@@ -176,7 +176,7 @@ npm run start:production
 
 O frontend é copiado para `backend/public/` e servido pelo Express (porta 4000). Com nginx na frente, ver `deploy/nginx-gsmartsoaco.conf`.
 
-Deploy controlado na VPS: `powershell -File scripts/deploy-producao.ps1` — detalhes em **[docs/FLUXO-DEV-DEPLOY.md](docs/FLUXO-DEV-DEPLOY.md)**.
+Deploy na VPS Hostinger (via GitHub `main`): automatico apos merge (self-hosted runner) — **[docs/DEPLOY-AUTOMATICO.md](docs/DEPLOY-AUTOMATICO.md)**; manual: `npm run deploy:producao` — **[docs/DEPLOY-PRODUCAO-VPS.md](docs/DEPLOY-PRODUCAO-VPS.md)**; fluxo completo em **[docs/FLUXO-DEV-DEPLOY.md](docs/FLUXO-DEV-DEPLOY.md)**.
 
 ### Fluxo Git (equipe de desenvolvimento)
 
