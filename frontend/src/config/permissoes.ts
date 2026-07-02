@@ -13,6 +13,7 @@ export const PERMISSOES = {
   COMPRAS_VINCULO_FINALIZACAO_AMPLIADO: 'compras.vinculo_finalizacao.ampliado',
   PRECIFICACAO_VER: 'precificacao.ver',
   PRECIFICACAO_GERAR: 'precificacao.gerar',
+  QUALIDADE_VER: 'qualidade.ver',
   RELATORIOS_VER: 'relatorios.ver',
   INTEGRACAO_VER: 'integracao.ver',
   INTEGRACAO_EDITAR: 'integracao.editar',
