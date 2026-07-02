@@ -1,0 +1,267 @@
+import { PERMISSOES, type CodigoPermissao } from './permissoes';
+import { podeAcessarRotaFinanceiro } from '../utils/financeiroPermissoes';
+
+export type NavMenuEntry =
+  | { kind: 'link'; to: string; label: string }
+  | { kind: 'submenu'; label: string; children: NavMenuEntry[] };
+
+export type FinanceiroMenuEntry =
+  | { kind: 'link'; to: string; label: string }
+  | { kind: 'submenu'; label: string; children: { to: string; label: string }[] };
+
+export const PCP_MENU: NavMenuEntry[] = [
+  { kind: 'link', to: '/pedidos/dash-entregas', label: 'Dash Entregas' },
+  { kind: 'link', to: '/pedidos/sequenciamento-carradas', label: 'Sequenciamento carradas' },
+  { kind: 'link', to: '/pedidos', label: 'Gerenciador de pedidos' },
+  { kind: 'link', to: '/pedidos/encerrados', label: 'Pedidos encerrados' },
+  {
+    kind: 'submenu',
+    label: 'Estoque',
+    children: [
+      { kind: 'link', to: '/pedidos/mrp-dashboard', label: 'Dashboard' },
+      { kind: 'link', to: '/pedidos/mrp', label: 'MRP Produtos secundários' },
+      { kind: 'link', to: '/pedidos/mrp-produtos-em-processo', label: 'MRP Produtos em processo' },
+      { kind: 'link', to: '/pedidos/mpp', label: 'MPP' },
+      { kind: 'link', to: '/pedidos/ressup-almox', label: 'Ressuprimento Almox' },
+      { kind: 'link', to: '/pedidos/ressup-nao-almox', label: 'Ressup Não Almox' },
+      { kind: 'link', to: '/pedidos/consulta-estoque', label: 'Consulta de Estoque' },
+    ],
+  },
+  {
+    kind: 'submenu',
+    label: 'Programação',
+    children: [
+      { kind: 'link', to: '/pedidos/programacao-setorial', label: 'Programação Setorial' },
+      {
+        kind: 'submenu',
+        label: 'Programação Perfiladeiras',
+        children: [{ kind: 'link', to: '/pedidos/programacao-producao', label: 'Recurso 1000' }],
+      },
+      {
+        kind: 'submenu',
+        label: 'Configuração',
+        children: [
+          { kind: 'link', to: '/pedidos/programacao-producao/recursos', label: 'Recursos' },
+          { kind: 'link', to: '/pedidos/regras-data-entrega', label: 'Regras data de entrega' },
+        ],
+      },
+    ],
+  },
+];
+
+export const LOGISTICA_MENU: NavMenuEntry[] = [
+  { kind: 'link', to: '/heatmap', label: 'Roteirizador' },
+  {
+    kind: 'submenu',
+    label: 'Cubagem',
+    children: [
+      { kind: 'link', to: '/logistica/cubagem/veiculos', label: 'Veículos' },
+      { kind: 'link', to: '/logistica/cubagem/produtos', label: 'Dimensões de Produtos' },
+      { kind: 'link', to: '/logistica/cubagem/simulacao', label: 'Simulação' },
+    ],
+  },
+];
+
+export const COMUNICACAO_INTERNA_SUBMENUS: { to: string; label: string }[] = [
+  { to: '/pedidos/sycroorder', label: 'Comunicação PD' },
+];
+
+export const COMPRAS_SUBMENUS: { to: string; label: string }[] = [
+  { to: '/compras/dashboard', label: 'Dashboard' },
+  { to: '/compras/coletas-precos', label: 'Coletas de Preços' },
+  { to: '/compras/pre-compra', label: 'Pré Compra' },
+];
+
+export const ENGENHARIA_SUBMENUS: { to: string; label: string }[] = [
+  { to: '/engenharia/precificacao', label: 'Precificação' },
+];
+
+export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
+  { kind: 'link', to: '/financeiro/resumo', label: 'Resumo Financeiro' },
+  { kind: 'link', to: '/financeiro/dre', label: 'DRE' },
+  { kind: 'link', to: '/financeiro/dfc', label: 'DFC' },
+  { kind: 'link', to: '/financeiro/painel-financeiro-comercial', label: 'Painel Financeiro-Comercial' },
+  { kind: 'link', to: '/financeiro/renegociacao-contratos', label: 'Simulação de Renegociação' },
+  { kind: 'link', to: '/financeiro/crm', label: 'CRM Financeiro' },
+];
+
+export const INTEGRACAO_SUBMENUS: { to: string; label: string }[] = [
+  { to: '/integracao/alteracao-data-entrega-compra', label: 'Alteração da Data de Entrega do Pedido de Compra' },
+  { to: '/integracao/sms', label: 'SMS' },
+];
+
+export const GESTAO_USUARIOS_SUBMENUS: { to: string; label: string }[] = [
+  { to: '/usuarios', label: 'Usuários' },
+  { to: '/usuarios/grupos', label: 'Grupos de usuários' },
+];
+
+/** Rotas que podem ser abertas em abas (path → label). Usado na barra de abas. */
+export const PATH_LABELS: Record<string, string> = {
+  '/': 'Início',
+  '/pedidos/dash-entregas': 'Dash Entregas',
+  '/pedidos/sequenciamento-carradas': 'Sequenciamento carradas',
+  '/pedidos': 'Gerenciador de Pedidos',
+  '/pedidos/encerrados': 'Pedidos encerrados',
+  '/pedidos/sycroorder': 'Comunicação PD',
+  '/suporte': 'Chamados',
+  '/suporte/configuracao': 'Configurações de suporte',
+  '/pedidos/mrp-dashboard': 'Dashboard MRP',
+  '/pedidos/mrp': 'MRP',
+  '/pedidos/mrp-produtos-em-processo': 'MRP - Produtos em Processo',
+  '/pedidos/mpp': 'MPP',
+  '/pedidos/programacao-setorial': 'Programação Setorial',
+  '/pedidos/programacao-producao': 'Programação de produção',
+  '/pedidos/programacao-producao/recursos': 'Recursos',
+  '/pedidos/regras-data-entrega': 'Regras data de entrega',
+  '/pedidos/ressup-almox': 'Ressup Almox',
+  '/pedidos/ressup-nao-almox': 'Ressup Não Almox',
+  '/pedidos/consulta-estoque': 'Consulta de Estoque',
+  '/heatmap': 'Roteirizador',
+  '/mind-maps': 'Fluxos Decisórios',
+  '/compras': 'Compras',
+  '/compras/dashboard': 'Dashboard Compras',
+  '/compras/coletas-precos': 'Coletas de Preços',
+  '/compras/pre-compra': 'Pré Compra',
+  '/engenharia': 'Engenharia',
+  '/engenharia/precificacao': 'Precificação',
+  '/financeiro': 'Financeiro',
+  '/financeiro/resumo': 'Resumo Financeiro',
+  '/financeiro/dfc': 'DFC',
+  '/financeiro/dre': 'DRE',
+  '/financeiro/painel-financeiro-comercial': 'Painel Financeiro-Comercial',
+  '/financeiro/renegociacao-contratos': 'Simulação de Renegociação',
+  '/financeiro/crm': 'CRM Financeiro',
+  '/relatorios': 'Relatórios',
+  '/integracao': 'Integração',
+  '/integracao/alteracao-data-entrega-compra': 'Alteração Data Entrega',
+  '/integracao/faturamento-diario': 'Faturamento Diário',
+  '/integracao/pedidos-entrega-vencida': 'Pedidos Previsão Vencida',
+  '/integracao/sms': 'SMS',
+  '/usuarios': 'Usuários',
+  '/usuarios/grupos': 'Grupos de usuários',
+  '/whatsapp': 'WhatsApp',
+  '/situacao-api': 'Situação da API',
+  '/logistica/cubagem/veiculos': 'Veículos',
+  '/logistica/cubagem/produtos': 'Dimensões de Produtos',
+  '/logistica/cubagem/simulacao': 'Simulação de Cubagem',
+  '/sem-acesso': 'Sem acesso',
+};
+
+export function navPathAtivo(to: string, pathname: string): boolean {
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
+
+export function navMenuEntryAtivo(entry: NavMenuEntry, pathname: string): boolean {
+  if (entry.kind === 'link') return navPathAtivo(entry.to, pathname);
+  return entry.children.some((c) => navMenuEntryAtivo(c, pathname));
+}
+
+export function getLabelForPath(path: string): string {
+  if (path.startsWith('/mind-maps')) return PATH_LABELS['/mind-maps'] ?? 'Fluxos Decisórios';
+  if (path.startsWith('/pedidos/programacao-producao/recursos')) {
+    return PATH_LABELS['/pedidos/programacao-producao/recursos'] ?? 'Recursos';
+  }
+  if (path.startsWith('/pedidos/regras-data-entrega')) {
+    return PATH_LABELS['/pedidos/regras-data-entrega'] ?? 'Regras data de entrega';
+  }
+  if (path.startsWith('/pedidos/programacao-producao')) {
+    return PATH_LABELS['/pedidos/programacao-producao'] ?? 'Programação de produção';
+  }
+  return PATH_LABELS[path] ?? (path || 'Início');
+}
+
+type HasPermission = (codigo: CodigoPermissao) => boolean;
+
+export function buildIntegracaoSubmenusForUser(
+  hasPermission: HasPermission,
+  isMaster: boolean,
+  grupo: string | null | undefined,
+): { to: string; label: string }[] {
+  const items: { to: string; label: string }[] = [];
+  if (hasPermission(PERMISSOES.INTEGRACAO_VER)) {
+    const g = String(grupo ?? '').trim();
+    const somenteAlteracao = g === 'Compras' || g === 'Operador Compras';
+    if (somenteAlteracao) {
+      items.push(...INTEGRACAO_SUBMENUS.filter((i) => i.to === '/integracao/alteracao-data-entrega-compra'));
+    } else {
+      items.push(...INTEGRACAO_SUBMENUS);
+    }
+  }
+  if (isMaster || hasPermission(PERMISSOES.SISTEMA_WHATSAPP)) {
+    items.push({ to: '/whatsapp', label: 'WhatsApp' });
+  }
+  if (isMaster || hasPermission(PERMISSOES.SISTEMA_SITUACAO_API)) {
+    items.push({ to: '/situacao-api', label: 'Situação da API' });
+  }
+  return items;
+}
+
+export function buildFinanceiroMenuForUser(hasPermission: HasPermission): FinanceiroMenuEntry[] {
+  const filtered: FinanceiroMenuEntry[] = [];
+  for (const entry of FINANCEIRO_MENU) {
+    if (entry.kind === 'link') {
+      if (podeAcessarRotaFinanceiro(entry.to, hasPermission)) filtered.push(entry);
+      continue;
+    }
+    const children = entry.children.filter((c) => podeAcessarRotaFinanceiro(c.to, hasPermission));
+    if (children.length > 0) filtered.push({ ...entry, children });
+  }
+  return filtered;
+}
+
+export function buildLogisticaMenuForUser(hasPermission: HasPermission): NavMenuEntry[] {
+  const filtered: NavMenuEntry[] = [];
+  for (const entry of LOGISTICA_MENU) {
+    if (entry.kind === 'link' && entry.to === '/heatmap') {
+      if (hasPermission(PERMISSOES.HEATMAP_VER)) filtered.push(entry);
+      continue;
+    }
+    if (entry.kind === 'submenu' && entry.label === 'Cubagem') {
+      const podeCubagem =
+        hasPermission(PERMISSOES.LOGISTICA_VER) ||
+        hasPermission(PERMISSOES.LOGISTICA_TOTAL) ||
+        hasPermission(PERMISSOES.LOGISTICA_CUBAGEM_VER);
+      if (podeCubagem) filtered.push(entry);
+    }
+  }
+  return filtered;
+}
+
+/** Filtra entradas do menu PCP conforme permissões (mesma lógica do menu horizontal). */
+export function filterPcpMenuChildren(
+  entry: NavMenuEntry,
+  hasPermission: HasPermission,
+): NavMenuEntry[] {
+  if (entry.kind !== 'submenu') return [];
+
+  if (entry.label === 'Estoque') {
+    return entry.children.filter(
+      (c) =>
+        c.kind !== 'link' ||
+        c.to !== '/pedidos/consulta-estoque' ||
+        hasPermission(PERMISSOES.PCP_CONSULTA_ESTOQUE_VER) ||
+        hasPermission(PERMISSOES.PCP_TOTAL),
+    );
+  }
+
+  return entry.children
+    .map((child) => {
+      if (child.kind === 'submenu' && child.label === 'Configuração') {
+        const leaves = child.children.filter((leaf) => {
+          if (leaf.kind !== 'link') return true;
+          if (leaf.to === '/pedidos/regras-data-entrega') {
+            return (
+              hasPermission(PERMISSOES.PCP_REGRAS_ENTREGA_VER) ||
+              hasPermission(PERMISSOES.PCP_REGRAS_ENTREGA_EDITAR) ||
+              hasPermission(PERMISSOES.PCP_TOTAL)
+            );
+          }
+          return true;
+        });
+        if (leaves.length === 0) return null;
+        return { ...child, children: leaves };
+      }
+      return child;
+    })
+    .filter((c): c is NavMenuEntry => c != null);
+}

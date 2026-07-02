@@ -1,0 +1,864 @@
+// Prisma schema - SQLite local (usuário e ajustes). Pedidos vêm do SQL que você colar (Nomus read-only).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DB_URL")
+}
+
+// Tabela auxiliar para ajustes manuais de previsão de entrega (histórico).
+//
+// Granularidade do ajuste:
+//   - `rota = NULL`  → ajuste base (vale para todas as rotas/romaneios em que o mesmo (PD, item) aparecer).
+//   - `rota != NULL` → override por rota (vale só naquela rota). Conteúdo do campo: nome da observação/rota
+//                      do romaneio (`de.observacoes` no Nomus) já normalizado (lower, sem acentos, trim).
+//
+// Leitura hierárquica (rowNomusToPedido): override por rota atual > base > dataParametro do Nomus.
+model PedidoPrevisaoAjuste {
+  id            Int      @id @default(autoincrement())
+  id_pedido     String   // ID do pedido no ERP (varchar para compatibilidade)
+  rota          String?  // Nome normalizado da rota (override). NULL = ajuste base.
+  previsao_nova DateTime
+  motivo        String
+  observacao    String?
+  usuario       String
+  data_ajuste   DateTime @default(now())
+  /// Quando false, altera a previsão efetiva mas não entra no histórico dos cards Comunicação Interna.
+  previsao_confiavel Boolean @default(true)
+
+  @@index([id_pedido])
+  @@index([id_pedido, rota])
+  @@index([data_ajuste])
+  @@map("pedido_previsao_ajuste")
+}
+
+model MotivoSugestao {
+  id        Int      @id @default(autoincrement())
+  descricao String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Motivos da alteração da data de entrega do pedido de compra (Integração Nomus) – cadastro separado da aba Pedidos
+model MotivoAlteracaoDataEntregaCompra {
+  id        Int      @id @default(autoincrement())
+  descricao String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("motivo_alteracao_data_entrega_compra")
+}
+
+// Grupo de usuários: define permissões de acesso
+model GrupoUsuario {
+  id          Int      @id @default(autoincrement())
+  nome        String   @unique
+  descricao   String?
+  permissoes  String   // JSON array: ["dashboard.ver", "pedidos.ver", ...]
+  /// Chave da tela inicial (ex.: gerenciador_pedidos). Null = padrão do sistema.
+  telaPrincipalInicial String?
+  /// Minutos sem interação antes do logout automático; null = desativado.
+  logoutInatividadeMinutos Int?
+  ativo       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  usuarios Usuario[]
+
+  @@map("grupo_usuario")
+}
+
+// Usuário para autenticação (login/senha) - tabela local do app
+model Usuario {
+  id        Int          @id @default(autoincrement())
+  login     String       @unique
+  senhaHash String
+  nome      String?
+  email     String?
+  telefone  String?
+  grupoId   Int?
+  fotoUrl   String? // Foto do usuário (data URL base64 ou URL). Opcional.
+  permissoes String?  // JSON array: permissões específicas do usuário (códigos), caso deseje sobrepor/adição em relação ao grupo.
+  ativo     Boolean    @default(true)
+  mustChangePassword Boolean @default(false)
+  /// Última interação autenticada (logout automático por inatividade do grupo).
+  ultimaAtividadeEm DateTime?
+  createdAt DateTime     @default(now())
+
+  grupo GrupoUsuario? @relation(fields: [grupoId], references: [id], onDelete: SetNull)
+  sycroOrdersCriados    SycroOrderOrder[]
+  sycroOrdersResponsavel SycroOrderOrder[] @relation("SycroOrderResponsavel")
+  sycroOrderHistory     SycroOrderHistory[]
+  sycroOrderNotifications SycroOrderNotification[]
+  sycroOrderOrderReads    SycroOrderOrderRead[]
+  mrpRunsCriados MrpRun[] @relation("MrpRunCreatedBy")
+  mrpRunsProcessados MrpRun[] @relation("MrpRunProcessedBy")
+  whatsappNotificacaoDestinatarios WhatsappNotificacaoDestinatario[]
+
+  @@map("usuario")
+}
+
+/// Execução/versionamento de MRP para auditoria de decisões.
+model MrpRun {
+  id                   Int      @id @default(autoincrement())
+  uid                  String   @unique @default(cuid())
+  nome                 String
+  observacoes          String?
+  scenario_type        String   // REAL | SIMULADO
+  scenario_file_name   String?
+  horizonte_fim        String?
+  horizonte_json       String?
+  /// JSON normalizado do cenário simulado (linhas do arquivo importado)
+  scenario_payload_json String?
+  status               String   @default("AGUARDANDO_PROCESSAMENTO") // AGUARDANDO_PROCESSAMENTO | PROCESSANDO | PROCESSADO | ERRO
+  error_message        String?
+  created_at           DateTime @default(now())
+  processed_at         DateTime?
+  created_by_user_id   Int?
+  processed_by_user_id Int?
+  created_by_login     String?
+  processed_by_login   String?
+
+  createdBy  Usuario? @relation("MrpRunCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  processedBy Usuario? @relation("MrpRunProcessedBy", fields: [processed_by_user_id], references: [id], onDelete: SetNull)
+  rows       MrpSnapshotRow[]
+
+  @@index([status])
+  @@index([created_at])
+  @@index([processed_at])
+  @@index([created_by_user_id])
+  @@index([processed_by_user_id])
+  @@map("mrp_run")
+}
+
+/// Snapshot imutável de cada linha do relatório MRP processado.
+model MrpSnapshotRow {
+  id              Int      @id @default(autoincrement())
+  run_id          Int
+  row_json        String
+  codigo          String?
+  componente      String?
+  coleta          String?
+  item_critico    String?
+  data_necessidade String?
+  data_ruptura    String?
+  created_at      DateTime @default(now())
+
+  run MrpRun @relation(fields: [run_id], references: [id], onDelete: Cascade)
+
+  @@index([run_id])
+  @@index([codigo])
+  @@index([data_necessidade])
+  @@index([data_ruptura])
+  @@map("mrp_snapshot_row")
+}
+
+// Configuração persistida (ex.: Evolution WhatsApp – instância e número para envio)
+model Config {
+  id    Int    @id @default(autoincrement())
+  key   String @unique
+  value String
+
+  @@map("config")
+}
+
+/// Tipos de mensagem automática WhatsApp (Integração → SMS)
+model WhatsappNotificacaoTipo {
+  id               Int      @id @default(autoincrement())
+  code             String   @unique
+  label            String
+  descricao        String?
+  ativo            Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  /// evento | sql_template | codigo
+  fonteMensagem    String   @default("evento")
+  /// evento | cron
+  modoDisparo      String   @default("evento")
+  cronExpressao    String?
+  sqlNomus         String?
+  templateMensagem String?
+  builderCode      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  destinatarios    WhatsappNotificacaoDestinatario[]
+
+  @@map("whatsapp_notificacao_tipo")
+}
+
+model WhatsappNotificacaoDestinatario {
+  id        Int @id @default(autoincrement())
+  tipoId    Int
+  usuarioId Int
+  tipo      WhatsappNotificacaoTipo @relation(fields: [tipoId], references: [id], onDelete: Cascade)
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([tipoId, usuarioId])
+  @@map("whatsapp_notificacao_destinatario")
+}
+
+// Coordenadas de municípios brasileiros (fonte: IBGE/kelvins – sem depender de API externa)
+model MunicipioCoordenada {
+  id               Int    @id @default(autoincrement())
+  nome_normalizado String // nome sem acentos, minúsculo, para comparação
+  uf               String // sigla: MA, PI, etc.
+  lat              Float
+  lng              Float
+
+  @@unique([nome_normalizado, uf])
+  @@index([nome_normalizado, uf])
+  @@map("municipio_coordenada")
+}
+
+// Coleta de preços: uma confirmação de seleção no modal (idProduto do Nomus)
+// Histórico de alteração de data de entrega do item de pedido de compra (Nomus). Gravado no banco do projeto.
+model PedidoCompraDataEntregaAlteracao {
+  id                   Int      @id @default(autoincrement())
+  idItemPedidoCompra   Int      // id do item no Nomus (itempedidocompra.id)
+  dataEntregaAnterior  String   // data antes da alteração (YYYY-MM-DD)
+  dataEntregaNova      String   // data após alteração (YYYY-MM-DD)
+  motivo               String
+  observacao           String?
+  usuario              String   // login de quem alterou
+  dataAlteracao        DateTime @default(now())
+
+  @@index([idItemPedidoCompra])
+  @@index([dataAlteracao])
+  @@map("pedido_compra_data_entrega_alteracao")
+}
+
+model ColetaPrecos {
+  id                  Int       @id @default(autoincrement())
+  createdAt           DateTime  @default(now())
+  usuarioCriacao      String?   // login do usuário que criou a coleta
+  fornecedores        String?   // JSON array de até 6 nomes de fornecedores da cotação
+  status                      String?   @default("Em cotação") // "Em cotação" | "Em Aprovação" | "Rejeitada" | "Finalizada" | "Enviado para Financeiro"
+  dataEnvioAprovacao          DateTime?  // quando foi enviado para aprovação (zerado ao reabrir)
+  jaEnviadaAprovacao          Boolean   @default(false) // true assim que foi enviada para aprovação uma vez; nunca volta a false (bloqueia exclusão)
+  justificativaCancelamento  String?   // justificativa ao cancelar (reverter) aprovação
+  dataCancelamento           DateTime?  // quando foi cancelada a aprovação
+  dataFinalizacao            DateTime?  // quando foi finalizada ou enviada ao financeiro (para cálculo de tempo em cotação)
+  observacoes                 String?   // observações da coleta (texto longo); exibido no mapa de cotação
+  dataUltimaMovimentacao     DateTime?  // última alteração (status, cotação, itens etc.); usado na regra de 72h para bloquear nova coleta
+  /// Coletas antigas (false): finalizar sem vínculo; novas (true): obrigatório pedido de compra ou cotação Nomus.
+  requerVinculoFinalizacao   Boolean    @default(true)
+  /// Preenchido ao finalizar: PEDIDO ou COTACAO (Nomus).
+  finalizacaoTipoRegistro    String?
+  /// id pedidocompra.id ou cotacaocompra.id no Nomus.
+  finalizacaoIdRegistro      Int?
+  /// JSON: [{ "tipoRegistro": "PEDIDO"|"COTACAO", "idRegistro": number }, ...] — múltiplos vínculos na finalização.
+  finalizacaoVinculosJson    String?
+
+  itens       ColetaPrecosItem[]
+  registros   ColetaPrecosRegistro[]
+  cotacoes    ColetaPrecosCotacao[]
+  ciencias    ColetaPrecosCiencia[]
+  /// Finalizações registradas como erro operacional (vínculo ampliado + senha).
+  vinculosErroOperacional ColetaPrecosVinculoErroOperacional[]
+
+  @@map("coleta_precos")
+}
+
+/// Registro de finalização com vínculo tratado como erro operacional (auditoria / dashboard).
+model ColetaPrecosVinculoErroOperacional {
+  id             Int      @id @default(autoincrement())
+  coletaPrecosId Int
+  usuario        String // login de quem confirmou com senha
+  vinculosJson   String // mesmo formato de finalizacaoVinculosJson
+  createdAt      DateTime @default(now())
+
+  coletaPrecos ColetaPrecos @relation(fields: [coletaPrecosId], references: [id], onDelete: Cascade)
+
+  @@index([coletaPrecosId])
+  @@index([createdAt])
+  @@map("coleta_precos_vinculo_erro_operacional")
+}
+
+// Ciência dada pelo usuário para coleta com mais de 72h em aberto (desbloqueia criar nova coleta)
+model ColetaPrecosCiencia {
+  id             Int      @id @default(autoincrement())
+  coletaPrecosId Int
+  justificativa  String   // motivo do período em aberto
+  usuario        String   // login de quem deu a ciência
+  createdAt      DateTime @default(now())
+
+  coletaPrecos ColetaPrecos @relation(fields: [coletaPrecosId], references: [id], onDelete: Cascade)
+
+  @@index([coletaPrecosId])
+  @@map("coleta_precos_ciencia")
+}
+
+model ColetaPrecosItem {
+  id             Int          @id @default(autoincrement())
+  coletaPrecosId Int
+  idProduto      Int          // id do produto no Nomus
+  idSolicitacao  Int?         // id da solicitação de compra no Nomus (quando vinculado)
+
+  coletaPrecos ColetaPrecos @relation(fields: [coletaPrecosId], references: [id], onDelete: Cascade)
+
+  @@index([coletaPrecosId])
+  @@index([idProduto])
+  @@map("coleta_precos_item")
+}
+
+// Registros retornados pelo SQL de coleta no Nomus (uma linha por item: produto + solicitação escolhida)
+model ColetaPrecosRegistro {
+  id                  Int     @id @default(autoincrement())
+  coletaPrecosId      Int
+  idProduto           Int     // Id Produto do Nomus
+  idSolicitacao       Int?    // Id da solicitação no Nomus (quando vinculado)
+  dados               String  // JSON com todas as colunas do SQL (para uso em condições)
+  qtdeAprovada        Float?  // Quantidade aprovada pela diretoria (obrigatória para finalizar)
+  idFornecedorVencedor Int?   // idPessoa do fornecedor vencedor do item (obrigatório para finalizar, exceto itens cancelados)
+
+  coletaPrecos ColetaPrecos @relation(fields: [coletaPrecosId], references: [id], onDelete: Cascade)
+
+  @@index([coletaPrecosId])
+  @@index([idProduto])
+  @@map("coleta_precos_registro")
+}
+
+// Preços cadastrados por produto/fornecedor na cotação (popup Cadastrar preços)
+model ColetaPrecosCotacao {
+  id             Int     @id @default(autoincrement())
+  coletaPrecosId Int
+  idProduto      Int     // Id Produto do Nomus
+  idFornecedor   Int     // idPessoa do fornecedor
+  precoNF        Float
+  percICMS       Float
+  percPIS        Float
+  percIPI        Float
+  percCOFINS     Float
+  precoTotal     Float
+
+  coletaPrecos ColetaPrecos @relation(fields: [coletaPrecosId], references: [id], onDelete: Cascade)
+
+  @@unique([coletaPrecosId, idProduto, idFornecedor])
+  @@index([coletaPrecosId])
+  @@index([idProduto])
+  @@map("coleta_precos_cotacao")
+}
+
+// Precificação (Engenharia): registro de uma precificação iniciada por produto
+model Precificacao {
+  id               Int      @id @default(autoincrement())
+  idProduto         Int      // id do produto no Nomus
+  codigoProduto     String?  // nome no Nomus (código)
+  descricaoProduto  String?
+  /// Código NCM (tabela ncm no Nomus), exibido no cabeçalho do resultado.
+  ncmCodigo         String?
+  data             DateTime @default(now())
+  usuario          String?  // login de quem iniciou
+  valoresCampos     String?  // JSON com os campos % (sucata, fosfatizacao, lucro, etc.)
+  /// ID do ticket (CRM) escolhido na ficha; gravado ao Salvar; null na criação até o usuário salvar.
+  ticketCrmId       Int?
+
+  itens PrecificacaoItem[]
+
+  @@index([idProduto])
+  @@index([data])
+  @@map("precificacao")
+}
+
+/// Tabela PSA (importada de CSV): NCM x parâmetros de ICMS para sugestão no Markup da precificação.
+model PsaNcmIcmsBz0 {
+  id               Int    @id @default(autoincrement())
+  /// idncmicms do arquivo de origem (opcional).
+  idLegado         Int?
+  /// NCM apenas com dígitos (chave de busca; ex.: 84212100).
+  ncmNormalizado   String @unique
+  icmsefetivo      Float
+  aliquotaicms     Float
+  reducaobc        Float
+
+  @@map("psa_ncm_icms_bz0")
+}
+
+// Linhas do resultado do SQL de precificação (lista de materiais / componentes)
+model PrecificacaoItem {
+  id                Int     @id @default(autoincrement())
+  precificacaoId    Int
+  idprodutopai      Int?
+  codigopai         String?
+  descricaopai      String?
+  idcomponente      Int?
+  /// idFamiliaProduto do produto componente no Nomus (base consumíveis 65/70/106).
+  idFamiliaProduto  Int?
+  codigocomponente  String?
+  componente        String?
+  unidadeMedida     String?
+  qtd               Float   // quantidade (round 5 decimais)
+  /// Data da última entrada usada no cálculo de custo (SQL Nomus).
+  dataEntrada       String?
+  valorUnitario     Float?  // da segunda consulta Nomus (por idcomponente)
+  valorTotal        Float?  // qtd * valorUnitario
+
+  precificacao Precificacao @relation(fields: [precificacaoId], references: [id], onDelete: Cascade)
+
+  @@index([precificacaoId])
+  @@map("precificacao_item")
+}
+
+/// Registro das programações setoriais a executar.
+model ProgramacaoSetorialRegistro {
+  id                 Int      @id @default(autoincrement())
+  nome               String
+  status             String   @default("PENDENTE") // PENDENTE | EM_EXECUCAO | CONCLUIDA | CANCELADA
+  observacao         String?
+  /// Snapshot da programação (JSON: filtros + linhas exibidas no gerador). SQLite: armazenado como texto.
+  dadosProgramacao   String?
+  criadoPor          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("programacao_setorial_registro")
+}
+
+/// Programação de produção (PCP) — registro com payload JSON (consultas e telas em evolução).
+model ProgramacaoProducaoRegistro {
+  id                     Int       @id @default(autoincrement())
+  uid                    String    @unique @default(cuid())
+  name                   String
+  description            String?
+  /// JSON da programação (snapshot da grade no momento do salvamento).
+  dadosJson              String
+  linhaCount             Int       @default(0)
+  /// "em_processamento" | "processado" | "concluido"
+  status                 String    @default("em_processamento")
+  processadoAt           DateTime?
+  usuarioLoginProcessado String?
+  concluidoAt            DateTime?
+  usuarioLoginConcluido  String?
+  criadoPorLogin         String
+  criadoPorNome          String?
+  atualizadoPorLogin     String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([criadoPorLogin])
+  @@index([updatedAt])
+  @@index([status])
+  @@map("programacao_producao_registro")
+}
+
+/// Versões das regras de data de entrega (PCP) — vigência por data; payload JSON.
+model RegraDataEntregaVersao {
+  id               Int      @id @default(autoincrement())
+  vigenteApartirDe DateTime
+  /// JSON: { carrada: { valorCorte, diasAbaixoCorte, diasIgualOuAcimaCorte, incluiInserirRomaneio, ... } }
+  payload          String
+  criadoPorLogin   String
+  criadoPorNome    String?
+  createdAt        DateTime @default(now())
+
+  @@index([vigenteApartirDe])
+  @@map("regra_data_entrega_versao")
+}
+
+// --- SycroOrder (migrado do sincroorder-crm): pedidos, histórico e notificações ---
+model SycroOrderOrder {
+  id                    Int      @id @default(autoincrement())
+  order_number           String
+  delivery_method       String
+  current_promised_date  String   // YYYY-MM-DD
+  status                 String   @default("PENDING") // PENDING | FINISHED | ESCALATED
+  is_urgent              Int      @default(0) // 0 ou 1
+  /// TAG de disponibilidade para "Comunicação PD" (DISPONÍVEL / NÃO DISPONÍVEL).
+  tag_disponivel         Int      @default(0) // 0 ou 1
+  /// Itens (id_pedido do ERP) referenciados por este card. Null = todos os itens do pedido.
+  item_ids_json          String?
+  /// Códigos (Cod) dos itens referenciados; usado só para exibição/diagnóstico.
+  item_codes_json        String?
+  created_by             Int?     // Usuario.id (quem criou)
+  creator_name           String?  // nome para exibição (migração ou fallback)
+  /// Usuário adicional marcado na criação do card (quem deve responder além da regra josenildo/PCP).
+  responsible_user_id    Int?
+  /// Último comentário pede retorno de outro participante (1) ou não (0).
+  aguarda_resposta_pendente Int      @default(0)
+  /// Texto exibido no card: nomes/logins de quem deve responder (quando pendente = 1).
+  aguarda_resposta_de_label String?
+  /// Quem deve responder, quando autor fora do time comercial escolhe: comercial | nao_comercial.
+  aguarda_resposta_destino_time String?
+  created_at             DateTime @default(now())
+
+  usuarioCriador Usuario?              @relation(fields: [created_by], references: [id], onDelete: SetNull)
+  usuarioResponsavel Usuario?          @relation("SycroOrderResponsavel", fields: [responsible_user_id], references: [id], onDelete: SetNull)
+  history        SycroOrderHistory[]
+  notifications  SycroOrderNotification[]
+  reads          SycroOrderOrderRead[]
+
+  @@index([created_by])
+  @@index([responsible_user_id])
+  @@index([status])
+  @@index([created_at])
+  @@map("sycro_order_order")
+}
+
+model SycroOrderOrderRead {
+  order_id  Int
+  user_id   Int
+  read_at   DateTime? // quando preenchido = lido; null = não lido (usuário pode marcar como não lida)
+  updated_at DateTime @updatedAt
+
+  order SycroOrderOrder @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  usuario Usuario       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@id([order_id, user_id])
+  @@index([user_id])
+  @@map("sycro_order_order_read")
+}
+
+model SycroOrderHistory {
+  id             Int      @id @default(autoincrement())
+  order_id       Int
+  user_id        Int?     // Usuario.id (quem fez a ação)
+  user_name      String?  // para exibição quando user_id null (migração)
+  action_type    String   // CREATE | UPDATE
+  previous_date  String?
+  new_date       String?
+  observation    String?
+  created_at     DateTime @default(now())
+
+  order SycroOrderOrder @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  usuario Usuario?      @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@index([order_id])
+  @@index([user_id])
+  @@map("sycro_order_history")
+}
+
+model SycroOrderNotification {
+  id         Int      @id @default(autoincrement())
+  user_id    Int      // Usuario.id (destinatário)
+  message    String
+  order_id   Int?
+  is_read    Int      @default(0) // 0 ou 1
+  created_at DateTime @default(now())
+
+  usuario Usuario?       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  order   SycroOrderOrder? @relation(fields: [order_id], references: [id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([order_id])
+  @@map("sycro_order_notification")
+}
+
+/// Snapshot gravado pelo usuário na tela Ressup Almox — análise (grade + linhas Nomus).
+model RessupAlmoxAnalise {
+  id             Int       @id @default(autoincrement())
+  createdAt      DateTime  @default(now())
+  usuarioLogin   String
+  resumoFiltros  String?
+  linhaCount     Int       @default(0)
+  /// JSON: version, columnDefs, displayRows, rawRows, aplicado, savedUi, userInputs
+  payload        String
+  /// "em_processamento" | "processado" | "concluido"
+  status                 String    @default("em_processamento")
+  processadoAt           DateTime?
+  usuarioLoginProcessado String?
+  concluidoAt            DateTime?
+  usuarioLoginConcluido  String?
+
+  @@index([createdAt])
+  @@index([status])
+  @@map("ressup_almox_analise")
+}
+
+/// Snapshot de análises Ressup Não Almox (grade + dados Nomus).
+model RessupNaoAlmoxAnalise {
+  id                     Int       @id @default(autoincrement())
+  createdAt              DateTime  @default(now())
+  usuarioLogin           String
+  resumoFiltros          String?
+  linhaCount             Int       @default(0)
+  /// JSON: version, columnDefs, displayRows, rawRows, aplicado, savedUi, userInputs
+  payload                String
+  /// "em_processamento" | "processado" | "concluido"
+  status                 String    @default("em_processamento")
+  processadoAt           DateTime?
+  usuarioLoginProcessado String?
+  concluidoAt            DateTime?
+  usuarioLoginConcluido  String?
+
+  @@index([createdAt])
+  @@index([status])
+  @@map("ressup_nao_almox_analise")
+}
+
+/// Snapshot gravado na tela Sequenciamento carradas (estado do Gerenciador no momento do Gravar).
+model SequenciamentoCarradasSnapshot {
+  id           Int      @id @default(autoincrement())
+  /// Código legível do snapshot (ex.: SC-20250610-001).
+  cod          String   @unique
+  usuarioLogin String
+  createdAt    DateTime @default(now())
+  carradaCount Int      @default(0)
+  /// JSON v1: carradas agregadas + linhas completas do Gerenciador.
+  payload      String
+
+  @@index([createdAt])
+  @@map("sequenciamento_carradas_snapshot")
+}
+
+/// Ticket de suporte interno (abertura por usuário comum e gestão pelo master).
+model SupportTicket {
+  id                 Int      @id @default(autoincrement())
+  ticketNumber       String   @unique
+  ownerLogin         String
+  ownerNome          String?
+  tipo               String
+  titulo             String
+  descricao          String
+  categoria          String?
+  prioridade         String   @default("media")
+  status             String   @default("aberto")
+  customFieldsJson   String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  lastStatusChangeAt DateTime @default(now())
+  lastStatusChangeBy String?
+  mensagens          SupportTicketMessage[]
+  anexos             SupportTicketAttachment[]
+  historicoStatus    SupportTicketStatusHistory[]
+  notificacoes       SupportTicketNotification[]
+  reads              SupportTicketRead[]
+
+  @@index([ownerLogin])
+  @@index([status])
+  @@index([prioridade])
+  @@index([createdAt])
+  @@map("support_ticket")
+}
+
+/// Estado de leitura individual do chamado por usuário (lido/não lido por master).
+model SupportTicketRead {
+  ticketId  Int
+  userLogin String
+  readAt    DateTime? // quando preenchido = lido; null = não lido (master pode reverter)
+  updatedAt DateTime  @updatedAt
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, userLogin])
+  @@index([userLogin])
+  @@map("support_ticket_read")
+}
+
+/// Mensagens no histórico do chamado (usuário comum e master).
+model SupportTicketMessage {
+  id          Int      @id @default(autoincrement())
+  ticketId    Int
+  authorLogin String
+  authorNome  String?
+  authorType  String   // usuario | master
+  mensagem    String
+  createdAt   DateTime @default(now())
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  anexos      SupportTicketAttachment[]
+
+  @@index([ticketId])
+  @@index([createdAt])
+  @@map("support_ticket_message")
+}
+
+/// Anexos enviados no chamado (abertura e respostas).
+model SupportTicketAttachment {
+  id           Int      @id @default(autoincrement())
+  ticketId     Int
+  messageId    Int?
+  fileName     String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  storagePath  String
+  createdAt    DateTime @default(now())
+  ticket       SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  message      SupportTicketMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([messageId])
+  @@map("support_ticket_attachment")
+}
+
+/// Histórico de mudanças de status com auditoria.
+model SupportTicketStatusHistory {
+  id         Int      @id @default(autoincrement())
+  ticketId   Int
+  fromStatus String?
+  toStatus   String
+  changedBy  String
+  changedAt  DateTime @default(now())
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([changedAt])
+  @@map("support_ticket_status_history")
+}
+
+/// Notificação interna (estrutura pronta para integração de alertas no frontend).
+model SupportTicketNotification {
+  id        Int      @id @default(autoincrement())
+  userLogin String
+  message   String
+  ticketId  Int
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([userLogin])
+  @@index([ticketId])
+  @@index([createdAt])
+  @@map("support_ticket_notification")
+}
+
+/// Catálogo configurável: status, prioridade e tipo de chamado (rótulo, código estável, ativo).
+model SupportTicketCatalogItem {
+  id              Int      @id @default(autoincrement())
+  kind            String
+  code            String
+  label           String
+  active          Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  blocksUserReply Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([kind, code])
+  @@index([kind, active, sortOrder])
+  @@map("support_ticket_catalog_item")
+}
+
+/// Mapa mental (Fluxos Decisórios) — documento JSON por usuário da organização.
+model MindMapSaved {
+  id                 Int      @id @default(autoincrement())
+  uid                String   @unique @default(cuid())
+  name               String
+  mapDescription     String?
+  /// JSON: root, pan, zoom (SavedMap sem metadados de lista)
+  graphJson          String
+  criadoPorLogin     String
+  criadoPorNome      String?
+  atualizadoPorLogin String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([criadoPorLogin])
+  @@index([updatedAt])
+  @@map("mind_map_saved")
+}
+
+// =====================================================================
+// DFC — Prioridade de pagamento (Plano de Contas e Lançamento)
+// =====================================================================
+// Classificação interna feita no app (Nomus é somente leitura). Por empresa.
+// prioridade: 1=Prioritário, 2=Reprogramar +30d, 3=Reprogramar indefinido, 4=Não pagar.
+// Regra ao filtrar DFC: override de lançamento vence o do plano de contas.
+
+/// Prioridade aplicada ao plano de contas (Nomus contafinanceiro.id) por empresa.
+model DfcPrioridadeConta {
+  id                Int      @id @default(autoincrement())
+  idEmpresa         Int
+  idContaFinanceiro Int
+  prioridade        Int
+  observacao        String?
+  usuario           String
+  atualizadoEm      DateTime @updatedAt
+  criadoEm          DateTime @default(now())
+
+  @@unique([idEmpresa, idContaFinanceiro])
+  @@index([prioridade])
+  @@index([idEmpresa])
+  @@map("dfc_prioridade_conta")
+}
+
+/// Prioridade aplicada a lançamento (override). tipoRef: 'A' = agendamentofinanceiro.id, 'L' = lancamentofinanceiro.id.
+/// idContaFinanceiro espelha o Nomus (cache local) — permite filtrar pelos planos sem ida à origem.
+model DfcPrioridadeLancamento {
+  id                Int      @id @default(autoincrement())
+  idEmpresa         Int
+  tipoRef           String
+  idRef             Int
+  idContaFinanceiro Int?
+  prioridade        Int
+  observacao        String?
+  usuario           String
+  atualizadoEm      DateTime @updatedAt
+  criadoEm          DateTime @default(now())
+
+  @@unique([idEmpresa, tipoRef, idRef])
+  @@index([prioridade])
+  @@index([idEmpresa, tipoRef])
+  @@index([idContaFinanceiro])
+  @@map("dfc_prioridade_lancamento")
+}
+
+// --- Logística / Cubagem (extensão local; produtos vêm do Nomus) ---
+
+/// Veículo (placa) com dimensões úteis da carroceria — cada caminhão tem sua própria carroceria.
+model LogVeiculo {
+  id                    Int      @id @default(autoincrement())
+  placa                 String   @unique
+  modelo                String?
+  alturaMm              Int?
+  larguraMm             Int?
+  profundidadeMm        Int?
+  capacidadePesoKg      Int?
+  taraKg                Int?
+  pbtKg                 Int?
+  alturaEmpilhamentoMm  Int?
+  aberturas             String?
+  fatorAproveitamento   Float    @default(0.85)
+  ano                   Int?
+  motoristaPadrao       String?
+  ativo                 Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("cubagem_veiculo")
+}
+
+/// Dados de cubagem estendendo produto do Nomus (sem duplicar mestre).
+model LogProdutoCubagem {
+  id                Int      @id @default(autoincrement())
+  idProduto         Int      @unique
+  codigoProduto     String
+  descricaoProduto  String
+  pesoKg            Float?
+  alturaMm          Int?
+  larguraMm         Int?
+  profundidadeMm    Int?
+  numVolumes        Int      @default(1)
+  empilhavel        Boolean  @default(true)
+  pesoMaxTopoKg     Float?
+  podeDeitar        Boolean  @default(true)
+  podeVirar         Boolean  @default(true)
+  esteLadoParaCima  Boolean  @default(false)
+  fragilNaoSobrepor Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  volumes LogProdutoVolume[]
+
+  @@index([codigoProduto])
+  @@map("cubagem_produto")
+}
+
+/// Volume individual de um produto multi-volume.
+model LogProdutoVolume {
+  id                Int      @id @default(autoincrement())
+  produtoCubagemId  Int
+  ordem             Int
+  descricao         String?
+  alturaMm          Int?
+  larguraMm         Int?
+  profundidadeMm    Int?
+  pesoKg            Float?
+
+  produtoCubagem LogProdutoCubagem @relation(fields: [produtoCubagemId], references: [id], onDelete: Cascade)
+
+  @@unique([produtoCubagemId, ordem])
+  @@index([produtoCubagemId])
+  @@map("cubagem_produto_volume")
+}

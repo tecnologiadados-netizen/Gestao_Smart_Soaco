@@ -1,0 +1,41 @@
+---
+description: Estratégia padrão de carregamento (grade enxuta + detalhe lazy + cache) e integridade grade==modal
+alwaysApply: true
+---
+
+# Telas com grade + modais analíticos (padrão do sistema)
+
+Para **toda tela nova** (qualquer módulo) e ao evoluir telas do **PCP**, use a estratégia de
+"consultas em cascata". Referência: `ConsultaEstoquePage`, `RessupAlmoxAnalisePage`,
+`RessupNaoAlmoxAnalisePage` e `ModalEmpenhoRessup` / `ModalPcPendDetalhes`.
+
+## Regras
+
+1. **Grade enxuta**: a consulta principal traz só os valores consolidados (sintéticos). NÃO
+   calcule o detalhe analítico de cada célula junto com a grade.
+2. **Detalhe lazy**: o detalhe de cada modal é buscado só quando o usuário clica na célula.
+3. **Cache em memória por consulta**: guarde o detalhe já buscado em `useRef(new Map())` e reabra
+   instantaneamente. Limpe **todos** os caches no início de cada novo "Filtrar".
+4. **Integridade inegociável — grade == modal**: o valor consolidado da grade DEVE ser exatamente
+   igual à soma do modal analítico. Nunca exiba parcial (ex.: só empenhos com data mais próxima)
+   para ganhar velocidade. Em caso de conflito, integridade > velocidade.
+5. **Mesma fonte/regra**: para garantir (4), derive o modal do MESMO bloco SQL/regra da grade
+   (ex.: `buildEmpenhoRessupDetalheSql` reaproveita o join `emp`). Valide contra o banco quando
+   mudar cálculo.
+
+## Padrão de cache (frontend)
+
+```tsx
+const detalheCacheRef = useRef(new Map<string, Detalhe>());
+// no Filtrar:
+detalheCacheRef.current.clear();
+// no loader do modal:
+const cached = cacheRef?.current.get(key);
+if (cached) { setDetalhe(cached); return; }
+// ...fetch... cacheRef?.current.set(key, data);
+```
+
+## Escopo atual
+
+- **PCP**: replicar nas telas com grade + modais. **Demais módulos**: manter como estão (só telas
+  novas adotam o padrão).

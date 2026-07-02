@@ -1,0 +1,49 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente (nunca commitar senhas/tokens)
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# Build / output
+dist/
+build/
+frontend/dist/
+backend/dist/
+*.tsbuildinfo
+
+# Vite
+frontend/.vite/
+
+# Logs
+*.log
+npm-debug.log*
+.dev-stack.lock
+.dev-restart.log
+backend/logs/
+
+# Sistema / IDE
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Testes / cobertura
+coverage/
+.nyc_output/
+
+# Prisma — banco SQLite local de cada desenvolvedor (nunca commitar)
+backend/prisma/*.db
+backend/prisma/*.db-journal
+backend/prisma/*.db-wal
+backend/prisma/*.db-shm
+backend/prisma/prisma/
+
+# ACME / SSL (não commitar chaves)
+backend/var/.well-known/
+deploy/ssl/*.pem
+deploy/ssl/*.crt
+deploy/ssl/*.key
+deploy/wacs/

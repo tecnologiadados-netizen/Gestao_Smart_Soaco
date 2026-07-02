@@ -1,0 +1,8 @@
+# Padrão: cabeçalho azul das tabelas (grade de dados)
+
+O **cabeçalho das tabelas** (grade de dados) deve seguir o padrão da aba **Coleta de preço**:
+
+- **thead**: `className="bg-primary-600 text-white"`
+- **th**: `className="py-3 px-4 font-semibold"` (ou `px-3` se preferir alinhamento igual ao restante)
+
+Ao criar ou alterar telas com tabelas de listagem, use esse padrão para o cabeçalho da grade.

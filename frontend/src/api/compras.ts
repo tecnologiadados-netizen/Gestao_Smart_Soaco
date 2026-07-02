@@ -1,0 +1,1278 @@
+import { apiFetch } from './client';
+
+export interface FiltrosProdutosColeta {
+  codigo?: string;
+  descricao?: string;
+  familia?: string;
+  fornecedor?: string;
+  coleta?: string;
+  diaSemana?: string;
+  apenasComSolicitacao?: boolean;
+  considerarRequisicoes?: boolean;
+}
+
+export interface ProdutoColetaRow {
+  idProduto: number;
+  codigoSolicitacao: number | null;
+  qtdeSolicitada: number | null;
+  codigoProduto: string;
+  descricaoProduto: string;
+  unidadeMedida: string | null;
+  tipoProduto: string | null;
+  grupoProduto: string | null;
+  idFamiliaProduto: number | null;
+  familiaProduto: string | null;
+  produtoAtivo: string;
+  idFornecedor: number | null;
+  ultimoFornecedor: string | null;
+  nomeColeta: string | null;
+  diaSemana: string | null;
+}
+
+export interface ProdutosColetaResponse {
+  data: ProdutoColetaRow[];
+  error?: string;
+}
+
+/**
+ * Lista produtos do Nomus para o pop-up de coleta de preços.
+ * Filtros aplicados no servidor (rápido e otimizado).
+ */
+export async function listarProdutosColeta(filtros: FiltrosProdutosColeta = {}): Promise<ProdutosColetaResponse> {
+  const params = new URLSearchParams();
+  if (filtros.codigo) params.set('codigo', filtros.codigo);
+  if (filtros.descricao) params.set('descricao', filtros.descricao);
+  if (filtros.familia) params.set('familia', filtros.familia);
+  if (filtros.fornecedor) params.set('fornecedor', filtros.fornecedor);
+  if (filtros.coleta) params.set('coleta', filtros.coleta);
+  if (filtros.diaSemana) params.set('diaSemana', filtros.diaSemana);
+  if (filtros.apenasComSolicitacao === true) params.set('apenasComSolicitacao', 'true');
+  const qs = params.toString();
+  const url = `/api/compras/produtos-coleta${qs ? `?${qs}` : ''}`;
+  const res = await apiFetch(url);
+  const body = await res.json().catch(() => ({})) as { data?: ProdutoColetaRow[]; error?: string };
+  if (!res.ok) {
+    return { data: [], error: body.error ?? res.statusText };
+  }
+  return { data: body.data ?? [], error: body.error };
+}
+
+/** Consulta Nomus (lista + registro) pode ser lenta; evitar abort prematuro em um único produto com muitas SCs. */
+const RESSUP_ALMOX_PREVIEW_TIMEOUT_MS = 120000;
+
+/**
+ * Linhas do registro Nomus (mesmo SQL da coleta de preços) para análise Ressup Almox, a partir dos filtros de produtos-coleta.
+ */
+export async function listarRessupAlmoxRegistroPreview(
+  filtros: FiltrosProdutosColeta = {}
+): Promise<{ data: Record<string, unknown>[]; message?: string; error?: string }> {
+  const params = new URLSearchParams();
+  if (filtros.codigo) params.set('codigo', filtros.codigo);
+  if (filtros.descricao) params.set('descricao', filtros.descricao);
+  if (filtros.familia) params.set('familia', filtros.familia);
+  if (filtros.fornecedor) params.set('fornecedor', filtros.fornecedor);
+  if (filtros.coleta) params.set('coleta', filtros.coleta);
+  if (filtros.diaSemana) params.set('diaSemana', filtros.diaSemana);
+  if (filtros.apenasComSolicitacao === true) params.set('apenasComSolicitacao', 'true');
+  if (filtros.considerarRequisicoes === true) params.set('considerarRequisicoes', 'true');
+  const qs = params.toString();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), RESSUP_ALMOX_PREVIEW_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await apiFetch(`/api/compras/ressup-almox/registro-preview${qs ? `?${qs}` : ''}`, {
+      signal: controller.signal,
+    });
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e instanceof Error && e.name === 'AbortError') {
+      return {
+        data: [],
+        error:
+          'A consulta ao Nomus ultrapassou o tempo máximo (2 min). Tente de novo em horário de menor carga ou verifique rede/ERP.',
+      };
+    }
+    throw e;
+  }
+  clearTimeout(timeoutId);
+  const text = await res.text();
+  let body: { data?: Record<string, unknown>[]; message?: string; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) {
+    return { data: [], error: body.error ?? res.statusText, message: body.message };
+  }
+  const data = Array.isArray(body.data) ? body.data : [];
+  return { data, message: body.message };
+}
+
+export interface RessupAlmoxPcPendLinha {
+  pedidoCompra: string;
+  qtde: number;
+  dataEntrega: string | null;
+}
+
+/** Detalhes das linhas de PC pendente (Nomus) para um produto. */
+export async function obterRessupAlmoxPcPendDetalhes(
+  idProduto: number
+): Promise<{ data: RessupAlmoxPcPendLinha[]; error?: string }> {
+  const res = await apiFetch(
+    `/api/compras/ressup-almox/pc-pend-detalhes?idProduto=${encodeURIComponent(String(idProduto))}`
+  );
+  const text = await res.text();
+  let body: { data?: RessupAlmoxPcPendLinha[]; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) {
+    return { data: [], error: body.error ?? res.statusText };
+  }
+  return { data: Array.isArray(body.data) ? body.data : [] };
+}
+
+/** Linha analítica do empenho via produto acabado (BOM) — telas de Ressup. */
+export interface RessupEmpenhoPaLinha {
+  idPa: number;
+  codigoPa: string;
+  descricaoPa: string;
+  qtdeNecessaria: number;
+  pedidosPa: number;
+  estoquePa: number;
+  net: number;
+}
+
+export interface RessupEmpenhoDetalhe {
+  pas: RessupEmpenhoPaLinha[];
+  vendaDireta: number;
+  totalBom: number;
+  total: number;
+}
+
+/**
+ * Detalhe analítico do empenho (Ressup Almox / Não Almox), mesma regra/abatimento da grade.
+ * O total retornado é igual ao valor da coluna "Qtde Empenhada".
+ */
+export async function obterRessupEmpenhoDetalhes(
+  idProduto: number,
+  considerarRequisicoes = false
+): Promise<{ data: RessupEmpenhoDetalhe | null; error?: string }> {
+  const qs = new URLSearchParams({ idProduto: String(idProduto) });
+  if (considerarRequisicoes) qs.set('considerarRequisicoes', 'true');
+  const res = await apiFetch(`/api/compras/ressup/empenho-detalhes?${qs}`);
+  const text = await res.text();
+  let body: { data?: RessupEmpenhoDetalhe | null; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { data: null, error: body.error ?? res.statusText };
+  return { data: body.data ?? null };
+}
+
+/** Linha do empenho do Ressup agrupada por pedido de venda. */
+export interface RessupEmpenhoPedidoLinha {
+  pedido: string;
+  dataEntrega: string | null;
+  rota: string;
+  /** Empenho bruto comprometido pelo pedido (sem abater estoque de PA). */
+  bruto: number;
+  /** Parte coberta pelo estoque de PA (acabados). */
+  coberto: number;
+  /** Empenho líquido (bruto − coberto). Σ líquido == valor da grade. */
+  liquido: number;
+}
+
+export interface RessupEmpenhoPedidoResultado {
+  linhas: RessupEmpenhoPedidoLinha[];
+  vendaDireta: number;
+  empenhoRequisicao: number;
+  empenhoPdEstoque: number;
+  totalBruto: number;
+  totalCoberto: number;
+  /** Total líquido == coluna "Qtde Empenhada" da grade. */
+  totalLiquido: number;
+  /** Estoque PA (explosão BOM) — modal Ressup Não Almox. */
+  estoquePaExplosao?: number;
+}
+
+/**
+ * Detalhe do empenho do Ressup POR PEDIDO de venda (líquido/bruto/coberto), mesma regra/abatimento
+ * da grade. O total líquido bate com a coluna "Qtde Empenhada".
+ */
+export async function obterRessupEmpenhoPorPedido(
+  idProduto: number,
+  considerarRequisicoes = false,
+  modoNaoAlmox = false,
+  idPedidoFiltro?: number
+): Promise<{ data: RessupEmpenhoPedidoResultado | null; error?: string }> {
+  const qs = new URLSearchParams({ idProduto: String(idProduto) });
+  if (considerarRequisicoes) qs.set('considerarRequisicoes', 'true');
+  if (modoNaoAlmox) qs.set('modoNaoAlmox', 'true');
+  if (idPedidoFiltro != null && idPedidoFiltro > 0) {
+    qs.set('idPedidoFiltro', String(idPedidoFiltro));
+  }
+  const res = await apiFetch(`/api/compras/ressup/empenho-por-pedido?${qs}`);
+  const text = await res.text();
+  let body: { data?: RessupEmpenhoPedidoResultado | null; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { data: null, error: body.error ?? res.statusText };
+  return { data: body.data ?? null };
+}
+
+/** Snapshot gravado na análise Ressup Almox (versão 1). */
+export type RessupAlmoxAnalisePayloadV1 = {
+  version: 1;
+  columnDefs: { key: string; label: string }[];
+  displayRows: Record<string, string>[];
+  rawRows: Record<string, unknown>[];
+  aplicado: { codigo: string; descricao: string; coleta: string; diaCompra?: string; considerarRequisicoes?: boolean };
+  savedUi?: {
+    colunasOcultas: string[];
+    columnFilters: Record<string, string>;
+    sort: { key: string; direction: 'asc' | 'desc' } | null;
+    sortLevels?: { id: string; dir: 'asc' | 'desc' }[];
+    colWidths?: Record<string, number>;
+  };
+};
+
+export interface RessupAlmoxAnaliseListItem {
+  id: number;
+  createdAt: string;
+  usuarioLogin: string;
+  resumoFiltros: string | null;
+  linhaCount: number;
+  status: 'em_processamento' | 'processado' | 'concluido';
+  processadoAt: string | null;
+  usuarioLoginProcessado: string | null;
+  concluidoAt: string | null;
+  usuarioLoginConcluido: string | null;
+}
+
+export async function gravarRessupAlmoxAnalise(params: {
+  resumoFiltros?: string;
+  payload: RessupAlmoxAnalisePayloadV1;
+}): Promise<{ ok: boolean; id?: number; status?: string; createdAt?: string; usuarioLogin?: string; error?: string }> {
+  const res = await apiFetch('/api/compras/ressup-almox/analises', { method: 'POST', body: params });
+  const text = await res.text();
+  let body: { id?: number; ok?: boolean; status?: string; createdAt?: string; usuarioLogin?: string; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true, id: body.id, status: body.status, createdAt: body.createdAt, usuarioLogin: body.usuarioLogin };
+}
+
+export async function atualizarRessupAlmoxAnalise(id: number, params: {
+  resumoFiltros?: string;
+  payload: RessupAlmoxAnalisePayloadV1;
+}): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/ressup-almox/analises/${id}`, { method: 'PUT', body: params });
+  const text = await res.text();
+  let body: { ok?: boolean; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+export async function processarRessupAlmoxAnalise(id: number): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/ressup-almox/analises/${id}/processar`, { method: 'PATCH' });
+  const text = await res.text();
+  let body: { ok?: boolean; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+export async function concluirRessupAlmoxAnalise(id: number): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/ressup-almox/analises/${id}/concluir`, { method: 'PATCH' });
+  const text = await res.text();
+  let body: { ok?: boolean; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+export async function listarRessupAlmoxAnalises(limit = 80): Promise<{
+  data: RessupAlmoxAnaliseListItem[];
+  error?: string;
+}> {
+  const res = await apiFetch(`/api/compras/ressup-almox/analises?limit=${encodeURIComponent(String(limit))}`);
+  const text = await res.text();
+  let body: { data?: RessupAlmoxAnaliseListItem[]; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { data: [], error: body.error ?? res.statusText };
+  return { data: Array.isArray(body.data) ? body.data : [] };
+}
+
+export async function obterRessupAlmoxAnalise(id: number): Promise<{
+  id: number;
+  createdAt: string;
+  usuarioLogin: string;
+  resumoFiltros: string | null;
+  linhaCount: number;
+  status: 'em_processamento' | 'processado' | 'concluido';
+  processadoAt: string | null;
+  usuarioLoginProcessado: string | null;
+  concluidoAt: string | null;
+  usuarioLoginConcluido: string | null;
+  payload: RessupAlmoxAnalisePayloadV1 | null;
+  error?: string;
+}> {
+  const res = await apiFetch(`/api/compras/ressup-almox/analises/${id}`);
+  const text = await res.text();
+  let body: {
+    id?: number;
+    createdAt?: string;
+    usuarioLogin?: string;
+    resumoFiltros?: string | null;
+    linhaCount?: number;
+    status?: string;
+    processadoAt?: string | null;
+    usuarioLoginProcessado?: string | null;
+    concluidoAt?: string | null;
+    usuarioLoginConcluido?: string | null;
+    payload?: RessupAlmoxAnalisePayloadV1 | null;
+    error?: string;
+  } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) {
+    return {
+      id: 0,
+      createdAt: '',
+      usuarioLogin: '',
+      resumoFiltros: null,
+      linhaCount: 0,
+      status: 'em_processamento',
+      processadoAt: null,
+      usuarioLoginProcessado: null,
+      concluidoAt: null,
+      usuarioLoginConcluido: null,
+      payload: null,
+      error: body.error ?? res.statusText,
+    };
+  }
+  const st = body.status;
+  return {
+    id: body.id ?? 0,
+    createdAt: body.createdAt ?? '',
+    usuarioLogin: body.usuarioLogin ?? '',
+    resumoFiltros: body.resumoFiltros ?? null,
+    linhaCount: body.linhaCount ?? 0,
+    status: (st === 'concluido' ? 'concluido' : st === 'processado' ? 'processado' : 'em_processamento') as 'em_processamento' | 'processado' | 'concluido',
+    processadoAt: body.processadoAt ?? null,
+    usuarioLoginProcessado: body.usuarioLoginProcessado ?? null,
+    concluidoAt: body.concluidoAt ?? null,
+    usuarioLoginConcluido: body.usuarioLoginConcluido ?? null,
+    payload: body.payload ?? null,
+  };
+}
+
+/** Item para confirmar/adicionar à coleta: idProduto e opcionalmente codigoSolicitacao (vínculo com solicitação de compra). */
+export interface ItemColetaPayload {
+  idProduto: number;
+  codigoSolicitacao?: number | null;
+}
+
+/**
+ * Confirma a seleção de produtos para coleta de preços.
+ * Envia itens (idProduto + opcional codigoSolicitacao) para um registro por linha selecionada.
+ */
+export interface ColetaEmConflito {
+  id: number;
+  status: string;
+}
+
+export async function confirmarColetaPrecos(itens: ItemColetaPayload[]): Promise<{
+  ok: boolean;
+  coletaId?: number;
+  error?: string;
+  coletasEmConflito?: ColetaEmConflito[];
+  bloqueante?: boolean;
+  coletas?: ColetaBloqueante[];
+}> {
+  const res = await apiFetch('/api/compras/confirmar-coleta', {
+    method: 'POST',
+    body: { itens },
+  });
+  const text = await res.text();
+  let body: {
+    error?: string;
+    cause?: string;
+    id?: number;
+    coletasEmConflito?: ColetaEmConflito[];
+    messageDetail?: string;
+    bloqueante?: boolean;
+    coletas?: ColetaBloqueante[];
+  } = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { error: text || res.statusText };
+  }
+  if (!res.ok) {
+    const base = body.error ?? res.statusText;
+    const detalhe = body.cause && body.cause !== base ? ` (${body.cause})` : '';
+    return {
+      ok: false,
+      error: `${base}${detalhe}`,
+      coletasEmConflito: body.coletasEmConflito,
+      bloqueante: body.bloqueante,
+      coletas: body.coletas,
+    };
+  }
+  return { ok: true, coletaId: body.id };
+}
+
+/** Opção de fornecedor retornada pela listagem (GET /fornecedores). */
+export interface FornecedorOpcao {
+  id: number;
+  nome: string;
+  nomeRazaoSocial: string | null;
+  uf: string | null;
+  cnpjCpf: string | null;
+}
+
+/** Item de fornecedor da cotação (com dados adicionais). */
+export interface FornecedorColetaItem {
+  idPessoa: number;
+  nome: string;
+  pedidoMinimo?: string;
+  condicaoPagamento?: string;
+  formaPagamento?: string;
+  valorFrete?: string;
+  valorFreteTipo?: '%' | 'R$';
+  ipi?: string;
+  ipiTipo?: '%' | 'R$';
+}
+
+export interface ColetaPrecosListItem {
+  id: number;
+  dataCriacao: string;
+  /** Data da última movimentação (status, cotação, itens etc.); null = usar dataCriacao. */
+  dataUltimaMovimentacao?: string | null;
+  /** True se já existe ciência para coleta >72h em aberto. */
+  temCiencia?: boolean;
+  qtdItens: number;
+  qtdRegistros: number;
+  usuarioCriacao: string | null;
+  fornecedores: FornecedorColetaItem[];
+  status?: string;
+  /** Justificativa do cancelamento (quando status é Rejeitada). */
+  justificativaCancelamento?: string | null;
+  dataEnvioAprovacao?: string | null;
+  dataFinalizacao?: string | null;
+  /** Códigos de produto da coleta (para filtro). */
+  codigosProduto?: string[];
+  /** Descrições de produto da coleta (para filtro). */
+  descricoesProduto?: string[];
+  /** Nomes da coleta (Nomus: atributo 650) dos produtos da coleta — para filtro no painel. */
+  nomesColeta?: string[];
+  /** Observações da coleta (texto longo); exibido no mapa de cotação. */
+  observacoes?: string | null;
+  /** True se a coleta já foi enviada para aprovação em algum momento (nunca volta a false); impede exclusão. */
+  jaEnviadaAprovacao?: boolean;
+  /** Coletas antigas (false): finalizar sem vínculo Nomus; novas (true): obrigatório pedido ou cotação. */
+  requerVinculoFinalizacao?: boolean;
+  finalizacaoTipoRegistro?: string | null;
+  finalizacaoIdRegistro?: number | null;
+  /** Vínculos Nomus na finalização (pedido/cotação); pode ter vários. */
+  finalizacaoVinculos?: { tipoRegistro: string; idRegistro: number }[];
+}
+
+/** Coleta que bloqueia criar nova coleta (>72h sem movimentação, sem ciência). */
+export interface ColetaBloqueante {
+  id: number;
+  status: string;
+  dataCriacao: string;
+  dataUltimaMovimentacao: string | null;
+}
+
+export async function listarColetasBloqueantes(): Promise<{ data: ColetaBloqueante[]; error?: string }> {
+  const res = await apiFetch('/api/compras/coletas-bloqueantes');
+  const body = await res.json().catch(() => ({})) as { data?: ColetaBloqueante[]; error?: string };
+  if (!res.ok) return { data: [], error: body.error ?? res.statusText };
+  return { data: body.data ?? [] };
+}
+
+export async function registrarCienciaColeta(coletaId: number, justificativa: string, senha: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/ciencia`, {
+    method: 'POST',
+    body: { justificativa, senha },
+  });
+  const body = await res.json().catch(() => ({})) as { error?: string };
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+export interface OpcoesFiltroItem {
+  codigo: string;
+  descricao: string;
+  coleta: string;
+}
+
+export interface OpcoesFiltroColetas {
+  codigos: string[];
+  descricoes: string[];
+  coletas: string[];
+  diasSemana?: string[];
+  /** Mapeamento cruzado para filtros em cascata. */
+  items: OpcoesFiltroItem[];
+}
+
+/**
+ * Opções para os filtros de Código, Descrição e Nome da coleta (multi-select).
+ */
+/**
+ * Opções de filtro do Ressup Almox (Nomus ao vivo — produtos ativos, mesmos tipos da nova coleta).
+ */
+export async function obterOpcoesFiltroRessupAlmox(): Promise<OpcoesFiltroColetas & { error?: string }> {
+  const res = await apiFetch('/api/compras/ressup-almox/opcoes-filtro');
+  const text = await res.text();
+  let body: { codigos?: string[]; descricoes?: string[]; coletas?: string[]; diasSemana?: string[]; items?: OpcoesFiltroItem[]; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) {
+    return { codigos: [], descricoes: [], coletas: [], diasSemana: [], items: [], error: body.error ?? res.statusText };
+  }
+  return {
+    codigos: Array.isArray(body.codigos) ? body.codigos : [],
+    descricoes: Array.isArray(body.descricoes) ? body.descricoes : [],
+    coletas: Array.isArray(body.coletas) ? body.coletas : [],
+    diasSemana: Array.isArray(body.diasSemana) ? body.diasSemana : [],
+    items: Array.isArray(body.items) ? body.items : [],
+    error: body.error,
+  };
+}
+
+export type RessupAlmoxFiltrosPayload = {
+  codigos?: string[];
+  descricoes?: string[];
+  coletas?: string[];
+  diasSemana?: string[];
+};
+
+function filtrosRessupAlmoxToQuery(filtros: RessupAlmoxFiltrosPayload): URLSearchParams {
+  const qs = new URLSearchParams();
+  const append = (key: string, vals?: string[]) => {
+    if (!vals?.length) return;
+    qs.set(key, vals.join('|'));
+  };
+  append('codigos', filtros.codigos);
+  append('descricoes', filtros.descricoes);
+  append('coletas', filtros.coletas);
+  append('diasSemana', filtros.diasSemana);
+  return qs;
+}
+
+export function filtrosRessupAlmoxPipePayload(
+  codigo: string,
+  descricao: string,
+  coleta: string,
+  diaCompra: string
+): RessupAlmoxFiltrosPayload {
+  return {
+    codigos: codigo.split('|').map((s) => s.trim()).filter(Boolean),
+    descricoes: descricao.split('|').map((s) => s.trim()).filter(Boolean),
+    coletas: coleta.split('|').map((s) => s.trim()).filter(Boolean),
+    diasSemana: diaCompra.split('|').map((s) => s.trim()).filter(Boolean),
+  };
+}
+
+export async function buscarOpcoesFiltroRessupAlmox(
+  campo: 'codigo' | 'descricao',
+  q: string,
+  filtros: RessupAlmoxFiltrosPayload
+): Promise<{ data: string[]; error?: string }> {
+  const qs = filtrosRessupAlmoxToQuery(filtros);
+  qs.set('campo', campo);
+  qs.set('q', q);
+  const res = await apiFetch(`/api/compras/ressup-almox/opcoes-filtro/buscar?${qs.toString()}`);
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { data: [], error: (j as { error?: string }).error ?? res.statusText };
+  }
+  return { data: (j as { data: string[] }).data ?? [] };
+}
+
+export async function obterOpcoesFiltroCascataRessupAlmox(
+  filtros: RessupAlmoxFiltrosPayload
+): Promise<OpcoesFiltroColetas & { error?: string }> {
+  const res = await apiFetch('/api/compras/ressup-almox/opcoes-filtro/cascata', {
+    method: 'POST',
+    body: filtros,
+  });
+  const body = await res.json().catch(() => ({})) as {
+    codigos?: string[];
+    descricoes?: string[];
+    coletas?: string[];
+    diasSemana?: string[];
+    items?: OpcoesFiltroItem[];
+    error?: string;
+  };
+  if (!res.ok) {
+    return { codigos: [], descricoes: [], coletas: [], diasSemana: [], items: [], error: body.error ?? res.statusText };
+  }
+  return {
+    codigos: Array.isArray(body.codigos) ? body.codigos : [],
+    descricoes: Array.isArray(body.descricoes) ? body.descricoes : [],
+    coletas: Array.isArray(body.coletas) ? body.coletas : [],
+    diasSemana: Array.isArray(body.diasSemana) ? body.diasSemana : [],
+    items: Array.isArray(body.items) ? body.items : [],
+    error: body.error,
+  };
+}
+
+export async function obterOpcoesFiltroColetas(): Promise<OpcoesFiltroColetas & { error?: string }> {
+  const res = await apiFetch('/api/compras/coletas/opcoes-filtro');
+  const text = await res.text();
+  let body: { codigos?: string[]; descricoes?: string[]; coletas?: string[]; items?: OpcoesFiltroItem[]; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) {
+    return { codigos: [], descricoes: [], coletas: [], items: [], error: body.error ?? res.statusText };
+  }
+  return {
+    codigos: Array.isArray(body.codigos) ? body.codigos : [],
+    descricoes: Array.isArray(body.descricoes) ? body.descricoes : [],
+    coletas: Array.isArray(body.coletas) ? body.coletas : [],
+    items: Array.isArray(body.items) ? body.items : [],
+    error: body.error,
+  };
+}
+
+/**
+ * Lista fornecedores ativos do Nomus (para o popup de seleção na cotação).
+ */
+export async function listarFornecedores(): Promise<{ data: FornecedorOpcao[]; error?: string }> {
+  const res = await apiFetch('/api/compras/fornecedores');
+  const text = await res.text();
+  let body: { data?: FornecedorOpcao[]; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { data?: FornecedorOpcao[]; error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) {
+    return { data: [], error: body.error ?? res.statusText };
+  }
+  const data = Array.isArray(body.data) ? body.data : [];
+  return { data, error: body.error };
+}
+
+export interface OpcaoNomus {
+  id: number;
+  nome: string;
+}
+
+/**
+ * Lista condições de pagamento ativas do Nomus (para selects no modal de fornecedores).
+ */
+export async function listarCondicoesPagamento(): Promise<{ data: OpcaoNomus[]; error?: string }> {
+  const res = await apiFetch('/api/compras/condicoes-pagamento');
+  const text = await res.text();
+  let body: { data?: OpcaoNomus[]; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { data?: OpcaoNomus[]; error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) {
+    return { data: [], error: body.error ?? res.statusText };
+  }
+  return { data: Array.isArray(body.data) ? body.data : [], error: body.error };
+}
+
+/**
+ * Lista formas de pagamento ativas do Nomus (para selects no modal de fornecedores).
+ */
+export async function listarFormasPagamento(): Promise<{ data: OpcaoNomus[]; error?: string }> {
+  const res = await apiFetch('/api/compras/formas-pagamento');
+  const text = await res.text();
+  let body: { data?: OpcaoNomus[]; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { data?: OpcaoNomus[]; error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) {
+    return { data: [], error: body.error ?? res.statusText };
+  }
+  return { data: Array.isArray(body.data) ? body.data : [], error: body.error };
+}
+
+/**
+ * Atualiza os fornecedores da cotação (máx. 6) com dados adicionais por fornecedor.
+ */
+export async function atualizarFornecedoresColeta(
+  coletaId: number,
+  fornecedores: FornecedorColetaItem[]
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/fornecedores`, {
+    method: 'PUT',
+    body: { fornecedores: fornecedores.slice(0, 6) },
+  });
+  const text = await res.text();
+  let body: { error?: string } = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { error: text || res.statusText };
+  }
+  if (!res.ok) {
+    return { ok: false, error: body.error ?? res.statusText };
+  }
+  return { ok: true };
+}
+
+/**
+ * Lista registros de preços/produtos da coleta (dados do SQL da coleta de preços).
+ * Retorna array de objetos com todos os campos do SQL (Id Produto, Codigo do Produto, etc.).
+ */
+export interface PrecosColetaDebug {
+  registrosSalvos?: number;
+  itensNaColeta?: number;
+  nomusConfigurado?: boolean;
+  nomusErro?: string;
+}
+
+const PRECOS_COLETA_TIMEOUT_MS = 60000;
+
+export async function listarPrecosColeta(coletaId: number): Promise<{
+  data: Record<string, unknown>[];
+  solicitacoesPorProduto?: Record<number, number[]>;
+  message?: string;
+  error?: string;
+  debug?: PrecosColetaDebug;
+}> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PRECOS_COLETA_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await apiFetch(`/api/compras/coletas/${coletaId}/precos`, { signal: controller.signal });
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error('A requisição demorou muito. Tente novamente ou verifique a conexão com o ERP (Nomus).');
+    }
+    throw e;
+  }
+  clearTimeout(timeoutId);
+  const text = await res.text();
+  let body: { data?: Record<string, unknown>[]; solicitacoesPorProduto?: Record<number, number[]>; message?: string; error?: string; debug?: PrecosColetaDebug } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) {
+    return { data: [], message: body.message, error: body.error ?? res.statusText, debug: body.debug };
+  }
+  const data = Array.isArray(body.data) ? body.data : [];
+  return { data, solicitacoesPorProduto: body.solicitacoesPorProduto, message: body.message, error: body.error, debug: body.debug };
+}
+
+/** Item de preço por fornecedor para salvar na cotação. */
+export interface PrecoCotacaoSalvarItem {
+  idPessoa: number;
+  precoNF: number;
+  percICMS: number;
+  percPIS: number;
+  percIPI: number;
+  percCOFINS: number;
+  precoTotal: number;
+}
+
+/** Preço salvo da cotação (resposta do GET precos-cotacao). idProduto presente quando lista toda a coleta. */
+export interface PrecoCotacaoSalvoItem {
+  idProduto?: number;
+  idFornecedor: number;
+  precoNF: number;
+  percICMS: number;
+  percPIS: number;
+  percIPI: number;
+  percCOFINS: number;
+  precoTotal: number;
+}
+
+/**
+ * Lista os preços já salvos da cotação para um produto (para preencher o modal ao reabrir).
+ */
+export async function listarPrecosCotacao(
+  coletaId: number,
+  idProduto: number
+): Promise<{ data: PrecoCotacaoSalvoItem[]; error?: string }> {
+  const res = await apiFetch(
+    `/api/compras/coletas/${coletaId}/precos-cotacao?idProduto=${encodeURIComponent(idProduto)}`
+  );
+  const text = await res.text();
+  let body: { data?: PrecoCotacaoSalvoItem[]; error?: string } = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { error: text || res.statusText };
+  }
+  if (!res.ok) {
+    return { data: [], error: body.error ?? res.statusText };
+  }
+  const data = Array.isArray(body.data) ? body.data : [];
+  return { data, error: body.error };
+}
+
+/**
+ * Lista toda a cotação da coleta (todos os produtos/fornecedores) para o Mapa de Cotação.
+ */
+export async function listarPrecosCotacaoToda(
+  coletaId: number
+): Promise<{ data: PrecoCotacaoSalvoItem[]; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/precos-cotacao`);
+  const text = await res.text();
+  let body: { data?: PrecoCotacaoSalvoItem[]; error?: string } = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { error: text || res.statusText };
+  }
+  if (!res.ok) {
+    return { data: [], error: body.error ?? res.statusText };
+  }
+  const data = Array.isArray(body.data) ? body.data : [];
+  return { data, error: body.error };
+}
+
+/**
+ * Salva os preços cadastrados (popup Cadastrar preços) por produto/fornecedor.
+ */
+export async function salvarPrecosCotacao(
+  coletaId: number,
+  idProduto: number,
+  precos: PrecoCotacaoSalvarItem[]
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/precos-cotacao`, {
+    method: 'POST',
+    body: { idProduto, precos },
+  });
+  const text = await res.text();
+  let body: { error?: string } = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { error: text || res.statusText };
+  }
+  if (!res.ok) {
+    return { ok: false, error: body.error ?? res.statusText };
+  }
+  return { ok: true };
+}
+
+/**
+ * Lista coletas de preços cadastradas.
+ */
+export async function listarColetasPrecos(): Promise<{ data: ColetaPrecosListItem[]; error?: string }> {
+  const res = await apiFetch('/api/compras/coletas');
+  const text = await res.text();
+  let body: { data?: ColetaPrecosListItem[]; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { data?: ColetaPrecosListItem[]; error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) {
+    return { data: [], error: body.error ?? res.statusText };
+  }
+  const data = Array.isArray(body.data) ? body.data : [];
+  return { data, error: body.error };
+}
+
+/** Exclui a coleta. Só é permitido se ela nunca foi enviada para aprovação (jaEnviadaAprovacao === false). */
+export async function excluirColetaPrecos(coletaId: number): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}`, { method: 'DELETE' });
+  const text = await res.text();
+  let body: { error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+/** Atualiza as observações da coleta (texto longo; exibido no mapa de cotação). */
+export async function atualizarObservacoesColeta(coletaId: number, observacoes: string | null): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/observacoes`, {
+    method: 'PATCH',
+    body: { observacoes: observacoes ?? null },
+  });
+  const text = await res.text();
+  let body: { error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+/** Envia a coleta para aprovação (status → "Em Aprovação"). */
+export async function enviarParaAprovacao(coletaId: number): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/enviar-aprovacao`, { method: 'PATCH' });
+  const text = await res.text();
+  let body: { error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+/** Reabre a coleta (volta para "Em cotação"). Exige senha do usuário. Só quando status é "Em Aprovação". */
+export async function reabrirColeta(coletaId: number, senha: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/reabrir`, {
+    method: 'PATCH',
+    body: { senha: senha.trim() },
+  });
+  const text = await res.text();
+  let body: { error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+/** Remove um item (produto) da coleta. Quando status é "Em cotação" ou "Em Aprovação". Justificativa obrigatória. */
+export async function excluirItemColeta(coletaId: number, idProduto: number, justificativa: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/itens/${idProduto}`, {
+    method: 'DELETE',
+    body: { justificativa: justificativa.trim() },
+  });
+  const text = await res.text();
+  let body: { error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+/** Cancela todos os itens da coleta. Apenas quando status é "Em Aprovação". Justificativa obrigatória. */
+export async function cancelarTodosItensColeta(coletaId: number, justificativa: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/itens/todos`, {
+    method: 'DELETE',
+    body: { justificativa: justificativa.trim() },
+  });
+  const text = await res.text();
+  let body: { error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+/** Adiciona itens à coleta (um por produto + solicitação). Só quando status é "Em cotação". */
+export async function adicionarItensColeta(coletaId: number, itens: ItemColetaPayload[]): Promise<{ ok: boolean; adicionados?: number; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/itens`, { method: 'POST', body: { itens } });
+  const text = await res.text();
+  let body: { error?: string; adicionados?: number } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { error?: string; adicionados?: number };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true, adicionados: body.adicionados };
+}
+
+/** Cancela a cotação (status "Rejeitada"). Justificativa obrigatória. Não permite mais alterações. */
+export async function cancelarCotacao(coletaId: number, justificativa: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/cancelar-cotacao`, {
+    method: 'PATCH',
+    body: { justificativa: justificativa.trim() },
+  });
+  const text = await res.text();
+  let body: { error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+/** Atualiza quantidade aprovada e/ou fornecedor vencedor do registro da coleta. */
+export async function atualizarRegistroColeta(
+  coletaId: number,
+  registroId: number,
+  payload: { qtdeAprovada?: number; idFornecedorVencedor?: number | null }
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/registros/${registroId}`, {
+    method: 'PATCH',
+    body: payload,
+  });
+  const text = await res.text();
+  let body: { error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+export interface OpcaoVinculoFinalizacaoItem {
+  id: number;
+  nome: string;
+  nomeFornecedor: string | null;
+  dataEmissao: string | null;
+  tipoRegistro: string;
+}
+
+/**
+ * Pedidos de compra e cotações no Nomus para vincular à finalização (busca no nome e fornecedor).
+ */
+export async function listarOpcoesVinculoFinalizacao(
+  q: string
+): Promise<{ data: OpcaoVinculoFinalizacaoItem[]; error?: string }> {
+  const qs = new URLSearchParams();
+  if (q.trim()) qs.set('q', q.trim());
+  const res = await apiFetch(`/api/compras/coletas/opcoes-vinculo-finalizacao?${qs.toString()}`);
+  const text = await res.text();
+  let body: { data?: OpcaoVinculoFinalizacaoItem[]; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { data?: OpcaoVinculoFinalizacaoItem[]; error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { data: [], error: body.error ?? res.statusText };
+  return { data: Array.isArray(body.data) ? body.data : [] };
+}
+
+/**
+ * Lista ampliada de pedidos/cotações (SQL erro operacional / últimos 180 dias). Exige permissão `compras.vinculo_finalizacao.ampliado`.
+ */
+export async function listarOpcoesVinculoErroOperacional(
+  q: string
+): Promise<{ data: OpcaoVinculoFinalizacaoItem[]; error?: string }> {
+  const qs = new URLSearchParams();
+  if (q.trim()) qs.set('q', q.trim());
+  const res = await apiFetch(`/api/compras/coletas/opcoes-vinculo-erro-operacional?${qs.toString()}`);
+  const text = await res.text();
+  let body: { data?: OpcaoVinculoFinalizacaoItem[]; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { data?: OpcaoVinculoFinalizacaoItem[]; error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { data: [], error: body.error ?? res.statusText };
+  return { data: Array.isArray(body.data) ? body.data : [] };
+}
+
+export type FinalizarCotacaoVinculoPayload =
+  | { tipoRegistro: 'PEDIDO' | 'COTACAO'; idRegistro: number; erroOperacional?: boolean; senha?: string }
+  | {
+      vinculos: { tipoRegistro: 'PEDIDO' | 'COTACAO'; idRegistro: number }[];
+      erroOperacional?: boolean;
+      senha?: string;
+    };
+
+/** Finaliza a cotação (status "Finalizada"). Só quando status é "Em Aprovação". Exige quantidades aprovadas preenchidas.
+ *  Coletas com vínculo: envie `vinculos` (um ou mais pedidos/cotações Nomus) ou um único `vinculo` legado.
+ *  Com permissão `compras.vinculo_finalizacao.ampliado`: `erroOperacional: true` + `senha` registra auditoria e exige validação no servidor. */
+export async function finalizarCotacao(
+  coletaId: number,
+  vinculo?: FinalizarCotacaoVinculoPayload | null
+): Promise<{ ok: boolean; error?: string }> {
+  let bodyPayload: Record<string, unknown> = {};
+  if (vinculo != null && 'vinculos' in vinculo && Array.isArray(vinculo.vinculos) && vinculo.vinculos.length > 0) {
+    bodyPayload = {
+      vinculos: vinculo.vinculos.map((v) => ({
+        tipoRegistro: v.tipoRegistro,
+        idRegistro: v.idRegistro,
+      })),
+    };
+  } else if (
+    vinculo != null &&
+    'tipoRegistro' in vinculo &&
+    vinculo.tipoRegistro &&
+    Number.isFinite(vinculo.idRegistro) &&
+    vinculo.idRegistro > 0
+  ) {
+    bodyPayload = { tipoRegistro: vinculo.tipoRegistro, idRegistro: vinculo.idRegistro };
+  }
+  if (vinculo != null && vinculo.erroOperacional === true) {
+    bodyPayload.erroOperacional = true;
+    if (typeof vinculo.senha === 'string' && vinculo.senha.trim()) bodyPayload.senha = vinculo.senha.trim();
+  }
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/finalizar-cotacao`, {
+    method: 'PATCH',
+    body: Object.keys(bodyPayload).length > 0 ? bodyPayload : {},
+  });
+  const text = await res.text();
+  let body: { error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+/** Série mensal de vínculos de finalização registrados como erro operacional (dashboard Compras). */
+export async function obterSerieErrosVinculoOperacionalDashboard(params?: {
+  dataInicio?: string;
+  dataFim?: string;
+}): Promise<{ series: { key: string; label: string; count: number }[]; error?: string }> {
+  const q = new URLSearchParams();
+  if (params?.dataInicio) q.set('dataInicio', params.dataInicio);
+  if (params?.dataFim) q.set('dataFim', params.dataFim);
+  const qs = q.toString();
+  const res = await apiFetch(`/api/compras/dashboard/erros-vinculo-operacional${qs ? `?${qs}` : ''}`);
+  const text = await res.text();
+  let body: { series?: unknown; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { series?: unknown; error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { series: [], error: body.error ?? res.statusText };
+  const raw = body.series;
+  if (!Array.isArray(raw)) return { series: [] };
+  const series: { key: string; label: string; count: number }[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
+    const o = row as Record<string, unknown>;
+    const key = typeof o.key === 'string' ? o.key : '';
+    const label = typeof o.label === 'string' ? o.label : key;
+    const c = o.count;
+    const count = typeof c === 'number' && Number.isFinite(c) ? c : typeof c === 'string' ? parseInt(c, 10) : 0;
+    if (key) series.push({ key, label, count: Number.isFinite(count) ? count : 0 });
+  }
+  return { series };
+}
+
+/** Envia a coleta para o financeiro. Só quando status é "Em Aprovação". */
+export async function enviarParaFinanceiro(coletaId: number): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/enviar-financeiro`, { method: 'PATCH' });
+  const text = await res.text();
+  let body: { error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
+  return { ok: true };
+}

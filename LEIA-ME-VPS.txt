@@ -1,0 +1,26 @@
+================================================================================
+  GESTOR DE PEDIDOS — VPS / ACESSO EXTERNO (5173, 5174, 5051)
+================================================================================
+
+1) Na VPS (ou PC servidor), clone o repositório e instale dependências:
+   npm install
+   cd backend && npx prisma migrate deploy && cd ..
+
+2) Firewall Windows (Administrador):
+   powershell -ExecutionPolicy Bypass -File scripts\garantir-firewall-externo.ps1
+
+3) Iniciar em desenvolvimento (backend 4000 + Vite 5180 + 5173 + 5174 + 5051):
+   npm run dev
+
+   Ou use: powershell -ExecutionPolicy Bypass -File iniciar-gestor.ps1
+
+4) MikroTik: encaminhe para o IP LAN do PC as portas que for usar (5173, 5174, 5051).
+   Exemplo: deploy\mikrotik-nat-externos.rsc (ajuste ether1-WAN e to-addresses).
+
+5) Teste de fora da rede (4G):
+   Com NAT WAN:80 -> PC:5173 (ver deploy\mikrotik-nat-externos.rsc): http://gsmartsoaco.com.br
+   Ou direto na porta: http://SEU_IP_PUBLICO:5173
+
+6) Produção (build + servir estático pelo backend): ver README.md seção "Produção".
+
+================================================================================

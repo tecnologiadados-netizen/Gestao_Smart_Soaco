@@ -1,0 +1,24 @@
+---
+description: Reiniciar backend e frontend após alterações solicitadas pelo usuário
+alwaysApply: true
+---
+
+# Reinício automático dos servidores
+
+Quando o usuário solicitar **qualquer alteração** (código, configuração, etc.) e você aplicar mudanças no projeto:
+
+1. **Não use `kill-ports` + `npm run dev` cegamente** — isso mata a stack inteira e causa "servidor offline" para todos os usuários.
+
+2. **Após alterações que exijam reinício**, use **apenas**:
+   - **`npm run dev:start`** — reinício limpo (para stack em execução ou portas ocupadas).
+   - Se a stack **não** estiver rodando: **`npm run dev`** na raiz (não mata instância anterior; trava impede duplicata).
+
+3. **Nunca** rode `npm run dev` em paralelo com outra instância. Se `dev` recusar ("Stack já em execução"), use `dev:start` ou `dev:stop` antes.
+
+4. Para **só backend** após mudança em `backend/src/`, o `tsx watch` já recarrega — na maioria dos casos **não** reinicie a stack inteira.
+
+5. Inicie em background na raiz: `npm run dev:start` (após alterações) ou `npm run dev` (primeira subida).
+
+6. **Não pergunte** se o usuário quer reiniciar; faça-o automaticamente após as alterações, preferindo `dev:start`.
+
+7. Modo estável (menos reinícios, sem watchdog): `npm run dev:stable` — só quando o usuário pedir ou for servidor de uso contínuo em dev.

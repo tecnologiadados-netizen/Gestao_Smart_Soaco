@@ -1,0 +1,21 @@
+# PostgreSQL local para desenvolvimento - subir com: docker compose up -d
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: gestorpedidos-db
+    environment:
+      POSTGRES_USER: gestor
+      POSTGRES_PASSWORD: gestor123
+      POSTGRES_DB: gestorpedidos
+    ports:
+      - "5432:5432"
+    volumes:
+      - gestorpedidos_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gestor -d gestorpedidos"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  gestorpedidos_pgdata:

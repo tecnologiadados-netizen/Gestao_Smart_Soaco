@@ -1,0 +1,647 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --soaco-navy: #041E42;
+  --soaco-blue: #1E22AA;
+  --soaco-gold: #FFAD00;
+  --soaco-gray: #808080;
+  --soaco-graphite: #2E2D2C;
+  --soaco-white: #FFFFFF;
+  --soaco-surface: #f4f5f8;
+  --soaco-surface-elevated: #ffffff;
+  --soaco-text: #041E42;
+  --soaco-text-muted: #808080;
+  --soaco-border: rgb(128 128 128 / 0.3);
+  --soaco-primary: #1E22AA;
+  --soaco-accent: #FFAD00;
+}
+
+.dark {
+  --soaco-surface: #000000;
+  --soaco-surface-elevated: #2E2D2C;
+  --soaco-text: #ffffff;
+  --soaco-text-muted: rgb(255 255 255 / 0.7);
+  --soaco-border: rgb(128 128 128 / 0.35);
+}
+
+html {
+  font-size: 15px;
+  width: 100%;
+}
+
+html,
+body {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.5) transparent;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+html::-webkit-scrollbar-button,
+body::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background-color: rgb(148 163 184 / 0.45);
+  border-radius: 4px;
+}
+
+html.dark::-webkit-scrollbar-thumb,
+html.dark body::-webkit-scrollbar-thumb {
+  background-color: rgb(71 85 105 / 0.85);
+}
+
+html.dark,
+html.dark body {
+  scrollbar-color: rgb(71 85 105 / 0.9) rgb(15 23 42 / 0.35);
+}
+
+body {
+  background-color: var(--soaco-surface);
+  color: var(--soaco-text);
+  @apply font-sans antialiased;
+  width: 100%;
+  margin: 0;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Força área de conteúdo e grade de pedidos a 100% da largura (evita faixa vazia à direita) */
+[data-main-content] {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.tabela-pedidos-outer {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0;
+}
+
+.tabela-pedidos-scroll {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block;
+}
+
+/* Grade Gestão de Pedidos: divisões entre células e colunas */
+.tabela-pedidos-grade {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.tabela-pedidos-grade th,
+.tabela-pedidos-grade td {
+  border: 1px solid rgb(203 213 225);
+}
+.dark .tabela-pedidos-grade th,
+.dark .tabela-pedidos-grade td {
+  border-color: rgb(71 85 105 / 0.75);
+}
+.tabela-pedidos-grade tbody td {
+  background-color: #fff;
+}
+.dark .tabela-pedidos-grade tbody td {
+  background-color: rgb(30 41 59);
+}
+.tabela-pedidos-grade tfoot td {
+  background-color: rgb(241 245 249);
+}
+.dark .tabela-pedidos-grade tfoot td {
+  background-color: rgb(51 65 85 / 0.6);
+}
+.tabela-pedidos-grade tbody tr:hover td {
+  background-color: rgb(248 250 252);
+}
+.dark .tabela-pedidos-grade tbody tr:hover td {
+  background-color: rgb(51 65 85 / 0.85);
+}
+
+/* Barras de rolagem discretas — sem setas largas do tema Windows */
+.scrollbar-app {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.5) transparent;
+}
+.scrollbar-app::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-app::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.scrollbar-app::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-app::-webkit-scrollbar-thumb {
+  background-color: rgb(148 163 184 / 0.45);
+  border-radius: 4px;
+}
+.scrollbar-app::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(100 116 139 / 0.65);
+}
+html.dark .scrollbar-app {
+  scrollbar-color: rgb(71 85 105 / 0.9) rgb(15 23 42 / 0.35);
+}
+html.dark .scrollbar-app::-webkit-scrollbar-thumb {
+  background-color: rgb(71 85 105 / 0.85);
+}
+html.dark .scrollbar-app::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(100 116 139 / 0.9);
+}
+html.dark .scrollbar-app::-webkit-scrollbar-track {
+  background: rgb(15 23 42 / 0.25);
+}
+
+/* Campos numéricos — sem setas de incremento (padrão global) */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/** Use apenas quando solicitado explicitamente em campo novo */
+input[type='number'].input-num-com-spinner::-webkit-outer-spin-button,
+input[type='number'].input-num-com-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: auto;
+  margin: initial;
+}
+input[type='number'].input-num-com-spinner {
+  -moz-appearance: auto;
+  appearance: auto;
+}
+
+/* Ressup Almox — alias legado */
+.ressup-almox-num-input::-webkit-outer-spin-button,
+.ressup-almox-num-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.ressup-almox-num-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.ressup-nao-almox-num-input::-webkit-outer-spin-button,
+.ressup-nao-almox-num-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.ressup-nao-almox-num-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Busca em dropdown — suprime flash de autofill do Chrome/WebKit */
+.input-busca-dropdown:-webkit-autofill,
+.input-busca-dropdown:-webkit-autofill:hover,
+.input-busca-dropdown:-webkit-autofill:focus {
+  -webkit-text-fill-color: inherit;
+  caret-color: inherit;
+  transition: background-color 999999s ease-out 0s;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes melhorPrecoIn {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-melhor-preco-in {
+  animation: melhorPrecoIn 0.35s ease-out forwards;
+}
+
+/* Inputs de data no popover: deixa em branco quando vazio (sem dd/MM/yyyy) */
+.filtro-datas-popover input[type="date"]::-webkit-datetime-edit {
+  color: inherit;
+}
+.filtro-datas-popover input[type="date"][value=""]::-webkit-datetime-edit {
+  color: transparent;
+}
+.filtro-datas-popover input[type="date"][value=""]::-webkit-datetime-edit-fields-wrapper {
+  color: transparent;
+}
+
+/* Popup do Heatmap: permite clicar, rolar e selecionar texto dentro do painel */
+.leaflet-popup-detalhes .leaflet-popup-content-wrapper {
+  pointer-events: auto;
+}
+.leaflet-popup-detalhes .leaflet-popup-content {
+  margin: 0;
+  pointer-events: auto;
+  user-select: text;
+}
+.leaflet-popup-detalhes .leaflet-popup-content .leaflet-popup-content-interact {
+  pointer-events: auto;
+  user-select: text;
+}
+
+/* Marcador de parada no mapa do Heatmap (DivIcon) */
+.leaflet-div-icon.heatmap-seq-parada,
+.leaflet-div-icon.heatmap-parada-pin {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* DFC — modal de carregamento (barras + linha de fluxo) */
+@keyframes dfc-load-bar-pulse {
+  0%,
+  100% {
+    transform: scaleY(0.4);
+    opacity: 0.65;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes dfc-load-line-draw {
+  0% {
+    stroke-dashoffset: 280;
+    opacity: 0.35;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes dfc-load-float {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}
+
+.dfc-load-bar {
+  animation: dfc-load-bar-pulse 1.1s ease-in-out infinite;
+}
+
+.dfc-load-line path {
+  stroke-dasharray: 280;
+  animation: dfc-load-line-draw 2s ease-in-out infinite alternate;
+}
+
+.dfc-load-float {
+  animation: dfc-load-float 1.6s ease-in-out infinite;
+}
+
+/* ── Só Aço — componentes reutilizáveis ── */
+@layer components {
+  .btn-primary {
+    @apply rounded-lg bg-primary-600 hover:bg-primary-700 px-4 py-2 text-sm font-medium text-white transition;
+  }
+
+  .btn-secondary {
+    @apply rounded-lg border border-soaco-gray/40 dark:border-soaco-gray/50 bg-white dark:bg-soaco-graphite px-4 py-2 text-sm font-medium text-soaco-navy dark:text-soaco-white hover:bg-slate-50 dark:hover:bg-soaco-navy/60 transition;
+  }
+
+  .card-panel {
+    @apply rounded-xl border border-soaco-gray/25 dark:border-soaco-gray/35 bg-white dark:bg-soaco-graphite/80 p-4 shadow-soaco;
+  }
+
+  .card-kpi {
+    @apply rounded-xl border border-soaco-gray/25 dark:border-soaco-gray/35 bg-white dark:bg-soaco-graphite/80 p-5 shadow-soaco;
+  }
+
+  .card-kpi-alert {
+    @apply card-kpi border-l-4 border-l-accent-500;
+  }
+
+  .card-kpi-label {
+    @apply text-xs font-medium uppercase tracking-wide text-soaco-gray dark:text-soaco-gray;
+  }
+
+  .card-kpi-value {
+    @apply text-2xl font-bold tabular-nums text-soaco-navy dark:text-soaco-white;
+  }
+
+  .table-head-brand {
+    @apply bg-soaco-navy text-white;
+  }
+
+  .table-head-brand th {
+    @apply text-white font-semibold;
+  }
+
+  .input-app {
+    @apply w-full rounded-lg border border-soaco-gray/40 dark:border-soaco-gray/50 bg-white dark:bg-soaco-graphite px-3 py-2 text-soaco-navy dark:text-soaco-white placeholder-soaco-gray focus:ring-2 focus:ring-primary-600 focus:border-transparent transition;
+  }
+
+  .badge-pill {
+    @apply inline-flex rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+  }
+
+  .alert-success {
+    @apply rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-4 py-2 text-sm;
+  }
+
+  .alert-error {
+    @apply rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 px-4 py-2 text-sm;
+  }
+
+  .alert-warn {
+    @apply rounded-xl border border-amber-200 dark:border-accent-600/50 bg-amber-50 dark:bg-accent-600/10 px-4 py-3 text-sm text-amber-800 dark:text-accent-400;
+  }
+
+  .row-total-brand {
+    @apply bg-primary-900/10 dark:bg-primary-900/30 border-t-2 border-t-accent-500 font-semibold;
+  }
+}
+
+/* Grade pedidos — cabeçalho marca */
+.tabela-pedidos-grade thead th {
+  background-color: var(--soaco-navy);
+  color: var(--soaco-white);
+  font-weight: 600;
+}
+.tabela-pedidos-grade th,
+.tabela-pedidos-grade td {
+  border-color: rgb(128 128 128 / 0.35);
+}
+.dark .tabela-pedidos-grade tbody td {
+  background-color: var(--soaco-graphite);
+}
+.dark .tabela-pedidos-grade tbody tr:hover td {
+  background-color: rgb(4 30 66 / 0.55);
+}
+
+/* CRM Financeiro — tabelas e painel */
+@keyframes crm-spin-ring {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.crm-loading-spinner {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  border: 3px solid #dbeafe;
+  border-top-color: #1e22aa;
+  animation: crm-spin-ring 0.75s linear infinite;
+}
+
+.dark .crm-loading-spinner {
+  border-color: rgb(30 34 170 / 0.35);
+  border-top-color: #ffad00;
+}
+
+.pdf-generating-icon-wrap {
+  position: relative;
+  display: flex;
+  height: 3.5rem;
+  width: 3.5rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.pdf-generating-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 3px solid #d1fae5;
+  border-top-color: #059669;
+  animation: crm-spin-ring 0.85s linear infinite;
+}
+
+.pdf-generating-icon {
+  position: relative;
+  z-index: 1;
+  height: 1.75rem;
+  width: 1.75rem;
+  color: #047857;
+  animation: crm-spin-ring 1.1s linear infinite;
+}
+
+.table-crm {
+  width: 100%;
+  min-width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.table-crm.table-crm-resizable {
+  width: auto;
+  min-width: auto;
+}
+
+.table-crm.table-crm-resizable th,
+.table-crm.table-crm-resizable td {
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.table-crm-wrapper {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.table-crm-scroll,
+.table-crm-scroll-y {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  max-height: min(48rem, 80vh);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-crm-section-modal {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.table-crm-scroll-modal {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-crm-scroll-y thead th,
+.table-crm-scroll thead th,
+.table-crm-scroll-modal thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: inherit;
+  box-shadow: 0 1px 0 #e2e8f0;
+}
+
+.dark .table-crm-scroll-y thead th,
+.dark .table-crm-scroll thead th,
+.dark .table-crm-scroll-modal thead th {
+  box-shadow: 0 1px 0 rgb(100 116 139 / 0.35);
+}
+
+.table-crm tbody tr.table-row-even {
+  background-color: #ffffff;
+}
+
+.table-crm tbody tr.table-row-odd {
+  background-color: #f2f5f8;
+}
+
+.table-crm tbody tr.table-row-total {
+  background-color: #f1f5f9;
+}
+
+.dark .table-crm tbody tr.table-row-even {
+  background-color: rgb(30 41 59 / 0.5);
+}
+
+.dark .table-crm tbody tr.table-row-odd {
+  background-color: rgb(15 23 42 / 0.35);
+}
+
+.dark .table-crm tbody tr.table-row-total {
+  background-color: rgb(30 41 59 / 0.65);
+}
+
+.crm-dashboard-panel {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.crm-dashboard-panel > * {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.crm-dashboard-detail-grid {
+  display: grid;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+}
+
+.table-crm-section {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(226 232 240);
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 6%);
+}
+
+.dark .table-crm-section {
+  border-color: rgb(100 116 139 / 0.35);
+  background: rgb(30 41 59 / 0.5);
+}
+
+.table-crm .cell-wrap {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.table-crm .cell-nowrap {
+  white-space: nowrap;
+}
+
+.table-crm th.sortable {
+  padding: 0;
+  vertical-align: top;
+}
+
+.table-crm .col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  z-index: 3;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.table-crm .col-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: #e2e8f0;
+}
+
+body.table-col-resizing {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+.table-crm .sort-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  width: 100%;
+  min-height: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.table-crm .sort-header:hover {
+  background: rgb(238 242 255);
+  color: #4338ca;
+}
+
+.dark .table-crm .sort-header:hover {
+  background: rgb(30 34 170 / 0.2);
+  color: #ffad00;
+}
+
+.table-crm .sort-header-right {
+  justify-content: flex-end;
+  text-align: right;
+  flex-direction: row-reverse;
+}

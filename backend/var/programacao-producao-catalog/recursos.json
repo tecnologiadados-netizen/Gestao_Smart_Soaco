@@ -1,0 +1,64 @@
+{
+  "recursos": [
+    {
+      "cod": "R001",
+      "nome": "Perfiladeira 1000",
+      "criadoPorLogin": "marquesfilho",
+      "criadoPorNome": null,
+      "atualizadoPorLogin": "marquesfilho",
+      "atualizadoPorNome": null,
+      "createdAt": "2026-06-01T16:22:09.173Z",
+      "updatedAt": "2026-06-01T16:22:09.173Z"
+    },
+    {
+      "cod": "R002",
+      "nome": "Marafon",
+      "criadoPorLogin": "marquesfilho",
+      "criadoPorNome": null,
+      "atualizadoPorLogin": "marquesfilho",
+      "atualizadoPorNome": null,
+      "createdAt": "2026-06-01T16:22:22.257Z",
+      "updatedAt": "2026-06-01T16:22:22.257Z"
+    },
+    {
+      "cod": "R003",
+      "nome": "Guilhotina",
+      "criadoPorLogin": "marquesfilho",
+      "criadoPorNome": null,
+      "atualizadoPorLogin": "marquesfilho",
+      "atualizadoPorNome": null,
+      "createdAt": "2026-06-01T16:22:28.518Z",
+      "updatedAt": "2026-06-01T16:22:28.518Z"
+    },
+    {
+      "cod": "R004",
+      "nome": "Prensa",
+      "criadoPorLogin": "marquesfilho",
+      "criadoPorNome": null,
+      "atualizadoPorLogin": "marquesfilho",
+      "atualizadoPorNome": null,
+      "createdAt": "2026-06-01T16:22:39.154Z",
+      "updatedAt": "2026-06-01T16:22:39.154Z"
+    },
+    {
+      "cod": "R005",
+      "nome": "Dobradeira",
+      "criadoPorLogin": "marquesfilho",
+      "criadoPorNome": null,
+      "atualizadoPorLogin": "marquesfilho",
+      "atualizadoPorNome": null,
+      "createdAt": "2026-06-01T16:22:49.139Z",
+      "updatedAt": "2026-06-01T16:22:49.139Z"
+    },
+    {
+      "cod": "R006",
+      "nome": "Centro de dobra",
+      "criadoPorLogin": "marquesfilho",
+      "criadoPorNome": null,
+      "atualizadoPorLogin": "marquesfilho",
+      "atualizadoPorNome": null,
+      "createdAt": "2026-06-01T16:23:01.089Z",
+      "updatedAt": "2026-06-01T16:23:01.089Z"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+---
+description: Padrão de busca de texto livre com refinamento via % (estilo SQL LIKE)
+alwaysApply: true
+---
+
+# Busca de texto livre com `%`
+
+Use o utilitário compartilhado para **todo filtro de texto livre** (grades, modais, listagens em memória e, quando aplicável, SQL LIKE):
+
+- **Frontend:** `frontend/src/utils/textoLivreBusca.ts`
+- **Backend:** `backend/src/utils/textoLivreBusca.ts`
+
+## Comportamento
+
+| Entrada do usuário | Significado |
+|---|---|
+| `ferramenta` | contém "ferramenta" (ignora acento e maiúsculas) |
+| `Ferr%` | começa com "Ferr…" |
+| `%Ltda` | termina com "Ltda" |
+| `%cent%` | contém "cent" no meio |
+
+O caractere **`%`** é curinga (qualquer sequência), como em SQL `LIKE`. **Não** envolva automaticamente com `%` quando o usuário já informou `%` no termo.
+
+## API
+
+```typescript
+import { criarMatcherTextoLivre, textoPassaBuscaLivre, normalizarTextoBusca } from '…/utils/textoLivreBusca';
+
+// Preferir matcher reutilizável em loops
+const match = criarMatcherTextoLivre(filtro);
+rows.filter((r) => match(r.nome));
+
+// Ou atalho pontual
+if (!textoPassaBuscaLivre(filtro, valor)) return false;
+```
+
+**Backend (SQL):** use `termoParaPadraoLikeSql(termo)` + parâmetro preparado (`LIKE ?`), nunca concatene SQL cru.
+
+## Evitar
+
+- `valor.toLowerCase().includes(termo.toLowerCase())` em filtros novos — use o utilitário.
+- Duplicar `normalizarParaFiltro` / `makeTextMatcher` locais — importe de `textoLivreBusca.ts`.
+- Placeholders genéricos sem mencionar `%` em campos que suportam refinamento.

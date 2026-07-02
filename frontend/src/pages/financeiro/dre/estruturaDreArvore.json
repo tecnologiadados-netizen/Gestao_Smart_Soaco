@@ -1,0 +1,3530 @@
+{
+  "roots": [
+    {
+      "id": null,
+      "nome": "Receita Bruta",
+      "tipo": "S",
+      "macro": "RECEITA",
+      "codigo": "1",
+      "sinal": 1,
+      "children": [
+        {
+          "id": null,
+          "nome": "Receita de vendas de produtos",
+          "tipo": "S",
+          "macro": "RECEITA",
+          "codigo": "1.1",
+          "sinal": 1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Só Aço",
+              "tipo": "S",
+              "macro": "RECEITA",
+              "codigo": "1.1.1",
+              "sinal": 1,
+              "children": [
+                {
+                  "id": null,
+                  "nome": "Faturamento Direto",
+                  "tipo": "S",
+                  "macro": "RECEITA",
+                  "codigo": "1.1.2",
+                  "sinal": 1,
+                  "children": [
+                    {
+                      "id": null,
+                      "nome": "Resfriador industrial",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.3",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/0"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Material comprado",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.4",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/1"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Checkout",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.5",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/2"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Cadeiras e similares",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.6",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/3"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Câmaras",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.7",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/4"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Fogão industrial",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.8",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/5"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Móveis de Aço",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.9",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/6"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Chapa bifeteira",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.10",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/7"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Móveis escolares",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.11",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/8"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Gôndolas",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.12",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/9"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Estufas",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.13",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/10"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Máquina para serrar ossos",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.14",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/11"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Fornos",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.15",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/12"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Balcão",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.16",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/13"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Móveis em melaminico",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.17",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/14"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Mesa para panificação",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.18",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/15"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Outros",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.19",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/16"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Fritadeira tacho",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.20",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/17"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Porta Paletes",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.21",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/18"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Balcão frigorífico sem tendal",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.1.22",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/0/19"
+                    }
+                  ],
+                  "pathKey": "D/0/0/0/0"
+                },
+                {
+                  "id": null,
+                  "nome": "Faturamento Indireto Bruto",
+                  "tipo": "A",
+                  "macro": "RECEITA",
+                  "codigo": "1.2",
+                  "sinal": 1,
+                  "children": [],
+                  "pathKey": "D/0/0/0/1"
+                },
+                {
+                  "id": null,
+                  "nome": "Faturamento Indireto Liquido (MKP)",
+                  "tipo": "S",
+                  "macro": "RECEITA",
+                  "codigo": "1.3",
+                  "sinal": 1,
+                  "children": [
+                    {
+                      "id": null,
+                      "nome": "Resfriador industrial",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.1",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/0"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Material comprado",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.2",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/1"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Checkout",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.3",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/2"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Cadeiras e similares",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.4",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/3"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Câmaras",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.5",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/4"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Fogão industrial",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.6",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/5"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Móveis de Aço",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.7",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/6"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Chapa bifeteira",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.8",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/7"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Móveis escolares",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.9",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/8"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Gôndolas",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.10",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/9"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Estufas",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.11",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/10"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Máquina para serrar ossos",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.12",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/11"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Fornos",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.13",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/12"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Balcão",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.14",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/13"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Móveis em melaminico",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.15",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/14"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Mesa para panificação",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.16",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/15"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Outros",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.17",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/16"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Fritadeira tacho",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.18",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/17"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Porta Paletes",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.19",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/18"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Balcão frigorífico sem tendal",
+                      "tipo": "A",
+                      "macro": "RECEITA",
+                      "codigo": "1.3.20",
+                      "sinal": 1,
+                      "children": [],
+                      "pathKey": "D/0/0/0/2/19"
+                    }
+                  ],
+                  "pathKey": "D/0/0/0/2"
+                }
+              ],
+              "pathKey": "D/0/0/0"
+            },
+            {
+              "id": null,
+              "nome": "Só Móveis",
+              "tipo": "S",
+              "macro": "RECEITA",
+              "codigo": "1.4",
+              "sinal": 1,
+              "children": [
+                {
+                  "id": null,
+                  "nome": "Faturamento Direto",
+                  "tipo": "A",
+                  "macro": "RECEITA",
+                  "codigo": "1.4.1",
+                  "sinal": 1,
+                  "children": [],
+                  "pathKey": "D/0/0/1/0"
+                },
+                {
+                  "id": null,
+                  "nome": "Faturamento Indireto",
+                  "tipo": "A",
+                  "macro": "RECEITA",
+                  "codigo": "1.4.2",
+                  "sinal": 1,
+                  "children": [],
+                  "pathKey": "D/0/0/1/1"
+                }
+              ],
+              "pathKey": "D/0/0/1"
+            },
+            {
+              "id": null,
+              "nome": "Só Refrigeração",
+              "tipo": "A",
+              "macro": "RECEITA",
+              "codigo": "1.5",
+              "sinal": 1,
+              "children": [],
+              "pathKey": "D/0/0/2"
+            },
+            {
+              "id": null,
+              "nome": "R N Marques",
+              "tipo": "S",
+              "macro": "RECEITA",
+              "codigo": "1.6",
+              "sinal": 1,
+              "children": [
+                {
+                  "id": null,
+                  "nome": "Faturamento Direto",
+                  "tipo": "A",
+                  "macro": "RECEITA",
+                  "codigo": "1.6.1",
+                  "sinal": 1,
+                  "children": [],
+                  "pathKey": "D/0/0/3/0"
+                },
+                {
+                  "id": null,
+                  "nome": "Faturamento Indireto",
+                  "tipo": "A",
+                  "macro": "RECEITA",
+                  "codigo": "1.6.2",
+                  "sinal": 1,
+                  "children": [],
+                  "pathKey": "D/0/0/3/1"
+                }
+              ],
+              "pathKey": "D/0/0/3"
+            }
+          ],
+          "pathKey": "D/0/0"
+        }
+      ],
+      "pathKey": "D/0"
+    },
+    {
+      "id": null,
+      "nome": "(-) Deduções Sobre o Faturamento",
+      "tipo": "S",
+      "macro": "DEDUCAO",
+      "codigo": "2",
+      "sinal": -1,
+      "children": [
+        {
+          "id": null,
+          "nome": "(-) Devoluções e Descontos",
+          "tipo": "S",
+          "macro": "DEDUCAO",
+          "codigo": "2.1",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Devoluções",
+              "tipo": "S",
+              "macro": "DEDUCAO",
+              "codigo": "2.1.1",
+              "sinal": -1,
+              "children": [
+                {
+                  "id": null,
+                  "nome": "Só Aço",
+                  "tipo": "A",
+                  "macro": "DEDUCAO",
+                  "codigo": "2.1.1.1",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/1/0/0/0"
+                },
+                {
+                  "id": null,
+                  "nome": "Só Móveis",
+                  "tipo": "A",
+                  "macro": "DEDUCAO",
+                  "codigo": "2.1.1.2",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/1/0/0/1"
+                },
+                {
+                  "id": null,
+                  "nome": "Só Refrigeração",
+                  "tipo": "A",
+                  "macro": "DEDUCAO",
+                  "codigo": "2.1.1.3",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/1/0/0/2"
+                },
+                {
+                  "id": null,
+                  "nome": "R N Marques",
+                  "tipo": "A",
+                  "macro": "DEDUCAO",
+                  "codigo": "2.1.1.4",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/1/0/0/3"
+                }
+              ],
+              "pathKey": "D/1/0/0"
+            },
+            {
+              "id": null,
+              "nome": "Cancelamentos",
+              "tipo": "A",
+              "macro": "DEDUCAO",
+              "codigo": "2.1.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/1/0/1"
+            },
+            {
+              "id": null,
+              "nome": "Descontos incondicionais",
+              "tipo": "S",
+              "macro": "DEDUCAO",
+              "codigo": "2.1.3",
+              "sinal": -1,
+              "children": [
+                {
+                  "id": null,
+                  "nome": "Só Aço",
+                  "tipo": "A",
+                  "macro": "DEDUCAO",
+                  "codigo": "2.1.3.1",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/1/0/2/0"
+                },
+                {
+                  "id": null,
+                  "nome": "Só Móveis",
+                  "tipo": "A",
+                  "macro": "DEDUCAO",
+                  "codigo": "2.1.3.2",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/1/0/2/1"
+                },
+                {
+                  "id": null,
+                  "nome": "Só Refrigeração",
+                  "tipo": "A",
+                  "macro": "DEDUCAO",
+                  "codigo": "2.1.3.3",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/1/0/2/2"
+                },
+                {
+                  "id": null,
+                  "nome": "R N Marques",
+                  "tipo": "A",
+                  "macro": "DEDUCAO",
+                  "codigo": "2.1.3.4",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/1/0/2/3"
+                }
+              ],
+              "pathKey": "D/1/0/2"
+            }
+          ],
+          "pathKey": "D/1/0"
+        }
+      ],
+      "pathKey": "D/1"
+    },
+    {
+      "id": null,
+      "nome": "Receita Líquida Antes de Impostos s/ Vendas",
+      "tipo": "T",
+      "macro": "TOTAL",
+      "codigo": "3",
+      "calcId": "RL_ANTES_IMPOSTOS",
+      "children": [],
+      "pathKey": "D/2"
+    },
+    {
+      "id": null,
+      "nome": "(-) Impostos s/ Vendas",
+      "tipo": "S",
+      "macro": "DEDUCAO",
+      "codigo": "4",
+      "sinal": -1,
+      "children": [
+        {
+          "id": null,
+          "nome": "ICMS s/ vendas",
+          "tipo": "A",
+          "macro": "DEDUCAO",
+          "codigo": "4.1",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/3/0"
+        },
+        {
+          "id": null,
+          "nome": "ICMS ST",
+          "tipo": "A",
+          "macro": "DEDUCAO",
+          "codigo": "4.2",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/3/1"
+        },
+        {
+          "id": null,
+          "nome": "ICMS Substituição Tributária",
+          "tipo": "A",
+          "macro": "DEDUCAO",
+          "codigo": "4.3",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/3/2"
+        },
+        {
+          "id": null,
+          "nome": "Guia Antecipação",
+          "tipo": "A",
+          "macro": "DEDUCAO",
+          "codigo": "4.4",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/3/3"
+        },
+        {
+          "id": null,
+          "nome": "ICMS Difal Uso e Consumo",
+          "tipo": "A",
+          "macro": "DEDUCAO",
+          "codigo": "4.5",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/3/4"
+        },
+        {
+          "id": null,
+          "nome": "Cofins s/ vendas",
+          "tipo": "A",
+          "macro": "DEDUCAO",
+          "codigo": "4.7",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/3/6"
+        },
+        {
+          "id": null,
+          "nome": "PIS",
+          "tipo": "A",
+          "macro": "DEDUCAO",
+          "codigo": "4.8",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/3/7"
+        },
+        {
+          "id": null,
+          "nome": "PIS Importação",
+          "tipo": "A",
+          "macro": "DEDUCAO",
+          "codigo": "4.9",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/3/8"
+        },
+        {
+          "id": null,
+          "nome": "ISS",
+          "tipo": "A",
+          "macro": "DEDUCAO",
+          "codigo": "4.10",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/3/9"
+        },
+        {
+          "id": null,
+          "nome": "IPI",
+          "tipo": "A",
+          "macro": "DEDUCAO",
+          "codigo": "4.11",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/3/10"
+        },
+        {
+          "id": null,
+          "nome": "Imposto – Simples Nacional",
+          "tipo": "A",
+          "macro": "DEDUCAO",
+          "codigo": "4.14",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/3/11"
+        },
+        {
+          "id": null,
+          "nome": "Impostos Retenção",
+          "tipo": "A",
+          "macro": "DEDUCAO",
+          "codigo": "4.15",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/3/12"
+        }
+      ],
+      "pathKey": "D/3"
+    },
+    {
+      "id": null,
+      "nome": "(=) Receita Líquida",
+      "tipo": "T",
+      "macro": "TOTAL",
+      "codigo": "5",
+      "calcId": "RECEITA_LIQUIDA",
+      "children": [],
+      "pathKey": "D/4"
+    },
+    {
+      "id": null,
+      "nome": "(-) CPV",
+      "tipo": "S",
+      "macro": "CUSTO",
+      "codigo": "6",
+      "sinal": -1,
+      "children": [
+        {
+          "id": null,
+          "nome": "CPV Só Aço",
+          "tipo": "S",
+          "macro": "CUSTO",
+          "codigo": "6.1",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "CPV Direto",
+              "tipo": "S",
+              "macro": "CUSTO",
+              "codigo": "6.1.1",
+              "sinal": -1,
+              "children": [
+                {
+                  "id": null,
+                  "nome": "Resfriador industrial",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.1",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/0"
+                },
+                {
+                  "id": null,
+                  "nome": "Material comprado",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.2",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/1"
+                },
+                {
+                  "id": null,
+                  "nome": "Checkout",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.3",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/2"
+                },
+                {
+                  "id": null,
+                  "nome": "Cadeiras e similares",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.4",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/3"
+                },
+                {
+                  "id": null,
+                  "nome": "Câmaras",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.5",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/4"
+                },
+                {
+                  "id": null,
+                  "nome": "Fogão industrial",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.6",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/5"
+                },
+                {
+                  "id": null,
+                  "nome": "Móveis de Aço",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.7",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/6"
+                },
+                {
+                  "id": null,
+                  "nome": "Chapa bifeteira",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.8",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/7"
+                },
+                {
+                  "id": null,
+                  "nome": "Móveis escolares",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.9",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/8"
+                },
+                {
+                  "id": null,
+                  "nome": "Gôndolas",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.10",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/9"
+                },
+                {
+                  "id": null,
+                  "nome": "Estufas",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.11",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/10"
+                },
+                {
+                  "id": null,
+                  "nome": "Máquina para serrar ossos",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.12",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/11"
+                },
+                {
+                  "id": null,
+                  "nome": "Fornos",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.13",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/12"
+                },
+                {
+                  "id": null,
+                  "nome": "Balcão",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.14",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/13"
+                },
+                {
+                  "id": null,
+                  "nome": "Móveis em melaminico",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.15",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/14"
+                },
+                {
+                  "id": null,
+                  "nome": "Mesa para panificação",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.16",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/15"
+                },
+                {
+                  "id": null,
+                  "nome": "Outros",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.17",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/16"
+                },
+                {
+                  "id": null,
+                  "nome": "Fritadeira tacho",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.18",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/17"
+                },
+                {
+                  "id": null,
+                  "nome": "Porta Paletes",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.19",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/18"
+                },
+                {
+                  "id": null,
+                  "nome": "Balcão frigorífico sem tendal",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.1.20",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/0/19"
+                }
+              ],
+              "pathKey": "D/5/0/0"
+            },
+            {
+              "id": null,
+              "nome": "CPV Indireto",
+              "tipo": "S",
+              "macro": "CUSTO",
+              "codigo": "6.1.2",
+              "sinal": -1,
+              "children": [
+                {
+                  "id": null,
+                  "nome": "Resfriador industrial",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.1",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/0"
+                },
+                {
+                  "id": null,
+                  "nome": "Material comprado",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.2",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/1"
+                },
+                {
+                  "id": null,
+                  "nome": "Checkout",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.3",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/2"
+                },
+                {
+                  "id": null,
+                  "nome": "Cadeiras e similares",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.4",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/3"
+                },
+                {
+                  "id": null,
+                  "nome": "Câmaras",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.5",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/4"
+                },
+                {
+                  "id": null,
+                  "nome": "Fogão industrial",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.6",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/5"
+                },
+                {
+                  "id": null,
+                  "nome": "Móveis de Aço",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.7",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/6"
+                },
+                {
+                  "id": null,
+                  "nome": "Chapa bifeteira",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.8",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/7"
+                },
+                {
+                  "id": null,
+                  "nome": "Móveis escolares",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.9",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/8"
+                },
+                {
+                  "id": null,
+                  "nome": "Gôndolas",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.10",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/9"
+                },
+                {
+                  "id": null,
+                  "nome": "Estufas",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.11",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/10"
+                },
+                {
+                  "id": null,
+                  "nome": "Máquina para serrar ossos",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.12",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/11"
+                },
+                {
+                  "id": null,
+                  "nome": "Fornos",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.13",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/12"
+                },
+                {
+                  "id": null,
+                  "nome": "Balcão",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.14",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/13"
+                },
+                {
+                  "id": null,
+                  "nome": "Móveis em melaminico",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.15",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/14"
+                },
+                {
+                  "id": null,
+                  "nome": "Mesa para panificação",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.16",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/15"
+                },
+                {
+                  "id": null,
+                  "nome": "Outros",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.17",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/16"
+                },
+                {
+                  "id": null,
+                  "nome": "Fritadeira tacho",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.18",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/17"
+                },
+                {
+                  "id": null,
+                  "nome": "Porta Paletes",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.19",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/18"
+                },
+                {
+                  "id": null,
+                  "nome": "Balcão frigorífico sem tendal",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.1.2.20",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/0/1/19"
+                }
+              ],
+              "pathKey": "D/5/0/1"
+            }
+          ],
+          "pathKey": "D/5/0"
+        },
+        {
+          "id": null,
+          "nome": "CMV Só Móveis",
+          "tipo": "S",
+          "macro": "CUSTO",
+          "codigo": "6.2",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "CPV Direto",
+              "tipo": "A",
+              "macro": "CUSTO",
+              "codigo": "6.2.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/5/1/0"
+            },
+            {
+              "id": null,
+              "nome": "CPV Indireto",
+              "tipo": "S",
+              "macro": "CUSTO",
+              "codigo": "6.2.2",
+              "sinal": -1,
+              "children": [
+                {
+                  "id": null,
+                  "nome": "Resfriador industrial",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.1",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/0"
+                },
+                {
+                  "id": null,
+                  "nome": "Material comprado",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.2",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/1"
+                },
+                {
+                  "id": null,
+                  "nome": "Checkout",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.3",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/2"
+                },
+                {
+                  "id": null,
+                  "nome": "Cadeiras e similares",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.4",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/3"
+                },
+                {
+                  "id": null,
+                  "nome": "Câmaras",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.5",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/4"
+                },
+                {
+                  "id": null,
+                  "nome": "Fogão industrial",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.6",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/5"
+                },
+                {
+                  "id": null,
+                  "nome": "Móveis de Aço",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.7",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/6"
+                },
+                {
+                  "id": null,
+                  "nome": "Chapa bifeteira",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.8",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/7"
+                },
+                {
+                  "id": null,
+                  "nome": "Móveis escolares",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.9",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/8"
+                },
+                {
+                  "id": null,
+                  "nome": "Gôndolas",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.10",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/9"
+                },
+                {
+                  "id": null,
+                  "nome": "Estufas",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.11",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/10"
+                },
+                {
+                  "id": null,
+                  "nome": "Máquina para serrar ossos",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.12",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/11"
+                },
+                {
+                  "id": null,
+                  "nome": "Fornos",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.13",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/12"
+                },
+                {
+                  "id": null,
+                  "nome": "Balcão",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.14",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/13"
+                },
+                {
+                  "id": null,
+                  "nome": "Móveis em melaminico",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.15",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/14"
+                },
+                {
+                  "id": null,
+                  "nome": "Mesa para panificação",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.16",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/15"
+                },
+                {
+                  "id": null,
+                  "nome": "Outros",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.17",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/16"
+                },
+                {
+                  "id": null,
+                  "nome": "Fritadeira tacho",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.18",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/17"
+                },
+                {
+                  "id": null,
+                  "nome": "Porta Paletes",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.19",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/18"
+                },
+                {
+                  "id": null,
+                  "nome": "Balcão frigorífico sem tendal",
+                  "tipo": "A",
+                  "macro": "CUSTO",
+                  "codigo": "6.2.2.20",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/5/1/1/19"
+                }
+              ],
+              "pathKey": "D/5/1/1"
+            }
+          ],
+          "pathKey": "D/5/1"
+        },
+        {
+          "id": null,
+          "nome": "CMV RN Marques",
+          "tipo": "S",
+          "macro": "CUSTO",
+          "codigo": "6.3",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "CMV Direto",
+              "tipo": "A",
+              "macro": "CUSTO",
+              "codigo": "6.3.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/5/2/0"
+            },
+            {
+              "id": null,
+              "nome": "CMV Indireto",
+              "tipo": "A",
+              "macro": "CUSTO",
+              "codigo": "6.3.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/5/2/1"
+            }
+          ],
+          "pathKey": "D/5/2"
+        },
+        {
+          "id": null,
+          "nome": "CMV Só Refrigeração",
+          "tipo": "A",
+          "macro": "CUSTO",
+          "codigo": "6.4",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/5/3"
+        }
+      ],
+      "pathKey": "D/5"
+    },
+    {
+      "id": null,
+      "nome": "(-) Despesas Variáveis",
+      "tipo": "S",
+      "macro": "DESP_VAR",
+      "codigo": "8",
+      "sinal": -1,
+      "children": [
+        {
+          "id": null,
+          "nome": "Energia Elétrica",
+          "tipo": "S",
+          "macro": "DESP_VAR",
+          "codigo": "8.1",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Energia elétrica",
+              "tipo": "A",
+              "macro": "DESP_VAR",
+              "codigo": "8.1.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/6/0/0"
+            }
+          ],
+          "pathKey": "D/6/0"
+        },
+        {
+          "id": null,
+          "nome": "Movimentação e Armazenagem",
+          "tipo": "S",
+          "macro": "DESP_VAR",
+          "codigo": "8.2",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Fretes e carretos",
+              "tipo": "A",
+              "macro": "DESP_VAR",
+              "codigo": "8.2.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/6/1/0"
+            },
+            {
+              "id": null,
+              "nome": "Fretes - Mercadorias",
+              "tipo": "A",
+              "macro": "DESP_VAR",
+              "codigo": "8.2.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/6/1/1"
+            }
+          ],
+          "pathKey": "D/6/1"
+        }
+      ],
+      "pathKey": "D/6"
+    },
+    {
+      "id": null,
+      "nome": "(-) Gastos com Pessoal Operação",
+      "tipo": "S",
+      "macro": "DESP_OI",
+      "codigo": "10",
+      "sinal": -1,
+      "children": [
+        {
+          "id": null,
+          "nome": "Folha de Pagamento - Operacional",
+          "tipo": "S",
+          "macro": "DESP_OI",
+          "codigo": "10.1",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Salários operacional",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/0"
+            },
+            {
+              "id": null,
+              "nome": "Provisão 13º Salário - Operação",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/1"
+            },
+            {
+              "id": null,
+              "nome": "Provisão Férias - Operação",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/2"
+            },
+            {
+              "id": null,
+              "nome": "Provisão 1/3 Férias - Operação",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.4",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/3"
+            },
+            {
+              "id": null,
+              "nome": "Provisão INSS Férias - Operação",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.5",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/4"
+            },
+            {
+              "id": null,
+              "nome": "Provisão FGTS Férias - Operação",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.6",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/5"
+            },
+            {
+              "id": null,
+              "nome": "INSS Operação",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.7",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/6"
+            },
+            {
+              "id": null,
+              "nome": "FGTS Operação",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.8",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/7"
+            },
+            {
+              "id": null,
+              "nome": "Horas Extras - Operacional",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.9",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/8"
+            },
+            {
+              "id": null,
+              "nome": "Alimentação hora extra",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.10",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/9"
+            },
+            {
+              "id": null,
+              "nome": "Bonificação Operacional",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.11",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/10"
+            },
+            {
+              "id": null,
+              "nome": "Vale Transporte - Operacional",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.12",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/11"
+            },
+            {
+              "id": null,
+              "nome": "Vale Alimentação/Refeição - Operacional",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.13",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/12"
+            },
+            {
+              "id": null,
+              "nome": "Pensão Alimentícia",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.14",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/13"
+            },
+            {
+              "id": null,
+              "nome": "Ajuda de Custo",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.1.15",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/0/14"
+            }
+          ],
+          "pathKey": "D/7/0"
+        },
+        {
+          "id": null,
+          "nome": "Demais Gastos com Pessoal",
+          "tipo": "S",
+          "macro": "DESP_OI",
+          "codigo": "10.2",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Saúde ocupacional",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.2.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/1/0"
+            },
+            {
+              "id": null,
+              "nome": "Auxílio Combustível - Operação",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.2.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/1/1"
+            },
+            {
+              "id": null,
+              "nome": "Seguro de vida",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.2.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/1/2"
+            },
+            {
+              "id": null,
+              "nome": "Contribuição sindical",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.2.4",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/1/3"
+            }
+          ],
+          "pathKey": "D/7/1"
+        },
+        {
+          "id": null,
+          "nome": "Serviços Terceirizados da Produção",
+          "tipo": "S",
+          "macro": "DESP_OI",
+          "codigo": "10.3",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Serviços Terceirizados de Produção",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.3.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/2/0"
+            },
+            {
+              "id": null,
+              "nome": "Aluguéis de Equipamentos Produção",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.3.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/2/1"
+            },
+            {
+              "id": null,
+              "nome": "Análises e Inspeções Técnicas",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.3.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/2/2"
+            }
+          ],
+          "pathKey": "D/7/2"
+        },
+        {
+          "id": null,
+          "nome": "Desenvolvimento de Colaboradores",
+          "tipo": "S",
+          "macro": "DESP_OI",
+          "codigo": "10.4",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Treinamentos e Certificações",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.4.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/3/0"
+            }
+          ],
+          "pathKey": "D/7/3"
+        },
+        {
+          "id": null,
+          "nome": "EPI e Uniformes",
+          "tipo": "S",
+          "macro": "DESP_OI",
+          "codigo": "10.5",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "EPI",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.5.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/4/0"
+            },
+            {
+              "id": null,
+              "nome": "Fardamento",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "10.5.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/7/4/1"
+            }
+          ],
+          "pathKey": "D/7/4"
+        }
+      ],
+      "pathKey": "D/7"
+    },
+    {
+      "id": null,
+      "nome": "(-) Despesas Operacionais Indiretas",
+      "tipo": "S",
+      "macro": "DESP_OI",
+      "codigo": "11",
+      "sinal": -1,
+      "children": [
+        {
+          "id": null,
+          "nome": "Mecânica, Manutenção e Equipamentos",
+          "tipo": "S",
+          "macro": "DESP_OI",
+          "codigo": "11.1",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Manutenção Industrial",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "11.1.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/8/0/0"
+            },
+            {
+              "id": null,
+              "nome": "Materiais manutenção Mecânica",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "11.1.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/8/0/1"
+            },
+            {
+              "id": null,
+              "nome": "Serviços manutenção Mecânica",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "11.1.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/8/0/2"
+            },
+            {
+              "id": null,
+              "nome": "Materiais manutenção Elétrico",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "11.1.4",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/8/0/3"
+            },
+            {
+              "id": null,
+              "nome": "Materiais manutenção Hidráulico",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "11.1.5",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/8/0/4"
+            },
+            {
+              "id": null,
+              "nome": "Calibração de instrumentos",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "11.1.6",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/8/0/5"
+            },
+            {
+              "id": null,
+              "nome": "Peças, Ferramentas, Pneus",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "11.1.7",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/8/0/6"
+            }
+          ],
+          "pathKey": "D/8/0"
+        },
+        {
+          "id": null,
+          "nome": "Despesas Logística",
+          "tipo": "S",
+          "macro": "DESP_OI",
+          "codigo": "11.2",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Folha de Pagamento - Logística",
+              "tipo": "S",
+              "macro": "DESP_OI",
+              "codigo": "11.2.1",
+              "sinal": -1,
+              "children": [
+                {
+                  "id": null,
+                  "nome": "Salários Logística",
+                  "tipo": "A",
+                  "macro": "DESP_OI",
+                  "codigo": "11.2.1.1",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/8/1/0/0"
+                },
+                {
+                  "id": null,
+                  "nome": "Provisão 13º Salário - Logística",
+                  "tipo": "A",
+                  "macro": "DESP_OI",
+                  "codigo": "11.2.1.2",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/8/1/0/1"
+                },
+                {
+                  "id": null,
+                  "nome": "Provisão Férias",
+                  "tipo": "A",
+                  "macro": "DESP_OI",
+                  "codigo": "11.2.1.3",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/8/1/0/2"
+                },
+                {
+                  "id": null,
+                  "nome": "Provisão 1/3 Férias",
+                  "tipo": "A",
+                  "macro": "DESP_OI",
+                  "codigo": "11.2.1.4",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/8/1/0/3"
+                },
+                {
+                  "id": null,
+                  "nome": "Provisão INSS Férias",
+                  "tipo": "A",
+                  "macro": "DESP_OI",
+                  "codigo": "11.2.1.5",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/8/1/0/4"
+                },
+                {
+                  "id": null,
+                  "nome": "Provisão FGTS Férias",
+                  "tipo": "A",
+                  "macro": "DESP_OI",
+                  "codigo": "11.2.1.6",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/8/1/0/5"
+                },
+                {
+                  "id": null,
+                  "nome": "INSS Logística",
+                  "tipo": "A",
+                  "macro": "DESP_OI",
+                  "codigo": "11.2.1.7",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/8/1/0/6"
+                },
+                {
+                  "id": null,
+                  "nome": "FGTS Logística",
+                  "tipo": "A",
+                  "macro": "DESP_OI",
+                  "codigo": "11.2.1.8",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/8/1/0/7"
+                },
+                {
+                  "id": null,
+                  "nome": "Auxílio Combustível - Logística",
+                  "tipo": "A",
+                  "macro": "DESP_OI",
+                  "codigo": "11.2.1.9",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/8/1/0/8"
+                },
+                {
+                  "id": null,
+                  "nome": "Despesas de Viagens OP",
+                  "tipo": "A",
+                  "macro": "DESP_OI",
+                  "codigo": "11.2.1.10",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/8/1/0/9"
+                }
+              ],
+              "pathKey": "D/8/1/0"
+            }
+          ],
+          "pathKey": "D/8/1"
+        },
+        {
+          "id": null,
+          "nome": "Despesas com Frota",
+          "tipo": "S",
+          "macro": "DESP_OI",
+          "codigo": "11.3",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "IPVA E Licenciamentos",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "11.3.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/8/2/0"
+            },
+            {
+              "id": null,
+              "nome": "Combustíveis e Lubrificantes",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "11.3.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/8/2/1"
+            },
+            {
+              "id": null,
+              "nome": "Multas de Trânsito",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "11.3.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/8/2/2"
+            },
+            {
+              "id": null,
+              "nome": "Rastreamento de Veículos",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "11.3.4",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/8/2/3"
+            }
+          ],
+          "pathKey": "D/8/2"
+        },
+        {
+          "id": null,
+          "nome": "Manutenção Veicular",
+          "tipo": "S",
+          "macro": "DESP_OI",
+          "codigo": "11.4",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Serviços manutenção de veículos",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "11.4.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/8/3/0"
+            },
+            {
+              "id": null,
+              "nome": "Materiais de manut. de veículos",
+              "tipo": "A",
+              "macro": "DESP_OI",
+              "codigo": "11.4.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/8/3/1"
+            }
+          ],
+          "pathKey": "D/8/3"
+        }
+      ],
+      "pathKey": "D/8"
+    },
+    {
+      "id": null,
+      "nome": "(=) Lucro Bruto",
+      "tipo": "T",
+      "macro": "TOTAL",
+      "codigo": "12",
+      "calcId": "LUCRO_BRUTO",
+      "children": [],
+      "pathKey": "D/9"
+    },
+    {
+      "id": null,
+      "nome": "(-) Despesas Administrativas",
+      "tipo": "S",
+      "macro": "DESP_ADM",
+      "codigo": "13",
+      "sinal": -1,
+      "children": [
+        {
+          "id": null,
+          "nome": "Folha de Pagamento - Administrativo",
+          "tipo": "S",
+          "macro": "DESP_ADM",
+          "codigo": "13.1",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Salários",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.1.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/0/0"
+            },
+            {
+              "id": null,
+              "nome": "Adiantamentos a Colaboradores",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.1.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/0/1"
+            },
+            {
+              "id": null,
+              "nome": "Horas Extras - Administrativo",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.1.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/0/2"
+            },
+            {
+              "id": null,
+              "nome": "Vale Transporte - Administrativo",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.1.4",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/0/3"
+            },
+            {
+              "id": null,
+              "nome": "INSS Administrativo",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.1.6",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/0/5"
+            },
+            {
+              "id": null,
+              "nome": "FGTS Administrativo",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.1.7",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/0/6"
+            },
+            {
+              "id": null,
+              "nome": "Provisão Férias",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.1.8",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/0/7"
+            },
+            {
+              "id": null,
+              "nome": "Provisão 13º Salário",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.1.9",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/0/8"
+            },
+            {
+              "id": null,
+              "nome": "Provisão INSS Férias",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.1.10",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/0/9"
+            },
+            {
+              "id": null,
+              "nome": "Provisão FGTS Férias",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.1.11",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/0/10"
+            },
+            {
+              "id": null,
+              "nome": "Provisão 1/3 Férias",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.1.16",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/0/11"
+            },
+            {
+              "id": null,
+              "nome": "Pró-labore",
+              "tipo": "S",
+              "macro": "DESP_ADM",
+              "codigo": "13.1.12",
+              "sinal": -1,
+              "children": [
+                {
+                  "id": null,
+                  "nome": "Pró-labore Só Aço",
+                  "tipo": "A",
+                  "macro": "DESP_ADM",
+                  "codigo": "13.1.12.1",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/10/0/12/0"
+                },
+                {
+                  "id": null,
+                  "nome": "Pró-labore Só Móveis",
+                  "tipo": "A",
+                  "macro": "DESP_ADM",
+                  "codigo": "13.1.12.2",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/10/0/12/1"
+                },
+                {
+                  "id": null,
+                  "nome": "Pró-labore Só Refrigeração",
+                  "tipo": "A",
+                  "macro": "DESP_ADM",
+                  "codigo": "13.1.12.3",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/10/0/12/2"
+                },
+                {
+                  "id": null,
+                  "nome": "Pró-labore RN Marques",
+                  "tipo": "A",
+                  "macro": "DESP_ADM",
+                  "codigo": "13.1.12.4",
+                  "sinal": -1,
+                  "children": [],
+                  "pathKey": "D/10/0/12/3"
+                }
+              ],
+              "pathKey": "D/10/0/12"
+            }
+          ],
+          "pathKey": "D/10/0"
+        },
+        {
+          "id": null,
+          "nome": "Despesas Variáveis com Pessoal",
+          "tipo": "S",
+          "macro": "DESP_ADM",
+          "codigo": "13.2",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Assistência Médica/Odontológica/Farmácia",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.2.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/1/0"
+            },
+            {
+              "id": null,
+              "nome": "Bolsa de Estágio",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.2.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/1/1"
+            },
+            {
+              "id": null,
+              "nome": "Auxílio Combustível - Administrativo",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.2.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/1/2"
+            },
+            {
+              "id": null,
+              "nome": "Vale Alimentação/Refeição - Administrativo",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.2.4",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/1/3"
+            },
+            {
+              "id": null,
+              "nome": "Refeições Corporativas",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.2.5",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/1/4"
+            },
+            {
+              "id": null,
+              "nome": "Bonificação - Administrativo",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.2.6",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/1/5"
+            },
+            {
+              "id": null,
+              "nome": "Despesas de Viagem",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.2.7",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/1/6"
+            },
+            {
+              "id": null,
+              "nome": "Treinamento e desenvolvimento",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.2.8",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/1/7"
+            },
+            {
+              "id": null,
+              "nome": "Fardamento Administrativo",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.2.9",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/1/8"
+            }
+          ],
+          "pathKey": "D/10/1"
+        },
+        {
+          "id": null,
+          "nome": "Despesas Prediais",
+          "tipo": "S",
+          "macro": "DESP_ADM",
+          "codigo": "13.3",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Aluguel",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.3.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/2/0"
+            },
+            {
+              "id": null,
+              "nome": "IPTU e Condomínio",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.3.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/2/1"
+            },
+            {
+              "id": null,
+              "nome": "Segurança e Vigilância",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.3.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/2/2"
+            },
+            {
+              "id": null,
+              "nome": "Água e Tratamento de Efluentes",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.3.4",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/2/3"
+            },
+            {
+              "id": null,
+              "nome": "Materiais manutenção Predial",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.3.5",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/2/4"
+            },
+            {
+              "id": null,
+              "nome": "Serviços manutenção Predial",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.3.6",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/2/5"
+            }
+          ],
+          "pathKey": "D/10/2"
+        },
+        {
+          "id": null,
+          "nome": "Indenizações e Rescisões",
+          "tipo": "S",
+          "macro": "DESP_ADM",
+          "codigo": "13.4",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "FGTS multa rescisória",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.4.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/3/0"
+            }
+          ],
+          "pathKey": "D/10/3"
+        },
+        {
+          "id": null,
+          "nome": "Treinamentos",
+          "tipo": "S",
+          "macro": "DESP_ADM",
+          "codigo": "13.6",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Alimentação para eventos",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.6.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/4/0"
+            },
+            {
+              "id": null,
+              "nome": "Brindes para Clientes",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.6.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/4/1"
+            },
+            {
+              "id": null,
+              "nome": "Eventos para Clientes",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.6.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/4/2"
+            }
+          ],
+          "pathKey": "D/10/4"
+        },
+        {
+          "id": null,
+          "nome": "Despesas Diversas",
+          "tipo": "S",
+          "macro": "DESP_ADM",
+          "codigo": "13.7",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Cartórios e Notários",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.7.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/5/0"
+            },
+            {
+              "id": null,
+              "nome": "Taxas de Legalização",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.7.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/5/1"
+            },
+            {
+              "id": null,
+              "nome": "Multas Judiciais",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.7.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/5/2"
+            },
+            {
+              "id": null,
+              "nome": "Despachantes",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.7.4",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/5/3"
+            },
+            {
+              "id": null,
+              "nome": "Laudos ambientais",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.7.5",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/5/4"
+            }
+          ],
+          "pathKey": "D/10/5"
+        },
+        {
+          "id": null,
+          "nome": "Despesas de Viagem",
+          "tipo": "S",
+          "macro": "DESP_ADM",
+          "codigo": "13.8",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Passagens aéreas",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.8.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/6/0"
+            },
+            {
+              "id": null,
+              "nome": "Hotéis e Hospedagens",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.8.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/6/1"
+            },
+            {
+              "id": null,
+              "nome": "Translados",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.8.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/6/2"
+            }
+          ],
+          "pathKey": "D/10/6"
+        },
+        {
+          "id": null,
+          "nome": "Despesas de Escritório",
+          "tipo": "S",
+          "macro": "DESP_ADM",
+          "codigo": "13.9",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Material de escritório",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.9.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/7/0"
+            },
+            {
+              "id": null,
+              "nome": "Materiais de suprimentos de informática",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.9.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/7/1"
+            },
+            {
+              "id": null,
+              "nome": "Despesas Gráficas",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.9.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/7/2"
+            },
+            {
+              "id": null,
+              "nome": "Despesas Mailing",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.9.4",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/7/3"
+            },
+            {
+              "id": null,
+              "nome": "Aluguel de Equipamentos",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.9.5",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/7/4"
+            }
+          ],
+          "pathKey": "D/10/7"
+        },
+        {
+          "id": null,
+          "nome": "Utilidades",
+          "tipo": "S",
+          "macro": "DESP_ADM",
+          "codigo": "13.10",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Internet",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.10.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/8/0"
+            },
+            {
+              "id": null,
+              "nome": "Telefone celular",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.10.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/8/1"
+            },
+            {
+              "id": null,
+              "nome": "Telefonia fixa",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.10.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/8/2"
+            }
+          ],
+          "pathKey": "D/10/8"
+        },
+        {
+          "id": null,
+          "nome": "Copa e Cozinha",
+          "tipo": "S",
+          "macro": "DESP_ADM",
+          "codigo": "13.11",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Higienização e Esterilização",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.11.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/9/0"
+            },
+            {
+              "id": null,
+              "nome": "Material de Limpeza",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.11.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/9/1"
+            },
+            {
+              "id": null,
+              "nome": "Copa e Cozinha",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.11.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/9/2"
+            }
+          ],
+          "pathKey": "D/10/9"
+        },
+        {
+          "id": null,
+          "nome": "Softwares",
+          "tipo": "S",
+          "macro": "DESP_ADM",
+          "codigo": "13.12",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Manutenção/Licença de softwares",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.12.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/10/0"
+            },
+            {
+              "id": null,
+              "nome": "Software Gestão",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.12.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/10/1"
+            }
+          ],
+          "pathKey": "D/10/10"
+        },
+        {
+          "id": null,
+          "nome": "Outros",
+          "tipo": "S",
+          "macro": "DESP_ADM",
+          "codigo": "13.13",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Programa de Formação Profissional",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.13.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/11/0"
+            },
+            {
+              "id": null,
+              "nome": "Seguros",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.13.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/11/1"
+            },
+            {
+              "id": null,
+              "nome": "Gastos com Animais",
+              "tipo": "A",
+              "macro": "DESP_ADM",
+              "codigo": "13.13.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/10/11/2"
+            }
+          ],
+          "pathKey": "D/10/11"
+        }
+      ],
+      "pathKey": "D/10"
+    },
+    {
+      "id": null,
+      "nome": "(-) Despesas Comerciais",
+      "tipo": "S",
+      "macro": "DESP_COM",
+      "codigo": "14",
+      "sinal": -1,
+      "children": [
+        {
+          "id": null,
+          "nome": "Promoção e Comercial",
+          "tipo": "S",
+          "macro": "DESP_COM",
+          "codigo": "14.1",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Propagandas e anúncios - Atividades Empresas",
+              "tipo": "A",
+              "macro": "DESP_COM",
+              "codigo": "14.1.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/11/0/0"
+            }
+          ],
+          "pathKey": "D/11/0"
+        },
+        {
+          "id": null,
+          "nome": "Despesas Operacionais",
+          "tipo": "S",
+          "macro": "DESP_COM",
+          "codigo": "14.2",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Aluguel de Máquina de Cartão",
+              "tipo": "A",
+              "macro": "DESP_COM",
+              "codigo": "14.2.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/11/1/0"
+            }
+          ],
+          "pathKey": "D/11/1"
+        },
+        {
+          "id": null,
+          "nome": "Relacionamento",
+          "tipo": "S",
+          "macro": "DESP_COM",
+          "codigo": "14.3",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Brindes",
+              "tipo": "A",
+              "macro": "DESP_COM",
+              "codigo": "14.3.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/11/2/0"
+            },
+            {
+              "id": null,
+              "nome": "Eventos Clientes Externos",
+              "tipo": "A",
+              "macro": "DESP_COM",
+              "codigo": "14.3.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/11/2/1"
+            },
+            {
+              "id": null,
+              "nome": "Parcerias Comerciais",
+              "tipo": "A",
+              "macro": "DESP_COM",
+              "codigo": "14.3.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/11/2/2"
+            }
+          ],
+          "pathKey": "D/11/2"
+        },
+        {
+          "id": null,
+          "nome": "Comissões e Bonificações",
+          "tipo": "S",
+          "macro": "DESP_COM",
+          "codigo": "14.4",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Comissão sobre vendas",
+              "tipo": "A",
+              "macro": "DESP_COM",
+              "codigo": "14.4.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/11/3/0"
+            },
+            {
+              "id": null,
+              "nome": "Representantes",
+              "tipo": "A",
+              "macro": "DESP_COM",
+              "codigo": "14.4.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/11/3/1"
+            },
+            {
+              "id": null,
+              "nome": "Bonificações Externas",
+              "tipo": "A",
+              "macro": "DESP_COM",
+              "codigo": "14.4.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/11/3/2"
+            },
+            {
+              "id": null,
+              "nome": "Televendas",
+              "tipo": "A",
+              "macro": "DESP_COM",
+              "codigo": "14.4.4",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/11/3/3"
+            }
+          ],
+          "pathKey": "D/11/3"
+        }
+      ],
+      "pathKey": "D/11"
+    },
+    {
+      "id": null,
+      "nome": "(-) Serviços de Terceiros",
+      "tipo": "S",
+      "macro": "DESP_VEND",
+      "codigo": "15",
+      "sinal": -1,
+      "children": [
+        {
+          "id": null,
+          "nome": "Judicial",
+          "tipo": "S",
+          "macro": "DESP_VEND",
+          "codigo": "15.1",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Assessoria Jurídica",
+              "tipo": "A",
+              "macro": "DESP_VEND",
+              "codigo": "15.1.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/12/0/0"
+            },
+            {
+              "id": null,
+              "nome": "Despesas legais e judiciais",
+              "tipo": "A",
+              "macro": "DESP_VEND",
+              "codigo": "15.1.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/12/0/1"
+            }
+          ],
+          "pathKey": "D/12/0"
+        },
+        {
+          "id": null,
+          "nome": "Gestão Empresarial",
+          "tipo": "S",
+          "macro": "DESP_VEND",
+          "codigo": "15.2",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Assessoria e Consultoria",
+              "tipo": "A",
+              "macro": "DESP_VEND",
+              "codigo": "15.2.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/12/1/0"
+            }
+          ],
+          "pathKey": "D/12/1"
+        },
+        {
+          "id": null,
+          "nome": "Marketing/Publicidade",
+          "tipo": "S",
+          "macro": "DESP_VEND",
+          "codigo": "15.3",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Assessoria de marketing e publicidade",
+              "tipo": "A",
+              "macro": "DESP_VEND",
+              "codigo": "15.3.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/12/2/0"
+            },
+            {
+              "id": null,
+              "nome": "Propagandas e anúncios - Atividades Empresas",
+              "tipo": "A",
+              "macro": "DESP_VEND",
+              "codigo": "15.3.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/12/2/1"
+            },
+            {
+              "id": null,
+              "nome": "Materiais de Marketing e Publicidade",
+              "tipo": "A",
+              "macro": "DESP_VEND",
+              "codigo": "15.3.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/12/2/2"
+            }
+          ],
+          "pathKey": "D/12/2"
+        },
+        {
+          "id": null,
+          "nome": "Contabilidade",
+          "tipo": "S",
+          "macro": "DESP_VEND",
+          "codigo": "15.4",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Assessoria Contábil",
+              "tipo": "A",
+              "macro": "DESP_VEND",
+              "codigo": "15.4.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/12/3/0"
+            }
+          ],
+          "pathKey": "D/12/3"
+        },
+        {
+          "id": null,
+          "nome": "Outros Serviços",
+          "tipo": "S",
+          "macro": "DESP_VEND",
+          "codigo": "15.5",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Assistência Técnica",
+              "tipo": "A",
+              "macro": "DESP_VEND",
+              "codigo": "15.5.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/12/4/0"
+            },
+            {
+              "id": null,
+              "nome": "Manutenção de Hardware",
+              "tipo": "A",
+              "macro": "DESP_VEND",
+              "codigo": "15.5.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/12/4/1"
+            },
+            {
+              "id": null,
+              "nome": "Coleta de Lixo",
+              "tipo": "A",
+              "macro": "DESP_VEND",
+              "codigo": "15.5.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/12/4/2"
+            }
+          ],
+          "pathKey": "D/12/4"
+        }
+      ],
+      "pathKey": "D/12"
+    },
+    {
+      "id": null,
+      "nome": "(=) EBITDA (Resultado Operacional)",
+      "tipo": "T",
+      "macro": "TOTAL",
+      "codigo": "16",
+      "calcId": "EBITDA",
+      "children": [],
+      "pathKey": "D/13"
+    },
+    {
+      "id": null,
+      "nome": "(-) Despesas Financeiras",
+      "tipo": "S",
+      "macro": "DESP_FIN",
+      "codigo": "17",
+      "sinal": -1,
+      "children": [
+        {
+          "id": null,
+          "nome": "Empréstimos Bancários",
+          "tipo": "S",
+          "macro": "DESP_FIN",
+          "codigo": "17.1",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Empréstimos e financiamentos - CD + Juros",
+              "tipo": "A",
+              "macro": "DESP_FIN",
+              "codigo": "17.1.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/14/0/0"
+            }
+          ],
+          "pathKey": "D/14/0"
+        },
+        {
+          "id": null,
+          "nome": "Antecipação",
+          "tipo": "S",
+          "macro": "DESP_FIN",
+          "codigo": "17.2",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Antecipação de recebíveis - taxas e juros",
+              "tipo": "A",
+              "macro": "DESP_FIN",
+              "codigo": "17.2.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/14/1/0"
+            }
+          ],
+          "pathKey": "D/14/1"
+        },
+        {
+          "id": null,
+          "nome": "Taxas e Demais",
+          "tipo": "S",
+          "macro": "DESP_FIN",
+          "codigo": "17.3",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "Tarifas Bancárias",
+              "tipo": "A",
+              "macro": "DESP_FIN",
+              "codigo": "17.3.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/14/2/0"
+            },
+            {
+              "id": null,
+              "nome": "Taxas adm. de cartões",
+              "tipo": "A",
+              "macro": "DESP_FIN",
+              "codigo": "17.3.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/14/2/1"
+            },
+            {
+              "id": null,
+              "nome": "Taxas de Administração de Consórcios",
+              "tipo": "A",
+              "macro": "DESP_FIN",
+              "codigo": "17.3.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/14/2/2"
+            },
+            {
+              "id": null,
+              "nome": "IOF",
+              "tipo": "A",
+              "macro": "DESP_FIN",
+              "codigo": "17.3.4",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/14/2/3"
+            },
+            {
+              "id": null,
+              "nome": "Juros sobre Mora",
+              "tipo": "A",
+              "macro": "DESP_FIN",
+              "codigo": "17.3.5",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/14/2/4"
+            },
+            {
+              "id": null,
+              "nome": "Juros sobre parcelamento tributário",
+              "tipo": "A",
+              "macro": "DESP_FIN",
+              "codigo": "17.3.6",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/14/2/5"
+            },
+            {
+              "id": null,
+              "nome": "Juros sobre atrasos de pagamentos",
+              "tipo": "A",
+              "macro": "DESP_FIN",
+              "codigo": "17.3.7",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/14/2/6"
+            }
+          ],
+          "pathKey": "D/14/2"
+        }
+      ],
+      "pathKey": "D/14"
+    },
+    {
+      "id": null,
+      "nome": "Lucro Antes do Imposto",
+      "tipo": "T",
+      "macro": "TOTAL",
+      "codigo": "18",
+      "calcId": "LUCRO_ANTES_IMPOSTO",
+      "children": [],
+      "pathKey": "D/15"
+    },
+    {
+      "id": null,
+      "nome": "(-) Tributos",
+      "tipo": "S",
+      "macro": "TRIBUTO",
+      "codigo": "19",
+      "sinal": -1,
+      "children": [
+        {
+          "id": null,
+          "nome": "Impostos Sobre o Lucro",
+          "tipo": "S",
+          "macro": "TRIBUTO",
+          "codigo": "19.1",
+          "sinal": -1,
+          "children": [
+            {
+              "id": null,
+              "nome": "CSLL",
+              "tipo": "A",
+              "macro": "TRIBUTO",
+              "codigo": "19.1.1",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/16/0/0"
+            },
+            {
+              "id": null,
+              "nome": "IRPJ",
+              "tipo": "A",
+              "macro": "TRIBUTO",
+              "codigo": "19.1.2",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/16/0/1"
+            },
+            {
+              "id": null,
+              "nome": "IRRF",
+              "tipo": "A",
+              "macro": "TRIBUTO",
+              "codigo": "19.1.3",
+              "sinal": -1,
+              "children": [],
+              "pathKey": "D/16/0/2"
+            }
+          ],
+          "pathKey": "D/16/0"
+        }
+      ],
+      "pathKey": "D/16"
+    },
+    {
+      "id": null,
+      "nome": "Lucro Líquido",
+      "tipo": "T",
+      "macro": "TOTAL",
+      "codigo": "20",
+      "calcId": "LUCRO_LIQUIDO",
+      "children": [],
+      "pathKey": "D/17"
+    },
+    {
+      "id": null,
+      "nome": "(-) Distribuição de Lucros",
+      "tipo": "S",
+      "macro": "DISTRIB",
+      "codigo": "21",
+      "sinal": -1,
+      "children": [
+        {
+          "id": null,
+          "nome": "Distribuição de Lucros",
+          "tipo": "A",
+          "macro": "DISTRIB",
+          "codigo": "21.1",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/18/0"
+        },
+        {
+          "id": null,
+          "nome": "Retirada de Lucros",
+          "tipo": "A",
+          "macro": "DISTRIB",
+          "codigo": "21.2",
+          "sinal": -1,
+          "children": [],
+          "pathKey": "D/18/1"
+        }
+      ],
+      "pathKey": "D/18"
+    },
+    {
+      "id": null,
+      "nome": "Lucro Após Retiradas",
+      "tipo": "T",
+      "macro": "TOTAL",
+      "codigo": "22",
+      "calcId": "LUCRO_APOS_RETIRADAS",
+      "children": [],
+      "pathKey": "D/19"
+    }
+  ]
+}

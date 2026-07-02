@@ -1,0 +1,84 @@
+import { PERMISSOES, type CodigoPermissao } from '../config/permissoes';
+
+/** Qualquer permissão que exibe o menu Financeiro na barra superior. */
+export const PERMISSOES_ACESSO_FINANCEIRO_MENU: CodigoPermissao[] = [
+  PERMISSOES.FINANCEIRO_VER,
+  PERMISSOES.FINANCEIRO_RESUMO_VER,
+  PERMISSOES.FINANCEIRO_DRE_VER,
+  PERMISSOES.FINANCEIRO_DFC_VER,
+  PERMISSOES.FINANCEIRO_PAINEL_COMERCIAL_VER,
+  PERMISSOES.FINANCEIRO_RENEGOCIACAO_CONTRATOS_VER,
+  PERMISSOES.FINANCEIRO_CRM_VER,
+  PERMISSOES.FINANCEIRO_CRM_EMPRESA_VER,
+  PERMISSOES.FINANCEIRO_CRM_CLIENTE_VER,
+];
+
+export const PERMISSOES_ACESSO_FINANCEIRO_RESUMO: CodigoPermissao[] = [
+  PERMISSOES.FINANCEIRO_VER,
+  PERMISSOES.FINANCEIRO_RESUMO_VER,
+];
+
+export const PERMISSOES_ACESSO_FINANCEIRO_DRE: CodigoPermissao[] = [
+  PERMISSOES.FINANCEIRO_VER,
+  PERMISSOES.FINANCEIRO_DRE_VER,
+];
+
+export const PERMISSOES_ACESSO_FINANCEIRO_DFC: CodigoPermissao[] = [
+  PERMISSOES.FINANCEIRO_VER,
+  PERMISSOES.FINANCEIRO_DFC_VER,
+];
+
+export const PERMISSOES_ACESSO_FINANCEIRO_PAINEL_COMERCIAL: CodigoPermissao[] = [
+  PERMISSOES.FINANCEIRO_VER,
+  PERMISSOES.FINANCEIRO_PAINEL_COMERCIAL_VER,
+];
+
+export const PERMISSOES_ACESSO_FINANCEIRO_RENEGOCIACAO: CodigoPermissao[] = [
+  PERMISSOES.FINANCEIRO_VER,
+  PERMISSOES.FINANCEIRO_RENEGOCIACAO_CONTRATOS_VER,
+];
+
+/** Guia "Situação geral da empresa" do CRM. */
+export const PERMISSOES_ACESSO_FINANCEIRO_CRM_EMPRESA: CodigoPermissao[] = [
+  PERMISSOES.FINANCEIRO_VER,
+  PERMISSOES.FINANCEIRO_CRM_VER,
+  PERMISSOES.FINANCEIRO_CRM_EMPRESA_VER,
+];
+
+/** Guia "Análise de crédito por cliente" do CRM. */
+export const PERMISSOES_ACESSO_FINANCEIRO_CRM_CLIENTE: CodigoPermissao[] = [
+  PERMISSOES.FINANCEIRO_VER,
+  PERMISSOES.FINANCEIRO_CRM_VER,
+  PERMISSOES.FINANCEIRO_CRM_CLIENTE_VER,
+];
+
+/** Acesso à tela do CRM (qualquer uma das guias). */
+export const PERMISSOES_ACESSO_FINANCEIRO_CRM: CodigoPermissao[] = [
+  PERMISSOES.FINANCEIRO_VER,
+  PERMISSOES.FINANCEIRO_CRM_VER,
+  PERMISSOES.FINANCEIRO_CRM_EMPRESA_VER,
+  PERMISSOES.FINANCEIRO_CRM_CLIENTE_VER,
+];
+
+export const ROTA_PERMISSOES_FINANCEIRO: Record<string, CodigoPermissao[]> = {
+  '/financeiro': PERMISSOES_ACESSO_FINANCEIRO_RESUMO,
+  '/financeiro/resumo': PERMISSOES_ACESSO_FINANCEIRO_RESUMO,
+  '/financeiro/dre': PERMISSOES_ACESSO_FINANCEIRO_DRE,
+  '/financeiro/dfc': PERMISSOES_ACESSO_FINANCEIRO_DFC,
+  '/financeiro/painel-financeiro-comercial': PERMISSOES_ACESSO_FINANCEIRO_PAINEL_COMERCIAL,
+  '/financeiro/renegociacao-contratos': PERMISSOES_ACESSO_FINANCEIRO_RENEGOCIACAO,
+  '/financeiro/crm': PERMISSOES_ACESSO_FINANCEIRO_CRM,
+};
+
+export function podeAcessarRotaFinanceiro(
+  path: string,
+  hasPermission: (c: CodigoPermissao) => boolean
+): boolean {
+  const perms = ROTA_PERMISSOES_FINANCEIRO[path];
+  if (!perms) return false;
+  return perms.some((p) => hasPermission(p));
+}
+
+export function podeVerMenuFinanceiro(hasPermission: (c: CodigoPermissao) => boolean): boolean {
+  return PERMISSOES_ACESSO_FINANCEIRO_MENU.some((p) => hasPermission(p));
+}

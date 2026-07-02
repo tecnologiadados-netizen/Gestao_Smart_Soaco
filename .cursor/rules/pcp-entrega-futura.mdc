@@ -1,0 +1,25 @@
+# PCP — Entrega futura (tipos de movimentação)
+
+No módulo **PCP** (Gerenciador de Pedidos), **entrega futura** significa: houve **documento de saída / NF emitida**, mas a **mercadoria ainda não saiu** (não houve baixa de estoque de remessa).
+
+## Tipos Nomus (fonte única)
+
+Config: `backend/src/config/pcpEntregaFutura.ts`
+
+| ID | Descrição |
+|----|-----------|
+| 48 | Simples faturamento de venda para entrega futura |
+| 82 | Simples faturamento de venda para entrega futura CF |
+| 44 | VENDA DE PROD DO ESTABELECIMENTO CONS FINAL/2 |
+| 150 | VENDA DE PRODUÇÃO DO ESTABELECIMENTO CONTRIBUINTE/2 |
+
+## SQL Nomus
+
+- Filtro de tipos: placeholder `/*PCP_EF_TIPOS_IN*/` → substituído via `aplicarTiposEntregaFuturaSql()`.
+- NFe: `status IN (2, 4)` (placeholder `/*PCP_EF_NFE_STATUS_IN*/` quando aplicável).
+- **Valor faturado EF:** soma `valorTotalComDesconto` + IPI do item (`nfef`).
+- **Data base entrega futura:** `documentoestoque.dataBaseParcelas` (ERP: “Data base para gerar parcelas”); múltiplos docs → datas distintas separadas por vírgula na grade.
+
+## Escopo
+
+- Gerenciador de Pedidos, export XLSX/grade, painel comercial e DFC (join `nfef`) devem usar a **mesma lista** do config — não duplicar IDs soltos em SQL novo.

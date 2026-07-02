@@ -1,0 +1,19 @@
+{
+  "bobinas": {
+    "PP 0335": {
+      "codigo_mp": "MP 6271",
+      "alternativas": [
+        "MP 5249",
+        "MP 4533",
+        "MP 1166"
+      ]
+    },
+    "PP 0107": {
+      "codigo_mp": "MP 5237",
+      "alternativas": [
+        "MP 5712"
+      ]
+    }
+  },
+  "descricoes": {}
+}
