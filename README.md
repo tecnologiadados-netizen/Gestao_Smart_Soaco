@@ -180,7 +180,7 @@ Deploy controlado na VPS: `powershell -File scripts/deploy-producao.ps1` — det
 
 ### Fluxo Git (equipe de desenvolvimento)
 
-Branches `main` (produção), `develop` (integração) e `feature/*` / `fix/*` por tarefa. Ver guia completo: **[docs/FLUXO-DEV-DEPLOY.md](docs/FLUXO-DEV-DEPLOY.md)**.
+Branches `main` (produção), `develop1` / `develop2` / `develop3` (um por dev) e `feature/*` / `fix/*` por tarefa. Ver guia completo: **[docs/FLUXO-DEV-DEPLOY.md](docs/FLUXO-DEV-DEPLOY.md)**.
 
 ## Scripts npm (backend)
 
