@@ -515,14 +515,19 @@ export default function Sidebar({
         )}
 
         {hasPermission(PERMISSOES.QUALIDADE_VER) && (
-          <div className="mb-0.5" title="Qualidade">
-            <div
-              className={`${SIDEBAR_SECTION_BTN} ${isQualidadeActive ? SIDEBAR_SECTION_ACTIVE : SIDEBAR_SECTION_IDLE} cursor-default`}
-            >
-              <MenuIcon>{ICONS.qualidade}</MenuIcon>
-              <SidebarLabel open={open}>Qualidade</SidebarLabel>
-            </div>
-          </div>
+          <NavLink
+            to="/qualidade"
+            title="Qualidade"
+            onClick={onNavigate}
+            className={({ isActive }) =>
+              `${SIDEBAR_SECTION_BTN} mb-0.5 ${
+                isActive || isQualidadeActive ? SIDEBAR_SECTION_ACTIVE : SIDEBAR_SECTION_IDLE
+              }`
+            }
+          >
+            <MenuIcon>{ICONS.qualidade}</MenuIcon>
+            <SidebarLabel open={open}>Qualidade</SidebarLabel>
+          </NavLink>
         )}
 
         {podeVerMenuFinanceiro(hasPermission) && (
