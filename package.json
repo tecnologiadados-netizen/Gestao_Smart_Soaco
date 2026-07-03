@@ -22,7 +22,8 @@
     "dev:frontend:5051": "node scripts/run-vite-loop.cjs 5051",
     "tunnel:externo": "npx --yes localtunnel@2.0.2 --port 5173",
     "build:production": "npm run build --prefix backend && npm run build:frontend --prefix backend",
-    "start:production": "npm start --prefix backend"
+    "start:production": "npm start --prefix backend",
+    "git:publish-main": "powershell -ExecutionPolicy Bypass -File scripts/publicar-develop3-para-main.ps1"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
