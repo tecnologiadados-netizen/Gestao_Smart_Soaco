@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "cross-env APP_PORT=4000 tsx watch src/server.ts",
     "dev:stable": "cross-env APP_PORT=4000 tsx src/server.ts",
-    "build": "tsc && node -e \"const fs=require('fs');fs.mkdirSync('dist/data',{recursive:true});['sqlBasePedidosNomus.sql','sqlPainelComercialNomus.sql','sqlPainelComercialItensPorPedido.sql','bomListaMateriaisAcabado.sql'].forEach(f=>fs.copyFileSync('src/data/'+f,'dist/data/'+f));fs.mkdirSync('dist/data/sql',{recursive:true});['dfcShop9Financeiro.sql','dreShop9SaidasSoAco.sql','dreShop9ReceitaRefrigeracao.sql','dreShop9ReceitaRefrigeracaoFilial6.sql','dreShop9DevolucoesRefrigeracao.sql','dreShop9DevolucoesRnMarques.sql','preCompraCotacoes.sql'].forEach(f=>fs.copyFileSync('src/data/sql/'+f,'dist/data/sql/'+f))\" && node scripts/copy-pre-compra-assets.cjs",
+    "build": "node scripts/build-backend.cjs",
     "build:frontend": "cd ../frontend && npm run build && cd ../backend && node scripts/copy-frontend.cjs",
     "start": "node dist/server.js",
     "migrate": "prisma migrate deploy",
