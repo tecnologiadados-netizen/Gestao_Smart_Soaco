@@ -1,13 +1,5 @@
-# Deploy controlado em producao (VPS Hostinger / Windows).
-# Uso:
-#   powershell -ExecutionPolicy Bypass -File scripts/deploy-producao.ps1
-#   powershell -ExecutionPolicy Bypass -File scripts/deploy-producao.ps1 -PastaProjeto "C:\apps\gestor-pedidos"
-#
-# Pre-requisitos:
-#   - Clone do repo na pasta de producao, branch main
-#   - backend\.env configurado (nao versionado)
-#   - Git instalado
-#   - Servico Windows configurado (scripts/setup-prod-service.ps1) OU processo Node manual
+# Deploy producao via GitHub (VPS Hostinger / Windows).
+# Fonte da verdade: branch main no GitHub. Nao edite arquivos .ts/.tsx na VPS.
 
 param(
     [string]$PastaProjeto = "",
@@ -31,68 +23,55 @@ function Find-Git {
     throw "Git nao encontrado."
 }
 
+function Invoke-NpmStep {
+    param([string]$Label, [scriptblock]$Command)
+    Write-Host $Label -ForegroundColor Cyan
+    & $Command
+    if ($LASTEXITCODE -ne 0) {
+        throw "Falhou: $Label"
+    }
+}
+
+function Restore-ProducaoSeParada {
+    param([bool]$ServicoExistia, [bool]$EstavaRodando, [string]$ServicoNome, [string]$PastaProjeto, [int]$Port)
+    if (-not $EstavaRodando) { return }
+    Write-Host ""
+    Write-Host "RESTAURANDO producao (deploy falhou mas servico estava ativo)..." -ForegroundColor Red
+    $svc = Get-Service -Name $ServicoNome -ErrorAction SilentlyContinue
+    if ($svc) {
+        Start-Service -Name $ServicoNome -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3
+    } elseif (Test-Path (Join-Path $PastaProjeto "backend\dist\server.js")) {
+        $env:NODE_ENV = "production"
+        Start-Process -FilePath "node" -ArgumentList "dist/server.js" -WorkingDirectory (Join-Path $PastaProjeto "backend") -WindowStyle Hidden
+        Start-Sleep -Seconds 3
+    }
+    try {
+        Invoke-RestMethod "http://127.0.0.1:$Port/health" -TimeoutSec 10 | Out-Null
+        Write-Host "Producao restaurada em :$Port" -ForegroundColor Green
+    } catch {
+        Write-Host "Nao foi possivel restaurar automaticamente. Rode: powershell -File scripts/restart-producao.ps1" -ForegroundColor Red
+    }
+}
+
 $Git = Find-Git
 Set-Location $PastaProjeto
 
+$env:Path = "C:\Program Files\nodejs;C:\Program Files (x86)\nodejs;$env:Path"
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    throw "npm nao encontrado."
+}
+
 Write-Host ""
-Write-Host "=== Deploy producao — Gestor Pedidos SoAco ===" -ForegroundColor Cyan
-Write-Host "Pasta: $PastaProjeto"
+Write-Host "=== Deploy producao - Gestor Pedidos SoAco (via GitHub main) ===" -ForegroundColor Cyan
+Write-Host "Pasta:  $PastaProjeto"
 Write-Host "Horario: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Write-Host ""
 
 if (-not (Test-Path "backend\.env")) {
-    throw "backend\.env nao encontrado. Copie de backend\.env.example e preencha os secrets de producao."
+    throw "backend\.env nao encontrado."
 }
 
-$branch = & $Git branch --show-current
-if ($branch -ne "main") {
-    Write-Host "Checkout main (estava em: $branch)..." -ForegroundColor Yellow
-    & $Git fetch origin
-    & $Git checkout main
-}
-
-Write-Host "[1/6] git pull origin main..." -ForegroundColor Cyan
-& $Git fetch origin
-& $Git pull origin main
-
-Write-Host "[2/6] npm ci (raiz, backend, frontend)..." -ForegroundColor Cyan
-npm ci
-npm ci --prefix backend
-npm ci --prefix frontend
-
-Write-Host "[3/6] prisma generate..." -ForegroundColor Cyan
-npm run generate --prefix backend
-
-if (-not $SemMigrate) {
-    Write-Host "[4/6] prisma migrate deploy..." -ForegroundColor Cyan
-    Write-Host "      ATENCAO: revise migrations destrutivas antes de continuar em producao." -ForegroundColor Yellow
-    npm run migrate --prefix backend
-} else {
-    Write-Host "[4/6] migrate ignorado (-SemMigrate)." -ForegroundColor Yellow
-}
-
-Write-Host "[5/6] build producao..." -ForegroundColor Cyan
-$env:NODE_ENV = "production"
-npm run build:production
-
-Write-Host "[6/6] reiniciar servico..." -ForegroundColor Cyan
-if (-not $SemRestart) {
-    $servico = Get-Service -Name $ServicoNome -ErrorAction SilentlyContinue
-    if ($servico) {
-        Restart-Service -Name $ServicoNome -Force
-        Start-Sleep -Seconds 3
-        $st = (Get-Service -Name $ServicoNome).Status
-        Write-Host "Servico $ServicoNome : $st" -ForegroundColor Green
-    } else {
-        Write-Host "Servico '$ServicoNome' nao encontrado." -ForegroundColor Yellow
-        Write-Host "Configure com: powershell -File scripts/setup-prod-service.ps1" -ForegroundColor Yellow
-        Write-Host "Ou reinicie manualmente: npm run start:production" -ForegroundColor Yellow
-    }
-} else {
-    Write-Host "Restart ignorado (-SemRestart). Execute manualmente." -ForegroundColor Yellow
-}
-
-# Smoke test
 $port = 4000
 $envFile = Get-Content "backend\.env" -ErrorAction SilentlyContinue
 foreach ($line in $envFile) {
@@ -102,20 +81,88 @@ foreach ($line in $envFile) {
     }
 }
 
-Start-Sleep -Seconds 2
+$servicoEstavaRodando = $false
+$servico = Get-Service -Name $ServicoNome -ErrorAction SilentlyContinue
+$servicoExistia = [bool]$servico
+
 try {
-    $resp = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 15
-    if ($resp.ok -eq $true) {
-        Write-Host ""
-        Write-Host "Health OK — build $($resp.build), db $($resp.db)" -ForegroundColor Green
-    } else {
-        Write-Host "Health retornou resposta inesperada." -ForegroundColor Yellow
+    if ($servico -and $servico.Status -eq "Running") {
+        Write-Host "[1b/9] Parando servico $ServicoNome..." -ForegroundColor Yellow
+        Stop-Service -Name $ServicoNome -Force
+        Start-Sleep -Seconds 2
+        $servicoEstavaRodando = $true
     }
+
+    $portEmUso = netstat -ano | Select-String "LISTENING" | Select-String ":$port "
+    if ($portEmUso) {
+        Write-Host "[1b/9] Porta $port em uso - npm run dev:stop..." -ForegroundColor Yellow
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        npm run dev:stop 2>&1 | Out-Null
+        $ErrorActionPreference = $prevEap
+        Start-Sleep -Seconds 2
+    }
+
+    $branch = & $Git branch --show-current
+    if ($branch -ne "main") {
+        & $Git fetch origin
+        & $Git checkout main
+    }
+
+    Write-Host "[2/9] Sincronizando com origin/main..." -ForegroundColor Cyan
+    & $Git fetch origin
+    if ($LASTEXITCODE -ne 0) { throw "git fetch origin falhou." }
+    & $Git reset --hard origin/main
+    if ($LASTEXITCODE -ne 0) { throw "git reset --hard origin/main falhou." }
+
+    Invoke-NpmStep "[3/9] npm install (raiz)..." { npm install }
+    Invoke-NpmStep "[4/9] npm install (backend)..." { npm install --prefix backend }
+    Invoke-NpmStep "[5/9] npm install (frontend)..." { npm install --prefix frontend }
+    Invoke-NpmStep "[6/9] prisma generate..." { npm run generate --prefix backend }
+
+    if (-not $SemMigrate) {
+        Write-Host "[7/9] prisma migrate deploy..." -ForegroundColor Cyan
+        npm run migrate --prefix backend
+        if ($LASTEXITCODE -ne 0) { throw "prisma migrate deploy falhou." }
+    }
+
+    Write-Host "[8/9] npm run build:production..." -ForegroundColor Cyan
+    $env:NODE_ENV = "production"
+    npm run build:production
+    if ($LASTEXITCODE -ne 0) { throw "Build falhou." }
+
+    Write-Host "[9/9] Reiniciar producao..." -ForegroundColor Cyan
+    if (-not $SemRestart) {
+        if ($servico) {
+            Start-Service -Name $ServicoNome
+            Start-Sleep -Seconds 3
+            Write-Host "Servico $ServicoNome : $((Get-Service $ServicoNome).Status)" -ForegroundColor Green
+        } else {
+            Start-Process -FilePath "node" -ArgumentList "dist/server.js" -WorkingDirectory (Join-Path $PastaProjeto "backend") -WindowStyle Hidden
+            Start-Sleep -Seconds 3
+            Write-Host "Node producao iniciado (sem servico NSSM)." -ForegroundColor Green
+        }
+    }
+
+    Start-Sleep -Seconds 2
+    $resp = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 15
+    if ($resp.ok -ne $true) { throw "Health check falhou." }
+    Write-Host "Health OK - build $($resp.build), db $($resp.db)" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Configurando portproxy 80 -> 4000 (producao)..." -ForegroundColor Cyan
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $portproxyScript = Join-Path $PastaProjeto "deploy\setup-domain-http.ps1"
+    if (Test-Path $portproxyScript) {
+        & $portproxyScript 2>&1 | Out-Null
+    }
+    $ErrorActionPreference = $prevEap
+    Write-Host "Deploy concluido com sucesso." -ForegroundColor Green
+    Write-Host "Ctrl+Shift+R em gsmartsoaco.com.br apos deploy." -ForegroundColor Yellow
+
 } catch {
-    Write-Host "AVISO: health check falhou em http://127.0.0.1:$port/health" -ForegroundColor Red
-    Write-Host $_.Exception.Message
+    Write-Host ""
+    Write-Host "ERRO NO DEPLOY: $($_.Exception.Message)" -ForegroundColor Red
+    Restore-ProducaoSeParada -ServicoExistia $servicoExistia -EstavaRodando $servicoEstavaRodando -ServicoNome $ServicoNome -PastaProjeto $PastaProjeto -Port $port
     exit 1
 }
-
-Write-Host ""
-Write-Host "Deploy concluido com sucesso." -ForegroundColor Green
