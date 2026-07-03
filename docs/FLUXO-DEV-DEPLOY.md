@@ -128,7 +128,7 @@ Quando a `developN` estiver estavel (testada localmente):
 
 1. PR `develop2` → `main` (ou a developN correspondente)
 2. Aprovar e merge
-3. Executar deploy na VPS (secao 5)
+3. Deploy automatico apos CI verde (secao 5) — ou manual se o runner ainda nao estiver configurado
 
 Apos merge em `main`, sincronize sua developN:
 
@@ -161,20 +161,53 @@ git push -u origin hotfix/descricao-curta
 
 ---
 
-## 5. Deploy em producao (VPS)
+## 5. Deploy em producao (VPS Hostinger via GitHub)
 
-### 5.1 Estrutura recomendada
+Producao **nao** e atualizada editando arquivos na VPS. A fonte da verdade e a branch **`main`** no GitHub.
+
+**Deploy automatico (recomendado):** merge em `main` → CI verde → GitHub Actions executa `deploy-producao.ps1` na VPS via self-hosted runner. Ver **[DEPLOY-AUTOMATICO.md](DEPLOY-AUTOMATICO.md)**.
 
 ```
-C:\apps\gestor-pedidos\          ← clone Git, branch main
-C:\apps\gestor-pedidos\backend\.env   ← secrets (nao versionado)
+Dev PC (developN) → PR → main → CI → Deploy producao (runner) → gsmartsoaco.com.br
 ```
 
-### 5.2 Deploy (cada release)
+Runbook manual / fallback: **[DEPLOY-PRODUCAO-VPS.md](DEPLOY-PRODUCAO-VPS.md)**
+
+### 5.1 Estrutura na VPS
+
+```
+C:\apps\gestor-pedidos\              ← clone Git, branch main
+C:\apps\gestor-pedidos\backend\.env  ← secrets (nao versionado)
+```
+
+Setup inicial (uma vez):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup-vps-producao.ps1
+notepad C:\apps\gestor-pedidos\backend\.env
+powershell -ExecutionPolicy Bypass -File scripts/setup-prod-service.ps1 -PastaProjeto "C:\apps\gestor-pedidos"
+```
+
+### 5.2 Deploy (cada release, apos merge em main)
+
+**Automatico:** apos setup do runner (secao 5.1 abaixo), nada a fazer — acompanhe em GitHub → Actions → **Deploy producao**.
+
+**Manual (fallback):**
 
 ```powershell
 cd C:\apps\gestor-pedidos
-powershell -ExecutionPolicy Bypass -File scripts/deploy-producao.ps1 -PastaProjeto "C:\apps\gestor-pedidos"
+npm run deploy:producao
+```
+
+O script faz: `git pull --ff-only origin main` → `npm install` → `prisma migrate deploy` → `npm run build:production` → restart NSSM → validacao `/health`.
+
+**Apos deploy:** Ctrl+Shift+R nos navegadores (evita cache de JS/CSS antigo).
+
+### 5.2.1 Setup deploy automatico (uma vez na VPS)
+
+```powershell
+# Token: GitHub → Settings → Actions → Runners → New self-hosted runner
+powershell -ExecutionPolicy Bypass -File scripts/setup-github-runner.ps1 -RegistrationToken "TOKEN"
 ```
 
 ### 5.3 Servico Windows (NSSM)
@@ -206,11 +239,14 @@ Restart-Service GestorPedidosSoaco
 
 ---
 
-## 7. CI (GitHub Actions)
+## 7. CI e deploy automatico (GitHub Actions)
 
-Arquivo: `.github/workflows/ci.yml`
+| Workflow | Quando roda | Onde |
+|----------|-------------|------|
+| **CI** (`.github/workflows/ci.yml`) | PR e push em `main`, `develop1/2/3` | GitHub (windows-latest) |
+| **Deploy producao** (`.github/workflows/deploy-producao.yml`) | Apos CI verde em **push** em `main` | Self-hosted runner na VPS |
 
-Roda em PRs e pushes para `main`, `develop1`, `develop2` e `develop3`.
+Setup do runner: **[DEPLOY-AUTOMATICO.md](DEPLOY-AUTOMATICO.md)**
 
 ---
 
@@ -242,4 +278,7 @@ Roda em PRs e pushes para `main`, `develop1`, `develop2` e `develop3`.
 | `scripts/desativar-backup-agendado.ps1` | Remove agendamento do backup cego |
 | `scripts/setup-vps-producao.ps1` | Clone limpo em `C:\apps\gestor-pedidos` |
 | `scripts/setup-prod-service.ps1` | Servico Windows NSSM |
-| `scripts/deploy-producao.ps1` | Deploy controlado |
+| `scripts/deploy-producao.ps1` | Deploy via GitHub (`git pull --ff-only` + build + NSSM) |
+| `scripts/setup-github-runner.ps1` | Self-hosted runner (deploy automatico ao merge em main) |
+| `docs/DEPLOY-AUTOMATICO.md` | Guia deploy automatico (estilo Vercel) |
+| `docs/DEPLOY-PRODUCAO-VPS.md` | Runbook copiavel para deploy manual na VPS |

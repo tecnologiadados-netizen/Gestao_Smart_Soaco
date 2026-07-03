@@ -1,11 +1,10 @@
-# Prepara pasta de producao na VPS (clone limpo, branch main).
-# Uso (como Administrador na VPS):
-#   powershell -ExecutionPolicy Bypass -File scripts/setup-vps-producao.ps1 -RemoteUrl "https://github.com/ORG/gestor-pedidos-soaco.git"
-#   powershell -ExecutionPolicy Bypass -File scripts/setup-vps-producao.ps1 -RemoteUrl "..." -PastaDestino "D:\apps\gestor-pedidos"
+# Prepara pasta de producao na VPS Hostinger (clone limpo, branch main).
+# Uso (como Administrador na VPS via RDP):
+#   powershell -ExecutionPolicy Bypass -File scripts/setup-vps-producao.ps1
+#   powershell -ExecutionPolicy Bypass -File scripts/setup-vps-producao.ps1 -PastaDestino "D:\apps\gestor-pedidos"
 
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$RemoteUrl,
+    [string]$RemoteUrl = "https://github.com/tecnologiadados-netizen/Gestao_Smart_Soaco.git",
     [string]$PastaDestino = "C:\apps\gestor-pedidos"
 )
 
@@ -29,7 +28,7 @@ if (Test-Path $PastaDestino) {
         Set-Location $PastaDestino
         & $Git fetch origin
         & $Git checkout main
-        & $Git pull origin main
+        & $Git pull --ff-only origin main
         Write-Host "Repositorio atualizado." -ForegroundColor Green
         exit 0
     }
@@ -57,8 +56,11 @@ if (-not (Test-Path $envProd)) {
 Write-Host ""
 Write-Host "Proximos passos na VPS:" -ForegroundColor Cyan
 Write-Host "  1. Editar backend\.env (producao)"
-Write-Host "  2. npm ci && npm ci --prefix backend && npm ci --prefix frontend"
+Write-Host "  2. npm install && npm install --prefix backend && npm install --prefix frontend"
 Write-Host "  3. npm run build:production"
 Write-Host "  4. powershell -File scripts\setup-prod-service.ps1 -PastaProjeto `"$PastaDestino`""
 Write-Host "  5. powershell -File scripts\desativar-backup-agendado.ps1"
-Write-Host "  6. Deploys futuros: powershell -File scripts\deploy-producao.ps1 -PastaProjeto `"$PastaDestino`""
+Write-Host "  6. Deploy automatico (recomendado, uma vez):"
+Write-Host "     powershell -File scripts\setup-github-runner.ps1 -RegistrationToken `"TOKEN_DO_GITHUB`""
+Write-Host "     (ver docs\DEPLOY-AUTOMATICO.md)"
+Write-Host "  7. Deploy manual (fallback): cd `"$PastaDestino`" && npm run deploy:producao"

@@ -1,0 +1,48 @@
+# Deploy automatico na VPS apos merge em main (CI verde).
+# Requer self-hosted runner na VPS — ver docs/DEPLOY-AUTOMATICO.md
+
+name: Deploy producao
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sem_migrate:
+        description: "Pular prisma migrate deploy"
+        type: boolean
+        default: false
+
+jobs:
+  deploy:
+    # So deploya apos push em main (merge), nunca apos CI de PR aberto.
+    if: >
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: [self-hosted, Windows, X64, producao]
+    timeout-minutes: 45
+
+    steps:
+      - name: Deploy na VPS (git pull + build + restart)
+        shell: powershell
+        env:
+          PASTA_PRODUCAO: C:\gestorpedidosSoAco
+        run: |
+          $pasta = $env:PASTA_PRODUCAO
+          if (-not (Test-Path $pasta)) {
+            throw "Pasta de producao nao encontrada: $pasta. Rode setup-vps-producao.ps1 na VPS."
+          }
+          $script = Join-Path $pasta "scripts\deploy-producao.ps1"
+          if (-not (Test-Path $script)) {
+            throw "Script de deploy nao encontrado: $script"
+          }
+          $args = @("-ExecutionPolicy", "Bypass", "-File", $script, "-PastaProjeto", $pasta)
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.sem_migrate }}" -eq "true") {
+            $args += "-SemMigrate"
+          }
+          Write-Host "Executando deploy em $pasta ..."
+          & powershell @args
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
