@@ -97,7 +97,7 @@ export const GESTAO_USUARIOS_SUBMENUS: { to: string; label: string }[] = [
   { to: '/usuarios/grupos', label: 'Grupos de usuários' },
 ];
 
-/** Rotas que podem ser abertas em abas (path → label). Usado na barra de abas. */
+/** Rotas que podem ser abertas no sistema (path → label). Usado na busca rápida e menus. */
 export const PATH_LABELS: Record<string, string> = {
   '/': 'Início',
   '/pedidos/dash-entregas': 'Dash Entregas',
