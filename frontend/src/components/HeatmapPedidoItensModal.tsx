@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type { TooltipDetalheRow } from '../api/pedidos';
 import { labelPedidoMapa } from '../utils/mapaMunicipioPedido';
 import { formatQtdeParaInput } from '../utils/heatmapAjusteCargaGradeUi';
+import { useRegisterModalEscape } from '../contexts/ModalStackContext';
 
 function formatarValor(valor: number): string {
   return new Intl.NumberFormat('pt-BR', {
@@ -58,6 +59,8 @@ export default function HeatmapPedidoItensModal({
     () => ordenados.reduce((s, r) => s + (r.valorPendente ?? 0), 0),
     [ordenados]
   );
+
+  useRegisterModalEscape({ id: `heatmap-pedido-itens`, onClose, zIndex: 14000, enabled: open });
 
   if (!open) return null;
 

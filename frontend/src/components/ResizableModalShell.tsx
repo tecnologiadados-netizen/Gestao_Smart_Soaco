@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useRegisterModalEscape } from '../contexts/ModalStackContext';
 
 export type ResizableModalSize = {
   width: number;
@@ -41,6 +42,20 @@ export default function ResizableModalShell({
   zIndexClass = 'z-[70]',
   ariaLabelledBy,
 }: Props) {
+  const zIndexNumber = useMemo(() => {
+    const m = zIndexClass.match(/\[(\d+)\]/);
+    if (m) return Number(m[1]);
+    const n = zIndexClass.match(/\bz-(\d+)\b/);
+    if (n) return Number(n[1]);
+    return 70;
+  }, [zIndexClass]);
+
+  useRegisterModalEscape({
+    id: `resizable:${title ?? 'modal'}:${zIndexClass}`,
+    onClose,
+    zIndex: zIndexNumber,
+  });
+
   const titleId = ariaLabelledBy ?? (title ? 'resizable-modal-title' : undefined);
   const [size, setSize] = useState<ResizableModalSize>({
     width: defaultWidth,

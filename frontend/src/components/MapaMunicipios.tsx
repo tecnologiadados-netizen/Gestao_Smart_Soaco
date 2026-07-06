@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback, Fragment, type ReactNode } from 'react';
 import { MapContainer, TileLayer, Circle, Tooltip, Popup, useMap, Polyline, CircleMarker, Pane, Marker } from 'react-leaflet';
+import { MODAL_Z_MAPA_POPUP, useRegisterModalEscape } from '../contexts/ModalStackContext';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { obterMapaMunicipios, type MapaMunicipioItem, type TooltipDetalheRow, type CorBolhaMapa, type MapaMunicipiosResponse, type FiltrosPedidos } from '../api/pedidos';
@@ -93,10 +94,22 @@ function PopupConteudo({
   item: MapaMunicipioItem;
   formatarValor: (v: number) => string;
 }) {
+  const map = useMap();
   const [sortBy, setSortBy] = useState<SortCol>('dataEmissao');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [linhaPedidoModal, setLinhaPedidoModal] = useState<TooltipDetalheRow | null>(null);
   const detalhesBruto = item.detalhes ?? [];
+
+  const fecharPopup = useCallback(() => {
+    map.closePopup();
+  }, [map]);
+
+  useRegisterModalEscape({
+    id: `mapa-popup:${item.chave ?? item.municipio}`,
+    onClose: fecharPopup,
+    zIndex: MODAL_Z_MAPA_POPUP,
+    enabled: !linhaPedidoModal,
+  });
 
   const municipioLabel = `${item.municipio}${item.uf ? ` (${item.uf})` : ''}`;
 
@@ -307,19 +320,6 @@ function RecalcularMapa({ token }: { token?: string }) {
     }, 80);
     return () => window.clearTimeout(t);
   }, [map, token]);
-  return null;
-}
-
-function FecharPopupComEsc() {
-  const map = useMap();
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      map.closePopup();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [map]);
   return null;
 }
 
@@ -539,7 +539,6 @@ export default function MapaMunicipios({
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
           />
-          <FecharPopupComEsc />
           <RecalcularMapa token={layoutToken} />
           {rotaPolyline && paradasRoteiro && paradasRoteiro.length > 0 ? (
             <AjustarBoundsRota

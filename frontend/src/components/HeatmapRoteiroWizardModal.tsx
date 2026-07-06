@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MapaMunicipioItem } from '../api/pedidos';
 import MultiSelectWithSearch from './MultiSelectWithSearch';
+import { useRegisterModalEscape } from '../contexts/ModalStackContext';
 import {
   FILTRO_ROTEIRO_SEP,
   filtrarItensMapaRoteiro,
@@ -53,6 +54,8 @@ export default function HeatmapRoteiroWizardModal({
   onVoltar: () => void;
   onCancelar: () => void;
 }) {
+  useRegisterModalEscape({ id: `heatmap-roteiro-wizard`, onClose: onCancelar, zIndex: 13000 });
+
   const itens = useMemo(() => indexarItensMapaRoteiro(itensMapa), [itensMapa]);
   const todasRotas = useMemo(() => rotasUnicas(itens), [itens]);
   const todasCarradas = useMemo(() => rotasCarradaUnicas(itens), [itens]);
