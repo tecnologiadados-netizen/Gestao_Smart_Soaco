@@ -21,6 +21,7 @@ import { useAutoLogout } from '../hooks/useAutoLogout';
 import { useSidebarOpen } from '../hooks/useSidebarOpen';
 import LogoSoAco from './LogoSoAco';
 import Sidebar from './layout/Sidebar';
+import BuscaRapidaTelas from './layout/BuscaRapidaTelas';
 
 function SunIcon() {
   return (
@@ -301,7 +302,7 @@ function LayoutInner() {
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header
-          className={`shrink-0 border-b border-soaco-gray/30 bg-black backdrop-blur transition-all duration-200 ${modoFoco ? 'hidden' : ''}`}
+          className={`relative z-50 shrink-0 border-b border-soaco-gray/30 bg-black backdrop-blur transition-all duration-200 ${modoFoco ? 'hidden' : ''}`}
         >
           <div className="flex w-full min-w-0 items-center gap-x-2 gap-y-1.5 px-3 py-2">
             <button
@@ -320,6 +321,9 @@ function LayoutInner() {
               <h1 className="hidden shrink-0 text-base font-bold text-white sm:block xl:text-lg">
                 Gestão Smart 2.0
               </h1>
+            </div>
+            <div className="hidden min-w-0 flex-1 justify-center px-2 md:flex">
+              <BuscaRapidaTelas className="max-w-md" />
             </div>
             <div className="ml-auto flex shrink-0 flex-wrap items-center gap-1">
               <button
