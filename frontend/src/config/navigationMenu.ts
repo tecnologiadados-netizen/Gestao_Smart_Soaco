@@ -76,7 +76,12 @@ export const ENGENHARIA_SUBMENUS: { to: string; label: string }[] = [
   { to: '/engenharia/precificacao', label: 'Precificação' },
 ];
 
-export const QUALIDADE_SUBMENUS: { to: string; label: string }[] = [];
+export const QUALIDADE_SUBMENUS: { to: string; label: string }[] = [
+  { to: '/qualidade/documentos', label: 'Documentos' },
+  { to: '/qualidade/calibracoes', label: 'Calibrações' },
+  { to: '/qualidade/registros', label: 'Registros' },
+  { to: '/qualidade/configuracoes', label: 'Configurações' },
+];
 
 export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
   { kind: 'link', to: '/financeiro/resumo', label: 'Resumo Financeiro' },
@@ -127,6 +132,10 @@ export const PATH_LABELS: Record<string, string> = {
   '/engenharia': 'Engenharia',
   '/engenharia/precificacao': 'Precificação',
   '/qualidade': 'Qualidade',
+  '/qualidade/documentos': 'Qualidade — Documentos',
+  '/qualidade/calibracoes': 'Qualidade — Calibrações',
+  '/qualidade/registros': 'Qualidade — Registros',
+  '/qualidade/configuracoes': 'Qualidade — Configurações',
   '/financeiro': 'Financeiro',
   '/financeiro/resumo': 'Resumo Financeiro',
   '/financeiro/dfc': 'DFC',

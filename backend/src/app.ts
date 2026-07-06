@@ -30,6 +30,7 @@ import suporteRoutes from './routes/suporteRoutes.js';
 import mindMapsRoutes from './routes/mindMapsRoutes.js';
 import programacaoProducaoRoutes from './routes/programacaoProducaoRoutes.js';
 import logisticaRoutes from './routes/logisticaRoutes.js';
+import qualidadeRoutes from './routes/qualidadeRoutes.js';
 import { csrfProtect } from './middleware/csrf.js';
 
 const app = express();
@@ -162,6 +163,7 @@ app.use('/api/mind-maps', mindMapsRoutes);
 app.use('/api/programacao-producao', programacaoProducaoRoutes);
 app.use('/api/pcp', pcpRoutes);
 app.use('/api/logistica', logisticaRoutes);
+app.use('/api/qualidade', qualidadeRoutes);
 
 // Header em todas as respostas para conferir na outra máquina se está rodando o build novo
 export const BUILD_ID = 'pedidos-no-csrf-v1';

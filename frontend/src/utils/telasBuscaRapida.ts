@@ -4,6 +4,7 @@ import {
   COMUNICACAO_INTERNA_SUBMENUS,
   COMPRAS_SUBMENUS,
   ENGENHARIA_SUBMENUS,
+  QUALIDADE_SUBMENUS,
   GESTAO_USUARIOS_SUBMENUS,
   PATH_LABELS,
   type FinanceiroMenuEntry,
@@ -120,7 +121,9 @@ export function buildTelasBuscaRapidaForUser(ctx: BuildTelasBuscaRapidaCtx): Tel
   }
 
   if (hasPermission(PERMISSOES.QUALIDADE_VER)) {
-    telas.push({ path: '/qualidade', label: PATH_LABELS['/qualidade'] ?? 'Qualidade' });
+    for (const item of QUALIDADE_SUBMENUS) {
+      telas.push({ path: item.to, label: item.label, contexto: 'Qualidade' });
+    }
   }
 
   if (podeVerMenuFinanceiro(hasPermission)) {

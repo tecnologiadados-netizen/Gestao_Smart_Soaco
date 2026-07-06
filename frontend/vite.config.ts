@@ -191,7 +191,10 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [malformedUriGuardPlugin(), react()],
     resolve: {
-      alias: { '@': path.resolve(__dirname, './src') },
+      alias: {
+        '@': path.resolve(__dirname, './src'),
+        '@qualidade': path.resolve(__dirname, './src/modules/qualidade'),
+      },
     },
     server,
   };

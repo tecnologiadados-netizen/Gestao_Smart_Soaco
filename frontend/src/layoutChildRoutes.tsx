@@ -49,7 +49,7 @@ import MindMapsPage, { MindMapsLegacyRedirect } from './pages/mind-maps/MindMaps
 import VeiculosPage from './pages/logistica/VeiculosPage';
 import ProdutosCubagemPage from './pages/logistica/ProdutosCubagemPage';
 import SimulacaoCubagemPage from './pages/logistica/SimulacaoCubagemPage';
-import QualidadePage from './pages/qualidade/QualidadePage';
+import { qualidadeRoutes } from './modules/qualidade/qualidadeRoutes';
 
 /** Rotas filhas do layout autenticado (espelham appRouter). */
 export const layoutChildRoutes: RouteObject[] = [
@@ -101,7 +101,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'compras/pre-compra', element: <ErrorBoundary><PreCompraPage /></ErrorBoundary> },
   { path: 'precificacao', element: <Navigate to="/engenharia/precificacao" replace /> },
   { path: 'engenharia/precificacao', element: <PrecificacaoPage /> },
-  { path: 'qualidade', element: <ErrorBoundary><QualidadePage /></ErrorBoundary> },
+  ...qualidadeRoutes,
   { path: 'financeiro', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/resumo', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/dfc', element: <DfcPage /> },

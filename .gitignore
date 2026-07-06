@@ -24,6 +24,9 @@ npm-debug.log*
 .dev-restart.log
 backend/logs/
 
+# Temporários locais (extrações, SQL de teste, etc.)
+tmp/
+
 # Sistema / IDE
 .DS_Store
 Thumbs.db

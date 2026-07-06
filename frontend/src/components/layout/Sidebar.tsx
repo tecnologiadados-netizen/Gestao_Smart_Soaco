@@ -7,6 +7,7 @@ import {
   COMPRAS_SUBMENUS,
   ENGENHARIA_SUBMENUS,
   GESTAO_USUARIOS_SUBMENUS,
+  QUALIDADE_SUBMENUS,
   type FinanceiroMenuEntry,
   type NavMenuEntry,
   filterPcpMenuChildren,
@@ -139,6 +140,7 @@ function SidebarNavLink({
   onNavigate,
   className = '',
   title,
+  external = false,
 }: {
   to: string;
   label: string;
@@ -146,7 +148,23 @@ function SidebarNavLink({
   onNavigate: () => void;
   className?: string;
   title?: string;
+  external?: boolean;
 }) {
+  if (external) {
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+    const isActive = pathname === to || pathname.startsWith(`${to}/`);
+    return (
+      <a
+        href={to}
+        title={title ?? label}
+        onClick={onNavigate}
+        className={`${SIDEBAR_LINK} ${isActive ? SIDEBAR_LINK_ACTIVE : SIDEBAR_LINK_IDLE} ${className}`}
+      >
+        <SidebarLabel open={sidebarOpen}>{label}</SidebarLabel>
+      </a>
+    );
+  }
+
   return (
     <NavLink
       to={to}
@@ -515,19 +533,26 @@ export default function Sidebar({
         )}
 
         {hasPermission(PERMISSOES.QUALIDADE_VER) && (
-          <NavLink
-            to="/qualidade"
-            title="Qualidade"
-            onClick={onNavigate}
-            className={({ isActive }) =>
-              `${SIDEBAR_SECTION_BTN} mb-0.5 ${
-                isActive || isQualidadeActive ? SIDEBAR_SECTION_ACTIVE : SIDEBAR_SECTION_IDLE
-              }`
-            }
+          <SidebarSection
+            id="qualidade"
+            label="Qualidade"
+            icon={ICONS.qualidade}
+            active={isQualidadeActive}
+            sidebarOpen={open}
+            onExpand={onExpand}
+            accordionOpen={accordionOpen}
+            toggleAccordion={toggleAccordion}
           >
-            <MenuIcon>{ICONS.qualidade}</MenuIcon>
-            <SidebarLabel open={open}>Qualidade</SidebarLabel>
-          </NavLink>
+            {QUALIDADE_SUBMENUS.map((item) => (
+              <SidebarNavLink
+                key={item.to}
+                to={item.to}
+                label={item.label}
+                sidebarOpen={open}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </SidebarSection>
         )}
 
         {podeVerMenuFinanceiro(hasPermission) && (

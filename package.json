@@ -6,7 +6,7 @@
     "dev": "node scripts/run-dev.cjs",
     "dev:quiet": "cross-env DEV_WATCHDOG=0 node scripts/run-dev.cjs",
     "dev:stable": "cross-env DEV_STABLE=1 DEV_WATCHDOG=0 node scripts/run-dev.cjs",
-    "dev:core": "concurrently -n api,fe,watchdog,watchdog-fe -c blue,green,magenta,cyan \"npm run dev:backend\" \"npm run dev:fe-all\" \"node scripts/watchdog-backend.cjs\" \"node scripts/watchdog-vite-interno.cjs\"",
+    "dev:core": "concurrently -n api,fe,watchdog,watchdog-fe -c blue,green,magenta,yellow \"npm run dev:backend\" \"npm run dev:fe-all\" \"node scripts/watchdog-backend.cjs\" \"node scripts/watchdog-vite-interno.cjs\"",
     "dev:core:quiet": "concurrently -n api,fe -c blue,green \"npm run dev:backend\" \"npm run dev:fe-all\"",
     "dev:fe-all": "concurrently --restart-tries 50 --restart-after 3000 -n interno,p5173,p5174,p5051 -c green,yellow,blue,magenta \"npm run dev:frontend\" \"npm run dev:frontend:5173\" \"npm run dev:frontend:5174\" \"npm run dev:frontend:5051\"",
     "dev:stop": "node scripts/kill-ports.cjs",
