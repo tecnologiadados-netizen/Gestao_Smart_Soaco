@@ -243,13 +243,13 @@ From (Select ud.idProduto,
   From (Select ide.idProduto,
       Max(d.dataEntrada) As dataEntrada
     From itemdocumentoestoque ide
-      Left Join documentoestoque d On d.id = ide.idDocumentoEntrada
+      Left Join documentoestoque d On d.id = ide.idDocumentoEstoque
       Left Join produto p On p.id = ide.idProduto
     Where (ide.idTipoMovimentacao In (11, 71, 116, 115, 114, 113, 112, 111,
       142)) And (ide.idSetorEntrada In (2, 19, 20, 32))
     Group By ide.idProduto) ud
     Left Join (Select ide.id,
-      ide.idDocumentoEntrada,
+      ide.idDocumentoEstoque As idDocumentoEntrada,
       ide.idProduto,
       ide.idTipoMovimentacao,
       d.dataEntrada,
@@ -258,29 +258,29 @@ From (Select ud.idProduto,
       ide.qtde,
       ide.valorUnitario
     From itemdocumentoestoque ide
-      Left Join documentoestoque d On d.id = ide.idDocumentoEntrada
+      Left Join documentoestoque d On d.id = ide.idDocumentoEstoque
       Left Join produto p On p.id = ide.idProduto
     Where (ide.idTipoMovimentacao In (11, 71, 116, 115, 114, 113, 112, 111,
       142)) And (ide.idSetorEntrada In (2, 19, 20, 32))) m
       On (m.idProduto = ud.idProduto) And (ud.dataEntrada = m.dataEntrada)
     Left Join tributacao t On t.idItemDocumentoEstoque = m.id
-    Left Join (Select ide.idDocumentoEntrada,
+    Left Join (Select ide.idDocumentoEstoque As idDocumentoEntrada,
       Count(Distinct ide.idProduto) As qtditens
     From itemdocumentoestoque ide
-      Left Join documentoestoque d On d.id = ide.idDocumentoEntrada
+      Left Join documentoestoque d On d.id = ide.idDocumentoEstoque
       Left Join produto p On p.id = ide.idProduto
     Where (ide.idSetorEntrada In (2, 19, 20, 32)) And
       (ide.idTipoMovimentacao In (11, 71, 116, 115, 114, 113, 112, 111, 142))
-    Group By ide.idDocumentoEntrada) q On q.idDocumentoEntrada =
+    Group By ide.idDocumentoEstoque) q On q.idDocumentoEntrada =
       m.idDocumentoEntrada
-    Left Join (Select ide.idDocumentoEntrada,
+    Left Join (Select ide.idDocumentoEstoque As idDocumentoEntrada,
       Sum((ide.qtde * ide.valorUnitario)) As totalnota
     From itemdocumentoestoque ide
-      Left Join documentoestoque d On d.id = ide.idDocumentoEntrada
+      Left Join documentoestoque d On d.id = ide.idDocumentoEstoque
       Left Join produto p On p.id = ide.idProduto
     Where (ide.idTipoMovimentacao In (11, 71, 116, 115, 114, 113, 112, 111,
       142)) And (ide.idSetorEntrada In (2, 19, 20, 32))
-    Group By ide.idDocumentoEntrada) tn On tn.idDocumentoEntrada =
+    Group By ide.idDocumentoEstoque) tn On tn.idDocumentoEntrada =
       m.idDocumentoEntrada
     Left Join (Select documentoestoque.id,
       Case When documentoestoque.modalidadeTransporte = 0 Then 'CIF'
@@ -310,7 +310,7 @@ From (Select ud.idProduto,
       Left Join documentofiscal dfe On nf.idDocumentoEstoque =
         dfe.idDocumentoSaida
       Left Join nfe nfe On nfe.chave = dfe.chaveAcessoNFe
-      Left Join itemdocumentoestoque ide On ide.idDocumentoEntrada =
+      Left Join itemdocumentoestoque ide On ide.idDocumentoEstoque =
         nfe.idDocumentoEstoque
       Left Join tributacao t On t.idItemDocumentoEstoque = ide.id
     Where de.idTipoMovimentacao In (70, 142)) bob
@@ -343,7 +343,7 @@ From (Select ud.idProduto,
       End) As bobina,
       Max(d.dataEntrada) As dataEntrada
     From itemdocumentoestoque ide
-      Left Join documentoestoque d On d.id = ide.idDocumentoEntrada
+      Left Join documentoestoque d On d.id = ide.idDocumentoEstoque
       Left Join produto p On p.id = ide.idProduto
     Where (ide.idTipoMovimentacao In (11, 71, 116, 115, 114, 113, 112, 111,
       142)) And (ide.idSetorEntrada In (2, 19, 20, 32)) And
@@ -359,7 +359,7 @@ From (Select ud.idProduto,
         SubString(Upper(p.descricao), Locate('MM', Upper(p.descricao)) + 2))
       End)) ud
     Left Join (Select ide.id,
-      ide.idDocumentoEntrada,
+      ide.idDocumentoEstoque As idDocumentoEntrada,
       ide.idProduto,
       ide.idTipoMovimentacao,
       d.dataEntrada,
@@ -378,29 +378,29 @@ From (Select ud.idProduto,
       ide.qtde,
       ide.valorUnitario
     From itemdocumentoestoque ide
-      Left Join documentoestoque d On d.id = ide.idDocumentoEntrada
+      Left Join documentoestoque d On d.id = ide.idDocumentoEstoque
       Left Join produto p On p.id = ide.idProduto
     Where (ide.idTipoMovimentacao In (11, 71, 116, 115, 114, 113, 112, 111,
       142)) And (ide.idSetorEntrada In (2, 19, 20, 32))) m
       On (m.bobina = ud.bobina) And (ud.dataEntrada = m.dataEntrada)
     Left Join tributacao t On t.idItemDocumentoEstoque = m.id
-    Left Join (Select ide.idDocumentoEntrada,
+    Left Join (Select ide.idDocumentoEstoque As idDocumentoEntrada,
       Count(Distinct ide.idProduto) As qtditens
     From itemdocumentoestoque ide
-      Left Join documentoestoque d On d.id = ide.idDocumentoEntrada
+      Left Join documentoestoque d On d.id = ide.idDocumentoEstoque
       Left Join produto p On p.id = ide.idProduto
     Where (ide.idSetorEntrada In (2, 19, 20, 32)) And
       (ide.idTipoMovimentacao In (11, 71, 116, 115, 114, 113, 112, 111, 142))
-    Group By ide.idDocumentoEntrada) q On q.idDocumentoEntrada =
+    Group By ide.idDocumentoEstoque) q On q.idDocumentoEntrada =
       m.idDocumentoEntrada
-    Left Join (Select ide.idDocumentoEntrada,
+    Left Join (Select ide.idDocumentoEstoque As idDocumentoEntrada,
       Sum((ide.qtde * ide.valorUnitario)) As totalnota
     From itemdocumentoestoque ide
-      Left Join documentoestoque d On d.id = ide.idDocumentoEntrada
+      Left Join documentoestoque d On d.id = ide.idDocumentoEstoque
       Left Join produto p On p.id = ide.idProduto
     Where (ide.idTipoMovimentacao In (11, 71, 116, 115, 114, 113, 112, 111,
       142)) And (ide.idSetorEntrada In (2, 19, 20, 32))
-    Group By ide.idDocumentoEntrada) tn On tn.idDocumentoEntrada =
+    Group By ide.idDocumentoEstoque) tn On tn.idDocumentoEntrada =
       m.idDocumentoEntrada
     Left Join (Select documentoestoque.id,
       Case When documentoestoque.modalidadeTransporte = 0 Then 'CIF'
@@ -430,7 +430,7 @@ From (Select ud.idProduto,
       Left Join documentofiscal dfe On nf.idDocumentoEstoque =
         dfe.idDocumentoSaida
       Left Join nfe nfe On nfe.chave = dfe.chaveAcessoNFe
-      Left Join itemdocumentoestoque ide On ide.idDocumentoEntrada =
+      Left Join itemdocumentoestoque ide On ide.idDocumentoEstoque =
         nfe.idDocumentoEstoque
       Left Join tributacao t On t.idItemDocumentoEstoque = ide.id
     Where de.idTipoMovimentacao In (70, 142)) bob
