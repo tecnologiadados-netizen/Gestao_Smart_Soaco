@@ -4,6 +4,7 @@ import {
   listarSnapshotsSequenciamento,
   montarPayloadSequenciamento,
   obterSnapshotSequenciamento,
+  sanitizarSimulacao,
 } from '../data/sequenciamentoCarradasRepository.js';
 
 /**
@@ -21,7 +22,8 @@ export async function postSequenciamentoCarradasSnapshot(req: Request, res: Resp
       res.status(503).json({ error: 'Não foi possível consultar o Nomus. Tente novamente.' });
       return;
     }
-    const row = await gravarSnapshotSequenciamento(login);
+    const simulacao = sanitizarSimulacao((req.body as Record<string, unknown> | undefined)?.simulacao);
+    const row = await gravarSnapshotSequenciamento(login, simulacao);
     res.status(201).json({
       ok: true,
       id: row.id,

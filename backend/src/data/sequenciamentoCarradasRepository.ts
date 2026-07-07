@@ -20,6 +20,32 @@ export type SequenciamentoCarradasPayloadV1 = {
   linhas: Record<string, unknown>[];
 };
 
+/** Estado da simulação (datas editadas e ordem manual das carradas) gravado junto ao snapshot. */
+export type SequenciamentoSimulacaoItem = {
+  chave: string;
+  cod: string;
+  carrada: string;
+  dataProducao?: string | null;
+  dataEntrega?: string | null;
+};
+
+export type SequenciamentoSimulacao = {
+  ordem: string[];
+  itens: SequenciamentoSimulacaoItem[];
+};
+
+export type SequenciamentoCarradasPayloadV2 = {
+  version: 2;
+  geradoEm: string;
+  carradas: SequenciamentoCarradaAgregada[];
+  linhas: Record<string, unknown>[];
+  simulacao?: SequenciamentoSimulacao | null;
+};
+
+export type SequenciamentoCarradasPayload =
+  | SequenciamentoCarradasPayloadV1
+  | SequenciamentoCarradasPayloadV2;
+
 type PedidoRow = Record<string, unknown>;
 
 function getField(row: PedidoRow, keys: string[]): string {
@@ -176,13 +202,37 @@ async function gerarCodSnapshot(): Promise<string> {
   return `PSC${String(count + 1).padStart(4, '0')}`;
 }
 
-export function validarPayloadSequenciamento(raw: unknown): { ok: true; payload: SequenciamentoCarradasPayloadV1 } | { ok: false; error: string } {
+export function validarPayloadSequenciamento(raw: unknown): { ok: true; payload: SequenciamentoCarradasPayload } | { ok: false; error: string } {
   if (!raw || typeof raw !== 'object') return { ok: false, error: 'Payload inválido.' };
   const p = raw as Record<string, unknown>;
-  if (p.version !== 1) return { ok: false, error: 'Versão de payload não suportada.' };
+  if (p.version !== 1 && p.version !== 2) return { ok: false, error: 'Versão de payload não suportada.' };
   if (!Array.isArray(p.carradas)) return { ok: false, error: 'Payload sem carradas.' };
   if (!Array.isArray(p.linhas)) return { ok: false, error: 'Payload sem linhas.' };
-  return { ok: true, payload: p as unknown as SequenciamentoCarradasPayloadV1 };
+  return { ok: true, payload: p as unknown as SequenciamentoCarradasPayload };
+}
+
+/** Normaliza o estado de simulação recebido do cliente (defensivo contra payload malformado). */
+export function sanitizarSimulacao(raw: unknown): SequenciamentoSimulacao | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const ordem = Array.isArray(r.ordem) ? r.ordem.filter((x): x is string => typeof x === 'string') : [];
+  const itensRaw = Array.isArray(r.itens) ? r.itens : [];
+  const itens: SequenciamentoSimulacaoItem[] = [];
+  for (const it of itensRaw) {
+    if (!it || typeof it !== 'object') continue;
+    const o = it as Record<string, unknown>;
+    const chave = typeof o.chave === 'string' ? o.chave : '';
+    if (!chave) continue;
+    itens.push({
+      chave,
+      cod: typeof o.cod === 'string' ? o.cod : '',
+      carrada: typeof o.carrada === 'string' ? o.carrada : '',
+      dataProducao: typeof o.dataProducao === 'string' ? o.dataProducao : null,
+      dataEntrega: typeof o.dataEntrega === 'string' ? o.dataEntrega : null,
+    });
+  }
+  if (ordem.length === 0 && itens.length === 0) return null;
+  return { ordem, itens };
 }
 
 export async function montarPayloadSequenciamento(): Promise<{
@@ -203,14 +253,20 @@ export async function montarPayloadSequenciamento(): Promise<{
   };
 }
 
-export async function gravarSnapshotSequenciamento(usuarioLogin: string): Promise<{
+export async function gravarSnapshotSequenciamento(
+  usuarioLogin: string,
+  simulacao?: SequenciamentoSimulacao | null
+): Promise<{
   id: number;
   cod: string;
   createdAt: Date;
   usuarioLogin: string;
   carradaCount: number;
 }> {
-  const { payload } = await montarPayloadSequenciamento();
+  const { payload: base } = await montarPayloadSequenciamento();
+  const payload: SequenciamentoCarradasPayload = simulacao
+    ? { ...base, version: 2, simulacao }
+    : base;
   const jsonStr = JSON.stringify(payload);
   if (jsonStr.length > SEQUENCIAMENTO_PAYLOAD_MAX_CHARS) {
     throw new Error('Snapshot muito grande para gravar. Reduza o volume de pedidos ou contate o suporte.');
@@ -263,11 +319,11 @@ export async function obterSnapshotSequenciamento(id: number): Promise<{
   usuarioLogin: string;
   createdAt: Date;
   carradaCount: number;
-  payload: SequenciamentoCarradasPayloadV1 | null;
+  payload: SequenciamentoCarradasPayload | null;
 } | null> {
   const row = await prisma.sequenciamentoCarradasSnapshot.findUnique({ where: { id } });
   if (!row) return null;
-  let payload: SequenciamentoCarradasPayloadV1 | null = null;
+  let payload: SequenciamentoCarradasPayload | null = null;
   try {
     const parsed = JSON.parse(row.payload) as unknown;
     const val = validarPayloadSequenciamento(parsed);

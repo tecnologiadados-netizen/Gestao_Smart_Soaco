@@ -21,6 +21,7 @@ import {
   getMapaMunicipioDetalhes,
   ajustarPrevisao,
   ajustarPrevisaoLote,
+  ajustarDataProducaoLote,
   getHistorico,
   getInconsistenciaQtdePendente,
   sincronizar,
@@ -89,6 +90,7 @@ router.post('/check-sycro', verPedidos, checkIdPedidosEmSycro);
 // Sincronizar: qualquer usuário autenticado (evita 403 ao acessar por IP externo)
 router.post('/sincronizar', writeLimiter, sincronizar);
 router.post('/ajustar-previsao-lote', ajustarLotePcp, writeLimiter, ajustarPrevisaoLote);
+router.post('/data-producao-lote', ajustarLotePcp, writeLimiter, ajustarDataProducaoLote);
 router.post('/:id/ajustar-previsao', ajustarUnicoPcp, writeLimiter, ajustarPrevisao);
 
 export default router;

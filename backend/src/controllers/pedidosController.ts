@@ -15,6 +15,7 @@ import {
   obterDetalhesCompletosMunicipioMapa,
   registrarAjustePrevisao,
   registrarAjustesPrevisaoLote,
+  registrarDataProducaoLote,
   obterMapaRotaPorIdPedido,
   buscarPedidoPorId,
   listarHistoricoAjustes,
@@ -28,8 +29,9 @@ import {
   formatarMensagemAlteracaoPrevisao,
   formatarMensagemAlteracaoPrevisaoLote,
 } from '../services/evolutionApi.js';
+import { responderSycroCardsPorAjusteGerenciador } from '../services/sycroOrderSyncRespostaPrevisao.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
-import { ajustarPrevisaoSchema, ajustarPrevisaoLoteSchema } from '../validators/pedidos.js';
+import { ajustarPrevisaoSchema, ajustarPrevisaoLoteSchema, ajustarDataProducaoLoteSchema } from '../validators/pedidos.js';
 import { listarPedidosQuerySchema, pedidosEncerradosQuerySchema, pedidosEncerradosTypeaheadQuerySchema } from '../validators/pedidos.js';
 import { prisma } from '../config/prisma.js';
 import { PERMISSOES } from '../config/permissoes.js';
@@ -62,6 +64,27 @@ function isExcludedSqlRotaCategory(dm: string): boolean {
 
 function rotaFromPedidoRow(row: Record<string, unknown>): string {
   return String(row['Observacoes'] ?? row['Observações'] ?? row['Rota'] ?? row['rota'] ?? '').trim();
+}
+
+async function syncSycroRespostaAposAjusteGerenciador(
+  idPedido: string,
+  usuario: string,
+  novaPrevisao: Date
+): Promise<void> {
+  try {
+    const pedido = await buscarPedidoPorId(idPedido);
+    if (!pedido) return;
+    const row = pedido as Record<string, unknown>;
+    const pd = String(row['PD'] ?? row['pd'] ?? '').trim();
+    if (!pd) return;
+    await responderSycroCardsPorAjusteGerenciador({
+      pd,
+      usuarioLogin: usuario,
+      novaPrevisaoIso: novaPrevisao.toISOString().slice(0, 10),
+    });
+  } catch (_) {
+    // não falha o ajuste se a sincronização com Comunicação PD der erro
+  }
 }
 
 /**
@@ -454,6 +477,7 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
       } catch (_) {
         // não falha o ajuste se o WhatsApp der erro
       }
+      await syncSycroRespostaAposAjusteGerenciador(idPedido, usuario, dataPrevisao);
       res.json(pedido);
       return;
     }
@@ -503,6 +527,7 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
     } catch (_) {
       // não falha o ajuste se o WhatsApp der erro
     }
+    await syncSycroRespostaAposAjusteGerenciador(idPedido, usuario, dataPrevisao);
     res.json(pedido);
   } catch (err) {
     console.error('ajustarPrevisao', err);
@@ -682,7 +707,53 @@ export async function ajustarPrevisaoLote(req: Request, res: Response): Promise<
   } catch (_) {
     // não falha o lote se o WhatsApp der erro
   }
+  try {
+    const syncedPd = new Set<string>();
+    for (const item of resultados.applied ?? []) {
+      const pedido = await buscarPedidoPorId(item.id_pedido);
+      if (!pedido) continue;
+      const row = pedido as Record<string, unknown>;
+      const pd = String(row['PD'] ?? row['pd'] ?? '').trim();
+      if (!pd || syncedPd.has(pd)) continue;
+      syncedPd.add(pd);
+      await responderSycroCardsPorAjusteGerenciador({
+        pd,
+        usuarioLogin: usuario,
+        novaPrevisaoIso: new Date(item.previsao_nova).toISOString().slice(0, 10),
+      });
+    }
+  } catch (_) {
+    // não falha o lote se a sincronização com Comunicação PD der erro
+  }
   res.json(resultados);
+}
+
+/**
+ * POST /api/pedidos/data-producao-lote - grava a data de produção de vários pedidos (append-only).
+ * Usado pelo Sequenciamento de Carradas ao confirmar a simulação. Não altera o Nomus.
+ */
+export async function ajustarDataProducaoLote(req: Request, res: Response): Promise<void> {
+  const raw = req.body;
+  const body = Array.isArray(raw) ? { itens: raw } : (raw ?? {});
+  const parsed = ajustarDataProducaoLoteSchema.safeParse(body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Payload inválido', details: parsed.error.flatten() });
+    return;
+  }
+  const usuario = req.user?.login ?? 'anon';
+  try {
+    const itens = parsed.data.itens.map((it) => ({
+      id_pedido: String(it.id_pedido).trim(),
+      data_producao: new Date(it.data_producao),
+    }));
+    const resultado = await registrarDataProducaoLote(itens, usuario);
+    invalidatePedidosCache();
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[pedidosController] ajustarDataProducaoLote:', msg);
+    res.status(500).json({ error: msg });
+  }
 }
 
 /**

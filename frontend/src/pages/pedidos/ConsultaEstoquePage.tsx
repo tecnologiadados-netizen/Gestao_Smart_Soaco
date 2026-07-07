@@ -1,4 +1,7 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
+import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
+import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import ModalPcPendDetalhes from '../../components/ressupAlmox/ModalPcPendDetalhes';
 import EmpenhoLiquidoPainel from '../../components/ressupAlmox/EmpenhoLiquidoPainel';
@@ -38,6 +41,11 @@ import {
   type ScDetalhe,
 } from '../../api/consultaEstoque';
 import { SETOR_ALMOX_SECUNDARIO } from '../../utils/ressupNaoAlmoxColetas';
+import {
+  getOrderLabelsForConsultaEstoqueCol,
+  isConsultaEstoqueColNumeric,
+  SORT_DEFAULT_CONSULTA_ESTOQUE,
+} from '../../utils/consultaEstoqueGradeSort';
 
 const COLS = [
   { key: 'codigo', label: 'Código', clickable: false, align: 'left' as const },
@@ -51,7 +59,13 @@ const COLS = [
   { key: 'saldoProjetado', label: 'Saldo projetado', clickable: false, align: 'center' as const },
 ] as const;
 
+type ColKey = (typeof COLS)[number]['key'];
+
 const NUM_KEYS = ['empenho', 'saldo', 'solicitacao', 'cotacao', 'pedidoCompra', 'saldoProjetado'] as const;
+
+const COL_KEYS: ColKey[] = COLS.map((c) => c.key);
+
+const SALDO_PROJETADO_NEG_CLASS = 'bg-red-50 dark:bg-red-950/40';
 
 const EMPTY_OPCOES: OpcoesFiltroConsultaEstoque = {
   codigos: [],
@@ -173,6 +187,55 @@ export default function ConsultaEstoquePage() {
   pedidoFiltroRef.current = pedidoFiltro;
   consultaPedidoResumoRef.current = consultaPedidoResumo;
 
+  const getCellText = useCallback((row: ConsultaEstoqueLinha, colId: string): string => {
+    switch (colId) {
+      case 'codigo':
+        return row.codigo;
+      case 'descricao':
+        return row.descricao;
+      case 'und':
+        return row.unidadeMedida || '—';
+      case 'empenho':
+        return fmtQtde(row.empenho);
+      case 'saldo':
+        return fmtQtde(row.saldo);
+      case 'solicitacao':
+        return fmtQtde(row.solicitacao);
+      case 'cotacao':
+        return fmtQtde(row.cotacao);
+      case 'pedidoCompra':
+        return fmtQtde(row.pedidoCompra);
+      case 'saldoProjetado':
+        return fmtQtde(row.saldoProjetado);
+      default:
+        return '—';
+    }
+  }, []);
+
+  const valueForSort = useCallback((row: ConsultaEstoqueLinha, colId: string): string | number => {
+    if (isConsultaEstoqueColNumeric(colId)) {
+      const v = row[colId as keyof ConsultaEstoqueLinha];
+      const n = typeof v === 'number' ? v : Number(v);
+      return Number.isFinite(n) ? n : NaN;
+    }
+    if (colId === 'und') return row.unidadeMedida || '';
+    return getCellText(row, colId);
+  }, [getCellText]);
+
+  const grade = useGradeFiltrosExcel({
+    rows: linhas,
+    columnIds: COL_KEYS,
+    getCellText,
+    valueForSort,
+    defaultSortLevels: SORT_DEFAULT_CONSULTA_ESTOQUE,
+  });
+
+  const gradeResetRef = useRef<() => void>(() => {});
+  gradeResetRef.current = () => {
+    grade.limparFiltrosGrade();
+    grade.setSortLevels([...SORT_DEFAULT_CONSULTA_ESTOQUE]);
+  };
+
   const carregarOpcoes = useCallback(async () => {
     setOpcoesCarregando(true);
     setMsgFiltro(null);
@@ -246,6 +309,7 @@ export default function ConsultaEstoquePage() {
     ) => {
       detalheCacheRef.current.clear();
       pcDetalheCacheRef.current.clear();
+      gradeResetRef.current();
       setLoading(true);
       setErroApi(null);
       setTruncatedInfo(null);
@@ -489,13 +553,13 @@ export default function ConsultaEstoquePage() {
   }, [detalhe]);
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col gap-3 p-3 md:p-4">
+    <div className="relative flex flex-1 min-h-0 flex-col gap-3 overflow-hidden p-3 md:p-4">
       <CarregandoInformacoesOverlay
         show={loading}
         mensagem="Consultando estoque no Nomus…"
         mode="contained"
       />
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Consulta de Estoque</h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -519,9 +583,9 @@ export default function ConsultaEstoquePage() {
         </p>
       )}
 
-      <div className="relative min-h-0 flex-1 rounded-lg border border-slate-200 dark:border-slate-600">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 dark:border-slate-600">
         {mostrarGrade && (
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               {consultaPedidoResumo && (
                 <>
@@ -557,31 +621,52 @@ export default function ConsultaEstoquePage() {
             </div>
             {linhas.length > 0 && (
               <span className="tabular-nums text-slate-500 dark:text-slate-400">
-                {linhas.length} produto{linhas.length === 1 ? '' : 's'}
+                {grade.rowsExibidas.length === linhas.length
+                  ? `${linhas.length} produto${linhas.length === 1 ? '' : 's'}`
+                  : `${grade.rowsExibidas.length} de ${linhas.length} produto${linhas.length === 1 ? '' : 's'}`}
               </span>
             )}
           </div>
         )}
-        <div className="h-full overflow-auto">
+        <div
+          ref={grade.tableScrollRef}
+          className="min-h-0 flex-1 overflow-auto overscroll-contain"
+        >
           <table className="w-full min-w-[960px] border-collapse text-xs">
-            <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900">
-              <tr>
-                {COLS.map((c) => (
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-primary-600 text-white">
+                {COLS.map((c) => {
+                  const sortAtivo =
+                    grade.sortState?.key === c.key || grade.sortLevels.some((l) => l.id === c.key);
+                  return (
                   <th
                     key={c.key}
-                    className={`border-b border-slate-200 px-2 py-2 font-semibold text-slate-700 dark:border-slate-600 dark:text-slate-200 ${
+                    className={`relative border border-primary-500/40 bg-primary-600 px-2 py-2 font-semibold ${
                       c.align === 'center' ? 'text-center' : 'text-left'
                     }`}
                   >
-                    {c.key === 'empenho' ? (
-                      <span className="inline-flex justify-center">
-                        <RotuloComDica rotulo={c.label} dica={DICA_EMPENHO_LIQ_GRADE} />
+                    <div
+                      className={`flex min-w-0 items-start gap-1 ${
+                        c.align === 'center' ? 'justify-center' : 'justify-between'
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1 leading-tight">
+                        {c.key === 'empenho' ? (
+                          <span className="inline-flex justify-center">
+                            <RotuloComDica rotulo={c.label} dica={DICA_EMPENHO_LIQ_GRADE} headerClaro />
+                          </span>
+                        ) : (
+                          c.label
+                        )}
                       </span>
-                    ) : (
-                      c.label
-                    )}
+                      <GradeFiltroCabecalhoBtn
+                        ativo={grade.colunaComFiltroAtivo(c.key) || sortAtivo}
+                        onClick={(e) => grade.abrirFiltroExcel(c.key, e)}
+                      />
+                    </div>
                   </th>
-                ))}
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -599,8 +684,15 @@ export default function ConsultaEstoquePage() {
                   </td>
                 </tr>
               )}
+              {mostrarGrade && linhas.length > 0 && grade.rowsExibidas.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={COLS.length} className="py-8 text-center text-slate-500">
+                    Nenhum produto com os filtros da grade. Ajuste ou limpe os filtros por coluna.
+                  </td>
+                </tr>
+              )}
               {mostrarGrade &&
-                linhas.map((row) => (
+                grade.rowsExibidas.map((row) => (
                   <tr
                     key={row.idProduto}
                     className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
@@ -613,8 +705,14 @@ export default function ConsultaEstoquePage() {
                     {NUM_KEYS.map((k) => {
                       const clickable = k !== 'saldoProjetado';
                       const val = row[k];
+                      const saldoNegativo = k === 'saldoProjetado' && val <= 0;
                       return (
-                        <td key={k} className="px-2 py-1.5 text-center tabular-nums">
+                        <td
+                          key={k}
+                          className={`px-2 py-1.5 text-center tabular-nums ${
+                            saldoNegativo ? SALDO_PROJETADO_NEG_CLASS : ''
+                          }`}
+                        >
                           {clickable ? (
                             <GradeCelulaModalBtn
                               onClick={() =>
@@ -661,6 +759,32 @@ export default function ConsultaEstoquePage() {
         onBuscarCodigo={buscarCodigoAsync}
         onBuscarDescricao={buscarDescricaoAsync}
       />
+
+      {grade.colunaFiltroAberta && grade.filtroAbertoRect && (
+        <GradeFiltroExcelPortal
+          colunaAberta={grade.colunaFiltroAberta}
+          rect={grade.filtroAbertoRect}
+          dropdownRef={grade.filtroDropdownRef}
+          excelFilterDrafts={grade.excelFilterDrafts}
+          setExcelFilterDrafts={grade.setExcelFilterDrafts}
+          valoresUnicosPorColuna={grade.valoresUnicosPorColuna}
+          sortAscLabel={getOrderLabelsForConsultaEstoqueCol(grade.colunaFiltroAberta).asc}
+          sortDescLabel={getOrderLabelsForConsultaEstoqueCol(grade.colunaFiltroAberta).desc}
+          showNumericFilters={isConsultaEstoqueColNumeric(grade.colunaFiltroAberta)}
+          onSortAsc={(colId) => {
+            grade.setSortState({ key: colId, direction: 'asc' });
+            grade.setSortLevels([]);
+            grade.fecharFiltroExcel();
+          }}
+          onSortDesc={(colId) => {
+            grade.setSortState({ key: colId, direction: 'desc' });
+            grade.setSortLevels([]);
+            grade.fecharFiltroExcel();
+          }}
+          onAplicar={grade.aplicarFiltroExcel}
+          onCancelar={grade.fecharFiltroExcel}
+        />
+      )}
 
       {confirmEscolhasPedidoAberto && pedidoPendenteEscolha && (
         <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">

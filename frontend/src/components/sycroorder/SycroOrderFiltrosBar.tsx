@@ -6,6 +6,8 @@ export type SycroOrderFiltrosState = {
   ultimaRespostaPor: string;
   formaEntrega: string;
   responsavel: string;
+  vendedor: string;
+  acao: string;
   entrega7d: 'todos' | 'sim' | 'nao';
   leitura: 'todos' | 'lidos' | 'nao_lidos';
 };
@@ -22,6 +24,8 @@ type SycroOrderFiltrosBarProps = {
     ultimaRespostaPor: string[];
     formaEntrega: string[];
     responsavel: string[];
+    vendedor: string[];
+    acao: string[];
   };
   temFiltro: boolean;
   onChange: React.Dispatch<React.SetStateAction<SycroOrderFiltrosState>>;
@@ -56,7 +60,12 @@ export default function SycroOrderFiltrosBar({
   onNovoCard,
 }: SycroOrderFiltrosBarProps) {
   const inline = variant === 'inline';
-  const setMulti = (key: keyof Pick<SycroOrderFiltrosState, 'pedido' | 'criadoPor' | 'ultimaRespostaPor' | 'formaEntrega' | 'responsavel'>) => (value: string) => {
+  const setMulti = (
+    key: keyof Pick<
+      SycroOrderFiltrosState,
+      'pedido' | 'criadoPor' | 'ultimaRespostaPor' | 'formaEntrega' | 'responsavel' | 'vendedor' | 'acao'
+    >
+  ) => (value: string) => {
     onChange((p) => ({ ...p, [key]: value }));
   };
 
@@ -116,6 +125,28 @@ export default function SycroOrderFiltrosBar({
         inputClass={inputClass}
         minWidth="160px"
         optionLabel="responsáveis"
+      />
+      <MultiSelectWithSearch
+        label="Vendedor/Representante"
+        placeholder="Todos"
+        options={opcoes.vendedor}
+        value={filtros.vendedor}
+        onChange={setMulti('vendedor')}
+        labelClass={labelClass}
+        inputClass={inputClass}
+        minWidth="180px"
+        optionLabel="vendedores"
+      />
+      <MultiSelectWithSearch
+        label="Ação"
+        placeholder="Todas"
+        options={opcoes.acao}
+        value={filtros.acao}
+        onChange={setMulti('acao')}
+        labelClass={labelClass}
+        inputClass={inputClass}
+        minWidth="160px"
+        optionLabel="ações"
       />
       <div className="shrink-0">
         <span className={labelClass}>Leitura</span>

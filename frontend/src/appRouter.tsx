@@ -20,7 +20,7 @@ export const router = createBrowserRouter(
         </AuthProvider>
       ),
       /**
-       * Rota splat: Layout + filhas. Necessário para `useRoutes` no keep-alive das abas.
+       * Rota splat: Layout + filhas via <Outlet /> com transição de tela.
        * RootEntry autenticado renderiza <Outlet /> (não <Layout /> direto).
        */
       children: [{ path: '*', element: <Layout />, children: layoutChildRoutes }],

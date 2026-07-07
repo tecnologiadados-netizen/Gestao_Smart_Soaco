@@ -1183,6 +1183,57 @@ export default function MRPPage({ runId: runIdProp, onClose, embedded = false }:
           <button type="button" onClick={limparFiltros} className={MRP_BTN_PRIMARY_CLASS} title="Limpar todos os filtros">
             Limpar filtros
           </button>
+          {colunasOcultasLista.length > 0 && (
+            <div className="relative ml-auto self-end" ref={colunasOcultasRef}>
+              <button
+                type="button"
+                onClick={() => setColunasOcultasOpen((open) => !open)}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                aria-expanded={colunasOcultasOpen}
+                aria-haspopup="true"
+              >
+                Colunas ocultas
+                <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs text-primary-700 dark:bg-primary-900/40 dark:text-primary-200">
+                  {colunasOcultasLista.length}
+                </span>
+              </button>
+              {colunasOcultasOpen && (
+                <div
+                  className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 text-slate-800 shadow-xl dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  role="dialog"
+                  aria-label="Reexibir colunas ocultas"
+                >
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 dark:border-slate-600">
+                    <p className="text-sm font-semibold">Reexibir colunas</p>
+                    <button
+                      type="button"
+                      onClick={reexibirTodasColunas}
+                      className="text-xs font-medium text-primary-600 hover:underline dark:text-primary-300"
+                    >
+                      Reexibir todas
+                    </button>
+                  </div>
+                  <div className="mt-2 max-h-64 overflow-auto">
+                    {colunasOcultasLista.map((col) => (
+                      <button
+                        key={col.key}
+                        type="button"
+                        onClick={() => reexibirColuna(col.key)}
+                        className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700"
+                      >
+                        <span className="truncate" title={col.label}>
+                          {col.label}
+                        </span>
+                        <span className="shrink-0 text-xs font-medium text-primary-600 dark:text-primary-300">
+                          Reexibir
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         {temFiltros && (
           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
@@ -1213,60 +1264,6 @@ export default function MRPPage({ runId: runIdProp, onClose, embedded = false }:
           </p>
         )}
       </div>
-
-      {colunasOcultasLista.length > 0 && (
-        <div className="flex justify-end">
-          <div className="relative" ref={colunasOcultasRef}>
-            <button
-              type="button"
-              onClick={() => setColunasOcultasOpen((open) => !open)}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-              aria-expanded={colunasOcultasOpen}
-              aria-haspopup="true"
-            >
-              Colunas ocultas
-              <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs text-primary-700 dark:bg-primary-900/40 dark:text-primary-200">
-                {colunasOcultasLista.length}
-              </span>
-            </button>
-            {colunasOcultasOpen && (
-              <div
-                className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 text-slate-800 shadow-xl dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                role="dialog"
-                aria-label="Reexibir colunas ocultas"
-              >
-                <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 dark:border-slate-600">
-                  <p className="text-sm font-semibold">Reexibir colunas</p>
-                  <button
-                    type="button"
-                    onClick={reexibirTodasColunas}
-                    className="text-xs font-medium text-primary-600 hover:underline dark:text-primary-300"
-                  >
-                    Reexibir todas
-                  </button>
-                </div>
-                <div className="mt-2 max-h-64 overflow-auto">
-                  {colunasOcultasLista.map((col) => (
-                    <button
-                      key={col.key}
-                      type="button"
-                      onClick={() => reexibirColuna(col.key)}
-                      className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700"
-                    >
-                      <span className="truncate" title={col.label}>
-                        {col.label}
-                      </span>
-                      <span className="shrink-0 text-xs font-medium text-primary-600 dark:text-primary-300">
-                        Reexibir
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       <div className="card-panel overflow-hidden shadow-sm">
         <div className={tableScrollClassName}>

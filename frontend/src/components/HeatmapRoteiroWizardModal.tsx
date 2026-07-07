@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { MapaMunicipioItem } from '../api/pedidos';
 import MultiSelectWithSearch from './MultiSelectWithSearch';
 import { useRegisterModalEscape } from '../contexts/ModalStackContext';
@@ -150,7 +151,7 @@ export default function HeatmapRoteiroWizardModal({
 
   const modalWide = step === 'filtros' || step === 'carrada';
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/70 p-4"
       role="presentation"
@@ -355,6 +356,7 @@ export default function HeatmapRoteiroWizardModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

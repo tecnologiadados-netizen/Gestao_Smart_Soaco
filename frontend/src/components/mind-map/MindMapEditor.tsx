@@ -110,6 +110,7 @@ export default function MindMapEditor({ mapId, readOnly = false, onSair, onSaved
   const obsTextareaRef = useRef<HTMLTextAreaElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; ids: string[] } | null>(null);
   const panDragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
   const marqueeRef = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const resizeRef = useRef<{ id: string; startW: number; startH: number; startX: number; startY: number } | null>(null);
   const obsDragRef = useRef<{ id: string; startX: number; startY: number } | null>(null);
@@ -145,6 +146,14 @@ export default function MindMapEditor({ mapId, readOnly = false, onSair, onSaved
   const markDirty = useCallback(() => {
     if (canEdit) setDirty(true);
   }, [canEdit]);
+
+  const startPanDrag = useCallback(
+    (clientX: number, clientY: number) => {
+      panDragRef.current = { startX: clientX, startY: clientY, panX: pan.x, panY: pan.y };
+      setIsPanning(true);
+    },
+    [pan]
+  );
 
   const screenToWorld = useCallback(
     (clientX: number, clientY: number) => {
@@ -268,10 +277,11 @@ export default function MindMapEditor({ mapId, readOnly = false, onSair, onSaved
   }, [editingId, editingObsId, handleSave, undo, redo, markDirty, addChild, deleteSelected, root.id, canEdit]);
 
   const realign = useCallback(() => {
+    if (!canEdit) return;
     const ids = selection.size >= 2 ? selection : undefined;
     setRoot((r) => resetOffsets(r, ids), false);
     markDirty();
-  }, [selection, setRoot, markDirty]);
+  }, [canEdit, selection, setRoot, markDirty]);
 
   const fitView = useCallback(() => {
     const el = canvasRef.current;
@@ -458,13 +468,19 @@ export default function MindMapEditor({ mapId, readOnly = false, onSair, onSaved
   };
 
   const onCanvasMouseDown = (e: React.MouseEvent) => {
+    // Botão do meio (scroll): pan em qualquer modo.
     if (e.button === 1) {
       e.preventDefault();
-      panDragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+      startPanDrag(e.clientX, e.clientY);
       return;
     }
     if (e.target !== canvasRef.current && e.target !== innerRef.current) return;
     if (e.button !== 0) return;
+    // Somente leitura: arrastar com botão esquerdo move a visualização (não caixa de seleção).
+    if (readOnly) {
+      startPanDrag(e.clientX, e.clientY);
+      return;
+    }
     setSelection(new Set());
     const w = screenToWorld(e.clientX, e.clientY);
     marqueeRef.current = { x0: w.x, y0: w.y, x1: w.x, y1: w.y };
@@ -553,6 +569,7 @@ export default function MindMapEditor({ mapId, readOnly = false, onSair, onSaved
         setMarquee(null);
       }
       panDragRef.current = null;
+      setIsPanning(false);
       dragRef.current = null;
       resizeRef.current = null;
       obsDragRef.current = null;
@@ -563,7 +580,7 @@ export default function MindMapEditor({ mapId, readOnly = false, onSair, onSaved
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [layout, pan, zoom, screenToWorld, worldToCanvas, setRoot, markDirty, canEdit]);
+  }, [layout, pan, zoom, screenToWorld, worldToCanvas, setRoot, markDirty, canEdit, readOnly, startPanDrag]);
 
   const sairTelaCheiaSeAtivo = useCallback(async () => {
     if (document.fullscreenElement === rootRef.current) {
@@ -665,7 +682,7 @@ export default function MindMapEditor({ mapId, readOnly = false, onSair, onSaved
             </button>
           </>
         )}
-        <button type="button" onClick={realign} title="Restaurar posição automática dos cards selecionados">
+        <button type="button" onClick={realign} title="Restaurar posição automática dos cards selecionados" disabled={!canEdit}>
           Realinhar
         </button>
         <button
@@ -791,8 +808,11 @@ export default function MindMapEditor({ mapId, readOnly = false, onSair, onSaved
         <div className="mind-map-editor__canvas-wrap">
           <div
             ref={canvasRef}
-            className="mind-map-editor__canvas"
+            className={`mind-map-editor__canvas${isPanning ? ' panning' : ''}${readOnly ? ' mind-map-editor__canvas--view' : ''}`}
             onMouseDown={onCanvasMouseDown}
+            onContextMenu={(e) => {
+              if (isPanning) e.preventDefault();
+            }}
           >
             <div
               ref={innerRef}
@@ -845,6 +865,15 @@ export default function MindMapEditor({ mapId, readOnly = false, onSair, onSaved
                       fontFamily: ln.node.fontFamily,
                     }}
                     onMouseDown={(e) => {
+                      if (e.button === 1) {
+                        e.preventDefault();
+                        startPanDrag(e.clientX, e.clientY);
+                        return;
+                      }
+                      if (readOnly && e.button === 0) {
+                        startPanDrag(e.clientX, e.clientY);
+                        return;
+                      }
                       e.stopPropagation();
                       if (e.button !== 0) return;
                       toggleSelect(ln.id, e);
@@ -983,6 +1012,15 @@ export default function MindMapEditor({ mapId, readOnly = false, onSair, onSaved
                       minHeight: obs.height,
                     }}
                     onMouseDown={(e) => {
+                      if (e.button === 1) {
+                        e.preventDefault();
+                        startPanDrag(e.clientX, e.clientY);
+                        return;
+                      }
+                      if (readOnly && e.button === 0) {
+                        startPanDrag(e.clientX, e.clientY);
+                        return;
+                      }
                       e.stopPropagation();
                       if (e.button !== 0) return;
                       setSelection(new Set([obs.nodeId]));

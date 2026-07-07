@@ -10,11 +10,27 @@ export type SequenciamentoCarradaAgregada = {
   valorAVistaAte10d: number;
 };
 
+/** Estado da simulação (datas editadas e ordem manual das carradas) gravado junto ao snapshot. */
+export type SequenciamentoSimulacaoItem = {
+  chave: string;
+  cod: string;
+  carrada: string;
+  dataProducao?: string | null;
+  dataEntrega?: string | null;
+};
+
+export type SequenciamentoSimulacao = {
+  ordem: string[];
+  itens: SequenciamentoSimulacaoItem[];
+};
+
 export type SequenciamentoCarradasPayloadV1 = {
-  version: 1;
+  version: 1 | 2;
   geradoEm: string;
   carradas: SequenciamentoCarradaAgregada[];
   linhas: Record<string, unknown>[];
+  /** Presente apenas em snapshots v2 (gravados com simulação). */
+  simulacao?: SequenciamentoSimulacao | null;
 };
 
 export type SequenciamentoSnapshotListItem = {
@@ -36,7 +52,7 @@ export type SequenciamentoConsultaAoVivo = {
   payload: SequenciamentoCarradasPayloadV1;
 };
 
-export async function gravarSequenciamentoSnapshot(): Promise<{
+export async function gravarSequenciamentoSnapshot(simulacao?: SequenciamentoSimulacao | null): Promise<{
   ok: boolean;
   id?: number;
   cod?: string;
@@ -45,7 +61,10 @@ export async function gravarSequenciamentoSnapshot(): Promise<{
   carradaCount?: number;
   error?: string;
 }> {
-  const res = await apiFetch('/api/pedidos/sequenciamento-carradas/snapshots', { method: 'POST', body: {} });
+  const res = await apiFetch('/api/pedidos/sequenciamento-carradas/snapshots', {
+    method: 'POST',
+    body: simulacao ? { simulacao } : {},
+  });
   const text = await res.text();
   let body: Record<string, unknown> = {};
   if (text) {

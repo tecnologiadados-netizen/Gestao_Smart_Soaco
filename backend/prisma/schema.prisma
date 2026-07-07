@@ -34,6 +34,21 @@ model PedidoPrevisaoAjuste {
   @@map("pedido_previsao_ajuste")
 }
 
+// Data de produção planejada por linha de pedido (histórico append-only, leitura pega o mais recente).
+// Mesmo padrão hierárquico/canônico de PedidoPrevisaoAjuste (chave canônica pedido+item via chavePedidoItem).
+// Não altera o Nomus; usada no Sequenciamento de Carradas (simulação) e exibida no Gerenciador de Pedidos.
+model PedidoDataProducao {
+  id            Int      @id @default(autoincrement())
+  id_pedido     String   // ID do pedido no ERP (idRomaneio-idPedido-idProduto)
+  data_producao DateTime
+  usuario       String
+  data_registro DateTime @default(now())
+
+  @@index([id_pedido])
+  @@index([data_registro])
+  @@map("pedido_data_producao")
+}
+
 model MotivoSugestao {
   id        Int      @id @default(autoincrement())
   descricao String   @unique

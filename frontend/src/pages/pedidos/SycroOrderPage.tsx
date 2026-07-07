@@ -22,7 +22,7 @@ import { listarMotivosSugestao, type MotivoSugestao } from '../../api/motivosSug
 import { listarPedidos } from '../../api/pedidos';
 import SingleSelectWithSearch, { type OptionItem } from '../../components/SingleSelectWithSearch';
 import ModalGerenciarMotivos from '../../components/ModalGerenciarMotivos';
-import SycroOrderFiltrosBar from '../../components/sycroorder/SycroOrderFiltrosBar';
+import SycroOrderFiltrosBar, { type SycroOrderFiltrosState } from '../../components/sycroorder/SycroOrderFiltrosBar';
 import SycroOrderKanbanCard, { type SycroOrderKanbanCardActions } from '../../components/sycroorder/SycroOrderKanbanCard';
 import ModalFaturadoEntregue from '../../components/sycroorder/ModalFaturadoEntregue';
 import HelpTooltipIcon from '../../components/HelpTooltipIcon';
@@ -109,6 +109,12 @@ function formatResponsavelLine(deliveryMethod: string, extraLogin: string | null
   const ex = (extraLogin ?? '').trim().toLowerCase();
   if (ex) return `Responsável por responder: ${base} | ${ex}`;
   return `Responsável por responder: ${base}`;
+}
+
+/** Rótulo exibido no card (🔴 AÇÃO: …) e usado no filtro "Ação". */
+function acaoLabelForCard(o: Pick<Order, 'aguarda_resposta_pendente' | 'aguarda_resposta_de_label'>): string {
+  if (!o.aguarda_resposta_pendente) return 'Sem ação pendente';
+  return (o.aguarda_resposta_de_label ?? '').trim() || '—';
 }
 
 /** Tags para o filtro: regra josenildo/outros + login extra se houver. */
@@ -301,8 +307,12 @@ function formatDateTime(iso: string): string {
 
 function firstIsoFromRange(iso: string | null | undefined): string | null {
   if (iso == null || String(iso).trim() === '') return null;
-  const m = String(iso).trim().match(/^(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1]! : null;
+  const t = String(iso).trim();
+  const m = t.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1]!;
+  const br = t.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  return null;
 }
 
 function formatLinhaPrevisaoHistorico(opts: {
@@ -436,20 +446,14 @@ export default function SycroOrderPage() {
   const [usersResponsavel, setUsersResponsavel] = useState<Array<{ id: number; login: string; nome: string | null }>>([]);
   const [loadingUsersResp, setLoadingUsersResp] = useState(false);
   const [savingResponsible, setSavingResponsible] = useState(false);
-  const [filtros, setFiltros] = useState<{
-    pedido: string;
-    criadoPor: string;
-    ultimaRespostaPor: string;
-    formaEntrega: string;
-    responsavel: string;
-    entrega7d: 'todos' | 'sim' | 'nao';
-    leitura: 'todos' | 'lidos' | 'nao_lidos';
-  }>({
+  const [filtros, setFiltros] = useState<SycroOrderFiltrosState>({
     pedido: '',
     criadoPor: '',
     ultimaRespostaPor: '',
     formaEntrega: '',
     responsavel: '',
+    vendedor: '',
+    acao: '',
     entrega7d: 'todos',
     leitura: 'todos',
   });
@@ -542,6 +546,14 @@ export default function SycroOrderPage() {
       ultimaRespostaPor: [...new Set(base.map((o) => (o.last_responder_name ?? '').trim() || '—'))].sort(),
       formaEntrega: [...new Set(base.map((o) => (o.delivery_method ?? '').trim() || '—'))].sort(),
       responsavel: opResponsavel,
+      vendedor: [...new Set(base.map((o) => (o.vendedor_name ?? '').trim() || '—'))].sort((a, b) =>
+        a.localeCompare(b, 'pt-BR')
+      ),
+      acao: [...new Set(base.map((o) => acaoLabelForCard(o)))].sort((a, b) => {
+        if (a === 'Sem ação pendente') return 1;
+        if (b === 'Sem ação pendente') return -1;
+        return a.localeCompare(b, 'pt-BR');
+      }),
     };
   }, [orders]);
 
@@ -571,6 +583,11 @@ export default function SycroOrderPage() {
     if (formaEntregaSel.length > 0 && !formaEntregaSel.includes(forma)) return false;
     const responsavelSel = parseFiltroMulti(filtros.responsavel);
     if (responsavelSel.length > 0 && !responsavelSel.some((f) => responsavelTagsForCard(o).includes(f))) return false;
+    const vendedor = (o.vendedor_name ?? '').trim() || '—';
+    const vendedorSel = parseFiltroMulti(filtros.vendedor);
+    if (vendedorSel.length > 0 && !vendedorSel.includes(vendedor)) return false;
+    const acaoSel = parseFiltroMulti(filtros.acao);
+    if (acaoSel.length > 0 && !acaoSel.includes(acaoLabelForCard(o))) return false;
     if (filtros.entrega7d !== 'todos') {
       const within7 = isPromisedWithin7DaysFromPrevisao(o);
       if (filtros.entrega7d === 'sim' && !within7) return false;
@@ -734,6 +751,8 @@ export default function SycroOrderPage() {
               parseFiltroMulti(filtros.ultimaRespostaPor).length > 0 ||
               parseFiltroMulti(filtros.formaEntrega).length > 0 ||
               parseFiltroMulti(filtros.responsavel).length > 0 ||
+              parseFiltroMulti(filtros.vendedor).length > 0 ||
+              parseFiltroMulti(filtros.acao).length > 0 ||
               filtros.entrega7d !== 'todos' ||
               filtros.leitura !== 'todos'
             }
@@ -746,6 +765,8 @@ export default function SycroOrderPage() {
                 ultimaRespostaPor: '',
                 formaEntrega: '',
                 responsavel: '',
+                vendedor: '',
+                acao: '',
                 entrega7d: 'todos',
                 leitura: 'todos',
               });
@@ -2167,13 +2188,20 @@ function ModalAtualizarPedido({
   }) => {
     const coment = observation.trim();
     if (!validarAguardaResposta()) return;
+    const informaNovaData = !isCommentOnlyUser && querInformarNovaData === 'sim' && new_date.trim() !== '';
+    const dataAlterada =
+      informaNovaData && new_date.trim().slice(0, 10) !== String(order.current_promised_date ?? '').trim().slice(0, 10);
     setSaving(true);
     try {
       await updateSycroOrderOrder(order.id, {
-        ...(isCommentOnlyUser ? {} : (querInformarNovaData === 'sim' ? { new_date: new_date.trim() || undefined } : {})),
+        ...(isCommentOnlyUser ? {} : (informaNovaData ? { new_date: new_date.trim() || undefined } : {})),
         ...(tagDisponivelToSet === undefined || tagDisponivelToSet === null ? {} : { tag_disponivel: tagDisponivelToSet }),
         comentario: coment || undefined,
-        aguarda_resposta: coment ? aguardaRespostaTri === 'sim' : undefined,
+        aguarda_resposta: coment
+          ? aguardaRespostaTri === 'sim'
+          : dataAlterada
+            ? false
+            : undefined,
         ...(coment && aguardaRespostaTri === 'sim' && !autorTimeComercial && aguardaRespostaDestinoTime !== 'unset'
           ? { aguarda_resposta_destino_time: aguardaRespostaDestinoTime }
           : {}),

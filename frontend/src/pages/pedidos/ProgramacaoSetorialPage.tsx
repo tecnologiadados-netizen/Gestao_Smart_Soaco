@@ -443,8 +443,8 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
 
   return (
     <div className="p-6 flex flex-col min-h-0 font-sans">
-      {/* Tabs */}
-      <div className="mb-4 flex gap-2 border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
+      {/* Tabs + ações na mesma linha (ganha área útil para a grade) */}
+      <div className="mb-3 flex flex-wrap items-end gap-2 border-b border-slate-200 dark:border-slate-700">
         <button
           type="button"
           onClick={() => setActiveTab('planning')}
@@ -467,45 +467,44 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
         >
           Estoque Atendido
         </button>
-      </div>
-
-      <div className="mb-3 flex flex-wrap items-center justify-end gap-3">
-        {saveOkMessage && !mostrarFaixas && (
-          <span className="text-sm text-emerald-700 dark:text-emerald-400 font-medium order-first sm:order-none">{saveOkMessage}</span>
-        )}
-        {!mostrarFaixas && (
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-3 pb-1.5">
+          {saveOkMessage && !mostrarFaixas && (
+            <span className="text-sm text-emerald-700 dark:text-emerald-400 font-medium order-first sm:order-none">{saveOkMessage}</span>
+          )}
+          {!mostrarFaixas && (
+            <button
+              type="button"
+              onClick={abrirModalSalvar}
+              disabled={!podeSalvar}
+              className={btnAcaoPrimariaClass}
+              title={!hasLoadedData ? 'Carregue as informações primeiro' : !podeSalvar ? 'Não há linhas para salvar' : 'Registrar no painel de programações'}
+            >
+              Salvar programação
+            </button>
+          )}
           <button
             type="button"
-            onClick={abrirModalSalvar}
-            disabled={!podeSalvar}
-            className={btnAcaoPrimariaClass}
-            title={!hasLoadedData ? 'Carregue as informações primeiro' : !podeSalvar ? 'Não há linhas para salvar' : 'Registrar no painel de programações'}
+            onClick={() => setMostrarFaixas((v) => !v)}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+            title={mostrarFaixas ? 'Ocultar filtros e parâmetros' : 'Exibir filtros e parâmetros'}
+            aria-label={mostrarFaixas ? 'Ocultar filtros e parâmetros' : 'Exibir filtros e parâmetros'}
           >
-            Salvar programação
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {mostrarFaixas ? (
+                <>
+                  <path d="m18 15-6-6-6 6" />
+                  <path d="M6 19h12" />
+                </>
+              ) : (
+                <>
+                  <path d="m6 9 6 6 6-6" />
+                  <path d="M6 5h12" />
+                </>
+              )}
+            </svg>
+            {mostrarFaixas ? 'Ocultar filtros' : 'Exibir filtros'}
           </button>
-        )}
-        <button
-          type="button"
-          onClick={() => setMostrarFaixas((v) => !v)}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition"
-          title={mostrarFaixas ? 'Ocultar filtros e parâmetros' : 'Exibir filtros e parâmetros'}
-          aria-label={mostrarFaixas ? 'Ocultar filtros e parâmetros' : 'Exibir filtros e parâmetros'}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            {mostrarFaixas ? (
-              <>
-                <path d="m18 15-6-6-6 6" />
-                <path d="M6 19h12" />
-              </>
-            ) : (
-              <>
-                <path d="m6 9 6 6 6-6" />
-                <path d="M6 5h12" />
-              </>
-            )}
-          </svg>
-          {mostrarFaixas ? 'Ocultar filtros' : 'Exibir filtros'}
-        </button>
+        </div>
       </div>
 
       {/* Modal salvar */}

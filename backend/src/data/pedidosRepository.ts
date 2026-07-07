@@ -352,11 +352,44 @@ async function obterUltimoEPenultimoPorPedido(linhas: LinhaLookup[]): Promise<Ma
   return result;
 }
 
+/**
+ * Data de produção mais recente por idChave (histórico append-only em pedido_data_producao).
+ * Usa a mesma chave canônica pedido+item (chavePedidoItem) do ajuste de previsão, de modo que a
+ * data acompanha a linha lógica mesmo quando o vínculo com a carrada muda no ERP.
+ */
+async function obterDataProducaoPorPedido(linhas: LinhaLookup[]): Promise<Map<string, Date>> {
+  const result = new Map<string, Date>();
+  if (linhas.length === 0) return result;
+  try {
+    const rows = await prisma.pedidoDataProducao.findMany({
+      select: { id: true, id_pedido: true, data_producao: true, data_registro: true },
+      orderBy: [{ data_registro: 'desc' }, { id: 'desc' }],
+    });
+    // canon (pedido+item) -> data de produção mais recente
+    const porCanon = new Map<string, Date>();
+    for (const r of rows) {
+      const canon = chavePedidoItem(String(r.id_pedido ?? '').trim());
+      if (!canon || porCanon.has(canon)) continue;
+      porCanon.set(canon, parseDateFromDb(r.data_producao));
+    }
+    for (const linha of linhas) {
+      const idChave = String(linha.idChave ?? '').trim();
+      if (!idChave) continue;
+      const d = porCanon.get(chavePedidoItem(idChave));
+      if (d) result.set(idChave, d);
+    }
+  } catch (err) {
+    console.error('[obterDataProducaoPorPedido] Prisma falhou:', err instanceof Error ? err.message : err);
+  }
+  return result;
+}
+
 /** Mapeia linha do Nomus para formato do app; aplica último e penúltimo ajuste (SQLite). Retorna todos os campos do banco (row) mais os calculados. */
 function rowNomusToPedido(
   row: Record<string, unknown>,
   ajustePorId: Map<string, AjusteInfo>,
-  versoesRegras: Array<{ vigenteApartirDe: Date; payload: RegraDataEntregaConfig }>
+  versoesRegras: Array<{ vigenteApartirDe: Date; payload: RegraDataEntregaConfig }>,
+  dataProducaoPorId?: Map<string, Date>
 ): PedidoRow {
   const idChave = String(row['idChave'] ?? '').trim();
   const cliente = String(row['Cliente'] ?? '');
@@ -373,6 +406,7 @@ function rowNomusToPedido(
   const origemAjuste = temAjusteReal ? info!.origem : null;
   const previsaoAtualConfiavel = temAjusteReal ? info!.ultimo.previsao_confiavel : true;
   const carradaMigrada = info?.carradaMigrada ?? null;
+  const dataProducao = dataProducaoPorId?.get(idChave) ?? null;
 
   const tipoF = String(row['TipoF'] ?? row['tipoF'] ?? '').trim();
   const emissaoRaw = row['Emissao'] ?? row['emissao'];
@@ -421,6 +455,7 @@ function rowNomusToPedido(
     origem_ultimo_ajuste: origemAjuste,
     previsao_atual_confiavel: previsaoAtualConfiavel,
     carrada_migrada: carradaMigrada,
+    data_producao: dataProducao,
     Status: status,
     dataParametro: previsaoOriginal,
   } as PedidoRow;
@@ -429,7 +464,7 @@ function rowNomusToPedido(
 const BATCH_SIZE_AJUSTES = 500;
 
 /** Colunas de data usadas na classificação (valor numérico para ordenar). */
-const SORT_DATE_COLUMN_IDS = ['emissao', 'data_original', 'previsao_anterior', 'previsao_atual'];
+const SORT_DATE_COLUMN_IDS = ['emissao', 'data_original', 'previsao_anterior', 'previsao_atual', 'data_producao'];
 
 /** Mapeamento coluna id -> chaves no row (espelhando o frontend). */
 const SORT_COLUMN_KEYS: Record<string, string[]> = {
@@ -446,6 +481,7 @@ const SORT_COLUMN_KEYS: Record<string, string[]> = {
   valor_pendente_real: ['Saldo a Faturar Real', 'Valor Pendente Real'],
   emissao: ['Emissao', 'emissao'],
   data_original: ['Data de entrega', 'dataParametro'],
+  data_producao: ['data_producao'],
   data_base_entrega_futura: ['Data base entrega futura'],
 };
 
@@ -834,8 +870,9 @@ export async function listarPedidos(filtros: FiltrosPedidos = {}): Promise<{
         }))
         .filter((l) => l.idChave !== '');
       const ajustePorId = await obterUltimoEPenultimoPorPedido(linhasLookup);
+      const dataProducaoPorId = await obterDataProducaoPorPedido(linhasLookup);
       const versoesRegras = await obterVersoesParaClassificacao();
-      resultado = list.map((r) => rowNomusToPedido(r, ajustePorId, versoesRegras));
+      resultado = list.map((r) => rowNomusToPedido(r, ajustePorId, versoesRegras, dataProducaoPorId));
       cachePedidos = { data: resultado, expiresAt: now + CACHE_PEDIDOS_TTL_MS };
       setLastSyncErp();
     }
@@ -1004,8 +1041,9 @@ export async function listarPedidosEncerrados(pd: string): Promise<{
       }))
       .filter((l) => l.idChave !== '');
     const ajustePorId = await obterUltimoEPenultimoPorPedido(linhasLookup);
+    const dataProducaoPorId = await obterDataProducaoPorPedido(linhasLookup);
     const versoesRegras = await obterVersoesParaClassificacao();
-    let resultado = list.map((r) => rowNomusToPedido(r, ajustePorId, versoesRegras));
+    let resultado = list.map((r) => rowNomusToPedido(r, ajustePorId, versoesRegras, dataProducaoPorId));
 
     resultado.sort((a, b) => {
       const codCmp = getField(a, ['Cod', 'cod']).localeCompare(getField(b, ['Cod', 'cod']), undefined, {
@@ -2060,6 +2098,79 @@ export async function registrarAjustesPrevisaoLote(
       ok: 0,
       erros: ajustes.map((a) => ({ id_pedido: a.id_pedido, erro: msg })),
     };
+  }
+}
+
+export interface DataProducaoLoteItem {
+  id_pedido: string;
+  data_producao: Date;
+}
+
+export interface RegistrarDataProducaoLoteResult {
+  ok: number;
+  erros: Array<{ id_pedido: string; erro: string }>;
+}
+
+/**
+ * Registra a data de produção de vários pedidos em uma transação (createMany, append-only).
+ * Ignora itens cuja data de produção efetiva atual já é a mesma (evita linhas duplicadas).
+ */
+export async function registrarDataProducaoLote(
+  itens: DataProducaoLoteItem[],
+  usuario: string
+): Promise<RegistrarDataProducaoLoteResult> {
+  if (itens.length === 0) return { ok: 0, erros: [] };
+
+  const toDateOnly = (d: Date) => new Date(d).toISOString().slice(0, 10);
+
+  // Data de produção efetiva atual por canon (para deduplicar).
+  const atuaisPorCanon = new Map<string, Date>();
+  try {
+    const rows = await prisma.pedidoDataProducao.findMany({
+      select: { id: true, id_pedido: true, data_producao: true, data_registro: true },
+      orderBy: [{ data_registro: 'desc' }, { id: 'desc' }],
+    });
+    for (const r of rows) {
+      const canon = chavePedidoItem(String(r.id_pedido ?? '').trim());
+      if (!canon || atuaisPorCanon.has(canon)) continue;
+      atuaisPorCanon.set(canon, parseDateFromDb(r.data_producao));
+    }
+  } catch (err) {
+    console.error('[registrarDataProducaoLote] leitura falhou:', err instanceof Error ? err.message : err);
+  }
+
+  const toInsert: { id_pedido: string; data_producao: Date }[] = [];
+  let skipped = 0;
+  for (const it of itens) {
+    const idNorm = String(it.id_pedido ?? '').trim();
+    if (!idNorm) continue;
+    const nova = new Date(it.data_producao);
+    if (Number.isNaN(nova.getTime())) continue;
+    const atual = atuaisPorCanon.get(chavePedidoItem(idNorm));
+    if (atual && toDateOnly(atual) === toDateOnly(nova)) {
+      skipped += 1;
+      continue;
+    }
+    toInsert.push({ id_pedido: idNorm, data_producao: toNoonUTC(nova) });
+  }
+
+  try {
+    if (toInsert.length > 0) {
+      const dataRegistro = new Date();
+      await prisma.pedidoDataProducao.createMany({
+        data: toInsert.map((a) => ({
+          id_pedido: a.id_pedido,
+          data_producao: a.data_producao,
+          usuario,
+          data_registro: dataRegistro,
+        })),
+      });
+      invalidatePedidosCache();
+    }
+    return { ok: toInsert.length + skipped, erros: [] };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Erro ao registrar data de produção em lote';
+    return { ok: 0, erros: itens.map((a) => ({ id_pedido: a.id_pedido, erro: msg })) };
   }
 }
 

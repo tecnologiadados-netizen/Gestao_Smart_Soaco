@@ -459,3 +459,24 @@ export async function ajustarPrevisaoLote(ajustes: AjustePrevisaoLoteItem[]): Pr
   return res.json();
 }
 
+export type DataProducaoLoteItem = {
+  id_pedido: string;
+  /** Data de produção (YYYY-MM-DD ou ISO). */
+  data_producao: string;
+};
+
+/** Grava a data de produção de vários pedidos (Sequenciamento de Carradas). Não altera o Nomus. */
+export async function ajustarDataProducaoLote(
+  itens: DataProducaoLoteItem[]
+): Promise<{ ok: number; erros: Array<{ id_pedido: string; erro: string }> }> {
+  const res = await apiFetch('/api/pedidos/data-producao-lote', {
+    method: 'POST',
+    body: { itens },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error((err as { error?: string }).error ?? 'Erro ao gravar data de produção em lote');
+  }
+  return res.json();
+}
+

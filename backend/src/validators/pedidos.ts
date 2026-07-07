@@ -47,6 +47,19 @@ export const ajustarPrevisaoLoteSchema = z.object({
 
 export type AjustarPrevisaoLoteInput = z.infer<typeof ajustarPrevisaoLoteSchema>;
 
+const itemDataProducaoLoteSchema = z.object({
+  id_pedido: z.string().min(1),
+  data_producao: z.string().refine((v) => !Number.isNaN(new Date(v).getTime()), {
+    message: 'Data de produção inválida (use ISO ou YYYY-MM-DD)',
+  }),
+});
+
+export const ajustarDataProducaoLoteSchema = z.object({
+  itens: z.array(itemDataProducaoLoteSchema).min(1).max(2000),
+});
+
+export type AjustarDataProducaoLoteInput = z.infer<typeof ajustarDataProducaoLoteSchema>;
+
 export const listarPedidosQuerySchema = z.object({
   cliente: z.string().optional(),
   observacoes: z.string().optional(),

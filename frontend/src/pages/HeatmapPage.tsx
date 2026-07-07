@@ -523,7 +523,7 @@ export default function HeatmapPage() {
       ? 'min-h-[min(720px,58svh)]'
       : mostrarFiltros || mostrarCards
         ? 'min-h-[min(640px,52svh)]'
-        : 'min-h-[min(560px,48svh)]';
+        : 'min-h-0';
   const areaPrincipalClass = telaCheia
     ? `flex-1 min-h-0 flex flex-col items-stretch gap-6 ${mostrarCards ? 'xl:flex-row' : ''}`
     : `flex min-h-0 flex-1 basis-0 flex-col gap-6 ${mostrarCards ? 'lg:flex-row' : ''} ${areaPrincipalMinH}`.trim();
@@ -673,8 +673,8 @@ export default function HeatmapPage() {
               paradasRoteiro={paradasRoteiroMapa.length > 0 ? paradasRoteiroMapa : undefined}
               mapaOverlaySuperiorEsquerdo={
                 <div className="pointer-events-none absolute inset-0 z-[1100]">
-                  <div className="pointer-events-auto absolute left-3 top-[5.25rem] flex max-w-[min(22rem,calc(100%-1.5rem))] flex-col items-start gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
+                  <div className="pointer-events-auto absolute bottom-3 left-3 top-[5.25rem] flex max-h-[calc(100%-5.25rem-0.75rem)] max-w-[min(22rem,calc(100%-1.5rem))] flex-col items-stretch gap-2 overflow-hidden">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
                       <button
                         type="button"
                         onClick={handleRoteirizarClick}
@@ -695,18 +695,18 @@ export default function HeatmapPage() {
                       )}
                     </div>
                     {roteiroModo === 'ctrl' && selecionadosComChave.length === 0 && (
-                      <p className="max-w-[14rem] rounded-md bg-white/95 px-2 py-1 text-[10px] leading-snug text-slate-600 shadow-sm dark:bg-slate-800/95 dark:text-slate-300">
+                      <p className="max-w-[14rem] shrink-0 rounded-md bg-white/95 px-2 py-1 text-[10px] leading-snug text-slate-600 shadow-sm dark:bg-slate-800/95 dark:text-slate-300">
                         Ctrl+clique nas cidades e clique em Roteirizar.
                       </p>
                     )}
                     {roteiroCarradasAtivas && roteiroCarradasAtivas.size > 0 && selecionadosComChave.length > 0 && (
-                      <p className="max-w-[16rem] rounded-md bg-white/95 px-2 py-1 text-[10px] leading-snug text-slate-600 shadow-sm dark:bg-slate-800/95 dark:text-slate-300">
+                      <p className="max-w-[16rem] shrink-0 rounded-md bg-white/95 px-2 py-1 text-[10px] leading-snug text-slate-600 shadow-sm dark:bg-slate-800/95 dark:text-slate-300">
                         Modo carrada: {roteiroCarradasAtivas.size} carrada
                         {roteiroCarradasAtivas.size !== 1 ? 's' : ''} — itens de outras carradas não entram na rota.
                       </p>
                     )}
                     {roteiroPopoverAberto && (
-                      <div className="w-full min-w-0">
+                      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
                         <HeatmapRoteirizadorPanel
                           loading={roteiroLoading}
                           resultado={roteiroResultado}

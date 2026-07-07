@@ -51,7 +51,7 @@ import ProdutosCubagemPage from './pages/logistica/ProdutosCubagemPage';
 import SimulacaoCubagemPage from './pages/logistica/SimulacaoCubagemPage';
 import QualidadePage from './pages/qualidade/QualidadePage';
 
-/** Rotas filhas do layout autenticado (espelham appRouter). Usadas no keep-alive das abas. */
+/** Rotas filhas do layout autenticado (espelham appRouter). */
 export const layoutChildRoutes: RouteObject[] = [
   { index: true, element: <InicioPage /> },
   { path: 'pedidos/dash-entregas', element: <ErrorBoundary><DashboardPage /></ErrorBoundary> },

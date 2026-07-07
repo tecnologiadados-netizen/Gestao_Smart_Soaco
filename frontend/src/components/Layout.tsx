@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import AbaKeepAliveOutlet from './AbaKeepAliveOutlet';
+import PageTransitionOutlet from './PageTransitionOutlet';
 import { logout, changeMyPassword } from '../api/auth';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,7 +9,6 @@ import {
   buildFinanceiroMenuForUser,
   buildIntegracaoSubmenusForUser,
   buildLogisticaMenuForUser,
-  getLabelForPath,
 } from '../config/navigationMenu';
 import PermissionGuard from './PermissionGuard';
 import StatusCard from './StatusCard';
@@ -62,7 +61,7 @@ function LayoutInner() {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
-  const { hasPermission, isMaster, grupo, nome, login, mustChangePassword, refreshUser, telaInicialPath, logoutInatividadeMinutos } = useAuth();
+  const { hasPermission, isMaster, grupo, nome, login, mustChangePassword, refreshUser, logoutInatividadeMinutos } = useAuth();
   const { modoFoco, sairModoFoco } = useLayoutFoco();
   const { open: sidebarOpen, pinned: sidebarPinned, toggle: toggleSidebar, expand: expandSidebar, collapse: collapseSidebar } = useSidebarOpen();
 
@@ -156,81 +155,6 @@ function LayoutInner() {
 
   const [syncPanelOpen, setSyncPanelOpen] = useState(false);
   const syncPanelRef = useRef<HTMLDivElement>(null);
-
-  const telaInicialPathRef = useRef(telaInicialPath);
-  useEffect(() => { telaInicialPathRef.current = telaInicialPath; }, [telaInicialPath]);
-
-  const [abas, setAbas] = useState<{ id: string; path: string; label: string }[]>(() => {
-    const path = location.pathname || '/';
-    if (path === '/') return [];
-    return [{ id: path, path, label: getLabelForPath(path) }];
-  });
-
-  useEffect(() => {
-    const path = location.pathname || '/';
-    if (path === '/') return;
-    const tabPath = path.startsWith('/mind-maps')
-      ? '/mind-maps'
-      : path.startsWith('/pedidos/programacao-producao/recursos')
-        ? '/pedidos/programacao-producao/recursos'
-        : path.startsWith('/pedidos/regras-data-entrega')
-          ? '/pedidos/regras-data-entrega'
-          : path.startsWith('/pedidos/programacao-producao')
-            ? '/pedidos/programacao-producao'
-            : path;
-    setAbas((prev) => {
-      const exists = prev.some((a) => a.path === tabPath);
-      if (exists) return prev;
-      return [...prev, { id: tabPath, path: tabPath, label: getLabelForPath(tabPath) }];
-    });
-  }, [location.pathname]);
-
-  useEffect(() => {
-    if (!telaInicialPath || telaInicialPath === '/') return;
-    setAbas((prev) => {
-      if (prev.some((a) => a.path === telaInicialPath)) return prev;
-      return [{ id: telaInicialPath, path: telaInicialPath, label: getLabelForPath(telaInicialPath) }, ...prev];
-    });
-  }, [telaInicialPath]);
-
-  const navigateAposFecharRef = useRef<string | null>(null);
-  const dragTabIndexRef = useRef<number | null>(null);
-  const justDraggedRef = useRef(false);
-
-  const reordenarAbas = useCallback((dragIndex: number, dropIndex: number) => {
-    if (dragIndex === dropIndex) return;
-    setAbas((prev) => {
-      const next = [...prev];
-      const [removed] = next.splice(dragIndex, 1);
-      next.splice(dropIndex, 0, removed);
-      return next;
-    });
-  }, []);
-
-  const fecharAba = useCallback((pathToClose: string) => {
-    const pinnedPath = telaInicialPathRef.current;
-    if (pinnedPath && pathToClose === pinnedPath) return;
-
-    const pathname = location.pathname;
-    setAbas((prev) => {
-      const idx = prev.findIndex((a) => a.path === pathToClose);
-      if (idx < 0) return prev;
-      const next = prev.filter((a) => a.path !== pathToClose);
-      if (next.length === 0) return prev;
-      if (pathname === pathToClose) {
-        const target = next[Math.min(idx, next.length - 1)];
-        navigateAposFecharRef.current = target?.path ?? pinnedPath ?? '/';
-      }
-      return next;
-    });
-    setTimeout(() => {
-      const p = navigateAposFecharRef.current;
-      if (p) {
-        navigateAposFecharRef.current = null;
-        navigate(p);
-      }
-    }, 0);
-  }, [location.pathname, navigate]);
 
   useEffect(() => {
     if (!syncPanelOpen) return;
@@ -383,94 +307,13 @@ function LayoutInner() {
         </header>
 
         <main className={`flex min-h-0 w-full flex-1 flex-col px-4 ${modoFoco ? 'py-2' : 'py-6'}`}>
-          {abas.length > 0 && !modoFoco && (
-            <div className="scrollbar-app mb-4 flex shrink-0 items-center gap-1 overflow-x-auto border-b border-soaco-gray/30 dark:border-soaco-gray/40">
-              {abas.map((aba, index) => {
-                const ativa = location.pathname === aba.path;
-                const isPinned = !!telaInicialPath && aba.path === telaInicialPath;
-                return (
-                  <div
-                    key={aba.id}
-                    draggable={!isPinned}
-                    onDragStart={(e) => {
-                      if (isPinned) { e.preventDefault(); return; }
-                      const target = e.target as HTMLElement;
-                      if (target.closest('button[aria-label="Fechar aba"]')) {
-                        e.preventDefault();
-                        return;
-                      }
-                      dragTabIndexRef.current = index;
-                      e.dataTransfer.setData('text/plain', String(index));
-                      e.dataTransfer.effectAllowed = 'move';
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'move';
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const dragIndex = dragTabIndexRef.current;
-                      if (dragIndex == null) return;
-                      reordenarAbas(dragIndex, index);
-                      dragTabIndexRef.current = null;
-                      justDraggedRef.current = true;
-                      setTimeout(() => { justDraggedRef.current = false; }, 100);
-                    }}
-                    onDragEnd={() => {
-                      dragTabIndexRef.current = null;
-                    }}
-                    className={`mb-[-1px] flex shrink-0 cursor-grab items-center gap-1 rounded-t-lg border-b-2 px-4 py-2.5 text-sm font-medium transition active:cursor-grabbing ${
-                      ativa
-                        ? 'border-accent-500 bg-white text-primary-600 dark:bg-soaco-graphite dark:text-accent-400'
-                        : 'border-transparent text-soaco-gray hover:bg-slate-100 hover:text-soaco-navy dark:text-white/60 dark:hover:bg-soaco-navy/30 dark:hover:text-white'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (justDraggedRef.current) return;
-                        navigate(aba.path);
-                      }}
-                      className="inline-flex max-w-[200px] items-center gap-1 truncate text-left"
-                      title={isPinned ? `${aba.label} (aba fixa)` : aba.label}
-                      aria-label={aba.label}
-                    >
-                      {isPinned && (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="shrink-0 opacity-60">
-                          <path d="M16 12V4h1a1 1 0 0 0 0-2H7a1 1 0 0 0 0 2h1v8l-2 2v2h5v6h2v-6h5v-2l-2-2z"/>
-                        </svg>
-                      )}
-                      {aba.label}
-                    </button>
-                    {!isPinned && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          fecharAba(aba.path);
-                        }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        className="shrink-0 rounded p-0.5 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600"
-                        aria-label="Fechar aba"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
           <div
             className={`scrollbar-app flex min-h-0 flex-1 flex-col overflow-x-hidden ${
               modoFoco ? 'overflow-y-hidden' : 'overflow-y-auto'
             }`}
           >
             <PermissionGuard>
-              <AbaKeepAliveOutlet abaPaths={abas.map((a) => a.path)} />
+              <PageTransitionOutlet />
             </PermissionGuard>
           </div>
         </main>
