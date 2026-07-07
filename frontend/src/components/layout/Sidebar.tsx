@@ -4,7 +4,7 @@ import { PERMISSOES, type CodigoPermissao } from '../../config/permissoes';
 import {
   PCP_MENU,
   COMUNICACAO_INTERNA_SUBMENUS,
-  COMPRAS_SUBMENUS,
+  COMPRAS_MENU,
   ENGENHARIA_SUBMENUS,
   GESTAO_USUARIOS_SUBMENUS,
   QUALIDADE_MENU,
@@ -497,15 +497,16 @@ export default function Sidebar({
             accordionOpen={accordionOpen}
             toggleAccordion={toggleAccordion}
           >
-            {COMPRAS_SUBMENUS.map((item) => (
-              <SidebarNavLink
-                key={item.to}
-                to={item.to}
-                label={item.label}
-                sidebarOpen={open}
-                onNavigate={onNavigate}
-              />
-            ))}
+            <NavMenuTree
+              entries={COMPRAS_MENU}
+              pathname={pathname}
+              sidebarOpen={open}
+              accordionOpen={accordionOpen}
+              toggleAccordion={toggleAccordion}
+              onNavigate={onNavigate}
+              hasPermission={hasPermission}
+              prefix="compras"
+            />
           </SidebarSection>
         )}
 

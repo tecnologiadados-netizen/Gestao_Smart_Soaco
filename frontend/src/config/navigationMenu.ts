@@ -72,6 +72,19 @@ export const COMPRAS_SUBMENUS: { to: string; label: string }[] = [
   { to: '/compras/pre-compra', label: 'Pré Compra' },
 ];
 
+export const COMPRAS_MENU: NavMenuEntry[] = [
+  { kind: 'link', to: '/compras/dashboard', label: 'Dashboard' },
+  { kind: 'link', to: '/compras/coletas-precos', label: 'Coletas de Preços' },
+  { kind: 'link', to: '/compras/pre-compra', label: 'Pré Compra' },
+  {
+    kind: 'submenu',
+    label: 'Rotina',
+    children: [
+      { kind: 'link', to: '/compras/rotina/pendencias', label: 'Pendências compras' },
+    ],
+  },
+];
+
 export const ENGENHARIA_SUBMENUS: { to: string; label: string }[] = [
   { to: '/engenharia/precificacao', label: 'Precificação' },
 ];
@@ -135,6 +148,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/compras/dashboard': 'Dashboard Compras',
   '/compras/coletas-precos': 'Coletas de Preços',
   '/compras/pre-compra': 'Pré Compra',
+  '/compras/rotina/pendencias': 'Pendências compras',
   '/engenharia': 'Engenharia',
   '/engenharia/precificacao': 'Precificação',
   '/qualidade': 'Qualidade',

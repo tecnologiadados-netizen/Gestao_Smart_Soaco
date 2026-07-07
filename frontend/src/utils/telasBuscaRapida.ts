@@ -2,7 +2,7 @@ import { PERMISSOES, type CodigoPermissao } from '../config/permissoes';
 import {
   PCP_MENU,
   COMUNICACAO_INTERNA_SUBMENUS,
-  COMPRAS_SUBMENUS,
+  COMPRAS_MENU,
   ENGENHARIA_SUBMENUS,
   QUALIDADE_MENU,
   GESTAO_USUARIOS_SUBMENUS,
@@ -109,9 +109,7 @@ export function buildTelasBuscaRapidaForUser(ctx: BuildTelasBuscaRapidaCtx): Tel
   }
 
   if (hasPermission(PERMISSOES.COMPRAS_VER)) {
-    for (const item of COMPRAS_SUBMENUS) {
-      telas.push({ ...item, contexto: 'Compras' });
-    }
+    telas.push(...flattenNavMenu(COMPRAS_MENU, hasPermission, 'Compras'));
   }
 
   if (hasPermission(PERMISSOES.PRECIFICACAO_VER)) {

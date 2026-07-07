@@ -38,8 +38,19 @@ const SQL_JOIN_ATTR_COLETA_PRODUTO = `
       Where apv.idAtributo = ${NOMUS_ATRIBUTO_COLETA}
     ) attr_coleta On attr_coleta.idProduto = sep.idProduto`;
 export const NOMUS_ATRIBUTO_DIA_COMPRA = 651;
+/** Comprador responsável pelo produto (pendências compras). */
+export const NOMUS_ATRIBUTO_COMPRADOR = 674;
 export const NOMUS_ATRIBUTO_COMPRA_RECORRENTE = 675;
 export const NOMUS_ATRIBUTO_ITEM_CRITICO = 713;
+
+/** Join atributo comprador (674) no alias `p`. */
+export const SQL_JOIN_ATTR_COMPRADOR_PRODUTO = `
+Left Join (
+  Select apv.idProduto, alo.opcao
+  From atributoprodutovalor apv
+  Left Join atributolistaopcao alo On alo.id = apv.idListaOpcao
+  Where apv.idAtributo = ${NOMUS_ATRIBUTO_COMPRADOR}
+) attr_comprador On attr_comprador.idProduto = p.id`;
 
 /** Restringe pedidos de empenho à empresa Só Aço Industrial. */
 export const SQL_FILTRO_PEDIDO_EMPRESA_PCP = ` And pd.idEmpresa = ${PCP_ID_EMPRESA_SO_ACO}`;

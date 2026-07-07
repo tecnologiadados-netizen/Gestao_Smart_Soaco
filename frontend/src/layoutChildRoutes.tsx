@@ -16,6 +16,7 @@ import ComprasPage from './pages/ComprasPage';
 import ColetasPrecosPage from './pages/compras/ColetasPrecosPage';
 import ComprasDashboardPage from './pages/compras/ComprasDashboardPage';
 import PreCompraPage from './pages/compras/PreCompraPage';
+import PendenciasComprasPage from './pages/compras/PendenciasComprasPage';
 import PrecificacaoPage from './pages/PrecificacaoPage';
 import ResumoFinanceiroPage from './pages/financeiro/ResumoFinanceiroPage';
 import DfcPage from './pages/financeiro/DfcPage';
@@ -99,6 +100,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'compras/dashboard', element: <ComprasDashboardPage /> },
   { path: 'compras/coletas-precos', element: <ColetasPrecosPage /> },
   { path: 'compras/pre-compra', element: <ErrorBoundary><PreCompraPage /></ErrorBoundary> },
+  { path: 'compras/rotina/pendencias', element: <ErrorBoundary><PendenciasComprasPage /></ErrorBoundary> },
   { path: 'precificacao', element: <Navigate to="/engenharia/precificacao" replace /> },
   { path: 'engenharia/precificacao', element: <PrecificacaoPage /> },
   ...qualidadeRoutes,

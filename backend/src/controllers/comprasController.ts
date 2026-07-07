@@ -27,6 +27,10 @@ import {
 } from '../data/ressupNaoAlmoxRepository.js';
 import { consultarSolicitacaoSaldoPorIds } from '../data/consultaEstoqueRepository.js';
 import {
+  listarOpcoesCompradorPendencias,
+  consultarPendenciasCompras,
+} from '../data/pendenciasComprasRepository.js';
+import {
   loadRessupNaoAlmoxCatalogo,
   saveCatalogoDescricaoSimplificadaNaoAlmox,
   saveCatalogoFundivelPar,
@@ -3154,4 +3158,23 @@ export async function postPrecosCotacao(req: Request, res: Response): Promise<vo
     console.error('[comprasController] postPrecosCotacao (outer):', msg, stack ?? '');
     if (!res.headersSent) res.status(503).json({ error: msg });
   }
+}
+
+export async function getPendenciasComprasOpcoesComprador(_req: Request, res: Response): Promise<void> {
+  const { data, erro } = await listarOpcoesCompradorPendencias();
+  if (erro) {
+    res.status(503).json({ error: erro });
+    return;
+  }
+  res.json({ compradores: data });
+}
+
+export async function getPendenciasComprasConsultar(req: Request, res: Response): Promise<void> {
+  const comprador = String(req.query.comprador ?? '').trim();
+  const { data, erro } = await consultarPendenciasCompras(comprador);
+  if (erro) {
+    res.status(comprador ? 503 : 400).json({ error: erro });
+    return;
+  }
+  res.json({ linhas: data, total: data.length });
 }
