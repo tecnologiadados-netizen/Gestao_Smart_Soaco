@@ -3,21 +3,55 @@ import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/requirePermission.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import {
+  getQualidadeBootstrapHandler,
   getQualidadeClientes,
   getQualidadeFornecedores,
   getQualidadeProdutos,
+  getQualidadeResponsaveisHandler,
   postQualidadeRccPdf,
+  postQualidadeRegistrosImportHandler,
   postQualidadeRncPdf,
-  postQualidadeEmbedSession,
+  putQualidadeAvaliacoesHandler,
+  putQualidadeCalibrationsHandler,
+  putQualidadeConfigHandler,
+  putQualidadeDocumentsHandler,
+  putQualidadeOpcoesListaHandler,
+  putQualidadeRegistrosHandler,
 } from '../controllers/qualidadeController.js';
 
 const router = Router();
 router.use(requireAuth);
 router.use(requirePermission(PERMISSOES.QUALIDADE_VER));
 
-router.post('/embed-session', (req, res, next) => {
-  postQualidadeEmbedSession(req, res).catch(next);
+router.get('/bootstrap', (req, res, next) => {
+  getQualidadeBootstrapHandler(req, res).catch(next);
 });
+router.get('/responsaveis', (req, res, next) => {
+  getQualidadeResponsaveisHandler(req, res).catch(next);
+});
+
+router.put('/sync/config', (req, res, next) => {
+  putQualidadeConfigHandler(req, res).catch(next);
+});
+router.put('/sync/registros', (req, res, next) => {
+  putQualidadeRegistrosHandler(req, res).catch(next);
+});
+router.put('/sync/documentos', (req, res, next) => {
+  putQualidadeDocumentsHandler(req, res).catch(next);
+});
+router.put('/sync/calibracoes', (req, res, next) => {
+  putQualidadeCalibrationsHandler(req, res).catch(next);
+});
+router.put('/sync/avaliacoes', (req, res, next) => {
+  putQualidadeAvaliacoesHandler(req, res).catch(next);
+});
+router.put('/sync/opcoes-lista', (req, res, next) => {
+  putQualidadeOpcoesListaHandler(req, res).catch(next);
+});
+router.post('/registros/import', (req, res, next) => {
+  postQualidadeRegistrosImportHandler(req, res).catch(next);
+});
+
 router.get('/clientes', (req, res, next) => {
   getQualidadeClientes(req, res).catch(next);
 });

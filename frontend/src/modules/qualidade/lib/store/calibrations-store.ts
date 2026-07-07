@@ -1,23 +1,16 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import type {
   CalibrationRecord,
   Equipment,
   EquipmentWithDue,
   VerificationRecord,
 } from "@qualidade/types/calibration";
-import {
-  initialCalibrationRecords,
-  initialEquipment,
-  initialVerificationRecords,
-} from "@qualidade/lib/mock-data/equipment";
-import { initialTasks } from "@qualidade/lib/mock-data/tasks";
 import type { Task } from "@qualidade/types/task";
 import {
   calcularDueStatus,
   calcularProximaData,
 } from "@qualidade/lib/utils/dates";
-import { CURRENT_USER_ID } from "@qualidade/lib/mock-data/users";
+import { getQualidadeCurrentUserId } from "@qualidade/lib/current-user";
 import {
   getNextRevision,
   INITIAL_REVISION,
@@ -124,13 +117,11 @@ function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}`;
 }
 
-export const useCalibrationsStore = create<CalibrationsState>()(
-  persist(
-    (set, get) => ({
-      equipment: initialEquipment,
-      calibrationRecords: initialCalibrationRecords,
-      verificationRecords: initialVerificationRecords,
-      tasks: initialTasks.filter((t) => t.referenciaTipo === "equipamento"),
+export const useCalibrationsStore = create<CalibrationsState>()((set, get) => ({
+      equipment: [],
+      calibrationRecords: [],
+      verificationRecords: [],
+      tasks: [],
 
       getEquipmentWithDue: () =>
         get()
@@ -163,7 +154,7 @@ export const useCalibrationsStore = create<CalibrationsState>()(
           id,
           ...input,
           setorId: input.setorId ?? "",
-          responsavelId: input.responsavelId ?? CURRENT_USER_ID,
+          responsavelId: input.responsavelId ?? getQualidadeCurrentUserId(),
           fornecedor: input.fornecedor?.trim() || undefined,
           laudoNome: input.laudoNome?.trim() || undefined,
           laudoDataUrl: input.laudoDataUrl?.trim() || undefined,
@@ -307,7 +298,4 @@ export const useCalibrationsStore = create<CalibrationsState>()(
         get()
           .verificationRecords.filter((r) => r.equipmentId === equipmentId)
           .sort((a, b) => b.data.localeCompare(a.data)),
-    }),
-    { name: "sgq-calibrations", skipHydration: true }
-  )
-);
+}));

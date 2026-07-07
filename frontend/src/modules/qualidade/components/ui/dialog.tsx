@@ -31,7 +31,7 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/15 dark:bg-black/35 supports-backdrop-filter:backdrop-blur-md",
+        "fixed inset-0 isolate z-[100] bg-black/40 dark:bg-black/55 supports-backdrop-filter:backdrop-blur-sm",
         className
       )}
       {...props}
@@ -53,11 +53,11 @@ function DialogContent({
   return (
     <DialogPortal>
       <DialogOverlay />
-      <div className="sgq-dialog-viewport">
+      <div className="qualidade-portal sgq-dialog-viewport">
         <DialogPrimitive.Popup
           data-slot="dialog-content"
           className={cn(
-            "outline-none w-full max-w-lg",
+            "outline-none w-full max-w-lg pointer-events-auto",
             className
           )}
           {...props}

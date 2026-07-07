@@ -7,7 +7,7 @@ import {
   COMPRAS_SUBMENUS,
   ENGENHARIA_SUBMENUS,
   GESTAO_USUARIOS_SUBMENUS,
-  QUALIDADE_SUBMENUS,
+  QUALIDADE_MENU,
   type FinanceiroMenuEntry,
   type NavMenuEntry,
   filterPcpMenuChildren,
@@ -543,15 +543,16 @@ export default function Sidebar({
             accordionOpen={accordionOpen}
             toggleAccordion={toggleAccordion}
           >
-            {QUALIDADE_SUBMENUS.map((item) => (
-              <SidebarNavLink
-                key={item.to}
-                to={item.to}
-                label={item.label}
-                sidebarOpen={open}
-                onNavigate={onNavigate}
-              />
-            ))}
+            <NavMenuTree
+              entries={QUALIDADE_MENU}
+              pathname={pathname}
+              sidebarOpen={open}
+              accordionOpen={accordionOpen}
+              toggleAccordion={toggleAccordion}
+              onNavigate={onNavigate}
+              hasPermission={hasPermission}
+              prefix="qualidade"
+            />
           </SidebarSection>
         )}
 

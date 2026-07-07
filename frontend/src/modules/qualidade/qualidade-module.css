@@ -1,5 +1,6 @@
-/* Variáveis e componentes do módulo Qualidade (escopo local — não afeta o restante do Gestão) */
-.qualidade-module {
+/* Variáveis do módulo Qualidade — também em portais (dialog/select no body) */
+.qualidade-module,
+.qualidade-portal {
   --brand-navy: #041e42;
   --brand-blue: #2b36c1;
   --brand-yellow: #fbb03b;
@@ -37,7 +38,8 @@
   color: var(--foreground);
 }
 
-.dark .qualidade-module {
+.dark .qualidade-module,
+.dark .qualidade-portal {
   --brand-navy: #e8eaf8;
   --brand-blue: #3b4cca;
   --brand-gray: #9ca3af;
@@ -65,12 +67,31 @@
 }
 
 .qualidade-module .brand-fieldset {
+  position: relative;
+  overflow: visible;
   border-radius: 0.5rem;
   border: 1px solid var(--brand-blue-muted);
   border-left-width: 4px;
   border-left-color: var(--brand-blue);
-  padding: 1rem;
+  padding: 1.25rem 1rem 1rem;
   background: color-mix(in oklch, var(--brand-blue-light) 65%, var(--card));
+}
+
+.qualidade-module .brand-fieldset > legend {
+  float: left;
+  width: auto;
+  padding: 0 0.35rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--foreground);
+}
+
+.qualidade-module .brand-fieldset::after {
+  content: "";
+  display: table;
+  clear: both;
 }
 
 .qualidade-module .sgq-form-footer {
@@ -174,15 +195,31 @@
   }
 }
 
-.qualidade-module .sgq-dialog-viewport {
+.qualidade-module .sgq-dialog-viewport,
+.qualidade-portal.sgq-dialog-viewport {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  padding: max(1rem, env(safe-area-inset-top, 0px))
+    max(1rem, env(safe-area-inset-right, 0px))
+    max(1rem, env(safe-area-inset-bottom, 0px))
+    max(1rem, env(safe-area-inset-left, 0px));
   pointer-events: none;
+}
+
+.qualidade-portal [data-slot="dialog-content"] {
+  position: relative;
+  z-index: 1;
+  max-height: min(92vh, 100dvh);
+  margin: 0;
+  pointer-events: auto;
+}
+
+.qualidade-portal [data-slot="dialog-overlay"] {
+  z-index: 100;
 }
 
 .qualidade-module .sgq-view-exit {
@@ -213,4 +250,19 @@
 .qualidade-module .sgq-sheet-preview th {
   border: 1px solid #c8ced9;
   padding: 6px 8px;
+}
+
+/* Layout das páginas — espaço para o botão flutuante "Conexão API / ERP" do shell principal */
+.qualidade-module .sgq-page {
+  width: 100%;
+  max-width: 80rem;
+  padding-bottom: 5.5rem;
+}
+
+.qualidade-module .sgq-subnav {
+  flex-shrink: 0;
+}
+
+.qualidade-module .sgq-shell {
+  min-height: 0;
 }

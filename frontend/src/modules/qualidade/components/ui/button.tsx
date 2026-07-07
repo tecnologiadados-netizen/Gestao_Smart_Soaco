@@ -76,6 +76,7 @@ function Button({
   loading = false,
   style,
   children,
+  ref,
   onPointerDown,
   onPointerUp,
   onPointerLeave,
@@ -84,7 +85,10 @@ function Button({
   onKeyUp,
   ...props
 }: ButtonPrimitive.Props &
-  VariantProps<typeof buttonVariants> & { loading?: boolean }) {
+  VariantProps<typeof buttonVariants> & {
+    loading?: boolean
+    ref?: React.Ref<HTMLButtonElement>
+  }) {
   const [pressed, setPressed] = React.useState(false)
   const pressStartedAtRef = React.useRef(0)
   const releaseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
@@ -123,6 +127,7 @@ function Button({
 
   return (
     <ButtonPrimitive
+      ref={ref}
       data-slot="button"
       data-variant={variant ?? "default"}
       data-pressed={showPressFeedback ? "true" : undefined}

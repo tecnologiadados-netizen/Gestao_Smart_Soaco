@@ -22,17 +22,15 @@ export function RegistroTipoSeletor({
 }: RegistroTipoSeletorProps) {
   return (
     <Select
-      value={value ?? ""}
+      value={value ?? undefined}
       onValueChange={(v) => {
         if (v) onChange(v as ModuloRegistroTipo);
       }}
     >
-      <SelectTrigger className="w-full max-w-xl">
-        <SelectValue placeholder="Selecione o tipo de registro">
-          {value ? moduloRegistroTipoLabels[value] : null}
-        </SelectValue>
+      <SelectTrigger className="h-9 w-full max-w-xl bg-background">
+        <SelectValue placeholder="Selecione o tipo de registro" />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent alignItemWithTrigger={false} className="max-h-60">
         {MODULO_REGISTRO_TIPOS.map((tipo) => (
           <SelectItem key={tipo} value={tipo}>
             {moduloRegistroTipoLabels[tipo]}

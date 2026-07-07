@@ -76,11 +76,17 @@ export const ENGENHARIA_SUBMENUS: { to: string; label: string }[] = [
   { to: '/engenharia/precificacao', label: 'Precificação' },
 ];
 
-export const QUALIDADE_SUBMENUS: { to: string; label: string }[] = [
-  { to: '/qualidade/documentos', label: 'Documentos' },
-  { to: '/qualidade/calibracoes', label: 'Calibrações' },
-  { to: '/qualidade/registros', label: 'Registros' },
-  { to: '/qualidade/configuracoes', label: 'Configurações' },
+export const QUALIDADE_MENU: NavMenuEntry[] = [
+  {
+    kind: 'submenu',
+    label: 'SGQ',
+    children: [
+      { kind: 'link', to: '/qualidade/documentos', label: 'Documentos' },
+      { kind: 'link', to: '/qualidade/calibracoes', label: 'Calibrações' },
+      { kind: 'link', to: '/qualidade/registros', label: 'Registros' },
+      { kind: 'link', to: '/qualidade/configuracoes', label: 'Configurações' },
+    ],
+  },
 ];
 
 export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
@@ -132,10 +138,10 @@ export const PATH_LABELS: Record<string, string> = {
   '/engenharia': 'Engenharia',
   '/engenharia/precificacao': 'Precificação',
   '/qualidade': 'Qualidade',
-  '/qualidade/documentos': 'Qualidade — Documentos',
-  '/qualidade/calibracoes': 'Qualidade — Calibrações',
-  '/qualidade/registros': 'Qualidade — Registros',
-  '/qualidade/configuracoes': 'Qualidade — Configurações',
+  '/qualidade/documentos': 'Qualidade — SGQ — Documentos',
+  '/qualidade/calibracoes': 'Qualidade — SGQ — Calibrações',
+  '/qualidade/registros': 'Qualidade — SGQ — Registros',
+  '/qualidade/configuracoes': 'Qualidade — SGQ — Configurações',
   '/financeiro': 'Financeiro',
   '/financeiro/resumo': 'Resumo Financeiro',
   '/financeiro/dfc': 'DFC',

@@ -10,8 +10,8 @@ export interface User {
   id: string;
   nome: string;
   email: string;
-  role: UserRole;
-  setorId: string;
+  role?: UserRole;
+  setorId?: string;
   ativo: boolean;
 }
 

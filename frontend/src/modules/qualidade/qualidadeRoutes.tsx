@@ -18,7 +18,6 @@ import { RegistrosConsultaPage } from '@qualidade/pages/RegistrosConsultaPage';
 import { AvaliacaoFornecedorRedirectPage } from '@qualidade/pages/AvaliacaoFornecedorPage';
 import { AvaliacaoFornecedorHistoricoRedirectPage } from '@qualidade/pages/AvaliacaoFornecedorHistoricoPage';
 import { ConfiguracoesPage } from '@qualidade/pages/ConfiguracoesPage';
-import { UsuariosPage } from '@qualidade/pages/ConfiguracoesUsuariosPage';
 import { SetoresPage } from '@qualidade/pages/ConfiguracoesSetoresPage';
 import { TiposDocumentoPage } from '@qualidade/pages/ConfiguracoesTiposDocumentoPage';
 import { VisualizarDocumentoPage } from '@qualidade/pages/DocumentosVisualizarPage';
@@ -48,7 +47,6 @@ export const qualidadeRoutes: RouteObject[] = [
       { path: 'avaliacao-fornecedor', element: wrap(<AvaliacaoFornecedorRedirectPage />) },
       { path: 'avaliacao-fornecedor/historico', element: wrap(<AvaliacaoFornecedorHistoricoRedirectPage />) },
       { path: 'configuracoes', element: wrap(<ConfiguracoesPage />) },
-      { path: 'configuracoes/usuarios', element: wrap(<UsuariosPage />) },
       { path: 'configuracoes/setores', element: wrap(<SetoresPage />) },
       { path: 'configuracoes/tipos-documento', element: wrap(<TiposDocumentoPage />) },
     ],

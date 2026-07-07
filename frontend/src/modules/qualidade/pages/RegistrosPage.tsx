@@ -163,8 +163,8 @@ function RegistrosPageContent() {
         </Link>
       </div>
 
-      <div className="sgq-table-surface space-y-6 rounded-xl border border-border bg-card p-6 shadow-sm ring-1 ring-foreground/6">
-        <fieldset className="brand-fieldset space-y-4">
+      <div className="sgq-table-surface space-y-6 overflow-visible rounded-xl border border-border bg-card p-6 shadow-sm ring-1 ring-foreground/6">
+        <fieldset className="brand-fieldset space-y-3">
           <legend>Tipo de registro</legend>
           <RegistroTipoSeletor
             value={tipoSelecionado}

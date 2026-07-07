@@ -1,38 +1,30 @@
-import { useEffect, useState } from "react";
-import { useAvaliacaoFornecedorStore } from "@qualidade/lib/store/avaliacao-fornecedor-store";
-import { useRegistrosStore } from "@qualidade/lib/store/registros-store";
-import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
-import { useConfigStore } from "@qualidade/lib/store/config-store";
-import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
-
-async function rehydrateAllStores() {
-  await Promise.all([
-    useConfigStore.persist.rehydrate(),
-    useDocumentsStore.persist.rehydrate(),
-    useCalibrationsStore.persist.rehydrate(),
-    useAvaliacaoFornecedorStore.persist.rehydrate(),
-    useRegistrosStore.persist.rehydrate(),
-  ]);
-}
+import { useEffect, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  hydrateQualidadeFromServer,
+  startQualidadeAutoSync,
+} from '@qualidade/lib/qualidadePersistence';
 
 export function StoreHydration({ children }: { children: React.ReactNode }) {
+  const { login, profileLoaded } = useAuth();
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    if (!profileLoaded || !login) return;
+
+    startQualidadeAutoSync();
+
     let cancelled = false;
     const fallback = window.setTimeout(() => {
       if (!cancelled) setHydrated(true);
-    }, 5000);
+    }, 8000);
 
-    void rehydrateAllStores()
+    void hydrateQualidadeFromServer(login)
       .then(() => {
-        if (cancelled) return;
-        useDocumentsStore.getState().syncValidadeAlertas();
-        useAvaliacaoFornecedorStore.getState().mesclarHistoricoErp();
-        useRegistrosStore.getState().mesclarHistoricoNomus();
-        setHydrated(true);
+        if (!cancelled) setHydrated(true);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('[qualidade] falha ao carregar dados:', err);
         if (!cancelled) setHydrated(true);
       })
       .finally(() => {
@@ -43,12 +35,12 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
       cancelled = true;
       window.clearTimeout(fallback);
     };
-  }, []);
+  }, [login, profileLoaded]);
 
   if (!hydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30">
-        <p className="text-sm text-muted-foreground">Carregando...</p>
+        <p className="text-sm text-muted-foreground">Carregando módulo Qualidade...</p>
       </div>
     );
   }

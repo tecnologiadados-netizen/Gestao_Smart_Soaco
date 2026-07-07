@@ -2,25 +2,13 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMemo } from 'react';
 import {
   BarChart3,
-  ChevronDown,
   ClipboardList,
   FileText,
-  Gauge,
   Home,
-  NotebookPen,
   Search,
-  Settings,
-  User,
   Wrench,
 } from 'lucide-react';
 import { cn } from '@qualidade/lib/utils';
-import { Button } from '@qualidade/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@qualidade/components/ui/dropdown-menu';
 import { useConfigStore } from '@qualidade/lib/store/config-store';
 import { useDocumentsStore } from '@qualidade/lib/store/documents-store';
 import { useCalibrationsStore } from '@qualidade/lib/store/calibrations-store';
@@ -28,13 +16,6 @@ import { NovoDocumentoNav } from '@qualidade/components/documentos/novo-document
 import { ValidadeNotificacoesBell } from '@qualidade/components/documentos/validade-notificacoes-bell';
 
 type Module = 'documentos' | 'calibracoes' | 'registros' | 'configuracoes';
-
-const modules: { id: Module; label: string; href: string; icon: typeof FileText }[] = [
-  { id: 'documentos', label: 'Documentos', href: '/qualidade/documentos', icon: FileText },
-  { id: 'calibracoes', label: 'Calibrações', href: '/qualidade/calibracoes', icon: Gauge },
-  { id: 'registros', label: 'Registros', href: '/qualidade/registros', icon: NotebookPen },
-  { id: 'configuracoes', label: 'Configurações', href: '/qualidade/configuracoes', icon: Settings },
-];
 
 function getActiveModule(pathname: string): Module {
   if (pathname.startsWith('/qualidade/registros') || pathname.startsWith('/qualidade/avaliacao-fornecedor')) {
@@ -73,7 +54,6 @@ function getNavItems(module: Module): NavItem[] {
     case 'configuracoes':
       return [
         { label: 'Início', href: '/qualidade/configuracoes', icon: Home },
-        { label: 'Usuários', href: '/qualidade/configuracoes/usuarios', icon: User },
         { label: 'Setores', href: '/qualidade/configuracoes/setores', icon: Wrench },
         { label: 'Categorias', href: '/qualidade/configuracoes/tipos-documento', icon: FileText },
       ];
@@ -84,7 +64,6 @@ export function QualidadeSubnav() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const activeModule = getActiveModule(pathname);
-  const currentModule = modules.find((m) => m.id === activeModule)!;
   const navItems = getNavItems(activeModule);
 
   const currentUserId = useConfigStore((s) => s.currentUserId);
@@ -106,26 +85,8 @@ export function QualidadeSubnav() {
         : 0;
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 shadow-sm">
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={<Button variant="outline" className="gap-2 font-medium" />}
-        >
-          <currentModule.icon className="size-4" />
-          {currentModule.label}
-          <ChevronDown className="size-4 opacity-60" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          {modules.map((mod) => (
-            <DropdownMenuItem key={mod.id} onClick={() => navigate(mod.href)}>
-              <mod.icon className="size-4" />
-              {mod.label}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <nav className="flex flex-wrap items-center gap-1">
+    <div className="sgq-subnav mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm">
+      <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
         {navItems.map((item) => {
           const isActive =
             pathname === item.href ||
@@ -135,8 +96,10 @@ export function QualidadeSubnav() {
               key={item.href}
               to={item.href}
               className={cn(
-                'flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                isActive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                'inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors',
+                isActive
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
               )}
             >
               <item.icon className="size-4" />
@@ -153,7 +116,7 @@ export function QualidadeSubnav() {
       </nav>
 
       {activeModule === 'documentos' ? (
-        <div className="ml-auto">
+        <div className="ml-auto shrink-0 pl-1">
           <ValidadeNotificacoesBell
             variant="default"
             onVerDocumento={(id) => navigate(`/qualidade/documentos/${id}`)}

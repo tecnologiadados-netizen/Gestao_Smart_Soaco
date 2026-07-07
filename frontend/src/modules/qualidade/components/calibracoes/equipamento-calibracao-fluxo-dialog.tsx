@@ -18,7 +18,7 @@ import {
 } from "@qualidade/components/calibracoes/calibracao-versao-arquivos";
 import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
-import { CURRENT_USER_ID } from "@qualidade/lib/mock-data/users";
+import { getQualidadeCurrentUserId } from "@qualidade/lib/current-user";
 import {
   calcularDueStatus,
   calcularProximaData,
@@ -178,7 +178,7 @@ export function EquipamentoCalibracaoFluxoDialog({
     registerCalibration(equipmentId, {
       data: new Date(data).toISOString(),
       proximaCalibracao: new Date(proximaCalibracaoData).toISOString(),
-      responsavelId: CURRENT_USER_ID,
+      responsavelId: getQualidadeCurrentUserId(),
       laudoNome: laudoNome.trim(),
       laudoDataUrl: laudoDataUrl.trim(),
       anexos: anexosPreenchidos(anexos),

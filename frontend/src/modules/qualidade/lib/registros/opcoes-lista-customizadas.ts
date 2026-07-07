@@ -71,6 +71,9 @@ export function adicionarOpcaoCustomizada(
 
   if (typeof window !== "undefined") {
     localStorage.setItem(storageKey, JSON.stringify(proximas));
+    void import("@qualidade/lib/qualidadePersistence").then(({ scheduleOpcoesListaSync }) =>
+      scheduleOpcoesListaSync()
+    );
   }
 
   return proximas;

@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import type {
   Document,
   DocumentRevalidacao,
@@ -14,12 +13,7 @@ import type {
   DocumentOrigem,
 } from "@qualidade/types/document";
 import type { Task } from "@qualidade/types/task";
-import {
-  initialDocuments,
-  initialDocumentVersions,
-} from "@qualidade/lib/mock-data/documents";
-import { initialTasks } from "@qualidade/lib/mock-data/tasks";
-import { CURRENT_USER_ID } from "@qualidade/lib/mock-data/users";
+import { getQualidadeCurrentUserId } from "@qualidade/lib/current-user";
 import type { WorkflowMovimentacao } from "@qualidade/types/workflow";
 import { generateNextDocumentCode } from "@qualidade/lib/documents/generate-code";
 import {
@@ -340,7 +334,7 @@ function applyRevalidacaoAposRevisao(
     data: now,
     observacoes,
     novaDataValidade,
-    usuarioId: CURRENT_USER_ID,
+    usuarioId: getQualidadeCurrentUserId(),
   };
   const synced = applyValidadeSync(
     documentsUpdated,
@@ -356,12 +350,10 @@ function applyRevalidacaoAposRevisao(
   };
 }
 
-export const useDocumentsStore = create<DocumentsState>()(
-  persist(
-    (set, get) => ({
-      documents: initialDocuments,
-      versions: initialDocumentVersions,
-      tasks: initialTasks.filter((t) => t.referenciaTipo === "documento"),
+export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
+      documents: [],
+      versions: [],
+      tasks: [],
       validadeAlertas: [],
       revalidacoes: [],
 
@@ -729,7 +721,7 @@ export const useDocumentsStore = create<DocumentsState>()(
           id: generateId("mov"),
           etapa: "consenso",
           acao: "aprovacao",
-          usuarioId: CURRENT_USER_ID,
+          usuarioId: getQualidadeCurrentUserId(),
           data: now,
         };
 
@@ -854,7 +846,7 @@ export const useDocumentsStore = create<DocumentsState>()(
           etapa: "consenso",
           acao: "reprovacao",
           motivo: motivoTrim,
-          usuarioId: CURRENT_USER_ID,
+          usuarioId: getQualidadeCurrentUserId(),
           data: now,
         };
 
@@ -907,7 +899,7 @@ export const useDocumentsStore = create<DocumentsState>()(
           id: generateId("mov"),
           etapa: "aprovacao",
           acao: "aprovacao",
-          usuarioId: CURRENT_USER_ID,
+          usuarioId: getQualidadeCurrentUserId(),
           data: now,
         };
 
@@ -944,7 +936,7 @@ export const useDocumentsStore = create<DocumentsState>()(
                     {
                       ...v,
                       dataAprovacao: now,
-                      aprovadorId: version.aprovadorId ?? CURRENT_USER_ID,
+                      aprovadorId: version.aprovadorId ?? getQualidadeCurrentUserId(),
                       observacoesAprovacao: observacoesAprovacao?.trim(),
                     },
                     movimentacao
@@ -978,7 +970,7 @@ export const useDocumentsStore = create<DocumentsState>()(
           etapa: "aprovacao",
           acao: "reprovacao",
           motivo: motivoTrim,
-          usuarioId: CURRENT_USER_ID,
+          usuarioId: getQualidadeCurrentUserId(),
           data: now,
         };
 
@@ -1197,7 +1189,7 @@ export const useDocumentsStore = create<DocumentsState>()(
           evidenciaNome: input.evidenciaNome,
           evidenciaDataUrl: input.evidenciaDataUrl,
           novaDataValidade: input.novaDataValidade,
-          usuarioId: CURRENT_USER_ID,
+          usuarioId: getQualidadeCurrentUserId(),
         };
 
         set((state) => {
@@ -1240,7 +1232,4 @@ export const useDocumentsStore = create<DocumentsState>()(
         });
         return true;
       },
-    }),
-    { name: "sgq-documents", skipHydration: true }
-  )
-);
+}));

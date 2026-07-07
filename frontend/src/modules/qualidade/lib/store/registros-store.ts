@@ -1,6 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { mesclarHistoricoNomus } from "@qualidade/lib/registros/mesclar-historico";
 import { inferirStatusRcc } from "@qualidade/lib/registros/validacao-rcc";
 import { inferirStatusRnc } from "@qualidade/lib/registros/validacao-rnc";
 import type {
@@ -18,7 +16,6 @@ interface RegistrosState {
   atualizarRegistroRnc: (input: AtualizarRegistroRncInput) => boolean;
   getRegistroById: (id: string) => Registro | undefined;
   getRegistrosPorTipo: (tipo: RegistroTipo) => Registro[];
-  mesclarHistoricoNomus: () => void;
 }
 
 function generateId(): string {
@@ -47,9 +44,7 @@ function montarRccParaSalvar(
   return { ...rcc, codigoDocumento };
 }
 
-export const useRegistrosStore = create<RegistrosState>()(
-  persist(
-    (set, get) => ({
+export const useRegistrosStore = create<RegistrosState>()((set, get) => ({
       registros: [],
 
       criarRegistro: (input) => {
@@ -134,13 +129,4 @@ export const useRegistrosStore = create<RegistrosState>()(
         get()
           .registros.filter((registro) => registro.tipo === tipo)
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-
-      mesclarHistoricoNomus: () => {
-        set((state) => ({
-          registros: mesclarHistoricoNomus(state.registros),
-        }));
-      },
-    }),
-    { name: "sgq-registros", skipHydration: true }
-  )
-);
+}));
