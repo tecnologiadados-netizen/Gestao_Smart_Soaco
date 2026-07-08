@@ -260,8 +260,6 @@ export default function PendenciasComprasPage() {
           agPag: getCellText(row, 'agPag'),
           pedidoCompra: getCellText(row, 'pedidoCompra'),
           estoqueAtual: getCellText(row, 'estoqueAtual'),
-          prioridadeFixa:
-            row.prioridadeFixa != null ? String(row.prioridadeFixa) : '—',
           destaques: row.destaques,
         })),
       });

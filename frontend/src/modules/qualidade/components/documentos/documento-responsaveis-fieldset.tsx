@@ -10,7 +10,6 @@ import {
 import type { User } from "@qualidade/types/user";
 import type { DocumentWorkflowPrazos } from "@qualidade/types/document";
 import { cn } from "@qualidade/lib/utils";
-import { userSelectLabel } from "@qualidade/lib/utils/select-display";
 
 export const DEFAULT_STAGE_DAYS = 7;
 
@@ -112,57 +111,50 @@ export function DocumentoResponsaveisFieldset({
             : "lg:grid-cols-3"
         )}
       >
-        {visibleStages.map((stage) => {
-          const responsavelId = values[stage.responsavelKey];
-          const responsavelNome = userSelectLabel(activeUsers, responsavelId);
-
-          return (
-            <div
-              key={stage.key}
-              className="space-y-3 rounded-lg border border-brand-blue-muted/60 bg-background/80 p-3"
-            >
-              <p className="text-sm font-semibold text-brand-blue">
-                {stage.label}
-              </p>
-              <div className="space-y-2">
-                <Label className="text-sm">Responsável</Label>
-                <Select
-                  value={responsavelId}
-                  onValueChange={(v) =>
-                    v && updateResponsavel(stage.responsavelKey, v)
-                  }
-                >
-                  <SelectTrigger className={selectTriggerClass}>
-                    <SelectValue placeholder="Selecione">
-                      {responsavelNome ?? null}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent className={selectContentClass}>
-                    {activeUsers.map((u) => (
-                      <SelectItem
-                        key={u.id}
-                        value={u.id}
-                        className={selectItemClass}
-                      >
-                        {u.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-sm">Prazo (dias)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={values.prazos[stage.prazoKey]}
-                  onChange={(e) => updatePrazo(stage.prazoKey, e.target.value)}
-                  className="h-10 text-base"
-                />
-              </div>
+        {visibleStages.map((stage) => (
+          <div
+            key={stage.key}
+            className="space-y-3 rounded-lg border border-brand-blue-muted/60 bg-background/80 p-3"
+          >
+            <p className="text-sm font-semibold text-brand-blue">
+              {stage.label}
+            </p>
+            <div className="space-y-2">
+              <Label className="text-sm">Responsável</Label>
+              <Select
+                value={values[stage.responsavelKey] || null}
+                onValueChange={(v) =>
+                  v && updateResponsavel(stage.responsavelKey, v)
+                }
+              >
+                <SelectTrigger className={selectTriggerClass}>
+                  <SelectValue placeholder="Selecione" />
+                </SelectTrigger>
+                <SelectContent className={selectContentClass}>
+                  {activeUsers.map((u) => (
+                    <SelectItem
+                      key={u.id}
+                      value={u.id}
+                      className={selectItemClass}
+                    >
+                      {u.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          );
-        })}
+            <div className="space-y-2">
+              <Label className="text-sm">Prazo (dias)</Label>
+              <Input
+                type="number"
+                min={1}
+                value={values.prazos[stage.prazoKey]}
+                onChange={(e) => updatePrazo(stage.prazoKey, e.target.value)}
+                className="h-10 text-base"
+              />
+            </div>
+          </div>
+        ))}
       </div>
     </fieldset>
   );

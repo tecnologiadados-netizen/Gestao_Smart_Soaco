@@ -73,6 +73,9 @@ export default {
         },
         'brand-navy': 'var(--brand-navy)',
         'brand-blue': 'var(--brand-blue)',
+        'brand-blue-light': 'var(--brand-blue-light)',
+        'brand-blue-muted': 'var(--brand-blue-muted)',
+        'brand-gray': 'var(--brand-gray)',
         'brand-yellow': 'var(--brand-yellow)',
       },
       borderRadius: {

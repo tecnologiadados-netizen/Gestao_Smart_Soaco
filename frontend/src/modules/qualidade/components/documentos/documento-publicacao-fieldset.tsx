@@ -13,7 +13,6 @@ import type {
   DocumentValidade,
   ValidadeModo,
 } from "@qualidade/types/document";
-import { validadeModoSelectLabel } from "@qualidade/lib/utils/select-display";
 
 export interface PublicacaoFormValues {
   solicitarRevisaoAposPublicacao: boolean;
@@ -156,9 +155,7 @@ export function DocumentoPublicacaoFieldset({ values, onChange }: Props) {
               onValueChange={(v) => v && handleModoChange(v as ValidadeModo)}
             >
               <SelectTrigger className="h-10 max-w-sm text-base">
-                <SelectValue placeholder="Selecione a forma de validade">
-                  {validadeModoSelectLabel(values.validadeModo) ?? null}
-                </SelectValue>
+                <SelectValue placeholder="Selecione a forma de validade" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="periodo">Por período (dias)</SelectItem>

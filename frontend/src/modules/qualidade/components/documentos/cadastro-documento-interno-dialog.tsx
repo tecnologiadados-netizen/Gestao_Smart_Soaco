@@ -170,8 +170,6 @@ export function CadastroDocumentoInternoDialog({
     ? (documentoEdicao?.versaoAtual ?? INITIAL_REVISION)
     : INITIAL_REVISION;
 
-  const processoNome = departments.find((d) => d.id === processoId)?.nome;
-
   function handleClose() {
     onOpenChange(false);
     afterUiTransition(resetForm);
@@ -282,13 +280,11 @@ export function CadastroDocumentoInternoDialog({
                       </div>
                     ) : (
                       <Select
-                        value={categoriaId}
+                        value={categoriaId || null}
                         onValueChange={(v) => v && setCategoriaId(v)}
                       >
                         <SelectTrigger className={selectTriggerClass}>
-                          <SelectValue placeholder="Selecione a categoria">
-                            {categoria ? formatTipo(categoria) : null}
-                          </SelectValue>
+                          <SelectValue placeholder="Selecione a categoria" />
                         </SelectTrigger>
                         <SelectContent className={selectContentClass}>
                           {categorias.map((t) => (
@@ -313,7 +309,7 @@ export function CadastroDocumentoInternoDialog({
                   <div className="space-y-2">
                     <Label className="text-base">Setor *</Label>
                     <Select
-                      value={processoId}
+                      value={processoId || null}
                       onValueChange={(v) => {
                         if (v) {
                           setProcessoId(v);
@@ -327,9 +323,7 @@ export function CadastroDocumentoInternoDialog({
                           formError && !processoId && "border-destructive ring-destructive/30"
                         )}
                       >
-                        <SelectValue placeholder="Selecione o setor">
-                          {processoNome ?? null}
-                        </SelectValue>
+                        <SelectValue placeholder="Selecione o setor" />
                       </SelectTrigger>
                       <SelectContent className={selectContentClass}>
                         {departments.map((d) => (
