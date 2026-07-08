@@ -19,6 +19,7 @@ import {
   validarConclusaoPerfiladeiraOps,
 } from '../../utils/programacaoProducaoValidacoes';
 import ConfirmProcessarInconsistenteModal from '../../components/programacao-producao/ConfirmProcessarInconsistenteModal';
+import ModalPdfProgramacaoProducao from '../../components/programacao-producao/ModalPdfProgramacaoProducao';
 import type { LinhaProgramacaoProducao } from '../../components/programacao-producao/types';
 import ProgramacaoProducaoEditor from '../../components/programacao-producao/ProgramacaoProducaoEditor';
 import ProgramacaoProducaoStatusBadge from '../../components/programacao-producao/ProgramacaoProducaoStatusBadge';
@@ -28,6 +29,7 @@ import {
   podeEditarProgramacaoProducao,
   podeVerProgramacaoProducao,
 } from '../../utils/programacaoProducaoPermissoes';
+import type { TipoImpressaoProgramacaoProducao } from '../../utils/programacaoProducaoRoteiros';
 
 type TelaProgramacao = 'lista' | { modo: 'editar' | 'visualizar'; programacaoId?: string };
 
@@ -79,6 +81,8 @@ export default function ProgramacaoProducaoPage() {
     id: string;
     linhas: LinhaProgramacaoProducao[];
   } | null>(null);
+  const [modalPdf, setModalPdf] = useState<ProgramacaoProducaoListItem | null>(null);
+  const [erroModalPdf, setErroModalPdf] = useState<string | null>(null);
   const carregar = useCallback(async () => {
     setLoading(true);
     setErro(null);
@@ -189,30 +193,38 @@ export default function ProgramacaoProducaoPage() {
     }
   }, []);
 
-  const gerarPdfProgramacao = useCallback(async (item: ProgramacaoProducaoListItem) => {
-    setAcaoEmAndamento(item.id);
-    setErro(null);
-    try {
-      const saved = await getProgramacaoProducao(item.id);
-      const parsed = parseDadosProgramacao(saved.dados);
-      const linhasPdf = ordenarLinhasParaPdf(parsed?.linhas ?? []);
-      if (!linhasPdf.length) {
-        throw new Error('Não há linhas com sequência definida para gerar o PDF.');
+  const gerarPdfProgramacao = useCallback(
+    async (item: ProgramacaoProducaoListItem, tipoImpressao: TipoImpressaoProgramacaoProducao) => {
+      setAcaoEmAndamento(item.id);
+      setErroModalPdf(null);
+      setErro(null);
+      try {
+        const saved = await getProgramacaoProducao(item.id);
+        const parsed = parseDadosProgramacao(saved.dados);
+        const linhasPdf = ordenarLinhasParaPdf(parsed?.linhas ?? []);
+        if (!linhasPdf.length) {
+          throw new Error('Não há linhas com sequência definida para gerar o PDF.');
+        }
+        const logoBase64 = await imageUrlToDataUrl('/logo-soaco.png');
+        await downloadProgramacaoProducaoPdf({
+          codigoProgramacao: saved.name || item.name,
+          dataCriacao: item.createdAt,
+          responsavel: responsavelLabel(item),
+          linhas: linhasPdf,
+          tipoImpressao,
+          logoBase64,
+        });
+        setModalPdf(null);
+        setErroModalPdf(null);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Erro ao gerar PDF.';
+        setErroModalPdf(msg);
+      } finally {
+        setAcaoEmAndamento(null);
       }
-      const logoBase64 = await imageUrlToDataUrl('/logo-soaco.png');
-      await downloadProgramacaoProducaoPdf({
-        codigoProgramacao: saved.name || item.name,
-        dataCriacao: item.createdAt,
-        responsavel: responsavelLabel(item),
-        linhas: linhasPdf,
-        logoBase64,
-      });
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Erro ao gerar PDF.');
-    } finally {
-      setAcaoEmAndamento(null);
-    }
-  }, []);
+    },
+    [],
+  );
 
   const abrirNovo = () => setTela({ modo: 'editar' });
   const abrirEditar = (programacaoId: string) => setTela({ modo: 'editar', programacaoId });
@@ -445,7 +457,8 @@ export default function ProgramacaoProducaoPage() {
                             disabled={acaoEmAndamento !== null}
                             onClick={(e) => {
                               e.stopPropagation();
-                              void gerarPdfProgramacao(item);
+                              setErroModalPdf(null);
+                              setModalPdf(item);
                             }}
                             className="px-2 py-1 rounded-lg border border-slate-400 bg-white text-slate-800 font-medium text-xs hover:bg-slate-50 disabled:opacity-50 dark:border-slate-500 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
                             title="Gerar PDF da programação"
@@ -462,6 +475,20 @@ export default function ProgramacaoProducaoPage() {
           </div>
         )}
       </div>
+
+      {modalPdf && (
+        <ModalPdfProgramacaoProducao
+          codigoProgramacao={modalPdf.name}
+          gerando={acaoEmAndamento === modalPdf.id}
+          erro={erroModalPdf}
+          onClose={() => {
+            if (acaoEmAndamento !== null) return;
+            setModalPdf(null);
+            setErroModalPdf(null);
+          }}
+          onConfirm={(tipo) => void gerarPdfProgramacao(modalPdf, tipo)}
+        />
+      )}
 
       {confirmProcessarLista && (
         <ConfirmProcessarInconsistenteModal

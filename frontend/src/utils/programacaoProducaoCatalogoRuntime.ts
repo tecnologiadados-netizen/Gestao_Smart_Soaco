@@ -1,17 +1,21 @@
 import type { ProgramacaoProducaoRecurso } from '../components/programacao-producao/types';
 import type { BobinaAlternativaCatalogEntry } from './programacaoProducaoBobinaAlternativa';
+import type { MedidasPecaCatalogEntry } from '../components/programacao-producao/types';
 
 let runtimeBobinas: Record<string, BobinaAlternativaCatalogEntry> | null = null;
 let runtimeDescricoes: Record<string, string> | null = null;
+let runtimeMedidasPeca: Record<string, MedidasPecaCatalogEntry> | null = null;
 let runtimeRecursos: ProgramacaoProducaoRecurso[] | null = null;
 
 export function aplicarCatalogoProgramacaoProducao(data: {
   bobinas?: Record<string, BobinaAlternativaCatalogEntry>;
   descricoes?: Record<string, string>;
+  medidasPeca?: Record<string, MedidasPecaCatalogEntry>;
   recursos?: ProgramacaoProducaoRecurso[];
 }): void {
   if (data.bobinas) runtimeBobinas = { ...data.bobinas };
   if (data.descricoes) runtimeDescricoes = { ...data.descricoes };
+  if (data.medidasPeca) runtimeMedidasPeca = { ...data.medidasPeca };
   if (data.recursos) runtimeRecursos = [...data.recursos];
 }
 
@@ -29,6 +33,23 @@ export function getCatalogoBobinasRuntime(): Record<string, BobinaAlternativaCat
 
 export function getCatalogoDescricoesRuntime(): Record<string, string> | null {
   return runtimeDescricoes;
+}
+
+export function getCatalogoMedidasPecaRuntime(): Record<string, MedidasPecaCatalogEntry> | null {
+  return runtimeMedidasPeca;
+}
+
+export function patchCatalogoMedidasPecaRuntime(
+  codComponente: string,
+  entry: MedidasPecaCatalogEntry | null
+): void {
+  const key = codComponente.trim().replace(/\s+/g, ' ');
+  if (!runtimeMedidasPeca) runtimeMedidasPeca = {};
+  if (!entry || (entry.med1 == null && entry.med2 == null)) {
+    delete runtimeMedidasPeca[key];
+  } else {
+    runtimeMedidasPeca[key] = entry;
+  }
 }
 
 export function patchCatalogoBobinaRuntime(

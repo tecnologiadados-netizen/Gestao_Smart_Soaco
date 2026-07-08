@@ -910,6 +910,7 @@ export function ProgramacaoProducaoModalHost({
   if (modal.tipo === 'qtde_produzir') {
     return (
       <ModalQtdeProduzir
+        key={`qtde-${modal.idComponente}`}
         linha={modal.linha}
         readOnly={readOnly}
         onClose={onClose}

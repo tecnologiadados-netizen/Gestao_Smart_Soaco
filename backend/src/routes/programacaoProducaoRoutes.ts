@@ -16,6 +16,7 @@ import {
   getOrdensNomusProgramacaoProducao,
   putProgramacaoProducaoCatalogoBobinas,
   putProgramacaoProducaoCatalogoDescricao,
+  putProgramacaoProducaoCatalogoMedidasPeca,
   getProgramacaoProducaoRecursos,
   postProgramacaoProducaoRecurso,
   putProgramacaoProducaoRecurso,
@@ -42,6 +43,7 @@ router.get('/grade', podeVer, getProgramacaoProducaoGrade);
 router.get('/catalogo', podeVer, getProgramacaoProducaoCatalogo);
 router.put('/catalogo/descricao', podeVer, validateCsrf, putProgramacaoProducaoCatalogoDescricao);
 router.put('/catalogo/bobinas', podeVer, validateCsrf, putProgramacaoProducaoCatalogoBobinas);
+router.put('/catalogo/medidas-peca', podeVer, validateCsrf, putProgramacaoProducaoCatalogoMedidasPeca);
 router.get('/recursos', podeVer, getProgramacaoProducaoRecursos);
 router.post('/recursos', podeVer, validateCsrf, postProgramacaoProducaoRecurso);
 router.put('/recursos/:cod', podeVer, validateCsrf, putProgramacaoProducaoRecurso);
