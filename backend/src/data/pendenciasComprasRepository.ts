@@ -107,6 +107,18 @@ coleta_min_necessidade As (
   From sc_abertas sc
   Inner Join produtos_filtrados pf On pf.id = sc.idProduto
   Group By pf.nomeColeta
+),
+coleta_prioridade As (
+  Select
+    cmn.nomeColeta,
+    cmn.minDataNecessidadeColeta,
+    Dense_Rank() Over (
+      Order By
+        Case When cmn.nomeColeta = 'A DEFINIR' Then 0 Else 1 End,
+        cmn.minDataNecessidadeColeta Asc,
+        cmn.nomeColeta Asc
+    ) As prioridadeAutomatica
+  From coleta_min_necessidade cmn
 )
 Select
   pf.id As idProduto,
@@ -128,7 +140,9 @@ Select
   End As estoqueVerificarPcp,
   cot_recente.horasDesdeEmissao,
   pc_flags.pcAtrasado,
-  cmn.minDataNecessidadeColeta
+  cmn.minDataNecessidadeColeta,
+  cp.prioridadeAutomatica,
+  sc_ordem.scIdMin
 From produtos_filtrados pf
 Left Join (
   Select Distinct pe.idProduto
@@ -150,7 +164,14 @@ Left Join (
   Inner Join produtos_filtrados pf2 On pf2.id = sc.idProduto
   Group By sc.idProduto
 ) sc_dates On sc_dates.idProduto = pf.id
+Left Join (
+  Select sc.idProduto, Min(sc.id) As scIdMin
+  From sc_abertas sc
+  Inner Join produtos_filtrados pf4 On pf4.id = sc.idProduto
+  Group By sc.idProduto
+) sc_ordem On sc_ordem.idProduto = pf.id
 Left Join coleta_min_necessidade cmn On cmn.nomeColeta = pf.nomeColeta
+Left Join coleta_prioridade cp On cp.nomeColeta = pf.nomeColeta
 Left Join (
   Select
     p2.id As idProduto,
@@ -301,9 +322,10 @@ Left Join (
 Where Exists (Select 1 From sc_abertas sc Where sc.idProduto = pf.id)
    Or Coalesce(cot_agg.qtde, 0) > 0
 Order By
-  Coalesce(cmn.minDataNecessidadeColeta, '9999-12-31') Asc,
+  Coalesce(cp.prioridadeAutomatica, 9999) Asc,
   pf.nomeColeta Asc,
   Coalesce(sc_dates.dataNecessidadeMin, '9999-12-31') Asc,
+  Coalesce(sc_ordem.scIdMin, 999999999) Asc,
   pf.codigo Asc
 `;
 
@@ -376,8 +398,8 @@ export async function consultarPendenciasCompras(comprador: string): Promise<{
     const data: PendenciasComprasLinha[] = (Array.isArray(rows) ? rows : []).map((r) => {
       const solicitacao = Number(r.solicitacao ?? 0);
       const agPag = Number(r.agPag ?? 0);
-      /** Datas só quando há pendência em SC ou Ag Pag (não quando tudo já virou PC). */
-      const exibirDatasSc = solicitacao > 0 || agPag > 0;
+      /** Datas só quando há saldo real em Solicitação (não quando já virou Ag Pag ou PC). */
+      const exibirDatasSc = solicitacao > 0;
       return {
         idProduto: Number(r.idProduto ?? 0),
         codigo: String(r.codigo ?? ''),

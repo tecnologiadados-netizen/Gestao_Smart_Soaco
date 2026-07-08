@@ -49,6 +49,59 @@ const MARGIN = { left: 8, right: 8, bottom: 10, top: 8 };
 /** Solicitação, Ag Pag, PC, Estoque Atual — sempre com badge azul (como GradeCelulaModalBtn). */
 const COLS_BADGE = new Set([4, 5, 6, 7]);
 
+/** Espaço reservado no rodapé de toda página para "Emitido em / Página". */
+const FOOTER_PAGINA_MM = 8;
+/** Altura do bloco de legenda (desenhado só na última página). */
+const LEGENDA_ALTURA_MM = 18;
+
+type LegendaPdfItem = {
+  texto: string;
+  cor?: [number, number, number];
+  badgeAzul?: boolean;
+};
+
+type LegendaPdfBloco = {
+  coluna: string;
+  itens: LegendaPdfItem[];
+};
+
+const LEGENDA_PDF_BLOCOS: LegendaPdfBloco[] = [
+  {
+    coluna: 'Cód',
+    itens: [
+      { texto: 'Estoque zerado e possui solicitação', cor: PDF.codigo.zerado_com_sc },
+      { texto: 'Estoque zerado e possui Ag Pag (sobrepõe SC)', cor: PDF.codigo.zerado_com_agpag },
+      {
+        texto: 'Todas as datas de necessidade superiores a 40 dias',
+        cor: PDF.codigo.necessidade_acima_40d,
+      },
+    ],
+  },
+  {
+    coluna: 'Ag Pag',
+    itens: [
+      { texto: 'Ag Pag com menos de 24h', cor: PDF.agPag.menos_24h },
+      { texto: 'Ag Pag com 24h ou mais', cor: PDF.agPag.mais_24h },
+    ],
+  },
+  {
+    coluna: 'PC',
+    itens: [
+      { texto: 'PC com data de entrega superior à necessidade da SC', cor: PDF.pc.atrasado },
+      { texto: 'PC em dia', cor: PDF.pc.em_dia },
+    ],
+  },
+  {
+    coluna: 'Estoque Atual',
+    itens: [
+      {
+        texto: 'Estoque padrão diferente do almox secundário (ex.: bobinas)',
+        badgeAzul: true,
+      },
+    ],
+  },
+];
+
 /** Nome completo no PDF (rótulo Nomus → nome para exibição). */
 const NOME_COMPRADOR_PDF: Record<string, string> = {
   'Comprador 1': 'Marcilia Brito da Rocha',
@@ -162,6 +215,10 @@ function desenharIconeImpressora(doc: jsPDF, x: number, y: number): void {
   doc.rect(x + w * 0.18, y - h * 0.35, w * 0.64, h * 0.38, 'F');
 }
 
+/** Texto explicativo do critério de inclusão no relatório. */
+const REGRAS_RELATORIO_TEXTO =
+  'Só entram no relatório produtos que possuem solicitação de compra em aberto ou solicitações de pagamento (Ag Pag) em aberto.';
+
 function desenharCabecalhoPendenciasPdf(
   doc: jsPDF,
   pageW: number,
@@ -174,57 +231,169 @@ function desenharCabecalhoPendenciasPdf(
   const contentW = right - left;
 
   const blockTop = 8.8;
-  const linhaBaseY = 22.8;
+  const colGap = 5;
+  const col1W = contentW * 0.3;
+  const col2W = contentW * 0.28;
+  const col3W = contentW - col1W - col2W - colGap * 2;
 
-  const contentX = left;
-
-  const sepX = left + contentW * 0.46;
-  const logsX = sepX + 5;
+  const col1X = left;
+  const sep1X = col1X + col1W + colGap / 2;
+  const col2X = sep1X + colGap / 2;
+  const sep2X = col2X + col2W + colGap / 2;
+  const col3X = sep2X + colGap / 2;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(...PDF.primary600);
-  doc.text('RELATÓRIO DE PENDÊNCIAS DO SETOR DE COMPRAS', contentX, blockTop + 1.8);
+  doc.text('RELATÓRIO DE PENDÊNCIAS DO SETOR DE COMPRAS', col1X, blockTop + 1.8);
 
   const labelY = blockTop + 6.2;
   const nomeY = labelY + 3.4;
   const logsLine2Y = labelY + 3.4;
   const logsLine3Y = labelY + 6.4;
-  const sepTop = labelY - 1.1;
-  const sepBottom = logsLine3Y + 0.8;
 
-  desenharIconePessoa(doc, contentX, labelY + 0.35);
+  desenharIconePessoa(doc, col1X, labelY + 0.35);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.setTextColor(...PDF.muted);
-  doc.text('Comprador(a)', contentX + 3.2, labelY);
+  doc.text('Comprador(a)', col1X + 3.2, labelY);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(...PDF.text);
-  doc.text(nomeComprador, contentX + 3.2, nomeY);
+  doc.text(nomeComprador, col1X + 3.2, nomeY);
 
-  doc.setDrawColor(203, 213, 225);
-  doc.setLineWidth(0.2);
-  doc.line(sepX, sepTop, sepX, sepBottom);
-
-  desenharIconeImpressora(doc, logsX, labelY + 0.35);
+  desenharIconeImpressora(doc, col2X, labelY + 0.35);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.5);
   doc.setTextColor(...PDF.text);
-  doc.text('LOGS DE IMPRESSÃO', logsX + 3.2, labelY);
+  doc.text('LOGS DE IMPRESSÃO', col2X + 3.2, labelY);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(...PDF.muted);
-  doc.text(`Emitido em: ${emitidoEmStr}`, logsX + 3.2, logsLine2Y);
-  doc.text(`Total de produtos: ${totalProdutos}`, logsX + 3.2, logsLine3Y);
+  doc.text(`Emitido em: ${emitidoEmStr}`, col2X + 3.2, logsLine2Y);
+  doc.text(`Total de produtos: ${totalProdutos}`, col2X + 3.2, logsLine3Y);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.setTextColor(...PDF.text);
+  doc.text('REGRAS DO RELATÓRIO', col3X, labelY);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.2);
+  doc.setTextColor(...PDF.muted);
+  const regrasLinhas = doc.splitTextToSize(REGRAS_RELATORIO_TEXTO, col3W - 0.5) as string[];
+  const regrasLineH = 2.8;
+  regrasLinhas.forEach((linha, i) => {
+    doc.text(linha, col3X, labelY + 3.2 + i * regrasLineH);
+  });
+
+  const regrasBottomY = labelY + 3.2 + regrasLinhas.length * regrasLineH;
+  const sepTop = labelY - 1.1;
+  const sepBottom = Math.max(logsLine3Y, nomeY, regrasBottomY) + 0.8;
+
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.2);
+  doc.line(sep1X, sepTop, sep1X, sepBottom);
+  doc.line(sep2X, sepTop, sep2X, sepBottom);
+
+  const linhaBaseY = sepBottom + 1.5;
 
   doc.setDrawColor(...PDF.primary600);
   doc.setLineWidth(0.35);
   doc.line(left, linhaBaseY, right, linhaBaseY);
 
   return linhaBaseY + 2.5;
+}
+
+function desenharAmostraLegenda(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  item: LegendaPdfItem
+): void {
+  const swatchW = 3;
+  const swatchH = 2;
+  if (item.badgeAzul) {
+    doc.setFillColor(...PDF.primary600);
+    doc.roundedRect(x, y - swatchH + 0.15, 5, swatchH, 0.35, 0.35, 'F');
+    return;
+  }
+  if (item.cor) {
+    doc.setFillColor(...item.cor);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.1);
+    doc.rect(x, y - swatchH + 0.15, swatchW, swatchH, 'FD');
+  }
+}
+
+function desenharRodapePaginacao(
+  doc: jsPDF,
+  pageW: number,
+  pageH: number,
+  emitidoEmStr: string,
+  pageNumber: number
+): void {
+  const left = MARGIN.left;
+  const right = pageW - MARGIN.right;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6);
+  doc.setTextColor(...PDF.muted);
+  doc.text(`Emitido em: ${emitidoEmStr}`, left, pageH - 3.5);
+  doc.text(`Página ${pageNumber}`, right, pageH - 3.5, { align: 'right' });
+}
+
+function desenharLegendaPdf(doc: jsPDF, pageW: number, legendTop: number): void {
+  const left = MARGIN.left;
+  const right = pageW - MARGIN.right;
+  const largura = right - left;
+  const gap = 2;
+  const blocoW = (largura - gap * (LEGENDA_PDF_BLOCOS.length - 1)) / LEGENDA_PDF_BLOCOS.length;
+  const itemLineH = 2.5;
+
+  doc.setDrawColor(...PDF.rowBorder);
+  doc.setLineWidth(0.2);
+  doc.line(left, legendTop - 1.2, right, legendTop - 1.2);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.setTextColor(...PDF.text);
+  doc.text('Legenda', left, legendTop);
+
+  LEGENDA_PDF_BLOCOS.forEach((bloco, blocoIdx) => {
+    const blocoX = left + blocoIdx * (blocoW + gap);
+    const tituloY = legendTop + 2.8;
+    let itemY = tituloY + 3.2;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(...PDF.primary600);
+    doc.text(bloco.coluna, blocoX, tituloY);
+
+    bloco.itens.forEach((item) => {
+      desenharAmostraLegenda(doc, blocoX, itemY, item);
+
+      const textX = item.badgeAzul ? blocoX + 5.8 : blocoX + 3.8;
+      const textW = blocoW - (textX - blocoX) - 0.5;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(...PDF.muted);
+      const linhas = doc.splitTextToSize(item.texto, textW) as string[];
+      linhas.forEach((linha, li) => {
+        doc.text(linha, textX, itemY + li * itemLineH);
+      });
+
+      itemY += Math.max(3.2, linhas.length * itemLineH + 0.8);
+    });
+
+    if (blocoIdx > 0) {
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.15);
+      doc.line(blocoX - gap / 2, tituloY - 1.5, blocoX - gap / 2, itemY);
+    }
+  });
 }
 
 export async function downloadPendenciasComprasPdf(
@@ -311,7 +480,7 @@ export async function downloadPendenciasComprasPdf(
       6: { cellWidth: colWidths[6], halign: 'center' },
       7: { cellWidth: colWidths[7], halign: 'center' },
     },
-    margin: MARGIN,
+    margin: { ...MARGIN, bottom: FOOTER_PAGINA_MM },
     didParseCell: (data) => {
       if (data.section === 'head') {
         if (data.column.index === 0 || data.column.index === 1) {
@@ -339,15 +508,21 @@ export async function downloadPendenciasComprasPdf(
     },
     didDrawPage: (data) => {
       const pageH = doc.internal.pageSize.getHeight();
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(...PDF.muted);
-      doc.text(`Emitido em: ${emitidoEmStr}`, MARGIN.left, pageH - 4);
-      doc.text(`Página ${data.pageNumber}`, pageW - MARGIN.right, pageH - 4, {
-        align: 'right',
-      });
+      desenharRodapePaginacao(doc, pageW, pageH, emitidoEmStr, data.pageNumber);
     },
   });
+
+  const pageH = doc.internal.pageSize.getHeight();
+  const finalY = (doc.lastAutoTable?.finalY ?? tableStartY) as number;
+  const legendTopUltimaPagina = pageH - FOOTER_PAGINA_MM - LEGENDA_ALTURA_MM;
+
+  if (finalY <= legendTopUltimaPagina - 4) {
+    desenharLegendaPdf(doc, pageW, legendTopUltimaPagina);
+  } else {
+    doc.addPage();
+    desenharRodapePaginacao(doc, pageW, pageH, emitidoEmStr, doc.getNumberOfPages());
+    desenharLegendaPdf(doc, pageW, MARGIN.top + 6);
+  }
 
   const slug =
     nomeComprador
