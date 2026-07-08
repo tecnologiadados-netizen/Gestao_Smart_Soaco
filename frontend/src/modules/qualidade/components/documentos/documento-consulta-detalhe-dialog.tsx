@@ -12,6 +12,8 @@ import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Badge } from "@qualidade/components/ui/badge";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
+import { cancelQualidadeDocumentsDebounce } from "@qualidade/lib/qualidadePersistence";
+import { deleteQualidadeDocument } from "@qualidade/lib/api/qualidadeApi";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
   documentOrigemLabelsLong,
@@ -136,6 +138,8 @@ export function DocumentoConsultaDetalheDialog({
   const [confirmacao, setConfirmacao] = useState<"inativar" | "excluir" | null>(
     null
   );
+  const [excluindo, setExcluindo] = useState(false);
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
   const [erroArquivo, setErroArquivo] = useState("");
 
   const users = useConfigStore((s) => s.users);
@@ -246,10 +250,23 @@ export function DocumentoConsultaDetalheDialog({
     onOpenChange(false);
   }
 
-  function confirmarExclusao() {
-    if (!documentId) return;
-    excluirDocumento(documentId);
-    onOpenChange(false);
+  async function confirmarExclusao() {
+    if (!documentId || excluindo) return;
+    setExcluindo(true);
+    setErroExclusao(null);
+    try {
+      await deleteQualidadeDocument(documentId);
+      cancelQualidadeDocumentsDebounce();
+      excluirDocumento(documentId);
+      onOpenChange(false);
+    } catch (err) {
+      setErroExclusao(
+        err instanceof Error ? err.message : "Não foi possível excluir o documento."
+      );
+      setConfirmacao(null);
+    } finally {
+      setExcluindo(false);
+    }
   }
 
   if (!doc) return null;
@@ -770,10 +787,18 @@ export function DocumentoConsultaDetalheDialog({
 
     <ConfirmacaoDialog
       open={confirmacao === "excluir"}
-      onOpenChange={(aberto) => !aberto && setConfirmacao(null)}
+      onOpenChange={(aberto) => {
+        if (!aberto) {
+          setConfirmacao(null);
+          setErroExclusao(null);
+        }
+      }}
       titulo="Excluir documento"
-      mensagem="Deseja excluir este documento permanentemente? Esta ação não pode ser desfeita."
-      confirmarLabel="Excluir"
+      mensagem={
+        erroExclusao ??
+        "Deseja excluir este documento permanentemente? Esta ação não pode ser desfeita."
+      }
+      confirmarLabel={excluindo ? "Excluindo…" : "Excluir"}
       variant="destructive"
       onConfirmar={confirmarExclusao}
     />

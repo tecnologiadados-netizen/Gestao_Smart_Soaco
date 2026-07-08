@@ -66,6 +66,17 @@ export async function syncQualidadeDocuments(payload: {
   await putJson('/api/qualidade/sync/documentos', payload);
 }
 
+export async function deleteQualidadeDocument(documentId: string): Promise<void> {
+  const res = await apiFetch(
+    `/api/qualidade/documentos/${encodeURIComponent(documentId)}`,
+    { method: 'DELETE' }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? 'Falha ao excluir documento.');
+  }
+}
+
 export async function syncQualidadeCalibrations(payload: {
   equipment: unknown[];
   calibrationRecords: unknown[];

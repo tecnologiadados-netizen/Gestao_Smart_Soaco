@@ -435,6 +435,117 @@ export async function getQualidadeBootstrap() {
 
 // ─── Sync helpers ────────────────────────────────────────────────────────────
 
+async function purgeSgqDocumentsRemovedFromPayload(
+  payloadDocumentUids: string[],
+  payloadVersionUids: string[],
+  payloadAlertaUids: string[],
+  payloadRevalidacaoUids: string[]
+): Promise<void> {
+  const docUids = [...new Set(payloadDocumentUids.filter(Boolean))];
+  const versionUids = [...new Set(payloadVersionUids.filter(Boolean))];
+  const alertaUids = [...new Set(payloadAlertaUids.filter(Boolean))];
+  const revalidacaoUids = [...new Set(payloadRevalidacaoUids.filter(Boolean))];
+
+  if (docUids.length > 0 && versionUids.length > 0) {
+    const orphanVersoes = await prisma.sgqDocumentoVersao.findMany({
+      where: {
+        documento: { uid: { in: docUids } },
+        uid: { notIn: versionUids },
+      },
+      select: { uid: true, arquivoStoragePath: true },
+    });
+    for (const v of orphanVersoes) {
+      deleteQualidadeAnexoIfExists(v.arquivoStoragePath);
+    }
+    if (orphanVersoes.length > 0) {
+      await prisma.sgqDocumentoVersao.deleteMany({
+        where: { uid: { in: orphanVersoes.map((v) => v.uid) } },
+      });
+    }
+  }
+
+  if (docUids.length > 0 && alertaUids.length > 0) {
+    await prisma.sgqDocumentoAlerta.deleteMany({
+      where: {
+        documento: { uid: { in: docUids } },
+        uid: { notIn: alertaUids },
+      },
+    });
+  }
+
+  if (docUids.length > 0 && revalidacaoUids.length > 0) {
+    const orphanRevs = await prisma.sgqDocumentoRevalidacao.findMany({
+      where: {
+        documento: { uid: { in: docUids } },
+        uid: { notIn: revalidacaoUids },
+      },
+      select: { uid: true, evidenciaStoragePath: true },
+    });
+    for (const r of orphanRevs) {
+      deleteQualidadeAnexoIfExists(r.evidenciaStoragePath);
+    }
+    if (orphanRevs.length > 0) {
+      await prisma.sgqDocumentoRevalidacao.deleteMany({
+        where: { uid: { in: orphanRevs.map((r) => r.uid) } },
+      });
+    }
+  }
+
+  const removedDocs = await prisma.sgqDocumento.findMany({
+    where: docUids.length > 0 ? { uid: { notIn: docUids } } : {},
+    select: {
+      uid: true,
+      versoes: { select: { arquivoStoragePath: true } },
+      revalidacoes: { select: { evidenciaStoragePath: true } },
+    },
+  });
+
+  if (removedDocs.length === 0) return;
+
+  const removedUids = removedDocs.map((d) => d.uid);
+  for (const doc of removedDocs) {
+    for (const v of doc.versoes) {
+      deleteQualidadeAnexoIfExists(v.arquivoStoragePath);
+    }
+    for (const r of doc.revalidacoes) {
+      deleteQualidadeAnexoIfExists(r.evidenciaStoragePath);
+    }
+  }
+
+  await prisma.sgqTarefa.deleteMany({
+    where: { referenciaTipo: 'documento', referenciaId: { in: removedUids } },
+  });
+
+  await prisma.sgqDocumento.deleteMany({
+    where: { uid: { in: removedUids } },
+  });
+}
+
+export async function deleteQualidadeDocumento(uid: string): Promise<boolean> {
+  const doc = await prisma.sgqDocumento.findUnique({
+    where: { uid },
+    select: {
+      uid: true,
+      versoes: { select: { arquivoStoragePath: true } },
+      revalidacoes: { select: { evidenciaStoragePath: true } },
+    },
+  });
+  if (!doc) return false;
+
+  for (const v of doc.versoes) {
+    deleteQualidadeAnexoIfExists(v.arquivoStoragePath);
+  }
+  for (const r of doc.revalidacoes) {
+    deleteQualidadeAnexoIfExists(r.evidenciaStoragePath);
+  }
+
+  await prisma.sgqTarefa.deleteMany({
+    where: { referenciaTipo: 'documento', referenciaId: uid },
+  });
+  await prisma.sgqDocumento.delete({ where: { uid } });
+  return true;
+}
+
 async function resolveSetorUid(setorId: string) {
   const byUid = await prisma.sgqSetor.findUnique({ where: { uid: setorId } });
   if (byUid) return byUid.uid;
@@ -807,6 +918,13 @@ export async function syncQualidadeDocuments(payload: {
       },
     });
   }
+
+  await purgeSgqDocumentsRemovedFromPayload(
+    documents.map((d) => String(d.id ?? '')),
+    versions.map((v) => String(v.id ?? '')),
+    validadeAlertas.map((a) => String(a.id ?? '')),
+    revalidacoes.map((r) => String(r.id ?? ''))
+  );
 }
 
 export async function syncQualidadeCalibrations(payload: {

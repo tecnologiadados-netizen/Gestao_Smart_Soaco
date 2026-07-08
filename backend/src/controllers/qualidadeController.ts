@@ -14,6 +14,7 @@ import {
   syncQualidadeDocuments,
   syncQualidadeOpcoesLista,
   syncQualidadeRegistros,
+  deleteQualidadeDocumento,
 } from '../data/qualidadeRepository.js';
 import { gerarRccPdfBuffer, gerarRncPdfBuffer } from '../services/qualidadePdfService.js';
 
@@ -198,6 +199,25 @@ export async function putQualidadeDocumentsHandler(req: Request, res: Response):
     res.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao salvar documentos.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function deleteQualidadeDocumentHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const uid = typeof req.params.uid === 'string' ? req.params.uid.trim() : '';
+    if (!uid) {
+      res.status(400).json({ error: 'Documento inválido.' });
+      return;
+    }
+    const removed = await deleteQualidadeDocumento(uid);
+    if (!removed) {
+      res.status(404).json({ error: 'Documento não encontrado.' });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao excluir documento.';
     res.status(500).json({ error: message });
   }
 }
