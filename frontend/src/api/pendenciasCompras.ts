@@ -16,6 +16,8 @@ export type PendenciasComprasLinha = {
   agPag: number;
   pedidoCompra: number;
   estoqueAtual: number;
+  /** Estoque padrão ≠ almox secundário — grade exibe texto em vez de número. */
+  estoqueVerificarPcp: boolean;
   nomeColeta: string;
   destaques: PendenciasComprasDestaques;
 };

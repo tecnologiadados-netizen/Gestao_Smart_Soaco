@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FileText } from 'lucide-react';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
@@ -24,17 +25,20 @@ import {
 } from '../../api/consultaEstoque';
 import type { RessupAlmoxPcPendLinha } from '../../api/compras';
 import {
+  ESTOQUE_VERIFICAR_PCP_TEXTO,
   LEGENDA_PENDENCIAS,
   classeDestaqueAgPag,
   classeDestaqueCodigo,
   classeDestaquePc,
 } from '../../utils/pendenciasComprasDestaques';
+import { downloadPendenciasComprasPdf } from '../../utils/exportPendenciasComprasPdf';
+import PendenciasPdfGeneratingOverlay from '../../components/compras/PendenciasPdfGeneratingOverlay';
 
 const COLS = [
   { key: 'codigo', label: 'Cód', clickable: false, align: 'left' as const },
   { key: 'descricao', label: 'Descrição', clickable: false, align: 'left' as const },
-  { key: 'dataEmissao', label: 'Emissão', clickable: false, align: 'center' as const },
-  { key: 'dataNecessidade', label: 'Necessidade', clickable: false, align: 'center' as const },
+  { key: 'dataEmissao', label: 'Emissão da SC', clickable: false, align: 'center' as const },
+  { key: 'dataNecessidade', label: 'Necessidade da SC', clickable: false, align: 'center' as const },
   { key: 'solicitacao', label: 'Solicitação', clickable: true as const, align: 'center' as const },
   { key: 'agPag', label: 'Ag Pag', clickable: true as const, align: 'center' as const },
   { key: 'pedidoCompra', label: 'PC', clickable: true as const, align: 'center' as const },
@@ -47,6 +51,9 @@ const NUM_KEYS = ['solicitacao', 'agPag', 'pedidoCompra', 'estoqueAtual'] as con
 
 const BTN_PRIMARY =
   'inline-flex items-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50';
+
+const BTN_PDF =
+  'inline-flex h-[38px] items-center gap-1.5 rounded-lg border border-red-700 bg-red-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 hover:border-red-800 disabled:opacity-50 disabled:hover:bg-red-600';
 
 const labelClass = 'text-sm font-medium text-slate-700 dark:text-slate-300';
 const inputClass =
@@ -76,6 +83,7 @@ export default function PendenciasComprasPage() {
   const [detalheSc, setDetalheSc] = useState<ScDetalhe[]>([]);
   const [detalheCotacao, setDetalheCotacao] = useState<CotacaoDetalhe[]>([]);
   const [ajudaAberta, setAjudaAberta] = useState(false);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
   const detalheCacheRef = useRef(new Map<string, DetalheCachePayload>());
   const pcCacheRef = useRef(new Map<number, RessupAlmoxPcPendLinha[]>());
   const ajudaRef = useRef<HTMLDivElement>(null);
@@ -110,12 +118,14 @@ export default function PendenciasComprasPage() {
   const getCellText = useCallback((row: PendenciasComprasLinha, key: string): string => {
     if (key === 'dataEmissao') return row.dataEmissao ?? '—';
     if (key === 'dataNecessidade') return row.dataNecessidade ?? '—';
+    if (key === 'estoqueAtual' && row.estoqueVerificarPcp) return ESTOQUE_VERIFICAR_PCP_TEXTO;
     const val = row[key as keyof PendenciasComprasLinha];
     if (typeof val === 'number') return fmtQtde(val);
     return String(val ?? '');
   }, []);
 
   const valueForSort = useCallback((row: PendenciasComprasLinha, key: string): string | number => {
+    if (key === 'estoqueAtual' && row.estoqueVerificarPcp) return ESTOQUE_VERIFICAR_PCP_TEXTO;
     if (NUM_KEYS.includes(key as (typeof NUM_KEYS)[number])) {
       return row[key as (typeof NUM_KEYS)[number]];
     }
@@ -158,6 +168,32 @@ export default function PendenciasComprasPage() {
     void executarConsulta(comprador.nome);
   };
 
+  const handleExportarPdf = useCallback(async () => {
+    if (!comprador?.nome || grade.rowsExibidas.length === 0 || gerandoPdf) return;
+    setGerandoPdf(true);
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+    try {
+      await downloadPendenciasComprasPdf({
+        comprador: comprador.nome,
+        linhas: grade.rowsExibidas.map((row) => ({
+          codigo: row.codigo,
+          descricao: row.descricao,
+          dataEmissao: getCellText(row, 'dataEmissao'),
+          dataNecessidade: getCellText(row, 'dataNecessidade'),
+          solicitacao: getCellText(row, 'solicitacao'),
+          agPag: getCellText(row, 'agPag'),
+          pedidoCompra: getCellText(row, 'pedidoCompra'),
+          estoqueAtual: getCellText(row, 'estoqueAtual'),
+          destaques: row.destaques,
+        })),
+      });
+    } finally {
+      setGerandoPdf(false);
+    }
+  }, [comprador?.nome, gerandoPdf, grade.rowsExibidas, getCellText]);
+
   const carregarDetalheModal = useCallback(async (): Promise<{ error?: string }> => {
     if (!detalhe || detalhe.tipo === 'pc') return {};
     const id = detalhe.linha.idProduto;
@@ -196,6 +232,12 @@ export default function PendenciasComprasPage() {
 
   return (
     <div className="relative flex flex-1 min-h-0 flex-col gap-3 overflow-hidden p-3 md:p-4">
+      {gerandoPdf && (
+        <PendenciasPdfGeneratingOverlay
+          mensagem="Gerando relatório PDF…"
+          subtitulo={comprador?.nome ? `Comprador: ${comprador.nome}` : undefined}
+        />
+      )}
       <CarregandoInformacoesOverlay
         show={loading}
         mensagem="Consultando pendências no Nomus…"
@@ -210,6 +252,17 @@ export default function PendenciasComprasPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
+          <button
+            type="button"
+            className={BTN_PDF}
+            disabled={loading || gerandoPdf || !consultaRealizada || grade.rowsExibidas.length === 0}
+            onClick={() => void handleExportarPdf()}
+            title="Emitir relatório PDF em paisagem"
+            aria-label="Emitir relatório PDF"
+          >
+            <FileText className="size-4 shrink-0" aria-hidden />
+            PDF
+          </button>
           <div className="w-64">
             <SingleSelectWithSearch
               label="Comprador"
@@ -351,6 +404,7 @@ export default function PendenciasComprasPage() {
                             : k === 'pedidoCompra'
                               ? 'pc'
                               : 'saldo';
+                      const estoqueVerificarPcp = k === 'estoqueAtual' && row.estoqueVerificarPcp;
                       return (
                         <td
                           key={k}
@@ -364,7 +418,13 @@ export default function PendenciasComprasPage() {
                               })
                             }
                           >
-                            {cellNum(val)}
+                            {estoqueVerificarPcp ? (
+                              <span className="whitespace-nowrap text-[10px] font-normal italic text-white">
+                                {ESTOQUE_VERIFICAR_PCP_TEXTO}
+                              </span>
+                            ) : (
+                              cellNum(val)
+                            )}
                           </GradeCelulaModalBtn>
                         </td>
                       );
@@ -424,25 +484,43 @@ export default function PendenciasComprasPage() {
           if (!detalhe || detalhe.tipo === 'pc') return null;
           if (detalhe.tipo === 'saldo') {
             if (detalheSaldo.length === 0) {
-              return <p className="text-slate-500">Sem saldo nos setores aplicáveis.</p>;
+              return (
+                <>
+                  {detalhe.linha.estoqueVerificarPcp ? (
+                    <p className="mb-3 text-xs text-slate-600 dark:text-slate-300">
+                      O estoque padrão deste item não é o almox secundário. Consulte o PCP para o
+                      saldo correto.
+                    </p>
+                  ) : null}
+                  <p className="text-slate-500">Sem saldo nos setores aplicáveis.</p>
+                </>
+              );
             }
             return (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b bg-slate-50 dark:bg-slate-900/50">
-                    <th className="py-2 text-left">Setor</th>
-                    <th className="py-2 text-right">Saldo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detalheSaldo.map((s) => (
-                    <tr key={s.idSetor} className="border-b border-slate-100 dark:border-slate-700">
-                      <td className="py-1.5">{s.setor}</td>
-                      <td className="py-1.5 text-right tabular-nums">{fmtQtde(s.saldo)}</td>
+              <>
+                {detalhe.linha.estoqueVerificarPcp ? (
+                  <p className="mb-3 text-xs text-slate-600 dark:text-slate-300">
+                    O estoque padrão deste item não é o almox secundário. Consulte o PCP para o
+                    saldo correto. Detalhe por setor abaixo:
+                  </p>
+                ) : null}
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b bg-slate-50 dark:bg-slate-900/50">
+                      <th className="py-2 text-left">Setor</th>
+                      <th className="py-2 text-right">Saldo</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {detalheSaldo.map((s) => (
+                      <tr key={s.idSetor} className="border-b border-slate-100 dark:border-slate-700">
+                        <td className="py-1.5">{s.setor}</td>
+                        <td className="py-1.5 text-right tabular-nums">{fmtQtde(s.saldo)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             );
           }
           if (detalhe.tipo === 'solicitacao') {

@@ -1,5 +1,7 @@
 import type { PendenciasComprasDestaques } from '../api/pendenciasCompras';
 
+/** Texto exibido na grade quando o estoque padrão não é o almox secundário (ex.: bobinas). */
+export const ESTOQUE_VERIFICAR_PCP_TEXTO = '(Verificar com PCP)';
 const CODIGO_CLASS: Record<NonNullable<PendenciasComprasDestaques['codigo']>, string> = {
   zerado_com_sc: 'bg-amber-100 dark:bg-amber-900/40',
   zerado_com_agpag: 'bg-orange-200 dark:bg-orange-900/50',
@@ -51,4 +53,9 @@ export const LEGENDA_PENDENCIAS = [
     classe: PC_CLASS.atrasado,
   },
   { coluna: 'PC', texto: 'PC em dia', classe: PC_CLASS.em_dia },
+  {
+    coluna: 'Estoque Atual',
+    texto: 'Estoque padrão diferente do almox secundário (ex.: bobinas)',
+    classe: 'italic text-slate-600 dark:text-slate-400',
+  },
 ] as const;

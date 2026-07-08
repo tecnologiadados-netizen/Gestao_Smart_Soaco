@@ -4,12 +4,17 @@
 
 import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
 import {
+  COLETAS_EXCLUIR_SETOR2_ALMOX,
   NOMUS_ATRIBUTO_COLETA,
   PCP_ID_EMPRESA_SO_ACO,
   STATUS_COTACAO_AGPAG_SQL,
   TIPOS_PRODUTO_CONSULTA_SQL,
   SQL_COND_SETOR2_NAO_EXCLUIDO_POR_COLETA,
 } from './sql/sqlComprasEstoqueFragments.js';
+
+const SQL_COLETAS_EXCLUIR_SETOR2_IN = COLETAS_EXCLUIR_SETOR2_ALMOX.map((c) =>
+  `'${c.replace(/'/g, "''")}'`
+).join(', ');
 
 export type PendenciasComprasDestaques = {
   codigo: 'zerado_com_sc' | 'zerado_com_agpag' | 'necessidade_acima_40d' | null;
@@ -27,6 +32,8 @@ export type PendenciasComprasLinha = {
   agPag: number;
   pedidoCompra: number;
   estoqueAtual: number;
+  /** Estoque padrão ≠ almox secundário (ex.: bobinas) — grade exibe texto, não número. */
+  estoqueVerificarPcp: boolean;
   nomeColeta: string;
   destaques: PendenciasComprasDestaques;
 };
@@ -38,6 +45,9 @@ Left Join atributolistaopcao alo On alo.id = apv.idListaOpcao
 Where apv.idAtributo = 674
 Order By comprador
 `;
+
+/** Compradores sem equipe ativa — não exibir no filtro. */
+const COMPRADORES_PENDENCIAS_EXCLUIDOS = new Set(['Comprador 4', 'Comprador 5']);
 
 const SQL_CONSULTAR = `
 With sc_abertas As (
@@ -110,10 +120,22 @@ Select
   Round(Coalesce(cot_agg.qtde, 0), 2) As agPag,
   Round(Coalesce(pc_agg.qtde, 0), 2) As pedidoCompra,
   Round(Coalesce(saldo_agg.saldo, 0), 2) As estoqueAtual,
+  Case
+    When pf.idTipoProduto In (8, 15) Then 0
+    When vinc_s2.idProduto Is Not Null
+      And pf.nomeColeta Not In (${SQL_COLETAS_EXCLUIR_SETOR2_IN}) Then 0
+    Else 1
+  End As estoqueVerificarPcp,
   cot_recente.horasDesdeEmissao,
   pc_flags.pcAtrasado,
   cmn.minDataNecessidadeColeta
 From produtos_filtrados pf
+Left Join (
+  Select Distinct pe.idProduto
+  From produtoempresa pe
+  Inner Join produtoempresa_setorestoque pese On pese.idProdutoEmpresa = pe.id
+  Where pe.idEmpresa = ${PCP_ID_EMPRESA_SO_ACO} And pese.idSetorEstoque = 2
+) vinc_s2 On vinc_s2.idProduto = pf.id
 Left Join (
   Select
     sc.idProduto,
@@ -286,6 +308,7 @@ Order By
 `;
 
 function montarDestaques(row: Record<string, unknown>): PendenciasComprasDestaques {
+  const verificarPcp = Number(row.estoqueVerificarPcp ?? 0) === 1;
   const estoque = Number(row.estoqueAtual ?? 0);
   const solicitacao = Number(row.solicitacao ?? 0);
   const agPag = Number(row.agPag ?? 0);
@@ -295,8 +318,8 @@ function montarDestaques(row: Record<string, unknown>): PendenciasComprasDestaqu
   const todasAcima40 = Number(row.todasNecessidadeAcima40d ?? 0) === 1;
 
   let codigo: PendenciasComprasDestaques['codigo'] = null;
-  if (estoque <= 0 && agPag > 0) codigo = 'zerado_com_agpag';
-  else if (estoque <= 0 && solicitacao > 0) codigo = 'zerado_com_sc';
+  if (!verificarPcp && estoque <= 0 && agPag > 0) codigo = 'zerado_com_agpag';
+  else if (!verificarPcp && estoque <= 0 && solicitacao > 0) codigo = 'zerado_com_sc';
   else if (todasAcima40 && solicitacao > 0) codigo = 'necessidade_acima_40d';
 
   let agPagDestaque: PendenciasComprasDestaques['agPag'] = null;
@@ -323,7 +346,7 @@ export async function listarOpcoesCompradorPendencias(): Promise<{
     const [rows] = (await pool.query(SQL_OPCOES_COMPRADOR)) as [Record<string, unknown>[], unknown];
     const data = (Array.isArray(rows) ? rows : [])
       .map((r) => String(r.comprador ?? '').trim())
-      .filter(Boolean);
+      .filter((c) => Boolean(c) && !COMPRADORES_PENDENCIAS_EXCLUIDOS.has(c));
     return { data };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -337,6 +360,9 @@ export async function consultarPendenciasCompras(comprador: string): Promise<{
 }> {
   const compradorTrim = comprador.trim();
   if (!compradorTrim) return { data: [], erro: 'Informe o comprador.' };
+  if (COMPRADORES_PENDENCIAS_EXCLUIDOS.has(compradorTrim)) {
+    return { data: [], erro: 'Comprador não disponível.' };
+  }
 
   const pool = getNomusPool();
   if (!pool || !isNomusEnabled()) return { data: [], erro: 'NOMUS_DB_URL não configurado' };
@@ -349,16 +375,20 @@ export async function consultarPendenciasCompras(comprador: string): Promise<{
 
     const data: PendenciasComprasLinha[] = (Array.isArray(rows) ? rows : []).map((r) => {
       const solicitacao = Number(r.solicitacao ?? 0);
+      const agPag = Number(r.agPag ?? 0);
+      /** Datas só quando há pendência em SC ou Ag Pag (não quando tudo já virou PC). */
+      const exibirDatasSc = solicitacao > 0 || agPag > 0;
       return {
         idProduto: Number(r.idProduto ?? 0),
         codigo: String(r.codigo ?? ''),
         descricao: String(r.descricao ?? ''),
-        dataEmissao: r.dataEmissao ? String(r.dataEmissao) : null,
-        dataNecessidade: r.dataNecessidade ? String(r.dataNecessidade) : null,
+        dataEmissao: exibirDatasSc && r.dataEmissao ? String(r.dataEmissao) : null,
+        dataNecessidade: exibirDatasSc && r.dataNecessidade ? String(r.dataNecessidade) : null,
         solicitacao,
-        agPag: Number(r.agPag ?? 0),
+        agPag,
         pedidoCompra: Number(r.pedidoCompra ?? 0),
         estoqueAtual: Number(r.estoqueAtual ?? 0),
+        estoqueVerificarPcp: Number(r.estoqueVerificarPcp ?? 0) === 1,
         nomeColeta: String(r.nomeColeta ?? ''),
         destaques: montarDestaques(r),
       };
