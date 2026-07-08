@@ -114,6 +114,7 @@ export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
 export const INTEGRACAO_SUBMENUS: { to: string; label: string }[] = [
   { to: '/integracao/alteracao-data-entrega-compra', label: 'Alteração da Data de Entrega do Pedido de Compra' },
   { to: '/integracao/sms', label: 'SMS' },
+  { to: '/integracao/credenciais', label: 'Credenciais' },
 ];
 
 export const GESTAO_USUARIOS_SUBMENUS: { to: string; label: string }[] = [
@@ -169,6 +170,8 @@ export const PATH_LABELS: Record<string, string> = {
   '/integracao/faturamento-diario': 'Faturamento Diário',
   '/integracao/pedidos-entrega-vencida': 'Pedidos Previsão Vencida',
   '/integracao/sms': 'SMS',
+  '/integracao/credenciais': 'Credenciais',
+  '/integracao/credenciais/email': 'E-mail (Gmail)',
   '/usuarios': 'Usuários',
   '/usuarios/grupos': 'Grupos de usuários',
   '/whatsapp': 'WhatsApp',
@@ -221,6 +224,16 @@ export function buildIntegracaoSubmenusForUser(
   }
   if (isMaster || hasPermission(PERMISSOES.SISTEMA_WHATSAPP)) {
     items.push({ to: '/whatsapp', label: 'WhatsApp' });
+  }
+  if (
+    isMaster ||
+    hasPermission(PERMISSOES.SISTEMA_EMAIL) ||
+    hasPermission(PERMISSOES.SISTEMA_WHATSAPP) ||
+    hasPermission(PERMISSOES.USUARIOS_GERENCIAR)
+  ) {
+    if (!items.some((i) => i.to === '/integracao/credenciais')) {
+      items.push({ to: '/integracao/credenciais', label: 'Credenciais' });
+    }
   }
   if (isMaster || hasPermission(PERMISSOES.SISTEMA_SITUACAO_API)) {
     items.push({ to: '/situacao-api', label: 'Situação da API' });

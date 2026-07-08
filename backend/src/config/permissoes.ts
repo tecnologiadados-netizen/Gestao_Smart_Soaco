@@ -91,6 +91,7 @@ export const PERMISSOES = {
 
   // Sistema (rotas antes restritas ao login master)
   SISTEMA_WHATSAPP: 'sistema.whatsapp',
+  SISTEMA_EMAIL: 'sistema.email',
   SISTEMA_SITUACAO_API: 'sistema.situacao_api',
 
   // Grupo Master (acesso total configurável pela UI)
@@ -184,6 +185,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.SUPORTE_CONFIGURAR,
 
   PERMISSOES.SISTEMA_WHATSAPP,
+  PERMISSOES.SISTEMA_EMAIL,
   PERMISSOES.SISTEMA_SITUACAO_API,
   PERMISSOES.USUARIOS_GRUPO_MASTER_ATRIBUIR,
   PERMISSOES.USUARIOS_GRUPO_MASTER_REMOVER,
@@ -276,6 +278,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.SUPORTE_CONFIGURAR]: 'Suporte: configurações (catálogo, campos da abertura)',
 
   [PERMISSOES.SISTEMA_WHATSAPP]: 'Acessar integração WhatsApp',
+  [PERMISSOES.SISTEMA_EMAIL]: 'Configurar credencial de e-mail (Gmail)',
   [PERMISSOES.SISTEMA_SITUACAO_API]: 'Acessar situação da API',
   [PERMISSOES.USUARIOS_GRUPO_MASTER_ATRIBUIR]: 'Atribuir usuários ao grupo Master',
   [PERMISSOES.USUARIOS_GRUPO_MASTER_REMOVER]: 'Remover usuários do grupo Master',

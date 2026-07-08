@@ -12,6 +12,8 @@ import AlteracaoDataEntregaCompraPage from './pages/integracao/AlteracaoDataEntr
 import FaturamentoDiarioPage from './pages/integracao/FaturamentoDiarioPage';
 import PedidosEntregaVencidaPage from './pages/integracao/PedidosEntregaVencidaPage';
 import SmsIntegracaoPage from './pages/integracao/SmsIntegracaoPage';
+import CredenciaisPage from './pages/integracao/CredenciaisPage';
+import EmailCredenciaisPage from './pages/integracao/EmailCredenciaisPage';
 import ComprasPage from './pages/ComprasPage';
 import ColetasPrecosPage from './pages/compras/ColetasPrecosPage';
 import ComprasDashboardPage from './pages/compras/ComprasDashboardPage';
@@ -120,6 +122,8 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'integracao/faturamento-diario', element: <FaturamentoDiarioPage /> },
   { path: 'integracao/pedidos-entrega-vencida', element: <PedidosEntregaVencidaPage /> },
   { path: 'integracao/sms', element: <SmsIntegracaoPage /> },
+  { path: 'integracao/credenciais', element: <CredenciaisPage /> },
+  { path: 'integracao/credenciais/email', element: <EmailCredenciaisPage /> },
   { path: 'usuarios', element: <UsuariosPage /> },
   { path: 'usuarios/grupos', element: <UsuariosPage /> },
   { path: 'whatsapp', element: <WhatsAppConnectPage /> },

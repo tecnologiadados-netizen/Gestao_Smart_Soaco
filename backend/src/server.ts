@@ -21,6 +21,7 @@ import { loadEnv } from './config/env.js';
 import { prisma } from './config/prisma.js';
 import app, { BUILD_ID } from './app.js';
 import { iniciarCronsWhatsappNotificacao } from './scheduler/whatsappNotificacaoCron.js';
+import { iniciarCronsSgqEmailNotificacao } from './scheduler/sgqEmailNotificacaoCron.js';
 import { backfillAguardaRespostaLabelsForPendingOrders } from './services/sycroOrderAguardaRespostaLabel.js';
 import { ensureGrupoMaster } from './config/ensureGrupoMaster.js';
 
@@ -103,6 +104,7 @@ function main(): void {
           console.warn('[startup] Backfill aguarda resposta SycroOrder:', (e as Error)?.message ?? e);
         }
         iniciarCronsWhatsappNotificacao();
+        iniciarCronsSgqEmailNotificacao();
       })
       .catch((e) => {
         console.warn('[startup] ensureDbReady falhou (servidor já no ar):', (e as Error)?.message ?? e);

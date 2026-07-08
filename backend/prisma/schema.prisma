@@ -1154,3 +1154,34 @@ model SgqAnexo {
   @@index([registroId])
   @@map("sgq_anexo")
 }
+
+model EmailProviderSettings {
+  id                     String    @id @default(uuid())
+  provider               String    @default("gmail_api")
+  fromEmail              String    @map("from_email")
+  fromName               String    @map("from_name")
+  clientId               String    @map("client_id")
+  clientSecretEncrypted  String    @map("client_secret_encrypted")
+  refreshTokenEncrypted  String    @map("refresh_token_encrypted")
+  lastTestedAt           DateTime? @map("last_tested_at")
+  lastError              String?
+  credentialBlockedAt    DateTime? @map("credential_blocked_at")
+  credentialBlockCode    String?   @map("credential_block_code")
+  credentialBlockSummary String?   @map("credential_block_summary")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  @@map("email_provider_settings")
+}
+
+model EmailDisparoLog {
+  id            String   @id @default(cuid())
+  categoria     String
+  chave         String   @unique
+  destinatarios String
+  assunto       String
+  enviadoEm     DateTime @default(now()) @map("enviado_em")
+
+  @@index([categoria, enviadoEm])
+  @@map("email_disparo_log")
+}

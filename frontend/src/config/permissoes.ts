@@ -87,6 +87,7 @@ export const PERMISSOES = {
   SUPORTE_CONFIGURAR: 'suporte.configurar',
 
   SISTEMA_WHATSAPP: 'sistema.whatsapp',
+  SISTEMA_EMAIL: 'sistema.email',
   SISTEMA_SITUACAO_API: 'sistema.situacao_api',
   USUARIOS_GRUPO_MASTER_ATRIBUIR: 'usuarios.grupo_master.atribuir',
   USUARIOS_GRUPO_MASTER_REMOVER: 'usuarios.grupo_master.remover',
