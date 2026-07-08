@@ -31,6 +31,10 @@ import {
   consultarPendenciasCompras,
 } from '../data/pendenciasComprasRepository.js';
 import {
+  removerPrioridadeFixa,
+  upsertPrioridadeFixa,
+} from '../data/pendenciasComprasPrioridadeFixaRepository.js';
+import {
   loadRessupNaoAlmoxCatalogo,
   saveCatalogoDescricaoSimplificadaNaoAlmox,
   saveCatalogoFundivelPar,
@@ -3171,10 +3175,88 @@ export async function getPendenciasComprasOpcoesComprador(_req: Request, res: Re
 
 export async function getPendenciasComprasConsultar(req: Request, res: Response): Promise<void> {
   const comprador = String(req.query.comprador ?? '').trim();
-  const { data, erro } = await consultarPendenciasCompras(comprador);
+  const login = req.user?.login?.trim();
+  if (!login) {
+    res.status(401).json({ error: 'Usuário não autenticado.' });
+    return;
+  }
+  const { data, erro } = await consultarPendenciasCompras(comprador, login);
   if (erro) {
     res.status(comprador ? 503 : 400).json({ error: erro });
     return;
   }
   res.json({ linhas: data, total: data.length });
+}
+
+export async function putPendenciasComprasPrioridadeFixa(req: Request, res: Response): Promise<void> {
+  const login = req.user?.login?.trim();
+  if (!login) {
+    res.status(401).json({ error: 'Usuário não autenticado.' });
+    return;
+  }
+
+  const comprador = String(req.body?.comprador ?? '').trim();
+  const idProduto = Number(req.body?.idProduto);
+  const prioridade = Number(req.body?.prioridade);
+
+  if (!comprador) {
+    res.status(400).json({ error: 'Informe o comprador.' });
+    return;
+  }
+  if (!Number.isFinite(idProduto) || idProduto <= 0) {
+    res.status(400).json({ error: 'idProduto inválido.' });
+    return;
+  }
+  if (!Number.isInteger(prioridade) || prioridade < 1) {
+    res.status(400).json({ error: 'Prioridade deve ser um inteiro >= 1.' });
+    return;
+  }
+
+  try {
+    await upsertPrioridadeFixa({
+      usuario: login,
+      comprador,
+      idProduto,
+      prioridade,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+}
+
+export async function deletePendenciasComprasPrioridadeFixa(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const login = req.user?.login?.trim();
+  if (!login) {
+    res.status(401).json({ error: 'Usuário não autenticado.' });
+    return;
+  }
+
+  const comprador = String(req.query.comprador ?? '').trim();
+  const idProduto = Number(req.query.idProduto);
+
+  if (!comprador) {
+    res.status(400).json({ error: 'Informe o comprador.' });
+    return;
+  }
+  if (!Number.isFinite(idProduto) || idProduto <= 0) {
+    res.status(400).json({ error: 'idProduto inválido.' });
+    return;
+  }
+
+  try {
+    await removerPrioridadeFixa({
+      usuario: login,
+      comprador,
+      idProduto,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
 }

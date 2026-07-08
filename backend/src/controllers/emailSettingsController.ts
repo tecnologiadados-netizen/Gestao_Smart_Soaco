@@ -9,6 +9,7 @@ import {
   sanitizeEmailProviderSettings,
   sendSystemEmail,
 } from '../services/systemEmail.js';
+import { buildEmailTestHtml } from '../services/emailHtmlTemplate.js';
 
 const saveSchema = z.object({
   provider: z.literal('gmail_api').default('gmail_api'),
@@ -85,10 +86,11 @@ export async function saveEmailSettings(req: Request, res: Response): Promise<vo
 
     if (body.testTo) {
       try {
+        const sentAtLabel = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         await sendSystemEmail(prisma, {
           to: body.testTo,
-          subject: 'Teste de credencial Gmail — Gestor de Pedidos SoAço',
-          html: '<p>Este e-mail confirma que a credencial Gmail foi configurada com sucesso.</p>',
+          subject: 'Teste de credencial Gmail — Gestão Smart SoAço',
+          html: buildEmailTestHtml(body.fromEmail.trim(), sentAtLabel),
         });
         await markEmailCredentialSuccess(prisma, saved.id);
       } catch (e) {
@@ -141,11 +143,11 @@ export async function sendTestEmail(req: Request, res: Response): Promise<void> 
       return;
     }
 
+    const sentAtLabel = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     await sendSystemEmail(prisma, {
       to: parsed.data.to,
-      subject: 'Teste de credencial Gmail — Gestor de Pedidos SoAço',
-      html: `<p>Este e-mail confirma que a credencial Gmail (<strong>${settings.fromEmail}</strong>) está funcionando.</p>
-        <p>Enviado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}.</p>`,
+      subject: 'Teste de credencial Gmail — Gestão Smart SoAço',
+      html: buildEmailTestHtml(settings.fromEmail, sentAtLabel),
     });
     await markEmailCredentialSuccess(prisma, settings.id);
     const refreshed = await fetchEmailProviderSettings(prisma);

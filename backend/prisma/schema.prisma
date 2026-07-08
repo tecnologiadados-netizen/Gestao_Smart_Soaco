@@ -1185,3 +1185,37 @@ model EmailDisparoLog {
   @@index([categoria, enviadoEm])
   @@map("email_disparo_log")
 }
+
+/// Metas mensais do Painel de Produção (PCP).
+model PainelProducaoMeta {
+  id      Int     @id @default(autoincrement())
+  setor   String
+  mesAno  String  @map("mes_ano")
+  target  Float
+  semMeta Boolean @default(false) @map("sem_meta")
+
+  @@unique([setor, mesAno])
+  @@map("painel_producao_meta")
+}
+
+/// Meses cadastrados no painel de produção.
+model PainelProducaoMes {
+  mesAno   String   @id @map("mes_ano")
+  origem   String   @default("auto")
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@map("painel_producao_mes")
+}
+
+/// Prioridade fixa manual no relatório Pendências compras (por usuário + comprador).
+model PendenciasComprasPrioridadeFixa {
+  usuario      String
+  comprador    String
+  idProduto    Int      @map("id_produto")
+  prioridade   Int
+  atualizadoEm DateTime @default(now()) @updatedAt @map("atualizado_em")
+
+  @@id([usuario, comprador, idProduto])
+  @@index([usuario, comprador])
+  @@map("pendencias_compras_prioridade_fixa")
+}

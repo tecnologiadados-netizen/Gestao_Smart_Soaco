@@ -1,5 +1,10 @@
 import { PERMISSOES, type CodigoPermissao } from './permissoes';
 import { podeAcessarRotaFinanceiro } from '../utils/financeiroPermissoes';
+import {
+  podeEditarPainelMetas,
+  podeVerPainelGerencial,
+  podeVerPainelTv,
+} from '../utils/painelProducaoPermissoes';
 
 export type NavMenuEntry =
   | { kind: 'link'; to: string; label: string }
@@ -45,6 +50,15 @@ export const PCP_MENU: NavMenuEntry[] = [
           { kind: 'link', to: '/pedidos/regras-data-entrega', label: 'Regras data de entrega' },
         ],
       },
+    ],
+  },
+  {
+    kind: 'submenu',
+    label: 'Painel Metas',
+    children: [
+      { kind: 'link', to: '/pedidos/painel-metas/gerencial', label: 'Painel Gerencial' },
+      { kind: 'link', to: '/pedidos/painel-metas/tv', label: 'Painel TV' },
+      { kind: 'link', to: '/pedidos/painel-metas/metas', label: 'Metas' },
     ],
   },
 ];
@@ -143,6 +157,9 @@ export const PATH_LABELS: Record<string, string> = {
   '/pedidos/ressup-almox': 'Ressup Almox',
   '/pedidos/ressup-nao-almox': 'Ressup Não Almox',
   '/pedidos/consulta-estoque': 'Consulta de Estoque',
+  '/pedidos/painel-metas/gerencial': 'Painel Gerencial',
+  '/pedidos/painel-metas/tv': 'Painel TV',
+  '/pedidos/painel-metas/metas': 'Metas',
   '/heatmap': 'Roteirizador',
   '/mind-maps': 'Fluxos Decisórios',
   '/compras': 'Compras',
@@ -287,6 +304,18 @@ export function filterPcpMenuChildren(
         hasPermission(PERMISSOES.PCP_CONSULTA_ESTOQUE_VER) ||
         hasPermission(PERMISSOES.PCP_TOTAL),
     );
+  }
+
+  if (entry.label === 'Painel Metas') {
+    return entry.children.filter((c) => {
+      if (c.kind !== 'link') return true;
+      if (c.to === '/pedidos/painel-metas/gerencial') return podeVerPainelGerencial(hasPermission);
+      if (c.to === '/pedidos/painel-metas/tv') return podeVerPainelTv(hasPermission);
+      if (c.to === '/pedidos/painel-metas/metas') {
+        return podeEditarPainelMetas(hasPermission) || podeVerPainelGerencial(hasPermission);
+      }
+      return true;
+    });
   }
 
   return entry.children

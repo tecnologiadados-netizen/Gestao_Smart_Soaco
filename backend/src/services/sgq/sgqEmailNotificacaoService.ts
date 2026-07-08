@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { buildSystemEmailHtml } from '../emailHtmlTemplate.js';
 import { sendSystemEmail } from '../systemEmail.js';
 import {
   calcularDiasRestantes,
@@ -21,14 +22,6 @@ function parseJson<T extends JsonRecord>(raw: string | null | undefined): T | nu
   } catch {
     return null;
   }
-}
-
-function wrapHtml(title: string, body: string): string {
-  return `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#1e293b">
-    <h2 style="color:#0f172a">${title}</h2>
-    ${body}
-    <p style="margin-top:24px;font-size:12px;color:#64748b">Gestor de Pedidos SoAço — Qualidade (SGQ)</p>
-  </body></html>`;
 }
 
 async function resolveEmailsByLogins(prisma: PrismaClient, logins: string[]): Promise<string[]> {
@@ -110,13 +103,24 @@ async function processValidadeDocumentos(prisma: PrismaClient, hoje: Date): Prom
       const chave = `sgq_validade:${doc.uid}:${validade.dataValidade}:${marco}`;
       const msg = mensagemAlertaValidade(doc.codigo, marco, dias);
       const link = `${resolveAppBaseUrl()}/qualidade/documentos`;
-      const html = wrapHtml(
-        'Alerta de validade de documento',
-        `<p><strong>${doc.codigo}</strong> — ${doc.titulo}</p>
-         <p>${msg}</p>
-         <p>Validade: <strong>${formatarDataBr(validade.dataValidade)}</strong></p>
-         <p><a href="${link}">Abrir documentos no SGQ</a></p>`
-      );
+      const html = buildSystemEmailHtml({
+        badge: 'ALERTA SGQ',
+        title: 'Validade de documento',
+        subtitle: msg,
+        intro: `O documento abaixo requer atenção quanto à validade no módulo de Qualidade (SGQ).`,
+        sections: [
+          {
+            heading: 'Dados do documento',
+            rows: [
+              { label: 'Código', value: doc.codigo },
+              { label: 'Título', value: doc.titulo },
+              { label: 'Validade', value: formatarDataBr(validade.dataValidade) },
+              { label: 'Situação', value: msg },
+            ],
+          },
+        ],
+        cta: { label: 'Abrir documentos no SGQ', href: link },
+      });
       const ok = await sendAndLog(
         prisma,
         'sgq_validade',
@@ -139,6 +143,140 @@ const TIPOS_TAREFA_WORKFLOW = new Set([
   'revalidar_documento',
 ]);
 
+export type NovaTarefaWorkflowInput = {
+  uid: string;
+  tipo: string;
+  titulo: string;
+  descricao: string | null;
+  responsavelLogin: string;
+  prazo: string | null;
+  referenciaId: string;
+};
+
+export type DocumentoMetaParaEmail = {
+  codigo: string;
+  titulo: string;
+  permissoes?: { avisoPublicacaoEmailIds?: string[] } | null;
+  publicacao?: { avisarPorEmail?: boolean } | null;
+};
+
+function buildTaskActionHref(tipo: string, referenciaId: string): string {
+  const base = `${resolveAppBaseUrl()}/qualidade/documentos/${referenciaId}`;
+  switch (tipo) {
+    case 'elaborar_documento':
+    case 'revisar_documento':
+      return `${base}/elaborar`;
+    case 'consenso_documento':
+      return `${base}/consenso`;
+    case 'aprovar_documento':
+      return `${base}/aprovacao`;
+    case 'revalidar_documento':
+      return `${resolveAppBaseUrl()}/qualidade/documentos?revalidar=${referenciaId}`;
+    default:
+      return base;
+  }
+}
+
+function loginsDestinatariosTarefa(
+  tarefa: NovaTarefaWorkflowInput,
+  doc?: DocumentoMetaParaEmail
+): string[] {
+  const logins = [tarefa.responsavelLogin];
+  if (doc?.publicacao?.avisarPorEmail !== false) {
+    logins.push(...(doc?.permissoes?.avisoPublicacaoEmailIds ?? []));
+  }
+  return [...new Set(logins.map((l) => l.trim()).filter(Boolean))];
+}
+
+function buildTarefaEmailHtml(input: {
+  title: string;
+  subtitle: string;
+  intro: string;
+  tarefaTitulo: string;
+  tarefaDescricao?: string | null;
+  docCodigo?: string;
+  docTitulo?: string;
+  prazo?: string | null;
+  prazoLabel?: string;
+  link: string;
+  ctaLabel: string;
+}): string {
+  const rows: Array<{ label: string; value: string }> = [];
+  if (input.docCodigo) rows.push({ label: 'Documento', value: `${input.docCodigo} — ${input.docTitulo ?? ''}` });
+  rows.push({ label: 'Tarefa', value: input.tarefaTitulo });
+  if (input.tarefaDescricao) rows.push({ label: 'Detalhes', value: input.tarefaDescricao });
+  if (input.prazo) rows.push({ label: input.prazoLabel ?? 'Prazo', value: formatarDataBr(input.prazo) });
+
+  return buildSystemEmailHtml({
+    badge: 'ALERTA SGQ',
+    title: input.title,
+    subtitle: input.subtitle,
+    intro: input.intro,
+    sections: [{ heading: 'Dados da tarefa', rows }],
+    cta: { label: input.ctaLabel, href: input.link },
+  });
+}
+
+/** Notifica imediatamente ao atribuir nova tarefa de workflow (criação de documento, transição de etapa). */
+export async function notificarNovasTarefasWorkflow(
+  prisma: PrismaClient,
+  novasTarefas: NovaTarefaWorkflowInput[],
+  docMetaByUid: Map<string, DocumentoMetaParaEmail>
+): Promise<number> {
+  if (novasTarefas.length === 0) return 0;
+
+  const provider = await prisma.emailProviderSettings.findFirst({ orderBy: { updatedAt: 'desc' } });
+  if (!provider) {
+    console.warn('[sgq-email] Credencial de e-mail não configurada; tarefas novas não notificadas.');
+    return 0;
+  }
+
+  let sent = 0;
+  for (const tarefa of novasTarefas) {
+    if (!TIPOS_TAREFA_WORKFLOW.has(tarefa.tipo)) continue;
+
+    const doc = docMetaByUid.get(tarefa.referenciaId);
+    const logins = loginsDestinatariosTarefa(tarefa, doc);
+    const emails = await resolveEmailsByLogins(prisma, logins);
+    if (emails.length === 0) {
+      console.warn(
+        `[sgq-email] Nenhum e-mail para tarefa ${tarefa.uid} (logins: ${logins.join(', ') || '—'})`
+      );
+      continue;
+    }
+
+    const chave = `sgq_tarefa_nova:${tarefa.uid}`;
+    const link = buildTaskActionHref(tarefa.tipo, tarefa.referenciaId);
+    const html = buildTarefaEmailHtml({
+      title: 'Nova tarefa no SGQ',
+      subtitle: tarefa.titulo,
+      intro: 'Uma nova pendência foi atribuída a você no módulo de Qualidade (SGQ).',
+      tarefaTitulo: tarefa.titulo,
+      tarefaDescricao: tarefa.descricao,
+      docCodigo: doc?.codigo,
+      docTitulo: doc?.titulo,
+      prazo: tarefa.prazo,
+      link,
+      ctaLabel: 'Abrir tarefa no sistema',
+    });
+
+    try {
+      const ok = await sendAndLog(
+        prisma,
+        'sgq_tarefa_nova',
+        chave,
+        emails,
+        `[SGQ] Nova tarefa: ${tarefa.titulo}`,
+        html
+      );
+      if (ok) sent++;
+    } catch (err) {
+      console.error(`[sgq-email] Falha ao notificar tarefa ${tarefa.uid}:`, err);
+    }
+  }
+  return sent;
+}
+
 async function processTarefas(prisma: PrismaClient, hoje: Date): Promise<number> {
   let sent = 0;
   const tarefas = await prisma.sgqTarefa.findMany({
@@ -146,6 +284,7 @@ async function processTarefas(prisma: PrismaClient, hoje: Date): Promise<number>
   });
 
   const hojeKey = hoje.toISOString().slice(0, 10);
+  const linkPendencias = `${resolveAppBaseUrl()}/qualidade/documentos`;
 
   for (const tarefa of tarefas) {
     if (!TIPOS_TAREFA_WORKFLOW.has(tarefa.tipo)) continue;
@@ -159,13 +298,17 @@ async function processTarefas(prisma: PrismaClient, hoje: Date): Promise<number>
 
     if (dias < 0) {
       const chave = `sgq_tarefa:${tarefa.uid}:vencida:${hojeKey}`;
-      const html = wrapHtml(
-        'Tarefa SGQ vencida',
-        `<p><strong>${tarefa.titulo}</strong></p>
-         <p>${tarefa.descricao ?? ''}</p>
-         <p>Prazo: <strong>${formatarDataBr(tarefa.prazo)}</strong> (vencida)</p>
-         <p><a href="${resolveAppBaseUrl()}/qualidade/documentos">Abrir pendências</a></p>`
-      );
+      const html = buildTarefaEmailHtml({
+        title: 'Tarefa SGQ vencida',
+        subtitle: 'O prazo desta atividade já foi ultrapassado.',
+        intro: 'Existe uma pendência vencida aguardando sua ação no módulo de Qualidade (SGQ).',
+        tarefaTitulo: tarefa.titulo,
+        tarefaDescricao: tarefa.descricao,
+        prazo: tarefa.prazo,
+        prazoLabel: 'Prazo (vencido)',
+        link: linkPendencias,
+        ctaLabel: 'Abrir pendências',
+      });
       const ok = await sendAndLog(prisma, 'sgq_tarefa', chave, emails, `[SGQ] Tarefa vencida: ${tarefa.titulo}`, html);
       if (ok) sent++;
       continue;
@@ -173,12 +316,16 @@ async function processTarefas(prisma: PrismaClient, hoje: Date): Promise<number>
 
     for (const marco of marcosTarefaAplicaveis(dias)) {
       const chave = `sgq_tarefa:${tarefa.uid}:${tarefa.prazo}:${marco}`;
-      const html = wrapHtml(
-        'Prazo de tarefa SGQ',
-        `<p><strong>${tarefa.titulo}</strong></p>
-         <p>Prazo: <strong>${formatarDataBr(tarefa.prazo)}</strong> (${dias} dia(s) restante(s))</p>
-         <p><a href="${resolveAppBaseUrl()}/qualidade/documentos">Abrir pendências</a></p>`
-      );
+      const html = buildTarefaEmailHtml({
+        title: 'Prazo de tarefa SGQ',
+        subtitle: `${dias} dia(s) restante(s) para conclusão.`,
+        intro: `O alerta de prazo (${marco} dia(s)) foi acionado para a tarefa abaixo.`,
+        tarefaTitulo: tarefa.titulo,
+        tarefaDescricao: tarefa.descricao,
+        prazo: tarefa.prazo,
+        link: linkPendencias,
+        ctaLabel: 'Abrir pendências',
+      });
       const ok = await sendAndLog(
         prisma,
         'sgq_tarefa',
@@ -223,13 +370,30 @@ async function processEquipamento(
     for (const marco of marcosAlertaAplicaveis(dias) as ValidadeMarcoDias[]) {
       const dataKey = proxima ?? 'sem-data';
       const chave = `${categoria}:${eq.uid}:${dataKey}:${marco}`;
-      const html = wrapHtml(
-        `${label} de equipamento`,
-        `<p><strong>${eq.codigo}</strong> — ${eq.descricao}</p>
-         <p>Próxima ${label.toLowerCase()}: <strong>${formatarDataBr(proxima)}</strong></p>
-         <p>Status: ${status === 'vencido' ? 'Vencida' : 'Próxima do vencimento'}</p>
-         <p><a href="${resolveAppBaseUrl()}/qualidade/calibracoes">Abrir calibrações</a></p>`
-      );
+      const html = buildSystemEmailHtml({
+        badge: 'ALERTA SGQ',
+        title: `${label} de equipamento`,
+        subtitle:
+          status === 'vencido'
+            ? 'Atividade vencida — requer atenção imediata.'
+            : 'Prazo próximo do vencimento.',
+        intro: `O equipamento abaixo possui ${label.toLowerCase()} com prazo a monitorar no SGQ.`,
+        sections: [
+          {
+            heading: 'Dados do equipamento',
+            rows: [
+              { label: 'Código', value: eq.codigo },
+              { label: 'Descrição', value: eq.descricao },
+              { label: `Próxima ${label.toLowerCase()}`, value: formatarDataBr(proxima) },
+              {
+                label: 'Status',
+                value: status === 'vencido' ? 'Vencida' : 'Próxima do vencimento',
+              },
+            ],
+          },
+        ],
+        cta: { label: 'Abrir calibrações', href: `${resolveAppBaseUrl()}/qualidade/calibracoes` },
+      });
       const ok = await sendAndLog(
         prisma,
         categoria,

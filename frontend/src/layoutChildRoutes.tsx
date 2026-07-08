@@ -43,6 +43,9 @@ import RessupNaoAlmoxAnalisePage from './pages/pedidos/RessupNaoAlmoxAnalisePage
 import SequenciamentoCarradasPage from './pages/pedidos/SequenciamentoCarradasPage';
 import RegrasDataEntregaPage from './pages/pedidos/RegrasDataEntregaPage';
 import ConsultaEstoquePage from './pages/pedidos/ConsultaEstoquePage';
+import PainelProducaoGerencialPage from './pages/pedidos/painel-metas/PainelProducaoGerencialPage';
+import PainelProducaoTvPage from './pages/pedidos/painel-metas/PainelProducaoTvPage';
+import PainelProducaoMetasPage from './pages/pedidos/painel-metas/PainelProducaoMetasPage';
 import PedidosEncerradosPage from './pages/pedidos/PedidosEncerradosPage';
 import SuportePage from './pages/suporte/SuportePage';
 import SuporteConfigPage from './pages/suporte/SuporteConfigPage';
@@ -91,6 +94,9 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'pedidos/ressup-almox', element: <ErrorBoundary><RessupAlmoxAnalisePage /></ErrorBoundary> },
   { path: 'pedidos/ressup-nao-almox', element: <ErrorBoundary><RessupNaoAlmoxAnalisePage /></ErrorBoundary> },
   { path: 'pedidos/consulta-estoque', element: <ErrorBoundary><ConsultaEstoquePage /></ErrorBoundary> },
+  { path: 'pedidos/painel-metas/gerencial', element: <ErrorBoundary><PainelProducaoGerencialPage /></ErrorBoundary> },
+  { path: 'pedidos/painel-metas/tv', element: <ErrorBoundary><PainelProducaoTvPage /></ErrorBoundary> },
+  { path: 'pedidos/painel-metas/metas', element: <ErrorBoundary><PainelProducaoMetasPage /></ErrorBoundary> },
   { path: 'suporte', element: <ErrorBoundary><SuportePage /></ErrorBoundary> },
   { path: 'suporte/configuracao', element: <ErrorBoundary><SuporteConfigPage /></ErrorBoundary> },
   { path: 'heatmap', element: <HeatmapPage /> },

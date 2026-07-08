@@ -12,6 +12,7 @@ export type PendenciasComprasPdfRow = {
   agPag: string;
   pedidoCompra: string;
   estoqueAtual: string;
+  prioridadeFixa: string;
   destaques: PendenciasComprasDestaques;
 };
 
@@ -44,7 +45,7 @@ const PDF = {
   },
 } as const;
 
-const COL_RATIOS = [0.065, 0.34, 0.095, 0.105, 0.09, 0.08, 0.08, 0.145] as const;
+const COL_RATIOS = [0.06, 0.31, 0.09, 0.1, 0.085, 0.075, 0.075, 0.13, 0.075] as const;
 const MARGIN = { left: 8, right: 8, bottom: 10, top: 8 };
 /** Solicitação, Ag Pag, PC, Estoque Atual — sempre com badge azul (como GradeCelulaModalBtn). */
 const COLS_BADGE = new Set([4, 5, 6, 7]);
@@ -429,6 +430,7 @@ export async function downloadPendenciasComprasPdf(
       'Ag Pag',
       'PC',
       'Estoque Atual',
+      'Prioridade Fixa',
     ],
   ];
 
@@ -441,6 +443,7 @@ export async function downloadPendenciasComprasPdf(
     r.agPag,
     r.pedidoCompra,
     r.estoqueAtual,
+    r.prioridadeFixa,
   ]);
 
   autoTable(doc, {
@@ -479,6 +482,7 @@ export async function downloadPendenciasComprasPdf(
       5: { cellWidth: colWidths[5], halign: 'center' },
       6: { cellWidth: colWidths[6], halign: 'center' },
       7: { cellWidth: colWidths[7], halign: 'center' },
+      8: { cellWidth: colWidths[8], halign: 'center' },
     },
     margin: { ...MARGIN, bottom: FOOTER_PAGINA_MM },
     didParseCell: (data) => {

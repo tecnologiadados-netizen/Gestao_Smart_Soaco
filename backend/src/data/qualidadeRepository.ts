@@ -1,4 +1,11 @@
 import { prisma } from '../config/prisma.js';
+import { PERMISSOES } from '../config/permissoes.js';
+import { getPermissoesUsuario } from '../middleware/requirePermission.js';
+import {
+  notificarNovasTarefasWorkflow,
+  type DocumentoMetaParaEmail,
+  type NovaTarefaWorkflowInput,
+} from '../services/sgq/sgqEmailNotificacaoService.js';
 import {
   deleteQualidadeAnexoIfExists,
   readQualidadeAnexoAsDataUrl,
@@ -544,6 +551,7 @@ export async function syncQualidadeDocuments(payload: {
 }) {
   const { documents, versions, tasks, validadeAlertas, revalidacoes, criadoPorLogin } = payload;
   const docUidToId = new Map<string, number>();
+  const docMetaByUid = new Map<string, DocumentoMetaParaEmail>();
 
   for (const doc of documents) {
     const uid = String(doc.id ?? '');
@@ -586,6 +594,12 @@ export async function syncQualidadeDocuments(payload: {
       },
     });
     docUidToId.set(uid, saved.id);
+    docMetaByUid.set(uid, {
+      codigo,
+      titulo: String(doc.titulo ?? ''),
+      permissoes: (doc.permissoes as DocumentoMetaParaEmail['permissoes']) ?? null,
+      publicacao: (doc.publicacao as DocumentoMetaParaEmail['publicacao']) ?? null,
+    });
   }
 
   for (const ver of versions) {
@@ -664,10 +678,35 @@ export async function syncQualidadeDocuments(payload: {
     });
   }
 
+  const pendingBefore = new Set(
+    (
+      await prisma.sgqTarefa.findMany({
+        where: { concluida: false },
+        select: { uid: true },
+      })
+    ).map((t) => t.uid)
+  );
+
+  const novasTarefas: NovaTarefaWorkflowInput[] = [];
+
   await prisma.sgqTarefa.deleteMany({ where: { concluida: false } });
   for (const task of tasks) {
     const uid = String(task.id ?? '');
     if (!uid) continue;
+
+    const concluida = Boolean(task.concluida);
+    if (!concluida && !pendingBefore.has(uid)) {
+      novasTarefas.push({
+        uid,
+        tipo: String(task.tipo ?? ''),
+        titulo: String(task.titulo ?? ''),
+        descricao: task.descricao ? String(task.descricao) : null,
+        responsavelLogin: String(task.responsavelId ?? ''),
+        prazo: task.prazo ? String(task.prazo) : null,
+        referenciaId: String(task.referenciaId ?? ''),
+      });
+    }
+
     await prisma.sgqTarefa.upsert({
       where: { uid },
       create: {
@@ -679,7 +718,7 @@ export async function syncQualidadeDocuments(payload: {
         descricao: task.descricao ? String(task.descricao) : null,
         responsavelLogin: String(task.responsavelId ?? ''),
         prazo: task.prazo ? String(task.prazo) : null,
-        concluida: Boolean(task.concluida),
+        concluida,
         metadadosJson: JSON.stringify(task),
       },
       update: {
@@ -690,10 +729,21 @@ export async function syncQualidadeDocuments(payload: {
         descricao: task.descricao ? String(task.descricao) : null,
         responsavelLogin: String(task.responsavelId ?? ''),
         prazo: task.prazo ? String(task.prazo) : null,
-        concluida: Boolean(task.concluida),
+        concluida,
         metadadosJson: JSON.stringify(task),
       },
     });
+  }
+
+  if (novasTarefas.length > 0) {
+    try {
+      const enviados = await notificarNovasTarefasWorkflow(prisma, novasTarefas, docMetaByUid);
+      if (enviados > 0) {
+        console.info(`[sgq-email] ${enviados} notificação(ões) de tarefa nova enviada(s).`);
+      }
+    } catch (err) {
+      console.error('[sgq-email] Erro ao notificar tarefas novas (sync continuou):', err);
+    }
   }
 
   for (const alerta of validadeAlertas) {
@@ -1027,10 +1077,17 @@ export async function listQualidadeResponsaveis() {
     select: { login: true, nome: true, email: true },
     orderBy: { nome: 'asc' },
   });
-  return users.map((u) => ({
-    id: u.login,
-    nome: u.nome ?? u.login,
-    email: u.email ?? '',
-    ativo: true,
-  }));
+
+  const result: Array<{ id: string; nome: string; email: string; ativo: boolean }> = [];
+  for (const u of users) {
+    const perms = await getPermissoesUsuario(u.login);
+    if (!perms.includes(PERMISSOES.QUALIDADE_VER)) continue;
+    result.push({
+      id: u.login,
+      nome: u.nome ?? u.login,
+      email: u.email ?? '',
+      ativo: true,
+    });
+  }
+  return result;
 }

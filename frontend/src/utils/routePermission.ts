@@ -4,6 +4,11 @@ import { PERMISSOES_ACESSO_FLUXOS } from './fluxosPermissoes';
 import { PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO } from './programacaoProducaoPermissoes';
 import { PERMISSOES_ROTA_SUPORTE_CHAMADOS } from './suportePermissoes';
 import {
+  PERMISSOES_ACESSO_PAINEL_GERENCIAL,
+  PERMISSOES_ACESSO_PAINEL_METAS,
+  PERMISSOES_ACESSO_PAINEL_TV,
+} from './painelProducaoPermissoes';
+import {
   PERMISSOES_ACESSO_FINANCEIRO_DFC,
   PERMISSOES_ACESSO_FINANCEIRO_DRE,
   PERMISSOES_ACESSO_FINANCEIRO_PAINEL_COMERCIAL,
@@ -34,6 +39,12 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/pedidos/ressup-almox': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos/ressup-nao-almox': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos/consulta-estoque': [PERMISSOES.PCP_CONSULTA_ESTOQUE_VER, PERMISSOES.PCP_TOTAL],
+  '/pedidos/painel-metas/gerencial': PERMISSOES_ACESSO_PAINEL_GERENCIAL,
+  '/pedidos/painel-metas/tv': PERMISSOES_ACESSO_PAINEL_TV,
+  '/pedidos/painel-metas/metas': [
+    ...PERMISSOES_ACESSO_PAINEL_METAS,
+    ...PERMISSOES_ACESSO_PAINEL_GERENCIAL,
+  ],
   '/heatmap': [PERMISSOES.HEATMAP_VER],
   '/mind-maps': PERMISSOES_ACESSO_FLUXOS,
   '/compras': [PERMISSOES.COMPRAS_VER],

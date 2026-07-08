@@ -1,4 +1,4 @@
-import { apiJson } from './client';
+import { apiFetch, apiJson } from './client';
 
 export type PendenciasComprasDestaques = {
   codigo: 'zerado_com_sc' | 'zerado_com_agpag' | 'necessidade_acima_40d' | null;
@@ -20,6 +20,12 @@ export type PendenciasComprasLinha = {
   estoqueVerificarPcp: boolean;
   nomeColeta: string;
   destaques: PendenciasComprasDestaques;
+  /** Grupo de prioridade automática (coleta / necessidade — como na planilha Excel). */
+  prioridadeAutomatica: number;
+  /** Prioridade fixa manual do usuário (null = ordem automática). */
+  prioridadeFixa: number | null;
+  /** Posição na ordem automática do Nomus (0-based). */
+  indiceOrdemAutomatica: number;
 };
 
 export async function listarCompradoresPendencias(): Promise<string[]> {
@@ -46,5 +52,47 @@ export async function consultarPendenciasCompras(comprador: string): Promise<{
       total: 0,
       error: e instanceof Error ? e.message : 'Erro ao consultar pendências',
     };
+  }
+}
+
+export async function salvarPrioridadeFixaPendencias(input: {
+  comprador: string;
+  idProduto: number;
+  prioridade: number;
+}): Promise<{ ok?: boolean; error?: string }> {
+  try {
+    const res = await apiFetch('/api/compras/rotina/pendencias/prioridade-fixa', {
+      method: 'PUT',
+      body: input,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error((err as { error?: string }).error ?? 'Erro ao salvar prioridade fixa');
+    }
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Erro ao salvar prioridade fixa' };
+  }
+}
+
+export async function removerPrioridadeFixaPendencias(input: {
+  comprador: string;
+  idProduto: number;
+}): Promise<{ ok?: boolean; error?: string }> {
+  try {
+    const sp = new URLSearchParams({
+      comprador: input.comprador,
+      idProduto: String(input.idProduto),
+    });
+    const res = await apiFetch(`/api/compras/rotina/pendencias/prioridade-fixa?${sp}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error((err as { error?: string }).error ?? 'Erro ao remover prioridade fixa');
+    }
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Erro ao remover prioridade fixa' };
   }
 }

@@ -52,6 +52,9 @@ export const PERMISSOES = {
   PCP_CONSULTA_ESTOQUE_VER: 'pcp.consulta_estoque.ver',
   PCP_REGRAS_ENTREGA_VER: 'pcp.regras_entrega.ver',
   PCP_REGRAS_ENTREGA_EDITAR: 'pcp.regras_entrega.editar',
+  PCP_PAINEL_GERENCIAL_VER: 'pcp.painel_gerencial.ver',
+  PCP_PAINEL_TV_VER: 'pcp.painel_tv.ver',
+  PCP_PAINEL_METAS_EDITAR: 'pcp.painel_metas.editar',
 
   // Usuários / Grupos de usuários
   USUARIOS_TELA_VER: 'usuarios.tela.ver',
@@ -149,6 +152,9 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
   PERMISSOES.PCP_REGRAS_ENTREGA_VER,
   PERMISSOES.PCP_REGRAS_ENTREGA_EDITAR,
+  PERMISSOES.PCP_PAINEL_GERENCIAL_VER,
+  PERMISSOES.PCP_PAINEL_TV_VER,
+  PERMISSOES.PCP_PAINEL_METAS_EDITAR,
 
   // Usuários / Grupos
   PERMISSOES.USUARIOS_TELA_VER,
@@ -240,6 +246,9 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.PCP_CONSULTA_ESTOQUE_VER]: 'Consulta de Estoque (PCP)',
   [PERMISSOES.PCP_REGRAS_ENTREGA_VER]: 'Regras data de entrega — visualizar',
   [PERMISSOES.PCP_REGRAS_ENTREGA_EDITAR]: 'Regras data de entrega — editar',
+  [PERMISSOES.PCP_PAINEL_GERENCIAL_VER]: 'Painel Metas — Painel Gerencial',
+  [PERMISSOES.PCP_PAINEL_TV_VER]: 'Painel Metas — Painel TV',
+  [PERMISSOES.PCP_PAINEL_METAS_EDITAR]: 'Painel Metas — cadastrar/editar metas',
 
   // Usuários
   [PERMISSOES.USUARIOS_TELA_VER]: 'Visualizar tela de usuários',

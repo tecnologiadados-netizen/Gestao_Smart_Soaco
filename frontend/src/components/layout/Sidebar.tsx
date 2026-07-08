@@ -15,6 +15,7 @@ import {
 } from '../../config/navigationMenu';
 import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from '../../utils/suportePermissoes';
 import { podeVerMenuFinanceiro } from '../../utils/financeiroPermissoes';
+import { PERMISSOES_ACESSO_PAINEL_METAS_QUALQUER } from '../../utils/painelProducaoPermissoes';
 
 const SIDEBAR_LINK =
   'block rounded-md px-3 py-2 text-sm transition min-h-[36px] truncate';
@@ -217,9 +218,12 @@ function NavMenuTree({
         }
 
         const children =
-          prefix.startsWith('pcp') && (entry.label === 'Estoque' || entry.label === 'Programação')
+          prefix.startsWith('pcp') &&
+          (entry.label === 'Estoque' || entry.label === 'Programação' || entry.label === 'Painel Metas')
             ? filterPcpMenuChildren(entry, hasPermission)
             : entry.children;
+
+        if (children.length === 0) return null;
 
         const key = prefix ? `${prefix}:${entry.label}` : entry.label;
         const isOpen = accordionOpen.has(key);
@@ -372,6 +376,11 @@ export default function Sidebar({
   const isGestaoUsuariosActive = pathname.startsWith('/usuarios');
   const isSuporteActive = pathname.startsWith('/suporte');
 
+  const showPcp =
+    hasPermission(PERMISSOES.PCP_VER_TELA) ||
+    hasPermission(PERMISSOES.PCP_TOTAL) ||
+    PERMISSOES_ACESSO_PAINEL_METAS_QUALQUER.some((p) => hasPermission(p));
+
   const showLogistica =
     (hasPermission(PERMISSOES.LOGISTICA_VER) ||
       hasPermission(PERMISSOES.LOGISTICA_TOTAL) ||
@@ -397,7 +406,7 @@ export default function Sidebar({
       onMouseLeave={onCollapse}
     >
       <nav className="scrollbar-app flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-2 py-3">
-        {hasPermission(PERMISSOES.PCP_VER_TELA) && (
+        {showPcp && (
           <SidebarSection
             id="pcp"
             label="PCP"

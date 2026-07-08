@@ -24,6 +24,7 @@ import { iniciarCronsWhatsappNotificacao } from './scheduler/whatsappNotificacao
 import { iniciarCronsSgqEmailNotificacao } from './scheduler/sgqEmailNotificacaoCron.js';
 import { backfillAguardaRespostaLabelsForPendingOrders } from './services/sycroOrderAguardaRespostaLabel.js';
 import { ensureGrupoMaster } from './config/ensureGrupoMaster.js';
+import { initPainelProducaoMetas } from './services/painelProducao/painelProducaoTargetsService.js';
 
 const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -69,6 +70,11 @@ async function ensureDbReady(): Promise<void> {
     await ensureGrupoMaster();
   } catch (e) {
     console.warn('[startup] ensureGrupoMaster:', (e as Error)?.message ?? e);
+  }
+  try {
+    await initPainelProducaoMetas();
+  } catch (e) {
+    console.warn('[startup] initPainelProducaoMetas:', (e as Error)?.message ?? e);
   }
 }
 

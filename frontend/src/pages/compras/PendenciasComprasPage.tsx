@@ -13,6 +13,8 @@ import SingleSelectWithSearch, { type OptionItem } from '../../components/Single
 import {
   consultarPendenciasCompras,
   listarCompradoresPendencias,
+  removerPrioridadeFixaPendencias,
+  salvarPrioridadeFixaPendencias,
   type PendenciasComprasLinha,
 } from '../../api/pendenciasCompras';
 import {
@@ -33,6 +35,13 @@ import {
 } from '../../utils/pendenciasComprasDestaques';
 import { downloadPendenciasComprasPdf } from '../../utils/exportPendenciasComprasPdf';
 import PendenciasPdfGeneratingOverlay from '../../components/compras/PendenciasPdfGeneratingOverlay';
+import PrioridadeFixaSelect from '../../components/compras/PrioridadeFixaSelect';
+import {
+  anexarPrioridadeFixaNasLinhas,
+  aplicarPrioridadesFixasPendenciasCompras,
+  opcoesPrioridadeGrupo,
+  prioridadesFixasDeLinhas,
+} from '../../utils/pendenciasComprasOrdenacao';
 
 const COLS = [
   { key: 'codigo', label: 'Cód', clickable: false, align: 'left' as const },
@@ -44,6 +53,8 @@ const COLS = [
   { key: 'pedidoCompra', label: 'PC', clickable: true as const, align: 'center' as const },
   { key: 'estoqueAtual', label: 'Estoque Atual', clickable: true as const, align: 'center' as const },
 ] as const;
+
+const COL_PRIORIDADE_FIXA = { key: 'prioridadeFixa', label: 'Prioridade Fixa', align: 'center' as const };
 
 type ColKey = (typeof COLS)[number]['key'];
 const COL_KEYS: ColKey[] = COLS.map((c) => c.key);
@@ -84,6 +95,7 @@ export default function PendenciasComprasPage() {
   const [detalheCotacao, setDetalheCotacao] = useState<CotacaoDetalhe[]>([]);
   const [ajudaAberta, setAjudaAberta] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [salvandoPrioridadeId, setSalvandoPrioridadeId] = useState<number | null>(null);
   const detalheCacheRef = useRef(new Map<string, DetalheCachePayload>());
   const pcCacheRef = useRef(new Map<number, RessupAlmoxPcPendLinha[]>());
   const ajudaRef = useRef<HTMLDivElement>(null);
@@ -139,6 +151,68 @@ export default function PendenciasComprasPage() {
     valueForSort,
   });
 
+  const opcoesGrupoPrioridade = useMemo(() => opcoesPrioridadeGrupo(linhas), [linhas]);
+
+  const reordenarComPrioridades = useCallback(
+    (linhasAtuais: PendenciasComprasLinha[], prioridades: Map<number, number>) => {
+      const ordemAuto = [...linhasAtuais].sort(
+        (a, b) => a.indiceOrdemAutomatica - b.indiceOrdemAutomatica
+      );
+      const reordenadas = aplicarPrioridadesFixasPendenciasCompras(ordemAuto, prioridades);
+      return anexarPrioridadeFixaNasLinhas(reordenadas, prioridades);
+    },
+    []
+  );
+
+  const handlePrioridadeFixaChange = useCallback(
+    async (row: PendenciasComprasLinha, valor: string) => {
+      if (!comprador?.nome) return;
+
+      const prioridadesAtuais = prioridadesFixasDeLinhas(linhas);
+
+      if (valor === '') {
+        prioridadesAtuais.delete(row.idProduto);
+      } else {
+        const prioridade = Number(valor);
+        const maxGrupo = opcoesGrupoPrioridade.at(-1) ?? 0;
+        if (!Number.isInteger(prioridade) || prioridade < 1 || prioridade > maxGrupo) return;
+        prioridadesAtuais.set(row.idProduto, prioridade);
+      }
+
+      setSalvandoPrioridadeId(row.idProduto);
+      setErroApi(null);
+
+      const r =
+        valor === ''
+          ? await removerPrioridadeFixaPendencias({
+              comprador: comprador.nome,
+              idProduto: row.idProduto,
+            })
+          : await salvarPrioridadeFixaPendencias({
+              comprador: comprador.nome,
+              idProduto: row.idProduto,
+              prioridade: Number(valor),
+            });
+
+      setSalvandoPrioridadeId(null);
+
+      if (r.error) {
+        setErroApi(r.error);
+        return;
+      }
+
+      setLinhas(reordenarComPrioridades(linhas, prioridadesAtuais));
+    },
+    [comprador?.nome, linhas, opcoesGrupoPrioridade, reordenarComPrioridades]
+  );
+
+  const handlePrioridadeFixaSelect = useCallback(
+    (row: PendenciasComprasLinha, prioridade: number | null) => {
+      void handlePrioridadeFixaChange(row, prioridade == null ? '' : String(prioridade));
+    },
+    [handlePrioridadeFixaChange]
+  );
+
   const executarConsulta = useCallback(async (compradorNome: string) => {
     setLoading(true);
     setErroApi(null);
@@ -186,6 +260,8 @@ export default function PendenciasComprasPage() {
           agPag: getCellText(row, 'agPag'),
           pedidoCompra: getCellText(row, 'pedidoCompra'),
           estoqueAtual: getCellText(row, 'estoqueAtual'),
+          prioridadeFixa:
+            row.prioridadeFixa != null ? String(row.prioridadeFixa) : '—',
           destaques: row.destaques,
         })),
       });
@@ -330,7 +406,7 @@ export default function PendenciasComprasPage() {
         )}
 
         <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full min-w-[960px] border-collapse text-xs">
+          <table className="w-full min-w-[1040px] border-collapse text-xs">
             <thead className="sticky top-0 z-10">
               <tr className="bg-primary-600 text-white">
                 {COLS.map((c) => {
@@ -357,19 +433,26 @@ export default function PendenciasComprasPage() {
                     </th>
                   );
                 })}
+                <th
+                  className={`border border-primary-500/40 bg-primary-600 px-2 py-2 font-semibold ${
+                    COL_PRIORIDADE_FIXA.align === 'center' ? 'text-center' : 'text-left'
+                  }`}
+                >
+                  {COL_PRIORIDADE_FIXA.label}
+                </th>
               </tr>
             </thead>
             <tbody>
               {!consultaRealizada && (
                 <tr>
-                  <td colSpan={COLS.length} className="py-12 text-center text-slate-500">
+                  <td colSpan={COLS.length + 1} className="py-12 text-center text-slate-500">
                     Selecione o comprador e clique em Filtrar.
                   </td>
                 </tr>
               )}
               {consultaRealizada && linhas.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={COLS.length} className="py-8 text-center text-slate-500">
+                  <td colSpan={COLS.length + 1} className="py-8 text-center text-slate-500">
                     Nenhuma pendência encontrada para este comprador.
                   </td>
                 </tr>
@@ -429,6 +512,15 @@ export default function PendenciasComprasPage() {
                         </td>
                       );
                     })}
+                    <td className="px-2 py-1.5 text-center">
+                      <PrioridadeFixaSelect
+                        value={row.prioridadeFixa}
+                        opcoesGrupo={opcoesGrupoPrioridade}
+                        disabled={salvandoPrioridadeId === row.idProduto}
+                        onChange={(prioridade) => handlePrioridadeFixaSelect(row, prioridade)}
+                        ariaLabel={`Prioridade fixa de ${row.codigo}`}
+                      />
+                    </td>
                   </tr>
                 ))}
             </tbody>

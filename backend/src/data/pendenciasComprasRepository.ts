@@ -4,6 +4,14 @@
 
 import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
 import {
+  listarPrioridadesFixasPorUsuarioComprador,
+  prioridadesFixasParaMapa,
+} from './pendenciasComprasPrioridadeFixaRepository.js';
+import {
+  anexarPrioridadeFixaNasLinhas,
+  aplicarPrioridadesFixasPendenciasCompras,
+} from '../utils/pendenciasComprasOrdenacao.js';
+import {
   COLETAS_EXCLUIR_SETOR2_ALMOX,
   NOMUS_ATRIBUTO_COLETA,
   PCP_ID_EMPRESA_SO_ACO,
@@ -36,6 +44,12 @@ export type PendenciasComprasLinha = {
   estoqueVerificarPcp: boolean;
   nomeColeta: string;
   destaques: PendenciasComprasDestaques;
+  /** Grupo de prioridade automática (coleta / necessidade — como na planilha Excel). */
+  prioridadeAutomatica: number;
+  /** Prioridade fixa manual do usuário (null = ordem automática). */
+  prioridadeFixa: number | null;
+  /** Posição na ordem automática do Nomus (0-based). */
+  indiceOrdemAutomatica: number;
 };
 
 const SQL_OPCOES_COMPRADOR = `
@@ -376,7 +390,10 @@ export async function listarOpcoesCompradorPendencias(): Promise<{
   }
 }
 
-export async function consultarPendenciasCompras(comprador: string): Promise<{
+export async function consultarPendenciasCompras(
+  comprador: string,
+  usuario?: string
+): Promise<{
   data: PendenciasComprasLinha[];
   erro?: string;
 }> {
@@ -395,7 +412,7 @@ export async function consultarPendenciasCompras(comprador: string): Promise<{
       unknown,
     ];
 
-    const data: PendenciasComprasLinha[] = (Array.isArray(rows) ? rows : []).map((r) => {
+    const linhasBase = (Array.isArray(rows) ? rows : []).map((r, indiceOrdemAutomatica) => {
       const solicitacao = Number(r.solicitacao ?? 0);
       const agPag = Number(r.agPag ?? 0);
       /** Datas só quando há saldo real em Solicitação (não quando já virou Ag Pag ou PC). */
@@ -413,8 +430,27 @@ export async function consultarPendenciasCompras(comprador: string): Promise<{
         estoqueVerificarPcp: Number(r.estoqueVerificarPcp ?? 0) === 1,
         nomeColeta: String(r.nomeColeta ?? ''),
         destaques: montarDestaques(r),
+        prioridadeAutomatica: Number(r.prioridadeAutomatica ?? 9999),
+        indiceOrdemAutomatica,
       };
     });
+
+    const usuarioTrim = usuario?.trim();
+    if (!usuarioTrim) {
+      const data: PendenciasComprasLinha[] = linhasBase.map((l) => ({
+        ...l,
+        prioridadeFixa: null,
+      }));
+      return { data };
+    }
+
+    const prioridadesRows = await listarPrioridadesFixasPorUsuarioComprador(
+      usuarioTrim,
+      compradorTrim
+    );
+    const prioridadesMap = prioridadesFixasParaMapa(prioridadesRows);
+    const reordenadas = aplicarPrioridadesFixasPendenciasCompras(linhasBase, prioridadesMap);
+    const data = anexarPrioridadeFixaNasLinhas(reordenadas, prioridadesMap);
 
     return { data };
   } catch (err) {

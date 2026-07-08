@@ -92,6 +92,7 @@ export function CadastroDocumentoInternoDialog({
     defaultPublicacaoValues()
   );
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const isEdicao = Boolean(documentId);
   const documentoEdicao = documentId ? getDocumentById(documentId) : undefined;
@@ -103,6 +104,20 @@ export function CadastroDocumentoInternoDialog({
     setResponsaveis(defaultResponsaveisValues(currentUserId));
     setPermissoes(defaultPermissoesValues());
     setPublicacao(defaultPublicacaoValues());
+    setFormError(null);
+  }
+
+  function validateForm(): string | null {
+    if (!categoriaId) return "Selecione a categoria do documento.";
+    if (!processoId) return "Selecione o setor do documento.";
+    if (!titulo.trim()) return "Informe o título do documento.";
+    if (!responsaveis.elaboradorId) return "Selecione o elaborador.";
+    if (!responsaveis.consensoId) return "Selecione o responsável pelo consenso.";
+    if (!responsaveis.aprovadorId) return "Selecione o aprovador.";
+    if (departments.length === 0) {
+      return "Nenhum setor cadastrado. Cadastre setores em Qualidade → Configurações.";
+    }
+    return null;
   }
 
   useEffect(() => {
@@ -164,8 +179,13 @@ export function CadastroDocumentoInternoDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!titulo || !categoriaId || !processoId || !categoria || saving) return;
+    const validationError = validateForm();
+    if (validationError || !categoria || saving) {
+      setFormError(validationError ?? "Preencha todos os campos obrigatórios.");
+      return;
+    }
 
+    setFormError(null);
     setSaving(true);
     await withLoading(async () => {
       if (isEdicao && documentId) {
@@ -237,6 +257,14 @@ export function CadastroDocumentoInternoDialog({
         </div>
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          {formError ? (
+            <div
+              role="alert"
+              className="mx-6 mt-4 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            >
+              {formError}
+            </div>
+          ) : null}
           <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto overscroll-y-contain p-6 lg:grid-cols-[1fr_240px]">
             <div className="space-y-6">
               <fieldset className="brand-fieldset space-y-4">
@@ -286,9 +314,19 @@ export function CadastroDocumentoInternoDialog({
                     <Label className="text-base">Setor *</Label>
                     <Select
                       value={processoId}
-                      onValueChange={(v) => v && setProcessoId(v)}
+                      onValueChange={(v) => {
+                        if (v) {
+                          setProcessoId(v);
+                          setFormError(null);
+                        }
+                      }}
                     >
-                      <SelectTrigger className={selectTriggerClass}>
+                      <SelectTrigger
+                        className={cn(
+                          selectTriggerClass,
+                          formError && !processoId && "border-destructive ring-destructive/30"
+                        )}
+                      >
                         <SelectValue placeholder="Selecione o setor">
                           {processoNome ?? null}
                         </SelectValue>
