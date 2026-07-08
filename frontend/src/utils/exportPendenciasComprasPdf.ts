@@ -142,6 +142,91 @@ function desenharBadgeCelula(doc: jsPDF, data: HookData, texto: string): void {
   });
 }
 
+/** Cabeçalho compacto — inspirado no modelo de compras, sem ocupar muito espaço. */
+function desenharIconePessoa(doc: jsPDF, x: number, y: number): void {
+  const s = 1.15;
+  doc.setFillColor(...PDF.primary600);
+  doc.circle(x + s, y - s * 0.55, s * 0.42, 'F');
+  doc.roundedRect(x + s * 0.25, y - s * 0.05, s * 1.5, s * 1.05, 0.35, 0.35, 'F');
+}
+
+function desenharIconeImpressora(doc: jsPDF, x: number, y: number): void {
+  const w = 2.4;
+  const h = 1.35;
+  doc.setFillColor(...PDF.primary600);
+  doc.setDrawColor(...PDF.primary600);
+  doc.rect(x, y - h, w, h * 0.62, 'F');
+  doc.setFillColor(255, 255, 255);
+  doc.rect(x + w * 0.12, y - h * 0.88, w * 0.76, h * 0.28, 'F');
+  doc.setFillColor(...PDF.primary600);
+  doc.rect(x + w * 0.18, y - h * 0.35, w * 0.64, h * 0.38, 'F');
+}
+
+function desenharCabecalhoPendenciasPdf(
+  doc: jsPDF,
+  pageW: number,
+  nomeComprador: string,
+  emitidoEmStr: string,
+  totalProdutos: number
+): number {
+  const left = MARGIN.left;
+  const right = pageW - MARGIN.right;
+  const contentW = right - left;
+
+  const blockTop = 8.8;
+  const linhaBaseY = 22.8;
+
+  const contentX = left;
+
+  const sepX = left + contentW * 0.46;
+  const logsX = sepX + 5;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(...PDF.primary600);
+  doc.text('RELATÓRIO DE PENDÊNCIAS DO SETOR DE COMPRAS', contentX, blockTop + 1.8);
+
+  const labelY = blockTop + 6.2;
+  const nomeY = labelY + 3.4;
+  const logsLine2Y = labelY + 3.4;
+  const logsLine3Y = labelY + 6.4;
+  const sepTop = labelY - 1.1;
+  const sepBottom = logsLine3Y + 0.8;
+
+  desenharIconePessoa(doc, contentX, labelY + 0.35);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(...PDF.muted);
+  doc.text('Comprador(a)', contentX + 3.2, labelY);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...PDF.text);
+  doc.text(nomeComprador, contentX + 3.2, nomeY);
+
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.2);
+  doc.line(sepX, sepTop, sepX, sepBottom);
+
+  desenharIconeImpressora(doc, logsX, labelY + 0.35);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.setTextColor(...PDF.text);
+  doc.text('LOGS DE IMPRESSÃO', logsX + 3.2, labelY);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(...PDF.muted);
+  doc.text(`Emitido em: ${emitidoEmStr}`, logsX + 3.2, logsLine2Y);
+  doc.text(`Total de produtos: ${totalProdutos}`, logsX + 3.2, logsLine3Y);
+
+  doc.setDrawColor(...PDF.primary600);
+  doc.setLineWidth(0.35);
+  doc.line(left, linhaBaseY, right, linhaBaseY);
+
+  return linhaBaseY + 2.5;
+}
+
 export async function downloadPendenciasComprasPdf(
   opts: DownloadPendenciasComprasPdfOpts
 ): Promise<void> {
@@ -157,15 +242,13 @@ export async function downloadPendenciasComprasPdf(
   const tableWidth = pageW - MARGIN.left - MARGIN.right;
   const colWidths = COL_RATIOS.map((r) => tableWidth * r);
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.setTextColor(...PDF.primary600);
-  doc.text(nomeComprador, MARGIN.left, 12);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(...PDF.muted);
-  doc.text(`Emitido em: ${emitidoEmStr} · ${linhas.length} produto(s)`, MARGIN.left, 17);
+  const tableStartY = desenharCabecalhoPendenciasPdf(
+    doc,
+    pageW,
+    nomeComprador,
+    emitidoEmStr,
+    linhas.length
+  );
 
   const head = [
     [
@@ -192,7 +275,7 @@ export async function downloadPendenciasComprasPdf(
   ]);
 
   autoTable(doc, {
-    startY: 21,
+    startY: tableStartY,
     head,
     body,
     tableWidth,
