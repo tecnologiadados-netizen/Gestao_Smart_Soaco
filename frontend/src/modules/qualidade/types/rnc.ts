@@ -2,6 +2,8 @@ export interface RncDados {
   codigoDocumento: string;
   /** Código do item no ERP (ex.: PA 10005, MP 6861). */
   codigoProduto: string;
+  loteSerie: string;
+  numeroOrdemProducao: string;
   dataOcorrencia: string;
   tipoAcao: string;
   tipoOcorrencia: string;
@@ -23,6 +25,13 @@ export interface RncDados {
   dataFechamento: string;
   usuarioCriacao: string;
   prazoExecucao: string;
+  acaoCorretiva2: string;
+  responsavelAcao2: string;
+  prazoAcao2: string;
+  acaoCorretiva3: string;
+  responsavelAcao3: string;
+  prazoAcao3: string;
+  analiseEficaz: string;
 }
 
 export type RncDadosInput = RncDados;
@@ -31,6 +40,8 @@ export function criarRncDadosVazio(codigoDocumento = ""): RncDados {
   return {
     codigoDocumento,
     codigoProduto: "",
+    loteSerie: "",
+    numeroOrdemProducao: "",
     dataOcorrencia: "",
     tipoAcao: "",
     tipoOcorrencia: "",
@@ -52,6 +63,13 @@ export function criarRncDadosVazio(codigoDocumento = ""): RncDados {
     dataFechamento: "",
     usuarioCriacao: "",
     prazoExecucao: "",
+    acaoCorretiva2: "",
+    responsavelAcao2: "",
+    prazoAcao2: "",
+    acaoCorretiva3: "",
+    responsavelAcao3: "",
+    prazoAcao3: "",
+    analiseEficaz: "",
   };
 }
 

@@ -25,16 +25,14 @@ export const RNC_CAMPOS_PDF_MAPA: RncCampoPdfMapa[] = [
   { rotuloPdf: "Setor de detecção", chaveSistema: "setorDeteccao", situacao: "mapeado" },
   {
     rotuloPdf: "Lote/Série",
-    chaveSistema: "codigoProduto",
-    situacao: "parcial",
-    observacao: "Reutiliza o código do produto ERP.",
+    chaveSistema: "loteSerie",
+    situacao: "mapeado",
   },
   { rotuloPdf: "Grupo de produto", chaveSistema: "grupoProduto", situacao: "mapeado" },
   {
     rotuloPdf: "O.P. Nº",
-    chaveSistema: "codigoProduto",
-    situacao: "parcial",
-    observacao: "Campo sem equivalente direto; usa código do produto.",
+    chaveSistema: "numeroOrdemProducao",
+    situacao: "mapeado",
   },
   { rotuloPdf: "Nota fiscal", chaveSistema: "notaFiscal", situacao: "mapeado" },
   {
@@ -80,9 +78,10 @@ export const RNC_CAMPOS_PDF_MAPA: RncCampoPdfMapa[] = [
   },
   {
     rotuloPdf: "Ações 2 e 3 / Análise eficaz?",
-    chaveSistema: "codigoDocumento",
-    situacao: "pendente",
-    observacao: "Campos do modelo sem equivalente no sistema.",
+    chaveSistema: "acaoCorretiva2",
+    situacao: "mapeado",
+    observacao:
+      "O sistema agora contempla ação 2, ação 3 e análise eficaz em campos próprios.",
   },
 ];
 

@@ -93,6 +93,8 @@ export const RNC_ANALISE_PROBLEMA = [
 
 export const rncFieldLabels = {
   codigoDocumento: "Código do documento",
+  loteSerie: "Lote/Série",
+  numeroOrdemProducao: "O.P. Nº",
   dataOcorrencia: "Data da ocorrência",
   tipoAcao: "Tipo de ação",
   tipoOcorrencia: "Tipo de ocorrência",
@@ -115,6 +117,13 @@ export const rncFieldLabels = {
   dataFechamento: "Data de fechamento do RNC",
   usuarioCriacao: "Usuário responsável pela criação",
   prazoExecucao: "Prazo de execução",
+  acaoCorretiva2: "Ação 2",
+  responsavelAcao2: "Responsável da ação 2",
+  prazoAcao2: "Prazo da ação 2",
+  acaoCorretiva3: "Ação 3",
+  responsavelAcao3: "Responsável da ação 3",
+  prazoAcao3: "Prazo da ação 3",
+  analiseEficaz: "Análise eficaz?",
 } as const;
 
 export const RCC_SIM_NAO = ["Sim", "Não"] as const;
@@ -207,6 +216,8 @@ export const rccFieldLabels = {
   horaSaidaEmpresa: "Hora da saída da empresa",
   numeroSerieCompressor: "Número de série do compressor",
   horaChegadaEmpresa: "Hora de chegada à empresa",
+  horaChegadaCliente: "Hora da chegada ao cliente",
+  horaSaidaCliente: "Hora da saída do cliente",
   problemaSolucionado: "Problema solucionado?",
   dataFechamento: "Data de fechamento",
   causaProblema: "Causa do problema",

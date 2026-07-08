@@ -41,6 +41,8 @@ export interface RccDados {
   horaSaidaEmpresa: string;
   numeroSerieCompressor: string;
   horaChegadaEmpresa: string;
+  horaChegadaCliente: string;
+  horaSaidaCliente: string;
   problemaSolucionado: string;
   dataFechamento: string;
   causaProblema: string;
@@ -90,6 +92,8 @@ export function criarRccDadosVazio(codigoDocumento = ""): RccDados {
     horaSaidaEmpresa: "",
     numeroSerieCompressor: "",
     horaChegadaEmpresa: "",
+    horaChegadaCliente: "",
+    horaSaidaCliente: "",
     problemaSolucionado: "",
     dataFechamento: "",
     causaProblema: "",

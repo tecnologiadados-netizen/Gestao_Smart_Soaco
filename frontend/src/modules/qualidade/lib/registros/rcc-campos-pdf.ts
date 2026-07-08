@@ -230,6 +230,18 @@ export const RCC_CAMPOS_PDF_MAPA: RccCampoPdfMapa[] = [
     versoes: ["empresa"],
     situacao: "mapeado",
   },
+  {
+    rotuloPdf: "Hora da chegada ao cliente",
+    chaveSistema: "horaChegadaCliente",
+    versoes: ["empresa"],
+    situacao: "mapeado",
+  },
+  {
+    rotuloPdf: "Hora da saída do cliente",
+    chaveSistema: "horaSaidaCliente",
+    versoes: ["empresa"],
+    situacao: "mapeado",
+  },
 ];
 
 export const RCC_CAMPOS_PDF_PENDENTES = RCC_CAMPOS_PDF_MAPA.filter(

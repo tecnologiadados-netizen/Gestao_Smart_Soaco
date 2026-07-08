@@ -1,6 +1,9 @@
 import { prisma } from '../config/prisma.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import { getPermissoesUsuario } from '../middleware/requirePermission.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import {
   notificarNovasTarefasWorkflow,
   type DocumentoMetaParaEmail,
@@ -360,6 +363,7 @@ function mapTarefa(row: {
 
 export async function getQualidadeBootstrap() {
   await ensureSgqCatalogosSeed();
+  await ensureSgqHistoricoSeed();
 
   const [
     setores,
@@ -1208,4 +1212,65 @@ export async function listQualidadeResponsaveis() {
     });
   }
   return result;
+}
+
+const sgqHistoricoMockDataDir = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..',
+  'frontend',
+  'src',
+  'modules',
+  'qualidade',
+  'lib',
+  'mock-data'
+);
+
+function readSgqHistoricoJson<T>(fileName: string): T[] {
+  const filePath = path.join(sgqHistoricoMockDataDir, fileName);
+  if (!fs.existsSync(filePath)) {
+    console.warn(`[sgq-historico] Arquivo não encontrado: ${filePath}`);
+    return [];
+  }
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(raw) as T[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error(`[sgq-historico] Falha ao ler ${fileName}:`, err);
+    return [];
+  }
+}
+
+/** Importa histórico Nomus (RNC/RCC/avaliações) quando ainda não há registros importados. */
+export async function ensureSgqHistoricoSeed(criadoPorLogin = 'sistema'): Promise<void> {
+  const [registrosImportados, avaliacoesImportadas] = await Promise.all([
+    prisma.sgqRegistro.count({ where: { origemImport: true } }),
+    prisma.sgqAvaliacaoFornecedor.count({ where: { origemImport: true } }),
+  ]);
+
+  if (registrosImportados === 0) {
+    const rnc = readSgqHistoricoJson<Record<string, unknown>>('rnc-historico-nomus.json');
+    const rcc = readSgqHistoricoJson<Record<string, unknown>>('rcc-historico-nomus.json');
+    const registros = [...rnc, ...rcc];
+    if (registros.length > 0) {
+      const result = await importRegistrosFromJson(registros, criadoPorLogin);
+      console.info(
+        `[sgq-historico] Registros Nomus: ${result.inseridos} inseridos, ${result.ignorados} ignorados`
+      );
+    }
+  }
+
+  if (avaliacoesImportadas === 0) {
+    const avaliacoes = readSgqHistoricoJson<Record<string, unknown>>(
+      'avaliacoes-fornecedor-historico.json'
+    );
+    if (avaliacoes.length > 0) {
+      await syncQualidadeAvaliacoes(
+        avaliacoes.map((av) => ({ ...av, origemImport: true }))
+      );
+      console.info(`[sgq-historico] Avaliações de fornecedor: ${avaliacoes.length} importadas`);
+    }
+  }
 }

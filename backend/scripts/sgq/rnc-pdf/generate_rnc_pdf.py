@@ -12,13 +12,14 @@ from pathlib import Path
 from typing import Any
 
 from docx import Document
-from docx.shared import Pt
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-TEMPLATES_DIR = SCRIPT_DIR / "templates"
+SGQ_DIR = SCRIPT_DIR.parent
+if str(SGQ_DIR) not in sys.path:
+    sys.path.insert(0, str(SGQ_DIR))
+from docx_cells import definir_celula
 
-FONT_NAME = "Arial"
-FONT_SIZE = Pt(8)
+TEMPLATES_DIR = SCRIPT_DIR / "templates"
 
 STATUS_LABELS = {
     "aberto": "Aberto",
@@ -111,9 +112,9 @@ def montar_campos(payload: dict[str, Any]) -> dict[str, str]:
         "quantidade": valor_campo(rnc.get("quantidade")),
         "setor_ocorrencia": valor_campo(rnc.get("setorOcorrencia")),
         "setor_deteccao": valor_campo(rnc.get("setorDeteccao")),
-        "lote_serie": valor_campo(rnc.get("codigoProduto")),
+        "lote_serie": valor_campo(rnc.get("loteSerie") or rnc.get("codigoProduto")),
         "grupo_produto": valor_campo(rnc.get("grupoProduto")),
-        "op_numero": valor_campo(rnc.get("codigoProduto")),
+        "op_numero": valor_campo(rnc.get("numeroOrdemProducao") or rnc.get("codigoProduto")),
         "nota_fiscal": valor_campo(rnc.get("notaFiscal")),
         "descricao_ocorrencia": descricao_ocorrencia(rnc),
         "preenchido_por": valor_campo(rnc.get("responsavel") or rnc.get("usuarioCriacao")),
@@ -132,31 +133,14 @@ def montar_campos(payload: dict[str, Any]) -> dict[str, str]:
         "acao_1": valor_campo(rnc.get("resolucaoNaoConformidade")),
         "acao_1_responsavel": valor_campo(rnc.get("responsavelAcaoImediata")),
         "acao_1_prazo": formatar_data(rnc.get("prazoExecucao")),
+        "acao_2": valor_campo(rnc.get("acaoCorretiva2")),
+        "acao_2_responsavel": valor_campo(rnc.get("responsavelAcao2")),
+        "acao_2_prazo": formatar_data(rnc.get("prazoAcao2")),
+        "acao_3": valor_campo(rnc.get("acaoCorretiva3")),
+        "acao_3_responsavel": valor_campo(rnc.get("responsavelAcao3")),
+        "acao_3_prazo": formatar_data(rnc.get("prazoAcao3")),
+        "analise_eficaz": valor_campo(rnc.get("analiseEficaz")),
     }
-
-
-def definir_celula(table, linha: int, coluna: int, texto: str) -> None:
-    if not texto:
-        return
-
-    cell = table.cell(linha, coluna)
-    if not cell.paragraphs:
-        cell.add_paragraph()
-    paragraph = cell.paragraphs[0]
-
-    if paragraph.runs:
-        paragraph.runs[0].text = texto
-        for run in paragraph.runs[1:]:
-            run.text = ""
-        run = paragraph.runs[0]
-    else:
-        run = paragraph.add_run(texto)
-
-    run.font.name = FONT_NAME
-    run.font.size = FONT_SIZE
-
-    for extra in cell.paragraphs[1:]:
-        extra._element.getparent().remove(extra._element)
 
 
 def preencher_rnc(table, campos: dict[str, str]) -> None:
@@ -190,6 +174,13 @@ def preencher_rnc(table, campos: dict[str, str]) -> None:
     definir_celula(table, 22, 2, campos["acao_1"])
     definir_celula(table, 22, 11, campos["acao_1_responsavel"])
     definir_celula(table, 22, 16, campos["acao_1_prazo"])
+    definir_celula(table, 23, 2, campos["acao_2"])
+    definir_celula(table, 23, 11, campos["acao_2_responsavel"])
+    definir_celula(table, 23, 16, campos["acao_2_prazo"])
+    definir_celula(table, 24, 2, campos["acao_3"])
+    definir_celula(table, 24, 11, campos["acao_3_responsavel"])
+    definir_celula(table, 24, 16, campos["acao_3_prazo"])
+    definir_celula(table, 25, 2, campos["analise_eficaz"])
 
 
 def preencher_documento(campos: dict[str, str]) -> Document:
@@ -206,14 +197,9 @@ def preencher_documento(campos: dict[str, str]) -> Document:
 
 
 def converter_para_pdf(docx_path: Path, pdf_path: Path) -> None:
-    try:
-        from docx2pdf import convert
-    except ImportError as exc:
-        raise RuntimeError(
-            "Pacote docx2pdf não instalado. Execute: pip install -r scripts/rnc-pdf/requirements.txt"
-        ) from exc
+    from docx_to_pdf import converter_docx_para_pdf
 
-    convert(str(docx_path), str(pdf_path))
+    converter_docx_para_pdf(str(docx_path), str(pdf_path))
 
 
 def gerar_pdf(payload: dict[str, Any], output_path: Path) -> None:

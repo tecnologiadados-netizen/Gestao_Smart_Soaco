@@ -282,11 +282,9 @@
   padding: 6px 8px;
 }
 
-/* Layout das páginas — espaço para o botão flutuante "Conexão API / ERP" do shell principal */
 .qualidade-module .sgq-page {
   width: 100%;
   max-width: 80rem;
-  padding-bottom: 5.5rem;
 }
 
 .qualidade-module .sgq-subnav {

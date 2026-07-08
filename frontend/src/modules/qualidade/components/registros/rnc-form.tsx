@@ -242,6 +242,28 @@ export function RncForm({
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="rnc-lote-serie">{rncFieldLabels.loteSerie}</Label>
+            <Input
+              id="rnc-lote-serie"
+              value={dados.loteSerie}
+              onChange={(e) => patch({ loteSerie: e.target.value })}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="rnc-op-numero">
+              {rncFieldLabels.numeroOrdemProducao}
+            </Label>
+            <Input
+              id="rnc-op-numero"
+              value={dados.numeroOrdemProducao}
+              onChange={(e) => patch({ numeroOrdemProducao: e.target.value })}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="rnc-tipo-produto">{rncFieldLabels.tipoProduto}</Label>
             {camposProdutoAuto ? (
               <Input
@@ -525,6 +547,95 @@ export function RncForm({
               rows={3}
               value={dados.causa}
               onChange={(e) => patch({ causa: e.target.value })}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="rnc-acao-2">{rncFieldLabels.acaoCorretiva2}</Label>
+            <Textarea
+              id="rnc-acao-2"
+              rows={2}
+              value={dados.acaoCorretiva2}
+              onChange={(e) => patch({ acaoCorretiva2: e.target.value })}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="rnc-resp-acao-2">
+              {rncFieldLabels.responsavelAcao2}
+            </Label>
+            <Input
+              id="rnc-resp-acao-2"
+              value={dados.responsavelAcao2}
+              onChange={(e) => patch({ responsavelAcao2: e.target.value })}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="rnc-prazo-acao-2">{rncFieldLabels.prazoAcao2}</Label>
+            <Input
+              id="rnc-prazo-acao-2"
+              type="date"
+              value={isoParaInputDate(dados.prazoAcao2)}
+              onChange={(e) =>
+                patch({
+                  prazoAcao2: e.target.value ? `${e.target.value}T12:00:00.000Z` : "",
+                })
+              }
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="rnc-acao-3">{rncFieldLabels.acaoCorretiva3}</Label>
+            <Textarea
+              id="rnc-acao-3"
+              rows={2}
+              value={dados.acaoCorretiva3}
+              onChange={(e) => patch({ acaoCorretiva3: e.target.value })}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="rnc-resp-acao-3">
+              {rncFieldLabels.responsavelAcao3}
+            </Label>
+            <Input
+              id="rnc-resp-acao-3"
+              value={dados.responsavelAcao3}
+              onChange={(e) => patch({ responsavelAcao3: e.target.value })}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="rnc-prazo-acao-3">{rncFieldLabels.prazoAcao3}</Label>
+            <Input
+              id="rnc-prazo-acao-3"
+              type="date"
+              value={isoParaInputDate(dados.prazoAcao3)}
+              onChange={(e) =>
+                patch({
+                  prazoAcao3: e.target.value ? `${e.target.value}T12:00:00.000Z` : "",
+                })
+              }
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="rnc-analise-eficaz">
+              {rncFieldLabels.analiseEficaz}
+            </Label>
+            <Textarea
+              id="rnc-analise-eficaz"
+              rows={2}
+              value={dados.analiseEficaz}
+              onChange={(e) => patch({ analiseEficaz: e.target.value })}
               disabled={somenteLeitura}
             />
           </div>
