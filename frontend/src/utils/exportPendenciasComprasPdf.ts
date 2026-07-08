@@ -1,7 +1,10 @@
 import { jsPDF } from 'jspdf';
 import autoTable, { type CellHookData, type HookData } from 'jspdf-autotable';
 import type { PendenciasComprasDestaques } from '../api/pendenciasCompras';
-import { ESTOQUE_VERIFICAR_PCP_TEXTO } from './pendenciasComprasDestaques';
+import {
+  ESTOQUE_NAO_CONTROLADO_TEXTO,
+  ESTOQUE_VERIFICAR_PCP_TEXTO,
+} from './pendenciasComprasDestaques';
 
 export type PendenciasComprasPdfRow = {
   codigo: string;
@@ -95,8 +98,12 @@ const LEGENDA_PDF_BLOCOS: LegendaPdfBloco[] = [
     coluna: 'Estoque Atual',
     itens: [
       {
-        texto: 'Estoque padrão diferente do almox secundário (ex.: bobinas)',
+        texto: 'Estoque padrão Galpão Bobina ou Matéria Prima Processada',
         badgeAzul: true,
+      },
+      {
+        texto: 'Demais estoques padrão (não controlado)',
+        badgeAzul: false,
       },
     ],
   },
@@ -169,6 +176,19 @@ function aplicarFundoCelula(data: CellHookData, linha: PendenciasComprasPdfRow):
 function desenharBadgeCelula(doc: jsPDF, data: HookData, texto: string): void {
   const { x, y, width, height } = data.cell;
   const isVerificarPcp = texto === ESTOQUE_VERIFICAR_PCP_TEXTO;
+  const isNaoControlado = texto === ESTOQUE_NAO_CONTROLADO_TEXTO;
+
+  if (isNaoControlado) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7);
+    doc.setTextColor(...PDF.muted);
+    doc.text(texto, x + width / 2, y + height / 2, {
+      align: 'center',
+      baseline: 'middle',
+    });
+    return;
+  }
+
   const fontSize = isVerificarPcp ? 6.5 : 9;
   const fontStyle = isVerificarPcp ? 'italic' : 'bold';
 

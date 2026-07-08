@@ -27,11 +27,11 @@ import {
 } from '../../api/consultaEstoque';
 import type { RessupAlmoxPcPendLinha } from '../../api/compras';
 import {
-  ESTOQUE_VERIFICAR_PCP_TEXTO,
   LEGENDA_PENDENCIAS,
   classeDestaqueAgPag,
   classeDestaqueCodigo,
   classeDestaquePc,
+  textoEstoquePendencias,
 } from '../../utils/pendenciasComprasDestaques';
 import { downloadPendenciasComprasPdf } from '../../utils/exportPendenciasComprasPdf';
 import PendenciasPdfGeneratingOverlay from '../../components/compras/PendenciasPdfGeneratingOverlay';
@@ -130,14 +130,14 @@ export default function PendenciasComprasPage() {
   const getCellText = useCallback((row: PendenciasComprasLinha, key: string): string => {
     if (key === 'dataEmissao') return row.dataEmissao ?? '—';
     if (key === 'dataNecessidade') return row.dataNecessidade ?? '—';
-    if (key === 'estoqueAtual' && row.estoqueVerificarPcp) return ESTOQUE_VERIFICAR_PCP_TEXTO;
+    if (key === 'estoqueAtual') return textoEstoquePendencias(row, fmtQtde);
     const val = row[key as keyof PendenciasComprasLinha];
     if (typeof val === 'number') return fmtQtde(val);
     return String(val ?? '');
   }, []);
 
   const valueForSort = useCallback((row: PendenciasComprasLinha, key: string): string | number => {
-    if (key === 'estoqueAtual' && row.estoqueVerificarPcp) return ESTOQUE_VERIFICAR_PCP_TEXTO;
+    if (key === 'estoqueAtual') return textoEstoquePendencias(row, fmtQtde);
     if (NUM_KEYS.includes(key as (typeof NUM_KEYS)[number])) {
       return row[key as (typeof NUM_KEYS)[number]];
     }
@@ -485,7 +485,10 @@ export default function PendenciasComprasPage() {
                             : k === 'pedidoCompra'
                               ? 'pc'
                               : 'saldo';
-                      const estoqueVerificarPcp = k === 'estoqueAtual' && row.estoqueVerificarPcp;
+                      const estoqueEspecial =
+                        k === 'estoqueAtual' && row.estoqueExibicao !== 'saldo';
+                      const estoqueTexto =
+                        k === 'estoqueAtual' ? textoEstoquePendencias(row, fmtQtde) : null;
                       return (
                         <td
                           key={k}
@@ -499,9 +502,15 @@ export default function PendenciasComprasPage() {
                               })
                             }
                           >
-                            {estoqueVerificarPcp ? (
-                              <span className="whitespace-nowrap text-[10px] font-normal italic text-white">
-                                {ESTOQUE_VERIFICAR_PCP_TEXTO}
+                            {estoqueEspecial ? (
+                              <span
+                                className={`whitespace-nowrap text-[10px] font-normal italic ${
+                                  row.estoqueExibicao === 'verificar_pcp'
+                                    ? 'text-white'
+                                    : 'text-slate-600 dark:text-slate-300'
+                                }`}
+                              >
+                                {estoqueTexto}
                               </span>
                             ) : (
                               cellNum(val)
@@ -576,10 +585,14 @@ export default function PendenciasComprasPage() {
             if (detalheSaldo.length === 0) {
               return (
                 <>
-                  {detalhe.linha.estoqueVerificarPcp ? (
+                  {detalhe.linha.estoqueExibicao === 'verificar_pcp' ? (
                     <p className="mb-3 text-xs text-slate-600 dark:text-slate-300">
-                      O estoque padrão deste item não é o almox secundário. Consulte o PCP para o
+                      Estoque padrão Galpão Bobina ou Matéria Prima Processada. Consulte o PCP para o
                       saldo correto.
+                    </p>
+                  ) : detalhe.linha.estoqueExibicao === 'nao_controlado' ? (
+                    <p className="mb-3 text-xs text-slate-600 dark:text-slate-300">
+                      Estoque padrão não controlado neste relatório.
                     </p>
                   ) : null}
                   <p className="text-slate-500">Sem saldo nos setores aplicáveis.</p>
@@ -588,10 +601,14 @@ export default function PendenciasComprasPage() {
             }
             return (
               <>
-                {detalhe.linha.estoqueVerificarPcp ? (
+                {detalhe.linha.estoqueExibicao === 'verificar_pcp' ? (
                   <p className="mb-3 text-xs text-slate-600 dark:text-slate-300">
-                    O estoque padrão deste item não é o almox secundário. Consulte o PCP para o
+                    Estoque padrão Galpão Bobina ou Matéria Prima Processada. Consulte o PCP para o
                     saldo correto. Detalhe por setor abaixo:
+                  </p>
+                ) : detalhe.linha.estoqueExibicao === 'nao_controlado' ? (
+                  <p className="mb-3 text-xs text-slate-600 dark:text-slate-300">
+                    Estoque padrão não controlado neste relatório. Detalhe por setor abaixo:
                   </p>
                 ) : null}
                 <table className="w-full text-xs">

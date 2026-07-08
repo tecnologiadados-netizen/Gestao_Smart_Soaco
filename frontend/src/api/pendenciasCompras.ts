@@ -1,5 +1,7 @@
 import { apiFetch, apiJson } from './client';
 
+import type { EstoqueExibicaoPendencias } from '../utils/pendenciasComprasDestaques';
+
 export type PendenciasComprasDestaques = {
   codigo: 'zerado_com_sc' | 'zerado_com_agpag' | 'necessidade_acima_40d' | null;
   agPag: 'menos_24h' | 'mais_24h' | null;
@@ -16,8 +18,8 @@ export type PendenciasComprasLinha = {
   agPag: number;
   pedidoCompra: number;
   estoqueAtual: number;
-  /** Estoque padrão ≠ almox secundário — grade exibe texto em vez de número. */
-  estoqueVerificarPcp: boolean;
+  /** Regra da coluna Estoque conforme estoque padrão do produto no Nomus. */
+  estoqueExibicao: EstoqueExibicaoPendencias;
   nomeColeta: string;
   destaques: PendenciasComprasDestaques;
   /** Grupo de prioridade automática (coleta / necessidade — como na planilha Excel). */

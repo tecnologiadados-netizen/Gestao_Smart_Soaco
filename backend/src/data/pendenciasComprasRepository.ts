@@ -14,11 +14,15 @@ import {
 import {
   COLETAS_EXCLUIR_SETOR2_ALMOX,
   NOMUS_ATRIBUTO_COLETA,
+  NOMUS_SETOR_ESTOQUE_PADRAO,
   PCP_ID_EMPRESA_SO_ACO,
+  SQL_SETORES_ESTOQUE_VERIFICAR_PCP_IN,
   STATUS_COTACAO_AGPAG_SQL,
   TIPOS_PRODUTO_CONSULTA_SQL,
   SQL_COND_SETOR2_NAO_EXCLUIDO_POR_COLETA,
 } from './sql/sqlComprasEstoqueFragments.js';
+
+export type EstoqueExibicaoPendencias = 'saldo' | 'verificar_pcp' | 'nao_controlado';
 
 const SQL_COLETAS_EXCLUIR_SETOR2_IN = COLETAS_EXCLUIR_SETOR2_ALMOX.map((c) =>
   `'${c.replace(/'/g, "''")}'`
@@ -40,8 +44,8 @@ export type PendenciasComprasLinha = {
   agPag: number;
   pedidoCompra: number;
   estoqueAtual: number;
-  /** Estoque padrão ≠ almox secundário (ex.: bobinas) — grade exibe texto, não número. */
-  estoqueVerificarPcp: boolean;
+  /** Regra da coluna Estoque conforme estoque padrão (produtoempresa.idSetorEstoquePadrao). */
+  estoqueExibicao: EstoqueExibicaoPendencias;
   nomeColeta: string;
   destaques: PendenciasComprasDestaques;
   /** Grupo de prioridade automática (coleta / necessidade — como na planilha Excel). */
@@ -147,17 +151,21 @@ Select
   Round(Coalesce(pc_agg.qtde, 0), 2) As pedidoCompra,
   Round(Coalesce(saldo_agg.saldo, 0), 2) As estoqueAtual,
   Case
-    When pf.idTipoProduto In (8, 15) Then 0
-    When vinc_s2.idProduto Is Not Null
-      And pf.nomeColeta Not In (${SQL_COLETAS_EXCLUIR_SETOR2_IN}) Then 0
-    Else 1
-  End As estoqueVerificarPcp,
+    When Coalesce(est_pad.idSetorEstoquePadrao, 0) = ${NOMUS_SETOR_ESTOQUE_PADRAO.MATERIAL_SECUNDARIO} Then 'saldo'
+    When est_pad.idSetorEstoquePadrao In (${SQL_SETORES_ESTOQUE_VERIFICAR_PCP_IN}) Then 'verificar_pcp'
+    Else 'nao_controlado'
+  End As estoqueExibicao,
   cot_recente.horasDesdeEmissao,
   pc_flags.pcAtrasado,
   cmn.minDataNecessidadeColeta,
   cp.prioridadeAutomatica,
   sc_ordem.scIdMin
 From produtos_filtrados pf
+Left Join (
+  Select pe.idProduto, pe.idSetorEstoquePadrao
+  From produtoempresa pe
+  Where pe.idEmpresa = ${PCP_ID_EMPRESA_SO_ACO}
+) est_pad On est_pad.idProduto = pf.id
 Left Join (
   Select Distinct pe.idProduto
   From produtoempresa pe
@@ -343,8 +351,14 @@ Order By
   pf.codigo Asc
 `;
 
+function parseEstoqueExibicao(valor: unknown): EstoqueExibicaoPendencias {
+  const s = String(valor ?? '').trim();
+  if (s === 'verificar_pcp' || s === 'nao_controlado') return s;
+  return 'saldo';
+}
+
 function montarDestaques(row: Record<string, unknown>): PendenciasComprasDestaques {
-  const verificarPcp = Number(row.estoqueVerificarPcp ?? 0) === 1;
+  const exibeSaldo = parseEstoqueExibicao(row.estoqueExibicao) === 'saldo';
   const estoque = Number(row.estoqueAtual ?? 0);
   const solicitacao = Number(row.solicitacao ?? 0);
   const agPag = Number(row.agPag ?? 0);
@@ -354,8 +368,8 @@ function montarDestaques(row: Record<string, unknown>): PendenciasComprasDestaqu
   const todasAcima40 = Number(row.todasNecessidadeAcima40d ?? 0) === 1;
 
   let codigo: PendenciasComprasDestaques['codigo'] = null;
-  if (!verificarPcp && estoque <= 0 && agPag > 0) codigo = 'zerado_com_agpag';
-  else if (!verificarPcp && estoque <= 0 && solicitacao > 0) codigo = 'zerado_com_sc';
+  if (exibeSaldo && estoque <= 0 && agPag > 0) codigo = 'zerado_com_agpag';
+  else if (exibeSaldo && estoque <= 0 && solicitacao > 0) codigo = 'zerado_com_sc';
   else if (todasAcima40 && solicitacao > 0) codigo = 'necessidade_acima_40d';
 
   let agPagDestaque: PendenciasComprasDestaques['agPag'] = null;
@@ -427,7 +441,7 @@ export async function consultarPendenciasCompras(
         agPag,
         pedidoCompra: Number(r.pedidoCompra ?? 0),
         estoqueAtual: Number(r.estoqueAtual ?? 0),
-        estoqueVerificarPcp: Number(r.estoqueVerificarPcp ?? 0) === 1,
+        estoqueExibicao: parseEstoqueExibicao(r.estoqueExibicao),
         nomeColeta: String(r.nomeColeta ?? ''),
         destaques: montarDestaques(r),
         prioridadeAutomatica: Number(r.prioridadeAutomatica ?? 9999),

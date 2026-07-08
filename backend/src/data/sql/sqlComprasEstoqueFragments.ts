@@ -10,6 +10,18 @@ export const TIPOS_PRODUTO_CONSULTA_SQL = TIPOS_PRODUTO_CONSULTA_ESTOQUE.join(',
 /** pd.idEmpresa Nomus — Só Aço Industrial (módulo PCP). */
 export const PCP_ID_EMPRESA_SO_ACO = 1;
 
+/** Setores de estoque padrão (produtoempresa.idSetorEstoquePadrao) — Pendências compras. */
+export const NOMUS_SETOR_ESTOQUE_PADRAO = {
+  MATERIAL_SECUNDARIO: 2,
+  GALPAO_BOBINA: 19,
+  MATERIA_PRIMA_PROCESSADA: 20,
+} as const;
+
+export const SQL_SETORES_ESTOQUE_VERIFICAR_PCP_IN = [
+  NOMUS_SETOR_ESTOQUE_PADRAO.GALPAO_BOBINA,
+  NOMUS_SETOR_ESTOQUE_PADRAO.MATERIA_PRIMA_PROCESSADA,
+].join(', ');
+
 /** Atributos de produto no Nomus (atributoprodutovalor / atributolistaopcao). */
 export const NOMUS_ATRIBUTO_COLETA = 650;
 

@@ -1,7 +1,22 @@
 import type { PendenciasComprasDestaques } from '../api/pendenciasCompras';
 
-/** Texto exibido na grade quando o estoque padrão não é o almox secundário (ex.: bobinas). */
+export type EstoqueExibicaoPendencias = 'saldo' | 'verificar_pcp' | 'nao_controlado';
+
+/** Estoque padrão Galpão Bobina ou Matéria Prima Processada. */
 export const ESTOQUE_VERIFICAR_PCP_TEXTO = '(Verificar com PCP)';
+
+/** Demais estoques padrão (fora almox secundário / bobina / MPP). */
+export const ESTOQUE_NAO_CONTROLADO_TEXTO = 'Não controlado';
+
+export function textoEstoquePendencias(
+  linha: { estoqueExibicao: EstoqueExibicaoPendencias; estoqueAtual: number },
+  formatarQtde: (valor: number) => string
+): string {
+  if (linha.estoqueExibicao === 'verificar_pcp') return ESTOQUE_VERIFICAR_PCP_TEXTO;
+  if (linha.estoqueExibicao === 'nao_controlado') return ESTOQUE_NAO_CONTROLADO_TEXTO;
+  return formatarQtde(linha.estoqueAtual);
+}
+
 const CODIGO_CLASS: Record<NonNullable<PendenciasComprasDestaques['codigo']>, string> = {
   zerado_com_sc: 'bg-amber-100 dark:bg-amber-900/40',
   zerado_com_agpag: 'bg-orange-200 dark:bg-orange-900/50',
@@ -55,7 +70,12 @@ export const LEGENDA_PENDENCIAS = [
   { coluna: 'PC', texto: 'PC em dia', classe: PC_CLASS.em_dia },
   {
     coluna: 'Estoque Atual',
-    texto: 'Estoque padrão diferente do almox secundário (ex.: bobinas)',
+    texto: 'Estoque padrão Galpão Bobina ou Matéria Prima Processada',
     classe: 'italic text-slate-600 dark:text-slate-400',
+  },
+  {
+    coluna: 'Estoque Atual',
+    texto: 'Demais estoques padrão (não controlado neste relatório)',
+    classe: 'italic text-slate-500 dark:text-slate-500',
   },
 ] as const;
