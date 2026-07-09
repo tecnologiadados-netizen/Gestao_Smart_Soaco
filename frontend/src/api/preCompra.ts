@@ -147,7 +147,8 @@ export async function downloadPreCompraPdf(
   const res = await fetch(url, { credentials: 'include', headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? 'Erro ao gerar PDF');
+    const detalhe = typeof err.cause === 'string' && err.cause.trim() ? err.cause.trim() : '';
+    throw new Error(detalhe || err.error || 'Erro ao gerar PDF');
   }
 
   const blob = await res.blob();

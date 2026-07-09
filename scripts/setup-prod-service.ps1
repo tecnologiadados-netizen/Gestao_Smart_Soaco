@@ -71,6 +71,12 @@ Write-Host "Instalando servico $ServicoNome..." -ForegroundColor Cyan
 
 New-Item -ItemType Directory -Force -Path (Join-Path $PastaProjeto "backend\logs") | Out-Null
 
+$ensureWordDirs = Join-Path $PastaProjeto "scripts\ensure-word-com-dirs.ps1"
+if (Test-Path $ensureWordDirs) {
+    Write-Host "Garantindo pastas Word COM (LocalSystem)..." -ForegroundColor Cyan
+    & $ensureWordDirs
+}
+
 & $nssmExe start $ServicoNome
 Start-Sleep -Seconds 3
 
