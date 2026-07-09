@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -23,6 +23,14 @@ import {
   type PainelProducaoRankingItem,
 } from '../../../api/painelProducao';
 import { formatMesLabel, formatNumber, formatPercent, getChartTheme } from '../../../utils/painelProducaoFormat';
+import { useTelaFavorita } from '../../../hooks/useTelaFavorita';
+import { useRegistrarVisaoFavorito } from '../../../hooks/useRegistrarVisaoFavorito';
+import {
+  isRotaFavoritavel,
+  resumoFiltrosFavorito,
+  TELAS_FAVORITAVEIS_CFG,
+  type RotaFavoritavel,
+} from '../../../config/telasFavoritaveis';
 
 interface ChartPoint {
   label: string;
@@ -387,6 +395,8 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
 
   const [filtersLoading, setFiltersLoading] = useState(true);
   const [filtersError, setFiltersError] = useState<string | null>(null);
+  const [filtrosProntos, setFiltrosProntos] = useState(false);
+  const defaultsRef = useRef({ setor: '', mes: '' });
 
   const [dashboard, setDashboard] = useState<PainelProducaoDashboard | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
@@ -396,12 +406,53 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
   const isDark = theme === 'dark';
   const chartTheme = getChartTheme(isDark);
 
+  const validarFiltrosPainel = useCallback(
+    (raw: Record<string, string>) => {
+      const setorV = raw.setor?.trim();
+      const mesV = raw.mes?.trim();
+      if (!setorV || !mesV) return null;
+      if (!setores.includes(setorV) || !meses.includes(mesV)) return null;
+      return { setor: setorV, mes: mesV };
+    },
+    [setores, meses],
+  );
+
+  const aplicarFiltrosPainel = useCallback((f: { setor: string; mes: string }) => {
+    setSetor(f.setor);
+    setMes(f.mes);
+  }, []);
+
+  const listasCarregadas = !filtersLoading && setores.length > 0 && meses.length > 0;
+
+  const { resolving, temFavNaUrl, rota } = useTelaFavorita({
+    filtrosAtuais: { setor, mes },
+    aplicarFiltros: aplicarFiltrosPainel,
+    validarFiltros: validarFiltrosPainel,
+    onResolved: () => setFiltrosProntos(true),
+    enabled: listasCarregadas,
+  });
+
+  const visaoFavorito = useMemo(() => {
+    if (!setor || !mes || !isRotaFavoritavel(rota)) return null;
+    const cfg = TELAS_FAVORITAVEIS_CFG[rota as RotaFavoritavel];
+    const filtros = { setor, mes };
+    return {
+      rota,
+      filtros,
+      telaLabel: cfg.label,
+      resumoFiltros: resumoFiltrosFavorito(rota, filtros),
+    };
+  }, [rota, setor, mes]);
+
+  useRegistrarVisaoFavorito(filtrosProntos && !filtersLoading ? visaoFavorito : null);
+
   useEffect(() => {
     let cancelled = false
 
     async function loadFilters() {
       setFiltersLoading(true)
       setFiltersError(null)
+      setFiltrosProntos(false)
       try {
         const data = await fetchPainelProducaoFilters();
         if (cancelled) return
@@ -409,16 +460,15 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
         setSetores(data.setores ?? [])
         setMeses(data.meses ?? [])
 
-        if (data.setores?.length) {
-          setSetor(data.default_setor && data.setores.includes(data.default_setor)
+        const defaultSetor =
+          data.default_setor && data.setores?.includes(data.default_setor)
             ? data.default_setor
-            : data.setores[0])
-        }
-        if (data.meses?.length) {
-          setMes(data.default_mes && data.meses.includes(data.default_mes)
+            : data.setores?.[0] ?? ''
+        const defaultMes =
+          data.default_mes && data.meses?.includes(data.default_mes)
             ? data.default_mes
-            : data.meses[0])
-        }
+            : data.meses?.[0] ?? ''
+        defaultsRef.current = { setor: defaultSetor, mes: defaultMes }
       } catch (err) {
         if (!cancelled) {
           setFiltersError(
@@ -435,6 +485,16 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (!filtrosProntos || resolving) return
+    if (setor && mes) return
+    const d = defaultsRef.current
+    if (d.setor && setores.includes(d.setor)) setSetor(d.setor)
+    else if (setores[0]) setSetor(setores[0])
+    if (d.mes && meses.includes(d.mes)) setMes(d.mes)
+    else if (meses[0]) setMes(meses[0])
+  }, [filtrosProntos, resolving, setor, mes, setores, meses])
 
   const loadDashboard = useCallback(async (selectedSetor: string, selectedMes: string) => {
     if (!selectedSetor || !selectedMes) return
@@ -466,8 +526,10 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
   const porDia = normalizeChartData(dashboard?.por_dia ?? [], 'dia')
   const rankingAll = dashboard?.ranking ?? []
   const rankingRest = rankingAll.filter((row) => row.ranking > 3)
+  const ocultarFiltrosTv = isTv && temFavNaUrl
+  const aguardandoFiltros = filtersLoading || resolving || (listasCarregadas && !filtrosProntos)
 
-  if (filtersLoading) {
+  if (aguardandoFiltros) {
     return (
       <PainelProducaoShell>
         <div className={`dashboard${isTv ? ' dashboard-tv' : ''}`}>
@@ -495,25 +557,29 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
           {dashboard?.titulo ?? `SETOR DE ${(setor || '—').toUpperCase()}`}
         </div>
         <div className="filters">
-          <SearchableSelect
-            id="setor-select"
-            label="Setor"
-            value={setor}
-            options={setores.map((s) => ({ value: s, label: s }))}
-            onChange={setSetor}
-            searchPlaceholder="Pesquisar setor..."
-          />
-          <MonthFilter
-            id="mes-select"
-            mes={mes}
-            meses={meses}
-            onChange={setMes}
-            onMesesChange={(lista, selected) => {
-              setMeses(lista);
-              setMes(selected);
-            }}
-            disabled={dashboardLoading}
-          />
+          {!ocultarFiltrosTv && (
+            <>
+              <SearchableSelect
+                id="setor-select"
+                label="Setor"
+                value={setor}
+                options={setores.map((s) => ({ value: s, label: s }))}
+                onChange={setSetor}
+                searchPlaceholder="Pesquisar setor..."
+              />
+              <MonthFilter
+                id="mes-select"
+                mes={mes}
+                meses={meses}
+                onChange={setMes}
+                onMesesChange={(lista, selected) => {
+                  setMeses(lista);
+                  setMes(selected);
+                }}
+                disabled={dashboardLoading}
+              />
+            </>
+          )}
         </div>
       </header>
 

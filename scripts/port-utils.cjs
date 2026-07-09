@@ -4,8 +4,8 @@
  */
 const { execSync } = require('child_process');
 const path = require('path');
+const { DEV_PORTS, KILL_PORTS } = require('./dev-ports.cjs');
 
-const DEV_PORTS = [4000, 5180, 5173, 5174, 5051];
 const PROJECT_MARKER = 'gestorpedidosSoAco';
 
 const DEV_CMD_PATTERNS = [
@@ -201,6 +201,7 @@ function ensurePortsFree(options = {}) {
 
 module.exports = {
   DEV_PORTS,
+  KILL_PORTS,
   ensurePortsFree,
   killDevStackProcesses,
   killPort,

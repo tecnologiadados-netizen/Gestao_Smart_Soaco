@@ -29,11 +29,14 @@ import { consultarSolicitacaoSaldoPorIds } from '../data/consultaEstoqueReposito
 import {
   listarOpcoesCompradorPendencias,
   consultarPendenciasCompras,
+  listarSaldoSetoresHabilitadosPendencias,
 } from '../data/pendenciasComprasRepository.js';
 import {
   removerPrioridadeFixa,
   upsertPrioridadeFixa,
+  listarHistoricoPrioridadeFixa,
 } from '../data/pendenciasComprasPrioridadeFixaRepository.js';
+import { usuarioPodeEditarPrioridadePendencias } from '../utils/pendenciasComprasPermissao.js';
 import {
   loadRessupNaoAlmoxCatalogo,
   saveCatalogoDescricaoSimplificadaNaoAlmox,
@@ -3175,17 +3178,26 @@ export async function getPendenciasComprasOpcoesComprador(_req: Request, res: Re
 
 export async function getPendenciasComprasConsultar(req: Request, res: Response): Promise<void> {
   const comprador = String(req.query.comprador ?? '').trim();
-  const login = req.user?.login?.trim();
-  if (!login) {
-    res.status(401).json({ error: 'Usuário não autenticado.' });
-    return;
-  }
-  const { data, erro } = await consultarPendenciasCompras(comprador, login);
+  const { data, erro } = await consultarPendenciasCompras(comprador);
   if (erro) {
     res.status(comprador ? 503 : 400).json({ error: erro });
     return;
   }
   res.json({ linhas: data, total: data.length });
+}
+
+export async function getPendenciasComprasSaldoSetores(req: Request, res: Response): Promise<void> {
+  const idProduto = Number(req.query.idProduto);
+  if (!Number.isFinite(idProduto) || idProduto <= 0) {
+    res.status(400).json({ error: 'idProduto inválido.' });
+    return;
+  }
+  const { data, erro } = await listarSaldoSetoresHabilitadosPendencias(idProduto);
+  if (erro) {
+    res.status(503).json({ error: erro });
+    return;
+  }
+  res.json({ setores: data });
 }
 
 export async function putPendenciasComprasPrioridadeFixa(req: Request, res: Response): Promise<void> {
@@ -3212,12 +3224,19 @@ export async function putPendenciasComprasPrioridadeFixa(req: Request, res: Resp
     return;
   }
 
+  const perms = await getPermissoesUsuario(login);
+  const podeEditar = await usuarioPodeEditarPrioridadePendencias(login, comprador, perms);
+  if (!podeEditar) {
+    res.status(403).json({ error: 'Sem permissão para editar prioridade fixa deste comprador.' });
+    return;
+  }
+
   try {
     await upsertPrioridadeFixa({
-      usuario: login,
       comprador,
       idProduto,
       prioridade,
+      usuarioLogin: login,
     });
     res.json({ ok: true });
   } catch (err) {
@@ -3248,13 +3267,45 @@ export async function deletePendenciasComprasPrioridadeFixa(
     return;
   }
 
+  const perms = await getPermissoesUsuario(login);
+  const podeEditar = await usuarioPodeEditarPrioridadePendencias(login, comprador, perms);
+  if (!podeEditar) {
+    res.status(403).json({ error: 'Sem permissão para editar prioridade fixa deste comprador.' });
+    return;
+  }
+
   try {
     await removerPrioridadeFixa({
-      usuario: login,
       comprador,
       idProduto,
+      usuarioLogin: login,
     });
     res.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+}
+
+export async function getPendenciasComprasPrioridadeFixaHistorico(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const comprador = String(req.query.comprador ?? '').trim();
+  const idProduto = Number(req.query.idProduto);
+
+  if (!comprador) {
+    res.status(400).json({ error: 'Informe o comprador.' });
+    return;
+  }
+  if (!Number.isFinite(idProduto) || idProduto <= 0) {
+    res.status(400).json({ error: 'idProduto inválido.' });
+    return;
+  }
+
+  try {
+    const historico = await listarHistoricoPrioridadeFixa(comprador, idProduto);
+    res.json({ historico });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: msg });

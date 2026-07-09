@@ -6,6 +6,12 @@ import { OPCOES_TELA_PRINCIPAL, mensagemSeTelaPrincipalInvalidaParaGrupo } from 
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSOES } from '../config/permissoes';
 import { isGrupoMasterNome } from '../config/grupoMaster';
+import {
+  isPermissaoPrioridadePendenciasUsuario,
+  LABELS_PRIORIDADE_PENDENCIAS_COMPRADOR,
+  PERMISSOES_PRIORIDADE_PENDENCIAS_COMPRADOR,
+  prioridadePendenciasDePermissoesUsuario,
+} from '../utils/pendenciasComprasPermissao';
 import { z } from 'zod';
 
 const MAX_FOTO_BASE64 = 700000;
@@ -31,6 +37,7 @@ const atualizarUsuarioSchema = z.object({
   grupoId: z.number().int().positive().optional().nullable(),
   ativo: z.boolean().optional(),
   isCommercialTeam: z.boolean().optional(),
+  permissoes: z.array(z.string()).optional(),
   fotoUrl: z.string().max(MAX_FOTO_BASE64).optional().nullable(),
 });
 
@@ -75,6 +82,7 @@ const ORDEM_SECOES_PERMISSOES = [
 function agruparPermissoes(permissoes: PermissaoItem[]): { secao: string; itens: PermissaoItem[] }[] {
   const map = new Map<string, PermissaoItem[]>();
   for (const p of permissoes) {
+    if (isPermissaoPrioridadePendenciasUsuario(p.codigo)) continue;
     const prefix = p.codigo.split('.')[0] ?? '';
     const secao = SECOES_PERMISSOES[prefix];
     if (!secao) continue;
@@ -105,6 +113,74 @@ function normalizarTelefoneParaSalvar(v: string): string {
   const d = somenteDigitos(v);
   if (!d) return '';
   return formatarTelefoneInput(d);
+}
+
+function QuadroPrioridadePendenciasGrupo({
+  editandoGrupoId,
+  usuariosDoGrupo,
+  prioridadePendenciasPorUsuario,
+  editandoGrupoMaster,
+  onToggle,
+}: {
+  editandoGrupoId: number | null;
+  usuariosDoGrupo: Usuario[];
+  prioridadePendenciasPorUsuario: Record<number, string[]>;
+  editandoGrupoMaster: boolean;
+  onToggle: (usuarioId: number, codigo: string) => void;
+}) {
+  if (!editandoGrupoId) return null;
+
+  return (
+    <div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-600">
+      <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 uppercase tracking-wide">
+        Pendências compras — prioridade fixa por usuário
+      </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+        Por usuário (não pelo grupo). Marque quem pode editar a prioridade fixa de cada comprador.
+      </p>
+      {usuariosDoGrupo.length === 0 ? (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Nenhum usuário neste grupo. Atribua usuários ao grupo para configurar.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-slate-600 dark:border-slate-600 dark:text-slate-400">
+                <th className="py-2 pr-3 font-semibold">Usuário</th>
+                {PERMISSOES_PRIORIDADE_PENDENCIAS_COMPRADOR.map((codigo) => (
+                  <th key={codigo} className="py-2 px-2 text-center font-semibold whitespace-nowrap">
+                    {LABELS_PRIORIDADE_PENDENCIAS_COMPRADOR[codigo]}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {usuariosDoGrupo.map((u) => (
+                <tr key={u.id} className="border-b border-slate-100 dark:border-slate-700/80">
+                  <td className="py-2 pr-3 text-slate-800 dark:text-slate-100">
+                    <span className="font-medium">{u.login}</span>
+                    {u.nome ? <span className="ml-1 text-slate-500 dark:text-slate-400">({u.nome})</span> : null}
+                  </td>
+                  {PERMISSOES_PRIORIDADE_PENDENCIAS_COMPRADOR.map((codigo) => (
+                    <td key={codigo} className="py-2 px-2 text-center">
+                      <input
+                        type="checkbox"
+                        disabled={editandoGrupoMaster}
+                        checked={(prioridadePendenciasPorUsuario[u.id] ?? []).includes(codigo)}
+                        onChange={() => onToggle(u.id, codigo)}
+                        aria-label={`${u.login} — ${LABELS_PRIORIDADE_PENDENCIAS_COMPRADOR[codigo]}`}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ModalContainer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -172,6 +248,7 @@ export default function UsuariosPage() {
   const [editFotoPreview, setEditFotoPreview] = useState<string | null>(null);
   const [editAtivo, setEditAtivo] = useState(true);
   const [editIsCommercialTeam, setEditIsCommercialTeam] = useState(false);
+  const [editPermissoesPrioridadePendencias, setEditPermissoesPrioridadePendencias] = useState<string[]>([]);
   const [editFotoBase64, setEditFotoBase64] = useState<string | null | undefined>(undefined);
   const [salvandoEditarUsuario, setSalvandoEditarUsuario] = useState(false);
   const [formErrorEditarUsuario, setFormErrorEditarUsuario] = useState('');
@@ -183,6 +260,7 @@ export default function UsuariosPage() {
   const [grupoTelaPrincipal, setGrupoTelaPrincipal] = useState('');
   const [grupoLogoutMinutos, setGrupoLogoutMinutos] = useState('');
   const [editandoGrupoId, setEditandoGrupoId] = useState<number | null>(null);
+  const [prioridadePendenciasPorUsuario, setPrioridadePendenciasPorUsuario] = useState<Record<number, string[]>>({});
   const [salvandoGrupo, setSalvandoGrupo] = useState(false);
   const [formErrorGrupo, setFormErrorGrupo] = useState('');
 
@@ -230,6 +308,11 @@ export default function UsuariosPage() {
   }, [grupos, grupoId]);
 
   const editandoGrupoMaster = isGrupoMasterNome(grupoNome);
+
+  const usuariosDoGrupoEditando = useMemo(() => {
+    if (editandoGrupoId == null) return [];
+    return usuarios.filter((u) => u.grupoId === editandoGrupoId);
+  }, [usuarios, editandoGrupoId]);
 
   const usuariosFiltrados = useMemo(() => {
     return usuarios.filter((u) => {
@@ -343,6 +426,7 @@ export default function UsuariosPage() {
     setEditGrupoId(u.grupoId ?? '');
     setEditAtivo(u.ativo);
     setEditIsCommercialTeam(!!u.isCommercialTeam);
+    setEditPermissoesPrioridadePendencias(prioridadePendenciasDePermissoesUsuario(u.permissoes));
     setEditFotoPreview(u.fotoUrl ?? null);
     setEditFotoBase64(undefined);
     setFormErrorEditarUsuario('');
@@ -363,6 +447,7 @@ export default function UsuariosPage() {
     setSalvandoEditarUsuario(false);
     setEditAtivo(true);
     setEditIsCommercialTeam(false);
+    setEditPermissoesPrioridadePendencias([]);
     setModalEditarUsuarioOpen(false);
   };
 
@@ -378,6 +463,7 @@ export default function UsuariosPage() {
       grupoId: editGrupoId === '' ? null : Number(editGrupoId),
       ativo: editAtivo,
       isCommercialTeam: editIsCommercialTeam,
+      permissoes: editPermissoesPrioridadePendencias,
     };
     if (editSenha.trim()) payloadBase.senha = editSenha.trim();
     if (editFotoBase64 !== undefined) payloadBase.fotoUrl = editFotoBase64;
@@ -409,6 +495,7 @@ export default function UsuariosPage() {
     setGrupoAtivo(true);
     setGrupoTelaPrincipal('');
     setGrupoLogoutMinutos('');
+    setPrioridadePendenciasPorUsuario({});
     setFormErrorGrupo('');
     setModalGrupoOpen(true);
   };
@@ -417,7 +504,12 @@ export default function UsuariosPage() {
     setEditandoGrupoId(g.id);
     setGrupoNome(g.nome);
     setGrupoDescricao(g.descricao ?? '');
-    setGrupoPermissoes(g.permissoes ?? []);
+    setGrupoPermissoes((g.permissoes ?? []).filter((p) => !isPermissaoPrioridadePendenciasUsuario(p)));
+    const matrix: Record<number, string[]> = {};
+    for (const u of usuarios.filter((x) => x.grupoId === g.id)) {
+      matrix[u.id] = prioridadePendenciasDePermissoesUsuario(u.permissoes);
+    }
+    setPrioridadePendenciasPorUsuario(matrix);
     setGrupoAtivo(g.ativo);
     setGrupoTelaPrincipal(g.telaPrincipalInicial ?? '');
     setGrupoLogoutMinutos(g.logoutInatividadeMinutos != null ? String(g.logoutInatividadeMinutos) : '');
@@ -433,13 +525,29 @@ export default function UsuariosPage() {
     setGrupoAtivo(true);
     setGrupoTelaPrincipal('');
     setGrupoLogoutMinutos('');
+    setPrioridadePendenciasPorUsuario({});
     setFormErrorGrupo('');
     setModalGrupoOpen(false);
   };
 
   const togglePermissao = (codigo: string) => {
-    if (editandoGrupoMaster) return;
+    if (editandoGrupoMaster || isPermissaoPrioridadePendenciasUsuario(codigo)) return;
     setGrupoPermissoes((prev) => (prev.includes(codigo) ? prev.filter((p) => p !== codigo) : [...prev, codigo]));
+  };
+
+  const togglePrioridadePendenciasUsuario = (usuarioId: number, codigo: string) => {
+    if (editandoGrupoMaster) return;
+    setPrioridadePendenciasPorUsuario((prev) => {
+      const atual = prev[usuarioId] ?? [];
+      const next = atual.includes(codigo) ? atual.filter((p) => p !== codigo) : [...atual, codigo];
+      return { ...prev, [usuarioId]: next };
+    });
+  };
+
+  const toggleEditPermissaoPrioridadePendencias = (codigo: string) => {
+    setEditPermissoesPrioridadePendencias((prev) =>
+      prev.includes(codigo) ? prev.filter((p) => p !== codigo) : [...prev, codigo]
+    );
   };
 
   const parseLogoutMinutosPayload = (): number | null => {
@@ -472,28 +580,36 @@ export default function UsuariosPage() {
     setSalvandoGrupo(true);
     try {
       const telaPayload = grupoTelaPrincipal || null;
+      const permsGrupoSalvar = grupoPermissoes.filter((p) => !isPermissaoPrioridadePendenciasUsuario(p));
       if (editandoGrupoId) {
         await atualizarGrupo(editandoGrupoId, {
           nome: grupoNome.trim(),
           descricao: grupoDescricao.trim() || null,
-          permissoes: grupoPermissoes,
+          permissoes: permsGrupoSalvar,
           ativo: grupoAtivo,
           telaPrincipalInicial: telaPayload,
           logoutInatividadeMinutos: logoutPayload,
         });
-        showToast('Grupo atualizado com sucesso.');
+        for (const u of usuariosDoGrupoEditando) {
+          await atualizarUsuario(u.id, {
+            permissoes: prioridadePendenciasPorUsuario[u.id] ?? [],
+            isCommercialTeam: u.isCommercialTeam,
+          });
+        }
+        await carregar();
+        showToast('Grupo e prioridades por usuário atualizados.');
       } else {
         await criarGrupo({
           nome: grupoNome.trim(),
           descricao: grupoDescricao.trim() || null,
-          permissoes: grupoPermissoes,
+          permissoes: permsGrupoSalvar,
           ativo: grupoAtivo,
           telaPrincipalInicial: telaPayload,
           logoutInatividadeMinutos: logoutPayload,
         });
+        await carregar();
         showToast('Grupo criado com sucesso.');
       }
-      await carregar();
       fecharFormGrupo();
     } catch (err) {
       setFormErrorGrupo(err instanceof Error ? err.message : 'Erro ao salvar grupo.');
@@ -709,6 +825,26 @@ export default function UsuariosPage() {
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editAtivo} onChange={(e) => setEditAtivo(e.target.checked)} /> Usuário ativo</label>
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editIsCommercialTeam} onChange={(e) => setEditIsCommercialTeam(e.target.checked)} /> Time comercial</label>
               </div>
+              <div className="md:col-span-2 rounded-lg border border-slate-200 dark:border-slate-600/50 p-3 bg-slate-50/50 dark:bg-slate-800/30">
+                <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2 uppercase tracking-wide">
+                  Pendências compras — prioridade fixa
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                  Defina quais compradores este usuário pode editar na tela Pendências compras.
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-2">
+                  {PERMISSOES_PRIORIDADE_PENDENCIAS_COMPRADOR.map((codigo) => (
+                    <label key={codigo} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editPermissoesPrioridadePendencias.includes(codigo)}
+                        onChange={() => toggleEditPermissaoPrioridadePendencias(codigo)}
+                      />
+                      {LABELS_PRIORIDADE_PENDENCIAS_COMPRADOR[codigo]}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <div>
                 <label className="block text-xs mb-1">Foto</label>
                 <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={handleEditFotoChange} className="w-full text-sm" />
@@ -769,12 +905,21 @@ export default function UsuariosPage() {
                   <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2 uppercase tracking-wide">{secao}</div>
                   <div className="flex flex-wrap gap-x-4 gap-y-2">
                     {itens.map((p) => (
-                      <label key={p.codigo} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <label key={p.codigo} className="flex items-center gap-2 text-sm cursor-pointer text-slate-800 dark:text-slate-100">
                         <input type="checkbox" checked={grupoPermissoes.includes(p.codigo)} onChange={() => togglePermissao(p.codigo)} disabled={editandoGrupoMaster} />
                         {p.label}
                       </label>
                     ))}
                   </div>
+                  {secao === 'Compras' ? (
+                    <QuadroPrioridadePendenciasGrupo
+                      editandoGrupoId={editandoGrupoId}
+                      usuariosDoGrupo={usuariosDoGrupoEditando}
+                      prioridadePendenciasPorUsuario={prioridadePendenciasPorUsuario}
+                      editandoGrupoMaster={editandoGrupoMaster}
+                      onToggle={togglePrioridadePendenciasUsuario}
+                    />
+                  ) : null}
                 </div>
               ))}
             </div>

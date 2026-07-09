@@ -2,7 +2,7 @@ import { Router, type RequestHandler } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/requirePermission.js';
 import { PERMISSOES } from '../config/permissoes.js';
-import { getProdutosColeta, getRessupAlmoxRegistroPreview, getRessupAlmoxPcPendDetalhes, getRessupEmpenhoDetalhes, getRessupEmpenhoPorPedido, getOpcoesFiltroRessupAlmox, getBuscarOpcoesFiltroRessupAlmox, postOpcoesFiltroCascataRessupAlmox, postRessupAlmoxAnalise, putRessupAlmoxAnalise, patchRessupAlmoxAnaliseProcessar, patchRessupAlmoxAnaliseConcluir, getRessupAlmoxAnalises, getRessupAlmoxAnaliseById, getRessupNaoAlmoxRegistroPreview, getRessupNaoAlmoxPcPendDetalhes, getOpcoesFiltroRessupNaoAlmox, getBuscarOpcoesFiltroRessupNaoAlmox, postOpcoesFiltroCascataRessupNaoAlmox, getRessupNaoAlmoxEstoque, getRessupNaoAlmoxCatalogo, putRessupNaoAlmoxCatalogoDescricao, putRessupNaoAlmoxCatalogoFundivel, postRessupNaoAlmoxAnalise, putRessupNaoAlmoxAnalise, patchRessupNaoAlmoxAnaliseProcessar, patchRessupNaoAlmoxAnaliseConcluir, getRessupNaoAlmoxAnalises, getRessupNaoAlmoxAnaliseById, getColetasPrecos, getColetasPrecosDebug, getOpcoesFiltroColetas, getOpcoesVinculoFinalizacao, getOpcoesVinculoErroOperacional, getDashboardErrosVinculoOperacional, getColetasBloqueantes, postCienciaColeta, postConfirmarColeta, getFornecedores, getCondicoesPagamento, getFormasPagamento, putColetaFornecedores, getPrecosColeta, getPrecosCotacao, postPrecosCotacao, patchObservacoesColeta, patchEnviarAprovacao, patchCancelarCotacao, patchReabrirColeta, patchFinalizarCotacao, patchRegistroQtdeAprovada, patchEnviarFinanceiro, deleteColetaPrecos, deleteColetaItem, deleteColetaTodosItens, postColetaItens, getPendenciasComprasOpcoesComprador, getPendenciasComprasConsultar, putPendenciasComprasPrioridadeFixa, deletePendenciasComprasPrioridadeFixa } from '../controllers/comprasController.js';
+import { getProdutosColeta, getRessupAlmoxRegistroPreview, getRessupAlmoxPcPendDetalhes, getRessupEmpenhoDetalhes, getRessupEmpenhoPorPedido, getOpcoesFiltroRessupAlmox, getBuscarOpcoesFiltroRessupAlmox, postOpcoesFiltroCascataRessupAlmox, postRessupAlmoxAnalise, putRessupAlmoxAnalise, patchRessupAlmoxAnaliseProcessar, patchRessupAlmoxAnaliseConcluir, getRessupAlmoxAnalises, getRessupAlmoxAnaliseById, getRessupNaoAlmoxRegistroPreview, getRessupNaoAlmoxPcPendDetalhes, getOpcoesFiltroRessupNaoAlmox, getBuscarOpcoesFiltroRessupNaoAlmox, postOpcoesFiltroCascataRessupNaoAlmox, getRessupNaoAlmoxEstoque, getRessupNaoAlmoxCatalogo, putRessupNaoAlmoxCatalogoDescricao, putRessupNaoAlmoxCatalogoFundivel, postRessupNaoAlmoxAnalise, putRessupNaoAlmoxAnalise, patchRessupNaoAlmoxAnaliseProcessar, patchRessupNaoAlmoxAnaliseConcluir, getRessupNaoAlmoxAnalises, getRessupNaoAlmoxAnaliseById, getColetasPrecos, getColetasPrecosDebug, getOpcoesFiltroColetas, getOpcoesVinculoFinalizacao, getOpcoesVinculoErroOperacional, getDashboardErrosVinculoOperacional, getColetasBloqueantes, postCienciaColeta, postConfirmarColeta, getFornecedores, getCondicoesPagamento, getFormasPagamento, putColetaFornecedores, getPrecosColeta, getPrecosCotacao, postPrecosCotacao, patchObservacoesColeta, patchEnviarAprovacao, patchCancelarCotacao, patchReabrirColeta, patchFinalizarCotacao, patchRegistroQtdeAprovada, patchEnviarFinanceiro, deleteColetaPrecos, deleteColetaItem, deleteColetaTodosItens, postColetaItens, getPendenciasComprasOpcoesComprador, getPendenciasComprasConsultar, getPendenciasComprasSaldoSetores, putPendenciasComprasPrioridadeFixa, deletePendenciasComprasPrioridadeFixa, getPendenciasComprasPrioridadeFixaHistorico } from '../controllers/comprasController.js';
 import { getPreCompraCotacoes, getPreCompraSugestoes, getPreCompraFornecedores, getPreCompraContatos, getPreCompraPdf } from '../controllers/preCompraController.js';
 
 const router = Router();
@@ -388,6 +388,12 @@ router.get(
   async503(getPendenciasComprasConsultar)
 );
 
+router.get(
+  '/rotina/pendencias/saldo-setores',
+  requirePermission(PERMISSOES.COMPRAS_VER),
+  async503(getPendenciasComprasSaldoSetores)
+);
+
 router.put(
   '/rotina/pendencias/prioridade-fixa',
   requirePermission(PERMISSOES.COMPRAS_VER),
@@ -398,6 +404,12 @@ router.delete(
   '/rotina/pendencias/prioridade-fixa',
   requirePermission(PERMISSOES.COMPRAS_VER),
   async503(deletePendenciasComprasPrioridadeFixa)
+);
+
+router.get(
+  '/rotina/pendencias/prioridade-fixa/historico',
+  requirePermission(PERMISSOES.COMPRAS_VER),
+  async503(getPendenciasComprasPrioridadeFixaHistorico)
 );
 
 export default router;

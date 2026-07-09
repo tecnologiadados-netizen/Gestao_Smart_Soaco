@@ -12,6 +12,8 @@ export const TELA_PRINCIPAL_KEYS = [
   'pre_compra',
   'precificacao',
   'resumo_financeiro',
+  'painel_tv',
+  'painel_gerencial',
 ] as const;
 
 export type TelaPrincipalKey = (typeof TELA_PRINCIPAL_KEYS)[number];
@@ -74,6 +76,16 @@ export const TELA_PRINCIPAL_MAP: Record<
     path: '/financeiro/resumo',
     label: 'Resumo financeiro',
     requiredAny: [PERMISSOES.FINANCEIRO_VER, PERMISSOES.FINANCEIRO_RESUMO_VER],
+  },
+  painel_tv: {
+    path: '/pedidos/painel-metas/tv',
+    label: 'Painel TV',
+    requiredAny: [PERMISSOES.PCP_PAINEL_TV_VER, PERMISSOES.PCP_TOTAL],
+  },
+  painel_gerencial: {
+    path: '/pedidos/painel-metas/gerencial',
+    label: 'Painel Gerencial',
+    requiredAny: [PERMISSOES.PCP_PAINEL_GERENCIAL_VER, PERMISSOES.PCP_TOTAL],
   },
 };
 

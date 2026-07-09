@@ -4,7 +4,7 @@
 
 import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
 import {
-  listarPrioridadesFixasPorUsuarioComprador,
+  listarPrioridadesFixasPorComprador,
   prioridadesFixasParaMapa,
 } from './pendenciasComprasPrioridadeFixaRepository.js';
 import {
@@ -132,7 +132,6 @@ coleta_prioridade As (
     cmn.minDataNecessidadeColeta,
     Dense_Rank() Over (
       Order By
-        Case When cmn.nomeColeta = 'A DEFINIR' Then 0 Else 1 End,
         cmn.minDataNecessidadeColeta Asc,
         cmn.nomeColeta Asc
     ) As prioridadeAutomatica
@@ -405,8 +404,7 @@ export async function listarOpcoesCompradorPendencias(): Promise<{
 }
 
 export async function consultarPendenciasCompras(
-  comprador: string,
-  usuario?: string
+  comprador: string
 ): Promise<{
   data: PendenciasComprasLinha[];
   erro?: string;
@@ -449,22 +447,88 @@ export async function consultarPendenciasCompras(
       };
     });
 
-    const usuarioTrim = usuario?.trim();
-    if (!usuarioTrim) {
-      const data: PendenciasComprasLinha[] = linhasBase.map((l) => ({
-        ...l,
-        prioridadeFixa: null,
-      }));
-      return { data };
-    }
-
-    const prioridadesRows = await listarPrioridadesFixasPorUsuarioComprador(
-      usuarioTrim,
-      compradorTrim
-    );
+    const prioridadesRows = await listarPrioridadesFixasPorComprador(compradorTrim);
     const prioridadesMap = prioridadesFixasParaMapa(prioridadesRows);
     const reordenadas = aplicarPrioridadesFixasPendenciasCompras(linhasBase, prioridadesMap);
     const data = anexarPrioridadeFixaNasLinhas(reordenadas, prioridadesMap);
+
+    return { data };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { data: [], erro: msg };
+  }
+}
+
+export type PendenciasSaldoSetorDetalheRow = {
+  idSetor: number;
+  setor: string;
+  saldo: number;
+  setorPrincipal: boolean;
+};
+
+const SQL_SALDO_SETORES_HABILITADOS = `
+With setores_habilitados As (
+  Select
+    pese.idSetorEstoque As idSetor,
+    se.nome As setor
+  From produtoempresa pe
+  Inner Join produtoempresa_setorestoque pese On pese.idProdutoEmpresa = pe.id
+  Inner Join setorestoque se On se.id = pese.idSetorEstoque And se.idEmpresa = pe.idEmpresa
+  Where pe.idProduto = ? And pe.idEmpresa = ${PCP_ID_EMPRESA_SO_ACO}
+),
+setor_padrao As (
+  Select Coalesce(pe.idSetorEstoquePadrao, 0) As idSetorPadrao
+  From produtoempresa pe
+  Where pe.idProduto = ? And pe.idEmpresa = ${PCP_ID_EMPRESA_SO_ACO}
+  Limit 1
+),
+ultimo_saldo As (
+  Select
+    sep.idSetorEstoque,
+    Case When sep.saldoSetorFinal <= 0 Then 0 Else sep.saldoSetorFinal End As saldo,
+    Row_Number() Over (
+      Partition By sep.idSetorEstoque
+      Order By sep.dataMovimentacao Desc, sep.id Desc
+    ) As rn
+  From saldoestoque_produto sep
+  Where sep.idProduto = ?
+)
+Select
+  sh.idSetor,
+  sh.setor,
+  Coalesce(us.saldo, 0) As saldo,
+  Case When sh.idSetor = sp.idSetorPadrao Then 1 Else 0 End As setorPrincipal
+From setores_habilitados sh
+Cross Join setor_padrao sp
+Left Join ultimo_saldo us On us.idSetorEstoque = sh.idSetor And us.rn = 1
+Order By
+  Case When sh.idSetor = sp.idSetorPadrao Then 0 Else 1 End,
+  sh.setor Asc
+`;
+
+export async function listarSaldoSetoresHabilitadosPendencias(
+  idProduto: number
+): Promise<{ data: PendenciasSaldoSetorDetalheRow[]; erro?: string }> {
+  if (!Number.isFinite(idProduto) || idProduto <= 0) {
+    return { data: [], erro: 'idProduto inválido.' };
+  }
+
+  const pool = getNomusPool();
+  if (!pool || !isNomusEnabled()) return { data: [], erro: 'NOMUS_DB_URL não configurado' };
+
+  try {
+    const [rows] = (await pool.query(SQL_SALDO_SETORES_HABILITADOS, [
+      idProduto,
+      idProduto,
+      idProduto,
+    ])) as [Record<string, unknown>[], unknown];
+
+    const data = (Array.isArray(rows) ? rows : []).map((r) => ({
+      idSetor: Number(r.idSetor ?? 0),
+      setor: String(r.setor ?? '').trim(),
+      saldo: Number(r.saldo ?? 0),
+      setorPrincipal: Number(r.setorPrincipal ?? 0) === 1,
+    }));
 
     return { data };
   } catch (err) {

@@ -1,5 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { FavoritosProvider } from './contexts/FavoritosContext';
+import { FavoritoVisaoAtualProvider } from './contexts/FavoritoVisaoAtualContext';
 import RootEntry from './RootEntry';
 import Layout from './components/Layout';
 import { layoutChildRoutes } from './layoutChildRoutes';
@@ -16,7 +18,11 @@ export const router = createBrowserRouter(
       path: '/',
       element: (
         <AuthProvider>
-          <RootEntry />
+          <FavoritosProvider>
+            <FavoritoVisaoAtualProvider>
+              <RootEntry />
+            </FavoritoVisaoAtualProvider>
+          </FavoritosProvider>
         </AuthProvider>
       ),
       /**

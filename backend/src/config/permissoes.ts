@@ -10,6 +10,12 @@ export const PERMISSOES = {
   HEATMAP_VER: 'heatmap.ver',
   COMPRAS_VER: 'compras.ver',
   COMPRAS_EDITAR: 'compras.editar',
+  /** Pendências compras — editar prioridade fixa do Comprador 1. */
+  COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1: 'compras.pendencias.prioridade.comprador_1',
+  /** Pendências compras — editar prioridade fixa do Comprador 2. */
+  COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2: 'compras.pendencias.prioridade.comprador_2',
+  /** Pendências compras — editar prioridade fixa do Comprador 3. */
+  COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3: 'compras.pendencias.prioridade.comprador_3',
   /** Lista na finalização da coleta pedidos já recebidos (status 1) e cotações nos últimos 180 dias. */
   COMPRAS_VINCULO_FINALIZACAO_AMPLIADO: 'compras.vinculo_finalizacao.ampliado',
   PRECIFICACAO_VER: 'precificacao.ver',
@@ -116,6 +122,9 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.HEATMAP_VER,
   PERMISSOES.COMPRAS_VER,
   PERMISSOES.COMPRAS_EDITAR,
+  PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1,
+  PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2,
+  PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3,
   PERMISSOES.COMPRAS_VINCULO_FINALIZACAO_AMPLIADO,
   PERMISSOES.PRECIFICACAO_VER,
   PERMISSOES.PRECIFICACAO_GERAR,
@@ -209,6 +218,12 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.HEATMAP_VER]: 'Ver Roteirizador',
   [PERMISSOES.COMPRAS_VER]: 'Ver Compras (Coletas de preços)',
   [PERMISSOES.COMPRAS_EDITAR]: 'Todas as funcionalidades (Compras)',
+  [PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1]:
+    'Pendências compras — editar prioridade fixa (Comprador 1) — por usuário',
+  [PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2]:
+    'Pendências compras — editar prioridade fixa (Comprador 2) — por usuário',
+  [PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3]:
+    'Pendências compras — editar prioridade fixa (Comprador 3) — por usuário',
   [PERMISSOES.COMPRAS_VINCULO_FINALIZACAO_AMPLIADO]:
     'Compras: vincular finalização a pedidos já recebidos / lista ampliada (últimos 180 dias)',
   [PERMISSOES.PRECIFICACAO_VER]: 'Visualizar Precificação',

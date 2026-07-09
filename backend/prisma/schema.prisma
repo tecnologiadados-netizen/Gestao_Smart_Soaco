@@ -96,8 +96,27 @@ model Usuario {
   mrpRunsCriados MrpRun[] @relation("MrpRunCreatedBy")
   mrpRunsProcessados MrpRun[] @relation("MrpRunProcessedBy")
   whatsappNotificacaoDestinatarios WhatsappNotificacaoDestinatario[]
+  telasFavoritas TelaFavorita[]
 
   @@map("usuario")
+}
+
+/// Visão favorita de tela (rota + filtros) por usuário.
+model TelaFavorita {
+  id        Int      @id @default(autoincrement())
+  usuarioId Int
+  nome      String
+  rota      String
+  filtros   String   // JSON: { "setor": "...", "mes": "YYYY-MM" }
+  ordem     Int      @default(0)
+  padrao    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, rota])
+  @@map("tela_favorita")
 }
 
 /// Execução/versionamento de MRP para auditoria de decisões.
@@ -1207,15 +1226,28 @@ model PainelProducaoMes {
   @@map("painel_producao_mes")
 }
 
-/// Prioridade fixa manual no relatório Pendências compras (por usuário + comprador).
+/// Prioridade fixa manual no relatório Pendências compras (por comprador — compartilhada entre usuários).
 model PendenciasComprasPrioridadeFixa {
-  usuario      String
   comprador    String
   idProduto    Int      @map("id_produto")
   prioridade   Int
   atualizadoEm DateTime @default(now()) @updatedAt @map("atualizado_em")
 
-  @@id([usuario, comprador, idProduto])
-  @@index([usuario, comprador])
+  @@id([comprador, idProduto])
+  @@index([comprador])
   @@map("pendencias_compras_prioridade_fixa")
+}
+
+/// Histórico de alterações da prioridade fixa (Pendências compras).
+model PendenciasComprasPrioridadeFixaHistorico {
+  id                 Int      @id @default(autoincrement())
+  comprador          String
+  idProduto          Int      @map("id_produto")
+  prioridadeAnterior Int?     @map("prioridade_anterior")
+  prioridadeNova     Int?     @map("prioridade_nova")
+  usuarioLogin       String   @map("usuario_login")
+  criadoEm           DateTime @default(now()) @map("criado_em")
+
+  @@index([comprador, idProduto])
+  @@map("pendencias_compras_prioridade_fixa_historico")
 }

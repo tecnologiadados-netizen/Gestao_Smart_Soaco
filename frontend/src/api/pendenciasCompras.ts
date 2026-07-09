@@ -24,7 +24,7 @@ export type PendenciasComprasLinha = {
   destaques: PendenciasComprasDestaques;
   /** Grupo de prioridade automática (coleta / necessidade — como na planilha Excel). */
   prioridadeAutomatica: number;
-  /** Prioridade fixa manual do usuário (null = ordem automática). */
+  /** Prioridade fixa manual do comprador (null = ordem automática). */
   prioridadeFixa: number | null;
   /** Posição na ordem automática do Nomus (0-based). */
   indiceOrdemAutomatica: number;
@@ -53,6 +53,31 @@ export async function consultarPendenciasCompras(comprador: string): Promise<{
       linhas: [],
       total: 0,
       error: e instanceof Error ? e.message : 'Erro ao consultar pendências',
+    };
+  }
+}
+
+export type PendenciasSaldoSetorDetalhe = {
+  idSetor: number;
+  setor: string;
+  saldo: number;
+  setorPrincipal: boolean;
+};
+
+export async function obterSaldoSetoresPendencias(idProduto: number): Promise<{
+  data: PendenciasSaldoSetorDetalhe[];
+  error?: string;
+}> {
+  try {
+    const sp = new URLSearchParams({ idProduto: String(idProduto) });
+    const res = await apiJson<{ setores: PendenciasSaldoSetorDetalhe[] }>(
+      `/api/compras/rotina/pendencias/saldo-setores?${sp}`
+    );
+    return { data: res.setores ?? [] };
+  } catch (e) {
+    return {
+      data: [],
+      error: e instanceof Error ? e.message : 'Erro ao carregar setores de estoque',
     };
   }
 }
@@ -96,5 +121,34 @@ export async function removerPrioridadeFixaPendencias(input: {
     return { ok: true };
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erro ao remover prioridade fixa' };
+  }
+}
+
+export type PendenciasPrioridadeFixaHistoricoItem = {
+  id: number;
+  prioridadeAnterior: number | null;
+  prioridadeNova: number | null;
+  usuarioLogin: string;
+  criadoEm: string;
+};
+
+export async function obterHistoricoPrioridadeFixaPendencias(input: {
+  comprador: string;
+  idProduto: number;
+}): Promise<{ historico: PendenciasPrioridadeFixaHistoricoItem[]; error?: string }> {
+  try {
+    const sp = new URLSearchParams({
+      comprador: input.comprador,
+      idProduto: String(input.idProduto),
+    });
+    const res = await apiJson<{ historico: PendenciasPrioridadeFixaHistoricoItem[] }>(
+      `/api/compras/rotina/pendencias/prioridade-fixa/historico?${sp}`
+    );
+    return { historico: res.historico ?? [] };
+  } catch (e) {
+    return {
+      historico: [],
+      error: e instanceof Error ? e.message : 'Erro ao carregar histórico',
+    };
   }
 }

@@ -1,9 +1,10 @@
 /**
- * Watchdog do Vite interno (5180): reinicia só se a porta responder erro persistente.
- * Ignora ECONNREFUSED (Vite reiniciando) e período de graça após queda.
+ * Watchdog do Vite (frontend dev): reinicia só se a porta responder erro persistente.
  */
+const { FRONTEND_PORT } = require('./dev-ports.cjs');
+
 const INTERVAL_MS = 45 * 1000;
-const PORT = 5180;
+const PORT = FRONTEND_PORT;
 const URL = `http://127.0.0.1:${PORT}/`;
 const MAX_CONSECUTIVE_FAILURES = 6;
 const FETCH_TIMEOUT_MS = 15_000;
@@ -11,9 +12,8 @@ const RESTART_GRACE_MS = 60 * 1000;
 let consecutiveFailures = 0;
 let restartGraceUntil = 0;
 
-/** run-vite-loop já reinicia o Vite; matar a porta aqui causa loop com outras instâncias. */
 function nudgeViteRestart() {
-  console.warn('[watchdog-vite] Vite 5180 indisponível — run-vite-loop deve reiniciar o processo.');
+  console.warn(`[watchdog-vite] Vite ${PORT} indisponível — run-vite-loop deve reiniciar o processo.`);
 }
 
 function timeoutSignal(ms) {
@@ -49,7 +49,7 @@ async function runCheck() {
 
   if (result === 'ok') {
     if (consecutiveFailures > 0) {
-      console.log('[watchdog-vite] Vite 5180 respondeu novamente.');
+      console.log(`[watchdog-vite] Vite ${PORT} respondeu novamente.`);
     }
     consecutiveFailures = 0;
     return;
@@ -64,7 +64,7 @@ async function runCheck() {
   consecutiveFailures += 1;
   console.warn(`[watchdog-vite] ${URL} sem resposta (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}).`);
   if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-    console.warn('[watchdog-vite] Vite 5180 falhou várias vezes seguidas.');
+    console.warn(`[watchdog-vite] Vite ${PORT} falhou várias vezes seguidas.`);
     nudgeViteRestart();
     restartGraceUntil = Date.now() + RESTART_GRACE_MS;
     consecutiveFailures = 0;

@@ -68,14 +68,32 @@ export const LEGENDA_PENDENCIAS = [
     classe: PC_CLASS.atrasado,
   },
   { coluna: 'PC', texto: 'PC em dia', classe: PC_CLASS.em_dia },
+] as const;
+
+/** Regras de exibição da coluna Estoque Atual (conforme estoque padrão do produto no Nomus). */
+export const LEGENDA_ESTOQUE_ATUAL_REGRAS = [
   {
-    coluna: 'Estoque Atual',
-    texto: 'Estoque padrão Galpão Bobina ou Matéria Prima Processada',
-    classe: 'italic text-slate-600 dark:text-slate-400',
+    estoquePadrao: 'Almoxarifado Material Secundário',
+    exibicao: 'Saldo numérico',
+    detalhe: 'Exibe o saldo consolidado do almox secundário.',
+    tipo: 'saldo' as const,
   },
   {
-    coluna: 'Estoque Atual',
-    texto: 'Demais estoques padrão (não controlado neste relatório)',
-    classe: 'italic text-slate-500 dark:text-slate-500',
+    estoquePadrao: 'Almoxarifado Galpão Bobina',
+    exibicao: ESTOQUE_VERIFICAR_PCP_TEXTO,
+    detalhe: 'O saldo não é exibido — consulte o PCP.',
+    tipo: 'verificar_pcp' as const,
+  },
+  {
+    estoquePadrao: 'Almoxarifado Matéria Prima Processada',
+    exibicao: ESTOQUE_VERIFICAR_PCP_TEXTO,
+    detalhe: 'O saldo não é exibido — consulte o PCP.',
+    tipo: 'verificar_pcp' as const,
+  },
+  {
+    estoquePadrao: 'Demais estoques padrão',
+    exibicao: ESTOQUE_NAO_CONTROLADO_TEXTO,
+    detalhe: 'Estoque não controlado neste relatório.',
+    tipo: 'nao_controlado' as const,
   },
 ] as const;

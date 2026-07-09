@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FileText } from 'lucide-react';
+import { FileText, History } from 'lucide-react';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
@@ -13,21 +13,24 @@ import SingleSelectWithSearch, { type OptionItem } from '../../components/Single
 import {
   consultarPendenciasCompras,
   listarCompradoresPendencias,
+  obterSaldoSetoresPendencias,
   removerPrioridadeFixaPendencias,
   salvarPrioridadeFixaPendencias,
   type PendenciasComprasLinha,
+  type PendenciasSaldoSetorDetalhe,
 } from '../../api/pendenciasCompras';
 import {
   obterCotacaoDetalhe,
-  obterSaldoDetalhe,
   obterScDetalhe,
   type CotacaoDetalhe,
-  type SaldoSetorDetalhe,
   type ScDetalhe,
 } from '../../api/consultaEstoque';
 import type { RessupAlmoxPcPendLinha } from '../../api/compras';
 import {
   LEGENDA_PENDENCIAS,
+  LEGENDA_ESTOQUE_ATUAL_REGRAS,
+  ESTOQUE_NAO_CONTROLADO_TEXTO,
+  ESTOQUE_VERIFICAR_PCP_TEXTO,
   classeDestaqueAgPag,
   classeDestaqueCodigo,
   classeDestaquePc,
@@ -36,16 +39,29 @@ import {
 import { downloadPendenciasComprasPdf } from '../../utils/exportPendenciasComprasPdf';
 import PendenciasPdfGeneratingOverlay from '../../components/compras/PendenciasPdfGeneratingOverlay';
 import PrioridadeFixaSelect from '../../components/compras/PrioridadeFixaSelect';
+import ModalPrioridadeFixaHistorico, {
+  historicoPrioridadeCacheKey,
+} from '../../components/compras/ModalPrioridadeFixaHistorico';
+import { useAuth } from '../../contexts/AuthContext';
+import { podeEditarPrioridadePendencias } from '../../utils/pendenciasComprasPermissao';
+import type { PendenciasPrioridadeFixaHistoricoItem } from '../../api/pendenciasCompras';
 import {
   anexarPrioridadeFixaNasLinhas,
   aplicarPrioridadesFixasPendenciasCompras,
   opcoesPrioridadeGrupo,
   prioridadesFixasDeLinhas,
 } from '../../utils/pendenciasComprasOrdenacao';
+import {
+  clampColWidth,
+  larguraColunaPendencias,
+  persistPendenciasColWidths,
+  readPendenciasColWidths,
+} from '../../utils/pendenciasComprasGradeUi';
 
 const COLS = [
   { key: 'codigo', label: 'Cód', clickable: false, align: 'left' as const },
   { key: 'descricao', label: 'Descrição', clickable: false, align: 'left' as const },
+  { key: 'nomeColeta', label: 'Coleta', clickable: false, align: 'left' as const },
   { key: 'dataEmissao', label: 'Emissão da SC', clickable: false, align: 'center' as const },
   { key: 'dataNecessidade', label: 'Necessidade da SC', clickable: false, align: 'center' as const },
   { key: 'solicitacao', label: 'Solicitação', clickable: true as const, align: 'center' as const },
@@ -55,9 +71,10 @@ const COLS = [
 ] as const;
 
 const COL_PRIORIDADE_FIXA = { key: 'prioridadeFixa', label: 'Prioridade Fixa', align: 'center' as const };
+const COL_HISTORICO = { key: 'historicoPrioridade', label: 'Histórico', align: 'center' as const };
 
-type ColKey = (typeof COLS)[number]['key'];
-const COL_KEYS: ColKey[] = COLS.map((c) => c.key);
+type ColKey = (typeof COLS)[number]['key'] | typeof COL_PRIORIDADE_FIXA.key | typeof COL_HISTORICO.key;
+const COL_KEYS: (typeof COLS)[number]['key'][] = COLS.map((c) => c.key);
 const NUM_KEYS = ['solicitacao', 'agPag', 'pedidoCompra', 'estoqueAtual'] as const;
 
 const BTN_PRIMARY =
@@ -76,13 +93,14 @@ type DetalheModal =
   | { tipo: 'cotacao'; linha: PendenciasComprasLinha }
   | { tipo: 'pc'; linha: PendenciasComprasLinha };
 
-type DetalheCachePayload = SaldoSetorDetalhe[] | ScDetalhe[] | CotacaoDetalhe[] | RessupAlmoxPcPendLinha[];
+type DetalheCachePayload = PendenciasSaldoSetorDetalhe[] | ScDetalhe[] | CotacaoDetalhe[] | RessupAlmoxPcPendLinha[];
 
 function detalheModalCacheKey(tipo: Exclude<DetalheModal['tipo'], 'pc'>, idProduto: number): string {
   return `${tipo}-${idProduto}`;
 }
 
 export default function PendenciasComprasPage() {
+  const { isMaster, hasPermission } = useAuth();
   const [compradores, setCompradores] = useState<string[]>([]);
   const [comprador, setComprador] = useState<OptionItem | null>(null);
   const [linhas, setLinhas] = useState<PendenciasComprasLinha[]>([]);
@@ -90,14 +108,18 @@ export default function PendenciasComprasPage() {
   const [erroApi, setErroApi] = useState<string | null>(null);
   const [consultaRealizada, setConsultaRealizada] = useState(false);
   const [detalhe, setDetalhe] = useState<DetalheModal | null>(null);
-  const [detalheSaldo, setDetalheSaldo] = useState<SaldoSetorDetalhe[]>([]);
+  const [detalheSaldo, setDetalheSaldo] = useState<PendenciasSaldoSetorDetalhe[]>([]);
   const [detalheSc, setDetalheSc] = useState<ScDetalhe[]>([]);
   const [detalheCotacao, setDetalheCotacao] = useState<CotacaoDetalhe[]>([]);
   const [ajudaAberta, setAjudaAberta] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const [salvandoPrioridadeId, setSalvandoPrioridadeId] = useState<number | null>(null);
+  const [historicoModal, setHistoricoModal] = useState<PendenciasComprasLinha | null>(null);
   const detalheCacheRef = useRef(new Map<string, DetalheCachePayload>());
+  const historicoCacheRef = useRef(new Map<string, PendenciasPrioridadeFixaHistoricoItem[]>());
   const pcCacheRef = useRef(new Map<number, RessupAlmoxPcPendLinha[]>());
+  const [colWidths, setColWidths] = useState<Record<string, number>>(readPendenciasColWidths);
+  const colResizeRef = useRef<{ colKey: ColKey; startX: number; startW: number } | null>(null);
   const ajudaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -130,6 +152,7 @@ export default function PendenciasComprasPage() {
   const getCellText = useCallback((row: PendenciasComprasLinha, key: string): string => {
     if (key === 'dataEmissao') return row.dataEmissao ?? '—';
     if (key === 'dataNecessidade') return row.dataNecessidade ?? '—';
+    if (key === 'nomeColeta') return row.nomeColeta?.trim() || '—';
     if (key === 'estoqueAtual') return textoEstoquePendencias(row, fmtQtde);
     const val = row[key as keyof PendenciasComprasLinha];
     if (typeof val === 'number') return fmtQtde(val);
@@ -151,7 +174,58 @@ export default function PendenciasComprasPage() {
     valueForSort,
   });
 
+  const larguraMinimaTabela = useMemo(() => {
+    let total = 0;
+    for (const c of COLS) total += larguraColunaPendencias(c.key, colWidths);
+    total += larguraColunaPendencias(COL_PRIORIDADE_FIXA.key, colWidths);
+    total += larguraColunaPendencias(COL_HISTORICO.key, colWidths);
+    return total;
+  }, [colWidths]);
+
+  const onColResizePointerDown = useCallback(
+    (colKey: ColKey, e: React.PointerEvent<HTMLSpanElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      colResizeRef.current = {
+        colKey,
+        startX: e.clientX,
+        startW: larguraColunaPendencias(colKey, colWidths),
+      };
+    },
+    [colWidths]
+  );
+
+  const onColResizePointerMove = useCallback((e: React.PointerEvent<HTMLSpanElement>) => {
+    const d = colResizeRef.current;
+    if (!d) return;
+    const delta = e.clientX - d.startX;
+    setColWidths((prev) => ({
+      ...prev,
+      [d.colKey]: clampColWidth(d.startW + delta),
+    }));
+  }, []);
+
+  const onColResizePointerEnd = useCallback((e: React.PointerEvent<HTMLSpanElement>) => {
+    if (!colResizeRef.current) return;
+    colResizeRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* */
+    }
+    setColWidths((w) => {
+      persistPendenciasColWidths(w);
+      return w;
+    });
+  }, []);
+
   const opcoesGrupoPrioridade = useMemo(() => opcoesPrioridadeGrupo(linhas), [linhas]);
+
+  const podeEditarPrioridade = useMemo(
+    () => podeEditarPrioridadePendencias(comprador?.nome, isMaster, hasPermission),
+    [comprador?.nome, isMaster, hasPermission]
+  );
 
   const reordenarComPrioridades = useCallback(
     (linhasAtuais: PendenciasComprasLinha[], prioridades: Map<number, number>) => {
@@ -201,6 +275,12 @@ export default function PendenciasComprasPage() {
         return;
       }
 
+      if (comprador?.nome) {
+        historicoCacheRef.current.delete(
+          historicoPrioridadeCacheKey(comprador.nome, row.idProduto)
+        );
+      }
+
       setLinhas(reordenarComPrioridades(linhas, prioridadesAtuais));
     },
     [comprador?.nome, linhas, opcoesGrupoPrioridade, reordenarComPrioridades]
@@ -217,6 +297,7 @@ export default function PendenciasComprasPage() {
     setLoading(true);
     setErroApi(null);
     detalheCacheRef.current.clear();
+    historicoCacheRef.current.clear();
     pcCacheRef.current.clear();
     setDetalhe(null);
     try {
@@ -274,13 +355,13 @@ export default function PendenciasComprasPage() {
     const cacheKey = detalheModalCacheKey(detalhe.tipo, id);
     const cached = detalheCacheRef.current.get(cacheKey);
     if (cached) {
-      if (detalhe.tipo === 'saldo') setDetalheSaldo(cached as SaldoSetorDetalhe[]);
+      if (detalhe.tipo === 'saldo') setDetalheSaldo(cached as PendenciasSaldoSetorDetalhe[]);
       else if (detalhe.tipo === 'solicitacao') setDetalheSc(cached as ScDetalhe[]);
       else setDetalheCotacao(cached as CotacaoDetalhe[]);
       return {};
     }
     if (detalhe.tipo === 'saldo') {
-      const r = await obterSaldoDetalhe(id);
+      const r = await obterSaldoSetoresPendencias(id);
       if (!r.error) detalheCacheRef.current.set(cacheKey, r.data);
       setDetalheSaldo(r.data);
       return { error: r.error };
@@ -363,7 +444,7 @@ export default function PendenciasComprasPage() {
               ?
             </button>
             {ajudaAberta && (
-              <div className="absolute right-0 top-full z-[80] mt-1 w-[26rem] max-w-[90vw] rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-xl dark:border-slate-600 dark:bg-slate-800">
+              <div className="absolute right-0 top-full z-[80] mt-1 max-h-[min(70vh,28rem)] w-[28rem] max-w-[90vw] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-xl dark:border-slate-600 dark:bg-slate-800">
                 <p className="mb-2 font-medium text-slate-700 dark:text-slate-200">Legenda das cores</p>
                 <ul className="grid gap-1.5">
                   {LEGENDA_PENDENCIAS.map((item) => (
@@ -372,6 +453,49 @@ export default function PendenciasComprasPage() {
                       <span>
                         <strong>{item.coluna}:</strong> {item.texto}
                       </span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="my-3 border-t border-slate-200 dark:border-slate-600" />
+
+                <p className="mb-2 font-medium text-slate-700 dark:text-slate-200">
+                  Regras — coluna Estoque Atual
+                </p>
+                <p className="mb-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                  A exibição depende do <strong>estoque padrão</strong> cadastrado para o produto no Nomus.
+                </p>
+                <ul className="grid gap-2">
+                  {LEGENDA_ESTOQUE_ATUAL_REGRAS.map((regra) => (
+                    <li
+                      key={regra.estoquePadrao}
+                      className="rounded-md border border-slate-200/80 bg-slate-50/80 p-2 dark:border-slate-600 dark:bg-slate-900/40"
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className="mt-0.5 shrink-0">
+                          {regra.tipo === 'saldo' ? (
+                            <span className="inline-flex min-w-[2rem] items-center justify-center rounded bg-primary-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                              0
+                            </span>
+                          ) : regra.tipo === 'verificar_pcp' ? (
+                            <span className="inline-flex max-w-[5.5rem] items-center justify-center rounded bg-primary-600 px-1 py-0.5 text-[9px] font-normal italic leading-tight text-white">
+                              {ESTOQUE_VERIFICAR_PCP_TEXTO}
+                            </span>
+                          ) : (
+                            <span className="inline-block max-w-[5.5rem] text-[10px] italic leading-tight text-slate-500 dark:text-slate-400">
+                              {ESTOQUE_NAO_CONTROLADO_TEXTO}
+                            </span>
+                          )}
+                        </span>
+                        <span className="min-w-0 text-slate-600 dark:text-slate-300">
+                          <strong className="block text-slate-700 dark:text-slate-200">
+                            {regra.estoquePadrao}
+                          </strong>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            → {regra.exibicao}. {regra.detalhe}
+                          </span>
+                        </span>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -404,7 +528,17 @@ export default function PendenciasComprasPage() {
         )}
 
         <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full min-w-[1040px] border-collapse text-xs">
+          <table
+            className="w-full border-separate border-spacing-0 text-xs"
+            style={{ tableLayout: 'fixed', minWidth: larguraMinimaTabela }}
+          >
+            <colgroup>
+              {COLS.map((c) => (
+                <col key={c.key} style={{ width: larguraColunaPendencias(c.key, colWidths) }} />
+              ))}
+              <col style={{ width: larguraColunaPendencias(COL_PRIORIDADE_FIXA.key, colWidths) }} />
+              <col style={{ width: larguraColunaPendencias(COL_HISTORICO.key, colWidths) }} />
+            </colgroup>
             <thead className="sticky top-0 z-10">
               <tr className="bg-primary-600 text-white">
                 {COLS.map((c) => {
@@ -418,39 +552,79 @@ export default function PendenciasComprasPage() {
                       }`}
                     >
                       <div
-                        className={`flex items-center gap-1 ${
+                        className={`flex min-w-0 items-center gap-1 ${
                           c.align === 'center' ? 'justify-center' : 'justify-between'
                         }`}
                       >
-                        <span>{c.label}</span>
+                        <span className="min-w-0 truncate">{c.label}</span>
                         <GradeFiltroCabecalhoBtn
                           ativo={grade.colunaComFiltroAtivo(c.key) || sortAtivo}
                           onClick={(e) => grade.abrirFiltroExcel(c.key, e)}
                         />
                       </div>
+                      <span
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label={`Redimensionar coluna ${c.label}`}
+                        title="Arraste para ajustar a largura"
+                        className="absolute right-0 top-0 z-20 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-sky-300/60 active:bg-sky-300"
+                        onPointerDown={(e) => onColResizePointerDown(c.key, e)}
+                        onPointerMove={onColResizePointerMove}
+                        onPointerUp={onColResizePointerEnd}
+                        onPointerCancel={onColResizePointerEnd}
+                      />
                     </th>
                   );
                 })}
                 <th
-                  className={`border border-primary-500/40 bg-primary-600 px-2 py-2 font-semibold ${
+                  className={`relative border border-primary-500/40 bg-primary-600 px-2 py-2 font-semibold ${
                     COL_PRIORIDADE_FIXA.align === 'center' ? 'text-center' : 'text-left'
                   }`}
                 >
-                  {COL_PRIORIDADE_FIXA.label}
+                  <span className="block truncate">{COL_PRIORIDADE_FIXA.label}</span>
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label={`Redimensionar coluna ${COL_PRIORIDADE_FIXA.label}`}
+                    title="Arraste para ajustar a largura"
+                    className="absolute right-0 top-0 z-20 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-sky-300/60 active:bg-sky-300"
+                    onPointerDown={(e) => onColResizePointerDown(COL_PRIORIDADE_FIXA.key, e)}
+                    onPointerMove={onColResizePointerMove}
+                    onPointerUp={onColResizePointerEnd}
+                    onPointerCancel={onColResizePointerEnd}
+                  />
+                </th>
+                <th
+                  className={`relative border border-primary-500/40 bg-primary-600 px-2 py-2 font-semibold ${
+                    COL_HISTORICO.align === 'center' ? 'text-center' : 'text-left'
+                  }`}
+                >
+                  <span className="block truncate">{COL_HISTORICO.label}</span>
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label={`Redimensionar coluna ${COL_HISTORICO.label}`}
+                    title="Arraste para ajustar a largura"
+                    className="absolute right-0 top-0 z-20 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-sky-300/60 active:bg-sky-300"
+                    onPointerDown={(e) => onColResizePointerDown(COL_HISTORICO.key, e)}
+                    onPointerMove={onColResizePointerMove}
+                    onPointerUp={onColResizePointerEnd}
+                    onPointerCancel={onColResizePointerEnd}
+                  />
                 </th>
               </tr>
             </thead>
             <tbody>
               {!consultaRealizada && (
                 <tr>
-                  <td colSpan={COLS.length + 1} className="py-12 text-center text-slate-500">
+                  <td colSpan={COLS.length + 2} className="py-12 text-center text-slate-500">
                     Selecione o comprador e clique em Filtrar.
                   </td>
                 </tr>
               )}
               {consultaRealizada && linhas.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={COLS.length + 1} className="py-8 text-center text-slate-500">
+                  <td colSpan={COLS.length + 2} className="py-8 text-center text-slate-500">
                     Nenhuma pendência encontrada para este comprador.
                   </td>
                 </tr>
@@ -461,11 +635,14 @@ export default function PendenciasComprasPage() {
                     key={row.idProduto}
                     className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
                   >
-                    <td className={`px-2 py-1.5 font-mono ${classeDestaqueCodigo(row.destaques)}`}>
+                    <td className={`truncate px-2 py-1.5 font-mono ${classeDestaqueCodigo(row.destaques)}`} title={row.codigo}>
                       {row.codigo}
                     </td>
-                    <td className="px-2 py-1.5 max-w-[280px] truncate" title={row.descricao}>
+                    <td className="truncate px-2 py-1.5" title={row.descricao}>
                       {row.descricao}
+                    </td>
+                    <td className="truncate px-2 py-1.5" title={row.nomeColeta?.trim() || undefined}>
+                      {row.nomeColeta?.trim() || '—'}
                     </td>
                     <td className="px-2 py-1.5 text-center">{row.dataEmissao ?? '—'}</td>
                     <td className="px-2 py-1.5 text-center">{row.dataNecessidade ?? '—'}</td>
@@ -523,10 +700,21 @@ export default function PendenciasComprasPage() {
                       <PrioridadeFixaSelect
                         value={row.prioridadeFixa}
                         opcoesGrupo={opcoesGrupoPrioridade}
-                        disabled={salvandoPrioridadeId === row.idProduto}
+                        disabled={!podeEditarPrioridade || salvandoPrioridadeId === row.idProduto}
                         onChange={(prioridade) => handlePrioridadeFixaSelect(row, prioridade)}
                         ariaLabel={`Prioridade fixa de ${row.codigo}`}
                       />
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded p-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+                        title="Ver histórico de prioridade fixa"
+                        aria-label={`Histórico de prioridade fixa de ${row.codigo}`}
+                        onClick={() => setHistoricoModal(row)}
+                      >
+                        <History className="h-4 w-4" aria-hidden />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -595,7 +783,7 @@ export default function PendenciasComprasPage() {
                       Estoque padrão não controlado neste relatório.
                     </p>
                   ) : null}
-                  <p className="text-slate-500">Sem saldo nos setores aplicáveis.</p>
+                  <p className="text-slate-500">Nenhum setor habilitado para este produto.</p>
                 </>
               );
             }
@@ -620,8 +808,24 @@ export default function PendenciasComprasPage() {
                   </thead>
                   <tbody>
                     {detalheSaldo.map((s) => (
-                      <tr key={s.idSetor} className="border-b border-slate-100 dark:border-slate-700">
-                        <td className="py-1.5">{s.setor}</td>
+                      <tr
+                        key={s.idSetor}
+                        className={`border-b border-slate-100 dark:border-slate-700 ${
+                          s.setorPrincipal
+                            ? 'bg-primary-50/70 dark:bg-primary-950/25'
+                            : ''
+                        }`}
+                      >
+                        <td className="py-1.5">
+                          <span className={s.setorPrincipal ? 'font-medium text-primary-900 dark:text-primary-100' : ''}>
+                            {s.setor}
+                          </span>
+                          {s.setorPrincipal ? (
+                            <span className="ml-1.5 rounded border border-primary-200 bg-primary-100/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-800 dark:border-primary-800 dark:bg-primary-900/40 dark:text-primary-200">
+                              Principal
+                            </span>
+                          ) : null}
+                        </td>
                         <td className="py-1.5 text-right tabular-nums">{fmtQtde(s.saldo)}</td>
                       </tr>
                     ))}
@@ -645,6 +849,18 @@ export default function PendenciasComprasPage() {
         onClose={() => setDetalhe(null)}
         cacheRef={pcCacheRef}
       />
+
+      {comprador?.nome && historicoModal ? (
+        <ModalPrioridadeFixaHistorico
+          open={historicoModal != null}
+          comprador={comprador.nome}
+          idProduto={historicoModal.idProduto}
+          codigo={historicoModal.codigo}
+          descricao={historicoModal.descricao}
+          onClose={() => setHistoricoModal(null)}
+          cacheRef={historicoCacheRef}
+        />
+      ) : null}
     </div>
   );
 }
