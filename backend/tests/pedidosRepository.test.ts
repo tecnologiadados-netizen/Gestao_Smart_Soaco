@@ -16,7 +16,7 @@ describe('pedidosRepository', () => {
     const result = await listarPedidos({});
     // Contrato do repo: { data, total, erroConexao? } (array fica em `data`)
     expect(result).toHaveProperty('data');
-    expect(Array.isArray((result as any).data)).toBe(true);
+    expect(Array.isArray(result.data)).toBe(true);
     },
     15000
   );

@@ -15,6 +15,7 @@ import {
   putQualidadeCalibrationsHandler,
   putQualidadeConfigHandler,
   putQualidadeDocumentsHandler,
+  deleteQualidadeDocumentHandler,
   putQualidadeOpcoesListaHandler,
   putQualidadeRegistrosHandler,
 } from '../controllers/qualidadeController.js';
@@ -38,6 +39,9 @@ router.put('/sync/registros', (req, res, next) => {
 });
 router.put('/sync/documentos', (req, res, next) => {
   putQualidadeDocumentsHandler(req, res).catch(next);
+});
+router.delete('/documentos/:uid', (req, res, next) => {
+  deleteQualidadeDocumentHandler(req, res).catch(next);
 });
 router.put('/sync/calibracoes', (req, res, next) => {
   putQualidadeCalibrationsHandler(req, res).catch(next);

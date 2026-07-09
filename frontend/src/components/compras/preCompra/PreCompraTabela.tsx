@@ -18,13 +18,18 @@ function formatDate(value: string) {
   return d.toLocaleDateString('pt-BR');
 }
 
-function formatMoney(value: number) {
-  return value?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) ?? '';
+function formatMoney(value: number | string | null | undefined) {
+  if (value == null || value === '') return '';
+  const n = Number(value);
+  if (Number.isNaN(n)) return String(value);
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function formatQty(value: number) {
-  if (value == null) return '';
-  return Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 4 });
+function formatQty(value: number | string | null | undefined) {
+  if (value == null || value === '') return '';
+  const n = Number(value);
+  if (Number.isNaN(n)) return String(value);
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 function groupByCotacao(items: PreCompraCotacaoItem[]): CotacaoGroup[] {

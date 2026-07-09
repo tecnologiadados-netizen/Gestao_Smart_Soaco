@@ -1,5 +1,10 @@
 import { PERMISSOES, type CodigoPermissao } from './permissoes';
 import { podeAcessarRotaFinanceiro } from '../utils/financeiroPermissoes';
+import {
+  podeEditarPainelMetas,
+  podeVerPainelGerencial,
+  podeVerPainelTv,
+} from '../utils/painelProducaoPermissoes';
 
 export type NavMenuEntry =
   | { kind: 'link'; to: string; label: string }
@@ -47,6 +52,15 @@ export const PCP_MENU: NavMenuEntry[] = [
       },
     ],
   },
+  {
+    kind: 'submenu',
+    label: 'Painel Metas',
+    children: [
+      { kind: 'link', to: '/pedidos/painel-metas/gerencial', label: 'Painel Gerencial' },
+      { kind: 'link', to: '/pedidos/painel-metas/tv', label: 'Painel TV' },
+      { kind: 'link', to: '/pedidos/painel-metas/metas', label: 'Metas' },
+    ],
+  },
 ];
 
 export const LOGISTICA_MENU: NavMenuEntry[] = [
@@ -70,6 +84,21 @@ export const COMPRAS_SUBMENUS: { to: string; label: string }[] = [
   { to: '/compras/dashboard', label: 'Dashboard' },
   { to: '/compras/coletas-precos', label: 'Coletas de Preços' },
   { to: '/compras/pre-compra', label: 'Pré Compra' },
+  { to: '/compras/painel-rupturas', label: 'Painel de Rupturas' },
+];
+
+export const COMPRAS_MENU: NavMenuEntry[] = [
+  { kind: 'link', to: '/compras/dashboard', label: 'Dashboard' },
+  { kind: 'link', to: '/compras/coletas-precos', label: 'Coletas de Preços' },
+  { kind: 'link', to: '/compras/pre-compra', label: 'Pré Compra' },
+  { kind: 'link', to: '/compras/painel-rupturas', label: 'Painel de Rupturas' },
+  {
+    kind: 'submenu',
+    label: 'Rotina',
+    children: [
+      { kind: 'link', to: '/compras/rotina/pendencias', label: 'Pendências compras' },
+    ],
+  },
 ];
 
 export const ENGENHARIA_SUBMENUS: { to: string; label: string }[] = [
@@ -105,6 +134,7 @@ export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
 export const INTEGRACAO_SUBMENUS: { to: string; label: string }[] = [
   { to: '/integracao/alteracao-data-entrega-compra', label: 'Alteração da Data de Entrega do Pedido de Compra' },
   { to: '/integracao/sms', label: 'SMS' },
+  { to: '/integracao/credenciais', label: 'Credenciais' },
 ];
 
 export const GESTAO_USUARIOS_SUBMENUS: { to: string; label: string }[] = [
@@ -133,12 +163,17 @@ export const PATH_LABELS: Record<string, string> = {
   '/pedidos/ressup-almox': 'Ressup Almox',
   '/pedidos/ressup-nao-almox': 'Ressup Não Almox',
   '/pedidos/consulta-estoque': 'Consulta de Estoque',
+  '/pedidos/painel-metas/gerencial': 'Painel Gerencial',
+  '/pedidos/painel-metas/tv': 'Painel TV',
+  '/pedidos/painel-metas/metas': 'Metas',
   '/heatmap': 'Roteirizador',
   '/mind-maps': 'Fluxos Decisórios',
   '/compras': 'Compras',
   '/compras/dashboard': 'Dashboard Compras',
   '/compras/coletas-precos': 'Coletas de Preços',
   '/compras/pre-compra': 'Pré Compra',
+  '/compras/painel-rupturas': 'Painel de Rupturas',
+  '/compras/rotina/pendencias': 'Pendências compras',
   '/engenharia': 'Engenharia',
   '/engenharia/precificacao': 'Precificação',
   '/qualidade': 'Qualidade',
@@ -160,6 +195,8 @@ export const PATH_LABELS: Record<string, string> = {
   '/integracao/faturamento-diario': 'Faturamento Diário',
   '/integracao/pedidos-entrega-vencida': 'Pedidos Previsão Vencida',
   '/integracao/sms': 'SMS',
+  '/integracao/credenciais': 'Credenciais',
+  '/integracao/credenciais/email': 'E-mail (Gmail)',
   '/usuarios': 'Usuários',
   '/usuarios/grupos': 'Grupos de usuários',
   '/whatsapp': 'WhatsApp',
@@ -213,6 +250,16 @@ export function buildIntegracaoSubmenusForUser(
   if (isMaster || hasPermission(PERMISSOES.SISTEMA_WHATSAPP)) {
     items.push({ to: '/whatsapp', label: 'WhatsApp' });
   }
+  if (
+    isMaster ||
+    hasPermission(PERMISSOES.SISTEMA_EMAIL) ||
+    hasPermission(PERMISSOES.SISTEMA_WHATSAPP) ||
+    hasPermission(PERMISSOES.USUARIOS_GERENCIAR)
+  ) {
+    if (!items.some((i) => i.to === '/integracao/credenciais')) {
+      items.push({ to: '/integracao/credenciais', label: 'Credenciais' });
+    }
+  }
   if (isMaster || hasPermission(PERMISSOES.SISTEMA_SITUACAO_API)) {
     items.push({ to: '/situacao-api', label: 'Situação da API' });
   }
@@ -265,6 +312,18 @@ export function filterPcpMenuChildren(
         hasPermission(PERMISSOES.PCP_CONSULTA_ESTOQUE_VER) ||
         hasPermission(PERMISSOES.PCP_TOTAL),
     );
+  }
+
+  if (entry.label === 'Painel Metas') {
+    return entry.children.filter((c) => {
+      if (c.kind !== 'link') return true;
+      if (c.to === '/pedidos/painel-metas/gerencial') return podeVerPainelGerencial(hasPermission);
+      if (c.to === '/pedidos/painel-metas/tv') return podeVerPainelTv(hasPermission);
+      if (c.to === '/pedidos/painel-metas/metas') {
+        return podeEditarPainelMetas(hasPermission) || podeVerPainelGerencial(hasPermission);
+      }
+      return true;
+    });
   }
 
   return entry.children

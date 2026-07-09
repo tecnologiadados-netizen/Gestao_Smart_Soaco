@@ -171,7 +171,7 @@ select
 	        sum(ifnull(t.valorIPI, 0)) as valorIPI
 	    from itemdocumentoestoque_itempedidovenda ideipv
 	    left join itemdocumentoestoque ide on ide.id = ideipv.idItemDocumentoEstoque
-	    left join documentoestoque de_nf on de_nf.id = ide.idDocumentoSaida
+	    left join documentoestoque de_nf on de_nf.id = ide.idDocumentoEstoque
 	    left join nfe nfe_nf on nfe_nf.idDocumentoEstoque = de_nf.id
 	    left join tributacao t on t.idItemPedido = ideipv.idItemPedidoVenda
 	    where de_nf.idTipoMovimentacao in (${pcpEntregaFuturaSqlInList()})

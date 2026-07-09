@@ -34,19 +34,56 @@ const LS_KEYS = [
 
 let syncTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 let autoSyncStarted = false;
+let documentsHydrating = false;
+
+export function setQualidadeDocumentsHydrating(value: boolean) {
+  documentsHydrating = value;
+}
+
+export function isQualidadeDocumentsHydrating(): boolean {
+  return documentsHydrating;
+}
+
+export function cancelQualidadeDocumentsDebounce(): void {
+  if (syncTimers.documents) {
+    clearTimeout(syncTimers.documents);
+    delete syncTimers.documents;
+  }
+}
 
 function debounceSync(key: string, fn: () => Promise<void>, ms = 800) {
   if (syncTimers[key]) clearTimeout(syncTimers[key]);
   syncTimers[key] = setTimeout(() => {
+    delete syncTimers[key];
     void fn().catch((err) => console.error(`[qualidade-sync] ${key}:`, err));
   }, ms);
 }
 
+function syncDocumentsStateNow(): Promise<void> {
+  const { documents, versions, tasks, validadeAlertas, revalidacoes } = useDocumentsStore.getState();
+  return syncQualidadeDocuments({
+    documents,
+    versions,
+    tasks,
+    validadeAlertas,
+    revalidacoes,
+  }).then(() => undefined);
+}
+
+/** Persiste documentos no servidor imediatamente (ex.: após exclusão). */
+export function flushQualidadeDocumentsSync(): Promise<void> {
+  cancelQualidadeDocumentsDebounce();
+  return syncDocumentsStateNow().catch((err) => {
+    console.error('[qualidade-sync] documents flush:', err);
+    throw err;
+  });
+}
+
 function flushPendingSyncs() {
-  for (const key of Object.keys(syncTimers)) {
-    clearTimeout(syncTimers[key]);
-    delete syncTimers[key];
-  }
+  cancelQualidadeDocumentsDebounce();
+  void syncDocumentsStateNow().catch((err) =>
+    console.error('[qualidade-sync] pagehide documents:', err)
+  );
   const { departments, documentTypes } = useConfigStore.getState();
   void flushConfigToServer({ departments, documentTypes }).catch((err) =>
     console.error('[qualidade-sync] flush config:', err)
@@ -150,6 +187,7 @@ async function migrateFromLocalStorageIfNeeded() {
 
 export async function hydrateQualidadeFromServer(currentUserLogin: string) {
   setQualidadeConfigHydrating(true);
+  setQualidadeDocumentsHydrating(true);
   try {
   const data = await migrateFromLocalStorageIfNeeded();
   const users = await fetchQualidadeResponsaveis();
@@ -203,6 +241,7 @@ export async function hydrateQualidadeFromServer(currentUserLogin: string) {
   useDocumentsStore.getState().syncValidadeAlertas();
   } finally {
     setQualidadeConfigHydrating(false);
+    setQualidadeDocumentsHydrating(false);
   }
 }
 
@@ -225,6 +264,7 @@ export function startQualidadeAutoSync() {
   });
 
   useDocumentsStore.subscribe((state, prev) => {
+    if (isQualidadeConfigHydrating() || isQualidadeDocumentsHydrating()) return;
     if (
       state.documents !== prev.documents ||
       state.versions !== prev.versions ||

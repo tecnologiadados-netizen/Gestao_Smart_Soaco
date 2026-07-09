@@ -66,35 +66,33 @@
   --ring: #3b4cca;
 }
 
-.qualidade-module .brand-fieldset {
-  position: relative;
-  overflow: visible;
+/* Fieldsets, formulários e controles — module + portal (dialogs/selects no body) */
+.qualidade-module .brand-fieldset,
+.qualidade-portal .brand-fieldset {
   border-radius: 0.5rem;
   border: 1px solid var(--brand-blue-muted);
   border-left-width: 4px;
   border-left-color: var(--brand-blue);
-  padding: 1.25rem 1rem 1rem;
+  padding: 1rem;
   background: color-mix(in oklch, var(--brand-blue-light) 65%, var(--card));
 }
 
-.qualidade-module .brand-fieldset > legend {
-  float: left;
-  width: auto;
-  padding: 0 0.35rem;
-  margin-bottom: 0.75rem;
-  font-size: 0.875rem;
+.dark .qualidade-module .brand-fieldset,
+.dark .qualidade-portal .brand-fieldset {
+  background: color-mix(in oklch, var(--card) 85%, var(--primary) 15%);
+  border-color: color-mix(in oklch, var(--primary) 35%, var(--border));
+}
+
+.qualidade-module .brand-fieldset > legend,
+.qualidade-portal .brand-fieldset > legend {
+  padding: 0 0.25rem;
+  font-size: 1rem;
   font-weight: 600;
-  line-height: 1.25;
-  color: var(--foreground);
+  color: var(--brand-blue);
 }
 
-.qualidade-module .brand-fieldset::after {
-  content: "";
-  display: table;
-  clear: both;
-}
-
-.qualidade-module .sgq-form-footer {
+.qualidade-module .sgq-form-footer,
+.qualidade-portal .sgq-form-footer {
   display: flex;
   flex-shrink: 0;
   flex-wrap: wrap;
@@ -102,6 +100,38 @@
   border-top: 1px solid var(--border);
   padding: 1rem 1.5rem;
   background: color-mix(in oklch, var(--muted) 55%, var(--card));
+}
+
+.dark .qualidade-module .sgq-form-footer,
+.dark .qualidade-portal .sgq-form-footer {
+  background: color-mix(in oklch, var(--muted) 75%, var(--card));
+}
+
+/* Controles dentro do módulo e dos portais */
+.qualidade-module [data-slot="select-trigger"],
+.qualidade-portal [data-slot="select-trigger"] {
+  min-height: 2.5rem;
+  background: var(--card);
+  border-color: color-mix(in oklch, var(--brand-blue-muted) 80%, var(--border));
+  font-size: 0.9375rem;
+}
+
+.qualidade-module [data-slot="input"],
+.qualidade-portal [data-slot="input"] {
+  min-height: 2.5rem;
+  background: var(--card);
+  border-color: color-mix(in oklch, var(--brand-blue-muted) 80%, var(--border));
+  font-size: 0.9375rem;
+}
+
+.qualidade-portal [data-slot="select-content"] {
+  z-index: 200;
+}
+
+.qualidade-module .sgq-field-hint {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--muted-foreground);
 }
 
 .qualidade-module .sgq-table-scroll-viewport {
@@ -252,11 +282,9 @@
   padding: 6px 8px;
 }
 
-/* Layout das páginas — espaço para o botão flutuante "Conexão API / ERP" do shell principal */
 .qualidade-module .sgq-page {
   width: 100%;
   max-width: 80rem;
-  padding-bottom: 5.5rem;
 }
 
 .qualidade-module .sgq-subnav {

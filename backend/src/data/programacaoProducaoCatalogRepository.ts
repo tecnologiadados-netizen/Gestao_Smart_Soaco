@@ -11,9 +11,15 @@ export type BobinaAlternativaCatalogEntry = {
   alternativas: string[];
 };
 
+export type MedidasPecaCatalogEntry = {
+  med1: number | null;
+  med2: number | null;
+};
+
 export type ProgramacaoProducaoCatalogOverrides = {
   bobinas: Record<string, BobinaAlternativaCatalogEntry>;
   descricoes: Record<string, string>;
+  medidasPeca: Record<string, MedidasPecaCatalogEntry>;
 };
 
 function normalizarCodComponente(cod: string): string {
@@ -49,16 +55,17 @@ function ensureVarDir(): void {
 function readOverrides(): ProgramacaoProducaoCatalogOverrides {
   ensureVarDir();
   if (!existsSync(OVERRIDES_FILE)) {
-    return { bobinas: {}, descricoes: {} };
+    return { bobinas: {}, descricoes: {}, medidasPeca: {} };
   }
   try {
     const raw = JSON.parse(readFileSync(OVERRIDES_FILE, 'utf-8')) as Partial<ProgramacaoProducaoCatalogOverrides>;
     return {
       bobinas: raw.bobinas && typeof raw.bobinas === 'object' ? raw.bobinas : {},
       descricoes: raw.descricoes && typeof raw.descricoes === 'object' ? raw.descricoes : {},
+      medidasPeca: raw.medidasPeca && typeof raw.medidasPeca === 'object' ? raw.medidasPeca : {},
     };
   } catch {
-    return { bobinas: {}, descricoes: {} };
+    return { bobinas: {}, descricoes: {}, medidasPeca: {} };
   }
 }
 
@@ -70,6 +77,7 @@ function writeOverrides(overrides: ProgramacaoProducaoCatalogOverrides): void {
 function mergeCatalogs(): {
   bobinas: Record<string, BobinaAlternativaCatalogEntry>;
   descricoes: Record<string, string>;
+  medidasPeca: Record<string, MedidasPecaCatalogEntry>;
 } {
   const baseBobinas = readSeedJson<Record<string, BobinaAlternativaCatalogEntry>>(
     'programacaoProducaoBobinasAlternativas.json'
@@ -81,12 +89,14 @@ function mergeCatalogs(): {
   return {
     bobinas: { ...baseBobinas, ...overrides.bobinas },
     descricoes: { ...baseDesc, ...overrides.descricoes },
+    medidasPeca: { ...overrides.medidasPeca },
   };
 }
 
 export function loadProgramacaoProducaoCatalogo(): {
   bobinas: Record<string, BobinaAlternativaCatalogEntry>;
   descricoes: Record<string, string>;
+  medidasPeca: Record<string, MedidasPecaCatalogEntry>;
 } {
   return mergeCatalogs();
 }
@@ -125,4 +135,29 @@ export function saveCatalogoBobinasAlternativas(
   };
   writeOverrides(overrides);
   return { bobinas: mergeCatalogs().bobinas };
+}
+
+function parseMedidaPeca(val: unknown): number | null {
+  if (val === null || val === undefined || val === '') return null;
+  const n = Number(val);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+export function saveCatalogoMedidasPeca(
+  codComponente: string,
+  entry: { med1?: unknown; med2?: unknown }
+): { medidasPeca: Record<string, MedidasPecaCatalogEntry> } {
+  const key = normalizarCodComponente(codComponente);
+  if (!key) throw new Error('Código do componente inválido.');
+  const med1 = parseMedidaPeca(entry.med1);
+  const med2 = parseMedidaPeca(entry.med2);
+  const overrides = readOverrides();
+  if (med1 == null && med2 == null) {
+    delete overrides.medidasPeca[key];
+  } else {
+    overrides.medidasPeca[key] = { med1, med2 };
+  }
+  writeOverrides(overrides);
+  return { medidasPeca: mergeCatalogs().medidasPeca };
 }

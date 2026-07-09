@@ -4,11 +4,8 @@
  */
 const { execSync } = require('child_process');
 const path = require('path');
+const { DEV_PORTS, KILL_PORTS } = require('./dev-ports.cjs');
 
-// Portas fixas da stack dev (evita colisões com múltiplas instâncias).
-// API (backend): 4000
-// Frontend (Vite): 5190
-const DEV_PORTS = [4000, 5190];
 const PROJECT_MARKER = 'gestorpedidosSoAco';
 
 const DEV_CMD_PATTERNS = [
@@ -204,6 +201,7 @@ function ensurePortsFree(options = {}) {
 
 module.exports = {
   DEV_PORTS,
+  KILL_PORTS,
   ensurePortsFree,
   killDevStackProcesses,
   killPort,

@@ -32,6 +32,88 @@ function Invoke-NpmStep {
     }
 }
 
+function Get-PidsOnPort {
+    param([int]$Port)
+    $pids = @()
+    $lines = netstat -ano -p tcp 2>$null | Select-String "LISTENING" | Select-String ":$Port\s"
+    foreach ($line in $lines) {
+        $parts = ($line -replace '\s+', ' ').Trim().Split(' ')
+        $pid = [int]$parts[-1]
+        if ($pid -gt 0) { $pids += $pid }
+    }
+    return $pids | Select-Object -Unique
+}
+
+function Stop-ProcessTree {
+    param([int]$ProcessId)
+    if ($ProcessId -le 0) { return }
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    taskkill /F /T /PID $ProcessId 2>&1 | Out-Null
+    $ErrorActionPreference = $prevEap
+}
+
+function Stop-ProducaoParaDeploy {
+    param(
+        [string]$ServicoNome,
+        [int]$Port,
+        [ref]$EstavaRodando
+    )
+
+    $svc = Get-Service -Name $ServicoNome -ErrorAction SilentlyContinue
+    if ($svc -and $svc.Status -eq "Running") {
+        Write-Host "[2/9] Parando servico $ServicoNome..." -ForegroundColor Yellow
+        Stop-Service -Name $ServicoNome -Force
+        $EstavaRodando.Value = $true
+        $deadline = (Get-Date).AddSeconds(30)
+        while ((Get-Service $ServicoNome).Status -ne "Stopped" -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 1
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    npm run dev:stop 2>&1 | Out-Null
+    $ErrorActionPreference = $prevEap
+    Start-Sleep -Seconds 2
+
+    Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
+        $cmd = [string]$_.CommandLine
+        if ($cmd -match 'dist[\\/]server\.js' -or ($cmd -match 'tsx watch' -and $cmd -match 'server\.ts')) {
+            Stop-ProcessTree -ProcessId $_.ProcessId
+        }
+    }
+    Start-Sleep -Seconds 2
+
+    for ($attempt = 1; $attempt -le 8; $attempt++) {
+        $pids = Get-PidsOnPort -Port $Port
+        if ($pids.Count -eq 0) { break }
+        Write-Host "[2/9] Porta $Port ainda em uso (PIDs: $($pids -join ', ')) - tentativa $attempt..." -ForegroundColor Yellow
+        foreach ($pid in $pids) { Stop-ProcessTree -ProcessId $pid }
+        Start-Sleep -Seconds 2
+    }
+
+    $rest = Get-PidsOnPort -Port $Port
+    if ($rest.Count -gt 0) {
+        throw "Porta $Port ainda ocupada (PIDs: $($rest -join ', ')). Pare o processo manualmente e rode o deploy de novo."
+    }
+}
+
+function Invoke-PrismaGenerate {
+    param([int]$MaxAttempts = 6)
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        Write-Host "[6/9] prisma generate (tentativa $attempt/$MaxAttempts)..." -ForegroundColor Cyan
+        npm run generate --prefix backend
+        if ($LASTEXITCODE -eq 0) { return }
+        if ($attempt -lt $MaxAttempts) {
+            Write-Host "prisma generate bloqueado (EPERM?) - aguardando liberacao do query engine..." -ForegroundColor Yellow
+            Start-Sleep -Seconds 4
+        }
+    }
+    throw "prisma generate falhou apos $MaxAttempts tentativas (arquivo query_engine-windows.dll.node em uso)."
+}
+
 function Restore-ProducaoSeParada {
     param([bool]$ServicoExistia, [bool]$EstavaRodando, [string]$ServicoNome, [string]$PastaProjeto, [int]$Port)
     if (-not $EstavaRodando) { return }
@@ -86,39 +168,24 @@ $servico = Get-Service -Name $ServicoNome -ErrorAction SilentlyContinue
 $servicoExistia = [bool]$servico
 
 try {
-    if ($servico -and $servico.Status -eq "Running") {
-        Write-Host "[1b/9] Parando servico $ServicoNome..." -ForegroundColor Yellow
-        Stop-Service -Name $ServicoNome -Force
-        Start-Sleep -Seconds 2
-        $servicoEstavaRodando = $true
-    }
-
-    $portEmUso = netstat -ano | Select-String "LISTENING" | Select-String ":$port "
-    if ($portEmUso) {
-        Write-Host "[1b/9] Porta $port em uso - npm run dev:stop..." -ForegroundColor Yellow
-        $prevEap = $ErrorActionPreference
-        $ErrorActionPreference = "Continue"
-        npm run dev:stop 2>&1 | Out-Null
-        $ErrorActionPreference = $prevEap
-        Start-Sleep -Seconds 2
-    }
-
     $branch = & $Git branch --show-current
     if ($branch -ne "main") {
         & $Git fetch origin
         & $Git checkout main
     }
 
-    Write-Host "[2/9] Sincronizando com origin/main..." -ForegroundColor Cyan
+    Write-Host "[1/9] Sincronizando com origin/main..." -ForegroundColor Cyan
     & $Git fetch origin
     if ($LASTEXITCODE -ne 0) { throw "git fetch origin falhou." }
     & $Git reset --hard origin/main
     if ($LASTEXITCODE -ne 0) { throw "git reset --hard origin/main falhou." }
 
+    Stop-ProducaoParaDeploy -ServicoNome $ServicoNome -Port $port -EstavaRodando ([ref]$servicoEstavaRodando)
+
     Invoke-NpmStep "[3/9] npm install (raiz)..." { npm install }
     Invoke-NpmStep "[4/9] npm install (backend)..." { npm install --prefix backend }
     Invoke-NpmStep "[5/9] npm install (frontend)..." { npm install --prefix frontend }
-    Invoke-NpmStep "[6/9] prisma generate..." { npm run generate --prefix backend }
+    Invoke-PrismaGenerate
 
     if (-not $SemMigrate) {
         Write-Host "[7/9] prisma migrate deploy..." -ForegroundColor Cyan
@@ -130,6 +197,11 @@ try {
     $env:NODE_ENV = "production"
     npm run build:production
     if ($LASTEXITCODE -ne 0) { throw "Build falhou." }
+
+    $ensureWordDirs = Join-Path $PastaProjeto "scripts\ensure-word-com-dirs.ps1"
+    if (Test-Path $ensureWordDirs) {
+        & $ensureWordDirs
+    }
 
     Write-Host "[9/9] Reiniciar producao..." -ForegroundColor Cyan
     if (-not $SemRestart) {

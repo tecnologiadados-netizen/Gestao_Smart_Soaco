@@ -1,4 +1,14 @@
 import { prisma } from '../config/prisma.js';
+import { PERMISSOES } from '../config/permissoes.js';
+import { getPermissoesUsuario } from '../middleware/requirePermission.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import {
+  notificarNovasTarefasWorkflow,
+  type DocumentoMetaParaEmail,
+  type NovaTarefaWorkflowInput,
+} from '../services/sgq/sgqEmailNotificacaoService.js';
 import {
   deleteQualidadeAnexoIfExists,
   readQualidadeAnexoAsDataUrl,
@@ -353,6 +363,7 @@ function mapTarefa(row: {
 
 export async function getQualidadeBootstrap() {
   await ensureSgqCatalogosSeed();
+  await ensureSgqHistoricoSeed();
 
   const [
     setores,
@@ -427,6 +438,117 @@ export async function getQualidadeBootstrap() {
 }
 
 // ─── Sync helpers ────────────────────────────────────────────────────────────
+
+async function purgeSgqDocumentsRemovedFromPayload(
+  payloadDocumentUids: string[],
+  payloadVersionUids: string[],
+  payloadAlertaUids: string[],
+  payloadRevalidacaoUids: string[]
+): Promise<void> {
+  const docUids = [...new Set(payloadDocumentUids.filter(Boolean))];
+  const versionUids = [...new Set(payloadVersionUids.filter(Boolean))];
+  const alertaUids = [...new Set(payloadAlertaUids.filter(Boolean))];
+  const revalidacaoUids = [...new Set(payloadRevalidacaoUids.filter(Boolean))];
+
+  if (docUids.length > 0 && versionUids.length > 0) {
+    const orphanVersoes = await prisma.sgqDocumentoVersao.findMany({
+      where: {
+        documento: { uid: { in: docUids } },
+        uid: { notIn: versionUids },
+      },
+      select: { uid: true, arquivoStoragePath: true },
+    });
+    for (const v of orphanVersoes) {
+      deleteQualidadeAnexoIfExists(v.arquivoStoragePath);
+    }
+    if (orphanVersoes.length > 0) {
+      await prisma.sgqDocumentoVersao.deleteMany({
+        where: { uid: { in: orphanVersoes.map((v) => v.uid) } },
+      });
+    }
+  }
+
+  if (docUids.length > 0 && alertaUids.length > 0) {
+    await prisma.sgqDocumentoAlerta.deleteMany({
+      where: {
+        documento: { uid: { in: docUids } },
+        uid: { notIn: alertaUids },
+      },
+    });
+  }
+
+  if (docUids.length > 0 && revalidacaoUids.length > 0) {
+    const orphanRevs = await prisma.sgqDocumentoRevalidacao.findMany({
+      where: {
+        documento: { uid: { in: docUids } },
+        uid: { notIn: revalidacaoUids },
+      },
+      select: { uid: true, evidenciaStoragePath: true },
+    });
+    for (const r of orphanRevs) {
+      deleteQualidadeAnexoIfExists(r.evidenciaStoragePath);
+    }
+    if (orphanRevs.length > 0) {
+      await prisma.sgqDocumentoRevalidacao.deleteMany({
+        where: { uid: { in: orphanRevs.map((r) => r.uid) } },
+      });
+    }
+  }
+
+  const removedDocs = await prisma.sgqDocumento.findMany({
+    where: docUids.length > 0 ? { uid: { notIn: docUids } } : {},
+    select: {
+      uid: true,
+      versoes: { select: { arquivoStoragePath: true } },
+      revalidacoes: { select: { evidenciaStoragePath: true } },
+    },
+  });
+
+  if (removedDocs.length === 0) return;
+
+  const removedUids = removedDocs.map((d) => d.uid);
+  for (const doc of removedDocs) {
+    for (const v of doc.versoes) {
+      deleteQualidadeAnexoIfExists(v.arquivoStoragePath);
+    }
+    for (const r of doc.revalidacoes) {
+      deleteQualidadeAnexoIfExists(r.evidenciaStoragePath);
+    }
+  }
+
+  await prisma.sgqTarefa.deleteMany({
+    where: { referenciaTipo: 'documento', referenciaId: { in: removedUids } },
+  });
+
+  await prisma.sgqDocumento.deleteMany({
+    where: { uid: { in: removedUids } },
+  });
+}
+
+export async function deleteQualidadeDocumento(uid: string): Promise<boolean> {
+  const doc = await prisma.sgqDocumento.findUnique({
+    where: { uid },
+    select: {
+      uid: true,
+      versoes: { select: { arquivoStoragePath: true } },
+      revalidacoes: { select: { evidenciaStoragePath: true } },
+    },
+  });
+  if (!doc) return false;
+
+  for (const v of doc.versoes) {
+    deleteQualidadeAnexoIfExists(v.arquivoStoragePath);
+  }
+  for (const r of doc.revalidacoes) {
+    deleteQualidadeAnexoIfExists(r.evidenciaStoragePath);
+  }
+
+  await prisma.sgqTarefa.deleteMany({
+    where: { referenciaTipo: 'documento', referenciaId: uid },
+  });
+  await prisma.sgqDocumento.delete({ where: { uid } });
+  return true;
+}
 
 async function resolveSetorUid(setorId: string) {
   const byUid = await prisma.sgqSetor.findUnique({ where: { uid: setorId } });
@@ -544,6 +666,7 @@ export async function syncQualidadeDocuments(payload: {
 }) {
   const { documents, versions, tasks, validadeAlertas, revalidacoes, criadoPorLogin } = payload;
   const docUidToId = new Map<string, number>();
+  const docMetaByUid = new Map<string, DocumentoMetaParaEmail>();
 
   for (const doc of documents) {
     const uid = String(doc.id ?? '');
@@ -586,6 +709,12 @@ export async function syncQualidadeDocuments(payload: {
       },
     });
     docUidToId.set(uid, saved.id);
+    docMetaByUid.set(uid, {
+      codigo,
+      titulo: String(doc.titulo ?? ''),
+      permissoes: (doc.permissoes as DocumentoMetaParaEmail['permissoes']) ?? null,
+      publicacao: (doc.publicacao as DocumentoMetaParaEmail['publicacao']) ?? null,
+    });
   }
 
   for (const ver of versions) {
@@ -664,10 +793,35 @@ export async function syncQualidadeDocuments(payload: {
     });
   }
 
+  const pendingBefore = new Set(
+    (
+      await prisma.sgqTarefa.findMany({
+        where: { concluida: false },
+        select: { uid: true },
+      })
+    ).map((t) => t.uid)
+  );
+
+  const novasTarefas: NovaTarefaWorkflowInput[] = [];
+
   await prisma.sgqTarefa.deleteMany({ where: { concluida: false } });
   for (const task of tasks) {
     const uid = String(task.id ?? '');
     if (!uid) continue;
+
+    const concluida = Boolean(task.concluida);
+    if (!concluida && !pendingBefore.has(uid)) {
+      novasTarefas.push({
+        uid,
+        tipo: String(task.tipo ?? ''),
+        titulo: String(task.titulo ?? ''),
+        descricao: task.descricao ? String(task.descricao) : null,
+        responsavelLogin: String(task.responsavelId ?? ''),
+        prazo: task.prazo ? String(task.prazo) : null,
+        referenciaId: String(task.referenciaId ?? ''),
+      });
+    }
+
     await prisma.sgqTarefa.upsert({
       where: { uid },
       create: {
@@ -679,7 +833,7 @@ export async function syncQualidadeDocuments(payload: {
         descricao: task.descricao ? String(task.descricao) : null,
         responsavelLogin: String(task.responsavelId ?? ''),
         prazo: task.prazo ? String(task.prazo) : null,
-        concluida: Boolean(task.concluida),
+        concluida,
         metadadosJson: JSON.stringify(task),
       },
       update: {
@@ -690,10 +844,21 @@ export async function syncQualidadeDocuments(payload: {
         descricao: task.descricao ? String(task.descricao) : null,
         responsavelLogin: String(task.responsavelId ?? ''),
         prazo: task.prazo ? String(task.prazo) : null,
-        concluida: Boolean(task.concluida),
+        concluida,
         metadadosJson: JSON.stringify(task),
       },
     });
+  }
+
+  if (novasTarefas.length > 0) {
+    try {
+      const enviados = await notificarNovasTarefasWorkflow(prisma, novasTarefas, docMetaByUid);
+      if (enviados > 0) {
+        console.info(`[sgq-email] ${enviados} notificação(ões) de tarefa nova enviada(s).`);
+      }
+    } catch (err) {
+      console.error('[sgq-email] Erro ao notificar tarefas novas (sync continuou):', err);
+    }
   }
 
   for (const alerta of validadeAlertas) {
@@ -757,6 +922,13 @@ export async function syncQualidadeDocuments(payload: {
       },
     });
   }
+
+  await purgeSgqDocumentsRemovedFromPayload(
+    documents.map((d) => String(d.id ?? '')),
+    versions.map((v) => String(v.id ?? '')),
+    validadeAlertas.map((a) => String(a.id ?? '')),
+    revalidacoes.map((r) => String(r.id ?? ''))
+  );
 }
 
 export async function syncQualidadeCalibrations(payload: {
@@ -1027,10 +1199,78 @@ export async function listQualidadeResponsaveis() {
     select: { login: true, nome: true, email: true },
     orderBy: { nome: 'asc' },
   });
-  return users.map((u) => ({
-    id: u.login,
-    nome: u.nome ?? u.login,
-    email: u.email ?? '',
-    ativo: true,
-  }));
+
+  const result: Array<{ id: string; nome: string; email: string; ativo: boolean }> = [];
+  for (const u of users) {
+    const perms = await getPermissoesUsuario(u.login);
+    if (!perms.includes(PERMISSOES.QUALIDADE_VER)) continue;
+    result.push({
+      id: u.login,
+      nome: u.nome ?? u.login,
+      email: u.email ?? '',
+      ativo: true,
+    });
+  }
+  return result;
+}
+
+const sgqHistoricoMockDataDir = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..',
+  'frontend',
+  'src',
+  'modules',
+  'qualidade',
+  'lib',
+  'mock-data'
+);
+
+function readSgqHistoricoJson<T>(fileName: string): T[] {
+  const filePath = path.join(sgqHistoricoMockDataDir, fileName);
+  if (!fs.existsSync(filePath)) {
+    console.warn(`[sgq-historico] Arquivo não encontrado: ${filePath}`);
+    return [];
+  }
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(raw) as T[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error(`[sgq-historico] Falha ao ler ${fileName}:`, err);
+    return [];
+  }
+}
+
+/** Importa histórico Nomus (RNC/RCC/avaliações) quando ainda não há registros importados. */
+export async function ensureSgqHistoricoSeed(criadoPorLogin = 'sistema'): Promise<void> {
+  const [registrosImportados, avaliacoesImportadas] = await Promise.all([
+    prisma.sgqRegistro.count({ where: { origemImport: true } }),
+    prisma.sgqAvaliacaoFornecedor.count({ where: { origemImport: true } }),
+  ]);
+
+  if (registrosImportados === 0) {
+    const rnc = readSgqHistoricoJson<Record<string, unknown>>('rnc-historico-nomus.json');
+    const rcc = readSgqHistoricoJson<Record<string, unknown>>('rcc-historico-nomus.json');
+    const registros = [...rnc, ...rcc];
+    if (registros.length > 0) {
+      const result = await importRegistrosFromJson(registros, criadoPorLogin);
+      console.info(
+        `[sgq-historico] Registros Nomus: ${result.inseridos} inseridos, ${result.ignorados} ignorados`
+      );
+    }
+  }
+
+  if (avaliacoesImportadas === 0) {
+    const avaliacoes = readSgqHistoricoJson<Record<string, unknown>>(
+      'avaliacoes-fornecedor-historico.json'
+    );
+    if (avaliacoes.length > 0) {
+      await syncQualidadeAvaliacoes(
+        avaliacoes.map((av) => ({ ...av, origemImport: true }))
+      );
+      console.info(`[sgq-historico] Avaliações de fornecedor: ${avaliacoes.length} importadas`);
+    }
+  }
 }

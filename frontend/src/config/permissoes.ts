@@ -10,6 +10,9 @@ export const PERMISSOES = {
   HEATMAP_VER: 'heatmap.ver',
   COMPRAS_VER: 'compras.ver',
   COMPRAS_EDITAR: 'compras.editar',
+  COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1: 'compras.pendencias.prioridade.comprador_1',
+  COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2: 'compras.pendencias.prioridade.comprador_2',
+  COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3: 'compras.pendencias.prioridade.comprador_3',
   COMPRAS_VINCULO_FINALIZACAO_AMPLIADO: 'compras.vinculo_finalizacao.ampliado',
   PRECIFICACAO_VER: 'precificacao.ver',
   PRECIFICACAO_GERAR: 'precificacao.gerar',
@@ -52,6 +55,9 @@ export const PERMISSOES = {
   PCP_CONSULTA_ESTOQUE_VER: 'pcp.consulta_estoque.ver',
   PCP_REGRAS_ENTREGA_VER: 'pcp.regras_entrega.ver',
   PCP_REGRAS_ENTREGA_EDITAR: 'pcp.regras_entrega.editar',
+  PCP_PAINEL_GERENCIAL_VER: 'pcp.painel_gerencial.ver',
+  PCP_PAINEL_TV_VER: 'pcp.painel_tv.ver',
+  PCP_PAINEL_METAS_EDITAR: 'pcp.painel_metas.editar',
 
   // Usuários / Grupos de usuários
   USUARIOS_TELA_VER: 'usuarios.tela.ver',
@@ -89,6 +95,7 @@ export const PERMISSOES = {
   SUPORTE_CONFIGURAR: 'suporte.configurar',
 
   SISTEMA_WHATSAPP: 'sistema.whatsapp',
+  SISTEMA_EMAIL: 'sistema.email',
   SISTEMA_SITUACAO_API: 'sistema.situacao_api',
   USUARIOS_GRUPO_MASTER_ATRIBUIR: 'usuarios.grupo_master.atribuir',
   USUARIOS_GRUPO_MASTER_REMOVER: 'usuarios.grupo_master.remover',

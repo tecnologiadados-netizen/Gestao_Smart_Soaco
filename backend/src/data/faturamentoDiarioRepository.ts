@@ -9,7 +9,7 @@ const SQL_DEVOLUCOES_DIARIA = `
 SELECT IfNull(Sum(ide.valorTotalComDesconto), 0) AS devolucao
 FROM itemdocumentoestoque ide
 LEFT JOIN tipomovimentacao tm ON ide.idTipoMovimentacao = tm.id
-LEFT JOIN documentoestoque de ON ide.idDocumentoEntrada = de.id
+LEFT JOIN documentoestoque de ON ide.idDocumentoEstoque = de.id
 LEFT JOIN nfe nfe ON nfe.idDocumentoEstoque = de.id
 LEFT JOIN produto pd ON pd.id = ide.idProduto
 LEFT JOIN grupoproduto gp ON pd.idGrupoProduto = gp.id
@@ -23,7 +23,7 @@ const SQL_DEVOLUCOES_MENSAL = `
 SELECT IfNull(Sum(ide.valorTotalComDesconto), 0) AS devolucao
 FROM itemdocumentoestoque ide
 LEFT JOIN tipomovimentacao tm ON ide.idTipoMovimentacao = tm.id
-LEFT JOIN documentoestoque de ON ide.idDocumentoEntrada = de.id
+LEFT JOIN documentoestoque de ON ide.idDocumentoEstoque = de.id
 LEFT JOIN nfe nfe ON nfe.idDocumentoEstoque = de.id
 LEFT JOIN produto pd ON pd.id = ide.idProduto
 LEFT JOIN grupoproduto gp ON pd.idGrupoProduto = gp.id
@@ -42,7 +42,7 @@ SELECT
   SUM(ide.valorTotalComDesconto) AS valorTotalComDesconto
 FROM itemdocumentoestoque ide
 LEFT JOIN tipomovimentacao tm ON ide.idTipoMovimentacao = tm.id
-LEFT JOIN documentoestoque de ON ide.idDocumentoSaida = de.id
+LEFT JOIN documentoestoque de ON ide.idDocumentoEstoque = de.id
 LEFT JOIN nfe nfe ON nfe.idDocumentoEstoque = de.id
 LEFT JOIN produto pd ON pd.id = ide.idProduto
 LEFT JOIN grupoproduto gp ON pd.idGrupoProduto = gp.id
@@ -62,7 +62,7 @@ const SQL_FATURAMENTO_MENSAL = `
 SELECT SUM(ide.valorTotalComDesconto) AS valorTotalComDesconto
 FROM itemdocumentoestoque ide
 LEFT JOIN tipomovimentacao tm ON ide.idTipoMovimentacao = tm.id
-LEFT JOIN documentoestoque de ON ide.idDocumentoSaida = de.id
+LEFT JOIN documentoestoque de ON ide.idDocumentoEstoque = de.id
 LEFT JOIN nfe nfe ON nfe.idDocumentoEstoque = de.id
 LEFT JOIN produto pd ON pd.id = ide.idProduto
 LEFT JOIN grupoproduto gp ON pd.idGrupoProduto = gp.id

@@ -61,7 +61,12 @@ function earliestIsoFromPrevisaoField(previsao: string | null | undefined, fallb
 }
 
 function getEffectivePrevisaoDateIso(o: Pick<Order, 'previsao_atual' | 'current_promised_date'>): string {
-  return earliestIsoFromPrevisaoField(o.previsao_atual ?? null, o.current_promised_date);
+  const ger = earliestIsoFromPrevisaoField(o.previsao_atual ?? null, '');
+  const card = (o.current_promised_date ?? '').trim().slice(0, 10);
+  if (!ger) return card;
+  if (!card) return ger;
+  if (card.localeCompare(ger) > 0) return card;
+  return ger;
 }
 
 /** Dias até a previsão efetiva (0 = hoje). null se inválido ou data já passou. */

@@ -18,6 +18,11 @@ if (-not (Test-Path "backend\dist\server.js")) {
     if ($LASTEXITCODE -ne 0) { throw "Build falhou." }
 }
 
+$ensureWordDirs = Join-Path $PastaProjeto "scripts\ensure-word-com-dirs.ps1"
+if (Test-Path $ensureWordDirs) {
+    & $ensureWordDirs
+}
+
 $servico = Get-Service -Name $ServicoNome -ErrorAction SilentlyContinue
 if ($servico) {
     if ($servico.Status -eq "Running") {

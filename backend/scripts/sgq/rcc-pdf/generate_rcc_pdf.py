@@ -12,13 +12,15 @@ from pathlib import Path
 from typing import Any
 
 from docx import Document
-from docx.shared import Pt
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+SGQ_DIR = SCRIPT_DIR.parent
+if str(SGQ_DIR) not in sys.path:
+    sys.path.insert(0, str(SGQ_DIR))
+from docx_cells import definir_celula
+
 TEMPLATES_DIR = SCRIPT_DIR / "templates"
 
-FONT_NAME = "Arial"
-FONT_SIZE = Pt(8)
 VENDEDOR_PADRAO = "SO AÇO INDUSTRIAL LTDA - SO MOVEIS LTDA"
 
 STATUS_LABELS = {
@@ -145,32 +147,9 @@ def montar_campos(payload: dict[str, Any]) -> dict[str, str]:
         "servico_realizado": servicos_realizados(rcc),
         "problema_solucionado": valor_campo(rcc.get("problemaSolucionado")),
         "data_conclusao": formatar_data(rcc.get("dataFechamento")),
+        "hora_chegada_cliente": formatar_hora(rcc.get("horaChegadaCliente")),
+        "hora_saida_cliente": formatar_hora(rcc.get("horaSaidaCliente")),
     }
-
-
-def definir_celula(table, linha: int, coluna: int, texto: str) -> None:
-    """Preenche apenas o valor, preservando mesclagens e formatação do modelo."""
-    if not texto:
-        return
-
-    cell = table.cell(linha, coluna)
-    if not cell.paragraphs:
-        cell.add_paragraph()
-    paragraph = cell.paragraphs[0]
-
-    if paragraph.runs:
-        paragraph.runs[0].text = texto
-        for run in paragraph.runs[1:]:
-            run.text = ""
-        run = paragraph.runs[0]
-    else:
-        run = paragraph.add_run(texto)
-
-    run.font.name = FONT_NAME
-    run.font.size = FONT_SIZE
-
-    for extra in cell.paragraphs[1:]:
-        extra._element.getparent().remove(extra._element)
 
 
 def preencher_cliente(table, campos: dict[str, str]) -> None:
@@ -231,6 +210,8 @@ def preencher_empresa(table, campos: dict[str, str]) -> None:
     definir_celula(table, 21, 4, campos["servico_realizado"])
     definir_celula(table, 22, 4, campos["problema_solucionado"])
     definir_celula(table, 22, 14, campos["data_conclusao"])
+    definir_celula(table, 23, 4, campos["hora_chegada_cliente"])
+    definir_celula(table, 23, 14, campos["hora_saida_cliente"])
 
 
 def preencher_documento(versao: str, campos: dict[str, str]) -> Document:
@@ -252,14 +233,9 @@ def preencher_documento(versao: str, campos: dict[str, str]) -> Document:
 
 
 def converter_para_pdf(docx_path: Path, pdf_path: Path) -> None:
-    try:
-        from docx2pdf import convert
-    except ImportError as exc:
-        raise RuntimeError(
-            "Pacote docx2pdf não instalado. Execute: pip install -r scripts/rcc-pdf/requirements.txt"
-        ) from exc
+    from docx_to_pdf import converter_docx_para_pdf
 
-    convert(str(docx_path), str(pdf_path))
+    converter_docx_para_pdf(str(docx_path), str(pdf_path))
 
 
 def gerar_pdf(payload: dict[str, Any], output_path: Path) -> None:

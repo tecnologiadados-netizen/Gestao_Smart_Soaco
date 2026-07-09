@@ -2,6 +2,9 @@ import type { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/prisma.js';
 import { PERMISSOES, TODAS_PERMISSOES, type CodigoPermissao } from '../config/permissoes.js';
 import { isGrupoMasterNome, isSuperLogin } from '../config/grupoMaster.js';
+import { isPermissaoPrioridadePendenciasUsuario } from '../utils/pendenciasComprasPermissao.js';
+
+const COMMERCIAL_TEAM_FLAG = '__time_comercial__';
 
 function parsePermissoesJSON(json: string | null | undefined): string[] {
   if (!json) return [];
@@ -32,14 +35,18 @@ export async function getPermissoesUsuario(login: string): Promise<CodigoPermiss
     where: { login },
     select: {
       id: true,
+      permissoes: true,
       grupo: { select: { nome: true, permissoes: true } },
     },
   });
 
   if (!usuario) return [];
 
-  const groupPerms = parsePermissoesJSON(usuario.grupo?.permissoes);
-  const union = [...new Set([...groupPerms])];
+  const groupPerms = parsePermissoesJSON(usuario.grupo?.permissoes).filter(
+    (p) => !isPermissaoPrioridadePendenciasUsuario(p)
+  );
+  const userPerms = parsePermissoesJSON(usuario.permissoes).filter((p) => p !== COMMERCIAL_TEAM_FLAG);
+  const union = [...new Set([...groupPerms, ...userPerms])];
 
   const grupoNome = usuario.grupo?.nome ?? '';
   const comprasGrupoComIntegracaoImplicita = ['Compras', 'Operador Compras'].includes(String(grupoNome));

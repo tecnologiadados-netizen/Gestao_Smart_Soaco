@@ -834,6 +834,36 @@ export function RccForm({
               className={somenteLeitura ? "bg-muted/40" : undefined}
             />
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="rcc-hora-chegada-cliente">
+              {rccFieldLabels.horaChegadaCliente}
+            </Label>
+            <Input
+              id="rcc-hora-chegada-cliente"
+              type="time"
+              value={dados.horaChegadaCliente}
+              onChange={(e) => patch({ horaChegadaCliente: e.target.value })}
+              readOnly={somenteLeitura}
+              disabled={somenteLeitura}
+              className={somenteLeitura ? "bg-muted/40" : undefined}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="rcc-hora-saida-cliente">
+              {rccFieldLabels.horaSaidaCliente}
+            </Label>
+            <Input
+              id="rcc-hora-saida-cliente"
+              type="time"
+              value={dados.horaSaidaCliente}
+              onChange={(e) => patch({ horaSaidaCliente: e.target.value })}
+              readOnly={somenteLeitura}
+              disabled={somenteLeitura}
+              className={somenteLeitura ? "bg-muted/40" : undefined}
+            />
+          </div>
         </div>
       </fieldset>
 

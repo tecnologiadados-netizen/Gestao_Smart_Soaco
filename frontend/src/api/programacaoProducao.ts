@@ -3,6 +3,7 @@ import type {
   DadosProgramacaoProducaoV1,
   EstoqueSetorDetalhe,
   ExplosaoPaDetalhe,
+  MedidasPecaCatalogEntry,
   OrdemNomusOpcao,
   ProgramacaoProducaoGradeRowApi,
   ProgramacaoProducaoListItem,
@@ -26,12 +27,13 @@ export async function getProgramacaoProducao(id: string): Promise<ProgramacaoPro
 export type ProgramacaoProducaoCatalogo = {
   bobinas: Record<string, { codigo_mp?: string; alternativas: string[] }>;
   descricoes: Record<string, string>;
+  medidasPeca: Record<string, MedidasPecaCatalogEntry>;
   recursos?: ProgramacaoProducaoRecurso[];
 };
 
 export async function fetchProgramacaoProducaoCatalogo(): Promise<ProgramacaoProducaoCatalogo> {
   const r = await apiJson<{ data: ProgramacaoProducaoCatalogo }>('/api/programacao-producao/catalogo');
-  return r.data ?? { bobinas: {}, descricoes: {}, recursos: [] };
+  return r.data ?? { bobinas: {}, descricoes: {}, medidasPeca: {}, recursos: [] };
 }
 
 export async function listProgramacaoProducaoRecursos(): Promise<ProgramacaoProducaoRecurso[]> {
@@ -89,6 +91,22 @@ export async function saveCatalogoDescricaoProgramacao(
   }
   const r = (await res.json()) as { data: { descricoes: Record<string, string> } };
   return r.data.descricoes;
+}
+
+export async function saveCatalogoMedidasPecaProgramacao(
+  codComponente: string,
+  entry: MedidasPecaCatalogEntry
+): Promise<Record<string, MedidasPecaCatalogEntry>> {
+  const res = await apiFetch('/api/programacao-producao/catalogo/medidas-peca', {
+    method: 'PUT',
+    body: { codComponente, med1: entry.med1, med2: entry.med2 },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? 'Erro ao gravar medidas da peça no catálogo.');
+  }
+  const r = (await res.json()) as { data: { medidasPeca: Record<string, MedidasPecaCatalogEntry> } };
+  return r.data.medidasPeca;
 }
 
 export async function saveCatalogoBobinasProgramacao(

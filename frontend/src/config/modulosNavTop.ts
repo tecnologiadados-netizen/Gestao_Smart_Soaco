@@ -42,6 +42,11 @@ export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
   },
   { code: 'integracao', label: 'Integração', permissoes: [PERMISSOES.INTEGRACAO_VER] },
   {
+    code: 'email',
+    label: 'E-mail',
+    permissoes: [PERMISSOES.SISTEMA_EMAIL, PERMISSOES.USUARIOS_GERENCIAR],
+  },
+  {
     code: 'whatsapp',
     label: 'WhatsApp',
     permissoes: [PERMISSOES.SISTEMA_WHATSAPP, PERMISSOES.USUARIOS_GERENCIAR],

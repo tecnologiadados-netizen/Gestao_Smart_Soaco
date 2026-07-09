@@ -18,13 +18,17 @@ def main() -> int:
 
     input_path, output_path = sys.argv[1], sys.argv[2]
 
-    with open(input_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    try:
+        with open(input_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-    pdf_bytes = generate_pdf(data)
+        pdf_bytes = generate_pdf(data)
 
-    with open(output_path, "wb") as f:
-        f.write(pdf_bytes)
+        with open(output_path, "wb") as f:
+            f.write(pdf_bytes)
+    except Exception as exc:  # noqa: BLE001
+        print(str(exc), file=sys.stderr)
+        return 1
 
     return 0
 

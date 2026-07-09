@@ -13,6 +13,7 @@ import {
   loadProgramacaoProducaoCatalogo,
   saveCatalogoBobinasAlternativas,
   saveCatalogoDescricaoSimplificada,
+  saveCatalogoMedidasPeca,
   type BobinaAlternativaCatalogEntry,
 } from '../data/programacaoProducaoCatalogRepository.js';
 import {
@@ -564,6 +565,29 @@ export async function putProgramacaoProducaoCatalogoBobinas(
   try {
     const { bobinas } = saveCatalogoBobinasAlternativas(cod, entry);
     res.json({ data: { bobinas } });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: msg });
+  }
+}
+
+/** PUT /api/programacao-producao/catalogo/medidas-peca */
+export async function putProgramacaoProducaoCatalogoMedidasPeca(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const body = req.body as { codComponente?: string; med1?: unknown; med2?: unknown };
+  const cod = typeof body.codComponente === 'string' ? body.codComponente : '';
+  if (!cod.trim()) {
+    res.status(400).json({ error: 'codComponente é obrigatório.' });
+    return;
+  }
+  try {
+    const { medidasPeca } = saveCatalogoMedidasPeca(cod, {
+      med1: body.med1,
+      med2: body.med2,
+    });
+    res.json({ data: { medidasPeca } });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: msg });

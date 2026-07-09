@@ -6,12 +6,12 @@ import { getStoredToken } from '../api/client';
 
 export default function PermissionGuard({ children }: { children: ReactNode }) {
   const location = useLocation();
-  const { hasPermission, isMaster, login } = useAuth(); // isMaster usado em primeiraRotaPermitida legado
+  const { hasPermission, isMaster, profileLoaded } = useAuth();
   const pathname = location.pathname.replace(/\/$/, '') || '/';
   const hasToken = !!getStoredToken();
 
-  // Durante revalidação após restart (token existe, perfil ainda carregando), evita falso "Sem acesso".
-  if (hasToken && !login) return <>{children}</>;
+  // Aguarda /api/me antes de negar acesso (evita falso "Sem acesso" em link direto com ?fav=).
+  if (hasToken && !profileLoaded) return <>{children}</>;
 
   const permsNecessarias =
     ROTA_PERMISSAO[pathname] ??

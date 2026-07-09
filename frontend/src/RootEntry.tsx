@@ -4,6 +4,7 @@ import { useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
 import { getStoredToken, SESSION_CLEARED_EVENT, SESSION_AUTHENTICATED_EVENT } from './api/client';
 import { checkAuth } from './api/auth';
+import { salvarRotaRetornoAposLogin } from './utils/rotaRetornoLogin';
 
 /** Autenticação na raiz `/`: visitante vê login; autenticado vê Layout (com Outlet interno para rotas filhas). */
 export default function RootEntry() {
@@ -63,6 +64,7 @@ export default function RootEntry() {
   }
   if (!auth) {
     if (location.pathname !== '/') {
+      salvarRotaRetornoAposLogin(location.pathname, location.search);
       return <Navigate to="/" replace />;
     }
     return <Login />;
