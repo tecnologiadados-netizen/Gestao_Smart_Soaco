@@ -1,5 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { FavoritosProvider } from './contexts/FavoritosContext';
+import { FavoritoVisaoAtualProvider } from './contexts/FavoritoVisaoAtualContext';
 import RootEntry from './RootEntry';
 import Layout from './components/Layout';
 import { layoutChildRoutes } from './layoutChildRoutes';
@@ -16,11 +18,15 @@ export const router = createBrowserRouter(
       path: '/',
       element: (
         <AuthProvider>
-          <RootEntry />
+          <FavoritosProvider>
+            <FavoritoVisaoAtualProvider>
+              <RootEntry />
+            </FavoritoVisaoAtualProvider>
+          </FavoritosProvider>
         </AuthProvider>
       ),
       /**
-       * Rota splat: Layout + filhas. Necessário para `useRoutes` no keep-alive das abas.
+       * Rota splat: Layout + filhas via <Outlet /> com transição de tela.
        * RootEntry autenticado renderiza <Outlet /> (não <Layout /> direto).
        */
       children: [{ path: '*', element: <Layout />, children: layoutChildRoutes }],

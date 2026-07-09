@@ -177,7 +177,7 @@ export async function atualizarUsuario(req: Request, res: Response): Promise<voi
     return;
   }
 
-  const { senha, nome, email, telefone, grupoId, fotoUrl, ativo, isCommercialTeam } = parsed.data;
+  const { senha, nome, email, telefone, grupoId, fotoUrl, ativo, isCommercialTeam, permissoes } = parsed.data;
   const temAlgumaAlteracao =
     senha !== undefined ||
     nome !== undefined ||
@@ -186,7 +186,8 @@ export async function atualizarUsuario(req: Request, res: Response): Promise<voi
     grupoId !== undefined ||
     fotoUrl !== undefined ||
     ativo !== undefined ||
-    isCommercialTeam !== undefined;
+    isCommercialTeam !== undefined ||
+    permissoes !== undefined;
   if (!temAlgumaAlteracao) {
     res.status(400).json({ error: 'Informe ao menos um campo para atualizar.' });
     return;
@@ -212,8 +213,15 @@ export async function atualizarUsuario(req: Request, res: Response): Promise<voi
     res.status(403).json({ error: 'Sem permissão para inativar/ativar usuário.' });
     return;
   }
+
   const teveOutrosCampos =
-    nome !== undefined || email !== undefined || telefone !== undefined || grupoId !== undefined || fotoUrl !== undefined || isCommercialTeam !== undefined;
+    nome !== undefined ||
+    email !== undefined ||
+    telefone !== undefined ||
+    grupoId !== undefined ||
+    fotoUrl !== undefined ||
+    isCommercialTeam !== undefined ||
+    permissoes !== undefined;
   if (teveOutrosCampos && !podeEditar) {
     res.status(403).json({ error: 'Sem permissão para editar usuário.' });
     return;
@@ -287,7 +295,13 @@ export async function atualizarUsuario(req: Request, res: Response): Promise<voi
     if (ativo !== undefined) {
       dataUpdate.ativo = ativo;
     }
-    if (isCommercialTeam !== undefined) {
+    if (permissoes !== undefined) {
+      const commercial =
+        isCommercialTeam !== undefined
+          ? isCommercialTeam
+          : isCommercialTeamFromPerms(parsePermissoes(existente.permissoes));
+      dataUpdate.permissoes = serializePermissoes(withCommercialFlag(permissoes, commercial));
+    } else if (isCommercialTeam !== undefined) {
       const currentPerms = existente ? parsePermissoes(existente.permissoes) : [];
       const nextPerms = withCommercialFlag(currentPerms, isCommercialTeam);
       dataUpdate.permissoes = serializePermissoes(nextPerms);

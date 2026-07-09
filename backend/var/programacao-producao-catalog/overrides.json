@@ -15,5 +15,11 @@
       ]
     }
   },
-  "descricoes": {}
+  "descricoes": {},
+  "medidasPeca": {
+    "PP 0107": {
+      "med1": 1975,
+      "med2": 915
+    }
+  }
 }

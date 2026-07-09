@@ -1,0 +1,661 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-monda), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+  --font-heading: var(--font-monda), ui-sans-serif, system-ui, sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-header: var(--header);
+  --color-header-foreground: var(--header-foreground);
+  --color-modal-header: var(--modal-header);
+  --color-modal-header-foreground: var(--modal-header-foreground);
+  --color-table-header: var(--table-header);
+  --color-table-header-foreground: var(--table-header-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-brand-navy: var(--brand-navy);
+  --color-brand-blue: var(--brand-blue);
+  --color-brand-yellow: var(--brand-yellow);
+  --color-brand-gray: var(--brand-gray);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-blue-light: var(--brand-blue-light);
+  --color-brand-blue-muted: var(--brand-blue-muted);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+  Manual da Marca Só Aço Industrial (Whoopee, Fev 2021)
+  Navy   #041E42 | Blue #1E22AA | Yellow #FFAD00
+  Gray   #808080 | Dark #2E2D2C | White #FFFFFF
+  Tipografia: Monda Family
+*/
+/* Gestão Smart 2.0 — tema claro (referência Só Aço) */
+:root {
+  --brand-navy: #041e42;
+  --brand-blue: #2b36c1;
+  --brand-yellow: #fbb03b;
+  --brand-gray: #808080;
+  --brand-dark: #2e2d2c;
+  --brand-white: #ffffff;
+  --brand-blue-light: #e8eaf8;
+  --brand-blue-muted: #c5c9ef;
+  --brand-success: #00a859;
+
+  --background: #f4f7f6;
+  --foreground: #2e2d2c;
+  --card: #ffffff;
+  --card-foreground: #2e2d2c;
+  --popover: #ffffff;
+  --popover-foreground: #2e2d2c;
+  --primary: #2b36c1;
+  --primary-foreground: #ffffff;
+  --secondary: #e8eaf8;
+  --secondary-foreground: #041e42;
+  --muted: #e8ecef;
+  --muted-foreground: #6b7280;
+  --accent: #e8eaf8;
+  --accent-foreground: #2b36c1;
+  --destructive: #dc2626;
+  --warning: #fbb03b;
+  --warning-foreground: #1a1a1a;
+  --border: #d1d8e0;
+  --input: #d1d8e0;
+  --ring: #2b36c1;
+  --header: #000000;
+  --header-foreground: #ffffff;
+  --modal-header: #2b36c1;
+  --modal-header-foreground: #ffffff;
+  --table-header: #2b36c1;
+  --table-header-foreground: #ffffff;
+  --chart-1: #2b36c1;
+  --chart-2: #fbb03b;
+  --chart-3: #00a859;
+  --chart-4: #808080;
+  --chart-5: #dc2626;
+  --radius: 0.5rem;
+  --sidebar: #000000;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #3b4cca;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2b36c1;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #2a2f3a;
+  --sidebar-ring: #fbb03b;
+}
+
+/* Gestão Smart 2.0 — tema escuro */
+.dark {
+  --brand-navy: #e8eaf8;
+  --brand-blue: #3b4cca;
+  --brand-yellow: #fbb03b;
+  --brand-gray: #9ca3af;
+  --brand-dark: #f4f4f5;
+  --brand-blue-light: #1a1d2e;
+  --brand-blue-muted: #2a3050;
+
+  --background: #0d0f12;
+  --foreground: #f4f4f5;
+  --card: #16181d;
+  --card-foreground: #f4f4f5;
+  --popover: #1a1d24;
+  --popover-foreground: #f4f4f5;
+  --primary: #3b4cca;
+  --primary-foreground: #ffffff;
+  --secondary: #1f2330;
+  --secondary-foreground: #e4e4e7;
+  --muted: #1c1f27;
+  --muted-foreground: #9ca3af;
+  --accent: #252a38;
+  --accent-foreground: #e8eaf8;
+  --destructive: #ef4444;
+  --warning: #fbb03b;
+  --warning-foreground: #0a0a0a;
+  --border: #2a2f3a;
+  --input: #2a2f3a;
+  --ring: #3b4cca;
+  --header: #000000;
+  --header-foreground: #ffffff;
+  --modal-header: #2b36c1;
+  --modal-header-foreground: #ffffff;
+  --table-header: #2b36c1;
+  --table-header-foreground: #ffffff;
+  --chart-1: #3b4cca;
+  --chart-2: #fbb03b;
+  --chart-3: #00a859;
+  --chart-4: #9ca3af;
+  --chart-5: #ef4444;
+  --sidebar: #000000;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #3b4cca;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2b36c1;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #2a2f3a;
+  --sidebar-ring: #fbb03b;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans antialiased;
+    font-family: var(--font-monda), "Monda", ui-sans-serif, system-ui, sans-serif;
+  }
+  body {
+    @apply bg-background text-foreground text-sm leading-normal font-sans;
+    font-family: inherit;
+    color: var(--foreground);
+    transition: background-color 220ms ease, color 220ms ease;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: inherit;
+    @apply font-semibold tracking-tight;
+    color: var(--foreground);
+  }
+  [data-slot="card-title"] {
+    color: var(--card-foreground);
+  }
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--brand-blue);
+  }
+}
+
+@layer components {
+  .brand-fieldset {
+    @apply rounded-lg border border-brand-blue-muted p-4;
+    border-left-width: 4px;
+    border-left-color: var(--brand-blue);
+    background: color-mix(in oklch, var(--brand-blue-light) 65%, var(--card));
+  }
+  .dark .brand-fieldset {
+    background: color-mix(in oklch, var(--card) 85%, var(--primary) 15%);
+    border-color: color-mix(in oklch, var(--primary) 35%, var(--border));
+  }
+  .sgq-form-footer {
+    @apply flex shrink-0 flex-wrap gap-3 border-t px-6 py-4;
+    border-color: var(--border);
+    background: color-mix(in oklch, var(--muted) 55%, var(--card));
+  }
+  .dark .sgq-form-footer {
+    background: color-mix(in oklch, var(--muted) 75%, var(--card));
+  }
+  .brand-fieldset legend {
+    @apply px-1 text-sm font-semibold;
+    color: var(--brand-blue);
+  }
+
+  /* Avaliação de fornecedor — estrelas */
+  .star-rating {
+    --star-empty-fill: #f3ead8;
+    --star-empty-stroke: #dcc9a3;
+  }
+  .star-rating .star-icon--filled {
+    filter: drop-shadow(0 2px 4px rgba(251, 176, 59, 0.35));
+  }
+  .star-rating .star-icon--empty path {
+    stroke-width: 1.35;
+  }
+  .dark .star-rating {
+    --star-empty-fill: color-mix(in oklch, var(--brand-yellow) 14%, var(--card));
+    --star-empty-stroke: color-mix(in oklch, var(--brand-yellow) 48%, var(--muted-foreground));
+  }
+  .dark .star-rating .star-icon--empty path {
+    stroke-width: 1.5;
+  }
+  .dark .star-rating .star-icon--filled {
+    filter: drop-shadow(0 1px 2px rgba(251, 176, 59, 0.22));
+  }
+
+  .sgq-table-scroll-viewport {
+    max-height: min(32rem, calc(100dvh - 16rem));
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  .sgq-table-scroll-viewport .sgq-table {
+    min-width: 56rem;
+  }
+  .sgq-table-scroll-viewport [data-slot="table-head"] {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    box-shadow: 0 1px 0 0 color-mix(in oklch, var(--border) 80%, transparent);
+  }
+
+  .brand-card {
+    @apply border-border border-l-4 shadow-sm;
+    border-left-color: var(--brand-blue);
+  }
+  .modal-header-bar {
+    background: linear-gradient(
+      90deg,
+      var(--brand-blue) 0%,
+      #2d35c4 100%
+    );
+    @apply text-white;
+    box-shadow: inset 0 -3px 0 0 var(--brand-yellow);
+  }
+  .app-header-bar {
+    background: var(--header);
+    border-bottom: 1px solid color-mix(in oklch, var(--header-foreground) 12%, transparent);
+    box-shadow:
+      0 1px 0 color-mix(in oklch, var(--header-foreground) 6%, transparent),
+      inset 0 -3px 0 0 var(--brand-yellow);
+  }
+
+  /* Cabeçalho sempre legível — independente do tema da página */
+  .app-header-bar [data-slot="button"]:not(.app-header-btn) {
+    color: color-mix(in oklch, var(--header-foreground) 92%, transparent);
+  }
+
+  .app-header-bar .app-header-btn {
+    border: 1px solid color-mix(in oklch, var(--header-foreground) 30%, transparent);
+    background: color-mix(in oklch, var(--header-foreground) 10%, transparent);
+    color: var(--header-foreground);
+  }
+
+  .app-header-bar .app-header-btn:hover,
+  .app-header-bar .app-header-btn:focus-visible,
+  .app-header-bar .app-header-btn[aria-expanded="true"],
+  .app-header-bar .app-header-btn[data-pressed="true"] {
+    border-color: color-mix(in oklch, var(--header-foreground) 42%, transparent);
+    background: color-mix(in oklch, var(--header-foreground) 16%, transparent);
+    color: var(--header-foreground);
+  }
+
+  .app-header-bar [data-slot="button"][data-variant="ghost"]:not(.app-header-btn) {
+    color: color-mix(in oklch, var(--header-foreground) 88%, transparent);
+  }
+
+  .app-header-bar [data-slot="button"][data-variant="ghost"]:not(.app-header-btn):hover,
+  .app-header-bar [data-slot="button"][data-variant="ghost"]:not(.app-header-btn):focus-visible,
+  .app-header-bar [data-slot="button"][data-variant="ghost"]:not(.app-header-btn)[aria-expanded="true"] {
+    background: color-mix(in oklch, var(--header-foreground) 12%, transparent);
+    color: var(--header-foreground);
+  }
+
+  .app-header-bar nav a:not(.app-header-nav-active) {
+    color: color-mix(in oklch, var(--header-foreground) 82%, transparent);
+  }
+
+  .app-header-bar nav a:not(.app-header-nav-active):hover {
+    color: var(--header-foreground);
+    background: color-mix(in oklch, var(--header-foreground) 10%, transparent);
+  }
+
+  .app-header-bar .app-header-nav-active {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  /* Colunas kanban — tokens semânticos */
+  .sgq-kanban-column {
+    @apply flex min-h-[320px] flex-col rounded-xl border border-border bg-card shadow-sm;
+  }
+
+  .sgq-kanban-column--primary {
+    border-top-width: 4px;
+    border-top-color: var(--primary);
+  }
+
+  .sgq-kanban-column--warning {
+    border-top-width: 4px;
+    border-top-color: var(--warning);
+  }
+
+  .sgq-kanban-header {
+    @apply border-b border-border px-5 py-4;
+    background: color-mix(in oklch, var(--muted) 55%, var(--card));
+  }
+
+  .sgq-kanban-icon {
+    @apply rounded-lg p-2;
+    background: color-mix(in oklch, var(--primary) 14%, var(--card));
+    color: var(--primary);
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary) 22%, transparent);
+  }
+
+  .sgq-kanban-empty {
+    @apply flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-border px-4 py-10 text-center;
+    background: color-mix(in oklch, var(--muted) 35%, var(--card));
+  }
+
+  /* Tabela de dados — visual moderno com cantos arredondados */
+  .sgq-table-surface [data-slot="table-header"] [data-slot="table-head"] {
+    box-shadow: inset 0 -1px 0 color-mix(in oklch, var(--table-header-foreground) 12%, transparent);
+  }
+
+  .sgq-table-surface [data-slot="table-body"] [data-slot="table-row"]:nth-child(even) {
+    background: color-mix(in oklch, var(--muted) 24%, transparent);
+  }
+
+  .sgq-table-surface [data-slot="table-body"] [data-slot="table-row"]:hover {
+    background: color-mix(in oklch, var(--muted) 48%, var(--card)) !important;
+  }
+
+  .sgq-table-surface [data-slot="table-body"] [data-slot="table-row"]:last-child {
+    border-bottom: none;
+  }
+
+  .sgq-table-toolbar {
+    @apply border-b border-border p-4;
+    background: color-mix(in oklch, var(--muted) 40%, var(--card));
+  }
+
+  .sgq-table-toolbar-actions {
+    @apply pb-0.5;
+  }
+
+  .app-header-bar a[title="Configurações"],
+  .app-header-bar .app-header-menu-trigger {
+    color: color-mix(in oklch, var(--header-foreground) 85%, transparent);
+  }
+
+  .app-header-bar a[title="Configurações"]:hover,
+  .app-header-bar .app-header-menu-trigger:hover,
+  .app-header-bar .app-header-menu-trigger[data-open="true"] {
+    color: var(--header-foreground);
+    background: color-mix(in oklch, var(--header-foreground) 12%, transparent);
+  }
+}
+
+/* Hover e elevação nos botões de ação */
+.sgq-btn-action[data-variant="default"]:not(:disabled):not([data-pressed]):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px color-mix(in oklch, var(--primary) 38%, transparent);
+}
+
+.sgq-btn-action[data-variant="outline"]:not(:disabled):not([data-pressed]):hover,
+.sgq-btn-action[data-variant="secondary"]:not(:disabled):not([data-pressed]):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 10px color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-color: color-mix(in oklch, var(--primary) 35%, var(--border));
+}
+
+.app-header-bar .app-header-btn.sgq-btn-action:hover,
+.app-header-bar .app-header-btn.sgq-btn-action[data-variant="ghost"]:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: color-mix(in oklch, var(--header-foreground) 42%, transparent);
+}
+
+.sgq-btn-action[data-variant="destructive"]:not(:disabled):not([data-pressed]):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 12px color-mix(in oklch, var(--destructive) 28%, transparent);
+}
+
+.sgq-btn-action[data-loading="true"] {
+  pointer-events: none;
+  opacity: 0.88;
+}
+
+/* Overlay de carregamento com efeito vidro */
+.sgq-glass-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklch, var(--background) 40%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  animation: sgq-glass-enter 240ms ease-out both;
+}
+
+.sgq-loader-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  min-width: 12rem;
+  padding: 1.75rem 2.25rem;
+  border-radius: var(--radius-xl);
+  background: color-mix(in oklch, var(--card) 72%, transparent);
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  box-shadow:
+    0 8px 32px color-mix(in oklch, var(--foreground) 10%, transparent),
+    inset 0 1px 0 color-mix(in oklch, var(--foreground) 6%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: sgq-loader-card-enter 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.sgq-loader-spinner {
+  animation: sgq-spin 0.9s linear infinite;
+}
+
+@keyframes sgq-glass-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sgq-loader-card-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes sgq-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Feedback tátil de botões — CSS garante :active mesmo em links com buttonVariants */
+.sgq-btn-action:not([data-variant="link"]):active:not(:disabled),
+a.sgq-btn-action:active {
+  transform: scale(0.94) !important;
+  filter: brightness(0.9);
+  box-shadow: inset 0 2px 8px rgb(4 30 66 / 0.2);
+}
+
+.sgq-btn-action[data-variant="destructive"]:active:not(:disabled) {
+  filter: brightness(0.86);
+  box-shadow: inset 0 2px 8px rgb(220 38 38 / 0.28);
+}
+
+/* Modais — viewport flex centraliza; animação no popup (Base UI detecta getAnimations()) */
+.sgq-dialog-viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(1rem, env(safe-area-inset-top, 0px))
+    max(1rem, env(safe-area-inset-right, 0px))
+    max(1rem, env(safe-area-inset-bottom, 0px))
+    max(1rem, env(safe-area-inset-left, 0px));
+  pointer-events: none;
+}
+
+[data-slot="dialog-content"] {
+  position: relative;
+  z-index: 1;
+  max-height: min(92vh, 100dvh);
+  margin: 0;
+  pointer-events: auto;
+}
+
+[data-slot="dialog-content"][data-open] {
+  animation: sgq-dialog-enter 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+[data-slot="dialog-content"][data-closed] {
+  animation: sgq-dialog-exit 180ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
+}
+
+[data-slot="dialog-overlay"][data-open] {
+  animation: sgq-overlay-enter 220ms ease-out both;
+}
+
+[data-slot="dialog-overlay"][data-closed] {
+  animation: sgq-overlay-exit 180ms ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes sgq-dialog-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes sgq-dialog-exit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes sgq-overlay-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sgq-overlay-exit {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Saída de telas de workflow (Aprovar, Cancelar, etc.) */
+.sgq-view-exit {
+  animation: sgq-view-exit 220ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes sgq-view-exit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sgq-btn-action:not([data-variant="link"]):active:not(:disabled),
+  a.sgq-btn-action:active,
+  .sgq-btn-action[data-variant="default"]:not(:disabled):hover,
+  .sgq-btn-action[data-variant="outline"]:not(:disabled):hover,
+  .sgq-btn-action[data-variant="secondary"]:not(:disabled):hover,
+  .sgq-btn-action[data-variant="destructive"]:not(:disabled):hover {
+    transform: none !important;
+    box-shadow: none;
+  }
+
+  [data-slot="dialog-content"][data-open],
+  [data-slot="dialog-content"][data-closed],
+  [data-slot="dialog-overlay"][data-open],
+  [data-slot="dialog-overlay"][data-closed],
+  .sgq-view-exit,
+  .sgq-glass-loader,
+  .sgq-loader-card,
+  .sgq-loader-spinner {
+    animation: none;
+  }
+
+  body {
+    transition: none;
+  }
+}
+
+.sgq-sheet-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.sgq-sheet-preview td,
+.sgq-sheet-preview th {
+  border: 1px solid #c8ced9;
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.sgq-sheet-preview tr:nth-child(even) {
+  background: color-mix(in oklch, var(--muted) 40%, var(--card));
+}
+
+@media print {
+  .sgq-viewer-toolbar {
+    display: none !important;
+  }
+}
+

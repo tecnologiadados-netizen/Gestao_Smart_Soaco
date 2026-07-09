@@ -11,6 +11,7 @@ import {
   type WhatsappNotificacaoTipo,
   type WhatsappNotificacaoTipoSave,
 } from '../../api/integracaoSms';
+import { fetchEmailSettings } from '../../api/emailSettings';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 import SmsTipoCard from './sms/SmsTipoCard';
 import ModalTesteSmsTipo from './sms/ModalTesteSmsTipo';
@@ -98,6 +99,7 @@ export default function SmsIntegracaoPage() {
   const [usuarios, setUsuarios] = useState<Awaited<ReturnType<typeof getSmsUsuarios>>>([]);
   const [nomusEnabled, setNomusEnabled] = useState(false);
   const [evolutionConfigured, setEvolutionConfigured] = useState(false);
+  const [emailConfigured, setEmailConfigured] = useState(false);
   const [filtroUsuario, setFiltroUsuario] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [destEdit, setDestEdit] = useState<Record<number, number[]>>({});
@@ -131,6 +133,12 @@ export default function SmsIntegracaoPage() {
       setEditTipos(res.tipos.map(toSave));
       setNomusEnabled(res.nomusEnabled);
       setEvolutionConfigured(res.evolutionConfigured);
+      try {
+        const email = await fetchEmailSettings();
+        setEmailConfigured(Boolean(email.configured && !email.lastError));
+      } catch {
+        setEmailConfigured(false);
+      }
       setUsuarios(us);
       const dest: Record<number, number[]> = {};
       for (const t of res.tipos) dest[t.id] = [...t.destinatarioIds];
@@ -247,6 +255,13 @@ export default function SmsIntegracaoPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        <StatusPill
+          ok={emailConfigured}
+          label="E-mail"
+          detail={emailConfigured ? 'Gmail configurado' : 'Não configurado'}
+          linkTo="/integracao/credenciais/email"
+          linkLabel="Configurar e-mail"
+        />
         <StatusPill
           ok={evolutionConfigured}
           label="WhatsApp"

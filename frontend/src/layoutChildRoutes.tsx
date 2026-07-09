@@ -12,10 +12,14 @@ import AlteracaoDataEntregaCompraPage from './pages/integracao/AlteracaoDataEntr
 import FaturamentoDiarioPage from './pages/integracao/FaturamentoDiarioPage';
 import PedidosEntregaVencidaPage from './pages/integracao/PedidosEntregaVencidaPage';
 import SmsIntegracaoPage from './pages/integracao/SmsIntegracaoPage';
+import CredenciaisPage from './pages/integracao/CredenciaisPage';
+import EmailCredenciaisPage from './pages/integracao/EmailCredenciaisPage';
 import ComprasPage from './pages/ComprasPage';
 import ColetasPrecosPage from './pages/compras/ColetasPrecosPage';
 import ComprasDashboardPage from './pages/compras/ComprasDashboardPage';
 import PreCompraPage from './pages/compras/PreCompraPage';
+import PendenciasComprasPage from './pages/compras/PendenciasComprasPage';
+import PainelRupturasPage from './pages/compras/PainelRupturasPage';
 import PrecificacaoPage from './pages/PrecificacaoPage';
 import ResumoFinanceiroPage from './pages/financeiro/ResumoFinanceiroPage';
 import DfcPage from './pages/financeiro/DfcPage';
@@ -40,6 +44,9 @@ import RessupNaoAlmoxAnalisePage from './pages/pedidos/RessupNaoAlmoxAnalisePage
 import SequenciamentoCarradasPage from './pages/pedidos/SequenciamentoCarradasPage';
 import RegrasDataEntregaPage from './pages/pedidos/RegrasDataEntregaPage';
 import ConsultaEstoquePage from './pages/pedidos/ConsultaEstoquePage';
+import PainelProducaoGerencialPage from './pages/pedidos/painel-metas/PainelProducaoGerencialPage';
+import PainelProducaoTvPage from './pages/pedidos/painel-metas/PainelProducaoTvPage';
+import PainelProducaoMetasPage from './pages/pedidos/painel-metas/PainelProducaoMetasPage';
 import PedidosEncerradosPage from './pages/pedidos/PedidosEncerradosPage';
 import SuportePage from './pages/suporte/SuportePage';
 import SuporteConfigPage from './pages/suporte/SuporteConfigPage';
@@ -49,9 +56,9 @@ import MindMapsPage, { MindMapsLegacyRedirect } from './pages/mind-maps/MindMaps
 import VeiculosPage from './pages/logistica/VeiculosPage';
 import ProdutosCubagemPage from './pages/logistica/ProdutosCubagemPage';
 import SimulacaoCubagemPage from './pages/logistica/SimulacaoCubagemPage';
-import QualidadePage from './pages/qualidade/QualidadePage';
+import { qualidadeRoutes } from './modules/qualidade/qualidadeRoutes';
 
-/** Rotas filhas do layout autenticado (espelham appRouter). Usadas no keep-alive das abas. */
+/** Rotas filhas do layout autenticado (espelham appRouter). */
 export const layoutChildRoutes: RouteObject[] = [
   { index: true, element: <InicioPage /> },
   { path: 'pedidos/dash-entregas', element: <ErrorBoundary><DashboardPage /></ErrorBoundary> },
@@ -88,6 +95,9 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'pedidos/ressup-almox', element: <ErrorBoundary><RessupAlmoxAnalisePage /></ErrorBoundary> },
   { path: 'pedidos/ressup-nao-almox', element: <ErrorBoundary><RessupNaoAlmoxAnalisePage /></ErrorBoundary> },
   { path: 'pedidos/consulta-estoque', element: <ErrorBoundary><ConsultaEstoquePage /></ErrorBoundary> },
+  { path: 'pedidos/painel-metas/gerencial', element: <ErrorBoundary><PainelProducaoGerencialPage /></ErrorBoundary> },
+  { path: 'pedidos/painel-metas/tv', element: <ErrorBoundary><PainelProducaoTvPage /></ErrorBoundary> },
+  { path: 'pedidos/painel-metas/metas', element: <ErrorBoundary><PainelProducaoMetasPage /></ErrorBoundary> },
   { path: 'suporte', element: <ErrorBoundary><SuportePage /></ErrorBoundary> },
   { path: 'suporte/configuracao', element: <ErrorBoundary><SuporteConfigPage /></ErrorBoundary> },
   { path: 'heatmap', element: <HeatmapPage /> },
@@ -99,9 +109,11 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'compras/dashboard', element: <ComprasDashboardPage /> },
   { path: 'compras/coletas-precos', element: <ColetasPrecosPage /> },
   { path: 'compras/pre-compra', element: <ErrorBoundary><PreCompraPage /></ErrorBoundary> },
+  { path: 'compras/painel-rupturas', element: <ErrorBoundary><PainelRupturasPage /></ErrorBoundary> },
+  { path: 'compras/rotina/pendencias', element: <ErrorBoundary><PendenciasComprasPage /></ErrorBoundary> },
   { path: 'precificacao', element: <Navigate to="/engenharia/precificacao" replace /> },
   { path: 'engenharia/precificacao', element: <PrecificacaoPage /> },
-  { path: 'qualidade', element: <ErrorBoundary><QualidadePage /></ErrorBoundary> },
+  ...qualidadeRoutes,
   { path: 'financeiro', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/resumo', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/dfc', element: <DfcPage /> },
@@ -118,6 +130,8 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'integracao/faturamento-diario', element: <FaturamentoDiarioPage /> },
   { path: 'integracao/pedidos-entrega-vencida', element: <PedidosEntregaVencidaPage /> },
   { path: 'integracao/sms', element: <SmsIntegracaoPage /> },
+  { path: 'integracao/credenciais', element: <CredenciaisPage /> },
+  { path: 'integracao/credenciais/email', element: <EmailCredenciaisPage /> },
   { path: 'usuarios', element: <UsuariosPage /> },
   { path: 'usuarios/grupos', element: <UsuariosPage /> },
   { path: 'whatsapp', element: <WhatsAppConnectPage /> },

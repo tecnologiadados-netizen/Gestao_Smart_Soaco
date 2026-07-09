@@ -10,6 +10,12 @@ export const PERMISSOES = {
   HEATMAP_VER: 'heatmap.ver',
   COMPRAS_VER: 'compras.ver',
   COMPRAS_EDITAR: 'compras.editar',
+  /** Pendências compras — editar prioridade fixa do Comprador 1. */
+  COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1: 'compras.pendencias.prioridade.comprador_1',
+  /** Pendências compras — editar prioridade fixa do Comprador 2. */
+  COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2: 'compras.pendencias.prioridade.comprador_2',
+  /** Pendências compras — editar prioridade fixa do Comprador 3. */
+  COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3: 'compras.pendencias.prioridade.comprador_3',
   /** Lista na finalização da coleta pedidos já recebidos (status 1) e cotações nos últimos 180 dias. */
   COMPRAS_VINCULO_FINALIZACAO_AMPLIADO: 'compras.vinculo_finalizacao.ampliado',
   PRECIFICACAO_VER: 'precificacao.ver',
@@ -52,6 +58,9 @@ export const PERMISSOES = {
   PCP_CONSULTA_ESTOQUE_VER: 'pcp.consulta_estoque.ver',
   PCP_REGRAS_ENTREGA_VER: 'pcp.regras_entrega.ver',
   PCP_REGRAS_ENTREGA_EDITAR: 'pcp.regras_entrega.editar',
+  PCP_PAINEL_GERENCIAL_VER: 'pcp.painel_gerencial.ver',
+  PCP_PAINEL_TV_VER: 'pcp.painel_tv.ver',
+  PCP_PAINEL_METAS_EDITAR: 'pcp.painel_metas.editar',
 
   // Usuários / Grupos de usuários
   USUARIOS_TELA_VER: 'usuarios.tela.ver',
@@ -91,6 +100,7 @@ export const PERMISSOES = {
 
   // Sistema (rotas antes restritas ao login master)
   SISTEMA_WHATSAPP: 'sistema.whatsapp',
+  SISTEMA_EMAIL: 'sistema.email',
   SISTEMA_SITUACAO_API: 'sistema.situacao_api',
 
   // Grupo Master (acesso total configurável pela UI)
@@ -112,6 +122,9 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.HEATMAP_VER,
   PERMISSOES.COMPRAS_VER,
   PERMISSOES.COMPRAS_EDITAR,
+  PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1,
+  PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2,
+  PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3,
   PERMISSOES.COMPRAS_VINCULO_FINALIZACAO_AMPLIADO,
   PERMISSOES.PRECIFICACAO_VER,
   PERMISSOES.PRECIFICACAO_GERAR,
@@ -148,6 +161,9 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
   PERMISSOES.PCP_REGRAS_ENTREGA_VER,
   PERMISSOES.PCP_REGRAS_ENTREGA_EDITAR,
+  PERMISSOES.PCP_PAINEL_GERENCIAL_VER,
+  PERMISSOES.PCP_PAINEL_TV_VER,
+  PERMISSOES.PCP_PAINEL_METAS_EDITAR,
 
   // Usuários / Grupos
   PERMISSOES.USUARIOS_TELA_VER,
@@ -184,6 +200,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.SUPORTE_CONFIGURAR,
 
   PERMISSOES.SISTEMA_WHATSAPP,
+  PERMISSOES.SISTEMA_EMAIL,
   PERMISSOES.SISTEMA_SITUACAO_API,
   PERMISSOES.USUARIOS_GRUPO_MASTER_ATRIBUIR,
   PERMISSOES.USUARIOS_GRUPO_MASTER_REMOVER,
@@ -201,6 +218,12 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.HEATMAP_VER]: 'Ver Roteirizador',
   [PERMISSOES.COMPRAS_VER]: 'Ver Compras (Coletas de preços)',
   [PERMISSOES.COMPRAS_EDITAR]: 'Todas as funcionalidades (Compras)',
+  [PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1]:
+    'Pendências compras — editar prioridade fixa (Comprador 1) — por usuário',
+  [PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2]:
+    'Pendências compras — editar prioridade fixa (Comprador 2) — por usuário',
+  [PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3]:
+    'Pendências compras — editar prioridade fixa (Comprador 3) — por usuário',
   [PERMISSOES.COMPRAS_VINCULO_FINALIZACAO_AMPLIADO]:
     'Compras: vincular finalização a pedidos já recebidos / lista ampliada (últimos 180 dias)',
   [PERMISSOES.PRECIFICACAO_VER]: 'Visualizar Precificação',
@@ -238,6 +261,9 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.PCP_CONSULTA_ESTOQUE_VER]: 'Consulta de Estoque (PCP)',
   [PERMISSOES.PCP_REGRAS_ENTREGA_VER]: 'Regras data de entrega — visualizar',
   [PERMISSOES.PCP_REGRAS_ENTREGA_EDITAR]: 'Regras data de entrega — editar',
+  [PERMISSOES.PCP_PAINEL_GERENCIAL_VER]: 'Painel Metas — Painel Gerencial',
+  [PERMISSOES.PCP_PAINEL_TV_VER]: 'Painel Metas — Painel TV',
+  [PERMISSOES.PCP_PAINEL_METAS_EDITAR]: 'Painel Metas — cadastrar/editar metas',
 
   // Usuários
   [PERMISSOES.USUARIOS_TELA_VER]: 'Visualizar tela de usuários',
@@ -276,6 +302,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.SUPORTE_CONFIGURAR]: 'Suporte: configurações (catálogo, campos da abertura)',
 
   [PERMISSOES.SISTEMA_WHATSAPP]: 'Acessar integração WhatsApp',
+  [PERMISSOES.SISTEMA_EMAIL]: 'Configurar credencial de e-mail (Gmail)',
   [PERMISSOES.SISTEMA_SITUACAO_API]: 'Acessar situação da API',
   [PERMISSOES.USUARIOS_GRUPO_MASTER_ATRIBUIR]: 'Atribuir usuários ao grupo Master',
   [PERMISSOES.USUARIOS_GRUPO_MASTER_REMOVER]: 'Remover usuários do grupo Master',

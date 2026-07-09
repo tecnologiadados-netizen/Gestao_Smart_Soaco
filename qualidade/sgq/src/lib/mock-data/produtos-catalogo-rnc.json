@@ -1,0 +1,590 @@
+[
+  {
+    "codigo": "EMB 0062",
+    "descricao": "ETIQUETA ADESIVA INMETRO BI04T 127V 7x6,5CM - AZULEMB 0037 ETIQUETA ADESIVA BI02TI-220V TENSÃO 11X11CM",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "EMB 0087",
+    "descricao": "ETIQUETA ADESIVA POLIESTER PRATA 4,5x1,5CM - SÓ AÇO",
+    "grupoProduto": "Roupeiro de aço",
+    "tipoProduto": ""
+  },
+  {
+    "codigo": "EMB 0123",
+    "descricao": "ETIQUETA ADESIVA P/ILHA 300x50CM",
+    "grupoProduto": "Ilha para congelados",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "EMB 0214",
+    "descricao": "ETIQUETA ADESIVA IMITA MADEIRA PARA BALCÃO LINHA INOX NATURAL DE 1200MM - 124x22cm",
+    "grupoProduto": "Balcão frigorífico tendal",
+    "tipoProduto": ""
+  },
+  {
+    "codigo": "EMB 0364",
+    "descricao": "CARTELA ETIQUETAS BI04TI220V 21x 30CM",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": ""
+  },
+  {
+    "codigo": "EMB 0373",
+    "descricao": "CARTELA ETIQUETAS BI02TI220V 21x 30CMEMB 0364",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "CARTELA ETIQUETAS BI04TI220V 21x 30CM"
+  },
+  {
+    "codigo": "EMB 0374",
+    "descricao": "CARTELA ETIQUETAS BI03TI127V 21x 30CM",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": ""
+  },
+  {
+    "codigo": "EMB 0379",
+    "descricao": "CARTELA ETIQUETAS BI05TI220V 21x 30CM",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": ""
+  },
+  {
+    "codigo": "MP 0947",
+    "descricao": "BOBINA SLITADA FINA FRIA 0,40X375MM",
+    "grupoProduto": "Estante de aço",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 1165",
+    "descricao": "BOBINA SLITADA FINA FRIA 0,45X385MM",
+    "grupoProduto": "Estante de aço",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "MP 2573",
+    "descricao": "PARAFUSO SEXT ZINC BRANCO RI UNC 1/4X1",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 2881",
+    "descricao": "TINTA PÓ POLITHERM BRANCO BRILHO - CXA 25Kg",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 2936",
+    "descricao": "REBITE DE REPUXO ALUMINIO BRANCO 3,2X6MM - 306",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 3043",
+    "descricao": "BOBINA SLITADA INOX 430 BRILHOSA 0,40X1250MM COM PVC",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 3109",
+    "descricao": "FILTRO SECADOR C/SÍLICA",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 3128",
+    "descricao": "ABRAÇADEIRA NYLON GRANDE - 220 mm - 300 mm - PRETO/BRANCO",
+    "grupoProduto": "Outros",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 3360",
+    "descricao": "NIVELADOR 3/8X1 [35MM] ZINC BRANCO - BASE PRETO",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 3405",
+    "descricao": "PARAFUSO CAB/PANELA PHILLIPS RI ZINC BRANCO 4,2X13MM",
+    "grupoProduto": "Mesas",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 3616",
+    "descricao": "PERFIL PORTA ETIQUETA ECONÔMICO 960 MM - PRETO BRILHO",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 3903",
+    "descricao": "VIDRO TEMPERADO INCOLOR RETO - 03 FUROS - ESPESSURA: 4 MM",
+    "grupoProduto": "Balcão Térmico Estufa",
+    "tipoProduto": ""
+  },
+  {
+    "codigo": "MP 3966",
+    "descricao": "PERFIL PORTA ETIQUETA ECONÔMICO 790 MM - AZUL",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 3978",
+    "descricao": "VIDRO TEMPERADO INCOLOR RETO - 01 FURO NO CENTRO - ESPESSURA: 4 MM",
+    "grupoProduto": "Balcão Térmico Estufa",
+    "tipoProduto": ""
+  },
+  {
+    "codigo": "MP 4018",
+    "descricao": "PORCA REBITE RECARTILHADA PLANA H=21 BICROMATIZADA M10X1,5MM",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 4184",
+    "descricao": "PUXADOR P/BOX DE ACRILICO - PRETO",
+    "grupoProduto": "Chapa bifeteira",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 4743",
+    "descricao": "CABO DE FORÇA PVC Ø 3X1,5MMX1,5M PLUG MACHO 2P+T 300/500V 180º 10A PRETO",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 4845",
+    "descricao": "CHAPA FINA FRIA 0,75X1200X3000MM",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 4963",
+    "descricao": "PORTA CERVEJEIRA PVC RESISTÊNCIA 02 BARRAS LED - BARRA DE TORÇÃO PUXADOR EMBUTIDO 630X1490MM PRETA",
+    "grupoProduto": "Balcão ar forçado",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 5208",
+    "descricao": "COMPRESSOR 1/5HP 220V R-134A THG1358YGS",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 5237",
+    "descricao": "BOBINA INTEIRA FINA FRIA 0,40X1200MM",
+    "grupoProduto": "Armário de aço",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 5282",
+    "descricao": "METALON TUBO FQ QD 30X30X2,00MM - 6000MM",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 5454",
+    "descricao": "TUBO AÇO INOX CC 304 Ø 5/16X0,50X4000MM",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 5626",
+    "descricao": "METALON TUBO FQ RT 30X70X2,00MM - 6000MM",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 5745",
+    "descricao": "CABO DE FORÇA PVC Ø 3X0,75MMX1,50M PLUG MACHO 2P+T 300/500V 10A COM PRENSA CABO",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 5768",
+    "descricao": "VIDRO INCOLOR TEMPERADO 4MM 530x580MM COM FURO DE 6MM DE DIÂMETRO E COM DISTÂNCIA COM 6CM DA BORDA.",
+    "grupoProduto": "Balcão frigorífico tendal",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 6151",
+    "descricao": "CHAPA INOX 430 - 22 - 0,80X1250X2000MM BRILHOSA COM PVC",
+    "grupoProduto": "Mesa de aço",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 6271",
+    "descricao": "BOBINA SLITADA FINA FRIA 0,40X490MM",
+    "grupoProduto": "Outros",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 6314",
+    "descricao": "CHAPA INOX 304 - 28 - 0,40X1250X2000MM COM PVC",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 6406",
+    "descricao": "VIDRO TEMPERADO INCOLOR RETO E BORDA PRETA (TOTAL) - ESPESSURA: 4 MM",
+    "grupoProduto": "Balcão frigorífico tendal",
+    "tipoProduto": ""
+  },
+  {
+    "codigo": "MP 6757",
+    "descricao": "TUBO AÇO INOX CC 304 Ø 5/16X0,50X2000MM",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 6860",
+    "descricao": "TANQUE CAIXA DE BEBEDOURO 50L",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": ""
+  },
+  {
+    "codigo": "MP 6861",
+    "descricao": "TANQUE CAIXA DE BEBEDOURO 100L - 430X804X404 MM",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 6874",
+    "descricao": "SAPATA L PRETA PARA FOGÃO 40X40MM",
+    "grupoProduto": "Fogão industrial",
+    "tipoProduto": ""
+  },
+  {
+    "codigo": "MP 6914",
+    "descricao": "TANQUE CAIXA DE BEBEDOURO 25L",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": ""
+  },
+  {
+    "codigo": "MP 6931",
+    "descricao": "TANQUE CAIXA DE BEBEDOURO 150L - 430X1160X404 MM",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 7450",
+    "descricao": "CABO PP FLEXIVEL 3X1,00MM 300/500V FIOS VERDE/AMARELO",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 7641",
+    "descricao": "EVAPORADOR FRIGORIFICO DUPLO 40 TUBOS 3/8 20 VOLTAS ESPAÇAMENTO ENTRE ALETAS DE 5 MM 280X640X100",
+    "grupoProduto": "Balcão frigorífico tendal",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MP 7685",
+    "descricao": "1122 TORNEIRA P/ BEBEDOURO C-33 4,8CM CRUZETA EM ABS CROMADA, CANOPLA EM AÇO INOX E QUEBRA JATO EM NYLON 1/2 - DN15 -SM EMBALAGEM",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MUC 0329",
+    "descricao": "TRENA 3 M",
+    "grupoProduto": "Outros",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MUC 0606",
+    "descricao": "Serra HW 250x3,2/2,2x30 Z60 FZ/TR",
+    "grupoProduto": "Mesas",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MUC 1383",
+    "descricao": "SERRA COPO 60MM = 2.3/8 - PARA AÇO INOX",
+    "grupoProduto": "Checkouts",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MUC 4048",
+    "descricao": "EXTINTOR DE INCÊNDIO PÓ QUÍMICO SECO (PQS) 12KG CLASSE B/C",
+    "grupoProduto": "Outros",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "MUC 4795",
+    "descricao": "FILME STRETCH (PELICULA) BOBINA 800X25X250M",
+    "grupoProduto": "Outros",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MUC 4797",
+    "descricao": "FILME STRETCH (PELICULA) BOBINA 600X0,25 MM",
+    "grupoProduto": "Estante de aço",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "MUM 0612",
+    "descricao": "BALANCA DIGITAL",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "PA 10002",
+    "descricao": "Resfriador industrial inox com 04 torneiras 150L com kit - 220V",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 10003",
+    "descricao": "Resfriador industrial inox com 04 torneiras 150L - 220V",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 10005",
+    "descricao": "Resfriador industrial inox com 04 torneiras 150L - 127V",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 10831",
+    "descricao": "Resfriador industrial inox com 05 torneiras 200L com kit - 220V",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 11006",
+    "descricao": "Resfriador industrial inox com 04 torneiras 200L com kit - 220V",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 11129",
+    "descricao": "Fogão industrial perfil 70 mm com 04 bocas simples com forno",
+    "grupoProduto": "Fogão industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 11134",
+    "descricao": "Fogão industrial perfil 100 mm com 06 bocas duplas sem forno",
+    "grupoProduto": "Fogão industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 5220",
+    "descricao": "BI100L220V - Resfriador industrial inox com 03 torneiras 100L - 220V",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 5221",
+    "descricao": "BI50L220V - Resfriador industrial inox com 02 torneiras 50L - 220V",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 5462",
+    "descricao": "BI25L220V - Resfriador industrial inox com 02 torneiras 25L - 220V",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 5595",
+    "descricao": "Arquivo montável e desmontável de aço com 04 gavetas econômico 1330x460x540mm - CINZA TEXTURIZADO",
+    "grupoProduto": "Arquivo de aço",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 5694",
+    "descricao": "Vestiário montável e desmontável de aço com 04 portas grandes com pitão 1935x680x410mm - CINZA",
+    "grupoProduto": "Roupeiro de aço",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 5875",
+    "descricao": "Vestiário montável e desmontável de aço com 12 portas pequenas com chave 1935x1020x410mm - CINZA TEXTURIZADO",
+    "grupoProduto": "Roupeiro de aço",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 6038",
+    "descricao": "Resfriador industrial inox com 03 torneiras 100 - 127VPA 10005 - Resfriador industrial inox com 04 torneiras 150L - 127V",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 6135",
+    "descricao": "Resfriador industrial inox com 02 torneiras 50L - 127V",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 8526",
+    "descricao": "Balcão Self Service 10 Cubas Pequenas Inferior Quente estufa e 05 Cubas Superior Para Gelox. 220VPA 8525 - Balcão Self Service 08 Cubas Pequenas Inferior Quente estufa e 04 Cubas Superior Para Gelox. 220VPA 9219 - Balcão Self Service 06 Cubas",
+    "grupoProduto": "Balcão Térmico Estufa",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 8625",
+    "descricao": "BALCÃO TÉRMICO SELF-SERVICE EM INOX COM 08 CUBAS GN 1/2x100 COM TAMPAS EM VIDRO - 220 V - VERMELHO",
+    "grupoProduto": "Balcão Térmico Estufa",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 9240",
+    "descricao": "BALCÃO VITRINE ESTUFA NATURAL VIDRO SEMI CURVO 1200 MM - 220V - LINHA INOX",
+    "grupoProduto": "Balcão vitrine",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 9729",
+    "descricao": "Resfriador industrial inox com 02 torneiras 50L com kit - 220V",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 9730",
+    "descricao": "Resfriador industrial inox com 03 torneiras 100L com kit - 127V",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PA 9731",
+    "descricao": "Resfriador industrial inox com 03 torneiras 100L com kit - 220V",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PI 0387",
+    "descricao": "Gaveta para arquivo 04 gavetas econômico 420x490 - (0,40mm) - (Chapa Aberta: 425x393mm) - Sem pintura",
+    "grupoProduto": "Arquivo de aço",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "PI 0743",
+    "descricao": "Tampo para mesa em melamínico 15mm 1200x600mm - CINZA CRISTAL",
+    "grupoProduto": "Mesa melamínico",
+    "tipoProduto": ""
+  },
+  {
+    "codigo": "PI 5164",
+    "descricao": "Permutação de montante porta palete",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Acabado"
+  },
+  {
+    "codigo": "PI 5441",
+    "descricao": "MONTANTE PERFIL 100X2,20 MM PARA PORTA PALETE INDUSTRIAL 10193X1000 MM GARRA 5D - AZUL",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "PP 0152",
+    "descricao": "Porta esquerda do armário de aço 1950x900x400mm com 02 portas - 1820x445mm - (0,40mm) - (Chapa/ab.: 1820X490mm) - SEM PINTURA",
+    "grupoProduto": "Armário de aço",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "PP 0197",
+    "descricao": "Bandeja de aço do armário de aço 1950x900x400mm com 02 portas - 895x375mm - (0,40mm) - (chapa aberta: 925x460mm) - SEM PINTURA",
+    "grupoProduto": "Armário de aço",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "PP 1038",
+    "descricao": "Dobradiça Fêmea (sem arame) P/ Móveis (roupeiro ou armário) - 30x20mm - (0,75mm) - (Chapa aberta: 30X31mm) - SEM PINTURA",
+    "grupoProduto": "Armário de aço",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "PP 2339",
+    "descricao": "--\tPorta direita do armário de aço 1600x750x350mm com 04 portas - 715x340mm - (0,40mm) - (Chapa aberta 775x430mm) - SEM PINTURA",
+    "grupoProduto": "Armário de aço",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "PP 2436",
+    "descricao": "--\tBandeja de aço para estante com reforço (CH26) 920x400mm (0,45mm Chapa Aberta: 1000x475mm) - SEM PINTURA",
+    "grupoProduto": "Estante de aço",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "PP 2437",
+    "descricao": "--\tBandeja de aço para estante sem reforço (CH24) 920x300mm (0,60mm Chapa Aberta: 1000x375mm) - SEM PINTURA",
+    "grupoProduto": "Estante de aço",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "PP 2479",
+    "descricao": "Bandeja de aço de armário de aço - 898x373mm - (0,40mm) - (Chapa aberta: 921x475mm) - SEM PINTURA",
+    "grupoProduto": "Armário de aço",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "PP 2546",
+    "descricao": "--\tFundo do armário de aço 1950x1200x400mm com 02 portas - 1920x1197mm - (0,40mm) - (Chapa aberta 1960x1225mm) - SEM PINTURA",
+    "grupoProduto": "Armário de aço",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "PP 3501",
+    "descricao": "Tela para resfriador inox padrão 470x610mm - CINZA TXT",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "PP 3665",
+    "descricao": "Banda da coluna para porta palete industrial econômica 2000mm (1,50mm Chapa aberta: 2000x163mm) - SEM PINTURA",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "PP 3742",
+    "descricao": "--\tBandeja de aço para estante sem reforço 800x250mm (0,40mm Chapa aberta: 880x325mm) - SEM PINTURA",
+    "grupoProduto": "Estante de aço",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "PP 3866",
+    "descricao": "--\tPontalete inferior do armário de aço com 02 portas - 850x93mm - (0,40mm) - (Chapa aberta 860x160mm) - SEM PINTURA",
+    "grupoProduto": "Armário de aço",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "PP 4327",
+    "descricao": "Corpo (Frente/Laterais) do resfriador econômico de 02 torneiras 50L Inox",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "PP 4680",
+    "descricao": "--\tCorpo (Frente/Laterais) do resfriador econômico 100L crominox (0,40mm Chapa aberta: 1680x1200mm)",
+    "grupoProduto": "Resfriador industrial",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "PP 4811",
+    "descricao": "PAINEL PARA GÔNDOLA CABECEIRA LINHA COMERCIAL 815X195 MM (0,40 CHAPA ABERTA 815X245 MM ) - SEM PINTURA",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "PP 4820",
+    "descricao": "BANDA DA COLUNA PARA PORTA PALETE INDUSTRIAL 10193X100 MM GARRA 5D (2,25 MM CHAPA ABERTA: 10193X310 MM) - SEM PINTURA",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Outros"
+  },
+  {
+    "codigo": "PP 4827",
+    "descricao": "Sapata para porta palete industrial CH12 100x107x150mm (2,65 MM CHAPA ABERTA 300X150 MM ) - SEM PINTURA",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Intermediário"
+  },
+  {
+    "codigo": "PP 4861",
+    "descricao": "PRATELEIRA DE AÇO PARA GÔNDOLA CABECEIRA LINHA ECONÔMICA 800X300 MM - SEM PINTURA",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": ""
+  },
+  {
+    "codigo": "PP 4879",
+    "descricao": "PRATELEIRA DE AÇO PARA GÔNDOLA LINHA COMERCIAL 1000X400 MM - SEM PINTURA",
+    "grupoProduto": "Gôndolas",
+    "tipoProduto": "Outros"
+  }
+]

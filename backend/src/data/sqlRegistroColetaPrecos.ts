@@ -92,7 +92,7 @@ FROM (
     LEFT JOIN itemdocumentoestoque b2 ON a2.idItemDocumentoEstoque = b2.id
     LEFT JOIN itempedidocompra ipc2 ON ipc2.id = a2.idItemPedidoCompra
     LEFT JOIN pedidocompra pc2 ON pc2.id = ipc2.idPedidoCompra
-    left join documentoestoque de on de.id = b2.idDocumentoEntrada
+    left join documentoestoque de on de.id = b2.idDocumentoEstoque
      where de.idTipoMovimentacao in (11,111,112,113,114,115,116,122)
     GROUP BY b2.idProduto
 ) AS b
@@ -115,7 +115,7 @@ LEFT JOIN movimentacaoproducao b ON a.idItemDocumentoEstoque = b.id
 LEFT JOIN itempedidocompra c ON a.idItemPedidoCompra = c.id
 LEFT JOIN pedidocompra d ON c.idPedidoCompra = d.id
 LEFT JOIN itemdocumentoestoque e ON a.idItemDocumentoEstoque = e.id
-LEFT JOIN documentoestoque f ON e.idDocumentoEntrada = f.id
+LEFT JOIN documentoestoque f ON e.idDocumentoEstoque = f.id
 LEFT JOIN produto g ON c.idProduto = g.id
 LEFT JOIN pessoa h ON f.idParceiro = h.id 
  where f.idTipoMovimentacao in (11,111,112,113,114,115,116,122)

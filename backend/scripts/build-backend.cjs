@@ -38,4 +38,20 @@ function copySqlRecursive(srcDir, destDir) {
 
 copySqlRecursive(path.join(root, 'src', 'data'), path.join(root, 'dist', 'data'));
 
+function copyDirRecursive(srcDir, destDir) {
+  if (!fs.existsSync(srcDir)) return;
+  fs.mkdirSync(destDir, { recursive: true });
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const src = path.join(srcDir, entry.name);
+    const dest = path.join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      copyDirRecursive(src, dest);
+    } else {
+      fs.copyFileSync(src, dest);
+    }
+  }
+}
+
+copyDirRecursive(path.join(root, 'scripts', 'sgq'), path.join(root, 'dist', 'scripts', 'sgq'));
+
 execSync('node scripts/copy-pre-compra-assets.cjs', { stdio: 'inherit', cwd: root });

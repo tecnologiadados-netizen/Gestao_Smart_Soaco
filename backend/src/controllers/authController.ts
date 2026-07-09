@@ -6,7 +6,7 @@ import { seedUserActivity } from '../middleware/inactivityLogout.js';
 import { loginSchema } from '../validators/auth.js';
 
 // Em HTTP (sem HTTPS), secure deve ser false para o navegador enviar o cookie
-const COOKIE_OPTIONS = {
+export const AUTH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.COOKIE_SECURE === 'true',
   sameSite: 'lax' as const,
@@ -123,7 +123,7 @@ export async function login(req: Request, res: Response): Promise<void> {
     }
 
     try {
-      res.cookie('token', token, COOKIE_OPTIONS);
+      res.cookie('token', token, AUTH_COOKIE_OPTIONS);
     } catch (cookieErr) {
       console.error('[auth] Erro ao definir cookie:', (cookieErr as Error)?.message);
       sendError(res, 503, LOGIN_ERR);

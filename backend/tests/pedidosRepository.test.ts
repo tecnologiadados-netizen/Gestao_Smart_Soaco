@@ -12,7 +12,8 @@ describe('pedidosRepository', () => {
 
   it('listarPedidos retorna um array', async () => {
     const result = await listarPedidos({});
-    expect(Array.isArray(result)).toBe(true);
+    expect(result).toHaveProperty('data');
+    expect(Array.isArray(result.data)).toBe(true);
   });
 
   it('obterResumoDashboard retorna total, entregaHoje, atrasados, leadTimeMedioDias e totais por valor pendente real', async () => {

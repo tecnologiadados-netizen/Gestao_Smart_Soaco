@@ -5,8 +5,9 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const { getPidsOnPort, sleep } = require('./port-utils.cjs');
+const { FRONTEND_PORT } = require('./dev-ports.cjs');
 
-const port = process.argv[2];
+const port = process.argv[2] || String(FRONTEND_PORT);
 if (!port || !/^\d+$/.test(port)) {
   console.error('[run-vite-loop] Uso: node scripts/run-vite-loop.cjs <porta>');
   process.exit(1);
@@ -15,8 +16,7 @@ if (!port || !/^\d+$/.test(port)) {
 const root = path.resolve(__dirname, '..');
 const frontendDir = path.join(root, 'frontend');
 const PORT_NUM = Number(port);
-/** Atraso inicial escalonado para não disputar portas com os outros loops. */
-const START_DELAY_MS = (PORT_NUM % 7) * 400;
+const START_DELAY_MS = 0;
 
 let portBusyRetries = 0;
 const MAX_PORT_BUSY_RETRIES = 12;

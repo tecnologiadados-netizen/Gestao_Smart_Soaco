@@ -293,6 +293,15 @@ function buildFilterSql(filtros: FiltrosPreCompraCotacoes): { sql: string; param
   return { sql: ' AND ' + conditions.join(' AND '), params };
 }
 
+const CAMPOS_NUMERICOS = new Set(['qtde', 'preco_unitario', 'valor_total']);
+
+function toNumero2Casas(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  if (Number.isNaN(n)) return null;
+  return Math.round(n * 100) / 100;
+}
+
 function serializeRow(row: PreCompraCotacaoRow): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(row)) {
@@ -300,6 +309,8 @@ function serializeRow(row: PreCompraCotacaoRow): Record<string, unknown> {
       result[key] = value.toISOString();
     } else if (typeof value === 'bigint') {
       result[key] = Number(value);
+    } else if (CAMPOS_NUMERICOS.has(key)) {
+      result[key] = toNumero2Casas(value);
     } else {
       result[key] = value;
     }
@@ -407,7 +418,7 @@ export async function buscarDadosPdfPreCompra(
     if (!seenItems.has(itemKey)) {
       seenItems.add(itemKey);
       itens.push(raw);
-      if (raw.valor_total != null) valorTotal += Number(raw.valor_total);
+      if (raw.valor_total != null) valorTotal += toNumero2Casas(raw.valor_total) ?? 0;
     }
     const solId = raw.solicitacao_id;
     if (solId != null && !solicitacoesMap.has(solId)) {
@@ -425,7 +436,7 @@ export async function buscarDadosPdfPreCompra(
           ? s.data_necessidade.toISOString()
           : s.data_necessidade,
     })),
-    valor_total_geral: valorTotal,
+    valor_total_geral: Math.round(valorTotal * 100) / 100,
   };
 }
 

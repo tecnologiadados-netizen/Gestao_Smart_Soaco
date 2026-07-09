@@ -1,20 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   LinhaProgramacaoProducao,
   ProgramacaoProducaoRecurso,
   QtdeProduzir,
   RoteiroProducao,
 } from './types';
-import { QTDE_PRODUZIR_VAZIO, formatNum, parseNumInputBranco } from './programacaoProducaoCalculos';
-import { getCatalogoRecursosRuntime, patchCatalogoRecursosRuntime } from '../../utils/programacaoProducaoCatalogoRuntime';
+import { QTDE_PRODUZIR_VAZIO, formatNum, numInputDisplayBranco, parseNumInputBranco } from './programacaoProducaoCalculos';
+import {
+  aplicarCatalogoProgramacaoProducao,
+  getCatalogoRecursosRuntime,
+  patchCatalogoMedidasPecaRuntime,
+  patchCatalogoRecursosRuntime,
+} from '../../utils/programacaoProducaoCatalogoRuntime';
 import {
   migrarQtdeProduzirLegado,
+  roteiroTemRecursoManual,
   textoRoteiroComQtde,
   validarQtdeProduzirModal,
 } from '../../utils/programacaoProducaoRoteiros';
+import { medidasPecaDoCatalogo } from '../../utils/programacaoProducaoMedidasPeca';
 import {
   createProgramacaoProducaoRecurso,
+  fetchProgramacaoProducaoCatalogo,
   listProgramacaoProducaoRecursos,
+  saveCatalogoMedidasPecaProgramacao,
 } from '../../api/programacaoProducao';
 
 const BTN_SECONDARY =
@@ -26,12 +35,40 @@ const INPUT =
 const BTN_ICON =
   'p-1 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 text-xs shrink-0';
 
+const INPUT_UNIT_WRAP =
+  'flex mt-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 overflow-hidden';
+const INPUT_UNIT_FIELD =
+  'flex-1 min-w-0 border-0 bg-transparent text-slate-800 dark:text-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-0';
+const INPUT_UNIT_SUFFIX =
+  'px-2 py-1.5 text-xs text-slate-500 dark:text-slate-400 border-l border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 shrink-0';
+
 function cloneRoteiros(q: QtdeProduzir): RoteiroProducao[] {
-  return q.roteiros.map((r) => ({ sequencia: [...r.sequencia], qtde: r.qtde }));
+  return q.roteiros.map((r) => ({
+    sequencia: [...r.sequencia],
+    qtde: r.qtde,
+    chapa: r.chapa ?? null,
+  }));
 }
 
 function roteiroVazio(): RoteiroProducao {
   return { sequencia: [], qtde: 0 };
+}
+
+function parseMedidaInput(v: string): number | '' {
+  const t = v.trim().replace(',', '.');
+  if (!t) return '';
+  const n = Number(t);
+  return Number.isFinite(n) ? n : '';
+}
+
+function medidaParaSalvar(v: number | ''): number | null {
+  if (v === '' || v === 0) return null;
+  return v;
+}
+
+function medidaCatalogoParaInput(v: number | null | undefined): number | '' {
+  if (v == null || !Number.isFinite(v) || v === 0) return '';
+  return v;
 }
 
 type ModalBaseProps = {
@@ -97,6 +134,40 @@ export default function ModalQtdeProduzir({
   const [nomeNovoRecurso, setNomeNovoRecurso] = useState('');
   const [salvandoRecurso, setSalvandoRecurso] = useState(false);
   const [erroNovoRecurso, setErroNovoRecurso] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [med1, setMed1] = useState<number | ''>('');
+  const [med2, setMed2] = useState<number | ''>('');
+  const medidasEditadasRef = useRef(false);
+
+  const aplicarMedidasDoCatalogo = useCallback((cod: string) => {
+    const cat = medidasPecaDoCatalogo(cod);
+    setMed1(medidaCatalogoParaInput(cat?.med1));
+    setMed2(medidaCatalogoParaInput(cat?.med2));
+  }, []);
+
+  useEffect(() => {
+    const r = cloneRoteiros(migrarQtdeProduzirLegado(linha.qtde_produzir ?? QTDE_PRODUZIR_VAZIO));
+    setRoteiros(r.length ? r : [roteiroVazio()]);
+    setErro(null);
+  }, [linha.cod_componente, linha.qtde_produzir]);
+
+  useEffect(() => {
+    medidasEditadasRef.current = false;
+    aplicarMedidasDoCatalogo(linha.cod_componente);
+    let cancelled = false;
+    void fetchProgramacaoProducaoCatalogo()
+      .then((data) => {
+        if (cancelled) return;
+        aplicarCatalogoProgramacaoProducao(data);
+        if (!medidasEditadasRef.current) {
+          aplicarMedidasDoCatalogo(linha.cod_componente);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [linha.cod_componente, aplicarMedidasDoCatalogo]);
 
   const recarregarRecursos = useCallback(async () => {
     const lista = await listProgramacaoProducaoRecursos();
@@ -111,6 +182,16 @@ export default function ModalQtdeProduzir({
   }, [listaRecursos.length, recarregarRecursos]);
 
   const soma = useMemo(() => roteiros.reduce((s, r) => s + (r.qtde > 0 ? r.qtde : 0), 0), [roteiros]);
+
+  const algumRoteiroManual = useMemo(
+    () => roteiros.some((r) => roteiroTemRecursoManual(r, listaRecursos)),
+    [roteiros, listaRecursos]
+  );
+
+  const primeiroRoteiroManualIdx = useMemo(
+    () => roteiros.findIndex((r) => roteiroTemRecursoManual(r, listaRecursos)),
+    [roteiros, listaRecursos]
+  );
 
   const atualizarRoteiro = useCallback((idx: number, patch: Partial<RoteiroProducao>) => {
     setRoteiros((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
@@ -159,11 +240,12 @@ export default function ModalQtdeProduzir({
     });
   };
 
-  const aplicar = () => {
+  const aplicar = async () => {
     const limpos = roteiros
       .map((r) => ({
         sequencia: r.sequencia.filter(Boolean),
         qtde: r.qtde,
+        chapa: r.chapa?.trim() ? r.chapa.trim() : null,
       }))
       .filter((r) => r.sequencia.length > 0 || r.qtde > 0);
     const payload: QtdeProduzir = { roteiros: limpos };
@@ -172,8 +254,25 @@ export default function ModalQtdeProduzir({
       setErro(err);
       return;
     }
-    onSave(payload);
-    onClose();
+    setSalvando(true);
+    setErro(null);
+    try {
+      if (!readOnly && algumRoteiroManual) {
+        const medidas = {
+          med1: medidaParaSalvar(med1),
+          med2: medidaParaSalvar(med2),
+        };
+        const medidasPeca = await saveCatalogoMedidasPecaProgramacao(linha.cod_componente, medidas);
+        patchCatalogoMedidasPecaRuntime(linha.cod_componente, medidas);
+        aplicarCatalogoProgramacaoProducao({ medidasPeca });
+      }
+      onSave(payload);
+      onClose();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao salvar.');
+    } finally {
+      setSalvando(false);
+    }
   };
 
   const subtitleQtde = [linha.cod_componente, linha.descricao_simplificada?.trim()]
@@ -215,8 +314,8 @@ export default function ModalQtdeProduzir({
             Cancelar
           </button>
           {!readOnly && (
-            <button type="button" className={BTN_PRIMARY} onClick={aplicar}>
-              Aplicar
+            <button type="button" className={BTN_PRIMARY} disabled={salvando} onClick={() => void aplicar()}>
+              {salvando ? 'Salvando…' : 'Aplicar'}
             </button>
           )}
         </>
@@ -228,7 +327,9 @@ export default function ModalQtdeProduzir({
             Cadastre recursos em PCP → Programação → Configuração → Recursos ou use &quot;Novo recurso&quot; abaixo.
           </p>
         )}
-        {roteiros.map((rot, idx) => (
+        {roteiros.map((rot, idx) => {
+          const exibirCamposManual = roteiroTemRecursoManual(rot, listaRecursos);
+          return (
           <div
             key={idx}
             className="rounded-lg border border-slate-200 dark:border-slate-600 p-3 space-y-2"
@@ -338,13 +439,83 @@ export default function ModalQtdeProduzir({
                 }
               />
             </label>
+            {exibirCamposManual && (
+              <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Peça
+                </p>
+                {idx === primeiroRoteiroManualIdx && (
+                  <div className="flex flex-wrap gap-3">
+                    <p className="w-full text-[11px] text-slate-500 dark:text-slate-400">
+                      Medidas cadastradas para este produto são preenchidas automaticamente e podem ser alteradas.
+                    </p>
+                    <label className="block min-w-[8rem] flex-1 max-w-[10rem]">
+                      <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Med. 1</span>
+                      <div className={INPUT_UNIT_WRAP}>
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          disabled={readOnly}
+                          className={INPUT_UNIT_FIELD}
+                          value={med1 === '' ? '' : numInputDisplayBranco(med1)}
+                          onChange={(e) => {
+                            medidasEditadasRef.current = true;
+                            setMed1(parseMedidaInput(e.target.value));
+                          }}
+                        />
+                        <span className={INPUT_UNIT_SUFFIX}>mm</span>
+                      </div>
+                    </label>
+                    <label className="block min-w-[8rem] flex-1 max-w-[10rem]">
+                      <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Med. 2</span>
+                      <div className={INPUT_UNIT_WRAP}>
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          disabled={readOnly}
+                          className={INPUT_UNIT_FIELD}
+                          value={med2 === '' ? '' : numInputDisplayBranco(med2)}
+                          onChange={(e) => {
+                            medidasEditadasRef.current = true;
+                            setMed2(parseMedidaInput(e.target.value));
+                          }}
+                        />
+                        <span className={INPUT_UNIT_SUFFIX}>mm</span>
+                      </div>
+                    </label>
+                  </div>
+                )}
+                <label className="block max-w-md">
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Chapa</span>
+                  <input
+                    type="text"
+                    disabled={readOnly}
+                    className={`${INPUT} mt-1`}
+                    value={rot.chapa ?? ''}
+                    onChange={(e) => atualizarRoteiro(idx, { chapa: e.target.value })}
+                    placeholder="Informe a chapa"
+                  />
+                </label>
+              </div>
+            )}
             {readOnly && rot.sequencia.length > 0 && (
               <p className="text-xs text-slate-500">
                 {textoRoteiroComQtde(rot, listaRecursos, formatNum)}
+                {idx === primeiroRoteiroManualIdx && (med1 !== '' || med2 !== '') && (
+                  <span>
+                    {' '}
+                    · Med. 1: {med1 === '' ? '—' : formatNum(med1)} mm · Med. 2:{' '}
+                    {med2 === '' ? '—' : formatNum(med2)} mm
+                  </span>
+                )}
+                {rot.chapa?.trim() ? ` · Chapa: ${rot.chapa.trim()}` : ''}
               </p>
             )}
           </div>
-        ))}
+        );
+        })}
         {!readOnly && (
           <button
             type="button"

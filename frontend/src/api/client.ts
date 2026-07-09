@@ -132,8 +132,8 @@ export async function apiFetch(
   } catch (e) {
     throw toApiError(e);
   }
-  // Se não autorizado, limpa token e manda para login (só se não estiver já na página de login — evita loop)
-  if (res.status === 401) {
+  // 401 em /api/me é tratado pelo AuthContext (evita limpar sessão em cascata no console)
+  if (res.status === 401 && !path.startsWith('/api/me')) {
     try {
       sessionStorage.removeItem(TOKEN_KEY);
       setAuthToken(null);

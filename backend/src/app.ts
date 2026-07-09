@@ -12,6 +12,7 @@ import usuariosRoutes from './routes/usuariosRoutes.js';
 import gruposRoutes from './routes/gruposRoutes.js';
 import relatoriosRoutes from './routes/relatoriosRoutes.js';
 import meRoutes from './routes/meRoutes.js';
+import meFavoritosRoutes from './routes/meFavoritosRoutes.js';
 import statusRoutes from './routes/statusRoutes.js';
 import evolutionRoutes from './routes/evolutionRoutes.js';
 import comprasRoutes from './routes/comprasRoutes.js';
@@ -30,6 +31,9 @@ import suporteRoutes from './routes/suporteRoutes.js';
 import mindMapsRoutes from './routes/mindMapsRoutes.js';
 import programacaoProducaoRoutes from './routes/programacaoProducaoRoutes.js';
 import logisticaRoutes from './routes/logisticaRoutes.js';
+import qualidadeRoutes from './routes/qualidadeRoutes.js';
+import emailSettingsRoutes from './routes/emailSettingsRoutes.js';
+import painelProducaoRoutes from './routes/painelProducaoRoutes.js';
 import { csrfProtect } from './middleware/csrf.js';
 
 const app = express();
@@ -144,6 +148,7 @@ app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/grupos', gruposRoutes);
 app.use('/api/relatorios', relatoriosRoutes);
 app.use('/api/me', meRoutes);
+app.use('/api/me/favoritos', meFavoritosRoutes);
 app.use('/api/status', statusRoutes);
 app.use('/api/evolution', evolutionRoutes);
 app.use('/api/compras', comprasRoutes);
@@ -162,6 +167,9 @@ app.use('/api/mind-maps', mindMapsRoutes);
 app.use('/api/programacao-producao', programacaoProducaoRoutes);
 app.use('/api/pcp', pcpRoutes);
 app.use('/api/logistica', logisticaRoutes);
+app.use('/api/qualidade', qualidadeRoutes);
+app.use('/api/email-settings', emailSettingsRoutes);
+app.use('/api/painel-producao', painelProducaoRoutes);
 
 // Header em todas as respostas para conferir na outra máquina se está rodando o build novo
 export const BUILD_ID = 'pedidos-no-csrf-v1';
@@ -189,7 +197,11 @@ const publicDir = path.join(backendRootApp, 'public');
 const spaIndex = path.join(publicDir, 'index.html');
 if (fs.existsSync(spaIndex)) {
   app.use(express.static(publicDir));
-  app.get('*', (_req, res) => {
+  app.get('*', (req, res) => {
+    if (req.path.startsWith('/api/')) {
+      res.status(404).json({ error: 'Rota da API não encontrada.' });
+      return;
+    }
     res.sendFile(spaIndex);
   });
 }

@@ -117,7 +117,7 @@ Left Join
       Left Join itemdocumentoestoque e On
         a.idItemDocumentoEstoque = e.id
       Left Join documentoestoque f On
-        e.idDocumentoEntrada = f.id
+        e.idDocumentoEstoque = f.id
       Left Join produto g On
         c.idProduto = g.id
       Left Join pessoa h On

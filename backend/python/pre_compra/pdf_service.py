@@ -6,19 +6,24 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import tempfile
-import threading
 from copy import deepcopy
 from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 
-TEMPLATE_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..", "assets", "pre-compra", "formulario_cotacao.docx"
-)
+BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+SGQ_DIR = BACKEND_ROOT / "scripts" / "sgq"
+if str(SGQ_DIR) not in sys.path:
+    sys.path.insert(0, str(SGQ_DIR))
+from docx_to_pdf import converter_docx_para_pdf
+
+TEMPLATE_PATH = BACKEND_ROOT / "assets" / "pre-compra" / "formulario_cotacao.docx"
 
 FONT_NAME = "Arial"
 FONT_SIZE = Pt(8)
@@ -26,8 +31,6 @@ HEADER_PAD_LEFT = Pt(6)
 
 ITEM_ROW_IDX = 8
 SOLICITACAO_VALUE_COL = 3
-
-_word_lock = threading.Lock()
 
 
 def _fmt_date(value) -> str:
@@ -209,10 +212,10 @@ def _fill_solicitacoes(table, solicitacoes: list[dict]) -> None:
 
 
 def _fill_document(data: dict) -> Document:
-    if not os.path.exists(TEMPLATE_PATH):
+    if not TEMPLATE_PATH.exists():
         raise FileNotFoundError(f"Template não encontrado: {TEMPLATE_PATH}")
 
-    doc = Document(TEMPLATE_PATH)
+    doc = Document(str(TEMPLATE_PATH))
     table = doc.tables[0]
 
     _fill_header(table, data)
@@ -233,52 +236,6 @@ def _fill_document(data: dict) -> Document:
     return doc
 
 
-def _convert_docx_to_pdf(docx_path: str, pdf_path: str) -> None:
-    docx_abs = os.path.abspath(docx_path)
-    pdf_abs = os.path.abspath(pdf_path)
-
-    with _word_lock:
-        word = None
-        doc = None
-        last_error = None
-
-        try:
-            import win32com.client
-
-            word = win32com.client.Dispatch("Word.Application")
-            word.Visible = False
-            word.DisplayAlerts = 0
-            doc = word.Documents.Open(docx_abs, ReadOnly=True)
-            doc.SaveAs2(pdf_abs, FileFormat=17)
-            doc.Close(False)
-            word.Quit()
-            return
-        except Exception as exc:
-            last_error = exc
-            if doc is not None:
-                try:
-                    doc.Close(False)
-                except Exception:
-                    pass
-            if word is not None:
-                try:
-                    word.Quit()
-                except Exception:
-                    pass
-
-        try:
-            from docx2pdf import convert
-
-            convert(docx_abs, pdf_abs)
-            return
-        except Exception as exc:
-            last_error = exc
-
-        raise RuntimeError(
-            "Não foi possível converter DOCX para PDF via Microsoft Word."
-        ) from last_error
-
-
 def generate_pdf(data: dict) -> bytes:
     with tempfile.TemporaryDirectory() as tmp:
         docx_path = os.path.join(tmp, "cotacao.docx")
@@ -286,7 +243,7 @@ def generate_pdf(data: dict) -> bytes:
 
         doc = _fill_document(data)
         doc.save(docx_path)
-        _convert_docx_to_pdf(docx_path, pdf_path)
+        converter_docx_para_pdf(docx_path, pdf_path)
 
         with open(pdf_path, "rb") as f:
             return f.read()

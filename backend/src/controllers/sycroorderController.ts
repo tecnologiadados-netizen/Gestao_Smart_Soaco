@@ -161,6 +161,32 @@ function rotaTextFromGerenciadorRow(row: Record<string, unknown>): string {
   return String(row['Observacoes'] ?? row['Observações'] ?? row['Rota'] ?? row['rota'] ?? '').trim();
 }
 
+/** Evita deslocamento de dia ao gravar previsão (YYYY-MM-DD → meio-dia UTC). */
+function parseDateYmdAtNoonUtc(ymd: string): Date {
+  const d = String(ymd ?? '').trim().slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    return new Date(`${d}T12:00:00.000Z`);
+  }
+  const parsed = new Date(ymd);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+/** Rota atual do item no Gerenciador (para gravar override na mesma rota da linha). */
+function resolveRotaForIdPedido(rows: Array<Record<string, unknown>>, idPedido: string): string | null {
+  const id = String(idPedido ?? '').trim();
+  if (!id) return null;
+  const canon = chavePedidoItem(id);
+  for (const row of rows) {
+    const key = rowItemIdKey(row);
+    if (!key) continue;
+    if (key === id || chavePedidoItem(key) === canon) {
+      const rota = rotaTextFromGerenciadorRow(row);
+      return rota || null;
+    }
+  }
+  return null;
+}
+
 function sortedUnique(arr: string[]): string[] {
   return [...new Set(arr.map((s) => String(s ?? '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
@@ -194,12 +220,18 @@ function isGrupoAdministrador(grupoNome?: string | null): boolean {
 function toIsoDate(value: unknown): string | null {
   if (value == null || value === '') return null;
   try {
-    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    if (value instanceof Date) {
+      if (Number.isNaN(value.getTime())) return null;
+      const y = value.getUTCFullYear();
+      const m = String(value.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(value.getUTCDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
     const s = String(value).trim();
     const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
-    if (m) return m[1];
+    if (m) return m[1]!;
     const d = new Date(s);
-    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    if (!Number.isNaN(d.getTime())) return toIsoDate(d);
     return null;
   } catch {
     return null;
@@ -1134,10 +1166,11 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
         const { data: gerenciadorList } = await listarPedidos({});
         const motivoTrim = String(motivo).trim();
         const orderNumber = String(order.order_number ?? '').trim();
-        const dataNova = new Date(nextDate);
+        const dataNova = parseDateYmdAtNoonUtc(nextDate);
         const dm = String(order.delivery_method ?? '').trim();
 
         let idsPedido: string[] = [];
+        let rotaReplicate: string | null = null;
         const rowsDoPd = (gerenciadorList as Array<Record<string, unknown>>).filter((row) =>
           gerenciadorRowMatchesOrderNumber(row, orderNumber)
         );
@@ -1152,6 +1185,7 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
           const rotaAlvo =
             (cardRows.length > 0 ? rotaTextFromGerenciadorRow(cardRows[0]!) : '') || dm;
           if (isCarradaRota(rotaAlvo) && !isExcludedSqlRotaCategory(rotaAlvo)) {
+            rotaReplicate = rotaAlvo;
             idsPedido = sortedUnique(
               (gerenciadorList as Array<Record<string, unknown>>)
                 .filter((row) => rotaTextFromGerenciadorRow(row) === rotaAlvo)
@@ -1182,13 +1216,14 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
         }
 
         for (const idPedido of idsPedido) {
+          const rotaAjuste = rotaReplicate ?? resolveRotaForIdPedido(rowsDoPd, idPedido);
           await registrarAjustePrevisao(
             idPedido,
             dataNova,
             motivoTrim,
             user_name ?? login,
             observacaoVal ?? undefined,
-            undefined,
+            rotaAjuste,
             true
           );
         }

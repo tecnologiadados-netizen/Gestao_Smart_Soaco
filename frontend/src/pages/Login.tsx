@@ -5,6 +5,7 @@ import { getStoredToken } from '../api/client';
 import { z } from 'zod';
 import { useAuth } from '../contexts/AuthContext';
 import LogoSoAco from '../components/LogoSoAco';
+import { consumirRotaRetornoAposLogin } from '../utils/rotaRetornoLogin';
 
 const loginSchema = z.object({
   login: z.string().min(1, 'Login é obrigatório'),
@@ -95,7 +96,8 @@ export default function Login() {
           // segue para a tela inicial neutra mesmo quando /api/me falhar momentaneamente
         }
         await refreshUser();
-        navigate('/', { replace: true });
+        const destino = consumirRotaRetornoAposLogin() ?? '/';
+        navigate(destino, { replace: true });
       } else {
         setError('Login ok, mas token não retornado. Tente novamente.');
       }

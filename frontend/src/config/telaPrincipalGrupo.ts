@@ -57,6 +57,16 @@ export const OPCOES_TELA_PRINCIPAL: { key: string; label: string; requiredAny: C
     label: 'Resumo financeiro',
     requiredAny: [PERMISSOES.FINANCEIRO_VER, PERMISSOES.FINANCEIRO_RESUMO_VER],
   },
+  {
+    key: 'painel_tv',
+    label: 'Painel TV',
+    requiredAny: [PERMISSOES.PCP_PAINEL_TV_VER, PERMISSOES.PCP_TOTAL],
+  },
+  {
+    key: 'painel_gerencial',
+    label: 'Painel Gerencial',
+    requiredAny: [PERMISSOES.PCP_PAINEL_GERENCIAL_VER, PERMISSOES.PCP_TOTAL],
+  },
 ];
 
 /** Retorna mensagem de erro ou null se OK (espelha a validação do backend). */

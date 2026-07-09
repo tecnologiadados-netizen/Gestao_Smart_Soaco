@@ -28,11 +28,18 @@ export interface EstoqueEmProcesso {
 export interface RoteiroProducao {
   sequencia: string[];
   qtde: number;
+  /** Preenchido na programação; não vai para o catálogo do produto. */
+  chapa?: string | null;
 }
 
 export interface QtdeProduzir {
   roteiros: RoteiroProducao[];
 }
+
+export type MedidasPecaCatalogEntry = {
+  med1: number | null;
+  med2: number | null;
+};
 
 export type ProgramacaoProducaoRecurso = {
   cod: string;

@@ -7,6 +7,8 @@ import type {
 export const LEGACY_RECURSO_PERFIL = '__legacy_perfiladeira__';
 export const LEGACY_RECURSO_MANUAL = '__legacy_manual__';
 
+export type TipoImpressaoProgramacaoProducao = 'manual' | 'perfiladeira';
+
 const LEGACY_LABELS: Record<string, string> = {
   [LEGACY_RECURSO_PERFIL]: 'Perfiladeira',
   [LEGACY_RECURSO_MANUAL]: 'Manual',
@@ -24,7 +26,8 @@ export function normalizarRoteiro(raw: unknown): RoteiroProducao | null {
     : [];
   const qtde = Number(o.qtde);
   if (!seq.length || !Number.isFinite(qtde) || qtde <= 0) return null;
-  return { sequencia: seq, qtde };
+  const chapa = typeof o.chapa === 'string' ? o.chapa : null;
+  return { sequencia: seq, qtde, chapa };
 }
 
 /** Converte formato antigo { perfiladeira, manual } para roteiros. */
@@ -121,21 +124,86 @@ export function validarQtdeProduzirModal(q: QtdeProduzir): string | null {
   return null;
 }
 
+function mapRecursos(
+  recursos: ProgramacaoProducaoRecurso[] | Map<string, ProgramacaoProducaoRecurso>
+): Map<string, ProgramacaoProducaoRecurso> {
+  return recursos instanceof Map ? recursos : new Map(recursos.map((r) => [r.cod, r]));
+}
+
+/** Recurso Perfiladeira (R001 / legado / nome iniciando com "perfiladeira"). */
+export function codRecursoEhPerfiladeira(
+  cod: string,
+  recursos: ProgramacaoProducaoRecurso[] | Map<string, ProgramacaoProducaoRecurso>
+): boolean {
+  if (cod === LEGACY_RECURSO_PERFIL) return true;
+  const map = mapRecursos(recursos);
+  const nome = map.get(cod)?.nome?.trim().toLowerCase() ?? '';
+  return nome.startsWith('perfiladeira');
+}
+
+/** Recurso manual cadastrado (não Perfiladeira). */
+export function codRecursoEhManual(
+  cod: string,
+  recursos: ProgramacaoProducaoRecurso[] | Map<string, ProgramacaoProducaoRecurso>
+): boolean {
+  if (cod === LEGACY_RECURSO_MANUAL) return true;
+  if (codRecursoEhPerfiladeira(cod, recursos)) return false;
+  const map = mapRecursos(recursos);
+  return map.has(cod);
+}
+
+/** Roteiro com ao menos um recurso manual na sequência. */
+export function roteiroTemRecursoManual(
+  roteiro: RoteiroProducao,
+  recursos: ProgramacaoProducaoRecurso[] | Map<string, ProgramacaoProducaoRecurso>
+): boolean {
+  return roteiro.sequencia.some((c) => codRecursoEhManual(c, recursos));
+}
+
+/** Roteiro com ao menos um passo na Perfiladeira. */
+export function roteiroEhPerfiladeira(
+  roteiro: RoteiroProducao,
+  recursos: ProgramacaoProducaoRecurso[] | Map<string, ProgramacaoProducaoRecurso>
+): boolean {
+  return roteiro.sequencia.some((c) => codRecursoEhPerfiladeira(c, recursos));
+}
+
+/** Roteiro exclusivamente manual (sem Perfiladeira; recursos cadastrados ou legado manual). */
+export function roteiroEhManual(
+  roteiro: RoteiroProducao,
+  recursos: ProgramacaoProducaoRecurso[] | Map<string, ProgramacaoProducaoRecurso>
+): boolean {
+  if (!roteiro.sequencia.length) return false;
+  if (roteiroEhPerfiladeira(roteiro, recursos)) return false;
+  const map = mapRecursos(recursos);
+  return roteiro.sequencia.every((c) => {
+    if (c === LEGACY_RECURSO_MANUAL) return true;
+    if (codRecursoEhPerfiladeira(c, recursos)) return false;
+    return map.has(c);
+  });
+}
+
+export function roteirosParaTipoImpressao(
+  roteiros: RoteiroProducao[],
+  tipo: TipoImpressaoProgramacaoProducao,
+  recursos: ProgramacaoProducaoRecurso[]
+): RoteiroProducao[] {
+  return roteiros
+    .filter((r) => r.sequencia.length > 0 && r.qtde > 0)
+    .filter((r) =>
+      tipo === 'perfiladeira' ? roteiroEhPerfiladeira(r, recursos) : roteiroEhManual(r, recursos)
+    );
+}
+
 /** Soma das qtdes dos roteiros que passam por recurso "Perfiladeira" (legado ou cadastro). */
 export function somaQtdePerfiladeiraRoteiros(
   q: QtdeProduzir | undefined,
   recursos: ProgramacaoProducaoRecurso[]
 ): number {
   if (!q?.roteiros?.length) return 0;
-  const map = new Map(recursos.map((r) => [r.cod, r]));
   let soma = 0;
   for (const rot of q.roteiros) {
-    const temPerfil = rot.sequencia.some((c) => {
-      if (c === LEGACY_RECURSO_PERFIL) return true;
-      const nome = map.get(c)?.nome?.trim().toLowerCase() ?? '';
-      return nome === 'perfiladeira';
-    });
-    if (temPerfil) soma += rot.qtde;
+    if (roteiroEhPerfiladeira(rot, recursos)) soma += rot.qtde;
   }
   return soma;
 }

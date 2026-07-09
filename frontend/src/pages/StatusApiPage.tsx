@@ -54,6 +54,7 @@ export default function StatusApiPage() {
     try {
       await sincronizar();
       await load();
+      window.dispatchEvent(new CustomEvent('sincronizado'));
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : 'Erro ao sincronizar com o ERP.');
       await load();

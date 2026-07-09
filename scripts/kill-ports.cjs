@@ -3,7 +3,7 @@
  * Por padrão encerra loops/watchdogs/concurrently deste projeto (--ports-only para só liberar listeners).
  * Use: npm run dev:stop para parada completa.
  */
-const { DEV_PORTS, ensurePortsFree } = require('./port-utils.cjs');
+const { DEV_PORTS, KILL_PORTS, ensurePortsFree } = require('./port-utils.cjs');
 const { releaseLock } = require('./dev-stack-lock.cjs');
 const { appendDevLog } = require('./dev-log.cjs');
 
@@ -15,13 +15,13 @@ appendDevLog(
   `Invocado (fullStack=${fullStack}, argv=${process.argv.slice(2).join(' ') || '(vazio)'}, pid=${process.pid})`
 );
 
-const result = ensurePortsFree({ ports: DEV_PORTS, maxAttempts: 5, killDevStack: fullStack });
+const result = ensurePortsFree({ ports: KILL_PORTS, maxAttempts: 5, killDevStack: fullStack });
 
 releaseLock();
 
 if (result.ok) {
-  appendDevLog('kill-ports', 'Portas liberadas', DEV_PORTS.join(','));
-  console.log('Portas 4000, 5180, 5173, 5174, 5051 liberadas.');
+  appendDevLog('kill-ports', 'Portas liberadas', KILL_PORTS.join(','));
+  console.log(`Portas liberadas: API ${DEV_PORTS[0]}, frontend ${DEV_PORTS[1]} (+ legado 5173/5174/5051).`);
   process.exit(0);
 }
 

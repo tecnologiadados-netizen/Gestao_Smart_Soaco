@@ -199,7 +199,10 @@ export default defineConfig(function (_a) {
     return {
         plugins: [malformedUriGuardPlugin(), react()],
         resolve: {
-            alias: { '@': path.resolve(__dirname, './src') },
+            alias: {
+                '@': path.resolve(__dirname, './src'),
+                '@qualidade': path.resolve(__dirname, './src/modules/qualidade'),
+            },
         },
         server: server,
     };

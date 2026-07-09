@@ -131,6 +131,11 @@ try {
     npm run build:production
     if ($LASTEXITCODE -ne 0) { throw "Build falhou." }
 
+    $ensureWordDirs = Join-Path $PastaProjeto "scripts\ensure-word-com-dirs.ps1"
+    if (Test-Path $ensureWordDirs) {
+        & $ensureWordDirs
+    }
+
     Write-Host "[9/9] Reiniciar producao..." -ForegroundColor Cyan
     if (-not $SemRestart) {
         if ($servico) {

@@ -51,6 +51,7 @@ export async function atualizarUsuario(
     grupoId?: number | null;
     ativo?: boolean;
     isCommercialTeam?: boolean;
+    permissoes?: string[];
     fotoUrl?: string | null;
   }
 ): Promise<Usuario> {

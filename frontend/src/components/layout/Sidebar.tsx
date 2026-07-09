@@ -4,9 +4,10 @@ import { PERMISSOES, type CodigoPermissao } from '../../config/permissoes';
 import {
   PCP_MENU,
   COMUNICACAO_INTERNA_SUBMENUS,
-  COMPRAS_SUBMENUS,
+  COMPRAS_MENU,
   ENGENHARIA_SUBMENUS,
   GESTAO_USUARIOS_SUBMENUS,
+  QUALIDADE_MENU,
   type FinanceiroMenuEntry,
   type NavMenuEntry,
   filterPcpMenuChildren,
@@ -14,6 +15,7 @@ import {
 } from '../../config/navigationMenu';
 import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from '../../utils/suportePermissoes';
 import { podeVerMenuFinanceiro } from '../../utils/financeiroPermissoes';
+import { PERMISSOES_ACESSO_PAINEL_METAS_QUALQUER } from '../../utils/painelProducaoPermissoes';
 
 const SIDEBAR_LINK =
   'block rounded-md px-3 py-2 text-sm transition min-h-[36px] truncate';
@@ -139,6 +141,7 @@ function SidebarNavLink({
   onNavigate,
   className = '',
   title,
+  external = false,
 }: {
   to: string;
   label: string;
@@ -146,7 +149,23 @@ function SidebarNavLink({
   onNavigate: () => void;
   className?: string;
   title?: string;
+  external?: boolean;
 }) {
+  if (external) {
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+    const isActive = pathname === to || pathname.startsWith(`${to}/`);
+    return (
+      <a
+        href={to}
+        title={title ?? label}
+        onClick={onNavigate}
+        className={`${SIDEBAR_LINK} ${isActive ? SIDEBAR_LINK_ACTIVE : SIDEBAR_LINK_IDLE} ${className}`}
+      >
+        <SidebarLabel open={sidebarOpen}>{label}</SidebarLabel>
+      </a>
+    );
+  }
+
   return (
     <NavLink
       to={to}
@@ -199,9 +218,12 @@ function NavMenuTree({
         }
 
         const children =
-          prefix.startsWith('pcp') && (entry.label === 'Estoque' || entry.label === 'Programação')
+          prefix.startsWith('pcp') &&
+          (entry.label === 'Estoque' || entry.label === 'Programação' || entry.label === 'Painel Metas')
             ? filterPcpMenuChildren(entry, hasPermission)
             : entry.children;
+
+        if (children.length === 0) return null;
 
         const key = prefix ? `${prefix}:${entry.label}` : entry.label;
         const isOpen = accordionOpen.has(key);
@@ -354,6 +376,11 @@ export default function Sidebar({
   const isGestaoUsuariosActive = pathname.startsWith('/usuarios');
   const isSuporteActive = pathname.startsWith('/suporte');
 
+  const showPcp =
+    hasPermission(PERMISSOES.PCP_VER_TELA) ||
+    hasPermission(PERMISSOES.PCP_TOTAL) ||
+    PERMISSOES_ACESSO_PAINEL_METAS_QUALQUER.some((p) => hasPermission(p));
+
   const showLogistica =
     (hasPermission(PERMISSOES.LOGISTICA_VER) ||
       hasPermission(PERMISSOES.LOGISTICA_TOTAL) ||
@@ -379,7 +406,7 @@ export default function Sidebar({
       onMouseLeave={onCollapse}
     >
       <nav className="scrollbar-app flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-2 py-3">
-        {hasPermission(PERMISSOES.PCP_VER_TELA) && (
+        {showPcp && (
           <SidebarSection
             id="pcp"
             label="PCP"
@@ -479,15 +506,16 @@ export default function Sidebar({
             accordionOpen={accordionOpen}
             toggleAccordion={toggleAccordion}
           >
-            {COMPRAS_SUBMENUS.map((item) => (
-              <SidebarNavLink
-                key={item.to}
-                to={item.to}
-                label={item.label}
-                sidebarOpen={open}
-                onNavigate={onNavigate}
-              />
-            ))}
+            <NavMenuTree
+              entries={COMPRAS_MENU}
+              pathname={pathname}
+              sidebarOpen={open}
+              accordionOpen={accordionOpen}
+              toggleAccordion={toggleAccordion}
+              onNavigate={onNavigate}
+              hasPermission={hasPermission}
+              prefix="compras"
+            />
           </SidebarSection>
         )}
 
@@ -515,19 +543,27 @@ export default function Sidebar({
         )}
 
         {hasPermission(PERMISSOES.QUALIDADE_VER) && (
-          <NavLink
-            to="/qualidade"
-            title="Qualidade"
-            onClick={onNavigate}
-            className={({ isActive }) =>
-              `${SIDEBAR_SECTION_BTN} mb-0.5 ${
-                isActive || isQualidadeActive ? SIDEBAR_SECTION_ACTIVE : SIDEBAR_SECTION_IDLE
-              }`
-            }
+          <SidebarSection
+            id="qualidade"
+            label="Qualidade"
+            icon={ICONS.qualidade}
+            active={isQualidadeActive}
+            sidebarOpen={open}
+            onExpand={onExpand}
+            accordionOpen={accordionOpen}
+            toggleAccordion={toggleAccordion}
           >
-            <MenuIcon>{ICONS.qualidade}</MenuIcon>
-            <SidebarLabel open={open}>Qualidade</SidebarLabel>
-          </NavLink>
+            <NavMenuTree
+              entries={QUALIDADE_MENU}
+              pathname={pathname}
+              sidebarOpen={open}
+              accordionOpen={accordionOpen}
+              toggleAccordion={toggleAccordion}
+              onNavigate={onNavigate}
+              hasPermission={hasPermission}
+              prefix="qualidade"
+            />
+          </SidebarSection>
         )}
 
         {podeVerMenuFinanceiro(hasPermission) && (
