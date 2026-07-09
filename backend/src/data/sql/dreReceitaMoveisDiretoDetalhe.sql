@@ -59,7 +59,7 @@ FROM (
     de.numeroDocumentoFiscal AS numeroDocumentoFiscal
   FROM itemdocumentoestoque ide
   LEFT JOIN tipomovimentacao tm ON ide.idTipoMovimentacao = tm.id
-  LEFT JOIN documentoestoque de ON ide.idDocumentoSaida = de.id
+  LEFT JOIN documentoestoque de ON ide.idDocumentoEstoque = de.id
   LEFT JOIN nfe nfe ON nfe.idDocumentoEstoque = de.id
   LEFT JOIN produto p ON p.id = ide.idProduto
   LEFT JOIN grupoproduto gp ON p.idGrupoProduto = gp.id

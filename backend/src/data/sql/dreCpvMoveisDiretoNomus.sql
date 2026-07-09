@@ -21,7 +21,7 @@ WITH faturamento AS (
     tm.nome AS tipoMovimentacao
   FROM itemdocumentoestoque ide
   LEFT JOIN tipomovimentacao tm ON ide.idTipoMovimentacao = tm.id
-  LEFT JOIN documentoestoque de ON ide.idDocumentoSaida = de.id
+  LEFT JOIN documentoestoque de ON ide.idDocumentoEstoque = de.id
   LEFT JOIN nfe nfe ON nfe.idDocumentoEstoque = de.id
   LEFT JOIN produto p ON p.id = ide.idProduto
   LEFT JOIN itemdocumentoestoque_itempedidovenda ideipv ON ideipv.idItemDocumentoEstoque = ide.id
@@ -70,7 +70,7 @@ entradas AS (
     ide.valorUnitario AS custoUnitarioEntrada,
     ide.valorTotalComDesconto AS valorTotalEntrada
   FROM itemdocumentoestoque ide
-  LEFT JOIN documentoestoque de ON de.id = ide.idDocumentoEntrada
+  LEFT JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
   LEFT JOIN produto p ON p.id = ide.idProduto
   LEFT JOIN tipomovimentacao tm ON tm.id = de.idTipoMovimentacao
   WHERE
