@@ -16,9 +16,13 @@ import {
   getTabelaStatusPorTipoF,
   getResumoObservacoes,
   getResumoMotivos,
+  getDashEntregasAnalytics,
+  getDashEntregasAgingTipoF,
+  getDashEntregasLeadTimeTipoF,
   getFiltrosOpcoes,
   getMapaMunicipios,
   getMapaMunicipioDetalhes,
+  getCargasSeparadasMesmoClienteCidade,
   ajustarPrevisao,
   ajustarPrevisaoLote,
   ajustarDataProducaoLote,
@@ -32,6 +36,8 @@ import {
   getSequenciamentoCarradasSnapshots,
   getSequenciamentoCarradasConsultaAoVivo,
   getSequenciamentoCarradasSnapshotById,
+  patchSequenciamentoCarradasSnapshot,
+  postSequenciamentoCarradasSnapshotConcluir,
 } from '../controllers/sequenciamentoCarradasController.js';
 
 const router = Router();
@@ -73,14 +79,27 @@ router.get('/resumo-financeiro-grade', verFinanceiro, getResumoFinanceiroGrade);
 router.get('/resumo-status-tipof', verPedidos, getResumoStatusPorTipoF);
 router.get('/tabela-status-tipof', verPedidos, getTabelaStatusPorTipoF);
 router.get('/observacoes-resumo', verPedidos, getResumoObservacoes);
+router.get('/dash-entregas-analytics', verPedidos, getDashEntregasAnalytics);
+router.get('/dash-entregas-aging-tipof', verPedidos, getDashEntregasAgingTipoF);
+router.get('/dash-entregas-leadtime-tipof', verPedidos, getDashEntregasLeadTimeTipoF);
 router.get('/resumo-motivos', verPedidos, getResumoMotivos);
 router.get('/filtros-opcoes', verPedidos, getFiltrosOpcoes);
 router.get('/mapa-municipios', verPedidos, getMapaMunicipios);
 router.get('/mapa-municipios/detalhes', verPedidos, getMapaMunicipioDetalhes);
+router.get('/cargas-separadas-cliente-cidade', verPedidos, getCargasSeparadasMesmoClienteCidade);
+// Limiter dedicado ao autosave do rascunho (mais frequente que os writes normais).
+const autosaveLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: { error: 'Muitas requisições. Tente novamente em breve.' },
+});
+
 router.get('/sequenciamento-carradas/consulta-ao-vivo', verPedidos, getSequenciamentoCarradasConsultaAoVivo);
 router.get('/sequenciamento-carradas/snapshots', verPedidos, getSequenciamentoCarradasSnapshots);
 router.post('/sequenciamento-carradas/snapshots', verPedidos, writeLimiter, postSequenciamentoCarradasSnapshot);
 router.get('/sequenciamento-carradas/snapshots/:id', verPedidos, getSequenciamentoCarradasSnapshotById);
+router.patch('/sequenciamento-carradas/snapshots/:id', verPedidos, autosaveLimiter, patchSequenciamentoCarradasSnapshot);
+router.post('/sequenciamento-carradas/snapshots/:id/concluir', verPedidos, writeLimiter, postSequenciamentoCarradasSnapshotConcluir);
 router.get('/inconsistencia-qtde-pendente', verPedidos, getInconsistenciaQtdePendente);
 router.get('/encerrados/typeahead', verPedidos, getPedidosEncerradosTypeahead);
 router.get('/encerrados', verPedidos, getPedidosEncerrados);

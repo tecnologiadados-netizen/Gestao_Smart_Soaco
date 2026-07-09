@@ -14,6 +14,8 @@ type PlanningRow = {
   id: string;
   Observacoes: string;
   PD: string;
+  DataBaseIso?: string;
+  DataBase?: string;
   Previsao: string;
   Cliente: string;
   Cod: string;
@@ -89,9 +91,11 @@ function linhaExcluidaProgramacaoSetorial(item: ProcessedItem): boolean {
 }
 
 function snapshotLinha(item: ProcessedItem) {
+  const dataBase = String(item.DataBase ?? item.Previsao ?? '');
   return {
     observacoes: item.Observacoes,
-    previsao: item.Previsao,
+    previsao: dataBase,
+    dataBaseIso: String(item.DataBaseIso ?? ''),
     pd: item.PD,
     cod: item.Cod,
     descricao: item['Descricao do produto'],
@@ -114,7 +118,8 @@ type CarradasConflict = {
 function dedupeLinhasParaSalvar(items: ProcessedItem[]): ProcessedItem[] {
   const map = new Map<string, ProcessedItem>();
   for (const it of items) {
-    const k = `${String(it.idChave ?? it.id)}|${String(it.Observacoes)}|${String(it.Previsao)}|${String(it.Cod)}`;
+    const dataBase = String(it.DataBaseIso ?? it.DataBase ?? it.Previsao ?? '');
+    const k = `${String(it.idChave ?? it.id)}|${String(it.Observacoes)}|${dataBase}|${String(it.Cod)}`;
     if (!map.has(k)) map.set(k, it);
   }
   return [...map.values()];
@@ -131,7 +136,11 @@ function validarCarradasMesmaDataPorCarrada(items: ProcessedItem[]): CarradasCon
   }
   const conflicts: CarradasConflict[] = [];
   for (const [obs, group] of byObs) {
-    const datas = new Set(group.map((g) => String(g.Previsao ?? '').trim()).filter(Boolean));
+    const datas = new Set(
+      group
+        .map((g) => String(g.DataBase ?? g.Previsao ?? '').trim())
+        .filter(Boolean)
+    );
     if (datas.size <= 1) continue;
     const datasSorted = [...datas].sort((a, b) => parsePtBrDateSafe(a).getTime() - parsePtBrDateSafe(b).getTime());
     conflicts.push({
@@ -139,7 +148,7 @@ function validarCarradasMesmaDataPorCarrada(items: ProcessedItem[]): CarradasCon
       datas: datasSorted,
       itens: group.map((g) => ({
         pd: String(g.PD ?? ''),
-        previsao: String(g.Previsao ?? ''),
+        previsao: String(g.DataBase ?? g.Previsao ?? ''),
       })),
     });
   }
@@ -242,7 +251,11 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
   const processedItems = useMemo(() => {
     if (planningData.length === 0) return [] as ProcessedItem[];
 
-    const sortedPlanning = [...planningData].sort((a, b) => parsePtBrDateSafe(a.Previsao).getTime() - parsePtBrDateSafe(b.Previsao).getTime());
+    const sortedPlanning = [...planningData].sort(
+      (a, b) =>
+        parsePtBrDateSafe(String(a.DataBase ?? a.Previsao)).getTime() -
+        parsePtBrDateSafe(String(b.DataBase ?? b.Previsao)).getTime()
+    );
     const stockRemaining = { ...stockData };
     const result: ProcessedItem[] = [];
 
@@ -274,7 +287,8 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
   const aglutinatedItems = useMemo(() => {
     const groups: Record<string, ProcessedItem> = {};
     for (const item of processedItems) {
-      const key = `${item.Observacoes}|${item.Previsao}|${item.Cod}`;
+      const dataBase = String(item.DataBaseIso ?? item.DataBase ?? item.Previsao ?? '');
+      const key = `${item.Observacoes}|${dataBase}|${item.Cod}`;
       if (!groups[key]) {
         groups[key] = { ...item };
       } else {
@@ -321,7 +335,7 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
       const s = parsePtBrDateSafe(start);
       const e = parsePtBrDateSafe(end);
       result = result.filter((item) => {
-        const itemDate = parsePtBrDateSafe(item.Previsao);
+        const itemDate = parsePtBrDateSafe(String(item.DataBase ?? item.Previsao));
         if (itemDate.getTime() === 0) return false;
         return isWithinInterval(itemDate, s, e);
       });
@@ -596,7 +610,7 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
                         <li key={`${it.pd}-${it.previsao}-${idx}`}>
                           PD <span className="font-mono">{it.pd || '—'}</span>
                           {' — '}
-                          previsão <span className="font-medium">{it.previsao || '—'}</span>
+                          data <span className="font-medium">{it.previsao || '—'}</span>
                         </li>
                       ))}
                     </ul>
@@ -766,7 +780,7 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
               <thead className="bg-primary-600 text-white">
                 <tr>
                   <th className="py-3 px-4 font-semibold">Observações</th>
-                  <th className="py-3 px-4 font-semibold">Previsão</th>
+                  <th className="py-3 px-4 font-semibold">Data base</th>
                   {showPD && <th className="py-3 px-4 font-semibold">PD</th>}
                   <th className="py-3 px-4 font-semibold">Cód</th>
                   <th className="py-3 px-4 font-semibold">Descrição do Produto</th>
@@ -792,7 +806,7 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
                         {item.Observacoes}
                       </td>
                       <td className="p-3 whitespace-nowrap text-slate-700 dark:text-slate-200">
-                        <span>{item.Previsao}</span>
+                        <span>{String(item.DataBase ?? item.Previsao ?? '')}</span>
                       </td>
                       {showPD && <td className="p-3 text-slate-700 dark:text-slate-200">{item.PD}</td>}
                       <td className="p-3 text-slate-700 dark:text-slate-200">{item.Cod}</td>

@@ -13,7 +13,9 @@ export default function PermissionGuard({ children }: { children: ReactNode }) {
   // Durante revalidação após restart (token existe, perfil ainda carregando), evita falso "Sem acesso".
   if (hasToken && !login) return <>{children}</>;
 
-  const permsNecessarias = ROTA_PERMISSAO[pathname];
+  const permsNecessarias =
+    ROTA_PERMISSAO[pathname] ??
+    (pathname.startsWith('/qualidade/') ? ROTA_PERMISSAO['/qualidade'] : undefined);
   if (permsNecessarias && !permsNecessarias.some((p) => hasPermission(p))) {
     const redirect = primeiraRotaPermitida(hasPermission, isMaster);
     if (redirect != null && redirect !== pathname) return <Navigate to={redirect} replace />;

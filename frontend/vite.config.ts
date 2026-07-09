@@ -43,10 +43,10 @@ export default defineConfig(({ mode }) => {
   const devOrigin = env.VITE_DEV_ORIGIN?.trim() || undefined;
 
   const server: NonNullable<UserConfig['server']> = {
-    port: 5180, // interno; externos: npm run dev:frontend:5173 | :5174 | :5051
+    port: 5190, // porta fixa do Vite (dev)
     host: '0.0.0.0',
     strictPort: true,
-    // true = qualquer Host — http://gsmartsoaco.com.br:5173 (ou :5174 :5051)
+    // true = qualquer Host — acesso por IP/domínio em dev
     allowedHosts: true,
     proxy: {
       '/api': {
@@ -58,7 +58,7 @@ export default defineConfig(({ mode }) => {
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes, _req, res) => {
             const clientRes = res as import('http').ServerResponse;
-            const status = proxyRes.statusCode === 500 ? 503 : proxyRes.statusCode;
+            const status = proxyRes.statusCode === 500 ? 503 : proxyRes.statusCode ?? 503;
             const headers = { ...proxyRes.headers };
             const setCookie = headers['set-cookie'];
             if (Array.isArray(setCookie)) {
@@ -102,7 +102,7 @@ export default defineConfig(({ mode }) => {
           const AUTH_LOG_INTERVAL_MS = 15000;
           proxy.on('proxyRes', (proxyRes, _req, res) => {
             const clientRes = res as import('http').ServerResponse;
-            const status = proxyRes.statusCode === 500 ? 503 : proxyRes.statusCode;
+            const status = proxyRes.statusCode === 500 ? 503 : proxyRes.statusCode ?? 503;
             const headers = { ...proxyRes.headers };
             const setCookie = headers['set-cookie'];
             if (Array.isArray(setCookie)) {
@@ -191,7 +191,10 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [malformedUriGuardPlugin(), react()],
     resolve: {
-      alias: { '@': path.resolve(__dirname, './src') },
+      alias: {
+        '@': path.resolve(__dirname, './src'),
+        '@qualidade': path.resolve(__dirname, './src/modules/qualidade'),
+      },
     },
     server,
   };

@@ -9,6 +9,10 @@ type PlanningItem = {
   id: string;
   Observacoes: string;
   PD: string;
+  /** Data base usada na Programação Setorial (produção; fallback para previsão atual). */
+  DataBaseIso: string;
+  /** Data base formatada dd/MM/yyyy (produção; fallback para previsão atual). */
+  DataBase: string;
   Previsao: string;
   Cliente: string;
   Cod: string;
@@ -33,12 +37,24 @@ function formatDateDDMMYYYY(value: unknown): string {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+function formatIsoYYYYMMDD(value: unknown): string {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value as string);
+  if (Number.isNaN(d.getTime())) return '';
+  const yyyy = String(d.getFullYear());
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function toPlanningItem(row: any): PlanningItem | null {
   const qtdePend = Number(row?.['Qtde Pendente Real'] ?? 0) || 0;
   if (qtdePend <= 0) return null;
 
-  const previsaoDate = row?.previsao_entrega_atualizada ?? row?.previsao_entrega;
-  const previsao = formatDateDDMMYYYY(previsaoDate);
+  // Data base: produção (SQLite) com fallback para previsão atual do Gerenciador.
+  const dataBaseDate = row?.data_producao ?? row?.previsao_entrega_atualizada ?? row?.previsao_entrega;
+  const dataBase = formatDateDDMMYYYY(dataBaseDate);
+  const dataBaseIso = formatIsoYYYYMMDD(dataBaseDate);
 
   const carradaMigradaRaw = row?.carrada_migrada;
   const carradaMigrada =
@@ -54,7 +70,10 @@ function toPlanningItem(row: any): PlanningItem | null {
     id: String(row?.id_pedido ?? row?.id ?? ''),
     Observacoes: String(row?.Observacoes ?? row?.['Observacoes '] ?? row?.['Observações'] ?? ''),
     PD: String(row?.PD ?? ''),
-    Previsao: previsao,
+    DataBaseIso: dataBaseIso,
+    DataBase: dataBase,
+    // Compatibilidade: o frontend atual usa `Previsao` como a data de ordenação/filtro.
+    Previsao: dataBase,
     Cliente: String(row?.Cliente ?? ''),
     Cod: String(row?.Cod ?? ''),
     'Descricao do produto': String(row?.['Descricao do produto'] ?? row?.produto ?? ''),

@@ -75,6 +75,8 @@ export const listarPedidosQuerySchema = z.object({
   data_fim: z.string().optional(),
   atrasados: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
   grupo_produto: z.string().optional(),
+  subgrupo1: z.string().optional(),
+  subgrupo2: z.string().optional(),
   setor_producao: z.string().optional(),
   uf: z.string().optional(),
   municipio_entrega: z.string().optional(),
@@ -87,6 +89,10 @@ export const listarPedidosQuerySchema = z.object({
   descricao_produto: z.string().optional(),
   a_vista: z.string().optional(),
   requisicao_loja: z.string().optional(),
+  faixa_atraso: z
+    .enum(['em_dia', 'atraso_1_7', 'atraso_8_15', 'atraso_16_30', 'atraso_31_60', 'atraso_60_mais'])
+    .optional(),
+  excluir_requisicao: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
   page: z.string().optional().transform((v) => (v ? Math.max(1, parseInt(v, 10) || 1) : 1)),
   limit: z.string().optional().transform((v) => (v ? Math.min(500, Math.max(1, parseInt(v, 10) || 100)) : 100)),
   /** JSON array de { id: string, dir: 'asc'|'desc' } para classificação antes da paginação. */

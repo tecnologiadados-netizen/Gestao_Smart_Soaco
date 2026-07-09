@@ -6,7 +6,10 @@ import { isRecursoPcp } from './programacaoSetorialRecursoPcp';
 
 export type SnapshotLinhaFiltravel = {
   observacoes?: string;
+  /** Data base (dd/MM/yyyy) — em snapshots antigos permanece em `previsao`. */
   previsao?: string;
+  /** Data base ISO (YYYY-MM-DD) quando disponível (snapshots novos). */
+  dataBaseIso?: string;
   pd?: string;
   cod?: string;
   descricao?: string;
@@ -72,7 +75,7 @@ export function filterSnapshotLinhasByRules(
     const s = parsePtBrDateSafe(startDate);
     const e = parsePtBrDateSafe(endDate);
     result = result.filter((item) => {
-      const itemDate = parsePtBrDateSafe(item.previsao);
+      const itemDate = parsePtBrDateSafe(item.dataBaseIso ?? item.previsao);
       if (itemDate.getTime() === 0) return false;
       return isWithinInterval(itemDate, s, e);
     });

@@ -4,7 +4,7 @@
 
 import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
 import { listarPcPendDetalhesPorProduto } from './comprasRepository.js';
-import { obterPrevisaoAtualizadaPorIdsPedido } from './pedidosRepository.js';
+import { obterDataBasePorIdsPedido } from './pedidosRepository.js';
 import { loadBomListaMateriaisAcabadoSemProdutoSql } from './bomListaMateriaisSql.js';
 import {
   buildEmpenhoLiquidoBatchSql,
@@ -959,23 +959,23 @@ Group By pd.id, pd.idTipoPedido
 export async function lookupPrevisaoPorPedidos(
   pool: NonNullable<ReturnType<typeof getNomusPool>>,
   linhas: { idPedido: number; pedido: string }[]
-): Promise<Map<string, { dataEntrega: string | null; rota: string; temRomaneio: boolean }>> {
-  const result = new Map<string, { dataEntrega: string | null; rota: string; temRomaneio: boolean }>();
+): Promise<Map<string, { dataBase: string | null; rota: string; temRomaneio: boolean }>> {
+  const result = new Map<string, { dataBase: string | null; rota: string; temRomaneio: boolean }>();
   if (linhas.length === 0) return result;
 
   const ids = [...new Set(linhas.map((l) => l.idPedido).filter((id) => id > 0))];
-  const [previsaoPorId, metaPorId] = await Promise.all([
-    obterPrevisaoAtualizadaPorIdsPedido(ids),
+  const [dataBasePorId, metaPorId] = await Promise.all([
+    obterDataBasePorIdsPedido(ids),
     lookupMetaPedidoEmpenho(pool, ids),
   ]);
 
   for (const l of linhas) {
     const key = l.pedido.trim().toUpperCase();
     if (!key) continue;
-    const ymd = previsaoPorId.get(l.idPedido) ?? null;
+    const ymd = dataBasePorId.get(l.idPedido) ?? null;
     const meta = metaPorId.get(l.idPedido);
     result.set(key, {
-      dataEntrega: ymd,
+      dataBase: ymd,
       rota: meta?.rota ?? '',
       temRomaneio: meta?.temRomaneio ?? false,
     });

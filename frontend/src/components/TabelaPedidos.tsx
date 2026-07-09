@@ -29,7 +29,11 @@ const COLUMNS: Array<{
   { id: 'valor_pendente_real', label: 'Saldo a Faturar Real', keys: ['Saldo a Faturar Real', 'Valor Pendente Real'] },
   { id: 'emissao', label: 'Emissão', keys: ['Emissao', 'emissao'] },
   { id: 'data_original', label: 'Data original', keys: ['Data de entrega', 'dataParametro'] },
-  { id: 'previsao_anterior', label: 'Previsão anterior', getValue: (p) => p.previsao_anterior ?? p.previsao_entrega },
+  { id: 'previsao_anterior', label: 'Previsão anterior', getValue: (p) => {
+    if (p.previsao_anterior) return p.previsao_anterior;
+    const dataOrig = (p as Record<string, unknown>)['Data de entrega'] ?? (p as Record<string, unknown>).dataParametro;
+    return dataOrig ?? p.previsao_entrega;
+  }},
   { id: 'previsao_atual', label: 'Previsão atual', getValue: (p) => p.previsao_entrega_atualizada ?? p.previsao_entrega },
   { id: 'data_producao', label: 'Data de produção', keys: ['data_producao'] },
   { id: 'data_base_entrega_futura', label: 'Data base entrega futura', keys: ['Data base entrega futura'] },

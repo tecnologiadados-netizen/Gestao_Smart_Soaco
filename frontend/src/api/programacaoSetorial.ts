@@ -5,6 +5,11 @@ export type ProgramacaoSetorialPlanningItem = {
   id: string;
   Observacoes: string;
   PD: string;
+  /** Data base usada na Programação Setorial (produção; fallback para previsão atual). */
+  DataBaseIso?: string;
+  /** Data base formatada dd/MM/yyyy (produção; fallback para previsão atual). */
+  DataBase?: string;
+  /** Compatibilidade: snapshots e UI antigos ainda usam `Previsao`. */
   Previsao: string;
   Cliente: string;
   Cod: string;

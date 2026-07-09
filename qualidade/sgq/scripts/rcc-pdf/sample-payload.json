@@ -1,0 +1,30 @@
+{
+  "versao": "cliente",
+  "registro": {
+    "tipo": "rcc",
+    "numero": "RCC006886",
+    "codigoDocumento": "RCC006886",
+    "status": "em_tratamento",
+    "rcc": {
+      "codigoDocumento": "RCC006886",
+      "dataRegistroReclamacao": "2026-06-30T12:00:00.000Z",
+      "cidade": "Timon",
+      "estado": "MA",
+      "nomeClienteConsumidor": "YAGO BRUNO TEIXEIRA MORAIS",
+      "clienteDoRevendedor": false,
+      "vendedor": "SO AÇO INDUSTRIAL LTDA - SO MOVEIS LTDA",
+      "produto": "BALCÃO AUTO SERVIÇO VISA COOLER CERVEJEIRO 220V",
+      "numeroSerieLoteProduto": "30146",
+      "dataEmissaoNf": "2026-06-27T12:00:00.000Z",
+      "numeroNf": "88977",
+      "quantidade": "01",
+      "numeroPedidoInternoExterno": "49390",
+      "produtoDentroGarantia": "Sim",
+      "descricaoReclamacao": "CLIENTE RECLAMA QUE O PRODUTO ESTA FUNCIONANDO DIRETO",
+      "comentario": "CLIENTE PODE TRAZER ATE A LOJA NOVAMENTE",
+      "reclamacao1": "Produto",
+      "usuarioCriacao": "Jaciara Mendes",
+      "dataFechamento": ""
+    }
+  }
+}

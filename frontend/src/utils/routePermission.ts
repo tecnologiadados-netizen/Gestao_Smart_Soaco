@@ -11,6 +11,7 @@ import {
   PERMISSOES_ACESSO_FINANCEIRO_RESUMO,
   PERMISSOES_ACESSO_FINANCEIRO_CRM,
 } from './financeiroPermissoes';
+import { PERMISSOES_ACESSO_COMERCIAL_PAINEL } from '../config/comercialPermissoes';
 
 export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/pedidos/dash-entregas': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.DASHBOARD_VER, PERMISSOES.PEDIDOS_VER],
@@ -43,6 +44,10 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/engenharia': [PERMISSOES.PRECIFICACAO_VER],
   '/engenharia/precificacao': [PERMISSOES.PRECIFICACAO_VER],
   '/qualidade': [PERMISSOES.QUALIDADE_VER],
+  '/qualidade/documentos': [PERMISSOES.QUALIDADE_VER],
+  '/qualidade/calibracoes': [PERMISSOES.QUALIDADE_VER],
+  '/qualidade/registros': [PERMISSOES.QUALIDADE_VER],
+  '/qualidade/configuracoes': [PERMISSOES.QUALIDADE_VER],
   '/financeiro': PERMISSOES_ACESSO_FINANCEIRO_RESUMO,
   '/financeiro/resumo': PERMISSOES_ACESSO_FINANCEIRO_RESUMO,
   '/financeiro/dfc': PERMISSOES_ACESSO_FINANCEIRO_DFC,
@@ -50,6 +55,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/financeiro/painel-financeiro-comercial': PERMISSOES_ACESSO_FINANCEIRO_PAINEL_COMERCIAL,
   '/financeiro/renegociacao-contratos': PERMISSOES_ACESSO_FINANCEIRO_RENEGOCIACAO,
   '/financeiro/crm': PERMISSOES_ACESSO_FINANCEIRO_CRM,
+  '/comercial/painel': PERMISSOES_ACESSO_COMERCIAL_PAINEL,
   '/logistica/cubagem/veiculos': [PERMISSOES.LOGISTICA_VER, PERMISSOES.LOGISTICA_TOTAL, PERMISSOES.LOGISTICA_CUBAGEM_VER],
   '/logistica/cubagem/produtos': [PERMISSOES.LOGISTICA_VER, PERMISSOES.LOGISTICA_TOTAL, PERMISSOES.LOGISTICA_CUBAGEM_VER],
   '/logistica/cubagem/simulacao': [PERMISSOES.LOGISTICA_VER, PERMISSOES.LOGISTICA_TOTAL, PERMISSOES.LOGISTICA_CUBAGEM_VER],
@@ -92,6 +98,7 @@ export const ROTAS_ORDEM = [
   '/engenharia',
   '/engenharia/precificacao',
   '/qualidade',
+  '/qualidade/documentos',
   '/financeiro',
   '/financeiro/resumo',
   '/financeiro/dfc',
@@ -99,6 +106,7 @@ export const ROTAS_ORDEM = [
   '/financeiro/painel-financeiro-comercial',
   '/financeiro/renegociacao-contratos',
   '/financeiro/crm',
+  '/comercial/painel',
   '/logistica/cubagem/veiculos',
   '/logistica/cubagem/produtos',
   '/logistica/cubagem/simulacao',

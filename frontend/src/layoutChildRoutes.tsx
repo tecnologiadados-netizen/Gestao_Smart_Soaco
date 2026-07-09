@@ -49,7 +49,8 @@ import MindMapsPage, { MindMapsLegacyRedirect } from './pages/mind-maps/MindMaps
 import VeiculosPage from './pages/logistica/VeiculosPage';
 import ProdutosCubagemPage from './pages/logistica/ProdutosCubagemPage';
 import SimulacaoCubagemPage from './pages/logistica/SimulacaoCubagemPage';
-import QualidadePage from './pages/qualidade/QualidadePage';
+import { qualidadeRoutes } from './modules/qualidade/qualidadeRoutes';
+import PainelComercialPage from './pages/comercial/PainelComercialPage';
 
 /** Rotas filhas do layout autenticado (espelham appRouter). */
 export const layoutChildRoutes: RouteObject[] = [
@@ -101,7 +102,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'compras/pre-compra', element: <ErrorBoundary><PreCompraPage /></ErrorBoundary> },
   { path: 'precificacao', element: <Navigate to="/engenharia/precificacao" replace /> },
   { path: 'engenharia/precificacao', element: <PrecificacaoPage /> },
-  { path: 'qualidade', element: <ErrorBoundary><QualidadePage /></ErrorBoundary> },
+  ...qualidadeRoutes,
   { path: 'financeiro', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/resumo', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/dfc', element: <DfcPage /> },
@@ -109,6 +110,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'financeiro/painel-financeiro-comercial', element: <PainelFinanceiroComercialPage /> },
   { path: 'financeiro/renegociacao-contratos', element: <RenegociacaoContratosPage /> },
   { path: 'financeiro/crm', element: <ErrorBoundary><CrmFinanceiroPage /></ErrorBoundary> },
+  { path: 'comercial/painel', element: <ErrorBoundary><PainelComercialPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/veiculos', element: <ErrorBoundary><VeiculosPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/produtos', element: <ErrorBoundary><ProdutosCubagemPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/simulacao', element: <ErrorBoundary><SimulacaoCubagemPage /></ErrorBoundary> },

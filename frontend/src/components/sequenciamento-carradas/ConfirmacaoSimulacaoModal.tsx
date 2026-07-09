@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { listarMotivosSugestao, type MotivoSugestao } from '../../api/motivosSugestao';
 import { formatDataCurta, formatQtdeInt, type PedidoAlterado } from './simulacaoCarradas';
+import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
+import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 
 type Props = {
   pedidosEntrega: PedidoAlterado[];
@@ -8,28 +11,234 @@ type Props = {
   qtdCarradasSomenteProducao: number;
   salvando: boolean;
   erro: string | null;
+  /** Motivos por id_pedido (estado vive na página para entrar no autosave do rascunho). */
+  motivoPorId: Record<string, string>;
+  onMotivoPorIdChange: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
   onConfirmar: (motivoPorIdPedido: Record<string, string>) => void;
   onClose: () => void;
 };
 
 const TH = 'px-2 py-2 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap';
 const TD = 'px-2 py-1.5 text-slate-700 dark:text-slate-200 align-top';
-const SELECT_CLASS =
-  'w-full min-w-[11rem] rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100';
+
+const RECENTES_STORAGE_KEY = 'seqCarradas:motivosRecentes';
+const MAX_RECENTES = 5;
+
+function lerMotivosRecentes(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENTES_STORAGE_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as unknown;
+    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function registrarMotivoRecente(motivo: string): string[] {
+  const atual = lerMotivosRecentes().filter((m) => m !== motivo);
+  const next = [motivo, ...atual].slice(0, MAX_RECENTES);
+  try {
+    localStorage.setItem(RECENTES_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // storage indisponível: segue sem persistir
+  }
+  return next;
+}
+
+/**
+ * Seletor de motivo com busca e recentes no topo.
+ * Dropdown em portal (position fixed) para não ser cortado pelo overflow do modal.
+ */
+function MotivoPicker({
+  value,
+  onSelect,
+  motivos,
+  recentes,
+  compact = false,
+  disabled = false,
+}: {
+  value: string;
+  onSelect: (motivo: string) => void;
+  motivos: MotivoSugestao[];
+  recentes: string[];
+  compact?: boolean;
+  disabled?: boolean;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState('');
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const idRef = useRef(`motivo-picker-${Math.random().toString(36).slice(2)}`);
+
+  const fechar = useCallback(() => {
+    setAberto(false);
+    setBusca('');
+  }, []);
+
+  // ESC fecha só o dropdown (fica acima do modal na pilha).
+  useRegisterModalEscape({ id: idRef.current, onClose: fechar, zIndex: 500, enabled: aberto });
+
+  const abrir = () => {
+    if (disabled) return;
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setRect({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 260) });
+    setAberto(true);
+  };
+
+  useEffect(() => {
+    if (!aberto) return;
+    const handle = (e: Event) => {
+      const t = e.target;
+      if (!(t instanceof Node)) return;
+      if (dropRef.current?.contains(t) || btnRef.current?.contains(t)) return;
+      fechar();
+    };
+    document.addEventListener('mousedown', handle, true);
+    return () => document.removeEventListener('mousedown', handle, true);
+  }, [aberto, fechar]);
+
+  const listaFiltrada = useMemo(() => {
+    const match = criarMatcherTextoLivre(busca);
+    const todas = motivos.map((m) => m.descricao);
+    const filtradas = busca.trim() ? todas.filter((d) => match(d)) : todas;
+    const recSet = new Set(recentes);
+    const rec = recentes.filter((r) => filtradas.includes(r));
+    const resto = filtradas.filter((d) => !recSet.has(d));
+    return { rec, resto };
+  }, [motivos, recentes, busca]);
+
+  const escolher = (motivo: string) => {
+    onSelect(motivo);
+    fechar();
+  };
+
+  const dropdown =
+    aberto && rect
+      ? createPortal(
+          <div
+            ref={dropRef}
+            style={{
+              position: 'fixed',
+              top: Math.min(rect.top, window.innerHeight - 320),
+              left: Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8)),
+              width: rect.width,
+              zIndex: 13001,
+            }}
+            className="max-h-80 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+          >
+            <div className="border-b border-slate-200 p-2 dark:border-slate-600">
+              <input
+                type="text"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar motivo… (% = curinga)"
+                autoFocus
+                className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+              />
+            </div>
+            <div className="max-h-64 overflow-auto p-1">
+              {value && (
+                <button
+                  type="button"
+                  onClick={() => escolher('')}
+                  className="block w-full rounded px-2 py-1.5 text-left text-xs italic text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
+                >
+                  Limpar motivo
+                </button>
+              )}
+              {listaFiltrada.rec.length > 0 && (
+                <>
+                  <p className="px-2 pt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    Recentes
+                  </p>
+                  {listaFiltrada.rec.map((d) => (
+                    <button
+                      key={`rec-${d}`}
+                      type="button"
+                      onClick={() => escolher(d)}
+                      className={`block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-slate-700 ${
+                        d === value ? 'bg-primary-50 font-medium text-primary-800 dark:bg-primary-900/30 dark:text-primary-200' : 'text-slate-700 dark:text-slate-200'
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                  <div className="my-1 border-t border-slate-200 dark:border-slate-600" />
+                </>
+              )}
+              {listaFiltrada.resto.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => escolher(d)}
+                  className={`block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-slate-700 ${
+                    d === value ? 'bg-primary-50 font-medium text-primary-800 dark:bg-primary-900/30 dark:text-primary-200' : 'text-slate-700 dark:text-slate-200'
+                  }`}
+                >
+                  {d}
+                </button>
+              ))}
+              {listaFiltrada.rec.length === 0 && listaFiltrada.resto.length === 0 && (
+                <p className="px-2 py-2 text-xs text-slate-500 dark:text-slate-400">Nenhum motivo encontrado.</p>
+              )}
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={aberto ? fechar : abrir}
+        disabled={disabled}
+        className={`flex w-full min-w-[11rem] items-center justify-between gap-1 rounded-md border px-2 text-left text-xs disabled:cursor-not-allowed disabled:opacity-60 ${
+          compact ? 'py-1' : 'py-1.5'
+        } ${
+          value
+            ? 'border-slate-300 bg-white text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100'
+            : 'border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-500/60 dark:bg-amber-900/20 dark:text-amber-200'
+        }`}
+        title={value || 'Selecionar motivo'}
+      >
+        <span className="truncate">{value || 'Selecione um motivo…'}</span>
+        <span aria-hidden className="shrink-0 text-slate-400">
+          ▾
+        </span>
+      </button>
+      {dropdown}
+    </>
+  );
+}
+
+type GrupoCarrada = {
+  rota: string;
+  itens: PedidoAlterado[];
+  previsoesAnteriores: string[];
+  previsoesNovas: string[];
+  qtdeTotal: number;
+};
 
 export default function ConfirmacaoSimulacaoModal({
   pedidosEntrega,
   qtdCarradasSomenteProducao,
   salvando,
   erro,
+  motivoPorId,
+  onMotivoPorIdChange,
   onConfirmar,
   onClose,
 }: Props) {
   const [motivos, setMotivos] = useState<MotivoSugestao[]>([]);
-  const [motivoPorId, setMotivoPorId] = useState<Record<string, string>>({});
-  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
-  const [motivoEmMassa, setMotivoEmMassa] = useState('');
+  const [recentes, setRecentes] = useState<string[]>(() => lerMotivosRecentes());
+  const [expandido, setExpandido] = useState<Set<string>>(new Set());
   const [validacao, setValidacao] = useState<string | null>(null);
+
+  useRegisterModalEscape({ id: 'seq-carradas-confirmacao', onClose, zIndex: 135, enabled: !salvando });
 
   useEffect(() => {
     let ativo = true;
@@ -45,56 +254,80 @@ export default function ConfirmacaoSimulacaoModal({
     };
   }, []);
 
-  const gruposPorCarrada = useMemo(() => {
+  const grupos = useMemo<GrupoCarrada[]>(() => {
     const map = new Map<string, PedidoAlterado[]>();
     for (const p of pedidosEntrega) {
       const list = map.get(p.rota) ?? [];
       list.push(p);
       map.set(p.rota, list);
     }
-    return [...map.entries()].map(([rota, itens]) => ({ rota, itens }));
+    return [...map.entries()].map(([rota, itens]) => ({
+      rota,
+      itens,
+      previsoesAnteriores: [...new Set(itens.map((i) => i.previsaoAnterior).filter(Boolean))],
+      previsoesNovas: [...new Set(itens.map((i) => i.previsaoNova).filter(Boolean))],
+      qtdeTotal: itens.reduce((s, i) => s + i.qtdePendenteReal, 0),
+    }));
   }, [pedidosEntrega]);
 
-  const setMotivo = (id: string, motivo: string) =>
-    setMotivoPorId((prev) => ({ ...prev, [id]: motivo }));
+  const selecionarMotivo = useCallback(
+    (ids: string[], motivo: string) => {
+      onMotivoPorIdChange((prev) => {
+        const next = { ...prev };
+        for (const id of ids) {
+          if (motivo) next[id] = motivo;
+          else delete next[id];
+        }
+        return next;
+      });
+      if (motivo) setRecentes(registrarMotivoRecente(motivo));
+    },
+    [onMotivoPorIdChange]
+  );
 
-  const setMotivoGrupo = (itens: PedidoAlterado[], motivo: string) =>
-    setMotivoPorId((prev) => {
-      const next = { ...prev };
-      for (const it of itens) next[it.idPedido] = motivo;
-      return next;
-    });
+  const pendentes = useMemo(
+    () => pedidosEntrega.filter((p) => !motivoPorId[p.idPedido]?.trim()),
+    [pedidosEntrega, motivoPorId]
+  );
+  const gruposPendentes = useMemo(
+    () => new Set(pendentes.map((p) => p.rota)),
+    [pendentes]
+  );
 
-  const toggleSel = (id: string) =>
-    setSelecionados((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-  const aplicarEmMassa = () => {
-    if (!motivoEmMassa || selecionados.size === 0) return;
-    setMotivoPorId((prev) => {
-      const next = { ...prev };
-      for (const id of selecionados) next[id] = motivoEmMassa;
-      return next;
-    });
+  const aplicarNasPendentes = (motivo: string) => {
+    if (!motivo) return;
+    selecionarMotivo(pendentes.map((p) => p.idPedido), motivo);
   };
 
+  const toggleExpandido = (rota: string) =>
+    setExpandido((prev) => {
+      const next = new Set(prev);
+      if (next.has(rota)) next.delete(rota);
+      else next.add(rota);
+      return next;
+    });
+
   const confirmar = () => {
-    if (pedidosEntrega.length > 0) {
-      const semMotivo = pedidosEntrega.filter((p) => !(motivoPorId[p.idPedido]?.trim()));
-      if (semMotivo.length > 0) {
-        setValidacao(`Selecione um motivo para todos os pedidos (${semMotivo.length} sem motivo).`);
-        return;
-      }
+    if (pedidosEntrega.length > 0 && pendentes.length > 0) {
+      setValidacao(
+        `Selecione um motivo para todas as carradas (${gruposPendentes.size} carrada(s) / ${pendentes.length} pedido(s) sem motivo).`
+      );
+      return;
     }
     setValidacao(null);
     onConfirmar(motivoPorId);
   };
 
-  const todosSelecionados = pedidosEntrega.length > 0 && pedidosEntrega.every((p) => selecionados.has(p.idPedido));
+  const motivoComumDoGrupo = (grupo: GrupoCarrada): string => {
+    const primeiro = motivoPorId[grupo.itens[0]!.idPedido] ?? '';
+    return grupo.itens.every((it) => (motivoPorId[it.idPedido] ?? '') === primeiro) ? primeiro : '';
+  };
+
+  const formatLista = (datas: string[]): string => {
+    if (datas.length === 0) return '—';
+    if (datas.length === 1) return formatDataCurta(datas[0]!);
+    return `${formatDataCurta(datas[0]!)} +${datas.length - 1}`;
+  };
 
   return (
     <div
@@ -112,11 +345,11 @@ export default function ConfirmacaoSimulacaoModal({
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-600">
           <div>
             <h2 id="confirmacao-simulacao-titulo" className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-              Confirmar alterações da simulação
+              Registrar motivos e confirmar
             </h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              As alterações de Data de entrega abaixo exigem um motivo e serão aplicadas à previsão dos
-              pedidos (replicadas para toda a carrada).
+              Escolha o motivo por carrada (replicado para todos os pedidos). Expanda a carrada para tratar
+              exceções pedido a pedido.
               {qtdCarradasSomenteProducao > 0 &&
                 ` Além disso, ${qtdCarradasSomenteProducao} carrada(s) terão apenas a Data de produção atualizada.`}
             </p>
@@ -132,39 +365,34 @@ export default function ConfirmacaoSimulacaoModal({
         </div>
 
         {pedidosEntrega.length > 0 && (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-2 dark:border-slate-600">
-            <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-              <input
-                type="checkbox"
-                checked={todosSelecionados}
-                onChange={(e) =>
-                  setSelecionados(e.target.checked ? new Set(pedidosEntrega.map((p) => p.idPedido)) : new Set())
-                }
-              />
-              Selecionar todos
-            </label>
-            <span className="text-xs text-slate-400">·</span>
-            <span className="text-xs text-slate-600 dark:text-slate-300">Aplicar motivo aos selecionados:</span>
-            <select
-              value={motivoEmMassa}
-              onChange={(e) => setMotivoEmMassa(e.target.value)}
-              className={SELECT_CLASS}
+          <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-2 dark:border-slate-600">
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
+                pendentes.length === 0
+                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+              }`}
             >
-              <option value="">Selecione um motivo…</option>
-              {motivos.map((m) => (
-                <option key={m.id} value={m.descricao}>
-                  {m.descricao}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={aplicarEmMassa}
-              disabled={!motivoEmMassa || selecionados.size === 0}
-              className="rounded-lg bg-primary-600 px-3 py-1 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-            >
-              Aplicar ({selecionados.size})
-            </button>
+              {pendentes.length === 0
+                ? 'Todos os motivos preenchidos'
+                : `${gruposPendentes.size} carrada(s) sem motivo`}
+            </span>
+            {pendentes.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-600 dark:text-slate-300">
+                  Aplicar às carradas sem motivo:
+                </span>
+                <div className="w-64">
+                  <MotivoPicker
+                    value=""
+                    onSelect={aplicarNasPendentes}
+                    motivos={motivos}
+                    recentes={recentes}
+                    compact
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -181,11 +409,8 @@ export default function ConfirmacaoSimulacaoModal({
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/50">
                   <th className={`${TH} w-8`} />
-                  <th className={`${TH} text-left`}>Rota</th>
-                  <th className={`${TH} text-left`}>Pedido</th>
-                  <th className={`${TH} text-left`}>Cliente</th>
-                  <th className={`${TH} text-left`}>Cód</th>
-                  <th className={`${TH} text-left`}>Descrição</th>
+                  <th className={`${TH} text-left`}>Carrada (rota)</th>
+                  <th className={`${TH} text-right`}>Pedidos</th>
                   <th className={`${TH} text-right`}>Qtde Pendente Real</th>
                   <th className={`${TH} text-left`}>Previsão anterior</th>
                   <th className={`${TH} text-left`}>Nova previsão</th>
@@ -193,19 +418,26 @@ export default function ConfirmacaoSimulacaoModal({
                 </tr>
               </thead>
               <tbody>
-                {gruposPorCarrada.map((grupo) => (
-                  <GrupoCarrada
-                    key={grupo.rota}
-                    rota={grupo.rota}
-                    itens={grupo.itens}
-                    motivos={motivos}
-                    motivoPorId={motivoPorId}
-                    selecionados={selecionados}
-                    onToggleSel={toggleSel}
-                    onSetMotivo={setMotivo}
-                    onSetMotivoGrupo={setMotivoGrupo}
-                  />
-                ))}
+                {grupos.map((grupo) => {
+                  const aberto = expandido.has(grupo.rota);
+                  const pendente = gruposPendentes.has(grupo.rota);
+                  const motivoComum = motivoComumDoGrupo(grupo);
+                  return (
+                    <GrupoCarradaRows
+                      key={grupo.rota}
+                      grupo={grupo}
+                      aberto={aberto}
+                      pendente={pendente}
+                      motivoComum={motivoComum}
+                      motivos={motivos}
+                      recentes={recentes}
+                      motivoPorId={motivoPorId}
+                      formatLista={formatLista}
+                      onToggle={() => toggleExpandido(grupo.rota)}
+                      onSelecionarMotivo={selecionarMotivo}
+                    />
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -241,96 +473,110 @@ export default function ConfirmacaoSimulacaoModal({
   );
 }
 
-function GrupoCarrada({
-  rota,
-  itens,
+function GrupoCarradaRows({
+  grupo,
+  aberto,
+  pendente,
+  motivoComum,
   motivos,
+  recentes,
   motivoPorId,
-  selecionados,
-  onToggleSel,
-  onSetMotivo,
-  onSetMotivoGrupo,
+  formatLista,
+  onToggle,
+  onSelecionarMotivo,
 }: {
-  rota: string;
-  itens: PedidoAlterado[];
+  grupo: GrupoCarrada;
+  aberto: boolean;
+  pendente: boolean;
+  motivoComum: string;
   motivos: MotivoSugestao[];
+  recentes: string[];
   motivoPorId: Record<string, string>;
-  selecionados: Set<string>;
-  onToggleSel: (id: string) => void;
-  onSetMotivo: (id: string, motivo: string) => void;
-  onSetMotivoGrupo: (itens: PedidoAlterado[], motivo: string) => void;
+  formatLista: (datas: string[]) => string;
+  onToggle: () => void;
+  onSelecionarMotivo: (ids: string[], motivo: string) => void;
 }) {
-  const motivoComum = itens.every((it) => motivoPorId[it.idPedido] === motivoPorId[itens[0]!.idPedido])
-    ? motivoPorId[itens[0]!.idPedido] ?? ''
-    : '';
   return (
     <>
-      <tr className="border-b border-slate-200 bg-slate-100/70 dark:border-slate-600 dark:bg-slate-700/40">
-        <td className="px-2 py-1.5" />
-        <td className="px-2 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200" colSpan={6}>
-          {rota} <span className="font-normal text-slate-400">({itens.length} pedido(s))</span>
+      <tr
+        className={`border-b border-slate-200 dark:border-slate-600 ${
+          pendente
+            ? 'bg-amber-50/70 dark:bg-amber-900/10'
+            : 'bg-slate-100/70 dark:bg-slate-700/40'
+        }`}
+      >
+        <td className="px-2 py-1.5 text-center align-middle">
+          <button
+            type="button"
+            onClick={onToggle}
+            className="rounded px-1 text-xs text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-600"
+            title={aberto ? 'Recolher pedidos' : 'Expandir pedidos (exceções)'}
+            aria-expanded={aberto}
+          >
+            {aberto ? '▾' : '▸'}
+          </button>
         </td>
-        <td className="px-2 py-1.5 text-right text-[11px] text-slate-500 dark:text-slate-400" colSpan={2}>
-          Motivo para toda a carrada:
+        <td className="px-2 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
+          {grupo.rota}
+        </td>
+        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-slate-600 dark:text-slate-300">
+          {grupo.itens.length}
+        </td>
+        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-slate-600 dark:text-slate-300">
+          {formatQtdeInt(grupo.qtdeTotal)}
+        </td>
+        <td className="px-2 py-1.5 text-xs whitespace-nowrap text-slate-600 dark:text-slate-300">
+          {formatLista(grupo.previsoesAnteriores)}
+        </td>
+        <td className="px-2 py-1.5 text-xs whitespace-nowrap font-medium text-primary-700 dark:text-primary-300">
+          {formatLista(grupo.previsoesNovas)}
         </td>
         <td className="px-2 py-1.5">
-          <select
+          <MotivoPicker
             value={motivoComum}
-            onChange={(e) => onSetMotivoGrupo(itens, e.target.value)}
-            className={SELECT_CLASS}
-          >
-            <option value="">Selecione…</option>
-            {motivos.map((m) => (
-              <option key={m.id} value={m.descricao}>
-                {m.descricao}
-              </option>
-            ))}
-          </select>
+            onSelect={(m) => onSelecionarMotivo(grupo.itens.map((i) => i.idPedido), m)}
+            motivos={motivos}
+            recentes={recentes}
+            compact
+          />
         </td>
       </tr>
-      {itens.map((it) => (
-        <tr key={it.idPedido} className="border-b border-slate-100 dark:border-slate-700">
-          <td className="px-2 py-1.5 text-center align-top">
-            <input
-              type="checkbox"
-              checked={selecionados.has(it.idPedido)}
-              onChange={() => onToggleSel(it.idPedido)}
-            />
-          </td>
-          <td className={TD}>{it.rota}</td>
-          <td className={TD}>{it.pd}</td>
-          <td className={`${TD} max-w-[12rem]`}>
-            <span className="line-clamp-2 block" title={it.cliente}>
-              {it.cliente || '—'}
-            </span>
-          </td>
-          <td className={TD}>{it.cod || '—'}</td>
-          <td className={`${TD} max-w-[16rem]`}>
-            <span className="line-clamp-2 block" title={it.descricao}>
-              {it.descricao || '—'}
-            </span>
-          </td>
-          <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(it.qtdePendenteReal)}</td>
-          <td className={`${TD} whitespace-nowrap`}>{formatDataCurta(it.previsaoAnterior)}</td>
-          <td className={`${TD} whitespace-nowrap font-medium text-primary-700 dark:text-primary-300`}>
-            {formatDataCurta(it.previsaoNova)}
-          </td>
-          <td className={TD}>
-            <select
-              value={motivoPorId[it.idPedido] ?? ''}
-              onChange={(e) => onSetMotivo(it.idPedido, e.target.value)}
-              className={SELECT_CLASS}
-            >
-              <option value="">Selecione…</option>
-              {motivos.map((m) => (
-                <option key={m.id} value={m.descricao}>
-                  {m.descricao}
-                </option>
-              ))}
-            </select>
-          </td>
-        </tr>
-      ))}
+      {aberto &&
+        grupo.itens.map((it) => (
+          <tr key={it.idPedido} className="border-b border-slate-100 dark:border-slate-700">
+            <td className="px-2 py-1.5" />
+            <td className={TD}>
+              <div className="flex flex-col">
+                <span className="text-xs font-medium">{it.pd}</span>
+                <span className="line-clamp-1 text-[11px] text-slate-500 dark:text-slate-400" title={it.cliente}>
+                  {it.cliente || '—'}
+                </span>
+                <span
+                  className="line-clamp-1 text-[11px] text-slate-400 dark:text-slate-500"
+                  title={it.descricao}
+                >
+                  {it.cod ? `${it.cod} · ` : ''}
+                  {it.descricao || '—'}
+                </span>
+              </div>
+            </td>
+            <td className={`${TD} text-right`} />
+            <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(it.qtdePendenteReal)}</td>
+            <td className={`${TD} whitespace-nowrap`}>{formatDataCurta(it.previsaoAnterior)}</td>
+            <td className={`${TD} whitespace-nowrap font-medium text-primary-700 dark:text-primary-300`}>
+              {formatDataCurta(it.previsaoNova)}
+            </td>
+            <td className={TD}>
+              <MotivoPicker
+                value={motivoPorId[it.idPedido] ?? ''}
+                onSelect={(m) => onSelecionarMotivo([it.idPedido], m)}
+                motivos={motivos}
+                recentes={recentes}
+                compact
+              />
+            </td>
+          </tr>
+        ))}
     </>
   );
 }

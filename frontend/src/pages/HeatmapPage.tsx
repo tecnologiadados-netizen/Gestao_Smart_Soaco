@@ -6,6 +6,7 @@ import FiltroPedidos, { defaultFiltros, type FiltrosPedidosState } from '../comp
 import {
   obterResumoFinanceiro,
   obterResumoStatusPorTipoF,
+  obterCargasSeparadasMesmoClienteCidade,
   type ResumoFinanceiro,
   type ResumoStatusPorTipoF,
   type FiltrosPedidos,
@@ -16,6 +17,7 @@ import { loadFiltrosHeatmap, saveFiltrosHeatmap } from '../utils/persistFiltros'
 import HeatmapRoteirizadorPanel from '../components/HeatmapRoteirizadorPanel';
 import HeatmapRoteiroWizardModal, { type RoteiroWizardStep } from '../components/HeatmapRoteiroWizardModal';
 import HeatmapAjusteCargaModal from '../components/HeatmapAjusteCargaModal';
+import HeatmapCargasSeparadasModal from '../components/HeatmapCargasSeparadasModal';
 import {
   limparExclusoesMunicipio,
   limparAjustesQtdeMunicipio,
@@ -68,8 +70,8 @@ export default function HeatmapPage() {
   const [loading, setLoading] = useState(true);
   const [resumoStatusTipoF, setResumoStatusTipoF] = useState<ResumoStatusPorTipoF | null>(null);
   const [loadingStatusTipoF, setLoadingStatusTipoF] = useState(true);
-  const [mostrarFiltros, setMostrarFiltros] = useState(true);
-  const [mostrarCards, setMostrarCards] = useState(true);
+  const [mostrarFiltros, setMostrarFiltros] = useState(false);
+  const [mostrarCards, setMostrarCards] = useState(false);
   const [telaCheia, setTelaCheia] = useState(false);
   /** Altura explícita (px) do bloco do mapa; `null` = preencher o espaço disponível (flex). */
   const [mapPaneHeightPx, setMapPaneHeightPx] = useState<number | null>(readStoredMapPaneHeight);
@@ -91,6 +93,11 @@ export default function HeatmapPage() {
   const [detalhesCompletos, setDetalhesCompletos] = useState<Map<string, TooltipDetalheRow[]>>(
     () => new Map()
   );
+  const [cargasSepOpen, setCargasSepOpen] = useState(false);
+  const [cargasSepLoading, setCargasSepLoading] = useState(false);
+  const [cargasSepErro, setCargasSepErro] = useState<string | null>(null);
+  const [cargasSepDetalhes, setCargasSepDetalhes] = useState<TooltipDetalheRow[]>([]);
+  const cargasSepCacheRef = useRef(new Map<string, TooltipDetalheRow[]>());
   const [pdfCaptura, setPdfCaptura] = useState<{
     key: number;
     polyline: [number, number][];
@@ -143,6 +150,8 @@ export default function HeatmapPage() {
     setDetalhesCompletos(new Map());
     setAjusteCargaChave(null);
     setRoteiroCarradasAtivas(null);
+    cargasSepCacheRef.current.clear();
+    setCargasSepDetalhes([]);
     carregar();
     carregarStatusTipoF();
   }, [carregar, carregarStatusTipoF]);
@@ -150,7 +159,43 @@ export default function HeatmapPage() {
   const limparFiltros = useCallback(() => {
     setFiltros(defaultFiltros);
     saveFiltrosHeatmap(defaultFiltros);
+    setExclusoesSimulacao(new Set());
+    setAjustesQtdeSimulacao(new Map());
+    setDetalhesCompletos(new Map());
+    setAjusteCargaChave(null);
+    setRoteiroCarradasAtivas(null);
+    cargasSepCacheRef.current.clear();
+    setCargasSepDetalhes([]);
   }, []);
+
+  const filtrosKey = useMemo(() => {
+    const params = new URLSearchParams();
+    Object.entries(filtros as Record<string, unknown>).forEach(([k, v]) => {
+      if (v !== undefined && v !== '' && k !== 'page' && k !== 'limit') params.set(k, String(v));
+    });
+    return params.toString();
+  }, [filtros]);
+
+  const abrirModalCargasSep = useCallback(async () => {
+    setCargasSepOpen(true);
+    setCargasSepErro(null);
+    const cached = cargasSepCacheRef.current.get(filtrosKey);
+    if (cached) {
+      setCargasSepDetalhes(cached);
+      return;
+    }
+    setCargasSepLoading(true);
+    try {
+      const r = await obterCargasSeparadasMesmoClienteCidade(filtros as FiltrosPedidos);
+      cargasSepCacheRef.current.set(filtrosKey, r.detalhes ?? []);
+      setCargasSepDetalhes(r.detalhes ?? []);
+    } catch {
+      setCargasSepErro('Não foi possível carregar os detalhes.');
+      setCargasSepDetalhes([]);
+    } finally {
+      setCargasSepLoading(false);
+    }
+  }, [filtros, filtrosKey]);
 
   const onMapaItensCarregados = useCallback((itens: MapaMunicipioItem[]) => {
     setMapaItens(itens);
@@ -624,7 +669,15 @@ export default function HeatmapPage() {
       )}
       {mostrarCards && (
         <div className="shrink-0">
-          <CardsResumoFinanceiro resumo={resumoFinanceiro} loading={loading} />
+          <CardsResumoFinanceiro
+            resumo={resumoFinanceiro}
+            loading={loading}
+            overrideQuantidadePedidos={{
+              label: 'Pedidos em cargas separadas (mesmo cliente e cidade)',
+              value: resumoFinanceiro?.quantidadePedidosCargasSeparadasMesmoClienteCidade ?? 0,
+              onClick: abrirModalCargasSep,
+            }}
+          />
         </div>
       )}
       <div className={areaPrincipalClass}>
@@ -863,6 +916,13 @@ export default function HeatmapPage() {
           onCancelar={cancelarRoteirizacao}
         />
       )}
+      <HeatmapCargasSeparadasModal
+        open={cargasSepOpen}
+        loading={cargasSepLoading}
+        erro={cargasSepErro}
+        detalhes={cargasSepDetalhes}
+        onClose={() => setCargasSepOpen(false)}
+      />
     </div>
   );
 }

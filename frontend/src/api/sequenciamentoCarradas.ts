@@ -22,7 +22,12 @@ export type SequenciamentoSimulacaoItem = {
 export type SequenciamentoSimulacao = {
   ordem: string[];
   itens: SequenciamentoSimulacaoItem[];
+  /** Rascunho de motivos por id_pedido (registro de motivos do fluxo de confirmação). */
+  motivos?: Record<string, string>;
 };
+
+/** Fluxo do snapshot: 'rascunho' (editável, autosave) -> 'concluido' (somente leitura). */
+export type SequenciamentoSnapshotStatus = 'rascunho' | 'concluido';
 
 export type SequenciamentoCarradasPayloadV1 = {
   version: 1 | 2;
@@ -39,6 +44,7 @@ export type SequenciamentoSnapshotListItem = {
   usuarioLogin: string;
   createdAt: string;
   carradaCount: number;
+  status: SequenciamentoSnapshotStatus;
 };
 
 export type SequenciamentoSnapshotDetalhe = SequenciamentoSnapshotListItem & {
@@ -59,6 +65,7 @@ export async function gravarSequenciamentoSnapshot(simulacao?: SequenciamentoSim
   createdAt?: string;
   usuarioLogin?: string;
   carradaCount?: number;
+  status?: SequenciamentoSnapshotStatus;
   error?: string;
 }> {
   const res = await apiFetch('/api/pedidos/sequenciamento-carradas/snapshots', {
@@ -82,7 +89,42 @@ export async function gravarSequenciamentoSnapshot(simulacao?: SequenciamentoSim
     createdAt: body.createdAt as string,
     usuarioLogin: body.usuarioLogin as string,
     carradaCount: body.carradaCount as number,
+    status: (body.status as SequenciamentoSnapshotStatus) ?? 'rascunho',
   };
+}
+
+/** Autosave do rascunho: atualiza a simulação (datas/ordem/motivos) do snapshot. */
+export async function atualizarSequenciamentoSnapshot(
+  id: number,
+  simulacao: SequenciamentoSimulacao | null,
+  opts?: { keepalive?: boolean }
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/pedidos/sequenciamento-carradas/snapshots/${id}`, {
+    method: 'PATCH',
+    body: { simulacao },
+    ...(opts?.keepalive ? { keepalive: true } : {}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    return { ok: false, error: (err as { error?: string }).error ?? res.statusText };
+  }
+  return { ok: true };
+}
+
+/** Marca o snapshot como concluído (status final; somente leitura). */
+export async function concluirSequenciamentoSnapshot(
+  id: number,
+  simulacao?: SequenciamentoSimulacao | null
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/api/pedidos/sequenciamento-carradas/snapshots/${id}/concluir`, {
+    method: 'POST',
+    body: simulacao !== undefined ? { simulacao } : {},
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    return { ok: false, error: (err as { error?: string }).error ?? res.statusText };
+  }
+  return { ok: true };
 }
 
 export async function consultarSequenciamentoAoVivo(): Promise<{

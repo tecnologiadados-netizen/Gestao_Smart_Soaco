@@ -1,0 +1,3 @@
+export const CLIENTES_INITIAL_LIMIT = 15;
+export const CLIENTES_SEARCH_LIMIT = 30;
+export const CLIENTES_MIN_SEARCH_CHARS = 2;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { PERMISSOES, type CodigoPermissao } from '../../config/permissoes';
 import {
@@ -7,6 +7,8 @@ import {
   COMPRAS_SUBMENUS,
   ENGENHARIA_SUBMENUS,
   GESTAO_USUARIOS_SUBMENUS,
+  QUALIDADE_MENU,
+  COMERCIAL_MENU,
   type FinanceiroMenuEntry,
   type NavMenuEntry,
   filterPcpMenuChildren,
@@ -14,6 +16,7 @@ import {
 } from '../../config/navigationMenu';
 import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from '../../utils/suportePermissoes';
 import { podeVerMenuFinanceiro } from '../../utils/financeiroPermissoes';
+import { useSidebarAccordionOpen } from '../../hooks/useSidebarAccordionOpen';
 
 const SIDEBAR_LINK =
   'block rounded-md px-3 py-2 text-sm transition min-h-[36px] truncate';
@@ -75,6 +78,12 @@ const ICONS = {
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  ),
+  comercial: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M6 7V5a2 2 0 012-2h8a2 2 0 012 2v2M6 7v14a2 2 0 002 2h8a2 2 0 002-2V7" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6M9 16h6" />
     </svg>
   ),
   qualidade: (
@@ -139,6 +148,7 @@ function SidebarNavLink({
   onNavigate,
   className = '',
   title,
+  external = false,
 }: {
   to: string;
   label: string;
@@ -146,7 +156,23 @@ function SidebarNavLink({
   onNavigate: () => void;
   className?: string;
   title?: string;
+  external?: boolean;
 }) {
+  if (external) {
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+    const isActive = pathname === to || pathname.startsWith(`${to}/`);
+    return (
+      <a
+        href={to}
+        title={title ?? label}
+        onClick={onNavigate}
+        className={`${SIDEBAR_LINK} ${isActive ? SIDEBAR_LINK_ACTIVE : SIDEBAR_LINK_IDLE} ${className}`}
+      >
+        <SidebarLabel open={sidebarOpen}>{label}</SidebarLabel>
+      </a>
+    );
+  }
+
   return (
     <NavLink
       to={to}
@@ -324,20 +350,7 @@ export default function Sidebar({
   financeiroMenu,
   supportUnreadCount,
 }: SidebarProps) {
-  const [accordionOpen, setAccordionOpen] = useState<Set<string>>(() => new Set());
-
-  useEffect(() => {
-    if (!open) setAccordionOpen(new Set());
-  }, [open]);
-
-  const toggleAccordion = useCallback((key: string) => {
-    setAccordionOpen((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
+  const { accordionOpen, toggleAccordion } = useSidebarAccordionOpen();
 
   const isPcpActive = pathname.startsWith('/pedidos');
   const isLogisticaActive =
@@ -350,6 +363,7 @@ export default function Sidebar({
     pathname.startsWith('/situacao-api');
   const isEngenhariaActive = pathname.startsWith('/engenharia');
   const isQualidadeActive = pathname.startsWith('/qualidade');
+  const isComercialActive = pathname.startsWith('/comercial');
   const isFinanceiroActive = pathname.startsWith('/financeiro');
   const isGestaoUsuariosActive = pathname.startsWith('/usuarios');
   const isSuporteActive = pathname.startsWith('/suporte');
@@ -491,6 +505,30 @@ export default function Sidebar({
           </SidebarSection>
         )}
 
+        {(hasPermission(PERMISSOES.COMERCIAL_VER) || hasPermission(PERMISSOES.COMERCIAL_PAINEL_VER)) && (
+          <SidebarSection
+            id="comercial"
+            label="Comercial"
+            icon={ICONS.comercial}
+            active={isComercialActive}
+            sidebarOpen={open}
+            onExpand={onExpand}
+            accordionOpen={accordionOpen}
+            toggleAccordion={toggleAccordion}
+          >
+            <NavMenuTree
+              entries={COMERCIAL_MENU}
+              pathname={pathname}
+              sidebarOpen={open}
+              accordionOpen={accordionOpen}
+              toggleAccordion={toggleAccordion}
+              onNavigate={onNavigate}
+              hasPermission={hasPermission}
+              prefix="comercial"
+            />
+          </SidebarSection>
+        )}
+
         {hasPermission(PERMISSOES.PRECIFICACAO_VER) && (
           <SidebarSection
             id="engenharia"
@@ -515,19 +553,27 @@ export default function Sidebar({
         )}
 
         {hasPermission(PERMISSOES.QUALIDADE_VER) && (
-          <NavLink
-            to="/qualidade"
-            title="Qualidade"
-            onClick={onNavigate}
-            className={({ isActive }) =>
-              `${SIDEBAR_SECTION_BTN} mb-0.5 ${
-                isActive || isQualidadeActive ? SIDEBAR_SECTION_ACTIVE : SIDEBAR_SECTION_IDLE
-              }`
-            }
+          <SidebarSection
+            id="qualidade"
+            label="Qualidade"
+            icon={ICONS.qualidade}
+            active={isQualidadeActive}
+            sidebarOpen={open}
+            onExpand={onExpand}
+            accordionOpen={accordionOpen}
+            toggleAccordion={toggleAccordion}
           >
-            <MenuIcon>{ICONS.qualidade}</MenuIcon>
-            <SidebarLabel open={open}>Qualidade</SidebarLabel>
-          </NavLink>
+            <NavMenuTree
+              entries={QUALIDADE_MENU}
+              pathname={pathname}
+              sidebarOpen={open}
+              accordionOpen={accordionOpen}
+              toggleAccordion={toggleAccordion}
+              onNavigate={onNavigate}
+              hasPermission={hasPermission}
+              prefix="qualidade"
+            />
+          </SidebarSection>
         )}
 
         {podeVerMenuFinanceiro(hasPermission) && (

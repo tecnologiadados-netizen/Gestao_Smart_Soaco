@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  atualizarSequenciamentoSnapshot,
+  concluirSequenciamentoSnapshot,
   consultarSequenciamentoAoVivo,
   gravarSequenciamentoSnapshot,
   listarSequenciamentoSnapshots,
@@ -8,11 +10,13 @@ import {
   type SequenciamentoCarradasPayloadV1,
   type SequenciamentoSimulacao,
   type SequenciamentoSnapshotListItem,
+  type SequenciamentoSnapshotStatus,
 } from '../../api/sequenciamentoCarradas';
 import { ajustarDataProducaoLote, ajustarPrevisaoLote } from '../../api/pedidos';
 import SequenciamentoCarradasDetalheModal from '../../components/sequenciamento-carradas/SequenciamentoCarradasDetalheModal';
 import CalendarioProducaoModal from '../../components/sequenciamento-carradas/CalendarioProducaoModal';
 import ConfirmacaoSimulacaoModal from '../../components/sequenciamento-carradas/ConfirmacaoSimulacaoModal';
+import ModalCorrigirDatasSequenciamento from '../../components/sequenciamento-carradas/ModalCorrigirDatasSequenciamento';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
@@ -21,10 +25,12 @@ import {
   formatMoeda,
   formatPercentual,
   classPercentualEmDia,
+  isCarradaOrdemFinal,
   ordenarCarradas,
   subtotalCarradas,
   SUBTOTAL_ROW_CLASS,
 } from '../../components/sequenciamento-carradas/sequenciamentoCarradasUtils';
+import { useDragAutoScroll } from '../../hooks/useDragAutoScroll';
 import {
   carradaAlterada,
   carradaKeyDe,
@@ -34,6 +40,7 @@ import {
   formatDataCurta,
   hojeISO,
   valorEfetivo,
+  listarCarradasComDatasPassadas,
   type SimEntry,
 } from '../../components/sequenciamento-carradas/simulacaoCarradas';
 
@@ -67,7 +74,25 @@ const COL_LABELS: Record<(typeof COL_IDS)[number], string> = {
 };
 
 const DATE_INPUT_CLASS =
-  'w-[9.5rem] rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:disabled:bg-slate-800';
+  'w-[8rem] rounded-md border border-slate-300 bg-white px-1.5 py-1 text-xs text-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:disabled:bg-slate-800';
+
+const COL_TH_CLASS: Partial<Record<(typeof COL_IDS)[number], string>> = {
+  dataProducao: 'w-[8.5rem]',
+  dataEntrega: 'w-[8.5rem]',
+  saldoAFaturar: 'w-28',
+  percentualEmDia: 'w-24',
+  adiantamento: 'w-28',
+  valorAVistaAte10d: 'w-28',
+};
+
+const COL_TD_CLASS: Partial<Record<(typeof COL_IDS)[number], string>> = {
+  dataProducao: 'w-[8.5rem]',
+  dataEntrega: 'w-[8.5rem]',
+  saldoAFaturar: 'w-28 text-right tabular-nums',
+  percentualEmDia: 'w-24 text-right tabular-nums',
+  adiantamento: 'w-28 text-right tabular-nums',
+  valorAVistaAte10d: 'w-28 text-right tabular-nums',
+};
 
 type SnapshotVisualizado = {
   id: number | null;
@@ -76,7 +101,18 @@ type SnapshotVisualizado = {
   usuarioLogin: string;
   carradaCount: number;
   aoVivo: boolean;
+  status?: SequenciamentoSnapshotStatus;
 };
+
+function labelStatus(status: SequenciamentoSnapshotStatus): string {
+  return status === 'rascunho' ? 'Rascunho' : 'Concluído';
+}
+
+function classStatus(status: SequenciamentoSnapshotStatus): string {
+  return status === 'rascunho'
+    ? 'bg-amber-500/15 text-amber-800 dark:text-amber-200'
+    : 'bg-slate-500/15 text-slate-700 dark:text-slate-300';
+}
 
 function aplicarPayload(
   payload: SequenciamentoCarradasPayloadV1
@@ -112,13 +148,22 @@ export default function SequenciamentoCarradasPage() {
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [calendarioAberto, setCalendarioAberto] = useState(false);
   const [confirmacaoAberta, setConfirmacaoAberta] = useState(false);
+  const [corrigirDatasAberta, setCorrigirDatasAberta] = useState(false);
   const [salvandoConfirmacao, setSalvandoConfirmacao] = useState(false);
   const [erroConfirmacao, setErroConfirmacao] = useState<string | null>(null);
+  const [motivoPorId, setMotivoPorId] = useState<Record<string, string>>({});
 
   const detalheReqRef = useRef(0);
+  const autosavePayloadRef = useRef<() => SequenciamentoSimulacao | null>(() => null);
 
   const aoVivo = snapshotVisualizado?.aoVivo ?? false;
-  const editavel = aoVivo; // datas/ordem só editáveis na consulta ao vivo (snapshot é congelado)
+  const statusSnapshot = snapshotVisualizado?.status;
+  const emConsulta = aoVivo;
+  const isRascunho = statusSnapshot === 'rascunho';
+  /** Datas editáveis apenas em snapshot rascunho. */
+  const editavel = isRascunho;
+  /** Reordenação visual liberada em consulta ao vivo e em rascunho. */
+  const podeArrastar = emConsulta || isRascunho;
 
   const baseline = useMemo(() => computarBaselines(linhasSnapshot), [linhasSnapshot]);
 
@@ -202,12 +247,12 @@ export default function SequenciamentoCarradasPage() {
     );
   }, [grade.rowsExibidas, ordemManual]);
 
-  const subtotal = useMemo(() => subtotalCarradas(carradasFinais), [carradasFinais]);
-
-  const temAlteracoes = useMemo(
-    () => [...sim.keys()].some((k) => carradaAlterada(sim, baseline, k)),
-    [sim, baseline]
+  const carradasComDatasPassadas = useMemo(
+    () => listarCarradasComDatasPassadas(carradasFinais, sim, baseline, carradaKeyDe),
+    [carradasFinais, sim, baseline]
   );
+
+  const subtotal = useMemo(() => subtotalCarradas(carradasFinais), [carradasFinais]);
 
   const pedidosEntrega = useMemo(
     () => computarPedidosComEntregaAlterada(linhasSnapshot, sim, baseline),
@@ -255,6 +300,7 @@ export default function SequenciamentoCarradasPage() {
   const resetarSimulacao = useCallback(() => {
     setSim(new Map());
     setOrdemManual(null);
+    setMotivoPorId({});
     grade.limparFiltrosGrade();
   }, [grade]);
 
@@ -291,9 +337,11 @@ export default function SequenciamentoCarradasPage() {
         }
         setSim(m);
         setOrdemManual(Array.isArray(simu.ordem) && simu.ordem.length > 0 ? simu.ordem : null);
+        setMotivoPorId(simu.motivos && typeof simu.motivos === 'object' ? { ...simu.motivos } : {});
       } else {
         setSim(new Map());
         setOrdemManual(null);
+        setMotivoPorId({});
       }
     },
     [grade]
@@ -326,6 +374,7 @@ export default function SequenciamentoCarradasPage() {
             usuarioLogin: data.usuarioLogin,
             carradaCount: data.carradaCount,
             aoVivo: false,
+            status: data.status,
           },
           data.payload
         );
@@ -392,9 +441,16 @@ export default function SequenciamentoCarradasPage() {
       };
     });
     const ordem = ordemManual ?? carradasFinais.map(carradaKeyDe);
-    if (itens.length === 0 && !ordemManual) return null;
-    return { ordem, itens };
-  }, [sim, carradas, ordemManual, carradasFinais]);
+    const motivosKeys = Object.keys(motivoPorId).filter((k) => motivoPorId[k]?.trim());
+    const motivos =
+      motivosKeys.length > 0
+        ? Object.fromEntries(motivosKeys.map((k) => [k, motivoPorId[k]!]))
+        : undefined;
+    if (itens.length === 0 && !ordemManual && !motivos) return null;
+    return { ordem, itens, ...(motivos ? { motivos } : {}) };
+  }, [sim, carradas, ordemManual, carradasFinais, motivoPorId]);
+
+  autosavePayloadRef.current = montarSimulacaoPayload;
 
   const handleGravar = useCallback(async () => {
     setGravando(true);
@@ -406,25 +462,131 @@ export default function SequenciamentoCarradasPage() {
         setFeedbackGravacao(r.error ?? 'Erro ao gravar snapshot.');
         return;
       }
-      setFeedbackGravacao(`Snapshot ${r.cod} gravado com sucesso (${r.carradaCount ?? 0} carradas).`);
+      setFeedbackGravacao(`Snapshot ${r.cod} gravado como rascunho (${r.carradaCount ?? 0} carradas).`);
       setHistoricoVersao((v) => v + 1);
+      if (r.id) {
+        await abrirSnapshot(r.id);
+      }
     } finally {
       setGravando(false);
     }
-  }, [montarSimulacaoPayload]);
+  }, [montarSimulacaoPayload, abrirSnapshot]);
+
+  const producaoEfetivaDe = useCallback(
+    (next: Map<string, SimEntry>, key: string): string => {
+      const s = next.get(key);
+      if (s && s.dataProducao !== undefined && s.dataProducao !== '') return s.dataProducao;
+      if (s && s.dataProducao === '') return '';
+      return baseline.get(key)?.dataProducao ?? '';
+    },
+    [baseline]
+  );
+
+  const entregaEfetivaDe = useCallback(
+    (next: Map<string, SimEntry>, key: string): string => {
+      const s = next.get(key);
+      if (s && s.dataEntrega !== undefined && s.dataEntrega !== '') return s.dataEntrega;
+      if (s && s.dataEntrega === '') return '';
+      return baseline.get(key)?.dataEntrega ?? '';
+    },
+    [baseline]
+  );
 
   const editarData = useCallback(
     (key: string, campo: 'dataProducao' | 'dataEntrega', value: string) => {
       setSim((prev) => {
         const next = new Map(prev);
         const cur = { ...(next.get(key) ?? {}) } as SimEntry;
-        cur[campo] = value;
-        next.set(key, cur);
+        if (campo === 'dataProducao') {
+          cur.dataProducao = value;
+          next.set(key, cur);
+          const entregaAtual = entregaEfetivaDe(next, key);
+          if (value && entregaAtual && entregaAtual < value) {
+            cur.dataEntrega = value;
+            next.set(key, cur);
+          }
+        } else {
+          const producao = producaoEfetivaDe(next, key);
+          let entrega = value;
+          if (producao && entrega && entrega < producao) entrega = producao;
+          cur.dataEntrega = entrega;
+          next.set(key, cur);
+        }
         return next;
       });
     },
-    []
+    [producaoEfetivaDe, entregaEfetivaDe]
   );
+
+  const replicarProducaoNaEntrega = useCallback(
+    (key: string) => {
+      const producao = efProducao(key);
+      if (!producao) return;
+      editarData(key, 'dataEntrega', producao);
+    },
+    [efProducao, editarData]
+  );
+
+  const replicarProducaoNaEntregaTodas = useCallback(() => {
+    for (const c of carradasFinais) {
+      if (isCarradaOrdemFinal(c.carrada)) continue;
+      const key = carradaKeyDe(c);
+      const producao = efProducao(key);
+      if (producao) editarData(key, 'dataEntrega', producao);
+    }
+  }, [carradasFinais, efProducao, editarData]);
+
+  const minEntrega = useCallback(
+    (key: string): string => {
+      const prod = efProducao(key);
+      const hoje = hojeISO();
+      if (prod && prod > hoje) return prod;
+      return hoje;
+    },
+    [efProducao]
+  );
+
+  const onDragOverContainer = useDragAutoScroll(grade.tableScrollRef, dragKey != null);
+
+  // Fecha o date picker nativo ao rolar a grade (evita popup desposicionado).
+  useEffect(() => {
+    const el = grade.tableScrollRef.current;
+    if (!el || mostrarHistorico) return;
+    const onScroll = () => {
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement && active.type === 'date') {
+        active.blur();
+      }
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [grade.tableScrollRef, mostrarHistorico, snapshotVisualizado?.id]);
+
+  // Autosave do rascunho (debounce ~2s).
+  const snapshotId = snapshotVisualizado?.id;
+  useEffect(() => {
+    if (!snapshotId || !isRascunho) return;
+    const timer = window.setTimeout(() => {
+      const simulacao = autosavePayloadRef.current();
+      void atualizarSequenciamentoSnapshot(snapshotId, simulacao);
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [sim, ordemManual, motivoPorId, snapshotId, isRascunho, carradasFinais]);
+
+  // Flush no unmount e beforeunload.
+  useEffect(() => {
+    if (!snapshotId || !isRascunho) return;
+    const flush = () => {
+      const simulacao = autosavePayloadRef.current();
+      void atualizarSequenciamentoSnapshot(snapshotId, simulacao, { keepalive: true });
+    };
+    const onBeforeUnload = () => flush();
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      flush();
+    };
+  }, [snapshotId, isRascunho]);
 
   const handleDrop = useCallback(
     (targetKey: string) => {
@@ -450,7 +612,7 @@ export default function SequenciamentoCarradasPage() {
   );
 
   const handleConfirmarAplicar = useCallback(
-    async (motivoPorId: Record<string, string>) => {
+    async (motivos: Record<string, string>) => {
       setSalvandoConfirmacao(true);
       setErroConfirmacao(null);
       try {
@@ -458,7 +620,7 @@ export default function SequenciamentoCarradasPage() {
           const ajustes = pedidosEntrega.map((p) => ({
             id_pedido: p.idPedido,
             previsao_nova: p.previsaoNova,
-            motivo: motivoPorId[p.idPedido] ?? '',
+            motivo: motivos[p.idPedido] ?? '',
             previsao_atual: p.previsaoAnterior,
             rota: p.rota,
             apply_rota: true,
@@ -467,6 +629,19 @@ export default function SequenciamentoCarradasPage() {
         }
         if (itensProducao.length > 0) {
           await ajustarDataProducaoLote(itensProducao);
+        }
+        const simulacao = montarSimulacaoPayload();
+        if (snapshotVisualizado?.id) {
+          const r = await concluirSequenciamentoSnapshot(snapshotVisualizado.id, simulacao);
+          if (!r.ok) {
+            setErroConfirmacao(r.error ?? 'Erro ao concluir snapshot.');
+            return;
+          }
+          setConfirmacaoAberta(false);
+          setFeedbackGravacao('Alterações aplicadas e snapshot concluído.');
+          setHistoricoVersao((v) => v + 1);
+          await abrirSnapshot(snapshotVisualizado.id);
+          return;
         }
         setConfirmacaoAberta(false);
         setFeedbackGravacao('Alterações aplicadas com sucesso nos pedidos.');
@@ -478,20 +653,31 @@ export default function SequenciamentoCarradasPage() {
         setSalvandoConfirmacao(false);
       }
     },
-    [pedidosEntrega, itensProducao, resetarSimulacao, handleConsultar]
+    [
+      pedidosEntrega,
+      itensProducao,
+      montarSimulacaoPayload,
+      snapshotVisualizado?.id,
+      abrirSnapshot,
+      resetarSimulacao,
+      handleConsultar,
+    ]
   );
 
   const renderTh = (colId: (typeof COL_IDS)[number]) => {
     const numerica = COL_NUMERICAS.has(colId);
+    const extra = COL_TH_CLASS[colId] ?? '';
+    const labelClass =
+      colId === 'valorAVistaAte10d'
+        ? 'max-w-[6rem] whitespace-normal break-words text-[10px] leading-tight'
+        : 'whitespace-normal break-words text-[11px] leading-tight sm:text-xs';
     return (
       <th
         key={colId}
-        className="sticky top-0 z-20 border border-primary-500/40 bg-primary-600 px-2 py-2.5 align-middle font-semibold text-white shadow-[0_1px_0_rgba(0,0,0,0.08)]"
+        className={`sticky top-0 z-20 border border-primary-500/40 bg-primary-600 px-2 py-2.5 align-middle font-semibold text-white shadow-[0_1px_0_rgba(0,0,0,0.08)] ${extra}`}
       >
         <div className={`flex items-center gap-1 ${numerica ? 'justify-end' : 'justify-between'}`}>
-          <span className="whitespace-normal break-words text-[11px] leading-tight sm:text-xs">
-            {COL_LABELS[colId]}
-          </span>
+          <span className={labelClass}>{COL_LABELS[colId]}</span>
           <GradeFiltroCabecalhoBtn
             ativo={grade.colunaComFiltroAtivo(colId)}
             onClick={(e) => grade.abrirFiltroExcel(colId, e)}
@@ -512,13 +698,25 @@ export default function SequenciamentoCarradasPage() {
             ) : snapshotVisualizado ? (
               snapshotVisualizado.aoVivo ? (
                 <>
-                  <span className="font-medium text-primary-600 dark:text-primary-400">Consulta ao vivo</span> ·{' '}
+                  <span className="font-medium text-primary-600 dark:text-primary-400">Em consulta</span> ·{' '}
                   {formatDateTimeBr(snapshotVisualizado.createdAt)} · {snapshotVisualizado.carradaCount} carradas
                 </>
               ) : (
                 <>
-                  <span className="font-medium">Snapshot {snapshotVisualizado.cod}</span> ·{' '}
-                  {formatDateTimeBr(snapshotVisualizado.createdAt)} · {snapshotVisualizado.usuarioLogin} ·{' '}
+                  <span className="font-medium">Snapshot {snapshotVisualizado.cod}</span>
+                  {snapshotVisualizado.status && (
+                    <>
+                      {' '}
+                      ·{' '}
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${classStatus(snapshotVisualizado.status)}`}
+                      >
+                        {labelStatus(snapshotVisualizado.status)}
+                      </span>
+                    </>
+                  )}
+                  {' '}
+                  · {formatDateTimeBr(snapshotVisualizado.createdAt)} · {snapshotVisualizado.usuarioLogin} ·{' '}
                   {snapshotVisualizado.carradaCount} carradas
                 </>
               )
@@ -541,28 +739,32 @@ export default function SequenciamentoCarradasPage() {
               >
                 Calendário de produção
               </button>
-              {editavel && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setErroConfirmacao(null);
+              {emConsulta && (
+                <button
+                  type="button"
+                  onClick={() => void handleGravar()}
+                  disabled={gravando || consultando}
+                  className={BTN_PRIMARY}
+                >
+                  {gravando ? 'Gravando...' : 'Gravar'}
+                </button>
+              )}
+              {isRascunho && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErroConfirmacao(null);
+                    if (carradasComDatasPassadas.length > 0) {
+                      setCorrigirDatasAberta(true);
+                    } else {
                       setConfirmacaoAberta(true);
-                    }}
-                    disabled={!temAlteracoes || gravando}
-                    className={BTN_SECONDARY}
-                  >
-                    Confirmar alterações
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleGravar()}
-                    disabled={gravando || consultando}
-                    className={BTN_PRIMARY}
-                  >
-                    {gravando ? 'Gravando...' : 'Gravar'}
-                  </button>
-                </>
+                    }
+                  }}
+                  disabled={gravando}
+                  className={BTN_PRIMARY}
+                >
+                  Registrar Motivos
+                </button>
               )}
             </>
           )}
@@ -610,6 +812,7 @@ export default function SequenciamentoCarradasPage() {
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/50">
                   <th className="py-2 px-2 font-semibold text-slate-700 dark:text-slate-200">Cód</th>
+                  <th className="py-2 px-2 font-semibold text-slate-700 dark:text-slate-200">Status</th>
                   <th className="py-2 px-2 font-semibold text-slate-700 dark:text-slate-200">Criado por</th>
                   <th className="py-2 px-2 font-semibold text-slate-700 dark:text-slate-200">Data de criação</th>
                   <th className="py-2 px-2 font-semibold text-slate-700 dark:text-slate-200 text-center">Carradas</th>
@@ -631,6 +834,13 @@ export default function SequenciamentoCarradasPage() {
                     }}
                   >
                     <td className="py-2 px-2 font-mono text-slate-800 dark:text-slate-200">{h.cod}</td>
+                    <td className="py-2 px-2">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classStatus(h.status)}`}
+                      >
+                        {labelStatus(h.status)}
+                      </span>
+                    </td>
                     <td className="py-2 px-2 text-slate-800 dark:text-slate-200">{h.usuarioLogin}</td>
                     <td className="py-2 px-2 whitespace-nowrap text-slate-800 dark:text-slate-200">
                       {formatDateTimeBr(h.createdAt)}
@@ -645,48 +855,69 @@ export default function SequenciamentoCarradasPage() {
           )}
         </div>
       ) : (
-        <div ref={grade.tableScrollRef} className="relative flex-1 min-h-0 card-panel overflow-auto p-4 shadow-sm">
-          {detalheCarregando && <p className="text-sm text-slate-500 dark:text-slate-400">Carregando...</p>}
-          {detalheErro && !detalheCarregando && (
-            <p className="text-sm text-red-600 dark:text-red-300" role="alert">
-              {detalheErro}
-            </p>
-          )}
-          {!detalheCarregando && !detalheErro && (
-            <>
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {editavel
-                    ? 'Simulação: edite Data de produção/entrega, arraste linhas para reordenar e clique numa carrada para ver detalhes. Cabeçalhos: use o funil para filtrar/classificar.'
-                    : 'Snapshot congelado (somente leitura). Cabeçalhos: use o funil para filtrar/classificar.'}
-                </p>
-                {grade.temFiltrosOuOrdem || ordemManual ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      grade.limparFiltrosGrade();
-                      setOrdemManual(null);
-                    }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                  >
-                    Limpar filtros/ordem
-                  </button>
-                ) : null}
-              </div>
-              <table className="w-full text-left text-sm border-collapse">
-                <thead>
+        <div className="relative flex min-h-0 flex-1 flex-col card-panel shadow-sm">
+          {!detalheCarregando && !detalheErro && (grade.temFiltrosOuOrdem || ordemManual) ? (
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-slate-200 px-4 py-2 dark:border-slate-600">
+              <button
+                type="button"
+                onClick={() => {
+                  grade.limparFiltrosGrade();
+                  setOrdemManual(null);
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                Limpar filtros/ordem
+              </button>
+            </div>
+          ) : null}
+          <div
+            ref={grade.tableScrollRef}
+            className="min-h-0 flex-1 overflow-auto overscroll-contain p-4"
+            onDragOver={podeArrastar ? onDragOverContainer : undefined}
+          >
+            {detalheCarregando && <p className="text-sm text-slate-500 dark:text-slate-400">Carregando...</p>}
+            {detalheErro && !detalheCarregando && (
+              <p className="text-sm text-red-600 dark:text-red-300" role="alert">
+                {detalheErro}
+              </p>
+            )}
+            {!detalheCarregando && !detalheErro && (
+              <table className="w-full border-separate border-spacing-0 text-left text-sm">
+                <thead className="sticky top-0 z-10">
                   <tr>
-                    {editavel && (
+                    {podeArrastar && (
                       <th className="sticky top-0 z-20 w-8 border border-primary-500/40 bg-primary-600 px-1 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.08)]" />
                     )}
-                    {COL_IDS.map((colId) => renderTh(colId))}
+                    {renderTh('cod')}
+                    {renderTh('carrada')}
+                    {renderTh('dataProducao')}
+                    {editavel && (
+                      <th className="sticky top-0 z-20 w-8 border border-primary-500/40 bg-primary-600 px-1 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.08)]">
+                        <button
+                          type="button"
+                          onClick={replicarProducaoNaEntregaTodas}
+                          className="mx-auto block rounded px-1.5 py-0.5 text-xs font-medium text-white hover:bg-primary-500/50"
+                          title="Replicar data de produção para entrega em todas as carradas"
+                          aria-label="Replicar data de produção para entrega em todas as carradas"
+                        >
+                          →
+                        </button>
+                      </th>
+                    )}
+                    {renderTh('dataEntrega')}
+                    {renderTh('saldoAFaturar')}
+                    {renderTh('percentualEmDia')}
+                    {renderTh('adiantamento')}
+                    {renderTh('valorAVistaAte10d')}
                   </tr>
                 </thead>
                 <tbody>
                   {carradasFinais.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={COL_IDS.length + (editavel ? 1 : 0)}
+                        colSpan={
+                          COL_IDS.length + (podeArrastar ? 1 : 0) + (editavel ? 1 : 0)
+                        }
                         className="py-4 text-center text-slate-500 dark:text-slate-400"
                       >
                         Nenhuma carrada.
@@ -697,17 +928,19 @@ export default function SequenciamentoCarradasPage() {
                       {carradasFinais.map((c) => {
                         const key = carradaKeyDe(c);
                         const alterada = carradaAlterada(sim, baseline, key);
+                        const carradaEspecial = isCarradaOrdemFinal(c.carrada);
+                        const datasBloqueadas = !editavel || carradaEspecial;
                         return (
                           <tr
                             key={key}
                             tabIndex={0}
-                            onDragOver={editavel ? (e) => e.preventDefault() : undefined}
-                            onDrop={editavel ? () => handleDrop(key) : undefined}
+                            onDragOver={podeArrastar ? onDragOverContainer : undefined}
+                            onDrop={podeArrastar ? () => handleDrop(key) : undefined}
                             className={`border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 ${
                               alterada ? 'bg-amber-50 dark:bg-amber-900/10' : ''
                             } ${dragKey === key ? 'opacity-50' : ''}`}
                           >
-                            {editavel && (
+                            {podeArrastar && (
                               <td
                                 className="w-8 cursor-grab px-1 text-center text-slate-400 hover:text-slate-600 active:cursor-grabbing dark:text-slate-500"
                                 draggable
@@ -732,35 +965,54 @@ export default function SequenciamentoCarradasPage() {
                             >
                               {c.carrada}
                             </td>
-                            <td className="py-2 px-2">
+                            <td className={`py-2 px-2 ${COL_TD_CLASS.dataProducao ?? ''}`}>
                               <input
                                 type="date"
                                 className={DATE_INPUT_CLASS}
                                 value={efProducao(key)}
-                                disabled={!editavel}
+                                disabled={datasBloqueadas}
                                 onChange={(e) => editarData(key, 'dataProducao', e.target.value)}
                                 onClick={(e) => e.stopPropagation()}
                               />
                             </td>
-                            <td className="py-2 px-2">
+                            {editavel && (
+                              <td className="w-8 px-1 py-2 text-center align-middle">
+                                {!carradaEspecial && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      replicarProducaoNaEntrega(key);
+                                    }}
+                                    disabled={!efProducao(key)}
+                                    className="rounded px-1.5 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-primary-300 dark:hover:bg-primary-900/30"
+                                    title="Replicar produção na entrega"
+                                    aria-label="Replicar produção na entrega"
+                                  >
+                                    →
+                                  </button>
+                                )}
+                              </td>
+                            )}
+                            <td className={`py-2 px-2 ${COL_TD_CLASS.dataEntrega ?? ''}`}>
                               <input
                                 type="date"
                                 className={DATE_INPUT_CLASS}
                                 value={efEntrega(key)}
-                                min={hojeISO()}
-                                disabled={!editavel}
+                                min={minEntrega(key)}
+                                disabled={datasBloqueadas}
                                 onChange={(e) => editarData(key, 'dataEntrega', e.target.value)}
                                 onClick={(e) => e.stopPropagation()}
                               />
                             </td>
                             <td
-                              className="cursor-pointer py-2 px-2 text-right tabular-nums text-slate-800 dark:text-slate-200"
+                              className={`cursor-pointer py-2 px-2 text-slate-800 dark:text-slate-200 ${COL_TD_CLASS.saldoAFaturar ?? 'text-right tabular-nums'}`}
                               onClick={() => setCarradaDetalhe(c)}
                             >
                               {formatMoeda(c.saldoAFaturar)}
                             </td>
                             <td
-                              className="cursor-pointer py-2 px-2 text-right tabular-nums"
+                              className={`cursor-pointer py-2 px-2 ${COL_TD_CLASS.percentualEmDia ?? 'text-right tabular-nums'}`}
                               onClick={() => setCarradaDetalhe(c)}
                             >
                               <span
@@ -770,13 +1022,13 @@ export default function SequenciamentoCarradasPage() {
                               </span>
                             </td>
                             <td
-                              className="cursor-pointer py-2 px-2 text-right tabular-nums text-slate-800 dark:text-slate-200"
+                              className={`cursor-pointer py-2 px-2 text-slate-800 dark:text-slate-200 ${COL_TD_CLASS.adiantamento ?? 'text-right tabular-nums'}`}
                               onClick={() => setCarradaDetalhe(c)}
                             >
                               {formatMoeda(c.adiantamento)}
                             </td>
                             <td
-                              className="cursor-pointer py-2 px-2 text-right tabular-nums text-slate-800 dark:text-slate-200"
+                              className={`cursor-pointer py-2 px-2 text-slate-800 dark:text-slate-200 ${COL_TD_CLASS.valorAVistaAte10d ?? 'text-right tabular-nums'}`}
                               onClick={() => setCarradaDetalhe(c)}
                             >
                               {formatMoeda(c.valorAVistaAte10d)}
@@ -787,7 +1039,7 @@ export default function SequenciamentoCarradasPage() {
                       <tr className={SUBTOTAL_ROW_CLASS}>
                         <td
                           className="py-2 px-2 text-slate-800 dark:text-slate-100"
-                          colSpan={(editavel ? 1 : 0) + 4}
+                          colSpan={(podeArrastar ? 1 : 0) + 3 + (editavel ? 1 : 0)}
                         >
                           Subtotal
                         </td>
@@ -812,8 +1064,8 @@ export default function SequenciamentoCarradasPage() {
                   )}
                 </tbody>
               </table>
-            </>
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -863,12 +1115,29 @@ export default function SequenciamentoCarradasPage() {
         />
       )}
 
+      {corrigirDatasAberta && (
+        <ModalCorrigirDatasSequenciamento
+          invalidas={carradasComDatasPassadas}
+          onEditar={editarData}
+          minEntrega={minEntrega}
+          onContinuar={() => {
+            if (carradasComDatasPassadas.length === 0) {
+              setCorrigirDatasAberta(false);
+              setConfirmacaoAberta(true);
+            }
+          }}
+          onClose={() => setCorrigirDatasAberta(false)}
+        />
+      )}
+
       {confirmacaoAberta && (
         <ConfirmacaoSimulacaoModal
           pedidosEntrega={pedidosEntrega}
           qtdCarradasSomenteProducao={qtdCarradasSomenteProducao}
           salvando={salvandoConfirmacao}
           erro={erroConfirmacao}
+          motivoPorId={motivoPorId}
+          onMotivoPorIdChange={(updater) => setMotivoPorId(updater)}
           onConfirmar={handleConfirmarAplicar}
           onClose={() => setConfirmacaoAberta(false)}
         />

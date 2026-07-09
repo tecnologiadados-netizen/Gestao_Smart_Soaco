@@ -52,10 +52,10 @@ export default defineConfig(function (_a) {
     var hmrClientPort = env.VITE_HMR_CLIENT_PORT ? parseInt(env.VITE_HMR_CLIENT_PORT, 10) : undefined;
     var devOrigin = ((_b = env.VITE_DEV_ORIGIN) === null || _b === void 0 ? void 0 : _b.trim()) || undefined;
     var server = {
-        port: 5180, // interno; externos: npm run dev:frontend:5173 | :5174 | :5051
+        port: 5190, // porta fixa do Vite (dev)
         host: '0.0.0.0',
         strictPort: true,
-        // true = qualquer Host — http://gsmartsoaco.com.br:5173 (ou :5174 :5051)
+        // true = qualquer Host — acesso por IP/domínio em dev
         allowedHosts: true,
         proxy: {
             '/api': {
@@ -66,8 +66,9 @@ export default defineConfig(function (_a) {
                 selfHandleResponse: true,
                 configure: function (proxy) {
                     proxy.on('proxyRes', function (proxyRes, _req, res) {
+                        var _a;
                         var clientRes = res;
-                        var status = proxyRes.statusCode === 500 ? 503 : proxyRes.statusCode;
+                        var status = proxyRes.statusCode === 500 ? 503 : (_a = proxyRes.statusCode) !== null && _a !== void 0 ? _a : 503;
                         var headers = __assign({}, proxyRes.headers);
                         var setCookie = headers['set-cookie'];
                         if (Array.isArray(setCookie)) {
@@ -110,8 +111,9 @@ export default defineConfig(function (_a) {
                     var lastAuthLog = 0;
                     var AUTH_LOG_INTERVAL_MS = 15000;
                     proxy.on('proxyRes', function (proxyRes, _req, res) {
+                        var _a;
                         var clientRes = res;
-                        var status = proxyRes.statusCode === 500 ? 503 : proxyRes.statusCode;
+                        var status = proxyRes.statusCode === 500 ? 503 : (_a = proxyRes.statusCode) !== null && _a !== void 0 ? _a : 503;
                         var headers = __assign({}, proxyRes.headers);
                         var setCookie = headers['set-cookie'];
                         if (Array.isArray(setCookie)) {
@@ -199,7 +201,10 @@ export default defineConfig(function (_a) {
     return {
         plugins: [malformedUriGuardPlugin(), react()],
         resolve: {
-            alias: { '@': path.resolve(__dirname, './src') },
+            alias: {
+                '@': path.resolve(__dirname, './src'),
+                '@qualidade': path.resolve(__dirname, './src/modules/qualidade'),
+            },
         },
         server: server,
     };

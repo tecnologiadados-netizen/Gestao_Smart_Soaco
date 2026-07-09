@@ -10,9 +10,13 @@ import {
   obterTabelaStatusPorTipoF,
   obterResumoObservacoes,
   obterResumoMotivos,
+  obterDashEntregasAnalytics,
+  obterDashEntregasAgingTipoF,
+  obterDashEntregasLeadTimeTipoF,
   obterFiltrosOpcoes,
   obterMapaMunicipios,
   obterDetalhesCompletosMunicipioMapa,
+  obterCargasSeparadasMesmoClienteCidade,
   registrarAjustePrevisao,
   registrarAjustesPrevisaoLote,
   registrarDataProducaoLote,
@@ -294,6 +298,50 @@ export async function getResumoObservacoes(req: Request, res: Response): Promise
 }
 
 /**
+ * GET /api/pedidos/dash-entregas-analytics - KPIs, rotas, aging e top clientes em uma requisição.
+ */
+export async function getDashEntregasAnalytics(_req: Request, res: Response): Promise<void> {
+  try {
+    const data = await obterDashEntregasAnalytics();
+    res.json(data);
+  } catch (err) {
+    console.error('getDashEntregasAnalytics', err);
+    res.status(503).json({ error: 'Erro ao obter analytics do Dash Entregas.' });
+  }
+}
+
+/**
+ * GET /api/pedidos/dash-entregas-aging-tipof?faixa_atraso= — saldo por TipoF em uma faixa de aging.
+ */
+export async function getDashEntregasAgingTipoF(req: Request, res: Response): Promise<void> {
+  const faixa = typeof req.query.faixa_atraso === 'string' ? req.query.faixa_atraso.trim() : '';
+  if (!faixa) {
+    res.status(400).json({ error: 'Parâmetro faixa_atraso é obrigatório.' });
+    return;
+  }
+  try {
+    const data = await obterDashEntregasAgingTipoF(faixa);
+    res.json(data);
+  } catch (err) {
+    console.error('getDashEntregasAgingTipoF', err);
+    res.status(503).json({ error: 'Erro ao obter saldo por TipoF.' });
+  }
+}
+
+/**
+ * GET /api/pedidos/dash-entregas-leadtime-tipof — saldo por TipoF para drill-down do lead time.
+ */
+export async function getDashEntregasLeadTimeTipoF(_req: Request, res: Response): Promise<void> {
+  try {
+    const data = await obterDashEntregasLeadTimeTipoF();
+    res.json(data);
+  } catch (err) {
+    console.error('getDashEntregasLeadTimeTipoF', err);
+    res.status(503).json({ error: 'Erro ao obter saldo por TipoF (lead time).' });
+  }
+}
+
+/**
  * GET /api/pedidos/resumo-motivos - quantidade de alterações por motivo.
  */
 export async function getResumoMotivos(req: Request, res: Response): Promise<void> {
@@ -361,6 +409,25 @@ export async function getMapaMunicipioDetalhes(req: Request, res: Response): Pro
   } catch (err) {
     console.error('getMapaMunicipioDetalhes', err);
     res.status(503).json({ error: 'Erro ao obter detalhes do município.' });
+  }
+}
+
+/**
+ * GET /api/pedidos/cargas-separadas-cliente-cidade — lista de pedidos em cargas separadas (mesmo cliente e mesma cidade).
+ * Aceita os mesmos query params de listar pedidos (heatmap filters).
+ */
+export async function getCargasSeparadasMesmoClienteCidade(req: Request, res: Response): Promise<void> {
+  const parsed = listarPedidosQuerySchema.safeParse(req.query);
+  const filtros = parsed.success ? parsed.data : {};
+  const { page: _pg, limit: _lm, ...filtrosResumo } = filtros as { page?: number; limit?: number; [k: string]: unknown };
+  try {
+    const dados = await obterCargasSeparadasMesmoClienteCidade(
+      filtrosResumo as Parameters<typeof obterCargasSeparadasMesmoClienteCidade>[0]
+    );
+    res.json(dados);
+  } catch (err) {
+    console.error('getCargasSeparadasMesmoClienteCidade', err);
+    res.status(503).json({ error: 'Erro ao obter cargas separadas por cliente/cidade.' });
   }
 }
 

@@ -21,7 +21,7 @@ releaseLock();
 
 if (result.ok) {
   appendDevLog('kill-ports', 'Portas liberadas', DEV_PORTS.join(','));
-  console.log('Portas 4000, 5180, 5173, 5174, 5051 liberadas.');
+  console.log(`Portas ${DEV_PORTS.join(', ')} liberadas.`);
   process.exit(0);
 }
 

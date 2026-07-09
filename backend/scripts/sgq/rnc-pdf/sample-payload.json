@@ -1,0 +1,33 @@
+{
+  "registro": {
+    "tipo": "rnc",
+    "numero": "RNC-0001",
+    "codigoDocumento": "RNC-0001",
+    "status": "em_tratamento",
+    "rnc": {
+      "codigoDocumento": "RNC-0001",
+      "codigoProduto": "PA 10005",
+      "dataOcorrencia": "2026-06-30T12:00:00.000Z",
+      "tipoAcao": "Real (já ocorrida)",
+      "tipoOcorrencia": "Produto",
+      "setorOcorrencia": "Produção",
+      "grupoProduto": "BALCÕES",
+      "produto": "BALCÃO AUTO SERVIÇO VISA COOLER 220V",
+      "tipoProduto": "Acabado",
+      "descricaoOcorrencia": "Chapa amassada na lateral direita do produto.",
+      "setorDeteccao": "Qualidade",
+      "responsavel": "João Silva",
+      "acaoImediata": "Retrabalhar",
+      "descricaoAcaoImediata": "Encaminhado para retrabalho no setor de pintura.",
+      "responsavelAcaoImediata": "Maria Santos",
+      "notaFiscal": "88977",
+      "analiseProblema": "Chapa amassada",
+      "quantidade": "01",
+      "resolucaoNaoConformidade": "Retrabalho da peça conforme procedimento PQ-012.",
+      "causa": "Manuseio inadequado no transporte interno.",
+      "dataFechamento": "",
+      "usuarioCriacao": "Jaciara Mendes",
+      "prazoExecucao": "2026-07-15T12:00:00.000Z"
+    }
+  }
+}

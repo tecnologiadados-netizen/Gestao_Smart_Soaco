@@ -1,0 +1,3 @@
+export const PRODUTOS_INITIAL_LIMIT = 15;
+export const PRODUTOS_SEARCH_LIMIT = 30;
+export const PRODUTOS_MIN_SEARCH_CHARS = 2;

@@ -25,11 +25,13 @@ import mppRoutes from './routes/mppRoutes.js';
 import pcRoutes from './routes/pcRoutes.js';
 import programacaoSetorialRoutes from './routes/programacaoSetorialRoutes.js';
 import financeiroRoutes from './routes/financeiroRoutes.js';
+import comercialRoutes from './routes/comercialRoutes.js';
 import pcpRoutes from './routes/pcpRoutes.js';
 import suporteRoutes from './routes/suporteRoutes.js';
 import mindMapsRoutes from './routes/mindMapsRoutes.js';
 import programacaoProducaoRoutes from './routes/programacaoProducaoRoutes.js';
 import logisticaRoutes from './routes/logisticaRoutes.js';
+import qualidadeRoutes from './routes/qualidadeRoutes.js';
 import { csrfProtect } from './middleware/csrf.js';
 
 const app = express();
@@ -157,11 +159,13 @@ app.use('/api/mpp', mppRoutes);
 app.use('/api/pc', pcRoutes);
 app.use('/api/programacao-setorial', programacaoSetorialRoutes);
 app.use('/api/financeiro', financeiroRoutes);
+app.use('/api/comercial', comercialRoutes);
 app.use('/api/suporte', suporteRoutes);
 app.use('/api/mind-maps', mindMapsRoutes);
 app.use('/api/programacao-producao', programacaoProducaoRoutes);
 app.use('/api/pcp', pcpRoutes);
 app.use('/api/logistica', logisticaRoutes);
+app.use('/api/qualidade', qualidadeRoutes);
 
 // Header em todas as respostas para conferir na outra máquina se está rodando o build novo
 export const BUILD_ID = 'pedidos-no-csrf-v1';

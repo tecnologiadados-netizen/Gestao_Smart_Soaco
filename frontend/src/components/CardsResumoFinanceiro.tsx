@@ -12,6 +12,11 @@ function formatarMoeda(valor: number): string {
 interface CardsResumoFinanceiroProps {
   resumo: ResumoFinanceiro | null;
   loading?: boolean;
+  overrideQuantidadePedidos?: {
+    label: string;
+    value: number;
+    onClick?: () => void;
+  };
 }
 
 const CARDS = [
@@ -45,7 +50,7 @@ const CARDS = [
   },
 ] as const;
 
-export default function CardsResumoFinanceiro({ resumo, loading }: CardsResumoFinanceiroProps) {
+export default function CardsResumoFinanceiro({ resumo, loading, overrideQuantidadePedidos }: CardsResumoFinanceiroProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -64,15 +69,39 @@ export default function CardsResumoFinanceiro({ resumo, loading }: CardsResumoFi
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {CARDS.map((c) => (
+        (() => {
+          const override =
+            c.key === 'quantidadePedidos' && overrideQuantidadePedidos
+              ? overrideQuantidadePedidos
+              : null;
+          const clickable = !!override?.onClick;
+          const label = override?.label ?? c.label;
+          const value = override?.value ?? (resumo[c.key] as number);
+          const format = override ? (v: number) => v.toLocaleString('pt-BR') : c.format;
+          const onClick = override?.onClick;
+
+          return (
         <div
           key={c.key}
-          className={c.alert ? 'card-kpi-alert' : 'card-kpi'}
+          className={`${c.alert ? 'card-kpi-alert' : 'card-kpi'}${clickable ? ' cursor-pointer hover:brightness-[1.03]' : ''}`}
+          role={clickable ? 'button' : undefined}
+          tabIndex={clickable ? 0 : undefined}
+          onClick={onClick}
+          onKeyDown={
+            clickable
+              ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') onClick?.();
+                }
+              : undefined
+          }
         >
-          <p className="card-kpi-label">{c.label}</p>
+          <p className="card-kpi-label">{label}</p>
           <p className={`card-kpi-value mt-1 ${c.color}`}>
-            {c.format(resumo[c.key])}
+            {format(value)}
           </p>
         </div>
+          );
+        })()
       ))}
     </div>
   );

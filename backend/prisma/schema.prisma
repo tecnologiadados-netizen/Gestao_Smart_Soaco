@@ -610,7 +610,11 @@ model SequenciamentoCarradasSnapshot {
   cod          String   @unique
   usuarioLogin String
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now())
   carradaCount Int      @default(0)
+  /// Fluxo: 'rascunho' (editável, autosave) -> 'concluido' (somente leitura).
+  /// Default 'concluido' para compatibilidade com snapshots antigos; novos nascem 'rascunho'.
+  status       String   @default("concluido")
   /// JSON v1: carradas agregadas + linhas completas do Gerenciador.
   payload      String
 
@@ -876,4 +880,296 @@ model LogProdutoVolume {
   @@unique([produtoCubagemId, ordem])
   @@index([produtoCubagemId])
   @@map("cubagem_produto_volume")
+}
+
+// ─── Módulo Qualidade (SGQ) ─────────────────────────────────────────────────
+
+model SgqSetor {
+  id        Int      @id @default(autoincrement())
+  uid       String   @unique @default(cuid())
+  sigla     String
+  nome      String
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sigla])
+  @@map("sgq_setor")
+}
+
+model SgqTipoDocumento {
+  id        Int      @id @default(autoincrement())
+  uid       String   @unique @default(cuid())
+  sigla     String   @unique
+  nome      String
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("sgq_tipo_documento")
+}
+
+model SgqOpcaoLista {
+  id        Int      @id @default(autoincrement())
+  chave     String
+  valor     String
+  sortOrder Int      @default(0)
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([chave, valor])
+  @@index([chave])
+  @@map("sgq_opcao_lista")
+}
+
+model SgqDocumento {
+  id                  Int      @id @default(autoincrement())
+  uid                 String   @unique @default(cuid())
+  codigo              String   @unique
+  titulo              String
+  origem              String
+  status              String
+  tipoUid             String
+  setorUid            String
+  versaoAtual         String
+  localizacao         String?
+  permissoesJson      String?
+  publicacaoJson      String?
+  validadeJson        String?
+  externoRegistroJson String?
+  criadoPorLogin      String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  versoes      SgqDocumentoVersao[]
+  revalidacoes SgqDocumentoRevalidacao[]
+  alertas      SgqDocumentoAlerta[]
+
+  @@index([status])
+  @@index([tipoUid])
+  @@index([setorUid])
+  @@map("sgq_documento")
+}
+
+model SgqDocumentoVersao {
+  id                       Int      @id @default(autoincrement())
+  uid                      String   @unique @default(cuid())
+  documentoId              Int
+  versao                   String
+  elaboradorLogin          String?
+  consensoLogin            String?
+  revisorLogin             String?
+  aprovadorLogin           String?
+  prazosJson               String?
+  dataElaboracao           String?
+  dataRevisao              String?
+  dataAprovacao            String?
+  observacoes              String?
+  justificativaRevisao     String?
+  alteracoesRevisao        String?
+  observacoesElaboracao    String?
+  observacoesConsenso      String?
+  observacoesAprovacao     String?
+  movimentacoesJson        String?
+  requerSubstituicaoConsenso Boolean @default(false)
+  arquivoNome              String?
+  arquivoStoragePath       String?
+  arquivoMimeType          String?
+  arquivoAtualizadoEm      String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  documento SgqDocumento @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+
+  @@unique([documentoId, versao])
+  @@index([documentoId])
+  @@map("sgq_documento_versao")
+}
+
+model SgqDocumentoRevalidacao {
+  id                 Int      @id @default(autoincrement())
+  uid                String   @unique @default(cuid())
+  documentoId        Int
+  data               String
+  observacoes        String
+  evidenciaNome      String?
+  evidenciaStoragePath String?
+  novaDataValidade   String
+  usuarioLogin       String
+  createdAt          DateTime @default(now())
+
+  documento SgqDocumento @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+
+  @@index([documentoId])
+  @@map("sgq_documento_revalidacao")
+}
+
+model SgqDocumentoAlerta {
+  id          Int      @id @default(autoincrement())
+  uid         String   @unique @default(cuid())
+  documentoId Int
+  marcoDias   Int
+  severidade  String
+  mensagem    String
+  lida        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  documento SgqDocumento @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+
+  @@index([documentoId])
+  @@map("sgq_documento_alerta")
+}
+
+model SgqRegistro {
+  id               Int      @id @default(autoincrement())
+  uid              String   @unique @default(cuid())
+  tipo             String
+  numero           String   @unique
+  status           String
+  codigoDocumento  String?
+  responsavelLogin String?
+  origemImport     Boolean  @default(false)
+  dadosJson        String
+  criadoPorLogin   String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  anexos SgqAnexo[]
+
+  @@index([tipo, status])
+  @@index([createdAt])
+  @@map("sgq_registro")
+}
+
+model SgqEquipamento {
+  id                         Int      @id @default(autoincrement())
+  uid                        String   @unique @default(cuid())
+  codigo                     String   @unique
+  descricao                  String
+  local                      String
+  setorUid                   String
+  responsavelLogin           String
+  fornecedor                 String?
+  tipoCalibracao             String
+  frequenciaCalibracaoDias   Int
+  frequenciaVerificacaoDias  Int
+  ultimaCalibracao           String?
+  ultimaVerificacao          String?
+  proximaCalibracao          String?
+  laudoNome                  String?
+  laudoStoragePath           String?
+  versaoLaudoAtual           String?
+  anexosJson                 String?
+  ativo                      Boolean  @default(true)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  calibracoes   SgqCalibracao[]
+  verificacoes  SgqVerificacao[]
+
+  @@map("sgq_equipamento")
+}
+
+model SgqCalibracao {
+  id               Int      @id @default(autoincrement())
+  uid              String   @unique @default(cuid())
+  equipamentoId    Int
+  versao           String
+  data             String
+  tipo             String
+  resultado        String
+  responsavelLogin String
+  laboratorio      String?
+  laudoNome        String?
+  laudoStoragePath String?
+  anexosJson       String?
+  observacoes      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  equipamento SgqEquipamento @relation(fields: [equipamentoId], references: [id], onDelete: Cascade)
+
+  @@index([equipamentoId])
+  @@map("sgq_calibracao")
+}
+
+model SgqVerificacao {
+  id               Int      @id @default(autoincrement())
+  uid              String   @unique @default(cuid())
+  equipamentoId    Int
+  data             String
+  resultado        String
+  responsavelLogin String
+  observacoes      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  equipamento SgqEquipamento @relation(fields: [equipamentoId], references: [id], onDelete: Cascade)
+
+  @@index([equipamentoId])
+  @@map("sgq_verificacao")
+}
+
+model SgqAvaliacaoFornecedor {
+  id               Int      @id @default(autoincrement())
+  uid              String   @unique @default(cuid())
+  fornecedorId     String
+  fornecedorNome   String
+  avaliadorLogin   String
+  dataReferencia   String?
+  dataAvaliacao    String?
+  numeroDocumento  String?
+  fornecedorAprovado Boolean?
+  rncNumero        String?
+  notasJson        String
+  media            Float
+  observacoes      String?
+  origemImport     Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([fornecedorId])
+  @@index([dataAvaliacao])
+  @@map("sgq_avaliacao_fornecedor")
+}
+
+model SgqTarefa {
+  id              Int      @id @default(autoincrement())
+  uid             String   @unique @default(cuid())
+  tipo            String
+  referenciaTipo  String
+  referenciaId    String
+  referenciaUid   String?
+  titulo          String
+  descricao       String?
+  responsavelLogin String
+  prazo           String?
+  concluida       Boolean  @default(false)
+  metadadosJson   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([responsavelLogin, concluida])
+  @@index([referenciaTipo, referenciaId])
+  @@map("sgq_tarefa")
+}
+
+model SgqAnexo {
+  id           Int      @id @default(autoincrement())
+  uid          String   @unique @default(cuid())
+  contexto     String
+  contextoUid  String
+  registroId   Int?
+  fileName     String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  storagePath  String
+  createdAt    DateTime @default(now())
+
+  registro SgqRegistro? @relation(fields: [registroId], references: [id], onDelete: Cascade)
+
+  @@index([contexto, contextoUid])
+  @@index([registroId])
+  @@map("sgq_anexo")
 }

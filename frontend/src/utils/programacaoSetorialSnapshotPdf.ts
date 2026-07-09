@@ -101,7 +101,7 @@ export function downloadProgramacaoSnapshotPdf(opts: DownloadProgramacaoSnapshot
   const items = linhas;
   drawPageHeader(`Programação de Produção — ${tituloSuffix}`, `Período programação: ${periodoLabel}`);
 
-  const headers = [['Observações', 'Previsão', 'Cód', 'Descrição do Produto', 'Qtde Real', 'Obs. Produção']];
+  const headers = [['Observações', 'Data base', 'Cód', 'Descrição do Produto', 'Qtde Real', 'Obs. Produção']];
   if (showPD) headers[0].splice(2, 0, 'PD');
 
   const body: any[][] = items.map((item) => {
@@ -206,6 +206,7 @@ export function downloadProgramacaoSnapshotPdf(opts: DownloadProgramacaoSnapshot
 export function processedItemToPdfRow(item: {
   Observacoes?: string;
   Previsao?: string;
+  DataBase?: string;
   PD?: string;
   Cod?: string;
   'Descricao do produto'?: string;
@@ -214,7 +215,7 @@ export function processedItemToPdfRow(item: {
 }): SnapshotLinhaPdf {
   return {
     observacoes: item.Observacoes,
-    previsao: item.Previsao,
+    previsao: item.DataBase ?? item.Previsao,
     pd: item.PD,
     cod: item.Cod,
     descricao: item['Descricao do produto'],
