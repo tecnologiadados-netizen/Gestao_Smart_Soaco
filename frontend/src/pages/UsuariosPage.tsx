@@ -248,7 +248,6 @@ export default function UsuariosPage() {
   const [editFotoPreview, setEditFotoPreview] = useState<string | null>(null);
   const [editAtivo, setEditAtivo] = useState(true);
   const [editIsCommercialTeam, setEditIsCommercialTeam] = useState(false);
-  const [editPermissoesPrioridadePendencias, setEditPermissoesPrioridadePendencias] = useState<string[]>([]);
   const [editFotoBase64, setEditFotoBase64] = useState<string | null | undefined>(undefined);
   const [salvandoEditarUsuario, setSalvandoEditarUsuario] = useState(false);
   const [formErrorEditarUsuario, setFormErrorEditarUsuario] = useState('');
@@ -426,7 +425,6 @@ export default function UsuariosPage() {
     setEditGrupoId(u.grupoId ?? '');
     setEditAtivo(u.ativo);
     setEditIsCommercialTeam(!!u.isCommercialTeam);
-    setEditPermissoesPrioridadePendencias(prioridadePendenciasDePermissoesUsuario(u.permissoes));
     setEditFotoPreview(u.fotoUrl ?? null);
     setEditFotoBase64(undefined);
     setFormErrorEditarUsuario('');
@@ -447,7 +445,6 @@ export default function UsuariosPage() {
     setSalvandoEditarUsuario(false);
     setEditAtivo(true);
     setEditIsCommercialTeam(false);
-    setEditPermissoesPrioridadePendencias([]);
     setModalEditarUsuarioOpen(false);
   };
 
@@ -463,7 +460,6 @@ export default function UsuariosPage() {
       grupoId: editGrupoId === '' ? null : Number(editGrupoId),
       ativo: editAtivo,
       isCommercialTeam: editIsCommercialTeam,
-      permissoes: editPermissoesPrioridadePendencias,
     };
     if (editSenha.trim()) payloadBase.senha = editSenha.trim();
     if (editFotoBase64 !== undefined) payloadBase.fotoUrl = editFotoBase64;
@@ -542,12 +538,6 @@ export default function UsuariosPage() {
       const next = atual.includes(codigo) ? atual.filter((p) => p !== codigo) : [...atual, codigo];
       return { ...prev, [usuarioId]: next };
     });
-  };
-
-  const toggleEditPermissaoPrioridadePendencias = (codigo: string) => {
-    setEditPermissoesPrioridadePendencias((prev) =>
-      prev.includes(codigo) ? prev.filter((p) => p !== codigo) : [...prev, codigo]
-    );
   };
 
   const parseLogoutMinutosPayload = (): number | null => {
@@ -824,26 +814,6 @@ export default function UsuariosPage() {
               <div className="flex items-center gap-5">
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editAtivo} onChange={(e) => setEditAtivo(e.target.checked)} /> Usuário ativo</label>
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editIsCommercialTeam} onChange={(e) => setEditIsCommercialTeam(e.target.checked)} /> Time comercial</label>
-              </div>
-              <div className="md:col-span-2 rounded-lg border border-slate-200 dark:border-slate-600/50 p-3 bg-slate-50/50 dark:bg-slate-800/30">
-                <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2 uppercase tracking-wide">
-                  Pendências compras — prioridade fixa
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-                  Defina quais compradores este usuário pode editar na tela Pendências compras.
-                </p>
-                <div className="flex flex-wrap gap-x-4 gap-y-2">
-                  {PERMISSOES_PRIORIDADE_PENDENCIAS_COMPRADOR.map((codigo) => (
-                    <label key={codigo} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editPermissoesPrioridadePendencias.includes(codigo)}
-                        onChange={() => toggleEditPermissaoPrioridadePendencias(codigo)}
-                      />
-                      {LABELS_PRIORIDADE_PENDENCIAS_COMPRADOR[codigo]}
-                    </label>
-                  ))}
-                </div>
               </div>
               <div>
                 <label className="block text-xs mb-1">Foto</label>

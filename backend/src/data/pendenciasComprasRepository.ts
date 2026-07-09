@@ -340,7 +340,7 @@ Left Join (
     And (ipc.qtde - IfNull(ipc.qtdeAtendida, 0)) > 0
   Group By ipc.idProduto
 ) pc_flags On pc_flags.idProduto = pf.id
-Where Exists (Select 1 From sc_abertas sc Where sc.idProduto = pf.id)
+Where Coalesce(sc_liq.solicitacao, 0) > 0
    Or Coalesce(cot_agg.qtde, 0) > 0
 Order By
   Coalesce(cp.prioridadeAutomatica, 9999) Asc,
