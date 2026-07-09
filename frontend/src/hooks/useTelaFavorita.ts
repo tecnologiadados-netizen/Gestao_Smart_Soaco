@@ -148,6 +148,15 @@ export function useTelaFavorita<T extends Record<string, string>>({
     [navigate, rota]
   );
 
+  const limparFavNaUrl = useCallback(() => {
+    if (!searchParams.get('fav')) return;
+    const params = new URLSearchParams(searchParams);
+    params.delete('fav');
+    setFavIdAtivo(null);
+    const q = params.toString();
+    navigate(q ? `${rota}?${q}` : rota, { replace: true });
+  }, [navigate, rota, searchParams]);
+
   const temFavNaUrl = !!searchParams.get('fav');
 
   return {
@@ -158,6 +167,7 @@ export function useTelaFavorita<T extends Record<string, string>>({
     resolving: resolving || (isRotaFavoritavel(rota) && favoritosLoading && !resolvedRef.current),
     aplicarFavorito,
     sincronizarUrlFavorito,
+    limparFavNaUrl,
     filtrosAtuais,
   };
 }

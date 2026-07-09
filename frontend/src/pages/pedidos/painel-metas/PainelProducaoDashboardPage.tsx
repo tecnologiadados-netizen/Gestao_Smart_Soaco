@@ -424,7 +424,7 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
 
   const listasCarregadas = !filtersLoading && setores.length > 0 && meses.length > 0;
 
-  const { resolving, temFavNaUrl, rota } = useTelaFavorita({
+  const { resolving, rota, limparFavNaUrl } = useTelaFavorita({
     filtrosAtuais: { setor, mes },
     aplicarFiltros: aplicarFiltrosPainel,
     validarFiltros: validarFiltrosPainel,
@@ -526,8 +526,23 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
   const porDia = normalizeChartData(dashboard?.por_dia ?? [], 'dia')
   const rankingAll = dashboard?.ranking ?? []
   const rankingRest = rankingAll.filter((row) => row.ranking > 3)
-  const ocultarFiltrosTv = isTv && temFavNaUrl
   const aguardandoFiltros = filtersLoading || resolving || (listasCarregadas && !filtrosProntos)
+
+  const onSetorChange = useCallback(
+    (value: string) => {
+      setSetor(value);
+      limparFavNaUrl();
+    },
+    [limparFavNaUrl],
+  );
+
+  const onMesChange = useCallback(
+    (value: string) => {
+      setMes(value);
+      limparFavNaUrl();
+    },
+    [limparFavNaUrl],
+  );
 
   if (aguardandoFiltros) {
     return (
@@ -557,29 +572,25 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
           {dashboard?.titulo ?? `SETOR DE ${(setor || '—').toUpperCase()}`}
         </div>
         <div className="filters">
-          {!ocultarFiltrosTv && (
-            <>
-              <SearchableSelect
-                id="setor-select"
-                label="Setor"
-                value={setor}
-                options={setores.map((s) => ({ value: s, label: s }))}
-                onChange={setSetor}
-                searchPlaceholder="Pesquisar setor..."
-              />
-              <MonthFilter
-                id="mes-select"
-                mes={mes}
-                meses={meses}
-                onChange={setMes}
-                onMesesChange={(lista, selected) => {
-                  setMeses(lista);
-                  setMes(selected);
-                }}
-                disabled={dashboardLoading}
-              />
-            </>
-          )}
+          <SearchableSelect
+            id="setor-select"
+            label="Setor"
+            value={setor}
+            options={setores.map((s) => ({ value: s, label: s }))}
+            onChange={onSetorChange}
+            searchPlaceholder="Pesquisar setor..."
+          />
+          <MonthFilter
+            id="mes-select"
+            mes={mes}
+            meses={meses}
+            onChange={onMesChange}
+            onMesesChange={(lista, selected) => {
+              setMeses(lista);
+              onMesChange(selected);
+            }}
+            disabled={dashboardLoading}
+          />
         </div>
       </header>
 
