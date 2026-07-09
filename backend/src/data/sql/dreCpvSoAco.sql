@@ -4,7 +4,7 @@
 base AS (
   SELECT
     ide.id,
-    ide.idDocumentoEntrada,
+    ide.idDocumentoEstoque,
     ide.idProduto,
     ide.idTipoMovimentacao,
     ide.qtde,
@@ -13,7 +13,7 @@ base AS (
     p.descricao,
     p.nome
   FROM itemdocumentoestoque ide
-  JOIN documentoestoque d ON d.id = ide.idDocumentoEntrada
+  JOIN documentoestoque d ON d.id = ide.idDocumentoEstoque
   JOIN produto p ON p.id = ide.idProduto
   WHERE ide.idTipoMovimentacao IN (11, 71, 116, 115, 114, 113, 112, 111, 142)
     AND ide.idSetorEntrada IN (2, 19, 20, 32)
@@ -114,7 +114,7 @@ fat AS (
     EXTRACT(YEAR FROM de.dataEmissao) AS ano,
     SUM(ide.qtde) AS qtd_total
   FROM itemdocumentoestoque ide
-  JOIN documentoestoque de ON de.id = ide.idDocumentoSaida
+  JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
   JOIN tipomovimentacao tm ON tm.id = ide.idTipoMovimentacao
   JOIN produto p ON p.id = ide.idProduto
   LEFT JOIN itemdocumentoestoque_itempedidovenda ideipv ON ideipv.idItemDocumentoEstoque = ide.id
