@@ -165,7 +165,15 @@
 }
 
 .mind-map-editor__canvas.panning {
+  cursor: grabbing;
+}
+
+.mind-map-editor__canvas--view {
   cursor: grab;
+}
+
+.mind-map-editor__canvas--view.panning {
+  cursor: grabbing;
 }
 
 .mind-map-editor__canvas-inner {

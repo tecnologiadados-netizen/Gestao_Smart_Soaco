@@ -34,6 +34,21 @@ model PedidoPrevisaoAjuste {
   @@map("pedido_previsao_ajuste")
 }
 
+// Data de produção planejada por linha de pedido (histórico append-only, leitura pega o mais recente).
+// Mesmo padrão hierárquico/canônico de PedidoPrevisaoAjuste (chave canônica pedido+item via chavePedidoItem).
+// Não altera o Nomus; usada no Sequenciamento de Carradas (simulação) e exibida no Gerenciador de Pedidos.
+model PedidoDataProducao {
+  id            Int      @id @default(autoincrement())
+  id_pedido     String   // ID do pedido no ERP (idRomaneio-idPedido-idProduto)
+  data_producao DateTime
+  usuario       String
+  data_registro DateTime @default(now())
+
+  @@index([id_pedido])
+  @@index([data_registro])
+  @@map("pedido_data_producao")
+}
+
 model MotivoSugestao {
   id        Int      @id @default(autoincrement())
   descricao String   @unique
@@ -96,6 +111,7 @@ model Usuario {
   mrpRunsCriados MrpRun[] @relation("MrpRunCreatedBy")
   mrpRunsProcessados MrpRun[] @relation("MrpRunProcessedBy")
   whatsappNotificacaoDestinatarios WhatsappNotificacaoDestinatario[]
+  emailNotificacaoDestinatarios EmailNotificacaoDestinatario[]
   telasFavoritas TelaFavorita[]
 
   @@map("usuario")
@@ -215,6 +231,38 @@ model WhatsappNotificacaoDestinatario {
 
   @@unique([tipoId, usuarioId])
   @@map("whatsapp_notificacao_destinatario")
+}
+
+/// Tipos de notificação por e-mail (Integração → E-mail).
+model EmailNotificacaoTipo {
+  id               Int      @id @default(autoincrement())
+  code             String   @unique
+  label            String
+  descricao        String?
+  ativo            Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  /// codigo (builder em código)
+  fonteMensagem    String   @default("codigo")
+  /// cron
+  modoDisparo      String   @default("cron")
+  cronExpressao    String?
+  builderCode      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  destinatarios    EmailNotificacaoDestinatario[]
+
+  @@map("email_notificacao_tipo")
+}
+
+model EmailNotificacaoDestinatario {
+  id        Int @id @default(autoincrement())
+  tipoId    Int
+  usuarioId Int
+  tipo      EmailNotificacaoTipo @relation(fields: [tipoId], references: [id], onDelete: Cascade)
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([tipoId, usuarioId])
+  @@map("email_notificacao_destinatario")
 }
 
 // Coordenadas de municípios brasileiros (fonte: IBGE/kelvins – sem depender de API externa)
@@ -614,7 +662,11 @@ model SequenciamentoCarradasSnapshot {
   cod          String   @unique
   usuarioLogin String
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now())
   carradaCount Int      @default(0)
+  /// Fluxo: 'rascunho' (editável, autosave) -> 'concluido' (somente leitura).
+  /// Default 'concluido' para compatibilidade com snapshots antigos; novos nascem 'rascunho'.
+  status       String   @default("concluido")
   /// JSON v1: carradas agregadas + linhas completas do Gerenciador.
   payload      String
 

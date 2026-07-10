@@ -20,6 +20,36 @@ export type SequenciamentoCarradasPayloadV1 = {
   linhas: Record<string, unknown>[];
 };
 
+/** Estado da simulação (datas editadas e ordem manual das carradas) gravado junto ao snapshot. */
+export type SequenciamentoSimulacaoItem = {
+  chave: string;
+  cod: string;
+  carrada: string;
+  dataProducao?: string | null;
+  dataEntrega?: string | null;
+};
+
+export type SequenciamentoSimulacao = {
+  ordem: string[];
+  itens: SequenciamentoSimulacaoItem[];
+  /** Rascunho de motivos por id_pedido (registro de motivos do fluxo de confirmação). */
+  motivos?: Record<string, string>;
+};
+
+export type SequenciamentoSnapshotStatus = 'rascunho' | 'concluido';
+
+export type SequenciamentoCarradasPayloadV2 = {
+  version: 2;
+  geradoEm: string;
+  carradas: SequenciamentoCarradaAgregada[];
+  linhas: Record<string, unknown>[];
+  simulacao?: SequenciamentoSimulacao | null;
+};
+
+export type SequenciamentoCarradasPayload =
+  | SequenciamentoCarradasPayloadV1
+  | SequenciamentoCarradasPayloadV2;
+
 type PedidoRow = Record<string, unknown>;
 
 function getField(row: PedidoRow, keys: string[]): string {
@@ -176,13 +206,44 @@ async function gerarCodSnapshot(): Promise<string> {
   return `PSC${String(count + 1).padStart(4, '0')}`;
 }
 
-export function validarPayloadSequenciamento(raw: unknown): { ok: true; payload: SequenciamentoCarradasPayloadV1 } | { ok: false; error: string } {
+export function validarPayloadSequenciamento(raw: unknown): { ok: true; payload: SequenciamentoCarradasPayload } | { ok: false; error: string } {
   if (!raw || typeof raw !== 'object') return { ok: false, error: 'Payload inválido.' };
   const p = raw as Record<string, unknown>;
-  if (p.version !== 1) return { ok: false, error: 'Versão de payload não suportada.' };
+  if (p.version !== 1 && p.version !== 2) return { ok: false, error: 'Versão de payload não suportada.' };
   if (!Array.isArray(p.carradas)) return { ok: false, error: 'Payload sem carradas.' };
   if (!Array.isArray(p.linhas)) return { ok: false, error: 'Payload sem linhas.' };
-  return { ok: true, payload: p as unknown as SequenciamentoCarradasPayloadV1 };
+  return { ok: true, payload: p as unknown as SequenciamentoCarradasPayload };
+}
+
+/** Normaliza o estado de simulação recebido do cliente (defensivo contra payload malformado). */
+export function sanitizarSimulacao(raw: unknown): SequenciamentoSimulacao | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const ordem = Array.isArray(r.ordem) ? r.ordem.filter((x): x is string => typeof x === 'string') : [];
+  const itensRaw = Array.isArray(r.itens) ? r.itens : [];
+  const itens: SequenciamentoSimulacaoItem[] = [];
+  for (const it of itensRaw) {
+    if (!it || typeof it !== 'object') continue;
+    const o = it as Record<string, unknown>;
+    const chave = typeof o.chave === 'string' ? o.chave : '';
+    if (!chave) continue;
+    itens.push({
+      chave,
+      cod: typeof o.cod === 'string' ? o.cod : '',
+      carrada: typeof o.carrada === 'string' ? o.carrada : '',
+      dataProducao: typeof o.dataProducao === 'string' ? o.dataProducao : null,
+      dataEntrega: typeof o.dataEntrega === 'string' ? o.dataEntrega : null,
+    });
+  }
+  const motivos: Record<string, string> = {};
+  if (r.motivos && typeof r.motivos === 'object' && !Array.isArray(r.motivos)) {
+    for (const [k, v] of Object.entries(r.motivos as Record<string, unknown>)) {
+      if (typeof v === 'string' && v.trim()) motivos[k] = v;
+    }
+  }
+  const temMotivos = Object.keys(motivos).length > 0;
+  if (ordem.length === 0 && itens.length === 0 && !temMotivos) return null;
+  return { ordem, itens, ...(temMotivos ? { motivos } : {}) };
 }
 
 export async function montarPayloadSequenciamento(): Promise<{
@@ -203,14 +264,142 @@ export async function montarPayloadSequenciamento(): Promise<{
   };
 }
 
-export async function gravarSnapshotSequenciamento(usuarioLogin: string): Promise<{
+const KEY_SEP = '\x1e';
+
+function carradaKeyRepo(cod: string, carrada: string): string {
+  return `${cod}${KEY_SEP}${carrada}`;
+}
+
+function toISODateRepo(value: unknown): string {
+  if (value == null || value === '') return '';
+  const s = String(value);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getUTCFullYear();
+  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${mo}-${day}`;
+}
+
+function linhaCarradaKeyRepo(row: Record<string, unknown>): string {
+  const cod = getField(row as PedidoRow, ['RM', 'rm']) || '—';
+  const carrada = getField(row as PedidoRow, ['Observacoes', 'Observacoes ', 'Observações']) || 'Sem Rota';
+  return carradaKeyRepo(cod, carrada);
+}
+
+type BaselineRepo = { dataProducao: string; dataEntrega: string };
+
+function computarBaselinesRepo(linhas: Record<string, unknown>[]): Map<string, BaselineRepo> {
+  const acc = new Map<string, { entrega: Set<string>; producao: Set<string> }>();
+  for (const row of linhas) {
+    const key = linhaCarradaKeyRepo(row);
+    let cur = acc.get(key);
+    if (!cur) {
+      cur = { entrega: new Set(), producao: new Set() };
+      acc.set(key, cur);
+    }
+    const entrega = toISODateRepo(row['previsao_entrega_atualizada'] ?? row['previsao_entrega']);
+    if (entrega) cur.entrega.add(entrega);
+    const producao = toISODateRepo(row['data_producao']);
+    if (producao) cur.producao.add(producao);
+  }
+  const out = new Map<string, BaselineRepo>();
+  for (const [key, v] of acc) {
+    const entregas = [...v.entrega];
+    const producoes = [...v.producao];
+    out.set(key, {
+      dataEntrega: entregas.length === 1 ? entregas[0]! : '',
+      dataProducao: producoes.length === 1 ? producoes[0]! : '',
+    });
+  }
+  return out;
+}
+
+/** Simulação do snapshot concluído mais recente (datas gravadas na última conclusão). */
+export async function obterSimulacaoUltimoSnapshotConcluido(): Promise<SequenciamentoSimulacao | null> {
+  const row = await prisma.sequenciamentoCarradasSnapshot.findFirst({
+    where: { status: 'concluido' },
+    orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+    select: { payload: true },
+  });
+  if (!row?.payload) return null;
+  try {
+    const parsed = JSON.parse(row.payload) as unknown;
+    const val = validarPayloadSequenciamento(parsed);
+    if (!val.ok || val.payload.version !== 2) return null;
+    return sanitizarSimulacao((val.payload as SequenciamentoCarradasPayloadV2).simulacao);
+  } catch {
+    return null;
+  }
+}
+
+function filtrarSimulacaoSeedConsultaAoVivo(
+  linhas: Record<string, unknown>[],
+  carradas: SequenciamentoCarradaAgregada[],
+  simUltimo: SequenciamentoSimulacao
+): SequenciamentoSimulacao | null {
+  const baseline = computarBaselinesRepo(linhas);
+  const keysAtuais = new Set(carradas.map((c) => carradaKeyRepo(c.cod, c.carrada)));
+  const itens: SequenciamentoSimulacaoItem[] = [];
+  for (const it of simUltimo.itens) {
+    if (!it.chave || !keysAtuais.has(it.chave)) continue;
+    const b = baseline.get(it.chave);
+    const entry: SequenciamentoSimulacaoItem = {
+      chave: it.chave,
+      cod: it.cod,
+      carrada: it.carrada,
+    };
+    let inclui = false;
+    if (it.dataProducao && !b?.dataProducao) {
+      entry.dataProducao = it.dataProducao;
+      inclui = true;
+    }
+    if (it.dataEntrega && !b?.dataEntrega) {
+      entry.dataEntrega = it.dataEntrega;
+      inclui = true;
+    }
+    if (inclui) itens.push(entry);
+  }
+  if (itens.length === 0) return null;
+  const ordem = simUltimo.ordem.filter((k) => keysAtuais.has(k));
+  return { ordem, itens };
+}
+
+/**
+ * Consulta ao vivo com semeadura: carradas sem data no banco herdam datas do último snapshot concluído.
+ */
+export async function montarPayloadConsultaAoVivo(): Promise<{
+  payload: SequenciamentoCarradasPayload;
+  erroConexao?: boolean;
+}> {
+  const { payload: base, erroConexao } = await montarPayloadSequenciamento();
+  const simUltimo = await obterSimulacaoUltimoSnapshotConcluido();
+  if (!simUltimo) return { payload: base, erroConexao };
+  const seed = filtrarSimulacaoSeedConsultaAoVivo(base.linhas, base.carradas, simUltimo);
+  if (!seed) return { payload: base, erroConexao };
+  return {
+    payload: { ...base, version: 2, simulacao: seed },
+    erroConexao,
+  };
+}
+
+export async function gravarSnapshotSequenciamento(
+  usuarioLogin: string,
+  simulacao?: SequenciamentoSimulacao | null
+): Promise<{
   id: number;
   cod: string;
   createdAt: Date;
   usuarioLogin: string;
   carradaCount: number;
+  status: SequenciamentoSnapshotStatus;
 }> {
-  const { payload } = await montarPayloadSequenciamento();
+  const { payload: base } = await montarPayloadSequenciamento();
+  const payload: SequenciamentoCarradasPayload = simulacao
+    ? { ...base, version: 2, simulacao }
+    : base;
   const jsonStr = JSON.stringify(payload);
   if (jsonStr.length > SEQUENCIAMENTO_PAYLOAD_MAX_CHARS) {
     throw new Error('Snapshot muito grande para gravar. Reduza o volume de pedidos ou contate o suporte.');
@@ -222,6 +411,8 @@ export async function gravarSnapshotSequenciamento(usuarioLogin: string): Promis
       usuarioLogin,
       carradaCount: payload.carradas.length,
       payload: jsonStr,
+      // Novo fluxo: snapshot nasce como rascunho (editável com autosave até concluir).
+      status: 'rascunho',
     },
   });
   return {
@@ -230,7 +421,56 @@ export async function gravarSnapshotSequenciamento(usuarioLogin: string): Promis
     createdAt: row.createdAt,
     usuarioLogin: row.usuarioLogin,
     carradaCount: row.carradaCount,
+    status: 'rascunho',
   };
+}
+
+/**
+ * Autosave do rascunho: substitui a simulação (datas, ordem e motivos) no payload gravado.
+ * Só permitido enquanto o snapshot estiver com status 'rascunho'.
+ */
+export async function atualizarSimulacaoSnapshot(
+  id: number,
+  simulacao: SequenciamentoSimulacao | null
+): Promise<{ ok: true } | { ok: false; error: string; notFound?: boolean }> {
+  const row = await prisma.sequenciamentoCarradasSnapshot.findUnique({ where: { id } });
+  if (!row) return { ok: false, error: 'Snapshot não encontrado.', notFound: true };
+  if (row.status !== 'rascunho') {
+    return { ok: false, error: 'Snapshot não está em rascunho; edição bloqueada.' };
+  }
+  let base: Record<string, unknown>;
+  try {
+    base = JSON.parse(row.payload) as Record<string, unknown>;
+  } catch {
+    return { ok: false, error: 'Payload do snapshot ilegível.' };
+  }
+  const payload = { ...base, version: 2, simulacao: simulacao ?? null };
+  const jsonStr = JSON.stringify(payload);
+  if (jsonStr.length > SEQUENCIAMENTO_PAYLOAD_MAX_CHARS) {
+    return { ok: false, error: 'Snapshot muito grande para gravar.' };
+  }
+  await prisma.sequenciamentoCarradasSnapshot.update({
+    where: { id },
+    data: { payload: jsonStr, updatedAt: new Date() },
+  });
+  return { ok: true };
+}
+
+/** Marca o snapshot como concluído (status final; somente leitura). */
+export async function concluirSnapshotSequenciamento(
+  id: number
+): Promise<{ ok: true } | { ok: false; error: string; notFound?: boolean }> {
+  const row = await prisma.sequenciamentoCarradasSnapshot.findUnique({
+    where: { id },
+    select: { id: true, status: true },
+  });
+  if (!row) return { ok: false, error: 'Snapshot não encontrado.', notFound: true };
+  if (row.status === 'concluido') return { ok: true };
+  await prisma.sequenciamentoCarradasSnapshot.update({
+    where: { id },
+    data: { status: 'concluido', updatedAt: new Date() },
+  });
+  return { ok: true };
 }
 
 export async function listarSnapshotsSequenciamento(limit = 100): Promise<
@@ -240,6 +480,7 @@ export async function listarSnapshotsSequenciamento(limit = 100): Promise<
     usuarioLogin: string;
     createdAt: Date;
     carradaCount: number;
+    status: string;
   }>
 > {
   const lim = Math.min(Math.max(1, limit), 500);
@@ -252,6 +493,7 @@ export async function listarSnapshotsSequenciamento(limit = 100): Promise<
       usuarioLogin: true,
       createdAt: true,
       carradaCount: true,
+      status: true,
     },
   });
   return rows;
@@ -263,11 +505,12 @@ export async function obterSnapshotSequenciamento(id: number): Promise<{
   usuarioLogin: string;
   createdAt: Date;
   carradaCount: number;
-  payload: SequenciamentoCarradasPayloadV1 | null;
+  status: string;
+  payload: SequenciamentoCarradasPayload | null;
 } | null> {
   const row = await prisma.sequenciamentoCarradasSnapshot.findUnique({ where: { id } });
   if (!row) return null;
-  let payload: SequenciamentoCarradasPayloadV1 | null = null;
+  let payload: SequenciamentoCarradasPayload | null = null;
   try {
     const parsed = JSON.parse(row.payload) as unknown;
     const val = validarPayloadSequenciamento(parsed);
@@ -281,6 +524,7 @@ export async function obterSnapshotSequenciamento(id: number): Promise<{
     usuarioLogin: row.usuarioLogin,
     createdAt: row.createdAt,
     carradaCount: row.carradaCount,
+    status: row.status,
     payload,
   };
 }

@@ -12,6 +12,7 @@ import AlteracaoDataEntregaCompraPage from './pages/integracao/AlteracaoDataEntr
 import FaturamentoDiarioPage from './pages/integracao/FaturamentoDiarioPage';
 import PedidosEntregaVencidaPage from './pages/integracao/PedidosEntregaVencidaPage';
 import SmsIntegracaoPage from './pages/integracao/SmsIntegracaoPage';
+import EmailIntegracaoPage from './pages/integracao/EmailIntegracaoPage';
 import CredenciaisPage from './pages/integracao/CredenciaisPage';
 import EmailCredenciaisPage from './pages/integracao/EmailCredenciaisPage';
 import ComprasPage from './pages/ComprasPage';
@@ -57,6 +58,7 @@ import VeiculosPage from './pages/logistica/VeiculosPage';
 import ProdutosCubagemPage from './pages/logistica/ProdutosCubagemPage';
 import SimulacaoCubagemPage from './pages/logistica/SimulacaoCubagemPage';
 import { qualidadeRoutes } from './modules/qualidade/qualidadeRoutes';
+import PainelComercialPage from './pages/comercial/PainelComercialPage';
 
 /** Rotas filhas do layout autenticado (espelham appRouter). */
 export const layoutChildRoutes: RouteObject[] = [
@@ -121,6 +123,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'financeiro/painel-financeiro-comercial', element: <PainelFinanceiroComercialPage /> },
   { path: 'financeiro/renegociacao-contratos', element: <RenegociacaoContratosPage /> },
   { path: 'financeiro/crm', element: <ErrorBoundary><CrmFinanceiroPage /></ErrorBoundary> },
+  { path: 'comercial/painel', element: <ErrorBoundary><PainelComercialPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/veiculos', element: <ErrorBoundary><VeiculosPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/produtos', element: <ErrorBoundary><ProdutosCubagemPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/simulacao', element: <ErrorBoundary><SimulacaoCubagemPage /></ErrorBoundary> },
@@ -130,6 +133,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'integracao/faturamento-diario', element: <FaturamentoDiarioPage /> },
   { path: 'integracao/pedidos-entrega-vencida', element: <PedidosEntregaVencidaPage /> },
   { path: 'integracao/sms', element: <SmsIntegracaoPage /> },
+  { path: 'integracao/email-notificacoes', element: <EmailIntegracaoPage /> },
   { path: 'integracao/credenciais', element: <CredenciaisPage /> },
   { path: 'integracao/credenciais/email', element: <EmailCredenciaisPage /> },
   { path: 'usuarios', element: <UsuariosPage /> },

@@ -10,11 +10,16 @@ import {
   obterTabelaStatusPorTipoF,
   obterResumoObservacoes,
   obterResumoMotivos,
+  obterDashEntregasAnalytics,
+  obterDashEntregasAgingTipoF,
+  obterDashEntregasLeadTimeTipoF,
   obterFiltrosOpcoes,
   obterMapaMunicipios,
   obterDetalhesCompletosMunicipioMapa,
+  obterCargasSeparadasMesmoClienteCidade,
   registrarAjustePrevisao,
   registrarAjustesPrevisaoLote,
+  registrarDataProducaoLote,
   obterMapaRotaPorIdPedido,
   buscarPedidoPorId,
   listarHistoricoAjustes,
@@ -28,8 +33,9 @@ import {
   formatarMensagemAlteracaoPrevisao,
   formatarMensagemAlteracaoPrevisaoLote,
 } from '../services/evolutionApi.js';
+import { responderSycroCardsPorAjusteGerenciador } from '../services/sycroOrderSyncRespostaPrevisao.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
-import { ajustarPrevisaoSchema, ajustarPrevisaoLoteSchema } from '../validators/pedidos.js';
+import { ajustarPrevisaoSchema, ajustarPrevisaoLoteSchema, ajustarDataProducaoLoteSchema } from '../validators/pedidos.js';
 import { listarPedidosQuerySchema, pedidosEncerradosQuerySchema, pedidosEncerradosTypeaheadQuerySchema } from '../validators/pedidos.js';
 import { prisma } from '../config/prisma.js';
 import { PERMISSOES } from '../config/permissoes.js';
@@ -62,6 +68,27 @@ function isExcludedSqlRotaCategory(dm: string): boolean {
 
 function rotaFromPedidoRow(row: Record<string, unknown>): string {
   return String(row['Observacoes'] ?? row['Observações'] ?? row['Rota'] ?? row['rota'] ?? '').trim();
+}
+
+async function syncSycroRespostaAposAjusteGerenciador(
+  idPedido: string,
+  usuario: string,
+  novaPrevisao: Date
+): Promise<void> {
+  try {
+    const pedido = await buscarPedidoPorId(idPedido);
+    if (!pedido) return;
+    const row = pedido as Record<string, unknown>;
+    const pd = String(row['PD'] ?? row['pd'] ?? '').trim();
+    if (!pd) return;
+    await responderSycroCardsPorAjusteGerenciador({
+      pd,
+      usuarioLogin: usuario,
+      novaPrevisaoIso: novaPrevisao.toISOString().slice(0, 10),
+    });
+  } catch (_) {
+    // não falha o ajuste se a sincronização com Comunicação PD der erro
+  }
 }
 
 /**
@@ -271,6 +298,50 @@ export async function getResumoObservacoes(req: Request, res: Response): Promise
 }
 
 /**
+ * GET /api/pedidos/dash-entregas-analytics - KPIs, rotas, aging e top clientes em uma requisição.
+ */
+export async function getDashEntregasAnalytics(_req: Request, res: Response): Promise<void> {
+  try {
+    const data = await obterDashEntregasAnalytics();
+    res.json(data);
+  } catch (err) {
+    console.error('getDashEntregasAnalytics', err);
+    res.status(503).json({ error: 'Erro ao obter analytics do Dash Entregas.' });
+  }
+}
+
+/**
+ * GET /api/pedidos/dash-entregas-aging-tipof?faixa_atraso= — saldo por TipoF em uma faixa de aging.
+ */
+export async function getDashEntregasAgingTipoF(req: Request, res: Response): Promise<void> {
+  const faixa = typeof req.query.faixa_atraso === 'string' ? req.query.faixa_atraso.trim() : '';
+  if (!faixa) {
+    res.status(400).json({ error: 'Parâmetro faixa_atraso é obrigatório.' });
+    return;
+  }
+  try {
+    const data = await obterDashEntregasAgingTipoF(faixa);
+    res.json(data);
+  } catch (err) {
+    console.error('getDashEntregasAgingTipoF', err);
+    res.status(503).json({ error: 'Erro ao obter saldo por TipoF.' });
+  }
+}
+
+/**
+ * GET /api/pedidos/dash-entregas-leadtime-tipof — saldo por TipoF para drill-down do lead time.
+ */
+export async function getDashEntregasLeadTimeTipoF(_req: Request, res: Response): Promise<void> {
+  try {
+    const data = await obterDashEntregasLeadTimeTipoF();
+    res.json(data);
+  } catch (err) {
+    console.error('getDashEntregasLeadTimeTipoF', err);
+    res.status(503).json({ error: 'Erro ao obter saldo por TipoF (lead time).' });
+  }
+}
+
+/**
  * GET /api/pedidos/resumo-motivos - quantidade de alterações por motivo.
  */
 export async function getResumoMotivos(req: Request, res: Response): Promise<void> {
@@ -338,6 +409,25 @@ export async function getMapaMunicipioDetalhes(req: Request, res: Response): Pro
   } catch (err) {
     console.error('getMapaMunicipioDetalhes', err);
     res.status(503).json({ error: 'Erro ao obter detalhes do município.' });
+  }
+}
+
+/**
+ * GET /api/pedidos/cargas-separadas-cliente-cidade — lista de pedidos em cargas separadas (mesmo cliente e mesma cidade).
+ * Aceita os mesmos query params de listar pedidos (heatmap filters).
+ */
+export async function getCargasSeparadasMesmoClienteCidade(req: Request, res: Response): Promise<void> {
+  const parsed = listarPedidosQuerySchema.safeParse(req.query);
+  const filtros = parsed.success ? parsed.data : {};
+  const { page: _pg, limit: _lm, ...filtrosResumo } = filtros as { page?: number; limit?: number; [k: string]: unknown };
+  try {
+    const dados = await obterCargasSeparadasMesmoClienteCidade(
+      filtrosResumo as Parameters<typeof obterCargasSeparadasMesmoClienteCidade>[0]
+    );
+    res.json(dados);
+  } catch (err) {
+    console.error('getCargasSeparadasMesmoClienteCidade', err);
+    res.status(503).json({ error: 'Erro ao obter cargas separadas por cliente/cidade.' });
   }
 }
 
@@ -454,6 +544,7 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
       } catch (_) {
         // não falha o ajuste se o WhatsApp der erro
       }
+      await syncSycroRespostaAposAjusteGerenciador(idPedido, usuario, dataPrevisao);
       res.json(pedido);
       return;
     }
@@ -503,6 +594,7 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
     } catch (_) {
       // não falha o ajuste se o WhatsApp der erro
     }
+    await syncSycroRespostaAposAjusteGerenciador(idPedido, usuario, dataPrevisao);
     res.json(pedido);
   } catch (err) {
     console.error('ajustarPrevisao', err);
@@ -682,7 +774,53 @@ export async function ajustarPrevisaoLote(req: Request, res: Response): Promise<
   } catch (_) {
     // não falha o lote se o WhatsApp der erro
   }
+  try {
+    const syncedPd = new Set<string>();
+    for (const item of resultados.applied ?? []) {
+      const pedido = await buscarPedidoPorId(item.id_pedido);
+      if (!pedido) continue;
+      const row = pedido as Record<string, unknown>;
+      const pd = String(row['PD'] ?? row['pd'] ?? '').trim();
+      if (!pd || syncedPd.has(pd)) continue;
+      syncedPd.add(pd);
+      await responderSycroCardsPorAjusteGerenciador({
+        pd,
+        usuarioLogin: usuario,
+        novaPrevisaoIso: new Date(item.previsao_nova).toISOString().slice(0, 10),
+      });
+    }
+  } catch (_) {
+    // não falha o lote se a sincronização com Comunicação PD der erro
+  }
   res.json(resultados);
+}
+
+/**
+ * POST /api/pedidos/data-producao-lote - grava a data de produção de vários pedidos (append-only).
+ * Usado pelo Sequenciamento de Carradas ao confirmar a simulação. Não altera o Nomus.
+ */
+export async function ajustarDataProducaoLote(req: Request, res: Response): Promise<void> {
+  const raw = req.body;
+  const body = Array.isArray(raw) ? { itens: raw } : (raw ?? {});
+  const parsed = ajustarDataProducaoLoteSchema.safeParse(body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Payload inválido', details: parsed.error.flatten() });
+    return;
+  }
+  const usuario = req.user?.login ?? 'anon';
+  try {
+    const itens = parsed.data.itens.map((it) => ({
+      id_pedido: String(it.id_pedido).trim(),
+      data_producao: new Date(it.data_producao),
+    }));
+    const resultado = await registrarDataProducaoLote(itens, usuario);
+    invalidatePedidosCache();
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[pedidosController] ajustarDataProducaoLote:', msg);
+    res.status(500).json({ error: msg });
+  }
 }
 
 /**

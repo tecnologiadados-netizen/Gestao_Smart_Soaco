@@ -102,7 +102,7 @@ export async function getCsrfToken(): Promise<string> {
 
 export async function apiFetch(
   path: string,
-  options: RequestInit & { method?: string; body?: unknown } = {}
+  options: Omit<RequestInit, 'body'> & { method?: string; body?: unknown } = {}
 ): Promise<Response> {
   const { method = 'GET', body, ...rest } = options;
   const headers: HeadersInit = {

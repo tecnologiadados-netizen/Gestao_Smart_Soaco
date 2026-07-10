@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { SequenciamentoCarradaAgregada } from '../../api/sequenciamentoCarradas';
+import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import {
   agregarPedidosVenda,
   agregarProdutosVinculados,
@@ -30,6 +31,8 @@ export default function SequenciamentoCarradasDetalheModal({
   onClose,
 }: Props) {
   const [aba, setAba] = useState<AbaDetalhe>('pedidos');
+
+  useRegisterModalEscape({ id: 'seq-carradas-detalhe', onClose, zIndex: 130 });
 
   const linhasFiltradas = useMemo(() => filtrarLinhasCarrada(linhas, carrada), [linhas, carrada]);
   const pedidos = useMemo(() => agregarPedidosVenda(linhasFiltradas), [linhasFiltradas]);

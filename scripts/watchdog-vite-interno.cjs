@@ -1,5 +1,6 @@
 /**
  * Watchdog do Vite (frontend dev): reinicia só se a porta responder erro persistente.
+ * Ignora ECONNREFUSED (Vite reiniciando) e período de graça após queda.
  */
 const { FRONTEND_PORT } = require('./dev-ports.cjs');
 

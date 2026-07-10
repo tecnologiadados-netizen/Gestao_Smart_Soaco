@@ -11,7 +11,7 @@ export type LinhaEmpenhoSaldoProjetado = RessupEmpenhoPedidoLinha & {
   ruptura: boolean;
 };
 
-/** Data ASC → carrada → pedido ASC (mesma regra do backend). */
+/** Data de produção ASC → carrada → pedido ASC (mesma regra do backend). */
 export function ordenarLinhasEmpenho(linhas: RessupEmpenhoPedidoLinha[]): RessupEmpenhoPedidoLinha[] {
   return [...linhas].sort((a, b) =>
     cmpPedidosEmpenho(

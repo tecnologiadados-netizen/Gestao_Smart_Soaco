@@ -169,23 +169,26 @@ function buildMapPedidoCodParaListaIdChaves(pedidos: PedidoRow[]): Map<string, s
   return m;
 }
 
-/** Mesma “Previsão atual” do Gerenciador (já mesclada no listarPedidos). Com várias linhas no mesmo PD+Cod, usa a data mais tardia (ISO). */
-function previsaoGestorRowIso(row: PedidoRow): string | null {
-  const p = row.previsao_entrega_atualizada ?? row.previsao_entrega;
+/**
+ * Data base do Gerenciador (produção com fallback para previsão atual).
+ * Com várias linhas no mesmo PD+Cod, usa a data mais tardia (ISO).
+ */
+function dataBaseGestorRowIso(row: PedidoRow): string | null {
+  const p = (row as any)?.data_producao ?? row.previsao_entrega_atualizada ?? row.previsao_entrega;
   if (p == null) return null;
   const d = p instanceof Date ? p : new Date(p as string);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString().slice(0, 10);
 }
 
-function buildMapPedidoCodParaMaiorPrevisaoGestor(pedidos: PedidoRow[]): Map<string, string> {
+function buildMapPedidoCodParaMaiorDataBaseGestor(pedidos: PedidoRow[]): Map<string, string> {
   const m = new Map<string, string>();
   for (const row of pedidos) {
     const r = row as Record<string, unknown>;
     const { pd, cod } = lerPdECodGerenciador(r);
     const k = chavePedidoMaisCod(pd, cod);
     if (!k) continue;
-    const iso = previsaoGestorRowIso(row);
+    const iso = dataBaseGestorRowIso(row);
     if (!iso) continue;
     const cur = m.get(k);
     if (!cur || iso > cur) m.set(k, iso);
@@ -423,13 +426,13 @@ async function carregarLinhasMppFiltradas(
   const rawTruncated = raw.length >= rawFetchLimit;
 
   let pedidoCodParaListaIdChave = new Map<string, string[]>();
-  let pedidoCodParaMaiorPrevisaoIso = new Map<string, string>();
+  let pedidoCodParaMaiorDataBaseIso = new Map<string, string>();
   let chavesPedidoCodMppPrevisaoFim = new Set<string>();
   try {
     invalidatePedidosCache();
     const { data: pedidos } = await listarPedidos({});
     pedidoCodParaListaIdChave = buildMapPedidoCodParaListaIdChaves(pedidos);
-    pedidoCodParaMaiorPrevisaoIso = buildMapPedidoCodParaMaiorPrevisaoGestor(pedidos);
+    pedidoCodParaMaiorDataBaseIso = buildMapPedidoCodParaMaiorDataBaseGestor(pedidos);
     chavesPedidoCodMppPrevisaoFim = buildSetChavesPedidoCodMppPrevisaoFim(pedidos);
   } catch (e) {
     console.warn('[mppController] listarPedidos para cruzar PD+Cod falhou:', (e as Error)?.message);
@@ -459,7 +462,7 @@ async function carregarLinhasMppFiltradas(
     const { pedido, produto } = lerMppPedidoEProduto(r);
     const kNegocio = chavePedidoMaisCod(pedido, produto);
     let dataPrevisao: string | null =
-      kNegocio ? pedidoCodParaMaiorPrevisaoIso.get(kNegocio) ?? null : null;
+      kNegocio ? pedidoCodParaMaiorDataBaseIso.get(kNegocio) ?? null : null;
     if (!dataPrevisao) {
       const doGestor = kNegocio ? (pedidoCodParaListaIdChave.get(kNegocio) ?? []) : [];
       const candidatos = [...doGestor];

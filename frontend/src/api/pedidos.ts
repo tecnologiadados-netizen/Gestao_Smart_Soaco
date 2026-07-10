@@ -27,11 +27,103 @@ export interface Resumo {
   total: number;
   entregaHoje: number;
   atrasados: number;
+  emDia?: number;
   leadTimeMedioDias: number | null;
   /** Soma do Valor Pendente Real de todos os pedidos do resumo (para % no gráfico). */
   totalValorPendenteReal?: number;
   /** Soma do Valor Pendente Real apenas dos pedidos atrasados. */
   atrasadosValorPendenteReal?: number;
+  /** Soma do Valor Pendente Real dos pedidos em dia. */
+  emDiaValorPendenteReal?: number;
+  /** Soma do Valor Pendente Real dos pedidos com entrega hoje. */
+  entregaHojeValorPendenteReal?: number;
+  /** Percentual do saldo pendente que está atrasado (0–100). */
+  pctAtrasadoValor?: number;
+  /** Quantidade de pedidos (PD distintos) em aberto. */
+  totalPedidos?: number;
+  atrasadosPedidos?: number;
+  emDiaPedidos?: number;
+  entregaHojePedidos?: number;
+}
+
+export interface ObservacaoValorResumo {
+  observacao: string;
+  quantidade: number;
+  valorTotal: number;
+  valorAtrasado: number;
+  valorEmDia: number;
+  quantidadeAtrasada: number;
+}
+
+export interface AgingFaixaResumo {
+  faixa: string;
+  label: string;
+  valor: number;
+  quantidade: number;
+}
+
+export interface ClienteAtrasadoResumo {
+  cliente: string;
+  valorAtrasado: number;
+  quantidade: number;
+}
+
+export interface ConcentracaoResumo {
+  label: string;
+  valor: number;
+  quantidade: number;
+}
+
+export interface DashEntregasAnalytics {
+  resumo: Resumo;
+  rotas: ObservacaoValorResumo[];
+  aging: AgingFaixaResumo[];
+  topClientesAtrasados: ClienteAtrasadoResumo[];
+  concentracao: {
+    porGrupoProduto: ConcentracaoResumo[];
+    porSubgrupo1: ConcentracaoResumo[];
+    porSubgrupo2: ConcentracaoResumo[];
+    porSetorProducao: ConcentracaoResumo[];
+  };
+}
+
+export type DashEntregasFaixaAtraso =
+  | 'em_dia'
+  | 'atraso_1_7'
+  | 'atraso_8_15'
+  | 'atraso_16_30'
+  | 'atraso_31_60'
+  | 'atraso_60_mais';
+
+export interface TipoFValorResumo {
+  tipoF: string;
+  valor: number;
+  quantidade: number;
+}
+
+export interface TipoFLeadTimeResumo {
+  tipoF: string;
+  leadTimeMedioDias: number;
+  quantidade: number;
+}
+
+/** Filtros para drill-down do Dash Entregas (modal de origem). */
+export interface DashEntregasDrillFiltro {
+  titulo: string;
+  subtitulo?: string;
+  status?: 'Atrasado' | 'Em dia';
+  observacoes?: string;
+  cliente?: string;
+  tipo_f?: string;
+  grupo_produto?: string;
+  subgrupo1?: string;
+  subgrupo2?: string;
+  setor_producao?: string;
+  data_ini?: string;
+  data_fim?: string;
+  faixa_atraso?: DashEntregasFaixaAtraso;
+  /** Layout enxuto: aging (saldo), lead_time (dias até previsão original) ou full. */
+  gradeLayout?: 'aging' | 'lead_time' | 'full';
 }
 
 export interface ObservacaoResumo {
@@ -59,6 +151,8 @@ export interface FiltrosPedidos {
   data_fim?: string;
   atrasados?: boolean;
   grupo_produto?: string;
+  subgrupo1?: string;
+  subgrupo2?: string;
   setor_producao?: string;
   uf?: string;
   municipio_entrega?: string;
@@ -71,6 +165,8 @@ export interface FiltrosPedidos {
   descricao_produto?: string;
   a_vista?: string;
   requisicao_loja?: string;
+  faixa_atraso?: DashEntregasFaixaAtraso;
+  excluir_requisicao?: boolean;
   page?: number;
   limit?: number;
   /** Níveis de classificação para ordenar todos os registros no servidor antes da paginação. */
@@ -112,6 +208,8 @@ export async function listarPedidos(filtros: FiltrosPedidos = {}): Promise<Lista
   if (filtros.descricao_produto) params.set('descricao_produto', filtros.descricao_produto);
   if (filtros.a_vista) params.set('a_vista', filtros.a_vista);
   if (filtros.requisicao_loja) params.set('requisicao_loja', filtros.requisicao_loja);
+  if (filtros.faixa_atraso) params.set('faixa_atraso', filtros.faixa_atraso);
+  if (filtros.excluir_requisicao === true) params.set('excluir_requisicao', 'true');
   if (filtros.page != null) params.set('page', String(filtros.page));
   if (filtros.limit != null) params.set('limit', String(filtros.limit));
   if (Array.isArray(filtros.sort_levels) && filtros.sort_levels.length > 0) {
@@ -161,6 +259,8 @@ export async function listarPedidosExport(filtros: Omit<FiltrosPedidos, 'page' |
   if (filtros.descricao_produto) params.set('descricao_produto', filtros.descricao_produto);
   if (filtros.a_vista) params.set('a_vista', filtros.a_vista);
   if (filtros.requisicao_loja) params.set('requisicao_loja', filtros.requisicao_loja);
+  if (filtros.faixa_atraso) params.set('faixa_atraso', filtros.faixa_atraso);
+  if (filtros.excluir_requisicao === true) params.set('excluir_requisicao', 'true');
   if (Array.isArray(filtros.sort_levels) && filtros.sort_levels.length > 0) {
     params.set('sort_levels', JSON.stringify(filtros.sort_levels));
   }
@@ -176,6 +276,7 @@ export async function obterResumo(observacoes?: string): Promise<Resumo> {
 
 export interface ResumoFinanceiro {
   quantidadePedidos: number;
+  quantidadePedidosCargasSeparadasMesmoClienteCidade: number;
   saldoFaturarPrazo: number;
   valorAdiantamento: number;
   saldoFaturar: number;
@@ -189,6 +290,25 @@ export async function obterResumoFinanceiro(filtros: FiltrosPedidos = {}): Promi
   });
   const qs = params.toString();
   return apiJson<ResumoFinanceiro>(`/api/pedidos/resumo-financeiro${qs ? `?${qs}` : ''}`);
+}
+
+export interface CargasSeparadasMesmoClienteCidadeResponse {
+  quantidadePedidos: number;
+  detalhes: TooltipDetalheRow[];
+}
+
+/** Lista de pedidos em cargas separadas (mesmo cliente e mesma cidade). */
+export async function obterCargasSeparadasMesmoClienteCidade(
+  filtros: FiltrosPedidos = {}
+): Promise<CargasSeparadasMesmoClienteCidadeResponse> {
+  const params = new URLSearchParams();
+  Object.entries(filtros).forEach(([k, v]) => {
+    if (v !== undefined && v !== '' && k !== 'page' && k !== 'limit') params.set(k, String(v));
+  });
+  const qs = params.toString();
+  return apiJson<CargasSeparadasMesmoClienteCidadeResponse>(
+    `/api/pedidos/cargas-separadas-cliente-cidade${qs ? `?${qs}` : ''}`
+  );
 }
 
 export interface ResumoFinanceiroGradeCondicao {
@@ -222,6 +342,21 @@ export async function getResumoFinanceiroGrade(
   return apiJson<ResumoFinanceiroGradeResponse>(
     `/api/pedidos/resumo-financeiro-grade${qs ? `?${qs}` : ''}`
   );
+}
+
+export async function obterDashEntregasAnalytics(): Promise<DashEntregasAnalytics> {
+  return apiJson<DashEntregasAnalytics>('/api/pedidos/dash-entregas-analytics');
+}
+
+export async function obterDashEntregasAgingTipoF(
+  faixaAtraso: DashEntregasFaixaAtraso
+): Promise<TipoFValorResumo[]> {
+  const params = new URLSearchParams({ faixa_atraso: faixaAtraso });
+  return apiJson<TipoFValorResumo[]>(`/api/pedidos/dash-entregas-aging-tipof?${params.toString()}`);
+}
+
+export async function obterDashEntregasLeadTimeTipoF(): Promise<TipoFLeadTimeResumo[]> {
+  return apiJson<TipoFLeadTimeResumo[]>('/api/pedidos/dash-entregas-leadtime-tipof');
 }
 
 export async function obterResumoObservacoes(): Promise<ObservacaoResumo[]> {
@@ -455,6 +590,27 @@ export async function ajustarPrevisaoLote(ajustes: AjustePrevisaoLoteItem[]): Pr
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error((err as { error?: string }).error ?? 'Erro ao ajustar previsão em lote');
+  }
+  return res.json();
+}
+
+export type DataProducaoLoteItem = {
+  id_pedido: string;
+  /** Data de produção (YYYY-MM-DD ou ISO). */
+  data_producao: string;
+};
+
+/** Grava a data de produção de vários pedidos (Sequenciamento de Carradas). Não altera o Nomus. */
+export async function ajustarDataProducaoLote(
+  itens: DataProducaoLoteItem[]
+): Promise<{ ok: number; erros: Array<{ id_pedido: string; erro: string }> }> {
+  const res = await apiFetch('/api/pedidos/data-producao-lote', {
+    method: 'POST',
+    body: { itens },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error((err as { error?: string }).error ?? 'Erro ao gravar data de produção em lote');
   }
   return res.json();
 }

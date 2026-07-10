@@ -64,6 +64,8 @@ export interface FiltrosPedidos {
   data_fim?: string;
   atrasados?: boolean;
   grupo_produto?: string;
+  subgrupo1?: string;
+  subgrupo2?: string;
   setor_producao?: string;
   uf?: string;
   municipio_entrega?: string;
@@ -76,6 +78,10 @@ export interface FiltrosPedidos {
   descricao_produto?: string;
   a_vista?: string;
   requisicao_loja?: string;
+  /** Faixa de aging para drill-down do Dash Entregas (em_dia, atraso_1_7, …). */
+  faixa_atraso?: string;
+  /** Quando true, exclui pedidos classificados como requisição (Dash Entregas). */
+  excluir_requisicao?: boolean;
   page?: number;
   limit?: number;
   /** Níveis de classificação para ordenar a lista antes da paginação (ex.: [{ id: 'previsao_atual', dir: 'asc' }, ...]). */
@@ -143,6 +149,37 @@ function statusPedidoGrade(p: PedidoRow): string {
 
 function pedidoGradeEstaAtrasado(p: PedidoRow): boolean {
   return statusPedidoGrade(p) === 'Atrasado';
+}
+
+/** Dias de atraso com base na previsão atualizada (0 quando em dia). */
+function getDiasAtrasoPedido(p: PedidoRow, hoje: Date): number {
+  if (!pedidoGradeEstaAtrasado(p)) return 0;
+  const d = new Date(p.previsao_entrega_atualizada);
+  d.setHours(0, 0, 0, 0);
+  const h = new Date(hoje);
+  h.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((h.getTime() - d.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
+function pedidoNaFaixaAtraso(p: PedidoRow, faixa: string, hoje: Date): boolean {
+  const f = faixa.trim().toLowerCase();
+  if (f === 'em_dia') return !pedidoGradeEstaAtrasado(p);
+  if (!pedidoGradeEstaAtrasado(p)) return false;
+  const dias = getDiasAtrasoPedido(p, hoje);
+  switch (f) {
+    case 'atraso_1_7':
+      return dias >= 1 && dias <= 7;
+    case 'atraso_8_15':
+      return dias >= 8 && dias <= 15;
+    case 'atraso_16_30':
+      return dias >= 16 && dias <= 30;
+    case 'atraso_31_60':
+      return dias >= 31 && dias <= 60;
+    case 'atraso_60_mais':
+      return dias >= 61;
+    default:
+      return true;
+  }
 }
 
 /**
@@ -304,7 +341,13 @@ async function obterUltimoEPenultimoPorPedido(linhas: LinhaLookup[]): Promise<Ma
       let info: AjusteInfo | null = null;
       if (overrides.length > 0) {
         const ultimo = overrides[0]!;
-        const penultimo = overrides[1]?.previsao_nova ?? null;
+        let penultimoRaw: Date | string | null = overrides[1]?.previsao_nova ?? null;
+        if (penultimoRaw == null && bases.length > 0) {
+          const baseHead = bases[0]!;
+          if (baseHead.previsao_nova !== ultimo.previsao_nova) {
+            penultimoRaw = baseHead.previsao_nova;
+          }
+        }
         info = {
           ultimo: {
             previsao_nova: parseDateFromDb(ultimo.previsao_nova),
@@ -312,7 +355,7 @@ async function obterUltimoEPenultimoPorPedido(linhas: LinhaLookup[]): Promise<Ma
             observacao: ultimo.observacao ?? null,
             previsao_confiavel: ultimo.previsao_confiavel !== false,
           },
-          penultimo: penultimo != null ? parseDateFromDb(penultimo) : null,
+          penultimo: penultimoRaw != null ? parseDateFromDb(penultimoRaw) : null,
           origem: 'override',
         };
       } else if (bases.length > 0) {
@@ -352,11 +395,44 @@ async function obterUltimoEPenultimoPorPedido(linhas: LinhaLookup[]): Promise<Ma
   return result;
 }
 
+/**
+ * Data de produção mais recente por idChave (histórico append-only em pedido_data_producao).
+ * Usa a mesma chave canônica pedido+item (chavePedidoItem) do ajuste de previsão, de modo que a
+ * data acompanha a linha lógica mesmo quando o vínculo com a carrada muda no ERP.
+ */
+async function obterDataProducaoPorPedido(linhas: LinhaLookup[]): Promise<Map<string, Date>> {
+  const result = new Map<string, Date>();
+  if (linhas.length === 0) return result;
+  try {
+    const rows = await prisma.pedidoDataProducao.findMany({
+      select: { id: true, id_pedido: true, data_producao: true, data_registro: true },
+      orderBy: [{ data_registro: 'desc' }, { id: 'desc' }],
+    });
+    // canon (pedido+item) -> data de produção mais recente
+    const porCanon = new Map<string, Date>();
+    for (const r of rows) {
+      const canon = chavePedidoItem(String(r.id_pedido ?? '').trim());
+      if (!canon || porCanon.has(canon)) continue;
+      porCanon.set(canon, parseDateFromDb(r.data_producao));
+    }
+    for (const linha of linhas) {
+      const idChave = String(linha.idChave ?? '').trim();
+      if (!idChave) continue;
+      const d = porCanon.get(chavePedidoItem(idChave));
+      if (d) result.set(idChave, d);
+    }
+  } catch (err) {
+    console.error('[obterDataProducaoPorPedido] Prisma falhou:', err instanceof Error ? err.message : err);
+  }
+  return result;
+}
+
 /** Mapeia linha do Nomus para formato do app; aplica último e penúltimo ajuste (SQLite). Retorna todos os campos do banco (row) mais os calculados. */
 function rowNomusToPedido(
   row: Record<string, unknown>,
   ajustePorId: Map<string, AjusteInfo>,
-  versoesRegras: Array<{ vigenteApartirDe: Date; payload: RegraDataEntregaConfig }>
+  versoesRegras: Array<{ vigenteApartirDe: Date; payload: RegraDataEntregaConfig }>,
+  dataProducaoPorId?: Map<string, Date>
 ): PedidoRow {
   const idChave = String(row['idChave'] ?? '').trim();
   const cliente = String(row['Cliente'] ?? '');
@@ -369,10 +445,14 @@ function rowNomusToPedido(
   let previsaoAtualizada = temAjusteReal ? info!.ultimo.previsao_nova : previsaoOriginal;
   const motivoAjuste = temAjusteReal ? info!.ultimo.motivo : null;
   const observacaoAjuste = temAjusteReal ? info!.ultimo.observacao : null;
-  const previsaoAnterior = info?.penultimo ?? previsaoOriginal;
+  const dataOriginalRaw = row['Data de entrega'] ?? row['dataParametro'];
+  const previsaoAnteriorFallback =
+    dataOriginalRaw != null ? new Date(dataOriginalRaw as string | Date) : previsaoOriginal;
+  let previsaoAnterior = info?.penultimo ?? previsaoAnteriorFallback;
   const origemAjuste = temAjusteReal ? info!.origem : null;
   const previsaoAtualConfiavel = temAjusteReal ? info!.ultimo.previsao_confiavel : true;
   const carradaMigrada = info?.carradaMigrada ?? null;
+  const dataProducao = dataProducaoPorId?.get(idChave) ?? null;
 
   const tipoF = String(row['TipoF'] ?? row['tipoF'] ?? '').trim();
   const emissaoRaw = row['Emissao'] ?? row['emissao'];
@@ -421,6 +501,7 @@ function rowNomusToPedido(
     origem_ultimo_ajuste: origemAjuste,
     previsao_atual_confiavel: previsaoAtualConfiavel,
     carrada_migrada: carradaMigrada,
+    data_producao: dataProducao,
     Status: status,
     dataParametro: previsaoOriginal,
   } as PedidoRow;
@@ -429,7 +510,7 @@ function rowNomusToPedido(
 const BATCH_SIZE_AJUSTES = 500;
 
 /** Colunas de data usadas na classificação (valor numérico para ordenar). */
-const SORT_DATE_COLUMN_IDS = ['emissao', 'data_original', 'previsao_anterior', 'previsao_atual'];
+const SORT_DATE_COLUMN_IDS = ['emissao', 'data_original', 'previsao_anterior', 'previsao_atual', 'data_producao'];
 
 /** Mapeamento coluna id -> chaves no row (espelhando o frontend). */
 const SORT_COLUMN_KEYS: Record<string, string[]> = {
@@ -446,6 +527,7 @@ const SORT_COLUMN_KEYS: Record<string, string[]> = {
   valor_pendente_real: ['Saldo a Faturar Real', 'Valor Pendente Real'],
   emissao: ['Emissao', 'emissao'],
   data_original: ['Data de entrega', 'dataParametro'],
+  data_producao: ['data_producao'],
   data_base_entrega_futura: ['Data base entrega futura'],
 };
 
@@ -543,6 +625,28 @@ export function pedidoTipoFMppEmpurraPrevisaoParaFim(row: PedidoRow): boolean {
   return false;
 }
 
+function normalizarTextoRequisicao(s: string): string {
+  return String(s ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Linha classificada como requisição (TipoF ou rota/Observacoes). Excluída do Dash Entregas. */
+export function pedidoEhRequisicao(row: PedidoRow): boolean {
+  const tipoF = normalizarTextoRequisicao(getField(row, ['TipoF', 'tipoF']));
+  if (tipoF.includes('requisicao')) return true;
+  const obs = normalizarTextoRequisicao(
+    getField(row, ['Observacoes', 'Observacoes ', 'Observações', 'observacoes'])
+  );
+  if (!obs) return false;
+  if (obs.includes('requisicao')) return true;
+  if (obs.startsWith('5-requisicao')) return true;
+  return false;
+}
+
 /** Conjunto de chaves PD+Cod com linha do Gerenciador em uma dessas categorias (para o MPP). */
 export function buildSetChavesPedidoCodMppPrevisaoFim(pedidos: PedidoRow[]): Set<string> {
   const s = new Set<string>();
@@ -593,11 +697,13 @@ function getDateOnlyTimestamp(d: Date): number {
 const CACHE_PEDIDOS_TTL_MS = 90 * 1000; // 90 segundos
 let cachePedidos: { data: PedidoRow[]; expiresAt: number } | null = null;
 let cachePrevisaoPorPedidoId: { map: Map<number, string>; expiresAt: number } | null = null;
+let cacheDataBasePorPedidoId: { map: Map<number, string>; expiresAt: number } | null = null;
 
 /** Invalida o cache de pedidos (chamar após importação ou ajuste manual). */
 export function invalidatePedidosCache(): void {
   cachePedidos = null;
   cachePrevisaoPorPedidoId = null;
+  cacheDataBasePorPedidoId = null;
 }
 
 /** Mapa pd.id → previsão atual (YYYY-MM-DD). Uma carga / 90s — evita SQL do gerenciador por página. */
@@ -629,6 +735,47 @@ export async function getPrevisaoPorPedidoIdMap(): Promise<Map<number, string>> 
     map.set(pid, ymdFromTimestampMs(t));
   }
   cachePrevisaoPorPedidoId = { map, expiresAt: now + CACHE_PEDIDOS_TTL_MS };
+  return map;
+}
+
+/**
+ * Mapa pd.id → data base (YYYY-MM-DD): `data_producao` (preferencial) com fallback para previsão atual.
+ * Uma carga / 90s — evita SQL do gerenciador por página.
+ */
+export async function getDataBasePorPedidoIdMap(): Promise<Map<number, string>> {
+  const now = Date.now();
+  if (cacheDataBasePorPedidoId && cacheDataBasePorPedidoId.expiresAt > now) {
+    return cacheDataBasePorPedidoId.map;
+  }
+
+  const acc = new Map<number, number>();
+
+  const add = (pid: number, val: unknown) => {
+    mergeMenorPrevisaoPorPedido(acc, pid, val as any);
+  };
+
+  if (cachePedidos && cachePedidos.expiresAt > now) {
+    for (const p of cachePedidos.data) {
+      const row = p as Record<string, unknown>;
+      const pid = Number(row.id ?? row['id']);
+      const base = (p as any).data_producao ?? p.previsao_entrega_atualizada ?? p.previsao_entrega;
+      add(pid, base);
+    }
+  } else if (isNomusEnabled() && getNomusPool()) {
+    const { data } = await listarPedidos({});
+    for (const p of data) {
+      const row = p as Record<string, unknown>;
+      const pid = Number(row.id ?? row['id']);
+      const base = (p as any).data_producao ?? p.previsao_entrega_atualizada ?? p.previsao_entrega;
+      add(pid, base);
+    }
+  }
+
+  const map = new Map<number, string>();
+  for (const [pid, t] of acc) {
+    map.set(pid, ymdFromTimestampMs(t));
+  }
+  cacheDataBasePorPedidoId = { map, expiresAt: now + CACHE_PEDIDOS_TTL_MS };
   return map;
 }
 
@@ -759,6 +906,12 @@ function applyFiltrosPedidos(resultado: PedidoRow[], filtros: FiltrosPedidos): P
   resultado = filterByMultiText(resultado, filtros.grupo_produto, (p) =>
     getField(p, ['Grupo de produto', 'grupo de produto'])
   );
+  resultado = filterByMultiText(resultado, filtros.subgrupo1, (p) =>
+    getField(p, ['Subgrupo1', 'subgrupo1'])
+  );
+  resultado = filterByMultiText(resultado, filtros.subgrupo2, (p) =>
+    getField(p, ['Subgrupo2', 'subgrupo2'])
+  );
   resultado = filterByMultiText(resultado, filtros.setor_producao, (p) =>
     getField(p, ['Setor de Producao', 'Setor de produção'])
   );
@@ -773,7 +926,7 @@ function applyFiltrosPedidos(resultado: PedidoRow[], filtros: FiltrosPedidos): P
   resultado = filterByMultiText(resultado, filtros.vendedor, (p) =>
     getField(p, ['Vendedor/Representante', 'vendedor/representante'])
   );
-  resultado = filterByMultiExact(resultado, filtros.tipo_f, (p) => getField(p, ['tipoF', 'tipo_f']));
+  resultado = filterByMultiExact(resultado, filtros.tipo_f, (p) => getTipoFExibicao(p));
   resultado = filterByMultiExact(resultado, filtros.status, (p) => {
     let s = getField(p, ['Status', 'status']);
     if (!s) s = getField(p, ['StatusPedido', 'statusPedido']);
@@ -799,6 +952,14 @@ function applyFiltrosPedidos(resultado: PedidoRow[], filtros: FiltrosPedidos): P
   resultado = filterByMultiExact(resultado, filtros.requisicao_loja, (p) =>
     getField(p, ['Requisicao de loja do grupo?', 'requisicao de loja do grupo?'])
   );
+  if (filtros.faixa_atraso?.trim()) {
+    const hojeFaixa = new Date();
+    hojeFaixa.setHours(0, 0, 0, 0);
+    resultado = resultado.filter((p) => pedidoNaFaixaAtraso(p, filtros.faixa_atraso!, hojeFaixa));
+  }
+  if (filtros.excluir_requisicao === true) {
+    resultado = resultado.filter((p) => !pedidoEhRequisicao(p));
+  }
 
   resultado.sort(
     (a, b) =>
@@ -834,8 +995,9 @@ export async function listarPedidos(filtros: FiltrosPedidos = {}): Promise<{
         }))
         .filter((l) => l.idChave !== '');
       const ajustePorId = await obterUltimoEPenultimoPorPedido(linhasLookup);
+      const dataProducaoPorId = await obterDataProducaoPorPedido(linhasLookup);
       const versoesRegras = await obterVersoesParaClassificacao();
-      resultado = list.map((r) => rowNomusToPedido(r, ajustePorId, versoesRegras));
+      resultado = list.map((r) => rowNomusToPedido(r, ajustePorId, versoesRegras, dataProducaoPorId));
       cachePedidos = { data: resultado, expiresAt: now + CACHE_PEDIDOS_TTL_MS };
       setLastSyncErp();
     }
@@ -1004,8 +1166,9 @@ export async function listarPedidosEncerrados(pd: string): Promise<{
       }))
       .filter((l) => l.idChave !== '');
     const ajustePorId = await obterUltimoEPenultimoPorPedido(linhasLookup);
+    const dataProducaoPorId = await obterDataProducaoPorPedido(linhasLookup);
     const versoesRegras = await obterVersoesParaClassificacao();
-    let resultado = list.map((r) => rowNomusToPedido(r, ajustePorId, versoesRegras));
+    let resultado = list.map((r) => rowNomusToPedido(r, ajustePorId, versoesRegras, dataProducaoPorId));
 
     resultado.sort((a, b) => {
       const codCmp = getField(a, ['Cod', 'cod']).localeCompare(getField(b, ['Cod', 'cod']), undefined, {
@@ -1062,53 +1225,124 @@ export async function obterPrevisaoAtualizadaPorIdsPedido(idsPedido: number[]): 
   return result;
 }
 
+/**
+ * Data base (produção com fallback para previsão atual) por id de pedido Nomus (pd.id).
+ * Subconjunto de {@link getDataBasePorPedidoIdMap} (cache compartilhado, sem SQL por lote de ids).
+ */
+export async function obterDataBasePorIdsPedido(idsPedido: number[]): Promise<Map<number, string>> {
+  const idSet = new Set(idsPedido.filter((n) => Number.isFinite(n) && n > 0));
+  if (idSet.size === 0) return new Map();
+
+  const full = await getDataBasePorPedidoIdMap();
+  const result = new Map<number, string>();
+  for (const id of idSet) {
+    const ymd = full.get(id);
+    if (ymd) result.set(id, ymd);
+  }
+  return result;
+}
+
 /** Chaves para Saldo a Faturar Real no row (nomus/export). */
 const KEYS_VALOR_PENDENTE_REAL = ['Saldo a Faturar Real', 'Valor Pendente Real', 'Valor Pendente', 'valor pendente real', 'valor pendente'];
+
+function getPdPedidoRow(p: PedidoRow): string {
+  return getField(p, ['PD', 'pd']).trim();
+}
+
+function getTipoFExibicao(p: PedidoRow): string {
+  const t = getField(p, ['TipoF', 'tipoF']);
+  if (t.trim()) return t.trim();
+  const fallback = getTipoFString(p);
+  return fallback.trim() || '—';
+}
 
 /** Resumo para o dashboard (total, entrega hoje, atrasados, lead time médio, totais por valor pendente real). Opcionalmente filtrado por observacoes (rota). */
 export async function obterResumoDashboard(filtros: { observacoes?: string } = {}): Promise<{
   total: number;
   entregaHoje: number;
   atrasados: number;
+  emDia: number;
   leadTimeMedioDias: number | null;
   totalValorPendenteReal: number;
   atrasadosValorPendenteReal: number;
+  emDiaValorPendenteReal: number;
+  entregaHojeValorPendenteReal: number;
+  pctAtrasadoValor: number;
+  totalPedidos: number;
+  atrasadosPedidos: number;
+  emDiaPedidos: number;
+  entregaHojePedidos: number;
 }> {
-  const { data: pedidos } = await listarPedidos(filtros);
+  const { data: pedidos } = await listarPedidos({ ...filtros, excluir_requisicao: true });
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
   let entregaHoje = 0;
   let atrasados = 0;
+  let emDia = 0;
   let somaDias = 0;
   let countDias = 0;
   let totalValorPendenteReal = 0;
   let atrasadosValorPendenteReal = 0;
+  let emDiaValorPendenteReal = 0;
+  let entregaHojeValorPendenteReal = 0;
+  const pdsTotal = new Set<string>();
+  const pdsAtrasados = new Set<string>();
+  const pdsEmDia = new Set<string>();
+  const pdsEntregaHoje = new Set<string>();
 
   for (const p of pedidos) {
     const valor = Math.max(0, getNumberFromRow(p, KEYS_VALOR_PENDENTE_REAL));
     totalValorPendenteReal += valor;
+    const pd = getPdPedidoRow(p);
+    if (pd) pdsTotal.add(pd);
 
     const atrasado = pedidoGradeEstaAtrasado(p);
-    const d = new Date(p.previsao_entrega_atualizada);
-    d.setHours(0, 0, 0, 0);
-    if (d.getTime() === hoje.getTime()) entregaHoje++;
+    const previsaoAtual = new Date(p.previsao_entrega_atualizada);
+    previsaoAtual.setHours(0, 0, 0, 0);
+    if (previsaoAtual.getTime() === hoje.getTime()) {
+      entregaHoje++;
+      entregaHojeValorPendenteReal += valor;
+      if (pd) pdsEntregaHoje.add(pd);
+    }
     if (atrasado) {
       atrasados++;
       atrasadosValorPendenteReal += valor;
+      if (pd) pdsAtrasados.add(pd);
+    } else {
+      emDia++;
+      emDiaValorPendenteReal += valor;
+      if (pd) pdsEmDia.add(pd);
     }
-    const dias = Math.round((d.getTime() - hoje.getTime()) / (24 * 60 * 60 * 1000));
-    somaDias += dias;
-    countDias++;
+    const dias = diasAtePrevisaoOriginal(p, hoje);
+    if (dias !== null) {
+      somaDias += dias;
+      countDias++;
+    }
   }
+
+  const pctAtrasadoValor =
+    totalValorPendenteReal > 0
+      ? Math.round((atrasadosValorPendenteReal / totalValorPendenteReal) * 100)
+      : atrasados > 0
+        ? Math.round((atrasados / Math.max(pedidos.length, 1)) * 100)
+        : 0;
 
   return {
     total: pedidos.length,
     entregaHoje,
     atrasados,
+    emDia,
     leadTimeMedioDias: countDias > 0 ? Math.round(somaDias / countDias) : null,
     totalValorPendenteReal,
     atrasadosValorPendenteReal,
+    emDiaValorPendenteReal,
+    entregaHojeValorPendenteReal,
+    pctAtrasadoValor,
+    totalPedidos: pdsTotal.size,
+    atrasadosPedidos: pdsAtrasados.size,
+    emDiaPedidos: pdsEmDia.size,
+    entregaHojePedidos: pdsEntregaHoje.size,
   };
 }
 
@@ -1251,15 +1485,47 @@ export async function obterTabelaStatusPorTipoF(): Promise<{
 /** Resumo financeiro para os 4 cards acima do dashboard. Usa a totalidade dos dados (sem paginação). */
 export async function obterResumoFinanceiro(filtros: FiltrosPedidos = {}): Promise<{
   quantidadePedidos: number;
+  quantidadePedidosCargasSeparadasMesmoClienteCidade: number;
   saldoFaturarPrazo: number;
   valorAdiantamento: number;
   saldoFaturar: number;
 }> {
   const pedidos = await obterTodosPedidosParaResumo(filtros);
   const codigosPedidos = new Set<string>();
+  const pedidosCargasSeparadasMesmoClienteCidade = new Set<string>();
   let saldoFaturarPrazo = 0;
   let valorAdiantamento = 0;
   let saldoFaturar = 0;
+
+  const grupoCliCid = new Map<
+    string,
+    {
+      rotas: Set<string>;
+      pedidos: Set<string>;
+    }
+  >();
+
+  for (const p of pedidos) {
+    const pd = getField(p, ['PD', 'pd']);
+    const cliente = String(p.cliente ?? '').trim() || '—';
+    const municipio = String(getField(p, ['Municipio de entrega', 'municipio de entrega']) ?? '').trim();
+    const uf = String(getField(p, ['UF', 'uf']) ?? '').trim().toUpperCase();
+    const rotaRaw = String(getField(p, ['Observacoes', 'Observacoes ', 'Observações']) ?? '').trim();
+    const rota = isSemRota(rotaRaw) ? 'SEM ROTA' : rotaRaw || 'SEM ROTA';
+
+    if (municipio) {
+      const key = `${cliente}||${municipio}||${uf}`;
+      const cur = grupoCliCid.get(key) ?? { rotas: new Set<string>(), pedidos: new Set<string>() };
+      cur.rotas.add(rota);
+      if (pd) cur.pedidos.add(pd);
+      grupoCliCid.set(key, cur);
+    }
+  }
+
+  for (const v of grupoCliCid.values()) {
+    if (v.rotas.size <= 1) continue;
+    for (const pd of v.pedidos) pedidosCargasSeparadasMesmoClienteCidade.add(pd);
+  }
 
   const keysValorPendente = ['Saldo a Faturar Real', 'Valor Pendente Real', 'Valor Pendente', 'valor pendente real', 'valor pendente'];
   const keysAdiantamentoRateio = ['valorAdiantamentoRateio', 'valor adiantamento rateio'];
@@ -1279,6 +1545,7 @@ export async function obterResumoFinanceiro(filtros: FiltrosPedidos = {}): Promi
 
   return {
     quantidadePedidos: codigosPedidos.size,
+    quantidadePedidosCargasSeparadasMesmoClienteCidade: pedidosCargasSeparadasMesmoClienteCidade.size,
     saldoFaturarPrazo: Math.round(saldoFaturarPrazo * 100) / 100,
     valorAdiantamento: Math.round(valorAdiantamento * 100) / 100,
     saldoFaturar: Math.round(saldoFaturar * 100) / 100,
@@ -1513,6 +1780,305 @@ export async function obterResumoObservacoes(): Promise<ObservacaoResumo[]> {
     .sort((a, b) => b.quantidade - a.quantidade);
 }
 
+export interface ObservacaoValorResumo {
+  observacao: string;
+  quantidade: number;
+  valorTotal: number;
+  valorAtrasado: number;
+  valorEmDia: number;
+  quantidadeAtrasada: number;
+}
+
+export interface AgingFaixaResumo {
+  faixa: string;
+  label: string;
+  valor: number;
+  quantidade: number;
+}
+
+export interface ClienteAtrasadoResumo {
+  cliente: string;
+  valorAtrasado: number;
+  quantidade: number;
+}
+
+export interface ConcentracaoResumo {
+  label: string;
+  valor: number;
+  quantidade: number;
+}
+
+export interface DashEntregasAnalytics {
+  resumo: Awaited<ReturnType<typeof obterResumoDashboard>>;
+  rotas: ObservacaoValorResumo[];
+  aging: AgingFaixaResumo[];
+  topClientesAtrasados: ClienteAtrasadoResumo[];
+  concentracao: {
+    porGrupoProduto: ConcentracaoResumo[];
+    porSubgrupo1: ConcentracaoResumo[];
+    porSubgrupo2: ConcentracaoResumo[];
+    porSetorProducao: ConcentracaoResumo[];
+  };
+}
+
+const AGING_FAIXAS: { faixa: string; label: string }[] = [
+  { faixa: 'em_dia', label: 'Em dia' },
+  { faixa: 'atraso_1_7', label: '1–7 dias' },
+  { faixa: 'atraso_8_15', label: '8–15 dias' },
+  { faixa: 'atraso_16_30', label: '16–30 dias' },
+  { faixa: 'atraso_31_60', label: '31–60 dias' },
+  { faixa: 'atraso_60_mais', label: '60+ dias' },
+];
+
+function getObservacaoPedido(p: PedidoRow): string {
+  const obsRaw = p['Observacoes'] ?? p['Observacoes '] ?? 'Sem Observacoes';
+  return String(obsRaw || 'Sem Observacoes').trim() || 'Sem Observacoes';
+}
+
+/** Agregações do Dash Entregas em uma única passagem (reutiliza cache de listarPedidos). */
+export async function obterDashEntregasAnalytics(): Promise<DashEntregasAnalytics> {
+  const { data: pedidos } = await listarPedidos({ excluir_requisicao: true });
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  const concentracaoGrupo = new Map<string, { valor: number; quantidade: number }>();
+  const concentracaoSub1 = new Map<string, { valor: number; quantidade: number }>();
+  const concentracaoSub2 = new Map<string, { valor: number; quantidade: number }>();
+  const concentracaoSetor = new Map<string, { valor: number; quantidade: number }>();
+
+  let entregaHoje = 0;
+  let atrasados = 0;
+  let emDia = 0;
+  let somaDias = 0;
+  let countDias = 0;
+  let totalValorPendenteReal = 0;
+  let atrasadosValorPendenteReal = 0;
+  let emDiaValorPendenteReal = 0;
+  let entregaHojeValorPendenteReal = 0;
+  const pdsTotal = new Set<string>();
+  const pdsAtrasados = new Set<string>();
+  const pdsEmDia = new Set<string>();
+  const pdsEntregaHoje = new Set<string>();
+
+  const rotasMap = new Map<string, ObservacaoValorResumo>();
+  const agingMap = new Map<string, { valor: number; quantidade: number }>(
+    AGING_FAIXAS.map((f) => [f.faixa, { valor: 0, quantidade: 0 }])
+  );
+  const clientesMap = new Map<string, { valorAtrasado: number; quantidade: number }>();
+
+  function addConcentracao(map: Map<string, { valor: number; quantidade: number }>, labelRaw: string, valor: number) {
+    const label = labelRaw.trim() || '—';
+    const cur = map.get(label) ?? { valor: 0, quantidade: 0 };
+    cur.valor += valor;
+    cur.quantidade++;
+    map.set(label, cur);
+  }
+
+  for (const p of pedidos) {
+    const valor = Math.max(0, getNumberFromRow(p, KEYS_VALOR_PENDENTE_REAL));
+    totalValorPendenteReal += valor;
+    const pd = getPdPedidoRow(p);
+    if (pd) pdsTotal.add(pd);
+
+    addConcentracao(concentracaoGrupo, getField(p, ['Grupo de produto', 'grupo de produto']), valor);
+    addConcentracao(concentracaoSub1, getField(p, ['Subgrupo1', 'subgrupo1']), valor);
+    addConcentracao(concentracaoSub2, getField(p, ['Subgrupo2', 'subgrupo2']), valor);
+    addConcentracao(concentracaoSetor, getField(p, ['Setor de Producao', 'Setor de produção']), valor);
+
+    const atrasado = pedidoGradeEstaAtrasado(p);
+    const obs = getObservacaoPedido(p);
+
+    let rota = rotasMap.get(obs);
+    if (!rota) {
+      rota = {
+        observacao: obs,
+        quantidade: 0,
+        valorTotal: 0,
+        valorAtrasado: 0,
+        valorEmDia: 0,
+        quantidadeAtrasada: 0,
+      };
+      rotasMap.set(obs, rota);
+    }
+    rota.quantidade++;
+    rota.valorTotal += valor;
+    if (atrasado) {
+      rota.valorAtrasado += valor;
+      rota.quantidadeAtrasada++;
+    } else {
+      rota.valorEmDia += valor;
+    }
+
+    const previsaoAtual = new Date(p.previsao_entrega_atualizada);
+    previsaoAtual.setHours(0, 0, 0, 0);
+    if (previsaoAtual.getTime() === hoje.getTime()) {
+      entregaHoje++;
+      entregaHojeValorPendenteReal += valor;
+      if (pd) pdsEntregaHoje.add(pd);
+    }
+    if (atrasado) {
+      atrasados++;
+      atrasadosValorPendenteReal += valor;
+      if (pd) pdsAtrasados.add(pd);
+      const cliente = String(p.cliente ?? '').trim() || '—';
+      const cli = clientesMap.get(cliente) ?? { valorAtrasado: 0, quantidade: 0 };
+      cli.valorAtrasado += valor;
+      cli.quantidade++;
+      clientesMap.set(cliente, cli);
+    } else {
+      emDia++;
+      emDiaValorPendenteReal += valor;
+      if (pd) pdsEmDia.add(pd);
+    }
+
+    for (const { faixa } of AGING_FAIXAS) {
+      if (pedidoNaFaixaAtraso(p, faixa, hoje)) {
+        const ag = agingMap.get(faixa)!;
+        ag.valor += valor;
+        ag.quantidade++;
+      }
+    }
+
+    const dias = diasAtePrevisaoOriginal(p, hoje);
+    if (dias !== null) {
+      somaDias += dias;
+      countDias++;
+    }
+  }
+
+  const pctAtrasadoValor =
+    totalValorPendenteReal > 0
+      ? Math.round((atrasadosValorPendenteReal / totalValorPendenteReal) * 100)
+      : atrasados > 0
+        ? Math.round((atrasados / Math.max(pedidos.length, 1)) * 100)
+        : 0;
+
+  const rotas = [...rotasMap.values()].sort((a, b) => b.valorTotal - a.valorTotal);
+  const aging = AGING_FAIXAS.map(({ faixa, label }) => {
+    const ag = agingMap.get(faixa)!;
+    return { faixa, label, valor: ag.valor, quantidade: ag.quantidade };
+  });
+  const topClientesAtrasados = [...clientesMap.entries()]
+    .map(([cliente, v]) => ({ cliente, valorAtrasado: v.valorAtrasado, quantidade: v.quantidade }))
+    .sort((a, b) => b.valorAtrasado - a.valorAtrasado)
+    .slice(0, 10);
+
+  const buildConcentracao = (map: Map<string, { valor: number; quantidade: number }>): ConcentracaoResumo[] => {
+    const rows = [...map.entries()]
+      .map(([label, v]) => ({ label, valor: v.valor, quantidade: v.quantidade }))
+      .sort((a, b) => b.valor - a.valor);
+    const max = 12;
+    if (rows.length <= max) return rows;
+    const top = rows.slice(0, max - 1);
+    const outros = rows.slice(max - 1).reduce(
+      (acc, r) => {
+        acc.valor += r.valor;
+        acc.quantidade += r.quantidade;
+        return acc;
+      },
+      { label: 'Outros', valor: 0, quantidade: 0 }
+    );
+    return [...top, outros];
+  };
+
+  return {
+    resumo: {
+      total: pedidos.length,
+      entregaHoje,
+      atrasados,
+      emDia,
+      leadTimeMedioDias: countDias > 0 ? Math.round(somaDias / countDias) : null,
+      totalValorPendenteReal,
+      atrasadosValorPendenteReal,
+      emDiaValorPendenteReal,
+      entregaHojeValorPendenteReal,
+      pctAtrasadoValor,
+      totalPedidos: pdsTotal.size,
+      atrasadosPedidos: pdsAtrasados.size,
+      emDiaPedidos: pdsEmDia.size,
+      entregaHojePedidos: pdsEntregaHoje.size,
+    },
+    rotas,
+    aging,
+    topClientesAtrasados,
+    concentracao: {
+      porGrupoProduto: buildConcentracao(concentracaoGrupo),
+      porSubgrupo1: buildConcentracao(concentracaoSub1),
+      porSubgrupo2: buildConcentracao(concentracaoSub2),
+      porSetorProducao: buildConcentracao(concentracaoSetor),
+    },
+  };
+}
+
+export interface TipoFValorResumo {
+  tipoF: string;
+  valor: number;
+  quantidade: number;
+}
+
+function getPrevisaoOriginalPedido(row: PedidoRow): Date | null {
+  const raw = row.previsao_entrega;
+  if (raw == null) return null;
+  const d = raw instanceof Date ? new Date(raw) : new Date(raw as string);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function diasAtePrevisaoOriginal(p: PedidoRow, hoje: Date): number | null {
+  const d = getPrevisaoOriginalPedido(p);
+  if (!d) return null;
+  return Math.round((d.getTime() - hoje.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+export interface TipoFLeadTimeResumo {
+  tipoF: string;
+  leadTimeMedioDias: number;
+  quantidade: number;
+}
+
+/** Lead time médio (dias até previsão original) por TipoF — drill-down lead time nível 1. */
+export async function obterDashEntregasLeadTimeTipoF(): Promise<TipoFLeadTimeResumo[]> {
+  const { data: pedidos } = await listarPedidos({ excluir_requisicao: true });
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const map = new Map<string, { somaDias: number; count: number }>();
+  for (const p of pedidos) {
+    const dias = diasAtePrevisaoOriginal(p, hoje);
+    if (dias === null) continue;
+    const label = getTipoFExibicao(p);
+    const cur = map.get(label) ?? { somaDias: 0, count: 0 };
+    cur.somaDias += dias;
+    cur.count++;
+    map.set(label, cur);
+  }
+  return [...map.entries()]
+    .map(([tipoF, v]) => ({
+      tipoF,
+      leadTimeMedioDias: Math.round(v.somaDias / v.count),
+      quantidade: v.count,
+    }))
+    .sort((a, b) => b.leadTimeMedioDias - a.leadTimeMedioDias);
+}
+
+/** Saldo pendente por TipoF dentro de uma faixa de aging (drill-down nível 1). */
+export async function obterDashEntregasAgingTipoF(faixaAtraso: string): Promise<TipoFValorResumo[]> {
+  const faixa = faixaAtraso.trim().toLowerCase();
+  const { data: pedidos } = await listarPedidos({ faixa_atraso: faixa, excluir_requisicao: true });
+  const map = new Map<string, { valor: number; quantidade: number }>();
+  for (const p of pedidos) {
+    const label = getTipoFExibicao(p);
+    const valor = Math.max(0, getNumberFromRow(p, KEYS_VALOR_PENDENTE_REAL));
+    const cur = map.get(label) ?? { valor: 0, quantidade: 0 };
+    cur.valor += valor;
+    cur.quantidade++;
+    map.set(label, cur);
+  }
+  return [...map.entries()]
+    .map(([tipoF, v]) => ({ tipoF, valor: v.valor, quantidade: v.quantidade }))
+    .sort((a, b) => b.valor - a.valor);
+}
+
 const MAX_DETALHES_TOOLTIP = 80;
 
 /** Rota "4 - Inserir em Romaneio" = sem rota definida. */
@@ -1667,6 +2233,104 @@ export interface MapaMunicipioDetalhesResponse {
   detalhes: TooltipDetalheRow[];
   /** Quantidade de linhas de pedido no município (pode ser > detalhes.length no mapa resumido). */
   totalLinhas: number;
+}
+
+export interface CargasSeparadasMesmoClienteCidadeResponse {
+  /** Quantidade de pedidos (PD distintos) em cargas separadas, para o mesmo cliente e a mesma cidade. */
+  quantidadePedidos: number;
+  detalhes: TooltipDetalheRow[];
+}
+
+/**
+ * Retorna a lista (completa) de linhas que pertencem a grupos (cliente + cidade + UF) onde existam
+ * 2+ cargas (rotas/observações) distintas, e a quantidade de pedidos (PD) distintos nesses grupos.
+ *
+ * Observação: "SEM ROTA" conta como uma carga.
+ */
+export async function obterCargasSeparadasMesmoClienteCidade(
+  filtros: FiltrosPedidos = {}
+): Promise<CargasSeparadasMesmoClienteCidadeResponse> {
+  const { data: pedidos } = await listarPedidos(filtros);
+
+  const grupos = new Map<
+    string,
+    {
+      rotas: Set<string>;
+      pedidos: Set<string>;
+    }
+  >();
+
+  for (const p of pedidos) {
+    const cliente = String(p.cliente ?? '').trim() || '—';
+    const municipioRow = getField(p, ['Municipio de entrega', 'municipio de entrega']);
+    const ufBruto = getField(p, ['UF', 'uf']);
+    const municipio = String(municipioRow ?? '').trim();
+    if (!municipio || municipio.toLowerCase().includes('retirada') || municipio.toLowerCase().includes('inserir')) continue;
+    const uf = corrigirUFMunicipio(municipio, String(ufBruto ?? ''));
+    const obs = getField(p, ['Observacoes', 'Observacoes ', 'Observações']);
+    const rotaRaw = String(obs ?? '').trim();
+    const rota = isSemRota(rotaRaw) ? 'SEM ROTA' : rotaRaw || 'SEM ROTA';
+    const pd = getField(p, ['PD', 'pd']);
+
+    const key = `${cliente}||${municipio}||${uf}`;
+    const cur = grupos.get(key) ?? { rotas: new Set<string>(), pedidos: new Set<string>() };
+    cur.rotas.add(rota);
+    if (pd) cur.pedidos.add(String(pd).trim());
+    grupos.set(key, cur);
+  }
+
+  const gruposValidos = new Set<string>();
+  const pedidosSet = new Set<string>();
+  for (const [k, v] of grupos.entries()) {
+    if (v.rotas.size <= 1) continue;
+    gruposValidos.add(k);
+    for (const pd of v.pedidos) pedidosSet.add(pd);
+  }
+
+  const detalhes: TooltipDetalheRow[] = [];
+  const keysValorPendente = ['Saldo a Faturar Real', 'Valor Pendente Real', 'Valor Pendente', 'valor pendente real', 'valor pendente'];
+
+  for (const p of pedidos) {
+    const cliente = String(p.cliente ?? '').trim() || '—';
+    const municipioRow = getField(p, ['Municipio de entrega', 'municipio de entrega']);
+    const ufBruto = getField(p, ['UF', 'uf']);
+    const municipio = String(municipioRow ?? '').trim();
+    if (!municipio || municipio.toLowerCase().includes('retirada') || municipio.toLowerCase().includes('inserir')) continue;
+    const uf = corrigirUFMunicipio(municipio, String(ufBruto ?? ''));
+    const groupKey = `${cliente}||${municipio}||${uf}`;
+    if (!gruposValidos.has(groupKey)) continue;
+
+    const valor = getNumberFromRowLoose(p, keysValorPendente);
+    if (!Number.isFinite(valor) || valor < 0) continue;
+    const rm = getField(p, ['RM', 'rm']);
+    const rota = getField(p, ['Observacoes', 'Observacoes ', 'Observações']);
+    const emissaoRaw = p['Emissao'] ?? getField(p, ['Emissao', 'emissao']);
+    const dataEmissao = emissaoRaw
+      ? typeof emissaoRaw === 'string'
+        ? emissaoRaw
+        : new Date(emissaoRaw as Date).toISOString().slice(0, 10)
+      : '';
+    const pedido = getField(p, ['PD', 'pd']);
+    const aVista = getField(p, ['Entrada/A vista Ate 10d', 'Entrada/A vista Ate 10d ', 'entrada/a vista ate 10d']);
+    const codigo = getField(p, ['Cod', 'cod']);
+    const produto = getField(p, ['Descricao do produto', 'descricao do produto']);
+    const qtdePendenteReal = getNumberFromRowLoose(p, ['Qtde Pendente Real', 'qtde pendente real']);
+
+    detalhes.push({
+      rm,
+      rota,
+      dataEmissao,
+      pedido,
+      municipio: municipioRow,
+      aVista,
+      valorPendente: valor,
+      codigo,
+      produto,
+      qtdePendenteReal,
+    });
+  }
+
+  return { quantidadePedidos: pedidosSet.size, detalhes };
 }
 
 /** Detalhes completos de um município (sem limite de 80) para simulação de carga na roteirização. */
@@ -2060,6 +2724,79 @@ export async function registrarAjustesPrevisaoLote(
       ok: 0,
       erros: ajustes.map((a) => ({ id_pedido: a.id_pedido, erro: msg })),
     };
+  }
+}
+
+export interface DataProducaoLoteItem {
+  id_pedido: string;
+  data_producao: Date;
+}
+
+export interface RegistrarDataProducaoLoteResult {
+  ok: number;
+  erros: Array<{ id_pedido: string; erro: string }>;
+}
+
+/**
+ * Registra a data de produção de vários pedidos em uma transação (createMany, append-only).
+ * Ignora itens cuja data de produção efetiva atual já é a mesma (evita linhas duplicadas).
+ */
+export async function registrarDataProducaoLote(
+  itens: DataProducaoLoteItem[],
+  usuario: string
+): Promise<RegistrarDataProducaoLoteResult> {
+  if (itens.length === 0) return { ok: 0, erros: [] };
+
+  const toDateOnly = (d: Date) => new Date(d).toISOString().slice(0, 10);
+
+  // Data de produção efetiva atual por canon (para deduplicar).
+  const atuaisPorCanon = new Map<string, Date>();
+  try {
+    const rows = await prisma.pedidoDataProducao.findMany({
+      select: { id: true, id_pedido: true, data_producao: true, data_registro: true },
+      orderBy: [{ data_registro: 'desc' }, { id: 'desc' }],
+    });
+    for (const r of rows) {
+      const canon = chavePedidoItem(String(r.id_pedido ?? '').trim());
+      if (!canon || atuaisPorCanon.has(canon)) continue;
+      atuaisPorCanon.set(canon, parseDateFromDb(r.data_producao));
+    }
+  } catch (err) {
+    console.error('[registrarDataProducaoLote] leitura falhou:', err instanceof Error ? err.message : err);
+  }
+
+  const toInsert: { id_pedido: string; data_producao: Date }[] = [];
+  let skipped = 0;
+  for (const it of itens) {
+    const idNorm = String(it.id_pedido ?? '').trim();
+    if (!idNorm) continue;
+    const nova = new Date(it.data_producao);
+    if (Number.isNaN(nova.getTime())) continue;
+    const atual = atuaisPorCanon.get(chavePedidoItem(idNorm));
+    if (atual && toDateOnly(atual) === toDateOnly(nova)) {
+      skipped += 1;
+      continue;
+    }
+    toInsert.push({ id_pedido: idNorm, data_producao: toNoonUTC(nova) });
+  }
+
+  try {
+    if (toInsert.length > 0) {
+      const dataRegistro = new Date();
+      await prisma.pedidoDataProducao.createMany({
+        data: toInsert.map((a) => ({
+          id_pedido: a.id_pedido,
+          data_producao: a.data_producao,
+          usuario,
+          data_registro: dataRegistro,
+        })),
+      });
+      invalidatePedidosCache();
+    }
+    return { ok: toInsert.length + skipped, erros: [] };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Erro ao registrar data de produção em lote';
+    return { ok: 0, erros: itens.map((a) => ({ id_pedido: a.id_pedido, erro: msg })) };
   }
 }
 

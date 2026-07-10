@@ -160,7 +160,7 @@ export default function EmpenhoLiquidoPainel({
             <thead className="sticky top-0 z-[1] bg-slate-50 dark:bg-slate-900/95">
               <tr className="border-b border-slate-200 text-left dark:border-slate-600">
                 <th className="py-2 pr-2 font-semibold text-slate-700 dark:text-slate-200">Pedido</th>
-                <th className="py-2 pr-2 font-semibold text-slate-700 dark:text-slate-200">Data</th>
+                <th className="py-2 pr-2 font-semibold text-slate-700 dark:text-slate-200">Data produção</th>
                 {!compacto && (
                   <th className="py-2 pr-2 font-semibold text-slate-700 dark:text-slate-200">Rota</th>
                 )}

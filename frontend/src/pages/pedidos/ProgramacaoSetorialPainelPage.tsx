@@ -14,6 +14,8 @@ import { downloadProgramacaoSnapshotPdf, formatPeriodoLabelBr, type SnapshotLinh
 type SnapshotLinha = {
   observacoes?: string;
   previsao?: string;
+  /** Novo: data base ISO (YYYY-MM-DD) para ordenação estável. */
+  dataBaseIso?: string;
   pd?: string;
   cod?: string;
   descricao?: string;

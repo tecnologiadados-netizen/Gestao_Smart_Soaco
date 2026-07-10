@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
+import { useRegisterModalEscape } from '../contexts/ModalStackContext';
 
 type ModalAbaBackdropProps = {
   onClose: () => void;
@@ -18,6 +20,20 @@ export default function ModalAbaBackdrop({
   zIndexClass = 'z-[14000]',
   className = '',
 }: ModalAbaBackdropProps) {
+  const zIndexNumber = useMemo(() => {
+    const m = zIndexClass.match(/\[(\d+)\]/);
+    if (m) return Number(m[1]);
+    const n = zIndexClass.match(/\bz-(\d+)\b/);
+    if (n) return Number(n[1]);
+    return 14000;
+  }, [zIndexClass]);
+
+  useRegisterModalEscape({
+    id: `aba-backdrop:${zIndexClass}`,
+    onClose,
+    zIndex: zIndexNumber,
+  });
+
   return (
     <div
       className={`absolute inset-0 ${zIndexClass} flex items-center justify-center bg-black/70 p-4 ${className}`.trim()}

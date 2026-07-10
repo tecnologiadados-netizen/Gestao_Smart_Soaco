@@ -23,7 +23,7 @@ export type ModalEmpenhoRessupProps = {
 
 /**
  * Detalhe analítico do empenho das telas de Ressup, POR PEDIDO de venda, com a MESMA regra
- * da grade: o estoque de produto acabado (PA) cobre as entregas mais próximas primeiro, então
+ * da grade: o estoque de produto acabado (PA) cobre as datas de produção mais próximas primeiro, então
  * a soma do empenho líquido por pedido é igual à coluna "Qtde Empenhada".
  */
 export default function ModalEmpenhoRessup({

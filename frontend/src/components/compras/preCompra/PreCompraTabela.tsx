@@ -45,13 +45,42 @@ function groupByCotacao(items: PreCompraCotacaoItem[]): CotacaoGroup[] {
   return groups;
 }
 
+const AVISO_VINCULO_PENDENTE =
+  'PDF bloqueado: vínculo pendente. Finalize a coleta na tela de Coleta de Preços, vinculando o pedido de compra (gerado a partir desta cotação) ou a própria cotação. Após finalizar, o PDF será liberado.';
+
 function PdfActionButton({
   loading,
+  bloqueado,
   onClick,
 }: {
   loading: boolean;
+  bloqueado?: boolean;
   onClick: () => void;
 }) {
+  if (bloqueado) {
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-400 cursor-not-allowed dark:border-slate-600 dark:bg-slate-700/40 dark:text-slate-500"
+          disabled
+          title={AVISO_VINCULO_PENDENTE}
+        >
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <rect x="3" y="11" width="18" height="10" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          PDF
+        </button>
+        <span
+          className="max-w-[180px] text-center text-[10px] leading-tight text-amber-600 dark:text-amber-400"
+          title={AVISO_VINCULO_PENDENTE}
+        >
+          Finalize a coleta vinculada para liberar
+        </span>
+      </div>
+    );
+  }
   return (
     <button
       type="button"
@@ -106,6 +135,7 @@ export default function PreCompraTabela({ items, onEmitirPdf, generatingCotacao 
             <th className="px-3 py-2 text-right whitespace-nowrap">Total</th>
             <th className="px-3 py-2 text-left whitespace-nowrap">Solicitação</th>
             <th className="px-3 py-2 text-left whitespace-nowrap">Data necessidade</th>
+            <th className="px-3 py-2 text-left whitespace-nowrap">N° da coleta</th>
             <th className="px-3 py-2 text-center whitespace-nowrap">Ações</th>
           </tr>
         </thead>
@@ -162,9 +192,31 @@ export default function PreCompraTabela({ items, onEmitirPdf, generatingCotacao 
                   <td className="px-3 py-2 whitespace-nowrap">{formatDate(item.data_necessidade)}</td>
 
                   {isFirst && (
-                    <td rowSpan={rowSpan} className="px-3 py-2 align-top text-center">
-                      <PdfActionButton loading={isGenerating} onClick={() => onEmitirPdf(group.cotacao)} />
-                    </td>
+                    <>
+                      <td rowSpan={rowSpan} className="px-3 py-2 align-top whitespace-nowrap">
+                        {header.numeros_coleta && header.numeros_coleta.length > 0 ? (
+                          <span className="inline-flex flex-wrap gap-1">
+                            {header.numeros_coleta.map((n) => (
+                              <span
+                                key={n}
+                                className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+                              >
+                                {n}
+                              </span>
+                            ))}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-500">—</span>
+                        )}
+                      </td>
+                      <td rowSpan={rowSpan} className="px-3 py-2 align-top text-center">
+                        <PdfActionButton
+                          loading={isGenerating}
+                          bloqueado={!(header.numeros_coleta && header.numeros_coleta.length > 0)}
+                          onClick={() => onEmitirPdf(group.cotacao)}
+                        />
+                      </td>
+                    </>
                   )}
                 </tr>
               );

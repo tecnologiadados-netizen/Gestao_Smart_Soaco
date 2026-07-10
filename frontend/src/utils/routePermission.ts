@@ -16,6 +16,7 @@ import {
   PERMISSOES_ACESSO_FINANCEIRO_RESUMO,
   PERMISSOES_ACESSO_FINANCEIRO_CRM,
 } from './financeiroPermissoes';
+import { PERMISSOES_ACESSO_COMERCIAL_PAINEL } from '../config/comercialPermissoes';
 
 export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/pedidos/dash-entregas': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.DASHBOARD_VER, PERMISSOES.PEDIDOS_VER],
@@ -67,6 +68,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/financeiro/painel-financeiro-comercial': PERMISSOES_ACESSO_FINANCEIRO_PAINEL_COMERCIAL,
   '/financeiro/renegociacao-contratos': PERMISSOES_ACESSO_FINANCEIRO_RENEGOCIACAO,
   '/financeiro/crm': PERMISSOES_ACESSO_FINANCEIRO_CRM,
+  '/comercial/painel': PERMISSOES_ACESSO_COMERCIAL_PAINEL,
   '/logistica/cubagem/veiculos': [PERMISSOES.LOGISTICA_VER, PERMISSOES.LOGISTICA_TOTAL, PERMISSOES.LOGISTICA_CUBAGEM_VER],
   '/logistica/cubagem/produtos': [PERMISSOES.LOGISTICA_VER, PERMISSOES.LOGISTICA_TOTAL, PERMISSOES.LOGISTICA_CUBAGEM_VER],
   '/logistica/cubagem/simulacao': [PERMISSOES.LOGISTICA_VER, PERMISSOES.LOGISTICA_TOTAL, PERMISSOES.LOGISTICA_CUBAGEM_VER],
@@ -76,6 +78,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/integracao/faturamento-diario': [PERMISSOES.INTEGRACAO_VER],
   '/integracao/pedidos-entrega-vencida': [PERMISSOES.INTEGRACAO_VER],
   '/integracao/sms': [PERMISSOES.INTEGRACAO_VER],
+  '/integracao/email-notificacoes': [PERMISSOES.INTEGRACAO_VER],
   '/integracao/credenciais': [
     PERMISSOES.INTEGRACAO_VER,
     PERMISSOES.SISTEMA_EMAIL,
@@ -129,6 +132,7 @@ export const ROTAS_ORDEM = [
   '/financeiro/painel-financeiro-comercial',
   '/financeiro/renegociacao-contratos',
   '/financeiro/crm',
+  '/comercial/painel',
   '/logistica/cubagem/veiculos',
   '/logistica/cubagem/produtos',
   '/logistica/cubagem/simulacao',
@@ -138,6 +142,7 @@ export const ROTAS_ORDEM = [
   '/integracao/faturamento-diario',
   '/integracao/pedidos-entrega-vencida',
   '/integracao/sms',
+  '/integracao/email-notificacoes',
   '/integracao/credenciais',
   '/integracao/credenciais/email',
   '/usuarios',

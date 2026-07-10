@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { Pedido } from '../api/pedidos';
 import ModalHistoricoPedido from './ModalHistoricoPedido';
 import { MensagemSemRegistros } from './MensagemSemRegistros';
@@ -28,8 +29,13 @@ const COLUMNS: Array<{
   { id: 'valor_pendente_real', label: 'Saldo a Faturar Real', keys: ['Saldo a Faturar Real', 'Valor Pendente Real'] },
   { id: 'emissao', label: 'Emissão', keys: ['Emissao', 'emissao'] },
   { id: 'data_original', label: 'Data original', keys: ['Data de entrega', 'dataParametro'] },
-  { id: 'previsao_anterior', label: 'Previsão anterior', getValue: (p) => p.previsao_anterior ?? p.previsao_entrega },
+  { id: 'previsao_anterior', label: 'Previsão anterior', getValue: (p) => {
+    if (p.previsao_anterior) return p.previsao_anterior;
+    const dataOrig = (p as Record<string, unknown>)['Data de entrega'] ?? (p as Record<string, unknown>).dataParametro;
+    return dataOrig ?? p.previsao_entrega;
+  }},
   { id: 'previsao_atual', label: 'Previsão atual', getValue: (p) => p.previsao_entrega_atualizada ?? p.previsao_entrega },
+  { id: 'data_producao', label: 'Data de produção', keys: ['data_producao'] },
   { id: 'data_base_entrega_futura', label: 'Data base entrega futura', keys: ['Data base entrega futura'] },
   { id: 'status', label: 'Status', keys: [] },
   { id: 'historico', label: 'Histórico', keys: [] },
@@ -159,6 +165,12 @@ interface TabelaPedidosProps {
   /** Linhas exibidas na grade (após filtros/ordenação do cabeçalho), para exportação alinhada à tela. */
   onGradeRowsForExport?: (rows: Pedido[]) => void;
   paginateLocally?: boolean;
+  /** Quando definido, os botões "Limpar filtros da grade" e "Colunas ocultas" são renderizados
+   * neste elemento (ex.: barra de botões da página) em vez de ocupar uma linha acima da grade. */
+  toolbarExtrasContainer?: HTMLElement | null;
+  /** Quando true, a grade ocupa toda a altura disponível do contêiner pai (até a paginação),
+   * em vez do teto fixo de 70vh. Requer pai flex com altura limitada (ex.: Gestão de Pedidos). */
+  fillHeight?: boolean;
 }
 
 function getField(row: Pedido, keys: string[]): string {
@@ -178,7 +190,7 @@ function compareSort(a: string | number | unknown, b: string | number | unknown)
   return sa.localeCompare(sb, undefined, { numeric: true });
 }
 
-const DATE_COLUMN_IDS = ['emissao', 'data_original', 'previsao_anterior', 'previsao_atual'];
+const DATE_COLUMN_IDS = ['emissao', 'data_original', 'previsao_anterior', 'previsao_atual', 'data_producao'];
 
 function pedidoTextoCelula(p: Pedido, colId: string): string {
   const col = COLUMNS.find((c) => c.id === colId);
@@ -262,6 +274,8 @@ export default function TabelaPedidos({
   onExibidosCountChange,
   onGradeRowsForExport,
   paginateLocally = true,
+  toolbarExtrasContainer,
+  fillHeight = false,
 }: TabelaPedidosProps) {
   const lista = Array.isArray(pedidos) ? pedidos : [];
   const showSelection = Boolean(onSelectionChange);
@@ -505,8 +519,14 @@ export default function TabelaPedidos({
     return (
       <div className="tabela-pedidos-outer min-w-0 w-full flex-1 flex flex-col overflow-hidden" style={{ width: '100%', minWidth: 0 }}>
         <div
-          className="tabela-pedidos-scroll scrollbar-app block min-w-0 overflow-x-auto overflow-y-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700/50 dark:bg-slate-800/50"
-          style={{ width: '100%', maxWidth: '100%', maxHeight: 'min(70vh, calc(100svh - 18rem))' }}
+          className={`tabela-pedidos-scroll scrollbar-app block min-w-0 overflow-x-auto overflow-y-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700/50 dark:bg-slate-800/50 ${
+            fillHeight ? 'min-h-0 flex-1' : ''
+          }`}
+          style={{
+            width: '100%',
+            maxWidth: '100%',
+            ...(fillHeight ? {} : { maxHeight: 'min(70vh, calc(100svh - 18rem))' }),
+          }}
         >
           <table className="tabela-pedidos-grade w-full min-w-[800px] text-left text-sm">
             <thead>
@@ -545,11 +565,15 @@ export default function TabelaPedidos({
   const mostraOverlayAtualizando = loading && lista.length > 0;
   const colSpanGrade = colunasVisiveisLista.length + (showSelection ? 1 : 0);
 
-  return (
-    <>
-    <div className="tabela-pedidos-outer min-w-0 w-full flex-1 flex flex-col overflow-hidden" style={{ width: '100%', minWidth: 0 }}>
-      {(colunasOcultasLista.length > 0 || grade.temFiltrosOuOrdem) && (
-        <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+  const temExtrasGrade = colunasOcultasLista.length > 0 || grade.temFiltrosOuOrdem;
+  const extrasGrade = temExtrasGrade && (
+        <div
+          className={
+            toolbarExtrasContainer
+              ? 'flex flex-wrap items-center gap-2'
+              : 'mb-2 flex flex-wrap items-center justify-end gap-2'
+          }
+        >
           {grade.temFiltrosOuOrdem && (
             <button
               type="button"
@@ -611,11 +635,22 @@ export default function TabelaPedidos({
             </div>
           )}
         </div>
-      )}
+  );
+
+  return (
+    <>
+    <div className="tabela-pedidos-outer min-w-0 w-full flex-1 flex flex-col overflow-hidden" style={{ width: '100%', minWidth: 0 }}>
+      {extrasGrade && (toolbarExtrasContainer ? createPortal(extrasGrade, toolbarExtrasContainer) : extrasGrade)}
       <div
         ref={grade.tableScrollRef}
-        className="tabela-pedidos-scroll scrollbar-app relative block min-w-0 overflow-x-auto overflow-y-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700/50 dark:bg-slate-800/50"
-        style={{ width: '100%', maxWidth: '100%', maxHeight: 'min(70vh, calc(100svh - 18rem))' }}
+        className={`tabela-pedidos-scroll scrollbar-app relative block min-w-0 overflow-x-auto overflow-y-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700/50 dark:bg-slate-800/50 ${
+          fillHeight ? 'min-h-0 flex-1' : ''
+        }`}
+        style={{
+          width: '100%',
+          maxWidth: '100%',
+          ...(fillHeight ? {} : { maxHeight: 'min(70vh, calc(100svh - 18rem))' }),
+        }}
       >
         {mostraOverlayAtualizando && (
           <div

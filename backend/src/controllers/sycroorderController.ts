@@ -1073,6 +1073,9 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     };
     if (tagDesejado !== undefined) updateData.tag_disponivel = tagDesejado ? 1 : 0;
 
+    const dateChanged =
+      newDateProvided && String(nextDate ?? '').trim() !== String(prevDate ?? '').trim();
+
     if (comentarioVal && typeof aguarda_resposta === 'boolean') {
       const destinoTimeGravado =
         aguarda_resposta === true && !authorIsCommercial
@@ -1091,6 +1094,9 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
       updateData.aguarda_resposta_pendente = aguarda_resposta ? 1 : 0;
       updateData.aguarda_resposta_de_label = aguarda_resposta ? label : null;
       updateData.aguarda_resposta_destino_time = destinoTimeGravado;
+    } else if (dateChanged) {
+      // Nova data prometida no card = resposta efetiva; limpa pendência sem comentário explícito.
+      Object.assign(updateData, CLEAR_AGUARDA_RESPOSTA_DATA);
     }
 
     await prisma.sycroOrderOrder.update({
@@ -1459,6 +1465,21 @@ export async function setOrderRead(req: Request, res: Response): Promise<void> {
   }
 }
 
+/** Normaliza data do histórico para `YYYY-MM-DD` (aceita ISO, Date serializado ou dd/mm/aaaa). */
+function toHistoryDateIso(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
+  }
+  const s = String(value).trim();
+  if (!s) return null;
+  const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1]!;
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  return null;
+}
+
 /** Primeira data ISO de um valor ou faixa (`2026-01-01 a 2026-01-05`). */
 function firstIsoDateFromRange(value: string | null | undefined): string | null {
   if (value == null || String(value).trim() === '') return null;
@@ -1543,8 +1564,8 @@ export async function getOrderHistory(req: Request, res: Response): Promise<void
       user_id: h.user_id,
       user_name: h.user_name ?? h.usuario?.nome ?? null,
       action_type: h.action_type,
-      previous_date: h.previous_date,
-      new_date: h.new_date,
+      previous_date: toHistoryDateIso(h.previous_date),
+      new_date: toHistoryDateIso(h.new_date),
       observation: h.observation,
       motivo: null,
       created_at: h.created_at,
@@ -1586,13 +1607,9 @@ export async function getOrderHistory(req: Request, res: Response): Promise<void
         for (let i = 0; i < ajustes.length; i++) {
           const a = ajustes[i];
           const created = a.data_ajuste instanceof Date ? a.data_ajuste : new Date(a.data_ajuste);
-          const newDateStr = a.previsao_nova instanceof Date ? a.previsao_nova.toISOString().slice(0, 10) : String(a.previsao_nova ?? '').slice(0, 10);
+          const newDateStr = toHistoryDateIso(a.previsao_nova);
           const prevAjuste = ajustes[i + 1];
-          let previousDateStr = prevAjuste
-            ? prevAjuste.previsao_nova instanceof Date
-              ? prevAjuste.previsao_nova.toISOString().slice(0, 10)
-              : String(prevAjuste.previsao_nova ?? '').slice(0, 10)
-            : null;
+          let previousDateStr = prevAjuste ? toHistoryDateIso(prevAjuste.previsao_nova) : null;
           if (!previousDateStr) {
             previousDateStr = idPedidoToDataOriginal.get(idPedido) ?? null;
           }
@@ -1684,18 +1701,26 @@ export async function getOrderHistory(req: Request, res: Response): Promise<void
 
     // Remove UPDATE do Sycro quando existe AJUSTE_PREVISAO no mesmo minuto com mesma new_date; usa o comentário do UPDATE no tópico exibido
     const updatesToRemove = mapped2.filter((h): h is HistoryEntry => h.action_type === 'UPDATE');
+    const ajusteMatchesUpdate = (a: HistoryEntry, upd: HistoryEntry): boolean => {
+      if (toMinuteKey(a.created_at) !== toMinuteKey(upd.created_at)) return false;
+      const aNew = (a.new_date ?? '').trim();
+      const updNew = (upd.new_date ?? '').trim();
+      if (aNew && updNew) return aNew === updNew;
+      // Mesmo minuto: UPDATE com data preenche AJUSTE sem new_date (evita tópico vazio no histórico).
+      return !aNew && !!updNew;
+    };
     for (const upd of updatesToRemove) {
-      const minKey = toMinuteKey(upd.created_at);
-      const newD = upd.new_date ?? '';
       const comentarioUpdate = upd.observation ?? '';
-      const matching = mergedAjuste.find(
-        (a) => toMinuteKey(a.created_at) === minKey && (a.new_date ?? '') === newD
-      );
+      const matching = mergedAjuste.find((a) => ajusteMatchesUpdate(a, upd));
       if (matching) {
         if (comentarioUpdate) matching.observation = comentarioUpdate;
         const updPrev = upd.previous_date?.trim() || null;
+        const updNew = upd.new_date?.trim() || null;
         const matchNew = matching.new_date ?? '';
         const matchPrev = matching.previous_date ?? '';
+        if (updNew && !matchNew.trim()) {
+          matching.new_date = updNew;
+        }
         if (updPrev && (!matchPrev || matchPrev === matchNew)) {
           matching.previous_date = updPrev;
         }
@@ -1703,11 +1728,7 @@ export async function getOrderHistory(req: Request, res: Response): Promise<void
     }
     const withoutDuplicateUpdates = mapped2.filter((h) => {
       if (h.action_type !== 'UPDATE') return true;
-      const minKey = toMinuteKey(h.created_at);
-      const newD = h.new_date ?? '';
-      const hasMatchingAjuste = mergedAjuste.some(
-        (a) => toMinuteKey(a.created_at) === minKey && (a.new_date ?? '') === newD
-      );
+      const hasMatchingAjuste = mergedAjuste.some((a) => ajusteMatchesUpdate(a, h));
       return !hasMatchingAjuste;
     });
 

@@ -156,25 +156,40 @@ def _fill_item_row(row, item: dict) -> None:
         0: item.get("codigo_produto"),
         1: item.get("codigo_fornecedor"),
         3: item.get("descricao_produto"),
-        4: _fmt_qty(item.get("qtde")),
-        5: item.get("unidade"),
-        7: _fmt_money(item.get("preco_unitario")),
-        10: _fmt_money(item.get("valor_total")),
+        5: _fmt_qty(item.get("qtde")),
+        7: item.get("unidade"),
+        9: _fmt_money(item.get("preco_unitario")),
+        12: _fmt_money(item.get("valor_total")),
     }
     for col, value in values.items():
         _set_cell(row, col, value, center=True)
 
 
+def _fmt_coleta(data: dict) -> str:
+    """Nº da coleta: aceita string única, número ou lista (`numeros_coleta`)."""
+    for key in ("coleta", "numero_coleta"):
+        value = data.get(key)
+        if value not in (None, ""):
+            return str(value)
+    numeros = data.get("numeros_coleta")
+    if isinstance(numeros, (list, tuple)):
+        return ", ".join(str(n) for n in numeros if n not in (None, ""))
+    if numeros not in (None, ""):
+        return str(numeros)
+    return ""
+
+
 def _fill_header(table, data: dict) -> None:
     header_fields = [
         (1, 2, data.get("cotacao")),
-        (1, 9, _fmt_date(data.get("data_emissao"))),
+        (1, 6, _fmt_coleta(data)),
+        (1, 11, _fmt_date(data.get("data_emissao"))),
         (2, 2, data.get("comprador")),
-        (2, 8, data.get("telefone")),
+        (2, 10, data.get("telefone")),
         (3, 2, data.get("fornecedor")),
-        (3, 6, data.get("cnpj")),
+        (3, 8, data.get("cnpj")),
         (4, 2, data.get("contato")),
-        (4, 6, data.get("telefone_fornecedor")),
+        (4, 8, data.get("telefone_fornecedor")),
     ]
     for row_idx, col_idx, value in header_fields:
         _set_cell(table.rows[row_idx], col_idx, value, pad_left=True, bold=False)
@@ -230,7 +245,7 @@ def _fill_document(data: dict) -> Document:
 
     total_row_idx = _find_row(table, "VALOR TOTAL")
     if total_row_idx is not None:
-        _set_cell(table.rows[total_row_idx], 10, _fmt_money(data.get("valor_total_geral")), center=True)
+        _set_cell(table.rows[total_row_idx], 12, _fmt_money(data.get("valor_total_geral")), center=True)
 
     _fill_solicitacoes(table, data.get("solicitacoes") or [])
     return doc

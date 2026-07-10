@@ -20,6 +20,7 @@ import { useSidebarOpen } from '../hooks/useSidebarOpen';
 import LogoSoAco from './LogoSoAco';
 import Sidebar from './layout/Sidebar';
 import BuscaRapidaTelas from './layout/BuscaRapidaTelas';
+import { ModalStackProvider } from '../contexts/ModalStackContext';
 
 function SunIcon() {
   return (
@@ -48,7 +49,9 @@ function MenuToggleIcon() {
 export default function Layout() {
   return (
     <LayoutFocoProvider>
-      <LayoutInner />
+      <ModalStackProvider>
+        <LayoutInner />
+      </ModalStackProvider>
     </LayoutFocoProvider>
   );
 }

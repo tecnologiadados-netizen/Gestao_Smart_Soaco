@@ -35,6 +35,20 @@ export default function PreCompraFiltros({ filters, onChange, onSearch, onClear 
           value={filters.cotacao ?? ''}
           onChange={(v) => set('cotacao', v)}
         />
+        <div>
+          <label className={LABEL_CLASS}>N° da coleta</label>
+          <input
+            className={INPUT_CLASS}
+            type="text"
+            inputMode="numeric"
+            placeholder="Ex: 619"
+            value={filters.coleta ?? ''}
+            onChange={(e) => set('coleta', e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onSearch();
+            }}
+          />
+        </div>
         <PreCompraAutocomplete
           label="Fornecedor"
           campo="fornecedor"

@@ -388,7 +388,8 @@ export default function DrePage() {
       setErroReceitaRefrigeracao(incluirShop9ReceitaFilial1 ? (refrigeracaoRes.erro ?? null) : null);
       setCpvSoAcoDiretoLinhas(incluirReceitaNomus ? (cpvRes.direto ?? []) : []);
       setCpvSoAcoIndiretoLinhas(incluirCpvNomus ? (cpvRes.indireto ?? []) : []);
-      setCpvIndiretoSemMkpLinhas(incluirCpvNomus ? (cpvRes.indiretoSemMkp ?? []) : []);
+      // 6.2.2 (margem MKP sob CMV Só Móveis): só com Só Móveis no filtro
+      setCpvIndiretoSemMkpLinhas(incluirReceitaMoveisDireto ? (cpvRes.indiretoSemMkp ?? []) : []);
       setErroCpvSoAco(incluirCpvNomus ? (cpvRes.erro ?? null) : null);
       setCpvMoveisDiretoLinhas(incluirReceitaMoveisDireto ? (cpvMoveisRes.linhas ?? []) : []);
       setErroCpvMoveisDireto(incluirReceitaMoveisDireto ? (cpvMoveisRes.erro ?? null) : null);

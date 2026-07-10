@@ -150,6 +150,8 @@ export default function PedidosPage() {
   const [incoherenceGrupos, setIncoherenceGrupos] = useState<GrupoInconsistenciaQtdePendente[]>([]);
   const [incoherenceViewRows, setIncoherenceViewRows] = useState<Pedido[] | null>(null);
   const [incoherenceClickBusy, setIncoherenceClickBusy] = useState(false);
+  /** Container na barra superior onde a grade injeta "Limpar filtros da grade" / "Colunas ocultas". */
+  const [gradeToolbarExtrasEl, setGradeToolbarExtrasEl] = useState<HTMLDivElement | null>(null);
 
   const totalParaPaginacao = incoherenceViewRows ? incoherenceViewRows.length : totalExibidosGrade;
   const totalPages = Math.max(1, Math.ceil(totalParaPaginacao / PAGE_SIZE));
@@ -716,6 +718,7 @@ export default function PedidosPage() {
             Reprogramar em lote ({selectedIds.size} selecionado(s))
           </button>
         )}
+        <div ref={setGradeToolbarExtrasEl} className="ml-auto flex flex-wrap items-center gap-2 empty:hidden" />
       </div>
       {!loading && total === 0 && erroConexaoErp && (
         <div className="rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
@@ -757,6 +760,8 @@ export default function PedidosPage() {
           onExibidosCountChange={setTotalExibidosGrade}
           onGradeRowsForExport={syncPedidosGradeExport}
           paginateLocally={!incoherenceViewRows}
+          toolbarExtrasContainer={gradeToolbarExtrasEl}
+          fillHeight
         />
       </div>
       {totalParaPaginacao > 0 && !incoherenceViewRows && (

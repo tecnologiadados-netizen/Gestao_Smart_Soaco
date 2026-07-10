@@ -14,6 +14,7 @@ import {
   syncQualidadeDocuments,
   syncQualidadeOpcoesLista,
   syncQualidadeRegistros,
+  deleteQualidadeRegistro,
   deleteQualidadeDocumento,
 } from '../data/qualidadeRepository.js';
 import { gerarRccPdfBuffer, gerarRncPdfBuffer } from '../services/qualidadePdfService.js';
@@ -182,6 +183,25 @@ export async function putQualidadeRegistrosHandler(req: Request, res: Response):
     res.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao salvar registros.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function deleteQualidadeRegistroHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const uid = typeof req.params.uid === 'string' ? req.params.uid.trim() : '';
+    if (!uid) {
+      res.status(400).json({ error: 'Registro inválido.' });
+      return;
+    }
+    const removed = await deleteQualidadeRegistro(uid);
+    if (!removed) {
+      res.status(404).json({ error: 'Registro não encontrado.' });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao excluir registro.';
     res.status(500).json({ error: message });
   }
 }

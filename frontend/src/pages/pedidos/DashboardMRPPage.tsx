@@ -330,7 +330,7 @@ export default function DashboardMRPPage() {
     return (
       <div className="space-y-6 p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Dashboard MRP</h2>
+          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Painel MRP</h2>
           <div className="h-10 w-48 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse" />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -350,7 +350,7 @@ export default function DashboardMRPPage() {
     <div className="space-y-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">Dashboard MRP</h2>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">Painel MRP</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
             Indicadores do planejamento com base na grade MRP e no horizonte de eventos (mesma lógica da tela MRP)
           </p>

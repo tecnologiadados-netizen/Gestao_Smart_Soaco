@@ -58,7 +58,7 @@ export default function HeatmapRoteirizadorPanel({
 
   return (
     <div
-      className="max-h-[min(70vh,28rem)] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+      className="min-h-0 max-h-full w-[min(22rem,calc(100vw-2rem))] flex-1 overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-2xl dark:border-slate-600 dark:bg-slate-800"
       role="dialog"
       aria-label="Resultado da roteirização"
     >

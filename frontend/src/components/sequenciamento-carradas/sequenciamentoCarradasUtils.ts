@@ -26,7 +26,11 @@ function normalizeCarradaNome(carrada: string): string {
     .replace(/\p{Diacritic}/gu, '');
 }
 
-function isCarradaOrdemFinal(carrada: string): boolean {
+/**
+ * Carradas "especiais" sem romaneio (retirada, entrega G. Teresina, inserir em romaneio, requisição).
+ * Ficam no final da grade e têm as datas bloqueadas para edição nesta tela.
+ */
+export function isCarradaOrdemFinal(carrada: string): boolean {
   const n = normalizeCarradaNome(carrada);
   return (
     n.includes('retirada na so aco') ||
@@ -258,6 +262,36 @@ export function listarItensPedido(linhas: Record<string, unknown>[]): ItemPedido
       (a, b) =>
         comparePedidoAsc(a.pedido, b.pedido) ||
         a.descricao.localeCompare(b.descricao, 'pt-BR', { sensitivity: 'base' })
+    );
+}
+
+function pedidoMatch(a: string, b: string): boolean {
+  const na = Number(String(a).replace(/\D/g, ''));
+  const nb = Number(String(b).replace(/\D/g, ''));
+  if (!Number.isNaN(na) && !Number.isNaN(nb) && na !== 0 && na === nb) return true;
+  return a.trim().toUpperCase() === b.trim().toUpperCase();
+}
+
+export type ItemPedidoDetalheRow = {
+  codigo: string;
+  descricao: string;
+  qtdePendenteReal: number;
+};
+
+/** Todos os itens de um pedido (PD), sem filtro de setor. */
+export function listarItensPedidoPorPd(
+  linhas: Record<string, unknown>[],
+  pd: string
+): ItemPedidoDetalheRow[] {
+  return linhas
+    .filter((row) => pedidoMatch(getField(row, ['PD', 'pd']), pd))
+    .map((row) => ({
+      codigo: getField(row, ['Cod', 'cod']) || '—',
+      descricao: getField(row, ['Descricao do produto', 'Descrição do produto']),
+      qtdePendenteReal: getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']),
+    }))
+    .sort((a, b) =>
+      a.codigo.localeCompare(b.codigo, 'pt-BR', { numeric: true, sensitivity: 'base' })
     );
 }
 

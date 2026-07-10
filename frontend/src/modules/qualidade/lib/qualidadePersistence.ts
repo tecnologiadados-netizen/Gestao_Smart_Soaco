@@ -1,4 +1,5 @@
 import {
+  deleteQualidadeRegistro,
   fetchQualidadeBootstrap,
   fetchQualidadeResponsaveis,
   importQualidadeRegistros,
@@ -7,8 +8,10 @@ import {
   syncQualidadeConfig,
   syncQualidadeDocuments,
   syncQualidadeOpcoesLista,
+  syncQualidadeRegistro,
   syncQualidadeRegistros,
 } from '@qualidade/lib/api/qualidadeApi';
+import type { Registro } from '@qualidade/types/registro';
 import { useAvaliacaoFornecedorStore } from '@qualidade/lib/store/avaliacao-fornecedor-store';
 import { useCalibrationsStore } from '@qualidade/lib/store/calibrations-store';
 import { useConfigStore } from '@qualidade/lib/store/config-store';
@@ -35,6 +38,7 @@ const LS_KEYS = [
 let syncTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 let autoSyncStarted = false;
 let documentsHydrating = false;
+let registrosHydrating = false;
 
 export function setQualidadeDocumentsHydrating(value: boolean) {
   documentsHydrating = value;
@@ -49,6 +53,43 @@ export function cancelQualidadeDocumentsDebounce(): void {
     clearTimeout(syncTimers.documents);
     delete syncTimers.documents;
   }
+}
+
+export function setQualidadeRegistrosHydrating(value: boolean) {
+  registrosHydrating = value;
+}
+
+export function cancelQualidadeRegistrosDebounce(): void {
+  if (syncTimers.registros) {
+    clearTimeout(syncTimers.registros);
+    delete syncTimers.registros;
+  }
+}
+
+function syncRegistrosStateNow(): Promise<void> {
+  const { registros } = useRegistrosStore.getState();
+  return syncQualidadeRegistros(registros).then(() => undefined);
+}
+
+/** Persiste registros no servidor imediatamente (ex.: ao sair da página). */
+export function flushQualidadeRegistrosSync(): Promise<void> {
+  cancelQualidadeRegistrosDebounce();
+  return syncRegistrosStateNow().catch((err) => {
+    console.error('[qualidade-sync] registros flush:', err);
+    throw err;
+  });
+}
+
+/** Persiste um registro recém-criado/alterado sem reenviar todo o histórico Nomus. */
+export async function persistQualidadeRegistro(registro: Registro): Promise<void> {
+  cancelQualidadeRegistrosDebounce();
+  await syncQualidadeRegistro(registro);
+}
+
+/** Exclui um registro no servidor (evita reenviar todo o histórico Nomus). */
+export async function excluirQualidadeRegistro(registroId: string): Promise<void> {
+  cancelQualidadeRegistrosDebounce();
+  await deleteQualidadeRegistro(registroId);
 }
 
 function debounceSync(key: string, fn: () => Promise<void>, ms = 800) {
@@ -83,6 +124,10 @@ function flushPendingSyncs() {
   cancelQualidadeDocumentsDebounce();
   void syncDocumentsStateNow().catch((err) =>
     console.error('[qualidade-sync] pagehide documents:', err)
+  );
+  cancelQualidadeRegistrosDebounce();
+  void syncRegistrosStateNow().catch((err) =>
+    console.error('[qualidade-sync] pagehide registros:', err)
   );
   const { departments, documentTypes } = useConfigStore.getState();
   void flushConfigToServer({ departments, documentTypes }).catch((err) =>
@@ -214,7 +259,9 @@ export async function hydrateQualidadeFromServer(currentUserLogin: string) {
     revalidacoes: data.revalidacoes as never[],
   });
 
+  setQualidadeRegistrosHydrating(true);
   useRegistrosStore.setState({ registros: data.registros as never[] });
+  setQualidadeRegistrosHydrating(false);
 
   useCalibrationsStore.setState({
     equipment: data.equipment as never[],
@@ -285,6 +332,7 @@ export function startQualidadeAutoSync() {
   });
 
   useRegistrosStore.subscribe((state, prev) => {
+    if (registrosHydrating) return;
     if (state.registros !== prev.registros) {
       debounceSync('registros', () => syncQualidadeRegistros(state.registros));
     }

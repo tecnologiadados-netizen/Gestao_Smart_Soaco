@@ -137,7 +137,7 @@ export default function RegrasDataEntregaPage() {
         <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Regras data de entrega</h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Configure prazos para classificação <span className="font-medium">Atrasado / Em dia</span> no Gerenciador de
-          Pedidos e no Dash Entregas. Entrega, retirada e requisição seguem as regras atuais do ERP. Aqui você altera
+          Pedidos e no Painel Pedidos em aberto. Entrega, retirada e requisição seguem as regras atuais do ERP. Aqui você altera
           apenas <span className="font-medium">carradas</span> (e opcionalmente &quot;Inserir em Romaneio&quot;).
         </p>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">

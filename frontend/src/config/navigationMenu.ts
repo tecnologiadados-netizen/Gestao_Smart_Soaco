@@ -15,7 +15,7 @@ export type FinanceiroMenuEntry =
   | { kind: 'submenu'; label: string; children: { to: string; label: string }[] };
 
 export const PCP_MENU: NavMenuEntry[] = [
-  { kind: 'link', to: '/pedidos/dash-entregas', label: 'Dash Entregas' },
+  { kind: 'link', to: '/pedidos/dash-entregas', label: 'Painel Pedidos em aberto' },
   { kind: 'link', to: '/pedidos/sequenciamento-carradas', label: 'Sequenciamento carradas' },
   { kind: 'link', to: '/pedidos', label: 'Gerenciador de pedidos' },
   { kind: 'link', to: '/pedidos/encerrados', label: 'Pedidos encerrados' },
@@ -23,7 +23,7 @@ export const PCP_MENU: NavMenuEntry[] = [
     kind: 'submenu',
     label: 'Estoque',
     children: [
-      { kind: 'link', to: '/pedidos/mrp-dashboard', label: 'Dashboard' },
+      { kind: 'link', to: '/pedidos/mrp-dashboard', label: 'Painel MRP' },
       { kind: 'link', to: '/pedidos/mrp', label: 'MRP Produtos secundários' },
       { kind: 'link', to: '/pedidos/mrp-produtos-em-processo', label: 'MRP Produtos em processo' },
       { kind: 'link', to: '/pedidos/mpp', label: 'MPP' },
@@ -118,6 +118,10 @@ export const QUALIDADE_MENU: NavMenuEntry[] = [
   },
 ];
 
+export const COMERCIAL_MENU: NavMenuEntry[] = [
+  { kind: 'link', to: '/comercial/painel', label: 'Painel Comercial' },
+];
+
 export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
   { kind: 'link', to: '/financeiro/resumo', label: 'Resumo Financeiro' },
   { kind: 'link', to: '/financeiro/dre', label: 'DRE' },
@@ -130,6 +134,7 @@ export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
 export const INTEGRACAO_SUBMENUS: { to: string; label: string }[] = [
   { to: '/integracao/alteracao-data-entrega-compra', label: 'Alteração da Data de Entrega do Pedido de Compra' },
   { to: '/integracao/sms', label: 'SMS' },
+  { to: '/integracao/email-notificacoes', label: 'E-mail' },
   { to: '/integracao/credenciais', label: 'Credenciais' },
 ];
 
@@ -141,14 +146,14 @@ export const GESTAO_USUARIOS_SUBMENUS: { to: string; label: string }[] = [
 /** Rotas que podem ser abertas no sistema (path → label). Usado na busca rápida e menus. */
 export const PATH_LABELS: Record<string, string> = {
   '/': 'Início',
-  '/pedidos/dash-entregas': 'Dash Entregas',
+  '/pedidos/dash-entregas': 'Painel Pedidos em aberto',
   '/pedidos/sequenciamento-carradas': 'Sequenciamento carradas',
   '/pedidos': 'Gerenciador de Pedidos',
   '/pedidos/encerrados': 'Pedidos encerrados',
   '/pedidos/sycroorder': 'Comunicação PD',
   '/suporte': 'Chamados',
   '/suporte/configuracao': 'Configurações de suporte',
-  '/pedidos/mrp-dashboard': 'Dashboard MRP',
+  '/pedidos/mrp-dashboard': 'Painel MRP',
   '/pedidos/mrp': 'MRP',
   '/pedidos/mrp-produtos-em-processo': 'MRP - Produtos em Processo',
   '/pedidos/mpp': 'MPP',
@@ -182,6 +187,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/financeiro/dfc': 'DFC',
   '/financeiro/dre': 'DRE',
   '/financeiro/painel-financeiro-comercial': 'Painel Financeiro-Comercial',
+  '/comercial/painel': 'Painel Comercial',
   '/financeiro/renegociacao-contratos': 'Simulação de Renegociação',
   '/financeiro/crm': 'CRM Financeiro',
   '/relatorios': 'Relatórios',
@@ -190,6 +196,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/integracao/faturamento-diario': 'Faturamento Diário',
   '/integracao/pedidos-entrega-vencida': 'Pedidos Previsão Vencida',
   '/integracao/sms': 'SMS',
+  '/integracao/email-notificacoes': 'E-mail',
   '/integracao/credenciais': 'Credenciais',
   '/integracao/credenciais/email': 'E-mail (Gmail)',
   '/usuarios': 'Usuários',
