@@ -6,6 +6,7 @@ import type { PrismaClient } from '@prisma/client';
 import { listarContasReceberPorPessoa } from '../data/crmFinanceiro/crmDashboardService.js';
 import {
   agruparPedidosAbertosPorCliente,
+  formatarNumeroPedidoExibicao,
   listarPedidosAbertosCredito,
   type PedidoAbertoPorCliente,
 } from '../data/financeiroCreditoPedidoQuery.js';
@@ -130,11 +131,13 @@ export function montarEmailAlertaCredito(alerta: AlertaCreditoCliente): {
   subject: string;
   html: string;
 } {
-  const pds = [...new Set(alerta.pedidos.map((p) => p.numeroPedido))].join(', ');
+  const pds = [
+    ...new Set(alerta.pedidos.map((p) => formatarNumeroPedidoExibicao(p.numeroPedido))),
+  ].join(', ');
   const subject = `[Gestão Smart] Crédito em risco — ${alerta.clienteNome}`;
 
   const pedidosLista = alerta.pedidos
-    .map((p) => `PD ${p.numeroPedido} (${p.statusLabel})`)
+    .map((p) => `${formatarNumeroPedidoExibicao(p.numeroPedido)} (${p.statusLabel})`)
     .join('; ');
 
   const html = buildSystemEmailHtml({
