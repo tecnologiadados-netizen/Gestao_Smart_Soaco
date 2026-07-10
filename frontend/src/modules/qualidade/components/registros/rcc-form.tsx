@@ -12,8 +12,10 @@ import { Textarea } from "@qualidade/components/ui/textarea";
 import { ClienteSearchField } from "@qualidade/components/registros/cliente-search-field";
 import { OpcaoListaPesquisavelField } from "@qualidade/components/registros/opcao-lista-pesquisavel-field";
 import { ProdutoCodigoField } from "@qualidade/components/registros/produto-codigo-field";
+import { RegistroAnexosTable } from "@qualidade/components/registros/registro-anexos-table";
 import {
   ORIGEM_NOMUS_LABEL,
+  RCC_CAUSAS_PROBLEMA,
   RCC_RECLAMACOES,
   RCC_SERVICOS_REALIZADOS,
   RCC_SIM_NAO,
@@ -33,7 +35,7 @@ import {
   produtoErpParaCamposRcc,
 } from "@qualidade/types/produto-erp";
 import type { RccDados } from "@qualidade/types/rcc";
-import { isoParaInputDate, inputDateParaIso } from "@qualidade/types/rcc";
+import { isoParaInputDate } from "@qualidade/types/rcc";
 
 interface RccFormProps {
   dados: RccDados;
@@ -80,8 +82,7 @@ export function RccForm({
   const camposProdutoAuto =
     camposVinculadosProduto && !somenteLeitura && !origemNomus;
 
-  const usarBuscaCliente =
-    !somenteLeitura && !origemNomus && !dados.clienteDoRevendedor;
+  const usarBuscaCliente = !somenteLeitura && !dados.clienteDoRevendedor;
 
   const camposClienteAuto =
     camposVinculadosCliente &&
@@ -156,22 +157,23 @@ export function RccForm({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="rcc-data-fechamento">
-              {rccFieldLabels.dataFechamento}
-            </Label>
-            <Input
-              id="rcc-data-fechamento"
-              type="date"
-              value={isoParaInputDate(dados.dataFechamento)}
-              onChange={(e) =>
-                patch({
-                  dataFechamento: e.target.value
-                    ? `${e.target.value}T12:00:00.000Z`
-                    : "",
-                })
-              }
+            <Label>{rccFieldLabels.feedbackClienteEnviado}</Label>
+            <Select
+              value={dados.feedbackClienteEnviado || undefined}
+              onValueChange={(v) => v && patch({ feedbackClienteEnviado: v })}
               disabled={somenteLeitura}
-            />
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Selecione..." />
+              </SelectTrigger>
+              <SelectContent>
+                {RCC_SIM_NAO.map((opcao) => (
+                  <SelectItem key={opcao} value={opcao}>
+                    {opcao}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
@@ -237,7 +239,7 @@ export function RccForm({
       <fieldset className="brand-fieldset space-y-4">
         <legend>Produto</legend>
         <div className="grid gap-4 sm:grid-cols-2">
-          {somenteLeitura || origemNomus ? (
+          {somenteLeitura ? (
             codigoExibicao ? (
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="rcc-codigo-produto">
@@ -252,6 +254,17 @@ export function RccForm({
                 />
               </div>
             ) : null
+          ) : origemNomus ? (
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="rcc-codigo-produto">
+                {rccFieldLabels.codigoProduto}
+              </Label>
+              <Input
+                id="rcc-codigo-produto"
+                value={dados.codigoProduto ?? codigoExibicao ?? ""}
+                onChange={(e) => patch({ codigoProduto: e.target.value })}
+              />
+            </div>
           ) : (
             <div className="sm:col-span-2">
               <ProdutoCodigoField
@@ -323,7 +336,7 @@ export function RccForm({
       <fieldset className="brand-fieldset space-y-4">
         <legend>Cliente</legend>
         <div className="grid gap-4 sm:grid-cols-2">
-          {!somenteLeitura && !origemNomus ? (
+          {!somenteLeitura ? (
             <div className="sm:col-span-2">
               <label className="flex cursor-pointer items-center gap-3 text-sm">
                 <input
@@ -549,6 +562,17 @@ export function RccForm({
                   onVinculoClear={() => setCamposVinculadosRevendedor(false)}
                   disabled={somenteLeitura}
                 />
+              ) : !somenteLeitura ? (
+                <>
+                  <Label htmlFor="rcc-revendedor">
+                    {rccFieldLabels.nomeRevendedor}
+                  </Label>
+                  <Input
+                    id="rcc-revendedor"
+                    value={dados.nomeRevendedor ?? ""}
+                    onChange={(e) => patch({ nomeRevendedor: e.target.value })}
+                  />
+                </>
               ) : (
                 <>
                   <Label htmlFor="rcc-revendedor">
@@ -658,48 +682,22 @@ export function RccForm({
               disabled={somenteLeitura}
             />
           </div>
-        </div>
-      </fieldset>
 
-      <fieldset className="brand-fieldset space-y-4">
-        <legend>Análise e tratamento</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rcc-analise">
-              {rccFieldLabels.analiseCausaQualidade}
+            <Label htmlFor="rcc-responsavel-analise">
+              {rccFieldLabels.responsavelAnaliseReclamacao}
             </Label>
-            <Textarea
-              id="rcc-analise"
-              rows={3}
-              value={dados.analiseCausaQualidade}
-              onChange={(e) => patch({ analiseCausaQualidade: e.target.value })}
+            <Input
+              id="rcc-responsavel-analise"
+              value={dados.responsavelAnaliseReclamacao}
+              onChange={(e) =>
+                patch({ responsavelAnaliseReclamacao: e.target.value })
+              }
               disabled={somenteLeitura}
             />
           </div>
 
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rcc-comentario">{rccFieldLabels.comentario}</Label>
-            <Textarea
-              id="rcc-comentario"
-              rows={3}
-              value={dados.comentario}
-              onChange={(e) => patch({ comentario: e.target.value })}
-              disabled={somenteLeitura}
-            />
-          </div>
-
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rcc-causa">{rccFieldLabels.causaProblema}</Label>
-            <Textarea
-              id="rcc-causa"
-              rows={3}
-              value={dados.causaProblema}
-              onChange={(e) => patch({ causaProblema: e.target.value })}
-              disabled={somenteLeitura}
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label>{rccFieldLabels.reclamacaoAceita}</Label>
             <Select
               value={dados.reclamacaoAceita || undefined}
@@ -718,91 +716,96 @@ export function RccForm({
               </SelectContent>
             </Select>
           </div>
-
-          <div className="space-y-2">
-            <Label>{rccFieldLabels.abrirOrdemServico}</Label>
-            <Select
-              value={dados.abrirOrdemServico || undefined}
-              onValueChange={(v) => v && patch({ abrirOrdemServico: v })}
-              disabled={somenteLeitura}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Selecione..." />
-              </SelectTrigger>
-              <SelectContent>
-                {RCC_SIM_NAO.map((opcao) => (
-                  <SelectItem key={opcao} value={opcao}>
-                    {opcao}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </div>
       </fieldset>
 
       <fieldset className="brand-fieldset space-y-4">
-        <legend>Ordem de serviço e técnico</legend>
+        <legend>Análise e tratamento</legend>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="rcc-ordem-prod">{rccFieldLabels.numeroOrdemProducao}</Label>
-            <Input
-              id="rcc-ordem-prod"
-              value={dados.numeroOrdemProducao}
-              onChange={(e) => patch({ numeroOrdemProducao: e.target.value })}
-              readOnly={somenteLeitura}
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="rcc-comentario">{rccFieldLabels.comentario}</Label>
+            <Textarea
+              id="rcc-comentario"
+              rows={3}
+              value={dados.comentario}
+              onChange={(e) => patch({ comentario: e.target.value })}
               disabled={somenteLeitura}
-              className={somenteLeitura ? "bg-muted/40" : undefined}
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="rcc-data-assist">{rccFieldLabels.dataAssistencia}</Label>
-            <Input
-              id="rcc-data-assist"
-              type="date"
-              value={isoParaInputDate(dados.dataAssistencia)}
-              onChange={(e) =>
-                patch({ dataAssistencia: inputDateParaIso(e.target.value) })
-              }
-              readOnly={somenteLeitura}
-              disabled={somenteLeitura}
-              className={somenteLeitura ? "bg-muted/40" : undefined}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rcc-serie-compressor">
-              {rccFieldLabels.numeroSerieCompressor}
-            </Label>
-            <Input
-              id="rcc-serie-compressor"
-              value={dados.numeroSerieCompressor}
-              onChange={(e) => patch({ numeroSerieCompressor: e.target.value })}
-              readOnly={somenteLeitura}
-              disabled={somenteLeitura}
-              className={somenteLeitura ? "bg-muted/40" : undefined}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>{rccFieldLabels.problemaSolucionado}</Label>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>{rccFieldLabels.causaProblema}</Label>
             <Select
-              value={dados.problemaSolucionado || undefined}
-              onValueChange={(v) => v && patch({ problemaSolucionado: v })}
+              value={dados.causaProblema || undefined}
+              onValueChange={(v) => v && patch({ causaProblema: v })}
               disabled={somenteLeitura}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="rcc-causa" className="w-full">
                 <SelectValue placeholder="Selecione..." />
               </SelectTrigger>
               <SelectContent>
-                {RCC_SIM_NAO.map((opcao) => (
+                {RCC_CAUSAS_PROBLEMA.map((opcao) => (
                   <SelectItem key={opcao} value={opcao}>
                     {opcao}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+        </div>
+      </fieldset>
+
+      <fieldset className="brand-fieldset space-y-4">
+        <legend>Serviço realizado</legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="rcc-funcionario">
+              {rccFieldLabels.funcionarioSolicitado}
+            </Label>
+            <Input
+              id="rcc-funcionario"
+              value={dados.funcionarioSolicitado}
+              onChange={(e) => patch({ funcionarioSolicitado: e.target.value })}
+              readOnly={somenteLeitura}
+              disabled={somenteLeitura}
+              className={somenteLeitura ? "bg-muted/40" : undefined}
+            />
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="rcc-servico">{rccFieldLabels.servicoRealizado}</Label>
+            <Textarea
+              id="rcc-servico"
+              rows={4}
+              value={dados.servicoRealizado}
+              onChange={(e) => patch({ servicoRealizado: e.target.value })}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <OpcaoListaPesquisavelField
+              id="rcc-servico-1"
+              label={rccFieldLabels.servicoRealizado1}
+              value={dados.servicoRealizado1}
+              onChange={(v) => patch({ servicoRealizado1: v })}
+              opcoesBase={RCC_SERVICOS_REALIZADOS}
+              storageKey={RCC_SERVICOS_OPCOES_STORAGE_KEY}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <OpcaoListaPesquisavelField
+              id="rcc-servico-2"
+              label={rccFieldLabels.servicoRealizado2}
+              value={dados.servicoRealizado2}
+              onChange={(v) => patch({ servicoRealizado2: v })}
+              opcoesBase={RCC_SERVICOS_REALIZADOS}
+              storageKey={RCC_SERVICOS_OPCOES_STORAGE_KEY}
+              disabled={somenteLeitura}
+            />
           </div>
 
           <div className="space-y-2">
@@ -864,20 +867,15 @@ export function RccForm({
               className={somenteLeitura ? "bg-muted/40" : undefined}
             />
           </div>
-        </div>
-      </fieldset>
 
-      <fieldset className="brand-fieldset space-y-4">
-        <legend>Serviço realizado</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rcc-funcionario">
-              {rccFieldLabels.funcionarioSolicitado}
+            <Label htmlFor="rcc-serie-compressor">
+              {rccFieldLabels.numeroSerieCompressor}
             </Label>
             <Input
-              id="rcc-funcionario"
-              value={dados.funcionarioSolicitado}
-              onChange={(e) => patch({ funcionarioSolicitado: e.target.value })}
+              id="rcc-serie-compressor"
+              value={dados.numeroSerieCompressor}
+              onChange={(e) => patch({ numeroSerieCompressor: e.target.value })}
               readOnly={somenteLeitura}
               disabled={somenteLeitura}
               className={somenteLeitura ? "bg-muted/40" : undefined}
@@ -885,40 +883,72 @@ export function RccForm({
           </div>
 
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rcc-servico">{rccFieldLabels.servicoRealizado}</Label>
-            <Textarea
-              id="rcc-servico"
-              rows={4}
-              value={dados.servicoRealizado}
-              onChange={(e) => patch({ servicoRealizado: e.target.value })}
+            <Label htmlFor="rcc-data-conclusao-servico">
+              {rccFieldLabels.dataConclusaoServico}
+            </Label>
+            <Input
+              id="rcc-data-conclusao-servico"
+              type="date"
+              value={isoParaInputDate(dados.dataConclusaoServico)}
+              onChange={(e) =>
+                patch({
+                  dataConclusaoServico: e.target.value
+                    ? `${e.target.value}T12:00:00.000Z`
+                    : "",
+                })
+              }
               disabled={somenteLeitura}
             />
           </div>
 
-          <div className="space-y-2">
-            <OpcaoListaPesquisavelField
-              id="rcc-servico-1"
-              label={rccFieldLabels.servicoRealizado1}
-              value={dados.servicoRealizado1}
-              onChange={(v) => patch({ servicoRealizado1: v })}
-              opcoesBase={RCC_SERVICOS_REALIZADOS}
-              storageKey={RCC_SERVICOS_OPCOES_STORAGE_KEY}
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="rcc-data-fechamento">
+              {rccFieldLabels.dataFechamento}
+            </Label>
+            <Input
+              id="rcc-data-fechamento"
+              type="date"
+              value={isoParaInputDate(dados.dataFechamento)}
+              onChange={(e) =>
+                patch({
+                  dataFechamento: e.target.value
+                    ? `${e.target.value}T12:00:00.000Z`
+                    : "",
+                })
+              }
               disabled={somenteLeitura}
             />
           </div>
 
-          <div className="space-y-2">
-            <OpcaoListaPesquisavelField
-              id="rcc-servico-2"
-              label={rccFieldLabels.servicoRealizado2}
-              value={dados.servicoRealizado2}
-              onChange={(v) => patch({ servicoRealizado2: v })}
-              opcoesBase={RCC_SERVICOS_REALIZADOS}
-              storageKey={RCC_SERVICOS_OPCOES_STORAGE_KEY}
+          <div className="space-y-2 sm:col-span-2">
+            <Label>{rccFieldLabels.problemaSolucionado}</Label>
+            <Select
+              value={dados.problemaSolucionado || undefined}
+              onValueChange={(v) => v && patch({ problemaSolucionado: v })}
               disabled={somenteLeitura}
-            />
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Selecione..." />
+              </SelectTrigger>
+              <SelectContent>
+                {RCC_SIM_NAO.map((opcao) => (
+                  <SelectItem key={opcao} value={opcao}>
+                    {opcao}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
+      </fieldset>
+
+      <fieldset className="brand-fieldset space-y-4">
+        <legend>Evidências</legend>
+        <RegistroAnexosTable
+          anexos={dados.anexos ?? []}
+          onChange={(anexos) => patch({ anexos })}
+          disabled={somenteLeitura}
+        />
       </fieldset>
     </div>
   );

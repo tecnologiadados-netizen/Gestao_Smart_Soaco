@@ -78,6 +78,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/integracao/faturamento-diario': [PERMISSOES.INTEGRACAO_VER],
   '/integracao/pedidos-entrega-vencida': [PERMISSOES.INTEGRACAO_VER],
   '/integracao/sms': [PERMISSOES.INTEGRACAO_VER],
+  '/integracao/email-notificacoes': [PERMISSOES.INTEGRACAO_VER],
   '/integracao/credenciais': [
     PERMISSOES.INTEGRACAO_VER,
     PERMISSOES.SISTEMA_EMAIL,
@@ -141,6 +142,7 @@ export const ROTAS_ORDEM = [
   '/integracao/faturamento-diario',
   '/integracao/pedidos-entrega-vencida',
   '/integracao/sms',
+  '/integracao/email-notificacoes',
   '/integracao/credenciais',
   '/integracao/credenciais/email',
   '/usuarios',

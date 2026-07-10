@@ -106,6 +106,7 @@ export default function PreCompraTabela({ items, onEmitirPdf, generatingCotacao 
             <th className="px-3 py-2 text-right whitespace-nowrap">Total</th>
             <th className="px-3 py-2 text-left whitespace-nowrap">Solicitação</th>
             <th className="px-3 py-2 text-left whitespace-nowrap">Data necessidade</th>
+            <th className="px-3 py-2 text-left whitespace-nowrap">N° da coleta</th>
             <th className="px-3 py-2 text-center whitespace-nowrap">Ações</th>
           </tr>
         </thead>
@@ -162,9 +163,27 @@ export default function PreCompraTabela({ items, onEmitirPdf, generatingCotacao 
                   <td className="px-3 py-2 whitespace-nowrap">{formatDate(item.data_necessidade)}</td>
 
                   {isFirst && (
-                    <td rowSpan={rowSpan} className="px-3 py-2 align-top text-center">
-                      <PdfActionButton loading={isGenerating} onClick={() => onEmitirPdf(group.cotacao)} />
-                    </td>
+                    <>
+                      <td rowSpan={rowSpan} className="px-3 py-2 align-top whitespace-nowrap">
+                        {header.numeros_coleta && header.numeros_coleta.length > 0 ? (
+                          <span className="inline-flex flex-wrap gap-1">
+                            {header.numeros_coleta.map((n) => (
+                              <span
+                                key={n}
+                                className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+                              >
+                                {n}
+                              </span>
+                            ))}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-500">—</span>
+                        )}
+                      </td>
+                      <td rowSpan={rowSpan} className="px-3 py-2 align-top text-center">
+                        <PdfActionButton loading={isGenerating} onClick={() => onEmitirPdf(group.cotacao)} />
+                      </td>
+                    </>
                   )}
                 </tr>
               );

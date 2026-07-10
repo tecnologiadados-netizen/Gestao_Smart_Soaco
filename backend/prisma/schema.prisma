@@ -111,6 +111,7 @@ model Usuario {
   mrpRunsCriados MrpRun[] @relation("MrpRunCreatedBy")
   mrpRunsProcessados MrpRun[] @relation("MrpRunProcessedBy")
   whatsappNotificacaoDestinatarios WhatsappNotificacaoDestinatario[]
+  emailNotificacaoDestinatarios EmailNotificacaoDestinatario[]
   telasFavoritas TelaFavorita[]
 
   @@map("usuario")
@@ -230,6 +231,38 @@ model WhatsappNotificacaoDestinatario {
 
   @@unique([tipoId, usuarioId])
   @@map("whatsapp_notificacao_destinatario")
+}
+
+/// Tipos de notificação por e-mail (Integração → E-mail).
+model EmailNotificacaoTipo {
+  id               Int      @id @default(autoincrement())
+  code             String   @unique
+  label            String
+  descricao        String?
+  ativo            Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  /// codigo (builder em código)
+  fonteMensagem    String   @default("codigo")
+  /// cron
+  modoDisparo      String   @default("cron")
+  cronExpressao    String?
+  builderCode      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  destinatarios    EmailNotificacaoDestinatario[]
+
+  @@map("email_notificacao_tipo")
+}
+
+model EmailNotificacaoDestinatario {
+  id        Int @id @default(autoincrement())
+  tipoId    Int
+  usuarioId Int
+  tipo      EmailNotificacaoTipo @relation(fields: [tipoId], references: [id], onDelete: Cascade)
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([tipoId, usuarioId])
+  @@map("email_notificacao_destinatario")
 }
 
 // Coordenadas de municípios brasileiros (fonte: IBGE/kelvins – sem depender de API externa)

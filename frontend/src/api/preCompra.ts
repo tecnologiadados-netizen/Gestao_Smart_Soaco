@@ -26,6 +26,9 @@ export interface PreCompraCotacaoItem {
   data_necessidade: string;
   status: number;
   status_label: string;
+  cotacao_id?: number;
+  /** Números das coletas do Gestão finalizadas vinculadas a esta cotação (direto ou via pedido). */
+  numeros_coleta?: number[];
 }
 
 export interface PreCompraCotacoesResponse {

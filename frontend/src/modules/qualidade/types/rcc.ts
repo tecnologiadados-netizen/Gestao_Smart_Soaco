@@ -1,9 +1,12 @@
 import { RCC_VENDEDOR_PADRAO } from "@qualidade/lib/registros/constants";
+import type { RegistroAnexo } from "@qualidade/types/registro-anexo";
+import { normalizarRegistroAnexos } from "@qualidade/types/registro-anexo";
 
 export interface RccDados {
   codigoDocumento: string;
   codigoProduto: string;
   dataRegistroReclamacao: string;
+  feedbackClienteEnviado: string;
   cidade: string;
   nomeClienteConsumidor: string;
   contato: string;
@@ -30,11 +33,13 @@ export interface RccDados {
   comentario: string;
   reclamacao1: string;
   reclamacao2: string;
+  responsavelAnaliseReclamacao: string;
   reclamacaoAceita: string;
   abrirOrdemServico: string;
   servicoRealizado: string;
   servicoRealizado1: string;
   servicoRealizado2: string;
+  dataConclusaoServico: string;
   funcionarioSolicitado: string;
   numeroOrdemProducao: string;
   dataAssistencia: string;
@@ -48,6 +53,7 @@ export interface RccDados {
   causaProblema: string;
   estado: string;
   usuarioCriacao: string;
+  anexos: RegistroAnexo[];
 }
 
 export function criarRccDadosVazio(codigoDocumento = ""): RccDados {
@@ -55,6 +61,7 @@ export function criarRccDadosVazio(codigoDocumento = ""): RccDados {
     codigoDocumento,
     codigoProduto: "",
     dataRegistroReclamacao: "",
+    feedbackClienteEnviado: "",
     cidade: "",
     nomeClienteConsumidor: "",
     contato: "",
@@ -81,11 +88,13 @@ export function criarRccDadosVazio(codigoDocumento = ""): RccDados {
     comentario: "",
     reclamacao1: "",
     reclamacao2: "",
+    responsavelAnaliseReclamacao: "",
     reclamacaoAceita: "",
     abrirOrdemServico: "",
     servicoRealizado: "",
     servicoRealizado1: "",
     servicoRealizado2: "",
+    dataConclusaoServico: "",
     funcionarioSolicitado: "",
     numeroOrdemProducao: "",
     dataAssistencia: "",
@@ -99,6 +108,7 @@ export function criarRccDadosVazio(codigoDocumento = ""): RccDados {
     causaProblema: "",
     estado: "",
     usuarioCriacao: "",
+    anexos: [],
   };
 }
 
@@ -111,6 +121,7 @@ export function normalizarRccDados(
     ...base,
     ...rcc,
     vendedor: rcc.vendedor?.trim() || base.vendedor,
+    anexos: normalizarRegistroAnexos(rcc.anexos),
   };
 }
 

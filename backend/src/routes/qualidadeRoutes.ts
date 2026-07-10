@@ -18,6 +18,7 @@ import {
   deleteQualidadeDocumentHandler,
   putQualidadeOpcoesListaHandler,
   putQualidadeRegistrosHandler,
+  deleteQualidadeRegistroHandler,
 } from '../controllers/qualidadeController.js';
 
 const router = Router();
@@ -36,6 +37,9 @@ router.put('/sync/config', (req, res, next) => {
 });
 router.put('/sync/registros', (req, res, next) => {
   putQualidadeRegistrosHandler(req, res).catch(next);
+});
+router.delete('/registros/:uid', (req, res, next) => {
+  deleteQualidadeRegistroHandler(req, res).catch(next);
 });
 router.put('/sync/documentos', (req, res, next) => {
   putQualidadeDocumentsHandler(req, res).catch(next);

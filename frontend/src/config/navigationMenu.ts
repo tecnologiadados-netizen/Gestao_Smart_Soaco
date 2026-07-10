@@ -134,6 +134,7 @@ export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
 export const INTEGRACAO_SUBMENUS: { to: string; label: string }[] = [
   { to: '/integracao/alteracao-data-entrega-compra', label: 'Alteração da Data de Entrega do Pedido de Compra' },
   { to: '/integracao/sms', label: 'SMS' },
+  { to: '/integracao/email-notificacoes', label: 'E-mail' },
   { to: '/integracao/credenciais', label: 'Credenciais' },
 ];
 
@@ -195,6 +196,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/integracao/faturamento-diario': 'Faturamento Diário',
   '/integracao/pedidos-entrega-vencida': 'Pedidos Previsão Vencida',
   '/integracao/sms': 'SMS',
+  '/integracao/email-notificacoes': 'E-mail',
   '/integracao/credenciais': 'Credenciais',
   '/integracao/credenciais/email': 'E-mail (Gmail)',
   '/usuarios': 'Usuários',

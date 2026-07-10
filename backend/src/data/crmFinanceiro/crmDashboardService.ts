@@ -687,3 +687,10 @@ export async function searchPessoas(
 export async function listEmpresas(): Promise<EmpresaOption[]> {
   return EMPRESAS_PAINEL;
 }
+
+export async function listarContasReceberPorPessoa(
+  situacao: "total" | "atraso" | "emDia",
+  pessoa: string,
+): Promise<ContaFinanceira[]> {
+  return carregarContasDetalheComTitulosDescontado("receber", situacao, pessoa);
+}

@@ -1173,6 +1173,82 @@ export async function listarOpcoesVinculoErroOperacional(
   return { data: Array.isArray(body.data) ? body.data : [] };
 }
 
+export interface VinculoDerivadoItem {
+  id: number;
+  nome: string;
+  nomeFornecedor: string | null;
+  dataEmissao: string | null;
+}
+
+export interface VinculosDerivadosColeta {
+  cotacoes: VinculoDerivadoItem[];
+  pedidos: VinculoDerivadoItem[];
+  error?: string;
+}
+
+/**
+ * Vínculo complementar derivado ao vivo do Nomus a partir da finalização da coleta:
+ * cotações derivadas dos pedidos vinculados e pedidos derivados das cotações vinculadas.
+ */
+export async function listarVinculosDerivadosColeta(coletaId: number): Promise<VinculosDerivadosColeta> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/vinculos-derivados`);
+  const text = await res.text();
+  let body: { cotacoes?: VinculoDerivadoItem[]; pedidos?: VinculoDerivadoItem[]; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { cotacoes: [], pedidos: [], error: body.error ?? res.statusText };
+  return {
+    cotacoes: Array.isArray(body.cotacoes) ? body.cotacoes : [],
+    pedidos: Array.isArray(body.pedidos) ? body.pedidos : [],
+    ...(body.error ? { error: body.error } : {}),
+  };
+}
+
+export interface VinculosDerivadosPreview {
+  /** Cotações derivadas, agrupadas pelo id do pedido de origem. */
+  porPedido: Record<number, VinculoDerivadoItem[]>;
+  /** Pedidos derivados, agrupados pelo id da cotação de origem. */
+  porCotacao: Record<number, VinculoDerivadoItem[]>;
+  error?: string;
+}
+
+/**
+ * Preview ao vivo do vínculo complementar (antes de finalizar), agrupado por origem.
+ */
+export async function listarVinculosDerivadosPreview(params: {
+  pedidos?: number[];
+  cotacoes?: number[];
+}): Promise<VinculosDerivadosPreview> {
+  const qs = new URLSearchParams();
+  if (params.pedidos && params.pedidos.length > 0) qs.set('pedidos', params.pedidos.join(','));
+  if (params.cotacoes && params.cotacoes.length > 0) qs.set('cotacoes', params.cotacoes.join(','));
+  const res = await apiFetch(`/api/compras/coletas/vinculos-derivados-preview?${qs.toString()}`);
+  const text = await res.text();
+  let body: {
+    porPedido?: Record<number, VinculoDerivadoItem[]>;
+    porCotacao?: Record<number, VinculoDerivadoItem[]>;
+    error?: string;
+  } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { porPedido: {}, porCotacao: {}, error: body.error ?? res.statusText };
+  return {
+    porPedido: body.porPedido ?? {},
+    porCotacao: body.porCotacao ?? {},
+    ...(body.error ? { error: body.error } : {}),
+  };
+}
+
 export type FinalizarCotacaoVinculoPayload =
   | { tipoRegistro: 'PEDIDO' | 'COTACAO'; idRegistro: number; erroOperacional?: boolean; senha?: string }
   | {

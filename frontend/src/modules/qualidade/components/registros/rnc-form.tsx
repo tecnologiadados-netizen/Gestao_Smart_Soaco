@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
 import {
@@ -19,11 +19,18 @@ import {
   rncFieldLabels,
 } from "@qualidade/lib/registros/constants";
 import { ProdutoCodigoField } from "@qualidade/components/registros/produto-codigo-field";
+import { RegistroAnexosTable } from "@qualidade/components/registros/registro-anexos-table";
+import { RncAcoesApartadasTable } from "@qualidade/components/registros/rnc-acoes-apartadas-table";
+import { RncPlanoAcaoPorques } from "@qualidade/components/registros/rnc-plano-acao-porques";
 import {
   extrairCodigoProduto,
   produtoErpParaCamposRnc,
 } from "@qualidade/types/produto-erp";
 import type { RncDados } from "@qualidade/types/rnc";
+import {
+  normalizarRncDados,
+  sincronizarAcoesApartadasLegado,
+} from "@qualidade/types/rnc";
 import { isoParaInputDate } from "@qualidade/types/rnc";
 
 interface RncFormProps {
@@ -57,20 +64,22 @@ export function RncForm({
   codigoDocumentoPreview,
   usuarioCriacaoNome = "",
 }: RncFormProps) {
+  const dadosAtuais = useMemo(() => normalizarRncDados(dados), [dados]);
+
   function patch(partial: Partial<RncDados>) {
-    onChange({ ...dados, ...partial });
+    onChange(sincronizarAcoesApartadasLegado({ ...dadosAtuais, ...partial }));
   }
 
   const somenteLeitura = disabled || modo === "visualizar";
   const [camposVinculadosProduto, setCamposVinculadosProduto] = useState(
-    Boolean(dados.codigoProduto?.trim())
+    Boolean(dadosAtuais.codigoProduto?.trim())
   );
 
   const camposProdutoAuto =
     camposVinculadosProduto && !somenteLeitura && !origemNomus;
 
   const codigoExibicao =
-    dados.codigoProduto?.trim() || extrairCodigoProduto(dados.produto);
+    dadosAtuais.codigoProduto?.trim() || extrairCodigoProduto(dadosAtuais.produto);
 
   return (
     <div className="space-y-6">
@@ -84,7 +93,7 @@ export function RncForm({
               <div className="space-y-1">
                 <Input
                   id="rnc-codigo"
-                  value={dados.codigoDocumento}
+                  value={dadosAtuais.codigoDocumento}
                   readOnly
                   disabled
                   className="bg-muted/40 font-medium"
@@ -117,7 +126,7 @@ export function RncForm({
             <Input
               id="rnc-data-ocorrencia"
               type="date"
-              value={isoParaInputDate(dados.dataOcorrencia)}
+              value={isoParaInputDate(dadosAtuais.dataOcorrencia)}
               onChange={(e) =>
                 patch({
                   dataOcorrencia: e.target.value
@@ -138,7 +147,7 @@ export function RncForm({
             <Input
               id="rnc-data-fechamento"
               type="date"
-              value={isoParaInputDate(dados.dataFechamento)}
+              value={isoParaInputDate(dadosAtuais.dataFechamento)}
               onChange={(e) =>
                 patch({
                   dataFechamento: e.target.value
@@ -159,7 +168,7 @@ export function RncForm({
               value={
                 modo === "criar" && !origemNomus
                   ? usuarioCriacaoNome
-                  : dados.usuarioCriacao
+                  : dadosAtuais.usuarioCriacao
               }
               readOnly
               disabled
@@ -167,146 +176,6 @@ export function RncForm({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="rnc-prazo">{rncFieldLabels.prazoExecucao}</Label>
-            <Input
-              id="rnc-prazo"
-              type="date"
-              value={isoParaInputDate(dados.prazoExecucao)}
-              onChange={(e) =>
-                patch({
-                  prazoExecucao: e.target.value
-                    ? `${e.target.value}T12:00:00.000Z`
-                    : "",
-                })
-              }
-              disabled={somenteLeitura}
-            />
-          </div>
-        </div>
-      </fieldset>
-
-      <fieldset className="brand-fieldset space-y-4">
-        <legend>Produto</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {somenteLeitura || origemNomus ? (
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="rnc-codigo-produto">
-                {rncFieldLabels.codigoProduto}
-              </Label>
-              <Input
-                id="rnc-codigo-produto"
-                value={codigoExibicao || "—"}
-                readOnly
-                disabled
-                className="bg-muted/40"
-              />
-            </div>
-          ) : (
-            <div className="sm:col-span-2">
-              <ProdutoCodigoField
-                value={dados.codigoProduto}
-                onCodigoChange={(codigo) => patch({ codigoProduto: codigo })}
-                onProdutoSelect={(produto) => {
-                  patch(produtoErpParaCamposRnc(produto));
-                  setCamposVinculadosProduto(true);
-                }}
-                onVinculoClear={() => setCamposVinculadosProduto(false)}
-                disabled={somenteLeitura}
-              />
-            </div>
-          )}
-
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rnc-produto">{rncFieldLabels.produto}</Label>
-            <Input
-              id="rnc-produto"
-              value={dados.produto}
-              onChange={(e) => patch({ produto: e.target.value })}
-              readOnly={camposProdutoAuto}
-              disabled={somenteLeitura || camposProdutoAuto}
-              className={camposProdutoAuto ? "bg-muted/40" : undefined}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rnc-grupo">{rncFieldLabels.grupoProduto}</Label>
-            <Input
-              id="rnc-grupo"
-              value={dados.grupoProduto}
-              onChange={(e) => patch({ grupoProduto: e.target.value })}
-              readOnly={camposProdutoAuto}
-              disabled={somenteLeitura || camposProdutoAuto}
-              className={camposProdutoAuto ? "bg-muted/40" : undefined}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rnc-lote-serie">{rncFieldLabels.loteSerie}</Label>
-            <Input
-              id="rnc-lote-serie"
-              value={dados.loteSerie}
-              onChange={(e) => patch({ loteSerie: e.target.value })}
-              disabled={somenteLeitura}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rnc-op-numero">
-              {rncFieldLabels.numeroOrdemProducao}
-            </Label>
-            <Input
-              id="rnc-op-numero"
-              value={dados.numeroOrdemProducao}
-              onChange={(e) => patch({ numeroOrdemProducao: e.target.value })}
-              disabled={somenteLeitura}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rnc-tipo-produto">{rncFieldLabels.tipoProduto}</Label>
-            {camposProdutoAuto ? (
-              <Input
-                id="rnc-tipo-produto"
-                value={dados.tipoProduto}
-                readOnly
-                disabled
-                className="bg-muted/40"
-              />
-            ) : (
-              <>
-                <Select
-                  value={dados.tipoProduto || undefined}
-                  onValueChange={(v) => v && patch({ tipoProduto: v })}
-                  disabled={somenteLeitura}
-                >
-                  <SelectTrigger id="rnc-tipo-produto" className="w-full">
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RNC_TIPOS_PRODUTO.map((opcao) => (
-                      <SelectItem key={opcao} value={opcao}>
-                        {opcao}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  className="mt-2"
-                  placeholder="Ou digite outro tipo..."
-                  value={
-                    RNC_TIPOS_PRODUTO.includes(
-                      dados.tipoProduto as (typeof RNC_TIPOS_PRODUTO)[number]
-                    )
-                      ? ""
-                      : dados.tipoProduto
-                  }
-                  onChange={(e) => patch({ tipoProduto: e.target.value })}
-                  disabled={somenteLeitura}
-                />
-              </>
-            )}
-          </div>
         </div>
       </fieldset>
 
@@ -316,7 +185,7 @@ export function RncForm({
           <div className="space-y-2">
             <Label>{rncFieldLabels.tipoAcao} *</Label>
             <Select
-              value={dados.tipoAcao || undefined}
+              value={dadosAtuais.tipoAcao || undefined}
               onValueChange={(v) => v && patch({ tipoAcao: v })}
               disabled={somenteLeitura}
             >
@@ -337,7 +206,7 @@ export function RncForm({
           <div className="space-y-2">
             <Label>{rncFieldLabels.tipoOcorrencia} *</Label>
             <Select
-              value={dados.tipoOcorrencia || undefined}
+              value={dadosAtuais.tipoOcorrencia || undefined}
               onValueChange={(v) => v && patch({ tipoOcorrencia: v })}
               disabled={somenteLeitura}
             >
@@ -357,10 +226,10 @@ export function RncForm({
               placeholder="Ou digite outro tipo..."
               value={
                 RNC_TIPOS_OCORRENCIA.includes(
-                  dados.tipoOcorrencia as (typeof RNC_TIPOS_OCORRENCIA)[number]
+                  dadosAtuais.tipoOcorrencia as (typeof RNC_TIPOS_OCORRENCIA)[number]
                 )
                   ? ""
-                  : dados.tipoOcorrencia
+                  : dadosAtuais.tipoOcorrencia
               }
               onChange={(e) => patch({ tipoOcorrencia: e.target.value })}
               disabled={somenteLeitura}
@@ -374,10 +243,155 @@ export function RncForm({
             </Label>
             <Input
               id="rnc-setor-ocorrencia"
-              value={dados.setorOcorrencia}
+              value={dadosAtuais.setorOcorrencia}
               onChange={(e) => patch({ setorOcorrencia: e.target.value })}
               disabled={somenteLeitura}
             />
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset className="brand-fieldset space-y-4">
+        <legend>Produto</legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {somenteLeitura ? (
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="rnc-codigo-produto">
+                {rncFieldLabels.codigoProduto}
+              </Label>
+              <Input
+                id="rnc-codigo-produto"
+                value={codigoExibicao || "—"}
+                readOnly
+                disabled
+                className="bg-muted/40"
+              />
+            </div>
+          ) : origemNomus ? (
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="rnc-codigo-produto">
+                {rncFieldLabels.codigoProduto}
+              </Label>
+              <Input
+                id="rnc-codigo-produto"
+                value={dadosAtuais.codigoProduto ?? codigoExibicao ?? ""}
+                onChange={(e) => patch({ codigoProduto: e.target.value })}
+              />
+            </div>
+          ) : (
+            <div className="sm:col-span-2">
+              <ProdutoCodigoField
+                value={dadosAtuais.codigoProduto}
+                onCodigoChange={(codigo) => patch({ codigoProduto: codigo })}
+                onProdutoSelect={(produto) => {
+                  patch(produtoErpParaCamposRnc(produto));
+                  setCamposVinculadosProduto(true);
+                }}
+                onVinculoClear={() => setCamposVinculadosProduto(false)}
+                disabled={somenteLeitura}
+              />
+            </div>
+          )}
+
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="rnc-produto">{rncFieldLabels.produto}</Label>
+            <Input
+              id="rnc-produto"
+              value={dadosAtuais.produto}
+              onChange={(e) => patch({ produto: e.target.value })}
+              readOnly={camposProdutoAuto}
+              disabled={somenteLeitura || camposProdutoAuto}
+              className={camposProdutoAuto ? "bg-muted/40" : undefined}
+            />
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="rnc-quantidade">{rncFieldLabels.quantidade}</Label>
+            <Input
+              id="rnc-quantidade"
+              value={dadosAtuais.quantidade}
+              onChange={(e) => patch({ quantidade: e.target.value })}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="rnc-grupo">{rncFieldLabels.grupoProduto}</Label>
+            <Input
+              id="rnc-grupo"
+              value={dadosAtuais.grupoProduto}
+              onChange={(e) => patch({ grupoProduto: e.target.value })}
+              readOnly={camposProdutoAuto}
+              disabled={somenteLeitura || camposProdutoAuto}
+              className={camposProdutoAuto ? "bg-muted/40" : undefined}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="rnc-lote-serie">{rncFieldLabels.loteSerie}</Label>
+            <Input
+              id="rnc-lote-serie"
+              value={dadosAtuais.loteSerie}
+              onChange={(e) => patch({ loteSerie: e.target.value })}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="rnc-op-numero">
+              {rncFieldLabels.numeroOrdemProducao}
+            </Label>
+            <Input
+              id="rnc-op-numero"
+              value={dadosAtuais.numeroOrdemProducao}
+              onChange={(e) => patch({ numeroOrdemProducao: e.target.value })}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="rnc-tipo-produto">{rncFieldLabels.tipoProduto}</Label>
+            {camposProdutoAuto ? (
+              <Input
+                id="rnc-tipo-produto"
+                value={dadosAtuais.tipoProduto}
+                readOnly
+                disabled
+                className="bg-muted/40"
+              />
+            ) : (
+              <>
+                <Select
+                  value={dadosAtuais.tipoProduto || undefined}
+                  onValueChange={(v) => v && patch({ tipoProduto: v })}
+                  disabled={somenteLeitura}
+                >
+                  <SelectTrigger id="rnc-tipo-produto" className="w-full">
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RNC_TIPOS_PRODUTO.map((opcao) => (
+                      <SelectItem key={opcao} value={opcao}>
+                        {opcao}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  className="mt-2"
+                  placeholder="Ou digite outro tipo..."
+                  value={
+                    RNC_TIPOS_PRODUTO.includes(
+                      dadosAtuais.tipoProduto as (typeof RNC_TIPOS_PRODUTO)[number]
+                    )
+                      ? ""
+                      : dadosAtuais.tipoProduto
+                  }
+                  onChange={(e) => patch({ tipoProduto: e.target.value })}
+                  disabled={somenteLeitura}
+                />
+              </>
+            )}
           </div>
         </div>
       </fieldset>
@@ -392,7 +406,7 @@ export function RncForm({
             <Textarea
               id="rnc-descricao"
               rows={4}
-              value={dados.descricaoOcorrencia}
+              value={dadosAtuais.descricaoOcorrencia}
               onChange={(e) => patch({ descricaoOcorrencia: e.target.value })}
               disabled={somenteLeitura}
               required
@@ -406,7 +420,7 @@ export function RncForm({
             </Label>
             <Input
               id="rnc-setor-deteccao"
-              value={dados.setorDeteccao}
+              value={dadosAtuais.setorDeteccao}
               onChange={(e) => patch({ setorDeteccao: e.target.value })}
               disabled={somenteLeitura}
             />
@@ -418,7 +432,7 @@ export function RncForm({
             </Label>
             <Input
               id="rnc-responsavel"
-              value={dados.responsavel}
+              value={dadosAtuais.responsavel}
               onChange={(e) => patch({ responsavel: e.target.value })}
               disabled={somenteLeitura}
               required
@@ -434,7 +448,7 @@ export function RncForm({
           <div className="space-y-2">
             <Label>{rncFieldLabels.acaoImediata}</Label>
             <Select
-              value={dados.acaoImediata || undefined}
+              value={dadosAtuais.acaoImediata || undefined}
               onValueChange={(v) => v && patch({ acaoImediata: v })}
               disabled={somenteLeitura}
             >
@@ -457,7 +471,7 @@ export function RncForm({
             </Label>
             <Input
               id="rnc-resp-acao"
-              value={dados.responsavelAcaoImediata}
+              value={dadosAtuais.responsavelAcaoImediata}
               onChange={(e) =>
                 patch({ responsavelAcaoImediata: e.target.value })
               }
@@ -472,9 +486,26 @@ export function RncForm({
             <Textarea
               id="rnc-desc-acao"
               rows={3}
-              value={dados.descricaoAcaoImediata}
+              value={dadosAtuais.descricaoAcaoImediata}
               onChange={(e) =>
                 patch({ descricaoAcaoImediata: e.target.value })
+              }
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="rnc-prazo">{rncFieldLabels.prazoExecucao}</Label>
+            <Input
+              id="rnc-prazo"
+              type="date"
+              value={isoParaInputDate(dadosAtuais.prazoExecucao)}
+              onChange={(e) =>
+                patch({
+                  prazoExecucao: e.target.value
+                    ? `${e.target.value}T12:00:00.000Z`
+                    : "",
+                })
               }
               disabled={somenteLeitura}
             />
@@ -484,7 +515,7 @@ export function RncForm({
             <Label htmlFor="rnc-nf">{rncFieldLabels.notaFiscal}</Label>
             <Input
               id="rnc-nf"
-              value={dados.notaFiscal}
+              value={dadosAtuais.notaFiscal}
               onChange={(e) => patch({ notaFiscal: e.target.value })}
               disabled={somenteLeitura}
             />
@@ -498,7 +529,7 @@ export function RncForm({
           <div className="space-y-2 sm:col-span-2">
             <Label>{rncFieldLabels.analiseProblema}</Label>
             <Select
-              value={dados.analiseProblema || undefined}
+              value={dadosAtuais.analiseProblema || undefined}
               onValueChange={(v) => v && patch({ analiseProblema: v })}
               disabled={somenteLeitura}
             >
@@ -515,16 +546,6 @@ export function RncForm({
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="rnc-quantidade">{rncFieldLabels.quantidade}</Label>
-            <Input
-              id="rnc-quantidade"
-              value={dados.quantidade}
-              onChange={(e) => patch({ quantidade: e.target.value })}
-              disabled={somenteLeitura}
-            />
-          </div>
-
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="rnc-resolucao">
               {rncFieldLabels.resolucaoNaoConformidade}
@@ -532,7 +553,7 @@ export function RncForm({
             <Textarea
               id="rnc-resolucao"
               rows={3}
-              value={dados.resolucaoNaoConformidade}
+              value={dadosAtuais.resolucaoNaoConformidade}
               onChange={(e) =>
                 patch({ resolucaoNaoConformidade: e.target.value })
               }
@@ -540,92 +561,32 @@ export function RncForm({
             />
           </div>
 
+          <RncPlanoAcaoPorques
+            dados={dadosAtuais}
+            onChange={(next) =>
+              onChange(sincronizarAcoesApartadasLegado(normalizarRncDados(next)))
+            }
+            disabled={somenteLeitura}
+          />
+
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="rnc-causa">{rncFieldLabels.causa}</Label>
             <Textarea
               id="rnc-causa"
               rows={3}
-              value={dados.causa}
+              value={dadosAtuais.causa}
               onChange={(e) => patch({ causa: e.target.value })}
               disabled={somenteLeitura}
             />
           </div>
 
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rnc-acao-2">{rncFieldLabels.acaoCorretiva2}</Label>
-            <Textarea
-              id="rnc-acao-2"
-              rows={2}
-              value={dados.acaoCorretiva2}
-              onChange={(e) => patch({ acaoCorretiva2: e.target.value })}
-              disabled={somenteLeitura}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rnc-resp-acao-2">
-              {rncFieldLabels.responsavelAcao2}
-            </Label>
-            <Input
-              id="rnc-resp-acao-2"
-              value={dados.responsavelAcao2}
-              onChange={(e) => patch({ responsavelAcao2: e.target.value })}
-              disabled={somenteLeitura}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rnc-prazo-acao-2">{rncFieldLabels.prazoAcao2}</Label>
-            <Input
-              id="rnc-prazo-acao-2"
-              type="date"
-              value={isoParaInputDate(dados.prazoAcao2)}
-              onChange={(e) =>
-                patch({
-                  prazoAcao2: e.target.value ? `${e.target.value}T12:00:00.000Z` : "",
-                })
-              }
-              disabled={somenteLeitura}
-            />
-          </div>
-
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rnc-acao-3">{rncFieldLabels.acaoCorretiva3}</Label>
-            <Textarea
-              id="rnc-acao-3"
-              rows={2}
-              value={dados.acaoCorretiva3}
-              onChange={(e) => patch({ acaoCorretiva3: e.target.value })}
-              disabled={somenteLeitura}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rnc-resp-acao-3">
-              {rncFieldLabels.responsavelAcao3}
-            </Label>
-            <Input
-              id="rnc-resp-acao-3"
-              value={dados.responsavelAcao3}
-              onChange={(e) => patch({ responsavelAcao3: e.target.value })}
-              disabled={somenteLeitura}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rnc-prazo-acao-3">{rncFieldLabels.prazoAcao3}</Label>
-            <Input
-              id="rnc-prazo-acao-3"
-              type="date"
-              value={isoParaInputDate(dados.prazoAcao3)}
-              onChange={(e) =>
-                patch({
-                  prazoAcao3: e.target.value ? `${e.target.value}T12:00:00.000Z` : "",
-                })
-              }
-              disabled={somenteLeitura}
-            />
-          </div>
+          <RncAcoesApartadasTable
+            dados={dadosAtuais}
+            onChange={(next) =>
+              onChange(sincronizarAcoesApartadasLegado(normalizarRncDados(next)))
+            }
+            disabled={somenteLeitura}
+          />
 
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="rnc-analise-eficaz">
@@ -634,12 +595,21 @@ export function RncForm({
             <Textarea
               id="rnc-analise-eficaz"
               rows={2}
-              value={dados.analiseEficaz}
+              value={dadosAtuais.analiseEficaz}
               onChange={(e) => patch({ analiseEficaz: e.target.value })}
               disabled={somenteLeitura}
             />
           </div>
         </div>
+      </fieldset>
+
+      <fieldset className="brand-fieldset space-y-4">
+        <legend>Evidências</legend>
+        <RegistroAnexosTable
+          anexos={dadosAtuais.anexos}
+          onChange={(anexos) => patch({ anexos })}
+          disabled={somenteLeitura}
+        />
       </fieldset>
     </div>
   );

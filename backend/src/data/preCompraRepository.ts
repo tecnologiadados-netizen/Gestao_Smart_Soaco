@@ -69,7 +69,8 @@ SELECT
     icpc.valorTotalComDesconto AS valor_total,
     sc.id AS solicitacao_id,
     sc.dataNecessidade AS data_necessidade,
-    c.status AS status
+    c.status AS status,
+    c.id AS cotacao_id
 `;
 
 const LIST_QUERY = LIST_SELECT + BASE_JOINS;
@@ -101,7 +102,8 @@ SELECT
     icpc.valorTotalComDesconto AS valor_total,
     sc.id AS solicitacao_id,
     sc.dataNecessidade AS data_necessidade,
-    c.status AS status
+    c.status AS status,
+    c.id AS cotacao_id
 `;
 
 const PDF_JOINS = `
@@ -235,6 +237,7 @@ export interface PreCompraCotacaoRow {
   solicitacao_id: number | null;
   data_necessidade: Date | string | null;
   status: number | null;
+  cotacao_id?: number | null;
   contato_id?: number | null;
   contato?: string | null;
 }

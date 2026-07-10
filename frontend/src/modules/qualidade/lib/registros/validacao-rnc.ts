@@ -32,7 +32,13 @@ export function validarRnc(rnc: RncDados): ValidacaoRncResult {
 
 export function inferirStatusRnc(rnc: RncDados): "aberto" | "em_tratamento" | "encerrado" {
   if (rnc.dataFechamento.trim()) return "encerrado";
-  if (rnc.resolucaoNaoConformidade.trim() || rnc.causa.trim()) {
+  if (
+    rnc.resolucaoNaoConformidade.trim() ||
+    rnc.causa.trim() ||
+    (rnc.registrarPlanoAcao && rnc.porques.some((porque) => porque.trim())) ||
+    (rnc.inserirAcoesApartadas &&
+      rnc.acoesApartadas.some((acao) => acao.acao.trim()))
+  ) {
     return "em_tratamento";
   }
   return "aberto";

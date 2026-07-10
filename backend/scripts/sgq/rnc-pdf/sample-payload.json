@@ -24,10 +24,35 @@
       "analiseProblema": "Chapa amassada",
       "quantidade": "01",
       "resolucaoNaoConformidade": "Retrabalho da peça conforme procedimento PQ-012.",
-      "causa": "Manuseio inadequado no transporte interno.",
+      "registrarPlanoAcao": true,
+      "porques": [
+        "Manuseio inadequado no transporte interno",
+        "Carrinho sem proteção lateral",
+        "Procedimento de movimentação não seguido",
+        "Falta de treinamento recente",
+        "Supervisão insuficiente no turno"
+      ],
+      "causa": "Falha no processo de movimentação interna de chapas.",
       "dataFechamento": "",
       "usuarioCriacao": "Jaciara Mendes",
-      "prazoExecucao": "2026-07-15T12:00:00.000Z"
+      "prazoExecucao": "2026-07-15T12:00:00.000Z",
+      "inserirAcoesApartadas": true,
+      "acoesApartadas": [
+        {
+          "id": "acao-1",
+          "acao": "Treinamento da equipe de montagem",
+          "responsavel": "Carlos Souza",
+          "prazoExecucao": "2026-08-01T12:00:00.000Z",
+          "status": "reprogramada"
+        }
+      ],
+      "acaoCorretiva2": "Treinamento da equipe de montagem",
+      "responsavelAcao2": "Carlos Souza",
+      "prazoAcao2": "2026-08-01T12:00:00.000Z",
+      "acaoCorretiva3": "",
+      "responsavelAcao3": "",
+      "prazoAcao3": "",
+      "analiseEficaz": "Eficaz após retrabalho."
     }
   }
 }

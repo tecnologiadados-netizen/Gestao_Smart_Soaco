@@ -11,7 +11,11 @@ import {
   atualizarObservacoesColeta,
   listarOpcoesVinculoFinalizacao,
   listarOpcoesVinculoErroOperacional,
+  listarVinculosDerivadosColeta,
+  listarVinculosDerivadosPreview,
   type OpcaoVinculoFinalizacaoItem,
+  type VinculosDerivadosColeta,
+  type VinculosDerivadosPreview,
 } from '../../api/compras';
 import type { FornecedorColetaItem } from '../../api/compras';
 import ModalCadastrarPrecos from './ModalCadastrarPrecos';
@@ -40,6 +44,12 @@ export interface ModalPrecosColetaProps {
   observacoes?: string | null;
   /** Coletas novas: ao finalizar, exige vínculo com pedido de compra ou cotação Nomus. */
   requerVinculoFinalizacao?: boolean;
+}
+
+/** Cache em memória por coleta do vínculo complementar derivado (pedido<->cotação). */
+const vinculosDerivadosCache = new Map<number, VinculosDerivadosColeta>();
+function invalidarVinculosDerivadosCache(coletaId: number): void {
+  vinculosDerivadosCache.delete(coletaId);
 }
 
 /** Colunas da grade de preços: possíveis chaves no row (SQL/MySQL) e rótulo no cabeçalho. */
@@ -299,6 +309,13 @@ export default function ModalPrecosColeta({
 
   const [solicitacoesPorProduto, setSolicitacoesPorProduto] = useState<Record<number, number[]>>({});
 
+  /** Vínculo complementar derivado do Nomus (cotações a partir dos pedidos e vice-versa). */
+  const [vinculosDerivados, setVinculosDerivados] = useState<VinculosDerivadosColeta | null>(null);
+  const [loadingVinculosDerivados, setLoadingVinculosDerivados] = useState(false);
+  /** Preview ao vivo do vínculo complementar dentro do modal de finalização (antes de confirmar). */
+  const [previewVinculos, setPreviewVinculos] = useState<VinculosDerivadosPreview | null>(null);
+  const [loadingPreviewVinculos, setLoadingPreviewVinculos] = useState(false);
+
   const linhasChecklistFiltradas = useMemo(() => {
     const t = filtroLocalChecklistErroOp.trim().toLowerCase();
     if (!t) return linhasOpcoesErroOperacional;
@@ -333,6 +350,62 @@ export default function ModalPrecosColeta({
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  const carregarVinculosDerivados = useCallback(async () => {
+    const cached = vinculosDerivadosCache.get(coletaId);
+    if (cached) {
+      setVinculosDerivados(cached);
+      return;
+    }
+    setLoadingVinculosDerivados(true);
+    const r = await listarVinculosDerivadosColeta(coletaId);
+    setLoadingVinculosDerivados(false);
+    vinculosDerivadosCache.set(coletaId, r);
+    setVinculosDerivados(r);
+  }, [coletaId]);
+
+  const coletaConcluida = statusLocal === 'Finalizada' || statusLocal === 'Enviado para Financeiro';
+  useEffect(() => {
+    if (!coletaConcluida) {
+      setVinculosDerivados(null);
+      return;
+    }
+    carregarVinculosDerivados();
+  }, [coletaConcluida, carregarVinculosDerivados]);
+
+  /** Ids de pedidos/cotações selecionados no modal de finalização (para preview do vínculo complementar). */
+  const idsPreviewVinculo = useMemo(() => {
+    const pedidos: number[] = [];
+    const cotacoes: number[] = [];
+    for (const v of vinculosSelecionados) {
+      const meta = v.meta as { tipoRegistro?: string; idRegistro?: number } | undefined;
+      if (!meta?.idRegistro || !Number.isFinite(meta.idRegistro)) continue;
+      if (meta.tipoRegistro === 'PEDIDO') pedidos.push(meta.idRegistro);
+      else if (meta.tipoRegistro === 'COTACAO') cotacoes.push(meta.idRegistro);
+    }
+    return { pedidos, cotacoes };
+  }, [vinculosSelecionados]);
+
+  const previewKey = `${idsPreviewVinculo.pedidos.join(',')}|${idsPreviewVinculo.cotacoes.join(',')}`;
+  useEffect(() => {
+    if (!modalVinculoFinalizar) return;
+    if (idsPreviewVinculo.pedidos.length === 0 && idsPreviewVinculo.cotacoes.length === 0) {
+      setPreviewVinculos(null);
+      setLoadingPreviewVinculos(false);
+      return;
+    }
+    let cancelado = false;
+    setLoadingPreviewVinculos(true);
+    listarVinculosDerivadosPreview(idsPreviewVinculo).then((r) => {
+      if (cancelado) return;
+      setPreviewVinculos(r);
+      setLoadingPreviewVinculos(false);
+    });
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewKey, modalVinculoFinalizar]);
 
   const colunas = useMemo(() => COLUNAS_PRECOS, []);
   const temDados = !loading && data.length > 0;
@@ -398,6 +471,44 @@ export default function ModalPrecosColeta({
             </div>
           );
         })()}
+
+        {coletaConcluida && (
+          <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 shrink-0 flex flex-col gap-1.5">
+            {loadingVinculosDerivados && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">Buscando vínculos no Nomus…</p>
+            )}
+            {!loadingVinculosDerivados && vinculosDerivados?.error && (
+              <p className="text-sm text-amber-700 dark:text-amber-300">
+                Não foi possível buscar os vínculos no Nomus: {vinculosDerivados.error}
+              </p>
+            )}
+            {!loadingVinculosDerivados && vinculosDerivados && !vinculosDerivados.error && (
+              <>
+                {vinculosDerivados.cotacoes.length > 0 && (
+                  <div className="text-sm text-slate-700 dark:text-slate-200">
+                    <strong className="text-slate-700 dark:text-slate-200">Cotação vinculada:</strong>{' '}
+                    {vinculosDerivados.cotacoes
+                      .map((c) => c.nome + (c.nomeFornecedor ? ` (${c.nomeFornecedor})` : ''))
+                      .join(', ')}
+                  </div>
+                )}
+                {vinculosDerivados.pedidos.length > 0 && (
+                  <div className="text-sm text-slate-700 dark:text-slate-200">
+                    <strong className="text-slate-700 dark:text-slate-200">Pedido vinculado:</strong>{' '}
+                    {vinculosDerivados.pedidos
+                      .map((p) => p.nome + (p.nomeFornecedor ? ` (${p.nomeFornecedor})` : ''))
+                      .join(', ')}
+                  </div>
+                )}
+                {vinculosDerivados.cotacoes.length === 0 && vinculosDerivados.pedidos.length === 0 && (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Nenhum vínculo complementar (pedido/cotação) encontrado no Nomus.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {podeEditarCompras && emCotacao && !rejeitada && (
           <div className="flex items-center justify-end gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shrink-0">
@@ -469,6 +580,7 @@ export default function ModalPrecosColeta({
                     const res = await finalizarCotacao(coletaId);
                     setEnviandoFinalizar(false);
                     if (res.ok) {
+                      invalidarVinculosDerivadosCache(coletaId);
                       setStatusLocal('Finalizada');
                       onColetaAlterada?.();
                     } else {
@@ -690,6 +802,7 @@ export default function ModalPrecosColeta({
                   const res = await reabrirColeta(coletaId, senhaReabrir);
                   setReabrindo(false);
                   if (res.ok) {
+                    invalidarVinculosDerivadosCache(coletaId);
                     setStatusLocal('Em cotação');
                     setDataEnvioAprovacaoLocal(null);
                     setModalReabrir(false);
@@ -876,27 +989,74 @@ export default function ModalPrecosColeta({
               </div>
             )}
             {vinculosSelecionados.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/40 p-2">
-                {vinculosSelecionados.map((v) => (
-                  <span
-                    key={v.uniqueKey ?? `${v.id}-${(v.meta as { idRegistro?: number })?.idRegistro}`}
-                    className="inline-flex items-center gap-1 max-w-full rounded-md bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 pl-2 pr-1 py-0.5 text-xs text-slate-800 dark:text-slate-100"
-                  >
-                    <span className="truncate max-w-[min(100%,280px)]" title={v.nome}>
-                      {v.nome}
-                    </span>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded p-0.5 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600 dark:text-slate-300"
-                      aria-label="Remover"
-                      onClick={() =>
-                        setVinculosSelecionados((prev) => prev.filter((p) => (p.uniqueKey ?? '') !== (v.uniqueKey ?? '')))
-                      }
+              <div className="flex flex-col gap-2">
+                {vinculosSelecionados.map((v) => {
+                  const meta = v.meta as { tipoRegistro?: string; idRegistro?: number } | undefined;
+                  const idRegistro = meta?.idRegistro;
+                  const ehPedido = meta?.tipoRegistro === 'PEDIDO';
+                  const ehCotacao = meta?.tipoRegistro === 'COTACAO';
+                  const derivados =
+                    idRegistro != null
+                      ? ehPedido
+                        ? previewVinculos?.porPedido?.[idRegistro] ?? []
+                        : ehCotacao
+                          ? previewVinculos?.porCotacao?.[idRegistro] ?? []
+                          : []
+                      : [];
+                  const labelDerivado = ehPedido ? 'Cotação vinculada' : 'Pedido vinculado';
+                  const vazioDerivado = ehPedido ? 'nenhuma cotação encontrada no Nomus' : 'nenhum pedido encontrado no Nomus';
+                  return (
+                    <div
+                      key={v.uniqueKey ?? `${v.id}-${idRegistro}`}
+                      className="rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/40 overflow-hidden"
                     >
-                      ×
-                    </button>
-                  </span>
-                ))}
+                      <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-white dark:bg-slate-700/60 border-b border-slate-200 dark:border-slate-600">
+                        <span className="inline-flex items-center gap-2 min-w-0">
+                          <span
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                              ehPedido
+                                ? 'bg-primary-100 text-blue-800 dark:bg-primary-900/40 dark:text-blue-200'
+                                : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+                            }`}
+                          >
+                            {ehPedido ? 'Pedido' : 'Cotação'}
+                          </span>
+                          <span className="truncate text-sm text-slate-800 dark:text-slate-100" title={v.nome}>
+                            {v.nome}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600 dark:text-slate-300"
+                          aria-label="Remover"
+                          onClick={() =>
+                            setVinculosSelecionados((prev) => prev.filter((p) => (p.uniqueKey ?? '') !== (v.uniqueKey ?? '')))
+                          }
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <div className="px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-300">
+                        {loadingPreviewVinculos ? (
+                          <span className="text-slate-500 dark:text-slate-400">Buscando vínculo no Nomus…</span>
+                        ) : previewVinculos?.error ? (
+                          <span className="text-amber-700 dark:text-amber-300">
+                            Não foi possível buscar no Nomus: {previewVinculos.error}
+                          </span>
+                        ) : (
+                          <span>
+                            <strong className="font-medium text-slate-700 dark:text-slate-200">{labelDerivado}:</strong>{' '}
+                            {derivados.length > 0
+                              ? derivados
+                                  .map((d) => d.nome + (d.nomeFornecedor ? ` (${d.nomeFornecedor})` : ''))
+                                  .join(', ')
+                              : vazioDerivado}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
             <SingleSelectWithSearch
@@ -986,6 +1146,7 @@ export default function ModalPrecosColeta({
                       setChavesSelecionadasErroOp([]);
                       setSenhaErroOperacional('');
                       setVinculosSelecionados([]);
+                      invalidarVinculosDerivadosCache(coletaId);
                       setStatusLocal('Finalizada');
                       onColetaAlterada?.();
                     } else {
@@ -1143,6 +1304,7 @@ export default function ModalPrecosColeta({
                       setSenhaErroOperacional('');
                       setModalVinculoFinalizar(false);
                       setVinculosSelecionados([]);
+                      invalidarVinculosDerivadosCache(coletaId);
                       setStatusLocal('Finalizada');
                       onColetaAlterada?.();
                     } else {

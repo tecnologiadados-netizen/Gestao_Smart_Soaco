@@ -8,6 +8,8 @@ import {
   type CampoSugestaoPreCompra,
 } from '../data/preCompraRepository.js';
 import { gerarPdfPreCompra } from '../services/preCompraPdfService.js';
+import { listarPedidosVinculadosPorCotacoesAgrupado } from '../data/comprasRepository.js';
+import { prisma } from '../config/prisma.js';
 
 const CAMPOS_SUGESTAO = new Set<CampoSugestaoPreCompra>(['cotacao', 'fornecedor', 'comprador', 'produto']);
 
@@ -15,6 +17,113 @@ function parseIntParam(v: unknown, fallback: number, min: number, max: number): 
   const n = Number(v);
   if (Number.isNaN(n)) return fallback;
   return Math.min(max, Math.max(min, Math.floor(n)));
+}
+
+/** Extrai os vínculos de finalização de uma coleta (JSON novo ou campos legados). */
+function parseVinculosColeta(
+  jsonStr: string | null | undefined,
+  tipoLegacy: string | null | undefined,
+  idLegacy: number | null | undefined
+): { tipoRegistro: string; idRegistro: number }[] {
+  if (typeof jsonStr === 'string' && jsonStr.trim()) {
+    try {
+      const p = JSON.parse(jsonStr) as unknown;
+      if (Array.isArray(p)) {
+        const out: { tipoRegistro: string; idRegistro: number }[] = [];
+        for (const x of p) {
+          if (!x || typeof x !== 'object') continue;
+          const o = x as Record<string, unknown>;
+          const tr = typeof o.tipoRegistro === 'string' ? o.tipoRegistro.trim().toUpperCase() : '';
+          const idR =
+            typeof o.idRegistro === 'number'
+              ? o.idRegistro
+              : typeof o.idRegistro === 'string'
+                ? parseInt(o.idRegistro, 10)
+                : NaN;
+          if ((tr === 'PEDIDO' || tr === 'COTACAO') && Number.isFinite(idR) && idR > 0) {
+            out.push({ tipoRegistro: tr, idRegistro: idR });
+          }
+        }
+        if (out.length > 0) return out;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const tl = typeof tipoLegacy === 'string' ? tipoLegacy.trim().toUpperCase() : '';
+  if ((tl === 'PEDIDO' || tl === 'COTACAO') && idLegacy != null && Number.isFinite(idLegacy) && idLegacy > 0) {
+    return [{ tipoRegistro: tl, idRegistro: idLegacy }];
+  }
+  return [];
+}
+
+/**
+ * Anexa `numeros_coleta` (números das coletas do Gestão finalizadas) a cada item da pré-compra,
+ * casando por cotação vinculada diretamente (COTACAO) ou pelo pedido vinculado (PEDIDO) que
+ * pertence àquela cotação no Nomus. Falha silenciosa: se não conseguir, os itens ficam sem coletas.
+ */
+export async function anexarNumerosColeta(items: Record<string, unknown>[]): Promise<void> {
+  const cotacaoIds = Array.from(
+    new Set(items.map((it) => Number(it.cotacao_id)).filter((n) => Number.isFinite(n) && n > 0))
+  );
+  for (const it of items) it.numeros_coleta = [];
+  if (cotacaoIds.length === 0) return;
+  const cotacaoIdsSet = new Set(cotacaoIds);
+
+  // Pedidos ligados a essas cotações no Nomus (para casar vínculos do tipo PEDIDO).
+  const pedidoParaCotacoes = new Map<number, Set<number>>();
+  try {
+    const { data: pedidosPorCotacao } = await listarPedidosVinculadosPorCotacoesAgrupado(cotacaoIds);
+    for (const [cotIdStr, pedidos] of Object.entries(pedidosPorCotacao)) {
+      const cotId = Number(cotIdStr);
+      for (const p of pedidos) {
+        if (!pedidoParaCotacoes.has(p.id)) pedidoParaCotacoes.set(p.id, new Set());
+        pedidoParaCotacoes.get(p.id)!.add(cotId);
+      }
+    }
+  } catch {
+    /* Nomus indisponível: mantém apenas o casamento direto por cotação. */
+  }
+
+  const coletas = await prisma.coletaPrecos.findMany({
+    where: {
+      OR: [{ finalizacaoVinculosJson: { not: null } }, { finalizacaoIdRegistro: { not: null } }],
+    },
+    select: {
+      id: true,
+      finalizacaoVinculosJson: true,
+      finalizacaoTipoRegistro: true,
+      finalizacaoIdRegistro: true,
+    },
+  });
+
+  const cotacaoParaColetas = new Map<number, Set<number>>();
+  const addColeta = (cotId: number, coletaId: number) => {
+    if (!cotacaoIdsSet.has(cotId)) return;
+    if (!cotacaoParaColetas.has(cotId)) cotacaoParaColetas.set(cotId, new Set());
+    cotacaoParaColetas.get(cotId)!.add(coletaId);
+  };
+  for (const c of coletas) {
+    const vinculos = parseVinculosColeta(
+      c.finalizacaoVinculosJson,
+      c.finalizacaoTipoRegistro,
+      c.finalizacaoIdRegistro
+    );
+    for (const v of vinculos) {
+      if (v.tipoRegistro === 'COTACAO') {
+        addColeta(v.idRegistro, c.id);
+      } else if (v.tipoRegistro === 'PEDIDO') {
+        const cots = pedidoParaCotacoes.get(v.idRegistro);
+        if (cots) for (const cotId of cots) addColeta(cotId, c.id);
+      }
+    }
+  }
+
+  for (const it of items) {
+    const cotId = Number(it.cotacao_id);
+    const set = cotacaoParaColetas.get(cotId);
+    it.numeros_coleta = set ? Array.from(set).sort((a, b) => a - b) : [];
+  }
 }
 
 export async function getPreCompraCotacoes(req: Request, res: Response): Promise<void> {
@@ -40,6 +149,12 @@ export async function getPreCompraCotacoes(req: Request, res: Response): Promise
     page,
     pageSize
   );
+
+  try {
+    await anexarNumerosColeta(result.items);
+  } catch (err) {
+    console.error('[preCompraController] anexarNumerosColeta:', err instanceof Error ? err.message : String(err));
+  }
 
   res.json(result);
 }
@@ -98,6 +213,12 @@ export async function getPreCompraPdf(req: Request, res: Response): Promise<void
   if (!pdfData) {
     res.status(404).json({ error: 'Dados não encontrados para gerar o PDF.' });
     return;
+  }
+
+  try {
+    await anexarNumerosColeta([pdfData]);
+  } catch (err) {
+    console.error('[preCompraController] anexarNumerosColeta (pdf):', err instanceof Error ? err.message : String(err));
   }
 
   const pdfBytes = await gerarPdfPreCompra(pdfData);

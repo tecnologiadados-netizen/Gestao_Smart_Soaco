@@ -22,6 +22,7 @@ import { prisma } from './config/prisma.js';
 import app, { BUILD_ID } from './app.js';
 import { iniciarCronsWhatsappNotificacao } from './scheduler/whatsappNotificacaoCron.js';
 import { iniciarCronsSgqEmailNotificacao } from './scheduler/sgqEmailNotificacaoCron.js';
+import { iniciarCronsEmailNotificacao } from './scheduler/emailNotificacaoCron.js';
 import { backfillAguardaRespostaLabelsForPendingOrders } from './services/sycroOrderAguardaRespostaLabel.js';
 import { ensureGrupoMaster } from './config/ensureGrupoMaster.js';
 import { initPainelProducaoMetas } from './services/painelProducao/painelProducaoTargetsService.js';
@@ -111,6 +112,7 @@ function main(): void {
         }
         iniciarCronsWhatsappNotificacao();
         iniciarCronsSgqEmailNotificacao();
+        iniciarCronsEmailNotificacao();
       })
       .catch((e) => {
         console.warn('[startup] ensureDbReady falhou (servidor já no ar):', (e as Error)?.message ?? e);

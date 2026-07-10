@@ -18,6 +18,13 @@ export const RNC_CAMPOS_PDF_MAPA: RncCampoPdfMapa[] = [
   },
   { rotuloPdf: "Data de fechamento", chaveSistema: "dataFechamento", situacao: "mapeado" },
   { rotuloPdf: "Status atual", chaveSistema: "status", situacao: "mapeado" },
+  { rotuloPdf: "Cód. Produto", chaveSistema: "codigoProduto", situacao: "mapeado" },
+  {
+    rotuloPdf: "Descrição Produto",
+    chaveSistema: "produto",
+    situacao: "parcial",
+    observacao: "Usa a descrição do produto; em registros Nomus extrai o texto após o código.",
+  },
   { rotuloPdf: "Tipo de ação", chaveSistema: "tipoAcao", situacao: "mapeado" },
   { rotuloPdf: "Tipo de ocorrência", chaveSistema: "tipoOcorrencia", situacao: "mapeado" },
   { rotuloPdf: "Qtde", chaveSistema: "quantidade", situacao: "mapeado" },
@@ -39,7 +46,7 @@ export const RNC_CAMPOS_PDF_MAPA: RncCampoPdfMapa[] = [
     rotuloPdf: "Descrição da ocorrência",
     chaveSistema: "descricaoOcorrencia",
     situacao: "parcial",
-    observacao: "Inclui produto e tipo de produto quando informados.",
+    observacao: "Não repete código/descrição do produto (campos próprios no PDF).",
   },
   {
     rotuloPdf: "Preenchido por",
@@ -66,22 +73,32 @@ export const RNC_CAMPOS_PDF_MAPA: RncCampoPdfMapa[] = [
     situacao: "parcial",
   },
   {
-    rotuloPdf: "Porquê? (1–5) / Causa raiz",
-    chaveSistema: "causa",
-    situacao: "parcial",
-    observacao: "Linhas múltiplas viram porquês; texto único vai à causa raiz.",
+    rotuloPdf: "Porquê? (1–5)",
+    chaveSistema: "porques",
+    situacao: "mapeado",
+    observacao: "Exibidos quando o plano de ação está ativo.",
   },
   {
-    rotuloPdf: "Ação 1",
+    rotuloPdf: "Causa raiz",
+    chaveSistema: "causa",
+    situacao: "mapeado",
+  },
+  {
+    rotuloPdf: "Resolução da não conformidade (Ação 1 no PDF)",
     chaveSistema: "resolucaoNaoConformidade",
     situacao: "mapeado",
   },
   {
-    rotuloPdf: "Ações 2 e 3 / Análise eficaz?",
-    chaveSistema: "acaoCorretiva2",
+    rotuloPdf: "Ações à parte",
+    chaveSistema: "acoesApartadas",
     situacao: "mapeado",
     observacao:
-      "O sistema agora contempla ação 2, ação 3 e análise eficaz em campos próprios.",
+      "Tabela dinâmica com ação, responsável, prazo e status. No PDF, as duas primeiras linhas vão para Ação 2 e Ação 3.",
+  },
+  {
+    rotuloPdf: "Análise eficaz?",
+    chaveSistema: "analiseEficaz",
+    situacao: "mapeado",
   },
 ];
 

@@ -41,6 +41,12 @@ export interface AtualizarRegistroRncInput {
   status?: RegistroStatus;
 }
 
+export interface AtualizarRegistroRccInput {
+  id: string;
+  rcc: RccDados;
+  status?: RegistroStatus;
+}
+
 export function getRegistroResponsavelNome(registro: Registro): string {
   if (registro.tipo === "rnc" && registro.rnc?.responsavel) {
     return registro.rnc.responsavel;

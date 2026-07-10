@@ -656,6 +656,17 @@ export async function syncQualidadeRegistros(
   }
 }
 
+export async function deleteQualidadeRegistro(uid: string): Promise<boolean> {
+  const registro = await prisma.sgqRegistro.findUnique({
+    where: { uid },
+    select: { uid: true },
+  });
+  if (!registro) return false;
+
+  await prisma.sgqRegistro.delete({ where: { uid } });
+  return true;
+}
+
 export async function syncQualidadeDocuments(payload: {
   documents: Array<Record<string, unknown>>;
   versions: Array<Record<string, unknown>>;
