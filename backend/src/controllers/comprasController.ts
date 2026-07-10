@@ -19,6 +19,8 @@ import {
   listarPedidosVinculadosPorCotacoes,
   listarCotacoesVinculadasPorPedidosAgrupado,
   listarPedidosVinculadosPorCotacoesAgrupado,
+  listarNomesPedidosPorIds,
+  listarNomesCotacoesPorIds,
   type ProdutoColetaRow,
 } from '../data/comprasRepository.js';
 import {
@@ -1908,12 +1910,28 @@ export async function getVinculosDerivadosColeta(req: Request, res: Response): P
     );
     const idsPedido = vinculos.filter((v) => v.tipoRegistro === 'PEDIDO').map((v) => v.idRegistro);
     const idsCotacao = vinculos.filter((v) => v.tipoRegistro === 'COTACAO').map((v) => v.idRegistro);
-    const [cotacoesRes, pedidosRes] = await Promise.all([
+    const [cotacoesRes, pedidosRes, nomesPedidosRes, nomesCotacoesRes] = await Promise.all([
       idsPedido.length > 0 ? listarCotacoesVinculadasPorPedidos(idsPedido) : Promise.resolve({ data: [] }),
       idsCotacao.length > 0 ? listarPedidosVinculadosPorCotacoes(idsCotacao) : Promise.resolve({ data: [] }),
+      idsPedido.length > 0 ? listarNomesPedidosPorIds(idsPedido) : Promise.resolve({ data: [] }),
+      idsCotacao.length > 0 ? listarNomesCotacoesPorIds(idsCotacao) : Promise.resolve({ data: [] }),
     ]);
-    const erro = cotacoesRes.erro || pedidosRes.erro;
-    res.json({ cotacoes: cotacoesRes.data, pedidos: pedidosRes.data, ...(erro ? { error: erro } : {}) });
+    // Une o vínculo direto (com nome) ao derivado, deduplicando por id. Assim o PDF/mapa
+    // exibe tanto o pedido quanto a cotação, independentemente de qual foi selecionado.
+    const dedupPorId = (rows: { id: number }[]): typeof rows => {
+      const vistos = new Set<number>();
+      const out: typeof rows = [];
+      for (const r of rows) {
+        if (r == null || vistos.has(r.id)) continue;
+        vistos.add(r.id);
+        out.push(r);
+      }
+      return out;
+    };
+    const cotacoes = dedupPorId([...(nomesCotacoesRes.data ?? []), ...(cotacoesRes.data ?? [])]);
+    const pedidos = dedupPorId([...(nomesPedidosRes.data ?? []), ...(pedidosRes.data ?? [])]);
+    const erro = cotacoesRes.erro || pedidosRes.erro || nomesPedidosRes.erro || nomesCotacoesRes.erro;
+    res.json({ cotacoes, pedidos, ...(erro ? { error: erro } : {}) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[comprasController] getVinculosDerivadosColeta:', msg);

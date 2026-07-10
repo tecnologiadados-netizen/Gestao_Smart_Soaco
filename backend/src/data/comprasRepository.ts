@@ -1366,6 +1366,57 @@ ORDER BY pc.dataEmissao DESC`.trim();
   }
 }
 
+/** Nomes (e fornecedor/data) de pedidos de compra por id, para exibir o vínculo escolhido. */
+export async function listarNomesPedidosPorIds(
+  idsPedido: number[]
+): Promise<{ data: VinculoDerivadoRow[]; erro?: string }> {
+  const ids = Array.from(new Set(idsPedido.filter((n) => Number.isFinite(n) && n > 0)));
+  if (ids.length === 0) return { data: [] };
+  const pool = getNomusPool();
+  if (!pool) return { data: [], erro: 'NOMUS_DB_URL não configurado' };
+  try {
+    const placeholders = ids.map(() => '?').join(',');
+    const sql = `
+SELECT pc.id, pc.nome, p.nome AS nomeFornecedor, pc.dataEmissao
+FROM pedidocompra pc
+LEFT JOIN pessoa p ON p.id = pc.idFornecedor
+WHERE pc.id IN (${placeholders})
+ORDER BY pc.dataEmissao DESC`.trim();
+    const [rows] = await pool.query<Record<string, unknown>[]>(sql, ids);
+    return { data: mapVinculosDerivados(Array.isArray(rows) ? rows : []) };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[comprasRepository] listarNomesPedidosPorIds:', msg);
+    return { data: [], erro: msg };
+  }
+}
+
+/** Nomes (e fornecedor/data) de cotações de compra por id, para exibir o vínculo escolhido. */
+export async function listarNomesCotacoesPorIds(
+  idsCotacao: number[]
+): Promise<{ data: VinculoDerivadoRow[]; erro?: string }> {
+  const ids = Array.from(new Set(idsCotacao.filter((n) => Number.isFinite(n) && n > 0)));
+  if (ids.length === 0) return { data: [] };
+  const pool = getNomusPool();
+  if (!pool) return { data: [], erro: 'NOMUS_DB_URL não configurado' };
+  try {
+    const placeholders = ids.map(() => '?').join(',');
+    const sql = `
+SELECT cc.id, cc.nome, p.nome AS nomeFornecedor, cc.dataEmissao
+FROM cotacaocompra cc
+LEFT JOIN coletaprecoscotacao cpc ON cpc.idCotacaoCompra = cc.id
+LEFT JOIN pessoa p ON p.id = cpc.idFornecedor
+WHERE cc.id IN (${placeholders})
+ORDER BY cc.dataEmissao DESC`.trim();
+    const [rows] = await pool.query<Record<string, unknown>[]>(sql, ids);
+    return { data: mapVinculosDerivados(Array.isArray(rows) ? rows : []) };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[comprasRepository] listarNomesCotacoesPorIds:', msg);
+    return { data: [], erro: msg };
+  }
+}
+
 /** Agrupa linhas Nomus por origem (chave `origem`), removendo duplicados (origem, id). */
 function mapVinculosPorOrigem(list: Record<string, unknown>[]): Record<number, VinculoDerivadoRow[]> {
   const out: Record<number, VinculoDerivadoRow[]> = {};
