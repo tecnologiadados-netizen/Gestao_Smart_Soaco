@@ -59,6 +59,7 @@ export type CampoSugestaoPreCompra = 'cotacao' | 'fornecedor' | 'comprador' | 'p
 
 export interface FiltrosPreCompra {
   cotacao?: string;
+  coleta?: string;
   fornecedor?: string;
   produto?: string;
   comprador?: string;

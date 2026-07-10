@@ -8,7 +8,10 @@ import {
   type CampoSugestaoPreCompra,
 } from '../data/preCompraRepository.js';
 import { gerarPdfPreCompra } from '../services/preCompraPdfService.js';
-import { listarPedidosVinculadosPorCotacoesAgrupado } from '../data/comprasRepository.js';
+import {
+  listarPedidosVinculadosPorCotacoesAgrupado,
+  listarCotacoesVinculadasPorPedidosAgrupado,
+} from '../data/comprasRepository.js';
 import { prisma } from '../config/prisma.js';
 
 const CAMPOS_SUGESTAO = new Set<CampoSugestaoPreCompra>(['cotacao', 'fornecedor', 'comprador', 'produto']);
@@ -55,6 +58,58 @@ function parseVinculosColeta(
     return [{ tipoRegistro: tl, idRegistro: idLegacy }];
   }
   return [];
+}
+
+/**
+ * Resolve o filtro "N° da coleta" em ids de cotação (cotacaocompra.id) do Nomus.
+ * Considera vínculos diretos (COTACAO) e indiretos (PEDIDO -> cotação via Nomus).
+ * Retorna [] quando a(s) coleta(s) informada(s) não têm vínculo (grade deve ficar vazia).
+ */
+async function resolverCotacaoIdsPorColeta(coletaFiltro: string): Promise<number[]> {
+  const ids = Array.from(
+    new Set(
+      coletaFiltro
+        .split(/[\s,;]+/)
+        .map((s) => parseInt(s, 10))
+        .filter((n) => Number.isFinite(n) && n > 0)
+    )
+  );
+  if (ids.length === 0) return [];
+
+  const coletas = await prisma.coletaPrecos.findMany({
+    where: { id: { in: ids } },
+    select: {
+      id: true,
+      finalizacaoVinculosJson: true,
+      finalizacaoTipoRegistro: true,
+      finalizacaoIdRegistro: true,
+    },
+  });
+
+  const cotacaoIds = new Set<number>();
+  const pedidoIds = new Set<number>();
+  for (const c of coletas) {
+    const vinculos = parseVinculosColeta(
+      c.finalizacaoVinculosJson,
+      c.finalizacaoTipoRegistro,
+      c.finalizacaoIdRegistro
+    );
+    for (const v of vinculos) {
+      if (v.tipoRegistro === 'COTACAO') cotacaoIds.add(v.idRegistro);
+      else if (v.tipoRegistro === 'PEDIDO') pedidoIds.add(v.idRegistro);
+    }
+  }
+
+  if (pedidoIds.size > 0) {
+    try {
+      const { data } = await listarCotacoesVinculadasPorPedidosAgrupado([...pedidoIds]);
+      for (const arr of Object.values(data)) for (const cot of arr) cotacaoIds.add(cot.id);
+    } catch {
+      /* Nomus indisponível: mantém apenas os vínculos diretos por cotação. */
+    }
+  }
+
+  return [...cotacaoIds];
 }
 
 /**
@@ -136,6 +191,12 @@ export async function getPreCompraCotacoes(req: Request, res: Response): Promise
       ? Number(statusRaw)
       : undefined;
 
+  const coletaFiltro = req.query.coleta != null ? String(req.query.coleta).trim() : '';
+  let cotacaoIds: number[] | undefined;
+  if (coletaFiltro) {
+    cotacaoIds = await resolverCotacaoIdsPorColeta(coletaFiltro);
+  }
+
   const result = await listarPreCompraCotacoes(
     {
       cotacao: req.query.cotacao != null ? String(req.query.cotacao) : undefined,
@@ -145,6 +206,7 @@ export async function getPreCompraCotacoes(req: Request, res: Response): Promise
       status: status != null && !Number.isNaN(status) ? status : undefined,
       dataInicio: req.query.data_inicio != null ? String(req.query.data_inicio) : undefined,
       dataFim: req.query.data_fim != null ? String(req.query.data_fim) : undefined,
+      cotacaoIds,
     },
     page,
     pageSize
@@ -219,6 +281,15 @@ export async function getPreCompraPdf(req: Request, res: Response): Promise<void
     await anexarNumerosColeta([pdfData]);
   } catch (err) {
     console.error('[preCompraController] anexarNumerosColeta (pdf):', err instanceof Error ? err.message : String(err));
+  }
+
+  const numerosColeta = (pdfData as { numeros_coleta?: number[] }).numeros_coleta ?? [];
+  if (numerosColeta.length === 0) {
+    res.status(409).json({
+      error:
+        'Vínculo pendente: finalize a coleta na tela de Coleta de Preços, vinculando o pedido de compra (gerado a partir desta cotação) ou a própria cotação. Após finalizar, o PDF será liberado.',
+    });
+    return;
   }
 
   const pdfBytes = await gerarPdfPreCompra(pdfData);

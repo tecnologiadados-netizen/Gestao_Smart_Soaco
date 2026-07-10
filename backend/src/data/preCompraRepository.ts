@@ -210,6 +210,9 @@ export interface FiltrosPreCompraCotacoes {
   status?: number;
   dataInicio?: string;
   dataFim?: string;
+  /** Restringe às cotações (cotacaocompra.id) resolvidas a partir do filtro "N° da coleta".
+   *  undefined = sem filtro de coleta; [] = filtro aplicado sem nenhuma cotação (retorna vazio). */
+  cotacaoIds?: number[];
 }
 
 export interface PreCompraCotacaoRow {
@@ -290,6 +293,14 @@ function buildFilterSql(filtros: FiltrosPreCompraCotacoes): { sql: string; param
   if (filtros.dataFim?.trim()) {
     conditions.push('DATE(c.dataEmissao) <= ?');
     params.push(filtros.dataFim.trim());
+  }
+  if (filtros.cotacaoIds != null) {
+    if (filtros.cotacaoIds.length === 0) {
+      conditions.push('1 = 0');
+    } else {
+      conditions.push(`c.id IN (${filtros.cotacaoIds.map(() => '?').join(',')})`);
+      params.push(...filtros.cotacaoIds);
+    }
   }
 
   if (conditions.length === 0) return { sql: '', params };
