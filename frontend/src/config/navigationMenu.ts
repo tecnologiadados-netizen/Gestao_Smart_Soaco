@@ -118,6 +118,27 @@ export const QUALIDADE_MENU: NavMenuEntry[] = [
   },
 ];
 
+export const RH_MENU: NavMenuEntry[] = [
+  {
+    kind: 'submenu',
+    label: 'Operacional',
+    children: [
+      { kind: 'link', to: '/rh/organico', label: 'Orgânico' },
+      { kind: 'link', to: '/rh/faltas-atestados', label: 'Faltas e Atestados' },
+    ],
+  },
+  {
+    kind: 'submenu',
+    label: 'Analítico',
+    children: [
+      { kind: 'link', to: '/rh/dashboard', label: 'Dashboard' },
+      { kind: 'link', to: '/rh/cargos', label: 'Cargos & Salários' },
+      { kind: 'link', to: '/rh/organograma', label: 'Organograma' },
+    ],
+  },
+  { kind: 'link', to: '/rh/configuracoes', label: 'Configurações' },
+];
+
 export const COMERCIAL_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/comercial/painel', label: 'Painel Comercial' },
 ];
@@ -182,6 +203,13 @@ export const PATH_LABELS: Record<string, string> = {
   '/qualidade/calibracoes': 'Qualidade — SGQ — Calibrações',
   '/qualidade/registros': 'Qualidade — SGQ — Registros',
   '/qualidade/configuracoes': 'Qualidade — SGQ — Configurações',
+  '/rh': 'RH',
+  '/rh/dashboard': 'RH — Dashboard',
+  '/rh/organico': 'RH — Orgânico',
+  '/rh/faltas-atestados': 'RH — Faltas e Atestados',
+  '/rh/cargos': 'RH — Cargos & Salários',
+  '/rh/organograma': 'RH — Organograma',
+  '/rh/configuracoes': 'RH — Configurações',
   '/financeiro': 'Financeiro',
   '/financeiro/resumo': 'Resumo Financeiro',
   '/financeiro/dfc': 'DFC',

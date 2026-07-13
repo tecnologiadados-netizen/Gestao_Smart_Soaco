@@ -58,6 +58,7 @@ import VeiculosPage from './pages/logistica/VeiculosPage';
 import ProdutosCubagemPage from './pages/logistica/ProdutosCubagemPage';
 import SimulacaoCubagemPage from './pages/logistica/SimulacaoCubagemPage';
 import { qualidadeRoutes } from './modules/qualidade/qualidadeRoutes';
+import { rhRoutes } from './modules/rh/rhRoutes';
 import PainelComercialPage from './pages/comercial/PainelComercialPage';
 
 /** Rotas filhas do layout autenticado (espelham appRouter). */
@@ -116,6 +117,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'precificacao', element: <Navigate to="/engenharia/precificacao" replace /> },
   { path: 'engenharia/precificacao', element: <PrecificacaoPage /> },
   ...qualidadeRoutes,
+  ...rhRoutes,
   { path: 'financeiro', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/resumo', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/dfc', element: <DfcPage /> },

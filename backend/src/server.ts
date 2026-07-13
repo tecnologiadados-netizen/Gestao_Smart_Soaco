@@ -77,6 +77,12 @@ async function ensureDbReady(): Promise<void> {
   } catch (e) {
     console.warn('[startup] initPainelProducaoMetas:', (e as Error)?.message ?? e);
   }
+  try {
+    const { seedRhDefaults } = await import('./rh/seedRhDefaults.js');
+    await seedRhDefaults();
+  } catch (e) {
+    console.warn('[startup] seedRhDefaults:', (e as Error)?.message ?? e);
+  }
 }
 
 function main(): void {

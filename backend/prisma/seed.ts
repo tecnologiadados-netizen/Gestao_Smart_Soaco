@@ -21,6 +21,8 @@ const PERM_ALL = JSON.stringify([
   'compras.ver',
   'relatorios.ver',
   'integracao.ver',
+  'rh.ver',
+  'rh.configurar',
   'usuarios.gerenciar',
 ]);
 const PERM_OPERADOR = JSON.stringify([
