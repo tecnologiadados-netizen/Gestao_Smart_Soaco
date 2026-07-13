@@ -40,6 +40,7 @@ import {
   deleteOrganicoDocumentHandler,
   downloadOrganicoDocumentHandler,
   getOrganicoDocumentsHandler,
+  resolveLaunchDocumentsHandler,
   uploadOrganicoDocumentHandler,
 } from '../rh/controllers/documentsController.js';
 import {
@@ -71,7 +72,6 @@ import {
   parseOrganicoTrajetoriaPdfHandler,
   renameOrganicoArchiveFolderHandler,
   replaceOrganico,
-  resolveLaunchDocumentsHandler,
   resolveOrganicoAlteracaoPendenteHandler,
   secullumFuncionariosHandler,
   setOrganicoFotoHandler,
@@ -171,7 +171,7 @@ router.get('/secullum-funcionarios', requireRhAccess('/organico', 'view'), wrap(
 router.post('/create-organico-archive-folder', requireRhFeaturePermission('documentos', 'create'), wrap(createOrganicoArchiveFolderHandler));
 router.post('/rename-organico-archive-folder', requireRhFeaturePermission('documentos', 'edit'), wrap(renameOrganicoArchiveFolderHandler));
 router.post('/hide-organico-archive-folder', requireRhFeaturePermission('documentos', 'edit'), wrap(hideOrganicoArchiveFolderHandler));
-router.post('/resolve-launch-documents', requireRhFeaturePermission('documentos', 'create'), wrap(resolveLaunchDocumentsHandler));
+router.post('/resolve-launch-documents', requireRhFeaturePermission('ausencias', 'view'), wrap(resolveLaunchDocumentsHandler));
 
 // Backup / grupos RH (Gestor grupos + rhGrupoPermissao)
 router.get('/rh-backup-export', requireRhMaster(), wrap(rhBackupExportHandler));

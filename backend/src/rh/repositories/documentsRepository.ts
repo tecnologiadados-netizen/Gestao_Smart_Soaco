@@ -363,3 +363,178 @@ export async function deleteOrganicoDocument(documentId: string, actor: string) 
 export async function getOrganicoDocuments(matricula: string) {
   return buildArchiveTreeForMatricula(matricula);
 }
+
+function normalizeResolveText(value: string): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function formatDateBrFromIso(iso: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? '').trim());
+  if (!match) return null;
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+type ResolveLaunchItem = {
+  source?: string;
+  sourceRecordId?: string;
+  matricula?: string;
+  data?: string;
+  tipo?: string;
+  colaboradorNome?: string;
+  expectedTitle?: string;
+};
+
+type LaunchDocumentRow = {
+  id: string;
+  matricula: string;
+  title: string;
+  originalName: string;
+  mimeType: string;
+  launchSource: string | null;
+  launchSourceRecordId: string | null;
+};
+
+function legacyDocumentMatchesItem(item: ResolveLaunchItem, candidate: LaunchDocumentRow): boolean {
+  const expectedTitle = String(item.expectedTitle ?? '').trim();
+  if (expectedTitle && normalizeResolveText(candidate.title) === normalizeResolveText(expectedTitle)) {
+    return true;
+  }
+
+  const dateBr = formatDateBrFromIso(String(item.data ?? ''));
+  if (!dateBr) return false;
+
+  const titleNorm = normalizeResolveText(candidate.title);
+  const dateNorm = normalizeResolveText(dateBr);
+  if (!titleNorm.includes(dateNorm)) return false;
+
+  const nome = normalizeResolveText(String(item.colaboradorNome ?? ''));
+  if (nome.length >= 6) {
+    const nomeTokens = nome.split(/\s+/).filter((t) => t.length >= 3);
+    const firstToken = nomeTokens[0] ?? '';
+    const lastToken = nomeTokens[nomeTokens.length - 1] ?? '';
+    if (firstToken && !titleNorm.includes(firstToken)) return false;
+    if (lastToken && lastToken !== firstToken && !titleNorm.includes(lastToken)) return false;
+  }
+
+  return true;
+}
+
+export async function resolveLaunchDocuments(items: ResolveLaunchItem[]) {
+  const slice = items.slice(0, 500);
+  const recordIds = [
+    ...new Set(slice.map((item) => s(item.sourceRecordId)).filter(Boolean)),
+  ];
+  const matriculas = [...new Set(slice.map((item) => s(item.matricula)).filter(Boolean))];
+
+  const byRecordId = new Map<string, LaunchDocumentRow>();
+  if (recordIds.length > 0) {
+    const linked = await prisma.rhOrganicoDocuments.findMany({
+      where: {
+        status: 'active',
+        launchSourceRecordId: { in: recordIds },
+      },
+      select: {
+        id: true,
+        matricula: true,
+        title: true,
+        originalName: true,
+        mimeType: true,
+        launchSource: true,
+        launchSourceRecordId: true,
+      },
+    });
+    for (const row of linked) {
+      const key = s(row.launchSourceRecordId);
+      if (key && !byRecordId.has(key)) byRecordId.set(key, row);
+    }
+  }
+
+  const docsByMatricula = new Map<string, LaunchDocumentRow[]>();
+  if (matriculas.length > 0) {
+    const rows = await prisma.rhOrganicoDocuments.findMany({
+      where: { status: 'active', matricula: { in: matriculas } },
+      select: {
+        id: true,
+        matricula: true,
+        title: true,
+        originalName: true,
+        mimeType: true,
+        launchSource: true,
+        launchSourceRecordId: true,
+      },
+    });
+    for (const row of rows) {
+      const mat = s(row.matricula);
+      if (!mat) continue;
+      const list = docsByMatricula.get(mat) ?? [];
+      list.push(row);
+      docsByMatricula.set(mat, list);
+    }
+  }
+
+  const links: Array<{
+    sourceRecordId: string;
+    documentId: string;
+    matricula: string;
+    title: string;
+    fileName: string;
+    mimeType: string;
+  }> = [];
+  const usedLegacyDocumentIds = new Set<string>();
+
+  for (const item of slice) {
+    const sourceRecordId = s(item.sourceRecordId);
+    const matricula = s(item.matricula);
+    if (!sourceRecordId || !matricula) continue;
+
+    let doc = byRecordId.get(sourceRecordId) ?? null;
+    if (!doc) {
+      const candidates = (docsByMatricula.get(matricula) ?? []).filter(
+        (candidate) =>
+          !candidate.launchSourceRecordId ||
+          s(candidate.launchSourceRecordId) === sourceRecordId,
+      );
+      doc =
+        candidates.find(
+          (candidate) =>
+            !usedLegacyDocumentIds.has(candidate.id) && legacyDocumentMatchesItem(item, candidate),
+        ) ?? null;
+      if (doc) usedLegacyDocumentIds.add(doc.id);
+    }
+
+    if (!doc) continue;
+    links.push({
+      sourceRecordId,
+      documentId: doc.id,
+      matricula: doc.matricula,
+      title: doc.title,
+      fileName: doc.originalName,
+      mimeType: doc.mimeType,
+    });
+  }
+
+  return { links };
+}
+
+export async function getOrganicoDocumentDownloadPath(input: {
+  matricula: string;
+  documentId: string;
+  kind?: 'file' | 'cover';
+}) {
+  const row = await prisma.rhOrganicoDocuments.findFirst({
+    where: {
+      id: input.documentId,
+      matricula: input.matricula,
+      status: 'active',
+    },
+  });
+  if (!row) return null;
+  const path =
+    input.kind === 'cover' ? row.coverStoragePath : row.storagePath;
+  if (!path) return null;
+  return { row, path };
+}

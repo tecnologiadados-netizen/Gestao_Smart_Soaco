@@ -25,7 +25,35 @@ export function normalizeOrganicoFotoPayload(
   return { payload: raw, mimeType: mimeType ?? null };
 }
 
-/** Lê arquivo de foto do pacote de migração (JPEG binário ou texto base64 legado). */
+function isMostlyBase64Text(text: string): boolean {
+  const compact = text.replace(/\s/g, '');
+  return compact.length > 50 && /^[A-Za-z0-9+/=]+$/.test(compact);
+}
+
+/** Localiza início real de JPEG/PNG dentro de buffer (alguns exports legados têm lixo antes do SOI). */
+export function extractImageBytes(buffer: Buffer): { bytes: Buffer; mimeType: string } {
+  const pngIdx = buffer.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (pngIdx >= 0) {
+    return { bytes: buffer.subarray(pngIdx), mimeType: 'image/png' };
+  }
+  const pngShort = buffer.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  if (pngShort >= 0) {
+    return { bytes: buffer.subarray(pngShort), mimeType: 'image/png' };
+  }
+
+  const jpgIdx = buffer.indexOf(Buffer.from([0xff, 0xd8, 0xff]));
+  if (jpgIdx >= 0) {
+    return { bytes: buffer.subarray(jpgIdx), mimeType: 'image/jpeg' };
+  }
+  const jpgShort = buffer.indexOf(Buffer.from([0xff, 0xd8]));
+  if (jpgShort >= 0) {
+    return { bytes: buffer.subarray(jpgShort), mimeType: 'image/jpeg' };
+  }
+
+  return { bytes: buffer, mimeType: 'image/jpeg' };
+}
+
+/** Lê arquivo de foto do pacote de migração (JPEG binário, PNG, texto base64 legado). */
 export function fileBufferToOrganicoFotoPayload(
   buffer: Buffer,
   mimeType?: string | null,
@@ -42,7 +70,17 @@ export function fileBufferToOrganicoFotoPayload(
   ) {
     return { payload: buffer.toString('base64'), mimeType: mimeType ?? 'image/png' };
   }
-  return normalizeOrganicoFotoPayload(buffer.toString('utf8'), mimeType);
+
+  const asText = buffer.toString('utf8').trim();
+  if (asText.startsWith('data:') || /^dataimage\//i.test(asText)) {
+    return normalizeOrganicoFotoPayload(asText, mimeType);
+  }
+  if (isMostlyBase64Text(asText)) {
+    return normalizeOrganicoFotoPayload(asText.replace(/\s/g, ''), mimeType);
+  }
+
+  const { bytes, mimeType: sniffed } = extractImageBytes(buffer);
+  return { payload: bytes.toString('base64'), mimeType: mimeType ?? sniffed };
 }
 
 export function mapOrganicoFotoRow(row: {

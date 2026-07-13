@@ -442,7 +442,3 @@ export async function secullumFuncionariosHandler(_req: Request, res: Response) 
     sendError(res, (e as Error).message);
   }
 }
-
-export async function resolveLaunchDocumentsHandler(_req: Request, res: Response) {
-  notImplemented(res, 'resolve-launch-documents');
-}
