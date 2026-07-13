@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { prisma } from '../../config/prisma.js';
 import { assertOrganicoSectorAllowed, buildAllowedOrganicoKeys } from '../lib/rh-organico-access.js';
 import { resolveSessionPermissions } from '../middleware/rhAuth.js';
 import {
@@ -388,22 +389,49 @@ export async function setOrganicoRepresentanteHandler(req: Request, res: Respons
 
 export async function createOrganicoArchiveFolderHandler(req: Request, res: Response) {
   try {
-    const { actor } = authCtx(req);
+    const { actor, isMaster, permissions } = authCtx(req);
     const body = req.body as {
       matricula?: string;
-      parentGlobalId?: string;
-      parentLocalId?: string;
+      colaboradorNome?: string;
       name?: string;
+      scope?: 'global' | 'local';
+      parentId?: string | null;
+      parentScope?: 'global' | 'local' | null;
     };
-    res.json(
-      await createOrganicoArchiveFolder({
-        matricula: s(body.matricula) || undefined,
-        parentGlobalId: s(body.parentGlobalId) || null,
-        parentLocalId: s(body.parentLocalId) || null,
-        name: s(body.name),
-        createdBy: actor,
-      }),
-    );
+    const name = s(body.name);
+    const scope = body.scope === 'local' ? 'local' : 'global';
+    const matricula = s(body.matricula);
+    const nome = s(body.colaboradorNome);
+    const parentId = s(body.parentId) || null;
+    const parentScope =
+      body.parentScope === 'local' ? 'local' : body.parentScope === 'global' ? 'global' : null;
+
+    if (!name) return sendError(res, 'Nome da pasta é obrigatório.', 400);
+    if (scope === 'local' && !matricula) {
+      return sendError(res, 'Matrícula é obrigatória para pasta individual.', 400);
+    }
+
+    if (scope === 'local' && !isMaster) {
+      const allowed = await assertOrganicoSectorAllowed(false, permissions, { matricula, nome });
+      if (!allowed) return sendError(res, 'Sem acesso ao setor deste colaborador.', 403);
+    }
+
+    const created =
+      scope === 'global'
+        ? await createOrganicoArchiveFolder({
+            parentGlobalId: parentScope === 'global' ? parentId : null,
+            name,
+            createdBy: actor,
+          })
+        : await createOrganicoArchiveFolder({
+            matricula,
+            parentGlobalId: parentScope === 'global' ? parentId : null,
+            parentLocalId: parentScope === 'local' ? parentId : null,
+            name,
+            createdBy: actor,
+          });
+
+    res.json({ ok: true, id: created.id, scope: created.scope });
   } catch (e) {
     sendError(res, (e as Error).message);
   }
@@ -411,9 +439,29 @@ export async function createOrganicoArchiveFolderHandler(req: Request, res: Resp
 
 export async function renameOrganicoArchiveFolderHandler(req: Request, res: Response) {
   try {
-    const body = req.body as { scope?: 'global' | 'local'; id?: string; name?: string };
-    if (!body.scope || !s(body.id)) return sendError(res, 'scope e id obrigatórios.', 400);
-    await renameOrganicoArchiveFolder({ scope: body.scope, id: s(body.id), name: s(body.name) });
+    const { isMaster, permissions } = authCtx(req);
+    const body = req.body as {
+      scope?: 'global' | 'local';
+      id?: string;
+      folderId?: string;
+      name?: string;
+      matricula?: string;
+      colaboradorNome?: string;
+    };
+    const scope = body.scope;
+    const id = s(body.folderId) || s(body.id);
+    const name = s(body.name);
+    const matricula = s(body.matricula);
+    const nome = s(body.colaboradorNome);
+    if (!scope || !id) return sendError(res, 'scope e folderId são obrigatórios.', 400);
+    if (!name) return sendError(res, 'Nome da pasta é obrigatório.', 400);
+
+    if (scope === 'local' && !isMaster) {
+      const allowed = await assertOrganicoSectorAllowed(false, permissions, { matricula, nome });
+      if (!allowed) return sendError(res, 'Sem acesso ao setor deste colaborador.', 403);
+    }
+
+    await renameOrganicoArchiveFolder({ scope, id, name });
     res.json({ ok: true });
   } catch (e) {
     sendError(res, (e as Error).message);
@@ -422,12 +470,43 @@ export async function renameOrganicoArchiveFolderHandler(req: Request, res: Resp
 
 export async function hideOrganicoArchiveFolderHandler(req: Request, res: Response) {
   try {
-    const { actor } = authCtx(req);
-    const body = req.body as { matricula?: string; globalFolderId?: string };
+    const { actor, isMaster, permissions } = authCtx(req);
+    const body = req.body as {
+      matricula?: string;
+      folderId?: string;
+      globalFolderId?: string;
+      scope?: 'global' | 'local';
+      globalMode?: 'delete_one' | 'delete_all';
+      confirm?: boolean;
+    };
     const matricula = s(body.matricula);
-    const globalFolderId = s(body.globalFolderId);
-    if (!matricula || !globalFolderId) return sendError(res, 'matricula e globalFolderId obrigatórios.', 400);
-    await hideOrganicoArchiveFolder(matricula, globalFolderId, actor);
+    const folderId = s(body.folderId) || s(body.globalFolderId);
+    const scope = body.scope === 'local' ? 'local' : 'global';
+    if (!matricula || !folderId) return sendError(res, 'Matrícula e pasta são obrigatórios.', 400);
+    if (body.confirm !== true) return sendError(res, 'Confirmação explícita é obrigatória.', 400);
+
+    if (!isMaster) {
+      const allowed = await assertOrganicoSectorAllowed(false, permissions, { matricula });
+      if (!allowed) return sendError(res, 'Sem acesso ao setor deste colaborador.', 403);
+    }
+
+    if (scope === 'local') {
+      await prisma.rhOrganicoDocuments.updateMany({
+        where: { matricula, localFolderId: folderId, status: 'active' },
+        data: { status: 'deleted', deletedAt: new Date(), deletedBy: actor },
+      });
+      await prisma.rhOrganicoArchiveFolderLocal.deleteMany({
+        where: { id: folderId, matricula },
+      });
+      res.json({ ok: true });
+      return;
+    }
+
+    if (body.globalMode === 'delete_all') {
+      return sendError(res, 'Exclusão global para todos ainda não portada no Gestor.', 501);
+    }
+
+    await hideOrganicoArchiveFolder(matricula, folderId, actor);
     res.json({ ok: true });
   } catch (e) {
     sendError(res, (e as Error).message);
