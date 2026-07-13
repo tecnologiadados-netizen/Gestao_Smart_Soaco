@@ -1,3 +1,5 @@
+import { randomUUID } from "@/utils/randomUUID";
+
 export interface RegistroAnexo {
   id: string;
   nome: string;
@@ -13,7 +15,7 @@ export const SGQ_ANEXO_ACCEPT =
 export const SGQ_ANEXO_MAX_BYTES = 5 * 1024 * 1024;
 
 export function criarAnexoVazio(): SgqAnexo {
-  return { id: crypto.randomUUID(), nome: "", dataUrl: "" };
+  return { id: randomUUID(), nome: "", dataUrl: "" };
 }
 
 export function anexosPreenchidos(

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { randomUUID } from "@/utils/randomUUID";
 import { SgqAnexosTable } from "@qualidade/components/ui/sgq-anexos-table";
 import type { SgqAnexo } from "@qualidade/types/registro-anexo";
 
@@ -16,7 +17,7 @@ interface Props {
 }
 
 function createAnexoRow(): AnexoItem {
-  return { id: crypto.randomUUID() };
+  return { id: randomUUID() };
 }
 
 export function defaultAnexoRows(count = 1): AnexoItem[] {
