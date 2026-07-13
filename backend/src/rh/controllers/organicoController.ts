@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { assertOrganicoSectorAllowed } from '../lib/rh-organico-access.js';
+import { assertOrganicoSectorAllowed, buildAllowedOrganicoKeys } from '../lib/rh-organico-access.js';
 import { resolveSessionPermissions } from '../middleware/rhAuth.js';
 import {
   addOrganicoComentario,
@@ -11,6 +11,7 @@ import {
   getOrganicoAlteracoesPendentes,
   getOrganicoComentarios,
   getOrganicoFoto,
+  listOrganicoFotosResumo,
   getOrganicoList,
   getOrganicoRepresentantes,
   getOrganicoTrajetoria,
@@ -162,10 +163,41 @@ export async function deleteOrganicoComentarioHandler(req: Request, res: Respons
 
 export async function getOrganicoFotoHandler(req: Request, res: Response) {
   try {
+    const { isMaster, permissions } = authCtx(req);
     const matricula = s(req.query.matricula);
-    if (!matricula) return sendError(res, 'matricula obrigatória.', 400);
-    const row = await getOrganicoFoto(matricula);
-    res.json(row);
+    const nome = s(req.query.nome);
+    const summary = req.query.summary === '1';
+
+    if (summary) {
+      const list = await listOrganicoFotosResumo({
+        isMaster,
+        permissions: isMaster ? null : permissions,
+      });
+      return res.json(list);
+    }
+
+    if (!matricula && !nome) {
+      return sendError(res, 'Informe a matrícula ou nome do colaborador.', 400);
+    }
+
+    const row = await getOrganicoFoto({
+      matricula: matricula || undefined,
+      nome: nome || undefined,
+    });
+
+    if (row && !isMaster) {
+      const allowedKeys = await buildAllowedOrganicoKeys(false, permissions);
+      if (allowedKeys) {
+        const matriculaAtual = s(row.colaboradorMatricula);
+        const nomeAtual = s(row.colaboradorNome);
+        const sectorOk =
+          (matriculaAtual && allowedKeys.matriculas.has(matriculaAtual)) ||
+          (nomeAtual && allowedKeys.nomes.has(nomeAtual));
+        if (!sectorOk) return sendError(res, 'Sem acesso ao setor deste colaborador.', 403);
+      }
+    }
+
+    res.json(row ?? { value: null });
   } catch (e) {
     sendError(res, (e as Error).message);
   }
@@ -177,6 +209,7 @@ export async function setOrganicoFotoHandler(req: Request, res: Response) {
     const body = req.body as {
       matricula?: string;
       colaboradorNome?: string;
+      nome?: string;
       fotoBase64?: string;
       mimeType?: string;
     };
@@ -186,7 +219,7 @@ export async function setOrganicoFotoHandler(req: Request, res: Response) {
     }
     const result = await setOrganicoFoto({
       matricula,
-      nome: s(body.colaboradorNome) || matricula,
+      nome: s(body.colaboradorNome) || s(body.nome) || matricula,
       fotoBase64: s(body.fotoBase64),
       mimeType: s(body.mimeType) || null,
       updatedBy: actor,

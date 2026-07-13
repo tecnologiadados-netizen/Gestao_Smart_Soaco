@@ -1,0 +1,18 @@
+GESTÃO RH SO — pacote de migração (exportado em 2026-07-13T14:09:18.766Z)
+
+Conteúdo:
+  • people-s-rh-backup-2026-07-13T14-04-11.json — dados tabulares (importar no SQLite)
+  • fotos/ — imagens dos colaboradores + manifest.json
+  • documentos/ — PDFs e anexos (mesma árvore do storage_path) + manifest.json
+
+Na máquina nova (SQLite):
+  1. Importe o JSON nas tabelas já criadas (ordem: cadastros → orgânico → faltas → pastas → documentos…)
+  2. Fotos: use manifest.json ou INSERT a partir de organico_fotos no JSON (foto_base64)
+  3. Documentos: copie a pasta documentos/ para o local esperado pelo app e alinhe storage_path
+
+Observações:
+  • Regras de alerta (faltas_alerta_*) não vêm neste backup — use seed/migrations do app novo.
+  • Arquivos binários de documentos foram baixados via API.
+
+Gerado por: node scripts/export-migracao.mjs
+Origem: C:\Users\BI\Documents\Davi\Cursor\Organico_Remaster\people-s-rh

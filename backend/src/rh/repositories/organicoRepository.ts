@@ -5,6 +5,7 @@ import { canViewOrganicoCommentClassification } from '../lib/rh-permissions.js';
 import type { RhGroupPermissions } from '../lib/rh-permissions.js';
 import { RH_ORGANICO_COMMENT_VISIBILITY_OPTIONS } from '../lib/rh-organico-comment-tags.js';
 import { formatIsoDate, parseValuesJson, s } from '../utils/rhHelpers.js';
+import { mapOrganicoFotoRow, normalizeOrganicoFotoPayload } from '../utils/organicoFotoBase64.js';
 
 export async function getOrganicoList(isMaster: boolean, permissions: RhGroupPermissions | null) {
   const rows = await prisma.rhOrganico.findMany({
@@ -164,17 +165,65 @@ export async function deleteOrganicoComentario(id: string) {
   await prisma.rhOrganicoComentarios.delete({ where: { id } });
 }
 
-export async function getOrganicoFoto(matricula: string) {
-  const row = await prisma.rhOrganicoFotos.findUnique({ where: { colaboradorMatricula: matricula } });
+function matriculaLookupVariants(matricula: string): string[] {
+  const trimmed = s(matricula);
+  if (!trimmed) return [];
+  const variants = new Set<string>([trimmed]);
+  const withoutLeadingZeros = trimmed.replace(/^0+/, '');
+  if (withoutLeadingZeros) variants.add(withoutLeadingZeros);
+  if (/^\d+$/.test(trimmed)) variants.add(trimmed.padStart(4, '0'));
+  return [...variants];
+}
+
+async function findOrganicoFotoRow(input: { matricula?: string; nome?: string }) {
+  const matricula = s(input.matricula);
+  const nome = s(input.nome);
+  if (matricula) {
+    for (const variant of matriculaLookupVariants(matricula)) {
+      const row = await prisma.rhOrganicoFotos.findUnique({ where: { colaboradorMatricula: variant } });
+      if (row) return row;
+    }
+  }
+  if (nome) {
+    return prisma.rhOrganicoFotos.findFirst({ where: { colaboradorNome: nome } });
+  }
+  return null;
+}
+
+export async function listOrganicoFotosResumo(input: {
+  isMaster: boolean;
+  permissions: RhGroupPermissions | null;
+}) {
+  const allowedKeys =
+    input.isMaster || !input.permissions
+      ? null
+      : await buildAllowedOrganicoKeys(false, input.permissions);
+
+  const rows = await prisma.rhOrganicoFotos.findMany({
+    select: { colaboradorMatricula: true, colaboradorNome: true },
+    orderBy: { colaboradorMatricula: 'asc' },
+  });
+
+  return rows
+    .filter((row) => {
+      if (!allowedKeys) return true;
+      const matricula = s(row.colaboradorMatricula);
+      const nome = s(row.colaboradorNome);
+      return (
+        (matricula && allowedKeys.matriculas.has(matricula)) ||
+        (nome && allowedKeys.nomes.has(nome))
+      );
+    })
+    .map((row) => ({
+      colaboradorMatricula: row.colaboradorMatricula,
+      colaboradorNome: row.colaboradorNome,
+    }));
+}
+
+export async function getOrganicoFoto(input: { matricula?: string; nome?: string }) {
+  const row = await findOrganicoFotoRow(input);
   if (!row) return null;
-  return {
-    colaboradorMatricula: row.colaboradorMatricula,
-    colaboradorNome: row.colaboradorNome,
-    fotoBase64: row.fotoBase64,
-    mimeType: row.mimeType,
-    updatedBy: row.updatedBy,
-    updatedAt: row.updatedAt.toISOString(),
-  };
+  return mapOrganicoFotoRow(row);
 }
 
 export async function setOrganicoFoto(input: {
@@ -184,19 +233,20 @@ export async function setOrganicoFoto(input: {
   mimeType?: string | null;
   updatedBy: string;
 }) {
+  const normalized = normalizeOrganicoFotoPayload(input.fotoBase64, input.mimeType);
   const row = await prisma.rhOrganicoFotos.upsert({
     where: { colaboradorMatricula: input.matricula },
     create: {
       colaboradorMatricula: input.matricula,
       colaboradorNome: input.nome,
-      fotoBase64: input.fotoBase64,
-      mimeType: input.mimeType ?? null,
+      fotoBase64: normalized.payload,
+      mimeType: normalized.mimeType ?? input.mimeType ?? null,
       updatedBy: input.updatedBy,
     },
     update: {
       colaboradorNome: input.nome,
-      fotoBase64: input.fotoBase64,
-      mimeType: input.mimeType ?? null,
+      fotoBase64: normalized.payload,
+      mimeType: normalized.mimeType ?? input.mimeType ?? null,
       updatedBy: input.updatedBy,
     },
   });

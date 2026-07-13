@@ -2,6 +2,7 @@
  * Monta URL utilizável em `<img src>` a partir do que está em `rh.organico_fotos.foto_base64`.
  * Upload pelo app grava `data:image/...;base64,...` (FileReader.readAsDataURL).
  * Import em lote pode gravar só o payload base64 — sem prefixo o navegador trata como path relativo e a imagem quebra.
+ * Legado Supabase: data URL sem pontuação (`dataimage/jpegbase64/9j/...`).
  */
 function sniffMimeFromBase64Payload(raw: string): string {
   const head = raw.slice(0, 16);
@@ -12,14 +13,34 @@ function sniffMimeFromBase64Payload(raw: string): string {
   return "image/jpeg";
 }
 
+function normalizeOrganicoFotoPayload(
+  input: string,
+  mimeType?: string | null,
+): { payload: string; mimeType: string | null } {
+  const raw = String(input ?? "").trim();
+  if (!raw) return { payload: "", mimeType: mimeType ?? null };
+
+  const dataUrl = raw.match(/^data:([^;,]+);base64,(.+)$/is);
+  if (dataUrl) {
+    return { payload: dataUrl[2]!.trim(), mimeType: dataUrl[1]!.trim() };
+  }
+
+  const legacy = raw.match(/^dataimage\/(jpeg|jpg|png|gif|webp)base64\/(.+)$/is);
+  if (legacy) {
+    const ext = legacy[1]!.toLowerCase();
+    const mime = `image/${ext === "jpg" ? "jpeg" : ext}`;
+    return { payload: legacy[2]!.trim(), mimeType: mime };
+  }
+
+  return { payload: raw, mimeType: mimeType ?? null };
+}
+
 export function organicoFotoToDataUrl(
   fotoBase64: string | null | undefined,
   mimeType: string | null | undefined,
 ): string | null {
-  const raw = String(fotoBase64 ?? "").trim();
-  if (!raw) return null;
-  if (raw.startsWith("data:")) return raw;
-  const fromMeta = String(mimeType ?? "").trim();
-  const mime = fromMeta || sniffMimeFromBase64Payload(raw);
-  return `data:${mime};base64,${raw}`;
+  const normalized = normalizeOrganicoFotoPayload(String(fotoBase64 ?? ""), mimeType);
+  if (!normalized.payload) return null;
+  const mime = normalized.mimeType || sniffMimeFromBase64Payload(normalized.payload);
+  return `data:${mime};base64,${normalized.payload}`;
 }

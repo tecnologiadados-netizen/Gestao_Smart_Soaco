@@ -24,7 +24,8 @@
     "import:psa-ncm-icms": "tsx scripts/import-psa-ncm-icms.ts",
     "alinhar:sycro-previsao-gerenciador": "tsx scripts/alinhar-previsao-sycroorder-gerenciador.ts",
     "backfill:sycro-aguarda-labels": "tsx scripts/backfill-sycroorder-aguarda-resposta-label.ts",
-    "seed:cubagem-inicial": "tsx scripts/seed-cubagem-inicial.ts"
+    "seed:cubagem-inicial": "tsx scripts/seed-cubagem-inicial.ts",
+    "import:rh-migration": "tsx scripts/import-rh-migration-export.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
