@@ -32,6 +32,14 @@ export interface FornecedorErp {
   documento?: string;
 }
 
+export interface PedidoVendaErp {
+  pedidoId: string;
+  numero: string;
+  dataEmissao: string;
+  clienteNome: string;
+  cliente: ClienteErp | null;
+}
+
 const CLIENTES_INITIAL_LIMIT = 30;
 const CLIENTES_SEARCH_LIMIT = 80;
 const CLIENTES_MIN_SEARCH_CHARS = 2;
@@ -43,6 +51,10 @@ const PRODUTOS_MIN_SEARCH_CHARS = 2;
 const FORNECEDORES_INITIAL_LIMIT = 40;
 const FORNECEDORES_SEARCH_LIMIT = 100;
 const FORNECEDORES_MIN_SEARCH_CHARS = 2;
+
+const PEDIDOS_VENDA_INITIAL_LIMIT = 20;
+const PEDIDOS_VENDA_SEARCH_LIMIT = 50;
+const PEDIDOS_VENDA_MIN_SEARCH_CHARS = 2;
 
 const DEFAULT_SUPPLIERS_BASE_QUERY = `SELECT nome, fornecedor FROM pessoa p WHERE fornecedor = 1`;
 
@@ -377,6 +389,153 @@ export async function buscarFornecedoresNomus(
     fornecedores: mapSqlRowsToFornecedores(rows as Record<string, unknown>[]),
     source: 'erp',
   };
+}
+
+export interface GetPedidosVendaOptions {
+  q?: string;
+  limit?: number;
+}
+
+function pedidosVendaIdEmpresa(): number {
+  const raw = process.env.QUALIDADE_PEDIDOS_EMPRESA_ID?.trim() || '1';
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/** Subquery de telefone do cliente do pedido (alias `cli`). */
+const PEDIDO_CLIENTE_TELEFONE_SUBQUERY = `
+  (
+    SELECT GROUP_CONCAT(telefone_fmt SEPARATOR ' / ')
+    FROM (
+      SELECT
+        CONCAT(
+          IF(t.DDD IS NULL OR TRIM(t.DDD) = '', '', CONCAT(TRIM(t.DDD), ' - ')),
+          TRIM(t.numero)
+        ) AS telefone_fmt
+      FROM telefone t
+      WHERE t.idEntidade = cli.id
+        AND t.discriminador = 'P'
+        AND TRIM(t.numero) <> ''
+      ORDER BY t.telefonePrincipal DESC, t.id ASC
+      LIMIT 2
+    ) tel
+  ) AS telefone
+`;
+
+const PEDIDO_CLIENTE_CONTATO_SUBQUERY = `
+  (
+    SELECT c.nome
+    FROM pessoa_contato pc
+    INNER JOIN contato c ON c.id = pc.idContato
+    WHERE pc.idParceiro = cli.id
+      AND TRIM(c.nome) <> ''
+    ORDER BY pc.idContato ASC
+    LIMIT 1
+  ) AS contato
+`;
+
+const PEDIDOS_VENDA_SELECT = `
+  SELECT
+    p.id AS pedidoId,
+    p.nome AS numero,
+    DATE_FORMAT(p.dataEmissao, '%Y-%m-%d') AS dataEmissao,
+    cli.id AS clienteId,
+    cli.nome AS clienteNome,
+    cli.nomeRazaoSocial AS clienteRazaoSocial,
+    cli.uf,
+    cli.endereco,
+    cli.bairroDistrito AS bairro,
+    m.nome AS municipio,
+    ${PEDIDO_CLIENTE_TELEFONE_SUBQUERY},
+    ${PEDIDO_CLIENTE_CONTATO_SUBQUERY},
+    IF(cli.tipoPessoa = 1, cli.cnpjCpf, cli.cpf) AS documento
+`;
+
+const PEDIDOS_VENDA_FROM = `
+  FROM pedido p
+  LEFT JOIN pessoa cli ON cli.id = p.idCliente
+  LEFT JOIN municipio m ON m.id = cli.idMunicipio
+`;
+
+function mapSqlRowsToPedidosVenda(rows: Record<string, unknown>[]): PedidoVendaErp[] {
+  const pedidos: PedidoVendaErp[] = [];
+  const vistos = new Set<string>();
+
+  const textoOpcional = (valor: unknown) => {
+    const texto = String(valor ?? '').trim();
+    return texto || undefined;
+  };
+
+  for (const row of rows) {
+    const numero = String(row.numero ?? '').trim();
+    const pedidoId = String(row.pedidoId ?? '').trim();
+    if (!numero || vistos.has(pedidoId)) continue;
+    vistos.add(pedidoId);
+
+    const clienteId = String(row.clienteId ?? '').trim();
+    const clienteNome = String(row.clienteNome ?? '').trim();
+    const cliente: ClienteErp | null = clienteId && clienteNome
+      ? {
+          id: clienteId,
+          nome: clienteNome,
+          razaoSocial: String(row.clienteRazaoSocial ?? clienteNome).trim(),
+          municipio: String(row.municipio ?? '').trim(),
+          uf: String(row.uf ?? '').trim().toUpperCase(),
+          endereco: textoOpcional(row.endereco),
+          bairro: textoOpcional(row.bairro),
+          telefone: textoOpcional(row.telefone),
+          contato: textoOpcional(row.contato),
+          documento: textoOpcional(row.documento),
+        }
+      : null;
+
+    pedidos.push({
+      pedidoId,
+      numero,
+      dataEmissao: String(row.dataEmissao ?? '').trim(),
+      clienteNome,
+      cliente,
+    });
+  }
+
+  return pedidos;
+}
+
+/** Busca pedidos de venda (tabela `pedido`) por número, trazendo os dados do cliente vinculado. */
+export async function buscarPedidosVendaNomus(
+  options: GetPedidosVendaOptions = {}
+): Promise<{ pedidos: PedidoVendaErp[]; source: 'erp' | 'indisponivel' }> {
+  const pool = getNomusPool();
+  if (!pool) return { pedidos: [], source: 'indisponivel' };
+
+  const limit = Math.min(
+    Math.max(options.limit ?? PEDIDOS_VENDA_INITIAL_LIMIT, 1),
+    PEDIDOS_VENDA_SEARCH_LIMIT
+  );
+  const idEmpresa = pedidosVendaIdEmpresa();
+  const q = options.q?.trim() ?? '';
+
+  if (q.length >= PEDIDOS_VENDA_MIN_SEARCH_CHARS) {
+    const like = `%${q}%`;
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `${PEDIDOS_VENDA_SELECT} ${PEDIDOS_VENDA_FROM}
+       WHERE p.idEmpresa = ?
+         AND (p.nome LIKE ? OR p.nome = ?)
+       ORDER BY p.dataEmissao DESC, p.id DESC
+       LIMIT ?`,
+      [idEmpresa, like, q, limit]
+    );
+    return { pedidos: mapSqlRowsToPedidosVenda(rows as Record<string, unknown>[]), source: 'erp' };
+  }
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `${PEDIDOS_VENDA_SELECT} ${PEDIDOS_VENDA_FROM}
+     WHERE p.idEmpresa = ?
+     ORDER BY p.dataEmissao DESC, p.id DESC
+     LIMIT ?`,
+    [idEmpresa, limit]
+  );
+  return { pedidos: mapSqlRowsToPedidosVenda(rows as Record<string, unknown>[]), source: 'erp' };
 }
 
 export function qualidadeNomusDisponivel(): boolean {

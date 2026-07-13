@@ -11,6 +11,7 @@ import {
 import { Textarea } from "@qualidade/components/ui/textarea";
 import { ClienteSearchField } from "@qualidade/components/registros/cliente-search-field";
 import { OpcaoListaPesquisavelField } from "@qualidade/components/registros/opcao-lista-pesquisavel-field";
+import { PedidoVendaSearchField } from "@qualidade/components/registros/pedido-venda-search-field";
 import { ProdutoCodigoField } from "@qualidade/components/registros/produto-codigo-field";
 import { RegistroAnexosTable } from "@qualidade/components/registros/registro-anexos-table";
 import {
@@ -34,6 +35,7 @@ import {
   extrairCodigoProduto,
   produtoErpParaCamposRcc,
 } from "@qualidade/types/produto-erp";
+import { pedidoVendaErpParaCamposRcc } from "@qualidade/types/pedido-venda-erp";
 import type { RccDados } from "@qualidade/types/rcc";
 import { isoParaInputDate } from "@qualidade/types/rcc";
 
@@ -78,14 +80,17 @@ export function RccForm({
   const [camposVinculadosCliente, setCamposVinculadosCliente] = useState(false);
   const [camposVinculadosRevendedor, setCamposVinculadosRevendedor] =
     useState(false);
+  const [pedidoInterno, setPedidoInterno] = useState(false);
+  const [camposVinculadosPedido, setCamposVinculadosPedido] = useState(false);
 
   const camposProdutoAuto =
     camposVinculadosProduto && !somenteLeitura && !origemNomus;
 
-  const usarBuscaCliente = !somenteLeitura && !dados.clienteDoRevendedor;
+  const usarBuscaCliente =
+    !somenteLeitura && !dados.clienteDoRevendedor && !camposVinculadosPedido;
 
   const camposClienteAuto =
-    camposVinculadosCliente &&
+    (camposVinculadosCliente || camposVinculadosPedido) &&
     !dados.clienteDoRevendedor &&
     !somenteLeitura &&
     !origemNomus;
@@ -220,18 +225,64 @@ export function RccForm({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="rcc-numero-pedido">
-              {rccFieldLabels.numeroPedidoInternoExterno}
-            </Label>
-            <Input
-              id="rcc-numero-pedido"
-              value={dados.numeroPedidoInternoExterno ?? ""}
-              onChange={(e) =>
-                patch({ numeroPedidoInternoExterno: e.target.value })
-              }
-              disabled={somenteLeitura}
-            />
+          <div className="space-y-3 sm:col-span-2">
+            {!somenteLeitura && !origemNomus ? (
+              <label className="flex cursor-pointer items-center gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="size-4 rounded border-input accent-brand-blue"
+                  checked={pedidoInterno}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setPedidoInterno(checked);
+                    setCamposVinculadosPedido(false);
+                    setCamposVinculadosCliente(false);
+                    if (!checked) {
+                      patch({ numeroPedidoInternoExterno: "" });
+                    }
+                  }}
+                />
+                Pedido interno?
+              </label>
+            ) : null}
+
+            {pedidoInterno && !somenteLeitura && !origemNomus ? (
+              <PedidoVendaSearchField
+                id="rcc-numero-pedido"
+                label={rccFieldLabels.numeroPedidoInternoExterno}
+                value={dados.numeroPedidoInternoExterno ?? ""}
+                onValueChange={(numero) =>
+                  patch({ numeroPedidoInternoExterno: numero })
+                }
+                onPedidoSelect={(pedido) => {
+                  patch(pedidoVendaErpParaCamposRcc(pedido));
+                  setCamposVinculadosPedido(true);
+                  if (pedido.cliente) setCamposVinculadosCliente(true);
+                }}
+                onVinculoClear={() => {
+                  setCamposVinculadosPedido(false);
+                  setCamposVinculadosCliente(false);
+                }}
+                disabled={somenteLeitura}
+              />
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="rcc-numero-pedido">
+                  {rccFieldLabels.numeroPedidoInternoExterno}
+                </Label>
+                <Input
+                  id="rcc-numero-pedido"
+                  value={dados.numeroPedidoInternoExterno ?? ""}
+                  onChange={(e) =>
+                    patch({ numeroPedidoInternoExterno: e.target.value })
+                  }
+                  disabled={somenteLeitura}
+                  placeholder={
+                    pedidoInterno ? undefined : "Informe o número do pedido externo"
+                  }
+                />
+              </div>
+            )}
           </div>
         </div>
       </fieldset>
