@@ -15,19 +15,15 @@ function envFlagOptional(name: keyof ImportMetaEnv): boolean | null {
   return v === "true" || v === "1" || v === "yes" || v === "sim";
 }
 
-function isApiUrlConfigured(): boolean {
-  return Boolean(String(import.meta.env?.VITE_API_URL ?? "").trim());
-}
-
 /**
  * UI de anexo nos modais de ausência/sanção.
- * Ativo por padrão quando `VITE_API_URL` está definido (produção).
+ * Ativo por padrão (API RH em `/api/rh`).
  * Use `VITE_FEATURE_LAUNCH_DOC_ATTACHMENT=false` para desligar explicitamente.
  */
 export function isLaunchDocAttachmentEnabled(): boolean {
   const explicit = envFlagOptional("VITE_FEATURE_LAUNCH_DOC_ATTACHMENT");
   if (explicit !== null) return explicit;
-  return isApiUrlConfigured();
+  return true;
 }
 
 /** Enfileira anexos localmente (IndexedDB) e não envia upload/replace ao servidor. */

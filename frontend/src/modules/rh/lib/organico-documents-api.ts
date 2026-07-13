@@ -1,73 +1,6 @@
-﻿import { getRequiredRhSessionToken, isApiConfigured } from "@rh/lib/api-client";
-
-const API_BASE =
-  typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL
-    ? String(import.meta.env.VITE_API_URL).replace(/\/$/, "")
-    : "";
-
-const ANON_KEY =
-  typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_ANON_KEY
-    ? String(import.meta.env.VITE_SUPABASE_ANON_KEY).trim()
-    : "";
-
-/** Mesmo padrão de `api-client.ts`: Authorization (não `apikey`) — CORS das Edge Functions só permite Authorization. */
-function apiHeaders(extra?: Record<string, string>): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    ...(extra ?? {}),
-  };
-  if (ANON_KEY) headers.Authorization = `Bearer ${ANON_KEY}`;
-  return headers;
-}
-
-async function parseError(res: Response, path: string): Promise<never> {
-  let msg = `API ${path}: ${res.status}`;
-  try {
-    const json = (await res.json()) as { error?: string };
-    if (typeof json?.error === "string" && json.error.trim()) msg = json.error;
-  } catch {
-    /* ignorar */
-  }
-  throw new Error(msg);
-}
-
-async function secureGet<T>(path: string): Promise<T> {
-  if (!API_BASE) throw new Error("API não configurada");
-  const token = getRequiredRhSessionToken();
-  const res = await fetch(`${API_BASE}/${path.replace(/^\//, "")}`, {
-    method: "GET",
-    headers: apiHeaders({ "X-RH-Session": token }),
-    credentials: "same-origin",
-  });
-  if (!res.ok) await parseError(res, path);
-  return res.json() as Promise<T>;
-}
-
-async function securePost<T>(path: string, body: unknown): Promise<T> {
-  if (!API_BASE) throw new Error("API não configurada");
-  const token = getRequiredRhSessionToken();
-  const res = await fetch(`${API_BASE}/${path.replace(/^\//, "")}`, {
-    method: "POST",
-    headers: apiHeaders({ "Content-Type": "application/json", "X-RH-Session": token }),
-    body: JSON.stringify(body),
-    credentials: "same-origin",
-  });
-  if (!res.ok) await parseError(res, path);
-  return res.json() as Promise<T>;
-}
-
-async function secureFormPost<T>(path: string, body: FormData): Promise<T> {
-  if (!API_BASE) throw new Error("API não configurada");
-  const token = getRequiredRhSessionToken();
-  const res = await fetch(`${API_BASE}/${path.replace(/^\//, "")}`, {
-    method: "POST",
-    headers: apiHeaders({ "X-RH-Session": token }),
-    body,
-    credentials: "same-origin",
-  });
-  if (!res.ok) await parseError(res, path);
-  return res.json() as Promise<T>;
-}
+﻿import { isApiConfigured } from "@rh/lib/api-client";
+import { resolveUploadUrl } from "@/api/client";
+import { parseRhApiError, rhFetch, rhFetchJson } from "@rh/lib/rh-fetch";
 
 export type OrganicoArchiveFolderScope = "global" | "local";
 
@@ -182,7 +115,9 @@ export function parseArchiveFolderOptionKey(key: string): { id: string; scope: O
 export async function getOrganicoDocuments(matricula: string, colaboradorNome: string): Promise<OrganicoArchiveFolder[]> {
   if (!isApiConfigured()) return [];
   const params = new URLSearchParams({ matricula, nome: colaboradorNome });
-  const raw = await secureGet<{ folders?: OrganicoArchiveFolder[] }>(`get-organico-documents?${params.toString()}`);
+  const raw = await rhFetchJson<{ folders?: OrganicoArchiveFolder[] }>(
+    `get-organico-documents?${params.toString()}`,
+  );
   return Array.isArray(raw.folders) ? raw.folders : [];
 }
 
@@ -194,7 +129,7 @@ export async function createOrganicoArchiveFolder(input: {
   parentId: string | null;
   parentScope: OrganicoArchiveFolderScope | null;
 }): Promise<{ id: string; scope: OrganicoArchiveFolderScope }> {
-  return securePost("create-organico-archive-folder", input);
+  return rhFetchJson("create-organico-archive-folder", { method: "POST", body: input });
 }
 
 export async function hideOrganicoArchiveFolder(input: {
@@ -204,7 +139,7 @@ export async function hideOrganicoArchiveFolder(input: {
   globalMode?: "delete_one" | "delete_all";
   confirm: true;
 }): Promise<{ ok: boolean }> {
-  return securePost("hide-organico-archive-folder", input);
+  return rhFetchJson("hide-organico-archive-folder", { method: "POST", body: input });
 }
 
 export async function renameOrganicoArchiveFolder(input: {
@@ -214,7 +149,7 @@ export async function renameOrganicoArchiveFolder(input: {
   scope: OrganicoArchiveFolderScope;
   name: string;
 }): Promise<{ ok: boolean }> {
-  return securePost("rename-organico-archive-folder", input);
+  return rhFetchJson("rename-organico-archive-folder", { method: "POST", body: input });
 }
 
 export async function uploadOrganicoDocument(input: {
@@ -246,7 +181,12 @@ export async function uploadOrganicoDocument(input: {
   if (input.launchSourceRecordId) form.set("launchSourceRecordId", input.launchSourceRecordId);
   form.set("file", input.file);
   if (input.cover) form.set("cover", input.cover);
-  return secureFormPost("upload-organico-document", form);
+
+  const res = await rhFetch("upload-organico-document", { method: "POST", body: form });
+  if (!res.ok) {
+    throw new Error(await parseRhApiError(res, "upload-organico-document"));
+  }
+  return res.json() as Promise<{ ok: boolean; id: string }>;
 }
 
 export async function deleteOrganicoDocument(input: {
@@ -254,7 +194,7 @@ export async function deleteOrganicoDocument(input: {
   documentId: string;
   confirm: true;
 }): Promise<{ ok: boolean }> {
-  return securePost("delete-organico-document", input);
+  return rhFetchJson("delete-organico-document", { method: "POST", body: input });
 }
 
 export async function fetchOrganicoDocumentUrl(input: {
@@ -267,9 +207,11 @@ export async function fetchOrganicoDocumentUrl(input: {
     documentId: input.documentId,
     kind: input.kind ?? "file",
   });
-  const raw = await secureGet<{ url?: string }>(`download-organico-document?${params.toString()}`);
+  const raw = await rhFetchJson<{ url?: string }>(
+    `download-organico-document?${params.toString()}`,
+  );
   if (!raw.url) throw new Error("URL indisponível.");
-  return raw.url;
+  return resolveUploadUrl(raw.url);
 }
 
 export type ResolveLaunchDocumentItem = {
@@ -294,7 +236,7 @@ export type ResolvedLaunchDocumentLink = {
 export async function resolveLaunchDocuments(input: {
   items: ResolveLaunchDocumentItem[];
 }): Promise<{ links: ResolvedLaunchDocumentLink[] }> {
-  return securePost("resolve-launch-documents", input);
+  return rhFetchJson("resolve-launch-documents", { method: "POST", body: input });
 }
 
 export { isApiConfigured as isOrganicoDocumentsApiConfigured };

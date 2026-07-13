@@ -1408,7 +1408,12 @@ export function OrganicoDocumentArchivePanel({
     [colaboradorMatricula],
   );
 
-  const { data: folders = [], isLoading: loadingFolders } = useQuery({
+  const {
+    data: folders = [],
+    isLoading: loadingFolders,
+    isError: archiveLoadError,
+    error: archiveError,
+  } = useQuery({
     queryKey: archiveQueryKey,
     queryFn: () => getOrganicoDocuments(colaboradorMatricula, colaboradorNome),
     enabled: open && Boolean(colaboradorMatricula) && isOrganicoDocumentsApiConfigured(),
@@ -1477,7 +1482,7 @@ export function OrganicoDocumentArchivePanel({
       return;
     }
     if (!isOrganicoDocumentsApiConfigured()) {
-      toast({ title: "API não configurada", description: "Defina VITE_API_URL para gravar documentos.", variant: "destructive" });
+      toast({ title: "API indisponível", description: "Não foi possível gravar o documento no servidor.", variant: "destructive" });
       return;
     }
     const validation = validateOrganicoDocumentFile(file);
@@ -1733,7 +1738,7 @@ export function OrganicoDocumentArchivePanel({
       return;
     }
     if (!isOrganicoDocumentsApiConfigured()) {
-      toast({ title: "API não configurada", description: "Defina VITE_API_URL.", variant: "destructive" });
+      toast({ title: "API indisponível", description: "Não foi possível concluir a operação no servidor.", variant: "destructive" });
       return;
     }
     try {
@@ -1818,6 +1823,13 @@ export function OrganicoDocumentArchivePanel({
           </div>
         ) : null}
         {loadingFolders ? <p className="text-sm text-muted-foreground">Carregando arquivamento...</p> : null}
+        {archiveLoadError ? (
+          <p className="text-sm text-destructive" role="alert">
+            {archiveError instanceof Error
+              ? archiveError.message
+              : "Não foi possível carregar as pastas do arquivamento."}
+          </p>
+        ) : null}
         <div className="grid gap-4">
           <FolderTree
             folders={displayFolders}
