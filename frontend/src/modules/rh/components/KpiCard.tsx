@@ -17,6 +17,15 @@ const alertColors = {
   red: "bg-destructive",
 };
 
+const iconColors = {
+  green:
+    "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/80 dark:bg-emerald-950/60 dark:text-emerald-300 dark:ring-emerald-800/70",
+  yellow:
+    "bg-amber-50 text-amber-700 ring-1 ring-amber-200/80 dark:bg-amber-950/60 dark:text-amber-300 dark:ring-amber-800/70",
+  red:
+    "bg-rose-50 text-rose-700 ring-1 ring-rose-200/80 dark:bg-rose-950/60 dark:text-rose-300 dark:ring-rose-800/70",
+};
+
 const KpiCard = ({
   title,
   value,
@@ -28,7 +37,7 @@ const KpiCard = ({
 }: KpiCardProps) => {
   return (
     <div
-      className="relative min-w-0 w-full overflow-hidden border border-border bg-card p-5 shadow-level-1 transition-all duration-200 hover:-translate-y-1 hover:shadow-level-2 sm:p-6"
+      className="group relative min-w-0 w-full overflow-hidden rounded-xl border border-border bg-card p-5 shadow-level-1 transition-all duration-200 hover:-translate-y-1 hover:border-primary/25 hover:shadow-level-2 sm:p-6"
     >
       <div className={`alert-strip ${alertColors[alertColor]}`} />
       <div className="flex items-start justify-between gap-3">
@@ -59,8 +68,10 @@ const KpiCard = ({
             ) : null}
           </div>
         </div>
-        <div className="w-9 h-9 shrink-0 bg-muted flex items-center justify-center sm:w-10 sm:h-10">
-          <Icon className="w-[18px] h-[18px] sm:w-5 sm:h-5 text-muted-foreground" />
+        <div
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-transform duration-200 group-hover:scale-105 sm:h-10 sm:w-10 ${iconColors[alertColor]}`}
+        >
+          <Icon className="h-[18px] w-[18px] sm:h-5 sm:w-5" />
         </div>
       </div>
     </div>

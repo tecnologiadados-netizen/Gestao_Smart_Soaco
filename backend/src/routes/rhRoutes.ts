@@ -64,6 +64,7 @@ import {
   getOrganicoComentariosHandler,
   getOrganicoFotoHandler,
   getOrganicoRepresentantesHandler,
+  getOrganicoRepresentantesDadosHandler,
   getOrganicoTrajetoriaHandler,
   hideOrganicoArchiveFolderHandler,
   importOrganicoTrajetoriaHandler,
@@ -163,6 +164,7 @@ router.post('/upsert-organico-alteracoes-pendentes', requireRhAccess('/organico'
 router.post('/resolve-organico-alteracao-pendente', requireRhAccess('/organico', 'edit'), wrap(resolveOrganicoAlteracaoPendenteHandler));
 router.post('/delete-organico-alteracao-pendente', requireRhAccess('/organico', 'edit'), wrap(deleteOrganicoAlteracaoPendenteHandler));
 router.get('/get-organico-representantes', requireRhAccess('/organico', 'view'), wrap(getOrganicoRepresentantesHandler));
+router.get('/get-organico-representantes-dados', requireRhAccess('/organico', 'view'), wrap(getOrganicoRepresentantesDadosHandler));
 router.post('/sync-organico-representantes', requireRhAccess('/organico', 'edit'), wrap(syncOrganicoRepresentantesHandler));
 router.post('/set-organico-representante', requireRhAccess('/organico', 'edit'), wrap(setOrganicoRepresentanteHandler));
 router.get('/secullum-funcionarios', requireRhAccess('/organico', 'view'), wrap(secullumFuncionariosHandler));

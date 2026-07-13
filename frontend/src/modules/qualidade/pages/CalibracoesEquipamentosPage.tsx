@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useId, useState } from "react";
+import { useState } from "react";
 import { Button } from "@qualidade/components/ui/button";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -46,8 +46,6 @@ export function CadastroEquipamentosPage() {
   const [laudoDataUrl, setLaudoDataUrl] = useState("");
   const [anexos, setAnexos] = useState<AnexoItem[]>(() => defaultAnexoRows());
   const [saving, setSaving] = useState(false);
-  const laudoInputId = useId();
-
   function handleLaudoSelect(file: File) {
     if (file.size > 5 * 1024 * 1024) return;
     const reader = new FileReader();
@@ -231,7 +229,6 @@ export function CadastroEquipamentosPage() {
           <fieldset className="brand-fieldset space-y-4">
             <legend>Documentação</legend>
             <DocumentoArquivoField
-              inputId={laudoInputId}
               label="Laudo"
               arquivoNome={laudoNome}
               arquivoDataUrl={laudoDataUrl}

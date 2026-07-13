@@ -4,6 +4,26 @@ export interface RegistroAnexo {
   dataUrl: string;
 }
 
+/** Alias compartilhado para anexos em qualquer tela do SGQ. */
+export type SgqAnexo = RegistroAnexo;
+
+export const SGQ_ANEXO_ACCEPT =
+  ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp";
+
+export const SGQ_ANEXO_MAX_BYTES = 5 * 1024 * 1024;
+
+export function criarAnexoVazio(): SgqAnexo {
+  return { id: crypto.randomUUID(), nome: "", dataUrl: "" };
+}
+
+export function anexosPreenchidos(
+  anexos: SgqAnexo[]
+): { nome: string; dataUrl: string }[] {
+  return anexos
+    .filter((a) => a.nome.trim() && a.dataUrl.trim())
+    .map((a) => ({ nome: a.nome.trim(), dataUrl: a.dataUrl.trim() }));
+}
+
 export function normalizarRegistroAnexos(valor: unknown): RegistroAnexo[] {
   if (!Array.isArray(valor)) return [];
   return valor

@@ -5,14 +5,22 @@ import type { UserPermission } from '@rh/lib/config';
 let cachedPermissions: RhGroupPermissions | null = null;
 let cachedIsRhMaster = false;
 let cachedUsername: string | null = null;
+// Sessão pode ser por cookie (sem token em sessionStorage). O app principal (RootEntry) já
+// garante a autenticação; este flag reflete isso para o módulo RH, que antes só olhava o token.
+let sessionAuthenticated = false;
 
 export const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
+
+/** Informa o módulo RH que há sessão ativa (cookie e/ou token), conforme o AuthContext do app. */
+export function setSessionAuthenticated(value: boolean): void {
+  sessionAuthenticated = !!value;
+}
 
 /** Carrega permissões granulares do RH a partir do backend Gestor. */
 export async function loadRhSessionPermissions(isGestorMaster: boolean, gestorLogin: string | null): Promise<void> {
   cachedIsRhMaster = isGestorMaster;
   cachedUsername = gestorLogin;
-  if (!getStoredToken()) {
+  if (!isAuthenticated()) {
     cachedPermissions = null;
     return;
   }
@@ -43,7 +51,7 @@ export function setCachedGroupPermissions(permissions: RhGroupPermissions): void
 }
 
 export function isAuthenticated(): boolean {
-  return !!getStoredToken();
+  return sessionAuthenticated || !!getStoredToken();
 }
 
 export function getRhSessionToken(): string | null {

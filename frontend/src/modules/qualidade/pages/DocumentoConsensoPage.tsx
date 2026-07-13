@@ -273,7 +273,6 @@ export function ConsensoDocumentoPage() {
             novamente para análise.
           </p>
           <DocumentoArquivoField
-            inputId="arquivo-consenso"
             label="Documento ajustado *"
             arquivoNome={versaoAtual.arquivoNome}
             arquivoDataUrl={versaoAtual.arquivoDataUrl}

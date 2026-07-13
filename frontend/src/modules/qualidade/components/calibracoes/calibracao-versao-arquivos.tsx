@@ -1,5 +1,6 @@
 import { Download, ExternalLink } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
+import { SgqAnexosTable } from "@qualidade/components/ui/sgq-anexos-table";
 import {
   downloadDocumentFile,
   openDocumentFileViewer,
@@ -40,22 +41,21 @@ export function CalibracaoVersaoAnexosList({
 }) {
   if (!anexos.length) return null;
 
+  const rows = anexos.map((anexo, index) => ({
+    id: `anexo-${index}-${anexo.nome}`,
+    nome: anexo.nome,
+    dataUrl: anexo.dataUrl,
+  }));
+
   return (
-    <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
-      <p className="text-xs font-medium text-muted-foreground">
-        Anexos ({anexos.length})
-      </p>
-      <ul className="space-y-2">
-        {anexos.map((anexo) => (
-          <li
-            key={`${anexo.nome}-${anexo.dataUrl.slice(0, 24)}`}
-            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 bg-background/60 px-3 py-2"
-          >
-            <span className="min-w-0 flex-1 truncate text-sm">{anexo.nome}</span>
-            <ArquivoActions dataUrl={anexo.dataUrl} nome={anexo.nome} />
-          </li>
-        ))}
-      </ul>
+    <div className="mt-3 border-t border-border/60 pt-3">
+      <SgqAnexosTable
+        label={`Anexos (${anexos.length})`}
+        anexos={rows}
+        onChange={() => {}}
+        disabled
+        readOnlyEmptyMessage="Nenhum anexo."
+      />
     </div>
   );
 }

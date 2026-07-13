@@ -113,8 +113,11 @@ export default {
         sm: 'calc(var(--radius) * 0.6)',
       },
       boxShadow: {
-        soaco: '0 4px 14px rgb(4 30 66 / 0.12)',
-        'soaco-lg': '0 8px 24px rgb(4 30 66 / 0.18)',
+        'level-1': 'var(--shadow-1)',
+        'level-2': 'var(--shadow-2)',
+        'level-3': 'var(--shadow-3)',
+        soaco: '0 6px 18px -6px rgb(4 30 66 / 0.16)',
+        'soaco-lg': '0 14px 34px -10px rgb(4 30 66 / 0.24)',
       },
     },
   },

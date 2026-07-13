@@ -408,6 +408,94 @@ async function processEquipamento(
   return sent;
 }
 
+export type DocumentoPublicadoInput = {
+  uid: string;
+  codigo: string;
+  titulo: string;
+  origem: string;
+  versaoAtual: string;
+  permissoes?: { avisoPublicacaoEmailIds?: string[] } | null;
+  publicacao?: { avisarPorEmail?: boolean } | null;
+};
+
+function origemDocumentoLabel(origem: string): string {
+  switch (origem) {
+    case 'externo':
+      return 'Documento externo';
+    case 'registro':
+      return 'Registro';
+    default:
+      return 'Documento interno';
+  }
+}
+
+/** Notifica destinatários quando um documento passa a vigente (cadastro externo/registro ou aprovação). */
+export async function notificarPublicacaoDocumentos(
+  prisma: PrismaClient,
+  documentos: DocumentoPublicadoInput[]
+): Promise<number> {
+  if (documentos.length === 0) return 0;
+
+  const provider = await prisma.emailProviderSettings.findFirst({ orderBy: { updatedAt: 'desc' } });
+  if (!provider) {
+    console.warn('[sgq-email] Credencial de e-mail não configurada; publicação não notificada.');
+    return 0;
+  }
+
+  let sent = 0;
+  for (const doc of documentos) {
+    if (doc.publicacao?.avisarPorEmail === false) continue;
+
+    const logins = [...new Set((doc.permissoes?.avisoPublicacaoEmailIds ?? []).map((l) => l.trim()).filter(Boolean))];
+    if (logins.length === 0) continue;
+
+    const emails = await resolveEmailsByLogins(prisma, logins);
+    if (emails.length === 0) {
+      console.warn(
+        `[sgq-email] Nenhum e-mail para publicação de ${doc.codigo} (logins: ${logins.join(', ')})`
+      );
+      continue;
+    }
+
+    const chave = `sgq_publicacao:${doc.uid}:${doc.versaoAtual}`;
+    const link = `${resolveAppBaseUrl()}/qualidade/documentos/${doc.uid}`;
+    const tipoLabel = origemDocumentoLabel(doc.origem);
+    const html = buildSystemEmailHtml({
+      badge: 'SGQ',
+      title: 'Documento publicado',
+      subtitle: `${doc.codigo} — ${doc.titulo}`,
+      intro: `Um ${tipoLabel.toLowerCase()} foi publicado no módulo de Qualidade (SGQ) e está disponível para consulta.`,
+      sections: [
+        {
+          heading: 'Dados do documento',
+          rows: [
+            { label: 'Código', value: doc.codigo },
+            { label: 'Título', value: doc.titulo },
+            { label: 'Tipo', value: tipoLabel },
+            { label: 'Revisão', value: doc.versaoAtual },
+          ],
+        },
+      ],
+      cta: { label: 'Abrir documento no SGQ', href: link },
+    });
+
+    try {
+      const ok = await sendAndLog(
+        prisma,
+        'sgq_publicacao',
+        chave,
+        emails,
+        `[SGQ] Documento publicado: ${doc.codigo}`,
+        html
+      );
+      if (ok) sent++;
+    } catch (err) {
+      console.error(`[sgq-email] Falha ao notificar publicação ${doc.codigo}:`, err);
+    }
+  }
+  return sent;
+}
+
 export async function executarNotificacoesSgqEmail(prisma: PrismaClient): Promise<{
   validade: number;
   tarefas: number;

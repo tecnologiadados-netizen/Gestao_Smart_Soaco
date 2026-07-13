@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO } from "date-fns";
 import { X } from "lucide-react";
@@ -79,8 +79,6 @@ export function SolicitarRevisaoDocumentoDialog({
   const [arquivoDataUrl, setArquivoDataUrl] = useState("");
   const [novaDataValidade, setNovaDataValidade] = useState("");
   const [error, setError] = useState("");
-  const arquivoInputId = useId();
-
   const exigeValidadeRevalidacao =
     fromRevalidacao && Boolean(doc?.validade?.ativa && doc.validade.dataValidade);
 
@@ -297,7 +295,6 @@ export function SolicitarRevisaoDocumentoDialog({
                 <fieldset className="brand-fieldset space-y-4">
                   <legend className="text-base">Documento da revisão</legend>
                   <DocumentoArquivoField
-                    inputId={arquivoInputId}
                     label="Substituir documento *"
                     arquivoNome={arquivoNome}
                     arquivoDataUrl={arquivoDataUrl}

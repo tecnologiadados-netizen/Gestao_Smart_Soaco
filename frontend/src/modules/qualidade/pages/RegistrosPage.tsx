@@ -1,12 +1,15 @@
 import { Suspense, useMemo, useState } from "react";
 import { Link } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
+import { X } from "lucide-react";
 import { AvaliacaoFornecedorForm } from "@qualidade/components/avaliacao-fornecedor/avaliacao-fornecedor-form";
 import { Button } from "@qualidade/components/ui/button";
+import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { RccForm } from "@qualidade/components/registros/rcc-form";
 import { RncForm } from "@qualidade/components/registros/rnc-form";
 import { RegistroTipoSeletor } from "@qualidade/components/registros/registro-tipo-seletor";
 import {
+  moduloRegistroTipoLabels,
   type ModuloRegistroTipo,
 } from "@qualidade/lib/registros/constants";
 import { validarRcc } from "@qualidade/lib/registros/validacao-rcc";
@@ -192,15 +195,17 @@ function RegistrosPageContent() {
   const isRegistroRncRcc =
     tipoSelecionado === "rnc" || tipoSelecionado === "rcc";
 
+  function handleDialogOpenChange(open: boolean) {
+    if (!open && !salvando) reiniciar();
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Novo registro</h1>
           <p className="text-sm text-muted-foreground">
-            {tipoSelecionado
-              ? "Preencha os dados do registro selecionado"
-              : "Selecione o tipo de registro para exibir o formulário"}
+            Selecione o tipo de registro para abrir o formulário
           </p>
         </div>
         <Link to={consultaHref(tipoSelecionado)}>
@@ -217,62 +222,103 @@ function RegistrosPageContent() {
             value={tipoSelecionado}
             onChange={handleTipoChange}
           />
+          <p className="text-sm text-muted-foreground">
+            Escolha RNC, RCC ou Avaliação de fornecedor para abrir o formulário
+            de cadastro.
+          </p>
         </fieldset>
-
-        {!tipoSelecionado ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            Escolha RNC, RCC ou Avaliação de fornecedor no campo acima para
-            continuar.
-          </p>
-        ) : null}
-
-        {tipoSelecionado === "rnc" ? (
-          <RncForm
-            dados={rncDados}
-            onChange={setRncDados}
-            erros={errosRnc}
-            codigoDocumentoPreview={proximoNumeroRnc}
-            usuarioCriacaoNome={usuarioAtual?.nome ?? ""}
-          />
-        ) : null}
-
-        {tipoSelecionado === "rcc" ? (
-          <RccForm
-            dados={rccDados}
-            onChange={setRccDados}
-            erros={errosRcc}
-            codigoDocumentoPreview={proximoNumeroRcc}
-            usuarioCriacaoNome={usuarioAtual?.nome ?? ""}
-          />
-        ) : null}
-
-        {isAvaliacao ? (
-          <AvaliacaoFornecedorForm
-            onSuccess={() => navigate(consultaHref("avaliacao-fornecedor"))}
-          />
-        ) : null}
-
-        {error && isRegistroRncRcc ? (
-          <p className="text-sm text-destructive" role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        {isRegistroRncRcc ? (
-          <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-            <Button type="button" variant="outline" onClick={reiniciar} disabled={salvando}>
-              Trocar tipo
-            </Button>
-            <Button type="button" onClick={() => void handleSalvar()} disabled={salvando}>
-              {salvando
-                ? "Salvando..."
-                : tipoSelecionado === "rnc"
-                  ? "Salvar RNC"
-                  : "Salvar RCC"}
-            </Button>
-          </div>
-        ) : null}
       </div>
+
+      <Dialog
+        open={tipoSelecionado !== null}
+        onOpenChange={handleDialogOpenChange}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="max-h-[min(92vh,100dvh)] w-full max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
+        >
+          <div className="modal-header-bar flex shrink-0 items-center justify-between px-5 py-3.5">
+            <h2 className="text-base font-semibold text-white">
+              {tipoSelecionado
+                ? `Novo registro — ${moduloRegistroTipoLabels[tipoSelecionado]}`
+                : "Novo registro"}
+            </h2>
+            <button
+              type="button"
+              onClick={() => handleDialogOpenChange(false)}
+              className="rounded p-1.5 hover:bg-white/20"
+              aria-label="Fechar"
+              disabled={salvando}
+            >
+              <X className="size-5" />
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6">
+            {tipoSelecionado === "rnc" ? (
+              <RncForm
+                dados={rncDados}
+                onChange={setRncDados}
+                erros={errosRnc}
+                codigoDocumentoPreview={proximoNumeroRnc}
+                usuarioCriacaoNome={usuarioAtual?.nome ?? ""}
+              />
+            ) : null}
+
+            {tipoSelecionado === "rcc" ? (
+              <RccForm
+                dados={rccDados}
+                onChange={setRccDados}
+                erros={errosRcc}
+                codigoDocumentoPreview={proximoNumeroRcc}
+                usuarioCriacaoNome={usuarioAtual?.nome ?? ""}
+              />
+            ) : null}
+
+            {isAvaliacao ? (
+              <AvaliacaoFornecedorForm
+                onSuccess={() => navigate(consultaHref("avaliacao-fornecedor"))}
+              />
+            ) : null}
+          </div>
+
+          {error && isRegistroRncRcc ? (
+            <p
+              role="alert"
+              className="border-t border-destructive/30 bg-destructive/10 px-6 py-3 text-sm font-medium text-destructive"
+            >
+              {error}
+            </p>
+          ) : null}
+
+          {isRegistroRncRcc ? (
+            <div className="sgq-form-footer">
+              <Button
+                type="button"
+                size="lg"
+                className="min-w-28"
+                onClick={() => void handleSalvar()}
+                disabled={salvando}
+              >
+                {salvando
+                  ? "Salvando..."
+                  : tipoSelecionado === "rnc"
+                    ? "Salvar RNC"
+                    : "Salvar RCC"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                onClick={() => handleDialogOpenChange(false)}
+                disabled={salvando}
+              >
+                Fechar
+              </Button>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

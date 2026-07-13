@@ -59,7 +59,7 @@ export function NovoDocumentoPage() {
       origem: "interno",
       observacoes: observacoes || undefined,
     });
-    navigate(`/qualidade/documentos/${id}`);
+    navigate("/qualidade/documentos/consulta");
   }
 
   return (

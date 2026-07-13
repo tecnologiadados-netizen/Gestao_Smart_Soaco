@@ -381,30 +381,31 @@ export async function getOrganicoRepresentantes() {
 }
 
 export async function syncOrganicoRepresentantes(
-  rows: Array<{ representanteKey: string; nomeRazaoSocial: string; [key: string]: unknown }>,
+  rows: Array<{ representanteKey: string; nomeRazaoSocial?: string; [key: string]: unknown }>,
 ) {
   let upserted = 0;
   for (const row of rows) {
     const key = s(row.representanteKey);
     if (!key) continue;
+    const nomeRazaoSocial = s(row.nomeRazaoSocial) || key;
+    const nomeFantasia = s(row.nomeFantasia) || null;
     await prisma.rhOrganicoRepresentantes.upsert({
       where: { representanteKey: key },
       create: {
         representanteKey: key,
-        nomeRazaoSocial: s(row.nomeRazaoSocial) || key,
-        nomeFantasia: s(row.nomeFantasia) || null,
+        nomeRazaoSocial,
+        nomeFantasia,
         cpf: s(row.cpf) || null,
         cargo: s(row.cargo) || null,
         area: s(row.area) || null,
         setor: s(row.setor) || null,
       },
+      // Sync apenas registra a existência do representante e atualiza os nomes.
+      // NÃO sobrescreve os campos editados manualmente (cpf, cargo, dados bancários, etc.),
+      // que são gravados via setOrganicoRepresentante.
       update: {
-        nomeRazaoSocial: s(row.nomeRazaoSocial) || key,
-        nomeFantasia: s(row.nomeFantasia) || null,
-        cpf: s(row.cpf) || null,
-        cargo: s(row.cargo) || null,
-        area: s(row.area) || null,
-        setor: s(row.setor) || null,
+        nomeRazaoSocial,
+        ...(nomeFantasia ? { nomeFantasia } : {}),
       },
     });
     upserted += 1;

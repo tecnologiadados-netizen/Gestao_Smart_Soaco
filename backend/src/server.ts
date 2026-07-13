@@ -23,6 +23,7 @@ import app, { BUILD_ID } from './app.js';
 import { iniciarCronsWhatsappNotificacao } from './scheduler/whatsappNotificacaoCron.js';
 import { iniciarCronsSgqEmailNotificacao } from './scheduler/sgqEmailNotificacaoCron.js';
 import { iniciarCronsEmailNotificacao } from './scheduler/emailNotificacaoCron.js';
+import { logStatusEnvioNotificacoes } from './config/envioNotificacoes.js';
 import { backfillAguardaRespostaLabelsForPendingOrders } from './services/sycroOrderAguardaRespostaLabel.js';
 import { ensureGrupoMaster } from './config/ensureGrupoMaster.js';
 import { initPainelProducaoMetas } from './services/painelProducao/painelProducaoTargetsService.js';
@@ -116,6 +117,7 @@ function main(): void {
         } catch (e) {
           console.warn('[startup] Backfill aguarda resposta SycroOrder:', (e as Error)?.message ?? e);
         }
+        logStatusEnvioNotificacoes();
         iniciarCronsWhatsappNotificacao();
         iniciarCronsSgqEmailNotificacao();
         iniciarCronsEmailNotificacao();

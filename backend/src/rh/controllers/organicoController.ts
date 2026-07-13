@@ -25,6 +25,8 @@ import {
 } from '../repositories/organicoRepository.js';
 import { replaceOrganicoSafe } from '../repositories/replaceRepository.js';
 import { notImplemented, s, sendError } from '../utils/rhHelpers.js';
+import { fetchSecullumFuncionarios } from '../services/secullumService.js';
+import { fetchNomusRepresentantes } from '../services/nomusRepresentantesService.js';
 
 function authCtx(req: Request) {
   const ctx = req.rhAuth!;
@@ -300,9 +302,20 @@ export async function deleteOrganicoAlteracaoPendenteHandler(req: Request, res: 
   }
 }
 
+/** Lista-base de representantes vinda do Nomus (fonte externa). Frontend: { representantes: [...] }. */
 export async function getOrganicoRepresentantesHandler(_req: Request, res: Response) {
   try {
-    res.json(await getOrganicoRepresentantes());
+    const representantes = await fetchNomusRepresentantes();
+    res.json({ representantes });
+  } catch (e) {
+    sendError(res, (e as Error).message);
+  }
+}
+
+/** Dados salvos (banco local) dos representantes — usados para mesclar com a lista-base do Nomus. */
+export async function getOrganicoRepresentantesDadosHandler(_req: Request, res: Response) {
+  try {
+    res.json({ representantes: await getOrganicoRepresentantes() });
   } catch (e) {
     sendError(res, (e as Error).message);
   }
@@ -310,9 +323,21 @@ export async function getOrganicoRepresentantesHandler(_req: Request, res: Respo
 
 export async function syncOrganicoRepresentantesHandler(req: Request, res: Response) {
   try {
-    const rows = Array.isArray((req.body as { rows?: unknown[] }).rows)
-      ? ((req.body as { rows: unknown[] }).rows as never[])
-      : [];
+    const body = req.body as {
+      rows?: unknown[];
+      representantes?: Array<{ representanteKey?: string; nome?: string; nomeRazaoSocial?: string }>;
+    };
+    // Frontend envia { representantes: [{ representanteKey, nome, nomeRazaoSocial }] }; aceitamos
+    // também o formato legado { rows }. "nome" (fantasia) mapeia para nomeFantasia.
+    const rows = Array.isArray(body.representantes)
+      ? body.representantes.map((r) => ({
+          representanteKey: s(r.representanteKey),
+          nomeRazaoSocial: s(r.nomeRazaoSocial),
+          nomeFantasia: s(r.nome),
+        }))
+      : Array.isArray(body.rows)
+        ? (body.rows as never[])
+        : [];
     res.json(await syncOrganicoRepresentantes(rows));
   } catch (e) {
     sendError(res, (e as Error).message);
@@ -377,7 +402,12 @@ export async function hideOrganicoArchiveFolderHandler(req: Request, res: Respon
 }
 
 export async function secullumFuncionariosHandler(_req: Request, res: Response) {
-  notImplemented(res, 'secullum-funcionarios');
+  try {
+    const funcionarios = await fetchSecullumFuncionarios();
+    res.json({ funcionarios });
+  } catch (e) {
+    sendError(res, (e as Error).message);
+  }
 }
 
 export async function resolveLaunchDocumentsHandler(_req: Request, res: Response) {

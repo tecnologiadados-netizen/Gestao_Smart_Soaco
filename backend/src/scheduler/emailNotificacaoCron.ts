@@ -6,6 +6,11 @@ import * as cron from 'node-cron';
 import { listarTiposEmailCronAtivos } from '../data/emailNotificacaoRepository.js';
 import { executarNotificacaoEmailAgendada } from '../services/emailNotificacaoService.js';
 import { listarExpressoesCronAgendamento } from '../utils/smsCronHorarios.js';
+import {
+  dispararComClaim,
+  ensureAgendamentoExecucaoTable,
+  executarCatchup,
+} from './agendamentoExecucao.js';
 
 const jobs = new Map<string, cron.ScheduledTask>();
 
@@ -14,6 +19,8 @@ export async function recarregarCronsEmailNotificacao(): Promise<void> {
     task.stop();
   }
   jobs.clear();
+
+  await ensureAgendamentoExecucaoTable();
 
   const tipos = await listarTiposEmailCronAtivos();
   for (const tipo of tipos) {
@@ -29,11 +36,19 @@ export async function recarregarCronsEmailNotificacao(): Promise<void> {
       }
       const jobKey = `${tipo.id}:${expr}`;
       const task = cron.schedule(expr, () => {
-        void executarNotificacaoEmailAgendada(tipo.code);
+        void dispararComClaim('email', tipo.code, () => executarNotificacaoEmailAgendada(tipo.code));
       });
       jobs.set(jobKey, task);
       console.log(`[emailNotificacaoCron] Agendado "${tipo.code}": ${expr}`);
     }
+
+    await executarCatchup({
+      canal: 'email',
+      code: tipo.code,
+      expr: tipo.cronExpressao,
+      run: () => executarNotificacaoEmailAgendada(tipo.code),
+      logPrefix: '[emailNotificacaoCron]',
+    });
   }
 }
 

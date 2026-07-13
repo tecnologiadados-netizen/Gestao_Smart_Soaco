@@ -214,7 +214,6 @@ export function ElaborarDocumentoPage() {
           <legend className="text-base">Elaboração do {origemLabel}</legend>
 
           <DocumentoArquivoField
-            inputId="arquivo"
             label="Arquivo inicial *"
             arquivoNome={arquivoNome}
             arquivoDataUrl={arquivoDataUrl}

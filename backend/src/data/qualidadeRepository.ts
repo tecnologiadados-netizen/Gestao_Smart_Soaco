@@ -6,7 +6,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   notificarNovasTarefasWorkflow,
+  notificarPublicacaoDocumentos,
   type DocumentoMetaParaEmail,
+  type DocumentoPublicadoInput,
   type NovaTarefaWorkflowInput,
 } from '../services/sgq/sgqEmailNotificacaoService.js';
 import {
@@ -679,10 +681,40 @@ export async function syncQualidadeDocuments(payload: {
   const docUidToId = new Map<string, number>();
   const docMetaByUid = new Map<string, DocumentoMetaParaEmail>();
 
+  const existingDocs = await prisma.sgqDocumento.findMany({
+    select: { uid: true, status: true, versaoAtual: true },
+  });
+  const existingByUid = new Map(existingDocs.map((d) => [d.uid, d]));
+  const publicacoesParaNotificar: DocumentoPublicadoInput[] = [];
+
   for (const doc of documents) {
     const uid = String(doc.id ?? '');
     const codigo = String(doc.codigo ?? '');
     if (!uid || !codigo) continue;
+
+    const status = String(doc.status ?? 'rascunho');
+    const versaoAtual = String(doc.versaoAtual ?? '01');
+    const prev = existingByUid.get(uid);
+    const permissoes = (doc.permissoes as DocumentoPublicadoInput['permissoes']) ?? null;
+    const publicacao = (doc.publicacao as DocumentoPublicadoInput['publicacao']) ?? null;
+
+    const eventoPublicacao =
+      status === 'vigente' &&
+      (!prev ||
+        prev.status !== 'vigente' ||
+        prev.versaoAtual !== versaoAtual);
+
+    if (eventoPublicacao && (permissoes?.avisoPublicacaoEmailIds?.length ?? 0) > 0) {
+      publicacoesParaNotificar.push({
+        uid,
+        codigo,
+        titulo: String(doc.titulo ?? ''),
+        origem: String(doc.origem ?? 'interno'),
+        versaoAtual,
+        permissoes,
+        publicacao,
+      });
+    }
 
     const tipoUid = await resolveTipoUid(String(doc.tipoId ?? ''));
     const setorUid = await resolveSetorUid(String(doc.setorId ?? ''));
@@ -869,6 +901,17 @@ export async function syncQualidadeDocuments(payload: {
       }
     } catch (err) {
       console.error('[sgq-email] Erro ao notificar tarefas novas (sync continuou):', err);
+    }
+  }
+
+  if (publicacoesParaNotificar.length > 0) {
+    try {
+      const enviados = await notificarPublicacaoDocumentos(prisma, publicacoesParaNotificar);
+      if (enviados > 0) {
+        console.info(`[sgq-email] ${enviados} notificação(ões) de publicação enviada(s).`);
+      }
+    } catch (err) {
+      console.error('[sgq-email] Erro ao notificar publicação (sync continuou):', err);
     }
   }
 
