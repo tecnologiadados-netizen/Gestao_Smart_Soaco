@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import {
   buscarClientesNomus,
   buscarFornecedoresNomus,
+  buscarPedidosVendaNomus,
   buscarProdutosNomus,
 } from '../data/qualidadeNomusRepository.js';
 import {
@@ -22,6 +23,7 @@ import { gerarRccPdfBuffer, gerarRncPdfBuffer } from '../services/qualidadePdfSe
 const CLIENTES_SEARCH_LIMIT = 80;
 const PRODUTOS_SEARCH_LIMIT = 100;
 const FORNECEDORES_SEARCH_LIMIT = 100;
+const PEDIDOS_VENDA_SEARCH_LIMIT = 50;
 
 function parseLimit(raw: string | undefined, fallback: number, max: number): number {
   if (!raw) return fallback;
@@ -54,6 +56,22 @@ export async function getQualidadeProdutos(req: Request, res: Response): Promise
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao buscar produtos.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function getQualidadePedidosVenda(req: Request, res: Response): Promise<void> {
+  try {
+    const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+    const limit = parseLimit(
+      typeof req.query.limit === 'string' ? req.query.limit : undefined,
+      20,
+      PEDIDOS_VENDA_SEARCH_LIMIT
+    );
+    const result = await buscarPedidosVendaNomus({ q, limit });
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao buscar pedidos de venda.';
     res.status(500).json({ error: message });
   }
 }
