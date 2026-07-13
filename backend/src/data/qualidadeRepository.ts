@@ -497,8 +497,10 @@ async function purgeSgqDocumentsRemovedFromPayload(
     }
   }
 
+  if (docUids.length === 0) return;
+
   const removedDocs = await prisma.sgqDocumento.findMany({
-    where: docUids.length > 0 ? { uid: { notIn: docUids } } : {},
+    where: { uid: { notIn: docUids } },
     select: {
       uid: true,
       versoes: { select: { arquivoStoragePath: true } },
@@ -553,15 +555,35 @@ export async function deleteQualidadeDocumento(uid: string): Promise<boolean> {
 }
 
 async function resolveSetorUid(setorId: string) {
-  const byUid = await prisma.sgqSetor.findUnique({ where: { uid: setorId } });
+  const trimmed = setorId.trim();
+  if (!trimmed) return trimmed;
+  const byUid = await prisma.sgqSetor.findUnique({ where: { uid: trimmed } });
   if (byUid) return byUid.uid;
-  return setorId;
+  const bySigla = await prisma.sgqSetor.findUnique({
+    where: { sigla: trimmed.toUpperCase() },
+  });
+  if (bySigla) return bySigla.uid;
+  return trimmed;
 }
 
 async function resolveTipoUid(tipoId: string) {
-  const byUid = await prisma.sgqTipoDocumento.findUnique({ where: { uid: tipoId } });
+  const trimmed = tipoId.trim();
+  if (!trimmed) return trimmed;
+  const byUid = await prisma.sgqTipoDocumento.findUnique({ where: { uid: trimmed } });
   if (byUid) return byUid.uid;
-  return tipoId;
+  const legacySigla =
+    trimmed === "tipo-man"
+      ? "MAN"
+      : trimmed === "tipo-re"
+        ? "RE"
+        : trimmed.startsWith("tipo-")
+          ? trimmed.slice(5).toUpperCase()
+          : trimmed.toUpperCase();
+  const bySigla = await prisma.sgqTipoDocumento.findUnique({
+    where: { sigla: legacySigla },
+  });
+  if (bySigla) return bySigla.uid;
+  return trimmed;
 }
 
 function extractBase64(dataUrl: string | undefined): IncomingQualidadeAnexo | null {

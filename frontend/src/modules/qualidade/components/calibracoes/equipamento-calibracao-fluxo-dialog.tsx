@@ -347,7 +347,6 @@ export function EquipamentoCalibracaoFluxoDialog({
                     value={equipment.descricao}
                     className="sm:col-span-2"
                   />
-                  <ReadOnlyField label="Localização" value={equipment.local} />
                   <ReadOnlyField
                     label="Setor"
                     value={departmentSelectLabel(

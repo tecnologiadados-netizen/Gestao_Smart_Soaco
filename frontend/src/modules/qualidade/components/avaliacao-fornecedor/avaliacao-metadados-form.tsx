@@ -1,5 +1,5 @@
-import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
+import { Input } from "@qualidade/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -7,11 +7,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@qualidade/components/ui/select";
+import { DocumentoEntradaSearchField } from "@qualidade/components/avaliacao-fornecedor/documento-entrada-search-field";
 import type { AvaliacaoMetadadosInput } from "@qualidade/types/avaliacao-fornecedor";
 
 interface AvaliacaoMetadadosFormProps {
   metadados: AvaliacaoMetadadosInput;
   responsavelNome: string;
+  fornecedorId: string | null;
   onChange: (metadados: AvaliacaoMetadadosInput) => void;
   disabled?: boolean;
 }
@@ -19,6 +21,7 @@ interface AvaliacaoMetadadosFormProps {
 export function AvaliacaoMetadadosForm({
   metadados,
   responsavelNome,
+  fornecedorId,
   onChange,
   disabled = false,
 }: AvaliacaoMetadadosFormProps) {
@@ -75,19 +78,16 @@ export function AvaliacaoMetadadosForm({
           />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="av-numero-documento">
-            Número do contrato / documento *
-          </Label>
-          <Input
-            id="av-numero-documento"
-            value={metadados.numeroDocumento}
-            onChange={(e) => patch({ numeroDocumento: e.target.value })}
-            placeholder="Ex.: DE38138"
-            disabled={disabled}
-            required
-          />
-        </div>
+        <DocumentoEntradaSearchField
+          id="av-numero-documento"
+          label="Número do contrato / documento"
+          fornecedorId={fornecedorId}
+          value={metadados.numeroDocumento}
+          onSelect={(numero) => patch({ numeroDocumento: numero })}
+          onClear={() => patch({ numeroDocumento: "" })}
+          disabled={disabled}
+          required
+        />
 
         <div className="space-y-2">
           <Label htmlFor="av-fornecedor-aprovado">Fornecedor aprovado? *</Label>

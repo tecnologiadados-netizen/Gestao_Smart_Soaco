@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@qualidade/components/ui/select";
 import { CalibracaoHistoricoSection } from "@qualidade/components/calibracoes/calibracao-historico-section";
+import { FornecedorSearchField } from "@qualidade/components/avaliacao-fornecedor/fornecedor-search-field";
 import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
@@ -20,6 +21,7 @@ import {
   tipoCalibracaoSelectLabel,
   userSelectLabel,
 } from "@qualidade/lib/utils/select-display";
+import type { Fornecedor } from "@qualidade/types/avaliacao-fornecedor";
 import type { CalibrationType } from "@qualidade/types/calibration";
 
 const selectTriggerClass =
@@ -53,10 +55,10 @@ export function EquipamentoEdicaoDialog({
 
   const [codigo, setCodigo] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [local, setLocal] = useState("");
   const [setorId, setSetorId] = useState("");
   const [responsavelId, setResponsavelId] = useState("");
-  const [fornecedor, setFornecedor] = useState("");
+  const [fornecedorSelecionado, setFornecedorSelecionado] =
+    useState<Fornecedor | null>(null);
   const [tipoCalibracao, setTipoCalibracao] = useState<CalibrationType>("interna");
   const [freqCal, setFreqCal] = useState("365");
   const [freqVer, setFreqVer] = useState("90");
@@ -72,10 +74,13 @@ export function EquipamentoEdicaoDialog({
 
     setCodigo(equipment.codigo);
     setDescricao(equipment.descricao);
-    setLocal(equipment.local);
     setSetorId(equipment.setorId);
     setResponsavelId(equipment.responsavelId);
-    setFornecedor(equipment.fornecedor ?? "");
+    setFornecedorSelecionado(
+      equipment.fornecedor
+        ? { id: equipment.fornecedor, nome: equipment.fornecedor }
+        : null
+    );
     setTipoCalibracao(equipment.tipoCalibracao);
     setFreqCal(String(equipment.frequenciaCalibracaoDias));
     setFreqVer(String(equipment.frequenciaVerificacaoDias));
@@ -103,10 +108,10 @@ export function EquipamentoEdicaoDialog({
 
     updateEquipment(equipmentId, {
       descricao: descricaoTrim,
-      local: local.trim(),
+      local: equipment.local,
       setorId,
       responsavelId,
-      fornecedor: fornecedor.trim() || undefined,
+      fornecedor: fornecedorSelecionado?.nome?.trim() || undefined,
       tipoCalibracao,
       frequenciaCalibracaoDias: Number(freqCal) || 365,
       frequenciaVerificacaoDias: Number(freqVer) || 90,
@@ -222,16 +227,6 @@ export function EquipamentoEdicaoDialog({
                     />
                   </div>
                   <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="edit-eq-local">Localização</Label>
-                    <Input
-                      id="edit-eq-local"
-                      value={local}
-                      onChange={(e) => setLocal(e.target.value)}
-                      readOnly={somenteLeitura}
-                      className={somenteLeitura ? "bg-muted/50" : undefined}
-                    />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
                     <Label htmlFor="edit-eq-setor">Setor</Label>
                     <Select
                       value={setorId || undefined}
@@ -290,13 +285,12 @@ export function EquipamentoEdicaoDialog({
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="edit-eq-fornecedor">Fornecedor</Label>
-                    <Input
+                    <FornecedorSearchField
                       id="edit-eq-fornecedor"
-                      value={fornecedor}
-                      onChange={(e) => setFornecedor(e.target.value)}
-                      readOnly={somenteLeitura}
-                      className={somenteLeitura ? "bg-muted/50" : undefined}
+                      value={fornecedorSelecionado}
+                      onSelect={setFornecedorSelecionado}
+                      onClear={() => setFornecedorSelecionado(null)}
+                      disabled={somenteLeitura}
                     />
                   </div>
                 </div>

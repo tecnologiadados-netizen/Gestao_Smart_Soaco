@@ -63,7 +63,7 @@ export function CadastroRegistroDialog({ open, onOpenChange }: Props) {
     afterUiTransition(resetForm);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const pendentes: string[] = [];
     if (!values.titulo.trim()) pendentes.push("Título");
@@ -80,7 +80,7 @@ export function CadastroRegistroDialog({ open, onOpenChange }: Props) {
     const anexos = anexosPreenchidos(values.anexos);
     const principal = anexos[0];
 
-    const id = createDocument({
+    createDocument({
       tipoSigla: registroTipo.sigla,
       titulo: values.titulo,
       tipoId: registroTipo.id,
@@ -94,15 +94,17 @@ export function CadastroRegistroDialog({ open, onOpenChange }: Props) {
       arquivoDataUrl: principal?.dataUrl,
     });
 
-    void flushQualidadeDocumentsSync().catch((err) =>
-      console.error("[qualidade] falha ao sincronizar registro:", err)
-    );
-
-    onOpenChange(false);
-    afterUiTransition(() => {
-      resetForm();
-      navigate("/qualidade/documentos/consulta");
-    });
+    try {
+      await flushQualidadeDocumentsSync();
+      onOpenChange(false);
+      afterUiTransition(() => {
+        resetForm();
+        navigate("/qualidade/documentos/consulta");
+      });
+    } catch (err) {
+      console.error("[qualidade] falha ao sincronizar registro:", err);
+      setErro("Registro criado localmente, mas falhou ao salvar no servidor. Tente novamente.");
+    }
   }
 
   return (

@@ -50,7 +50,7 @@ export function CadastroDocumentoExternoDialog({ open, onOpenChange }: Props) {
     afterUiTransition(resetForm);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const pendentes: string[] = [];
     if (!values.titulo.trim()) pendentes.push("Título");
@@ -68,7 +68,7 @@ export function CadastroDocumentoExternoDialog({ open, onOpenChange }: Props) {
     const anexos = anexosPreenchidos(values.anexos);
     const principal = anexos[0];
 
-    const id = createDocument({
+    createDocument({
       codigo,
       titulo: values.titulo,
       tipoId: "tipo-man",
@@ -83,15 +83,17 @@ export function CadastroDocumentoExternoDialog({ open, onOpenChange }: Props) {
       arquivoDataUrl: principal?.dataUrl,
     });
 
-    void flushQualidadeDocumentsSync().catch((err) =>
-      console.error("[qualidade] falha ao sincronizar documento externo:", err)
-    );
-
-    onOpenChange(false);
-    afterUiTransition(() => {
-      resetForm();
-      navigate("/qualidade/documentos/consulta");
-    });
+    try {
+      await flushQualidadeDocumentsSync();
+      onOpenChange(false);
+      afterUiTransition(() => {
+        resetForm();
+        navigate("/qualidade/documentos/consulta");
+      });
+    } catch (err) {
+      console.error("[qualidade] falha ao sincronizar documento externo:", err);
+      setErro("Documento criado localmente, mas falhou ao salvar no servidor. Tente novamente.");
+    }
   }
 
   return (

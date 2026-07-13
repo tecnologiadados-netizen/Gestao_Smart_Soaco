@@ -18,6 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@qualidade/components/ui/card";
+import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
@@ -46,11 +47,11 @@ export function NovoDocumentoPage() {
     [tipo, getNextDocumentCode]
   );
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!titulo || !tipoId || !setorId || !tipo) return;
 
-    const id = createDocument({
+    createDocument({
       tipoSigla: tipo.sigla,
       titulo,
       tipoId,
@@ -59,7 +60,13 @@ export function NovoDocumentoPage() {
       origem: "interno",
       observacoes: observacoes || undefined,
     });
-    navigate("/qualidade/documentos/consulta");
+
+    try {
+      await flushQualidadeDocumentsSync();
+      navigate("/qualidade/documentos/consulta");
+    } catch (err) {
+      console.error("[qualidade] falha ao salvar novo documento:", err);
+    }
   }
 
   return (

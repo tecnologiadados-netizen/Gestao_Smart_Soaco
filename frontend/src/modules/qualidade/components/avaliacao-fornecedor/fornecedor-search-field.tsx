@@ -186,6 +186,11 @@ export function FornecedorSearchField({
                     <span className="block truncate font-medium">
                       {fornecedor.nome}
                     </span>
+                    {fornecedor.documento ? (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {fornecedor.documento}
+                      </span>
+                    ) : null}
                   </button>
                 </li>
               ))}

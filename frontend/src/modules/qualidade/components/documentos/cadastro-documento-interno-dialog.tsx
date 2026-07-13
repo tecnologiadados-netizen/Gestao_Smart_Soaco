@@ -33,7 +33,12 @@ import {
   type PublicacaoFormValues,
 } from "@qualidade/components/documentos/documento-publicacao-fieldset";
 import { afterUiTransition } from "@qualidade/lib/motion";
+import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
 import { cn } from "@qualidade/lib/utils";
+import {
+  departmentSelectLabel,
+  documentTypeSelectLabel,
+} from "@qualidade/lib/utils/select-display";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
@@ -161,6 +166,8 @@ export function CadastroDocumentoInternoDialog({
   const categoria =
     documentTypes.find((t) => t.id === categoriaId) ??
     categorias.find((t) => t.id === categoriaId);
+  const categoriaLabel = documentTypeSelectLabel(documentTypes, categoriaId);
+  const setorLabel = departmentSelectLabel(departments, processoId, "sigla-nome");
   const codigo = useMemo(() => {
     if (isEdicao && documentoEdicao) return documentoEdicao.codigo;
     return categoria ? getNextDocumentCode(categoria.sigla) : "";
@@ -185,48 +192,61 @@ export function CadastroDocumentoInternoDialog({
 
     setFormError(null);
     setSaving(true);
-    await withLoading(async () => {
-      if (isEdicao && documentId) {
-        updateDocumentCadastro(documentId, {
+    try {
+      await withLoading(async () => {
+        if (isEdicao && documentId) {
+          updateDocumentCadastro(documentId, {
+            titulo,
+            setorId: processoId,
+            elaboradorId: responsaveis.elaboradorId || currentUserId,
+            consensoId: responsaveis.consensoId || undefined,
+            aprovadorId: responsaveis.aprovadorId || undefined,
+            prazos: responsaveis.prazos,
+            permissoes,
+            publicacao: toDocumentPublicacao(publicacao),
+            validade: toDocumentValidade(publicacao),
+          });
+          await flushQualidadeDocumentsSync();
+          onOpenChange(false);
+          afterUiTransition(resetForm);
+          onSalvo?.();
+          return;
+        }
+
+        createDocument({
+          tipoSigla: categoria.sigla,
           titulo,
+          tipoId: categoriaId,
           setorId: processoId,
           elaboradorId: responsaveis.elaboradorId || currentUserId,
           consensoId: responsaveis.consensoId || undefined,
           aprovadorId: responsaveis.aprovadorId || undefined,
           prazos: responsaveis.prazos,
+          origem: "interno",
           permissoes,
           publicacao: toDocumentPublicacao(publicacao),
           validade: toDocumentValidade(publicacao),
+          observacoes: formatWorkflowObservacoes(responsaveis.prazos),
         });
+
+        await flushQualidadeDocumentsSync();
+
         onOpenChange(false);
-        afterUiTransition(resetForm);
-        onSalvo?.();
-        return;
-      }
-
-      createDocument({
-        tipoSigla: categoria.sigla,
-        titulo,
-        tipoId: categoriaId,
-        setorId: processoId,
-        elaboradorId: responsaveis.elaboradorId || currentUserId,
-        consensoId: responsaveis.consensoId || undefined,
-        aprovadorId: responsaveis.aprovadorId || undefined,
-        prazos: responsaveis.prazos,
-        origem: "interno",
-        permissoes,
-        publicacao: toDocumentPublicacao(publicacao),
-        validade: toDocumentValidade(publicacao),
-        observacoes: formatWorkflowObservacoes(responsaveis.prazos),
-      });
-
-      onOpenChange(false);
-      afterUiTransition(() => {
-        resetForm();
-        navigate("/qualidade/documentos/consulta");
-      });
-    }, isEdicao ? "Salvando alterações..." : "Gravando documento...");
-    setSaving(false);
+        afterUiTransition(() => {
+          resetForm();
+          navigate("/qualidade/documentos/consulta");
+        });
+      }, isEdicao ? "Salvando alterações..." : "Gravando documento...");
+    } catch (err) {
+      console.error("[qualidade] falha ao salvar documento interno:", err);
+      setFormError(
+        err instanceof Error
+          ? err.message
+          : "Falha ao salvar o documento no servidor. Tente novamente."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -276,7 +296,7 @@ export function CadastroDocumentoInternoDialog({
                         className="flex min-h-10 items-center rounded-lg border-2 border-brand-blue/30 bg-muted/40 px-3 text-base text-brand-navy"
                         aria-readonly="true"
                       >
-                        {categoria ? formatTipo(categoria) : "—"}
+                        {categoriaLabel ?? (categoria ? formatTipo(categoria) : "—")}
                       </div>
                     ) : (
                       <Select
@@ -284,7 +304,9 @@ export function CadastroDocumentoInternoDialog({
                         onValueChange={(v) => v && setCategoriaId(v)}
                       >
                         <SelectTrigger className={selectTriggerClass}>
-                          <SelectValue placeholder="Selecione a categoria" />
+                          <SelectValue placeholder="Selecione a categoria">
+                            {categoriaLabel ?? null}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent className={selectContentClass}>
                           {categorias.map((t) => (
@@ -323,7 +345,9 @@ export function CadastroDocumentoInternoDialog({
                           formError && !processoId && "border-destructive ring-destructive/30"
                         )}
                       >
-                        <SelectValue placeholder="Selecione o setor" />
+                        <SelectValue placeholder="Selecione o setor">
+                          {setorLabel ?? null}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent className={selectContentClass}>
                         {departments.map((d) => (

@@ -152,7 +152,6 @@ export function linhaCsvParaAvaliacao(linha: LinhaCsvAeps): AvaliacaoFornecedor 
 
   const notas = {
     qualidade: linha.notaQualidade,
-    compromisso: linha.notaCompromisso,
     prazo: mediaExtra,
     atendimento: mediaExtra,
     preco: mediaExtra,

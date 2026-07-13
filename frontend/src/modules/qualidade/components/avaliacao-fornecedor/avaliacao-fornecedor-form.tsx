@@ -160,6 +160,7 @@ export function AvaliacaoFornecedorForm({ onSuccess }: AvaliacaoFornecedorFormPr
           <AvaliacaoMetadadosForm
             metadados={metadados}
             responsavelNome={responsavelNome}
+            fornecedorId={fornecedorSelecionado.id}
             onChange={setMetadados}
           />
 

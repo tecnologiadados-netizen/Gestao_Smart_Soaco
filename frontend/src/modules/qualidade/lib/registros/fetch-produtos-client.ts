@@ -1,3 +1,4 @@
+import { apiFetch } from "@/api/client";
 import {
   PRODUTOS_INITIAL_LIMIT,
   PRODUTOS_MIN_SEARCH_CHARS,
@@ -9,6 +10,8 @@ import type { ProdutoErp } from "@qualidade/types/produto-erp";
 export interface FetchProdutosOptions {
   q?: string;
   codigo?: string;
+  /** Filtra apenas produtos do pedido de venda Nomus (itempedido). */
+  pedidoId?: string;
   limit?: number;
 }
 
@@ -23,15 +26,18 @@ export async function fetchProdutosClient(
   if (options.codigo?.trim()) {
     params.set("codigo", options.codigo.trim());
   }
+  if (options.pedidoId?.trim()) {
+    params.set("pedidoId", options.pedidoId.trim());
+  }
 
   params.set(
     "limit",
     String(options.limit ?? PRODUTOS_INITIAL_LIMIT)
   );
 
-  const response = await fetch(`${QUALIDADE_API_BASE}/produtos?${params.toString()}`, {
-    cache: "no-store",
-  });
+  const response = await apiFetch(
+    `${QUALIDADE_API_BASE}/produtos?${params.toString()}`
+  );
 
   if (!response.ok) {
     throw new Error("Não foi possível carregar os produtos.");
