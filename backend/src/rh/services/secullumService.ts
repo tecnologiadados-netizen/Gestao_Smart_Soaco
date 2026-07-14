@@ -188,6 +188,15 @@ function afastamentoVigente(
   });
 }
 
+/** Afastamento cuja justificativa indica férias (ex.: JustificativaNome "FÉRIAS"). */
+function afastamentoEhFerias(af: RawAfastamento): boolean {
+  const texto = `${limpar(af.JustificativaNome)} ${limpar(af.Motivo)}`
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return texto.includes('FERIAS');
+}
+
 function mapFuncionario(
   f: RawFuncionario,
   motivosById: Map<number, string>,
@@ -207,9 +216,14 @@ function mapFuncionario(
   } else {
     const af = afastamentoVigente(afastamentos, numeroFolha);
     if (af) {
-      statusFuncionario = 'Afastado';
       const detalhe = limpar(af.JustificativaNome) || limpar(af.Motivo);
-      statusDetalhado = detalhe ? `Afastado - ${detalhe}` : 'Afastado';
+      if (afastamentoEhFerias(af)) {
+        statusFuncionario = 'Férias';
+        statusDetalhado = detalhe && detalhe.toUpperCase() !== 'FÉRIAS' ? `Férias - ${detalhe}` : 'Férias';
+      } else {
+        statusFuncionario = 'Afastado';
+        statusDetalhado = detalhe ? `Afastado - ${detalhe}` : 'Afastado';
+      }
     }
   }
 
@@ -252,13 +266,18 @@ export async function fetchSecullumFuncionarios(): Promise<SecullumFuncionario[]
   }
   const token = await getAccessToken(cfg);
 
+  // A Secullum rejeita dataFim muito distante (ex.: 2100) com HTTP 400; usa hoje+4 anos.
+  const dataFim = `${new Date().getFullYear() + 4}-12-31`;
   const [funcionariosRaw, motivosRaw, afastamentosRaw] = await Promise.all([
     apiGet<RawFuncionario[]>('Funcionarios', token),
     apiGet<RawDescricao[]>('MotivosDemissao', token).catch(() => [] as RawDescricao[]),
     apiGet<RawAfastamento[]>(
-      'FuncionariosAfastamentos?dataInicio=2000-01-01&dataFim=2100-12-31',
+      `FuncionariosAfastamentos?dataInicio=2000-01-01&dataFim=${dataFim}`,
       token,
-    ).catch(() => [] as RawAfastamento[]),
+    ).catch((err) => {
+      console.error('[secullum] Falha ao buscar FuncionariosAfastamentos:', err);
+      return [] as RawAfastamento[];
+    }),
   ]);
 
   const motivosById = new Map<number, string>();
