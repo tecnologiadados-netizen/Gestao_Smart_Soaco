@@ -722,7 +722,7 @@ const Cargos = () => {
               {areas.map((area) => {
                 const checked = selectedAreas.includes(area);
                 return (
-                  <label key={area} className="inline-flex items-center gap-2 text-xs border border-border px-2 py-1 cursor-pointer">
+                  <label key={area} className="rh-filter-chip">
                     <input
                       type="checkbox"
                       checked={checked}
@@ -733,7 +733,7 @@ const Cargos = () => {
                         );
                       }}
                     />
-                    <span>{area}</span>
+                    <span className="font-medium">{area}</span>
                   </label>
                 );
               })}
@@ -752,7 +752,7 @@ const Cargos = () => {
             <div className="border border-border bg-card shadow-level-1 mb-8 overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-border bg-muted">
+              <tr className="border-b-2 border-border bg-secondary/60">
                 <th
                   className="text-left p-4 label-industrial cursor-pointer select-none"
                   onClick={(e) => handleSortClick("cargo", e.ctrlKey)}
@@ -841,7 +841,7 @@ const Cargos = () => {
                             e.stopPropagation();
                             setExpandedCargoRows((prev) => ({ ...prev, [c.cargo]: !prev[c.cargo] }));
                           }}
-                          className="mt-0.5 shrink-0 inline-flex size-7 items-center justify-center border border-border bg-background text-foreground hover:bg-muted"
+                          className="mt-0.5 shrink-0 inline-flex size-7 items-center justify-center rounded-md border border-input bg-card text-foreground shadow-level-1 hover:bg-muted"
                         >
                           {cargoListaExpanded ? <Minus className="size-3.5" aria-hidden /> : <Plus className="size-3.5" aria-hidden />}
                         </button>
@@ -866,7 +866,7 @@ const Cargos = () => {
                             }));
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          className="w-32 ml-auto text-right bg-background border border-border px-2 py-1 text-xs"
+                          className="rh-inline-field w-32 ml-auto text-right px-2 py-1.5 text-xs tabular-nums"
                         />
                       </div>
                     </td>
@@ -887,7 +887,7 @@ const Cargos = () => {
                             }));
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          className="w-32 ml-auto text-right bg-background border border-border px-2 py-1 text-xs"
+                          className="rh-inline-field w-32 ml-auto text-right px-2 py-1.5 text-xs tabular-nums"
                         />
                       </div>
                     </td>
@@ -1130,7 +1130,7 @@ const Cargos = () => {
             <div className="border border-border bg-card shadow-level-1 mb-8 overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-border bg-muted">
+                  <tr className="border-b-2 border-border bg-secondary/60">
                     <th
                       className="text-left p-4 label-industrial cursor-pointer select-none"
                       onClick={(e) => handleSimSortClick("cargo", e.ctrlKey)}
@@ -1219,7 +1219,7 @@ const Cargos = () => {
                                 e.stopPropagation();
                                 setExpandedCargoRows((prev) => ({ ...prev, [c.cargo]: !prev[c.cargo] }));
                               }}
-                              className="mt-0.5 shrink-0 inline-flex size-7 items-center justify-center border border-border bg-background text-foreground hover:bg-muted"
+                              className="mt-0.5 shrink-0 inline-flex size-7 items-center justify-center rounded-md border border-input bg-card text-foreground shadow-level-1 hover:bg-muted"
                             >
                               {cargoListaExpandedSim ? <Minus className="size-3.5" aria-hidden /> : <Plus className="size-3.5" aria-hidden />}
                             </button>
@@ -1244,7 +1244,7 @@ const Cargos = () => {
                                 }));
                               }}
                               onClick={(e) => e.stopPropagation()}
-                              className="w-32 ml-auto text-right bg-background border border-border px-2 py-1 text-xs"
+                              className="rh-inline-field w-32 ml-auto text-right px-2 py-1.5 text-xs tabular-nums"
                             />
                           </div>
                         </td>
@@ -1265,7 +1265,7 @@ const Cargos = () => {
                                 }));
                               }}
                               onClick={(e) => e.stopPropagation()}
-                              className="w-32 ml-auto text-right bg-background border border-border px-2 py-1 text-xs"
+                              className="rh-inline-field w-32 ml-auto text-right px-2 py-1.5 text-xs tabular-nums"
                             />
                           </div>
                         </td>

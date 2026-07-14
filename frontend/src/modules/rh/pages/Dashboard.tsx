@@ -48,17 +48,13 @@ import DiagnosticoGeralAusenciasJustificadas from "@rh/pages/DiagnosticoGeralAus
 import AbsenteismoPorHorasTab from "@rh/pages/FaltasAtestados/absenteismo-por-horas/AbsenteismoPorHorasTab";
 import { OrganicoCard } from "@rh/pages/Organico/OrganicoCard";
 import { ORGANICO_IDX, parseDateBR } from "@rh/pages/Organico/organico-derive";
+import {
+  rhChartAxisTick,
+  rhChartCategoryTick,
+  rhChartTooltipStyle,
+  useRhChartTheme,
+} from "@rh/lib/chart-theme";
 
-const TOP_SETORES_GRADIENT = [
-  "#0B1F3A",
-  "#12305A",
-  "#1A4380",
-  "#2459A6",
-  "#3B72BF",
-  "#5A8FD4",
-  "#7BA9E3",
-  "#9BC1ED",
-];
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"] as const;
 
 type TurnoverPointPayload = Pick<TurnoverSeriesPoint, "year" | "month">;
@@ -164,6 +160,7 @@ function formatTenure(meses: number): string {
 }
 
 const Dashboard = () => {
+  const chart = useRhChartTheme();
   const navigate = useNavigate();
   const [selectedTurnoverPoint, setSelectedTurnoverPoint] = useState<{
     year: number;
@@ -614,15 +611,15 @@ const Dashboard = () => {
             <div className="mt-4 h-[260px] relative overflow-visible">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={turnoverChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(20,2%,90%)" />
-                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#808080" }} />
-                  <YAxis tick={{ fontSize: 10, fill: "#808080" }} domain={[0, "auto"]} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+                  <XAxis dataKey="month" tick={rhChartAxisTick(chart)} />
+                  <YAxis tick={rhChartAxisTick(chart)} domain={[0, "auto"]} />
                   <Tooltip content={TurnoverEvolutionTooltip} />
                   <Line
                     type="monotone"
                     dataKey="value"
-                    stroke="#1A4380"
-                    strokeWidth={2}
+                    stroke={chart.linePrimary}
+                    strokeWidth={2.5}
                     dot={(props: { cx?: number; cy?: number; payload?: TurnoverPointPayload; index?: number }) => (
                       <g
                         key={`dot-${props.payload?.year}-${props.payload?.month}-${props.index ?? 0}`}
@@ -630,7 +627,7 @@ const Dashboard = () => {
                         style={{ cursor: "pointer" }}
                       >
                         <circle cx={props.cx} cy={props.cy} r={10} fill="transparent" />
-                        <circle cx={props.cx} cy={props.cy} r={3} fill="#12305A" />
+                        <circle cx={props.cx} cy={props.cy} r={3} fill={chart.lineDot} />
                       </g>
                     )}
                     activeDot={(props: { cx?: number; cy?: number; payload?: TurnoverPointPayload; index?: number }) => (
@@ -640,7 +637,7 @@ const Dashboard = () => {
                         style={{ cursor: "pointer" }}
                       >
                         <circle cx={props.cx} cy={props.cy} r={12} fill="transparent" />
-                        <circle cx={props.cx} cy={props.cy} r={5} fill="#5A8FD4" />
+                        <circle cx={props.cx} cy={props.cy} r={5} fill={chart.lineDotActive} stroke={chart.dotStrokeActive} strokeWidth={2} />
                       </g>
                     )}
                   />
@@ -777,7 +774,7 @@ const Dashboard = () => {
                               className="h-full rounded-sm pointer-events-none"
                               style={{
                                 width: `${widthPct}%`,
-                                backgroundColor: TOP_SETORES_GRADIENT[idx % TOP_SETORES_GRADIENT.length],
+                                backgroundColor: chart.sectorGradient[idx % chart.sectorGradient.length],
                               }}
                             />
                           </div>
@@ -809,21 +806,21 @@ const Dashboard = () => {
                     layout="vertical"
                     margin={{ top: 8, right: 12, left: 4, bottom: 8 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(20,2%,90%)" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 10, fill: "#808080" }} allowDecimals={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} horizontal={false} />
+                    <XAxis type="number" tick={rhChartAxisTick(chart)} allowDecimals={false} />
                     <YAxis
                       dataKey="sector"
                       type="category"
-                      tick={{ fontSize: 11, fill: "#041E42" }}
+                      tick={rhChartCategoryTick(chart)}
                       width={132}
                       interval={0}
                     />
-                    <Tooltip contentStyle={{ border: "1px solid #e5e5e5", borderRadius: 0, fontSize: 12 }} />
-                    <Bar dataKey="count" fill="#12305A" barSize={22} maxBarSize={28}>
+                    <Tooltip contentStyle={rhChartTooltipStyle(chart)} labelStyle={{ color: chart.tooltipText }} itemStyle={{ color: chart.tooltipText }} />
+                    <Bar dataKey="count" fill={chart.barPrimary} barSize={22} maxBarSize={28}>
                       {headcountData.map((entry, index) => (
                         <Cell
                           key={index}
-                          fill={entry.count > 1000 ? "#3B72BF" : "#12305A"}
+                          fill={entry.count > 1000 ? chart.barLarge : chart.barPrimary}
                         />
                       ))}
                     </Bar>

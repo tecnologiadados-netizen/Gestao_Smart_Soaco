@@ -14,7 +14,8 @@
     "patch:dfc-receitas-fin": "node scripts/patch-dfc-move-para-receitas-financeiras.cjs",
     "patch:dfc-recompra-desp-fin": "node scripts/patch-dfc-recompra-despesas-fin.cjs",
     "patch:dfc-aporte-rec-fin": "node scripts/patch-dfc-aporte-receitas-fin.cjs",
-    "patch:dfc-fornecedores": "node scripts/patch-dfc-fornecedores-custos.cjs"
+    "patch:dfc-fornecedores": "node scripts/patch-dfc-fornecedores-custos.cjs",
+    "sync:modelos": "node scripts/sync-modelos-xlsx.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

@@ -68,6 +68,7 @@ import {
 } from "@rh/lib/api-client";
 import { normalizePontualidadePontoRows } from "@rh/lib/pontualidade-ponto-normalize";
 import { cn } from "@rh/lib/utils";
+import { useRhChartTheme } from "@rh/lib/chart-theme";
 import { textIncludesSearch } from "@rh/lib/normalize-search-text";
 import { useToast } from "@rh/hooks/use-toast";
 import { useSavingOverlay } from "@rh/contexts/saving-overlay-context";
@@ -105,7 +106,6 @@ const WEEKDAY_LONG = [
 ] as const;
 const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
 const RANKING_TOP = [5, 10, 15, 20, 25, 30, 50] as const;
-const CHART_COLOR = "hsl(var(--primary))";
 
 /**
  * Entrada considerada "no horário" se o atraso em relação ao início previsto da jornada for ≤ este valor (min).
@@ -460,6 +460,7 @@ function PainelMultiSelect({ label, options, selected, onChange, disabled }: Pai
 }
 
 export default function AbsenteismoPorHorasTab({ canEdit = true }: { canEdit?: boolean }) {
+  const chart = useRhChartTheme();
   const { toast } = useToast();
   const { runWithSaving } = useSavingOverlay();
   const queryClient = useQueryClient();
@@ -1647,9 +1648,9 @@ export default function AbsenteismoPorHorasTab({ canEdit = true }: { canEdit?: b
                             <Line
                               type="monotone"
                               dataKey="indice"
-                              stroke={CHART_COLOR}
+                              stroke={chart.barPrimary}
                               strokeWidth={2}
-                              dot={{ r: 3, fill: CHART_COLOR }}
+                              dot={{ r: 3, fill: chart.barPrimary }}
                               activeDot={{ r: 5 }}
                             />
                           </RechartsLineChart>
@@ -1811,7 +1812,7 @@ export default function AbsenteismoPorHorasTab({ canEdit = true }: { canEdit?: b
                         {aggByColaborador.map((a) => (
                           <Cell
                             key={a.key}
-                            fill={CHART_COLOR}
+                            fill={chart.barPrimary}
                             opacity={
                               crossSafe.colaboradorNome != null && crossSafe.colaboradorNome !== a.key ? 0.35 : 1
                             }
@@ -2041,7 +2042,7 @@ export default function AbsenteismoPorHorasTab({ canEdit = true }: { canEdit?: b
                   />
                   <Bar
                     dataKey="qtd"
-                    fill={CHART_COLOR}
+                    fill={chart.barPrimary}
                     radius={[4, 4, 0, 0]}
                     cursor="pointer"
                     onClick={(d) => {
@@ -2249,7 +2250,7 @@ export default function AbsenteismoPorHorasTab({ canEdit = true }: { canEdit?: b
                   />
                   <Bar
                     dataKey="qtd"
-                    fill={CHART_COLOR}
+                    fill={chart.barPrimary}
                     radius={[4, 4, 0, 0]}
                     cursor="pointer"
                     onClick={(d) => {

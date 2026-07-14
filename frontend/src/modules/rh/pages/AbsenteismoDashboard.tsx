@@ -74,6 +74,11 @@ import {
 import { FaltasAusenciasMirrorTable } from "@rh/pages/FaltasAtestados/FaltasAusenciasMirrorTable";
 import { getStatusFromRow, ORGANICO_IDX } from "@rh/pages/Organico/organico-derive";
 import { cn } from "@rh/lib/utils";
+import {
+  rhChartAxisTick,
+  rhChartCategoryTick,
+  useRhChartTheme,
+} from "@rh/lib/chart-theme";
 import type { FaltaRow, OrganicoRow, SancaoDisciplinarRow } from "@rh/types/api";
 
 type ClassificacaoAusencia = "justificada" | "injustificada" | "indefinida";
@@ -1111,13 +1116,6 @@ function buildAbsenteismoFromFaltas(
   };
 }
 
-const RANKING_TOOLTIP_JUST_FILL = "#059669";
-const RANKING_TOOLTIP_INJUST_FILL = "#dc2626";
-
-/**
- * Deve ser ≥ largura do YAxis: o Recharts reserva `margin.left` para o eixo; se for menor que o eixo,
- * o gráfico desloca as barras (efeito “vazio à esquerda”).
- */
 const RANKING_INNER_CHART_MARGIN_LEFT = 56;
 const RANKING_INNER_CHART_MARGIN_RIGHT = 24;
 
@@ -1128,6 +1126,7 @@ function RankingAusenciasDetalheConteudo({
   bar: RankingFuncionario & { funcionarioKey?: string };
   det: RankingColaboradorTooltipModel | undefined;
 }) {
+  const chart = useRhChartTheme();
   const pctJ = det?.temClassificacao ? det.pctJustificadas : null;
   const pctI = det?.temClassificacao ? det.pctInjustificadas : null;
   const totalDias = det?.totalDiasPerdidos ?? bar.totalQuantidade;
@@ -1204,17 +1203,17 @@ function RankingAusenciasDetalheConteudo({
                       barCategoryGap="8%"
                       barGap={3}
                     >
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(20,2%,90%)" vertical={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
                       {serie.map((p) =>
                         p.yearDividerBefore ? (
-                          <ReferenceLine key={`ranking-yl-${p.ym}`} x={p.ym} stroke="hsl(220,9%,82%)" strokeWidth={1} />
+                          <ReferenceLine key={`ranking-yl-${p.ym}`} x={p.ym} stroke={chart.referenceLine} strokeWidth={1} />
                         ) : null,
                       )}
                       <XAxis
                         dataKey="ym"
                         type="category"
                         tickLine={false}
-                        axisLine={{ stroke: "hsl(220,9%,88%)" }}
+                        axisLine={{ stroke: chart.grid }}
                         interval={0}
                         height={48}
                         tick={(props: { x: number; y: number; payload: { value: string } }) => {
@@ -1225,14 +1224,14 @@ function RankingAusenciasDetalheConteudo({
                             <g transform={`translate(${x},${y})`}>
                               <text
                                 textAnchor="middle"
-                                fill="hsl(215,16%,40%)"
+                                fill={chart.axisCategory}
                                 fontSize={10}
                                 dy={p.showAnoLinha ? 10 : 16}
                               >
                                 {p.mesCurto}
                               </text>
                               {p.showAnoLinha ? (
-                                <text textAnchor="middle" fill="hsl(215,11%,50%)" fontSize={9} dy={20}>
+                                <text textAnchor="middle" fill={chart.axisTick} fontSize={9} dy={20}>
                                   {p.ano}
                                 </text>
                               ) : null}
@@ -1240,7 +1239,7 @@ function RankingAusenciasDetalheConteudo({
                           );
                         }}
                       />
-                      <YAxis tick={{ fontSize: 10, fill: "hsl(215,16%,45%)" }} width={48} allowDecimals domain={[0, "auto"]} />
+                      <YAxis tick={rhChartAxisTick(chart)} width={48} allowDecimals domain={[0, "auto"]} />
                       <Legend
                         layout="horizontal"
                         verticalAlign="bottom"
@@ -1257,7 +1256,7 @@ function RankingAusenciasDetalheConteudo({
                       <Bar
                         dataKey="justificadas"
                         name="Justificadas"
-                        fill={RANKING_TOOLTIP_JUST_FILL}
+                        fill={chart.success}
                         maxBarSize={64}
                         radius={[2, 2, 0, 0]}
                       >
@@ -1271,7 +1270,7 @@ function RankingAusenciasDetalheConteudo({
                       <Bar
                         dataKey="injustificadas"
                         name="Injustificadas"
-                        fill={RANKING_TOOLTIP_INJUST_FILL}
+                        fill={chart.danger}
                         maxBarSize={64}
                         radius={[2, 2, 0, 0]}
                       >
@@ -1373,6 +1372,7 @@ function TendenciasFaltasTooltip({
   }>;
   label?: string;
 }) {
+  const chart = useRhChartTheme();
   if (!active || !payload?.length) return null;
   const row = payload[0]?.payload;
   if (!row) return null;
@@ -1397,14 +1397,14 @@ function TendenciasFaltasTooltip({
       <div className="mt-2 space-y-1.5 border-b border-border pb-2">
         <div className="flex justify-between gap-4">
           <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-            <span className="h-2 w-2 rounded-full bg-[#2438b8]" />
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: chart.legendBlue }} />
             Dias perdidos
           </span>
           <span className="shrink-0 font-semibold text-foreground tabular-nums">{formatDecimalPt(diasPerdidosTooltip)}</span>
         </div>
         <div className="flex justify-between gap-4">
           <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-            <span className="h-2 w-2 rounded-full bg-[#d99000]" />
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: chart.legendGold }} />
             Taxa de absenteísmo
           </span>
           <span className="shrink-0 font-semibold text-foreground tabular-nums">{taxaFmt}</span>
@@ -1675,6 +1675,7 @@ function SancoesDetalhePainelConteudo({
 }
 
 export default function AbsenteismoDashboard() {
+  const chart = useRhChartTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isSyncing, setIsSyncing] = useState(false);
@@ -1730,7 +1731,7 @@ export default function AbsenteismoDashboard() {
       const y = Number(shapeProps.y ?? 0);
       const width = Number(shapeProps.width ?? 0);
       const height = Number(shapeProps.height ?? 0);
-      const fill = String(shapeProps.fill ?? "#2438b8");
+      const fill = String(shapeProps.fill ?? chart.barPrimary);
       const payload = shapeProps.payload as (RankingFuncionario & { funcionarioKey?: string }) | undefined;
       if (!payload) {
         return <rect x={x} y={y} width={width} height={height} fill={fill} rx={2} ry={2} />;
@@ -1752,7 +1753,7 @@ export default function AbsenteismoDashboard() {
         />
       );
     },
-    [openRankingAusenciasContextMenu],
+    [openRankingAusenciasContextMenu, chart.barPrimary],
   );
 
   useEffect(() => {
@@ -2302,7 +2303,7 @@ export default function AbsenteismoDashboard() {
           cy={cy}
           r={isActive ? 6 : 4}
           fill={strokeColor}
-          stroke={isActive ? "hsl(220, 14%, 96%)" : "transparent"}
+          stroke={isActive ? chart.dotStrokeActive : "transparent"}
           strokeWidth={isActive ? 2 : 0}
           className="cursor-pointer"
           onClick={(e) => {
@@ -2602,11 +2603,11 @@ export default function AbsenteismoDashboard() {
             <p className="text-xs text-muted-foreground">Dias perdidos e taxa de abs por mês.</p>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-[#2438b8]" />
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: chart.legendBlue }} />
                 Dias perdidos
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-[#d99000]" />
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: chart.legendGold }} />
                 Taxa de absenteísmo
               </span>
             </div>
@@ -2614,13 +2615,13 @@ export default function AbsenteismoDashboard() {
           <div className="h-[320px] [&_.recharts-layer.recharts-line-dots]:outline-none">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={derived.serieMensal}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(20,2%,90%)" />
-                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748b" }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 10, fill: "#64748b" }} allowDecimals={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+                <XAxis dataKey="label" tick={rhChartAxisTick(chart)} />
+                <YAxis yAxisId="left" tick={rhChartAxisTick(chart)} allowDecimals={false} />
                 <YAxis
                   yAxisId="right"
                   orientation="right"
-                  tick={{ fontSize: 10, fill: "#64748b" }}
+                  tick={rhChartAxisTick(chart)}
                   domain={[0, taxaTrendAxisMax]}
                   tickFormatter={(v) => `${formatIntPt(Number(v))}%`}
                 />
@@ -2630,20 +2631,20 @@ export default function AbsenteismoDashboard() {
                   type="monotone"
                   dataKey="totalQuantidade"
                   name="Dias perdidos"
-                  stroke="#2438b8"
+                  stroke={chart.linePrimary}
                   strokeWidth={2.4}
-                  dot={renderTendenciaDot("#2438b8", "dias")}
-                  activeDot={{ r: 6 }}
+                  dot={renderTendenciaDot(chart.linePrimary, "dias")}
+                  activeDot={{ r: 6, fill: chart.lineDotActive }}
                 />
                 <Line
                   yAxisId="right"
                   type="monotone"
                   dataKey="taxaAbsenteismo"
                   name="Taxa de absenteísmo"
-                  stroke="#d99000"
+                  stroke={chart.lineSecondary}
                   strokeWidth={2}
-                  dot={renderTendenciaDot("#d99000", "taxa")}
-                  activeDot={{ r: 5 }}
+                  dot={renderTendenciaDot(chart.lineSecondary, "taxa")}
+                  activeDot={{ r: 5, fill: chart.lineDotActive }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -2674,9 +2675,9 @@ export default function AbsenteismoDashboard() {
           <div className="h-[320px] [&_.recharts-rectangle]:cursor-pointer">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={derived.serieMensal}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(20,2%,90%)" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748b" }} />
-                <YAxis tick={{ fontSize: 10, fill: "#64748b" }} allowDecimals={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                <XAxis dataKey="label" tick={rhChartAxisTick(chart)} />
+                <YAxis tick={rhChartAxisTick(chart)} allowDecimals={false} />
                 <Tooltip content={<DashboardTooltip />} />
                 <Bar
                   dataKey="justificadas"
@@ -2694,8 +2695,8 @@ export default function AbsenteismoDashboard() {
                       key={`j-${entry.ym}`}
                       fill={
                         chartDrilldown?.type === "mes" && chartDrilldown.ym === entry.ym
-                          ? "#34d399"
-                          : "#059669"
+                          ? chart.successActive
+                          : chart.success
                       }
                     />
                   ))}
@@ -2716,8 +2717,8 @@ export default function AbsenteismoDashboard() {
                       key={`i-${entry.ym}`}
                       fill={
                         chartDrilldown?.type === "mes" && chartDrilldown.ym === entry.ym
-                          ? "#f87171"
-                          : "#dc2626"
+                          ? chart.dangerActive
+                          : chart.danger
                       }
                     />
                   ))}
@@ -2738,8 +2739,8 @@ export default function AbsenteismoDashboard() {
                       key={`u-${entry.ym}`}
                       fill={
                         chartDrilldown?.type === "mes" && chartDrilldown.ym === entry.ym
-                          ? "#cbd5e1"
-                          : "#94a3b8"
+                          ? chart.neutralActive
+                          : chart.neutral
                       }
                     />
                   ))}
@@ -2766,11 +2767,11 @@ export default function AbsenteismoDashboard() {
             <p className="text-xs text-muted-foreground">Por setor — clique para filtrar.</p>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-[#2438b8]" />
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: chart.legendBlue }} />
                 Padrão
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-[#ffad00]" />
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: chart.legendGold }} />
                 Selecionado
               </span>
             </div>
@@ -2782,13 +2783,13 @@ export default function AbsenteismoDashboard() {
                 layout="vertical"
                 margin={{ top: 8, right: 24, left: 12, bottom: 8 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(20,2%,90%)" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 10, fill: "#64748b" }} allowDecimals={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} horizontal={false} />
+                <XAxis type="number" tick={rhChartAxisTick(chart)} allowDecimals={false} />
                 <YAxis
                   dataKey="setor"
                   type="category"
                   width={140}
-                  tick={{ fontSize: 11, fill: "#041E42" }}
+                  tick={rhChartCategoryTick(chart)}
                   interval={0}
                 />
                 <Tooltip content={<DashboardTooltip />} />
@@ -2804,7 +2805,7 @@ export default function AbsenteismoDashboard() {
                     <Cell
                       key={entry.setor}
                       fill={
-                        chartDrilldown?.type === "setor" && chartDrilldown.setor === entry.setor ? "#ffad00" : "#2438b8"
+                        chartDrilldown?.type === "setor" && chartDrilldown.setor === entry.setor ? chart.barSelected : chart.barPrimary
                       }
                     />
                   ))}
@@ -2829,11 +2830,11 @@ export default function AbsenteismoDashboard() {
             <p className="text-xs text-muted-foreground">% por dia — clique para filtrar.</p>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-[#cdd3ff]" />
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: chart.legendSoft }} />
                 Padrão
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-[#ffad00]" />
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: chart.legendGold }} />
                 Selecionado
               </span>
             </div>
@@ -2841,15 +2842,15 @@ export default function AbsenteismoDashboard() {
           <div className="h-[320px] [&_.recharts-rectangle]:cursor-pointer">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={derived.diasSemana} margin={{ top: 28, right: 8, left: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(20,2%,90%)" vertical={false} />
-                <XAxis dataKey="dia" tick={{ fontSize: 10, fill: "#64748b" }} interval={0} angle={-15} textAnchor="end" height={60} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                <XAxis dataKey="dia" tick={rhChartAxisTick(chart)} interval={0} angle={-15} textAnchor="end" height={60} />
                 <YAxis
-                  tick={{ fontSize: 10, fill: "#64748b" }}
+                  tick={rhChartAxisTick(chart)}
                   tickFormatter={(v) => `${formatIntPt(Number(v))}%`}
                   width={44}
                   domain={[0, (max: number) => (Number.isFinite(max) && max > 0 ? Math.min(100, Math.ceil(max / 5) * 5 + 5) : 5)]}
                 />
-                <Tooltip content={<DiasSemanaBarTooltip />} cursor={{ fill: "hsl(20,2%,96%)" }} />
+                <Tooltip content={<DiasSemanaBarTooltip />} cursor={{ fill: chart.grid }} />
                 <Bar
                   dataKey="percentual"
                   name="Total de ausências %"
@@ -2865,8 +2866,8 @@ export default function AbsenteismoDashboard() {
                       key={entry.dia}
                       fill={
                         chartDrilldown?.type === "diaSemana" && chartDrilldown.weekdayIndex === entry.weekdayIndex
-                          ? "#ffad00"
-                          : "#cdd3ff"
+                          ? chart.barSelected
+                          : chart.legendSoft
                       }
                     />
                   ))}
@@ -2995,13 +2996,13 @@ export default function AbsenteismoDashboard() {
                 content={() => null}
                 wrapperStyle={{ pointerEvents: "none", visibility: "hidden" }}
               />
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(20,2%,90%)" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 10, fill: "#64748b" }} />
+              <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} horizontal={false} />
+              <XAxis type="number" tick={rhChartAxisTick(chart)} />
               <YAxis
                 dataKey="nome"
                 type="category"
                 width={170}
-                tick={{ fontSize: 10, fill: "#041E42" }}
+                tick={rhChartCategoryTick(chart, 10)}
                 interval={0}
               />
               <Bar
@@ -3048,8 +3049,8 @@ export default function AbsenteismoDashboard() {
                       chartDrilldown?.type === "colaborador" &&
                       chartDrilldown.key ===
                         (entry.funcionarioKey ?? rankingColaboradorKeyFromNomeMatricula(entry.nome, entry.matricula))
-                        ? "#ffad00"
-                        : "#2438b8"
+                        ? chart.barSelected
+                        : chart.barPrimary
                     }
                   />
                 ))}

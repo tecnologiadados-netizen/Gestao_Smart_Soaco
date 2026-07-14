@@ -4,6 +4,7 @@ import {
   getFaltasCadastros,
   getSancoesDisciplinares,
   getSecullumFuncionarios,
+  isApiConfigured,
 } from '@rh/lib/api-client'
 import type { FaltaRow, SancaoDisciplinarRow } from '@rh/types/api'
 import {
@@ -173,7 +174,7 @@ function toSancaoRowsFromSistema(rows: SancaoDisciplinarRow[]): SancaoRow[] {
   }))
 }
 
-export default function App() {
+export default function App({ embedded = false }: { embedded?: boolean }) {
   const [allRows, setAllRows] = useState<AbsenceRow[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [from, setFrom] = useState('')
@@ -216,15 +217,24 @@ export default function App() {
         }))
         const regrasMap = buildFaltasTiposRegrasMap(regras)
         const rowsSistema = toAbsenceRowsFromSistema(faltas, regrasMap)
-        if (!cancelled && rowsSistema.length > 0) {
+        if (!cancelled) {
           setAllRows(rowsSistema)
-          bootstrapDates(rowsSistema)
+          if (rowsSistema.length > 0) bootstrapDates(rowsSistema)
           setLoadError(null)
           return
         }
       } catch {
-        // fallback para planilha
+        if (embedded || isApiConfigured()) {
+          if (!cancelled) {
+            setLoadError('Não foi possível carregar os dados de ausências do sistema.')
+            setAllRows([])
+          }
+          return
+        }
       }
+
+      if (embedded) return
+
       try {
         const cached = await getImportedSpreadsheetCache()
         if (cached && !cancelled) {
@@ -260,7 +270,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [bootstrapDates, refreshTick])
+  }, [bootstrapDates, embedded, refreshTick])
 
   useEffect(() => {
     let cancelled = false
@@ -419,29 +429,31 @@ export default function App() {
   const topGruposCidRank = useMemo(() => topGruposSintomaCid(filteredIndicadores, 15), [filteredIndicadores])
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
-      <header className="relative z-20 w-full shrink-0 border-b border-white/10 bg-[#071426] text-white shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
-        <div className="flex flex-col gap-5 px-5 py-4 sm:px-8 sm:py-5 lg:px-10">
-          <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-4">
-            <img
-              src="/logo-so-aco.png"
-              alt="Só Aço"
-              className="h-9 w-auto max-h-11 max-w-[min(100%,220px)] shrink-0 object-contain object-left sm:h-11 sm:max-w-[260px]"
-              width={220}
-              height={44}
-              decoding="async"
-            />
-            <span className="shrink-0 select-none px-0.5 text-2xl font-extralight leading-none text-brand-amber" aria-hidden>
-              |
-            </span>
-            <h1 className="min-w-0 text-lg font-bold leading-tight tracking-tight text-white sm:text-xl lg:text-2xl">
-              Análise de ausências e medidas corretivas
-            </h1>
+    <div className={`flex flex-col ${embedded ? 'min-h-0 bg-transparent' : 'min-h-screen bg-page'}`}>
+      {!embedded ? (
+        <header className="relative z-20 w-full shrink-0 border-b border-white/10 bg-[#071426] text-white shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
+          <div className="flex flex-col gap-5 px-5 py-4 sm:px-8 sm:py-5 lg:px-10">
+            <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-4">
+              <img
+                src="/logo-so-aco.png"
+                alt="Só Aço"
+                className="h-9 w-auto max-h-11 max-w-[min(100%,220px)] shrink-0 object-contain object-left sm:h-11 sm:max-w-[260px]"
+                width={220}
+                height={44}
+                decoding="async"
+              />
+              <span className="shrink-0 select-none px-0.5 text-2xl font-extralight leading-none text-brand-amber" aria-hidden>
+                |
+              </span>
+              <h1 className="min-w-0 text-lg font-bold leading-tight tracking-tight text-white sm:text-xl lg:text-2xl">
+                Análise de ausências e medidas corretivas
+              </h1>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      ) : null}
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 pt-6">
+      <div className={`flex min-h-0 min-w-0 flex-1 flex-col gap-6 ${embedded ? 'pt-0' : 'pt-6'}`}>
         <FloatingFiltersPanel
           from={from}
           to={to}
@@ -462,12 +474,21 @@ export default function App() {
           onClearFilters={limparFiltrosDimensao}
         />
 
-        <main className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pb-6 sm:px-8 sm:pb-8">
+        <main className={`flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto ${embedded ? 'px-0 pb-2' : 'px-6 pb-6 sm:px-8 sm:pb-8'}`}>
 
           {loadError ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-              {loadError} — coloque <code className="rounded bg-red-100 px-1">faltas-atestados.xlsx</code> em{' '}
-              <code className="rounded bg-red-100 px-1">web/public/</code> ou confira os dados de ausências no sistema RH.
+            <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {loadError}
+              {embedded ? (
+                <span className="mt-1 block text-muted-foreground">
+                  Verifique a conexão com o servidor ou importe registros em Faltas e Atestados.
+                </span>
+              ) : (
+                <span className="mt-1 block text-muted-foreground">
+                  Coloque <code className="rounded bg-muted px-1">faltas-atestados.xlsx</code> em{' '}
+                  <code className="rounded bg-muted px-1">web/public/</code> ou confira os dados de ausências no sistema RH.
+                </span>
+              )}
             </div>
           ) : null}
 

@@ -3,8 +3,13 @@ import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
 import type { SancaoDisciplinarRow } from "@rh/types/api";
 import {
+  applyRowStyleTemplates,
+  extractRowStyleTemplates,
+} from "@rh/lib/excel-modelo-styles";
+import {
   emptySancaoFields,
   SANCOES_SHEET_MAIN,
+  SANCOES_MODELO_HEADERS,
   mapSanHeaderToField,
   normalizeSanHeader,
 } from "./sancoes-disciplinares-excel";
@@ -144,12 +149,16 @@ export function useSancoesDisciplinaresExcel() {
     await workbook.xlsx.load(ab);
     const wsMain = workbook.getWorksheet(SANCOES_SHEET_MAIN);
     if (!wsMain) throw new Error(`Planilha "${SANCOES_SHEET_MAIN}" não encontrada no modelo`);
+    const dataStyleTemplates = extractRowStyleTemplates(wsMain, 2, SANCOES_MODELO_HEADERS.length);
+    const dataRowHeight = wsMain.getRow(2).height;
     const lastMain = wsMain.lastRow?.number ?? 1;
     if (lastMain > 1) {
       wsMain.spliceRows(2, lastMain - 1);
     }
     for (const row of rows) {
-      wsMain.addRow(rowToExportArray(row));
+      const excelRow = wsMain.addRow(rowToExportArray(row));
+      applyRowStyleTemplates(excelRow, dataStyleTemplates);
+      if (dataRowHeight != null) excelRow.height = dataRowHeight;
     }
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], {

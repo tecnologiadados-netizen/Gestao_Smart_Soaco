@@ -586,7 +586,7 @@ function DistribuicaoDiasDonut({ d }: { d: DistribuicaoDiasPerdidosTipo }) {
     { key: 'f', name: 'Faltas injustificadas', value: d.faltasInjustificadas, fill: LINE.inj },
     {
       key: 'o',
-      name: 'Declarações / outros justificados',
+      name: 'Declaração / outros',
       value: d.declaracoesOutrosJustificados,
       fill: '#94a3b8',
     },
@@ -594,8 +594,8 @@ function DistribuicaoDiasDonut({ d }: { d: DistribuicaoDiasPerdidosTipo }) {
   const pieData = sliceDefs.filter((s) => s.value > 0)
 
   return (
-    <div className="mt-6 flex min-h-0 flex-col gap-8 lg:min-h-[380px] lg:flex-row lg:items-center lg:justify-between lg:gap-8 xl:gap-12">
-      <div className="relative mx-auto aspect-square w-full max-w-[min(480px,92vw)] shrink-0 sm:max-w-[440px] lg:mx-0 lg:w-[min(100%,480px)] lg:max-w-[480px]">
+    <div className="mt-6 flex flex-col gap-6">
+      <div className="relative mx-auto aspect-square w-full max-w-[min(280px,88%)] shrink-0">
         {pieData.length > 0 ? (
           <>
             <ResponsiveContainer width="100%" height="100%">
@@ -631,24 +631,24 @@ function DistribuicaoDiasDonut({ d }: { d: DistribuicaoDiasPerdidosTipo }) {
             </div>
           </>
         ) : (
-          <div className="flex h-full w-full items-center justify-center rounded-2xl border border-dashed border-black/10 bg-page text-sm text-brand-gray">
+          <div className="flex aspect-square w-full items-center justify-center rounded-2xl border border-dashed border-black/10 bg-page px-4 text-center text-sm text-brand-gray">
             Sem dados no filtro
           </div>
         )}
       </div>
-      <ul className="flex min-h-0 min-w-0 flex-1 flex-col justify-center gap-5 sm:gap-6 lg:py-2">
+      <ul className="flex w-full flex-col gap-3">
         {sliceDefs.map((s) => {
           const pct = total > 0 ? (s.value / total) * 100 : 0
           return (
-            <li key={s.key} className="flex gap-4">
+            <li key={s.key} className="flex min-w-0 items-start gap-3">
               <span
-                className="mt-1 h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-black/5 sm:h-4 sm:w-4"
+                className="mt-1 h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-black/5 sm:mt-1.5 sm:h-4 sm:w-4"
                 style={{ backgroundColor: s.fill }}
                 aria-hidden
               />
-              <div className="min-w-0">
-                <p className="text-[15px] font-semibold leading-snug text-brand-ink sm:text-base">{s.name}</p>
-                <p className="mt-1 text-base tabular-nums text-brand-gray sm:text-lg">
+              <div className="min-w-0 flex-1">
+                <p className="break-words text-sm font-semibold leading-snug text-brand-ink">{s.name}</p>
+                <p className="mt-1 text-sm tabular-nums text-brand-gray">
                   {fmtPt(s.value)} ({pctFmt(pct)}%)
                 </p>
               </div>
@@ -680,8 +680,8 @@ function DonutTop3({
 
   return (
     <div className="mt-6">
-      <div className="flex min-h-0 flex-col gap-8 lg:min-h-[380px] lg:flex-row lg:items-center lg:justify-between lg:gap-8 xl:gap-12">
-        <div className="relative mx-auto aspect-square w-full max-w-[min(480px,92vw)] shrink-0 sm:max-w-[440px] lg:mx-0 lg:w-[min(100%,480px)] lg:max-w-[480px]">
+      <div className="flex flex-col gap-6">
+        <div className="relative mx-auto aspect-square w-full max-w-[min(280px,88%)] shrink-0">
           {pieData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height="100%">
@@ -723,24 +723,24 @@ function DonutTop3({
               </div>
             </>
           ) : (
-            <div className="flex h-full w-full items-center justify-center rounded-2xl border border-dashed border-black/10 bg-page text-sm text-brand-gray">
+            <div className="flex aspect-square w-full items-center justify-center rounded-2xl border border-dashed border-black/10 bg-page px-4 text-center text-sm text-brand-gray">
               Sem dados no filtro
             </div>
           )}
         </div>
-        <ul className="flex min-h-0 min-w-0 flex-1 flex-col justify-center gap-5 sm:gap-6 lg:py-2">
+        <ul className="flex w-full flex-col gap-3">
           {items.map((s) => {
             const pct = total > 0 ? (s.value / total) * 100 : 0
             return (
-              <li key={s.key} className="flex gap-4">
+              <li key={s.key} className="flex min-w-0 items-start gap-3">
                 <span
-                  className="mt-1 h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-black/5 sm:h-4 sm:w-4"
+                  className="mt-1 h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-black/5 sm:mt-1.5 sm:h-4 sm:w-4"
                   style={{ backgroundColor: s.fill }}
                   aria-hidden
                 />
-                <div className="min-w-0">
-                  <p className="text-[15px] font-semibold leading-snug text-brand-ink sm:text-base">{s.name}</p>
-                  <p className="mt-1 text-base tabular-nums text-brand-gray sm:text-lg">
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-sm font-semibold leading-snug text-brand-ink">{s.name}</p>
+                  <p className="mt-1 text-sm tabular-nums text-brand-gray">
                     {fmtPt(s.value)} ({pctFmt(pct)}%)
                   </p>
                 </div>
@@ -3122,20 +3122,18 @@ export function ChartsBoard({
           <h2 className="text-base font-bold uppercase tracking-wide text-navy">
             Distribuição dos dias perdidos por tipo
           </h2>
-          <p className="mt-1 text-sm text-brand-gray">
-            Soma de QNTD no período: atestados (coluna tipo), faltas injustificadas e demais tipos justificados /
-            declarações agrupados em «outros».
+          <p className="mt-1 text-sm leading-relaxed text-brand-gray">
+            Soma de QNTD no período: atestados, faltas injustificadas e demais tipos justificados.
           </p>
           <DistribuicaoDiasDonut d={distribuicaoDiasTipo} />
         </section>
 
         <section className="rounded-2xl border border-black/5 bg-white p-6 shadow-soft">
           <h2 className="text-lg font-bold text-navy">Quais os principais CIDs?</h2>
-          <p className="text-sm text-brand-gray">
-            Top 15 grupos de sintomas (CID-10) por dias perdidos (QNTD).{' '}
-            <span className="font-medium text-brand-ink">Clique num grupo</span> para ver cada CID da planilha e os
-            dias respectivos. Utilize os filtros do painel para afinar período, área, setor ou líder antes de analisar o
-            ranking.
+          <p className="mt-1 text-sm leading-relaxed text-brand-gray">
+            Top 15 grupos CID-10 por dias perdidos.{' '}
+            <span className="font-medium text-brand-ink">Clique num grupo</span> para ver cada CID e os dias
+            respectivos.
           </p>
           <div className="mt-4">
             <RankingGruposCidLista lista={topGruposCid} rows={rows} />

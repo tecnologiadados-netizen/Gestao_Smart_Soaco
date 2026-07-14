@@ -27,7 +27,7 @@
   --secondary: #e7ebfb;
   --secondary-foreground: #10233f;
   --muted: #e9eef5;
-  --muted-foreground: #53657f;
+  --muted-foreground: #3d5168;
   --accent: var(--soaco-gold, #ffad00);
   --accent-foreground: #10233f;
   --destructive: #dc2626;
@@ -36,8 +36,8 @@
   --success-foreground: #ffffff;
   --warning: var(--soaco-gold, #ffad00);
   --warning-foreground: #10233f;
-  --border: rgb(4 30 66 / 0.14);
-  --input: rgb(4 30 66 / 0.18);
+  --border: rgb(4 30 66 / 0.24);
+  --input: rgb(4 30 66 / 0.34);
   --ring: #3047d0;
   --header: var(--soaco-navy, #041e42);
   --header-foreground: #ffffff;
@@ -82,10 +82,10 @@
   --secondary: #252d42;
   --secondary-foreground: #eef1ff;
   --muted: #222a36;
-  --muted-foreground: #a9b6c8;
+  --muted-foreground: #c0cbd8;
   --accent: var(--soaco-gold, #ffad00);
-  --border: rgb(148 163 184 / 0.25);
-  --input: rgb(148 163 184 / 0.32);
+  --border: rgb(148 163 184 / 0.38);
+  --input: rgb(148 163 184 / 0.48);
   --ring: #7b88ff;
   --shadow-1: 0 3px 8px rgb(0 0 0 / 0.3);
   --shadow-2: 0 12px 28px -8px rgb(0 0 0 / 0.55), 0 3px 8px rgb(0 0 0 / 0.3);
@@ -97,7 +97,90 @@
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  color: color-mix(in oklch, var(--foreground) 72%, var(--muted-foreground));
+}
+
+/* Abas, campos e chips — contraste reforçado em todo o RH */
+.rh-module [role='tablist'],
+.rh-portal [role='tablist'] {
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-1);
+}
+
+.rh-module [role='tab']:not([data-state='active']),
+.rh-portal [role='tab']:not([data-state='active']) {
+  color: color-mix(in oklch, var(--foreground) 82%, transparent);
+  font-weight: 500;
+}
+
+.rh-module [role='tab'][data-state='active'],
+.rh-portal [role='tab'][data-state='active'] {
+  font-weight: 600;
+}
+
+.rh-module .rh-inline-field,
+.rh-portal .rh-inline-field {
+  border: 1px solid var(--input);
+  background: var(--card);
+  color: var(--foreground);
+  border-radius: calc(var(--radius) * 0.75);
+  box-shadow: var(--shadow-1);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.rh-module .rh-inline-field::placeholder,
+.rh-portal .rh-inline-field::placeholder {
   color: var(--muted-foreground);
+}
+
+.rh-module .rh-inline-field:hover:not(:disabled),
+.rh-portal .rh-inline-field:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--primary) 45%, var(--input));
+}
+
+.rh-module .rh-inline-field:focus,
+.rh-portal .rh-inline-field:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 38%, transparent), var(--shadow-1);
+}
+
+.rh-module .rh-inline-field:disabled,
+.rh-portal .rh-inline-field:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  background: var(--muted);
+}
+
+.rh-module .rh-filter-chip,
+.rh-portal .rh-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--foreground);
+  background: var(--card);
+  border: 1px solid var(--input);
+  border-radius: calc(var(--radius) * 0.75);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.rh-module .rh-filter-chip:hover,
+.rh-portal .rh-filter-chip:hover {
+  background: var(--muted);
+  border-color: color-mix(in oklch, var(--primary) 40%, var(--input));
+}
+
+.rh-module input[type='checkbox'],
+.rh-portal input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--primary);
+  cursor: pointer;
 }
 
 .rh-module .kpi-value {
@@ -139,6 +222,11 @@
 
 .rh-portal [data-slot="select-content"],
 .rh-portal [data-slot="dialog-content"] {
+  z-index: 200;
+}
+
+.rh-portal [data-radix-toast-viewport],
+.rh-portal [data-sonner-toaster] {
   z-index: 200;
 }
 
@@ -235,4 +323,51 @@
   border-radius: 50%;
   background: color-mix(in oklch, var(--accent) 18%, transparent);
   animation: rh-saving-pulse 1.15s ease-in-out infinite;
+}
+
+/* Painel Diagnóstico Geral — tokens e ajustes no tema integrado */
+.rh-diagnostico {
+  --diagnostico-page: var(--muted);
+  --diagnostico-ink: var(--foreground);
+  --diagnostico-navy: var(--brand-navy);
+  --diagnostico-navy-soft: #0a2a5c;
+  --diagnostico-shadow-card: var(--shadow-2);
+  --diagnostico-shadow-soft: var(--shadow-1);
+  color: var(--foreground);
+}
+
+.dark .rh-diagnostico {
+  --diagnostico-navy: #b8c9e8;
+  --diagnostico-navy-soft: #1a3050;
+}
+
+/* Substitui fundos fixos do sub-app legado no tema escuro */
+.dark .rh-diagnostico .bg-white {
+  background-color: var(--card) !important;
+}
+
+.dark .rh-diagnostico .hover\:bg-white:hover {
+  background-color: var(--muted) !important;
+}
+
+.dark .rh-diagnostico .bg-slate-50\/60 {
+  background-color: color-mix(in oklch, var(--card) 70%, var(--muted)) !important;
+}
+
+.dark .rh-diagnostico .odd\:bg-white:nth-child(odd) {
+  background-color: var(--card) !important;
+}
+
+.dark .rh-diagnostico .even\:bg-page\/35:nth-child(even) {
+  background-color: color-mix(in oklch, var(--muted) 55%, transparent) !important;
+}
+
+.dark .rh-diagnostico .border-black\/5,
+.dark .rh-diagnostico .border-black\/8,
+.dark .rh-diagnostico .border-black\/10 {
+  border-color: var(--border) !important;
+}
+
+.dark .rh-diagnostico input[type='date'] {
+  color-scheme: dark;
 }

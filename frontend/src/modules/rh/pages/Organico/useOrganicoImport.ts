@@ -11,7 +11,6 @@ import {
   adaptarFormulaParaLinha,
   COLUNAS_NUMERICAS_VAZIO_ZERO,
   COLUNAS_FORMULA_MOEDA,
-  NUMFMT_MOEDA_BR,
   COLUNAS_TEXTO_PRESERVAR,
   ORGANICO_COLUNAS_BENEFICIOS_SIM_NAO_EXCEL,
   COLUNA_CPF,
@@ -28,6 +27,12 @@ import {
   ORGANICO_COLUNAS_TEXTO_FINANCEIRO,
   readOrganicoFinancialCell,
 } from "./organico-financial-text";
+import {
+  createDefaultModeloExportStyle,
+  type ModeloCellStyle,
+  type ModeloExportStyle,
+} from "./organico-excel-styles";
+import { cloneExcelStyleValue } from "@rh/lib/excel-modelo-styles";
 
 export type OrganicoCell = string | number;
 export type OrganicoSheetRow = OrganicoCell[];
@@ -152,26 +157,6 @@ function toExcelValue(value: unknown, colIndex: number): string | number {
   return s;
 }
 
-type ModeloMoedaStyle = {
-  numFmt: string;
-  alignment?: Partial<ExcelJS.Alignment>;
-};
-
-type ModeloCellStyle = {
-  fill?: ExcelJS.Fill;
-  font?: Partial<ExcelJS.Font>;
-  alignment?: Partial<ExcelJS.Alignment>;
-  border?: Partial<ExcelJS.Borders>;
-};
-
-type ModeloExportStyle = {
-  moeda: ModeloMoedaStyle;
-  headerHeight: number;
-  columnWidths: number[];
-  headerStyles: ModeloCellStyle[];
-  dataStyles: ModeloCellStyle[];
-};
-
 let modeloExportStylePromise: Promise<ModeloExportStyle> | null = null;
 let excelJsModulePromise: Promise<typeof import("exceljs").default> | null = null;
 
@@ -183,8 +168,7 @@ async function getExcelJS(): Promise<typeof import("exceljs").default> {
 }
 
 function cloneStyleValue<T>(value: T | undefined): T | undefined {
-  if (!value) return undefined;
-  return JSON.parse(JSON.stringify(value)) as T;
+  return cloneExcelStyleValue(value);
 }
 
 async function getModeloExportStyle(): Promise<ModeloExportStyle> {
@@ -247,16 +231,11 @@ async function getModeloExportStyle(): Promise<ModeloExportStyle> {
           }
         }
       } catch {
-        // Fallback seguro caso o modelo não esteja disponível.
+        // modelo-organico.xlsx ausente ou inválido — aplica layout Só Aço parametrizado.
+        return createDefaultModeloExportStyle();
       }
 
-      return {
-        moeda: { numFmt: NUMFMT_MOEDA_BR },
-        headerHeight: 22,
-        columnWidths: ORGANICO_HEADERS.map(() => 16),
-        headerStyles: ORGANICO_HEADERS.map(() => ({})),
-        dataStyles: ORGANICO_HEADERS.map(() => ({})),
-      };
+      return createDefaultModeloExportStyle();
     })();
   }
 

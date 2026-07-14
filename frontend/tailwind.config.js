@@ -106,6 +106,13 @@ export default {
         'brand-blue-muted': 'var(--brand-blue-muted)',
         'brand-gray': 'var(--brand-gray)',
         'brand-yellow': 'var(--brand-yellow)',
+        'brand-ink': 'var(--diagnostico-ink, #2e2d2c)',
+        'brand-amber': 'var(--soaco-gold, #ffad00)',
+        navy: {
+          DEFAULT: 'var(--diagnostico-navy, #041e42)',
+          soft: 'var(--diagnostico-navy-soft, #0a2a5c)',
+        },
+        page: 'var(--diagnostico-page, var(--background))',
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -118,6 +125,8 @@ export default {
         'level-3': 'var(--shadow-3)',
         soaco: '0 6px 18px -6px rgb(4 30 66 / 0.16)',
         'soaco-lg': '0 14px 34px -10px rgb(4 30 66 / 0.24)',
+        card: 'var(--diagnostico-shadow-card, 0 4px 24px rgb(4 30 66 / 0.06))',
+        soft: 'var(--diagnostico-shadow-soft, 0 2px 12px rgb(46 45 44 / 0.06))',
       },
     },
   },

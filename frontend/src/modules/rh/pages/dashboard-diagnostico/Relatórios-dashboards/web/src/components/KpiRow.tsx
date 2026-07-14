@@ -98,19 +98,19 @@ export function KpiRow({ kpis, heroJustificadas }: Props) {
     <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <HeroJustificadasCard hero={heroJustificadas} />
 
-      <div className="flex h-full min-h-0 flex-col rounded-2xl border border-black/5 bg-white p-4 shadow-soft">
+      <div className="flex h-full min-h-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-soft">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-brand-gray">Total de dias</p>
         <p className="mt-1 text-2xl font-bold leading-tight text-navy sm:text-3xl">{fmt(kpis.total)}</p>
         <p className="mt-auto pt-2 text-[11px] leading-snug text-brand-gray">{fmt(kpis.ocorrencias)} ocorrências no filtro</p>
       </div>
 
-      <div className="flex h-full min-h-0 flex-col rounded-2xl border border-black/5 bg-white p-4 shadow-soft">
+      <div className="flex h-full min-h-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-soft">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-brand-gray">Justificadas</p>
         <p className="mt-1 text-2xl font-bold leading-tight text-brand-blue sm:text-3xl">{fmt(kpis.jus)}</p>
         <p className="mt-auto pt-2 text-[11px] leading-snug text-brand-gray">{kpis.pctJus.toFixed(1)}% do total (período)</p>
       </div>
 
-      <div className="flex h-full min-h-0 flex-col rounded-2xl border border-black/5 bg-white p-4 shadow-soft">
+      <div className="flex h-full min-h-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-soft">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-brand-gray">Injustificadas</p>
         <p className="mt-1 text-2xl font-bold leading-tight text-navy sm:text-3xl">{fmt(kpis.inj)}</p>
         <p className="mt-auto pt-2 text-[11px] leading-snug text-brand-gray">Procedente / colaborador</p>

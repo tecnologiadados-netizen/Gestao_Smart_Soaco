@@ -23,6 +23,7 @@ import {
   type AtestadosEvolucaoPonto,
 } from "@rh/pages/FaltasAtestados/atestados-relatorio-logic";
 import type { FaltaRow } from "@rh/types/api";
+import { useRhChartTheme } from "@rh/lib/chart-theme";
 
 function formatIntPt(value: number): string {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(value);
@@ -42,14 +43,6 @@ type AtestadosRelatorioDialogProps = {
   /** Linhas do colaborador (mesmo recorte da trajetória; o modelo considera só atestados). */
   rows: FaltaRow[];
 };
-
-/** Alinhado ao painel de absenteísmo (ranking / tendências). */
-const ABS_CHART_BAR = "#2f3138";
-const ABS_CHART_LINE = "#2f3138";
-const ABS_CHART_GRID = "hsl(20,2%,90%)";
-const ABS_CHART_AXIS_TICK = "#808080";
-/** Destaque de barra/ponto selecionado (bronze do painel). */
-const ABS_CHART_SELECTED = "#b38b63";
 
 const Y_LABEL_MAX_LINES = 5;
 const Y_LABEL_LINE_HEIGHT = 11;
@@ -120,13 +113,13 @@ type YAxisTickProps = {
   payload?: { value?: string | number };
 };
 
-function HorizBarYAxisTick(props: YAxisTickProps & { maxCharsPerLine: number }) {
-  const { x = 0, y = 0, payload, maxCharsPerLine } = props;
+function HorizBarYAxisTick(props: YAxisTickProps & { maxCharsPerLine: number; axisFill: string }) {
+  const { x = 0, y = 0, payload, maxCharsPerLine, axisFill } = props;
   const raw = String(payload?.value ?? "");
   const lines = wrapLabelLines(raw, maxCharsPerLine, Y_LABEL_MAX_LINES);
   const startDy = -((lines.length - 1) * Y_LABEL_LINE_HEIGHT) / 2;
   return (
-    <text x={x} y={y} textAnchor="end" fill={ABS_CHART_AXIS_TICK} fontSize={10}>
+    <text x={x} y={y} textAnchor="end" fill={axisFill} fontSize={10}>
       {lines.map((line, i) => (
         <tspan key={i} x={x} dy={i === 0 ? startDy : Y_LABEL_LINE_HEIGHT}>
           {line}
@@ -197,6 +190,7 @@ function EvolucaoTemporalBlock({
   mesYmAtivo?: string;
   onMesClick?: (ym: string) => void;
 }) {
+  const chart = useRhChartTheme();
   if (data.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-card p-4 shadow-level-1 min-w-0">
@@ -227,27 +221,27 @@ function EvolucaoTemporalBlock({
           <ComposedChart data={data} margin={{ left: 4, right: 12, top: 8, bottom: xAngle !== 0 ? 56 : 28 }}>
             <defs>
               <linearGradient id="evolucaoAtestadosArea" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={ABS_CHART_LINE} stopOpacity={0.55} />
-                <stop offset="55%" stopColor={ABS_CHART_LINE} stopOpacity={0.14} />
-                <stop offset="100%" stopColor={ABS_CHART_LINE} stopOpacity={0} />
+                <stop offset="0%" stopColor={chart.linePrimary} stopOpacity={0.55} />
+                <stop offset="55%" stopColor={chart.linePrimary} stopOpacity={0.14} />
+                <stop offset="100%" stopColor={chart.linePrimary} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke={ABS_CHART_GRID} vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
             <XAxis
               dataKey="label"
-              tick={{ fontSize: manyPontos ? 8 : 10, fill: ABS_CHART_AXIS_TICK }}
+              tick={{ fontSize: manyPontos ? 8 : 10, fill: chart.axisTick }}
               interval={manyPontos ? Math.max(0, Math.floor(data.length / 14)) : 0}
               angle={xAngle}
               textAnchor="end"
               height={xAngle !== 0 ? 64 : 28}
             />
-            <YAxis tick={{ fontSize: 11, fill: ABS_CHART_AXIS_TICK }} allowDecimals={false} width={44} />
+            <YAxis tick={{ fontSize: 11, fill: chart.axisTick }} allowDecimals={false} width={44} />
             <Tooltip content={<EvolucaoTooltip />} />
             <Area
               type="monotone"
               dataKey="quantidade"
               name="Atestados no mês"
-              stroke={ABS_CHART_LINE}
+              stroke={chart.linePrimary}
               strokeWidth={2.5}
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -262,15 +256,15 @@ function EvolucaoTemporalBlock({
                     cx={cx}
                     cy={cy}
                     r={r}
-                    fill={active ? ABS_CHART_SELECTED : ABS_CHART_LINE}
-                    stroke="hsl(var(--card))"
+                    fill={active ? chart.barSelected : chart.linePrimary}
+                    stroke={chart.dotStrokeActive}
                     strokeWidth={2}
                     style={{ cursor: onMesClick ? "pointer" : undefined }}
                     onClick={() => ym && onMesClick?.(ym)}
                   />
                 );
               }}
-              activeDot={{ r: 6, fill: ABS_CHART_SELECTED }}
+              activeDot={{ r: 6, fill: chart.barSelected }}
               connectNulls
             />
           </ComposedChart>
@@ -303,6 +297,7 @@ function BarBlock({
   filtro?: AtestadoCrossFilter;
   onCrossClick?: (dim: BarDim, name: string) => void;
 }) {
+  const chart = useRhChartTheme();
   const hasData = data.some((d) => d.quantidade > 0);
   if (!hasData) {
     return (
@@ -325,7 +320,7 @@ function BarBlock({
     return false;
   };
 
-  const barFill = (name: string) => (dim && isBarActive(name) ? ABS_CHART_SELECTED : ABS_CHART_BAR);
+  const barFill = (name: string) => (dim && isBarActive(name) ? chart.barSelected : chart.barPrimary);
 
   const handleBarClick = (payload: { name?: string }) => {
     if (!dim || !onCrossClick || payload?.name == null) return;
@@ -353,8 +348,8 @@ function BarBlock({
           <div style={{ height: chartHeight, minWidth: Math.min(720, yW + 120) }} className="min-h-[200px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart layout="vertical" data={data} margin={{ left: 4, right: 12, top: 8, bottom: 8 }} barCategoryGap="12%">
-                <CartesianGrid strokeDasharray="3 3" stroke={ABS_CHART_GRID} vertical={false} />
-                <XAxis type="number" tick={{ fontSize: 11, fill: ABS_CHART_AXIS_TICK }} allowDecimals={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                <XAxis type="number" tick={{ fontSize: 11, fill: chart.axisTick }} allowDecimals={false} />
                 <YAxis
                   type="category"
                   dataKey="name"
@@ -363,10 +358,10 @@ function BarBlock({
                   tickMargin={6}
                   tick={
                     truncateTicks ? (
-                      { fontSize: 10, fill: ABS_CHART_AXIS_TICK }
+                      { fontSize: 10, fill: chart.axisTick }
                     ) : (
                       (tickProps: YAxisTickProps) => (
-                        <HorizBarYAxisTick {...tickProps} maxCharsPerLine={maxCharsPerLine} />
+                        <HorizBarYAxisTick {...tickProps} maxCharsPerLine={maxCharsPerLine} axisFill={chart.axisCategory} />
                       )
                     )
                   }
@@ -403,16 +398,16 @@ function BarBlock({
       <div className="h-[min(300px,36vh)] w-full min-h-[220px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ left: 8, right: 8, top: 8, bottom: 48 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={ABS_CHART_GRID} vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
             <XAxis
               dataKey="name"
-              tick={{ fontSize: 10, fill: ABS_CHART_AXIS_TICK }}
+              tick={{ fontSize: 10, fill: chart.axisTick }}
               interval={0}
               angle={-35}
               textAnchor="end"
               height={64}
             />
-            <YAxis tick={{ fontSize: 11, fill: ABS_CHART_AXIS_TICK }} allowDecimals={false} />
+            <YAxis tick={{ fontSize: 11, fill: chart.axisTick }} allowDecimals={false} />
             <Tooltip content={<RankingAtestadosBarTooltip />} />
             <Bar
               dataKey="quantidade"

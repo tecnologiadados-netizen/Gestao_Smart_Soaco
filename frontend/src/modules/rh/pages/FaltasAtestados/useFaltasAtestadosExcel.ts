@@ -3,7 +3,12 @@ import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
 import type { FaltaRow, FaltaCadastrosData } from "@rh/types/api";
 import {
+  applyRowStyleTemplates,
+  extractRowStyleTemplates,
+} from "@rh/lib/excel-modelo-styles";
+import {
   emptyFaltaFields,
+  FALTAS_MODELO_HEADERS,
   FALTAS_SHEET_MAIN,
   FALTAS_SHEET_CADASTROS,
   mapFaltasHeaderToField,
@@ -234,12 +239,16 @@ export function useFaltasAtestadosExcel() {
       const wsMain = workbook.getWorksheet(FALTAS_SHEET_MAIN);
       if (!wsMain) throw new Error(`Planilha "${FALTAS_SHEET_MAIN}" não encontrada no modelo`);
 
+      const mainDataStyles = extractRowStyleTemplates(wsMain, 2, FALTAS_MODELO_HEADERS.length);
+      const mainDataRowHeight = wsMain.getRow(2).height;
       const lastMain = wsMain.lastRow?.number ?? 1;
       if (lastMain > 1) {
         wsMain.spliceRows(2, lastMain - 1);
       }
       for (const row of faltasRows) {
-        wsMain.addRow(rowToExportArray(row));
+        const excelRow = wsMain.addRow(rowToExportArray(row));
+        applyRowStyleTemplates(excelRow, mainDataStyles);
+        if (mainDataRowHeight != null) excelRow.height = mainDataRowHeight;
       }
 
       const sortVals = (items: { valor: string }[]) =>
@@ -253,13 +262,18 @@ export function useFaltasAtestadosExcel() {
       const sv = sortVals(cadastro.tiposSancoes);
       const cadWs = workbook.getWorksheet(FALTAS_SHEET_CADASTROS);
       if (cadWs) {
+        const cadCols = 4;
+        const cadDataStyles = extractRowStyleTemplates(cadWs, 2, cadCols);
+        const cadDataRowHeight = cadWs.getRow(2).height;
         const lastCad = cadWs.lastRow?.number ?? 1;
         if (lastCad > 1) {
           cadWs.spliceRows(2, lastCad - 1);
         }
         const maxR = Math.max(pv.length, tv.length, cv.length, sv.length);
         for (let i = 0; i < maxR; i++) {
-          cadWs.addRow([pv[i] ?? "", tv[i] ?? "", cv[i] ?? "", sv[i] ?? ""]);
+          const excelRow = cadWs.addRow([pv[i] ?? "", tv[i] ?? "", cv[i] ?? "", sv[i] ?? ""]);
+          applyRowStyleTemplates(excelRow, cadDataStyles);
+          if (cadDataRowHeight != null) excelRow.height = cadDataRowHeight;
         }
       }
 
