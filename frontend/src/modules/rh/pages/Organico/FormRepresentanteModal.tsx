@@ -80,7 +80,7 @@ const lblForm = "text-xs font-medium text-muted-foreground mb-1.5 block";
 const dashedInput =
   "flex h-9 w-full min-w-0 rounded-lg border border-dashed border-muted-foreground/35 bg-background px-3 text-sm text-foreground shadow-none transition-colors placeholder:text-foreground focus-visible:border-solid focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:ring-offset-0 read-only:text-foreground disabled:cursor-not-allowed disabled:text-foreground disabled:opacity-100 md:text-sm";
 const dashedInputRead =
-  "cursor-default bg-muted/45 border-muted-foreground/25 text-foreground placeholder:text-foreground read-only:text-foreground";
+  "cursor-default bg-muted border-muted-foreground/25 text-foreground placeholder:text-foreground read-only:text-foreground";
 
 function FormSection({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (

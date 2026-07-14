@@ -26,7 +26,8 @@
     "backfill:sycro-aguarda-labels": "tsx scripts/backfill-sycroorder-aguarda-resposta-label.ts",
     "seed:cubagem-inicial": "tsx scripts/seed-cubagem-inicial.ts",
     "import:rh-migration": "tsx scripts/import-rh-migration-export.ts",
-    "reimport:rh-fotos": "tsx scripts/reimport-rh-fotos.ts"
+    "reimport:rh-fotos": "tsx scripts/reimport-rh-fotos.ts",
+    "seed:rh-grupos": "tsx scripts/seed-rh-grupos-permissoes.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

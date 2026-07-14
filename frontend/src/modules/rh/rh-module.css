@@ -152,6 +152,77 @@
   background: var(--muted);
 }
 
+/* Inputs nativos (modal orgânico, faltas, etc.) — contraste no tema escuro */
+.dark .rh-module input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']),
+.dark .rh-portal input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']),
+.dark .rh-module select,
+.dark .rh-portal select,
+.dark .rh-module textarea,
+.dark .rh-portal textarea,
+html.dark .rh-module input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']),
+html.dark .rh-portal input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']),
+html.dark .rh-module select,
+html.dark .rh-portal select,
+html.dark .rh-module textarea,
+html.dark .rh-portal textarea {
+  color: var(--foreground);
+}
+
+.dark .rh-module input:not([type='checkbox']):not([type='radio']):not(:read-only):not(:disabled),
+.dark .rh-portal input:not([type='checkbox']):not([type='radio']):not(:read-only):not(:disabled),
+.dark .rh-module select:not(:disabled),
+.dark .rh-portal select:not(:disabled),
+.dark .rh-module textarea:not(:read-only):not(:disabled),
+.dark .rh-portal textarea:not(:read-only):not(:disabled),
+html.dark .rh-module input:not([type='checkbox']):not([type='radio']):not(:read-only):not(:disabled),
+html.dark .rh-portal input:not([type='checkbox']):not([type='radio']):not(:read-only):not(:disabled),
+html.dark .rh-module select:not(:disabled),
+html.dark .rh-portal select:not(:disabled),
+html.dark .rh-module textarea:not(:read-only):not(:disabled),
+html.dark .rh-portal textarea:not(:read-only):not(:disabled) {
+  background-color: var(--card);
+}
+
+.dark .rh-module input:read-only:not([type='checkbox']):not([type='radio']),
+.dark .rh-portal input:read-only:not([type='checkbox']):not([type='radio']),
+.dark .rh-module input:disabled:not([type='checkbox']):not([type='radio']),
+.dark .rh-portal input:disabled:not([type='checkbox']):not([type='radio']),
+.dark .rh-module select:disabled,
+.dark .rh-portal select:disabled,
+.dark .rh-module textarea:read-only,
+.dark .rh-portal textarea:read-only,
+.dark .rh-module textarea:disabled,
+.dark .rh-portal textarea:disabled,
+html.dark .rh-module input:read-only:not([type='checkbox']):not([type='radio']),
+html.dark .rh-portal input:read-only:not([type='checkbox']):not([type='radio']),
+html.dark .rh-module input:disabled:not([type='checkbox']):not([type='radio']),
+html.dark .rh-portal input:disabled:not([type='checkbox']):not([type='radio']),
+html.dark .rh-module select:disabled,
+html.dark .rh-portal select:disabled,
+html.dark .rh-module textarea:read-only,
+html.dark .rh-portal textarea:read-only,
+html.dark .rh-module textarea:disabled,
+html.dark .rh-portal textarea:disabled {
+  background-color: color-mix(in oklch, var(--muted) 88%, var(--card)) !important;
+  color: var(--foreground) !important;
+  -webkit-text-fill-color: var(--foreground);
+  opacity: 1 !important;
+  border-color: color-mix(in oklch, var(--border) 92%, transparent);
+}
+
+.dark .rh-module input:-webkit-autofill,
+.dark .rh-portal input:-webkit-autofill,
+.dark .rh-module input:-webkit-autofill:read-only,
+.dark .rh-portal input:-webkit-autofill:read-only,
+html.dark .rh-module input:-webkit-autofill,
+html.dark .rh-portal input:-webkit-autofill,
+html.dark .rh-module input:-webkit-autofill:read-only,
+html.dark .rh-portal input:-webkit-autofill:read-only {
+  -webkit-box-shadow: 0 0 0 1000px color-mix(in oklch, var(--muted) 88%, var(--card)) inset !important;
+  -webkit-text-fill-color: var(--foreground) !important;
+  caret-color: var(--foreground);
+}
+
 .rh-module .rh-filter-chip,
 .rh-portal .rh-filter-chip {
   display: inline-flex;

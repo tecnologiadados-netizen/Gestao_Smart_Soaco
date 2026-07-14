@@ -69,7 +69,7 @@ const lblForm = "text-xs font-medium text-muted-foreground mb-1.5 block";
 const dashedInput =
   "flex h-9 w-full min-w-0 rounded-lg border border-dashed border-muted-foreground/35 bg-background px-3 text-sm text-foreground shadow-none transition-colors placeholder:text-foreground focus-visible:border-solid focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:ring-offset-0 read-only:text-foreground disabled:cursor-not-allowed disabled:text-foreground disabled:opacity-100 md:text-sm";
 const dashedInputRead =
-  "cursor-default bg-muted/45 border-muted-foreground/25 text-foreground placeholder:text-foreground read-only:text-foreground";
+  "cursor-default bg-muted border-muted-foreground/25 text-foreground placeholder:text-foreground read-only:text-foreground";
 const dashedSelect =
   "flex h-9 w-full min-w-0 appearance-none rounded-lg border border-dashed border-muted-foreground/35 bg-background px-3 pr-9 text-sm text-foreground shadow-none transition-colors focus-visible:border-solid focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:text-foreground disabled:opacity-100";
 
@@ -450,7 +450,7 @@ export function FormFuncionarioModal({
             id={`cell-${idx}`}
             value={cells[idx] ?? ""}
             readOnly
-            className="min-h-[88px] resize-none rounded-xl border border-dashed border-muted-foreground/35 bg-muted/45 px-3 py-2 text-sm text-foreground placeholder:text-foreground shadow-none read-only:text-foreground disabled:opacity-100"
+            className="min-h-[88px] resize-none rounded-xl border border-dashed border-muted-foreground/35 bg-muted px-3 py-2 text-sm text-foreground placeholder:text-foreground shadow-none read-only:text-foreground disabled:opacity-100"
           />
         ) : isDerivada ? (
           <Input
@@ -503,7 +503,7 @@ export function FormFuncionarioModal({
           <Textarea
             value={secullumStatusDetalhado}
             readOnly
-            className="min-h-[88px] resize-none rounded-xl border border-dashed border-muted-foreground/35 bg-muted/45 px-3 py-2 text-sm text-foreground placeholder:text-foreground shadow-none read-only:text-foreground disabled:opacity-100"
+            className="min-h-[88px] resize-none rounded-xl border border-dashed border-muted-foreground/35 bg-muted px-3 py-2 text-sm text-foreground placeholder:text-foreground shadow-none read-only:text-foreground disabled:opacity-100"
           />
         </div>
       );
@@ -534,7 +534,7 @@ export function FormFuncionarioModal({
                 id="motivo-desligamento-secullum"
                 value={textoMotivoExibido}
                 readOnly
-                className="min-h-[88px] resize-none rounded-xl border border-dashed border-muted-foreground/35 bg-muted/45 px-3 py-2 text-sm text-foreground placeholder:text-foreground shadow-none read-only:text-foreground disabled:opacity-100 whitespace-pre-wrap"
+                className="min-h-[88px] resize-none rounded-xl border border-dashed border-muted-foreground/35 bg-muted px-3 py-2 text-sm text-foreground placeholder:text-foreground shadow-none read-only:text-foreground disabled:opacity-100 whitespace-pre-wrap"
               />
             </div>
           </div>,
