@@ -1,6 +1,8 @@
 ﻿import { useRef, memo, useState, useMemo, useEffect, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Trash2, Filter, Search, Pencil, MessageSquare } from "lucide-react";
+import { FaltaAusenciaAttachmentActions } from "@rh/pages/FaltasAtestados/FaltaAusenciaAttachmentActions";
+import type { AusenciaLaunchAttachment } from "@rh/lib/launch-document-access";
 import { Popover, PopoverContent, PopoverTrigger } from "@rh/components/ui/popover";
 import { Input } from "@rh/components/ui/input";
 import { Button } from "@rh/components/ui/button";
@@ -74,6 +76,7 @@ type Props = {
   onColumnFilterApply: (key: keyof SancaoDisciplinarRow, filter: SancaoColumnFilter) => void;
   sortConfig: { key: keyof SancaoDisciplinarRow; dir: "asc" | "desc" } | null;
   onSortChange: (next: { key: keyof SancaoDisciplinarRow; dir: "asc" | "desc" } | null) => void;
+  sancaoAttachments?: Map<string, AusenciaLaunchAttachment>;
 };
 
 function ColumnHeaderExcelFilter({
@@ -361,6 +364,7 @@ function SancaoGridRowInner({
   canEdit,
   onEditRow,
   onRemoveRow,
+  attachment,
 }: {
   row: SancaoDisciplinarRow;
   rowIdx: number;
@@ -369,6 +373,7 @@ function SancaoGridRowInner({
   canEdit: boolean;
   onEditRow: Props["onEditRow"];
   onRemoveRow: Props["onRemoveRow"];
+  attachment?: AusenciaLaunchAttachment;
 }) {
   const zebra = rowIdx % 2 === 0 ? "bg-card" : "bg-muted/20";
   const motivoTrim = stripMarcaGeradaAusenciaMotivo(String(row.observacoes ?? "")).trim();
@@ -403,6 +408,7 @@ function SancaoGridRowInner({
         </div>
       ))}
       <div className="flex items-center justify-center gap-0.5 border-l border-border bg-inherit shrink-0 px-0.5">
+        {attachment ? <FaltaAusenciaAttachmentActions attachment={attachment} /> : null}
         {canEdit ? (
           <>
             <button
@@ -468,6 +474,7 @@ export function SancoesDisciplinaresVirtualGrid({
   onColumnFilterApply,
   sortConfig,
   onSortChange,
+  sancaoAttachments,
 }: Props) {
   const colSig = useMemo(() => columns.map((c) => c.key).join("|"), [columns]);
   const [pixelWidths, setPixelWidths] = useState<number[]>(() => loadPixelWidths(columns));
@@ -611,6 +618,7 @@ export function SancoesDisciplinaresVirtualGrid({
                       canEdit={canEdit}
                       onEditRow={onEditRow}
                       onRemoveRow={onRemoveRow}
+                      attachment={sancaoAttachments?.get(String(row.id))}
                     />
                   </div>
                 );

@@ -11,12 +11,11 @@ import {
   type ResolveLaunchDocumentItem,
 } from "@rh/lib/organico-documents-api";
 import {
-  ausenciaExigeAnexoDocumento,
   ausenciaSuportaAnexoDocumento,
   buildLaunchDocumentTitle,
   resolveLaunchDocumentCategory,
 } from "@rh/lib/launch-document-rules";
-import type { FaltaRow } from "@rh/types/api";
+import type { FaltaRow, SancaoDisciplinarRow } from "@rh/types/api";
 
 export type AusenciaLaunchAttachment = {
   documentId: string;
@@ -63,12 +62,12 @@ export function findAusenciaLaunchAttachment(sourceTempId: string): AusenciaLaun
   return queueItemToAttachment(id) ?? linkToAttachment("ausencia", id);
 }
 
-export function buildAusenciaAttachmentIndex(): Map<string, AusenciaLaunchAttachment> {
+function buildLaunchAttachmentIndex(source: LaunchDocumentSource): Map<string, AusenciaLaunchAttachment> {
   const map = new Map<string, AusenciaLaunchAttachment>();
   const usedDocumentIds = new Set<string>();
 
   for (const item of listAllLaunchDocuments()) {
-    if (item.source !== "ausencia" || !item.sourceTempId.trim()) continue;
+    if (item.source !== source || !item.sourceTempId.trim()) continue;
     const documentId = `test-${item.id}`;
     if (usedDocumentIds.has(documentId)) continue;
     map.set(item.sourceTempId, {
@@ -83,7 +82,7 @@ export function buildAusenciaAttachmentIndex(): Map<string, AusenciaLaunchAttach
   }
 
   for (const link of listLaunchDocumentLinks()) {
-    if (link.source !== "ausencia" || !link.sourceTempId.trim()) continue;
+    if (link.source !== source || !link.sourceTempId.trim()) continue;
     if (map.has(link.sourceTempId) || usedDocumentIds.has(link.documentId)) continue;
     map.set(link.sourceTempId, {
       documentId: link.documentId,
@@ -97,6 +96,14 @@ export function buildAusenciaAttachmentIndex(): Map<string, AusenciaLaunchAttach
   }
 
   return map;
+}
+
+export function buildAusenciaAttachmentIndex(): Map<string, AusenciaLaunchAttachment> {
+  return buildLaunchAttachmentIndex("ausencia");
+}
+
+export function buildSancaoAttachmentIndex(): Map<string, AusenciaLaunchAttachment> {
+  return buildLaunchAttachmentIndex("sancao");
 }
 
 export function buildAusenciaAttachmentResolveItems(
@@ -125,6 +132,40 @@ export function buildAusenciaAttachmentResolveItems(
       expectedTitle: buildLaunchDocumentTitle({
         category,
         dataIso: String(row.data ?? ""),
+        colaboradorNome: String(row.nomeFuncionario ?? ""),
+      }),
+    });
+  }
+  return items;
+}
+
+export function buildSancaoAttachmentResolveItems(
+  rows: SancaoDisciplinarRow[],
+  categoryOptions: string[],
+): ResolveLaunchDocumentItem[] {
+  const items: ResolveLaunchDocumentItem[] = [];
+  for (const row of rows) {
+    const sourceRecordId = String(row.id ?? "").trim();
+    const matricula = String(row.matricula ?? "").trim();
+    if (!sourceRecordId || !matricula) continue;
+    // Linhas provisórias ainda não têm id do banco — nada a resolver no servidor.
+    if (sourceRecordId.startsWith("temp-") || sourceRecordId.startsWith("import-")) continue;
+    const tipo = String(row.tipo ?? "").trim();
+    const category = resolveLaunchDocumentCategory({
+      source: "sancao",
+      tipo,
+      categoryOptions,
+    });
+    items.push({
+      source: "sancao",
+      sourceRecordId,
+      matricula,
+      data: String(row.dataAplicacao ?? "").trim().slice(0, 10),
+      tipo,
+      colaboradorNome: String(row.nomeFuncionario ?? "").trim(),
+      expectedTitle: buildLaunchDocumentTitle({
+        category,
+        dataIso: String(row.dataAplicacao ?? ""),
         colaboradorNome: String(row.nomeFuncionario ?? ""),
       }),
     });

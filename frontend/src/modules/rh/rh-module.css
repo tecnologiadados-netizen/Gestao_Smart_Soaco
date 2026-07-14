@@ -291,9 +291,13 @@ html.dark .rh-portal input:-webkit-autofill:read-only {
   box-shadow: 1px 0 0 rgb(255 255 255 / 0.22);
 }
 
-.rh-portal [data-slot="select-content"],
 .rh-portal [data-slot="dialog-content"] {
   z-index: 200;
+}
+
+/* Dropdowns portalados (select/popover/command) precisam abrir ACIMA do dialog-content (200). */
+.rh-portal [data-slot="select-content"] {
+  z-index: 300;
 }
 
 .rh-portal [data-radix-toast-viewport],

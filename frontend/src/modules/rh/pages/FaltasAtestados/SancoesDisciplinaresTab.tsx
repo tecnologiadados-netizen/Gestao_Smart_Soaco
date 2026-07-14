@@ -46,9 +46,17 @@ import {
 } from "@rh/pages/FaltasAtestados/faltas-ui-filters-persistence";
 import { syncSuspensaoAusenciasParaSancoesPadrao } from "@rh/pages/FaltasAtestados/sync-suspensao-ausencia-to-sancoes";
 import { shouldMergeVisibleRowIntoServerSnapshot } from "@rh/pages/FaltasAtestados/faltas-save-merge";
-import { isLaunchDocTestMode } from "@rh/lib/launch-document-config";
+import { isLaunchDocAttachmentEnabled, isLaunchDocTestMode } from "@rh/lib/launch-document-config";
 import { mergeTestSancoesIntoRows, upsertTestSancaoRow } from "@rh/lib/launch-document-test-records";
 import { resolveDocumentCategoryOptions } from "@rh/lib/organico-documents";
+import {
+  buildSancaoAttachmentIndex,
+  buildSancaoAttachmentResolveItems,
+  mergeAusenciaAttachmentIndex,
+} from "@rh/lib/launch-document-access";
+import { LAUNCH_DOC_LINKS_CHANGED_EVENT } from "@rh/lib/launch-document-links";
+import { LAUNCH_DOC_QUEUE_CHANGED_EVENT } from "@rh/lib/launch-document-queue";
+import { resolveLaunchDocuments } from "@rh/lib/organico-documents-api";
 
 const DASHBOARD_SANCOES_UPDATED_EVENT = "rh-dashboard-sancoes-updated";
 
@@ -195,6 +203,20 @@ export default function SancoesDisciplinaresTab({ canEdit = true }: { canEdit?: 
   const deletedIdsRef = useRef<Set<string>>(new Set());
   const { parseFile, exportToExcel } = useSancoesDisciplinaresExcel();
   const savedFilters = readFaltasSancoesFilters();
+  const launchAttachmentsEnabled = isLaunchDocAttachmentEnabled();
+  const [sancaoAttachments, setSancaoAttachments] = useState(() => buildSancaoAttachmentIndex());
+
+  useEffect(() => {
+    if (!launchAttachmentsEnabled) return;
+    const refresh = () => setSancaoAttachments(buildSancaoAttachmentIndex());
+    refresh();
+    window.addEventListener(LAUNCH_DOC_QUEUE_CHANGED_EVENT, refresh);
+    window.addEventListener(LAUNCH_DOC_LINKS_CHANGED_EVENT, refresh);
+    return () => {
+      window.removeEventListener(LAUNCH_DOC_QUEUE_CHANGED_EVENT, refresh);
+      window.removeEventListener(LAUNCH_DOC_LINKS_CHANGED_EVENT, refresh);
+    };
+  }, [launchAttachmentsEnabled]);
 
   const defaultMonth = useMemo(() => ymKey(new Date()), []);
   const [selectedMonths, setSelectedMonths] = useState<string[]>(
@@ -472,6 +494,7 @@ export default function SancoesDisciplinaresTab({ canEdit = true }: { canEdit?: 
           deletedIdsRef.current.clear();
           void queryClient.invalidateQueries({ queryKey: ["sancoes-disciplinares"] });
           void queryClient.invalidateQueries({ queryKey: ["sancoes-disciplinares-months-meta"] });
+          void queryClient.invalidateQueries({ queryKey: ["sancao-launch-documents"] });
           notifyDashboardSancoesUpdated();
           toast({
             title: isNewTemp ? "Sanção salva" : "Sanção atualizada",
@@ -574,6 +597,32 @@ export default function SancoesDisciplinaresTab({ canEdit = true }: { canEdit?: 
       return set.has(raw.slice(0, 7));
     });
   }, [data, selectedMonths]);
+
+  const attachmentResolveItems = useMemo(
+    () => buildSancaoAttachmentResolveItems(monthFiltered, documentCategoryOptions),
+    [monthFiltered, documentCategoryOptions],
+  );
+
+  const attachmentResolveKey = useMemo(
+    () => attachmentResolveItems.map((item) => item.sourceRecordId).sort().join("|"),
+    [attachmentResolveItems],
+  );
+
+  const { data: serverAttachmentLinks } = useQuery({
+    queryKey: ["sancao-launch-documents", attachmentResolveKey],
+    queryFn: () => resolveLaunchDocuments({ items: attachmentResolveItems }),
+    enabled:
+      launchAttachmentsEnabled &&
+      isApiConfigured() &&
+      !isLaunchDocTestMode() &&
+      attachmentResolveItems.length > 0,
+    staleTime: 30_000,
+  });
+
+  const mergedSancaoAttachments = useMemo(() => {
+    if (!launchAttachmentsEnabled) return undefined;
+    return mergeAusenciaAttachmentIndex(sancaoAttachments, serverAttachmentLinks?.links ?? []);
+  }, [launchAttachmentsEnabled, sancaoAttachments, serverAttachmentLinks]);
 
   const filtered = useMemo(() => {
     let rows = applyClientFilters(monthFiltered);
@@ -860,6 +909,7 @@ export default function SancoesDisciplinaresTab({ canEdit = true }: { canEdit?: 
           onColumnFilterApply={onColumnFilterApply}
           sortConfig={sortConfig}
           onSortChange={setSortConfig}
+          sancaoAttachments={mergedSancaoAttachments}
         />
       )}
 
