@@ -427,11 +427,12 @@ export function useOrganicoImport() {
           if (formulaTemplate && idPreenchido) {
             const formula = adaptarFormulaParaLinha(formulaTemplate, excelRowNum);
             const raw = cells[c];
+            const rawUpper = String(raw ?? "").trim().toUpperCase();
             const hasCached =
               raw != null &&
-              String(raw).trim() !== "" &&
-              String(raw).trim().toUpperCase() !== "#VALUE!" &&
-              String(raw).trim().toUpperCase() !== "#REF!";
+              rawUpper !== "" &&
+              // Erros de fórmula (EN e PT-BR) não devem virar resultado em cache.
+              !rawUpper.startsWith("#");
             if (hasCached) {
               const result: string | number =
                 typeof raw === "number" && Number.isFinite(raw) ? raw : String(raw);
@@ -442,8 +443,11 @@ export function useOrganicoImport() {
           } else {
             const val = cells[c];
             const isEmpty = val == null || String(val).trim() === "";
-            if (isEmpty && COLUNAS_NUMERICAS_VAZIO_ZERO.has(c)) {
-              cell.value = 0;
+            if (COLUNAS_NUMERICAS_VAZIO_ZERO.has(c)) {
+              // Coluna numérica que alimenta fórmula: vazio ou texto (ex.: "Não") vira 0,
+              // senão o Excel dá #VALOR! nas fórmulas dependentes.
+              const excelVal = isEmpty ? 0 : toExcelValue(val, c);
+              cell.value = typeof excelVal === "number" && Number.isFinite(excelVal) ? excelVal : 0;
             } else {
               cell.value = val != null ? toExcelValue(val, c) : "";
             }
