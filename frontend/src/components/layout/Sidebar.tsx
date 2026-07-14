@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { PERMISSOES, type CodigoPermissao } from '../../config/permissoes';
 import {
   PCP_MENU,
@@ -13,6 +13,7 @@ import {
   type NavMenuEntry,
   filterPcpMenuChildren,
   navMenuEntryAtivo,
+  navPathAtivo,
 } from '../../config/navigationMenu';
 import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from '../../utils/suportePermissoes';
 import { podeVerMenuFinanceiro } from '../../utils/financeiroPermissoes';
@@ -159,30 +160,20 @@ function SidebarNavLink({
   title?: string;
   external?: boolean;
 }) {
+  const { pathname } = useLocation();
+  const isActive = navPathAtivo(to, pathname);
+  const linkClass = `${SIDEBAR_LINK} ${isActive ? SIDEBAR_LINK_ACTIVE : SIDEBAR_LINK_IDLE} ${className}`;
+
   if (external) {
-    const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
-    const isActive = pathname === to || pathname.startsWith(`${to}/`);
     return (
-      <a
-        href={to}
-        title={title ?? label}
-        onClick={onNavigate}
-        className={`${SIDEBAR_LINK} ${isActive ? SIDEBAR_LINK_ACTIVE : SIDEBAR_LINK_IDLE} ${className}`}
-      >
+      <a href={to} title={title ?? label} onClick={onNavigate} className={linkClass}>
         <SidebarLabel open={sidebarOpen}>{label}</SidebarLabel>
       </a>
     );
   }
 
   return (
-    <NavLink
-      to={to}
-      title={title ?? label}
-      onClick={onNavigate}
-      className={({ isActive }) =>
-        `${SIDEBAR_LINK} ${isActive ? SIDEBAR_LINK_ACTIVE : SIDEBAR_LINK_IDLE} ${className}`
-      }
-    >
+    <NavLink to={to} title={title ?? label} onClick={onNavigate} className={linkClass} end>
       <SidebarLabel open={sidebarOpen}>{label}</SidebarLabel>
     </NavLink>
   );

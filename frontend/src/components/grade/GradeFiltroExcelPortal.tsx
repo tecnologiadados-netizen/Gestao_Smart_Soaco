@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import type { ReactNode } from 'react';
 import type { ExcelFilterDraft, SortDir } from '../../hooks/useGradeFiltrosExcel';
 import { NUMERIC_FILTER_OPTIONS, type NumericFilterOp } from '../../utils/gradeFiltroNumerico';
 
@@ -21,6 +22,8 @@ type Props = {
   /** Ordenação só é aplicada ao clicar em Ordenar (não ao escolher A/Z). */
   deferSortUntilApply?: boolean;
   applyButtonLabel?: string;
+  /** Ações extras abaixo dos botões de ordenação (ex.: autopreencher Seq.). */
+  extraActions?: ReactNode;
 };
 
 export default function GradeFiltroExcelPortal({
@@ -39,6 +42,7 @@ export default function GradeFiltroExcelPortal({
   showNumericFilters = false,
   deferSortUntilApply = false,
   applyButtonLabel = 'OK',
+  extraActions,
 }: Props) {
   const key = colunaAberta;
   const valores = valoresUnicosPorColuna[key] ?? [];
@@ -118,6 +122,13 @@ export default function GradeFiltroExcelPortal({
       <button type="button" onClick={() => escolherOrdenacao('desc')} className={sortBtnClass('desc')}>
         {sortDescLabel}
       </button>
+
+      {extraActions ? (
+        <>
+          <div className="my-2 border-t border-slate-200 dark:border-slate-600" />
+          {extraActions}
+        </>
+      ) : null}
 
       {showNumericFilters && (
         <>

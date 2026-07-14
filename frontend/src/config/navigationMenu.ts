@@ -207,8 +207,23 @@ export const PATH_LABELS: Record<string, string> = {
   '/sem-acesso': 'Sem acesso',
 };
 
+/** Paths de menu do mais específico (longo) ao mais genérico — evita pai genérico (ex.: `/pedidos`) ficar ativo em irmãos (`/pedidos/dash-entregas`). */
+const NAV_MENU_PATHS_BY_SPECIFICITY = Object.keys(PATH_LABELS)
+  .filter((p) => p !== '/')
+  .sort((a, b) => b.length - a.length || b.localeCompare(a));
+
 export function navPathAtivo(to: string, pathname: string): boolean {
-  return pathname === to || pathname.startsWith(`${to}/`);
+  if (pathname === to) return true;
+  if (!pathname.startsWith(`${to}/`)) return false;
+
+  // Prefixo só destaca se `to` for o item de menu mais específico que casa com o pathname
+  // (ex.: `/pedidos/mrp` em `/pedidos/mrp/123`; não `/pedidos` em `/pedidos/dash-entregas`).
+  for (const path of NAV_MENU_PATHS_BY_SPECIFICITY) {
+    if (pathname === path || pathname.startsWith(`${path}/`)) {
+      return path === to;
+    }
+  }
+  return true;
 }
 
 export function navMenuEntryAtivo(entry: NavMenuEntry, pathname: string): boolean {

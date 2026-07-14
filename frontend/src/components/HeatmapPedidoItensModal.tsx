@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { TooltipDetalheRow } from '../api/pedidos';
+import { formatDataCurta } from './sequenciamento-carradas/simulacaoCarradas';
+import IndicadorDataPorPrevisao from './sequenciamento-carradas/IndicadorDataPorPrevisao';
 import { labelPedidoMapa } from '../utils/mapaMunicipioPedido';
 import { formatQtdeParaInput } from '../utils/heatmapAjusteCargaGradeUi';
 import { useRegisterModalEscape } from '../contexts/ModalStackContext';
@@ -12,6 +14,12 @@ function formatarValor(valor: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(valor);
+}
+
+function formatDataColuna(value: string | undefined): string {
+  const iso = String(value ?? '').trim().slice(0, 10);
+  if (!iso) return '—';
+  return formatDataCurta(iso);
 }
 
 function formatQtde(n: number): string {
@@ -75,7 +83,7 @@ export default function HeatmapPedidoItensModal({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[min(85vh,560px)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+        className="flex max-h-[min(85vh,560px)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
         role="dialog"
         aria-modal
         aria-labelledby="heatmap-pedido-itens-titulo"
@@ -118,6 +126,12 @@ export default function HeatmapPedidoItensModal({
             <table className="w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left dark:border-slate-600 dark:bg-slate-900/50">
+                  <th className="whitespace-nowrap py-2 pr-2 font-semibold text-slate-700 dark:text-slate-200">
+                    Data de produção
+                  </th>
+                  <th className="whitespace-nowrap py-2 pr-2 font-semibold text-slate-700 dark:text-slate-200">
+                    Previsão atual
+                  </th>
                   <th className="py-2 pr-2 font-semibold text-slate-700 dark:text-slate-200">Cód.</th>
                   <th className="py-2 pr-2 font-semibold text-slate-700 dark:text-slate-200">Descrição</th>
                   <th className="py-2 pr-2 text-right font-semibold text-slate-700 dark:text-slate-200">Qtde</th>
@@ -127,6 +141,17 @@ export default function HeatmapPedidoItensModal({
               <tbody className="text-slate-700 dark:text-slate-200">
                 {ordenados.map((row, i) => (
                   <tr key={`${row.codigo}-${i}`} className="border-b border-slate-100 dark:border-slate-700">
+                    <td className="whitespace-nowrap py-1.5 pr-2 tabular-nums">
+                      <span className="inline-flex items-center gap-1">
+                        {formatDataColuna(
+                          row.producaoPorPrevisao ? row.dataCalendario ?? row.previsaoAtual : row.dataProducao
+                        )}
+                        {row.producaoPorPrevisao ? <IndicadorDataPorPrevisao /> : null}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap py-1.5 pr-2 tabular-nums">
+                      {formatDataColuna(row.previsaoAtual)}
+                    </td>
                     <td className="py-1.5 pr-2 font-mono">{row.codigo || '—'}</td>
                     <td className="max-w-[220px] py-1.5 pr-2 break-words">{row.produto || '—'}</td>
                     <td className="py-1.5 pr-2 text-right tabular-nums">{formatQtde(row.qtdePendenteReal ?? 0)}</td>
@@ -134,7 +159,7 @@ export default function HeatmapPedidoItensModal({
                   </tr>
                 ))}
                 <tr className="border-t-2 border-amber-200 bg-amber-50/80 font-semibold dark:border-amber-800 dark:bg-amber-900/30">
-                  <td className="py-2 pr-2" colSpan={2}>
+                  <td className="py-2 pr-2" colSpan={4}>
                     Total
                   </td>
                   <td className="py-2 pr-2 text-right tabular-nums">{formatQtde(totalQtde)}</td>

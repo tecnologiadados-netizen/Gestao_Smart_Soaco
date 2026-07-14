@@ -22,6 +22,8 @@ export type SequenciamentoSimulacaoItem = {
 export type SequenciamentoSimulacao = {
   ordem: string[];
   itens: SequenciamentoSimulacaoItem[];
+  /** Prioridade manual por chave de carrada (maior = mais acima). */
+  prioridades?: Record<string, number>;
   /** Rascunho de motivos por id_pedido (registro de motivos do fluxo de confirmação). */
   motivos?: Record<string, string>;
 };

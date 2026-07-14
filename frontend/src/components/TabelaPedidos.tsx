@@ -6,6 +6,8 @@ import { MensagemSemRegistros } from './MensagemSemRegistros';
 import { useGradeFiltrosExcel } from '../hooks/useGradeFiltrosExcel';
 import GradeFiltroExcelPortal from './grade/GradeFiltroExcelPortal';
 import GradeFiltroCabecalhoBtn from './grade/GradeFiltroCabecalhoBtn';
+import IndicadorDataPorPrevisao from './sequenciamento-carradas/IndicadorDataPorPrevisao';
+import { resolverDataProducaoExibicaoGerenciador } from '../utils/dataProducaoGerenciador';
 
 type SortDir = 'asc' | 'desc';
 
@@ -35,7 +37,11 @@ const COLUMNS: Array<{
     return dataOrig ?? p.previsao_entrega;
   }},
   { id: 'previsao_atual', label: 'Previsão atual', getValue: (p) => p.previsao_entrega_atualizada ?? p.previsao_entrega },
-  { id: 'data_producao', label: 'Data de produção', keys: ['data_producao'] },
+  {
+    id: 'data_producao',
+    label: 'Data de produção',
+    getValue: (p) => resolverDataProducaoExibicaoGerenciador(p).dataExibicao,
+  },
   { id: 'data_base_entrega_futura', label: 'Data base entrega futura', keys: ['Data base entrega futura'] },
   { id: 'status', label: 'Status', keys: [] },
   { id: 'historico', label: 'Histórico', keys: [] },
@@ -75,6 +81,23 @@ function statusFlagsPedido(p: Pedido): string[] {
   if (cardSinal === 'Disponível') flags.push('Disponível');
   if (linhaEstaFaturada(p)) flags.push('Faturado');
   return flags.length > 0 ? flags : ['—'];
+}
+
+function CelulaDataProducao({
+  dataFormatada,
+  pedido: p,
+}: {
+  dataFormatada: string;
+  pedido: Pedido;
+}) {
+  const { producaoPorPrevisao } = resolverDataProducaoExibicaoGerenciador(p);
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="tabular-nums text-slate-700 dark:text-slate-200">{dataFormatada}</span>
+      {producaoPorPrevisao ? <IndicadorDataPorPrevisao /> : null}
+    </div>
+  );
 }
 
 function CelulaPrevisaoAtual({
@@ -786,6 +809,13 @@ export default function TabelaPedidos({
                   return (
                     <td key={col.id} className="p-3">
                       <CelulaPrevisaoAtual dataFormatada={display} pedido={p} />
+                    </td>
+                  );
+                }
+                if (col.id === 'data_producao') {
+                  return (
+                    <td key={col.id} className="p-3">
+                      <CelulaDataProducao dataFormatada={display} pedido={p} />
                     </td>
                   );
                 }
