@@ -547,7 +547,7 @@ export function FormFuncionarioModal({
     if (idx === ORGANICO_IDX.CTPS && guiaId === "remuneracao") {
       const ctpsBruto = String(cells[idx] ?? "").trim();
       const ctpsNum = parseCtpsToNumber(cells[idx]);
-      const divisaoCtpsIndice = 1685;
+      const divisaoCtpsIndice = 1701.85;
       const indiceTexto =
         ctpsBruto.length > 0 && Number.isFinite(ctpsNum)
           ? new Intl.NumberFormat("pt-BR", {
@@ -564,14 +564,14 @@ export function FormFuncionarioModal({
             </span>
             <span className="normal-case font-normal text-muted-foreground">
               {" "}
-              (calculado · Baseado em 1.685)
+              (calculado · Baseado em 1.701,85)
             </span>
           </Label>
           <Input
             id="organico-indice-ctps"
             value={indiceTexto || "—"}
             readOnly
-            title="CTPS do colaborador ÷ 1.685,00"
+            title="CTPS do colaborador ÷ 1.701,85"
             className={cn(dashedInput, dashedInputRead)}
           />
         </div>
