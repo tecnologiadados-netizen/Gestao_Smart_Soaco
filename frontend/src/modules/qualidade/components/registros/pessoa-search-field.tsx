@@ -33,17 +33,20 @@ export function PessoaSearchField({
   const listId = useId();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const digitandoRef = useRef(false);
 
   const [termo, setTermo] = useState(value);
   const [resultados, setResultados] = useState<PessoaErp[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [aberto, setAberto] = useState(false);
-  const [selecionado, setSelecionado] = useState(Boolean(value.trim()));
+  const [selecionado, setSelecionado] = useState(() => Boolean(value.trim()));
 
   useEffect(() => {
     setTermo(value);
-    setSelecionado(Boolean(value.trim()));
+    if (!digitandoRef.current) {
+      setSelecionado(Boolean(value.trim()));
+    }
   }, [value]);
 
   async function buscarPessoas(busca: string) {
@@ -92,6 +95,7 @@ export function PessoaSearchField({
   }, []);
 
   function selecionar(pessoa: PessoaErp) {
+    digitandoRef.current = false;
     setTermo(pessoa.nome);
     setSelecionado(true);
     onValueChange(pessoa.nome);
@@ -100,6 +104,7 @@ export function PessoaSearchField({
   }
 
   function limparSelecao() {
+    digitandoRef.current = false;
     setTermo("");
     setSelecionado(false);
     onValueChange("");
@@ -134,8 +139,8 @@ export function PessoaSearchField({
             autoComplete="off"
             value={termo}
             onChange={(e) => {
+              digitandoRef.current = true;
               setTermo(e.target.value);
-              onValueChange(e.target.value);
               setSelecionado(false);
               setAberto(true);
             }}
@@ -194,7 +199,7 @@ export function PessoaSearchField({
       ) : null}
 
       <p className="text-xs text-muted-foreground">
-        Busca pessoas (funcionários) ativas no Nomus.
+        Busca pessoas ativas cadastradas no Nomus.
       </p>
     </div>
   );

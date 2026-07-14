@@ -13,6 +13,7 @@ import {
   situacaoRevalidacaoQuadro,
 } from "@qualidade/lib/documents/validity";
 import { formatarData } from "@qualidade/lib/utils/dates";
+import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { taskTypeLabels } from "@qualidade/lib/utils/status-labels";
 import {
   getTaskActionHref,
@@ -178,14 +179,13 @@ function RevalidacaoKanbanColumn({
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold leading-snug text-foreground">
-                    {doc.codigo} — {doc.titulo}
+                    {formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)} — {doc.titulo}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Vencimento:{" "}
                     {doc.validade?.dataValidade
                       ? formatarData(doc.validade.dataValidade)
-                      : "—"}{" "}
-                    · Rev. {doc.versaoAtual}
+                      : "—"}
                   </p>
                   <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                     {situacao === "disponivel"

@@ -14,6 +14,7 @@ import {
   getUltimaReprovacao,
 } from "@qualidade/components/documentos/documento-historico-workflow";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
+import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -150,7 +151,7 @@ export function ElaborarDocumentoPage() {
 
   return (
     <DocumentoWorkflowPage
-      title={`Elaboração — ${doc.codigo}`}
+      title={`Elaboração — ${formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}`}
       activeStep={1}
       onBack={() => navigate("/qualidade/documentos")}
       exiting={exiting}

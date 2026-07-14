@@ -17,6 +17,10 @@ import { getQualidadeCurrentUserId } from "@qualidade/lib/current-user";
 import type { WorkflowMovimentacao } from "@qualidade/types/workflow";
 import { generateNextDocumentCode } from "@qualidade/lib/documents/generate-code";
 import {
+  codigoBaseFromCodigo,
+  formatDocumentCodigo,
+} from "@qualidade/lib/documents/document-codigo";
+import {
   computeTaskDeadline,
   resolveTaskAssignee,
 } from "@qualidade/lib/documents/task-assignee";
@@ -70,6 +74,7 @@ interface UpdateDocumentCadastroInput {
   consensoId?: string;
   aprovadorId?: string;
   prazos?: DocumentWorkflowPrazos;
+  localizacao?: string;
   permissoes?: DocumentPermissoes;
   publicacao?: DocumentPublicacao;
   validade?: DocumentValidade;
@@ -165,6 +170,19 @@ function getCurrentVersion(
   return versions.find(
     (v) => v.documentId === documentId && v.versao === versaoAtual
   );
+}
+
+function atualizarDocumentoVersao(
+  doc: Document,
+  versao: string,
+  now: string
+): Document {
+  return {
+    ...doc,
+    versaoAtual: versao,
+    codigo: formatDocumentCodigo(doc.codigo, versao),
+    updatedAt: now,
+  };
 }
 
 function withoutPendingDocumentTasks(tasks: Task[], documentId: string) {
@@ -361,14 +379,15 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         const id = generateId("doc");
         const now = new Date().toISOString();
         const versao = formatRevision(input.versao ?? INITIAL_REVISION);
-        const codigo =
-          input.codigo ??
-          (input.tipoSigla
+        const codigoBase = input.codigo?.trim()
+          ? codigoBaseFromCodigo(input.codigo)
+          : input.tipoSigla
             ? generateNextDocumentCode(
                 input.tipoSigla,
                 get().documents.map((d) => d.codigo)
               )
-            : "");
+            : "";
+        const codigo = codigoBase ? formatDocumentCodigo(codigoBase, versao) : "";
         const skipWorkflow =
           input.origem === "externo" ||
           (input.origem === "registro" && !input.consensoId);
@@ -462,6 +481,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
                   ...d,
                   titulo: input.titulo.trim(),
                   setorId: input.setorId,
+                  localizacao: input.localizacao,
                   permissoes: input.permissoes,
                   publicacao: input.publicacao,
                   validade: mergeValidadeOnUpdate(d.validade, input.validade),
@@ -547,12 +567,11 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
           set((state) => {
             let documents = state.documents.map((d) =>
               d.id === documentId
-                ? {
-                    ...d,
-                    status: "vigente" as DocumentStatus,
-                    versaoAtual: versao,
-                    updatedAt: now,
-                  }
+                ? atualizarDocumentoVersao(
+                    { ...d, status: "vigente" as DocumentStatus },
+                    versao,
+                    now
+                  )
                 : d
             );
             let tasks = withoutPendingDocumentTasks(state.tasks, documentId);
@@ -592,12 +611,11 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         set((state) => {
           let documents = state.documents.map((d) =>
             d.id === documentId
-              ? {
-                  ...d,
-                  status: "rascunho" as DocumentStatus,
-                  versaoAtual: versao,
-                  updatedAt: now,
-                }
+              ? atualizarDocumentoVersao(
+                  { ...d, status: "rascunho" as DocumentStatus },
+                  versao,
+                  now
+                )
               : d
           );
           let tasks = withoutPendingDocumentTasks(state.tasks, documentId);

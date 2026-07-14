@@ -28,7 +28,9 @@ export function RegistroTipoSeletor({
       }}
     >
       <SelectTrigger className="h-9 w-full max-w-xl bg-background">
-        <SelectValue placeholder="Selecione o tipo de registro" />
+        <SelectValue placeholder="Selecione o tipo de registro">
+          {value ? moduloRegistroTipoLabels[value] : null}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false} className="max-h-60">
         {MODULO_REGISTRO_TIPOS.map((tipo) => (

@@ -106,7 +106,7 @@ export async function getQualidadePessoas(req: Request, res: Response): Promise<
       40,
       PESSOAS_SEARCH_LIMIT
     );
-    const result = await buscarPessoasNomus({ q, limit, apenasFuncionarios: true });
+    const result = await buscarPessoasNomus({ q, limit, apenasFuncionarios: false });
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao buscar pessoas.';

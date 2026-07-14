@@ -19,6 +19,8 @@ import {
   CardTitle,
 } from "@qualidade/components/ui/card";
 import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
+import { formatDocumentCodigo } from "@qualidade/lib/documents/document-codigo";
+import { INITIAL_REVISION } from "@qualidade/lib/documents/revision";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
@@ -42,10 +44,10 @@ export function NovoDocumentoPage() {
   const tipo = documentTypes.find((t) => t.id === tipoId);
   const tipoLabel = documentTypeSelectLabel(documentTypes, tipoId);
   const setorLabel = departmentSelectLabel(departments, setorId, "nome");
-  const codigo = useMemo(
-    () => (tipo ? getNextDocumentCode(tipo.sigla) : ""),
-    [tipo, getNextDocumentCode]
-  );
+  const codigo = useMemo(() => {
+    const base = tipo ? getNextDocumentCode(tipo.sigla) : "";
+    return base ? formatDocumentCodigo(base, INITIAL_REVISION) : "";
+  }, [tipo, getNextDocumentCode]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

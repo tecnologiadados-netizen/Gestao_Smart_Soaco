@@ -18,6 +18,11 @@ import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { calcularProximaDataValidade } from "@qualidade/lib/documents/validity";
 import { formatarData } from "@qualidade/lib/utils/dates";
+import {
+  codigoBaseFromCodigo,
+  formatDocumentCodigo,
+  formatDocumentCodigoExibicao,
+} from "@qualidade/lib/documents/document-codigo";
 
 interface Props {
   documentId: string | null;
@@ -253,14 +258,19 @@ export function SolicitarRevisaoDocumentoDialog({
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       Código
                     </p>
-                    <p className="font-semibold text-brand-navy">{doc.codigo}</p>
+                    <p className="font-semibold text-brand-navy">
+                      {formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       Nova revisão
                     </p>
                     <p className="font-semibold text-brand-blue">
-                      {doc.versaoAtual} → {proximaRevisao}
+                      {formatDocumentCodigo(
+                        codigoBaseFromCodigo(doc.codigo),
+                        proximaRevisao
+                      )}
                     </p>
                   </div>
                   <div className="sm:col-span-2">

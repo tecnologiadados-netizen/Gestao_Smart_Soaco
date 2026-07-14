@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { format } from "date-fns";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -28,6 +29,8 @@ import {
   userSelectLabel,
 } from "@qualidade/lib/utils/select-display";
 import type { SgqAnexo } from "@qualidade/types/registro-anexo";
+import { useConfigStore } from "@qualidade/lib/store/config-store";
+import { buildLocalizacaoOpcoes } from "@qualidade/lib/enderecamentos-sync";
 
 export interface ExternoRegistroFormValues {
   titulo: string;
@@ -157,9 +160,20 @@ export function DocumentoExternoRegistroCampos({
   showProcesso = true,
   showValidade = true,
 }: Props) {
+  const enderecamentos = useConfigStore((s) => s.enderecamentos);
+
   function patch(partial: Partial<ExternoRegistroFormValues>) {
     onChange({ ...values, ...partial });
   }
+
+  const localizacaoOpcoes = useMemo(
+    () => buildLocalizacaoOpcoes(enderecamentos, departments, values.localizacao),
+    [departments, enderecamentos, values.localizacao]
+  );
+
+  const localizacaoLabel =
+    localizacaoOpcoes.find((opcao) => opcao.value === values.localizacao)?.label ??
+    (values.localizacao.trim() || null);
 
   const userOptions: MultiSelectOption[] = users
     .filter((u) => u.ativo)
@@ -247,13 +261,33 @@ export function DocumentoExternoRegistroCampos({
 
         <div className="space-y-2">
           <Label className="text-base">Localização *</Label>
-          <Input
+          <Select
             value={values.localizacao}
-            onChange={(e) => patch({ localizacao: e.target.value })}
-            className="h-10 text-base"
-            placeholder="Onde o documento está armazenado"
-            required
-          />
+            onValueChange={(v) => v && patch({ localizacao: v })}
+          >
+            <SelectTrigger className={selectTriggerClass}>
+              <SelectValue placeholder="Selecione onde o documento está armazenado">
+                {localizacaoLabel}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className={selectContentClass}>
+              {localizacaoOpcoes.length === 0 ? (
+                <SelectItem value="__vazio__" disabled className={selectItemClass}>
+                  Cadastre endereços em Configurações → Endereçamento
+                </SelectItem>
+              ) : (
+                localizacaoOpcoes.map((opcao) => (
+                  <SelectItem
+                    key={opcao.value}
+                    value={opcao.value}
+                    className={selectItemClass}
+                  >
+                    {opcao.label}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="space-y-2">

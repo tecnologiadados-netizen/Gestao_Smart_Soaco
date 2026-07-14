@@ -429,7 +429,9 @@ export async function getQualidadeBootstrap() {
       lida: a.lida,
       createdAt: iso(a.createdAt),
     })),
-    registros: registros.map(mapRegistro),
+    registros: registros
+      .map(mapRegistro)
+      .filter((r) => !isRegistroNomusRncRcc(r.tipo, Boolean(r.origemNomus))),
     equipment: equipamentos.map(mapEquipamento),
     calibrationRecords: calibracoes.map(mapCalibracao),
     verificationRecords: verificacoes.map(mapVerificacao),
@@ -642,6 +644,10 @@ export async function syncQualidadeConfig(payload: {
   }
 }
 
+function isRegistroNomusRncRcc(tipo: string, origemImport: boolean): boolean {
+  return origemImport && (tipo === 'rnc' || tipo === 'rcc');
+}
+
 export async function syncQualidadeRegistros(
   registros: Array<Record<string, unknown>>,
   criadoPorLogin: string
@@ -651,6 +657,9 @@ export async function syncQualidadeRegistros(
     const tipo = String(reg.tipo ?? '');
     const numero = String(reg.numero ?? '');
     if (!uid || !tipo || !numero) continue;
+
+    const origemImport = Boolean(reg.origemNomus ?? reg.origemImport);
+    if (isRegistroNomusRncRcc(tipo, origemImport)) continue;
 
     const dados =
       tipo === 'rnc'
@@ -666,7 +675,7 @@ export async function syncQualidadeRegistros(
         status: String(reg.status ?? 'aberto'),
         codigoDocumento: String(reg.codigoDocumento ?? ''),
         responsavelLogin: String(reg.responsavelId ?? reg.responsavelLogin ?? ''),
-        origemImport: Boolean(reg.origemNomus ?? reg.origemImport),
+        origemImport,
         dadosJson: JSON.stringify(dados ?? {}),
         criadoPorLogin,
       },
@@ -1219,13 +1228,26 @@ export async function syncQualidadeAvaliacoes(avaliacoes: Array<Record<string, u
 
 export async function syncQualidadeOpcoesLista(opcoes: Record<string, string[]>) {
   for (const [chave, valores] of Object.entries(opcoes)) {
+    const normalizados = valores.map((valor) => valor.trim()).filter(Boolean);
+    const manter = new Set(normalizados);
+
+    const existentes = await prisma.sgqOpcaoLista.findMany({
+      where: { chave, ativo: true },
+    });
+    for (const row of existentes) {
+      if (!manter.has(row.valor)) {
+        await prisma.sgqOpcaoLista.update({
+          where: { id: row.id },
+          data: { ativo: false },
+        });
+      }
+    }
+
     let order = 0;
-    for (const valor of valores) {
-      const v = valor.trim();
-      if (!v) continue;
+    for (const valor of normalizados) {
       await prisma.sgqOpcaoLista.upsert({
-        where: { chave_valor: { chave, valor: v } },
-        create: { chave, valor: v, sortOrder: order++, ativo: true },
+        where: { chave_valor: { chave, valor } },
+        create: { chave, valor, sortOrder: order++, ativo: true },
         update: { sortOrder: order++, ativo: true },
       });
     }
@@ -1319,24 +1341,26 @@ function readSgqHistoricoJson<T>(fileName: string): T[] {
   }
 }
 
-/** Importa histórico Nomus (RNC/RCC/avaliações) quando ainda não há registros importados. */
-export async function ensureSgqHistoricoSeed(criadoPorLogin = 'sistema'): Promise<void> {
-  const [registrosImportados, avaliacoesImportadas] = await Promise.all([
-    prisma.sgqRegistro.count({ where: { origemImport: true } }),
-    prisma.sgqAvaliacaoFornecedor.count({ where: { origemImport: true } }),
-  ]);
-
-  if (registrosImportados === 0) {
-    const rnc = readSgqHistoricoJson<Record<string, unknown>>('rnc-historico-nomus.json');
-    const rcc = readSgqHistoricoJson<Record<string, unknown>>('rcc-historico-nomus.json');
-    const registros = [...rnc, ...rcc];
-    if (registros.length > 0) {
-      const result = await importRegistrosFromJson(registros, criadoPorLogin);
-      console.info(
-        `[sgq-historico] Registros Nomus: ${result.inseridos} inseridos, ${result.ignorados} ignorados`
-      );
-    }
+/** Remove histórico Nomus de RNC/RCC e importa avaliações de fornecedor quando necessário. */
+async function purgeNomusRncRccHistorico(): Promise<void> {
+  const { count } = await prisma.sgqRegistro.deleteMany({
+    where: {
+      origemImport: true,
+      tipo: { in: ['rnc', 'rcc'] },
+    },
+  });
+  if (count > 0) {
+    console.info(`[sgq-historico] Removidos ${count} registros RNC/RCC do Nomus`);
   }
+}
+
+/** Importa avaliações de fornecedor do histórico Nomus quando ainda não há registros importados. */
+export async function ensureSgqHistoricoSeed(criadoPorLogin = 'sistema'): Promise<void> {
+  await purgeNomusRncRccHistorico();
+
+  const avaliacoesImportadas = await prisma.sgqAvaliacaoFornecedor.count({
+    where: { origemImport: true },
+  });
 
   if (avaliacoesImportadas === 0) {
     const avaliacoes = readSgqHistoricoJson<Record<string, unknown>>(

@@ -50,6 +50,17 @@ export const registroStatusLabels: Record<RegistroStatus, string> = {
 
 export const ORIGEM_NOMUS_LABEL = "Sistema Nomus";
 
+/** Histórico RNC/RCC importado do Nomus — excluído da consulta e da sincronização. */
+export function isRegistroHistoricoNomusExcluido(registro: {
+  tipo: string;
+  origemNomus?: boolean;
+}): boolean {
+  return Boolean(
+    registro.origemNomus &&
+      (registro.tipo === "rnc" || registro.tipo === "rcc")
+  );
+}
+
 /** Opções extraídas do histórico ERP — podem ser refinadas depois. */
 export const RNC_TIPOS_ACAO = [
   "Real (já ocorrida)",
