@@ -159,9 +159,11 @@ function TrajetoriaTimeline({
       <article
         key={item.id}
         className={cn(
-          "rounded-2xl border border-border/70 bg-background/95 p-4 shadow-sm ring-1 ring-black/5 overflow-x-hidden overflow-y-auto",
+          "rounded-2xl border border-border/70 bg-card p-4 shadow-sm ring-1 ring-black/5 overflow-x-hidden overflow-y-auto",
           expanded ? "h-[240px]" : "h-[210px]",
-          item.tipoEvento === "admissao" && "border-primary/20 bg-primary/[0.03]",
+          // Fundo sólido + leve tinte via gradiente (gradiente compõe sobre o bg-card, sem transparência real).
+          item.tipoEvento === "admissao" &&
+            "border-primary/20 bg-gradient-to-b from-primary/[0.04] to-primary/[0.04]",
         )}
       >
         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -265,7 +267,7 @@ function TrajetoriaTimeline({
                   <div className="absolute left-1/2 top-1/2 z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
                     <div
                       className={cn(
-                        "mb-2 rounded-full border bg-background/95 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground shadow-sm",
+                        "mb-2 rounded-full border bg-background px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground shadow-sm",
                         isPromocaoMarco
                           ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/50 dark:bg-amber-500/15 dark:text-amber-100"
                           : "border-primary/20",
