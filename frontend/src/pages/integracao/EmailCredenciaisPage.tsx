@@ -81,6 +81,10 @@ export default function EmailCredenciaisPage() {
       setError('Informe o e-mail de teste antes de enviar.');
       return;
     }
+    if (!settings?.configured) {
+      setError('Salve a credencial (Client Secret e Refresh Token) antes de testar o envio.');
+      return;
+    }
     setTesting(true);
     setError(null);
     setOkMsg(null);
@@ -280,7 +284,7 @@ export default function EmailCredenciaisPage() {
           </button>
           <button
             type="button"
-            disabled={testing || saving || !testTo.trim() || !settings?.configured}
+            disabled={testing || saving}
             title={
               settings?.configured
                 ? 'Envia e-mail de teste com a credencial salva'
