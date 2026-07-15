@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   montarEixoDatasCalendario,
   isFimDeSemana,
@@ -10,6 +10,10 @@ import {
   resolverDataCalendarioLinha,
   encontrarLinhaSnapshotNoDrill,
   linhaCarradaKey,
+  computarBaselines,
+  listarCarradasComDatasPassadas,
+  atualizarEstadoLinhaCorrigirDatas,
+  listarProdutosSetorCalendario,
   type SimEntry,
   type CarradaBaseline,
 } from './simulacaoCarradas';
@@ -211,5 +215,235 @@ describe('Fallback previsão atual no calendário', () => {
       baseline
     );
     expect(encontrada).toBe(linha);
+  });
+
+  it('disponível sem data_producao usa hoje como produção', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-14T12:00:00'));
+    const linha: Record<string, unknown> = {
+      RM: '01677',
+      Observacoes: 'ROTA BAIXADA',
+      Card: 'Disponível',
+      previsao_entrega_atualizada: '2026-08-15',
+      PD: '9005',
+      Cod: 'MNO',
+    };
+    expect(dataProducaoDaLinha(linha, sim, baseline)).toBe('2026-07-14');
+    expect(resolverDataCalendarioLinha(linha, sim, baseline)).toEqual({
+      data: '2026-07-14',
+      origem: 'producao',
+    });
+    vi.useRealTimers();
+  });
+});
+
+describe('listarCarradasComDatasPassadas', () => {
+  it('inclui carrada quando previsão atual é anterior a hoje', () => {
+    const linhas: Record<string, unknown>[] = [
+      {
+        RM: '01677',
+        Observacoes: 'ROTA BAIXADA',
+        previsao_entrega_atualizada: '2026-07-03',
+        PD: '9001',
+        Cod: 'ABC',
+      },
+    ];
+    const key = linhaCarradaKey(linhas[0]!);
+    const bl = computarBaselines(linhas);
+    const simLocal = new Map<string, SimEntry>([[key, { dataEntrega: '' }]]);
+    const invalidas = listarCarradasComDatasPassadas(
+      [{ cod: '01677', carrada: 'ROTA BAIXADA' }],
+      simLocal,
+      bl,
+      (c) => `${c.cod}\x1e${c.carrada}`,
+      '2026-07-14',
+      linhas
+    );
+    expect(invalidas).toHaveLength(1);
+    expect(invalidas[0]?.previsaoPassada).toBe(true);
+    expect(invalidas[0]?.previsaoAtual).toBe('2026-07-03');
+  });
+
+  it('remove carrada após ajuste de produção e entrega para hoje ou futuro', () => {
+    const linhas: Record<string, unknown>[] = [
+      {
+        RM: '01677',
+        Observacoes: 'ROTA BAIXADA',
+        previsao_entrega_atualizada: '2026-07-03',
+        PD: '9001',
+        Cod: 'ABC',
+      },
+    ];
+    const key = linhaCarradaKey(linhas[0]!);
+    const bl = computarBaselines(linhas);
+    const simLocal = new Map<string, SimEntry>([
+      [key, { dataProducao: '2026-07-14', dataEntrega: '2026-07-15' }],
+    ]);
+    const invalidas = listarCarradasComDatasPassadas(
+      [{ cod: '01677', carrada: 'ROTA BAIXADA' }],
+      simLocal,
+      bl,
+      (c) => `${c.cod}\x1e${c.carrada}`,
+      '2026-07-14',
+      linhas
+    );
+    expect(invalidas).toHaveLength(0);
+  });
+});
+
+describe('listarProdutosSetorCalendario', () => {
+  const sim = new Map<string, SimEntry>();
+  const baseline = new Map<string, CarradaBaseline>();
+
+  it('agrega códigos do setor com qtde pendente no calendário', () => {
+    const linhas: Record<string, unknown>[] = [
+      {
+        RM: '01677',
+        Observacoes: 'ROTA',
+        'Setor de Producao': 'Cadeiras',
+        data_producao: '2026-08-20',
+        'Qtde Pendente Real': 5,
+        Cod: 'PA 100',
+        'Descricao do produto': 'Cadeira A',
+        PD: '9001',
+      },
+      {
+        RM: '01678',
+        Observacoes: 'ROTA 2',
+        'Setor de Producao': 'Cadeiras',
+        data_producao: '2026-08-21',
+        'Qtde Pendente Real': 3,
+        Cod: 'PA 100',
+        'Descricao do produto': 'Cadeira A',
+        PD: '9002',
+      },
+      {
+        RM: '01679',
+        Observacoes: 'ROTA 3',
+        'Setor de Producao': 'Balcões',
+        data_producao: '2026-08-20',
+        'Qtde Pendente Real': 10,
+        Cod: 'PA 200',
+        'Descricao do produto': 'Balcão X',
+        PD: '9003',
+      },
+    ];
+    const bl = computarBaselines(linhas);
+    const produtos = listarProdutosSetorCalendario(linhas, 'Cadeiras', sim, bl);
+    expect(produtos).toHaveLength(1);
+    expect(produtos[0]).toMatchObject({ codigo: 'PA 100', qtdePendente: 8 });
+  });
+});
+
+describe('listarCarradasComDatasPassadas — itens especiais', () => {
+  const sim = new Map<string, SimEntry>();
+  const baseline = new Map<string, CarradaBaseline>();
+
+  it('desmembra carradas especiais em itens de pedido', () => {
+    const linhas: Record<string, unknown>[] = [
+      {
+        RM: '—',
+        Observacoes: '3-Entrega em Grande Teresina',
+        id_pedido: 'p1',
+        PD: '49104',
+        Cliente: 'Cliente A',
+        Cod: 'PA 100',
+        'Descricao do produto': 'Produto A',
+        previsao_entrega_atualizada: '2026-07-03',
+        'Qtde Pendente Real': 2,
+      },
+      {
+        RM: '—',
+        Observacoes: '3-Entrega em Grande Teresina',
+        id_pedido: 'p2',
+        PD: '49345',
+        Cliente: 'Cliente B',
+        Cod: 'PA 200',
+        'Descricao do produto': 'Produto B',
+        previsao_entrega_atualizada: '2026-07-03',
+        'Qtde Pendente Real': 1,
+      },
+    ];
+    const carradas = [{ cod: '—', carrada: '3-Entrega em Grande Teresina' }];
+    const invalidas = listarCarradasComDatasPassadas(
+      carradas,
+      sim,
+      baseline,
+      (c) => `${c.cod}\x1e${c.carrada}`,
+      '2026-07-14',
+      linhas
+    );
+    expect(invalidas).toHaveLength(2);
+    expect(invalidas.every((i) => i.idPedido)).toBe(true);
+    expect(invalidas.map((i) => i.pedido).sort()).toEqual(['49104', '49345']);
+  });
+
+  it('exclui itens Inserir em Romaneio', () => {
+    const linhas: Record<string, unknown>[] = [
+      {
+        RM: '—',
+        Observacoes: '4-Inserir em Romaneio',
+        tipoF: 'Inserir em Romaneio',
+        id_pedido: 'rom1',
+        PD: '47494',
+        Cliente: 'Cliente X',
+        Cod: 'PA 5445',
+        'Descricao do produto': 'Produto',
+        previsao_entrega_atualizada: '2026-07-03',
+        'Qtde Pendente Real': 2,
+      },
+    ];
+    const invalidas = listarCarradasComDatasPassadas(
+      [{ cod: '—', carrada: '4-Inserir em Romaneio' }],
+      sim,
+      baseline,
+      (c) => `${c.cod}\x1e${c.carrada}`,
+      '2026-07-14',
+      linhas
+    );
+    expect(invalidas).toHaveLength(0);
+  });
+});
+
+describe('atualizarEstadoLinhaCorrigirDatas', () => {
+  it('marca concluida quando datas passam a ser válidas', () => {
+    const snap = {
+      key: 'item:10',
+      cod: 'C1',
+      carrada: '1-Retirada',
+      dataProducao: '2026-07-01',
+      dataEntrega: '2026-07-02',
+      producaoPassada: true,
+      entregaPassada: true,
+      idPedido: '10',
+      pedido: '48418',
+    };
+    const sim = new Map<string, SimEntry>([
+      ['item:10', { dataProducao: '2026-07-20', dataEntrega: '2026-07-25' }],
+    ]);
+    const atual = atualizarEstadoLinhaCorrigirDatas(snap, sim, new Map(), undefined, '2026-07-14');
+    expect(atual.concluida).toBe(true);
+    expect(atual.producaoPassada).toBe(false);
+    expect(atual.entregaPassada).toBe(false);
+    expect(atual.dataProducao).toBe('2026-07-20');
+    expect(atual.dataEntrega).toBe('2026-07-25');
+  });
+
+  it('permanece pendente se ainda houver data vencida', () => {
+    const snap = {
+      key: 'c1\x1ecarr',
+      cod: 'C1',
+      carrada: 'Carrada A',
+      dataProducao: '2026-07-01',
+      dataEntrega: '2026-07-02',
+      producaoPassada: true,
+      entregaPassada: true,
+    };
+    const sim = new Map<string, SimEntry>([
+      ['c1\x1ecarr', { dataProducao: '2026-07-20', dataEntrega: '2026-07-10' }],
+    ]);
+    const atual = atualizarEstadoLinhaCorrigirDatas(snap, sim, new Map(), undefined, '2026-07-14');
+    expect(atual.concluida).toBe(false);
+    expect(atual.entregaPassada).toBe(true);
   });
 });

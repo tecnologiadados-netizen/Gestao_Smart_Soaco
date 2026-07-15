@@ -18,6 +18,7 @@ import {
   type SimEntry,
 } from './simulacaoCarradas';
 import IndicadorDataPorPrevisao from './IndicadorDataPorPrevisao';
+import CalendarioSetorProdutosModal from './CalendarioSetorProdutosModal';
 import {
   comparePedidoAsc,
   linhaSnapshotParaPedido,
@@ -76,6 +77,8 @@ const TH = 'px-2 py-2 font-semibold text-slate-700 dark:text-slate-200 whitespac
 const TD = 'px-2 py-1.5 text-slate-700 dark:text-slate-200';
 const NUM_BTN =
   'tabular-nums text-primary-700 hover:underline dark:text-primary-300 disabled:cursor-default disabled:text-slate-400 disabled:no-underline dark:disabled:text-slate-500';
+const LINK_BTN =
+  'text-left font-medium text-primary-700 hover:underline dark:text-primary-300';
 const WEEKEND_TD = 'bg-slate-100/80 dark:bg-slate-900/40';
 const OCIOso_TD = 'bg-slate-50/60 dark:bg-slate-900/20';
 
@@ -92,15 +95,31 @@ function IconAjustarPrevisao() {
   );
 }
 
+function diaSemanaIso(iso: string): number | null {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getDay();
+}
+
+function labelColunaData(iso: string): string {
+  const dow = diaSemanaIso(iso);
+  if (dow === 6) return 'S';
+  if (dow === 0) return 'D';
+  return formatDataCurta(iso);
+}
+
 function labelColuna(col: ColunaCalendario): string {
-  if (col.tipo === 'data') return formatDataCurta(col.iso);
+  if (col.tipo === 'data') return labelColunaData(col.iso);
   return '…';
 }
 
 function tituloColuna(col: ColunaCalendario): string {
   if (col.tipo === 'data') {
     const label = formatDataCurta(col.iso);
-    return isFimDeSemana(col.iso) ? `${label} (fim de semana)` : label;
+    const dow = diaSemanaIso(col.iso);
+    if (dow === 6) return `${label} (Sábado)`;
+    if (dow === 0) return `${label} (Domingo)`;
+    return label;
   }
   return `Período ocioso (${formatDataCurta(col.de)} – ${formatDataCurta(col.ate)})`;
 }
@@ -132,6 +151,7 @@ export default function CalendarioProducaoModal({
   } | null>(null);
   const [pedidoAjustePrevisao, setPedidoAjustePrevisao] = useState<PedidoAjusteState | null>(null);
   const [escolhaEscopoPd, setEscolhaEscopoPd] = useState<string | null>(null);
+  const [setorDetalhe, setSetorDetalhe] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const colunas = useMemo(() => montarEixoDatasCalendario(dados.totalPorData), [dados.totalPorData]);
@@ -256,6 +276,10 @@ export default function CalendarioProducaoModal({
       setPedidoModal(null);
       return;
     }
+    if (setorDetalhe) {
+      setSetorDetalhe(null);
+      return;
+    }
     if (grade.colunaFiltroAberta) {
       grade.fecharFiltroExcel();
       return;
@@ -265,7 +289,7 @@ export default function CalendarioProducaoModal({
       return;
     }
     onClose();
-  }, [pedidoAjustePrevisao, escolhaEscopoPd, pedidoModal, grade, drill.nivel, voltarNivel, onClose]);
+  }, [pedidoAjustePrevisao, escolhaEscopoPd, pedidoModal, setorDetalhe, grade, drill.nivel, voltarNivel, onClose]);
 
   const abrirModalPedido = useCallback(
     (pd: string) => {
@@ -384,13 +408,23 @@ export default function CalendarioProducaoModal({
     return (
       <th
         key={colId}
-        className={`sticky top-0 z-20 border border-primary-500/40 px-2 py-2 align-middle font-semibold text-white shadow-[0_1px_0_rgba(0,0,0,0.08)] ${
+        className={`sticky top-0 z-20 border border-primary-500/40 py-2 align-middle font-semibold text-white shadow-[0_1px_0_rgba(0,0,0,0.08)] ${
+          weekend ? 'px-1' : 'px-2'
+        } ${
           weekend ? 'bg-primary-800' : ocioso ? 'bg-primary-700' : 'bg-primary-600'
         } ${isSetor ? 'left-0 z-30 text-left' : 'text-right'}`}
         title={title}
       >
-        <div className={`flex items-center gap-1 ${isSetor ? 'justify-between' : 'justify-end'}`}>
-          <span className="whitespace-nowrap text-[11px] leading-tight sm:text-xs">{label}</span>
+        <div className={`flex items-center gap-0.5 ${isSetor ? 'justify-between' : weekend ? 'justify-center' : 'justify-end'}`}>
+          <span
+            className={
+              weekend
+                ? 'text-xs font-bold leading-none'
+                : 'whitespace-nowrap text-[11px] leading-tight sm:text-xs'
+            }
+          >
+            {label}
+          </span>
           {!ocioso && (
             <GradeFiltroCabecalhoBtn
               ativo={grade.colunaComFiltroAtivo(colId)}
@@ -419,7 +453,7 @@ export default function CalendarioProducaoModal({
       ? `${tituloBase} (contém itens posicionados pela previsão atual — Prev.)`
       : tituloBase;
     return (
-      <td key={colId} className={`${TD} text-right ${weekend ? WEEKEND_TD : ''}`}>
+      <td key={colId} className={`${TD} text-right ${weekend ? 'px-1' : ''} ${weekend ? WEEKEND_TD : ''}`}>
         {v > 0 ? (
           <button
             type="button"
@@ -536,7 +570,16 @@ export default function CalendarioProducaoModal({
                 <tbody>
                   {grade.rowsExibidas.map(({ setor }) => (
                     <tr key={setor} className="border-b border-slate-100 dark:border-slate-700">
-                      <td className={`${TD} sticky left-0 z-10 bg-white font-medium dark:bg-slate-800`}>{setor}</td>
+                      <td className={`${TD} sticky left-0 z-10 bg-white dark:bg-slate-800`}>
+                        <button
+                          type="button"
+                          className={LINK_BTN}
+                          onClick={() => setSetorDetalhe(setor)}
+                          title="Ver códigos e descrições do setor"
+                        >
+                          {setor}
+                        </button>
+                      </td>
                       {colunas.map((col) => renderCelulaData(setor, col))}
                       <td className={`${TD} text-right font-semibold tabular-nums`}>
                         {formatQtdeInt(dados.totalPorSetor.get(setor) ?? 0)}
@@ -557,7 +600,7 @@ export default function CalendarioProducaoModal({
                       return (
                         <td
                           key={colId}
-                          className={`${TD} text-right tabular-nums ${isFimDeSemana(col.iso) ? WEEKEND_TD : ''}`}
+                          className={`${TD} text-right tabular-nums ${isFimDeSemana(col.iso) ? `px-1 ${WEEKEND_TD}` : ''}`}
                         >
                           {formatQtdeInt(totais.porColId.get(colId) ?? 0)}
                         </td>
@@ -580,8 +623,7 @@ export default function CalendarioProducaoModal({
               <tbody>
                 {tipoFRows.map((r) => (
                   <tr key={r.tipoF} className="border-b border-slate-100 dark:border-slate-700">
-                    <td className={TD}>{r.tipoF}</td>
-                    <td className={`${TD} text-right`}>
+                    <td className={TD}>
                       <button
                         type="button"
                         className={NUM_BTN}
@@ -590,9 +632,10 @@ export default function CalendarioProducaoModal({
                         }
                         title="Ver pedidos"
                       >
-                        {formatQtdeInt(r.qtde)}
+                        {r.tipoF}
                       </button>
                     </td>
+                    <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(r.qtde)}</td>
                   </tr>
                 ))}
                 <tr className={SUBTOTAL_ROW_CLASS}>
@@ -684,6 +727,17 @@ export default function CalendarioProducaoModal({
           municipioLabel={pedidoModal.linha.municipio || '—'}
           itens={pedidoModal.itens}
           onClose={() => setPedidoModal(null)}
+        />
+      )}
+
+      {setorDetalhe && (
+        <CalendarioSetorProdutosModal
+          setor={setorDetalhe}
+          linhas={linhas}
+          sim={sim}
+          baseline={baseline}
+          dataInserirRomaneio={dataInserirRomaneio}
+          onClose={() => setSetorDetalhe(null)}
         />
       )}
 

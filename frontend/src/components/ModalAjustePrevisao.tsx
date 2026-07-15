@@ -25,6 +25,14 @@ const ajusteSchema = z.object({
   observacao: z.string().max(1000).optional(),
 });
 
+function validarPrevisaoNaoAnteriorProducao(previsaoIso: string, producaoIso: string): string | null {
+  if (!previsaoIso || !producaoIso) return null;
+  if (previsaoIso < producaoIso) {
+    return 'A nova data de previsão não pode ser anterior à data de produção.';
+  }
+  return null;
+}
+
 /** Após salvar com replicação na mesma carrada, lista do Gerenciador para essa rota (atualiza todas as linhas visíveis de uma vez). */
 export type AjustePrevisaoSuccessMeta = {
   atualizadosMesmaCarrada?: Pedido[];
@@ -253,6 +261,18 @@ export default function ModalAjustePrevisao({
         return;
       }
 
+      const producaoRef = producaoNovaNorm || producaoAtualStr;
+      const previsaoRef =
+        calendario.producaoDerivadaPrevisao && producaoMudou && !previsaoMudou
+          ? producaoNovaNorm
+          : previsaoNovaNorm;
+      const ordemErro = validarPrevisaoNaoAnteriorProducao(previsaoRef, producaoRef);
+      if (ordemErro) {
+        setErrors({ previsao_nova: ordemErro, data_producao_nova: ordemErro });
+        onError(ordemErro);
+        return;
+      }
+
       // Somente data de produção (carrada normal): atualiza simulação, sem API de previsão.
       if (producaoMudou && !calendario.producaoDerivadaPrevisao && !previsaoMudou) {
         if (!producaoNovaNorm) {
@@ -269,6 +289,16 @@ export default function ModalAjustePrevisao({
       setErrors({ previsao_nova: 'A data não foi alterada.' });
       onError('A data não foi alterada. Informe uma data diferente da previsão atual para salvar.');
       return;
+    }
+
+    const dataProducaoPedido = String((pedido as Record<string, unknown>).data_producao ?? '').slice(0, 10);
+    if (!calendario) {
+      const ordemErro = validarPrevisaoNaoAnteriorProducao(previsaoNovaNorm, dataProducaoPedido);
+      if (ordemErro) {
+        setErrors({ previsao_nova: ordemErro });
+        onError(ordemErro);
+        return;
+      }
     }
 
     const precisaAjustePrevisao =

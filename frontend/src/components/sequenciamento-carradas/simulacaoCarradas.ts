@@ -4,6 +4,20 @@ import { isCarradaOrdemFinal, isInserirEmRomaneio } from './sequenciamentoCarrad
 
 /** Separador interno usado na chave (cod + carrada). */
 const KEY_SEP = '\x1e';
+/** Prefixo de chave de simulação por item de pedido (carradas especiais). */
+const ITEM_KEY_PREFIX = 'item\x1f';
+
+export function simItemKey(idPedido: string): string {
+  return `${ITEM_KEY_PREFIX}${idPedido}`;
+}
+
+export function isSimItemKey(key: string): boolean {
+  return key.startsWith(ITEM_KEY_PREFIX);
+}
+
+export function idPedidoDeSimItemKey(key: string): string {
+  return isSimItemKey(key) ? key.slice(ITEM_KEY_PREFIX.length) : '';
+}
 
 /** Campo ausente (undefined) = usar baseline; string vazia = usuário limpou explicitamente. */
 export type SimEntry = { dataProducao?: string; dataEntrega?: string };
@@ -30,8 +44,8 @@ export function getNumber(row: Record<string, unknown>, keys: string[]): number 
 export function toISODate(value: unknown): string {
   if (value == null || value === '') return '';
   const s = String(value).trim();
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  const isoPrefix = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoPrefix) return `${isoPrefix[1]}-${isoPrefix[2]}-${isoPrefix[3]}`;
   const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
   if (br) return `${br[3]}-${br[2]}-${br[1]}`;
   const d = new Date(s);
@@ -187,8 +201,29 @@ export function computarPedidosComEntregaAlterada(
   const out: PedidoAlterado[] = [];
   for (const row of linhas) {
     const { carrada: nomeCarrada } = linhaCodCarrada(row);
-    // Carradas especiais (retirada/romaneio/requisição) não têm datas alteradas por esta tela.
-    if (isCarradaOrdemFinal(nomeCarrada)) continue;
+    const idPedido = getField(row, ['id_pedido', 'idChave']);
+    if (!idPedido) continue;
+
+    if (isCarradaOrdemFinal(nomeCarrada)) {
+      const s = sim.get(simItemKey(idPedido));
+      if (!s || s.dataEntrega === undefined) continue;
+      const atual = previsaoAtualDaLinha(row);
+      const nova = s.dataEntrega;
+      if (!nova || nova === atual) continue;
+      out.push({
+        idPedido,
+        rota: nomeCarrada,
+        pd: getField(row, ['PD', 'pd']) || '—',
+        cliente: getField(row, ['Cliente', 'cliente']),
+        cod: getField(row, ['Cod', 'cod']),
+        descricao: getField(row, ['Descricao do produto', 'Descrição do produto']),
+        qtdePendenteReal: getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']),
+        previsaoAnterior: atual,
+        previsaoNova: nova,
+      });
+      continue;
+    }
+
     const key = linhaCarradaKey(row);
     const s = sim.get(key);
     if (!s || s.dataEntrega === undefined) continue;
@@ -196,9 +231,7 @@ export function computarPedidosComEntregaAlterada(
     const nova = s.dataEntrega;
     if (!nova || nova === baseEntrega) continue;
     const atual = toISODate(row['previsao_entrega_atualizada'] ?? row['previsao_entrega']);
-    if (nova === atual) continue; // sem mudança efetiva neste pedido
-    const idPedido = getField(row, ['id_pedido', 'idChave']);
-    if (!idPedido) continue;
+    if (nova === atual) continue;
     const { carrada } = linhaCodCarrada(row);
     out.push({
       idPedido,
@@ -246,6 +279,18 @@ export function computarItensDataProducao(
       vistos.add(idPedido);
       out.push({ id_pedido: idPedido, data_producao: dataAlvo });
     }
+  }
+  for (const row of linhas) {
+    const { carrada: nomeCarrada } = linhaCodCarrada(row);
+    if (!isCarradaOrdemFinal(nomeCarrada)) continue;
+    const idPedido = getField(row, ['id_pedido', 'idChave']);
+    if (!idPedido || vistos.has(idPedido)) continue;
+    const dataAlvo = valorEfetivoItem(sim, row, 'dataProducao');
+    if (!dataAlvo) continue;
+    const atualLinha = toISODate(row['data_producao']);
+    if (dataAlvo === atualLinha) continue;
+    vistos.add(idPedido);
+    out.push({ id_pedido: idPedido, data_producao: dataAlvo });
   }
   return out;
 }
@@ -410,6 +455,29 @@ export type CalendarioDados = {
   detalhes: CalendarioCelulaDetalhe[];
 };
 
+/** Item marcado como disponível no Gerenciador de Pedidos (Comunicação PD). */
+export function isPedidoDisponivel(row: Record<string, unknown>): boolean {
+  return getField(row, ['Card', 'card']) === 'Disponível';
+}
+
+/** Previsão de entrega comum da carrada (baseline ou menor previsão entre linhas). */
+export function previsaoBaselineCarrada(
+  key: string,
+  baseline: Map<string, CarradaBaseline>,
+  linhas?: Record<string, unknown>[]
+): string {
+  const b = baseline.get(key);
+  if (b?.dataEntrega) return b.dataEntrega;
+  if (!linhas) return '';
+  let menor = '';
+  for (const row of linhas) {
+    if (linhaCarradaKey(row) !== key) continue;
+    const previsao = previsaoAtualDaLinha(row);
+    if (previsao && (!menor || previsao < menor)) menor = previsao;
+  }
+  return menor;
+}
+
 /** Previsão atual do Gerenciador de Pedidos na linha do snapshot. */
 export function previsaoAtualDaLinha(row: Record<string, unknown>): string {
   const previsaoRaw =
@@ -437,7 +505,10 @@ export function dataProducaoDaLinha(
     return dataInserirRomaneio;
   }
   const key = linhaCarradaKey(row);
-  return valorEfetivo(sim, baseline, key, 'dataProducao');
+  const dataProducao = valorEfetivo(sim, baseline, key, 'dataProducao');
+  if (dataProducao) return dataProducao;
+  if (isPedidoDisponivel(row)) return hojeISO();
+  return '';
 }
 
 /**
@@ -459,6 +530,7 @@ export function resolverDataCalendarioLinha(
   const key = linhaCarradaKey(row);
   const dataProducao = valorEfetivo(sim, baseline, key, 'dataProducao');
   if (dataProducao) return { data: dataProducao, origem: 'producao' };
+  if (isPedidoDisponivel(row)) return { data: hojeISO(), origem: 'producao' };
   const previsao = previsaoAtualDaLinha(row);
   if (previsao) return { data: previsao, origem: 'previsao' };
   return { data: '', origem: null };
@@ -544,6 +616,45 @@ export function computarCalendarioProducao(
   return { datas, setores, valores, totalPorData, totalPorSetor, totalGeral, detalhes };
 }
 
+export type ProdutoSetorCalendarioRow = {
+  codigo: string;
+  descricao: string;
+  qtdePendente: number;
+};
+
+/** Produtos agregados por código no setor (mesma regra do calendário: qtde pendente com data válida). */
+export function listarProdutosSetorCalendario(
+  linhas: Record<string, unknown>[],
+  setor: string,
+  sim: Map<string, SimEntry>,
+  baseline: Map<string, CarradaBaseline>,
+  dataInserirRomaneio = ''
+): ProdutoSetorCalendarioRow[] {
+  const map = new Map<string, ProdutoSetorCalendarioRow>();
+  for (const row of linhas) {
+    const setorRow = getField(row, ['Setor de Producao', 'Setor de produção']) || '(vazio)';
+    if (setorRow !== setor) continue;
+    const qtde = getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']);
+    if (qtde === 0) continue;
+    const { data } = resolverDataCalendarioLinha(row, sim, baseline, dataInserirRomaneio);
+    if (!data) continue;
+    const codigo = getField(row, ['Cod', 'cod']) || '—';
+    const existing = map.get(codigo);
+    if (existing) {
+      existing.qtdePendente += qtde;
+    } else {
+      map.set(codigo, {
+        codigo,
+        descricao: getField(row, ['Descricao do produto', 'Descrição do produto']),
+        qtdePendente: qtde,
+      });
+    }
+  }
+  return [...map.values()].sort((a, b) =>
+    a.descricao.localeCompare(b.descricao, 'pt-BR', { sensitivity: 'base' })
+  );
+}
+
 /** Verdadeiro se a data ISO ('YYYY-MM-DD') cai em sábado ou domingo. */
 export function isFimDeSemana(iso: string): boolean {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -612,28 +723,188 @@ export type CarradaDataInvalida = {
   dataEntrega: string;
   producaoPassada: boolean;
   entregaPassada: boolean;
+  /** Previsão atual do Gerenciador anterior a hoje. */
+  previsaoPassada?: boolean;
+  previsaoAtual?: string;
+  /** Preenchido quando a linha é um item de pedido (carradas especiais / TipoF). */
+  idPedido?: string;
+  pedido?: string;
+  cliente?: string;
+  codigoProduto?: string;
+  descricaoProduto?: string;
+  tipoF?: string;
+  /** Datas válidas (≥ hoje); linha permanece visível no modal após correção. */
+  concluida?: boolean;
 };
 
-/** Carradas com data de produção ou entrega anterior a hoje. */
+function carradaTemDisponivelSemProducao(
+  key: string,
+  linhas: Record<string, unknown>[] | undefined
+): boolean {
+  if (!linhas) return false;
+  return linhas.some((row) => {
+    if (linhaCarradaKey(row) !== key) return false;
+    if (!isPedidoDisponivel(row)) return false;
+    return !toISODate(row['data_producao']);
+  });
+}
+
+/** Datas efetivas de um item de pedido (simulação por id_pedido sobrepõe baseline da linha). */
+export function valorEfetivoItem(
+  sim: Map<string, SimEntry>,
+  row: Record<string, unknown>,
+  campo: 'dataProducao' | 'dataEntrega'
+): string {
+  const idPedido = getField(row, ['id_pedido', 'idChave']);
+  if (!idPedido) return '';
+  const s = sim.get(simItemKey(idPedido));
+  if (s && s[campo] !== undefined && s[campo] !== '') return s[campo]!;
+  if (s && s[campo] === '') return '';
+  if (campo === 'dataProducao') return toISODate(row['data_producao']);
+  return previsaoAtualDaLinha(row);
+}
+
+function montarLinhaDataInvalida(
+  key: string,
+  cod: string,
+  carrada: string,
+  dataProducao: string,
+  dataEntrega: string,
+  previsaoAtual: string,
+  hoje: string,
+  extra?: Partial<CarradaDataInvalida>
+): CarradaDataInvalida | null {
+  const previsaoPassada = !!previsaoAtual && previsaoAtual < hoje;
+  const producaoPassada = !!dataProducao && dataProducao < hoje;
+  const entregaPassada = !!dataEntrega && dataEntrega < hoje;
+  const datasCorrigidas =
+    !!dataProducao && dataProducao >= hoje && !!dataEntrega && dataEntrega >= hoje;
+  if (!(producaoPassada || entregaPassada || (previsaoPassada && !datasCorrigidas))) return null;
+  return {
+    key,
+    cod,
+    carrada,
+    dataProducao,
+    dataEntrega,
+    producaoPassada: producaoPassada || (previsaoPassada && (!dataProducao || dataProducao < hoje)),
+    entregaPassada: entregaPassada || (previsaoPassada && (!dataEntrega || dataEntrega < hoje)),
+    previsaoPassada: previsaoPassada || undefined,
+    previsaoAtual: previsaoPassada ? previsaoAtual : undefined,
+    ...extra,
+  };
+}
+
+/** Carradas com data de produção, entrega ou previsão anterior a hoje. */
 export function listarCarradasComDatasPassadas(
   carradas: Array<{ cod: string; carrada: string }>,
   sim: Map<string, SimEntry>,
   baseline: Map<string, CarradaBaseline>,
   keyFn: (c: { cod: string; carrada: string }) => string,
-  hoje: string = hojeISO()
+  hoje: string = hojeISO(),
+  linhas?: Record<string, unknown>[]
 ): CarradaDataInvalida[] {
   const out: CarradaDataInvalida[] = [];
+
   for (const c of carradas) {
+    if (isCarradaOrdemFinal(c.carrada)) continue;
     const key = keyFn(c);
-    const dataProducao = valorEfetivo(sim, baseline, key, 'dataProducao');
+    let dataProducao = valorEfetivo(sim, baseline, key, 'dataProducao');
     const dataEntrega = valorEfetivo(sim, baseline, key, 'dataEntrega');
-    const producaoPassada = !!dataProducao && dataProducao < hoje;
-    const entregaPassada = !!dataEntrega && dataEntrega < hoje;
-    if (producaoPassada || entregaPassada) {
-      out.push({ key, cod: c.cod, carrada: c.carrada, dataProducao, dataEntrega, producaoPassada, entregaPassada });
+    if (!dataProducao && carradaTemDisponivelSemProducao(key, linhas)) {
+      dataProducao = hoje;
     }
+    const previsaoAtual = previsaoBaselineCarrada(key, baseline, linhas);
+    const linha = montarLinhaDataInvalida(key, c.cod, c.carrada, dataProducao, dataEntrega, previsaoAtual, hoje);
+    if (linha) out.push(linha);
   }
+
+  if (linhas) {
+    for (const row of linhas) {
+      const { cod, carrada } = linhaCodCarrada(row);
+      if (!isCarradaOrdemFinal(carrada)) continue;
+      const tipoF = getField(row, ['tipoF', 'TipoF', 'tipo_f']);
+      if (isInserirEmRomaneio(carrada) || isInserirEmRomaneio(tipoF)) continue;
+      const idPedido = getField(row, ['id_pedido', 'idChave']);
+      if (!idPedido) continue;
+      const qtde = getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']);
+      if (qtde === 0) continue;
+
+      let dataProducao = valorEfetivoItem(sim, row, 'dataProducao');
+      const dataEntrega = valorEfetivoItem(sim, row, 'dataEntrega');
+      if (!dataProducao && isPedidoDisponivel(row)) dataProducao = hoje;
+      const previsaoAtual = previsaoAtualDaLinha(row);
+      const linha = montarLinhaDataInvalida(simItemKey(idPedido), cod, carrada, dataProducao, dataEntrega, previsaoAtual, hoje, {
+        idPedido,
+        pedido: getField(row, ['PD', 'pd']),
+        cliente: getField(row, ['Cliente', 'cliente']),
+        codigoProduto: getField(row, ['Cod', 'cod']),
+        descricaoProduto: getField(row, ['Descricao do produto', 'Descrição do produto']),
+        tipoF: getField(row, ['tipoF', 'TipoF', 'tipo_f']),
+      });
+      if (linha) out.push(linha);
+    }
+    out.sort((a, b) => {
+      const itemA = a.idPedido ? 1 : 0;
+      const itemB = b.idPedido ? 1 : 0;
+      if (itemA !== itemB) return itemA - itemB;
+      const carr = a.carrada.localeCompare(b.carrada, 'pt-BR', { sensitivity: 'base' });
+      if (carr !== 0) return carr;
+      if (a.idPedido && b.idPedido) {
+        const pd = (a.pedido ?? '').localeCompare(b.pedido ?? '', 'pt-BR', { numeric: true });
+        if (pd !== 0) return pd;
+        return (a.codigoProduto ?? '').localeCompare(b.codigoProduto ?? '', 'pt-BR', { numeric: true });
+      }
+      return a.cod.localeCompare(b.cod, 'pt-BR', { numeric: true });
+    });
+  }
+
   return out;
+}
+
+/** Atualiza datas/flags de uma linha do modal a partir da simulação atual. */
+export function atualizarEstadoLinhaCorrigirDatas(
+  snap: CarradaDataInvalida,
+  sim: Map<string, SimEntry>,
+  baseline: Map<string, CarradaBaseline>,
+  linhas?: Record<string, unknown>[],
+  hoje: string = hojeISO()
+): CarradaDataInvalida {
+  let dataProducao = snap.dataProducao;
+  let dataEntrega = snap.dataEntrega;
+  let previsaoAtual = snap.previsaoAtual ?? '';
+
+  if (snap.idPedido && linhas) {
+    const row = linhas.find((r) => getField(r, ['id_pedido', 'idChave']) === snap.idPedido);
+    if (row) {
+      dataProducao = valorEfetivoItem(sim, row, 'dataProducao');
+      dataEntrega = valorEfetivoItem(sim, row, 'dataEntrega');
+      if (!dataProducao && isPedidoDisponivel(row)) dataProducao = hoje;
+      previsaoAtual = previsaoAtualDaLinha(row);
+    }
+  } else {
+    dataProducao = valorEfetivo(sim, baseline, snap.key, 'dataProducao');
+    dataEntrega = valorEfetivo(sim, baseline, snap.key, 'dataEntrega');
+    if (!dataProducao && carradaTemDisponivelSemProducao(snap.key, linhas)) dataProducao = hoje;
+    previsaoAtual = previsaoBaselineCarrada(snap.key, baseline, linhas);
+  }
+
+  const previsaoPassada = !!previsaoAtual && previsaoAtual < hoje;
+  const producaoPassada = !!dataProducao && dataProducao < hoje;
+  const entregaPassada = !!dataEntrega && dataEntrega < hoje;
+  const datasCorrigidas =
+    !!dataProducao && dataProducao >= hoje && !!dataEntrega && dataEntrega >= hoje;
+  const concluida = !(producaoPassada || entregaPassada || (previsaoPassada && !datasCorrigidas));
+
+  return {
+    ...snap,
+    dataProducao,
+    dataEntrega,
+    producaoPassada: producaoPassada || (previsaoPassada && (!dataProducao || dataProducao < hoje)),
+    entregaPassada: entregaPassada || (previsaoPassada && (!dataEntrega || dataEntrega < hoje)),
+    previsaoPassada: previsaoPassada || undefined,
+    previsaoAtual: previsaoPassada ? previsaoAtual : undefined,
+    concluida,
+  };
 }
 
 /**
@@ -736,8 +1007,7 @@ export function datasItemPedidoGerenciador(
   baseline: Map<string, CarradaBaseline>,
   dataInserirRomaneio = ''
 ): { dataProducao: string; previsaoAtual: string; dataCalendario: string; producaoPorPrevisao: boolean } {
-  const key = linhaCarradaKey(linha);
-  const dataProducao = valorEfetivo(sim, baseline, key, 'dataProducao');
+  const dataProducao = dataProducaoDaLinha(linha, sim, baseline, dataInserirRomaneio);
   const previsaoAtual = previsaoAtualDaLinha(linha);
   const { data: dataCalendario, origem } = resolverDataCalendarioLinha(
     linha,

@@ -45,6 +45,11 @@ import {
   toISODate,
   valorEfetivo,
   listarCarradasComDatasPassadas,
+  atualizarEstadoLinhaCorrigirDatas,
+  type CarradaDataInvalida,
+  isSimItemKey,
+  idPedidoDeSimItemKey,
+  linhaCodCarrada,
   type SimEntry,
 } from '../../components/sequenciamento-carradas/simulacaoCarradas';
 import {
@@ -193,6 +198,7 @@ export default function SequenciamentoCarradasPage() {
   const [calendarioAberto, setCalendarioAberto] = useState(false);
   const [confirmacaoAberta, setConfirmacaoAberta] = useState(false);
   const [corrigirDatasAberta, setCorrigirDatasAberta] = useState(false);
+  const [corrigirDatasSnapshot, setCorrigirDatasSnapshot] = useState<CarradaDataInvalida[]>([]);
   const [salvandoConfirmacao, setSalvandoConfirmacao] = useState(false);
   const [erroConfirmacao, setErroConfirmacao] = useState<string | null>(null);
   const [motivoPorId, setMotivoPorId] = useState<Record<string, string>>({});
@@ -302,10 +308,35 @@ export default function SequenciamentoCarradasPage() {
     [carradasFinais]
   );
 
-  const carradasComDatasPassadas = useMemo(
-    () => listarCarradasComDatasPassadas(carradasFinais, sim, baseline, carradaKeyDe),
-    [carradasFinais, sim, baseline]
-  );
+  const linhasCorrigirDatasModal = useMemo(() => {
+    if (!corrigirDatasAberta || corrigirDatasSnapshot.length === 0) return [];
+    return corrigirDatasSnapshot.map((snap) =>
+      atualizarEstadoLinhaCorrigirDatas(snap, sim, baseline, linhasSnapshot)
+    );
+  }, [corrigirDatasAberta, corrigirDatasSnapshot, sim, baseline, linhasSnapshot]);
+
+  const abrirCorrigirDatas = useCallback(() => {
+    setErroConfirmacao(null);
+    const invalidas = listarCarradasComDatasPassadas(
+      carradasFinais,
+      sim,
+      baseline,
+      carradaKeyDe,
+      undefined,
+      linhasSnapshot
+    );
+    if (invalidas.length === 0) {
+      setConfirmacaoAberta(true);
+      return;
+    }
+    setCorrigirDatasSnapshot(invalidas);
+    setCorrigirDatasAberta(true);
+  }, [carradasFinais, sim, baseline, linhasSnapshot]);
+
+  const fecharCorrigirDatas = useCallback(() => {
+    setCorrigirDatasAberta(false);
+    setCorrigirDatasSnapshot([]);
+  }, []);
 
   const subtotal = useMemo(() => subtotalCarradas(carradasFinais), [carradasFinais]);
 
@@ -402,8 +433,8 @@ export default function SequenciamentoCarradasPage() {
           for (const it of simu.itens) {
             if (!it?.chave) continue;
             const entry: SimEntry = {};
-            if (it.dataProducao != null) entry.dataProducao = it.dataProducao;
-            if (it.dataEntrega != null) entry.dataEntrega = it.dataEntrega;
+            if (it.dataProducao != null) entry.dataProducao = toISODate(it.dataProducao);
+            if (it.dataEntrega != null) entry.dataEntrega = toISODate(it.dataEntrega);
             m.set(it.chave, entry);
           }
         }
@@ -507,6 +538,20 @@ export default function SequenciamentoCarradasPage() {
 
   const montarSimulacaoPayload = useCallback((): SequenciamentoSimulacao | null => {
     const itens = [...sim.entries()].map(([chave, v]) => {
+      if (isSimItemKey(chave)) {
+        const idPedido = idPedidoDeSimItemKey(chave);
+        const linha = linhasSnapshot.find(
+          (row) => String(row['id_pedido'] ?? row['idChave'] ?? '').trim() === idPedido
+        );
+        const { cod, carrada } = linha ? linhaCodCarrada(linha) : { cod: '—', carrada: '' };
+        return {
+          chave,
+          cod,
+          carrada,
+          dataProducao: v.dataProducao ?? null,
+          dataEntrega: v.dataEntrega ?? null,
+        };
+      }
       const c = carradas.find((x) => carradaKeyDe(x) === chave);
       return {
         chave,
@@ -537,7 +582,7 @@ export default function SequenciamentoCarradasPage() {
       ...(motivos ? { motivos } : {}),
       ...(temPrioridades ? { prioridades: prioridadesFiltradas } : {}),
     };
-  }, [sim, carradas, ordemManual, carradasFinais, motivoPorId, prioridades]);
+  }, [sim, carradas, ordemManual, carradasFinais, motivoPorId, prioridades, linhasSnapshot]);
 
   autosavePayloadRef.current = montarSimulacaoPayload;
 
@@ -1024,14 +1069,7 @@ export default function SequenciamentoCarradasPage() {
               {isRascunho && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setErroConfirmacao(null);
-                    if (carradasComDatasPassadas.length > 0) {
-                      setCorrigirDatasAberta(true);
-                    } else {
-                      setConfirmacaoAberta(true);
-                    }
-                  }}
+                  onClick={() => abrirCorrigirDatas()}
                   disabled={gravando}
                   className={BTN_PRIMARY}
                 >
@@ -1493,15 +1531,15 @@ export default function SequenciamentoCarradasPage() {
 
       {corrigirDatasAberta && (
         <ModalCorrigirDatasSequenciamento
-          invalidas={carradasComDatasPassadas}
+          invalidas={linhasCorrigirDatasModal}
           onEditar={editarData}
           onContinuar={() => {
-            if (carradasComDatasPassadas.length === 0) {
-              setCorrigirDatasAberta(false);
+            if (linhasCorrigirDatasModal.every((l) => l.concluida)) {
+              fecharCorrigirDatas();
               setConfirmacaoAberta(true);
             }
           }}
-          onClose={() => setCorrigirDatasAberta(false)}
+          onClose={fecharCorrigirDatas}
         />
       )}
 

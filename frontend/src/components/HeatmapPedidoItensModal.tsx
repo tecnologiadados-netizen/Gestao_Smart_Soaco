@@ -74,6 +74,7 @@ export default function HeatmapPedidoItensModal({
 
   const titulo = labelPedidoMapa(linha.pedido);
   const dataEmissaoFmt = formatDataEmissao(linha.dataEmissao);
+  const clienteLabel = String(linha.cliente ?? '').trim();
   const meta = [linha.rota, linha.rm ? `RM ${linha.rm}` : ''].filter(Boolean).join(' · ');
 
   return createPortal(
@@ -101,6 +102,9 @@ export default function HeatmapPedidoItensModal({
                   <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">· {dataEmissaoFmt}</span>
                 ) : null}
               </h3>
+              {clienteLabel ? (
+                <p className="mt-0.5 text-xs font-medium text-slate-700 dark:text-slate-200">{clienteLabel}</p>
+              ) : null}
               <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">{municipioLabel}</p>
               {meta && (
                 <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400" title={meta}>

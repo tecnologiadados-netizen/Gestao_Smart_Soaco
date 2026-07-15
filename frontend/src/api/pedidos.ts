@@ -414,6 +414,8 @@ export interface TooltipDetalheRow {
   rota: string;
   dataEmissao: string;
   pedido: string;
+  /** Nome do cliente (quando disponível no snapshot/API). */
+  cliente?: string;
   municipio: string;
   aVista: string;
   valorPendente: number;

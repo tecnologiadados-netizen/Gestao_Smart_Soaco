@@ -4,6 +4,12 @@ import { listarMotivosSugestao, type MotivoSugestao } from '../../api/motivosSug
 import { formatDataCurta, formatQtdeInt, type PedidoAlterado } from './simulacaoCarradas';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
+import {
+  agruparAlteradosPorPedido,
+  grupoPedidoMotivoConcluido,
+  itemMotivoConcluido,
+  motivoComumIds,
+} from './confirmacaoMotivosUtils';
 
 type Props = {
   pedidosEntrega: PedidoAlterado[];
@@ -19,7 +25,12 @@ type Props = {
 };
 
 const TH = 'px-2 py-2 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap';
-const TD = 'px-2 py-1.5 text-slate-700 dark:text-slate-200 align-top';
+const TD = 'px-2 py-1.5 text-slate-700 dark:text-slate-200 align-middle';
+const TR_ROW = 'border-b border-slate-100 dark:border-slate-700';
+const TR_CONCLUIDA =
+  'border-b border-slate-100 dark:border-slate-700 bg-emerald-50/80 dark:bg-emerald-950/40';
+const TR_PENDENTE_ITEM = 'border-b border-slate-100 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-950/20';
+const TD_MESCLADA = 'px-2 py-1.5 align-middle text-center text-slate-700 dark:text-slate-200';
 
 const RECENTES_STORAGE_KEY = 'seqCarradas:motivosRecentes';
 const MAX_RECENTES = 5;
@@ -318,10 +329,11 @@ export default function ConfirmacaoSimulacaoModal({
     onConfirmar(motivoPorId);
   };
 
-  const motivoComumDoGrupo = (grupo: GrupoCarrada): string => {
-    const primeiro = motivoPorId[grupo.itens[0]!.idPedido] ?? '';
-    return grupo.itens.every((it) => (motivoPorId[it.idPedido] ?? '') === primeiro) ? primeiro : '';
-  };
+  const motivoComumDoGrupo = (grupo: GrupoCarrada): string =>
+    motivoComumIds(
+      grupo.itens.map((i) => i.idPedido),
+      motivoPorId
+    );
 
   const formatLista = (datas: string[]): string => {
     if (datas.length === 0) return '—';
@@ -348,8 +360,8 @@ export default function ConfirmacaoSimulacaoModal({
               Registrar motivos e confirmar
             </h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Escolha o motivo por carrada (replicado para todos os pedidos). Expanda a carrada para tratar
-              exceções pedido a pedido.
+              Escolha o motivo por carrada, por pedido (replicado para todos os itens do PD) ou por item.
+              Expanda a carrada para ajustar exceções. Itens com motivo ficam destacados em verde.
               {qtdCarradasSomenteProducao > 0 &&
                 ` Além disso, ${qtdCarradasSomenteProducao} carrada(s) terão apenas a Data de produção atualizada.`}
             </p>
@@ -409,8 +421,7 @@ export default function ConfirmacaoSimulacaoModal({
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/50">
                   <th className={`${TH} w-8`} />
-                  <th className={`${TH} text-left`}>Carrada (rota)</th>
-                  <th className={`${TH} text-right`}>Pedidos</th>
+                  <th className={`${TH} text-left`}>Carrada / Pedido / Item</th>
                   <th className={`${TH} text-right`}>Qtde Pendente Real</th>
                   <th className={`${TH} text-left`}>Previsão anterior</th>
                   <th className={`${TH} text-left`}>Nova previsão</th>
@@ -473,6 +484,10 @@ export default function ConfirmacaoSimulacaoModal({
   );
 }
 
+function classeLinhaItemMotivo(idPedido: string, motivoPorId: Record<string, string>): string {
+  return itemMotivoConcluido(idPedido, motivoPorId) ? TR_CONCLUIDA : TR_PENDENTE_ITEM;
+}
+
 function GrupoCarradaRows({
   grupo,
   aberto,
@@ -496,13 +511,15 @@ function GrupoCarradaRows({
   onToggle: () => void;
   onSelecionarMotivo: (ids: string[], motivo: string) => void;
 }) {
+  const gruposPedido = useMemo(() => agruparAlteradosPorPedido(grupo.itens), [grupo.itens]);
+
   return (
     <>
       <tr
-        className={`border-b border-slate-200 dark:border-slate-600 ${
+        className={`${TR_ROW} ${
           pendente
             ? 'bg-amber-50/70 dark:bg-amber-900/10'
-            : 'bg-slate-100/70 dark:bg-slate-700/40'
+            : 'bg-emerald-50/60 dark:bg-emerald-950/25'
         }`}
       >
         <td className="px-2 py-1.5 text-center align-middle">
@@ -510,7 +527,7 @@ function GrupoCarradaRows({
             type="button"
             onClick={onToggle}
             className="rounded px-1 text-xs text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-600"
-            title={aberto ? 'Recolher pedidos' : 'Expandir pedidos (exceções)'}
+            title={aberto ? 'Recolher pedidos e itens' : 'Expandir pedidos e itens'}
             aria-expanded={aberto}
           >
             {aberto ? '▾' : '▸'}
@@ -518,9 +535,9 @@ function GrupoCarradaRows({
         </td>
         <td className="px-2 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
           {grupo.rota}
-        </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-slate-600 dark:text-slate-300">
-          {grupo.itens.length}
+          <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
+            ({grupo.itens.length} pedido(s))
+          </span>
         </td>
         <td className="px-2 py-1.5 text-right text-xs tabular-nums text-slate-600 dark:text-slate-300">
           {formatQtdeInt(grupo.qtdeTotal)}
@@ -542,41 +559,78 @@ function GrupoCarradaRows({
         </td>
       </tr>
       {aberto &&
-        grupo.itens.map((it) => (
-          <tr key={it.idPedido} className="border-b border-slate-100 dark:border-slate-700">
-            <td className="px-2 py-1.5" />
-            <td className={TD}>
-              <div className="flex flex-col">
-                <span className="text-xs font-medium">{it.pd}</span>
-                <span className="line-clamp-1 text-[11px] text-slate-500 dark:text-slate-400" title={it.cliente}>
-                  {it.cliente || '—'}
-                </span>
-                <span
-                  className="line-clamp-1 text-[11px] text-slate-400 dark:text-slate-500"
-                  title={it.descricao}
-                >
-                  {it.cod ? `${it.cod} · ` : ''}
-                  {it.descricao || '—'}
-                </span>
-              </div>
-            </td>
-            <td className={`${TD} text-right`} />
-            <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(it.qtdePendenteReal)}</td>
-            <td className={`${TD} whitespace-nowrap`}>{formatDataCurta(it.previsaoAnterior)}</td>
-            <td className={`${TD} whitespace-nowrap font-medium text-primary-700 dark:text-primary-300`}>
-              {formatDataCurta(it.previsaoNova)}
-            </td>
-            <td className={TD}>
-              <MotivoPicker
-                value={motivoPorId[it.idPedido] ?? ''}
-                onSelect={(m) => onSelecionarMotivo([it.idPedido], m)}
-                motivos={motivos}
-                recentes={recentes}
-                compact
-              />
-            </td>
-          </tr>
-        ))}
+        gruposPedido.flatMap((grupoPd) => {
+          const idsPedido = grupoPd.itens.map((i) => i.idPedido);
+          const motivoComumPedido = motivoComumIds(idsPedido, motivoPorId);
+          const pedidoConcluido = grupoPedidoMotivoConcluido(grupoPd.itens, motivoPorId);
+          const rowSpan = grupoPd.itens.length;
+
+          return grupoPd.itens.map((it, itemIdx) => {
+            const isFirst = itemIdx === 0;
+            return (
+              <tr key={it.idPedido} className={classeLinhaItemMotivo(it.idPedido, motivoPorId)}>
+                <td className="px-2 py-1.5" />
+                {isFirst ? (
+                  <td rowSpan={rowSpan} className={TD_MESCLADA}>
+                    <div className="flex flex-col items-center justify-center gap-1">
+                      <span className="text-xs font-semibold">{grupoPd.pd}</span>
+                      <span
+                        className="max-w-[140px] truncate text-[11px] text-slate-500 dark:text-slate-400"
+                        title={grupoPd.cliente}
+                      >
+                        {grupoPd.cliente || '—'}
+                      </span>
+                      <div className="w-full min-w-[11rem]">
+                        <MotivoPicker
+                          value={motivoComumPedido}
+                          onSelect={(m) => onSelecionarMotivo(idsPedido, m)}
+                          motivos={motivos}
+                          recentes={recentes}
+                          compact
+                        />
+                      </div>
+                      {pedidoConcluido ? (
+                        <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+                          Concluído
+                        </span>
+                      ) : null}
+                    </div>
+                  </td>
+                ) : null}
+                <td className={TD}>
+                  <div className="flex flex-col">
+                    <span className="font-mono text-xs">{it.cod || '—'}</span>
+                    <span
+                      className="line-clamp-2 text-[11px] text-slate-500 dark:text-slate-400"
+                      title={it.descricao}
+                    >
+                      {it.descricao || '—'}
+                    </span>
+                    {itemMotivoConcluido(it.idPedido, motivoPorId) ? (
+                      <span className="mt-0.5 inline-block w-fit rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
+                        Concluído
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
+                <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(it.qtdePendenteReal)}</td>
+                <td className={`${TD} whitespace-nowrap`}>{formatDataCurta(it.previsaoAnterior)}</td>
+                <td className={`${TD} whitespace-nowrap font-medium text-primary-700 dark:text-primary-300`}>
+                  {formatDataCurta(it.previsaoNova)}
+                </td>
+                <td className={TD}>
+                  <MotivoPicker
+                    value={motivoPorId[it.idPedido] ?? ''}
+                    onSelect={(m) => onSelecionarMotivo([it.idPedido], m)}
+                    motivos={motivos}
+                    recentes={recentes}
+                    compact
+                  />
+                </td>
+              </tr>
+            );
+          });
+        })}
     </>
   );
 }

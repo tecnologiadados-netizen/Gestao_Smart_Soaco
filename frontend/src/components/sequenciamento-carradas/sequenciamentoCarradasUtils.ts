@@ -417,6 +417,7 @@ export function listarTooltipDetalhePorPd(
         rota: !rota || rota === 'Sem Rota' ? '' : rota,
         dataEmissao: emissaoParaIso(getField(row, ['Emissao', 'emissao'])),
         pedido: getField(row, ['PD', 'pd']),
+        cliente: getField(row, ['Cliente', 'cliente']),
         municipio: municipio && uf ? `${municipio} (${uf})` : municipio,
         aVista: getField(row, ['A Vista', 'A vista', 'aVista']),
         valorPendente: getNumber(row, ['Saldo a Faturar Real', 'Valor Pendente Real']),
