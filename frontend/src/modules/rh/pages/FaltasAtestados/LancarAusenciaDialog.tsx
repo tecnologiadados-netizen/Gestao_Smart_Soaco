@@ -42,6 +42,17 @@ import {
   CommandList,
 } from "@rh/components/ui/command";
 import type { Colaborador, FaltaRow, OrganicoRow, SancaoDisciplinarRow } from "@rh/types/api";
+import {
+  rhFieldCombo,
+  rhFieldInput,
+  rhFieldInputRead,
+  rhFieldLabel,
+  rhFieldSelectTrigger,
+  rhFieldTextarea,
+  rhFormSection,
+  rhFormSectionBody,
+  rhFormSectionHeader,
+} from "@rh/lib/form-field-styles";
 import { isLaunchDocTestMode } from "@rh/lib/launch-document-config";
 import {
   ausenciaExigeAnexoDocumento,
@@ -205,24 +216,18 @@ function isQntdValid(qntd: string, mode: "horas" | "dias" | "livre"): boolean {
   return !Number.isNaN(n) && n > 0;
 }
 
-const lblForm = "text-xs font-medium text-muted-foreground mb-1.5 block";
-const dashedInput =
-  "flex h-9 w-full min-w-0 rounded-lg border border-dashed border-muted-foreground/35 bg-background px-3 text-sm shadow-none transition-colors placeholder:text-muted-foreground/65 file:mr-3 file:h-8 file:border-0 file:bg-transparent file:text-sm focus-visible:border-solid focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-60 md:text-sm";
-const dashedInputRead = "cursor-not-allowed bg-muted/45 border-muted-foreground/25";
-const dashedTextarea =
-  "flex min-h-[104px] w-full resize-y rounded-lg border border-dashed border-muted-foreground/35 bg-background px-3 py-2.5 text-sm shadow-none transition-colors placeholder:text-muted-foreground/65 focus-visible:border-solid focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-60";
-const dashedSelectTrigger =
-  "h-9 w-full min-w-0 rounded-lg border border-dashed border-muted-foreground/35 bg-background shadow-none focus:ring-2 focus:ring-ring/25 focus:ring-offset-0 [&>span]:line-clamp-1";
-const comboDashed =
-  "h-9 w-full min-w-0 justify-between rounded-lg border border-dashed border-muted-foreground/35 bg-background font-normal text-sm shadow-none hover:bg-muted/35";
+const lblForm = rhFieldLabel;
+const dashedInput = rhFieldInput;
+const dashedInputRead = rhFieldInputRead;
+const dashedTextarea = `${rhFieldTextarea} min-h-[104px]`;
+const dashedSelectTrigger = rhFieldSelectTrigger;
+const comboDashed = rhFieldCombo;
 
 function FormSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-xl border border-border/90 bg-card/35 shadow-sm overflow-hidden">
-      <header className="border-b border-border/80 bg-muted/50 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-foreground">
-        {title}
-      </header>
-      <div className="p-4 sm:p-5">{children}</div>
+    <section className={rhFormSection}>
+      <header className={rhFormSectionHeader}>{title}</header>
+      <div className={rhFormSectionBody}>{children}</div>
     </section>
   );
 }

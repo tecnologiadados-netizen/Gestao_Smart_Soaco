@@ -109,3 +109,38 @@ describe("rh-permissions - documentos globais", () => {
     expect(permissions.organico.documentos.deleteGlobalForAll).toBe(true);
   });
 });
+
+describe("rh-permissions - fotos do organograma", () => {
+  it("herda a permissão do módulo em grupos salvos antes da permissão de fotos", () => {
+    const permissions = normalizeGroupPermissions({
+      organograma: { view: true, edit: true },
+    });
+
+    expect(permissions.organograma.fotos).toEqual({ view: true, edit: true });
+  });
+
+  it("preserva uma permissão de fotos explicitamente restrita", () => {
+    const permissions = normalizeGroupPermissions({
+      organograma: {
+        view: true,
+        edit: true,
+        fotos: { view: true, edit: false },
+      },
+    });
+
+    expect(permissions.organograma.fotos).toEqual({ view: true, edit: false });
+  });
+
+  it("reflete edição de fotos na permissão derivada da rota", () => {
+    const permissions = normalizeGroupPermissions({
+      organograma: {
+        view: false,
+        edit: false,
+        fotos: { view: true, edit: true },
+      },
+    });
+    const route = permissions.routes.find((item) => item.url === "/organograma");
+
+    expect(route).toMatchObject({ canView: true, canEdit: true });
+  });
+});

@@ -1,0 +1,30 @@
+---
+description: Padrão visual de campos e containers de formulário do módulo RH
+globs: frontend/src/modules/rh/**
+alwaysApply: false
+---
+
+# Padrão de campos e containers do RH (temas claro e escuro)
+
+Hierarquia de fundos, válida nos dois temas:
+
+| Camada | Fundo |
+|---|---|
+| Página / modal | `--background` |
+| Container de campos (seção/card do formulário) | `--card` **sólido** (nunca `bg-card/35`) |
+| Campo editável | `--background` (rebaixado em relação ao card) |
+| Campo readonly/disabled | `--muted` |
+
+## Como aplicar
+
+- **Sempre** importe as classes de `frontend/src/modules/rh/lib/form-field-styles.ts`:
+  `rhFieldLabel`, `rhFieldInput`, `rhFieldInputRead`, `rhFieldSelectNative`,
+  `rhFieldSelectTrigger`, `rhFieldTextarea`, `rhFieldCombo`,
+  `rhFormSection`, `rhFormSectionHeader`, `rhFormSectionBody`.
+- **Não** redefina strings locais tipo `dashedInput` / `FormSection` com classes próprias;
+  se precisar variar (ex.: `min-h`), concatene sobre a constante compartilhada.
+- Regras CSS globais em `frontend/src/modules/rh/rh-module.css` reforçam esses fundos para
+  inputs/selects/textareas nativos (editável = `--background`, readonly/disabled = `--muted`).
+  Não adicione overrides locais de fundo que briguem com elas.
+- Componentes shadcn base (`Input`, `Textarea`, `SelectTrigger`) já usam `bg-background`;
+  não os troque para `bg-card`/`bg-white`.

@@ -143,6 +143,18 @@ export function canDeleteOrganicoPhotos(): boolean {
   return canEditAccess(permissions?.organico.fotos);
 }
 
+export function canViewOrganogramaFotos(): boolean {
+  if (isMaster()) return true;
+  const permissions = getEffectiveGroupPermissions();
+  return canViewAccess(permissions?.organograma.fotos);
+}
+
+export function canEditOrganogramaFotos(): boolean {
+  if (isMaster()) return true;
+  const permissions = getEffectiveGroupPermissions();
+  return canEditAccess(permissions?.organograma.fotos);
+}
+
 export function canViewOrganicoDocuments(): boolean {
   if (isMaster()) return true;
   const permissions = getEffectiveGroupPermissions();

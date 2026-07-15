@@ -5,6 +5,7 @@ import {
   requireRhAccess,
   requireRhAusenciasWrite,
   requireRhConfigAccess,
+  requireRhConfigPermission,
   requireRhFeaturePermission,
   requireRhMaster,
   requireRhRegrasAlertasEdit,
@@ -100,8 +101,8 @@ const wrap =
 router.get('/rh-session-permissions', requireRhSession(), wrap(rhSessionPermissionsHandler));
 
 // Config
-router.get('/get-config', wrap(getConfigHandler));
-router.post('/set-config', wrap(setConfigHandler));
+router.get('/get-config', requireRhConfigPermission('view'), wrap(getConfigHandler));
+router.post('/set-config', requireRhConfigPermission('edit'), wrap(setConfigHandler));
 
 // Orgânico
 router.get('/get-organico', requireRhAccess('/organico', 'view'), wrap(getOrganico));

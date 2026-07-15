@@ -5,6 +5,7 @@ import { Search } from "lucide-react";
 
 import { cn } from "@rh/lib/utils";
 import { commandFilterScore } from "@rh/lib/normalize-search-text";
+import { useDialogSafeWheelScrollRef } from "@rh/lib/scroll-container-wheel";
 import { Dialog, DialogContent } from "@rh/components/ui/dialog";
 
 const Command = React.forwardRef<
@@ -59,13 +60,25 @@ CommandInput.displayName = CommandPrimitive.Input.displayName;
 const CommandList = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.List>
->(({ className, ...props }, ref) => (
-  <CommandPrimitive.List
-    ref={ref}
-    className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden", className)}
-    {...props}
-  />
-));
+>(({ className, ...props }, ref) => {
+  const wheelScrollRef = useDialogSafeWheelScrollRef<HTMLDivElement>("vertical");
+  const mergedRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      wheelScrollRef(node);
+      if (typeof ref === "function") ref(node);
+      else if (ref) ref.current = node;
+    },
+    [ref, wheelScrollRef],
+  );
+
+  return (
+    <CommandPrimitive.List
+      ref={mergedRef}
+      className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden overscroll-y-contain", className)}
+      {...props}
+    />
+  );
+});
 
 CommandList.displayName = CommandPrimitive.List.displayName;
 

@@ -303,6 +303,44 @@ export function requireRhConfigAccess(mode: AccessMode = 'edit') {
   return requireRhAccess('/configuracoes', mode);
 }
 
+/**
+ * Protege somente as chaves de fotos configuráveis do Organograma.
+ * As demais chaves de `/get-config` e `/set-config` mantêm a política existente.
+ */
+export function requireRhConfigPermission(mode: AccessMode) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const rawKey = mode === 'view' ? req.query.key : (req.body as { key?: unknown } | undefined)?.key;
+    const key = String(rawKey ?? '').trim();
+    if (!key.startsWith('organograma-foto:')) {
+      next();
+      return;
+    }
+
+    try {
+      const context = await ensureAuthenticated(req, res);
+      if (!context) return;
+
+      const fotos = context.permissions?.organograma.fotos;
+      const allowed =
+        context.isMaster ||
+        (mode === 'view' ? canViewAccess(fotos) : canEditAccess(fotos));
+
+      if (!allowed) {
+        deny(res, 'Sem permissão para acessar fotos do organograma.');
+        return;
+      }
+
+      attachRhAuth(req, context);
+      next();
+    } catch (err) {
+      console.error('[requireRhConfigPermission]', (err as Error)?.message ?? err);
+      if (!res.headersSent) {
+        res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
+      }
+    }
+  };
+}
+
 export function requireRhMaster() {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

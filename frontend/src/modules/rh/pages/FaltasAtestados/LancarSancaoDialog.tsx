@@ -25,6 +25,16 @@ import {
   CommandList,
 } from "@rh/components/ui/command";
 import type { Colaborador, OrganicoRow, SancaoDisciplinarRow } from "@rh/types/api";
+import {
+  rhFieldCombo,
+  rhFieldInput,
+  rhFieldInputRead,
+  rhFieldLabel,
+  rhFieldTextarea,
+  rhFormSection,
+  rhFormSectionBody,
+  rhFormSectionHeader,
+} from "@rh/lib/form-field-styles";
 import { isLaunchDocTestMode } from "@rh/lib/launch-document-config";
 import {
   buildLaunchDocumentTitle,
@@ -67,14 +77,11 @@ function mesAnoFromDataAplicacao(iso: string): { mes: string; ano: string } {
 
 type ColabEntry = { id: string; row: OrganicoRow; colab: Colaborador };
 
-const lblForm = "text-xs font-medium text-muted-foreground mb-1.5 block";
-const dashedInput =
-  "flex h-9 w-full min-w-0 rounded-lg border border-dashed border-muted-foreground/35 bg-background px-3 text-sm shadow-none transition-colors placeholder:text-muted-foreground/65 focus-visible:border-solid focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:ring-offset-0 md:text-sm";
-const dashedInputRead = "cursor-not-allowed bg-muted/45 border-muted-foreground/25";
-const dashedTextarea =
-  "flex min-h-[88px] w-full resize-y rounded-lg border border-dashed border-muted-foreground/35 bg-background px-3 py-2.5 text-sm shadow-none transition-colors placeholder:text-muted-foreground/65 focus-visible:border-solid focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:ring-offset-0";
-const comboDashed =
-  "h-9 w-full min-w-0 justify-between rounded-lg border border-dashed border-muted-foreground/35 bg-background font-normal text-sm shadow-none hover:bg-muted/35";
+const lblForm = rhFieldLabel;
+const dashedInput = rhFieldInput;
+const dashedInputRead = rhFieldInputRead;
+const dashedTextarea = rhFieldTextarea;
+const comboDashed = rhFieldCombo;
 
 function isProvisionalSancaoId(id: SancaoDisciplinarRow["id"]): boolean {
   const s = String(id);
@@ -454,11 +461,11 @@ export function LancarSancaoDialog({
 
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain px-6 sm:px-8 py-5 space-y-5">
-            <div className="rounded-xl border border-border/90 bg-card/35 shadow-sm overflow-hidden">
-              <header className="border-b border-border/80 bg-muted/50 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-foreground">
+            <div className={rhFormSection}>
+              <header className={rhFormSectionHeader}>
                 Registro
               </header>
-              <div className="p-4 sm:p-5 space-y-4">
+              <div className={cn(rhFormSectionBody, "space-y-4")}>
                 <div>
                   <Label htmlFor="san-data" className={lblForm}>
                     Data da aplicação<span className="text-destructive"> *</span>

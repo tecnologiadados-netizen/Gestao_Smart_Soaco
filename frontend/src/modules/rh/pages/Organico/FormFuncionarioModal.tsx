@@ -40,6 +40,15 @@ import { OrganicoDocumentArchivePanel } from "./OrganicoDocumentArchivePanel";
 import { buildOrganicoActivityLogs, type OrganicoActivityDraft } from "./organico-activity-log";
 import { cn } from "@rh/lib/utils";
 import {
+  rhFieldInput,
+  rhFieldInputRead,
+  rhFieldLabel,
+  rhFieldSelectNative,
+  rhFormSection,
+  rhFormSectionBody,
+  rhFormSectionHeader,
+} from "@rh/lib/form-field-styles";
+import {
   findSecullumFuncionarioByMatricula,
   getSecullumFuncionarios,
   isApiConfigured,
@@ -63,15 +72,12 @@ const STATUS_OPCOES = ["Ativo", "Férias", "Afastado", "Desligado"] as const;
 
 const SIM_NAO_OPCOES = ["Não", "Sim"] as const;
 
-/** Alinhado ao formulário de ausências (LancarAusenciaDialog). */
-const lblForm = "text-xs font-medium text-muted-foreground mb-1.5 block";
-/** Texto e placeholder com o mesmo contraste (evita placeholder “apagado” vs valor preenchido). */
-const dashedInput =
-  "flex h-9 w-full min-w-0 rounded-lg border border-dashed border-muted-foreground/35 bg-background px-3 text-sm text-foreground shadow-none transition-colors placeholder:text-foreground focus-visible:border-solid focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:ring-offset-0 read-only:text-foreground disabled:cursor-not-allowed disabled:text-foreground disabled:opacity-100 md:text-sm";
-const dashedInputRead =
-  "cursor-default bg-muted border-muted-foreground/25 text-foreground placeholder:text-foreground read-only:text-foreground";
-const dashedSelect =
-  "flex h-9 w-full min-w-0 appearance-none rounded-lg border border-dashed border-muted-foreground/35 bg-background px-3 pr-9 text-sm text-foreground shadow-none transition-colors focus-visible:border-solid focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:text-foreground disabled:opacity-100";
+/** Padrão de campos do RH — ver @rh/lib/form-field-styles. */
+const lblForm = rhFieldLabel;
+/** Placeholder "—" com o mesmo contraste do valor preenchido. */
+const dashedInput = `${rhFieldInput} placeholder:text-foreground`;
+const dashedInputRead = rhFieldInputRead;
+const dashedSelect = rhFieldSelectNative;
 
 function IconeEdicaoBloqueada() {
   return (
@@ -93,14 +99,9 @@ function FormSection({
   children: ReactNode;
 }) {
   return (
-    <section
-      id={id}
-      className="scroll-mt-3 rounded-xl border border-border/90 bg-card/35 shadow-sm overflow-hidden"
-    >
-      <header className="border-b border-border/80 bg-muted/50 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-foreground">
-        {title}
-      </header>
-      <div className="p-4 sm:p-5">{children}</div>
+    <section id={id} className={cn("scroll-mt-3", rhFormSection)}>
+      <header className={rhFormSectionHeader}>{title}</header>
+      <div className={rhFormSectionBody}>{children}</div>
     </section>
   );
 }

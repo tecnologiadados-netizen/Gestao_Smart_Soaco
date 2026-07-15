@@ -899,6 +899,22 @@ export function ConfiguracoesPermissionsEditor({ value, onChange, availableSecto
             })
           }
         />
+        <ToggleRow
+          label="Fotos da Empresa e Diretorias"
+          editLabel="Inserir / editar"
+          viewChecked={permissions.organograma.fotos.view}
+          editChecked={permissions.organograma.fotos.edit}
+          onSetView={(checked) =>
+            update((draft) => {
+              draft.organograma.fotos.view = checked;
+            })
+          }
+          onSetEdit={(checked) =>
+            update((draft) => {
+              draft.organograma.fotos.edit = checked;
+            })
+          }
+        />
       </PermissionCard>
 
       <PermissionCard

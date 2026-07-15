@@ -14,9 +14,9 @@ import {
   SelectValue,
 } from "@rh/components/ui/select";
 import { cn } from "@rh/lib/utils";
+import { rhFieldInput } from "@rh/lib/form-field-styles";
 
-const dashedInput =
-  "flex h-9 w-full min-w-0 rounded-lg border border-dashed border-muted-foreground/35 bg-background px-3 text-sm shadow-none transition-colors placeholder:text-muted-foreground/65 focus-visible:border-solid focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:ring-offset-0 md:text-sm";
+const dashedInput = rhFieldInput;
 
 export type LaunchDocumentFolderSelection = {
   id: string;
@@ -62,7 +62,7 @@ export function LaunchDocumentAttachmentField({
   const selectedKey = folderSelection ? archiveFolderOptionKey(folderSelection) : "";
 
   return (
-    <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-4">
+    <div className="rounded-xl border border-primary/30 bg-card p-4 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <div className="flex items-center gap-2">
@@ -132,7 +132,7 @@ export function LaunchDocumentAttachmentField({
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Categoria no Orgânico</Label>
-          <div className={cn(dashedInput, "flex items-center gap-2 bg-muted/30 cursor-default")}>
+          <div className={cn(dashedInput, "flex items-center gap-2 bg-muted border-muted-foreground/25 cursor-default")}>
             <FileText className="h-4 w-4 shrink-0 text-primary" />
             <span className="truncate">{category}</span>
           </div>

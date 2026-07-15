@@ -69,7 +69,10 @@ export type RhGroupPermissions = {
     modulos: Record<string, PermissionAccess>;
   };
   cargos: PermissionAccess;
-  organograma: PermissionAccess;
+  organograma: PermissionAccess & {
+    /** Fotos configuráveis da Empresa e das Diretorias. */
+    fotos: PermissionAccess;
+  };
   configuracoes: PermissionAccess;
 };
 
@@ -251,7 +254,10 @@ function buildDefaultPermissions(): RhGroupPermissions {
       modulos: Object.fromEntries(DASHBOARD_MODULE_IDS.map((id) => [id, access()])),
     },
     cargos: access(),
-    organograma: access(),
+    organograma: {
+      ...access(),
+      fotos: access(),
+    },
     configuracoes: access(),
   };
 }
@@ -414,7 +420,12 @@ function applyLegacy(routes: RhGroupPermissions["routes"]): RhGroupPermissions {
   syncCompositeAccess(next);
 
   next.cargos = access(!!(cargos?.canView || cargos?.canEdit), !!cargos?.canEdit);
-  next.organograma = access(!!(organograma?.canView || organograma?.canEdit), !!organograma?.canEdit);
+  const organogramaView = !!(organograma?.canView || organograma?.canEdit);
+  const organogramaEdit = !!organograma?.canEdit;
+  next.organograma = {
+    ...access(organogramaView, organogramaEdit),
+    fotos: access(organogramaView, organogramaEdit),
+  };
   next.configuracoes = access(!!(configuracoes?.canView || configuracoes?.canEdit), !!configuracoes?.canEdit);
   next.routes = deriveRoutesFromPermissions(next);
   return next;
@@ -478,7 +489,11 @@ function deriveRoutesFromPermissions(next: RhGroupPermissions): RhGroupPermissio
       case "/cargos":
         return { ...item, canView: next.cargos.view || next.cargos.edit, canEdit: next.cargos.edit };
       case "/organograma":
-        return { ...item, canView: next.organograma.view || next.organograma.edit, canEdit: next.organograma.edit };
+        return {
+          ...item,
+          canView: next.organograma.view || next.organograma.edit || hasAccess(next.organograma.fotos),
+          canEdit: next.organograma.edit || next.organograma.fotos.edit,
+        };
       case "/configuracoes":
         return { ...item, canView: next.configuracoes.view || next.configuracoes.edit, canEdit: next.configuracoes.edit };
       default:
@@ -583,7 +598,21 @@ export function normalizeRhPermissions(input: unknown): RhGroupPermissions {
   next.dashboard.route = hasDashboardConfig ? readAccess(dashboard.route, access()) : legacy.dashboard.route;
 
   next.cargos = Object.hasOwn(source, "cargos") ? readAccess(source.cargos, access()) : legacy.cargos;
-  next.organograma = Object.hasOwn(source, "organograma") ? readAccess(source.organograma, access()) : legacy.organograma;
+  if (Object.hasOwn(source, "organograma")) {
+    const organograma =
+      source.organograma && typeof source.organograma === "object"
+        ? (source.organograma as Record<string, unknown>)
+        : {};
+    const acessoOrganograma = readAccess(source.organograma, access());
+    next.organograma = {
+      ...acessoOrganograma,
+      fotos: Object.hasOwn(organograma, "fotos")
+        ? readAccess(organograma.fotos, access())
+        : { ...acessoOrganograma },
+    };
+  } else {
+    next.organograma = legacy.organograma;
+  }
   next.configuracoes = Object.hasOwn(source, "configuracoes") ? readAccess(source.configuracoes, access()) : legacy.configuracoes;
   syncCompositeAccess(next);
   next.routes = deriveRoutesFromPermissions(next);
@@ -637,8 +666,10 @@ export function granularPermissionFallback(
         : permissions.cargos.view || permissions.cargos.edit;
     case "/organograma":
       return mode === "edit"
-        ? permissions.organograma.edit
-        : permissions.organograma.view || permissions.organograma.edit;
+        ? permissions.organograma.edit || permissions.organograma.fotos.edit
+        : permissions.organograma.view ||
+            permissions.organograma.edit ||
+            hasAccess(permissions.organograma.fotos);
     case "/configuracoes":
       return mode === "edit"
         ? permissions.configuracoes.edit

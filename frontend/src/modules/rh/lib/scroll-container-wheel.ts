@@ -4,6 +4,8 @@
  * alinha mouse, trackpad (incl. deltaMode linha/página) e eixo dominante.
  */
 
+import { useCallback, useLayoutEffect, useRef } from "react";
+
 export function normalizeWheelDelta(e: WheelEvent, clientWidth: number, clientHeight: number): { dx: number; dy: number } {
   let dx = e.deltaX;
   let dy = e.deltaY;
@@ -73,4 +75,29 @@ export function attachDialogSafeWheelScroll(el: HTMLElement, mode: WheelScrollMo
 
   el.addEventListener("wheel", onWheel, { passive: false, capture: true });
   return () => el.removeEventListener("wheel", onWheel, { capture: true });
+}
+
+/** Ref callback que liga/desliga wheel scroll seguro em modais (Popover/Select dentro de Dialog). */
+export function useDialogSafeWheelScrollRef<T extends HTMLElement>(
+  mode: WheelScrollMode = "vertical",
+): (node: T | null) => void {
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  useLayoutEffect(() => {
+    return () => {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+    };
+  }, []);
+
+  return useCallback(
+    (node: T | null) => {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+      if (node) {
+        cleanupRef.current = attachDialogSafeWheelScroll(node, mode);
+      }
+    },
+    [mode],
+  );
 }

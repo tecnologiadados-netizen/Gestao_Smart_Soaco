@@ -10,6 +10,14 @@ import {
 } from "@rh/components/ui/dialog";
 import { Button } from "@rh/components/ui/button";
 import { cn } from "@rh/lib/utils";
+import {
+  rhFieldInput,
+  rhFieldInputRead,
+  rhFieldLabel,
+  rhFormSection,
+  rhFormSectionBody,
+  rhFormSectionHeader,
+} from "@rh/lib/form-field-styles";
 import type { OrganicoRepresentanteDraft } from "./OrganicoRepresentanteCard";
 
 type RepresentanteField =
@@ -76,19 +84,15 @@ const SECTIONS: RepresentanteSection[] = [
   },
 ];
 
-const lblForm = "text-xs font-medium text-muted-foreground mb-1.5 block";
-const dashedInput =
-  "flex h-9 w-full min-w-0 rounded-lg border border-dashed border-muted-foreground/35 bg-background px-3 text-sm text-foreground shadow-none transition-colors placeholder:text-foreground focus-visible:border-solid focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:ring-offset-0 read-only:text-foreground disabled:cursor-not-allowed disabled:text-foreground disabled:opacity-100 md:text-sm";
-const dashedInputRead =
-  "cursor-default bg-muted border-muted-foreground/25 text-foreground placeholder:text-foreground read-only:text-foreground";
+const lblForm = rhFieldLabel;
+const dashedInput = `${rhFieldInput} placeholder:text-foreground`;
+const dashedInputRead = rhFieldInputRead;
 
 function FormSection({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section id={id} className="scroll-mt-3 rounded-xl border border-border/90 bg-card/35 shadow-sm overflow-hidden">
-      <header className="border-b border-border/80 bg-muted/50 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-foreground">
-        {title}
-      </header>
-      <div className="p-4 sm:p-5">{children}</div>
+    <section id={id} className={cn("scroll-mt-3", rhFormSection)}>
+      <header className={rhFormSectionHeader}>{title}</header>
+      <div className={rhFormSectionBody}>{children}</div>
     </section>
   );
 }
