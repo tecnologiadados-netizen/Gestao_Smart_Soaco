@@ -83,8 +83,8 @@ export function calcularFormulasRow(row: OrganicoSheetRow, opts?: CalcularFormul
   // Salário base: exclusivamente coluna CTPS; todas as derivações usam este valor
   const v52 = parseCtpsToNumber(cells[ORGANICO_IDX.CTPS]);
 
-  // 41: $$ (valor diário) = AN*AM
-  const v40 = roundMoney(n(39) * n(38));
+  // 41: $$ (valor diário) = AO*AN (Valor (Vale) × QTD 2 ou 4)
+  const v40 = roundMoney(n(40) * n(39));
   cells[41] = v40;
 
   // 42: $$ (21 Dias) = AO*21
