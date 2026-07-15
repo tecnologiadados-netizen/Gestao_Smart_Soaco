@@ -18,6 +18,8 @@ export type PendenciasComprasLinha = {
   agPag: number;
   pedidoCompra: number;
   estoqueAtual: number;
+  dataUltimaEntrada: string | null;
+  estoqueAntesUltimaEntrada: number | null;
   /** Regra da coluna Estoque conforme estoque padrão do produto no Nomus. */
   estoqueExibicao: EstoqueExibicaoPendencias;
   nomeColeta: string;

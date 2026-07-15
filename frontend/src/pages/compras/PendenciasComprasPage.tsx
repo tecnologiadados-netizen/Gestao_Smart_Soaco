@@ -68,6 +68,13 @@ const COLS = [
   { key: 'agPag', label: 'Ag Pag', clickable: true as const, align: 'center' as const },
   { key: 'pedidoCompra', label: 'PC', clickable: true as const, align: 'center' as const },
   { key: 'estoqueAtual', label: 'Estoque Atual', clickable: true as const, align: 'center' as const },
+  { key: 'dataUltimaEntrada', label: 'Data Última Entrada', clickable: false, align: 'center' as const },
+  {
+    key: 'estoqueAntesUltimaEntrada',
+    label: 'Estoque Antes da Entrada',
+    clickable: false,
+    align: 'center' as const,
+  },
 ] as const;
 
 const COL_PRIORIDADE_FIXA = { key: 'prioridadeFixa', label: 'Prioridade Fixa', align: 'center' as const };
@@ -75,7 +82,8 @@ const COL_HISTORICO = { key: 'historicoPrioridade', label: 'Histórico', align: 
 
 type ColKey = (typeof COLS)[number]['key'] | typeof COL_PRIORIDADE_FIXA.key | typeof COL_HISTORICO.key;
 const COL_KEYS: (typeof COLS)[number]['key'][] = COLS.map((c) => c.key);
-const NUM_KEYS = ['solicitacao', 'agPag', 'pedidoCompra', 'estoqueAtual'] as const;
+const MODAL_NUM_KEYS = ['solicitacao', 'agPag', 'pedidoCompra', 'estoqueAtual'] as const;
+const NUM_KEYS = [...MODAL_NUM_KEYS, 'estoqueAntesUltimaEntrada'] as const;
 
 const BTN_PRIMARY =
   'inline-flex items-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50';
@@ -152,8 +160,13 @@ export default function PendenciasComprasPage() {
   const getCellText = useCallback((row: PendenciasComprasLinha, key: string): string => {
     if (key === 'dataEmissao') return row.dataEmissao ?? '—';
     if (key === 'dataNecessidade') return row.dataNecessidade ?? '—';
+    if (key === 'dataUltimaEntrada') return row.dataUltimaEntrada ?? '—';
     if (key === 'nomeColeta') return row.nomeColeta?.trim() || '—';
     if (key === 'estoqueAtual') return textoEstoquePendencias(row, fmtQtde);
+    if (key === 'estoqueAntesUltimaEntrada') {
+      if (row.estoqueExibicao !== 'saldo') return textoEstoquePendencias(row, fmtQtde);
+      return row.estoqueAntesUltimaEntrada == null ? '—' : fmtQtde(row.estoqueAntesUltimaEntrada);
+    }
     const val = row[key as keyof PendenciasComprasLinha];
     if (typeof val === 'number') return fmtQtde(val);
     return String(val ?? '');
@@ -161,8 +174,15 @@ export default function PendenciasComprasPage() {
 
   const valueForSort = useCallback((row: PendenciasComprasLinha, key: string): string | number => {
     if (key === 'estoqueAtual') return textoEstoquePendencias(row, fmtQtde);
+    if (key === 'estoqueAntesUltimaEntrada' && row.estoqueExibicao !== 'saldo') {
+      return textoEstoquePendencias(row, fmtQtde);
+    }
     if (NUM_KEYS.includes(key as (typeof NUM_KEYS)[number])) {
-      return row[key as (typeof NUM_KEYS)[number]];
+      return row[key as (typeof NUM_KEYS)[number]] ?? Number.NEGATIVE_INFINITY;
+    }
+    if (key === 'dataUltimaEntrada') {
+      const [dia, mes, ano] = (row.dataUltimaEntrada ?? '').split('/').map(Number);
+      return ano && mes && dia ? ano * 10_000 + mes * 100 + dia : 0;
     }
     return getCellText(row, key);
   }, [getCellText]);
@@ -341,6 +361,8 @@ export default function PendenciasComprasPage() {
           agPag: getCellText(row, 'agPag'),
           pedidoCompra: getCellText(row, 'pedidoCompra'),
           estoqueAtual: getCellText(row, 'estoqueAtual'),
+          dataUltimaEntrada: getCellText(row, 'dataUltimaEntrada'),
+          estoqueAntesUltimaEntrada: getCellText(row, 'estoqueAntesUltimaEntrada'),
           destaques: row.destaques,
         })),
       });
@@ -646,7 +668,7 @@ export default function PendenciasComprasPage() {
                     </td>
                     <td className="px-2 py-1.5 text-center">{row.dataEmissao ?? '—'}</td>
                     <td className="px-2 py-1.5 text-center">{row.dataNecessidade ?? '—'}</td>
-                    {NUM_KEYS.map((k) => {
+                    {MODAL_NUM_KEYS.map((k) => {
                       const val = row[k];
                       const destaqueClass =
                         k === 'agPag'
@@ -696,6 +718,26 @@ export default function PendenciasComprasPage() {
                         </td>
                       );
                     })}
+                    <td className="px-2 py-1.5 text-center">
+                      {row.dataUltimaEntrada ?? '—'}
+                    </td>
+                    <td className="px-2 py-1.5 text-center tabular-nums">
+                      {row.estoqueExibicao !== 'saldo' ? (
+                        <span
+                          className={`whitespace-nowrap text-[10px] font-normal italic ${
+                            row.estoqueExibicao === 'verificar_pcp'
+                              ? 'text-primary-600 dark:text-primary-300'
+                              : 'text-slate-600 dark:text-slate-300'
+                          }`}
+                        >
+                          {textoEstoquePendencias(row, fmtQtde)}
+                        </span>
+                      ) : row.estoqueAntesUltimaEntrada == null ? (
+                        '—'
+                      ) : (
+                        fmtQtde(row.estoqueAntesUltimaEntrada)
+                      )}
+                    </td>
                     <td className="px-2 py-1.5 text-center">
                       <PrioridadeFixaSelect
                         value={row.prioridadeFixa}

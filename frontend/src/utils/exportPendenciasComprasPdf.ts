@@ -15,6 +15,8 @@ export type PendenciasComprasPdfRow = {
   agPag: string;
   pedidoCompra: string;
   estoqueAtual: string;
+  dataUltimaEntrada: string;
+  estoqueAntesUltimaEntrada: string;
   destaques: PendenciasComprasDestaques;
 };
 
@@ -47,10 +49,12 @@ const PDF = {
   },
 } as const;
 
-const COL_RATIOS = [0.065, 0.34, 0.095, 0.105, 0.09, 0.08, 0.08, 0.145] as const;
+const COL_RATIOS = [0.06, 0.245, 0.083, 0.09, 0.078, 0.072, 0.062, 0.115, 0.088, 0.107] as const;
 const MARGIN = { left: 8, right: 8, bottom: 10, top: 8 };
 /** Solicitação, Ag Pag, PC, Estoque Atual — sempre com badge azul (como GradeCelulaModalBtn). */
 const COLS_BADGE = new Set([4, 5, 6, 7]);
+/** Estoque Antes da Últ. Entrada — texto simples; estilo especial p/ "(Verificar com PCP)" / "Não controlado". */
+const COL_ESTOQUE_ANTES = 9;
 
 /** Espaço reservado no rodapé de toda página para "Emitido em / Página". */
 const FOOTER_PAGINA_MM = 8;
@@ -449,6 +453,8 @@ export async function downloadPendenciasComprasPdf(
       'Ag Pag',
       'PC',
       'Estoque Atual',
+      'Últ. Entrada',
+      'Estoque Antes da Entrada',
     ],
   ];
 
@@ -461,6 +467,8 @@ export async function downloadPendenciasComprasPdf(
     r.agPag,
     r.pedidoCompra,
     r.estoqueAtual,
+    r.dataUltimaEntrada,
+    r.estoqueAntesUltimaEntrada,
   ]);
 
   autoTable(doc, {
@@ -499,6 +507,8 @@ export async function downloadPendenciasComprasPdf(
       5: { cellWidth: colWidths[5], halign: 'center' },
       6: { cellWidth: colWidths[6], halign: 'center' },
       7: { cellWidth: colWidths[7], halign: 'center' },
+      8: { cellWidth: colWidths[8], halign: 'center' },
+      9: { cellWidth: colWidths[9], halign: 'center' },
     },
     margin: { ...MARGIN, bottom: FOOTER_PAGINA_MM },
     didParseCell: (data) => {
@@ -517,6 +527,15 @@ export async function downloadPendenciasComprasPdf(
 
       if (COLS_BADGE.has(data.column.index)) {
         data.cell.text = [];
+      }
+
+      if (data.column.index === COL_ESTOQUE_ANTES) {
+        const texto = linha.estoqueAntesUltimaEntrada.trim();
+        if (texto === ESTOQUE_VERIFICAR_PCP_TEXTO || texto === ESTOQUE_NAO_CONTROLADO_TEXTO) {
+          data.cell.styles.fontStyle = 'italic';
+          data.cell.styles.fontSize = 6.5;
+          data.cell.styles.textColor = PDF.muted;
+        }
       }
     },
     didDrawCell: (data) => {
