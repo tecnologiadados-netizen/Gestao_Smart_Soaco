@@ -1322,7 +1322,7 @@ export async function fetchDreRateioConfig(): Promise<DreRateioConfigApi> {
   return {
     regras: Array.isArray(body.regras) ? body.regras : [],
     atualizadoEm: body.atualizadoEm ?? null,
-    vazio: body.vazio ?? !Array.isArray(body.regras) || body.regras.length === 0,
+    vazio: body.vazio ?? (!Array.isArray(body.regras) || body.regras.length === 0),
   };
 }
 
