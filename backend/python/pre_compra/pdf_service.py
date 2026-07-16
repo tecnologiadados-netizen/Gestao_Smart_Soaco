@@ -179,20 +179,62 @@ def _fmt_coleta(data: dict) -> str:
     return ""
 
 
+def _cell_text(row, index: int) -> str:
+    if index < 0 or index >= len(row.cells):
+        return ""
+    return _normalize_text(row.cells[index].text)
+
+
+def _find_header_value_cell(table, *label_fragments: str) -> tuple[int, int] | None:
+    """Localiza (linha, coluna_valor) pelo texto do rótulo; valor = primeira célula distinta à direita."""
+    needles = [_normalize_text(f) for f in label_fragments if f]
+    for i, row in enumerate(table.rows):
+        for j, cell in enumerate(row.cells):
+            label = _normalize_text(cell.text)
+            if not label or not any(n in label for n in needles):
+                continue
+            for k in range(j + 1, len(row.cells)):
+                if _normalize_text(row.cells[k].text) != label:
+                    return i, k
+            return i, min(j + 1, len(row.cells) - 1)
+    return None
+
+
 def _fill_header(table, data: dict) -> None:
-    header_fields = [
-        (1, 2, data.get("cotacao")),
-        (1, 6, _fmt_coleta(data)),
-        (1, 11, _fmt_date(data.get("data_emissao"))),
-        (2, 2, data.get("comprador")),
-        (2, 10, data.get("telefone")),
-        (3, 2, data.get("fornecedor")),
-        (3, 8, data.get("cnpj")),
-        (4, 2, data.get("contato")),
-        (4, 8, data.get("telefone_fornecedor")),
+    # Preferência: achar pelo rótulo do template (aceita nome antigo ou novo).
+    # Fallback: índices fixos do layout atual do formulario_cotacao.docx.
+    resolved: list[tuple[int, int, object]] = []
+    specs: list[tuple[tuple[str, ...], int, int, object]] = [
+        (
+            ("nº da pré-compra", "n° da pré-compra", "nº da pre-compra", "n° da pre-compra", "nº da cotação", "n° da cotação", "nº da cotacao", "n° da cotacao"),
+            1,
+            2,
+            data.get("cotacao"),
+        ),
+        (("nº da coleta", "n° da coleta", "nº da coleta", "n° da coleta"), 1, 6, _fmt_coleta(data)),
+        (("data de emissão", "data de emissao"), 1, 11, _fmt_date(data.get("data_emissao"))),
+        (("nome do comprador",), 2, 2, data.get("comprador")),
+        (("telefone comprador",), 2, 10, data.get("telefone")),
+        (("fornecedor:", "fornecedor"), 3, 2, data.get("fornecedor")),
+        (("cnpj",), 3, 8, data.get("cnpj")),
+        (("contato:", "contato"), 4, 2, data.get("contato")),
+        (("telefone:", "telefone"), 4, 8, data.get("telefone_fornecedor")),
     ]
-    for row_idx, col_idx, value in header_fields:
-        _set_cell(table.rows[row_idx], col_idx, value, pad_left=True, bold=False)
+    used_rows_cols: set[tuple[int, int]] = set()
+    for fragments, fb_row, fb_col, value in specs:
+        found = _find_header_value_cell(table, *fragments)
+        if found is not None and found not in used_rows_cols:
+            row_idx, col_idx = found
+        else:
+            row_idx, col_idx = fb_row, fb_col
+        if (row_idx, col_idx) in used_rows_cols:
+            row_idx, col_idx = fb_row, fb_col
+        used_rows_cols.add((row_idx, col_idx))
+        resolved.append((row_idx, col_idx, value))
+
+    for row_idx, col_idx, value in resolved:
+        if row_idx < len(table.rows) and col_idx < len(table.rows[row_idx].cells):
+            _set_cell(table.rows[row_idx], col_idx, value, pad_left=True, bold=False)
 
 
 def _fmt_solicitacao(sol: dict) -> str:
@@ -219,7 +261,7 @@ def _fill_solicitacoes(table, solicitacoes: list[dict]) -> None:
     if len(ordenadas) == 1:
         texto = _fmt_solicitacao(ordenadas[0])
     else:
-        texto = "\n".join(
+        texto = "; ".join(
             f"{i}° {_fmt_solicitacao(sol)}" for i, sol in enumerate(ordenadas, start=1)
         )
 
