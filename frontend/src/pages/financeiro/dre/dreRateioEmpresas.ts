@@ -145,6 +145,16 @@ export function configRateioValida(config: DreRateioConfig): boolean {
   return config.regras.every((r) => percentuaisRateioValidos(r.percentuais));
 }
 
+/** Config “rica” do navegador — candidata a migrar para a VPS se o servidor ainda estiver vazio. */
+export function configRateioRicaParaMigrar(config: DreRateioConfig): boolean {
+  if (config.regras.length > 1) return true;
+  return config.regras.some((r) => r.origem.tipo === 'fornecedores');
+}
+
+export function parseRateioConfigFromApi(regras: unknown[]): DreRateioConfig | null {
+  return parseStoredConfig(JSON.stringify({ regras }));
+}
+
 /** Ajusta centavos no maior percentual para fechar 100%. */
 export function normalizarPercentuaisRateio(percentuais: DreRateioProLaborePct): DreRateioProLaborePct {
   const out: DreRateioProLaborePct = {};

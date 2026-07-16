@@ -101,6 +101,9 @@ O script executa automaticamente:
 1. Conferir health: http://127.0.0.1:4000/health
 2. Conferir site: https://gsmartsoaco.com.br
 3. **Ctrl+Shift+R** nos navegadores (evita JS/CSS antigo em cache)
+4. **Rateio DRE:** a config fica em `backend/var/dre-rateio.json` (fora do git). O deploy **nao apaga** esse arquivo.
+   - Se for o primeiro deploy com persistencia no servidor: abra a DRE **no navegador de producao que ja tinha os rateios salvos** — a migracao do `localStorage` para a VPS ocorre automaticamente (somente se o arquivo ainda estiver vazio).
+   - Nao delete `backend/var/dre-rateio.json` na VPS.
 
 ---
 
