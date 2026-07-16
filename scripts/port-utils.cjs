@@ -6,7 +6,15 @@ const { execSync } = require('child_process');
 const path = require('path');
 const { DEV_PORTS, KILL_PORTS } = require('./dev-ports.cjs');
 
+/**
+ * Marcador legado (quando o projeto ficava em `C:\gestorpedidosSoAco`). Mantido apenas como
+ * dica adicional — a identificação principal é feita pelo CAMINHO REAL da raiz do projeto,
+ * para funcionar independentemente do nome da pasta em que o repositório foi clonado.
+ */
 const PROJECT_MARKER = 'gestorpedidosSoAco';
+
+/** Raiz real deste checkout e o nome da pasta — usados para casar processos deste projeto. */
+const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 const DEV_CMD_PATTERNS = [
   /run-vite-loop\.cjs/i,
@@ -35,9 +43,19 @@ function normalizePath(p) {
 
 function isDevStackCommandLine(cmd, projectRootNorm) {
   if (!cmd) return false;
-  const c = cmd.replace(/\\/g, '/');
-  if (!c.toLowerCase().includes(PROJECT_MARKER.toLowerCase())) return false;
-  if (projectRootNorm && !c.toLowerCase().includes(projectRootNorm)) return false;
+  const c = cmd.replace(/\\/g, '/').toLowerCase();
+  const rootNorm = projectRootNorm || normalizePath(PROJECT_ROOT);
+  const dirName = path.basename(PROJECT_ROOT).toLowerCase();
+
+  // Só encerramos processos DESTE projeto. Identificação principal: caminho real da raiz
+  // aparece na linha de comando (node vite.js, tsx, concurrently, scripts .cjs). Marcador
+  // legado e nome da pasta ficam como dica extra, mas o caminho é o que garante robustez.
+  const belongsToProject =
+    (!!rootNorm && c.includes(rootNorm)) ||
+    (!!dirName && c.includes(`/${dirName}/`)) ||
+    c.includes(PROJECT_MARKER.toLowerCase());
+  if (!belongsToProject) return false;
+
   return DEV_CMD_PATTERNS.some((re) => re.test(c));
 }
 
@@ -90,7 +108,35 @@ function killPid(pid, excludePids = new Set()) {
   }
 }
 
-function listWindowsProcesses() {
+/**
+ * Lista processos via PowerShell/CIM (confiável no Windows 11 moderno, onde o `wmic`
+ * foi descontinuado e pode devolver lista incompleta ou vazia).
+ */
+function listWindowsProcessesPowerShell() {
+  try {
+    const script =
+      "$ErrorActionPreference='SilentlyContinue';" +
+      '@(Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine) | ' +
+      'ConvertTo-Json -Compress -Depth 2';
+    const raw = execSync(`powershell -NoProfile -NonInteractive -Command "${script}"`, {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    if (!raw || !raw.trim()) return null;
+    const parsed = JSON.parse(raw);
+    const arr = Array.isArray(parsed) ? parsed : [parsed];
+    const procs = arr
+      .map((p) => ({ pid: Number(p.ProcessId), cmd: p.CommandLine || '' }))
+      .filter((p) => Number.isFinite(p.pid) && p.pid > 0);
+    return procs.length > 0 ? procs : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fallback legado via `wmic` (mquinas antigas sem o CIM acessível). */
+function listWindowsProcessesWmic() {
   try {
     const raw = execSync('wmic process get ProcessId,CommandLine /format:list', {
       encoding: 'utf8',
@@ -114,6 +160,10 @@ function listWindowsProcesses() {
   } catch {
     return [];
   }
+}
+
+function listWindowsProcesses() {
+  return listWindowsProcessesPowerShell() || listWindowsProcessesWmic();
 }
 
 function listUnixDevProcesses(projectRootNorm) {

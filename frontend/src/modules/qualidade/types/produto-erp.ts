@@ -4,6 +4,8 @@ export interface ProdutoErp {
   descricao: string;
   grupoProduto: string;
   tipoProduto: string;
+  /** Quantidade pedida no pedido de venda (quando a busca é filtrada por pedido). */
+  quantidadePedido?: number;
 }
 
 /**

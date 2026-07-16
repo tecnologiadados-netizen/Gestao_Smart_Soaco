@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { inferirStatusRcc } from "@qualidade/lib/registros/validacao-rcc";
 import { inferirStatusRnc } from "@qualidade/lib/registros/validacao-rnc";
 import type {
+  AtualizarRegistroRccInput,
   AtualizarRegistroRncInput,
   CriarRegistroInput,
   Registro,
@@ -14,6 +15,8 @@ interface RegistrosState {
   registros: Registro[];
   criarRegistro: (input: CriarRegistroInput) => string;
   atualizarRegistroRnc: (input: AtualizarRegistroRncInput) => boolean;
+  atualizarRegistroRcc: (input: AtualizarRegistroRccInput) => boolean;
+  excluirRegistro: (id: string) => boolean;
   getRegistroById: (id: string) => Registro | undefined;
   getRegistrosPorTipo: (tipo: RegistroTipo) => Registro[];
 }
@@ -23,11 +26,19 @@ function generateId(): string {
 }
 
 function gerarNumeroSgq(tipo: RegistroTipo, registros: Registro[]): string {
-  const sequencia =
-    registros.filter(
-      (registro) => registro.tipo === tipo && !registro.origemNomus
-    ).length + 1;
-  return `${tipo.toUpperCase()}-${String(sequencia).padStart(4, "0")}`;
+  const prefixo = `${tipo.toUpperCase()}-`;
+  let maiorSequencia = 0;
+
+  for (const registro of registros) {
+    if (registro.tipo !== tipo || registro.origemNomus) continue;
+    if (!registro.numero.startsWith(prefixo)) continue;
+    const sequencia = Number.parseInt(registro.numero.slice(prefixo.length), 10);
+    if (!Number.isNaN(sequencia)) {
+      maiorSequencia = Math.max(maiorSequencia, sequencia);
+    }
+  }
+
+  return `${prefixo}${String(maiorSequencia + 1).padStart(4, "0")}`;
 }
 
 function montarRncParaSalvar(
@@ -96,7 +107,7 @@ export const useRegistrosStore = create<RegistrosState>()((set, get) => ({
 
       atualizarRegistroRnc: (input) => {
         const atual = get().registros.find((r) => r.id === input.id);
-        if (!atual || atual.tipo !== "rnc" || atual.origemNomus) {
+        if (!atual || atual.tipo !== "rnc") {
           return false;
         }
 
@@ -117,6 +128,45 @@ export const useRegistrosStore = create<RegistrosState>()((set, get) => ({
                 }
               : registro
           ),
+        }));
+
+        return true;
+      },
+
+      atualizarRegistroRcc: (input) => {
+        const atual = get().registros.find((r) => r.id === input.id);
+        if (!atual || atual.tipo !== "rcc") {
+          return false;
+        }
+
+        const agora = new Date().toISOString();
+        const status = input.status ?? inferirStatusRcc(input.rcc);
+
+        set((state) => ({
+          registros: state.registros.map((registro) =>
+            registro.id === input.id
+              ? {
+                  ...registro,
+                  status,
+                  rcc: montarRccParaSalvar(
+                    input.rcc,
+                    registro.codigoDocumento
+                  ),
+                  updatedAt: agora,
+                }
+              : registro
+          ),
+        }));
+
+        return true;
+      },
+
+      excluirRegistro: (id) => {
+        const atual = get().registros.find((r) => r.id === id);
+        if (!atual) return false;
+
+        set((state) => ({
+          registros: state.registros.filter((registro) => registro.id !== id),
         }));
 
         return true;

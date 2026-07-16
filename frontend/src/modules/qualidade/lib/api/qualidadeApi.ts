@@ -56,6 +56,22 @@ export async function syncQualidadeRegistros(registros: unknown[]) {
   await putJson('/api/qualidade/sync/registros', { registros });
 }
 
+/** Persiste um único registro (criação/edição) sem reenviar todo o histórico. */
+export async function syncQualidadeRegistro(registro: unknown) {
+  await putJson('/api/qualidade/sync/registros', { registros: [registro] });
+}
+
+export async function deleteQualidadeRegistro(registroId: string): Promise<void> {
+  const res = await apiFetch(
+    `/api/qualidade/registros/${encodeURIComponent(registroId)}`,
+    { method: 'DELETE' }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? 'Falha ao excluir registro.');
+  }
+}
+
 export async function syncQualidadeDocuments(payload: {
   documents: unknown[];
   versions: unknown[];

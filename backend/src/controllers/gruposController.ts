@@ -11,6 +11,13 @@ import {
   serializePermissoesMaster,
 } from '../config/grupoMaster.js';
 import { TODAS_PERMISSOES } from '../config/permissoes.js';
+import { getGrupoPermissions, setGrupoPermissions } from '../rh/services/rhPermissionsService.js';
+import { normalizeRhPermissions } from '../rh/lib/rh-permissions.js';
+import {
+  RH_ORGANICO_COMMENT_TAGS_CONFIG_KEY,
+  RH_ORGANICO_COMMENT_TAG_OPTIONS,
+  parseRhCommentTagCatalog,
+} from '../rh/lib/rh-organico-comment-tags.js';
 
 function parsePermissoes(json: string): CodigoPermissao[] {
   try {
@@ -108,6 +115,11 @@ export async function criarGrupo(req: Request, res: Response): Promise<void> {
         ativo: true,
       },
     });
+    if (parsed.data.rhPermissoes !== undefined) {
+      await setGrupoPermissions(grupo.id, normalizeRhPermissions(parsed.data.rhPermissoes));
+    } else {
+      await setGrupoPermissions(grupo.id, normalizeRhPermissions(null));
+    }
     res.status(201).json({
       id: grupo.id,
       nome: grupo.nome,
@@ -165,6 +177,7 @@ export async function atualizarGrupo(req: Request, res: Response): Promise<void>
     parsed.data.nome !== undefined ||
     parsed.data.descricao !== undefined ||
     parsed.data.permissoes !== undefined ||
+    parsed.data.rhPermissoes !== undefined ||
     parsed.data.telaPrincipalInicial !== undefined;
   if (teveOutrosCampos && !podeEditar) {
     res.status(403).json({ error: 'Sem permissão para editar grupo.' });
@@ -259,6 +272,9 @@ export async function atualizarGrupo(req: Request, res: Response): Promise<void>
         _count: { select: { usuarios: true } },
       },
     });
+    if (parsed.data.rhPermissoes !== undefined) {
+      await setGrupoPermissions(grupo.id, normalizeRhPermissions(parsed.data.rhPermissoes));
+    }
     res.json({
       id: grupo.id,
       nome: grupo.nome,
@@ -278,6 +294,66 @@ export async function atualizarGrupo(req: Request, res: Response): Promise<void>
     }
     console.error('atualizarGrupo', err);
     res.status(503).json({ error: 'Erro ao atualizar grupo.' });
+  }
+}
+
+/**
+ * GET /api/grupos/rh-permissoes-contexto — setores e tags para o editor de permissões RH.
+ */
+export async function obterRhPermissoesContexto(_req: Request, res: Response): Promise<void> {
+  try {
+    const organicoRows = await prisma.rhOrganico.findMany({
+      select: { valuesJson: true },
+    });
+    const sectors = new Set<string>();
+    for (const row of organicoRows) {
+      try {
+        const values = JSON.parse(row.valuesJson) as unknown[];
+        if (Array.isArray(values)) {
+          const setor = String(values[14] ?? '').trim();
+          if (setor) sectors.add(setor);
+        }
+      } catch {
+        /* ignora linha inválida */
+      }
+    }
+    const configRow = await prisma.rhConfig.findUnique({
+      where: { key: RH_ORGANICO_COMMENT_TAGS_CONFIG_KEY },
+      select: { value: true },
+    });
+    const commentTagOptions = configRow?.value
+      ? parseRhCommentTagCatalog(configRow.value)
+      : [...RH_ORGANICO_COMMENT_TAG_OPTIONS];
+    res.json({
+      setores: [...sectors].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      commentTagOptions,
+    });
+  } catch (err) {
+    console.error('obterRhPermissoesContexto', err);
+    res.status(503).json({ error: 'Erro ao carregar contexto do editor RH.' });
+  }
+}
+
+/**
+ * GET /api/grupos/:id/rh-permissoes — permissões granulares do módulo RH para o grupo.
+ */
+export async function obterRhPermissoesGrupo(req: Request, res: Response): Promise<void> {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) {
+    res.status(400).json({ error: 'ID inválido.' });
+    return;
+  }
+  try {
+    const grupo = await prisma.grupoUsuario.findUnique({ where: { id }, select: { id: true } });
+    if (!grupo) {
+      res.status(404).json({ error: 'Grupo não encontrado.' });
+      return;
+    }
+    const permissions = await getGrupoPermissions(id);
+    res.json({ permissions });
+  } catch (err) {
+    console.error('obterRhPermissoesGrupo', err);
+    res.status(503).json({ error: 'Erro ao carregar permissões RH do grupo.' });
   }
 }
 

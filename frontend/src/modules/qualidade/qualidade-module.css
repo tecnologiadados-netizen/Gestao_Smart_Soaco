@@ -124,6 +124,13 @@
   font-size: 0.9375rem;
 }
 
+.qualidade-module [data-slot="textarea"],
+.qualidade-portal [data-slot="textarea"] {
+  background: var(--card);
+  border-color: color-mix(in oklch, var(--brand-blue-muted) 80%, var(--border));
+  font-size: 0.9375rem;
+}
+
 .qualidade-portal [data-slot="select-content"] {
   z-index: 200;
 }

@@ -13,6 +13,7 @@ import GradeFiltroCabecalhoBtn from '../grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../grade/GradeFiltroExcelPortal';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import ModalConsultaEstoqueEmbed from '../pcp/ModalConsultaEstoqueEmbed';
+import GradeCelulaModalBtn from '../pcp/GradeCelulaModalBtn';
 
 const COLS = ['codigo', 'descricao', 'qtdePendente'] as const;
 
@@ -176,14 +177,13 @@ export default function CalendarioSetorProdutosModal({
                       <tr key={r.codigo} className="border-b border-slate-100 dark:border-slate-700">
                         <td className={`${TD} pl-4 font-mono`}>
                           {r.codigo ? (
-                            <button
-                              type="button"
-                              className="rounded px-0.5 text-left font-mono text-primary-600 underline-offset-2 hover:underline dark:text-primary-400"
-                              title={`Consultar estoque de ${r.codigo}`}
+                            <GradeCelulaModalBtn
                               onClick={() => setConsultaCodigo(r.codigo)}
+                              title={`Consultar estoque de ${r.codigo}`}
+                              align="left"
                             >
                               {r.codigo}
-                            </button>
+                            </GradeCelulaModalBtn>
                           ) : (
                             '—'
                           )}

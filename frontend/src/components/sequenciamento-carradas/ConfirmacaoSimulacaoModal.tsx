@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { listarMotivosSugestao, type MotivoSugestao } from '../../api/motivosSugestao';
 import { formatDataCurta, formatQtdeInt, type PedidoAlterado } from './simulacaoCarradas';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
@@ -22,6 +23,8 @@ type Props = {
   onMotivoPorIdChange: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
   onConfirmar: (motivoPorIdPedido: Record<string, string>) => void;
   onClose: () => void;
+  /** Volta à etapa anterior (ex.: corrigir datas), se disponível. */
+  onVoltar?: () => void;
 };
 
 const TH = 'px-2 py-2 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap';
@@ -33,14 +36,15 @@ const TR_PENDENTE_ITEM = 'border-b border-slate-100 dark:border-slate-700 bg-amb
 const TD_MESCLADA = 'px-2 py-1.5 align-middle text-center text-slate-700 dark:text-slate-200';
 
 const RECENTES_STORAGE_KEY = 'seqCarradas:motivosRecentes';
-const MAX_RECENTES = 5;
+const MAX_RECENTES = 2;
 
 function lerMotivosRecentes(): string[] {
   try {
     const raw = localStorage.getItem(RECENTES_STORAGE_KEY);
     if (!raw) return [];
     const arr = JSON.parse(raw) as unknown;
-    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [];
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((x): x is string => typeof x === 'string').slice(0, MAX_RECENTES);
   } catch {
     return [];
   }
@@ -243,6 +247,7 @@ export default function ConfirmacaoSimulacaoModal({
   onMotivoPorIdChange,
   onConfirmar,
   onClose,
+  onVoltar,
 }: Props) {
   const [motivos, setMotivos] = useState<MotivoSugestao[]>([]);
   const [recentes, setRecentes] = useState<string[]>(() => lerMotivosRecentes());
@@ -348,7 +353,7 @@ export default function ConfirmacaoSimulacaoModal({
       onClick={salvando ? undefined : onClose}
     >
       <div
-        className="flex max-h-[92vh] w-full max-w-6xl flex-col rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
+        className="flex max-h-[92vh] w-full max-w-7xl flex-col rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirmacao-simulacao-titulo"
@@ -366,14 +371,26 @@ export default function ConfirmacaoSimulacaoModal({
                 ` Além disso, ${qtdCarradasSomenteProducao} carrada(s) terão apenas a Data de produção atualizada.`}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={salvando}
-            className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-700"
-          >
-            Fechar
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            {onVoltar ? (
+              <button
+                type="button"
+                onClick={onVoltar}
+                disabled={salvando}
+                className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                Voltar
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={salvando}
+              className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              Fechar
+            </button>
+          </div>
         </div>
 
         {pedidosEntrega.length > 0 && (
@@ -420,12 +437,15 @@ export default function ConfirmacaoSimulacaoModal({
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/50">
-                  <th className={`${TH} w-8`} />
-                  <th className={`${TH} text-left`}>Carrada / Pedido / Item</th>
+                  <th className={`${TH} w-10 text-center`} title="Expandir / recolher">
+                    <span className="sr-only">Expandir</span>
+                  </th>
+                  <th className={`${TH} text-left`}>Carrada / Pedido</th>
+                  <th className={`${TH} min-w-[16rem] text-left`}>Item / Descrição</th>
                   <th className={`${TH} text-right`}>Qtde Pendente Real</th>
                   <th className={`${TH} text-left`}>Previsão anterior</th>
                   <th className={`${TH} text-left`}>Nova previsão</th>
-                  <th className={`${TH} text-left`}>Motivo</th>
+                  <th className={`${TH} min-w-[12rem] text-left`}>Motivo</th>
                 </tr>
               </thead>
               <tbody>
@@ -461,6 +481,16 @@ export default function ConfirmacaoSimulacaoModal({
             </p>
           )}
           <div className="flex items-center justify-end gap-2">
+            {onVoltar ? (
+              <button
+                type="button"
+                onClick={onVoltar}
+                disabled={salvando}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                Voltar
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onClose}
@@ -526,11 +556,16 @@ function GrupoCarradaRows({
           <button
             type="button"
             onClick={onToggle}
-            className="rounded px-1 text-xs text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-600"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 shadow-sm hover:border-primary-400 hover:bg-primary-50 hover:text-primary-700 dark:border-slate-500 dark:bg-slate-700 dark:text-slate-100 dark:hover:border-primary-400 dark:hover:bg-primary-900/40 dark:hover:text-primary-200"
             title={aberto ? 'Recolher pedidos e itens' : 'Expandir pedidos e itens'}
+            aria-label={aberto ? 'Recolher pedidos e itens' : 'Expandir pedidos e itens'}
             aria-expanded={aberto}
           >
-            {aberto ? '▾' : '▸'}
+            {aberto ? (
+              <ChevronDown className="h-4 w-4" aria-hidden />
+            ) : (
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            )}
           </button>
         </td>
         <td className="px-2 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
@@ -539,6 +574,7 @@ function GrupoCarradaRows({
             ({grupo.itens.length} pedido(s))
           </span>
         </td>
+        <td className="px-2 py-1.5 text-xs text-slate-400 dark:text-slate-500">—</td>
         <td className="px-2 py-1.5 text-right text-xs tabular-nums text-slate-600 dark:text-slate-300">
           {formatQtdeInt(grupo.qtdeTotal)}
         </td>
@@ -575,7 +611,7 @@ function GrupoCarradaRows({
                     <div className="flex flex-col items-center justify-center gap-1">
                       <span className="text-xs font-semibold">{grupoPd.pd}</span>
                       <span
-                        className="max-w-[140px] truncate text-[11px] text-slate-500 dark:text-slate-400"
+                        className="max-w-[160px] text-[11px] leading-snug text-slate-500 dark:text-slate-400"
                         title={grupoPd.cliente}
                       >
                         {grupoPd.cliente || '—'}
@@ -597,13 +633,10 @@ function GrupoCarradaRows({
                     </div>
                   </td>
                 ) : null}
-                <td className={TD}>
-                  <div className="flex flex-col">
+                <td className={`${TD} min-w-[16rem] max-w-md`}>
+                  <div className="flex flex-col gap-0.5">
                     <span className="font-mono text-xs">{it.cod || '—'}</span>
-                    <span
-                      className="line-clamp-2 text-[11px] text-slate-500 dark:text-slate-400"
-                      title={it.descricao}
-                    >
+                    <span className="whitespace-normal break-words text-[11px] leading-snug text-slate-600 dark:text-slate-300">
                       {it.descricao || '—'}
                     </span>
                     {itemMotivoConcluido(it.idPedido, motivoPorId) ? (

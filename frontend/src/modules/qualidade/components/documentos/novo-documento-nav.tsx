@@ -3,13 +3,11 @@ import { ChevronDown, Plus } from "lucide-react";
 import { cn } from "@qualidade/lib/utils";
 import { CadastroDocumentoInternoDialog } from "@qualidade/components/documentos/cadastro-documento-interno-dialog";
 import { CadastroDocumentoExternoDialog } from "@qualidade/components/documentos/cadastro-documento-externo-dialog";
-import { CadastroRegistroDialog } from "@qualidade/components/documentos/cadastro-registro-dialog";
 
 export function NovoDocumentoNav() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [internoOpen, setInternoOpen] = useState(false);
   const [externoOpen, setExternoOpen] = useState(false);
-  const [registroOpen, setRegistroOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function openMenu() {
@@ -29,11 +27,6 @@ export function NovoDocumentoNav() {
   function openExterno() {
     setMenuOpen(false);
     setExternoOpen(true);
-  }
-
-  function openRegistro() {
-    setMenuOpen(false);
-    setRegistroOpen(true);
   }
 
   return (
@@ -75,20 +68,12 @@ export function NovoDocumentoNav() {
             >
               Documento externo
             </button>
-            <button
-              type="button"
-              className="flex w-full px-4 py-2.5 text-left text-sm text-foreground hover:bg-muted"
-              onClick={openRegistro}
-            >
-              Registros
-            </button>
           </div>
         )}
       </div>
 
       <CadastroDocumentoInternoDialog open={internoOpen} onOpenChange={setInternoOpen} />
       <CadastroDocumentoExternoDialog open={externoOpen} onOpenChange={setExternoOpen} />
-      <CadastroRegistroDialog open={registroOpen} onOpenChange={setRegistroOpen} />
     </>
   );
 }

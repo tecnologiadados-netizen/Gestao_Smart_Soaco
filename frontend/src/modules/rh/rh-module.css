@@ -1,0 +1,436 @@
+/* Variáveis do módulo RH — paleta SoAço (shadcn tokens) */
+.rh-module,
+.rh-portal {
+  --brand-navy: var(--soaco-navy, #041e42);
+  --brand-blue: #2438b8;
+  --brand-yellow: var(--soaco-gold, #ffad00);
+  --brand-gray: #64748b;
+  --brand-dark: var(--soaco-graphite, #2e2d2c);
+  --brand-white: var(--soaco-white, #ffffff);
+  --brand-blue-light: #eef0ff;
+  --brand-blue-muted: #cdd3ff;
+  --brand-success: #059669;
+  --background: #edf1f7;
+  --foreground: #10233f;
+  --card: #ffffff;
+  --card-foreground: #10233f;
+  --popover: #ffffff;
+  --popover-foreground: #10233f;
+  --primary: #2438b8;
+  --primary-foreground: #ffffff;
+  --primary-vibrant: #3047d0;
+  --primary-vibrant-foreground: #ffffff;
+  --primary-soft: #eef0ff;
+  --accent-soft: #fff4d6;
+  --success-soft: #e8f8f1;
+  --destructive-soft: #fff0f0;
+  --secondary: #e7ebfb;
+  --secondary-foreground: #10233f;
+  --muted: #e9eef5;
+  --muted-foreground: #3d5168;
+  --accent: var(--soaco-gold, #ffad00);
+  --accent-foreground: #10233f;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --success: #059669;
+  --success-foreground: #ffffff;
+  --warning: var(--soaco-gold, #ffad00);
+  --warning-foreground: #10233f;
+  --border: rgb(4 30 66 / 0.24);
+  --input: rgb(4 30 66 / 0.34);
+  --ring: #3047d0;
+  --header: var(--soaco-navy, #041e42);
+  --header-foreground: #ffffff;
+  --table-header: var(--soaco-primary, #1e22aa);
+  --table-header-foreground: #ffffff;
+  --sidebar-background: var(--soaco-navy, #041e42);
+  --sidebar-foreground: #e8eaf8;
+  --sidebar-primary: var(--soaco-gold, #ffad00);
+  --sidebar-primary-foreground: var(--soaco-navy, #041e42);
+  --sidebar-accent: #0a2d5c;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #1a3a6b;
+  --sidebar-ring: var(--soaco-blue, #1e22aa);
+  --sidebar-muted: #6b7fa3;
+  --radius: 0.625rem;
+  --shadow-1: 0 2px 5px rgb(4 30 66 / 0.08), 0 1px 2px rgb(4 30 66 / 0.05);
+  --shadow-2: 0 10px 24px -8px rgb(4 30 66 / 0.2), 0 3px 8px -3px rgb(4 30 66 / 0.12);
+  --shadow-3: 0 22px 48px -16px rgb(4 30 66 / 0.3), 0 8px 18px -8px rgb(4 30 66 / 0.16);
+  color: var(--foreground);
+}
+
+.rh-module {
+  background:
+    radial-gradient(circle at 92% 2%, rgb(36 56 184 / 0.055), transparent 26rem),
+    var(--background);
+}
+
+.dark .rh-module,
+.dark .rh-portal {
+  --background: #0e131b;
+  --foreground: #f4f7fb;
+  --card: #171d27;
+  --card-foreground: #f4f7fb;
+  --popover: #1b222e;
+  --popover-foreground: #f4f7fb;
+  --primary: #6676ff;
+  --primary-vibrant: #7b88ff;
+  --primary-soft: #252d59;
+  --accent-soft: #443716;
+  --success-soft: #123a2f;
+  --destructive-soft: #411e25;
+  --secondary: #252d42;
+  --secondary-foreground: #eef1ff;
+  --muted: #222a36;
+  --muted-foreground: #c0cbd8;
+  --accent: var(--soaco-gold, #ffad00);
+  --border: rgb(148 163 184 / 0.38);
+  --input: rgb(148 163 184 / 0.48);
+  --ring: #7b88ff;
+  --shadow-1: 0 3px 8px rgb(0 0 0 / 0.3);
+  --shadow-2: 0 12px 28px -8px rgb(0 0 0 / 0.55), 0 3px 8px rgb(0 0 0 / 0.3);
+  --shadow-3: 0 24px 56px -16px rgb(0 0 0 / 0.72);
+}
+
+.rh-module .label-industrial {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--foreground) 72%, var(--muted-foreground));
+}
+
+/* Abas, campos e chips — contraste reforçado em todo o RH */
+.rh-module [role='tablist'],
+.rh-portal [role='tablist'] {
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-1);
+}
+
+.rh-module [role='tab']:not([data-state='active']),
+.rh-portal [role='tab']:not([data-state='active']) {
+  color: color-mix(in oklch, var(--foreground) 82%, transparent);
+  font-weight: 500;
+}
+
+.rh-module [role='tab'][data-state='active'],
+.rh-portal [role='tab'][data-state='active'] {
+  font-weight: 600;
+}
+
+.rh-module .rh-inline-field,
+.rh-portal .rh-inline-field {
+  border: 1px solid var(--input);
+  background: var(--background);
+  color: var(--foreground);
+  border-radius: calc(var(--radius) * 0.75);
+  box-shadow: var(--shadow-1);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.rh-module .rh-inline-field::placeholder,
+.rh-portal .rh-inline-field::placeholder {
+  color: var(--muted-foreground);
+}
+
+.rh-module .rh-inline-field:hover:not(:disabled),
+.rh-portal .rh-inline-field:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--primary) 45%, var(--input));
+}
+
+.rh-module .rh-inline-field:focus,
+.rh-portal .rh-inline-field:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 38%, transparent), var(--shadow-1);
+}
+
+.rh-module .rh-inline-field:disabled,
+.rh-portal .rh-inline-field:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  background: var(--muted);
+}
+
+/*
+ * PADRÃO DE CAMPOS DO RH (temas claro e escuro).
+ * Hierarquia de fundos:
+ *   página/modal = --background | container de campos = --card (sólido)
+ *   campo editável = --background (rebaixado) | readonly/disabled = --muted
+ * Classes utilitárias correspondentes: frontend/src/modules/rh/lib/form-field-styles.ts
+ */
+.rh-module input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']),
+.rh-portal input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']),
+.rh-module select,
+.rh-portal select,
+.rh-module textarea,
+.rh-portal textarea {
+  color: var(--foreground);
+}
+
+.rh-module input:not([type='checkbox']):not([type='radio']):not([type='hidden']):not([type='range']):not([cmdk-input]):not(:read-only):not(:disabled),
+.rh-portal input:not([type='checkbox']):not([type='radio']):not([type='hidden']):not([type='range']):not([cmdk-input]):not(:read-only):not(:disabled),
+.rh-module input[type='file']:not(:disabled),
+.rh-portal input[type='file']:not(:disabled),
+.rh-module select:not(:disabled),
+.rh-portal select:not(:disabled),
+.rh-module textarea:not(:read-only):not(:disabled),
+.rh-portal textarea:not(:read-only):not(:disabled) {
+  background-color: var(--background);
+}
+
+.rh-module input:read-only:not([type='checkbox']):not([type='radio']):not([type='file']):not([cmdk-input]),
+.rh-portal input:read-only:not([type='checkbox']):not([type='radio']):not([type='file']):not([cmdk-input]),
+.rh-module input:disabled:not([type='checkbox']):not([type='radio']),
+.rh-portal input:disabled:not([type='checkbox']):not([type='radio']),
+.rh-module select:disabled,
+.rh-portal select:disabled,
+.rh-module textarea:read-only,
+.rh-portal textarea:read-only,
+.rh-module textarea:disabled,
+.rh-portal textarea:disabled {
+  background-color: var(--muted) !important;
+  color: var(--foreground) !important;
+  -webkit-text-fill-color: var(--foreground);
+  opacity: 1 !important;
+  border-color: color-mix(in oklch, var(--border) 92%, transparent);
+}
+
+.rh-module input:-webkit-autofill,
+.rh-portal input:-webkit-autofill,
+.rh-module input:-webkit-autofill:read-only,
+.rh-portal input:-webkit-autofill:read-only {
+  -webkit-box-shadow: 0 0 0 1000px var(--muted) inset !important;
+  -webkit-text-fill-color: var(--foreground) !important;
+  caret-color: var(--foreground);
+}
+
+/* Campo de busca do Command (dropdowns) fica transparente sobre o popover. */
+.rh-module input[cmdk-input],
+.rh-portal input[cmdk-input] {
+  background-color: transparent;
+}
+
+.rh-module .rh-filter-chip,
+.rh-portal .rh-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--foreground);
+  background: var(--card);
+  border: 1px solid var(--input);
+  border-radius: calc(var(--radius) * 0.75);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.rh-module .rh-filter-chip:hover,
+.rh-portal .rh-filter-chip:hover {
+  background: var(--muted);
+  border-color: color-mix(in oklch, var(--primary) 40%, var(--input));
+}
+
+.rh-module input[type='checkbox'],
+.rh-portal input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.rh-module .kpi-value {
+  font-size: 1.5rem;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
+
+/*
+ * Níveis de elevação usados em todo o RH. As classes já existiam nos
+ * componentes, mas não possuíam definição no tema integrado.
+ */
+.rh-module .shadow-level-1,
+.rh-portal .shadow-level-1 {
+  box-shadow: var(--shadow-1);
+}
+
+.rh-module .shadow-level-2,
+.rh-portal .shadow-level-2 {
+  box-shadow: var(--shadow-2);
+}
+
+.rh-module .shadow-level-3,
+.rh-portal .shadow-level-3 {
+  box-shadow: var(--shadow-3);
+}
+
+/* Faixa semântica dos KPIs: antes a classe existia sem posicionamento/tamanho. */
+.rh-module .alert-strip,
+.rh-portal .alert-strip {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 4px;
+  box-shadow: 1px 0 0 rgb(255 255 255 / 0.22);
+}
+
+.rh-portal [data-slot="dialog-content"] {
+  z-index: 200;
+}
+
+/* Dropdowns portalados (select/popover/command) precisam abrir ACIMA do dialog-content (200). */
+.rh-portal [data-slot="select-content"] {
+  z-index: 300;
+}
+
+.rh-portal [data-radix-toast-viewport],
+.rh-portal [data-sonner-toaster] {
+  z-index: 200;
+}
+
+@keyframes rh-saving-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rh-saving-scale-in {
+  from { opacity: 0; transform: scale(0.92) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes rh-saving-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes rh-saving-pulse {
+  0%, 100% { transform: scale(0.92); opacity: 0.55; }
+  50% { transform: scale(1); opacity: 1; }
+}
+
+.rh-module .rh-saving-overlay,
+.rh-saving-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: all;
+}
+
+.rh-saving-overlay__backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklch, var(--background) 58%, transparent);
+  backdrop-filter: blur(5px);
+  animation: rh-saving-fade-in 0.18s ease-out both;
+}
+
+.rh-saving-overlay__panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  min-width: 220px;
+  padding: 2rem 2.5rem;
+  border-radius: calc(var(--radius) + 6px);
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-3);
+  animation: rh-saving-scale-in 0.28s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+.rh-saving-overlay__message {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+  text-align: center;
+}
+
+.rh-saving-loader {
+  position: relative;
+  width: 56px;
+  height: 56px;
+}
+
+.rh-saving-loader__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: var(--accent);
+  border-right-color: var(--primary-vibrant);
+  animation: rh-saving-spin 0.85s linear infinite;
+}
+
+.rh-saving-loader__ring--outer {
+  inset: -5px;
+  border-width: 2px;
+  opacity: 0.5;
+  animation: rh-saving-spin 1.35s linear infinite reverse;
+  border-top-color: var(--primary-vibrant);
+  border-right-color: var(--accent);
+}
+
+.rh-saving-loader__core {
+  position: absolute;
+  inset: 14px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--accent) 18%, transparent);
+  animation: rh-saving-pulse 1.15s ease-in-out infinite;
+}
+
+/* Painel Diagnóstico Geral — tokens e ajustes no tema integrado */
+.rh-diagnostico {
+  --diagnostico-page: var(--muted);
+  --diagnostico-ink: var(--foreground);
+  --diagnostico-navy: var(--brand-navy);
+  --diagnostico-navy-soft: #0a2a5c;
+  --diagnostico-shadow-card: var(--shadow-2);
+  --diagnostico-shadow-soft: var(--shadow-1);
+  color: var(--foreground);
+}
+
+.dark .rh-diagnostico {
+  --diagnostico-navy: #b8c9e8;
+  --diagnostico-navy-soft: #1a3050;
+}
+
+/* Substitui fundos fixos do sub-app legado no tema escuro */
+.dark .rh-diagnostico .bg-white {
+  background-color: var(--card) !important;
+}
+
+.dark .rh-diagnostico .hover\:bg-white:hover {
+  background-color: var(--muted) !important;
+}
+
+.dark .rh-diagnostico .bg-slate-50\/60 {
+  background-color: color-mix(in oklch, var(--card) 70%, var(--muted)) !important;
+}
+
+.dark .rh-diagnostico .odd\:bg-white:nth-child(odd) {
+  background-color: var(--card) !important;
+}
+
+.dark .rh-diagnostico .even\:bg-page\/35:nth-child(even) {
+  background-color: color-mix(in oklch, var(--muted) 55%, transparent) !important;
+}
+
+.dark .rh-diagnostico .border-black\/5,
+.dark .rh-diagnostico .border-black\/8,
+.dark .rh-diagnostico .border-black\/10 {
+  border-color: var(--border) !important;
+}
+
+.dark .rh-diagnostico input[type='date'] {
+  color-scheme: dark;
+}

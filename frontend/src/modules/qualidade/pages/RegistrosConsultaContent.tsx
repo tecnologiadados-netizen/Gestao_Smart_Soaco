@@ -28,6 +28,8 @@ import {
   TableRow,
 } from "@qualidade/components/ui/table";
 import { SortableTableHead } from "@qualidade/components/ui/sortable-table-head";
+import { TableRowActions } from "@qualidade/components/ui/table-row-actions";
+import { ConfirmacaoDialog } from "@qualidade/components/ui/confirmacao-dialog";
 import { RegistroDetalheDialog } from "@qualidade/components/registros/registro-detalhe-dialog";
 import { useTableSort } from "@qualidade/hooks/use-table-sort";
 import {
@@ -39,6 +41,7 @@ import {
 } from "@qualidade/lib/registros/constants";
 import { useRegistrosStore } from "@qualidade/lib/store/registros-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
+import { excluirQualidadeRegistro } from "@qualidade/lib/qualidadePersistence";
 import { formatarData } from "@qualidade/lib/utils/dates";
 import { sortByRules } from "@qualidade/lib/utils/table-sort";
 import { cn } from "@qualidade/lib/utils";
@@ -65,10 +68,7 @@ type RegistroSortKey =
   | "status"
   | "fechamento";
 
-function novoRegistroHref(tipoFiltro: string): string {
-  if (isModuloRegistroTipo(tipoFiltro)) {
-    return `/qualidade/registros?tipo=${tipoFiltro}`;
-  }
+function novoRegistroHref(_tipoFiltro: string): string {
   return "/qualidade/registros";
 }
 
@@ -104,6 +104,7 @@ export function RegistrosConsultaContent() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const registros = useRegistrosStore((s) => s.registros);
+  const excluirRegistroStore = useRegistrosStore((s) => s.excluirRegistro);
   const users = useConfigStore((s) => s.users);
 
   const [busca, setBusca] = useState("");
@@ -115,6 +116,11 @@ export function RegistrosConsultaContent() {
   const [registroSelecionadoId, setRegistroSelecionadoId] = useState<
     string | null
   >(null);
+  const [abrirEmEdicao, setAbrirEmEdicao] = useState(false);
+  const [registroParaExcluir, setRegistroParaExcluir] =
+    useState<Registro | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
+  const [erroExclusao, setErroExclusao] = useState("");
   const [contagemAvaliacoes, setContagemAvaliacoes] = useState(0);
   const { sorts, toggleSort, getSortState } = useTableSort<RegistroSortKey>();
 
@@ -148,6 +154,36 @@ export function RegistrosConsultaContent() {
   function limparFiltrosRegistros() {
     setBusca("");
     setStatusFiltro(TABLE_FILTER_ALL);
+  }
+
+  function abrirDetalhe(registro: Registro) {
+    setAbrirEmEdicao(false);
+    setRegistroSelecionadoId(registro.id);
+  }
+
+  function abrirEdicao(registro: Registro) {
+    setAbrirEmEdicao(true);
+    setRegistroSelecionadoId(registro.id);
+  }
+
+  async function confirmarExclusao() {
+    if (!registroParaExcluir) return;
+    const alvo = registroParaExcluir;
+    setExcluindo(true);
+    setErroExclusao("");
+    try {
+      await excluirQualidadeRegistro(alvo.id);
+      excluirRegistroStore(alvo.id);
+      setRegistroParaExcluir(null);
+    } catch (err) {
+      setErroExclusao(
+        err instanceof Error
+          ? err.message
+          : "Falha ao excluir o registro no servidor. Tente novamente."
+      );
+    } finally {
+      setExcluindo(false);
+    }
   }
 
   const filtrados = useMemo(() => {
@@ -222,6 +258,15 @@ export function RegistrosConsultaContent() {
         </Link>
       </div>
 
+      {erroExclusao ? (
+        <p
+          className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          {erroExclusao}
+        </p>
+      ) : null}
+
       <div className="sgq-table-surface overflow-hidden rounded-xl border border-border bg-card shadow-sm ring-1 ring-foreground/6">
         <div className="border-b border-border p-4">
           <TableFilterField label="Tipo" htmlFor="reg-tipo">
@@ -233,7 +278,11 @@ export function RegistrosConsultaContent() {
                 id="reg-tipo"
                 className={cn(tableFilterSelectTriggerClass, "max-w-md")}
               >
-                <SelectValue placeholder="Selecione o tipo" />
+                <SelectValue placeholder="Selecione o tipo">
+                  {tipoSelecionado
+                    ? moduloRegistroTipoLabelsCurto[tipoSelecionado]
+                    : null}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {MODULO_REGISTRO_TIPOS.map((tipo) => (
@@ -370,6 +419,7 @@ export function RegistrosConsultaContent() {
                     >
                       Fechamento
                     </SortableTableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -383,8 +433,8 @@ export function RegistrosConsultaContent() {
                     return (
                       <TableRow
                         key={registro.id}
-                        className="cursor-pointer"
-                        onClick={() => setRegistroSelecionadoId(registro.id)}
+                        className="group cursor-pointer"
+                        onClick={() => abrirDetalhe(registro)}
                       >
                         <TableCell>
                           <CodigoDocumentoCell registro={registro} />
@@ -413,13 +463,26 @@ export function RegistrosConsultaContent() {
                         <TableCell>
                           {formatarData(getRegistroDataFechamento(registro))}
                         </TableCell>
+                        <TableCell
+                          className="text-right"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <TableRowActions
+                            onEdit={() => abrirEdicao(registro)}
+                            onDelete={() => {
+                              setErroExclusao("");
+                              setRegistroParaExcluir(registro);
+                            }}
+                            editLabel="Editar"
+                          />
+                        </TableCell>
                       </TableRow>
                     );
                   })}
                   {filtrados.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={9}
+                        colSpan={10}
                         className={cn(
                           "py-10 text-center text-muted-foreground"
                         )}
@@ -439,11 +502,36 @@ export function RegistrosConsultaContent() {
         <RegistroDetalheDialog
           registroId={registroSelecionadoId}
           open={registroSelecionadoId !== null}
+          editarAoAbrir={abrirEmEdicao}
           onOpenChange={(open) => {
-            if (!open) setRegistroSelecionadoId(null);
+            if (!open) {
+              setRegistroSelecionadoId(null);
+              setAbrirEmEdicao(false);
+            }
           }}
         />
       ) : null}
+
+      <ConfirmacaoDialog
+        open={registroParaExcluir !== null}
+        onOpenChange={(open) => {
+          if (!open && !excluindo) {
+            setRegistroParaExcluir(null);
+            setErroExclusao("");
+          }
+        }}
+        titulo="Excluir registro"
+        mensagem={
+          registroParaExcluir
+            ? `Tem certeza que deseja excluir o registro ${getRegistroCodigoDocumento(
+                registroParaExcluir
+              )}? Esta ação não pode ser desfeita.`
+            : ""
+        }
+        confirmarLabel="Excluir"
+        variant="destructive"
+        onConfirmar={() => void confirmarExclusao()}
+      />
     </div>
   );
 }

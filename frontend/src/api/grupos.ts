@@ -1,5 +1,15 @@
 import { apiFetch, apiJson } from './client';
 
+export interface RhGroupPermissionsPayload {
+  version: 2;
+  [key: string]: unknown;
+}
+
+export interface RhPermissoesContexto {
+  setores: string[];
+  commentTagOptions: { id: string; tone: string; label: string }[];
+}
+
 export interface Grupo {
   id: number;
   nome: string;
@@ -31,6 +41,7 @@ export async function criarGrupo(payload: {
   nome: string;
   descricao?: string | null;
   permissoes: string[];
+  rhPermissoes?: RhGroupPermissionsPayload;
   ativo?: boolean;
   telaPrincipalInicial?: string | null;
   logoutInatividadeMinutos?: number | null;
@@ -52,6 +63,7 @@ export async function atualizarGrupo(
     nome?: string;
     descricao?: string | null;
     permissoes?: string[];
+    rhPermissoes?: RhGroupPermissionsPayload;
     ativo?: boolean;
     telaPrincipalInicial?: string | null;
     logoutInatividadeMinutos?: number | null;
@@ -76,4 +88,13 @@ export async function excluirGrupo(id: number): Promise<void> {
     const orient = (err as { error?: string; orientacao?: string }).orientacao;
     throw new Error(orient ? `${msg}\n${orient}` : msg);
   }
+}
+
+export async function obterRhPermissoesContexto(): Promise<RhPermissoesContexto> {
+  return apiJson<RhPermissoesContexto>('/api/grupos/rh-permissoes-contexto');
+}
+
+export async function obterRhPermissoesGrupo(id: number): Promise<RhGroupPermissionsPayload> {
+  const data = await apiJson<{ permissions: RhGroupPermissionsPayload }>(`/api/grupos/${id}/rh-permissoes`);
+  return data.permissions;
 }

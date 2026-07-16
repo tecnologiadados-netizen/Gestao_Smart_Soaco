@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import tempfile
 from datetime import datetime
@@ -66,12 +67,9 @@ def formatar_data(valor: Any) -> str:
 
 def descricao_ocorrencia(rnc: dict[str, Any]) -> str:
     partes: list[str] = []
-    produto = valor_campo(rnc.get("produto"))
     tipo_produto = valor_campo(rnc.get("tipoProduto"))
     descricao = valor_campo(rnc.get("descricaoOcorrencia"))
 
-    if produto:
-        partes.append(produto)
     if tipo_produto:
         partes.append(f"Tipo de produto: {tipo_produto}")
     if descricao:
@@ -79,7 +77,84 @@ def descricao_ocorrencia(rnc: dict[str, Any]) -> str:
     return "\n".join(partes)
 
 
+def codigo_produto(rnc: dict[str, Any]) -> str:
+    codigo = valor_campo(rnc.get("codigoProduto"))
+    if codigo:
+        return codigo
+    produto = valor_campo(rnc.get("produto"))
+    if not produto:
+        return ""
+    match = re.match(r"^([A-Z]{2,4}\s+[\dA-Za-z./]+)\s*-", produto, re.IGNORECASE)
+    return match.group(1).strip().upper() if match else ""
+
+
+def descricao_produto(rnc: dict[str, Any]) -> str:
+    produto = valor_campo(rnc.get("produto"))
+    if not produto:
+        return ""
+    codigo = codigo_produto(rnc)
+    if codigo and produto.upper().startswith(codigo.upper()):
+        resto = produto[len(codigo) :].strip()
+        if resto.startswith("-"):
+            resto = resto[1:].strip()
+        return resto or produto
+    return produto
+
+
+STATUS_ACAO_LABELS = {
+    "cancelada": "Cancelada",
+    "concluida": "Concluída",
+    "reprogramada": "Reprogramada",
+}
+
+
+def acoes_apartadas(rnc: dict[str, Any]) -> list[dict[str, Any]]:
+    acoes = rnc.get("acoesApartadas")
+    if isinstance(acoes, list) and acoes:
+        return [item for item in acoes if isinstance(item, dict)]
+
+    legado: list[dict[str, Any]] = []
+    pares = (
+        ("acaoCorretiva2", "responsavelAcao2", "prazoAcao2"),
+        ("acaoCorretiva3", "responsavelAcao3", "prazoAcao3"),
+    )
+    for acao_key, resp_key, prazo_key in pares:
+        acao = valor_campo(rnc.get(acao_key))
+        responsavel = valor_campo(rnc.get(resp_key))
+        prazo = valor_campo(rnc.get(prazo_key))
+        if acao or responsavel or prazo:
+            legado.append(
+                {
+                    "acao": acao,
+                    "responsavel": responsavel,
+                    "prazoExecucao": prazo,
+                    "status": "",
+                }
+            )
+    return legado
+
+
+def texto_acao_com_status(acao: dict[str, Any]) -> str:
+    texto = valor_campo(acao.get("acao"))
+    status = valor_campo(acao.get("status"))
+    status_label = STATUS_ACAO_LABELS.get(status, status)
+    if status_label and texto:
+        return f"{texto} (Status: {status_label})"
+    if status_label:
+        return f"Status: {status_label}"
+    return texto
+
+
 def porques_causa(rnc: dict[str, Any]) -> list[str]:
+    porques = rnc.get("porques")
+    if isinstance(porques, list):
+        valores = [
+            valor_campo(item) if isinstance(item, str) else valor_campo(item)
+            for item in porques
+        ]
+        if any(valores):
+            return (valores[:5] + [""] * 5)[:5]
+
     causa = valor_campo(rnc.get("causa"))
     if not causa:
         return ["", "", "", "", ""]
@@ -101,20 +176,25 @@ def montar_campos(payload: dict[str, Any]) -> dict[str, str]:
         valor_campo(registro.get("status")), valor_campo(registro.get("status"))
     )
     porque = porques_causa(rnc)
+    acoes = acoes_apartadas(rnc)
+    acao_2 = acoes[0] if len(acoes) > 0 else {}
+    acao_3 = acoes[1] if len(acoes) > 1 else {}
 
     return {
         "numero_rnc": codigo,
         "data_registro": formatar_data(rnc.get("dataOcorrencia")),
         "data_fechamento": formatar_data(rnc.get("dataFechamento")),
         "status": status,
+        "codigo_produto": codigo_produto(rnc),
+        "descricao_produto": descricao_produto(rnc),
         "tipo_acao": valor_campo(rnc.get("tipoAcao")),
         "tipo_ocorrencia": valor_campo(rnc.get("tipoOcorrencia")),
         "quantidade": valor_campo(rnc.get("quantidade")),
         "setor_ocorrencia": valor_campo(rnc.get("setorOcorrencia")),
         "setor_deteccao": valor_campo(rnc.get("setorDeteccao")),
-        "lote_serie": valor_campo(rnc.get("loteSerie") or rnc.get("codigoProduto")),
+        "lote_serie": valor_campo(rnc.get("loteSerie")),
         "grupo_produto": valor_campo(rnc.get("grupoProduto")),
-        "op_numero": valor_campo(rnc.get("numeroOrdemProducao") or rnc.get("codigoProduto")),
+        "op_numero": valor_campo(rnc.get("numeroOrdemProducao")),
         "nota_fiscal": valor_campo(rnc.get("notaFiscal")),
         "descricao_ocorrencia": descricao_ocorrencia(rnc),
         "preenchido_por": valor_campo(rnc.get("responsavel") or rnc.get("usuarioCriacao")),
@@ -133,12 +213,12 @@ def montar_campos(payload: dict[str, Any]) -> dict[str, str]:
         "acao_1": valor_campo(rnc.get("resolucaoNaoConformidade")),
         "acao_1_responsavel": valor_campo(rnc.get("responsavelAcaoImediata")),
         "acao_1_prazo": formatar_data(rnc.get("prazoExecucao")),
-        "acao_2": valor_campo(rnc.get("acaoCorretiva2")),
-        "acao_2_responsavel": valor_campo(rnc.get("responsavelAcao2")),
-        "acao_2_prazo": formatar_data(rnc.get("prazoAcao2")),
-        "acao_3": valor_campo(rnc.get("acaoCorretiva3")),
-        "acao_3_responsavel": valor_campo(rnc.get("responsavelAcao3")),
-        "acao_3_prazo": formatar_data(rnc.get("prazoAcao3")),
+        "acao_2": texto_acao_com_status(acao_2),
+        "acao_2_responsavel": valor_campo(acao_2.get("responsavel")),
+        "acao_2_prazo": formatar_data(acao_2.get("prazoExecucao")),
+        "acao_3": texto_acao_com_status(acao_3),
+        "acao_3_responsavel": valor_campo(acao_3.get("responsavel")),
+        "acao_3_prazo": formatar_data(acao_3.get("prazoExecucao")),
         "analise_eficaz": valor_campo(rnc.get("analiseEficaz")),
     }
 
@@ -148,39 +228,41 @@ def preencher_rnc(table, campos: dict[str, str]) -> None:
     definir_celula(table, 1, 7, campos["data_registro"])
     definir_celula(table, 1, 13, campos["data_fechamento"])
     definir_celula(table, 1, 16, campos["status"])
-    definir_celula(table, 3, 1, campos["tipo_acao"])
-    definir_celula(table, 3, 8, campos["tipo_ocorrencia"])
-    definir_celula(table, 3, 13, campos["quantidade"])
-    definir_celula(table, 4, 1, campos["setor_ocorrencia"])
-    definir_celula(table, 4, 8, campos["setor_deteccao"])
-    definir_celula(table, 4, 13, campos["lote_serie"])
-    definir_celula(table, 5, 1, campos["grupo_produto"])
-    definir_celula(table, 5, 8, campos["op_numero"])
-    definir_celula(table, 5, 13, campos["nota_fiscal"])
-    definir_celula(table, 7, 0, campos["descricao_ocorrencia"])
-    definir_celula(table, 8, 3, campos["preenchido_por"])
-    definir_celula(table, 8, 14, campos["data_ocorrencia"])
-    definir_celula(table, 10, 3, campos["acao_imediata"])
-    definir_celula(table, 12, 0, campos["descricao_acao_imediata"])
-    definir_celula(table, 13, 3, campos["responsavel_acao_imediata"])
-    definir_celula(table, 13, 14, campos["prazo_execucao"])
-    definir_celula(table, 14, 3, campos["abertura_analise_causa"])
-    definir_celula(table, 16, 2, campos["porque_1"])
-    definir_celula(table, 17, 2, campos["porque_2"])
-    definir_celula(table, 18, 2, campos["porque_3"])
-    definir_celula(table, 19, 2, campos["porque_4"])
-    definir_celula(table, 20, 2, campos["porque_5"])
-    definir_celula(table, 21, 2, campos["causa_raiz"])
-    definir_celula(table, 22, 2, campos["acao_1"])
-    definir_celula(table, 22, 11, campos["acao_1_responsavel"])
-    definir_celula(table, 22, 16, campos["acao_1_prazo"])
-    definir_celula(table, 23, 2, campos["acao_2"])
-    definir_celula(table, 23, 11, campos["acao_2_responsavel"])
-    definir_celula(table, 23, 16, campos["acao_2_prazo"])
-    definir_celula(table, 24, 2, campos["acao_3"])
-    definir_celula(table, 24, 11, campos["acao_3_responsavel"])
-    definir_celula(table, 24, 16, campos["acao_3_prazo"])
-    definir_celula(table, 25, 2, campos["analise_eficaz"])
+    definir_celula(table, 3, 1, campos["codigo_produto"])
+    definir_celula(table, 3, 12, campos["descricao_produto"])
+    definir_celula(table, 4, 1, campos["tipo_acao"])
+    definir_celula(table, 4, 8, campos["tipo_ocorrencia"])
+    definir_celula(table, 4, 13, campos["quantidade"])
+    definir_celula(table, 5, 1, campos["setor_ocorrencia"])
+    definir_celula(table, 5, 8, campos["setor_deteccao"])
+    definir_celula(table, 5, 13, campos["lote_serie"])
+    definir_celula(table, 6, 1, campos["grupo_produto"])
+    definir_celula(table, 6, 8, campos["op_numero"])
+    definir_celula(table, 6, 13, campos["nota_fiscal"])
+    definir_celula(table, 8, 0, campos["descricao_ocorrencia"])
+    definir_celula(table, 9, 3, campos["preenchido_por"])
+    definir_celula(table, 9, 14, campos["data_ocorrencia"])
+    definir_celula(table, 11, 3, campos["acao_imediata"])
+    definir_celula(table, 13, 0, campos["descricao_acao_imediata"])
+    definir_celula(table, 14, 3, campos["responsavel_acao_imediata"])
+    definir_celula(table, 14, 14, campos["prazo_execucao"])
+    definir_celula(table, 15, 3, campos["abertura_analise_causa"])
+    definir_celula(table, 17, 2, campos["porque_1"])
+    definir_celula(table, 18, 2, campos["porque_2"])
+    definir_celula(table, 19, 2, campos["porque_3"])
+    definir_celula(table, 20, 2, campos["porque_4"])
+    definir_celula(table, 21, 2, campos["porque_5"])
+    definir_celula(table, 22, 2, campos["causa_raiz"])
+    definir_celula(table, 23, 2, campos["acao_1"])
+    definir_celula(table, 23, 11, campos["acao_1_responsavel"])
+    definir_celula(table, 23, 16, campos["acao_1_prazo"])
+    definir_celula(table, 24, 2, campos["acao_2"])
+    definir_celula(table, 24, 11, campos["acao_2_responsavel"])
+    definir_celula(table, 24, 16, campos["acao_2_prazo"])
+    definir_celula(table, 25, 2, campos["acao_3"])
+    definir_celula(table, 25, 11, campos["acao_3_responsavel"])
+    definir_celula(table, 25, 16, campos["acao_3_prazo"])
+    definir_celula(table, 26, 2, campos["analise_eficaz"])
 
 
 def preencher_documento(campos: dict[str, str]) -> Document:

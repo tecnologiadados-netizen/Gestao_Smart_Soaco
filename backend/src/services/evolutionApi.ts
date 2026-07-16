@@ -4,6 +4,7 @@
  */
 
 import { getEvolutionStoredConfig, saveUazapiInstanceToken } from '../data/configRepository.js';
+import { envioNotificacoesHabilitado, logEnvioSuprimido } from '../config/envioNotificacoes.js';
 
 const DEFAULT_INSTANCE_LABEL = 'gestor-pedidos';
 
@@ -380,6 +381,10 @@ function splitTextIntoChunks(text: string, maxLen: number): string[] {
 
 /** POST /send/text – envia mensagem para um número específico */
 export async function sendWhatsAppTextTo(number: string, text: string): Promise<{ ok: boolean; error?: string }> {
+  if (!envioNotificacoesHabilitado()) {
+    logEnvioSuprimido('whatsapp', number);
+    return { ok: true };
+  }
   const env = await getResolvedEvolutionEnv();
   if (!env.url) {
     return { ok: false, error: 'uazapiGO não configurada (URL no app)' };

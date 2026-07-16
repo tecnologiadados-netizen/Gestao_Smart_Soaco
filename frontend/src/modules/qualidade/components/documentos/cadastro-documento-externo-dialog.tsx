@@ -11,7 +11,9 @@ import {
   DocumentoExternoRegistroCampos,
   type ExternoRegistroFormValues,
 } from "@qualidade/components/documentos/documento-externo-registro-campos";
+import { anexosPreenchidos } from "@qualidade/types/registro-anexo";
 import { afterUiTransition } from "@qualidade/lib/motion";
+import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 
@@ -31,9 +33,16 @@ export function CadastroDocumentoExternoDialog({ open, onOpenChange }: Props) {
   const [values, setValues] = useState<ExternoRegistroFormValues>(() =>
     defaultExternoRegistroValues(currentUserId)
   );
+  const [erro, setErro] = useState("");
 
   function resetForm() {
     setValues(defaultExternoRegistroValues(currentUserId));
+    setErro("");
+  }
+
+  function handleChange(next: ExternoRegistroFormValues) {
+    setValues(next);
+    if (erro) setErro("");
   }
 
   function handleClose() {
@@ -41,20 +50,25 @@ export function CadastroDocumentoExternoDialog({ open, onOpenChange }: Props) {
     afterUiTransition(resetForm);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (
-      !values.titulo ||
-      !values.processoId ||
-      !values.localizacao ||
-      !values.responsavelId
-    ) {
+    const pendentes: string[] = [];
+    if (!values.titulo.trim()) pendentes.push("Título");
+    if (!values.processoId) pendentes.push("Setor");
+    if (!values.localizacao.trim()) pendentes.push("Localização");
+    if (!values.responsavelId) pendentes.push("Responsável");
+    if (!values.distEletronica && !values.distFisica) pendentes.push("Distribuição");
+    if (pendentes.length > 0) {
+      setErro(`Preencha os campos obrigatórios: ${pendentes.join(", ")}.`);
       return;
     }
-    if (!values.distEletronica && !values.distFisica) return;
+    setErro("");
 
     const codigo = `EXT-${Date.now().toString().slice(-6)}`;
-    const id = createDocument({
+    const anexos = anexosPreenchidos(values.anexos);
+    const principal = anexos[0];
+
+    createDocument({
       codigo,
       titulo: values.titulo,
       tipoId: "tipo-man",
@@ -65,15 +79,21 @@ export function CadastroDocumentoExternoDialog({ open, onOpenChange }: Props) {
       permissoes: buildPermissoesFromExternoRegistro(values),
       validade: buildValidadeFromExternoRegistro(values),
       externoRegistro: buildExternoRegistroMeta(values),
-      arquivoNome: values.anexoNome,
-      arquivoDataUrl: values.anexoDataUrl,
+      arquivoNome: principal?.nome,
+      arquivoDataUrl: principal?.dataUrl,
     });
 
-    onOpenChange(false);
-    afterUiTransition(() => {
-      resetForm();
-      navigate(`/qualidade/documentos/${id}`);
-    });
+    try {
+      await flushQualidadeDocumentsSync();
+      onOpenChange(false);
+      afterUiTransition(() => {
+        resetForm();
+        navigate("/qualidade/documentos/consulta");
+      });
+    } catch (err) {
+      console.error("[qualidade] falha ao sincronizar documento externo:", err);
+      setErro("Documento criado localmente, mas falhou ao salvar no servidor. Tente novamente.");
+    }
   }
 
   return (
@@ -100,12 +120,21 @@ export function CadastroDocumentoExternoDialog({ open, onOpenChange }: Props) {
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6">
             <DocumentoExternoRegistroCampos
               values={values}
-              onChange={setValues}
+              onChange={handleChange}
               users={users}
               departments={departments}
               documents={documents}
             />
           </div>
+
+          {erro ? (
+            <p
+              role="alert"
+              className="border-t border-destructive/30 bg-destructive/10 px-6 py-3 text-sm font-medium text-destructive"
+            >
+              {erro}
+            </p>
+          ) : null}
 
           <div className="sgq-form-footer">
             <Button type="submit" size="lg" className="min-w-28">

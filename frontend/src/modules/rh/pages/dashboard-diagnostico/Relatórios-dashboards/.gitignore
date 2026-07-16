@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/_uploaded.xlsx
+.streamlit/secrets.toml
+web/node_modules/
+web/dist/

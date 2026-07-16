@@ -40,6 +40,7 @@ import {
   calcularDiasRestantesValidade,
   calcularValidadeStatus,
 } from "@qualidade/lib/documents/validity";
+import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { cn } from "@qualidade/lib/utils";
 import { sortByRules } from "@qualidade/lib/utils/table-sort";
 import {
@@ -55,7 +56,6 @@ type DocumentoSortKey =
   | "tipo"
   | "categoria"
   | "setor"
-  | "revisao"
   | "status"
   | "validade"
   | "atualizado";
@@ -94,9 +94,13 @@ export function DocumentosConsultaPage() {
 
   const filtrados = useMemo(() => {
     const lista = documents.filter((doc) => {
+      const codigoExibicao = formatDocumentCodigoExibicao(
+        doc.codigo,
+        doc.versaoAtual
+      );
       const matchBusca =
         !busca ||
-        doc.codigo.toLowerCase().includes(busca.toLowerCase()) ||
+        codigoExibicao.toLowerCase().includes(busca.toLowerCase()) ||
         doc.titulo.toLowerCase().includes(busca.toLowerCase());
       const matchStatus =
         statusFiltro === TABLE_FILTER_ALL || doc.status === statusFiltro;
@@ -113,7 +117,7 @@ export function DocumentosConsultaPage() {
 
       switch (key) {
         case "codigo":
-          return doc.codigo;
+          return formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual);
         case "titulo":
           return doc.titulo;
         case "tipo":
@@ -122,8 +126,6 @@ export function DocumentosConsultaPage() {
           return tipo?.sigla ?? "";
         case "setor":
           return setor?.sigla ?? "";
-        case "revisao":
-          return doc.versaoAtual;
         case "status":
           return documentStatusLabels[doc.status];
         case "validade":
@@ -269,13 +271,6 @@ export function DocumentosConsultaPage() {
                 Setor
               </SortableTableHead>
               <SortableTableHead
-                sortKey="revisao"
-                sortState={getSortState("revisao")}
-                onSort={toggleSort}
-              >
-                Revisão
-              </SortableTableHead>
-              <SortableTableHead
                 sortKey="status"
                 sortState={getSortState("status")}
                 onSort={toggleSort}
@@ -314,7 +309,7 @@ export function DocumentosConsultaPage() {
                 >
                   <TableCell>
                     <span className="font-medium text-primary">
-                      {doc.codigo}
+                      {formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}
                     </span>
                   </TableCell>
                   <TableCell className="max-w-xs truncate">{doc.titulo}</TableCell>
@@ -325,7 +320,6 @@ export function DocumentosConsultaPage() {
                   </TableCell>
                   <TableCell>{tipo?.sigla ?? "—"}</TableCell>
                   <TableCell>{setor?.sigla ?? "—"}</TableCell>
-                  <TableCell>{doc.versaoAtual}</TableCell>
                   <TableCell>
                     <Badge variant={getDocumentStatusVariant(doc.status)}>
                       {documentStatusLabels[doc.status]}

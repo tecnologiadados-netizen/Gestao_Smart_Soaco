@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import type { EmailProviderSettings, PrismaClient } from '@prisma/client';
+import { envioNotificacoesHabilitado, logEnvioSuprimido } from '../config/envioNotificacoes.js';
 
 export type EmailAttachment = {
   filename: string;
@@ -238,6 +239,10 @@ export async function sendSystemEmail(
   prisma: PrismaClient,
   input: SendSystemEmailInput
 ): Promise<void> {
+  if (!envioNotificacoesHabilitado()) {
+    logEnvioSuprimido('email', normalizeRecipients(input.to).join(', '), input.subject);
+    return;
+  }
   const settings = await fetchEmailProviderSettings(prisma);
   if (!settings) {
     throw new Error('Credencial de e-mail não configurada. Acesse Integração → Credenciais → E-mail.');

@@ -38,8 +38,7 @@ const COL_KEYS: ColKey[] = COLS.map((c) => c.key);
 const NUM_KEYS = ['empenho', 'saldo', 'saldoProjetado'] as const;
 
 const SALDO_PROJETADO_NEG_CLASS = 'bg-red-50 dark:bg-red-950/40';
-const Z_MAIN = 132;
-const Z_DETALHE = 133;
+const Z_MAIN_DEFAULT = 132;
 
 type DetalheModal =
   | { tipo: 'saldo'; linha: ConsultaEstoqueLinha }
@@ -58,9 +57,13 @@ function detalheModalCacheKey(
 type Props = {
   codigo: string;
   onClose: () => void;
+  /** Base de empilhamento (padrão 132). Use valor maior quando aberto sobre outro modal alto. */
+  zIndexBase?: number;
 };
 
-export default function ModalConsultaEstoqueEmbed({ codigo, onClose }: Props) {
+export default function ModalConsultaEstoqueEmbed({ codigo, onClose, zIndexBase = Z_MAIN_DEFAULT }: Props) {
+  const zMain = zIndexBase;
+  const zDetalhe = zIndexBase + 1;
   const [linhas, setLinhas] = useState<ConsultaEstoqueLinha[]>([]);
   const [loading, setLoading] = useState(true);
   const [erroApi, setErroApi] = useState<string | null>(null);
@@ -187,7 +190,7 @@ export default function ModalConsultaEstoqueEmbed({ codigo, onClose }: Props) {
   useRegisterModalEscape({
     id: 'consulta-estoque-embed',
     onClose: handleEscapeMain,
-    zIndex: Z_MAIN,
+    zIndex: zMain,
     enabled: !detalhe,
   });
 
@@ -371,7 +374,7 @@ export default function ModalConsultaEstoqueEmbed({ codigo, onClose }: Props) {
         <ModalConsultaEstoqueDetalhe
           open
           backdropMode="fixed"
-          zIndex={Z_DETALHE}
+          zIndex={zDetalhe}
           rotuloFechar="Voltar"
           titulo={
             detalhe.tipo === 'saldo'
@@ -482,7 +485,7 @@ export default function ModalConsultaEstoqueEmbed({ codigo, onClose }: Props) {
   return createPortal(
     <div
       className="fixed inset-0 flex items-center justify-center bg-black/70 p-4"
-      style={{ zIndex: Z_MAIN }}
+      style={{ zIndex: zMain }}
       role="presentation"
       onClick={onClose}
     >

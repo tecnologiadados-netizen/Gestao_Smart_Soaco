@@ -69,7 +69,8 @@ SELECT
     icpc.valorTotalComDesconto AS valor_total,
     sc.id AS solicitacao_id,
     sc.dataNecessidade AS data_necessidade,
-    c.status AS status
+    c.status AS status,
+    c.id AS cotacao_id
 `;
 
 const LIST_QUERY = LIST_SELECT + BASE_JOINS;
@@ -101,7 +102,8 @@ SELECT
     icpc.valorTotalComDesconto AS valor_total,
     sc.id AS solicitacao_id,
     sc.dataNecessidade AS data_necessidade,
-    c.status AS status
+    c.status AS status,
+    c.id AS cotacao_id
 `;
 
 const PDF_JOINS = `
@@ -208,6 +210,9 @@ export interface FiltrosPreCompraCotacoes {
   status?: number;
   dataInicio?: string;
   dataFim?: string;
+  /** Restringe às cotações (cotacaocompra.id) resolvidas a partir do filtro "N° da coleta".
+   *  undefined = sem filtro de coleta; [] = filtro aplicado sem nenhuma cotação (retorna vazio). */
+  cotacaoIds?: number[];
 }
 
 export interface PreCompraCotacaoRow {
@@ -235,6 +240,7 @@ export interface PreCompraCotacaoRow {
   solicitacao_id: number | null;
   data_necessidade: Date | string | null;
   status: number | null;
+  cotacao_id?: number | null;
   contato_id?: number | null;
   contato?: string | null;
 }
@@ -287,6 +293,14 @@ function buildFilterSql(filtros: FiltrosPreCompraCotacoes): { sql: string; param
   if (filtros.dataFim?.trim()) {
     conditions.push('DATE(c.dataEmissao) <= ?');
     params.push(filtros.dataFim.trim());
+  }
+  if (filtros.cotacaoIds != null) {
+    if (filtros.cotacaoIds.length === 0) {
+      conditions.push('1 = 0');
+    } else {
+      conditions.push(`c.id IN (${filtros.cotacaoIds.map(() => '?').join(',')})`);
+      params.push(...filtros.cotacaoIds);
+    }
   }
 
   if (conditions.length === 0) return { sql: '', params };

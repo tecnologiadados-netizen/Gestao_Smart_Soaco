@@ -50,6 +50,17 @@ export const registroStatusLabels: Record<RegistroStatus, string> = {
 
 export const ORIGEM_NOMUS_LABEL = "Sistema Nomus";
 
+/** Histórico RNC/RCC importado do Nomus — excluído da consulta e da sincronização. */
+export function isRegistroHistoricoNomusExcluido(registro: {
+  tipo: string;
+  origemNomus?: boolean;
+}): boolean {
+  return Boolean(
+    registro.origemNomus &&
+      (registro.tipo === "rnc" || registro.tipo === "rcc")
+  );
+}
+
 /** Opções extraídas do histórico ERP — podem ser refinadas depois. */
 export const RNC_TIPOS_ACAO = [
   "Real (já ocorrida)",
@@ -91,6 +102,14 @@ export const RNC_ANALISE_PROBLEMA = [
   "Qualidade do produto",
 ] as const;
 
+export const RNC_ACAO_STATUS_OPCOES = [
+  { value: "cancelada", label: "Cancelada" },
+  { value: "concluida", label: "Concluída" },
+  { value: "reprogramada", label: "Reprogramada" },
+] as const;
+
+export const RNC_SIM_NAO = ["Sim", "Não"] as const;
+
 export const rncFieldLabels = {
   codigoDocumento: "Código do documento",
   loteSerie: "Lote/Série",
@@ -113,20 +132,33 @@ export const rncFieldLabels = {
   analiseProblema: "Análise do problema (RNC)",
   quantidade: "Quantidade",
   resolucaoNaoConformidade: "Resolução da não conformidade",
+  registrarPlanoAcao: "Deseja registrar um plano de ação?",
   causa: "Causa",
   dataFechamento: "Data de fechamento do RNC",
   usuarioCriacao: "Usuário responsável pela criação",
   prazoExecucao: "Prazo de execução",
-  acaoCorretiva2: "Ação 2",
-  responsavelAcao2: "Responsável da ação 2",
-  prazoAcao2: "Prazo da ação 2",
-  acaoCorretiva3: "Ação 3",
-  responsavelAcao3: "Responsável da ação 3",
-  prazoAcao3: "Prazo da ação 3",
+  inserirAcoesApartadas: "Inserir ações à parte?",
   analiseEficaz: "Análise eficaz?",
 } as const;
 
 export const RCC_SIM_NAO = ["Sim", "Não"] as const;
+
+export const RCC_CAUSAS_PROBLEMA = [
+  "Análise crítica",
+  "Produto com defeito",
+  "Solicitação criada baseada em estoque errado",
+  "Cancelamento de venda",
+  "Aproveitamento de componente alternativo",
+  "Compra reprovada pela presidência",
+  "Compra reprovada pela diretoria de produção",
+  "Compra reprovada pelo setor de compras",
+  "Houve reprogramação nos pedidos/carradas alterando a necessidade de compra do item",
+  "Atraso na entrega",
+  "Produto diferente do solicitado",
+  "Estamparia",
+  "Peças Defeituosas",
+  "Resíduo final da bobina",
+] as const;
 
 export const RCC_RECLAMACOES = [
   "CHAMAS DESREGULADAS",
@@ -179,6 +211,7 @@ export const rccFieldLabels = {
   codigoDocumento: "Código do documento",
   codigoProduto: "Código do produto",
   dataRegistroReclamacao: "Data de registro da reclamação",
+  feedbackClienteEnviado: "Feedback passado para o cliente",
   cidade: "Cidade",
   nomeClienteConsumidor: "Nome do cliente consumidor",
   contato: "Contato",
@@ -205,11 +238,13 @@ export const rccFieldLabels = {
   comentario: "Comentário",
   reclamacao1: "Reclamação 1",
   reclamacao2: "Reclamação 2",
+  responsavelAnaliseReclamacao: "Responsável pela análise da reclamação",
   reclamacaoAceita: "Reclamação aceita?",
   abrirOrdemServico: "Abrir ordem de serviço?",
   servicoRealizado: "Serviço realizado",
   servicoRealizado1: "Serviço realizado (1)",
   servicoRealizado2: "Serviço realizado (2)",
+  dataConclusaoServico: "Data de conclusão do serviço",
   funcionarioSolicitado: "Funcionário solicitado",
   numeroOrdemProducao: "Número de ordem de produção",
   dataAssistencia: "Previsão para data de assistência",
@@ -219,7 +254,7 @@ export const rccFieldLabels = {
   horaChegadaCliente: "Hora da chegada ao cliente",
   horaSaidaCliente: "Hora da saída do cliente",
   problemaSolucionado: "Problema solucionado?",
-  dataFechamento: "Data de fechamento",
+  dataFechamento: "Data de fechamento da reclamação",
   causaProblema: "Causa do problema",
   estado: "Estado (UF)",
   usuarioCriacao: "Usuário responsável pela criação",

@@ -18,7 +18,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@qualidade/*": ["src/modules/qualidade/*"]
+      "@qualidade/*": ["src/modules/qualidade/*"],
+      "@rh/*": ["src/modules/rh/*"]
     }
   },
   "include": ["src"],

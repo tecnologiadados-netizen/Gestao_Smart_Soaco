@@ -1,4 +1,5 @@
 import {
+  deleteQualidadeRegistro,
   fetchQualidadeBootstrap,
   fetchQualidadeResponsaveis,
   importQualidadeRegistros,
@@ -7,13 +8,16 @@ import {
   syncQualidadeConfig,
   syncQualidadeDocuments,
   syncQualidadeOpcoesLista,
+  syncQualidadeRegistro,
   syncQualidadeRegistros,
 } from '@qualidade/lib/api/qualidadeApi';
+import type { Registro } from '@qualidade/types/registro';
 import { useAvaliacaoFornecedorStore } from '@qualidade/lib/store/avaliacao-fornecedor-store';
 import { useCalibrationsStore } from '@qualidade/lib/store/calibrations-store';
 import { useConfigStore } from '@qualidade/lib/store/config-store';
 import { useDocumentsStore } from '@qualidade/lib/store/documents-store';
 import { useRegistrosStore } from '@qualidade/lib/store/registros-store';
+import { isRegistroHistoricoNomusExcluido } from '@qualidade/lib/registros/constants';
 import {
   persistConfigToServer as flushConfigToServer,
   isQualidadeConfigHydrating,
@@ -23,6 +27,11 @@ import {
   RCC_RECLAMACOES_OPCOES_STORAGE_KEY,
   RCC_SERVICOS_OPCOES_STORAGE_KEY,
 } from '@qualidade/lib/registros/opcoes-lista-customizadas';
+import {
+  ENDERECAMENTOS_OPCOES_CHAVE,
+  parseEnderecamentosFromOpcoes,
+  serializeEnderecamentos,
+} from '@qualidade/lib/enderecamentos-sync';
 
 const LS_KEYS = [
   'sgq-config',
@@ -35,6 +44,7 @@ const LS_KEYS = [
 let syncTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 let autoSyncStarted = false;
 let documentsHydrating = false;
+let registrosHydrating = false;
 
 export function setQualidadeDocumentsHydrating(value: boolean) {
   documentsHydrating = value;
@@ -49,6 +59,43 @@ export function cancelQualidadeDocumentsDebounce(): void {
     clearTimeout(syncTimers.documents);
     delete syncTimers.documents;
   }
+}
+
+export function setQualidadeRegistrosHydrating(value: boolean) {
+  registrosHydrating = value;
+}
+
+export function cancelQualidadeRegistrosDebounce(): void {
+  if (syncTimers.registros) {
+    clearTimeout(syncTimers.registros);
+    delete syncTimers.registros;
+  }
+}
+
+function syncRegistrosStateNow(): Promise<void> {
+  const { registros } = useRegistrosStore.getState();
+  return syncQualidadeRegistros(registros).then(() => undefined);
+}
+
+/** Persiste registros no servidor imediatamente (ex.: ao sair da página). */
+export function flushQualidadeRegistrosSync(): Promise<void> {
+  cancelQualidadeRegistrosDebounce();
+  return syncRegistrosStateNow().catch((err) => {
+    console.error('[qualidade-sync] registros flush:', err);
+    throw err;
+  });
+}
+
+/** Persiste um registro recém-criado/alterado sem reenviar todo o histórico Nomus. */
+export async function persistQualidadeRegistro(registro: Registro): Promise<void> {
+  cancelQualidadeRegistrosDebounce();
+  await syncQualidadeRegistro(registro);
+}
+
+/** Exclui um registro no servidor (evita reenviar todo o histórico Nomus). */
+export async function excluirQualidadeRegistro(registroId: string): Promise<void> {
+  cancelQualidadeRegistrosDebounce();
+  await deleteQualidadeRegistro(registroId);
 }
 
 function debounceSync(key: string, fn: () => Promise<void>, ms = 800) {
@@ -84,9 +131,16 @@ function flushPendingSyncs() {
   void syncDocumentsStateNow().catch((err) =>
     console.error('[qualidade-sync] pagehide documents:', err)
   );
-  const { departments, documentTypes } = useConfigStore.getState();
+  cancelQualidadeRegistrosDebounce();
+  void syncRegistrosStateNow().catch((err) =>
+    console.error('[qualidade-sync] pagehide registros:', err)
+  );
+  const { departments, documentTypes, enderecamentos } = useConfigStore.getState();
   void flushConfigToServer({ departments, documentTypes }).catch((err) =>
     console.error('[qualidade-sync] flush config:', err)
+  );
+  void flushEnderecamentosToServer(enderecamentos).catch((err) =>
+    console.error('[qualidade-sync] flush enderecamentos:', err)
   );
 }
 
@@ -153,7 +207,12 @@ async function migrateFromLocalStorageIfNeeded() {
     });
   }
   if (registros?.registros?.length) {
-    await syncQualidadeRegistros(registros.registros);
+    const registrosSemNomus = (registros.registros as Registro[]).filter(
+      (r) => !isRegistroHistoricoNomusExcluido(r)
+    );
+    if (registrosSemNomus.length) {
+      await syncQualidadeRegistros(registrosSemNomus);
+    }
   }
   if (cal) {
     await syncQualidadeCalibrations({
@@ -197,6 +256,9 @@ export async function hydrateQualidadeFromServer(currentUserLogin: string) {
     users,
     departments: data.departments,
     documentTypes: data.documentTypes,
+    enderecamentos: parseEnderecamentosFromOpcoes(
+      data.opcoesLista[ENDERECAMENTOS_OPCOES_CHAVE]
+    ),
   });
 
   const docTasks = data.tasks.filter(
@@ -214,7 +276,12 @@ export async function hydrateQualidadeFromServer(currentUserLogin: string) {
     revalidacoes: data.revalidacoes as never[],
   });
 
-  useRegistrosStore.setState({ registros: data.registros as never[] });
+  setQualidadeRegistrosHydrating(true);
+  const registrosAtivos = (data.registros as Registro[]).filter(
+    (r) => !isRegistroHistoricoNomusExcluido(r)
+  );
+  useRegistrosStore.setState({ registros: registrosAtivos as never[] });
+  setQualidadeRegistrosHydrating(false);
 
   useCalibrationsStore.setState({
     equipment: data.equipment as never[],
@@ -261,6 +328,9 @@ export function startQualidadeAutoSync() {
         documentTypes: state.documentTypes,
       }), 300);
     }
+    if (state.enderecamentos !== prev.enderecamentos) {
+      debounceSync('enderecamentos', () => flushEnderecamentosToServer(state.enderecamentos), 300);
+    }
   });
 
   useDocumentsStore.subscribe((state, prev) => {
@@ -285,6 +355,7 @@ export function startQualidadeAutoSync() {
   });
 
   useRegistrosStore.subscribe((state, prev) => {
+    if (registrosHydrating) return;
     if (state.registros !== prev.registros) {
       debounceSync('registros', () => syncQualidadeRegistros(state.registros));
     }
@@ -330,4 +401,19 @@ export function scheduleOpcoesListaSync() {
       console.error('[qualidade-sync] opcoes-lista:', err);
     }
   });
+}
+
+async function flushEnderecamentosToServer(
+  enderecamentos: ReturnType<typeof useConfigStore.getState>['enderecamentos']
+): Promise<void> {
+  await syncQualidadeOpcoesLista({
+    [ENDERECAMENTOS_OPCOES_CHAVE]: serializeEnderecamentos(enderecamentos),
+  });
+}
+
+export function scheduleEnderecamentosSync() {
+  debounceSync('enderecamentos', async () => {
+    const { enderecamentos } = useConfigStore.getState();
+    await flushEnderecamentosToServer(enderecamentos);
+  }, 300);
 }

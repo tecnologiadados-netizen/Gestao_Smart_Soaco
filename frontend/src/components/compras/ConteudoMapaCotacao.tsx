@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { listarPrecosColeta, listarPrecosCotacaoToda, type ColetaPrecosListItem, type FornecedorColetaItem, type PrecoCotacaoSalvoItem } from '../../api/compras';
+import { listarPrecosColeta, listarPrecosCotacaoToda, listarVinculosDerivadosColeta, type ColetaPrecosListItem, type FornecedorColetaItem, type PrecoCotacaoSalvoItem, type VinculoDerivadoItem } from '../../api/compras';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -82,6 +82,8 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
   const [produtos, setProdutos] = useState<Record<string, unknown>[]>([]);
   const [cotacao, setCotacao] = useState<PrecoCotacaoSalvoItem[]>([]);
   const [exportando, setExportando] = useState(false);
+  const [pedidosVinculados, setPedidosVinculados] = useState<VinculoDerivadoItem[]>([]);
+  const [cotacoesVinculadas, setCotacoesVinculadas] = useState<VinculoDerivadoItem[]>([]);
 
   /** Fornecedores da coleta; se vazio, deriva da cotação (ids únicos dos preços salvos) para exibir as colunas. */
   const fornecedores: FornecedorColetaItem[] = useMemo(() => {
@@ -125,6 +127,35 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
       cancelled = true;
     };
   }, [coleta.id]);
+
+  // Pedido(s) e cotação(ões) vinculados na finalização (derivados ao vivo do Nomus), para o cabeçalho do mapa/PDF.
+  useEffect(() => {
+    let cancelled = false;
+    listarVinculosDerivadosColeta(coleta.id)
+      .then((res) => {
+        if (cancelled) return;
+        setPedidosVinculados(res.pedidos ?? []);
+        setCotacoesVinculadas(res.cotacoes ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPedidosVinculados([]);
+          setCotacoesVinculadas([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [coleta.id]);
+
+  const nomesPedidos = useMemo(
+    () => pedidosVinculados.map((p) => p.nome).filter((n) => n && n.trim()).join(', '),
+    [pedidosVinculados]
+  );
+  const nomesCotacoes = useMemo(
+    () => cotacoesVinculadas.map((c) => c.nome).filter((n) => n && n.trim()).join(', '),
+    [cotacoesVinculadas]
+  );
 
   const getPrecoFor = (idProduto: number, idFornecedor: number): number | null => {
     const item = cotacao.find(
@@ -355,6 +386,8 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
             <p>Data Coleta: {formatarData(coleta.dataCriacao)}</p>
             <p>Coleta: Itens Selecionados - Só Aço</p>
             <p>Nº Coleta: {coleta.id}</p>
+            <p>Nº Pedido de Compra: {nomesPedidos || '—'}</p>
+            <p>Nº Cotação: {nomesCotacoes || '—'}</p>
           </div>
 
           <table className="w-full border-collapse border border-slate-300 table-fixed" style={{ fontSize: 'inherit', writingMode: 'horizontal-tb', width: '100%', minWidth: '100%', tableLayout: 'fixed' }}>

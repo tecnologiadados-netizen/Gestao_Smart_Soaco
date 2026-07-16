@@ -6,6 +6,11 @@ import * as cron from 'node-cron';
 import { listarTiposCronAtivos } from '../data/whatsappNotificacaoRepository.js';
 import { executarNotificacaoAgendada } from '../services/whatsappNotificacaoService.js';
 import { listarExpressoesCronAgendamento } from '../utils/smsCronHorarios.js';
+import {
+  dispararComClaim,
+  ensureAgendamentoExecucaoTable,
+  executarCatchup,
+} from './agendamentoExecucao.js';
 
 const jobs = new Map<string, cron.ScheduledTask>();
 
@@ -14,6 +19,8 @@ export async function recarregarCronsWhatsappNotificacao(): Promise<void> {
     task.stop();
   }
   jobs.clear();
+
+  await ensureAgendamentoExecucaoTable();
 
   const tipos = await listarTiposCronAtivos();
   for (const tipo of tipos) {
@@ -29,11 +36,19 @@ export async function recarregarCronsWhatsappNotificacao(): Promise<void> {
       }
       const jobKey = `${tipo.id}:${expr}`;
       const task = cron.schedule(expr, () => {
-        void executarNotificacaoAgendada(tipo.code);
+        void dispararComClaim('whatsapp', tipo.code, () => executarNotificacaoAgendada(tipo.code));
       });
       jobs.set(jobKey, task);
       console.log(`[whatsappNotificacaoCron] Agendado "${tipo.code}": ${expr}`);
     }
+
+    await executarCatchup({
+      canal: 'whatsapp',
+      code: tipo.code,
+      expr: tipo.cronExpressao,
+      run: () => executarNotificacaoAgendada(tipo.code),
+      logPrefix: '[whatsappNotificacaoCron]',
+    });
   }
 }
 

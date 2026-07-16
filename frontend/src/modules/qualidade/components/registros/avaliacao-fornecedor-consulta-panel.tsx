@@ -32,12 +32,15 @@ import { useTableSort } from "@qualidade/hooks/use-table-sort";
 import { useAvaliacaoFornecedorStore } from "@qualidade/lib/store/avaliacao-fornecedor-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { NOTA_MAX } from "@qualidade/lib/avaliacao-fornecedor/criterios";
+import { resolverNomeAvaliador } from "@qualidade/lib/avaliacao-fornecedor/resolver-nome-avaliador";
 import { formatarData } from "@qualidade/lib/utils/dates";
 import { sortByRules } from "@qualidade/lib/utils/table-sort";
+import { criarMatcherTextoLivre } from "@/utils/textoLivreBusca";
 import {
   getDataAvaliacao,
   type AvaliacaoFornecedor,
 } from "@qualidade/types/avaliacao-fornecedor";
+import { DocumentoAvaliadoFilterSearch } from "@qualidade/components/registros/documento-avaliado-filter-search";
 
 const ITENS_POR_PAGINA = 50;
 
@@ -67,6 +70,7 @@ export function AvaliacaoFornecedorConsultaPanel({
   const users = useConfigStore((s) => s.users);
 
   const [busca, setBusca] = useState("");
+  const [documentoFiltro, setDocumentoFiltro] = useState("");
   const [avaliadorFiltro, setAvaliadorFiltro] = useState(TABLE_FILTER_ALL);
   const [aprovadoFiltro, setAprovadoFiltro] = useState(TABLE_FILTER_ALL);
   const [periodoInicio, setPeriodoInicio] = useState("");
@@ -78,13 +82,29 @@ export function AvaliacaoFornecedorConsultaPanel({
     { key: "data", direction: "desc" },
   ]);
 
+  const documentosAvaliados = useMemo(() => {
+    const vistos = new Set<string>();
+    const lista: { numero: string; data: string }[] = [];
+
+    for (const av of avaliacoes) {
+      const numero = av.numeroDocumento?.trim();
+      if (!numero || vistos.has(numero)) continue;
+      vistos.add(numero);
+      lista.push({ numero, data: getDataAvaliacao(av) });
+    }
+
+    return lista
+      .sort((a, b) => b.data.localeCompare(a.data))
+      .map((item) => item.numero);
+  }, [avaliacoes]);
+
   const avaliadoresUnicos = useMemo(() => {
     const map = new Map<string, string>();
     for (const av of avaliacoes) {
       if (!map.has(av.avaliadorId)) {
         map.set(
           av.avaliadorId,
-          users.find((u) => u.id === av.avaliadorId)?.nome ?? av.avaliadorId
+          resolverNomeAvaliador(av.avaliadorId, users)
         );
       }
     }
@@ -95,6 +115,7 @@ export function AvaliacaoFornecedorConsultaPanel({
 
   const filtrosAtivos =
     busca.trim() !== "" ||
+    documentoFiltro.trim() !== "" ||
     avaliadorFiltro !== TABLE_FILTER_ALL ||
     aprovadoFiltro !== TABLE_FILTER_ALL ||
     periodoInicio !== "" ||
@@ -102,6 +123,7 @@ export function AvaliacaoFornecedorConsultaPanel({
 
   function limparFiltros() {
     setBusca("");
+    setDocumentoFiltro("");
     setAvaliadorFiltro(TABLE_FILTER_ALL);
     setAprovadoFiltro(TABLE_FILTER_ALL);
     setPeriodoInicio("");
@@ -109,17 +131,20 @@ export function AvaliacaoFornecedorConsultaPanel({
   }
 
   function getAvaliadorNome(avaliadorId: string) {
-    return users.find((u) => u.id === avaliadorId)?.nome ?? "—";
+    return resolverNomeAvaliador(avaliadorId, users);
   }
 
   const filtradas = useMemo(() => {
-    const q = busca.trim().toLowerCase();
+    const matchFornecedor = criarMatcherTextoLivre(busca);
+    const matchDocumento = criarMatcherTextoLivre(documentoFiltro);
     const lista = avaliacoes.filter((av) => {
       const matchBusca =
-        !q ||
-        av.fornecedorNome.toLowerCase().includes(q) ||
-        av.fornecedorId.toLowerCase().includes(q) ||
-        av.numeroDocumento?.toLowerCase().includes(q);
+        !busca.trim() ||
+        matchFornecedor(av.fornecedorNome) ||
+        matchFornecedor(av.fornecedorId);
+      const matchDoc =
+        !documentoFiltro.trim() ||
+        matchDocumento(av.numeroDocumento ?? "");
       const matchAvaliador =
         avaliadorFiltro === TABLE_FILTER_ALL ||
         av.avaliadorId === avaliadorFiltro;
@@ -131,7 +156,7 @@ export function AvaliacaoFornecedorConsultaPanel({
       const matchPeriodo =
         (!periodoInicio || (dataAv !== "" && dataAv >= periodoInicio)) &&
         (!periodoFim || (dataAv !== "" && dataAv <= periodoFim));
-      return matchBusca && matchAvaliador && matchAprovado && matchPeriodo;
+      return matchBusca && matchDoc && matchAvaliador && matchAprovado && matchPeriodo;
     });
 
     return sortByRules(lista, sorts, (av, key) => {
@@ -153,6 +178,7 @@ export function AvaliacaoFornecedorConsultaPanel({
   }, [
     avaliacoes,
     busca,
+    documentoFiltro,
     avaliadorFiltro,
     aprovadoFiltro,
     periodoInicio,
@@ -173,7 +199,7 @@ export function AvaliacaoFornecedorConsultaPanel({
 
   useEffect(() => {
     setPagina(1);
-  }, [busca, avaliadorFiltro, aprovadoFiltro, periodoInicio, periodoFim, sorts]);
+  }, [busca, documentoFiltro, avaliadorFiltro, aprovadoFiltro, periodoInicio, periodoFim, sorts]);
 
   useEffect(() => {
     if (pagina > totalPaginas) {
@@ -192,20 +218,29 @@ export function AvaliacaoFornecedorConsultaPanel({
   return (
     <>
       <TableFiltersToolbar
-        gridClassName="sm:grid-cols-2 lg:grid-cols-4"
+        gridClassName="items-start sm:grid-cols-2 lg:grid-cols-6"
         onClear={limparFiltros}
         hasActiveFilters={filtrosAtivos}
       >
         <TableFilterField
-          label="Busca"
+          label="Fornecedor"
           htmlFor="av-hist-busca"
           className="sm:col-span-2"
         >
           <TableFilterSearch
             id="av-hist-busca"
-            placeholder="Fornecedor, código ou documento..."
+            placeholder="Nome ou código do fornecedor…"
             value={busca}
             onChange={setBusca}
+          />
+        </TableFilterField>
+        <TableFilterField label="Nº documento" htmlFor="av-hist-documento">
+          <DocumentoAvaliadoFilterSearch
+            id="av-hist-documento"
+            placeholder="Ex.: DE38138 ou DE%"
+            value={documentoFiltro}
+            onChange={setDocumentoFiltro}
+            documentos={documentosAvaliados}
           />
         </TableFilterField>
         <TableFilterField label="Avaliador" htmlFor="av-hist-avaliador">
@@ -258,8 +293,8 @@ export function AvaliacaoFornecedorConsultaPanel({
             </SelectContent>
           </Select>
         </TableFilterField>
-        <TableFilterField label="Período" className="sm:col-span-2">
-          <div className="grid grid-cols-2 gap-2">
+        <TableFilterField label="Período">
+          <div className="flex flex-col gap-2">
             <Input
               id="av-hist-periodo-inicio"
               type="date"

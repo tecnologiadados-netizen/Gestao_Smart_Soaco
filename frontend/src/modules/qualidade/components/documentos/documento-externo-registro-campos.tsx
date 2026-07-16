@@ -1,10 +1,9 @@
+import { useMemo } from "react";
 import { format } from "date-fns";
-import { useId } from "react";
-import { Trash2 } from "lucide-react";
-import { Button } from "@qualidade/components/ui/button";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
 import { Textarea } from "@qualidade/components/ui/textarea";
+import { SgqAnexosTable } from "@qualidade/components/ui/sgq-anexos-table";
 import {
   Select,
   SelectContent,
@@ -29,6 +28,9 @@ import {
   permissaoAcessoSelectLabel,
   userSelectLabel,
 } from "@qualidade/lib/utils/select-display";
+import type { SgqAnexo } from "@qualidade/types/registro-anexo";
+import { useConfigStore } from "@qualidade/lib/store/config-store";
+import { buildLocalizacaoOpcoes } from "@qualidade/lib/enderecamentos-sync";
 
 export interface ExternoRegistroFormValues {
   titulo: string;
@@ -42,8 +44,7 @@ export interface ExternoRegistroFormValues {
   validadeData: string;
   avisarAntes: boolean;
   avisarAntesDias: number;
-  anexoNome?: string;
-  anexoDataUrl?: string;
+  anexos: SgqAnexo[];
   observacao: string;
   associarDocumentos: boolean;
   documentosAssociadosIds: string[];
@@ -77,6 +78,7 @@ export function defaultExternoRegistroValues(
     validadeData: defaultValidadeData(),
     avisarAntes: false,
     avisarAntesDias: 30,
+    anexos: [],
     observacao: "",
     associarDocumentos: false,
     documentosAssociadosIds: [],
@@ -104,6 +106,10 @@ export function buildValidadeFromExternoRegistro(
 export function buildExternoRegistroMeta(
   values: ExternoRegistroFormValues
 ): DocumentExternoRegistro {
+  const anexosPreenchidos = values.anexos
+    .filter((a) => a.nome.trim() && a.dataUrl.trim())
+    .map((a) => ({ nome: a.nome.trim(), dataUrl: a.dataUrl.trim() }));
+
   return {
     unidadeTodos: values.unidadeTodos,
     distribuicaoEletronica: values.distEletronica,
@@ -115,6 +121,7 @@ export function buildExternoRegistroMeta(
     documentosAssociadosIds: values.documentosAssociadosIds,
     permissaoAcesso: (values.permissaoAcesso ||
       "todos") as PermissaoAcessoDocumento,
+    anexos: anexosPreenchidos.length > 0 ? anexosPreenchidos : undefined,
   };
 }
 
@@ -153,11 +160,20 @@ export function DocumentoExternoRegistroCampos({
   showProcesso = true,
   showValidade = true,
 }: Props) {
-  const anexoInputId = useId();
+  const enderecamentos = useConfigStore((s) => s.enderecamentos);
 
   function patch(partial: Partial<ExternoRegistroFormValues>) {
     onChange({ ...values, ...partial });
   }
+
+  const localizacaoOpcoes = useMemo(
+    () => buildLocalizacaoOpcoes(enderecamentos, departments, values.localizacao),
+    [departments, enderecamentos, values.localizacao]
+  );
+
+  const localizacaoLabel =
+    localizacaoOpcoes.find((opcao) => opcao.value === values.localizacao)?.label ??
+    (values.localizacao.trim() || null);
 
   const userOptions: MultiSelectOption[] = users
     .filter((u) => u.ativo)
@@ -174,18 +190,6 @@ export function DocumentoExternoRegistroCampos({
   const processoNome = departmentSelectLabel(departments, values.processoId, "sigla-nome");
   const responsavelNome = userSelectLabel(users, values.responsavelId);
   const permissaoAcessoNome = permissaoAcessoSelectLabel(values.permissaoAcesso);
-
-  function handleFileSelect(file: File) {
-    if (file.size > 5 * 1024 * 1024) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      patch({
-        anexoNome: file.name,
-        anexoDataUrl: reader.result as string,
-      });
-    };
-    reader.readAsDataURL(file);
-  }
 
   return (
     <div className="space-y-6">
@@ -257,13 +261,33 @@ export function DocumentoExternoRegistroCampos({
 
         <div className="space-y-2">
           <Label className="text-base">Localização *</Label>
-          <Input
+          <Select
             value={values.localizacao}
-            onChange={(e) => patch({ localizacao: e.target.value })}
-            className="h-10 text-base"
-            placeholder="Onde o documento está armazenado"
-            required
-          />
+            onValueChange={(v) => v && patch({ localizacao: v })}
+          >
+            <SelectTrigger className={selectTriggerClass}>
+              <SelectValue placeholder="Selecione onde o documento está armazenado">
+                {localizacaoLabel}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className={selectContentClass}>
+              {localizacaoOpcoes.length === 0 ? (
+                <SelectItem value="__vazio__" disabled className={selectItemClass}>
+                  Cadastre endereços em Configurações → Endereçamento
+                </SelectItem>
+              ) : (
+                localizacaoOpcoes.map((opcao) => (
+                  <SelectItem
+                    key={opcao.value}
+                    value={opcao.value}
+                    className={selectItemClass}
+                  >
+                    {opcao.label}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="space-y-2">
@@ -355,52 +379,14 @@ export function DocumentoExternoRegistroCampos({
       <fieldset className="brand-fieldset space-y-4">
         <legend className="text-base">Anexo e complementos</legend>
 
-        <div className="space-y-2">
-          <Label className="text-base">Anexo</Label>
-          <div className="space-y-3">
-            <div>
-              <input
-                type="file"
-                id={anexoInputId}
-                className="hidden"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleFileSelect(file);
-                  e.target.value = "";
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => document.getElementById(anexoInputId)?.click()}
-              >
-                Inserir arquivo
-              </Button>
-            </div>
-            {values.anexoNome ? (
-              <div className="flex items-center gap-3 rounded-lg border border-border/80 bg-muted/20 px-4 py-3 text-sm">
-                <span className="min-w-0 flex-1 truncate font-medium">
-                  {values.anexoNome}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Remover anexo"
-                  onClick={() =>
-                    patch({
-                      anexoNome: undefined,
-                      anexoDataUrl: undefined,
-                    })
-                  }
-                >
-                  <Trash2 className="size-4 text-destructive" />
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <SgqAnexosTable
+          label="Anexos"
+          anexos={values.anexos}
+          onChange={(anexos) => patch({ anexos })}
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png"
+          emptyMessage='Nenhum anexo adicionado. Clique em "Adicionar anexo" para incluir um arquivo.'
+          addButtonLabel="Adicionar anexo"
+        />
 
         <div className="space-y-2">
           <Label className="text-base">Observação</Label>

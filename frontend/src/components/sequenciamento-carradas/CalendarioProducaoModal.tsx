@@ -36,6 +36,7 @@ import ModalAjustePrevisao, {
   type AjustePrevisaoContextoCalendario,
   type AjustePrevisaoSuccessMeta,
 } from '../ModalAjustePrevisao';
+import GradeCelulaModalBtn from '../pcp/GradeCelulaModalBtn';
 import { labelPedidoMapa } from '../../utils/mapaMunicipioPedido';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -49,6 +50,8 @@ type Props = {
   onClose: () => void;
   onLinhasAtualizadas?: (linhas: Record<string, unknown>[]) => void;
   onEditarDataProducao?: (carradaKey: string, novaData: string) => void;
+  /** False quando o snapshot já está concluído (somente leitura). */
+  editavel?: boolean;
 };
 
 type EscopoAjustePd = 'item' | 'todos_itens_pd';
@@ -75,10 +78,6 @@ const COL_TOTAL = '__total';
 
 const TH = 'px-2 py-2 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap';
 const TD = 'px-2 py-1.5 text-slate-700 dark:text-slate-200';
-const NUM_BTN =
-  'tabular-nums text-primary-700 hover:underline dark:text-primary-300 disabled:cursor-default disabled:text-slate-400 disabled:no-underline dark:disabled:text-slate-500';
-const LINK_BTN =
-  'text-left font-medium text-primary-700 hover:underline dark:text-primary-300';
 const WEEKEND_TD = 'bg-slate-100/80 dark:bg-slate-900/40';
 const OCIOso_TD = 'bg-slate-50/60 dark:bg-slate-900/20';
 
@@ -131,12 +130,14 @@ export default function CalendarioProducaoModal({
   onClose,
   onLinhasAtualizadas,
   onEditarDataProducao,
+  editavel = true,
 }: Props) {
   const { hasPermission } = useAuth();
   const podeAjustarPrevisao =
-    hasPermission(PERMISSOES.PCP_AJUSTAR_PREVISAO) ||
-    hasPermission(PERMISSOES.PCP_TOTAL) ||
-    hasPermission(PERMISSOES.PEDIDOS_EDITAR);
+    editavel &&
+    (hasPermission(PERMISSOES.PCP_AJUSTAR_PREVISAO) ||
+      hasPermission(PERMISSOES.PCP_TOTAL) ||
+      hasPermission(PERMISSOES.PEDIDOS_EDITAR));
 
   const dados = useMemo(() => computarCalendarioProducao(linhas, sim, baseline), [linhas, sim, baseline]);
 
@@ -455,15 +456,16 @@ export default function CalendarioProducaoModal({
     return (
       <td key={colId} className={`${TD} text-right ${weekend ? 'px-1' : ''} ${weekend ? WEEKEND_TD : ''}`}>
         {v > 0 ? (
-          <button
-            type="button"
-            className={`${NUM_BTN} inline-flex items-center justify-end gap-0.5`}
+          <GradeCelulaModalBtn
             onClick={() => setDrill({ nivel: 'tipof', setor, data: col.iso })}
             title={titulo}
+            align="right"
           >
-            {formatQtdeInt(v)}
-            {temPrevisaoFallback ? <span className="text-amber-600 dark:text-amber-400">*</span> : null}
-          </button>
+            <span className="inline-flex items-center gap-0.5">
+              {formatQtdeInt(v)}
+              {temPrevisaoFallback ? <span className="text-amber-200">*</span> : null}
+            </span>
+          </GradeCelulaModalBtn>
         ) : (
           <span className="text-slate-300 dark:text-slate-600">—</span>
         )}
@@ -571,14 +573,13 @@ export default function CalendarioProducaoModal({
                   {grade.rowsExibidas.map(({ setor }) => (
                     <tr key={setor} className="border-b border-slate-100 dark:border-slate-700">
                       <td className={`${TD} sticky left-0 z-10 bg-white dark:bg-slate-800`}>
-                        <button
-                          type="button"
-                          className={LINK_BTN}
+                        <GradeCelulaModalBtn
                           onClick={() => setSetorDetalhe(setor)}
                           title="Ver códigos e descrições do setor"
+                          align="left"
                         >
                           {setor}
-                        </button>
+                        </GradeCelulaModalBtn>
                       </td>
                       {colunas.map((col) => renderCelulaData(setor, col))}
                       <td className={`${TD} text-right font-semibold tabular-nums`}>
@@ -624,16 +625,15 @@ export default function CalendarioProducaoModal({
                 {tipoFRows.map((r) => (
                   <tr key={r.tipoF} className="border-b border-slate-100 dark:border-slate-700">
                     <td className={TD}>
-                      <button
-                        type="button"
-                        className={NUM_BTN}
+                      <GradeCelulaModalBtn
                         onClick={() =>
                           setDrill({ nivel: 'pedidos', setor: drill.setor, data: drill.data, tipoF: r.tipoF })
                         }
                         title="Ver pedidos"
+                        align="left"
                       >
                         {r.tipoF}
-                      </button>
+                      </GradeCelulaModalBtn>
                     </td>
                     <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(r.qtde)}</td>
                   </tr>
@@ -659,14 +659,13 @@ export default function CalendarioProducaoModal({
                   <tr key={r.pd} className="border-b border-slate-100 dark:border-slate-700">
                     <td className={TD}>
                       <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          className={NUM_BTN}
+                        <GradeCelulaModalBtn
                           onClick={() => abrirModalPedido(r.pd)}
                           title="Ver itens do pedido"
+                          align="left"
                         >
                           {labelPedidoMapa(r.pd)}
-                        </button>
+                        </GradeCelulaModalBtn>
                         {r.producaoPorPrevisao && <IndicadorDataPorPrevisao />}
                         {podeAjustarPrevisao && (
                           <button

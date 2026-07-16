@@ -1,3 +1,5 @@
+import { codigoBaseFromCodigo } from "@qualidade/lib/documents/document-codigo";
+
 export function generateNextDocumentCode(
   tipoSigla: string,
   existingCodes: string[]
@@ -6,8 +8,9 @@ export function generateNextDocumentCode(
   let maxNum = 0;
 
   for (const codigo of existingCodes) {
-    if (!codigo.toUpperCase().startsWith(prefix)) continue;
-    const num = parseInt(codigo.slice(prefix.length), 10);
+    const base = codigoBaseFromCodigo(codigo);
+    if (!base.toUpperCase().startsWith(prefix)) continue;
+    const num = parseInt(base.slice(prefix.length), 10);
     if (!Number.isNaN(num) && num > maxNum) maxNum = num;
   }
 

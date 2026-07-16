@@ -1,10 +1,7 @@
-import { useId } from "react";
-import { Plus, Trash2 } from "lucide-react";
-import { Button } from "@qualidade/components/ui/button";
-import { Label } from "@qualidade/components/ui/label";
-
-const DEFAULT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png";
-const MAX_SIZE_BYTES = 5 * 1024 * 1024;
+import { useMemo } from "react";
+import { randomUUID } from "@/utils/randomUUID";
+import { SgqAnexosTable } from "@qualidade/components/ui/sgq-anexos-table";
+import type { SgqAnexo } from "@qualidade/types/registro-anexo";
 
 export interface AnexoItem {
   id: string;
@@ -20,97 +17,51 @@ interface Props {
 }
 
 function createAnexoRow(): AnexoItem {
-  return { id: crypto.randomUUID() };
+  return { id: randomUUID() };
 }
 
 export function defaultAnexoRows(count = 1): AnexoItem[] {
   return Array.from({ length: count }, () => createAnexoRow());
 }
 
+function toSgqAnexos(rows: AnexoItem[]): SgqAnexo[] {
+  return rows.map((row) => ({
+    id: row.id,
+    nome: row.nome ?? "",
+    dataUrl: row.dataUrl ?? "",
+  }));
+}
+
+function fromSgqAnexos(rows: SgqAnexo[]): AnexoItem[] {
+  return rows.map((row) => ({
+    id: row.id,
+    nome: row.nome || undefined,
+    dataUrl: row.dataUrl || undefined,
+  }));
+}
+
 export function EquipamentoAnexosField({
-  label = "Anexo",
+  label = "Anexos complementares",
   value,
   onChange,
-  accept = DEFAULT_ACCEPT,
+  accept,
 }: Props) {
-  const baseId = useId();
+  const anexos = useMemo(() => toSgqAnexos(value), [value]);
 
-  function updateRow(id: string, patch: Partial<AnexoItem>) {
-    onChange(value.map((row) => (row.id === id ? { ...row, ...patch } : row)));
-  }
-
-  function removeRow(id: string) {
-    const next = value.filter((row) => row.id !== id);
-    onChange(next.length > 0 ? next : [createAnexoRow()]);
-  }
-
-  function addRow() {
-    onChange([...value, createAnexoRow()]);
-  }
-
-  function handleFileSelect(id: string, file: File) {
-    if (file.size > MAX_SIZE_BYTES) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      updateRow(id, {
-        nome: file.name,
-        dataUrl: reader.result as string,
-      });
-    };
-    reader.readAsDataURL(file);
+  function handleChange(next: SgqAnexo[]) {
+    const mapped = fromSgqAnexos(next);
+    onChange(mapped.length > 0 ? mapped : [createAnexoRow()]);
   }
 
   return (
-    <div className="space-y-3">
-      <Label className="text-sm font-medium">{label}</Label>
-      <div className="space-y-3">
-        {value.map((row, index) => {
-          const inputId = `${baseId}-${row.id}`;
-          return (
-            <div
-              key={row.id}
-              className="flex flex-wrap items-center gap-3 rounded-lg border border-border/80 bg-muted/20 px-4 py-3"
-            >
-              <input
-                type="file"
-                id={inputId}
-                className="hidden"
-                accept={accept}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleFileSelect(row.id, file);
-                  e.target.value = "";
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => document.getElementById(inputId)?.click()}
-              >
-                Inserir arquivo
-              </Button>
-              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-                {row.nome ?? `Anexo ${index + 1} — nenhum arquivo selecionado`}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Remover linha de anexo"
-                onClick={() => removeRow(row.id)}
-              >
-                <Trash2 className="size-4 text-destructive" />
-              </Button>
-            </div>
-          );
-        })}
-      </div>
-      <Button type="button" variant="outline" size="sm" onClick={addRow}>
-        <Plus className="size-4" />
-        Adicionar anexo
-      </Button>
-    </div>
+    <SgqAnexosTable
+      label={label}
+      anexos={anexos}
+      onChange={handleChange}
+      accept={accept}
+      emptyMessage='Nenhum anexo adicionado. Clique em "Adicionar anexo" para incluir um arquivo.'
+      addButtonLabel="Adicionar anexo"
+    />
   );
 }
 

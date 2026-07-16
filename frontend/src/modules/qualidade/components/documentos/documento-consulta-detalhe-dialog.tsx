@@ -23,6 +23,7 @@ import {
   dueStatusLabels,
 } from "@qualidade/lib/utils/status-labels";
 import { formatarData, formatarDataHora } from "@qualidade/lib/utils/dates";
+import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import {
   calcularDiasRestantesValidade,
   calcularProximaDataValidade,
@@ -298,14 +299,11 @@ export function DocumentoConsultaDetalheDialog({
               <div className="min-w-0 space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="rounded-md bg-brand-blue px-2.5 py-1 text-sm font-bold text-white">
-                    {doc.codigo}
+                    {formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}
                   </span>
                   <Badge variant={getDocumentStatusVariant(doc.status)}>
                     {documentStatusLabels[doc.status]}
                   </Badge>
-                  <span className="text-sm text-muted-foreground">
-                    Rev. {doc.versaoAtual}
-                  </span>
                 </div>
                 <h3 className="max-w-3xl text-xl font-semibold leading-snug text-brand-navy">
                   {doc.titulo}

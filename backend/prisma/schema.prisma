@@ -81,6 +81,7 @@ model GrupoUsuario {
   updatedAt   DateTime @updatedAt
 
   usuarios Usuario[]
+  rhGrupoPermissao RhGrupoPermissao?
 
   @@map("grupo_usuario")
 }
@@ -111,6 +112,7 @@ model Usuario {
   mrpRunsCriados MrpRun[] @relation("MrpRunCreatedBy")
   mrpRunsProcessados MrpRun[] @relation("MrpRunProcessedBy")
   whatsappNotificacaoDestinatarios WhatsappNotificacaoDestinatario[]
+  emailNotificacaoDestinatarios EmailNotificacaoDestinatario[]
   telasFavoritas TelaFavorita[]
 
   @@map("usuario")
@@ -230,6 +232,38 @@ model WhatsappNotificacaoDestinatario {
 
   @@unique([tipoId, usuarioId])
   @@map("whatsapp_notificacao_destinatario")
+}
+
+/// Tipos de notificação por e-mail (Integração → E-mail).
+model EmailNotificacaoTipo {
+  id               Int      @id @default(autoincrement())
+  code             String   @unique
+  label            String
+  descricao        String?
+  ativo            Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  /// codigo (builder em código)
+  fonteMensagem    String   @default("codigo")
+  /// cron
+  modoDisparo      String   @default("cron")
+  cronExpressao    String?
+  builderCode      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  destinatarios    EmailNotificacaoDestinatario[]
+
+  @@map("email_notificacao_tipo")
+}
+
+model EmailNotificacaoDestinatario {
+  id        Int @id @default(autoincrement())
+  tipoId    Int
+  usuarioId Int
+  tipo      EmailNotificacaoTipo @relation(fields: [tipoId], references: [id], onDelete: Cascade)
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([tipoId, usuarioId])
+  @@map("email_notificacao_destinatario")
 }
 
 // Coordenadas de municípios brasileiros (fonte: IBGE/kelvins – sem depender de API externa)
@@ -1269,4 +1303,554 @@ model PendenciasComprasPrioridadeFixaHistorico {
 
   @@index([comprador, idProduto])
   @@map("pendencias_compras_prioridade_fixa_historico")
+}
+
+// Permissões granulares RH (RhGroupPermissions v2) por grupo do Gestor.
+model RhGrupoPermissao {
+  id          String   @id @default(uuid())
+  grupoId     Int      @unique @map("grupo_id")
+  permissions String   @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  grupo GrupoUsuario @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+
+  @@map("rh_grupo_permissao")
+}
+
+model RhOrganico {
+  id           String    @id @default(uuid())
+  matricula    String
+  nome         String
+  cargo        String
+  setor        String
+  area         String?
+  lider        String?
+  dataAdmissao DateTime? @map("data_admissao")
+  status       String    @default("Ativo")
+  valuesJson   String    @default("[]") @map("values_json")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("rh_organico")
+}
+
+model RhFaltasAtestados {
+  id               String    @id @default(uuid())
+  data             DateTime
+  mesFalta         String?   @map("mes_falta")
+  matricula        String
+  nomeFuncionario  String    @map("nome_funcionario")
+  endereco         String?
+  area             String?
+  setor            String?
+  lider            String?
+  periodo          String?
+  qntd             String?
+  diasTurno        String?   @map("dias_turno")
+  tipo             String?
+  cid              String?
+  localAtendimento String?   @map("local_atendimento")
+  medicoResponsavel String?  @map("medico_responsavel")
+  observacoes      String?
+  aprovado         String?
+  reprovado        String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@map("rh_faltas_atestados")
+}
+
+model RhSancoesDisciplinares {
+  id              String    @id @default(uuid())
+  matricula       String
+  nomeFuncionario String    @map("nome_funcionario")
+  tipo            String?
+  dataAplicacao   DateTime  @map("data_aplicacao")
+  mes             String?
+  ano             String?
+  observacoes     String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("rh_sancoes_disciplinares")
+}
+
+model RhFaltasCadPeriodos {
+  id        String   @id @default(uuid())
+  ordem     Int
+  valor     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([ordem])
+  @@map("rh_faltas_cad_periodos")
+}
+
+model RhFaltasCadTipos {
+  id                      String   @id @default(uuid())
+  ordem                   Int
+  valor                   String
+  contabilizaIndicadores  Boolean  @default(true) @map("contabiliza_indicadores")
+  classificacaoIndicador  String?  @map("classificacao_indicador")
+  exibirNoDetalhamento    Boolean  @default(true) @map("exibir_no_detalhamento")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@index([ordem])
+  @@map("rh_faltas_cad_tipos")
+}
+
+model RhFaltasCadCids {
+  id        String   @id @default(uuid())
+  ordem     Int
+  valor     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([ordem])
+  @@map("rh_faltas_cad_cids")
+}
+
+model RhFaltasCadTiposSancoes {
+  id        String   @id @default(uuid())
+  ordem     Int
+  valor     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([ordem])
+  @@map("rh_faltas_cad_tipos_sancoes")
+}
+
+model RhFaltasCadCategoriasDocumentos {
+  id        String   @id @default(uuid())
+  ordem     Int
+  valor     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([ordem])
+  @@map("rh_faltas_cad_categorias_documentos")
+}
+
+model RhFaltasAlertaRegras {
+  id                String   @id
+  titulo            String
+  descricao         String   @default("")
+  baseLegal         String   @map("base_legal")
+  referenciaLegal   String?  @map("referencia_legal")
+  limiteResumo      String   @default("") @map("limite_resumo")
+  ativa             Boolean  @default(true)
+  ordem             Int      @default(0)
+  severidadePadrao  String   @default("media") @map("severidade_padrao")
+  updatedAt         DateTime? @default(now()) @map("updated_at")
+  updatedBy         String?  @map("updated_by")
+
+  enquadramentos    RhFaltasAlertaEnquadramentos[]
+  inconsistencias   RhFaltasAusenciaInconsistencias[]
+
+  @@map("rh_faltas_alerta_regras")
+}
+
+model RhFaltasAlertaEnquadramentos {
+  id               String    @id @default(uuid())
+  regraId          String    @map("regra_id")
+  faltaId          String    @map("falta_id")
+  inconsistenciaId String?   @map("inconsistencia_id")
+  matricula        String    @default("")
+  nomeFuncionario  String    @default("") @map("nome_funcionario")
+  dataAusencia     DateTime? @map("data_ausencia")
+  tipo             String    @default("")
+  cid              String?
+  motivo           String    @default("")
+  contextoJson     String?   @map("contexto")
+  lancadoPor       String    @default("") @map("lancado_por")
+  detectadaEm      DateTime  @default(now()) @map("detectada_em")
+
+  regra RhFaltasAlertaRegras @relation(fields: [regraId], references: [id], onDelete: Cascade)
+
+  @@index([regraId, detectadaEm])
+  @@map("rh_faltas_alerta_enquadramentos")
+}
+
+model RhFaltasAusenciaInconsistencias {
+  id               String    @id @default(uuid())
+  faltaId          String    @map("falta_id")
+  enquadramentoId  String?   @map("enquadramento_id")
+  regraId          String    @map("regra_id")
+  titulo           String
+  descricao        String    @default("")
+  baseLegal        String    @map("base_legal")
+  severidade       String    @default("media")
+  status           String    @default("pendente")
+  matricula        String    @default("")
+  nomeFuncionario  String    @default("") @map("nome_funcionario")
+  dataAusencia     DateTime? @map("data_ausencia")
+  diasAcumulados   Float?    @map("dias_acumulados")
+  limiteDias       Float?    @map("limite_dias")
+  grupoCidId       String?   @map("grupo_cid_id")
+  grupoCidTitulo   String?   @map("grupo_cid_titulo")
+  detectadaEm      DateTime  @default(now()) @map("detectada_em")
+  resolvidaEm      DateTime? @map("resolvida_em")
+  resolucaoNotas   String?   @map("resolucao_notas")
+  lancadoPor       String?   @map("lancado_por")
+  resolvidoPor     String?   @map("resolvido_por")
+
+  regra RhFaltasAlertaRegras @relation(fields: [regraId], references: [id], onDelete: Cascade)
+
+  @@index([status, detectadaEm])
+  @@map("rh_faltas_ausencia_inconsistencias")
+}
+
+model RhOrganicoComentarios {
+  id                   String   @id @default(uuid())
+  colaboradorNome      String   @map("colaborador_nome")
+  colaboradorMatricula String?  @map("colaborador_matricula")
+  comentario           String
+  criadoPor            String   @map("criado_por")
+  tagCodigo            String   @default("6") @map("tag_codigo")
+  visibilidade         String   @default("public")
+  tipo                 String   @default("comentario")
+  categoria            String   @default("geral")
+  campoAlterado        String?  @map("campo_alterado")
+  valorAnterior        String?  @map("valor_anterior")
+  valorAtual           String?  @map("valor_atual")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  sancaoFingerprints RhOrganicoLogSancaoFingerprint[]
+
+  @@index([colaboradorNome, colaboradorMatricula, createdAt])
+  @@map("rh_organico_comentarios")
+}
+
+model RhOrganicoFotos {
+  id                   String   @id @default(uuid())
+  colaboradorMatricula String   @unique @map("colaborador_matricula")
+  colaboradorNome      String   @map("colaborador_nome")
+  fotoBase64           String   @map("foto_base64")
+  mimeType             String?  @map("mime_type")
+  updatedBy            String?  @map("updated_by")
+  updatedAt            DateTime @default(now()) @map("updated_at")
+
+  @@index([colaboradorNome])
+  @@map("rh_organico_fotos")
+}
+
+model RhOrganicoTrajetoria {
+  id                   String   @id @default(uuid())
+  colaboradorMatricula String   @map("colaborador_matricula")
+  colaboradorNome      String   @default("") @map("colaborador_nome")
+  dataEvento           DateTime @map("data_evento")
+  tipoEvento           String   @map("tipo_evento")
+  titulo               String
+  descricao            String
+  motivo               String?
+  origemArquivo        String?  @map("origem_arquivo")
+  importadoPor         String?  @map("importado_por")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  alteracoesPendentes RhOrganicoAlteracaoPendente[]
+
+  @@index([colaboradorMatricula, dataEvento, createdAt])
+  @@map("rh_organico_trajetoria")
+}
+
+model RhOrganicoAlteracaoPendente {
+  id                   String    @id @default(uuid())
+  colaboradorMatricula String    @map("colaborador_matricula")
+  colaboradorNome      String    @default("") @map("colaborador_nome")
+  setor                String    @default("")
+  tipo                 String
+  campoLabel           String    @default("") @map("campo_label")
+  valorAnterior        String    @default("") @map("valor_anterior")
+  valorAtual           String    @default("") @map("valor_atual")
+  motivo               String?
+  detectedAt           DateTime  @default(now()) @map("detected_at")
+  resolvedAt           DateTime? @map("resolved_at")
+  resolvedBy           String?   @map("resolved_by")
+  dataReferencia       DateTime? @map("data_referencia")
+  organicoTrajetoriaId String?   @map("organico_trajetoria_id")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  organicoTrajetoria RhOrganicoTrajetoria? @relation(fields: [organicoTrajetoriaId], references: [id], onDelete: SetNull)
+
+  @@index([setor])
+  @@map("rh_organico_alteracao_pendente")
+}
+
+model RhOrganicoRepresentantes {
+  id                String   @id @default(uuid())
+  representanteKey  String   @unique @map("representante_key")
+  nomeRazaoSocial   String   @map("nome_razao_social")
+  nomeFantasia      String?  @map("nome_fantasia")
+  fotoBase64        String?  @map("foto_base64")
+  fotoMimeType      String?  @map("foto_mime_type")
+  cpf               String?
+  admissao          String?
+  tempoEmpresa      String?  @map("tempo_empresa")
+  cargo             String?
+  area              String?
+  setor             String?
+  nascimento        String?
+  idade             String?
+  grauInstrucao     String?  @map("grau_instrucao")
+  vinculo           String?
+  telefone          String?
+  telefoneEmergencial String? @map("telefone_emergencial")
+  agencia           String?
+  conta             String?
+  banco             String?
+  chavePix          String?  @map("chave_pix")
+  casoNaoTenhaPix   String?  @map("caso_nao_tenha_pix")
+  updatedBy         String?  @map("updated_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("rh_organico_representantes")
+}
+
+model RhOrganicoArchiveFolderGlobal {
+  id        String   @id @default(uuid())
+  parentId  String?  @map("parent_id")
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime? @default(now()) @map("created_at")
+  createdBy String?  @map("created_by")
+
+  parent       RhOrganicoArchiveFolderGlobal?  @relation("RhArchiveFolderGlobalTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children     RhOrganicoArchiveFolderGlobal[] @relation("RhArchiveFolderGlobalTree")
+  localFolders RhOrganicoArchiveFolderLocal[]
+  hiddenByMatricula RhOrganicoArchiveFolderHidden[]
+  documents    RhOrganicoDocuments[]
+
+  @@index([parentId, sortOrder])
+  @@map("rh_organico_archive_folder_global")
+}
+
+model RhOrganicoArchiveFolderLocal {
+  id              String   @id @default(uuid())
+  matricula       String
+  parentGlobalId  String?  @map("parent_global_id")
+  parentLocalId   String?  @map("parent_local_id")
+  name            String
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime? @default(now()) @map("created_at")
+  createdBy       String?  @map("created_by")
+
+  parentGlobal RhOrganicoArchiveFolderGlobal? @relation(fields: [parentGlobalId], references: [id], onDelete: SetNull)
+  parentLocal  RhOrganicoArchiveFolderLocal?  @relation("RhArchiveFolderLocalTree", fields: [parentLocalId], references: [id], onDelete: Cascade)
+  children     RhOrganicoArchiveFolderLocal[]  @relation("RhArchiveFolderLocalTree")
+  documents    RhOrganicoDocuments[]
+
+  @@index([matricula, sortOrder])
+  @@map("rh_organico_archive_folder_local")
+}
+
+model RhOrganicoArchiveFolderHidden {
+  matricula      String
+  globalFolderId String   @map("global_folder_id")
+  hiddenAt       DateTime? @default(now()) @map("hidden_at")
+  hiddenBy       String?  @map("hidden_by")
+
+  globalFolder RhOrganicoArchiveFolderGlobal @relation(fields: [globalFolderId], references: [id], onDelete: Cascade)
+
+  @@id([matricula, globalFolderId])
+  @@map("rh_organico_archive_folder_hidden")
+}
+
+model RhOrganicoDocuments {
+  id                  String    @id @default(uuid())
+  matricula           String
+  globalFolderId      String?   @map("global_folder_id")
+  localFolderId       String?   @map("local_folder_id")
+  title               String
+  category            String
+  classification      String    @default("confidential")
+  originalName        String    @map("original_name")
+  mimeType            String    @map("mime_type")
+  sizeBytes           Int       @map("size_bytes")
+  sha256              String?
+  storagePath         String    @map("storage_path")
+  coverStoragePath    String?   @map("cover_storage_path")
+  sourcePages         String?   @map("source_pages")
+  sourceKind          String    @default("individual") @map("source_kind")
+  status              String    @default("active")
+  launchSource        String?   @map("launch_source")
+  launchSourceRecordId String?  @map("launch_source_record_id")
+  createdBy           String    @map("created_by")
+  createdAt           DateTime? @default(now()) @map("created_at")
+  deletedAt           DateTime? @map("deleted_at")
+  deletedBy           String?   @map("deleted_by")
+
+  globalFolder RhOrganicoArchiveFolderGlobal? @relation(fields: [globalFolderId], references: [id], onDelete: SetNull)
+  localFolder  RhOrganicoArchiveFolderLocal?  @relation(fields: [localFolderId], references: [id], onDelete: SetNull)
+  audits       RhOrganicoDocumentAudit[]
+
+  @@index([matricula, status, createdAt])
+  @@index([globalFolderId])
+  @@index([localFolderId])
+  @@index([launchSource, launchSourceRecordId])
+  @@map("rh_organico_documents")
+}
+
+model RhOrganicoDocumentAudit {
+  id          String    @id @default(uuid())
+  documentId  String?   @map("document_id")
+  matricula   String
+  action      String
+  actor       String
+  detailsJson String?   @map("details")
+  occurredAt  DateTime? @default(now()) @map("occurred_at")
+
+  document RhOrganicoDocuments? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([matricula, occurredAt])
+  @@map("rh_organico_document_audit")
+}
+
+model RhColaboradores {
+  id           String    @id @default(uuid())
+  codigo       String    @unique
+  nome         String
+  cargo        String
+  setor        String
+  salario      Float
+  admissao     DateTime
+  status       String    @default("Ativo")
+  tempoEmpresa String?   @map("tempo_empresa")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("rh_colaboradores")
+}
+
+model RhCargos {
+  id         String    @id @default(uuid())
+  cargo      String
+  faixaMin   Float     @map("faixa_min")
+  faixaMax   Float     @map("faixa_max")
+  mediaAtual Float     @map("media_atual")
+  quantidade Int       @default(0)
+  createdAt  DateTime? @default(now()) @map("created_at")
+
+  @@map("rh_cargos")
+}
+
+model RhCargosInconsistencias {
+  id        String    @id @default(uuid())
+  cargo     String
+  setor     String
+  problema  String
+  severity  String
+  createdAt DateTime? @default(now()) @map("created_at")
+
+  @@map("rh_cargos_inconsistencias")
+}
+
+model RhCargosSalarioSetor {
+  id        String    @id @default(uuid())
+  setor     String
+  media     Float
+  createdAt DateTime? @default(now()) @map("created_at")
+
+  @@map("rh_cargos_salario_setor")
+}
+
+model RhCargoFaixas {
+  cargo     String    @id
+  faixaMin  Float?    @map("faixa_min")
+  faixaMax  Float?    @map("faixa_max")
+  updatedAt DateTime? @default(now()) @map("updated_at")
+  updatedBy String?   @map("updated_by")
+
+  @@map("rh_cargo_faixas")
+}
+
+model RhDashboardTurnover {
+  id    String @id @default(uuid())
+  mes   String
+  valor Float
+  ordem Int
+
+  @@map("rh_dashboard_turnover")
+}
+
+model RhDashboardHeadcount {
+  id    String @id @default(uuid())
+  setor String
+  count Int
+
+  @@map("rh_dashboard_headcount")
+}
+
+model RhDashboardCustoSetor {
+  id    String @id @default(uuid())
+  nome  String
+  value Int
+  ordem Int
+
+  @@map("rh_dashboard_custo_setor")
+}
+
+model RhDashboardAlertas {
+  id       String @id @default(uuid())
+  message  String
+  severity String
+  sector   String
+  ordem    Int
+
+  @@map("rh_dashboard_alertas")
+}
+
+model RhRelatoriosMensais {
+  id        String @id @default(uuid())
+  month     String
+  admissoes Int
+  demissoes Int
+  folha     Float
+  ordem     Int
+
+  @@map("rh_relatorios_mensais")
+}
+
+model RhPontualidadePontoSnapshot {
+  id             String   @id
+  rowsJson       String   @default("[]") @map("rows")
+  dateRangeStart String?  @map("date_range_start")
+  dateRangeEnd   String?  @map("date_range_end")
+  updatedAt      DateTime @default(now()) @map("updated_at")
+
+  @@map("rh_pontualidade_ponto_snapshot")
+}
+
+model RhConfig {
+  key       String    @id
+  value     String?
+  updatedAt DateTime? @default(now()) @map("updated_at")
+
+  @@map("rh_config")
+}
+
+model RhReplaceSnapshots {
+  id             String   @id @default(uuid())
+  dataset        String
+  actor          String?
+  action         String   @default("replace")
+  rowCountBefore Int      @default(0) @map("row_count_before")
+  snapshotJson   String   @map("snapshot")
+  metaJson       String   @default("{}") @map("meta")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("rh_replace_snapshots")
+}
+
+model RhOrganicoLogSancaoFingerprint {
+  fingerprint         String   @id
+  organicoComentarioId String  @map("organico_comentario_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  organicoComentario RhOrganicoComentarios @relation(fields: [organicoComentarioId], references: [id], onDelete: Cascade)
+
+  @@map("rh_organico_log_sancao_fingerprint")
 }

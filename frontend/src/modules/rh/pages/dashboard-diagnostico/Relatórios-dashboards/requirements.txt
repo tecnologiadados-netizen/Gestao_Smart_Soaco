@@ -1,0 +1,6 @@
+# numpy explícito evita pip puxar 2.4.x e ajuda em ambientes Windows com wheels antigos.
+numpy>=2.0,<2.3
+pandas==2.2.3
+openpyxl==3.1.5
+streamlit==1.41.1
+plotly==5.24.1

@@ -114,6 +114,49 @@ function Invoke-PrismaGenerate {
     throw "prisma generate falhou apos $MaxAttempts tentativas (arquivo query_engine-windows.dll.node em uso)."
 }
 
+function Stop-GitOrfaosNoProjeto {
+    $root = (Get-Location).Path.ToLower()
+    Get-CimInstance Win32_Process -Filter "Name='git.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
+        $cmd = [string]$_.CommandLine
+        if ($cmd.ToLower().Contains($root) -or $cmd.ToLower().Contains('gestorpedidos')) {
+            Stop-ProcessTree -ProcessId $_.ProcessId
+        }
+    }
+    Start-Sleep -Seconds 2
+}
+
+function Sync-GitComOriginMain {
+    param([string]$GitExe)
+    $env:GIT_TERMINAL_PROMPT = '0'
+    $env:GIT_OPTIONAL_LOCKS = '0'
+
+    for ($attempt = 1; $attempt -le 8; $attempt++) {
+        Stop-GitOrfaosNoProjeto
+
+        & $GitExe -c gc.auto=0 fetch origin main
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "git fetch falhou (tentativa $attempt)..." -ForegroundColor Yellow
+            Start-Sleep -Seconds 4
+            continue
+        }
+
+        $resetOk = $false
+        for ($r = 1; $r -le 5; $r++) {
+            $stdin = ('y' + [Environment]::NewLine) * 15
+            $stdin | & $GitExe -c gc.auto=0 reset --hard origin/main 2>&1 | Out-Host
+            if ($LASTEXITCODE -eq 0) {
+                $resetOk = $true
+                break
+            }
+            Write-Host "git reset bloqueado (tentativa $attempt/$r)..." -ForegroundColor Yellow
+            Stop-GitOrfaosNoProjeto
+            Start-Sleep -Seconds 4
+        }
+        if ($resetOk) { return }
+    }
+    throw "git sync com origin/main falhou (pack .idx bloqueado no Windows - feche IDEs/git e tente de novo)."
+}
+
 function Restore-ProducaoSeParada {
     param([bool]$ServicoExistia, [bool]$EstavaRodando, [string]$ServicoNome, [string]$PastaProjeto, [int]$Port)
     if (-not $EstavaRodando) { return }
@@ -175,10 +218,7 @@ try {
     }
 
     Write-Host "[1/9] Sincronizando com origin/main..." -ForegroundColor Cyan
-    & $Git fetch origin
-    if ($LASTEXITCODE -ne 0) { throw "git fetch origin falhou." }
-    & $Git reset --hard origin/main
-    if ($LASTEXITCODE -ne 0) { throw "git reset --hard origin/main falhou." }
+    Sync-GitComOriginMain -GitExe $Git
 
     Stop-ProducaoParaDeploy -ServicoNome $ServicoNome -Port $port -EstavaRodando ([ref]$servicoEstavaRodando)
 

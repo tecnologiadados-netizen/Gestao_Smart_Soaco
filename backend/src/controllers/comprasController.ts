@@ -15,6 +15,12 @@ import {
   listarPcPendDetalhesPorProduto,
   listarEmpenhoRessupDetalhePorProduto,
   listarEmpenhoRessupPorPedido,
+  listarCotacoesVinculadasPorPedidos,
+  listarPedidosVinculadosPorCotacoes,
+  listarCotacoesVinculadasPorPedidosAgrupado,
+  listarPedidosVinculadosPorCotacoesAgrupado,
+  listarNomesPedidosPorIds,
+  listarNomesCotacoesPorIds,
   type ProdutoColetaRow,
 } from '../data/comprasRepository.js';
 import {
@@ -1868,6 +1874,101 @@ export async function getOpcoesVinculoErroOperacional(req: Request, res: Respons
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[comprasController] getOpcoesVinculoErroOperacional:', msg);
     res.status(503).json({ data: [], error: msg });
+  }
+}
+
+/**
+ * GET /api/compras/coletas/:id/vinculos-derivados
+ * Deriva ao vivo (Nomus) o vínculo complementar ao que foi selecionado na finalização:
+ * - cotações derivadas dos pedidos vinculados;
+ * - pedidos derivados das cotações vinculadas.
+ * Cobre o histórico sem migração, lendo finalizacaoVinculosJson (fallback tipo/id legado).
+ */
+export async function getVinculosDerivadosColeta(req: Request, res: Response): Promise<void> {
+  const id = parseInt(String(req.params.id), 10);
+  if (!Number.isFinite(id) || id < 1) {
+    res.status(400).json({ error: 'ID da coleta inválido.', cotacoes: [], pedidos: [] });
+    return;
+  }
+  if (!isNomusEnabled()) {
+    res.status(503).json({ error: 'NOMUS_DB_URL não configurado', cotacoes: [], pedidos: [] });
+    return;
+  }
+  try {
+    const coleta = await prisma.coletaPrecos.findUnique({
+      where: { id },
+      select: { finalizacaoVinculosJson: true, finalizacaoTipoRegistro: true, finalizacaoIdRegistro: true },
+    });
+    if (!coleta) {
+      res.status(404).json({ error: 'Coleta não encontrada.', cotacoes: [], pedidos: [] });
+      return;
+    }
+    const vinculos = parseFinalizacaoVinculosApi(
+      coleta.finalizacaoVinculosJson,
+      coleta.finalizacaoTipoRegistro,
+      coleta.finalizacaoIdRegistro
+    );
+    const idsPedido = vinculos.filter((v) => v.tipoRegistro === 'PEDIDO').map((v) => v.idRegistro);
+    const idsCotacao = vinculos.filter((v) => v.tipoRegistro === 'COTACAO').map((v) => v.idRegistro);
+    const [cotacoesRes, pedidosRes, nomesPedidosRes, nomesCotacoesRes] = await Promise.all([
+      idsPedido.length > 0 ? listarCotacoesVinculadasPorPedidos(idsPedido) : Promise.resolve({ data: [] }),
+      idsCotacao.length > 0 ? listarPedidosVinculadosPorCotacoes(idsCotacao) : Promise.resolve({ data: [] }),
+      idsPedido.length > 0 ? listarNomesPedidosPorIds(idsPedido) : Promise.resolve({ data: [] }),
+      idsCotacao.length > 0 ? listarNomesCotacoesPorIds(idsCotacao) : Promise.resolve({ data: [] }),
+    ]);
+    // Une o vínculo direto (com nome) ao derivado, deduplicando por id. Assim o PDF/mapa
+    // exibe tanto o pedido quanto a cotação, independentemente de qual foi selecionado.
+    const dedupPorId = (rows: { id: number }[]): typeof rows => {
+      const vistos = new Set<number>();
+      const out: typeof rows = [];
+      for (const r of rows) {
+        if (r == null || vistos.has(r.id)) continue;
+        vistos.add(r.id);
+        out.push(r);
+      }
+      return out;
+    };
+    const cotacoes = dedupPorId([...(nomesCotacoesRes.data ?? []), ...(cotacoesRes.data ?? [])]);
+    const pedidos = dedupPorId([...(nomesPedidosRes.data ?? []), ...(pedidosRes.data ?? [])]);
+    const erro = cotacoesRes.erro || pedidosRes.erro || nomesPedidosRes.erro || nomesCotacoesRes.erro;
+    res.json({ cotacoes, pedidos, ...(erro ? { error: erro } : {}) });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[comprasController] getVinculosDerivadosColeta:', msg);
+    res.status(503).json({ error: msg, cotacoes: [], pedidos: [] });
+  }
+}
+
+/**
+ * GET /api/compras/coletas/vinculos-derivados-preview?pedidos=1,2&cotacoes=3
+ * Preview ao vivo (Nomus) do vínculo complementar antes de finalizar: dado os ids selecionados,
+ * retorna cotações derivadas dos pedidos e pedidos derivados das cotações. Não persiste nada.
+ */
+export async function getVinculosDerivadosPreview(req: Request, res: Response): Promise<void> {
+  if (!isNomusEnabled()) {
+    res.status(503).json({ error: 'NOMUS_DB_URL não configurado', cotacoes: [], pedidos: [] });
+    return;
+  }
+  const parseIds = (v: unknown): number[] =>
+    typeof v === 'string'
+      ? v
+          .split(',')
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      : [];
+  const idsPedido = parseIds(req.query.pedidos);
+  const idsCotacao = parseIds(req.query.cotacoes);
+  try {
+    const [cotacoesRes, pedidosRes] = await Promise.all([
+      idsPedido.length > 0 ? listarCotacoesVinculadasPorPedidosAgrupado(idsPedido) : Promise.resolve({ data: {} }),
+      idsCotacao.length > 0 ? listarPedidosVinculadosPorCotacoesAgrupado(idsCotacao) : Promise.resolve({ data: {} }),
+    ]);
+    const erro = cotacoesRes.erro || pedidosRes.erro;
+    res.json({ porPedido: cotacoesRes.data, porCotacao: pedidosRes.data, ...(erro ? { error: erro } : {}) });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[comprasController] getVinculosDerivadosPreview:', msg);
+    res.status(503).json({ error: msg, porPedido: {}, porCotacao: {} });
   }
 }
 

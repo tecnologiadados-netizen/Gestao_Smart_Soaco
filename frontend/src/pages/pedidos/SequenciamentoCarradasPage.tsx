@@ -20,6 +20,7 @@ import ModalCorrigirDatasSequenciamento from '../../components/sequenciamento-ca
 import { useGradeFiltrosExcel, type ExcelFilterDraft } from '../../hooks/useGradeFiltrosExcel';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
+import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import {
   formatDateTimeBr,
   formatMoeda,
@@ -940,12 +941,14 @@ export default function SequenciamentoCarradasPage() {
             return;
           }
           setConfirmacaoAberta(false);
+          setCorrigirDatasSnapshot([]);
           setFeedbackGravacao('Alterações aplicadas e snapshot concluído.');
           setHistoricoVersao((v) => v + 1);
           await abrirSnapshot(snapshotVisualizado.id);
           return;
         }
         setConfirmacaoAberta(false);
+        setCorrigirDatasSnapshot([]);
         setFeedbackGravacao('Alterações aplicadas com sucesso nos pedidos.');
         resetarSimulacao();
         await handleConsultar();
@@ -1313,18 +1316,23 @@ export default function SequenciamentoCarradasPage() {
                                 {carradaEspecial ? '' : '⠿'}
                               </td>
                             )}
-                            <td
-                              className="cursor-pointer py-2 px-2 font-mono text-slate-800 dark:text-slate-200"
-                              onClick={() => setCarradaDetalhe(c)}
-                            >
-                              {c.cod}
+                            <td className="py-2 px-2 font-mono text-slate-800 dark:text-slate-200">
+                              <GradeCelulaModalBtn
+                                onClick={() => setCarradaDetalhe(c)}
+                                title="Ver detalhe da carrada"
+                                align="left"
+                              >
+                                {c.cod}
+                              </GradeCelulaModalBtn>
                             </td>
-                            <td
-                              className="max-w-[280px] cursor-pointer truncate py-2 px-2 text-slate-800 dark:text-slate-200"
-                              title={c.carrada}
-                              onClick={() => setCarradaDetalhe(c)}
-                            >
-                              {c.carrada}
+                            <td className="max-w-[280px] py-2 px-2 text-slate-800 dark:text-slate-200">
+                              <GradeCelulaModalBtn
+                                onClick={() => setCarradaDetalhe(c)}
+                                title={c.carrada}
+                                align="left"
+                              >
+                                <span className="max-w-[16rem] truncate">{c.carrada}</span>
+                              </GradeCelulaModalBtn>
                             </td>
                             <td className={`py-2 px-2 ${COL_TD_CLASS.dataProducao ?? ''}`}>
                               <input
@@ -1390,32 +1398,48 @@ export default function SequenciamentoCarradasPage() {
                               />
                             </td>
                             <td
-                              className={`cursor-pointer py-2 px-2 text-slate-800 dark:text-slate-200 ${COL_TD_CLASS.saldoAFaturar ?? 'text-right tabular-nums'}`}
-                              onClick={() => setCarradaDetalhe(c)}
+                              className={`py-2 px-2 ${COL_TD_CLASS.saldoAFaturar ?? 'text-right tabular-nums'}`}
                             >
-                              {formatMoeda(c.saldoAFaturar)}
+                              <GradeCelulaModalBtn
+                                onClick={() => setCarradaDetalhe(c)}
+                                title="Ver detalhe da carrada"
+                                align="right"
+                              >
+                                {formatMoeda(c.saldoAFaturar)}
+                              </GradeCelulaModalBtn>
                             </td>
                             <td
-                              className={`cursor-pointer py-2 px-2 ${COL_TD_CLASS.percentualEmDia ?? 'text-right tabular-nums'}`}
-                              onClick={() => setCarradaDetalhe(c)}
+                              className={`py-2 px-2 ${COL_TD_CLASS.percentualEmDia ?? 'text-right tabular-nums'}`}
                             >
-                              <span
-                                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classPercentualEmDia(c.percentualEmDia ?? 0)}`}
+                              <GradeCelulaModalBtn
+                                onClick={() => setCarradaDetalhe(c)}
+                                title="Ver detalhe da carrada"
+                                align="right"
                               >
                                 {formatPercentual(c.percentualEmDia ?? 0)}
-                              </span>
+                              </GradeCelulaModalBtn>
                             </td>
                             <td
-                              className={`cursor-pointer py-2 px-2 text-slate-800 dark:text-slate-200 ${COL_TD_CLASS.adiantamento ?? 'text-right tabular-nums'}`}
-                              onClick={() => setCarradaDetalhe(c)}
+                              className={`py-2 px-2 ${COL_TD_CLASS.adiantamento ?? 'text-right tabular-nums'}`}
                             >
-                              {formatMoeda(c.adiantamento)}
+                              <GradeCelulaModalBtn
+                                onClick={() => setCarradaDetalhe(c)}
+                                title="Ver detalhe da carrada"
+                                align="right"
+                              >
+                                {formatMoeda(c.adiantamento)}
+                              </GradeCelulaModalBtn>
                             </td>
                             <td
-                              className={`cursor-pointer py-2 px-2 text-slate-800 dark:text-slate-200 ${COL_TD_CLASS.valorAVistaAte10d ?? 'text-right tabular-nums'}`}
-                              onClick={() => setCarradaDetalhe(c)}
+                              className={`py-2 px-2 ${COL_TD_CLASS.valorAVistaAte10d ?? 'text-right tabular-nums'}`}
                             >
-                              {formatMoeda(c.valorAVistaAte10d)}
+                              <GradeCelulaModalBtn
+                                onClick={() => setCarradaDetalhe(c)}
+                                title="Ver detalhe da carrada"
+                                align="right"
+                              >
+                                {formatMoeda(c.valorAVistaAte10d)}
+                              </GradeCelulaModalBtn>
                             </td>
                           </tr>
                         );
@@ -1526,6 +1550,7 @@ export default function SequenciamentoCarradasPage() {
           onClose={() => setCalendarioAberto(false)}
           onLinhasAtualizadas={setLinhasSnapshot}
           onEditarDataProducao={(key, novaData) => editarData(key, 'dataProducao', novaData)}
+          editavel={editavel}
         />
       )}
 
@@ -1535,7 +1560,7 @@ export default function SequenciamentoCarradasPage() {
           onEditar={editarData}
           onContinuar={() => {
             if (linhasCorrigirDatasModal.every((l) => l.concluida)) {
-              fecharCorrigirDatas();
+              setCorrigirDatasAberta(false);
               setConfirmacaoAberta(true);
             }
           }}
@@ -1552,7 +1577,19 @@ export default function SequenciamentoCarradasPage() {
           motivoPorId={motivoPorId}
           onMotivoPorIdChange={(updater) => setMotivoPorId(updater)}
           onConfirmar={handleConfirmarAplicar}
-          onClose={() => setConfirmacaoAberta(false)}
+          onClose={() => {
+            setConfirmacaoAberta(false);
+            setCorrigirDatasSnapshot([]);
+          }}
+          onVoltar={
+            corrigirDatasSnapshot.length > 0
+              ? () => {
+                  setConfirmacaoAberta(false);
+                  setErroConfirmacao(null);
+                  setCorrigirDatasAberta(true);
+                }
+              : undefined
+          }
         />
       )}
     </div>

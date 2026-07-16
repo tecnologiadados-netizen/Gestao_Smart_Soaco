@@ -4,6 +4,8 @@ import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
+import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
+import ModalConsultaEstoqueEmbed from '../../components/pcp/ModalConsultaEstoqueEmbed';
 import {
   agregarPedidosVenda,
   agregarProdutosVinculados,
@@ -150,8 +152,14 @@ export default function SequenciamentoCarradasDetalheModal({
   onClose,
 }: Props) {
   const [aba, setAba] = useState<AbaDetalhe>('pedidos');
+  const [consultaCodigo, setConsultaCodigo] = useState<string | null>(null);
 
-  useRegisterModalEscape({ id: 'seq-carradas-detalhe', onClose, zIndex: 130 });
+  useRegisterModalEscape({
+    id: 'seq-carradas-detalhe',
+    onClose,
+    zIndex: 130,
+    enabled: !consultaCodigo,
+  });
 
   const linhasFiltradas = useMemo(() => filtrarLinhasCarrada(linhas, carrada), [linhas, carrada]);
   const pedidos = useMemo(() => agregarPedidosVenda(linhasFiltradas), [linhasFiltradas]);
@@ -221,6 +229,7 @@ export default function SequenciamentoCarradasDetalheModal({
   );
 
   return (
+    <>
     <div
       className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4"
       role="presentation"
@@ -358,7 +367,19 @@ export default function SequenciamentoCarradasDetalheModal({
                         <td className={TD}>{r.pedido}</td>
                         <td className={TD}>{r.cliente || '—'}</td>
                         <td className={`${TD} whitespace-nowrap`}>{formatDateBr(r.emissao)}</td>
-                        <td className={TD}>{r.codigo || '—'}</td>
+                        <td className={TD}>
+                          {r.codigo ? (
+                            <GradeCelulaModalBtn
+                              onClick={() => setConsultaCodigo(r.codigo)}
+                              title={`Consultar estoque de ${r.codigo}`}
+                              align="left"
+                            >
+                              {r.codigo}
+                            </GradeCelulaModalBtn>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td className={TD}>{r.descricao || '—'}</td>
                         <td className={`${TD} text-right tabular-nums`}>{formatQtde(r.qtdeRomaneada)}</td>
                         <td className={`${TD} text-right tabular-nums`}>{formatMoeda(r.precoUnitario)}</td>
@@ -401,7 +422,19 @@ export default function SequenciamentoCarradasDetalheModal({
                   <>
                     {gradeProdutos.rowsExibidas.map((r) => (
                       <tr key={r.codigo} className="border-b border-slate-100 dark:border-slate-700">
-                        <td className={TD}>{r.codigo}</td>
+                        <td className={TD}>
+                          {r.codigo ? (
+                            <GradeCelulaModalBtn
+                              onClick={() => setConsultaCodigo(r.codigo)}
+                              title={`Consultar estoque de ${r.codigo}`}
+                              align="left"
+                            >
+                              {r.codigo}
+                            </GradeCelulaModalBtn>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td className={TD}>{r.descricao || '—'}</td>
                         <td className={`${TD} text-right tabular-nums`}>{formatQtde(r.qtdeRomaneada)}</td>
                       </tr>
@@ -450,5 +483,13 @@ export default function SequenciamentoCarradasDetalheModal({
         />
       )}
     </div>
+    {consultaCodigo ? (
+      <ModalConsultaEstoqueEmbed
+        codigo={consultaCodigo}
+        onClose={() => setConsultaCodigo(null)}
+        zIndexBase={140}
+      />
+    ) : null}
+    </>
   );
 }

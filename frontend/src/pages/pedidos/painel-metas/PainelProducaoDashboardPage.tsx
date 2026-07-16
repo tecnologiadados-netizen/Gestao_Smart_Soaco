@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -386,8 +386,39 @@ function ErrorState({ message }: { message: string }) {
   )
 }
 
+function DashboardFullscreenButton({
+  ativo,
+  onClick,
+}: {
+  ativo: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="dashboard-fullscreen-btn"
+      title={ativo ? 'Sair da tela cheia' : 'Tela cheia'}
+      aria-label={ativo ? 'Sair da tela cheia' : 'Visualizar em tela cheia'}
+      aria-pressed={ativo}
+    >
+      {ativo ? (
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+        </svg>
+      ) : (
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
 function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao' | 'tv' }) {
   const isTv = variant === 'tv';
+  const dashboardRef = useRef<HTMLDivElement>(null);
+  const [telaCheia, setTelaCheia] = useState(false);
   const [setores, setSetores] = useState<string[]>([]);
   const [meses, setMeses] = useState<string[]>([]);
   const [setor, setSetor] = useState('');
@@ -544,33 +575,38 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
     [limparFavNaUrl],
   );
 
-  if (aguardandoFiltros) {
-    return (
-      <PainelProducaoShell>
-        <div className={`dashboard${isTv ? ' dashboard-tv' : ''}`}>
-          <LoadingOverlay message="Carregando filtros..." />
-        </div>
-      </PainelProducaoShell>
-    );
-  }
+  const alternarTelaCheia = useCallback(async () => {
+    const el = dashboardRef.current;
+    if (!el) return;
+    try {
+      if (!document.fullscreenElement) {
+        await el.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch {
+      /* navegador pode negar fullscreen */
+    }
+  }, []);
 
-  if (filtersError) {
-    return (
-      <PainelProducaoShell>
-        <div className={`dashboard${isTv ? ' dashboard-tv' : ''}`}>
-          <ErrorState message={filtersError} />
-        </div>
-      </PainelProducaoShell>
-    );
-  }
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setTelaCheia(document.fullscreenElement === dashboardRef.current);
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
 
-  return (
-    <PainelProducaoShell>
-    <div className={`dashboard${isTv ? ' dashboard-tv' : ''}`}>
-      <header className="header">
-        <div className="title-bar">
-          {dashboard?.titulo ?? `SETOR DE ${(setor || '—').toUpperCase()}`}
-        </div>
+  const renderHeader = () => (
+    <header className="header">
+      <div className="title-bar">
+        {dashboard?.titulo ?? `SETOR DE ${(setor || '—').toUpperCase()}`}
+      </div>
+      <div className="header-side">
+        <DashboardFullscreenButton
+          ativo={telaCheia}
+          onClick={() => void alternarTelaCheia()}
+        />
         <div className="filters">
           <SearchableSelect
             id="setor-select"
@@ -592,7 +628,36 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
             disabled={dashboardLoading}
           />
         </div>
-      </header>
+      </div>
+    </header>
+  );
+
+  if (aguardandoFiltros) {
+    return (
+      <PainelProducaoShell>
+        <div ref={dashboardRef} className={`dashboard${isTv ? ' dashboard-tv' : ''}`}>
+          {renderHeader()}
+          <LoadingOverlay message="Carregando filtros..." />
+        </div>
+      </PainelProducaoShell>
+    );
+  }
+
+  if (filtersError) {
+    return (
+      <PainelProducaoShell>
+        <div ref={dashboardRef} className={`dashboard${isTv ? ' dashboard-tv' : ''}`}>
+          {renderHeader()}
+          <ErrorState message={filtersError} />
+        </div>
+      </PainelProducaoShell>
+    );
+  }
+
+  return (
+    <PainelProducaoShell>
+    <div ref={dashboardRef} className={`dashboard${isTv ? ' dashboard-tv' : ''}`}>
+      {renderHeader()}
 
       {dashboardLoading && <LoadingOverlay />}
 

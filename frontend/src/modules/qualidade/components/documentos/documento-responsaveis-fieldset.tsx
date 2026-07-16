@@ -10,6 +10,7 @@ import {
 import type { User } from "@qualidade/types/user";
 import type { DocumentWorkflowPrazos } from "@qualidade/types/document";
 import { cn } from "@qualidade/lib/utils";
+import { userSelectLabel } from "@qualidade/lib/utils/select-display";
 
 export const DEFAULT_STAGE_DAYS = 7;
 
@@ -128,7 +129,9 @@ export function DocumentoResponsaveisFieldset({
                 }
               >
                 <SelectTrigger className={selectTriggerClass}>
-                  <SelectValue placeholder="Selecione" />
+                  <SelectValue placeholder="Selecione">
+                    {userSelectLabel(users, values[stage.responsavelKey]) ?? null}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className={selectContentClass}>
                   {activeUsers.map((u) => (

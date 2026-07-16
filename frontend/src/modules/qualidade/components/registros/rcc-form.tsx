@@ -11,9 +11,13 @@ import {
 import { Textarea } from "@qualidade/components/ui/textarea";
 import { ClienteSearchField } from "@qualidade/components/registros/cliente-search-field";
 import { OpcaoListaPesquisavelField } from "@qualidade/components/registros/opcao-lista-pesquisavel-field";
+import { PedidoVendaSearchField } from "@qualidade/components/registros/pedido-venda-search-field";
+import { PessoaSearchField } from "@qualidade/components/registros/pessoa-search-field";
 import { ProdutoCodigoField } from "@qualidade/components/registros/produto-codigo-field";
+import { RegistroAnexosTable } from "@qualidade/components/registros/registro-anexos-table";
 import {
   ORIGEM_NOMUS_LABEL,
+  RCC_CAUSAS_PROBLEMA,
   RCC_RECLAMACOES,
   RCC_SERVICOS_REALIZADOS,
   RCC_SIM_NAO,
@@ -32,8 +36,9 @@ import {
   extrairCodigoProduto,
   produtoErpParaCamposRcc,
 } from "@qualidade/types/produto-erp";
+import { pedidoVendaErpParaCamposRcc } from "@qualidade/types/pedido-venda-erp";
 import type { RccDados } from "@qualidade/types/rcc";
-import { isoParaInputDate, inputDateParaIso } from "@qualidade/types/rcc";
+import { isoParaInputDate } from "@qualidade/types/rcc";
 
 interface RccFormProps {
   dados: RccDados;
@@ -76,15 +81,23 @@ export function RccForm({
   const [camposVinculadosCliente, setCamposVinculadosCliente] = useState(false);
   const [camposVinculadosRevendedor, setCamposVinculadosRevendedor] =
     useState(false);
+  const [pedidoInterno, setPedidoInterno] = useState(false);
+  const [camposVinculadosPedido, setCamposVinculadosPedido] = useState(false);
+  const [pedidoIdSelecionado, setPedidoIdSelecionado] = useState<string | null>(
+    null
+  );
+  const [quantidadeMaximaPedido, setQuantidadeMaximaPedido] = useState<
+    number | null
+  >(null);
 
   const camposProdutoAuto =
     camposVinculadosProduto && !somenteLeitura && !origemNomus;
 
   const usarBuscaCliente =
-    !somenteLeitura && !origemNomus && !dados.clienteDoRevendedor;
+    !somenteLeitura && !dados.clienteDoRevendedor && !camposVinculadosPedido;
 
   const camposClienteAuto =
-    camposVinculadosCliente &&
+    (camposVinculadosCliente || camposVinculadosPedido) &&
     !dados.clienteDoRevendedor &&
     !somenteLeitura &&
     !origemNomus;
@@ -156,22 +169,23 @@ export function RccForm({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="rcc-data-fechamento">
-              {rccFieldLabels.dataFechamento}
-            </Label>
-            <Input
-              id="rcc-data-fechamento"
-              type="date"
-              value={isoParaInputDate(dados.dataFechamento)}
-              onChange={(e) =>
-                patch({
-                  dataFechamento: e.target.value
-                    ? `${e.target.value}T12:00:00.000Z`
-                    : "",
-                })
-              }
+            <Label>{rccFieldLabels.feedbackClienteEnviado}</Label>
+            <Select
+              value={dados.feedbackClienteEnviado || undefined}
+              onValueChange={(v) => v && patch({ feedbackClienteEnviado: v })}
               disabled={somenteLeitura}
-            />
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Selecione..." />
+              </SelectTrigger>
+              <SelectContent>
+                {RCC_SIM_NAO.map((opcao) => (
+                  <SelectItem key={opcao} value={opcao}>
+                    {opcao}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
@@ -218,18 +232,77 @@ export function RccForm({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="rcc-numero-pedido">
-              {rccFieldLabels.numeroPedidoInternoExterno}
-            </Label>
-            <Input
-              id="rcc-numero-pedido"
-              value={dados.numeroPedidoInternoExterno ?? ""}
-              onChange={(e) =>
-                patch({ numeroPedidoInternoExterno: e.target.value })
-              }
-              disabled={somenteLeitura}
-            />
+          <div className="space-y-3 sm:col-span-2">
+            {!somenteLeitura && !origemNomus ? (
+              <label className="flex cursor-pointer items-center gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="size-4 rounded border-input accent-brand-blue"
+                  checked={pedidoInterno}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setPedidoInterno(checked);
+                    setCamposVinculadosPedido(false);
+                    setCamposVinculadosCliente(false);
+                    setPedidoIdSelecionado(null);
+                    setQuantidadeMaximaPedido(null);
+                    if (!checked) {
+                      patch({ numeroPedidoInternoExterno: "" });
+                    }
+                  }}
+                />
+                Pedido interno?
+              </label>
+            ) : null}
+
+            {pedidoInterno && !somenteLeitura && !origemNomus ? (
+              <PedidoVendaSearchField
+                id="rcc-numero-pedido"
+                label={rccFieldLabels.numeroPedidoInternoExterno}
+                value={dados.numeroPedidoInternoExterno ?? ""}
+                onValueChange={(numero) =>
+                  patch({ numeroPedidoInternoExterno: numero })
+                }
+                onPedidoSelect={(pedido) => {
+                  patch({
+                    ...pedidoVendaErpParaCamposRcc(pedido),
+                    codigoProduto: "",
+                    produto: "",
+                    grupoProduto: "",
+                    quantidade: "",
+                  });
+                  setPedidoIdSelecionado(pedido.pedidoId);
+                  setQuantidadeMaximaPedido(null);
+                  setCamposVinculadosProduto(false);
+                  setCamposVinculadosPedido(true);
+                  if (pedido.cliente) setCamposVinculadosCliente(true);
+                }}
+                onVinculoClear={() => {
+                  setPedidoIdSelecionado(null);
+                  setQuantidadeMaximaPedido(null);
+                  setCamposVinculadosPedido(false);
+                  setCamposVinculadosCliente(false);
+                }}
+                disabled={somenteLeitura}
+              />
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="rcc-numero-pedido">
+                  {rccFieldLabels.numeroPedidoInternoExterno}
+                </Label>
+                <Input
+                  id="rcc-numero-pedido"
+                  value={dados.numeroPedidoInternoExterno ?? ""}
+                  onChange={(e) =>
+                    patch({ numeroPedidoInternoExterno: e.target.value })
+                  }
+                  disabled={somenteLeitura}
+                  placeholder={
+                    pedidoInterno ? undefined : "Informe o número do pedido externo"
+                  }
+                />
+              </div>
+            )}
           </div>
         </div>
       </fieldset>
@@ -237,7 +310,7 @@ export function RccForm({
       <fieldset className="brand-fieldset space-y-4">
         <legend>Produto</legend>
         <div className="grid gap-4 sm:grid-cols-2">
-          {somenteLeitura || origemNomus ? (
+          {somenteLeitura ? (
             codigoExibicao ? (
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="rcc-codigo-produto">
@@ -252,18 +325,49 @@ export function RccForm({
                 />
               </div>
             ) : null
+          ) : origemNomus ? (
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="rcc-codigo-produto">
+                {rccFieldLabels.codigoProduto}
+              </Label>
+              <Input
+                id="rcc-codigo-produto"
+                value={dados.codigoProduto ?? codigoExibicao ?? ""}
+                onChange={(e) => patch({ codigoProduto: e.target.value })}
+              />
+            </div>
           ) : (
             <div className="sm:col-span-2">
               <ProdutoCodigoField
                 label={rccFieldLabels.codigoProduto}
                 value={dados.codigoProduto}
-                onCodigoChange={(codigo) => patch({ codigoProduto: codigo })}
+                onCodigoChange={(codigo) => {
+                  patch({ codigoProduto: codigo, quantidade: "" });
+                  setQuantidadeMaximaPedido(null);
+                }}
                 onProdutoSelect={(produto) => {
-                  patch(produtoErpParaCamposRcc(produto));
+                  const maxQtde =
+                    typeof produto.quantidadePedido === "number" &&
+                    produto.quantidadePedido > 0
+                      ? produto.quantidadePedido
+                      : null;
+                  patch({
+                    ...produtoErpParaCamposRcc(produto),
+                    quantidade: "",
+                  });
+                  setQuantidadeMaximaPedido(maxQtde);
                   setCamposVinculadosProduto(true);
                 }}
-                onVinculoClear={() => setCamposVinculadosProduto(false)}
+                onVinculoClear={() => {
+                  setCamposVinculadosProduto(false);
+                  setQuantidadeMaximaPedido(null);
+                }}
                 disabled={somenteLeitura}
+                pedidoId={
+                  pedidoInterno && camposVinculadosPedido
+                    ? pedidoIdSelecionado
+                    : null
+                }
               />
             </div>
           )}
@@ -296,12 +400,41 @@ export function RccForm({
 
           <div className="space-y-2">
             <Label htmlFor="rcc-quantidade">{rccFieldLabels.quantidade}</Label>
-            <Input
-              id="rcc-quantidade"
-              value={dados.quantidade}
-              onChange={(e) => patch({ quantidade: e.target.value })}
-              disabled={somenteLeitura}
-            />
+            {quantidadeMaximaPedido != null && quantidadeMaximaPedido > 0 ? (
+              <>
+                <Select
+                  value={dados.quantidade || null}
+                  onValueChange={(v) => v && patch({ quantidade: v })}
+                  disabled={somenteLeitura}
+                >
+                  <SelectTrigger id="rcc-quantidade" className="w-full">
+                    <SelectValue placeholder="Selecione a quantidade">
+                      {dados.quantidade || null}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from(
+                      { length: quantidadeMaximaPedido },
+                      (_, i) => String(i + 1)
+                    ).map((qtde) => (
+                      <SelectItem key={qtde} value={qtde}>
+                        {qtde}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Limite do pedido: {quantidadeMaximaPedido} unidade(s).
+                </p>
+              </>
+            ) : (
+              <Input
+                id="rcc-quantidade"
+                value={dados.quantidade}
+                onChange={(e) => patch({ quantidade: e.target.value })}
+                disabled={somenteLeitura}
+              />
+            )}
           </div>
 
           <div className="space-y-2 sm:col-span-2">
@@ -323,7 +456,7 @@ export function RccForm({
       <fieldset className="brand-fieldset space-y-4">
         <legend>Cliente</legend>
         <div className="grid gap-4 sm:grid-cols-2">
-          {!somenteLeitura && !origemNomus ? (
+          {!somenteLeitura ? (
             <div className="sm:col-span-2">
               <label className="flex cursor-pointer items-center gap-3 text-sm">
                 <input
@@ -549,6 +682,17 @@ export function RccForm({
                   onVinculoClear={() => setCamposVinculadosRevendedor(false)}
                   disabled={somenteLeitura}
                 />
+              ) : !somenteLeitura ? (
+                <>
+                  <Label htmlFor="rcc-revendedor">
+                    {rccFieldLabels.nomeRevendedor}
+                  </Label>
+                  <Input
+                    id="rcc-revendedor"
+                    value={dados.nomeRevendedor ?? ""}
+                    onChange={(e) => patch({ nomeRevendedor: e.target.value })}
+                  />
+                </>
               ) : (
                 <>
                   <Label htmlFor="rcc-revendedor">
@@ -658,48 +802,38 @@ export function RccForm({
               disabled={somenteLeitura}
             />
           </div>
-        </div>
-      </fieldset>
 
-      <fieldset className="brand-fieldset space-y-4">
-        <legend>Análise e tratamento</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rcc-analise">
-              {rccFieldLabels.analiseCausaQualidade}
-            </Label>
-            <Textarea
-              id="rcc-analise"
-              rows={3}
-              value={dados.analiseCausaQualidade}
-              onChange={(e) => patch({ analiseCausaQualidade: e.target.value })}
-              disabled={somenteLeitura}
-            />
+          <div className="sm:col-span-2">
+            {somenteLeitura || origemNomus ? (
+              <div className="space-y-2">
+                <Label htmlFor="rcc-responsavel-analise">
+                  {rccFieldLabels.responsavelAnaliseReclamacao}
+                </Label>
+                <Input
+                  id="rcc-responsavel-analise"
+                  value={dados.responsavelAnaliseReclamacao}
+                  onChange={(e) =>
+                    patch({ responsavelAnaliseReclamacao: e.target.value })
+                  }
+                  disabled={somenteLeitura}
+                  readOnly={origemNomus}
+                  className={origemNomus ? "bg-muted/40" : undefined}
+                />
+              </div>
+            ) : (
+              <PessoaSearchField
+                id="rcc-responsavel-analise"
+                label={rccFieldLabels.responsavelAnaliseReclamacao}
+                value={dados.responsavelAnaliseReclamacao}
+                onValueChange={(nome) =>
+                  patch({ responsavelAnaliseReclamacao: nome })
+                }
+                placeholder="Digite o nome do responsável..."
+              />
+            )}
           </div>
 
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rcc-comentario">{rccFieldLabels.comentario}</Label>
-            <Textarea
-              id="rcc-comentario"
-              rows={3}
-              value={dados.comentario}
-              onChange={(e) => patch({ comentario: e.target.value })}
-              disabled={somenteLeitura}
-            />
-          </div>
-
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rcc-causa">{rccFieldLabels.causaProblema}</Label>
-            <Textarea
-              id="rcc-causa"
-              rows={3}
-              value={dados.causaProblema}
-              onChange={(e) => patch({ causaProblema: e.target.value })}
-              disabled={somenteLeitura}
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label>{rccFieldLabels.reclamacaoAceita}</Label>
             <Select
               value={dados.reclamacaoAceita || undefined}
@@ -718,91 +852,114 @@ export function RccForm({
               </SelectContent>
             </Select>
           </div>
-
-          <div className="space-y-2">
-            <Label>{rccFieldLabels.abrirOrdemServico}</Label>
-            <Select
-              value={dados.abrirOrdemServico || undefined}
-              onValueChange={(v) => v && patch({ abrirOrdemServico: v })}
-              disabled={somenteLeitura}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Selecione..." />
-              </SelectTrigger>
-              <SelectContent>
-                {RCC_SIM_NAO.map((opcao) => (
-                  <SelectItem key={opcao} value={opcao}>
-                    {opcao}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </div>
       </fieldset>
 
       <fieldset className="brand-fieldset space-y-4">
-        <legend>Ordem de serviço e técnico</legend>
+        <legend>Análise e tratamento</legend>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="rcc-ordem-prod">{rccFieldLabels.numeroOrdemProducao}</Label>
-            <Input
-              id="rcc-ordem-prod"
-              value={dados.numeroOrdemProducao}
-              onChange={(e) => patch({ numeroOrdemProducao: e.target.value })}
-              readOnly={somenteLeitura}
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="rcc-comentario">{rccFieldLabels.comentario}</Label>
+            <Textarea
+              id="rcc-comentario"
+              rows={3}
+              value={dados.comentario}
+              onChange={(e) => patch({ comentario: e.target.value })}
               disabled={somenteLeitura}
-              className={somenteLeitura ? "bg-muted/40" : undefined}
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="rcc-data-assist">{rccFieldLabels.dataAssistencia}</Label>
-            <Input
-              id="rcc-data-assist"
-              type="date"
-              value={isoParaInputDate(dados.dataAssistencia)}
-              onChange={(e) =>
-                patch({ dataAssistencia: inputDateParaIso(e.target.value) })
-              }
-              readOnly={somenteLeitura}
-              disabled={somenteLeitura}
-              className={somenteLeitura ? "bg-muted/40" : undefined}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rcc-serie-compressor">
-              {rccFieldLabels.numeroSerieCompressor}
-            </Label>
-            <Input
-              id="rcc-serie-compressor"
-              value={dados.numeroSerieCompressor}
-              onChange={(e) => patch({ numeroSerieCompressor: e.target.value })}
-              readOnly={somenteLeitura}
-              disabled={somenteLeitura}
-              className={somenteLeitura ? "bg-muted/40" : undefined}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>{rccFieldLabels.problemaSolucionado}</Label>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>{rccFieldLabels.causaProblema}</Label>
             <Select
-              value={dados.problemaSolucionado || undefined}
-              onValueChange={(v) => v && patch({ problemaSolucionado: v })}
+              value={dados.causaProblema || undefined}
+              onValueChange={(v) => v && patch({ causaProblema: v })}
               disabled={somenteLeitura}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="rcc-causa" className="w-full">
                 <SelectValue placeholder="Selecione..." />
               </SelectTrigger>
               <SelectContent>
-                {RCC_SIM_NAO.map((opcao) => (
+                {RCC_CAUSAS_PROBLEMA.map((opcao) => (
                   <SelectItem key={opcao} value={opcao}>
                     {opcao}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+        </div>
+      </fieldset>
+
+      <fieldset className="brand-fieldset space-y-4">
+        <legend>Serviço realizado</legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            {somenteLeitura || origemNomus ? (
+              <div className="space-y-2">
+                <Label htmlFor="rcc-funcionario">
+                  {rccFieldLabels.funcionarioSolicitado}
+                </Label>
+                <Input
+                  id="rcc-funcionario"
+                  value={dados.funcionarioSolicitado}
+                  onChange={(e) =>
+                    patch({ funcionarioSolicitado: e.target.value })
+                  }
+                  readOnly={somenteLeitura || origemNomus}
+                  disabled={somenteLeitura}
+                  className={
+                    somenteLeitura || origemNomus ? "bg-muted/40" : undefined
+                  }
+                />
+              </div>
+            ) : (
+              <PessoaSearchField
+                id="rcc-funcionario"
+                label={rccFieldLabels.funcionarioSolicitado}
+                value={dados.funcionarioSolicitado}
+                onValueChange={(nome) =>
+                  patch({ funcionarioSolicitado: nome })
+                }
+                placeholder="Digite o nome do funcionário..."
+              />
+            )}
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="rcc-servico">{rccFieldLabels.servicoRealizado}</Label>
+            <Textarea
+              id="rcc-servico"
+              rows={4}
+              value={dados.servicoRealizado}
+              onChange={(e) => patch({ servicoRealizado: e.target.value })}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <OpcaoListaPesquisavelField
+              id="rcc-servico-1"
+              label={rccFieldLabels.servicoRealizado1}
+              value={dados.servicoRealizado1}
+              onChange={(v) => patch({ servicoRealizado1: v })}
+              opcoesBase={RCC_SERVICOS_REALIZADOS}
+              storageKey={RCC_SERVICOS_OPCOES_STORAGE_KEY}
+              disabled={somenteLeitura}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <OpcaoListaPesquisavelField
+              id="rcc-servico-2"
+              label={rccFieldLabels.servicoRealizado2}
+              value={dados.servicoRealizado2}
+              onChange={(v) => patch({ servicoRealizado2: v })}
+              opcoesBase={RCC_SERVICOS_REALIZADOS}
+              storageKey={RCC_SERVICOS_OPCOES_STORAGE_KEY}
+              disabled={somenteLeitura}
+            />
           </div>
 
           <div className="space-y-2">
@@ -864,20 +1021,15 @@ export function RccForm({
               className={somenteLeitura ? "bg-muted/40" : undefined}
             />
           </div>
-        </div>
-      </fieldset>
 
-      <fieldset className="brand-fieldset space-y-4">
-        <legend>Serviço realizado</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rcc-funcionario">
-              {rccFieldLabels.funcionarioSolicitado}
+            <Label htmlFor="rcc-serie-compressor">
+              {rccFieldLabels.numeroSerieCompressor}
             </Label>
             <Input
-              id="rcc-funcionario"
-              value={dados.funcionarioSolicitado}
-              onChange={(e) => patch({ funcionarioSolicitado: e.target.value })}
+              id="rcc-serie-compressor"
+              value={dados.numeroSerieCompressor}
+              onChange={(e) => patch({ numeroSerieCompressor: e.target.value })}
               readOnly={somenteLeitura}
               disabled={somenteLeitura}
               className={somenteLeitura ? "bg-muted/40" : undefined}
@@ -885,40 +1037,72 @@ export function RccForm({
           </div>
 
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rcc-servico">{rccFieldLabels.servicoRealizado}</Label>
-            <Textarea
-              id="rcc-servico"
-              rows={4}
-              value={dados.servicoRealizado}
-              onChange={(e) => patch({ servicoRealizado: e.target.value })}
+            <Label htmlFor="rcc-data-conclusao-servico">
+              {rccFieldLabels.dataConclusaoServico}
+            </Label>
+            <Input
+              id="rcc-data-conclusao-servico"
+              type="date"
+              value={isoParaInputDate(dados.dataConclusaoServico)}
+              onChange={(e) =>
+                patch({
+                  dataConclusaoServico: e.target.value
+                    ? `${e.target.value}T12:00:00.000Z`
+                    : "",
+                })
+              }
               disabled={somenteLeitura}
             />
           </div>
 
-          <div className="space-y-2">
-            <OpcaoListaPesquisavelField
-              id="rcc-servico-1"
-              label={rccFieldLabels.servicoRealizado1}
-              value={dados.servicoRealizado1}
-              onChange={(v) => patch({ servicoRealizado1: v })}
-              opcoesBase={RCC_SERVICOS_REALIZADOS}
-              storageKey={RCC_SERVICOS_OPCOES_STORAGE_KEY}
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="rcc-data-fechamento">
+              {rccFieldLabels.dataFechamento}
+            </Label>
+            <Input
+              id="rcc-data-fechamento"
+              type="date"
+              value={isoParaInputDate(dados.dataFechamento)}
+              onChange={(e) =>
+                patch({
+                  dataFechamento: e.target.value
+                    ? `${e.target.value}T12:00:00.000Z`
+                    : "",
+                })
+              }
               disabled={somenteLeitura}
             />
           </div>
 
-          <div className="space-y-2">
-            <OpcaoListaPesquisavelField
-              id="rcc-servico-2"
-              label={rccFieldLabels.servicoRealizado2}
-              value={dados.servicoRealizado2}
-              onChange={(v) => patch({ servicoRealizado2: v })}
-              opcoesBase={RCC_SERVICOS_REALIZADOS}
-              storageKey={RCC_SERVICOS_OPCOES_STORAGE_KEY}
+          <div className="space-y-2 sm:col-span-2">
+            <Label>{rccFieldLabels.problemaSolucionado}</Label>
+            <Select
+              value={dados.problemaSolucionado || undefined}
+              onValueChange={(v) => v && patch({ problemaSolucionado: v })}
               disabled={somenteLeitura}
-            />
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Selecione..." />
+              </SelectTrigger>
+              <SelectContent>
+                {RCC_SIM_NAO.map((opcao) => (
+                  <SelectItem key={opcao} value={opcao}>
+                    {opcao}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
+      </fieldset>
+
+      <fieldset className="brand-fieldset space-y-4">
+        <legend>Evidências</legend>
+        <RegistroAnexosTable
+          anexos={dados.anexos ?? []}
+          onChange={(anexos) => patch({ anexos })}
+          disabled={somenteLeitura}
+        />
       </fieldset>
     </div>
   );

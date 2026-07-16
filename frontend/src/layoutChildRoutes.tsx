@@ -12,6 +12,7 @@ import AlteracaoDataEntregaCompraPage from './pages/integracao/AlteracaoDataEntr
 import FaturamentoDiarioPage from './pages/integracao/FaturamentoDiarioPage';
 import PedidosEntregaVencidaPage from './pages/integracao/PedidosEntregaVencidaPage';
 import SmsIntegracaoPage from './pages/integracao/SmsIntegracaoPage';
+import EmailIntegracaoPage from './pages/integracao/EmailIntegracaoPage';
 import CredenciaisPage from './pages/integracao/CredenciaisPage';
 import EmailCredenciaisPage from './pages/integracao/EmailCredenciaisPage';
 import ComprasPage from './pages/ComprasPage';
@@ -57,6 +58,7 @@ import VeiculosPage from './pages/logistica/VeiculosPage';
 import ProdutosCubagemPage from './pages/logistica/ProdutosCubagemPage';
 import SimulacaoCubagemPage from './pages/logistica/SimulacaoCubagemPage';
 import { qualidadeRoutes } from './modules/qualidade/qualidadeRoutes';
+import { rhRoutes } from './modules/rh/rhRoutes';
 import PainelComercialPage from './pages/comercial/PainelComercialPage';
 
 /** Rotas filhas do layout autenticado (espelham appRouter). */
@@ -115,6 +117,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'precificacao', element: <Navigate to="/engenharia/precificacao" replace /> },
   { path: 'engenharia/precificacao', element: <PrecificacaoPage /> },
   ...qualidadeRoutes,
+  ...rhRoutes,
   { path: 'financeiro', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/resumo', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/dfc', element: <DfcPage /> },
@@ -132,6 +135,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'integracao/faturamento-diario', element: <FaturamentoDiarioPage /> },
   { path: 'integracao/pedidos-entrega-vencida', element: <PedidosEntregaVencidaPage /> },
   { path: 'integracao/sms', element: <SmsIntegracaoPage /> },
+  { path: 'integracao/email-notificacoes', element: <EmailIntegracaoPage /> },
   { path: 'integracao/credenciais', element: <CredenciaisPage /> },
   { path: 'integracao/credenciais/email', element: <EmailCredenciaisPage /> },
   { path: 'usuarios', element: <UsuariosPage /> },

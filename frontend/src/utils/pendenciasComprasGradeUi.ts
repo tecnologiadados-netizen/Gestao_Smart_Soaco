@@ -12,6 +12,8 @@ export const PENDENCIAS_DEFAULT_COL_WIDTHS: Record<string, number> = {
   agPag: 80,
   pedidoCompra: 64,
   estoqueAtual: 120,
+  dataUltimaEntrada: 120,
+  estoqueAntesUltimaEntrada: 148,
   prioridadeFixa: 112,
   historicoPrioridade: 72,
 };

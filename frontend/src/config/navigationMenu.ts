@@ -118,6 +118,27 @@ export const QUALIDADE_MENU: NavMenuEntry[] = [
   },
 ];
 
+export const RH_MENU: NavMenuEntry[] = [
+  {
+    kind: 'submenu',
+    label: 'Operacional',
+    children: [
+      { kind: 'link', to: '/rh/organico', label: 'Orgânico' },
+      { kind: 'link', to: '/rh/faltas-atestados', label: 'Faltas e Atestados' },
+    ],
+  },
+  {
+    kind: 'submenu',
+    label: 'Analítico',
+    children: [
+      { kind: 'link', to: '/rh/dashboard', label: 'Dashboard' },
+      { kind: 'link', to: '/rh/cargos', label: 'Cargos & Salários' },
+      { kind: 'link', to: '/rh/organograma', label: 'Organograma' },
+    ],
+  },
+  { kind: 'link', to: '/rh/configuracoes', label: 'Configurações' },
+];
+
 export const COMERCIAL_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/comercial/painel', label: 'Painel Comercial' },
 ];
@@ -134,6 +155,7 @@ export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
 export const INTEGRACAO_SUBMENUS: { to: string; label: string }[] = [
   { to: '/integracao/alteracao-data-entrega-compra', label: 'Alteração da Data de Entrega do Pedido de Compra' },
   { to: '/integracao/sms', label: 'SMS' },
+  { to: '/integracao/email-notificacoes', label: 'E-mail' },
   { to: '/integracao/credenciais', label: 'Credenciais' },
 ];
 
@@ -181,6 +203,13 @@ export const PATH_LABELS: Record<string, string> = {
   '/qualidade/calibracoes': 'Qualidade — SGQ — Calibrações',
   '/qualidade/registros': 'Qualidade — SGQ — Registros',
   '/qualidade/configuracoes': 'Qualidade — SGQ — Configurações',
+  '/rh': 'RH',
+  '/rh/dashboard': 'RH — Dashboard',
+  '/rh/organico': 'RH — Orgânico',
+  '/rh/faltas-atestados': 'RH — Faltas e Atestados',
+  '/rh/cargos': 'RH — Cargos & Salários',
+  '/rh/organograma': 'RH — Organograma',
+  '/rh/configuracoes': 'RH — Configurações',
   '/financeiro': 'Financeiro',
   '/financeiro/resumo': 'Resumo Financeiro',
   '/financeiro/dfc': 'DFC',
@@ -195,6 +224,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/integracao/faturamento-diario': 'Faturamento Diário',
   '/integracao/pedidos-entrega-vencida': 'Pedidos Previsão Vencida',
   '/integracao/sms': 'SMS',
+  '/integracao/email-notificacoes': 'E-mail',
   '/integracao/credenciais': 'Credenciais',
   '/integracao/credenciais/email': 'E-mail (Gmail)',
   '/usuarios': 'Usuários',

@@ -1,7 +1,10 @@
 import type { Request, Response } from 'express';
 import {
   buscarClientesNomus,
+  buscarDocumentosEntradaNomus,
   buscarFornecedoresNomus,
+  buscarPedidosVendaNomus,
+  buscarPessoasNomus,
   buscarProdutosNomus,
 } from '../data/qualidadeNomusRepository.js';
 import {
@@ -14,6 +17,7 @@ import {
   syncQualidadeDocuments,
   syncQualidadeOpcoesLista,
   syncQualidadeRegistros,
+  deleteQualidadeRegistro,
   deleteQualidadeDocumento,
 } from '../data/qualidadeRepository.js';
 import { gerarRccPdfBuffer, gerarRncPdfBuffer } from '../services/qualidadePdfService.js';
@@ -21,6 +25,9 @@ import { gerarRccPdfBuffer, gerarRncPdfBuffer } from '../services/qualidadePdfSe
 const CLIENTES_SEARCH_LIMIT = 80;
 const PRODUTOS_SEARCH_LIMIT = 100;
 const FORNECEDORES_SEARCH_LIMIT = 100;
+const PEDIDOS_VENDA_SEARCH_LIMIT = 50;
+const PESSOAS_SEARCH_LIMIT = 100;
+const DOCUMENTOS_ENTRADA_SEARCH_LIMIT = 100;
 
 function parseLimit(raw: string | undefined, fallback: number, max: number): number {
   if (!raw) return fallback;
@@ -48,11 +55,29 @@ export async function getQualidadeProdutos(req: Request, res: Response): Promise
   try {
     const q = typeof req.query.q === 'string' ? req.query.q : undefined;
     const codigo = typeof req.query.codigo === 'string' ? req.query.codigo : undefined;
+    const pedidoId =
+      typeof req.query.pedidoId === 'string' ? req.query.pedidoId : undefined;
     const limit = parseLimit(typeof req.query.limit === 'string' ? req.query.limit : undefined, 40, PRODUTOS_SEARCH_LIMIT);
-    const result = await buscarProdutosNomus({ q, codigo, limit });
+    const result = await buscarProdutosNomus({ q, codigo, pedidoId, limit });
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao buscar produtos.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function getQualidadePedidosVenda(req: Request, res: Response): Promise<void> {
+  try {
+    const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+    const limit = parseLimit(
+      typeof req.query.limit === 'string' ? req.query.limit : undefined,
+      20,
+      PEDIDOS_VENDA_SEARCH_LIMIT
+    );
+    const result = await buscarPedidosVendaNomus({ q, limit });
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao buscar pedidos de venda.';
     res.status(500).json({ error: message });
   }
 }
@@ -69,6 +94,49 @@ export async function getQualidadeFornecedores(req: Request, res: Response): Pro
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao buscar fornecedores.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function getQualidadePessoas(req: Request, res: Response): Promise<void> {
+  try {
+    const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+    const limit = parseLimit(
+      typeof req.query.limit === 'string' ? req.query.limit : undefined,
+      40,
+      PESSOAS_SEARCH_LIMIT
+    );
+    const result = await buscarPessoasNomus({ q, limit, apenasFuncionarios: false });
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao buscar pessoas.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function getQualidadeDocumentosEntrada(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const fornecedorId =
+      typeof req.query.fornecedorId === 'string' ? req.query.fornecedorId.trim() : '';
+    if (!fornecedorId) {
+      res.status(400).json({ error: 'Informe fornecedorId.' });
+      return;
+    }
+
+    const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+    const limit = parseLimit(
+      typeof req.query.limit === 'string' ? req.query.limit : undefined,
+      40,
+      DOCUMENTOS_ENTRADA_SEARCH_LIMIT
+    );
+    const result = await buscarDocumentosEntradaNomus({ fornecedorId, q, limit });
+    res.json(result);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Erro ao buscar documentos de entrada.';
     res.status(500).json({ error: message });
   }
 }
@@ -182,6 +250,25 @@ export async function putQualidadeRegistrosHandler(req: Request, res: Response):
     res.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao salvar registros.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function deleteQualidadeRegistroHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const uid = typeof req.params.uid === 'string' ? req.params.uid.trim() : '';
+    if (!uid) {
+      res.status(400).json({ error: 'Registro inválido.' });
+      return;
+    }
+    const removed = await deleteQualidadeRegistro(uid);
+    if (!removed) {
+      res.status(404).json({ error: 'Registro não encontrado.' });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao excluir registro.';
     res.status(500).json({ error: message });
   }
 }

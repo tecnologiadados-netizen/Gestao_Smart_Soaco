@@ -24,6 +24,7 @@ import {
   documentoExigeRevalidacao,
 } from "@qualidade/lib/documents/validity";
 import { formatarData } from "@qualidade/lib/utils/dates";
+import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { acaoRevalidacaoSelectLabel } from "@qualidade/lib/utils/select-display";
 import { cn } from "@qualidade/lib/utils";
 import { format, parseISO } from "date-fns";
@@ -242,14 +243,8 @@ export function RevalidarDocumentoDialog({
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Código
                   </p>
-                  <p className="font-semibold text-brand-navy">{doc.codigo}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Revisão atual
-                  </p>
-                  <p className="font-semibold text-brand-blue">
-                    {doc.versaoAtual}
+                  <p className="font-semibold text-brand-navy">
+                    {formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}
                   </p>
                 </div>
                 <div className="sm:col-span-2">
