@@ -6,6 +6,7 @@ import type { PrismaClient } from '@prisma/client';
 import { listarContasReceberPorPessoa } from '../data/crmFinanceiro/crmDashboardService.js';
 import {
   agruparPedidosAbertosPorCliente,
+  formatarNumeroPedidoExibicao,
   listarPedidosAbertosCredito,
   type PedidoAbertoPorCliente,
 } from '../data/financeiroCreditoPedidoQuery.js';
@@ -15,6 +16,12 @@ import { buildSystemEmailHtml } from './emailHtmlTemplate.js';
 import { sendSystemEmail } from './systemEmail.js';
 
 const CATEGORIA = 'financeiro_credito_pedido_atraso';
+
+/**
+ * Carência: o cliente só entra no alerta quando o título mais antigo em atraso
+ * atinge este número de dias (ex.: venceu hoje → alerta só daqui a 3 dias).
+ */
+const CARENCIA_DIAS_ATRASO = 3;
 
 export type AlertaCreditoCliente = {
   clienteNome: string;
@@ -84,6 +91,8 @@ export async function listarAlertasCreditoPendentes(): Promise<AlertaCreditoClie
   for (const grupo of porCliente) {
     const contasAtraso = await listarContasReceberPorPessoa('atraso', grupo.clienteNome);
     if (contasAtraso.length === 0) continue;
+    const maiorAtrasoDias = Math.max(...contasAtraso.map((c) => c.diasAtraso));
+    if (maiorAtrasoDias < CARENCIA_DIAS_ATRASO) continue;
     const totalAtraso = contasAtraso.reduce((acc, c) => acc + c.valor, 0);
     alertas.push({
       clienteNome: grupo.clienteNome,
@@ -130,11 +139,13 @@ export function montarEmailAlertaCredito(alerta: AlertaCreditoCliente): {
   subject: string;
   html: string;
 } {
-  const pds = [...new Set(alerta.pedidos.map((p) => p.numeroPedido))].join(', ');
+  const pds = [
+    ...new Set(alerta.pedidos.map((p) => formatarNumeroPedidoExibicao(p.numeroPedido))),
+  ].join(', ');
   const subject = `[Gestão Smart] Crédito em risco — ${alerta.clienteNome}`;
 
   const pedidosLista = alerta.pedidos
-    .map((p) => `PD ${p.numeroPedido} (${p.statusLabel})`)
+    .map((p) => `${formatarNumeroPedidoExibicao(p.numeroPedido)} (${p.statusLabel})`)
     .join('; ');
 
   const html = buildSystemEmailHtml({
@@ -163,7 +174,7 @@ export function montarEmailAlertaCredito(alerta: AlertaCreditoCliente): {
       href: `${resolveAppBaseUrl()}/financeiro/crm`,
     },
     footerNote:
-      'Este alerta é enviado no máximo uma vez por cliente por dia enquanto a condição persistir.',
+      `Este alerta é enviado no máximo uma vez por cliente por dia enquanto a condição persistir. O cliente entra no alerta após ${CARENCIA_DIAS_ATRASO} dias de atraso do título mais antigo.`,
   });
 
   return { subject, html };

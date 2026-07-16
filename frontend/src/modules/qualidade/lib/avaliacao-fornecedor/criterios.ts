@@ -1,6 +1,5 @@
 export const CRITERIOS_AVALIACAO = [
   { id: "qualidade", label: "Qualidade do produto/serviço" },
-  { id: "compromisso", label: "Compromisso" },
   { id: "prazo", label: "Prazo de entrega" },
   { id: "atendimento", label: "Atendimento" },
   { id: "preco", label: "Preço / competitividade" },

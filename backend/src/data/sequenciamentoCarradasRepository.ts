@@ -32,6 +32,8 @@ export type SequenciamentoSimulacaoItem = {
 export type SequenciamentoSimulacao = {
   ordem: string[];
   itens: SequenciamentoSimulacaoItem[];
+  /** Prioridade manual por chave de carrada (maior = mais acima). */
+  prioridades?: Record<string, number>;
   /** Rascunho de motivos por id_pedido (registro de motivos do fluxo de confirmação). */
   motivos?: Record<string, string>;
 };
@@ -241,9 +243,21 @@ export function sanitizarSimulacao(raw: unknown): SequenciamentoSimulacao | null
       if (typeof v === 'string' && v.trim()) motivos[k] = v;
     }
   }
+  const prioridades: Record<string, number> = {};
+  if (r.prioridades && typeof r.prioridades === 'object' && !Array.isArray(r.prioridades)) {
+    for (const [k, v] of Object.entries(r.prioridades as Record<string, unknown>)) {
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) prioridades[k] = Math.floor(v);
+    }
+  }
   const temMotivos = Object.keys(motivos).length > 0;
-  if (ordem.length === 0 && itens.length === 0 && !temMotivos) return null;
-  return { ordem, itens, ...(temMotivos ? { motivos } : {}) };
+  const temPrioridades = Object.keys(prioridades).length > 0;
+  if (ordem.length === 0 && itens.length === 0 && !temMotivos && !temPrioridades) return null;
+  return {
+    ordem,
+    itens,
+    ...(temMotivos ? { motivos } : {}),
+    ...(temPrioridades ? { prioridades } : {}),
+  };
 }
 
 export async function montarPayloadSequenciamento(): Promise<{
@@ -362,9 +376,21 @@ function filtrarSimulacaoSeedConsultaAoVivo(
     }
     if (inclui) itens.push(entry);
   }
-  if (itens.length === 0) return null;
+  const prioridades: Record<string, number> = {};
+  if (simUltimo.prioridades) {
+    for (const [k, v] of Object.entries(simUltimo.prioridades)) {
+      if (!keysAtuais.has(k)) continue;
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) prioridades[k] = Math.floor(v);
+    }
+  }
   const ordem = simUltimo.ordem.filter((k) => keysAtuais.has(k));
-  return { ordem, itens };
+  const temPrioridades = Object.keys(prioridades).length > 0;
+  if (itens.length === 0 && !temPrioridades && ordem.length === 0) return null;
+  return {
+    ordem,
+    itens,
+    ...(temPrioridades ? { prioridades } : {}),
+  };
 }
 
 /**

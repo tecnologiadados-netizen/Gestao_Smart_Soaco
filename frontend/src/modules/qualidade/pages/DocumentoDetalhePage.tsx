@@ -14,6 +14,7 @@ import {
 import { Badge } from "@qualidade/components/ui/badge";
 import { Separator } from "@qualidade/components/ui/separator";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
+import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
   documentStatusLabels,
@@ -69,7 +70,9 @@ export function DocumentoDetalhePage() {
         </Button>
         <div className="flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold">{doc.codigo}</h1>
+            <h1 className="text-2xl font-bold">
+              {formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}
+            </h1>
             <Badge variant={getDocumentStatusVariant(doc.status)}>
               {documentStatusLabels[doc.status]}
             </Badge>
@@ -94,8 +97,10 @@ export function DocumentoDetalhePage() {
                 <p className="font-medium">{setor?.nome ?? "—"}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Revisão atual</p>
-                <p className="font-medium">{doc.versaoAtual}</p>
+                <p className="text-xs text-muted-foreground">Código</p>
+                <p className="font-medium">
+                  {formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Última atualização</p>

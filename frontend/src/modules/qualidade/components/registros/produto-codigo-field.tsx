@@ -19,6 +19,8 @@ interface ProdutoCodigoFieldProps {
   onProdutoSelect: (produto: ProdutoErp) => void;
   onVinculoClear?: () => void;
   disabled?: boolean;
+  /** Quando informado, a lista mostra só produtos deste pedido Nomus. */
+  pedidoId?: string | null;
 }
 
 export function ProdutoCodigoField({
@@ -29,6 +31,7 @@ export function ProdutoCodigoField({
   onProdutoSelect,
   onVinculoClear,
   disabled = false,
+  pedidoId = null,
 }: ProdutoCodigoFieldProps) {
   const listId = useId();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -39,6 +42,8 @@ export function ProdutoCodigoField({
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [aberto, setAberto] = useState(false);
+
+  const pedidoIdFiltro = pedidoId?.trim() || undefined;
 
   useEffect(() => {
     setTermo(value);
@@ -56,11 +61,16 @@ export function ProdutoCodigoField({
 
       const lista = await fetchProdutosClient({
         q: busca.trim() || undefined,
-        limit,
+        pedidoId: pedidoIdFiltro,
+        limit: pedidoIdFiltro ? Math.max(limit, 200) : limit,
       });
       setResultados(lista);
     } catch {
-      setErro("Não foi possível buscar produtos.");
+      setErro(
+        pedidoIdFiltro
+          ? "Não foi possível buscar os produtos deste pedido."
+          : "Não foi possível buscar produtos."
+      );
       setResultados([]);
     } finally {
       setCarregando(false);
@@ -72,7 +82,11 @@ export function ProdutoCodigoField({
     if (!normalizado) return null;
 
     try {
-      const lista = await fetchProdutosClient({ codigo: normalizado, limit: 1 });
+      const lista = await fetchProdutosClient({
+        codigo: normalizado,
+        pedidoId: pedidoIdFiltro,
+        limit: 1,
+      });
       return lista[0] ?? null;
     } catch {
       return null;
@@ -91,7 +105,7 @@ export function ProdutoCodigoField({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [termo, disabled]);
+  }, [termo, disabled, pedidoIdFiltro]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -145,7 +159,11 @@ export function ProdutoCodigoField({
             }, 150);
           }}
           disabled={disabled}
-          placeholder="Ex.: PA 10005, MP 6861..."
+          placeholder={
+            pedidoIdFiltro
+              ? "Selecione um produto do pedido..."
+              : "Ex.: PA 10005, MP 6861..."
+          }
           className="pl-9"
           autoComplete="off"
           role="combobox"
@@ -160,6 +178,14 @@ export function ProdutoCodigoField({
       {erro ? (
         <p className="text-xs text-destructive" role="alert">
           {erro}
+        </p>
+      ) : null}
+
+      {aberto && !disabled && !carregando && resultados.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {pedidoIdFiltro
+            ? "Nenhum produto encontrado neste pedido."
+            : "Nenhum produto encontrado."}
         </p>
       ) : null}
 
@@ -183,7 +209,11 @@ export function ProdutoCodigoField({
                 <span className="line-clamp-1 text-xs text-muted-foreground">
                   {produto.descricao}
                 </span>
-                {produto.grupoProduto ? (
+                {produto.quantidadePedido != null && produto.quantidadePedido > 0 ? (
+                  <span className="text-[11px] text-muted-foreground">
+                    Qtde no pedido: {produto.quantidadePedido}
+                  </span>
+                ) : produto.grupoProduto ? (
                   <span className="text-[11px] text-muted-foreground">
                     {produto.grupoProduto}
                     {produto.tipoProduto ? ` · ${produto.tipoProduto}` : ""}
@@ -196,8 +226,9 @@ export function ProdutoCodigoField({
       ) : null}
 
       <p className="text-xs text-muted-foreground">
-        Digite o código ou parte do nome para preencher grupo e descrição
-        automaticamente.
+        {pedidoIdFiltro
+          ? "Exibindo apenas os códigos de produto deste pedido de venda."
+          : "Digite o código ou parte do nome para preencher grupo e descrição automaticamente."}
       </p>
     </div>
   );

@@ -47,6 +47,18 @@ describe('filtrarSimulacaoSeedConsultaAoVivo', () => {
       ordem: [key],
       itens: [{ chave: key, cod: COD, carrada: CARRADA, dataProducao: '2026-07-14' }],
     });
-    expect(seed).toBeNull();
+    expect(seed?.itens).toHaveLength(0);
+    expect(seed?.itens[0]?.dataProducao).toBeUndefined();
+  });
+
+  it('semear prioridades do último snapshot', () => {
+    const linhas = [linha('a', null)];
+    const key = linhaCarradaKey(linhas[0]!);
+    const seed = filtrarSimulacaoSeedConsultaAoVivo(linhas, carradas, {
+      ordem: [key],
+      itens: [],
+      prioridades: { [key]: 25 },
+    });
+    expect(seed?.prioridades?.[key]).toBe(25);
   });
 });

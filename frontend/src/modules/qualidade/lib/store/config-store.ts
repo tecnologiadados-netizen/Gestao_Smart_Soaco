@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persistConfigToServer } from '@qualidade/lib/qualidadeConfigSync';
+import type { Enderecamento } from '@qualidade/types/enderecamento';
 import type { Department, DocumentType, User } from '@qualidade/types/user';
 
 interface ConfigState {
@@ -7,6 +8,7 @@ interface ConfigState {
   users: User[];
   departments: Department[];
   documentTypes: DocumentType[];
+  enderecamentos: Enderecamento[];
   getCurrentUser: () => User | undefined;
   addDepartment: (nome: string, sigla: string) => boolean;
   updateDepartment: (id: string, nome: string, sigla: string) => boolean;
@@ -14,6 +16,34 @@ interface ConfigState {
   addDocumentType: (nome: string, sigla: string) => boolean;
   updateDocumentType: (id: string, nome: string, sigla: string) => boolean;
   removeDocumentType: (id: string) => void;
+  addEnderecamento: (setorId: string, endereco: string) => boolean;
+  updateEnderecamento: (id: string, setorId: string, endereco: string) => boolean;
+  removeEnderecamento: (id: string) => void;
+}
+
+function normalizarEndereco(endereco: string): string {
+  return endereco.trim().toLowerCase();
+}
+
+function enderecamentoDuplicado(
+  enderecamentos: Enderecamento[],
+  setorId: string,
+  endereco: string,
+  ignoreId?: string
+): boolean {
+  const alvo = normalizarEndereco(endereco);
+  return enderecamentos.some(
+    (e) =>
+      e.id !== ignoreId &&
+      e.setorId === setorId &&
+      normalizarEndereco(e.endereco) === alvo
+  );
+}
+
+function syncEnderecamentosAfterMutation() {
+  void import('@qualidade/lib/qualidadePersistence').then(({ scheduleEnderecamentosSync }) =>
+    scheduleEnderecamentosSync()
+  );
 }
 
 function generateId(prefix: string): string {
@@ -32,6 +62,7 @@ export const useConfigStore = create<ConfigState>()((set, get) => ({
   users: [],
   departments: [],
   documentTypes: [],
+  enderecamentos: [],
 
   getCurrentUser: () => get().users.find((u) => u.id === get().currentUserId),
 
@@ -121,5 +152,43 @@ export const useConfigStore = create<ConfigState>()((set, get) => ({
       documentTypes: state.documentTypes.filter((t) => t.id !== id),
     }));
     syncConfigAfterMutation();
+  },
+
+  addEnderecamento: (setorId, endereco) => {
+    const enderecoNorm = endereco.trim();
+    if (!setorId || !enderecoNorm) return false;
+    if (!get().departments.some((d) => d.id === setorId)) return false;
+    if (enderecamentoDuplicado(get().enderecamentos, setorId, enderecoNorm)) return false;
+
+    set((state) => ({
+      enderecamentos: [
+        ...state.enderecamentos,
+        { id: generateId('end'), setorId, endereco: enderecoNorm },
+      ],
+    }));
+    syncEnderecamentosAfterMutation();
+    return true;
+  },
+
+  updateEnderecamento: (id, setorId, endereco) => {
+    const enderecoNorm = endereco.trim();
+    if (!setorId || !enderecoNorm) return false;
+    if (!get().departments.some((d) => d.id === setorId)) return false;
+    if (enderecamentoDuplicado(get().enderecamentos, setorId, enderecoNorm, id)) return false;
+
+    set((state) => ({
+      enderecamentos: state.enderecamentos.map((e) =>
+        e.id === id ? { ...e, setorId, endereco: enderecoNorm } : e
+      ),
+    }));
+    syncEnderecamentosAfterMutation();
+    return true;
+  },
+
+  removeEnderecamento: (id) => {
+    set((state) => ({
+      enderecamentos: state.enderecamentos.filter((e) => e.id !== id),
+    }));
+    syncEnderecamentosAfterMutation();
   },
 }));

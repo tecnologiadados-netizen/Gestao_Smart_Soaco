@@ -33,6 +33,7 @@ import mindMapsRoutes from './routes/mindMapsRoutes.js';
 import programacaoProducaoRoutes from './routes/programacaoProducaoRoutes.js';
 import logisticaRoutes from './routes/logisticaRoutes.js';
 import qualidadeRoutes from './routes/qualidadeRoutes.js';
+import rhRoutes from './routes/rhRoutes.js';
 import emailSettingsRoutes from './routes/emailSettingsRoutes.js';
 import painelProducaoRoutes from './routes/painelProducaoRoutes.js';
 import { csrfProtect } from './middleware/csrf.js';
@@ -170,6 +171,7 @@ app.use('/api/programacao-producao', programacaoProducaoRoutes);
 app.use('/api/pcp', pcpRoutes);
 app.use('/api/logistica', logisticaRoutes);
 app.use('/api/qualidade', qualidadeRoutes);
+app.use('/api/rh', rhRoutes);
 app.use('/api/email-settings', emailSettingsRoutes);
 app.use('/api/painel-producao', painelProducaoRoutes);
 

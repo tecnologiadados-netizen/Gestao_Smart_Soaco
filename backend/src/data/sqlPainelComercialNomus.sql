@@ -1,6 +1,7 @@
 select
 pd.idEmpresa,
 	concat(coalesce(de.id,'0000000'),'-',pd.id,'-',p.id) as idChave,
+	pd.observacao as observacaoPedido,
 	ip.id as id_item_pedido,
 	pd.id,
 	CASE 
@@ -80,6 +81,8 @@ then 'Teresina' else
 	ip.qtdeAtendida as 'Qtde atendida',
 	((ip.qtde - ip.qtdeAtendida)+coalesce(devol.qtdDevolvida,0)) as 'Pendente',
 	ifnull(prm.qtdeVinculada,0) as 'Qtde Romaneada',
+	ifnull(ip.valorTotal,0) as valorTotal,
+	ifnull(ip.valorDesconto,0) as valorDesconto,
 	(((round((ip.valorTotalComDesconto * ifnull(t.aliquotaIPI/100,0)),2))+ifnull(ip.valorTotalComDesconto,0))/ip.qtde) as 'Valor Unitario com desconto + IPI do item PD',
 	(((round((ip.valorTotalComDesconto * ifnull(t.aliquotaIPI/100,0)),2))+ifnull(ip.valorTotalComDesconto,0))) as 'Valor Total com desconto + IPI do item PD',
 	((((round((ip.valorTotalComDesconto * ifnull(t.aliquotaIPI/100,0)),2))+ifnull(ip.valorTotalComDesconto,0))/ip.qtde) * 
@@ -88,7 +91,7 @@ then 'Teresina' else
 	 ifnull(prm.qtdeVinculada,0)) as 'Valor Romaneado',
 	(ifnull(max(nfef.valorTotalComDesconto),0)+ifnull(max(t.valorIPI),0)) as 'Valor Faturado Entrega Futura + IPI do item do Pedido',
 	emp.opcao as 'Venda por qual empresa?',
-	vr.nome as 'Vendedor/Representante',
+	vr.nome as vendedorRepresentante,
 	adt.valorAdiantamento as 'Valor Adiantamento',
 	COUNT(pd.nome) OVER (PARTITION BY pd.nome) AS 'Quantidade Pedidos',
 	sum(((round((ip.valorTotalComDesconto * ifnull(t.aliquotaIPI/100,0)),2))+ifnull(ip.valorTotalComDesconto,0))) OVER (PARTITION BY pd.nome) AS 'Valor Pedido Total',
@@ -450,6 +453,7 @@ group by ip.id
 	AND DATE(pd.dataEmissao) BETWEEN '__DATA_INI__' AND '__DATA_FIM__'
 	group by
 	pd.idEmpresa,
+	pd.observacao,
 	de.observacoes,
 	de.codigo,
 	pe.id,
@@ -470,4 +474,7 @@ group by ip.id
 	fp.nome,
 	cp.nome,
 	ip.idTabelaPreco,
-	tpc.nome
+	tpc.nome,
+	vr.nome,
+	ip.valorTotal,
+	ip.valorDesconto

@@ -1,3 +1,4 @@
+import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import type { Document, DocumentVersion } from "@qualidade/types/document";
 import type { Department, DocumentType, User } from "@qualidade/types/user";
 
@@ -42,19 +43,11 @@ export function DocumentoIdentificacaoResumo({
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-[minmax(140px,180px)_100px_1fr]">
+      <div className="grid gap-4 md:grid-cols-[minmax(180px,220px)_1fr]">
         <div className="space-y-2">
           <p className="text-sm font-medium text-muted-foreground">Código</p>
           <div className={`${readonlyFieldClass} font-mono text-lg font-bold`}>
-            {doc.codigo}
-          </div>
-        </div>
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-muted-foreground">Revisão</p>
-          <div
-            className={`${readonlyFieldClass} justify-center font-mono text-lg font-bold`}
-          >
-            {doc.versaoAtual}
+            {formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}
           </div>
         </div>
         <div className="space-y-2">

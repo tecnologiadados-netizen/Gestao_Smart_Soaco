@@ -17,6 +17,7 @@ import { useCalibrationsStore } from '@qualidade/lib/store/calibrations-store';
 import { useConfigStore } from '@qualidade/lib/store/config-store';
 import { useDocumentsStore } from '@qualidade/lib/store/documents-store';
 import { useRegistrosStore } from '@qualidade/lib/store/registros-store';
+import { isRegistroHistoricoNomusExcluido } from '@qualidade/lib/registros/constants';
 import {
   persistConfigToServer as flushConfigToServer,
   isQualidadeConfigHydrating,
@@ -26,6 +27,11 @@ import {
   RCC_RECLAMACOES_OPCOES_STORAGE_KEY,
   RCC_SERVICOS_OPCOES_STORAGE_KEY,
 } from '@qualidade/lib/registros/opcoes-lista-customizadas';
+import {
+  ENDERECAMENTOS_OPCOES_CHAVE,
+  parseEnderecamentosFromOpcoes,
+  serializeEnderecamentos,
+} from '@qualidade/lib/enderecamentos-sync';
 
 const LS_KEYS = [
   'sgq-config',
@@ -129,9 +135,12 @@ function flushPendingSyncs() {
   void syncRegistrosStateNow().catch((err) =>
     console.error('[qualidade-sync] pagehide registros:', err)
   );
-  const { departments, documentTypes } = useConfigStore.getState();
+  const { departments, documentTypes, enderecamentos } = useConfigStore.getState();
   void flushConfigToServer({ departments, documentTypes }).catch((err) =>
     console.error('[qualidade-sync] flush config:', err)
+  );
+  void flushEnderecamentosToServer(enderecamentos).catch((err) =>
+    console.error('[qualidade-sync] flush enderecamentos:', err)
   );
 }
 
@@ -198,7 +207,12 @@ async function migrateFromLocalStorageIfNeeded() {
     });
   }
   if (registros?.registros?.length) {
-    await syncQualidadeRegistros(registros.registros);
+    const registrosSemNomus = (registros.registros as Registro[]).filter(
+      (r) => !isRegistroHistoricoNomusExcluido(r)
+    );
+    if (registrosSemNomus.length) {
+      await syncQualidadeRegistros(registrosSemNomus);
+    }
   }
   if (cal) {
     await syncQualidadeCalibrations({
@@ -242,6 +256,9 @@ export async function hydrateQualidadeFromServer(currentUserLogin: string) {
     users,
     departments: data.departments,
     documentTypes: data.documentTypes,
+    enderecamentos: parseEnderecamentosFromOpcoes(
+      data.opcoesLista[ENDERECAMENTOS_OPCOES_CHAVE]
+    ),
   });
 
   const docTasks = data.tasks.filter(
@@ -260,7 +277,10 @@ export async function hydrateQualidadeFromServer(currentUserLogin: string) {
   });
 
   setQualidadeRegistrosHydrating(true);
-  useRegistrosStore.setState({ registros: data.registros as never[] });
+  const registrosAtivos = (data.registros as Registro[]).filter(
+    (r) => !isRegistroHistoricoNomusExcluido(r)
+  );
+  useRegistrosStore.setState({ registros: registrosAtivos as never[] });
   setQualidadeRegistrosHydrating(false);
 
   useCalibrationsStore.setState({
@@ -307,6 +327,9 @@ export function startQualidadeAutoSync() {
         departments: state.departments,
         documentTypes: state.documentTypes,
       }), 300);
+    }
+    if (state.enderecamentos !== prev.enderecamentos) {
+      debounceSync('enderecamentos', () => flushEnderecamentosToServer(state.enderecamentos), 300);
     }
   });
 
@@ -378,4 +401,19 @@ export function scheduleOpcoesListaSync() {
       console.error('[qualidade-sync] opcoes-lista:', err);
     }
   });
+}
+
+async function flushEnderecamentosToServer(
+  enderecamentos: ReturnType<typeof useConfigStore.getState>['enderecamentos']
+): Promise<void> {
+  await syncQualidadeOpcoesLista({
+    [ENDERECAMENTOS_OPCOES_CHAVE]: serializeEnderecamentos(enderecamentos),
+  });
+}
+
+export function scheduleEnderecamentosSync() {
+  debounceSync('enderecamentos', async () => {
+    const { enderecamentos } = useConfigStore.getState();
+    await flushEnderecamentosToServer(enderecamentos);
+  }, 300);
 }

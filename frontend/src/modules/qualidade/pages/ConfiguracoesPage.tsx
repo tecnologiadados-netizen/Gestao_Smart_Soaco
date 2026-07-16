@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { FileText, Gauge, Wrench } from "lucide-react";
+import { FileText, Gauge, MapPin, Wrench } from "lucide-react";
 import {
   Card,
   CardDescription,
@@ -19,6 +19,12 @@ const links = [
     title: "Categorias",
     description: "PO, IT, FO, Manual, Registro e outros",
     icon: FileText,
+  },
+  {
+    href: "/qualidade/configuracoes/enderecamento",
+    title: "Endereçamento",
+    description: "Localizações físicas por setor",
+    icon: MapPin,
   },
   {
     href: "/qualidade/documentos",

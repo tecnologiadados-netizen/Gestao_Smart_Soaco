@@ -20,6 +20,7 @@ import { AvaliacaoFornecedorHistoricoRedirectPage } from '@qualidade/pages/Avali
 import { ConfiguracoesPage } from '@qualidade/pages/ConfiguracoesPage';
 import { SetoresPage } from '@qualidade/pages/ConfiguracoesSetoresPage';
 import { TiposDocumentoPage } from '@qualidade/pages/ConfiguracoesTiposDocumentoPage';
+import { EnderecamentoPage } from '@qualidade/pages/ConfiguracoesEnderecamentoPage';
 import { VisualizarDocumentoPage } from '@qualidade/pages/DocumentosVisualizarPage';
 
 const wrap = (element: React.ReactNode) => <ErrorBoundary>{element}</ErrorBoundary>;
@@ -49,6 +50,7 @@ export const qualidadeRoutes: RouteObject[] = [
       { path: 'configuracoes', element: wrap(<ConfiguracoesPage />) },
       { path: 'configuracoes/setores', element: wrap(<SetoresPage />) },
       { path: 'configuracoes/tipos-documento', element: wrap(<TiposDocumentoPage />) },
+      { path: 'configuracoes/enderecamento', element: wrap(<EnderecamentoPage />) },
     ],
   },
 ];

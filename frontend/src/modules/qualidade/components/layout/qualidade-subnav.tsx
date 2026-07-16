@@ -5,6 +5,7 @@ import {
   ClipboardList,
   FileText,
   Home,
+  MapPin,
   Search,
   Wrench,
 } from 'lucide-react';
@@ -56,6 +57,7 @@ function getNavItems(module: Module): NavItem[] {
         { label: 'Início', href: '/qualidade/configuracoes', icon: Home },
         { label: 'Setores', href: '/qualidade/configuracoes/setores', icon: Wrench },
         { label: 'Categorias', href: '/qualidade/configuracoes/tipos-documento', icon: FileText },
+        { label: 'Endereçamento', href: '/qualidade/configuracoes/enderecamento', icon: MapPin },
       ];
   }
 }

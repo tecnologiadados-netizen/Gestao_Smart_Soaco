@@ -32,12 +32,22 @@ import {
   toDocumentValidade,
   type PublicacaoFormValues,
 } from "@qualidade/components/documentos/documento-publicacao-fieldset";
+import { DocumentoEnderecamentoFieldset } from "@qualidade/components/documentos/documento-enderecamento-fieldset";
 import { afterUiTransition } from "@qualidade/lib/motion";
+import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
 import { cn } from "@qualidade/lib/utils";
+import {
+  departmentSelectLabel,
+  documentTypeSelectLabel,
+} from "@qualidade/lib/utils/select-display";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { INITIAL_REVISION } from "@qualidade/lib/documents/revision";
+import {
+  formatDocumentCodigo,
+  formatDocumentCodigoExibicao,
+} from "@qualidade/lib/documents/document-codigo";
 import type { DocumentType } from "@qualidade/types/user";
 
 interface Props {
@@ -91,6 +101,7 @@ export function CadastroDocumentoInternoDialog({
   const [publicacao, setPublicacao] = useState<PublicacaoFormValues>(() =>
     defaultPublicacaoValues()
   );
+  const [localizacao, setLocalizacao] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -104,6 +115,7 @@ export function CadastroDocumentoInternoDialog({
     setResponsaveis(defaultResponsaveisValues(currentUserId));
     setPermissoes(defaultPermissoesValues());
     setPublicacao(defaultPublicacaoValues());
+    setLocalizacao("");
     setFormError(null);
   }
 
@@ -114,6 +126,7 @@ export function CadastroDocumentoInternoDialog({
     if (!responsaveis.elaboradorId) return "Selecione o elaborador.";
     if (!responsaveis.consensoId) return "Selecione o responsável pelo consenso.";
     if (!responsaveis.aprovadorId) return "Selecione o aprovador.";
+    if (!localizacao.trim()) return "Selecione a localização do documento.";
     if (departments.length === 0) {
       return "Nenhum setor cadastrado. Cadastre setores em Qualidade → Configurações.";
     }
@@ -146,6 +159,7 @@ export function CadastroDocumentoInternoDialog({
     });
     setPermissoes(doc.permissoes ?? defaultPermissoesValues());
     setPublicacao(publicacaoFromDocument(doc.publicacao, doc.validade));
+    setLocalizacao(doc.localizacao ?? "");
   }, [open, documentId, getDocumentById, getVersionsByDocumentId, currentUserId]);
 
   const categorias = useMemo(() => {
@@ -161,14 +175,18 @@ export function CadastroDocumentoInternoDialog({
   const categoria =
     documentTypes.find((t) => t.id === categoriaId) ??
     categorias.find((t) => t.id === categoriaId);
-  const codigo = useMemo(() => {
-    if (isEdicao && documentoEdicao) return documentoEdicao.codigo;
-    return categoria ? getNextDocumentCode(categoria.sigla) : "";
+  const categoriaLabel = documentTypeSelectLabel(documentTypes, categoriaId);
+  const setorLabel = departmentSelectLabel(departments, processoId, "sigla-nome");
+  const codigoExibicao = useMemo(() => {
+    if (isEdicao && documentoEdicao) {
+      return formatDocumentCodigoExibicao(
+        documentoEdicao.codigo,
+        documentoEdicao.versaoAtual
+      );
+    }
+    const base = categoria ? getNextDocumentCode(categoria.sigla) : "";
+    return base ? formatDocumentCodigo(base, INITIAL_REVISION) : "";
   }, [isEdicao, documentoEdicao, categoria, getNextDocumentCode]);
-
-  const revisaoExibida = isEdicao
-    ? (documentoEdicao?.versaoAtual ?? INITIAL_REVISION)
-    : INITIAL_REVISION;
 
   function handleClose() {
     onOpenChange(false);
@@ -185,48 +203,63 @@ export function CadastroDocumentoInternoDialog({
 
     setFormError(null);
     setSaving(true);
-    await withLoading(async () => {
-      if (isEdicao && documentId) {
-        updateDocumentCadastro(documentId, {
+    try {
+      await withLoading(async () => {
+        if (isEdicao && documentId) {
+          updateDocumentCadastro(documentId, {
+            titulo,
+            setorId: processoId,
+            localizacao: localizacao.trim(),
+            elaboradorId: responsaveis.elaboradorId || currentUserId,
+            consensoId: responsaveis.consensoId || undefined,
+            aprovadorId: responsaveis.aprovadorId || undefined,
+            prazos: responsaveis.prazos,
+            permissoes,
+            publicacao: toDocumentPublicacao(publicacao),
+            validade: toDocumentValidade(publicacao),
+          });
+          await flushQualidadeDocumentsSync();
+          onOpenChange(false);
+          afterUiTransition(resetForm);
+          onSalvo?.();
+          return;
+        }
+
+        createDocument({
+          tipoSigla: categoria.sigla,
           titulo,
+          tipoId: categoriaId,
           setorId: processoId,
+          localizacao: localizacao.trim(),
           elaboradorId: responsaveis.elaboradorId || currentUserId,
           consensoId: responsaveis.consensoId || undefined,
           aprovadorId: responsaveis.aprovadorId || undefined,
           prazos: responsaveis.prazos,
+          origem: "interno",
           permissoes,
           publicacao: toDocumentPublicacao(publicacao),
           validade: toDocumentValidade(publicacao),
+          observacoes: formatWorkflowObservacoes(responsaveis.prazos),
         });
+
+        await flushQualidadeDocumentsSync();
+
         onOpenChange(false);
-        afterUiTransition(resetForm);
-        onSalvo?.();
-        return;
-      }
-
-      createDocument({
-        tipoSigla: categoria.sigla,
-        titulo,
-        tipoId: categoriaId,
-        setorId: processoId,
-        elaboradorId: responsaveis.elaboradorId || currentUserId,
-        consensoId: responsaveis.consensoId || undefined,
-        aprovadorId: responsaveis.aprovadorId || undefined,
-        prazos: responsaveis.prazos,
-        origem: "interno",
-        permissoes,
-        publicacao: toDocumentPublicacao(publicacao),
-        validade: toDocumentValidade(publicacao),
-        observacoes: formatWorkflowObservacoes(responsaveis.prazos),
-      });
-
-      onOpenChange(false);
-      afterUiTransition(() => {
-        resetForm();
-        navigate("/qualidade/documentos");
-      });
-    }, isEdicao ? "Salvando alterações..." : "Gravando documento...");
-    setSaving(false);
+        afterUiTransition(() => {
+          resetForm();
+          navigate("/qualidade/documentos/consulta");
+        });
+      }, isEdicao ? "Salvando alterações..." : "Gravando documento...");
+    } catch (err) {
+      console.error("[qualidade] falha ao salvar documento interno:", err);
+      setFormError(
+        err instanceof Error
+          ? err.message
+          : "Falha ao salvar o documento no servidor. Tente novamente."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -276,7 +309,7 @@ export function CadastroDocumentoInternoDialog({
                         className="flex min-h-10 items-center rounded-lg border-2 border-brand-blue/30 bg-muted/40 px-3 text-base text-brand-navy"
                         aria-readonly="true"
                       >
-                        {categoria ? formatTipo(categoria) : "—"}
+                        {categoriaLabel ?? (categoria ? formatTipo(categoria) : "—")}
                       </div>
                     ) : (
                       <Select
@@ -284,7 +317,9 @@ export function CadastroDocumentoInternoDialog({
                         onValueChange={(v) => v && setCategoriaId(v)}
                       >
                         <SelectTrigger className={selectTriggerClass}>
-                          <SelectValue placeholder="Selecione a categoria" />
+                          <SelectValue placeholder="Selecione a categoria">
+                            {categoriaLabel ?? null}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent className={selectContentClass}>
                           {categorias.map((t) => (
@@ -313,6 +348,7 @@ export function CadastroDocumentoInternoDialog({
                       onValueChange={(v) => {
                         if (v) {
                           setProcessoId(v);
+                          setLocalizacao("");
                           setFormError(null);
                         }
                       }}
@@ -323,7 +359,9 @@ export function CadastroDocumentoInternoDialog({
                           formError && !processoId && "border-destructive ring-destructive/30"
                         )}
                       >
-                        <SelectValue placeholder="Selecione o setor" />
+                        <SelectValue placeholder="Selecione o setor">
+                          {setorLabel ?? null}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent className={selectContentClass}>
                         {departments.map((d) => (
@@ -340,30 +378,17 @@ export function CadastroDocumentoInternoDialog({
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-[minmax(140px,180px)_100px_1fr]">
+                <div className="grid gap-4 md:grid-cols-[minmax(180px,220px)_1fr]">
                   <div className="space-y-2">
                     <Label className="text-base">Código</Label>
                     <div
                       className="flex h-10 items-center rounded-lg border-2 border-brand-blue/30 bg-brand-blue-light/70 px-3 font-mono text-lg font-bold tracking-wide text-brand-navy"
                       aria-live="polite"
                     >
-                      {codigo || "—"}
+                      {codigoExibicao || "—"}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Gerado automaticamente
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-base">Revisão</Label>
-                    <div
-                      className="flex h-10 items-center justify-center rounded-lg border-2 border-brand-blue/30 bg-brand-blue-light/70 px-3 font-mono text-lg font-bold tracking-wide text-brand-navy"
-                      aria-label={`Revisão ${revisaoExibida}`}
-                    >
-                      {revisaoExibida}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {isEdicao ? "Revisão atual" : "Primeira emissão"}
+                      Gerado automaticamente (código:revisão)
                     </p>
                   </div>
 
@@ -391,6 +416,12 @@ export function CadastroDocumentoInternoDialog({
                 departments={departments}
                 values={permissoes}
                 onChange={setPermissoes}
+              />
+
+              <DocumentoEnderecamentoFieldset
+                value={localizacao}
+                onChange={setLocalizacao}
+                setorId={processoId}
               />
 
               <DocumentoPublicacaoFieldset

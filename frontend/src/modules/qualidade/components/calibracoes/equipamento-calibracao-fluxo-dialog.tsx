@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { parseISO } from "date-fns";
 import { X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
@@ -101,8 +101,6 @@ export function EquipamentoCalibracaoFluxoDialog({
   const [laudoDataUrl, setLaudoDataUrl] = useState("");
   const [anexos, setAnexos] = useState<AnexoItem[]>(() => defaultAnexoRows());
   const [error, setError] = useState("");
-  const laudoInputId = useId();
-
   function sugerirProximaCalibracao(
     dataCalibracao: string,
     frequenciaDias: number
@@ -286,7 +284,6 @@ export function EquipamentoCalibracaoFluxoDialog({
               <fieldset className="brand-fieldset space-y-4">
                 <legend>Documentação</legend>
                 <DocumentoArquivoField
-                  inputId={laudoInputId}
                   label="Laudo da calibração *"
                   arquivoNome={laudoNome}
                   arquivoDataUrl={laudoDataUrl}
@@ -350,7 +347,6 @@ export function EquipamentoCalibracaoFluxoDialog({
                     value={equipment.descricao}
                     className="sm:col-span-2"
                   />
-                  <ReadOnlyField label="Localização" value={equipment.local} />
                   <ReadOnlyField
                     label="Setor"
                     value={departmentSelectLabel(

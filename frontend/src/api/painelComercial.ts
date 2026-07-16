@@ -39,16 +39,23 @@ export interface PainelComercialPedido {
   pd: string;
   pdId: number;
   empresaId: number;
+  vendaPorEmpresa?: string;
   cliente: string;
+  vendedorRepresentante: string;
   emissao: string;
   tabelaPreco: string;
+  valorTotal: number;
+  valorDesconto: number;
   totalPedido: number;
   somaEntrada: number;
   pctEntrada: number;
   formaPagamento: string;
   condicaoPagamento: string;
   metodoEntrega: string;
+  /** Rota / romaneio (política). */
   observacoes: string;
+  /** Observação livre do pedido. */
+  observacaoPedido: string;
   faixaTicket: FaixaTicketPainel;
   labelFaixa: string;
   diasCondicao: number[];
@@ -180,44 +187,87 @@ export async function fetchPainelComercial(params?: {
   };
 }
 
-export async function fetchPoliticaComercialPainel(): Promise<{
+export type PoliticaComercialEscopo = 'industria' | 'lojas';
+
+export async function fetchPoliticaComercialPainel(
+  escopo: PoliticaComercialEscopo = 'industria'
+): Promise<{
   politica: PoliticaComercialPainel;
   padraoSistema: PoliticaComercialPainel;
+  escopo: PoliticaComercialEscopo;
   erro?: string;
 }> {
-  const res = await apiFetch('/api/financeiro/painel-comercial/politica');
+  const sp = new URLSearchParams({ escopo });
+  const res = await apiFetch(`/api/financeiro/painel-comercial/politica?${sp.toString()}`);
   const body = (await res.json().catch(() => ({}))) as {
     politica?: PoliticaComercialPainel;
     padraoSistema?: PoliticaComercialPainel;
+    escopo?: PoliticaComercialEscopo;
     error?: string;
   };
   if (!res.ok) {
     return {
       politica: body.politica ?? ({} as PoliticaComercialPainel),
       padraoSistema: body.padraoSistema ?? ({} as PoliticaComercialPainel),
+      escopo,
       erro: body.error ?? res.statusText,
     };
   }
   return {
     politica: body.politica as PoliticaComercialPainel,
     padraoSistema: (body.padraoSistema ?? body.politica) as PoliticaComercialPainel,
+    escopo: body.escopo === 'lojas' ? 'lojas' : 'industria',
   };
 }
 
 export async function putPoliticaComercialPainel(
-  politica: PoliticaComercialPainel
-): Promise<{ politica: PoliticaComercialPainel; erro?: string }> {
-  const res = await apiFetch('/api/financeiro/painel-comercial/politica', {
+  politica: PoliticaComercialPainel,
+  escopo: PoliticaComercialEscopo
+): Promise<{ politica: PoliticaComercialPainel; escopo: PoliticaComercialEscopo; erro?: string }> {
+  const sp = new URLSearchParams({ escopo });
+  const res = await apiFetch(`/api/financeiro/painel-comercial/politica?${sp.toString()}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(politica),
   });
   const body = (await res.json().catch(() => ({}))) as {
     politica?: PoliticaComercialPainel;
+    escopo?: PoliticaComercialEscopo;
     error?: string;
   };
   if (!res.ok) {
-    return { politica: politica, erro: body.error ?? res.statusText };
+    return { politica, escopo, erro: body.error ?? res.statusText };
   }
-  return { politica: (body.politica ?? politica) as PoliticaComercialPainel };
+  return {
+    politica: (body.politica ?? politica) as PoliticaComercialPainel,
+    escopo: body.escopo === 'lojas' ? 'lojas' : escopo,
+  };
+}
+
+export type PoliticaComercialClienteNomus = {
+  id: number;
+  nome: string;
+  idGrupoPessoa: number | null;
+  grupo: string;
+};
+
+export async function fetchPoliticaComercialClientes(params?: {
+  q?: string;
+  limit?: number;
+  signal?: AbortSignal;
+}): Promise<{ clientes: PoliticaComercialClienteNomus[]; erro?: string }> {
+  const sp = new URLSearchParams();
+  if (params?.q?.trim()) sp.set('q', params.q.trim());
+  if (params?.limit != null) sp.set('limit', String(params.limit));
+  const res = await apiFetch(`/api/financeiro/painel-comercial/politica/clientes?${sp.toString()}`, {
+    signal: params?.signal,
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    clientes?: PoliticaComercialClienteNomus[];
+    error?: string;
+  };
+  if (!res.ok) {
+    return { clientes: [], erro: body.error ?? res.statusText };
+  }
+  return { clientes: Array.isArray(body.clientes) ? body.clientes : [] };
 }

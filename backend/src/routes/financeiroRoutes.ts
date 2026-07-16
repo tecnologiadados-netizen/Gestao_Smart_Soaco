@@ -45,6 +45,7 @@ import {
   getPainelComercialItensPedido,
   getPoliticaComercialPainel,
   putPoliticaComercialPainel,
+  getPoliticaComercialClientes,
 } from '../controllers/financeiroController.js';
 import {
   deletePrioridadeContaCtrl,
@@ -120,6 +121,7 @@ router.post('/dfc/prioridades/lancamentos/lote', verFinanceiroDfc, postPrioridad
 router.delete('/dfc/prioridades/lancamentos/:idEmpresa/:tipoRef/:idRef', verFinanceiroDfc, deletePrioridadeLancamentoCtrl);
 
 router.get('/painel-comercial/itens-pedido', verFinanceiroPainelComercial, getPainelComercialItensPedido);
+router.get('/painel-comercial/politica/clientes', verFinanceiroPainelComercial, getPoliticaComercialClientes);
 router.get('/painel-comercial/politica', verFinanceiroPainelComercial, getPoliticaComercialPainel);
 router.put('/painel-comercial/politica', verFinanceiroPainelComercial, putPoliticaComercialPainel);
 router.get('/painel-comercial', verFinanceiroPainelComercial, getPainelComercial);

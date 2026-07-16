@@ -21,6 +21,13 @@ export function labelStatusPedidoAberto(statusItem: number): string {
   return STATUS_LABEL[statusItem] ?? `Status ${statusItem}`;
 }
 
+/** pd.nome no Nomus já costuma vir como "PD 49511" — evita duplicar o prefixo na UI/e-mail. */
+export function formatarNumeroPedidoExibicao(numeroPedido: string): string {
+  const trimmed = numeroPedido.trim();
+  if (/^PD\s+/i.test(trimmed)) return trimmed;
+  return trimmed ? `PD ${trimmed}` : trimmed;
+}
+
 const SQL_PEDIDOS_ABERTOS = `
   SELECT DISTINCT
     pd.id AS idPedido,

@@ -6,6 +6,10 @@ import * as cron from 'node-cron';
 import { prisma } from '../config/prisma.js';
 import { executarNotificacoesSgqEmail } from '../services/sgq/sgqEmailNotificacaoService.js';
 import { fetchEmailProviderSettings } from '../services/systemEmail.js';
+import { dispararComClaim, executarCatchup } from './agendamentoExecucao.js';
+
+const SGQ_CANAL = 'sgq_email';
+const SGQ_CODE = 'sgq_email';
 
 let job: cron.ScheduledTask | null = null;
 let running = false;
@@ -45,9 +49,17 @@ export function iniciarCronsSgqEmailNotificacao(): void {
   }
   if (job) job.stop();
   job = cron.schedule(expr, () => {
-    void runJob();
+    void dispararComClaim(SGQ_CANAL, SGQ_CODE, runJob);
   });
   console.log(`[sgqEmailNotificacaoCron] Agendado: ${expr}`);
+
+  void executarCatchup({
+    canal: SGQ_CANAL,
+    code: SGQ_CODE,
+    expr,
+    run: runJob,
+    logPrefix: '[sgqEmailNotificacaoCron]',
+  });
 }
 
 export async function executarSgqEmailNotificacaoManual(): Promise<void> {

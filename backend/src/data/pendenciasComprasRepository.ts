@@ -44,6 +44,8 @@ export type PendenciasComprasLinha = {
   agPag: number;
   pedidoCompra: number;
   estoqueAtual: number;
+  dataUltimaEntrada: string | null;
+  estoqueAntesUltimaEntrada: number | null;
   /** Regra da coluna Estoque conforme estoque padrão (produtoempresa.idSetorEstoquePadrao). */
   estoqueExibicao: EstoqueExibicaoPendencias;
   nomeColeta: string;
@@ -118,6 +120,48 @@ produtos_filtrados As (
       )
     )
 ),
+entradas_compra As (
+  Select
+    ide.idProduto,
+    ide.id As idMovimentacao,
+    Max(de.dataEntrada) As dataEntrada,
+    Max(de.idTipoMovimentacao) As idTipoMovimentacao
+  From itemdocumentoestoque_itempedidocompra ide_ipc
+  Inner Join itemdocumentoestoque ide On ide.id = ide_ipc.idItemDocumentoEstoque
+  Inner Join documentoestoque de On de.id = ide.idDocumentoEstoque
+  Inner Join produtos_filtrados pf_entrada On pf_entrada.id = ide.idProduto
+  Where de.idTipoMovimentacao In (11, 111, 112, 113, 114, 115, 116, 122)
+  Group By ide.idProduto, ide.id
+),
+entradas_compra_com_saldo As (
+  Select
+    ec.*,
+    (
+      Select sep.saldoSetorInicial
+      From saldoestoque_produto sep
+      Inner Join movimentacaoproducao mp On mp.id = sep.idMovimentacao
+      Where sep.idProduto = ec.idProduto
+        And sep.dataMovimentacao = ec.dataEntrada
+        And sep.idSetorEstoque In (2, 19)
+        And mp.idTipoMovimentacao = ec.idTipoMovimentacao
+      Order By sep.id Desc
+      Limit 1
+    ) As estoqueAntesEntrada
+  From entradas_compra ec
+),
+ultima_entrada_compra As (
+  Select idProduto, dataEntrada, estoqueAntesEntrada
+  From (
+    Select
+      ec.*,
+      Row_Number() Over (
+        Partition By ec.idProduto
+        Order By ec.dataEntrada Desc, ec.idMovimentacao Desc
+      ) As rn
+    From entradas_compra_com_saldo ec
+  ) ordenadas
+  Where rn = 1
+),
 coleta_min_necessidade As (
   Select
     pf.nomeColeta,
@@ -149,6 +193,8 @@ Select
   Round(Coalesce(cot_agg.qtde, 0), 2) As agPag,
   Round(Coalesce(pc_agg.qtde, 0), 2) As pedidoCompra,
   Round(Coalesce(saldo_agg.saldo, 0), 2) As estoqueAtual,
+  Date_Format(uec.dataEntrada, '%d/%m/%Y') As dataUltimaEntrada,
+  Round(uec.estoqueAntesEntrada, 2) As estoqueAntesUltimaEntrada,
   Case
     When Coalesce(est_pad.idSetorEstoquePadrao, 0) = ${NOMUS_SETOR_ESTOQUE_PADRAO.MATERIAL_SECUNDARIO} Then 'saldo'
     When est_pad.idSetorEstoquePadrao In (${SQL_SETORES_ESTOQUE_VERIFICAR_PCP_IN}) Then 'verificar_pcp'
@@ -160,6 +206,7 @@ Select
   cp.prioridadeAutomatica,
   sc_ordem.scIdMin
 From produtos_filtrados pf
+Left Join ultima_entrada_compra uec On uec.idProduto = pf.id
 Left Join (
   Select pe.idProduto, pe.idSetorEstoquePadrao
   From produtoempresa pe
@@ -439,6 +486,9 @@ export async function consultarPendenciasCompras(
         agPag,
         pedidoCompra: Number(r.pedidoCompra ?? 0),
         estoqueAtual: Number(r.estoqueAtual ?? 0),
+        dataUltimaEntrada: r.dataUltimaEntrada ? String(r.dataUltimaEntrada) : null,
+        estoqueAntesUltimaEntrada:
+          r.estoqueAntesUltimaEntrada == null ? null : Number(r.estoqueAntesUltimaEntrada),
         estoqueExibicao: parseEstoqueExibicao(r.estoqueExibicao),
         nomeColeta: String(r.nomeColeta ?? ''),
         destaques: montarDestaques(r),

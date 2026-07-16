@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { buildFavoritoUrl } from '../../config/telasFavoritaveis';
 import { useFavoritos } from '../../contexts/FavoritosContext';
 import type { TelaFavorita } from '../../api/favoritos';
@@ -54,12 +55,18 @@ export default function SalvarFavoritoModal({
     void navigator.clipboard.writeText(url);
   }
 
-  return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[17000] flex items-center justify-center overflow-y-auto bg-black/55 p-4 sm:p-6"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) fechar();
+      }}
+    >
       <div
         role="dialog"
+        aria-modal="true"
         aria-labelledby="salvar-favorito-titulo"
-        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+        className="my-auto w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
       >
         {criado ? (
           <>
@@ -133,6 +140,7 @@ export default function SalvarFavoritoModal({
           </form>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

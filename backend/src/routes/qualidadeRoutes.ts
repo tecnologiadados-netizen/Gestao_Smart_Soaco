@@ -5,7 +5,10 @@ import { PERMISSOES } from '../config/permissoes.js';
 import {
   getQualidadeBootstrapHandler,
   getQualidadeClientes,
+  getQualidadeDocumentosEntrada,
   getQualidadeFornecedores,
+  getQualidadePedidosVenda,
+  getQualidadePessoas,
   getQualidadeProdutos,
   getQualidadeResponsaveisHandler,
   postQualidadeRccPdf,
@@ -68,6 +71,15 @@ router.get('/produtos', (req, res, next) => {
 });
 router.get('/fornecedores', (req, res, next) => {
   getQualidadeFornecedores(req, res).catch(next);
+});
+router.get('/pessoas', (req, res, next) => {
+  getQualidadePessoas(req, res).catch(next);
+});
+router.get('/documentos-entrada', (req, res, next) => {
+  getQualidadeDocumentosEntrada(req, res).catch(next);
+});
+router.get('/pedidos-venda', (req, res, next) => {
+  getQualidadePedidosVenda(req, res).catch(next);
 });
 router.post('/registros/rnc/pdf', (req, res, next) => {
   postQualidadeRncPdf(req, res).catch(next);

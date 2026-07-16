@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { listarUsuarios, criarUsuario, atualizarUsuario, excluirUsuario, type Usuario } from '../api/usuarios';
-import { listarGrupos, listarPermissoes, criarGrupo, atualizarGrupo, excluirGrupo, type Grupo, type PermissaoItem } from '../api/grupos';
+import { listarGrupos, listarPermissoes, criarGrupo, atualizarGrupo, excluirGrupo, obterRhPermissoesGrupo, type Grupo, type PermissaoItem } from '../api/grupos';
+import GrupoRhPermissoesPanel, { createDefaultRhGroupPermissions } from '../components/rh/GrupoRhPermissoesPanel';
+import type { RhGroupPermissions } from '@rh/lib/rh-permissions';
+import { cloneGroupPermissions } from '@rh/lib/rh-permissions';
 import { OPCOES_TELA_PRINCIPAL, mensagemSeTelaPrincipalInvalidaParaGrupo } from '../config/telaPrincipalGrupo';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSOES } from '../config/permissoes';
@@ -57,6 +60,7 @@ const SECOES_PERMISSOES: Record<string, string> = {
   integracao: 'Integração',
   financeiro: 'Financeiro',
   logistica: 'Logística',
+  rh: 'RH',
   sistema: 'Sistema',
 };
 
@@ -76,6 +80,7 @@ const ORDEM_SECOES_PERMISSOES = [
   'Integração',
   'Financeiro',
   'Logística',
+  'RH',
   'Sistema',
 ];
 
@@ -183,15 +188,28 @@ function QuadroPrioridadePendenciasGrupo({
   );
 }
 
-function ModalContainer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function ModalContainer({
+  title,
+  onClose,
+  children,
+  wide = false,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  wide?: boolean;
+}) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75" onClick={onClose}>
-      <div className="w-full max-w-2xl max-h-[88vh] overflow-hidden rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`w-full ${wide ? 'max-w-6xl' : 'max-w-2xl'} max-h-[92vh] overflow-hidden rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-600 flex items-center justify-between">
           <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">{title}</h3>
           <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700">✕</button>
         </div>
-        <div className="p-5 overflow-y-auto max-h-[calc(88vh-64px)]">{children}</div>
+        <div className={`p-5 overflow-y-auto ${wide ? 'max-h-[calc(92vh-64px)]' : 'max-h-[calc(88vh-64px)]'}`}>{children}</div>
       </div>
     </div>
   );
@@ -255,6 +273,8 @@ export default function UsuariosPage() {
   const [grupoNome, setGrupoNome] = useState('');
   const [grupoDescricao, setGrupoDescricao] = useState('');
   const [grupoPermissoes, setGrupoPermissoes] = useState<string[]>([]);
+  const [grupoRhPermissoes, setGrupoRhPermissoes] = useState<RhGroupPermissions>(() => createDefaultRhGroupPermissions());
+  const [grupoRhPermissoesLoading, setGrupoRhPermissoesLoading] = useState(false);
   const [grupoAtivo, setGrupoAtivo] = useState(true);
   const [grupoTelaPrincipal, setGrupoTelaPrincipal] = useState('');
   const [grupoLogoutMinutos, setGrupoLogoutMinutos] = useState('');
@@ -488,6 +508,8 @@ export default function UsuariosPage() {
     setGrupoNome('');
     setGrupoDescricao('');
     setGrupoPermissoes([]);
+    setGrupoRhPermissoes(createDefaultRhGroupPermissions());
+    setGrupoRhPermissoesLoading(false);
     setGrupoAtivo(true);
     setGrupoTelaPrincipal('');
     setGrupoLogoutMinutos('');
@@ -501,6 +523,18 @@ export default function UsuariosPage() {
     setGrupoNome(g.nome);
     setGrupoDescricao(g.descricao ?? '');
     setGrupoPermissoes((g.permissoes ?? []).filter((p) => !isPermissaoPrioridadePendenciasUsuario(p)));
+    setGrupoRhPermissoes(createDefaultRhGroupPermissions());
+    setGrupoRhPermissoesLoading(true);
+    void obterRhPermissoesGrupo(g.id)
+      .then((permissions) => {
+        setGrupoRhPermissoes(cloneGroupPermissions(permissions as RhGroupPermissions));
+      })
+      .catch(() => {
+        setGrupoRhPermissoes(createDefaultRhGroupPermissions());
+      })
+      .finally(() => {
+        setGrupoRhPermissoesLoading(false);
+      });
     const matrix: Record<number, string[]> = {};
     for (const u of usuarios.filter((x) => x.grupoId === g.id)) {
       matrix[u.id] = prioridadePendenciasDePermissoesUsuario(u.permissoes);
@@ -518,6 +552,8 @@ export default function UsuariosPage() {
     setGrupoNome('');
     setGrupoDescricao('');
     setGrupoPermissoes([]);
+    setGrupoRhPermissoes(createDefaultRhGroupPermissions());
+    setGrupoRhPermissoesLoading(false);
     setGrupoAtivo(true);
     setGrupoTelaPrincipal('');
     setGrupoLogoutMinutos('');
@@ -576,6 +612,7 @@ export default function UsuariosPage() {
           nome: grupoNome.trim(),
           descricao: grupoDescricao.trim() || null,
           permissoes: permsGrupoSalvar,
+          rhPermissoes: cloneGroupPermissions(grupoRhPermissoes),
           ativo: grupoAtivo,
           telaPrincipalInicial: telaPayload,
           logoutInatividadeMinutos: logoutPayload,
@@ -593,6 +630,7 @@ export default function UsuariosPage() {
           nome: grupoNome.trim(),
           descricao: grupoDescricao.trim() || null,
           permissoes: permsGrupoSalvar,
+          rhPermissoes: cloneGroupPermissions(grupoRhPermissoes),
           ativo: grupoAtivo,
           telaPrincipalInicial: telaPayload,
           logoutInatividadeMinutos: logoutPayload,
@@ -831,7 +869,7 @@ export default function UsuariosPage() {
       )}
 
       {modalGrupoOpen && (
-        <ModalContainer title={editandoGrupoId ? 'Editar grupo' : 'Cadastrar novo grupo'} onClose={fecharFormGrupo}>
+        <ModalContainer title={editandoGrupoId ? 'Editar grupo' : 'Cadastrar novo grupo'} onClose={fecharFormGrupo} wide>
           <form onSubmit={handleSubmitGrupo} className="space-y-4">
             <div><label className="block text-xs mb-1">Nome do grupo</label><input value={grupoNome} onChange={(e) => setGrupoNome(e.target.value)} disabled={editandoGrupoMaster} className="w-full rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm" /></div>
             <div><label className="block text-xs mb-1">Descrição</label><input value={grupoDescricao} onChange={(e) => setGrupoDescricao(e.target.value)} className="w-full rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm" /></div>
@@ -870,6 +908,7 @@ export default function UsuariosPage() {
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={grupoAtivo} onChange={(e) => setGrupoAtivo(e.target.checked)} /> Grupo ativo</label>
             <div className="space-y-3">
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Permissões do Gestão Smart</div>
               {agruparPermissoes(permissoesLista).map(({ secao, itens }) => (
                 <div key={secao} className="rounded-lg border border-slate-200 dark:border-slate-600/50 p-3 bg-slate-50/50 dark:bg-slate-800/30">
                   <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2 uppercase tracking-wide">{secao}</div>
@@ -893,6 +932,15 @@ export default function UsuariosPage() {
                 </div>
               ))}
             </div>
+            {grupoRhPermissoesLoading ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">Carregando permissões RH…</p>
+            ) : (
+              <GrupoRhPermissoesPanel
+                value={grupoRhPermissoes}
+                onChange={setGrupoRhPermissoes}
+                disabled={editandoGrupoMaster}
+              />
+            )}
             {formErrorGrupo && <p className="text-amber-600 dark:text-amber-400 text-sm">{formErrorGrupo}</p>}
             <div className="flex gap-2">
               <button type="submit" disabled={salvandoGrupo} className="rounded-lg bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white px-4 py-2 text-sm font-medium">

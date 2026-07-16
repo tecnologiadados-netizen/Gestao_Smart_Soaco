@@ -278,7 +278,11 @@ export function RegistrosConsultaContent() {
                 id="reg-tipo"
                 className={cn(tableFilterSelectTriggerClass, "max-w-md")}
               >
-                <SelectValue placeholder="Selecione o tipo" />
+                <SelectValue placeholder="Selecione o tipo">
+                  {tipoSelecionado
+                    ? moduloRegistroTipoLabelsCurto[tipoSelecionado]
+                    : null}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {MODULO_REGISTRO_TIPOS.map((tipo) => (

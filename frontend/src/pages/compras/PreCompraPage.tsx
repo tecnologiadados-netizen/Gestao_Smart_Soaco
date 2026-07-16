@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fetchPreCompraCotacoes,
   type FiltrosPreCompra,
@@ -8,31 +8,50 @@ import PreCompraFiltros from '../../components/compras/preCompra/PreCompraFiltro
 import PreCompraTabela from '../../components/compras/preCompra/PreCompraTabela';
 import ModalEmitirPdfPreCompra from '../../components/compras/preCompra/ModalEmitirPdfPreCompra';
 
-const defaultFilters: FiltrosPreCompra = { page: 1, page_size: 20 };
+const PAGE_SIZE = 20;
+/** Busca todos os registros do período de uma vez (filtros de coluna são client-side). */
+const FETCH_PAGE_SIZE = 5000;
+
+const defaultFilters: FiltrosPreCompra = {};
 
 export default function PreCompraPage() {
   const [filters, setFilters] = useState<FiltrosPreCompra>(defaultFilters);
   const [appliedFilters, setAppliedFilters] = useState<FiltrosPreCompra>(defaultFilters);
   const [items, setItems] = useState<PreCompraCotacaoItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [exibidos, setExibidos] = useState(0);
   const [pdfCotacao, setPdfCotacao] = useState<string | null>(null);
   const [generatingCotacao, setGeneratingCotacao] = useState<string | null>(null);
+  const [mostrarFiltros, setMostrarFiltros] = useState(true);
+  const limparFiltrosGradeRef = useRef<(() => void) | null>(null);
 
   const load = useCallback(async (f: FiltrosPreCompra) => {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchPreCompraCotacoes(f);
-      setItems(data.items);
-      setTotal(data.total);
-      setPage(data.page);
-      setTotalPages(data.totalPages);
+      const all: PreCompraCotacaoItem[] = [];
+      let pageNum = 1;
+      let totalPagesFetch = 1;
+      do {
+        const data = await fetchPreCompraCotacoes({
+          data_inicio: f.data_inicio,
+          data_fim: f.data_fim,
+          page: pageNum,
+          page_size: FETCH_PAGE_SIZE,
+        });
+        all.push(...data.items);
+        totalPagesFetch = data.totalPages;
+        pageNum += 1;
+      } while (pageNum <= totalPagesFetch);
+      setItems(all);
+      setExibidos(all.length);
+      setPage(1);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar dados');
+      setItems([]);
+      setExibidos(0);
     } finally {
       setLoading(false);
     }
@@ -42,62 +61,107 @@ export default function PreCompraPage() {
     load(appliedFilters);
   }, [appliedFilters, load]);
 
-  const handleSearch = () => setAppliedFilters({ ...filters, page: 1 });
+  const handleSearch = () => {
+    limparFiltrosGradeRef.current?.();
+    setAppliedFilters({ ...filters });
+  };
+
   const handleClear = () => {
+    limparFiltrosGradeRef.current?.();
     setFilters(defaultFilters);
     setAppliedFilters(defaultFilters);
   };
 
-  const goToPage = (p: number) => {
-    const next = { ...appliedFilters, page: p };
-    setFilters(next);
-    setAppliedFilters(next);
-  };
-
-  const pageSize = appliedFilters.page_size ?? 20;
-  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const end = Math.min(page * pageSize, total);
+  const totalPages = Math.max(1, Math.ceil(exibidos / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const start = exibidos === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
+  const end = Math.min(safePage * PAGE_SIZE, exibidos);
 
   return (
     <div className="p-4 md:p-6 max-w-[100%]">
       <header className="mb-4">
-        <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Pré Compra</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Pré Compra</h1>
+          <button
+            type="button"
+            onClick={() => setMostrarFiltros((v) => !v)}
+            className="inline-flex items-center justify-center rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition"
+            title={mostrarFiltros ? 'Ocultar filtros' : 'Exibir filtros'}
+            aria-label={mostrarFiltros ? 'Ocultar filtros' : 'Exibir filtros'}
+          >
+            {mostrarFiltros ? (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            ) : (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            )}
+          </button>
+        </div>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
           Consulta e emissão de formulários — Decisão de compra e Encerrada
         </p>
       </header>
 
-      <PreCompraFiltros
-        filters={filters}
-        onChange={setFilters}
-        onSearch={handleSearch}
-        onClear={handleClear}
-      />
+      {mostrarFiltros && (
+        <PreCompraFiltros
+          filters={filters}
+          onChange={setFilters}
+          onSearch={handleSearch}
+          onClear={handleClear}
+        />
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3 text-sm text-slate-600 dark:text-slate-400">
         <span>
           Resultados: <strong className="text-slate-800 dark:text-slate-200">{start}</strong> a{' '}
           <strong className="text-slate-800 dark:text-slate-200">{end}</strong> de{' '}
-          <strong className="text-slate-800 dark:text-slate-200">{total}</strong>
+          <strong className="text-slate-800 dark:text-slate-200">{exibidos}</strong>
         </span>
         <div className="flex items-center gap-2">
           <button
             type="button"
             className="rounded border border-slate-300 px-2 py-1 disabled:opacity-40 dark:border-slate-600"
-            disabled={page <= 1}
-            onClick={() => goToPage(page - 1)}
+            disabled={safePage <= 1}
+            onClick={() => setPage(safePage - 1)}
             aria-label="Anterior"
           >
             ‹
           </button>
           <span>
-            {page} / {totalPages}
+            {safePage} / {totalPages}
           </span>
           <button
             type="button"
             className="rounded border border-slate-300 px-2 py-1 disabled:opacity-40 dark:border-slate-600"
-            disabled={page >= totalPages}
-            onClick={() => goToPage(page + 1)}
+            disabled={safePage >= totalPages}
+            onClick={() => setPage(safePage + 1)}
             aria-label="Próxima"
           >
             ›
@@ -121,6 +185,11 @@ export default function PreCompraPage() {
       {!loading && (
         <PreCompraTabela
           items={items}
+          page={safePage}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
+          onExibidosCountChange={setExibidos}
+          limparFiltrosGradeRef={limparFiltrosGradeRef}
           onEmitirPdf={setPdfCotacao}
           generatingCotacao={generatingCotacao}
         />

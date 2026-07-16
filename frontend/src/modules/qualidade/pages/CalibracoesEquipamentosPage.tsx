@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useId, useState } from "react";
+import { useState } from "react";
 import { Button } from "@qualidade/components/ui/button";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -18,10 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@qualidade/components/ui/select";
+import { FornecedorSearchField } from "@qualidade/components/avaliacao-fornecedor/fornecedor-search-field";
 import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { tipoCalibracaoSelectLabel, userSelectLabel } from "@qualidade/lib/utils/select-display";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
+import type { Fornecedor } from "@qualidade/types/avaliacao-fornecedor";
 
 const selectTriggerClass =
   "h-10 w-full min-w-0 *:data-[slot=select-value]:line-clamp-none *:data-[slot=select-value]:whitespace-normal";
@@ -36,9 +38,9 @@ export function CadastroEquipamentosPage() {
 
   const [codigo, setCodigo] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [local, setLocal] = useState("");
   const [responsavelId, setResponsavelId] = useState(currentUserId);
-  const [fornecedor, setFornecedor] = useState("");
+  const [fornecedorSelecionado, setFornecedorSelecionado] =
+    useState<Fornecedor | null>(null);
   const [tipoCalibracao, setTipoCalibracao] = useState<"interna" | "externa" | "ambos">("interna");
   const [freqCal, setFreqCal] = useState("365");
   const [ultimaCalibracao, setUltimaCalibracao] = useState("");
@@ -46,8 +48,6 @@ export function CadastroEquipamentosPage() {
   const [laudoDataUrl, setLaudoDataUrl] = useState("");
   const [anexos, setAnexos] = useState<AnexoItem[]>(() => defaultAnexoRows());
   const [saving, setSaving] = useState(false);
-  const laudoInputId = useId();
-
   function handleLaudoSelect(file: File) {
     if (file.size > 5 * 1024 * 1024) return;
     const reader = new FileReader();
@@ -72,8 +72,8 @@ export function CadastroEquipamentosPage() {
       createEquipment({
         codigo,
         descricao,
-        local,
-        fornecedor,
+        local: "",
+        fornecedor: fornecedorSelecionado?.nome,
         responsavelId,
         tipoCalibracao,
         frequenciaCalibracaoDias: Number(freqCal),
@@ -136,15 +136,6 @@ export function CadastroEquipamentosPage() {
                   required
                 />
               </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="local">Localização</Label>
-                <Input
-                  id="local"
-                  placeholder="Ex: Produção — Inspeção final"
-                  value={local}
-                  onChange={(e) => setLocal(e.target.value)}
-                />
-              </div>
             </div>
           </fieldset>
 
@@ -172,12 +163,11 @@ export function CadastroEquipamentosPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="fornecedor">Fornecedor</Label>
-                <Input
+                <FornecedorSearchField
                   id="fornecedor"
-                  value={fornecedor}
-                  onChange={(e) => setFornecedor(e.target.value)}
-                  placeholder="Ex: Laboratório de calibração"
+                  value={fornecedorSelecionado}
+                  onSelect={setFornecedorSelecionado}
+                  onClear={() => setFornecedorSelecionado(null)}
                 />
               </div>
             </div>
@@ -231,7 +221,6 @@ export function CadastroEquipamentosPage() {
           <fieldset className="brand-fieldset space-y-4">
             <legend>Documentação</legend>
             <DocumentoArquivoField
-              inputId={laudoInputId}
               label="Laudo"
               arquivoNome={laudoNome}
               arquivoDataUrl={laudoDataUrl}

@@ -414,12 +414,22 @@ export interface TooltipDetalheRow {
   rota: string;
   dataEmissao: string;
   pedido: string;
+  /** Nome do cliente (quando disponível no snapshot/API). */
+  cliente?: string;
   municipio: string;
   aVista: string;
   valorPendente: number;
   codigo: string;
   produto: string;
   qtdePendenteReal: number;
+  /** ISO YYYY-MM-DD — data de produção real (pode estar vazia). */
+  dataProducao?: string;
+  /** ISO YYYY-MM-DD — previsão atual do Gerenciador de Pedidos. */
+  previsaoAtual?: string;
+  /** ISO YYYY-MM-DD — data usada no calendário (produção ou fallback previsão). */
+  dataCalendario?: string;
+  /** Verdadeiro quando o calendário posiciona o item pela previsão atual. */
+  producaoPorPrevisao?: boolean;
 }
 
 export type CorBolhaMapa = 'vermelho' | 'verde' | 'amarelo' | 'roxo' | 'preto';

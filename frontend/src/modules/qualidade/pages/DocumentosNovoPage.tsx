@@ -18,6 +18,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@qualidade/components/ui/card";
+import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
+import { formatDocumentCodigo } from "@qualidade/lib/documents/document-codigo";
+import { INITIAL_REVISION } from "@qualidade/lib/documents/revision";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
@@ -41,16 +44,16 @@ export function NovoDocumentoPage() {
   const tipo = documentTypes.find((t) => t.id === tipoId);
   const tipoLabel = documentTypeSelectLabel(documentTypes, tipoId);
   const setorLabel = departmentSelectLabel(departments, setorId, "nome");
-  const codigo = useMemo(
-    () => (tipo ? getNextDocumentCode(tipo.sigla) : ""),
-    [tipo, getNextDocumentCode]
-  );
+  const codigo = useMemo(() => {
+    const base = tipo ? getNextDocumentCode(tipo.sigla) : "";
+    return base ? formatDocumentCodigo(base, INITIAL_REVISION) : "";
+  }, [tipo, getNextDocumentCode]);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!titulo || !tipoId || !setorId || !tipo) return;
 
-    const id = createDocument({
+    createDocument({
       tipoSigla: tipo.sigla,
       titulo,
       tipoId,
@@ -59,7 +62,13 @@ export function NovoDocumentoPage() {
       origem: "interno",
       observacoes: observacoes || undefined,
     });
-    navigate(`/qualidade/documentos/${id}`);
+
+    try {
+      await flushQualidadeDocumentsSync();
+      navigate("/qualidade/documentos/consulta");
+    } catch (err) {
+      console.error("[qualidade] falha ao salvar novo documento:", err);
+    }
   }
 
   return (

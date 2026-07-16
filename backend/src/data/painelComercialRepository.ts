@@ -18,8 +18,12 @@ import {
   type FaixaTicket,
   type StatusConformidade,
 } from '../services/painelComercialConformidade.js';
-import { getPoliticaComercialPainelPersistida } from './politicaComercialPainelRepository.js';
+import {
+  escopoPoliticaPorVendaEmpresa,
+  getPoliticasComerciaisPainel,
+} from './politicaComercialPainelRepository.js';
 import { aplicarTiposEntregaFuturaSql } from '../config/pcpEntregaFutura.js';
+import type { PoliticaComercialParams } from '../services/painelComercialConformidade.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_FILE = 'sqlPainelComercialNomus.sql';
@@ -52,6 +56,7 @@ function num(v: unknown): number {
 
 function str(v: unknown): string {
   if (v == null) return '';
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(v)) return v.toString('utf8').trim();
   return String(v).trim();
 }
 
@@ -59,20 +64,37 @@ function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/** Mapeia "Venda por qual empresa?" → 1 Só Aço / 2 Só Móveis (0 se indeterminado). */
+function empresaIdFromVendaPorEmpresa(opcao: string, fallbackIdEmpresa: number): number {
+  const s = opcao.trim();
+  if (s === 'Só Aço') return 1;
+  if (s === 'Só Móveis') return 2;
+  if (fallbackIdEmpresa === 1 || fallbackIdEmpresa === 2) return fallbackIdEmpresa;
+  return 0;
+}
+
 export interface PainelComercialPedidoDto {
   pd: string;
   pdId: number;
   empresaId: number;
+  /** Atributo Nomus «Venda por qual empresa?». */
+  vendaPorEmpresa: string;
   cliente: string;
+  vendedorRepresentante: string;
   emissao: string;
   tabelaPreco: string;
+  valorTotal: number;
+  valorDesconto: number;
   totalPedido: number;
   somaEntrada: number;
   pctEntrada: number;
   formaPagamento: string;
   condicaoPagamento: string;
   metodoEntrega: string;
+  /** Rota / romaneio (usado na política de conformidade). */
   observacoes: string;
+  /** Observação livre do pedido (`pd.observacao`). */
+  observacaoPedido: string;
   faixaTicket: FaixaTicket;
   labelFaixa: string;
   diasCondicao: number[];
@@ -147,7 +169,7 @@ export async function obterPainelComercialDashboard(
     return { ...empty, erro: 'NOMUS_DB_URL não configurado ou pool indisponível.' };
   }
 
-  const politica = await getPoliticaComercialPainelPersistida();
+  const politicas = await getPoliticasComerciaisPainel();
 
   let sql: string;
   try {
@@ -162,7 +184,13 @@ export async function obterPainelComercialDashboard(
     return { ...empty, erro: 'Datas inválidas.' };
   }
 
-  const empresaFilter = empresaId ? `AND pd.idEmpresa = ${empresaId}` : '';
+  // Filtro pela atributo Nomus "Venda por qual empresa?" (emp.opcao, idAtributo 592), não pd.idEmpresa.
+  const empresaFilter =
+    empresaId === 1
+      ? `AND emp.opcao = 'Só Aço'`
+      : empresaId === 2
+        ? `AND emp.opcao = 'Só Móveis'`
+        : '';
   sql = sql
     .replace(/__DATA_INI__/g, dataInicio)
     .replace(/__DATA_FIM__/g, dataFim)
@@ -181,17 +209,22 @@ export async function obterPainelComercialDashboard(
     pd: string;
     pdId: number;
     empresaId: number;
+    vendaPorEmpresa: string;
     cliente: string;
+    vendedorRepresentante: string;
     emissao: string;
     tabelaPreco: string;
     forma: string;
     condicao: string;
     metodo: string;
     observacoes: string;
+    observacaoPedido: string;
     algumaLinhaRetiradaSoAco: boolean;
     sumLinha: number;
     sumEntrada: number;
     valorPedidoTotalRef: number;
+    /** Soma de valorTotal/valorDesconto por id_item_pedido (evita duplicar romaneio). */
+    itensValor: Map<number, { valorTotal: number; valorDesconto: number }>;
   };
 
   const map = new Map<string, Agg>();
@@ -199,19 +232,28 @@ export async function obterPainelComercialDashboard(
   for (const row of rows) {
     const pd = str(getCell(row, 'PD'));
     if (!pd) continue;
-    const empresaIdRow = Math.trunc(num(getCell(row, 'idEmpresa', 'pd.idEmpresa'))) || 0;
+    const idEmpresaNomus = Math.trunc(num(getCell(row, 'idEmpresa', 'pd.idEmpresa'))) || 0;
+    const vendaPorEmpresa = str(getCell(row, 'Venda por qual empresa?', 'venda por qual empresa?', 'vendaPorEmpresa'));
+    const empresaIdRow = empresaIdFromVendaPorEmpresa(vendaPorEmpresa, idEmpresaNomus);
     const pdId = Math.trunc(num(getCell(row, 'pd.id', 'id'))) || 0;
+    const idItemPedido = Math.trunc(num(getCell(row, 'id_item_pedido', 'idItemPedido'))) || 0;
     const cliente = str(getCell(row, 'Cliente'));
+    const vendedorRepresentante = str(
+      getCell(row, 'vendedorRepresentante', 'Vendedor/Representante', 'vendedor/representante')
+    );
     const emissaoRaw = getCell(row, 'Emissao', 'emissao');
     const emissao = emissaoRaw instanceof Date ? ymd(emissaoRaw) : str(emissaoRaw).slice(0, 10);
     const forma = str(getCell(row, 'Forma de Pagamento'));
     const condicao = str(getCell(row, 'Condicao de pagamento do pedido de venda'));
     const metodo = str(getCell(row, 'Metodo de Entrega'));
     const observacoes = str(getCell(row, 'Observacoes', 'Observações'));
+    const observacaoPedido = str(getCell(row, 'observacaoPedido', 'ObservacaoPedido'));
     const tabelaPreco = str(getCell(row, 'tabelaPreco', 'TabelaPreco', 'nomeTabelaPreco'));
     const linha = num(getCell(row, 'Valor Total com desconto + IPI do item PD'));
     const entrada = num(getCell(row, 'valorAdiantamentoRateio'));
     const vpt = num(getCell(row, 'Valor Pedido Total'));
+    const valorTotalItem = num(getCell(row, 'valorTotal', 'ValorTotal'));
+    const valorDescontoItem = num(getCell(row, 'valorDesconto', 'ValorDesconto'));
 
     let a = map.get(pd);
     if (!a) {
@@ -219,17 +261,21 @@ export async function obterPainelComercialDashboard(
         pd,
         pdId,
         empresaId: empresaIdRow,
+        vendaPorEmpresa,
         cliente,
+        vendedorRepresentante,
         emissao,
         tabelaPreco,
         forma,
         condicao,
         metodo,
         observacoes,
+        observacaoPedido,
         algumaLinhaRetiradaSoAco: false,
         sumLinha: 0,
         sumEntrada: 0,
         valorPedidoTotalRef: vpt,
+        itensValor: new Map(),
       };
       map.set(pd, a);
     }
@@ -237,15 +283,24 @@ export async function obterPainelComercialDashboard(
     a.sumEntrada += entrada;
     if (vpt > 0) a.valorPedidoTotalRef = vpt;
     if (!a.cliente && cliente) a.cliente = cliente;
+    if (!a.vendedorRepresentante && vendedorRepresentante) a.vendedorRepresentante = vendedorRepresentante;
     if (!a.emissao && emissao) a.emissao = emissao;
     if (!a.forma && forma) a.forma = forma;
     if (!a.tabelaPreco && tabelaPreco) a.tabelaPreco = tabelaPreco;
     if (!a.condicao && condicao) a.condicao = condicao;
     if (!a.metodo && metodo) a.metodo = metodo;
     if (observacoes) a.observacoes = observacoes;
+    if (observacaoPedido) a.observacaoPedido = observacaoPedido;
+    if (vendaPorEmpresa) {
+      a.vendaPorEmpresa = vendaPorEmpresa;
+      a.empresaId = empresaIdFromVendaPorEmpresa(vendaPorEmpresa, idEmpresaNomus);
+    }
     if (isRetiradaSoAco(observacoes)) a.algumaLinhaRetiradaSoAco = true;
     if (!a.pdId && pdId) a.pdId = pdId;
     if (!a.empresaId && empresaIdRow) a.empresaId = empresaIdRow;
+    if (idItemPedido > 0 && !a.itensValor.has(idItemPedido)) {
+      a.itensValor.set(idItemPedido, { valorTotal: valorTotalItem, valorDesconto: valorDescontoItem });
+    }
   }
 
   const pedidos: PainelComercialPedidoDto[] = [];
@@ -253,6 +308,15 @@ export async function obterPainelComercialDashboard(
   for (const a of map.values()) {
     const totalPedido = a.valorPedidoTotalRef > 0 ? a.valorPedidoTotalRef : a.sumLinha;
     const pctEntrada = totalPedido > 0 ? a.sumEntrada / totalPedido : 0;
+    let valorTotal = 0;
+    let valorDesconto = 0;
+    for (const iv of a.itensValor.values()) {
+      valorTotal += iv.valorTotal;
+      valorDesconto += iv.valorDesconto;
+    }
+    const escopo = escopoPoliticaPorVendaEmpresa(a.vendaPorEmpresa, a.empresaId);
+    const politica: PoliticaComercialParams =
+      escopo === 'lojas' ? politicas.lojas : politicas.industria;
     const fx = faixaTicket(totalPedido, politica);
     const diasC = extrairDiasDaCondicao(a.condicao, politica);
     const diasEsp = diasEsperadosParcelas(totalPedido, politica);
@@ -272,9 +336,13 @@ export async function obterPainelComercialDashboard(
       pd: a.pd,
       pdId: a.pdId,
       empresaId: a.empresaId,
+      vendaPorEmpresa: a.vendaPorEmpresa,
       cliente: a.cliente,
+      vendedorRepresentante: a.vendedorRepresentante,
       emissao: a.emissao,
       tabelaPreco: a.tabelaPreco,
+      valorTotal,
+      valorDesconto,
       totalPedido,
       somaEntrada: a.sumEntrada,
       pctEntrada,
@@ -282,6 +350,7 @@ export async function obterPainelComercialDashboard(
       condicaoPagamento: a.condicao,
       metodoEntrega: a.metodo,
       observacoes: a.observacoes,
+      observacaoPedido: a.observacaoPedido,
       faixaTicket: fx,
       labelFaixa: labelFaixa(fx, politica),
       diasCondicao: diasC,
@@ -362,19 +431,24 @@ export async function obterPainelComercialDashboard(
     const v = faixaMap.get(faixa) ?? { pedidos: 0, analisados: 0, ok: 0 };
     return {
       faixa,
-      label: labelFaixa(faixa, politica),
+      // Rótulos genéricos: limites da política de indústria (referência de UI).
+      label: labelFaixa(faixa, politicas.industria),
       pedidos: v.pedidos,
       pctOk: v.analisados ? Math.round((v.ok / v.analisados) * 1000) / 10 : 0,
     };
   });
 
   const entMap = new Map<string, number>();
-  const alvoE = politica.pctEntradaAlvo;
-  const tolE = politica.pctEntradaTolerancia;
-  const lowE = alvoE - tolE;
-  const highE = alvoE + tolE;
   const fmtPctInt = (x: number) => `${Math.round(x * 100)}`;
   for (const p of pedidos) {
+    const pol =
+      escopoPoliticaPorVendaEmpresa(p.vendaPorEmpresa, p.empresaId) === 'lojas'
+        ? politicas.lojas
+        : politicas.industria;
+    const alvoE = pol.pctEntradaAlvo;
+    const tolE = pol.pctEntradaTolerancia;
+    const lowE = alvoE - tolE;
+    const highE = alvoE + tolE;
     const pct = p.pctEntrada;
     let k = `${fmtPctInt(lowE)}–${fmtPctInt(highE)}%`;
     if (pct < lowE) k = `< ${fmtPctInt(lowE)}%`;

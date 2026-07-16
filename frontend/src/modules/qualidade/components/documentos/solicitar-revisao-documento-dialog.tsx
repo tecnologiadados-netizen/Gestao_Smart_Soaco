@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO } from "date-fns";
 import { X } from "lucide-react";
@@ -18,6 +18,11 @@ import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { calcularProximaDataValidade } from "@qualidade/lib/documents/validity";
 import { formatarData } from "@qualidade/lib/utils/dates";
+import {
+  codigoBaseFromCodigo,
+  formatDocumentCodigo,
+  formatDocumentCodigoExibicao,
+} from "@qualidade/lib/documents/document-codigo";
 
 interface Props {
   documentId: string | null;
@@ -79,8 +84,6 @@ export function SolicitarRevisaoDocumentoDialog({
   const [arquivoDataUrl, setArquivoDataUrl] = useState("");
   const [novaDataValidade, setNovaDataValidade] = useState("");
   const [error, setError] = useState("");
-  const arquivoInputId = useId();
-
   const exigeValidadeRevalidacao =
     fromRevalidacao && Boolean(doc?.validade?.ativa && doc.validade.dataValidade);
 
@@ -255,14 +258,19 @@ export function SolicitarRevisaoDocumentoDialog({
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       Código
                     </p>
-                    <p className="font-semibold text-brand-navy">{doc.codigo}</p>
+                    <p className="font-semibold text-brand-navy">
+                      {formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       Nova revisão
                     </p>
                     <p className="font-semibold text-brand-blue">
-                      {doc.versaoAtual} → {proximaRevisao}
+                      {formatDocumentCodigo(
+                        codigoBaseFromCodigo(doc.codigo),
+                        proximaRevisao
+                      )}
                     </p>
                   </div>
                   <div className="sm:col-span-2">
@@ -297,7 +305,6 @@ export function SolicitarRevisaoDocumentoDialog({
                 <fieldset className="brand-fieldset space-y-4">
                   <legend className="text-base">Documento da revisão</legend>
                   <DocumentoArquivoField
-                    inputId={arquivoInputId}
                     label="Substituir documento *"
                     arquivoNome={arquivoNome}
                     arquivoDataUrl={arquivoDataUrl}

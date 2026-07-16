@@ -1,5 +1,6 @@
 /**
  * Política comercial do painel financeiro-comercial (SQLite key-value).
+ * Escopos: indústria (Só Aço) e lojas (Só Móveis / Só Refrigeração).
  */
 
 import { prisma } from '../config/prisma.js';
@@ -8,7 +9,15 @@ import {
   type PoliticaComercialParams,
 } from '../services/painelComercialConformidade.js';
 
-const KEY = 'painel_politica_comercial_v1';
+const KEY_V1 = 'painel_politica_comercial_v1';
+const KEY_V2 = 'painel_politica_comercial_v2';
+
+export type PoliticaComercialEscopo = 'industria' | 'lojas';
+
+export type PoliticasComerciaisPainel = {
+  industria: PoliticaComercialParams;
+  lojas: PoliticaComercialParams;
+};
 
 function num(v: unknown, d: number): number {
   const n = Number(v);
@@ -90,29 +99,106 @@ export function validarPoliticaComercialParaSalvar(p: PoliticaComercialParams): 
   return null;
 }
 
-export async function getPoliticaComercialPainelPersistida(): Promise<PoliticaComercialParams> {
-  const row = await prisma.config.findUnique({ where: { key: KEY } });
-  if (!row?.value?.trim()) return { ...DEFAULT_POLITICA_COMERCIAL };
+function normalizarPoliticaLida(politica: PoliticaComercialParams): PoliticaComercialParams {
+  // Legado: teto 180 impedia considerar parcelas 210–300 no texto da condição.
+  if (politica.diasCondicaoMax === 180 && politica.diasCondicaoMin === DEFAULT_POLITICA_COMERCIAL.diasCondicaoMin) {
+    return { ...politica, diasCondicaoMax: DEFAULT_POLITICA_COMERCIAL.diasCondicaoMax };
+  }
+  return politica;
+}
+
+async function lerPoliticaV1(): Promise<PoliticaComercialParams | null> {
+  const row = await prisma.config.findUnique({ where: { key: KEY_V1 } });
+  if (!row?.value?.trim()) return null;
   try {
-    const parsed = JSON.parse(row.value) as unknown;
-    const politica = mergePoliticaComercialParcial(parsed);
-    // Legado: teto 180 impedia considerar parcelas 210–300 no texto da condição.
-    if (politica.diasCondicaoMax === 180 && politica.diasCondicaoMin === DEFAULT_POLITICA_COMERCIAL.diasCondicaoMin) {
-      return { ...politica, diasCondicaoMax: DEFAULT_POLITICA_COMERCIAL.diasCondicaoMax };
-    }
-    return politica;
+    return normalizarPoliticaLida(mergePoliticaComercialParcial(JSON.parse(row.value) as unknown));
   } catch {
-    return { ...DEFAULT_POLITICA_COMERCIAL };
+    return null;
   }
 }
 
-export async function savePoliticaComercialPainel(politica: PoliticaComercialParams): Promise<void> {
+function padraoDuplo(base?: PoliticaComercialParams | null): PoliticasComerciaisPainel {
+  const p = base ? { ...base } : { ...DEFAULT_POLITICA_COMERCIAL };
+  return { industria: { ...p }, lojas: { ...p } };
+}
+
+export async function getPoliticasComerciaisPainel(): Promise<PoliticasComerciaisPainel> {
+  const row = await prisma.config.findUnique({ where: { key: KEY_V2 } });
+  if (row?.value?.trim()) {
+    try {
+      const parsed = JSON.parse(row.value) as Record<string, unknown>;
+      return {
+        industria: normalizarPoliticaLida(mergePoliticaComercialParcial(parsed.industria ?? parsed)),
+        lojas: normalizarPoliticaLida(mergePoliticaComercialParcial(parsed.lojas ?? parsed.industria ?? parsed)),
+      };
+    } catch {
+      /* fall through */
+    }
+  }
+  const v1 = await lerPoliticaV1();
+  return padraoDuplo(v1);
+}
+
+/** @deprecated Prefer getPoliticaComercialPainelPorEscopo — mantém compat. com v1 (indústria). */
+export async function getPoliticaComercialPainelPersistida(): Promise<PoliticaComercialParams> {
+  const ambas = await getPoliticasComerciaisPainel();
+  return ambas.industria;
+}
+
+export async function getPoliticaComercialPainelPorEscopo(
+  escopo: PoliticaComercialEscopo
+): Promise<PoliticaComercialParams> {
+  const ambas = await getPoliticasComerciaisPainel();
+  return escopo === 'lojas' ? ambas.lojas : ambas.industria;
+}
+
+export async function savePoliticaComercialPainelPorEscopo(
+  escopo: PoliticaComercialEscopo,
+  politica: PoliticaComercialParams
+): Promise<void> {
   const err = validarPoliticaComercialParaSalvar(politica);
   if (err) throw new Error(err);
-  const value = JSON.stringify(politica);
+  const atuais = await getPoliticasComerciaisPainel();
+  const next: PoliticasComerciaisPainel = {
+    industria: escopo === 'industria' ? politica : atuais.industria,
+    lojas: escopo === 'lojas' ? politica : atuais.lojas,
+  };
+  const value = JSON.stringify(next);
   await prisma.config.upsert({
-    where: { key: KEY },
-    create: { key: KEY, value },
+    where: { key: KEY_V2 },
+    create: { key: KEY_V2, value },
     update: { value },
   });
+}
+
+/** @deprecated Prefer savePoliticaComercialPainelPorEscopo. */
+export async function savePoliticaComercialPainel(politica: PoliticaComercialParams): Promise<void> {
+  await savePoliticaComercialPainelPorEscopo('industria', politica);
+}
+
+/**
+ * Indústria ← «Só Aço»; Lojas ← «Só Móveis» / «Só Refrigeração».
+ * Fallback por empresaId mapeado (1/2) quando o atributo vier vazio.
+ */
+export function escopoPoliticaPorVendaEmpresa(
+  vendaPorEmpresa: string,
+  empresaId?: number
+): PoliticaComercialEscopo {
+  const s = (vendaPorEmpresa ?? '').trim();
+  if (s === 'Só Aço') return 'industria';
+  if (s === 'Só Móveis' || s === 'Só Refrigeração') return 'lojas';
+  if (empresaId === 1) return 'industria';
+  if (empresaId === 2) return 'lojas';
+  return 'industria';
+}
+
+export function parseEscopoPolitica(raw: unknown): PoliticaComercialEscopo | null {
+  const s = String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '');
+  if (s === 'industria') return 'industria';
+  if (s === 'lojas' || s === 'loja') return 'lojas';
+  return null;
 }

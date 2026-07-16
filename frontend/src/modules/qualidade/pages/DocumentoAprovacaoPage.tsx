@@ -14,6 +14,7 @@ import {
   documentoAjustadoNoConsenso,
 } from "@qualidade/components/documentos/documento-historico-workflow";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
+import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 
 export function AprovacaoDocumentoPage() {
@@ -118,7 +119,7 @@ export function AprovacaoDocumentoPage() {
 
   return (
     <DocumentoWorkflowPage
-      title={`Aprovação — ${doc.codigo}`}
+      title={`Aprovação — ${formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}`}
       activeStep={3}
       onBack={() => navigate("/qualidade/documentos")}
       exiting={exiting}

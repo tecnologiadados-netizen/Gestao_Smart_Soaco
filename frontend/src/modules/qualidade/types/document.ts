@@ -90,6 +90,12 @@ export interface DocumentPublicacao {
 
 export type PermissaoAcessoDocumento = "todos" | "restrito" | "responsavel";
 
+/** Metadado de anexo em documento externo / registro. */
+export interface DocumentoAnexoArquivo {
+  nome: string;
+  dataUrl: string;
+}
+
 /** Campos específicos de documento externo e registro */
 export interface DocumentExternoRegistro {
   unidadeTodos: boolean;
@@ -101,6 +107,7 @@ export interface DocumentExternoRegistro {
   associarDocumentos: boolean;
   documentosAssociadosIds: string[];
   permissaoAcesso: PermissaoAcessoDocumento;
+  anexos?: DocumentoAnexoArquivo[];
 }
 
 export interface Document {

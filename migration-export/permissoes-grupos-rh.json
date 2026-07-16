@@ -1,0 +1,470 @@
+[
+  {
+    "id": "aa8ddf2b-7da5-44f1-b501-88c5574460fd",
+    "name": "RH - Gestão",
+    "description": "Grupo para os usuários que fazem parte da gestão do setor de RH, normalmente atribuído para analistas e supervisores",
+    "permissions": {
+      "cargos": {
+        "edit": true,
+        "view": true
+      },
+      "faltas": {
+        "route": {
+          "edit": true,
+          "view": true
+        },
+        "sancoes": {
+          "edit": true,
+          "view": true,
+          "create": true,
+          "delete": true
+        },
+        "ausencias": {
+          "edit": true,
+          "view": true,
+          "create": true,
+          "delete": true
+        },
+        "cadastros": {
+          "edit": true,
+          "view": true
+        },
+        "tiposRegras": {
+          "edit": true,
+          "view": true
+        }
+      },
+      "routes": [
+        {
+          "url": "/dashboard#executivo",
+          "title": "Dashboard Executivo",
+          "canEdit": false,
+          "canView": false
+        },
+        {
+          "url": "/dashboard#absenteismo",
+          "title": "Absenteísmo (por faltas)",
+          "canEdit": true,
+          "canView": true
+        },
+        {
+          "url": "/dashboard#absenteismo-horas",
+          "title": "Pontualidade",
+          "canEdit": true,
+          "canView": true
+        },
+        {
+          "url": "/dashboard#diagnostico-ausencias-justificadas",
+          "title": "Diagnóstico Geral - Ausências justificadas",
+          "canEdit": true,
+          "canView": true
+        },
+        {
+          "url": "/cargos",
+          "title": "Cargos e Salários",
+          "canEdit": true,
+          "canView": true
+        },
+        {
+          "url": "/organograma",
+          "title": "Organograma",
+          "canEdit": false,
+          "canView": true
+        },
+        {
+          "url": "/organico",
+          "title": "Orgânico",
+          "canEdit": true,
+          "canView": true
+        },
+        {
+          "url": "/faltas-atestados",
+          "title": "Faltas e Atestados",
+          "canEdit": true,
+          "canView": true
+        },
+        {
+          "url": "/configuracoes",
+          "title": "Configurações",
+          "canEdit": false,
+          "canView": false
+        }
+      ],
+      "version": 2,
+      "organico": {
+        "fotos": {
+          "edit": true,
+          "view": true
+        },
+        "formTabs": {
+          "banco": {
+            "edit": true,
+            "view": true
+          },
+          "cargo": {
+            "edit": true,
+            "view": true
+          },
+          "pessoal": {
+            "edit": true,
+            "view": true
+          },
+          "contrato": {
+            "edit": true,
+            "view": true
+          },
+          "formacao": {
+            "edit": true,
+            "view": true
+          },
+          "beneficios": {
+            "edit": true,
+            "view": true
+          },
+          "trajetoria": {
+            "edit": true,
+            "view": true
+          },
+          "remuneracao": {
+            "edit": true,
+            "view": true
+          },
+          "identificacao": {
+            "edit": true,
+            "view": true
+          }
+        },
+        "documentos": {
+          "edit": true,
+          "view": true,
+          "audit": true,
+          "create": true,
+          "delete": true,
+          "download": true,
+          "categories": {
+            "medical": true,
+            "payroll": true,
+            "contract": true,
+            "admission": true,
+            "termination": true,
+            "disciplinary": true,
+            "identification": true
+          },
+          "classifications": {
+            "internal": true,
+            "confidential": true,
+            "highly_confidential": true
+          },
+          "deleteGlobalForAll": true,
+          "deleteGlobalForOne": true
+        },
+        "comentarios": {
+          "edit": true,
+          "tags": {
+            "1": true,
+            "2": true,
+            "3": true,
+            "4": true,
+            "5": true,
+            "6": true,
+            "7": true,
+            "8": true,
+            "9": true,
+            "10": true,
+            "11": true,
+            "12": true,
+            "13": true,
+            "14": true,
+            "15": true,
+            "16": true,
+            "17": true,
+            "18": true,
+            "19": true,
+            "20": true,
+            "21": true,
+            "22": true
+          },
+          "view": true,
+          "visibilities": {
+            "public": true,
+            "restricted": true,
+            "confidential": false
+          }
+        },
+        "colaboradores": {
+          "edit": true,
+          "view": true
+        },
+        "allowedSectors": [],
+        "justificarAlteracoesSecullum": true,
+        "notificarCadastroComplementarSecullum": false
+      },
+      "dashboard": {
+        "route": {
+          "edit": true,
+          "view": true
+        },
+        "modulos": {
+          "executivo": {
+            "edit": false,
+            "view": false
+          },
+          "absenteismo": {
+            "edit": true,
+            "view": true
+          },
+          "absenteismo-horas": {
+            "edit": true,
+            "view": true
+          },
+          "diagnostico-ausencias-justificadas": {
+            "edit": true,
+            "view": true
+          }
+        }
+      },
+      "organograma": {
+        "edit": false,
+        "view": true
+      },
+      "configuracoes": {
+        "edit": false,
+        "view": false
+      }
+    }
+  },
+  {
+    "id": "01d75313-22c1-4ea1-bb06-94e461991818",
+    "name": "RH - Operacional",
+    "description": "Para colaboradores que executam atividades operacionais no setor de RH, normalmente atribuído para auxiliares/assistentes.",
+    "permissions": {
+      "cargos": {
+        "edit": false,
+        "view": false
+      },
+      "faltas": {
+        "route": {
+          "edit": true,
+          "view": true
+        },
+        "sancoes": {
+          "edit": true,
+          "view": true,
+          "create": true,
+          "delete": true
+        },
+        "ausencias": {
+          "edit": true,
+          "view": true,
+          "create": true,
+          "delete": true
+        },
+        "cadastros": {
+          "edit": true,
+          "view": true
+        },
+        "tiposRegras": {
+          "edit": false,
+          "view": true
+        }
+      },
+      "routes": [
+        {
+          "url": "/dashboard#executivo",
+          "title": "Dashboard Executivo",
+          "canEdit": false,
+          "canView": false
+        },
+        {
+          "url": "/dashboard#absenteismo",
+          "title": "Absenteísmo (por faltas)",
+          "canEdit": false,
+          "canView": true
+        },
+        {
+          "url": "/dashboard#absenteismo-horas",
+          "title": "Pontualidade",
+          "canEdit": false,
+          "canView": false
+        },
+        {
+          "url": "/dashboard#diagnostico-ausencias-justificadas",
+          "title": "Diagnóstico Geral - Ausências justificadas",
+          "canEdit": false,
+          "canView": false
+        },
+        {
+          "url": "/cargos",
+          "title": "Cargos e Salários",
+          "canEdit": false,
+          "canView": false
+        },
+        {
+          "url": "/organograma",
+          "title": "Organograma",
+          "canEdit": false,
+          "canView": false
+        },
+        {
+          "url": "/organico",
+          "title": "Orgânico",
+          "canEdit": true,
+          "canView": true
+        },
+        {
+          "url": "/faltas-atestados",
+          "title": "Faltas e Atestados",
+          "canEdit": true,
+          "canView": true
+        },
+        {
+          "url": "/configuracoes",
+          "title": "Configurações",
+          "canEdit": false,
+          "canView": false
+        }
+      ],
+      "version": 2,
+      "organico": {
+        "fotos": {
+          "edit": true,
+          "view": true
+        },
+        "formTabs": {
+          "banco": {
+            "edit": true,
+            "view": true
+          },
+          "cargo": {
+            "edit": true,
+            "view": true
+          },
+          "pessoal": {
+            "edit": true,
+            "view": true
+          },
+          "contrato": {
+            "edit": true,
+            "view": true
+          },
+          "formacao": {
+            "edit": true,
+            "view": true
+          },
+          "beneficios": {
+            "edit": true,
+            "view": true
+          },
+          "trajetoria": {
+            "edit": false,
+            "view": true
+          },
+          "remuneracao": {
+            "edit": true,
+            "view": true
+          },
+          "identificacao": {
+            "edit": true,
+            "view": true
+          }
+        },
+        "documentos": {
+          "edit": true,
+          "view": true,
+          "audit": true,
+          "create": true,
+          "delete": true,
+          "download": true,
+          "categories": {
+            "medical": true,
+            "payroll": true,
+            "contract": true,
+            "admission": true,
+            "termination": true,
+            "disciplinary": true,
+            "identification": true
+          },
+          "classifications": {
+            "internal": true,
+            "confidential": true,
+            "highly_confidential": true
+          },
+          "deleteGlobalForAll": false,
+          "deleteGlobalForOne": true
+        },
+        "comentarios": {
+          "edit": true,
+          "tags": {
+            "1": true,
+            "2": true,
+            "3": true,
+            "4": true,
+            "5": true,
+            "6": true,
+            "7": true,
+            "8": true,
+            "9": true,
+            "10": true,
+            "11": true,
+            "12": true,
+            "13": true,
+            "14": true,
+            "15": true,
+            "16": true,
+            "17": true,
+            "18": true,
+            "19": true,
+            "20": true,
+            "21": true,
+            "22": true
+          },
+          "view": true,
+          "visibilities": {
+            "public": true,
+            "restricted": false,
+            "confidential": false
+          }
+        },
+        "colaboradores": {
+          "edit": true,
+          "view": true
+        },
+        "allowedSectors": [],
+        "justificarAlteracoesSecullum": false,
+        "notificarCadastroComplementarSecullum": false
+      },
+      "dashboard": {
+        "route": {
+          "edit": false,
+          "view": true
+        },
+        "modulos": {
+          "executivo": {
+            "edit": false,
+            "view": false
+          },
+          "absenteismo": {
+            "edit": false,
+            "view": true
+          },
+          "absenteismo-horas": {
+            "edit": false,
+            "view": false
+          },
+          "diagnostico-ausencias-justificadas": {
+            "edit": false,
+            "view": false
+          }
+        }
+      },
+      "organograma": {
+        "edit": false,
+        "view": false
+      },
+      "configuracoes": {
+        "edit": false,
+        "view": false
+      }
+    }
+  }
+]

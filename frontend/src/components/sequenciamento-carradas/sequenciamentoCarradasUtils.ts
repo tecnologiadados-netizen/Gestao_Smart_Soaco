@@ -1,4 +1,6 @@
 import type { SequenciamentoCarradaAgregada } from '../../api/sequenciamentoCarradas';
+import type { Pedido, TooltipDetalheRow } from '../../api/pedidos';
+import type { AjustePrevisaoSuccessMeta } from '../ModalAjustePrevisao';
 
 function getField(row: Record<string, unknown>, keys: string[]): string {
   for (const k of keys) {
@@ -36,14 +38,19 @@ export function isCarradaOrdemFinal(carrada: string): boolean {
     n.includes('retirada na so aco') ||
     n.includes('retirada na so moveis') ||
     n.includes('entrega em grande teresina') ||
-    n.includes('inserir em romaneio') ||
+    isInserirEmRomaneio(carrada) ||
     n.includes('requisicao') ||
     n.startsWith('1-retirada') ||
     n.startsWith('2-retirada') ||
     n.startsWith('3-entrega') ||
-    n.startsWith('4-inserir') ||
     n.startsWith('5-requisicao')
   );
+}
+
+/** Categoria "Inserir em Romaneio" (nome da carrada/rota ou TipoF). */
+export function isInserirEmRomaneio(texto: string): boolean {
+  const n = normalizeCarradaNome(texto);
+  return n.includes('inserir em romaneio') || n.startsWith('4-inserir');
 }
 
 function compareCodRomaneio(a: string, b: string): number {
@@ -74,6 +81,15 @@ export function ordenarCarradas(carradas: SequenciamentoCarradaAgregada[]): Sequ
     compareCodRomaneio(x.cod, y.cod) || x.carrada.localeCompare(y.carrada, 'pt-BR');
   normais.sort(sortFn);
   finais.sort(sortFn);
+  return [...normais, ...finais];
+}
+
+/** Carradas especiais (retirada, entrega, requisição) permanecem no final após qualquer reordenação. */
+export function garantirEspeciaisNoFim(
+  carradas: SequenciamentoCarradaAgregada[]
+): SequenciamentoCarradaAgregada[] {
+  const normais = carradas.filter((c) => !isCarradaOrdemFinal(c.carrada));
+  const finais = carradas.filter((c) => isCarradaOrdemFinal(c.carrada));
   return [...normais, ...finais];
 }
 
@@ -272,6 +288,81 @@ function pedidoMatch(a: string, b: string): boolean {
   return a.trim().toUpperCase() === b.trim().toUpperCase();
 }
 
+/** Todas as linhas do snapshot com o mesmo PD. */
+export function listarLinhasSnapshotPorPd(
+  linhas: Record<string, unknown>[],
+  pd: string
+): Record<string, unknown>[] {
+  return linhas.filter((row) => pedidoMatch(getField(row, ['PD', 'pd']), pd));
+}
+
+/** Primeira linha do snapshot correspondente ao PD (item usado no fluxo de ajuste de previsão). */
+export function encontrarLinhaSnapshotPorPd(
+  linhas: Record<string, unknown>[],
+  pd: string
+): Record<string, unknown> | null {
+  return listarLinhasSnapshotPorPd(linhas, pd)[0] ?? null;
+}
+
+/** Converte linha do snapshot do sequenciamento no formato esperado por `ModalAjustePrevisao`. */
+export function linhaSnapshotParaPedido(linha: Record<string, unknown>): Pedido | null {
+  const id_pedido = getField(linha, ['id_pedido', 'idChave']);
+  if (!id_pedido) return null;
+  const cliente = getField(linha, ['Cliente', 'cliente']);
+  const produto = getField(linha, ['Descricao do produto', 'Descrição do produto', 'produto']);
+  const qtd = getNumber(linha, ['Qtde Pendente Real', 'qtde pendente real', 'qtd']);
+  const previsaoRaw = linha['previsao_entrega'] ?? linha['Previsão de entrega'] ?? '';
+  const previsaoAtualRaw =
+    linha['previsao_entrega_atualizada'] ?? linha['Previsão de entrega atualizada'] ?? previsaoRaw;
+  const previsao = String(previsaoRaw).slice(0, 10);
+  const previsaoAtualizada = String(previsaoAtualRaw).slice(0, 10);
+  return {
+    ...linha,
+    id_pedido,
+    cliente,
+    produto,
+    qtd,
+    previsao_entrega: previsao,
+    previsao_entrega_atualizada: previsaoAtualizada,
+  };
+}
+
+/** Atualiza linhas do snapshot após ajuste de previsão (mesma regra do Gerenciador de Pedidos). */
+export function mergeLinhasSnapshotAposAjuste(
+  prev: Record<string, unknown>[],
+  atualizado: Pedido,
+  meta?: AjustePrevisaoSuccessMeta
+): Record<string, unknown>[] {
+  const lista = meta?.atualizadosMesmaCarrada;
+  if (lista && lista.length > 0) {
+    const mapById = new Map(lista.map((p) => [String(p.id_pedido ?? '').trim(), p]));
+    return prev.map((row) => {
+      const id = getField(row, ['id_pedido', 'idChave']);
+      const novo = mapById.get(id);
+      return novo ? { ...row, ...novo } : row;
+    });
+  }
+  const idAtual = String(atualizado.id_pedido ?? '').trim();
+  return prev.map((row) => {
+    const id = getField(row, ['id_pedido', 'idChave']);
+    return id === idAtual ? { ...row, ...atualizado } : row;
+  });
+}
+
+/** Atualiza várias linhas do snapshot após ajustes em lote (ex.: todos os itens do PD). */
+export function mergeLinhasSnapshotVarios(
+  prev: Record<string, unknown>[],
+  atualizados: Pedido[]
+): Record<string, unknown>[] {
+  if (atualizados.length === 0) return prev;
+  const mapById = new Map(atualizados.map((p) => [String(p.id_pedido ?? '').trim(), p]));
+  return prev.map((row) => {
+    const id = getField(row, ['id_pedido', 'idChave']);
+    const novo = mapById.get(id);
+    return novo ? { ...row, ...novo } : row;
+  });
+}
+
 export type ItemPedidoDetalheRow = {
   codigo: string;
   descricao: string;
@@ -292,6 +383,51 @@ export function listarItensPedidoPorPd(
     }))
     .sort((a, b) =>
       a.codigo.localeCompare(b.codigo, 'pt-BR', { numeric: true, sensitivity: 'base' })
+    );
+}
+
+/** Normaliza emissão para ISO (YYYY-MM-DD) quando possível — formato esperado pelo modal da roteirização. */
+function emissaoParaIso(value: string): string {
+  const s = value.trim();
+  if (!s) return '';
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  return s;
+}
+
+/**
+ * Converte linhas do snapshot do sequenciamento no formato do modal de itens da roteirização
+ * (`HeatmapPedidoItensModal`).
+ */
+export function listarTooltipDetalhePorPd(
+  linhas: Record<string, unknown>[],
+  pd: string
+): TooltipDetalheRow[] {
+  return linhas
+    .filter((row) => pedidoMatch(getField(row, ['PD', 'pd']), pd))
+    .map((row) => {
+      const rm = getField(row, ['RM', 'rm']);
+      const rota = getField(row, ['Observacoes', 'Observacoes ', 'Observações']);
+      const municipio = getField(row, ['Municipio de entrega', 'Município de entrega']);
+      const uf = getField(row, ['UF', 'uf']);
+      return {
+        rm: rm === '—' ? '' : rm,
+        rota: !rota || rota === 'Sem Rota' ? '' : rota,
+        dataEmissao: emissaoParaIso(getField(row, ['Emissao', 'emissao'])),
+        pedido: getField(row, ['PD', 'pd']),
+        cliente: getField(row, ['Cliente', 'cliente']),
+        municipio: municipio && uf ? `${municipio} (${uf})` : municipio,
+        aVista: getField(row, ['A Vista', 'A vista', 'aVista']),
+        valorPendente: getNumber(row, ['Saldo a Faturar Real', 'Valor Pendente Real']),
+        codigo: getField(row, ['Cod', 'cod']),
+        produto: getField(row, ['Descricao do produto', 'Descrição do produto']),
+        qtdePendenteReal: getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']),
+      };
+    })
+    .sort((a, b) =>
+      (a.codigo || '').localeCompare(b.codigo || '', 'pt-BR', { numeric: true, sensitivity: 'base' })
     );
 }
 

@@ -118,6 +118,27 @@ export const QUALIDADE_MENU: NavMenuEntry[] = [
   },
 ];
 
+export const RH_MENU: NavMenuEntry[] = [
+  {
+    kind: 'submenu',
+    label: 'Operacional',
+    children: [
+      { kind: 'link', to: '/rh/organico', label: 'Orgânico' },
+      { kind: 'link', to: '/rh/faltas-atestados', label: 'Faltas e Atestados' },
+    ],
+  },
+  {
+    kind: 'submenu',
+    label: 'Analítico',
+    children: [
+      { kind: 'link', to: '/rh/dashboard', label: 'Dashboard' },
+      { kind: 'link', to: '/rh/cargos', label: 'Cargos & Salários' },
+      { kind: 'link', to: '/rh/organograma', label: 'Organograma' },
+    ],
+  },
+  { kind: 'link', to: '/rh/configuracoes', label: 'Configurações' },
+];
+
 export const COMERCIAL_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/comercial/painel', label: 'Painel Comercial' },
 ];
@@ -182,6 +203,13 @@ export const PATH_LABELS: Record<string, string> = {
   '/qualidade/calibracoes': 'Qualidade — SGQ — Calibrações',
   '/qualidade/registros': 'Qualidade — SGQ — Registros',
   '/qualidade/configuracoes': 'Qualidade — SGQ — Configurações',
+  '/rh': 'RH',
+  '/rh/dashboard': 'RH — Dashboard',
+  '/rh/organico': 'RH — Orgânico',
+  '/rh/faltas-atestados': 'RH — Faltas e Atestados',
+  '/rh/cargos': 'RH — Cargos & Salários',
+  '/rh/organograma': 'RH — Organograma',
+  '/rh/configuracoes': 'RH — Configurações',
   '/financeiro': 'Financeiro',
   '/financeiro/resumo': 'Resumo Financeiro',
   '/financeiro/dfc': 'DFC',
@@ -209,8 +237,23 @@ export const PATH_LABELS: Record<string, string> = {
   '/sem-acesso': 'Sem acesso',
 };
 
+/** Paths de menu do mais específico (longo) ao mais genérico — evita pai genérico (ex.: `/pedidos`) ficar ativo em irmãos (`/pedidos/dash-entregas`). */
+const NAV_MENU_PATHS_BY_SPECIFICITY = Object.keys(PATH_LABELS)
+  .filter((p) => p !== '/')
+  .sort((a, b) => b.length - a.length || b.localeCompare(a));
+
 export function navPathAtivo(to: string, pathname: string): boolean {
-  return pathname === to || pathname.startsWith(`${to}/`);
+  if (pathname === to) return true;
+  if (!pathname.startsWith(`${to}/`)) return false;
+
+  // Prefixo só destaca se `to` for o item de menu mais específico que casa com o pathname
+  // (ex.: `/pedidos/mrp` em `/pedidos/mrp/123`; não `/pedidos` em `/pedidos/dash-entregas`).
+  for (const path of NAV_MENU_PATHS_BY_SPECIFICITY) {
+    if (pathname === path || pathname.startsWith(`${path}/`)) {
+      return path === to;
+    }
+  }
+  return true;
 }
 
 export function navMenuEntryAtivo(entry: NavMenuEntry, pathname: string): boolean {

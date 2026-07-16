@@ -1,3 +1,4 @@
+import { apiFetch } from "@/api/client";
 import { QUALIDADE_API_BASE } from "@qualidade/lib/api-base";
 import {
   FORNECEDORES_INITIAL_LIMIT,
@@ -24,9 +25,9 @@ export async function fetchFornecedoresClient(
     String(options.limit ?? FORNECEDORES_INITIAL_LIMIT)
   );
 
-  const response = await fetch(`${QUALIDADE_API_BASE}/fornecedores?${params.toString()}`, {
-    cache: "no-store",
-  });
+  const response = await apiFetch(
+    `${QUALIDADE_API_BASE}/fornecedores?${params.toString()}`
+  );
 
   if (!response.ok) {
     throw new Error("Não foi possível carregar os fornecedores.");

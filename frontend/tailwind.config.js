@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+import tailwindcssAnimate from 'tailwindcss-animate';
+
 export default {
   darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
@@ -6,6 +8,18 @@ export default {
     extend: {
       animation: {
         'spin-slow': 'spin 1.5s linear infinite',
+        'accordion-down': 'accordion-down 0.2s ease-out',
+        'accordion-up': 'accordion-up 0.2s ease-out',
+      },
+      keyframes: {
+        'accordion-down': {
+          from: { height: '0' },
+          to: { height: 'var(--radix-accordion-content-height)' },
+        },
+        'accordion-up': {
+          from: { height: 'var(--radix-accordion-content-height)' },
+          to: { height: '0' },
+        },
       },
       fontFamily: {
         sans: ['Barlow', 'system-ui', 'sans-serif'],
@@ -71,12 +85,34 @@ export default {
           DEFAULT: 'var(--popover)',
           foreground: 'var(--popover-foreground)',
         },
+        success: {
+          DEFAULT: 'var(--success)',
+          foreground: 'var(--success-foreground)',
+        },
+        sidebar: {
+          DEFAULT: 'var(--sidebar-background)',
+          foreground: 'var(--sidebar-foreground)',
+          primary: 'var(--sidebar-primary)',
+          'primary-foreground': 'var(--sidebar-primary-foreground)',
+          accent: 'var(--sidebar-accent)',
+          'accent-foreground': 'var(--sidebar-accent-foreground)',
+          border: 'var(--sidebar-border)',
+          ring: 'var(--sidebar-ring)',
+          muted: 'var(--sidebar-muted)',
+        },
         'brand-navy': 'var(--brand-navy)',
         'brand-blue': 'var(--brand-blue)',
         'brand-blue-light': 'var(--brand-blue-light)',
         'brand-blue-muted': 'var(--brand-blue-muted)',
         'brand-gray': 'var(--brand-gray)',
         'brand-yellow': 'var(--brand-yellow)',
+        'brand-ink': 'var(--diagnostico-ink, #2e2d2c)',
+        'brand-amber': 'var(--soaco-gold, #ffad00)',
+        navy: {
+          DEFAULT: 'var(--diagnostico-navy, #041e42)',
+          soft: 'var(--diagnostico-navy-soft, #0a2a5c)',
+        },
+        page: 'var(--diagnostico-page, var(--background))',
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -84,10 +120,15 @@ export default {
         sm: 'calc(var(--radius) * 0.6)',
       },
       boxShadow: {
-        soaco: '0 4px 14px rgb(4 30 66 / 0.12)',
-        'soaco-lg': '0 8px 24px rgb(4 30 66 / 0.18)',
+        'level-1': 'var(--shadow-1)',
+        'level-2': 'var(--shadow-2)',
+        'level-3': 'var(--shadow-3)',
+        soaco: '0 6px 18px -6px rgb(4 30 66 / 0.16)',
+        'soaco-lg': '0 14px 34px -10px rgb(4 30 66 / 0.24)',
+        card: 'var(--diagnostico-shadow-card, 0 4px 24px rgb(4 30 66 / 0.06))',
+        soft: 'var(--diagnostico-shadow-soft, 0 2px 12px rgb(46 45 44 / 0.06))',
       },
     },
   },
-  plugins: [],
+  plugins: [tailwindcssAnimate],
 };

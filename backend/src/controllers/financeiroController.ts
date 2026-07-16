@@ -75,10 +75,12 @@ import {
   testarConexaoShop9,
 } from '../data/dfcShop9Repository.js';
 import {
-  getPoliticaComercialPainelPersistida,
+  getPoliticaComercialPainelPorEscopo,
   mergePoliticaComercialParcial,
-  savePoliticaComercialPainel,
+  parseEscopoPolitica,
+  savePoliticaComercialPainelPorEscopo,
 } from '../data/politicaComercialPainelRepository.js';
+import { buscarClientesPoliticaComercialNomus } from '../data/politicaComercialClientesRepository.js';
 import { DEFAULT_POLITICA_COMERCIAL } from '../services/painelComercialConformidade.js';
 import { resolverFiltroPrioridade } from '../data/dfcPrioridadeFilter.js';
 import {
@@ -882,29 +884,55 @@ export async function getPainelComercial(req: Request, res: Response): Promise<v
 }
 
 /**
- * GET /api/financeiro/painel-comercial/politica
- * Política comercial persistida para o painel (parcelas, entrada, limites de extração de dias).
+ * GET /api/financeiro/painel-comercial/politica?escopo=industria|lojas
+ * Política comercial persistida para o escopo (indústria / lojas).
  */
 export async function getPoliticaComercialPainel(req: Request, res: Response): Promise<void> {
-  void req;
-  const politica = await getPoliticaComercialPainelPersistida();
-  res.json({ politica, padraoSistema: DEFAULT_POLITICA_COMERCIAL });
+  const escopo = parseEscopoPolitica(req.query.escopo) ?? 'industria';
+  const politica = await getPoliticaComercialPainelPorEscopo(escopo);
+  res.json({ politica, padraoSistema: DEFAULT_POLITICA_COMERCIAL, escopo });
 }
 
 /**
- * PUT /api/financeiro/painel-comercial/politica
+ * PUT /api/financeiro/painel-comercial/politica?escopo=industria|lojas
  * Body: objeto parcial ou completo (mesmo formato de `politica` no GET).
  */
 export async function putPoliticaComercialPainel(req: Request, res: Response): Promise<void> {
-  const merged = mergePoliticaComercialParcial(req.body);
+  const escopo =
+    parseEscopoPolitica(req.query.escopo) ??
+    parseEscopoPolitica((req.body as { escopo?: unknown })?.escopo) ??
+    null;
+  if (!escopo) {
+    res.status(400).json({ error: 'Informe escopo=industria ou escopo=lojas.' });
+    return;
+  }
+  const body = req.body && typeof req.body === 'object' ? { ...(req.body as object) } : {};
+  delete (body as { escopo?: unknown }).escopo;
+  const merged = mergePoliticaComercialParcial(body);
   try {
-    await savePoliticaComercialPainel(merged);
+    await savePoliticaComercialPainelPorEscopo(escopo, merged);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(400).json({ error: msg });
     return;
   }
-  res.json({ politica: merged });
+  res.json({ politica: merged, escopo });
+}
+
+/**
+ * GET /api/financeiro/painel-comercial/politica/clientes?q=&limit=
+ * Busca clientes Nomus (pessoa + grupo) para políticas «Outras».
+ */
+export async function getPoliticaComercialClientes(req: Request, res: Response): Promise<void> {
+  const q = String(req.query.q ?? '').trim();
+  const limitRaw = Number(req.query.limit ?? 50);
+  const limit = Number.isFinite(limitRaw) ? limitRaw : 50;
+  const body = await buscarClientesPoliticaComercialNomus(q, limit);
+  if (body.erro) {
+    res.status(503).json({ clientes: [], error: body.erro });
+    return;
+  }
+  res.json({ clientes: body.clientes });
 }
 
 /**
