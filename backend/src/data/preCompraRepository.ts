@@ -86,8 +86,8 @@ SELECT
     pcole.nome AS fornecedor,
     pcole.cnpjCpf AS cnpj,
     CONCAT(IF(tcole.DDD IS NULL, '', CONCAT('(', tcole.DDD, ') ')), tcole.numero) AS telefone_fornecedor,
-    cont.id AS contato_id,
-    cont.nome AS contato,
+    COALESCE(cont.id, cc.idContato) AS contato_id,
+    COALESCE(cont.nome, NULLIF(TRIM(cc.contatoFornecedor), '')) AS contato,
     pcole.cep,
     pcole.endereco,
     pcole.numero AS numero_endereco,
@@ -123,8 +123,7 @@ LEFT JOIN (
     ) AS rn
     FROM telefone tcole WHERE tcole.discriminador = 'P'
 ) tcole ON pcole.id = tcole.idEntidade AND tcole.rn = 1
-LEFT JOIN pessoa_contato pcont ON pcont.idParceiro = pcole.id
-LEFT JOIN contato cont ON cont.id = pcont.idContato
+LEFT JOIN contato cont ON cont.id = COALESCE(?, cc.idContato)
 LEFT JOIN municipio m ON pcole.idMunicipio = m.id
 LEFT JOIN itemcoletaprecoscotacao icpc ON icpc.idColetaPrecosCotacao = cc.id
 LEFT JOIN unidademedida u ON icpc.idUnidadeMedida = u.id
@@ -394,6 +393,50 @@ export async function listarPreCompraFornecedores(nomeCotacao: string): Promise<
   return rows as PreCompraFornecedorRow[];
 }
 
+/** Id da cotação Nomus (`cotacaocompra.id`) pelo nome (ex.: CC000378). */
+export async function buscarIdCotacaoPorNome(nomeCotacao: string): Promise<number | null> {
+  const pool = getNomusPool();
+  if (!pool) throw new Error('Conexão Nomus indisponível.');
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT c.id FROM cotacaocompra c WHERE c.nome = ? AND c.status IN (3, 4) LIMIT 1`,
+    [nomeCotacao]
+  );
+  const id = rows[0]?.id;
+  const n = typeof id === 'number' ? id : Number(id);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Fornecedores dos pedidos de compra derivados da cotação no Nomus.
+ * Usado como fallback quando a coleta do Gestão não tem um único vencedor.
+ */
+export async function listarIdsFornecedorPedidoPorCotacao(nomeCotacao: string): Promise<number[]> {
+  const pool = getNomusPool();
+  if (!pool) throw new Error('Conexão Nomus indisponível.');
+
+  const sql = `
+SELECT DISTINCT pc.idFornecedor AS id
+FROM cotacaocompra c
+JOIN itemcotacaocompra icc ON icc.idCotacaoCompra = c.id
+JOIN solicitacaocompra_itemcotacaocompra scicc ON scicc.idItemCotacaoCompra = icc.id
+JOIN solicitacaocompraitempedidocompra scipc ON scipc.idSolicitacaoCompra = scicc.idSolicitacaoCompra
+JOIN itempedidocompra ipc ON ipc.id = scipc.idItemPedidoCompra
+JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
+WHERE c.nome = ? AND c.status IN (3, 4) AND pc.idFornecedor IS NOT NULL
+`;
+  const [rows] = await pool.query<RowDataPacket[]>(sql, [nomeCotacao]);
+  const ids: number[] = [];
+  const seen = new Set<number>();
+  for (const r of rows) {
+    const n = typeof r.id === 'number' ? r.id : Number(r.id);
+    if (!Number.isFinite(n) || n <= 0 || seen.has(n)) continue;
+    seen.add(n);
+    ids.push(n);
+  }
+  return ids;
+}
+
 export async function listarPreCompraContatos(
   nomeCotacao: string,
   fornecedorId: number
@@ -405,20 +448,66 @@ export async function listarPreCompraContatos(
   return rows as PreCompraContatoRow[];
 }
 
+export interface ContatoDefinidoNaColeta {
+  idContato: number | null;
+  nome: string | null;
+  contatoFornecedor: string | null;
+}
+
+/** Contato escolhido ao registrar a coleta de preços no Nomus (`coletaprecoscotacao`). */
+export async function buscarContatoDefinidoNaColeta(
+  nomeCotacao: string,
+  fornecedorId: number
+): Promise<ContatoDefinidoNaColeta> {
+  const pool = getNomusPool();
+  if (!pool) throw new Error('Conexão Nomus indisponível.');
+
+  const sql = `
+SELECT
+  cc.idContato AS idContato,
+  cont.nome AS nome,
+  NULLIF(TRIM(cc.contatoFornecedor), '') AS contatoFornecedor
+FROM cotacaocompra c
+JOIN coletaprecoscotacao cc ON c.id = cc.idCotacaoCompra
+LEFT JOIN contato cont ON cont.id = cc.idContato
+WHERE c.nome = ? AND cc.idFornecedor = ? AND c.status IN (3, 4)
+LIMIT 1
+`;
+  const [rows] = await pool.query<RowDataPacket[]>(sql, [nomeCotacao, fornecedorId]);
+  const row = rows[0];
+  if (!row) return { idContato: null, nome: null, contatoFornecedor: null };
+
+  const idRaw = row.idContato;
+  const idNum = typeof idRaw === 'number' ? idRaw : Number(idRaw);
+  return {
+    idContato: Number.isFinite(idNum) && idNum > 0 ? idNum : null,
+    nome: row.nome != null && String(row.nome).trim() ? String(row.nome).trim() : null,
+    contatoFornecedor:
+      row.contatoFornecedor != null && String(row.contatoFornecedor).trim()
+        ? String(row.contatoFornecedor).trim()
+        : null,
+  };
+}
+
 export async function buscarDadosPdfPreCompra(
   nomeCotacao: string,
   fornecedorId: number,
-  contatoId: number
+  contatoId: number | null
 ): Promise<Record<string, unknown> | null> {
   const pool = getNomusPool();
   if (!pool) throw new Error('Conexão Nomus indisponível.');
 
   const sql =
     PDF_QUERY +
-    ' AND c.nome = ? AND pcole.id = ? AND cont.id = ? ' +
+    ' AND c.nome = ? AND pcole.id = ? ' +
     'ORDER BY prod.nome';
 
-  const [rows] = await pool.query<RowDataPacket[]>(sql, [nomeCotacao, fornecedorId, contatoId]);
+  // 1º param do PDF_JOINS: COALESCE(?, cc.idContato)
+  const [rows] = await pool.query<RowDataPacket[]>(sql, [
+    contatoId != null && contatoId > 0 ? contatoId : null,
+    nomeCotacao,
+    fornecedorId,
+  ]);
   if (!rows.length) return null;
 
   const first = rows[0] as PreCompraCotacaoRow;

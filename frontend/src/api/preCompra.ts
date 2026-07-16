@@ -108,7 +108,9 @@ export async function fetchPreCompraCotacoes(filtros: FiltrosPreCompra): Promise
   };
 }
 
-export async function fetchPreCompraFornecedores(cotacao: string): Promise<PreCompraFornecedor[]> {
+export async function fetchPreCompraFornecedores(
+  cotacao: string
+): Promise<{ fornecedores: PreCompraFornecedor[]; vencedorId: number | null }> {
   const res = await apiFetch(
     `/api/compras/pre-compra/cotacoes/${encodeURIComponent(cotacao)}/fornecedores`
   );
@@ -117,13 +119,25 @@ export async function fetchPreCompraFornecedores(cotacao: string): Promise<PreCo
     throw new Error(err.error ?? 'Erro ao carregar fornecedores');
   }
   const data = await res.json();
-  return data.fornecedores ?? [];
+  const vencedorRaw = data.vencedorId ?? data.vencedor_id;
+  const vencedorId =
+    vencedorRaw != null && Number.isFinite(Number(vencedorRaw)) && Number(vencedorRaw) > 0
+      ? Number(vencedorRaw)
+      : null;
+  return {
+    fornecedores: data.fornecedores ?? [],
+    vencedorId,
+  };
 }
 
 export async function fetchPreCompraContatos(
   cotacao: string,
   fornecedorId: number
-): Promise<PreCompraContato[]> {
+): Promise<{
+  contatos: PreCompraContato[];
+  contatoId: number | null;
+  contatoTextoLivre: string | null;
+}> {
   const res = await apiFetch(
     `/api/compras/pre-compra/cotacoes/${encodeURIComponent(cotacao)}/contatos?fornecedorId=${fornecedorId}`
   );
@@ -132,16 +146,29 @@ export async function fetchPreCompraContatos(
     throw new Error(err.error ?? 'Erro ao carregar contatos');
   }
   const data = await res.json();
-  return data.contatos ?? [];
+  const contatoRaw = data.contatoId ?? data.contato_id;
+  const contatoId =
+    contatoRaw != null && Number.isFinite(Number(contatoRaw)) && Number(contatoRaw) > 0
+      ? Number(contatoRaw)
+      : null;
+  const texto =
+    data.contatoTextoLivre ?? data.contato_texto_livre ?? data.contatoFornecedor ?? null;
+  return {
+    contatos: data.contatos ?? [],
+    contatoId,
+    contatoTextoLivre: typeof texto === 'string' && texto.trim() ? texto.trim() : null,
+  };
 }
 
 export async function downloadPreCompraPdf(
   cotacao: string,
   fornecedorId: number,
-  contatoId: number
+  contatoId?: number | null
 ): Promise<void> {
   const base = getApiBase();
-  const path = `/api/compras/pre-compra/cotacoes/${encodeURIComponent(cotacao)}/pdf?fornecedorId=${fornecedorId}&contatoId=${contatoId}`;
+  const qs = new URLSearchParams({ fornecedorId: String(fornecedorId) });
+  if (contatoId != null && contatoId > 0) qs.set('contatoId', String(contatoId));
+  const path = `/api/compras/pre-compra/cotacoes/${encodeURIComponent(cotacao)}/pdf?${qs}`;
   const url = base ? `${base}${path}` : path;
 
   const headers: HeadersInit = {};

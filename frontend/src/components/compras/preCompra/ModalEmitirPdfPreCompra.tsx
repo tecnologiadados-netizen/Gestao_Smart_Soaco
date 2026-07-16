@@ -20,6 +20,7 @@ export default function ModalEmitirPdfPreCompra({ cotacao, onClose, onGenerating
   const [fornecedores, setFornecedores] = useState<PreCompraFornecedor[]>([]);
   const [contatos, setContatos] = useState<PreCompraContato[]>([]);
   const [fornecedorId, setFornecedorId] = useState<number | null>(null);
+  const [fornecedorNome, setFornecedorNome] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -29,13 +30,20 @@ export default function ModalEmitirPdfPreCompra({ cotacao, onClose, onGenerating
     setError('');
     setStep('fornecedor');
     setFornecedorId(null);
+    setFornecedorNome(null);
     onGeneratingChange?.(null);
 
     fetchPreCompraFornecedores(cotacao)
-      .then(async (list) => {
+      .then(async ({ fornecedores: list, vencedorId }) => {
         setFornecedores(list);
-        if (list.length === 1) {
-          await loadContatos(cotacao, list[0].id);
+        const autoId =
+          vencedorId != null && list.some((f) => f.id === vencedorId)
+            ? vencedorId
+            : list.length === 1
+              ? list[0].id
+              : null;
+        if (autoId != null) {
+          await loadContatos(cotacao, autoId, list);
         }
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Erro ao carregar fornecedores'))
@@ -43,18 +51,35 @@ export default function ModalEmitirPdfPreCompra({ cotacao, onClose, onGenerating
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cotacao]);
 
-  async function loadContatos(cot: string, fornId: number) {
+  async function loadContatos(cot: string, fornId: number, listFornecedores?: PreCompraFornecedor[]) {
     setLoading(true);
     setError('');
     try {
-      const list = await fetchPreCompraContatos(cot, fornId);
+      const { contatos: list, contatoId, contatoTextoLivre } = await fetchPreCompraContatos(cot, fornId);
       setContatos(list);
       setFornecedorId(fornId);
+      const nome =
+        (listFornecedores ?? fornecedores).find((f) => f.id === fornId)?.nome ?? fornecedorNome;
+      setFornecedorNome(nome ?? null);
+
+      // Contato já definido na coleta de preços do Nomus → gera direto.
+      if (contatoId != null) {
+        await gerarPdf(cot, fornId, contatoId);
+        return;
+      }
+      if (contatoTextoLivre) {
+        await gerarPdf(cot, fornId, null);
+        return;
+      }
       if (list.length === 1) {
         await gerarPdf(cot, fornId, list[0].id);
-      } else {
-        setStep('contato');
+        return;
       }
+      if (list.length > 1) {
+        setStep('contato');
+        return;
+      }
+      setError('Nenhum contato encontrado para este fornecedor.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar contatos');
     } finally {
@@ -62,7 +87,7 @@ export default function ModalEmitirPdfPreCompra({ cotacao, onClose, onGenerating
     }
   }
 
-  async function gerarPdf(cot: string, fornId: number, contId: number) {
+  async function gerarPdf(cot: string, fornId: number, contId: number | null) {
     setStep('gerando');
     onGeneratingChange?.(cot);
     setError('');
@@ -73,7 +98,7 @@ export default function ModalEmitirPdfPreCompra({ cotacao, onClose, onGenerating
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao gerar PDF');
       onGeneratingChange?.(null);
-      setStep('contato');
+      setStep(contatos.length > 1 ? 'contato' : 'fornecedor');
     }
   }
 
@@ -139,6 +164,11 @@ export default function ModalEmitirPdfPreCompra({ cotacao, onClose, onGenerating
 
           {!loading && step === 'contato' && contatos.length > 1 && (
             <>
+              {fornecedorNome && (
+                <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+                  Fornecedor: <strong className="text-slate-700 dark:text-slate-200">{fornecedorNome}</strong>
+                </p>
+              )}
               <p className="text-sm text-slate-600 dark:text-slate-300 mb-3">
                 Selecione o contato do fornecedor:
               </p>
