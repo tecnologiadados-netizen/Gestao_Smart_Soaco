@@ -5,6 +5,9 @@ import {
   listarPreCompraFornecedores,
   listarPreCompraContatos,
   buscarDadosPdfPreCompra,
+  buscarIdCotacaoPorNome,
+  listarIdsFornecedorPedidoPorCotacao,
+  buscarContatoDefinidoNaColeta,
   type CampoSugestaoPreCompra,
 } from '../data/preCompraRepository.js';
 import { gerarPdfPreCompra } from '../services/preCompraPdfService.js';
@@ -235,6 +238,78 @@ export async function getPreCompraSugestoes(req: Request, res: Response): Promis
   res.json({ sugestoes });
 }
 
+/**
+ * Resolve o fornecedor “vencedor” da cotação para auto-seleção no PDF.
+ * Preferência: `idFornecedorVencedor` das coletas do Gestão vinculadas;
+ * fallback: fornecedor único dos pedidos Nomus derivados da cotação.
+ */
+async function resolverFornecedorVencedorPorCotacao(nomeCotacao: string): Promise<number | null> {
+  const cotacaoId = await buscarIdCotacaoPorNome(nomeCotacao);
+  if (cotacaoId == null) return null;
+
+  const pedidoIds = new Set<number>();
+  try {
+    const { data: pedidosPorCotacao } = await listarPedidosVinculadosPorCotacoesAgrupado([cotacaoId]);
+    for (const p of pedidosPorCotacao[cotacaoId] ?? []) {
+      if (p.id > 0) pedidoIds.add(p.id);
+    }
+  } catch {
+    /* Nomus indisponível: segue só com vínculo direto por cotação. */
+  }
+
+  const coletas = await prisma.coletaPrecos.findMany({
+    where: {
+      OR: [{ finalizacaoVinculosJson: { not: null } }, { finalizacaoIdRegistro: { not: null } }],
+    },
+    select: {
+      id: true,
+      finalizacaoVinculosJson: true,
+      finalizacaoTipoRegistro: true,
+      finalizacaoIdRegistro: true,
+    },
+  });
+
+  const coletaIds: number[] = [];
+  for (const c of coletas) {
+    const vinculos = parseVinculosColeta(
+      c.finalizacaoVinculosJson,
+      c.finalizacaoTipoRegistro,
+      c.finalizacaoIdRegistro
+    );
+    const bate = vinculos.some(
+      (v) =>
+        (v.tipoRegistro === 'COTACAO' && v.idRegistro === cotacaoId) ||
+        (v.tipoRegistro === 'PEDIDO' && pedidoIds.has(v.idRegistro))
+    );
+    if (bate) coletaIds.push(c.id);
+  }
+
+  if (coletaIds.length > 0) {
+    const registros = await prisma.coletaPrecosRegistro.findMany({
+      where: {
+        coletaPrecosId: { in: coletaIds },
+        idFornecedorVencedor: { not: null },
+      },
+      select: { idFornecedorVencedor: true },
+    });
+    const vencedores = new Set<number>();
+    for (const r of registros) {
+      const n = Number(r.idFornecedorVencedor);
+      if (Number.isFinite(n) && n > 0) vencedores.add(n);
+    }
+    if (vencedores.size === 1) return [...vencedores][0]!;
+  }
+
+  try {
+    const idsPedido = await listarIdsFornecedorPedidoPorCotacao(nomeCotacao);
+    if (idsPedido.length === 1) return idsPedido[0]!;
+  } catch {
+    /* ignore */
+  }
+
+  return null;
+}
+
 export async function getPreCompraFornecedores(req: Request, res: Response): Promise<void> {
   const nome = decodeURIComponent(String(req.params.nome ?? ''));
   const fornecedores = await listarPreCompraFornecedores(nome);
@@ -242,7 +317,23 @@ export async function getPreCompraFornecedores(req: Request, res: Response): Pro
     res.status(404).json({ error: 'Cotação não encontrada ou sem fornecedores.' });
     return;
   }
-  res.json({ fornecedores });
+
+  let vencedorId: number | null = null;
+  try {
+    vencedorId = await resolverFornecedorVencedorPorCotacao(nome);
+  } catch (err) {
+    console.error(
+      '[preCompraController] resolverFornecedorVencedorPorCotacao:',
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+
+  // Só sugere o vencedor se ele estiver entre os fornecedores da cotação Nomus.
+  if (vencedorId != null && !fornecedores.some((f) => Number(f.id) === vencedorId)) {
+    vencedorId = null;
+  }
+
+  res.json({ fornecedores, vencedorId });
 }
 
 export async function getPreCompraContatos(req: Request, res: Response): Promise<void> {
@@ -253,27 +344,64 @@ export async function getPreCompraContatos(req: Request, res: Response): Promise
     return;
   }
 
+  const definido = await buscarContatoDefinidoNaColeta(nome, fornecedorId);
   const contatos = await listarPreCompraContatos(nome, fornecedorId);
-  if (!contatos.length) {
+
+  // Garante que o contato da coleta apareça na lista mesmo se o vínculo pessoa_contato estiver incompleto.
+  if (
+    definido.idContato != null &&
+    definido.nome &&
+    !contatos.some((c) => Number(c.id) === definido.idContato)
+  ) {
+    contatos.unshift({ id: definido.idContato, nome: definido.nome });
+  }
+
+  if (!contatos.length && !definido.contatoFornecedor) {
     res.status(404).json({ error: 'Nenhum contato encontrado para este fornecedor.' });
     return;
   }
-  res.json({ contatos });
+
+  res.json({
+    contatos,
+    contatoId: definido.idContato,
+    contatoTextoLivre: definido.contatoFornecedor,
+  });
 }
 
 export async function getPreCompraPdf(req: Request, res: Response): Promise<void> {
   const nome = decodeURIComponent(String(req.params.nome ?? ''));
   const fornecedorId = Number(req.query.fornecedorId ?? req.query.fornecedor_id);
-  const contatoId = Number(req.query.contatoId ?? req.query.contato_id);
+  const contatoRaw = req.query.contatoId ?? req.query.contato_id;
+  const contatoId =
+    contatoRaw != null && String(contatoRaw).trim() !== ''
+      ? Number(contatoRaw)
+      : null;
 
-  if (Number.isNaN(fornecedorId) || Number.isNaN(contatoId)) {
-    res.status(400).json({ error: 'fornecedorId e contatoId são obrigatórios.' });
+  if (Number.isNaN(fornecedorId)) {
+    res.status(400).json({ error: 'fornecedorId é obrigatório.' });
+    return;
+  }
+  if (contatoId != null && Number.isNaN(contatoId)) {
+    res.status(400).json({ error: 'contatoId inválido.' });
     return;
   }
 
-  const pdfData = await buscarDadosPdfPreCompra(nome, fornecedorId, contatoId);
+  const pdfData = await buscarDadosPdfPreCompra(
+    nome,
+    fornecedorId,
+    contatoId != null && contatoId > 0 ? contatoId : null
+  );
   if (!pdfData) {
     res.status(404).json({ error: 'Dados não encontrados para gerar o PDF.' });
+    return;
+  }
+
+  const contatoNome = pdfData.contato != null ? String(pdfData.contato).trim() : '';
+  if (!contatoNome) {
+    res.status(400).json({
+      error:
+        'Contato do fornecedor não definido na coleta de preços do Nomus. Selecione um contato para emitir o PDF.',
+    });
     return;
   }
 
