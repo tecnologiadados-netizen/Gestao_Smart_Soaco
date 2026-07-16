@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  atualizarFavorito,
   criarFavorito,
   excluirFavorito,
   listarFavoritos,
@@ -25,6 +26,7 @@ interface FavoritosContextValue {
     rota: string;
     filtros: Record<string, string>;
   }) => Promise<TelaFavorita>;
+  atualizarFavoritoNome: (id: number, nome: string) => Promise<TelaFavorita>;
   removerFavorito: (id: number) => Promise<void>;
   favoritosDaRota: (rota: string) => TelaFavorita[];
 }
@@ -76,6 +78,16 @@ export function FavoritosProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const atualizarFavoritoNome = useCallback(async (id: number, nome: string) => {
+    const updated = await atualizarFavorito(id, { nome: nome.trim() });
+    setFavoritos((prev) =>
+      prev
+        .map((f) => (f.id === id ? updated : f))
+        .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome)),
+    );
+    return updated;
+  }, []);
+
   const removerFavorito = useCallback(async (id: number) => {
     await excluirFavorito(id);
     setFavoritos((prev) => prev.filter((f) => f.id !== id));
@@ -92,10 +104,11 @@ export function FavoritosProvider({ children }: { children: ReactNode }) {
       loading,
       refreshFavoritos,
       salvarFavorito,
+      atualizarFavoritoNome,
       removerFavorito,
       favoritosDaRota,
     }),
-    [favoritos, loading, refreshFavoritos, salvarFavorito, removerFavorito, favoritosDaRota]
+    [favoritos, loading, refreshFavoritos, salvarFavorito, atualizarFavoritoNome, removerFavorito, favoritosDaRota]
   );
 
   return <FavoritosContext.Provider value={value}>{children}</FavoritosContext.Provider>;

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "@rh/components/AppLayout";
@@ -43,7 +43,9 @@ import {
   listTurnoverPeopleFromOrganico,
   type TurnoverSeriesPoint,
 } from "@rh/lib/dashboard-from-organico";
-import AbsenteismoDashboard from "@rh/pages/AbsenteismoDashboard";
+import AbsenteismoDashboard, {
+  type AbsenteismoFavoritoSnapshot,
+} from "@rh/pages/AbsenteismoDashboard";
 import DiagnosticoGeralAusenciasJustificadas from "@rh/pages/DiagnosticoGeralAusenciasJustificadas";
 import AbsenteismoPorHorasTab from "@rh/pages/FaltasAtestados/absenteismo-por-horas/AbsenteismoPorHorasTab";
 import { OrganicoCard } from "@rh/pages/Organico/OrganicoCard";
@@ -54,6 +56,8 @@ import {
   rhChartTooltipStyle,
   useRhChartTheme,
 } from "@rh/lib/chart-theme";
+import { useFavoritoPagina } from "../../../hooks/useFavoritoPagina";
+import { resumoFiltrosFavorito } from "../../../config/telasFavoritaveis";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"] as const;
 
@@ -243,6 +247,89 @@ const Dashboard = () => {
     return tabs;
   }, [canViewExecutivo, canViewAbsenteismo, canViewPontualidade, canViewDiagnosticoAusenciasJustificadas]);
   const [activeTab, setActiveTab] = useState<DashboardTab>("executivo");
+  const [absenteismoSnap, setAbsenteismoSnap] = useState<AbsenteismoFavoritoSnapshot>({
+    selectedColaboradores: [],
+    startDate: "",
+    endDate: "",
+    incluirColaboradoresDesligados: false,
+    rankingTiposAusencia: null,
+    rankingTopN: 10,
+  });
+  const [absenteismoApply, setAbsenteismoApply] = useState<AbsenteismoFavoritoSnapshot | null>(null);
+  const [absenteismoApplyToken, setAbsenteismoApplyToken] = useState<string | null>(null);
+  const onAbsenteismoFiltrosChange = useCallback((snap: AbsenteismoFavoritoSnapshot) => {
+    setAbsenteismoSnap(snap);
+  }, []);
+
+  const filtrosFavorito = useMemo(() => {
+    const f: Record<string, string> = { tab: activeTab };
+    if (activeTab === "absenteismo") {
+      if (absenteismoSnap.selectedColaboradores.length > 0) {
+        f.selectedColaboradores = JSON.stringify(absenteismoSnap.selectedColaboradores);
+      }
+      if (absenteismoSnap.startDate) f.startDate = absenteismoSnap.startDate;
+      if (absenteismoSnap.endDate) f.endDate = absenteismoSnap.endDate;
+      f.incluirColaboradoresDesligados = absenteismoSnap.incluirColaboradoresDesligados
+        ? "true"
+        : "false";
+      f.rankingTopN = String(absenteismoSnap.rankingTopN);
+      if (absenteismoSnap.rankingTiposAusencia !== null) {
+        f.rankingTiposAusencia = JSON.stringify(absenteismoSnap.rankingTiposAusencia);
+      }
+    }
+    return f;
+  }, [activeTab, absenteismoSnap]);
+
+  const aplicarFiltrosFavorito = useCallback((raw: Record<string, string>) => {
+    const tab = (raw.tab as DashboardTab) || "absenteismo";
+    const nextTab: DashboardTab =
+      tab === "executivo" ||
+      tab === "absenteismo" ||
+      tab === "absenteismo-horas" ||
+      tab === "diagnostico-ausencias-justificadas"
+        ? tab
+        : "absenteismo";
+    setActiveTab(nextTab);
+
+    if (nextTab === "absenteismo" || raw.selectedColaboradores) {
+      let selectedColaboradores: string[] = [];
+      try {
+        const parsed = JSON.parse(raw.selectedColaboradores || "[]") as unknown;
+        if (Array.isArray(parsed)) selectedColaboradores = parsed.map(String);
+      } catch {
+        selectedColaboradores = [];
+      }
+      let rankingTiposAusencia: string[] | null = null;
+      if (raw.rankingTiposAusencia) {
+        try {
+          const parsed = JSON.parse(raw.rankingTiposAusencia) as unknown;
+          rankingTiposAusencia = Array.isArray(parsed) ? parsed.map(String) : null;
+        } catch {
+          rankingTiposAusencia = null;
+        }
+      }
+      const snap: AbsenteismoFavoritoSnapshot = {
+        selectedColaboradores,
+        startDate: raw.startDate ?? "",
+        endDate: raw.endDate ?? "",
+        incluirColaboradoresDesligados: raw.incluirColaboradoresDesligados === "true",
+        rankingTiposAusencia,
+        rankingTopN: Number(raw.rankingTopN) > 0 ? Number(raw.rankingTopN) : 10,
+      };
+      setAbsenteismoSnap(snap);
+      setAbsenteismoApply(snap);
+      setAbsenteismoApplyToken(`${Date.now()}-${raw.selectedColaboradores ?? ""}`);
+    }
+  }, []);
+
+  useFavoritoPagina({
+    rota: "/rh/dashboard",
+    telaLabel: "RH — Dashboard",
+    filtros: filtrosFavorito,
+    aplicarFiltros: aplicarFiltrosFavorito,
+    resumoFiltros: resumoFiltrosFavorito("/rh/dashboard", filtrosFavorito),
+  });
+
   useEffect(() => {
     if (!availableTabs.includes(activeTab)) {
       setActiveTab(availableTabs[0] ?? "executivo");
@@ -869,7 +956,11 @@ const Dashboard = () => {
           </TabsContent> : null}
 
           {canViewAbsenteismo ? <TabsContent value="absenteismo" className="mt-0 focus-visible:outline-none">
-            <AbsenteismoDashboard />
+            <AbsenteismoDashboard
+              filtrosIniciaisToken={absenteismoApplyToken}
+              filtrosIniciais={absenteismoApply}
+              onFiltrosChange={onAbsenteismoFiltrosChange}
+            />
           </TabsContent> : null}
 
           {canViewPontualidade ? <TabsContent value="absenteismo-horas" className="mt-0 focus-visible:outline-none">

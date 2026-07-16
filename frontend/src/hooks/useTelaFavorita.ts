@@ -4,7 +4,7 @@ import { obterFavorito } from '../api/favoritos';
 import { useFavoritos } from '../contexts/FavoritosContext';
 import {
   filtrosFromSearchParams,
-  isRotaFavoritavel,
+  isRotaAppFavoritavel,
   normalizarRotaFavorito,
 } from '../config/telasFavoritaveis';
 
@@ -13,7 +13,6 @@ type UseTelaFavoritaOptions<T extends Record<string, string>> = {
   aplicarFiltros: (filtros: T) => void;
   validarFiltros?: (filtros: Record<string, string>) => T | null;
   onResolved?: () => void;
-  /** Aguarda listas de filtros carregarem antes de resolver favoritos. */
   enabled?: boolean;
 };
 
@@ -30,7 +29,8 @@ export function useTelaFavorita<T extends Record<string, string>>({
   const { favoritos, favoritosDaRota, loading: favoritosLoading } = useFavoritos();
 
   const rota = normalizarRotaFavorito(location.pathname);
-  const [resolving, setResolving] = useState(isRotaFavoritavel(rota));
+  const rotaOk = isRotaAppFavoritavel(rota);
+  const [resolving, setResolving] = useState(rotaOk);
   const [favIdAtivo, setFavIdAtivo] = useState<number | null>(null);
   const resolvedRef = useRef(false);
   const onResolvedRef = useRef(onResolved);
@@ -49,7 +49,7 @@ export function useTelaFavorita<T extends Record<string, string>>({
 
   useEffect(() => {
     if (!enabled) return;
-    if (!isRotaFavoritavel(rota)) {
+    if (!rotaOk) {
       setResolving(false);
       resolvedRef.current = true;
       onResolvedRef.current?.();
@@ -120,6 +120,7 @@ export function useTelaFavorita<T extends Record<string, string>>({
     };
   }, [
     rota,
+    rotaOk,
     searchParams,
     favoritos,
     favoritosRota,
@@ -164,7 +165,7 @@ export function useTelaFavorita<T extends Record<string, string>>({
     favoritosRota,
     favIdAtivo,
     temFavNaUrl,
-    resolving: resolving || (isRotaFavoritavel(rota) && favoritosLoading && !resolvedRef.current),
+    resolving: resolving || (rotaOk && favoritosLoading && !resolvedRef.current),
     aplicarFavorito,
     sincronizarUrlFavorito,
     limparFavNaUrl,
