@@ -1,5 +1,14 @@
 import { PERMISSOES, type CodigoPermissao } from './permissoes.js';
 
+/**
+ * Registry opcional: telas com validação estrita de filtros.
+ * Qualquer outra rota do app pode guardar filtros livres (Record<string,string>).
+ *
+ * Para persistir visão completa numa tela:
+ * - useRegistrarVisaoFavorito / useFavoritoPagina com os filtros atuais
+ * - useTelaFavorita / useFavoritoPagina para aplicar ao abrir ?fav=
+ */
+
 export const ROTAS_FAVORITAVEIS = [
   '/pedidos/painel-metas/tv',
   '/pedidos/painel-metas/gerencial',
@@ -27,6 +36,9 @@ export const TELAS_FAVORITAVEIS_CFG: Record<
   },
 };
 
+const MAX_FILTRO_KEYS = 40;
+const MAX_FILTRO_JSON_CHARS = 12_000;
+
 export function normalizarRotaFavorito(rota: string): string {
   const path = rota.split('?')[0]?.split('#')[0] ?? rota;
   if (!path.startsWith('/')) return `/${path}`;
@@ -38,8 +50,16 @@ export function isRotaFavoritavel(rota: string): rota is RotaFavoritavel {
   return (ROTAS_FAVORITAVEIS as readonly string[]).includes(norm);
 }
 
+export function isRotaAppFavoritavel(rota: string): boolean {
+  const n = normalizarRotaFavorito(rota);
+  if (!n.startsWith('/') || n.startsWith('//')) return false;
+  if (n.includes('..') || n.includes('\\')) return false;
+  if (n === '/' || n === '/sem-acesso' || n === '/entrar') return false;
+  return true;
+}
+
 function parseFiltrosJson(raw: unknown): FiltrosFavorito | null {
-  if (raw == null) return null;
+  if (raw == null) return {};
   if (typeof raw === 'string') {
     try {
       return parseFiltrosJson(JSON.parse(raw));
@@ -55,28 +75,46 @@ function parseFiltrosJson(raw: unknown): FiltrosFavorito | null {
   return out;
 }
 
+function limiteTamanhoFiltros(filtros: FiltrosFavorito): string | null {
+  const keys = Object.keys(filtros);
+  if (keys.length > MAX_FILTRO_KEYS) {
+    return `Excesso de filtros (máx. ${MAX_FILTRO_KEYS}).`;
+  }
+  try {
+    if (JSON.stringify(filtros).length > MAX_FILTRO_JSON_CHARS) {
+      return 'Filtros muito grandes para salvar no favorito.';
+    }
+  } catch {
+    return 'Filtros inválidos.';
+  }
+  return null;
+}
+
 export function validarFiltrosFavorito(
   rota: string,
   filtrosRaw: unknown
 ): { ok: true; filtros: FiltrosFavorito } | { ok: false; error: string } {
-  if (!isRotaFavoritavel(rota)) {
-    return { ok: false, error: 'Rota não suporta favoritos.' };
-  }
-  const cfg = TELAS_FAVORITAVEIS_CFG[rota];
   const filtros = parseFiltrosJson(filtrosRaw);
   if (!filtros) return { ok: false, error: 'Filtros inválidos.' };
 
-  for (const chave of cfg.chaves) {
-    if (!filtros[chave]?.trim()) {
-      return { ok: false, error: `Filtro "${chave}" é obrigatório.` };
+  if (isRotaFavoritavel(rota)) {
+    const cfg = TELAS_FAVORITAVEIS_CFG[rota];
+    for (const chave of cfg.chaves) {
+      if (!filtros[chave]?.trim()) {
+        return { ok: false, error: `Filtro "${chave}" é obrigatório.` };
+      }
     }
+    // Permite chaves extras (ex.: __hash) além das obrigatórias do registry
+    const lim = limiteTamanhoFiltros(filtros);
+    if (lim) return { ok: false, error: lim };
+    return { ok: true, filtros };
   }
 
-  const extras = Object.keys(filtros).filter((k) => !(cfg.chaves as readonly string[]).includes(k));
-  if (extras.length > 0) {
-    return { ok: false, error: `Filtros não permitidos: ${extras.join(', ')}.` };
+  if (!isRotaAppFavoritavel(rota)) {
+    return { ok: false, error: 'Rota inválida para favorito.' };
   }
-
+  const lim = limiteTamanhoFiltros(filtros);
+  if (lim) return { ok: false, error: lim };
   return { ok: true, filtros };
 }
 
@@ -84,9 +122,11 @@ export function filtrosPermitidosParaPermissoes(
   rota: string,
   permissoes: string[]
 ): boolean {
-  if (!isRotaFavoritavel(rota)) return false;
-  const cfg = TELAS_FAVORITAVEIS_CFG[rota];
-  return cfg.requiredAny.some((p) => permissoes.includes(p));
+  if (isRotaFavoritavel(rota)) {
+    const cfg = TELAS_FAVORITAVEIS_CFG[rota];
+    return cfg.requiredAny.some((p) => permissoes.includes(p));
+  }
+  return isRotaAppFavoritavel(rota);
 }
 
 export function resumoFiltrosPainel(filtros: FiltrosPainel): string {
@@ -103,5 +143,39 @@ export function resumoFiltrosFavorito(rota: string, filtros: FiltrosFavorito): s
   ) {
     return resumoFiltrosPainel(filtros);
   }
-  return Object.values(filtros).filter(Boolean).join(' · ');
+  if (rota === '/rh/dashboard') {
+    const parts: string[] = [];
+    const tabLabels: Record<string, string> = {
+      executivo: 'Executivo',
+      absenteismo: 'Absenteísmo',
+      'absenteismo-horas': 'Pontualidade',
+      'diagnostico-ausencias-justificadas': 'Diagnóstico',
+    };
+    if (filtros.tab) parts.push(tabLabels[filtros.tab] ?? filtros.tab);
+    if (filtros.selectedColaboradores) {
+      try {
+        const arr = JSON.parse(filtros.selectedColaboradores) as unknown;
+        if (Array.isArray(arr) && arr.length > 0) {
+          const nomes = arr
+            .map((k) => String(k).split('|||')[1] || String(k))
+            .filter(Boolean)
+            .slice(0, 2);
+          parts.push(nomes.join(', ') + (arr.length > 2 ? ` +${arr.length - 2}` : ''));
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    return parts.join(' · ');
+  }
+  const vals = Object.entries(filtros)
+    .filter(([k, v]) => v && !k.startsWith('__'))
+    .map(([, v]) => v)
+    .slice(0, 4);
+  return vals.join(' · ');
+}
+
+export function labelFavoritoRota(rota: string): string {
+  if (isRotaFavoritavel(rota)) return TELAS_FAVORITAVEIS_CFG[rota].label;
+  return rota;
 }

@@ -1674,7 +1674,28 @@ function SancoesDetalhePainelConteudo({
   );
 }
 
-export default function AbsenteismoDashboard() {
+export type AbsenteismoFavoritoSnapshot = {
+  selectedColaboradores: string[];
+  startDate: string;
+  endDate: string;
+  incluirColaboradoresDesligados: boolean;
+  /** `null` = todos os tipos (equivale a undefined no state). */
+  rankingTiposAusencia: string[] | null;
+  rankingTopN: number;
+};
+
+type AbsenteismoDashboardProps = {
+  /** Token muda quando um favorito deve ser reaplicado. */
+  filtrosIniciaisToken?: string | null;
+  filtrosIniciais?: AbsenteismoFavoritoSnapshot | null;
+  onFiltrosChange?: (snap: AbsenteismoFavoritoSnapshot) => void;
+};
+
+export default function AbsenteismoDashboard({
+  filtrosIniciaisToken = null,
+  filtrosIniciais = null,
+  onFiltrosChange,
+}: AbsenteismoDashboardProps) {
   const chart = useRhChartTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -1690,6 +1711,42 @@ export default function AbsenteismoDashboard() {
   /** `undefined` = todos os tipos; `[]` = nenhum selecionado; senão subconjunto (chaves normalizadas). */
   const [rankingTiposAusencia, setRankingTiposAusencia] = useState<string[] | undefined>(undefined);
   const [rankingTiposOpen, setRankingTiposOpen] = useState(false);
+
+  useEffect(() => {
+    if (!filtrosIniciaisToken || !filtrosIniciais) return;
+    setSelectedColaboradores(filtrosIniciais.selectedColaboradores ?? []);
+    setStartDate(filtrosIniciais.startDate ?? "");
+    setEndDate(filtrosIniciais.endDate ?? "");
+    setIncluirColaboradoresDesligados(!!filtrosIniciais.incluirColaboradoresDesligados);
+    setRankingTiposAusencia(
+      filtrosIniciais.rankingTiposAusencia === null
+        ? undefined
+        : filtrosIniciais.rankingTiposAusencia ?? undefined,
+    );
+    if (typeof filtrosIniciais.rankingTopN === "number" && filtrosIniciais.rankingTopN > 0) {
+      setRankingTopN(filtrosIniciais.rankingTopN);
+    }
+  }, [filtrosIniciaisToken]); // eslint-disable-line react-hooks/exhaustive-deps -- token dispara reaplicação
+
+  useEffect(() => {
+    onFiltrosChange?.({
+      selectedColaboradores,
+      startDate,
+      endDate,
+      incluirColaboradoresDesligados,
+      rankingTiposAusencia: rankingTiposAusencia === undefined ? null : rankingTiposAusencia,
+      rankingTopN,
+    });
+  }, [
+    selectedColaboradores,
+    startDate,
+    endDate,
+    incluirColaboradoresDesligados,
+    rankingTiposAusencia,
+    rankingTopN,
+    onFiltrosChange,
+  ]);
+
   const [sancaoSort, setSancaoSort] = useState<{ key: SancaoSortKey; dir: "asc" | "desc" }>({
     key: "qntd",
     dir: "desc",

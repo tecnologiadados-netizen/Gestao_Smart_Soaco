@@ -186,7 +186,7 @@ export async function anexarNumerosColeta(items: Record<string, unknown>[]): Pro
 
 export async function getPreCompraCotacoes(req: Request, res: Response): Promise<void> {
   const page = parseIntParam(req.query.page, 1, 1, 10_000);
-  const pageSize = parseIntParam(req.query.page_size, 20, 1, 100);
+  const pageSize = parseIntParam(req.query.page_size, 20, 1, 5000);
 
   const statusRaw = req.query.status;
   const status =
