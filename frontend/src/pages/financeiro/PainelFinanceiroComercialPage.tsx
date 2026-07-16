@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import {
 
@@ -12,9 +12,12 @@ import {
 
   type PainelComercialPedido,
 
+  type PoliticaComercialEscopo,
+
 } from '../../api/painelComercial';
 
 import PainelComercialPedidoDetalheModal from './PainelComercialPedidoDetalheModal';
+import PoliticaComercialEscopoChooser from './PoliticaComercialEscopoChooser';
 import PoliticaComercialPainelModal from './PoliticaComercialPainelModal';
 import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE, textoPassaBuscaLivre } from '../../utils/textoLivreBusca';
 import { downloadPainelComercialXlsx } from '../../utils/exportPainelComercialXlsx';
@@ -44,6 +47,12 @@ function inicioAnoYmd(): string {
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const pctFmt = (n: number) => `${n.toFixed(1)}%`;
+
+/** % desconto = Valor Desconto / Valor Total (0 se total zerado). */
+function pctDescontoPedido(valorTotal: number, valorDesconto: number): number {
+  if (!(valorTotal > 0)) return 0;
+  return (valorDesconto / valorTotal) * 100;
+}
 
 type EmpresaPainelFiltro = 'todos' | 1 | 2;
 
@@ -739,72 +748,6 @@ function MetricBar({
 
 
 
-/** Recorrência mensal — segmentos semânticos */
-
-function BarraStatusMes({
-
-  ok,
-
-  alerta,
-
-  naoConforme,
-
-  excluido,
-
-}: {
-
-  ok: number;
-
-  alerta: number;
-
-  naoConforme: number;
-
-  excluido: number;
-
-}) {
-
-  const t = ok + alerta + naoConforme + excluido || 1;
-
-  const seg = [
-
-    { v: ok, className: 'bg-emerald-500 dark:bg-emerald-600', label: 'Conforme' },
-
-    { v: alerta, className: 'bg-amber-400 dark:bg-amber-500', label: 'Alerta' },
-
-    { v: naoConforme, className: 'bg-rose-500 dark:bg-rose-600', label: 'Não conforme' },
-
-    { v: excluido, className: 'bg-slate-300 dark:bg-slate-600', label: 'Excluído' },
-
-  ].filter((s) => s.v > 0);
-
-  return (
-
-    <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
-
-      {seg.map((s, i) => (
-
-        <div
-
-          key={i}
-
-          className={`h-full ${s.className} first:rounded-l-full last:rounded-r-full`}
-
-          style={{ width: `${(s.v / t) * 100}%` }}
-
-          title={`${s.label}: ${s.v}`}
-
-        />
-
-      ))}
-
-    </div>
-
-  );
-
-}
-
-
-
 export default function PainelFinanceiroComercialPage() {
 
   const [dataInicio, setDataInicio] = useState(inicioAnoYmd);
@@ -836,7 +779,9 @@ export default function PainelFinanceiroComercialPage() {
 
   const [pedidoModal, setPedidoModal] = useState<PainelComercialPedido | null>(null);
 
+  const [politicaChooserOpen, setPoliticaChooserOpen] = useState(false);
   const [politicaModalOpen, setPoliticaModalOpen] = useState(false);
+  const [politicaEscopo, setPoliticaEscopo] = useState<PoliticaComercialEscopo>('industria');
 
 
 
@@ -1144,6 +1089,7 @@ export default function PainelFinanceiroComercialPage() {
                   const v = e.target.value;
                   setEmpresaFiltro(v === '1' ? 1 : v === '2' ? 2 : 'todos');
                 }}
+                title="Filtro pelo atributo Nomus «Venda por qual empresa?»"
                 className={`${inputClass} min-w-[10rem]`}
               >
                 <option value="todos">Todas</option>
@@ -1173,7 +1119,7 @@ export default function PainelFinanceiroComercialPage() {
 
               type="button"
 
-              onClick={() => setPoliticaModalOpen(true)}
+              onClick={() => setPoliticaChooserOpen(true)}
 
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-sm font-semibold dark:border-slate-600 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-100 transition-all"
 
@@ -1647,61 +1593,7 @@ export default function PainelFinanceiroComercialPage() {
 
           </div>
 
-
-
-          <div className="card-panel p-5 shadow-sm">
-
-            <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">Recorrência por mês</h3>
-
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-4">Emissão do pedido — proporção de status por barra.</p>
-
-            {dash.porMes.length === 0 ? (
-
-              <p className="py-6 text-center text-sm text-slate-500">Nenhum pedido no período.</p>
-
-            ) : (
-
-              <div className="space-y-4">
-
-                {dash.porMes.map((m) => (
-
-                  <div key={m.mes} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-
-                    <span className="w-24 shrink-0 font-sans tabular-nums text-[13px] font-semibold text-slate-700 dark:text-slate-200">{m.mes}</span>
-
-                    <div className="min-w-0 flex-1 space-y-1.5">
-
-                      <BarraStatusMes ok={m.ok} alerta={m.alerta} naoConforme={m.naoConforme} excluido={m.excluido} />
-
-                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-
-                        <span>{m.total} pedidos</span>
-
-                        <span className="text-emerald-600 dark:text-emerald-400">{m.ok} ok</span>
-
-                        <span className="text-amber-700 dark:text-amber-400">{m.alerta} alerta</span>
-
-                        <span className="text-rose-700 dark:text-rose-400">{m.naoConforme} não conf.</span>
-
-                        {m.excluido > 0 ? <span className="text-slate-500">{m.excluido} excl.</span> : null}
-
-                      </div>
-
-                    </div>
-
-                  </div>
-
-                ))}
-
-              </div>
-
-            )}
-
-          </div>
-
-
-
-          <div className="card-panel shadow-sm overflow-hidden">
+<div className="card-panel shadow-sm overflow-hidden">
 
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-600">
 
@@ -1739,7 +1631,7 @@ export default function PainelFinanceiroComercialPage() {
 
             <div className="overflow-x-auto">
 
-              <table className="w-full min-w-[920px] text-sm text-left">
+              <table className="w-full min-w-[1400px] text-sm text-left">
 
                 <thead className="bg-primary-600 text-white">
 
@@ -1751,17 +1643,29 @@ export default function PainelFinanceiroComercialPage() {
 
                     <th className="py-3 px-4 font-semibold">Cliente</th>
 
+                    <th className="py-3 px-4 font-semibold">Vendedor/Representante</th>
+
                     <th className="py-3 px-4 font-semibold">Emissão</th>
 
-                    <th className="py-3 px-4 font-semibold text-right">Total</th>
+                    <th className="py-3 px-4 font-semibold text-right">Valor Total</th>
+
+                    <th className="py-3 px-4 font-semibold text-right">Valor Desconto</th>
+
+                    <th className="py-3 px-4 font-semibold text-right">Valor Total com Desconto</th>
 
                     <th className="py-3 px-4 font-semibold text-right">Entrada</th>
 
                     <th className="py-3 px-4 font-semibold text-right">% Ent.</th>
 
+                    <th className="py-3 px-4 font-semibold text-right">% Desc.</th>
+
                     <th className="py-3 px-4 font-semibold">Forma</th>
 
+                    <th className="py-3 px-4 font-semibold">Condição de Pagamento</th>
+
                     <th className="min-w-[200px] py-3 px-4 font-semibold">Prazos (cadastro → esperado)</th>
+
+                    <th className="min-w-[180px] py-3 px-4 font-semibold">Observação do pedido</th>
 
                     <th className="py-3 px-4 font-semibold">Status</th>
 
@@ -1827,9 +1731,27 @@ export default function PainelFinanceiroComercialPage() {
 
                       </td>
 
+                      <td className="max-w-[160px] truncate py-3 px-4 align-middle text-slate-700 dark:text-slate-300" title={p.vendedorRepresentante || undefined}>
+
+                        {p.vendedorRepresentante || '—'}
+
+                      </td>
+
                       <td className="whitespace-nowrap py-3 px-4 align-middle tabular-nums text-slate-600 dark:text-slate-400">
 
                         {formatEmissaoPainelBr(p.emissao)}
+
+                      </td>
+
+                      <td className="py-3 px-4 align-middle text-right tabular-nums text-slate-700 dark:text-slate-300">
+
+                        {brl.format(p.valorTotal ?? 0)}
+
+                      </td>
+
+                      <td className="py-3 px-4 align-middle text-right tabular-nums text-slate-700 dark:text-slate-300">
+
+                        {brl.format(p.valorDesconto ?? 0)}
 
                       </td>
 
@@ -1851,9 +1773,21 @@ export default function PainelFinanceiroComercialPage() {
 
                       </td>
 
+                      <td className="py-3 px-4 align-middle text-right tabular-nums text-slate-700 dark:text-slate-300">
+
+                        {pctFmt(pctDescontoPedido(p.valorTotal ?? 0, p.valorDesconto ?? 0))}
+
+                      </td>
+
                       <td className="max-w-[130px] truncate py-3 px-4 align-middle text-slate-700 dark:text-slate-300" title={p.formaPagamento}>
 
                         {p.formaPagamento}
+
+                      </td>
+
+                      <td className="max-w-[160px] truncate py-3 px-4 align-middle text-slate-700 dark:text-slate-300" title={p.condicaoPagamento}>
+
+                        {p.condicaoPagamento || '—'}
 
                       </td>
 
@@ -1862,6 +1796,12 @@ export default function PainelFinanceiroComercialPage() {
                         <span className="font-medium">{p.periodicidadeLabel}</span>
 
                         <span className="block text-[11px] text-slate-500 dark:text-slate-500">Esperado: {p.diasEsperados}</span>
+
+                      </td>
+
+                      <td className="max-w-[220px] truncate py-3 px-4 align-middle text-xs text-slate-600 dark:text-slate-400" title={p.observacaoPedido || undefined}>
+
+                        {p.observacaoPedido || '—'}
 
                       </td>
 
@@ -1907,8 +1847,19 @@ export default function PainelFinanceiroComercialPage() {
           <PainelComercialPedidoDetalheModal pedido={pedidoModal} onClose={() => setPedidoModal(null)} />
         ) : null}
 
+        <PoliticaComercialEscopoChooser
+          open={politicaChooserOpen}
+          onClose={() => setPoliticaChooserOpen(false)}
+          onSelect={(escopo) => {
+            setPoliticaEscopo(escopo);
+            setPoliticaChooserOpen(false);
+            setPoliticaModalOpen(true);
+          }}
+        />
+
         <PoliticaComercialPainelModal
           open={politicaModalOpen}
+          escopo={politicaEscopo}
           onClose={() => setPoliticaModalOpen(false)}
           onSaved={() => void carregar()}
         />
