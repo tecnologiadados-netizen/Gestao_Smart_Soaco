@@ -10,6 +10,8 @@ import { listarOpcoesPlanoContasDre } from './dre/drePlanoContasOpcoes';
 import { listarPeriodosDfc } from './dfc/dfcPeriodos';
 import {
   carregarRateioConfig,
+  configRateioRicaParaMigrar,
+  parseRateioConfigFromApi,
   regrasFornecedor,
   salvarRateioConfig,
   type DreRateioConfig,
@@ -26,6 +28,8 @@ import {
   fetchDreDevolucoes,
   fetchDreSaidasSoAco,
   fetchDreRateioFornecedorTotais,
+  fetchDreRateioConfig,
+  salvarDreRateioConfigApi,
   type DreCpvMoveisDiretoLinha,
   type DreCpvSoAcoLinhaApi,
   type DreDevolucoesLinha,
@@ -144,6 +148,46 @@ export default function DrePage() {
     useState<Record<string, Record<string, number>>>({});
   const [modalRateioAberto, setModalRateioAberto] = useState(false);
   const [modalRelacaoPcAberto, setModalRelacaoPcAberto] = useState(false);
+
+  useEffect(() => {
+    let cancelado = false;
+    void (async () => {
+      const remoto = await fetchDreRateioConfig();
+      if (cancelado) return;
+      if (!remoto.erro && remoto.regras.length > 0) {
+        const parsed = parseRateioConfigFromApi(remoto.regras);
+        if (parsed) {
+          setRateioConfig(parsed);
+          salvarRateioConfig(parsed);
+          return;
+        }
+      }
+      const local = carregarRateioConfig();
+      if (remoto.vazio && !remoto.erro && configRateioRicaParaMigrar(local)) {
+        const migrou = await salvarDreRateioConfigApi(
+          {
+            regras: local.regras.map((r) => ({
+              id: r.id,
+              origem: r.origem,
+              percentuais: r.percentuais,
+            })),
+          },
+          { somenteSeVazio: true },
+        );
+        if (cancelado) return;
+        if (migrou.gravado && migrou.regras.length > 0) {
+          const parsed = parseRateioConfigFromApi(migrou.regras);
+          if (parsed) {
+            setRateioConfig(parsed);
+            salvarRateioConfig(parsed);
+          }
+        }
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
 
   const carregarSeqRef = useRef(0);
   const rateioConfigRef = useRef(rateioConfig);
@@ -386,9 +430,10 @@ export default function DrePage() {
           : [],
       );
       setErroReceitaRefrigeracao(incluirShop9ReceitaFilial1 ? (refrigeracaoRes.erro ?? null) : null);
+      // 6.1.1 / 6.1.2 só com Só Aço; 6.2.2 (margem MKP) só com Só Móveis — evita vazamento entre seções no filtro.
       setCpvSoAcoDiretoLinhas(incluirReceitaNomus ? (cpvRes.direto ?? []) : []);
-      setCpvSoAcoIndiretoLinhas(incluirCpvNomus ? (cpvRes.indireto ?? []) : []);
-      setCpvIndiretoSemMkpLinhas(incluirCpvNomus ? (cpvRes.indiretoSemMkp ?? []) : []);
+      setCpvSoAcoIndiretoLinhas(incluirReceitaNomus ? (cpvRes.indireto ?? []) : []);
+      setCpvIndiretoSemMkpLinhas(incluirReceitaMoveisDireto ? (cpvRes.indiretoSemMkp ?? []) : []);
       setErroCpvSoAco(incluirCpvNomus ? (cpvRes.erro ?? null) : null);
       setCpvMoveisDiretoLinhas(incluirReceitaMoveisDireto ? (cpvMoveisRes.linhas ?? []) : []);
       setErroCpvMoveisDireto(incluirReceitaMoveisDireto ? (cpvMoveisRes.erro ?? null) : null);
@@ -684,6 +729,13 @@ export default function DrePage() {
         onSalvar={(cfg) => {
           setRateioConfig(cfg);
           salvarRateioConfig(cfg);
+          void salvarDreRateioConfigApi({
+            regras: cfg.regras.map((r) => ({
+              id: r.id,
+              origem: r.origem,
+              percentuais: r.percentuais,
+            })),
+          });
         }}
       />
 

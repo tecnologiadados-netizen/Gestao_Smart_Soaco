@@ -1,6 +1,7 @@
 import type { DreEstruturaNo } from './ArvoreContasDre';
 import {
   ajustarRollupSecaoReceitaMoveis,
+  aplicarFiltroEmpresaReceitaNomus,
   calcularFaturamentoIndiretoMoveisPorPeriodo,
   somarPeriodosNoSoMoveis,
 } from './dreReceitaMoveisMap';
@@ -50,6 +51,7 @@ export function montarSomasDrePorPathKey(
   periodos: string[],
   valoresPorConta: Record<number, Record<string, number>>,
   valoresPorPathKeyExterno?: Map<string, Record<string, number>>,
+  filtroReceitaEmpresas?: { incluirAco: boolean; incluirMoveis: boolean },
 ): Map<string, Record<string, number>> {
   const out = new Map<string, Record<string, number>>();
 
@@ -105,6 +107,16 @@ export function montarSomasDrePorPathKey(
     ajustarRollupSecaoReceitaMoveis(roots, out, periodos);
     const receitaBruta = encontrarNoPorCodigo(roots, '1');
     if (receitaBruta) rollupNo(receitaBruta, out, periodos);
+  }
+
+  if (filtroReceitaEmpresas) {
+    aplicarFiltroEmpresaReceitaNomus(
+      roots,
+      out,
+      periodos,
+      filtroReceitaEmpresas.incluirAco,
+      filtroReceitaEmpresas.incluirMoveis,
+    );
   }
 
   recalcularLinhasTotais(roots, roots, out, periodos);

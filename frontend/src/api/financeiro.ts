@@ -1304,3 +1304,49 @@ export async function salvarDreRelacaoPcPathKey(body: {
   if (!res.ok) return { erro: json.error ?? res.statusText };
   return { ok: json.ok, conta: json.conta ?? null };
 }
+
+export type DreRateioConfigApi = {
+  regras: unknown[];
+  atualizadoEm?: string | null;
+  vazio?: boolean;
+  gravado?: boolean;
+  erro?: string;
+};
+
+export async function fetchDreRateioConfig(): Promise<DreRateioConfigApi> {
+  const res = await apiFetch('/api/financeiro/dre/rateio-config');
+  const body = (await res.json().catch(() => ({}))) as DreRateioConfigApi & { error?: string };
+  if (!res.ok) {
+    return { regras: [], vazio: true, erro: body.error ?? res.statusText };
+  }
+  return {
+    regras: Array.isArray(body.regras) ? body.regras : [],
+    atualizadoEm: body.atualizadoEm ?? null,
+    vazio: body.vazio ?? !Array.isArray(body.regras) || body.regras.length === 0,
+  };
+}
+
+export async function salvarDreRateioConfigApi(
+  config: { regras: unknown[] },
+  opts?: { somenteSeVazio?: boolean },
+): Promise<DreRateioConfigApi & { ok?: boolean }> {
+  const qs = opts?.somenteSeVazio ? '?somenteSeVazio=1' : '';
+  const res = await apiFetch(`/api/financeiro/dre/rateio-config${qs}`, {
+    method: 'PUT',
+    body: config,
+  });
+  const body = (await res.json().catch(() => ({}))) as DreRateioConfigApi & {
+    ok?: boolean;
+    error?: string;
+  };
+  if (!res.ok) {
+    return { regras: [], vazio: true, erro: body.error ?? res.statusText };
+  }
+  return {
+    ok: body.ok,
+    regras: Array.isArray(body.regras) ? body.regras : [],
+    atualizadoEm: body.atualizadoEm ?? null,
+    vazio: body.vazio ?? false,
+    gravado: body.gravado,
+  };
+}

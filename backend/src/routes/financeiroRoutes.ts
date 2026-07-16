@@ -41,6 +41,8 @@ import {
   getDreRelacaoPc,
   putDreRelacaoPc,
   deleteDreRelacaoPcOverrides,
+  getDreRateioConfig,
+  putDreRateioConfig,
   getPainelComercial,
   getPainelComercialItensPedido,
   getPoliticaComercialPainel,
@@ -108,6 +110,8 @@ router.get('/dre/saidas-soaco/detalhe-nomus', verFinanceiroDre, getDreSaidasNomu
 router.get('/dre/relacao-pc', verFinanceiroDre, getDreRelacaoPc);
 router.put('/dre/relacao-pc', verFinanceiroDre, putDreRelacaoPc);
 router.delete('/dre/relacao-pc', verFinanceiroDre, deleteDreRelacaoPcOverrides);
+router.get('/dre/rateio-config', verFinanceiroDre, getDreRateioConfig);
+router.put('/dre/rateio-config', verFinanceiroDre, putDreRateioConfig);
 
 // Prioridade DFC (plano de contas + lançamento)
 router.get('/dfc/prioridades/opcoes', verFinanceiroDfc, getOpcoesPrioridade);

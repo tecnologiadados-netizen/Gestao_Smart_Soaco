@@ -65,6 +65,11 @@ import {
   resetarRelacaoPcOverrides,
   salvarRelacaoPcPathKey,
 } from '../data/dreRelacaoPcRepository.js';
+import {
+  lerDreRateioConfig,
+  salvarDreRateioConfig,
+  salvarDreRateioConfigSeVazio,
+} from '../data/dreRateioConfigRepository.js';
 import { isShop9Enabled } from '../config/shop9Db.js';
 import {
   queryDfcShop9RetroAgregado,
@@ -1692,6 +1697,68 @@ export async function deleteDreRelacaoPcOverrides(_req: Request, res: Response):
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[deleteDreRelacaoPcOverrides]', msg);
+    res.status(500).json({ error: msg });
+  }
+}
+
+/** GET /api/financeiro/dre/rateio-config — rateios DRE persistidos na VPS (var/dre-rateio.json). */
+export async function getDreRateioConfig(_req: Request, res: Response): Promise<void> {
+  try {
+    const config = lerDreRateioConfig();
+    res.json({
+      regras: config.regras,
+      atualizadoEm: config.atualizadoEm ?? null,
+      vazio: config.regras.length === 0,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[getDreRateioConfig]', msg);
+    res.status(500).json({ error: msg, regras: [], vazio: true });
+  }
+}
+
+/**
+ * PUT /api/financeiro/dre/rateio-config
+ * Body: { regras: [...] }
+ * Query: somenteSeVazio=1 — grava só se o arquivo ainda não tiver regras (migração do localStorage).
+ */
+export async function putDreRateioConfig(req: Request, res: Response): Promise<void> {
+  try {
+    const somenteSeVazio =
+      String(req.query.somenteSeVazio ?? req.body?.somenteSeVazio ?? '')
+        .trim()
+        .toLowerCase() === '1' ||
+      req.query.somenteSeVazio === 'true' ||
+      req.body?.somenteSeVazio === true;
+
+    const payload = { regras: req.body?.regras };
+    if (somenteSeVazio) {
+      const result = salvarDreRateioConfigSeVazio(payload);
+      res.json({
+        ok: true,
+        gravado: result.gravado,
+        regras: result.config.regras,
+        atualizadoEm: result.config.atualizadoEm ?? null,
+        vazio: result.config.regras.length === 0,
+      });
+      return;
+    }
+
+    const config = salvarDreRateioConfig(payload);
+    if (config.regras.length === 0) {
+      res.status(400).json({ error: 'Informe ao menos uma regra de rateio válida.' });
+      return;
+    }
+    res.json({
+      ok: true,
+      gravado: true,
+      regras: config.regras,
+      atualizadoEm: config.atualizadoEm ?? null,
+      vazio: false,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[putDreRateioConfig]', msg);
     res.status(500).json({ error: msg });
   }
 }
