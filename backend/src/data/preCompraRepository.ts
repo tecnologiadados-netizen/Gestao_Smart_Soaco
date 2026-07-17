@@ -100,6 +100,8 @@ SELECT
     u.abreviatura AS unidade,
     icpc.precoUnitario AS preco_unitario,
     icpc.valorTotalComDesconto AS valor_total,
+    COALESCE(icpc.valorFrete, 0) AS valor_frete,
+    COALESCE(cc.valorTotalFrete, 0) AS valor_frete_geral,
     sc.id AS solicitacao_id,
     sc.dataNecessidade AS data_necessidade,
     c.status AS status,
@@ -236,6 +238,8 @@ export interface PreCompraCotacaoRow {
   unidade: string | null;
   preco_unitario: number | null;
   valor_total: number | null;
+  valor_frete?: number | null;
+  valor_frete_geral?: number | null;
   solicitacao_id: number | null;
   data_necessidade: Date | string | null;
   status: number | null;
@@ -306,7 +310,13 @@ function buildFilterSql(filtros: FiltrosPreCompraCotacoes): { sql: string; param
   return { sql: ' AND ' + conditions.join(' AND '), params };
 }
 
-const CAMPOS_NUMERICOS = new Set(['qtde', 'preco_unitario', 'valor_total']);
+const CAMPOS_NUMERICOS = new Set([
+  'qtde',
+  'preco_unitario',
+  'valor_total',
+  'valor_frete',
+  'valor_frete_geral',
+]);
 
 function toNumero2Casas(value: unknown): number | null {
   if (value == null || value === '') return null;
@@ -514,20 +524,28 @@ export async function buscarDadosPdfPreCompra(
   const seenItems = new Set<string>();
   const itens: PreCompraCotacaoRow[] = [];
   const solicitacoesMap = new Map<number, { id: number; data_necessidade: unknown }>();
-  let valorTotal = 0;
+  let valorItens = 0;
+  let valorFreteItens = 0;
 
   for (const raw of rows as PreCompraCotacaoRow[]) {
     const itemKey = `${raw.codigo_produto}|${raw.descricao_produto}|${raw.qtde}|${raw.preco_unitario}`;
     if (!seenItems.has(itemKey)) {
       seenItems.add(itemKey);
       itens.push(raw);
-      if (raw.valor_total != null) valorTotal += toNumero2Casas(raw.valor_total) ?? 0;
+      if (raw.valor_total != null) valorItens += toNumero2Casas(raw.valor_total) ?? 0;
+      if (raw.valor_frete != null) valorFreteItens += toNumero2Casas(raw.valor_frete) ?? 0;
     }
     const solId = raw.solicitacao_id;
     if (solId != null && !solicitacoesMap.has(solId)) {
       solicitacoesMap.set(solId, { id: solId, data_necessidade: raw.data_necessidade });
     }
   }
+
+  // Preferência: soma do frete rateado por item (bate com a grade). Fallback: cabeçalho da coleta.
+  const freteCabecalho = toNumero2Casas(first.valor_frete_geral) ?? 0;
+  const valorFreteGeral =
+    Math.round((valorFreteItens > 0 ? valorFreteItens : freteCabecalho) * 100) / 100;
+  const valorTotalGeral = Math.round((valorItens + valorFreteGeral) * 100) / 100;
 
   return {
     ...serializeRow(first),
@@ -539,7 +557,8 @@ export async function buscarDadosPdfPreCompra(
           ? s.data_necessidade.toISOString()
           : s.data_necessidade,
     })),
-    valor_total_geral: Math.round(valorTotal * 100) / 100,
+    valor_frete_geral: valorFreteGeral,
+    valor_total_geral: valorTotalGeral,
   };
 }
 
