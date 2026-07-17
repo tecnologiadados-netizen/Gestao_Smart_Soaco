@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { listarFornecedores, atualizarFornecedoresColeta, listarCondicoesPagamento, listarFormasPagamento } from '../../api/compras';
 import type { FornecedorOpcao, FornecedorColetaItem, OpcaoNomus } from '../../api/compras';
+import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 
 const MAX_FORNECEDORES = 5;
 const MAX_ITENS_LISTA_FORNECEDORES = 50;
@@ -151,9 +152,11 @@ export default function ModalFornecedoresColeta({
   };
 
   const opcoesDisponiveis = opcoes.filter((o) => !itens.some((i) => i.idPessoa === o.id));
-  const buscaLower = searchFornecedor.trim().toLowerCase();
-  const opcoesFiltradas = buscaLower
-    ? opcoesDisponiveis.filter((o) => o.nome.toLowerCase().includes(buscaLower))
+  const matchFornecedor = criarMatcherTextoLivre(searchFornecedor);
+  const opcoesFiltradas = searchFornecedor.trim()
+    ? opcoesDisponiveis.filter((o) =>
+        matchFornecedor([o.nome, o.nomeRazaoSocial, o.cnpjCpf].filter(Boolean).join(' '))
+      )
     : opcoesDisponiveis;
   const opcoesParaLista = opcoesFiltradas.slice(0, MAX_ITENS_LISTA_FORNECEDORES);
 
@@ -192,7 +195,7 @@ export default function ModalFornecedoresColeta({
                   setDropdownFornecedorOpen(true);
                 }}
                 onFocus={() => setDropdownFornecedorOpen(true)}
-                placeholder="Buscar fornecedor (digite para filtrar)..."
+                placeholder="Buscar fornecedor… (% refina)"
                 className={inputClass}
                 disabled={opcoesDisponiveis.length === 0 || itens.length >= MAX_FORNECEDORES}
                 autoComplete="off"
