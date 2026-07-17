@@ -37,6 +37,8 @@ export const PERMISSOES = {
   FINANCEIRO_CRM_VER: 'financeiro.crm.ver',
   FINANCEIRO_CRM_EMPRESA_VER: 'financeiro.crm.empresa.ver',
   FINANCEIRO_CRM_CLIENTE_VER: 'financeiro.crm.cliente.ver',
+  FINANCEIRO_CRM_PENDENCIAS_VER: 'financeiro.crm.pendencias.ver',
+  FINANCEIRO_CRM_PENDENCIAS_DESTINATARIOS_EDITAR: 'financeiro.crm.pendencias.destinatarios.editar',
 
   // Logística / Cubagem
   LOGISTICA_VER: 'logistica.ver',
@@ -149,6 +151,8 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.FINANCEIRO_CRM_VER,
   PERMISSOES.FINANCEIRO_CRM_EMPRESA_VER,
   PERMISSOES.FINANCEIRO_CRM_CLIENTE_VER,
+  PERMISSOES.FINANCEIRO_CRM_PENDENCIAS_VER,
+  PERMISSOES.FINANCEIRO_CRM_PENDENCIAS_DESTINATARIOS_EDITAR,
   PERMISSOES.LOGISTICA_VER,
   PERMISSOES.LOGISTICA_TOTAL,
   PERMISSOES.LOGISTICA_CUBAGEM_VER,
@@ -250,9 +254,12 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.FINANCEIRO_DFC_VER]: 'DFC',
   [PERMISSOES.FINANCEIRO_PAINEL_COMERCIAL_VER]: 'Painel Financeiro-Comercial',
   [PERMISSOES.FINANCEIRO_RENEGOCIACAO_CONTRATOS_VER]: 'Simulação de Renegociação',
-  [PERMISSOES.FINANCEIRO_CRM_VER]: 'CRM Financeiro (Receber/Pagar) — acesso completo (ambas as guias)',
+  [PERMISSOES.FINANCEIRO_CRM_VER]: 'CRM Financeiro (Receber/Pagar) — acesso completo (todas as guias)',
   [PERMISSOES.FINANCEIRO_CRM_EMPRESA_VER]: 'CRM Financeiro — guia "Situação geral da empresa"',
   [PERMISSOES.FINANCEIRO_CRM_CLIENTE_VER]: 'CRM Financeiro — guia "Análise de crédito por cliente"',
+  [PERMISSOES.FINANCEIRO_CRM_PENDENCIAS_VER]: 'CRM Financeiro — guia "Pendências de crédito"',
+  [PERMISSOES.FINANCEIRO_CRM_PENDENCIAS_DESTINATARIOS_EDITAR]:
+    'CRM Financeiro — editar destinatários/cópias do e-mail de ação (Pendências)',
   [PERMISSOES.LOGISTICA_VER]: 'Ver Logística',
   [PERMISSOES.LOGISTICA_TOTAL]: 'Logística — permissão total',
   [PERMISSOES.LOGISTICA_CUBAGEM_VER]: 'Cubagem — visualizar',

@@ -1258,6 +1258,61 @@ model EmailDisparoLog {
   @@map("email_disparo_log")
 }
 
+/// Linha da aba CRM → Pendências de crédito (1 pedido aberto de cliente inadimplente).
+model CrmCreditoPendencia {
+  id                   Int       @id @default(autoincrement())
+  idPedido             Int       @unique @map("id_pedido")
+  numeroPedido         String    @map("numero_pedido")
+  clienteNome          String    @map("cliente_nome")
+  clienteChave         String    @map("cliente_chave")
+  statusNomusSnapshot  Int?      @map("status_nomus_snapshot")
+  statusNomusLabel     String?   @map("status_nomus_label")
+  /// null = aguardando ação; CANCELADO | PAUSADO | REALOCAR_MATERIAL
+  acao                 String?
+  observacao           String?
+  pedidoDestino        String?   @map("pedido_destino")
+  qtdTitulosAtraso     Int?      @map("qtd_titulos_atraso")
+  totalAtraso          Float?    @map("total_atraso")
+  maiorAtrasoDias      Int?      @map("maior_atraso_dias")
+  alertaEm             DateTime  @map("alerta_em")
+  acaoEm               DateTime? @map("acao_em")
+  acaoPorLogin         String?   @map("acao_por_login")
+  acaoPorNome          String?   @map("acao_por_nome")
+  encerrada            Boolean   @default(false)
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  eventos              CrmCreditoPendenciaEvento[]
+
+  @@index([clienteChave])
+  @@index([encerrada, alertaEm])
+  @@index([acao])
+  @@map("crm_credito_pendencia")
+}
+
+model CrmCreditoPendenciaEvento {
+  id           Int                 @id @default(autoincrement())
+  pendenciaId  Int                 @map("pendencia_id")
+  tipo         String
+  detalhe      String?
+  usuarioLogin String?             @map("usuario_login")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  pendencia    CrmCreditoPendencia @relation(fields: [pendenciaId], references: [id], onDelete: Cascade)
+
+  @@index([pendenciaId, createdAt])
+  @@map("crm_credito_pendencia_evento")
+}
+
+/// Config singleton: To/Cc do e-mail disparado ao salvar ação na aba Pendências.
+model CrmCreditoPendenciaEmailConfig {
+  id               Int      @id @default(1)
+  destinatariosTo  String   @default("[]") @map("destinatarios_to")
+  destinatariosCc  String   @default("[]") @map("destinatarios_cc")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  updatedByLogin   String?  @map("updated_by_login")
+
+  @@map("crm_credito_pendencia_email_config")
+}
+
 /// Metas mensais do Painel de Produção (PCP).
 model PainelProducaoMeta {
   id      Int     @id @default(autoincrement())

@@ -21,6 +21,20 @@ export function labelStatusPedidoAberto(statusItem: number): string {
   return STATUS_LABEL[statusItem] ?? `Status ${statusItem}`;
 }
 
+/** Labels amplos (inclui status finais para sync da aba Pendências). */
+const STATUS_LABEL_COMPLETO: Record<number, string> = {
+  ...STATUS_LABEL,
+  4: 'Atendido totalmente',
+  5: 'Atendido com corte',
+  6: 'Cancelado',
+  7: 'Devolvido parcialmente',
+  8: 'Devolvido totalmente',
+};
+
+export function labelStatusItemPedidoCompleto(statusItem: number): string {
+  return STATUS_LABEL_COMPLETO[statusItem] ?? `Status ${statusItem}`;
+}
+
 /** pd.nome no Nomus já costuma vir como "PD 49511" — evita duplicar o prefixo na UI/e-mail. */
 export function formatarNumeroPedidoExibicao(numeroPedido: string): string {
   const trimmed = numeroPedido.trim();
@@ -89,4 +103,57 @@ export function agruparPedidosAbertosPorCliente(
   }
 
   return [...map.values()].sort((a, b) => a.clienteNome.localeCompare(b.clienteNome, 'pt-BR'));
+}
+
+export type StatusPedidoCredito = {
+  idPedido: number;
+  numeroPedido: string;
+  clienteNome: string;
+  /** Menor status entre os itens (1 prevalece sobre 2/3 se houver item pausado). */
+  statusItem: number;
+  statusLabel: string;
+};
+
+/**
+ * Status atual dos pedidos no Nomus (MIN dos status dos itens).
+ * Usado no refresh da grade de pendências de crédito.
+ */
+export async function listarStatusPedidosCreditoPorIds(
+  ids: number[]
+): Promise<StatusPedidoCredito[]> {
+  const unique = [...new Set(ids.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0))];
+  if (unique.length === 0) return [];
+
+  const placeholders = unique.map(() => '?').join(', ');
+  const sql = `
+    SELECT
+      pd.id AS idPedido,
+      pd.nome AS numeroPedido,
+      pe.nome AS clienteNome,
+      MIN(ip.status) AS statusItem
+    FROM itempedido ip
+    INNER JOIN pedido pd ON pd.id = ip.idPedido
+    INNER JOIN pessoa pe ON pe.id = pd.idCliente
+    WHERE pd.id IN (${placeholders})
+      AND pd.idEmpresa IN (1, 2)
+    GROUP BY pd.id, pd.nome, pe.nome
+  `;
+
+  const rows = await nomusQuery<{
+    idPedido: number;
+    numeroPedido: string;
+    clienteNome: string;
+    statusItem: number;
+  }>(sql, unique);
+
+  return rows.map((row) => {
+    const statusItem = Number(row.statusItem);
+    return {
+      idPedido: Number(row.idPedido),
+      numeroPedido: String(row.numeroPedido ?? '').trim(),
+      clienteNome: String(row.clienteNome ?? '').trim(),
+      statusItem,
+      statusLabel: labelStatusItemPedidoCompleto(statusItem),
+    };
+  });
 }
