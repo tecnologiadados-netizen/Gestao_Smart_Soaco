@@ -1350,3 +1350,135 @@ export async function salvarDreRateioConfigApi(
     gravado: body.gravado,
   };
 }
+
+export type DreDashboardKpi = {
+  id: string;
+  label: string;
+  valor: number;
+  momPct: number | null;
+  yoyPct: number | null;
+  pctFaturamento: number | null;
+  inverso?: boolean;
+  breakdown?: {
+    operacional: { valor: number; pctTotal: number | null };
+    logistica: { valor: number; pctTotal: number | null };
+    administrativo: { valor: number; pctTotal: number | null };
+  };
+};
+
+export type DreDashboardPayload = {
+  unidade: { id: string; label: string; idEmpresas: number[] };
+  dataInicio: string;
+  dataFim: string;
+  periodos: string[];
+  vazio: boolean;
+  kpis: DreDashboardKpi[];
+  series: {
+    evolucao12m: {
+      periodo: string;
+      faturamento: number;
+      lucroBruto: number;
+      ebitda: number;
+      lucroLiquido: number;
+      faturamentoAnoAnt: number | null;
+      lucroBrutoAnoAnt: number | null;
+      ebitdaAnoAnt: number | null;
+      lucroLiquidoAnoAnt: number | null;
+    }[];
+    margens: {
+      periodo: string;
+      margemBruta: number | null;
+      margemEbitda: number | null;
+      margemLiquida: number | null;
+    }[];
+    pessoal: {
+      periodo: string;
+      operacional: number;
+      logistica: number;
+      administrativo: number;
+    }[];
+    empresas: {
+      unidadeId: string;
+      label: string;
+      faturamento: number;
+      cpv: number;
+      lucroBruto: number;
+      despOp: number;
+      ebitda: number;
+      lucroLiquido: number;
+      margemLiquida: number | null;
+    }[];
+  };
+  waterfall: { id: string; label: string; valor: number; tipo: string }[];
+  analise: {
+    pontoEquilibrio: number | null;
+    faturamentoMetaEbitda: number | null;
+    faturamentoMetaLucro: number | null;
+    metaEbitdaPct: number;
+    metaLucroPct: number;
+    premissas: {
+      cpvPct: number;
+      custosFixos: number;
+      margemContribuicaoPct: number;
+      descricao: string;
+    };
+  };
+  insights: { severidade: 'positivo' | 'atencao' | 'critico'; titulo: string; texto: string }[];
+  erro?: string;
+};
+
+export async function fetchDreDashboard(params: {
+  dataInicio: string;
+  dataFim: string;
+  unidade?: string;
+  metaEbitdaPct?: number;
+  metaLucroPct?: number;
+}): Promise<DreDashboardPayload> {
+  const sp = new URLSearchParams({
+    dataInicio: params.dataInicio,
+    dataFim: params.dataFim,
+    unidade: params.unidade ?? 'todas',
+  });
+  if (params.metaEbitdaPct != null) sp.set('metaEbitda', String(params.metaEbitdaPct));
+  if (params.metaLucroPct != null) sp.set('metaLucro', String(params.metaLucroPct));
+  const res = await apiFetch(`/api/financeiro/dre/dashboard?${sp.toString()}`);
+  const body = (await res.json().catch(() => ({}))) as DreDashboardPayload & { error?: string };
+  if (!res.ok) {
+    return {
+      unidade: { id: 'todas', label: 'Todas', idEmpresas: [] },
+      dataInicio: params.dataInicio,
+      dataFim: params.dataFim,
+      periodos: [],
+      vazio: true,
+      kpis: [],
+      series: { evolucao12m: [], margens: [], pessoal: [], empresas: [] },
+      waterfall: [],
+      analise: {
+        pontoEquilibrio: null,
+        faturamentoMetaEbitda: null,
+        faturamentoMetaLucro: null,
+        metaEbitdaPct: 12,
+        metaLucroPct: 3,
+        premissas: { cpvPct: 0, custosFixos: 0, margemContribuicaoPct: 0, descricao: '' },
+      },
+      insights: [],
+      erro: body.error ?? res.statusText,
+    };
+  }
+  return {
+    ...body,
+    kpis: Array.isArray(body.kpis) ? body.kpis : [],
+    series: body.series ?? { evolucao12m: [], margens: [], pessoal: [], empresas: [] },
+    waterfall: Array.isArray(body.waterfall) ? body.waterfall : [],
+    analise: body.analise ?? {
+      pontoEquilibrio: null,
+      faturamentoMetaEbitda: null,
+      faturamentoMetaLucro: null,
+      metaEbitdaPct: params.metaEbitdaPct ?? 12,
+      metaLucroPct: params.metaLucroPct ?? 3,
+      premissas: { cpvPct: 0, custosFixos: 0, margemContribuicaoPct: 0, descricao: '' },
+    },
+    insights: Array.isArray(body.insights) ? body.insights : [],
+    vazio: Boolean(body.vazio),
+  };
+}

@@ -6,6 +6,7 @@
 export const DFC_NOME_GERACAO_CAIXA = 'Geração de Caixa';
 
 import estruturaJson from './estruturaDfcArvore.json';
+import { classificacaoExcluidaDaArvoreDfc } from './mapeamentoFluxoDfc';
 
 export type DfcEstruturaNo = {
   pathKey: string;
@@ -62,9 +63,22 @@ function assignPathKeysRecursive(node: DfcEstruturaNo, base: string): void {
   node.children?.forEach((ch, i) => assignPathKeysRecursive(ch, `${base}/${i}`));
 }
 
+/** Remove nós cuja classificação está em CLASSIFICACOES_EXCLUIDAS_ARVORE_DFC. */
+function podarNosExcluidosDaArvore(nodes: DfcEstruturaNo[]): DfcEstruturaNo[] {
+  const out: DfcEstruturaNo[] = [];
+  for (const n of nodes) {
+    if (n.codigo?.trim() && classificacaoExcluidaDaArvoreDfc(n.codigo)) continue;
+    const children = n.children?.length ? podarNosExcluidosDaArvore(n.children) : [];
+    out.push({ ...n, children });
+  }
+  return out;
+}
+
 /** Mesma transformação da grade (Entradas operacionais / Saídas operacionais). */
 export function montarRootsParaExibicao(roots: DfcEstruturaNo[]): DfcEstruturaNo[] {
-  const cloned = JSON.parse(JSON.stringify(roots)) as DfcEstruturaNo[];
+  const cloned = podarNosExcluidosDaArvore(
+    JSON.parse(JSON.stringify(roots)) as DfcEstruturaNo[],
+  );
   const opIdx = cloned.findIndex((r) => r.macro === 'OPERACIONAL');
   if (opIdx >= 0) {
     const op = cloned[opIdx];

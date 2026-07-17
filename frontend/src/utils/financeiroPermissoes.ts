@@ -80,6 +80,7 @@ export const ROTA_PERMISSOES_FINANCEIRO: Record<string, CodigoPermissao[]> = {
   '/financeiro': PERMISSOES_ACESSO_FINANCEIRO_RESUMO,
   '/financeiro/resumo': PERMISSOES_ACESSO_FINANCEIRO_RESUMO,
   '/financeiro/dre': PERMISSOES_ACESSO_FINANCEIRO_DRE,
+  '/financeiro/dashboard': PERMISSOES_ACESSO_FINANCEIRO_DRE,
   '/financeiro/dfc': PERMISSOES_ACESSO_FINANCEIRO_DFC,
   '/financeiro/painel-financeiro-comercial': PERMISSOES_ACESSO_FINANCEIRO_PAINEL_COMERCIAL,
   '/financeiro/renegociacao-contratos': PERMISSOES_ACESSO_FINANCEIRO_RENEGOCIACAO,

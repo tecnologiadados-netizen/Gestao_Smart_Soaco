@@ -40,6 +40,7 @@ import {
 } from '../data/dfcSaldoFaturarRepository.js';
 import { queryDfcSaldosBancarios } from '../data/dfcSaldosBancariosRepository.js';
 import { agregarSaldosBancariosParaGrade } from '../data/dfcSaldosBancariosAgregar.js';
+import { resolverContasCaixaInicialFinal } from '../data/dfcContasCaixaConstantes.js';
 import {
   queryDreReceitaIndiretaBruto,
   queryDreReceitaIndiretaDetalhe,
@@ -70,6 +71,7 @@ import {
   salvarDreRateioConfig,
   salvarDreRateioConfigSeVazio,
 } from '../data/dreRateioConfigRepository.js';
+import { montarDreDashboard } from '../data/dreDashboardService.js';
 import { isShop9Enabled } from '../config/shop9Db.js';
 import {
   queryDfcShop9RetroAgregado,
@@ -246,7 +248,7 @@ export async function getDfcAgendamentosEfetivos(req: Request, res: Response): P
     dataFim,
     granularidade,
     idEmpresas: [...DFC_EMPRESAS_CARGA],
-    contasBancarias: [],
+    contasBancarias: resolverContasCaixaInicialFinal([]),
   });
 
   res.json({
@@ -336,7 +338,7 @@ export async function getDfcSaldosBancarios(req: Request, res: Response): Promis
     dataFim,
     granularidade,
     idEmpresas: idEmpresas.length > 0 ? idEmpresas : [...DFC_EMPRESAS_CARGA],
-    contasBancarias,
+    contasBancarias: resolverContasCaixaInicialFinal(contasBancarias),
   });
 
   res.json({
@@ -1697,6 +1699,39 @@ export async function deleteDreRelacaoPcOverrides(_req: Request, res: Response):
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[deleteDreRelacaoPcOverrides]', msg);
+    res.status(500).json({ error: msg });
+  }
+}
+
+/** GET /api/financeiro/dre/dashboard — KPIs, séries e análise (somente leitura). */
+export async function getDreDashboard(req: Request, res: Response): Promise<void> {
+  const dataInicio = String(req.query.dataInicio ?? '').trim();
+  const dataFim = String(req.query.dataFim ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataInicio) || !/^\d{4}-\d{2}-\d{2}$/.test(dataFim)) {
+    res.status(400).json({ error: 'Informe dataInicio e dataFim no formato YYYY-MM-DD.' });
+    return;
+  }
+  if (dataFim < dataInicio) {
+    res.status(400).json({ error: 'Período inválido: dataFim deve ser >= dataInicio.' });
+    return;
+  }
+
+  const unidade = String(req.query.unidade ?? req.query.idEmpresas ?? 'todas').trim();
+  const metaEbitdaPct = Number(req.query.metaEbitda ?? req.query.metaEbitdaPct ?? 12);
+  const metaLucroPct = Number(req.query.metaLucro ?? req.query.metaLucroPct ?? 3);
+
+  try {
+    const payload = await montarDreDashboard({
+      dataInicio,
+      dataFim,
+      unidade,
+      metaEbitdaPct: Number.isFinite(metaEbitdaPct) ? metaEbitdaPct : 12,
+      metaLucroPct: Number.isFinite(metaLucroPct) ? metaLucroPct : 3,
+    });
+    res.json(payload);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[getDreDashboard]', msg);
     res.status(500).json({ error: msg });
   }
 }
