@@ -327,13 +327,12 @@ export default function ModalCadastrarPrecos({
             >
               <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
                 <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">{p.nome}</h3>
-                <label className={`inline-flex items-center gap-2 select-none ${statusColeta === 'Finalizada' ? 'cursor-default opacity-75' : 'cursor-pointer'}`}>
+                <label className="inline-flex items-center gap-2 select-none cursor-pointer">
                   <input
                     type="checkbox"
                     checked={idFornecedorVencedor === p.idPessoa}
                     onChange={() => setIdFornecedorVencedor(idFornecedorVencedor === p.idPessoa ? null : p.idPessoa)}
-                    disabled={statusColeta === 'Finalizada'}
-                    className="rounded border-slate-400 text-primary-600 focus:ring-primary-500 disabled:opacity-60"
+                    className="rounded border-slate-400 text-primary-600 focus:ring-primary-500"
                   />
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Vencedor</span>
                 </label>

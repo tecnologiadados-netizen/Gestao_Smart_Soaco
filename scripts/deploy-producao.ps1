@@ -209,6 +209,7 @@ foreach ($line in $envFile) {
 $servicoEstavaRodando = $false
 $servico = Get-Service -Name $ServicoNome -ErrorAction SilentlyContinue
 $servicoExistia = [bool]$servico
+$nodeEnvAnterior = $env:NODE_ENV
 
 try {
     $branch = & $Git branch --show-current
@@ -221,6 +222,9 @@ try {
     Sync-GitComOriginMain -GitExe $Git
 
     Stop-ProducaoParaDeploy -ServicoNome $ServicoNome -Port $port -EstavaRodando ([ref]$servicoEstavaRodando)
+
+    # Instalacao precisa de devDependencies (typescript, vite). NODE_ENV=production no .env omitiria isso.
+    $env:NODE_ENV = "development"
 
     Invoke-NpmStep "[3/9] npm install (raiz)..." { npm install }
     Invoke-NpmStep "[4/9] npm install (backend)..." { npm install --prefix backend }
@@ -237,10 +241,16 @@ try {
     $env:NODE_ENV = "production"
     npm run build:production
     if ($LASTEXITCODE -ne 0) { throw "Build falhou." }
+    $env:NODE_ENV = $nodeEnvAnterior
 
     $ensureWordDirs = Join-Path $PastaProjeto "scripts\ensure-word-com-dirs.ps1"
     if (Test-Path $ensureWordDirs) {
         & $ensureWordDirs
+    }
+
+    $clearGenPy = Join-Path $PastaProjeto "scripts\clear-win32com-genpy.ps1"
+    if (Test-Path $clearGenPy) {
+        & $clearGenPy
     }
 
     Write-Host "[9/9] Reiniciar producao..." -ForegroundColor Cyan
@@ -273,6 +283,7 @@ try {
     Write-Host "Ctrl+Shift+R em gsmartsoaco.com.br apos deploy." -ForegroundColor Yellow
 
 } catch {
+    $env:NODE_ENV = $nodeEnvAnterior
     Write-Host ""
     Write-Host "ERRO NO DEPLOY: $($_.Exception.Message)" -ForegroundColor Red
     Restore-ProducaoSeParada -ServicoExistia $servicoExistia -EstavaRodando $servicoEstavaRodando -ServicoNome $ServicoNome -PastaProjeto $PastaProjeto -Port $port
