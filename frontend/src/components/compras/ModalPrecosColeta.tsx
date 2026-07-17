@@ -220,7 +220,10 @@ export default function ModalPrecosColeta({
   const emCotacao = statusLocal === 'Em cotação';
   const emAprovacao = statusLocal === 'Em Aprovação';
   const enviadoFinanceiro = statusLocal === 'Enviado para Financeiro';
-  const podeReabrir = emAprovacao || enviadoFinanceiro;
+  const finalizada = statusLocal === 'Finalizada';
+  /** Permite cadastrar/alterar preços mesmo após finalização (nova cotação). */
+  const podeCadastrarPrecos = emCotacao || emAprovacao || finalizada;
+  const podeReabrir = emAprovacao || enviadoFinanceiro || finalizada;
   const rejeitada = statusLocal === 'Rejeitada';
   const [modalCancelar, setModalCancelar] = useState(false);
   const [justificativaCancelar, setJustificativaCancelar] = useState('');
@@ -671,11 +674,17 @@ export default function ModalPrecosColeta({
                     >
                       <td className="py-2 px-3 border-b border-slate-100 dark:border-slate-700 align-middle">
                         <div className="flex flex-wrap items-center gap-1">
-                          {podeEditarCompras && (emCotacao || emAprovacao) && (
+                          {podeEditarCompras && podeCadastrarPrecos && (
                             <button
                               type="button"
                               onClick={() => setCadastrarPrecosRow(row as Record<string, unknown>)}
-                              title={emAprovacao ? 'Visualizar preços e informar quantidade aprovada' : 'Cadastrar ou alterar preços por fornecedor'}
+                              title={
+                                emAprovacao
+                                  ? 'Visualizar preços e informar quantidade aprovada'
+                                  : finalizada
+                                    ? 'Incluir ou alterar cotação/preços mesmo com coleta finalizada'
+                                    : 'Cadastrar ou alterar preços por fornecedor'
+                              }
                               className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium transition"
                             >
                               Cadastrar preços
