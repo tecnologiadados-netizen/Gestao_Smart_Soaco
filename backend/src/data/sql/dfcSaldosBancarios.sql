@@ -15,6 +15,7 @@ LEFT JOIN contabancaria cb ON cb.id = lf.idContaBancaria
 WHERE lf.dataLancamento >= ?
   AND lf.dataLancamento <= ?
   AND cb.id IS NOT NULL
+  AND cb.ativo = 1
 GROUP BY
     DATE(lf.dataLancamento),
     cb.id,

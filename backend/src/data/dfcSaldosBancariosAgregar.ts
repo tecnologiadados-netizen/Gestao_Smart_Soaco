@@ -3,6 +3,7 @@
  */
 
 import type { DfcSaldoBancarioLinha } from './dfcSaldosBancariosRepository.js';
+import { ehContaBancariaInativaDfc } from './dfcContasCaixaConstantes.js';
 
 export type DfcSaldoBancarioContaGrade = {
   idContaBancaria: number;
@@ -65,6 +66,7 @@ function filtrarLinhas(
   const cbSet =
     contasBancarias.length > 0 ? new Set(contasBancarias.map((n) => n.trim()).filter(Boolean)) : null;
   return linhas.filter((l) => {
+    if (ehContaBancariaInativaDfc(l.idContaBancaria, l.nomeContaBancaria)) return false;
     if (empSet && !empSet.has(l.idEmpresa)) return false;
     if (cbSet && !cbSet.has(l.nomeContaBancaria.trim())) return false;
     return true;

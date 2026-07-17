@@ -1,10 +1,12 @@
 import estruturaJson from './estruturaDfcArvore.json';
 import type { DfcEstruturaNo } from './ArvoreContasDfc';
+import { classificacaoExcluidaDaArvoreDfc } from './mapeamentoFluxoDfc';
 
 export type OpcaoFiltroPlano = { id: string; label: string; idNum: number };
 
 function flatten(nodes: DfcEstruturaNo[], out: OpcaoFiltroPlano[]): void {
   for (const n of nodes) {
+    if (n.codigo?.trim() && classificacaoExcluidaDaArvoreDfc(n.codigo)) continue;
     if (n.id != null && n.id > 0) {
       const cod = n.codigo?.trim();
       const label = cod ? `${cod} — ${n.nome}` : n.nome;

@@ -31,7 +31,7 @@ function excluidaDfc(classificacao) {
     .replace(/\s+/g, '')
     .replace(/\.+$/, '');
   if (!c) return true;
-  return classificacaoSobPrefixo(c, '1.2');
+  return ['1.2', '13'].some((prefix) => classificacaoSobPrefixo(c, prefix));
 }
 
 const out = rows

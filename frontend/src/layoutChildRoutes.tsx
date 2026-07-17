@@ -25,6 +25,7 @@ import PrecificacaoPage from './pages/PrecificacaoPage';
 import ResumoFinanceiroPage from './pages/financeiro/ResumoFinanceiroPage';
 import DfcPage from './pages/financeiro/DfcPage';
 import DrePage from './pages/financeiro/DrePage';
+import DashboardFinanceiroPage from './pages/financeiro/DashboardFinanceiroPage';
 import PainelFinanceiroComercialPage from './pages/financeiro/PainelFinanceiroComercialPage';
 import RenegociacaoContratosPage from './pages/financeiro/RenegociacaoContratosPage';
 import CrmFinanceiroPage from './pages/financeiro/CrmFinanceiroPage';
@@ -122,6 +123,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'financeiro/resumo', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/dfc', element: <DfcPage /> },
   { path: 'financeiro/dre', element: <ErrorBoundary><DrePage /></ErrorBoundary> },
+  { path: 'financeiro/dashboard', element: <ErrorBoundary><DashboardFinanceiroPage /></ErrorBoundary> },
   { path: 'financeiro/painel-financeiro-comercial', element: <PainelFinanceiroComercialPage /> },
   { path: 'financeiro/renegociacao-contratos', element: <RenegociacaoContratosPage /> },
   { path: 'financeiro/crm', element: <ErrorBoundary><CrmFinanceiroPage /></ErrorBoundary> },
