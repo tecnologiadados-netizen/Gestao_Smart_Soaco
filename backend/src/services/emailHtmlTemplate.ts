@@ -1,5 +1,3 @@
-import { resolveAppBaseUrl } from '../config/appBaseUrl.js';
-
 export type EmailDataRow = {
   label: string;
   value: string;
@@ -47,9 +45,8 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function logoUrl(): string {
-  return `${resolveAppBaseUrl()}/logo-soaco-clean.png`;
-}
+/** CID anexado automaticamente por sendSystemEmail (funciona sem URL pública). */
+const LOGO_EMAIL_CID = 'soaco-email-logo';
 
 function renderDataTable(rows: EmailDataRow[]): string {
   const bodyRows = rows
@@ -154,8 +151,8 @@ export function buildSystemEmailHtml(options: SystemEmailLayoutOptions): string 
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
                   <td style="padding-bottom:18px;">
-                    <div style="display:inline-block;background:#ffffff;border-radius:8px;padding:8px 12px;">
-                      <img src="${logoUrl()}" alt="SoAço" width="120" height="40" style="display:block;border:0;outline:none;height:auto;max-width:120px;" />
+                    <div style="display:inline-block;background:#ffffff;border-radius:8px;padding:10px 14px;">
+                      <img src="cid:${LOGO_EMAIL_CID}" alt="SoAço" width="170" height="65" style="display:block;border:0;outline:none;width:170px;height:auto;max-width:100%;" />
                     </div>
                   </td>
                 </tr>

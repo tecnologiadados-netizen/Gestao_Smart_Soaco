@@ -35,8 +35,8 @@ export default function KpiCards({ titulo, indicadores, tipo }: Props) {
     {
       label: labelBaixado,
       value: indicadores.recebido30d,
-      color: "text-slate-700",
-      bg: "bg-slate-50 border-slate-200",
+      color: "text-slate-700 dark:text-slate-200",
+      bg: "bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700",
     },
     {
       label: labelHistorico,
@@ -48,7 +48,7 @@ export default function KpiCards({ titulo, indicadores, tipo }: Props) {
 
   return (
     <section>
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
         {titulo}
       </h2>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -57,7 +57,7 @@ export default function KpiCards({ titulo, indicadores, tipo }: Props) {
             key={card.label}
             className={`rounded-xl border p-4 shadow-sm ${card.bg}`}
           >
-            <p className="text-xs font-medium text-slate-500">{card.label}</p>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{card.label}</p>
             <p className={`mt-1 text-xl font-bold ${card.color}`}>
               {formatCurrency(card.value)}
             </p>

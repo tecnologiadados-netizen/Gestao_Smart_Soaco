@@ -38,9 +38,13 @@ import { useAuth } from "../../contexts/AuthContext";
 import {
   PERMISSOES_ACESSO_FINANCEIRO_CRM_EMPRESA,
   PERMISSOES_ACESSO_FINANCEIRO_CRM_CLIENTE,
+  PERMISSOES_ACESSO_FINANCEIRO_CRM_PENDENCIAS,
+  PERMISSOES_EDITAR_CRM_PENDENCIAS_DESTINATARIOS,
 } from "../../utils/financeiroPermissoes";
+import PendenciasCreditoPanel from "./crm/components/PendenciasCreditoPanel";
+import { useSearchParams } from "react-router-dom";
 type Aba = "receber" | "pagar";
-type GuiaPainel = "empresa" | "cliente";
+type GuiaPainel = "empresa" | "cliente" | "pendencias";
 
 const CACHE_STORAGE_KEY = "crm-financeiro:indicadores-globais:v13";
 const CACHE_SAUDE_EMPRESA_KEY = "crm-financeiro:saude-empresa:v6";
@@ -106,15 +110,15 @@ function salvarCacheLocal(
 function ResumoSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="h-14 animate-pulse rounded-xl bg-slate-200" />
-      <div className="h-48 animate-pulse rounded-xl bg-slate-100" />
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="h-14 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700" />
+      <div className="h-48 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
         <div className="h-12 animate-pulse bg-blue-700/80" />
         <div className="space-y-2 p-4">
           {Array.from({ length: 6 }).map((_, index) => (
             <div
               key={index}
-              className="h-10 animate-pulse rounded bg-slate-100"
+              className="h-10 animate-pulse rounded bg-slate-100 dark:bg-slate-800"
             />
           ))}
         </div>
@@ -125,16 +129,16 @@ function ResumoSkeleton() {
 
 function SaudeEmpresaSkeleton() {
   return (
-    <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <div className="mb-4 space-y-2">
-        <div className="h-6 w-96 max-w-full animate-pulse rounded bg-slate-200" />
-        <div className="h-4 w-72 max-w-full animate-pulse rounded bg-slate-100" />
+        <div className="h-6 w-96 max-w-full animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+        <div className="h-4 w-72 max-w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <div
             key={index}
-            className="h-52 animate-pulse rounded-xl border border-slate-200 bg-slate-50"
+            className="h-52 animate-pulse rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800"
           />
         ))}
       </div>
@@ -150,7 +154,7 @@ function AbasResumo({
   onChange: (aba: Aba) => void;
 }) {
   return (
-    <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+    <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <div className="flex flex-wrap gap-1 p-1">
         <button
           type="button"
@@ -158,7 +162,7 @@ function AbasResumo({
           className={`rounded-lg px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition ${
             aba === "receber"
               ? "bg-blue-700 text-white shadow"
-              : "text-slate-600 hover:bg-slate-100"
+              : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
           }`}
         >
           Contas a receber e recebimentos
@@ -169,7 +173,7 @@ function AbasResumo({
           className={`rounded-lg px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition ${
             aba === "pagar"
               ? "bg-blue-700 text-white shadow"
-              : "text-slate-600 hover:bg-slate-100"
+              : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
           }`}
         >
           Contas a pagar e pagamentos
@@ -184,14 +188,16 @@ function GuiasPainel({
   onChange,
   podeVerEmpresa,
   podeVerCliente,
+  podeVerPendencias,
 }: {
   guia: GuiaPainel;
   onChange: (guia: GuiaPainel) => void;
   podeVerEmpresa: boolean;
   podeVerCliente: boolean;
+  podeVerPendencias: boolean;
 }) {
   return (
-    <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+    <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <div className="flex flex-wrap gap-1 p-1">
         {podeVerEmpresa && (
           <button
@@ -200,7 +206,7 @@ function GuiasPainel({
             className={`rounded-lg px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition ${
               guia === "empresa"
                 ? "bg-blue-700 text-white shadow"
-                : "text-slate-600 hover:bg-slate-100"
+                : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             }`}
           >
             Situação geral da empresa
@@ -213,10 +219,23 @@ function GuiasPainel({
             className={`rounded-lg px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition ${
               guia === "cliente"
                 ? "bg-blue-700 text-white shadow"
-                : "text-slate-600 hover:bg-slate-100"
+                : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             }`}
           >
             Análise de crédito por cliente
+          </button>
+        )}
+        {podeVerPendencias && (
+          <button
+            type="button"
+            onClick={() => onChange("pendencias")}
+            className={`rounded-lg px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition ${
+              guia === "pendencias"
+                ? "bg-blue-700 text-white shadow"
+                : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            }`}
+          >
+            Pendências de crédito
           </button>
         )}
       </div>
@@ -226,15 +245,44 @@ function GuiasPainel({
 
 export default function CrmFinanceiroPage() {
   const { hasPermission } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const podeVerEmpresa = PERMISSOES_ACESSO_FINANCEIRO_CRM_EMPRESA.some((p) =>
     hasPermission(p),
   );
   const podeVerCliente = PERMISSOES_ACESSO_FINANCEIRO_CRM_CLIENTE.some((p) =>
     hasPermission(p),
   );
-  const guiaInicial: GuiaPainel = podeVerEmpresa ? "empresa" : "cliente";
+  const podeVerPendencias = PERMISSOES_ACESSO_FINANCEIRO_CRM_PENDENCIAS.some((p) =>
+    hasPermission(p),
+  );
+  const podeEditarDestinatariosPendencias =
+    PERMISSOES_EDITAR_CRM_PENDENCIAS_DESTINATARIOS.some((p) => hasPermission(p));
+
+  const guiaFromUrl = searchParams.get("guia");
+  const clienteFromUrl = searchParams.get("cliente");
+  const situacaoFromUrl = searchParams.get("situacao");
+
+  const guiaInicial: GuiaPainel = (() => {
+    if (guiaFromUrl === "pendencias" && podeVerPendencias) return "pendencias";
+    if (guiaFromUrl === "cliente" && podeVerCliente) return "cliente";
+    if (guiaFromUrl === "empresa" && podeVerEmpresa) return "empresa";
+    if (podeVerEmpresa) return "empresa";
+    if (podeVerCliente) return "cliente";
+    return "pendencias";
+  })();
+
+  const situacaoPendenciasInicial =
+    guiaInicial === "pendencias" &&
+    (situacaoFromUrl === "INADIMPLENTES" ||
+      situacaoFromUrl === "REGULARIZADOS" ||
+      situacaoFromUrl === "FINALIZADOS")
+      ? situacaoFromUrl
+      : null;
 
   const [guiaPainel, setGuiaPainel] = useState<GuiaPainel>(guiaInicial);
+  const [clientePendenciasFiltro, setClientePendenciasFiltro] = useState<string | null>(
+    guiaInicial === "pendencias" && clienteFromUrl ? clienteFromUrl : null,
+  );
   const [aba, setAba] = useState<Aba>("receber");
   const [empresaId, setEmpresaId] = useState<number | null>(null);
   const [empresaNome, setEmpresaNome] = useState<string | null>(null);
@@ -679,11 +727,19 @@ export default function CrmFinanceiroPage() {
       fecharModalDetalhe();
       if (guia === "empresa") {
         setPessoa(null);
-      } else {
+        setClientePendenciasFiltro(null);
+      } else if (guia === "cliente") {
         setAba("receber");
+        setClientePendenciasFiltro(null);
       }
+      const next = new URLSearchParams(searchParams);
+      next.set("guia", guia);
+      if (guia !== "pendencias") {
+        next.delete("cliente");
+      }
+      setSearchParams(next, { replace: true });
     },
-    [fecharModalDetalhe],
+    [fecharModalDetalhe, searchParams, setSearchParams],
   );
 
   const handleExtrairRelatorio = async () => {
@@ -741,6 +797,8 @@ export default function CrmFinanceiroPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {guiaPainel !== "pendencias" && (
+            <>
           <button
             type="button"
             onClick={handleExtrairRelatorio}
@@ -778,20 +836,38 @@ export default function CrmFinanceiroPage() {
               >
                 {carregando ? "Atualizando..." : "Atualizar painel"}
               </button>
+            </>
+          )}
             </div>
           </div>
 
       <div className="crm-dashboard-panel space-y-6">
-        {podeVerEmpresa && podeVerCliente && (
+        {[podeVerEmpresa, podeVerCliente, podeVerPendencias].filter(Boolean).length >
+          1 && (
           <GuiasPainel
             guia={guiaPainel}
             onChange={handleTrocarGuia}
             podeVerEmpresa={podeVerEmpresa}
             podeVerCliente={podeVerCliente}
+            podeVerPendencias={podeVerPendencias}
           />
         )}
 
-        <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        {guiaPainel === "pendencias" ? (
+          podeVerPendencias ? (
+            <PendenciasCreditoPanel
+              podeEditarDestinatarios={podeEditarDestinatariosPendencias}
+              clienteInicial={clientePendenciasFiltro}
+              situacaoInicial={situacaoPendenciasInicial}
+            />
+          ) : (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-800">
+              Você não tem permissão para a guia Pendências de crédito.
+            </div>
+          )
+        ) : (
+          <>
+        <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div
             className={`grid gap-4 ${
               guiaPainel === "cliente" ? "lg:grid-cols-2" : "lg:grid-cols-1"
@@ -852,11 +928,11 @@ export default function CrmFinanceiroPage() {
         )}
 
         {guiaPainel === "cliente" && !pessoa ? (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center shadow-sm">
-            <p className="text-base font-semibold text-slate-800">
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center shadow-sm dark:border-slate-600 dark:bg-slate-900">
+            <p className="text-base font-semibold text-slate-800 dark:text-slate-100">
               Selecione um cliente para iniciar a análise de crédito
             </p>
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               Esta guia mostra somente dados do cliente filtrado: saúde,
               indicadores, pendências, recebimentos e relatório em PDF.
             </p>
@@ -970,7 +1046,7 @@ export default function CrmFinanceiroPage() {
           </>
         ) : !carregando && !erro ? (
           <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
               Não foi possível exibir os indicadores.
             </p>
             <button
@@ -982,6 +1058,8 @@ export default function CrmFinanceiroPage() {
             </button>
           </div>
         ) : null}
+          </>
+        )}
       </div>
     </div>
   );

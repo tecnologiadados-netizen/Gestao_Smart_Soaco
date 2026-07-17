@@ -176,11 +176,11 @@ function ContaRow({
         {formatDate(row.dataAgendamento)}
       </td>
       <td className={`${td} cell-wrap`}>
-        <span className="block font-medium text-slate-800">
+        <span className="block font-medium text-slate-800 dark:text-slate-100">
           {row.nomeClassificacao ?? "—"}
         </span>
         {row.classificacao && (
-          <span className="text-xs text-slate-400">{row.classificacao}</span>
+          <span className="text-xs text-slate-400 dark:text-slate-500">{row.classificacao}</span>
         )}
       </td>
       <td className={`${td} cell-wrap`}>{row.empresa ?? "—"}</td>
@@ -211,8 +211,8 @@ function ContaRow({
           isAtraso
             ? row.diasAtraso > 0
               ? "bg-red-500 text-white"
-              : "text-slate-400"
-            : "text-emerald-700"
+              : "text-slate-400 dark:text-slate-500"
+            : "text-emerald-700 dark:text-emerald-400"
         }`}
       >
         {isAtraso
@@ -366,7 +366,7 @@ export default function TabelaContas({
             ))}
           </colgroup>
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500 [&>th]:bg-slate-50">
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 [&>th]:bg-slate-50 dark:[&>th]:bg-slate-800">
               {COLUMN_IDS.map((columnId) => {
                 const coluna = colunas[columnId];
                 const sortMeta = getSortMeta(coluna.id);
@@ -378,7 +378,7 @@ export default function TabelaContas({
                 return (
                   <th
                     key={coluna.id}
-                    className={`sortable text-xs uppercase tracking-wide text-slate-500 ${diasHeaderClass} ${
+                    className={`sortable text-xs uppercase tracking-wide text-slate-500 dark:text-slate-300 ${diasHeaderClass} ${
                       coluna.align === "right"
                         ? "text-right"
                         : coluna.align === "center"
@@ -450,7 +450,7 @@ export default function TabelaContas({
               <tr>
                 <td
                   colSpan={COLUMN_IDS.length}
-                  className="px-4 py-8 text-center text-slate-400"
+                  className="px-4 py-8 text-center text-slate-400 dark:text-slate-500"
                 >
                   Não há registros para exibição
                 </td>
@@ -469,7 +469,7 @@ export default function TabelaContas({
         </table>
       </div>
       {dados.length > 0 && !ocultarRodape && (
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-500">
+        <div className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
           {dados.length} registro(s) · Total:{" "}
           <strong>
             {formatCurrency(dados.reduce((acc, item) => acc + item.valor, 0))}
