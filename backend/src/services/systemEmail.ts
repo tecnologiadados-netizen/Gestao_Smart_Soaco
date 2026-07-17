@@ -1,4 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { EmailProviderSettings, PrismaClient } from '@prisma/client';
 import { envioNotificacoesHabilitado, logEnvioSuprimido } from '../config/envioNotificacoes.js';
 
@@ -6,6 +8,9 @@ export type EmailAttachment = {
   filename: string;
   mimeType: string;
   contentBase64: string;
+  /** Content-ID usado por imagens inline: <img src="cid:...">. */
+  contentId?: string;
+  disposition?: 'attachment' | 'inline';
 };
 
 export type SendSystemEmailInput = {
@@ -148,17 +153,66 @@ function buildRawMimeMessage(input: {
   );
 
   for (const att of attachments) {
+    const disposition = att.disposition ?? (att.contentId ? 'inline' : 'attachment');
     lines.push(
       `--${boundaryMixed}`,
       `Content-Type: ${att.mimeType}; name="${att.filename}"`,
       'Content-Transfer-Encoding: base64',
-      `Content-Disposition: attachment; filename="${att.filename}"`,
+      `Content-Disposition: ${disposition}; filename="${att.filename}"`,
+      ...(att.contentId ? [`Content-ID: <${att.contentId}>`, `X-Attachment-Id: ${att.contentId}`] : []),
       '',
       att.contentBase64,
     );
   }
   lines.push(`--${boundaryMixed}--`);
   return lines.join('\r\n');
+}
+
+const LOGO_EMAIL_CID = 'soaco-email-logo';
+let logoEmailBase64Cache: string | null = null;
+
+function carregarLogoEmailBase64(): string {
+  if (logoEmailBase64Cache) return logoEmailBase64Cache;
+
+  // Em desenvolvimento o cwd costuma ser backend; no build o ativo vem de frontend/public
+  // e é copiado para backend/public.
+  const candidatos = [
+    resolve(process.cwd(), 'public', 'logo-soaco-email.png'),
+    resolve(process.cwd(), '..', 'frontend', 'public', 'logo-soaco-email.png'),
+  ];
+  let ultimoErro: unknown;
+  for (const caminho of candidatos) {
+    try {
+      logoEmailBase64Cache = readFileSync(caminho).toString('base64');
+      return logoEmailBase64Cache;
+    } catch (error) {
+      ultimoErro = error;
+    }
+  }
+  throw new Error(
+    `Logo padrão de e-mail não encontrada (logo-soaco-email.png): ${
+      ultimoErro instanceof Error ? ultimoErro.message : String(ultimoErro)
+    }`
+  );
+}
+
+function incluirLogoPadraoInline(input: SendSystemEmailInput): SendSystemEmailInput {
+  if (!input.html.includes(`cid:${LOGO_EMAIL_CID}`)) return input;
+  if (input.attachments?.some((att) => att.contentId === LOGO_EMAIL_CID)) return input;
+
+  return {
+    ...input,
+    attachments: [
+      ...(input.attachments ?? []),
+      {
+        filename: 'logo-soaco-email.png',
+        mimeType: 'image/png',
+        contentBase64: carregarLogoEmailBase64(),
+        contentId: LOGO_EMAIL_CID,
+        disposition: 'inline',
+      },
+    ],
+  };
 }
 
 function oauthErrorHint(error: string | undefined): string {
@@ -254,7 +308,7 @@ export async function sendSystemEmail(
         'Credencial de e-mail bloqueada. Reconfigure em Credenciais.'
     );
   }
-  await sendEmailViaGmailApi(settings, input);
+  await sendEmailViaGmailApi(settings, incluirLogoPadraoInline(input));
 }
 
 export async function markEmailCredentialError(

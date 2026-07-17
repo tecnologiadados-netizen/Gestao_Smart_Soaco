@@ -18,6 +18,10 @@ import {
   executarAlertasClienteRegularizado,
   previewAlertaClienteRegularizado,
 } from './crmCreditoRegularizacaoService.js';
+import {
+  executarResumoDiarioCredito,
+  previewResumoDiarioCredito,
+} from './crmCreditoResumoDiarioEmailService.js';
 
 type TipoComDestinatarios = NonNullable<Awaited<ReturnType<typeof buscarTipoEmailPorCode>>>;
 
@@ -36,6 +40,10 @@ const BUILDERS: Record<string, (ctx: BuilderContext) => Promise<BuilderResult>> 
     }),
   financeiro_credito_cliente_regularizado: (ctx) =>
     executarAlertasClienteRegularizado(ctx.prisma, ctx.destinatarios, {
+      ignorarDedup: ctx.ignorarDedup,
+    }),
+  financeiro_credito_resumo_diario: (ctx) =>
+    executarResumoDiarioCredito(ctx.prisma, ctx.destinatarios, {
       ignorarDedup: ctx.ignorarDedup,
     }),
 };
@@ -142,6 +150,16 @@ export async function previewEmailDoTipo(tipoId: number): Promise<{
     };
   }
 
+  if (builderCode === 'financeiro_credito_resumo_diario') {
+    const preview = await previewResumoDiarioCredito(prisma);
+    return {
+      subject: preview.subject,
+      html: preview.html,
+      resumo: preview.resumo,
+      quantidadeAlertas: preview.quantidade,
+    };
+  }
+
   throw new Error(`Preview não disponível para builder "${builderCode ?? ''}".`);
 }
 
@@ -172,7 +190,7 @@ export async function testarEnvioEmailTipo(tipoId: number, usuarioId: number): P
     const msg =
       result.erros[0] ??
       (result.ignorados > 0
-        ? 'Nenhum alerta para enviar no momento (sem clientes em risco).'
+        ? 'Nenhum alerta para enviar no momento (sem conteúdo ou já enviado hoje).'
         : 'Nenhum e-mail enviado.');
     throw new Error(msg);
   }
