@@ -14,6 +14,10 @@ import {
   executarAlertasCreditoPedidoAtraso,
   previewAlertaCreditoPedidoAtraso,
 } from './financeiroCreditoPedidoAtrasoEmailService.js';
+import {
+  executarAlertasClienteRegularizado,
+  previewAlertaClienteRegularizado,
+} from './crmCreditoRegularizacaoService.js';
 
 type TipoComDestinatarios = NonNullable<Awaited<ReturnType<typeof buscarTipoEmailPorCode>>>;
 
@@ -28,6 +32,10 @@ type BuilderResult = { enviados: number; ignorados: number; erros: string[] };
 const BUILDERS: Record<string, (ctx: BuilderContext) => Promise<BuilderResult>> = {
   financeiro_credito_pedido_atraso: (ctx) =>
     executarAlertasCreditoPedidoAtraso(ctx.prisma, ctx.destinatarios, {
+      ignorarDedup: ctx.ignorarDedup,
+    }),
+  financeiro_credito_cliente_regularizado: (ctx) =>
+    executarAlertasClienteRegularizado(ctx.prisma, ctx.destinatarios, {
       ignorarDedup: ctx.ignorarDedup,
     }),
 };
@@ -108,6 +116,29 @@ export async function previewEmailDoTipo(tipoId: number): Promise<{
       html: first.html,
       resumo,
       quantidadeAlertas: alertas.length,
+    };
+  }
+
+  if (builderCode === 'financeiro_credito_cliente_regularizado') {
+    const { quantidade, previews } = await previewAlertaClienteRegularizado(prisma);
+    if (previews.length === 0) {
+      return {
+        subject: '[Preview] Nenhum cliente regularizado pendente',
+        html: '<p>Não há clientes regularizados aguardando alerta para a analista de crédito.</p>',
+        resumo: 'Nenhum alerta de regularização pendente.',
+        quantidadeAlertas: 0,
+      };
+    }
+    const first = previews[0]!;
+    const resumo =
+      quantidade === 1
+        ? `1 cliente regularizado: ${first.clienteNome}.`
+        : `${quantidade} clientes regularizados. Preview do primeiro: ${first.clienteNome}.`;
+    return {
+      subject: first.subject,
+      html: first.html,
+      resumo,
+      quantidadeAlertas: quantidade,
     };
   }
 

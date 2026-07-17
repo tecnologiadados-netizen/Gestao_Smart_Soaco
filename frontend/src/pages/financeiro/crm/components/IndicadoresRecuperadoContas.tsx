@@ -89,7 +89,7 @@ export default function IndicadoresRecuperadoContas({
 
   return (
     <section
-      className="shrink-0 border-b border-slate-200 bg-white px-5 py-4"
+      className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900"
       aria-label="Indicadores de recebimentos recuperados"
     >
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

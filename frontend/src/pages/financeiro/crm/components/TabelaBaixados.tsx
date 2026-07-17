@@ -248,8 +248,8 @@ function BaixadoRow({
 }) {
   const rowClass = linhaRecuperado
     ? index % 2 === 0
-      ? "bg-emerald-50"
-      : "bg-emerald-100"
+      ? "bg-emerald-50 dark:bg-emerald-950/35"
+      : "bg-emerald-100 dark:bg-emerald-900/35"
     : index % 2 === 0
       ? "table-row-even"
       : "table-row-odd";
@@ -268,7 +268,7 @@ function BaixadoRow({
             className={`block text-[11px] capitalize leading-tight ${
               shouldHighlightVencimentoDayLabel(row.dataVencimento)
                 ? "font-semibold text-orange-500"
-                : "text-slate-500"
+                : "text-slate-500 dark:text-slate-400"
             }`}
           >
             {formatWeekday(row.dataVencimento)}
@@ -344,13 +344,13 @@ function LegendaCoresBaixados() {
   );
 
   const sep = (
-    <span className="hidden text-slate-300 sm:inline" aria-hidden="true">
+    <span className="hidden text-slate-300 dark:text-slate-600 sm:inline" aria-hidden="true">
       ;
     </span>
   );
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] leading-snug text-slate-600 sm:text-xs">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] leading-snug text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 sm:text-xs">
       {LEGENDA_CORES_BAIXADOS.map((item, index) => (
         <span key={item.descricao} className="contents">
           {index > 0 && sep}
@@ -526,14 +526,14 @@ export default function TabelaBaixados({
             ))}
           </colgroup>
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500 [&>th]:bg-slate-50">
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 [&>th]:bg-slate-50 dark:[&>th]:bg-slate-800">
               {COLUMN_IDS.map((columnId) => {
                 const coluna = COLunas[columnId];
                 const sortMeta = getSortMeta(coluna.id);
                 return (
                   <th
                     key={coluna.id}
-                    className={`sortable text-xs uppercase tracking-wide text-slate-500 ${
+                    className={`sortable text-xs uppercase tracking-wide text-slate-500 dark:text-slate-300 ${
                       coluna.align === "right"
                         ? "text-right"
                         : coluna.align === "center"
@@ -593,7 +593,7 @@ export default function TabelaBaixados({
               <tr>
                 <td
                   colSpan={COLUMN_IDS.length}
-                  className="px-4 py-8 text-center text-slate-400"
+                  className="px-4 py-8 text-center text-slate-400 dark:text-slate-500"
                 >
                   Não há registros para exibição
                 </td>
@@ -612,7 +612,7 @@ export default function TabelaBaixados({
         </table>
       </div>
       {sortedData.length > 0 && !ocultarRodape && (
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-500">
+        <div className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
           {sortedData.length} registro(s)
         </div>
       )}

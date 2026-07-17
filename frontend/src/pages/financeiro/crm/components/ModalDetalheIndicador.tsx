@@ -281,14 +281,14 @@ function LegendaDetalhe({
         : "bg-blue-600";
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-slate-200 bg-slate-50 px-5 py-2.5">
-      <p className="text-sm text-slate-700">
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-slate-200 bg-slate-50 px-5 py-2.5 dark:border-slate-700 dark:bg-slate-800">
+      <p className="text-sm text-slate-700 dark:text-slate-300">
         <span className="inline-flex flex-wrap items-center gap-2">
           <span
             className={`inline-block h-2.5 w-2.5 rounded-full ${dotClass}`}
             aria-hidden="true"
           />
-          <strong className="text-base font-bold text-slate-900">
+          <strong className="text-base font-bold text-slate-900 dark:text-slate-100">
             {quantidade.toLocaleString("pt-BR")}
           </strong>
           <span>
@@ -308,7 +308,7 @@ function LegendaDetalhe({
                   ? "linha referente a título descontado"
                   : "linhas referentes a títulos descontados"}
               </span>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                 {(quantidade - quantidadeTitulos).toLocaleString("pt-BR")}{" "}
                 {quantidade - quantidadeTitulos === 1
                   ? "linha sem título descontado"
@@ -319,9 +319,9 @@ function LegendaDetalhe({
         </span>
       </p>
       {totalValor != null && quantidade > 0 && (
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-slate-600 dark:text-slate-400">
           {labelTotal}:{" "}
-          <strong className="font-semibold text-slate-900">
+          <strong className="font-semibold text-slate-900 dark:text-slate-100">
             {formatCurrency(totalValor)}
           </strong>
         </p>
@@ -539,11 +539,11 @@ export default function ModalDetalheIndicador({
       onClick={onFechar}
     >
       <div
-        className="flex h-[min(96vh,960px)] w-full max-w-[min(99vw,1920px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        className="flex h-[min(96vh,960px)] w-full max-w-[min(99vw,1920px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
         onClick={(event) => event.stopPropagation()}
       >
         <div
-          className={`flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 ${headerClass}`}
+          className={`flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-700 ${headerClass}`}
         >
           <div className="min-w-0">
             <h2
@@ -626,7 +626,7 @@ export default function ModalDetalheIndicador({
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {carregando ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 py-20 text-slate-500">
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 py-20 text-slate-500 dark:text-slate-400">
               <div className="loading-spinner" aria-hidden="true" />
               <p className="text-sm font-medium">Carregando registros...</p>
             </div>

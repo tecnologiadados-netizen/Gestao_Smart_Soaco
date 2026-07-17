@@ -74,7 +74,7 @@ function CelulaValor({
   destaqueCor?: string;
 }) {
   const cell = destaque
-    ? "px-4 py-2.5 text-right font-semibold text-slate-800"
+    ? "px-4 py-2.5 text-right font-semibold text-slate-800 dark:text-slate-100"
     : "px-4 py-2.5 text-right";
   const corTexto = destaque ? destaqueCor : cor;
   const clicavel = valor > 0 && onClickCelula && nomeClassificacao != null;
@@ -93,7 +93,7 @@ function CelulaValor({
             })
           }
           title={`Clique para ver: ${COLUNA_INDICADOR_LABEL[coluna]}`}
-          className={`cursor-pointer rounded px-1 font-semibold underline decoration-slate-300 underline-offset-2 transition hover:bg-slate-100 hover:decoration-slate-600 ${corTexto ?? "text-slate-800"}`}
+          className={`cursor-pointer rounded px-1 font-semibold underline decoration-slate-300 underline-offset-2 transition hover:bg-slate-100 hover:decoration-slate-600 dark:decoration-slate-600 dark:hover:bg-slate-700 dark:hover:decoration-slate-400 ${corTexto ?? "text-slate-800 dark:text-slate-100"}`}
         >
           {formatCurrency(valor)}
         </button>
@@ -154,7 +154,7 @@ export default function TabelaIndicadores({
 
   return (
     <section className="table-crm-section w-full max-w-full min-w-0">
-      <div className="border-b border-slate-200 bg-blue-700 px-4 py-3">
+      <div className="border-b border-slate-200 bg-blue-700 px-4 py-3 dark:border-slate-700 dark:bg-blue-900">
         <h3 className="text-sm font-semibold text-white">{titulo}</h3>
       </div>
       <div className="table-crm-wrapper table-crm-scroll-y">
@@ -210,7 +210,7 @@ export default function TabelaIndicadores({
               <tr>
                 <td
                   colSpan={8}
-                  className="px-4 py-8 text-center text-slate-400"
+                  className="px-4 py-8 text-center text-slate-400 dark:text-slate-500"
                 >
                   Não há registros para exibição
                 </td>
@@ -225,10 +225,10 @@ export default function TabelaIndicadores({
                     }
                   >
                     <td className="cell-wrap min-w-[260px] px-4 py-2.5 align-top">
-                      <span className="block font-medium leading-snug text-slate-800">
+                      <span className="block font-medium leading-snug text-slate-800 dark:text-slate-100">
                         {row.nomeClassificacao}
                       </span>
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs text-slate-400 dark:text-slate-500">
                         {row.classificacao}
                       </span>
                     </td>
@@ -240,8 +240,8 @@ export default function TabelaIndicadores({
                     />
                   </tr>
                 ))}
-                <tr className="table-row-total border-t-2 border-slate-300">
-                  <td className="px-4 py-2.5 font-bold text-slate-800">
+                <tr className="table-row-total border-t-2 border-slate-300 dark:border-slate-600">
+                  <td className="px-4 py-2.5 font-bold text-slate-800 dark:text-slate-100">
                     Total
                   </td>
                   <LinhaValores

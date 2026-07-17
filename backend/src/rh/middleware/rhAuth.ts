@@ -304,14 +304,18 @@ export function requireRhConfigAccess(mode: AccessMode = 'edit') {
 }
 
 /**
- * Protege somente as chaves de fotos configuráveis do Organograma.
- * As demais chaves de `/get-config` e `/set-config` mantêm a política existente.
+ * Protege chaves do Organograma em `/get-config` e `/set-config`.
+ * - `organograma-foto:*` → `organograma.fotos`
+ * - `organograma_vinculacoes*` → `organograma.edit` (escrita) / view|edit (leitura)
+ * Demais chaves mantêm a política existente.
  */
 export function requireRhConfigPermission(mode: AccessMode) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const rawKey = mode === 'view' ? req.query.key : (req.body as { key?: unknown } | undefined)?.key;
     const key = String(rawKey ?? '').trim();
-    if (!key.startsWith('organograma-foto:')) {
+    const isFoto = key.startsWith('organograma-foto:');
+    const isVinculacao = key.startsWith('organograma_vinculacoes');
+    if (!isFoto && !isVinculacao) {
       next();
       return;
     }
@@ -320,13 +324,27 @@ export function requireRhConfigPermission(mode: AccessMode) {
       const context = await ensureAuthenticated(req, res);
       if (!context) return;
 
-      const fotos = context.permissions?.organograma.fotos;
-      const allowed =
-        context.isMaster ||
-        (mode === 'view' ? canViewAccess(fotos) : canEditAccess(fotos));
+      let allowed = context.isMaster;
+      if (!allowed && context.permissions) {
+        if (isFoto) {
+          const fotos = context.permissions.organograma.fotos;
+          allowed = mode === 'view' ? canViewAccess(fotos) : canEditAccess(fotos);
+        } else {
+          const organograma = context.permissions.organograma;
+          allowed =
+            mode === 'view'
+              ? canViewAccess(organograma) || canViewAccess(organograma.fotos)
+              : organograma.edit === true;
+        }
+      }
 
       if (!allowed) {
-        deny(res, 'Sem permissão para acessar fotos do organograma.');
+        deny(
+          res,
+          isFoto
+            ? 'Sem permissão para acessar fotos do organograma.'
+            : 'Sem permissão para configurar vínculos do organograma.',
+        );
         return;
       }
 

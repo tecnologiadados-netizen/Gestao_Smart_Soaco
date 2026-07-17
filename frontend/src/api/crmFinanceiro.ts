@@ -141,3 +141,342 @@ export async function fetchCrmEmpresas(): Promise<EmpresaOption[]> {
   }
   return Array.isArray(body) ? body : [];
 }
+
+export type AcaoPendenciaCredito = 'CANCELADO' | 'PAUSADO' | 'REALOCAR_MATERIAL';
+
+export type SituacaoFilaPendencia =
+  | 'INADIMPLENTES'
+  | 'REGULARIZADOS'
+  | 'FINALIZADOS';
+
+export type PendenciaCreditoItem = {
+  id: number;
+  idPedido: number;
+  numeroPedido: string;
+  numeroPedidoExibicao: string;
+  clienteNome: string;
+  clienteChave: string;
+  statusNomus: number | null;
+  statusNomusLabel: string | null;
+  acao: string | null;
+  acaoLabel: string | null;
+  observacao: string | null;
+  pedidoDestino: string | null;
+  qtdTitulosAtraso: number | null;
+  totalAtraso: number | null;
+  maiorAtrasoDias: number | null;
+  alertaEm: string;
+  acaoEm: string | null;
+  acaoPorLogin: string | null;
+  acaoPorNome: string | null;
+  encerrada: boolean;
+  aguardandoConfirmacaoNomus: boolean;
+  instrucaoNomus: string | null;
+  emailAcaoEnviado: boolean;
+  emailAcaoEnviadoEm: string | null;
+  regularizacaoSituacao: string | null;
+  regularizacaoSituacaoLabel: string | null;
+  qtdTitulosMonitorPendentes: number | null;
+  qtdTitulosMonitorTotal: number | null;
+  contasAcompanhamento: Array<{
+    codigoConta: number;
+    dataVencimento: string | null;
+    status: string;
+    statusLabel: string;
+  }>;
+  situacaoFila: SituacaoFilaPendencia;
+  situacaoFilaLabel: string;
+  podeConfirmarLiberacao: boolean;
+  qtdEmailsAlerta: number;
+  qtdEmailsAcao: number;
+  qtdEmailsTotal: number;
+  qtdAcoesRegistradas: number;
+};
+
+export type TituloRegularizacaoItem = {
+  id: number;
+  codigoConta: number;
+  dataVencimento: string | null;
+  valorReferencia: number;
+  nfeOrigem: string | null;
+  descricao: string | null;
+  diasAtrasoSnap: number | null;
+  status: string;
+  statusLabel: string;
+  regularizadoEm: string | null;
+};
+
+export type MonitorRegularizacaoCliente = {
+  id: number;
+  clienteNome: string;
+  clienteChave: string;
+  situacao: string;
+  situacaoLabel: string;
+  iniciadoEm: string;
+  regularizadoEm: string | null;
+  emailEnviadoEm: string | null;
+  qtdTitulosPendentes: number;
+  qtdTitulosRegularizados: number;
+  qtdTitulosTotal: number;
+  titulos: TituloRegularizacaoItem[];
+};
+
+export type HistoricoPendenciaEvento = {
+  id: number;
+  tipo: string;
+  tipoLabel: string;
+  detalhe: string | null;
+  usuarioLogin: string | null;
+  createdAt: string;
+  pendenciaId: number;
+  numeroPedido: string;
+  numeroPedidoExibicao: string;
+  acao: string | null;
+  acaoLabel: string | null;
+  observacao: string | null;
+};
+
+export type HistoricoPendenciaCliente = {
+  clienteNome: string;
+  clienteChave: string;
+  eventos: HistoricoPendenciaEvento[];
+};
+
+export type UsuarioDestinatarioPendencia = {
+  id: number;
+  login: string;
+  nome: string | null;
+  email: string | null;
+  ativo: boolean;
+};
+
+export type PendenciasEmailConfig = {
+  usuarioIdsTo: number[];
+  usuarioIdsCc: number[];
+  destinatariosTo: UsuarioDestinatarioPendencia[];
+  destinatariosCc: UsuarioDestinatarioPendencia[];
+  updatedAt?: string | null;
+  updatedByLogin?: string | null;
+};
+
+export async function fetchCrmPendenciasCredito(params?: {
+  cliente?: string | null;
+  syncAlertas?: boolean;
+  syncNomus?: boolean;
+  situacao?: SituacaoFilaPendencia;
+}): Promise<{
+  itens: PendenciaCreditoItem[];
+  contagens: Record<SituacaoFilaPendencia, number>;
+  situacaoFila: SituacaoFilaPendencia;
+}> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/pendencias-credito${buildParams({
+      cliente: params?.cliente ?? undefined,
+      syncAlertas: params?.syncAlertas ? '1' : undefined,
+      syncNomus: params?.syncNomus === false ? '0' : undefined,
+      situacao: params?.situacao ?? 'INADIMPLENTES',
+    })}`,
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    itens?: PendenciaCreditoItem[];
+    contagens?: Record<SituacaoFilaPendencia, number>;
+    situacaoFila?: SituacaoFilaPendencia;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao carregar pendências');
+  }
+  return {
+    itens: body.itens ?? [],
+    contagens: body.contagens ?? {
+      INADIMPLENTES: 0,
+      REGULARIZADOS: 0,
+      FINALIZADOS: 0,
+    },
+    situacaoFila: body.situacaoFila ?? params?.situacao ?? 'INADIMPLENTES',
+  };
+}
+
+export async function salvarCrmPendenciaAcao(
+  id: number,
+  payload: {
+    acao: AcaoPendenciaCredito;
+    observacao?: string | null;
+    pedidoDestino?: string | null;
+  },
+): Promise<{
+  pendencia: PendenciaCreditoItem;
+  instrucaoNomus: string | null;
+  mensagem?: string;
+  emailEnviado: boolean;
+  aguardandoConfirmacaoNomus: boolean;
+  email: { to: string[]; cc: string[] } | null;
+}> {
+  const res = await apiFetch(`/api/financeiro/crm/pendencias-credito/${id}/acao`, {
+    method: 'POST',
+    body: payload,
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    pendencia?: PendenciaCreditoItem;
+    instrucaoNomus?: string | null;
+    mensagem?: string;
+    emailEnviado?: boolean;
+    aguardandoConfirmacaoNomus?: boolean;
+    email?: { to: string[]; cc: string[] } | null;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao salvar ação');
+  }
+  return {
+    pendencia: body.pendencia!,
+    instrucaoNomus: body.instrucaoNomus ?? null,
+    mensagem: body.mensagem,
+    emailEnviado: Boolean(body.emailEnviado),
+    aguardandoConfirmacaoNomus: Boolean(body.aguardandoConfirmacaoNomus),
+    email: body.email ?? null,
+  };
+}
+
+export async function confirmarCrmPendenciaLiberacao(id: number): Promise<{
+  pendencia: PendenciaCreditoItem;
+  instrucaoNomus: string | null;
+  mensagem: string;
+  aguardandoConfirmacaoNomus: boolean;
+}> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/pendencias-credito/${id}/confirmar-liberacao`,
+    { method: 'POST', body: {} },
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    pendencia?: PendenciaCreditoItem;
+    instrucaoNomus?: string | null;
+    mensagem?: string;
+    aguardandoConfirmacaoNomus?: boolean;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao confirmar liberação');
+  }
+  return {
+    pendencia: body.pendencia!,
+    instrucaoNomus: body.instrucaoNomus ?? null,
+    mensagem: body.mensagem ?? 'Liberação processada.',
+    aguardandoConfirmacaoNomus: Boolean(body.aguardandoConfirmacaoNomus),
+  };
+}
+
+export async function fetchCrmPendenciasEmailConfig(): Promise<PendenciasEmailConfig> {
+  const res = await apiFetch('/api/financeiro/crm/pendencias-credito/email-config');
+  const body = (await res.json().catch(() => ({}))) as
+    | PendenciasEmailConfig
+    | { error?: string };
+  if (!res.ok) {
+    throw new Error(
+      (body as { error?: string }).error ?? 'Falha ao carregar destinatários',
+    );
+  }
+  return body as PendenciasEmailConfig;
+}
+
+export async function salvarCrmPendenciasEmailConfig(payload: {
+  usuarioIdsTo: number[];
+  usuarioIdsCc: number[];
+}): Promise<PendenciasEmailConfig> {
+  const res = await apiFetch('/api/financeiro/crm/pendencias-credito/email-config', {
+    method: 'PUT',
+    body: payload,
+  });
+  const body = (await res.json().catch(() => ({}))) as
+    | PendenciasEmailConfig
+    | { error?: string };
+  if (!res.ok) {
+    throw new Error(
+      (body as { error?: string }).error ?? 'Falha ao salvar destinatários',
+    );
+  }
+  return body as PendenciasEmailConfig;
+}
+
+export async function fetchCrmPendenciasUsuarios(): Promise<UsuarioDestinatarioPendencia[]> {
+  const res = await apiFetch('/api/financeiro/crm/pendencias-credito/usuarios');
+  const body = (await res.json().catch(() => ({}))) as
+    | UsuarioDestinatarioPendencia[]
+    | { error?: string };
+  if (!res.ok) {
+    throw new Error(
+      (body as { error?: string }).error ?? 'Falha ao carregar usuários',
+    );
+  }
+  return Array.isArray(body) ? body : [];
+}
+
+export async function fetchCrmPendenciasHistorico(
+  cliente: string,
+): Promise<HistoricoPendenciaCliente> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/pendencias-credito/historico${buildParams({ cliente })}`,
+  );
+  const body = (await res.json().catch(() => ({}))) as
+    | HistoricoPendenciaCliente
+    | { error?: string };
+  if (!res.ok) {
+    throw new Error(
+      (body as { error?: string }).error ?? 'Falha ao carregar histórico',
+    );
+  }
+  return body as HistoricoPendenciaCliente;
+}
+
+export async function fetchCrmPendenciasContasCliente(
+  cliente: string,
+): Promise<{ monitor: MonitorRegularizacaoCliente | null; clienteNome: string }> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/pendencias-credito/contas${buildParams({ cliente })}`,
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    monitor?: MonitorRegularizacaoCliente | null;
+    clienteNome?: string;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao carregar contas do cliente');
+  }
+  return {
+    monitor: body.monitor ?? null,
+    clienteNome: body.clienteNome ?? cliente,
+  };
+}
+
+export type PedidoDestinoOpcao = {
+  idPedido: number;
+  numeroPedido: string;
+  numeroPedidoExibicao: string;
+  clienteNome: string;
+  statusItem: number;
+  statusLabel: string;
+  rotuloDestino: string;
+};
+
+export async function fetchCrmPendenciasPedidosDestino(params: {
+  busca: string;
+  excluirIdPedido?: number | null;
+  excluirCliente?: string | null;
+}): Promise<PedidoDestinoOpcao[]> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/pendencias-credito/pedidos-destino${buildParams({
+      busca: params.busca,
+      excluirIdPedido:
+        params.excluirIdPedido != null ? String(params.excluirIdPedido) : undefined,
+      excluirCliente: params.excluirCliente ?? undefined,
+    })}`,
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    pedidos?: PedidoDestinoOpcao[];
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao buscar pedidos destino');
+  }
+  return body.pedidos ?? [];
+}

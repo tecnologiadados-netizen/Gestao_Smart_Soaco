@@ -1278,6 +1278,8 @@ model CrmCreditoPendencia {
   acaoEm               DateTime? @map("acao_em")
   acaoPorLogin         String?   @map("acao_por_login")
   acaoPorNome          String?   @map("acao_por_nome")
+  /// Preenchido só após confirmar status no Nomus e disparar o e-mail de ação.
+  emailAcaoEnviadoEm   DateTime? @map("email_acao_enviado_em")
   encerrada            Boolean   @default(false)
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
@@ -1302,7 +1304,8 @@ model CrmCreditoPendenciaEvento {
   @@map("crm_credito_pendencia_evento")
 }
 
-/// Config singleton: To/Cc do e-mail disparado ao salvar ação na aba Pendências.
+/// Config singleton: IDs de usuários (To/Cc) do e-mail disparado ao salvar ação na aba Pendências.
+/// Campos destinatarios_to / destinatarios_cc guardam JSON de number[] (usuario.id).
 model CrmCreditoPendenciaEmailConfig {
   id               Int      @id @default(1)
   destinatariosTo  String   @default("[]") @map("destinatarios_to")
@@ -1311,6 +1314,48 @@ model CrmCreditoPendenciaEmailConfig {
   updatedByLogin   String?  @map("updated_by_login")
 
   @@map("crm_credito_pendencia_email_config")
+}
+
+/// Ciclo de monitoramento pós-pausa: vigia títulos em atraso até o cliente regularizar.
+model CrmCreditoRegularizacaoMonitor {
+  id                 Int      @id @default(autoincrement())
+  clienteNome        String   @map("cliente_nome")
+  clienteChave       String   @map("cliente_chave")
+  /// MONITORANDO | REGULARIZADO
+  situacao           String   @default("MONITORANDO")
+  iniciadoEm         DateTime @map("iniciado_em")
+  regularizadoEm     DateTime? @map("regularizado_em")
+  emailEnviadoEm     DateTime? @map("email_enviado_em")
+  iniciadoPorLogin   String?  @map("iniciado_por_login")
+  iniciadoPorNome    String?  @map("iniciado_por_nome")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  titulos            CrmCreditoRegularizacaoTitulo[]
+
+  @@index([clienteChave, situacao])
+  @@index([situacao, regularizadoEm])
+  @@map("crm_credito_regularizacao_monitor")
+}
+
+model CrmCreditoRegularizacaoTitulo {
+  id               Int      @id @default(autoincrement())
+  monitorId        Int      @map("monitor_id")
+  codigoConta      Int      @map("codigo_conta")
+  dataVencimento   String?  @map("data_vencimento")
+  valorReferencia  Float    @map("valor_referencia")
+  nfeOrigem        String?  @map("nfe_origem")
+  descricao        String?
+  diasAtrasoSnap   Int?     @map("dias_atraso_snap")
+  /// PENDENTE | REGULARIZADO
+  status           String   @default("PENDENTE")
+  regularizadoEm   DateTime? @map("regularizado_em")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  monitor          CrmCreditoRegularizacaoMonitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@unique([monitorId, codigoConta])
+  @@index([monitorId, status])
+  @@map("crm_credito_regularizacao_titulo")
 }
 
 /// Metas mensais do Painel de Produção (PCP).

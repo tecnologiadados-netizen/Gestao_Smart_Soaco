@@ -157,3 +157,146 @@ export async function listarStatusPedidosCreditoPorIds(
     };
   });
 }
+
+/**
+ * Pedidos abertos (status item 1–3) de um cliente, para seleção de destino na realocação.
+ * @deprecated Preferir `buscarPedidosAbertosParaRealocacao` (destino é outro cliente).
+ */
+export async function listarPedidosAbertosPorClienteNome(
+  clienteNome: string,
+  excluirIdPedido?: number | null
+): Promise<
+  Array<{
+    idPedido: number;
+    numeroPedido: string;
+    numeroPedidoExibicao: string;
+    statusItem: number;
+    statusLabel: string;
+  }>
+> {
+  const nome = clienteNome.trim();
+  if (!nome) return [];
+
+  const sql = `
+    SELECT
+      pd.id AS idPedido,
+      pd.nome AS numeroPedido,
+      MIN(ip.status) AS statusItem
+    FROM itempedido ip
+    INNER JOIN pedido pd ON pd.id = ip.idPedido
+    INNER JOIN pessoa pe ON pe.id = pd.idCliente
+    WHERE pe.nome = ?
+      AND ip.status IN (1, 2, 3)
+      AND pd.idEmpresa IN (1, 2)
+    GROUP BY pd.id, pd.nome
+    ORDER BY pd.nome ASC
+  `;
+
+  const rows = await nomusQuery<{
+    idPedido: number;
+    numeroPedido: string;
+    statusItem: number;
+  }>(sql, [nome]);
+
+  const excluir = excluirIdPedido != null ? Number(excluirIdPedido) : null;
+
+  return rows
+    .map((row) => {
+      const idPedido = Number(row.idPedido);
+      const statusItem = Number(row.statusItem);
+      const numeroPedido = String(row.numeroPedido ?? '').trim();
+      return {
+        idPedido,
+        numeroPedido,
+        numeroPedidoExibicao: formatarNumeroPedidoExibicao(numeroPedido),
+        statusItem,
+        statusLabel: labelStatusPedidoAberto(statusItem),
+      };
+    })
+    .filter((p) => (excluir != null && Number.isFinite(excluir) ? p.idPedido !== excluir : true));
+}
+
+export type PedidoDestinoRealocacaoRow = {
+  idPedido: number;
+  numeroPedido: string;
+  numeroPedidoExibicao: string;
+  clienteNome: string;
+  statusItem: number;
+  statusLabel: string;
+  /** Texto pronto para gravar em pedidoDestino (pedido + cliente). */
+  rotuloDestino: string;
+};
+
+/**
+ * Busca pedidos abertos de **outros** clientes (realocar material = outro cliente).
+ * `busca` filtra por nome do cliente ou número do pedido (texto livre com %).
+ */
+export async function buscarPedidosAbertosParaRealocacao(options: {
+  busca: string;
+  excluirIdPedido?: number | null;
+  excluirClienteNome?: string | null;
+  limite?: number;
+}): Promise<PedidoDestinoRealocacaoRow[]> {
+  const busca = options.busca.trim();
+  if (busca.length < 2) return [];
+
+  const { termoParaPadraoLikeSql } = await import('../utils/textoLivreBusca.js');
+  const like = termoParaPadraoLikeSql(busca);
+  const limite = Math.min(Math.max(options.limite ?? 40, 1), 80);
+  const excluirId =
+    options.excluirIdPedido != null && Number.isFinite(Number(options.excluirIdPedido))
+      ? Number(options.excluirIdPedido)
+      : null;
+  const excluirCliente = options.excluirClienteNome?.trim() || null;
+
+  const params: Array<string | number> = [like, like];
+  let sql = `
+    SELECT
+      pd.id AS idPedido,
+      pd.nome AS numeroPedido,
+      pe.nome AS clienteNome,
+      MIN(ip.status) AS statusItem
+    FROM itempedido ip
+    INNER JOIN pedido pd ON pd.id = ip.idPedido
+    INNER JOIN pessoa pe ON pe.id = pd.idCliente
+    WHERE ip.status IN (1, 2, 3)
+      AND pd.idEmpresa IN (1, 2)
+      AND (pe.nome LIKE ? OR pd.nome LIKE ?)
+  `;
+  if (excluirId != null) {
+    sql += ` AND pd.id <> ?`;
+    params.push(excluirId);
+  }
+  if (excluirCliente) {
+    sql += ` AND pe.nome <> ?`;
+    params.push(excluirCliente);
+  }
+  sql += `
+    GROUP BY pd.id, pd.nome, pe.nome
+    ORDER BY pe.nome ASC, pd.nome ASC
+    LIMIT ${limite}
+  `;
+
+  const rows = await nomusQuery<{
+    idPedido: number;
+    numeroPedido: string;
+    clienteNome: string;
+    statusItem: number;
+  }>(sql, params);
+
+  return rows.map((row) => {
+    const numeroPedido = String(row.numeroPedido ?? '').trim();
+    const numeroPedidoExibicao = formatarNumeroPedidoExibicao(numeroPedido);
+    const clienteNome = String(row.clienteNome ?? '').trim();
+    const statusItem = Number(row.statusItem);
+    return {
+      idPedido: Number(row.idPedido),
+      numeroPedido,
+      numeroPedidoExibicao,
+      clienteNome,
+      statusItem,
+      statusLabel: labelStatusPedidoAberto(statusItem),
+      rotuloDestino: `${numeroPedidoExibicao} · ${clienteNome}`,
+    };
+  });
+}
