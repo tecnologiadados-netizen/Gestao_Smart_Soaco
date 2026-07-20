@@ -23,6 +23,7 @@ import app, { BUILD_ID } from './app.js';
 import { iniciarCronsWhatsappNotificacao } from './scheduler/whatsappNotificacaoCron.js';
 import { iniciarCronsSgqEmailNotificacao } from './scheduler/sgqEmailNotificacaoCron.js';
 import { iniciarCronsEmailNotificacao } from './scheduler/emailNotificacaoCron.js';
+import { iniciarCronsCrmCreditoSla } from './scheduler/crmCreditoSlaCron.js';
 import { logStatusEnvioNotificacoes } from './config/envioNotificacoes.js';
 import { backfillAguardaRespostaLabelsForPendingOrders } from './services/sycroOrderAguardaRespostaLabel.js';
 import { ensureGrupoMaster } from './config/ensureGrupoMaster.js';
@@ -121,6 +122,7 @@ function main(): void {
         iniciarCronsWhatsappNotificacao();
         iniciarCronsSgqEmailNotificacao();
         iniciarCronsEmailNotificacao();
+        iniciarCronsCrmCreditoSla();
       })
       .catch((e) => {
         console.warn('[startup] ensureDbReady falhou (servidor já no ar):', (e as Error)?.message ?? e);

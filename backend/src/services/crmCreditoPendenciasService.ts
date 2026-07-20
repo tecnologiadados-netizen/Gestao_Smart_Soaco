@@ -251,7 +251,7 @@ export async function upsertPendenciasFromAlerta(
           totalAtraso,
           maiorAtrasoDias,
           contasAtrasoJson,
-          alertaEm: agora,
+          // Mantém alertaEm original — base do prazo de execução (SLA).
         },
       });
       // Sem evento ALERTA reiterado — histórico só registra e-mails enviados e ações
@@ -364,6 +364,17 @@ export type PendenciaCreditoDto = {
   /** E-mail de ação já disparado após confirmação Nomus. */
   emailAcaoEnviado: boolean;
   emailAcaoEnviadoEm: string | null;
+  /** Prazo configurado (h) para ação após o alerta. */
+  prazoHorasSemAcao: number;
+  /** Horas desde o alerta até agora (ou até a ação). */
+  horasDecorridas: number;
+  /** Horas restantes até estourar o prazo; null se já houve ação / encerrado. */
+  horasRestantes: number | null;
+  /** Sem ação e prazo estourado. */
+  slaEstourado: boolean;
+  /** E-mail de SLA ao gestor já enviado. */
+  emailSlaEnviado: boolean;
+  emailSlaEnviadoEm: string | null;
   /** Situação do monitoramento de regularização (por cliente). */
   regularizacaoSituacao: string | null;
   regularizacaoSituacaoLabel: string | null;
@@ -418,28 +429,59 @@ function parseContasAtrasoSnapshot(
   }
 }
 
-function toDto(row: {
-  id: number;
-  idPedido: number;
-  numeroPedido: string;
-  clienteNome: string;
-  clienteChave: string;
-  statusNomusSnapshot: number | null;
-  statusNomusLabel: string | null;
-  acao: string | null;
-  observacao: string | null;
-  pedidoDestino: string | null;
-  qtdTitulosAtraso: number | null;
-  totalAtraso: number | null;
-  maiorAtrasoDias: number | null;
-  contasAtrasoJson?: string | null;
+export function calcularSlaPendencia(input: {
   alertaEm: Date;
-  acaoEm: Date | null;
-  acaoPorLogin: string | null;
-  acaoPorNome: string | null;
-  emailAcaoEnviadoEm?: Date | null;
+  acao: string | null | undefined;
   encerrada: boolean;
-}): PendenciaCreditoDto {
+  prazoHorasSemAcao: number;
+  agora?: Date;
+}): {
+  horasDecorridas: number;
+  horasRestantes: number | null;
+  slaEstourado: boolean;
+} {
+  const agora = input.agora ?? new Date();
+  const ms = Math.max(0, agora.getTime() - input.alertaEm.getTime());
+  const horasDecorridas = Math.floor(ms / 3_600_000);
+  if (input.acao || input.encerrada) {
+    return { horasDecorridas, horasRestantes: null, slaEstourado: false };
+  }
+  const prazoMs = Math.max(1, input.prazoHorasSemAcao) * 3_600_000;
+  const restanteMs = prazoMs - ms;
+  const horasRestantes = Math.max(0, Math.ceil(restanteMs / 3_600_000));
+  return {
+    horasDecorridas,
+    horasRestantes,
+    slaEstourado: restanteMs <= 0,
+  };
+}
+
+function toDto(
+  row: {
+    id: number;
+    idPedido: number;
+    numeroPedido: string;
+    clienteNome: string;
+    clienteChave: string;
+    statusNomusSnapshot: number | null;
+    statusNomusLabel: string | null;
+    acao: string | null;
+    observacao: string | null;
+    pedidoDestino: string | null;
+    qtdTitulosAtraso: number | null;
+    totalAtraso: number | null;
+    maiorAtrasoDias: number | null;
+    contasAtrasoJson?: string | null;
+    alertaEm: Date;
+    acaoEm: Date | null;
+    acaoPorLogin: string | null;
+    acaoPorNome: string | null;
+    emailAcaoEnviadoEm?: Date | null;
+    emailSlaEnviadoEm?: Date | null;
+    encerrada: boolean;
+  },
+  prazoHorasSemAcao = 48
+): PendenciaCreditoDto {
   const conf = confirmacaoNomusOk(row.acao, row.statusNomusSnapshot);
   const emailAcaoEnviado = Boolean(row.emailAcaoEnviadoEm);
   const aguardando =
@@ -448,6 +490,12 @@ function toDto(row: {
     acaoExigeConfirmacaoNomus(row.acao as AcaoPendenciaCredito) &&
     conf !== true &&
     !emailAcaoEnviado;
+  const sla = calcularSlaPendencia({
+    alertaEm: row.alertaEm,
+    acao: row.acao,
+    encerrada: row.encerrada,
+    prazoHorasSemAcao,
+  });
   return {
     id: row.id,
     idPedido: row.idPedido,
@@ -476,6 +524,12 @@ function toDto(row: {
         : null,
     emailAcaoEnviado,
     emailAcaoEnviadoEm: row.emailAcaoEnviadoEm?.toISOString() ?? null,
+    prazoHorasSemAcao,
+    horasDecorridas: sla.horasDecorridas,
+    horasRestantes: sla.horasRestantes,
+    slaEstourado: sla.slaEstourado,
+    emailSlaEnviado: Boolean(row.emailSlaEnviadoEm),
+    emailSlaEnviadoEm: row.emailSlaEnviadoEm?.toISOString() ?? null,
     regularizacaoSituacao: null,
     regularizacaoSituacaoLabel: null,
     qtdTitulosMonitorPendentes: null,
@@ -647,6 +701,8 @@ export async function listarPendenciasCredito(
   const rows = await prisma.crmCreditoPendencia.findMany({
     orderBy: [{ alertaEm: 'desc' }, { clienteNome: 'asc' }, { numeroPedido: 'asc' }],
   });
+  const emailCfg = await obterEmailConfigPendencias(prisma);
+  const prazoHoras = emailCfg.prazoHorasSemAcao;
 
   if (syncNomus && rows.length > 0) {
     const statuses = await listarStatusPedidosCreditoPorIds(rows.map((r) => r.idPedido));
@@ -714,7 +770,7 @@ export async function listarPendenciasCredito(
     );
   }
 
-  let result = rows.map(toDto);
+  let result = rows.map((r) => toDto(r, prazoHoras));
   if (clienteFiltro) {
     const match = criarMatcherTextoLivre(clienteFiltro);
     result = result.filter(
@@ -827,7 +883,7 @@ export async function listarHistoricoClientePendencias(
     where: {
       pendenciaId: { in: pendencias.map((p) => p.id) },
       OR: [
-        { tipo: { in: ['EMAIL', 'LIBERACAO', 'FINALIZADO'] } },
+        { tipo: { in: ['EMAIL', 'LIBERACAO', 'FINALIZADO', 'EMAIL_SLA', 'ACAO'] } },
         {
           tipo: 'ACAO',
           NOT: { detalhe: { contains: 'rascunho' } },
@@ -843,6 +899,7 @@ export async function listarHistoricoClientePendencias(
     EMAIL: 'E-mail de ação',
     EMAIL_ALERTA: 'E-mail de alerta',
     EMAIL_REGULARIZADO: 'E-mail de regularização',
+    EMAIL_SLA: 'E-mail SLA (prazo sem ação)',
     LIBERACAO: 'Liberação confirmada',
     FINALIZADO: 'Finalizado',
   };
@@ -962,6 +1019,12 @@ export async function obterEmailConfigPendencias(prisma: PrismaClient): Promise<
   usuarioIdsCc: number[];
   destinatariosTo: UsuarioDestinatarioPendencia[];
   destinatariosCc: UsuarioDestinatarioPendencia[];
+  prazoHorasSemAcao: number;
+  alertaPrazoAtivo: boolean;
+  usuarioIdsGestorTo: number[];
+  usuarioIdsGestorCc: number[];
+  destinatariosGestorTo: UsuarioDestinatarioPendencia[];
+  destinatariosGestorCc: UsuarioDestinatarioPendencia[];
   updatedAt: string | null;
   updatedByLogin: string | null;
 }> {
@@ -975,15 +1038,28 @@ export async function obterEmailConfigPendencias(prisma: PrismaClient): Promise<
   const usuarioIdsCc = parseUsuarioIdsJson(row.destinatariosCc).filter(
     (id) => !usuarioIdsTo.includes(id)
   );
-  const [destinatariosTo, destinatariosCc] = await Promise.all([
-    carregarUsuariosPorIds(prisma, usuarioIdsTo),
-    carregarUsuariosPorIds(prisma, usuarioIdsCc),
-  ]);
+  const usuarioIdsGestorTo = parseUsuarioIdsJson(row.destinatariosGestorTo);
+  const usuarioIdsGestorCc = parseUsuarioIdsJson(row.destinatariosGestorCc).filter(
+    (id) => !usuarioIdsGestorTo.includes(id)
+  );
+  const [destinatariosTo, destinatariosCc, destinatariosGestorTo, destinatariosGestorCc] =
+    await Promise.all([
+      carregarUsuariosPorIds(prisma, usuarioIdsTo),
+      carregarUsuariosPorIds(prisma, usuarioIdsCc),
+      carregarUsuariosPorIds(prisma, usuarioIdsGestorTo),
+      carregarUsuariosPorIds(prisma, usuarioIdsGestorCc),
+    ]);
   return {
     usuarioIdsTo,
     usuarioIdsCc,
     destinatariosTo,
     destinatariosCc,
+    prazoHorasSemAcao: Math.max(1, Number(row.prazoHorasSemAcao) || 48),
+    alertaPrazoAtivo: row.alertaPrazoAtivo !== false,
+    usuarioIdsGestorTo,
+    usuarioIdsGestorCc,
+    destinatariosGestorTo,
+    destinatariosGestorCc,
     updatedAt: row.updatedAt.toISOString(),
     updatedByLogin: row.updatedByLogin,
   };
@@ -991,24 +1067,52 @@ export async function obterEmailConfigPendencias(prisma: PrismaClient): Promise<
 
 export async function salvarEmailConfigPendencias(
   prisma: PrismaClient,
-  input: { usuarioIdsTo?: unknown; usuarioIdsCc?: unknown },
+  input: {
+    usuarioIdsTo?: unknown;
+    usuarioIdsCc?: unknown;
+    prazoHorasSemAcao?: unknown;
+    alertaPrazoAtivo?: unknown;
+    usuarioIdsGestorTo?: unknown;
+    usuarioIdsGestorCc?: unknown;
+  },
   usuarioLogin: string | null
 ): Promise<{
   usuarioIdsTo: number[];
   usuarioIdsCc: number[];
   destinatariosTo: UsuarioDestinatarioPendencia[];
   destinatariosCc: UsuarioDestinatarioPendencia[];
+  prazoHorasSemAcao: number;
+  alertaPrazoAtivo: boolean;
+  usuarioIdsGestorTo: number[];
+  usuarioIdsGestorCc: number[];
+  destinatariosGestorTo: UsuarioDestinatarioPendencia[];
+  destinatariosGestorCc: UsuarioDestinatarioPendencia[];
 }> {
   const to = normalizarListaUsuarioIds(input.usuarioIdsTo);
   const cc = normalizarListaUsuarioIds(input.usuarioIdsCc).filter((id) => !to.includes(id));
+  const gestorTo = normalizarListaUsuarioIds(input.usuarioIdsGestorTo);
+  const gestorCc = normalizarListaUsuarioIds(input.usuarioIdsGestorCc).filter(
+    (id) => !gestorTo.includes(id)
+  );
+
+  const prazoRaw = Number(input.prazoHorasSemAcao);
+  const prazoHorasSemAcao = Number.isFinite(prazoRaw)
+    ? Math.min(720, Math.max(1, Math.round(prazoRaw)))
+    : 48;
+  const alertaPrazoAtivo =
+    input.alertaPrazoAtivo === undefined || input.alertaPrazoAtivo === null
+      ? true
+      : Boolean(input.alertaPrazoAtivo);
 
   const existentes = await prisma.usuario.findMany({
-    where: { id: { in: [...to, ...cc] }, ativo: true },
+    where: { id: { in: [...to, ...cc, ...gestorTo, ...gestorCc] }, ativo: true },
     select: { id: true },
   });
   const idsValidos = new Set(existentes.map((u) => u.id));
   const toOk = to.filter((id) => idsValidos.has(id));
   const ccOk = cc.filter((id) => idsValidos.has(id));
+  const gestorToOk = gestorTo.filter((id) => idsValidos.has(id));
+  const gestorCcOk = gestorCc.filter((id) => idsValidos.has(id));
 
   await prisma.crmCreditoPendenciaEmailConfig.upsert({
     where: { id: 1 },
@@ -1016,24 +1120,41 @@ export async function salvarEmailConfigPendencias(
       id: 1,
       destinatariosTo: JSON.stringify(toOk),
       destinatariosCc: JSON.stringify(ccOk),
+      prazoHorasSemAcao,
+      alertaPrazoAtivo,
+      destinatariosGestorTo: JSON.stringify(gestorToOk),
+      destinatariosGestorCc: JSON.stringify(gestorCcOk),
       updatedByLogin: usuarioLogin,
     },
     update: {
       destinatariosTo: JSON.stringify(toOk),
       destinatariosCc: JSON.stringify(ccOk),
+      prazoHorasSemAcao,
+      alertaPrazoAtivo,
+      destinatariosGestorTo: JSON.stringify(gestorToOk),
+      destinatariosGestorCc: JSON.stringify(gestorCcOk),
       updatedByLogin: usuarioLogin,
     },
   });
 
-  const [destinatariosTo, destinatariosCc] = await Promise.all([
-    carregarUsuariosPorIds(prisma, toOk),
-    carregarUsuariosPorIds(prisma, ccOk),
-  ]);
+  const [destinatariosTo, destinatariosCc, destinatariosGestorTo, destinatariosGestorCc] =
+    await Promise.all([
+      carregarUsuariosPorIds(prisma, toOk),
+      carregarUsuariosPorIds(prisma, ccOk),
+      carregarUsuariosPorIds(prisma, gestorToOk),
+      carregarUsuariosPorIds(prisma, gestorCcOk),
+    ]);
   return {
     usuarioIdsTo: toOk,
     usuarioIdsCc: ccOk,
     destinatariosTo,
     destinatariosCc,
+    prazoHorasSemAcao,
+    alertaPrazoAtivo,
+    usuarioIdsGestorTo: gestorToOk,
+    usuarioIdsGestorCc: gestorCcOk,
+    destinatariosGestorTo,
+    destinatariosGestorCc,
   };
 }
 

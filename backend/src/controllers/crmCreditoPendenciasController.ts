@@ -162,6 +162,10 @@ export async function putCrmPendenciasEmailConfig(req: Request, res: Response): 
       {
         usuarioIdsTo: req.body?.usuarioIdsTo ?? req.body?.destinatariosTo,
         usuarioIdsCc: req.body?.usuarioIdsCc ?? req.body?.destinatariosCc,
+        prazoHorasSemAcao: req.body?.prazoHorasSemAcao,
+        alertaPrazoAtivo: req.body?.alertaPrazoAtivo,
+        usuarioIdsGestorTo: req.body?.usuarioIdsGestorTo,
+        usuarioIdsGestorCc: req.body?.usuarioIdsGestorCc,
       },
       req.user?.login ?? null
     );

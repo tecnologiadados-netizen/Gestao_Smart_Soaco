@@ -73,7 +73,35 @@ type Props = {
   situacaoInicial?: SituacaoFilaPendencia | null;
 };
 
-type ListaDest = 'to' | 'cc';
+type ListaDest = 'to' | 'cc' | 'gestorTo' | 'gestorCc';
+
+function formatarTempoExecucao(item: PendenciaCreditoItem): {
+  label: string;
+  className: string;
+} {
+  const decorridas = item.horasDecorridas ?? 0;
+  const prazo = item.prazoHorasSemAcao ?? 48;
+  if (item.acao || item.encerrada) {
+    return {
+      label: item.acao ? `Ação em ${decorridas}h` : `${decorridas}h`,
+      className: 'text-slate-500 dark:text-slate-400',
+    };
+  }
+  if (item.slaEstourado) {
+    return {
+      label: `${decorridas}h · prazo ${prazo}h estourado`,
+      className: 'font-semibold text-red-600 dark:text-red-400',
+    };
+  }
+  const restam = item.horasRestantes ?? Math.max(0, prazo - decorridas);
+  return {
+    label: `${decorridas}h · restam ${restam}h`,
+    className:
+      restam <= 12
+        ? 'font-medium text-amber-700 dark:text-amber-400'
+        : 'text-slate-700 dark:text-slate-200',
+  };
+}
 
 function ListaUsuariosDestinatarios({
   titulo,
@@ -256,12 +284,23 @@ export default function PendenciasCreditoPanel({
   const [usuarios, setUsuarios] = useState<UsuarioDestinatarioPendencia[]>([]);
   const [idsTo, setIdsTo] = useState<number[]>([]);
   const [idsCc, setIdsCc] = useState<number[]>([]);
+  const [idsGestorTo, setIdsGestorTo] = useState<number[]>([]);
+  const [idsGestorCc, setIdsGestorCc] = useState<number[]>([]);
+  const [prazoHorasSemAcao, setPrazoHorasSemAcao] = useState(48);
+  const [alertaPrazoAtivo, setAlertaPrazoAtivo] = useState(true);
   const [salvandoEmail, setSalvandoEmail] = useState(false);
   /** Seção de destinatários expandida (visível). */
   const [destinatariosAberto, setDestinatariosAberto] = useState(true);
   /** Edição liberada só após clicar em Editar (e com permissão). */
   const [editandoDestinatarios, setEditandoDestinatarios] = useState(false);
-  const destinatariosSnapshotRef = useRef<{ to: number[]; cc: number[] } | null>(null);
+  const destinatariosSnapshotRef = useRef<{
+    to: number[];
+    cc: number[];
+    gestorTo: number[];
+    gestorCc: number[];
+    prazo: number;
+    alertaAtivo: boolean;
+  } | null>(null);
   const [historicoCliente, setHistoricoCliente] = useState<{
     clienteNome: string;
     eventos: HistoricoPendenciaEvento[];
@@ -291,6 +330,20 @@ export default function PendenciasCreditoPanel({
         .map((id) => usuariosById.get(id))
         .filter((u): u is UsuarioDestinatarioPendencia => Boolean(u)),
     [idsCc, usuariosById],
+  );
+  const selecionadosGestorTo = useMemo(
+    () =>
+      idsGestorTo
+        .map((id) => usuariosById.get(id))
+        .filter((u): u is UsuarioDestinatarioPendencia => Boolean(u)),
+    [idsGestorTo, usuariosById],
+  );
+  const selecionadosGestorCc = useMemo(
+    () =>
+      idsGestorCc
+        .map((id) => usuariosById.get(id))
+        .filter((u): u is UsuarioDestinatarioPendencia => Boolean(u)),
+    [idsGestorCc, usuariosById],
   );
 
   const carregar = useCallback(
@@ -348,12 +401,25 @@ export default function PendenciasCreditoPanel({
         fetchCrmPendenciasUsuarios(),
       ]);
       const map = new Map(listaUsuarios.map((u) => [u.id, u]));
-      for (const u of [...cfg.destinatariosTo, ...cfg.destinatariosCc]) {
+      for (const u of [
+        ...cfg.destinatariosTo,
+        ...cfg.destinatariosCc,
+        ...(cfg.destinatariosGestorTo ?? []),
+        ...(cfg.destinatariosGestorCc ?? []),
+      ]) {
         map.set(u.id, u);
       }
       setUsuarios([...map.values()]);
       setIdsTo(cfg.usuarioIdsTo ?? cfg.destinatariosTo.map((u) => u.id));
       setIdsCc(cfg.usuarioIdsCc ?? cfg.destinatariosCc.map((u) => u.id));
+      setIdsGestorTo(
+        cfg.usuarioIdsGestorTo ?? (cfg.destinatariosGestorTo ?? []).map((u) => u.id),
+      );
+      setIdsGestorCc(
+        cfg.usuarioIdsGestorCc ?? (cfg.destinatariosGestorCc ?? []).map((u) => u.id),
+      );
+      setPrazoHorasSemAcao(cfg.prazoHorasSemAcao ?? 48);
+      setAlertaPrazoAtivo(cfg.alertaPrazoAtivo !== false);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao carregar destinatários');
     }
@@ -391,19 +457,32 @@ export default function PendenciasCreditoPanel({
       const saved = await salvarCrmPendenciasEmailConfig({
         usuarioIdsTo: idsTo,
         usuarioIdsCc: idsCc,
+        prazoHorasSemAcao,
+        alertaPrazoAtivo,
+        usuarioIdsGestorTo: idsGestorTo,
+        usuarioIdsGestorCc: idsGestorCc,
       });
       setIdsTo(saved.usuarioIdsTo);
       setIdsCc(saved.usuarioIdsCc);
+      setIdsGestorTo(saved.usuarioIdsGestorTo);
+      setIdsGestorCc(saved.usuarioIdsGestorCc);
+      setPrazoHorasSemAcao(saved.prazoHorasSemAcao);
+      setAlertaPrazoAtivo(saved.alertaPrazoAtivo);
       setUsuarios((prev) => {
         const map = new Map(prev.map((u) => [u.id, u]));
-        for (const u of [...saved.destinatariosTo, ...saved.destinatariosCc]) {
+        for (const u of [
+          ...saved.destinatariosTo,
+          ...saved.destinatariosCc,
+          ...saved.destinatariosGestorTo,
+          ...saved.destinatariosGestorCc,
+        ]) {
           map.set(u.id, u);
         }
         return [...map.values()];
       });
       destinatariosSnapshotRef.current = null;
       setEditandoDestinatarios(false);
-      setAviso('Destinatários do e-mail de ação salvos.');
+      setAviso('Configuração de e-mails salva.');
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao salvar destinatários');
     } finally {
@@ -413,7 +492,14 @@ export default function PendenciasCreditoPanel({
 
   const iniciarEdicaoDestinatarios = () => {
     if (!podeEditarDestinatarios) return;
-    destinatariosSnapshotRef.current = { to: [...idsTo], cc: [...idsCc] };
+    destinatariosSnapshotRef.current = {
+      to: [...idsTo],
+      cc: [...idsCc],
+      gestorTo: [...idsGestorTo],
+      gestorCc: [...idsGestorCc],
+      prazo: prazoHorasSemAcao,
+      alertaAtivo: alertaPrazoAtivo,
+    };
     setEditandoDestinatarios(true);
     setDestinatariosAberto(true);
     setErro(null);
@@ -425,6 +511,10 @@ export default function PendenciasCreditoPanel({
     if (snap) {
       setIdsTo(snap.to);
       setIdsCc(snap.cc);
+      setIdsGestorTo(snap.gestorTo);
+      setIdsGestorCc(snap.gestorCc);
+      setPrazoHorasSemAcao(snap.prazo);
+      setAlertaPrazoAtivo(snap.alertaAtivo);
     }
     destinatariosSnapshotRef.current = null;
     setEditandoDestinatarios(false);
@@ -435,15 +525,23 @@ export default function PendenciasCreditoPanel({
     if (lista === 'to') {
       setIdsTo((prev) => (prev.includes(id) ? prev : [...prev, id]));
       setIdsCc((prev) => prev.filter((x) => x !== id));
-    } else {
+    } else if (lista === 'cc') {
       setIdsCc((prev) => (prev.includes(id) ? prev : [...prev, id]));
       setIdsTo((prev) => prev.filter((x) => x !== id));
+    } else if (lista === 'gestorTo') {
+      setIdsGestorTo((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      setIdsGestorCc((prev) => prev.filter((x) => x !== id));
+    } else {
+      setIdsGestorCc((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      setIdsGestorTo((prev) => prev.filter((x) => x !== id));
     }
   };
 
   const removerDest = (lista: ListaDest, id: number) => {
     if (lista === 'to') setIdsTo((prev) => prev.filter((x) => x !== id));
-    else setIdsCc((prev) => prev.filter((x) => x !== id));
+    else if (lista === 'cc') setIdsCc((prev) => prev.filter((x) => x !== id));
+    else if (lista === 'gestorTo') setIdsGestorTo((prev) => prev.filter((x) => x !== id));
+    else setIdsGestorCc((prev) => prev.filter((x) => x !== id));
   };
 
   const handleSalvarAcao = async (item: PendenciaCreditoItem) => {
@@ -615,7 +713,7 @@ export default function PendenciasCreditoPanel({
             />
             <span className="min-w-0">
               <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">
-                Destinatários do e-mail de ação
+                E-mail — ação e alerta de prazo
               </span>
               {!destinatariosAberto && (
                 <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
@@ -628,6 +726,9 @@ export default function PendenciasCreditoPanel({
                   {selecionadosCc.length
                     ? `: ${selecionadosCc.map(labelUsuario).join(', ')}`
                     : ''}
+                  {' · '}
+                  prazo {prazoHorasSemAcao}h
+                  {alertaPrazoAtivo ? '' : ' (alerta off)'}
                 </span>
               )}
             </span>
@@ -670,6 +771,73 @@ export default function PendenciasCreditoPanel({
                 onRemover={(id) => removerDest('cc', id)}
               />
             </div>
+
+            <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/40">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    Alerta de prazo sem ação
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Se o alerta chegar e nenhuma ação for registrada no prazo, o
+                    sistema envia e-mail ao gestor pedindo providências. Se os
+                    gestores abaixo estiverem vazios, usa To/Cc da ação.
+                  </p>
+                </div>
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={alertaPrazoAtivo}
+                    disabled={!podeEditarDestinatarios || !editandoDestinatarios}
+                    onChange={(e) => setAlertaPrazoAtivo(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  Ativo
+                </label>
+              </div>
+              <div className="mt-3 flex flex-wrap items-end gap-3">
+                <label className="block text-sm text-slate-700 dark:text-slate-200">
+                  Prazo (horas)
+                  <input
+                    type="number"
+                    min={1}
+                    max={720}
+                    value={prazoHorasSemAcao}
+                    disabled={!podeEditarDestinatarios || !editandoDestinatarios}
+                    onChange={(e) =>
+                      setPrazoHorasSemAcao(
+                        Math.min(720, Math.max(1, Number(e.target.value) || 48)),
+                      )
+                    }
+                    className="mt-1 w-28 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  />
+                </label>
+                <span className="pb-2 text-xs text-slate-500 dark:text-slate-400">
+                  Padrão: 48h
+                </span>
+              </div>
+              <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                <ListaUsuariosDestinatarios
+                  titulo="Gestores do alerta (To)"
+                  usuarios={usuarios}
+                  selecionados={selecionadosGestorTo}
+                  podeEditar={podeEditarDestinatarios && editandoDestinatarios}
+                  excluirIds={new Set(idsGestorCc)}
+                  onAdicionar={(id) => adicionarDest('gestorTo', id)}
+                  onRemover={(id) => removerDest('gestorTo', id)}
+                />
+                <ListaUsuariosDestinatarios
+                  titulo="Gestores do alerta (Cc)"
+                  usuarios={usuarios}
+                  selecionados={selecionadosGestorCc}
+                  podeEditar={podeEditarDestinatarios && editandoDestinatarios}
+                  excluirIds={new Set(idsGestorTo)}
+                  onAdicionar={(id) => adicionarDest('gestorCc', id)}
+                  onRemover={(id) => removerDest('gestorCc', id)}
+                />
+              </div>
+            </div>
+
             {podeEditarDestinatarios && editandoDestinatarios && (
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
@@ -825,6 +993,12 @@ export default function PendenciasCreditoPanel({
                 <th className="px-3 py-2.5 font-semibold">Vencimento</th>
                 <th className="px-3 py-2.5 font-semibold">Status conta</th>
                 <th className="px-3 py-2.5 font-semibold">Ação</th>
+                <th
+                  className="px-3 py-2.5 font-semibold"
+                  title="Tempo desde o alerta até a ação (prazo configurável)"
+                >
+                  Tempo / prazo
+                </th>
                 <th className="px-3 py-2.5 font-semibold">Observação</th>
                 <th
                   className="px-3 py-2.5 font-semibold"
@@ -1064,6 +1238,21 @@ export default function PendenciasCreditoPanel({
                               )}
                             </>
                           )}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5 align-middle">
+                          {(() => {
+                            const t = formatarTempoExecucao(item);
+                            return (
+                              <div className={`text-xs leading-snug ${t.className}`}>
+                                {t.label}
+                                {item.emailSlaEnviado ? (
+                                  <div className="mt-0.5 text-[10px] font-normal text-slate-400">
+                                    Gestor notificado
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="min-w-[14rem] px-3 py-2.5 align-middle">
                           {situacaoFila === 'FINALIZADOS' ? (

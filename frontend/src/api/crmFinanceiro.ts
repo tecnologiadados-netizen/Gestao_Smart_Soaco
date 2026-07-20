@@ -197,6 +197,12 @@ export type PendenciaCreditoItem = {
   instrucaoNomus: string | null;
   emailAcaoEnviado: boolean;
   emailAcaoEnviadoEm: string | null;
+  prazoHorasSemAcao?: number;
+  horasDecorridas?: number;
+  horasRestantes?: number | null;
+  slaEstourado?: boolean;
+  emailSlaEnviado?: boolean;
+  emailSlaEnviadoEm?: string | null;
   regularizacaoSituacao: string | null;
   regularizacaoSituacaoLabel: string | null;
   qtdTitulosMonitorPendentes: number | null;
@@ -278,6 +284,12 @@ export type PendenciasEmailConfig = {
   usuarioIdsCc: number[];
   destinatariosTo: UsuarioDestinatarioPendencia[];
   destinatariosCc: UsuarioDestinatarioPendencia[];
+  prazoHorasSemAcao: number;
+  alertaPrazoAtivo: boolean;
+  usuarioIdsGestorTo: number[];
+  usuarioIdsGestorCc: number[];
+  destinatariosGestorTo: UsuarioDestinatarioPendencia[];
+  destinatariosGestorCc: UsuarioDestinatarioPendencia[];
   updatedAt?: string | null;
   updatedByLogin?: string | null;
 };
@@ -405,6 +417,10 @@ export async function fetchCrmPendenciasEmailConfig(): Promise<PendenciasEmailCo
 export async function salvarCrmPendenciasEmailConfig(payload: {
   usuarioIdsTo: number[];
   usuarioIdsCc: number[];
+  prazoHorasSemAcao: number;
+  alertaPrazoAtivo: boolean;
+  usuarioIdsGestorTo: number[];
+  usuarioIdsGestorCc: number[];
 }): Promise<PendenciasEmailConfig> {
   const res = await apiFetch('/api/financeiro/crm/pendencias-credito/email-config', {
     method: 'PUT',
