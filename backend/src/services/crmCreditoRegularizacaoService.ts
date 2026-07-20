@@ -333,22 +333,25 @@ export async function reconciliarMonitoresRegularizacao(
   let regularizados = 0;
   let titulosAtualizados = 0;
   const agora = new Date();
+  const CONCORRENCIA = 6;
+  let cursor = 0;
 
-  for (const monitor of monitores) {
+  async function processarMonitor(
+    monitor: (typeof monitores)[number]
+  ): Promise<{ regularizado: boolean; titulosAtualizados: number }> {
+    let localTitulos = 0;
     const contasAtraso = await listarContasReceberPorPessoa('atraso', monitor.clienteNome);
     const codigosAtuais = new Set(contasAtraso.map((c) => c.codigo));
 
-    // Novos / ainda pendentes
     if (contasAtraso.length > 0) {
       const antes = monitor.titulos.length;
       await upsertTitulosPendentes(prisma, monitor.id, contasAtraso);
       const depois = await prisma.crmCreditoRegularizacaoTitulo.count({
         where: { monitorId: monitor.id },
       });
-      if (depois > antes) titulosAtualizados += depois - antes;
+      if (depois > antes) localTitulos += depois - antes;
     }
 
-    // Títulos que sumiram da consulta de atraso → regularizados
     const pendentes = monitor.titulos.filter((t) => t.status === STATUS_PENDENTE);
     for (const tit of pendentes) {
       if (codigosAtuais.has(tit.codigoConta)) continue;
@@ -356,7 +359,7 @@ export async function reconciliarMonitoresRegularizacao(
         where: { id: tit.id },
         data: { status: STATUS_REGULARIZADO, regularizadoEm: agora },
       });
-      titulosAtualizados++;
+      localTitulos++;
       await registrarEventoCliente(
         prisma,
         monitor.clienteChave,
@@ -365,9 +368,7 @@ export async function reconciliarMonitoresRegularizacao(
       );
     }
 
-    // Zero atrasados atuais = cliente regularizado
     if (contasAtraso.length === 0) {
-      // Garante que todos os títulos do snapshot fiquem REGULARIZADO
       await prisma.crmCreditoRegularizacaoTitulo.updateMany({
         where: { monitorId: monitor.id, status: STATUS_PENDENTE },
         data: { status: STATUS_REGULARIZADO, regularizadoEm: agora },
@@ -380,7 +381,6 @@ export async function reconciliarMonitoresRegularizacao(
           regularizadoEm: agora,
         },
       });
-      regularizados++;
 
       await registrarEventoCliente(
         prisma,
@@ -388,8 +388,26 @@ export async function reconciliarMonitoresRegularizacao(
         'REGULARIZADO',
         'Cliente regularizou títulos em atraso — aguardando análise de crédito'
       );
+      return { regularizado: true, titulosAtualizados: localTitulos };
+    }
+
+    return { regularizado: false, titulosAtualizados: localTitulos };
+  }
+
+  async function worker() {
+    while (cursor < monitores.length) {
+      const idx = cursor++;
+      const res = await processarMonitor(monitores[idx]);
+      if (res.regularizado) regularizados++;
+      titulosAtualizados += res.titulosAtualizados;
     }
   }
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCORRENCIA, Math.max(monitores.length, 1)) }, () =>
+      worker()
+    )
+  );
 
   return {
     monitorados: monitores.length,

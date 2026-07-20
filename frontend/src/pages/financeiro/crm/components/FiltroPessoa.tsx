@@ -1,27 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchCrmPessoas } from "../../../../api/crmFinanceiro";
 import { formatCurrency } from "../lib/formatters";
-import type { PessoaOption } from "../lib/types";
+import type {
+  GrupoPessoaOption,
+  PessoaOption,
+  SelecaoClienteCrm,
+} from "../lib/types";
 
 interface Props {
-  pessoaSelecionada: string | null;
+  selecao: SelecaoClienteCrm | null;
   empresaId: number | null;
-  onSelect: (pessoa: string | null) => void;
+  onSelect: (selecao: SelecaoClienteCrm | null) => void;
 }
 
-export default function FiltroPessoa({
-  pessoaSelecionada,
-  empresaId,
-  onSelect,
-}: Props) {
+export default function FiltroPessoa({ selecao, empresaId, onSelect }: Props) {
   const [busca, setBusca] = useState("");
-  const [opcoes, setOpcoes] = useState<PessoaOption[]>([]);
+  const [pessoas, setPessoas] = useState<PessoaOption[]>([]);
+  const [grupos, setGrupos] = useState<GrupoPessoaOption[]>([]);
   const [aberto, setAberto] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const controller = new AbortController();
     const timer = setTimeout(async () => {
       setCarregando(true);
       try {
@@ -29,7 +29,8 @@ export default function FiltroPessoa({
           q: busca || undefined,
           empresaId,
         });
-        setOpcoes(data);
+        setPessoas(data.pessoas);
+        setGrupos(data.grupos);
       } catch {
         /* abort ou erro de rede */
       } finally {
@@ -38,7 +39,6 @@ export default function FiltroPessoa({
     }, 300);
 
     return () => {
-      controller.abort();
       clearTimeout(timer);
     };
   }, [busca, empresaId]);
@@ -56,23 +56,32 @@ export default function FiltroPessoa({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const labelSelecao =
+    selecao == null
+      ? ""
+      : selecao.tipo === "grupo"
+        ? `Grupo: ${selecao.nome}`
+        : selecao.nome;
+
+  const temOpcoes = grupos.length > 0 || pessoas.length > 0;
+
   return (
     <div ref={containerRef} className="relative w-full max-w-xl">
       <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        Filtrar por pessoa / cliente
+        Filtrar por pessoa / cliente / grupo
       </label>
       <div className="flex gap-2">
         <div className="relative flex-1">
           <input
             type="text"
-            value={pessoaSelecionada ?? busca}
+            value={selecao ? labelSelecao : busca}
             onChange={(e) => {
               setBusca(e.target.value);
-              if (pessoaSelecionada) onSelect(null);
+              if (selecao) onSelect(null);
               setAberto(true);
             }}
             onFocus={() => setAberto(true)}
-            placeholder="Digite nome, razão social ou CNPJ/CPF..."
+            placeholder="Digite nome, razão social, CNPJ/CPF ou grupo..."
             className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-blue-900/50"
           />
           {carregando && (
@@ -80,33 +89,73 @@ export default function FiltroPessoa({
               ...
             </span>
           )}
-          {aberto && !pessoaSelecionada && opcoes.length > 0 && (
-            <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-900">
-              {opcoes.map((opcao) => (
-                <li key={opcao.nome}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSelect(opcao.nome);
-                      setBusca("");
-                      setAberto(false);
-                    }}
-                    className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-blue-50 dark:hover:bg-slate-800"
-                  >
-                    <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                      {opcao.nome}
-                    </span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      {opcao.razaoSocial ?? "—"} · Pendente:{" "}
-                      {formatCurrency(opcao.totalPendente)}
-                    </span>
-                  </button>
-                </li>
-              ))}
+          {aberto && !selecao && temOpcoes && (
+            <ul className="absolute z-20 mt-1 max-h-80 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-900">
+              {grupos.length > 0 && (
+                <>
+                  <li className="sticky top-0 bg-slate-100 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                    Grupos econômicos
+                  </li>
+                  {grupos.map((grupo) => (
+                    <li key={`g-${grupo.id}`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSelect({
+                            tipo: "grupo",
+                            id: grupo.id,
+                            nome: grupo.nome,
+                          });
+                          setBusca("");
+                          setAberto(false);
+                        }}
+                        className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-indigo-50 dark:hover:bg-slate-800"
+                      >
+                        <span className="text-sm font-semibold text-indigo-800 dark:text-indigo-300">
+                          {grupo.nome}
+                        </span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {grupo.qtdMembros} empresa(s) · Pendente:{" "}
+                          {formatCurrency(grupo.totalPendente)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </>
+              )}
+              {pessoas.length > 0 && (
+                <>
+                  <li className="sticky top-0 bg-slate-100 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                    Clientes
+                  </li>
+                  {pessoas.map((opcao) => (
+                    <li key={`p-${opcao.nome}`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSelect({ tipo: "pessoa", nome: opcao.nome });
+                          setBusca("");
+                          setAberto(false);
+                        }}
+                        className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-blue-50 dark:hover:bg-slate-800"
+                      >
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                          {opcao.nome}
+                        </span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {opcao.razaoSocial ?? "—"} · Pendente:{" "}
+                          {formatCurrency(opcao.totalPendente)}
+                          {opcao.grupo ? ` · ${opcao.grupo}` : ""}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </>
+              )}
             </ul>
           )}
         </div>
-        {pessoaSelecionada && (
+        {selecao && (
           <button
             type="button"
             onClick={() => {

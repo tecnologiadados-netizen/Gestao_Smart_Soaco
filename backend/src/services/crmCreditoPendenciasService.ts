@@ -23,7 +23,11 @@ export type AlertaCreditoParaPendencia = {
     statusItem: number;
     statusLabel: string;
   }>;
-  contasAtraso: Array<{ diasAtraso: number }>;
+  contasAtraso: Array<{
+    codigo: number;
+    dataVencimento: string | null;
+    diasAtraso: number;
+  }>;
   totalAtraso: number;
 };
 
@@ -194,6 +198,14 @@ export async function upsertPendenciasFromAlerta(
   const maiorAtrasoDias = Math.max(...alerta.contasAtraso.map((c) => c.diasAtraso), 0);
   const totalAtraso = alerta.totalAtraso;
   const qtdTitulos = alerta.contasAtraso.length;
+  const contasAtrasoJson = JSON.stringify(
+    alerta.contasAtraso.map((c) => ({
+      codigoConta: c.codigo,
+      dataVencimento: c.dataVencimento,
+      status: 'PENDENTE',
+      statusLabel: 'Em atraso',
+    }))
+  );
 
   const porPedido = new Map<
     number,
@@ -229,6 +241,7 @@ export async function upsertPendenciasFromAlerta(
           qtdTitulosAtraso: qtdTitulos,
           totalAtraso,
           maiorAtrasoDias,
+          contasAtrasoJson,
           alertaEm: agora,
         },
       });
@@ -245,6 +258,7 @@ export async function upsertPendenciasFromAlerta(
           qtdTitulosAtraso: qtdTitulos,
           totalAtraso,
           maiorAtrasoDias,
+          contasAtrasoJson,
           alertaEm: agora,
         },
       });
@@ -262,7 +276,57 @@ export async function sincronizarPendenciasComAlertasAtuais(
   for (const alerta of alertas) {
     total += await upsertPendenciasFromAlerta(prisma, alerta);
   }
+  await limparPendenciasForaDaCarencia(prisma, alertas);
   return total;
+}
+
+/**
+ * Remove da grade linhas abertas sem ação confirmada no Nomus que:
+ * - não estão mais nos alertas elegíveis (abaixo da carência / sem atraso), ou
+ * - ainda têm snapshot de atraso abaixo da carência.
+ * Mantém quem já confirmou ação (pausa/cancelamento/realocação) ou está encerrada.
+ */
+export async function limparPendenciasForaDaCarencia(
+  prisma: PrismaClient,
+  alertas: AlertaCreditoParaPendencia[]
+): Promise<number> {
+  const { CARENCIA_DIAS_ATRASO } = await import(
+    './financeiroCreditoPedidoAtrasoEmailService.js'
+  );
+
+  const chavesElegiveis = new Set(
+    alertas.map((a) => normalizarClienteChave(a.clienteNome)).filter(Boolean)
+  );
+
+  const abertas = await prisma.crmCreditoPendencia.findMany({
+    where: { encerrada: false },
+    select: {
+      id: true,
+      clienteChave: true,
+      acao: true,
+      statusNomusSnapshot: true,
+      emailAcaoEnviadoEm: true,
+      maiorAtrasoDias: true,
+    },
+  });
+
+  let removidas = 0;
+  for (const row of abertas) {
+    const confirmada =
+      Boolean(row.emailAcaoEnviadoEm) ||
+      confirmacaoNomusOk(row.acao, row.statusNomusSnapshot) === true;
+    if (confirmada) continue;
+
+    const elegivel = chavesElegiveis.has(row.clienteChave);
+    const abaixoCarencia =
+      row.maiorAtrasoDias != null && row.maiorAtrasoDias < CARENCIA_DIAS_ATRASO;
+
+    if (!elegivel || abaixoCarencia) {
+      await prisma.crmCreditoPendencia.delete({ where: { id: row.id } });
+      removidas++;
+    }
+  }
+  return removidas;
 }
 
 export type PendenciaCreditoDto = {
@@ -317,6 +381,34 @@ export type PendenciaCreditoDto = {
   qtdAcoesRegistradas: number;
 };
 
+function parseContasAtrasoSnapshot(
+  raw: string | null | undefined
+): PendenciaCreditoDto['contasAcompanhamento'] {
+  if (!raw?.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const row = item as Record<string, unknown>;
+        const codigo = Number(row.codigoConta ?? row.codigo);
+        if (!Number.isFinite(codigo) || codigo <= 0) return null;
+        return {
+          codigoConta: codigo,
+          dataVencimento:
+            typeof row.dataVencimento === 'string' ? row.dataVencimento : null,
+          status: typeof row.status === 'string' ? row.status : 'PENDENTE',
+          statusLabel:
+            typeof row.statusLabel === 'string' ? row.statusLabel : 'Em atraso',
+        };
+      })
+      .filter((x): x is PendenciaCreditoDto['contasAcompanhamento'][number] => Boolean(x));
+  } catch {
+    return [];
+  }
+}
+
 function toDto(row: {
   id: number;
   idPedido: number;
@@ -331,6 +423,7 @@ function toDto(row: {
   qtdTitulosAtraso: number | null;
   totalAtraso: number | null;
   maiorAtrasoDias: number | null;
+  contasAtrasoJson?: string | null;
   alertaEm: Date;
   acaoEm: Date | null;
   acaoPorLogin: string | null;
@@ -378,7 +471,7 @@ function toDto(row: {
     regularizacaoSituacaoLabel: null,
     qtdTitulosMonitorPendentes: null,
     qtdTitulosMonitorTotal: null,
-    contasAcompanhamento: [],
+    contasAcompanhamento: parseContasAtrasoSnapshot(row.contasAtrasoJson),
     situacaoFila: row.encerrada ? 'FINALIZADOS' : 'INADIMPLENTES',
     situacaoFilaLabel: row.encerrada
       ? LABEL_SITUACAO_FILA.FINALIZADOS
@@ -398,44 +491,58 @@ async function enriquecerContadoresCliente(
   if (itens.length === 0) return itens;
 
   const chaves = [...new Set(itens.map((i) => i.clienteChave).filter(Boolean))];
-  const contagem = new Map<
-    string,
-    { alerta: number; acaoEmail: number; acoes: number }
-  >();
+  if (chaves.length === 0) return itens;
 
-  await Promise.all(
-    chaves.map(async (chave) => {
-      const prefix = `financeiro_credito_pedido_atraso:${chave}:`;
-      const [alerta, pendencias] = await Promise.all([
-        prisma.emailDisparoLog.count({
-          where: {
-            categoria: 'financeiro_credito_pedido_atraso',
-            chave: { startsWith: prefix },
-          },
-        }),
-        prisma.crmCreditoPendencia.findMany({
-          where: { clienteChave: chave },
-          select: { id: true },
-        }),
-      ]);
-      const ids = pendencias.map((p) => p.id);
-      let acaoEmail = 0;
-      let acoes = 0;
-      if (ids.length > 0) {
-        const [emailCount, acaoCount] = await Promise.all([
-          prisma.crmCreditoPendenciaEvento.count({
-            where: { pendenciaId: { in: ids }, tipo: 'EMAIL' },
-          }),
-          prisma.crmCreditoPendenciaEvento.count({
-            where: { pendenciaId: { in: ids }, tipo: 'ACAO' },
-          }),
-        ]);
-        acaoEmail = emailCount;
-        acoes = acaoCount;
-      }
-      contagem.set(chave, { alerta, acaoEmail, acoes });
-    })
-  );
+  const contagem = new Map<string, { alerta: number; acaoEmail: number; acoes: number }>();
+  for (const chave of chaves) {
+    contagem.set(chave, { alerta: 0, acaoEmail: 0, acoes: 0 });
+  }
+
+  const [logsAlerta, pendenciasChave] = await Promise.all([
+    prisma.emailDisparoLog.findMany({
+      where: {
+        categoria: 'financeiro_credito_pedido_atraso',
+        OR: chaves.map((chave) => ({
+          chave: { startsWith: `financeiro_credito_pedido_atraso:${chave}:` },
+        })),
+      },
+      select: { chave: true },
+    }),
+    prisma.crmCreditoPendencia.findMany({
+      where: { clienteChave: { in: chaves } },
+      select: { id: true, clienteChave: true },
+    }),
+  ]);
+
+  for (const log of logsAlerta) {
+    const chave = chaves.find((c) =>
+      log.chave.startsWith(`financeiro_credito_pedido_atraso:${c}:`)
+    );
+    if (!chave) continue;
+    const c = contagem.get(chave)!;
+    c.alerta += 1;
+  }
+
+  const idParaChave = new Map(pendenciasChave.map((p) => [p.id, p.clienteChave]));
+  const todosIds = pendenciasChave.map((p) => p.id);
+  if (todosIds.length > 0) {
+    const eventos = await prisma.crmCreditoPendenciaEvento.groupBy({
+      by: ['pendenciaId', 'tipo'],
+      where: {
+        pendenciaId: { in: todosIds },
+        tipo: { in: ['EMAIL', 'ACAO'] },
+      },
+      _count: { _all: true },
+    });
+    for (const ev of eventos) {
+      const chave = idParaChave.get(ev.pendenciaId);
+      if (!chave) continue;
+      const c = contagem.get(chave);
+      if (!c) continue;
+      if (ev.tipo === 'EMAIL') c.acaoEmail += ev._count._all;
+      if (ev.tipo === 'ACAO') c.acoes += ev._count._all;
+    }
+  }
 
   return itens.map((item) => {
     const c = contagem.get(item.clienteChave) ?? { alerta: 0, acaoEmail: 0, acoes: 0 };
@@ -535,6 +642,7 @@ export async function listarPendenciasCredito(
   if (syncNomus && rows.length > 0) {
     const statuses = await listarStatusPedidosCreditoPorIds(rows.map((r) => r.idPedido));
     const map = new Map(statuses.map((s) => [s.idPedido, s]));
+    const updates: Promise<unknown>[] = [];
     for (const row of rows) {
       const st = map.get(row.idPedido);
       if (!st) continue;
@@ -543,19 +651,22 @@ export async function listarPendenciasCredito(
         st.statusLabel !== row.statusNomusLabel ||
         st.numeroPedido !== row.numeroPedido
       ) {
-        await prisma.crmCreditoPendencia.update({
-          where: { id: row.id },
-          data: {
-            statusNomusSnapshot: st.statusItem,
-            statusNomusLabel: st.statusLabel,
-            numeroPedido: st.numeroPedido || row.numeroPedido,
-          },
-        });
+        updates.push(
+          prisma.crmCreditoPendencia.update({
+            where: { id: row.id },
+            data: {
+              statusNomusSnapshot: st.statusItem,
+              statusNomusLabel: st.statusLabel,
+              numeroPedido: st.numeroPedido || row.numeroPedido,
+            },
+          })
+        );
         row.statusNomusSnapshot = st.statusItem;
         row.statusNomusLabel = st.statusLabel;
         if (st.numeroPedido) row.numeroPedido = st.numeroPedido;
       }
     }
+    if (updates.length > 0) await Promise.all(updates);
   }
 
   type MonitorResumo = Awaited<
@@ -570,6 +681,7 @@ export async function listarPendenciasCredito(
   try {
     const { reconciliarMonitoresRegularizacao, listarResumoMonitoresPorChaves } =
       await import('./crmCreditoRegularizacaoService.js');
+    // Reconciliação Nomus só no sync pesado (Atualizar); listagem usa snapshot local.
     if (syncNomus) {
       await reconciliarMonitoresRegularizacao(prisma);
     }
@@ -580,15 +692,17 @@ export async function listarPendenciasCredito(
   }
 
   if (syncNomus) {
-    for (const row of rows) {
-      const m = monitores.get(row.clienteChave);
-      const encerrou = await encerrarPendenciaSeElegivel(
-        prisma,
-        row,
-        m?.situacao ?? null
-      );
-      if (encerrou) row.encerrada = true;
-    }
+    await Promise.all(
+      rows.map(async (row) => {
+        const m = monitores.get(row.clienteChave);
+        const encerrou = await encerrarPendenciaSeElegivel(
+          prisma,
+          row,
+          m?.situacao ?? null
+        );
+        if (encerrou) row.encerrada = true;
+      })
+    );
   }
 
   let result = rows.map(toDto);
@@ -601,96 +715,38 @@ export async function listarPendenciasCredito(
 
   result = await enriquecerContadoresCliente(prisma, result);
 
-  try {
-    const { listarContasReceberPorPessoa } = await import(
-      '../data/crmFinanceiro/crmDashboardService.js'
-    );
+  // Contas: monitor (Prisma) tem prioridade; senão snapshot JSON da pendência (sem Nomus).
+  result = result.map((item) => {
+    const m = monitores.get(item.clienteChave);
+    const situacaoFila = classificarSituacaoFila(item.encerrada, m?.situacao);
+    const podeConfirmarLiberacao =
+      situacaoFila === 'REGULARIZADOS' && !statusNomusLiberado(item.statusNomus);
 
-    const clientesSemMonitor = [
-      ...new Map(
-        result
-          .filter((r) => !r.encerrada && r.clienteChave && !monitores.has(r.clienteChave))
-          .map((r) => [r.clienteChave, r.clienteNome] as const)
-      ).entries(),
-    ];
-
-    const contasLive = new Map<
-      string,
-      Array<{
-        codigoConta: number;
-        dataVencimento: string | null;
-        status: string;
-        statusLabel: string;
-      }>
-    >();
-
-    await Promise.all(
-      clientesSemMonitor.map(async ([chave, nome]) => {
-        try {
-          const contas = await listarContasReceberPorPessoa('atraso', nome);
-          contasLive.set(
-            chave,
-            contas.map((c) => ({
-              codigoConta: c.codigo,
-              dataVencimento: c.dataVencimento,
-              status: 'PENDENTE',
-              statusLabel: 'Em atraso',
-            }))
-          );
-        } catch {
-          contasLive.set(chave, []);
-        }
-      })
-    );
-
-    result = result.map((item) => {
-      const m = monitores.get(item.clienteChave);
-      const situacaoFila = classificarSituacaoFila(item.encerrada, m?.situacao);
-      const podeConfirmarLiberacao =
-        situacaoFila === 'REGULARIZADOS' && !statusNomusLiberado(item.statusNomus);
-
-      if (m) {
-        return {
-          ...item,
-          regularizacaoSituacao: m.situacao,
-          regularizacaoSituacaoLabel: m.situacaoLabel,
-          qtdTitulosMonitorPendentes: m.qtdTitulosPendentes,
-          qtdTitulosMonitorTotal: m.qtdTitulosTotal,
-          contasAcompanhamento: m.titulos.map((t) => ({
-            codigoConta: t.codigoConta,
-            dataVencimento: t.dataVencimento,
-            status: t.status,
-            statusLabel: t.statusLabel,
-          })),
-          situacaoFila,
-          situacaoFilaLabel: LABEL_SITUACAO_FILA[situacaoFila],
-          podeConfirmarLiberacao,
-        };
-      }
+    if (m) {
       return {
         ...item,
-        contasAcompanhamento: contasLive.get(item.clienteChave) ?? [],
+        regularizacaoSituacao: m.situacao,
+        regularizacaoSituacaoLabel: m.situacaoLabel,
+        qtdTitulosMonitorPendentes: m.qtdTitulosPendentes,
+        qtdTitulosMonitorTotal: m.qtdTitulosTotal,
+        contasAcompanhamento: m.titulos.map((t) => ({
+          codigoConta: t.codigoConta,
+          dataVencimento: t.dataVencimento,
+          status: t.status,
+          statusLabel: t.statusLabel,
+        })),
         situacaoFila,
         situacaoFilaLabel: LABEL_SITUACAO_FILA[situacaoFila],
         podeConfirmarLiberacao,
       };
-    });
-  } catch (err) {
-    console.warn('Enriquecer regularização (parcial):', err);
-    result = result.map((item) => {
-      const situacaoFila = classificarSituacaoFila(
-        item.encerrada,
-        item.regularizacaoSituacao
-      );
-      return {
-        ...item,
-        situacaoFila,
-        situacaoFilaLabel: LABEL_SITUACAO_FILA[situacaoFila],
-        podeConfirmarLiberacao:
-          situacaoFila === 'REGULARIZADOS' && !statusNomusLiberado(item.statusNomus),
-      };
-    });
-  }
+    }
+    return {
+      ...item,
+      situacaoFila,
+      situacaoFilaLabel: LABEL_SITUACAO_FILA[situacaoFila],
+      podeConfirmarLiberacao,
+    };
+  });
 
   const contagens: Record<SituacaoFilaPendencia, number> = {
     INADIMPLENTES: 0,

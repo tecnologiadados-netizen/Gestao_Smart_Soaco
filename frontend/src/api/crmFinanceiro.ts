@@ -5,6 +5,7 @@ import type {
   DashboardDetalhesData,
   DashboardGlobalData,
   EmpresaOption,
+  GrupoPessoaOption,
   PessoaOption,
   Recebimento,
 } from '../pages/financeiro/crm/lib/types';
@@ -42,12 +43,14 @@ function buildParams(
 
 export async function fetchCrmDashboard(params: {
   pessoa?: string | null;
+  grupoId?: number | null;
   empresaId?: number | null;
   refresh?: boolean;
 }): Promise<DashboardGlobalData | DashboardDetalhesData> {
   const res = await apiFetch(
     `/api/financeiro/crm/dashboard${buildParams({
       pessoa: params.pessoa ?? undefined,
+      grupoId: params.grupoId ?? undefined,
       empresa: params.empresaId ?? undefined,
       refresh: params.refresh ? '1' : undefined,
     })}`,
@@ -90,6 +93,7 @@ export async function fetchCrmDetalhe(params: {
   coluna: ColunaIndicador;
   classificacao?: string | null;
   pessoa?: string | null;
+  grupoId?: number | null;
   empresaId?: number | null;
 }): Promise<IndicadorDetalheResponse> {
   const res = await apiFetch(
@@ -98,6 +102,7 @@ export async function fetchCrmDetalhe(params: {
       coluna: params.coluna,
       classificacao: params.classificacao ?? undefined,
       pessoa: params.pessoa ?? undefined,
+      grupoId: params.grupoId ?? undefined,
       empresa: params.empresaId ?? undefined,
     })}`,
   );
@@ -115,7 +120,10 @@ export async function fetchCrmDetalhe(params: {
 export async function fetchCrmPessoas(params: {
   q?: string;
   empresaId?: number | null;
-}): Promise<PessoaOption[]> {
+}): Promise<{
+  pessoas: PessoaOption[];
+  grupos: GrupoPessoaOption[];
+}> {
   const res = await apiFetch(
     `/api/financeiro/crm/pessoas${buildParams({
       q: params.q ?? undefined,
@@ -123,12 +131,23 @@ export async function fetchCrmPessoas(params: {
     })}`,
   );
   const body = (await res.json().catch(() => ({}))) as
+    | {
+        pessoas: PessoaOption[];
+        grupos: GrupoPessoaOption[];
+      }
     | PessoaOption[]
     | { error?: string };
   if (!res.ok) {
-    return [];
+    return { pessoas: [], grupos: [] };
   }
-  return Array.isArray(body) ? body : [];
+  // Compat: resposta antiga era só array de pessoas
+  if (Array.isArray(body)) {
+    return { pessoas: body, grupos: [] };
+  }
+  return {
+    pessoas: Array.isArray(body.pessoas) ? body.pessoas : [],
+    grupos: Array.isArray(body.grupos) ? body.grupos : [],
+  };
 }
 
 export async function fetchCrmEmpresas(): Promise<EmpresaOption[]> {

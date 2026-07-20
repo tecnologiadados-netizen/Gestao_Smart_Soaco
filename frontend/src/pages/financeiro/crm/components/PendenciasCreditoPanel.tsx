@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clock } from 'lucide-react';
+import { ChevronDown, Clock } from 'lucide-react';
 import {
   confirmarCrmPendenciaLiberacao,
   fetchCrmPendenciasContasCliente,
@@ -120,7 +120,13 @@ function ListaUsuariosDestinatarios({
         {titulo}
       </span>
 
-      <div className="flex min-h-[2.5rem] flex-wrap gap-1.5 rounded-lg border border-slate-300 bg-white p-2 dark:border-slate-600 dark:bg-slate-800">
+      <div
+        className={`flex min-h-[2.5rem] flex-wrap gap-1.5 rounded-lg border p-2 ${
+          podeEditar
+            ? 'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-800'
+            : 'border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800/60'
+        }`}
+      >
         {selecionados.length === 0 ? (
           <span className="px-1 py-0.5 text-xs text-slate-400 dark:text-slate-500">
             Nenhum usuário selecionado
@@ -255,6 +261,11 @@ export default function PendenciasCreditoPanel({
   const [idsTo, setIdsTo] = useState<number[]>([]);
   const [idsCc, setIdsCc] = useState<number[]>([]);
   const [salvandoEmail, setSalvandoEmail] = useState(false);
+  /** Seção de destinatários expandida (visível). */
+  const [destinatariosAberto, setDestinatariosAberto] = useState(true);
+  /** Edição liberada só após clicar em Editar (e com permissão). */
+  const [editandoDestinatarios, setEditandoDestinatarios] = useState(false);
+  const destinatariosSnapshotRef = useRef<{ to: number[]; cc: number[] } | null>(null);
   const [historicoCliente, setHistoricoCliente] = useState<{
     clienteNome: string;
     eventos: HistoricoPendenciaEvento[];
@@ -294,6 +305,7 @@ export default function PendenciasCreditoPanel({
   const carregar = useCallback(
     async (opts?: {
       syncAlertas?: boolean;
+      syncNomus?: boolean;
       cliente?: string;
       situacao?: SituacaoFilaPendencia;
     }) => {
@@ -308,7 +320,8 @@ export default function PendenciasCreditoPanel({
         const data = await fetchCrmPendenciasCredito({
           cliente: cliente || null,
           syncAlertas: opts?.syncAlertas ?? false,
-          syncNomus: true,
+          // Listagem rápida por padrão; sync Nomus só no Atualizar.
+          syncNomus: opts?.syncNomus ?? false,
           situacao,
         });
         const lista = data.itens;
@@ -365,7 +378,8 @@ export default function PendenciasCreditoPanel({
   }, []);
 
   useEffect(() => {
-    void carregar({ syncAlertas: true, cliente: clienteInicial ?? '' });
+    // Abertura rápida: só lê o banco. Sync Nomus/alertas fica no botão Atualizar.
+    void carregar({ syncAlertas: false, syncNomus: false, cliente: clienteInicial ?? '' });
     void carregarEmailConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- montagem / deep link inicial
   }, []);
@@ -373,17 +387,21 @@ export default function PendenciasCreditoPanel({
   useEffect(() => {
     if (clienteInicial != null && clienteInicial !== filtroCliente) {
       setFiltroCliente(clienteInicial);
-      void carregar({ cliente: clienteInicial, syncAlertas: false });
+      void carregar({ cliente: clienteInicial, syncAlertas: false, syncNomus: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteInicial]);
 
   const handleAtualizarTabela = () => {
-    void carregar({ syncAlertas: true, cliente: filtroCliente || undefined });
+    void carregar({
+      syncAlertas: true,
+      syncNomus: true,
+      cliente: filtroCliente || undefined,
+    });
   };
 
   const handleSalvarEmail = async () => {
-    if (!podeEditarDestinatarios) return;
+    if (!podeEditarDestinatarios || !editandoDestinatarios) return;
     setSalvandoEmail(true);
     setErro(null);
     setAviso(null);
@@ -401,12 +419,34 @@ export default function PendenciasCreditoPanel({
         }
         return [...map.values()];
       });
+      destinatariosSnapshotRef.current = null;
+      setEditandoDestinatarios(false);
       setAviso('Destinatários do e-mail de ação salvos.');
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao salvar destinatários');
     } finally {
       setSalvandoEmail(false);
     }
+  };
+
+  const iniciarEdicaoDestinatarios = () => {
+    if (!podeEditarDestinatarios) return;
+    destinatariosSnapshotRef.current = { to: [...idsTo], cc: [...idsCc] };
+    setEditandoDestinatarios(true);
+    setDestinatariosAberto(true);
+    setErro(null);
+    setAviso(null);
+  };
+
+  const cancelarEdicaoDestinatarios = () => {
+    const snap = destinatariosSnapshotRef.current;
+    if (snap) {
+      setIdsTo(snap.to);
+      setIdsCc(snap.cc);
+    }
+    destinatariosSnapshotRef.current = null;
+    setEditandoDestinatarios(false);
+    setErro(null);
   };
 
   const adicionarDest = (lista: ListaDest, id: number) => {
@@ -623,45 +663,97 @@ export default function PendenciasCreditoPanel({
 
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-          Destinatários do e-mail de ação
-        </h4>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Ao confirmar a ação (após o status no Nomus), o sistema envia um
-          e-mail-resumo para To e Cc. Pesquise usuários do Gestão e adicione na
-          lista — o envio usa o e-mail cadastrado no usuário.
-        </p>
-        <div className="mt-3 grid gap-4 lg:grid-cols-2">
-          <ListaUsuariosDestinatarios
-            titulo="Destinatários (To)"
-            usuarios={usuarios}
-            selecionados={selecionadosTo}
-            podeEditar={podeEditarDestinatarios}
-            excluirIds={new Set(idsCc)}
-            onAdicionar={(id) => adicionarDest('to', id)}
-            onRemover={(id) => removerDest('to', id)}
-          />
-          <ListaUsuariosDestinatarios
-            titulo="Cópias (Cc)"
-            usuarios={usuarios}
-            selecionados={selecionadosCc}
-            podeEditar={podeEditarDestinatarios}
-            excluirIds={new Set(idsTo)}
-            onAdicionar={(id) => adicionarDest('cc', id)}
-            onRemover={(id) => removerDest('cc', id)}
-          />
-        </div>
-        {podeEditarDestinatarios && (
-          <div className="mt-3">
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-wrap items-start justify-between gap-2 p-4">
+          <button
+            type="button"
+            onClick={() => setDestinatariosAberto((v) => !v)}
+            className="flex min-w-0 flex-1 items-start gap-2 text-left"
+            aria-expanded={destinatariosAberto}
+          >
+            <ChevronDown
+              className={`mt-0.5 h-4 w-4 shrink-0 text-slate-500 transition-transform dark:text-slate-400 ${
+                destinatariosAberto ? 'rotate-0' : '-rotate-90'
+              }`}
+              aria-hidden
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">
+                Destinatários do e-mail de ação
+              </span>
+              {!destinatariosAberto && (
+                <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                  {selecionadosTo.length} To
+                  {selecionadosTo.length
+                    ? `: ${selecionadosTo.map(labelUsuario).join(', ')}`
+                    : ''}
+                  {' · '}
+                  {selecionadosCc.length} Cc
+                  {selecionadosCc.length
+                    ? `: ${selecionadosCc.map(labelUsuario).join(', ')}`
+                    : ''}
+                </span>
+              )}
+            </span>
+          </button>
+          {podeEditarDestinatarios && !editandoDestinatarios && (
             <button
               type="button"
-              onClick={() => void handleSalvarEmail()}
-              disabled={salvandoEmail}
-              className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60 dark:bg-blue-600 dark:hover:bg-blue-500"
+              onClick={iniciarEdicaoDestinatarios}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
-              {salvandoEmail ? 'Salvando…' : 'Salvar destinatários'}
+              Editar
             </button>
+          )}
+        </div>
+
+        {destinatariosAberto && (
+          <div className="border-t border-slate-100 px-4 pb-4 pt-3 dark:border-slate-700">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Ao confirmar a ação (após o status no Nomus), o sistema envia um
+              e-mail-resumo para To e Cc. Pesquise usuários do Gestão e adicione na
+              lista — o envio usa o e-mail cadastrado no usuário.
+            </p>
+            <div className="mt-3 grid gap-4 lg:grid-cols-2">
+              <ListaUsuariosDestinatarios
+                titulo="Destinatários (To)"
+                usuarios={usuarios}
+                selecionados={selecionadosTo}
+                podeEditar={podeEditarDestinatarios && editandoDestinatarios}
+                excluirIds={new Set(idsCc)}
+                onAdicionar={(id) => adicionarDest('to', id)}
+                onRemover={(id) => removerDest('to', id)}
+              />
+              <ListaUsuariosDestinatarios
+                titulo="Cópias (Cc)"
+                usuarios={usuarios}
+                selecionados={selecionadosCc}
+                podeEditar={podeEditarDestinatarios && editandoDestinatarios}
+                excluirIds={new Set(idsTo)}
+                onAdicionar={(id) => adicionarDest('cc', id)}
+                onRemover={(id) => removerDest('cc', id)}
+              />
+            </div>
+            {podeEditarDestinatarios && editandoDestinatarios && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleSalvarEmail()}
+                  disabled={salvandoEmail}
+                  className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60 dark:bg-blue-600 dark:hover:bg-blue-500"
+                >
+                  {salvandoEmail ? 'Salvando…' : 'Salvar destinatários'}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelarEdicaoDestinatarios}
+                  disabled={salvandoEmail}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
           </div>
         )}
       </section>

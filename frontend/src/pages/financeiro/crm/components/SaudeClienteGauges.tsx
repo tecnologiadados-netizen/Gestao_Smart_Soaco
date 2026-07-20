@@ -7,7 +7,7 @@ import {
   type SaudeClienteResult,
 } from "../lib/saude-cliente";
 
-export type SaudeGaugesVariant = "cliente" | "empresa";
+export type SaudeGaugesVariant = "cliente" | "empresa" | "grupo";
 
 interface Props {
   saude: SaudeClienteResult;
@@ -28,6 +28,13 @@ const VARIANT_CONFIG: Record<
     ariaLabel: "Indicador de saúde do cliente",
     titulo: "Saúde do cliente",
     subtitulo: "Contas a receber — histórico completo (Confirmada + Adiantamento)",
+    descricaoMediaGeral: DESCRICAO_MEDIA_GERAL,
+  },
+  grupo: {
+    ariaLabel: "Indicador de saúde do grupo econômico",
+    titulo: "Saúde do grupo econômico",
+    subtitulo:
+      "Contas a receber consolidadas de todas as empresas do grupo — histórico completo",
     descricaoMediaGeral: DESCRICAO_MEDIA_GERAL,
   },
   empresa: {
