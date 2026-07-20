@@ -20,6 +20,11 @@ import {
   criarMatcherTextoLivre,
   PLACEHOLDER_BUSCA_TEXTO_LIVRE,
 } from '../../../../utils/textoLivreBusca';
+import { useAuth } from '../../../../contexts/AuthContext';
+import {
+  downloadPendenciasAprovacaoPdf,
+  mapPendenciasParaAprovacaoPdf,
+} from '../lib/generate-pendencias-aprovacao-pdf';
 
 const FILAS: Array<{ id: SituacaoFilaPendencia; label: string }> = [
   { id: 'INADIMPLENTES', label: 'Inadimplentes — aguardando ação' },
@@ -258,6 +263,7 @@ export default function PendenciasCreditoPanel({
   clienteInicial = null,
   situacaoInicial = null,
 }: Props) {
+  const { login, nome } = useAuth();
   const [itens, setItens] = useState<PendenciaCreditoItem[]>([]);
   const [situacaoFila, setSituacaoFila] = useState<SituacaoFilaPendencia>(
     situacaoInicial ?? 'INADIMPLENTES',
@@ -446,6 +452,23 @@ export default function PendenciasCreditoPanel({
       syncNomus: true,
       cliente: filtroCliente || undefined,
     });
+  };
+
+  const handleEmitirPdfAprovacao = () => {
+    void (async () => {
+      try {
+        const tituloFila =
+          FILAS.find((f) => f.id === situacaoFila)?.label ?? 'Pendências';
+        await downloadPendenciasAprovacaoPdf({
+          linhas: mapPendenciasParaAprovacaoPdf(itens),
+          tituloFila,
+          responsavel: nome?.trim() || login || '—',
+        });
+        setErro(null);
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : 'Não foi possível gerar o PDF.');
+      }
+    })();
   };
 
   const handleSalvarEmail = async () => {
@@ -938,14 +961,25 @@ export default function PendenciasCreditoPanel({
               </span>
             )}
           </div>
-          <button
-            type="button"
-            onClick={handleAtualizarTabela}
-            disabled={carregando}
-            className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
-          >
-            {carregando ? 'Atualizando…' : 'Atualizar'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleEmitirPdfAprovacao}
+              disabled={carregando || itens.length === 0}
+              title="PDF para o gestor marcar a decisão e assinar"
+              className="rounded-lg border border-emerald-700 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Emitir PDF aprovação
+            </button>
+            <button
+              type="button"
+              onClick={handleAtualizarTabela}
+              disabled={carregando}
+              className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+            >
+              {carregando ? 'Atualizando…' : 'Atualizar'}
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">

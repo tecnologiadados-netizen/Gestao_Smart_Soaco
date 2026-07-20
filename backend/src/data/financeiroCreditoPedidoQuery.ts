@@ -1,5 +1,6 @@
 /**
  * Pedidos de venda em aberto (itens com status 1, 2 ou 3) para monitoramento de crédito.
+ * Exclui requisições de loja do grupo (atributo Nomus 313 = Sim).
  */
 
 import { nomusQuery } from './crmFinanceiro/nomusQuery.js';
@@ -42,6 +43,21 @@ export function formatarNumeroPedidoExibicao(numeroPedido: string): string {
   return trimmed ? `PD ${trimmed}` : trimmed;
 }
 
+/**
+ * Atributo Nomus 313 — "Requisição de loja do grupo?".
+ * Exclui pedidos marcados como Sim (não entram no alerta/pendências de crédito).
+ */
+const EXCLUIR_REQUISICAO_LOJA_GRUPO = `
+  AND NOT EXISTS (
+    SELECT 1
+    FROM atributopedidovalor apvreq
+    INNER JOIN atributolistaopcao aloreq ON aloreq.id = apvreq.idListaOpcao
+    WHERE apvreq.idPedido = pd.id
+      AND apvreq.idAtributo = 313
+      AND COALESCE(aloreq.opcao, '') = 'Sim'
+  )
+`;
+
 const SQL_PEDIDOS_ABERTOS = `
   SELECT DISTINCT
     pd.id AS idPedido,
@@ -53,6 +69,7 @@ const SQL_PEDIDOS_ABERTOS = `
   INNER JOIN pessoa pe ON pe.id = pd.idCliente
   WHERE ip.status IN (1, 2, 3)
     AND pd.idEmpresa IN (1, 2)
+    ${EXCLUIR_REQUISICAO_LOJA_GRUPO}
   ORDER BY pe.nome ASC, pd.nome ASC, ip.status ASC
 `;
 

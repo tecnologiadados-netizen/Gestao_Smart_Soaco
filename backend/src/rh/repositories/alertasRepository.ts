@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { prisma } from '../../config/prisma.js';
 import {
   mapEnquadramentoRow,
@@ -173,11 +174,152 @@ export async function updateFaltasAlertaInconsistencia(input: {
 }
 
 export async function registrarFaltasAlertaAusencia(input: Record<string, unknown>) {
+  const lancadoPor = s(input.lancadoPor) || null;
+  const linha =
+    input.linha && typeof input.linha === 'object' ? (input.linha as Record<string, unknown>) : null;
+  const alertasRaw = Array.isArray(input.alertas) ? (input.alertas as Record<string, unknown>[]) : null;
+
+  // Contrato do frontend (Lançar ausência): { linha, alertas[], lancadoPor }
+  if (linha && alertasRaw) {
+    const faltaId = s(linha.id);
+    if (!faltaId) throw new Error('faltaId obrigatório no lançamento de alertas.');
+    if (alertasRaw.length === 0) return { enquadramentos: [], inconsistencias: [] };
+
+    const regraIds = [...new Set(alertasRaw.map((a) => s(a.regraId)).filter(Boolean))];
+    const regrasExistentes = await prisma.rhFaltasAlertaRegras.findMany({
+      where: { id: { in: regraIds } },
+      select: { id: true },
+    });
+    const regrasOk = new Set(regrasExistentes.map((r) => r.id));
+    const faltando = regraIds.filter((id) => !regrasOk.has(id));
+    if (faltando.length > 0) {
+      throw new Error(
+        `Regra(s) de alerta não cadastrada(s) no banco: ${faltando.join(', ')}. Reinicie o backend ou rode o seed de regras RH.`,
+      );
+    }
+
+    const detectadaEm = new Date();
+    const enquadramentos: ReturnType<typeof mapEnquadramentoRow>[] = [];
+    const inconsistencias: ReturnType<typeof mapInconsistenciaRow>[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      for (const alerta of alertasRaw) {
+        const regraId = s(alerta.regraId);
+        if (!regraId) continue;
+
+        const inconsistenciaId = randomUUID();
+        const enquadramentoId = randomUUID();
+        const ctx =
+          alerta.contexto && typeof alerta.contexto === 'object'
+            ? (alerta.contexto as Record<string, unknown>)
+            : {};
+        const dataAusenciaRaw = s(linha.data);
+        const dataAusencia = dataAusenciaRaw ? new Date(dataAusenciaRaw.slice(0, 10)) : null;
+        const matricula = s(linha.matricula);
+        const nomeFuncionario = s(linha.nomeFuncionario);
+        const tipo = s(linha.tipo);
+        const cid = s(linha.cid) || null;
+        const titulo = s(alerta.titulo) || 'Alerta de ausência';
+        const descricao = s(alerta.motivo);
+        const baseLegal = s(alerta.baseLegal) || 'operacional';
+        const severidade = s(alerta.severidade) || 'media';
+
+        await tx.rhFaltasAusenciaInconsistencias.create({
+          data: {
+            id: inconsistenciaId,
+            faltaId,
+            enquadramentoId,
+            regraId,
+            titulo,
+            descricao,
+            baseLegal,
+            severidade,
+            status: 'pendente',
+            matricula,
+            nomeFuncionario,
+            dataAusencia,
+            diasAcumulados: typeof ctx.diasAcumulados === 'number' ? ctx.diasAcumulados : null,
+            limiteDias: typeof ctx.limiteDias === 'number' ? ctx.limiteDias : null,
+            grupoCidId: typeof ctx.grupoCidId === 'string' ? ctx.grupoCidId : null,
+            grupoCidTitulo: typeof ctx.grupoCidTitulo === 'string' ? ctx.grupoCidTitulo : null,
+            detectadaEm,
+            lancadoPor,
+          },
+        });
+
+        await tx.rhFaltasAlertaEnquadramentos.create({
+          data: {
+            id: enquadramentoId,
+            regraId,
+            faltaId,
+            inconsistenciaId,
+            matricula,
+            nomeFuncionario,
+            dataAusencia,
+            tipo,
+            cid,
+            motivo: descricao,
+            contextoJson: Object.keys(ctx).length > 0 ? JSON.stringify(ctx) : null,
+            lancadoPor: lancadoPor ?? '',
+            detectadaEm,
+          },
+        });
+
+        const incMapped = mapInconsistenciaRow({
+          id: inconsistenciaId,
+          falta_id: faltaId,
+          enquadramento_id: enquadramentoId,
+          regra_id: regraId,
+          titulo,
+          descricao,
+          base_legal: baseLegal,
+          severidade,
+          status: 'pendente',
+          matricula,
+          nome_funcionario: nomeFuncionario,
+          data_ausencia: dataAusencia,
+          dias_acumulados: typeof ctx.diasAcumulados === 'number' ? ctx.diasAcumulados : null,
+          limite_dias: typeof ctx.limiteDias === 'number' ? ctx.limiteDias : null,
+          grupo_cid_id: typeof ctx.grupoCidId === 'string' ? ctx.grupoCidId : null,
+          grupo_cid_titulo: typeof ctx.grupoCidTitulo === 'string' ? ctx.grupoCidTitulo : null,
+          detectada_em: detectadaEm,
+          lancado_por: lancadoPor,
+        });
+        inconsistencias.push(incMapped);
+        enquadramentos.push(
+          mapEnquadramentoRow(
+            {
+              id: enquadramentoId,
+              regra_id: regraId,
+              falta_id: faltaId,
+              inconsistencia_id: inconsistenciaId,
+              matricula,
+              nome_funcionario: nomeFuncionario,
+              data_ausencia: dataAusencia,
+              tipo,
+              cid,
+              motivo: descricao,
+              contexto: ctx,
+              lancado_por: lancadoPor ?? '',
+              detectada_em: detectadaEm,
+            },
+            incMapped,
+          ),
+        );
+      }
+    });
+
+    return { enquadramentos, inconsistencias };
+  }
+
+  // Compatibilidade com payload único legado.
   const id = s(input.id) || undefined;
+  const regraId = s(input.regraId);
+  if (!regraId) throw new Error('regraId obrigatório.');
   const data = {
     faltaId: s(input.faltaId),
     enquadramentoId: s(input.enquadramentoId) || null,
-    regraId: s(input.regraId),
+    regraId,
     titulo: s(input.titulo),
     descricao: s(input.descricao),
     baseLegal: s(input.baseLegal),
@@ -190,7 +332,7 @@ export async function registrarFaltasAlertaAusencia(input: Record<string, unknow
     limiteDias: input.limiteDias == null ? null : Number(input.limiteDias),
     grupoCidId: s(input.grupoCidId) || null,
     grupoCidTitulo: s(input.grupoCidTitulo) || null,
-    lancadoPor: s(input.lancadoPor) || null,
+    lancadoPor,
   };
 
   if (id) {
