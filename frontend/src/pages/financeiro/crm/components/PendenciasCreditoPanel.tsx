@@ -458,16 +458,16 @@ export default function PendenciasCreditoPanel({
         usuarioIdsTo: idsTo,
         usuarioIdsCc: idsCc,
         prazoHorasSemAcao,
-        alertaPrazoAtivo,
+        alertaPrazoAtivo: true,
         usuarioIdsGestorTo: idsGestorTo,
         usuarioIdsGestorCc: idsGestorCc,
       });
       setIdsTo(saved.usuarioIdsTo);
       setIdsCc(saved.usuarioIdsCc);
-      setIdsGestorTo(saved.usuarioIdsGestorTo);
-      setIdsGestorCc(saved.usuarioIdsGestorCc);
+      setIdsGestorTo(saved.usuarioIdsGestorTo ?? []);
+      setIdsGestorCc(saved.usuarioIdsGestorCc ?? []);
       setPrazoHorasSemAcao(saved.prazoHorasSemAcao);
-      setAlertaPrazoAtivo(saved.alertaPrazoAtivo);
+      setAlertaPrazoAtivo(true);
       setUsuarios((prev) => {
         const map = new Map(prev.map((u) => [u.id, u]));
         for (const u of [
@@ -728,7 +728,6 @@ export default function PendenciasCreditoPanel({
                     : ''}
                   {' · '}
                   prazo {prazoHorasSemAcao}h
-                  {alertaPrazoAtivo ? '' : ' (alerta off)'}
                 </span>
               )}
             </span>
@@ -773,28 +772,16 @@ export default function PendenciasCreditoPanel({
             </div>
 
             <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/40">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                    Alerta de prazo sem ação
-                  </div>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Se o alerta chegar e nenhuma ação for registrada no prazo, o
-                    sistema envia e-mail ao gestor pedindo providências. Se os
-                    gestores abaixo estiverem vazios, usa To/Cc da ação.
-                  </p>
-                </div>
-                <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-                  <input
-                    type="checkbox"
-                    checked={alertaPrazoAtivo}
-                    disabled={!podeEditarDestinatarios || !editandoDestinatarios}
-                    onChange={(e) => setAlertaPrazoAtivo(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300"
-                  />
-                  Ativo
-                </label>
+              <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                Prazo sem ação (SLA)
               </div>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Define quantas horas após o alerta a ação deve ser tomada (coluna
+                Tempo / prazo). O e-mail de prazo estourado — dias, horários e
+                destinatários — fica em{' '}
+                <strong>Integração → E-mail</strong>, no tipo{' '}
+                <em>Alerta de crédito — prazo de ação estourado</em>.
+              </p>
               <div className="mt-3 flex flex-wrap items-end gap-3">
                 <label className="block text-sm text-slate-700 dark:text-slate-200">
                   Prazo (horas)
@@ -815,26 +802,6 @@ export default function PendenciasCreditoPanel({
                 <span className="pb-2 text-xs text-slate-500 dark:text-slate-400">
                   Padrão: 48h
                 </span>
-              </div>
-              <div className="mt-3 grid gap-4 lg:grid-cols-2">
-                <ListaUsuariosDestinatarios
-                  titulo="Gestores do alerta (To)"
-                  usuarios={usuarios}
-                  selecionados={selecionadosGestorTo}
-                  podeEditar={podeEditarDestinatarios && editandoDestinatarios}
-                  excluirIds={new Set(idsGestorCc)}
-                  onAdicionar={(id) => adicionarDest('gestorTo', id)}
-                  onRemover={(id) => removerDest('gestorTo', id)}
-                />
-                <ListaUsuariosDestinatarios
-                  titulo="Gestores do alerta (Cc)"
-                  usuarios={usuarios}
-                  selecionados={selecionadosGestorCc}
-                  podeEditar={podeEditarDestinatarios && editandoDestinatarios}
-                  excluirIds={new Set(idsGestorTo)}
-                  onAdicionar={(id) => adicionarDest('gestorCc', id)}
-                  onRemover={(id) => removerDest('gestorCc', id)}
-                />
               </div>
             </div>
 

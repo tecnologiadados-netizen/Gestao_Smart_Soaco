@@ -1,8 +1,10 @@
 /**
  * Alerta de SLA: pendência de crédito sem ação após X horas → e-mail ao gestor.
+ * Disparado via Integração → E-mail (builder financeiro_credito_sla_sem_acao).
  */
 import type { PrismaClient } from '@prisma/client';
 import { formatarNumeroPedidoExibicao } from '../data/financeiroCreditoPedidoQuery.js';
+import { envioNotificacoesHabilitado, logEnvioSuprimido } from '../config/envioNotificacoes.js';
 import {
   calcularSlaPendencia,
   deepLinkPendenciasCrm,
@@ -10,7 +12,6 @@ import {
 } from './crmCreditoPendenciasService.js';
 import { buildSystemEmailHtml } from './emailHtmlTemplate.js';
 import { sendSystemEmail } from './systemEmail.js';
-import { envioNotificacoesHabilitado, logEnvioSuprimido } from '../config/envioNotificacoes.js';
 
 function formatarBRL(val: number): string {
   return val.toLocaleString('pt-BR', {
@@ -21,80 +22,16 @@ function formatarBRL(val: number): string {
   });
 }
 
-function emailsDeUsuarios(
-  usuarios: Array<{ email: string | null }>
-): string[] {
-  return [
-    ...new Set(
-      usuarios
-        .map((u) => (u.email ?? '').trim().toLowerCase())
-        .filter((e) => e.includes('@'))
-    ),
-  ];
-}
+type PendenciaSla = Awaited<
+  ReturnType<PrismaClient['crmCreditoPendencia']['findMany']>
+>[number];
 
-export type ResultadoSlaSemAcao = {
-  ativos: number;
-  elegiveis: number;
-  enviados: number;
-  falhas: number;
-};
-
-export async function processarAlertasSlaSemAcao(
-  prisma: PrismaClient
-): Promise<ResultadoSlaSemAcao> {
-  const config = await obterEmailConfigPendencias(prisma);
-  if (!config.alertaPrazoAtivo) {
-    return { ativos: 0, elegiveis: 0, enviados: 0, falhas: 0 };
-  }
-
-  const gestorTo =
-    config.destinatariosGestorTo.length > 0
-      ? config.destinatariosGestorTo
-      : config.destinatariosTo;
-  const gestorCcBase =
-    config.destinatariosGestorTo.length > 0 || config.destinatariosGestorCc.length > 0
-      ? config.destinatariosGestorCc
-      : config.destinatariosCc;
-
-  const emailsTo = emailsDeUsuarios(gestorTo);
-  const emailsCc = emailsDeUsuarios(gestorCcBase).filter((e) => !emailsTo.includes(e));
-
-  if (emailsTo.length === 0) {
-    console.warn(
-      '[crmCreditoSla] Sem destinatário gestor com e-mail — configure na aba Pendências.'
-    );
-    return { ativos: 0, elegiveis: 0, enviados: 0, falhas: 0 };
-  }
-
-  const prazoHoras = config.prazoHorasSemAcao;
-  const limite = new Date(Date.now() - prazoHoras * 3_600_000);
-
-  const candidatas = await prisma.crmCreditoPendencia.findMany({
-    where: {
-      encerrada: false,
-      acao: null,
-      emailSlaEnviadoEm: null,
-      alertaEm: { lte: limite },
-    },
-    orderBy: [{ alertaEm: 'asc' }, { clienteNome: 'asc' }],
-  });
-
-  const elegiveis = candidatas.filter((row) => {
-    const sla = calcularSlaPendencia({
-      alertaEm: row.alertaEm,
-      acao: row.acao,
-      encerrada: row.encerrada,
-      prazoHorasSemAcao: prazoHoras,
-    });
-    return sla.slaEstourado;
-  });
-
-  if (elegiveis.length === 0) {
-    return { ativos: 1, elegiveis: 0, enviados: 0, falhas: 0 };
-  }
-
-  const porCliente = new Map<string, typeof elegiveis>();
+function montarEmailSla(input: {
+  elegiveis: PendenciaSla[];
+  prazoHoras: number;
+}): { subject: string; html: string } {
+  const { elegiveis, prazoHoras } = input;
+  const porCliente = new Map<string, PendenciaSla[]>();
   for (const row of elegiveis) {
     const key = row.clienteChave || row.clienteNome;
     const lista = porCliente.get(key) ?? [];
@@ -114,10 +51,7 @@ export async function processarAlertasSlaSemAcao(
           encerrada: false,
           prazoHorasSemAcao: prazoHoras,
         }).horasDecorridas;
-        const atraso =
-          p.totalAtraso != null
-            ? formatarBRL(p.totalAtraso)
-            : '—';
+        const atraso = p.totalAtraso != null ? formatarBRL(p.totalAtraso) : '—';
         return `<li><strong>${formatarNumeroPedidoExibicao(p.numeroPedido)}</strong> — ${horas}h sem ação · atraso ${atraso} · Nomus: ${p.statusNomusLabel ?? '—'}</li>`;
       })
       .join('');
@@ -145,53 +79,133 @@ export async function processarAlertasSlaSemAcao(
           {
             label: 'Ação sugerida',
             value:
-              'Acesse CRM → Pendências de crédito, escolha a ação (cancelar, pausar, realocar ou seguir produção) e confirme.',
+              'Acesse CRM → Pendências de crédito com PD em carteira, escolha a ação e confirme.',
           },
         ],
       },
     ],
   });
 
+  return { subject, html };
+}
+
+async function listarPendenciasSlaElegiveis(
+  prisma: PrismaClient,
+  prazoHoras: number
+): Promise<PendenciaSla[]> {
+  const limite = new Date(Date.now() - Math.max(1, prazoHoras) * 3_600_000);
+  const candidatas = await prisma.crmCreditoPendencia.findMany({
+    where: {
+      encerrada: false,
+      acao: null,
+      emailSlaEnviadoEm: null,
+      alertaEm: { lte: limite },
+    },
+    orderBy: [{ alertaEm: 'asc' }, { clienteNome: 'asc' }],
+  });
+
+  return candidatas.filter((row) => {
+    const sla = calcularSlaPendencia({
+      alertaEm: row.alertaEm,
+      acao: row.acao,
+      encerrada: row.encerrada,
+      prazoHorasSemAcao: prazoHoras,
+    });
+    return sla.slaEstourado;
+  });
+}
+
+/**
+ * Builder usado pelo cron de Integração → E-mail.
+ * Destinatários e horários/dias vêm do tipo configurado lá.
+ * O prazo em horas continua na aba CRM (config de e-mail da pendência).
+ */
+export async function executarAlertasSlaSemAcao(
+  prisma: PrismaClient,
+  destinatarios: string[],
+  options?: { ignorarDedup?: boolean }
+): Promise<{ enviados: number; ignorados: number; erros: string[] }> {
+  const emails = [
+    ...new Set(
+      destinatarios.map((e) => e.trim().toLowerCase()).filter((e) => e.includes('@'))
+    ),
+  ];
+  if (emails.length === 0) {
+    return { enviados: 0, ignorados: 0, erros: ['Nenhum destinatário com e-mail válido.'] };
+  }
+
+  const config = await obterEmailConfigPendencias(prisma);
+  const prazoHoras = config.prazoHorasSemAcao;
+  const elegiveis = await listarPendenciasSlaElegiveis(prisma, prazoHoras);
+
+  if (elegiveis.length === 0) {
+    return { enviados: 0, ignorados: 0, erros: [] };
+  }
+
+  const { subject, html } = montarEmailSla({ elegiveis, prazoHoras });
+
   if (!envioNotificacoesHabilitado()) {
-    logEnvioSuprimido('email', emailsTo.join(', '), subject);
-    return { ativos: 1, elegiveis: elegiveis.length, enviados: 0, falhas: 0 };
+    logEnvioSuprimido('email', emails.join(', '), subject);
+    return { enviados: 0, ignorados: elegiveis.length, erros: [] };
   }
 
   try {
-    await sendSystemEmail(prisma, {
-      to: emailsTo,
-      cc: emailsCc.length > 0 ? emailsCc : undefined,
-      subject,
-      html,
-    });
+    await sendSystemEmail(prisma, { to: emails, subject, html });
   } catch (err) {
-    console.error('[crmCreditoSla] Falha ao enviar e-mail:', err);
-    return { ativos: 1, elegiveis: elegiveis.length, enviados: 0, falhas: 1 };
+    return {
+      enviados: 0,
+      ignorados: 0,
+      erros: [err instanceof Error ? err.message : String(err)],
+    };
   }
 
-  const agora = new Date();
-  await prisma.$transaction(
-    elegiveis.map((row) =>
-      prisma.crmCreditoPendencia.update({
-        where: { id: row.id },
-        data: { emailSlaEnviadoEm: agora },
-      })
-    )
-  );
+  if (!options?.ignorarDedup) {
+    const agora = new Date();
+    await prisma.$transaction(
+      elegiveis.map((row) =>
+        prisma.crmCreditoPendencia.update({
+          where: { id: row.id },
+          data: { emailSlaEnviadoEm: agora },
+        })
+      )
+    );
+    await prisma.crmCreditoPendenciaEvento.createMany({
+      data: elegiveis.map((row) => ({
+        pendenciaId: row.id,
+        tipo: 'EMAIL_SLA',
+        detalhe: `E-mail SLA (+${prazoHoras}h sem ação) → ${emails.join(', ')}`,
+        usuarioLogin: 'sistema',
+      })),
+    });
+  }
 
-  await prisma.crmCreditoPendenciaEvento.createMany({
-    data: elegiveis.map((row) => ({
-      pendenciaId: row.id,
-      tipo: 'EMAIL_SLA',
-      detalhe: `E-mail SLA (+${prazoHoras}h sem ação) → ${emailsTo.join(', ')}`,
-      usuarioLogin: 'sistema',
-    })),
-  });
+  return { enviados: 1, ignorados: 0, erros: [] };
+}
 
+export async function previewAlertaSlaSemAcao(prisma: PrismaClient): Promise<{
+  subject: string;
+  html: string;
+  resumo: string;
+  quantidade: number;
+}> {
+  const config = await obterEmailConfigPendencias(prisma);
+  const prazoHoras = config.prazoHorasSemAcao;
+  const elegiveis = await listarPendenciasSlaElegiveis(prisma, prazoHoras);
+
+  if (elegiveis.length === 0) {
+    return {
+      subject: '[Preview] Nenhum pedido com prazo de ação estourado',
+      html: `<p>Não há pedidos sem ação há mais de ${prazoHoras}h no momento.</p>`,
+      resumo: `Nenhum pedido elegível (prazo ${prazoHoras}h).`,
+      quantidade: 0,
+    };
+  }
+
+  const { subject, html } = montarEmailSla({ elegiveis, prazoHoras });
   return {
-    ativos: 1,
-    elegiveis: elegiveis.length,
-    enviados: elegiveis.length,
-    falhas: 0,
+    subject,
+    html,
+    resumo: `${elegiveis.length} pedido(s) sem ação há +${prazoHoras}h.`,
+    quantidade: elegiveis.length,
   };
 }

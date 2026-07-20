@@ -22,6 +22,10 @@ import {
   executarResumoDiarioCredito,
   previewResumoDiarioCredito,
 } from './crmCreditoResumoDiarioEmailService.js';
+import {
+  executarAlertasSlaSemAcao,
+  previewAlertaSlaSemAcao,
+} from './crmCreditoSlaSemAcaoService.js';
 
 type TipoComDestinatarios = NonNullable<Awaited<ReturnType<typeof buscarTipoEmailPorCode>>>;
 
@@ -44,6 +48,10 @@ const BUILDERS: Record<string, (ctx: BuilderContext) => Promise<BuilderResult>> 
     }),
   financeiro_credito_resumo_diario: (ctx) =>
     executarResumoDiarioCredito(ctx.prisma, ctx.destinatarios, {
+      ignorarDedup: ctx.ignorarDedup,
+    }),
+  financeiro_credito_sla_sem_acao: (ctx) =>
+    executarAlertasSlaSemAcao(ctx.prisma, ctx.destinatarios, {
       ignorarDedup: ctx.ignorarDedup,
     }),
 };
@@ -152,6 +160,16 @@ export async function previewEmailDoTipo(tipoId: number): Promise<{
 
   if (builderCode === 'financeiro_credito_resumo_diario') {
     const preview = await previewResumoDiarioCredito(prisma);
+    return {
+      subject: preview.subject,
+      html: preview.html,
+      resumo: preview.resumo,
+      quantidadeAlertas: preview.quantidade,
+    };
+  }
+
+  if (builderCode === 'financeiro_credito_sla_sem_acao') {
+    const preview = await previewAlertaSlaSemAcao(prisma);
     return {
       subject: preview.subject,
       html: preview.html,
