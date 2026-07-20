@@ -39,7 +39,7 @@ export const PERMISSOES_ACESSO_FINANCEIRO_CRM_CLIENTE: CodigoPermissao[] = [
   PERMISSOES.FINANCEIRO_CRM_CLIENTE_VER,
 ];
 
-/** Guia "Pendências de crédito" do CRM. */
+/** Guia "Pendências de crédito com PD em carteira" do CRM. */
 export const PERMISSOES_ACESSO_FINANCEIRO_CRM_PENDENCIAS: CodigoPermissao[] = [
   PERMISSOES.FINANCEIRO_VER,
   PERMISSOES.FINANCEIRO_CRM_VER,

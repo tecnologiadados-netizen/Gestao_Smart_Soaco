@@ -257,7 +257,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.FINANCEIRO_CRM_VER]: 'CRM Financeiro (Receber/Pagar) — acesso completo (todas as guias)',
   [PERMISSOES.FINANCEIRO_CRM_EMPRESA_VER]: 'CRM Financeiro — guia "Situação geral da empresa"',
   [PERMISSOES.FINANCEIRO_CRM_CLIENTE_VER]: 'CRM Financeiro — guia "Análise de crédito por cliente"',
-  [PERMISSOES.FINANCEIRO_CRM_PENDENCIAS_VER]: 'CRM Financeiro — guia "Pendências de crédito"',
+  [PERMISSOES.FINANCEIRO_CRM_PENDENCIAS_VER]: 'CRM Financeiro — guia "Pendências de crédito com PD em carteira"',
   [PERMISSOES.FINANCEIRO_CRM_PENDENCIAS_DESTINATARIOS_EDITAR]:
     'CRM Financeiro — editar destinatários/cópias do e-mail de ação (Pendências)',
   [PERMISSOES.LOGISTICA_VER]: 'Ver Logística',

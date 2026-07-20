@@ -258,7 +258,7 @@ function GuiasPainel({
                 : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             }`}
           >
-            Pendências de crédito
+            Pendências de crédito com PD em carteira
           </button>
         )}
       </div>
@@ -899,7 +899,7 @@ export default function CrmFinanceiroPage() {
             />
           ) : (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-800">
-              Você não tem permissão para a guia Pendências de crédito.
+              Você não tem permissão para a guia Pendências de crédito com PD em carteira.
             </div>
           )
         ) : (
