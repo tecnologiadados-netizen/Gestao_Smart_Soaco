@@ -1072,7 +1072,12 @@ export default function PendenciasCreditoPanel({
                           </td>
                         )}
                         <td className="px-3 py-2.5 align-middle whitespace-nowrap font-medium">
-                          {item.numeroPedidoExibicao}
+                          <div>{item.numeroPedidoExibicao}</div>
+                          {item.valorPedido != null && Number.isFinite(item.valorPedido) ? (
+                            <div className="mt-0.5 text-xs font-normal text-slate-500 dark:text-slate-400">
+                              {formatarBRL(item.valorPedido)}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="px-3 py-2.5 align-middle">
                           <div>{item.statusNomusLabel ?? '—'}</div>

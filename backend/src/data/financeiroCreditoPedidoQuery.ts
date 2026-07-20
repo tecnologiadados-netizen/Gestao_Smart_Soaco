@@ -112,6 +112,8 @@ export type StatusPedidoCredito = {
   /** Menor status entre os itens (1 prevalece sobre 2/3 se houver item pausado). */
   statusItem: number;
   statusLabel: string;
+  /** Soma de valorTotalComDesconto dos itens do pedido. */
+  valorPedido: number;
 };
 
 /**
@@ -130,7 +132,8 @@ export async function listarStatusPedidosCreditoPorIds(
       pd.id AS idPedido,
       pd.nome AS numeroPedido,
       pe.nome AS clienteNome,
-      MIN(ip.status) AS statusItem
+      MIN(ip.status) AS statusItem,
+      COALESCE(SUM(IFNULL(ip.valorTotalComDesconto, 0)), 0) AS valorPedido
     FROM itempedido ip
     INNER JOIN pedido pd ON pd.id = ip.idPedido
     INNER JOIN pessoa pe ON pe.id = pd.idCliente
@@ -144,6 +147,7 @@ export async function listarStatusPedidosCreditoPorIds(
     numeroPedido: string;
     clienteNome: string;
     statusItem: number;
+    valorPedido: number;
   }>(sql, unique);
 
   return rows.map((row) => {
@@ -154,8 +158,37 @@ export async function listarStatusPedidosCreditoPorIds(
       clienteNome: String(row.clienteNome ?? '').trim(),
       statusItem,
       statusLabel: labelStatusItemPedidoCompleto(statusItem),
+      valorPedido: Number(row.valorPedido) || 0,
     };
   });
+}
+
+/**
+ * Só o valor total dos pedidos (para enriquecer a grade sem sync completo de status).
+ */
+export async function listarValoresPedidosCreditoPorIds(
+  ids: number[]
+): Promise<Array<{ idPedido: number; valorPedido: number }>> {
+  const unique = [...new Set(ids.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0))];
+  if (unique.length === 0) return [];
+
+  const placeholders = unique.map(() => '?').join(', ');
+  const sql = `
+    SELECT
+      pd.id AS idPedido,
+      COALESCE(SUM(IFNULL(ip.valorTotalComDesconto, 0)), 0) AS valorPedido
+    FROM itempedido ip
+    INNER JOIN pedido pd ON pd.id = ip.idPedido
+    WHERE pd.id IN (${placeholders})
+      AND pd.idEmpresa IN (1, 2)
+    GROUP BY pd.id
+  `;
+
+  const rows = await nomusQuery<{ idPedido: number; valorPedido: number }>(sql, unique);
+  return rows.map((row) => ({
+    idPedido: Number(row.idPedido),
+    valorPedido: Number(row.valorPedido) || 0,
+  }));
 }
 
 /**

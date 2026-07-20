@@ -179,6 +179,7 @@ export type PendenciaCreditoItem = {
   numeroPedidoExibicao: string;
   clienteNome: string;
   clienteChave: string;
+  valorPedido: number | null;
   statusNomus: number | null;
   statusNomusLabel: string | null;
   acao: string | null;

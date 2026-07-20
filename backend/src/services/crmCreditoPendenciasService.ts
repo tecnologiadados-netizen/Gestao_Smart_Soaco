@@ -8,6 +8,7 @@ import {
   formatarNumeroPedidoExibicao,
   labelStatusItemPedidoCompleto,
   listarStatusPedidosCreditoPorIds,
+  listarValoresPedidosCreditoPorIds,
 } from '../data/financeiroCreditoPedidoQuery.js';
 import { criarMatcherTextoLivre } from '../utils/textoLivreBusca.js';
 import { buildSystemEmailHtml } from './emailHtmlTemplate.js';
@@ -345,6 +346,8 @@ export type PendenciaCreditoDto = {
   numeroPedidoExibicao: string;
   clienteNome: string;
   clienteChave: string;
+  /** Valor total do pedido (Nomus). */
+  valorPedido: number | null;
   statusNomus: number | null;
   statusNomusLabel: string | null;
   acao: string | null;
@@ -472,6 +475,7 @@ function toDto(
     totalAtraso: number | null;
     maiorAtrasoDias: number | null;
     contasAtrasoJson?: string | null;
+    valorPedido?: number | null;
     alertaEm: Date;
     acaoEm: Date | null;
     acaoPorLogin: string | null;
@@ -503,6 +507,10 @@ function toDto(
     numeroPedidoExibicao: formatarNumeroPedidoExibicao(row.numeroPedido),
     clienteNome: row.clienteNome,
     clienteChave: row.clienteChave,
+    valorPedido:
+      row.valorPedido != null && Number.isFinite(Number(row.valorPedido))
+        ? Number(row.valorPedido)
+        : null,
     statusNomus: row.statusNomusSnapshot,
     statusNomusLabel: row.statusNomusLabel,
     acao: row.acao,
@@ -711,10 +719,13 @@ export async function listarPendenciasCredito(
     for (const row of rows) {
       const st = map.get(row.idPedido);
       if (!st) continue;
+      const valorMudou =
+        row.valorPedido == null || Math.abs(Number(row.valorPedido) - st.valorPedido) > 0.009;
       if (
         st.statusItem !== row.statusNomusSnapshot ||
         st.statusLabel !== row.statusNomusLabel ||
-        st.numeroPedido !== row.numeroPedido
+        st.numeroPedido !== row.numeroPedido ||
+        valorMudou
       ) {
         updates.push(
           prisma.crmCreditoPendencia.update({
@@ -723,15 +734,41 @@ export async function listarPendenciasCredito(
               statusNomusSnapshot: st.statusItem,
               statusNomusLabel: st.statusLabel,
               numeroPedido: st.numeroPedido || row.numeroPedido,
+              valorPedido: st.valorPedido,
             },
           })
         );
         row.statusNomusSnapshot = st.statusItem;
         row.statusNomusLabel = st.statusLabel;
         if (st.numeroPedido) row.numeroPedido = st.numeroPedido;
+        row.valorPedido = st.valorPedido;
       }
     }
     if (updates.length > 0) await Promise.all(updates);
+  } else if (rows.length > 0) {
+    // Abertura rápida: só completa valor quando ainda não há snapshot.
+    const semValor = rows.filter((r) => r.valorPedido == null);
+    if (semValor.length > 0) {
+      try {
+        const valores = await listarValoresPedidosCreditoPorIds(semValor.map((r) => r.idPedido));
+        const map = new Map(valores.map((v) => [v.idPedido, v.valorPedido]));
+        const updates: Promise<unknown>[] = [];
+        for (const row of semValor) {
+          const valor = map.get(row.idPedido);
+          if (valor == null) continue;
+          row.valorPedido = valor;
+          updates.push(
+            prisma.crmCreditoPendencia.update({
+              where: { id: row.id },
+              data: { valorPedido: valor },
+            })
+          );
+        }
+        if (updates.length > 0) await Promise.all(updates);
+      } catch (err) {
+        console.warn('Valor pedido pendências (parcial):', err);
+      }
+    }
   }
 
   type MonitorResumo = Awaited<

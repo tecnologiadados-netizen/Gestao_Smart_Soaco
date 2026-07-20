@@ -1274,6 +1274,8 @@ model CrmCreditoPendencia {
   qtdTitulosAtraso     Int?      @map("qtd_titulos_atraso")
   totalAtraso          Float?    @map("total_atraso")
   maiorAtrasoDias      Int?      @map("maior_atraso_dias")
+  /// Snapshot do valor total do pedido (Nomus — soma itens).
+  valorPedido          Float?    @map("valor_pedido")
   /// Snapshot JSON das contas em atraso (código, vencimento, status) — evita N+1 Nomus na grade.
   contasAtrasoJson     String?   @map("contas_atraso_json")
   alertaEm             DateTime  @map("alerta_em")
