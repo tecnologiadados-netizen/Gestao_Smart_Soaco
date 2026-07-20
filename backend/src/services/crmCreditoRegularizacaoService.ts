@@ -298,7 +298,7 @@ export async function reconciliarMonitoresRegularizacao(
   const pausados = await prisma.crmCreditoPendencia.findMany({
     where: {
       encerrada: false,
-      acao: { in: ['PAUSADO', 'REALOCAR_MATERIAL'] },
+      acao: { in: ['PAUSADO', 'REALOCAR_MATERIAL', 'SEGUIR_PRODUCAO'] },
       statusNomusSnapshot: 1,
     },
     select: {
@@ -521,7 +521,7 @@ export async function montarEmailClienteRegularizado(
     where: {
       clienteChave: monitor.clienteChave,
       encerrada: false,
-      acao: { in: ['PAUSADO', 'REALOCAR_MATERIAL'] },
+      acao: { in: ['PAUSADO', 'REALOCAR_MATERIAL', 'SEGUIR_PRODUCAO'] },
     },
     select: { numeroPedido: true, statusNomusLabel: true, acao: true },
     orderBy: { numeroPedido: 'asc' },
@@ -531,7 +531,7 @@ export async function montarEmailClienteRegularizado(
     pedidos
       .map(
         (p) =>
-          `${formatarNumeroPedidoExibicao(p.numeroPedido)}${p.statusNomusLabel ? ` (${p.statusNomusLabel})` : ''}${p.acao === 'REALOCAR_MATERIAL' ? ' [realocar]' : ''}`
+          `${formatarNumeroPedidoExibicao(p.numeroPedido)}${p.statusNomusLabel ? ` (${p.statusNomusLabel})` : ''}${p.acao === 'REALOCAR_MATERIAL' ? ' [realocar]' : ''}${p.acao === 'SEGUIR_PRODUCAO' ? ' [seguir produção]' : ''}`
       )
       .join('; ') || '—';
 

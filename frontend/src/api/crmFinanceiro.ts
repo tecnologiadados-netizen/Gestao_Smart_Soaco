@@ -161,7 +161,11 @@ export async function fetchCrmEmpresas(): Promise<EmpresaOption[]> {
   return Array.isArray(body) ? body : [];
 }
 
-export type AcaoPendenciaCredito = 'CANCELADO' | 'PAUSADO' | 'REALOCAR_MATERIAL';
+export type AcaoPendenciaCredito =
+  | 'CANCELADO'
+  | 'PAUSADO'
+  | 'REALOCAR_MATERIAL'
+  | 'SEGUIR_PRODUCAO';
 
 export type SituacaoFilaPendencia =
   | 'INADIMPLENTES'

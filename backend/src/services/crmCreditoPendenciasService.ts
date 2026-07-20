@@ -31,13 +31,19 @@ export type AlertaCreditoParaPendencia = {
   totalAtraso: number;
 };
 
-export const ACOES_PENDENCIA = ['CANCELADO', 'PAUSADO', 'REALOCAR_MATERIAL'] as const;
+export const ACOES_PENDENCIA = [
+  'CANCELADO',
+  'PAUSADO',
+  'REALOCAR_MATERIAL',
+  'SEGUIR_PRODUCAO',
+] as const;
 export type AcaoPendenciaCredito = (typeof ACOES_PENDENCIA)[number];
 
 export const LABEL_ACAO: Record<AcaoPendenciaCredito, string> = {
   CANCELADO: 'Pedido cancelado',
   PAUSADO: 'Pedido pausado',
   REALOCAR_MATERIAL: 'Realocar material',
+  SEGUIR_PRODUCAO: 'Seguir com produção',
 };
 
 export function normalizarClienteChave(nome: string): string {
@@ -147,7 +153,9 @@ export function instrucaoNomusParaAcao(acao: AcaoPendenciaCredito): string {
     case 'PAUSADO':
       return 'Vá ao Nomus e altere o(s) item(ns) do pedido para "Aguardando liberação". Depois volte e atualize a tabela.';
     case 'REALOCAR_MATERIAL':
-      return 'Realoque o material para um pedido de outro cliente. Depois, no Nomus, altere o(s) item(ns) do pedido de origem para "Aguardando liberação". Em seguida volte e confirme na tabela.';
+      return 'Realoque o material conforme a necessidade. Depois, no Nomus, altere o(s) item(ns) do pedido de origem para "Aguardando liberação". Em seguida volte e confirme na tabela.';
+    case 'SEGUIR_PRODUCAO':
+      return 'Produção segue normalmente. Nenhuma alteração de status no Nomus é exigida para esta ação — o e-mail será enviado ao salvar.';
     default:
       return '';
   }
@@ -160,6 +168,7 @@ export function confirmacaoNomusOk(
   if (!acao || statusNomus == null) return null;
   if (acao === 'PAUSADO' || acao === 'REALOCAR_MATERIAL') return statusNomus === 1;
   if (acao === 'CANCELADO') return statusNomus === 6 || statusNomus >= 4;
+  if (acao === 'SEGUIR_PRODUCAO') return true;
   return null;
 }
 
@@ -177,7 +186,7 @@ function nomusConfirmadoParaAcao(
 }
 
 function acaoEntraMonitorRegularizacao(acao: AcaoPendenciaCredito): boolean {
-  return acao === 'PAUSADO' || acao === 'REALOCAR_MATERIAL';
+  return acao === 'PAUSADO' || acao === 'REALOCAR_MATERIAL' || acao === 'SEGUIR_PRODUCAO';
 }
 
 export type SituacaoFilaPendencia = 'INADIMPLENTES' | 'REGULARIZADOS' | 'FINALIZADOS';
@@ -1061,7 +1070,7 @@ async function enviarEmailAcaoPendencia(
           { label: 'Pedido', value: pendencia.numeroPedidoExibicao },
           { label: 'Ação', value: LABEL_ACAO[acao] },
           ...(acao === 'REALOCAR_MATERIAL' && pendencia.pedidoDestino
-            ? [{ label: 'Pedido destino (outro cliente)', value: pendencia.pedidoDestino }]
+            ? [{ label: 'Pedido destino', value: pendencia.pedidoDestino }]
             : []),
           {
             label: 'Observação',
@@ -1125,14 +1134,6 @@ export async function salvarAcaoPendenciaCredito(
   if (!ACOES_PENDENCIA.includes(input.acao)) {
     throw new Error('Ação inválida.');
   }
-  if (input.acao === 'REALOCAR_MATERIAL') {
-    const dest = String(input.pedidoDestino ?? '').trim();
-    if (!dest) {
-      throw new Error(
-        'Informe o pedido destino de outro cliente para realocar o material.'
-      );
-    }
-  }
 
   const row = await prisma.crmCreditoPendencia.findUnique({ where: { id: input.id } });
   if (!row) throw new Error('Pendência não encontrada.');
@@ -1146,8 +1147,7 @@ export async function salvarAcaoPendenciaCredito(
   const numeroPedido = st?.numeroPedido || row.numeroPedido;
 
   const agora = new Date();
-  const pedidoDestino =
-    input.acao === 'REALOCAR_MATERIAL' ? String(input.pedidoDestino ?? '').trim() : null;
+  const pedidoDestino = String(input.pedidoDestino ?? '').trim() || null;
   const observacao = String(input.observacao ?? '').trim() || null;
 
   const conteudoMudou =

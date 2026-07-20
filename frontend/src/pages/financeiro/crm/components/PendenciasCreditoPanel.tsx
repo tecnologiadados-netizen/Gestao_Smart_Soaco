@@ -6,14 +6,12 @@ import {
   fetchCrmPendenciasCredito,
   fetchCrmPendenciasEmailConfig,
   fetchCrmPendenciasHistorico,
-  fetchCrmPendenciasPedidosDestino,
   fetchCrmPendenciasUsuarios,
   salvarCrmPendenciaAcao,
   salvarCrmPendenciasEmailConfig,
   type AcaoPendenciaCredito,
   type HistoricoPendenciaEvento,
   type MonitorRegularizacaoCliente,
-  type PedidoDestinoOpcao,
   type PendenciaCreditoItem,
   type SituacaoFilaPendencia,
   type UsuarioDestinatarioPendencia,
@@ -66,6 +64,7 @@ const ACOES: { value: AcaoPendenciaCredito; label: string }[] = [
   { value: 'CANCELADO', label: 'Pedido cancelado' },
   { value: 'PAUSADO', label: 'Pedido pausado' },
   { value: 'REALOCAR_MATERIAL', label: 'Realocar material' },
+  { value: 'SEGUIR_PRODUCAO', label: 'Seguir com produção' },
 ];
 
 type Props = {
@@ -253,9 +252,6 @@ export default function PendenciasCreditoPanel({
 
   const [draftAcao, setDraftAcao] = useState<Record<number, AcaoPendenciaCredito | ''>>({});
   const [draftObs, setDraftObs] = useState<Record<number, string>>({});
-  const [draftDestino, setDraftDestino] = useState<Record<number, string>>({});
-  const [buscaDestino, setBuscaDestino] = useState<Record<number, string>>({});
-  const buscaDestinoTimerRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
   const [usuarios, setUsuarios] = useState<UsuarioDestinatarioPendencia[]>([]);
   const [idsTo, setIdsTo] = useState<number[]>([]);
@@ -275,11 +271,6 @@ export default function PendenciasCreditoPanel({
   const [clienteContasModal, setClienteContasModal] = useState<string | null>(null);
   const [carregandoContas, setCarregandoContas] = useState(false);
   const contasCacheRef = useRef(new Map<string, MonitorRegularizacaoCliente | null>());
-  const pedidosDestinoCacheRef = useRef(new Map<string, PedidoDestinoOpcao[]>());
-  const [pedidosDestinoPorItem, setPedidosDestinoPorItem] = useState<
-    Record<number, PedidoDestinoOpcao[]>
-  >({});
-  const [carregandoDestinoId, setCarregandoDestinoId] = useState<number | null>(null);
 
   const usuariosById = useMemo(() => {
     const map = new Map<number, UsuarioDestinatarioPendencia>();
@@ -312,8 +303,6 @@ export default function PendenciasCreditoPanel({
       setCarregando(true);
       setErro(null);
       contasCacheRef.current.clear();
-      pedidosDestinoCacheRef.current.clear();
-      setPedidosDestinoPorItem({});
       const situacao = opts?.situacao ?? situacaoFila;
       try {
         const cliente = opts?.cliente ?? filtroCliente;
@@ -340,13 +329,6 @@ export default function PendenciasCreditoPanel({
           const next = { ...prev };
           for (const item of lista) {
             if (next[item.id] === undefined) next[item.id] = item.observacao ?? '';
-          }
-          return next;
-        });
-        setDraftDestino((prev) => {
-          const next = { ...prev };
-          for (const item of lista) {
-            if (next[item.id] === undefined) next[item.id] = item.pedidoDestino ?? '';
           }
           return next;
         });
@@ -476,7 +458,6 @@ export default function PendenciasCreditoPanel({
       const result = await salvarCrmPendenciaAcao(item.id, {
         acao,
         observacao: draftObs[item.id] ?? '',
-        pedidoDestino: draftDestino[item.id] ?? '',
       });
       setMensagemNomus({
         titulo: result.emailEnviado
@@ -518,10 +499,6 @@ export default function PendenciasCreditoPanel({
           [item.id]: (result.pendencia.acao as AcaoPendenciaCredito) || acao,
         }));
         setDraftObs((prev) => ({ ...prev, [item.id]: result.pendencia.observacao ?? '' }));
-        setDraftDestino((prev) => ({
-          ...prev,
-          [item.id]: result.pendencia.pedidoDestino ?? '',
-        }));
       }
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao salvar ação');
@@ -599,47 +576,6 @@ export default function PendenciasCreditoPanel({
     } finally {
       setCarregandoContas(false);
     }
-  };
-
-  const carregarPedidosDestino = async (
-    item: PendenciaCreditoItem,
-    termoBusca: string,
-  ) => {
-    const busca = termoBusca.trim();
-    if (busca.length < 2) {
-      setPedidosDestinoPorItem((prev) => ({ ...prev, [item.id]: [] }));
-      return;
-    }
-    const cacheKey = `${busca.toLowerCase()}::excluir:${item.idPedido}::cli:${item.clienteNome}`;
-    const cached = pedidosDestinoCacheRef.current.get(cacheKey);
-    if (cached) {
-      setPedidosDestinoPorItem((prev) => ({ ...prev, [item.id]: cached }));
-      return;
-    }
-    setCarregandoDestinoId(item.id);
-    try {
-      const pedidos = await fetchCrmPendenciasPedidosDestino({
-        busca,
-        excluirIdPedido: item.idPedido,
-        excluirCliente: item.clienteNome,
-      });
-      pedidosDestinoCacheRef.current.set(cacheKey, pedidos);
-      setPedidosDestinoPorItem((prev) => ({ ...prev, [item.id]: pedidos }));
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Falha ao buscar pedidos destino');
-      setPedidosDestinoPorItem((prev) => ({ ...prev, [item.id]: [] }));
-    } finally {
-      setCarregandoDestinoId(null);
-    }
-  };
-
-  const agendarBuscaDestino = (item: PendenciaCreditoItem, termo: string) => {
-    setBuscaDestino((prev) => ({ ...prev, [item.id]: termo }));
-    const prevTimer = buscaDestinoTimerRef.current[item.id];
-    if (prevTimer) clearTimeout(prevTimer);
-    buscaDestinoTimerRef.current[item.id] = setTimeout(() => {
-      void carregarPedidosDestino(item, termo);
-    }, 350);
   };
 
   const aguardandoAcao = useMemo(
@@ -889,7 +825,7 @@ export default function PendenciasCreditoPanel({
                 <th className="px-3 py-2.5 font-semibold">Vencimento</th>
                 <th className="px-3 py-2.5 font-semibold">Status conta</th>
                 <th className="px-3 py-2.5 font-semibold">Ação</th>
-                <th className="px-3 py-2.5 font-semibold">Observação / destino</th>
+                <th className="px-3 py-2.5 font-semibold">Observação</th>
                 <th
                   className="px-3 py-2.5 font-semibold"
                   title="E-mails já enviados sobre o cliente"
@@ -1108,13 +1044,6 @@ export default function PendenciasCreditoPanel({
                                     ...prev,
                                     [item.id]: value,
                                   }));
-                                  if (value !== 'REALOCAR_MATERIAL') {
-                                    setPedidosDestinoPorItem((prev) => {
-                                      const next = { ...prev };
-                                      delete next[item.id];
-                                      return next;
-                                    });
-                                  }
                                 }}
                                 className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                               >
@@ -1161,99 +1090,6 @@ export default function PendenciasCreditoPanel({
                                 disabled={situacaoFila === 'REGULARIZADOS'}
                                 className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                               />
-                              {acaoSel === 'REALOCAR_MATERIAL' &&
-                                situacaoFila === 'INADIMPLENTES' && (
-                                <div className="mt-1 space-y-1">
-                                  <p className="text-[11px] leading-snug text-slate-500 dark:text-slate-400">
-                                    Realocar para pedido de <strong>outro cliente</strong>.
-                                    Busque pelo nome do cliente ou número do pedido.
-                                  </p>
-                                  {draftDestino[item.id] ? (
-                                    <div className="flex items-start gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 dark:border-emerald-800/60 dark:bg-emerald-950/40">
-                                      <div className="min-w-0 flex-1 text-xs font-medium text-emerald-900 dark:text-emerald-200">
-                                        Destino: {draftDestino[item.id]}
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setDraftDestino((prev) => ({
-                                            ...prev,
-                                            [item.id]: '',
-                                          }));
-                                          setBuscaDestino((prev) => ({
-                                            ...prev,
-                                            [item.id]: '',
-                                          }));
-                                          setPedidosDestinoPorItem((prev) => {
-                                            const next = { ...prev };
-                                            delete next[item.id];
-                                            return next;
-                                          });
-                                        }}
-                                        className="shrink-0 text-[11px] font-semibold text-emerald-800 underline dark:text-emerald-300"
-                                      >
-                                        Trocar
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <input
-                                        type="text"
-                                        value={buscaDestino[item.id] ?? ''}
-                                        onChange={(e) =>
-                                          agendarBuscaDestino(item, e.target.value)
-                                        }
-                                        placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
-                                        className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-                                      />
-                                      {carregandoDestinoId === item.id && (
-                                        <div className="text-[11px] text-slate-500">
-                                          Buscando pedidos de outros clientes…
-                                        </div>
-                                      )}
-                                      {(buscaDestino[item.id] ?? '').trim().length >= 2 &&
-                                        carregandoDestinoId !== item.id &&
-                                        (pedidosDestinoPorItem[item.id]?.length ?? 0) === 0 && (
-                                          <div className="text-[11px] text-amber-700 dark:text-amber-400">
-                                            Nenhum pedido aberto de outro cliente encontrado.
-                                          </div>
-                                        )}
-                                      {(pedidosDestinoPorItem[item.id]?.length ?? 0) > 0 && (
-                                        <select
-                                          value=""
-                                          onChange={(e) => {
-                                            const value = e.target.value;
-                                            if (!value) return;
-                                            setDraftDestino((prev) => ({
-                                              ...prev,
-                                              [item.id]: value,
-                                            }));
-                                            setPedidosDestinoPorItem((prev) => {
-                                              const next = { ...prev };
-                                              delete next[item.id];
-                                              return next;
-                                            });
-                                          }}
-                                          className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                                        >
-                                          <option value="">
-                                            Selecione o pedido destino…
-                                          </option>
-                                          {(pedidosDestinoPorItem[item.id] ?? []).map((p) => (
-                                            <option
-                                              key={p.idPedido}
-                                              value={p.rotuloDestino || `${p.numeroPedidoExibicao} · ${p.clienteNome}`}
-                                            >
-                                              {p.numeroPedidoExibicao} — {p.clienteNome} (
-                                              {p.statusLabel})
-                                            </option>
-                                          ))}
-                                        </select>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                              )}
                               {situacaoFila === 'REGULARIZADOS' && item.pedidoDestino ? (
                                 <div className="mt-1 text-xs text-slate-500">
                                   Destino: {item.pedidoDestino}
