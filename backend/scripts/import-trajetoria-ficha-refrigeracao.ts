@@ -26,6 +26,10 @@ const IMPORTADO_POR = 'sistema';
 const ADMISSAO_BASELINE_MOTIVO = '__admissao_inicial__';
 const SETOR_PADRAO = 'LOJA - ADMINISTRATIVO';
 const AREA_PADRAO = 'ADMINISTRATIVO';
+const EMPRESA_TAB = 'SO REFRIGERAÇÃO';
+const VINCULO_HISTORICO_LOCAL = 'HISTÓRICO LOCAL';
+const DIRETORIA_IDX = 17;
+const VINCULO_IDX = 27;
 
 const dryRun = process.argv.includes('--dry-run');
 
@@ -432,6 +436,8 @@ function buildOrganicoValues(input: {
   values[12] = input.cargo || '';
   values[13] = AREA_PADRAO;
   values[14] = SETOR_PADRAO;
+  values[DIRETORIA_IDX] = EMPRESA_TAB;
+  values[VINCULO_IDX] = VINCULO_HISTORICO_LOCAL;
   values[53] = input.salario ? input.salario.replace(/[^\d,.]/g, '').replace(/\./g, '').replace(',', '.') : '';
   // tenta extrair número do "R$ 1.043,83 por mês"
   if (input.salario) {

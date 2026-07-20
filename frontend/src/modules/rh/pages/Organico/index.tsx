@@ -85,6 +85,7 @@ import {
   ORGANICO_IDX,
   getTempoEmpresaMeses,
   getStatusFromRow,
+  isOrganicoHistoricoLocal,
 } from "./organico-derive";
 import { ORGANICO_NUM_COLUNAS } from "./organico-headers";
 import { useOrganicoImport, type OrganicoSheetRow } from "./useOrganicoImport";
@@ -227,16 +228,26 @@ function normalizeEmpresaTabName(value: string): string {
   const norm = normalizeEmpresaText(raw);
   if (norm.includes("SO ACO") || norm.includes("ACO INDUSTRIAL")) return ORGANICO_EMPRESA_PADRAO;
   if (norm.includes("SO MOVEIS") || norm.includes("MOVEIS")) return "SÓ MÓVEIS";
+  if (norm.includes("REFRIGER")) return "SO REFRIGERAÇÃO";
+  if (norm.includes("RN MARQUES") || norm.includes("R N MARQUES")) return "R N MARQUES ARAUJO";
   return raw;
 }
 
 function resolveEmpresaTabFromRow(row: OrganicoSheetRow): OrganicoEmpresaTab {
   const setor = normalizeEmpresaText(String(row[ORGANICO_IDX.SETOR] ?? "").trim());
   const area = normalizeEmpresaText(String(row[ORGANICO_IDX.AREA] ?? "").trim());
-  const diretoria = normalizeEmpresaText(String(row[ORGANICO_DIRETORIA_IDX] ?? "").trim());
+  const diretoria = normalizeEmpresaText(String(row[ORGANICO_IDX.DIRETORIA] ?? row[ORGANICO_DIRETORIA_IDX] ?? "").trim());
 
   const joined = `${setor} ${area} ${diretoria}`;
+  if (joined.includes("REFRIGER")) return normalizeEmpresaTabName("SO REFRIGERAÇÃO");
   if (joined.includes("MOVEIS") || joined.includes("MOVEL")) return normalizeEmpresaTabName("SÓ MÓVEIS");
+  if (joined.includes("RN MARQUES") || joined.includes("R N MARQUES")) {
+    return normalizeEmpresaTabName("R N MARQUES ARAUJO");
+  }
+  // Histórico local: DIRETORIA guarda o nome da empresa da ficha.
+  if (isOrganicoHistoricoLocal(row) && diretoria) {
+    return normalizeEmpresaTabName(String(row[ORGANICO_IDX.DIRETORIA] ?? "").trim());
+  }
   return ORGANICO_EMPRESA_PADRAO;
 }
 
@@ -265,6 +276,7 @@ function resolveEmpresaTabFromApiFuncionario(
   const joined = normalizeEmpresaText(
     `${empresa} ${estrutura} ${departamento} ${String(f.area ?? "")} ${String(f.setor ?? "")}`,
   );
+  if (joined.includes("REFRIGER")) return normalizeEmpresaTabName("SO REFRIGERAÇÃO");
   if (joined.includes("MOVEIS") || joined.includes("MOVEL")) return normalizeEmpresaTabName("SÓ MÓVEIS");
   return ORGANICO_EMPRESA_PADRAO;
 }
@@ -900,7 +912,8 @@ const Organico = () => {
       const setor = String(row[ORGANICO_IDX.SETOR] ?? "").trim();
       if (!canAccessOrganicoSector(setor)) return false;
       const isRepresentante = setor === ORGANICO_REPRESENTANTE_DEFAULT_SETOR;
-      if (!isRepresentante && secullumMatriculasFetched) {
+      const isHistoricoLocal = isOrganicoHistoricoLocal(row);
+      if (!isRepresentante && !isHistoricoLocal && secullumMatriculasFetched) {
         const mat = String(row[ORGANICO_IDX.MATRICULA] ?? "").trim();
         if (!mat || !secullumMatriculaSetMatchesOrganico(secullumMatriculaSet, mat)) return false;
       }
@@ -955,6 +968,7 @@ const Organico = () => {
       const nextRows = mergedRows.filter((row) => {
         const setor = String(row[ORGANICO_IDX.SETOR] ?? "").trim();
         if (setor === ORGANICO_REPRESENTANTE_DEFAULT_SETOR) return true;
+        if (isOrganicoHistoricoLocal(row)) return true;
         const mat = String(row[ORGANICO_IDX.MATRICULA] ?? "").trim();
         return Boolean(mat) && secullumMatriculaSetMatchesOrganico(apiMatriculas, mat);
       });
