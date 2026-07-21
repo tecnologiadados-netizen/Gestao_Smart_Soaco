@@ -1,5 +1,6 @@
 import type { SycroOrderOrder as Order } from '../../api/sycroorder';
 import { PERMISSOES, type CodigoPermissao } from '../../config/permissoes';
+import { LABEL_CARRADA_EM_FORMACAO } from '../../utils/rotaCarrada';
 import { entregaProximityLabel, formatDate, previsaoCapa } from './sycroOrderCardUtils';
 
 export type SycroOrderKanbanCardActions = {
@@ -124,7 +125,15 @@ export default function SycroOrderKanbanCard({
         </p>
 
         {previsao && (
-          <p className="mt-1 text-sm font-semibold text-primary-700 dark:text-primary-300">Previsão Atual: {previsao}</p>
+          <p
+            className={`mt-1 text-sm font-semibold ${
+              previsao === LABEL_CARRADA_EM_FORMACAO
+                ? 'text-amber-700 dark:text-amber-300'
+                : 'text-primary-700 dark:text-primary-300'
+            }`}
+          >
+            Previsão Atual: {previsao}
+          </p>
         )}
 
         <div className="mt-2 flex flex-wrap gap-2 border-t border-slate-100 pt-2 dark:border-slate-700">

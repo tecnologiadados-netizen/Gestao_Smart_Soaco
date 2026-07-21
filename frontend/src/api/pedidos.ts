@@ -416,6 +416,8 @@ export interface TooltipDetalheRow {
   pedido: string;
   /** Nome do cliente (quando disponível no snapshot/API). */
   cliente?: string;
+  /** Tipo de pedido Nomus (Assistência, Padrão, Produção para estoque, etc.). */
+  tipoPedido?: string;
   municipio: string;
   aVista: string;
   valorPendente: number;
@@ -483,7 +485,11 @@ export async function obterDetalhesMapaMunicipio(
   return apiJson<MapaMunicipioDetalhesResponse>(`/api/pedidos/mapa-municipios/detalhes?${params.toString()}`);
 }
 
-export type HistoricoTipoEvento = 'ajuste_previsao' | 'tag_disponivel' | 'comentario_sycro';
+export type HistoricoTipoEvento =
+  | 'ajuste_previsao'
+  | 'tag_disponivel'
+  | 'comentario_sycro'
+  | 'regra_carrada';
 
 export interface HistoricoItem {
   id: number;
@@ -608,6 +614,8 @@ export type DataProducaoLoteItem = {
   id_pedido: string;
   /** Data de produção (YYYY-MM-DD ou ISO). */
   data_producao: string;
+  /** Override por rota/carrada. Omitido = ajuste base. */
+  rota?: string | null;
 };
 
 /** Grava a data de produção de vários pedidos (Sequenciamento de Carradas). Não altera o Nomus. */

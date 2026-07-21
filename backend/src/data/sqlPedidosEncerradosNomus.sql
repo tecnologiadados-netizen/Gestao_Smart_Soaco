@@ -320,7 +320,7 @@ END AS StatusPedido
 	sum(ifnull(ide.valorTotalComDesconto,0)) as valorTotalComDesconto
 	from itemdocumentoestoque_itempedidovenda ideipv
 	left join itemdocumentoestoque ide on ide.id = ideipv.idItemDocumentoEstoque
-	left join documentoestoque de_nf on de_nf.id = ide.idDocumentoSaida
+	left join documentoestoque de_nf on de_nf.id = ide.idDocumentoEstoque
 	left join nfe nfe_nf on nfe_nf.idDocumentoEstoque = de_nf.id
 	where de_nf.idTipoMovimentacao in (/*PCP_EF_TIPOS_IN*/)
 	  and nfe_nf.status in (/*PCP_EF_NFE_STATUS_IN*/)
@@ -335,7 +335,7 @@ END AS StatusPedido
 	) as datasBaseEF
 	from itemdocumentoestoque_itempedidovenda ideipv
 	left join itemdocumentoestoque ide on ide.id = ideipv.idItemDocumentoEstoque
-	left join documentoestoque de_nf on de_nf.id = ide.idDocumentoSaida
+	left join documentoestoque de_nf on de_nf.id = ide.idDocumentoEstoque
 	left join nfe nfe_nf on nfe_nf.idDocumentoEstoque = de_nf.id
 	where de_nf.idTipoMovimentacao in (/*PCP_EF_TIPOS_IN*/)
 	  and nfe_nf.status in (/*PCP_EF_NFE_STATUS_IN*/)

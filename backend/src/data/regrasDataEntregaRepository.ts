@@ -5,7 +5,6 @@
 import { prisma } from '../config/prisma.js';
 import {
   DEFAULT_REGRA_DATA_ENTREGA,
-  LEGADO_DIAS_CARRADA_SEM_VERSAO,
   type RegraDataEntregaConfig,
 } from '../config/regrasDataEntrega.js';
 
@@ -159,20 +158,28 @@ export function calcularDataLimiteCarrada(
   emissao: Date,
   valorPedidoTotal: number,
   config: RegraDataEntregaConfig | null
-): { dataLimite: Date; dias: number } {
+): { dataLimite: Date; dias: number; usouPadraoSistema: boolean } {
   const em = new Date(emissao);
   em.setHours(0, 0, 0, 0);
-  let dias: number;
-  if (!config) {
-    dias = LEGADO_DIAS_CARRADA_SEM_VERSAO;
-  } else {
-    const c = config.carrada;
-    dias =
-      valorPedidoTotal >= c.valorCorte ? c.diasIgualOuAcimaCorte : c.diasAbaixoCorte;
-  }
+  const usouPadraoSistema = !config;
+  const c = (config ?? DEFAULT_REGRA_DATA_ENTREGA).carrada;
+  const dias =
+    valorPedidoTotal >= c.valorCorte ? c.diasIgualOuAcimaCorte : c.diasAbaixoCorte;
   const dataLimite = new Date(em);
   dataLimite.setDate(dataLimite.getDate() + dias);
-  return { dataLimite, dias };
+  return { dataLimite, dias, usouPadraoSistema };
+}
+
+/** Texto de motivo para histórico sintético da regra de carrada. */
+export function textoMotivoRegraCarrada(
+  dias: number,
+  valorPedidoTotal: number,
+  valorCorte: number,
+  usouPadraoSistema: boolean
+): string {
+  const faixa = valorPedidoTotal >= valorCorte ? 'valor ≥ corte' : 'valor < corte';
+  const origem = usouPadraoSistema ? 'padrão do sistema (sem versão vigente)' : 'versão vigente na emissão';
+  return `Regra de carrada (emissão + ${dias} dias — ${faixa}; ${origem})`;
 }
 
 export function isTipoFCarradaParaRegra(tipoF: string, incluiInserirRomaneio: boolean): boolean {

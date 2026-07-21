@@ -13,10 +13,10 @@ export function escapeAttrSelector(value: string): string {
 
 export function focusSeqEditInput(rowKey: string, colKey: EditColKey | DateColKey): void {
   const selector = `[data-editinput][data-rowkey="${escapeAttrSelector(rowKey)}"][data-colkey="${colKey}"]`;
-  const el = document.querySelector<HTMLInputElement>(selector);
-  if (el && !el.disabled) {
+  const el = document.querySelector<HTMLElement>(selector);
+  if (el && !('disabled' in el && (el as HTMLButtonElement | HTMLInputElement).disabled)) {
     el.focus();
-    el.select?.();
+    if (el instanceof HTMLInputElement) el.select?.();
   }
 }
 

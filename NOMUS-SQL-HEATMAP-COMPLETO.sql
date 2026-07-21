@@ -311,7 +311,7 @@ END AS StatusPedido
 	sum(ifnull(ide.valorTotalComDesconto,0)) as valorTotalComDesconto
 	from itemdocumentoestoque_itempedidovenda ideipv
 	left join itemdocumentoestoque ide on ide.id = ideipv.idItemDocumentoEstoque
-	left join documentoestoque de_nf on de_nf.id = ide.idDocumentoSaida
+	left join documentoestoque de_nf on de_nf.id = ide.idDocumentoEstoque
 	left join nfe nfe_nf on nfe_nf.idDocumentoEstoque = de_nf.id
 	where de_nf.idTipoMovimentacao in (48,82,44,150)
 	  and nfe_nf.status in (2, 4)

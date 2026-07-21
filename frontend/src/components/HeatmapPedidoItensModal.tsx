@@ -8,6 +8,7 @@ import { formatQtdeParaInput } from '../utils/heatmapAjusteCargaGradeUi';
 import { useRegisterModalEscape } from '../contexts/ModalStackContext';
 import ModalConsultaEstoqueEmbed from './pcp/ModalConsultaEstoqueEmbed';
 import GradeCelulaModalBtn from './pcp/GradeCelulaModalBtn';
+import CopiarTextoBtn, { numeroPedidoLimpo } from './CopiarTextoBtn';
 
 function formatarValor(valor: number): string {
   return new Intl.NumberFormat('pt-BR', {
@@ -85,8 +86,10 @@ export default function HeatmapPedidoItensModal({
   if (!open) return null;
 
   const titulo = labelPedidoMapa(linha.pedido);
+  const pdNum = numeroPedidoLimpo(linha.pedido);
   const dataEmissaoFmt = formatDataEmissao(linha.dataEmissao);
   const clienteLabel = String(linha.cliente ?? '').trim();
+  const tipoPedidoLabel = String(linha.tipoPedido ?? '').trim();
   const meta = [linha.rota, linha.rm ? `RM ${linha.rm}` : ''].filter(Boolean).join(' · ');
 
   return createPortal(
@@ -108,11 +111,12 @@ export default function HeatmapPedidoItensModal({
               <div className="min-w-0">
                 <h3
                   id="heatmap-pedido-itens-titulo"
-                  className="text-sm font-semibold text-slate-800 dark:text-slate-100"
+                  className="inline-flex flex-wrap items-center gap-1 text-sm font-semibold text-slate-800 dark:text-slate-100"
                 >
-                  {titulo}
+                  <span>{titulo}</span>
+                  <CopiarTextoBtn texto={pdNum} title="Copiar número do pedido" />
                   {dataEmissaoFmt ? (
-                    <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
+                    <span className="ml-1 font-normal text-slate-500 dark:text-slate-400">
                       · {dataEmissaoFmt}
                     </span>
                   ) : null}
@@ -121,6 +125,9 @@ export default function HeatmapPedidoItensModal({
                   <p className="mt-0.5 text-xs font-medium text-slate-700 dark:text-slate-200">
                     {clienteLabel}
                   </p>
+                ) : null}
+                {tipoPedidoLabel ? (
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{tipoPedidoLabel}</p>
                 ) : null}
                 <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">{municipioLabel}</p>
                 {meta && (

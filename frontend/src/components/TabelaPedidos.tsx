@@ -7,7 +7,16 @@ import { useGradeFiltrosExcel } from '../hooks/useGradeFiltrosExcel';
 import GradeFiltroExcelPortal from './grade/GradeFiltroExcelPortal';
 import GradeFiltroCabecalhoBtn from './grade/GradeFiltroCabecalhoBtn';
 import IndicadorDataPorPrevisao from './sequenciamento-carradas/IndicadorDataPorPrevisao';
-import { resolverDataProducaoExibicaoGerenciador } from '../utils/dataProducaoGerenciador';
+import { resolverDataProducaoExibicaoGerenciador, maxDataProducaoPedidosNormais, dataProducaoCarradaEmFormacaoApartirDe } from '../utils/dataProducaoGerenciador';
+import { LABEL_CARRADA_EM_FORMACAO } from '../utils/rotaCarrada';
+import {
+  BADGE_GRADE_CLASS,
+  classePillStatusPrazo,
+  linhaEstaFaturada,
+  statusFlagsPedido,
+  statusPrincipalPedido,
+} from '../utils/statusPedidoBadges';
+import { formatDataCurta } from './sequenciamento-carradas/simulacaoCarradas';
 
 type SortDir = 'asc' | 'desc';
 
@@ -54,59 +63,43 @@ const SUBTOTAL_COLUMN_IDS = ['valor_pendente_real', 'qtde_pendente_real'];
 /** Texto longo: limita altura da linha e mostra completo no tooltip. */
 const COLUNAS_TEXTO_LONGO = new Set(['descricao', 'cliente', 'municipio']);
 
-/** Mesmo padrão da coluna Status (pill com fundo suave). */
-const BADGE_GRADE_CLASS = 'inline-flex rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap';
-
-const VALOR_FATURADO_EF_KEY = 'Valor Faturado Entrega Futura + IPI do item do Pedido';
-
-function linhaEstaFaturada(p: Pedido): boolean {
-  const n = Number(p[VALOR_FATURADO_EF_KEY]);
-  return Number.isFinite(n) && n > 0;
-}
-
-function statusPrincipalPedido(p: Pedido): string {
-  const status = (p['Status'] ?? p['StatusPedido'] ?? p['statusPedido']) as string | undefined;
-  const texto = status?.trim() || '—';
-  if (texto === '—') return texto;
-  return texto === 'Em dia' ? 'No prazo' : texto;
-}
-
-/** Badges exibidos na coluna Status — cada uma entra como opção no filtro Excel. */
-function statusFlagsPedido(p: Pedido): string[] {
-  const flags: string[] = [];
-  const principal = statusPrincipalPedido(p);
-  if (principal !== '—') flags.push(principal);
-  const cardSinal = String(p.Card ?? '').trim();
-  if (cardSinal === 'Card') flags.push('Card');
-  if (cardSinal === 'Disponível') flags.push('Disponível');
-  if (linhaEstaFaturada(p)) flags.push('Faturado');
-  return flags.length > 0 ? flags : ['—'];
-}
-
 function CelulaDataProducao({
-  dataFormatada,
   pedido: p,
+  dataProducaoEmFormacao,
 }: {
-  dataFormatada: string;
   pedido: Pedido;
+  dataProducaoEmFormacao: string;
 }) {
-  const { producaoPorPrevisao } = resolverDataProducaoExibicaoGerenciador(p);
+  const exib = resolverDataProducaoExibicaoGerenciador(p, dataProducaoEmFormacao);
+  const dataFormatada = exib.dataExibicao ? formatDataCurta(exib.dataExibicao) : '—';
 
   return (
     <div className="flex items-center gap-1.5">
       <span className="tabular-nums text-slate-700 dark:text-slate-200">{dataFormatada}</span>
-      {producaoPorPrevisao ? <IndicadorDataPorPrevisao /> : null}
+      {exib.producaoPorPrevisao ? <IndicadorDataPorPrevisao /> : null}
     </div>
   );
 }
 
 function CelulaPrevisaoAtual({
-  dataFormatada,
   pedido: p,
+  dataProducaoEmFormacao,
 }: {
-  dataFormatada: string;
   pedido: Pedido;
+  dataProducaoEmFormacao: string;
 }) {
+  const exib = resolverDataProducaoExibicaoGerenciador(p, dataProducaoEmFormacao);
+  if (exib.carradaEmFormacao) {
+    return (
+      <span
+        className="font-medium text-amber-700 dark:text-amber-300"
+        title="Entrega/previsão não definida — carrada em formação"
+      >
+        {exib.previsaoExibicaoLabel ?? LABEL_CARRADA_EM_FORMACAO}
+      </span>
+    );
+  }
+  const dataFormatada = exib.previsaoAtual ? formatDataCurta(exib.previsaoAtual) : '—';
   const naoConfiavel = p.previsao_atual_confiavel === false;
 
   return (
@@ -301,6 +294,10 @@ export default function TabelaPedidos({
   fillHeight = false,
 }: TabelaPedidosProps) {
   const lista = Array.isArray(pedidos) ? pedidos : [];
+  const dataProducaoEmFormacao = useMemo(
+    () => dataProducaoCarradaEmFormacaoApartirDe(maxDataProducaoPedidosNormais(lista)),
+    [lista]
+  );
   const showSelection = Boolean(onSelectionChange);
   const [colunasOcultas, setColunasOcultas] = useState<string[]>(() => loadColunasOcultasPedidos());
   const [colunasOcultasOpen, setColunasOcultasOpen] = useState(false);
@@ -368,6 +365,7 @@ export default function TabelaPedidos({
       return v;
     },
     defaultSortLevels: SORT_LEVELS_DEFAULT,
+    persistGradeFilters: true,
   });
 
   useEffect(() => {
@@ -600,7 +598,10 @@ export default function TabelaPedidos({
           {grade.temFiltrosOuOrdem && (
             <button
               type="button"
-              onClick={grade.limparFiltrosGrade}
+              onClick={() => {
+                grade.limparFiltrosGrade();
+                onSortLevelsChange?.([...SORT_LEVELS_DEFAULT]);
+              }}
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
               Limpar filtros da grade
@@ -738,25 +739,16 @@ export default function TabelaPedidos({
               {colunasVisiveisLista.map((col) => {
                 if (col.id === 'status') {
                   const texto = statusPrincipalPedido(p);
-                  const atrasado = texto.toLowerCase() === 'atrasado';
                   const cardSinal = String(p.Card ?? '').trim() as '' | 'Card' | 'Disponível';
                   return (
                     <td key={col.id} className="p-3">
                       <div className="flex flex-col items-start gap-1">
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${
-                            atrasado ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'
-                          }`}
-                        >
-                          {texto}
-                        </span>
+                        <span className={`${BADGE_GRADE_CLASS} ${classePillStatusPrazo(texto)}`}>{texto}</span>
                         {cardSinal === 'Card' && (
-                          <span className="inline-flex rounded-full bg-sky-500/20 px-2 py-0.5 text-xs font-medium text-sky-400 whitespace-nowrap">
-                            Card
-                          </span>
+                          <span className={`${BADGE_GRADE_CLASS} bg-sky-500/20 text-sky-400`}>Card</span>
                         )}
                         {cardSinal === 'Disponível' && (
-                          <span className="inline-flex rounded-full bg-emerald-600/25 px-2 py-0.5 text-xs font-medium text-emerald-300 whitespace-nowrap">
+                          <span className={`${BADGE_GRADE_CLASS} bg-emerald-600/25 text-emerald-300`}>
                             Disponível
                           </span>
                         )}
@@ -808,14 +800,14 @@ export default function TabelaPedidos({
                 if (col.id === 'previsao_atual') {
                   return (
                     <td key={col.id} className="p-3">
-                      <CelulaPrevisaoAtual dataFormatada={display} pedido={p} />
+                      <CelulaPrevisaoAtual pedido={p} dataProducaoEmFormacao={dataProducaoEmFormacao} />
                     </td>
                   );
                 }
                 if (col.id === 'data_producao') {
                   return (
                     <td key={col.id} className="p-3">
-                      <CelulaDataProducao dataFormatada={display} pedido={p} />
+                      <CelulaDataProducao pedido={p} dataProducaoEmFormacao={dataProducaoEmFormacao} />
                     </td>
                   );
                 }

@@ -29,4 +29,28 @@ describe('resolverDataProducaoExibicaoGerenciador', () => {
     expect(r.dataExibicao).toBe('');
     expect(r.producaoPorPrevisao).toBe(false);
   });
+
+  it('carrada em formação: produção = max+30 e previsão com rótulo', () => {
+    const r = resolverDataProducaoExibicaoGerenciador(
+      pedido({
+        Observacoes: 'ROTA CONSTRUCAO NORTE',
+        data_producao: '2026-01-01',
+        previsao_entrega_atualizada: '2026-02-01',
+      }),
+      '2026-09-15'
+    );
+    expect(r.carradaEmFormacao).toBe(true);
+    expect(r.dataExibicao).toBe('2026-09-15');
+    expect(r.previsaoAtual).toBe('');
+    expect(r.previsaoExibicaoLabel).toBe('Carrada em formação');
+  });
+
+  it('token cont no nome da rota marca em formação', () => {
+    const r = resolverDataProducaoExibicaoGerenciador(
+      pedido({ Observacoes: 'ROTA CONT 12', previsao_entrega: '2026-03-01' }),
+      '2026-10-01'
+    );
+    expect(r.carradaEmFormacao).toBe(true);
+    expect(r.dataExibicao).toBe('2026-10-01');
+  });
 });

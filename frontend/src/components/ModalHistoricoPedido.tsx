@@ -157,6 +157,7 @@ export default function ModalHistoricoPedido({ pedido, open, onClose }: ModalHis
                 const naoConfiavel = item.previsao_confiavel === false;
                 const isTagDisponivel = item.tipo_evento === 'tag_disponivel';
                 const isComentarioSycro = item.tipo_evento === 'comentario_sycro';
+                const isRegraCarrada = item.tipo_evento === 'regra_carrada';
                 const tagDisponivel = item.tag_disponivel === true;
                 return (
                   <li
@@ -164,6 +165,8 @@ export default function ModalHistoricoPedido({ pedido, open, onClose }: ModalHis
                     className={`rounded-lg border-2 p-3 text-sm ${
                       isComentarioSycro
                         ? 'border-primary-400 dark:border-primary-500 bg-primary-50/40 dark:bg-primary-950/20'
+                        : isRegraCarrada
+                        ? 'border-amber-400 dark:border-amber-500 bg-amber-50/50 dark:bg-amber-950/20'
                         : isTagDisponivel
                         ? tagDisponivel
                           ? 'border-emerald-400 dark:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20'
@@ -181,6 +184,11 @@ export default function ModalHistoricoPedido({ pedido, open, onClose }: ModalHis
                             Comunicação Interna
                           </span>
                         )}
+                        {isRegraCarrada && (
+                          <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200 border border-amber-500 dark:border-amber-400">
+                            Regra automática
+                          </span>
+                        )}
                         {isTagDisponivel && (
                           <span
                             className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide border ${
@@ -192,7 +200,7 @@ export default function ModalHistoricoPedido({ pedido, open, onClose }: ModalHis
                             {tagDisponivel ? 'Disponível' : 'Não disponível'}
                           </span>
                         )}
-                        {!isTagDisponivel && !isComentarioSycro && naoConfiavel && (
+                        {!isTagDisponivel && !isComentarioSycro && !isRegraCarrada && naoConfiavel && (
                           <span
                             className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:text-red-300 border border-red-500 dark:border-red-400"
                             title="Esta alteração não entra no histórico da Comunicação Interna"

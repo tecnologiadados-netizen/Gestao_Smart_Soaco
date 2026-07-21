@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   atualizarSequenciamentoSnapshot,
   concluirSequenciamentoSnapshot,
   consultarSequenciamentoAoVivo,
+  excluirSequenciamentoSnapshot,
   gravarSequenciamentoSnapshot,
   listarSequenciamentoSnapshots,
   obterSequenciamentoSnapshot,
@@ -32,14 +34,18 @@ import {
   subtotalCarradas,
   SUBTOTAL_ROW_CLASS,
 } from '../../components/sequenciamento-carradas/sequenciamentoCarradasUtils';
+import { isCarradaEmFormacao, LABEL_CARRADA_EM_FORMACAO } from '../../utils/rotaCarrada';
 import { useDragAutoScroll } from '../../hooks/useDragAutoScroll';
 import {
   carradaAlterada,
   carradaKeyDe,
   computarBaselines,
   computarItensDataProducao,
+  detectarExcessoQtdeRomaneadaCanon,
   computarPedidosComEntregaAlterada,
+  dataProducaoCarradaEmFormacaoApartirDe,
   formatDataCurta,
+  maxDataProducaoCarradasNormais,
   ordenarChavesPorPrioridade,
   indiceBasePrioridadeParaAutopreencher,
   autopreencherPrioridadesSequenciais,
@@ -57,11 +63,9 @@ import {
   DATE_COL_KEYS,
   EDIT_COL_KEYS,
   focusSeqEditInput,
-  onDateInputToggleBlur,
-  onDateInputToggleClick,
-  clearDatePickerAberto,
   type EditColKey,
 } from '../../components/sequenciamento-carradas/sequenciamentoGradeUi';
+import SequenciamentoDateField from '../../components/sequenciamento-carradas/SequenciamentoDateField';
 
 const BTN_PRIMARY =
   'inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed';
@@ -92,9 +96,6 @@ const COL_LABELS: Record<(typeof COL_IDS)[number], string> = {
   valorAVistaAte10d: 'Valor adiantamento + até 10d',
 };
 
-const DATE_INPUT_CLASS =
-  'w-[8rem] rounded-md border border-slate-300 bg-white px-1.5 py-1 text-xs text-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:disabled:bg-slate-800';
-
 const PRIORIDADE_INPUT_CLASS =
   'w-12 rounded-md border border-slate-300 bg-white px-1 py-1 text-center text-xs text-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:disabled:bg-slate-800';
 
@@ -124,6 +125,8 @@ type SnapshotVisualizado = {
   carradaCount: number;
   aoVivo: boolean;
   status?: SequenciamentoSnapshotStatus;
+  /** Abertura só para leitura (mesmo se o snapshot for rascunho). */
+  somenteLeitura?: boolean;
 };
 
 function labelStatus(status: SequenciamentoSnapshotStatus): string {
@@ -191,7 +194,6 @@ export default function SequenciamentoCarradasPage() {
   const [seqFiltroDrafts, setSeqFiltroDrafts] = useState<Record<string, ExcelFilterDraft>>({});
   const seqFiltroDropdownRef = useRef<HTMLDivElement>(null);
   const ultimaSeqFocadaRef = useRef<string | null>(null);
-  const datePickerAbertoRef = useRef<string | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [dropPosition, setDropPosition] = useState<'before' | 'after'>('before');
@@ -203,6 +205,17 @@ export default function SequenciamentoCarradasPage() {
   const [salvandoConfirmacao, setSalvandoConfirmacao] = useState(false);
   const [erroConfirmacao, setErroConfirmacao] = useState<string | null>(null);
   const [motivoPorId, setMotivoPorId] = useState<Record<string, string>>({});
+  const [observacaoPorId, setObservacaoPorId] = useState<Record<string, string>>({});
+  const [previsaoConfiavelPorId, setPrevisaoConfiavelPorId] = useState<Record<string, boolean>>({});
+  const [menuHistorico, setMenuHistorico] = useState<{
+    item: SequenciamentoSnapshotListItem;
+    top: number;
+    left: number;
+  } | null>(null);
+  const [confirmExcluir, setConfirmExcluir] = useState<SequenciamentoSnapshotListItem | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
+  const menuHistoricoRef = useRef<HTMLDivElement>(null);
 
   const detalheReqRef = useRef(0);
   const autosavePayloadRef = useRef<() => SequenciamentoSimulacao | null>(() => null);
@@ -214,10 +227,10 @@ export default function SequenciamentoCarradasPage() {
   const statusSnapshot = snapshotVisualizado?.status;
   const emConsulta = aoVivo;
   const isRascunho = statusSnapshot === 'rascunho';
-  /** Datas editáveis apenas em snapshot rascunho. */
-  const editavel = isRascunho;
-  /** Reordenação visual liberada em consulta ao vivo e em rascunho. */
-  const podeArrastar = emConsulta || isRascunho;
+  /** Datas editáveis apenas em snapshot rascunho aberto para edição. */
+  const editavel = isRascunho && !snapshotVisualizado?.somenteLeitura;
+  /** Reordenação visual liberada em consulta ao vivo e em rascunho editável. */
+  const podeArrastar = emConsulta || editavel;
 
   const baseline = useMemo(() => computarBaselines(linhasSnapshot), [linhasSnapshot]);
 
@@ -341,6 +354,14 @@ export default function SequenciamentoCarradasPage() {
 
   const subtotal = useMemo(() => subtotalCarradas(carradasFinais), [carradasFinais]);
 
+  const dataProducaoEmFormacao = useMemo(
+    () =>
+      dataProducaoCarradaEmFormacaoApartirDe(
+        maxDataProducaoCarradasNormais(linhasSnapshot, sim, baseline)
+      ),
+    [linhasSnapshot, sim, baseline]
+  );
+
   const pedidosEntrega = useMemo(
     () => computarPedidosComEntregaAlterada(linhasSnapshot, sim, baseline),
     [linhasSnapshot, sim, baseline]
@@ -348,6 +369,10 @@ export default function SequenciamentoCarradasPage() {
   const itensProducao = useMemo(
     () => computarItensDataProducao(linhasSnapshot, sim, baseline),
     [linhasSnapshot, sim, baseline]
+  );
+  const excessosQtdeRomaneada = useMemo(
+    () => detectarExcessoQtdeRomaneadaCanon(linhasSnapshot),
+    [linhasSnapshot]
   );
 
   const qtdCarradasSomenteProducao = useMemo(() => {
@@ -389,6 +414,8 @@ export default function SequenciamentoCarradasPage() {
     setOrdemManual(null);
     setPrioridades({});
     setMotivoPorId({});
+    setObservacaoPorId({});
+    setPrevisaoConfiavelPorId({});
     setDragOverKey(null);
     setAutosaveStatus('idle');
     grade.limparFiltrosGrade();
@@ -404,7 +431,7 @@ export default function SequenciamentoCarradasPage() {
 
   const fecharVisualizacao = useCallback(async () => {
     const id = snapshotVisualizado?.id;
-    if (id && isRascunho) {
+    if (id && editavel) {
       await flushRascunho(id);
     }
     setMostrarHistorico(true);
@@ -416,7 +443,7 @@ export default function SequenciamentoCarradasPage() {
     setCalendarioAberto(false);
     setConfirmacaoAberta(false);
     resetarSimulacao();
-  }, [snapshotVisualizado?.id, isRascunho, flushRascunho, resetarSimulacao]);
+  }, [snapshotVisualizado?.id, editavel, flushRascunho, resetarSimulacao]);
 
   const abrirComPayload = useCallback(
     (meta: SnapshotVisualizado, payload: SequenciamentoCarradasPayloadV1) => {
@@ -445,23 +472,34 @@ export default function SequenciamentoCarradasPage() {
           simu.prioridades && typeof simu.prioridades === 'object' ? { ...simu.prioridades } : {}
         );
         setMotivoPorId(simu.motivos && typeof simu.motivos === 'object' ? { ...simu.motivos } : {});
+        setObservacaoPorId(
+          simu.observacoes && typeof simu.observacoes === 'object' ? { ...simu.observacoes } : {}
+        );
+        setPrevisaoConfiavelPorId(
+          simu.previsaoConfiavel && typeof simu.previsaoConfiavel === 'object'
+            ? { ...simu.previsaoConfiavel }
+            : {}
+        );
       } else {
         setSim(new Map());
         setOrdemManual(null);
         setPrioridades({});
         setMotivoPorId({});
+        setObservacaoPorId({});
+        setPrevisaoConfiavelPorId({});
       }
     },
     [grade]
   );
 
   const abrirSnapshot = useCallback(
-    async (id: number) => {
+    async (id: number, opts?: { somenteLeitura?: boolean }) => {
       const req = ++detalheReqRef.current;
       setDetalheErro(null);
       setDetalheCarregando(true);
       setFeedbackGravacao(null);
       setCarradaDetalhe(null);
+      setMenuHistorico(null);
       try {
         const r = await obterSequenciamentoSnapshot(id);
         if (req !== detalheReqRef.current) return;
@@ -474,6 +512,7 @@ export default function SequenciamentoCarradasPage() {
           setDetalheErro('Snapshot sem dados legíveis.');
           return;
         }
+        const somenteLeitura = opts?.somenteLeitura === true || data.status === 'concluido';
         abrirComPayload(
           {
             id: data.id,
@@ -483,6 +522,7 @@ export default function SequenciamentoCarradasPage() {
             carradaCount: data.carradaCount,
             aoVivo: false,
             status: data.status,
+            somenteLeitura,
           },
           data.payload
         );
@@ -495,6 +535,56 @@ export default function SequenciamentoCarradasPage() {
     },
     [abrirComPayload]
   );
+
+  const abrirMenuHistorico = useCallback(
+    (item: SequenciamentoSnapshotListItem, el: HTMLElement) => {
+      const rect = el.getBoundingClientRect();
+      setMenuHistorico({
+        item,
+        top: rect.bottom + 4,
+        left: Math.min(rect.left, window.innerWidth - 200),
+      });
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!menuHistorico) return;
+    const fechar = (e: MouseEvent) => {
+      const t = e.target;
+      if (t instanceof Node && menuHistoricoRef.current?.contains(t)) return;
+      setMenuHistorico(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuHistorico(null);
+    };
+    document.addEventListener('mousedown', fechar, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', fechar, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuHistorico]);
+
+  const confirmarExclusaoHistorico = useCallback(async () => {
+    if (!confirmExcluir) return;
+    setExcluindo(true);
+    setErroExclusao(null);
+    try {
+      const r = await excluirSequenciamentoSnapshot(confirmExcluir.id);
+      if (!r.ok) {
+        setErroExclusao(r.error ?? 'Não foi possível excluir.');
+        return;
+      }
+      setConfirmExcluir(null);
+      setFeedbackGravacao(`Sequência ${confirmExcluir.cod} excluída.`);
+      setHistoricoVersao((v) => v + 1);
+    } catch (e) {
+      setErroExclusao(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExcluindo(false);
+    }
+  }, [confirmExcluir]);
 
   const handleConsultar = useCallback(async () => {
     const req = ++detalheReqRef.current;
@@ -568,6 +658,18 @@ export default function SequenciamentoCarradasPage() {
       motivosKeys.length > 0
         ? Object.fromEntries(motivosKeys.map((k) => [k, motivoPorId[k]!]))
         : undefined;
+    const observacoesKeys = Object.keys(observacaoPorId).filter((k) => observacaoPorId[k]?.trim());
+    const observacoes =
+      observacoesKeys.length > 0
+        ? Object.fromEntries(observacoesKeys.map((k) => [k, observacaoPorId[k]!.slice(0, 1000)]))
+        : undefined;
+    const confiavelKeys = Object.keys(previsaoConfiavelPorId).filter(
+      (k) => previsaoConfiavelPorId[k] === false
+    );
+    const previsaoConfiavel =
+      confiavelKeys.length > 0
+        ? Object.fromEntries(confiavelKeys.map((k) => [k, false as boolean]))
+        : undefined;
     const prioridadesFiltradas = Object.fromEntries(
       Object.entries(prioridades).filter(([chave, v]) => {
         if (typeof v !== 'number' || v <= 0) return false;
@@ -576,14 +678,35 @@ export default function SequenciamentoCarradasPage() {
       })
     );
     const temPrioridades = Object.keys(prioridadesFiltradas).length > 0;
-    if (itens.length === 0 && !ordemManual && !motivos && !temPrioridades) return null;
+    if (
+      itens.length === 0 &&
+      !ordemManual &&
+      !motivos &&
+      !observacoes &&
+      !previsaoConfiavel &&
+      !temPrioridades
+    ) {
+      return null;
+    }
     return {
       ordem,
       itens,
       ...(motivos ? { motivos } : {}),
+      ...(observacoes ? { observacoes } : {}),
+      ...(previsaoConfiavel ? { previsaoConfiavel } : {}),
       ...(temPrioridades ? { prioridades: prioridadesFiltradas } : {}),
     };
-  }, [sim, carradas, ordemManual, carradasFinais, motivoPorId, prioridades, linhasSnapshot]);
+  }, [
+    sim,
+    carradas,
+    ordemManual,
+    carradasFinais,
+    motivoPorId,
+    observacaoPorId,
+    previsaoConfiavelPorId,
+    prioridades,
+    linhasSnapshot,
+  ]);
 
   autosavePayloadRef.current = montarSimulacaoPayload;
 
@@ -677,6 +800,24 @@ export default function SequenciamentoCarradasPage() {
     }
   }, [carradasFinais, efProducao, editarData]);
 
+  const replicarEntregaNaProducao = useCallback(
+    (key: string) => {
+      const entrega = efEntrega(key);
+      if (!entrega) return;
+      editarData(key, 'dataProducao', entrega);
+    },
+    [efEntrega, editarData]
+  );
+
+  const replicarEntregaNaProducaoTodas = useCallback(() => {
+    for (const c of carradasFinais) {
+      if (isCarradaOrdemFinal(c.carrada)) continue;
+      const key = carradaKeyDe(c);
+      const entrega = efEntrega(key);
+      if (entrega) editarData(key, 'dataProducao', entrega);
+    }
+  }, [carradasFinais, efEntrega, editarData]);
+
   const onDragOverContainer = useDragAutoScroll(grade.tableScrollRef, dragKey != null);
 
   const linhasEditaveis = useMemo(
@@ -691,7 +832,7 @@ export default function SequenciamentoCarradasPage() {
   );
 
   const handleEditInputKey = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>, rowKey: string, colKey: EditColKey) => {
+    (e: React.KeyboardEvent<HTMLElement>, rowKey: string, colKey: EditColKey) => {
       if (e.key !== 'Tab' && e.key !== 'Enter') return;
 
       const cols: readonly EditColKey[] = editavel
@@ -824,21 +965,6 @@ export default function SequenciamentoCarradasPage() {
     [dragKey, onDragOverContainer]
   );
 
-  // Fecha o date picker nativo ao rolar a grade (evita popup desposicionado).
-  useEffect(() => {
-    const el = grade.tableScrollRef.current;
-    if (!el || mostrarHistorico) return;
-    const onScroll = () => {
-      const active = document.activeElement;
-      if (active instanceof HTMLInputElement && active.type === 'date') {
-        active.blur();
-      }
-      clearDatePickerAberto(datePickerAbertoRef);
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
-  }, [grade.tableScrollRef, mostrarHistorico, snapshotVisualizado?.id]);
-
   // Autosave do rascunho (debounce ~2s).
   const snapshotId = snapshotVisualizado?.id;
   useEffect(() => {
@@ -846,7 +972,7 @@ export default function SequenciamentoCarradasPage() {
   }, [snapshotId]);
 
   useEffect(() => {
-    if (!snapshotId || !isRascunho) return;
+    if (!snapshotId || !editavel) return;
     const timer = window.setTimeout(() => {
       const simulacao = pendingSimulacaoRef.current ?? autosavePayloadRef.current();
       setAutosaveStatus('saving');
@@ -855,11 +981,11 @@ export default function SequenciamentoCarradasPage() {
       });
     }, 2000);
     return () => window.clearTimeout(timer);
-  }, [sim, ordemManual, prioridades, motivoPorId, snapshotId, isRascunho, carradasFinais]);
+  }, [sim, ordemManual, prioridades, motivoPorId, observacaoPorId, previsaoConfiavelPorId, snapshotId, editavel, carradasFinais]);
 
   // Flush no unmount e beforeunload.
   useEffect(() => {
-    if (!snapshotId || !isRascunho) return;
+    if (!snapshotId || !editavel) return;
     const id = snapshotId;
     const flush = () => {
       const simulacao = flushSimulacaoRef.current;
@@ -871,7 +997,7 @@ export default function SequenciamentoCarradasPage() {
       window.removeEventListener('beforeunload', onBeforeUnload);
       flush();
     };
-  }, [snapshotId, isRascunho]);
+  }, [snapshotId, editavel]);
 
   const handleDrop = useCallback(
     (targetKey: string) => {
@@ -919,11 +1045,32 @@ export default function SequenciamentoCarradasPage() {
       setSalvandoConfirmacao(true);
       setErroConfirmacao(null);
       try {
+        if (excessosQtdeRomaneada.length > 0) {
+          const resumo = excessosQtdeRomaneada
+            .slice(0, 5)
+            .map((c) => {
+              const carradas = c.carradas.length > 0 ? ` [${c.carradas.join(', ')}]` : '';
+              return `${c.pd || c.canon}${c.codigo ? ` / ${c.codigo}` : ''}: romaneado ${c.somaRomaneada} > pendente ${c.pendente}${carradas}`;
+            })
+            .join('; ');
+          const extra =
+            excessosQtdeRomaneada.length > 5
+              ? ` (+${excessosQtdeRomaneada.length - 5} outro(s))`
+              : '';
+          setErroConfirmacao(
+            `Não é possível confirmar: quantidade romaneada excede o Pendente do item. Conflitos: ${resumo}${extra}`
+          );
+          return;
+        }
         if (pedidosEntrega.length > 0) {
           const ajustes = pedidosEntrega.map((p) => ({
             id_pedido: p.idPedido,
             previsao_nova: p.previsaoNova,
             motivo: motivos[p.idPedido] ?? '',
+            observacao: observacaoPorId[p.idPedido]?.trim()
+              ? observacaoPorId[p.idPedido]!.slice(0, 1000)
+              : null,
+            previsao_confiavel: previsaoConfiavelPorId[p.idPedido] !== false,
             previsao_atual: p.previsaoAnterior,
             rota: p.rota,
             apply_rota: true,
@@ -931,9 +1078,19 @@ export default function SequenciamentoCarradasPage() {
           await ajustarPrevisaoLote(ajustes);
         }
         if (itensProducao.length > 0) {
-          await ajustarDataProducaoLote(itensProducao);
+          const rProd = await ajustarDataProducaoLote(itensProducao);
+          if (rProd.erros?.length) {
+            throw new Error(rProd.erros[0]?.erro ?? 'Erro ao gravar data de produção.');
+          }
         }
         const simulacao = montarSimulacaoPayload();
+        const partes: string[] = [];
+        if (pedidosEntrega.length > 0) partes.push('previsões');
+        if (itensProducao.length > 0) partes.push('datas de produção');
+        const resumo =
+          partes.length > 0
+            ? `${partes.join(' e ')} aplicadas no Gerenciador`
+            : 'Alterações aplicadas';
         if (snapshotVisualizado?.id) {
           const r = await concluirSequenciamentoSnapshot(snapshotVisualizado.id, simulacao);
           if (!r.ok) {
@@ -942,14 +1099,14 @@ export default function SequenciamentoCarradasPage() {
           }
           setConfirmacaoAberta(false);
           setCorrigirDatasSnapshot([]);
-          setFeedbackGravacao('Alterações aplicadas e snapshot concluído.');
+          setFeedbackGravacao(`${resumo} e snapshot concluído.`);
           setHistoricoVersao((v) => v + 1);
           await abrirSnapshot(snapshotVisualizado.id);
           return;
         }
         setConfirmacaoAberta(false);
         setCorrigirDatasSnapshot([]);
-        setFeedbackGravacao('Alterações aplicadas com sucesso nos pedidos.');
+        setFeedbackGravacao(`${resumo} com sucesso.`);
         resetarSimulacao();
         await handleConsultar();
       } catch (e) {
@@ -959,8 +1116,11 @@ export default function SequenciamentoCarradasPage() {
       }
     },
     [
+      excessosQtdeRomaneada,
       pedidosEntrega,
       itensProducao,
+      observacaoPorId,
+      previsaoConfiavelPorId,
       montarSimulacaoPayload,
       snapshotVisualizado?.id,
       abrirSnapshot,
@@ -1069,7 +1229,7 @@ export default function SequenciamentoCarradasPage() {
                   {gravando ? 'Gravando...' : 'Gravar'}
                 </button>
               )}
-              {isRascunho && (
+              {editavel && (
                 <button
                   type="button"
                   onClick={() => abrirCorrigirDatas()}
@@ -1135,18 +1295,23 @@ export default function SequenciamentoCarradasPage() {
                 {historicoLista.map((h) => (
                   <tr
                     key={h.id}
-                    tabIndex={0}
-                    className="border-b border-slate-100 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
-                    title="Clique para ver este snapshot"
-                    onClick={() => void abrirSnapshot(h.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        void abrirSnapshot(h.id);
-                      }
-                    }}
+                    className="border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50"
                   >
-                    <td className="py-2 px-2 font-mono text-slate-800 dark:text-slate-200">{h.cod}</td>
+                    <td className="py-2 px-2 font-mono text-slate-800 dark:text-slate-200">
+                      <button
+                        type="button"
+                        className="rounded px-1 py-0.5 font-mono text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/30"
+                        title="Abrir opções da sequência"
+                        aria-haspopup="menu"
+                        aria-expanded={menuHistorico?.item.id === h.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          abrirMenuHistorico(h, e.currentTarget);
+                        }}
+                      >
+                        {h.cod}
+                      </button>
+                    </td>
                     <td className="py-2 px-2">
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classStatus(h.status)}`}
@@ -1213,16 +1378,27 @@ export default function SequenciamentoCarradasPage() {
                     {renderTh('carrada')}
                     {renderTh('dataProducao')}
                     {editavel && (
-                      <th className="sticky top-0 z-20 w-8 border border-primary-500/40 bg-primary-600 px-1 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.08)]">
-                        <button
-                          type="button"
-                          onClick={replicarProducaoNaEntregaTodas}
-                          className="mx-auto block rounded px-1.5 py-0.5 text-xs font-medium text-white hover:bg-primary-500/50"
-                          title="Replicar data de produção para entrega em todas as carradas"
-                          aria-label="Replicar data de produção para entrega em todas as carradas"
-                        >
-                          →
-                        </button>
+                      <th className="sticky top-0 z-20 w-12 border border-primary-500/40 bg-primary-600 px-0.5 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.08)]">
+                        <div className="flex flex-col items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={replicarProducaoNaEntregaTodas}
+                            className="rounded px-1 py-0.5 text-xs font-medium text-white hover:bg-primary-500/50"
+                            title="Replicar data de produção para entrega em todas as carradas"
+                            aria-label="Replicar data de produção para entrega em todas as carradas"
+                          >
+                            →
+                          </button>
+                          <button
+                            type="button"
+                            onClick={replicarEntregaNaProducaoTodas}
+                            className="rounded px-1 py-0.5 text-xs font-medium text-white hover:bg-primary-500/50"
+                            title="Replicar data de entrega para produção em todas as carradas"
+                            aria-label="Replicar data de entrega para produção em todas as carradas"
+                          >
+                            ←
+                          </button>
+                        </div>
                       </th>
                     )}
                     {renderTh('dataEntrega')}
@@ -1250,7 +1426,7 @@ export default function SequenciamentoCarradasPage() {
                         const key = carradaKeyDe(c);
                         const alterada = carradaAlterada(sim, baseline, key);
                         const carradaEspecial = isCarradaOrdemFinal(c.carrada);
-                        const datasBloqueadas = !editavel || carradaEspecial;
+                        const carradaEmFormacao = isCarradaEmFormacao(c.carrada);
                         const dropBefore = dragOverKey === key && dropPosition === 'before';
                         const dropAfter = dragOverKey === key && dropPosition === 'after';
                         return (
@@ -1335,111 +1511,104 @@ export default function SequenciamentoCarradasPage() {
                               </GradeCelulaModalBtn>
                             </td>
                             <td className={`py-2 px-2 ${COL_TD_CLASS.dataProducao ?? ''}`}>
-                              <input
-                                type="date"
-                                className={DATE_INPUT_CLASS}
-                                value={toISODate(efProducao(key))}
-                                disabled={datasBloqueadas}
-                                data-editinput
-                                data-rowkey={key}
-                                data-colkey="dataProducao"
-                                onChange={(e) => {
-                                  clearDatePickerAberto(datePickerAbertoRef);
-                                  editarData(key, 'dataProducao', e.target.value);
-                                }}
-                                onKeyDown={(e) => {
-                                  e.stopPropagation();
-                                  if (e.key === 'Escape') clearDatePickerAberto(datePickerAbertoRef);
-                                  handleEditInputKey(e, key, 'dataProducao');
-                                }}
-                                onClick={(e) => onDateInputToggleClick(e, `${key}:dataProducao`, datePickerAbertoRef)}
-                                onBlur={() => onDateInputToggleBlur(`${key}:dataProducao`, datePickerAbertoRef)}
-                              />
+                              {carradaEspecial ? null : carradaEmFormacao ? (
+                                <span
+                                  className="text-xs tabular-nums text-slate-700 dark:text-slate-200"
+                                  title="Data de produção = maior data das demais carradas + 30 dias"
+                                >
+                                  {dataProducaoEmFormacao
+                                    ? formatDataCurta(dataProducaoEmFormacao)
+                                    : '—'}
+                                </span>
+                              ) : (
+                                <SequenciamentoDateField
+                                  value={toISODate(efProducao(key))}
+                                  disabled={!editavel}
+                                  rowKey={key}
+                                  colKey="dataProducao"
+                                  className="text-xs"
+                                  onChange={(iso) => editarData(key, 'dataProducao', iso)}
+                                  onKeyDown={(e) => handleEditInputKey(e, key, 'dataProducao')}
+                                />
+                              )}
                             </td>
                             {editavel && (
-                              <td className="w-8 px-1 py-2 text-center align-middle">
-                                {!carradaEspecial && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      replicarProducaoNaEntrega(key);
-                                    }}
-                                    disabled={!efProducao(key)}
-                                    className="rounded px-1.5 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-primary-300 dark:hover:bg-primary-900/30"
-                                    title="Replicar produção na entrega"
-                                    aria-label="Replicar produção na entrega"
-                                  >
-                                    →
-                                  </button>
+                              <td className="w-12 px-0.5 py-2 text-center align-middle">
+                                {!carradaEspecial && !carradaEmFormacao && (
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        replicarProducaoNaEntrega(key);
+                                      }}
+                                      disabled={!efProducao(key)}
+                                      className="rounded px-1 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-primary-300 dark:hover:bg-primary-900/30"
+                                      title="Replicar produção na entrega"
+                                      aria-label="Replicar produção na entrega"
+                                    >
+                                      →
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        replicarEntregaNaProducao(key);
+                                      }}
+                                      disabled={!efEntrega(key)}
+                                      className="rounded px-1 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-primary-300 dark:hover:bg-primary-900/30"
+                                      title="Replicar entrega na produção"
+                                      aria-label="Replicar entrega na produção"
+                                    >
+                                      ←
+                                    </button>
+                                  </div>
                                 )}
                               </td>
                             )}
                             <td className={`py-2 px-2 ${COL_TD_CLASS.dataEntrega ?? ''}`}>
-                              <input
-                                type="date"
-                                className={DATE_INPUT_CLASS}
-                                value={toISODate(efEntrega(key))}
-                                disabled={datasBloqueadas}
-                                data-editinput
-                                data-rowkey={key}
-                                data-colkey="dataEntrega"
-                                onChange={(e) => {
-                                  clearDatePickerAberto(datePickerAbertoRef);
-                                  editarData(key, 'dataEntrega', e.target.value);
-                                }}
-                                onKeyDown={(e) => {
-                                  e.stopPropagation();
-                                  if (e.key === 'Escape') clearDatePickerAberto(datePickerAbertoRef);
-                                  handleEditInputKey(e, key, 'dataEntrega');
-                                }}
-                                onClick={(e) => onDateInputToggleClick(e, `${key}:dataEntrega`, datePickerAbertoRef)}
-                                onBlur={() => onDateInputToggleBlur(`${key}:dataEntrega`, datePickerAbertoRef)}
-                              />
+                              {carradaEspecial ? null : carradaEmFormacao ? (
+                                <span
+                                  className="text-xs font-medium text-amber-700 dark:text-amber-300"
+                                  title="Entrega/previsão não definida — carrada em formação"
+                                >
+                                  {LABEL_CARRADA_EM_FORMACAO}
+                                </span>
+                              ) : (
+                                <SequenciamentoDateField
+                                  value={toISODate(efEntrega(key))}
+                                  disabled={!editavel}
+                                  rowKey={key}
+                                  colKey="dataEntrega"
+                                  className="text-xs"
+                                  onChange={(iso) => editarData(key, 'dataEntrega', iso)}
+                                  onKeyDown={(e) => handleEditInputKey(e, key, 'dataEntrega')}
+                                />
+                              )}
                             </td>
                             <td
-                              className={`py-2 px-2 ${COL_TD_CLASS.saldoAFaturar ?? 'text-right tabular-nums'}`}
+                              className={`py-2 px-2 text-slate-800 dark:text-slate-200 ${COL_TD_CLASS.saldoAFaturar ?? 'text-right tabular-nums'}`}
                             >
-                              <GradeCelulaModalBtn
-                                onClick={() => setCarradaDetalhe(c)}
-                                title="Ver detalhe da carrada"
-                                align="right"
-                              >
-                                {formatMoeda(c.saldoAFaturar)}
-                              </GradeCelulaModalBtn>
+                              {formatMoeda(c.saldoAFaturar)}
                             </td>
                             <td
                               className={`py-2 px-2 ${COL_TD_CLASS.percentualEmDia ?? 'text-right tabular-nums'}`}
                             >
-                              <GradeCelulaModalBtn
-                                onClick={() => setCarradaDetalhe(c)}
-                                title="Ver detalhe da carrada"
-                                align="right"
+                              <span
+                                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classPercentualEmDia(c.percentualEmDia ?? 0)}`}
                               >
                                 {formatPercentual(c.percentualEmDia ?? 0)}
-                              </GradeCelulaModalBtn>
+                              </span>
                             </td>
                             <td
-                              className={`py-2 px-2 ${COL_TD_CLASS.adiantamento ?? 'text-right tabular-nums'}`}
+                              className={`py-2 px-2 text-slate-800 dark:text-slate-200 ${COL_TD_CLASS.adiantamento ?? 'text-right tabular-nums'}`}
                             >
-                              <GradeCelulaModalBtn
-                                onClick={() => setCarradaDetalhe(c)}
-                                title="Ver detalhe da carrada"
-                                align="right"
-                              >
-                                {formatMoeda(c.adiantamento)}
-                              </GradeCelulaModalBtn>
+                              {formatMoeda(c.adiantamento)}
                             </td>
                             <td
-                              className={`py-2 px-2 ${COL_TD_CLASS.valorAVistaAte10d ?? 'text-right tabular-nums'}`}
+                              className={`py-2 px-2 text-slate-800 dark:text-slate-200 ${COL_TD_CLASS.valorAVistaAte10d ?? 'text-right tabular-nums'}`}
                             >
-                              <GradeCelulaModalBtn
-                                onClick={() => setCarradaDetalhe(c)}
-                                title="Ver detalhe da carrada"
-                                align="right"
-                              >
-                                {formatMoeda(c.valorAVistaAte10d)}
-                              </GradeCelulaModalBtn>
+                              {formatMoeda(c.valorAVistaAte10d)}
                             </td>
                           </tr>
                         );
@@ -1572,10 +1741,15 @@ export default function SequenciamentoCarradasPage() {
         <ConfirmacaoSimulacaoModal
           pedidosEntrega={pedidosEntrega}
           qtdCarradasSomenteProducao={qtdCarradasSomenteProducao}
+          excessosQtdeRomaneada={excessosQtdeRomaneada}
           salvando={salvandoConfirmacao}
           erro={erroConfirmacao}
           motivoPorId={motivoPorId}
           onMotivoPorIdChange={(updater) => setMotivoPorId(updater)}
+          observacaoPorId={observacaoPorId}
+          onObservacaoPorIdChange={(updater) => setObservacaoPorId(updater)}
+          previsaoConfiavelPorId={previsaoConfiavelPorId}
+          onPrevisaoConfiavelPorIdChange={(updater) => setPrevisaoConfiavelPorId(updater)}
           onConfirmar={handleConfirmarAplicar}
           onClose={() => {
             setConfirmacaoAberta(false);
@@ -1591,6 +1765,122 @@ export default function SequenciamentoCarradasPage() {
               : undefined
           }
         />
+      )}
+
+      {menuHistorico &&
+        createPortal(
+          <div
+            ref={menuHistoricoRef}
+            role="menu"
+            className="fixed z-[80] min-w-[11rem] overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-600 dark:bg-slate-800"
+            style={{ top: menuHistorico.top, left: menuHistorico.left }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+              onClick={() => {
+                const id = menuHistorico.item.id;
+                setMenuHistorico(null);
+                void abrirSnapshot(id, { somenteLeitura: true });
+              }}
+            >
+              Visualizar
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={menuHistorico.item.status !== 'rascunho'}
+              title={
+                menuHistorico.item.status !== 'rascunho'
+                  ? 'Somente rascunhos podem ser editados'
+                  : undefined
+              }
+              className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-200 dark:hover:bg-slate-700"
+              onClick={() => {
+                if (menuHistorico.item.status !== 'rascunho') return;
+                const id = menuHistorico.item.id;
+                setMenuHistorico(null);
+                void abrirSnapshot(id);
+              }}
+            >
+              Editar
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={menuHistorico.item.status !== 'rascunho'}
+              title={
+                menuHistorico.item.status !== 'rascunho'
+                  ? 'Somente rascunhos podem ser excluídos'
+                  : undefined
+              }
+              className="block w-full px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-300 dark:hover:bg-red-950/40"
+              onClick={() => {
+                if (menuHistorico.item.status !== 'rascunho') return;
+                const item = menuHistorico.item;
+                setMenuHistorico(null);
+                setErroExclusao(null);
+                setConfirmExcluir(item);
+              }}
+            >
+              Excluir
+            </button>
+          </div>,
+          document.body
+        )}
+
+      {confirmExcluir && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4"
+          role="presentation"
+          onClick={() => !excluindo && setConfirmExcluir(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="seq-excluir-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              id="seq-excluir-title"
+              className="text-base font-semibold text-slate-800 dark:text-slate-100"
+            >
+              Excluir sequência?
+            </h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+              A sequência{' '}
+              <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                {confirmExcluir.cod}
+              </span>{' '}
+              (rascunho) será removida permanentemente.
+            </p>
+            {erroExclusao && (
+              <p className="mt-2 text-sm text-red-600 dark:text-red-300" role="alert">
+                {erroExclusao}
+              </p>
+            )}
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className={BTN_SECONDARY}
+                disabled={excluindo}
+                onClick={() => setConfirmExcluir(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50"
+                disabled={excluindo}
+                onClick={() => void confirmarExclusaoHistorico()}
+              >
+                {excluindo ? 'Excluindo…' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

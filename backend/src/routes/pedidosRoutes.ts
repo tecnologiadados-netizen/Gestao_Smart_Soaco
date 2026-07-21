@@ -38,6 +38,7 @@ import {
   getSequenciamentoCarradasSnapshotById,
   patchSequenciamentoCarradasSnapshot,
   postSequenciamentoCarradasSnapshotConcluir,
+  deleteSequenciamentoCarradasSnapshot,
 } from '../controllers/sequenciamentoCarradasController.js';
 
 const router = Router();
@@ -100,6 +101,7 @@ router.post('/sequenciamento-carradas/snapshots', verPedidos, writeLimiter, post
 router.get('/sequenciamento-carradas/snapshots/:id', verPedidos, getSequenciamentoCarradasSnapshotById);
 router.patch('/sequenciamento-carradas/snapshots/:id', verPedidos, autosaveLimiter, patchSequenciamentoCarradasSnapshot);
 router.post('/sequenciamento-carradas/snapshots/:id/concluir', verPedidos, writeLimiter, postSequenciamentoCarradasSnapshotConcluir);
+router.delete('/sequenciamento-carradas/snapshots/:id', verPedidos, writeLimiter, deleteSequenciamentoCarradasSnapshot);
 router.get('/inconsistencia-qtde-pendente', verPedidos, getInconsistenciaQtdePendente);
 router.get('/encerrados/typeahead', verPedidos, getPedidosEncerradosTypeahead);
 router.get('/encerrados', verPedidos, getPedidosEncerrados);

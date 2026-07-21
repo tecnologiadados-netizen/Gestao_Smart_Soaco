@@ -25,6 +25,7 @@ import {
   listarHistoricoAjustes,
   listarEventosTagDisponivelHistorico,
   listarComentariosSycroHistorico,
+  obterItemHistoricoRegraCarrada,
   invalidatePedidosCache,
 } from '../data/pedidosRepository.js';
 import { obterInconsistenciaQtdePendenteReal } from '../services/qtdePendenteInconsistenciaService.js';
@@ -812,6 +813,7 @@ export async function ajustarDataProducaoLote(req: Request, res: Response): Prom
     const itens = parsed.data.itens.map((it) => ({
       id_pedido: String(it.id_pedido).trim(),
       data_producao: new Date(it.data_producao),
+      rota: it.rota ?? null,
     }));
     const resultado = await registrarDataProducaoLote(itens, usuario);
     invalidatePedidosCache();
@@ -875,18 +877,24 @@ export async function getHistorico(req: Request, res: Response): Promise<void> {
     return;
   }
   try {
-    const [historico, tags, comentarios] = await Promise.all([
+    const [historico, tags, comentarios, regraCarrada] = await Promise.all([
       listarHistoricoAjustes(idPedido),
       listarEventosTagDisponivelHistorico(idPedido),
       listarComentariosSycroHistorico(idPedido),
+      obterItemHistoricoRegraCarrada(idPedido),
     ]);
     const itensAjustes = historico.map((h, i) => {
       const prev = historico[i + 1];
+      let previsaoAnterior: Date | null = prev?.previsao_nova ?? null;
+      // Ajuste mais antigo: anterior = data-limite da regra (se houver entrada sintética).
+      if (!prev && regraCarrada) {
+        previsaoAnterior = regraCarrada.previsao_nova;
+      }
       return {
         id: h.id,
         id_pedido: h.id_pedido,
         previsao_nova: h.previsao_nova,
-        previsao_anterior: prev?.previsao_nova ?? null,
+        previsao_anterior: previsaoAnterior,
         motivo: h.motivo,
         observacao: h.observacao,
         usuario: h.usuario,
@@ -920,7 +928,23 @@ export async function getHistorico(req: Request, res: Response): Promise<void> {
       previsao_confiavel: true,
       tipo_evento: 'comentario_sycro' as const,
     }));
-    const itens = [...itensAjustes, ...itensTags, ...itensComentarios].sort((a, b) => {
+    const itensRegra = regraCarrada
+      ? [
+          {
+            id: regraCarrada.id,
+            id_pedido: regraCarrada.id_pedido,
+            previsao_nova: regraCarrada.previsao_nova,
+            previsao_anterior: regraCarrada.previsao_anterior,
+            motivo: regraCarrada.motivo,
+            observacao: regraCarrada.observacao,
+            usuario: regraCarrada.usuario,
+            data_ajuste: regraCarrada.data_ajuste,
+            previsao_confiavel: regraCarrada.previsao_confiavel,
+            tipo_evento: regraCarrada.tipo_evento,
+          },
+        ]
+      : [];
+    const itens = [...itensAjustes, ...itensTags, ...itensComentarios, ...itensRegra].sort((a, b) => {
       const ta = a.data_ajuste instanceof Date ? a.data_ajuste.getTime() : new Date(a.data_ajuste).getTime();
       const tb = b.data_ajuste instanceof Date ? b.data_ajuste.getTime() : new Date(b.data_ajuste).getTime();
       return tb - ta;

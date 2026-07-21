@@ -9,6 +9,8 @@ export interface SycroOrderOrder {
   data_original?: string | null;
   /** Previsão atual (Gerenciador de Pedidos): previsao_entrega_atualizada || previsao_entrega */
   previsao_atual?: string | null;
+  /** Card só com itens de carrada constr/cont — previsão = "Carrada em formação". */
+  carrada_em_formacao?: boolean;
   /** Nome do cliente no ERP */
   cliente_name?: string | null;
   /** Nome do vendedor/representante no ERP (Vendedor/Representante) */
