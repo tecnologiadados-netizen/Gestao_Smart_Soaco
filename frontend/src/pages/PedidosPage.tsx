@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { countFiltrosModalAtivos, type FiltrosPedidosState } from '../components/FiltroPedidos';
 import ModalMaisFiltrosPedidos from '../components/ModalMaisFiltrosPedidos';
+import PedidosAjudaModal from './pedidos/PedidosAjudaModal';
 import TabelaPedidos, { SORT_LEVELS_DEFAULT } from '../components/TabelaPedidos';
 import ModalClassificarPedidos from '../components/ModalClassificarPedidos';
 import FiltroDatasPopover from '../components/FiltroDatasPopover';
@@ -143,6 +144,7 @@ export default function PedidosPage() {
   const [modalClassificarOpen, setModalClassificarOpen] = useState(false);
   const [sortLevelsPersonalizado, setSortLevelsPersonalizado] = useState<{ id: string; dir: 'asc' | 'desc' }[]>(() => [...SORT_LEVELS_DEFAULT]);
   const [modalMaisFiltrosOpen, setModalMaisFiltrosOpen] = useState(false);
+  const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
   const [totalExibidosGrade, setTotalExibidosGrade] = useState(0);
   const incoherenceFullRowsRef = useRef<Pedido[] | null>(null);
   const [incoherenceHasIssue, setIncoherenceHasIssue] = useState(false);
@@ -580,6 +582,21 @@ export default function PedidosPage() {
         <h2 className="shrink-0 text-lg font-semibold text-slate-800 dark:text-slate-200">Gestão de Pedidos</h2>
         <button
           type="button"
+          onClick={() => setModalAjudaAberto(true)}
+          title="Como ler o Gerenciador — categorias, status e regras de previsão"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
+            />
+          </svg>
+          Como ler
+        </button>
+        <button
+          type="button"
           onClick={() => setModalMaisFiltrosOpen(true)}
           className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
         >
@@ -796,6 +813,8 @@ export default function PedidosPage() {
           </div>
         </div>
       )}
+
+      <PedidosAjudaModal aberto={modalAjudaAberto} onClose={() => setModalAjudaAberto(false)} />
 
       <ModalMaisFiltrosPedidos
         open={modalMaisFiltrosOpen}

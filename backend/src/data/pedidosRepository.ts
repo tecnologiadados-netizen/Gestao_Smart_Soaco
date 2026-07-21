@@ -3064,38 +3064,81 @@ function parseDateFromDb(val: unknown): Date {
 export type OpcoesListarHistoricoAjustes = {
   /** Quando true, retorna só ajustes com previsao_confiavel (histórico Comunicação Interna). */
   apenasPrevisaoConfiavel?: boolean;
+  /**
+   * Quando informado, retorna overrides dessa rota + ajustes base (`rota` null).
+   * Exclui overrides de outras rotas (evita misturar carradas do mesmo PD+item).
+   */
+  rota?: string | null;
 };
 
-/** Histórico de ajustes por pedido (SQLite). Agrupa pela chave canônica pedido+item para incluir registros gravados com id_chave antigo (outra carrada). */
-export async function listarHistoricoAjustes(
-  idPedido: string,
-  opcoes?: OpcoesListarHistoricoAjustes
-): Promise<{
+export type HistoricoAjusteRow = {
   id: number;
   id_pedido: string;
+  /** Nome da rota gravado (override) ou null (ajuste base). */
+  rota: string | null;
   previsao_nova: Date;
   motivo: string;
   observacao: string | null;
   usuario: string;
   data_ajuste: Date;
   previsao_confiavel: boolean;
-}[]> {
+};
+
+/**
+ * Resolve a previsão anterior de um ajuste na cadeia por escopo de rota.
+ * `historicoDesc` deve estar ordenado do mais recente para o mais antigo.
+ *
+ * - Override da rota R → próximo override da mesma R; senão, próximo base.
+ * - Ajuste base → próximo base (nunca override de outra rota).
+ */
+export function resolverPrevisaoAnteriorNaCadeia(
+  historicoDesc: ReadonlyArray<{ rota: string | null; previsao_nova: Date }>,
+  index: number,
+  fallbackMaisAntigo?: Date | null
+): Date | null {
+  const current = historicoDesc[index];
+  if (!current) return fallbackMaisAntigo ?? null;
+  const currentRota = normalizeRotaForChave(current.rota);
+  const isBase = !currentRota;
+
+  for (let j = index + 1; j < historicoDesc.length; j++) {
+    const cand = historicoDesc[j]!;
+    const candRota = normalizeRotaForChave(cand.rota);
+    const candIsBase = !candRota;
+    if (isBase) {
+      if (candIsBase) return cand.previsao_nova;
+      continue;
+    }
+    if (!candIsBase && candRota === currentRota) return cand.previsao_nova;
+    if (candIsBase) return cand.previsao_nova;
+  }
+  return fallbackMaisAntigo ?? null;
+}
+
+/** Histórico de ajustes por pedido (SQLite). Agrupa pela chave canônica pedido+item para incluir registros gravados com id_chave antigo (outra carrada). */
+export async function listarHistoricoAjustes(
+  idPedido: string,
+  opcoes?: OpcoesListarHistoricoAjustes
+): Promise<HistoricoAjusteRow[]> {
   const idNorm = (idPedido ?? '').trim();
   if (!idNorm) return [];
   const canon = chavePedidoItem(idNorm);
+  const rotaFiltroNorm = normalizeRotaForChave(opcoes?.rota);
 
   const mapRow = (r: {
     id: number;
     id_pedido: string;
+    rota: string | null;
     previsao_nova: unknown;
     motivo: string;
     observacao: string | null;
     usuario: string;
     data_ajuste: unknown;
     previsao_confiavel: boolean;
-  }) => ({
+  }): HistoricoAjusteRow => ({
     id: r.id,
     id_pedido: r.id_pedido,
+    rota: r.rota != null && String(r.rota).trim() !== '' ? String(r.rota).trim() : null,
     previsao_nova: parseDateFromDb(r.previsao_nova),
     motivo: r.motivo,
     observacao: r.observacao,
@@ -3107,6 +3150,7 @@ export async function listarHistoricoAjustes(
   type Row = {
     id: number;
     id_pedido: string;
+    rota: string | null;
     previsao_nova: unknown;
     motivo: string;
     observacao: string | null;
@@ -3125,6 +3169,7 @@ export async function listarHistoricoAjustes(
       .map((r) => ({
         id: r.id,
         id_pedido: r.id_pedido,
+        rota: r.rota != null && String(r.rota).trim() !== '' ? String(r.rota).trim() : null,
         previsao_nova: r.previsao_nova,
         motivo: r.motivo,
         observacao: r.observacao,
@@ -3137,6 +3182,12 @@ export async function listarHistoricoAjustes(
   }
 
   let result = rows.map(mapRow);
+  if (rotaFiltroNorm) {
+    result = result.filter((r) => {
+      const rNorm = normalizeRotaForChave(r.rota);
+      return !rNorm || rNorm === rotaFiltroNorm;
+    });
+  }
   if (opcoes?.apenasPrevisaoConfiavel) {
     result = result.filter((r) => r.previsao_confiavel);
   }

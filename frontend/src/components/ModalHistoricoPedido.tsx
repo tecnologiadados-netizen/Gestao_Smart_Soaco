@@ -10,6 +10,11 @@ function getField(row: Pedido, keys: string[]): string {
   return '';
 }
 
+function rotaDaLinha(pedido: Pedido | null): string {
+  if (!pedido) return '';
+  return getField(pedido, ['Observacoes', 'Observacoes ', 'Observações', 'rota', 'observacoes']).trim();
+}
+
 function formatDate(value: string | Date): string {
   if (value == null) return '-';
   const s = typeof value === 'string' ? value : value.toISOString?.() ?? '';
@@ -47,6 +52,7 @@ export default function ModalHistoricoPedido({ pedido, open, onClose }: ModalHis
   const [historicoError, setHistoricoError] = useState<string | null>(null);
 
   const idPedido = pedido?.id_pedido?.trim() ?? '';
+  const rotaLinha = rotaDaLinha(pedido);
 
   useEffect(() => {
     if (!open || !idPedido) {
@@ -59,7 +65,7 @@ export default function ModalHistoricoPedido({ pedido, open, onClose }: ModalHis
     let cancelled = false;
     setHistoricoError(null);
     setLoadingHistorico(true);
-    obterHistorico(idPedido)
+    obterHistorico(idPedido, rotaLinha ? { rota: rotaLinha } : undefined)
       .then((data) => {
         if (!cancelled) setHistorico(data);
       })
@@ -76,7 +82,7 @@ export default function ModalHistoricoPedido({ pedido, open, onClose }: ModalHis
     return () => {
       cancelled = true;
     };
-  }, [open, idPedido]);
+  }, [open, idPedido, rotaLinha]);
 
   const historicoOrdenado = useMemo(() => {
     return [...historico].sort((a, b) => {
@@ -120,6 +126,7 @@ export default function ModalHistoricoPedido({ pedido, open, onClose }: ModalHis
               const parts = [];
               if (pd) parts.push(`Pedido: ${pd}`);
               if (cod) parts.push(`Código: ${cod}`);
+              if (rotaLinha) parts.push(`Rota: ${rotaLinha}`);
               if (prazoOriginal) parts.push(`Prazo original: ${formatDate(prazoOriginal)}`);
               if (cliente) parts.push(`Cliente: ${cliente}`);
               if (!parts.length) return <span className="text-sm font-normal">{idPedido}</span>;
@@ -158,7 +165,12 @@ export default function ModalHistoricoPedido({ pedido, open, onClose }: ModalHis
                 const isTagDisponivel = item.tipo_evento === 'tag_disponivel';
                 const isComentarioSycro = item.tipo_evento === 'comentario_sycro';
                 const isRegraCarrada = item.tipo_evento === 'regra_carrada';
+                const isAjustePrevisao =
+                  item.tipo_evento === 'ajuste_previsao' ||
+                  (!item.tipo_evento && !isTagDisponivel && !isComentarioSycro && !isRegraCarrada);
                 const tagDisponivel = item.tag_disponivel === true;
+                const rotaItem = item.rota != null ? String(item.rota).trim() : '';
+                const isAjusteBase = isAjustePrevisao && !rotaItem;
                 return (
                   <li
                     key={item.id}
@@ -200,6 +212,22 @@ export default function ModalHistoricoPedido({ pedido, open, onClose }: ModalHis
                             {tagDisponivel ? 'Disponível' : 'Não disponível'}
                           </span>
                         )}
+                        {isAjusteBase && (
+                          <span
+                            className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300 border border-slate-400 dark:border-slate-500"
+                            title="Ajuste base: vale em todas as rotas deste item"
+                          >
+                            Base
+                          </span>
+                        )}
+                        {isAjustePrevisao && rotaItem && (
+                          <span
+                            className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-200 border border-sky-500 dark:border-sky-400 max-w-[10rem] truncate"
+                            title={rotaItem}
+                          >
+                            Carrada
+                          </span>
+                        )}
                         {!isTagDisponivel && !isComentarioSycro && !isRegraCarrada && naoConfiavel && (
                           <span
                             className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:text-red-300 border border-red-500 dark:border-red-400"
@@ -221,6 +249,9 @@ export default function ModalHistoricoPedido({ pedido, open, onClose }: ModalHis
                       <div className="mt-1 text-slate-700 dark:text-slate-200">
                         <strong>{formatPrevisaoAlteracao(item)}</strong>
                       </div>
+                    )}
+                    {isAjustePrevisao && rotaItem && (
+                      <div className="mt-1 text-slate-500 dark:text-slate-400">Rota: {rotaItem}</div>
                     )}
                     {!isTagDisponivel && !isComentarioSycro && item.motivo && (
                       <div className="mt-1 text-slate-500 dark:text-slate-400">Motivo: {item.motivo}</div>

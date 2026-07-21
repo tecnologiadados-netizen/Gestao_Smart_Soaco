@@ -494,6 +494,8 @@ export type HistoricoTipoEvento =
 export interface HistoricoItem {
   id: number;
   id_pedido: string;
+  /** Rota/carrada do override; null = ajuste base (vale em todas as rotas). */
+  rota?: string | null;
   previsao_nova: string | null;
   previsao_anterior?: string | null;
   motivo: string;
@@ -505,8 +507,17 @@ export interface HistoricoItem {
   tag_disponivel?: boolean;
 }
 
-export async function obterHistorico(idPedido: string): Promise<HistoricoItem[]> {
-  return apiJson<HistoricoItem[]>(`/api/pedidos/${encodeURIComponent(idPedido)}/historico`);
+export async function obterHistorico(
+  idPedido: string,
+  opcoes?: { rota?: string | null }
+): Promise<HistoricoItem[]> {
+  const params = new URLSearchParams();
+  const rota = opcoes?.rota != null ? String(opcoes.rota).trim() : '';
+  if (rota) params.set('rota', rota);
+  const qs = params.toString();
+  return apiJson<HistoricoItem[]>(
+    `/api/pedidos/${encodeURIComponent(idPedido)}/historico${qs ? `?${qs}` : ''}`
+  );
 }
 
 export async function listarPedidosEncerrados(
