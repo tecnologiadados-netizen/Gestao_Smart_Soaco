@@ -34,10 +34,10 @@ function iso(d: Date) {
 // ─── Seed catálogos ───────────────────────────────────────────────────────────
 
 const SEED_SETORES = [
-  { sigla: 'PROD', nome: 'Produção' },
-  { sigla: 'QUAL', nome: 'Qualidade' },
-  { sigla: 'MAN', nome: 'Manutenção' },
-  { sigla: 'LAB', nome: 'Laboratório' },
+  { nome: 'Produção' },
+  { nome: 'Qualidade' },
+  { nome: 'Manutenção' },
+  { nome: 'Laboratório' },
 ];
 
 const SEED_TIPOS = [
@@ -52,7 +52,7 @@ export async function ensureSgqCatalogosSeed() {
   const setorCount = await prisma.sgqSetor.count();
   if (setorCount === 0) {
     await prisma.sgqSetor.createMany({
-      data: SEED_SETORES.map((s) => ({ sigla: s.sigla, nome: s.nome, ativo: true })),
+      data: SEED_SETORES.map((s) => ({ nome: s.nome, ativo: true })),
     });
   }
   const tipoCount = await prisma.sgqTipoDocumento.count();
@@ -65,8 +65,8 @@ export async function ensureSgqCatalogosSeed() {
 
 // ─── Mappers DB → frontend ───────────────────────────────────────────────────
 
-function mapSetor(row: { uid: string; nome: string; sigla: string; ativo: boolean }) {
-  return { id: row.uid, nome: row.nome, sigla: row.sigla, ativo: row.ativo };
+function mapSetor(row: { uid: string; nome: string; ativo: boolean }) {
+  return { id: row.uid, nome: row.nome, ativo: row.ativo };
 }
 
 function mapTipo(row: { uid: string; nome: string; sigla: string; ativo: boolean }) {
@@ -344,9 +344,12 @@ function mapTarefa(row: {
   responsavelLogin: string;
   prazo: string | null;
   concluida: boolean;
+  createdAt: Date;
   metadadosJson: string | null;
 }) {
   const meta = parseJson<Record<string, unknown>>(row.metadadosJson, {});
+  const statusFromMeta =
+    typeof meta.status === 'string' ? meta.status : undefined;
   return {
     id: row.uid,
     tipo: row.tipo,
@@ -356,8 +359,13 @@ function mapTarefa(row: {
     descricao: row.descricao ?? undefined,
     responsavelId: row.responsavelLogin,
     prazo: row.prazo ?? undefined,
-    concluida: row.concluida,
-    ...meta,
+    createdAt:
+      typeof meta.createdAt === 'string' ? meta.createdAt : iso(row.createdAt),
+    status: row.concluida
+      ? 'concluida'
+      : statusFromMeta === 'cancelada'
+        ? 'cancelada'
+        : 'pendente',
   };
 }
 
@@ -561,10 +569,8 @@ async function resolveSetorUid(setorId: string) {
   if (!trimmed) return trimmed;
   const byUid = await prisma.sgqSetor.findUnique({ where: { uid: trimmed } });
   if (byUid) return byUid.uid;
-  const bySigla = await prisma.sgqSetor.findUnique({
-    where: { sigla: trimmed.toUpperCase() },
-  });
-  if (bySigla) return bySigla.uid;
+  const byNome = await prisma.sgqSetor.findUnique({ where: { nome: trimmed } });
+  if (byNome) return byNome.uid;
   return trimmed;
 }
 
@@ -600,26 +606,25 @@ function extractBase64(dataUrl: string | undefined): IncomingQualidadeAnexo | nu
 }
 
 export async function syncQualidadeConfig(payload: {
-  departments: Array<{ id?: string; nome: string; sigla: string }>;
+  departments: Array<{ id?: string; nome: string }>;
   documentTypes: Array<{ id?: string; nome: string; sigla: string }>;
 }) {
   await ensureSgqCatalogosSeed();
 
   for (const dep of payload.departments) {
-    const sigla = dep.sigla.trim().toUpperCase();
     const nome = dep.nome.trim();
-    if (!sigla || !nome) continue;
+    if (!nome) continue;
     if (dep.id) {
       await prisma.sgqSetor.upsert({
         where: { uid: dep.id },
-        create: { uid: dep.id, sigla, nome, ativo: true },
-        update: { sigla, nome },
+        create: { uid: dep.id, nome, ativo: true },
+        update: { nome },
       });
     } else {
       await prisma.sgqSetor.upsert({
-        where: { sigla },
-        create: { sigla, nome, ativo: true },
-        update: { nome },
+        where: { nome },
+        create: { nome, ativo: true },
+        update: {},
       });
     }
   }
@@ -870,7 +875,7 @@ export async function syncQualidadeDocuments(payload: {
   const pendingBefore = new Set(
     (
       await prisma.sgqTarefa.findMany({
-        where: { concluida: false },
+        where: { concluida: false, referenciaTipo: 'documento' },
         select: { uid: true },
       })
     ).map((t) => t.uid)
@@ -878,12 +883,20 @@ export async function syncQualidadeDocuments(payload: {
 
   const novasTarefas: NovaTarefaWorkflowInput[] = [];
 
-  await prisma.sgqTarefa.deleteMany({ where: { concluida: false } });
+  // Só substitui pendências de documento — não apaga tarefas de calibração/equipamento.
+  await prisma.sgqTarefa.deleteMany({
+    where: { concluida: false, referenciaTipo: 'documento' },
+  });
   for (const task of tasks) {
     const uid = String(task.id ?? '');
     if (!uid) continue;
 
-    const concluida = Boolean(task.concluida);
+    const referenciaTipo = String(task.referenciaTipo ?? 'documento');
+    if (referenciaTipo !== 'documento') continue;
+
+    const status = String(task.status ?? '');
+    const concluida =
+      Boolean(task.concluida) || status === 'concluida' || status === 'cancelada';
     if (!concluida && !pendingBefore.has(uid)) {
       novasTarefas.push({
         uid,
@@ -901,7 +914,7 @@ export async function syncQualidadeDocuments(payload: {
       create: {
         uid,
         tipo: String(task.tipo ?? ''),
-        referenciaTipo: String(task.referenciaTipo ?? ''),
+        referenciaTipo,
         referenciaId: String(task.referenciaId ?? ''),
         titulo: String(task.titulo ?? ''),
         descricao: task.descricao ? String(task.descricao) : null,
@@ -912,7 +925,7 @@ export async function syncQualidadeDocuments(payload: {
       },
       update: {
         tipo: String(task.tipo ?? ''),
-        referenciaTipo: String(task.referenciaTipo ?? ''),
+        referenciaTipo,
         referenciaId: String(task.referenciaId ?? ''),
         titulo: String(task.titulo ?? ''),
         descricao: task.descricao ? String(task.descricao) : null,

@@ -9,7 +9,7 @@ export function formatEnderecamentoLabel(
 ): string {
   const setor = departments.find((d) => d.id === enderecamento.setorId);
   if (!setor) return enderecamento.endereco;
-  return `${setor.sigla} — ${enderecamento.endereco}`;
+  return `${setor.nome} — ${enderecamento.endereco}`;
 }
 
 export function parseEnderecamentosFromOpcoes(

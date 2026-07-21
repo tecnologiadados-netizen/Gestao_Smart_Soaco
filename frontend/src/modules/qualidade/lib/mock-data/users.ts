@@ -3,10 +3,10 @@ import type { Department, DocumentType, User } from "@qualidade/types/user";
 export const CURRENT_USER_ID = "user-davi";
 
 export const departments: Department[] = [
-  { id: "dep-producao", nome: "Produção", sigla: "PROD" },
-  { id: "dep-qualidade", nome: "Qualidade", sigla: "QUAL" },
-  { id: "dep-manutencao", nome: "Manutenção", sigla: "MAN" },
-  { id: "dep-laboratorio", nome: "Laboratório", sigla: "LAB" },
+  { id: "dep-producao", nome: "Produção" },
+  { id: "dep-qualidade", nome: "Qualidade" },
+  { id: "dep-manutencao", nome: "Manutenção" },
+  { id: "dep-laboratorio", nome: "Laboratório" },
 ];
 
 export const documentTypes: DocumentType[] = [

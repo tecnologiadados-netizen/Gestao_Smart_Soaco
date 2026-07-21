@@ -240,7 +240,7 @@ export default function CalibracoesConsultaPage() {
                 <SelectItem value={TABLE_FILTER_ALL}>Todos os setores</SelectItem>
                 {departments.map((d) => (
                   <SelectItem key={d.id} value={d.id}>
-                    {d.sigla} — {d.nome}
+                    {d.nome}
                   </SelectItem>
                 ))}
               </SelectContent>

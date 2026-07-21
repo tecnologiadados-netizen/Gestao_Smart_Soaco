@@ -302,7 +302,7 @@ export function CadastroDocumentoInternoDialog({
                             value={d.id}
                             className={selectItemClass}
                           >
-                            {d.sigla} — {d.nome}
+                            {d.nome}
                           </SelectItem>
                         ))}
                       </SelectContent>

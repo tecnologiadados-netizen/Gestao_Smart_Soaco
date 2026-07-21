@@ -36,7 +36,7 @@ function departmentsToOptions(departments: Department[]): MultiSelectOption[] {
   return departments
     .map((department) => ({
       value: department.id,
-      label: `${department.sigla} — ${department.nome}`,
+      label: department.nome,
       description: department.nome,
     }))
     .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
@@ -186,7 +186,7 @@ export function formatPermissaoProcessos(
   return processoIds
     .map((id) => {
       const processo = departments.find((department) => department.id === id);
-      return processo ? `${processo.sigla} — ${processo.nome}` : id;
+      return processo ? processo.nome : id;
     })
     .join(", ");
 }

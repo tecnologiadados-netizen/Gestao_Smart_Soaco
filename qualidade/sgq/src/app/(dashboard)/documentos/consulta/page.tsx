@@ -123,7 +123,7 @@ export default function DocumentosConsultaPage() {
         case "categoria":
           return tipo?.sigla ?? "";
         case "setor":
-          return setor?.sigla ?? "";
+          return setor?.nome ?? "";
         case "revisao":
           return doc.versaoAtual;
         case "status":
@@ -223,7 +223,7 @@ export default function DocumentosConsultaPage() {
                 <SelectItem value={TABLE_FILTER_ALL}>Todos os setores</SelectItem>
                 {departments.map((d) => (
                   <SelectItem key={d.id} value={d.id}>
-                    {d.sigla} — {d.nome}
+                    {d.nome}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -326,7 +326,7 @@ export default function DocumentosConsultaPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>{tipo?.sigla ?? "—"}</TableCell>
-                  <TableCell>{setor?.sigla ?? "—"}</TableCell>
+                  <TableCell>{setor?.nome ?? "—"}</TableCell>
                   <TableCell>{doc.versaoAtual}</TableCell>
                   <TableCell>
                     <Badge variant={getDocumentStatusVariant(doc.status)}>

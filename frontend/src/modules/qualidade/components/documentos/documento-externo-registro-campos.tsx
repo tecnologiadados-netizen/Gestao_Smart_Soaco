@@ -227,7 +227,7 @@ export function DocumentoExternoRegistroCampos({
                     value={d.id}
                     className={selectItemClass}
                   >
-                    {d.sigla} — {d.nome}
+                    {d.nome}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -164,7 +164,7 @@ export function EnderecamentoPage() {
               <SelectContent>
                 {departments.map((dep) => (
                   <SelectItem key={dep.id} value={dep.id}>
-                    {dep.sigla} — {dep.nome}
+                    {dep.nome}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -222,7 +222,7 @@ export function EnderecamentoPage() {
               return (
                 <TableRow key={item.id} className="group">
                   <TableCell className="font-medium">
-                    {setor ? `${setor.sigla} — ${setor.nome}` : "—"}
+                    {setor ? setor.nome : "—"}
                   </TableCell>
                   <TableCell>{item.endereco}</TableCell>
                   <TableCell>
@@ -267,7 +267,7 @@ export function EnderecamentoPage() {
               <SelectContent>
                 {departments.map((dep) => (
                   <SelectItem key={dep.id} value={dep.id}>
-                    {dep.sigla} — {dep.nome}
+                    {dep.nome}
                   </SelectItem>
                 ))}
               </SelectContent>

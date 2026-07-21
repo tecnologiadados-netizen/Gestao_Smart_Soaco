@@ -21,7 +21,7 @@ import { useTableSort } from "@/hooks/use-table-sort";
 import { useConfigStore } from "@/lib/store/config-store";
 import { sortByRules } from "@/lib/utils/table-sort";
 
-type SetorSortKey = "sigla" | "nome";
+type SetorSortKey = "nome";
 
 export default function SetoresPage() {
   const departments = useConfigStore((s) => s.departments);
@@ -30,21 +30,17 @@ export default function SetoresPage() {
   const removeDepartment = useConfigStore((s) => s.removeDepartment);
 
   const [nome, setNome] = useState("");
-  const [sigla, setSigla] = useState("");
   const [addError, setAddError] = useState("");
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNome, setEditNome] = useState("");
-  const [editSigla, setEditSigla] = useState("");
   const [editError, setEditError] = useState("");
 
   const [excluirId, setExcluirId] = useState<string | null>(null);
   const { sorts, toggleSort, getSortState } = useTableSort<SetorSortKey>();
 
   const setoresOrdenados = useMemo(() => {
-    return sortByRules(departments, sorts, (dep, key) =>
-      key === "sigla" ? dep.sigla : dep.nome
-    );
+    return sortByRules(departments, sorts, (dep) => dep.nome);
   }, [departments, sorts]);
 
   const setorParaExcluir = departments.find((d) => d.id === excluirId);
@@ -52,14 +48,12 @@ export default function SetoresPage() {
 
   function resetAddForm() {
     setNome("");
-    setSigla("");
     setAddError("");
   }
 
   function fecharEdicao() {
     setEditingId(null);
     setEditNome("");
-    setEditSigla("");
     setEditError("");
   }
 
@@ -67,16 +61,15 @@ export default function SetoresPage() {
     e.preventDefault();
 
     const nomeTrim = nome.trim();
-    const siglaTrim = sigla.trim();
 
-    if (!nomeTrim || !siglaTrim) {
-      setAddError("Preencha nome e sigla.");
+    if (!nomeTrim) {
+      setAddError("Preencha o nome.");
       return;
     }
 
-    const ok = addDepartment(nomeTrim, siglaTrim);
+    const ok = addDepartment(nomeTrim);
     if (!ok) {
-      setAddError("Já existe um setor com esta sigla.");
+      setAddError("Já existe um setor com este nome.");
       return;
     }
 
@@ -88,16 +81,15 @@ export default function SetoresPage() {
     if (!editingId) return;
 
     const nomeTrim = editNome.trim();
-    const siglaTrim = editSigla.trim();
 
-    if (!nomeTrim || !siglaTrim) {
-      setEditError("Preencha nome e sigla.");
+    if (!nomeTrim) {
+      setEditError("Preencha o nome.");
       return;
     }
 
-    const ok = updateDepartment(editingId, nomeTrim, siglaTrim);
+    const ok = updateDepartment(editingId, nomeTrim);
     if (!ok) {
-      setEditError("Já existe um setor com esta sigla.");
+      setEditError("Já existe um setor com este nome.");
       return;
     }
 
@@ -109,7 +101,6 @@ export default function SetoresPage() {
     if (!dep) return;
     setEditingId(id);
     setEditNome(dep.nome);
-    setEditSigla(dep.sigla);
     setEditError("");
   }
 
@@ -147,17 +138,6 @@ export default function SetoresPage() {
               required
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="sigla">Sigla</Label>
-            <Input
-              id="sigla"
-              value={sigla}
-              onChange={(e) => setSigla(e.target.value.toUpperCase())}
-              className="w-24 uppercase"
-              maxLength={6}
-              required
-            />
-          </div>
           <Button type="submit">Adicionar</Button>
         </div>
         {addError ? (
@@ -171,13 +151,6 @@ export default function SetoresPage() {
         <TableHeader>
           <TableRow>
             <SortableTableHead
-              sortKey="sigla"
-              sortState={getSortState("sigla")}
-              onSort={toggleSort}
-            >
-              Sigla
-            </SortableTableHead>
-            <SortableTableHead
               sortKey="nome"
               sortState={getSortState("nome")}
               onSort={toggleSort}
@@ -190,8 +163,7 @@ export default function SetoresPage() {
         <TableBody>
           {setoresOrdenados.map((dep) => (
             <TableRow key={dep.id} className="group">
-              <TableCell className="font-medium">{dep.sigla}</TableCell>
-              <TableCell>{dep.nome}</TableCell>
+              <TableCell className="font-medium">{dep.nome}</TableCell>
               <TableCell>
                 <TableRowActions
                   onEdit={() => iniciarEdicao(dep.id)}
@@ -209,35 +181,22 @@ export default function SetoresPage() {
         titulo="Editar setor"
         descricao={
           setorEmEdicao
-            ? `Altere os dados do setor ${setorEmEdicao.sigla}.`
+            ? `Altere o nome do setor ${setorEmEdicao.nome}.`
             : undefined
         }
         onSubmit={handleEdit}
         submitLabel="Salvar alterações"
         error={editError}
       >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="edit-nome">Nome</Label>
-            <Input
-              id="edit-nome"
-              value={editNome}
-              onChange={(e) => setEditNome(e.target.value)}
-              autoFocus
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-sigla">Sigla</Label>
-            <Input
-              id="edit-sigla"
-              value={editSigla}
-              onChange={(e) => setEditSigla(e.target.value.toUpperCase())}
-              className="w-full uppercase"
-              maxLength={6}
-              required
-            />
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="edit-nome">Nome</Label>
+          <Input
+            id="edit-nome"
+            value={editNome}
+            onChange={(e) => setEditNome(e.target.value)}
+            autoFocus
+            required
+          />
         </div>
       </FormDialog>
 
@@ -247,7 +206,7 @@ export default function SetoresPage() {
         titulo="Excluir setor"
         mensagem={
           setorParaExcluir
-            ? `Deseja excluir o setor ${setorParaExcluir.sigla} — ${setorParaExcluir.nome}? Esta ação não pode ser desfeita.`
+            ? `Deseja excluir o setor ${setorParaExcluir.nome}? Esta ação não pode ser desfeita.`
             : "Deseja excluir este setor?"
         }
         confirmarLabel="Excluir"

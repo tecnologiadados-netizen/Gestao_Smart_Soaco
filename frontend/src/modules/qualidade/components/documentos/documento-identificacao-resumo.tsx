@@ -38,7 +38,7 @@ export function DocumentoIdentificacaoResumo({
         <div className="space-y-2">
           <p className="text-sm font-medium text-muted-foreground">Setor</p>
           <div className={readonlyFieldClass}>
-            {processo ? `${processo.sigla} — ${processo.nome}` : "—"}
+            {processo ? processo.nome : "—"}
           </div>
         </div>
       </div>

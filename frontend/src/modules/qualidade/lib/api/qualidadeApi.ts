@@ -1,7 +1,7 @@
 import { apiFetch } from '@/api/client';
 
 export interface QualidadeBootstrap {
-  departments: Array<{ id: string; nome: string; sigla: string }>;
+  departments: Array<{ id: string; nome: string }>;
   documentTypes: Array<{ id: string; nome: string; sigla: string }>;
   documents: unknown[];
   versions: unknown[];

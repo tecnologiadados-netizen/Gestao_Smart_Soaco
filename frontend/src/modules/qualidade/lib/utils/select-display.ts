@@ -21,13 +21,9 @@ export function userSelectLabel(
 export function departmentSelectLabel(
   departments: Department[],
   id: string,
-  format: "nome" | "sigla-nome" = "sigla-nome"
+  _format?: "nome" | "sigla-nome"
 ): string | undefined {
-  const department = departments.find((d) => d.id === id);
-  if (!department) return undefined;
-  return format === "nome"
-    ? department.nome
-    : `${department.sigla} — ${department.nome}`;
+  return departments.find((d) => d.id === id)?.nome;
 }
 
 export function documentTypeSelectLabel(

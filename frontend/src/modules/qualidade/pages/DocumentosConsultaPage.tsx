@@ -125,7 +125,7 @@ export function DocumentosConsultaPage() {
         case "categoria":
           return tipo?.sigla ?? "";
         case "setor":
-          return setor?.sigla ?? "";
+          return setor?.nome ?? "";
         case "status":
           return documentStatusLabels[doc.status];
         case "validade":
@@ -223,7 +223,7 @@ export function DocumentosConsultaPage() {
                 <SelectItem value={TABLE_FILTER_ALL}>Todos os setores</SelectItem>
                 {departments.map((d) => (
                   <SelectItem key={d.id} value={d.id}>
-                    {d.sigla} — {d.nome}
+                    {d.nome}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -319,7 +319,7 @@ export function DocumentosConsultaPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>{tipo?.sigla ?? "—"}</TableCell>
-                  <TableCell>{setor?.sigla ?? "—"}</TableCell>
+                  <TableCell>{setor?.nome ?? "—"}</TableCell>
                   <TableCell>
                     <Badge variant={getDocumentStatusVariant(doc.status)}>
                       {documentStatusLabels[doc.status]}

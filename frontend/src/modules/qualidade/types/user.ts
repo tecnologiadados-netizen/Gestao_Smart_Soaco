@@ -18,7 +18,6 @@ export interface User {
 export interface Department {
   id: string;
   nome: string;
-  sigla: string;
 }
 
 export interface DocumentType {

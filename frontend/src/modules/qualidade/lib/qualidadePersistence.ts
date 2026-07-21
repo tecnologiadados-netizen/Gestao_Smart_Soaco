@@ -310,6 +310,11 @@ export async function hydrateQualidadeFromServer(currentUserLogin: string) {
     setQualidadeConfigHydrating(false);
     setQualidadeDocumentsHydrating(false);
   }
+
+  // Reconciliação pode recriar pendências perdidas — persiste após liberar o hydrate.
+  void flushQualidadeDocumentsSync().catch((err) =>
+    console.error('[qualidade] falha ao persistir tarefas reconciliadas:', err)
+  );
 }
 
 export function startQualidadeAutoSync() {

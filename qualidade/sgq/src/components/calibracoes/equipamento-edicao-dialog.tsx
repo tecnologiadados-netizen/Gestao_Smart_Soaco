@@ -252,7 +252,7 @@ export function EquipamentoEdicaoDialog({
                       <SelectContent>
                         {departments.map((dep) => (
                           <SelectItem key={dep.id} value={dep.id}>
-                            {dep.sigla} — {dep.nome}
+                            {dep.nome}
                           </SelectItem>
                         ))}
                       </SelectContent>

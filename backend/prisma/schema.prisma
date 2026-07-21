@@ -940,13 +940,11 @@ model LogProdutoVolume {
 model SgqSetor {
   id        Int      @id @default(autoincrement())
   uid       String   @unique @default(cuid())
-  sigla     String
-  nome      String
+  nome      String   @unique
   ativo     Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([sigla])
   @@map("sgq_setor")
 }
 

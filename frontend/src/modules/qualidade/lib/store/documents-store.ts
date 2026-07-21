@@ -191,6 +191,100 @@ function withoutPendingDocumentTasks(tasks: Task[], documentId: string) {
   );
 }
 
+/** Garante pendência coerente com o status do documento (recupera tarefas perdidas no sync). */
+function reconcileWorkflowTasks(
+  documents: Document[],
+  versions: DocumentVersion[],
+  tasks: Task[]
+): Task[] {
+  const now = new Date().toISOString();
+  const docIds = new Set(documents.map((d) => d.id));
+
+  let next = tasks.filter((t) => {
+    if (t.referenciaTipo !== "documento") return true;
+    if (t.status !== "pendente") return true;
+    if (!docIds.has(t.referenciaId)) return false;
+    const doc = documents.find((d) => d.id === t.referenciaId);
+    if (!doc) return false;
+    if (t.tipo === "revalidar_documento") {
+      return doc.status === "vigente";
+    }
+    if (doc.status === "rascunho") return t.tipo === "elaborar_documento";
+    if (doc.status === "em_revisao") return t.tipo === "consenso_documento";
+    if (doc.status === "em_aprovacao") return t.tipo === "aprovar_documento";
+    return false;
+  });
+
+  for (const doc of documents) {
+    const version = getCurrentVersion(versions, doc.id, doc.versaoAtual);
+    if (!version) continue;
+
+    const hasPending = (tipo: Task["tipo"]) =>
+      next.some(
+        (t) =>
+          t.referenciaId === doc.id &&
+          t.tipo === tipo &&
+          t.status === "pendente"
+      );
+
+    if (doc.status === "rascunho" && !hasPending("elaborar_documento")) {
+      next = [
+        ...next,
+        {
+          id: generateId("task"),
+          tipo: "elaborar_documento",
+          titulo: `Elaborar ${doc.codigo} — ${doc.titulo}`,
+          descricao: `Revisão ${doc.versaoAtual} · Etapa: Elaboração`,
+          referenciaId: doc.id,
+          referenciaTipo: "documento",
+          responsavelId: resolveTaskAssignee(version.elaboradorId),
+          prazo: computeTaskDeadline(now, version.prazos?.elaboracao ?? 7),
+          status: "pendente",
+          createdAt: now,
+        },
+      ];
+    }
+
+    if (doc.status === "em_revisao" && !hasPending("consenso_documento")) {
+      next = [
+        ...next,
+        {
+          id: generateId("task"),
+          tipo: "consenso_documento",
+          titulo: `Consenso ${doc.codigo} — ${doc.titulo}`,
+          descricao: `Revisão ${doc.versaoAtual} · Etapa: Consenso`,
+          referenciaId: doc.id,
+          referenciaTipo: "documento",
+          responsavelId: resolveTaskAssignee(version.consensoId),
+          prazo: computeTaskDeadline(now, version.prazos?.consenso ?? 7),
+          status: "pendente",
+          createdAt: now,
+        },
+      ];
+    }
+
+    if (doc.status === "em_aprovacao" && !hasPending("aprovar_documento")) {
+      next = [
+        ...next,
+        {
+          id: generateId("task"),
+          tipo: "aprovar_documento",
+          titulo: `Aprovar ${doc.codigo} — ${doc.titulo}`,
+          descricao: `Revisão ${doc.versaoAtual} · Etapa: Aprovação`,
+          referenciaId: doc.id,
+          referenciaTipo: "documento",
+          responsavelId: resolveTaskAssignee(version.aprovadorId),
+          prazo: computeTaskDeadline(now, version.prazos?.aprovacao ?? 7),
+          status: "pendente",
+          createdAt: now,
+        },
+      ];
+    }
+  }
+
+  return next;
+}
+
 function exigeSubstituicaoConsenso(version: DocumentVersion): boolean {
   if (version.requerSubstituicaoConsenso) return true;
   const movimentacoes = version.movimentacoes ?? [];
@@ -474,8 +568,8 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         if (!versaoAtual) return false;
 
         const now = new Date().toISOString();
-        set((state) => ({
-          documents: state.documents.map((d) =>
+        set((state) => {
+          const documents = state.documents.map((d) =>
             d.id === documentId
               ? {
                   ...d,
@@ -488,8 +582,8 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
                   updatedAt: now,
                 }
               : d
-          ),
-          versions: state.versions.map((v) =>
+          );
+          const versions = state.versions.map((v) =>
             v.id === versaoAtual.id
               ? {
                   ...v,
@@ -499,8 +593,24 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
                   prazos: input.prazos,
                 }
               : v
-          ),
-        }));
+          );
+          return {
+            documents,
+            versions,
+            tasks: reconcileWorkflowTasks(documents, versions, state.tasks).map(
+              (t) =>
+                t.referenciaId === documentId &&
+                t.status === "pendente" &&
+                t.tipo === "elaborar_documento" &&
+                doc.status === "rascunho"
+                  ? {
+                      ...t,
+                      responsavelId: resolveTaskAssignee(input.elaboradorId),
+                    }
+                  : t
+            ),
+          };
+        });
         return true;
       },
 
@@ -1165,7 +1275,11 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
           );
           return {
             validadeAlertas: synced.alertas,
-            tasks: synced.tasks,
+            tasks: reconcileWorkflowTasks(
+              state.documents,
+              state.versions,
+              synced.tasks
+            ),
           };
         });
       },

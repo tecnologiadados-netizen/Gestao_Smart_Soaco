@@ -251,7 +251,7 @@ export default function UsuariosPage() {
               <SelectContent>
                 {departments.map((d) => (
                   <SelectItem key={d.id} value={d.id}>
-                    {d.sigla} — {d.nome}
+                    {d.nome}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -431,7 +431,7 @@ export default function UsuariosPage() {
               <SelectContent>
                 {departments.map((d) => (
                   <SelectItem key={d.id} value={d.id}>
-                    {d.sigla} — {d.nome}
+                    {d.nome}
                   </SelectItem>
                 ))}
               </SelectContent>

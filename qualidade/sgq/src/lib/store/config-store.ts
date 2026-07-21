@@ -17,8 +17,8 @@ interface ConfigState {
   documentTypes: DocumentType[];
   setCurrentUserId: (id: string) => void;
   getCurrentUser: () => User | undefined;
-  addDepartment: (nome: string, sigla: string) => boolean;
-  updateDepartment: (id: string, nome: string, sigla: string) => boolean;
+  addDepartment: (nome: string) => boolean;
+  updateDepartment: (id: string, nome: string) => boolean;
   removeDepartment: (id: string) => void;
   addDocumentType: (nome: string, sigla: string) => boolean;
   updateDocumentType: (id: string, nome: string, sigla: string) => boolean;
@@ -45,38 +45,41 @@ export const useConfigStore = create<ConfigState>()(
       getCurrentUser: () =>
         get().users.find((u) => u.id === get().currentUserId),
 
-      addDepartment: (nome, sigla) => {
-        const siglaNorm = sigla.trim().toUpperCase();
+      addDepartment: (nome) => {
         const nomeNorm = nome.trim();
-        if (!nomeNorm || !siglaNorm) return false;
+        if (!nomeNorm) return false;
 
         const exists = get().departments.some(
-          (d) => d.sigla.toUpperCase() === siglaNorm
+          (d) =>
+            d.nome.toLocaleLowerCase("pt-BR") ===
+            nomeNorm.toLocaleLowerCase("pt-BR")
         );
         if (exists) return false;
 
         set((state) => ({
           departments: [
             ...state.departments,
-            { id: generateId("dep"), nome: nomeNorm, sigla: siglaNorm },
+            { id: generateId("dep"), nome: nomeNorm },
           ],
         }));
         return true;
       },
 
-      updateDepartment: (id, nome, sigla) => {
-        const siglaNorm = sigla.trim().toUpperCase();
+      updateDepartment: (id, nome) => {
         const nomeNorm = nome.trim();
-        if (!nomeNorm || !siglaNorm) return false;
+        if (!nomeNorm) return false;
 
         const duplicate = get().departments.some(
-          (d) => d.id !== id && d.sigla.toUpperCase() === siglaNorm
+          (d) =>
+            d.id !== id &&
+            d.nome.toLocaleLowerCase("pt-BR") ===
+              nomeNorm.toLocaleLowerCase("pt-BR")
         );
         if (duplicate) return false;
 
         set((state) => ({
           departments: state.departments.map((d) =>
-            d.id === id ? { ...d, nome: nomeNorm, sigla: siglaNorm } : d
+            d.id === id ? { ...d, nome: nomeNorm } : d
           ),
         }));
         return true;
