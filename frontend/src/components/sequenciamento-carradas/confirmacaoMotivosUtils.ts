@@ -45,6 +45,31 @@ export function motivoComumIds(ids: string[], motivoPorId: Record<string, string
   return ids.every((id) => (motivoPorId[id] ?? '') === primeiro) ? primeiro : '';
 }
 
+/** Observação comum entre ids (vazio se divergir). */
+export function observacaoComumIds(ids: string[], observacaoPorId: Record<string, string>): string {
+  if (ids.length === 0) return '';
+  const primeiro = observacaoPorId[ids[0]!] ?? '';
+  return ids.every((id) => (observacaoPorId[id] ?? '') === primeiro) ? primeiro : '';
+}
+
+/** Previsão confiável efetiva (ausente = true). */
+export function previsaoConfiavelEfetiva(idPedido: string, map: Record<string, boolean>): boolean {
+  return map[idPedido] !== false;
+}
+
+/**
+ * Valor comum de previsão confiável entre ids.
+ * `null` = divergente entre os itens.
+ */
+export function previsaoConfiavelComumIds(
+  ids: string[],
+  map: Record<string, boolean>
+): boolean | null {
+  if (ids.length === 0) return true;
+  const primeiro = previsaoConfiavelEfetiva(ids[0]!, map);
+  return ids.every((id) => previsaoConfiavelEfetiva(id, map) === primeiro) ? primeiro : null;
+}
+
 export function itemMotivoConcluido(idPedido: string, motivoPorId: Record<string, string>): boolean {
   return !!motivoPorId[idPedido]?.trim();
 }

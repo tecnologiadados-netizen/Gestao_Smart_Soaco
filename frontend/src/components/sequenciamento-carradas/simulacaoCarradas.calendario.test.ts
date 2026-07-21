@@ -403,6 +403,76 @@ describe('listarCarradasComDatasPassadas — itens especiais', () => {
     );
     expect(invalidas).toHaveLength(0);
   });
+
+  it('exclui carradas em formação (EM CONSTRUÇÃO)', () => {
+    const keyFormacao = '01712\x1eROTA SÃO LUIS - EM CONSTRUÇÃO';
+    const keyNormal = '01700\x1eROTA BELEM 04.2';
+    const bl = new Map([
+      [
+        keyFormacao,
+        {
+          dataProducao: '2026-07-10',
+          dataEntrega: '2026-07-15',
+          dataProducaoDivergente: false,
+          dataEntregaDivergente: false,
+        },
+      ],
+      [
+        keyNormal,
+        {
+          dataProducao: '2026-07-10',
+          dataEntrega: '2026-07-12',
+          dataProducaoDivergente: false,
+          dataEntregaDivergente: false,
+        },
+      ],
+    ]);
+    const invalidas = listarCarradasComDatasPassadas(
+      [
+        { cod: '01712', carrada: 'ROTA SÃO LUIS - EM CONSTRUÇÃO' },
+        { cod: '01700', carrada: 'ROTA BELEM 04.2' },
+      ],
+      sim,
+      bl,
+      (c) => `${c.cod}\x1e${c.carrada}`,
+      '2026-07-20'
+    );
+    expect(invalidas).toHaveLength(1);
+    expect(invalidas[0]?.carrada).toBe('ROTA BELEM 04.2');
+  });
+
+  it('propaga badges de Status/Card nos itens de pedido', () => {
+    const linhas: Record<string, unknown>[] = [
+      {
+        RM: '—',
+        Observacoes: '1-Retirada na So Aço',
+        id_pedido: 'p48418a',
+        PD: '48418',
+        Cliente: 'PAPEL NORTE',
+        Cod: 'PA 5430',
+        'Descricao do produto': 'Armario',
+        Status: 'Atrasado',
+        Card: 'Card',
+        'Valor Faturado Entrega Futura + IPI do item do Pedido': 0,
+        previsao_entrega_atualizada: '2026-07-17',
+        'Qtde Pendente Real': 10,
+      },
+    ];
+    const invalidas = listarCarradasComDatasPassadas(
+      [{ cod: '—', carrada: '1-Retirada na So Aço' }],
+      sim,
+      baseline,
+      (c) => `${c.cod}\x1e${c.carrada}`,
+      '2026-07-20',
+      linhas
+    );
+    expect(invalidas).toHaveLength(1);
+    expect(invalidas[0]).toMatchObject({
+      statusPrazo: 'Atrasado',
+      card: 'Card',
+      pedido: '48418',
+    });
+  });
 });
 
 describe('atualizarEstadoLinhaCorrigirDatas', () => {

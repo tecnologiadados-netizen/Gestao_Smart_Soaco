@@ -30,7 +30,7 @@ function normalizeCarradaNome(carrada: string): string {
 
 /**
  * Carradas "especiais" sem romaneio (retirada, entrega G. Teresina, inserir em romaneio, requisição).
- * Ficam no final da grade e têm as datas bloqueadas para edição nesta tela.
+ * Ficam no final da grade; datas não são exibidas/editáveis nesta tela (pedidos com datas distintas).
  */
 export function isCarradaOrdemFinal(carrada: string): boolean {
   const n = normalizeCarradaNome(carrada);
@@ -418,12 +418,18 @@ export function listarTooltipDetalhePorPd(
         dataEmissao: emissaoParaIso(getField(row, ['Emissao', 'emissao'])),
         pedido: getField(row, ['PD', 'pd']),
         cliente: getField(row, ['Cliente', 'cliente']),
+        tipoPedido: getField(row, ['Tipo Pedido', 'tipo pedido', 'TipoPedido']),
         municipio: municipio && uf ? `${municipio} (${uf})` : municipio,
         aVista: getField(row, ['A Vista', 'A vista', 'aVista']),
         valorPendente: getNumber(row, ['Saldo a Faturar Real', 'Valor Pendente Real']),
         codigo: getField(row, ['Cod', 'cod']),
         produto: getField(row, ['Descricao do produto', 'Descrição do produto']),
         qtdePendenteReal: getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']),
+        dataProducao: (() => {
+          const raw = row['data_producao'] ?? row['dataProducao'];
+          if (raw instanceof Date && !Number.isNaN(raw.getTime())) return raw.toISOString().slice(0, 10);
+          return emissaoParaIso(getField(row, ['data_producao', 'dataProducao']));
+        })(),
       };
     })
     .sort((a, b) =>

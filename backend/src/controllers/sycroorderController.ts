@@ -13,6 +13,7 @@ import {
   resolveSycroOrderResponsibleRecipientUserIds,
 } from '../services/sycroOrderAguardaRespostaLabel.js';
 import { invalidateSycroCardSinalizacaoCache } from '../services/sycroOrderPedidoSinalizacao.js';
+import { isCarradaEmFormacao, LABEL_CARRADA_EM_FORMACAO, rotaFromPedidoRow } from '../utils/rotaCarrada.js';
 
 /** Número que recebe notificação de novo pedido SycroOrder (DDD + número, sem 55) */
 type OrderStatus = 'PENDING' | 'FINISHED' | 'ESCALATED';
@@ -253,12 +254,14 @@ function rotaDisplayKeyFromRow(r: Record<string, unknown>): string {
 }
 
 function buildCarradasInfo(rows: Array<Record<string, unknown>>): Array<{ rota: string; previsao_atual: string | null; codigos: string[] }> {
-  const byRota = new Map<string, { previsoes: string[]; codigos: string[] }>();
+  const byRota = new Map<string, { previsoes: string[]; codigos: string[]; emFormacao: boolean }>();
   for (const r of rows) {
     const rota = rotaDisplayKeyFromRow(r);
-    const previsao = toIsoDate(r['previsao_entrega_atualizada'] ?? r['previsao_entrega']);
+    const emFormacao = isCarradaEmFormacao(rota);
+    const previsao = emFormacao ? '' : toIsoDate(r['previsao_entrega_atualizada'] ?? r['previsao_entrega']);
     const cod = String(r['Cod'] ?? r['cod'] ?? '').trim();
-    const cur = byRota.get(rota) ?? { previsoes: [], codigos: [] };
+    const cur = byRota.get(rota) ?? { previsoes: [], codigos: [], emFormacao };
+    cur.emFormacao = cur.emFormacao || emFormacao;
     if (previsao) cur.previsoes.push(previsao);
     if (cod) cur.codigos.push(cod);
     byRota.set(rota, cur);
@@ -266,7 +269,7 @@ function buildCarradasInfo(rows: Array<Record<string, unknown>>): Array<{ rota: 
   return [...byRota.entries()]
     .map(([rota, v]) => ({
       rota,
-      previsao_atual: formatDateRangePtBr(v.previsoes),
+      previsao_atual: v.emFormacao ? LABEL_CARRADA_EM_FORMACAO : formatDateRangePtBr(v.previsoes),
       codigos: sortedUnique(v.codigos),
     }))
     .sort((a, b) => a.rota.localeCompare(b.rota, 'pt-BR'));
@@ -385,6 +388,8 @@ export async function getPedidosErp(req: Request, res: Response): Promise<void> 
       rota: string | null;
     }>;
     let previsaoAtualByPd = new Map<string, string>();
+    const pdTemCarradaNormal = new Set<string>();
+    const pdTemCarradaEmFormacao = new Set<string>();
     // Restringir aos mesmos pedidos que aparecem no Gerenciador de Pedidos
     try {
       const { data: gerenciadorList } = await listarPedidos({});
@@ -395,6 +400,12 @@ export async function getPedidosErp(req: Request, res: Response): Promise<void> 
       for (const row of gerenciadorList as Array<Record<string, unknown>>) {
         const pd = String(row['PD'] ?? '').trim();
         if (!pd) continue;
+        const rota = rotaFromPedidoRow(row);
+        if (isCarradaEmFormacao(rota)) {
+          pdTemCarradaEmFormacao.add(pd);
+          continue;
+        }
+        pdTemCarradaNormal.add(pd);
         const previsaoIso = toIsoDate(row['previsao_entrega_atualizada'] ?? row['previsao_entrega']);
         if (!previsaoIso) continue;
         const prev = previsaoAtualByPd.get(pd);
@@ -414,16 +425,26 @@ export async function getPedidosErp(req: Request, res: Response): Promise<void> 
       const s = v instanceof Date ? v.toISOString().slice(0, 10) : String(v).trim().slice(0, 10);
       return s || null;
     };
-    const data = list.map((r) => ({
-      id: Number(r.id),
-      nome: String(r.nome ?? ''),
-      cliente: r.cliente != null ? String(r.cliente) : null,
-      dataEmissao: r.dataEmissao instanceof Date ? r.dataEmissao.toISOString().slice(0, 10) : String(r.dataEmissao ?? '').slice(0, 10),
-      dataEntregaPadrao: toDateStr(r.dataEntregaPadrao),
-      dataOriginalEntrega: toDateStr(r.dataOriginalEntrega),
-      previsao_atual: previsaoAtualByPd.get(String(r.nome ?? '').trim() || '') ?? null,
-      rota: r.rota != null && String(r.rota).trim() !== '' ? String(r.rota).trim() : null,
-    }));
+    const data = list.map((r) => {
+      const pd = String(r.nome ?? '').trim() || '';
+      const soEmFormacao =
+        pdTemCarradaEmFormacao.has(pd) && !pdTemCarradaNormal.has(pd);
+      const rotaErp = r.rota != null && String(r.rota).trim() !== '' ? String(r.rota).trim() : null;
+      const previsao =
+        soEmFormacao || isCarradaEmFormacao(rotaErp)
+          ? LABEL_CARRADA_EM_FORMACAO
+          : previsaoAtualByPd.get(pd) ?? null;
+      return {
+        id: Number(r.id),
+        nome: String(r.nome ?? ''),
+        cliente: r.cliente != null ? String(r.cliente) : null,
+        dataEmissao: r.dataEmissao instanceof Date ? r.dataEmissao.toISOString().slice(0, 10) : String(r.dataEmissao ?? '').slice(0, 10),
+        dataEntregaPadrao: toDateStr(r.dataEntregaPadrao),
+        dataOriginalEntrega: toDateStr(r.dataOriginalEntrega),
+        previsao_atual: previsao,
+        rota: rotaErp,
+      };
+    });
     res.json(data);
   } catch (e) {
     console.error('sycroorder getPedidosErp', e);
@@ -601,16 +622,22 @@ export async function getOrders(req: Request, res: Response): Promise<void> {
       const selectedItemIds = parseJsonArray((o as unknown as { item_ids_json?: string | null }).item_ids_json);
       const itemCodesJson = (o as unknown as { item_codes_json?: string | null }).item_codes_json;
       const relevantRows = resolveRelevantRowsForCard(rows, selectedItemIds, itemCodesJson);
+      const relevantNaoFormacao = relevantRows.filter(
+        (r) => !isCarradaEmFormacao(rotaDisplayKeyFromRow(r))
+      );
+      const soEmFormacao = relevantRows.length > 0 && relevantNaoFormacao.length === 0;
       const dataOriginalIso = formatDateRangePtBr(
         relevantRows
           .map((r) => toIsoDate(r['Data de entrega'] ?? r['Data de Entrega'] ?? r['dataParametro']))
           .filter(Boolean) as string[]
       );
-      const previsaoAtualIso = formatDateRangePtBr(
-        relevantRows
-          .map((r) => toIsoDate(r['previsao_entrega_atualizada'] ?? r['previsao_entrega']))
-          .filter(Boolean) as string[]
-      );
+      const previsaoAtualIso = soEmFormacao
+        ? null
+        : formatDateRangePtBr(
+            relevantNaoFormacao
+              .map((r) => toIsoDate(r['previsao_entrega_atualizada'] ?? r['previsao_entrega']))
+              .filter(Boolean) as string[]
+          );
 
       const clienteNome = pickFirstDistinctFromRows(rows, ['Cliente', 'cliente']);
       const vendedorNome = pickFirstDistinctFromRows(rows, [
@@ -626,9 +653,10 @@ export async function getOrders(req: Request, res: Response): Promise<void> {
         id: o.id,
         order_number: o.order_number,
         delivery_method: o.delivery_method,
-        current_promised_date: o.current_promised_date,
+        current_promised_date: soEmFormacao ? '' : o.current_promised_date,
         data_original: dataOriginalIso,
-        previsao_atual: previsaoAtualIso,
+        previsao_atual: soEmFormacao ? LABEL_CARRADA_EM_FORMACAO : previsaoAtualIso,
+        carrada_em_formacao: soEmFormacao,
         cliente_name: clienteNome,
         vendedor_name: vendedorNome,
         carradas_info: carradasInfo,

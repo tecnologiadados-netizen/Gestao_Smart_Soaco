@@ -142,7 +142,8 @@ export default function RegrasDataEntregaPage() {
         </p>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">
           Cada versão vale para pedidos cuja <strong>data de emissão</strong> seja igual ou posterior à vigência. Pedidos
-          emitidos antes da primeira versão mantêm o prazo legado (emissão + 30 dias).
+          emitidos antes da primeira versão usam o <strong>padrão do sistema</strong> (corte R$ 30.000 → 60 dias abaixo / 45
+          dias iguais ou acima).
         </p>
       </div>
 
@@ -255,7 +256,7 @@ export default function RegrasDataEntregaPage() {
               </p>
             ) : (
               <p className="text-sm text-slate-600 dark:text-slate-400">
-                Nenhuma versão cadastrada — carradas usam o legado (emissão + 30 dias).
+                Nenhuma versão cadastrada — carradas usam o padrão do sistema (corte R$ 30.000 → 60d / 45d).
               </p>
             )}
           </div>

@@ -7,6 +7,8 @@ export const EXCLUDED_SQL_ROTA_CATEGORIES = new Set([
   'requisicao',
 ]);
 
+export const LABEL_CARRADA_EM_FORMACAO = 'Carrada em formação';
+
 export function normalizeRotaNameStr(dm: string): string {
   return dm.trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 }
@@ -19,6 +21,18 @@ export function isExcludedSqlRotaCategory(dm: string): boolean {
 export function isCarradaRota(rota?: string | null): boolean {
   const n = (rota ?? '').trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
   return n.startsWith('rota ');
+}
+
+/**
+ * Carrada "em formação": nomes com constr/construção/cont.
+ * Produção = max das demais + 30 dias; entrega/previsão exibe "Carrada em formação".
+ */
+export function isCarradaEmFormacao(carrada?: string | null): boolean {
+  const n = normalizeRotaNameStr(carrada ?? '');
+  if (!n) return false;
+  if (n.includes('construcao') || n.includes('constr')) return true;
+  // "cont" como token (evita contrato, continente, etc.)
+  return /(^|[^a-z0-9])cont([^a-z0-9]|$)/.test(n);
 }
 
 export function rotaFromPedidoRow(row: Record<string, unknown>): string {

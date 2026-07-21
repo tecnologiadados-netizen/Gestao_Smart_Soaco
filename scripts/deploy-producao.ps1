@@ -53,10 +53,59 @@ function Stop-ProcessTree {
     $ErrorActionPreference = $prevEap
 }
 
+function Stop-NodeDoProjeto {
+    param([string]$PastaProjeto)
+    # Mata qualquer node do projeto que possa segurar query_engine-windows.dll.node
+    # (server, tsx scripts, npx, etc). Nao mexe no node embutido do Cursor/VS Code.
+    $rootNorm = $PastaProjeto.Replace('/', '\').TrimEnd('\').ToLowerInvariant()
+    $killed = @()
+    Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
+        $cmd = [string]$_.CommandLine
+        $exe = [string]$_.ExecutablePath
+        if (-not $cmd) { return }
+        if ($exe -match '(?i)[\\/]cursor[\\/]|[\\/]Code[\\/]|vscode') { return }
+        $cmdNorm = $cmd.Replace('/', '\').ToLowerInvariant()
+        if ($cmdNorm.Contains($rootNorm) -or $cmdNorm.Contains('gestorpedidos')) {
+            Stop-ProcessTree -ProcessId $_.ProcessId
+            $killed += $_.ProcessId
+        }
+    }
+    if ($killed.Count -gt 0) {
+        Write-Host "[2/9] Encerrados processos Node do projeto (PIDs: $($killed -join ', '))..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 2
+    }
+}
+
+function Unlock-PrismaQueryEngine {
+    param([string]$PastaProjeto)
+    $clientDir = Join-Path $PastaProjeto "backend\node_modules\.prisma\client"
+    $engine = Join-Path $clientDir "query_engine-windows.dll.node"
+    if (-not (Test-Path $clientDir)) { return }
+
+    Stop-NodeDoProjeto -PastaProjeto $PastaProjeto
+
+    # Remove/renomeia o DLL travado para o prisma generate conseguir gravar o novo.
+    if (Test-Path $engine) {
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        Remove-Item -LiteralPath $engine -Force -ErrorAction SilentlyContinue
+        if (Test-Path $engine) {
+            $bak = "$engine.old_$(Get-Date -Format 'yyyyMMddHHmmss')"
+            Rename-Item -LiteralPath $engine -NewName (Split-Path $bak -Leaf) -Force -ErrorAction SilentlyContinue
+        }
+        $ErrorActionPreference = $prevEap
+    }
+    Get-ChildItem -LiteralPath $clientDir -Filter "query_engine-windows.dll.node.tmp*" -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    Get-ChildItem -LiteralPath $clientDir -Filter "query_engine-windows.dll.node.old_*" -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
 function Stop-ProducaoParaDeploy {
     param(
         [string]$ServicoNome,
         [int]$Port,
+        [string]$PastaProjeto,
         [ref]$EstavaRodando
     )
 
@@ -78,13 +127,8 @@ function Stop-ProducaoParaDeploy {
     $ErrorActionPreference = $prevEap
     Start-Sleep -Seconds 2
 
-    Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
-        $cmd = [string]$_.CommandLine
-        if ($cmd -match 'dist[\\/]server\.js' -or ($cmd -match 'tsx watch' -and $cmd -match 'server\.ts')) {
-            Stop-ProcessTree -ProcessId $_.ProcessId
-        }
-    }
-    Start-Sleep -Seconds 2
+    # Antes: so matava server.js / tsx watch. Scripts tsx/npx orfaos seguravam o DLL do Prisma (EPERM).
+    Stop-NodeDoProjeto -PastaProjeto $PastaProjeto
 
     for ($attempt = 1; $attempt -le 8; $attempt++) {
         $pids = Get-PidsOnPort -Port $Port
@@ -101,14 +145,18 @@ function Stop-ProducaoParaDeploy {
 }
 
 function Invoke-PrismaGenerate {
-    param([int]$MaxAttempts = 6)
+    param(
+        [string]$PastaProjeto,
+        [int]$MaxAttempts = 6
+    )
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        Unlock-PrismaQueryEngine -PastaProjeto $PastaProjeto
         Write-Host "[6/9] prisma generate (tentativa $attempt/$MaxAttempts)..." -ForegroundColor Cyan
         npm run generate --prefix backend
         if ($LASTEXITCODE -eq 0) { return }
         if ($attempt -lt $MaxAttempts) {
-            Write-Host "prisma generate bloqueado (EPERM?) - aguardando liberacao do query engine..." -ForegroundColor Yellow
-            Start-Sleep -Seconds 4
+            Write-Host "prisma generate bloqueado (EPERM?) - liberando query engine e tentando de novo..." -ForegroundColor Yellow
+            Start-Sleep -Seconds 3
         }
     }
     throw "prisma generate falhou apos $MaxAttempts tentativas (arquivo query_engine-windows.dll.node em uso)."
@@ -221,7 +269,7 @@ try {
     Write-Host "[1/9] Sincronizando com origin/main..." -ForegroundColor Cyan
     Sync-GitComOriginMain -GitExe $Git
 
-    Stop-ProducaoParaDeploy -ServicoNome $ServicoNome -Port $port -EstavaRodando ([ref]$servicoEstavaRodando)
+    Stop-ProducaoParaDeploy -ServicoNome $ServicoNome -Port $port -PastaProjeto $PastaProjeto -EstavaRodando ([ref]$servicoEstavaRodando)
 
     # Instalacao precisa de devDependencies (typescript, vite). NODE_ENV=production no .env omitiria isso.
     $env:NODE_ENV = "development"
@@ -229,7 +277,7 @@ try {
     Invoke-NpmStep "[3/9] npm install (raiz)..." { npm install }
     Invoke-NpmStep "[4/9] npm install (backend)..." { npm install --prefix backend }
     Invoke-NpmStep "[5/9] npm install (frontend)..." { npm install --prefix frontend }
-    Invoke-PrismaGenerate
+    Invoke-PrismaGenerate -PastaProjeto $PastaProjeto
 
     if (-not $SemMigrate) {
         Write-Host "[7/9] prisma migrate deploy..." -ForegroundColor Cyan

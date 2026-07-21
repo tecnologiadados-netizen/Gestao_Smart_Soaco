@@ -1,33 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  obterDashEntregasAnalytics,
-  type AgingFaixaResumo,
-  type ClienteAtrasadoResumo,
-  type DashEntregasAnalytics,
-  type DashEntregasDrillFiltro,
-  type ObservacaoValorResumo,
-  type TipoFLeadTimeResumo,
-  type TipoFValorResumo,
-} from '../api/pedidos';
+import { obterDashEntregasAnalytics, type DashEntregasAnalytics } from '../api/pedidos';
 import DashEntregasAgingChart from '../components/dash-entregas/DashEntregasAgingChart';
 import DashEntregasConcentracaoCard from '../components/dash-entregas/DashEntregasConcentracaoCard';
-import DashEntregasKpiCards, { type KpiDrillKey } from '../components/dash-entregas/DashEntregasKpiCards';
+import DashEntregasKpiCards from '../components/dash-entregas/DashEntregasKpiCards';
 import DashEntregasRotasChart from '../components/dash-entregas/DashEntregasRotasChart';
 import DashEntregasStatusChart from '../components/dash-entregas/DashEntregasStatusChart';
 import DashEntregasTopClientesChart from '../components/dash-entregas/DashEntregasTopClientesChart';
-import ModalDashEntregasAgingTipoF from '../components/dash-entregas/ModalDashEntregasAgingTipoF';
-import ModalDashEntregasLeadTimeTipoF from '../components/dash-entregas/ModalDashEntregasLeadTimeTipoF';
-import ModalDashEntregasDetalhe from '../components/dash-entregas/ModalDashEntregasDetalhe';
-import { formatLeadTimeDias, formatMoedaDash, formatNumero, getTodayISO } from '../components/dash-entregas/dashEntregasUtils';
+
+/** Painel temporariamente indisponível (conteúdo borrado + overlay). */
+const PAINEL_EM_CONSTRUCAO = true;
 
 export default function DashboardPage() {
   const [analytics, setAnalytics] = useState<DashEntregasAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
-  const [drillFiltro, setDrillFiltro] = useState<DashEntregasDrillFiltro | null>(null);
-  const [modalAberto, setModalAberto] = useState(false);
-  const [agingFaixa, setAgingFaixa] = useState<AgingFaixaResumo | null>(null);
-  const [agingTipoFModalAberto, setAgingTipoFModalAberto] = useState(false);
-  const [leadTimeTipoFModalAberto, setLeadTimeTipoFModalAberto] = useState(false);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -45,145 +30,11 @@ export default function DashboardPage() {
     void carregar();
   }, [carregar]);
 
-  const abrirDrill = useCallback((filtro: DashEntregasDrillFiltro) => {
-    setDrillFiltro(filtro);
-    setModalAberto(true);
-  }, []);
-
-  const fecharDrill = useCallback(() => {
-    setModalAberto(false);
-    setDrillFiltro(null);
-  }, []);
-
-  const fecharAgingTipoF = useCallback(() => {
-    setAgingTipoFModalAberto(false);
-    setAgingFaixa(null);
-  }, []);
-
-  const fecharLeadTimeTipoF = useCallback(() => {
-    setLeadTimeTipoFModalAberto(false);
-  }, []);
-
-  const handleKpiDrill = useCallback(
-    (key: KpiDrillKey) => {
-      const hoje = getTodayISO();
-      switch (key) {
-        case 'total':
-          abrirDrill({
-            titulo: 'Todos os pedidos em aberto',
-            subtitulo: 'Saldo pendente total do gerenciador',
-          });
-          break;
-        case 'atrasado':
-          abrirDrill({
-            titulo: 'Pedidos atrasados',
-            subtitulo: 'Itens classificados como Atrasado',
-            status: 'Atrasado',
-          });
-          break;
-        case 'em_dia':
-          abrirDrill({
-            titulo: 'Pedidos em dia',
-            subtitulo: 'Itens classificados como Em dia',
-            status: 'Em dia',
-          });
-          break;
-        case 'entrega_hoje':
-          abrirDrill({
-            titulo: 'Entrega hoje',
-            subtitulo: `Previsão atualizada em ${hoje.split('-').reverse().join('/')}`,
-            data_ini: hoje,
-            data_fim: hoje,
-          });
-          break;
-        case 'lead_time':
-          setLeadTimeTipoFModalAberto(true);
-          break;
-      }
-    },
-    [abrirDrill]
-  );
-
-  const handleFaixaClick = useCallback((faixa: AgingFaixaResumo) => {
-    setAgingFaixa(faixa);
-    setAgingTipoFModalAberto(true);
-  }, []);
-
-  const handleAgingTipoFClick = useCallback(
-    (faixa: AgingFaixaResumo, item: TipoFValorResumo) => {
-      setAgingTipoFModalAberto(false);
-      abrirDrill({
-        titulo: `${faixa.label} — ${item.tipoF}`,
-        subtitulo: `${formatMoedaDash(item.valor)} · ${item.quantidade} linhas`,
-        faixa_atraso: faixa.faixa as DashEntregasDrillFiltro['faixa_atraso'],
-        tipo_f: item.tipoF,
-        status: faixa.faixa === 'em_dia' ? 'Em dia' : 'Atrasado',
-        gradeLayout: 'aging',
-      });
-    },
-    [abrirDrill]
-  );
-
-  const handleLeadTimeTipoFClick = useCallback(
-    (item: TipoFLeadTimeResumo) => {
-      setLeadTimeTipoFModalAberto(false);
-      abrirDrill({
-        titulo: `Lead time — ${item.tipoF}`,
-        subtitulo: `Média de ${formatLeadTimeDias(item.leadTimeMedioDias)} · ${formatNumero(item.quantidade)} linhas`,
-        tipo_f: item.tipoF,
-        gradeLayout: 'lead_time',
-      });
-    },
-    [abrirDrill]
-  );
-
-  const handleRotaClick = useCallback(
-    (rota: ObservacaoValorResumo, tipo: 'total' | 'atrasado' | 'em_dia') => {
-      const base = {
-        observacoes: rota.observacao,
-        subtitulo: rota.observacao,
-      };
-      if (tipo === 'atrasado') {
-        abrirDrill({
-          ...base,
-          titulo: `Atrasados — ${rota.observacao}`,
-          status: 'Atrasado',
-        });
-      } else if (tipo === 'em_dia') {
-        abrirDrill({
-          ...base,
-          titulo: `Em dia — ${rota.observacao}`,
-          status: 'Em dia',
-        });
-      } else {
-        abrirDrill({
-          ...base,
-          titulo: `Rota: ${rota.observacao}`,
-        });
-      }
-    },
-    [abrirDrill]
-  );
-
-  const handleClienteClick = useCallback(
-    (cliente: ClienteAtrasadoResumo) => {
-      abrirDrill({
-        titulo: `Cliente: ${cliente.cliente}`,
-        subtitulo: `${formatMoedaDash(cliente.valorAtrasado)} atrasado · ${cliente.quantidade} itens`,
-        cliente: cliente.cliente,
-        status: 'Atrasado',
-      });
-    },
-    [abrirDrill]
-  );
-
   const resumo = analytics?.resumo ?? null;
-  const leadTimeSubtitulo = resumo?.leadTimeMedioDias != null
-    ? `Média geral de ${formatLeadTimeDias(resumo.leadTimeMedioDias)} até a previsão original`
-    : 'Lead time médio por TipoF';
   const totalValorBase = resumo?.totalValorPendenteReal ?? 0;
+  const noop = () => {};
 
-  return (
+  const conteudo = (
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -198,7 +49,7 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={() => void carregar()}
-          disabled={loading}
+          disabled={loading || PAINEL_EM_CONSTRUCAO}
           className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
         >
           {loading ? 'Atualizando…' : 'Atualizar'}
@@ -206,7 +57,7 @@ export default function DashboardPage() {
       </header>
 
       <section>
-        <DashEntregasKpiCards resumo={resumo} loading={loading} onDrill={handleKpiDrill} />
+        <DashEntregasKpiCards resumo={resumo} loading={loading} onDrill={noop} />
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -216,13 +67,7 @@ export default function DashboardPage() {
           data={analytics?.concentracao?.porGrupoProduto ?? []}
           totalValorBase={totalValorBase}
           loading={loading}
-          onItemClick={(item) =>
-            abrirDrill({
-              titulo: `Grupo: ${item.label}`,
-              subtitulo: `${formatMoedaDash(item.valor)} · ${formatNumero(item.quantidade)} itens`,
-              grupo_produto: item.label,
-            })
-          }
+          onItemClick={noop}
         />
         <DashEntregasConcentracaoCard
           titulo="Concentração por Setor de produção"
@@ -230,13 +75,7 @@ export default function DashboardPage() {
           data={analytics?.concentracao?.porSetorProducao ?? []}
           totalValorBase={totalValorBase}
           loading={loading}
-          onItemClick={(item) =>
-            abrirDrill({
-              titulo: `Setor de produção: ${item.label}`,
-              subtitulo: `${formatMoedaDash(item.valor)} · ${formatNumero(item.quantidade)} itens`,
-              setor_producao: item.label,
-            })
-          }
+          onItemClick={noop}
         />
       </section>
 
@@ -247,13 +86,7 @@ export default function DashboardPage() {
           data={analytics?.concentracao?.porSubgrupo1 ?? []}
           totalValorBase={totalValorBase}
           loading={loading}
-          onItemClick={(item) =>
-            abrirDrill({
-              titulo: `Subgrupo1: ${item.label}`,
-              subtitulo: `${formatMoedaDash(item.valor)} · ${formatNumero(item.quantidade)} itens`,
-              subgrupo1: item.label,
-            })
-          }
+          onItemClick={noop}
         />
         <DashEntregasConcentracaoCard
           titulo="Concentração por Subgrupo2"
@@ -261,13 +94,7 @@ export default function DashboardPage() {
           data={analytics?.concentracao?.porSubgrupo2 ?? []}
           totalValorBase={totalValorBase}
           loading={loading}
-          onItemClick={(item) =>
-            abrirDrill({
-              titulo: `Subgrupo2: ${item.label}`,
-              subtitulo: `${formatMoedaDash(item.valor)} · ${formatNumero(item.quantidade)} itens`,
-              subgrupo2: item.label,
-            })
-          }
+          onItemClick={noop}
         />
       </section>
 
@@ -275,45 +102,46 @@ export default function DashboardPage() {
         <DashEntregasStatusChart
           resumo={resumo}
           loading={loading}
-          onAtrasadoClick={() => handleKpiDrill('atrasado')}
-          onEmDiaClick={() => handleKpiDrill('em_dia')}
+          onAtrasadoClick={noop}
+          onEmDiaClick={noop}
         />
-        <DashEntregasAgingChart
-          data={analytics?.aging ?? []}
-          loading={loading}
-          onFaixaClick={handleFaixaClick}
-        />
+        <DashEntregasAgingChart data={analytics?.aging ?? []} loading={loading} onFaixaClick={noop} />
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="xl:col-span-2">
-          <DashEntregasRotasChart
-            data={analytics?.rotas ?? []}
-            loading={loading}
-            onRotaClick={handleRotaClick}
-          />
+          <DashEntregasRotasChart data={analytics?.rotas ?? []} loading={loading} onRotaClick={noop} />
         </div>
         <DashEntregasTopClientesChart
           data={analytics?.topClientesAtrasados ?? []}
           loading={loading}
-          onClienteClick={handleClienteClick}
+          onClienteClick={noop}
         />
       </section>
+    </div>
+  );
 
-      <ModalDashEntregasAgingTipoF
-        open={agingTipoFModalAberto}
-        faixa={agingFaixa}
-        onClose={fecharAgingTipoF}
-        onTipoFClick={handleAgingTipoFClick}
-      />
-      <ModalDashEntregasLeadTimeTipoF
-        open={leadTimeTipoFModalAberto}
-        titulo="Lead time — média por TipoF"
-        subtitulo={leadTimeSubtitulo}
-        onClose={fecharLeadTimeTipoF}
-        onTipoFClick={handleLeadTimeTipoFClick}
-      />
-      <ModalDashEntregasDetalhe open={modalAberto} filtro={drillFiltro} onClose={fecharDrill} />
+  if (!PAINEL_EM_CONSTRUCAO) return conteudo;
+
+  return (
+    <div className="relative min-h-[60vh]">
+      <div className="pointer-events-none select-none blur-sm opacity-60" aria-hidden>
+        {conteudo}
+      </div>
+      <div
+        className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-slate-950/45 backdrop-blur-[2px]"
+        role="status"
+        aria-live="polite"
+      >
+        <div className="mx-4 max-w-md rounded-2xl border border-slate-200/80 bg-white/95 px-8 py-10 text-center shadow-xl dark:border-slate-600 dark:bg-slate-800/95">
+          <p className="text-2xl font-semibold tracking-tight text-slate-800 dark:text-slate-100">
+            Em construção
+          </p>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            Este painel está temporariamente indisponível. Em breve voltará com melhorias.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

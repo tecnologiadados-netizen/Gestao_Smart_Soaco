@@ -416,6 +416,8 @@ export interface TooltipDetalheRow {
   pedido: string;
   /** Nome do cliente (quando disponível no snapshot/API). */
   cliente?: string;
+  /** Tipo de pedido Nomus (Assistência, Padrão, Produção para estoque, etc.). */
+  tipoPedido?: string;
   municipio: string;
   aVista: string;
   valorPendente: number;
@@ -483,11 +485,17 @@ export async function obterDetalhesMapaMunicipio(
   return apiJson<MapaMunicipioDetalhesResponse>(`/api/pedidos/mapa-municipios/detalhes?${params.toString()}`);
 }
 
-export type HistoricoTipoEvento = 'ajuste_previsao' | 'tag_disponivel' | 'comentario_sycro';
+export type HistoricoTipoEvento =
+  | 'ajuste_previsao'
+  | 'tag_disponivel'
+  | 'comentario_sycro'
+  | 'regra_carrada';
 
 export interface HistoricoItem {
   id: number;
   id_pedido: string;
+  /** Rota/carrada do override; null = ajuste base (vale em todas as rotas). */
+  rota?: string | null;
   previsao_nova: string | null;
   previsao_anterior?: string | null;
   motivo: string;
@@ -499,8 +507,17 @@ export interface HistoricoItem {
   tag_disponivel?: boolean;
 }
 
-export async function obterHistorico(idPedido: string): Promise<HistoricoItem[]> {
-  return apiJson<HistoricoItem[]>(`/api/pedidos/${encodeURIComponent(idPedido)}/historico`);
+export async function obterHistorico(
+  idPedido: string,
+  opcoes?: { rota?: string | null }
+): Promise<HistoricoItem[]> {
+  const params = new URLSearchParams();
+  const rota = opcoes?.rota != null ? String(opcoes.rota).trim() : '';
+  if (rota) params.set('rota', rota);
+  const qs = params.toString();
+  return apiJson<HistoricoItem[]>(
+    `/api/pedidos/${encodeURIComponent(idPedido)}/historico${qs ? `?${qs}` : ''}`
+  );
 }
 
 export async function listarPedidosEncerrados(
@@ -608,6 +625,8 @@ export type DataProducaoLoteItem = {
   id_pedido: string;
   /** Data de produção (YYYY-MM-DD ou ISO). */
   data_producao: string;
+  /** Override por rota/carrada. Omitido = ajuste base. */
+  rota?: string | null;
 };
 
 /** Grava a data de produção de vários pedidos (Sequenciamento de Carradas). Não altera o Nomus. */

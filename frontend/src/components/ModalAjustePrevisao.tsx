@@ -4,11 +4,7 @@ import { listarPedidos, type Pedido } from '../api/pedidos';
 import { listarMotivosSugestao, type MotivoSugestao } from '../api/motivosSugestao';
 import ModalGerenciarMotivos from './ModalGerenciarMotivos';
 import CampoLabelComAjuda, { AJUDA_CAMPO_OBSERVACAO } from './CampoLabelComAjuda';
-import {
-  clearDatePickerAberto,
-  onDateInputToggleBlur,
-  onDateInputToggleClick,
-} from './sequenciamento-carradas/sequenciamentoGradeUi';
+import SequenciamentoDateField from './sequenciamento-carradas/SequenciamentoDateField';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSOES } from '../config/permissoes';
 import {
@@ -104,9 +100,6 @@ export default function ModalAjustePrevisao({
   const [carradaCheckLoading, setCarradaCheckLoading] = useState(false);
   const pendingRef = useRef<PendingDecision | null>(null);
   const pendingProducaoRef = useRef<string | null>(null);
-  const datePickerAbertoRef = useRef<string | null>(null);
-  const CAMPO_DATA_PRODUCAO = 'ajuste:dataProducao';
-  const CAMPO_DATA_PREVISAO = 'ajuste:previsao';
   const { hasPermission } = useAuth();
   const podeGerenciarMotivos =
     hasPermission(PERMISSOES.PCP_MOTIVO_CRIAR) ||
@@ -132,7 +125,6 @@ export default function ModalAjustePrevisao({
     setCarradaRotaNome('');
     pendingRef.current = null;
     pendingProducaoRef.current = null;
-    clearDatePickerAberto(datePickerAbertoRef);
     setPrevisaoNova(
       pedido.previsao_entrega_atualizada ? String(pedido.previsao_entrega_atualizada).slice(0, 10) : ''
     );
@@ -273,8 +265,18 @@ export default function ModalAjustePrevisao({
         return;
       }
 
-      // Somente data de produção (carrada normal): atualiza simulação, sem API de previsão.
-      if (producaoMudou && !calendario.producaoDerivadaPrevisao && !previsaoMudou) {
+      // Somente produção (ou previsão só elevada para acompanhar produção): simulação, sem API.
+      const previsaoApenasClamp =
+        previsaoMudou &&
+        !!producaoNovaNorm &&
+        previsaoNovaNorm === producaoNovaNorm &&
+        (!!previsaoAtualStr ? previsaoAtualStr < producaoNovaNorm : true);
+
+      if (
+        producaoMudou &&
+        !calendario.producaoDerivadaPrevisao &&
+        (!previsaoMudou || previsaoApenasClamp)
+      ) {
         if (!producaoNovaNorm) {
           setErrors({ data_producao_nova: 'Informe a data' });
           onError('Informe a nova data de produção.');
@@ -489,13 +491,17 @@ export default function ModalAjustePrevisao({
           {calendario && (
             <div className="mb-4">
               <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Nova data de produção</label>
-              <input
-                type="date"
+              <SequenciamentoDateField
+                fullWidth
                 value={data_producao_nova}
-                onChange={(e) => setDataProducaoNova(e.target.value)}
-                onClick={(e) => onDateInputToggleClick(e, CAMPO_DATA_PRODUCAO, datePickerAbertoRef)}
-                onBlur={() => onDateInputToggleBlur(CAMPO_DATA_PRODUCAO, datePickerAbertoRef)}
-                className="w-full rounded-lg bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 focus:ring-2 focus:ring-primary-600 focus:border-transparent"
+                onChange={(nova) => {
+                  setDataProducaoNova(nova);
+                  const previsaoForm = previsao_nova.trim().slice(0, 10);
+                  if (nova && (!previsaoForm || previsaoForm < nova)) {
+                    setPrevisaoNova(nova);
+                  }
+                }}
+                className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
               />
               {errors.data_producao_nova && (
                 <p className="text-amber-400 text-xs mt-1">{errors.data_producao_nova}</p>
@@ -504,13 +510,11 @@ export default function ModalAjustePrevisao({
           )}
           <div className="mb-4">
             <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Nova data de previsão</label>
-            <input
-              type="date"
+            <SequenciamentoDateField
+              fullWidth
               value={previsao_nova}
-              onChange={(e) => setPrevisaoNova(e.target.value)}
-              onClick={(e) => onDateInputToggleClick(e, CAMPO_DATA_PREVISAO, datePickerAbertoRef)}
-              onBlur={() => onDateInputToggleBlur(CAMPO_DATA_PREVISAO, datePickerAbertoRef)}
-              className="w-full rounded-lg bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 focus:ring-2 focus:ring-primary-600 focus:border-transparent"
+              onChange={setPrevisaoNova}
+              className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
             />
             {errors.previsao_nova && (
               <p className="text-amber-400 text-xs mt-1">{errors.previsao_nova}</p>

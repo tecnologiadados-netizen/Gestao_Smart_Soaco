@@ -115,6 +115,7 @@ export default function GradeFiltroExcelPortal({
       }}
       className="rounded-lg border border-slate-300 bg-white p-2 text-slate-800 shadow-2xl dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
       onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
     >
       <button type="button" onClick={() => escolherOrdenacao('asc')} className={sortBtnClass('asc')}>
         {sortAscLabel}

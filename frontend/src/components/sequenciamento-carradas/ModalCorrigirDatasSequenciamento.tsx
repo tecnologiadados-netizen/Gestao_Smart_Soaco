@@ -1,19 +1,17 @@
-import { useMemo, useRef, type KeyboardEvent, type MutableRefObject } from 'react';
-import { Calendar } from 'lucide-react';
+import { useMemo, type KeyboardEvent } from 'react';
 import { formatDataCurta, hojeISO, toISODate, type CarradaDataInvalida } from './simulacaoCarradas';
 import { labelPedidoMapa } from '../../utils/mapaMunicipioPedido';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import GradeFiltroCabecalhoBtn from '../grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../grade/GradeFiltroExcelPortal';
+import { DATE_COL_KEYS, focusSeqDateInput, type DateColKey } from './sequenciamentoGradeUi';
+import SequenciamentoDateField from './SequenciamentoDateField';
 import {
-  clearDatePickerAberto,
-  DATE_COL_KEYS,
-  focusSeqDateInput,
-  onDateInputToggleBlur,
-  onDateInputToggleClick,
-  type DateColKey,
-} from './sequenciamentoGradeUi';
+  BADGE_GRADE_CLASS,
+  classePillStatusPrazo,
+  type StatusPedidoBadgeFields,
+} from '../../utils/statusPedidoBadges';
 import {
   agruparInvalidasPorPedido,
   chavePedidoGrupo,
@@ -40,9 +38,6 @@ function classeLinhaCorrigir(
   }
   return TR_ROW;
 }
-
-const DATE_INPUT_CLASS =
-  'w-[8rem] rounded-md border border-slate-300 bg-white px-1.5 py-1 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100';
 
 const TH_STICKY =
   'sticky top-0 z-20 border border-primary-500/40 bg-primary-600 px-2 py-2 text-left font-semibold text-white shadow-[0_1px_0_rgba(0,0,0,0.12)]';
@@ -95,6 +90,37 @@ type EntryAgrupada =
   | { kind: 'grupo'; grupo: GrupoInvalidasPorPedido }
   | { kind: 'carrada'; row: CarradaDataInvalida };
 
+function badgesDoGrupo(itens: CarradaDataInvalida[]): StatusPedidoBadgeFields {
+  const comStatus = itens.find((i) => i.statusPrazo || i.card || i.faturado) ?? itens[0];
+  if (!comStatus) return {};
+  return {
+    statusPrazo: comStatus.statusPrazo,
+    card: comStatus.card,
+    faturado: comStatus.faturado,
+  };
+}
+
+function StatusPedidoPills({ badges }: { badges: StatusPedidoBadgeFields }) {
+  const { statusPrazo, card, faturado } = badges;
+  if (!statusPrazo && !card && !faturado) return null;
+  return (
+    <div className="mt-0.5 flex flex-col items-center gap-0.5">
+      {statusPrazo ? (
+        <span className={`${BADGE_GRADE_CLASS} ${classePillStatusPrazo(statusPrazo)}`}>{statusPrazo}</span>
+      ) : null}
+      {card === 'Card' ? (
+        <span className={`${BADGE_GRADE_CLASS} bg-sky-500/20 text-sky-400`}>Card</span>
+      ) : null}
+      {card === 'Disponível' ? (
+        <span className={`${BADGE_GRADE_CLASS} bg-emerald-600/25 text-emerald-300`}>Disponível</span>
+      ) : null}
+      {faturado ? (
+        <span className={`${BADGE_GRADE_CLASS} bg-violet-500/20 text-violet-400`}>Faturado</span>
+      ) : null}
+    </div>
+  );
+}
+
 function PedidoLoteDataPicker({
   titulo,
   onSelecionar,
@@ -104,38 +130,13 @@ function PedidoLoteDataPicker({
   onSelecionar: (value: string) => void;
   iconClassName?: string;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
   return (
-    <span className="relative inline-flex">
-      <button
-        type="button"
-        className={`rounded p-0.5 hover:bg-slate-200/80 dark:hover:bg-slate-600/50 ${iconClassName}`}
-        title={titulo}
-        aria-label={titulo}
-        onClick={(e) => {
-          e.stopPropagation();
-          const input = inputRef.current;
-          if (!input) return;
-          input.showPicker?.();
-          input.focus();
-        }}
-      >
-        <Calendar className="h-4 w-4" aria-hidden />
-      </button>
-      <input
-        ref={inputRef}
-        type="date"
-        className="sr-only"
-        tabIndex={-1}
-        aria-hidden
-        onChange={(e) => {
-          const value = e.target.value;
-          if (value) onSelecionar(value);
-          e.target.value = '';
-        }}
-      />
-    </span>
+    <SequenciamentoDateField
+      iconOnly
+      iconTitle={titulo}
+      className={iconClassName}
+      onChange={onSelecionar}
+    />
   );
 }
 
@@ -144,82 +145,75 @@ function renderInputsDataItem(
   opts: {
     divergeProducao?: boolean;
     divergeEntrega?: boolean;
-    datePickerAbertoRef: MutableRefObject<string | null>;
     onEditar: Props['onEditar'];
-    handleDateKey: (e: KeyboardEvent<HTMLInputElement>, rowKey: string, colKey: DateColKey) => void;
+    handleDateKey: (e: KeyboardEvent<HTMLButtonElement>, rowKey: string, colKey: DateColKey) => void;
     replicarProducaoNaEntrega: (key: string, dataProducao: string) => void;
+    replicarEntregaNaProducao: (key: string, dataEntrega: string) => void;
   }
 ) {
   const {
     divergeProducao = false,
     divergeEntrega = false,
-    datePickerAbertoRef,
     onEditar,
     handleDateKey,
     replicarProducaoNaEntrega,
+    replicarEntregaNaProducao,
   } = opts;
 
   return (
     <>
       <td className="px-2 py-2 align-middle">
-        <input
-          type="date"
-          className={`${DATE_INPUT_CLASS} ${
+        <SequenciamentoDateField
+          value={toISODate(c.dataProducao)}
+          rowKey={c.key}
+          colKey="dataProducao"
+          className={`text-xs ${
             c.producaoPassada ? 'border-red-400 ring-1 ring-red-300' : ''
           } ${divergeProducao ? 'border-amber-400 ring-1 ring-amber-200' : ''}`}
-          value={toISODate(c.dataProducao)}
-          data-editinput
-          data-rowkey={c.key}
-          data-colkey="dataProducao"
-          onChange={(e) => {
-            clearDatePickerAberto(datePickerAbertoRef);
-            onEditar(c.key, 'dataProducao', e.target.value);
-          }}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-            if (e.key === 'Escape') clearDatePickerAberto(datePickerAbertoRef);
-            handleDateKey(e, c.key, 'dataProducao');
-          }}
-          onClick={(e) => onDateInputToggleClick(e, `${c.key}:dataProducao`, datePickerAbertoRef)}
-          onBlur={() => onDateInputToggleBlur(`${c.key}:dataProducao`, datePickerAbertoRef)}
+          onChange={(iso) => onEditar(c.key, 'dataProducao', iso)}
+          onKeyDown={(e) => handleDateKey(e, c.key, 'dataProducao')}
         />
       </td>
-      <td className="w-8 px-1 py-2 text-center align-middle">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            replicarProducaoNaEntrega(c.key, c.dataProducao);
-          }}
-          disabled={!c.dataProducao}
-          className="rounded px-1.5 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-primary-300 dark:hover:bg-primary-900/30"
-          title="Replicar produção na entrega"
-          aria-label="Replicar produção na entrega"
-        >
-          →
-        </button>
+      <td className="w-12 px-0.5 py-2 text-center align-middle">
+        <div className="flex flex-col items-center gap-0.5">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              replicarProducaoNaEntrega(c.key, c.dataProducao);
+            }}
+            disabled={!c.dataProducao}
+            className="rounded px-1 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-primary-300 dark:hover:bg-primary-900/30"
+            title="Replicar produção na entrega"
+            aria-label="Replicar produção na entrega"
+          >
+            →
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              replicarEntregaNaProducao(c.key, c.dataEntrega);
+            }}
+            disabled={!c.dataEntrega}
+            className="rounded px-1 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-primary-300 dark:hover:bg-primary-900/30"
+            title="Replicar entrega na produção"
+            aria-label="Replicar entrega na produção"
+          >
+            ←
+          </button>
+        </div>
       </td>
       <td className="px-2 py-2 pr-4 align-middle">
-        <input
-          type="date"
-          className={`${DATE_INPUT_CLASS} ${
+        <SequenciamentoDateField
+          value={toISODate(c.dataEntrega)}
+          rowKey={c.key}
+          colKey="dataEntrega"
+          className={`text-xs ${
             c.entregaPassada ? 'border-red-400 ring-1 ring-red-300' : ''
           } ${divergeEntrega ? 'border-amber-400 ring-1 ring-amber-200' : ''}`}
-          value={toISODate(c.dataEntrega)}
-          data-editinput
-          data-rowkey={c.key}
-          data-colkey="dataEntrega"
-          onChange={(e) => {
-            clearDatePickerAberto(datePickerAbertoRef);
-            onEditar(c.key, 'dataEntrega', e.target.value);
-          }}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-            if (e.key === 'Escape') clearDatePickerAberto(datePickerAbertoRef);
-            handleDateKey(e, c.key, 'dataEntrega');
-          }}
-          onClick={(e) => onDateInputToggleClick(e, `${c.key}:dataEntrega`, datePickerAbertoRef)}
-          onBlur={() => onDateInputToggleBlur(`${c.key}:dataEntrega`, datePickerAbertoRef)}
+          onChange={(iso) => onEditar(c.key, 'dataEntrega', iso)}
+          onKeyDown={(e) => handleDateKey(e, c.key, 'dataEntrega')}
         />
       </td>
     </>
@@ -237,7 +231,6 @@ export default function ModalCorrigirDatasSequenciamento({
   const qtdConcluidas = invalidas.filter((c) => c.concluida).length;
   const temPrevisaoVencida = invalidas.some((c) => c.previsaoPassada);
   const temItensPedido = invalidas.some((c) => c.idPedido);
-  const datePickerAbertoRef = useRef<string | null>(null);
 
   const columnIds = useMemo(
     () => (temItensPedido ? [...COLS_ITEM] : [...COLS_CARRADA]),
@@ -292,9 +285,20 @@ export default function ModalCorrigirDatasSequenciamento({
     onEditar(key, 'dataEntrega', dataProducao);
   };
 
-  const replicarProducaoNaEntregaTodas = () => {
-    for (const c of invalidas) {
-      if (c.dataProducao) onEditar(c.key, 'dataEntrega', c.dataProducao);
+  const replicarEntregaNaProducao = (key: string, dataEntrega: string) => {
+    if (!dataEntrega) return;
+    onEditar(key, 'dataProducao', dataEntrega);
+  };
+
+  const replicarProducaoNaEntregaPedido = (grupo: GrupoInvalidasPorPedido) => {
+    for (const item of grupo.itens) {
+      if (item.dataProducao) onEditar(item.key, 'dataEntrega', item.dataProducao);
+    }
+  };
+
+  const replicarEntregaNaProducaoPedido = (grupo: GrupoInvalidasPorPedido) => {
+    for (const item of grupo.itens) {
+      if (item.dataEntrega) onEditar(item.key, 'dataProducao', item.dataEntrega);
     }
   };
 
@@ -309,7 +313,7 @@ export default function ModalCorrigirDatasSequenciamento({
   useRegisterModalEscape({ id: 'seq-corrigir-datas', onClose: handleEscape, zIndex: 140 });
 
   const handleDateKey = (
-    e: React.KeyboardEvent<HTMLInputElement>,
+    e: React.KeyboardEvent<HTMLButtonElement>,
     rowKey: string,
     colKey: DateColKey
   ) => {
@@ -413,17 +417,7 @@ export default function ModalCorrigirDatasSequenciamento({
                   </>
                 )}
                 {renderTh('dataProducao')}
-                <th className={`${TH_STICKY} w-8 px-1 text-center`}>
-                  <button
-                    type="button"
-                    onClick={replicarProducaoNaEntregaTodas}
-                    className="mx-auto block rounded px-1.5 py-0.5 text-xs font-medium text-white hover:bg-primary-500/50"
-                    title="Replicar data de produção para entrega em todas as linhas"
-                    aria-label="Replicar data de produção para entrega em todas as linhas"
-                  >
-                    →
-                  </button>
-                </th>
+                <th className={`${TH_STICKY} w-12 px-0.5 text-center`} aria-hidden />
                 {renderTh('dataEntrega', 'pr-4')}
               </tr>
             </thead>
@@ -458,10 +452,10 @@ export default function ModalCorrigirDatasSequenciamento({
                           ) : null}
                         </td>
                         {renderInputsDataItem(c, {
-                          datePickerAbertoRef,
                           onEditar,
                           handleDateKey,
                           replicarProducaoNaEntrega,
+                          replicarEntregaNaProducao,
                         })}
                       </tr>,
                     ];
@@ -471,6 +465,9 @@ export default function ModalCorrigirDatasSequenciamento({
                   const rowSpan = grupo.itens.length;
                   const previsaoGrupo = grupo.itens.find((i) => i.previsaoPassada && i.previsaoAtual);
                   const grupoTodoConcluido = grupo.itens.every((i) => i.concluida);
+                  const badgesGrupo = badgesDoGrupo(grupo.itens);
+                  const temProducaoGrupo = grupo.itens.some((i) => !!i.dataProducao);
+                  const temEntregaGrupo = grupo.itens.some((i) => !!i.dataEntrega);
 
                   return grupo.itens.map((c, itemIdx) => {
                     const isFirst = itemIdx === 0;
@@ -495,8 +492,35 @@ export default function ModalCorrigirDatasSequenciamento({
                                     iconClassName="text-emerald-600 dark:text-emerald-400"
                                     onSelecionar={(value) => editarPedido(grupo, 'dataEntrega', value)}
                                   />
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      replicarProducaoNaEntregaPedido(grupo);
+                                    }}
+                                    disabled={!temProducaoGrupo}
+                                    className="rounded px-1 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-primary-300 dark:hover:bg-primary-900/30"
+                                    title="Replicar produção na entrega em todos os itens do pedido"
+                                    aria-label="Replicar produção na entrega em todos os itens do pedido"
+                                  >
+                                    →
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      replicarEntregaNaProducaoPedido(grupo);
+                                    }}
+                                    disabled={!temEntregaGrupo}
+                                    className="rounded px-1 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-primary-300 dark:hover:bg-primary-900/30"
+                                    title="Replicar entrega na produção em todos os itens do pedido"
+                                    aria-label="Replicar entrega na produção em todos os itens do pedido"
+                                  >
+                                    ←
+                                  </button>
                                 </span>
                               </div>
+                              <StatusPedidoPills badges={badgesGrupo} />
                               {grupoTodoConcluido ? (
                                 <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
                                   Concluído
@@ -543,10 +567,10 @@ export default function ModalCorrigirDatasSequenciamento({
                         {renderInputsDataItem(c, {
                           divergeProducao,
                           divergeEntrega,
-                          datePickerAbertoRef,
                           onEditar,
                           handleDateKey,
                           replicarProducaoNaEntrega,
+                          replicarEntregaNaProducao,
                         })}
                       </tr>
                     );
@@ -623,10 +647,10 @@ export default function ModalCorrigirDatasSequenciamento({
                         </>
                       )}
                       {renderInputsDataItem(c, {
-                        datePickerAbertoRef,
                         onEditar,
                         handleDateKey,
                         replicarProducaoNaEntrega,
+                        replicarEntregaNaProducao,
                       })}
                     </tr>
                   );

@@ -4,6 +4,9 @@ import {
   grupoPedidoMotivoConcluido,
   itemMotivoConcluido,
   motivoComumIds,
+  observacaoComumIds,
+  previsaoConfiavelComumIds,
+  previsaoConfiavelEfetiva,
 } from './confirmacaoMotivosUtils';
 import type { PedidoAlterado } from './simulacaoCarradas';
 
@@ -41,6 +44,26 @@ describe('motivoComumIds', () => {
 
   it('retorna vazio quando diverge', () => {
     expect(motivoComumIds(['a', 'b'], { a: 'A', b: 'B' })).toBe('');
+  });
+});
+
+describe('observacaoComumIds', () => {
+  it('retorna observação comum ou vazio se divergir', () => {
+    expect(observacaoComumIds(['a', 'b'], { a: 'Obs', b: 'Obs' })).toBe('Obs');
+    expect(observacaoComumIds(['a', 'b'], { a: 'Obs', b: 'Outra' })).toBe('');
+  });
+});
+
+describe('previsaoConfiavel', () => {
+  it('trata ausente como true', () => {
+    expect(previsaoConfiavelEfetiva('x', {})).toBe(true);
+    expect(previsaoConfiavelEfetiva('x', { x: false })).toBe(false);
+  });
+
+  it('detecta valor comum ou divergência', () => {
+    expect(previsaoConfiavelComumIds(['a', 'b'], {})).toBe(true);
+    expect(previsaoConfiavelComumIds(['a', 'b'], { a: false, b: false })).toBe(false);
+    expect(previsaoConfiavelComumIds(['a', 'b'], { a: false })).toBe(null);
   });
 });
 

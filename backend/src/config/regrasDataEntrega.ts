@@ -24,5 +24,7 @@ export const DEFAULT_REGRA_DATA_ENTREGA: RegraDataEntregaConfig = {
   },
 };
 
-/** Dias fixos (legado SQL) quando não há versão vigente na data de emissão do pedido. */
+/**
+ * @deprecated Mantido por compatibilidade; o fallback sem versão vigente usa DEFAULT_REGRA_DATA_ENTREGA.
+ */
 export const LEGADO_DIAS_CARRADA_SEM_VERSAO = 30;

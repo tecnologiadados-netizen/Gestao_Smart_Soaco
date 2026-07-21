@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { listarMotivosSugestao, type MotivoSugestao } from '../../api/motivosSugestao';
-import { formatDataCurta, formatQtdeInt, type PedidoAlterado } from './simulacaoCarradas';
+import {
+  formatDataCurta,
+  formatQtdeInt,
+  type ExcessoQtdeRomaneadaCanon,
+  type PedidoAlterado,
+} from './simulacaoCarradas';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 import {
@@ -10,17 +15,28 @@ import {
   grupoPedidoMotivoConcluido,
   itemMotivoConcluido,
   motivoComumIds,
+  observacaoComumIds,
+  previsaoConfiavelComumIds,
+  previsaoConfiavelEfetiva,
 } from './confirmacaoMotivosUtils';
 
 type Props = {
   pedidosEntrega: PedidoAlterado[];
   /** Quantidade de carradas que terão apenas a Data de produção atualizada (sem mudança de previsão). */
   qtdCarradasSomenteProducao: number;
+  /** Soma de Qtde Romaneada do item excede o Pendente — bloqueia confirmação. */
+  excessosQtdeRomaneada?: ExcessoQtdeRomaneadaCanon[];
   salvando: boolean;
   erro: string | null;
   /** Motivos por id_pedido (estado vive na página para entrar no autosave do rascunho). */
   motivoPorId: Record<string, string>;
   onMotivoPorIdChange: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
+  observacaoPorId: Record<string, string>;
+  onObservacaoPorIdChange: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
+  previsaoConfiavelPorId: Record<string, boolean>;
+  onPrevisaoConfiavelPorIdChange: (
+    updater: (prev: Record<string, boolean>) => Record<string, boolean>
+  ) => void;
   onConfirmar: (motivoPorIdPedido: Record<string, string>) => void;
   onClose: () => void;
   /** Volta à etapa anterior (ex.: corrigir datas), se disponível. */
@@ -241,10 +257,15 @@ type GrupoCarrada = {
 export default function ConfirmacaoSimulacaoModal({
   pedidosEntrega,
   qtdCarradasSomenteProducao,
+  excessosQtdeRomaneada = [],
   salvando,
   erro,
   motivoPorId,
   onMotivoPorIdChange,
+  observacaoPorId,
+  onObservacaoPorIdChange,
+  previsaoConfiavelPorId,
+  onPrevisaoConfiavelPorIdChange,
   onConfirmar,
   onClose,
   onVoltar,
@@ -301,6 +322,35 @@ export default function ConfirmacaoSimulacaoModal({
     [onMotivoPorIdChange]
   );
 
+  const selecionarObservacao = useCallback(
+    (ids: string[], observacao: string) => {
+      onObservacaoPorIdChange((prev) => {
+        const next = { ...prev };
+        const valor = observacao.slice(0, 1000);
+        for (const id of ids) {
+          if (valor.trim()) next[id] = valor;
+          else delete next[id];
+        }
+        return next;
+      });
+    },
+    [onObservacaoPorIdChange]
+  );
+
+  const selecionarConfiavel = useCallback(
+    (ids: string[], confiavel: boolean) => {
+      onPrevisaoConfiavelPorIdChange((prev) => {
+        const next = { ...prev };
+        for (const id of ids) {
+          if (confiavel) delete next[id];
+          else next[id] = false;
+        }
+        return next;
+      });
+    },
+    [onPrevisaoConfiavelPorIdChange]
+  );
+
   const pendentes = useMemo(
     () => pedidosEntrega.filter((p) => !motivoPorId[p.idPedido]?.trim()),
     [pedidosEntrega, motivoPorId]
@@ -309,11 +359,6 @@ export default function ConfirmacaoSimulacaoModal({
     () => new Set(pendentes.map((p) => p.rota)),
     [pendentes]
   );
-
-  const aplicarNasPendentes = (motivo: string) => {
-    if (!motivo) return;
-    selecionarMotivo(pendentes.map((p) => p.idPedido), motivo);
-  };
 
   const toggleExpandido = (rota: string) =>
     setExpandido((prev) => {
@@ -324,6 +369,12 @@ export default function ConfirmacaoSimulacaoModal({
     });
 
   const confirmar = () => {
+    if (excessosQtdeRomaneada.length > 0) {
+      setValidacao(
+        'Há itens com quantidade romaneada superior ao saldo a faturar (Pendente). Corrija no ERP antes de confirmar.'
+      );
+      return;
+    }
     if (pedidosEntrega.length > 0 && pendentes.length > 0) {
       setValidacao(
         `Selecione um motivo para todas as carradas (${gruposPendentes.size} carrada(s) / ${pendentes.length} pedido(s) sem motivo).`
@@ -365,8 +416,8 @@ export default function ConfirmacaoSimulacaoModal({
               Registrar motivos e confirmar
             </h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Escolha o motivo por carrada, por pedido (replicado para todos os itens do PD) ou por item.
-              Expanda a carrada para ajustar exceções. Itens com motivo ficam destacados em verde.
+              Informe motivo, observação e se a previsão é confiável (iguais ao Gerenciador de Pedidos).
+              Expanda a carrada para ajustar por pedido ou item. Itens com motivo ficam destacados em verde.
               {qtdCarradasSomenteProducao > 0 &&
                 ` Além disso, ${qtdCarradasSomenteProducao} carrada(s) terão apenas a Data de produção atualizada.`}
             </p>
@@ -393,6 +444,34 @@ export default function ConfirmacaoSimulacaoModal({
           </div>
         </div>
 
+        {excessosQtdeRomaneada.length > 0 && (
+          <div
+            className="shrink-0 border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+            role="alert"
+          >
+            <p className="font-semibold">
+              Confirmação bloqueada: a quantidade romaneada do item excede o saldo a faturar (Pendente).
+            </p>
+            <p className="mt-1 text-xs opacity-90">
+              O somatório das quantidades romaneadas nas carradas não pode ser maior que o Pendente do
+              item. Corrija o vínculo no ERP antes de confirmar. Datas diferentes por carrada são
+              permitidas.
+            </p>
+            <ul className="mt-2 max-h-32 list-disc space-y-1 overflow-auto pl-5 text-xs">
+              {excessosQtdeRomaneada.map((c) => (
+                <li key={c.canon}>
+                  <span className="font-medium">
+                    {c.pd || c.canon}
+                    {c.codigo ? ` / ${c.codigo}` : ''}
+                  </span>
+                  {`: romaneado ${formatQtdeInt(c.somaRomaneada)} > pendente ${formatQtdeInt(c.pendente)}`}
+                  {c.carradas.length > 0 ? ` (${c.carradas.join(' · ')})` : ''}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {pedidosEntrega.length > 0 && (
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-2 dark:border-slate-600">
             <span
@@ -406,22 +485,6 @@ export default function ConfirmacaoSimulacaoModal({
                 ? 'Todos os motivos preenchidos'
                 : `${gruposPendentes.size} carrada(s) sem motivo`}
             </span>
-            {pendentes.length > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-600 dark:text-slate-300">
-                  Aplicar às carradas sem motivo:
-                </span>
-                <div className="w-64">
-                  <MotivoPicker
-                    value=""
-                    onSelect={aplicarNasPendentes}
-                    motivos={motivos}
-                    recentes={recentes}
-                    compact
-                  />
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -441,18 +504,25 @@ export default function ConfirmacaoSimulacaoModal({
                     <span className="sr-only">Expandir</span>
                   </th>
                   <th className={`${TH} text-left`}>Carrada / Pedido</th>
-                  <th className={`${TH} min-w-[16rem] text-left`}>Item / Descrição</th>
+                  <th className={`${TH} min-w-[14rem] text-left`}>Item / Descrição</th>
                   <th className={`${TH} text-right`}>Qtde Pendente Real</th>
                   <th className={`${TH} text-left`}>Previsão anterior</th>
                   <th className={`${TH} text-left`}>Nova previsão</th>
-                  <th className={`${TH} min-w-[12rem] text-left`}>Motivo</th>
+                  <th className={`${TH} min-w-[11rem] text-left`}>Motivo</th>
+                  <th className={`${TH} min-w-[10rem] text-left`}>Observação</th>
+                  <th className={`${TH} w-24 text-center`} title="Previsão confiável">
+                    Confiável
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {grupos.map((grupo) => {
                   const aberto = expandido.has(grupo.rota);
                   const pendente = gruposPendentes.has(grupo.rota);
+                  const idsGrupo = grupo.itens.map((i) => i.idPedido);
                   const motivoComum = motivoComumDoGrupo(grupo);
+                  const observacaoComum = observacaoComumIds(idsGrupo, observacaoPorId);
+                  const confiavelComum = previsaoConfiavelComumIds(idsGrupo, previsaoConfiavelPorId);
                   return (
                     <GrupoCarradaRows
                       key={grupo.rota}
@@ -460,12 +530,18 @@ export default function ConfirmacaoSimulacaoModal({
                       aberto={aberto}
                       pendente={pendente}
                       motivoComum={motivoComum}
+                      observacaoComum={observacaoComum}
+                      confiavelComum={confiavelComum}
                       motivos={motivos}
                       recentes={recentes}
                       motivoPorId={motivoPorId}
+                      observacaoPorId={observacaoPorId}
+                      previsaoConfiavelPorId={previsaoConfiavelPorId}
                       formatLista={formatLista}
                       onToggle={() => toggleExpandido(grupo.rota)}
                       onSelecionarMotivo={selecionarMotivo}
+                      onSelecionarObservacao={selecionarObservacao}
+                      onSelecionarConfiavel={selecionarConfiavel}
                     />
                   );
                 })}
@@ -502,7 +578,12 @@ export default function ConfirmacaoSimulacaoModal({
             <button
               type="button"
               onClick={confirmar}
-              disabled={salvando}
+              disabled={salvando || excessosQtdeRomaneada.length > 0}
+              title={
+                excessosQtdeRomaneada.length > 0
+                  ? 'Resolva o excesso de quantidade romaneada vs pendente'
+                  : undefined
+              }
               className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
             >
               {salvando ? 'Aplicando...' : 'Confirmar e aplicar'}
@@ -518,30 +599,96 @@ function classeLinhaItemMotivo(idPedido: string, motivoPorId: Record<string, str
   return itemMotivoConcluido(idPedido, motivoPorId) ? TR_CONCLUIDA : TR_PENDENTE_ITEM;
 }
 
+function ObservacaoInput({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <input
+      type="text"
+      value={value}
+      disabled={disabled}
+      maxLength={1000}
+      placeholder="Opcional"
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full min-w-[9rem] rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 placeholder:text-slate-400 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500"
+    />
+  );
+}
+
+function ConfiavelCheckbox({
+  checked,
+  indeterminate = false,
+  onChange,
+  disabled = false,
+  title = 'Previsão confiável',
+}: {
+  checked: boolean;
+  indeterminate?: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+  title?: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      onChange={(e) => onChange(e.target.checked)}
+      className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600 disabled:opacity-50 dark:border-slate-600"
+    />
+  );
+}
+
 function GrupoCarradaRows({
   grupo,
   aberto,
   pendente,
   motivoComum,
+  observacaoComum,
+  confiavelComum,
   motivos,
   recentes,
   motivoPorId,
+  observacaoPorId,
+  previsaoConfiavelPorId,
   formatLista,
   onToggle,
   onSelecionarMotivo,
+  onSelecionarObservacao,
+  onSelecionarConfiavel,
 }: {
   grupo: GrupoCarrada;
   aberto: boolean;
   pendente: boolean;
   motivoComum: string;
+  observacaoComum: string;
+  confiavelComum: boolean | null;
   motivos: MotivoSugestao[];
   recentes: string[];
   motivoPorId: Record<string, string>;
+  observacaoPorId: Record<string, string>;
+  previsaoConfiavelPorId: Record<string, boolean>;
   formatLista: (datas: string[]) => string;
   onToggle: () => void;
   onSelecionarMotivo: (ids: string[], motivo: string) => void;
+  onSelecionarObservacao: (ids: string[], observacao: string) => void;
+  onSelecionarConfiavel: (ids: string[], confiavel: boolean) => void;
 }) {
   const gruposPedido = useMemo(() => agruparAlteradosPorPedido(grupo.itens), [grupo.itens]);
+  const idsGrupo = grupo.itens.map((i) => i.idPedido);
 
   return (
     <>
@@ -587,10 +734,23 @@ function GrupoCarradaRows({
         <td className="px-2 py-1.5">
           <MotivoPicker
             value={motivoComum}
-            onSelect={(m) => onSelecionarMotivo(grupo.itens.map((i) => i.idPedido), m)}
+            onSelect={(m) => onSelecionarMotivo(idsGrupo, m)}
             motivos={motivos}
             recentes={recentes}
             compact
+          />
+        </td>
+        <td className="px-2 py-1.5">
+          <ObservacaoInput
+            value={observacaoComum}
+            onChange={(v) => onSelecionarObservacao(idsGrupo, v)}
+          />
+        </td>
+        <td className="px-2 py-1.5 text-center">
+          <ConfiavelCheckbox
+            checked={confiavelComum !== false}
+            indeterminate={confiavelComum === null}
+            onChange={(v) => onSelecionarConfiavel(idsGrupo, v)}
           />
         </td>
       </tr>
@@ -598,6 +758,8 @@ function GrupoCarradaRows({
         gruposPedido.flatMap((grupoPd) => {
           const idsPedido = grupoPd.itens.map((i) => i.idPedido);
           const motivoComumPedido = motivoComumIds(idsPedido, motivoPorId);
+          const observacaoComumPedido = observacaoComumIds(idsPedido, observacaoPorId);
+          const confiavelComumPedido = previsaoConfiavelComumIds(idsPedido, previsaoConfiavelPorId);
           const pedidoConcluido = grupoPedidoMotivoConcluido(grupoPd.itens, motivoPorId);
           const rowSpan = grupoPd.itens.length;
 
@@ -616,7 +778,7 @@ function GrupoCarradaRows({
                       >
                         {grupoPd.cliente || '—'}
                       </span>
-                      <div className="w-full min-w-[11rem]">
+                      <div className="w-full min-w-[11rem] space-y-1">
                         <MotivoPicker
                           value={motivoComumPedido}
                           onSelect={(m) => onSelecionarMotivo(idsPedido, m)}
@@ -624,6 +786,18 @@ function GrupoCarradaRows({
                           recentes={recentes}
                           compact
                         />
+                        <ObservacaoInput
+                          value={observacaoComumPedido}
+                          onChange={(v) => onSelecionarObservacao(idsPedido, v)}
+                        />
+                        <label className="flex items-center justify-center gap-1.5 text-[10px] text-slate-600 dark:text-slate-300">
+                          <ConfiavelCheckbox
+                            checked={confiavelComumPedido !== false}
+                            indeterminate={confiavelComumPedido === null}
+                            onChange={(v) => onSelecionarConfiavel(idsPedido, v)}
+                          />
+                          Confiável
+                        </label>
                       </div>
                       {pedidoConcluido ? (
                         <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
@@ -633,7 +807,7 @@ function GrupoCarradaRows({
                     </div>
                   </td>
                 ) : null}
-                <td className={`${TD} min-w-[16rem] max-w-md`}>
+                <td className={`${TD} min-w-[14rem] max-w-md`}>
                   <div className="flex flex-col gap-0.5">
                     <span className="font-mono text-xs">{it.cod || '—'}</span>
                     <span className="whitespace-normal break-words text-[11px] leading-snug text-slate-600 dark:text-slate-300">
@@ -658,6 +832,18 @@ function GrupoCarradaRows({
                     motivos={motivos}
                     recentes={recentes}
                     compact
+                  />
+                </td>
+                <td className={TD}>
+                  <ObservacaoInput
+                    value={observacaoPorId[it.idPedido] ?? ''}
+                    onChange={(v) => onSelecionarObservacao([it.idPedido], v)}
+                  />
+                </td>
+                <td className={`${TD} text-center`}>
+                  <ConfiavelCheckbox
+                    checked={previsaoConfiavelEfetiva(it.idPedido, previsaoConfiavelPorId)}
+                    onChange={(v) => onSelecionarConfiavel([it.idPedido], v)}
                   />
                 </td>
               </tr>

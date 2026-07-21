@@ -25,6 +25,8 @@ import {
   listarHistoricoAjustes,
   listarEventosTagDisponivelHistorico,
   listarComentariosSycroHistorico,
+  obterItemHistoricoRegraCarrada,
+  resolverPrevisaoAnteriorNaCadeia,
   invalidatePedidosCache,
 } from '../data/pedidosRepository.js';
 import { obterInconsistenciaQtdePendenteReal } from '../services/qtdePendenteInconsistenciaService.js';
@@ -812,6 +814,7 @@ export async function ajustarDataProducaoLote(req: Request, res: Response): Prom
     const itens = parsed.data.itens.map((it) => ({
       id_pedido: String(it.id_pedido).trim(),
       data_producao: new Date(it.data_producao),
+      rota: it.rota ?? null,
     }));
     const resultado = await registrarDataProducaoLote(itens, usuario);
     invalidatePedidosCache();
@@ -862,6 +865,7 @@ export async function checkIdPedidosEmSycro(req: Request, res: Response): Promis
 
 /**
  * GET /api/pedidos/:id/historico — ajustes de previsão do Gerenciador (SQLite) + TAG disponível (Comunicação Interna).
+ * Query opcional `rota`: filtra overrides da carrada (+ bases); `previsao_anterior` respeita a cadeia por rota.
  * Alterações de previsão feitas pela Comunicação PD já são registradas via `registrarAjustePrevisao` no mesmo fluxo.
  */
 export async function getHistorico(req: Request, res: Response): Promise<void> {
@@ -874,19 +878,25 @@ export async function getHistorico(req: Request, res: Response): Promise<void> {
     res.status(400).json({ error: 'id do pedido é obrigatório.' });
     return;
   }
+  const rotaQueryRaw = req.query.rota;
+  const rotaFiltro =
+    typeof rotaQueryRaw === 'string' && rotaQueryRaw.trim() !== '' ? rotaQueryRaw.trim() : undefined;
   try {
-    const [historico, tags, comentarios] = await Promise.all([
-      listarHistoricoAjustes(idPedido),
+    const [historico, tags, comentarios, regraCarrada] = await Promise.all([
+      listarHistoricoAjustes(idPedido, rotaFiltro ? { rota: rotaFiltro } : undefined),
       listarEventosTagDisponivelHistorico(idPedido),
       listarComentariosSycroHistorico(idPedido),
+      obterItemHistoricoRegraCarrada(idPedido),
     ]);
+    const fallbackRegra = regraCarrada?.previsao_nova ?? null;
     const itensAjustes = historico.map((h, i) => {
-      const prev = historico[i + 1];
+      const previsaoAnterior = resolverPrevisaoAnteriorNaCadeia(historico, i, fallbackRegra);
       return {
         id: h.id,
         id_pedido: h.id_pedido,
+        rota: h.rota,
         previsao_nova: h.previsao_nova,
-        previsao_anterior: prev?.previsao_nova ?? null,
+        previsao_anterior: previsaoAnterior,
         motivo: h.motivo,
         observacao: h.observacao,
         usuario: h.usuario,
@@ -898,6 +908,7 @@ export async function getHistorico(req: Request, res: Response): Promise<void> {
     const itensTags = tags.map((t) => ({
       id: -1_000_000 - t.id,
       id_pedido: idPedido,
+      rota: null as string | null,
       previsao_nova: null as Date | null,
       previsao_anterior: null as Date | null,
       motivo: t.tag_disponivel ? 'Marcado como disponível' : 'Marcado como não disponível',
@@ -911,6 +922,7 @@ export async function getHistorico(req: Request, res: Response): Promise<void> {
     const itensComentarios = comentarios.map((c) => ({
       id: -2_000_000 - c.id,
       id_pedido: idPedido,
+      rota: null as string | null,
       previsao_nova: null as Date | null,
       previsao_anterior: null as Date | null,
       motivo: c.action_type === 'CREATE' ? 'Comentário na criação do card' : 'Comentário no card',
@@ -920,7 +932,24 @@ export async function getHistorico(req: Request, res: Response): Promise<void> {
       previsao_confiavel: true,
       tipo_evento: 'comentario_sycro' as const,
     }));
-    const itens = [...itensAjustes, ...itensTags, ...itensComentarios].sort((a, b) => {
+    const itensRegra = regraCarrada
+      ? [
+          {
+            id: regraCarrada.id,
+            id_pedido: regraCarrada.id_pedido,
+            rota: null as string | null,
+            previsao_nova: regraCarrada.previsao_nova,
+            previsao_anterior: regraCarrada.previsao_anterior,
+            motivo: regraCarrada.motivo,
+            observacao: regraCarrada.observacao,
+            usuario: regraCarrada.usuario,
+            data_ajuste: regraCarrada.data_ajuste,
+            previsao_confiavel: regraCarrada.previsao_confiavel,
+            tipo_evento: regraCarrada.tipo_evento,
+          },
+        ]
+      : [];
+    const itens = [...itensAjustes, ...itensTags, ...itensComentarios, ...itensRegra].sort((a, b) => {
       const ta = a.data_ajuste instanceof Date ? a.data_ajuste.getTime() : new Date(a.data_ajuste).getTime();
       const tb = b.data_ajuste instanceof Date ? b.data_ajuste.getTime() : new Date(b.data_ajuste).getTime();
       return tb - ta;

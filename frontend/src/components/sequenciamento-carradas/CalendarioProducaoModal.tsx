@@ -3,11 +3,13 @@ import {
   colunaCalendarioId,
   computarCalendarioProducao,
   dataProducaoInserirRomaneioApartirDe,
+  dataProducaoCarradaEmFormacaoApartirDe,
   encontrarLinhaSnapshotNoDrill,
   encontrarLinhaSnapshotParaTooltipItem,
   formatDataCurta,
   formatQtdeInt,
   isFimDeSemana,
+  carradaKey,
   linhaCarradaKey,
   maxDataProducaoCarradasNormais,
   montarEixoDatasCalendario,
@@ -69,7 +71,8 @@ type PedidoAjusteState = {
 type Drill =
   | { nivel: 'pivot' }
   | { nivel: 'tipof'; setor: string; data: string }
-  | { nivel: 'pedidos'; setor: string; data: string; tipoF: string };
+  | { nivel: 'carradas'; setor: string; data: string; tipoF: string }
+  | { nivel: 'pedidos'; setor: string; data: string; tipoF: string; carradaKey: string };
 
 type SetorRow = { setor: string };
 
@@ -141,9 +144,17 @@ export default function CalendarioProducaoModal({
 
   const dados = useMemo(() => computarCalendarioProducao(linhas, sim, baseline), [linhas, sim, baseline]);
 
-  const dataInserirRomaneio = useMemo(
-    () => dataProducaoInserirRomaneioApartirDe(maxDataProducaoCarradasNormais(linhas, sim, baseline)),
+  const maxProducaoNormais = useMemo(
+    () => maxDataProducaoCarradasNormais(linhas, sim, baseline),
     [linhas, sim, baseline]
+  );
+  const dataInserirRomaneio = useMemo(
+    () => dataProducaoInserirRomaneioApartirDe(maxProducaoNormais),
+    [maxProducaoNormais]
+  );
+  const dataEmFormacao = useMemo(
+    () => dataProducaoCarradaEmFormacaoApartirDe(maxProducaoNormais),
+    [maxProducaoNormais]
   );
   const [drill, setDrill] = useState<Drill>({ nivel: 'pivot' });
   const [pedidoModal, setPedidoModal] = useState<{
@@ -216,22 +227,55 @@ export default function CalendarioProducaoModal({
 
   const tipoFRows = useMemo(() => {
     if (drill.nivel !== 'tipof') return [];
-    const map = new Map<string, number>();
+    const map = new Map<string, { qtde: number; producaoPorPrevisao: boolean }>();
     for (const d of dados.detalhes) {
       if (d.setor === drill.setor && d.data === drill.data) {
-        map.set(d.tipoF, (map.get(d.tipoF) ?? 0) + d.qtde);
+        const cur = map.get(d.tipoF) ?? { qtde: 0, producaoPorPrevisao: false };
+        cur.qtde += d.qtde;
+        if (d.producaoPorPrevisao) cur.producaoPorPrevisao = true;
+        map.set(d.tipoF, cur);
       }
     }
     return [...map.entries()]
-      .map(([tipoF, qtde]) => ({ tipoF, qtde }))
+      .map(([tipoF, { qtde, producaoPorPrevisao }]) => ({ tipoF, qtde, producaoPorPrevisao }))
       .sort((a, b) => b.qtde - a.qtde);
+  }, [drill, dados.detalhes]);
+
+  const carradaRows = useMemo(() => {
+    if (drill.nivel !== 'carradas') return [];
+    const map = new Map<
+      string,
+      { cod: string; carrada: string; qtde: number; producaoPorPrevisao: boolean }
+    >();
+    for (const d of dados.detalhes) {
+      if (d.setor === drill.setor && d.data === drill.data && d.tipoF === drill.tipoF) {
+        const key = carradaKey(d.cod, d.carrada);
+        const cur = map.get(key) ?? {
+          cod: d.cod,
+          carrada: d.carrada,
+          qtde: 0,
+          producaoPorPrevisao: false,
+        };
+        cur.qtde += d.qtde;
+        if (d.producaoPorPrevisao) cur.producaoPorPrevisao = true;
+        map.set(key, cur);
+      }
+    }
+    return [...map.entries()]
+      .map(([key, v]) => ({ key, ...v }))
+      .sort((a, b) => b.qtde - a.qtde || a.cod.localeCompare(b.cod, 'pt-BR'));
   }, [drill, dados.detalhes]);
 
   const pedidoRows = useMemo(() => {
     if (drill.nivel !== 'pedidos') return [];
     const map = new Map<string, { qtde: number; producaoPorPrevisao: boolean }>();
     for (const d of dados.detalhes) {
-      if (d.setor === drill.setor && d.data === drill.data && d.tipoF === drill.tipoF) {
+      if (
+        d.setor === drill.setor &&
+        d.data === drill.data &&
+        d.tipoF === drill.tipoF &&
+        carradaKey(d.cod, d.carrada) === drill.carradaKey
+      ) {
         const cur = map.get(d.pd) ?? { qtde: 0, producaoPorPrevisao: false };
         cur.qtde += d.qtde;
         if (d.producaoPorPrevisao) cur.producaoPorPrevisao = true;
@@ -252,11 +296,17 @@ export default function CalendarioProducaoModal({
   }, [dados.detalhes]);
 
   const tipoFTotal = tipoFRows.reduce((s, r) => s + r.qtde, 0);
+  const carradaTotal = carradaRows.reduce((s, r) => s + r.qtde, 0);
   const pedidoTotal = pedidoRows.reduce((s, r) => s + r.qtde, 0);
 
   const voltarNivel = useCallback(() => {
     setDrill((cur) => {
-      if (cur.nivel === 'pedidos') return { nivel: 'tipof', setor: cur.setor, data: cur.data };
+      if (cur.nivel === 'pedidos') {
+        return { nivel: 'carradas', setor: cur.setor, data: cur.data, tipoF: cur.tipoF };
+      }
+      if (cur.nivel === 'carradas') {
+        return { nivel: 'tipof', setor: cur.setor, data: cur.data };
+      }
       if (cur.nivel === 'tipof') return { nivel: 'pivot' };
       return cur;
     });
@@ -298,12 +348,14 @@ export default function CalendarioProducaoModal({
       const itens = listarTooltipDetalhePorPd(linhas, pd)
         .map((item) => {
           const linha = encontrarLinhaSnapshotParaTooltipItem(linhasPd, item);
-          return linha ? tooltipDetalheComDatasEfetivas(item, linha, sim, baseline, dataInserirRomaneio) : item;
+          return linha
+            ? tooltipDetalheComDatasEfetivas(item, linha, sim, baseline, dataInserirRomaneio, dataEmFormacao)
+            : item;
         });
       if (itens.length === 0) return;
       setPedidoModal({ linha: itens[0]!, itens });
     },
-    [linhas, sim, baseline, dataInserirRomaneio]
+    [linhas, sim, baseline, dataInserirRomaneio, dataEmFormacao]
   );
 
   const abrirAjustePrevisao = useCallback(
@@ -313,10 +365,16 @@ export default function CalendarioProducaoModal({
       const linhaDrill = encontrarLinhaSnapshotNoDrill(
         linhas,
         pd,
-        { setor: drill.setor, data: drill.data, tipoF: drill.tipoF },
+        {
+          setor: drill.setor,
+          data: drill.data,
+          tipoF: drill.tipoF,
+          carradaKey: drill.carradaKey,
+        },
         sim,
         baseline,
-        dataInserirRomaneio
+        dataInserirRomaneio,
+        dataEmFormacao
       );
       const linha = escopo === 'item' ? linhaDrill : linhaDrill ?? linhasPd[0] ?? null;
       if (!linha) return;
@@ -349,7 +407,7 @@ export default function CalendarioProducaoModal({
         },
       });
     },
-    [linhas, sim, baseline, dataInserirRomaneio, drill]
+    [linhas, sim, baseline, dataInserirRomaneio, dataEmFormacao, drill]
   );
 
   const solicitarAjustePrevisao = useCallback(
@@ -535,11 +593,30 @@ export default function CalendarioProducaoModal({
             >
               {drill.setor} · {formatDataCurta(drill.data)}
             </button>
+            {(drill.nivel === 'carradas' || drill.nivel === 'pedidos') && (
+              <>
+                <span className="text-slate-400">/</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDrill({
+                      nivel: 'carradas',
+                      setor: drill.setor,
+                      data: drill.data,
+                      tipoF: drill.tipoF,
+                    })
+                  }
+                  className={`rounded px-2 py-1 font-medium ${drill.nivel === 'carradas' ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200' : 'text-primary-700 hover:bg-slate-100 dark:text-primary-300 dark:hover:bg-slate-700'}`}
+                >
+                  TipoF: {drill.tipoF}
+                </button>
+              </>
+            )}
             {drill.nivel === 'pedidos' && (
               <>
                 <span className="text-slate-400">/</span>
                 <span className="rounded bg-primary-100 px-2 py-1 font-medium text-primary-800 dark:bg-primary-900/40 dark:text-primary-200">
-                  TipoF: {drill.tipoF}
+                  Carrada
                 </span>
               </>
             )}
@@ -627,20 +704,78 @@ export default function CalendarioProducaoModal({
                     <td className={TD}>
                       <GradeCelulaModalBtn
                         onClick={() =>
-                          setDrill({ nivel: 'pedidos', setor: drill.setor, data: drill.data, tipoF: r.tipoF })
+                          setDrill({
+                            nivel: 'carradas',
+                            setor: drill.setor,
+                            data: drill.data,
+                            tipoF: r.tipoF,
+                          })
                         }
-                        title="Ver pedidos"
+                        title="Ver carradas"
                         align="left"
                       >
                         {r.tipoF}
                       </GradeCelulaModalBtn>
                     </td>
-                    <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(r.qtde)}</td>
+                    <td className={`${TD} text-right tabular-nums`}>
+                      {formatQtdeInt(r.qtde)}
+                      {r.producaoPorPrevisao ? (
+                        <span className="ml-0.5 text-amber-600 dark:text-amber-400" title="Inclui itens posicionados pela previsão">
+                          *
+                        </span>
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
                 <tr className={SUBTOTAL_ROW_CLASS}>
                   <td className={TD}>Total</td>
                   <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(tipoFTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+
+          {drill.nivel === 'carradas' && (
+            <table className="w-full max-w-3xl border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/50">
+                  <th className={`${TH} text-left`}>Cód</th>
+                  <th className={`${TH} text-left`}>Carrada</th>
+                  <th className={`${TH} text-right`}>Qtde Pendente Real</th>
+                </tr>
+              </thead>
+              <tbody>
+                {carradaRows.map((r) => (
+                  <tr key={r.key} className="border-b border-slate-100 dark:border-slate-700">
+                    <td className={`${TD} tabular-nums`}>{r.cod}</td>
+                    <td className={TD}>
+                      <div className="flex items-center gap-1.5">
+                        <GradeCelulaModalBtn
+                          onClick={() =>
+                            setDrill({
+                              nivel: 'pedidos',
+                              setor: drill.setor,
+                              data: drill.data,
+                              tipoF: drill.tipoF,
+                              carradaKey: r.key,
+                            })
+                          }
+                          title="Ver pedidos"
+                          align="left"
+                        >
+                          {r.carrada}
+                        </GradeCelulaModalBtn>
+                        {r.producaoPorPrevisao && <IndicadorDataPorPrevisao />}
+                      </div>
+                    </td>
+                    <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(r.qtde)}</td>
+                  </tr>
+                ))}
+                <tr className={SUBTOTAL_ROW_CLASS}>
+                  <td className={TD} colSpan={2}>
+                    Total
+                  </td>
+                  <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(carradaTotal)}</td>
                 </tr>
               </tbody>
             </table>
