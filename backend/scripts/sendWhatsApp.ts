@@ -1,5 +1,5 @@
 /**
- * Script para enviar uma mensagem WhatsApp via uazapiGO.
+ * Script para enviar uma mensagem WhatsApp via Evolution API.
  * Sem args: envia "Oi" para o número cadastrado no app (banco).
  * Com args: npx tsx scripts/sendWhatsApp.ts [número] [mensagem]
  */

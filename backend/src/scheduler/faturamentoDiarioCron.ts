@@ -5,7 +5,7 @@
 import * as cron from 'node-cron';
 import { obterDadosFaturamentoDiario } from '../data/faturamentoDiarioRepository.js';
 import { montarMensagemFaturamentoDiario } from '../services/faturamentoDiarioMensagem.js';
-import { sendWhatsAppTextTo } from '../services/evolutionApi.js';
+import { delayEntreDestinatariosMs, sendWhatsAppTextTo } from '../services/evolutionApi.js';
 
 const NUMEROS_DIRETORIA = ['5586995887672', '5586999766623', '5586999350016', '5586999145111'];
 
@@ -19,12 +19,21 @@ export function iniciarCronFaturamentoDiario(): void {
         return;
       }
       const mensagem = montarMensagemFaturamentoDiario(result.dados);
-      for (const numero of NUMEROS_DIRETORIA) {
+      const delayMs = delayEntreDestinatariosMs();
+      for (let i = 0; i < NUMEROS_DIRETORIA.length; i++) {
+        const numero = NUMEROS_DIRETORIA[i]!;
         const sendResult = await sendWhatsAppTextTo(numero, mensagem);
         if (sendResult.ok) {
-          console.log('[faturamentoDiarioCron] Enviado para', numero);
+          if (sendResult.dryRun) {
+            console.warn('[faturamentoDiarioCron] Dry-run (não enviado) para', numero);
+          } else {
+            console.log('[faturamentoDiarioCron] Enviado para', numero);
+          }
         } else {
           console.error('[faturamentoDiarioCron] Falha para', numero, sendResult.error);
+        }
+        if (i < NUMEROS_DIRETORIA.length - 1 && delayMs > 0) {
+          await new Promise((r) => setTimeout(r, delayMs));
         }
       }
     } catch (err) {

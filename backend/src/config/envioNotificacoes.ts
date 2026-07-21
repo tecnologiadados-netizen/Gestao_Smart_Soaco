@@ -6,7 +6,7 @@
  * `NOTIFICACOES_ENVIO_HABILITADO=true` no `.env`.
  *
  * Motivo: máquinas de desenvolvimento frequentemente usam o mesmo banco e as
- * mesmas credenciais de produção (SQLite + Gmail/uazapiGO). Sem esta trava, um
+ * mesmas credenciais de produção (SQLite + Gmail/Evolution). Sem esta trava, um
  * cron rodando na máquina de dev dispara e-mail/WhatsApp reais para clientes
  * (duplicando o que a produção já envia). Não dá para confiar em `NODE_ENV`
  * como guarda porque ele costuma estar `production` também em dev.
