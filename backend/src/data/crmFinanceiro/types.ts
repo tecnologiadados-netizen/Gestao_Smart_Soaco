@@ -86,6 +86,28 @@ export interface PessoaOption {
   razaoSocial: string | null;
   cnpjCpf: string | null;
   totalPendente: number;
+  idGrupoPessoa: number | null;
+  grupo: string | null;
+}
+
+export interface GrupoPessoaOption {
+  id: number;
+  nome: string;
+  qtdMembros: number;
+  totalPendente: number;
+}
+
+export interface MembroGrupoResumo {
+  nome: string;
+  razaoSocial: string | null;
+  cnpjCpf: string | null;
+  totalPendente: number;
+}
+
+export interface GrupoFiltradoInfo {
+  id: number;
+  nome: string;
+  membros: MembroGrupoResumo[];
 }
 
 export interface EmpresaOption {
@@ -103,6 +125,7 @@ export interface DashboardGlobalData {
     pagar: IndicadorClassificacao[];
   };
   pessoaFiltrada: string | null;
+  grupoFiltrado: GrupoFiltradoInfo | null;
 }
 
 export interface DashboardDetalhesData {
@@ -121,6 +144,7 @@ export interface DashboardDetalhesData {
   recebimentos: Recebimento[];
   pagamentos: Recebimento[];
   pessoaFiltrada: string | null;
+  grupoFiltrado: GrupoFiltradoInfo | null;
 }
 
 export interface DashboardData {
@@ -139,4 +163,5 @@ export interface DashboardData {
   recebimentos: Recebimento[];
   pagamentos: Recebimento[];
   pessoaFiltrada: string | null;
+  grupoFiltrado: GrupoFiltradoInfo | null;
 }

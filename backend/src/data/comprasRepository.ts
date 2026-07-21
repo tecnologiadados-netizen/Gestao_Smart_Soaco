@@ -796,9 +796,14 @@ export async function listarFornecedoresAtivos(): Promise<{ data: FornecedorOpca
   const pool = getNomusPool();
   if (!pool) return { data: [], erro: 'NOMUS_DB_URL não configurado' };
   try {
+    // CONCAT_WS ignora NULL: se cnpjCpf for nulo, o nome não some (Concat clássico zera tudo).
     const sql = `Select
   p.id,
-  Concat(p.cnpjCpf, ' - ', p.nome) As nome,
+  CONCAT_WS(
+    ' - ',
+    NULLIF(TRIM(p.cnpjCpf), ''),
+    COALESCE(NULLIF(TRIM(p.nome), ''), NULLIF(TRIM(p.nomeRazaoSocial), ''))
+  ) As nome,
   p.nomeRazaoSocial,
   p.uf,
   p.cnpjCpf
@@ -811,13 +816,17 @@ Where
 Order By
   p.nomeRazaoSocial`;
     const [rows] = await pool.query<Record<string, unknown>[]>(sql);
-    const data = (Array.isArray(rows) ? rows : []).map((r) => ({
-      id: Number(r.id ?? 0),
-      nome: String(r.nome ?? r.Nome ?? '').trim(),
-      nomeRazaoSocial: r.nomeRazaoSocial != null ? String(r.nomeRazaoSocial).trim() : null,
-      uf: r.uf != null ? String(r.uf).trim() : null,
-      cnpjCpf: r.cnpjCpf != null ? String(r.cnpjCpf).trim() : null,
-    })) as FornecedorOpcaoRow[];
+    const data = (Array.isArray(rows) ? rows : []).map((r) => {
+      const nomeLista = String(r.nome ?? r.Nome ?? '').trim();
+      const nomeRazaoSocial = r.nomeRazaoSocial != null ? String(r.nomeRazaoSocial).trim() : null;
+      return {
+        id: Number(r.id ?? 0),
+        nome: nomeLista || nomeRazaoSocial || `Fornecedor #${Number(r.id ?? 0)}`,
+        nomeRazaoSocial,
+        uf: r.uf != null ? String(r.uf).trim() : null,
+        cnpjCpf: r.cnpjCpf != null ? String(r.cnpjCpf).trim() : null,
+      };
+    }) as FornecedorOpcaoRow[];
     return { data };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

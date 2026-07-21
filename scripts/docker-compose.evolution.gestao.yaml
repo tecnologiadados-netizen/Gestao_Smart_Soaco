@@ -1,0 +1,59 @@
+# Compose dedicado ao Gestão Smart — sem rede dokploy externa.
+# Uso: na pasta %USERPROFILE%\evolution-api
+#   docker compose -f docker-compose.gestao.yaml --env-file .env.gestao up -d
+
+services:
+  api:
+    container_name: gestao_evolution_api
+    image: evoapicloud/evolution-api:latest
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - postgres
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - gestao_evolution_instances:/evolution/instances
+    networks:
+      - gestao-evolution-net
+    env_file:
+      - .env.gestao
+
+  redis:
+    container_name: gestao_evolution_redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - gestao_evolution_redis:/data
+    networks:
+      gestao-evolution-net:
+        aliases:
+          - evolution-redis
+          - redis
+
+  postgres:
+    container_name: gestao_evolution_postgres
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: evolution_gestao_local
+    volumes:
+      - gestao_evolution_postgres:/var/lib/postgresql/data
+    networks:
+      gestao-evolution-net:
+        aliases:
+          - postgres
+          - evolution-postgres
+
+volumes:
+  gestao_evolution_instances:
+  gestao_evolution_redis:
+  gestao_evolution_postgres:
+
+networks:
+  gestao-evolution-net:
+    name: gestao-evolution-net
+    driver: bridge

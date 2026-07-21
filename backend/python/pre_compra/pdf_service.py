@@ -151,15 +151,32 @@ def _find_row(table, fragment: str) -> int | None:
     return None
 
 
+def _item_valor_frete(item: dict) -> Decimal:
+    raw = item.get("valor_frete")
+    if raw is None or raw == "":
+        return Decimal("0")
+    return Decimal(str(raw))
+
+
+def _item_valor_total_com_frete(item: dict) -> Decimal:
+    base = item.get("valor_total")
+    base_dec = Decimal("0") if base is None or base == "" else Decimal(str(base))
+    return base_dec + _item_valor_frete(item)
+
+
 def _fill_item_row(row, item: dict) -> None:
+    # Layout atual (formulario_cotacao.docx):
+    # 0 código | 1-2 cód.fornec | 3-4 produto | 5-6 qtde | 7-8 U.M
+    # 9 V.FRETE | 10-12 V.UNIT | 13 TOTAL (item + frete)
     values = {
         0: item.get("codigo_produto"),
         1: item.get("codigo_fornecedor"),
         3: item.get("descricao_produto"),
         5: _fmt_qty(item.get("qtde")),
         7: item.get("unidade"),
-        9: _fmt_money(item.get("preco_unitario")),
-        12: _fmt_money(item.get("valor_total")),
+        9: _fmt_money(_item_valor_frete(item)),
+        10: _fmt_money(item.get("preco_unitario")),
+        13: _fmt_money(_item_valor_total_com_frete(item)),
     }
     for col, value in values.items():
         _set_cell(row, col, value, center=True)
@@ -287,7 +304,14 @@ def _fill_document(data: dict) -> Document:
 
     total_row_idx = _find_row(table, "VALOR TOTAL")
     if total_row_idx is not None:
-        _set_cell(table.rows[total_row_idx], 12, _fmt_money(data.get("valor_total_geral")), center=True)
+        # Coluna TOTAL do rodapé (índice 13 no layout com V. FRETE).
+        total_col = 13 if len(table.rows[total_row_idx].cells) > 13 else 12
+        _set_cell(
+            table.rows[total_row_idx],
+            total_col,
+            _fmt_money(data.get("valor_total_geral")),
+            center=True,
+        )
 
     _fill_solicitacoes(table, data.get("solicitacoes") or [])
     return doc

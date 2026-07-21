@@ -13,6 +13,7 @@ FROM lancamentofinanceiro lf
 LEFT JOIN contabancaria cb ON cb.id = lf.idContaBancaria
 WHERE DATE(lf.dataLancamento) < ?
   AND cb.id IS NOT NULL
+  AND cb.ativo = 1
 GROUP BY
     cb.id,
     cb.nome

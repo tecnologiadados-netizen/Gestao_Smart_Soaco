@@ -2,7 +2,7 @@
  * Montagem e envio de notificações WhatsApp configuráveis (Integração → SMS).
  */
 
-import { sendWhatsAppTextTo } from './evolutionApi.js';
+import { delayEntreDestinatariosMs, sendWhatsAppTextTo } from './evolutionApi.js';
 import { obterDadosFaturamentoDiario } from '../data/faturamentoDiarioRepository.js';
 import { montarMensagemFaturamentoDiario } from './faturamentoDiarioMensagem.js';
 import { obterDadosPedidosEntregaVencida } from '../data/pedidosRepository.js';
@@ -126,8 +126,8 @@ export function listarNumerosDestinatarios(tipo: TipoComDestinatarios): string[]
 function enviarTextoWhatsApp(
   numero: string,
   texto: string,
-  tipo: TipoComDestinatarios
-): Promise<{ ok: boolean; error?: string }> {
+  _tipo: TipoComDestinatarios
+): Promise<{ ok: boolean; error?: string; dryRun?: boolean }> {
   return sendWhatsAppTextTo(numero, texto);
 }
 
@@ -138,15 +138,27 @@ export async function enviarParaDestinatarios(tipo: TipoComDestinatarios, texto:
     return { enviados: 0, erros: [] };
   }
 
+  const delayMs = delayEntreDestinatariosMs();
   let enviados = 0;
+  let dryRuns = 0;
   const erros: string[] = [];
-  for (const numero of numeros) {
+  for (let i = 0; i < numeros.length; i++) {
+    const numero = numeros[i]!;
     const result = await enviarTextoWhatsApp(numero, texto, tipo);
     if (result.ok) {
-      enviados++;
+      if (result.dryRun) dryRuns++;
+      else enviados++;
     } else {
       erros.push(`${numero}: ${result.error ?? 'erro'}`);
     }
+    if (i < numeros.length - 1 && delayMs > 0) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  if (dryRuns > 0) {
+    console.warn(
+      `[whatsappNotificacao] Tipo "${tipo.code}": ${dryRuns} envio(s) em dry-run (NOTIFICACOES_ENVIO_HABILITADO≠true).`
+    );
   }
   return { enviados, erros };
 }

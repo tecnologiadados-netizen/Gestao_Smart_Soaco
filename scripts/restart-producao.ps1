@@ -23,6 +23,11 @@ if (Test-Path $ensureWordDirs) {
     & $ensureWordDirs
 }
 
+$clearGenPy = Join-Path $PastaProjeto "scripts\clear-win32com-genpy.ps1"
+if (Test-Path $clearGenPy) {
+    & $clearGenPy
+}
+
 $servico = Get-Service -Name $ServicoNome -ErrorAction SilentlyContinue
 if ($servico) {
     if ($servico.Status -eq "Running") {

@@ -33,11 +33,28 @@ export const ORGANICO_IDX = {
   SALARIO_MAIS_POR_FORA: 73,
   /** Fórmula: SALÁRIO + ADENDO + ADICIONAIS (coluna BV) — remuneração total usada em Cargos & Salários. */
   SALARIO_POR_FORA_ADICIONAIS: 74,
+  /** "DIRETORIA" — também usado para empresa de histórico local (sem Secullum). */
+  DIRETORIA: 17,
+  /** "Vínculo" — marca `HISTÓRICO LOCAL` = cadastro só para trajetória/ficha. */
+  VINCULO: 27,
   SITUACAO_TRABALHISTA: 83, // "SITUAÇÃO TRABALHISTA"
   STATUS: 84,    // "STATUS FUNCIONÁRIO"
 } as const;
 
+/** Valor em `Vínculo` para colaboradores cadastrados só via ficha (histórico), fora da Secullum. */
+export const ORGANICO_VINCULO_HISTORICO_LOCAL = "HISTÓRICO LOCAL";
+
 export type OrganicoStatus = "Ativo" | "Férias" | "Afastado" | "Desligado";
+
+/** True se o card veio só da ficha/histórico e deve aparecer sem estar na Secullum. */
+export function isOrganicoHistoricoLocal(row: unknown[] | null | undefined): boolean {
+  if (!row || !Array.isArray(row)) return false;
+  const vinculo = String(row[ORGANICO_IDX.VINCULO] ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+  return vinculo.includes("HISTORICO LOCAL");
+}
 
 type Status = OrganicoStatus;
 

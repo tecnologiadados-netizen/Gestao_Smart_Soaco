@@ -5,7 +5,7 @@ import {
   getIndicadoresGlobais,
   getSaudeQuadroReceberEmpresa,
   listEmpresas,
-  searchPessoas,
+  searchPessoasEGrupos,
 } from '../data/crmFinanceiro/crmDashboardService.js';
 import { parseEmpresaIdParam } from '../data/crmFinanceiro/empresaConfig.js';
 import type { ColunaIndicador } from '../data/crmFinanceiro/types.js';
@@ -20,15 +20,23 @@ const COLUNAS_VALIDAS = new Set<ColunaIndicador>([
   'recebidoHistorico',
 ]);
 
+function parseGrupoIdParam(raw: unknown): number | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.trunc(n);
+}
+
 export async function getCrmDashboard(req: Request, res: Response): Promise<void> {
   try {
     const pessoa = String(req.query.pessoa ?? '').trim() || null;
+    const grupoId = parseGrupoIdParam(req.query.grupoId);
     const empresaId = parseEmpresaIdParam(
       typeof req.query.empresa === 'string' ? req.query.empresa : null,
     );
 
-    if (pessoa) {
-      const data = await getDashboardDetalhes(pessoa, empresaId);
+    if (pessoa || grupoId != null) {
+      const data = await getDashboardDetalhes(pessoa, empresaId, grupoId);
       res.json(data);
       return;
     }
@@ -51,6 +59,7 @@ export async function getCrmDetalhe(req: Request, res: Response): Promise<void> 
     const classificacao =
       typeof req.query.classificacao === 'string' ? req.query.classificacao : null;
     const pessoa = String(req.query.pessoa ?? '').trim() || null;
+    const grupoId = parseGrupoIdParam(req.query.grupoId);
     const empresaId = parseEmpresaIdParam(
       typeof req.query.empresa === 'string' ? req.query.empresa : null,
     );
@@ -71,6 +80,7 @@ export async function getCrmDetalhe(req: Request, res: Response): Promise<void> 
       classificacao,
       pessoa,
       empresaId,
+      grupoId,
     );
     res.json(resultado);
   } catch (error) {
@@ -103,8 +113,8 @@ export async function getCrmPessoas(req: Request, res: Response): Promise<void> 
     const empresaId = parseEmpresaIdParam(
       typeof req.query.empresa === 'string' ? req.query.empresa : null,
     );
-    const pessoas = await searchPessoas(search, empresaId);
-    res.json(pessoas);
+    const data = await searchPessoasEGrupos(search, empresaId);
+    res.json(data);
   } catch (error) {
     console.error('Erro ao buscar pessoas CRM:', error);
     res.status(500).json({ error: 'Não foi possível buscar pessoas.' });

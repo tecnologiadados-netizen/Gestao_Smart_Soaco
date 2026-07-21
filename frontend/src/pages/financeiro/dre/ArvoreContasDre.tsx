@@ -44,7 +44,7 @@ import {
   noPermiteDetalheSaidas,
 } from './dreDetalhePlano';
 import { isProvisaoCalculadaDre } from './dreProvisoesFolha';
-import { DFC_EMPRESAS_TODAS } from '../dfc/dfcEmpresas';
+import { DFC_EMPRESAS_TODAS, DFC_ID_EMPRESA_ACO, DFC_ID_EMPRESA_MOVEIS } from '../dfc/dfcEmpresas';
 
 export type DreEstruturaNo = {
   pathKey: string;
@@ -129,6 +129,7 @@ const COL_W_VALOR = 88;
 const COL_W_AH = 56;
 const COL_W_AV = 56;
 const COL_W_TOTAL = 108;
+const COL_W_MEDIA = 108;
 const COL_W_MKP = 72;
 const COLS_POR_PERIODO = COL_W_VALOR + COL_W_AV + COL_W_AH;
 
@@ -140,6 +141,13 @@ const TD_AV =
   'py-2 px-1.5 text-right tabular-nums text-[11px] font-medium text-black dark:text-black bg-indigo-50/90 dark:bg-indigo-950/70 border-l border-indigo-100 dark:border-indigo-900/50';
 const TD_AH =
   'py-2 px-1.5 text-right tabular-nums text-[11px] font-medium bg-indigo-50/90 dark:bg-indigo-950/70 border-l border-indigo-100 dark:border-indigo-900/50';
+
+/** Quantidade de meses no intervalo (para média mensal; em visão diária usa meses distintos). */
+function contarMesesPeriodo(periodos: string[], granularidade: 'dia' | 'mes'): number {
+  if (periodos.length === 0) return 0;
+  if (granularidade === 'mes') return periodos.length;
+  return new Set(periodos.map((p) => p.slice(0, 7))).size;
+}
 
 function encontrarPathKeyPorCodigo(nodes: DreEstruturaNo[], codigo: string): string | null {
   for (const n of nodes) {
@@ -649,10 +657,14 @@ export default function ArvoreContasDre({
       periodos,
       valoresPorConta,
       valoresExternosPorPathKey,
+      {
+        incluirAco: idEmpresas.includes(DFC_ID_EMPRESA_ACO),
+        incluirMoveis: idEmpresas.includes(DFC_ID_EMPRESA_MOVEIS),
+      },
     );
     if (mkpAtivo) aplicarMkpNasSomas(roots, somas, periodos);
     return somas;
-  }, [roots, idsPorPathKey, periodos, valoresPorConta, valoresExternosPorPathKey, mkpAtivo]);
+  }, [roots, idsPorPathKey, periodos, valoresPorConta, valoresExternosPorPathKey, mkpAtivo, idEmpresas]);
 
   const receitaBrutaPorPeriodo = useMemo(() => {
     const rb = roots.find((r) => r.codigo === '1');
@@ -660,11 +672,24 @@ export default function ArvoreContasDre({
     return somasPorPathKey.get(rb.pathKey) ?? {};
   }, [roots, somasPorPathKey]);
 
+  const receitaBrutaTotal = useMemo(
+    () => periodos.reduce((s, p) => s + (receitaBrutaPorPeriodo[p] ?? 0), 0),
+    [periodos, receitaBrutaPorPeriodo],
+  );
+
+  const nMesesPeriodo = useMemo(
+    () => contarMesesPeriodo(periodos, granularidade),
+    [periodos, granularidade],
+  );
+
   const temPivot = periodos.length > 0;
 
   const colunasFim = useMemo(() => {
     const defs: { key: string; w: number; show: boolean }[] = [
       { key: 'total', w: COL_W_TOTAL, show: temPivot },
+      { key: 'totalAv', w: COL_W_AV, show: temPivot },
+      { key: 'media', w: COL_W_MEDIA, show: temPivot },
+      { key: 'mediaAv', w: COL_W_AV, show: temPivot },
       { key: 'mkp', w: COL_W_MKP, show: mkpAtivo },
     ];
     return defs.filter((c) => c.show);
@@ -960,6 +985,42 @@ export default function ArvoreContasDre({
                   Total
                 </th>
               ) : null}
+              {temPivot && stickyRightPorKey.has('totalAv') ? (
+                <th
+                  className={`${TH_AV} ${TH_STICKY_DIREITA}`}
+                  style={{
+                    minWidth: COL_W_AV,
+                    right: stickyRightPorKey.get('totalAv')!.right,
+                  }}
+                  title="Análise vertical do total (% sobre Receita Bruta do período)"
+                >
+                  AV
+                </th>
+              ) : null}
+              {temPivot && stickyRightPorKey.has('media') ? (
+                <th
+                  className={`py-2.5 px-2 text-xs font-semibold text-slate-700 dark:text-slate-200 text-right whitespace-nowrap bg-slate-200/80 dark:bg-slate-600/70 ${TH_STICKY_DIREITA}`}
+                  style={{
+                    minWidth: COL_W_MEDIA,
+                    right: stickyRightPorKey.get('media')!.right,
+                  }}
+                  title="Média mensal do período selecionado"
+                >
+                  Média
+                </th>
+              ) : null}
+              {temPivot && stickyRightPorKey.has('mediaAv') ? (
+                <th
+                  className={`${TH_AV} ${TH_STICKY_DIREITA}`}
+                  style={{
+                    minWidth: COL_W_AV,
+                    right: stickyRightPorKey.get('mediaAv')!.right,
+                  }}
+                  title="Análise vertical da média mensal (% sobre Receita Bruta média)"
+                >
+                  AV
+                </th>
+              ) : null}
               {mkpAtivo && stickyRightPorKey.has('mkp') ? (
                 <th
                   className={`py-2.5 px-2 text-xs font-semibold text-white text-right whitespace-nowrap bg-primary-600 ${TH_STICKY_DIREITA}`}
@@ -999,6 +1060,10 @@ export default function ArvoreContasDre({
               const isSynth = node.tipo === 'S';
               const somasNo = somasPorPathKey.get(node.pathKey);
               const totalGeral = periodos.reduce((s, p) => s + (somasNo?.[p] ?? 0), 0);
+              const avTotal = calcularAnaliseVertical(totalGeral, receitaBrutaTotal);
+              const mediaMensal = nMesesPeriodo > 0 ? totalGeral / nMesesPeriodo : 0;
+              const receitaBrutaMedia = nMesesPeriodo > 0 ? receitaBrutaTotal / nMesesPeriodo : 0;
+              const avMedia = calcularAnaliseVertical(mediaMensal, receitaBrutaMedia);
               const ctxReceita = contextoDetalheReceitaVendas(node);
               const provisaoCalculada = isProvisaoCalculadaDre(node.codigo);
               const podeDetalheReceita = receitaNomusCarregada && ctxReceita != null && !isTotal;
@@ -1224,6 +1289,52 @@ export default function ArvoreContasDre({
                       tabIndex={podeDetalheReceita || podeDetalhePlano || podeDetalheDevolucao ? 0 : undefined}
                     >
                       {totalGeral === 0 ? '—' : nf.format(totalGeral)}
+                    </td>
+                  ) : null}
+                  {temPivot && stickyRightPorKey.has('totalAv') ? (
+                    <td
+                      className={`${TD_AV} ${TD_STICKY_DIREITA} ${isTotal ? 'font-bold' : ''}`}
+                      style={{
+                        minWidth: COL_W_AV,
+                        right: stickyRightPorKey.get('totalAv')!.right,
+                      }}
+                      title="Análise vertical do total (% sobre Receita Bruta do período)"
+                    >
+                      {formatarAnalisePct(avTotal)}
+                    </td>
+                  ) : null}
+                  {temPivot && stickyRightPorKey.has('media') ? (
+                    <td
+                      className={`py-2 px-2 text-right tabular-nums text-sm font-semibold bg-slate-100/95 dark:bg-slate-700/95 ${TD_STICKY_DIREITA} ${
+                        mediaMensal < 0
+                          ? 'text-red-700 dark:text-red-700'
+                          : mediaMensal > 0
+                            ? 'text-black dark:text-black'
+                            : 'text-black/40 dark:text-black/40'
+                      } ${isTotal ? 'font-bold' : ''}`}
+                      style={{
+                        minWidth: COL_W_MEDIA,
+                        right: stickyRightPorKey.get('media')!.right,
+                      }}
+                      title={
+                        nMesesPeriodo > 0
+                          ? `Média mensal (${nMesesPeriodo} ${nMesesPeriodo === 1 ? 'mês' : 'meses'})`
+                          : 'Média mensal do período'
+                      }
+                    >
+                      {mediaMensal === 0 ? '—' : nf.format(mediaMensal)}
+                    </td>
+                  ) : null}
+                  {temPivot && stickyRightPorKey.has('mediaAv') ? (
+                    <td
+                      className={`${TD_AV} ${TD_STICKY_DIREITA} ${isTotal ? 'font-bold' : ''}`}
+                      style={{
+                        minWidth: COL_W_AV,
+                        right: stickyRightPorKey.get('mediaAv')!.right,
+                      }}
+                      title="Análise vertical da média mensal (% sobre Receita Bruta média)"
+                    >
+                      {formatarAnalisePct(avMedia)}
                     </td>
                   ) : null}
                   {mkpAtivo && stickyRightPorKey.has('mkp') ? (

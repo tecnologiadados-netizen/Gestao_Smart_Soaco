@@ -2218,70 +2218,6 @@
       "codigo": "",
       "children": [
         {
-          "id": 379,
-          "nome": "TRANSAÇÕES TEMPORÁRIAS",
-          "tipo": "S",
-          "macro": "OUTRAS",
-          "codigo": "13.1",
-          "children": [
-            {
-              "id": 166,
-              "nome": "Transferências entre Empresas do Grupo - Crédito",
-              "tipo": "A",
-              "macro": "OUTRAS",
-              "codigo": "13.2",
-              "children": [],
-              "pathKey": "M3/0/0"
-            },
-            {
-              "id": 165,
-              "nome": "Transferências entre Empresas do Grupo - Débito",
-              "tipo": "A",
-              "macro": "OUTRAS",
-              "codigo": "13.3",
-              "children": [],
-              "pathKey": "M3/0/1"
-            },
-            {
-              "id": 124,
-              "nome": "Transferência para Aplicação Financeira",
-              "tipo": "A",
-              "macro": "OUTRAS",
-              "codigo": "13.4",
-              "children": [],
-              "pathKey": "M3/0/2"
-            },
-            {
-              "id": 135,
-              "nome": "Transferências",
-              "tipo": "A",
-              "macro": "OUTRAS",
-              "codigo": "13.5",
-              "children": [],
-              "pathKey": "M3/0/3"
-            },
-            {
-              "id": 132,
-              "nome": "Ajuste de Saldo - Entrada",
-              "tipo": "A",
-              "macro": "OUTRAS",
-              "codigo": "13.6",
-              "children": [],
-              "pathKey": "M3/0/4"
-            },
-            {
-              "id": 133,
-              "nome": "Ajuste de Saldo - Saída",
-              "tipo": "A",
-              "macro": "OUTRAS",
-              "codigo": "13.7",
-              "children": [],
-              "pathKey": "M3/0/5"
-            }
-          ],
-          "pathKey": "M3/0"
-        },
-        {
           "id": 453,
           "nome": "MOVIMENTAÇÕES DE RECEBÍVEIS",
           "tipo": "S",
@@ -2295,7 +2231,7 @@
               "macro": "OUTRAS",
               "codigo": "14.2",
               "children": [],
-              "pathKey": "M3/1/0"
+              "pathKey": "M3/0/0"
             },
             {
               "id": 404,
@@ -2304,7 +2240,7 @@
               "macro": "OUTRAS",
               "codigo": "14.3",
               "children": [],
-              "pathKey": "M3/1/1"
+              "pathKey": "M3/0/1"
             },
             {
               "id": 401,
@@ -2313,7 +2249,7 @@
               "macro": "OUTRAS",
               "codigo": "14.4",
               "children": [],
-              "pathKey": "M3/1/2"
+              "pathKey": "M3/0/2"
             },
             {
               "id": 402,
@@ -2322,10 +2258,10 @@
               "macro": "OUTRAS",
               "codigo": "14.5",
               "children": [],
-              "pathKey": "M3/1/3"
+              "pathKey": "M3/0/3"
             }
           ],
-          "pathKey": "M3/1"
+          "pathKey": "M3/0"
         },
         {
           "id": 454,
@@ -2341,10 +2277,10 @@
               "macro": "OUTRAS",
               "codigo": "15.2",
               "children": [],
-              "pathKey": "M3/2/0"
+              "pathKey": "M3/1/0"
             }
           ],
-          "pathKey": "M3/2"
+          "pathKey": "M3/1"
         },
         {
           "id": 455,
@@ -2360,7 +2296,7 @@
               "macro": "OUTRAS",
               "codigo": "16.1",
               "children": [],
-              "pathKey": "M3/3/0"
+              "pathKey": "M3/2/0"
             },
             {
               "id": 398,
@@ -2369,7 +2305,7 @@
               "macro": "OUTRAS",
               "codigo": "16.2",
               "children": [],
-              "pathKey": "M3/3/1"
+              "pathKey": "M3/2/1"
             },
             {
               "id": 399,
@@ -2378,7 +2314,7 @@
               "macro": "OUTRAS",
               "codigo": "16.3",
               "children": [],
-              "pathKey": "M3/3/2"
+              "pathKey": "M3/2/2"
             },
             {
               "id": 400,
@@ -2387,10 +2323,10 @@
               "macro": "OUTRAS",
               "codigo": "16.4",
               "children": [],
-              "pathKey": "M3/3/3"
+              "pathKey": "M3/2/3"
             }
           ],
-          "pathKey": "M3/3"
+          "pathKey": "M3/2"
         }
       ],
       "pathKey": "M3"

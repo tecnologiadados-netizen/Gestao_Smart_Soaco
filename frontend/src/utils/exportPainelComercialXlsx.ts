@@ -51,19 +51,31 @@ function labelStatusFiltro(s: FiltrosPainelComercialExport['status']): string {
   return labelStatusExport(s);
 }
 
+function pctDescontoExport(valorTotal: number, valorDesconto: number): number {
+  if (!(valorTotal > 0)) return 0;
+  return Math.round((valorDesconto / valorTotal) * 1000) / 10;
+}
+
 function pedidoParaLinha(p: PainelComercialPedido): (string | number)[] {
+  const valorTotal = p.valorTotal ?? 0;
+  const valorDesconto = p.valorDesconto ?? 0;
   return [
     p.pd,
     labelEmpresa(p.empresaId),
     p.cliente,
+    p.vendedorRepresentante || '',
     formatEmissaoPainelBr(p.emissao),
+    valorTotal,
+    valorDesconto,
     p.totalPedido,
     p.somaEntrada,
     Math.round(p.pctEntrada * 1000) / 10,
+    pctDescontoExport(valorTotal, valorDesconto),
     p.formaPagamento,
     p.condicaoPagamento,
     p.periodicidadeLabel,
     p.diasEsperados,
+    p.observacaoPedido || '',
     labelStatusExport(p.status),
     p.labelFaixa,
     p.retiradaSoAco ? 'Sim' : 'Não',
@@ -75,14 +87,19 @@ const COLUNAS_PEDIDOS = [
   'PD',
   'Empresa',
   'Cliente',
+  'Vendedor/Representante',
   'Emissão',
-  'Total (R$)',
+  'Valor Total (R$)',
+  'Valor Desconto (R$)',
+  'Valor Total com Desconto (R$)',
   'Entrada (R$)',
   '% Entrada',
+  '% Desconto',
   'Forma pagamento',
   'Condição pagamento',
   'Prazos (cadastro)',
   'Prazos esperados',
+  'Observação do pedido',
   'Status',
   'Faixa ticket',
   'Retirada Só Aço',

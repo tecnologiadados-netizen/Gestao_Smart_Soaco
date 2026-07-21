@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFavoritos } from '../../contexts/FavoritosContext';
 import { useFavoritoVisaoAtual } from '../../contexts/FavoritoVisaoAtualContext';
 import SalvarFavoritoModal from '../favoritos/SalvarFavoritoModal';
-import { buildFavoritoUrl } from '../../config/telasFavoritaveis';
+import EditarFavoritoModal from '../favoritos/EditarFavoritoModal';
+import ConfirmarExcluirFavoritoModal from '../favoritos/ConfirmarExcluirFavoritoModal';
+import {
+  buildFavoritoUrl,
+  isRotaAppFavoritavel,
+  normalizarRotaFavorito,
+  searchParamsParaFiltrosFavorito,
+  resumoFiltrosFavorito,
+} from '../../config/telasFavoritaveis';
+import { getLabelForPath } from '../../config/navigationMenu';
+import type { TelaFavorita } from '../../api/favoritos';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 import { criarPropsInputBuscaDropdown } from '../../utils/inputBuscaDropdown';
 import {
@@ -13,6 +23,7 @@ import {
   filtrarTelasBuscaRapida,
   type TelaBuscaRapida,
 } from '../../utils/telasBuscaRapida';
+import type { VisaoFavoritavel } from '../../contexts/FavoritoVisaoAtualContext';
 
 function SearchIcon() {
   return (
@@ -35,15 +46,70 @@ function BookmarkIcon() {
   );
 }
 
+function PencilIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-.828.414l-3.414.586a.5.5 0 01-.578-.578l.586-3.414A2 2 0 019 13z"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m-7 0h8"
+      />
+    </svg>
+  );
+}
+
 export default function BuscaRapidaTelas({ className = '' }: { className?: string }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { hasPermission, isMaster, grupo } = useAuth();
   const { favoritos } = useFavoritos();
   const { visao } = useFavoritoVisaoAtual();
 
+  const rotaAtual = normalizarRotaFavorito(location.pathname);
+
+  /** Visão da página (com filtros) + query da URL; fallback só com a rota. */
+  const visaoEfetiva = useMemo((): VisaoFavoritavel | null => {
+    if (!isRotaAppFavoritavel(rotaAtual)) return null;
+    const daUrl = searchParamsParaFiltrosFavorito(searchParams);
+    const daPagina =
+      visao && normalizarRotaFavorito(visao.rota) === rotaAtual ? visao.filtros : {};
+    const filtros = { ...daUrl, ...daPagina };
+    const telaLabel =
+      visao && normalizarRotaFavorito(visao.rota) === rotaAtual
+        ? visao.telaLabel
+        : getLabelForPath(rotaAtual);
+    const resumo =
+      visao && normalizarRotaFavorito(visao.rota) === rotaAtual && visao.resumoFiltros
+        ? visao.resumoFiltros
+        : resumoFiltrosFavorito(rotaAtual, filtros);
+    return {
+      rota: rotaAtual,
+      filtros,
+      telaLabel,
+      resumoFiltros: resumo,
+    };
+  }, [visao, rotaAtual, searchParams]);
+
   const [termo, setTermo] = useState('');
   const [aberto, setAberto] = useState(false);
   const [modalSalvarAberto, setModalSalvarAberto] = useState(false);
+  const [favoritoEditando, setFavoritoEditando] = useState<TelaFavorita | null>(null);
+  const [favoritoExcluindo, setFavoritoExcluindo] = useState<TelaFavorita | null>(null);
   const [destaqueIdx, setDestaqueIdx] = useState(0);
   const [inputEditavel, setInputEditavel] = useState(false);
 
@@ -85,20 +151,30 @@ export default function BuscaRapidaTelas({ className = '' }: { className?: strin
     | { kind: 'favorito'; id: number; label: string; sub: string; path: string }
     | { kind: 'tela'; tela: TelaBuscaRapida };
 
-  const podeFavoritarAtual =
-    !!visao && Object.values(visao.filtros).every((v) => v?.trim());
+  const podeFavoritarAtual = !!visaoEfetiva;
+
+  const labelFavorito = useCallback(
+    (f: TelaFavorita) => {
+      const label =
+        f.telaLabel && f.telaLabel !== f.rota ? f.telaLabel : getLabelForPath(f.rota);
+      return f.resumoFiltros ? `${label} › ${f.resumoFiltros}` : label;
+    },
+    [],
+  );
 
   const itensLista = useMemo((): ItemLista[] => {
     const termoVazio = termo.trim().length === 0;
     const favs = termoVazio ? favoritos : favoritosFiltrados;
     const out: ItemLista[] = [];
 
-    if (termoVazio && podeFavoritarAtual && visao) {
+    if (termoVazio && podeFavoritarAtual && visaoEfetiva) {
       out.push({ kind: 'header', label: 'Esta tela' });
       out.push({
         kind: 'salvar-atual',
         label: 'Favoritar visão atual',
-        sub: `${visao.telaLabel} › ${visao.resumoFiltros}`,
+        sub: visaoEfetiva.resumoFiltros
+          ? `${visaoEfetiva.telaLabel} › ${visaoEfetiva.resumoFiltros}`
+          : visaoEfetiva.telaLabel,
       });
     }
 
@@ -109,7 +185,7 @@ export default function BuscaRapidaTelas({ className = '' }: { className?: strin
           kind: 'favorito',
           id: f.id,
           label: f.nome,
-          sub: `${f.telaLabel} › ${f.resumoFiltros}`,
+          sub: labelFavorito(f),
           path: buildFavoritoUrl(f.rota, f.id),
         });
       }
@@ -125,7 +201,7 @@ export default function BuscaRapidaTelas({ className = '' }: { className?: strin
     }
 
     return out;
-  }, [termo, favoritos, favoritosFiltrados, sugestoes, podeFavoritarAtual, visao]);
+  }, [termo, favoritos, favoritosFiltrados, sugestoes, podeFavoritarAtual, visaoEfetiva, labelFavorito]);
 
   const mostrarLista = aberto && (termo.trim().length > 0 || favoritos.length > 0 || podeFavoritarAtual);
 
@@ -137,6 +213,18 @@ export default function BuscaRapidaTelas({ className = '' }: { className?: strin
   function abrirModalSalvar() {
     setAberto(false);
     setModalSalvarAberto(true);
+    inputRef.current?.blur();
+  }
+
+  function abrirEditarFavorito(fav: TelaFavorita) {
+    setAberto(false);
+    setFavoritoEditando(fav);
+    inputRef.current?.blur();
+  }
+
+  function abrirExcluirFavorito(fav: TelaFavorita) {
+    setAberto(false);
+    setFavoritoExcluindo(fav);
     inputRef.current?.blur();
   }
 
@@ -317,23 +405,56 @@ export default function BuscaRapidaTelas({ className = '' }: { className?: strin
                   );
                 }
                 if (item.kind === 'favorito') {
+                  const fav = favoritos.find((f) => f.id === item.id);
                   return (
                     <li key={`fav-${item.id}`} role="option" aria-selected={idx === destaqueIdx}>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => irParaPath(item.path)}
-                        onMouseEnter={() => setDestaqueIdx(idx)}
-                        className={`flex w-full items-start gap-2 px-3 py-2 text-left transition ${
+                      <div
+                        className={`flex w-full items-start gap-1 px-2 py-1.5 transition ${
                           idx === destaqueIdx ? 'bg-accent-500/20 text-white' : 'text-white/85 hover:bg-white/10'
                         }`}
+                        onMouseEnter={() => setDestaqueIdx(idx)}
                       >
-                        <BookmarkIcon />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">{item.label}</span>
-                          <span className="block truncate text-xs text-white/45">{item.sub}</span>
-                        </span>
-                      </button>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => irParaPath(item.path)}
+                          className="flex min-w-0 flex-1 items-start gap-2 px-1 py-0.5 text-left"
+                        >
+                          <BookmarkIcon />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium">{item.label}</span>
+                            <span className="block truncate text-xs text-white/45">{item.sub}</span>
+                          </span>
+                        </button>
+                        <div className="flex shrink-0 items-center gap-0.5 pt-0.5">
+                          <button
+                            type="button"
+                            title="Renomear favorito"
+                            aria-label={`Renomear ${item.label}`}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (fav) abrirEditarFavorito(fav);
+                            }}
+                            className="rounded p-1 text-white/45 transition hover:bg-white/15 hover:text-white"
+                          >
+                            <PencilIcon />
+                          </button>
+                          <button
+                            type="button"
+                            title="Excluir favorito"
+                            aria-label={`Excluir ${item.label}`}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (fav) abrirExcluirFavorito(fav);
+                            }}
+                            className="rounded p-1 text-white/45 transition hover:bg-red-500/20 hover:text-red-300"
+                          >
+                            <TrashIcon />
+                          </button>
+                        </div>
+                      </div>
                     </li>
                   );
                 }
@@ -362,13 +483,36 @@ export default function BuscaRapidaTelas({ className = '' }: { className?: strin
           document.body,
         )}
 
-      {visao && (
+      {visaoEfetiva && (
         <SalvarFavoritoModal
           open={modalSalvarAberto}
           onClose={() => setModalSalvarAberto(false)}
-          rota={visao.rota}
-          filtros={visao.filtros}
-          resumoFiltros={`${visao.telaLabel} › ${visao.resumoFiltros}`}
+          rota={visaoEfetiva.rota}
+          filtros={visaoEfetiva.filtros}
+          resumoFiltros={
+            visaoEfetiva.resumoFiltros
+              ? `${visaoEfetiva.telaLabel} › ${visaoEfetiva.resumoFiltros}`
+              : visaoEfetiva.telaLabel
+          }
+        />
+      )}
+
+      {favoritoEditando && (
+        <EditarFavoritoModal
+          open={!!favoritoEditando}
+          onClose={() => setFavoritoEditando(null)}
+          favoritoId={favoritoEditando.id}
+          nomeAtual={favoritoEditando.nome}
+          resumoFiltros={labelFavorito(favoritoEditando)}
+        />
+      )}
+
+      {favoritoExcluindo && (
+        <ConfirmarExcluirFavoritoModal
+          open={!!favoritoExcluindo}
+          onClose={() => setFavoritoExcluindo(null)}
+          favoritoId={favoritoExcluindo.id}
+          nome={favoritoExcluindo.nome}
         />
       )}
     </div>

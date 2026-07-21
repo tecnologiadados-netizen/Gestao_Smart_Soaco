@@ -72,13 +72,15 @@ export const LF_DATA_REFERENCIA_RECEBIMENTO = `COALESCE(
 export const LF_TEM_VALOR_RECEBIDO_PAGO = `COALESCE(${LF_VALOR_RECEBIDO_PAGO}, 0) > 0`;
 export const TEM_RECEBIMENTO_OU_BAIXA = `(${LF_TEM_VALOR_RECEBIDO_PAGO} OR COALESCE(${VALOR_BAIXADO_AGENDAMENTO}, 0) > 0)`;
 
-/** LF agregado restrito à pessoa/empresa — evita varrer toda lancamentofinanceiro. */
+/** LF agregado restrito à pessoa/grupo/empresa — evita varrer toda lancamentofinanceiro. */
 function buildLfAgregadoJoinsScoped(
   pessoa?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): { sql: string; params: QueryParams } {
+  const grupoOk = grupoId != null && grupoId > 0;
   const useScope =
-    !!pessoa?.trim() || (empresaId != null && empresaId > 0);
+    !!pessoa?.trim() || grupoOk || (empresaId != null && empresaId > 0);
 
   if (!useScope) {
     return { sql: LF_AGREGADO_JOINS, params: [] };
@@ -86,11 +88,15 @@ function buildLfAgregadoJoinsScoped(
 
   const scopeClauses = [TIPO_CONTA_UTILIZADO.replace(/af\./g, "afScope.")];
   const params: QueryParams = [];
-  const pessoaJoin = pessoa?.trim()
-    ? "INNER JOIN pessoa pesScope ON pesScope.id = afScope.idPessoa"
-    : "";
+  const pessoaJoin =
+    !!pessoa?.trim() || grupoOk
+      ? "INNER JOIN pessoa pesScope ON pesScope.id = afScope.idPessoa"
+      : "";
 
-  if (pessoa?.trim()) {
+  if (grupoOk) {
+    scopeClauses.push("pesScope.idGrupoPessoa = ?");
+    params.push(grupoId!);
+  } else if (pessoa?.trim()) {
     scopeClauses.push("pesScope.nome = ?");
     params.push(pessoa.trim());
   }
@@ -131,9 +137,11 @@ LEFT JOIN (
 export function buildIndicadoresFrom(
   pessoa?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): { sql: string; params: QueryParams } {
-  const precisaPessoa = !!pessoa?.trim();
-  const lfJoins = buildLfAgregadoJoinsScoped(pessoa, empresaId);
+  const precisaJoinPessoa =
+    !!pessoa?.trim() || (grupoId != null && grupoId > 0);
+  const lfJoins = buildLfAgregadoJoinsScoped(pessoa, empresaId, grupoId);
 
   return {
     sql: `
@@ -142,7 +150,7 @@ LEFT JOIN contafinanceiro cf ON cf.id = af.idContaFinanceiro
 LEFT JOIN nfe nfes ON nfes.idDocumentoEstoque = af.idDocumentoSaida
 LEFT JOIN nfe nfee ON nfee.idDocumentoEstoque = af.idDocumentoEntrada
 LEFT JOIN nfse ON nfse.idDocumentoServico = af.idDocumentoSaida
-${precisaPessoa ? "INNER JOIN pessoa pes ON pes.id = af.idPessoa" : ""}
+${precisaJoinPessoa ? "INNER JOIN pessoa pes ON pes.id = af.idPessoa" : ""}
 ${lfJoins.sql}`,
     params: lfJoins.params,
   };
@@ -240,10 +248,23 @@ export const SELECT_COLS = `
 /** Alias mantido para compatibilidade com buildBaixadosQuery */
 export const SELECT_COLS_BAIXADOS = SELECT_COLS;
 
-export function buildPessoaFilter(pessoa?: string | null): {
+/**
+ * Filtro por cliente individual (nome) ou grupo econômico Nomus (idGrupoPessoa).
+ * Se `grupoId` for válido, tem prioridade sobre `pessoa`.
+ */
+export function buildPessoaFilter(
+  pessoa?: string | null,
+  grupoId?: number | null,
+): {
   clause: string;
   params: QueryParams;
 } {
+  if (grupoId != null && grupoId > 0) {
+    return {
+      clause: " AND pes.idGrupoPessoa = ? ",
+      params: [grupoId],
+    };
+  }
   if (!pessoa?.trim()) {
     return { clause: "", params: [] };
   }
@@ -263,12 +284,13 @@ export function buildIndicadoresQuery(
   tipo: "receber" | "pagar",
   pessoa?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): { sql: string; params: QueryParams } {
   const discriminadores =
     tipo === "receber" ? RECEBER_DISCRIMINADORES : PAGAR_DISCRIMINADORES;
-  const pessoaFilter = buildPessoaFilter(pessoa);
+  const pessoaFilter = buildPessoaFilter(pessoa, grupoId);
   const empresaFilter = buildEmpresaFilter(empresaId);
-  const from = buildIndicadoresFrom(pessoa, empresaId);
+  const from = buildIndicadoresFrom(pessoa, empresaId, grupoId);
 
   const sql = `
     SELECT
@@ -297,12 +319,13 @@ export function buildIndicadoresClassificacaoQuery(
   tipo: "receber" | "pagar",
   pessoa?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): { sql: string; params: QueryParams } {
   const discriminadores =
     tipo === "receber" ? RECEBER_DISCRIMINADORES : PAGAR_DISCRIMINADORES;
-  const pessoaFilter = buildPessoaFilter(pessoa);
+  const pessoaFilter = buildPessoaFilter(pessoa, grupoId);
   const empresaFilter = buildEmpresaFilter(empresaId);
-  const from = buildIndicadoresFrom(pessoa, empresaId);
+  const from = buildIndicadoresFrom(pessoa, empresaId, grupoId);
 
   const sql = `
     SELECT
@@ -336,13 +359,14 @@ export function buildIndicadoresClassificacaoQuery(
 export function buildIndicadoresConsolidadoQuery(
   pessoa?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): {
   sql: string;
   params: QueryParams;
 } {
-  const pessoaFilter = buildPessoaFilter(pessoa);
+  const pessoaFilter = buildPessoaFilter(pessoa, grupoId);
   const empresaFilter = buildEmpresaFilter(empresaId);
-  const from = buildIndicadoresFrom(pessoa, empresaId);
+  const from = buildIndicadoresFrom(pessoa, empresaId, grupoId);
 
   const sql = `
     SELECT
@@ -429,10 +453,11 @@ export function buildContasQuery(
   pessoa?: string | null,
   classificacao?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): { sql: string; params: QueryParams } {
   const discriminadores =
     tipo === "receber" ? RECEBER_DISCRIMINADORES : PAGAR_DISCRIMINADORES;
-  const pessoaFilter = buildPessoaFilter(pessoa);
+  const pessoaFilter = buildPessoaFilter(pessoa, grupoId);
   const classificacaoFilter = buildClassificacaoFilter(classificacao);
   const empresaFilter = buildEmpresaFilter(empresaId);
 
@@ -475,10 +500,11 @@ export function buildTitulosDescontadoContasQuery(
   pessoa?: string | null,
   classificacao?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): { sql: string; params: QueryParams } {
   const discriminadores =
     tipo === "receber" ? RECEBER_DISCRIMINADORES : PAGAR_DISCRIMINADORES;
-  const pessoaFilter = buildPessoaFilter(pessoa);
+  const pessoaFilter = buildPessoaFilter(pessoa, grupoId);
   const classificacaoFilter = buildClassificacaoFilter(classificacao);
   const empresaFilter = buildEmpresaFilter(empresaId);
 
@@ -535,10 +561,11 @@ export function buildRecebimentosDetalheQuery(
   pessoa?: string | null,
   classificacao?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): { sql: string; params: QueryParams } {
   const discriminadores =
     tipo === "receber" ? RECEBER_DISCRIMINADORES : PAGAR_DISCRIMINADORES;
-  const pessoaFilter = buildPessoaFilter(pessoa);
+  const pessoaFilter = buildPessoaFilter(pessoa, grupoId);
   const classificacaoFilter = buildClassificacaoFilter(classificacao);
   const empresaFilter = buildEmpresaFilter(empresaId);
   const dataRef = LF_DATA_REFERENCIA_RECEBIMENTO;
@@ -586,10 +613,11 @@ export function buildRecebimentosDetalheResumoQuery(
   pessoa?: string | null,
   classificacao?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): { sql: string; params: QueryParams } {
   const discriminadores =
     tipo === "receber" ? RECEBER_DISCRIMINADORES : PAGAR_DISCRIMINADORES;
-  const pessoaFilter = buildPessoaFilter(pessoa);
+  const pessoaFilter = buildPessoaFilter(pessoa, grupoId);
   const classificacaoFilter = buildClassificacaoFilter(classificacao);
   const empresaFilter = buildEmpresaFilter(empresaId);
   const dataRef = LF_DATA_REFERENCIA_RECEBIMENTO;
@@ -728,10 +756,11 @@ export function buildBaixadosQuery(
   tipo: "receber" | "pagar",
   pessoa?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): { sql: string; params: QueryParams } {
   const discriminadores =
     tipo === "receber" ? RECEBER_DISCRIMINADORES : PAGAR_DISCRIMINADORES;
-  const pessoaFilter = buildPessoaFilter(pessoa);
+  const pessoaFilter = buildPessoaFilter(pessoa, grupoId);
   const empresaFilter = buildEmpresaFilter(empresaId);
 
   const sql = `
@@ -767,10 +796,103 @@ export function buildPessoasQuery(
 
   if (search?.trim()) {
     searchClause =
-      " AND (pes.nome LIKE ? OR pes.nomeRazaoSocial LIKE ? OR pes.cnpjCpf LIKE ? OR pes.cpf LIKE ?) ";
+      " AND (pes.nome LIKE ? OR pes.nomeRazaoSocial LIKE ? OR pes.cnpjCpf LIKE ? OR pes.cpf LIKE ? OR IFNULL(gp.grupo, '') LIKE ?) ";
     const term = `%${search.trim()}%`;
-    params.push(term, term, term, term);
+    params.push(term, term, term, term, term);
   }
+
+  const sql = `
+    SELECT
+      pes.nome AS nome,
+      pes.nomeRazaoSocial AS razaoSocial,
+      IF(pes.tipoPessoa = 1, pes.cnpjCpf, pes.cpf) AS cnpjCpf,
+      pes.idGrupoPessoa AS idGrupoPessoa,
+      IFNULL(gp.grupo, '') AS grupo,
+      COALESCE(SUM(CASE WHEN ${AGENDAMENTO_PENDENTE} AND af.discriminador IN ('R','CR','NCC') THEN af.saldoBaixar ELSE 0 END), 0) AS totalPendente
+    FROM pessoa pes
+    LEFT JOIN grupopessoa gp ON gp.id = pes.idGrupoPessoa
+    INNER JOIN agendamentofinanceiro af ON af.idPessoa = pes.id AND ${TIPO_CONTA_UTILIZADO}${empresaFilter.clause}
+    LEFT JOIN nfe nfes ON nfes.idDocumentoEstoque = af.idDocumentoSaida
+    LEFT JOIN nfe nfee ON nfee.idDocumentoEstoque = af.idDocumentoEntrada
+    LEFT JOIN nfse ON nfse.idDocumentoServico = af.idDocumentoSaida
+    WHERE pes.ativo = 1
+      ${EXCLUIR_NF_ORIGEM_CANCELADA}
+      ${searchClause}
+    GROUP BY pes.id, pes.nome, pes.nomeRazaoSocial, pes.cnpjCpf, pes.cpf, pes.tipoPessoa, pes.idGrupoPessoa, gp.grupo
+    HAVING totalPendente > 0 OR COUNT(af.id) > 0
+    ORDER BY pes.nome ASC
+    LIMIT 100
+  `;
+
+  return { sql, params };
+}
+
+/** Grupos econômicos Nomus que batem na busca (nome do grupo ou de algum membro). */
+export function buildGruposPessoaQuery(
+  search?: string | null,
+  empresaId?: number | null,
+): {
+  sql: string;
+  params: QueryParams;
+} {
+  const empresaFilter = buildEmpresaFilter(empresaId);
+  const params: QueryParams = [...empresaFilter.params];
+  let searchClause = "";
+
+  if (search?.trim()) {
+    searchClause = `
+      AND (
+        IFNULL(gp.grupo, '') LIKE ?
+        OR EXISTS (
+          SELECT 1 FROM pessoa p2
+          WHERE p2.idGrupoPessoa = gp.id
+            AND p2.ativo = 1
+            AND (
+              p2.nome LIKE ?
+              OR p2.nomeRazaoSocial LIKE ?
+              OR p2.cnpjCpf LIKE ?
+              OR p2.cpf LIKE ?
+            )
+        )
+      ) `;
+    const term = `%${search.trim()}%`;
+    params.push(term, term, term, term, term);
+  }
+
+  const sql = `
+    SELECT
+      gp.id AS id,
+      IFNULL(gp.grupo, '') AS nome,
+      COUNT(DISTINCT pes.id) AS qtdMembros,
+      COALESCE(SUM(CASE WHEN ${AGENDAMENTO_PENDENTE} AND af.discriminador IN ('R','CR','NCC') THEN af.saldoBaixar ELSE 0 END), 0) AS totalPendente
+    FROM grupopessoa gp
+    INNER JOIN pessoa pes ON pes.idGrupoPessoa = gp.id AND pes.ativo = 1
+    INNER JOIN agendamentofinanceiro af ON af.idPessoa = pes.id AND ${TIPO_CONTA_UTILIZADO}${empresaFilter.clause}
+    LEFT JOIN nfe nfes ON nfes.idDocumentoEstoque = af.idDocumentoSaida
+    LEFT JOIN nfe nfee ON nfee.idDocumentoEstoque = af.idDocumentoEntrada
+    LEFT JOIN nfse ON nfse.idDocumentoServico = af.idDocumentoSaida
+    WHERE IFNULL(gp.grupo, '') <> ''
+      ${EXCLUIR_NF_ORIGEM_CANCELADA}
+      ${searchClause}
+    GROUP BY gp.id, gp.grupo
+    HAVING qtdMembros > 0 AND (totalPendente > 0 OR COUNT(af.id) > 0)
+    ORDER BY gp.grupo ASC
+    LIMIT 30
+  `;
+
+  return { sql, params };
+}
+
+/** Membros ativos de um grupo com pendência consolidada (visão de detalhe). */
+export function buildMembrosGrupoQuery(
+  grupoId: number,
+  empresaId?: number | null,
+): {
+  sql: string;
+  params: QueryParams;
+} {
+  const empresaFilter = buildEmpresaFilter(empresaId);
+  const params: QueryParams = [...empresaFilter.params, grupoId];
 
   const sql = `
     SELECT
@@ -779,17 +901,15 @@ export function buildPessoasQuery(
       IF(pes.tipoPessoa = 1, pes.cnpjCpf, pes.cpf) AS cnpjCpf,
       COALESCE(SUM(CASE WHEN ${AGENDAMENTO_PENDENTE} AND af.discriminador IN ('R','CR','NCC') THEN af.saldoBaixar ELSE 0 END), 0) AS totalPendente
     FROM pessoa pes
-    INNER JOIN agendamentofinanceiro af ON af.idPessoa = pes.id AND ${TIPO_CONTA_UTILIZADO}${empresaFilter.clause}
+    LEFT JOIN agendamentofinanceiro af ON af.idPessoa = pes.id AND ${TIPO_CONTA_UTILIZADO}${empresaFilter.clause}
     LEFT JOIN nfe nfes ON nfes.idDocumentoEstoque = af.idDocumentoSaida
     LEFT JOIN nfe nfee ON nfee.idDocumentoEstoque = af.idDocumentoEntrada
     LEFT JOIN nfse ON nfse.idDocumentoServico = af.idDocumentoSaida
     WHERE pes.ativo = 1
-      ${EXCLUIR_NF_ORIGEM_CANCELADA}
-      ${searchClause}
+      AND pes.idGrupoPessoa = ?
+      AND (af.id IS NULL OR NOT ${NF_ORIGEM_CANCELADA})
     GROUP BY pes.id, pes.nome, pes.nomeRazaoSocial, pes.cnpjCpf, pes.cpf, pes.tipoPessoa
-    HAVING totalPendente > 0 OR COUNT(af.id) > 0
-    ORDER BY pes.nome ASC
-    LIMIT 100
+    ORDER BY totalPendente DESC, pes.nome ASC
   `;
 
   return { sql, params };

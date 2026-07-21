@@ -20,7 +20,7 @@ export default function WhatsAppConnectPage() {
       setData(result);
       if (result.error) setError(result.error);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erro ao conectar com a uazapiGO');
+      setError(e instanceof Error ? e.message : 'Erro ao conectar com a Evolution API');
       setData(null);
     } finally {
       setLoading(false);
@@ -68,11 +68,11 @@ export default function WhatsAppConnectPage() {
     return (
       <div className="max-w-lg mx-auto py-12">
         <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-6">
-          <h2 className="text-lg font-semibold text-amber-800 dark:text-amber-200 mb-2">uazapiGO não configurada</h2>
+          <h2 className="text-lg font-semibold text-amber-800 dark:text-amber-200 mb-2">Evolution API não configurada</h2>
           <p className="text-amber-700 dark:text-amber-300 text-sm">
-            Configure <code className="bg-amber-200/50 dark:bg-amber-800/50 px-1 rounded">UAZAPI_URL</code> e{' '}
-            <code className="bg-amber-200/50 dark:bg-amber-800/50 px-1 rounded">UAZAPI_TOKEN</code> ou{' '}
-            <code className="bg-amber-200/50 dark:bg-amber-800/50 px-1 rounded">UAZAPI_ADMIN_TOKEN</code> no .env do backend.
+            Configure <code className="bg-amber-200/50 dark:bg-amber-800/50 px-1 rounded">EVOLUTION_API_URL</code> e{' '}
+            <code className="bg-amber-200/50 dark:bg-amber-800/50 px-1 rounded">EVOLUTION_API_KEY</code> no .env do backend.
+            Guia: <code className="bg-amber-200/50 dark:bg-amber-800/50 px-1 rounded">docs/WHATSAPP-EVOLUTION-GESTAO.md</code>.
           </p>
         </div>
       </div>
@@ -141,7 +141,7 @@ export default function WhatsAppConnectPage() {
           )}
 
           <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-600">
-            <p className="text-slate-600 dark:text-slate-400 text-xs mb-2">Desconectar este WhatsApp da uazapiGO (será necessário escanear o QR code novamente)</p>
+            <p className="text-slate-600 dark:text-slate-400 text-xs mb-2">Desconectar este WhatsApp da Evolution API (será necessário escanear o QR code novamente)</p>
             {disconnectError && <p className="text-red-600 dark:text-red-400 text-xs mb-2">{disconnectError}</p>}
             <button
               type="button"

@@ -4,7 +4,9 @@ import { EMPRESAS_PAINEL } from './empresaConfig.js';
 import {
   buildBaixadosQuery,
   buildContasQuery,
+  buildGruposPessoaQuery,
   buildIndicadoresConsolidadoQuery,
+  buildMembrosGrupoQuery,
   buildPessoasQuery,
   buildRecebimentosDetalheQuery,
   buildRecebimentosDetalheResumoQuery,
@@ -30,12 +32,33 @@ import type {
   DashboardData,
   DashboardDetalhesData,
   DashboardGlobalData,
+  GrupoFiltradoInfo,
+  GrupoPessoaOption,
   IndicadorClassificacao,
   IndicadoresResumo,
   PessoaOption,
   EmpresaOption,
   Recebimento,
 } from './types.js';
+
+function resolveClienteFiltro(
+  pessoa?: string | null,
+  grupoId?: number | null,
+): { pessoa: string | null; grupoId: number | null } {
+  if (grupoId != null && grupoId > 0) {
+    return { pessoa: null, grupoId: Math.trunc(grupoId) };
+  }
+  return { pessoa: pessoa?.trim() || null, grupoId: null };
+}
+
+function clienteCacheKey(
+  pessoa?: string | null,
+  grupoId?: number | null,
+): string {
+  const f = resolveClienteFiltro(pessoa, grupoId);
+  if (f.grupoId != null) return `grupo:${f.grupoId}`;
+  return f.pessoa || "all";
+}
 
 interface RowIndicadores {
   total: number;
@@ -155,19 +178,23 @@ async function carregarContasDetalheComTitulosDescontado(
   pessoa?: string | null,
   classificacao?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): Promise<ContaFinanceira[]> {
+  const f = resolveClienteFiltro(pessoa, grupoId);
   const contasQuery = buildContasQuery(
     tipo,
     situacao,
-    pessoa,
+    f.pessoa,
     classificacao,
     empresaId,
+    f.grupoId,
   );
   const titulosQuery = buildTitulosDescontadoContasQuery(
     tipo,
-    pessoa,
+    f.pessoa,
     classificacao,
     empresaId,
+    f.grupoId,
   );
 
   const [contasRows, titulosRows] = await Promise.all([
@@ -254,8 +281,9 @@ function detalheCacheKey(
   classificacao?: string | null,
   pessoa?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): string {
-  return `${CACHE_KEY_DETALHE}:${tipo}:${coluna}:${classificacao ?? "all"}:${pessoa?.trim() || "all"}${empresaCacheSuffix(empresaId)}`;
+  return `${CACHE_KEY_DETALHE}:${tipo}:${coluna}:${classificacao ?? "all"}:${clienteCacheKey(pessoa, grupoId)}${empresaCacheSuffix(empresaId)}`;
 }
 
 function somarIndicadores(rows: RowIndicadores[]): IndicadoresResumo {
@@ -285,13 +313,18 @@ function somarIndicadores(rows: RowIndicadores[]): IndicadoresResumo {
 async function carregarIndicadoresConsolidados(
   pessoa?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): Promise<IndicadoresConsolidadosResult> {
-  const pessoaKey = pessoa?.trim() || "all";
-  const inFlightKey = `${pessoaKey}${empresaCacheSuffix(empresaId ?? null)}`;
+  const f = resolveClienteFiltro(pessoa, grupoId);
+  const inFlightKey = `${clienteCacheKey(f.pessoa, f.grupoId)}${empresaCacheSuffix(empresaId ?? null)}`;
   const inFlight = indicadoresConsolidadosInFlight.get(inFlightKey);
   if (inFlight) return inFlight;
 
-  const { sql, params } = buildIndicadoresConsolidadoQuery(pessoa, empresaId);
+  const { sql, params } = buildIndicadoresConsolidadoQuery(
+    f.pessoa,
+    empresaId,
+    f.grupoId,
+  );
   const promise = nomusQuery<
     RowIndicadores & {
       tipo: "receber" | "pagar";
@@ -392,29 +425,41 @@ async function carregarResumoRecebimentosSaudeEmpresa(
 
 export async function getIndicadoresGlobais(
   pessoa?: string | null,
-  options?: { refresh?: boolean; empresaId?: number | null },
+  options?: {
+    refresh?: boolean;
+    empresaId?: number | null;
+    grupoId?: number | null;
+  },
 ): Promise<DashboardGlobalData> {
-  const pessoaKey = pessoa?.trim() || null;
+  const f = resolveClienteFiltro(pessoa, options?.grupoId);
   const empresaId = options?.empresaId ?? null;
-  const cacheKey = pessoaKey
-    ? `${CACHE_KEY_GLOBAL}:pessoa:${pessoaKey}${empresaCacheSuffix(empresaId)}`
-    : `${CACHE_KEY_GLOBAL}${empresaCacheSuffix(empresaId)}`;
+  const cacheKey =
+    f.grupoId != null
+      ? `${CACHE_KEY_GLOBAL}:grupo:${f.grupoId}${empresaCacheSuffix(empresaId)}`
+      : f.pessoa
+        ? `${CACHE_KEY_GLOBAL}:pessoa:${f.pessoa}${empresaCacheSuffix(empresaId)}`
+        : `${CACHE_KEY_GLOBAL}${empresaCacheSuffix(empresaId)}`;
 
   if (!options?.refresh) {
     const cached = getCached<DashboardGlobalData>(cacheKey);
     if (cached) return cached;
-  } else if (!pessoaKey) {
+  } else if (!f.pessoa && f.grupoId == null) {
     invalidateCache(`${CACHE_KEY_GLOBAL}${empresaCacheSuffix(empresaId)}`);
   }
 
-  const indicadores = await carregarIndicadoresConsolidados(pessoaKey, empresaId);
+  const indicadores = await carregarIndicadoresConsolidados(
+    f.pessoa,
+    empresaId,
+    f.grupoId,
+  );
 
   const data: DashboardGlobalData = {
     ...indicadores,
-    pessoaFiltrada: pessoaKey,
+    pessoaFiltrada: f.pessoa,
+    grupoFiltrado: null,
   };
 
-  if (!pessoaKey) {
+  if (!f.pessoa && f.grupoId == null) {
     setCache(cacheKey, data, CACHE_TTL_MS);
   }
 
@@ -455,10 +500,46 @@ export async function getSaudeQuadroReceberEmpresa(options?: {
   return saudeEmpresa;
 }
 
-export async function getDashboardDetalhes(
-  pessoa: string,
+async function carregarGrupoFiltrado(
+  grupoId: number,
   empresaId?: number | null,
+): Promise<GrupoFiltradoInfo | null> {
+  const nomeRows = await nomusQuery<{ id: number; nome: string }>(
+    `SELECT id, IFNULL(grupo, '') AS nome FROM grupopessoa WHERE id = ? LIMIT 1`,
+    [grupoId],
+  );
+  const nome = nomeRows[0]?.nome?.trim() || `Grupo #${grupoId}`;
+
+  const membrosQuery = buildMembrosGrupoQuery(grupoId, empresaId);
+  const membrosRows = await nomusQuery<{
+    nome: string;
+    razaoSocial: string | null;
+    cnpjCpf: string | null;
+    totalPendente: number;
+  }>(membrosQuery.sql, membrosQuery.params);
+
+  return {
+    id: grupoId,
+    nome,
+    membros: membrosRows.map((row) => ({
+      nome: row.nome,
+      razaoSocial: row.razaoSocial,
+      cnpjCpf: row.cnpjCpf,
+      totalPendente: Number(row.totalPendente ?? 0),
+    })),
+  };
+}
+
+export async function getDashboardDetalhes(
+  pessoa?: string | null,
+  empresaId?: number | null,
+  grupoId?: number | null,
 ): Promise<DashboardDetalhesData> {
+  const f = resolveClienteFiltro(pessoa, grupoId);
+  if (!f.pessoa && f.grupoId == null) {
+    throw new Error("Informe pessoa ou grupoId para carregar detalhes.");
+  }
+
   const [
     indicadores,
     contasReceberAtraso,
@@ -467,44 +548,62 @@ export async function getDashboardDetalhes(
     contasPagarEmDia,
     recebimentosRows,
     pagamentosRows,
+    grupoFiltrado,
   ] = await Promise.all([
-    carregarIndicadoresConsolidados(pessoa, empresaId),
+    carregarIndicadoresConsolidados(f.pessoa, empresaId, f.grupoId),
     carregarContasDetalheComTitulosDescontado(
       "receber",
       "atraso",
-      pessoa,
+      f.pessoa,
       null,
       empresaId,
+      f.grupoId,
     ),
     carregarContasDetalheComTitulosDescontado(
       "receber",
       "emDia",
-      pessoa,
+      f.pessoa,
       null,
       empresaId,
+      f.grupoId,
     ),
     carregarContasDetalheComTitulosDescontado(
       "pagar",
       "atraso",
-      pessoa,
+      f.pessoa,
       null,
       empresaId,
+      f.grupoId,
     ),
     carregarContasDetalheComTitulosDescontado(
       "pagar",
       "emDia",
-      pessoa,
+      f.pessoa,
       null,
       empresaId,
+      f.grupoId,
     ),
     (async () => {
-      const { sql, params } = buildBaixadosQuery("receber", pessoa, empresaId);
+      const { sql, params } = buildBaixadosQuery(
+        "receber",
+        f.pessoa,
+        empresaId,
+        f.grupoId,
+      );
       return nomusQuery<RowConta>(sql, params);
     })(),
     (async () => {
-      const { sql, params } = buildBaixadosQuery("pagar", pessoa, empresaId);
+      const { sql, params } = buildBaixadosQuery(
+        "pagar",
+        f.pessoa,
+        empresaId,
+        f.grupoId,
+      );
       return nomusQuery<RowConta>(sql, params);
     })(),
+    f.grupoId != null
+      ? carregarGrupoFiltrado(f.grupoId, empresaId)
+      : Promise.resolve(null),
   ]);
 
   return {
@@ -520,16 +619,19 @@ export async function getDashboardDetalhes(
     pagamentos: filtrarRecebimentosSemTituloDescontado(
       pagamentosRows.map(mapBaixado),
     ),
-    pessoaFiltrada: pessoa.trim(),
+    pessoaFiltrada: f.pessoa,
+    grupoFiltrado,
   };
 }
 
 /** @deprecated Use getIndicadoresGlobais ou getDashboardDetalhes */
 export async function getDashboardData(
   pessoa?: string | null,
+  grupoId?: number | null,
 ): Promise<DashboardData> {
-  if (pessoa?.trim()) {
-    return getDashboardDetalhes(pessoa);
+  const f = resolveClienteFiltro(pessoa, grupoId);
+  if (f.pessoa || f.grupoId != null) {
+    return getDashboardDetalhes(f.pessoa, null, f.grupoId);
   }
   const global = await getIndicadoresGlobais();
   return {
@@ -549,6 +651,7 @@ export async function getContasDetalhe(
   classificacao?: string | null,
   pessoa?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): Promise<ContaFinanceira[]> {
   return carregarContasDetalheComTitulosDescontado(
     tipo,
@@ -556,6 +659,7 @@ export async function getContasDetalhe(
     pessoa,
     classificacao,
     empresaId,
+    grupoId,
   );
 }
 
@@ -565,20 +669,24 @@ export async function getRecebimentosDetalhe(
   classificacao?: string | null,
   pessoa?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): Promise<{ dados: Recebimento[]; resumo: DetalheResumo }> {
+  const f = resolveClienteFiltro(pessoa, grupoId);
   const detalheQuery = buildRecebimentosDetalheQuery(
     tipo,
     periodo,
-    pessoa,
+    f.pessoa,
     classificacao,
     empresaId,
+    f.grupoId,
   );
   const resumoQuery = buildRecebimentosDetalheResumoQuery(
     tipo,
     periodo,
-    pessoa,
+    f.pessoa,
     classificacao,
     empresaId,
+    f.grupoId,
   );
 
   const [rows, resumoRows] = await Promise.all([
@@ -627,8 +735,16 @@ export async function getIndicadorDetalhe(
   classificacao?: string | null,
   pessoa?: string | null,
   empresaId?: number | null,
+  grupoId?: number | null,
 ): Promise<IndicadorDetalheResultado> {
-  const cacheKey = detalheCacheKey(tipo, coluna, classificacao, pessoa, empresaId);
+  const cacheKey = detalheCacheKey(
+    tipo,
+    coluna,
+    classificacao,
+    pessoa,
+    empresaId,
+    grupoId,
+  );
   const cached = getCached<IndicadorDetalheResultado>(cacheKey);
   if (cached) return cached;
 
@@ -642,6 +758,7 @@ export async function getIndicadorDetalhe(
       classificacao,
       pessoa,
       empresaId,
+      grupoId,
     );
     resultado = { modo: "contas", dados };
   } else {
@@ -652,6 +769,7 @@ export async function getIndicadorDetalhe(
       classificacao,
       pessoa,
       empresaId,
+      grupoId,
     );
     resultado = {
       modo: "recebimentos",
@@ -664,24 +782,58 @@ export async function getIndicadorDetalhe(
   return resultado;
 }
 
+export async function searchPessoasEGrupos(
+  search?: string | null,
+  empresaId?: number | null,
+): Promise<{ pessoas: PessoaOption[]; grupos: GrupoPessoaOption[] }> {
+  const pessoasQ = buildPessoasQuery(search, empresaId);
+  const gruposQ = buildGruposPessoaQuery(search, empresaId);
+
+  const [pessoasRows, gruposRows] = await Promise.all([
+    nomusQuery<{
+      nome: string;
+      razaoSocial: string | null;
+      cnpjCpf: string | null;
+      idGrupoPessoa: number | null;
+      grupo: string | null;
+      totalPendente: number;
+    }>(pessoasQ.sql, pessoasQ.params),
+    nomusQuery<{
+      id: number;
+      nome: string;
+      qtdMembros: number;
+      totalPendente: number;
+    }>(gruposQ.sql, gruposQ.params),
+  ]);
+
+  return {
+    pessoas: pessoasRows.map((row) => ({
+      nome: row.nome,
+      razaoSocial: row.razaoSocial,
+      cnpjCpf: row.cnpjCpf,
+      totalPendente: Number(row.totalPendente ?? 0),
+      idGrupoPessoa:
+        row.idGrupoPessoa != null && Number(row.idGrupoPessoa) > 0
+          ? Number(row.idGrupoPessoa)
+          : null,
+      grupo: row.grupo?.trim() || null,
+    })),
+    grupos: gruposRows.map((row) => ({
+      id: Number(row.id),
+      nome: row.nome,
+      qtdMembros: Number(row.qtdMembros ?? 0),
+      totalPendente: Number(row.totalPendente ?? 0),
+    })),
+  };
+}
+
+/** @deprecated Prefer searchPessoasEGrupos */
 export async function searchPessoas(
   search?: string | null,
   empresaId?: number | null,
 ): Promise<PessoaOption[]> {
-  const { sql, params } = buildPessoasQuery(search, empresaId);
-  const rows = await nomusQuery<{
-    nome: string;
-    razaoSocial: string | null;
-    cnpjCpf: string | null;
-    totalPendente: number;
-  }>(sql, params);
-
-  return rows.map((row) => ({
-    nome: row.nome,
-    razaoSocial: row.razaoSocial,
-    cnpjCpf: row.cnpjCpf,
-    totalPendente: Number(row.totalPendente ?? 0),
-  }));
+  const { pessoas } = await searchPessoasEGrupos(search, empresaId);
+  return pessoas;
 }
 
 export async function listEmpresas(): Promise<EmpresaOption[]> {

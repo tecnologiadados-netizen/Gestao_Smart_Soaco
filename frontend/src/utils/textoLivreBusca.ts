@@ -13,7 +13,8 @@ export function normalizarTextoBusca(s: string): string {
   return t
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
 }
 
 function escaparRegex(s: string): string {

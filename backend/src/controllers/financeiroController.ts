@@ -40,6 +40,7 @@ import {
 } from '../data/dfcSaldoFaturarRepository.js';
 import { queryDfcSaldosBancarios } from '../data/dfcSaldosBancariosRepository.js';
 import { agregarSaldosBancariosParaGrade } from '../data/dfcSaldosBancariosAgregar.js';
+import { resolverContasCaixaInicialFinal } from '../data/dfcContasCaixaConstantes.js';
 import {
   queryDreReceitaIndiretaBruto,
   queryDreReceitaIndiretaDetalhe,
@@ -65,6 +66,12 @@ import {
   resetarRelacaoPcOverrides,
   salvarRelacaoPcPathKey,
 } from '../data/dreRelacaoPcRepository.js';
+import {
+  lerDreRateioConfig,
+  salvarDreRateioConfig,
+  salvarDreRateioConfigSeVazio,
+} from '../data/dreRateioConfigRepository.js';
+import { montarDreDashboard } from '../data/dreDashboardService.js';
 import { isShop9Enabled } from '../config/shop9Db.js';
 import {
   queryDfcShop9RetroAgregado,
@@ -75,10 +82,12 @@ import {
   testarConexaoShop9,
 } from '../data/dfcShop9Repository.js';
 import {
-  getPoliticaComercialPainelPersistida,
+  getPoliticaComercialPainelPorEscopo,
   mergePoliticaComercialParcial,
-  savePoliticaComercialPainel,
+  parseEscopoPolitica,
+  savePoliticaComercialPainelPorEscopo,
 } from '../data/politicaComercialPainelRepository.js';
+import { buscarClientesPoliticaComercialNomus } from '../data/politicaComercialClientesRepository.js';
 import { DEFAULT_POLITICA_COMERCIAL } from '../services/painelComercialConformidade.js';
 import { resolverFiltroPrioridade } from '../data/dfcPrioridadeFilter.js';
 import {
@@ -239,7 +248,7 @@ export async function getDfcAgendamentosEfetivos(req: Request, res: Response): P
     dataFim,
     granularidade,
     idEmpresas: [...DFC_EMPRESAS_CARGA],
-    contasBancarias: [],
+    contasBancarias: resolverContasCaixaInicialFinal([]),
   });
 
   res.json({
@@ -329,7 +338,7 @@ export async function getDfcSaldosBancarios(req: Request, res: Response): Promis
     dataFim,
     granularidade,
     idEmpresas: idEmpresas.length > 0 ? idEmpresas : [...DFC_EMPRESAS_CARGA],
-    contasBancarias,
+    contasBancarias: resolverContasCaixaInicialFinal(contasBancarias),
   });
 
   res.json({
@@ -882,29 +891,55 @@ export async function getPainelComercial(req: Request, res: Response): Promise<v
 }
 
 /**
- * GET /api/financeiro/painel-comercial/politica
- * Política comercial persistida para o painel (parcelas, entrada, limites de extração de dias).
+ * GET /api/financeiro/painel-comercial/politica?escopo=industria|lojas
+ * Política comercial persistida para o escopo (indústria / lojas).
  */
 export async function getPoliticaComercialPainel(req: Request, res: Response): Promise<void> {
-  void req;
-  const politica = await getPoliticaComercialPainelPersistida();
-  res.json({ politica, padraoSistema: DEFAULT_POLITICA_COMERCIAL });
+  const escopo = parseEscopoPolitica(req.query.escopo) ?? 'industria';
+  const politica = await getPoliticaComercialPainelPorEscopo(escopo);
+  res.json({ politica, padraoSistema: DEFAULT_POLITICA_COMERCIAL, escopo });
 }
 
 /**
- * PUT /api/financeiro/painel-comercial/politica
+ * PUT /api/financeiro/painel-comercial/politica?escopo=industria|lojas
  * Body: objeto parcial ou completo (mesmo formato de `politica` no GET).
  */
 export async function putPoliticaComercialPainel(req: Request, res: Response): Promise<void> {
-  const merged = mergePoliticaComercialParcial(req.body);
+  const escopo =
+    parseEscopoPolitica(req.query.escopo) ??
+    parseEscopoPolitica((req.body as { escopo?: unknown })?.escopo) ??
+    null;
+  if (!escopo) {
+    res.status(400).json({ error: 'Informe escopo=industria ou escopo=lojas.' });
+    return;
+  }
+  const body = req.body && typeof req.body === 'object' ? { ...(req.body as object) } : {};
+  delete (body as { escopo?: unknown }).escopo;
+  const merged = mergePoliticaComercialParcial(body);
   try {
-    await savePoliticaComercialPainel(merged);
+    await savePoliticaComercialPainelPorEscopo(escopo, merged);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(400).json({ error: msg });
     return;
   }
-  res.json({ politica: merged });
+  res.json({ politica: merged, escopo });
+}
+
+/**
+ * GET /api/financeiro/painel-comercial/politica/clientes?q=&limit=
+ * Busca clientes Nomus (pessoa + grupo) para políticas «Outras».
+ */
+export async function getPoliticaComercialClientes(req: Request, res: Response): Promise<void> {
+  const q = String(req.query.q ?? '').trim();
+  const limitRaw = Number(req.query.limit ?? 50);
+  const limit = Number.isFinite(limitRaw) ? limitRaw : 50;
+  const body = await buscarClientesPoliticaComercialNomus(q, limit);
+  if (body.erro) {
+    res.status(503).json({ clientes: [], error: body.erro });
+    return;
+  }
+  res.json({ clientes: body.clientes });
 }
 
 /**
@@ -1664,6 +1699,101 @@ export async function deleteDreRelacaoPcOverrides(_req: Request, res: Response):
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[deleteDreRelacaoPcOverrides]', msg);
+    res.status(500).json({ error: msg });
+  }
+}
+
+/** GET /api/financeiro/dre/dashboard — KPIs, séries e análise (somente leitura). */
+export async function getDreDashboard(req: Request, res: Response): Promise<void> {
+  const dataInicio = String(req.query.dataInicio ?? '').trim();
+  const dataFim = String(req.query.dataFim ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataInicio) || !/^\d{4}-\d{2}-\d{2}$/.test(dataFim)) {
+    res.status(400).json({ error: 'Informe dataInicio e dataFim no formato YYYY-MM-DD.' });
+    return;
+  }
+  if (dataFim < dataInicio) {
+    res.status(400).json({ error: 'Período inválido: dataFim deve ser >= dataInicio.' });
+    return;
+  }
+
+  const unidade = String(req.query.unidade ?? req.query.idEmpresas ?? 'todas').trim();
+  const metaEbitdaPct = Number(req.query.metaEbitda ?? req.query.metaEbitdaPct ?? 12);
+  const metaLucroPct = Number(req.query.metaLucro ?? req.query.metaLucroPct ?? 3);
+
+  try {
+    const payload = await montarDreDashboard({
+      dataInicio,
+      dataFim,
+      unidade,
+      metaEbitdaPct: Number.isFinite(metaEbitdaPct) ? metaEbitdaPct : 12,
+      metaLucroPct: Number.isFinite(metaLucroPct) ? metaLucroPct : 3,
+    });
+    res.json(payload);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[getDreDashboard]', msg);
+    res.status(500).json({ error: msg });
+  }
+}
+
+/** GET /api/financeiro/dre/rateio-config — rateios DRE persistidos na VPS (var/dre-rateio.json). */
+export async function getDreRateioConfig(_req: Request, res: Response): Promise<void> {
+  try {
+    const config = lerDreRateioConfig();
+    res.json({
+      regras: config.regras,
+      atualizadoEm: config.atualizadoEm ?? null,
+      vazio: config.regras.length === 0,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[getDreRateioConfig]', msg);
+    res.status(500).json({ error: msg, regras: [], vazio: true });
+  }
+}
+
+/**
+ * PUT /api/financeiro/dre/rateio-config
+ * Body: { regras: [...] }
+ * Query: somenteSeVazio=1 — grava só se o arquivo ainda não tiver regras (migração do localStorage).
+ */
+export async function putDreRateioConfig(req: Request, res: Response): Promise<void> {
+  try {
+    const somenteSeVazio =
+      String(req.query.somenteSeVazio ?? req.body?.somenteSeVazio ?? '')
+        .trim()
+        .toLowerCase() === '1' ||
+      req.query.somenteSeVazio === 'true' ||
+      req.body?.somenteSeVazio === true;
+
+    const payload = { regras: req.body?.regras };
+    if (somenteSeVazio) {
+      const result = salvarDreRateioConfigSeVazio(payload);
+      res.json({
+        ok: true,
+        gravado: result.gravado,
+        regras: result.config.regras,
+        atualizadoEm: result.config.atualizadoEm ?? null,
+        vazio: result.config.regras.length === 0,
+      });
+      return;
+    }
+
+    const config = salvarDreRateioConfig(payload);
+    if (config.regras.length === 0) {
+      res.status(400).json({ error: 'Informe ao menos uma regra de rateio válida.' });
+      return;
+    }
+    res.json({
+      ok: true,
+      gravado: true,
+      regras: config.regras,
+      atualizadoEm: config.atualizadoEm ?? null,
+      vazio: false,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[putDreRateioConfig]', msg);
     res.status(500).json({ error: msg });
   }
 }

@@ -50,35 +50,35 @@ const TEMA: Record<
     badgeAtivo: "bg-emerald-600 text-white",
   },
   recebido30d: {
-    card: "border-slate-200 bg-slate-50",
-    cardHover: "hover:border-slate-300",
+    card: "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800",
+    cardHover: "hover:border-slate-300 dark:hover:border-slate-600",
     cardAtivo: "border-slate-600 ring-2 ring-slate-500/40",
-    valor: "text-slate-800",
-    badge: "bg-slate-100 text-slate-700",
+    valor: "text-slate-800 dark:text-slate-100",
+    badge: "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
     badgeAtivo: "bg-slate-700 text-white",
   },
   recebido90d: {
-    card: "border-slate-200 bg-slate-50",
-    cardHover: "hover:border-slate-300",
+    card: "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800",
+    cardHover: "hover:border-slate-300 dark:hover:border-slate-600",
     cardAtivo: "border-slate-600 ring-2 ring-slate-500/40",
-    valor: "text-slate-800",
-    badge: "bg-slate-100 text-slate-700",
+    valor: "text-slate-800 dark:text-slate-100",
+    badge: "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
     badgeAtivo: "bg-slate-700 text-white",
   },
   recebidoAno: {
-    card: "border-slate-200 bg-slate-50",
-    cardHover: "hover:border-slate-300",
+    card: "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800",
+    cardHover: "hover:border-slate-300 dark:hover:border-slate-600",
     cardAtivo: "border-slate-600 ring-2 ring-slate-500/40",
-    valor: "text-slate-800",
-    badge: "bg-slate-100 text-slate-700",
+    valor: "text-slate-800 dark:text-slate-100",
+    badge: "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
     badgeAtivo: "bg-slate-700 text-white",
   },
   recebidoHistorico: {
-    card: "border-slate-200 bg-slate-50",
-    cardHover: "hover:border-slate-300",
+    card: "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800",
+    cardHover: "hover:border-slate-300 dark:hover:border-slate-600",
     cardAtivo: "border-slate-600 ring-2 ring-slate-500/40",
-    valor: "text-slate-800",
-    badge: "bg-slate-100 text-slate-700",
+    valor: "text-slate-800 dark:text-slate-100",
+    badge: "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
     badgeAtivo: "bg-slate-700 text-white",
   },
 };
@@ -115,10 +115,10 @@ function CardPeriodo({
           : `cursor-pointer ${tema.cardHover}`
       } ${selecionado ? tema.cardAtivo : tema.card}`}
     >
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
         {indicador.label}
       </p>
-      <p className="mt-0.5 text-[11px] leading-snug text-slate-500">
+      <p className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
         {indicador.descricao}
       </p>
       <p className={`mt-2 text-xl font-bold ${tema.valor}`}>
@@ -156,7 +156,7 @@ export default function IndicadoresPeriodoContas({
 
   return (
     <section
-      className="shrink-0 border-b border-slate-200 bg-white px-5 py-4"
+      className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900"
       aria-label="Indicadores por período de vencimento"
     >
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

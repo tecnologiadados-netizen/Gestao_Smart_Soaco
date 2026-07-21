@@ -1690,8 +1690,14 @@ export async function patchReabrirColeta(req: Request, res: Response): Promise<v
       return;
     }
     const statusAtual = coleta.status ?? '';
-    if (statusAtual !== 'Em Aprovação' && statusAtual !== 'Enviado para Financeiro') {
-      res.status(400).json({ error: 'Só é possível reabrir quando o status é "Em Aprovação" ou "Enviado para Financeiro".' });
+    if (
+      statusAtual !== 'Em Aprovação' &&
+      statusAtual !== 'Enviado para Financeiro' &&
+      statusAtual !== 'Finalizada'
+    ) {
+      res.status(400).json({
+        error: 'Só é possível reabrir quando o status é "Em Aprovação", "Enviado para Financeiro" ou "Finalizada".',
+      });
       return;
     }
     await prisma.coletaPrecos.update({
@@ -3226,8 +3232,10 @@ export async function postPrecosCotacao(req: Request, res: Response): Promise<vo
       return;
     }
     const statusColeta = String(coleta.status ?? 'Em cotação').trim();
-    if (statusColeta !== 'Em cotação') {
-      res.status(400).json({ error: 'Só é possível cadastrar ou alterar preços quando o status é "Em cotação".' });
+    if (statusColeta !== 'Em cotação' && statusColeta !== 'Finalizada') {
+      res.status(400).json({
+        error: 'Só é possível cadastrar ou alterar preços quando o status é "Em cotação" ou "Finalizada".',
+      });
       return;
     }
     await prisma.coletaPrecosCotacao.deleteMany({

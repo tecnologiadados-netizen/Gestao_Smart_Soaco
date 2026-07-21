@@ -8,17 +8,18 @@ import {
 } from '../services/evolutionApi.js';
 import { getEvolutionStoredConfig, saveEvolutionConfig } from '../data/configRepository.js';
 
-const DEFAULT_INSTANCE = 'gestor-pedidos';
+const DEFAULT_INSTANCE = 'gestao-soaco';
 
 /**
  * GET /api/evolution/connect
- * Verifica status uazapiGO e retorna QR se não estiver conectada.
+ * Verifica status Evolution API e retorna QR se não estiver conectada.
  */
 export async function getConnect(_req: Request, res: Response): Promise<void> {
   const config = getEvolutionConfig();
   if (!config.configured) {
     res.status(400).json({
-      error: 'uazapiGO não configurada. Defina UAZAPI_URL e UAZAPI_TOKEN (ou UAZAPI_ADMIN_TOKEN) no .env.',
+      error:
+        'Evolution API não configurada. Defina EVOLUTION_API_URL e EVOLUTION_API_KEY no .env do backend.',
       configured: false,
     });
     return;
@@ -34,14 +35,14 @@ export async function getConnect(_req: Request, res: Response): Promise<void> {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const isNetworkError = /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|network|aborted/i.test(msg);
-      console.error('[uazapiGO] status:', msg);
+      console.error('[Evolution] status:', msg);
       const hint = isNetworkError
-        ? ` Servidor inacessível. Teste: curl -I "${config.url}"`
-        : ' Verifique UAZAPI_URL, UAZAPI_TOKEN e UAZAPI_ADMIN_TOKEN no .env do backend.';
+        ? ` Servidor inacessível. Confirme o PM2 (evolution-api) e teste: curl -H "apikey: SUA_CHAVE" "${config.url}/instance/fetchInstances"`
+        : ' Verifique EVOLUTION_API_URL e EVOLUTION_API_KEY no .env do backend.';
       res.status(200).json({
         configured: true,
         connected: false,
-        error: `uazapiGO inacessível: ${msg}.${hint}`,
+        error: `Evolution API inacessível: ${msg}.${hint}`,
       });
       return;
     }
@@ -74,7 +75,7 @@ export async function getConnect(_req: Request, res: Response): Promise<void> {
       qr = await getConnectQr(instanceName);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error('[uazapiGO] connect:', msg);
+      console.error('[Evolution] connect:', msg);
       res.status(200).json({
         configured: true,
         connected: false,
@@ -94,7 +95,7 @@ export async function getConnect(_req: Request, res: Response): Promise<void> {
       envHint: 'Após conectar, defina o número nesta página para habilitar envios automáticos.',
     });
   } catch (err) {
-    console.error('[uazapiGO] getConnect:', err);
+    console.error('[Evolution] getConnect:', err);
     res.status(200).json({
       configured: true,
       connected: false,
@@ -128,21 +129,21 @@ export async function getConfig(_req: Request, res: Response): Promise<void> {
   });
 }
 
-/** POST /api/evolution/logout – desconecta a instância uazapiGO */
+/** POST /api/evolution/logout – desconecta a instância Evolution */
 export async function logout(_req: Request, res: Response): Promise<void> {
   const config = getEvolutionConfig();
   if (!config.configured) {
-    res.status(400).json({ error: 'uazapiGO não configurada.' });
+    res.status(400).json({ error: 'Evolution API não configurada.' });
     return;
   }
   const stored = await getEvolutionStoredConfig();
   const instanceName = stored?.instance || config.instance || DEFAULT_INSTANCE;
   try {
     await logoutInstance(instanceName);
-    res.json({ ok: true, message: 'WhatsApp desconectado da uazapiGO.' });
+    res.json({ ok: true, message: 'WhatsApp desconectado da Evolution API.' });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[uazapiGO] logout:', msg);
+    console.error('[Evolution] logout:', msg);
     res.status(503).json({ error: msg });
   }
 }
@@ -159,7 +160,7 @@ export async function saveConfig(req: Request, res: Response): Promise<void> {
     await saveEvolutionConfig(instance, number || undefined);
     res.json({ ok: true, instance, number: number || null });
   } catch (err) {
-    console.error('[uazapiGO] saveConfig:', err);
+    console.error('[Evolution] saveConfig:', err);
     res.status(503).json({ error: 'Erro ao salvar configuração.' });
   }
 }

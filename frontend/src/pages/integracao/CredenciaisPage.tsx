@@ -131,7 +131,7 @@ export default function CredenciaisPage() {
           {podeWhatsapp && (
             <CredencialCard
               title="WhatsApp"
-              description="Mensagens automáticas via uazapiGO (SMS, faturamento, pedidos vencidos)."
+              description="Mensagens automáticas via Evolution API (SMS, faturamento, pedidos vencidos)."
               ok={whatsappOk}
               detail={
                 !whatsapp?.configured

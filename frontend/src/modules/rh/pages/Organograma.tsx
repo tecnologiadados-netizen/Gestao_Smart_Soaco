@@ -1,173 +1,45 @@
-﻿import { useMemo, useRef, type ChangeEvent } from "react";
+﻿import { useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AppLayout from "@rh/components/AppLayout";
 import { motion } from "framer-motion";
 import { Camera } from "lucide-react";
 import {
   getConfig,
+  getOrganico,
   getOrganicoFotosResumo,
   isApiConfigured,
   setConfig,
 } from "@rh/lib/api-client";
 import {
   canEditOrganogramaFotos,
+  canEditRoute,
   canViewOrganicoPhotos,
   canViewOrganogramaFotos,
 } from "@rh/lib/route-permissions";
+import {
+  LIDER_A_DEFINIR,
+  ORGANOGRAMA_VINCULACOES_CONFIG_KEY,
+  buildDiretoriasTree,
+  mergeVinculacoesComSetores,
+  normalizarChave,
+  parseOrganogramaVinculacoes,
+  type DiretoriaTree,
+} from "@rh/lib/organograma-vinculacoes";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@rh/components/ui/tabs";
 import { useOrganicoCardFoto } from "@rh/pages/Organico/useOrganicoCardFoto";
 import { useToast } from "@rh/hooks/use-toast";
+import { ORGANICO_IDX, getStatusFromRow } from "@rh/pages/Organico/organico-derive";
+import { OrganogramaVinculosConfigPanel } from "@rh/pages/organograma/OrganogramaVinculosConfigPanel";
 
-interface SetorOrganizacional {
-  nome: string;
-  lider: string;
-  cargo?: string;
-  matricula?: string;
-}
-
-interface AreaOrganizacional {
-  nome: string;
-  setores: SetorOrganizacional[];
-}
-
-interface Diretoria {
-  nome: string;
-  diretor: string;
-  /** Chave de config onde fica a foto do diretor (não há matrícula no Orgânico). */
-  fotoKey: string;
-  areas: AreaOrganizacional[];
-}
+type OrganogramaAba = "mapa-vinculos" | "hierarquia" | "configuracoes";
 
 const FOTO_EMPRESA_KEY = "organograma-foto:empresa";
-
-/** Setor ainda sem líder imediato contratado (o diretor responde direto por ele). */
-const LIDER_A_DEFINIR = "A definir";
-
-const setor = (
-  nome: string,
-  lider: string,
-  cargo?: string,
-  matricula?: string,
-): SetorOrganizacional => ({ nome, lider, cargo, matricula });
-
-const diretorias: Diretoria[] = [
-  {
-    nome: "Presidência · Dir. Comercial",
-    diretor: "Sr. Marques",
-    fotoKey: "organograma-foto:presidencia",
-    areas: [
-      {
-        nome: "Comercial",
-        setores: [
-          setor("Vendas", "Marcos Vinicius Amorim Carneiro", "Gerente Comercial", "1008"),
-          setor("Compras", LIDER_A_DEFINIR),
-        ],
-      },
-      {
-        nome: "Manutenção",
-        setores: [
-          setor("Industrial", LIDER_A_DEFINIR),
-          setor("Veicular", LIDER_A_DEFINIR),
-        ],
-      },
-      {
-        nome: "Logística",
-        setores: [
-          setor("Transporte", LIDER_A_DEFINIR),
-          setor("Depósito", "Gilvania Evangelista Sampaio", "Gerente Comercial - Loja", "1964"),
-        ],
-      },
-      {
-        nome: "Administrativo",
-        setores: [
-          setor("Portaria", LIDER_A_DEFINIR),
-          setor("Pós-venda / Assistência", "Ana Lucia Lima de Carvalho", "Sub-Gerente", "84"),
-        ],
-      },
-    ],
-  },
-  {
-    nome: "Diretoria de Operação",
-    diretor: "Marques Filho",
-    fotoKey: "organograma-foto:operacao",
-    areas: [
-      {
-        nome: "Produção",
-        setores: [
-          setor("Almoxarifado", "Manoel Luiz de Sousa Junior", "Almoxarife II", "80"),
-          setor("Balcão", "Ricardo Carvalho Pinto", "Supervisor de Refrigeração", "96"),
-          setor("Bebedouro", "João da Cruz Alves de Freitas", "Líder de Equipe I", "1177"),
-          setor("Chaparia", "Herbert da Silva Chaves", "Líder de Equipe V", "1478"),
-          setor("Fogões", "Pedro Paulo Machado Rocha", "Montador Líder", "509"),
-          setor("Lixadeira", "Rian Mateus Alves Fernandes", "Líder de Equipe III", "530"),
-          setor("Marcenaria", "Regivaldo Alves de Sena", "Chefe da Marcenaria", "434"),
-          setor("Montagem", "Juniel Pereira de Sousa Costa", "Montador I", "1348"),
-          setor("Perfiladeiras", "Jorge Lemos Ribeiro", "Operador Líder I", "168"),
-          setor("Pintura", "Rian Mateus Alves Fernandes", "Líder de Equipe III", "530"),
-          setor("Policorte", "Herbert da Silva Chaves", "Líder de Equipe V", "1478"),
-          setor("SESMT", "Francisco de Jesus Alves Silva", "Técnico de Segurança do Trabalho", "1769"),
-          setor("Solda", "Claudiano Ferreira de Macedo", "Supervisor de Solda e Pintura", "87"),
-          setor("Embalagem", "Josenildo Santos Coelho", "Líder de Equipe II", "897"),
-          setor("Estoque", "Josenildo Santos Coelho", "Líder de Equipe II", "897"),
-        ],
-      },
-      {
-        nome: "Engenharia",
-        setores: [
-          setor("Engenharia", "Roberval Sampaio de Sousa Junior", "Supervisor de Projetos", "1691"),
-        ],
-      },
-      {
-        nome: "Qualidade",
-        setores: [
-          setor("Qualidade", "Lidia Marina Torres Carvalho Moreira", "Supervisora de Qualidade", "1577"),
-        ],
-      },
-      {
-        nome: "PCP",
-        setores: [
-          setor("PCP", "Vinicius Rodrigues Barbosa Cavalcante", "Analista de PCP III", "1601"),
-        ],
-      },
-      {
-        nome: "Tecnologia",
-        setores: [
-          setor("TI", "João Wanderson de Freitas e Silva", "Analista de Suporte Técnico", "1237"),
-        ],
-      },
-    ],
-  },
-  {
-    nome: "Diretoria Financeira",
-    diretor: "Manuela Cortez",
-    fotoKey: "organograma-foto:financeira",
-    areas: [
-      {
-        nome: "Administrativo",
-        setores: [
-          setor("RH", LIDER_A_DEFINIR),
-          setor("Marketing", LIDER_A_DEFINIR),
-          setor("Recepção", LIDER_A_DEFINIR),
-          setor("Limpeza", LIDER_A_DEFINIR),
-        ],
-      },
-      {
-        nome: "Financeiro",
-        setores: [
-          setor("Financeiro", LIDER_A_DEFINIR),
-        ],
-      },
-    ],
-  },
-];
-
-const totalAreas = diretorias.reduce((total, diretoria) => total + diretoria.areas.length, 0);
-const totalSetores = diretorias.reduce(
-  (total, diretoria) =>
-    total + diretoria.areas.reduce((subtotal, area) => subtotal + area.setores.length, 0),
-  0,
-);
-
+const STATUS_VALIDOS = new Set(["Ativo", "Férias", "Afastado"]);
 const PALAVRAS_IGNORADAS = new Set(["de", "da", "do", "e", "sr", "sra"]);
+
+function cell(values: unknown[], index: number): string {
+  return values[index] != null ? String(values[index]).trim() : "";
+}
 
 function iniciais(nome: string): string {
   const palavras = nome
@@ -409,7 +281,7 @@ const DiretoriaBranch = ({
   podeBuscarFotos,
   canEditFotos,
 }: {
-  diretoria: Diretoria;
+  diretoria: DiretoriaTree;
   delay: number;
   matriculasComFoto: Set<string>;
   podeBuscarFotos: boolean;
@@ -461,15 +333,29 @@ const DiretoriaBranch = ({
 };
 
 const Organograma = () => {
+  const [abaAtiva, setAbaAtiva] = useState<OrganogramaAba>("mapa-vinculos");
   const podeBuscarFotos = isApiConfigured() && canViewOrganicoPhotos();
   const canEditFotos = canEditOrganogramaFotos();
+  const canEditVinculos = canEditRoute("/organograma");
   const fotoEmpresa = useOrganogramaFotoConfig(FOTO_EMPRESA_KEY);
+
   const { data: fotosResumo = [] } = useQuery({
     queryKey: ["organico-fotos-resumo"],
     queryFn: getOrganicoFotosResumo,
     enabled: podeBuscarFotos,
     staleTime: 5 * 60 * 1000,
   });
+  const { data: organicoRows = [] } = useQuery({
+    queryKey: ["organico"],
+    queryFn: getOrganico,
+    staleTime: 60_000,
+  });
+  const { data: vinculacoesRaw } = useQuery({
+    queryKey: ["organograma-vinculacoes"],
+    queryFn: async () => (await getConfig(ORGANOGRAMA_VINCULACOES_CONFIG_KEY)).value,
+    staleTime: 30_000,
+  });
+
   const matriculasComFoto = useMemo(
     () =>
       new Set(
@@ -480,96 +366,189 @@ const Organograma = () => {
     [fotosResumo],
   );
 
+  const setoresAtivos = useMemo(() => {
+    const bySetor = new Map<string, { setor: string; area: string }>();
+    for (const row of organicoRows) {
+      const values = Array.isArray(row.values) ? row.values : [];
+      if (!STATUS_VALIDOS.has(getStatusFromRow(values))) continue;
+      const setor = cell(values, ORGANICO_IDX.SETOR);
+      if (!setor) continue;
+      const key = normalizarChave(setor);
+      const prev = bySetor.get(key);
+      if (!prev) {
+        bySetor.set(key, { setor, area: cell(values, ORGANICO_IDX.AREA) });
+      } else if (!prev.area) {
+        prev.area = cell(values, ORGANICO_IDX.AREA);
+      }
+    }
+    return [...bySetor.values()];
+  }, [organicoRows]);
+
+  const diretorias = useMemo(() => {
+    const salvos = parseOrganogramaVinculacoes(vinculacoesRaw);
+    const merged = mergeVinculacoesComSetores(setoresAtivos, salvos);
+    return buildDiretoriasTree(merged.filter((item) => item.diretoriaId));
+  }, [vinculacoesRaw, setoresAtivos]);
+
+  const totalAreas = diretorias.reduce((total, diretoria) => total + diretoria.areas.length, 0);
+  const totalSetores = diretorias.reduce(
+    (total, diretoria) =>
+      total + diretoria.areas.reduce((subtotal, area) => subtotal + area.setores.length, 0),
+    0,
+  );
+
   return (
     <AppLayout>
       <div className="py-8 px-10">
-        <div className="mb-8 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">Estrutura Organizacional</h1>
-            <p className="text-sm text-muted-foreground mt-2">
-              Hierarquia principal de diretorias, áreas, setores e lideranças da Só Aço Industrial Ltda.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
-              {diretorias.length} diretorias
-            </span>
-            <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
-              {totalAreas} áreas
-            </span>
-            <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
-              {totalSetores} setores
-            </span>
-          </div>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Estrutura Organizacional</h1>
+          <p className="text-sm text-muted-foreground mt-2">
+            Consultas de organograma da Só Aço Industrial Ltda.: mapa de vínculos, hierarquia e configurações.
+          </p>
         </div>
 
-        <div className="overflow-x-auto border border-border bg-muted/30 p-8 shadow-level-1">
-          <div className="flex w-max min-w-full justify-center">
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-              className="flex flex-col items-center"
-            >
-              <div className="flex flex-col items-center">
-                <div className="relative z-10 h-28 w-28">
-                  <div
-                    className="pointer-events-none absolute -inset-[9px] rounded-full border-[7px] border-r-transparent border-soaco-gold"
-                    aria-hidden="true"
-                  />
-                  <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-soaco-navy text-3xl font-bold text-white shadow-level-2 ring-4 ring-card">
-                    {fotoEmpresa ? (
-                      <img
-                        src={fotoEmpresa}
-                        alt="Logo da Só Aço Industrial Ltda."
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      iniciais("Só Aço Industrial Ltda.")
-                    )}
-                  </div>
-                  {canEditFotos && (
-                    <FotoConfigUploadButton
-                      configKey={FOTO_EMPRESA_KEY}
-                      nome="Só Aço Industrial Ltda."
-                      className="bottom-0 right-0"
-                    />
-                  )}
-                </div>
-                <div className="relative -mt-4">
-                  <span className="absolute -top-2.5 right-5 z-10 rounded-full bg-soaco-navy px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-white shadow-level-1">
-                    Nível A
-                  </span>
-                  <div className="rounded-full border border-border/50 bg-card px-14 py-3.5 text-center shadow-level-2">
-                    <p className="text-lg font-bold text-soaco-navy dark:text-primary-100">Só Aço Industrial Ltda.</p>
-                    <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                      Empresa
-                    </p>
-                  </div>
+        <Tabs
+          value={abaAtiva}
+          onValueChange={(value) => setAbaAtiva(value as OrganogramaAba)}
+          className="space-y-6"
+        >
+          <TabsList className="inline-flex h-auto min-h-10 w-max min-w-max flex-nowrap justify-start gap-1 whitespace-nowrap bg-muted/80 p-1">
+            <TabsTrigger value="mapa-vinculos" className="shrink-0 text-xs sm:text-sm px-3 sm:px-4">
+              Mapa de Vínculos Organizacionais
+            </TabsTrigger>
+            <TabsTrigger value="hierarquia" className="shrink-0 text-xs sm:text-sm px-3 sm:px-4">
+              Hierarquia
+            </TabsTrigger>
+            <TabsTrigger value="configuracoes" className="shrink-0 text-xs sm:text-sm px-3 sm:px-4">
+              Configurações
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="mapa-vinculos" className="mt-0 space-y-4 focus-visible:outline-none">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">Mapa de Vínculos Organizacionais</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Quais setores respondem a cada diretoria e quem é o líder imediato de cada setor.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
+                  {diretorias.length} diretorias
+                </span>
+                <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
+                  {totalAreas} áreas
+                </span>
+                <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
+                  {totalSetores} setores
+                </span>
+              </div>
+            </div>
+
+            {totalSetores === 0 ? (
+              <div className="flex min-h-[280px] items-center justify-center border border-dashed border-border bg-muted/20 p-10 text-center shadow-level-1">
+                <div className="max-w-md space-y-2">
+                  <p className="text-sm font-semibold text-foreground">Nenhum vínculo configurado</p>
+                  <p className="text-sm text-muted-foreground">
+                    Abra a aba Configurações para vincular os setores às diretorias e definir os líderes.
+                  </p>
                 </div>
               </div>
-              <div className="h-6 w-px bg-border" />
-              <div className="relative flex gap-8">
-                <div
-                  className="absolute top-0 left-1/2 h-px -translate-x-1/2 bg-border"
-                  style={{ width: "calc(100% - 230px)" }}
-                />
-                {diretorias.map((diretoria, i) => (
-                  <div key={diretoria.nome} className="flex flex-col items-center">
+            ) : (
+              <div className="overflow-x-auto border border-border bg-muted/30 p-8 shadow-level-1">
+                <div className="flex w-max min-w-full justify-center">
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="flex flex-col items-center"
+                  >
+                    <div className="flex flex-col items-center">
+                      <div className="relative z-10 h-28 w-28">
+                        <div
+                          className="pointer-events-none absolute -inset-[9px] rounded-full border-[7px] border-r-transparent border-soaco-gold"
+                          aria-hidden="true"
+                        />
+                        <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-soaco-navy text-3xl font-bold text-white shadow-level-2 ring-4 ring-card">
+                          {fotoEmpresa ? (
+                            <img
+                              src={fotoEmpresa}
+                              alt="Logo da Só Aço Industrial Ltda."
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            iniciais("Só Aço Industrial Ltda.")
+                          )}
+                        </div>
+                        {canEditFotos && (
+                          <FotoConfigUploadButton
+                            configKey={FOTO_EMPRESA_KEY}
+                            nome="Só Aço Industrial Ltda."
+                            className="bottom-0 right-0"
+                          />
+                        )}
+                      </div>
+                      <div className="relative -mt-4">
+                        <span className="absolute -top-2.5 right-5 z-10 rounded-full bg-soaco-navy px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-white shadow-level-1">
+                          Nível A
+                        </span>
+                        <div className="rounded-full border border-border/50 bg-card px-14 py-3.5 text-center shadow-level-2">
+                          <p className="text-lg font-bold text-soaco-navy dark:text-primary-100">
+                            Só Aço Industrial Ltda.
+                          </p>
+                          <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Empresa
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                     <div className="h-6 w-px bg-border" />
-                    <DiretoriaBranch
-                      diretoria={diretoria}
-                      delay={0.1 * (i + 1)}
-                      matriculasComFoto={matriculasComFoto}
-                      podeBuscarFotos={podeBuscarFotos}
-                      canEditFotos={canEditFotos}
-                    />
-                  </div>
-                ))}
+                    <div className="relative flex gap-8">
+                      <div
+                        className="absolute top-0 left-1/2 h-px -translate-x-1/2 bg-border"
+                        style={{ width: "calc(100% - 230px)" }}
+                      />
+                      {diretorias.map((diretoria, i) => (
+                        <div key={diretoria.id} className="flex flex-col items-center">
+                          <div className="h-6 w-px bg-border" />
+                          <DiretoriaBranch
+                            diretoria={diretoria}
+                            delay={0.1 * (i + 1)}
+                            matriculasComFoto={matriculasComFoto}
+                            podeBuscarFotos={podeBuscarFotos}
+                            canEditFotos={canEditFotos}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                </div>
               </div>
-            </motion.div>
-          </div>
-        </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="hierarquia" className="mt-0 focus-visible:outline-none">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-foreground">Hierarquia</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Organograma de hierarquia de lideranças e subordinados.
+              </p>
+            </div>
+            <div className="flex min-h-[320px] items-center justify-center border border-dashed border-border bg-muted/20 p-10 text-center shadow-level-1">
+              <div className="max-w-md space-y-2">
+                <p className="text-sm font-semibold text-foreground">Aba em construção</p>
+                <p className="text-sm text-muted-foreground">
+                  Aqui vamos montar o organograma de hierarquia. O mapa de vínculos permanece na aba Mapa de
+                  Vínculos Organizacionais.
+                </p>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="configuracoes" className="mt-0 focus-visible:outline-none">
+            <OrganogramaVinculosConfigPanel canEdit={canEditVinculos} />
+          </TabsContent>
+        </Tabs>
       </div>
     </AppLayout>
   );

@@ -28,7 +28,8 @@
  * - 8.2 demais (tarifas, IOF, juros mora) → operacional
  * - 12.1–12.2 (dívida bancária principal e juros) → financiamentos
  * - 12.3–12.9 (dívidas diversas / NCG) → operacional
- * - 13.2, 13.3, 13.5 (transferências inter-empresa / conta) → revisar manualmente
+ * - 13.2, 13.3, 13.5 (transferências inter-empresa / conta) → fora da DFC (mov. internas)
+ * - Grupo 13 inteiro (TRANSAÇÕES TEMPORÁRIAS) excluído da árvore DFC.
  */
 
 export type DfcFluxo = 'OPERACIONAL' | 'INVESTIMENTOS' | 'FINANCIAMENTOS';
@@ -72,7 +73,7 @@ const PREFIXO_PARA_FLUXO_RAW: { prefix: string; fluxo: DfcFluxoComAlerta }[] = [
   { prefix: '12.8', fluxo: 'OPERACIONAL' },      // Dívida Municipal
   { prefix: '12.9', fluxo: 'OPERACIONAL' },      // Dívida Trabalhista
 
-  // ── REVISAR MANUALMENTE ────────────────────────────────────────
+  // ── REVISAR MANUALMENTE (legado; grupo 13 sai da árvore via exclusão) ──
   { prefix: '13.2', fluxo: 'REVISAR_MANUAL' },   // Transferências entre Empresas - Crédito
   { prefix: '13.3', fluxo: 'REVISAR_MANUAL' },   // Transferências entre Empresas - Débito
   { prefix: '13.5', fluxo: 'REVISAR_MANUAL' },   // Transferências
@@ -124,7 +125,10 @@ function normalizarClassificacao(classificacao: string | number | null | undefin
 }
 
 /** Classificações (e toda a subárvore) que não entram na DFC / árvore do relatório. */
-const CLASSIFICACOES_EXCLUIDAS_ARVORE_DFC: readonly string[] = ['1.2'];
+const CLASSIFICACOES_EXCLUIDAS_ARVORE_DFC: readonly string[] = [
+  '1.2', // deduções da receita (fora do relatório)
+  '13', // TRANSAÇÕES TEMPORÁRIAS — transferências/ajustes internos de numerário
+];
 
 export function classificacaoExcluidaDaArvoreDfc(classificacao: string | number | null | undefined): boolean {
   const c = normalizarClassificacao(classificacao);
@@ -194,7 +198,7 @@ export const RESUMO_ARVORE_RAIZ: { classificacao: string; titulo: string; predom
       classificacao: '13',
       titulo: 'OUTRAS MOVIMENTAÇÕES',
       predominante: 'OPERACIONAL',
-      nota: 'Transferências inter-empresa (13.2, 13.3, 13.5) → revisar manualmente.',
+      nota: 'Grupo 13 (TRANSAÇÕES TEMPORÁRIAS / transferências internas) excluído da árvore DFC.',
     },
     { classificacao: '14', titulo: 'MOVIMENTAÇÕES DE RECEBÍVEIS', predominante: 'OPERACIONAL' },
     { classificacao: '15', titulo: 'OUTRAS RECUPERAÇÕES', predominante: 'OPERACIONAL' },

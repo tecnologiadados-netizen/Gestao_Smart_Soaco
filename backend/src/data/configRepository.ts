@@ -1,5 +1,5 @@
 /**
- * Configurações persistidas (key-value). Usado para uazapiGO (rótulo da instância e número).
+ * Configurações persistidas (key-value). Usado para Evolution API (rótulo da instância e número).
  */
 
 import { prisma } from '../config/prisma.js';

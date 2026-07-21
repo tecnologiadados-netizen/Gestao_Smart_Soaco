@@ -54,7 +54,7 @@ export async function saveEvolutionConfig(instance: string, number: string): Pro
   }
 }
 
-/** Desconecta a instância uazapiGO (logout no WhatsApp). */
+/** Desconecta a instância Evolution API (logout no WhatsApp). */
 export async function logoutEvolution(): Promise<void> {
   const res = await apiFetch('/api/evolution/logout', { method: 'POST' });
   if (!res.ok) {

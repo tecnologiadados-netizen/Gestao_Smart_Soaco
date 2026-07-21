@@ -46,6 +46,8 @@ backend/prisma/prisma/
 
 # ACME / SSL (não commitar chaves)
 backend/var/.well-known/
+# Rateio DRE da VPS — nunca sobrescrever com git pull
+backend/var/dre-rateio.json
 deploy/ssl/*.pem
 deploy/ssl/*.crt
 deploy/ssl/*.key

@@ -8,6 +8,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { getNomusPool } from '../config/nomusDb.js';
 import { formatSqlDateYmd } from './dfcDateUtils.js';
+import { ehContaBancariaInativaDfc } from './dfcContasCaixaConstantes.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_MOV = readFileSync(join(__dirname, 'sql', 'dfcSaldosBancarios.sql'), 'utf-8');
@@ -146,7 +147,7 @@ export async function queryDfcSaldosBancarios(params: {
       const idEmpresa = toInt(r.idEmpresa);
       const idConta = toInt(r.idContaBancaria);
       const nome = String(r.nomeContaBancaria ?? '').trim();
-      if (!idConta || !nome) continue;
+      if (!idConta || !nome || ehContaBancariaInativaDfc(idConta, nome)) continue;
       const chave = contaChave(idConta);
       abertura.set(chave, (abertura.get(chave) ?? 0) + toNum(r.saldoAbertura));
       if (!contas.has(chave)) {
@@ -160,7 +161,7 @@ export async function queryDfcSaldosBancarios(params: {
       const idEmpresa = toInt(r.idEmpresa);
       const idConta = toInt(r.idContaBancaria);
       const nome = String(r.nomeContaBancaria ?? '').trim();
-      if (!idConta || !nome) continue;
+      if (!idConta || !nome || ehContaBancariaInativaDfc(idConta, nome)) continue;
       const chave = contaChave(idConta);
       if (!contas.has(chave)) {
         contas.set(chave, { idEmpresa, idContaBancaria: idConta, nomeContaBancaria: nome });

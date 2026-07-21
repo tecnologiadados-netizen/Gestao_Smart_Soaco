@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLayoutFoco } from '../../contexts/LayoutFocoContext';
 import ArvoreContasDre from './dre/ArvoreContasDre';
 import DreMkpModal from './dre/DreMkpModal';
+import DreAjudaModal from './dre/DreAjudaModal';
 import DreRateioEmpresasModal from './dre/DreRateioEmpresasModal';
 import DreRelacaoPcModal from './dre/DreRelacaoPcModal';
 import DfcCarregandoModal from './dfc/DfcCarregandoModal';
@@ -10,6 +11,8 @@ import { listarOpcoesPlanoContasDre } from './dre/drePlanoContasOpcoes';
 import { listarPeriodosDfc } from './dfc/dfcPeriodos';
 import {
   carregarRateioConfig,
+  configRateioRicaParaMigrar,
+  parseRateioConfigFromApi,
   regrasFornecedor,
   salvarRateioConfig,
   type DreRateioConfig,
@@ -26,6 +29,8 @@ import {
   fetchDreDevolucoes,
   fetchDreSaidasSoAco,
   fetchDreRateioFornecedorTotais,
+  fetchDreRateioConfig,
+  salvarDreRateioConfigApi,
   type DreCpvMoveisDiretoLinha,
   type DreCpvSoAcoLinhaApi,
   type DreDevolucoesLinha,
@@ -136,6 +141,7 @@ export default function DrePage() {
 
   const [mkpAtivo, setMkpAtivo] = useState(false);
   const [modalMkpAberto, setModalMkpAberto] = useState(false);
+  const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
   const [rateioConfig, setRateioConfig] = useState<DreRateioConfig>(() => carregarRateioConfig());
   const [rateioFornecedorTotaisPorRegraId, setRateioFornecedorTotaisPorRegraId] = useState<
     Record<string, Record<string, number>>
@@ -144,6 +150,46 @@ export default function DrePage() {
     useState<Record<string, Record<string, number>>>({});
   const [modalRateioAberto, setModalRateioAberto] = useState(false);
   const [modalRelacaoPcAberto, setModalRelacaoPcAberto] = useState(false);
+
+  useEffect(() => {
+    let cancelado = false;
+    void (async () => {
+      const remoto = await fetchDreRateioConfig();
+      if (cancelado) return;
+      if (!remoto.erro && remoto.regras.length > 0) {
+        const parsed = parseRateioConfigFromApi(remoto.regras);
+        if (parsed) {
+          setRateioConfig(parsed);
+          salvarRateioConfig(parsed);
+          return;
+        }
+      }
+      const local = carregarRateioConfig();
+      if (remoto.vazio && !remoto.erro && configRateioRicaParaMigrar(local)) {
+        const migrou = await salvarDreRateioConfigApi(
+          {
+            regras: local.regras.map((r) => ({
+              id: r.id,
+              origem: r.origem,
+              percentuais: r.percentuais,
+            })),
+          },
+          { somenteSeVazio: true },
+        );
+        if (cancelado) return;
+        if (migrou.gravado && migrou.regras.length > 0) {
+          const parsed = parseRateioConfigFromApi(migrou.regras);
+          if (parsed) {
+            setRateioConfig(parsed);
+            salvarRateioConfig(parsed);
+          }
+        }
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
 
   const carregarSeqRef = useRef(0);
   const rateioConfigRef = useRef(rateioConfig);
@@ -386,9 +432,10 @@ export default function DrePage() {
           : [],
       );
       setErroReceitaRefrigeracao(incluirShop9ReceitaFilial1 ? (refrigeracaoRes.erro ?? null) : null);
+      // 6.1.1 / 6.1.2 só com Só Aço; 6.2.2 (margem MKP) só com Só Móveis — evita vazamento entre seções no filtro.
       setCpvSoAcoDiretoLinhas(incluirReceitaNomus ? (cpvRes.direto ?? []) : []);
-      setCpvSoAcoIndiretoLinhas(incluirCpvNomus ? (cpvRes.indireto ?? []) : []);
-      setCpvIndiretoSemMkpLinhas(incluirCpvNomus ? (cpvRes.indiretoSemMkp ?? []) : []);
+      setCpvSoAcoIndiretoLinhas(incluirReceitaNomus ? (cpvRes.indireto ?? []) : []);
+      setCpvIndiretoSemMkpLinhas(incluirReceitaMoveisDireto ? (cpvRes.indiretoSemMkp ?? []) : []);
       setErroCpvSoAco(incluirCpvNomus ? (cpvRes.erro ?? null) : null);
       setCpvMoveisDiretoLinhas(incluirReceitaMoveisDireto ? (cpvMoveisRes.linhas ?? []) : []);
       setErroCpvMoveisDireto(incluirReceitaMoveisDireto ? (cpvMoveisRes.erro ?? null) : null);
@@ -467,11 +514,28 @@ export default function DrePage() {
     >
       {!modoFoco ? (
         <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
-          <div>
-            <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">DRE</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Demonstração do Resultado do Exercício
-            </p>
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">DRE</h1>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Demonstração do Resultado do Exercício
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setModalAjudaAberto(true)}
+              title="Como ler a DRE — o que cada bloco significa"
+              className="inline-flex items-center gap-1.5 self-center px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
+                />
+              </svg>
+              Como ler
+            </button>
           </div>
           <button
             type="button"
@@ -492,6 +556,21 @@ export default function DrePage() {
         <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-100 dark:border-slate-700/80">
           <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Filtros</span>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setModalAjudaAberto(true)}
+              title="Como ler a DRE — o que cada bloco significa"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
+                />
+              </svg>
+              Como ler
+            </button>
             <button
               type="button"
               onClick={() => setFaixaFiltrosVisivel((v) => !v)}
@@ -677,6 +756,8 @@ export default function DrePage() {
         onMkpAtivoChange={setMkpAtivo}
       />
 
+      <DreAjudaModal aberto={modalAjudaAberto} onClose={() => setModalAjudaAberto(false)} />
+
       <DreRateioEmpresasModal
         aberto={modalRateioAberto}
         config={rateioConfig}
@@ -684,6 +765,13 @@ export default function DrePage() {
         onSalvar={(cfg) => {
           setRateioConfig(cfg);
           salvarRateioConfig(cfg);
+          void salvarDreRateioConfigApi({
+            regras: cfg.regras.map((r) => ({
+              id: r.id,
+              origem: r.origem,
+              percentuais: r.percentuais,
+            })),
+          });
         }}
       />
 

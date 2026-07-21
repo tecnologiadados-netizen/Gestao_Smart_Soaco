@@ -11,17 +11,20 @@ import {
   type PedidoAbertoPorCliente,
 } from '../data/financeiroCreditoPedidoQuery.js';
 import type { ContaFinanceira } from '../data/crmFinanceiro/types.js';
-import { resolveAppBaseUrl } from '../config/appBaseUrl.js';
 import { buildSystemEmailHtml } from './emailHtmlTemplate.js';
 import { sendSystemEmail } from './systemEmail.js';
+import {
+  deepLinkPendenciasCrm,
+  upsertPendenciasFromAlerta,
+} from './crmCreditoPendenciasService.js';
 
 const CATEGORIA = 'financeiro_credito_pedido_atraso';
 
 /**
  * Carência: o cliente só entra no alerta quando o título mais antigo em atraso
- * atinge este número de dias (ex.: venceu hoje → alerta só daqui a 3 dias).
+ * atinge este número de dias (ex.: venceu na sexta → alerta só na terça = 4 dias).
  */
-const CARENCIA_DIAS_ATRASO = 3;
+export const CARENCIA_DIAS_ATRASO = 4;
 
 export type AlertaCreditoCliente = {
   clienteNome: string;
@@ -88,19 +91,38 @@ export async function listarAlertasCreditoPendentes(): Promise<AlertaCreditoClie
   const porCliente = agruparPedidosAbertosPorCliente(pedidos);
   const alertas: AlertaCreditoCliente[] = [];
 
-  for (const grupo of porCliente) {
-    const contasAtraso = await listarContasReceberPorPessoa('atraso', grupo.clienteNome);
-    if (contasAtraso.length === 0) continue;
-    const maiorAtrasoDias = Math.max(...contasAtraso.map((c) => c.diasAtraso));
-    if (maiorAtrasoDias < CARENCIA_DIAS_ATRASO) continue;
-    const totalAtraso = contasAtraso.reduce((acc, c) => acc + c.valor, 0);
-    alertas.push({
-      clienteNome: grupo.clienteNome,
-      pedidos: grupo.pedidos,
-      contasAtraso,
-      totalAtraso,
-    });
+  // Limita concorrência no Nomus (evita 15s+ sequencial por cliente).
+  const CONCORRENCIA = 6;
+  let cursor = 0;
+  async function worker() {
+    while (cursor < porCliente.length) {
+      const idx = cursor++;
+      const grupo = porCliente[idx];
+      try {
+        const contasAtraso = await listarContasReceberPorPessoa('atraso', grupo.clienteNome);
+        if (contasAtraso.length === 0) continue;
+        const maiorAtrasoDias = Math.max(...contasAtraso.map((c) => c.diasAtraso));
+        if (maiorAtrasoDias < CARENCIA_DIAS_ATRASO) continue;
+        const totalAtraso = contasAtraso.reduce((acc, c) => acc + c.valor, 0);
+        alertas.push({
+          clienteNome: grupo.clienteNome,
+          pedidos: grupo.pedidos,
+          contasAtraso,
+          totalAtraso,
+        });
+      } catch (err) {
+        console.warn(
+          `Alerta crédito — falha ao listar contas de ${grupo.clienteNome}:`,
+          err
+        );
+      }
+    }
   }
+  await Promise.all(
+    Array.from({ length: Math.min(CONCORRENCIA, Math.max(porCliente.length, 1)) }, () =>
+      worker()
+    )
+  );
 
   return alertas;
 }
@@ -170,11 +192,11 @@ export function montarEmailAlertaCredito(alerta: AlertaCreditoCliente): {
       },
     ],
     cta: {
-      label: 'Abrir CRM Financeiro',
-      href: `${resolveAppBaseUrl()}/financeiro/crm`,
+      label: 'Abrir pendências no CRM e dar baixa',
+      href: deepLinkPendenciasCrm(alerta.clienteNome),
     },
     footerNote:
-      `Este alerta é enviado no máximo uma vez por cliente por dia enquanto a condição persistir. O cliente entra no alerta após ${CARENCIA_DIAS_ATRASO} dias de atraso do título mais antigo.`,
+      `Este alerta é enviado no máximo uma vez por cliente por dia enquanto a condição persistir. O cliente entra no alerta após ${CARENCIA_DIAS_ATRASO} dias de atraso do título mais antigo. Use o link para abrir a aba Pendências de crédito e registrar a ação de cada pedido.`,
   });
 
   return { subject, html };
@@ -197,6 +219,14 @@ export async function executarAlertasCreditoPedidoAtraso(
   const erros: string[] = [];
 
   for (const alerta of alertas) {
+    try {
+      await upsertPendenciasFromAlerta(prisma, alerta);
+    } catch (err) {
+      erros.push(
+        `Pendência ${alerta.clienteNome}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+
     const chave = chaveDisparoDiario(alerta.clienteNome, dataRef);
     if (!options?.ignorarDedup && (await alreadySent(prisma, chave))) {
       ignorados++;

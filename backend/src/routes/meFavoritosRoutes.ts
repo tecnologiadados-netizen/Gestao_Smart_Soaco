@@ -5,10 +5,11 @@ import { prisma } from '../config/prisma.js';
 import { getPermissoesUsuario } from '../middleware/requirePermission.js';
 import {
   filtrosPermitidosParaPermissoes,
+  isRotaAppFavoritavel,
   isRotaFavoritavel,
+  labelFavoritoRota,
   normalizarRotaFavorito,
   resumoFiltrosFavorito,
-  TELAS_FAVORITAVEIS_CFG,
   validarFiltrosFavorito,
 } from '../config/telasFavoritaveis.js';
 import { atualizarFavoritoSchema, criarFavoritoSchema } from '../validators/favoritos.js';
@@ -38,7 +39,6 @@ function serializeFavorito(f: {
     filtros = {};
   }
   const rota = normalizarRotaFavorito(f.rota);
-  const cfg = isRotaFavoritavel(rota) ? TELAS_FAVORITAVEIS_CFG[rota] : null;
   return {
     id: f.id,
     nome: f.nome,
@@ -46,7 +46,7 @@ function serializeFavorito(f: {
     filtros,
     ordem: f.ordem,
     padrao: f.padrao,
-    telaLabel: cfg?.label ?? rota,
+    telaLabel: labelFavoritoRota(rota),
     resumoFiltros: resumoFiltrosFavorito(rota, filtros),
     createdAt: f.createdAt.toISOString(),
     updatedAt: f.updatedAt.toISOString(),
@@ -121,8 +121,8 @@ router.post('/', validateCsrf, async (req: Request, res: Response) => {
     return;
   }
   const rota = normalizarRotaFavorito(parsed.data.rota);
-  if (!isRotaFavoritavel(rota)) {
-    res.status(400).json({ error: 'Esta tela ainda não suporta favoritos.' });
+  if (!isRotaFavoritavel(rota) && !isRotaAppFavoritavel(rota)) {
+    res.status(400).json({ error: 'Rota inválida para favorito.' });
     return;
   }
   const checkFiltros = validarFiltrosFavorito(rota, parsed.data.filtros);
@@ -136,7 +136,7 @@ router.post('/', validateCsrf, async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Usuário não encontrado.' });
       return;
     }
-    if (!filtrosPermitidosParaPermissoes(rota, permissoes)) {
+    if (isRotaFavoritavel(rota) && !filtrosPermitidosParaPermissoes(rota, permissoes)) {
       res.status(403).json({ error: 'Sem permissão para favoritar esta tela.' });
       return;
     }

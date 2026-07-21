@@ -7,7 +7,7 @@ import {
   type SaudeClienteResult,
 } from "../lib/saude-cliente";
 
-export type SaudeGaugesVariant = "cliente" | "empresa";
+export type SaudeGaugesVariant = "cliente" | "empresa" | "grupo";
 
 interface Props {
   saude: SaudeClienteResult;
@@ -30,6 +30,13 @@ const VARIANT_CONFIG: Record<
     subtitulo: "Contas a receber — histórico completo (Confirmada + Adiantamento)",
     descricaoMediaGeral: DESCRICAO_MEDIA_GERAL,
   },
+  grupo: {
+    ariaLabel: "Indicador de saúde do grupo econômico",
+    titulo: "Saúde do grupo econômico",
+    subtitulo:
+      "Contas a receber consolidadas de todas as empresas do grupo — histórico completo",
+    descricaoMediaGeral: DESCRICAO_MEDIA_GERAL,
+  },
   empresa: {
     ariaLabel: "Indicador de saúde do quadro de contas a receber da empresa",
     titulo: "Saúde do quadro de contas a receber da empresa",
@@ -45,27 +52,27 @@ const FAIXA_STYLES: Record<
 > = {
   excelente: {
     arc: "stroke-emerald-500",
-    text: "text-emerald-700",
-    bg: "bg-emerald-50",
-    border: "border-emerald-200",
+    text: "text-emerald-700 dark:text-emerald-400",
+    bg: "bg-emerald-50 dark:bg-emerald-950/35",
+    border: "border-emerald-200 dark:border-emerald-800/70",
   },
   bom: {
     arc: "stroke-blue-500",
-    text: "text-blue-700",
-    bg: "bg-blue-50",
-    border: "border-blue-200",
+    text: "text-blue-700 dark:text-blue-400",
+    bg: "bg-blue-50 dark:bg-blue-950/35",
+    border: "border-blue-200 dark:border-blue-800/70",
   },
   atencao: {
     arc: "stroke-amber-500",
-    text: "text-amber-700",
-    bg: "bg-amber-50",
-    border: "border-amber-200",
+    text: "text-amber-700 dark:text-amber-400",
+    bg: "bg-amber-50 dark:bg-amber-950/35",
+    border: "border-amber-200 dark:border-amber-800/70",
   },
   critico: {
     arc: "stroke-red-500",
-    text: "text-red-700",
-    bg: "bg-red-50",
-    border: "border-red-200",
+    text: "text-red-700 dark:text-red-400",
+    bg: "bg-red-50 dark:bg-red-950/35",
+    border: "border-red-200 dark:border-red-800/70",
   },
 };
 
@@ -97,7 +104,7 @@ function GaugeArc({
       <path
         d={`M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}`}
         fill="none"
-        className="stroke-slate-200"
+        className="stroke-slate-200 dark:stroke-slate-700"
         strokeWidth={strokeWidth}
         strokeLinecap="round"
       />
@@ -131,8 +138,8 @@ function getDetalheItemStyle(rotulo: string): {
     text.includes("media final")
   ) {
     return {
-      row: "border-emerald-100 bg-emerald-50",
-      label: "text-emerald-900",
+      row: "border-emerald-100 bg-emerald-50 dark:border-emerald-800/70 dark:bg-emerald-950/40",
+      label: "text-emerald-900 dark:text-emerald-200",
       value: "bg-emerald-600 text-white",
       dot: "bg-emerald-500",
     };
@@ -140,8 +147,8 @@ function getDetalheItemStyle(rotulo: string): {
 
   if (text.includes("desconsider")) {
     return {
-      row: "border-amber-100 bg-amber-50",
-      label: "text-amber-900",
+      row: "border-amber-100 bg-amber-50 dark:border-amber-800/70 dark:bg-amber-950/40",
+      label: "text-amber-900 dark:text-amber-200",
       value: "bg-amber-500 text-white",
       dot: "bg-amber-500",
     };
@@ -153,17 +160,17 @@ function getDetalheItemStyle(rotulo: string): {
     text.includes("sem juros")
   ) {
     return {
-      row: "border-red-100 bg-red-50",
-      label: "text-red-900",
+      row: "border-red-100 bg-red-50 dark:border-red-800/70 dark:bg-red-950/40",
+      label: "text-red-900 dark:text-red-200",
       value: "bg-red-600 text-white",
       dot: "bg-red-500",
     };
   }
 
   return {
-    row: "border-slate-200 bg-slate-50",
-    label: "text-slate-700",
-    value: "bg-white text-slate-900 ring-1 ring-inset ring-slate-200",
+    row: "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800",
+    label: "text-slate-700 dark:text-slate-200",
+    value: "bg-white text-slate-900 ring-1 ring-inset ring-slate-200 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-600",
     dot: "bg-slate-400",
   };
 }
@@ -179,13 +186,13 @@ function PainelDetalhes({
     <div
       id={painelId}
       role="tooltip"
-      className="absolute bottom-full left-1/2 z-30 mb-3 w-[min(25rem,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-xl ring-1 ring-black/5"
+      className="absolute bottom-full left-1/2 z-30 mb-3 w-[min(25rem,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-xl ring-1 ring-black/5 dark:border-slate-600 dark:bg-slate-900"
     >
-      <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5">
+      <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 dark:border-blue-800/70 dark:bg-blue-950/40">
         <p className="text-[11px] font-bold uppercase tracking-wide text-blue-700">
           Resumo do indicador
         </p>
-        <p className="mt-1 text-sm font-bold leading-snug text-slate-950 sm:text-base">
+        <p className="mt-1 text-sm font-bold leading-snug text-slate-950 sm:text-base dark:text-slate-100">
           {detalhes.resumo}
         </p>
       </div>
@@ -218,7 +225,7 @@ function PainelDetalhes({
         })}
       </dl>
       <span
-        className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-slate-200 bg-white"
+        className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-900"
         aria-hidden="true"
       />
     </div>
@@ -256,20 +263,20 @@ function GaugeCard({
       className={`flex min-w-0 flex-1 flex-col items-center rounded-xl border px-4 py-5 text-center sm:px-5 ${
         destaque
           ? `${styles.bg} ${styles.border} shadow-sm ring-1 ring-inset ring-black/5`
-          : "border-slate-200 bg-white"
+          : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
       }`}
     >
       <div className="mb-2 min-h-[5rem] w-full space-y-1.5">
         <p
           className={`text-sm font-bold leading-tight sm:text-base ${
-            destaque ? styles.text : "text-slate-800"
+            destaque ? styles.text : "text-slate-800 dark:text-slate-100"
           }`}
         >
           {titulo}
         </p>
         <p
           className={`text-sm leading-snug sm:text-[15px] ${
-            destaque ? `${styles.text} opacity-90` : "text-slate-500"
+            destaque ? `${styles.text} opacity-90` : "text-slate-500 dark:text-slate-400"
           }`}
         >
           {descricao}
@@ -309,7 +316,7 @@ function GaugeCard({
           aria-expanded={popupAberto}
           aria-controls={painelId}
           onClick={() => setPopupAberto((prev) => !prev)}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="mt-2 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
         >
           <svg
             aria-hidden="true"
@@ -341,14 +348,14 @@ export default function SaudeClienteGauges({
     <section
       id={exportId}
       aria-label={config.ariaLabel}
-      className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+      className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900"
     >
       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
         <div>
-          <h2 className="text-base font-bold text-slate-900 sm:text-lg">
+          <h2 className="text-base font-bold text-slate-900 sm:text-lg dark:text-slate-100">
             {config.titulo}
           </h2>
-          <p className="text-sm text-slate-500">{config.subtitulo}</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{config.subtitulo}</p>
         </div>
       </div>
 

@@ -8,6 +8,8 @@ import {
   PERMISSOES_ACESSO_FINANCEIRO_CRM,
   PERMISSOES_ACESSO_FINANCEIRO_CRM_EMPRESA,
   PERMISSOES_ACESSO_FINANCEIRO_CRM_CLIENTE,
+  PERMISSOES_ACESSO_FINANCEIRO_CRM_PENDENCIAS,
+  PERMISSOES_EDITAR_CRM_PENDENCIAS_DESTINATARIOS,
 } from '../utils/financeiroPermissoes.js';
 import {
   getDfcAgendamentosEfetivos,
@@ -41,10 +43,14 @@ import {
   getDreRelacaoPc,
   putDreRelacaoPc,
   deleteDreRelacaoPcOverrides,
+  getDreRateioConfig,
+  putDreRateioConfig,
+  getDreDashboard,
   getPainelComercial,
   getPainelComercialItensPedido,
   getPoliticaComercialPainel,
   putPoliticaComercialPainel,
+  getPoliticaComercialClientes,
 } from '../controllers/financeiroController.js';
 import {
   deletePrioridadeContaCtrl,
@@ -64,6 +70,17 @@ import {
   getCrmPessoas,
   getCrmSaudeEmpresa,
 } from '../controllers/crmFinanceiroController.js';
+import {
+  getCrmPendenciasCredito,
+  getCrmPendenciasContasCliente,
+  getCrmPendenciasEmailConfig,
+  getCrmPendenciasHistorico,
+  getCrmPendenciasPedidosDestino,
+  getCrmPendenciasUsuarios,
+  postCrmPendenciaAcao,
+  postCrmPendenciaConfirmarLiberacao,
+  putCrmPendenciasEmailConfig,
+} from '../controllers/crmCreditoPendenciasController.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -74,6 +91,10 @@ const verFinanceiroPainelComercial = requirePermission(...PERMISSOES_ACESSO_FINA
 const verFinanceiroCrm = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_CRM);
 const verFinanceiroCrmEmpresa = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_CRM_EMPRESA);
 const verFinanceiroCrmCliente = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_CRM_CLIENTE);
+const verFinanceiroCrmPendencias = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_CRM_PENDENCIAS);
+const editarCrmPendenciasDestinatarios = requirePermission(
+  ...PERMISSOES_EDITAR_CRM_PENDENCIAS_DESTINATARIOS
+);
 
 router.get('/dfc/agendamentos-efetivos', verFinanceiroDfc, getDfcAgendamentosEfetivos);
 router.get('/dfc/projecao-receitas', verFinanceiroDfc, getDfcProjecaoReceitas);
@@ -107,6 +128,9 @@ router.get('/dre/saidas-soaco/detalhe-nomus', verFinanceiroDre, getDreSaidasNomu
 router.get('/dre/relacao-pc', verFinanceiroDre, getDreRelacaoPc);
 router.put('/dre/relacao-pc', verFinanceiroDre, putDreRelacaoPc);
 router.delete('/dre/relacao-pc', verFinanceiroDre, deleteDreRelacaoPcOverrides);
+router.get('/dre/rateio-config', verFinanceiroDre, getDreRateioConfig);
+router.put('/dre/rateio-config', verFinanceiroDre, putDreRateioConfig);
+router.get('/dre/dashboard', verFinanceiroDre, getDreDashboard);
 
 // Prioridade DFC (plano de contas + lançamento)
 router.get('/dfc/prioridades/opcoes', verFinanceiroDfc, getOpcoesPrioridade);
@@ -120,6 +144,7 @@ router.post('/dfc/prioridades/lancamentos/lote', verFinanceiroDfc, postPrioridad
 router.delete('/dfc/prioridades/lancamentos/:idEmpresa/:tipoRef/:idRef', verFinanceiroDfc, deletePrioridadeLancamentoCtrl);
 
 router.get('/painel-comercial/itens-pedido', verFinanceiroPainelComercial, getPainelComercialItensPedido);
+router.get('/painel-comercial/politica/clientes', verFinanceiroPainelComercial, getPoliticaComercialClientes);
 router.get('/painel-comercial/politica', verFinanceiroPainelComercial, getPoliticaComercialPainel);
 router.put('/painel-comercial/politica', verFinanceiroPainelComercial, putPoliticaComercialPainel);
 router.get('/painel-comercial', verFinanceiroPainelComercial, getPainelComercial);
@@ -129,5 +154,27 @@ router.get('/crm/detalhe', verFinanceiroCrm, getCrmDetalhe);
 router.get('/crm/saude-empresa', verFinanceiroCrmEmpresa, getCrmSaudeEmpresa);
 router.get('/crm/pessoas', verFinanceiroCrmCliente, getCrmPessoas);
 router.get('/crm/empresas', verFinanceiroCrm, getCrmEmpresas);
+
+router.get('/crm/pendencias-credito/email-config', verFinanceiroCrmPendencias, getCrmPendenciasEmailConfig);
+router.put(
+  '/crm/pendencias-credito/email-config',
+  editarCrmPendenciasDestinatarios,
+  putCrmPendenciasEmailConfig
+);
+router.get('/crm/pendencias-credito/usuarios', verFinanceiroCrmPendencias, getCrmPendenciasUsuarios);
+router.get('/crm/pendencias-credito/historico', verFinanceiroCrmPendencias, getCrmPendenciasHistorico);
+router.get('/crm/pendencias-credito/contas', verFinanceiroCrmPendencias, getCrmPendenciasContasCliente);
+router.get(
+  '/crm/pendencias-credito/pedidos-destino',
+  verFinanceiroCrmPendencias,
+  getCrmPendenciasPedidosDestino
+);
+router.get('/crm/pendencias-credito', verFinanceiroCrmPendencias, getCrmPendenciasCredito);
+router.post('/crm/pendencias-credito/:id/acao', verFinanceiroCrmPendencias, postCrmPendenciaAcao);
+router.post(
+  '/crm/pendencias-credito/:id/confirmar-liberacao',
+  verFinanceiroCrmPendencias,
+  postCrmPendenciaConfirmarLiberacao
+);
 
 export default router;

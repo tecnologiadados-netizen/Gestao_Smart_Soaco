@@ -1,5 +1,6 @@
 /**
  * Pedidos de venda em aberto (itens com status 1, 2 ou 3) para monitoramento de crédito.
+ * Exclui requisições de loja do grupo (atributo Nomus 313 = Sim).
  */
 
 import { nomusQuery } from './crmFinanceiro/nomusQuery.js';
@@ -21,12 +22,41 @@ export function labelStatusPedidoAberto(statusItem: number): string {
   return STATUS_LABEL[statusItem] ?? `Status ${statusItem}`;
 }
 
+/** Labels amplos (inclui status finais para sync da aba Pendências). */
+const STATUS_LABEL_COMPLETO: Record<number, string> = {
+  ...STATUS_LABEL,
+  4: 'Atendido totalmente',
+  5: 'Atendido com corte',
+  6: 'Cancelado',
+  7: 'Devolvido parcialmente',
+  8: 'Devolvido totalmente',
+};
+
+export function labelStatusItemPedidoCompleto(statusItem: number): string {
+  return STATUS_LABEL_COMPLETO[statusItem] ?? `Status ${statusItem}`;
+}
+
 /** pd.nome no Nomus já costuma vir como "PD 49511" — evita duplicar o prefixo na UI/e-mail. */
 export function formatarNumeroPedidoExibicao(numeroPedido: string): string {
   const trimmed = numeroPedido.trim();
   if (/^PD\s+/i.test(trimmed)) return trimmed;
   return trimmed ? `PD ${trimmed}` : trimmed;
 }
+
+/**
+ * Atributo Nomus 313 — "Requisição de loja do grupo?".
+ * Exclui pedidos marcados como Sim (não entram no alerta/pendências de crédito).
+ */
+const EXCLUIR_REQUISICAO_LOJA_GRUPO = `
+  AND NOT EXISTS (
+    SELECT 1
+    FROM atributopedidovalor apvreq
+    INNER JOIN atributolistaopcao aloreq ON aloreq.id = apvreq.idListaOpcao
+    WHERE apvreq.idPedido = pd.id
+      AND apvreq.idAtributo = 313
+      AND COALESCE(aloreq.opcao, '') = 'Sim'
+  )
+`;
 
 const SQL_PEDIDOS_ABERTOS = `
   SELECT DISTINCT
@@ -39,6 +69,7 @@ const SQL_PEDIDOS_ABERTOS = `
   INNER JOIN pessoa pe ON pe.id = pd.idCliente
   WHERE ip.status IN (1, 2, 3)
     AND pd.idEmpresa IN (1, 2)
+    ${EXCLUIR_REQUISICAO_LOJA_GRUPO}
   ORDER BY pe.nome ASC, pd.nome ASC, ip.status ASC
 `;
 
@@ -89,4 +120,233 @@ export function agruparPedidosAbertosPorCliente(
   }
 
   return [...map.values()].sort((a, b) => a.clienteNome.localeCompare(b.clienteNome, 'pt-BR'));
+}
+
+export type StatusPedidoCredito = {
+  idPedido: number;
+  numeroPedido: string;
+  clienteNome: string;
+  /** Menor status entre os itens (1 prevalece sobre 2/3 se houver item pausado). */
+  statusItem: number;
+  statusLabel: string;
+  /** Soma de valorTotalComDesconto dos itens do pedido. */
+  valorPedido: number;
+};
+
+/**
+ * Status atual dos pedidos no Nomus (MIN dos status dos itens).
+ * Usado no refresh da grade de pendências de crédito.
+ */
+export async function listarStatusPedidosCreditoPorIds(
+  ids: number[]
+): Promise<StatusPedidoCredito[]> {
+  const unique = [...new Set(ids.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0))];
+  if (unique.length === 0) return [];
+
+  const placeholders = unique.map(() => '?').join(', ');
+  const sql = `
+    SELECT
+      pd.id AS idPedido,
+      pd.nome AS numeroPedido,
+      pe.nome AS clienteNome,
+      MIN(ip.status) AS statusItem,
+      COALESCE(SUM(IFNULL(ip.valorTotalComDesconto, 0)), 0) AS valorPedido
+    FROM itempedido ip
+    INNER JOIN pedido pd ON pd.id = ip.idPedido
+    INNER JOIN pessoa pe ON pe.id = pd.idCliente
+    WHERE pd.id IN (${placeholders})
+      AND pd.idEmpresa IN (1, 2)
+    GROUP BY pd.id, pd.nome, pe.nome
+  `;
+
+  const rows = await nomusQuery<{
+    idPedido: number;
+    numeroPedido: string;
+    clienteNome: string;
+    statusItem: number;
+    valorPedido: number;
+  }>(sql, unique);
+
+  return rows.map((row) => {
+    const statusItem = Number(row.statusItem);
+    return {
+      idPedido: Number(row.idPedido),
+      numeroPedido: String(row.numeroPedido ?? '').trim(),
+      clienteNome: String(row.clienteNome ?? '').trim(),
+      statusItem,
+      statusLabel: labelStatusItemPedidoCompleto(statusItem),
+      valorPedido: Number(row.valorPedido) || 0,
+    };
+  });
+}
+
+/**
+ * Só o valor total dos pedidos (para enriquecer a grade sem sync completo de status).
+ */
+export async function listarValoresPedidosCreditoPorIds(
+  ids: number[]
+): Promise<Array<{ idPedido: number; valorPedido: number }>> {
+  const unique = [...new Set(ids.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0))];
+  if (unique.length === 0) return [];
+
+  const placeholders = unique.map(() => '?').join(', ');
+  const sql = `
+    SELECT
+      pd.id AS idPedido,
+      COALESCE(SUM(IFNULL(ip.valorTotalComDesconto, 0)), 0) AS valorPedido
+    FROM itempedido ip
+    INNER JOIN pedido pd ON pd.id = ip.idPedido
+    WHERE pd.id IN (${placeholders})
+      AND pd.idEmpresa IN (1, 2)
+    GROUP BY pd.id
+  `;
+
+  const rows = await nomusQuery<{ idPedido: number; valorPedido: number }>(sql, unique);
+  return rows.map((row) => ({
+    idPedido: Number(row.idPedido),
+    valorPedido: Number(row.valorPedido) || 0,
+  }));
+}
+
+/**
+ * Pedidos abertos (status item 1–3) de um cliente, para seleção de destino na realocação.
+ * @deprecated Preferir `buscarPedidosAbertosParaRealocacao` (destino é outro cliente).
+ */
+export async function listarPedidosAbertosPorClienteNome(
+  clienteNome: string,
+  excluirIdPedido?: number | null
+): Promise<
+  Array<{
+    idPedido: number;
+    numeroPedido: string;
+    numeroPedidoExibicao: string;
+    statusItem: number;
+    statusLabel: string;
+  }>
+> {
+  const nome = clienteNome.trim();
+  if (!nome) return [];
+
+  const sql = `
+    SELECT
+      pd.id AS idPedido,
+      pd.nome AS numeroPedido,
+      MIN(ip.status) AS statusItem
+    FROM itempedido ip
+    INNER JOIN pedido pd ON pd.id = ip.idPedido
+    INNER JOIN pessoa pe ON pe.id = pd.idCliente
+    WHERE pe.nome = ?
+      AND ip.status IN (1, 2, 3)
+      AND pd.idEmpresa IN (1, 2)
+    GROUP BY pd.id, pd.nome
+    ORDER BY pd.nome ASC
+  `;
+
+  const rows = await nomusQuery<{
+    idPedido: number;
+    numeroPedido: string;
+    statusItem: number;
+  }>(sql, [nome]);
+
+  const excluir = excluirIdPedido != null ? Number(excluirIdPedido) : null;
+
+  return rows
+    .map((row) => {
+      const idPedido = Number(row.idPedido);
+      const statusItem = Number(row.statusItem);
+      const numeroPedido = String(row.numeroPedido ?? '').trim();
+      return {
+        idPedido,
+        numeroPedido,
+        numeroPedidoExibicao: formatarNumeroPedidoExibicao(numeroPedido),
+        statusItem,
+        statusLabel: labelStatusPedidoAberto(statusItem),
+      };
+    })
+    .filter((p) => (excluir != null && Number.isFinite(excluir) ? p.idPedido !== excluir : true));
+}
+
+export type PedidoDestinoRealocacaoRow = {
+  idPedido: number;
+  numeroPedido: string;
+  numeroPedidoExibicao: string;
+  clienteNome: string;
+  statusItem: number;
+  statusLabel: string;
+  /** Texto pronto para gravar em pedidoDestino (pedido + cliente). */
+  rotuloDestino: string;
+};
+
+/**
+ * Busca pedidos abertos de **outros** clientes (realocar material = outro cliente).
+ * `busca` filtra por nome do cliente ou número do pedido (texto livre com %).
+ */
+export async function buscarPedidosAbertosParaRealocacao(options: {
+  busca: string;
+  excluirIdPedido?: number | null;
+  excluirClienteNome?: string | null;
+  limite?: number;
+}): Promise<PedidoDestinoRealocacaoRow[]> {
+  const busca = options.busca.trim();
+  if (busca.length < 2) return [];
+
+  const { termoParaPadraoLikeSql } = await import('../utils/textoLivreBusca.js');
+  const like = termoParaPadraoLikeSql(busca);
+  const limite = Math.min(Math.max(options.limite ?? 40, 1), 80);
+  const excluirId =
+    options.excluirIdPedido != null && Number.isFinite(Number(options.excluirIdPedido))
+      ? Number(options.excluirIdPedido)
+      : null;
+  const excluirCliente = options.excluirClienteNome?.trim() || null;
+
+  const params: Array<string | number> = [like, like];
+  let sql = `
+    SELECT
+      pd.id AS idPedido,
+      pd.nome AS numeroPedido,
+      pe.nome AS clienteNome,
+      MIN(ip.status) AS statusItem
+    FROM itempedido ip
+    INNER JOIN pedido pd ON pd.id = ip.idPedido
+    INNER JOIN pessoa pe ON pe.id = pd.idCliente
+    WHERE ip.status IN (1, 2, 3)
+      AND pd.idEmpresa IN (1, 2)
+      AND (pe.nome LIKE ? OR pd.nome LIKE ?)
+  `;
+  if (excluirId != null) {
+    sql += ` AND pd.id <> ?`;
+    params.push(excluirId);
+  }
+  if (excluirCliente) {
+    sql += ` AND pe.nome <> ?`;
+    params.push(excluirCliente);
+  }
+  sql += `
+    GROUP BY pd.id, pd.nome, pe.nome
+    ORDER BY pe.nome ASC, pd.nome ASC
+    LIMIT ${limite}
+  `;
+
+  const rows = await nomusQuery<{
+    idPedido: number;
+    numeroPedido: string;
+    clienteNome: string;
+    statusItem: number;
+  }>(sql, params);
+
+  return rows.map((row) => {
+    const numeroPedido = String(row.numeroPedido ?? '').trim();
+    const numeroPedidoExibicao = formatarNumeroPedidoExibicao(numeroPedido);
+    const clienteNome = String(row.clienteNome ?? '').trim();
+    const statusItem = Number(row.statusItem);
+    return {
+      idPedido: Number(row.idPedido),
+      numeroPedido,
+      numeroPedidoExibicao,
+      clienteNome,
+      statusItem,
+      statusLabel: labelStatusPedidoAberto(statusItem),
+      rotuloDestino: `${numeroPedidoExibicao} · ${clienteNome}`,
+    };
+  });
 }

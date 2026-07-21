@@ -1,81 +1,197 @@
 /**
- * Integração uazapiGO v2 – https://docs.uazapi.com/
- * Autenticação: header `token` (token da instância).
+ * Integração Evolution API (Baileys) – WhatsApp.
+ * Autenticação: header `apikey` (= AUTHENTICATION_API_KEY da Evolution).
+ *
+ * Endpoints usados:
+ *  - GET  /instance/fetchInstances
+ *  - POST /instance/create
+ *  - GET  /instance/connectionState/{instance}
+ *  - GET  /instance/connect/{instance}
+ *  - DELETE /instance/logout/{instance}
+ *  - POST /message/sendText/{instance}
  */
 
-import { getEvolutionStoredConfig, saveUazapiInstanceToken } from '../data/configRepository.js';
+import { getEvolutionStoredConfig } from '../data/configRepository.js';
 import { envioNotificacoesHabilitado, logEnvioSuprimido } from '../config/envioNotificacoes.js';
 
-const DEFAULT_INSTANCE_LABEL = 'gestor-pedidos';
+const DEFAULT_INSTANCE_LABEL = 'gestao-soaco';
+const FETCH_TIMEOUT_MS = 45_000;
+const SEND_MAX_ATTEMPTS = 3;
+const SEND_RETRY_DELAYS_MS = [2_000, 5_000, 10_000];
+const WHATSAPP_MAX_TEXT_CHARS = 4096;
 
 function getEnv() {
   return {
-    url: (process.env.UAZAPI_URL ?? process.env.EVOLUTION_API_URL ?? '').replace(/\/$/, '').trim(),
-    token: (process.env.UAZAPI_TOKEN ?? process.env.EVOLUTION_API_KEY ?? '').trim(),
-    adminToken: (process.env.UAZAPI_ADMIN_TOKEN ?? '').trim(),
-    instance: (process.env.UAZAPI_INSTANCE_NAME ?? process.env.EVOLUTION_API_INSTANCE ?? DEFAULT_INSTANCE_LABEL).trim(),
-    number: (process.env.UAZAPI_WHATSAPP_NUMBER ?? process.env.EVOLUTION_WHATSAPP_NUMBER ?? '').trim(),
+    url: (process.env.EVOLUTION_API_URL ?? process.env.EVOLUTION_API_BASE_URL ?? process.env.UAZAPI_URL ?? '')
+      .replace(/\/$/, '')
+      .trim(),
+    apiKey: (process.env.EVOLUTION_API_KEY ?? process.env.UAZAPI_TOKEN ?? '').trim(),
+    instance: (
+      process.env.EVOLUTION_API_INSTANCE ??
+      process.env.UAZAPI_INSTANCE_NAME ??
+      DEFAULT_INSTANCE_LABEL
+    ).trim(),
+    number: (process.env.EVOLUTION_WHATSAPP_NUMBER ?? process.env.UAZAPI_WHATSAPP_NUMBER ?? '').trim(),
   };
 }
 
-async function resolveInstanceToken(): Promise<string> {
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit & { timeoutMs?: number } = {}
+): Promise<Response> {
+  const { timeoutMs = FETCH_TIMEOUT_MS, ...init } = options;
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function evolutionHeaders(apiKey: string, withJson = false): Record<string, string> {
+  const h: Record<string, string> = {
+    apikey: apiKey,
+    Accept: 'application/json',
+    'ngrok-skip-browser-warning': 'true',
+  };
+  if (withJson) h['Content-Type'] = 'application/json';
+  return h;
+}
+
+function extractErrorMessage(json: unknown, fallback: string): string {
+  if (!json || typeof json !== 'object') return fallback;
+  const record = json as Record<string, unknown>;
+  const response = record.response;
+  if (response && typeof response === 'object') {
+    const message = (response as { message?: unknown }).message;
+    if (Array.isArray(message)) return message.map(String).join(', ');
+    if (typeof message === 'string' && message.trim()) return message;
+  }
+  if (typeof record.message === 'string' && record.message.trim()) return record.message;
+  if (typeof record.error === 'string' && record.error.trim()) return record.error;
+  return fallback;
+}
+
+function isErrorPayload(json: unknown): boolean {
+  if (!json || typeof json !== 'object') return false;
+  const record = json as Record<string, unknown>;
+  if (record.error === true) return true;
+  const status = Number(record.status);
+  if (Number.isFinite(status) && status >= 400) return true;
+  if (typeof record.error === 'string' && record.error.trim() && record.instance == null) {
+    return true;
+  }
+  return false;
+}
+
+async function evolutionRequest<T>(
+  path: string,
+  init?: RequestInit
+): Promise<T> {
+  const env = getEnv();
+  if (!env.url || !env.apiKey) {
+    throw new Error('Evolution API não configurada. Defina EVOLUTION_API_URL e EVOLUTION_API_KEY no .env.');
+  }
+  const res = await fetchWithTimeout(`${env.url}${path}`, {
+    ...init,
+    headers: {
+      ...evolutionHeaders(env.apiKey, Boolean(init?.body)),
+      ...(init?.headers ?? {}),
+    },
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || isErrorPayload(json)) {
+    throw new Error(extractErrorMessage(json, `Evolution API HTTP ${res.status}`));
+  }
+  return json as T;
+}
+
+function readInstanceName(record: Record<string, unknown>): string {
+  const nested = record.instance;
+  if (nested && typeof nested === 'object') {
+    const fromNested = String((nested as { instanceName?: string }).instanceName ?? '').trim();
+    if (fromNested) return fromNested;
+  }
+  return String(record.instanceName ?? record.name ?? '').trim();
+}
+
+function mapConnectionState(raw: unknown): string {
+  const state = String(
+    (raw as { instance?: { state?: string }; state?: string })?.instance?.state ??
+      (raw as { state?: string })?.state ??
+      ''
+  ).toLowerCase();
+  if (state === 'open' || state === 'connected') return 'connected';
+  if (state === 'connecting') return 'connecting';
+  return state || 'disconnected';
+}
+
+async function resolveInstanceName(override?: string): Promise<string> {
   const env = getEnv();
   const stored = await getEvolutionStoredConfig();
-  const candidates = [env.token, stored.instanceToken].filter(Boolean);
-  for (const token of candidates) {
-    if (await tokenWorks(token)) return token;
-  }
-  if (!env.adminToken) {
-    throw new Error('Token uazapiGO inválido. Informe UAZAPI_TOKEN (instância) ou UAZAPI_ADMIN_TOKEN no .env.');
-  }
-  const provisioned = await provisionInstanceToken(env.url, env.adminToken, env.instance || DEFAULT_INSTANCE_LABEL);
-  await saveUazapiInstanceToken(provisioned);
-  return provisioned;
+  return (override?.trim() || stored.instance || env.instance || DEFAULT_INSTANCE_LABEL).trim();
 }
 
-async function tokenWorks(token: string): Promise<boolean> {
-  const env = getEnv();
-  if (!env.url || !token) return false;
-  try {
-    const res = await fetchWithTimeout(`${env.url}/instance/status`, { headers: headersGet(token) });
-    if (res.status === 401) return false;
-    return res.ok;
-  } catch {
-    return false;
-  }
+async function fetchEvolutionInstances(): Promise<string[]> {
+  const json = await evolutionRequest<unknown>('/instance/fetchInstances', { method: 'GET' });
+  if (!Array.isArray(json)) return [];
+  return json
+    .map((item) => {
+      if (!item || typeof item !== 'object') return '';
+      return readInstanceName(item as Record<string, unknown>);
+    })
+    .filter(Boolean);
 }
 
-type UazInstanceListItem = { name?: string; token?: string; instance?: { name?: string; token?: string } };
-
-async function provisionInstanceToken(url: string, adminToken: string, instanceName: string): Promise<string> {
-  const listRes = await fetchWithTimeout(`${url}/instance/all`, { headers: headersAdminGet(adminToken) });
-  if (listRes.ok) {
-    const list = (await listRes.json()) as UazInstanceListItem[];
-    if (Array.isArray(list)) {
-      const found = list.find((item) => {
-        const name = item.name ?? item.instance?.name ?? '';
-        return name.toLowerCase() === instanceName.toLowerCase();
-      });
-      const token = found?.token ?? found?.instance?.token;
-      if (token && (await tokenWorks(token))) return token;
-    }
+async function ensureEvolutionInstance(instanceName: string): Promise<Record<string, unknown> | null> {
+  const names = await fetchEvolutionInstances();
+  if (names.some((n) => n.toLowerCase() === instanceName.toLowerCase())) {
+    return null;
   }
-
-  const initRes = await fetchWithTimeout(`${url}/instance/init`, {
+  return evolutionRequest<Record<string, unknown>>('/instance/create', {
     method: 'POST',
-    headers: headersAdminPost(adminToken),
-    body: JSON.stringify({ name: instanceName }),
+    body: JSON.stringify({
+      instanceName,
+      integration: 'WHATSAPP-BAILEYS',
+      qrcode: true,
+    }),
   });
-  const initText = await initRes.text();
-  if (!initRes.ok) {
-    throw new Error(`uazapiGO init: ${initRes.status} ${apiErrorMessage(initRes.status, initText)}`);
+}
+
+function stripDataUrlBase64(raw: string): string {
+  const s = raw.trim();
+  if (s.startsWith('data:')) {
+    const idx = s.indexOf(',');
+    return idx >= 0 ? s.slice(idx + 1) : s;
   }
-  const data = parseJson(initText);
-  const token = data.token ?? data.instance?.token;
-  if (!token || typeof token !== 'string') {
-    throw new Error('uazapiGO init: resposta sem token da instância.');
-  }
-  return token;
+  return s;
+}
+
+function parseQrPayload(json: Record<string, unknown>): { qrCodeBase64?: string; pairingCode?: string } {
+  const qrcodeField = json.qrcode;
+  const nestedBase64 =
+    qrcodeField && typeof qrcodeField === 'object'
+      ? String((qrcodeField as { base64?: string }).base64 ?? '')
+      : '';
+  const pairingField = json.pairingCode;
+  const nestedPairing =
+    pairingField && typeof pairingField === 'object'
+      ? String((pairingField as { code?: string }).code ?? '')
+      : '';
+  const base64Raw = String(json.base64 ?? nestedBase64 ?? '').trim();
+  const qrCodeBase64 = base64Raw ? stripDataUrlBase64(base64Raw) : undefined;
+  const pairingCode =
+    String(
+      (typeof json.pairingCode === 'string' ? json.pairingCode : '') ||
+        nestedPairing ||
+        String(json.code ?? '')
+    ).trim() || undefined;
+  return { qrCodeBase64, pairingCode };
 }
 
 /** Config resolvida para envio: banco primeiro, depois .env */
@@ -89,47 +205,15 @@ export async function getResolvedEvolutionEnv(): Promise<{
   const stored = await getEvolutionStoredConfig();
   return {
     url: env.url,
-    key: env.token,
+    key: env.apiKey,
     instance: (stored?.instance ?? env.instance) || DEFAULT_INSTANCE_LABEL,
     number: (stored?.number ?? env.number) || '',
   };
 }
 
-const UAZAPI_FETCH_TIMEOUT_MS = 15000;
-
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit & { timeoutMs?: number } = {}
-): Promise<Response> {
-  const { timeoutMs = UAZAPI_FETCH_TIMEOUT_MS, ...init } = options;
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-function headersGet(token: string): Record<string, string> {
-  return { token, Accept: 'application/json' };
-}
-
-function headersPost(token: string): Record<string, string> {
-  return { 'Content-Type': 'application/json', Accept: 'application/json', token };
-}
-
-function headersAdminGet(adminToken: string): Record<string, string> {
-  return { admintoken: adminToken, Accept: 'application/json' };
-}
-
-function headersAdminPost(adminToken: string): Record<string, string> {
-  return { 'Content-Type': 'application/json', Accept: 'application/json', admintoken: adminToken };
-}
-
 export function isConfigured(): boolean {
-  const { url, token, adminToken } = getEnv();
-  return Boolean(url && (token || adminToken));
+  const { url, apiKey } = getEnv();
+  return Boolean(url && apiKey);
 }
 
 export function getEvolutionConfig(): { url: string; instance: string; configured: boolean } {
@@ -137,145 +221,96 @@ export function getEvolutionConfig(): { url: string; instance: string; configure
   return { url, instance: instance || DEFAULT_INSTANCE_LABEL, configured: isConfigured() };
 }
 
-type UazInstancePayload = {
-  status?: string;
-  qrcode?: string;
-  paircode?: string;
-  name?: string;
-  profileName?: string;
-};
-
-type UazStatusPayload = {
-  connected?: boolean;
-  loggedIn?: boolean;
-};
-
-type UazApiResponse = {
-  code?: number;
-  message?: string;
-  error?: string;
-  token?: string;
-  instance?: UazInstancePayload;
-  status?: UazStatusPayload;
-  qrcode?: string;
-  paircode?: string;
-  connected?: boolean;
-};
-
-function parseJson(text: string): UazApiResponse {
+/** GET /instance/connectionState/{instance} */
+export async function getConnectionState(instanceName?: string): Promise<{ state: string } | null> {
+  if (!isConfigured()) throw new Error('Evolution API não configurada');
+  const name = await resolveInstanceName(instanceName);
   try {
-    return JSON.parse(text) as UazApiResponse;
+    const names = await fetchEvolutionInstances();
+    if (!names.some((n) => n.toLowerCase() === name.toLowerCase())) {
+      return { state: 'disconnected' };
+    }
   } catch {
-    return {};
+    // segue para connectionState
   }
+  const json = await evolutionRequest<unknown>(
+    `/instance/connectionState/${encodeURIComponent(name)}`,
+    { method: 'GET' }
+  );
+  return { state: mapConnectionState(json) };
 }
 
-function extractQrBase64(data: UazApiResponse): string | undefined {
-  const raw = data.instance?.qrcode ?? data.qrcode;
-  if (!raw || typeof raw !== 'string') return undefined;
-  if (raw.startsWith('data:image')) {
-    return raw.replace(/^data:image\/\w+;base64,/, '');
-  }
-  if (/^[A-Za-z0-9+/=]+$/.test(raw) && raw.length > 100) return raw;
-  return undefined;
+/** DELETE /instance/logout/{instance} */
+export async function logoutInstance(instanceName?: string): Promise<void> {
+  if (!isConfigured()) throw new Error('Evolution API não configurada');
+  const name = await resolveInstanceName(instanceName);
+  await evolutionRequest(`/instance/logout/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
-function extractPairingCode(data: UazApiResponse): string | undefined {
-  const raw = data.instance?.paircode ?? data.paircode;
-  return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
-}
+/** Garante instância + GET /instance/connect/{instance} – QR base64 (sem data-url) */
+export async function getConnectQr(instanceName?: string): Promise<{ qrCodeBase64: string; pairingCode?: string }> {
+  if (!isConfigured()) throw new Error('Evolution API não configurada');
+  const name = await resolveInstanceName(instanceName);
 
-function isConnected(data: UazApiResponse): boolean {
-  if (data.status?.connected === true || data.connected === true) return true;
-  const st = (data.instance?.status ?? '').toLowerCase();
-  return st === 'connected' || st === 'open';
-}
-
-function apiErrorMessage(httpStatus: number, text: string): string {
-  const data = parseJson(text);
-  return data.message ?? data.error ?? text.slice(0, 300);
-}
-
-/** GET /instance/status */
-export async function getConnectionState(_instanceName?: string): Promise<{ state: string } | null> {
-  const env = getEnv();
-  if (!env.url) throw new Error('uazapiGO não configurada');
-  const token = await resolveInstanceToken();
-  const res = await fetchWithTimeout(`${env.url}/instance/status`, { headers: headersGet(token) });
-  const text = await res.text();
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`uazapiGO status: ${res.status} ${apiErrorMessage(res.status, text)}`);
-  const data = parseJson(text);
-  if (isConnected(data)) return { state: 'connected' };
-  const st = (data.instance?.status ?? 'disconnected').toLowerCase();
-  return { state: st || 'disconnected' };
-}
-
-/** POST /instance/disconnect */
-export async function logoutInstance(_instanceName?: string): Promise<void> {
-  const env = getEnv();
-  if (!env.url) throw new Error('uazapiGO não configurada');
-  const token = await resolveInstanceToken();
-  const res = await fetchWithTimeout(`${env.url}/instance/disconnect`, {
-    method: 'POST',
-    headers: headersPost(token),
-    body: '{}',
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`uazapiGO disconnect: ${res.status} ${apiErrorMessage(res.status, text)}`);
-  }
-}
-
-/** POST /instance/connect – retorna QR base64 e opcional paircode */
-export async function getConnectQr(_instanceName?: string): Promise<{ qrCodeBase64: string; pairingCode?: string }> {
-  const env = getEnv();
-  if (!env.url) throw new Error('uazapiGO não configurada');
-  const token = await resolveInstanceToken();
-
-  const statusRes = await fetchWithTimeout(`${env.url}/instance/status`, { headers: headersGet(token) });
-  const statusText = await statusRes.text();
-  if (statusRes.ok) {
-    const statusData = parseJson(statusText);
-    if (isConnected(statusData)) {
-      throw new Error('Instância já conectada.');
+  const created = await ensureEvolutionInstance(name);
+  if (created) {
+    const fromCreate = parseQrPayload(created);
+    if (fromCreate.qrCodeBase64) {
+      return { qrCodeBase64: fromCreate.qrCodeBase64, pairingCode: fromCreate.pairingCode };
     }
-    const qrFromStatus = extractQrBase64(statusData);
-    if (qrFromStatus) {
-      return { qrCodeBase64: qrFromStatus, pairingCode: extractPairingCode(statusData) };
+    await sleep(2000);
+  }
+
+  const state = await getConnectionState(name);
+  if (state?.state === 'connected' || state?.state === 'open') {
+    throw new Error('Instância já conectada.');
+  }
+
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const json = await evolutionRequest<Record<string, unknown>>(
+        `/instance/connect/${encodeURIComponent(name)}`,
+        { method: 'GET' }
+      );
+      const parsed = parseQrPayload(json);
+      if (parsed.qrCodeBase64) {
+        return { qrCodeBase64: parsed.qrCodeBase64, pairingCode: parsed.pairingCode };
+      }
+      lastError = new Error('Evolution connect: resposta sem QR code. Aguarde e tente atualizar.');
+      await sleep(2000);
+    } catch (e) {
+      lastError = e;
+      await sleep(2000);
     }
   }
-
-  const res = await fetchWithTimeout(`${env.url}/instance/connect`, {
-    method: 'POST',
-    headers: headersPost(token),
-    body: '{}',
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`uazapiGO connect: ${res.status} ${apiErrorMessage(res.status, text)}`);
-
-  const data = parseJson(text);
-  const qrCodeBase64 = extractQrBase64(data);
-  if (!qrCodeBase64) {
-    throw new Error('uazapiGO connect: resposta sem QR code. Aguarde e tente atualizar.');
-  }
-  return { qrCodeBase64, pairingCode: extractPairingCode(data) };
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Evolution connect: resposta sem QR code. Aguarde e tente atualizar.');
 }
 
-/** Compatibilidade – uazapi usa token único, não lista instâncias */
 export async function fetchInstances(): Promise<{ instanceName: string; state?: string }[]> {
-  const env = getEnv();
-  if (!env.url || !env.token) return [];
+  if (!isConfigured()) return [];
   try {
-    const st = await getConnectionState();
-    return [{ instanceName: env.instance || DEFAULT_INSTANCE_LABEL, state: st?.state }];
+    const names = await fetchEvolutionInstances();
+    const out: { instanceName: string; state?: string }[] = [];
+    for (const instanceName of names) {
+      try {
+        const st = await getConnectionState(instanceName);
+        out.push({ instanceName, state: st?.state });
+      } catch {
+        out.push({ instanceName });
+      }
+    }
+    return out;
   } catch {
+    const env = getEnv();
     return [{ instanceName: env.instance || DEFAULT_INSTANCE_LABEL }];
   }
 }
 
-/** Compatibilidade – instância já existe via token */
 export async function createInstance(instanceName: string): Promise<{ instanceName: string }> {
+  await ensureEvolutionInstance(instanceName);
   return { instanceName };
 }
 
@@ -296,33 +331,41 @@ function formatarDataBR(isoDate: string): string {
 export async function sendWhatsAppText(text: string): Promise<void> {
   const env = await getResolvedEvolutionEnv();
   if (!env.url || !env.key) return;
-  const numbers = [env.number, NUMERO_EXTRA_NOTIFICACAO].filter((n) => n && n.replace(/\D/g, '').length >= 10);
+  const numbers = [env.number, NUMERO_EXTRA_NOTIFICACAO].filter(
+    (n) => n && n.replace(/\D/g, '').length >= 10
+  );
   for (const num of numbers) {
-    await sendWhatsAppTextTo(num, text).catch(() => {});
+    const result = await sendWhatsAppTextTo(num, text);
+    if (!result.ok) {
+      console.error('[Evolution] sendWhatsAppText falhou para', num, result.error);
+    }
   }
 }
 
-/** Limite oficial de texto no WhatsApp (uazapiGO / Cloud API). */
-const WHATSAPP_MAX_TEXT_CHARS = 4096;
-
 export function mensagemErroEvolutionEnvio(httpStatus: number, errText: string): string {
   const lower = errText.toLowerCase();
-  if (lower.includes('invalid token') || lower.includes('missing token')) {
-    return 'Token uazapiGO inválido ou ausente. Verifique UAZAPI_TOKEN no .env do backend.';
+  if (
+    lower.includes('unauthorized') ||
+    (lower.includes('invalid') && lower.includes('apikey')) ||
+    lower.includes('invalid token') ||
+    lower.includes('missing token')
+  ) {
+    return 'API key da Evolution inválida ou ausente. Verifique EVOLUTION_API_KEY no .env do backend.';
   }
   if (
     lower.includes('connection closed') ||
     lower.includes('not connected') ||
     lower.includes('disconnected') ||
-    lower.includes('session closed')
+    lower.includes('session closed') ||
+    lower.includes('whatsapp desconectado')
   ) {
     return 'WhatsApp desconectado. Acesse o menu WhatsApp no sistema e reconecte a instância (escaneie o QR Code).';
   }
   if (httpStatus === 404) {
-    return 'Instância WhatsApp não encontrada na uazapiGO. Verifique URL e token em WhatsApp.';
+    return 'Instância WhatsApp não encontrada na Evolution. Verifique EVOLUTION_API_INSTANCE e reconecte o QR.';
   }
   if (httpStatus >= 500) {
-    return 'Servidor uazapiGO indisponível ou instância desconectada. Reconecte o WhatsApp e tente novamente.';
+    return 'Servidor Evolution indisponível ou instância desconectada. Confirme o PM2 (evolution-api) e reconecte o WhatsApp.';
   }
   const resumo = errText.length > 180 ? `${errText.slice(0, 180)}…` : errText;
   return `Falha ao enviar mensagem (${httpStatus}): ${resumo}`;
@@ -331,23 +374,23 @@ export function mensagemErroEvolutionEnvio(httpStatus: number, errText: string):
 export async function verificarWhatsAppProntoParaEnvio(): Promise<{ ok: true } | { ok: false; error: string }> {
   const env = await getResolvedEvolutionEnv();
   if (!env.url) {
-    return { ok: false, error: 'uazapiGO não configurada (URL no .env).' };
+    return { ok: false, error: 'Evolution API não configurada (EVOLUTION_API_URL no .env).' };
   }
-  const { adminToken } = getEnv();
-  if (!env.key && !adminToken) {
-    return { ok: false, error: 'uazapiGO não configurada (TOKEN ou ADMIN_TOKEN no .env).' };
+  if (!env.key) {
+    return { ok: false, error: 'Evolution API não configurada (EVOLUTION_API_KEY no .env).' };
   }
   try {
-    const st = await getConnectionState();
+    const st = await getConnectionState(env.instance);
     const state = (st?.state ?? '').toLowerCase();
-    if (state && state !== 'connected' && state !== 'open') {
+    if (state !== 'connected' && state !== 'open') {
       return {
         ok: false,
         error: `WhatsApp desconectado (estado: ${st?.state ?? 'desconhecido'}). Reconecte em WhatsApp no menu do sistema.`,
       };
     }
   } catch (e) {
-    console.warn('[uazapiGO] status:', (e as Error)?.message ?? e);
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: `Não foi possível verificar a Evolution: ${msg}` };
   }
   return { ok: true };
 }
@@ -379,46 +422,84 @@ function splitTextIntoChunks(text: string, maxLen: number): string[] {
   return chunks.length > 0 ? chunks : [text.slice(0, maxLen)];
 }
 
-/** POST /send/text – envia mensagem para um número específico */
-export async function sendWhatsAppTextTo(number: string, text: string): Promise<{ ok: boolean; error?: string }> {
-  if (!envioNotificacoesHabilitado()) {
-    logEnvioSuprimido('whatsapp', number);
-    return { ok: true };
-  }
-  const env = await getResolvedEvolutionEnv();
-  if (!env.url) {
-    return { ok: false, error: 'uazapiGO não configurada (URL no app)' };
-  }
-  let token = env.key;
-  try {
-    token = await resolveInstanceToken();
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-  const numberClean = number.replace(/\D/g, '');
-  if (!numberClean) return { ok: false, error: 'Número inválido' };
-
-  const res = await fetchWithTimeout(`${env.url}/send/text`, {
-    method: 'POST',
-    headers: headersPost(token),
-    body: JSON.stringify({ number: numberClean, text }),
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error('[uazapiGO] send/text:', res.status, errText);
-    return { ok: false, error: mensagemErroEvolutionEnvio(res.status, apiErrorMessage(res.status, errText)) };
-  }
-  return { ok: true };
+function isTransientSendError(message: string, httpStatus?: number): boolean {
+  if (httpStatus != null && httpStatus >= 500) return true;
+  const lower = message.toLowerCase();
+  return (
+    /abort|timeout|etimedout|econnreset|econnrefused|fetch failed|network|502|503|504/.test(lower) ||
+    /not connected|disconnected|connection closed|session closed|connecting/.test(lower)
+  );
 }
 
-export async function sendWhatsAppTextToLong(number: string, text: string): Promise<{ ok: boolean; error?: string }> {
+async function sendTextOnce(numberClean: string, text: string, instanceName: string): Promise<void> {
+  const st = await getConnectionState(instanceName);
+  const state = (st?.state ?? '').toLowerCase();
+  if (state !== 'connected' && state !== 'open') {
+    throw new Error(
+      `WhatsApp desconectado (estado: ${st?.state ?? 'desconhecido'}). Escaneie o QR Code em WhatsApp.`
+    );
+  }
+
+  await evolutionRequest(`/message/sendText/${encodeURIComponent(instanceName)}`, {
+    method: 'POST',
+    body: JSON.stringify({ number: numberClean, text }),
+  });
+}
+
+export type SendWhatsAppResult = { ok: boolean; error?: string; dryRun?: boolean };
+
+/** POST /message/sendText/{instance} – com gate de sessão e retry. */
+export async function sendWhatsAppTextTo(number: string, text: string): Promise<SendWhatsAppResult> {
+  if (!envioNotificacoesHabilitado()) {
+    logEnvioSuprimido('whatsapp', number);
+    return { ok: true, dryRun: true };
+  }
+  const env = await getResolvedEvolutionEnv();
+  if (!env.url || !env.key) {
+    return { ok: false, error: 'Evolution API não configurada (EVOLUTION_API_URL / EVOLUTION_API_KEY).' };
+  }
+  const numberClean = number.replace(/\D/g, '');
+  if (!numberClean || numberClean.length < 10) {
+    return { ok: false, error: 'Número inválido' };
+  }
+
+  const instanceName = env.instance || DEFAULT_INSTANCE_LABEL;
+  let lastError = '';
+
+  for (let attempt = 0; attempt < SEND_MAX_ATTEMPTS; attempt++) {
+    try {
+      await sendTextOnce(numberClean, text, instanceName);
+      return { ok: true };
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
+      console.error(`[Evolution] sendText tentativa ${attempt + 1}/${SEND_MAX_ATTEMPTS}:`, lastError);
+      const transient = isTransientSendError(lastError);
+      if (!transient || attempt >= SEND_MAX_ATTEMPTS - 1) break;
+      await sleep(SEND_RETRY_DELAYS_MS[attempt] ?? 5_000);
+    }
+  }
+
+  return {
+    ok: false,
+    error: mensagemErroEvolutionEnvio(0, lastError || 'Falha ao enviar'),
+  };
+}
+
+export async function sendWhatsAppTextToLong(number: string, text: string): Promise<SendWhatsAppResult> {
   const chunks = splitTextIntoChunks(text, WHATSAPP_MAX_TEXT_CHARS);
   for (let i = 0; i < chunks.length; i++) {
     const parte = chunks.length > 1 ? `(${i + 1}/${chunks.length})\n${chunks[i]!}` : chunks[i]!;
     const result = await sendWhatsAppTextTo(number, parte);
     if (!result.ok) return result;
+    if (i < chunks.length - 1) await sleep(500);
   }
   return { ok: true };
+}
+
+/** Pausa entre destinatários (anti rate-limit). Padrão 500 ms. */
+export function delayEntreDestinatariosMs(): number {
+  const n = Number(process.env.WHATSAPP_DELAY_ENTRE_DESTINATARIOS_MS);
+  return Number.isFinite(n) && n >= 0 ? n : 500;
 }
 
 export function formatarMensagemAlteracaoPrevisao(params: {
@@ -433,7 +514,8 @@ export function formatarMensagemAlteracaoPrevisao(params: {
   observacao?: string | null;
   usuario: string;
 }): string {
-  const { pedido, codigo, cliente, descricao, data_entrega, previsao_antiga, previsao_nova, motivo, observacao, usuario } = params;
+  const { pedido, codigo, cliente, descricao, data_entrega, previsao_antiga, previsao_nova, motivo, observacao, usuario } =
+    params;
   let msg = '📦 *Alteração de previsão de entrega*\n\n';
   if (pedido?.trim()) msg += `📄 *Pedido:* ${pedido.trim()}\n`;
   if (codigo?.trim()) msg += `🔢 *Código:* ${codigo.trim()}\n`;

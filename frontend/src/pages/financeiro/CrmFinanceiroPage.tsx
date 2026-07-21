@@ -3,6 +3,7 @@ import LoadingOverlay from "./crm/components/LoadingOverlay";
 import PdfGeneratingOverlay from "./crm/components/PdfGeneratingOverlay";
 import FiltroPessoa from "./crm/components/FiltroPessoa";
 import FiltroEmpresa from "./crm/components/FiltroEmpresa";
+import MembrosGrupoPanel from "./crm/components/MembrosGrupoPanel";
 import TabelaBaixados from "./crm/components/TabelaBaixados";
 import TabelaContas from "./crm/components/TabelaContas";
 import TabelaIndicadores from "./crm/components/TabelaIndicadores";
@@ -19,6 +20,7 @@ import type {
   IndicadorDetalheClickPayload,
   IndicadoresResumo,
   Recebimento,
+  SelecaoClienteCrm,
 } from "./crm/lib/types";
 import {
   filtrarDetalheLocal,
@@ -38,9 +40,34 @@ import { useAuth } from "../../contexts/AuthContext";
 import {
   PERMISSOES_ACESSO_FINANCEIRO_CRM_EMPRESA,
   PERMISSOES_ACESSO_FINANCEIRO_CRM_CLIENTE,
+  PERMISSOES_ACESSO_FINANCEIRO_CRM_PENDENCIAS,
+  PERMISSOES_EDITAR_CRM_PENDENCIAS_DESTINATARIOS,
 } from "../../utils/financeiroPermissoes";
+import PendenciasCreditoPanel from "./crm/components/PendenciasCreditoPanel";
+import { useSearchParams } from "react-router-dom";
+
+function chaveSelecao(s: SelecaoClienteCrm | null): string | null {
+  if (!s) return null;
+  return s.tipo === "pessoa" ? `p:${s.nome}` : `g:${s.id}`;
+}
+
+function labelSelecao(s: SelecaoClienteCrm | null): string | null {
+  if (!s) return null;
+  return s.nome;
+}
+
+function selecaoSincronizada(
+  s: SelecaoClienteCrm,
+  data: DashboardDetalhesData | DashboardGlobalData,
+): boolean {
+  if (s.tipo === "pessoa") {
+    return data.pessoaFiltrada === s.nome;
+  }
+  return data.grupoFiltrado?.id === s.id;
+}
+
 type Aba = "receber" | "pagar";
-type GuiaPainel = "empresa" | "cliente";
+type GuiaPainel = "empresa" | "cliente" | "pendencias";
 
 const CACHE_STORAGE_KEY = "crm-financeiro:indicadores-globais:v13";
 const CACHE_SAUDE_EMPRESA_KEY = "crm-financeiro:saude-empresa:v6";
@@ -106,15 +133,15 @@ function salvarCacheLocal(
 function ResumoSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="h-14 animate-pulse rounded-xl bg-slate-200" />
-      <div className="h-48 animate-pulse rounded-xl bg-slate-100" />
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="h-14 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700" />
+      <div className="h-48 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
         <div className="h-12 animate-pulse bg-blue-700/80" />
         <div className="space-y-2 p-4">
           {Array.from({ length: 6 }).map((_, index) => (
             <div
               key={index}
-              className="h-10 animate-pulse rounded bg-slate-100"
+              className="h-10 animate-pulse rounded bg-slate-100 dark:bg-slate-800"
             />
           ))}
         </div>
@@ -125,16 +152,16 @@ function ResumoSkeleton() {
 
 function SaudeEmpresaSkeleton() {
   return (
-    <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <div className="mb-4 space-y-2">
-        <div className="h-6 w-96 max-w-full animate-pulse rounded bg-slate-200" />
-        <div className="h-4 w-72 max-w-full animate-pulse rounded bg-slate-100" />
+        <div className="h-6 w-96 max-w-full animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+        <div className="h-4 w-72 max-w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <div
             key={index}
-            className="h-52 animate-pulse rounded-xl border border-slate-200 bg-slate-50"
+            className="h-52 animate-pulse rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800"
           />
         ))}
       </div>
@@ -150,7 +177,7 @@ function AbasResumo({
   onChange: (aba: Aba) => void;
 }) {
   return (
-    <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+    <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <div className="flex flex-wrap gap-1 p-1">
         <button
           type="button"
@@ -158,7 +185,7 @@ function AbasResumo({
           className={`rounded-lg px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition ${
             aba === "receber"
               ? "bg-blue-700 text-white shadow"
-              : "text-slate-600 hover:bg-slate-100"
+              : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
           }`}
         >
           Contas a receber e recebimentos
@@ -169,7 +196,7 @@ function AbasResumo({
           className={`rounded-lg px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition ${
             aba === "pagar"
               ? "bg-blue-700 text-white shadow"
-              : "text-slate-600 hover:bg-slate-100"
+              : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
           }`}
         >
           Contas a pagar e pagamentos
@@ -184,14 +211,16 @@ function GuiasPainel({
   onChange,
   podeVerEmpresa,
   podeVerCliente,
+  podeVerPendencias,
 }: {
   guia: GuiaPainel;
   onChange: (guia: GuiaPainel) => void;
   podeVerEmpresa: boolean;
   podeVerCliente: boolean;
+  podeVerPendencias: boolean;
 }) {
   return (
-    <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+    <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <div className="flex flex-wrap gap-1 p-1">
         {podeVerEmpresa && (
           <button
@@ -200,7 +229,7 @@ function GuiasPainel({
             className={`rounded-lg px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition ${
               guia === "empresa"
                 ? "bg-blue-700 text-white shadow"
-                : "text-slate-600 hover:bg-slate-100"
+                : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             }`}
           >
             Situação geral da empresa
@@ -213,10 +242,23 @@ function GuiasPainel({
             className={`rounded-lg px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition ${
               guia === "cliente"
                 ? "bg-blue-700 text-white shadow"
-                : "text-slate-600 hover:bg-slate-100"
+                : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             }`}
           >
             Análise de crédito por cliente
+          </button>
+        )}
+        {podeVerPendencias && (
+          <button
+            type="button"
+            onClick={() => onChange("pendencias")}
+            className={`rounded-lg px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition ${
+              guia === "pendencias"
+                ? "bg-blue-700 text-white shadow"
+                : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            }`}
+          >
+            Pendências de crédito com PD em carteira
           </button>
         )}
       </div>
@@ -226,19 +268,48 @@ function GuiasPainel({
 
 export default function CrmFinanceiroPage() {
   const { hasPermission } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const podeVerEmpresa = PERMISSOES_ACESSO_FINANCEIRO_CRM_EMPRESA.some((p) =>
     hasPermission(p),
   );
   const podeVerCliente = PERMISSOES_ACESSO_FINANCEIRO_CRM_CLIENTE.some((p) =>
     hasPermission(p),
   );
-  const guiaInicial: GuiaPainel = podeVerEmpresa ? "empresa" : "cliente";
+  const podeVerPendencias = PERMISSOES_ACESSO_FINANCEIRO_CRM_PENDENCIAS.some((p) =>
+    hasPermission(p),
+  );
+  const podeEditarDestinatariosPendencias =
+    PERMISSOES_EDITAR_CRM_PENDENCIAS_DESTINATARIOS.some((p) => hasPermission(p));
+
+  const guiaFromUrl = searchParams.get("guia");
+  const clienteFromUrl = searchParams.get("cliente");
+  const situacaoFromUrl = searchParams.get("situacao");
+
+  const guiaInicial: GuiaPainel = (() => {
+    if (guiaFromUrl === "pendencias" && podeVerPendencias) return "pendencias";
+    if (guiaFromUrl === "cliente" && podeVerCliente) return "cliente";
+    if (guiaFromUrl === "empresa" && podeVerEmpresa) return "empresa";
+    if (podeVerEmpresa) return "empresa";
+    if (podeVerCliente) return "cliente";
+    return "pendencias";
+  })();
+
+  const situacaoPendenciasInicial =
+    guiaInicial === "pendencias" &&
+    (situacaoFromUrl === "INADIMPLENTES" ||
+      situacaoFromUrl === "REGULARIZADOS" ||
+      situacaoFromUrl === "FINALIZADOS")
+      ? situacaoFromUrl
+      : null;
 
   const [guiaPainel, setGuiaPainel] = useState<GuiaPainel>(guiaInicial);
+  const [clientePendenciasFiltro, setClientePendenciasFiltro] = useState<string | null>(
+    guiaInicial === "pendencias" && clienteFromUrl ? clienteFromUrl : null,
+  );
   const [aba, setAba] = useState<Aba>("receber");
   const [empresaId, setEmpresaId] = useState<number | null>(null);
   const [empresaNome, setEmpresaNome] = useState<string | null>(null);
-  const [pessoa, setPessoa] = useState<string | null>(null);
+  const [selecao, setSelecao] = useState<SelecaoClienteCrm | null>(null);
   const [indicadoresGlobais, setIndicadoresGlobais] =
     useState<DashboardGlobalData | null>(null);
   const [saudeQuadroEmpresa, setSaudeQuadroEmpresa] =
@@ -265,7 +336,7 @@ export default function CrmFinanceiroPage() {
   const [modalCarregando, setModalCarregando] = useState(false);
   const filtroAtivoRef = useRef<string | null>(null);
   const empresaIdRef = useRef<number | null>(null);
-  filtroAtivoRef.current = pessoa;
+  filtroAtivoRef.current = chaveSelecao(selecao);
   empresaIdRef.current = empresaId;
   const requisicaoGlobalRef = useRef(0);
   const requisicaoDetalhesRef = useRef(0);
@@ -368,25 +439,27 @@ export default function CrmFinanceiroPage() {
     }
   }, [empresaId]);
 
-  const carregarDetalhes = useCallback(async (pessoaFiltro: string) => {
+  const carregarDetalhes = useCallback(async (selecaoFiltro: SelecaoClienteCrm) => {
     abortDetalhesRef.current?.abort();
     const controller = new AbortController();
     abortDetalhesRef.current = controller;
 
     const requestId = ++requisicaoDetalhesRef.current;
     const empresaAtual = empresaId;
+    const chave = chaveSelecao(selecaoFiltro);
     setCarregandoDetalhes(true);
     setDetalhes(null);
     setErro(null);
 
     try {
       const json = (await fetchCrmDashboard({
-        pessoa: pessoaFiltro,
+        pessoa: selecaoFiltro.tipo === "pessoa" ? selecaoFiltro.nome : undefined,
+        grupoId: selecaoFiltro.tipo === "grupo" ? selecaoFiltro.id : undefined,
         empresaId: empresaAtual,
       })) as DashboardDetalhesData;
 
       if (requestId !== requisicaoDetalhesRef.current) return;
-      if (filtroAtivoRef.current !== pessoaFiltro) return;
+      if (filtroAtivoRef.current !== chave) return;
       if (empresaIdRef.current !== empresaAtual) return;
 
       setDetalhes(json);
@@ -394,19 +467,24 @@ export default function CrmFinanceiroPage() {
         indicadoresGlobais: json.indicadoresGlobais,
         indicadoresPorClassificacao: json.indicadoresPorClassificacao,
         pessoaFiltrada: json.pessoaFiltrada,
+        grupoFiltrado: json.grupoFiltrado ?? null,
       });
     } catch {
       if (controller.signal.aborted) return;
       if (requestId !== requisicaoDetalhesRef.current) return;
-      if (filtroAtivoRef.current !== pessoaFiltro) return;
+      if (filtroAtivoRef.current !== chave) return;
       if (empresaIdRef.current !== empresaAtual) return;
 
-      setErro("Não foi possível carregar os detalhes do cliente selecionado.");
+      setErro(
+        selecaoFiltro.tipo === "grupo"
+          ? "Não foi possível carregar os detalhes do grupo selecionado."
+          : "Não foi possível carregar os detalhes do cliente selecionado.",
+      );
       setDetalhes(null);
     } finally {
       if (
         requestId === requisicaoDetalhesRef.current &&
-        filtroAtivoRef.current === pessoaFiltro &&
+        filtroAtivoRef.current === chave &&
         empresaIdRef.current === empresaAtual &&
         abortDetalhesRef.current === controller
       ) {
@@ -438,8 +516,8 @@ export default function CrmFinanceiroPage() {
       requisicaoGlobalRef.current += 1;
       setCarregandoGlobal(false);
       setCarregandoSaudeEmpresa(false);
-      if (pessoa) {
-        carregarDetalhes(pessoa);
+      if (selecao) {
+        carregarDetalhes(selecao);
       } else {
         abortDetalhesRef.current?.abort();
         requisicaoDetalhesRef.current += 1;
@@ -459,7 +537,7 @@ export default function CrmFinanceiroPage() {
     void carregarSaudeEmpresa();
   }, [
     guiaPainel,
-    pessoa,
+    selecao,
     empresaId,
     cacheClienteRestaurado,
     carregarDetalhes,
@@ -468,11 +546,11 @@ export default function CrmFinanceiroPage() {
   ]);
 
   const handleAtualizar = () => {
-    if (guiaPainel === "cliente" && !pessoa) {
+    if (guiaPainel === "cliente" && !selecao) {
       return;
     }
-    if (pessoa) {
-      carregarDetalhes(pessoa);
+    if (selecao) {
+      carregarDetalhes(selecao);
       return;
     }
 
@@ -482,31 +560,31 @@ export default function CrmFinanceiroPage() {
 
   const carregando =
     guiaPainel === "cliente"
-      ? pessoa
+      ? selecao
         ? carregandoDetalhes && !detalhes
         : false
       : carregandoGlobal && !indicadoresGlobais;
 
   const dadosClienteProntos =
-    !!pessoa &&
+    !!selecao &&
     !!detalhes &&
     !!indicadoresGlobais &&
-    indicadoresGlobais.pessoaFiltrada === pessoa;
+    selecaoSincronizada(selecao, indicadoresGlobais);
 
   const exibirOverlayCliente =
     guiaPainel === "cliente" &&
-    !!pessoa &&
+    !!selecao &&
     (carregandoDetalhes || !dadosClienteProntos) &&
     !erro;
 
   const resumoSincronizadoComFiltro =
     !!indicadoresGlobais &&
-    (!pessoa || dadosClienteProntos) &&
+    (!selecao || dadosClienteProntos) &&
     !carregandoDetalhes;
 
   const exibirResumo =
     guiaPainel === "cliente"
-      ? !!pessoa && resumoSincronizadoComFiltro
+      ? !!selecao && resumoSincronizadoComFiltro
       : resumoSincronizadoComFiltro && (!carregandoGlobal || !!indicadoresGlobais);
 
   const classificacoes: IndicadorClassificacao[] =
@@ -571,7 +649,7 @@ export default function CrmFinanceiroPage() {
   }, [dadosClienteProntos, detalhes, indicadoresGlobais]);
 
   const podeExtrairRelatorio =
-    guiaPainel === "cliente" && !!pessoa && dadosClienteProntos && !gerandoRelatorio;
+    guiaPainel === "cliente" && !!selecao && dadosClienteProntos && !gerandoRelatorio;
 
   const handleClickCelula = useCallback(
     async (payload: IndicadorDetalheClickPayload) => {
@@ -588,7 +666,7 @@ export default function CrmFinanceiroPage() {
         aba === "receber" && payload.coluna === "emAtraso";
 
       try {
-        if (pessoa && detalhes) {
+        if (selecao && detalhes) {
           const local = filtrarDetalheLocal(
             detalhes,
             aba,
@@ -628,7 +706,8 @@ export default function CrmFinanceiroPage() {
             tipo: aba,
             coluna: payload.coluna as ColunaIndicador,
             classificacao: payload.classificacao,
-            pessoa,
+            pessoa: selecao?.tipo === "pessoa" ? selecao.nome : undefined,
+            grupoId: selecao?.tipo === "grupo" ? selecao.id : undefined,
             empresaId,
           }),
           precisaRecuperado
@@ -636,7 +715,8 @@ export default function CrmFinanceiroPage() {
                 tipo: aba,
                 coluna: "recebidoHistorico",
                 classificacao: payload.classificacao,
-                pessoa,
+                pessoa: selecao?.tipo === "pessoa" ? selecao.nome : undefined,
+                grupoId: selecao?.tipo === "grupo" ? selecao.id : undefined,
                 empresaId,
               })
             : Promise.resolve(null),
@@ -661,7 +741,7 @@ export default function CrmFinanceiroPage() {
         setModalCarregando(false);
       }
     },
-    [aba, detalhes, pessoa, empresaId],
+    [aba, detalhes, selecao, empresaId],
   );
 
   const fecharModalDetalhe = useCallback(() => {
@@ -678,16 +758,24 @@ export default function CrmFinanceiroPage() {
       setGuiaPainel(guia);
       fecharModalDetalhe();
       if (guia === "empresa") {
-        setPessoa(null);
-      } else {
+        setSelecao(null);
+        setClientePendenciasFiltro(null);
+      } else if (guia === "cliente") {
         setAba("receber");
+        setClientePendenciasFiltro(null);
       }
+      const next = new URLSearchParams(searchParams);
+      next.set("guia", guia);
+      if (guia !== "pendencias") {
+        next.delete("cliente");
+      }
+      setSearchParams(next, { replace: true });
     },
-    [fecharModalDetalhe],
+    [fecharModalDetalhe, searchParams, setSearchParams],
   );
 
   const handleExtrairRelatorio = async () => {
-    if (!pessoa || !detalhes || !dadosClienteProntos) return;
+    if (!selecao || !detalhes || !dadosClienteProntos) return;
 
     setGerandoRelatorio(true);
     setErro(null);
@@ -699,14 +787,19 @@ export default function CrmFinanceiroPage() {
 
       if (saudeCliente && !saudeCaptura) {
         setErro(
-          "Não foi possível capturar os indicadores de saúde do cliente para o PDF.",
+          selecao.tipo === "grupo"
+            ? "Não foi possível capturar os indicadores de saúde do grupo para o PDF."
+            : "Não foi possível capturar os indicadores de saúde do cliente para o PDF.",
         );
         return;
       }
 
       await downloadDashboardPdf({
         aba,
-        pessoa,
+        pessoa:
+          selecao.tipo === "grupo"
+            ? `Grupo: ${selecao.nome}`
+            : selecao.nome,
         classificacoes,
         totalGeral,
         contasAtraso,
@@ -741,14 +834,16 @@ export default function CrmFinanceiroPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {guiaPainel !== "pendencias" && (
+            <>
           <button
             type="button"
             onClick={handleExtrairRelatorio}
             disabled={!podeExtrairRelatorio}
             title={
-              pessoa
+              selecao
                 ? "Gerar PDF com todas as tabelas e linhas do painel"
-                : "Selecione um cliente para extrair o relatório"
+                : "Selecione um cliente ou grupo para extrair o relatório"
             }
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-600 bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500 dark:disabled:border-slate-600 dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
           >
@@ -778,20 +873,38 @@ export default function CrmFinanceiroPage() {
               >
                 {carregando ? "Atualizando..." : "Atualizar painel"}
               </button>
+            </>
+          )}
             </div>
           </div>
 
       <div className="crm-dashboard-panel space-y-6">
-        {podeVerEmpresa && podeVerCliente && (
+        {[podeVerEmpresa, podeVerCliente, podeVerPendencias].filter(Boolean).length >
+          1 && (
           <GuiasPainel
             guia={guiaPainel}
             onChange={handleTrocarGuia}
             podeVerEmpresa={podeVerEmpresa}
             podeVerCliente={podeVerCliente}
+            podeVerPendencias={podeVerPendencias}
           />
         )}
 
-        <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        {guiaPainel === "pendencias" ? (
+          podeVerPendencias ? (
+            <PendenciasCreditoPanel
+              podeEditarDestinatarios={podeEditarDestinatariosPendencias}
+              clienteInicial={clientePendenciasFiltro}
+              situacaoInicial={situacaoPendenciasInicial}
+            />
+          ) : (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-800">
+              Você não tem permissão para a guia Pendências de crédito com PD em carteira.
+            </div>
+          )
+        ) : (
+          <>
+        <section className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div
             className={`grid gap-4 ${
               guiaPainel === "cliente" ? "lg:grid-cols-2" : "lg:grid-cols-1"
@@ -806,13 +919,13 @@ export default function CrmFinanceiroPage() {
             />
             {guiaPainel === "cliente" && (
               <FiltroPessoa
-                pessoaSelecionada={pessoa}
+                selecao={selecao}
                 empresaId={empresaId}
-                onSelect={setPessoa}
+                onSelect={setSelecao}
               />
             )}
           </div>
-          {(empresaNome || (guiaPainel === "cliente" && pessoa)) && (
+          {(empresaNome || (guiaPainel === "cliente" && selecao)) && (
             <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
               <strong>Filtro ativo:</strong>
               {empresaNome && (
@@ -821,10 +934,11 @@ export default function CrmFinanceiroPage() {
                   empresa <span className="font-semibold">{empresaNome}</span>
                 </>
               )}
-              {empresaNome && guiaPainel === "cliente" && pessoa && " · "}
-              {guiaPainel === "cliente" && pessoa && (
+              {empresaNome && guiaPainel === "cliente" && selecao && " · "}
+              {guiaPainel === "cliente" && selecao && (
                 <>
-                  pessoa <span className="font-semibold">{pessoa}</span>
+                  {selecao.tipo === "grupo" ? "grupo" : "pessoa"}{" "}
+                  <span className="font-semibold">{selecao.nome}</span>
                 </>
               )}
             </div>
@@ -833,15 +947,19 @@ export default function CrmFinanceiroPage() {
 
         {exibirOverlayCliente && (
           <LoadingOverlay
-            mensagem="Carregando dados do cliente"
-            subtitulo={pessoa}
+            mensagem={
+              selecao?.tipo === "grupo"
+                ? "Carregando dados do grupo"
+                : "Carregando dados do cliente"
+            }
+            subtitulo={labelSelecao(selecao)}
           />
         )}
 
         {gerandoRelatorio && (
           <PdfGeneratingOverlay
             mensagem="Gerando relatório em PDF..."
-            subtitulo={pessoa ?? undefined}
+            subtitulo={labelSelecao(selecao) ?? undefined}
           />
         )}
 
@@ -851,14 +969,16 @@ export default function CrmFinanceiroPage() {
           </div>
         )}
 
-        {guiaPainel === "cliente" && !pessoa ? (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center shadow-sm">
-            <p className="text-base font-semibold text-slate-800">
-              Selecione um cliente para iniciar a análise de crédito
+        {guiaPainel === "cliente" && !selecao ? (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center shadow-sm dark:border-slate-600 dark:bg-slate-900">
+            <p className="text-base font-semibold text-slate-800 dark:text-slate-100">
+              Selecione um cliente ou grupo econômico para iniciar a análise
             </p>
-            <p className="mt-2 text-sm text-slate-500">
-              Esta guia mostra somente dados do cliente filtrado: saúde,
-              indicadores, pendências, recebimentos e relatório em PDF.
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Esta guia mostra dados do cliente ou do grupo filtrado: saúde,
+              indicadores, pendências, recebimentos e relatório em PDF. Na
+              pesquisa, grupos econômicos aparecem no topo quando houver vínculo
+              no Nomus.
             </p>
           </div>
         ) : carregandoGlobal && !indicadoresGlobais && guiaPainel === "empresa" ? (
@@ -874,14 +994,14 @@ export default function CrmFinanceiroPage() {
             <AbasResumo aba={aba} onChange={setAba} />
 
             {guiaPainel === "cliente" &&
-              pessoa &&
+              selecao &&
               aba === "receber" &&
               saudeCliente &&
               !exibirOverlayCliente && (
                 <SaudeClienteGauges
                   saude={saudeCliente}
                   exportId="saude-cliente-relatorio"
-                  variant="cliente"
+                  variant={selecao.tipo === "grupo" ? "grupo" : "cliente"}
                 />
               )}
 
@@ -897,6 +1017,18 @@ export default function CrmFinanceiroPage() {
                 variant="empresa"
               />
             )}
+
+            {guiaPainel === "cliente" &&
+              selecao?.tipo === "grupo" &&
+              detalhes?.grupoFiltrado &&
+              !exibirOverlayCliente && (
+                <MembrosGrupoPanel
+                  grupo={detalhes.grupoFiltrado}
+                  onSelecionarPessoa={(nome) =>
+                    setSelecao({ tipo: "pessoa", nome })
+                  }
+                />
+              )}
 
             <TabelaIndicadores
               dados={classificacoes}
@@ -930,7 +1062,7 @@ export default function CrmFinanceiroPage() {
               carregando={modalCarregando}
             />
 
-            {guiaPainel === "cliente" && pessoa && detalhes && (
+            {guiaPainel === "cliente" && selecao && detalhes && (
               <div className="crm-dashboard-detail-grid">
                 <TabelaContas
                   titulo={
@@ -970,7 +1102,7 @@ export default function CrmFinanceiroPage() {
           </>
         ) : !carregando && !erro ? (
           <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
               Não foi possível exibir os indicadores.
             </p>
             <button
@@ -982,6 +1114,8 @@ export default function CrmFinanceiroPage() {
             </button>
           </div>
         ) : null}
+          </>
+        )}
       </div>
     </div>
   );
