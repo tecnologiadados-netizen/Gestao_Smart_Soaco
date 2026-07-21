@@ -52,6 +52,8 @@ const itemDataProducaoLoteSchema = z.object({
   data_producao: z.string().refine((v) => !Number.isNaN(new Date(v).getTime()), {
     message: 'Data de produção inválida (use ISO ou YYYY-MM-DD)',
   }),
+  /** Override por rota/carrada (igual à previsão). Omitido/vazio = ajuste base. */
+  rota: z.string().optional().nullable(),
 });
 
 export const ajustarDataProducaoLoteSchema = z.object({

@@ -18,7 +18,7 @@ import https from 'https';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { loadEnv } from './config/env.js';
-import { prisma } from './config/prisma.js';
+import { ensureSqlitePragmas, prisma } from './config/prisma.js';
 import app, { BUILD_ID } from './app.js';
 import { iniciarCronsWhatsappNotificacao } from './scheduler/whatsappNotificacaoCron.js';
 import { iniciarCronsSgqEmailNotificacao } from './scheduler/sgqEmailNotificacaoCron.js';
@@ -55,6 +55,7 @@ async function ensureDbReady(): Promise<void> {
   } catch (e) {
     console.warn('[startup] Migrate deploy falhou (pode ser normal na primeira vez):', (e as Error)?.message ?? e);
   }
+  await ensureSqlitePragmas();
   const userCount = await prisma.usuario.count().catch(() => 0);
   if (userCount === 0) {
     console.log('[startup] Nenhum usuário na base; executando seed (master/123, admin/admin123)...');

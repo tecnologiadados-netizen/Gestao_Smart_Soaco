@@ -42,6 +42,7 @@ backend/prisma/*.db
 backend/prisma/*.db-journal
 backend/prisma/*.db-wal
 backend/prisma/*.db-shm
+backend/prisma/*.db*.bak
 backend/prisma/prisma/
 
 # ACME / SSL (não commitar chaves)

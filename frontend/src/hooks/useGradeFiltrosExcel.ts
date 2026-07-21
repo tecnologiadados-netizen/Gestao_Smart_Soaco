@@ -8,6 +8,11 @@ import {
   parseNumericColumnFilter,
   type NumericFilterOp,
 } from '../utils/gradeFiltroNumerico';
+import {
+  clearGradeFiltrosPedidos,
+  loadGradeFiltrosPedidos,
+  saveGradeFiltrosPedidos,
+} from '../utils/persistFiltros';
 
 export type SortDir = 'asc' | 'desc';
 export type SortLevel = { id: string; dir: SortDir };
@@ -84,7 +89,17 @@ export type UseGradeFiltrosExcelOptions<T> = {
     levels: SortLevel[],
     getSortValue: (row: T, columnId: string) => string | number
   ) => number;
+  /**
+   * Se true, restaura/persiste filtros Excel e sortState da grade em sessionStorage
+   * (escopo: sessão da aba; 1º acesso limpo).
+   */
+  persistGradeFilters?: boolean;
 };
+
+export function sortLevelsIguais(a: SortLevel[], b: SortLevel[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((l, i) => l.id === b[i]?.id && l.dir === b[i]?.dir);
+}
 
 export function compareRowsBySortLevels<T>(
   a: T,
@@ -114,14 +129,19 @@ export function useGradeFiltrosExcel<T>({
   valueForSort,
   defaultSortLevels = [],
   compareRows,
+  persistGradeFilters = false,
 }: UseGradeFiltrosExcelOptions<T>) {
-  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>(() =>
+    persistGradeFilters ? loadGradeFiltrosPedidos().columnFilters : {}
+  );
   const [excelFilterDrafts, setExcelFilterDrafts] = useState<Record<string, ExcelFilterDraft>>({});
   const [colunaFiltroAberta, setColunaFiltroAberta] = useState<string | null>(null);
   const [filtroAbertoRect, setFiltroAbertoRect] = useState<{ top: number; left: number; width: number } | null>(
     null
   );
-  const [sortState, setSortState] = useState<SortState>(null);
+  const [sortState, setSortState] = useState<SortState>(() =>
+    persistGradeFilters ? loadGradeFiltrosPedidos().sortState : null
+  );
   const [sortLevels, setSortLevels] = useState<SortLevel[]>(defaultSortLevels);
   const filtroDropdownRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -310,16 +330,24 @@ export function useGradeFiltrosExcel<T>({
     [columnFilters]
   );
 
-  const temFiltrosOuOrdem =
-    temFiltrosColuna || sortState != null || sortLevels.length > 0;
+  const sortDiferenteDoPadrao =
+    sortState != null || !sortLevelsIguais(sortLevels, defaultSortLevels);
+
+  const temFiltrosOuOrdem = temFiltrosColuna || sortDiferenteDoPadrao;
+
+  useEffect(() => {
+    if (!persistGradeFilters) return;
+    saveGradeFiltrosPedidos({ columnFilters, sortState });
+  }, [persistGradeFilters, columnFilters, sortState]);
 
   const limparFiltrosGrade = useCallback(() => {
     setColumnFilters({});
     setExcelFilterDrafts({});
     setSortState(null);
-    setSortLevels([]);
+    setSortLevels([...defaultSortLevels]);
     fecharFiltroExcel();
-  }, [fecharFiltroExcel]);
+    if (persistGradeFilters) clearGradeFiltrosPedidos();
+  }, [fecharFiltroExcel, defaultSortLevels, persistGradeFilters]);
 
   /** Confirma ordenação e/ou filtro da coluna (botão OK/Ordenar), sem reaplicar ao editar linhas. */
   const confirmarMenuExcelColuna = useCallback(
@@ -377,13 +405,9 @@ export function useGradeFiltrosExcel<T>({
   const colunaComFiltroAtivo = useCallback(
     (colId: string) => {
       const f = columnFilters[colId]?.trim();
-      return (
-        Boolean(f && f !== FILTER_NONE) ||
-        sortState?.key === colId ||
-        sortLevels.some((l) => l.id === colId)
-      );
+      return Boolean(f && f !== FILTER_NONE) || sortState?.key === colId;
     },
-    [columnFilters, sortState, sortLevels]
+    [columnFilters, sortState]
   );
 
   return {

@@ -23,8 +23,9 @@ import {
   isTipoFCarradaParaRegra,
   obterVersoesParaClassificacao,
   resolverConfigPorEmissao,
+  textoMotivoRegraCarrada,
 } from './regrasDataEntregaRepository.js';
-import type { RegraDataEntregaConfig } from '../config/regrasDataEntrega.js';
+import { DEFAULT_REGRA_DATA_ENTREGA, type RegraDataEntregaConfig } from '../config/regrasDataEntrega.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_FILE = 'sqlBasePedidosNomus.sql';
@@ -396,29 +397,44 @@ async function obterUltimoEPenultimoPorPedido(linhas: LinhaLookup[]): Promise<Ma
 }
 
 /**
- * Data de produção mais recente por idChave (histórico append-only em pedido_data_producao).
- * Usa a mesma chave canônica pedido+item (chavePedidoItem) do ajuste de previsão, de modo que a
- * data acompanha a linha lógica mesmo quando o vínculo com a carrada muda no ERP.
+ * Data de produção efetiva por idChave (histórico append-only em pedido_data_producao).
+ * Hierarquia igual à previsão: override da rota da linha > ajuste base (rota NULL).
+ * Usa chave canônica pedido+item para que a data acompanhe a linha lógica quando o romaneio muda.
  */
 async function obterDataProducaoPorPedido(linhas: LinhaLookup[]): Promise<Map<string, Date>> {
   const result = new Map<string, Date>();
   if (linhas.length === 0) return result;
   try {
     const rows = await prisma.pedidoDataProducao.findMany({
-      select: { id: true, id_pedido: true, data_producao: true, data_registro: true },
+      select: { id: true, id_pedido: true, rota: true, data_producao: true, data_registro: true },
       orderBy: [{ data_registro: 'desc' }, { id: 'desc' }],
     });
-    // canon (pedido+item) -> data de produção mais recente
-    const porCanon = new Map<string, Date>();
+    const baseByCanon = new Map<string, Date>();
+    const overrideByCanonRota = new Map<string, Map<string, Date>>();
     for (const r of rows) {
       const canon = chavePedidoItem(String(r.id_pedido ?? '').trim());
-      if (!canon || porCanon.has(canon)) continue;
-      porCanon.set(canon, parseDateFromDb(r.data_producao));
+      if (!canon) continue;
+      const rotaNorm = normalizeRotaForChave(r.rota);
+      const data = parseDateFromDb(r.data_producao);
+      if (!rotaNorm) {
+        if (!baseByCanon.has(canon)) baseByCanon.set(canon, data);
+      } else {
+        let byRota = overrideByCanonRota.get(canon);
+        if (!byRota) {
+          byRota = new Map<string, Date>();
+          overrideByCanonRota.set(canon, byRota);
+        }
+        if (!byRota.has(rotaNorm)) byRota.set(rotaNorm, data);
+      }
     }
     for (const linha of linhas) {
       const idChave = String(linha.idChave ?? '').trim();
       if (!idChave) continue;
-      const d = porCanon.get(chavePedidoItem(idChave));
+      const canon = chavePedidoItem(idChave);
+      if (!canon) continue;
+      const rotaNorm = normalizeRotaForChave(linha.rota);
+      const dOverride = rotaNorm ? overrideByCanonRota.get(canon)?.get(rotaNorm) : undefined;
+      const d = dOverride ?? baseByCanon.get(canon);
       if (d) result.set(idChave, d);
     }
   } catch (err) {
@@ -2113,6 +2129,10 @@ export interface TooltipDetalheRow {
   rota: string;
   dataEmissao: string;
   pedido: string;
+  /** Nome do cliente (quando disponível). */
+  cliente?: string;
+  /** Tipo de pedido Nomus (Assistência, Padrão, Produção para estoque, etc.). */
+  tipoPedido?: string;
   municipio: string;
   aVista: string;
   valorPendente: number;
@@ -2120,6 +2140,53 @@ export interface TooltipDetalheRow {
   produto: string;
   /** Quantidade unitária pendente (coluna Qtde Pendente Real do ERP). */
   qtdePendenteReal: number;
+  /** ISO YYYY-MM-DD — data de produção real (pode estar vazia). */
+  dataProducao?: string;
+}
+
+/** Converte data do pedido para ISO YYYY-MM-DD (sem horário). */
+function toDateOnlyIsoTooltip(val: unknown): string {
+  if (val == null || val === '') return '';
+  if (val instanceof Date && !Number.isNaN(val.getTime())) return val.toISOString().slice(0, 10);
+  if (typeof val === 'string') {
+    const s = val.trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  }
+  return '';
+}
+
+/** Monta linha de tooltip do mapa a partir de um pedido já enriquecido por listarPedidos. */
+function pedidoToTooltipDetalheRow(p: PedidoRow, valorPendente: number): TooltipDetalheRow {
+  const rm = getField(p, ['RM', 'rm']);
+  const rota = getField(p, ['Observacoes', 'Observacoes ', 'Observações']);
+  const emissaoRaw = p['Emissao'] ?? getField(p, ['Emissao', 'emissao']);
+  const dataEmissao = toDateOnlyIsoTooltip(emissaoRaw);
+  const pedido = getField(p, ['PD', 'pd']);
+  const municipioRow = getField(p, ['Municipio de entrega', 'municipio de entrega']);
+  const aVista = getField(p, ['Entrada/A vista Ate 10d', 'Entrada/A vista Ate 10d ', 'entrada/a vista ate 10d']);
+  const codigo = getField(p, ['Cod', 'cod']);
+  const produto = getField(p, ['Descricao do produto', 'descricao do produto']);
+  const qtdePendenteReal = getNumberFromRowLoose(p, ['Qtde Pendente Real', 'qtde pendente real']);
+  const cliente = String(p.cliente ?? getField(p, ['Cliente', 'cliente']) ?? '').trim();
+  const tipoPedido = getField(p, ['Tipo Pedido', 'tipo pedido', 'TipoPedido']).trim();
+  const dataProducao = toDateOnlyIsoTooltip(p.data_producao ?? p['data_producao']);
+  return {
+    rm,
+    rota,
+    dataEmissao,
+    pedido,
+    ...(cliente ? { cliente } : {}),
+    ...(tipoPedido ? { tipoPedido } : {}),
+    municipio: municipioRow,
+    aVista,
+    valorPendente,
+    codigo,
+    produto,
+    qtdePendenteReal,
+    ...(dataProducao ? { dataProducao } : {}),
+  };
 }
 
 export interface MunicipioAgregadoMapa {
@@ -2155,28 +2222,8 @@ async function obterAgregacaoPorMunicipioComDetalhes(filtros: FiltrosPedidos = {
     if (Number.isNaN(valor)) continue;
     if (valor < 0) continue;
     const key = `${municipio.trim()}|${uf}`;
-    const rm = getField(p, ['RM', 'rm']);
-    const rota = getField(p, ['Observacoes', 'Observacoes ', 'Observações']);
-    const emissaoRaw = p['Emissao'] ?? getField(p, ['Emissao', 'emissao']);
-    const dataEmissao = emissaoRaw ? (typeof emissaoRaw === 'string' ? emissaoRaw : new Date(emissaoRaw as Date).toISOString().slice(0, 10)) : '';
-    const pedido = getField(p, ['PD', 'pd']);
-    const municipioRow = getField(p, ['Municipio de entrega', 'municipio de entrega']);
-    const aVista = getField(p, ['Entrada/A vista Ate 10d', 'Entrada/A vista Ate 10d ', 'entrada/a vista ate 10d']);
-    const codigo = getField(p, ['Cod', 'cod']);
-    const produto = getField(p, ['Descricao do produto', 'descricao do produto']);
-    const qtdePendenteReal = getNumberFromRowLoose(p, ['Qtde Pendente Real', 'qtde pendente real']);
-    const row: TooltipDetalheRow = {
-      rm,
-      rota,
-      dataEmissao,
-      pedido,
-      municipio: municipioRow,
-      aVista,
-      valorPendente: valor,
-      codigo,
-      produto,
-      qtdePendenteReal,
-    };
+    const row = pedidoToTooltipDetalheRow(p, valor);
+    const rota = row.rota;
     const semRota = isSemRota(rota);
     const cur = map.get(key);
     if (cur) {
@@ -2302,32 +2349,7 @@ export async function obterCargasSeparadasMesmoClienteCidade(
 
     const valor = getNumberFromRowLoose(p, keysValorPendente);
     if (!Number.isFinite(valor) || valor < 0) continue;
-    const rm = getField(p, ['RM', 'rm']);
-    const rota = getField(p, ['Observacoes', 'Observacoes ', 'Observações']);
-    const emissaoRaw = p['Emissao'] ?? getField(p, ['Emissao', 'emissao']);
-    const dataEmissao = emissaoRaw
-      ? typeof emissaoRaw === 'string'
-        ? emissaoRaw
-        : new Date(emissaoRaw as Date).toISOString().slice(0, 10)
-      : '';
-    const pedido = getField(p, ['PD', 'pd']);
-    const aVista = getField(p, ['Entrada/A vista Ate 10d', 'Entrada/A vista Ate 10d ', 'entrada/a vista ate 10d']);
-    const codigo = getField(p, ['Cod', 'cod']);
-    const produto = getField(p, ['Descricao do produto', 'descricao do produto']);
-    const qtdePendenteReal = getNumberFromRowLoose(p, ['Qtde Pendente Real', 'qtde pendente real']);
-
-    detalhes.push({
-      rm,
-      rota,
-      dataEmissao,
-      pedido,
-      municipio: municipioRow,
-      aVista,
-      valorPendente: valor,
-      codigo,
-      produto,
-      qtdePendenteReal,
-    });
+    detalhes.push(pedidoToTooltipDetalheRow(p, valor));
   }
 
   return { quantidadePedidos: pedidosSet.size, detalhes };
@@ -2362,31 +2384,7 @@ export async function obterDetalhesCompletosMunicipioMapa(
     uf = ufCor;
     valorPendente += valor;
     totalLinhas += 1;
-    const rm = getField(p, ['RM', 'rm']);
-    const rota = getField(p, ['Observacoes', 'Observacoes ', 'Observações']);
-    const emissaoRaw = p['Emissao'] ?? getField(p, ['Emissao', 'emissao']);
-    const dataEmissao = emissaoRaw
-      ? typeof emissaoRaw === 'string'
-        ? emissaoRaw
-        : new Date(emissaoRaw as Date).toISOString().slice(0, 10)
-      : '';
-    const pedido = getField(p, ['PD', 'pd']);
-    const aVista = getField(p, ['Entrada/A vista Ate 10d', 'Entrada/A vista Ate 10d ', 'entrada/a vista ate 10d']);
-    const codigo = getField(p, ['Cod', 'cod']);
-    const produto = getField(p, ['Descricao do produto', 'descricao do produto']);
-    const qtdePendenteReal = getNumberFromRowLoose(p, ['Qtde Pendente Real', 'qtde pendente real']);
-    detalhes.push({
-      rm,
-      rota,
-      dataEmissao,
-      pedido,
-      municipio: municipioRow,
-      aVista,
-      valorPendente: valor,
-      codigo,
-      produto,
-      qtdePendenteReal,
-    });
+    detalhes.push(pedidoToTooltipDetalheRow(p, valor));
   }
   if (totalLinhas === 0) return null;
   return { chave: chaveNorm, municipio, uf, valorPendente, detalhes, totalLinhas };
@@ -2730,6 +2728,8 @@ export async function registrarAjustesPrevisaoLote(
 export interface DataProducaoLoteItem {
   id_pedido: string;
   data_producao: Date;
+  /** Quando informado, grava como override apenas para esta rota. Caso contrário, grava como base. */
+  rota?: string | null;
 }
 
 export interface RegistrarDataProducaoLoteResult {
@@ -2739,7 +2739,8 @@ export interface RegistrarDataProducaoLoteResult {
 
 /**
  * Registra a data de produção de vários pedidos em uma transação (createMany, append-only).
- * Ignora itens cuja data de produção efetiva atual já é a mesma (evita linhas duplicadas).
+ * Ignora itens cuja data de produção efetiva atual (override da rota ou base) já é a mesma.
+ * Granularidade: `rota` informado → override da carrada; omitido/vazio → ajuste base.
  */
 export async function registrarDataProducaoLote(
   itens: DataProducaoLoteItem[],
@@ -2748,36 +2749,65 @@ export async function registrarDataProducaoLote(
   if (itens.length === 0) return { ok: 0, erros: [] };
 
   const toDateOnly = (d: Date) => new Date(d).toISOString().slice(0, 10);
+  const chaveEfetiva = (canon: string, rotaNorm: string) => `${canon}|${rotaNorm}`;
 
-  // Data de produção efetiva atual por canon (para deduplicar).
-  const atuaisPorCanon = new Map<string, Date>();
+  // Data de produção efetiva atual por (canon, rota): override > base.
+  const baseByCanon = new Map<string, Date>();
+  const overrideByCanonRota = new Map<string, Map<string, Date>>();
   try {
     const rows = await prisma.pedidoDataProducao.findMany({
-      select: { id: true, id_pedido: true, data_producao: true, data_registro: true },
+      select: { id: true, id_pedido: true, rota: true, data_producao: true, data_registro: true },
       orderBy: [{ data_registro: 'desc' }, { id: 'desc' }],
     });
     for (const r of rows) {
       const canon = chavePedidoItem(String(r.id_pedido ?? '').trim());
-      if (!canon || atuaisPorCanon.has(canon)) continue;
-      atuaisPorCanon.set(canon, parseDateFromDb(r.data_producao));
+      if (!canon) continue;
+      const rotaNorm = normalizeRotaForChave(r.rota);
+      const data = parseDateFromDb(r.data_producao);
+      if (!rotaNorm) {
+        if (!baseByCanon.has(canon)) baseByCanon.set(canon, data);
+      } else {
+        let byRota = overrideByCanonRota.get(canon);
+        if (!byRota) {
+          byRota = new Map<string, Date>();
+          overrideByCanonRota.set(canon, byRota);
+        }
+        if (!byRota.has(rotaNorm)) byRota.set(rotaNorm, data);
+      }
     }
   } catch (err) {
     console.error('[registrarDataProducaoLote] leitura falhou:', err instanceof Error ? err.message : err);
   }
 
-  const toInsert: { id_pedido: string; data_producao: Date }[] = [];
+  const toInsert: { id_pedido: string; rota: string | null; data_producao: Date }[] = [];
+  const vistos = new Set<string>();
   let skipped = 0;
   for (const it of itens) {
     const idNorm = String(it.id_pedido ?? '').trim();
     if (!idNorm) continue;
     const nova = new Date(it.data_producao);
     if (Number.isNaN(nova.getTime())) continue;
-    const atual = atuaisPorCanon.get(chavePedidoItem(idNorm));
-    if (atual && toDateOnly(atual) === toDateOnly(nova)) {
+    const canon = chavePedidoItem(idNorm);
+    if (!canon) continue;
+    const rotaNorm = normalizeRotaForChave(it.rota);
+    const key = chaveEfetiva(canon, rotaNorm);
+    if (vistos.has(key)) {
       skipped += 1;
       continue;
     }
-    toInsert.push({ id_pedido: idNorm, data_producao: toNoonUTC(nova) });
+    const dOverride = rotaNorm ? overrideByCanonRota.get(canon)?.get(rotaNorm) : undefined;
+    const atual = dOverride ?? baseByCanon.get(canon);
+    if (atual && toDateOnly(atual) === toDateOnly(nova)) {
+      skipped += 1;
+      vistos.add(key);
+      continue;
+    }
+    vistos.add(key);
+    toInsert.push({
+      id_pedido: idNorm,
+      rota: rotaNorm ? rotaNorm : null,
+      data_producao: toNoonUTC(nova),
+    });
   }
 
   try {
@@ -2786,6 +2816,7 @@ export async function registrarDataProducaoLote(
       await prisma.pedidoDataProducao.createMany({
         data: toInsert.map((a) => ({
           id_pedido: a.id_pedido,
+          rota: a.rota,
           data_producao: a.data_producao,
           usuario,
           data_registro: dataRegistro,
@@ -2809,6 +2840,84 @@ export async function buscarPedidoPorId(idPedido: string): Promise<PedidoRow | n
   const canon = chavePedidoItem(idNorm);
   if (!canon) return null;
   return pedidos.find((p) => chavePedidoItem(String(p.id_pedido ?? '')) === canon) ?? null;
+}
+
+function dateOnlyTs(d: Date): number {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x.getTime();
+}
+
+export type HistoricoRegraCarradaItem = {
+  id: number;
+  id_pedido: string;
+  previsao_nova: Date;
+  previsao_anterior: Date;
+  motivo: string;
+  observacao: null;
+  usuario: string;
+  data_ajuste: Date;
+  previsao_confiavel: true;
+  tipo_evento: 'regra_carrada';
+};
+
+/**
+ * Entrada sintética de histórico quando a regra de carrada altera a data do ERP.
+ * Não grava SQLite — só explica a Previsão atual da grade.
+ */
+export function montarItemHistoricoRegraCarrada(
+  pedido: PedidoRow,
+  versoes: Array<{ vigenteApartirDe: Date; payload: RegraDataEntregaConfig }>
+): HistoricoRegraCarradaItem | null {
+  const tipoF = String(pedido['TipoF'] ?? pedido['tipoF'] ?? '').trim();
+  const emissaoRaw = pedido['Emissao'] ?? pedido['emissao'];
+  const emissao = emissaoRaw != null ? new Date(emissaoRaw as string | Date) : null;
+  if (!emissao || Number.isNaN(emissao.getTime())) return null;
+
+  const config = resolverConfigPorEmissao(versoes, emissao);
+  const incluiRomaneio = config?.carrada.incluiInserirRomaneio ?? false;
+  if (!isTipoFCarradaParaRegra(tipoF, incluiRomaneio)) return null;
+
+  const valorRaw = pedido['Valor Pedido Total'] ?? pedido['Valor pedido total'];
+  const valorPedidoTotal =
+    valorRaw != null && !Number.isNaN(Number(valorRaw)) ? Number(valorRaw) : 0;
+
+  const { dataLimite, dias, usouPadraoSistema } = calcularDataLimiteCarrada(
+    emissao,
+    valorPedidoTotal,
+    config
+  );
+  const valorCorte = (config ?? DEFAULT_REGRA_DATA_ENTREGA).carrada.valorCorte;
+
+  const dataOriginalRaw = pedido['Data de entrega'] ?? pedido['Data de Entrega'];
+  if (dataOriginalRaw == null) return null;
+  const dataOriginal = new Date(dataOriginalRaw as string | Date);
+  if (Number.isNaN(dataOriginal.getTime())) return null;
+
+  if (dateOnlyTs(dataOriginal) === dateOnlyTs(dataLimite)) return null;
+
+  return {
+    id: -3_000_000,
+    id_pedido: String(pedido.id_pedido ?? '').trim(),
+    previsao_nova: dataLimite,
+    previsao_anterior: dataOriginal,
+    motivo: textoMotivoRegraCarrada(dias, valorPedidoTotal, valorCorte, usouPadraoSistema),
+    observacao: null,
+    usuario: 'Sistema',
+    data_ajuste: emissao,
+    previsao_confiavel: true,
+    tipo_evento: 'regra_carrada',
+  };
+}
+
+/** Carrega pedido + versões e monta o item sintético de regra (se aplicável). */
+export async function obterItemHistoricoRegraCarrada(
+  idPedido: string
+): Promise<HistoricoRegraCarradaItem | null> {
+  const pedido = await buscarPedidoPorId(idPedido);
+  if (!pedido) return null;
+  const versoes = await obterVersoesParaClassificacao();
+  return montarItemHistoricoRegraCarrada(pedido, versoes);
 }
 
 function parseJsonArrayLocal(value: string | null | undefined): string[] | null {
@@ -2955,38 +3064,81 @@ function parseDateFromDb(val: unknown): Date {
 export type OpcoesListarHistoricoAjustes = {
   /** Quando true, retorna só ajustes com previsao_confiavel (histórico Comunicação Interna). */
   apenasPrevisaoConfiavel?: boolean;
+  /**
+   * Quando informado, retorna overrides dessa rota + ajustes base (`rota` null).
+   * Exclui overrides de outras rotas (evita misturar carradas do mesmo PD+item).
+   */
+  rota?: string | null;
 };
 
-/** Histórico de ajustes por pedido (SQLite). Agrupa pela chave canônica pedido+item para incluir registros gravados com id_chave antigo (outra carrada). */
-export async function listarHistoricoAjustes(
-  idPedido: string,
-  opcoes?: OpcoesListarHistoricoAjustes
-): Promise<{
+export type HistoricoAjusteRow = {
   id: number;
   id_pedido: string;
+  /** Nome da rota gravado (override) ou null (ajuste base). */
+  rota: string | null;
   previsao_nova: Date;
   motivo: string;
   observacao: string | null;
   usuario: string;
   data_ajuste: Date;
   previsao_confiavel: boolean;
-}[]> {
+};
+
+/**
+ * Resolve a previsão anterior de um ajuste na cadeia por escopo de rota.
+ * `historicoDesc` deve estar ordenado do mais recente para o mais antigo.
+ *
+ * - Override da rota R → próximo override da mesma R; senão, próximo base.
+ * - Ajuste base → próximo base (nunca override de outra rota).
+ */
+export function resolverPrevisaoAnteriorNaCadeia(
+  historicoDesc: ReadonlyArray<{ rota: string | null; previsao_nova: Date }>,
+  index: number,
+  fallbackMaisAntigo?: Date | null
+): Date | null {
+  const current = historicoDesc[index];
+  if (!current) return fallbackMaisAntigo ?? null;
+  const currentRota = normalizeRotaForChave(current.rota);
+  const isBase = !currentRota;
+
+  for (let j = index + 1; j < historicoDesc.length; j++) {
+    const cand = historicoDesc[j]!;
+    const candRota = normalizeRotaForChave(cand.rota);
+    const candIsBase = !candRota;
+    if (isBase) {
+      if (candIsBase) return cand.previsao_nova;
+      continue;
+    }
+    if (!candIsBase && candRota === currentRota) return cand.previsao_nova;
+    if (candIsBase) return cand.previsao_nova;
+  }
+  return fallbackMaisAntigo ?? null;
+}
+
+/** Histórico de ajustes por pedido (SQLite). Agrupa pela chave canônica pedido+item para incluir registros gravados com id_chave antigo (outra carrada). */
+export async function listarHistoricoAjustes(
+  idPedido: string,
+  opcoes?: OpcoesListarHistoricoAjustes
+): Promise<HistoricoAjusteRow[]> {
   const idNorm = (idPedido ?? '').trim();
   if (!idNorm) return [];
   const canon = chavePedidoItem(idNorm);
+  const rotaFiltroNorm = normalizeRotaForChave(opcoes?.rota);
 
   const mapRow = (r: {
     id: number;
     id_pedido: string;
+    rota: string | null;
     previsao_nova: unknown;
     motivo: string;
     observacao: string | null;
     usuario: string;
     data_ajuste: unknown;
     previsao_confiavel: boolean;
-  }) => ({
+  }): HistoricoAjusteRow => ({
     id: r.id,
     id_pedido: r.id_pedido,
+    rota: r.rota != null && String(r.rota).trim() !== '' ? String(r.rota).trim() : null,
     previsao_nova: parseDateFromDb(r.previsao_nova),
     motivo: r.motivo,
     observacao: r.observacao,
@@ -2998,6 +3150,7 @@ export async function listarHistoricoAjustes(
   type Row = {
     id: number;
     id_pedido: string;
+    rota: string | null;
     previsao_nova: unknown;
     motivo: string;
     observacao: string | null;
@@ -3016,6 +3169,7 @@ export async function listarHistoricoAjustes(
       .map((r) => ({
         id: r.id,
         id_pedido: r.id_pedido,
+        rota: r.rota != null && String(r.rota).trim() !== '' ? String(r.rota).trim() : null,
         previsao_nova: r.previsao_nova,
         motivo: r.motivo,
         observacao: r.observacao,
@@ -3028,6 +3182,12 @@ export async function listarHistoricoAjustes(
   }
 
   let result = rows.map(mapRow);
+  if (rotaFiltroNorm) {
+    result = result.filter((r) => {
+      const rNorm = normalizeRotaForChave(r.rota);
+      return !rNorm || rNorm === rotaFiltroNorm;
+    });
+  }
   if (opcoes?.apenasPrevisaoConfiavel) {
     result = result.filter((r) => r.previsao_confiavel);
   }

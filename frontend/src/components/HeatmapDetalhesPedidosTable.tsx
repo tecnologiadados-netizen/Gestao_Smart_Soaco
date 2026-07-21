@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { TooltipDetalheRow } from '../api/pedidos';
 import { labelPedidoMapa, itensProdutoLinhaPedido } from '../utils/mapaMunicipioPedido';
+import CopiarTextoBtn, { numeroPedidoLimpo } from './CopiarTextoBtn';
 import HeatmapPedidoItensModal from './HeatmapPedidoItensModal';
 
 function formatarValor(valor: number): string {
@@ -18,8 +19,33 @@ function formatDataExibicao(iso: string): string {
   return d && m && y ? `${d}/${m}/${y}` : '—';
 }
 
-type SortCol = 'rm' | 'rota' | 'dataEmissao' | 'pedido' | 'municipio' | 'aVista' | 'valorPendente';
+/** Rota "Inserir em Romaneio" = sem rota definida (espelha backend). */
+function isInserirEmRomaneio(rota: string): boolean {
+  const r = (rota || '').trim();
+  return r.includes('Inserir em Romaneio') || r === '4 - Inserir em Romaneio';
+}
+
+type SortCol =
+  | 'rm'
+  | 'rota'
+  | 'dataEmissao'
+  | 'dataProducao'
+  | 'pedido'
+  | 'municipio'
+  | 'aVista'
+  | 'valorPendente'
+  | 'default';
 type SortDir = 'asc' | 'desc';
+
+/** Ordenação padrão: Inserir em Romaneio primeiro, depois RM ascendente. */
+function compareDefault(a: TooltipDetalheRow, b: TooltipDetalheRow): number {
+  const aSem = isInserirEmRomaneio(a.rota ?? '') ? 0 : 1;
+  const bSem = isInserirEmRomaneio(b.rota ?? '') ? 0 : 1;
+  if (aSem !== bSem) return aSem - bSem;
+  const rmA = String(a.rm ?? '').trim();
+  const rmB = String(b.rm ?? '').trim();
+  return rmA.localeCompare(rmB, undefined, { numeric: true });
+}
 
 export default function HeatmapDetalhesPedidosTable({
   titulo,
@@ -32,7 +58,7 @@ export default function HeatmapDetalhesPedidosTable({
   detalhesBruto: TooltipDetalheRow[];
   maxAlturaPx?: number;
 }) {
-  const [sortBy, setSortBy] = useState<SortCol>('dataEmissao');
+  const [sortBy, setSortBy] = useState<SortCol>('default');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [linhaPedidoModal, setLinhaPedidoModal] = useState<TooltipDetalheRow | null>(null);
 
@@ -62,23 +88,46 @@ export default function HeatmapDetalhesPedidosTable({
   }, [detalhesBruto]);
 
   const toggleSort = useCallback((col: SortCol) => {
-    setSortBy(col);
-    setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    setSortBy((prev) => {
+      if (prev === col) {
+        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+        return col;
+      }
+      setSortDir('asc');
+      return col;
+    });
   }, []);
 
   const detalhes = useMemo(() => {
     if (detalhesPorPedido.length === 0) return [];
     return [...detalhesPorPedido].sort((a, b) => {
+      if (sortBy === 'default') return compareDefault(a, b);
       let cmp = 0;
       if (sortBy === 'valorPendente') {
         cmp = (a.valorPendente ?? 0) - (b.valorPendente ?? 0);
-      } else if (sortBy === 'dataEmissao') {
-        const da = (a as TooltipDetalheRow).dataEmissao ?? '';
-        const db = (b as TooltipDetalheRow).dataEmissao ?? '';
+      } else if (sortBy === 'dataEmissao' || sortBy === 'dataProducao') {
+        const da = String((a as TooltipDetalheRow)[sortBy] ?? '');
+        const db = String((b as TooltipDetalheRow)[sortBy] ?? '');
         cmp = da.localeCompare(db, undefined, { numeric: true });
       } else {
-        const va = String((a as Record<string, unknown>)[sortBy] ?? '').toLowerCase();
-        const vb = String((b as Record<string, unknown>)[sortBy] ?? '').toLowerCase();
+        const getStr = (row: TooltipDetalheRow, col: SortCol): string => {
+          switch (col) {
+            case 'rm':
+              return row.rm ?? '';
+            case 'rota':
+              return row.rota ?? '';
+            case 'pedido':
+              return row.pedido ?? '';
+            case 'municipio':
+              return row.municipio ?? '';
+            case 'aVista':
+              return row.aVista ?? '';
+            default:
+              return '';
+          }
+        };
+        const va = getStr(a, sortBy).toLowerCase();
+        const vb = getStr(b, sortBy).toLowerCase();
         cmp = va.localeCompare(vb, undefined, { numeric: true });
       }
       return sortDir === 'asc' ? cmp : -cmp;
@@ -95,8 +144,11 @@ export default function HeatmapDetalhesPedidosTable({
   const thRightClass =
     'text-right py-1.5 px-2 border-b border-amber-200 font-semibold pl-4 cursor-pointer select-none hover:bg-amber-100 bg-amber-50/90 text-slate-800';
 
+  const sortMark = (col: SortCol) =>
+    sortBy === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
+
   return (
-    <div className="min-w-[480px] max-w-[90vw] w-max" style={{ maxWidth: 'min(720px, 90vw)' }}>
+    <div className="min-w-[480px] max-w-[90vw] w-max" style={{ maxWidth: 'min(800px, 90vw)' }}>
       <div className="px-3 py-2 border-b border-slate-200 bg-slate-50 rounded-t-lg">
         <div className="font-semibold text-slate-800 text-sm">{titulo}</div>
         {subtitulo ? <div className="text-xs text-slate-500 mt-0.5 font-mono">{subtitulo}</div> : null}
@@ -107,10 +159,10 @@ export default function HeatmapDetalhesPedidosTable({
           <thead className="sticky top-0 z-10">
             <tr>
               <th className={thClass} onClick={() => toggleSort('rm')} role="button" title="Ordenar por RM">
-                RM {sortBy === 'rm' && (sortDir === 'asc' ? '↑' : '↓')}
+                RM{sortMark('rm')}
               </th>
               <th className={thClass} onClick={() => toggleSort('rota')} role="button" title="Ordenar por Rotas">
-                ROTAS {sortBy === 'rota' && (sortDir === 'asc' ? '↑' : '↓')}
+                ROTAS{sortMark('rota')}
               </th>
               <th
                 className={thClass}
@@ -118,10 +170,18 @@ export default function HeatmapDetalhesPedidosTable({
                 role="button"
                 title="Ordenar por Data Emissão"
               >
-                DATA EMISSÃO {sortBy === 'dataEmissao' && (sortDir === 'asc' ? '↑' : '↓')}
+                DATA EMISSÃO{sortMark('dataEmissao')}
+              </th>
+              <th
+                className={thClass}
+                onClick={() => toggleSort('dataProducao')}
+                role="button"
+                title="Ordenar por Data de Produção"
+              >
+                DATA PRODUÇÃO{sortMark('dataProducao')}
               </th>
               <th className={thClass} onClick={() => toggleSort('pedido')} role="button" title="Ordenar por PD">
-                PD {sortBy === 'pedido' && (sortDir === 'asc' ? '↑' : '↓')}
+                PD{sortMark('pedido')}
               </th>
               <th
                 className={thClass}
@@ -129,45 +189,52 @@ export default function HeatmapDetalhesPedidosTable({
                 role="button"
                 title="Ordenar por Município"
               >
-                MUNICIPIO {sortBy === 'municipio' && (sortDir === 'asc' ? '↑' : '↓')}
+                MUNICIPIO{sortMark('municipio')}
               </th>
               <th className={thClass} onClick={() => toggleSort('aVista')} role="button" title="Ordenar por A Vista">
-                A VISTA {sortBy === 'aVista' && (sortDir === 'asc' ? '↑' : '↓')}
+                A VISTA{sortMark('aVista')}
               </th>
               <th className={thRightClass} onClick={() => toggleSort('valorPendente')} role="button" title="Ordenar por Venda">
-                VENDA {sortBy === 'valorPendente' && (sortDir === 'asc' ? '↑' : '↓')}
+                VENDA{sortMark('valorPendente')}
               </th>
             </tr>
           </thead>
           <tbody className="text-slate-700 bg-white">
-            {detalhes.map((row, idx) => (
-              <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
-                <td className="py-1 px-2">{row.rm || '—'}</td>
-                <td className="py-1 px-2 max-w-[200px] truncate" title={row.rota || ''}>
-                  {row.rota || '—'}
-                </td>
-                <td className="py-1 px-2">{formatDataExibicao(row.dataEmissao ?? '')}</td>
-                <td className="py-1 px-2">
-                  {row.pedido ? (
-                    <button
-                      type="button"
-                      className="font-medium text-primary-700 underline-offset-2 hover:underline dark:text-primary-300"
-                      title="Ver itens do pedido"
-                      onClick={(e) => abrirItensPedido(row, e)}
-                    >
-                      {labelPedidoMapa(row.pedido)}
-                    </button>
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td className="py-1 px-2">{row.municipio || '—'}</td>
-                <td className="py-1 px-2">{row.aVista || '—'}</td>
-                <td className="py-1 px-2 pl-4 text-right">{formatarValor(row.valorPendente ?? 0)}</td>
-              </tr>
-            ))}
+            {detalhes.map((row, idx) => {
+              const pdNum = numeroPedidoLimpo(row.pedido);
+              return (
+                <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
+                  <td className="py-1 px-2">{row.rm || '—'}</td>
+                  <td className="py-1 px-2 max-w-[200px] truncate" title={row.rota || ''}>
+                    {row.rota || '—'}
+                  </td>
+                  <td className="py-1 px-2">{formatDataExibicao(row.dataEmissao ?? '')}</td>
+                  <td className="py-1 px-2">{formatDataExibicao(row.dataProducao ?? '')}</td>
+                  <td className="py-1 px-2">
+                    {row.pedido ? (
+                      <span className="inline-flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          className="font-medium text-primary-700 underline-offset-2 hover:underline dark:text-primary-300"
+                          title="Ver itens do pedido"
+                          onClick={(e) => abrirItensPedido(row, e)}
+                        >
+                          {labelPedidoMapa(row.pedido)}
+                        </button>
+                        <CopiarTextoBtn texto={pdNum} title="Copiar número do pedido" />
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td className="py-1 px-2">{row.municipio || '—'}</td>
+                  <td className="py-1 px-2">{row.aVista || '—'}</td>
+                  <td className="py-1 px-2 pl-4 text-right">{formatarValor(row.valorPendente ?? 0)}</td>
+                </tr>
+              );
+            })}
             <tr className="border-t-2 border-amber-200 bg-amber-50/70 font-semibold text-slate-800">
-              <td className="py-1.5 px-2" colSpan={6}>
+              <td className="py-1.5 px-2" colSpan={7}>
                 Total
               </td>
               <td className="py-1.5 px-2 pl-4 text-right">{formatarValor(totalVenda)}</td>
@@ -187,4 +254,3 @@ export default function HeatmapDetalhesPedidosTable({
     </div>
   );
 }
-

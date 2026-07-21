@@ -204,8 +204,24 @@ export function ordenarCarradasAgregadas(carradas: SequenciamentoCarradaAgregada
 }
 
 async function gerarCodSnapshot(): Promise<string> {
-  const count = await prisma.sequenciamentoCarradasSnapshot.count();
-  return `PSC${String(count + 1).padStart(4, '0')}`;
+  // Não usar count()+1: exclusões deixam buracos e o próximo cod colide com um existente.
+  const rows = await prisma.sequenciamentoCarradasSnapshot.findMany({ select: { cod: true } });
+  let maxN = 0;
+  for (const r of rows) {
+    const m = /^PSC(\d+)$/i.exec(String(r.cod ?? '').trim());
+    if (m) maxN = Math.max(maxN, parseInt(m[1]!, 10));
+  }
+  return `PSC${String(maxN + 1).padStart(4, '0')}`;
+}
+
+function isUniqueCodConstraintError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: string; meta?: { target?: string | string[] }; message?: string };
+  if (e.code !== 'P2002') return false;
+  const target = e.meta?.target;
+  if (Array.isArray(target)) return target.includes('cod');
+  if (typeof target === 'string') return target.includes('cod');
+  return String(e.message ?? '').toLowerCase().includes('cod');
 }
 
 export function validarPayloadSequenciamento(raw: unknown): { ok: true; payload: SequenciamentoCarradasPayload } | { ok: false; error: string } {
@@ -331,22 +347,59 @@ function computarBaselinesRepo(linhas: Record<string, unknown>[]): Map<string, B
   return out;
 }
 
-/** Simulação do snapshot concluído mais recente (datas gravadas na última conclusão). */
+/** Simulação do snapshot concluído mais recente (nunca usa rascunho). */
 export async function obterSimulacaoUltimoSnapshotConcluido(): Promise<SequenciamentoSimulacao | null> {
   const row = await prisma.sequenciamentoCarradasSnapshot.findFirst({
     where: { status: 'concluido' },
     orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
-    select: { payload: true },
+    select: { status: true, payload: true },
   });
-  if (!row?.payload) return null;
+  if (!row?.payload || row.status !== 'concluido') return null;
   try {
     const parsed = JSON.parse(row.payload) as unknown;
     const val = validarPayloadSequenciamento(parsed);
-    if (!val.ok || val.payload.version !== 2) return null;
-    return sanitizarSimulacao((val.payload as SequenciamentoCarradasPayloadV2).simulacao);
+    if (!val.ok) return null;
+    if (val.payload.version === 2) {
+      const sim = sanitizarSimulacao((val.payload as SequenciamentoCarradasPayloadV2).simulacao);
+      if (
+        sim &&
+        (sim.itens.length > 0 ||
+          sim.ordem.length > 0 ||
+          (sim.prioridades != null && Object.keys(sim.prioridades).length > 0))
+      ) {
+        return sim;
+      }
+    }
+    // Snapshots antigos (v1) ou v2 sem itens: deriva datas das linhas gravadas no concluído.
+    return simularAPartirDasLinhasSnapshot(val.payload.linhas, val.payload.carradas);
   } catch {
     return null;
   }
+}
+
+/** Monta simulação sintética a partir das datas já presentes nas linhas do snapshot concluído. */
+function simularAPartirDasLinhasSnapshot(
+  linhas: Record<string, unknown>[],
+  carradas: SequenciamentoCarradaAgregada[]
+): SequenciamentoSimulacao | null {
+  const baseline = computarBaselinesRepo(linhas);
+  const keysAtuais = new Set(carradas.map((c) => carradaKeyRepo(c.cod, c.carrada)));
+  const itens: SequenciamentoSimulacaoItem[] = [];
+  for (const c of carradas) {
+    const chave = carradaKeyRepo(c.cod, c.carrada);
+    if (!keysAtuais.has(chave)) continue;
+    const b = baseline.get(chave);
+    if (!b?.dataProducao && !b?.dataEntrega) continue;
+    itens.push({
+      chave,
+      cod: c.cod,
+      carrada: c.carrada,
+      ...(b.dataProducao ? { dataProducao: b.dataProducao } : {}),
+      ...(b.dataEntrega ? { dataEntrega: b.dataEntrega } : {}),
+    });
+  }
+  if (itens.length === 0) return null;
+  return { ordem: [], itens };
 }
 
 function filtrarSimulacaoSeedConsultaAoVivo(
@@ -430,25 +483,38 @@ export async function gravarSnapshotSequenciamento(
   if (jsonStr.length > SEQUENCIAMENTO_PAYLOAD_MAX_CHARS) {
     throw new Error('Snapshot muito grande para gravar. Reduza o volume de pedidos ou contate o suporte.');
   }
-  const cod = await gerarCodSnapshot();
-  const row = await prisma.sequenciamentoCarradasSnapshot.create({
-    data: {
-      cod,
-      usuarioLogin,
-      carradaCount: payload.carradas.length,
-      payload: jsonStr,
-      // Novo fluxo: snapshot nasce como rascunho (editável com autosave até concluir).
-      status: 'rascunho',
-    },
-  });
-  return {
-    id: row.id,
-    cod: row.cod,
-    createdAt: row.createdAt,
-    usuarioLogin: row.usuarioLogin,
-    carradaCount: row.carradaCount,
-    status: 'rascunho',
-  };
+  const maxTentativas = 8;
+  let lastErr: unknown;
+  for (let tentativa = 0; tentativa < maxTentativas; tentativa++) {
+    const cod = await gerarCodSnapshot();
+    try {
+      const row = await prisma.sequenciamentoCarradasSnapshot.create({
+        data: {
+          cod,
+          usuarioLogin,
+          carradaCount: payload.carradas.length,
+          payload: jsonStr,
+          // Novo fluxo: snapshot nasce como rascunho (editável com autosave até concluir).
+          status: 'rascunho',
+        },
+      });
+      return {
+        id: row.id,
+        cod: row.cod,
+        createdAt: row.createdAt,
+        usuarioLogin: row.usuarioLogin,
+        carradaCount: row.carradaCount,
+        status: 'rascunho',
+      };
+    } catch (err) {
+      lastErr = err;
+      if (isUniqueCodConstraintError(err) && tentativa < maxTentativas - 1) continue;
+      throw err;
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error('Não foi possível gerar um código único para o snapshot.');
 }
 
 /**
@@ -496,6 +562,22 @@ export async function concluirSnapshotSequenciamento(
     where: { id },
     data: { status: 'concluido', updatedAt: new Date() },
   });
+  return { ok: true };
+}
+
+/** Remove snapshot em rascunho. Concluídos não podem ser excluídos. */
+export async function removerSnapshotSequenciamento(
+  id: number
+): Promise<{ ok: true } | { ok: false; error: string; notFound?: boolean }> {
+  const row = await prisma.sequenciamentoCarradasSnapshot.findUnique({
+    where: { id },
+    select: { id: true, status: true, cod: true },
+  });
+  if (!row) return { ok: false, error: 'Snapshot não encontrado.', notFound: true };
+  if (row.status !== 'rascunho') {
+    return { ok: false, error: 'Somente sequências em rascunho podem ser excluídas.' };
+  }
+  await prisma.sequenciamentoCarradasSnapshot.delete({ where: { id } });
   return { ok: true };
 }
 

@@ -89,3 +89,57 @@ export function saveFiltrosDashboard(f: FiltrosPedidosState): void {
     // ignore
   }
 }
+
+const KEY_PEDIDOS_GRADE = 'pedidos.gradeFilters.v1';
+
+export type GradeFiltersPersisted = {
+  columnFilters: Record<string, string>;
+  sortState: { key: string; direction: 'asc' | 'desc' } | null;
+};
+
+/** Carrega filtros Excel da grade de Pedidos (sessionStorage). */
+export function loadGradeFiltrosPedidos(): GradeFiltersPersisted {
+  const saved = safeParse<GradeFiltersPersisted | null>(KEY_PEDIDOS_GRADE, null);
+  if (saved == null || typeof saved !== 'object') {
+    return { columnFilters: {}, sortState: null };
+  }
+  const columnFilters =
+    saved.columnFilters != null && typeof saved.columnFilters === 'object'
+      ? (saved.columnFilters as Record<string, string>)
+      : {};
+  const sortState =
+    saved.sortState != null &&
+    typeof saved.sortState === 'object' &&
+    typeof (saved.sortState as { key?: unknown }).key === 'string' &&
+    ((saved.sortState as { direction?: unknown }).direction === 'asc' ||
+      (saved.sortState as { direction?: unknown }).direction === 'desc')
+      ? {
+          key: (saved.sortState as { key: string }).key,
+          direction: (saved.sortState as { direction: 'asc' | 'desc' }).direction,
+        }
+      : null;
+  return { columnFilters, sortState };
+}
+
+/** Salva filtros Excel da grade de Pedidos. */
+export function saveGradeFiltrosPedidos(data: GradeFiltersPersisted): void {
+  try {
+    const hasFilters = Object.values(data.columnFilters).some((v) => v?.trim());
+    if (!hasFilters && data.sortState == null) {
+      sessionStorage.removeItem(KEY_PEDIDOS_GRADE);
+      return;
+    }
+    sessionStorage.setItem(KEY_PEDIDOS_GRADE, safeStringify(data));
+  } catch {
+    // ignore
+  }
+}
+
+/** Remove filtros Excel da grade de Pedidos. */
+export function clearGradeFiltrosPedidos(): void {
+  try {
+    sessionStorage.removeItem(KEY_PEDIDOS_GRADE);
+  } catch {
+    // ignore
+  }
+}

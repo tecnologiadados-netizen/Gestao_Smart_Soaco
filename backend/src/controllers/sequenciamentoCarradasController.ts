@@ -7,6 +7,7 @@ import {
   montarPayloadConsultaAoVivo,
   montarPayloadSequenciamento,
   obterSnapshotSequenciamento,
+  removerSnapshotSequenciamento,
   sanitizarSimulacao,
 } from '../data/sequenciamentoCarradasRepository.js';
 
@@ -178,6 +179,30 @@ export async function getSequenciamentoCarradasSnapshotById(req: Request, res: R
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[sequenciamentoCarradasController] getSnapshotById:', msg);
+    res.status(503).json({ error: msg });
+  }
+}
+
+/**
+ * DELETE /api/pedidos/sequenciamento-carradas/snapshots/:id
+ * Exclui somente snapshot em rascunho.
+ */
+export async function deleteSequenciamentoCarradasSnapshot(req: Request, res: Response): Promise<void> {
+  const id = parseInt(String(req.params.id), 10);
+  if (!Number.isFinite(id) || id < 1) {
+    res.status(400).json({ error: 'ID inválido.' });
+    return;
+  }
+  try {
+    const r = await removerSnapshotSequenciamento(id);
+    if (!r.ok) {
+      res.status(r.notFound ? 404 : 409).json({ error: r.error });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[sequenciamentoCarradasController] deleteSnapshot:', msg);
     res.status(503).json({ error: msg });
   }
 }

@@ -26,6 +26,10 @@ export type SequenciamentoSimulacao = {
   prioridades?: Record<string, number>;
   /** Rascunho de motivos por id_pedido (registro de motivos do fluxo de confirmação). */
   motivos?: Record<string, string>;
+  /** Rascunho de observações por id_pedido (mesmo fluxo do Gerenciador). */
+  observacoes?: Record<string, string>;
+  /** Previsão confiável por id_pedido (`false` = provisória). Ausente = true. */
+  previsaoConfiavel?: Record<string, boolean>;
 };
 
 /** Fluxo do snapshot: 'rascunho' (editável, autosave) -> 'concluido' (somente leitura). */
@@ -187,4 +191,19 @@ export async function obterSequenciamentoSnapshot(id: number): Promise<{
   }
   if (!res.ok) return { error: body.error ?? res.statusText };
   return { data: body };
+}
+
+/** Exclui snapshot em rascunho. */
+export async function excluirSequenciamentoSnapshot(id: number): Promise<{
+  ok: boolean;
+  error?: string;
+}> {
+  const res = await apiFetch(`/api/pedidos/sequenciamento-carradas/snapshots/${id}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    return { ok: false, error: (err as { error?: string }).error ?? res.statusText };
+  }
+  return { ok: true };
 }

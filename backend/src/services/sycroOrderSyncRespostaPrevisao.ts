@@ -73,8 +73,9 @@ function usuarioPodeResponderAguardaLabel(args: {
 }
 
 /**
- * Quando o PCP (ou outro destinatário da pendência) altera a previsão no Gerenciador,
- * limpa `aguarda_resposta` nos cards Comunicação PD do mesmo PD.
+ * Quando o PCP altera a previsão no Gerenciador / Sequenciamento:
+ * 1) espelha `current_promised_date` em todos os cards abertos do PD;
+ * 2) limpa `aguarda_resposta` nos cards pendentes que o usuário pode responder.
  */
 export async function responderSycroCardsPorAjusteGerenciador(args: {
   pd: string;
@@ -92,39 +93,55 @@ export async function responderSycroCardsPorAjusteGerenciador(args: {
   if (!usuario?.ativo) return { cardsAtualizados: 0 };
 
   const orders = await prisma.sycroOrderOrder.findMany({
-    where: { aguarda_resposta_pendente: 1, status: { not: 'FINISHED' } },
+    where: { status: { not: 'FINISHED' } },
     select: {
       id: true,
       order_number: true,
+      aguarda_resposta_pendente: true,
       aguarda_resposta_de_label: true,
+      current_promised_date: true,
     },
   });
 
   const alvo = orders.filter((o) => orderNumberMatchesPd(o.order_number, pd));
   const novaIso = args.novaPrevisaoIso.trim().slice(0, 10);
+  const dataValida = !!novaIso && /^\d{4}-\d{2}-\d{2}$/.test(novaIso);
 
   let cardsAtualizados = 0;
   for (const o of alvo) {
+    const data: {
+      current_promised_date?: string;
+      aguarda_resposta_pendente?: number;
+      aguarda_resposta_de_label?: string | null;
+      aguarda_resposta_destino_time?: string | null;
+    } = {};
+
+    if (dataValida && o.current_promised_date !== novaIso) {
+      data.current_promised_date = novaIso;
+    }
+
+    const pendente = Number(o.aguarda_resposta_pendente) === 1;
     const label = (o.aguarda_resposta_de_label ?? '').trim();
-    if (!label) continue;
     if (
-      !usuarioPodeResponderAguardaLabel({
+      pendente &&
+      label &&
+      usuarioPodeResponderAguardaLabel({
         usuarioLogin,
         usuarioNome: usuario.nome,
         usuarioPermsJson: usuario.permissoes,
         label,
       })
     ) {
-      continue;
+      data.aguarda_resposta_pendente = 0;
+      data.aguarda_resposta_de_label = null;
+      data.aguarda_resposta_destino_time = null;
     }
+
+    if (Object.keys(data).length === 0) continue;
+
     await prisma.sycroOrderOrder.update({
       where: { id: o.id },
-      data: {
-        aguarda_resposta_pendente: 0,
-        aguarda_resposta_de_label: null,
-        aguarda_resposta_destino_time: null,
-        ...(novaIso && /^\d{4}-\d{2}-\d{2}$/.test(novaIso) ? { current_promised_date: novaIso } : {}),
-      },
+      data,
     });
     cardsAtualizados += 1;
   }

@@ -33,71 +33,23 @@ import {
   isSycroOrderCommercialAuthor,
   SYCRO_ORDER_COMMERCIAL_AUTHOR_LOGINS,
 } from '../../utils/sycroOrderComercial';
+import { LABEL_CARRADA_EM_FORMACAO, isCarradaEmFormacao } from '../../utils/rotaCarrada';
+import {
+  formatDate,
+  getDaysUntilEffectivePrevisao,
+} from '../../components/sycroorder/sycroOrderCardUtils';
 
 function parseFiltroMulti(value: string): string[] {
   if (!value?.trim()) return [];
   return value.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function formatDate(iso: string): string {
-  try {
-    const [y, m, d] = iso.split('-');
-    return d && m && y ? `${d}/${m}/${y}` : iso;
-  } catch {
-    return iso;
-  }
-}
-
-/** Menor data ISO entre trecho "a ... b" ou string única (previsão do Gerenciador). */
-function earliestIsoFromPrevisaoField(previsao: string | null | undefined, fallbackIso: string): string {
-  const p = previsao?.trim();
-  if (!p) return fallbackIso.slice(0, 10);
-  if (p.includes(' a ')) {
-    const parts = p.split(' a ').map((x) => x.trim().slice(0, 10)).filter(Boolean);
-    if (parts.length === 0) return fallbackIso.slice(0, 10);
-    return [...parts].sort((a, b) => a.localeCompare(b))[0]!;
-  }
-  return p.slice(0, 10);
-}
-
-function getEffectivePrevisaoDateIso(o: Pick<Order, 'previsao_atual' | 'current_promised_date'>): string {
-  const ger = earliestIsoFromPrevisaoField(o.previsao_atual ?? null, '');
-  const card = (o.current_promised_date ?? '').trim().slice(0, 10);
-  if (!ger) return card;
-  if (!card) return ger;
-  if (card.localeCompare(ger) > 0) return card;
-  return ger;
-}
-
-/** Dias até a previsão efetiva (0 = hoje). null se inválido ou data já passou. */
-function getDaysUntilEffectivePrevisao(o: Pick<Order, 'previsao_atual' | 'current_promised_date'>): number | null {
-  const dateStr = getEffectivePrevisaoDateIso(o);
-  try {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const target = new Date(y, m - 1, d);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    target.setHours(0, 0, 0, 0);
-    const diff = Math.round((target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
-    if (diff < 0) return null;
-    return diff;
-  } catch {
-    return null;
-  }
-}
-
 /** Mesma janela do filtro “Entrega em 7 dias”: hoje até hoje+7 (comparando à previsão atual). */
-function isPromisedWithin7DaysFromPrevisao(o: Pick<Order, 'previsao_atual' | 'current_promised_date'>): boolean {
+function isPromisedWithin7DaysFromPrevisao(
+  o: Pick<Order, 'previsao_atual' | 'current_promised_date' | 'carrada_em_formacao'>
+): boolean {
   const days = getDaysUntilEffectivePrevisao(o);
   return days != null && days <= 7;
-}
-
-/** Texto do selo no card; null se fora da janela de 7 dias. */
-function entregaProximityLabel(o: Pick<Order, 'previsao_atual' | 'current_promised_date'>): string | null {
-  const days = getDaysUntilEffectivePrevisao(o);
-  if (days == null || days > 7) return null;
-  if (days === 0) return 'Entrega HOJE';
-  return `Entrega em ${days} dias`;
 }
 
 function getPrimaryResponsavelLabel(deliveryMethod: string): 'josenildo' | 'PCP' {
@@ -230,7 +182,9 @@ function cardVerMeuEnvolvimento(o: Order, login: string | null, nome: string | n
   return false;
 }
 
-function isEntregaHojeOuAmanha(o: Pick<Order, 'previsao_atual' | 'current_promised_date'>): boolean {
+function isEntregaHojeOuAmanha(
+  o: Pick<Order, 'previsao_atual' | 'current_promised_date' | 'carrada_em_formacao'>
+): boolean {
   const d = getDaysUntilEffectivePrevisao(o);
   return d != null && d <= 1;
 }
@@ -1707,11 +1661,14 @@ function ModalNovoPedido({
                     <HelpTooltipIcon text="Conforme Gerenciador de Pedidos" />
                   </div>
                   <p className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 text-sm">
-                    {selectedPedidoFull.previsao_atual
-                      ? formatDate(selectedPedidoFull.previsao_atual)
-                      : selectedPedidoFull.dataEntregaPadrao
-                        ? formatDate(selectedPedidoFull.dataEntregaPadrao)
-                        : '—'}
+                    {selectedPedidoFull.previsao_atual === LABEL_CARRADA_EM_FORMACAO ||
+                    isCarradaEmFormacao(selectedPedidoFull.rota)
+                      ? LABEL_CARRADA_EM_FORMACAO
+                      : selectedPedidoFull.previsao_atual
+                        ? formatDate(selectedPedidoFull.previsao_atual)
+                        : selectedPedidoFull.dataEntregaPadrao
+                          ? formatDate(selectedPedidoFull.dataEntregaPadrao)
+                          : '—'}
                   </p>
                 </div>
               )}
