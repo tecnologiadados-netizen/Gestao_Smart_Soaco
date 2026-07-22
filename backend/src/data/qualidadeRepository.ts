@@ -1036,6 +1036,38 @@ export async function syncQualidadeCalibrations(payload: {
   tasks: Array<Record<string, unknown>>;
 }) {
   const eqUidToId = new Map<string, number>();
+  const equipmentUids = [
+    ...new Set(
+      payload.equipment
+        .map((eq) => String(eq.id ?? ''))
+        .filter(Boolean)
+    ),
+  ];
+  const calibrationUids = [
+    ...new Set(
+      payload.calibrationRecords
+        .map((cal) => String(cal.id ?? ''))
+        .filter(Boolean)
+    ),
+  ];
+  const verificationUids = [
+    ...new Set(
+      payload.verificationRecords
+        .map((ver) => String(ver.id ?? ''))
+        .filter(Boolean)
+    ),
+  ];
+  const taskUids = [
+    ...new Set(payload.tasks.map((task) => String(task.id ?? '')).filter(Boolean)),
+  ];
+
+  // Remove primeiro o que saiu do payload — evita o equipamento “voltar” no hydrate.
+  await purgeSgqCalibrationsRemovedFromPayload(
+    equipmentUids,
+    calibrationUids,
+    verificationUids,
+    taskUids
+  );
 
   for (const eq of payload.equipment) {
     const uid = String(eq.id ?? '');
@@ -1047,7 +1079,11 @@ export async function syncQualidadeCalibrations(payload: {
     const laudoIncoming = extractBase64(eq.laudoDataUrl as string | undefined);
     if (laudoIncoming && laudoNome) {
       laudoIncoming.fileName = laudoNome;
-      laudoStoragePath = saveQualidadeAnexo(`equipamentos/${uid}`, laudoIncoming).storagePath;
+      try {
+        laudoStoragePath = saveQualidadeAnexo(`equipamentos/${uid}`, laudoIncoming).storagePath;
+      } catch (err) {
+        console.warn('[qualidade] laudo do equipamento ignorado no sync:', uid, err);
+      }
     }
 
     const setorUid = await resolveSetorUid(String(eq.setorId ?? ''));
@@ -1113,7 +1149,11 @@ export async function syncQualidadeCalibrations(payload: {
     const incoming = extractBase64(cal.laudoDataUrl as string | undefined);
     if (incoming && laudoNome) {
       incoming.fileName = laudoNome;
-      laudoStoragePath = saveQualidadeAnexo(`calibracoes/${uid}`, incoming).storagePath;
+      try {
+        laudoStoragePath = saveQualidadeAnexo(`calibracoes/${uid}`, incoming).storagePath;
+      } catch (err) {
+        console.warn('[qualidade] laudo de calibração ignorado no sync:', uid, err);
+      }
     }
 
     await prisma.sgqCalibracao.upsert({
@@ -1177,12 +1217,14 @@ export async function syncQualidadeCalibrations(payload: {
   for (const task of payload.tasks) {
     const uid = String(task.id ?? '');
     if (!uid) continue;
+    const referenciaTipo = String(task.referenciaTipo ?? 'equipamento');
+    if (referenciaTipo !== 'equipamento') continue;
     await prisma.sgqTarefa.upsert({
       where: { uid },
       create: {
         uid,
         tipo: String(task.tipo ?? ''),
-        referenciaTipo: String(task.referenciaTipo ?? 'equipamento'),
+        referenciaTipo,
         referenciaId: String(task.referenciaId ?? ''),
         titulo: String(task.titulo ?? ''),
         descricao: task.descricao ? String(task.descricao) : null,
@@ -1193,7 +1235,7 @@ export async function syncQualidadeCalibrations(payload: {
       },
       update: {
         tipo: String(task.tipo ?? ''),
-        referenciaTipo: String(task.referenciaTipo ?? 'equipamento'),
+        referenciaTipo,
         referenciaId: String(task.referenciaId ?? ''),
         titulo: String(task.titulo ?? ''),
         descricao: task.descricao ? String(task.descricao) : null,
@@ -1204,6 +1246,84 @@ export async function syncQualidadeCalibrations(payload: {
       },
     });
   }
+}
+
+async function purgeSgqCalibrationsRemovedFromPayload(
+  payloadEquipmentUids: string[],
+  payloadCalibrationUids: string[],
+  payloadVerificationUids: string[],
+  payloadTaskUids: string[]
+): Promise<void> {
+  const eqUids = [...new Set(payloadEquipmentUids.filter(Boolean))];
+  const calUids = [...new Set(payloadCalibrationUids.filter(Boolean))];
+  const verUids = [...new Set(payloadVerificationUids.filter(Boolean))];
+  const taskUids = [...new Set(payloadTaskUids.filter(Boolean))];
+
+  const removedEq = await prisma.sgqEquipamento.findMany({
+    where: eqUids.length > 0 ? { uid: { notIn: eqUids } } : {},
+    select: {
+      uid: true,
+      laudoStoragePath: true,
+      calibracoes: { select: { uid: true, laudoStoragePath: true } },
+    },
+  });
+
+  if (removedEq.length > 0) {
+    const removedUids = removedEq.map((e) => e.uid);
+    for (const eq of removedEq) {
+      deleteQualidadeAnexoIfExists(eq.laudoStoragePath);
+      for (const cal of eq.calibracoes) {
+        deleteQualidadeAnexoIfExists(cal.laudoStoragePath);
+      }
+    }
+    await prisma.sgqTarefa.deleteMany({
+      where: {
+        referenciaTipo: 'equipamento',
+        referenciaId: { in: removedUids },
+      },
+    });
+    await prisma.sgqEquipamento.deleteMany({
+      where: { uid: { in: removedUids } },
+    });
+  }
+
+  if (eqUids.length > 0) {
+    if (calUids.length > 0) {
+      const orphanCals = await prisma.sgqCalibracao.findMany({
+        where: {
+          equipamento: { uid: { in: eqUids } },
+          uid: { notIn: calUids },
+        },
+        select: { uid: true, laudoStoragePath: true },
+      });
+      for (const cal of orphanCals) {
+        deleteQualidadeAnexoIfExists(cal.laudoStoragePath);
+      }
+      if (orphanCals.length > 0) {
+        await prisma.sgqCalibracao.deleteMany({
+          where: { uid: { in: orphanCals.map((c) => c.uid) } },
+        });
+      }
+    }
+
+    if (verUids.length > 0) {
+      await prisma.sgqVerificacao.deleteMany({
+        where: {
+          equipamento: { uid: { in: eqUids } },
+          uid: { notIn: verUids },
+        },
+      });
+    }
+  }
+
+  // Pendências de equipamento: remove as que saíram do payload (não apaga concluídas).
+  await prisma.sgqTarefa.deleteMany({
+    where: {
+      referenciaTipo: 'equipamento',
+      concluida: false,
+      ...(taskUids.length > 0 ? { uid: { notIn: taskUids } } : {}),
+    },
+  });
 }
 
 export async function syncQualidadeAvaliacoes(avaliacoes: Array<Record<string, unknown>>) {

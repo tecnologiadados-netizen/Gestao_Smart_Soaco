@@ -42,12 +42,37 @@ function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
+const EXT_MIME: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.doc': 'application/msword',
+  '.docx':
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx':
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.txt': 'text/plain',
+};
+
+function resolveMimeType(fileName: string, mimeType: string): string {
+  const normalized = (mimeType || '').trim().toLowerCase();
+  if (normalized && normalized !== 'application/octet-stream' && ALLOWED_MIME.has(normalized)) {
+    return normalized;
+  }
+  const ext = path.extname(fileName).toLowerCase();
+  return EXT_MIME[ext] ?? normalized;
+}
+
 export function saveQualidadeAnexo(
   subdir: string,
   file: IncomingQualidadeAnexo
 ): SavedQualidadeAnexo {
   const originalName = (file.fileName || 'arquivo').trim() || 'arquivo';
-  const mimeType = (file.mimeType || '').trim().toLowerCase();
+  const mimeType = resolveMimeType(originalName, file.mimeType || '');
   const contentBase64 = (file.contentBase64 || '').trim();
 
   if (!ALLOWED_MIME.has(mimeType)) {

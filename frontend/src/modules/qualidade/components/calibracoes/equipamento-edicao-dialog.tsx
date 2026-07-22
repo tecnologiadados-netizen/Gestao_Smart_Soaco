@@ -246,6 +246,9 @@ export function EquipamentoEdicaoDialog({
     if (!equipmentId) return;
     setEquipmentAtivo(equipmentId, false);
     setConfirmarInativacao(false);
+    void flushQualidadeCalibrationsSync().catch((err) => {
+      console.error("[qualidade] falha ao persistir inativação:", err);
+    });
     handleClose();
   }
 
@@ -253,6 +256,9 @@ export function EquipamentoEdicaoDialog({
     if (!equipmentId) return;
     setEquipmentAtivo(equipmentId, true);
     setConfirmarReativacao(false);
+    void flushQualidadeCalibrationsSync().catch((err) => {
+      console.error("[qualidade] falha ao persistir reativação:", err);
+    });
     handleClose();
   }
 
@@ -260,6 +266,9 @@ export function EquipamentoEdicaoDialog({
     if (!equipmentId) return;
     removeEquipment(equipmentId);
     setConfirmarExclusao(false);
+    void flushQualidadeCalibrationsSync().catch((err) => {
+      console.error("[qualidade] falha ao persistir exclusão do equipamento:", err);
+    });
     handleClose();
   }
 
