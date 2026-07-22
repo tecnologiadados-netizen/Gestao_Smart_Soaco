@@ -23,6 +23,7 @@ type Props = {
   onToggleExpand: () => void;
   onTest: () => void;
   onPreview: () => void;
+  onHistorico: () => void;
   onToggleDest: (usuarioId: number) => void;
   onSaveDest: () => void;
   onFiltroUsuario: (value: string) => void;
@@ -43,6 +44,7 @@ export default function EmailTipoCard({
   onToggleExpand,
   onTest,
   onPreview,
+  onHistorico,
   onToggleDest,
   onSaveDest,
   onFiltroUsuario,
@@ -98,6 +100,13 @@ export default function EmailTipoCard({
                 className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600"
               >
                 Testar envio
+              </button>
+              <button
+                type="button"
+                onClick={onHistorico}
+                className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600"
+              >
+                Histórico
               </button>
               <button
                 type="button"

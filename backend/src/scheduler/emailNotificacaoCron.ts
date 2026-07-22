@@ -36,7 +36,9 @@ export async function recarregarCronsEmailNotificacao(): Promise<void> {
       }
       const jobKey = `${tipo.id}:${expr}`;
       const task = cron.schedule(expr, () => {
-        void dispararComClaim('email', tipo.code, () => executarNotificacaoEmailAgendada(tipo.code));
+        void dispararComClaim('email', tipo.code, () =>
+          executarNotificacaoEmailAgendada(tipo.code, 'cron')
+        );
       });
       jobs.set(jobKey, task);
       console.log(`[emailNotificacaoCron] Agendado "${tipo.code}": ${expr}`);
@@ -46,7 +48,7 @@ export async function recarregarCronsEmailNotificacao(): Promise<void> {
       canal: 'email',
       code: tipo.code,
       expr: tipo.cronExpressao,
-      run: () => executarNotificacaoEmailAgendada(tipo.code),
+      run: () => executarNotificacaoEmailAgendada(tipo.code, 'catchup'),
       logPrefix: '[emailNotificacaoCron]',
     });
   }

@@ -6,6 +6,7 @@ import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoes
 import {
   getEmailTipos,
   getEmailUsuarios,
+  getEmailHistorico,
   previewEmailTipo,
   saveEmailDestinatarios,
   saveEmailTipos,
@@ -15,6 +16,7 @@ import {
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 import EmailTipoCard from './email/EmailTipoCard';
 import ModalTesteEmailTipo from './email/ModalTesteEmailTipo';
+import ModalHistoricoNotificacao from './components/ModalHistoricoNotificacao';
 import ModalAbaBackdrop from '../../components/ModalAbaBackdrop';
 
 function toSave(t: EmailNotificacaoTipo): EmailNotificacaoTipoSave {
@@ -92,6 +94,7 @@ export default function EmailIntegracaoPage() {
   const [saving, setSaving] = useState(false);
   const [savingDest, setSavingDest] = useState<number | null>(null);
   const [testModalTipoId, setTestModalTipoId] = useState<number | null>(null);
+  const [historicoTipoId, setHistoricoTipoId] = useState<number | null>(null);
   const [previewModal, setPreviewModal] = useState<{
     subject: string;
     html: string;
@@ -164,6 +167,16 @@ export default function EmailIntegracaoPage() {
     () => (testModalTipoId != null ? tipos.find((t) => t.id === testModalTipoId) ?? null : null),
     [testModalTipoId, tipos]
   );
+
+  const historicoTipo = useMemo(
+    () => (historicoTipoId != null ? tipos.find((t) => t.id === historicoTipoId) ?? null : null),
+    [historicoTipoId, tipos]
+  );
+
+  const loadHistoricoEmail = useCallback(async () => {
+    if (historicoTipoId == null) return [];
+    return getEmailHistorico(historicoTipoId);
+  }, [historicoTipoId]);
 
   const handleSaveDest = async (tipoId: number) => {
     if (!podeEditar) return;
@@ -323,6 +336,7 @@ export default function EmailIntegracaoPage() {
                 onToggleExpand={() => setExpandedId(isExpanded ? null : tipoId ?? null)}
                 onTest={() => tipoId != null && setTestModalTipoId(tipoId)}
                 onPreview={() => tipoId != null && void handlePreview(tipoId)}
+                onHistorico={() => tipoId != null && setHistoricoTipoId(tipoId)}
                 onToggleDest={(usuarioId) => tipoId != null && toggleDest(tipoId, usuarioId)}
                 onSaveDest={() => tipoId != null && void handleSaveDest(tipoId)}
                 onFiltroUsuario={setFiltroUsuario}
@@ -347,6 +361,14 @@ export default function EmailIntegracaoPage() {
         usuarios={usuarios}
         podeEnviar={podeEditar}
         emailConfigured={emailConfigured}
+      />
+
+      <ModalHistoricoNotificacao
+        open={historicoTipoId != null}
+        onClose={() => setHistoricoTipoId(null)}
+        titulo={historicoTipo?.label ?? historicoTipo?.code ?? 'Alerta'}
+        canalLabel="e-mail"
+        loadHistorico={loadHistoricoEmail}
       />
 
       {previewModal && (

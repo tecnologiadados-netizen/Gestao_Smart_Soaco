@@ -10,6 +10,11 @@ import { previewMensagemDoTipo, testarEnvioTipo } from '../services/whatsappNoti
 import { recarregarCronsWhatsappNotificacao } from '../scheduler/whatsappNotificacaoCron.js';
 import { isNomusEnabled } from '../config/nomusDb.js';
 import { isConfigured as isEvolutionConfigured } from '../services/evolutionApi.js';
+import {
+  limparHistoricoAntigo,
+  listarHistoricoPorTipo,
+} from '../services/notificacaoExecucaoService.js';
+import { buscarTipoPorId } from '../data/whatsappNotificacaoRepository.js';
 
 export async function getSmsTipos(_req: Request, res: Response): Promise<void> {
   try {
@@ -104,5 +109,32 @@ export async function postSmsTestar(req: Request, res: Response): Promise<void> 
     const msg = err instanceof Error ? err.message : 'Erro ao testar envio.';
     console.error('postSmsTestar', err);
     res.status(400).json({ error: msg });
+  }
+}
+
+export async function getSmsHistorico(req: Request, res: Response): Promise<void> {
+  const tipoId = parseInt(req.params.id, 10);
+  if (Number.isNaN(tipoId)) {
+    res.status(400).json({ error: 'ID inválido.' });
+    return;
+  }
+  const limitRaw = req.query.limit != null ? Number(req.query.limit) : 50;
+  try {
+    const tipo = await buscarTipoPorId(tipoId);
+    if (!tipo) {
+      res.status(404).json({ error: 'Tipo não encontrado.' });
+      return;
+    }
+    void limparHistoricoAntigo();
+    const historico = await listarHistoricoPorTipo({
+      canal: 'whatsapp',
+      tipoId: tipo.id,
+      tipoCode: tipo.code,
+      limit: Number.isFinite(limitRaw) ? limitRaw : 50,
+    });
+    res.json({ historico });
+  } catch (err) {
+    console.error('getSmsHistorico', err);
+    res.status(503).json({ error: 'Erro ao listar histórico.' });
   }
 }

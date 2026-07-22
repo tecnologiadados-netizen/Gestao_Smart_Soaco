@@ -26,6 +26,12 @@ import {
   executarAlertasSlaSemAcao,
   previewAlertaSlaSemAcao,
 } from './crmCreditoSlaSemAcaoService.js';
+import { envioNotificacoesHabilitado } from '../config/envioNotificacoes.js';
+import {
+  comExecucaoRegistrada,
+  type OrigemNotificacao,
+  type TentativaInput,
+} from './notificacaoExecucaoService.js';
 
 type TipoComDestinatarios = NonNullable<Awaited<ReturnType<typeof buscarTipoEmailPorCode>>>;
 
@@ -66,40 +72,152 @@ export function listarEmailsDestinatarios(tipo: TipoComDestinatarios): string[] 
   return [...emails];
 }
 
-export async function executarNotificacaoEmailAgendada(code: string): Promise<void> {
+function tentativasFromBuilderResult(
+  destinatarios: string[],
+  result: BuilderResult,
+  dryRun: boolean
+): {
+  tentativas: TentativaInput[];
+  forcarSkipped?: boolean;
+  status?: 'success' | 'skipped' | 'failed' | 'partial';
+  resumo: string;
+  erroMensagem?: string;
+} {
+  const { enviados, ignorados, erros } = result;
+
+  if (enviados === 0 && erros.length === 0) {
+    return {
+      tentativas: [],
+      forcarSkipped: true,
+      status: 'skipped',
+      resumo:
+        ignorados > 0
+          ? `Sem disparo (${ignorados} ignorado(s) por dedup/sem conteúdo)`
+          : 'Sem disparo (nenhum alerta pendente)',
+    };
+  }
+
+  const tentativas: TentativaInput[] = [];
+
+  if (enviados > 0) {
+    for (const email of destinatarios) {
+      tentativas.push({
+        canal: 'email',
+        destinatario: email,
+        ok: true,
+        dryRun,
+      });
+    }
+  }
+
+  for (const erro of erros) {
+    tentativas.push({
+      canal: 'email',
+      destinatario: erro.split(':')[0]?.trim() || '—',
+      ok: false,
+      erro,
+    });
+  }
+
+  let status: 'success' | 'failed' | 'partial' = 'success';
+  if (enviados === 0 && erros.length > 0) status = 'failed';
+  else if (enviados > 0 && erros.length > 0) status = 'partial';
+
+  const parts: string[] = [];
+  if (enviados > 0) parts.push(`${enviados} e-mail(s)${dryRun ? ' dry-run' : ''}`);
+  if (ignorados > 0) parts.push(`${ignorados} ignorado(s)`);
+  if (erros.length > 0) parts.push(`${erros.length} erro(s)`);
+
+  return {
+    tentativas,
+    status,
+    resumo: parts.join(', ') || 'Sem disparo',
+    erroMensagem: erros.length > 0 ? erros.slice(0, 3).join('; ') : undefined,
+  };
+}
+
+export async function executarNotificacaoEmailAgendada(
+  code: string,
+  origem: OrigemNotificacao = 'cron'
+): Promise<void> {
   const tipo = await buscarTipoEmailPorCode(code);
   if (!tipo || !tipo.ativo) return;
 
-  const settings = await fetchEmailProviderSettings(prisma);
-  if (!settings) {
-    console.log(`[emailNotificacaoCron] "${code}": credencial de e-mail não configurada.`);
-    return;
-  }
+  await comExecucaoRegistrada(
+    { canal: 'email', tipoCode: tipo.code, tipoId: tipo.id, origem },
+    async () => {
+      const settings = await fetchEmailProviderSettings(prisma);
+      if (!settings) {
+        console.log(`[emailNotificacaoCron] "${code}": credencial de e-mail não configurada.`);
+        return {
+          result: undefined as void,
+          forcarSkipped: true,
+          status: 'skipped' as const,
+          resumo: 'Credencial de e-mail não configurada',
+          erroMensagem: 'Credencial de e-mail não configurada',
+          tentativas: [],
+        };
+      }
 
-  const destinatarios = listarEmailsDestinatarios(tipo);
-  if (destinatarios.length === 0) {
-    console.warn(`[emailNotificacaoCron] "${code}": nenhum destinatário com e-mail válido.`);
-    return;
-  }
+      const destinatarios = listarEmailsDestinatarios(tipo);
+      if (destinatarios.length === 0) {
+        console.warn(`[emailNotificacaoCron] "${code}": nenhum destinatário com e-mail válido.`);
+        return {
+          result: undefined as void,
+          forcarSkipped: true,
+          status: 'skipped' as const,
+          resumo: 'Nenhum destinatário com e-mail válido',
+          tentativas: [],
+        };
+      }
 
-  const builderCode = tipo.builderCode?.trim();
-  const builder = builderCode ? BUILDERS[builderCode] : undefined;
-  if (!builder) {
-    console.error(`[emailNotificacaoCron] "${code}": builder "${builderCode ?? ''}" não registrado.`);
-    return;
-  }
+      const builderCode = tipo.builderCode?.trim();
+      const builder = builderCode ? BUILDERS[builderCode] : undefined;
+      if (!builder) {
+        console.error(`[emailNotificacaoCron] "${code}": builder "${builderCode ?? ''}" não registrado.`);
+        return {
+          result: undefined as void,
+          status: 'failed' as const,
+          erroMensagem: `Builder "${builderCode ?? ''}" não registrado`,
+          resumo: 'Falha na execução',
+          tentativas: [],
+        };
+      }
 
-  try {
-    const result = await builder({ prisma, destinatarios });
-    console.log(
-      `[emailNotificacaoCron] "${code}": ${result.enviados} e-mail(s), ${result.ignorados} ignorado(s) (dedup).`
-    );
-    if (result.erros.length > 0) {
-      console.error(`[emailNotificacaoCron] "${code}" erros:`, result.erros.join('; '));
+      try {
+        const dryRun = !envioNotificacoesHabilitado();
+        const result = await builder({ prisma, destinatarios });
+        console.log(
+          `[emailNotificacaoCron] "${code}": ${result.enviados} e-mail(s), ${result.ignorados} ignorado(s) (dedup).`
+        );
+        if (result.erros.length > 0) {
+          console.error(`[emailNotificacaoCron] "${code}" erros:`, result.erros.join('; '));
+        }
+
+        const mapped = tentativasFromBuilderResult(destinatarios, result, dryRun);
+        return {
+          result: undefined as void,
+          ...mapped,
+          metadados: {
+            enviados: result.enviados,
+            ignorados: result.ignorados,
+            erros: result.erros.length,
+            dryRun,
+          },
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[emailNotificacaoCron] "${code}":`, msg);
+        return {
+          result: undefined as void,
+          status: 'failed' as const,
+          erroMensagem: msg,
+          resumo: 'Falha na execução',
+          tentativas: [],
+        };
+      }
     }
-  } catch (err) {
-    console.error(`[emailNotificacaoCron] "${code}":`, err instanceof Error ? err.message : err);
-  }
+  );
 }
 
 export async function previewEmailDoTipo(tipoId: number): Promise<{
@@ -198,20 +316,45 @@ export async function testarEnvioEmailTipo(tipoId: number, usuarioId: number): P
   const builder = builderCode ? BUILDERS[builderCode] : undefined;
   if (!builder) throw new Error(`Builder "${builderCode ?? ''}" não registrado.`);
 
-  const result = await builder({
-    prisma,
-    destinatarios: [email],
-    ignorarDedup: true,
-  });
+  await comExecucaoRegistrada(
+    { canal: 'email', tipoCode: tipo.code, tipoId: tipo.id, origem: 'teste' },
+    async () => {
+      const dryRun = !envioNotificacoesHabilitado();
+      const result = await builder({
+        prisma,
+        destinatarios: [email],
+        ignorarDedup: true,
+      });
 
-  if (result.enviados === 0) {
-    const msg =
-      result.erros[0] ??
-      (result.ignorados > 0
-        ? 'Nenhum alerta para enviar no momento (sem conteúdo ou já enviado hoje).'
-        : 'Nenhum e-mail enviado.');
-    throw new Error(msg);
-  }
+      if (result.enviados === 0) {
+        const msg =
+          result.erros[0] ??
+          (result.ignorados > 0
+            ? 'Nenhum alerta para enviar no momento (sem conteúdo ou já enviado hoje).'
+            : 'Nenhum e-mail enviado.');
+        throw new Error(msg);
+      }
+
+      return {
+        result: undefined as void,
+        tentativas: [
+          {
+            canal: 'email' as const,
+            destinatario: email,
+            usuarioId,
+            ok: true,
+            dryRun,
+          },
+        ],
+        metadados: {
+          teste: true,
+          dryRun,
+          enviados: result.enviados,
+          ignorados: result.ignorados,
+        },
+      };
+    }
+  );
 }
 
 export type { EmailNotificacaoTipoRow };

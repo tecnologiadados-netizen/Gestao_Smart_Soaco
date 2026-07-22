@@ -105,3 +105,46 @@ export async function testarEmailTipo(tipoId: number, usuarioId: number): Promis
     throw new Error((err as { error?: string }).error ?? 'Erro ao testar envio.');
   }
 }
+
+export type NotificacaoExecucaoStatus =
+  | 'running'
+  | 'success'
+  | 'skipped'
+  | 'failed'
+  | 'partial';
+
+export interface NotificacaoTentativaHistorico {
+  id: number;
+  canal: string;
+  destinatario: string;
+  usuarioId: number | null;
+  ok: boolean;
+  dryRun: boolean;
+  erro: string | null;
+  enviadoEm: string;
+}
+
+export interface NotificacaoExecucaoHistorico {
+  id: number;
+  canal: 'whatsapp' | 'email';
+  tipoCode: string;
+  tipoId: number | null;
+  origem: string;
+  status: NotificacaoExecucaoStatus;
+  iniciadoEm: string;
+  finalizadoEm: string | null;
+  resumo: string | null;
+  erroMensagem: string | null;
+  metadados: Record<string, unknown> | null;
+  tentativas: NotificacaoTentativaHistorico[];
+}
+
+export async function getEmailHistorico(
+  tipoId: number,
+  limit = 50
+): Promise<NotificacaoExecucaoHistorico[]> {
+  const data = await apiJson<{ historico: NotificacaoExecucaoHistorico[] }>(
+    `/api/integracao/email/tipos/${tipoId}/historico?limit=${limit}`
+  );
+  return data.historico;
+}

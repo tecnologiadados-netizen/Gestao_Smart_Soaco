@@ -1,13 +1,17 @@
 import type { Request, Response } from 'express';
+import fs from 'fs';
 import { prisma } from '../config/prisma.js';
 import { listarAlertasCreditoPendentes } from '../services/financeiroCreditoPedidoAtrasoEmailService.js';
 import {
   ACOES_PENDENCIA,
+  anexarPdfAssinadoPendenciaCredito,
   confirmarLiberacaoPendenciaCredito,
   listarHistoricoClientePendencias,
   listarPendenciasCredito,
   listarUsuariosParaDestinatarioPendencia,
   obterEmailConfigPendencias,
+  obterPdfAssinadoPendenciaCredito,
+  removerPdfAssinadoPendenciaCredito,
   salvarAcaoPendenciaCredito,
   salvarEmailConfigPendencias,
   sincronizarPendenciasComAlertasAtuais,
@@ -95,13 +99,119 @@ export async function postCrmPendenciaAcao(req: Request, res: Response): Promise
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     const status =
-      msg.includes('destinatário') || msg.includes('destino') || msg.includes('inválida')
+      msg.includes('destinatário') ||
+      msg.includes('destino') ||
+      msg.includes('inválida') ||
+      msg.includes('Anexe o PDF')
         ? 400
         : msg.includes('não encontrada')
           ? 404
           : 500;
     if (status === 500) console.error('Erro ao salvar ação de pendência:', error);
     res.status(status).json({ error: msg || 'Não foi possível salvar a ação.' });
+  }
+}
+
+export async function postCrmPendenciaPdfAssinado(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: 'ID inválido.' });
+      return;
+    }
+
+    const fileName = String(req.body?.fileName ?? '').trim();
+    const mimeType = String(req.body?.mimeType ?? '').trim();
+    const contentBase64 = String(req.body?.contentBase64 ?? '').trim();
+    if (!fileName || !contentBase64) {
+      res.status(400).json({ error: 'Informe o arquivo PDF (fileName e contentBase64).' });
+      return;
+    }
+
+    const pendencia = await anexarPdfAssinadoPendenciaCredito(prisma, {
+      id,
+      fileName,
+      mimeType: mimeType || 'application/pdf',
+      contentBase64,
+      usuarioLogin: req.user?.login ?? null,
+    });
+    res.json({ pendencia, mensagem: 'PDF assinado anexado com sucesso.' });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    const status =
+      msg.includes('apenas PDF') ||
+      msg.includes('excede') ||
+      msg.includes('vazio') ||
+      msg.includes('encerrada')
+        ? 400
+        : msg.includes('não encontrada')
+          ? 404
+          : 500;
+    if (status === 500) console.error('Erro ao anexar PDF assinado:', error);
+    res.status(status).json({ error: msg || 'Não foi possível anexar o PDF.' });
+  }
+}
+
+export async function getCrmPendenciaPdfAssinado(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: 'ID inválido.' });
+      return;
+    }
+
+    const file = await obterPdfAssinadoPendenciaCredito(prisma, id);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${file.fileName.replace(/"/g, '')}"`
+    );
+    fs.createReadStream(file.absPath).pipe(res);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    const status =
+      msg.includes('não encontrada') || msg.includes('não encontrado')
+        ? 404
+        : msg.includes('Nenhum PDF')
+          ? 404
+          : 500;
+    if (status === 500) console.error('Erro ao baixar PDF assinado:', error);
+    res.status(status).json({ error: msg || 'Não foi possível baixar o PDF.' });
+  }
+}
+
+export async function deleteCrmPendenciaPdfAssinado(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: 'ID inválido.' });
+      return;
+    }
+
+    const pendencia = await removerPdfAssinadoPendenciaCredito(prisma, {
+      id,
+      usuarioLogin: req.user?.login ?? null,
+    });
+    res.json({ pendencia, mensagem: 'PDF assinado removido.' });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    const status =
+      msg.includes('Não é possível') || msg.includes('encerrada')
+        ? 400
+        : msg.includes('não encontrada')
+          ? 404
+          : 500;
+    if (status === 500) console.error('Erro ao remover PDF assinado:', error);
+    res.status(status).json({ error: msg || 'Não foi possível remover o PDF.' });
   }
 }
 

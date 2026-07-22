@@ -270,6 +270,47 @@ model EmailNotificacaoDestinatario {
   @@map("email_notificacao_destinatario")
 }
 
+/// Histórico de execuções de notificações (WhatsApp / e-mail) — espelha o ledger do Otimiza.
+model NotificacaoExecucao {
+  id           Int       @id @default(autoincrement())
+  /// whatsapp | email
+  canal        String
+  tipoCode     String    @map("tipo_code")
+  tipoId       Int?      @map("tipo_id")
+  /// cron | catchup | evento | teste
+  origem       String
+  /// running | success | skipped | failed | partial
+  status       String    @default("running")
+  iniciadoEm   DateTime  @default(now()) @map("iniciado_em")
+  finalizadoEm DateTime? @map("finalizado_em")
+  resumo       String?
+  erroMensagem String?   @map("erro_mensagem")
+  /// JSON opcional (ex.: dryRun, enviados, ignorados)
+  metadadosJson String?  @map("metadados_json")
+  tentativas   NotificacaoTentativa[]
+
+  @@index([canal, tipoCode, iniciadoEm])
+  @@index([tipoId, iniciadoEm])
+  @@map("notificacao_execucao")
+}
+
+model NotificacaoTentativa {
+  id           Int      @id @default(autoincrement())
+  execucaoId   Int      @map("execucao_id")
+  /// whatsapp | email
+  canal        String
+  destinatario String
+  usuarioId    Int?     @map("usuario_id")
+  ok           Boolean
+  dryRun       Boolean  @default(false) @map("dry_run")
+  erro         String?
+  enviadoEm    DateTime @default(now()) @map("enviado_em")
+  execucao     NotificacaoExecucao @relation(fields: [execucaoId], references: [id], onDelete: Cascade)
+
+  @@index([execucaoId])
+  @@map("notificacao_tentativa")
+}
+
 // Coordenadas de municípios brasileiros (fonte: IBGE/kelvins – sem depender de API externa)
 model MunicipioCoordenada {
   id               Int    @id @default(autoincrement())
@@ -1288,6 +1329,12 @@ model CrmCreditoPendencia {
   emailAcaoEnviadoEm   DateTime? @map("email_acao_enviado_em")
   /// E-mail de SLA (prazo sem ação) já enviado ao gestor para esta pendência.
   emailSlaEnviadoEm    DateTime? @map("email_sla_enviado_em")
+  /// PDF de aprovação assinado pelo gestor (evidência antes de confirmar no Nomus).
+  pdfAssinadoNome         String?   @map("pdf_assinado_nome")
+  pdfAssinadoStoragePath  String?   @map("pdf_assinado_storage_path")
+  pdfAssinadoMimeType     String?   @map("pdf_assinado_mime_type")
+  pdfAssinadoEm           DateTime? @map("pdf_assinado_em")
+  pdfAssinadoPorLogin     String?   @map("pdf_assinado_por_login")
   encerrada            Boolean   @default(false)
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")

@@ -21,6 +21,7 @@ import {
   getSmsUsuarios,
   postSmsPreview,
   postSmsTestar,
+  getSmsHistorico,
 } from '../controllers/integracaoSmsController.js';
 import {
   getEmailTipos,
@@ -29,6 +30,7 @@ import {
   getEmailUsuarios,
   postEmailPreview,
   postEmailTestar,
+  getEmailHistorico,
 } from '../controllers/integracaoEmailController.js';
 
 const router = Router();
@@ -91,6 +93,7 @@ router.put('/sms/tipos/:id/destinatarios', requirePermission(PERMISSOES.INTEGRAC
 router.get('/sms/usuarios', requirePermission(PERMISSOES.INTEGRACAO_VER), getSmsUsuarios);
 router.post('/sms/tipos/:id/preview', requirePermission(PERMISSOES.INTEGRACAO_VER), postSmsPreview);
 router.post('/sms/tipos/:id/testar', requirePermission(PERMISSOES.INTEGRACAO_EDITAR), postSmsTestar);
+router.get('/sms/tipos/:id/historico', requirePermission(PERMISSOES.INTEGRACAO_VER), getSmsHistorico);
 
 router.get('/email/tipos', requirePermission(PERMISSOES.INTEGRACAO_VER), getEmailTipos);
 router.put('/email/tipos', requirePermission(PERMISSOES.INTEGRACAO_EDITAR), putEmailTipos);
@@ -98,5 +101,6 @@ router.put('/email/tipos/:id/destinatarios', requirePermission(PERMISSOES.INTEGR
 router.get('/email/usuarios', requirePermission(PERMISSOES.INTEGRACAO_VER), getEmailUsuarios);
 router.post('/email/tipos/:id/preview', requirePermission(PERMISSOES.INTEGRACAO_VER), postEmailPreview);
 router.post('/email/tipos/:id/testar', requirePermission(PERMISSOES.INTEGRACAO_EDITAR), postEmailTestar);
+router.get('/email/tipos/:id/historico', requirePermission(PERMISSOES.INTEGRACAO_VER), getEmailHistorico);
 
 export default router;

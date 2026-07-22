@@ -9,6 +9,11 @@ import { obterDadosPedidosEntregaVencida } from '../data/pedidosRepository.js';
 import { montarMensagemPedidosEntregaVencida } from './pedidosEntregaVencidaMensagem.js';
 import { executarSqlSeguro } from '../data/whatsappNotificacaoNomusRepository.js';
 import { buscarTipoPorCode } from '../data/whatsappNotificacaoRepository.js';
+import {
+  comExecucaoRegistrada,
+  type OrigemNotificacao,
+  type TentativaInput,
+} from './notificacaoExecucaoService.js';
 
 type TipoComDestinatarios = NonNullable<Awaited<ReturnType<typeof buscarTipoPorCode>>>;
 
@@ -113,14 +118,23 @@ function normalizarTelefone(raw: string | null | undefined): string | null {
   return digits;
 }
 
-export function listarNumerosDestinatarios(tipo: TipoComDestinatarios): string[] {
-  const nums = new Set<string>();
+type DestinoWhatsApp = { numero: string; usuarioId: number | null };
+
+export function listarDestinosWhatsApp(tipo: TipoComDestinatarios): DestinoWhatsApp[] {
+  const byNumero = new Map<string, DestinoWhatsApp>();
   for (const d of tipo.destinatarios) {
     if (!d.usuario.ativo) continue;
     const n = normalizarTelefone(d.usuario.telefone);
-    if (n) nums.add(n);
+    if (!n) continue;
+    if (!byNumero.has(n)) {
+      byNumero.set(n, { numero: n, usuarioId: d.usuarioId });
+    }
   }
-  return [...nums];
+  return [...byNumero.values()];
+}
+
+export function listarNumerosDestinatarios(tipo: TipoComDestinatarios): string[] {
+  return listarDestinosWhatsApp(tipo).map((d) => d.numero);
 }
 
 function enviarTextoWhatsApp(
@@ -131,27 +145,47 @@ function enviarTextoWhatsApp(
   return sendWhatsAppTextTo(numero, texto);
 }
 
-export async function enviarParaDestinatarios(tipo: TipoComDestinatarios, texto: string): Promise<{ enviados: number; erros: string[] }> {
-  const numeros = listarNumerosDestinatarios(tipo);
-  if (numeros.length === 0) {
+export async function enviarParaDestinatarios(
+  tipo: TipoComDestinatarios,
+  texto: string
+): Promise<{ enviados: number; erros: string[]; tentativas: TentativaInput[]; dryRuns: number }> {
+  const destinos = listarDestinosWhatsApp(tipo);
+  if (destinos.length === 0) {
     console.warn(`[whatsappNotificacao] Tipo "${tipo.code}": nenhum destinatário com telefone válido.`);
-    return { enviados: 0, erros: [] };
+    return { enviados: 0, erros: [], tentativas: [], dryRuns: 0 };
   }
 
   const delayMs = delayEntreDestinatariosMs();
   let enviados = 0;
   let dryRuns = 0;
   const erros: string[] = [];
-  for (let i = 0; i < numeros.length; i++) {
-    const numero = numeros[i]!;
-    const result = await enviarTextoWhatsApp(numero, texto, tipo);
+  const tentativas: TentativaInput[] = [];
+
+  for (let i = 0; i < destinos.length; i++) {
+    const dest = destinos[i]!;
+    const result = await enviarTextoWhatsApp(dest.numero, texto, tipo);
     if (result.ok) {
       if (result.dryRun) dryRuns++;
       else enviados++;
+      tentativas.push({
+        canal: 'whatsapp',
+        destinatario: dest.numero,
+        usuarioId: dest.usuarioId,
+        ok: true,
+        dryRun: Boolean(result.dryRun),
+      });
     } else {
-      erros.push(`${numero}: ${result.error ?? 'erro'}`);
+      const erro = result.error ?? 'erro';
+      erros.push(`${dest.numero}: ${erro}`);
+      tentativas.push({
+        canal: 'whatsapp',
+        destinatario: dest.numero,
+        usuarioId: dest.usuarioId,
+        ok: false,
+        erro,
+      });
     }
-    if (i < numeros.length - 1 && delayMs > 0) {
+    if (i < destinos.length - 1 && delayMs > 0) {
       await new Promise((r) => setTimeout(r, delayMs));
     }
   }
@@ -160,7 +194,7 @@ export async function enviarParaDestinatarios(tipo: TipoComDestinatarios, texto:
       `[whatsappNotificacao] Tipo "${tipo.code}": ${dryRuns} envio(s) em dry-run (NOTIFICACOES_ENVIO_HABILITADO≠true).`
     );
   }
-  return { enviados, erros };
+  return { enviados, erros, tentativas, dryRuns };
 }
 
 export async function enviarNotificacaoPorTipo(code: string, texto: string): Promise<void> {
@@ -170,20 +204,77 @@ export async function enviarNotificacaoPorTipo(code: string, texto: string): Pro
     console.warn(`[whatsappNotificacao] enviarNotificacaoPorTipo("${code}") ignorado: fonteMensagem=${tipo.fonteMensagem}`);
     return;
   }
-  await enviarParaDestinatarios(tipo, texto);
+
+  await comExecucaoRegistrada(
+    { canal: 'whatsapp', tipoCode: tipo.code, tipoId: tipo.id, origem: 'evento' },
+    async () => {
+      const { enviados, erros, tentativas, dryRuns } = await enviarParaDestinatarios(tipo, texto);
+      if (tentativas.length === 0) {
+        return {
+          result: undefined as void,
+          forcarSkipped: true,
+          resumo: 'Nenhum destinatário com telefone válido',
+          metadados: { enviados: 0, erros: 0, dryRuns: 0 },
+          tentativas: [],
+        };
+      }
+      return {
+        result: undefined as void,
+        tentativas,
+        metadados: { enviados, erros: erros.length, dryRuns },
+      };
+    }
+  );
 }
 
-export async function executarNotificacaoAgendada(code: string): Promise<void> {
+export async function executarNotificacaoAgendada(
+  code: string,
+  origem: OrigemNotificacao = 'cron'
+): Promise<void> {
   const tipo = await buscarTipoPorCode(code);
   if (!tipo || !tipo.ativo) return;
-  try {
-    const mensagem = await gerarMensagemDoTipo(tipo);
-    const { enviados, erros } = await enviarParaDestinatarios(tipo, mensagem);
-    console.log(`[whatsappNotificacaoCron] "${code}": ${enviados} envio(s).`);
-    if (erros.length > 0) console.error(`[whatsappNotificacaoCron] "${code}" erros:`, erros.join('; '));
-  } catch (err) {
-    console.error(`[whatsappNotificacaoCron] "${code}":`, err instanceof Error ? err.message : err);
-  }
+
+  await comExecucaoRegistrada(
+    { canal: 'whatsapp', tipoCode: tipo.code, tipoId: tipo.id, origem },
+    async () => {
+      try {
+        const mensagem = await gerarMensagemDoTipo(tipo);
+        const { enviados, erros, tentativas, dryRuns } = await enviarParaDestinatarios(tipo, mensagem);
+        console.log(`[whatsappNotificacaoCron] "${code}": ${enviados} envio(s).`);
+        if (erros.length > 0) console.error(`[whatsappNotificacaoCron] "${code}" erros:`, erros.join('; '));
+
+        if (tentativas.length === 0) {
+          return {
+            result: undefined as void,
+            forcarSkipped: true,
+            resumo: 'Nenhum destinatário com telefone válido',
+            metadados: { enviados: 0, erros: 0, dryRuns: 0 },
+            tentativas: [],
+          };
+        }
+        return {
+          result: undefined as void,
+          tentativas,
+          metadados: { enviados, erros: erros.length, dryRuns },
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[whatsappNotificacaoCron] "${code}":`, msg);
+        // SQL sem linhas / builder vazio → skipped; demais → failed
+        const skipped =
+          /não retornou linhas|sem conteúdo|nenhum/i.test(msg) ||
+          /SQL não retornou/i.test(msg);
+        return {
+          result: undefined as void,
+          status: skipped ? 'skipped' : 'failed',
+          forcarSkipped: skipped,
+          erroMensagem: msg,
+          resumo: skipped ? 'Sem disparo' : 'Falha na execução',
+          tentativas: [],
+        };
+      }
+    }
+  );
 }
 
 export async function testarEnvioTipo(tipoId: number, usuarioId: number): Promise<void> {
@@ -196,11 +287,31 @@ export async function testarEnvioTipo(tipoId: number, usuarioId: number): Promis
   const numero = normalizarTelefone(dest.usuario.telefone);
   if (!numero) throw new Error('Usuário sem telefone válido.');
 
-  const mensagem =
-    tipo.fonteMensagem === 'evento'
-      ? `[Teste] Mensagem automática: ${tipo.label}`
-      : await gerarMensagemDoTipo(tipo);
+  await comExecucaoRegistrada(
+    { canal: 'whatsapp', tipoCode: tipo.code, tipoId: tipo.id, origem: 'teste' },
+    async () => {
+      const mensagem =
+        tipo.fonteMensagem === 'evento'
+          ? `[Teste] Mensagem automática: ${tipo.label}`
+          : await gerarMensagemDoTipo(tipo);
 
-  const result = await enviarTextoWhatsApp(numero, mensagem, tipo);
-  if (!result.ok) throw new Error(result.error ?? 'Erro ao enviar WhatsApp.');
+      const result = await enviarTextoWhatsApp(numero, mensagem, tipo);
+      if (!result.ok) {
+        throw new Error(result.error ?? 'Erro ao enviar WhatsApp.');
+      }
+      return {
+        result: undefined as void,
+        tentativas: [
+          {
+            canal: 'whatsapp' as const,
+            destinatario: numero,
+            usuarioId,
+            ok: true,
+            dryRun: Boolean(result.dryRun),
+          },
+        ],
+        metadados: { teste: true, dryRun: Boolean(result.dryRun) },
+      };
+    }
+  );
 }

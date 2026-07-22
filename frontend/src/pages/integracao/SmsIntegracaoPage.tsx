@@ -6,6 +6,7 @@ import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoes
 import {
   getSmsTipos,
   getSmsUsuarios,
+  getSmsHistorico,
   saveSmsTipos,
   saveSmsDestinatarios,
   type WhatsappNotificacaoTipo,
@@ -15,6 +16,7 @@ import { fetchEmailSettings } from '../../api/emailSettings';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 import SmsTipoCard from './sms/SmsTipoCard';
 import ModalTesteSmsTipo from './sms/ModalTesteSmsTipo';
+import ModalHistoricoNotificacao from './components/ModalHistoricoNotificacao';
 
 function novoTipo(sortOrder: number): WhatsappNotificacaoTipoSave {
   return {
@@ -106,6 +108,7 @@ export default function SmsIntegracaoPage() {
   const [saving, setSaving] = useState(false);
   const [savingDest, setSavingDest] = useState<number | null>(null);
   const [testModalTipoId, setTestModalTipoId] = useState<number | null>(null);
+  const [historicoTipoId, setHistoricoTipoId] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
@@ -178,6 +181,16 @@ export default function SmsIntegracaoPage() {
     () => (testModalTipoId != null ? tipos.find((t) => t.id === testModalTipoId) ?? null : null),
     [testModalTipoId, tipos]
   );
+
+  const historicoTipo = useMemo(
+    () => (historicoTipoId != null ? tipos.find((t) => t.id === historicoTipoId) ?? null : null),
+    [historicoTipoId, tipos]
+  );
+
+  const loadHistoricoSms = useCallback(async () => {
+    if (historicoTipoId == null) return [];
+    return getSmsHistorico(historicoTipoId);
+  }, [historicoTipoId]);
 
   const handleSaveDest = async (tipoId: number) => {
     if (!podeEditar) return;
@@ -334,6 +347,7 @@ export default function SmsIntegracaoPage() {
                 onUpdate={(patch) => updateEditTipo(idx, patch)}
                 onToggleExpand={() => setExpandedId(isExpanded ? null : tipoId ?? null)}
                 onTest={() => tipoId != null && setTestModalTipoId(tipoId)}
+                onHistorico={() => tipoId != null && setHistoricoTipoId(tipoId)}
                 onToggleDest={(usuarioId) => tipoId != null && toggleDest(tipoId, usuarioId)}
                 onSaveDest={() => tipoId != null && void handleSaveDest(tipoId)}
                 onFiltroUsuario={setFiltroUsuario}
@@ -365,6 +379,14 @@ export default function SmsIntegracaoPage() {
         usuarios={usuarios}
         podeEnviar={podeEditar}
         evolutionConfigured={evolutionConfigured}
+      />
+
+      <ModalHistoricoNotificacao
+        open={historicoTipoId != null}
+        onClose={() => setHistoricoTipoId(null)}
+        titulo={historicoTipo?.label ?? historicoTipo?.code ?? 'Alerta'}
+        canalLabel="WhatsApp"
+        loadHistorico={loadHistoricoSms}
       />
     </div>
   );

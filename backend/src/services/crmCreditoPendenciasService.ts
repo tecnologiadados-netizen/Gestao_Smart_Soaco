@@ -402,6 +402,11 @@ export type PendenciaCreditoDto = {
   /** Total de e-mails (alerta + ação). */
   qtdEmailsTotal: number;
   qtdAcoesRegistradas: number;
+  /** PDF de aprovação assinado pelo gestor. */
+  pdfAssinadoNome: string | null;
+  pdfAssinadoEm: string | null;
+  pdfAssinadoPorLogin: string | null;
+  temPdfAssinado: boolean;
 };
 
 function parseContasAtrasoSnapshot(
@@ -482,6 +487,10 @@ function toDto(
     acaoPorNome: string | null;
     emailAcaoEnviadoEm?: Date | null;
     emailSlaEnviadoEm?: Date | null;
+    pdfAssinadoNome?: string | null;
+    pdfAssinadoStoragePath?: string | null;
+    pdfAssinadoEm?: Date | null;
+    pdfAssinadoPorLogin?: string | null;
     encerrada: boolean;
   },
   prazoHorasSemAcao = 48
@@ -552,6 +561,10 @@ function toDto(
     qtdEmailsAcao: 0,
     qtdEmailsTotal: 0,
     qtdAcoesRegistradas: 0,
+    pdfAssinadoNome: row.pdfAssinadoNome ?? null,
+    pdfAssinadoEm: row.pdfAssinadoEm?.toISOString() ?? null,
+    pdfAssinadoPorLogin: row.pdfAssinadoPorLogin ?? null,
+    temPdfAssinado: Boolean(row.pdfAssinadoStoragePath),
   };
 }
 
@@ -939,6 +952,7 @@ export async function listarHistoricoClientePendencias(
     EMAIL_SLA: 'E-mail SLA (prazo sem ação)',
     LIBERACAO: 'Liberação confirmada',
     FINALIZADO: 'Finalizado',
+    PDF_ASSINADO: 'PDF assinado',
   };
 
   const eventosDto: HistoricoPendenciaEventoDto[] = [];
@@ -1346,8 +1360,14 @@ export async function salvarAcaoPendenciaCredito(
       emailEnviado: false,
       aguardandoConfirmacaoNomus: true,
       mensagem:
-        `${instrucao} A ação ficou em rascunho. Quando o status estiver atualizado no Nomus, volte e clique em Salvar ação novamente — só então o e-mail será enviado.`,
+        `${instrucao} A ação ficou em rascunho. Quando o status estiver atualizado no Nomus, anexe o PDF assinado pelo gestor e clique em Confirmar / salvar — só então o e-mail será enviado.`,
     };
+  }
+
+  if (!updated.pdfAssinadoStoragePath) {
+    throw new Error(
+      'Anexe o PDF assinado pelo gestor antes de confirmar a ação. Use o campo de anexo na linha do pedido.'
+    );
   }
 
   // Ação confirmada no Nomus → registra no histórico
@@ -1614,4 +1634,119 @@ export function deepLinkPendenciasCrm(
 /** Garante snapshot de label completo ao sync. */
 export function ensureStatusLabel(statusItem: number): string {
   return labelStatusItemPedidoCompleto(statusItem);
+}
+
+export async function anexarPdfAssinadoPendenciaCredito(
+  prisma: PrismaClient,
+  input: {
+    id: number;
+    fileName: string;
+    mimeType: string;
+    contentBase64: string;
+    usuarioLogin: string | null;
+  }
+): Promise<PendenciaCreditoDto> {
+  const { deleteCrmCreditoPdfIfExists, saveCrmCreditoPdfAssinado } = await import(
+    '../utils/crmCreditoPdfUpload.js'
+  );
+
+  const row = await prisma.crmCreditoPendencia.findUnique({ where: { id: input.id } });
+  if (!row) throw new Error('Pendência não encontrada.');
+  if (row.encerrada) throw new Error('Esta pendência já está encerrada.');
+
+  const saved = saveCrmCreditoPdfAssinado(row.id, {
+    fileName: input.fileName,
+    mimeType: input.mimeType,
+    contentBase64: input.contentBase64,
+  });
+
+  if (row.pdfAssinadoStoragePath && row.pdfAssinadoStoragePath !== saved.storagePath) {
+    deleteCrmCreditoPdfIfExists(row.pdfAssinadoStoragePath);
+  }
+
+  const agora = new Date();
+  const updated = await prisma.crmCreditoPendencia.update({
+    where: { id: row.id },
+    data: {
+      pdfAssinadoNome: saved.originalName,
+      pdfAssinadoStoragePath: saved.storagePath,
+      pdfAssinadoMimeType: saved.mimeType,
+      pdfAssinadoEm: agora,
+      pdfAssinadoPorLogin: input.usuarioLogin,
+    },
+  });
+
+  await prisma.crmCreditoPendenciaEvento.create({
+    data: {
+      pendenciaId: updated.id,
+      tipo: 'PDF_ASSINADO',
+      detalhe: `PDF assinado anexado: ${saved.originalName}`,
+      usuarioLogin: input.usuarioLogin,
+    },
+  });
+
+  const [pendencia] = await enriquecerContadoresCliente(prisma, [toDto(updated)]);
+  return pendencia;
+}
+
+export async function obterPdfAssinadoPendenciaCredito(
+  prisma: PrismaClient,
+  id: number
+): Promise<{
+  absPath: string;
+  fileName: string;
+  mimeType: string;
+}> {
+  const { resolveCrmCreditoPdfAbsPath } = await import('../utils/crmCreditoPdfUpload.js');
+  const row = await prisma.crmCreditoPendencia.findUnique({ where: { id } });
+  if (!row) throw new Error('Pendência não encontrada.');
+  if (!row.pdfAssinadoStoragePath) throw new Error('Nenhum PDF assinado anexado nesta pendência.');
+
+  const absPath = resolveCrmCreditoPdfAbsPath(row.pdfAssinadoStoragePath);
+  if (!absPath) throw new Error('Arquivo do PDF assinado não encontrado no servidor.');
+
+  return {
+    absPath,
+    fileName: row.pdfAssinadoNome || 'aprovacao-assinada.pdf',
+    mimeType: row.pdfAssinadoMimeType || 'application/pdf',
+  };
+}
+
+export async function removerPdfAssinadoPendenciaCredito(
+  prisma: PrismaClient,
+  input: { id: number; usuarioLogin: string | null }
+): Promise<PendenciaCreditoDto> {
+  const { deleteCrmCreditoPdfIfExists } = await import('../utils/crmCreditoPdfUpload.js');
+
+  const row = await prisma.crmCreditoPendencia.findUnique({ where: { id: input.id } });
+  if (!row) throw new Error('Pendência não encontrada.');
+  if (row.encerrada) throw new Error('Esta pendência já está encerrada.');
+  if (row.emailAcaoEnviadoEm) {
+    throw new Error('Não é possível remover o PDF após a confirmação e envio do e-mail.');
+  }
+
+  deleteCrmCreditoPdfIfExists(row.pdfAssinadoStoragePath);
+
+  const updated = await prisma.crmCreditoPendencia.update({
+    where: { id: row.id },
+    data: {
+      pdfAssinadoNome: null,
+      pdfAssinadoStoragePath: null,
+      pdfAssinadoMimeType: null,
+      pdfAssinadoEm: null,
+      pdfAssinadoPorLogin: null,
+    },
+  });
+
+  await prisma.crmCreditoPendenciaEvento.create({
+    data: {
+      pendenciaId: updated.id,
+      tipo: 'PDF_ASSINADO',
+      detalhe: 'PDF assinado removido',
+      usuarioLogin: input.usuarioLogin,
+    },
+  });
+
+  const [pendencia] = await enriquecerContadoresCliente(prisma, [toDto(updated)]);
+  return pendencia;
 }

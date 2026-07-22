@@ -36,7 +36,9 @@ export async function recarregarCronsWhatsappNotificacao(): Promise<void> {
       }
       const jobKey = `${tipo.id}:${expr}`;
       const task = cron.schedule(expr, () => {
-        void dispararComClaim('whatsapp', tipo.code, () => executarNotificacaoAgendada(tipo.code));
+        void dispararComClaim('whatsapp', tipo.code, () =>
+          executarNotificacaoAgendada(tipo.code, 'cron')
+        );
       });
       jobs.set(jobKey, task);
       console.log(`[whatsappNotificacaoCron] Agendado "${tipo.code}": ${expr}`);
@@ -46,7 +48,7 @@ export async function recarregarCronsWhatsappNotificacao(): Promise<void> {
       canal: 'whatsapp',
       code: tipo.code,
       expr: tipo.cronExpressao,
-      run: () => executarNotificacaoAgendada(tipo.code),
+      run: () => executarNotificacaoAgendada(tipo.code, 'catchup'),
       logPrefix: '[whatsappNotificacaoCron]',
     });
   }

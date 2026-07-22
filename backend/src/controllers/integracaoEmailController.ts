@@ -11,6 +11,11 @@ import { recarregarCronsEmailNotificacao } from '../scheduler/emailNotificacaoCr
 import { isNomusEnabled } from '../config/nomusDb.js';
 import { fetchEmailProviderSettings } from '../services/systemEmail.js';
 import { prisma } from '../config/prisma.js';
+import {
+  limparHistoricoAntigo,
+  listarHistoricoPorTipo,
+} from '../services/notificacaoExecucaoService.js';
+import { buscarTipoEmailPorId } from '../data/emailNotificacaoRepository.js';
 
 export async function getEmailTipos(_req: Request, res: Response): Promise<void> {
   try {
@@ -110,5 +115,32 @@ export async function postEmailTestar(req: Request, res: Response): Promise<void
     const msg = err instanceof Error ? err.message : 'Erro ao testar envio.';
     console.error('postEmailTestar', err);
     res.status(400).json({ error: msg });
+  }
+}
+
+export async function getEmailHistorico(req: Request, res: Response): Promise<void> {
+  const tipoId = parseInt(req.params.id, 10);
+  if (Number.isNaN(tipoId)) {
+    res.status(400).json({ error: 'ID inválido.' });
+    return;
+  }
+  const limitRaw = req.query.limit != null ? Number(req.query.limit) : 50;
+  try {
+    const tipo = await buscarTipoEmailPorId(tipoId);
+    if (!tipo) {
+      res.status(404).json({ error: 'Tipo não encontrado.' });
+      return;
+    }
+    void limparHistoricoAntigo();
+    const historico = await listarHistoricoPorTipo({
+      canal: 'email',
+      tipoId: tipo.id,
+      tipoCode: tipo.code,
+      limit: Number.isFinite(limitRaw) ? limitRaw : 50,
+    });
+    res.json({ historico });
+  } catch (err) {
+    console.error('getEmailHistorico', err);
+    res.status(503).json({ error: 'Erro ao listar histórico.' });
   }
 }

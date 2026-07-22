@@ -71,14 +71,17 @@ import {
   getCrmSaudeEmpresa,
 } from '../controllers/crmFinanceiroController.js';
 import {
+  deleteCrmPendenciaPdfAssinado,
   getCrmPendenciasCredito,
   getCrmPendenciasContasCliente,
   getCrmPendenciasEmailConfig,
   getCrmPendenciasHistorico,
   getCrmPendenciasPedidosDestino,
   getCrmPendenciasUsuarios,
+  getCrmPendenciaPdfAssinado,
   postCrmPendenciaAcao,
   postCrmPendenciaConfirmarLiberacao,
+  postCrmPendenciaPdfAssinado,
   putCrmPendenciasEmailConfig,
 } from '../controllers/crmCreditoPendenciasController.js';
 
@@ -171,6 +174,21 @@ router.get(
 );
 router.get('/crm/pendencias-credito', verFinanceiroCrmPendencias, getCrmPendenciasCredito);
 router.post('/crm/pendencias-credito/:id/acao', verFinanceiroCrmPendencias, postCrmPendenciaAcao);
+router.post(
+  '/crm/pendencias-credito/:id/pdf-assinado',
+  verFinanceiroCrmPendencias,
+  postCrmPendenciaPdfAssinado
+);
+router.get(
+  '/crm/pendencias-credito/:id/pdf-assinado',
+  verFinanceiroCrmPendencias,
+  getCrmPendenciaPdfAssinado
+);
+router.delete(
+  '/crm/pendencias-credito/:id/pdf-assinado',
+  verFinanceiroCrmPendencias,
+  deleteCrmPendenciaPdfAssinado
+);
 router.post(
   '/crm/pendencias-credito/:id/confirmar-liberacao',
   verFinanceiroCrmPendencias,

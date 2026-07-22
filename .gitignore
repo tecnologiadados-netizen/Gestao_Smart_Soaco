@@ -39,6 +39,7 @@ coverage/
 
 # Prisma — banco SQLite local de cada desenvolvedor (nunca commitar)
 backend/prisma/*.db
+backend/prisma/*.db.*
 backend/prisma/*.db-journal
 backend/prisma/*.db-wal
 backend/prisma/*.db-shm

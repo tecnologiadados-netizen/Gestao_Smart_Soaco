@@ -221,6 +221,10 @@ export type PendenciaCreditoItem = {
   qtdEmailsAcao: number;
   qtdEmailsTotal: number;
   qtdAcoesRegistradas: number;
+  pdfAssinadoNome: string | null;
+  pdfAssinadoEm: string | null;
+  pdfAssinadoPorLogin: string | null;
+  temPdfAssinado: boolean;
 };
 
 export type TituloRegularizacaoItem = {
@@ -400,6 +404,89 @@ export async function confirmarCrmPendenciaLiberacao(id: number): Promise<{
     mensagem: body.mensagem ?? 'Liberação processada.',
     aguardandoConfirmacaoNomus: Boolean(body.aguardandoConfirmacaoNomus),
   };
+}
+
+async function fileToPdfBase64(file: File): Promise<{
+  fileName: string;
+  mimeType: string;
+  contentBase64: string;
+}> {
+  const isPdf =
+    file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  if (!isPdf) throw new Error('Envie apenas PDF assinado (.pdf).');
+  if (file.size > 15 * 1024 * 1024) throw new Error('PDF excede 15MB.');
+  const contentBase64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? '');
+      const idx = result.indexOf(',');
+      resolve(idx >= 0 ? result.slice(idx + 1) : result);
+    };
+    reader.onerror = () => reject(new Error(`Falha ao ler ${file.name}.`));
+    reader.readAsDataURL(file);
+  });
+  return {
+    fileName: file.name,
+    mimeType: file.type || 'application/pdf',
+    contentBase64,
+  };
+}
+
+export async function anexarCrmPendenciaPdfAssinado(
+  id: number,
+  file: File,
+): Promise<PendenciaCreditoItem> {
+  const payload = await fileToPdfBase64(file);
+  const res = await apiFetch(`/api/financeiro/crm/pendencias-credito/${id}/pdf-assinado`, {
+    method: 'POST',
+    body: payload,
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    pendencia?: PendenciaCreditoItem;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao anexar PDF assinado');
+  }
+  return body.pendencia!;
+}
+
+export async function removerCrmPendenciaPdfAssinado(
+  id: number,
+): Promise<PendenciaCreditoItem> {
+  const res = await apiFetch(`/api/financeiro/crm/pendencias-credito/${id}/pdf-assinado`, {
+    method: 'DELETE',
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    pendencia?: PendenciaCreditoItem;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao remover PDF assinado');
+  }
+  return body.pendencia!;
+}
+
+export async function baixarCrmPendenciaPdfAssinado(
+  id: number,
+  fileName?: string | null,
+): Promise<void> {
+  const res = await apiFetch(`/api/financeiro/crm/pendencias-credito/${id}/pdf-assinado`);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? 'Falha ao baixar PDF assinado');
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName?.trim() || 'aprovacao-assinada.pdf';
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function fetchCrmPendenciasEmailConfig(): Promise<PendenciasEmailConfig> {

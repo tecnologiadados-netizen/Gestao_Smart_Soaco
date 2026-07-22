@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Clock } from 'lucide-react';
 import {
+  anexarCrmPendenciaPdfAssinado,
+  baixarCrmPendenciaPdfAssinado,
   confirmarCrmPendenciaLiberacao,
   fetchCrmPendenciasContasCliente,
   fetchCrmPendenciasCredito,
   fetchCrmPendenciasEmailConfig,
   fetchCrmPendenciasHistorico,
   fetchCrmPendenciasUsuarios,
+  removerCrmPendenciaPdfAssinado,
   salvarCrmPendenciaAcao,
   salvarCrmPendenciasEmailConfig,
   type AcaoPendenciaCredito,
@@ -71,6 +75,20 @@ const ACOES: { value: AcaoPendenciaCredito; label: string }[] = [
   { value: 'REALOCAR_MATERIAL', label: 'Realocar material' },
   { value: 'SEGUIR_PRODUCAO', label: 'Seguir com produção' },
 ];
+
+function precisaPdfParaConfirmar(
+  item: PendenciaCreditoItem,
+  acaoSel: AcaoPendenciaCredito | '',
+): boolean {
+  if (!acaoSel || item.temPdfAssinado) return false;
+  if (item.aguardandoConfirmacaoNomus) return true;
+  if (acaoSel === 'SEGUIR_PRODUCAO') return true;
+  const st = item.statusNomus;
+  if (st == null) return false;
+  if (acaoSel === 'PAUSADO' || acaoSel === 'REALOCAR_MATERIAL') return st === 1;
+  if (acaoSel === 'CANCELADO') return st === 6 || st >= 4;
+  return false;
+}
 
 type Props = {
   podeEditarDestinatarios: boolean;
@@ -275,6 +293,7 @@ export default function PendenciasCreditoPanel({
   });
   const [carregando, setCarregando] = useState(true);
   const [salvandoId, setSalvandoId] = useState<number | null>(null);
+  const [pdfUploadingId, setPdfUploadingId] = useState<number | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [mensagemNomus, setMensagemNomus] = useState<{
@@ -310,6 +329,11 @@ export default function PendenciasCreditoPanel({
   const [historicoCliente, setHistoricoCliente] = useState<{
     clienteNome: string;
     eventos: HistoricoPendenciaEvento[];
+    qtdEmailsAlerta: number;
+    qtdEmailsAcao: number;
+    qtdEmailsTotal: number;
+    qtdAcoesRegistradas: number;
+    alertaEm: string | null;
   } | null>(null);
   const [carregandoHistorico, setCarregandoHistorico] = useState(false);
   const [monitorContas, setMonitorContas] = useState<MonitorRegularizacaoCliente | null>(null);
@@ -573,6 +597,10 @@ export default function PendenciasCreditoPanel({
       setErro('Selecione uma ação para o pedido.');
       return;
     }
+    if (precisaPdfParaConfirmar(item, acao)) {
+      setErro('Anexe o PDF assinado pelo gestor antes de confirmar a ação.');
+      return;
+    }
     setSalvandoId(item.id);
     setErro(null);
     try {
@@ -654,12 +682,65 @@ export default function PendenciasCreditoPanel({
     }
   };
 
+  const atualizarPendenciaLocal = (pendencia: PendenciaCreditoItem) => {
+    setItens((prev) => prev.map((row) => (row.id === pendencia.id ? pendencia : row)));
+  };
+
+  const handleAnexarPdfAssinado = async (item: PendenciaCreditoItem, file: File | null) => {
+    if (!file) return;
+    setPdfUploadingId(item.id);
+    setErro(null);
+    setAviso(null);
+    try {
+      const pendencia = await anexarCrmPendenciaPdfAssinado(item.id, file);
+      atualizarPendenciaLocal(pendencia);
+      setAviso(`PDF assinado anexado em ${item.numeroPedidoExibicao}.`);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao anexar PDF');
+    } finally {
+      setPdfUploadingId(null);
+    }
+  };
+
+  const handleRemoverPdfAssinado = async (item: PendenciaCreditoItem) => {
+    setPdfUploadingId(item.id);
+    setErro(null);
+    try {
+      const pendencia = await removerCrmPendenciaPdfAssinado(item.id);
+      atualizarPendenciaLocal(pendencia);
+      setAviso('PDF assinado removido.');
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao remover PDF');
+    } finally {
+      setPdfUploadingId(null);
+    }
+  };
+
+  const handleBaixarPdfAssinado = async (item: PendenciaCreditoItem) => {
+    setErro(null);
+    try {
+      await baixarCrmPendenciaPdfAssinado(item.id, item.pdfAssinadoNome);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao baixar PDF');
+    }
+  };
+
   const trocarFila = (fila: SituacaoFilaPendencia) => {
     setSituacaoFila(fila);
     void carregar({ situacao: fila });
   };
 
-  const abrirHistoricoCliente = async (clienteNome: string, clienteChave?: string) => {
+  const abrirHistoricoCliente = async (
+    clienteNome: string,
+    clienteChave: string | undefined,
+    indicadores: {
+      qtdEmailsAlerta: number;
+      qtdEmailsAcao: number;
+      qtdEmailsTotal: number;
+      qtdAcoesRegistradas: number;
+      alertaEm: string | null;
+    },
+  ) => {
     setCarregandoHistorico(true);
     setErro(null);
     try {
@@ -667,6 +748,11 @@ export default function PendenciasCreditoPanel({
       setHistoricoCliente({
         clienteNome: hist.clienteNome || clienteNome,
         eventos: hist.eventos ?? [],
+        qtdEmailsAlerta: indicadores.qtdEmailsAlerta,
+        qtdEmailsAcao: indicadores.qtdEmailsAcao,
+        qtdEmailsTotal: indicadores.qtdEmailsTotal,
+        qtdAcoesRegistradas: indicadores.qtdAcoesRegistradas,
+        alertaEm: indicadores.alertaEm,
       });
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao carregar histórico');
@@ -863,55 +949,57 @@ export default function PendenciasCreditoPanel({
         </div>
       )}
 
-      {mensagemNomus && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="mensagem-nomus-titulo"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setMensagemNomus(null);
-          }}
-        >
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl dark:border-amber-800/70 dark:bg-slate-900">
-            <div className="border-b border-amber-200 bg-amber-50 px-6 py-4 dark:border-amber-800/70 dark:bg-amber-950/40">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xl dark:bg-amber-900/60">
-                  !
-                </div>
-                <div>
-                  <h3
-                    id="mensagem-nomus-titulo"
-                    className="text-base font-bold text-amber-950 dark:text-amber-200"
-                  >
-                    {mensagemNomus.titulo}
-                  </h3>
-                  <p className="mt-0.5 text-sm text-amber-800 dark:text-amber-300">
-                    Pedido {mensagemNomus.pedido}
-                  </p>
+      {mensagemNomus &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10050] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mensagem-nomus-titulo"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setMensagemNomus(null);
+            }}
+          >
+            <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl dark:border-amber-800/70 dark:bg-slate-900">
+              <div className="border-b border-amber-200 bg-amber-50 px-6 py-4 dark:border-amber-800/70 dark:bg-amber-950/40">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xl dark:bg-amber-900/60">
+                    !
+                  </div>
+                  <div>
+                    <h3
+                      id="mensagem-nomus-titulo"
+                      className="text-base font-bold text-amber-950 dark:text-amber-200"
+                    >
+                      {mensagemNomus.titulo}
+                    </h3>
+                    <p className="mt-0.5 text-sm text-amber-800 dark:text-amber-300">
+                      Pedido {mensagemNomus.pedido}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="px-6 py-5">
-              <p className="text-base leading-relaxed text-slate-700 dark:text-slate-200">
-                {mensagemNomus.mensagem}
-              </p>
-            </div>
+              <div className="px-6 py-5">
+                <p className="text-base leading-relaxed text-slate-700 dark:text-slate-200">
+                  {mensagemNomus.mensagem}
+                </p>
+              </div>
 
-            <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-6 py-4 dark:border-slate-700 dark:bg-slate-800/60">
-              <button
-                type="button"
-                autoFocus
-                onClick={() => setMensagemNomus(null)}
-                className="rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
-              >
-                Entendi
-              </button>
+              <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-6 py-4 dark:border-slate-700 dark:bg-slate-800/60">
+                <button
+                  type="button"
+                  autoFocus
+                  onClick={() => setMensagemNomus(null)}
+                  className="rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
+                >
+                  Entendi
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 px-3 pt-2 dark:border-slate-700">
@@ -983,39 +1071,38 @@ export default function PendenciasCreditoPanel({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
+          <table className="min-w-full text-left text-xs leading-snug">
             <thead className="bg-blue-700 text-white dark:bg-blue-900">
               <tr>
-                <th className="px-3 py-2.5 font-semibold">Cliente</th>
-                <th className="px-3 py-2.5 font-semibold">Pedido</th>
-                <th className="px-3 py-2.5 font-semibold">Status Nomus</th>
-                <th className="px-3 py-2.5 font-semibold">Atraso</th>
-                <th className="px-3 py-2.5 font-semibold">Conta</th>
-                <th className="px-3 py-2.5 font-semibold">Vencimento</th>
-                <th className="px-3 py-2.5 font-semibold">Status conta</th>
-                <th className="px-3 py-2.5 font-semibold">Ação</th>
+                <th className="px-2 py-1.5 font-semibold">Cliente</th>
+                <th className="px-2 py-1.5 font-semibold">Pedido</th>
+                <th className="px-2 py-1.5 font-semibold">Status Nomus</th>
+                <th className="px-2 py-1.5 font-semibold">Atraso</th>
+                <th className="px-2 py-1.5 font-semibold">Conta</th>
+                <th className="px-2 py-1.5 font-semibold">Vencimento</th>
+                <th className="px-2 py-1.5 font-semibold">Status conta</th>
+                <th className="px-2 py-1.5 font-semibold">Ação</th>
                 <th
-                  className="px-3 py-2.5 font-semibold"
+                  className="px-2 py-1.5 font-semibold"
                   title="Tempo desde o alerta até a ação (prazo configurável)"
                 >
                   Tempo / prazo
                 </th>
-                <th className="px-3 py-2.5 font-semibold">Observação</th>
+                <th className="px-2 py-1.5 font-semibold">Observação</th>
+                <th className="px-2 py-1.5 font-semibold" />
                 <th
-                  className="px-3 py-2.5 font-semibold"
-                  title="E-mails já enviados sobre o cliente"
+                  className="px-2 py-1.5 text-center font-semibold"
+                  title="Histórico, e-mails e ações do cliente"
                 >
-                  E-mails
+                  Histórico
                 </th>
-                <th className="px-3 py-2.5 font-semibold" />
-                <th className="px-3 py-2.5 text-center font-semibold">Histórico</th>
               </tr>
             </thead>
             <tbody>
               {carregando && itens.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={12}
+                    colSpan={11}
                     className="px-3 py-8 text-center text-slate-500 dark:text-slate-400"
                   >
                     Carregando…
@@ -1024,7 +1111,7 @@ export default function PendenciasCreditoPanel({
               ) : itens.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={12}
+                    colSpan={11}
                     className="px-3 py-8 text-center text-slate-500 dark:text-slate-400"
                   >
                     {situacaoFila === 'INADIMPLENTES'
@@ -1060,56 +1147,64 @@ export default function PendenciasCreditoPanel({
                         {isPrimeira && (
                           <td
                             rowSpan={rowSpan}
-                            className="border-r border-slate-100 px-3 py-2.5 align-middle font-medium text-slate-900 dark:border-slate-700 dark:text-slate-100"
+                            className="max-w-[11rem] border-r border-slate-100 px-2 py-1.5 align-middle font-medium text-slate-900 dark:border-slate-700 dark:text-slate-100"
                           >
-                            <div className="max-w-[14rem]">
+                            <div className="break-words whitespace-normal leading-snug" title={grupo.clienteNome}>
                               {grupo.clienteNome}
-                              {rowSpan > 1 && (
-                                <div className="mt-1 text-xs font-normal text-slate-500 dark:text-slate-400">
-                                  {rowSpan} pedidos abertos
-                                </div>
-                              )}
                             </div>
+                            {rowSpan > 1 && (
+                              <div className="mt-0.5 text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                                {rowSpan} pedidos
+                              </div>
+                            )}
                           </td>
                         )}
-                        <td className="px-3 py-2.5 align-middle whitespace-nowrap font-medium">
-                          <div>{item.numeroPedidoExibicao}</div>
+                        <td className="px-2 py-1.5 align-middle font-medium">
+                          <div className="break-words whitespace-normal">{item.numeroPedidoExibicao}</div>
                           {item.valorPedido != null && Number.isFinite(item.valorPedido) ? (
-                            <div className="mt-0.5 text-xs font-normal text-slate-500 dark:text-slate-400">
+                            <div className="mt-0.5 break-words whitespace-normal text-[10px] font-normal tabular-nums text-slate-500 dark:text-slate-400">
                               {formatarBRL(item.valorPedido)}
                             </div>
                           ) : null}
                         </td>
-                        <td className="px-3 py-2.5 align-middle">
-                          <div>{item.statusNomusLabel ?? '—'}</div>
+                        <td className="max-w-[9rem] px-2 py-1.5 align-middle">
+                          <div
+                            className="break-words whitespace-normal leading-snug"
+                            title={item.statusNomusLabel ?? undefined}
+                          >
+                            {item.statusNomusLabel ?? '—'}
+                          </div>
                           {item.aguardandoConfirmacaoNomus && (
-                            <span className="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                              Rascunho — aguardando confirmação no Nomus
+                            <span
+                              className="mt-0.5 inline-block rounded bg-amber-100 px-1 py-px text-[10px] font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                              title="Rascunho — aguardando confirmação no Nomus"
+                            >
+                              Rascunho · Nomus
                             </span>
                           )}
                           {item.emailAcaoEnviado && (
-                            <span className="mt-1 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                              E-mail de ação enviado
+                            <span className="mt-0.5 inline-block rounded bg-emerald-100 px-1 py-px text-[10px] font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                              E-mail ok
                             </span>
                           )}
                         </td>
                         {isPrimeira && (
                           <td
                             rowSpan={rowSpan}
-                            className="border-x border-slate-100 px-3 py-2.5 align-middle whitespace-nowrap dark:border-slate-700"
+                            className="border-x border-slate-100 px-2 py-1.5 align-middle dark:border-slate-700"
                           >
-                            <div className="font-medium">
+                            <div className="break-words whitespace-normal font-medium tabular-nums leading-snug">
                               {formatarBRL(primeiro.totalAtraso)}
                             </div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                              {primeiro.qtdTitulosAtraso ?? 0} título(s)
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                              {primeiro.qtdTitulosAtraso ?? 0} tít.
                               {primeiro.maiorAtrasoDias != null
                                 ? ` · ${primeiro.maiorAtrasoDias}d`
                                 : ''}
                             </div>
                             {primeiro.regularizacaoSituacaoLabel && (
                               <div
-                                className={`mt-1 text-[11px] font-medium ${
+                                className={`mt-0.5 text-[10px] font-medium ${
                                   primeiro.regularizacaoSituacao === 'REGULARIZADO'
                                     ? 'text-emerald-700 dark:text-emerald-400'
                                     : 'text-amber-700 dark:text-amber-400'
@@ -1124,18 +1219,18 @@ export default function PendenciasCreditoPanel({
                           (() => {
                             const contas = primeiro.contasAcompanhamento ?? [];
                             const cellClass =
-                              'border-r border-slate-100 px-3 py-2.5 align-middle dark:border-slate-700';
+                              'border-r border-slate-100 px-2 py-1.5 align-middle dark:border-slate-700';
                             if (contas.length === 0) {
                               return (
                                 <>
                                   <td rowSpan={rowSpan} className={cellClass}>
-                                    <span className="text-xs text-slate-400">—</span>
+                                    <span className="text-[10px] text-slate-400">—</span>
                                   </td>
                                   <td rowSpan={rowSpan} className={cellClass}>
-                                    <span className="text-xs text-slate-400">—</span>
+                                    <span className="text-[10px] text-slate-400">—</span>
                                   </td>
                                   <td rowSpan={rowSpan} className={cellClass}>
-                                    <span className="text-xs text-slate-400">—</span>
+                                    <span className="text-[10px] text-slate-400">—</span>
                                   </td>
                                 </>
                               );
@@ -1143,11 +1238,11 @@ export default function PendenciasCreditoPanel({
                             return (
                               <>
                                 <td rowSpan={rowSpan} className={cellClass}>
-                                  <ul className="space-y-1.5">
+                                  <ul className="space-y-0.5">
                                     {contas.map((c) => (
                                       <li
                                         key={c.codigoConta}
-                                        className="whitespace-nowrap text-xs font-medium tabular-nums"
+                                        className="whitespace-nowrap text-[11px] font-medium tabular-nums"
                                       >
                                         {c.codigoConta}
                                       </li>
@@ -1155,11 +1250,11 @@ export default function PendenciasCreditoPanel({
                                   </ul>
                                 </td>
                                 <td rowSpan={rowSpan} className={cellClass}>
-                                  <ul className="space-y-1.5">
+                                  <ul className="space-y-0.5">
                                     {contas.map((c) => (
                                       <li
                                         key={`v-${c.codigoConta}`}
-                                        className="whitespace-nowrap text-xs tabular-nums"
+                                        className="whitespace-nowrap text-[11px] tabular-nums"
                                       >
                                         {formatarDataCurta(c.dataVencimento)}
                                       </li>
@@ -1167,11 +1262,11 @@ export default function PendenciasCreditoPanel({
                                   </ul>
                                 </td>
                                 <td rowSpan={rowSpan} className={cellClass}>
-                                  <ul className="space-y-1.5">
+                                  <ul className="space-y-0.5">
                                     {contas.map((c) => (
                                       <li key={`s-${c.codigoConta}`}>
                                         <span
-                                          className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${
+                                          className={`inline-block rounded px-1 py-px text-[10px] font-medium ${
                                             c.status === 'REGULARIZADO'
                                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
                                               : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
@@ -1186,33 +1281,40 @@ export default function PendenciasCreditoPanel({
                               </>
                             );
                           })()}
-                        <td className="min-w-[11rem] px-3 py-2.5 align-middle">
+                        <td className="min-w-[9.5rem] max-w-[11rem] px-2 py-1.5 align-middle">
                           {situacaoFila === 'REGULARIZADOS' ? (
                             <div>
-                              <div className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+                              <div className="break-words whitespace-normal font-medium leading-snug text-emerald-800 dark:text-emerald-300">
                                 Confirmar liberação
                               </div>
-                              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                              <div className="mt-0.5 break-words whitespace-normal text-[10px] leading-snug text-slate-500 dark:text-slate-400">
                                 {item.acaoLabel ?? 'Pausado / realocado'}
                                 {item.acaoPorNome || item.acaoPorLogin
                                   ? ` · ${item.acaoPorNome || item.acaoPorLogin}`
                                   : ''}
                               </div>
-                              <p className="mt-1 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
-                                Libere o pedido no Nomus e confirme aqui.
-                              </p>
                             </div>
                           ) : situacaoFila === 'FINALIZADOS' ? (
                             <div>
-                              <div className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                              <div className="break-words whitespace-normal font-medium leading-snug text-slate-800 dark:text-slate-200">
                                 {item.acaoLabel ?? '—'}
                               </div>
-                              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                              <div className="mt-0.5 break-words whitespace-normal text-[10px] leading-snug text-slate-500 dark:text-slate-400">
                                 Encerrado
                                 {item.acaoPorNome || item.acaoPorLogin
                                   ? ` · ${item.acaoPorNome || item.acaoPorLogin}`
                                   : ''}
                               </div>
+                              {item.temPdfAssinado ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleBaixarPdfAssinado(item)}
+                                  className="mt-0.5 block max-w-full break-words whitespace-normal text-left text-[10px] font-medium leading-snug text-blue-700 hover:underline dark:text-blue-400"
+                                  title={item.pdfAssinadoNome ?? 'PDF assinado'}
+                                >
+                                  PDF: {item.pdfAssinadoNome ?? 'Ver'}
+                                </button>
+                              ) : null}
                             </div>
                           ) : (
                             <>
@@ -1225,7 +1327,7 @@ export default function PendenciasCreditoPanel({
                                     [item.id]: value,
                                   }));
                                 }}
-                                className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                                className="w-full rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                               >
                                 <option value="">Aguardando ação…</option>
                                 {ACOES.map((a) => (
@@ -1235,44 +1337,105 @@ export default function PendenciasCreditoPanel({
                                 ))}
                               </select>
                               {item.acaoLabel && (
-                                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                <div
+                                  className="mt-0.5 break-words whitespace-normal text-[10px] leading-snug text-slate-500 dark:text-slate-400"
+                                  title={`Salvo: ${item.acaoLabel}${
+                                    item.acaoPorNome || item.acaoPorLogin
+                                      ? ` · ${item.acaoPorNome || item.acaoPorLogin}`
+                                      : ''
+                                  }`}
+                                >
                                   Salvo: {item.acaoLabel}
                                   {item.acaoPorNome || item.acaoPorLogin
                                     ? ` · ${item.acaoPorNome || item.acaoPorLogin}`
                                     : ''}
                                 </div>
                               )}
+                              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                {item.temPdfAssinado ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleBaixarPdfAssinado(item)}
+                                      className="max-w-full break-words whitespace-normal text-left text-[10px] font-medium leading-snug text-blue-700 hover:underline dark:text-blue-400"
+                                      title={item.pdfAssinadoNome ?? 'PDF assinado'}
+                                    >
+                                      PDF: {item.pdfAssinadoNome ?? 'Ver'}
+                                    </button>
+                                    {!item.emailAcaoEnviado && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleRemoverPdfAssinado(item)}
+                                        disabled={pdfUploadingId === item.id}
+                                        className="text-[10px] text-red-600 hover:underline disabled:opacity-50 dark:text-red-400"
+                                      >
+                                        Remover
+                                      </button>
+                                    )}
+                                  </>
+                                ) : (
+                                  <label
+                                    className="inline-flex cursor-pointer items-center text-[10px] font-medium text-emerald-800 hover:text-emerald-950 dark:text-emerald-300 dark:hover:text-emerald-200"
+                                    title={
+                                      precisaPdfParaConfirmar(item, acaoSel)
+                                        ? 'Obrigatório para confirmar (após Nomus / Seguir produção)'
+                                        : 'Anexar PDF assinado pelo gestor'
+                                    }
+                                  >
+                                    <input
+                                      type="file"
+                                      accept="application/pdf,.pdf"
+                                      className="sr-only"
+                                      disabled={pdfUploadingId === item.id}
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0] ?? null;
+                                        e.target.value = '';
+                                        void handleAnexarPdfAssinado(item, file);
+                                      }}
+                                    />
+                                    {pdfUploadingId === item.id
+                                      ? 'Enviando…'
+                                      : precisaPdfParaConfirmar(item, acaoSel)
+                                        ? 'Anexar PDF *'
+                                        : 'Anexar PDF'}
+                                  </label>
+                                )}
+                              </div>
                             </>
                           )}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 align-middle">
+                        <td className="whitespace-nowrap px-2 py-1.5 align-middle">
                           {(() => {
                             const t = formatarTempoExecucao(item);
                             return (
-                              <div className={`text-xs leading-snug ${t.className}`}>
+                              <div className={`text-[11px] leading-snug ${t.className}`}>
                                 {t.label}
                                 {item.emailSlaEnviado ? (
-                                  <div className="mt-0.5 text-[10px] font-normal text-slate-400">
-                                    Gestor notificado
+                                  <div className="mt-px text-[10px] font-normal text-slate-400">
+                                    Gestor ok
                                   </div>
                                 ) : null}
                               </div>
                             );
                           })()}
                         </td>
-                        <td className="min-w-[14rem] px-3 py-2.5 align-middle">
+                        <td className="min-w-[9rem] max-w-[12rem] px-2 py-1.5 align-middle">
                           {situacaoFila === 'FINALIZADOS' ? (
-                            <div className="text-sm text-slate-600 dark:text-slate-300">
+                            <div
+                              className="break-words whitespace-normal text-[11px] leading-snug text-slate-600 dark:text-slate-300"
+                              title={item.observacao?.trim() || undefined}
+                            >
                               {item.observacao?.trim() || '—'}
                               {item.pedidoDestino ? (
-                                <div className="mt-1 text-xs text-slate-500">
+                                <div className="mt-0.5 break-words text-[10px] text-slate-500">
                                   Destino: {item.pedidoDestino}
                                 </div>
                               ) : null}
                             </div>
                           ) : (
                             <>
-                              <textarea
+                              <input
+                                type="text"
                                 value={draftObs[item.id] ?? ''}
                                 onChange={(e) =>
                                   setDraftObs((prev) => ({
@@ -1280,82 +1443,61 @@ export default function PendenciasCreditoPanel({
                                     [item.id]: e.target.value,
                                   }))
                                 }
-                                rows={2}
-                                placeholder="Observação"
+                                placeholder="Obs."
                                 disabled={situacaoFila === 'REGULARIZADOS'}
-                                className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+                                className="w-full rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-900 placeholder:text-slate-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                               />
                               {situacaoFila === 'REGULARIZADOS' && item.pedidoDestino ? (
-                                <div className="mt-1 text-xs text-slate-500">
+                                <div className="mt-0.5 text-[10px] text-slate-500">
                                   Destino: {item.pedidoDestino}
                                 </div>
                               ) : null}
                             </>
                           )}
                         </td>
-                        {isPrimeira && (
-                          <td
-                            rowSpan={rowSpan}
-                            className="border-l border-slate-100 px-3 py-2.5 align-middle whitespace-nowrap dark:border-slate-700"
-                          >
-                            <div
-                              className="text-base font-semibold tabular-nums text-slate-900 dark:text-slate-100"
-                              title={`${primeiro.qtdEmailsAlerta ?? 0} alerta(s) · ${primeiro.qtdEmailsAcao ?? 0} e-mail(s) de ação`}
-                            >
-                              {primeiro.qtdEmailsTotal ?? 0}
-                            </div>
-                            <div className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
-                              {(primeiro.qtdEmailsAlerta ?? 0) > 0 ||
-                              (primeiro.qtdEmailsAcao ?? 0) > 0 ? (
-                                <>
-                                  {primeiro.qtdEmailsAlerta ?? 0} alerta
-                                  {(primeiro.qtdEmailsAlerta ?? 0) !== 1 ? 's' : ''}
-                                  {' · '}
-                                  {primeiro.qtdEmailsAcao ?? 0} e-mail
-                                  {(primeiro.qtdEmailsAcao ?? 0) !== 1 ? 's' : ''} de ação
-                                </>
-                              ) : (
-                                'nenhum enviado'
-                              )}
-                            </div>
-                            <div className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
-                              Último: {formatarDataHora(primeiro.alertaEm)}
-                            </div>
-                          </td>
-                        )}
-                        <td className="px-3 py-2.5 align-middle">
+                        <td className="px-2 py-1.5 align-middle">
                           {situacaoFila === 'FINALIZADOS' ? (
-                            <span className="text-xs text-slate-400">—</span>
+                            <span className="text-[10px] text-slate-400">—</span>
                           ) : situacaoFila === 'REGULARIZADOS' ? (
                             <button
                               type="button"
                               onClick={() => void handleConfirmarLiberacao(item)}
                               disabled={salvandoId === item.id}
-                              className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+                              className="rounded bg-emerald-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
                             >
                               {salvandoId === item.id
                                 ? 'Confirmando…'
-                                : 'Confirmar liberação'}
+                                : 'Confirmar'}
                             </button>
                           ) : (
                             <button
                               type="button"
                               onClick={() => void handleSalvarAcao(item)}
-                              disabled={salvandoId === item.id || !acaoSel}
-                              className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+                              disabled={
+                                salvandoId === item.id ||
+                                !acaoSel ||
+                                precisaPdfParaConfirmar(item, acaoSel) ||
+                                pdfUploadingId === item.id
+                              }
+                              title={
+                                precisaPdfParaConfirmar(item, acaoSel)
+                                  ? 'Anexe o PDF assinado pelo gestor antes de confirmar'
+                                  : undefined
+                              }
+                              className="rounded bg-blue-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
                             >
                               {salvandoId === item.id
                                 ? 'Salvando…'
                                 : item.aguardandoConfirmacaoNomus
-                                  ? 'Confirmar / salvar'
-                                  : 'Salvar ação'}
+                                  ? 'Confirmar'
+                                  : 'Salvar'}
                             </button>
                           )}
                         </td>
                         {isPrimeira && (
                           <td
                             rowSpan={rowSpan}
-                            className="border-l border-slate-100 px-3 py-2.5 text-center align-middle dark:border-slate-700"
+                            className="border-l border-slate-100 px-2 py-1.5 text-center align-middle dark:border-slate-700"
                           >
                             <button
                               type="button"
@@ -1363,14 +1505,28 @@ export default function PendenciasCreditoPanel({
                                 void abrirHistoricoCliente(
                                   grupo.clienteNome,
                                   primeiro.clienteChave,
+                                  {
+                                    qtdEmailsAlerta: primeiro.qtdEmailsAlerta ?? 0,
+                                    qtdEmailsAcao: primeiro.qtdEmailsAcao ?? 0,
+                                    qtdEmailsTotal: primeiro.qtdEmailsTotal ?? 0,
+                                    qtdAcoesRegistradas: primeiro.qtdAcoesRegistradas ?? 0,
+                                    alertaEm: primeiro.alertaEm ?? null,
+                                  },
                                 )
                               }
                               disabled={carregandoHistorico}
-                              className="inline-flex items-center justify-center rounded-lg p-2 text-slate-600 hover:bg-slate-100 hover:text-blue-700 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-400"
-                              title={`Histórico de ${grupo.clienteNome}`}
-                              aria-label={`Histórico de ${grupo.clienteNome}`}
+                              className="relative inline-flex items-center justify-center rounded-lg p-2 text-slate-600 hover:bg-slate-100 hover:text-blue-700 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+                              title={`Histórico e e-mails de ${grupo.clienteNome}`}
+                              aria-label={`Histórico e e-mails de ${grupo.clienteNome}`}
                             >
                               <Clock className="h-5 w-5" aria-hidden />
+                              {(primeiro.qtdEmailsTotal ?? 0) > 0 ? (
+                                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold leading-none text-white">
+                                  {primeiro.qtdEmailsTotal > 99
+                                    ? '99+'
+                                    : primeiro.qtdEmailsTotal}
+                                </span>
+                              ) : null}
                             </button>
                           </td>
                         )}
@@ -1384,14 +1540,15 @@ export default function PendenciasCreditoPanel({
         </div>
       </section>
 
-      {historicoCliente && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="historico-pendencia-titulo"
-          onClick={() => setHistoricoCliente(null)}
-        >
+      {historicoCliente &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/50 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="historico-pendencia-titulo"
+            onClick={() => setHistoricoCliente(null)}
+          >
           <div
             className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
             onClick={(e) => e.stopPropagation()}
@@ -1417,7 +1574,31 @@ export default function PendenciasCreditoPanel({
               </button>
             </div>
 
-            <div className="overflow-y-auto px-6 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+              <div className="mb-4 grid grid-cols-2 gap-2">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    E-mails enviados
+                  </div>
+                  <div className="mt-0.5 text-xl font-semibold tabular-nums text-blue-700 dark:text-blue-400">
+                    {historicoCliente.qtdEmailsTotal}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Ações tomadas
+                  </div>
+                  <div className="mt-0.5 text-xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                    {historicoCliente.qtdAcoesRegistradas}
+                  </div>
+                </div>
+              </div>
+              {historicoCliente.alertaEm ? (
+                <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                  Último alerta: {formatarDataHora(historicoCliente.alertaEm)}
+                </p>
+              ) : null}
+
               {historicoCliente.eventos.length === 0 ? (
                 <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
                   Nenhum e-mail enviado ou ação registrada para este cliente.
@@ -1432,13 +1613,15 @@ export default function PendenciasCreditoPanel({
                     const isAcao =
                       ev.tipo === 'ACAO' ||
                       ev.tipo === 'LIBERACAO' ||
-                      ev.tipo === 'FINALIZADO';
+                      ev.tipo === 'FINALIZADO' ||
+                      ev.tipo === 'PDF_ASSINADO';
                     const mostrarPedido =
                       Boolean(ev.numeroPedidoExibicao) &&
                       (ev.tipo === 'ACAO' ||
                         ev.tipo === 'EMAIL' ||
                         ev.tipo === 'LIBERACAO' ||
-                        ev.tipo === 'FINALIZADO');
+                        ev.tipo === 'FINALIZADO' ||
+                        ev.tipo === 'PDF_ASSINADO');
                     return (
                     <li
                       key={`${ev.tipo}-${ev.id}-${ev.createdAt}`}
@@ -1482,20 +1665,22 @@ export default function PendenciasCreditoPanel({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
-      {(clienteContasModal || carregandoContas) && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="contas-pendencia-titulo"
-          onClick={() => {
-            setClienteContasModal(null);
-            setMonitorContas(null);
-          }}
-        >
+      {(clienteContasModal || carregandoContas) &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/50 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contas-pendencia-titulo"
+            onClick={() => {
+              setClienteContasModal(null);
+              setMonitorContas(null);
+            }}
+          >
           <div
             className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
             onClick={(e) => e.stopPropagation()}
@@ -1527,7 +1712,7 @@ export default function PendenciasCreditoPanel({
               </button>
             </div>
 
-            <div className="overflow-y-auto px-6 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
               {carregandoContas ? (
                 <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
                   Carregando contas…
@@ -1590,7 +1775,8 @@ export default function PendenciasCreditoPanel({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
