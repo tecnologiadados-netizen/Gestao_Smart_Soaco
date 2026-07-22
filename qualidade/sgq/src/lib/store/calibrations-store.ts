@@ -180,18 +180,39 @@ export const useCalibrationsStore = create<CalibrationsState>()(
 
       updateEquipment: (id, input) => {
         set((state) => ({
-          equipment: state.equipment.map((e) =>
-            e.id === id
-              ? {
-                  ...e,
-                  ...input,
-                  fornecedor: input.fornecedor?.trim() || undefined,
-                  laudoNome: input.laudoNome?.trim() || undefined,
-                  laudoDataUrl: input.laudoDataUrl?.trim() || undefined,
-                  anexos: input.anexos?.length ? input.anexos : undefined,
-                }
-              : e
-          ),
+          equipment: state.equipment.map((e) => {
+            if (e.id !== id) return e;
+
+            const next: Equipment = {
+              ...e,
+              descricao: input.descricao,
+              local: input.local,
+              setorId: input.setorId,
+              responsavelId: input.responsavelId,
+              fornecedor: input.fornecedor?.trim() || undefined,
+              tipoCalibracao: input.tipoCalibracao,
+              frequenciaCalibracaoDias: input.frequenciaCalibracaoDias,
+              frequenciaVerificacaoDias: input.frequenciaVerificacaoDias,
+              ultimaCalibracao: input.ultimaCalibracao,
+              ultimaVerificacao: input.ultimaVerificacao,
+              ativo: input.ativo,
+            };
+
+            // Nunca zerar laudo ao salvar cadastro sem anexar arquivo de novo.
+            if (input.laudoNome !== undefined) {
+              next.laudoNome = input.laudoNome.trim() || undefined;
+            }
+            if (input.laudoDataUrl !== undefined) {
+              next.laudoDataUrl = input.laudoDataUrl.trim() || undefined;
+            }
+            if (input.anexos !== undefined) {
+              const anexos = input.anexos.length ? input.anexos : undefined;
+              next.anexos = anexos;
+              next.laudoAnexos = anexos;
+            }
+
+            return next;
+          }),
         }));
       },
 

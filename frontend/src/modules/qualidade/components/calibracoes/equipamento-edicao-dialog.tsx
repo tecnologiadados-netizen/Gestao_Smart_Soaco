@@ -13,9 +13,11 @@ import {
   SelectValue,
 } from "@qualidade/components/ui/select";
 import { CalibracaoHistoricoSection } from "@qualidade/components/calibracoes/calibracao-historico-section";
+import { DocumentoArquivoField } from "@qualidade/components/documentos/documento-arquivo-field";
 import { FornecedorSearchField } from "@qualidade/components/avaliacao-fornecedor/fornecedor-search-field";
 import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
+import { flushQualidadeCalibrationsSync } from "@qualidade/lib/qualidadePersistence";
 import {
   departmentSelectLabel,
   tipoCalibracaoSelectLabel,
@@ -64,6 +66,8 @@ export function EquipamentoEdicaoDialog({
   const [freqVer, setFreqVer] = useState("90");
   const [ultimaCalibracao, setUltimaCalibracao] = useState("");
   const [ultimaVerificacao, setUltimaVerificacao] = useState("");
+  const [laudoNome, setLaudoNome] = useState("");
+  const [laudoDataUrl, setLaudoDataUrl] = useState("");
   const [error, setError] = useState("");
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
   const [confirmarInativacao, setConfirmarInativacao] = useState(false);
@@ -86,6 +90,8 @@ export function EquipamentoEdicaoDialog({
     setFreqVer(String(equipment.frequenciaVerificacaoDias));
     setUltimaCalibracao(isoToDateInput(equipment.ultimaCalibracao));
     setUltimaVerificacao(isoToDateInput(equipment.ultimaVerificacao));
+    setLaudoNome("");
+    setLaudoDataUrl("");
     setError("");
   }, [open, equipment]);
 
@@ -122,8 +128,36 @@ export function EquipamentoEdicaoDialog({
         ? new Date(ultimaVerificacao).toISOString()
         : undefined,
       ativo: equipment.ativo,
+      ...(laudoNome.trim() && laudoDataUrl.trim()
+        ? {
+            laudoNome: laudoNome.trim(),
+            laudoDataUrl: laudoDataUrl.trim(),
+          }
+        : {}),
+    });
+    void flushQualidadeCalibrationsSync().catch((err) => {
+      console.error("[qualidade] falha ao persistir equipamento:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Alterações salvas localmente, mas falhou ao gravar no servidor."
+      );
     });
     handleClose();
+  }
+
+  function handleLaudoSelect(file: File) {
+    if (file.size > 5 * 1024 * 1024) {
+      setError("O arquivo excede o limite de 5 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setLaudoNome(file.name);
+      setLaudoDataUrl(reader.result as string);
+      setError("");
+    };
+    reader.readAsDataURL(file);
   }
 
   function handleInativar() {
@@ -375,6 +409,31 @@ export function EquipamentoEdicaoDialog({
               </fieldset>
 
               <CalibracaoHistoricoSection equipment={equipment} />
+
+              {!somenteLeitura ? (
+                <fieldset className="brand-fieldset space-y-3">
+                  <legend>Laudo vigente</legend>
+                  <p className="text-sm text-muted-foreground">
+                    {equipment.laudoNome
+                      ? "Anexe um arquivo para substituir o laudo atual (sem gerar nova versão de calibração)."
+                      : "Anexe o laudo vigente caso ainda não tenha sido registrado."}
+                  </p>
+                  <DocumentoArquivoField
+                    label={
+                      equipment.laudoNome
+                        ? "Substituir laudo"
+                        : "Anexar laudo *"
+                    }
+                    arquivoNome={laudoNome}
+                    arquivoDataUrl={laudoDataUrl}
+                    onSelect={handleLaudoSelect}
+                    onClear={() => {
+                      setLaudoNome("");
+                      setLaudoDataUrl("");
+                    }}
+                  />
+                </fieldset>
+              ) : null}
 
               {error ? (
                 <p className="text-sm text-destructive" role="alert">

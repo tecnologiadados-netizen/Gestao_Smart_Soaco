@@ -72,6 +72,13 @@ export function cancelQualidadeRegistrosDebounce(): void {
   }
 }
 
+export function cancelQualidadeCalibrationsDebounce(): void {
+  if (syncTimers.calibrations) {
+    clearTimeout(syncTimers.calibrations);
+    delete syncTimers.calibrations;
+  }
+}
+
 function syncRegistrosStateNow(): Promise<void> {
   const { registros } = useRegistrosStore.getState();
   return syncQualidadeRegistros(registros).then(() => undefined);
@@ -126,6 +133,26 @@ export function flushQualidadeDocumentsSync(): Promise<void> {
   });
 }
 
+function syncCalibrationsStateNow(): Promise<void> {
+  const { equipment, calibrationRecords, verificationRecords, tasks } =
+    useCalibrationsStore.getState();
+  return syncQualidadeCalibrations({
+    equipment,
+    calibrationRecords,
+    verificationRecords,
+    tasks,
+  }).then(() => undefined);
+}
+
+/** Persiste calibrações/equipamentos imediatamente (ex.: após registrar laudo). */
+export function flushQualidadeCalibrationsSync(): Promise<void> {
+  cancelQualidadeCalibrationsDebounce();
+  return syncCalibrationsStateNow().catch((err) => {
+    console.error('[qualidade-sync] calibrations flush:', err);
+    throw err;
+  });
+}
+
 function flushPendingSyncs() {
   cancelQualidadeDocumentsDebounce();
   void syncDocumentsStateNow().catch((err) =>
@@ -134,6 +161,10 @@ function flushPendingSyncs() {
   cancelQualidadeRegistrosDebounce();
   void syncRegistrosStateNow().catch((err) =>
     console.error('[qualidade-sync] pagehide registros:', err)
+  );
+  cancelQualidadeCalibrationsDebounce();
+  void syncCalibrationsStateNow().catch((err) =>
+    console.error('[qualidade-sync] pagehide calibrations:', err)
   );
   const { departments, documentTypes, enderecamentos } = useConfigStore.getState();
   void flushConfigToServer({ departments, documentTypes }).catch((err) =>

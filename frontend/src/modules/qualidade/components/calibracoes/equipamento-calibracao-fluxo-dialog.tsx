@@ -19,6 +19,7 @@ import {
 import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { getQualidadeCurrentUserId } from "@qualidade/lib/current-user";
+import { flushQualidadeCalibrationsSync } from "@qualidade/lib/qualidadePersistence";
 import {
   calcularDueStatus,
   calcularProximaData,
@@ -180,6 +181,15 @@ export function EquipamentoCalibracaoFluxoDialog({
       laudoNome: laudoNome.trim(),
       laudoDataUrl: laudoDataUrl.trim(),
       anexos: anexosPreenchidos(anexos),
+    });
+
+    void flushQualidadeCalibrationsSync().catch((err) => {
+      console.error("[qualidade] falha ao persistir calibração:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Calibração salva localmente, mas falhou ao gravar no servidor."
+      );
     });
 
     setCalibracaoRegistrada(true);

@@ -1087,10 +1087,15 @@ export async function syncQualidadeCalibrations(payload: {
         ultimaCalibracao: eq.ultimaCalibracao ? String(eq.ultimaCalibracao) : null,
         ultimaVerificacao: eq.ultimaVerificacao ? String(eq.ultimaVerificacao) : null,
         proximaCalibracao: eq.proximaCalibracao ? String(eq.proximaCalibracao) : null,
-        laudoNome,
+        // Preserva laudo existente quando o sync não traz arquivo novo / nome vazio.
+        ...(laudoNome ? { laudoNome } : {}),
         ...(laudoStoragePath ? { laudoStoragePath } : {}),
-        versaoLaudoAtual: eq.versaoLaudoAtual ? String(eq.versaoLaudoAtual) : null,
-        anexosJson: eq.laudoAnexos ? JSON.stringify(eq.laudoAnexos) : null,
+        ...(eq.versaoLaudoAtual
+          ? { versaoLaudoAtual: String(eq.versaoLaudoAtual) }
+          : {}),
+        ...(eq.laudoAnexos !== undefined
+          ? { anexosJson: eq.laudoAnexos ? JSON.stringify(eq.laudoAnexos) : null }
+          : {}),
         ativo: eq.ativo !== false,
       },
     });
@@ -1134,9 +1139,11 @@ export async function syncQualidadeCalibrations(payload: {
         resultado: String(cal.resultado ?? 'aprovado'),
         responsavelLogin: String(cal.responsavelId ?? ''),
         laboratorio: cal.laboratorio ? String(cal.laboratorio) : null,
-        laudoNome,
+        ...(laudoNome ? { laudoNome } : {}),
         ...(laudoStoragePath ? { laudoStoragePath } : {}),
-        anexosJson: cal.anexos ? JSON.stringify(cal.anexos) : null,
+        ...(cal.anexos !== undefined
+          ? { anexosJson: cal.anexos ? JSON.stringify(cal.anexos) : null }
+          : {}),
         observacoes: cal.observacoes ? String(cal.observacoes) : null,
       },
     });
