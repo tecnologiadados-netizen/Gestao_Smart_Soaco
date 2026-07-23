@@ -15,8 +15,161 @@ import {
   deleteQualidadeAnexoIfExists,
   readQualidadeAnexoAsDataUrl,
   saveQualidadeAnexo,
+  saveQualidadeAnexoIfChanged,
   type IncomingQualidadeAnexo,
 } from '../utils/qualidadeUpload.js';
+
+type AnexoStored = {
+  nome: string;
+  storagePath?: string;
+  dataUrl?: string;
+};
+
+/**
+ * Persiste anexos complementares em disco e grava só { nome, storagePath } no JSON.
+ * Nunca apaga anexos existentes quando o payload vem vazio ou sem conteúdo utilizável.
+ */
+function persistAnexosToDisk(
+  subdir: string,
+  incoming: unknown,
+  existingJson: string | null | undefined
+): { json: string | null; touched: boolean } {
+  if (incoming === undefined) {
+    return { json: existingJson ?? null, touched: false };
+  }
+
+  const existing = parseJson<AnexoStored[]>(existingJson, []);
+  if (!Array.isArray(incoming)) {
+    return { json: existingJson ?? null, touched: false };
+  }
+
+  if (incoming.length === 0) {
+    if (existing.length > 0) {
+      console.warn(
+        '[qualidade] ignorando lista de anexos vazia para não apagar existentes:',
+        subdir
+      );
+      return { json: existingJson ?? null, touched: false };
+    }
+    return { json: null, touched: true };
+  }
+
+  const result: Array<{ nome: string; storagePath: string }> = [];
+  for (const raw of incoming) {
+    if (!raw || typeof raw !== 'object') continue;
+    const item = raw as AnexoStored;
+    const nome = String(item.nome ?? '').trim();
+    if (!nome) continue;
+
+    const dataUrl = typeof item.dataUrl === 'string' ? item.dataUrl : '';
+    const pathHint = typeof item.storagePath === 'string' ? item.storagePath : '';
+    const prevByPath = existing.find((e) => e.storagePath && e.storagePath === pathHint);
+    const prevByNome = existing.find((e) => e.nome === nome && e.storagePath);
+
+    if (dataUrl.startsWith('data:')) {
+      const file = extractBase64(dataUrl);
+      if (file) {
+        file.fileName = nome;
+        try {
+          const saved = saveQualidadeAnexoIfChanged(
+            subdir,
+            file,
+            prevByPath?.storagePath ?? prevByNome?.storagePath ?? (pathHint || null)
+          );
+          result.push({ nome, storagePath: saved.storagePath });
+          continue;
+        } catch (err) {
+          console.warn('[qualidade] anexo ignorado no sync:', subdir, nome, err);
+        }
+      }
+    }
+
+    if (prevByPath?.storagePath) {
+      result.push({ nome, storagePath: prevByPath.storagePath });
+      continue;
+    }
+    if (prevByNome?.storagePath) {
+      result.push({ nome, storagePath: prevByNome.storagePath });
+      continue;
+    }
+    if (pathHint.startsWith('/uploads/qualidade/')) {
+      result.push({ nome, storagePath: pathHint });
+    }
+  }
+
+  if (result.length === 0 && existing.length > 0) {
+    return { json: existingJson ?? null, touched: false };
+  }
+
+  return { json: JSON.stringify(result), touched: true };
+}
+
+function mapAnexosFromJson(anexosJson: string | null | undefined): Array<{
+  nome: string;
+  dataUrl: string;
+  storagePath?: string;
+}> {
+  const anexos = parseJson<AnexoStored[]>(anexosJson, []);
+  const mapped = anexos
+    .map((a) => {
+      const nome = String(a.nome ?? '').trim();
+      if (!nome) return null;
+      const storagePath = a.storagePath?.startsWith('/uploads/qualidade/')
+        ? a.storagePath
+        : undefined;
+      const dataUrl = storagePath
+        ? readQualidadeAnexoAsDataUrl(storagePath) ?? ''
+        : a.dataUrl ?? '';
+      return {
+        nome,
+        dataUrl,
+        ...(storagePath ? { storagePath } : {}),
+      };
+    })
+    .filter((a): a is { nome: string; dataUrl: string; storagePath?: string } => a != null);
+  return mapped;
+}
+
+/** Migra anexos antigos (base64 embutido no JSON) para arquivos em disco — sem apagar nada. */
+async function migrateEmbeddedAnexosToDisk(): Promise<void> {
+  const equipamentos = await prisma.sgqEquipamento.findMany({
+    select: { id: true, uid: true, anexosJson: true },
+  });
+  for (const eq of equipamentos) {
+    const parsed = parseJson<AnexoStored[]>(eq.anexosJson, []);
+    if (!parsed.some((a) => a.dataUrl?.startsWith('data:') && !a.storagePath)) continue;
+    const { json, touched } = persistAnexosToDisk(
+      `equipamentos/${eq.uid}/anexos`,
+      parsed,
+      eq.anexosJson
+    );
+    if (touched && json !== eq.anexosJson) {
+      await prisma.sgqEquipamento.update({
+        where: { id: eq.id },
+        data: { anexosJson: json },
+      });
+    }
+  }
+
+  const calibracoes = await prisma.sgqCalibracao.findMany({
+    select: { id: true, uid: true, anexosJson: true },
+  });
+  for (const cal of calibracoes) {
+    const parsed = parseJson<AnexoStored[]>(cal.anexosJson, []);
+    if (!parsed.some((a) => a.dataUrl?.startsWith('data:') && !a.storagePath)) continue;
+    const { json, touched } = persistAnexosToDisk(
+      `calibracoes/${cal.uid}/anexos`,
+      parsed,
+      cal.anexosJson
+    );
+    if (touched && json !== cal.anexosJson) {
+      await prisma.sgqCalibracao.update({
+        where: { id: cal.id },
+        data: { anexosJson: json },
+      });
+    }
+  }
+}
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
@@ -214,10 +367,7 @@ function mapEquipamento(row: {
   anexosJson: string | null;
   ativo: boolean;
 }) {
-  const anexos = parseJson<Array<{ nome: string; dataUrl?: string; storagePath?: string }>>(
-    row.anexosJson,
-    []
-  );
+  const anexos = mapAnexosFromJson(row.anexosJson);
   return {
     id: row.uid,
     codigo: row.codigo,
@@ -236,10 +386,9 @@ function mapEquipamento(row: {
     laudoDataUrl: row.laudoStoragePath
       ? readQualidadeAnexoAsDataUrl(row.laudoStoragePath) ?? undefined
       : undefined,
-    laudoAnexos: anexos.map((a) => ({
-      nome: a.nome,
-      dataUrl: a.storagePath ? readQualidadeAnexoAsDataUrl(a.storagePath) ?? '' : a.dataUrl ?? '',
-    })),
+    ...(anexos.length
+      ? { laudoAnexos: anexos, anexos }
+      : {}),
     versaoLaudoAtual: row.versaoLaudoAtual ?? undefined,
     ativo: row.ativo,
   };
@@ -259,10 +408,7 @@ function mapCalibracao(row: {
   anexosJson: string | null;
   observacoes: string | null;
 }) {
-  const anexos = parseJson<Array<{ nome: string; storagePath?: string; dataUrl?: string }>>(
-    row.anexosJson,
-    []
-  );
+  const anexos = mapAnexosFromJson(row.anexosJson);
   return {
     id: row.uid,
     equipmentId: row.equipamento.uid,
@@ -276,10 +422,7 @@ function mapCalibracao(row: {
     laudoDataUrl: row.laudoStoragePath
       ? readQualidadeAnexoAsDataUrl(row.laudoStoragePath) ?? undefined
       : undefined,
-    anexos: anexos.map((a) => ({
-      nome: a.nome,
-      dataUrl: a.storagePath ? readQualidadeAnexoAsDataUrl(a.storagePath) ?? '' : a.dataUrl ?? '',
-    })),
+    ...(anexos.length ? { anexos } : {}),
     observacoes: row.observacoes ?? undefined,
   };
 }
@@ -374,6 +517,8 @@ function mapTarefa(row: {
 export async function getQualidadeBootstrap() {
   await ensureSgqCatalogosSeed();
   await ensureSgqHistoricoSeed();
+  // Anexos antigos em base64 no JSON → disco (não apaga; só reorganiza).
+  await migrateEmbeddedAnexosToDisk();
 
   const [
     setores,
@@ -1035,6 +1180,8 @@ export async function syncQualidadeCalibrations(payload: {
   verificationRecords: Array<Record<string, unknown>>;
   tasks: Array<Record<string, unknown>>;
 }) {
+  await migrateEmbeddedAnexosToDisk();
+
   const eqUidToId = new Map<string, number>();
   const equipmentUids = [
     ...new Set(
@@ -1074,17 +1221,34 @@ export async function syncQualidadeCalibrations(payload: {
     const codigo = String(eq.codigo ?? '');
     if (!uid || !codigo) continue;
 
+    const existing = await prisma.sgqEquipamento.findUnique({
+      where: { uid },
+      select: { laudoStoragePath: true, anexosJson: true },
+    });
+
     let laudoStoragePath: string | null = null;
     const laudoNome = eq.laudoNome ? String(eq.laudoNome) : null;
     const laudoIncoming = extractBase64(eq.laudoDataUrl as string | undefined);
     if (laudoIncoming && laudoNome) {
       laudoIncoming.fileName = laudoNome;
       try {
-        laudoStoragePath = saveQualidadeAnexo(`equipamentos/${uid}`, laudoIncoming).storagePath;
+        laudoStoragePath = saveQualidadeAnexoIfChanged(
+          `equipamentos/${uid}`,
+          laudoIncoming,
+          existing?.laudoStoragePath
+        ).storagePath;
       } catch (err) {
         console.warn('[qualidade] laudo do equipamento ignorado no sync:', uid, err);
       }
     }
+
+    const anexosIncoming =
+      eq.laudoAnexos !== undefined ? eq.laudoAnexos : eq.anexos;
+    const anexosPersist = persistAnexosToDisk(
+      `equipamentos/${uid}/anexos`,
+      anexosIncoming,
+      existing?.anexosJson
+    );
 
     const setorUid = await resolveSetorUid(String(eq.setorId ?? ''));
 
@@ -1107,7 +1271,7 @@ export async function syncQualidadeCalibrations(payload: {
         laudoNome,
         laudoStoragePath,
         versaoLaudoAtual: eq.versaoLaudoAtual ? String(eq.versaoLaudoAtual) : null,
-        anexosJson: eq.laudoAnexos ? JSON.stringify(eq.laudoAnexos) : null,
+        anexosJson: anexosPersist.json,
         ativo: eq.ativo !== false,
       },
       update: {
@@ -1129,9 +1293,7 @@ export async function syncQualidadeCalibrations(payload: {
         ...(eq.versaoLaudoAtual
           ? { versaoLaudoAtual: String(eq.versaoLaudoAtual) }
           : {}),
-        ...(eq.laudoAnexos !== undefined
-          ? { anexosJson: eq.laudoAnexos ? JSON.stringify(eq.laudoAnexos) : null }
-          : {}),
+        ...(anexosPersist.touched ? { anexosJson: anexosPersist.json } : {}),
         ativo: eq.ativo !== false,
       },
     });
@@ -1144,17 +1306,32 @@ export async function syncQualidadeCalibrations(payload: {
     const eqPk = eqUidToId.get(equipmentId);
     if (!uid || !eqPk) continue;
 
+    const existingCal = await prisma.sgqCalibracao.findUnique({
+      where: { uid },
+      select: { laudoStoragePath: true, anexosJson: true },
+    });
+
     let laudoStoragePath: string | null = null;
     const laudoNome = cal.laudoNome ? String(cal.laudoNome) : null;
     const incoming = extractBase64(cal.laudoDataUrl as string | undefined);
     if (incoming && laudoNome) {
       incoming.fileName = laudoNome;
       try {
-        laudoStoragePath = saveQualidadeAnexo(`calibracoes/${uid}`, incoming).storagePath;
+        laudoStoragePath = saveQualidadeAnexoIfChanged(
+          `calibracoes/${uid}`,
+          incoming,
+          existingCal?.laudoStoragePath
+        ).storagePath;
       } catch (err) {
         console.warn('[qualidade] laudo de calibração ignorado no sync:', uid, err);
       }
     }
+
+    const anexosPersist = persistAnexosToDisk(
+      `calibracoes/${uid}/anexos`,
+      cal.anexos,
+      existingCal?.anexosJson
+    );
 
     await prisma.sgqCalibracao.upsert({
       where: { uid },
@@ -1169,7 +1346,7 @@ export async function syncQualidadeCalibrations(payload: {
         laboratorio: cal.laboratorio ? String(cal.laboratorio) : null,
         laudoNome,
         laudoStoragePath,
-        anexosJson: cal.anexos ? JSON.stringify(cal.anexos) : null,
+        anexosJson: anexosPersist.json,
         observacoes: cal.observacoes ? String(cal.observacoes) : null,
       },
       update: {
@@ -1181,9 +1358,7 @@ export async function syncQualidadeCalibrations(payload: {
         laboratorio: cal.laboratorio ? String(cal.laboratorio) : null,
         ...(laudoNome ? { laudoNome } : {}),
         ...(laudoStoragePath ? { laudoStoragePath } : {}),
-        ...(cal.anexos !== undefined
-          ? { anexosJson: cal.anexos ? JSON.stringify(cal.anexos) : null }
-          : {}),
+        ...(anexosPersist.touched ? { anexosJson: anexosPersist.json } : {}),
         observacoes: cal.observacoes ? String(cal.observacoes) : null,
       },
     });
@@ -1259,71 +1434,71 @@ async function purgeSgqCalibrationsRemovedFromPayload(
   const verUids = [...new Set(payloadVerificationUids.filter(Boolean))];
   const taskUids = [...new Set(payloadTaskUids.filter(Boolean))];
 
-  const removedEq = await prisma.sgqEquipamento.findMany({
-    where: eqUids.length > 0 ? { uid: { notIn: eqUids } } : {},
-    select: {
-      uid: true,
-      laudoStoragePath: true,
-      calibracoes: { select: { uid: true, laudoStoragePath: true } },
-    },
-  });
+  // Payload vazio nunca apaga todos — evita wipe por body inválido / race de hydrate.
+  // Equipamentos NÃO são removidos pelo sync (só via deleteQualidadeEquipamento).
+  // Aqui só limpamos órfãos de calibração/verificação/tarefa dos equipamentos presentes.
+  if (eqUids.length === 0) return;
 
-  if (removedEq.length > 0) {
-    const removedUids = removedEq.map((e) => e.uid);
-    for (const eq of removedEq) {
-      deleteQualidadeAnexoIfExists(eq.laudoStoragePath);
-      for (const cal of eq.calibracoes) {
-        deleteQualidadeAnexoIfExists(cal.laudoStoragePath);
-      }
-    }
-    await prisma.sgqTarefa.deleteMany({
+  if (calUids.length > 0) {
+    const orphanCals = await prisma.sgqCalibracao.findMany({
       where: {
-        referenciaTipo: 'equipamento',
-        referenciaId: { in: removedUids },
+        equipamento: { uid: { in: eqUids } },
+        uid: { notIn: calUids },
       },
+      select: { uid: true, laudoStoragePath: true },
     });
-    await prisma.sgqEquipamento.deleteMany({
-      where: { uid: { in: removedUids } },
-    });
+    for (const cal of orphanCals) {
+      deleteQualidadeAnexoIfExists(cal.laudoStoragePath);
+    }
+    if (orphanCals.length > 0) {
+      await prisma.sgqCalibracao.deleteMany({
+        where: { uid: { in: orphanCals.map((c) => c.uid) } },
+      });
+    }
   }
 
-  if (eqUids.length > 0) {
-    if (calUids.length > 0) {
-      const orphanCals = await prisma.sgqCalibracao.findMany({
-        where: {
-          equipamento: { uid: { in: eqUids } },
-          uid: { notIn: calUids },
-        },
-        select: { uid: true, laudoStoragePath: true },
-      });
-      for (const cal of orphanCals) {
-        deleteQualidadeAnexoIfExists(cal.laudoStoragePath);
-      }
-      if (orphanCals.length > 0) {
-        await prisma.sgqCalibracao.deleteMany({
-          where: { uid: { in: orphanCals.map((c) => c.uid) } },
-        });
-      }
-    }
-
-    if (verUids.length > 0) {
-      await prisma.sgqVerificacao.deleteMany({
-        where: {
-          equipamento: { uid: { in: eqUids } },
-          uid: { notIn: verUids },
-        },
-      });
-    }
+  if (verUids.length > 0) {
+    await prisma.sgqVerificacao.deleteMany({
+      where: {
+        equipamento: { uid: { in: eqUids } },
+        uid: { notIn: verUids },
+      },
+    });
   }
 
   // Pendências de equipamento: remove as que saíram do payload (não apaga concluídas).
-  await prisma.sgqTarefa.deleteMany({
-    where: {
-      referenciaTipo: 'equipamento',
-      concluida: false,
-      ...(taskUids.length > 0 ? { uid: { notIn: taskUids } } : {}),
+  if (taskUids.length > 0) {
+    await prisma.sgqTarefa.deleteMany({
+      where: {
+        referenciaTipo: 'equipamento',
+        concluida: false,
+        uid: { notIn: taskUids },
+      },
+    });
+  }
+}
+
+export async function deleteQualidadeEquipamento(uid: string): Promise<boolean> {
+  const eq = await prisma.sgqEquipamento.findUnique({
+    where: { uid },
+    select: {
+      uid: true,
+      laudoStoragePath: true,
+      calibracoes: { select: { laudoStoragePath: true } },
     },
   });
+  if (!eq) return false;
+
+  deleteQualidadeAnexoIfExists(eq.laudoStoragePath);
+  for (const cal of eq.calibracoes) {
+    deleteQualidadeAnexoIfExists(cal.laudoStoragePath);
+  }
+
+  await prisma.sgqTarefa.deleteMany({
+    where: { referenciaTipo: 'equipamento', referenciaId: uid },
+  });
+  await prisma.sgqEquipamento.delete({ where: { uid } });
+  return true;
 }
 
 export async function syncQualidadeAvaliacoes(avaliacoes: Array<Record<string, unknown>>) {

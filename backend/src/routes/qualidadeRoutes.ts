@@ -19,6 +19,7 @@ import {
   putQualidadeConfigHandler,
   putQualidadeDocumentsHandler,
   deleteQualidadeDocumentHandler,
+  deleteQualidadeEquipamentoHandler,
   putQualidadeOpcoesListaHandler,
   putQualidadeRegistrosHandler,
   deleteQualidadeRegistroHandler,
@@ -52,6 +53,9 @@ router.delete('/documentos/:uid', (req, res, next) => {
 });
 router.put('/sync/calibracoes', (req, res, next) => {
   putQualidadeCalibrationsHandler(req, res).catch(next);
+});
+router.delete('/equipamentos/:uid', (req, res, next) => {
+  deleteQualidadeEquipamentoHandler(req, res).catch(next);
 });
 router.put('/sync/avaliacoes', (req, res, next) => {
   putQualidadeAvaliacoesHandler(req, res).catch(next);

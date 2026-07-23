@@ -19,6 +19,7 @@ import {
   syncQualidadeRegistros,
   deleteQualidadeRegistro,
   deleteQualidadeDocumento,
+  deleteQualidadeEquipamento,
 } from '../data/qualidadeRepository.js';
 import { gerarRccPdfBuffer, gerarRncPdfBuffer } from '../services/qualidadePdfService.js';
 
@@ -311,15 +312,45 @@ export async function deleteQualidadeDocumentHandler(req: Request, res: Response
 
 export async function putQualidadeCalibrationsHandler(req: Request, res: Response): Promise<void> {
   try {
+    // Body inválido/vazio (ex.: JSON > limite) chega como {} — não tratar como wipe intencional.
+    if (!req.body || typeof req.body !== 'object' || !Array.isArray(req.body.equipment)) {
+      res.status(400).json({
+        error: 'Payload de calibrações inválido ou incompleto. Nenhum equipamento foi alterado.',
+      });
+      return;
+    }
     await syncQualidadeCalibrations({
-      equipment: req.body?.equipment ?? [],
-      calibrationRecords: req.body?.calibrationRecords ?? [],
-      verificationRecords: req.body?.verificationRecords ?? [],
-      tasks: req.body?.tasks ?? [],
+      equipment: req.body.equipment,
+      calibrationRecords: Array.isArray(req.body.calibrationRecords)
+        ? req.body.calibrationRecords
+        : [],
+      verificationRecords: Array.isArray(req.body.verificationRecords)
+        ? req.body.verificationRecords
+        : [],
+      tasks: Array.isArray(req.body.tasks) ? req.body.tasks : [],
     });
     res.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao salvar calibrações.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function deleteQualidadeEquipamentoHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const uid = typeof req.params.uid === 'string' ? req.params.uid.trim() : '';
+    if (!uid) {
+      res.status(400).json({ error: 'Equipamento inválido.' });
+      return;
+    }
+    const removed = await deleteQualidadeEquipamento(uid);
+    if (!removed) {
+      res.status(404).json({ error: 'Equipamento não encontrado.' });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao excluir equipamento.';
     res.status(500).json({ error: message });
   }
 }

@@ -23,6 +23,10 @@ import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { tipoCalibracaoSelectLabel, userSelectLabel } from "@qualidade/lib/utils/select-display";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
+import {
+  flushQualidadeCalibrationsSync,
+  markQualidadeCalibrationFilesPending,
+} from "@qualidade/lib/qualidadePersistence";
 import type { Fornecedor } from "@qualidade/types/avaliacao-fornecedor";
 
 const selectTriggerClass =
@@ -69,7 +73,7 @@ export function CadastroEquipamentosPage() {
 
     setSaving(true);
     await withLoading(async () => {
-      createEquipment({
+      const id = createEquipment({
         codigo,
         descricao,
         local: "",
@@ -85,6 +89,11 @@ export function CadastroEquipamentosPage() {
         anexos: anexosPreenchidos(anexos),
       });
 
+      if (laudoDataUrl || anexosPreenchidos(anexos).length) {
+        markQualidadeCalibrationFilesPending(id);
+      }
+
+      await flushQualidadeCalibrationsSync();
       navigate("/qualidade/calibracoes");
     }, "Salvando equipamento...");
     setSaving(false);

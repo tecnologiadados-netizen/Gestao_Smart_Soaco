@@ -107,6 +107,45 @@ export function saveQualidadeAnexo(
   };
 }
 
+/**
+ * Evita duplicar arquivo no disco quando o sync reenvia o mesmo conteúdo
+ * (ex.: bootstrap devolveu dataUrl e o cliente reenviou no próximo PUT).
+ */
+export function saveQualidadeAnexoIfChanged(
+  subdir: string,
+  file: IncomingQualidadeAnexo,
+  existingStoragePath: string | null | undefined
+): SavedQualidadeAnexo {
+  const contentBase64 = (file.contentBase64 || '').trim();
+  if (existingStoragePath?.startsWith('/uploads/qualidade/') && contentBase64) {
+    const rel = existingStoragePath
+      .replace(/^\/uploads\/qualidade\//, '')
+      .replace(/\//g, path.sep);
+    const abs = path.join(qualidadeUploadRoot, rel);
+    if (fs.existsSync(abs)) {
+      try {
+        const incoming = Buffer.from(contentBase64, 'base64');
+        const existing = fs.readFileSync(abs);
+        if (incoming.byteLength > 0 && existing.equals(incoming)) {
+          const originalName = (file.fileName || 'arquivo').trim() || 'arquivo';
+          const mimeType = resolveMimeType(originalName, file.mimeType || '');
+          return {
+            fileName: path.basename(abs),
+            originalName,
+            mimeType,
+            sizeBytes: existing.byteLength,
+            storagePath: existingStoragePath,
+            publicUrl: existingStoragePath,
+          };
+        }
+      } catch {
+        /* grava novo abaixo */
+      }
+    }
+  }
+  return saveQualidadeAnexo(subdir, file);
+}
+
 export function readQualidadeAnexoAsDataUrl(storagePath: string): string | null {
   if (!storagePath) return null;
   const rel = storagePath.replace(/^\/uploads\/qualidade\//, '').replace(/\//g, path.sep);

@@ -19,7 +19,7 @@ import {
 import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { getQualidadeCurrentUserId } from "@qualidade/lib/current-user";
-import { flushQualidadeCalibrationsSync } from "@qualidade/lib/qualidadePersistence";
+import { flushQualidadeCalibrationsSync, markQualidadeCalibrationFilesPending } from "@qualidade/lib/qualidadePersistence";
 import {
   calcularDueStatus,
   calcularProximaData,
@@ -155,7 +155,7 @@ export function EquipamentoCalibracaoFluxoDialog({
     reader.readAsDataURL(file);
   }
 
-  function handleRegistrarCalibracao(e: React.FormEvent) {
+  async function handleRegistrarCalibracao(e: React.FormEvent) {
     e.preventDefault();
     if (!equipmentId) return;
 
@@ -183,23 +183,26 @@ export function EquipamentoCalibracaoFluxoDialog({
       anexos: anexosPreenchidos(anexos),
     });
 
-    void flushQualidadeCalibrationsSync().catch((err) => {
+    markQualidadeCalibrationFilesPending(equipmentId);
+
+    try {
+      await flushQualidadeCalibrationsSync();
+      setCalibracaoRegistrada(true);
+      setMostrarNovaCalibracao(false);
+      setData(new Date().toISOString().slice(0, 10));
+      setProximaCalibracaoData("");
+      setLaudoNome("");
+      setLaudoDataUrl("");
+      setAnexos(defaultAnexoRows());
+      setError("");
+    } catch (err) {
       console.error("[qualidade] falha ao persistir calibração:", err);
       setError(
         err instanceof Error
           ? err.message
           : "Calibração salva localmente, mas falhou ao gravar no servidor."
       );
-    });
-
-    setCalibracaoRegistrada(true);
-    setMostrarNovaCalibracao(false);
-    setData(new Date().toISOString().slice(0, 10));
-    setProximaCalibracaoData("");
-    setLaudoNome("");
-    setLaudoDataUrl("");
-    setAnexos(defaultAnexoRows());
-    setError("");
+    }
   }
 
   if (!open || !equipmentId || !equipment) {

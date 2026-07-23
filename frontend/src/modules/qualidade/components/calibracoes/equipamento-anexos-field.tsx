@@ -7,6 +7,7 @@ export interface AnexoItem {
   id: string;
   nome?: string;
   dataUrl?: string;
+  storagePath?: string;
 }
 
 interface Props {
@@ -33,12 +34,19 @@ function toSgqAnexos(rows: AnexoItem[]): SgqAnexo[] {
   }));
 }
 
-function fromSgqAnexos(rows: SgqAnexo[]): AnexoItem[] {
-  return rows.map((row) => ({
-    id: row.id,
-    nome: row.nome || undefined,
-    dataUrl: row.dataUrl || undefined,
-  }));
+function fromSgqAnexos(rows: SgqAnexo[], previous: AnexoItem[]): AnexoItem[] {
+  const prevById = new Map(previous.map((p) => [p.id, p]));
+  return rows.map((row) => {
+    const prev = prevById.get(row.id);
+    const dataUrl = row.dataUrl || undefined;
+    const sameFile = Boolean(prev && prev.dataUrl === dataUrl);
+    return {
+      id: row.id,
+      nome: row.nome || undefined,
+      dataUrl,
+      storagePath: sameFile ? prev?.storagePath : undefined,
+    };
+  });
 }
 
 export function EquipamentoAnexosField({
@@ -52,7 +60,7 @@ export function EquipamentoAnexosField({
 
   function handleChange(next: SgqAnexo[]) {
     if (disabled) return;
-    const mapped = fromSgqAnexos(next);
+    const mapped = fromSgqAnexos(next, value);
     onChange(mapped.length > 0 ? mapped : [createAnexoRow()]);
   }
 
@@ -72,11 +80,12 @@ export function EquipamentoAnexosField({
 
 export function anexosPreenchidos(
   rows: AnexoItem[]
-): { nome: string; dataUrl: string }[] {
+): { nome: string; dataUrl: string; storagePath?: string }[] {
   return rows
-    .filter((row) => row.nome?.trim() && row.dataUrl?.trim())
+    .filter((row) => row.nome?.trim() && (row.dataUrl?.trim() || row.storagePath?.trim()))
     .map((row) => ({
       nome: row.nome!.trim(),
-      dataUrl: row.dataUrl!.trim(),
+      dataUrl: row.dataUrl?.trim() || '',
+      ...(row.storagePath?.trim() ? { storagePath: row.storagePath.trim() } : {}),
     }));
 }

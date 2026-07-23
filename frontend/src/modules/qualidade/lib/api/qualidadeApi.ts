@@ -102,6 +102,17 @@ export async function syncQualidadeCalibrations(payload: {
   await putJson('/api/qualidade/sync/calibracoes', payload);
 }
 
+export async function deleteQualidadeEquipamento(equipmentId: string): Promise<void> {
+  const res = await apiFetch(
+    `/api/qualidade/equipamentos/${encodeURIComponent(equipmentId)}`,
+    { method: 'DELETE' }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? 'Falha ao excluir equipamento.');
+  }
+}
+
 export async function syncQualidadeAvaliacoes(avaliacoes: unknown[]) {
   await putJson('/api/qualidade/sync/avaliacoes', { avaliacoes });
 }

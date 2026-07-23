@@ -36,7 +36,7 @@ interface CreateEquipmentInput {
   ultimaVerificacao?: string;
   laudoNome?: string;
   laudoDataUrl?: string;
-  anexos?: { nome: string; dataUrl: string }[];
+  anexos?: { nome: string; dataUrl: string; storagePath?: string }[];
 }
 
 interface UpdateEquipmentInput {
@@ -52,7 +52,7 @@ interface UpdateEquipmentInput {
   ultimaVerificacao?: string;
   laudoNome?: string;
   laudoDataUrl?: string;
-  anexos?: { nome: string; dataUrl: string }[];
+  anexos?: { nome: string; dataUrl: string; storagePath?: string }[];
   ativo: boolean;
 }
 
@@ -62,7 +62,7 @@ interface RegisterCalibrationInput {
   responsavelId: string;
   laudoNome: string;
   laudoDataUrl: string;
-  anexos?: { nome: string; dataUrl: string }[];
+  anexos?: { nome: string; dataUrl: string; storagePath?: string }[];
 }
 
 interface CalibrationsState {
@@ -160,6 +160,7 @@ export const useCalibrationsStore = create<CalibrationsState>()((set, get) => ({
           laudoDataUrl: input.laudoDataUrl?.trim() || undefined,
           versaoLaudoAtual: input.laudoNome ? INITIAL_REVISION : undefined,
           anexos: input.anexos?.length ? input.anexos : undefined,
+          laudoAnexos: input.anexos?.length ? input.anexos : undefined,
           frequenciaVerificacaoDias: input.frequenciaVerificacaoDias ?? 90,
           ativo: true,
         };

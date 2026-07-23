@@ -12,6 +12,11 @@ import {
   syncQualidadeRegistros,
 } from '@qualidade/lib/api/qualidadeApi';
 import type { Registro } from '@qualidade/types/registro';
+import type {
+  CalibrationRecord,
+  Equipment,
+  EquipmentAnexo,
+} from '@qualidade/types/calibration';
 import { useAvaliacaoFornecedorStore } from '@qualidade/lib/store/avaliacao-fornecedor-store';
 import { useCalibrationsStore } from '@qualidade/lib/store/calibrations-store';
 import { useConfigStore } from '@qualidade/lib/store/config-store';
@@ -45,6 +50,81 @@ let syncTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 let autoSyncStarted = false;
 let documentsHydrating = false;
 let registrosHydrating = false;
+let calibrationsHydrating = false;
+
+/** Equipamentos/calibrações com arquivos novos ainda não confirmados no servidor. */
+const pendingCalibrationFileUids = new Set<string>();
+
+export function markQualidadeCalibrationFilesPending(...uids: string[]) {
+  for (const uid of uids) {
+    if (uid) pendingCalibrationFileUids.add(uid);
+  }
+}
+
+function anexosForSync(
+  anexos: EquipmentAnexo[] | undefined,
+  includeBinary: boolean
+): EquipmentAnexo[] | undefined {
+  if (!anexos?.length) return undefined;
+  return anexos.map((a) => {
+    if (a.storagePath) {
+      // Já no servidor: nunca reenviar base64 (mesmo no flush).
+      return { nome: a.nome, dataUrl: '', storagePath: a.storagePath };
+    }
+    if (includeBinary && a.dataUrl?.startsWith('data:')) {
+      return { nome: a.nome, dataUrl: a.dataUrl };
+    }
+    return { nome: a.nome, dataUrl: '' };
+  });
+}
+
+function equipmentForSync(eq: Equipment, includeFiles: boolean) {
+  const anexos = eq.laudoAnexos ?? eq.anexos;
+  if (includeFiles) {
+    return {
+      ...eq,
+      // Só envia binário do laudo se for upload novo (sem path ainda no cliente).
+      // Laudos já hidratados do servidor vêm só com dataUrl — o backend deduplica por conteúdo.
+      laudoAnexos: anexosForSync(anexos, true),
+      anexos: anexosForSync(anexos, true),
+    };
+  }
+  const { laudoDataUrl: _laudo, laudoAnexos: _la, anexos: _an, ...rest } = eq;
+  return rest;
+}
+
+function calibrationForSync(cal: CalibrationRecord, includeFiles: boolean) {
+  if (includeFiles) {
+    return {
+      ...cal,
+      anexos: anexosForSync(cal.anexos, true),
+    };
+  }
+  const { laudoDataUrl: _laudo, anexos: _an, ...rest } = cal;
+  return rest;
+}
+
+function buildCalibrationsSyncPayload(includePendingFiles: boolean) {
+  const { equipment, calibrationRecords, verificationRecords, tasks } =
+    useCalibrationsStore.getState();
+  const pending = includePendingFiles
+    ? new Set(pendingCalibrationFileUids)
+    : new Set<string>();
+
+  return {
+    equipment: equipment.map((eq) =>
+      equipmentForSync(eq, pending.has(eq.id))
+    ),
+    calibrationRecords: calibrationRecords.map((cal) =>
+      calibrationForSync(
+        cal,
+        pending.has(cal.id) || pending.has(cal.equipmentId)
+      )
+    ),
+    verificationRecords,
+    tasks,
+  };
+}
 
 export function setQualidadeDocumentsHydrating(value: boolean) {
   documentsHydrating = value;
@@ -70,6 +150,10 @@ export function cancelQualidadeRegistrosDebounce(): void {
     clearTimeout(syncTimers.registros);
     delete syncTimers.registros;
   }
+}
+
+export function setQualidadeCalibrationsHydrating(value: boolean) {
+  calibrationsHydrating = value;
 }
 
 export function cancelQualidadeCalibrationsDebounce(): void {
@@ -133,21 +217,19 @@ export function flushQualidadeDocumentsSync(): Promise<void> {
   });
 }
 
-function syncCalibrationsStateNow(): Promise<void> {
-  const { equipment, calibrationRecords, verificationRecords, tasks } =
-    useCalibrationsStore.getState();
-  return syncQualidadeCalibrations({
-    equipment,
-    calibrationRecords,
-    verificationRecords,
-    tasks,
-  }).then(() => undefined);
+function syncCalibrationsStateNow(includePendingFiles = false): Promise<void> {
+  const payload = buildCalibrationsSyncPayload(includePendingFiles);
+  return syncQualidadeCalibrations(payload).then(() => {
+    if (includePendingFiles) {
+      pendingCalibrationFileUids.clear();
+    }
+  });
 }
 
 /** Persiste calibrações/equipamentos imediatamente (ex.: após registrar laudo). */
 export function flushQualidadeCalibrationsSync(): Promise<void> {
   cancelQualidadeCalibrationsDebounce();
-  return syncCalibrationsStateNow().catch((err) => {
+  return syncCalibrationsStateNow(true).catch((err) => {
     console.error('[qualidade-sync] calibrations flush:', err);
     throw err;
   });
@@ -163,7 +245,7 @@ function flushPendingSyncs() {
     console.error('[qualidade-sync] pagehide registros:', err)
   );
   cancelQualidadeCalibrationsDebounce();
-  void syncCalibrationsStateNow().catch((err) =>
+  void syncCalibrationsStateNow(pendingCalibrationFileUids.size > 0).catch((err) =>
     console.error('[qualidade-sync] pagehide calibrations:', err)
   );
   const { departments, documentTypes, enderecamentos } = useConfigStore.getState();
@@ -314,12 +396,14 @@ export async function hydrateQualidadeFromServer(currentUserLogin: string) {
   useRegistrosStore.setState({ registros: registrosAtivos as never[] });
   setQualidadeRegistrosHydrating(false);
 
+  setQualidadeCalibrationsHydrating(true);
   useCalibrationsStore.setState({
     equipment: data.equipment as never[],
     calibrationRecords: data.calibrationRecords as never[],
     verificationRecords: data.verificationRecords as never[],
     tasks: calTasks as never[],
   });
+  setQualidadeCalibrationsHydrating(false);
 
   useAvaliacaoFornecedorStore.setState({ avaliacoes: data.avaliacoes as never[] });
 
@@ -398,20 +482,15 @@ export function startQualidadeAutoSync() {
   });
 
   useCalibrationsStore.subscribe((state, prev) => {
+    if (calibrationsHydrating) return;
     if (
       state.equipment !== prev.equipment ||
       state.calibrationRecords !== prev.calibrationRecords ||
       state.verificationRecords !== prev.verificationRecords ||
       state.tasks !== prev.tasks
     ) {
-      debounceSync('calibrations', () =>
-        syncQualidadeCalibrations({
-          equipment: state.equipment,
-          calibrationRecords: state.calibrationRecords,
-          verificationRecords: state.verificationRecords,
-          tasks: state.tasks,
-        })
-      );
+      // Auto-sync sem binários — arquivos só no flush explícito (evita estourar 15MB / F5).
+      debounceSync('calibrations', () => syncCalibrationsStateNow(false));
     }
   });
 

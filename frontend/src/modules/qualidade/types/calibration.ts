@@ -27,6 +27,8 @@ export interface Equipment {
 export interface EquipmentAnexo {
   nome: string;
   dataUrl: string;
+  /** Caminho no servidor quando já persistido — evita reenvio desnecessário do binário. */
+  storagePath?: string;
 }
 
 export interface CalibrationRecord {

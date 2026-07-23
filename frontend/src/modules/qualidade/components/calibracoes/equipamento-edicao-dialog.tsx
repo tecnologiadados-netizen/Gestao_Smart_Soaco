@@ -24,7 +24,8 @@ import { FornecedorSearchField } from "@qualidade/components/avaliacao-fornecedo
 import { SgqAnexosTable } from "@qualidade/components/ui/sgq-anexos-table";
 import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
-import { flushQualidadeCalibrationsSync } from "@qualidade/lib/qualidadePersistence";
+import { flushQualidadeCalibrationsSync, cancelQualidadeCalibrationsDebounce, markQualidadeCalibrationFilesPending } from "@qualidade/lib/qualidadePersistence";
+import { deleteQualidadeEquipamento } from "@qualidade/lib/api/qualidadeApi";
 import {
   departmentSelectLabel,
   tipoCalibracaoSelectLabel,
@@ -61,6 +62,7 @@ function anexosDoEquipamento(equipment: Equipment): AnexoItem[] {
     id: randomUUID(),
     nome: item.nome,
     dataUrl: item.dataUrl,
+    storagePath: item.storagePath,
   }));
 }
 
@@ -135,6 +137,7 @@ export function EquipamentoEdicaoDialog({
   const [anexos, setAnexos] = useState<AnexoItem[]>(() => defaultAnexoRows());
   const [error, setError] = useState("");
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
   const [confirmarInativacao, setConfirmarInativacao] = useState(false);
   const [confirmarReativacao, setConfirmarReativacao] = useState(false);
 
@@ -183,7 +186,7 @@ export function EquipamentoEdicaoDialog({
     setEditando(false);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!equipmentId || !equipment || !equipment.ativo || !editando) return;
 
@@ -192,6 +195,9 @@ export function EquipamentoEdicaoDialog({
       setError("Preencha os campos obrigatórios.");
       return;
     }
+
+    const temLaudoNovo = Boolean(laudoNome.trim() && laudoDataUrl.trim());
+    const anexosSalvar = anexosPreenchidos(anexos);
 
     updateEquipment(equipmentId, {
       descricao: descricaoTrim,
@@ -209,23 +215,33 @@ export function EquipamentoEdicaoDialog({
         ? new Date(ultimaVerificacao).toISOString()
         : undefined,
       ativo: equipment.ativo,
-      anexos: anexosPreenchidos(anexos),
-      ...(laudoNome.trim() && laudoDataUrl.trim()
+      anexos: anexosSalvar,
+      ...(temLaudoNovo
         ? {
             laudoNome: laudoNome.trim(),
             laudoDataUrl: laudoDataUrl.trim(),
           }
         : {}),
     });
-    void flushQualidadeCalibrationsSync().catch((err) => {
+
+    if (temLaudoNovo || anexosSalvar.length > 0) {
+      markQualidadeCalibrationFilesPending(equipmentId);
+    }
+
+    // Sempre faz flush: metadados do equipamento precisam ir ao servidor.
+    // Arquivos só entram no payload se marcados como pending.
+
+    try {
+      await flushQualidadeCalibrationsSync();
+      handleClose();
+    } catch (err) {
       console.error("[qualidade] falha ao persistir equipamento:", err);
       setError(
         err instanceof Error
           ? err.message
           : "Alterações salvas localmente, mas falhou ao gravar no servidor."
       );
-    });
-    handleClose();
+    }
   }
 
   function handleLaudoSelect(file: File) {
@@ -262,14 +278,26 @@ export function EquipamentoEdicaoDialog({
     handleClose();
   }
 
-  function handleExcluir() {
-    if (!equipmentId) return;
-    removeEquipment(equipmentId);
-    setConfirmarExclusao(false);
-    void flushQualidadeCalibrationsSync().catch((err) => {
-      console.error("[qualidade] falha ao persistir exclusão do equipamento:", err);
-    });
-    handleClose();
+  async function handleExcluir() {
+    if (!equipmentId || excluindo) return;
+    setExcluindo(true);
+    setError("");
+    try {
+      await deleteQualidadeEquipamento(equipmentId);
+      cancelQualidadeCalibrationsDebounce();
+      removeEquipment(equipmentId);
+      setConfirmarExclusao(false);
+      handleClose();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível excluir o equipamento."
+      );
+      setConfirmarExclusao(false);
+    } finally {
+      setExcluindo(false);
+    }
   }
 
   if (!open || !equipmentId || !equipment) {
