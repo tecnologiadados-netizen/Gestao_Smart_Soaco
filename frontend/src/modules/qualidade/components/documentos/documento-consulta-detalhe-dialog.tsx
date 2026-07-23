@@ -37,6 +37,7 @@ import {
   downloadDocumentFile,
   openDocumentFileViewer,
 } from "@qualidade/lib/documents/file-actions";
+import { buildLocalizacaoOpcoes } from "@qualidade/lib/enderecamentos-sync";
 import { cn } from "@qualidade/lib/utils";
 import {
   formatPermissaoProcessos,
@@ -146,6 +147,7 @@ export function DocumentoConsultaDetalheDialog({
   const users = useConfigStore((s) => s.users);
   const departments = useConfigStore((s) => s.departments);
   const documentTypes = useConfigStore((s) => s.documentTypes);
+  const enderecamentos = useConfigStore((s) => s.enderecamentos);
 
   const doc = useMemo(
     () =>
@@ -160,6 +162,12 @@ export function DocumentoConsultaDetalheDialog({
   const versaoAtual = versoes.find((v) => v.versao === doc?.versaoAtual);
   const tipo = documentTypes.find((t) => t.id === doc?.tipoId);
   const setor = departments.find((d) => d.id === doc?.setorId);
+  const localizacaoLabel = useMemo(() => {
+    const valor = doc?.localizacao?.trim() ?? "";
+    if (!valor) return "—";
+    const opcoes = buildLocalizacaoOpcoes(enderecamentos, departments, valor);
+    return opcoes.find((opcao) => opcao.value === valor)?.label ?? valor;
+  }, [departments, doc?.localizacao, enderecamentos]);
   const temArquivo = Boolean(
     versaoAtual?.arquivoDataUrl && versaoAtual?.arquivoNome
   );
@@ -399,6 +407,7 @@ export function DocumentoConsultaDetalheDialog({
                     label="Revisão atual"
                     value={doc.versaoAtual}
                   />
+                  <MetaItem label="Localização" value={localizacaoLabel} />
                 </div>
               </section>
             </div>
