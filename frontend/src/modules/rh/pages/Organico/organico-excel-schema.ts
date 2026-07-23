@@ -260,7 +260,7 @@ export const COLUNAS_EXCEL_NUMFMT_TEXTO = new Set<number>([COLUNA_CPF, ...COLUNA
 export const COLUNAS_PERCENTUAL = new Set([56, 59, 62, 68]);
 
 /** Colunas de moeda (dados de entrada, não fórmula). Aplicar numFmt R$. */
-export const COLUNAS_MOEDA_DADOS = new Set([53]); // CTPS
+export const COLUNAS_MOEDA_DADOS = new Set([53, 72]); // CTPS, Adendo
 
 /** Colunas de data. Formatar como DD/MM/YYYY (padrão brasileiro). */
 export const COLUNAS_DATA = new Set([10, 19]); // ADMISSÃO, Nascimento

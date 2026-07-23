@@ -29,7 +29,12 @@ import { Textarea } from "@rh/components/ui/textarea";
 import { ORGANICO_HEADERS, ORGANICO_NUM_COLUNAS } from "./organico-headers";
 import { ORGANICO_IDX, parseCtpsToNumber } from "./organico-derive";
 import { ORGANICO_COLUNAS_READONLY_SECULLUM } from "./organico-secullum-readonly";
-import { isColunaDerivadaSistema, ORGANICO_INDICES_SIM_NAO, COLUNAS_PERCENTUAL } from "./organico-excel-schema";
+import {
+  isColunaDerivadaSistema,
+  ORGANICO_INDICES_SIM_NAO,
+  COLUNAS_PERCENTUAL,
+  COLUNAS_MOEDA_DADOS,
+} from "./organico-excel-schema";
 import { calcularFormulasRow } from "./organico-formulas";
 import { displayCellsToStorageRow, formatDateBRDisplay, rowToDisplayCells } from "./organico-display";
 import type { OrganicoSheetRow } from "./useOrganicoImport";
@@ -354,21 +359,47 @@ export function FormFuncionarioModal({
     [demissao],
   );
 
+  /** Percentual/moeda: não reformatar a cada tecla (ex.: "81" → "R$ 8,00" → "R$ 8.001,00"). */
+  const keepRawWhileTyping = (idx: number) =>
+    COLUNAS_PERCENTUAL.has(idx) || COLUNAS_MOEDA_DADOS.has(idx);
+
   const handleChange = (idx: number, value: string) => {
     if (isCellReadOnly(idx)) return;
     setCells((prev) => {
       const nextDisplay = [...prev];
       while (nextDisplay.length < ORGANICO_NUM_COLUNAS) nextDisplay.push("");
       nextDisplay[idx] = value;
-      if (COLUNAS_PERCENTUAL.has(idx)) {
+      if (keepRawWhileTyping(idx)) {
         return recalcCellsFromDisplay(nextDisplay, { keepRawAt: idx, keepRawValue: value });
       }
       return recalcCellsFromDisplay(nextDisplay);
     });
   };
 
-  const handlePercentBlur = (idx: number) => {
-    if (!COLUNAS_PERCENTUAL.has(idx) || isCellReadOnly(idx)) return;
+  /** Ao focar moeda, tira "R$" e zeros à direita para digitar 810 sem virar 8.001. */
+  const handleMoneyFocus = (idx: number) => {
+    if (!COLUNAS_MOEDA_DADOS.has(idx) || isCellReadOnly(idx)) return;
+    setCells((prev) => {
+      const current = String(prev[idx] ?? "").trim();
+      if (!current || current === "-") return prev;
+      const n = parseCtpsToNumber(current);
+      if (!Number.isFinite(n)) return prev;
+      const editable =
+        n === 0
+          ? ""
+          : Math.abs(n - Math.round(n)) < 1e-9
+            ? String(Math.round(n))
+            : n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      if (editable === current) return prev;
+      const next = [...prev];
+      while (next.length < ORGANICO_NUM_COLUNAS) next.push("");
+      next[idx] = editable;
+      return next;
+    });
+  };
+
+  const handleDeferredFormatBlur = (idx: number) => {
+    if (!keepRawWhileTyping(idx) || isCellReadOnly(idx)) return;
     setCells((prev) => recalcCellsFromDisplay(prev));
   };
 
@@ -466,8 +497,10 @@ export function FormFuncionarioModal({
             id={`cell-${idx}`}
             value={cells[idx] ?? ""}
             onChange={(e) => handleChange(idx, e.target.value)}
-            onBlur={COLUNAS_PERCENTUAL.has(idx) ? () => handlePercentBlur(idx) : undefined}
-            autoComplete={COLUNAS_PERCENTUAL.has(idx) ? "off" : undefined}
+            onFocus={COLUNAS_MOEDA_DADOS.has(idx) ? () => handleMoneyFocus(idx) : undefined}
+            onBlur={keepRawWhileTyping(idx) ? () => handleDeferredFormatBlur(idx) : undefined}
+            autoComplete={keepRawWhileTyping(idx) ? "off" : undefined}
+            inputMode={COLUNAS_MOEDA_DADOS.has(idx) ? "decimal" : undefined}
             placeholder="—"
             readOnly={cellRo}
             className={cn(dashedInput, cellRo && dashedInputRead)}

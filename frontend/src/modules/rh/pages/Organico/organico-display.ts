@@ -15,7 +15,7 @@ import {
 import type { OrganicoSheetRow } from "./useOrganicoImport";
 
 /** Moeda (fórmulas + CTPS + Adendo). Coluna 69 pode ser "-". */
-const COLUNAS_MOEDA_EXIBICAO = new Set<number>([...COLUNAS_FORMULA_MOEDA, ...COLUNAS_MOEDA_DADOS, 72]);
+const COLUNAS_MOEDA_EXIBICAO = new Set<number>([...COLUNAS_FORMULA_MOEDA, ...COLUNAS_MOEDA_DADOS]);
 
 export function formatCurrencyBRLDisplay(n: number): string {
   return new Intl.NumberFormat("pt-BR", {
