@@ -333,6 +333,93 @@ describe('listarProdutosSetorCalendario', () => {
     expect(produtos).toHaveLength(1);
     expect(produtos[0]).toMatchObject({ codigo: 'PA 100', qtdePendente: 8 });
   });
+
+  it('respeita getQtdeLinha (qtde líquida após estoque)', () => {
+    const linhas: Record<string, unknown>[] = [
+      {
+        RM: '1',
+        Observacoes: 'R',
+        'Setor de Producao': 'Cadeiras',
+        data_producao: '2026-08-20',
+        'Qtde Pendente Real': 50,
+        Cod: 'PA 1',
+        'Descricao do produto': 'A',
+        PD: '1',
+      },
+    ];
+    const bl = computarBaselines(linhas);
+    const produtos = listarProdutosSetorCalendario(
+      linhas,
+      'Cadeiras',
+      sim,
+      bl,
+      '',
+      '',
+      () => 12
+    );
+    expect(produtos[0].qtdePendente).toBe(12);
+  });
+});
+
+describe('computarCalendarioProducao — qtde líquida', () => {
+  const sim = new Map<string, SimEntry>();
+
+  it('célula usa getQtdeLinha e não a pendente bruta; detalhes somam igual à grade', () => {
+    const linhas: Record<string, unknown>[] = [
+      {
+        RM: '01677',
+        Observacoes: 'ROTA',
+        'Setor de Producao': 'Fogões',
+        data_producao: '2026-08-20',
+        'Qtde Pendente Real': 100,
+        Cod: 'PA X',
+        PD: '111',
+        tipoF: 'Carradas',
+        id_pedido: 'p1',
+      },
+      {
+        RM: '01678',
+        Observacoes: 'ROTA 2',
+        'Setor de Producao': 'Fogões',
+        data_producao: '2026-08-20',
+        'Qtde Pendente Real': 40,
+        Cod: 'PA Y',
+        PD: '222',
+        tipoF: 'Carradas',
+        id_pedido: 'p2',
+      },
+    ];
+    const bl = computarBaselines(linhas);
+    const qtdeLiquida = new Map<Record<string, unknown>, number>([
+      [linhas[0], 20],
+      [linhas[1], 5],
+    ]);
+    const dados = computarCalendarioProducao(linhas, sim, bl, (row) => qtdeLiquida.get(row) ?? 0);
+    expect(dados.valores.get('Fogões')?.get('2026-08-20')).toBe(25);
+    expect(dados.totalGeral).toBe(25);
+    const somaDetalhes = dados.detalhes
+      .filter((d) => d.setor === 'Fogões' && d.data === '2026-08-20')
+      .reduce((s, d) => s + d.qtde, 0);
+    expect(somaDetalhes).toBe(25);
+  });
+
+  it('omite linhas com qty líquida zero', () => {
+    const linhas: Record<string, unknown>[] = [
+      {
+        RM: '1',
+        Observacoes: 'R',
+        'Setor de Producao': 'Balcões',
+        data_producao: '2026-08-20',
+        'Qtde Pendente Real': 80,
+        Cod: 'PA',
+        PD: '1',
+      },
+    ];
+    const bl = computarBaselines(linhas);
+    const dados = computarCalendarioProducao(linhas, sim, bl, () => 0);
+    expect(dados.totalGeral).toBe(0);
+    expect(dados.detalhes).toHaveLength(0);
+  });
 });
 
 describe('listarCarradasComDatasPassadas — itens especiais', () => {

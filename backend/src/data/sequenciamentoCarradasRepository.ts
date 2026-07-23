@@ -1,5 +1,6 @@
 import { prisma } from '../config/prisma.js';
 import { listarPedidos } from './pedidosRepository.js';
+import { getProgramacaoSetorialEstoqueSaldo } from './programacaoSetorialRepository.js';
 
 export const SEQUENCIAMENTO_PAYLOAD_MAX_CHARS = 24 * 1024 * 1024;
 
@@ -18,6 +19,8 @@ export type SequenciamentoCarradasPayloadV1 = {
   geradoEm: string;
   carradas: SequenciamentoCarradaAgregada[];
   linhas: Record<string, unknown>[];
+  /** Saldo de estoque por código no momento de `geradoEm` (opcional em snapshots legados). */
+  estoquePorCod?: Record<string, number>;
 };
 
 /** Estado da simulação (datas editadas e ordem manual das carradas) gravado junto ao snapshot. */
@@ -45,6 +48,8 @@ export type SequenciamentoCarradasPayloadV2 = {
   geradoEm: string;
   carradas: SequenciamentoCarradaAgregada[];
   linhas: Record<string, unknown>[];
+  /** Saldo de estoque por código no momento de `geradoEm` (opcional em snapshots legados). */
+  estoquePorCod?: Record<string, number>;
   simulacao?: SequenciamentoSimulacao | null;
 };
 
@@ -280,15 +285,27 @@ export async function montarPayloadSequenciamento(): Promise<{
   payload: SequenciamentoCarradasPayloadV1;
   erroConexao?: boolean;
 }> {
-  const { data: pedidos, erroConexao } = await listarPedidos({});
+  const [pedidosRes, estoqueRes] = await Promise.all([
+    listarPedidos({}),
+    getProgramacaoSetorialEstoqueSaldo(),
+  ]);
+  const { data: pedidos, erroConexao } = pedidosRes;
   const linhas = pedidos.map((p) => serializeRow(p as PedidoRow));
   const carradas = agregarCarradas(pedidos as PedidoRow[]);
+  const estoquePorCod: Record<string, number> = {};
+  for (const row of estoqueRes.data ?? []) {
+    const cod = String(row.cod ?? '').trim();
+    if (!cod) continue;
+    const saldo = Number(row.saldoSetorFinal ?? 0) || 0;
+    estoquePorCod[cod] = saldo > 0 ? saldo : 0;
+  }
   return {
     payload: {
       version: 1,
       geradoEm: new Date().toISOString(),
       carradas,
       linhas,
+      estoquePorCod,
     },
     erroConexao,
   };

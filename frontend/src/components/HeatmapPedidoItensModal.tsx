@@ -49,12 +49,15 @@ export default function HeatmapPedidoItensModal({
   linha,
   municipioLabel,
   itens,
+  setorDestaque,
   onClose,
 }: {
   open: boolean;
   linha: TooltipDetalheRow;
   municipioLabel: string;
   itens: TooltipDetalheRow[];
+  /** Quando informado, destaca linhas cujo setor de produção coincide. */
+  setorDestaque?: string;
   onClose: () => void;
 }) {
   const [consultaCodigo, setConsultaCodigo] = useState<string | null>(null);
@@ -97,7 +100,10 @@ export default function HeatmapPedidoItensModal({
       <div
         className="fixed inset-0 z-[14000] flex items-center justify-center bg-black/70 p-4"
         role="presentation"
-        onClick={onClose}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
       >
         <div
           className="flex max-h-[min(85vh,560px)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
@@ -151,6 +157,12 @@ export default function HeatmapPedidoItensModal({
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-4 py-3">
+            {setorDestaque ? (
+              <p className="mb-2 text-[11px] text-slate-500 dark:text-slate-400">
+                Itens do setor <span className="font-medium text-sky-700 dark:text-sky-300">{setorDestaque}</span>{' '}
+                destacados em azul.
+              </p>
+            ) : null}
             {ordenados.length === 0 ? (
               <p className="py-6 text-center text-sm text-slate-500">
                 Nenhum item encontrado para este pedido.
@@ -178,8 +190,24 @@ export default function HeatmapPedidoItensModal({
                   </tr>
                 </thead>
                 <tbody className="text-slate-700 dark:text-slate-200">
-                  {ordenados.map((row, i) => (
-                    <tr key={`${row.codigo}-${i}`} className="border-b border-slate-100 dark:border-slate-700">
+                  {ordenados.map((row, i) => {
+                    const doSetorAnalisado =
+                      !!setorDestaque &&
+                      (row.setorProducao || '(vazio)') === setorDestaque;
+                    return (
+                    <tr
+                      key={`${row.codigo}-${i}`}
+                      className={`border-b border-slate-100 dark:border-slate-700 ${
+                        doSetorAnalisado
+                          ? 'bg-sky-100/90 dark:bg-sky-900/45'
+                          : ''
+                      }`}
+                      title={
+                        doSetorAnalisado
+                          ? `Item do setor analisado: ${setorDestaque}`
+                          : undefined
+                      }
+                    >
                       <td className="whitespace-nowrap py-1.5 pr-2 tabular-nums">
                         <span className="inline-flex items-center gap-1">
                           {formatDataColuna(
@@ -214,7 +242,8 @@ export default function HeatmapPedidoItensModal({
                         {formatarValor(row.valorPendente ?? 0)}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   <tr className="border-t-2 border-amber-200 bg-amber-50/80 font-semibold dark:border-amber-800 dark:bg-amber-900/30">
                     <td className="py-2 pr-2" colSpan={4}>
                       Total

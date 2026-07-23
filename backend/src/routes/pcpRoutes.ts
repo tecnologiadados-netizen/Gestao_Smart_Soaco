@@ -12,6 +12,7 @@ import {
   getPcDetalheConsultaEstoque,
   getSaldoDetalheConsultaEstoque,
   getScDetalheConsultaEstoque,
+  postContarConsultaEstoque,
   postConsultarEstoque,
 } from '../controllers/consultaEstoqueController.js';
 import {
@@ -69,6 +70,7 @@ router.get(
   podeConsultaEstoque,
   async503(getBuscarPedidosGerenciadorTypeahead)
 );
+router.post('/consulta-estoque/contar', podeConsultaEstoque, async503(postContarConsultaEstoque));
 router.post('/consulta-estoque/consultar', podeConsultaEstoque, async503(postConsultarEstoque));
 router.get(
   '/consulta-estoque/detalhe/saldo',

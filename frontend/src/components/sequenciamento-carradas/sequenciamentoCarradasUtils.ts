@@ -1,6 +1,7 @@
 import type { SequenciamentoCarradaAgregada } from '../../api/sequenciamentoCarradas';
 import type { Pedido, TooltipDetalheRow } from '../../api/pedidos';
 import type { AjustePrevisaoSuccessMeta } from '../ModalAjustePrevisao';
+import { normalizeRotaNameStr } from '../../utils/rotaCarrada';
 
 function getField(row: Record<string, unknown>, keys: string[]): string {
   for (const k of keys) {
@@ -21,11 +22,7 @@ function getNumber(row: Record<string, unknown>, keys: string[]): number {
 }
 
 function normalizeCarradaNome(carrada: string): string {
-  return carrada
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '');
+  return normalizeRotaNameStr(carrada);
 }
 
 /**
@@ -419,6 +416,7 @@ export function listarTooltipDetalhePorPd(
         pedido: getField(row, ['PD', 'pd']),
         cliente: getField(row, ['Cliente', 'cliente']),
         tipoPedido: getField(row, ['Tipo Pedido', 'tipo pedido', 'TipoPedido']),
+        setorProducao: getField(row, ['Setor de Producao', 'Setor de produção']) || '(vazio)',
         municipio: municipio && uf ? `${municipio} (${uf})` : municipio,
         aVista: getField(row, ['A Vista', 'A vista', 'aVista']),
         valorPendente: getNumber(row, ['Saldo a Faturar Real', 'Valor Pendente Real']),

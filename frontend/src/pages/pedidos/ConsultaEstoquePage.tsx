@@ -23,6 +23,7 @@ import ModalFiltrosConsultaEstoque, {
 } from '../../components/pcp/ModalFiltrosConsultaEstoque';
 import type { OptionItem } from '../../components/SingleSelectWithSearch';
 import {
+  contarConsultaEstoque,
   consultarEstoque,
   obterCotacaoDetalhe,
   buscarOpcoesFiltroConsultaEstoque,
@@ -87,7 +88,11 @@ const EMPTY_FILTROS: FiltrosConsultaEstoqueState = {
   setoresProducao: '',
   subgrupo1: '',
   subgrupo2: '',
+  comEmpenho: 'todos',
+  comSaldoEstoque: 'todos',
 };
+
+const CONSULTA_ESTOQUE_CONFIRM_ROWS = 50;
 
 const BTN_PRIMARY =
   'inline-flex items-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50';
@@ -164,13 +169,13 @@ export default function ConsultaEstoquePage() {
   const [erroApi, setErroApi] = useState<string | null>(null);
   const [considerarRequisicoes, setConsiderarRequisicoes] = useState(false);
   const [confirmRequisicoesAberto, setConfirmRequisicoesAberto] = useState(false);
-  const [confirmLargeAberto, setConfirmLargeAberto] = useState(false);
+  const [confirmVolumeAberto, setConfirmVolumeAberto] = useState(false);
+  const [confirmVolumeTotal, setConfirmVolumeTotal] = useState(0);
   const [pendingConsulta, setPendingConsulta] = useState<{
     filtros: FiltrosConsultaEstoqueState;
     pedidoFiltro: PedidoFiltroConsultaEstoque;
     considerarRequisicoes: boolean;
   } | null>(null);
-  const [truncatedInfo, setTruncatedInfo] = useState<{ total: number } | null>(null);
   const [detalhe, setDetalhe] = useState<DetalheModal | null>(null);
   const [detalheSaldo, setDetalheSaldo] = useState<SaldoSetorDetalhe[]>([]);
   const [detalheEmpenhoLiquido, setDetalheEmpenhoLiquido] = useState<RessupEmpenhoPedidoResultado | null>(null);
@@ -304,20 +309,17 @@ export default function ConsultaEstoquePage() {
     async (
       f: FiltrosConsultaEstoqueState,
       pf: PedidoFiltroConsultaEstoque,
-      req: boolean,
-      confirmLarge?: boolean
+      req: boolean
     ) => {
       detalheCacheRef.current.clear();
       pcDetalheCacheRef.current.clear();
       gradeResetRef.current();
       setLoading(true);
       setErroApi(null);
-      setTruncatedInfo(null);
       const payload = filtrosStateToPayload(f, pf);
       const r = await consultarEstoque({
         filtros: payload,
         considerarRequisicoes: req,
-        confirmLarge,
       });
       setLoading(false);
       if (r.error) {
@@ -335,18 +337,8 @@ export default function ConsultaEstoquePage() {
       } else {
         setConsultaPedidoResumo(null);
       }
-      if (r.truncated && !confirmLarge) {
-        setTruncatedInfo({ total: r.total });
-        setConfirmLargeAberto(true);
-        setPendingConsulta({ filtros: f, pedidoFiltro: pf, considerarRequisicoes: req });
-        setLinhas(r.data);
-        setMostrarGrade(true);
-        return;
-      }
       setLinhas(r.data);
       setMostrarGrade(true);
-      setTruncatedInfo(null);
-      setConfirmLargeAberto(false);
       setPendingConsulta(null);
     },
     []
@@ -436,7 +428,7 @@ export default function ConsultaEstoquePage() {
     setConfirmEscolhasPedidoAberto(true);
   };
 
-  const handleFiltrar = () => {
+  const handleFiltrar = async () => {
     if (!filtrosConsultaTemAlgumSelecionado(filtros, pedidoFiltro.pedido)) {
       setMsgFiltro('Informe ao menos um filtro.');
       return;
@@ -446,7 +438,32 @@ export default function ConsultaEstoquePage() {
       return;
     }
     setMsgFiltro(null);
+    setErroApi(null);
     setFiltrosPopoverAberto(false);
+    setLoading(true);
+    const countRes = await contarConsultaEstoque({
+      filtros: filtrosStateToPayload(filtros, pedidoFiltro),
+    });
+    setLoading(false);
+    if (countRes.error) {
+      setErroApi(countRes.error);
+      setFiltrosPopoverAberto(true);
+      return;
+    }
+    if (countRes.total > CONSULTA_ESTOQUE_CONFIRM_ROWS) {
+      setConfirmVolumeTotal(countRes.total);
+      setConfirmVolumeAberto(true);
+      return;
+    }
+    setConfirmRequisicoesAberto(true);
+  };
+
+  const confirmarVolume = (sim: boolean) => {
+    setConfirmVolumeAberto(false);
+    if (!sim) {
+      setFiltrosPopoverAberto(true);
+      return;
+    }
     setConfirmRequisicoesAberto(true);
   };
 
@@ -457,8 +474,7 @@ export default function ConsultaEstoquePage() {
       void executarConsulta(
         pendingConsulta.filtros,
         pendingConsulta.pedidoFiltro,
-        sim,
-        true
+        sim
       );
     } else {
       void executarConsulta(filtros, pedidoFiltro, sim);
@@ -468,20 +484,6 @@ export default function ConsultaEstoquePage() {
   const voltarConfirmRequisicoes = () => {
     setConfirmRequisicoesAberto(false);
     setFiltrosPopoverAberto(true);
-  };
-
-  const confirmarLarge = (sim: boolean) => {
-    setConfirmLargeAberto(false);
-    if (!sim || !pendingConsulta) {
-      setPendingConsulta(null);
-      return;
-    }
-    void executarConsulta(
-      pendingConsulta.filtros,
-      pendingConsulta.pedidoFiltro,
-      pendingConsulta.considerarRequisicoes,
-      true
-    );
   };
 
   const cellNum = (n: number) => fmtQtde(n);
@@ -574,12 +576,6 @@ export default function ConsultaEstoquePage() {
       {erroApi && (
         <p className="text-sm text-red-600 dark:text-red-300" role="alert">
           {erroApi}
-        </p>
-      )}
-
-      {truncatedInfo && (
-        <p className="text-sm text-amber-700 dark:text-amber-300">
-          Exibindo as primeiras linhas. Confirme para carregar todas as {truncatedInfo.total} linhas.
         </p>
       )}
 
@@ -864,6 +860,33 @@ export default function ConsultaEstoquePage() {
         </div>
       )}
 
+      {confirmVolumeAberto && (
+        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
+          <div className="max-w-md rounded-xl bg-white p-5 shadow-xl dark:bg-slate-800">
+            <p className="text-sm text-slate-800 dark:text-slate-100">
+              Sua busca irá trazer o resultado de <strong>{confirmVolumeTotal}</strong> produtos, deseja
+              continuar?
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border px-3 py-1.5 text-sm dark:border-slate-600 dark:text-slate-200"
+                onClick={() => confirmarVolume(false)}
+              >
+                Não
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm text-white"
+                onClick={() => confirmarVolume(true)}
+              >
+                Sim
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmRequisicoesAberto && (
         <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
           <div className="max-w-md rounded-xl bg-white p-5 shadow-xl dark:bg-slate-800">
@@ -894,33 +917,6 @@ export default function ConsultaEstoquePage() {
                 Sim
               </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {confirmLargeAberto && truncatedInfo && (
-        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
-          <div className="max-w-md rounded-xl bg-white p-5 shadow-xl dark:bg-slate-800">
-            <p className="text-sm text-slate-800 dark:text-slate-100">
-              Foram encontradas <strong>{truncatedInfo.total}</strong> linhas (limite inicial: 150). Deseja carregar
-              todas?
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-lg border px-3 py-1.5 text-sm"
-                onClick={() => confirmarLarge(false)}
-              >
-                Não, manter parcial
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm text-white"
-                onClick={() => confirmarLarge(true)}
-              >
-                Sim, carregar todas
-              </button>
             </div>
           </div>
         </div>

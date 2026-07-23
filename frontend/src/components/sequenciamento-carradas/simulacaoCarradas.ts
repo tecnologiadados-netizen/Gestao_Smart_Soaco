@@ -537,6 +537,7 @@ export type CalendarioCelulaDetalhe = {
   qtde: number;
   cod: string;
   carrada: string;
+  cliente: string;
   /** Sem data de produção — posicionado pela previsão atual. */
   producaoPorPrevisao?: boolean;
 };
@@ -546,7 +547,7 @@ export type OrigemDataCalendario = 'producao' | 'previsao' | 'inserir_romaneio';
 export type CalendarioDados = {
   datas: string[];
   setores: string[];
-  /** valores[setor][data] = soma de Qtde Pendente Real. */
+  /** valores[setor][data] = soma da qtde líquida (após estoque) ou pendente bruta. */
   valores: Map<string, Map<string, number>>;
   totalPorData: Map<string, number>;
   totalPorSetor: Map<string, number>;
@@ -686,7 +687,12 @@ export function dataProducaoCarradaEmFormacaoApartirDe(maxDataCarradas: string):
 export function computarCalendarioProducao(
   linhas: Record<string, unknown>[],
   sim: Map<string, SimEntry>,
-  baseline: Map<string, CarradaBaseline>
+  baseline: Map<string, CarradaBaseline>,
+  /**
+   * Qtde líquida após estoque (Programação Setorial).
+   * Se omitido, usa `Qtde Pendente Real` bruta (compatibilidade / testes legados).
+   */
+  getQtdeLinha?: (row: Record<string, unknown>, index: number) => number
 ): CalendarioDados {
   const valores = new Map<string, Map<string, number>>();
   const totalPorData = new Map<string, number>();
@@ -700,7 +706,8 @@ export function computarCalendarioProducao(
   const dataInserirRomaneio = dataProducaoInserirRomaneioApartirDe(maxNormais);
   const dataEmFormacao = dataProducaoCarradaEmFormacaoApartirDe(maxNormais);
 
-  for (const row of linhas) {
+  for (let index = 0; index < linhas.length; index++) {
+    const row = linhas[index];
     const { data, origem } = resolverDataCalendarioLinha(
       row,
       sim,
@@ -710,7 +717,9 @@ export function computarCalendarioProducao(
     );
     if (!data) continue;
     const setor = getField(row, ['Setor de Producao', 'Setor de produção']) || '(vazio)';
-    const qtde = getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']);
+    const qtde = getQtdeLinha
+      ? getQtdeLinha(row, index)
+      : getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']);
     if (qtde === 0) continue;
     const tipoF = getField(row, ['tipoF', 'TipoF', 'tipo_f']) || '(vazio)';
     const pd = getField(row, ['PD', 'pd']) || '—';
@@ -738,6 +747,7 @@ export function computarCalendarioProducao(
       qtde,
       cod,
       carrada,
+      cliente: getField(row, ['Cliente', 'cliente']),
       producaoPorPrevisao: producaoPorPrevisao || undefined,
     });
   }
@@ -753,20 +763,24 @@ export type ProdutoSetorCalendarioRow = {
   qtdePendente: number;
 };
 
-/** Produtos agregados por código no setor (mesma regra do calendário: qtde pendente com data válida). */
+/** Produtos agregados por código no setor (mesma regra do calendário: qtde líquida com data válida). */
 export function listarProdutosSetorCalendario(
   linhas: Record<string, unknown>[],
   setor: string,
   sim: Map<string, SimEntry>,
   baseline: Map<string, CarradaBaseline>,
   dataInserirRomaneio = '',
-  dataEmFormacao = ''
+  dataEmFormacao = '',
+  getQtdeLinha?: (row: Record<string, unknown>, index: number) => number
 ): ProdutoSetorCalendarioRow[] {
   const map = new Map<string, ProdutoSetorCalendarioRow>();
-  for (const row of linhas) {
+  for (let index = 0; index < linhas.length; index++) {
+    const row = linhas[index];
     const setorRow = getField(row, ['Setor de Producao', 'Setor de produção']) || '(vazio)';
     if (setorRow !== setor) continue;
-    const qtde = getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']);
+    const qtde = getQtdeLinha
+      ? getQtdeLinha(row, index)
+      : getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']);
     if (qtde === 0) continue;
     const { data } = resolverDataCalendarioLinha(
       row,

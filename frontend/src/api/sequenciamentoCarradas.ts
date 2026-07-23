@@ -42,6 +42,8 @@ export type SequenciamentoCarradasPayloadV1 = {
   linhas: Record<string, unknown>[];
   /** Presente apenas em snapshots v2 (gravados com simulação). */
   simulacao?: SequenciamentoSimulacao | null;
+  /** Saldo de estoque por código no momento de `geradoEm` (ausente em snapshots legados). */
+  estoquePorCod?: Record<string, number>;
 };
 
 export type SequenciamentoSnapshotListItem = {

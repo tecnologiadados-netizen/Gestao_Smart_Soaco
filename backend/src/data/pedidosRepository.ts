@@ -211,7 +211,10 @@ export function normalizeRotaForChave(rota: string | null | undefined): string {
     .trim()
     .toLowerCase()
     .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '');
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s*-\s*/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Último e penúltimo ajuste por idChave (para Previsão atual e Previsão anterior). */

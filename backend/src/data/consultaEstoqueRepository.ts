@@ -23,13 +23,14 @@ import {
 } from './sql/sqlComprasEstoqueFragments.js';
 import { termoParaPadraoLikeSql } from '../utils/textoLivreBusca.js';
 
-export const CONSULTA_ESTOQUE_MAX_ROWS = 150;
+export const CONSULTA_ESTOQUE_CONFIRM_ROWS = 50;
 
 const OPCOES_FILTRO_CACHE_TTL_MS = 5 * 60 * 1000;
 let opcoesFiltroCache: { expiresAt: number; data: OpcoesFiltroConsultaEstoque } | null = null;
 
 export type ModoPedidoConsultaEstoque = 'diretos' | 'componentes';
 export type EmpenhoEscopoConsultaEstoque = 'pedido' | 'todos';
+export type FiltroSimNaoTodos = 'todos' | 'sim' | 'nao';
 
 export interface FiltrosConsultaEstoque {
   codigos?: string[];
@@ -43,6 +44,8 @@ export interface FiltrosConsultaEstoque {
   idPedido?: number;
   modoPedido?: ModoPedidoConsultaEstoque;
   empenhoEscopo?: EmpenhoEscopoConsultaEstoque;
+  comEmpenho?: FiltroSimNaoTodos;
+  comSaldoEstoque?: FiltroSimNaoTodos;
 }
 
 export interface PedidoGerenciadorTypeaheadItem {
@@ -283,12 +286,23 @@ function buildFiltroConditions(
   return { conditions, params };
 }
 
+function sqlCondicaoSaldoEstoque(comSaldoEstoque?: FiltroSimNaoTodos): string {
+  if (comSaldoEstoque === 'sim') {
+    return ' Where Round(Coalesce(saldo_agg.saldo, 0), 2) > 0';
+  }
+  if (comSaldoEstoque === 'nao') {
+    return ' Where Round(Coalesce(saldo_agg.saldo, 0), 2) = 0';
+  }
+  return '';
+}
+
 /**
  * Grade: produtos filtrados + agregados (empenho BOM em consulta separada por ids).
  */
 function buildConsultaSql(filtros: FiltrosConsultaEstoque): { sql: string; params: unknown[] } {
   const { conditions, params } = buildFiltroConditions(filtros);
   const whereExtra = conditions.length ? ` And ${conditions.join(' And ')}` : '';
+  const saldoWhere = sqlCondicaoSaldoEstoque(filtros.comSaldoEstoque);
 
   const cotJoin = SQL_JOIN_COTACAO_AGREGADA.replace(
     /Where cc\.status In/,
@@ -331,10 +345,48 @@ From produtos_filtrados pf_outer
 ${SQL_SALDO_AGREGADO_PARA_PRODUTOS_FILTRADOS}
 ${cotJoin}
 ${pcJoin}
+${saldoWhere}
 Order By pf_outer.nome
 `.trim();
 
   return { sql, params };
+}
+
+/** Contagem leve: mesmos filtros dimensionais + saldo, sem cotação/PC/empenho. */
+function buildContagemSql(filtros: FiltrosConsultaEstoque): { sql: string; params: unknown[] } {
+  const { conditions, params } = buildFiltroConditions(filtros);
+  const whereExtra = conditions.length ? ` And ${conditions.join(' And ')}` : '';
+  const saldoWhere = sqlCondicaoSaldoEstoque(filtros.comSaldoEstoque);
+
+  const sql = `
+With produtos_filtrados As (
+  Select
+    p.id,
+    p.idTipoProduto
+  From produto p
+  Inner Join produtoempresa pe On pe.idProduto = p.id And pe.idEmpresa = 1
+  Left Join tipoproduto tp On p.idTipoProduto = tp.id
+  Left Join grupoproduto gp On p.idGrupoProduto = gp.id
+  Where p.ativo = 1
+    And p.idTipoProduto In (${TIPOS_PRODUTO_CONSULTA_SQL})
+    ${whereExtra}
+)
+Select Count(*) As total
+From (
+  Select pf_outer.id
+  From produtos_filtrados pf_outer
+  ${SQL_SALDO_AGREGADO_PARA_PRODUTOS_FILTRADOS}
+  ${saldoWhere}
+) t
+`.trim();
+
+  return { sql, params };
+}
+
+function passaFiltroSimNao(valor: number, filtro?: FiltroSimNaoTodos): boolean {
+  if (!filtro || filtro === 'todos') return true;
+  if (filtro === 'sim') return valor > 0;
+  return valor === 0;
 }
 
 function mapConsultaRow(
@@ -695,28 +747,56 @@ export function validarFiltrosPedidoConsultaEstoque(filtros: FiltrosConsultaEsto
   return null;
 }
 
-export async function consultarEstoque(params: {
-  filtros: FiltrosConsultaEstoque;
-  considerarRequisicoes: boolean;
-  confirmLarge?: boolean;
-}): Promise<{
-  data: ConsultaEstoqueRow[];
-  total: number;
-  truncated: boolean;
-  erro?: string;
-}> {
-  if (!filtrosConsultaTemAlgum(params.filtros)) {
-    return { data: [], total: 0, truncated: false, erro: 'Informe ao menos um filtro.' };
+export async function contarConsultaEstoque(
+  filtros: FiltrosConsultaEstoque
+): Promise<{ total: number; erro?: string }> {
+  if (!filtrosConsultaTemAlgum(filtros)) {
+    return { total: 0, erro: 'Informe ao menos um filtro.' };
   }
 
-  const erroPedido = validarFiltrosPedidoConsultaEstoque(params.filtros);
+  const erroPedido = validarFiltrosPedidoConsultaEstoque(filtros);
   if (erroPedido) {
-    return { data: [], total: 0, truncated: false, erro: erroPedido };
+    return { total: 0, erro: erroPedido };
   }
 
   const pool = getNomusPool();
   if (!pool || !isNomusEnabled()) {
-    return { data: [], total: 0, truncated: false, erro: 'NOMUS_DB_URL não configurado' };
+    return { total: 0, erro: 'NOMUS_DB_URL não configurado' };
+  }
+
+  const { sql, params: sqlParams } = buildContagemSql(filtros);
+
+  try {
+    const [rows] = (await pool.query(sql, sqlParams)) as [Record<string, unknown>[], unknown];
+    const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+    return { total: Number(row?.total ?? 0) };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[consultaEstoqueRepository] contarConsultaEstoque:', msg);
+    return { total: 0, erro: msg };
+  }
+}
+
+export async function consultarEstoque(params: {
+  filtros: FiltrosConsultaEstoque;
+  considerarRequisicoes: boolean;
+}): Promise<{
+  data: ConsultaEstoqueRow[];
+  total: number;
+  erro?: string;
+}> {
+  if (!filtrosConsultaTemAlgum(params.filtros)) {
+    return { data: [], total: 0, erro: 'Informe ao menos um filtro.' };
+  }
+
+  const erroPedido = validarFiltrosPedidoConsultaEstoque(params.filtros);
+  if (erroPedido) {
+    return { data: [], total: 0, erro: erroPedido };
+  }
+
+  const pool = getNomusPool();
+  if (!pool || !isNomusEnabled()) {
+    return { data: [], total: 0, erro: 'NOMUS_DB_URL não configurado' };
   }
 
   const { sql, params: sqlParams } = buildConsultaSql(params.filtros);
@@ -724,11 +804,8 @@ export async function consultarEstoque(params: {
   try {
     const [rows] = (await pool.query(sql, sqlParams)) as [Record<string, unknown>[], unknown];
     const baseRows = Array.isArray(rows) ? rows : [];
-    const total = baseRows.length;
-    const truncated = total > CONSULTA_ESTOQUE_MAX_ROWS && !params.confirmLarge;
-    const slice = truncated ? baseRows.slice(0, CONSULTA_ESTOQUE_MAX_ROWS) : baseRows;
 
-    const ids = slice.map((r) => Number(r.idProduto ?? 0)).filter((id) => id > 0);
+    const ids = baseRows.map((r) => Number(r.idProduto ?? 0)).filter((id) => id > 0);
     const [empenhoMap, solicitacaoMap] = await Promise.all([
       consultarEmpenhoLiquidoPorIds(ids, params.considerarRequisicoes, {
         idPedido: params.filtros.idPedido,
@@ -738,18 +815,21 @@ export async function consultarEstoque(params: {
       consultarSolicitacaoSaldoPorIds(ids),
     ]);
 
-    const all = slice.map((r) => {
-      const id = Number(r.idProduto ?? 0);
-      return mapConsultaRow(r, {
-        empenho: empenhoMap.get(id) ?? 0,
-        solicitacao: solicitacaoMap.get(id) ?? 0,
-      });
-    });
-    return { data: all, total, truncated };
+    const all = baseRows
+      .map((r) => {
+        const id = Number(r.idProduto ?? 0);
+        return mapConsultaRow(r, {
+          empenho: empenhoMap.get(id) ?? 0,
+          solicitacao: solicitacaoMap.get(id) ?? 0,
+        });
+      })
+      .filter((row) => passaFiltroSimNao(row.empenho, params.filtros.comEmpenho));
+
+    return { data: all, total: all.length };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[consultaEstoqueRepository] consultarEstoque:', msg);
-    return { data: [], total: 0, truncated: false, erro: msg };
+    return { data: [], total: 0, erro: msg };
   }
 }
 

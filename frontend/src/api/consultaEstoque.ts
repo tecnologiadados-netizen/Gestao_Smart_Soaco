@@ -27,6 +27,7 @@ export type OpcoesFiltroConsultaEstoque = {
 
 export type ModoPedidoConsultaEstoque = 'diretos' | 'componentes';
 export type EmpenhoEscopoConsultaEstoque = 'pedido' | 'todos';
+export type FiltroSimNaoTodos = 'todos' | 'sim' | 'nao';
 
 export type FiltrosConsultaEstoquePayload = {
   codigos?: string[];
@@ -40,6 +41,8 @@ export type FiltrosConsultaEstoquePayload = {
   idPedido?: number;
   modoPedido?: ModoPedidoConsultaEstoque;
   empenhoEscopo?: EmpenhoEscopoConsultaEstoque;
+  comEmpenho?: FiltroSimNaoTodos;
+  comSaldoEstoque?: FiltroSimNaoTodos;
 };
 
 export type PedidoGerenciadorTypeaheadItem = {
@@ -119,16 +122,29 @@ export async function buscarPedidosGerenciadorTypeahead(
   return { data: (j as { data: PedidoGerenciadorTypeaheadItem[] }).data ?? [] };
 }
 
+export async function contarConsultaEstoque(params: {
+  filtros: FiltrosConsultaEstoquePayload;
+}): Promise<{ total: number; error?: string }> {
+  const res = await apiFetch('/api/pcp/consulta-estoque/contar', {
+    method: 'POST',
+    body: params,
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return {
+      total: 0,
+      error: (j as { error?: string }).error ?? res.statusText,
+    };
+  }
+  return { total: Number((j as { total?: number }).total ?? 0) };
+}
+
 export async function consultarEstoque(params: {
   filtros: FiltrosConsultaEstoquePayload;
   considerarRequisicoes: boolean;
-  confirmLarge?: boolean;
 }): Promise<{
   data: ConsultaEstoqueLinha[];
   total: number;
-  truncated: boolean;
-  maxRows?: number;
-  message?: string;
   error?: string;
 }> {
   const res = await apiFetch('/api/pcp/consulta-estoque/consultar', {
@@ -140,16 +156,12 @@ export async function consultarEstoque(params: {
     return {
       data: [],
       total: 0,
-      truncated: false,
       error: (j as { error?: string }).error ?? res.statusText,
     };
   }
   return j as {
     data: ConsultaEstoqueLinha[];
     total: number;
-    truncated: boolean;
-    maxRows?: number;
-    message?: string;
   };
 }
 

@@ -8,6 +8,10 @@ import {
 import { mensagemBloqueioInconsistenciaQtdePendente } from '../../api/inconsistenciaQtdePendente';
 import MultiSelectWithSearch from '../../components/MultiSelectWithSearch';
 import { isRecursoPcp } from '../../utils/programacaoSetorialRecursoPcp';
+import {
+  abaterSaldoEstoquePorDataAsc,
+  parseDataBaseProgramacao,
+} from '../../utils/abaterSaldoEstoqueProgramacao';
 
 type PlanningRow = {
   idChave: string;
@@ -47,28 +51,7 @@ function normalize(str: string): string {
 }
 
 function parsePtBrDateSafe(dateStr: string | null | undefined): Date {
-  if (!dateStr) return new Date(0);
-  const s = String(dateStr).trim();
-  // dd/MM/yyyy
-  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (m) {
-    const d = Number(m[1]);
-    const mm = Number(m[2]);
-    const y = Number(m[3]);
-    const dt = new Date(y, mm - 1, d);
-    if (!Number.isNaN(dt.getTime())) return dt;
-  }
-  // yyyy-MM-dd (input type="date")
-  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m2) {
-    const y = Number(m2[1]);
-    const mm = Number(m2[2]);
-    const d = Number(m2[3]);
-    const dt = new Date(y, mm - 1, d);
-    if (!Number.isNaN(dt.getTime())) return dt;
-  }
-  const dt = new Date(s);
-  return Number.isNaN(dt.getTime()) ? new Date(0) : dt;
+  return parseDataBaseProgramacao(dateStr);
 }
 
 function isWithinInterval(date: Date, start: Date, end: Date): boolean {
@@ -251,37 +234,14 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
   const processedItems = useMemo(() => {
     if (planningData.length === 0) return [] as ProcessedItem[];
 
-    const sortedPlanning = [...planningData].sort(
-      (a, b) =>
-        parsePtBrDateSafe(String(a.DataBase ?? a.Previsao)).getTime() -
-        parsePtBrDateSafe(String(b.DataBase ?? b.Previsao)).getTime()
-    );
-    const stockRemaining = { ...stockData };
-    const result: ProcessedItem[] = [];
+    const { items } = abaterSaldoEstoquePorDataAsc(planningData, stockData, {
+      getCod: (item) => String(item.Cod || ''),
+      getRequestedQty: (item) => Number(item['Qtde Pendente Real'] ?? 0) || 0,
+      getSortTime: (item) =>
+        parseDataBaseProgramacao(String(item.DataBase ?? item.Previsao)).getTime(),
+    });
 
-    for (const item of sortedPlanning) {
-      const cod = String(item.Cod || '');
-      const requested = Number(item['Qtde Pendente Real'] ?? 0) || 0;
-      let available = stockRemaining[cod] || 0;
-
-      let usedFromStock = 0;
-      if (available > 0) {
-        usedFromStock = Math.min(requested, available);
-        stockRemaining[cod] -= usedFromStock;
-      }
-
-      const rawQtyToProduce = Math.max(0, requested - usedFromStock);
-      const roundedQtyToProduce = Math.ceil(rawQtyToProduce);
-
-      result.push({
-        ...item,
-        originalQty: requested,
-        qtyToProduce: roundedQtyToProduce,
-        fulfilledByStock: usedFromStock,
-      });
-    }
-
-    return result;
+    return items as ProcessedItem[];
   }, [planningData, stockData]);
 
   const aglutinatedItems = useMemo(() => {

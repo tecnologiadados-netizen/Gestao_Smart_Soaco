@@ -10,7 +10,14 @@ export const EXCLUDED_SQL_ROTA_CATEGORIES = new Set([
 export const LABEL_CARRADA_EM_FORMACAO = 'Carrada em formação';
 
 export function normalizeRotaNameStr(dm: string): string {
-  return dm.trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  return String(dm ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s*-\s*/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export function isExcludedSqlRotaCategory(dm: string): boolean {
@@ -19,8 +26,7 @@ export function isExcludedSqlRotaCategory(dm: string): boolean {
 
 /** Carrada = rota que começa com "ROTA " (após normalização). */
 export function isCarradaRota(rota?: string | null): boolean {
-  const n = (rota ?? '').trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
-  return n.startsWith('rota ');
+  return normalizeRotaNameStr(rota ?? '').startsWith('rota ');
 }
 
 /**

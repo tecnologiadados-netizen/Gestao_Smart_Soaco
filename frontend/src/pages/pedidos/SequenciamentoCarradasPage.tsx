@@ -176,6 +176,10 @@ export default function SequenciamentoCarradasPage() {
   const [snapshotVisualizado, setSnapshotVisualizado] = useState<SnapshotVisualizado | null>(null);
   const [carradas, setCarradas] = useState<SequenciamentoCarradaAgregada[]>([]);
   const [linhasSnapshot, setLinhasSnapshot] = useState<Record<string, unknown>[]>([]);
+  /** Estoque congelado no payload (`undefined` no legado = tratar como {}). */
+  const [estoquePorCodSnapshot, setEstoquePorCodSnapshot] = useState<Record<string, number>>({});
+  const [estoqueCongeladoSnapshot, setEstoqueCongeladoSnapshot] = useState(false);
+  const [geradoEmSnapshot, setGeradoEmSnapshot] = useState<string>('');
   const [detalheCarregando, setDetalheCarregando] = useState(false);
   const [detalheErro, setDetalheErro] = useState<string | null>(null);
 
@@ -451,6 +455,22 @@ export default function SequenciamentoCarradasPage() {
       setSnapshotVisualizado(meta);
       setCarradas(sorted);
       setLinhasSnapshot(linhas);
+      const temEstoque =
+        payload.estoquePorCod != null &&
+        typeof payload.estoquePorCod === 'object' &&
+        !Array.isArray(payload.estoquePorCod);
+      setEstoqueCongeladoSnapshot(temEstoque);
+      if (temEstoque) {
+        const map: Record<string, number> = {};
+        for (const [cod, saldo] of Object.entries(payload.estoquePorCod!)) {
+          const n = Number(saldo);
+          if (cod.trim() && Number.isFinite(n)) map[cod] = n > 0 ? n : 0;
+        }
+        setEstoquePorCodSnapshot(map);
+      } else {
+        setEstoquePorCodSnapshot({});
+      }
+      setGeradoEmSnapshot(typeof payload.geradoEm === 'string' ? payload.geradoEm : '');
       setMostrarHistorico(false);
       grade.limparFiltrosGrade();
       // Restaura simulação salva (snapshots v2)
@@ -1720,6 +1740,9 @@ export default function SequenciamentoCarradasPage() {
           onLinhasAtualizadas={setLinhasSnapshot}
           onEditarDataProducao={(key, novaData) => editarData(key, 'dataProducao', novaData)}
           editavel={editavel}
+          estoquePorCod={estoquePorCodSnapshot}
+          estoqueCongelado={estoqueCongeladoSnapshot}
+          geradoEm={geradoEmSnapshot}
         />
       )}
 

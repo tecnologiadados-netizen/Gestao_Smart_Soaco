@@ -17,6 +17,8 @@ const BTN_FILTRAR =
 const BTN_LIMPAR =
   'px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-medium text-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600';
 
+export type FiltroSimNaoTodos = 'todos' | 'sim' | 'nao';
+
 export type FiltrosConsultaEstoqueState = {
   codigos: string;
   descricoes: string;
@@ -26,6 +28,8 @@ export type FiltrosConsultaEstoqueState = {
   setoresProducao: string;
   subgrupo1: string;
   subgrupo2: string;
+  comEmpenho: FiltroSimNaoTodos;
+  comSaldoEstoque: FiltroSimNaoTodos;
 };
 
 export type PedidoFiltroConsultaEstoque = {
@@ -86,6 +90,8 @@ export function filtrosStateToPayload(
     setoresProducao: splitPipe(f.setoresProducao),
     subgrupo1: splitPipe(f.subgrupo1),
     subgrupo2: splitPipe(f.subgrupo2),
+    comEmpenho: f.comEmpenho,
+    comSaldoEstoque: f.comSaldoEstoque,
   };
   if (!pedidoFiltro?.pedido) return base;
   return {
@@ -329,6 +335,38 @@ export default function ModalFiltrosConsultaEstoque({
                   valueSeparator="|"
                   fillContainer
                 />
+              </div>
+              <div className="min-w-0">
+                <label className={labelClass} htmlFor="filtro-com-empenho">
+                  Com empenho?
+                </label>
+                <select
+                  id="filtro-com-empenho"
+                  className={inputClass}
+                  value={filtros.comEmpenho}
+                  onChange={(e) => onChange({ comEmpenho: e.target.value as FiltroSimNaoTodos })}
+                >
+                  <option value="todos">Todos</option>
+                  <option value="sim">Sim</option>
+                  <option value="nao">Não</option>
+                </select>
+              </div>
+              <div className="min-w-0">
+                <label className={labelClass} htmlFor="filtro-com-saldo-estoque">
+                  Com saldo de estoque?
+                </label>
+                <select
+                  id="filtro-com-saldo-estoque"
+                  className={inputClass}
+                  value={filtros.comSaldoEstoque}
+                  onChange={(e) =>
+                    onChange({ comSaldoEstoque: e.target.value as FiltroSimNaoTodos })
+                  }
+                >
+                  <option value="todos">Todos</option>
+                  <option value="sim">Sim</option>
+                  <option value="nao">Não</option>
+                </select>
               </div>
             </div>
 

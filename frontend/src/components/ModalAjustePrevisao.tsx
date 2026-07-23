@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { z } from 'zod';
-import { listarPedidos, type Pedido } from '../api/pedidos';
+import { ajustarDataProducaoLote, listarPedidos, type Pedido } from '../api/pedidos';
 import { listarMotivosSugestao, type MotivoSugestao } from '../api/motivosSugestao';
 import ModalGerenciarMotivos from './ModalGerenciarMotivos';
 import CampoLabelComAjuda, { AJUDA_CAMPO_OBSERVACAO } from './CampoLabelComAjuda';
 import SequenciamentoDateField from './sequenciamento-carradas/SequenciamentoDateField';
+import { montarItensDataProducaoCalendario, rotaPayloadAjusteDoCalendario } from './sequenciamento-carradas/ajustePrevisaoCalendario';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSOES } from '../config/permissoes';
 import {
@@ -52,7 +53,10 @@ interface ModalAjustePrevisaoProps {
   onSuccess: (atualizado: Pedido, meta?: AjustePrevisaoSuccessMeta) => void;
   onError: (msg: string) => void;
   calendario?: AjustePrevisaoContextoCalendario;
-  /** Grava nova data de produção na simulação do sequenciamento (carradas normais). */
+  /**
+   * Atualiza a data de produção na simulação do sequenciamento (UI do calendário).
+   * A persistência no Gerenciador é feita pelo próprio modal via `data-producao-lote`.
+   */
   onSalvarDataProducao?: (novaData: string) => void;
   /** Volta à etapa anterior (ex.: escolha de escopo no calendário). */
   onVoltar?: () => void;
@@ -63,8 +67,10 @@ type FlowStep = 'form' | 'multiplas_rotas' | 'carrada_confirm';
 /** Decisão acumulada ao longo dos steps do fluxo. */
 type PendingDecision = {
   data: { previsao_nova: string; motivo: string; observacao?: string; previsao_confiavel: boolean };
-  /** Override por rota. null = ajuste base (vale em todas as rotas do PD/item). */
+  /** Override por rota. null = ajuste base (vale em todas as rotas do PD/item), salvo no calendário sem forcarBase. */
   rotaOverride: string | null;
+  /** Usuário escolheu explicitamente ajuste base (todas as rotas). */
+  forcarBase?: boolean;
   /** Outras rotas em que o mesmo (PD, item) aparece, além da rota atual. */
   outrasRotasDoItem: string[];
   /** Se a rota atual é "ROTA …" com 2+ PDs distintos (precisa perguntar replicate_carrada). */
@@ -153,11 +159,30 @@ export default function ModalAjustePrevisao({
   const motivoObrigatorio =
     !calendario || previsaoMudouForm || (calendario.producaoDerivadaPrevisao && producaoMudouForm);
 
-  const aplicarDataProducaoPendente = () => {
+  const demaisItensCalendario = (): Pedido[] =>
+    calendario?.escopoTodosItensPd ? calendario.demaisItensPd ?? [] : [];
+
+  /** Persiste produção no Gerenciador (override por Observacoes) e atualiza o sim do calendário. */
+  const persistirDataProducaoCalendario = async (novaData: string) => {
+    const itens = montarItensDataProducaoCalendario(pedido, novaData, demaisItensCalendario());
+    if (itens.length === 0) {
+      throw new Error('Não foi possível montar o lote de data de produção (pedido sem id).');
+    }
+    const r = await ajustarDataProducaoLote(itens);
+    if (r.erros?.length) {
+      throw new Error(r.erros[0]?.erro ?? 'Erro ao gravar data de produção no Gerenciador.');
+    }
+    onSalvarDataProducao?.(novaData);
+  };
+
+  const aplicarDataProducaoPendente = async () => {
     const nova = pendingProducaoRef.current;
-    if (nova) {
+    if (!nova) return;
+    pendingProducaoRef.current = null;
+    if (calendario) {
+      await persistirDataProducaoCalendario(nova);
+    } else {
       onSalvarDataProducao?.(nova);
-      pendingProducaoRef.current = null;
     }
   };
 
@@ -167,13 +192,17 @@ export default function ModalAjustePrevisao({
     setLoading(true);
     try {
       const replicateCarrada = decision.replicateCarrada === true;
+      const rotaPayloadPrincipal = rotaPayloadAjusteDoCalendario(pedido, decision.rotaOverride, {
+        modoCalendario: !!calendario,
+        forcarBase: decision.forcarBase === true,
+      });
       const { ajustarPrevisao } = await import('../api/pedidos');
-      const atualizado = await ajustarPrevisao(pedido.id_pedido, {
+      let atualizado = await ajustarPrevisao(pedido.id_pedido, {
         previsao_nova: decision.data.previsao_nova,
         motivo: decision.data.motivo,
         observacao: decision.data.observacao || null,
         replicate_carrada: replicateCarrada ? true : undefined,
-        rota: decision.rotaOverride ?? undefined,
+        rota: rotaPayloadPrincipal,
         previsao_confiavel: decision.data.previsao_confiavel,
       });
       let meta: AjustePrevisaoSuccessMeta | undefined;
@@ -188,23 +217,33 @@ export default function ModalAjustePrevisao({
           }
         }
       }
-      aplicarDataProducaoPendente();
-      const demaisItens = calendario?.escopoTodosItensPd ? calendario.demaisItensPd ?? [] : [];
+      const producaoPendente = pendingProducaoRef.current;
+      await aplicarDataProducaoPendente();
+      if (producaoPendente) {
+        atualizado = { ...atualizado, data_producao: producaoPendente } as Pedido;
+      }
+      const demaisItens = demaisItensCalendario();
       const outrosAtualizados: Pedido[] = [];
       if (demaisItens.length > 0) {
         for (const item of demaisItens) {
           const rotaItem = rotaFromPedidoRow(item as Record<string, unknown>).trim();
           const rotaPayload =
-            decision.rotaOverride != null && decision.rotaOverride !== ''
-              ? rotaItem || decision.rotaOverride
-              : decision.rotaOverride ?? undefined;
-          const upd = await ajustarPrevisao(item.id_pedido, {
+            rotaPayloadPrincipal != null
+              ? rotaPayloadAjusteDoCalendario(item, rotaItem || rotaPayloadPrincipal, {
+                  modoCalendario: true,
+                  forcarBase: decision.forcarBase === true,
+                })
+              : undefined;
+          let upd = await ajustarPrevisao(item.id_pedido, {
             previsao_nova: decision.data.previsao_nova,
             motivo: decision.data.motivo,
             observacao: decision.data.observacao || null,
             rota: rotaPayload,
             previsao_confiavel: decision.data.previsao_confiavel,
           });
+          if (producaoPendente) {
+            upd = { ...upd, data_producao: producaoPendente } as Pedido;
+          }
           outrosAtualizados.push(upd);
         }
       }
@@ -265,7 +304,8 @@ export default function ModalAjustePrevisao({
         return;
       }
 
-      // Somente produção (ou previsão só elevada para acompanhar produção): simulação, sem API.
+      // Somente produção (ou previsão só elevada para acompanhar produção):
+      // grava no Gerenciador na hora (override por Observacoes) + atualiza o sim.
       const previsaoApenasClamp =
         previsaoMudou &&
         !!producaoNovaNorm &&
@@ -282,9 +322,19 @@ export default function ModalAjustePrevisao({
           onError('Informe a nova data de produção.');
           return;
         }
-        onSalvarDataProducao?.(producaoNovaNorm);
-        onSuccess(pedido);
-        onClose();
+        setLoading(true);
+        try {
+          await persistirDataProducaoCalendario(producaoNovaNorm);
+          onSuccess({
+            ...pedido,
+            data_producao: producaoNovaNorm,
+          } as Pedido);
+          onClose();
+        } catch (err) {
+          onError(err instanceof Error ? err.message : 'Erro ao gravar data de produção.');
+        } finally {
+          setLoading(false);
+        }
         return;
       }
     } else if (previsaoAtualStr && previsaoNovaNorm === previsaoAtualStr) {
@@ -315,9 +365,25 @@ export default function ModalAjustePrevisao({
 
     if (!precisaAjustePrevisao) {
       if (producaoMudou && producaoNovaNorm) {
-        onSalvarDataProducao?.(producaoNovaNorm);
-        onSuccess(pedido);
-        onClose();
+        if (calendario) {
+          setLoading(true);
+          try {
+            await persistirDataProducaoCalendario(producaoNovaNorm);
+            onSuccess({
+              ...pedido,
+              data_producao: producaoNovaNorm,
+            } as Pedido);
+            onClose();
+          } catch (err) {
+            onError(err instanceof Error ? err.message : 'Erro ao gravar data de produção.');
+          } finally {
+            setLoading(false);
+          }
+        } else {
+          onSalvarDataProducao?.(producaoNovaNorm);
+          onSuccess(pedido);
+          onClose();
+        }
       }
       return;
     }
@@ -412,7 +478,10 @@ export default function ModalAjustePrevisao({
 
     const decision: PendingDecision = {
       data: dataComConfiavel!,
-      rotaOverride: null,
+      // Calendário: override na Observacoes da linha (mesma hierarquia da grade).
+      // Sem calendário: null = ajuste base.
+      rotaOverride: calendario && rotaAtual.trim() ? rotaAtual.trim() : null,
+      forcarBase: false,
       outrasRotasDoItem,
       precisaConfirmarCarrada,
       replicateCarrada: precisaConfirmarCarrada ? null : false,
@@ -437,7 +506,7 @@ export default function ModalAjustePrevisao({
   const handleMultiplasRotasTodas = async () => {
     const pending = pendingRef.current;
     if (!pending) return;
-    const decision: PendingDecision = { ...pending, rotaOverride: null };
+    const decision: PendingDecision = { ...pending, rotaOverride: null, forcarBase: true };
     setFlowStep('form');
     await advanceFlow(decision);
   };
@@ -446,7 +515,11 @@ export default function ModalAjustePrevisao({
     const pending = pendingRef.current;
     if (!pending) return;
     const rotaAtual = rotaFromPedidoRow(pedido as Record<string, unknown>).trim();
-    const decision: PendingDecision = { ...pending, rotaOverride: rotaAtual || null };
+    const decision: PendingDecision = {
+      ...pending,
+      rotaOverride: rotaAtual || null,
+      forcarBase: false,
+    };
     setFlowStep('form');
     await advanceFlow(decision);
   };

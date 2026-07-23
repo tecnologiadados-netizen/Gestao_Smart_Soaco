@@ -20,7 +20,7 @@ const COLS = ['codigo', 'descricao', 'qtdePendente'] as const;
 const COL_LABELS: Record<(typeof COLS)[number], string> = {
   codigo: 'Código',
   descricao: 'Descrição',
-  qtdePendente: 'Qtde Pendente Real',
+  qtdePendente: 'Qtde a produzir',
 };
 
 const TH =
@@ -33,6 +33,8 @@ type Props = {
   sim: Map<string, SimEntry>;
   baseline: Map<string, CarradaBaseline>;
   dataInserirRomaneio: string;
+  /** Qtde líquida após estoque (mesma regra da Programação Setorial). */
+  getQtdeLinha?: (row: Record<string, unknown>) => number;
   onClose: () => void;
 };
 
@@ -54,13 +56,23 @@ export default function CalendarioSetorProdutosModal({
   sim,
   baseline,
   dataInserirRomaneio,
+  getQtdeLinha,
   onClose,
 }: Props) {
   const [consultaCodigo, setConsultaCodigo] = useState<string | null>(null);
 
   const produtos = useMemo(
-    () => listarProdutosSetorCalendario(linhas, setor, sim, baseline, dataInserirRomaneio),
-    [linhas, setor, sim, baseline, dataInserirRomaneio]
+    () =>
+      listarProdutosSetorCalendario(
+        linhas,
+        setor,
+        sim,
+        baseline,
+        dataInserirRomaneio,
+        '',
+        getQtdeLinha ? (row) => getQtdeLinha(row) : undefined
+      ),
+    [linhas, setor, sim, baseline, dataInserirRomaneio, getQtdeLinha]
   );
 
   const grade = useGradeFiltrosExcel<ProdutoSetorCalendarioRow>({
@@ -91,7 +103,10 @@ export default function CalendarioSetorProdutosModal({
     <div
       className="fixed inset-0 z-[131] flex items-center justify-center bg-black/70 p-4"
       role="presentation"
-      onClick={onClose}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
     >
       <div
         className="flex max-h-[min(85vh,640px)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"

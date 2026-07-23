@@ -126,7 +126,6 @@ export default function ModalConsultaEstoqueEmbed({ codigo, onClose, zIndexBase 
     const r = await consultarEstoque({
       filtros: { codigos: [codigo.trim()] },
       considerarRequisicoes: req,
-      confirmLarge: true,
     });
     setLoading(false);
     if (r.error) {

@@ -418,6 +418,8 @@ export interface TooltipDetalheRow {
   cliente?: string;
   /** Tipo de pedido Nomus (Assistência, Padrão, Produção para estoque, etc.). */
   tipoPedido?: string;
+  /** Setor de produção do item (quando disponível no snapshot). */
+  setorProducao?: string;
   municipio: string;
   aVista: string;
   valorPendente: number;

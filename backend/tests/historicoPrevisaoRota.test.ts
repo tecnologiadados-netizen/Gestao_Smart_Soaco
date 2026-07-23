@@ -19,6 +19,15 @@ describe('normalizeRotaForChave', () => {
       normalizeRotaForChave('rota belem abaetetuba - liberada')
     );
   });
+
+  it('unifica espaço em torno do hífen (3-Entrega ≡ 3- Entrega)', () => {
+    expect(normalizeRotaForChave('3-Entrega em Grande Teresina')).toBe(
+      '3-entrega em grande teresina'
+    );
+    expect(normalizeRotaForChave('3- Entrega em Grande Teresina')).toBe(
+      normalizeRotaForChave('3-Entrega em Grande Teresina')
+    );
+  });
 });
 
 describe('resolverPrevisaoAnteriorNaCadeia — duas carradas no mesmo timestamp', () => {

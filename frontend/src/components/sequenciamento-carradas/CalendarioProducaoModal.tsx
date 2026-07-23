@@ -4,6 +4,7 @@ import {
   computarCalendarioProducao,
   dataProducaoInserirRomaneioApartirDe,
   dataProducaoCarradaEmFormacaoApartirDe,
+  datasItemPedidoGerenciador,
   encontrarLinhaSnapshotNoDrill,
   encontrarLinhaSnapshotParaTooltipItem,
   formatDataCurta,
@@ -13,6 +14,8 @@ import {
   linhaCarradaKey,
   maxDataProducaoCarradasNormais,
   montarEixoDatasCalendario,
+  resolverDataCalendarioLinha,
+  simItemKey,
   tooltipDetalheComDatasEfetivas,
   valorEfetivo,
   type CarradaBaseline,
@@ -23,6 +26,7 @@ import IndicadorDataPorPrevisao from './IndicadorDataPorPrevisao';
 import CalendarioSetorProdutosModal from './CalendarioSetorProdutosModal';
 import {
   comparePedidoAsc,
+  isCarradaOrdemFinal,
   linhaSnapshotParaPedido,
   listarLinhasSnapshotPorPd,
   listarTooltipDetalhePorPd,
@@ -30,6 +34,7 @@ import {
   mergeLinhasSnapshotVarios,
   SUBTOTAL_ROW_CLASS,
 } from './sequenciamentoCarradasUtils';
+import MultiSelectWithSearch from '../MultiSelectWithSearch';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import GradeFiltroCabecalhoBtn from '../grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../grade/GradeFiltroExcelPortal';
@@ -40,6 +45,10 @@ import ModalAjustePrevisao, {
 } from '../ModalAjustePrevisao';
 import GradeCelulaModalBtn from '../pcp/GradeCelulaModalBtn';
 import { labelPedidoMapa } from '../../utils/mapaMunicipioPedido';
+import { normalizePdLabelForCompare } from '../../utils/rotaCarrada';
+import {
+  montarQtdeLiquidaDoSnapshot,
+} from '../../utils/abaterSaldoEstoqueProgramacao';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { PERMISSOES } from '../../config/permissoes';
@@ -54,6 +63,15 @@ type Props = {
   onEditarDataProducao?: (carradaKey: string, novaData: string) => void;
   /** False quando o snapshot já está concluído (somente leitura). */
   editavel?: boolean;
+  /**
+   * Saldo de estoque congelado no snapshot do sequenciamento.
+   * Ausente/legado: passar `{}` e `estoqueCongelado: false`.
+   */
+  estoquePorCod?: Record<string, number>;
+  /** True se o payload tinha `estoquePorCod` (mesmo que vazio). */
+  estoqueCongelado?: boolean;
+  /** ISO de quando linhas+estoque foram capturados (legenda). */
+  geradoEm?: string;
 };
 
 type EscopoAjustePd = 'item' | 'todos_itens_pd';
@@ -126,6 +144,38 @@ function tituloColuna(col: ColunaCalendario): string {
   return `Período ocioso (${formatDataCurta(col.de)} – ${formatDataCurta(col.ate)})`;
 }
 
+function pdDaLinha(row: Record<string, unknown>): string {
+  for (const k of ['PD', 'pd']) {
+    const v = row[k];
+    if (v != null && String(v).trim()) return String(v).trim();
+  }
+  return '';
+}
+
+function pdPassaFiltro(pdLinha: string, selecionados: string[]): boolean {
+  if (selecionados.length === 0) return true;
+  const digitosLinha = normalizePdLabelForCompare(pdLinha);
+  return selecionados.some((sel) => {
+    if (!sel.trim()) return false;
+    if (pdLinha.trim().toUpperCase() === sel.trim().toUpperCase()) return true;
+    const digitosSel = normalizePdLabelForCompare(sel);
+    return !!digitosLinha && !!digitosSel && digitosLinha === digitosSel;
+  });
+}
+
+const FILTRO_PD_LABEL_CLASS = 'block text-xs text-slate-500 dark:text-slate-400 mb-1';
+const FILTRO_PD_INPUT_CLASS =
+  'w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm text-slate-800 focus:border-transparent focus:ring-2 focus:ring-primary-600 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100';
+/** Acima do modal do calendário (z ~50–130) e do portal de filtro Excel. */
+const FILTRO_PD_DROPDOWN_Z = 10080;
+
+function formatGeradoEmLegenda(iso: string | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString('pt-BR');
+}
+
 export default function CalendarioProducaoModal({
   linhas,
   sim,
@@ -134,6 +184,9 @@ export default function CalendarioProducaoModal({
   onLinhasAtualizadas,
   onEditarDataProducao,
   editavel = true,
+  estoquePorCod = {},
+  estoqueCongelado = false,
+  geradoEm,
 }: Props) {
   const { hasPermission } = useAuth();
   const podeAjustarPrevisao =
@@ -142,7 +195,49 @@ export default function CalendarioProducaoModal({
       hasPermission(PERMISSOES.PCP_TOTAL) ||
       hasPermission(PERMISSOES.PEDIDOS_EDITAR));
 
-  const dados = useMemo(() => computarCalendarioProducao(linhas, sim, baseline), [linhas, sim, baseline]);
+  const [filtroPd, setFiltroPd] = useState('');
+
+  const qtdePorRow = useMemo(() => {
+    const porIndex = montarQtdeLiquidaDoSnapshot(linhas, estoquePorCod);
+    const map = new Map<Record<string, unknown>, number>();
+    linhas.forEach((row, i) => {
+      map.set(row, porIndex.get(i) ?? 0);
+    });
+    return map;
+  }, [linhas, estoquePorCod]);
+
+  const getQtdeLinha = useCallback(
+    (row: Record<string, unknown>) => qtdePorRow.get(row) ?? 0,
+    [qtdePorRow]
+  );
+
+  const opcoesPd = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of linhas) {
+      const pd = pdDaLinha(row);
+      if (pd) set.add(pd);
+    }
+    return [...set].sort(comparePedidoAsc);
+  }, [linhas]);
+
+  const pdsSelecionados = useMemo(
+    () =>
+      filtroPd
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    [filtroPd]
+  );
+
+  const linhasFiltradas = useMemo(() => {
+    if (pdsSelecionados.length === 0) return linhas;
+    return linhas.filter((row) => pdPassaFiltro(pdDaLinha(row), pdsSelecionados));
+  }, [linhas, pdsSelecionados]);
+
+  const dados = useMemo(
+    () => computarCalendarioProducao(linhasFiltradas, sim, baseline, (row) => getQtdeLinha(row)),
+    [linhasFiltradas, sim, baseline, getQtdeLinha]
+  );
 
   const maxProducaoNormais = useMemo(
     () => maxDataProducaoCarradasNormais(linhas, sim, baseline),
@@ -160,6 +255,7 @@ export default function CalendarioProducaoModal({
   const [pedidoModal, setPedidoModal] = useState<{
     linha: TooltipDetalheRow;
     itens: TooltipDetalheRow[];
+    setorDestaque: string;
   } | null>(null);
   const [pedidoAjustePrevisao, setPedidoAjustePrevisao] = useState<PedidoAjusteState | null>(null);
   const [escolhaEscopoPd, setEscolhaEscopoPd] = useState<string | null>(null);
@@ -268,7 +364,7 @@ export default function CalendarioProducaoModal({
 
   const pedidoRows = useMemo(() => {
     if (drill.nivel !== 'pedidos') return [];
-    const map = new Map<string, { qtde: number; producaoPorPrevisao: boolean }>();
+    const map = new Map<string, { qtde: number; producaoPorPrevisao: boolean; cliente: string }>();
     for (const d of dados.detalhes) {
       if (
         d.setor === drill.setor &&
@@ -276,14 +372,20 @@ export default function CalendarioProducaoModal({
         d.tipoF === drill.tipoF &&
         carradaKey(d.cod, d.carrada) === drill.carradaKey
       ) {
-        const cur = map.get(d.pd) ?? { qtde: 0, producaoPorPrevisao: false };
+        const cur = map.get(d.pd) ?? { qtde: 0, producaoPorPrevisao: false, cliente: '' };
         cur.qtde += d.qtde;
         if (d.producaoPorPrevisao) cur.producaoPorPrevisao = true;
+        if (!cur.cliente && d.cliente) cur.cliente = d.cliente;
         map.set(d.pd, cur);
       }
     }
     return [...map.entries()]
-      .map(([pd, { qtde, producaoPorPrevisao }]) => ({ pd, qtde, producaoPorPrevisao }))
+      .map(([pd, { qtde, producaoPorPrevisao, cliente }]) => ({
+        pd,
+        qtde,
+        producaoPorPrevisao,
+        cliente,
+      }))
       .sort((a, b) => comparePedidoAsc(a.pd, b.pd));
   }, [drill, dados.detalhes]);
 
@@ -344,6 +446,7 @@ export default function CalendarioProducaoModal({
 
   const abrirModalPedido = useCallback(
     (pd: string) => {
+      if (drill.nivel !== 'pedidos') return;
       const linhasPd = listarLinhasSnapshotPorPd(linhas, pd);
       const itens = listarTooltipDetalhePorPd(linhas, pd)
         .map((item) => {
@@ -353,9 +456,9 @@ export default function CalendarioProducaoModal({
             : item;
         });
       if (itens.length === 0) return;
-      setPedidoModal({ linha: itens[0]!, itens });
+      setPedidoModal({ linha: itens[0]!, itens, setorDestaque: drill.setor });
     },
-    [linhas, sim, baseline, dataInserirRomaneio, dataEmFormacao]
+    [linhas, sim, baseline, dataInserirRomaneio, dataEmFormacao, drill]
   );
 
   const abrirAjustePrevisao = useCallback(
@@ -391,7 +494,22 @@ export default function CalendarioProducaoModal({
           : undefined;
 
       const key = linhaCarradaKey(linha);
-      const dataProducaoAtual = valorEfetivo(sim, baseline, key, 'dataProducao');
+      const datasExibidas = datasItemPedidoGerenciador(
+        linha,
+        sim,
+        baseline,
+        dataInserirRomaneio,
+        dataEmFormacao
+      );
+      const { origem } = resolverDataCalendarioLinha(
+        linha,
+        sim,
+        baseline,
+        dataInserirRomaneio,
+        dataEmFormacao
+      );
+      const dataProducaoAtual =
+        datasExibidas.dataProducao || datasExibidas.dataCalendario || valorEfetivo(sim, baseline, key, 'dataProducao');
       setPedidoAjustePrevisao({
         pedido,
         pd,
@@ -401,7 +519,7 @@ export default function CalendarioProducaoModal({
         exibirVoltarEscopo: linhasPd.length > 1,
         calendario: {
           dataProducaoAtual,
-          producaoDerivadaPrevisao: false,
+          producaoDerivadaPrevisao: datasExibidas.producaoPorPrevisao || origem === 'previsao',
           escopoTodosItensPd: escopo === 'todos_itens_pd',
           demaisItensPd,
         },
@@ -432,10 +550,10 @@ export default function CalendarioProducaoModal({
       const qtdTodos = meta?.todosItensPdAtualizados?.length ?? 0;
       setToast(
         meta?.atualizadosMesmaCarrada?.length
-          ? 'Datas atualizadas (previsão replicada na carrada).'
+          ? 'Datas aplicadas no Gerenciador (previsão replicada na carrada).'
           : qtdTodos > 1
-            ? `Datas atualizadas em ${qtdTodos} itens do pedido.`
-            : 'Datas atualizadas com sucesso.'
+            ? `Datas aplicadas no Gerenciador em ${qtdTodos} itens do pedido.`
+            : 'Datas aplicadas no Gerenciador de Pedidos.'
       );
       setTimeout(() => setToast(null), 3000);
     },
@@ -450,6 +568,27 @@ export default function CalendarioProducaoModal({
           ? pedidoAjustePrevisao.carradaKeysTodosItens
           : [pedidoAjustePrevisao.carradaKey];
       for (const key of keys) onEditarDataProducao?.(key, novaData);
+
+      // Ordem final (Entrega GT etc.): leitura efetiva usa simItemKey(id_pedido).
+      const pedidosEscopo =
+        pedidoAjustePrevisao.escopo === 'todos_itens_pd'
+          ? [
+              pedidoAjustePrevisao.pedido,
+              ...(pedidoAjustePrevisao.calendario.demaisItensPd ?? []),
+            ]
+          : [pedidoAjustePrevisao.pedido];
+      for (const p of pedidosEscopo) {
+        const id = String(p.id_pedido ?? '').trim();
+        if (!id) continue;
+        const rota = String(
+          (p as Record<string, unknown>)['Observacoes'] ??
+            (p as Record<string, unknown>)['Observações'] ??
+            ''
+        ).trim();
+        if (rota && isCarradaOrdemFinal(rota)) {
+          onEditarDataProducao?.(simItemKey(id), novaData);
+        }
+      }
     },
     [pedidoAjustePrevisao, onEditarDataProducao]
   );
@@ -532,6 +671,7 @@ export default function CalendarioProducaoModal({
   };
 
   return (
+    <>
     <div
       className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4"
       role="presentation"
@@ -568,14 +708,59 @@ export default function CalendarioProducaoModal({
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-2 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-400">
-          <span>Datas do calendário baseadas na data de produção.</span>
-          <span className="inline-flex items-center gap-1">
-            <IndicadorDataPorPrevisao />
-            <span>= sem data de produção, usando previsão atual</span>
-          </span>
+        <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b border-slate-200 px-4 py-2 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-400">
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span>Datas do calendário baseadas na data de produção.</span>
+              <span className="inline-flex items-center gap-1">
+                <IndicadorDataPorPrevisao />
+                <span>= sem data de produção, usando previsão atual</span>
+              </span>
+            </div>
+            <span className="text-slate-500 dark:text-slate-400">
+              {estoqueCongelado ? (
+                <>
+                  Quantidades líquidas após abater estoque congelado no sequenciamento
+                  {geradoEm ? ` (${formatGeradoEmLegenda(geradoEm)})` : ''}.
+                </>
+              ) : (
+                <>
+                  Snapshot sem estoque congelado (legado); quantidades como se o saldo fosse 0. Grave
+                  um novo sequenciamento para congelar o estoque.
+                </>
+              )}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[11rem] max-w-[16rem]">
+              <MultiSelectWithSearch
+                label="Pedido"
+                placeholder="Todos"
+                options={opcoesPd}
+                value={filtroPd}
+                onChange={setFiltroPd}
+                labelClass={FILTRO_PD_LABEL_CLASS}
+                inputClass={FILTRO_PD_INPUT_CLASS}
+                minWidth="11rem"
+                optionLabel="pedidos"
+                dropdownZIndex={FILTRO_PD_DROPDOWN_Z}
+                fillContainer
+              />
+            </div>
+            {pdsSelecionados.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setFiltroPd('')}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                title="Limpar filtro de pedido"
+              >
+                Limpar pedido
+              </button>
+            )}
+          </div>
         </div>
 
+        <>
         {emDrill && (
           <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-slate-200 px-4 py-2 text-xs dark:border-slate-600">
             <button
@@ -782,10 +967,11 @@ export default function CalendarioProducaoModal({
           )}
 
           {drill.nivel === 'pedidos' && (
-            <table className="w-full max-w-2xl border-collapse text-sm">
+            <table className="w-full max-w-4xl border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/50">
                   <th className={`${TH} text-left`}>Pedido</th>
+                  <th className={`${TH} text-left`}>Cliente</th>
                   <th className={`${TH} text-right`}>Qtde Pendente Real</th>
                 </tr>
               </thead>
@@ -815,11 +1001,16 @@ export default function CalendarioProducaoModal({
                         )}
                       </div>
                     </td>
+                    <td className={`${TD} max-w-[280px] truncate`} title={r.cliente || undefined}>
+                      {r.cliente || '—'}
+                    </td>
                     <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(r.qtde)}</td>
                   </tr>
                 ))}
                 <tr className={SUBTOTAL_ROW_CLASS}>
-                  <td className={TD}>Total</td>
+                  <td className={TD} colSpan={2}>
+                    Total
+                  </td>
                   <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(pedidoTotal)}</td>
                 </tr>
               </tbody>
@@ -852,7 +1043,9 @@ export default function CalendarioProducaoModal({
             showNumericFilters={grade.colunaFiltroAberta !== COL_SETOR}
           />
         )}
+        </>
       </div>
+    </div>
 
       {pedidoModal && (
         <HeatmapPedidoItensModal
@@ -860,6 +1053,7 @@ export default function CalendarioProducaoModal({
           linha={pedidoModal.linha}
           municipioLabel={pedidoModal.linha.municipio || '—'}
           itens={pedidoModal.itens}
+          setorDestaque={pedidoModal.setorDestaque}
           onClose={() => setPedidoModal(null)}
         />
       )}
@@ -867,10 +1061,11 @@ export default function CalendarioProducaoModal({
       {setorDetalhe && (
         <CalendarioSetorProdutosModal
           setor={setorDetalhe}
-          linhas={linhas}
+          linhas={linhasFiltradas}
           sim={sim}
           baseline={baseline}
           dataInserirRomaneio={dataInserirRomaneio}
+          getQtdeLinha={getQtdeLinha}
           onClose={() => setSetorDetalhe(null)}
         />
       )}
@@ -879,7 +1074,10 @@ export default function CalendarioProducaoModal({
         <div
           className="fixed inset-0 z-[135] flex items-center justify-center bg-black/75 p-4"
           role="presentation"
-          onClick={() => setEscolhaEscopoPd(null)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setEscolhaEscopoPd(null);
+          }}
         >
           <div
             className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-600 dark:bg-slate-800"
@@ -956,15 +1154,30 @@ export default function CalendarioProducaoModal({
             ).slice(0, 10);
             const previsaoNova = String(atualizado.previsao_entrega_atualizada ?? '').slice(0, 10);
             const previsaoAlterada = previsaoNova !== previsaoAnterior;
-            if (previsaoAlterada || meta?.atualizadosMesmaCarrada?.length) {
+            const producaoNova = String(
+              (atualizado as Record<string, unknown>).data_producao ?? ''
+            ).slice(0, 10);
+            const producaoAnterior = String(
+              (pedidoAjustePrevisao.pedido as Record<string, unknown>).data_producao ??
+                pedidoAjustePrevisao.calendario.dataProducaoAtual ??
+                ''
+            ).slice(0, 10);
+            const producaoAlterada = !!producaoNova && producaoNova !== producaoAnterior;
+
+            if (previsaoAlterada || meta?.atualizadosMesmaCarrada?.length || meta?.todosItensPdAtualizados?.length) {
               handleAjusteSuccess(atualizado, meta);
-            } else {
+            } else if (producaoAlterada) {
+              onLinhasAtualizadas?.(
+                mergeLinhasSnapshotAposAjuste(linhas, atualizado, meta)
+              );
               const msg =
                 pedidoAjustePrevisao.escopo === 'todos_itens_pd'
-                  ? `Data de produção atualizada em ${pedidoAjustePrevisao.carradaKeysTodosItens.length} carrada(s).`
-                  : 'Data de produção atualizada na simulação.';
+                  ? `Data de produção aplicada no Gerenciador em ${pedidoAjustePrevisao.carradaKeysTodosItens.length} carrada(s).`
+                  : 'Data de produção aplicada no Gerenciador de Pedidos.';
               setToast(msg);
               setTimeout(() => setToast(null), 3000);
+            } else {
+              handleAjusteSuccess(atualizado, meta);
             }
           }}
           onError={(msg) => {
@@ -979,6 +1192,6 @@ export default function CalendarioProducaoModal({
           {toast}
         </div>
       )}
-    </div>
+    </>
   );
 }

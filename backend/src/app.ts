@@ -200,12 +200,22 @@ app.get('/health', async (_req, res) => {
 const publicDir = path.join(backendRootApp, 'public');
 const spaIndex = path.join(publicDir, 'index.html');
 if (fs.existsSync(spaIndex)) {
-  app.use(express.static(publicDir));
+  app.use(
+    express.static(publicDir, {
+      // index.html nunca em cache — evita usuários com bundle antigo (ex.: painel sem “Em construção”).
+      setHeaders(res, filePath) {
+        if (filePath.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        }
+      },
+    })
+  );
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
       res.status(404).json({ error: 'Rota da API não encontrada.' });
       return;
     }
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.sendFile(spaIndex);
   });
 }
