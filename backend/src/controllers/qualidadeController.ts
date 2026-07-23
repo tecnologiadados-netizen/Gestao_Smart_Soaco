@@ -276,12 +276,22 @@ export async function deleteQualidadeRegistroHandler(req: Request, res: Response
 
 export async function putQualidadeDocumentsHandler(req: Request, res: Response): Promise<void> {
   try {
+    // Body inválido/vazio (ex.: JSON > limite 15MB) chega como {} — não tratar como sucesso.
+    if (!req.body || typeof req.body !== 'object' || !Array.isArray(req.body.documents)) {
+      res.status(400).json({
+        error:
+          'Payload de documentos inválido ou incompleto (possível estouro do limite de upload). Nenhum documento foi alterado.',
+      });
+      return;
+    }
     await syncQualidadeDocuments({
-      documents: req.body?.documents ?? [],
-      versions: req.body?.versions ?? [],
-      tasks: req.body?.tasks ?? [],
-      validadeAlertas: req.body?.validadeAlertas ?? [],
-      revalidacoes: req.body?.revalidacoes ?? [],
+      documents: req.body.documents,
+      versions: Array.isArray(req.body.versions) ? req.body.versions : [],
+      tasks: Array.isArray(req.body.tasks) ? req.body.tasks : [],
+      validadeAlertas: Array.isArray(req.body.validadeAlertas)
+        ? req.body.validadeAlertas
+        : [],
+      revalidacoes: Array.isArray(req.body.revalidacoes) ? req.body.revalidacoes : [],
       criadoPorLogin: userLogin(req),
     });
     res.json({ ok: true });

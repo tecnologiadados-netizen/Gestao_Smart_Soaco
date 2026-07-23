@@ -70,17 +70,26 @@ export function SgqAnexosTable({
     setErro("");
     const reader = new FileReader();
     reader.onload = () => {
-      atualizarLinha(id, { nome: file.name, dataUrl: reader.result as string });
+      atualizarLinha(id, {
+        nome: file.name,
+        dataUrl: reader.result as string,
+        storagePath: undefined,
+      });
     };
     reader.readAsDataURL(file);
   }
 
   function podeVisualizar(anexo: SgqAnexo) {
-    return isPdfFile(anexo.nome) || isImageFile(anexo.nome);
+    return (
+      Boolean(anexo.dataUrl?.trim()) &&
+      (isPdfFile(anexo.nome) || isImageFile(anexo.nome))
+    );
   }
 
   const anexosVisiveis = disabled
-    ? anexos.filter((row) => row.nome.trim() && row.dataUrl.trim())
+    ? anexos.filter(
+        (row) => row.nome.trim() && (row.dataUrl.trim() || row.storagePath?.trim())
+      )
     : anexos;
 
   const podeAdicionar =
@@ -108,7 +117,8 @@ export function SgqAnexosTable({
           {anexosVisiveis.map((anexo, index) => {
             const inputId = `${baseId}-${anexo.id}`;
             const temArquivo = Boolean(
-              anexo.nome.trim() && anexo.dataUrl.trim()
+              anexo.nome.trim() &&
+                (anexo.dataUrl.trim() || Boolean(anexo.storagePath?.trim()))
             );
             return (
               <TableRow
@@ -161,7 +171,7 @@ export function SgqAnexosTable({
                         <Eye className="size-4" />
                       </Button>
                     ) : null}
-                    {temArquivo ? (
+                    {temArquivo && anexo.dataUrl.trim() ? (
                       <Button
                         type="button"
                         variant="ghost"

@@ -4,6 +4,8 @@ export interface RegistroAnexo {
   id: string;
   nome: string;
   dataUrl: string;
+  /** Caminho no servidor quando o arquivo já foi persistido (sem reenviar base64). */
+  storagePath?: string;
 }
 
 /** Alias compartilhado para anexos em qualquer tela do SGQ. */
@@ -18,12 +20,26 @@ export function criarAnexoVazio(): SgqAnexo {
   return { id: randomUUID(), nome: "", dataUrl: "" };
 }
 
+export function anexoTemArquivo(anexo: {
+  nome?: string;
+  dataUrl?: string;
+  storagePath?: string;
+}): boolean {
+  return Boolean(
+    anexo.nome?.trim() && (anexo.dataUrl?.trim() || anexo.storagePath?.trim())
+  );
+}
+
 export function anexosPreenchidos(
   anexos: SgqAnexo[]
-): { nome: string; dataUrl: string }[] {
+): { nome: string; dataUrl: string; storagePath?: string }[] {
   return anexos
-    .filter((a) => a.nome.trim() && a.dataUrl.trim())
-    .map((a) => ({ nome: a.nome.trim(), dataUrl: a.dataUrl.trim() }));
+    .filter((a) => anexoTemArquivo(a))
+    .map((a) => ({
+      nome: a.nome.trim(),
+      dataUrl: a.dataUrl?.trim() || "",
+      ...(a.storagePath?.trim() ? { storagePath: a.storagePath.trim() } : {}),
+    }));
 }
 
 export function normalizarRegistroAnexos(valor: unknown): RegistroAnexo[] {
@@ -33,11 +49,13 @@ export function normalizarRegistroAnexos(valor: unknown): RegistroAnexo[] {
       const anexo = item as Partial<RegistroAnexo> & Record<string, unknown>;
       const nome = typeof anexo?.nome === "string" ? anexo.nome : "";
       const dataUrl = typeof anexo?.dataUrl === "string" ? anexo.dataUrl : "";
+      const storagePath =
+        typeof anexo?.storagePath === "string" ? anexo.storagePath : undefined;
       const id =
         typeof anexo?.id === "string" && anexo.id
           ? anexo.id
           : `anexo-legado-${index}`;
-      return { id, nome, dataUrl };
+      return { id, nome, dataUrl, ...(storagePath ? { storagePath } : {}) };
     })
-    .filter((anexo) => anexo.nome.trim() && anexo.dataUrl.trim());
+    .filter((anexo) => anexoTemArquivo(anexo));
 }

@@ -154,7 +154,7 @@ export function SolicitarRevisaoDocumentoDialog({
     if (!aberto) handleFechar();
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
 
@@ -205,6 +205,19 @@ export function SolicitarRevisaoDocumentoDialog({
     if (!versao) {
       setError("Não foi possível solicitar a revisão.");
       return;
+    }
+
+    if (fluxoSimplificado && arquivoDataUrl.startsWith("data:")) {
+      const { markQualidadeDocumentFilesPending, flushQualidadeDocumentsSync } =
+        await import("@qualidade/lib/qualidadePersistence");
+      markQualidadeDocumentFilesPending(documentId, versao.id);
+      try {
+        await flushQualidadeDocumentsSync();
+      } catch (err) {
+        console.error("[qualidade] falha ao sincronizar revisão com anexo:", err);
+        setError("Revisão criada localmente, mas falhou ao gravar o anexo no servidor.");
+        return;
+      }
     }
 
     onOpenChange(false);

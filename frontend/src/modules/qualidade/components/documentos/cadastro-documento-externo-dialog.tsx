@@ -14,7 +14,7 @@ import {
 } from "@qualidade/components/documentos/documento-externo-registro-campos";
 import { anexosPreenchidos } from "@qualidade/types/registro-anexo";
 import { afterUiTransition } from "@qualidade/lib/motion";
-import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
+import { flushQualidadeDocumentsSync, markQualidadeDocumentFilesPending } from "@qualidade/lib/qualidadePersistence";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 
@@ -128,6 +128,12 @@ export function CadastroDocumentoExternoDialog({
         setErro("Não foi possível atualizar o documento.");
         return;
       }
+      const versaoAtual = getVersionsByDocumentId(documentId).find(
+        (v) => v.versao === getDocumentById(documentId)?.versaoAtual
+      );
+      if (anexos.some((a) => a.dataUrl.startsWith("data:"))) {
+        markQualidadeDocumentFilesPending(documentId, versaoAtual?.id ?? "");
+      }
       try {
         await flushQualidadeDocumentsSync();
         onOpenChange(false);
@@ -143,7 +149,7 @@ export function CadastroDocumentoExternoDialog({
     }
 
     const codigo = `EXT-${Date.now().toString().slice(-6)}`;
-    createDocument({
+    const novoId = createDocument({
       codigo,
       tipoId: "tipo-man",
       origem: "externo",
@@ -151,6 +157,10 @@ export function CadastroDocumentoExternoDialog({
       arquivoDataUrl: principal?.dataUrl,
       ...payloadBase,
     });
+
+    if (anexos.some((a) => a.dataUrl.startsWith("data:"))) {
+      markQualidadeDocumentFilesPending(novoId);
+    }
 
     try {
       await flushQualidadeDocumentsSync();

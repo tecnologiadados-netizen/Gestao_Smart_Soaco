@@ -301,10 +301,28 @@ function mapVersao(
     anexos.length > 0
       ? anexos
       : row.arquivoNome && dataUrl
-        ? [{ nome: row.arquivoNome, dataUrl }]
-        : row.arquivoNome
-          ? [{ nome: row.arquivoNome, dataUrl: '' }]
-          : [];
+        ? [
+            {
+              nome: row.arquivoNome,
+              dataUrl,
+              ...(row.arquivoStoragePath
+                ? { storagePath: row.arquivoStoragePath }
+                : {}),
+            },
+          ]
+        : row.arquivoNome && row.arquivoStoragePath
+          ? [
+              {
+                nome: row.arquivoNome,
+                dataUrl: includeDataUrl
+                  ? readQualidadeAnexoAsDataUrl(row.arquivoStoragePath) ?? ''
+                  : '',
+                storagePath: row.arquivoStoragePath,
+              },
+            ]
+          : row.arquivoNome
+            ? [{ nome: row.arquivoNome, dataUrl: '' }]
+            : [];
   return {
     id: row.uid,
     documentId: row.documento.uid,
@@ -912,6 +930,28 @@ export async function syncQualidadeDocuments(payload: {
     const tipoUid = await resolveTipoUid(String(doc.tipoId ?? ''));
     const setorUid = await resolveSetorUid(String(doc.setorId ?? ''));
 
+    // Sanitiza externoRegistro: nunca persistir base64 no JSON do documento.
+    const externoRegistroSanitizado = (() => {
+      if (!doc.externoRegistro || typeof doc.externoRegistro !== 'object') {
+        return doc.externoRegistro ? JSON.stringify(doc.externoRegistro) : null;
+      }
+      const er = { ...(doc.externoRegistro as Record<string, unknown>) };
+      if (Array.isArray(er.anexos)) {
+        er.anexos = (er.anexos as Array<Record<string, unknown>>)
+          .map((a) => {
+            const nome = String(a.nome ?? '').trim();
+            if (!nome) return null;
+            const storagePath =
+              typeof a.storagePath === 'string' && a.storagePath.startsWith('/uploads/qualidade/')
+                ? a.storagePath
+                : undefined;
+            return storagePath ? { nome, storagePath } : { nome };
+          })
+          .filter(Boolean);
+      }
+      return JSON.stringify(er);
+    })();
+
     const saved = await prisma.sgqDocumento.upsert({
       where: { uid },
       create: {
@@ -927,7 +967,7 @@ export async function syncQualidadeDocuments(payload: {
         permissoesJson: doc.permissoes ? JSON.stringify(doc.permissoes) : null,
         publicacaoJson: doc.publicacao ? JSON.stringify(doc.publicacao) : null,
         validadeJson: doc.validade ? JSON.stringify(doc.validade) : null,
-        externoRegistroJson: doc.externoRegistro ? JSON.stringify(doc.externoRegistro) : null,
+        externoRegistroJson: externoRegistroSanitizado,
         criadoPorLogin,
       },
       update: {
@@ -941,7 +981,7 @@ export async function syncQualidadeDocuments(payload: {
         permissoesJson: doc.permissoes ? JSON.stringify(doc.permissoes) : null,
         publicacaoJson: doc.publicacao ? JSON.stringify(doc.publicacao) : null,
         validadeJson: doc.validade ? JSON.stringify(doc.validade) : null,
-        externoRegistroJson: doc.externoRegistro ? JSON.stringify(doc.externoRegistro) : null,
+        externoRegistroJson: externoRegistroSanitizado,
       },
     });
     docUidToId.set(uid, saved.id);
@@ -963,9 +1003,26 @@ export async function syncQualidadeDocuments(payload: {
     let arquivoMimeType: string | null = null;
     const arquivoNome = ver.arquivoNome ? String(ver.arquivoNome) : null;
     const existing = await prisma.sgqDocumentoVersao.findUnique({ where: { uid } });
-    const incoming = extractBase64(ver.arquivoDataUrl as string | undefined);
-    if (incoming && arquivoNome) {
-      incoming.fileName = arquivoNome;
+
+    // Prefer arquivoDataUrl; se vazio, usa o primeiro anexo com base64 (evita depender de cópia duplicada).
+    let principalDataUrl =
+      typeof ver.arquivoDataUrl === 'string' ? ver.arquivoDataUrl : '';
+    if (!principalDataUrl.startsWith('data:') && Array.isArray(ver.anexos)) {
+      const firstWithData = (ver.anexos as AnexoStored[]).find((a) =>
+        String(a?.dataUrl ?? '').startsWith('data:')
+      );
+      if (firstWithData?.dataUrl) principalDataUrl = String(firstWithData.dataUrl);
+    }
+
+    const incoming = extractBase64(principalDataUrl);
+    const nomePrincipal =
+      arquivoNome ||
+      (Array.isArray(ver.anexos) && (ver.anexos as AnexoStored[])[0]?.nome
+        ? String((ver.anexos as AnexoStored[])[0].nome)
+        : null);
+
+    if (incoming && nomePrincipal) {
+      incoming.fileName = nomePrincipal;
       const saved = saveQualidadeAnexoIfChanged(
         `documentos/${documentId}`,
         incoming,
@@ -973,6 +1030,15 @@ export async function syncQualidadeDocuments(payload: {
       );
       arquivoStoragePath = saved.storagePath;
       arquivoMimeType = saved.mimeType;
+    } else if (Array.isArray(ver.anexos)) {
+      const pathHint = (ver.anexos as AnexoStored[]).find(
+        (a) =>
+          typeof a.storagePath === 'string' &&
+          a.storagePath.startsWith('/uploads/qualidade/')
+      )?.storagePath;
+      if (pathHint) {
+        arquivoStoragePath = pathHint;
+      }
     }
 
     if (existing?.arquivoStoragePath && arquivoStoragePath && existing.arquivoStoragePath !== arquivoStoragePath) {
@@ -990,12 +1056,12 @@ export async function syncQualidadeDocuments(payload: {
         anexosIncoming = ext.anexos;
       }
     }
-    if (anexosIncoming === undefined && arquivoNome) {
+    if (anexosIncoming === undefined && nomePrincipal) {
       anexosIncoming = [
         {
-          nome: arquivoNome,
-          dataUrl: typeof ver.arquivoDataUrl === 'string' ? ver.arquivoDataUrl : '',
-          storagePath: existing?.arquivoStoragePath ?? undefined,
+          nome: nomePrincipal,
+          dataUrl: principalDataUrl,
+          storagePath: arquivoStoragePath ?? existing?.arquivoStoragePath ?? undefined,
         },
       ];
     }
@@ -1005,6 +1071,14 @@ export async function syncQualidadeDocuments(payload: {
       anexosIncoming,
       existing?.anexosJson
     );
+
+    // Se anexos gravaram path e o principal ainda não tem, reutiliza o primeiro.
+    if (!arquivoStoragePath && anexosPersist.json) {
+      const list = parseJson<Array<{ storagePath?: string }>>(anexosPersist.json, []);
+      const firstPath = list.find((a) => a.storagePath?.startsWith('/uploads/qualidade/'))
+        ?.storagePath;
+      if (firstPath) arquivoStoragePath = firstPath;
+    }
 
     await prisma.sgqDocumentoVersao.upsert({
       where: { uid },
@@ -1028,7 +1102,7 @@ export async function syncQualidadeDocuments(payload: {
         observacoesAprovacao: ver.observacoesAprovacao ? String(ver.observacoesAprovacao) : null,
         movimentacoesJson: ver.movimentacoes ? JSON.stringify(ver.movimentacoes) : null,
         requerSubstituicaoConsenso: Boolean(ver.requerSubstituicaoConsenso),
-        arquivoNome,
+        arquivoNome: nomePrincipal,
         arquivoStoragePath: arquivoStoragePath ?? existing?.arquivoStoragePath ?? null,
         arquivoMimeType: arquivoMimeType ?? existing?.arquivoMimeType ?? null,
         arquivoAtualizadoEm: ver.arquivoAtualizadoEm ? String(ver.arquivoAtualizadoEm) : null,
@@ -1052,7 +1126,7 @@ export async function syncQualidadeDocuments(payload: {
         observacoesAprovacao: ver.observacoesAprovacao ? String(ver.observacoesAprovacao) : null,
         movimentacoesJson: ver.movimentacoes ? JSON.stringify(ver.movimentacoes) : null,
         requerSubstituicaoConsenso: Boolean(ver.requerSubstituicaoConsenso),
-        ...(arquivoNome ? { arquivoNome } : {}),
+        ...(nomePrincipal ? { arquivoNome: nomePrincipal } : {}),
         ...(arquivoStoragePath
           ? { arquivoStoragePath, arquivoMimeType }
           : {}),

@@ -92,18 +92,23 @@ function toAnexoRows(
 ): SgqAnexo[] {
   if (!items?.length) return [];
   return items
-    .filter((a) => a.nome?.trim())
+    .filter((a) => a.nome?.trim() && (a.dataUrl?.trim() || a.storagePath?.trim()))
     .map((a, i) => ({
       id: `anexo-${i}-${a.nome}`,
       nome: a.nome,
       dataUrl: a.dataUrl ?? "",
+      ...(a.storagePath ? { storagePath: a.storagePath } : {}),
     }));
 }
 
 /** Hidrata o formulário a partir de um documento externo/registro existente. */
 export function externoRegistroValuesFromDocument(
   doc: Document,
-  versaoAtual?: { arquivoNome?: string; arquivoDataUrl?: string; anexos?: Array<{ nome: string; dataUrl: string }> },
+  versaoAtual?: {
+    arquivoNome?: string;
+    arquivoDataUrl?: string;
+    anexos?: Array<{ nome: string; dataUrl: string; storagePath?: string }>;
+  },
   fallbackResponsavelId = ""
 ): ExternoRegistroFormValues {
   const reg = doc.externoRegistro;
@@ -111,8 +116,15 @@ export function externoRegistroValuesFromDocument(
     ? versaoAtual.anexos
     : reg?.anexos?.length
       ? reg.anexos
-      : versaoAtual?.arquivoNome && versaoAtual?.arquivoDataUrl
-        ? [{ nome: versaoAtual.arquivoNome, dataUrl: versaoAtual.arquivoDataUrl }]
+      : versaoAtual?.arquivoNome &&
+          (versaoAtual?.arquivoDataUrl ||
+            (versaoAtual as { arquivoStoragePath?: string }).arquivoStoragePath)
+        ? [
+            {
+              nome: versaoAtual.arquivoNome,
+              dataUrl: versaoAtual.arquivoDataUrl ?? "",
+            },
+          ]
         : [];
 
   return {
@@ -157,9 +169,14 @@ export function buildValidadeFromExternoRegistro(
 export function buildExternoRegistroMeta(
   values: ExternoRegistroFormValues
 ): DocumentExternoRegistro {
-  const anexosPreenchidos = values.anexos
-    .filter((a) => a.nome.trim() && a.dataUrl.trim())
-    .map((a) => ({ nome: a.nome.trim(), dataUrl: a.dataUrl.trim() }));
+  // Metadados leves: nunca embutir base64 em externoRegistro (binário fica na versão).
+  const anexosMeta = values.anexos
+    .filter((a) => a.nome.trim() && (a.dataUrl.trim() || a.storagePath?.trim()))
+    .map((a) => ({
+      nome: a.nome.trim(),
+      dataUrl: "",
+      ...(a.storagePath?.trim() ? { storagePath: a.storagePath.trim() } : {}),
+    }));
 
   return {
     unidadeTodos: values.unidadeTodos,
@@ -172,7 +189,7 @@ export function buildExternoRegistroMeta(
     documentosAssociadosIds: values.documentosAssociadosIds,
     permissaoAcesso: (values.permissaoAcesso ||
       "todos") as PermissaoAcessoDocumento,
-    anexos: anexosPreenchidos.length > 0 ? anexosPreenchidos : undefined,
+    anexos: anexosMeta.length > 0 ? anexosMeta : undefined,
   };
 }
 

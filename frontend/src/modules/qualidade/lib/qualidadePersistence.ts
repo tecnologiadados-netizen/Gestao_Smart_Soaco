@@ -197,21 +197,144 @@ function debounceSync(key: string, fn: () => Promise<void>, ms = 800) {
   }, ms);
 }
 
-function syncDocumentsStateNow(): Promise<void> {
-  const { documents, versions, tasks, validadeAlertas, revalidacoes } = useDocumentsStore.getState();
-  return syncQualidadeDocuments({
-    documents,
-    versions,
+/** Documentos/versões com arquivos novos ainda não confirmados no servidor. */
+const pendingDocumentFileUids = new Set<string>();
+
+export function markQualidadeDocumentFilesPending(...uids: string[]) {
+  for (const uid of uids) {
+    if (uid) pendingDocumentFileUids.add(uid);
+  }
+}
+
+type DocAnexoSync = {
+  nome: string;
+  dataUrl?: string;
+  storagePath?: string;
+};
+
+function docAnexoForSync(
+  a: DocAnexoSync,
+  includeBinary: boolean
+): DocAnexoSync {
+  const nome = a.nome;
+  if (a.storagePath) {
+    return { nome, dataUrl: '', storagePath: a.storagePath };
+  }
+  if (includeBinary && a.dataUrl?.startsWith('data:')) {
+    return { nome, dataUrl: a.dataUrl };
+  }
+  return { nome, dataUrl: '' };
+}
+
+function sanitizeExternoRegistroForSync(
+  externoRegistro: Record<string, unknown> | undefined,
+  includeBinary: boolean
+): Record<string, unknown> | undefined {
+  if (!externoRegistro) return undefined;
+  const anexosRaw = externoRegistro.anexos;
+  if (!Array.isArray(anexosRaw)) {
+    return externoRegistro;
+  }
+  // Nunca embutir base64 no JSON do documento — binário só na versão.
+  const anexos = (anexosRaw as DocAnexoSync[]).map((a) =>
+    docAnexoForSync(a, false)
+  );
+  void includeBinary;
+  return { ...externoRegistro, anexos };
+}
+
+function versionForSync(
+  ver: {
+    id: string;
+    documentId: string;
+    arquivoNome?: string;
+    arquivoDataUrl?: string;
+    anexos?: DocAnexoSync[];
+    [key: string]: unknown;
+  },
+  includeFiles: boolean
+) {
+  const anexos = ver.anexos?.map((a) => docAnexoForSync(a, includeFiles));
+  const hasAnexoBinary = Boolean(
+    anexos?.some((a) => a.dataUrl?.startsWith('data:'))
+  );
+  // Evita triplicar o mesmo PDF (anexos + arquivoDataUrl + externoRegistro).
+  const arquivoDataUrl =
+    includeFiles && !hasAnexoBinary && ver.arquivoDataUrl?.startsWith('data:')
+      ? ver.arquivoDataUrl
+      : undefined;
+
+  if (includeFiles) {
+    return {
+      ...ver,
+      anexos,
+      ...(arquivoDataUrl !== undefined
+        ? { arquivoDataUrl }
+        : { arquivoDataUrl: '' }),
+    };
+  }
+
+  const { arquivoDataUrl: _drop, ...rest } = ver;
+  return {
+    ...rest,
+    anexos,
+    arquivoDataUrl: '',
+  };
+}
+
+function documentForSync(
+  doc: {
+    id: string;
+    externoRegistro?: Record<string, unknown>;
+    [key: string]: unknown;
+  },
+  includeFiles: boolean
+) {
+  return {
+    ...doc,
+    externoRegistro: sanitizeExternoRegistroForSync(
+      doc.externoRegistro as Record<string, unknown> | undefined,
+      includeFiles
+    ),
+  };
+}
+
+function buildDocumentsSyncPayload(includePendingFiles: boolean) {
+  const { documents, versions, tasks, validadeAlertas, revalidacoes } =
+    useDocumentsStore.getState();
+  const pending = includePendingFiles
+    ? new Set(pendingDocumentFileUids)
+    : new Set<string>();
+
+  return {
+    documents: documents.map((d) =>
+      documentForSync(d as never, pending.has(d.id))
+    ),
+    versions: versions.map((v) =>
+      versionForSync(
+        v as never,
+        pending.has(v.id) || pending.has(v.documentId)
+      )
+    ),
     tasks,
     validadeAlertas,
     revalidacoes,
-  }).then(() => undefined);
+  };
 }
 
-/** Persiste documentos no servidor imediatamente (ex.: após exclusão). */
+function syncDocumentsStateNow(includePendingFiles = false): Promise<void> {
+  const payload = buildDocumentsSyncPayload(includePendingFiles);
+  return syncQualidadeDocuments(payload).then(() => {
+    if (includePendingFiles) {
+      pendingDocumentFileUids.clear();
+    }
+  });
+}
+
+/** Persiste documentos no servidor imediatamente (ex.: após exclusão / upload). */
 export function flushQualidadeDocumentsSync(): Promise<void> {
   cancelQualidadeDocumentsDebounce();
-  return syncDocumentsStateNow().catch((err) => {
+  return syncDocumentsStateNow(true).catch((err) => {
     console.error('[qualidade-sync] documents flush:', err);
     throw err;
   });
@@ -237,7 +360,7 @@ export function flushQualidadeCalibrationsSync(): Promise<void> {
 
 function flushPendingSyncs() {
   cancelQualidadeDocumentsDebounce();
-  void syncDocumentsStateNow().catch((err) =>
+  void syncDocumentsStateNow(pendingDocumentFileUids.size > 0).catch((err) =>
     console.error('[qualidade-sync] pagehide documents:', err)
   );
   cancelQualidadeRegistrosDebounce();
@@ -462,15 +585,7 @@ export function startQualidadeAutoSync() {
       state.validadeAlertas !== prev.validadeAlertas ||
       state.revalidacoes !== prev.revalidacoes
     ) {
-      debounceSync('documents', () =>
-        syncQualidadeDocuments({
-          documents: state.documents,
-          versions: state.versions,
-          tasks: state.tasks,
-          validadeAlertas: state.validadeAlertas,
-          revalidacoes: state.revalidacoes,
-        })
-      );
+      debounceSync('documents', () => syncDocumentsStateNow(false));
     }
   });
 

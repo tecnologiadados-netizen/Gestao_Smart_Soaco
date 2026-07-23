@@ -12,7 +12,7 @@ import {
 } from "@qualidade/components/documentos/documento-externo-registro-campos";
 import { anexosPreenchidos } from "@qualidade/types/registro-anexo";
 import { afterUiTransition } from "@qualidade/lib/motion";
-import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
+import { flushQualidadeDocumentsSync, markQualidadeDocumentFilesPending } from "@qualidade/lib/qualidadePersistence";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 
@@ -80,7 +80,7 @@ export function CadastroRegistroDialog({ open, onOpenChange }: Props) {
     const anexos = anexosPreenchidos(values.anexos);
     const principal = anexos[0];
 
-    createDocument({
+    const novoId = createDocument({
       tipoSigla: registroTipo.sigla,
       titulo: values.titulo,
       tipoId: registroTipo.id,
@@ -94,6 +94,10 @@ export function CadastroRegistroDialog({ open, onOpenChange }: Props) {
       arquivoDataUrl: principal?.dataUrl,
       anexos: anexos.length ? anexos : undefined,
     });
+
+    if (anexos.some((a) => a.dataUrl.startsWith("data:"))) {
+      markQualidadeDocumentFilesPending(novoId);
+    }
 
     try {
       await flushQualidadeDocumentsSync();

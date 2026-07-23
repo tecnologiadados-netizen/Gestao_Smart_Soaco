@@ -710,8 +710,12 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         if (
           !isInterno &&
           !(
-            input.anexos?.some((a) => a.nome?.trim() && a.dataUrl?.trim()) ||
-            (input.arquivoNome?.trim() && input.arquivoDataUrl?.trim())
+            input.anexos?.some(
+              (a) => a.nome?.trim() && (a.dataUrl?.trim() || a.storagePath?.trim())
+            ) ||
+            (input.arquivoNome?.trim() &&
+              (input.arquivoDataUrl?.trim() ||
+                input.anexos?.some((a) => a.storagePath?.trim())))
           )
         ) {
           return null;
@@ -724,7 +728,9 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
             .map((v) => v.versao)
         );
         const anexosRevisao =
-          input.anexos?.filter((a) => a.nome?.trim() && a.dataUrl?.trim()) ??
+          input.anexos?.filter(
+            (a) => a.nome?.trim() && (a.dataUrl?.trim() || a.storagePath?.trim())
+          ) ??
           (input.arquivoNome?.trim() && input.arquivoDataUrl?.trim()
             ? [
                 {
