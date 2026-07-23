@@ -1,4 +1,4 @@
-# Deploy producao via GitHub (VPS Hostinger / Windows).
+﻿# Deploy producao via GitHub (VPS Hostinger / Windows).
 # Fonte da verdade: branch main no GitHub. Nao edite arquivos .ts/.tsx na VPS.
 #
 # Estrategia de downtime minimo:
@@ -373,7 +373,7 @@ try {
 
     # --- CUTOVER: unico intervalo em que o sistema fica fora ---
     Write-Host ""
-    Write-Host "=== CUTOVER (sistema fora do ar — generate + migrate + restart) ===" -ForegroundColor Yellow
+    Write-Host "=== CUTOVER (sistema fora do ar - generate + migrate + restart) ===" -ForegroundColor Yellow
     $cutoverInicio = Get-Date
 
     Write-Host "[4/8] Parando producao..." -ForegroundColor Cyan
@@ -399,7 +399,7 @@ try {
     }
 
     if (-not $buildOnlineOk) {
-        Write-Host "[7b/8] npm run build:production (retry no cutover)..." -ForegroundColor Cyan
+        Write-Host '[-] npm run build:production (retry no cutover)...' -ForegroundColor Cyan
         $env:NODE_ENV = "production"
         npm run build:production
         if ($LASTEXITCODE -ne 0) { throw "Build falhou." }
