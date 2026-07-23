@@ -1361,6 +1361,34 @@ model CrmCreditoPendenciaEvento {
   @@map("crm_credito_pendencia_evento")
 }
 
+/// Cadastro histórico de inadimplentes (importado da planilha VENCIDOS + novas linhas manuais).
+model CrmRegistroInadimplente {
+  id             Int      @id @default(autoincrement())
+  vencimento     String?
+  pagamento      String?
+  empresa        String?
+  banco          String?
+  tipo           String?
+  cliente        String
+  status         String?
+  serasa         String?
+  vendedor       String?
+  total          Float?
+  nfPd           String?  @map("nf_pd")
+  parcela        String?
+  obs            String?
+  origemImport   Boolean  @default(false) @map("origem_import")
+  criadoPorLogin String?  @map("criado_por_login")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([cliente])
+  @@index([empresa])
+  @@index([status])
+  @@index([vencimento])
+  @@map("crm_registro_inadimplente")
+}
+
 /// Config singleton: IDs de usuários (To/Cc) do e-mail disparado ao salvar ação na aba Pendências.
 /// Campos destinatarios_* guardam JSON de number[] (usuario.id).
 model CrmCreditoPendenciaEmailConfig {

@@ -84,6 +84,13 @@ import {
   postCrmPendenciaPdfAssinado,
   putCrmPendenciasEmailConfig,
 } from '../controllers/crmCreditoPendenciasController.js';
+import {
+  deleteCrmRegistroInadimplente,
+  getCrmRegistroInadimplentes,
+  postCrmRegistroInadimplente,
+  postCrmRegistroInadimplentesImport,
+  putCrmRegistroInadimplente,
+} from '../controllers/crmRegistroInadimplentesController.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -193,6 +200,20 @@ router.post(
   '/crm/pendencias-credito/:id/confirmar-liberacao',
   verFinanceiroCrmPendencias,
   postCrmPendenciaConfirmarLiberacao
+);
+
+router.get('/crm/registro-inadimplentes', verFinanceiroCrmPendencias, getCrmRegistroInadimplentes);
+router.post('/crm/registro-inadimplentes', verFinanceiroCrmPendencias, postCrmRegistroInadimplente);
+router.put('/crm/registro-inadimplentes/:id', verFinanceiroCrmPendencias, putCrmRegistroInadimplente);
+router.delete(
+  '/crm/registro-inadimplentes/:id',
+  verFinanceiroCrmPendencias,
+  deleteCrmRegistroInadimplente
+);
+router.post(
+  '/crm/registro-inadimplentes/import',
+  verFinanceiroCrmPendencias,
+  postCrmRegistroInadimplentesImport
 );
 
 export default router;

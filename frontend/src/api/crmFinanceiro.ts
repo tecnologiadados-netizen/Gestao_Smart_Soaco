@@ -607,3 +607,118 @@ export async function fetchCrmPendenciasPedidosDestino(params: {
   }
   return body.pedidos ?? [];
 }
+
+export type RegistroInadimplente = {
+  id: number;
+  vencimento: string | null;
+  pagamento: string | null;
+  empresa: string | null;
+  banco: string | null;
+  tipo: string | null;
+  cliente: string;
+  status: string | null;
+  serasa: string | null;
+  vendedor: string | null;
+  total: number | null;
+  nfPd: string | null;
+  parcela: string | null;
+  obs: string | null;
+  origemImport: boolean;
+  criadoPorLogin: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RegistroInadimplenteInput = {
+  vencimento?: string | null;
+  pagamento?: string | null;
+  empresa?: string | null;
+  banco?: string | null;
+  tipo?: string | null;
+  cliente: string;
+  status?: string | null;
+  serasa?: string | null;
+  vendedor?: string | null;
+  total?: number | null;
+  nfPd?: string | null;
+  parcela?: string | null;
+  obs?: string | null;
+};
+
+export async function fetchCrmRegistroInadimplentes(params?: {
+  q?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<{
+  data: RegistroInadimplente[];
+  total: number;
+  page: number;
+  pageSize: number;
+}> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/registro-inadimplentes${buildParams({
+      q: params?.q,
+      page: params?.page,
+      pageSize: params?.pageSize,
+    })}`,
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    data?: RegistroInadimplente[];
+    total?: number;
+    page?: number;
+    pageSize?: number;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao carregar registro de inadimplentes');
+  }
+  return {
+    data: body.data ?? [],
+    total: body.total ?? 0,
+    page: body.page ?? 1,
+    pageSize: body.pageSize ?? 50,
+  };
+}
+
+export async function createCrmRegistroInadimplente(
+  payload: RegistroInadimplenteInput,
+): Promise<RegistroInadimplente> {
+  const res = await apiFetch('/api/financeiro/crm/registro-inadimplentes', {
+    method: 'POST',
+    body: payload,
+  });
+  const body = (await res.json().catch(() => ({}))) as RegistroInadimplente & {
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao cadastrar registro');
+  }
+  return body;
+}
+
+export async function updateCrmRegistroInadimplente(
+  id: number,
+  payload: RegistroInadimplenteInput,
+): Promise<RegistroInadimplente> {
+  const res = await apiFetch(`/api/financeiro/crm/registro-inadimplentes/${id}`, {
+    method: 'PUT',
+    body: payload,
+  });
+  const body = (await res.json().catch(() => ({}))) as RegistroInadimplente & {
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao atualizar registro');
+  }
+  return body;
+}
+
+export async function deleteCrmRegistroInadimplente(id: number): Promise<void> {
+  const res = await apiFetch(`/api/financeiro/crm/registro-inadimplentes/${id}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? 'Falha ao excluir registro');
+  }
+}

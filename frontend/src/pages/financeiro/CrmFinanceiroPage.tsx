@@ -44,6 +44,7 @@ import {
   PERMISSOES_EDITAR_CRM_PENDENCIAS_DESTINATARIOS,
 } from "../../utils/financeiroPermissoes";
 import PendenciasCreditoPanel from "./crm/components/PendenciasCreditoPanel";
+import RegistroInadimplentesPanel from "./crm/components/RegistroInadimplentesPanel";
 import { useSearchParams } from "react-router-dom";
 
 function chaveSelecao(s: SelecaoClienteCrm | null): string | null {
@@ -67,7 +68,7 @@ function selecaoSincronizada(
 }
 
 type Aba = "receber" | "pagar";
-type GuiaPainel = "empresa" | "cliente" | "pendencias";
+type GuiaPainel = "empresa" | "cliente" | "pendencias" | "inadimplentes";
 
 const CACHE_STORAGE_KEY = "crm-financeiro:indicadores-globais:v13";
 const CACHE_SAUDE_EMPRESA_KEY = "crm-financeiro:saude-empresa:v6";
@@ -261,6 +262,19 @@ function GuiasPainel({
             Pendências de crédito com PD em carteira
           </button>
         )}
+        {podeVerPendencias && (
+          <button
+            type="button"
+            onClick={() => onChange("inadimplentes")}
+            className={`rounded-lg px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition ${
+              guia === "inadimplentes"
+                ? "bg-blue-700 text-white shadow"
+                : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            }`}
+          >
+            Registro de Inadimplentes
+          </button>
+        )}
       </div>
     </section>
   );
@@ -287,6 +301,7 @@ export default function CrmFinanceiroPage() {
 
   const guiaInicial: GuiaPainel = (() => {
     if (guiaFromUrl === "pendencias" && podeVerPendencias) return "pendencias";
+    if (guiaFromUrl === "inadimplentes" && podeVerPendencias) return "inadimplentes";
     if (guiaFromUrl === "cliente" && podeVerCliente) return "cliente";
     if (guiaFromUrl === "empresa" && podeVerEmpresa) return "empresa";
     if (podeVerEmpresa) return "empresa";
@@ -763,11 +778,14 @@ export default function CrmFinanceiroPage() {
       } else if (guia === "cliente") {
         setAba("receber");
         setClientePendenciasFiltro(null);
+      } else if (guia === "inadimplentes") {
+        setClientePendenciasFiltro(null);
       }
       const next = new URLSearchParams(searchParams);
       next.set("guia", guia);
       if (guia !== "pendencias") {
         next.delete("cliente");
+        next.delete("situacao");
       }
       setSearchParams(next, { replace: true });
     },
@@ -834,7 +852,7 @@ export default function CrmFinanceiroPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {guiaPainel !== "pendencias" && (
+          {guiaPainel !== "pendencias" && guiaPainel !== "inadimplentes" && (
             <>
           <button
             type="button"
@@ -879,8 +897,11 @@ export default function CrmFinanceiroPage() {
           </div>
 
       <div className="crm-dashboard-panel space-y-6">
-        {[podeVerEmpresa, podeVerCliente, podeVerPendencias].filter(Boolean).length >
-          1 && (
+        {(
+          (podeVerEmpresa ? 1 : 0) +
+          (podeVerCliente ? 1 : 0) +
+          (podeVerPendencias ? 2 : 0)
+        ) > 1 && (
           <GuiasPainel
             guia={guiaPainel}
             onChange={handleTrocarGuia}
@@ -890,7 +911,15 @@ export default function CrmFinanceiroPage() {
           />
         )}
 
-        {guiaPainel === "pendencias" ? (
+        {guiaPainel === "inadimplentes" ? (
+          podeVerPendencias ? (
+            <RegistroInadimplentesPanel />
+          ) : (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-800">
+              Você não tem permissão para a guia Registro de Inadimplentes.
+            </div>
+          )
+        ) : guiaPainel === "pendencias" ? (
           podeVerPendencias ? (
             <PendenciasCreditoPanel
               podeEditarDestinatarios={podeEditarDestinatariosPendencias}
