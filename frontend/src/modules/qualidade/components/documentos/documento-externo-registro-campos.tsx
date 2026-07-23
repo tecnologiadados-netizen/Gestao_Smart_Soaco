@@ -87,6 +87,57 @@ export function defaultExternoRegistroValues(
   };
 }
 
+function toAnexoRows(
+  items: Array<{ nome: string; dataUrl?: string; storagePath?: string }> | undefined
+): SgqAnexo[] {
+  if (!items?.length) return [];
+  return items
+    .filter((a) => a.nome?.trim())
+    .map((a, i) => ({
+      id: `anexo-${i}-${a.nome}`,
+      nome: a.nome,
+      dataUrl: a.dataUrl ?? "",
+    }));
+}
+
+/** Hidrata o formulário a partir de um documento externo/registro existente. */
+export function externoRegistroValuesFromDocument(
+  doc: Document,
+  versaoAtual?: { arquivoNome?: string; arquivoDataUrl?: string; anexos?: Array<{ nome: string; dataUrl: string }> },
+  fallbackResponsavelId = ""
+): ExternoRegistroFormValues {
+  const reg = doc.externoRegistro;
+  const anexosVersao = versaoAtual?.anexos?.length
+    ? versaoAtual.anexos
+    : reg?.anexos?.length
+      ? reg.anexos
+      : versaoAtual?.arquivoNome && versaoAtual?.arquivoDataUrl
+        ? [{ nome: versaoAtual.arquivoNome, dataUrl: versaoAtual.arquivoDataUrl }]
+        : [];
+
+  return {
+    titulo: doc.titulo ?? "",
+    unidadeTodos: reg?.unidadeTodos ?? true,
+    processoId: doc.setorId ?? "",
+    distEletronica: reg?.distribuicaoEletronica ?? true,
+    distFisica: reg?.distribuicaoFisica ?? false,
+    localizacao: doc.localizacao ?? "",
+    responsavelId: fallbackResponsavelId,
+    definirValidade: Boolean(doc.validade?.ativa && doc.validade.dataValidade),
+    validadeData: doc.validade?.dataValidade
+      ? format(new Date(doc.validade.dataValidade), "yyyy-MM-dd")
+      : defaultValidadeData(),
+    avisarAntes: reg?.avisarAntesAtivo ?? false,
+    avisarAntesDias: reg?.avisarAntesDias ?? 30,
+    anexos: toAnexoRows(anexosVersao),
+    observacao: reg?.observacao ?? "",
+    associarDocumentos: reg?.associarDocumentos ?? false,
+    documentosAssociadosIds: reg?.documentosAssociadosIds ?? [],
+    avisoEmailIds: doc.permissoes?.avisoPublicacaoEmailIds ?? [],
+    permissaoAcesso: reg?.permissaoAcesso ?? "",
+  };
+}
+
 function fromDateInputValue(value: string): string {
   return new Date(`${value}T12:00:00`).toISOString();
 }

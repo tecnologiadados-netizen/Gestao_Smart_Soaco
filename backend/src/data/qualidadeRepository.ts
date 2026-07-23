@@ -287,6 +287,7 @@ function mapVersao(
     arquivoStoragePath: string | null;
     arquivoMimeType: string | null;
     arquivoAtualizadoEm: string | null;
+    anexosJson?: string | null;
   },
   includeDataUrl: boolean
 ) {
@@ -294,6 +295,16 @@ function mapVersao(
     includeDataUrl && row.arquivoStoragePath
       ? readQualidadeAnexoAsDataUrl(row.arquivoStoragePath)
       : undefined;
+  const anexos = includeDataUrl ? mapAnexosFromJson(row.anexosJson) : [];
+  // Compat: se não há lista, o arquivo principal vira o único item.
+  const anexosResolvidos =
+    anexos.length > 0
+      ? anexos
+      : row.arquivoNome && dataUrl
+        ? [{ nome: row.arquivoNome, dataUrl }]
+        : row.arquivoNome
+          ? [{ nome: row.arquivoNome, dataUrl: '' }]
+          : [];
   return {
     id: row.uid,
     documentId: row.documento.uid,
@@ -316,6 +327,7 @@ function mapVersao(
     requerSubstituicaoConsenso: row.requerSubstituicaoConsenso,
     arquivoNome: row.arquivoNome ?? undefined,
     arquivoDataUrl: dataUrl ?? undefined,
+    ...(anexosResolvidos.length ? { anexos: anexosResolvidos } : {}),
     arquivoAtualizadoEm: row.arquivoAtualizadoEm ?? undefined,
   };
 }
@@ -950,18 +962,49 @@ export async function syncQualidadeDocuments(payload: {
     let arquivoStoragePath: string | null = null;
     let arquivoMimeType: string | null = null;
     const arquivoNome = ver.arquivoNome ? String(ver.arquivoNome) : null;
+    const existing = await prisma.sgqDocumentoVersao.findUnique({ where: { uid } });
     const incoming = extractBase64(ver.arquivoDataUrl as string | undefined);
     if (incoming && arquivoNome) {
       incoming.fileName = arquivoNome;
-      const saved = saveQualidadeAnexo(`documentos/${documentId}`, incoming);
+      const saved = saveQualidadeAnexoIfChanged(
+        `documentos/${documentId}`,
+        incoming,
+        existing?.arquivoStoragePath
+      );
       arquivoStoragePath = saved.storagePath;
       arquivoMimeType = saved.mimeType;
     }
 
-    const existing = await prisma.sgqDocumentoVersao.findUnique({ where: { uid } });
     if (existing?.arquivoStoragePath && arquivoStoragePath && existing.arquivoStoragePath !== arquivoStoragePath) {
       deleteQualidadeAnexoIfExists(existing.arquivoStoragePath);
     }
+
+    let anexosIncoming: unknown = ver.anexos;
+    if (anexosIncoming === undefined) {
+      const docRow = await prisma.sgqDocumento.findUnique({
+        where: { id: docPk },
+        select: { externoRegistroJson: true },
+      });
+      const ext = parseJson<{ anexos?: unknown[] }>(docRow?.externoRegistroJson, {});
+      if (Array.isArray(ext.anexos) && ext.anexos.length > 0 && !existing?.anexosJson) {
+        anexosIncoming = ext.anexos;
+      }
+    }
+    if (anexosIncoming === undefined && arquivoNome) {
+      anexosIncoming = [
+        {
+          nome: arquivoNome,
+          dataUrl: typeof ver.arquivoDataUrl === 'string' ? ver.arquivoDataUrl : '',
+          storagePath: existing?.arquivoStoragePath ?? undefined,
+        },
+      ];
+    }
+
+    const anexosPersist = persistAnexosToDisk(
+      `documentos/${documentId}/versoes/${uid}/anexos`,
+      anexosIncoming,
+      existing?.anexosJson
+    );
 
     await prisma.sgqDocumentoVersao.upsert({
       where: { uid },
@@ -989,6 +1032,7 @@ export async function syncQualidadeDocuments(payload: {
         arquivoStoragePath: arquivoStoragePath ?? existing?.arquivoStoragePath ?? null,
         arquivoMimeType: arquivoMimeType ?? existing?.arquivoMimeType ?? null,
         arquivoAtualizadoEm: ver.arquivoAtualizadoEm ? String(ver.arquivoAtualizadoEm) : null,
+        anexosJson: anexosPersist.json,
       },
       update: {
         versao: String(ver.versao ?? '01'),
@@ -1008,11 +1052,12 @@ export async function syncQualidadeDocuments(payload: {
         observacoesAprovacao: ver.observacoesAprovacao ? String(ver.observacoesAprovacao) : null,
         movimentacoesJson: ver.movimentacoes ? JSON.stringify(ver.movimentacoes) : null,
         requerSubstituicaoConsenso: Boolean(ver.requerSubstituicaoConsenso),
-        arquivoNome,
+        ...(arquivoNome ? { arquivoNome } : {}),
         ...(arquivoStoragePath
           ? { arquivoStoragePath, arquivoMimeType }
           : {}),
         arquivoAtualizadoEm: ver.arquivoAtualizadoEm ? String(ver.arquivoAtualizadoEm) : null,
+        ...(anexosPersist.touched ? { anexosJson: anexosPersist.json } : {}),
       },
     });
   }

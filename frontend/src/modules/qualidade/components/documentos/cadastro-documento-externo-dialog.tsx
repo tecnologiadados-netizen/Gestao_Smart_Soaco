@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
@@ -9,6 +9,7 @@ import {
   buildValidadeFromExternoRegistro,
   defaultExternoRegistroValues,
   DocumentoExternoRegistroCampos,
+  externoRegistroValuesFromDocument,
   type ExternoRegistroFormValues,
 } from "@qualidade/components/documentos/documento-externo-registro-campos";
 import { anexosPreenchidos } from "@qualidade/types/registro-anexo";
@@ -20,16 +21,32 @@ import { useConfigStore } from "@qualidade/lib/store/config-store";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Quando informado, abre em modo edição do cadastro externo. */
+  documentId?: string | null;
+  onSalvo?: () => void;
 }
 
-export function CadastroDocumentoExternoDialog({ open, onOpenChange }: Props) {
+export function CadastroDocumentoExternoDialog({
+  open,
+  onOpenChange,
+  documentId = null,
+  onSalvo,
+}: Props) {
   const navigate = useNavigate();
   const createDocument = useDocumentsStore((s) => s.createDocument);
+  const updateDocumentoExternoCadastro = useDocumentsStore(
+    (s) => s.updateDocumentoExternoCadastro
+  );
+  const getDocumentById = useDocumentsStore((s) => s.getDocumentById);
+  const getVersionsByDocumentId = useDocumentsStore(
+    (s) => s.getVersionsByDocumentId
+  );
   const documents = useDocumentsStore((s) => s.documents);
   const departments = useConfigStore((s) => s.departments);
   const users = useConfigStore((s) => s.users);
   const currentUserId = useConfigStore((s) => s.currentUserId);
 
+  const editando = Boolean(documentId);
   const [values, setValues] = useState<ExternoRegistroFormValues>(() =>
     defaultExternoRegistroValues(currentUserId)
   );
@@ -39,6 +56,34 @@ export function CadastroDocumentoExternoDialog({ open, onOpenChange }: Props) {
     setValues(defaultExternoRegistroValues(currentUserId));
     setErro("");
   }
+
+  useEffect(() => {
+    if (!open) return;
+    if (!documentId) {
+      setValues(defaultExternoRegistroValues(currentUserId));
+      setErro("");
+      return;
+    }
+    const doc = getDocumentById(documentId);
+    if (!doc) return;
+    const versaoAtual = getVersionsByDocumentId(documentId).find(
+      (v) => v.versao === doc.versaoAtual
+    );
+    setValues(
+      externoRegistroValuesFromDocument(
+        doc,
+        versaoAtual,
+        versaoAtual?.elaboradorId || currentUserId
+      )
+    );
+    setErro("");
+  }, [
+    open,
+    documentId,
+    currentUserId,
+    getDocumentById,
+    getVersionsByDocumentId,
+  ]);
 
   function handleChange(next: ExternoRegistroFormValues) {
     setValues(next);
@@ -64,23 +109,47 @@ export function CadastroDocumentoExternoDialog({ open, onOpenChange }: Props) {
     }
     setErro("");
 
-    const codigo = `EXT-${Date.now().toString().slice(-6)}`;
     const anexos = anexosPreenchidos(values.anexos);
     const principal = anexos[0];
-
-    createDocument({
-      codigo,
+    const payloadBase = {
       titulo: values.titulo,
-      tipoId: "tipo-man",
       setorId: values.processoId,
       elaboradorId: values.responsavelId,
-      origem: "externo",
       localizacao: values.localizacao,
       permissoes: buildPermissoesFromExternoRegistro(values),
       validade: buildValidadeFromExternoRegistro(values),
       externoRegistro: buildExternoRegistroMeta(values),
+      anexos: anexos.length ? anexos : undefined,
+    };
+
+    if (editando && documentId) {
+      const ok = updateDocumentoExternoCadastro(documentId, payloadBase);
+      if (!ok) {
+        setErro("Não foi possível atualizar o documento.");
+        return;
+      }
+      try {
+        await flushQualidadeDocumentsSync();
+        onOpenChange(false);
+        afterUiTransition(() => {
+          resetForm();
+          onSalvo?.();
+        });
+      } catch (err) {
+        console.error("[qualidade] falha ao sincronizar edição externa:", err);
+        setErro("Alterações salvas localmente, mas falhou ao gravar no servidor.");
+      }
+      return;
+    }
+
+    const codigo = `EXT-${Date.now().toString().slice(-6)}`;
+    createDocument({
+      codigo,
+      tipoId: "tipo-man",
+      origem: "externo",
       arquivoNome: principal?.nome,
       arquivoDataUrl: principal?.dataUrl,
+      ...payloadBase,
     });
 
     try {
@@ -104,7 +173,9 @@ export function CadastroDocumentoExternoDialog({ open, onOpenChange }: Props) {
       >
         <div className="modal-header-bar flex shrink-0 items-center justify-between px-5 py-3.5">
           <h2 className="text-base font-semibold text-white">
-            Cadastro de documento externo
+            {editando
+              ? "Editar documento externo"
+              : "Cadastro de documento externo"}
           </h2>
           <button
             type="button"
@@ -138,11 +209,13 @@ export function CadastroDocumentoExternoDialog({ open, onOpenChange }: Props) {
 
           <div className="sgq-form-footer">
             <Button type="submit" size="lg" className="min-w-28">
-              Gravar
+              {editando ? "Salvar" : "Gravar"}
             </Button>
-            <Button type="button" variant="secondary" size="lg" disabled>
-              Inativar
-            </Button>
+            {!editando ? (
+              <Button type="button" variant="secondary" size="lg" disabled>
+                Inativar
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"

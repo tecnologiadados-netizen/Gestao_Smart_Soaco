@@ -45,13 +45,40 @@ import {
 } from "@qualidade/components/documentos/documento-permissoes-fieldset";
 import { SolicitarRevisaoDocumentoDialog } from "@qualidade/components/documentos/solicitar-revisao-documento-dialog";
 import { CadastroDocumentoInternoDialog } from "@qualidade/components/documentos/cadastro-documento-interno-dialog";
+import { CadastroDocumentoExternoDialog } from "@qualidade/components/documentos/cadastro-documento-externo-dialog";
 import { ConfirmacaoDialog } from "@qualidade/components/ui/confirmacao-dialog";
 import { RevalidarDocumentoDialog } from "@qualidade/components/documentos/revalidar-documento-dialog";
+import type { Document, DocumentVersion } from "@qualidade/types/document";
 
 interface Props {
   documentId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+function arquivosDaVersao(
+  ver: DocumentVersion | undefined,
+  doc?: Document
+): Array<{ nome: string; dataUrl: string }> {
+  if (!ver) return [];
+  if (ver.anexos?.length) {
+    return ver.anexos
+      .filter((a) => a.nome?.trim())
+      .map((a) => ({ nome: a.nome, dataUrl: a.dataUrl ?? "" }));
+  }
+  const list: Array<{ nome: string; dataUrl: string }> = [];
+  if (ver.arquivoNome) {
+    list.push({
+      nome: ver.arquivoNome,
+      dataUrl: ver.arquivoDataUrl ?? "",
+    });
+  }
+  for (const a of doc?.externoRegistro?.anexos ?? []) {
+    if (!a.nome?.trim()) continue;
+    if (list.some((x) => x.nome === a.nome)) continue;
+    list.push({ nome: a.nome, dataUrl: a.dataUrl ?? "" });
+  }
+  return list;
 }
 
 function MetaItem({ label, value }: { label: string; value: string }) {
@@ -137,6 +164,7 @@ export function DocumentoConsultaDetalheDialog({
   const [revisaoFromRevalidacao, setRevisaoFromRevalidacao] = useState(false);
   const [revalidarAberta, setRevalidarAberta] = useState(false);
   const [edicaoAberta, setEdicaoAberta] = useState(false);
+  const [edicaoExternaAberta, setEdicaoExternaAberta] = useState(false);
   const [confirmacao, setConfirmacao] = useState<"inativar" | "excluir" | null>(
     null
   );
@@ -168,9 +196,11 @@ export function DocumentoConsultaDetalheDialog({
     const opcoes = buildLocalizacaoOpcoes(enderecamentos, departments, valor);
     return opcoes.find((opcao) => opcao.value === valor)?.label ?? valor;
   }, [departments, doc?.localizacao, enderecamentos]);
-  const temArquivo = Boolean(
-    versaoAtual?.arquivoDataUrl && versaoAtual?.arquivoNome
+  const arquivosVigentes = useMemo(
+    () => arquivosDaVersao(versaoAtual, doc),
+    [versaoAtual, doc]
   );
+  const temArquivo = arquivosVigentes.some((a) => a.dataUrl?.trim());
   const revalidacoes = documentId
     ? getRevalidacoesByDocumentId(documentId)
     : [];
@@ -185,22 +215,14 @@ export function DocumentoConsultaDetalheDialog({
     onOpenChange(false);
   }
 
-  function abrirArquivo(mode: "view" | "print") {
-    if (
-      !temArquivo ||
-      !versaoAtual?.arquivoDataUrl ||
-      !versaoAtual.arquivoNome
-    ) {
-      return;
-    }
-
+  function abrirArquivo(
+    arquivo: { nome: string; dataUrl: string },
+    mode: "view" | "print"
+  ) {
+    if (!arquivo.dataUrl?.trim() || !arquivo.nome?.trim()) return;
     setErroArquivo("");
     try {
-      openDocumentFileViewer(
-        versaoAtual.arquivoDataUrl,
-        versaoAtual.arquivoNome,
-        mode
-      );
+      openDocumentFileViewer(arquivo.dataUrl, arquivo.nome, mode);
     } catch (error) {
       setErroArquivo(
         error instanceof Error
@@ -210,29 +232,11 @@ export function DocumentoConsultaDetalheDialog({
     }
   }
 
-  function handleVisualizar() {
-    abrirArquivo("view");
-  }
-
-  function handleImprimir() {
-    abrirArquivo("print");
-  }
-
-  function handleBaixar() {
-    if (
-      !temArquivo ||
-      !versaoAtual?.arquivoDataUrl ||
-      !versaoAtual.arquivoNome
-    ) {
-      return;
-    }
-
+  function handleBaixarArquivo(arquivo: { nome: string; dataUrl: string }) {
+    if (!arquivo.dataUrl?.trim() || !arquivo.nome?.trim()) return;
     setErroArquivo("");
     try {
-      downloadDocumentFile(
-        versaoAtual.arquivoDataUrl,
-        versaoAtual.arquivoNome
-      );
+      downloadDocumentFile(arquivo.dataUrl, arquivo.nome);
     } catch {
       setErroArquivo("Não foi possível baixar o arquivo.");
     }
@@ -328,6 +332,17 @@ export function DocumentoConsultaDetalheDialog({
                   <Pencil className="size-3.5" />
                   Editar cadastro
                 </Button>
+              ) : doc.origem === "externo" || doc.origem === "registro" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="default"
+                  className="shrink-0 gap-2 border-brand-blue/30 px-4 text-brand-blue hover:bg-brand-blue-light/40"
+                  onClick={() => setEdicaoExternaAberta(true)}
+                >
+                  <Pencil className="size-3.5" />
+                  Editar cadastro
+                </Button>
               ) : null}
             </div>
 
@@ -336,53 +351,68 @@ export function DocumentoConsultaDetalheDialog({
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Arquivo vigente
                 </p>
-                <div className="flex items-start gap-4">
-                  <div className="rounded-lg bg-brand-blue-light p-3">
-                    <FileText className="size-6 text-brand-blue" />
-                  </div>
-                  <div className="min-w-0 flex-1 py-0.5">
-                    {temArquivo ? (
-                      <p className="break-all text-base font-medium leading-relaxed text-brand-navy">
-                        {versaoAtual?.arquivoNome}
-                      </p>
-                    ) : (
-                      <p className="text-sm leading-relaxed text-muted-foreground">
-                        Nenhum anexo disponível nesta revisão.
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-3 pt-2">
-                  <Button
-                    type="button"
-                    className="gap-2"
-                    disabled={!temArquivo}
-                    onClick={handleVisualizar}
-                  >
-                    <ExternalLink className="size-4" />
-                    Visualizar
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="gap-2"
-                    disabled={!temArquivo}
-                    onClick={handleImprimir}
-                  >
-                    <Printer className="size-4" />
-                    Imprimir
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="gap-2"
-                    disabled={!temArquivo}
-                    onClick={handleBaixar}
-                  >
-                    <Download className="size-4" />
-                    Baixar
-                  </Button>
-                </div>
+                {arquivosVigentes.length === 0 ? (
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    Nenhum anexo disponível nesta revisão.
+                  </p>
+                ) : (
+                  <ul className="space-y-4">
+                    {arquivosVigentes.map((arquivo, idx) => {
+                      const disponivel = Boolean(arquivo.dataUrl?.trim());
+                      return (
+                        <li
+                          key={`${arquivo.nome}-${idx}`}
+                          className="rounded-lg border border-border/70 bg-muted/15 p-3"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="rounded-lg bg-brand-blue-light p-2.5">
+                              <FileText className="size-5 text-brand-blue" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="break-all text-sm font-medium leading-relaxed text-brand-navy">
+                                {arquivo.nome}
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="gap-1.5"
+                                  disabled={!disponivel}
+                                  onClick={() => abrirArquivo(arquivo, "view")}
+                                >
+                                  <ExternalLink className="size-3.5" />
+                                  Visualizar
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1.5"
+                                  disabled={!disponivel}
+                                  onClick={() => abrirArquivo(arquivo, "print")}
+                                >
+                                  <Printer className="size-3.5" />
+                                  Imprimir
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1.5"
+                                  disabled={!disponivel}
+                                  onClick={() => handleBaixarArquivo(arquivo)}
+                                >
+                                  <Download className="size-3.5" />
+                                  Baixar
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
                 {erroArquivo ? (
                   <p className="text-sm text-destructive">{erroArquivo}</p>
                 ) : null}
@@ -619,25 +649,39 @@ export function DocumentoConsultaDetalheDialog({
                               </Badge>
                             )}
                           </div>
-                          {ver.arquivoNome && ver.arquivoDataUrl ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                downloadDocumentFile(
-                                  ver.arquivoDataUrl!,
-                                  ver.arquivoNome!
-                                )
-                              }
-                              className="inline-flex items-center gap-1 text-xs font-medium text-brand-blue hover:underline"
-                            >
-                              <Download className="size-3.5" />
-                              Baixar
-                            </button>
-                          ) : ver.arquivoNome ? (
-                            <span className="text-xs text-muted-foreground">
-                              {ver.arquivoNome}
-                            </span>
-                          ) : null}
+                          {(() => {
+                            const arquivosRev = arquivosDaVersao(ver, doc);
+                            if (!arquivosRev.length) return null;
+                            return (
+                              <div className="mt-2 space-y-1.5">
+                                {arquivosRev.map((arquivo, idx) =>
+                                  arquivo.dataUrl ? (
+                                    <button
+                                      key={`${ver.id}-${arquivo.nome}-${idx}`}
+                                      type="button"
+                                      onClick={() =>
+                                        downloadDocumentFile(
+                                          arquivo.dataUrl,
+                                          arquivo.nome
+                                        )
+                                      }
+                                      className="inline-flex items-center gap-1 text-xs font-medium text-brand-blue hover:underline"
+                                    >
+                                      <Download className="size-3.5" />
+                                      {arquivo.nome}
+                                    </button>
+                                  ) : (
+                                    <span
+                                      key={`${ver.id}-${arquivo.nome}-${idx}`}
+                                      className="block text-xs text-muted-foreground"
+                                    >
+                                      {arquivo.nome}
+                                    </span>
+                                  )
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                         <p className="mt-1.5 text-muted-foreground">
                           {doc.origem === "interno" ? (
@@ -740,6 +784,12 @@ export function DocumentoConsultaDetalheDialog({
     <CadastroDocumentoInternoDialog
       open={edicaoAberta}
       onOpenChange={setEdicaoAberta}
+      documentId={documentId}
+    />
+
+    <CadastroDocumentoExternoDialog
+      open={edicaoExternaAberta}
+      onOpenChange={setEdicaoExternaAberta}
       documentId={documentId}
     />
 

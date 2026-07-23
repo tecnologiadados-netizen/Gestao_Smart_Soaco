@@ -92,6 +92,7 @@ export function CadastroRegistroDialog({ open, onOpenChange }: Props) {
       externoRegistro: buildExternoRegistroMeta(values),
       arquivoNome: principal?.nome,
       arquivoDataUrl: principal?.dataUrl,
+      anexos: anexos.length ? anexos : undefined,
     });
 
     try {

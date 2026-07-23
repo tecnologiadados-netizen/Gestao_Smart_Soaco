@@ -24,6 +24,8 @@ export interface DocumentVersion {
   alteracoesRevisao?: string;
   arquivoNome?: string;
   arquivoDataUrl?: string;
+  /** Todos os arquivos da revisão (principal + complementares). */
+  anexos?: DocumentoAnexoArquivo[];
   observacoesElaboracao?: string;
   observacoesConsenso?: string;
   observacoesAprovacao?: string;
@@ -94,6 +96,7 @@ export type PermissaoAcessoDocumento = "todos" | "restrito" | "responsavel";
 export interface DocumentoAnexoArquivo {
   nome: string;
   dataUrl: string;
+  storagePath?: string;
 }
 
 /** Campos específicos de documento externo e registro */

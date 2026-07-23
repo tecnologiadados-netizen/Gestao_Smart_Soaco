@@ -58,6 +58,8 @@ interface CreateDocumentInput {
   externoRegistro?: DocumentExternoRegistro;
   arquivoNome?: string;
   arquivoDataUrl?: string;
+  /** Todos os anexos da versão (principal + complementares). */
+  anexos?: { nome: string; dataUrl: string; storagePath?: string }[];
 }
 
 interface RevalidarDocumentoInput {
@@ -89,6 +91,7 @@ interface SolicitarRevisaoInput {
   alteracoesRevisao?: string;
   arquivoNome?: string;
   arquivoDataUrl?: string;
+  anexos?: { nome: string; dataUrl: string; storagePath?: string }[];
   /** Atualiza validade e conclui pendência de revalidação (fluxo revalidação → revisão). */
   novaDataValidade?: string;
 }
@@ -103,6 +106,19 @@ interface DocumentsState {
   updateDocumentCadastro: (
     documentId: string,
     input: UpdateDocumentCadastroInput
+  ) => boolean;
+  updateDocumentoExternoCadastro: (
+    documentId: string,
+    input: {
+      titulo: string;
+      setorId: string;
+      elaboradorId: string;
+      localizacao?: string;
+      permissoes?: DocumentPermissoes;
+      validade?: DocumentValidade;
+      externoRegistro?: DocumentExternoRegistro;
+      anexos?: { nome: string; dataUrl: string; storagePath?: string }[];
+    }
   ) => boolean;
   createNewRevision: (
     documentId: string,
@@ -512,8 +528,9 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
           prazos: input.prazos,
           dataElaboracao: now,
           observacoes: input.observacoes,
-          arquivoNome: input.arquivoNome,
-          arquivoDataUrl: input.arquivoDataUrl,
+          arquivoNome: input.arquivoNome ?? input.anexos?.[0]?.nome,
+          arquivoDataUrl: input.arquivoDataUrl ?? input.anexos?.[0]?.dataUrl,
+          ...(input.anexos?.length ? { anexos: input.anexos } : {}),
           ...(skipWorkflow ? { dataAprovacao: now } : {}),
         };
         set((state) => {
@@ -614,6 +631,57 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         return true;
       },
 
+      updateDocumentoExternoCadastro: (documentId, input) => {
+        const doc = get().getDocumentById(documentId);
+        if (!doc || (doc.origem !== "externo" && doc.origem !== "registro")) {
+          return false;
+        }
+
+        const versaoAtual = getCurrentVersion(
+          get().versions,
+          documentId,
+          doc.versaoAtual
+        );
+        if (!versaoAtual) return false;
+
+        const anexos = input.anexos?.length ? input.anexos : undefined;
+        const principal = anexos?.[0];
+        const now = new Date().toISOString();
+
+        set((state) => ({
+          documents: state.documents.map((d) =>
+            d.id === documentId
+              ? {
+                  ...d,
+                  titulo: input.titulo.trim(),
+                  setorId: input.setorId,
+                  localizacao: input.localizacao,
+                  permissoes: input.permissoes ?? d.permissoes,
+                  validade: mergeValidadeOnUpdate(d.validade, input.validade),
+                  externoRegistro: input.externoRegistro ?? d.externoRegistro,
+                  updatedAt: now,
+                }
+              : d
+          ),
+          versions: state.versions.map((v) =>
+            v.id === versaoAtual.id
+              ? {
+                  ...v,
+                  elaboradorId: input.elaboradorId,
+                  ...(anexos
+                    ? {
+                        anexos,
+                        arquivoNome: principal?.nome ?? v.arquivoNome,
+                        arquivoDataUrl: principal?.dataUrl ?? v.arquivoDataUrl,
+                      }
+                    : {}),
+                }
+              : v
+          ),
+        }));
+        return true;
+      },
+
       getDocumentById: (id) => get().documents.find((d) => d.id === id),
 
       getNextDocumentCode: (tipoSigla) =>
@@ -641,7 +709,10 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         if (isInterno && (!input.consensoId || !input.aprovadorId)) return null;
         if (
           !isInterno &&
-          (!input.arquivoNome?.trim() || !input.arquivoDataUrl?.trim())
+          !(
+            input.anexos?.some((a) => a.nome?.trim() && a.dataUrl?.trim()) ||
+            (input.arquivoNome?.trim() && input.arquivoDataUrl?.trim())
+          )
         ) {
           return null;
         }
@@ -652,6 +723,17 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
             .versions.filter((v) => v.documentId === documentId)
             .map((v) => v.versao)
         );
+        const anexosRevisao =
+          input.anexos?.filter((a) => a.nome?.trim() && a.dataUrl?.trim()) ??
+          (input.arquivoNome?.trim() && input.arquivoDataUrl?.trim()
+            ? [
+                {
+                  nome: input.arquivoNome.trim(),
+                  dataUrl: input.arquivoDataUrl.trim(),
+                },
+              ]
+            : undefined);
+        const principal = anexosRevisao?.[0];
         const version: DocumentVersion = {
           id: generateId("ver"),
           documentId,
@@ -667,8 +749,9 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
           ...(!isInterno
             ? {
                 dataAprovacao: now,
-                arquivoNome: input.arquivoNome,
-                arquivoDataUrl: input.arquivoDataUrl,
+                arquivoNome: principal?.nome ?? input.arquivoNome,
+                arquivoDataUrl: principal?.dataUrl ?? input.arquivoDataUrl,
+                ...(anexosRevisao?.length ? { anexos: anexosRevisao } : {}),
               }
             : {}),
         };

@@ -1072,6 +1072,8 @@ model SgqDocumentoVersao {
   arquivoStoragePath       String?
   arquivoMimeType          String?
   arquivoAtualizadoEm      String?
+  /// Anexos complementares da revisao: JSON [{ nome, storagePath }]
+  anexosJson               String?
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
