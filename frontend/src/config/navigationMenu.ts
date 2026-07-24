@@ -145,8 +145,9 @@ export const COMERCIAL_MENU: NavMenuEntry[] = [
 
 export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
   { kind: 'link', to: '/financeiro/resumo', label: 'Resumo Financeiro' },
-  { kind: 'link', to: '/financeiro/dre', label: 'DRE' },
   { kind: 'link', to: '/financeiro/dashboard', label: 'Dashboard Financeiro' },
+  { kind: 'link', to: '/financeiro/carteira-financeira', label: 'Carteira Financeira' },
+  { kind: 'link', to: '/financeiro/dre', label: 'DRE' },
   { kind: 'link', to: '/financeiro/dfc', label: 'DFC' },
   { kind: 'link', to: '/financeiro/painel-financeiro-comercial', label: 'Painel Financeiro-Comercial' },
   { kind: 'link', to: '/financeiro/renegociacao-contratos', label: 'Simulação de Renegociação' },
@@ -216,6 +217,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/financeiro/dfc': 'DFC',
   '/financeiro/dre': 'DRE',
   '/financeiro/dashboard': 'Dashboard Financeiro',
+  '/financeiro/carteira-financeira': 'Carteira Financeira',
   '/financeiro/painel-financeiro-comercial': 'Painel Financeiro-Comercial',
   '/comercial/painel': 'Painel Comercial',
   '/financeiro/renegociacao-contratos': 'Simulação de Renegociação',

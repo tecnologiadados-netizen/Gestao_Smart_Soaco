@@ -29,6 +29,7 @@ import DashboardFinanceiroPage from './pages/financeiro/DashboardFinanceiroPage'
 import PainelFinanceiroComercialPage from './pages/financeiro/PainelFinanceiroComercialPage';
 import RenegociacaoContratosPage from './pages/financeiro/RenegociacaoContratosPage';
 import CrmFinanceiroPage from './pages/financeiro/CrmFinanceiroPage';
+import CarteiraFinanceiraPage from './pages/financeiro/CarteiraFinanceiraPage';
 import SycroOrderPage from './pages/pedidos/SycroOrderPage';
 import MRPPage from './pages/pedidos/MRPPage';
 import MRPManagerPage from './pages/pedidos/MRPManagerPage';
@@ -124,6 +125,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'financeiro/dfc', element: <DfcPage /> },
   { path: 'financeiro/dre', element: <ErrorBoundary><DrePage /></ErrorBoundary> },
   { path: 'financeiro/dashboard', element: <ErrorBoundary><DashboardFinanceiroPage /></ErrorBoundary> },
+  { path: 'financeiro/carteira-financeira', element: <ErrorBoundary><CarteiraFinanceiraPage /></ErrorBoundary> },
   { path: 'financeiro/painel-financeiro-comercial', element: <PainelFinanceiroComercialPage /> },
   { path: 'financeiro/renegociacao-contratos', element: <RenegociacaoContratosPage /> },
   { path: 'financeiro/crm', element: <ErrorBoundary><CrmFinanceiroPage /></ErrorBoundary> },

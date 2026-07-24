@@ -3,27 +3,18 @@ import {
   fetchDreDashboard,
   type DreDashboardPayload,
 } from '../../api/financeiro';
-import DashboardAnaliseMetas from './dashboard/DashboardAnaliseMetas';
+import DashboardDespesasPrincipaisChart from './dashboard/DashboardDespesasPrincipaisChart';
 import DashboardEmpresasChart from './dashboard/DashboardEmpresasChart';
 import DashboardEvolucaoChart from './dashboard/DashboardEvolucaoChart';
 import DashboardInsights from './dashboard/DashboardInsights';
 import DashboardKpiCards from './dashboard/DashboardKpiCards';
 import DashboardMargensChart from './dashboard/DashboardMargensChart';
-import DashboardMetasModal from './dashboard/DashboardMetasModal';
 import DashboardPessoalChart from './dashboard/DashboardPessoalChart';
-import DashboardWaterfallChart from './dashboard/DashboardWaterfallChart';
-import {
-  carregarMetasDashboard,
-  DASHBOARD_UNIDADE_OPCOES,
-  salvarMetasDashboard,
-  type DashboardMetas,
-} from './dashboard/dashboardEmpresas';
+import { DASHBOARD_UNIDADE_OPCOES } from './dashboard/dashboardEmpresas';
 
 const FILTRO_INPUT_CLASS =
   'w-full rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-600 focus:border-transparent';
 const FILTRO_LABEL_CLASS = 'block text-xs text-slate-500 dark:text-slate-400 mb-1';
-const BTN_SEC =
-  'inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 transition shadow-sm';
 
 function hojeLocalYmd(): string {
   const d = new Date();
@@ -67,6 +58,7 @@ function payloadVazio(dataInicio: string, dataFim: string): DreDashboardPayload 
     kpis: [],
     series: { evolucao12m: [], margens: [], pessoal: [], empresas: [] },
     waterfall: [],
+    despesasPrincipais: { total: 0, fatias: [] },
     analise: {
       pontoEquilibrio: null,
       faturamentoMetaEbitda: null,
@@ -84,8 +76,6 @@ export default function DashboardFinanceiroPage() {
   const [dataFim, setDataFim] = useState(hojeLocalYmd);
   const [unidade, setUnidade] = useState('todas');
   const [mostrarYoy, setMostrarYoy] = useState(true);
-  const [metas, setMetas] = useState<DashboardMetas>(() => carregarMetasDashboard());
-  const [modalMetas, setModalMetas] = useState(false);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [dados, setDados] = useState<DreDashboardPayload | null>(null);
@@ -102,8 +92,6 @@ export default function DashboardFinanceiroPage() {
         dataInicio,
         dataFim,
         unidade,
-        metaEbitdaPct: metas.metaEbitdaPct,
-        metaLucroPct: metas.metaLucroPct,
       });
       if (seq !== seqRef.current) return;
       if (payload.erro) setErro(payload.erro);
@@ -115,7 +103,7 @@ export default function DashboardFinanceiroPage() {
     } finally {
       if (seq === seqRef.current) setLoading(false);
     }
-  }, [dataInicio, dataFim, unidade, metas]);
+  }, [dataInicio, dataFim, unidade]);
 
   useEffect(() => {
     void carregar();
@@ -235,17 +223,6 @@ export default function DashboardFinanceiroPage() {
           <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200 dark:border-slate-600">
             <button
               type="button"
-              onClick={() => setModalMetas(true)}
-              title="Metas de margem EBITDA e Lucro Líquido"
-              className={BTN_SEC}
-            >
-              Metas
-              <span className="rounded-md bg-primary-600/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-800 dark:text-primary-200">
-                {metas.metaEbitdaPct}% / {metas.metaLucroPct}%
-              </span>
-            </button>
-            <button
-              type="button"
               onClick={() => void carregar()}
               disabled={loading || dataFim < dataInicio}
               className="px-5 py-2 rounded-lg text-sm font-semibold bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition shadow-sm"
@@ -278,46 +255,12 @@ export default function DashboardFinanceiroPage() {
             <DashboardPessoalChart data={dados.series.pessoal} />
             <DashboardMargensChart data={dados.series.margens} />
           </div>
-          <DashboardWaterfallChart data={dados.waterfall} />
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <DashboardAnaliseMetas analise={dados.analise} />
+            <DashboardDespesasPrincipaisChart data={dados.despesasPrincipais} />
             <DashboardInsights insights={dados.insights} />
           </div>
         </>
       ) : null}
-
-      <DashboardMetasModal
-        aberto={modalMetas}
-        metas={metas}
-        onClose={() => setModalMetas(false)}
-        onSalvar={(m) => {
-          setMetas(m);
-          salvarMetasDashboard(m);
-          // Recarrega com as novas metas no próximo tick (estado já atualizado no callback)
-          void (async () => {
-            const seq = ++seqRef.current;
-            setLoading(true);
-            setErro(null);
-            try {
-              const payload = await fetchDreDashboard({
-                dataInicio,
-                dataFim,
-                unidade,
-                metaEbitdaPct: m.metaEbitdaPct,
-                metaLucroPct: m.metaLucroPct,
-              });
-              if (seq !== seqRef.current) return;
-              if (payload.erro) setErro(payload.erro);
-              setDados(payload);
-            } catch (e) {
-              if (seq !== seqRef.current) return;
-              setErro(e instanceof Error ? e.message : String(e));
-            } finally {
-              if (seq === seqRef.current) setLoading(false);
-            }
-          })();
-        }}
-      />
     </div>
   );
 }

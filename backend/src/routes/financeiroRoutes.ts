@@ -10,7 +10,9 @@ import {
   PERMISSOES_ACESSO_FINANCEIRO_CRM_CLIENTE,
   PERMISSOES_ACESSO_FINANCEIRO_CRM_PENDENCIAS,
   PERMISSOES_EDITAR_CRM_PENDENCIAS_DESTINATARIOS,
+  PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA,
 } from '../utils/financeiroPermissoes.js';
+import { getCarteiraFinanceira } from '../controllers/carteiraFinanceiraController.js';
 import {
   getDfcAgendamentosEfetivos,
   getDfcAgendamentosDetalhe,
@@ -105,6 +107,9 @@ const verFinanceiroCrmPendencias = requirePermission(...PERMISSOES_ACESSO_FINANC
 const editarCrmPendenciasDestinatarios = requirePermission(
   ...PERMISSOES_EDITAR_CRM_PENDENCIAS_DESTINATARIOS
 );
+const verFinanceiroCarteira = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA);
+
+router.get('/carteira-financeira', verFinanceiroCarteira, getCarteiraFinanceira);
 
 router.get('/dfc/agendamentos-efetivos', verFinanceiroDfc, getDfcAgendamentosEfetivos);
 router.get('/dfc/projecao-receitas', verFinanceiroDfc, getDfcProjecaoReceitas);
