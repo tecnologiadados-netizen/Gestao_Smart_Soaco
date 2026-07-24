@@ -28,6 +28,8 @@ const DICA_EMP_PD_ESTOQUE =
 const DICA_VENDA_DIRETA =
   'Pedidos que consomem o item diretamente, sem explosão de PA.';
 const DICA_ESTOQUE_PA =
+  'Estoque de produtos acabados (setores 5 e 24) que cobre a demanda do respectivo PA, em unidades do componente.';
+const DICA_ESTOQUE_PA_EXPLOSAO =
   'Estoque de produtos acabados convertido em unidades do componente (explosão BOM, setor 5).';
 
 type Props = {
@@ -57,10 +59,12 @@ function CardsResumo({
   const totalLiquido = detalhe.totalLiquido ?? 0;
   const empenhoRequisicao = detalhe.empenhoRequisicao ?? 0;
   const empenhoPdEstoque = detalhe.empenhoPdEstoque ?? 0;
-  const estoquePa =
-    detalhe.estoquePaExplosao != null && Number.isFinite(detalhe.estoquePaExplosao)
-      ? detalhe.estoquePaExplosao
-      : (detalhe.totalCoberto ?? 0);
+  const usaExplosaoPa =
+    detalhe.estoquePaExplosao != null && Number.isFinite(detalhe.estoquePaExplosao);
+  const estoquePa = usaExplosaoPa
+    ? detalhe.estoquePaExplosao!
+    : (detalhe.totalCoberto ?? 0);
+  const dicaEstoquePa = usaExplosaoPa ? DICA_ESTOQUE_PA_EXPLOSAO : DICA_ESTOQUE_PA;
 
   const gridClass = compacto
     ? 'grid-cols-2'
@@ -97,7 +101,7 @@ function CardsResumo({
       {!compacto && (
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-900/40">
           <div className="text-[11px] text-slate-500 dark:text-slate-400">
-            <RotuloComDica rotulo="Estoque em PA" dica={DICA_ESTOQUE_PA} />
+            <RotuloComDica rotulo="Estoque em PA" dica={dicaEstoquePa} />
           </div>
           <div className="text-sm font-medium tabular-nums">{fmt(estoquePa)}</div>
         </div>

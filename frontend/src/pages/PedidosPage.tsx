@@ -15,6 +15,7 @@ import {
   listarPedidosExport,
   ajustarPrevisao,
   ajustarPrevisaoLote,
+  ajustarDataProducaoLote,
   checkPedidosEmSycro,
   type FiltrosPedidos,
   type Pedido,
@@ -368,8 +369,16 @@ export default function PedidosPage() {
         const d = new Date(t);
         return !Number.isNaN(d.getTime());
       };
-      const comPrevisao = linhas.filter((l) => dataValida(l.nova_previsao));
-      const total = comPrevisao.length;
+      const mesmaData = (a: string, b: string) =>
+        dataValida(a) && dataValida(b) && new Date(a).toISOString().slice(0, 10) === new Date(b).toISOString().slice(0, 10);
+      const mudaPrevisao = (l: LinhaImportacao) =>
+        dataValida(l.nova_previsao) &&
+        (!dataValida(l.previsao_atual) || !mesmaData(l.nova_previsao, l.previsao_atual));
+      const mudaProducao = (l: LinhaImportacao) => dataValida(String(l.data_producao ?? ''));
+
+      const comPrevisao = linhas.filter(mudaPrevisao);
+      const comProducao = linhas.filter(mudaProducao);
+      const total = comPrevisao.length + comProducao.length;
       let ok = 0;
       const errosLista: string[] = [];
       const TAMANHO_LOTE = 1000;
@@ -377,6 +386,8 @@ export default function PedidosPage() {
       setImportProgresso(0);
       setImportResultado(null);
       setImportMensagemErro(undefined);
+
+      let processados = 0;
       for (let inicio = 0; inicio < comPrevisao.length; inicio += TAMANHO_LOTE) {
         const lote = comPrevisao.slice(inicio, inicio + TAMANHO_LOTE);
         const ajustes = lote.map((linha) => {
@@ -397,9 +408,27 @@ export default function PedidosPage() {
         const resultado = await ajustarPrevisaoLote(ajustes);
         ok += resultado.ok;
         resultado.erros.forEach((e) => errosLista.push(`Pedido ${e.id_pedido}: ${e.erro}`));
-        const processados = Math.min(inicio + TAMANHO_LOTE, total);
+        processados = Math.min(inicio + TAMANHO_LOTE, comPrevisao.length);
         setImportProgresso(total > 0 ? Math.round((processados / total) * 100) : 100);
       }
+
+      for (let inicio = 0; inicio < comProducao.length; inicio += TAMANHO_LOTE) {
+        const lote = comProducao.slice(inicio, inicio + TAMANHO_LOTE);
+        const itens = lote.map((linha) => {
+          const rotaNorm = (linha.rota ?? '').trim();
+          return {
+            id_pedido: linha.id_pedido,
+            data_producao: String(linha.data_producao).trim(),
+            rota: rotaNorm || undefined,
+          };
+        });
+        const resultado = await ajustarDataProducaoLote(itens);
+        ok += resultado.ok;
+        resultado.erros.forEach((e) => errosLista.push(`Pedido ${e.id_pedido} (produção): ${e.erro}`));
+        processados = comPrevisao.length + Math.min(inicio + TAMANHO_LOTE, comProducao.length);
+        setImportProgresso(total > 0 ? Math.round((processados / total) * 100) : 100);
+      }
+
       setImportStatus(errosLista.length > 0 ? 'erro' : 'sucesso');
       setImportResultado({
         ok,
@@ -425,10 +454,62 @@ export default function PedidosPage() {
       setImportBloqueio(null);
       try {
         const linhas = await parsePedidosXlsxForImport(file);
-        const idPedidosUnicos = [...new Set(linhas.map((l) => l.id_pedido).filter(Boolean))];
-        if (idPedidosUnicos.length > 0) {
+        const dataValida = (s: string) => {
+          const t = (s ?? '').trim();
+          if (!t) return false;
+          const d = new Date(t);
+          return !Number.isNaN(d.getTime());
+        };
+        const mesmaData = (a: string, b: string) =>
+          dataValida(a) && dataValida(b) && new Date(a).toISOString().slice(0, 10) === new Date(b).toISOString().slice(0, 10);
+        /** Nova previsão preenchida e diferente da atual (= intenção de alterar previsão). */
+        const mudaPrevisao = (l: LinhaImportacao) =>
+          dataValida(l.nova_previsao) &&
+          (!dataValida(l.previsao_atual) || !mesmaData(l.nova_previsao, l.previsao_atual));
+        const mudaProducao = (l: LinhaImportacao) => dataValida(String(l.data_producao ?? ''));
+        const producaoPreenchidaInvalida = (l: LinhaImportacao) => {
+          const raw = String(l.data_producao ?? '').trim();
+          return raw.length > 0 && !dataValida(raw);
+        };
+
+        const linhasComIndex = linhas.map((l, i) => ({ l, linha: i + 2 }));
+        const linhasMudaPrevisao = linhasComIndex.filter(({ l }) => mudaPrevisao(l));
+        const linhasMudaProducao = linhasComIndex.filter(({ l }) => mudaProducao(l));
+        const linhasProducaoInvalida = linhasComIndex.filter(({ l }) => producaoPreenchidaInvalida(l));
+
+        if (linhasMudaPrevisao.length === 0 && linhasMudaProducao.length === 0) {
+          setImportStatus('erro');
+          setImportBloqueio(
+            bloqueioImportacaoValidacao([
+              'Nenhuma alteração encontrada: preencha Nova previsão (diferente da atual) e/ou Data de produção.',
+            ])
+          );
+          setImportMensagemErro(undefined);
+          setImportResultado(null);
+          setImportLoading(false);
+          return;
+        }
+
+        if (linhasProducaoInvalida.length > 0) {
+          setImportStatus('erro');
+          setImportBloqueio(
+            bloqueioImportacaoValidacao([
+              `Data de produção inválida (linhas: ${linhasProducaoInvalida.map((x) => x.linha).join(', ')})`,
+            ])
+          );
+          setImportMensagemErro(undefined);
+          setImportResultado(null);
+          setImportLoading(false);
+          return;
+        }
+
+        // Sycro: bloqueia apenas linhas que alteram previsão
+        const idPedidosPrevisao = [
+          ...new Set(linhasMudaPrevisao.map(({ l }) => l.id_pedido).filter(Boolean)),
+        ];
+        if (idPedidosPrevisao.length > 0) {
           try {
-            const { pd_em_sycro } = await checkPedidosEmSycro(idPedidosUnicos);
+            const { pd_em_sycro } = await checkPedidosEmSycro(idPedidosPrevisao);
             if (pd_em_sycro.length > 0) {
               setImportStatus('erro');
               setImportBloqueio(bloqueioImportacaoSycro(pd_em_sycro));
@@ -441,45 +522,17 @@ export default function PedidosPage() {
             // Se a verificação falhar (ex.: rede), permitir seguir; o backend pode validar depois se necessário
           }
         }
-        const dataValida = (s: string) => {
-          const t = s.trim();
-          if (!t) return false;
-          const d = new Date(t);
-          return !Number.isNaN(d.getTime());
-        };
-        const mesmaData = (a: string, b: string) => dataValida(a) && dataValida(b) && new Date(a).toISOString().slice(0, 10) === new Date(b).toISOString().slice(0, 10);
-        const linhasComIndex = linhas.map((l, i) => ({ l, linha: i + 2 }));
 
-        // Regra: não pode importar com Nova previsão sem data (vazia ou inválida)
-        const linhasPrevisaoAtualSemData = linhasComIndex.filter(({ l }) => !dataValida(l.nova_previsao));
-        // Regra 1: aceitar apenas se TODAS as linhas tiverem Nova previsão diferente da Previsão atual
-        const linhasComIgualVerdadeiro = linhasComIndex.filter(({ l }) => l.igual === true);
-        const linhasComDataIgual = linhasComIndex.filter(
-          ({ l }) => dataValida(l.nova_previsao) && dataValida(l.previsao_atual) && mesmaData(l.nova_previsao, l.previsao_atual)
-        );
-        // Regra 2: não aceitar importação com motivo vazio
-        const linhasComMotivoVazio = linhasComIndex.filter(({ l }) => !String(l.motivo ?? '').trim());
+        // Regras de previsão: só nas linhas que mudam previsão
+        const linhasComIgualVerdadeiro = linhasMudaPrevisao.filter(({ l }) => l.igual === true);
+        const linhasComMotivoVazio = linhasMudaPrevisao.filter(({ l }) => !String(l.motivo ?? '').trim());
 
-        if (
-          linhasPrevisaoAtualSemData.length > 0 ||
-          linhasComIgualVerdadeiro.length > 0 ||
-          linhasComDataIgual.length > 0 ||
-          linhasComMotivoVazio.length > 0
-        ) {
+        if (linhasComIgualVerdadeiro.length > 0 || linhasComMotivoVazio.length > 0) {
           setImportStatus('erro');
           const partes: string[] = [];
-          if (linhasPrevisaoAtualSemData.length > 0) {
-            partes.push(
-              `Nova previsão sem data ou inválida (linhas: ${linhasPrevisaoAtualSemData.map((x) => x.linha).join(', ')})`
-            );
-          }
           if (linhasComIgualVerdadeiro.length > 0) {
             partes.push(
               `Coluna Igual? = Verdadeiro — a Nova previsão deve ser diferente da Previsão atual (linhas: ${linhasComIgualVerdadeiro.map((x) => x.linha).join(', ')})`
-            );
-          } else if (linhasComDataIgual.length > 0) {
-            partes.push(
-              `Nova previsão igual à Previsão atual (linhas: ${linhasComDataIgual.map((x) => x.linha).join(', ')})`
             );
           }
           if (linhasComMotivoVazio.length > 0) {
@@ -496,34 +549,33 @@ export default function PedidosPage() {
           const r = (rota ?? '').toLowerCase();
           return (
             r.includes('grande teresina') ||
-            r.includes('requisição') || r.includes('requisicao') ||
+            r.includes('requisição') ||
+            r.includes('requisicao') ||
             r.includes('retirada') ||
-            r.includes('inserir romaneio') || r.includes('inserir em romaneio')
+            r.includes('inserir romaneio') ||
+            r.includes('inserir em romaneio')
           );
         };
         const porCarrada = new Map<string, Set<string>>();
-        linhas.forEach((l, idx) => {
-          if (!dataValida(l.nova_previsao)) return;
+        for (const { l } of linhasMudaPrevisao) {
           const rota = (l.rota ?? '').trim();
-          if (!rota || isRotaExcluida(rota)) return;
+          if (!rota || isRotaExcluida(rota)) continue;
           const dataStr = new Date(l.nova_previsao).toISOString().slice(0, 10);
           const cur = porCarrada.get(rota);
           if (cur) cur.add(dataStr);
           else porCarrada.set(rota, new Set([dataStr]));
-        });
+        }
         const carradasComDatasDivergentes = [...porCarrada.entries()].filter(([, datas]) => datas.size > 1);
         if (carradasComDatasDivergentes.length > 0) {
           setImportStatus('erro');
-          setImportBloqueio(
-            bloqueioImportacaoCarrada(carradasComDatasDivergentes.map(([rota]) => rota))
-          );
+          setImportBloqueio(bloqueioImportacaoCarrada(carradasComDatasDivergentes.map(([rota]) => rota)));
           setImportMensagemErro(undefined);
           setImportResultado(null);
           setImportLoading(false);
           return;
         }
 
-        // Bloqueio: Nova previsão diferente da Previsão atual e data anterior a hoje — não permitir importação (só inferior a hoje; igual a hoje é permitido)
+        // Bloqueio: Nova previsão anterior a hoje (só linhas que mudam previsão)
         const hoje = new Date();
         hoje.setHours(0, 0, 0, 0);
         const dataPrevisaoAntesDeHoje = (dataStr: string) => {
@@ -533,17 +585,12 @@ export default function PedidosPage() {
           const diaPrevisao = new Date(d.getFullYear(), d.getMonth(), d.getDate());
           return diaPrevisao.getTime() < hoje.getTime();
         };
-        const linhasPrevisaoAnteriorHoje = linhasComIndex.filter(
-          ({ l }) =>
-            dataValida(l.nova_previsao) &&
-            !mesmaData(l.nova_previsao, l.previsao_atual) &&
-            dataPrevisaoAntesDeHoje(l.nova_previsao)
+        const linhasPrevisaoAnteriorHoje = linhasMudaPrevisao.filter(({ l }) =>
+          dataPrevisaoAntesDeHoje(l.nova_previsao)
         );
         if (linhasPrevisaoAnteriorHoje.length > 0) {
           setImportStatus('erro');
-          setImportBloqueio(
-            bloqueioImportacaoDataAnteriorHoje(linhasPrevisaoAnteriorHoje.map((x) => x.linha))
-          );
+          setImportBloqueio(bloqueioImportacaoDataAnteriorHoje(linhasPrevisaoAnteriorHoje.map((x) => x.linha)));
           setImportMensagemErro(undefined);
           setImportResultado(null);
           setImportLoading(false);

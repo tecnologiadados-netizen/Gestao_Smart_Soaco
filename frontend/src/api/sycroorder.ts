@@ -25,6 +25,8 @@ export interface SycroOrderOrder {
   }>;
   /** TAG de disponibilidade (Comunicação PD) */
   tag_disponivel?: boolean;
+  /** Data (YYYY-MM-DD) da última marcação como disponível no histórico; só quando tag_disponivel. */
+  disponivel_desde?: string | null;
   /** Último comentário pede retorno de outro participante. */
   aguarda_resposta_pendente?: boolean;
   /** Nomes exibidos em “Aguarda resposta de …”. */

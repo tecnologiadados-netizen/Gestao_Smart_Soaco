@@ -67,7 +67,7 @@ export default function ModalConsultaEstoqueEmbed({ codigo, onClose, zIndexBase 
   const [linhas, setLinhas] = useState<ConsultaEstoqueLinha[]>([]);
   const [loading, setLoading] = useState(true);
   const [erroApi, setErroApi] = useState<string | null>(null);
-  const [considerarRequisicoes, setConsiderarRequisicoes] = useState(false);
+  const [considerarRequisicoes, setConsiderarRequisicoes] = useState(true);
   const [detalhe, setDetalhe] = useState<DetalheModal | null>(null);
   const [detalheSaldo, setDetalheSaldo] = useState<SaldoSetorDetalhe[]>([]);
   const [detalheEmpenhoLiquido, setDetalheEmpenhoLiquido] = useState<RessupEmpenhoPedidoResultado | null>(

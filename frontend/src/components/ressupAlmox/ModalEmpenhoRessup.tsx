@@ -17,7 +17,7 @@ export type ModalEmpenhoRessupProps = {
   onClose: () => void;
   /** Cache opcional — reabrir o modal é instantâneo até novo Filtrar. */
   cacheRef?: MutableRefObject<Map<string, RessupEmpenhoPedidoResultado>>;
-  /** Ressup Não Almox: abatimento PA por explosão BOM. */
+  /** @deprecated Preferir regra Almox/Consulta (default). Mantido para compatibilidade da API. */
   modoNaoAlmox?: boolean;
 };
 

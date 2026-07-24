@@ -3,6 +3,8 @@
  * Mesma regra da Programação Setorial (PDF / grade).
  */
 
+import { isCarradaEmFormacao } from './rotaCarrada';
+
 export type ItemAposAbateEstoque<T> = T & {
   originalQty: number;
   qtyToProduce: number;
@@ -236,16 +238,59 @@ export function montarQtdeLiquidaCalendario(
   return qtdeLiquidaPorLinhaSnapshot(linhasSnapshot, filaQtyPorChave, stockRemaining);
 }
 
-/** Data base ISO (produção → previsão) para ordenação do abate a partir da linha do snapshot. */
-export function dataBaseSortLinhaSnapshot(row: Record<string, unknown>): string {
+/** Data base ISO (produção → previsão; formação → max+30) para ordenação do abate. */
+export function dataBaseSortLinhaSnapshot(
+  row: Record<string, unknown>,
+  dataProducaoEmFormacao = ''
+): string {
+  const { carrada } = (() => {
+    const c = String(row['Observacoes'] ?? row['Observacoes '] ?? row['Observações'] ?? '').trim();
+    return { carrada: c };
+  })();
+  const emFormacao =
+    isCarradaEmFormacao(carrada) ||
+    row['romaneio_como_formacao'] === true ||
+    (() => {
+      // Fallback espelhando isRomaneioComoFormacaoLinha quando flag ausente
+      const n = carrada
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '');
+      const tipoF = String(row['tipoF'] ?? row['TipoF'] ?? '').trim();
+      const nTipo = tipoF
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '');
+      const isRom =
+        n.includes('inserir em romaneio') ||
+        n.startsWith('4-inserir') ||
+        nTipo.includes('inserir em romaneio') ||
+        nTipo.startsWith('4-inserir');
+      if (!isRom || row['romaneio_como_formacao'] === false) return false;
+      if (row['romaneio_como_formacao'] === true) return true;
+      const valorRaw = row['Valor Pedido Total'] ?? row['Valor pedido total'];
+      const valor = valorRaw != null && !Number.isNaN(Number(valorRaw)) ? Number(valorRaw) : 0;
+      return valor < 30_000;
+    })();
+
   const rawProd = row['data_producao'] ?? row['Data de producao'] ?? row['Data de produção'];
+  let prodIso = '';
   if (rawProd != null && String(rawProd).trim()) {
     const s = String(rawProd).trim();
     const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-    const mBr = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (mBr) return `${mBr[3]}-${mBr[2]}-${mBr[1]}`;
+    if (m) prodIso = `${m[1]}-${m[2]}-${m[3]}`;
+    else {
+      const mBr = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (mBr) prodIso = `${mBr[3]}-${mBr[2]}-${mBr[1]}`;
+    }
   }
+
+  if (emFormacao) {
+    return prodIso || dataProducaoEmFormacao || '';
+  }
+
+  if (prodIso) return prodIso;
+
   const previsaoRaw =
     row['previsao_entrega_atualizada'] ??
     row['Previsão de entrega atualizada'] ??
@@ -261,12 +306,54 @@ export function dataBaseSortLinhaSnapshot(row: Record<string, unknown>): string 
   return '';
 }
 
+function maxDataProducaoNormaisSnapshot(linhas: Record<string, unknown>[]): string {
+  let max = '';
+  for (const row of linhas) {
+    const carrada = String(row['Observacoes'] ?? row['Observacoes '] ?? row['Observações'] ?? '').trim();
+    if (isCarradaEmFormacao(carrada) || row['romaneio_como_formacao'] === true) continue;
+    const n = carrada
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '');
+    if (
+      n.includes('inserir em romaneio') ||
+      n.startsWith('4-inserir') ||
+      n.includes('retirada') ||
+      n.includes('requisicao') ||
+      n.includes('grande teresina') ||
+      n.startsWith('1-') ||
+      n.startsWith('2-') ||
+      n.startsWith('3-') ||
+      n.startsWith('5-')
+    ) {
+      continue;
+    }
+    const rawProd = row['data_producao'] ?? row['Data de producao'] ?? row['Data de produção'];
+    if (rawProd == null || !String(rawProd).trim()) continue;
+    const s = String(rawProd).trim();
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const d = m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+    if (d && d > max) max = d;
+  }
+  return max;
+}
+
+function addDaysIsoLocal(iso: string, days: number): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 /** Converte linhas do snapshot do sequenciamento no formato de planning para o abate. */
 export function linhasSnapshotParaPlanningEstoque(
   linhas: Record<string, unknown>[]
 ): PlanningItemEstoque[] {
+  const dataFormacao = addDaysIsoLocal(maxDataProducaoNormaisSnapshot(linhas), 30);
   return linhas.map((row) => {
-    const iso = dataBaseSortLinhaSnapshot(row);
+    const iso = dataBaseSortLinhaSnapshot(row, dataFormacao);
     let dataBaseBr = '';
     const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (m) dataBaseBr = `${m[3]}/${m[2]}/${m[1]}`;
@@ -293,10 +380,11 @@ export function montarQtdeLiquidaDoSnapshot(
   linhas: Record<string, unknown>[],
   estoquePorCod: Record<string, number>
 ): Map<number, number> {
+  const dataFormacao = addDaysIsoLocal(maxDataProducaoNormaisSnapshot(linhas), 30);
   const planning = linhasSnapshotParaPlanningEstoque(linhas);
   const snapshotLinhas = linhas.map((row) => ({
     row,
-    dataBaseSort: dataBaseSortLinhaSnapshot(row),
+    dataBaseSort: dataBaseSortLinhaSnapshot(row, dataFormacao),
   }));
   return montarQtdeLiquidaCalendario(planning, estoquePorCod, snapshotLinhas);
 }

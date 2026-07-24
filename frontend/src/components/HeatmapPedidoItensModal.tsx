@@ -9,6 +9,7 @@ import { useRegisterModalEscape } from '../contexts/ModalStackContext';
 import ModalConsultaEstoqueEmbed from './pcp/ModalConsultaEstoqueEmbed';
 import GradeCelulaModalBtn from './pcp/GradeCelulaModalBtn';
 import CopiarTextoBtn, { numeroPedidoLimpo } from './CopiarTextoBtn';
+import { LABEL_CARRADA_EM_FORMACAO } from '../utils/rotaCarrada';
 
 function formatarValor(valor: number): string {
   return new Intl.NumberFormat('pt-BR', {
@@ -219,7 +220,16 @@ export default function HeatmapPedidoItensModal({
                         </span>
                       </td>
                       <td className="whitespace-nowrap py-1.5 pr-2 tabular-nums">
-                        {formatDataColuna(row.previsaoAtual)}
+                        {row.carradaEmFormacao ? (
+                          <span
+                            className="font-medium text-amber-700 dark:text-amber-300"
+                            title="Entrega/previsão não definida — carrada em formação"
+                          >
+                            {LABEL_CARRADA_EM_FORMACAO}
+                          </span>
+                        ) : (
+                          formatDataColuna(row.previsaoAtual)
+                        )}
                       </td>
                       <td className="py-1.5 pr-2 font-mono">
                         {row.codigo ? (

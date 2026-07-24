@@ -56,7 +56,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Categoria padrão quando o pedido ainda não tem observação de romaneio e não se encaixa em Retirada, Requisição ou Grande Teresina. Indica que ainda precisa ser colocado em uma rota.',
     comoLe:
-      'Por padrão a previsão é a data de entrega do item. Se, em Regras de data de entrega, a opção “Aplicar a mesma regra a Inserir em Romaneio” estiver ligada, passa a valer a mesma lógica de carrada (emissão + dias conforme o valor de corte).',
+      'Sempre aplica a regra de valor de corte: se o Valor Pedido Total for menor que o corte, trata como Carrada em formação (previsão com rótulo; produção = maior data das carradas normais + 30 dias). Se for igual ou maior que o corte, previsão e produção usam emissão + dias da faixa ≥ corte (padrão +45). Ajuste manual de previsão prevalece.',
   },
   {
     id: 'carrada',
@@ -79,12 +79,17 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Regra configurável (tela Regras de data de entrega) que define a data limite das carradas a partir da emissão do pedido e do valor total do PD.',
     comoLe:
-      'Padrão do sistema: base = data de emissão; valor = Valor Pedido Total (com IPI). Abaixo de R$ 30.000 → emissão + 60 dias; igual ou acima do corte → emissão + 45 dias. Versões da regra valem conforme a data de emissão do pedido. Se existir ajuste manual gravado, ele prevalece sobre a regra.',
+      'Padrão do sistema (Carradas): base = data de emissão; valor = Valor Pedido Total (com IPI). Abaixo de R$ 30.000 → emissão + 60 dias; igual ou acima do corte → emissão + 45 dias. Versões da regra valem conforme a data de emissão do pedido. Se existir ajuste manual gravado, ele prevalece sobre a regra.',
     detalhes: [
+      {
+        titulo: 'Inserir em Romaneio',
+        texto:
+          'Bifurcação fixa: valor abaixo do corte → Carrada em formação (produção max+30); valor ≥ corte → emissão + dias da faixa ≥ corte. Não depende mais do checkbox legado “aplicar a mesma regra”.',
+      },
       {
         titulo: 'Onde configurar',
         texto:
-          'Em Pedidos → Regras de data de entrega você altera corte, dias e se a regra também vale para “Inserir em Romaneio”.',
+          'Em Pedidos → Regras de data de entrega você altera corte e dias. A bifurcação de Inserir em Romaneio usa o valor de corte e os dias da faixa ≥ corte.',
       },
     ],
   },

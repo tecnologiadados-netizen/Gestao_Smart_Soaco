@@ -140,8 +140,8 @@ export interface SidebarProps {
 function SidebarLabel({ open, children }: { open: boolean; children: ReactNode }) {
   return (
     <span
-      className={`min-w-0 truncate transition-opacity duration-200 ${
-        open ? 'opacity-100' : 'w-0 overflow-hidden opacity-0'
+      className={`min-w-0 transition-opacity duration-200 ${
+        open ? 'flex min-w-0 flex-1 items-center gap-1 overflow-hidden opacity-100' : 'w-0 overflow-hidden opacity-0'
       }`}
     >
       {children}
@@ -173,14 +173,18 @@ function SidebarNavLink({
   if (external) {
     return (
       <a href={to} title={title ?? label} onClick={onNavigate} className={linkClass}>
-        <SidebarLabel open={sidebarOpen}>{label}</SidebarLabel>
+        <SidebarLabel open={sidebarOpen}>
+          <span className="truncate">{label}</span>
+        </SidebarLabel>
       </a>
     );
   }
 
   return (
     <NavLink to={to} title={title ?? label} onClick={onNavigate} className={linkClass} end>
-      <SidebarLabel open={sidebarOpen}>{label}</SidebarLabel>
+      <SidebarLabel open={sidebarOpen}>
+        <span className="truncate">{label}</span>
+      </SidebarLabel>
     </NavLink>
   );
 }
@@ -245,10 +249,8 @@ function NavMenuTree({
               aria-expanded={isOpen}
             >
               <SidebarLabel open={sidebarOpen}>
-                <span className="flex flex-1 items-center justify-between gap-1 min-w-0">
-                  <span className="truncate">{entry.label}</span>
-                  {sidebarOpen && <ChevronDown open={isOpen} />}
-                </span>
+                <span className="truncate">{entry.label}</span>
+                {sidebarOpen && <ChevronDown open={isOpen} />}
               </SidebarLabel>
             </button>
             {sidebarOpen && isOpen && (
@@ -318,10 +320,8 @@ function SidebarSection({
       >
         <MenuIcon>{icon}</MenuIcon>
         <SidebarLabel open={sidebarOpen}>
-          <span className="flex flex-1 items-center justify-between gap-1 min-w-0">
-            <span className="truncate">{label}</span>
-            {sidebarOpen && <ChevronDown open={isOpen} />}
-          </span>
+          <span className="truncate">{label}</span>
+          {sidebarOpen && <ChevronDown open={isOpen} />}
         </SidebarLabel>
         {badge != null && badge > 0 && (
           <span
@@ -485,7 +485,9 @@ export default function Sidebar({
             }
           >
             <MenuIcon>{ICONS.fluxos}</MenuIcon>
-            <SidebarLabel open={open}>Fluxos Decisórios</SidebarLabel>
+            <SidebarLabel open={open}>
+              <span className="truncate">Fluxos Decisórios</span>
+            </SidebarLabel>
           </NavLink>
         )}
 
@@ -641,10 +643,8 @@ export default function Sidebar({
                     aria-expanded={accordionOpen.has(`financeiro:${entry.label}`)}
                   >
                     <SidebarLabel open={open}>
-                      <span className="flex flex-1 items-center justify-between gap-1 min-w-0">
-                        <span className="truncate">{entry.label}</span>
-                        <ChevronDown open={accordionOpen.has(`financeiro:${entry.label}`)} />
-                      </span>
+                      <span className="truncate">{entry.label}</span>
+                      <ChevronDown open={accordionOpen.has(`financeiro:${entry.label}`)} />
                     </SidebarLabel>
                   </button>
                   {accordionOpen.has(`financeiro:${entry.label}`) && (

@@ -20,12 +20,15 @@ import {
 import { aplicarTiposEntregaFuturaSql } from '../config/pcpEntregaFutura.js';
 import {
   calcularDataLimiteCarrada,
+  classificarInserirRomaneioPorValor,
+  isInserirEmRomaneioCategoria,
   isTipoFCarradaParaRegra,
   obterVersoesParaClassificacao,
   resolverConfigPorEmissao,
   textoMotivoRegraCarrada,
 } from './regrasDataEntregaRepository.js';
 import { DEFAULT_REGRA_DATA_ENTREGA, type RegraDataEntregaConfig } from '../config/regrasDataEntrega.js';
+import { buildDataBasePorPedidoIdMap, type PedidoParaDataBase } from '../utils/dataBasePedidoFormacao.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_FILE = 'sqlBasePedidosNomus.sql';
@@ -474,6 +477,7 @@ function rowNomusToPedido(
   const dataProducao = dataProducaoPorId?.get(idChave) ?? null;
 
   const tipoF = String(row['TipoF'] ?? row['tipoF'] ?? '').trim();
+  const observacoesRota = String(row['Observacoes'] ?? row['Observações'] ?? row['Observacoes '] ?? '').trim();
   const emissaoRaw = row['Emissao'] ?? row['emissao'];
   const emissao = emissaoRaw != null ? new Date(emissaoRaw as string | Date) : null;
   const valorRaw = row['Valor Pedido Total'] ?? row['Valor pedido total'];
@@ -483,10 +487,32 @@ function rowNomusToPedido(
     emissao && !Number.isNaN(emissao.getTime())
       ? resolverConfigPorEmissao(versoesRegras, emissao)
       : null;
-  const incluiRomaneio = configEmissao?.carrada.incluiInserirRomaneio ?? false;
+
+  const isRomaneio =
+    isInserirEmRomaneioCategoria(tipoF) || isInserirEmRomaneioCategoria(observacoesRota);
+  let romaneioComoFormacao = false;
 
   let status: 'Atrasado' | 'Em dia';
-  if (emissao && isTipoFCarradaParaRegra(tipoF, incluiRomaneio)) {
+  if (emissao && isRomaneio) {
+    const classe = classificarInserirRomaneioPorValor(valorPedidoTotal, configEmissao);
+    if (classe === 'regra_acima_corte') {
+      const { dataLimite } = calcularDataLimiteCarrada(emissao, valorPedidoTotal, configEmissao);
+      previsaoOriginal = dataLimite;
+      if (!temAjusteReal) {
+        previsaoAtualizada = dataLimite;
+      }
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      const lim = new Date(dataLimite);
+      lim.setHours(0, 0, 0, 0);
+      status = lim.getTime() < hoje.getTime() ? 'Atrasado' : 'Em dia';
+    } else {
+      romaneioComoFormacao = true;
+      // Como formação: não atrasa por dataLimite (emissão+60).
+      status = 'Em dia';
+    }
+  } else if (emissao && isTipoFCarradaParaRegra(tipoF, false)) {
+    // Carradas: regra completa (ambas as faixas emissão+dias).
     const { dataLimite } = calcularDataLimiteCarrada(emissao, valorPedidoTotal, configEmissao);
     previsaoOriginal = dataLimite;
     if (!temAjusteReal) {
@@ -521,6 +547,7 @@ function rowNomusToPedido(
     previsao_atual_confiavel: previsaoAtualConfiavel,
     carrada_migrada: carradaMigrada,
     data_producao: dataProducao,
+    romaneio_como_formacao: romaneioComoFormacao,
     Status: status,
     dataParametro: previsaoOriginal,
   } as PedidoRow;
@@ -759,6 +786,7 @@ export async function getPrevisaoPorPedidoIdMap(): Promise<Map<number, string>> 
 
 /**
  * Mapa pd.id → data base (YYYY-MM-DD): `data_producao` (preferencial) com fallback para previsão atual.
+ * Formação (constr/cont ou romaneio &lt; corte): produção real ou max(normais)+30 — nunca previsão ERP.
  * Uma carga / 90s — evita SQL do gerenciador por página.
  */
 export async function getDataBasePorPedidoIdMap(): Promise<Map<number, string>> {
@@ -767,33 +795,18 @@ export async function getDataBasePorPedidoIdMap(): Promise<Map<number, string>> 
     return cacheDataBasePorPedidoId.map;
   }
 
-  const acc = new Map<number, number>();
-
-  const add = (pid: number, val: unknown) => {
-    mergeMenorPrevisaoPorPedido(acc, pid, val as any);
-  };
-
+  let pedidos: PedidoRow[] = [];
   if (cachePedidos && cachePedidos.expiresAt > now) {
-    for (const p of cachePedidos.data) {
-      const row = p as Record<string, unknown>;
-      const pid = Number(row.id ?? row['id']);
-      const base = (p as any).data_producao ?? p.previsao_entrega_atualizada ?? p.previsao_entrega;
-      add(pid, base);
-    }
+    pedidos = cachePedidos.data;
   } else if (isNomusEnabled() && getNomusPool()) {
     const { data } = await listarPedidos({});
-    for (const p of data) {
-      const row = p as Record<string, unknown>;
-      const pid = Number(row.id ?? row['id']);
-      const base = (p as any).data_producao ?? p.previsao_entrega_atualizada ?? p.previsao_entrega;
-      add(pid, base);
-    }
+    pedidos = data;
   }
 
-  const map = new Map<number, string>();
-  for (const [pid, t] of acc) {
-    map.set(pid, ymdFromTimestampMs(t));
-  }
+  const map = buildDataBasePorPedidoIdMap(pedidos as PedidoParaDataBase[], (p) => {
+    const row = p as Record<string, unknown>;
+    return Number(row.id ?? row['id']);
+  });
   cacheDataBasePorPedidoId = { map, expiresAt: now + CACHE_PEDIDOS_TTL_MS };
   return map;
 }
@@ -2878,12 +2891,15 @@ export function montarItemHistoricoRegraCarrada(
   if (!emissao || Number.isNaN(emissao.getTime())) return null;
 
   const config = resolverConfigPorEmissao(versoes, emissao);
-  const incluiRomaneio = config?.carrada.incluiInserirRomaneio ?? false;
-  if (!isTipoFCarradaParaRegra(tipoF, incluiRomaneio)) return null;
-
   const valorRaw = pedido['Valor Pedido Total'] ?? pedido['Valor pedido total'];
   const valorPedidoTotal =
     valorRaw != null && !Number.isNaN(Number(valorRaw)) ? Number(valorRaw) : 0;
+  const isRomaneio = isInserirEmRomaneioCategoria(tipoF);
+  if (isRomaneio) {
+    if (classificarInserirRomaneioPorValor(valorPedidoTotal, config) === 'formacao') return null;
+  } else if (!isTipoFCarradaParaRegra(tipoF, false)) {
+    return null;
+  }
 
   const { dataLimite, dias, usouPadraoSistema } = calcularDataLimiteCarrada(
     emissao,

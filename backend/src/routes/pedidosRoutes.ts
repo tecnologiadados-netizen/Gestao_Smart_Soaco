@@ -40,6 +40,11 @@ import {
   postSequenciamentoCarradasSnapshotConcluir,
   deleteSequenciamentoCarradasSnapshot,
 } from '../controllers/sequenciamentoCarradasController.js';
+import {
+  postDisponibilidadeMateriaisDia,
+  postDisponibilidadeMateriaisItem,
+  postDisponibilidadeMateriaisSintetica,
+} from '../controllers/disponibilidadeMateriaisCalendarioController.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -102,6 +107,24 @@ router.get('/sequenciamento-carradas/snapshots/:id', verPedidos, getSequenciamen
 router.patch('/sequenciamento-carradas/snapshots/:id', verPedidos, autosaveLimiter, patchSequenciamentoCarradasSnapshot);
 router.post('/sequenciamento-carradas/snapshots/:id/concluir', verPedidos, writeLimiter, postSequenciamentoCarradasSnapshotConcluir);
 router.delete('/sequenciamento-carradas/snapshots/:id', verPedidos, writeLimiter, deleteSequenciamentoCarradasSnapshot);
+router.post(
+  '/sequenciamento-carradas/calendario-producao/disponibilidade-materiais',
+  verPedidos,
+  writeLimiter,
+  postDisponibilidadeMateriaisSintetica
+);
+router.post(
+  '/sequenciamento-carradas/calendario-producao/disponibilidade-materiais/dia',
+  verPedidos,
+  writeLimiter,
+  postDisponibilidadeMateriaisDia
+);
+router.post(
+  '/sequenciamento-carradas/calendario-producao/disponibilidade-materiais/item',
+  verPedidos,
+  writeLimiter,
+  postDisponibilidadeMateriaisItem
+);
 router.get('/inconsistencia-qtde-pendente', verPedidos, getInconsistenciaQtdePendente);
 router.get('/encerrados/typeahead', verPedidos, getPedidosEncerradosTypeahead);
 router.get('/encerrados', verPedidos, getPedidosEncerrados);

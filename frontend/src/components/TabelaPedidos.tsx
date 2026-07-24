@@ -6,6 +6,8 @@ import { MensagemSemRegistros } from './MensagemSemRegistros';
 import { useGradeFiltrosExcel } from '../hooks/useGradeFiltrosExcel';
 import GradeFiltroExcelPortal from './grade/GradeFiltroExcelPortal';
 import GradeFiltroCabecalhoBtn from './grade/GradeFiltroCabecalhoBtn';
+import GradeCelulaModalBtn from './pcp/GradeCelulaModalBtn';
+import ModalConsultaEstoqueEmbed from './pcp/ModalConsultaEstoqueEmbed';
 import IndicadorDataPorPrevisao from './sequenciamento-carradas/IndicadorDataPorPrevisao';
 import { resolverDataProducaoExibicaoGerenciador, maxDataProducaoPedidosNormais, dataProducaoCarradaEmFormacaoApartirDe } from '../utils/dataProducaoGerenciador';
 import { LABEL_CARRADA_EM_FORMACAO } from '../utils/rotaCarrada';
@@ -235,7 +237,18 @@ export const COLUMNS_SORTABLE = COLUMNS.filter(
 
 export type SortLevel = { id: string; dir: SortDir };
 
-function getSortValue(p: Pedido, colId: string): string | number {
+function getSortValue(p: Pedido, colId: string, dataProducaoEmFormacao = ''): string | number {
+  if (colId === 'previsao_atual' || colId === 'data_producao') {
+    const exib = resolverDataProducaoExibicaoGerenciador(p, dataProducaoEmFormacao);
+    if (colId === 'previsao_atual') {
+      if (exib.carradaEmFormacao || !exib.previsaoAtual) return Number.MAX_SAFE_INTEGER;
+      const d = new Date(exib.previsaoAtual);
+      return Number.isNaN(d.getTime()) ? Number.MAX_SAFE_INTEGER : d.getTime();
+    }
+    if (!exib.dataExibicao) return Number.MAX_SAFE_INTEGER;
+    const d = new Date(exib.dataExibicao);
+    return Number.isNaN(d.getTime()) ? Number.MAX_SAFE_INTEGER : d.getTime();
+  }
   const col = COLUMNS.find((c) => c.id === colId);
   if (!col) return '';
   const raw = col.getValue ? col.getValue(p) : getField(p, col.keys ?? []);
@@ -245,21 +258,6 @@ function getSortValue(p: Pedido, colId: string): string | number {
     return Number.isNaN((d as Date).getTime()) ? Number.MAX_SAFE_INTEGER : (d as Date).getTime();
   }
   return String(raw);
-}
-
-function comparePedidos(a: Pedido, b: Pedido, levels: { id: string; dir: SortDir }[]): number {
-  for (const { id, dir } of levels) {
-    const va = getSortValue(a, id);
-    const vb = getSortValue(b, id);
-    let cmp: number;
-    if (typeof va === 'number' && typeof vb === 'number') {
-      cmp = va - vb;
-    } else {
-      cmp = String(va).localeCompare(String(vb), undefined, { numeric: true });
-    }
-    if (cmp !== 0) return dir === 'asc' ? cmp : -cmp;
-  }
-  return 0;
 }
 
 function ClockIcon() {
@@ -274,6 +272,61 @@ function normIdPedido(p: { id_pedido?: string | number }): string {
   const v = p.id_pedido;
   if (v == null) return '';
   return String(v).trim();
+}
+
+/** Nome do cliente normalizado para agrupar “mesmo cliente” (sem id_cliente no payload). */
+function chaveCliente(p: Pedido): string {
+  const nome = getField(p, ['Cliente']) || String(p.cliente ?? '');
+  return nome.trim().toUpperCase();
+}
+
+function chavePd(p: Pedido): string {
+  return getField(p, ['PD']).trim().toUpperCase();
+}
+
+function indicePedidosPorCliente(rows: Pedido[]): {
+  pdsPorCliente: Map<string, Set<string>>;
+  linhasPorCliente: Map<string, Pedido[]>;
+} {
+  const pdsPorCliente = new Map<string, Set<string>>();
+  const linhasPorCliente = new Map<string, Pedido[]>();
+  for (const p of rows) {
+    const ck = chaveCliente(p);
+    if (!ck) continue;
+    const pd = chavePd(p);
+    if (!pdsPorCliente.has(ck)) pdsPorCliente.set(ck, new Set());
+    if (pd) pdsPorCliente.get(ck)!.add(pd);
+    if (!linhasPorCliente.has(ck)) linhasPorCliente.set(ck, []);
+    linhasPorCliente.get(ck)!.push(p);
+  }
+  return { pdsPorCliente, linhasPorCliente };
+}
+
+/** Une linhas filtradas com todos os pedidos dos clientes expandidos (dataset da tela). */
+function mesclarLinhasClientesExpandidos(
+  base: Pedido[],
+  clientesExpandidos: Set<string>,
+  linhasPorClienteCompleto: Map<string, Pedido[]>
+): Pedido[] {
+  if (clientesExpandidos.size === 0) return base;
+  const presentIds = new Set(base.map(normIdPedido));
+  const result = [...base];
+  for (const key of clientesExpandidos) {
+    const todas = linhasPorClienteCompleto.get(key) ?? [];
+    const faltantes = todas.filter((p) => !presentIds.has(normIdPedido(p)));
+    if (faltantes.length === 0) continue;
+    let lastIdx = -1;
+    for (let i = 0; i < result.length; i++) {
+      if (chaveCliente(result[i]) === key) lastIdx = i;
+    }
+    if (lastIdx >= 0) {
+      result.splice(lastIdx + 1, 0, ...faltantes);
+    } else {
+      result.push(...faltantes);
+    }
+    for (const p of faltantes) presentIds.add(normIdPedido(p));
+  }
+  return result;
 }
 
 export default function TabelaPedidos({
@@ -303,7 +356,9 @@ export default function TabelaPedidos({
   const [colunasOcultasOpen, setColunasOcultasOpen] = useState(false);
   const colunasOcultasRef = useRef<HTMLDivElement>(null);
   const [historicoPedido, setHistoricoPedido] = useState<Pedido | null>(null);
+  const [consultaCodigo, setConsultaCodigo] = useState<string | null>(null);
   const [historicoOpen, setHistoricoOpen] = useState(false);
+  const [clientesExpandidos, setClientesExpandidos] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     try {
@@ -357,7 +412,7 @@ export default function TabelaPedidos({
     getCellText,
     getCellFilterValues,
     valueForSort: (p, colId) => {
-      const v = getSortValue(p, colId);
+      const v = getSortValue(p, colId, dataProducaoEmFormacao);
       if (['qtde_pendente_real', 'valor_pendente_real'].includes(colId)) {
         const n = Number(v);
         return Number.isFinite(n) ? n : NaN;
@@ -409,7 +464,30 @@ export default function TabelaPedidos({
     [sortLevels, onSortLevelsChange, grade]
   );
 
-  const listaExibida = grade.rowsExibidas;
+  const indiceCompleto = useMemo(() => indicePedidosPorCliente(lista), [lista]);
+  const indiceFiltrado = useMemo(
+    () => indicePedidosPorCliente(grade.rowsExibidas),
+    [grade.rowsExibidas]
+  );
+
+  const listaExibida = useMemo(
+    () =>
+      mesclarLinhasClientesExpandidos(
+        grade.rowsExibidas,
+        clientesExpandidos,
+        indiceCompleto.linhasPorCliente
+      ),
+    [grade.rowsExibidas, clientesExpandidos, indiceCompleto.linhasPorCliente]
+  );
+
+  const toggleClienteExpandido = useCallback((clienteKey: string) => {
+    setClientesExpandidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(clienteKey)) next.delete(clienteKey);
+      else next.add(clienteKey);
+      return next;
+    });
+  }, []);
 
   const listaPagina = useMemo(() => {
     if (!paginateLocally) return listaExibida;
@@ -418,6 +496,10 @@ export default function TabelaPedidos({
   }, [listaExibida, paginateLocally, page, pageSize]);
 
   const columnFiltersKey = JSON.stringify(grade.columnFilters);
+
+  useEffect(() => {
+    setClientesExpandidos(new Set());
+  }, [columnFiltersKey]);
 
   useEffect(() => {
     onExibidosCountChange?.(listaExibida.length);
@@ -793,6 +875,65 @@ export default function TabelaPedidos({
                     </td>
                   );
                 }
+                if (col.id === 'cod') {
+                  const codigo = getField(p, col.keys ?? []);
+                  return (
+                    <td key={col.id} className="p-3 font-mono text-slate-700 dark:text-slate-200">
+                      {codigo ? (
+                        <GradeCelulaModalBtn
+                          onClick={() => setConsultaCodigo(codigo)}
+                          title={`Consultar estoque de ${codigo}`}
+                          align="left"
+                        >
+                          {codigo}
+                        </GradeCelulaModalBtn>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                  );
+                }
+                if (col.id === 'cliente') {
+                  const nome = getField(p, col.keys ?? []);
+                  const ck = chaveCliente(p);
+                  const pdsCompletos = indiceCompleto.pdsPorCliente.get(ck) ?? new Set<string>();
+                  const pdsFiltrados = indiceFiltrado.pdsPorCliente.get(ck) ?? new Set<string>();
+                  const expandido = clientesExpandidos.has(ck);
+                  const pdsOcultos = [...pdsCompletos].filter((pd) => !pdsFiltrados.has(pd));
+                  const nOcultos = pdsOcultos.length;
+                  const mostrarSinal = ck.length > 0 && (expandido || nOcultos > 0);
+                  const labelSinal = expandido
+                    ? `Recolher · ${pdsCompletos.size} pedido${pdsCompletos.size === 1 ? '' : 's'}`
+                    : nOcultos === 1
+                      ? '+1 outro pedido'
+                      : `+${nOcultos} outros pedidos`;
+                  const titleSinal = expandido
+                    ? 'Ocultar pedidos extras deste cliente (voltar ao filtro da grade)'
+                    : `Outros pedidos no filtro da tela: ${pdsOcultos.join(', ')}. Clique para exibir na grade.`;
+                  return (
+                    <td key={col.id} className="p-3 max-w-[13rem] text-slate-700 dark:text-slate-200">
+                      <div className="flex flex-col items-start gap-1">
+                        <span className="line-clamp-2 block break-words leading-snug" title={nome || undefined}>
+                          {nome || '—'}
+                        </span>
+                        {mostrarSinal ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleClienteExpandido(ck);
+                            }}
+                            className={`${BADGE_GRADE_CLASS} bg-sky-500/20 text-sky-700 hover:bg-sky-500/30 dark:text-sky-300 cursor-pointer`}
+                            title={titleSinal}
+                            aria-label={labelSinal}
+                          >
+                            {labelSinal}
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  );
+                }
                 const raw = col.getValue ? col.getValue(p) : getField(p, col.keys ?? []);
                 const isDate = DATE_COLUMN_IDS.includes(col.id);
                 const isNum = ['valor_pendente_real', 'qtde_pendente_real'].includes(col.id);
@@ -906,6 +1047,12 @@ export default function TabelaPedidos({
       open={historicoOpen}
       onClose={fecharModalHistorico}
     />
+    {consultaCodigo ? (
+      <ModalConsultaEstoqueEmbed
+        codigo={consultaCodigo}
+        onClose={() => setConsultaCodigo(null)}
+      />
+    ) : null}
     </>
   );
 }

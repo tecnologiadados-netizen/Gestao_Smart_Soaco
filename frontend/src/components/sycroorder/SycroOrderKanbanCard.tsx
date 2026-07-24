@@ -124,16 +124,22 @@ export default function SycroOrderKanbanCard({
           Prazo original: <span className="font-medium text-slate-800 dark:text-slate-200">{prazoOriginal}</span>
         </p>
 
-        {previsao && (
-          <p
-            className={`mt-1 text-sm font-semibold ${
-              previsao === LABEL_CARRADA_EM_FORMACAO
-                ? 'text-amber-700 dark:text-amber-300'
-                : 'text-primary-700 dark:text-primary-300'
-            }`}
-          >
-            Previsão Atual: {previsao}
+        {o.tag_disponivel ? (
+          <p className="mt-1 text-sm font-semibold text-primary-700 dark:text-primary-300">
+            Disponível desde: {o.disponivel_desde ? formatDate(o.disponivel_desde) : '—'}
           </p>
+        ) : (
+          previsao && (
+            <p
+              className={`mt-1 text-sm font-semibold ${
+                previsao === LABEL_CARRADA_EM_FORMACAO
+                  ? 'text-amber-700 dark:text-amber-300'
+                  : 'text-primary-700 dark:text-primary-300'
+              }`}
+            >
+              Previsão Atual: {previsao}
+            </p>
+          )
         )}
 
         <div className="mt-2 flex flex-wrap gap-2 border-t border-slate-100 pt-2 dark:border-slate-700">

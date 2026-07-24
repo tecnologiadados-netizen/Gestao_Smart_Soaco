@@ -20,6 +20,11 @@ export interface Pedido {
   carrada_migrada?: { rota: string; previsao: string }[] | null;
   /** Sinalização Comunicação PD: vazio, "Card" ou "Disponível". */
   Card?: '' | 'Card' | 'Disponível';
+  /**
+   * Inserir em Romaneio com valor do PD abaixo do corte das Regras de data de entrega:
+   * exibe como carrada em formação (previsão rótulo + produção max+30).
+   */
+  romaneio_como_formacao?: boolean;
   [key: string]: unknown;
 }
 
@@ -434,6 +439,8 @@ export interface TooltipDetalheRow {
   dataCalendario?: string;
   /** Verdadeiro quando o calendário posiciona o item pela previsão atual. */
   producaoPorPrevisao?: boolean;
+  /** Constr/cont ou romaneio &lt; corte — previsão exibe "Carrada em formação". */
+  carradaEmFormacao?: boolean;
 }
 
 export type CorBolhaMapa = 'vermelho' | 'verde' | 'amarelo' | 'roxo' | 'preto';

@@ -23,9 +23,21 @@ function parseNomusUrl(url: string): mysql.PoolOptions {
       connectionLimit: 10,
       queueLimit: 0,
       connectTimeout: 15000,
+      // Evita ECONNRESET em conexões idle do pool (MySQL wait_timeout).
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10_000,
+      idleTimeout: 60_000,
+      maxIdle: 5,
     };
   } catch {
-    return { uri: url, waitForConnections: true, connectionLimit: 5, queueLimit: 0 };
+    return {
+      uri: url,
+      waitForConnections: true,
+      connectionLimit: 5,
+      queueLimit: 0,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10_000,
+    };
   }
 }
 
@@ -41,4 +53,38 @@ export function getNomusPool(): mysql.Pool | null {
 
 export function isNomusEnabled(): boolean {
   return !!process.env.NOMUS_DB_URL?.trim();
+}
+
+/** Erros de conexão transitórios do MySQL (vale retry 1–2x). */
+export function isNomusTransientConnectionError(err: unknown): boolean {
+  const code =
+    err && typeof err === 'object' && 'code' in err ? String((err as { code?: unknown }).code ?? '') : '';
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return (
+    code === 'ECONNRESET' ||
+    code === 'PROTOCOL_CONNECTION_LOST' ||
+    code === 'EPIPE' ||
+    code === 'ETIMEDOUT' ||
+    /ECONNRESET|PROTOCOL_CONNECTION_LOST|EPIPE|ETIMEDOUT|Connection lost/i.test(msg)
+  );
+}
+
+/** Executa query Nomus com retry curto em ECONNRESET / connection lost. */
+export async function nomusQueryWithRetry<T = unknown>(
+  pool: mysql.Pool,
+  sql: string,
+  params?: unknown[],
+  tentativas = 3
+): Promise<[T, mysql.FieldPacket[]]> {
+  let lastErr: unknown;
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      return (await pool.query(sql, params)) as [T, mysql.FieldPacket[]];
+    } catch (err) {
+      lastErr = err;
+      if (!isNomusTransientConnectionError(err) || i === tentativas - 1) throw err;
+      await new Promise((r) => setTimeout(r, 120 * (i + 1)));
+    }
+  }
+  throw lastErr;
 }

@@ -1,6 +1,6 @@
 import type { Pedido } from '../api/pedidos';
 import { addDaysIso, toISODate } from '../components/sequenciamento-carradas/simulacaoCarradas';
-import { isCarradaOrdemFinal } from '../components/sequenciamento-carradas/sequenciamentoCarradasUtils';
+import { isCarradaOrdemFinal, isInserirEmRomaneio } from '../components/sequenciamento-carradas/sequenciamentoCarradasUtils';
 import {
   isCarradaEmFormacao,
   LABEL_CARRADA_EM_FORMACAO,
@@ -16,7 +16,7 @@ export type DataProducaoExibicaoGerenciador = {
   previsaoAtual: string;
   /** Verdadeiro quando a exibição usa previsão por falta de data de produção. */
   producaoPorPrevisao: boolean;
-  /** Carrada constr/cont: entrega/previsão exibe rótulo fixo. */
+  /** Carrada constr/cont ou romaneio abaixo do corte: entrega/previsão exibe rótulo fixo. */
   carradaEmFormacao?: boolean;
   /** Texto da previsão quando em formação (substitui a data). */
   previsaoExibicaoLabel?: string;
@@ -34,12 +34,23 @@ export function rotaPedido(p: Pedido): string {
   return rotaFromPedidoRow(p as unknown as Record<string, unknown>);
 }
 
+/** Inserir em Romaneio com valor &lt; corte (backend). */
+export function isRomaneioComoFormacao(p: Pedido): boolean {
+  return p.romaneio_como_formacao === true;
+}
+
+function isPedidoInserirRomaneio(p: Pedido): boolean {
+  const tipoF = String(p['TipoF'] ?? p['tipoF'] ?? '').trim();
+  const rota = rotaPedido(p);
+  return isInserirEmRomaneio(tipoF) || isInserirEmRomaneio(rota);
+}
+
 /** Maior data de produção real entre pedidos de carradas normais (exclui especiais / em formação). */
 export function maxDataProducaoPedidosNormais(pedidos: Pedido[]): string {
   let max = '';
   for (const p of pedidos) {
     const rota = rotaPedido(p);
-    if (isCarradaOrdemFinal(rota) || isCarradaEmFormacao(rota)) continue;
+    if (isCarradaOrdemFinal(rota) || isCarradaEmFormacao(rota) || isRomaneioComoFormacao(p)) continue;
     const d = dataProducaoRealPedido(p);
     if (d && d > max) max = d;
   }
@@ -60,7 +71,7 @@ export function resolverDataProducaoExibicaoGerenciador(
   const dataProducaoReal = dataProducaoRealPedido(p);
   const previsaoAtual = previsaoAtualPedido(p);
 
-  if (isCarradaEmFormacao(rota)) {
+  if (isCarradaEmFormacao(rota) || isRomaneioComoFormacao(p)) {
     return {
       dataExibicao: dataProducaoEmFormacao || dataProducaoReal,
       dataProducaoReal,
@@ -79,6 +90,17 @@ export function resolverDataProducaoExibicaoGerenciador(
       producaoPorPrevisao: false,
     };
   }
+
+  // Inserir em Romaneio ≥ corte: previsão da regra é oficial — sem badge Prev.
+  if (isPedidoInserirRomaneio(p) && previsaoAtual) {
+    return {
+      dataExibicao: previsaoAtual,
+      dataProducaoReal: '',
+      previsaoAtual,
+      producaoPorPrevisao: false,
+    };
+  }
+
   if (previsaoAtual) {
     return {
       dataExibicao: previsaoAtual,

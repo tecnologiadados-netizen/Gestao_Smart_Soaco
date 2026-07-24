@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 import { getNomusPool } from '../config/nomusDb.js';
 import { termoParaPadraoLikeSql } from '../utils/textoLivreBusca.js';
 import {
-  buildEmpJoinSqlNaoAlmox,
+  buildEmpJoinSql,
   SQL_REGISTRO_COLETA_BASE,
   SQL_REGISTRO_COLETA_LEVE,
 } from './sqlRegistroColetaPrecos.js';
@@ -25,10 +25,6 @@ const SQL_SALDO_PA_EXPLOSAO_SCALAR = readFileSync(
   join(__dirname, 'sql', 'ressupNaoAlmoxSaldoPaExplosaoScalar.sql'),
   'utf-8'
 ).trim();
-const SQL_SALDO_PA_EXPLOSAO_CORRELACIONADO = SQL_SALDO_PA_EXPLOSAO_SCALAR.replace(
-  /__CORREL__/g,
-  'pq.idProdutoComponente'
-);
 
 export const RESSUP_NAO_ALMOX_COLETAS = [
   'ISOPOR',
@@ -159,7 +155,8 @@ function replaceEmpJoinSql(baseSql: string, considerarRequisicoes: boolean): str
   const i = baseSql.indexOf(EMP_JOIN_START);
   const j = baseSql.indexOf(EMP_JOIN_END);
   if (i === -1 || j === -1 || j < i) return baseSql;
-  const newJoin = buildEmpJoinSqlNaoAlmox(considerarRequisicoes, SQL_SALDO_PA_EXPLOSAO_CORRELACIONADO);
+  // Mesma regra da Consulta de Estoque / Ressup Almox: abate PA por pai (setores 5/24).
+  const newJoin = buildEmpJoinSql(considerarRequisicoes);
   return baseSql.slice(0, i) + newJoin + baseSql.slice(j + EMP_JOIN_END.length);
 }
 

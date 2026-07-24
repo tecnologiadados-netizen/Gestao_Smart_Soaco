@@ -3,6 +3,12 @@ import { listarPedidos } from '../data/pedidosRepository.js';
 import { getProgramacaoSetorialEstoqueSaldo } from '../data/programacaoSetorialRepository.js';
 import { prisma } from '../config/prisma.js';
 import { garantirSemInconsistenciaQtdePendente } from '../services/qtdePendenteInconsistenciaService.js';
+import {
+  dataProducaoCarradaEmFormacaoApartirDe,
+  maxDataProducaoPedidosNormais,
+  resolverDataBasePedido,
+  type PedidoParaDataBase,
+} from '../utils/dataBasePedidoFormacao.js';
 
 type PlanningItem = {
   idChave: string;
@@ -37,24 +43,18 @@ function formatDateDDMMYYYY(value: unknown): string {
   return `${dd}/${mm}/${yyyy}`;
 }
 
-function formatIsoYYYYMMDD(value: unknown): string {
-  if (!value) return '';
-  const d = value instanceof Date ? value : new Date(value as string);
-  if (Number.isNaN(d.getTime())) return '';
-  const yyyy = String(d.getFullYear());
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function toPlanningItem(row: any): PlanningItem | null {
+function toPlanningItem(row: any, dataProducaoEmFormacao = ''): PlanningItem | null {
   const qtdePend = Number(row?.['Qtde Pendente Real'] ?? 0) || 0;
   if (qtdePend <= 0) return null;
 
-  // Data base: produção (SQLite) com fallback para previsão atual do Gerenciador.
-  const dataBaseDate = row?.data_producao ?? row?.previsao_entrega_atualizada ?? row?.previsao_entrega;
-  const dataBase = formatDateDDMMYYYY(dataBaseDate);
-  const dataBaseIso = formatIsoYYYYMMDD(dataBaseDate);
+  // Data base alinhada ao Gerenciador (formação → max+30; senão produção ?? previsão).
+  const dataBaseIso = resolverDataBasePedido(row as PedidoParaDataBase, dataProducaoEmFormacao);
+  const dataBase = dataBaseIso
+    ? (() => {
+        const m = dataBaseIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        return m ? `${m[3]}/${m[2]}/${m[1]}` : formatDateDDMMYYYY(dataBaseIso);
+      })()
+    : '';
 
   const carradaMigradaRaw = row?.carrada_migrada;
   const carradaMigrada =
@@ -100,8 +100,11 @@ export async function getProgramacaoSetorialPlanning(req: Request, res: Response
   }
 
   const data: PlanningItem[] = [];
+  const dataFormacao = dataProducaoCarradaEmFormacaoApartirDe(
+    maxDataProducaoPedidosNormais(result.data as PedidoParaDataBase[])
+  );
   for (const row of result.data) {
-    const item = toPlanningItem(row);
+    const item = toPlanningItem(row, dataFormacao);
     if (!item) continue;
     data.push(item);
   }

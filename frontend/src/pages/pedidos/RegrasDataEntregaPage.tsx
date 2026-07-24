@@ -137,8 +137,9 @@ export default function RegrasDataEntregaPage() {
         <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Regras data de entrega</h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Configure prazos para classificação <span className="font-medium">Atrasado / Em dia</span> no Gerenciador de
-          Pedidos e no Painel Pedidos em aberto. Entrega, retirada e requisição seguem as regras atuais do ERP. Aqui você altera
-          apenas <span className="font-medium">carradas</span> (e opcionalmente &quot;Inserir em Romaneio&quot;).
+          Pedidos e no Painel Pedidos em aberto. Entrega, retirada e requisição seguem as regras atuais do ERP. Aqui você
+          altera <span className="font-medium">carradas</span> e a bifurcação de{' '}
+          <span className="font-medium">Inserir em Romaneio</span> (valor &lt; corte → formação; ≥ corte → emissão + dias).
         </p>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">
           Cada versão vale para pedidos cuja <strong>data de emissão</strong> seja igual ou posterior à vigência. Pedidos
@@ -219,7 +220,16 @@ export default function RegrasDataEntregaPage() {
               </div>
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-800/60 dark:text-slate-200">
+              <p className="font-medium text-slate-800 dark:text-slate-100">Inserir em Romaneio</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                Sempre pela bifurcação de valor: abaixo do corte → Carrada em formação (produção = maior
+                data das carradas + 30 dias; previsão com rótulo). Igual ou acima do corte → emissão + dias
+                da faixa ≥ corte (campo acima). O checkbox legado abaixo não altera mais esse comportamento.
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
               <input
                 type="checkbox"
                 className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
@@ -227,7 +237,10 @@ export default function RegrasDataEntregaPage() {
                 checked={c.incluiInserirRomaneio}
                 onChange={(e) => atualizarCarrada({ incluiInserirRomaneio: e.target.checked })}
               />
-              Aplicar a mesma regra a &quot;Inserir em Romaneio&quot;
+              <span>
+                Legado: &quot;Aplicar a mesma regra a Inserir em Romaneio&quot; (mantido no payload; a
+                bifurcação acima prevalece)
+              </span>
             </label>
 
             {podeEditar && (
