@@ -39,6 +39,7 @@ export const PERMISSOES = {
   FINANCEIRO_CRM_CLIENTE_VER: 'financeiro.crm.cliente.ver',
   FINANCEIRO_CRM_PENDENCIAS_VER: 'financeiro.crm.pendencias.ver',
   FINANCEIRO_CRM_PENDENCIAS_DESTINATARIOS_EDITAR: 'financeiro.crm.pendencias.destinatarios.editar',
+  FINANCEIRO_CARTEIRA_FINANCEIRA_VER: 'financeiro.carteira_financeira.ver',
 
   // Logística / Cubagem
   LOGISTICA_VER: 'logistica.ver',
@@ -153,6 +154,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.FINANCEIRO_CRM_CLIENTE_VER,
   PERMISSOES.FINANCEIRO_CRM_PENDENCIAS_VER,
   PERMISSOES.FINANCEIRO_CRM_PENDENCIAS_DESTINATARIOS_EDITAR,
+  PERMISSOES.FINANCEIRO_CARTEIRA_FINANCEIRA_VER,
   PERMISSOES.LOGISTICA_VER,
   PERMISSOES.LOGISTICA_TOTAL,
   PERMISSOES.LOGISTICA_CUBAGEM_VER,
@@ -260,6 +262,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.FINANCEIRO_CRM_PENDENCIAS_VER]: 'CRM Financeiro — guia "Pendências de crédito"',
   [PERMISSOES.FINANCEIRO_CRM_PENDENCIAS_DESTINATARIOS_EDITAR]:
     'CRM Financeiro — editar destinatários/cópias do e-mail de ação (Pendências)',
+  [PERMISSOES.FINANCEIRO_CARTEIRA_FINANCEIRA_VER]: 'Carteira Financeira',
   [PERMISSOES.LOGISTICA_VER]: 'Ver Logística',
   [PERMISSOES.LOGISTICA_TOTAL]: 'Logística — permissão total',
   [PERMISSOES.LOGISTICA_CUBAGEM_VER]: 'Cubagem — visualizar',

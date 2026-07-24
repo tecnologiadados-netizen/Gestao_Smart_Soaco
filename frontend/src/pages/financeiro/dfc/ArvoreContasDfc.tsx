@@ -176,7 +176,7 @@ function BlocoSaldoBancarioExpandivel({
   filtroAtivo: boolean;
 }): JSX.Element {
   const temFilhos = contas.length > 0;
-  const bgPai = rowIdxBase % 2 === 0 ? 'bg-slate-50/80 dark:bg-slate-800/40' : 'bg-white dark:bg-slate-800/30';
+  const bgPai = rowIdxBase % 2 === 0 ? 'bg-slate-50 dark:bg-slate-800' : 'bg-white dark:bg-slate-800';
   const pRefTotal = tipo === 'final' ? periodos[periodos.length - 1] : periodos[0];
   const total = pRefTotal != null ? (valoresTotais[pRefTotal] ?? 0) : 0;
 
@@ -249,7 +249,7 @@ function BlocoSaldoBancarioExpandivel({
         ? contas.map((c) => {
             const vals =
               tipo === 'inicial' ? c.saldosIniciaisPorPeriodo : c.saldosFinaisPorPeriodo;
-            const bg = 'bg-slate-50/50 dark:bg-slate-800/25';
+            const bg = 'bg-slate-50 dark:bg-slate-900';
             const pRef = tipo === 'final' ? periodos[periodos.length - 1] : periodos[0];
             const totalConta = pRef != null ? (vals[pRef] ?? 0) : 0;
             const empLabel = EMPRESA_LABELS[c.idEmpresa] ?? `Empresa ${c.idEmpresa}`;
@@ -350,13 +350,13 @@ function fundoListraNeutra(rowIdx: number): string {
 }
 
 /**
- * Fundo da linha: hierarquia clara via tons de cinza.
- * Raízes de fluxo (M0, M1…) = separador escuro; sintéticas = cinza suave; analíticas = branco alternado.
+ * Fundo da linha: tons sólidos (sem alpha) para as colunas sticky não misturarem com o scroll.
+ * Raízes de fluxo (M0, M1…) = separador; sintéticas = cinza/primary suave; analíticas = branco alternado.
  */
 function corFundoLinha(node: DfcEstruturaNo, rowIdx: number): string {
-  if (isLinhaRaizFluxoDfc(node)) return 'bg-soaco-navy/10 dark:bg-soaco-navy/35 font-semibold';
-  if (node.tipo === 'S') return 'bg-primary-50/80 dark:bg-soaco-graphite/80';
-  return rowIdx % 2 === 0 ? 'bg-white dark:bg-soaco-graphite/60' : 'bg-slate-50/60 dark:bg-soaco-graphite/40';
+  if (isLinhaRaizFluxoDfc(node)) return 'bg-slate-200 dark:bg-slate-700 font-semibold';
+  if (node.tipo === 'S') return 'bg-primary-50 dark:bg-slate-800';
+  return rowIdx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-50 dark:bg-slate-900';
 }
 
 function isDescendantPath(desc: string, ancestor: string): boolean {
@@ -750,20 +750,20 @@ export default function ArvoreContasDfc({
       >
         <table className="text-sm border-collapse" style={{ minWidth: temPivot ? STICKY_TOTAL_W + periodos.length * 96 + 120 : STICKY_TOTAL_W }}>
           <thead className="sticky top-0 z-30">
-            <tr className="bg-slate-100 dark:bg-slate-700/90 text-left border-b-2 border-slate-200 dark:border-slate-600">
+            <tr className="bg-slate-100 dark:bg-slate-700 text-left border-b-2 border-slate-200 dark:border-slate-600">
               <th
-                className="py-2.5 px-2 text-xs font-semibold text-slate-500 dark:text-slate-400 sticky z-30 border-r border-slate-200 dark:border-slate-600 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.08)] bg-slate-100 dark:bg-slate-700/90"
+                className="py-2.5 px-2 text-xs font-semibold text-slate-500 dark:text-slate-400 sticky z-30 border-r border-slate-200 dark:border-slate-600 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.08)] bg-slate-100 dark:bg-slate-700"
                 style={{ left: STICKY_COLS[0].l, width: STICKY_COLS[0].w, minWidth: STICKY_COLS[0].w }}
                 aria-label="Expandir"
               />
               <th
-                className="py-2.5 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide sticky z-30 border-r border-slate-200 dark:border-slate-600 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.08)] bg-slate-100 dark:bg-slate-700/90"
+                className="py-2.5 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide sticky z-30 border-r border-slate-200 dark:border-slate-600 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.08)] bg-slate-100 dark:bg-slate-700"
                 style={{ left: STICKY_COLS[1].l, width: STICKY_COLS[1].w, minWidth: STICKY_COLS[1].w }}
               >
                 Conta
               </th>
               <th
-                className="py-2.5 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide whitespace-nowrap sticky z-30 border-r border-slate-200 dark:border-slate-600 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)] bg-slate-100 dark:bg-slate-700/90"
+                className="py-2.5 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide whitespace-nowrap sticky z-30 border-r border-slate-200 dark:border-slate-600 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)] bg-slate-100 dark:bg-slate-700"
                 style={{ left: STICKY_COLS[2].l, width: STICKY_COLS[2].w, minWidth: STICKY_COLS[2].w }}
               >
                 Fluxo

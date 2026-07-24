@@ -1410,6 +1410,24 @@ export type DreDashboardPayload = {
     }[];
   };
   waterfall: { id: string; label: string; valor: number; tipo: string }[];
+  despesasPrincipais: {
+    total: number;
+    fatias: {
+      id: string;
+      codigo: string;
+      label: string;
+      pathKey: string;
+      valor: number;
+      pctTotal: number | null;
+      detalhes: {
+        codigo: string;
+        label: string;
+        pathKey: string;
+        valor: number;
+        pctGrupo: number | null;
+      }[];
+    }[];
+  };
   analise: {
     pontoEquilibrio: number | null;
     faturamentoMetaEbitda: number | null;
@@ -1453,6 +1471,7 @@ export async function fetchDreDashboard(params: {
       kpis: [],
       series: { evolucao12m: [], margens: [], pessoal: [], empresas: [] },
       waterfall: [],
+      despesasPrincipais: { total: 0, fatias: [] },
       analise: {
         pontoEquilibrio: null,
         faturamentoMetaEbitda: null,
@@ -1470,6 +1489,7 @@ export async function fetchDreDashboard(params: {
     kpis: Array.isArray(body.kpis) ? body.kpis : [],
     series: body.series ?? { evolucao12m: [], margens: [], pessoal: [], empresas: [] },
     waterfall: Array.isArray(body.waterfall) ? body.waterfall : [],
+    despesasPrincipais: body.despesasPrincipais ?? { total: 0, fatias: [] },
     analise: body.analise ?? {
       pontoEquilibrio: null,
       faturamentoMetaEbitda: null,
@@ -1480,5 +1500,144 @@ export async function fetchDreDashboard(params: {
     },
     insights: Array.isArray(body.insights) ? body.insights : [],
     vazio: Boolean(body.vazio),
+  };
+}
+
+/* ——— Carteira Financeira ——— */
+
+export type CarteiraFinanceiraLinha = {
+  idEmpresa: number;
+  id: number;
+  Observacoes: string | null;
+  RM: string | null;
+  'Tipo Pedido': string | null;
+  PD: string | null;
+  Emissao: string | null;
+  Cliente: string | null;
+  'Data de entrega': string | null;
+  'Metodo de Entrega': string | null;
+  'Requisicao de loja do grupo?': string | null;
+  UF: string | null;
+  'Municipio de entrega': string | null;
+  'Forma de Pagamento': string | null;
+  'Condicao de pagamento do pedido de venda': string | null;
+  'Valor Original Pedido': number;
+  'Valor Total': number;
+  'Valor Pendente': number;
+  'Valor Romaneado': number;
+  'Valor Adiantamento': number;
+  'Valor Faturado Entrega Futura + IPI': number;
+  'Saldo a Faturar Real': number;
+  'Data base entrega futura': string | null;
+  'Venda por qual empresa?': string | null;
+  'Vendedor/Representante': string | null;
+  dataParametro: string | null;
+  tipoF: string | null;
+  StatusPedido: string | null;
+};
+
+export type CarteiraFinanceiraResumo = {
+  saldoAReceber: number;
+  saldoAFaturar: number;
+  saldoRomaneado: number;
+  totalPedidos: number;
+  pedidosAtrasados: number;
+  pctAtrasados: number;
+  ticketMedio: number;
+};
+
+export type CarteiraMapaPonto = {
+  municipio: string;
+  uf: string;
+  lat: number;
+  lng: number;
+  saldoAReceber: number;
+  saldoAFaturar: number;
+  saldoRomaneado: number;
+  qtdPedidos: number;
+  qtdClientes: number;
+};
+
+export type CarteiraFinanceiraPayload = {
+  linhas: CarteiraFinanceiraLinha[];
+  resumo: CarteiraFinanceiraResumo;
+  mapaPontos: CarteiraMapaPonto[];
+  semLocalizacao: number;
+  opcoes: {
+    uf: string[];
+    cliente: string[];
+    empresa: string[];
+    condicaoPagamento: string[];
+    tipoF: string[];
+  };
+  erro?: string;
+};
+
+export type CarteiraFinanceiraFiltrosParams = {
+  dataInicio?: string;
+  dataFim?: string;
+  uf?: string[];
+  cliente?: string[];
+  empresa?: string[];
+  statusPedido?: string;
+  tipoF?: string[];
+  condicaoPagamento?: string[];
+  municipio?: string[];
+};
+
+const CARTEIRA_VAZIA: CarteiraFinanceiraPayload = {
+  linhas: [],
+  resumo: {
+    saldoAReceber: 0,
+    saldoAFaturar: 0,
+    saldoRomaneado: 0,
+    totalPedidos: 0,
+    pedidosAtrasados: 0,
+    pctAtrasados: 0,
+    ticketMedio: 0,
+  },
+  mapaPontos: [],
+  semLocalizacao: 0,
+  opcoes: { uf: [], cliente: [], empresa: [], condicaoPagamento: [], tipoF: [] },
+};
+
+export async function fetchCarteiraFinanceira(
+  params: CarteiraFinanceiraFiltrosParams = {}
+): Promise<CarteiraFinanceiraPayload> {
+  const sp = new URLSearchParams();
+  if (params.dataInicio) sp.set('dataInicio', params.dataInicio);
+  if (params.dataFim) sp.set('dataFim', params.dataFim);
+  if (params.statusPedido) sp.set('statusPedido', params.statusPedido);
+  for (const [key, list] of [
+    ['uf', params.uf],
+    ['cliente', params.cliente],
+    ['empresa', params.empresa],
+    ['tipoF', params.tipoF],
+    ['condicaoPagamento', params.condicaoPagamento],
+    ['municipio', params.municipio],
+  ] as const) {
+    if (list?.length) sp.set(key, list.join(','));
+  }
+  const qs = sp.toString();
+  const res = await apiFetch(`/api/financeiro/carteira-financeira${qs ? `?${qs}` : ''}`);
+  const body = (await res.json().catch(() => ({}))) as CarteiraFinanceiraPayload & { error?: string };
+  if (!res.ok) {
+    return { ...CARTEIRA_VAZIA, erro: body.error ?? body.erro ?? res.statusText };
+  }
+  return {
+    ...CARTEIRA_VAZIA,
+    ...body,
+    linhas: Array.isArray(body.linhas) ? body.linhas : [],
+    resumo: body.resumo ?? CARTEIRA_VAZIA.resumo,
+    mapaPontos: Array.isArray(body.mapaPontos) ? body.mapaPontos : [],
+    semLocalizacao: Number(body.semLocalizacao) || 0,
+    opcoes: {
+      uf: Array.isArray(body.opcoes?.uf) ? body.opcoes.uf : [],
+      cliente: Array.isArray(body.opcoes?.cliente) ? body.opcoes.cliente : [],
+      empresa: Array.isArray(body.opcoes?.empresa) ? body.opcoes.empresa : [],
+      condicaoPagamento: Array.isArray(body.opcoes?.condicaoPagamento) ? body.opcoes.condicaoPagamento : [],
+      tipoF: Array.isArray(body.opcoes?.tipoF) ? body.opcoes.tipoF : [],
+    },
+    erro: body.erro,
   };
 }

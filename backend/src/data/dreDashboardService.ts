@@ -14,6 +14,7 @@ import { queryDreDevolucoes } from './dreDevolucoesRepository.js';
 import { queryDreCpvSoAco } from './dreCpvSoAcoRepository.js';
 import { queryDreCpvMoveisDireto } from './dreCpvMoveisDiretoRepository.js';
 import {
+  DRE_DASH_DESPESAS_PRINCIPAIS,
   DRE_DASH_ID_ACO,
   DRE_DASH_ID_MOVEIS,
   DRE_DASH_ID_REFRIGERACAO,
@@ -97,6 +98,64 @@ function sumPrefix(
     }
   }
   return s;
+}
+
+function sumPrefixMeses(
+  linhas: DreSaidasSoAcoAgregado[],
+  prefix: string,
+  periodos: ReadonlySet<string>,
+): number {
+  let s = 0;
+  for (const l of linhas) {
+    if (!periodos.has(l.periodo)) continue;
+    if (l.pathKey === prefix || l.pathKey.startsWith(`${prefix}/`)) {
+      s += Math.abs(l.valor);
+    }
+  }
+  return s;
+}
+
+/** Pizza de principais despesas + detalhe (filhos de 1º nível da árvore DRE). */
+function montarDespesasPrincipais(saidas: DreSaidasSoAcoAgregado[], meses: string[]) {
+  const periodos = new Set(meses);
+  const fatias = DRE_DASH_DESPESAS_PRINCIPAIS.map((g) => {
+    const valor = Math.round(sumPrefixMeses(saidas, g.pathKey, periodos) * 100) / 100;
+    const detalhes = g.filhos
+      .map((f) => {
+        const v = Math.round(sumPrefixMeses(saidas, f.pathKey, periodos) * 100) / 100;
+        return {
+          codigo: f.codigo,
+          label: f.label,
+          pathKey: f.pathKey,
+          valor: -v,
+          pctGrupo: null as number | null,
+        };
+      })
+      .filter((d) => d.valor !== 0)
+      .sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor));
+
+    const somaFilhos = detalhes.reduce((acc, d) => acc + Math.abs(d.valor), 0);
+    for (const d of detalhes) {
+      d.pctGrupo = somaFilhos > 0 ? (Math.abs(d.valor) / somaFilhos) * 100 : null;
+    }
+
+    return {
+      id: g.id,
+      codigo: g.codigo,
+      label: g.label,
+      pathKey: g.pathKey,
+      valor: -valor,
+      pctTotal: null as number | null,
+      detalhes,
+    };
+  }).filter((f) => f.valor !== 0);
+
+  const total = fatias.reduce((acc, f) => acc + Math.abs(f.valor), 0);
+  for (const f of fatias) {
+    f.pctTotal = total > 0 ? (Math.abs(f.valor) / total) * 100 : null;
+  }
+
+  return { total: -total, fatias };
 }
 
 function pctVar(atual: number, base: number): number | null {
@@ -762,7 +821,7 @@ export async function montarDreDashboard(params: DreDashboardParams) {
   const metaLucroPct = Number.isFinite(params.metaLucroPct) ? Number(params.metaLucroPct) : 3;
 
   const { dataInicio, dataFim } = params;
-  const { meses, porMes } = await carregarTotaisUnidade(dataInicio, dataFim, unidade);
+  const { meses, porMes, saidas } = await carregarTotaisUnidade(dataInicio, dataFim, unidade);
 
   // Estender 12m para evolução / YoY (buscar histórico se necessário)
   const fimUlt = meses[meses.length - 1] ?? dataFim.slice(0, 7);
@@ -967,6 +1026,7 @@ export async function montarDreDashboard(params: DreDashboardParams) {
   ];
 
   const analise = calcularAnalise(atual, metaEbitdaPct, metaLucroPct);
+  const despesasPrincipais = montarDespesasPrincipais(saidas, meses);
   const insights = gerarInsights(
     porMesHist,
     mesesHist,
@@ -997,6 +1057,7 @@ export async function montarDreDashboard(params: DreDashboardParams) {
       empresas: comparativo,
     },
     waterfall,
+    despesasPrincipais,
     analise,
     insights,
     grupoRnSomoveis: [...GRUPO_RN_SOMOVEIS],

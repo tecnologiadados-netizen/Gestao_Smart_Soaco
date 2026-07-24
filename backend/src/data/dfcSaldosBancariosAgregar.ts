@@ -3,7 +3,10 @@
  */
 
 import type { DfcSaldoBancarioLinha } from './dfcSaldosBancariosRepository.js';
-import { ehContaBancariaInativaDfc } from './dfcContasCaixaConstantes.js';
+import {
+  DFC_CONTAS_CAIXA_SHOP9_PLACEHOLDERS,
+  ehContaBancariaInativaDfc,
+} from './dfcContasCaixaConstantes.js';
 
 export type DfcSaldoBancarioContaGrade = {
   idContaBancaria: number;
@@ -276,6 +279,34 @@ export function agregarSaldosBancariosParaGrade(
       saldosIniciaisPorPeriodo: porPeriodo.saldosIniciais,
       saldosFinaisPorPeriodo: porPeriodo.saldosFinais,
     });
+  }
+
+  // Placeholders Shop9 (Refrigeração / RN Marques) — aparecem na grade com zero até haver fonte de saldo.
+  const empSet = opts.idEmpresas.length > 0 ? new Set(opts.idEmpresas) : null;
+  const cbSet =
+    opts.contasBancarias.length > 0
+      ? new Set(opts.contasBancarias.map((n) => n.trim()).filter(Boolean))
+      : null;
+  const jaTem = new Set(
+    saldosPorConta.map((c) => `${c.idEmpresa}\t${c.nomeContaBancaria.trim().toLowerCase()}`),
+  );
+  const zeros: Record<string, number> = {};
+  for (const p of periodos) zeros[p] = 0;
+
+  for (const ph of DFC_CONTAS_CAIXA_SHOP9_PLACEHOLDERS) {
+    if (empSet && !empSet.has(ph.idEmpresa)) continue;
+    if (cbSet && !cbSet.has(ph.nomeContaBancaria.trim())) continue;
+    if (ehContaBancariaInativaDfc(ph.idContaBancaria, ph.nomeContaBancaria)) continue;
+    const key = `${ph.idEmpresa}\t${ph.nomeContaBancaria.trim().toLowerCase()}`;
+    if (jaTem.has(key)) continue;
+    saldosPorConta.push({
+      idContaBancaria: ph.idContaBancaria,
+      nomeContaBancaria: ph.nomeContaBancaria,
+      idEmpresa: ph.idEmpresa,
+      saldosIniciaisPorPeriodo: { ...zeros },
+      saldosFinaisPorPeriodo: { ...zeros },
+    });
+    jaTem.add(key);
   }
 
   saldosPorConta.sort((a, b) =>

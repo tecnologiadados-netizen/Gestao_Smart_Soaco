@@ -39,6 +39,47 @@ export const DFC_CONTAS_CAIXA_INICIAL_FINAL: readonly string[] = [
   'SÓ MÓVEIS SAFRA CONTA VINCULADA 2',
   'SÓ MÓVEIS SAFRA CONTA VINCULADA 3',
   'SÓ MÓVEIS UNICRED',
+  // Só Refrigeração (saldos virão do Shop9 — nomes da planilha de caixas)
+  'CAIXA BALCAO SO MOVEIS - SO REF',
+  'CAIXA BALCÃO SO REFRIGERAÇÃO',
+  'CAIXA BOLETO SO REFRIGERAÇÃO',
+  'CAIXA CARTÕES SO REFRIGERAÇÃO',
+  'CAIXA ECONOMICA-SO REFRIGERA',
+  'CAIXA FICTICIO SO REFRIGERAÇÃO',
+  'CAIXA PRINCIPAL SO REFRIGERAÇÃO',
+  'SO REFRIGERAÇÃO - PAGME IP',
+  'CAIXA DE SANGRIA',
+  'SO REFRIGERACAO-PAGBANK',
+  // R N Marques (saldos virão do Shop9)
+  'RN MARQUES-BB',
+  'RN MARQUES-PAGBANK',
+];
+
+/**
+ * Contas cujo saldo ainda não vem do Nomus (LF) — placeholders na grade DFC
+ * filtrados por idEmpresa (3 = Refrigeração, 4 = RN Marques). IDs sintéticos negativos.
+ */
+export type DfcContaCaixaShop9Placeholder = {
+  idContaBancaria: number;
+  nomeContaBancaria: string;
+  idEmpresa: number;
+};
+
+export const DFC_CONTAS_CAIXA_SHOP9_PLACEHOLDERS: readonly DfcContaCaixaShop9Placeholder[] = [
+  // Só Refrigeração (idEmpresa 3)
+  { idContaBancaria: -3101, nomeContaBancaria: 'CAIXA BALCAO SO MOVEIS - SO REF', idEmpresa: 3 },
+  { idContaBancaria: -3102, nomeContaBancaria: 'CAIXA BALCÃO SO REFRIGERAÇÃO', idEmpresa: 3 },
+  { idContaBancaria: -3103, nomeContaBancaria: 'CAIXA BOLETO SO REFRIGERAÇÃO', idEmpresa: 3 },
+  { idContaBancaria: -3104, nomeContaBancaria: 'CAIXA CARTÕES SO REFRIGERAÇÃO', idEmpresa: 3 },
+  { idContaBancaria: -3105, nomeContaBancaria: 'CAIXA ECONOMICA-SO REFRIGERA', idEmpresa: 3 },
+  { idContaBancaria: -3106, nomeContaBancaria: 'CAIXA FICTICIO SO REFRIGERAÇÃO', idEmpresa: 3 },
+  { idContaBancaria: -3107, nomeContaBancaria: 'CAIXA PRINCIPAL SO REFRIGERAÇÃO', idEmpresa: 3 },
+  { idContaBancaria: -3108, nomeContaBancaria: 'SO REFRIGERAÇÃO - PAGME IP', idEmpresa: 3 },
+  { idContaBancaria: -3109, nomeContaBancaria: 'CAIXA DE SANGRIA', idEmpresa: 3 },
+  { idContaBancaria: -3110, nomeContaBancaria: 'SO REFRIGERACAO-PAGBANK', idEmpresa: 3 },
+  // R N Marques (idEmpresa 4)
+  { idContaBancaria: -4101, nomeContaBancaria: 'RN MARQUES-BB', idEmpresa: 4 },
+  { idContaBancaria: -4102, nomeContaBancaria: 'RN MARQUES-PAGBANK', idEmpresa: 4 },
 ];
 
 /** Contas FIDC explicitamente excluídas do caixa inicial/final. */

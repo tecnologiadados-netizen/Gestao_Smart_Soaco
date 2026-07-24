@@ -15,6 +15,7 @@ import {
   PERMISSOES_ACESSO_FINANCEIRO_RENEGOCIACAO,
   PERMISSOES_ACESSO_FINANCEIRO_RESUMO,
   PERMISSOES_ACESSO_FINANCEIRO_CRM,
+  PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA,
 } from './financeiroPermissoes';
 import { PERMISSOES_ACESSO_COMERCIAL_PAINEL } from '../config/comercialPermissoes';
 
@@ -76,6 +77,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/financeiro/painel-financeiro-comercial': PERMISSOES_ACESSO_FINANCEIRO_PAINEL_COMERCIAL,
   '/financeiro/renegociacao-contratos': PERMISSOES_ACESSO_FINANCEIRO_RENEGOCIACAO,
   '/financeiro/crm': PERMISSOES_ACESSO_FINANCEIRO_CRM,
+  '/financeiro/carteira-financeira': PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA,
   '/comercial/painel': PERMISSOES_ACESSO_COMERCIAL_PAINEL,
   '/logistica/cubagem/veiculos': [PERMISSOES.LOGISTICA_VER, PERMISSOES.LOGISTICA_TOTAL, PERMISSOES.LOGISTICA_CUBAGEM_VER],
   '/logistica/cubagem/produtos': [PERMISSOES.LOGISTICA_VER, PERMISSOES.LOGISTICA_TOTAL, PERMISSOES.LOGISTICA_CUBAGEM_VER],
@@ -144,6 +146,7 @@ export const ROTAS_ORDEM = [
   '/financeiro/painel-financeiro-comercial',
   '/financeiro/renegociacao-contratos',
   '/financeiro/crm',
+  '/financeiro/carteira-financeira',
   '/comercial/painel',
   '/logistica/cubagem/veiculos',
   '/logistica/cubagem/produtos',
