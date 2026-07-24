@@ -2975,6 +2975,16 @@ export async function listarHistoricoAjustes(
   if (!idNorm) return [];
   const canon = chavePedidoItem(idNorm);
 
+  const matchId = (storedRaw: string): boolean => {
+    const stored = chavePedidoItem(String(storedRaw ?? '').trim());
+    if (stored === canon) return true;
+    // Consulta só com pd.id numérico → todos os itens/romaneios do pedido.
+    if (/^\d+$/.test(canon)) {
+      return stored === canon || stored.startsWith(`${canon}-`);
+    }
+    return false;
+  };
+
   const mapRow = (r: {
     id: number;
     id_pedido: string;
@@ -3012,7 +3022,7 @@ export async function listarHistoricoAjustes(
       orderBy: [{ data_ajuste: 'desc' }, { id: 'desc' }],
     });
     rows = todos
-      .filter((r) => chavePedidoItem(String(r.id_pedido ?? '').trim()) === canon)
+      .filter((r) => matchId(String(r.id_pedido ?? '').trim()))
       .map((r) => ({
         id: r.id,
         id_pedido: r.id_pedido,

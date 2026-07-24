@@ -5,7 +5,7 @@ import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
-import { buscarCoordenadasMunicipio } from './municipioCoordenadaRepository.js';
+import { obterPrevisaoAtualizadaPorIdsPedido } from './pedidosRepository.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -22,6 +22,7 @@ export type CarteiraFinanceiraFiltros = {
   statusPedido?: string;
   tipoF?: string[];
   condicaoPagamento?: string[];
+  observacoes?: string[];
   municipio?: string[];
 };
 
@@ -33,6 +34,7 @@ export type CarteiraFinanceiraLinha = {
   'Tipo Pedido': string | null;
   PD: string | null;
   Emissao: string | null;
+  previsaoAtual: string | null;
   Cliente: string | null;
   'Data de entrega': string | null;
   'Metodo de Entrega': string | null;
@@ -46,8 +48,10 @@ export type CarteiraFinanceiraLinha = {
   'Valor Pendente': number;
   'Valor Romaneado': number;
   'Valor Adiantamento': number;
+  percRateioAdiantamento: number;
   'Valor Faturado Entrega Futura + IPI': number;
   'Saldo a Faturar Real': number;
+  'Saldo a Receber': number;
   'Data base entrega futura': string | null;
   'Venda por qual empresa?': string | null;
   'Vendedor/Representante': string | null;
@@ -66,29 +70,16 @@ export type CarteiraFinanceiraResumo = {
   ticketMedio: number;
 };
 
-export type CarteiraMapaPonto = {
-  municipio: string;
-  uf: string;
-  lat: number;
-  lng: number;
-  saldoAReceber: number;
-  saldoAFaturar: number;
-  saldoRomaneado: number;
-  qtdPedidos: number;
-  qtdClientes: number;
-};
-
 export type CarteiraFinanceiraPayload = {
   linhas: CarteiraFinanceiraLinha[];
   resumo: CarteiraFinanceiraResumo;
-  mapaPontos: CarteiraMapaPonto[];
-  semLocalizacao: number;
   opcoes: {
     uf: string[];
     cliente: string[];
     empresa: string[];
     condicaoPagamento: string[];
     tipoF: string[];
+    observacoes: string[];
   };
   erro?: string;
 };
@@ -139,6 +130,7 @@ function mapRow(raw: Record<string, unknown>): CarteiraFinanceiraLinha {
     'Tipo Pedido': toStr(raw['Tipo Pedido']),
     PD: toStr(raw.PD),
     Emissao: toDateStr(raw.Emissao),
+    previsaoAtual: null,
     Cliente: toStr(raw.Cliente),
     'Data de entrega': toDateStr(raw['Data de entrega']),
     'Metodo de Entrega': toStr(raw['Metodo de Entrega']),
@@ -152,8 +144,10 @@ function mapRow(raw: Record<string, unknown>): CarteiraFinanceiraLinha {
     'Valor Pendente': toNum(raw['Valor Pendente']),
     'Valor Romaneado': toNum(raw['Valor Romaneado']),
     'Valor Adiantamento': toNum(raw['Valor Adiantamento']),
+    percRateioAdiantamento: toNum(raw.percRateioAdiantamento),
     'Valor Faturado Entrega Futura + IPI': toNum(raw['Valor Faturado Entrega Futura + IPI']),
     'Saldo a Faturar Real': toNum(raw['Saldo a Faturar Real']),
+    'Saldo a Receber': toNum(raw['Saldo a Receber']),
     'Data base entrega futura': toStr(raw['Data base entrega futura']),
     'Venda por qual empresa?': toStr(raw['Venda por qual empresa?']),
     'Vendedor/Representante': toStr(raw['Vendedor/Representante']),
@@ -213,6 +207,11 @@ function buildOuterFilters(
     );
   }
 
+  const observacoes = asList(filtros.observacoes);
+  if (observacoes.length) {
+    parts.push(`c.\`Observacoes\` IN (${observacoes.map((v) => escape(v)).join(', ')})`);
+  }
+
   const municipio = asList(filtros.municipio);
   if (municipio.length) {
     parts.push(`c.\`Municipio de entrega\` IN (${municipio.map((v) => escape(v)).join(', ')})`);
@@ -229,7 +228,7 @@ function calcResumo(linhas: CarteiraFinanceiraLinha[]): CarteiraFinanceiraResumo
   const pdsAtrasados = new Set<string>();
 
   for (const l of linhas) {
-    saldoAReceber += l['Saldo a Faturar Real'];
+    saldoAReceber += l['Saldo a Receber'];
     saldoAFaturar += l['Valor Pendente'];
     saldoRomaneado += l['Valor Romaneado'];
     const pd = l.PD ?? String(l.id);
@@ -258,70 +257,14 @@ function uniqueSorted(vals: (string | null | undefined)[]): string[] {
   return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
 
-async function montarMapaPontos(
-  linhas: CarteiraFinanceiraLinha[]
-): Promise<{ pontos: CarteiraMapaPonto[]; semLocalizacao: number }> {
-  type Agg = {
-    municipio: string;
-    uf: string;
-    saldoAReceber: number;
-    saldoAFaturar: number;
-    saldoRomaneado: number;
-    pds: Set<string>;
-    clientes: Set<string>;
-  };
-  const byKey = new Map<string, Agg>();
-
-  for (const l of linhas) {
-    const municipio = (l['Municipio de entrega'] ?? '').trim();
-    const uf = (l.UF ?? '').trim().toUpperCase();
-    if (!municipio) continue;
-    const key = `${municipio.toUpperCase()}|${uf}`;
-    let agg = byKey.get(key);
-    if (!agg) {
-      agg = {
-        municipio,
-        uf,
-        saldoAReceber: 0,
-        saldoAFaturar: 0,
-        saldoRomaneado: 0,
-        pds: new Set(),
-        clientes: new Set(),
-      };
-      byKey.set(key, agg);
-    }
-    agg.saldoAReceber += l['Saldo a Faturar Real'];
-    agg.saldoAFaturar += l['Valor Pendente'];
-    agg.saldoRomaneado += l['Valor Romaneado'];
-    agg.pds.add(l.PD ?? String(l.id));
-    if (l.Cliente) agg.clientes.add(l.Cliente);
-  }
-
-  const pontos: CarteiraMapaPonto[] = [];
-  let semLocalizacao = 0;
-
-  for (const agg of byKey.values()) {
-    // Só banco local (municipio_coordenada) — evita Nominatim no hot path.
-    const coords = await buscarCoordenadasMunicipio(agg.municipio, agg.uf);
-    if (!coords) {
-      semLocalizacao += 1;
-      continue;
-    }
-    pontos.push({
-      municipio: agg.municipio,
-      uf: agg.uf,
-      lat: coords.lat,
-      lng: coords.lng,
-      saldoAReceber: agg.saldoAReceber,
-      saldoAFaturar: agg.saldoAFaturar,
-      saldoRomaneado: agg.saldoRomaneado,
-      qtdPedidos: agg.pds.size,
-      qtdClientes: agg.clientes.size,
-    });
-  }
-
-  return { pontos, semLocalizacao };
-}
+const OPCOES_VAZIAS = {
+  uf: [] as string[],
+  cliente: [] as string[],
+  empresa: [] as string[],
+  condicaoPagamento: [] as string[],
+  tipoF: [] as string[],
+  observacoes: [] as string[],
+};
 
 const RESUMO_VAZIO: CarteiraFinanceiraResumo = {
   saldoAReceber: 0,
@@ -340,9 +283,7 @@ export async function queryCarteiraFinanceira(
     return {
       linhas: [],
       resumo: RESUMO_VAZIO,
-      mapaPontos: [],
-      semLocalizacao: 0,
-      opcoes: { uf: [], cliente: [], empresa: [], condicaoPagamento: [], tipoF: [] },
+      opcoes: { ...OPCOES_VAZIAS },
       erro: 'Nomus não configurado (NOMUS_DB_URL).',
     };
   }
@@ -351,9 +292,7 @@ export async function queryCarteiraFinanceira(
     return {
       linhas: [],
       resumo: RESUMO_VAZIO,
-      mapaPontos: [],
-      semLocalizacao: 0,
-      opcoes: { uf: [], cliente: [], empresa: [], condicaoPagamento: [], tipoF: [] },
+      opcoes: { ...OPCOES_VAZIAS },
       erro: 'Pool Nomus indisponível.',
     };
   }
@@ -371,15 +310,18 @@ ${where}
     // Sem params: aliases da query base contêm "?" (mysql2 interpretaria como placeholder).
     const [rows] = await pool.query(sql);
     const rawList = Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [];
-    const linhas = rawList.map(mapRow);
+    const linhasBase = rawList.map(mapRow);
+    const ids = [...new Set(linhasBase.map((l) => l.id).filter((id) => id > 0))];
+    const previsaoMap = await obterPrevisaoAtualizadaPorIdsPedido(ids);
+    const linhas = linhasBase.map((l) => ({
+      ...l,
+      previsaoAtual: previsaoMap.get(l.id) ?? l.dataParametro ?? null,
+    }));
     const resumo = calcResumo(linhas);
-    const { pontos: mapaPontos, semLocalizacao } = await montarMapaPontos(linhas);
 
     return {
       linhas,
       resumo,
-      mapaPontos,
-      semLocalizacao,
       opcoes: {
         uf: uniqueSorted(linhas.map((l) => l.UF)),
         cliente: uniqueSorted(linhas.map((l) => l.Cliente)),
@@ -388,6 +330,7 @@ ${where}
           linhas.map((l) => l['Condicao de pagamento do pedido de venda'])
         ),
         tipoF: uniqueSorted(linhas.map((l) => l.tipoF)),
+        observacoes: uniqueSorted(linhas.map((l) => l.Observacoes)),
       },
     };
   } catch (err) {
@@ -396,10 +339,9 @@ ${where}
     return {
       linhas: [],
       resumo: RESUMO_VAZIO,
-      mapaPontos: [],
-      semLocalizacao: 0,
-      opcoes: { uf: [], cliente: [], empresa: [], condicaoPagamento: [], tipoF: [] },
+      opcoes: { ...OPCOES_VAZIAS },
       erro: msg,
     };
   }
 }
+

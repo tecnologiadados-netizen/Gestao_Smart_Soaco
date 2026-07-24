@@ -39,9 +39,16 @@ export interface ModalHistoricoPedidoProps {
   pedido: Pedido | null;
   open: boolean;
   onClose: () => void;
+  /** Overlay z-index (ex.: modal aninhado na Carteira). Default: z-50 */
+  overlayClassName?: string;
 }
 
-export default function ModalHistoricoPedido({ pedido, open, onClose }: ModalHistoricoPedidoProps) {
+export default function ModalHistoricoPedido({
+  pedido,
+  open,
+  onClose,
+  overlayClassName = 'z-50',
+}: ModalHistoricoPedidoProps) {
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
   const [loadingHistorico, setLoadingHistorico] = useState(false);
   const [historicoError, setHistoricoError] = useState<string | null>(null);
@@ -95,7 +102,7 @@ export default function ModalHistoricoPedido({ pedido, open, onClose }: ModalHis
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+      className={`fixed inset-0 flex items-center justify-center bg-black/75 p-4 ${overlayClassName}`}
       onClick={fechar}
       onKeyDown={(e) => e.key === 'Escape' && fechar()}
       role="dialog"

@@ -35,21 +35,15 @@ SELECT
     END) REGEXP 'Retirada|Entrega' THEN 'Teresina' ELSE IFNULL(m.nome, mc.nome) END AS 'Municipio de entrega',
     fp.nome AS 'Forma de Pagamento',
     cp.nome AS 'Condicao de pagamento do pedido de venda',
-
     MAX(totped.valorTotalPedido) AS 'Valor Original Pedido',
-
     SUM(ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI/100,0),2) + IFNULL(ip.valorTotalComDesconto,0)) AS 'Valor Total',
-
     SUM(((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI/100,0),2) + IFNULL(ip.valorTotalComDesconto,0)) / ip.qtde)
         * ((ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida,0))) AS 'Valor Pendente',
-
     SUM(((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI/100,0),2) + IFNULL(ip.valorTotalComDesconto,0)) / ip.qtde)
         * IFNULL(prm.qtdeVinculada,0)) AS 'Valor Romaneado',
-
     adt.valorAdiantamento AS 'Valor Adiantamento',
-
+     (adt.valorAdiantamento/MAX(totped.valorTotalPedido)) as percRateioAdiantamento,
     SUM(IFNULL(nfef.valorTotalComDesconto,0) + IFNULL(t.valorIPI,0)) AS 'Valor Faturado Entrega Futura + IPI',
-
     SUM(CASE WHEN de.observacoes IS NULL 
         THEN (CASE WHEN de.codigo IS NULL 
                    THEN ((ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida,0))
@@ -57,11 +51,20 @@ SELECT
              * ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI/100,0),2) + IFNULL(ip.valorTotalComDesconto,0)) / ip.qtde)
         ELSE ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI/100,0),2) + IFNULL(ip.valorTotalComDesconto,0)) / ip.qtde) * IFNULL(prm.qtdeVinculada,0)
     END) AS 'Saldo a Faturar Real',
-
+        case when adt.valorAdiantamento is null then
+          SUM(((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI/100,0),2) + IFNULL(ip.valorTotalComDesconto,0)) / ip.qtde)
+        * ((ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida,0)))
+        - IFNULL(adt.valorAdiantamento,0) else
+             (adt.valorAdiantamento/MAX(totped.valorTotalPedido)) * SUM(CASE WHEN de.observacoes IS NULL 
+        THEN (CASE WHEN de.codigo IS NULL 
+                   THEN ((ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida,0))
+                   ELSE IFNULL(prm.qtdeVinculada,0) END)
+             * ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI/100,0),2) + IFNULL(ip.valorTotalComDesconto,0)) / ip.qtde)
+        ELSE ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI/100,0),2) + IFNULL(ip.valorTotalComDesconto,0)) / ip.qtde) * IFNULL(prm.qtdeVinculada,0)
+    END) end as 'Saldo a Receber',
     MAX(ef_base.datasBaseEF) AS 'Data base entrega futura',
     emp.opcao AS 'Venda por qual empresa?',
     vr.nome AS 'Vendedor/Representante',
-
     CASE 
         WHEN (CASE 
             WHEN (de.observacoes IS NULL AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
@@ -73,7 +76,6 @@ SELECT
         THEN DATE(DATE_ADD(pd.dataEmissao, INTERVAL 30 DAY))
         ELSE DATE(MIN(ip.dataEntrega))
     END AS 'dataParametro',
-
     CASE 
         WHEN (CASE 
             WHEN (de.observacoes IS NULL AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
@@ -105,7 +107,6 @@ SELECT
             ELSE de.observacoes END) LIKE '%ROTA%' THEN 'Carradas'
         ELSE 'Inserir em Romaneio'
     END AS 'tipoF',
-
     CASE WHEN CURDATE() > 
         CASE 
             WHEN (CASE 
@@ -119,7 +120,6 @@ SELECT
             ELSE DATE(MIN(ip.dataEntrega))
         END
     THEN 'Atrasado' ELSE 'Em dia' END AS 'StatusPedido'
-
 FROM itempedido ip
 LEFT JOIN pedido pd ON pd.id = ip.idPedido
 LEFT JOIN tipopedido tpd ON tpd.id = pd.idTipoPedido
@@ -200,7 +200,6 @@ LEFT JOIN (
     WHERE tm.id IN (52,55) AND ide.idItemOrigemDevolucao IS NOT NULL AND ip.status IN (2,3)
     GROUP BY ip.id
 ) devol ON devol.idPedidoVenda = ip.id
-
 WHERE ip.status IN (2,3)
   AND pd.idEmpresa IN (1,2)
   AND (CASE 
@@ -225,7 +224,6 @@ WHERE ip.status IN (2,3)
             ) NOT IN ('2-Retirada na So Moveis','1-Retirada na So Aço','3-Entrega em Grande Teresina','5-Requisicao')
         )
       )
-
 GROUP BY
     pd.idEmpresa,
     pd.id,
