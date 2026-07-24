@@ -66,10 +66,12 @@ import {
   putPrioridadeLancamento,
 } from '../controllers/dfcPrioridadeController.js';
 import {
+  getCrmContasBancarias,
   getCrmDashboard,
   getCrmDetalhe,
   getCrmEmpresas,
   getCrmPessoas,
+  getCrmPessoasLookup,
   getCrmSaudeEmpresa,
 } from '../controllers/crmFinanceiroController.js';
 import {
@@ -88,10 +90,14 @@ import {
 } from '../controllers/crmCreditoPendenciasController.js';
 import {
   deleteCrmRegistroInadimplente,
+  deleteCrmRegistroInadimplenteContato,
+  getCrmRegistroInadimplenteContatos,
   getCrmRegistroInadimplentes,
   postCrmRegistroInadimplente,
+  postCrmRegistroInadimplenteContato,
   postCrmRegistroInadimplentesImport,
   putCrmRegistroInadimplente,
+  putCrmRegistroInadimplenteContato,
 } from '../controllers/crmRegistroInadimplentesController.js';
 
 const router = Router();
@@ -169,6 +175,8 @@ router.get('/crm/detalhe', verFinanceiroCrm, getCrmDetalhe);
 router.get('/crm/saude-empresa', verFinanceiroCrmEmpresa, getCrmSaudeEmpresa);
 router.get('/crm/pessoas', verFinanceiroCrmCliente, getCrmPessoas);
 router.get('/crm/empresas', verFinanceiroCrm, getCrmEmpresas);
+router.get('/crm/contas-bancarias', verFinanceiroCrmPendencias, getCrmContasBancarias);
+router.get('/crm/pessoas-lookup', verFinanceiroCrmPendencias, getCrmPessoasLookup);
 
 router.get('/crm/pendencias-credito/email-config', verFinanceiroCrmPendencias, getCrmPendenciasEmailConfig);
 router.put(
@@ -209,16 +217,36 @@ router.post(
 
 router.get('/crm/registro-inadimplentes', verFinanceiroCrmPendencias, getCrmRegistroInadimplentes);
 router.post('/crm/registro-inadimplentes', verFinanceiroCrmPendencias, postCrmRegistroInadimplente);
+router.post(
+  '/crm/registro-inadimplentes/import',
+  verFinanceiroCrmPendencias,
+  postCrmRegistroInadimplentesImport
+);
+router.get(
+  '/crm/registro-inadimplentes/:id/contatos',
+  verFinanceiroCrmPendencias,
+  getCrmRegistroInadimplenteContatos
+);
+router.post(
+  '/crm/registro-inadimplentes/:id/contatos',
+  verFinanceiroCrmPendencias,
+  postCrmRegistroInadimplenteContato
+);
+router.put(
+  '/crm/registro-inadimplentes/:id/contatos/:contatoId',
+  verFinanceiroCrmPendencias,
+  putCrmRegistroInadimplenteContato
+);
+router.delete(
+  '/crm/registro-inadimplentes/:id/contatos/:contatoId',
+  verFinanceiroCrmPendencias,
+  deleteCrmRegistroInadimplenteContato
+);
 router.put('/crm/registro-inadimplentes/:id', verFinanceiroCrmPendencias, putCrmRegistroInadimplente);
 router.delete(
   '/crm/registro-inadimplentes/:id',
   verFinanceiroCrmPendencias,
   deleteCrmRegistroInadimplente
-);
-router.post(
-  '/crm/registro-inadimplentes/import',
-  verFinanceiroCrmPendencias,
-  postCrmRegistroInadimplentesImport
 );
 
 export default router;

@@ -1,11 +1,16 @@
 import type { Request, Response } from 'express';
 import {
   countRegistroInadimplentes,
+  createContatoRegistro,
   createRegistroInadimplente,
+  deleteContatoRegistro,
   deleteRegistroInadimplente,
   importRegistroInadimplentesBulk,
+  listContatosRegistro,
   listRegistroInadimplentes,
+  updateContatoRegistro,
   updateRegistroInadimplente,
+  type ContatoInadimplenteInput,
   type RegistroInadimplenteInput,
 } from '../services/crmRegistroInadimplentesService.js';
 
@@ -28,6 +33,20 @@ function parseBody(body: unknown): RegistroInadimplenteInput {
   };
 }
 
+function parseContatoBody(body: unknown): ContatoInadimplenteInput {
+  const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+  return {
+    dataContato: b.dataContato != null ? String(b.dataContato) : null,
+    texto: String(b.texto ?? ''),
+  };
+}
+
+function getLogin(req: Request): string | null {
+  return typeof (req as { user?: { login?: string } }).user?.login === 'string'
+    ? (req as { user?: { login?: string } }).user?.login ?? null
+    : null;
+}
+
 export async function getCrmRegistroInadimplentes(req: Request, res: Response): Promise<void> {
   try {
     const q = typeof req.query.q === 'string' ? req.query.q : '';
@@ -43,11 +62,7 @@ export async function getCrmRegistroInadimplentes(req: Request, res: Response): 
 
 export async function postCrmRegistroInadimplente(req: Request, res: Response): Promise<void> {
   try {
-    const login =
-      typeof (req as { user?: { login?: string } }).user?.login === 'string'
-        ? (req as { user?: { login?: string } }).user?.login
-        : null;
-    const created = await createRegistroInadimplente(parseBody(req.body), login);
+    const created = await createRegistroInadimplente(parseBody(req.body), getLogin(req));
     res.status(201).json(created);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao criar registro.';
@@ -103,19 +118,105 @@ export async function postCrmRegistroInadimplentesImport(
       res.status(400).json({ error: 'Informe rows[] para importar.' });
       return;
     }
-    const login =
-      typeof (req as { user?: { login?: string } }).user?.login === 'string'
-        ? (req as { user?: { login?: string } }).user?.login
-        : null;
     const rows = body.rows.map((r) => parseBody(r));
     const result = await importRegistroInadimplentesBulk(rows, {
       clearExistingImport: Boolean(body.clearExistingImport),
-      login,
+      login: getLogin(req),
     });
     const total = await countRegistroInadimplentes();
     res.json({ ...result, total });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao importar registros.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function getCrmRegistroInadimplenteContatos(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: 'ID inválido.' });
+      return;
+    }
+    const data = await listContatosRegistro(id);
+    if (!data) {
+      res.status(404).json({ error: 'Registro não encontrado.' });
+      return;
+    }
+    res.json({ data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao listar contatos.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function postCrmRegistroInadimplenteContato(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: 'ID inválido.' });
+      return;
+    }
+    const created = await createContatoRegistro(id, parseContatoBody(req.body), getLogin(req));
+    if (!created) {
+      res.status(404).json({ error: 'Registro não encontrado.' });
+      return;
+    }
+    res.status(201).json(created);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao criar contato.';
+    res.status(400).json({ error: message });
+  }
+}
+
+export async function putCrmRegistroInadimplenteContato(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const id = Number(req.params.id);
+    const contatoId = Number(req.params.contatoId);
+    if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(contatoId) || contatoId <= 0) {
+      res.status(400).json({ error: 'ID inválido.' });
+      return;
+    }
+    const updated = await updateContatoRegistro(id, contatoId, parseContatoBody(req.body));
+    if (!updated) {
+      res.status(404).json({ error: 'Contato não encontrado.' });
+      return;
+    }
+    res.json(updated);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao atualizar contato.';
+    res.status(400).json({ error: message });
+  }
+}
+
+export async function deleteCrmRegistroInadimplenteContato(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const id = Number(req.params.id);
+    const contatoId = Number(req.params.contatoId);
+    if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(contatoId) || contatoId <= 0) {
+      res.status(400).json({ error: 'ID inválido.' });
+      return;
+    }
+    const ok = await deleteContatoRegistro(id, contatoId);
+    if (!ok) {
+      res.status(404).json({ error: 'Contato não encontrado.' });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao excluir contato.';
     res.status(500).json({ error: message });
   }
 }

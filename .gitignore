@@ -54,3 +54,9 @@ deploy/ssl/*.pem
 deploy/ssl/*.crt
 deploy/ssl/*.key
 deploy/wacs/
+
+# Backups/corruptos locais do SQLite (nunca no remoto)
+backend/prisma/dev.db-*
+backend/prisma/*.db-wal.*
+backend/prisma/*.db-shm.*
+

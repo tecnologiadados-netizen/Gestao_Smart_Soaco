@@ -1376,17 +1376,38 @@ model CrmRegistroInadimplente {
   total          Float?
   nfPd           String?  @map("nf_pd")
   parcela        String?
+  /// Texto denormalizado (concatenação dos contatos) — busca e compatibilidade.
   obs            String?
   origemImport   Boolean  @default(false) @map("origem_import")
   criadoPorLogin String?  @map("criado_por_login")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
+  contatos       CrmRegistroInadimplenteContato[]
 
   @@index([cliente])
   @@index([empresa])
   @@index([status])
   @@index([vencimento])
   @@map("crm_registro_inadimplente")
+}
+
+/// Contato de cobrança estruturado (histórico por registro de inadimplente).
+model CrmRegistroInadimplenteContato {
+  id             Int                     @id @default(autoincrement())
+  registroId     Int                     @map("registro_id")
+  /// Data do contato (sem hora obrigatória; legado usa só a data inferida do texto).
+  dataContato    DateTime?               @map("data_contato")
+  texto          String
+  /// manual = lançado na tela; legado = parseado do campo obs antigo.
+  origem         String                  @default("manual")
+  criadoPorLogin String?                 @map("criado_por_login")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+  registro       CrmRegistroInadimplente @relation(fields: [registroId], references: [id], onDelete: Cascade)
+
+  @@index([registroId, dataContato])
+  @@index([registroId, createdAt])
+  @@map("crm_registro_inadimplente_contato")
 }
 
 /// Config singleton: IDs de usuários (To/Cc) do e-mail disparado ao salvar ação na aba Pendências.

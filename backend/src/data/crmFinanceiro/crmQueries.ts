@@ -925,3 +925,67 @@ export function buildEmpresasQuery(): { sql: string; params: QueryParams } {
     params: [],
   };
 }
+
+/** Contas bancárias ativas no Nomus (campo BANCO do registro de inadimplentes). */
+export function buildContasBancariasQuery(opts?: {
+  q?: string | null;
+}): { sql: string; params: QueryParams } {
+  const params: QueryParams = [];
+  const clauses: string[] = ['IFNULL(cb.ativo, 1) = 1'];
+
+  if (opts?.q?.trim()) {
+    clauses.push('IFNULL(cb.nome, \'\') LIKE ?');
+    params.push(`%${opts.q.trim()}%`);
+  }
+
+  return {
+    sql: `
+      SELECT
+        cb.id AS id,
+        cb.nome AS nome
+      FROM contabancaria cb
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY cb.nome ASC
+      LIMIT 300
+    `,
+    params,
+  };
+}
+
+/** Busca leve de clientes ativos (sem exigir contas em aberto) — formulários/lookup. */
+export function buildPessoasLookupQuery(search?: string | null): {
+  sql: string;
+  params: QueryParams;
+} {
+  const params: QueryParams = [];
+  let searchClause = '';
+  if (search?.trim()) {
+    searchClause = `
+      AND (
+        IFNULL(pes.nome, '') LIKE ?
+        OR IFNULL(pes.nomeRazaoSocial, '') LIKE ?
+        OR IFNULL(pes.cnpjCpf, '') LIKE ?
+        OR IFNULL(pes.cpf, '') LIKE ?
+      )
+    `;
+    const term = `%${search.trim()}%`;
+    params.push(term, term, term, term);
+  }
+
+  return {
+    sql: `
+      SELECT
+        pes.id AS id,
+        pes.nome AS nome,
+        pes.nomeRazaoSocial AS razaoSocial,
+        IF(pes.tipoPessoa = 1, pes.cnpjCpf, pes.cpf) AS cnpjCpf
+      FROM pessoa pes
+      WHERE pes.ativo = 1
+        AND pes.cliente = 1
+        ${searchClause}
+      ORDER BY pes.nome ASC
+      LIMIT 80
+    `,
+    params,
+  };
+}

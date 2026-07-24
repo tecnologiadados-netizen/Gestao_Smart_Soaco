@@ -101,7 +101,7 @@ export function downloadProgramacaoSnapshotPdf(opts: DownloadProgramacaoSnapshot
   const items = linhas;
   drawPageHeader(`Programação de Produção — ${tituloSuffix}`, `Período programação: ${periodoLabel}`);
 
-  const headers = [['Observações', 'Data base', 'Cód', 'Descrição do Produto', 'Qtde Real', 'Obs. Produção']];
+  const headers = [['Observações', 'Previsão', 'Cód', 'Descrição do Produto', 'Qtde Real', 'Obs. Produção']];
   if (showPD) headers[0].splice(2, 0, 'PD');
 
   const body: any[][] = items.map((item) => {

@@ -4,8 +4,10 @@ import {
   getIndicadorDetalhe,
   getIndicadoresGlobais,
   getSaudeQuadroReceberEmpresa,
+  listContasBancarias,
   listEmpresas,
   searchPessoasEGrupos,
+  searchPessoasLookup,
 } from '../data/crmFinanceiro/crmDashboardService.js';
 import { parseEmpresaIdParam } from '../data/crmFinanceiro/empresaConfig.js';
 import type { ColunaIndicador } from '../data/crmFinanceiro/types.js';
@@ -128,5 +130,27 @@ export async function getCrmEmpresas(_req: Request, res: Response): Promise<void
   } catch (error) {
     console.error('Erro ao buscar empresas CRM:', error);
     res.status(500).json({ error: 'Não foi possível buscar empresas.' });
+  }
+}
+
+export async function getCrmContasBancarias(req: Request, res: Response): Promise<void> {
+  try {
+    const q = typeof req.query.q === 'string' ? req.query.q : null;
+    const data = await listContasBancarias({ q });
+    res.json({ data });
+  } catch (error) {
+    console.error('Erro ao buscar contas bancárias CRM:', error);
+    res.status(500).json({ error: 'Não foi possível buscar contas bancárias.' });
+  }
+}
+
+export async function getCrmPessoasLookup(req: Request, res: Response): Promise<void> {
+  try {
+    const q = typeof req.query.q === 'string' ? req.query.q : null;
+    const data = await searchPessoasLookup(q);
+    res.json({ data });
+  } catch (error) {
+    console.error('Erro ao buscar clientes (lookup):', error);
+    res.status(500).json({ error: 'Não foi possível buscar clientes.' });
   }
 }
