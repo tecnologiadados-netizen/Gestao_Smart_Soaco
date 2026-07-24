@@ -10,15 +10,16 @@ type SortKey = keyof CarteiraFinanceiraLinha;
 const COLS: { key: SortKey; label: string; money?: boolean; date?: boolean }[] = [
   { key: 'PD', label: 'PD' },
   { key: 'Emissao', label: 'Emissão', date: true },
+  { key: 'previsaoAtual', label: 'Previsão Atual', date: true },
   { key: 'Cliente', label: 'Cliente' },
   { key: 'UF', label: 'UF' },
   { key: 'Municipio de entrega', label: 'Município' },
   { key: 'Observacoes', label: 'Carrada/Rota' },
   { key: 'Condicao de pagamento do pedido de venda', label: 'Cond. Pagamento' },
   { key: 'StatusPedido', label: 'Status' },
-  { key: 'Valor Pendente', label: 'Saldo a Faturar', money: true },
   { key: 'Valor Romaneado', label: 'Saldo Romaneado', money: true },
-  { key: 'Saldo a Faturar Real', label: 'Saldo a Receber', money: true },
+  { key: 'Saldo a Faturar Real', label: 'Saldo a Faturar Real', money: true },
+  { key: 'Saldo a Receber', label: 'Saldo a Receber', money: true },
   { key: 'Venda por qual empresa?', label: 'Empresa' },
   { key: 'tipoF', label: 'Tipo' },
   { key: 'RM', label: 'RM' },
@@ -36,7 +37,7 @@ function fmtDate(iso: string | null): string {
 
 export default function CarteiraTabela({ linhas }: Props) {
   const [busca, setBusca] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('Saldo a Faturar Real');
+  const [sortKey, setSortKey] = useState<SortKey>('Saldo a Receber');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(0);
 
@@ -67,14 +68,14 @@ export default function CarteiraTabela({ linhas }: Props) {
 
   const totais = useMemo(() => {
     let receber = 0;
-    let faturar = 0;
     let romaneado = 0;
+    let faturarReal = 0;
     for (const l of filtradas) {
-      receber += l['Saldo a Faturar Real'] || 0;
-      faturar += l['Valor Pendente'] || 0;
+      receber += l['Saldo a Receber'] || 0;
       romaneado += l['Valor Romaneado'] || 0;
+      faturarReal += l['Saldo a Faturar Real'] || 0;
     }
-    return { receber, faturar, romaneado };
+    return { receber, romaneado, faturarReal };
   }, [filtradas]);
 
   function toggleSort(key: SortKey) {
@@ -176,17 +177,17 @@ export default function CarteiraTabela({ linhas }: Props) {
           <tfoot>
             <tr className="border-t-2 border-slate-300 dark:border-slate-500 font-semibold">
               {COLS.map((c) => {
-                if (c.key === 'Saldo a Faturar Real') {
+                if (c.key === 'Saldo a Receber') {
                   return (
                     <td key={c.key} className="py-2 px-2 text-right tabular-nums">
                       {formatarReais(totais.receber)}
                     </td>
                   );
                 }
-                if (c.key === 'Valor Pendente') {
+                if (c.key === 'Saldo a Faturar Real') {
                   return (
                     <td key={c.key} className="py-2 px-2 text-right tabular-nums">
-                      {formatarReais(totais.faturar)}
+                      {formatarReais(totais.faturarReal)}
                     </td>
                   );
                 }

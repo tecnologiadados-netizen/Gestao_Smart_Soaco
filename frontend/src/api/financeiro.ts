@@ -7,7 +7,7 @@ export interface DfcAgendamentoLinha {
   valor: number;
 }
 
-/** Contribuição granular (carga completa no Aplicar; filtros no cliente). */
+/** Contribui??o granular (carga completa no Aplicar; filtros no cliente). */
 export interface DfcContribuicaoLinha {
   idContaFinanceiro: number;
   valor: number;
@@ -27,11 +27,11 @@ export interface DfcAgendamentosEfetivosResponse {
   dataInicio: string;
   dataFim: string;
   idEmpresas: number[];
-  /** Contas bancárias Nomus com movimento no período (após Aplicar). */
+  /** Contas banc?rias Nomus com movimento no per?odo (ap?s Aplicar). */
   contasBancariasDisponiveis?: string[];
-  /** Saldo a faturar agregado por Data Proj Venc (linha «Projeção de Receitas» na árvore). */
+  /** Saldo a faturar agregado por Data Proj Venc (linha ?Proje??o de Receitas? na ?rvore). */
   projecaoReceitasPorPeriodo?: Record<string, number>;
-  /** Saldos agregados por coluna da grade (pré-calculados no servidor). */
+  /** Saldos agregados por coluna da grade (pr?-calculados no servidor). */
   saldosIniciaisPorPeriodo?: Record<string, number>;
   saldosFinaisPorPeriodo?: Record<string, number>;
   saldosPorConta?: DfcSaldoBancarioContaGrade[];
@@ -78,7 +78,7 @@ export interface DfcSaldoBancarioLinha {
   saldoFinal: number;
 }
 
-/** Saldos agregados por conta bancária e coluna da grade. */
+/** Saldos agregados por conta banc?ria e coluna da grade. */
 export interface DfcSaldoBancarioContaGrade {
   idContaBancaria: number;
   nomeContaBancaria: string;
@@ -194,7 +194,7 @@ export async function fetchDfcContasBancarias(params: {
   };
 }
 
-/** Carga DFC: apenas período e granularidade (empresas 1–4 no servidor). */
+/** Carga DFC: apenas per?odo e granularidade (empresas 1?4 no servidor). */
 export async function fetchDfcAgendamentosEfetivos(params: {
   dataInicio: string;
   dataFim: string;
@@ -251,7 +251,7 @@ export interface DfcAgendamentoDetalheLinha {
   nome: string | null;
   dataVencimento: string | null;
   dataBaixa: string | null;
-  /** Data de competência (DRE) — critério da grade. */
+  /** Data de compet?ncia (DRE) ? crit?rio da grade. */
   dataCompetencia?: string | null;
   valorBaixado: number;
   /** Universo do `id`: 'A' = agendamentofinanceiro.id ; 'L' = lancamentofinanceiro.id. */
@@ -260,7 +260,7 @@ export interface DfcAgendamentoDetalheLinha {
   idEmpresa: number;
   /** idContaFinanceiro Nomus (chave para a prioridade pelo plano de contas). */
   idContaFinanceiro: number | null;
-  /** Nome da empresa (exibição no modal de detalhe). */
+  /** Nome da empresa (exibi??o no modal de detalhe). */
   empresa?: string | null;
 }
 
@@ -312,7 +312,7 @@ export async function fetchDfcKpis(params: {
   };
 }
 
-/** Despesas (agendamento P) em aberto no Nomus — critérios alinhados aos KPIs Vencidos / A vencer a pagar. */
+/** Despesas (agendamento P) em aberto no Nomus ? crit?rios alinhados aos KPIs Vencidos / A vencer a pagar. */
 export type DfcDespesaPagamentoSituacaoApi = 'vencido' | 'a_vencer';
 
 export interface DfcDespesaPagamentoEmAbertoLinha {
@@ -425,7 +425,7 @@ export async function fetchDfcDespesasPagamentoEmAberto(params: {
   dataInicio: string;
   dataFim: string;
   idEmpresas?: number[];
-  /** Legado — preferir `idsContaFinanceiro`. */
+  /** Legado ? preferir `idsContaFinanceiro`. */
   idContaFinanceiro?: number;
   idsContaFinanceiro?: number[];
   nomesFornecedor?: string[];
@@ -561,7 +561,7 @@ export async function fetchDfcAgendamentosDetalhe(params: {
   dataFim: string;
   granularidade: 'dia' | 'mes';
   ids: number[];
-  /** Se omitido, retorna lançamentos de todo o intervalo (ex.: coluna Total). */
+  /** Se omitido, retorna lan?amentos de todo o intervalo (ex.: coluna Total). */
   periodo?: string;
   idEmpresas?: number[];
   contasBancarias?: string[];
@@ -994,7 +994,7 @@ export async function fetchDreSaidasSoAco(params: {
   dataInicio: string;
   dataFim: string;
   granularidade: 'dia' | 'mes';
-  /** Padrão no backend: 1 (Só Aço) e 2 (Só Móveis). */
+  /** Padr?o no backend: 1 (S? A?o) e 2 (S? M?veis). */
   idEmpresas?: number[];
 }): Promise<{
   linhas: DreSaidasSoAcoLinhaApi[];
@@ -1003,11 +1003,11 @@ export async function fetchDreSaidasSoAco(params: {
   totalMapeado: number;
   idsPorPathKey?: Record<string, number[]>;
   idsPorPathKeyShop9?: Record<string, number[]>;
-  /** Catálogo Shop9 por pathKey — drill-down rateio (independente do filtro da grade). */
+  /** Cat?logo Shop9 por pathKey ? drill-down rateio (independente do filtro da grade). */
   shop9OrdensCatalogoPorPathKey?: Record<string, number[]>;
-  /** shop9 = Só Aço via Shop9; nomus = demais empresas; shop9+nomus = combinação. */
+  /** shop9 = S? A?o via Shop9; nomus = demais empresas; shop9+nomus = combina??o. */
   fonteSaidas?: 'shop9' | 'nomus' | 'shop9+nomus';
-  /** Simples Nacional direto filial 6 (RN Marques) por período — base do rateio 4.14. */
+  /** Simples Nacional direto filial 6 (RN Marques) por per?odo ? base do rateio 4.14. */
   simplesNacionalFilial6PorPeriodo?: Record<string, number>;
   erro?: string;
 }> {
@@ -1503,7 +1503,7 @@ export async function fetchDreDashboard(params: {
   };
 }
 
-/* ��� Carteira Financeira ��� */
+/* ??? Carteira Financeira ??? */
 
 export type CarteiraFinanceiraLinha = {
   idEmpresa: number;
@@ -1513,6 +1513,7 @@ export type CarteiraFinanceiraLinha = {
   'Tipo Pedido': string | null;
   PD: string | null;
   Emissao: string | null;
+  previsaoAtual: string | null;
   Cliente: string | null;
   'Data de entrega': string | null;
   'Metodo de Entrega': string | null;
@@ -1526,8 +1527,10 @@ export type CarteiraFinanceiraLinha = {
   'Valor Pendente': number;
   'Valor Romaneado': number;
   'Valor Adiantamento': number;
+  percRateioAdiantamento: number;
   'Valor Faturado Entrega Futura + IPI': number;
   'Saldo a Faturar Real': number;
+  'Saldo a Receber': number;
   'Data base entrega futura': string | null;
   'Venda por qual empresa?': string | null;
   'Vendedor/Representante': string | null;
@@ -1546,29 +1549,16 @@ export type CarteiraFinanceiraResumo = {
   ticketMedio: number;
 };
 
-export type CarteiraMapaPonto = {
-  municipio: string;
-  uf: string;
-  lat: number;
-  lng: number;
-  saldoAReceber: number;
-  saldoAFaturar: number;
-  saldoRomaneado: number;
-  qtdPedidos: number;
-  qtdClientes: number;
-};
-
 export type CarteiraFinanceiraPayload = {
   linhas: CarteiraFinanceiraLinha[];
   resumo: CarteiraFinanceiraResumo;
-  mapaPontos: CarteiraMapaPonto[];
-  semLocalizacao: number;
   opcoes: {
     uf: string[];
     cliente: string[];
     empresa: string[];
     condicaoPagamento: string[];
     tipoF: string[];
+    observacoes: string[];
   };
   erro?: string;
 };
@@ -1582,6 +1572,7 @@ export type CarteiraFinanceiraFiltrosParams = {
   statusPedido?: string;
   tipoF?: string[];
   condicaoPagamento?: string[];
+  observacoes?: string[];
   municipio?: string[];
 };
 
@@ -1596,9 +1587,14 @@ const CARTEIRA_VAZIA: CarteiraFinanceiraPayload = {
     pctAtrasados: 0,
     ticketMedio: 0,
   },
-  mapaPontos: [],
-  semLocalizacao: 0,
-  opcoes: { uf: [], cliente: [], empresa: [], condicaoPagamento: [], tipoF: [] },
+  opcoes: {
+    uf: [],
+    cliente: [],
+    empresa: [],
+    condicaoPagamento: [],
+    tipoF: [],
+    observacoes: [],
+  },
 };
 
 export async function fetchCarteiraFinanceira(
@@ -1614,6 +1610,7 @@ export async function fetchCarteiraFinanceira(
     ['empresa', params.empresa],
     ['tipoF', params.tipoF],
     ['condicaoPagamento', params.condicaoPagamento],
+    ['observacoes', params.observacoes],
     ['municipio', params.municipio],
   ] as const) {
     if (list?.length) sp.set(key, list.join(','));
@@ -1629,14 +1626,13 @@ export async function fetchCarteiraFinanceira(
     ...body,
     linhas: Array.isArray(body.linhas) ? body.linhas : [],
     resumo: body.resumo ?? CARTEIRA_VAZIA.resumo,
-    mapaPontos: Array.isArray(body.mapaPontos) ? body.mapaPontos : [],
-    semLocalizacao: Number(body.semLocalizacao) || 0,
     opcoes: {
       uf: Array.isArray(body.opcoes?.uf) ? body.opcoes.uf : [],
       cliente: Array.isArray(body.opcoes?.cliente) ? body.opcoes.cliente : [],
       empresa: Array.isArray(body.opcoes?.empresa) ? body.opcoes.empresa : [],
       condicaoPagamento: Array.isArray(body.opcoes?.condicaoPagamento) ? body.opcoes.condicaoPagamento : [],
       tipoF: Array.isArray(body.opcoes?.tipoF) ? body.opcoes.tipoF : [],
+      observacoes: Array.isArray(body.opcoes?.observacoes) ? body.opcoes.observacoes : [],
     },
     erro: body.erro,
   };
