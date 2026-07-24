@@ -27,6 +27,7 @@ function parseFiltros(req: Request): CarteiraFinanceiraFiltros {
     statusPedido: statusRaw || undefined,
     tipoF: parseListParam(q.tipoF),
     condicaoPagamento: parseListParam(q.condicaoPagamento),
+    observacoes: parseListParam(q.observacoes),
     municipio: parseListParam(q.municipio),
   };
 }

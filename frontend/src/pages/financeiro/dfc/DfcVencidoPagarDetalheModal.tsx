@@ -160,21 +160,24 @@ export default function DfcVencidoPagarDetalheModal({ payload, onClose }: Props)
 
           <div className="rounded-lg border border-slate-200 overflow-hidden">
             <div className="max-h-[min(45vh,400px)] overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-slate-100 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">Cód.</th>
-                    <th className="px-3 py-2">Vencimento</th>
-                    <th className="px-3 py-2">Atraso</th>
-                    <th className="px-3 py-2">Empresa</th>
-                    <th className="px-3 py-2">Categoria</th>
-                    <th className="px-3 py-2">Fornecedor</th>
-                    <th className="px-3 py-2 text-right">Saldo</th>
+              <table className="w-full border-collapse text-sm">
+                <thead className="sticky top-0 z-[1]">
+                  <tr className="bg-primary-600 text-left text-white shadow-sm">
+                    <th className="px-3 py-2 font-semibold">Cód.</th>
+                    <th className="px-3 py-2 font-semibold">Vencimento</th>
+                    <th className="px-3 py-2 font-semibold">Atraso</th>
+                    <th className="px-3 py-2 font-semibold">Empresa</th>
+                    <th className="px-3 py-2 font-semibold">Categoria</th>
+                    <th className="px-3 py-2 font-semibold">Fornecedor</th>
+                    <th className="px-3 py-2 font-semibold text-right">Saldo</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtradas.map((r) => (
-                    <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50">
+                    <tr
+                      key={r.id}
+                      className="border-t border-slate-100 odd:bg-white even:bg-slate-50/90 hover:bg-slate-50"
+                    >
                       <td className="px-3 py-2 tabular-nums">{r.id}</td>
                       <td className="px-3 py-2 whitespace-nowrap">{fmtDataBr(r.dataVencimento)}</td>
                       <td className="px-3 py-2 tabular-nums">{diasAtraso(r.dataVencimento)}d</td>

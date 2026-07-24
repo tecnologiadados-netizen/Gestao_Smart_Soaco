@@ -144,14 +144,14 @@ export const COMERCIAL_MENU: NavMenuEntry[] = [
 ];
 
 export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
-  { kind: 'link', to: '/financeiro/resumo', label: 'Resumo Financeiro' },
-  { kind: 'link', to: '/financeiro/dashboard', label: 'Dashboard Financeiro' },
   { kind: 'link', to: '/financeiro/carteira-financeira', label: 'Carteira Financeira' },
-  { kind: 'link', to: '/financeiro/dre', label: 'DRE' },
-  { kind: 'link', to: '/financeiro/dfc', label: 'DFC' },
-  { kind: 'link', to: '/financeiro/painel-financeiro-comercial', label: 'Painel Financeiro-Comercial' },
-  { kind: 'link', to: '/financeiro/renegociacao-contratos', label: 'Simulação de Renegociação' },
   { kind: 'link', to: '/financeiro/crm', label: 'CRM Financeiro' },
+  { kind: 'link', to: '/financeiro/dashboard', label: 'Dashboard Financeiro' },
+  { kind: 'link', to: '/financeiro/dfc', label: 'DFC' },
+  { kind: 'link', to: '/financeiro/dre', label: 'DRE' },
+  { kind: 'link', to: '/financeiro/painel-financeiro-comercial', label: 'Painel Financeiro-Comercial' },
+  { kind: 'link', to: '/financeiro/resumo', label: 'Resumo Financeiro' },
+  { kind: 'link', to: '/financeiro/renegociacao-contratos', label: 'Simulação de Renegociação' },
 ];
 
 export const INTEGRACAO_SUBMENUS: { to: string; label: string }[] = [

@@ -4,12 +4,15 @@ import {
   fetchCarteiraFinanceira,
   type CarteiraFinanceiraLinha,
   type CarteiraFinanceiraPayload,
-  type CarteiraMapaPonto,
 } from '../../api/financeiro';
 import CarteiraKpiCards from './carteira/CarteiraKpiCards';
-import { CarteiraBarrasAgrupadas, CarteiraDonutStatus } from './carteira/CarteiraCharts';
-import CarteiraMapa from './carteira/CarteiraMapa';
+import {
+  CarteiraBarrasAgrupadas,
+  CarteiraDonutStatus,
+  CarteiraPizzaCondicao,
+} from './carteira/CarteiraCharts';
 import CarteiraTabela from './carteira/CarteiraTabela';
+import CarteiraDetalheModal from './carteira/CarteiraDetalheModal';
 import {
   aggPorCarrada,
   aggPorCliente,
@@ -17,8 +20,20 @@ import {
   aggPorStatus,
   aggPorUf,
   calcResumoLocal,
+  consolidarPedidosDetalhe,
+  filtrarLinhasPorDimensao,
+  type CarteiraDetalhePedido,
+  type CarteiraDimensao,
 } from './carteira/carteiraAggregates';
 import { exportCarteiraFinanceiraXlsx } from './carteira/exportCarteiraFinanceiraXlsx';
+
+const DIM_TITULO: Record<CarteiraDimensao, string> = {
+  uf: 'Por UF',
+  carrada: 'Por Carrada/Rota',
+  cliente: 'Por Cliente',
+  condicao: 'Por Condição de Pagamento',
+  status: 'Por Status',
+};
 
 const FILTRO_INPUT_CLASS =
   'w-full rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-600 focus:border-transparent';
@@ -52,9 +67,14 @@ const VAZIO: CarteiraFinanceiraPayload = {
     pctAtrasados: 0,
     ticketMedio: 0,
   },
-  mapaPontos: [],
-  semLocalizacao: 0,
-  opcoes: { uf: [], cliente: [], empresa: [], condicaoPagamento: [], tipoF: [] },
+  opcoes: {
+    uf: [],
+    cliente: [],
+    empresa: [],
+    condicaoPagamento: [],
+    tipoF: [],
+    observacoes: [],
+  },
 };
 
 export default function CarteiraFinanceiraPage() {
@@ -64,8 +84,8 @@ export default function CarteiraFinanceiraPage() {
   const [ufCsv, setUfCsv] = useState('');
   const [clienteCsv, setClienteCsv] = useState('');
   const [condicaoCsv, setCondicaoCsv] = useState('');
+  const [carradaCsv, setCarradaCsv] = useState('');
   const [statusPedido, setStatusPedido] = useState('');
-  const [municipioFiltro, setMunicipioFiltro] = useState<string | null>(null);
 
   const [payload, setPayload] = useState<CarteiraFinanceiraPayload>(VAZIO);
   const [opcoesBase, setOpcoesBase] = useState(VAZIO.opcoes);
@@ -74,25 +94,19 @@ export default function CarteiraFinanceiraPage() {
   const [exportando, setExportando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  const carregar = useCallback(async (overrides?: {
-    clienteCsv?: string;
-    municipioFiltro?: string | null;
-  }) => {
+  const carregar = useCallback(async () => {
     setLoading(true);
     setErro(null);
-    const clienteVal = overrides?.clienteCsv ?? clienteCsv;
-    const municipioVal =
-      overrides && 'municipioFiltro' in overrides ? overrides.municipioFiltro : municipioFiltro;
     try {
       const data = await fetchCarteiraFinanceira({
         dataInicio,
         dataFim,
         empresa: csvToList(empresaCsv),
         uf: csvToList(ufCsv),
-        cliente: csvToList(clienteVal),
+        cliente: csvToList(clienteCsv),
         condicaoPagamento: csvToList(condicaoCsv),
+        observacoes: csvToList(carradaCsv),
         statusPedido: statusPedido || undefined,
-        municipio: municipioVal ? [municipioVal] : undefined,
       });
       setPayload(data);
       if (data.erro) setErro(data.erro);
@@ -104,6 +118,7 @@ export default function CarteiraFinanceiraPage() {
           ? prev.condicaoPagamento
           : data.opcoes.condicaoPagamento,
         tipoF: prev.tipoF.length ? prev.tipoF : data.opcoes.tipoF,
+        observacoes: prev.observacoes.length ? prev.observacoes : data.opcoes.observacoes,
       }));
       setLoaded(true);
     } catch (e) {
@@ -113,7 +128,7 @@ export default function CarteiraFinanceiraPage() {
     } finally {
       setLoading(false);
     }
-  }, [dataInicio, dataFim, empresaCsv, ufCsv, clienteCsv, condicaoCsv, statusPedido, municipioFiltro]);
+  }, [dataInicio, dataFim, empresaCsv, ufCsv, clienteCsv, condicaoCsv, carradaCsv, statusPedido]);
 
   useEffect(() => {
     void carregar();
@@ -128,29 +143,33 @@ export default function CarteiraFinanceiraPage() {
     setUfCsv('');
     setClienteCsv('');
     setCondicaoCsv('');
+    setCarradaCsv('');
     setStatusPedido('');
-    setMunicipioFiltro(null);
   };
 
-  const onClienteClick = (chave: string) => {
-    setClienteCsv(chave);
-    setMunicipioFiltro(null);
-    void carregar({ clienteCsv: chave, municipioFiltro: null });
-  };
-
-  const onMunicipioClick = (municipio: string) => {
-    setMunicipioFiltro(municipio);
-    void carregar({ municipioFiltro: municipio });
-  };
+  const [detalhe, setDetalhe] = useState<{
+    titulo: string;
+    subtitulo: string;
+    pedidos: CarteiraDetalhePedido[];
+  } | null>(null);
 
   const linhas: CarteiraFinanceiraLinha[] = payload.linhas;
+
+  const abrirDetalhe = (dimensao: CarteiraDimensao, chave: string) => {
+    const filtradas = filtrarLinhasPorDimensao(linhas, dimensao, chave);
+    setDetalhe({
+      titulo: DIM_TITULO[dimensao],
+      subtitulo: chave,
+      pedidos: consolidarPedidosDetalhe(filtradas),
+    });
+  };
+
   const resumo = useMemo(() => calcResumoLocal(linhas), [linhas]);
   const porUf = useMemo(() => aggPorUf(linhas), [linhas]);
   const porCarrada = useMemo(() => aggPorCarrada(linhas, 10), [linhas]);
   const porCliente = useMemo(() => aggPorCliente(linhas, 15), [linhas]);
   const porCondicao = useMemo(() => aggPorCondicao(linhas), [linhas]);
   const porStatus = useMemo(() => aggPorStatus(linhas), [linhas]);
-  const mapaPontos: CarteiraMapaPonto[] = payload.mapaPontos;
 
   const onExport = async () => {
     setExportando(true);
@@ -164,14 +183,13 @@ export default function CarteiraFinanceiraPage() {
   };
 
   const opcoes = opcoesBase.uf.length || opcoesBase.empresa.length ? opcoesBase : payload.opcoes;
-  const opcoesEmpresa = opcoes.empresa.length
-    ? opcoes.empresa
-    : csvToList(empresaCsv);
+  const opcoesEmpresa = opcoes.empresa.length ? opcoes.empresa : csvToList(empresaCsv);
   const opcoesUf = opcoes.uf.length ? opcoes.uf : csvToList(ufCsv);
   const opcoesCliente = opcoes.cliente.length ? opcoes.cliente : csvToList(clienteCsv);
   const opcoesCondicao = opcoes.condicaoPagamento.length
     ? opcoes.condicaoPagamento
     : csvToList(condicaoCsv);
+  const opcoesCarrada = opcoes.observacoes.length ? opcoes.observacoes : csvToList(carradaCsv);
 
   return (
     <div className="flex flex-col gap-4 min-h-0">
@@ -196,7 +214,7 @@ export default function CarteiraFinanceiraPage() {
         </div>
 
         <div className="px-4 pb-4 space-y-3 border-t border-slate-200 dark:border-slate-700">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 pt-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 pt-3">
             <div>
               <label className={FILTRO_LABEL_CLASS}>Data início</label>
               <input
@@ -260,6 +278,17 @@ export default function CarteiraFinanceiraPage() {
               optionLabel="condições"
               minWidth="160px"
             />
+            <MultiSelectWithSearch
+              label="Carrada/Rota"
+              placeholder="Todas"
+              options={opcoesCarrada}
+              value={carradaCsv}
+              onChange={setCarradaCsv}
+              labelClass={FILTRO_LABEL_CLASS}
+              inputClass={FILTRO_INPUT_CLASS}
+              optionLabel="carradas"
+              minWidth="160px"
+            />
             <div>
               <label className={FILTRO_LABEL_CLASS}>Status do Pedido</label>
               <select
@@ -273,23 +302,6 @@ export default function CarteiraFinanceiraPage() {
               </select>
             </div>
           </div>
-
-          {municipioFiltro && (
-            <div className="text-xs text-slate-600 dark:text-slate-300">
-              Filtro município:{' '}
-              <span className="font-medium">{municipioFiltro}</span>
-              <button
-                type="button"
-                className="ml-2 text-primary-600 underline"
-                onClick={() => {
-                  setMunicipioFiltro(null);
-                  void carregar({ municipioFiltro: null });
-                }}
-              >
-                limpar
-              </button>
-            </div>
-          )}
 
           <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200 dark:border-slate-700">
             <button
@@ -327,24 +339,45 @@ export default function CarteiraFinanceiraPage() {
       {(linhas.length > 0 || loading) && (
         <>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <CarteiraBarrasAgrupadas title="Por UF" data={porUf} layout="horizontal" height={Math.max(280, porUf.length * 36)} />
-            <CarteiraBarrasAgrupadas title="Por Carradas/Rota (Top 10 + Outros)" data={porCarrada} layout="vertical" />
             <CarteiraBarrasAgrupadas
-              title="Por Cliente (Top 15)"
-              data={porCliente}
-              layout="horizontal"
-              height={Math.max(320, porCliente.length * 32)}
-              onBarClick={onClienteClick}
+              title="Por UF"
+              data={porUf}
+              layout="vertical"
+              height={Math.max(320, 280 + Math.min(porUf.length, 12) * 8)}
+              onBarClick={(chave) => abrirDetalhe('uf', chave)}
             />
-            <CarteiraBarrasAgrupadas title="Por Condição de Pagamento" data={porCondicao} layout="vertical" />
-            <CarteiraMapa
-              pontos={mapaPontos}
-              semLocalizacao={payload.semLocalizacao}
-              onSelectMunicipio={onMunicipioClick}
+            <CarteiraBarrasAgrupadas
+              title="Por Carradas/Rota (Top 10 + Outros)"
+              data={porCarrada}
+              layout="vertical"
+              onBarClick={(chave) => abrirDetalhe('carrada', chave)}
             />
-            <CarteiraDonutStatus data={porStatus} />
+            <CarteiraDonutStatus
+              data={porStatus}
+              onSliceClick={(chave) => abrirDetalhe('status', chave)}
+            />
+            <CarteiraPizzaCondicao
+              data={porCondicao}
+              onSliceClick={(chave) => abrirDetalhe('condicao', chave)}
+            />
+            <div className="xl:col-span-2">
+              <CarteiraBarrasAgrupadas
+                title="Por Cliente (Top 15)"
+                data={porCliente}
+                layout="vertical"
+                height={Math.max(360, 300 + Math.min(porCliente.length, 15) * 8)}
+                onBarClick={(chave) => abrirDetalhe('cliente', chave)}
+              />
+            </div>
           </div>
           <CarteiraTabela linhas={linhas} />
+          <CarteiraDetalheModal
+            aberto={detalhe != null}
+            titulo={detalhe?.titulo ?? ''}
+            subtitulo={detalhe?.subtitulo}
+            pedidos={detalhe?.pedidos ?? []}
+            onClose={() => setDetalhe(null)}
+          />
         </>
       )}
     </div>
