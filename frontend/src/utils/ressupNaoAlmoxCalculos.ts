@@ -42,6 +42,13 @@ export function somaSetoresErp(setores: RessupNaoAlmoxEstoqueSetor[]): number {
   return setores.reduce((s, x) => s + (Number.isFinite(x.saldo) ? x.saldo : 0), 0);
 }
 
+/** Soma saldos ERP excluindo a linha PA (explosão BOM do setor 5). */
+export function somaSetoresErpSemPa(setores: RessupNaoAlmoxEstoqueSetor[]): number {
+  return setores
+    .filter((s) => s.tipo !== 'PA')
+    .reduce((acc, x) => acc + (Number.isFinite(x.saldo) ? x.saldo : 0), 0);
+}
+
 /** Saldo do setor 2 (almox secundário), excluindo linha PA. */
 export function saldoSetor2FromSetores(setores: RessupNaoAlmoxEstoqueSetor[]): number {
   return setores
@@ -77,9 +84,10 @@ export function calcEstoqueTotalNaoAlmox(
   fundivel = false,
   excluirMarcenaria = false
 ): number {
+  // Total do card = MPP + almox (setores diretos) + produção manual — sem PA/BOM.
   return (
-    somaSetoresErp(setores) +
-    somaSetoresErp(setoresPintado) +
+    somaSetoresErpSemPa(setores) +
+    somaSetoresErpSemPa(setoresPintado) +
     somaEstoqueProcesso(processo, fundivel, excluirMarcenaria)
   );
 }

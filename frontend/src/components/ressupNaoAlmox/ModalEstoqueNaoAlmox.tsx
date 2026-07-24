@@ -15,6 +15,7 @@ import {
   saldoSetor2FromSetores,
   somaEstoqueProcesso,
   somaSetoresErp,
+  somaSetoresErpSemPa,
 } from '../../utils/ressupNaoAlmoxCalculos';
 import { coletaDestacaSetor2Almox } from '../../utils/ressupNaoAlmoxColetas';
 import { numInputDisplayBranco } from '../programacao-producao/programacaoProducaoCalculos';
@@ -301,4 +302,4 @@ export default function ModalEstoqueNaoAlmox({
   );
 }
 
-export { calcEstoqueTotalNaoAlmox, somaSetoresErp };
+export { calcEstoqueTotalNaoAlmox, somaSetoresErp, somaSetoresErpSemPa };

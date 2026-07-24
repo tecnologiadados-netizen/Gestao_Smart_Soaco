@@ -535,7 +535,10 @@ export type CalendarioCelulaDetalhe = {
   tipoF: string;
   pd: string;
   qtde: number;
+  /** RM (romaneio) — chave de carrada / drill. */
   cod: string;
+  /** Código do produto (PA) — usado na demanda de materiais / BOM. */
+  codigoProduto: string;
   carrada: string;
   cliente: string;
   /** Sem data de produção — posicionado pela previsão atual. */
@@ -589,11 +592,39 @@ export function previsaoAtualDaLinha(row: Record<string, unknown>): string {
   return toISODate(previsaoRaw);
 }
 
+/** Corte padrão (espelha DEFAULT_REGRA_DATA_ENTREGA) para snapshots sem flag. */
+const VALOR_CORTE_ROMANEIO_PADRAO = 30_000;
+const DIAS_ACIMA_CORTE_ROMANEIO_PADRAO = 45;
+
+/** Inserir em Romaneio com valor &lt; corte → mesma lógica de carrada em formação. */
+export function isRomaneioComoFormacaoLinha(row: Record<string, unknown>): boolean {
+  const flag = row['romaneio_como_formacao'];
+  if (flag === true) return true;
+  if (flag === false) return false;
+  const { carrada } = linhaCodCarrada(row);
+  const tipoF = getField(row, ['tipoF', 'TipoF', 'tipo_f']);
+  if (!isInserirEmRomaneio(carrada) && !isInserirEmRomaneio(tipoF)) return false;
+  const valorRaw = row['Valor Pedido Total'] ?? row['Valor pedido total'];
+  const valor = valorRaw != null && !Number.isNaN(Number(valorRaw)) ? Number(valorRaw) : 0;
+  return valor < VALOR_CORTE_ROMANEIO_PADRAO;
+}
+
+/** Emissão + dias ≥ corte (padrão 45) para romaneio acima do corte. */
+export function dataRegraRomaneioAcimaCorte(row: Record<string, unknown>): string {
+  const previsao = previsaoAtualDaLinha(row);
+  if (previsao) return previsao;
+  const emissaoRaw = row['Emissao'] ?? row['emissao'];
+  const emissaoIso = toISODate(emissaoRaw);
+  if (!emissaoIso) return '';
+  return addDaysIso(emissaoIso, DIAS_ACIMA_CORTE_ROMANEIO_PADRAO);
+}
+
 /**
  * Data de produção efetiva de uma linha (simulação sobrepõe data_producao do snapshot).
- * - Inserir em Romaneio: 1 dia útil após a maior data de produção das carradas normais.
+ * - Inserir em Romaneio &lt; corte: max das demais + 30 (em formação).
+ * - Inserir em Romaneio ≥ corte: emissão + dias ≥ corte (previsão da regra).
  * - Em formação (constr/cont): maior data das demais + 30 dias.
- * - Demais linhas: simulação / baseline de data_producao (produção real, sem fallback).
+ * - Demais linhas: simulação / baseline da carrada; se vazio, produção por item.
  */
 export function dataProducaoDaLinha(
   row: Record<string, unknown>,
@@ -605,6 +636,11 @@ export function dataProducaoDaLinha(
   const { carrada } = linhaCodCarrada(row);
   const tipoF = getField(row, ['tipoF', 'TipoF', 'tipo_f']);
   if (isInserirEmRomaneio(carrada) || isInserirEmRomaneio(tipoF)) {
+    if (isRomaneioComoFormacaoLinha(row)) {
+      return dataEmFormacao || dataInserirRomaneio;
+    }
+    const regra = dataRegraRomaneioAcimaCorte(row);
+    if (regra) return regra;
     return dataInserirRomaneio;
   }
   if (isCarradaEmFormacao(carrada)) {
@@ -613,13 +649,15 @@ export function dataProducaoDaLinha(
   const key = linhaCarradaKey(row);
   const dataProducao = valorEfetivo(sim, baseline, key, 'dataProducao');
   if (dataProducao) return dataProducao;
+  const dataItem = valorEfetivoItem(sim, row, 'dataProducao');
+  if (dataItem) return dataItem;
   if (isPedidoDisponivel(row)) return hojeISO();
   return '';
 }
 
 /**
  * Data usada para posicionar a linha no calendário de produção.
- * Fallback: previsão atual quando não há data de produção definida.
+ * Ordem: romaneio (formação / regra) → em formação → carrada → item → disponível/hoje → previsão.
  */
 export function resolverDataCalendarioLinha(
   row: Record<string, unknown>,
@@ -631,6 +669,12 @@ export function resolverDataCalendarioLinha(
   const { carrada } = linhaCodCarrada(row);
   const tipoF = getField(row, ['tipoF', 'TipoF', 'tipo_f']);
   if (isInserirEmRomaneio(carrada) || isInserirEmRomaneio(tipoF)) {
+    if (isRomaneioComoFormacaoLinha(row)) {
+      const data = dataEmFormacao || dataInserirRomaneio;
+      return data ? { data, origem: 'producao' } : { data: '', origem: null };
+    }
+    const regra = dataRegraRomaneioAcimaCorte(row);
+    if (regra) return { data: regra, origem: 'producao' };
     const data = dataInserirRomaneio;
     return data ? { data, origem: 'inserir_romaneio' } : { data: '', origem: null };
   }
@@ -640,6 +684,8 @@ export function resolverDataCalendarioLinha(
   const key = linhaCarradaKey(row);
   const dataProducao = valorEfetivo(sim, baseline, key, 'dataProducao');
   if (dataProducao) return { data: dataProducao, origem: 'producao' };
+  const dataItem = valorEfetivoItem(sim, row, 'dataProducao');
+  if (dataItem) return { data: dataItem, origem: 'producao' };
   if (isPedidoDisponivel(row)) return { data: hojeISO(), origem: 'producao' };
   const previsao = previsaoAtualDaLinha(row);
   if (previsao) return { data: previsao, origem: 'previsao' };
@@ -684,6 +730,12 @@ export function dataProducaoCarradaEmFormacaoApartirDe(maxDataCarradas: string):
   return addDaysIso(maxDataCarradas, 30);
 }
 
+export type ComputarCalendarioProducaoOpts = {
+  /** Se informado, não recalcula a partir de `linhas` (usar snapshot completo ao filtrar PD). */
+  dataInserirRomaneio?: string;
+  dataEmFormacao?: string;
+};
+
 export function computarCalendarioProducao(
   linhas: Record<string, unknown>[],
   sim: Map<string, SimEntry>,
@@ -692,7 +744,8 @@ export function computarCalendarioProducao(
    * Qtde líquida após estoque (Programação Setorial).
    * Se omitido, usa `Qtde Pendente Real` bruta (compatibilidade / testes legados).
    */
-  getQtdeLinha?: (row: Record<string, unknown>, index: number) => number
+  getQtdeLinha?: (row: Record<string, unknown>, index: number) => number,
+  opts?: ComputarCalendarioProducaoOpts
 ): CalendarioDados {
   const valores = new Map<string, Map<string, number>>();
   const totalPorData = new Map<string, number>();
@@ -703,8 +756,14 @@ export function computarCalendarioProducao(
   let totalGeral = 0;
 
   const maxNormais = maxDataProducaoCarradasNormais(linhas, sim, baseline);
-  const dataInserirRomaneio = dataProducaoInserirRomaneioApartirDe(maxNormais);
-  const dataEmFormacao = dataProducaoCarradaEmFormacaoApartirDe(maxNormais);
+  const dataInserirRomaneio =
+    opts?.dataInserirRomaneio !== undefined
+      ? opts.dataInserirRomaneio
+      : dataProducaoInserirRomaneioApartirDe(maxNormais);
+  const dataEmFormacao =
+    opts?.dataEmFormacao !== undefined
+      ? opts.dataEmFormacao
+      : dataProducaoCarradaEmFormacaoApartirDe(maxNormais);
 
   for (let index = 0; index < linhas.length; index++) {
     const row = linhas[index];
@@ -724,6 +783,7 @@ export function computarCalendarioProducao(
     const tipoF = getField(row, ['tipoF', 'TipoF', 'tipo_f']) || '(vazio)';
     const pd = getField(row, ['PD', 'pd']) || '—';
     const { cod, carrada } = linhaCodCarrada(row);
+    const codigoProduto = getField(row, ['Cod', 'cod']) || '';
     const producaoPorPrevisao = origem === 'previsao';
 
     datasSet.add(data);
@@ -746,6 +806,7 @@ export function computarCalendarioProducao(
       pd,
       qtde,
       cod,
+      codigoProduto,
       carrada,
       cliente: getField(row, ['Cliente', 'cliente']),
       producaoPorPrevisao: producaoPorPrevisao || undefined,
@@ -755,6 +816,40 @@ export function computarCalendarioProducao(
   const datas = [...datasSet].sort();
   const setores = [...setoresSet].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
   return { datas, setores, valores, totalPorData, totalPorSetor, totalGeral, detalhes };
+}
+
+/** Payload de demanda (PA × data × qtde) para disponibilidade de materiais. */
+export type DemandaMateriaisCalendarioPayload = {
+  codigoPa: string;
+  qtde: number;
+  dataIso: string;
+  pd?: string;
+  setor?: string;
+};
+
+/**
+ * Agrega detalhes do calendário em linhas de demanda para o backend.
+ * Mantém pd/setor nas linhas individuais (sem agregar) para origem do consumo.
+ */
+export function montarDemandaMateriaisDoCalendario(
+  detalhes: CalendarioCelulaDetalhe[]
+): DemandaMateriaisCalendarioPayload[] {
+  const out: DemandaMateriaisCalendarioPayload[] = [];
+  for (const d of detalhes) {
+    // Cod do produto (PA), nunca RM — o backend resolve por produto.nome.
+    const codigoPa = String(d.codigoProduto ?? '').trim();
+    const dataIso = toISODate(d.data) || String(d.data ?? '').trim();
+    const qtde = Number(d.qtde);
+    if (!codigoPa || !/^\d{4}-\d{2}-\d{2}$/.test(dataIso) || !(qtde > 0)) continue;
+    out.push({
+      codigoPa,
+      qtde,
+      dataIso,
+      pd: String(d.pd ?? '').trim() || undefined,
+      setor: String(d.setor ?? '').trim() || undefined,
+    });
+  }
+  return out;
 }
 
 export type ProdutoSetorCalendarioRow = {
@@ -1175,15 +1270,23 @@ export function datasItemPedidoGerenciador(
   baseline: Map<string, CarradaBaseline>,
   dataInserirRomaneio = '',
   dataEmFormacao = ''
-): { dataProducao: string; previsaoAtual: string; dataCalendario: string; producaoPorPrevisao: boolean } {
+): {
+  dataProducao: string;
+  previsaoAtual: string;
+  dataCalendario: string;
+  producaoPorPrevisao: boolean;
+  carradaEmFormacao: boolean;
+} {
   const { carrada } = linhaCodCarrada(linha);
-  if (isCarradaEmFormacao(carrada)) {
+  const emFormacao = isCarradaEmFormacao(carrada) || isRomaneioComoFormacaoLinha(linha);
+  if (emFormacao) {
     const dataProducao = dataEmFormacao || dataProducaoDaLinha(linha, sim, baseline, dataInserirRomaneio, dataEmFormacao);
     return {
       dataProducao,
       previsaoAtual: '',
       dataCalendario: dataProducao,
       producaoPorPrevisao: false,
+      carradaEmFormacao: true,
     };
   }
   const dataProducao = dataProducaoDaLinha(linha, sim, baseline, dataInserirRomaneio, dataEmFormacao);
@@ -1209,7 +1312,7 @@ export function datasItemPedidoGerenciador(
     dataEmFormacao
   );
   const producaoPorPrevisao = origem === 'previsao';
-  return { dataProducao, previsaoAtual, dataCalendario, producaoPorPrevisao };
+  return { dataProducao, previsaoAtual, dataCalendario, producaoPorPrevisao, carradaEmFormacao: false };
 }
 
 /** Enriquece item do tooltip com datas alinhadas ao Gerenciador de Pedidos. */
@@ -1221,18 +1324,14 @@ export function tooltipDetalheComDatasEfetivas(
   dataInserirRomaneio = '',
   dataEmFormacao = ''
 ): TooltipDetalheRow {
-  const { dataProducao, previsaoAtual, dataCalendario, producaoPorPrevisao } = datasItemPedidoGerenciador(
-    linha,
-    sim,
-    baseline,
-    dataInserirRomaneio,
-    dataEmFormacao
-  );
+  const { dataProducao, previsaoAtual, dataCalendario, producaoPorPrevisao, carradaEmFormacao } =
+    datasItemPedidoGerenciador(linha, sim, baseline, dataInserirRomaneio, dataEmFormacao);
   return {
     ...item,
     dataProducao,
     previsaoAtual,
     dataCalendario,
     producaoPorPrevisao: producaoPorPrevisao || undefined,
+    carradaEmFormacao: carradaEmFormacao || undefined,
   };
 }

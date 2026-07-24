@@ -45,12 +45,33 @@ describe('resolverDataProducaoExibicaoGerenciador', () => {
     expect(r.previsaoExibicaoLabel).toBe('Carrada em formação');
   });
 
-  it('token cont no nome da rota marca em formação', () => {
+  it('romaneio_como_formacao: produção = max+30 e previsão com rótulo', () => {
     const r = resolverDataProducaoExibicaoGerenciador(
-      pedido({ Observacoes: 'ROTA CONT 12', previsao_entrega: '2026-03-01' }),
-      '2026-10-01'
+      pedido({
+        TipoF: 'Inserir em Romaneio',
+        Observacoes: '4-Inserir em Romaneio',
+        romaneio_como_formacao: true,
+        previsao_entrega_atualizada: '2026-07-08',
+      }),
+      '2026-09-15'
     );
     expect(r.carradaEmFormacao).toBe(true);
-    expect(r.dataExibicao).toBe('2026-10-01');
+    expect(r.dataExibicao).toBe('2026-09-15');
+    expect(r.previsaoExibicaoLabel).toBe('Carrada em formação');
+    expect(r.producaoPorPrevisao).toBe(false);
+  });
+
+  it('romaneio ≥ corte: produção = previsão da regra sem badge Prev.', () => {
+    const r = resolverDataProducaoExibicaoGerenciador(
+      pedido({
+        TipoF: 'Inserir em Romaneio',
+        Observacoes: '4-Inserir em Romaneio',
+        romaneio_como_formacao: false,
+        previsao_entrega_atualizada: '2026-02-15',
+      })
+    );
+    expect(r.dataExibicao).toBe('2026-02-15');
+    expect(r.producaoPorPrevisao).toBe(false);
+    expect(r.carradaEmFormacao).toBeUndefined();
   });
 });

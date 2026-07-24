@@ -30,6 +30,7 @@ import {
   classPercentualEmDia,
   garantirEspeciaisNoFim,
   isCarradaOrdemFinal,
+  isInserirEmRomaneio,
   ordenarCarradas,
   subtotalCarradas,
   SUBTOTAL_ROW_CLASS,
@@ -57,6 +58,8 @@ import {
   isSimItemKey,
   idPedidoDeSimItemKey,
   linhaCodCarrada,
+  linhaCarradaKey,
+  isRomaneioComoFormacaoLinha,
   type SimEntry,
 } from '../../components/sequenciamento-carradas/simulacaoCarradas';
 import {
@@ -365,6 +368,25 @@ export default function SequenciamentoCarradasPage() {
       ),
     [linhasSnapshot, sim, baseline]
   );
+
+  /** Chaves de carrada Inserir em Romaneio em que todas as linhas são formação (&lt; corte). */
+  const keysRomaneioSoFormacao = useMemo(() => {
+    const byKey = new Map<string, { total: number; formacao: number }>();
+    for (const row of linhasSnapshot) {
+      const { carrada } = linhaCodCarrada(row);
+      if (!isInserirEmRomaneio(carrada)) continue;
+      const key = linhaCarradaKey(row);
+      const cur = byKey.get(key) ?? { total: 0, formacao: 0 };
+      cur.total += 1;
+      if (isRomaneioComoFormacaoLinha(row)) cur.formacao += 1;
+      byKey.set(key, cur);
+    }
+    const out = new Set<string>();
+    for (const [key, v] of byKey) {
+      if (v.total > 0 && v.formacao === v.total) out.add(key);
+    }
+    return out;
+  }, [linhasSnapshot]);
 
   const pedidosEntrega = useMemo(
     () => computarPedidosComEntregaAlterada(linhasSnapshot, sim, baseline),
@@ -1446,7 +1468,8 @@ export default function SequenciamentoCarradasPage() {
                         const key = carradaKeyDe(c);
                         const alterada = carradaAlterada(sim, baseline, key);
                         const carradaEspecial = isCarradaOrdemFinal(c.carrada);
-                        const carradaEmFormacao = isCarradaEmFormacao(c.carrada);
+                        const carradaEmFormacao =
+                          isCarradaEmFormacao(c.carrada) || keysRomaneioSoFormacao.has(key);
                         const dropBefore = dragOverKey === key && dropPosition === 'before';
                         const dropAfter = dragOverKey === key && dropPosition === 'after';
                         return (
@@ -1531,7 +1554,7 @@ export default function SequenciamentoCarradasPage() {
                               </GradeCelulaModalBtn>
                             </td>
                             <td className={`py-2 px-2 ${COL_TD_CLASS.dataProducao ?? ''}`}>
-                              {carradaEspecial ? null : carradaEmFormacao ? (
+                              {carradaEmFormacao ? (
                                 <span
                                   className="text-xs tabular-nums text-slate-700 dark:text-slate-200"
                                   title="Data de produção = maior data das demais carradas + 30 dias"
@@ -1540,7 +1563,7 @@ export default function SequenciamentoCarradasPage() {
                                     ? formatDataCurta(dataProducaoEmFormacao)
                                     : '—'}
                                 </span>
-                              ) : (
+                              ) : carradaEspecial ? null : (
                                 <SequenciamentoDateField
                                   value={toISODate(efProducao(key))}
                                   disabled={!editavel}
@@ -1587,14 +1610,14 @@ export default function SequenciamentoCarradasPage() {
                               </td>
                             )}
                             <td className={`py-2 px-2 ${COL_TD_CLASS.dataEntrega ?? ''}`}>
-                              {carradaEspecial ? null : carradaEmFormacao ? (
+                              {carradaEmFormacao ? (
                                 <span
                                   className="text-xs font-medium text-amber-700 dark:text-amber-300"
                                   title="Entrega/previsão não definida — carrada em formação"
                                 >
                                   {LABEL_CARRADA_EM_FORMACAO}
                                 </span>
-                              ) : (
+                              ) : carradaEspecial ? null : (
                                 <SequenciamentoDateField
                                   value={toISODate(efEntrega(key))}
                                   disabled={!editavel}

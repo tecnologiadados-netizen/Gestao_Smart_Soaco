@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   colunaCalendarioId,
   computarCalendarioProducao,
@@ -13,9 +13,11 @@ import {
   carradaKey,
   linhaCarradaKey,
   maxDataProducaoCarradasNormais,
+  montarDemandaMateriaisDoCalendario,
   montarEixoDatasCalendario,
   resolverDataCalendarioLinha,
   simItemKey,
+  toISODate,
   tooltipDetalheComDatasEfetivas,
   valorEfetivo,
   type CarradaBaseline,
@@ -24,6 +26,8 @@ import {
 } from './simulacaoCarradas';
 import IndicadorDataPorPrevisao from './IndicadorDataPorPrevisao';
 import CalendarioSetorProdutosModal from './CalendarioSetorProdutosModal';
+import CalendarioMateriaisDiaModal from './CalendarioMateriaisDiaModal';
+import CalendarioMaterialHorizonteModal from './CalendarioMaterialHorizonteModal';
 import {
   comparePedidoAsc,
   isCarradaOrdemFinal,
@@ -53,6 +57,14 @@ import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { PERMISSOES } from '../../config/permissoes';
 import type { Pedido, TooltipDetalheRow } from '../../api/pedidos';
+import {
+  consultarDisponibilidadeMateriaisSintetica,
+  type DisponibilidadeMateriaisSintetica,
+  type MaterialCriticoCalendario,
+  type MaterialDiaCalendario,
+  type StatusMaterialDia,
+  type StatusPorDataMateriais,
+} from '../../api/sequenciamentoCarradas';
 
 type Props = {
   linhas: Record<string, unknown>[];
@@ -176,6 +188,48 @@ function formatGeradoEmLegenda(iso: string | undefined): string {
   return d.toLocaleString('pt-BR');
 }
 
+function tituloStatusMateriais(st: StatusPorDataMateriais | undefined): string {
+  if (!st) return 'Disponibilidade de materiais não carregada';
+  if (st.status === 'falta') {
+    return `${st.qtdeMateriaisFalta} material(is) em falta neste dia — clique para detalhar`;
+  }
+  if (st.status === 'atencao') {
+    return `${st.qtdeMateriaisAtencao} material(is) cobertos só com PC do dia — clique para detalhar`;
+  }
+  return 'Materiais OK neste dia — clique para ver';
+}
+
+function SemaforoMateriais({
+  status,
+  title,
+  onClick,
+}: {
+  status: StatusMaterialDia | undefined;
+  title: string;
+  onClick: () => void;
+}) {
+  const cor =
+    status === 'falta'
+      ? 'bg-red-400 ring-red-200'
+      : status === 'atencao'
+        ? 'bg-amber-300 ring-amber-100'
+        : status === 'ok'
+          ? 'bg-emerald-400 ring-emerald-100'
+          : 'bg-slate-400/70 ring-slate-200';
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      title={title}
+      className={`ml-0.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ${cor} hover:scale-125`}
+      aria-label={title}
+    />
+  );
+}
+
 export default function CalendarioProducaoModal({
   linhas,
   sim,
@@ -234,11 +288,6 @@ export default function CalendarioProducaoModal({
     return linhas.filter((row) => pdPassaFiltro(pdDaLinha(row), pdsSelecionados));
   }, [linhas, pdsSelecionados]);
 
-  const dados = useMemo(
-    () => computarCalendarioProducao(linhasFiltradas, sim, baseline, (row) => getQtdeLinha(row)),
-    [linhasFiltradas, sim, baseline, getQtdeLinha]
-  );
-
   const maxProducaoNormais = useMemo(
     () => maxDataProducaoCarradasNormais(linhas, sim, baseline),
     [linhas, sim, baseline]
@@ -251,6 +300,15 @@ export default function CalendarioProducaoModal({
     () => dataProducaoCarradaEmFormacaoApartirDe(maxProducaoNormais),
     [maxProducaoNormais]
   );
+
+  const dados = useMemo(
+    () =>
+      computarCalendarioProducao(linhasFiltradas, sim, baseline, (row) => getQtdeLinha(row), {
+        dataInserirRomaneio,
+        dataEmFormacao,
+      }),
+    [linhasFiltradas, sim, baseline, getQtdeLinha, dataInserirRomaneio, dataEmFormacao]
+  );
   const [drill, setDrill] = useState<Drill>({ nivel: 'pivot' });
   const [pedidoModal, setPedidoModal] = useState<{
     linha: TooltipDetalheRow;
@@ -261,6 +319,96 @@ export default function CalendarioProducaoModal({
   const [escolhaEscopoPd, setEscolhaEscopoPd] = useState<string | null>(null);
   const [setorDetalhe, setSetorDetalhe] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [vistaCalendario, setVistaCalendario] = useState<'producao' | 'materiais'>('producao');
+  const [dispMateriais, setDispMateriais] = useState<DisponibilidadeMateriaisSintetica | null>(null);
+  const [dispCarregando, setDispCarregando] = useState(false);
+  const [dispErro, setDispErro] = useState<string | null>(null);
+  const [materiaisDiaIso, setMateriaisDiaIso] = useState<string | null>(null);
+  const [horizonteItem, setHorizonteItem] = useState<{
+    codigo: string;
+    idProduto: number | null;
+    descricao: string;
+  } | null>(null);
+  const materiaisDiaCacheRef = useRef(new Map<string, MaterialDiaCalendario[]>());
+  const horizonteCacheRef = useRef(
+    new Map<
+      string,
+      {
+        idProduto: number;
+        codigo: string;
+        descricao: string;
+        saldoInicial: number;
+        dias: import('../../api/sequenciamentoCarradas').HorizonteDiaCalendario[];
+        origens: import('../../api/sequenciamentoCarradas').OrigemConsumoCalendario[];
+      }
+    >()
+  );
+
+  const demandaMateriais = useMemo(
+    () => montarDemandaMateriaisDoCalendario(dados.detalhes),
+    [dados.detalhes]
+  );
+  const demandaMateriaisKey = useMemo(
+    () =>
+      JSON.stringify(
+        demandaMateriais.map((d) => [d.codigoPa, d.dataIso, d.qtde, d.pd ?? '', d.setor ?? ''])
+      ),
+    [demandaMateriais]
+  );
+
+  // Debounce ao filtrar pedido: evita 2 consultas Nomus em paralelo (ECONNRESET).
+  const [demandaKeyConsulta, setDemandaKeyConsulta] = useState(demandaMateriaisKey);
+  const demandaRef = useRef(demandaMateriais);
+  demandaRef.current = demandaMateriais;
+  useEffect(() => {
+    const t = window.setTimeout(() => setDemandaKeyConsulta(demandaMateriaisKey), 280);
+    return () => window.clearTimeout(t);
+  }, [demandaMateriaisKey]);
+
+  useEffect(() => {
+    materiaisDiaCacheRef.current.clear();
+    horizonteCacheRef.current.clear();
+    setDispErro(null);
+    const demanda = demandaRef.current;
+    if (demanda.length === 0) {
+      setDispMateriais(null);
+      setDispCarregando(false);
+      return;
+    }
+    const ac = new AbortController();
+    let cancelled = false;
+    setDispMateriais(null);
+    setDispCarregando(true);
+    void consultarDisponibilidadeMateriaisSintetica(demanda, { signal: ac.signal })
+      .then((r) => {
+        if (cancelled || ac.signal.aborted) return;
+        setDispCarregando(false);
+        if (r.error) {
+          setDispErro(r.error);
+          setDispMateriais(null);
+          return;
+        }
+        setDispMateriais(r.data ?? null);
+      })
+      .catch((err: unknown) => {
+        if (cancelled || ac.signal.aborted) return;
+        setDispCarregando(false);
+        const msg = err instanceof Error ? err.message : String(err ?? '');
+        if (/abort|AbortError/i.test(msg)) return;
+        setDispErro(msg || 'Falha ao consultar disponibilidade de materiais.');
+        setDispMateriais(null);
+      });
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [demandaKeyConsulta]);
+
+  const statusPorDataMap = useMemo(() => {
+    const m = new Map<string, StatusPorDataMateriais>();
+    for (const s of dispMateriais?.statusPorData ?? []) m.set(s.data, s);
+    return m;
+  }, [dispMateriais]);
 
   const colunas = useMemo(() => montarEixoDatasCalendario(dados.totalPorData), [dados.totalPorData]);
 
@@ -304,6 +452,32 @@ export default function CalendarioProducaoModal({
     getCellText,
     valueForSort,
     defaultSortLevels: [],
+  });
+
+  const criticosRows = dispMateriais?.materiaisCriticos ?? [];
+  const CRITICOS_COLS = ['codigo', 'descricao', 'primeiraDataFalta', 'falta'] as const;
+  const gradeCriticos = useGradeFiltrosExcel<MaterialCriticoCalendario>({
+    rows: criticosRows,
+    columnIds: [...CRITICOS_COLS],
+    getCellText: (row, colId) => {
+      if (colId === 'codigo') return row.codigo;
+      if (colId === 'descricao') return row.descricao || '';
+      if (colId === 'primeiraDataFalta') return formatDataCurta(row.primeiraDataFalta);
+      if (colId === 'falta') {
+        return row.faltaNaPrimeiraData.toLocaleString('pt-BR', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        });
+      }
+      return '';
+    },
+    valueForSort: (row, colId) => {
+      if (colId === 'falta') return row.faltaNaPrimeiraData;
+      if (colId === 'primeiraDataFalta') return row.primeiraDataFalta;
+      if (colId === 'descricao') return row.descricao || '';
+      return row.codigo;
+    },
+    defaultSortLevels: [{ id: 'descricao', dir: 'asc' }],
   });
 
   const totais = useMemo(() => {
@@ -417,6 +591,14 @@ export default function CalendarioProducaoModal({
   const emDrill = drill.nivel !== 'pivot';
 
   const handleEscape = useCallback(() => {
+    if (horizonteItem) {
+      setHorizonteItem(null);
+      return;
+    }
+    if (materiaisDiaIso) {
+      setMateriaisDiaIso(null);
+      return;
+    }
     if (pedidoAjustePrevisao) {
       setPedidoAjustePrevisao(null);
       return;
@@ -437,12 +619,28 @@ export default function CalendarioProducaoModal({
       grade.fecharFiltroExcel();
       return;
     }
+    if (gradeCriticos.colunaFiltroAberta) {
+      gradeCriticos.fecharFiltroExcel();
+      return;
+    }
     if (drill.nivel !== 'pivot') {
       voltarNivel();
       return;
     }
     onClose();
-  }, [pedidoAjustePrevisao, escolhaEscopoPd, pedidoModal, setorDetalhe, grade, drill.nivel, voltarNivel, onClose]);
+  }, [
+    horizonteItem,
+    materiaisDiaIso,
+    pedidoAjustePrevisao,
+    escolhaEscopoPd,
+    pedidoModal,
+    setorDetalhe,
+    grade,
+    gradeCriticos,
+    drill.nivel,
+    voltarNivel,
+    onClose,
+  ]);
 
   const abrirModalPedido = useCallback(
     (pd: string) => {
@@ -602,7 +800,10 @@ export default function CalendarioProducaoModal({
     const weekend = col?.tipo === 'data' && isFimDeSemana(col.iso);
     const ocioso = col?.tipo === 'ocioso';
     const label = isSetor ? 'Setor de produção' : isTotal ? 'Total Geral' : col ? labelColuna(col) : colId;
-    const title = isSetor || isTotal ? label : col ? tituloColuna(col) : label;
+    const st = col?.tipo === 'data' ? statusPorDataMap.get(col.iso) : undefined;
+    const titleBase = isSetor || isTotal ? label : col ? tituloColuna(col) : label;
+    const title =
+      col?.tipo === 'data' ? `${titleBase} · ${tituloStatusMateriais(st)}` : titleBase;
     return (
       <th
         key={colId}
@@ -623,6 +824,13 @@ export default function CalendarioProducaoModal({
           >
             {label}
           </span>
+          {col?.tipo === 'data' && (
+            <SemaforoMateriais
+              status={st?.status}
+              title={tituloStatusMateriais(st)}
+              onClick={() => setMateriaisDiaIso(toISODate(col.iso) || col.iso)}
+            />
+          )}
           {!ocioso && (
             <GradeFiltroCabecalhoBtn
               ativo={grade.colunaComFiltroAtivo(colId)}
@@ -730,8 +938,44 @@ export default function CalendarioProducaoModal({
                 </>
               )}
             </span>
+            <span className="text-slate-500 dark:text-slate-400">
+              Semáforo nas datas: disponibilidade de materiais (almox secundário + PC)
+              {dispCarregando
+                ? ' — consultando…'
+                : dispMateriais?.consultadoEm
+                  ? ` — ${formatGeradoEmLegenda(dispMateriais.consultadoEm)}`
+                  : ''}
+              {dispErro ? ` — erro: ${dispErro}` : ''}.
+            </span>
           </div>
           <div className="flex flex-wrap items-end gap-2">
+            <div className="inline-flex rounded-lg border border-slate-300 p-0.5 dark:border-slate-600">
+              <button
+                type="button"
+                onClick={() => setVistaCalendario('producao')}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                  vistaCalendario === 'producao'
+                    ? 'bg-primary-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'
+                }`}
+              >
+                Produção
+              </button>
+              <button
+                type="button"
+                onClick={() => setVistaCalendario('materiais')}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                  vistaCalendario === 'materiais'
+                    ? 'bg-primary-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'
+                }`}
+              >
+                Materiais críticos
+                {(dispMateriais?.materiaisCriticos.length ?? 0) > 0
+                  ? ` (${dispMateriais!.materiaisCriticos.length})`
+                  : ''}
+              </button>
+            </div>
             <div className="min-w-[11rem] max-w-[16rem]">
               <MultiSelectWithSearch
                 label="Pedido"
@@ -808,7 +1052,7 @@ export default function CalendarioProducaoModal({
           </div>
         )}
 
-        {drill.nivel === 'pivot' && grade.temFiltrosOuOrdem && (
+        {drill.nivel === 'pivot' && vistaCalendario === 'producao' && grade.temFiltrosOuOrdem && (
           <div className="flex shrink-0 items-center justify-end border-b border-slate-200 px-4 py-1.5 dark:border-slate-600">
             <button
               type="button"
@@ -821,7 +1065,160 @@ export default function CalendarioProducaoModal({
         )}
 
         <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-auto p-4">
+          {drill.nivel === 'pivot' && vistaCalendario === 'materiais' && (
+            <div className="space-y-3">
+              {dispCarregando && (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Consultando disponibilidade de materiais…
+                </p>
+              )}
+              {dispErro && (
+                <p className="text-sm text-red-600 dark:text-red-400">{dispErro}</p>
+              )}
+              {!dispCarregando && !dispErro && (dispMateriais?.materiaisCriticos.length ?? 0) === 0 && (
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  {demandaMateriais.length === 0 ? (
+                    <>
+                      Sem demanda de produção no calendário para analisar materiais.
+                    </>
+                  ) : (dispMateriais?.qtdeMateriaisEscopo ?? 0) === 0 ? (
+                    <>
+                      Nenhum componente de almox secundário (setor 2, sem Matéria Prima) na BOM
+                      dos produtos do calendário. O semáforo só cobre esses materiais.
+                    </>
+                  ) : (
+                    <>
+                      Nenhum material com falta no horizonte ({dispMateriais!.qtdeMateriaisEscopo}{' '}
+                      material(is) de almox secundário cobertos por saldo e/ou PC).
+                    </>
+                  )}
+                </p>
+              )}
+              {!dispCarregando && (dispMateriais?.materiaisCriticos.length ?? 0) > 0 && (
+                <div className="space-y-2">
+                  {gradeCriticos.temFiltrosOuOrdem && (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={gradeCriticos.limparFiltrosGrade}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        Limpar filtros/ordem
+                      </button>
+                    </div>
+                  )}
+                  <div ref={gradeCriticos.tableScrollRef} className="overflow-auto">
+                    <table className="w-full max-w-4xl border-collapse text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/50">
+                          {(
+                            [
+                              ['codigo', 'Código', false],
+                              ['descricao', 'Descrição', false],
+                              ['primeiraDataFalta', '1ª data falta', false],
+                              ['falta', 'Falta', true],
+                            ] as const
+                          ).map(([colId, label, numeric]) => (
+                            <th
+                              key={colId}
+                              className={`${TH} ${numeric ? 'text-right' : 'text-left'}`}
+                            >
+                              <div
+                                className={`flex items-center gap-1 ${numeric ? 'justify-end' : 'justify-between'}`}
+                              >
+                                <span>{label}</span>
+                                <GradeFiltroCabecalhoBtn
+                                  ativo={gradeCriticos.colunaComFiltroAtivo(colId)}
+                                  onClick={(e) => gradeCriticos.abrirFiltroExcel(colId, e)}
+                                />
+                              </div>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {gradeCriticos.rowsExibidas.map((m) => (
+                          <tr key={m.codigo} className="border-b border-slate-100 dark:border-slate-700">
+                            <td className={TD}>
+                              <GradeCelulaModalBtn
+                                onClick={() =>
+                                  setHorizonteItem({
+                                    codigo: m.codigo,
+                                    idProduto: m.idProduto,
+                                    descricao: m.descricao,
+                                  })
+                                }
+                                title="Ver horizonte do material"
+                                align="left"
+                              >
+                                {m.codigo}
+                              </GradeCelulaModalBtn>
+                            </td>
+                            <td className={`${TD} max-w-[16rem] truncate`} title={m.descricao}>
+                              {m.descricao || '—'}
+                            </td>
+                            <td className={TD}>
+                              <GradeCelulaModalBtn
+                                onClick={() =>
+                                  setMateriaisDiaIso(
+                                    toISODate(m.primeiraDataFalta) || m.primeiraDataFalta
+                                  )
+                                }
+                                title="Ver materiais deste dia"
+                                align="left"
+                              >
+                                {formatDataCurta(m.primeiraDataFalta)}
+                              </GradeCelulaModalBtn>
+                            </td>
+                            <td
+                              className={`${TD} text-right tabular-nums text-red-700 dark:text-red-300`}
+                            >
+                              {m.faltaNaPrimeiraData.toLocaleString('pt-BR', {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {gradeCriticos.colunaFiltroAberta && gradeCriticos.filtroAbertoRect && (
+                    <GradeFiltroExcelPortal
+                      colunaAberta={gradeCriticos.colunaFiltroAberta}
+                      rect={gradeCriticos.filtroAbertoRect}
+                      dropdownRef={gradeCriticos.filtroDropdownRef}
+                      excelFilterDrafts={gradeCriticos.excelFilterDrafts}
+                      setExcelFilterDrafts={gradeCriticos.setExcelFilterDrafts}
+                      valoresUnicosPorColuna={gradeCriticos.valoresUnicosPorColuna}
+                      onSortAsc={(colId) => {
+                        gradeCriticos.setSortState({ key: colId, direction: 'asc' });
+                        gradeCriticos.setSortLevels([]);
+                        gradeCriticos.fecharFiltroExcel();
+                      }}
+                      onSortDesc={(colId) => {
+                        gradeCriticos.setSortState({ key: colId, direction: 'desc' });
+                        gradeCriticos.setSortLevels([]);
+                        gradeCriticos.fecharFiltroExcel();
+                      }}
+                      onAplicar={gradeCriticos.aplicarFiltroExcel}
+                      onCancelar={gradeCriticos.fecharFiltroExcel}
+                      sortAscLabel={
+                        gradeCriticos.colunaFiltroAberta === 'falta' ? 'Menor para Maior' : undefined
+                      }
+                      sortDescLabel={
+                        gradeCriticos.colunaFiltroAberta === 'falta' ? 'Maior para Menor' : undefined
+                      }
+                      showNumericFilters={gradeCriticos.colunaFiltroAberta === 'falta'}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {drill.nivel === 'pivot' &&
+            vistaCalendario === 'producao' &&
             (colunas.length === 0 ? (
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Nenhum item com data de produção ou previsão atual para montar o calendário.
@@ -1184,6 +1581,31 @@ export default function CalendarioProducaoModal({
             setToast(msg);
             setTimeout(() => setToast(null), 5000);
           }}
+        />
+      )}
+
+      {materiaisDiaIso && (
+        <CalendarioMateriaisDiaModal
+          open
+          dataIso={materiaisDiaIso}
+          demanda={demandaMateriais}
+          onClose={() => setMateriaisDiaIso(null)}
+          onAbrirItem={(codigo, idProduto, descricao) =>
+            setHorizonteItem({ codigo, idProduto, descricao })
+          }
+          cacheRef={materiaisDiaCacheRef}
+        />
+      )}
+
+      {horizonteItem && (
+        <CalendarioMaterialHorizonteModal
+          open
+          codigo={horizonteItem.codigo}
+          idProdutoHint={horizonteItem.idProduto}
+          descricaoHint={horizonteItem.descricao}
+          demanda={demandaMateriais}
+          onClose={() => setHorizonteItem(null)}
+          cacheRef={horizonteCacheRef}
         />
       )}
 

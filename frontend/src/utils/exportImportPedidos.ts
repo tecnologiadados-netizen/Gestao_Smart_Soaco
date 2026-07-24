@@ -1,15 +1,22 @@
 /**
  * Exportação e importação de pedidos em XLSX.
  * Export: colunas conforme config (exceto Emissao, Data de entrega, Previsao na posição original);
- *         depois Igual?; Emissao, Data original, Previsão atual (última no histórico), Nova previsão (em branco); Motivo; Previsão Confiável.
+ *         depois Igual?; Emissao, Data original, Previsão atual, Data de produção (real; vazia se Prev.),
+ *         Nova previsão (em branco); Motivo; Previsão Confiável.
  * Datas em formato dd/MM/yyyy (tipo data, sem hora).
- * Import: lê id_pedido (idChave), Nova previsão (valor a aplicar), Previsão atual (valor no sistema para validação), Motivo.
+ * Import: previsão e/ou data de produção de forma independente (célula vazia de produção = não altera).
  */
 
 import { Workbook, type Worksheet } from 'exceljs';
 import * as XLSX from 'xlsx';
 import type { Pedido } from '../api/pedidos';
 import { parsePrevisaoConfiavel, previsaoConfiavelValorInvalido } from './previsaoConfiavel';
+import {
+  dataProducaoCarradaEmFormacaoApartirDe,
+  maxDataProducaoPedidosNormais,
+  resolverDataProducaoExibicaoGerenciador,
+} from './dataProducaoGerenciador';
+import { LABEL_CARRADA_EM_FORMACAO } from './rotaCarrada';
 
 /** Valor de célula na exportação: `null` = célula vazia real no Excel (não string ""). */
 export type ExportCellValue = string | number | Date | null;
@@ -139,7 +146,15 @@ const EXPORT_COLUMNS_CONFIG: { key: string; hidden: boolean }[] = [
 ];
 
 /** Colunas de data: formato dd/MM/yyyy (aplicado às colunas de data no export). */
-const DATE_COLUMN_KEYS = new Set(['Emissao', 'Data de entrega', 'Previsao', 'Nova previsão', 'Data original', 'Previsão atual']);
+const DATE_COLUMN_KEYS = new Set([
+  'Emissao',
+  'Data de entrega',
+  'Previsao',
+  'Nova previsão',
+  'Data original',
+  'Previsão atual',
+  'Data de produção',
+]);
 /** Colunas de quantidade (Qtde): formato geral. Aplica a visíveis e ocultas. */
 const QTDE_COLUMN_KEYS = new Set([
   'id', 'regra', 'Qtde pedida', 'Qtde atendida', 'Pendente', 'Qtde Romaneada', 'Quantidade Pedidos', 'Qtde Pendente Real',
@@ -185,13 +200,14 @@ export const GRADE_EXPORT_COLUMNS = [
   'Card',
 ] as const;
 
-/** Cabeçalhos: config exceto Emissao/Data de entrega/Previsao; depois Igual?; Emissao, Data original, Previsão atual (última no histórico), Nova previsão (em branco); Motivo; Observação. */
+/** Cabeçalhos: config exceto Emissao/Data de entrega/Previsao; depois Igual?; Emissao, Data original, Previsão atual, Data de produção, Nova previsão (em branco); Motivo; Observação. */
 export const HEADERS = [
   ...EXPORT_COLUMNS_CONFIG.map((c) => c.key).filter((k) => !COLUMNS_MOVED.has(k)),
   'Igual?',
   'Emissao',
   'Data original',
   'Previsão atual',
+  'Data de produção',
   'Nova previsão',
   'Motivo',
   'Previsão Confiável',
@@ -225,14 +241,18 @@ function normalizeNumValue(key: string, val: unknown): string | number | Date | 
 }
 
 export function pedidosToSheetRows(pedidos: Pedido[]): Record<string, ExportCellValue>[] {
+  const dataFormacao = dataProducaoCarradaEmFormacaoApartirDe(maxDataProducaoPedidosNormais(pedidos));
   return pedidos.map((p) => {
-    const previsaoAtual = toDate(p.previsao_entrega_atualizada ?? p.previsao_entrega ?? '');
+    const exib = resolverDataProducaoExibicaoGerenciador(p, dataFormacao);
+    const previsaoAtual = exib.carradaEmFormacao ? null : toDate(exib.previsaoAtual);
     const row: Record<string, ExportCellValue> = {};
     for (const { key } of EXPORT_COLUMNS_CONFIG) {
       if (key === 'idChave') {
         row[key] = exportCell(String(p.id_pedido ?? ''));
       } else if (key === 'Previsao') {
-        row[key] = toExcelDateSerial(previsaoAtual);
+        row[key] = exib.carradaEmFormacao
+          ? LABEL_CARRADA_EM_FORMACAO
+          : toExcelDateSerial(previsaoAtual);
       } else if (key === 'Analise') {
         row[key] = null;
       } else if (key === 'Card') {
@@ -252,7 +272,17 @@ export function pedidosToSheetRows(pedidos: Pedido[]): Record<string, ExportCell
     row['Emissao'] = emissaoVal ? toExcelDateSerial(emissaoVal) : null;
     const dataEntregaVal = toDateValue('Data de entrega', p['Data de entrega' as keyof Pedido] ?? getField(p, ['Data de entrega']));
     row['Data original'] = dataEntregaVal ? toExcelDateSerial(dataEntregaVal) : null;
-    row['Previsão atual'] = toExcelDateSerial(previsaoAtual);
+    row['Previsão atual'] = exib.carradaEmFormacao
+      ? LABEL_CARRADA_EM_FORMACAO
+      : toExcelDateSerial(previsaoAtual);
+    // Produção real; formação sem real → data efetiva (max+30); badge Prev. → vazia.
+    if (exib.carradaEmFormacao) {
+      row['Data de produção'] = toExcelDateSerial(toDate(exib.dataExibicao));
+    } else if (exib.dataProducaoReal) {
+      row['Data de produção'] = toExcelDateSerial(toDate(exib.dataProducaoReal));
+    } else {
+      row['Data de produção'] = null;
+    }
     row['Nova previsão'] = null;
     row['Motivo'] = null;
     row['Previsão Confiável'] = 'SIM';
@@ -275,8 +305,10 @@ const GRADE_DATE_KEYS = new Set(['Emissao', 'Data original', 'Previsão anterior
 
 /** Converte pedidos em linhas apenas com as colunas da grade (Exportar Grade). */
 export function pedidosToGradeRows(pedidos: Pedido[]): Record<string, ExportCellValue>[] {
+  const dataFormacao = dataProducaoCarradaEmFormacaoApartirDe(maxDataProducaoPedidosNormais(pedidos));
   return pedidos.map((p) => {
-    const previsaoAtual = toDate(p.previsao_entrega_atualizada ?? p.previsao_entrega ?? '');
+    const exib = resolverDataProducaoExibicaoGerenciador(p, dataFormacao);
+    const previsaoAtual = exib.carradaEmFormacao ? null : toDate(exib.previsaoAtual);
     const previsaoAnterior = toDate(p.previsao_anterior ?? p.previsao_entrega ?? '');
     const dataOriginal = toDateValue('Data de entrega', p['Data de entrega' as keyof Pedido] ?? getField(p, ['Data de entrega']));
     const emissaoVal = p.Emissao ?? getField(p, ['Emissao']);
@@ -289,7 +321,9 @@ export function pedidosToGradeRows(pedidos: Pedido[]): Record<string, ExportCell
       } else if (key === 'Previsão anterior') {
         row[key] = toExcelDateSerial(previsaoAnterior);
       } else if (key === 'Previsão atual') {
-        row[key] = toExcelDateSerial(previsaoAtual);
+        row[key] = exib.carradaEmFormacao
+          ? LABEL_CARRADA_EM_FORMACAO
+          : toExcelDateSerial(previsaoAtual);
       } else if (key === 'Emissao') {
         const dateVal = toDateValue('Emissao', emissaoVal);
         row[key] = dateVal ? toExcelDateSerial(dateVal) : null;
@@ -502,6 +536,11 @@ export interface LinhaImportacao {
   igual?: boolean;
   /** Coluna Previsão Confiável (SIM/NÃO). Quando false, não exibe no histórico Comunicação Interna. */
   previsao_confiavel?: boolean;
+  /**
+   * Coluna Data de produção (ISO YYYY-MM-DD).
+   * Vazia = não altera a data gravada no sistema.
+   */
+  data_producao?: string;
 }
 
 /** Lê coluna do Excel por nome exato ou prefixo (cabeçalhos truncados pelo Excel). */
@@ -535,7 +574,7 @@ function normalizarDataExcel(val: unknown): string {
   return ddmm ? `${ddmm[3]}-${ddmm[2].padStart(2, '0')}-${ddmm[1].padStart(2, '0')}` : s;
 }
 
-/** Lê um arquivo XLSX e retorna linhas com id_pedido, nova_previsao, motivo, previsao_atual. */
+/** Lê um arquivo XLSX e retorna linhas com id_pedido, nova_previsao, data_producao, motivo, previsao_atual. */
 export function parsePedidosXlsxForImport(file: File): Promise<LinhaImportacao[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -623,9 +662,16 @@ export function parsePedidosXlsxForImport(file: File): Promise<LinhaImportacao[]
             linhasPrevisaoConfiavelInvalida.push(rowIndex);
           }
           const previsao_confiavel = parsePrevisaoConfiavel(previsaoConfiavelRaw, true);
+          const dataProducaoRaw =
+            valorColunaExcel(
+              row,
+              ['Data de produção', 'Data de producao', 'data_producao'],
+              ['data de produ', 'data de produc']
+            ) ?? '';
           if (String(id).trim()) {
             const nova = normalizarDataExcel(novaRaw);
             const previsao_atual = normalizarDataExcel(atualRaw);
+            const data_producao = normalizarDataExcel(dataProducaoRaw);
             linhas.push({
               id_pedido: String(id).trim(),
               pd: pdStr || undefined,
@@ -638,6 +684,7 @@ export function parsePedidosXlsxForImport(file: File): Promise<LinhaImportacao[]
               rota: rotaStr,
               igual,
               previsao_confiavel,
+              data_producao: data_producao || undefined,
             });
           }
         }

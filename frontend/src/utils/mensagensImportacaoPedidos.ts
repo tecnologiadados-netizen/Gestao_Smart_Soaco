@@ -25,7 +25,8 @@ export function bloqueioImportacaoSycro(pds: string[]): ImportacaoBloqueioDetalh
 export function bloqueioImportacaoValidacao(partes: string[]): ImportacaoBloqueioDetalhe {
   return {
     titulo: 'Upload bloqueado',
-    motivo: 'O arquivo não atende às regras de importação de previsão. Corrija os pontos abaixo e envie o arquivo novamente.',
+    motivo:
+      'O arquivo não atende às regras de importação (previsão e/ou data de produção). Corrija os pontos abaixo e envie o arquivo novamente.',
     itens: partes.length > 0 ? { rotulo: 'Problemas encontrados', valores: partes } : undefined,
     acoes: ['Ajuste o XLSX conforme as mensagens acima e tente importar de novo.'],
   };

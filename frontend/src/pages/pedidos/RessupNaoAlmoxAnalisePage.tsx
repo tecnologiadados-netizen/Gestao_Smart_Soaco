@@ -89,7 +89,7 @@ import {
 } from '../../utils/ressupNaoAlmoxCatalogoRuntime';
 import {
   estoqueExibicaoGrade,
-  somaSetoresErp,
+  somaSetoresErpSemPa,
   temEstoqueProducaoManual,
 } from '../../utils/ressupNaoAlmoxCalculos';
 import {
@@ -785,7 +785,8 @@ export default function RessupNaoAlmoxAnalisePage() {
           estoqueCacheRef.current.set(cacheKey, r);
           cached = r;
         }
-        const erpTotal = somaSetoresErp(cached.setores) + somaSetoresErp(cached.setoresPintado);
+        const erpTotal =
+          somaSetoresErpSemPa(cached.setores) + somaSetoresErpSemPa(cached.setoresPintado);
         setUserInputs((prev) => {
           const cur = prev[rowKey];
           if (cur?.estoqueTotal != null && Number.isFinite(cur.estoqueTotal)) return prev;
@@ -3199,7 +3200,6 @@ export default function RessupNaoAlmoxAnalisePage() {
         descricao={empenhoModal?.descricao ?? ''}
         saldoAtual={empenhoModal?.saldoAtual ?? 0}
         considerarRequisicoes={considerarRequisicoes}
-        modoNaoAlmox
         onClose={() => setEmpenhoModal(null)}
         cacheRef={empenhoCacheRef}
       />

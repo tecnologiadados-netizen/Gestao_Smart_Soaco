@@ -15,6 +15,10 @@ import {
 import { invalidateSycroCardSinalizacaoCache } from '../services/sycroOrderPedidoSinalizacao.js';
 import { isCarradaEmFormacao, LABEL_CARRADA_EM_FORMACAO, rotaFromPedidoRow } from '../utils/rotaCarrada.js';
 
+function isPedidoEmFormacaoRow(r: Record<string, unknown>): boolean {
+  return isCarradaEmFormacao(rotaFromPedidoRow(r)) || r['romaneio_como_formacao'] === true;
+}
+
 /** Número que recebe notificação de novo pedido SycroOrder (DDD + número, sem 55) */
 type OrderStatus = 'PENDING' | 'FINISHED' | 'ESCALATED';
 
@@ -42,6 +46,16 @@ function formatarDataBR(iso: string): string {
   const s = String(iso).trim().slice(0, 10);
   const [y, m, d] = s.split('-');
   return d && m && y ? `${d}/${m}/${y}` : s;
+}
+
+/** Data civil (YYYY-MM-DD) em America/Sao_Paulo a partir de um DateTime do histórico. */
+function toLocalIsoDateBr(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
 }
 
 /** Resolve usuário atual por login; retorna id, nome e login ou null */
@@ -257,7 +271,7 @@ function buildCarradasInfo(rows: Array<Record<string, unknown>>): Array<{ rota: 
   const byRota = new Map<string, { previsoes: string[]; codigos: string[]; emFormacao: boolean }>();
   for (const r of rows) {
     const rota = rotaDisplayKeyFromRow(r);
-    const emFormacao = isCarradaEmFormacao(rota);
+    const emFormacao = isPedidoEmFormacaoRow(r);
     const previsao = emFormacao ? '' : toIsoDate(r['previsao_entrega_atualizada'] ?? r['previsao_entrega']);
     const cod = String(r['Cod'] ?? r['cod'] ?? '').trim();
     const cur = byRota.get(rota) ?? { previsoes: [], codigos: [], emFormacao };
@@ -400,8 +414,7 @@ export async function getPedidosErp(req: Request, res: Response): Promise<void> 
       for (const row of gerenciadorList as Array<Record<string, unknown>>) {
         const pd = String(row['PD'] ?? '').trim();
         if (!pd) continue;
-        const rota = rotaFromPedidoRow(row);
-        if (isCarradaEmFormacao(rota)) {
+        if (isPedidoEmFormacaoRow(row)) {
           pdTemCarradaEmFormacao.add(pd);
           continue;
         }
@@ -610,6 +623,24 @@ export async function getOrders(req: Request, res: Response): Promise<void> {
       }
     }
 
+    /** Última marcação TAG_DISPONIVEL_TRUE por card (capa: "Disponível desde"). */
+    const disponivelDesdeByOrderId = new Map<number, string>();
+    const disponivelIds = ordersParaListar.filter((o) => Number(o.tag_disponivel) === 1).map((o) => o.id);
+    if (disponivelIds.length > 0) {
+      const tagTrueRows = await prisma.sycroOrderHistory.findMany({
+        where: {
+          order_id: { in: disponivelIds },
+          action_type: 'TAG_DISPONIVEL_TRUE',
+        },
+        orderBy: { created_at: 'desc' },
+        select: { order_id: true, created_at: true },
+      });
+      for (const row of tagTrueRows) {
+        if (disponivelDesdeByOrderId.has(row.order_id)) continue;
+        disponivelDesdeByOrderId.set(row.order_id, toLocalIsoDateBr(row.created_at));
+      }
+    }
+
     const list = ordersParaListar.map((o) => {
       const lastH = o.history[0];
       const isFinished = String(o.status) === 'FINISHED';
@@ -622,9 +653,7 @@ export async function getOrders(req: Request, res: Response): Promise<void> {
       const selectedItemIds = parseJsonArray((o as unknown as { item_ids_json?: string | null }).item_ids_json);
       const itemCodesJson = (o as unknown as { item_codes_json?: string | null }).item_codes_json;
       const relevantRows = resolveRelevantRowsForCard(rows, selectedItemIds, itemCodesJson);
-      const relevantNaoFormacao = relevantRows.filter(
-        (r) => !isCarradaEmFormacao(rotaDisplayKeyFromRow(r))
-      );
+      const relevantNaoFormacao = relevantRows.filter((r) => !isPedidoEmFormacaoRow(r));
       const soEmFormacao = relevantRows.length > 0 && relevantNaoFormacao.length === 0;
       const dataOriginalIso = formatDateRangePtBr(
         relevantRows
@@ -661,6 +690,8 @@ export async function getOrders(req: Request, res: Response): Promise<void> {
         vendedor_name: vendedorNome,
         carradas_info: carradasInfo,
         tag_disponivel: !!o.tag_disponivel,
+        /** Data da marcação mais recente como disponível (histórico TAG_DISPONIVEL_TRUE). */
+        disponivel_desde: Number(o.tag_disponivel) === 1 ? (disponivelDesdeByOrderId.get(o.id) ?? null) : null,
         aguarda_resposta_pendente: isFinished
           ? false
           : Number((o as { aguarda_resposta_pendente?: number }).aguarda_resposta_pendente) === 1,

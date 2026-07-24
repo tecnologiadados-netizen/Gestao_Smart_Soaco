@@ -189,6 +189,29 @@ export function isTipoFCarradaParaRegra(tipoF: string, incluiInserirRomaneio: bo
   return false;
 }
 
+/** TipoF ou rótulo de rota "Inserir em Romaneio" / "4-Inserir em Romaneio". */
+export function isInserirEmRomaneioCategoria(texto: string): boolean {
+  const n = String(texto ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+  return n.includes('inserir em romaneio') || /^4\s*-?\s*inserir/.test(n);
+}
+
+/**
+ * Bifurcação Inserir em Romaneio pelo valor de corte:
+ * - abaixo do corte → tratar como carrada em formação
+ * - igual ou acima → emissão + dias da faixa ≥ corte
+ */
+export function classificarInserirRomaneioPorValor(
+  valorPedidoTotal: number,
+  config: RegraDataEntregaConfig | null
+): 'formacao' | 'regra_acima_corte' {
+  const c = (config ?? DEFAULT_REGRA_DATA_ENTREGA).carrada;
+  return valorPedidoTotal >= c.valorCorte ? 'regra_acima_corte' : 'formacao';
+}
+
 export async function obterVersoesParaClassificacao(): Promise<VersaoInterna[]> {
   return carregarVersoesInternas();
 }
