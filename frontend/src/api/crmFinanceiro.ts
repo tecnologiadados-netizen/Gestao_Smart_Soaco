@@ -161,6 +161,50 @@ export async function fetchCrmEmpresas(): Promise<EmpresaOption[]> {
   return Array.isArray(body) ? body : [];
 }
 
+export type ContaBancariaOption = {
+  id: number;
+  nome: string;
+};
+
+export async function fetchCrmContasBancarias(params?: {
+  q?: string;
+}): Promise<ContaBancariaOption[]> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/contas-bancarias${buildParams({
+      q: params?.q,
+    })}`,
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    data?: ContaBancariaOption[];
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao carregar contas bancárias');
+  }
+  return body.data ?? [];
+}
+
+export type PessoaLookupOption = {
+  id: number;
+  nome: string;
+  razaoSocial: string | null;
+  cnpjCpf: string | null;
+};
+
+export async function fetchCrmPessoasLookup(q?: string): Promise<PessoaLookupOption[]> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/pessoas-lookup${buildParams({ q: q || undefined })}`,
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    data?: PessoaLookupOption[];
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao buscar clientes');
+  }
+  return body.data ?? [];
+}
+
 export type AcaoPendenciaCredito =
   | 'CANCELADO'
   | 'PAUSADO'
@@ -627,6 +671,7 @@ export type RegistroInadimplente = {
   criadoPorLogin: string | null;
   createdAt: string;
   updatedAt: string;
+  contatosCount?: number;
 };
 
 export type RegistroInadimplenteInput = {
@@ -643,6 +688,23 @@ export type RegistroInadimplenteInput = {
   nfPd?: string | null;
   parcela?: string | null;
   obs?: string | null;
+};
+
+export type ContatoInadimplente = {
+  id: number;
+  registroId: number;
+  dataContato: string | null;
+  dataContatoBr: string | null;
+  texto: string;
+  origem: string;
+  criadoPorLogin: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ContatoInadimplenteInput = {
+  dataContato?: string | null;
+  texto: string;
 };
 
 export async function fetchCrmRegistroInadimplentes(params?: {
@@ -720,5 +782,70 @@ export async function deleteCrmRegistroInadimplente(id: number): Promise<void> {
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? 'Falha ao excluir registro');
+  }
+}
+
+export async function fetchCrmRegistroInadimplenteContatos(
+  registroId: number,
+): Promise<ContatoInadimplente[]> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/registro-inadimplentes/${registroId}/contatos`,
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    data?: ContatoInadimplente[];
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao carregar histórico de contatos');
+  }
+  return body.data ?? [];
+}
+
+export async function createCrmRegistroInadimplenteContato(
+  registroId: number,
+  payload: ContatoInadimplenteInput,
+): Promise<ContatoInadimplente> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/registro-inadimplentes/${registroId}/contatos`,
+    { method: 'POST', body: payload },
+  );
+  const body = (await res.json().catch(() => ({}))) as ContatoInadimplente & {
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao registrar contato');
+  }
+  return body;
+}
+
+export async function updateCrmRegistroInadimplenteContato(
+  registroId: number,
+  contatoId: number,
+  payload: ContatoInadimplenteInput,
+): Promise<ContatoInadimplente> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/registro-inadimplentes/${registroId}/contatos/${contatoId}`,
+    { method: 'PUT', body: payload },
+  );
+  const body = (await res.json().catch(() => ({}))) as ContatoInadimplente & {
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao atualizar contato');
+  }
+  return body;
+}
+
+export async function deleteCrmRegistroInadimplenteContato(
+  registroId: number,
+  contatoId: number,
+): Promise<void> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/registro-inadimplentes/${registroId}/contatos/${contatoId}`,
+    { method: 'DELETE' },
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? 'Falha ao excluir contato');
   }
 }

@@ -1,14 +1,28 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Pencil, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { History, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import {
   createCrmRegistroInadimplente,
   deleteCrmRegistroInadimplente,
+  fetchCrmContasBancarias,
+  fetchCrmEmpresas,
+  fetchCrmPessoasLookup,
   fetchCrmRegistroInadimplentes,
   updateCrmRegistroInadimplente,
+  type ContaBancariaOption,
+  type EmpresaOption,
   type RegistroInadimplente,
   type RegistroInadimplenteInput,
 } from '../../../../api/crmFinanceiro';
+import GradeFiltroCabecalhoBtn from '../../../../components/grade/GradeFiltroCabecalhoBtn';
+import GradeFiltroExcelPortal from '../../../../components/grade/GradeFiltroExcelPortal';
+import SingleSelectWithSearch, {
+  type OptionItem,
+} from '../../../../components/SingleSelectWithSearch';
+import { useGradeFiltrosExcel } from '../../../../hooks/useGradeFiltrosExcel';
+import { useColumnResize } from '../hooks/useColumnResize';
+import { EMPRESAS_PAINEL } from '../lib/empresaConfig';
+import ModalHistoricoContatosInadimplente from './ModalHistoricoContatosInadimplente';
 
 type FormState = {
   vencimento: string;
@@ -42,9 +56,130 @@ const EMPTY_FORM: FormState = {
   obs: '',
 };
 
+const COLUMN_IDS = [
+  'vencimento',
+  'pagamento',
+  'empresa',
+  'banco',
+  'tipo',
+  'cliente',
+  'status',
+  'serasa',
+  'vendedor',
+  'total',
+  'nfPd',
+  'parcela',
+  'obs',
+  'acoes',
+] as const;
+
+type ColumnId = (typeof COLUMN_IDS)[number];
+
+const FILTERABLE_IDS = COLUMN_IDS.filter((id) => id !== 'acoes');
+
+const COL_LABELS: Record<ColumnId, string> = {
+  vencimento: 'Vencimento',
+  pagamento: 'Pagamento',
+  empresa: 'Empresa',
+  banco: 'Banco',
+  tipo: 'Tipo',
+  cliente: 'Cliente',
+  status: 'Status',
+  serasa: 'Serasa',
+  vendedor: 'Vendedor',
+  total: 'Total',
+  nfPd: 'NF / PD',
+  parcela: 'Parcela',
+  obs: 'Obs',
+  acoes: 'Ações',
+};
+
+const DEFAULT_COLUMN_WIDTHS: Record<ColumnId, number> = {
+  vencimento: 88,
+  pagamento: 88,
+  empresa: 120,
+  banco: 100,
+  tipo: 100,
+  cliente: 160,
+  status: 80,
+  serasa: 64,
+  vendedor: 110,
+  total: 96,
+  nfPd: 72,
+  parcela: 64,
+  obs: 200,
+  acoes: 72,
+};
+
+const FLEX_WEIGHTS: Partial<Record<ColumnId, number>> = {
+  cliente: 2,
+  empresa: 1.2,
+  obs: 2.5,
+  banco: 1,
+  vendedor: 1,
+};
+
+const PAGE_SIZE = 80;
+const td = 'px-1.5 py-1 align-top';
+
 function moneyBr(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—';
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function sortDateBr(raw: string | null | undefined): string {
+  const s = String(raw ?? '').trim();
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (!m) return s.toLowerCase();
+  const dd = m[1]!.padStart(2, '0');
+  const mm = m[2]!.padStart(2, '0');
+  let yyyy = m[3]!;
+  if (yyyy.length === 2) yyyy = `20${yyyy}`;
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function cellText(row: RegistroInadimplente, col: ColumnId): string {
+  switch (col) {
+    case 'vencimento':
+      return row.vencimento?.trim() || '—';
+    case 'pagamento':
+      return row.pagamento?.trim() || '—';
+    case 'empresa':
+      return row.empresa?.trim() || '—';
+    case 'banco':
+      return row.banco?.trim() || '—';
+    case 'tipo':
+      return row.tipo?.trim() || '—';
+    case 'cliente':
+      return row.cliente?.trim() || '—';
+    case 'status':
+      return row.status?.trim() || '—';
+    case 'serasa':
+      return row.serasa?.trim() || '—';
+    case 'vendedor':
+      return row.vendedor?.trim() || '—';
+    case 'total':
+      return moneyBr(row.total);
+    case 'nfPd':
+      return row.nfPd?.trim() || '—';
+    case 'parcela':
+      return row.parcela?.trim() || '—';
+    case 'obs':
+      return (
+        row.obs?.trim() ||
+        ((row.contatosCount ?? 0) > 0 ? `${row.contatosCount} contato(s)` : '—')
+      );
+    case 'acoes':
+      return '';
+    default:
+      return '—';
+  }
+}
+
+function sortValue(row: RegistroInadimplente, col: ColumnId): string | number {
+  if (col === 'total') return row.total ?? Number.NEGATIVE_INFINITY;
+  if (col === 'vencimento' || col === 'pagamento') return sortDateBr(cellText(row, col));
+  return cellText(row, col).toLowerCase();
 }
 
 function toInput(form: FormState): RegistroInadimplenteInput {
@@ -108,43 +243,140 @@ function Field({
 const inputClass =
   'h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none ring-blue-600/30 focus:ring-2 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100';
 
+const fieldLabelClass =
+  'text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400';
+
+function optionFromTexto(texto: string): OptionItem | null {
+  const nome = texto.trim();
+  if (!nome) return null;
+  return { id: -1, nome };
+}
+
 export default function RegistroInadimplentesPanel() {
-  const [q, setQ] = useState('');
-  const [qApplied, setQApplied] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(50);
   const [rows, setRows] = useState<RegistroInadimplente[]>([]);
-  const [total, setTotal] = useState(0);
+  const [totalDb, setTotalDb] = useState(0);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<RegistroInadimplente | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [historicoRegistro, setHistoricoRegistro] = useState<RegistroInadimplente | null>(null);
+  const [empresasNomus, setEmpresasNomus] = useState<EmpresaOption[]>(EMPRESAS_PAINEL);
+  const [bancosNomus, setBancosNomus] = useState<ContaBancariaOption[]>([]);
+  const [bancosLoading, setBancosLoading] = useState(false);
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const { startResize, tableRef } = useColumnResize(COLUMN_IDS, DEFAULT_COLUMN_WIDTHS, {
+    storageKey: 'crm-registro-inadimplentes-cols-v1',
+    fillContainer: true,
+    flexColumnWeights: FLEX_WEIGHTS,
+    minWidthPx: 48,
+  });
+
+  const grade = useGradeFiltrosExcel<RegistroInadimplente>({
+    rows,
+    columnIds: [...FILTERABLE_IDS],
+    getCellText: (r, c) => cellText(r, c as ColumnId),
+    valueForSort: (r, c) => sortValue(r, c as ColumnId),
+    defaultSortLevels: [{ id: 'vencimento', dir: 'desc' }],
+  });
+
+  const totalPages = Math.max(1, Math.ceil(grade.rowsExibidas.length / PAGE_SIZE));
+
+  const paged = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return grade.rowsExibidas.slice(start, start + PAGE_SIZE);
+  }, [grade.rowsExibidas, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [grade.rowsExibidas.length]);
 
   const carregar = useCallback(async () => {
     setLoading(true);
     setErro('');
     try {
       const result = await fetchCrmRegistroInadimplentes({
-        q: qApplied,
-        page,
-        pageSize,
+        page: 1,
+        pageSize: 5000,
       });
       setRows(result.data);
-      setTotal(result.total);
+      setTotalDb(result.total);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao carregar.');
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, qApplied]);
+  }, []);
 
   useEffect(() => {
     void carregar();
   }, [carregar]);
+
+  useEffect(() => {
+    if (!formOpen) return;
+    let cancelled = false;
+    void fetchCrmEmpresas()
+      .then((emps) => {
+        if (!cancelled) setEmpresasNomus(emps.length ? emps : EMPRESAS_PAINEL);
+      })
+      .catch(() => {
+        if (!cancelled) setEmpresasNomus(EMPRESAS_PAINEL);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [formOpen]);
+
+  useEffect(() => {
+    if (!formOpen) return;
+    let cancelled = false;
+    setBancosLoading(true);
+    void fetchCrmContasBancarias()
+      .then((bancos) => {
+        if (!cancelled) setBancosNomus(bancos);
+      })
+      .catch(() => {
+        if (!cancelled) setBancosNomus([]);
+      })
+      .finally(() => {
+        if (!cancelled) setBancosLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [formOpen]);
+
+  const bancoOptions: OptionItem[] = useMemo(() => {
+    const list = bancosNomus.map((b) => ({
+      id: b.id,
+      nome: b.nome,
+    }));
+    const atual = form.banco.trim();
+    if (atual && !list.some((o) => o.nome.trim().toUpperCase() === atual.toUpperCase())) {
+      list.unshift({ id: -1, nome: atual });
+    }
+    return list;
+  }, [bancosNomus, form.banco]);
+
+  const empresaOptions = useMemo(() => {
+    const list = [...empresasNomus];
+    const atual = form.empresa.trim();
+    if (atual && !list.some((e) => e.nome.trim().toUpperCase() === atual.toUpperCase())) {
+      list.unshift({ id: -1, nome: atual });
+    }
+    return list;
+  }, [empresasNomus, form.empresa]);
+
+  const buscarClientesNomus = useCallback(async (term: string): Promise<OptionItem[]> => {
+    const rows = await fetchCrmPessoasLookup(term);
+    return rows.map((p) => ({
+      id: p.id,
+      nome: p.nome,
+      descricao: [p.razaoSocial, p.cnpjCpf].filter(Boolean).join(' · ') || null,
+    }));
+  }, []);
 
   function abrirNovo() {
     setEditing(null);
@@ -195,67 +427,49 @@ export default function RegistroInadimplentesPanel() {
   }
 
   const resumo = useMemo(() => {
-    const somaPagina = rows.reduce((acc, r) => acc + (r.total ?? 0), 0);
-    return { somaPagina };
-  }, [rows]);
+    const somaFiltrada = grade.rowsExibidas.reduce((acc, r) => acc + (r.total ?? 0), 0);
+    return { somaFiltrada };
+  }, [grade.rowsExibidas]);
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
             Registro de Inadimplentes
           </h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Histórico importado da planilha de vencidos e novos cadastros manuais.
+            Histórico importado da planilha de vencidos. Clique em Obs para ver e registrar contatos de
+            cobrança. Use ▾ no cabeçalho para filtrar/ordenar; arraste a borda da coluna para
+            redimensionar.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => void carregar()}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+            onClick={() => grade.limparFiltrosGrade()}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+            title="Limpar filtros e ordenação da grade"
           >
-            <RefreshCw className="size-4" />
+            Limpar filtros
+          </button>
+          <button
+            type="button"
+            onClick={() => void carregar()}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+          >
+            <RefreshCw className="size-3.5" />
             Atualizar
           </button>
           <button
             type="button"
             onClick={abrirNovo}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-700 px-4 text-sm font-semibold text-white shadow hover:bg-blue-800"
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-700 px-3 text-xs font-semibold text-white shadow hover:bg-blue-800"
           >
-            <Plus className="size-4" />
+            <Plus className="size-3.5" />
             Novo registro
           </button>
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[240px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                setPage(1);
-                setQApplied(q.trim());
-              }
-            }}
-            placeholder="Buscar cliente, empresa, status, NF/PD… (use % como curinga)"
-            className={`${inputClass} pl-9`}
-          />
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setPage(1);
-            setQApplied(q.trim());
-          }}
-          className="h-10 rounded-lg bg-slate-800 px-4 text-sm font-semibold text-white hover:bg-slate-900 dark:bg-slate-200 dark:text-slate-900"
-        >
-          Filtrar
-        </button>
       </div>
 
       {erro ? (
@@ -264,108 +478,170 @@ export default function RegistroInadimplentesPanel() {
         </div>
       ) : null}
 
-      <div className="overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <table className="min-w-[1400px] w-full border-collapse text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-            <tr>
-              {[
-                'Vencimento',
-                'Pagamento',
-                'Empresa',
-                'Banco',
-                'Tipo',
-                'Cliente',
-                'Status',
-                'Serasa',
-                'Vendedor',
-                'Total',
-                'NF / PD',
-                'Parcela',
-                'Obs',
-                'Ações',
-              ].map((h) => (
-                <th key={h} className="whitespace-nowrap px-3 py-3 font-semibold">
-                  {h}
-                </th>
+      <div className="table-crm-section">
+        <div ref={grade.tableScrollRef} className="overflow-auto max-h-[calc(100vh-14rem)]">
+          <table
+            ref={tableRef}
+            className="table-crm w-full border-collapse text-left text-xs leading-snug"
+            style={{ tableLayout: 'fixed' }}
+          >
+            <colgroup>
+              {COLUMN_IDS.map((id) => (
+                <col key={id} style={{ width: DEFAULT_COLUMN_WIDTHS[id] }} />
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={14} className="px-3 py-8 text-center text-slate-500">
-                  Carregando...
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={14} className="px-3 py-8 text-center text-slate-500">
-                  Nenhum registro encontrado.
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr
-                  key={row.id}
-                  className="border-t border-slate-100 align-top hover:bg-slate-50/80 dark:border-slate-800 dark:hover:bg-slate-800/40"
-                >
-                  <td className="whitespace-nowrap px-3 py-2">{row.vencimento || '—'}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{row.pagamento || '—'}</td>
-                  <td className="max-w-[160px] px-3 py-2">{row.empresa || '—'}</td>
-                  <td className="max-w-[140px] px-3 py-2">{row.banco || '—'}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{row.tipo || '—'}</td>
-                  <td className="min-w-[180px] px-3 py-2 font-medium text-slate-900 dark:text-slate-100">
-                    {row.cliente}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2">{row.status || '—'}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{row.serasa || '—'}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{row.vendedor || '—'}</td>
-                  <td className="whitespace-nowrap px-3 py-2 tabular-nums">{moneyBr(row.total)}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{row.nfPd || '—'}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{row.parcela || '—'}</td>
-                  <td className="max-w-[220px] px-3 py-2 text-slate-600 dark:text-slate-300">
-                    {row.obs || '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2">
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        title="Editar"
-                        onClick={() => abrirEditar(row)}
-                        className="rounded-md p-1.5 text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                      >
-                        <Pencil className="size-4" />
-                      </button>
-                      <button
-                        type="button"
-                        title="Excluir"
-                        onClick={() => void handleExcluir(row)}
-                        className="rounded-md p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
+            </colgroup>
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-blue-700 text-white dark:bg-blue-900">
+                {COLUMN_IDS.map((colId) => (
+                  <th
+                    key={colId}
+                    className="relative border-b border-blue-600/40 px-0 py-0 font-semibold"
+                  >
+                    <div className="flex min-h-[2.25rem] items-start justify-between gap-1 px-1.5 py-1">
+                      <span className="min-w-0 flex-1 whitespace-normal break-words text-[10px] uppercase leading-tight tracking-wide">
+                        {COL_LABELS[colId]}
+                      </span>
+                      {colId !== 'acoes' ? (
+                        <GradeFiltroCabecalhoBtn
+                          ativo={grade.colunaComFiltroAtivo(colId)}
+                          onClick={(e) => grade.abrirFiltroExcel(colId, e)}
+                          className="mt-0.5 shrink-0"
+                        />
+                      ) : null}
                     </div>
+                    <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={`Redimensionar coluna ${COL_LABELS[colId]}`}
+                      className="col-resize-handle"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        startResize(colId, event.clientX);
+                      }}
+                    />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={COLUMN_IDS.length} className="px-3 py-8 text-center text-slate-500">
+                    Carregando...
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : paged.length === 0 ? (
+                <tr>
+                  <td colSpan={COLUMN_IDS.length} className="px-3 py-8 text-center text-slate-500">
+                    Nenhum registro encontrado.
+                  </td>
+                </tr>
+              ) : (
+                paged.map((row, index) => (
+                  <tr
+                    key={row.id}
+                    className={`border-t border-slate-100 dark:border-slate-800 ${
+                      index % 2 === 0
+                        ? 'bg-white dark:bg-slate-900'
+                        : 'bg-slate-50/70 dark:bg-slate-800/40'
+                    } hover:bg-sky-50/60 dark:hover:bg-slate-800/70`}
+                  >
+                    <td className={`${td} cell-nowrap`}>{cellText(row, 'vencimento')}</td>
+                    <td className={`${td} cell-nowrap`}>{cellText(row, 'pagamento')}</td>
+                    <td className={`${td} cell-wrap`}>{cellText(row, 'empresa')}</td>
+                    <td className={`${td} cell-wrap`}>{cellText(row, 'banco')}</td>
+                    <td className={`${td} cell-wrap`}>{cellText(row, 'tipo')}</td>
+                    <td className={`${td} cell-wrap font-medium text-slate-900 dark:text-slate-100`}>
+                      {row.cliente}
+                    </td>
+                    <td className={`${td} cell-wrap`}>{cellText(row, 'status')}</td>
+                    <td className={`${td} cell-nowrap`}>{cellText(row, 'serasa')}</td>
+                    <td className={`${td} cell-wrap`}>{cellText(row, 'vendedor')}</td>
+                    <td className={`${td} cell-nowrap tabular-nums`}>{moneyBr(row.total)}</td>
+                    <td className={`${td} cell-nowrap`}>{cellText(row, 'nfPd')}</td>
+                    <td className={`${td} cell-nowrap`}>{cellText(row, 'parcela')}</td>
+                    <td className={`${td} cell-wrap`}>
+                      <button
+                        type="button"
+                        title="Ver histórico de contatos"
+                        onClick={() => setHistoricoRegistro(row)}
+                        className="group flex w-full min-w-0 items-start gap-1 rounded px-0.5 py-0.5 text-left text-slate-600 hover:bg-sky-50 dark:text-slate-300 dark:hover:bg-sky-950/30"
+                      >
+                        <History className="mt-0.5 size-3 shrink-0 text-sky-700 opacity-70 group-hover:opacity-100" />
+                        <span className="min-w-0 whitespace-normal break-words">
+                          {cellText(row, 'obs') === '—' ? 'Registrar…' : cellText(row, 'obs')}
+                        </span>
+                      </button>
+                    </td>
+                    <td className={`${td} cell-nowrap`}>
+                      <div className="flex gap-0.5">
+                        <button
+                          type="button"
+                          title="Editar"
+                          onClick={() => abrirEditar(row)}
+                          className="rounded p-1 text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                        >
+                          <Pencil className="size-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Excluir"
+                          onClick={() => void handleExcluir(row)}
+                          className="rounded p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {grade.colunaFiltroAberta && grade.filtroAbertoRect ? (
+          <GradeFiltroExcelPortal
+            colunaAberta={grade.colunaFiltroAberta}
+            rect={grade.filtroAbertoRect}
+            dropdownRef={grade.filtroDropdownRef}
+            excelFilterDrafts={grade.excelFilterDrafts}
+            setExcelFilterDrafts={grade.setExcelFilterDrafts}
+            valoresUnicosPorColuna={grade.valoresUnicosPorColuna}
+            onSortAsc={(colId) => {
+              grade.setSortState({ key: colId, direction: 'asc' });
+              grade.setSortLevels([]);
+              grade.fecharFiltroExcel();
+            }}
+            onSortDesc={(colId) => {
+              grade.setSortState({ key: colId, direction: 'desc' });
+              grade.setSortLevels([]);
+              grade.fecharFiltroExcel();
+            }}
+            onAplicar={grade.aplicarFiltroExcel}
+            onCancelar={grade.fecharFiltroExcel}
+            showNumericFilters={grade.colunaFiltroAberta === 'total'}
+          />
+        ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-300">
         <p>
-          {total.toLocaleString('pt-BR')} registro(s) · página {page}/{totalPages}
-          {resumo.somaPagina > 0
-            ? ` · total da página ${moneyBr(resumo.somaPagina)}`
+          {grade.rowsExibidas.length.toLocaleString('pt-BR')} exibido(s)
+          {totalDb !== grade.rowsExibidas.length
+            ? ` de ${totalDb.toLocaleString('pt-BR')}`
             : ''}
+          {' · '}
+          página {page}/{totalPages}
+          {resumo.somaFiltrada > 0 ? ` · soma ${moneyBr(resumo.somaFiltrada)}` : ''}
         </p>
         <div className="flex gap-2">
           <button
             type="button"
             disabled={page <= 1 || loading}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="h-9 rounded-lg border border-slate-300 px-3 disabled:opacity-40 dark:border-slate-600"
+            className="h-8 rounded-lg border border-slate-300 px-3 disabled:opacity-40 dark:border-slate-600"
           >
             Anterior
           </button>
@@ -373,7 +649,7 @@ export default function RegistroInadimplentesPanel() {
             type="button"
             disabled={page >= totalPages || loading}
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            className="h-9 rounded-lg border border-slate-300 px-3 disabled:opacity-40 dark:border-slate-600"
+            className="h-8 rounded-lg border border-slate-300 px-3 disabled:opacity-40 dark:border-slate-600"
           >
             Próxima
           </button>
@@ -425,19 +701,35 @@ export default function RegistroInadimplentesPanel() {
                     />
                   </Field>
                   <Field label="Empresa">
-                    <input
+                    <select
                       className={inputClass}
                       value={form.empresa}
                       onChange={(e) => setForm((f) => ({ ...f, empresa: e.target.value }))}
-                    />
+                    >
+                      <option value="">Selecione (Nomus)…</option>
+                      {empresaOptions.map((e) => (
+                        <option key={`${e.id}-${e.nome}`} value={e.nome}>
+                          {e.nome}
+                        </option>
+                      ))}
+                    </select>
                   </Field>
-                  <Field label="Banco">
-                    <input
-                      className={inputClass}
-                      value={form.banco}
-                      onChange={(e) => setForm((f) => ({ ...f, banco: e.target.value }))}
+                  <div className="sm:col-span-1">
+                    <SingleSelectWithSearch
+                      label="Banco"
+                      placeholder={bancosLoading ? 'Carregando…' : 'Buscar conta bancária (Nomus)…'}
+                      options={bancoOptions}
+                      value={optionFromTexto(form.banco)}
+                      onChange={(opt) => setForm((f) => ({ ...f, banco: opt?.nome ?? '' }))}
+                      labelClass={fieldLabelClass}
+                      inputClass={inputClass}
+                      fillContainer
+                      clearable
+                      searchLoading={bancosLoading}
+                      dropdownZIndex={11000}
+                      listMaxHeight="220px"
                     />
-                  </Field>
+                  </div>
                   <Field label="Tipo">
                     <input
                       className={inputClass}
@@ -445,14 +737,23 @@ export default function RegistroInadimplentesPanel() {
                       onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value }))}
                     />
                   </Field>
-                  <Field label="Cliente" required>
-                    <input
-                      className={inputClass}
-                      required
-                      value={form.cliente}
-                      onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))}
+                  <div className="sm:col-span-1">
+                    <SingleSelectWithSearch
+                      label="Cliente *"
+                      placeholder="Digite para buscar no Nomus…"
+                      options={form.cliente.trim() ? [optionFromTexto(form.cliente)!] : []}
+                      value={optionFromTexto(form.cliente)}
+                      onChange={(opt) => setForm((f) => ({ ...f, cliente: opt?.nome ?? '' }))}
+                      labelClass={fieldLabelClass}
+                      inputClass={inputClass}
+                      fillContainer
+                      clearable
+                      onSearchAsync={buscarClientesNomus}
+                      minSearchChars={2}
+                      dropdownZIndex={11000}
+                      listMaxHeight="240px"
                     />
-                  </Field>
+                  </div>
                   <Field label="Status">
                     <input
                       className={inputClass}
@@ -497,13 +798,21 @@ export default function RegistroInadimplentesPanel() {
                     />
                   </Field>
                   <div className="sm:col-span-2">
-                    <Field label="Obs">
-                      <textarea
-                        className="min-h-[88px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-blue-600/30 focus:ring-2 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
-                        value={form.obs}
-                        onChange={(e) => setForm((f) => ({ ...f, obs: e.target.value }))}
-                      />
-                    </Field>
+                    {editing ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-300">
+                        Os contatos de cobrança ficam no histórico estruturado. Use o botão da coluna{' '}
+                        <strong>Obs</strong> na grade para ver e registrar novos contatos.
+                      </div>
+                    ) : (
+                      <Field label="Primeiro contato (opcional)">
+                        <textarea
+                          className="min-h-[88px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-blue-600/30 focus:ring-2 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                          value={form.obs}
+                          onChange={(e) => setForm((f) => ({ ...f, obs: e.target.value }))}
+                          placeholder="Justificativa do primeiro contato de cobrança…"
+                        />
+                      </Field>
+                    )}
                   </div>
                 </div>
                 <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-700">
@@ -528,6 +837,13 @@ export default function RegistroInadimplentesPanel() {
           </div>,
           document.body
         )}
+
+      <ModalHistoricoContatosInadimplente
+        registro={historicoRegistro}
+        open={historicoRegistro != null}
+        onClose={() => setHistoricoRegistro(null)}
+        onChanged={() => void carregar()}
+      />
     </section>
   );
 }

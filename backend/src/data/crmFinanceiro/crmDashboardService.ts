@@ -3,10 +3,12 @@ import { getCached, invalidateCache, setCache } from './cache.js';
 import { EMPRESAS_PAINEL } from './empresaConfig.js';
 import {
   buildBaixadosQuery,
+  buildContasBancariasQuery,
   buildContasQuery,
   buildGruposPessoaQuery,
   buildIndicadoresConsolidadoQuery,
   buildMembrosGrupoQuery,
+  buildPessoasLookupQuery,
   buildPessoasQuery,
   buildRecebimentosDetalheQuery,
   buildRecebimentosDetalheResumoQuery,
@@ -838,6 +840,52 @@ export async function searchPessoas(
 
 export async function listEmpresas(): Promise<EmpresaOption[]> {
   return EMPRESAS_PAINEL;
+}
+
+export type ContaBancariaOption = {
+  id: number;
+  nome: string;
+};
+
+export async function listContasBancarias(opts?: {
+  q?: string | null;
+}): Promise<ContaBancariaOption[]> {
+  const q = buildContasBancariasQuery(opts);
+  const rows = await nomusQuery<{
+    id: number;
+    nome: string;
+  }>(q.sql, q.params);
+  return rows
+    .map((r) => ({
+      id: Number(r.id),
+      nome: String(r.nome ?? '').trim(),
+    }))
+    .filter((r) => r.id > 0 && r.nome);
+}
+
+export type PessoaLookupOption = {
+  id: number;
+  nome: string;
+  razaoSocial: string | null;
+  cnpjCpf: string | null;
+};
+
+export async function searchPessoasLookup(search?: string | null): Promise<PessoaLookupOption[]> {
+  const q = buildPessoasLookupQuery(search);
+  const rows = await nomusQuery<{
+    id: number;
+    nome: string;
+    razaoSocial: string | null;
+    cnpjCpf: string | null;
+  }>(q.sql, q.params);
+  return rows
+    .map((r) => ({
+      id: Number(r.id),
+      nome: String(r.nome ?? '').trim(),
+      razaoSocial: r.razaoSocial?.trim() || null,
+      cnpjCpf: r.cnpjCpf != null ? String(r.cnpjCpf).trim() || null : null,
+    }))
+    .filter((r) => r.id > 0 && r.nome);
 }
 
 export async function listarContasReceberPorPessoa(
