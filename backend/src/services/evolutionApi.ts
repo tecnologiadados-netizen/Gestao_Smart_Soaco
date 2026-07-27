@@ -448,8 +448,32 @@ async function sendTextOnce(numberClean: string, text: string, instanceName: str
 
 export type SendWhatsAppResult = { ok: boolean; error?: string; dryRun?: boolean };
 
+/** Introdução fixa do robô em todas as mensagens WhatsApp do sistema. */
+export const WHATSAPP_ROBO_INTRO =
+  'Olá! Aqui é o *Açonildo*, passando para avisar:';
+
+const WHATSAPP_ROBO_INTRO_RE =
+  /^Olá!\s*Aqui é o \*?Açonildo\*?,?\s*passando para avisar:?/i;
+
+/** Prefixa a mensagem com a intro do Açonildo (idempotente). */
+export function comIntroducaoRoboWhatsApp(texto: string): string {
+  const body = String(texto ?? '').trim();
+  if (!body) return body;
+  if (WHATSAPP_ROBO_INTRO_RE.test(body)) return body;
+  return `${WHATSAPP_ROBO_INTRO}\n\n${body}`;
+}
+
+type SendWhatsAppTextOptions = {
+  /** Quando true, não aplica a intro (ex.: partes 2+ de mensagem longa). */
+  skipRoboIntro?: boolean;
+};
+
 /** POST /message/sendText/{instance} – com gate de sessão e retry. */
-export async function sendWhatsAppTextTo(number: string, text: string): Promise<SendWhatsAppResult> {
+export async function sendWhatsAppTextTo(
+  number: string,
+  text: string,
+  opts?: SendWhatsAppTextOptions
+): Promise<SendWhatsAppResult> {
   if (!envioNotificacoesHabilitado()) {
     logEnvioSuprimido('whatsapp', number);
     return { ok: true, dryRun: true };
@@ -463,12 +487,13 @@ export async function sendWhatsAppTextTo(number: string, text: string): Promise<
     return { ok: false, error: 'Número inválido' };
   }
 
+  const payload = opts?.skipRoboIntro ? String(text ?? '') : comIntroducaoRoboWhatsApp(text);
   const instanceName = env.instance || DEFAULT_INSTANCE_LABEL;
   let lastError = '';
 
   for (let attempt = 0; attempt < SEND_MAX_ATTEMPTS; attempt++) {
     try {
-      await sendTextOnce(numberClean, text, instanceName);
+      await sendTextOnce(numberClean, payload, instanceName);
       return { ok: true };
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
@@ -486,10 +511,12 @@ export async function sendWhatsAppTextTo(number: string, text: string): Promise<
 }
 
 export async function sendWhatsAppTextToLong(number: string, text: string): Promise<SendWhatsAppResult> {
-  const chunks = splitTextIntoChunks(text, WHATSAPP_MAX_TEXT_CHARS);
+  const withIntro = comIntroducaoRoboWhatsApp(text);
+  const chunks = splitTextIntoChunks(withIntro, WHATSAPP_MAX_TEXT_CHARS);
   for (let i = 0; i < chunks.length; i++) {
     const parte = chunks.length > 1 ? `(${i + 1}/${chunks.length})\n${chunks[i]!}` : chunks[i]!;
-    const result = await sendWhatsAppTextTo(number, parte);
+    // Intro já aplicada no texto completo; partes seguintes não devem repetir.
+    const result = await sendWhatsAppTextTo(number, parte, { skipRoboIntro: true });
     if (!result.ok) return result;
     if (i < chunks.length - 1) await sleep(500);
   }
