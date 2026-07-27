@@ -34,6 +34,25 @@ export type DemandaCalendarioLinha = {
   dataIso: string;
   pd?: string;
   setor?: string;
+  /** Rota/carrada da linha (coluna "Carrada" do sequenciamento) — origem do consumo. */
+  carrada?: string;
+};
+
+/**
+ * Entradas do motor congeladas no momento do Gravar da sequência.
+ * Com ela o cálculo roda sem tocar no Nomus, mantendo semáforos e modais estáticos.
+ */
+export type BaseMateriaisCongelada = {
+  version: 1;
+  capturadoEm: string;
+  /** Data de referência do "PC atrasado → hoje" e do início do eixo no momento da captura. */
+  hoje: string;
+  idPorCodigoPa: Record<string, number>;
+  /** BOM folha já filtrada (almox secundário, sem Matéria Prima). */
+  bom: { idPa: number; idComp: number; cod: string; desc: string; qtdePorPa: number }[];
+  saldoPorIdComp: Record<string, number>;
+  /** PC pendente linha a linha — alimenta a entrada diária e o modal "PC Pend". */
+  pcLinhas: { idProduto: number; pedidoCompra: string; dataEntrega: string; qtde: number }[];
 };
 
 export type StatusPorDataRow = {
@@ -55,11 +74,13 @@ export type MaterialDiaRow = {
   idProduto: number;
   codigo: string;
   descricao: string;
-  necessidadeDia: number;
+  consumoDia: number;
   saldoInicio: number;
   entradaDia: number;
   falta: number;
   status: StatusMaterialDia;
+  /** Origem do consumo do dia (mesma fonte da célula, garante grade == modal). */
+  origens: OrigemConsumoRow[];
 };
 
 export type HorizonteDiaRow = {
@@ -73,11 +94,9 @@ export type HorizonteDiaRow = {
 
 export type OrigemConsumoRow = {
   dataIso: string;
-  codigoPa: string;
-  qtdePa: number;
-  qtdeComponente: number;
+  carrada: string;
   pd: string;
-  setor: string;
+  qtdeComponente: number;
 };
 
 export type DisponibilidadeSintetico = {
@@ -170,6 +189,7 @@ function normalizarDemanda(raw: DemandaCalendarioLinha[]): DemandaCalendarioLinh
       qtde,
       pd: String(r.pd ?? '').trim(),
       setor: String(r.setor ?? '').trim(),
+      carrada: String(r.carrada ?? '').trim(),
     });
   }
   return out;
@@ -336,20 +356,28 @@ async function saldoSetor2PorIds(pool: Pool, ids: number[]): Promise<Map<number,
   return map;
 }
 
+type PcLinhaPendente = {
+  idProduto: number;
+  pedidoCompra: string;
+  dataEntrega: string;
+  qtde: number;
+};
+
 /** PC pendente linha a linha (não agrega em MIN) — atrasado/NULL → hoje. */
-async function entradasPcPorProdutoDia(
+async function pcPendentePorProduto(
   pool: Pool,
   ids: number[],
   hoje: string
-): Promise<Map<number, Map<string, number>>> {
-  const map = new Map<number, Map<string, number>>();
-  if (ids.length === 0) return map;
+): Promise<PcLinhaPendente[]> {
+  const out: PcLinhaPendente[] = [];
+  if (ids.length === 0) return out;
   for (let i = 0; i < ids.length; i += IDS_CHUNK) {
     const chunk = ids.slice(i, i + IDS_CHUNK);
     const placeholders = chunk.map(() => '?').join(', ');
     const sql = `
     SELECT
       i.idProduto AS idProduto,
+      pc.nome AS pedidoCompra,
       CASE
         WHEN i.dataEntrega IS NULL THEN CURDATE()
         WHEN CAST(i.dataEntrega AS DATE) < CURDATE() THEN CURDATE()
@@ -357,6 +385,7 @@ async function entradasPcPorProdutoDia(
       END AS dataEntrega,
       ROUND(COALESCE(i.qtde, 0) - COALESCE(i.qtdeAtendida, 0), 2) AS qtde
     FROM itempedidocompra i
+    LEFT JOIN pedidocompra pc ON pc.id = i.idPedidoCompra
     WHERE i.status IN (2, 3, 4)
       AND (COALESCE(i.qtde, 0) - COALESCE(i.qtdeAtendida, 0)) > 0
       AND i.idProduto IN (${placeholders})
@@ -365,17 +394,99 @@ async function entradasPcPorProdutoDia(
     for (const r of Array.isArray(rows) ? rows : []) {
       const id = Number(r.idProduto);
       if (!Number.isFinite(id) || id <= 0) continue;
-      let dia = mppDiaIsoDataPrevisao(r.dataEntrega);
-      if (!dia || !isoDateOnlyValid(dia)) dia = hoje;
-      if (dia < hoje) dia = hoje;
       const q = arred2(num(r.qtde));
       if (q <= 0) continue;
-      if (!map.has(id)) map.set(id, new Map());
-      const m = map.get(id)!;
-      m.set(dia, arred2((m.get(dia) ?? 0) + q));
+      out.push({
+        idProduto: id,
+        pedidoCompra: String(r.pedidoCompra ?? '').trim(),
+        dataEntrega: diaEntradaPc(r.dataEntrega, hoje),
+        qtde: q,
+      });
     }
   }
+  return out;
+}
+
+/** Normaliza a data de entrega do PC no eixo: inválida/atrasada → hoje. */
+function diaEntradaPc(valor: unknown, hoje: string): string {
+  let dia = mppDiaIsoDataPrevisao(valor);
+  if (!dia || !isoDateOnlyValid(dia)) dia = hoje;
+  if (dia < hoje) dia = hoje;
+  return dia;
+}
+
+function agruparEntradasPcPorDia(
+  linhas: PcLinhaPendente[],
+  hoje: string
+): Map<number, Map<string, number>> {
+  const map = new Map<number, Map<string, number>>();
+  for (const l of linhas) {
+    const dia = diaEntradaPc(l.dataEntrega, hoje);
+    let m = map.get(l.idProduto);
+    if (!m) {
+      m = new Map();
+      map.set(l.idProduto, m);
+    }
+    m.set(dia, arred2((m.get(dia) ?? 0) + l.qtde));
+  }
   return map;
+}
+
+/**
+ * Captura as entradas do motor (BOM, saldo do almox secundário e PC pendente) para congelar
+ * junto ao snapshot da sequência. `codigosPa` deve conter todos os PAs das linhas gravadas.
+ */
+export async function capturarBaseMateriaisCongelada(
+  pool: Pool,
+  codigosPa: string[]
+): Promise<BaseMateriaisCongelada> {
+  const hoje = hojeIsoLocal();
+  const codigos = [...new Set(codigosPa.map((c) => String(c ?? '').trim()).filter(Boolean))];
+  const idPorCodigoPa = await resolverIdsPorCodigoPa(pool, codigos);
+  const idPas = [...new Set([...idPorCodigoPa.values()])];
+
+  const bomRows = await carregarBomFolhaPorPas(pool, idPas);
+  const idsCompAll = [...new Set(bomRows.map((b) => b.idComponente))];
+  const idsSetor2 = await filtrarIdsComSetor2(pool, idsCompAll);
+  const idsMateriaPrima = await filtrarIdsMateriaPrima(pool, [...idsSetor2]);
+  const bomSec = bomRows.filter(
+    (b) => idsSetor2.has(b.idComponente) && !idsMateriaPrima.has(b.idComponente) && b.codigoComponente
+  );
+
+  const idsItens = [...new Set(bomSec.map((b) => b.idComponente))];
+  const [saldos, pcLinhas] = await Promise.all([
+    saldoSetor2PorIds(pool, idsItens),
+    pcPendentePorProduto(pool, idsItens, hoje),
+  ]);
+
+  const saldoPorIdComp: Record<string, number> = {};
+  for (const [id, saldo] of saldos) saldoPorIdComp[String(id)] = saldo;
+
+  return {
+    version: 1,
+    capturadoEm: new Date().toISOString(),
+    hoje,
+    idPorCodigoPa: Object.fromEntries(idPorCodigoPa),
+    bom: bomSec.map((b) => ({
+      idPa: b.idPa,
+      idComp: b.idComponente,
+      cod: b.codigoComponente,
+      desc: b.descricaoComponente,
+      qtdePorPa: b.qtdePorPa,
+    })),
+    saldoPorIdComp,
+    pcLinhas,
+  };
+}
+
+/** Linhas de PC pendente congeladas de um componente (modal "PC Pend" em snapshot). */
+export function pcPendentesCongeladasDoProduto(
+  base: BaseMateriaisCongelada,
+  idProduto: number
+): PcLinhaPendente[] {
+  return base.pcLinhas
+    .filter((l) => l.idProduto === idProduto)
+    .sort((a, b) => a.dataEntrega.localeCompare(b.dataEntrega));
 }
 
 function montarDatasCalendario(demanda: DemandaCalendarioLinha[], hoje: string): string[] {
@@ -391,13 +502,21 @@ function montarDatasCalendario(demanda: DemandaCalendarioLinha[], hoje: string):
   return datas.length > MAX_DIAS ? datas.slice(0, MAX_DIAS) : datas;
 }
 
+/**
+ * Motor de disponibilidade. Com `base` congelada não consulta o Nomus: BOM, saldos e PCs vêm do
+ * snapshot e a data de referência é a da captura, mantendo o resultado estável no tempo.
+ */
 export async function computarEngineDisponibilidade(
-  pool: Pool,
-  demandaRaw: DemandaCalendarioLinha[]
+  pool: Pool | null,
+  demandaRaw: DemandaCalendarioLinha[],
+  base?: BaseMateriaisCongelada | null
 ): Promise<{ ok: true; data: EngineResult } | { ok: false; error: string }> {
   const demanda = normalizarDemanda(demandaRaw);
-  const consultadoEm = new Date().toISOString();
-  const hoje = hojeIsoLocal();
+  const consultadoEm = base ? base.capturadoEm : new Date().toISOString();
+  const hoje = base ? base.hoje : hojeIsoLocal();
+  if (!base && !pool) {
+    return { ok: false, error: 'ERP (Nomus) não configurado.' };
+  }
 
   if (demanda.length === 0) {
     return {
@@ -420,19 +539,37 @@ export async function computarEngineDisponibilidade(
   const setDias = new Set(datas);
 
   const codigosPa = [...new Set(demanda.map((d) => d.codigoPa))];
-  const idPorCodigoPa = await resolverIdsPorCodigoPa(pool, codigosPa);
-  const idPas = [...new Set([...idPorCodigoPa.values()])];
-
-  const bomRows = await carregarBomFolhaPorPas(pool, idPas);
-  const idsCompAll = [...new Set(bomRows.map((b) => b.idComponente))];
-  const idsSetor2 = await filtrarIdsComSetor2(pool, idsCompAll);
-  const idsMateriaPrima = await filtrarIdsMateriaPrima(pool, [...idsSetor2]);
-  const bomSec = bomRows.filter(
-    (b) =>
-      idsSetor2.has(b.idComponente) &&
-      !idsMateriaPrima.has(b.idComponente) &&
-      b.codigoComponente
-  );
+  let idPorCodigoPa: Map<string, number>;
+  let bomSec: BomRow[];
+  if (base) {
+    idPorCodigoPa = new Map(
+      codigosPa
+        .map((cod) => [cod, base.idPorCodigoPa[cod]] as const)
+        .filter((e): e is readonly [string, number] => Number.isFinite(e[1]) && (e[1] as number) > 0)
+        .map(([cod, id]) => [cod, id])
+    );
+    bomSec = base.bom.map((b) => ({
+      idPa: b.idPa,
+      codigoPa: '',
+      idComponente: b.idComp,
+      codigoComponente: b.cod,
+      descricaoComponente: b.desc,
+      qtdePorPa: b.qtdePorPa,
+    }));
+  } else {
+    idPorCodigoPa = await resolverIdsPorCodigoPa(pool!, codigosPa);
+    const idPas = [...new Set([...idPorCodigoPa.values()])];
+    const bomRows = await carregarBomFolhaPorPas(pool!, idPas);
+    const idsCompAll = [...new Set(bomRows.map((b) => b.idComponente))];
+    const idsSetor2 = await filtrarIdsComSetor2(pool!, idsCompAll);
+    const idsMateriaPrima = await filtrarIdsMateriaPrima(pool!, [...idsSetor2]);
+    bomSec = bomRows.filter(
+      (b) =>
+        idsSetor2.has(b.idComponente) &&
+        !idsMateriaPrima.has(b.idComponente) &&
+        b.codigoComponente
+    );
+  }
 
   // BOM por PA id
   const bomPorPa = new Map<number, BomRow[]>();
@@ -475,20 +612,27 @@ export async function computarEngineDisponibilidade(
       }
       it.origens.push({
         dataIso: d.dataIso,
-        codigoPa: d.codigoPa,
-        qtdePa: d.qtde,
-        qtdeComponente: consumo,
+        carrada: d.carrada ?? '',
         pd: d.pd ?? '',
-        setor: d.setor ?? '',
+        qtdeComponente: consumo,
       });
     }
   }
 
   const idsItens = [...itensMap.keys()];
-  const [saldos, entradas] = await Promise.all([
-    saldoSetor2PorIds(pool, idsItens),
-    entradasPcPorProdutoDia(pool, idsItens, hoje),
-  ]);
+  let saldos: Map<number, number>;
+  let entradas: Map<number, Map<string, number>>;
+  if (base) {
+    saldos = new Map(idsItens.map((id) => [id, arred2(num(base.saldoPorIdComp[String(id)]))]));
+    entradas = agruparEntradasPcPorDia(base.pcLinhas, hoje);
+  } else {
+    [saldos, entradas] = await Promise.all([
+      saldoSetor2PorIds(pool!, idsItens),
+      pcPendentePorProduto(pool!, idsItens, hoje).then((linhas) =>
+        agruparEntradasPcPorDia(linhas, hoje)
+      ),
+    ]);
+  }
 
   for (const [id, it] of itensMap) {
     it.saldoInicial = saldos.get(id) ?? 0;
@@ -585,11 +729,34 @@ export async function computarEngineDisponibilidade(
   };
 }
 
+/** Compacta origens por (data, carrada, pd); `filtroData` restringe a um único dia. */
+function agregarOrigens(origens: OrigemConsumoRow[], filtroData?: string): OrigemConsumoRow[] {
+  const map = new Map<string, OrigemConsumoRow>();
+  for (const o of origens) {
+    if (filtroData && o.dataIso !== filtroData) continue;
+    const key = `${o.dataIso}\0${o.carrada}\0${o.pd}`;
+    const prev = map.get(key);
+    if (prev) {
+      prev.qtdeComponente = arred2(prev.qtdeComponente + o.qtdeComponente);
+    } else {
+      map.set(key, { ...o, qtdeComponente: arred2(o.qtdeComponente) });
+    }
+  }
+  return [...map.values()].sort((a, b) => {
+    const dc = a.dataIso.localeCompare(b.dataIso);
+    if (dc !== 0) return dc;
+    const cc = a.carrada.localeCompare(b.carrada, 'pt-BR', { sensitivity: 'base' });
+    if (cc !== 0) return cc;
+    return a.pd.localeCompare(b.pd, 'pt-BR');
+  });
+}
+
 export async function obterDisponibilidadeSintetica(
-  pool: Pool,
-  demanda: DemandaCalendarioLinha[]
+  pool: Pool | null,
+  demanda: DemandaCalendarioLinha[],
+  base?: BaseMateriaisCongelada | null
 ): Promise<{ ok: true; data: DisponibilidadeSintetico } | { ok: false; error: string }> {
-  const r = await computarEngineDisponibilidade(pool, demanda);
+  const r = await computarEngineDisponibilidade(pool, demanda, base);
   if (!r.ok) return r;
   return {
     ok: true,
@@ -604,9 +771,10 @@ export async function obterDisponibilidadeSintetica(
 }
 
 export async function obterMateriaisDoDia(
-  pool: Pool,
+  pool: Pool | null,
   demanda: DemandaCalendarioLinha[],
-  dataRaw: string
+  dataRaw: string,
+  base?: BaseMateriaisCongelada | null
 ): Promise<
   | {
       ok: true;
@@ -621,7 +789,7 @@ export async function obterMateriaisDoDia(
       error: `Data inválida (“${String(dataRaw ?? '').trim() || 'vazia'}”). Use YYYY-MM-DD.`,
     };
   }
-  const r = await computarEngineDisponibilidade(pool, demanda);
+  const r = await computarEngineDisponibilidade(pool, demanda, base);
   if (!r.ok) return r;
   const idx = r.data.datas.indexOf(dataIso);
   if (idx < 0) {
@@ -650,11 +818,12 @@ export async function obterMateriaisDoDia(
       idProduto: item.idProduto,
       codigo: item.codigo,
       descricao: item.descricao,
-      necessidadeDia: arred2(consumo),
+      consumoDia: arred2(consumo),
       saldoInicio: arred2(saldoInicio),
       entradaDia: arred2(entrada),
       falta: arred2(falta),
       status,
+      origens: agregarOrigens(item.origens, dataIso),
     });
   }
 
@@ -671,9 +840,10 @@ export async function obterMateriaisDoDia(
 }
 
 export async function obterHorizonteItem(
-  pool: Pool,
+  pool: Pool | null,
   demanda: DemandaCalendarioLinha[],
-  codigoComponente: string
+  codigoComponente: string,
+  base?: BaseMateriaisCongelada | null
 ): Promise<
   | {
       ok: true;
@@ -692,7 +862,7 @@ export async function obterHorizonteItem(
   const codigo = String(codigoComponente ?? '').trim();
   if (!codigo) return { ok: false, error: 'codigoComponente obrigatório.' };
 
-  const r = await computarEngineDisponibilidade(pool, demanda);
+  const r = await computarEngineDisponibilidade(pool, demanda, base);
   if (!r.ok) return r;
 
   const item = r.data.itens.find((i) => i.codigo === codigo);
@@ -723,23 +893,7 @@ export async function obterHorizonteItem(
     };
   });
 
-  // Compacta origens por (data, pa, pd, setor)
-  const origMap = new Map<string, OrigemConsumoRow>();
-  for (const o of item.origens) {
-    const key = `${o.dataIso}\0${o.codigoPa}\0${o.pd}\0${o.setor}`;
-    const prev = origMap.get(key);
-    if (prev) {
-      prev.qtdePa = arred2(prev.qtdePa + o.qtdePa);
-      prev.qtdeComponente = arred2(prev.qtdeComponente + o.qtdeComponente);
-    } else {
-      origMap.set(key, { ...o });
-    }
-  }
-  const origens = [...origMap.values()].sort((a, b) => {
-    const dc = a.dataIso.localeCompare(b.dataIso);
-    if (dc !== 0) return dc;
-    return a.codigoPa.localeCompare(b.codigoPa, 'pt-BR');
-  });
+  const origens = agregarOrigens(item.origens);
 
   return {
     ok: true,

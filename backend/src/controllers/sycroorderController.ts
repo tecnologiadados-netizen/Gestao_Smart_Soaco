@@ -2,7 +2,13 @@ import type { Request, Response } from 'express';
 import { prisma } from '../config/prisma.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
 import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
-import { listarPedidos, listarHistoricoAjustes, registrarAjustePrevisao } from '../data/pedidosRepository.js';
+import {
+  listarPedidos,
+  listarHistoricoAjustes,
+  registrarAjustePrevisao,
+  registrarDataProducaoLote,
+  invalidatePedidosCache,
+} from '../data/pedidosRepository.js';
 import { getPermissoesUsuario } from '../middleware/requirePermission.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import {
@@ -200,6 +206,27 @@ function resolveRotaForIdPedido(rows: Array<Record<string, unknown>>, idPedido: 
     }
   }
   return null;
+}
+
+/**
+ * Data de produção vigente dos itens afetados (YYYY-MM-DD), para o histórico do card.
+ * Retorna null quando os itens divergem ou nenhum tem data gravada.
+ */
+function dataProducaoAtualDosItens(
+  rows: Array<Record<string, unknown>>,
+  idsPedido: string[]
+): string | null {
+  const ids = new Set(idsPedido.map((id) => chavePedidoItem(String(id ?? '').trim())));
+  const datas = new Set<string>();
+  for (const row of rows) {
+    const key = rowItemIdKey(row);
+    if (!key || !ids.has(chavePedidoItem(key))) continue;
+    const bruto = row['data_producao'];
+    if (bruto == null) continue;
+    const iso = bruto instanceof Date ? bruto.toISOString().slice(0, 10) : String(bruto).trim().slice(0, 10);
+    if (iso) datas.add(iso);
+  }
+  return datas.size === 1 ? [...datas][0]! : null;
 }
 
 function sortedUnique(arr: string[]): string[] {
@@ -984,6 +1011,7 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
   const {
     status,
     new_date,
+    nova_data_producao,
     observation,
     comentario,
     observacao,
@@ -997,6 +1025,8 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
   } = req.body as {
     status?: OrderStatus;
     new_date?: string;
+    /** Opcional: grava a data de produção dos mesmos itens no Gerenciador. Omitir = não alterar. */
+    nova_data_producao?: string;
     /** @deprecated use comentario */
     observation?: string;
     /** Comentário do usuário no card (diálogo entre usuários) — exibido no histórico do Sycro. */
@@ -1018,6 +1048,10 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
   };
   const comentarioVal = (comentario != null && String(comentario).trim() !== '' ? String(comentario).trim() : null) ?? (observation != null && String(observation).trim() !== '' ? String(observation).trim() : null);
   const observacaoVal = observacao != null && String(observacao).trim() !== '' ? String(observacao).trim() : null;
+  const novaDataProducaoVal =
+    nova_data_producao != null && String(nova_data_producao).trim() !== ''
+      ? String(nova_data_producao).trim().slice(0, 10)
+      : null;
   let hasMentions = false;
 
   try {
@@ -1056,6 +1090,10 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
         res.status(400).json({ error: 'Seu perfil permite apenas inserir comentários neste card. Não é permitido informar nova data prometida.' });
         return;
       }
+      if (novaDataProducaoVal) {
+        res.status(400).json({ error: 'Seu perfil permite apenas inserir comentários neste card. Não é permitido informar nova data de produção.' });
+        return;
+      }
       if (is_urgent !== undefined) {
         res.status(400).json({ error: 'Seu perfil permite apenas inserir comentários neste card. Não é permitido alterar urgência.' });
         return;
@@ -1073,8 +1111,10 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
         return;
       }
     }
-    if (!newDateProvided && !comentarioVal) {
-      res.status(400).json({ error: 'Comentário é obrigatório quando não informar uma nova data prometida.' });
+    if (!newDateProvided && !comentarioVal && !novaDataProducaoVal) {
+      res.status(400).json({
+        error: 'Informe um comentário ou uma nova data de produção quando não informar uma nova data prometida.',
+      });
       return;
     }
 
@@ -1226,10 +1266,12 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
       });
     }
 
-    if (nextDate !== prevDate && new_date !== undefined && new_date !== null && motivo != null && String(motivo).trim()) {
+    const ajustaPrevisaoNoGerenciador =
+      nextDate !== prevDate && new_date !== undefined && new_date !== null && motivo != null && String(motivo).trim() !== '';
+    if (ajustaPrevisaoNoGerenciador || novaDataProducaoVal) {
       try {
         const { data: gerenciadorList } = await listarPedidos({});
-        const motivoTrim = String(motivo).trim();
+        const motivoTrim = String(motivo ?? '').trim();
         const orderNumber = String(order.order_number ?? '').trim();
         const dataNova = parseDateYmdAtNoonUtc(nextDate);
         const dm = String(order.delivery_method ?? '').trim();
@@ -1280,17 +1322,55 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
           });
         }
 
-        for (const idPedido of idsPedido) {
-          const rotaAjuste = rotaReplicate ?? resolveRotaForIdPedido(rowsDoPd, idPedido);
-          await registrarAjustePrevisao(
-            idPedido,
-            dataNova,
-            motivoTrim,
-            user_name ?? login,
-            observacaoVal ?? undefined,
-            rotaAjuste,
-            true
+        if (ajustaPrevisaoNoGerenciador) {
+          for (const idPedido of idsPedido) {
+            const rotaAjuste = rotaReplicate ?? resolveRotaForIdPedido(rowsDoPd, idPedido);
+            await registrarAjustePrevisao(
+              idPedido,
+              dataNova,
+              motivoTrim,
+              user_name ?? login,
+              observacaoVal ?? undefined,
+              rotaAjuste,
+              true
+            );
+          }
+        }
+
+        // Data de produção: mesmo escopo de itens e mesma rota usados na previsão.
+        if (novaDataProducaoVal && idsPedido.length > 0) {
+          const dataProducaoNova = parseDateYmdAtNoonUtc(novaDataProducaoVal);
+          const producaoAnterior = dataProducaoAtualDosItens(
+            gerenciadorList as Array<Record<string, unknown>>,
+            idsPedido
           );
+          const resultadoProducao = await registrarDataProducaoLote(
+            idsPedido.map((idPedido) => ({
+              id_pedido: idPedido,
+              data_producao: dataProducaoNova,
+              rota: rotaReplicate ?? resolveRotaForIdPedido(rowsDoPd, idPedido),
+            })),
+            user_name ?? login
+          );
+          if (resultadoProducao.erros.length > 0) {
+            console.error(
+              '[SycroOrder] updateOrder: erro ao gravar data de produção',
+              resultadoProducao.erros[0]?.erro
+            );
+          } else if (producaoAnterior !== novaDataProducaoVal) {
+            invalidatePedidosCache();
+            await prisma.sycroOrderHistory.create({
+              data: {
+                order_id: id,
+                user_id,
+                user_name,
+                action_type: 'DATA_PRODUCAO',
+                previous_date: producaoAnterior,
+                new_date: novaDataProducaoVal,
+                observation: null,
+              },
+            });
+          }
         }
       } catch (errRepl) {
         console.error('sycroorder updateOrder: replicar ajuste no Gerenciador', errRepl);

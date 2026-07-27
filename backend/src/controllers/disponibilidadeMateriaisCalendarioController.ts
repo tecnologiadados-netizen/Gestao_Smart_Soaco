@@ -3,14 +3,19 @@
  * POST /api/pedidos/sequenciamento-carradas/calendario-producao/disponibilidade-materiais
  * POST .../disponibilidade-materiais/dia
  * POST .../disponibilidade-materiais/item
+ *
+ * Com `snapshotId` no body o cálculo usa a base congelada no Gravar (sem tocar no Nomus);
+ * sem ele, ou em snapshot legado sem base, consulta ao vivo.
  */
 
 import type { Request, Response } from 'express';
 import { getNomusPool, isNomusEnabled, isNomusTransientConnectionError } from '../config/nomusDb.js';
+import { obterBaseMateriaisSnapshot } from '../data/sequenciamentoCarradasRepository.js';
 import {
   obterDisponibilidadeSintetica,
   obterHorizonteItem,
   obterMateriaisDoDia,
+  type BaseMateriaisCongelada,
   type DemandaCalendarioLinha,
 } from '../services/disponibilidadeMateriaisCalendarioService.js';
 import { normalizarDataIsoCalendario } from '../utils/disponibilidadeMateriaisCalendarioDerivados.js';
@@ -29,9 +34,16 @@ function parseDemanda(body: unknown): DemandaCalendarioLinha[] {
       dataIso: normalizarDataIsoCalendario(r.dataIso),
       pd: r.pd != null ? String(r.pd) : undefined,
       setor: r.setor != null ? String(r.setor) : undefined,
+      carrada: r.carrada != null ? String(r.carrada) : undefined,
     });
   }
   return out;
+}
+
+function parseSnapshotId(body: unknown): number | null {
+  const raw = (body as Record<string, unknown> | null | undefined)?.snapshotId;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function mensagemErroDisponibilidade(err: unknown): string {
@@ -41,20 +53,38 @@ function mensagemErroDisponibilidade(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export async function postDisponibilidadeMateriaisSintetica(req: Request, res: Response): Promise<void> {
+/**
+ * Resolve a fonte do cálculo. Com base congelada o pool é dispensável — o snapshot continua
+ * abrindo mesmo com o ERP fora do ar.
+ */
+async function resolverFonte(
+  body: unknown
+): Promise<
+  | { ok: true; pool: ReturnType<typeof getNomusPool>; base: BaseMateriaisCongelada | null }
+  | { ok: false; error: string }
+> {
+  const snapshotId = parseSnapshotId(body);
+  const base = snapshotId != null ? await obterBaseMateriaisSnapshot(snapshotId) : null;
+  if (base) return { ok: true, pool: null, base };
   const pool = getNomusPool();
-  if (!pool || !isNomusEnabled()) {
-    res.status(503).json({ error: 'ERP (Nomus) não configurado.' });
+  if (!pool || !isNomusEnabled()) return { ok: false, error: 'ERP (Nomus) não configurado.' };
+  return { ok: true, pool, base: null };
+}
+
+export async function postDisponibilidadeMateriaisSintetica(req: Request, res: Response): Promise<void> {
+  const fonte = await resolverFonte(req.body);
+  if (!fonte.ok) {
+    res.status(503).json({ error: fonte.error });
     return;
   }
   try {
     const demanda = parseDemanda(req.body);
-    const r = await obterDisponibilidadeSintetica(pool, demanda);
+    const r = await obterDisponibilidadeSintetica(fonte.pool, demanda, fonte.base);
     if (!r.ok) {
       res.status(400).json({ error: r.error });
       return;
     }
-    res.json({ ok: true, ...r.data });
+    res.json({ ok: true, congelado: fonte.base != null, ...r.data });
   } catch (err) {
     const msg = mensagemErroDisponibilidade(err);
     console.error('[disponibilidadeMateriais] sintetico:', err instanceof Error ? err.message : err);
@@ -63,9 +93,9 @@ export async function postDisponibilidadeMateriaisSintetica(req: Request, res: R
 }
 
 export async function postDisponibilidadeMateriaisDia(req: Request, res: Response): Promise<void> {
-  const pool = getNomusPool();
-  if (!pool || !isNomusEnabled()) {
-    res.status(503).json({ error: 'ERP (Nomus) não configurado.' });
+  const fonte = await resolverFonte(req.body);
+  if (!fonte.ok) {
+    res.status(503).json({ error: fonte.error });
     return;
   }
   try {
@@ -73,12 +103,12 @@ export async function postDisponibilidadeMateriaisDia(req: Request, res: Respons
     const body = req.body as Record<string, unknown>;
     // Aceita dataIso ou data; normaliza dd/MM/yyyy → YYYY-MM-DD.
     const dataIso = normalizarDataIsoCalendario(body?.dataIso ?? body?.data);
-    const r = await obterMateriaisDoDia(pool, demanda, dataIso);
+    const r = await obterMateriaisDoDia(fonte.pool, demanda, dataIso, fonte.base);
     if (!r.ok) {
       res.status(400).json({ error: r.error });
       return;
     }
-    res.json({ ok: true, ...r.data });
+    res.json({ ok: true, congelado: fonte.base != null, ...r.data });
   } catch (err) {
     const msg = mensagemErroDisponibilidade(err);
     console.error('[disponibilidadeMateriais] dia:', err instanceof Error ? err.message : err);
@@ -87,9 +117,9 @@ export async function postDisponibilidadeMateriaisDia(req: Request, res: Respons
 }
 
 export async function postDisponibilidadeMateriaisItem(req: Request, res: Response): Promise<void> {
-  const pool = getNomusPool();
-  if (!pool || !isNomusEnabled()) {
-    res.status(503).json({ error: 'ERP (Nomus) não configurado.' });
+  const fonte = await resolverFonte(req.body);
+  if (!fonte.ok) {
+    res.status(503).json({ error: fonte.error });
     return;
   }
   try {
@@ -97,12 +127,12 @@ export async function postDisponibilidadeMateriaisItem(req: Request, res: Respon
     const codigoComponente = String(
       (req.body as Record<string, unknown>)?.codigoComponente ?? ''
     ).trim();
-    const r = await obterHorizonteItem(pool, demanda, codigoComponente);
+    const r = await obterHorizonteItem(fonte.pool, demanda, codigoComponente, fonte.base);
     if (!r.ok) {
       res.status(400).json({ error: r.error });
       return;
     }
-    res.json({ ok: true, ...r.data });
+    res.json({ ok: true, congelado: fonte.base != null, ...r.data });
   } catch (err) {
     const msg = mensagemErroDisponibilidade(err);
     console.error('[disponibilidadeMateriais] item:', err instanceof Error ? err.message : err);

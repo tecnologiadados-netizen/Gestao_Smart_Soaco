@@ -54,14 +54,37 @@ function detalheModalCacheKey(
   return `${tipo}-${idProduto}-${considerarRequisicoes ? '1' : '0'}`;
 }
 
+/** Fontes injetáveis: permitem servir a consulta de um snapshot congelado em vez do Nomus ao vivo. */
+export type FontesConsultaEstoqueEmbed = {
+  consultar: (
+    codigo: string,
+    considerarRequisicoes: boolean
+  ) => Promise<{ data: ConsultaEstoqueLinha[]; error?: string }>;
+  saldoDetalhe: (idProduto: number) => Promise<{ data: SaldoSetorDetalhe[]; error?: string }>;
+  empenhoPorPedido: (
+    idProduto: number,
+    considerarRequisicoes: boolean
+  ) => Promise<{ data: RessupEmpenhoPedidoResultado | null; error?: string }>;
+};
+
 type Props = {
   codigo: string;
   onClose: () => void;
   /** Base de empilhamento (padrão 132). Use valor maior quando aberto sobre outro modal alto. */
   zIndexBase?: number;
+  /** Substitui as consultas ao vivo (ex.: snapshot de sequência com valores congelados). */
+  fontes?: FontesConsultaEstoqueEmbed;
+  /** Texto do subtítulo; padrão avisa que a visualização é em tempo real. */
+  legenda?: string;
 };
 
-export default function ModalConsultaEstoqueEmbed({ codigo, onClose, zIndexBase = Z_MAIN_DEFAULT }: Props) {
+export default function ModalConsultaEstoqueEmbed({
+  codigo,
+  onClose,
+  zIndexBase = Z_MAIN_DEFAULT,
+  fontes,
+  legenda,
+}: Props) {
   const zMain = zIndexBase;
   const zDetalhe = zIndexBase + 1;
   const [linhas, setLinhas] = useState<ConsultaEstoqueLinha[]>([]);
@@ -118,23 +141,28 @@ export default function ModalConsultaEstoqueEmbed({ codigo, onClose, zIndexBase 
     defaultSortLevels: SORT_DEFAULT_CONSULTA_ESTOQUE,
   });
 
-  const carregarConsulta = useCallback(async (req: boolean) => {
-    detalheCacheRef.current.clear();
-    setDetalhe(null);
-    setLoading(true);
-    setErroApi(null);
-    const r = await consultarEstoque({
-      filtros: { codigos: [codigo.trim()] },
-      considerarRequisicoes: req,
-    });
-    setLoading(false);
-    if (r.error) {
-      setErroApi(r.error);
-      setLinhas([]);
-      return;
-    }
-    setLinhas(r.data);
-  }, [codigo]);
+  const carregarConsulta = useCallback(
+    async (req: boolean) => {
+      detalheCacheRef.current.clear();
+      setDetalhe(null);
+      setLoading(true);
+      setErroApi(null);
+      const r = fontes
+        ? await fontes.consultar(codigo.trim(), req)
+        : await consultarEstoque({
+            filtros: { codigos: [codigo.trim()] },
+            considerarRequisicoes: req,
+          });
+      setLoading(false);
+      if (r.error) {
+        setErroApi(r.error);
+        setLinhas([]);
+        return;
+      }
+      setLinhas(r.data);
+    },
+    [codigo, fontes]
+  );
 
   useEffect(() => {
     void carregarConsulta(considerarRequisicoes);
@@ -156,16 +184,18 @@ export default function ModalConsultaEstoqueEmbed({ codigo, onClose, zIndexBase 
       return {};
     }
     if (detalhe.tipo === 'saldo') {
-      const r = await obterSaldoDetalhe(id);
+      const r = fontes ? await fontes.saldoDetalhe(id) : await obterSaldoDetalhe(id);
       if (!r.error) detalheCacheRef.current.set(cacheKey, r.data);
       setDetalheSaldo(r.data);
       return { error: r.error };
     }
-    const rLiquido = await obterRessupEmpenhoPorPedido(id, considerarRef.current, false);
+    const rLiquido = fontes
+      ? await fontes.empenhoPorPedido(id, considerarRef.current)
+      : await obterRessupEmpenhoPorPedido(id, considerarRef.current, false);
     if (!rLiquido.error && rLiquido.data) detalheCacheRef.current.set(cacheKey, rLiquido.data);
     setDetalheEmpenhoLiquido(rLiquido.data);
     return { error: rLiquido.error };
-  }, [detalhe]);
+  }, [detalhe, fontes]);
 
   useEffect(() => {
     if (!detalhe) {
@@ -205,7 +235,7 @@ export default function ModalConsultaEstoqueEmbed({ codigo, onClose, zIndexBase 
             Consulta de estoque — {codigo}
           </h2>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            Visualização em tempo real. Clique em Empenho ou Estoque para detalhar.
+            {legenda ?? 'Visualização em tempo real.'} Clique em Empenho ou Estoque para detalhar.
           </p>
         </div>
         <button

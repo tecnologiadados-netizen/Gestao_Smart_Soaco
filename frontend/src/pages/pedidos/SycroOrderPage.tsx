@@ -280,6 +280,7 @@ function formatLinhaPrevisaoHistorico(opts: {
   newDate: string | null;
   prazoOriginal?: string | null;
 }): string | null {
+  if (opts.actionType === 'DATA_PRODUCAO') return null;
   const newIso = firstIsoFromRange(opts.newDate);
   if (!newIso) return null;
   const newFmt = formatDate(newIso);
@@ -295,7 +296,19 @@ function formatLinhaPrevisaoHistorico(opts: {
   return `Previsão alterada para ${newFmt}`;
 }
 
-type HistoricoEventTone = 'create' | 'previsao' | 'tagDisponivel' | 'tagIndisponivel' | 'default';
+/** Evento de data de produção (Comunicação PD): não passa pelo texto de previsão. */
+function formatLinhaDataProducaoHistorico(previousDate: string | null, newDate: string | null): string | null {
+  const newIso = firstIsoFromRange(newDate);
+  if (!newIso) return null;
+  const newFmt = formatDate(newIso);
+  const prevIso = firstIsoFromRange(previousDate);
+  const prevFmt = prevIso ? formatDate(prevIso) : null;
+  return prevFmt && prevFmt !== newFmt
+    ? `Data de produção alterada de ${prevFmt} para ${newFmt}`
+    : `Data de produção definida para ${newFmt}`;
+}
+
+type HistoricoEventTone = 'create' | 'previsao' | 'dataProducao' | 'tagDisponivel' | 'tagIndisponivel' | 'default';
 
 function historicoEventTone(
   actionType: string,
@@ -305,6 +318,7 @@ function historicoEventTone(
   if (actionType === 'CREATE') return 'create';
   if (actionType === 'TAG_DISPONIVEL_TRUE') return 'tagDisponivel';
   if (actionType === 'TAG_DISPONIVEL_FALSE') return 'tagIndisponivel';
+  if (actionType === 'DATA_PRODUCAO') return 'dataProducao';
   if (actionType === 'AJUSTE_PREVISAO') return 'previsao';
   if (linhaPrevisao && linhaConteudo === linhaPrevisao) return 'previsao';
   return 'default';
@@ -325,6 +339,13 @@ const HISTORICO_EVENT_BOX: Record<Exclude<HistoricoEventTone, 'default'>, { li: 
     dot: 'size-1.5 shrink-0 rounded-full bg-amber-600 dark:bg-amber-400',
     badgeSub: 'font-semibold normal-case tracking-normal text-[11px] text-amber-950 dark:text-amber-50',
   },
+  dataProducao: {
+    li: 'relative rounded-lg border-l-[5px] border-violet-500 bg-violet-50/95 pl-3.5 pr-3 py-3 shadow-sm ring-1 ring-violet-600/20 last:pb-3 dark:border-violet-400 dark:bg-violet-950/45 dark:ring-violet-400/25',
+    badge:
+      'inline-flex flex-wrap items-center gap-1.5 rounded-md border border-violet-600/35 bg-violet-600/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-violet-950 dark:border-violet-400/40 dark:bg-violet-500/15 dark:text-violet-100',
+    dot: 'size-1.5 shrink-0 rounded-full bg-violet-600 dark:bg-violet-400',
+    badgeSub: 'font-semibold normal-case tracking-normal text-[11px] text-violet-950 dark:text-violet-50',
+  },
   tagDisponivel: {
     li: 'relative rounded-lg border-l-[5px] border-emerald-500 bg-emerald-50/95 pl-3.5 pr-3 py-3 shadow-sm ring-1 ring-emerald-600/20 last:pb-3 dark:border-emerald-400 dark:bg-emerald-950/50 dark:ring-emerald-400/25',
     badge:
@@ -344,6 +365,7 @@ const HISTORICO_EVENT_BOX: Record<Exclude<HistoricoEventTone, 'default'>, { li: 
 const HISTORICO_EVENT_BADGE_TITULO: Record<Exclude<HistoricoEventTone, 'default'>, string> = {
   create: 'CRIAÇÃO DO CARD',
   previsao: 'ALTERAÇÃO DE PREVISÃO',
+  dataProducao: 'ALTERAÇÃO DE DATA DE PRODUÇÃO',
   tagDisponivel: 'MARCADO COMO DISPONÍVEL',
   tagIndisponivel: 'MARCADO COMO NÃO DISPONÍVEL',
 };
@@ -1034,6 +1056,10 @@ export default function SycroOrderPage() {
                       newDate: h.new_date,
                       prazoOriginal,
                     });
+                    const linhaDataProducao =
+                      h.action_type === 'DATA_PRODUCAO'
+                        ? formatLinhaDataProducaoHistorico(h.previous_date, h.new_date)
+                        : null;
                     const linhaConteudo =
                       h.action_type === 'UPDATE' && obsStr
                         ? obsStr
@@ -1043,7 +1069,7 @@ export default function SycroOrderPage() {
                             ? 'Marcado como disponível'
                             : h.action_type === 'TAG_DISPONIVEL_FALSE'
                               ? 'Marcado como não disponível'
-                              : null;
+                              : linhaDataProducao;
                     const linhaCabecalho = [h.user_name || 'Sistema', h.created_at ? formatDateTime(h.created_at) : '']
                       .filter(Boolean)
                       .join(' em ');
@@ -1051,7 +1077,9 @@ export default function SycroOrderPage() {
                     const isBoxed = tone !== 'default';
                     const box = isBoxed ? HISTORICO_EVENT_BOX[tone] : null;
                     const linhasCorpoBoxed: string[] = [];
-                    if (isCreate || tone === 'previsao') {
+                    if (tone === 'dataProducao') {
+                      if (linhaDataProducao) linhasCorpoBoxed.push(linhaDataProducao);
+                    } else if (isCreate || tone === 'previsao') {
                       if (linhaPrevisao) linhasCorpoBoxed.push(linhaPrevisao);
                       if (obsStr) linhasCorpoBoxed.push(obsStr);
                     }
@@ -1983,6 +2011,8 @@ function ModalAtualizarPedido({
   const [querInformarNovaData, setQuerInformarNovaData] = useState<'sim' | 'nao' | null>(null);
   // Quando o usuário escolher "Sim", o campo deve aparecer vazio e ser obrigatório.
   const [new_date, setNew_date] = useState('');
+  // Opcional e independente da data prometida: vazio = não altera a data de produção.
+  const [novaDataProducao, setNovaDataProducao] = useState('');
   const [observation, setObservation] = useState('');
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionCandidates, setMentionCandidates] = useState<Array<{ login: string; nome: string | null }>>([]);
@@ -2061,6 +2091,7 @@ function ModalAtualizarPedido({
   const novaDataPreenchida = new_date.trim() !== '';
   const dataAlterada =
     novaDataPreenchida && normalizeDateKeyForCompare(new_date) !== normalizeDateKeyForCompare(order.current_promised_date);
+  const producaoPreenchida = novaDataProducao.trim() !== '';
 
   const carregarMotivos = useCallback(() => {
     setLoadingMotivos(true);
@@ -2087,8 +2118,8 @@ function ModalAtualizarPedido({
       return;
     }
     if (querInformarNovaData !== 'sim') {
-      if (!observation.trim()) {
-        setErro('Comentário é obrigatório quando não informar uma nova data prometida.');
+      if (!observation.trim() && !producaoPreenchida) {
+        setErro('Informe um comentário ou uma nova data de produção quando não informar uma nova data prometida.');
         return;
       }
       submitDireto();
@@ -2099,8 +2130,13 @@ function ModalAtualizarPedido({
       return;
     }
 
-    if (querInformarNovaData === 'sim' && novaDataPreenchida && !dataAlterada) {
+    if (querInformarNovaData === 'sim' && novaDataPreenchida && !dataAlterada && !producaoPreenchida) {
       setErro('Informe uma data diferente da data prometida atual do card para continuar (ou escolha "Não" se for apenas comentário).');
+      return;
+    }
+
+    if (novaDataPreenchida && producaoPreenchida && new_date.trim().slice(0, 10) < novaDataProducao.trim().slice(0, 10)) {
+      setErro('A nova data prometida não pode ser anterior à nova data de produção.');
       return;
     }
 
@@ -2157,6 +2193,7 @@ function ModalAtualizarPedido({
     try {
       await updateSycroOrderOrder(order.id, {
         ...(isCommentOnlyUser ? {} : (informaNovaData ? { new_date: new_date.trim() || undefined } : {})),
+        ...(isCommentOnlyUser || !producaoPreenchida ? {} : { nova_data_producao: novaDataProducao.trim() }),
         ...(tagDisponivelToSet === undefined || tagDisponivelToSet === null ? {} : { tag_disponivel: tagDisponivelToSet }),
         comentario: coment || undefined,
         aguarda_resposta: coment
@@ -2328,6 +2365,20 @@ function ModalAtualizarPedido({
                     </p>
                   </div>
                 )}
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Nova data de produção <span className="font-normal text-slate-500 dark:text-slate-400">(opcional)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={novaDataProducao}
+                    onChange={(e) => setNovaDataProducao(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                  />
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                    Deixe em branco para não alterar. Vale para os mesmos itens do Gerenciador que receberem a nova data prometida.
+                  </p>
+                </div>
               </div>
             )}
             <div>

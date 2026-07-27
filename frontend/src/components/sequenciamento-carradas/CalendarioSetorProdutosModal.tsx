@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useConsultaEstoqueCongelada } from './useConsultaEstoqueCongelada';
 import {
   formatQtdeInt,
   listarProdutosSetorCalendario,
@@ -36,6 +37,8 @@ type Props = {
   /** Qtde líquida após estoque (mesma regra da Programação Setorial). */
   getQtdeLinha?: (row: Record<string, unknown>) => number;
   onClose: () => void;
+  /** Snapshot da sequência: congela a Consulta de estoque na primeira abertura de cada produto. */
+  snapshotId?: number | null;
 };
 
 function textoCelula(row: ProdutoSetorCalendarioRow, colId: string): string {
@@ -58,8 +61,10 @@ export default function CalendarioSetorProdutosModal({
   dataInserirRomaneio,
   getQtdeLinha,
   onClose,
+  snapshotId = null,
 }: Props) {
   const [consultaCodigo, setConsultaCodigo] = useState<string | null>(null);
+  const fontesCongeladas = useConsultaEstoqueCongelada(snapshotId);
 
   const produtos = useMemo(
     () =>
@@ -259,7 +264,16 @@ export default function CalendarioSetorProdutosModal({
         </div>
       </div>
       {consultaCodigo ? (
-        <ModalConsultaEstoqueEmbed codigo={consultaCodigo} onClose={() => setConsultaCodigo(null)} />
+        <ModalConsultaEstoqueEmbed
+          codigo={consultaCodigo}
+          onClose={() => setConsultaCodigo(null)}
+          fontes={fontesCongeladas}
+          legenda={
+            fontesCongeladas
+              ? 'Valores congelados nesta sequência (capturados na primeira consulta).'
+              : undefined
+          }
+        />
       ) : null}
     </div>,
     document.body

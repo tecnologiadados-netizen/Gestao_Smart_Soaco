@@ -1,4 +1,9 @@
 import { prisma } from '../config/prisma.js';
+import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
+import {
+  capturarBaseMateriaisCongelada,
+  type BaseMateriaisCongelada,
+} from '../services/disponibilidadeMateriaisCalendarioService.js';
 import { listarPedidos } from './pedidosRepository.js';
 import { getProgramacaoSetorialEstoqueSaldo } from './programacaoSetorialRepository.js';
 
@@ -311,6 +316,28 @@ export async function montarPayloadSequenciamento(): Promise<{
   };
 }
 
+/**
+ * Congela as entradas do motor de materiais no momento do Gravar. Falha aqui não impede a
+ * gravação: o snapshot fica sem base e o Calendário volta ao modo ao vivo (igual ao legado).
+ */
+async function capturarBaseMateriaisDoPayload(
+  linhas: PedidoRow[]
+): Promise<BaseMateriaisCongelada | null> {
+  const pool = getNomusPool();
+  if (!pool || !isNomusEnabled()) return null;
+  const codigosPa = [...new Set(linhas.map((row) => getField(row, ['Cod', 'cod'])).filter(Boolean))];
+  if (codigosPa.length === 0) return null;
+  try {
+    return await capturarBaseMateriaisCongelada(pool, codigosPa);
+  } catch (err) {
+    console.error(
+      '[sequenciamento] falha ao congelar base de materiais:',
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+}
+
 const KEY_SEP = '\x1e';
 
 function carradaKeyRepo(cod: string, carrada: string): string {
@@ -500,6 +527,12 @@ export async function gravarSnapshotSequenciamento(
   if (jsonStr.length > SEQUENCIAMENTO_PAYLOAD_MAX_CHARS) {
     throw new Error('Snapshot muito grande para gravar. Reduza o volume de pedidos ou contate o suporte.');
   }
+  const baseMateriais = await capturarBaseMateriaisDoPayload(base.linhas as PedidoRow[]);
+  let baseMateriaisStr: string | null = baseMateriais ? JSON.stringify(baseMateriais) : null;
+  if (baseMateriaisStr && baseMateriaisStr.length > SEQUENCIAMENTO_PAYLOAD_MAX_CHARS) {
+    console.error('[sequenciamento] base de materiais excede o limite; snapshot fica ao vivo.');
+    baseMateriaisStr = null;
+  }
   const maxTentativas = 8;
   let lastErr: unknown;
   for (let tentativa = 0; tentativa < maxTentativas; tentativa++) {
@@ -511,6 +544,7 @@ export async function gravarSnapshotSequenciamento(
           usuarioLogin,
           carradaCount: payload.carradas.length,
           payload: jsonStr,
+          baseMateriais: baseMateriaisStr,
           // Novo fluxo: snapshot nasce como rascunho (editável com autosave até concluir).
           status: 'rascunho',
         },
@@ -596,6 +630,77 @@ export async function removerSnapshotSequenciamento(
   }
   await prisma.sequenciamentoCarradasSnapshot.delete({ where: { id } });
   return { ok: true };
+}
+
+/** Base congelada do motor de materiais; `null` em snapshot legado (cai no modo ao vivo). */
+export async function obterBaseMateriaisSnapshot(
+  id: number
+): Promise<BaseMateriaisCongelada | null> {
+  const row = await prisma.sequenciamentoCarradasSnapshot.findUnique({
+    where: { id },
+    select: { baseMateriais: true },
+  });
+  if (!row?.baseMateriais) return null;
+  try {
+    const parsed = JSON.parse(row.baseMateriais) as BaseMateriaisCongelada;
+    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.bom)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Consulta congelada sob demanda: devolve o registro já gravado ou executa `consultar` uma única
+ * vez, persistindo o resultado. A partir daí o valor nunca muda para aquela sequência.
+ */
+export async function obterOuCongelarConsultaSnapshot<T>(
+  snapshotId: number,
+  tipo: string,
+  chave: string,
+  consultar: () => Promise<T>
+): Promise<{ ok: true; data: T; capturadoEm: string } | { ok: false; error: string; notFound?: boolean }> {
+  const existente = await prisma.sequenciamentoSnapshotConsulta.findUnique({
+    where: { snapshotId_tipo_chave: { snapshotId, tipo, chave } },
+  });
+  if (existente) {
+    try {
+      return {
+        ok: true,
+        data: JSON.parse(existente.payload) as T,
+        capturadoEm: existente.capturadoEm.toISOString(),
+      };
+    } catch {
+      return { ok: false, error: 'Consulta congelada ilegível.' };
+    }
+  }
+  const snapshot = await prisma.sequenciamentoCarradasSnapshot.findUnique({
+    where: { id: snapshotId },
+    select: { id: true },
+  });
+  if (!snapshot) return { ok: false, error: 'Snapshot não encontrado.', notFound: true };
+
+  const data = await consultar();
+  const payload = JSON.stringify(data);
+  try {
+    const criado = await prisma.sequenciamentoSnapshotConsulta.create({
+      data: { snapshotId, tipo, chave, payload },
+    });
+    return { ok: true, data, capturadoEm: criado.capturadoEm.toISOString() };
+  } catch (err) {
+    // Corrida entre dois usuários abrindo o mesmo produto: relê o registro que venceu.
+    const concorrente = await prisma.sequenciamentoSnapshotConsulta.findUnique({
+      where: { snapshotId_tipo_chave: { snapshotId, tipo, chave } },
+    });
+    if (concorrente) {
+      return {
+        ok: true,
+        data: JSON.parse(concorrente.payload) as T,
+        capturadoEm: concorrente.capturadoEm.toISOString(),
+      };
+    }
+    throw err;
+  }
 }
 
 export async function listarSnapshotsSequenciamento(limit = 100): Promise<
