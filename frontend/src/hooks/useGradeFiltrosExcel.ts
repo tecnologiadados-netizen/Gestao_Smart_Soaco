@@ -51,19 +51,13 @@ export function rowMatchesColumnFilters<T>(
     const selected = value.split(FILTER_SEP).filter(Boolean);
     const multi = getCellFilterValues?.(row, key);
     if (multi) {
-      if (selected.length > 1 || value.includes(FILTER_SEP)) {
-        if (!multi.some((t) => selected.includes(t))) return false;
-      } else if (!multi.some((t) => t.toLowerCase().includes(value.trim().toLowerCase()))) {
-        return false;
-      }
+      // Checklist Excel: correspondência exata (nunca "contém").
+      if (!multi.some((t) => selected.includes(t))) return false;
       continue;
     }
     const cellText = getCellText(row, key);
-    if (selected.length > 1 || value.includes(FILTER_SEP)) {
-      if (!selected.includes(cellText)) return false;
-    } else if (!cellText.toLowerCase().includes(value.trim().toLowerCase())) {
-      return false;
-    }
+    // Um ou vários valores do checklist — sempre igualdade exata.
+    if (!selected.includes(cellText)) return false;
   }
   return true;
 }

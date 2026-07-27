@@ -2640,6 +2640,28 @@ export async function obterMapaRotaPorIdPedido(ids: string[]): Promise<Map<strin
   return map;
 }
 
+/**
+ * Rotas (Observacoes) em que o mesmo (PD, item) aparece hoje no Gerenciador.
+ * Usada para aplicar um ajuste em todas as rotas: como a grade resolve override da rota antes do
+ * ajuste base, gravar só o base deixaria as rotas com override já existente sem efeito.
+ */
+export async function obterRotasDoItem(idPedido: string): Promise<string[]> {
+  const idNorm = String(idPedido ?? '').trim();
+  if (!idNorm) return [];
+  const canon = chavePedidoItem(idNorm);
+  const { data } = await listarPedidos({});
+  const rotas = new Set<string>();
+  for (const p of data) {
+    const row = p as Record<string, unknown>;
+    const id = String(p.id_pedido ?? row['idChave'] ?? '').trim();
+    if (!id) continue;
+    if (id !== idNorm && chavePedidoItem(id) !== canon) continue;
+    const rota = String(row['Observacoes'] ?? row['Observações'] ?? row['Rota'] ?? '').trim();
+    if (rota) rotas.add(rota);
+  }
+  return [...rotas];
+}
+
 export interface AjusteLoteItem {
   id_pedido: string;
   previsao_nova: Date;

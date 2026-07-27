@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { z } from 'zod';
-import { ajustarDataProducaoLote, listarPedidos, type Pedido } from '../api/pedidos';
+import { ajustarDataProducaoLote, listarPedidos, type DataProducaoLoteItem, type Pedido } from '../api/pedidos';
+import { dataProducaoRealPedido } from '../utils/dataProducaoGerenciador';
 import { listarMotivosSugestao, type MotivoSugestao } from '../api/motivosSugestao';
 import ModalGerenciarMotivos from './ModalGerenciarMotivos';
 import CampoLabelComAjuda, { AJUDA_CAMPO_OBSERVACAO } from './CampoLabelComAjuda';
@@ -15,6 +16,7 @@ import {
   normalizeRotaNameStr,
   rotaFromPedidoRow,
 } from '../utils/rotaCarrada';
+import { validarDatasReprogramacao } from '../utils/canalReprogramacaoDatas';
 
 const ajusteSchema = z.object({
   previsao_nova: z.string().min(1, 'Informe a data'),
@@ -22,12 +24,24 @@ const ajusteSchema = z.object({
   observacao: z.string().max(1000).optional(),
 });
 
-function validarPrevisaoNaoAnteriorProducao(previsaoIso: string, producaoIso: string): string | null {
-  if (!previsaoIso || !producaoIso) return null;
-  if (previsaoIso < producaoIso) {
-    return 'A nova data de previsão não pode ser anterior à data de produção.';
-  }
-  return null;
+/**
+ * Data de produção atual do formulário: no calendário vem do contexto da coluna; no Gerenciador,
+ * do valor real gravado no pedido (vazio quando a grade só exibe a previsão como fallback).
+ */
+function resolverDataProducaoInicial(
+  pedido: Pedido | null,
+  calendario?: AjustePrevisaoContextoCalendario
+): string {
+  if (calendario) return calendario.dataProducaoAtual?.slice(0, 10) ?? '';
+  return pedido ? dataProducaoRealPedido(pedido) : '';
+}
+
+function validarDatasCompletas(previsaoIso: string, producaoIso: string): string | null {
+  return validarDatasReprogramacao({
+    previsaoIso: previsaoIso || null,
+    producaoIso: producaoIso || null,
+    exigirNaoAnteriorHoje: true,
+  });
 }
 
 /** Após salvar com replicação na mesma carrada, lista do Gerenciador para essa rota (atualiza todas as linhas visíveis de uma vez). */
@@ -54,6 +68,11 @@ interface ModalAjustePrevisaoProps {
   onError: (msg: string) => void;
   calendario?: AjustePrevisaoContextoCalendario;
   /**
+   * Itens adicionais a receber o mesmo ajuste (Reprogramar no Gerenciador).
+   * No calendário, preferir `calendario.demaisItensPd` + `escopoTodosItensPd`.
+   */
+  demaisItens?: Pedido[];
+  /**
    * Atualiza a data de produção na simulação do sequenciamento (UI do calendário).
    * A persistência no Gerenciador é feita pelo próprio modal via `data-producao-lote`.
    */
@@ -67,9 +86,9 @@ type FlowStep = 'form' | 'multiplas_rotas' | 'carrada_confirm';
 /** Decisão acumulada ao longo dos steps do fluxo. */
 type PendingDecision = {
   data: { previsao_nova: string; motivo: string; observacao?: string; previsao_confiavel: boolean };
-  /** Override por rota. null = ajuste base (vale em todas as rotas do PD/item), salvo no calendário sem forcarBase. */
+  /** Override por rota (padrão: Observacoes da linha). null só quando a linha não tem rota. */
   rotaOverride: string | null;
-  /** Usuário escolheu explicitamente ajuste base (todas as rotas). */
+  /** Usuário escolheu explicitamente aplicar em todas as rotas em que o item aparece. */
   forcarBase?: boolean;
   /** Outras rotas em que o mesmo (PD, item) aparece, além da rota atual. */
   outrasRotasDoItem: string[];
@@ -85,6 +104,7 @@ export default function ModalAjustePrevisao({
   onSuccess,
   onError,
   calendario,
+  demaisItens,
   onSalvarDataProducao,
   onVoltar,
 }: ModalAjustePrevisaoProps) {
@@ -92,7 +112,9 @@ export default function ModalAjustePrevisao({
     if (!pedido?.previsao_entrega_atualizada) return '';
     return String(pedido.previsao_entrega_atualizada).slice(0, 10);
   });
-  const [data_producao_nova, setDataProducaoNova] = useState(() => calendario?.dataProducaoAtual?.slice(0, 10) ?? '');
+  const [data_producao_nova, setDataProducaoNova] = useState(() =>
+    resolverDataProducaoInicial(pedido, calendario)
+  );
   const [motivo, setMotivo] = useState('');
   const [observacao, setObservacao] = useState('');
   const [previsaoConfiavel, setPrevisaoConfiavel] = useState(true);
@@ -134,7 +156,7 @@ export default function ModalAjustePrevisao({
     setPrevisaoNova(
       pedido.previsao_entrega_atualizada ? String(pedido.previsao_entrega_atualizada).slice(0, 10) : ''
     );
-    setDataProducaoNova(calendario?.dataProducaoAtual?.slice(0, 10) ?? '');
+    setDataProducaoNova(resolverDataProducaoInicial(pedido, calendario));
     setMotivo('');
     setObservacao('');
     setPrevisaoConfiavel(true);
@@ -150,23 +172,50 @@ export default function ModalAjustePrevisao({
     ? String(pedido.previsao_entrega_atualizada).slice(0, 10)
     : '';
 
-  const producaoAtualStr = calendario?.dataProducaoAtual?.slice(0, 10) ?? '';
+  const producaoAtualStr = resolverDataProducaoInicial(pedido, calendario);
 
   const previsaoNovaForm = previsao_nova.trim().slice(0, 10);
   const producaoNovaForm = data_producao_nova.trim().slice(0, 10);
   const previsaoMudouForm = !previsaoAtualStr || previsaoNovaForm !== previsaoAtualStr;
-  const producaoMudouForm = !!calendario && producaoNovaForm !== producaoAtualStr;
-  const motivoObrigatorio =
-    !calendario || previsaoMudouForm || (calendario.producaoDerivadaPrevisao && producaoMudouForm);
+  const producaoMudouForm = producaoNovaForm !== producaoAtualStr;
+  /**
+   * Motivo, previsão confiável e observação descrevem a mudança de previsão. Quando só a data de
+   * produção muda, não há ajuste de previsão e esses campos ficam fora do fluxo.
+   */
+  const previsaoSeraAjustada =
+    previsaoMudouForm || (!!calendario && calendario.producaoDerivadaPrevisao && producaoMudouForm);
 
-  const demaisItensCalendario = (): Pedido[] =>
-    calendario?.escopoTodosItensPd ? calendario.demaisItensPd ?? [] : [];
+  /** Evita deixar motivo/observação preenchidos e desabilitados quando a previsão volta ao valor atual. */
+  const limparCamposAjustePrevisaoSeInativos = (previsaoIso: string, producaoIso: string) => {
+    const previsaoMuda = !previsaoAtualStr || previsaoIso !== previsaoAtualStr;
+    const producaoMuda = producaoIso !== producaoAtualStr;
+    if (previsaoMuda || (!!calendario && calendario.producaoDerivadaPrevisao && producaoMuda)) return;
+    setMotivo('');
+    setObservacao('');
+    setPrevisaoConfiavel(true);
+  };
 
-  /** Persiste produção no Gerenciador (override por Observacoes) e atualiza o sim do calendário. */
-  const persistirDataProducaoCalendario = async (novaData: string) => {
+  const demaisItensCalendario = (): Pedido[] => {
+    if (calendario?.escopoTodosItensPd) return calendario.demaisItensPd ?? [];
+    return demaisItens ?? [];
+  };
+
+  /**
+   * Persiste a data de produção no Gerenciador como override da rota da linha (mesma hierarquia da
+   * grade) e atualiza a simulação do calendário quando houver.
+   * `rotasTodasDoItem` preenchido: grava também o base e um override por rota do item.
+   */
+  const persistirDataProducao = async (novaData: string, rotasTodasDoItem: string[] = []) => {
     const itens = montarItensDataProducaoCalendario(pedido, novaData, demaisItensCalendario());
     if (itens.length === 0) {
       throw new Error('Não foi possível montar o lote de data de produção (pedido sem id).');
+    }
+    if (rotasTodasDoItem.length > 0) {
+      const extras: DataProducaoLoteItem[] = [{ id_pedido: pedido.id_pedido, data_producao: novaData }];
+      for (const rota of rotasTodasDoItem) {
+        extras.push({ id_pedido: pedido.id_pedido, data_producao: novaData, rota });
+      }
+      itens.push(...extras);
     }
     const r = await ajustarDataProducaoLote(itens);
     if (r.erros?.length) {
@@ -175,15 +224,11 @@ export default function ModalAjustePrevisao({
     onSalvarDataProducao?.(novaData);
   };
 
-  const aplicarDataProducaoPendente = async () => {
+  const aplicarDataProducaoPendente = async (decision: PendingDecision) => {
     const nova = pendingProducaoRef.current;
     if (!nova) return;
     pendingProducaoRef.current = null;
-    if (calendario) {
-      await persistirDataProducaoCalendario(nova);
-    } else {
-      onSalvarDataProducao?.(nova);
-    }
+    await persistirDataProducao(nova, decision.forcarBase === true ? decision.outrasRotasDoItem : []);
   };
 
   /** Executa a gravação respeitando a decisão acumulada. */
@@ -203,6 +248,7 @@ export default function ModalAjustePrevisao({
         observacao: decision.data.observacao || null,
         replicate_carrada: replicateCarrada ? true : undefined,
         rota: rotaPayloadPrincipal,
+        todas_rotas: decision.forcarBase === true ? true : undefined,
         previsao_confiavel: decision.data.previsao_confiavel,
       });
       let meta: AjustePrevisaoSuccessMeta | undefined;
@@ -218,7 +264,7 @@ export default function ModalAjustePrevisao({
         }
       }
       const producaoPendente = pendingProducaoRef.current;
-      await aplicarDataProducaoPendente();
+      await aplicarDataProducaoPendente(decision);
       if (producaoPendente) {
         atualizado = { ...atualizado, data_producao: producaoPendente } as Pedido;
       }
@@ -284,7 +330,29 @@ export default function ModalAjustePrevisao({
     const previsaoNovaNorm = previsao_nova.trim().slice(0, 10);
     const producaoNovaNorm = data_producao_nova.trim().slice(0, 10);
     const previsaoMudou = !previsaoAtualStr || previsaoNovaNorm !== previsaoAtualStr;
-    const producaoMudou = !!calendario && producaoNovaNorm !== producaoAtualStr;
+    const producaoMudou = producaoNovaNorm !== producaoAtualStr;
+
+    /** Grava só a data de produção e fecha (nenhum ajuste de previsão envolvido). */
+    const salvarSomenteProducao = async (rotasTodasDoItem: string[] = []) => {
+      if (!producaoNovaNorm) {
+        setErrors({ data_producao_nova: 'Informe a data' });
+        onError('Informe a nova data de produção.');
+        return;
+      }
+      setLoading(true);
+      try {
+        await persistirDataProducao(producaoNovaNorm, rotasTodasDoItem);
+        onSuccess({
+          ...pedido,
+          data_producao: producaoNovaNorm,
+        } as Pedido);
+        onClose();
+      } catch (err) {
+        onError(err instanceof Error ? err.message : 'Erro ao gravar data de produção.');
+      } finally {
+        setLoading(false);
+      }
+    };
 
     if (calendario) {
       if (!producaoMudou && !previsaoMudou) {
@@ -297,7 +365,10 @@ export default function ModalAjustePrevisao({
         calendario.producaoDerivadaPrevisao && producaoMudou && !previsaoMudou
           ? producaoNovaNorm
           : previsaoNovaNorm;
-      const ordemErro = validarPrevisaoNaoAnteriorProducao(previsaoRef, producaoRef);
+      const ordemErro = validarDatasCompletas(
+        previsaoMudou || (calendario.producaoDerivadaPrevisao && producaoMudou) ? previsaoRef : '',
+        producaoMudou ? producaoNovaNorm : previsaoMudou ? producaoRef : ''
+      );
       if (ordemErro) {
         setErrors({ previsao_nova: ordemErro, data_producao_nova: ordemErro });
         onError(ordemErro);
@@ -317,46 +388,35 @@ export default function ModalAjustePrevisao({
         !calendario.producaoDerivadaPrevisao &&
         (!previsaoMudou || previsaoApenasClamp)
       ) {
-        if (!producaoNovaNorm) {
-          setErrors({ data_producao_nova: 'Informe a data' });
-          onError('Informe a nova data de produção.');
-          return;
-        }
-        setLoading(true);
-        try {
-          await persistirDataProducaoCalendario(producaoNovaNorm);
-          onSuccess({
-            ...pedido,
-            data_producao: producaoNovaNorm,
-          } as Pedido);
-          onClose();
-        } catch (err) {
-          onError(err instanceof Error ? err.message : 'Erro ao gravar data de produção.');
-        } finally {
-          setLoading(false);
-        }
+        await salvarSomenteProducao();
         return;
       }
-    } else if (previsaoAtualStr && previsaoNovaNorm === previsaoAtualStr) {
-      setErrors({ previsao_nova: 'A data não foi alterada.' });
-      onError('A data não foi alterada. Informe uma data diferente da previsão atual para salvar.');
-      return;
-    }
+    } else {
+      if (!previsaoMudou && !producaoMudou) {
+        setErrors({ previsao_nova: 'A data não foi alterada.' });
+        onError('Nenhuma data foi alterada. Informe uma nova previsão ou uma nova data de produção para salvar.');
+        return;
+      }
 
-    const dataProducaoPedido = String((pedido as Record<string, unknown>).data_producao ?? '').slice(0, 10);
-    if (!calendario) {
-      const ordemErro = validarPrevisaoNaoAnteriorProducao(previsaoNovaNorm, dataProducaoPedido);
+      const ordemErro = validarDatasCompletas(
+        previsaoMudou ? previsaoNovaNorm : '',
+        producaoMudou ? producaoNovaNorm : producaoNovaNorm || producaoAtualStr
+      );
       if (ordemErro) {
-        setErrors({ previsao_nova: ordemErro });
+        setErrors({ previsao_nova: ordemErro, data_producao_nova: ordemErro });
         onError(ordemErro);
+        return;
+      }
+
+      // Só a data de produção mudou: motivo, confiabilidade e observação não se aplicam.
+      if (!previsaoMudou) {
+        await salvarSomenteProducao();
         return;
       }
     }
 
     const precisaAjustePrevisao =
-      !calendario ||
-      previsaoMudou ||
-      (producaoMudou && calendario.producaoDerivadaPrevisao);
+      previsaoMudou || (!!calendario && calendario.producaoDerivadaPrevisao && producaoMudou);
 
     const previsaoEfetiva =
       calendario?.producaoDerivadaPrevisao && producaoMudou && !previsaoMudou
@@ -365,25 +425,7 @@ export default function ModalAjustePrevisao({
 
     if (!precisaAjustePrevisao) {
       if (producaoMudou && producaoNovaNorm) {
-        if (calendario) {
-          setLoading(true);
-          try {
-            await persistirDataProducaoCalendario(producaoNovaNorm);
-            onSuccess({
-              ...pedido,
-              data_producao: producaoNovaNorm,
-            } as Pedido);
-            onClose();
-          } catch (err) {
-            onError(err instanceof Error ? err.message : 'Erro ao gravar data de produção.');
-          } finally {
-            setLoading(false);
-          }
-        } else {
-          onSalvarDataProducao?.(producaoNovaNorm);
-          onSuccess(pedido);
-          onClose();
-        }
+        await salvarSomenteProducao();
       }
       return;
     }
@@ -478,9 +520,9 @@ export default function ModalAjustePrevisao({
 
     const decision: PendingDecision = {
       data: dataComConfiavel!,
-      // Calendário: override na Observacoes da linha (mesma hierarquia da grade).
-      // Sem calendário: null = ajuste base.
-      rotaOverride: calendario && rotaAtual.trim() ? rotaAtual.trim() : null,
+      // Override na Observacoes da linha: a grade resolve override da rota antes do ajuste base,
+      // então gravar base deixaria a nova data invisível sempre que a linha já tivesse override.
+      rotaOverride: rotaAtual.trim() ? rotaAtual.trim() : null,
       forcarBase: false,
       outrasRotasDoItem,
       precisaConfirmarCarrada,
@@ -556,37 +598,40 @@ export default function ModalAjustePrevisao({
           <p><span className="font-medium text-slate-700 dark:text-slate-300">Pedido</span> {String(pd)}</p>
           <p>
             <span className="font-medium text-slate-700 dark:text-slate-300">Produto</span>{' '}
-            {calendario?.escopoTodosItensPd ? 'TODOS' : String(cod)}
+            {calendario?.escopoTodosItensPd || (demaisItens && demaisItens.length > 0)
+              ? `TODOS (${1 + (calendario?.escopoTodosItensPd ? calendario.demaisItensPd?.length ?? 0 : demaisItens?.length ?? 0)} itens)`
+              : String(cod)}
           </p>
           <p><span className="font-medium text-slate-700 dark:text-slate-300">Cliente</span> {pedido.cliente}</p>
         </div>
         <form onSubmit={handleSubmit}>
-          {calendario && (
-            <div className="mb-4">
-              <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Nova data de produção</label>
-              <SequenciamentoDateField
-                fullWidth
-                value={data_producao_nova}
-                onChange={(nova) => {
-                  setDataProducaoNova(nova);
-                  const previsaoForm = previsao_nova.trim().slice(0, 10);
-                  if (nova && (!previsaoForm || previsaoForm < nova)) {
-                    setPrevisaoNova(nova);
-                  }
-                }}
-                className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
-              />
-              {errors.data_producao_nova && (
-                <p className="text-amber-400 text-xs mt-1">{errors.data_producao_nova}</p>
-              )}
-            </div>
-          )}
+          <div className="mb-4">
+            <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Nova data de produção</label>
+            <SequenciamentoDateField
+              fullWidth
+              value={data_producao_nova}
+              onChange={(nova) => {
+                setDataProducaoNova(nova);
+                const previsaoForm = previsao_nova.trim().slice(0, 10);
+                const previsaoAjustada = nova && (!previsaoForm || previsaoForm < nova) ? nova : previsaoForm;
+                if (previsaoAjustada !== previsaoForm) setPrevisaoNova(previsaoAjustada);
+                limparCamposAjustePrevisaoSeInativos(previsaoAjustada, nova);
+              }}
+              className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
+            />
+            {errors.data_producao_nova && (
+              <p className="text-amber-400 text-xs mt-1">{errors.data_producao_nova}</p>
+            )}
+          </div>
           <div className="mb-4">
             <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Nova data de previsão</label>
             <SequenciamentoDateField
               fullWidth
               value={previsao_nova}
-              onChange={setPrevisaoNova}
+              onChange={(nova) => {
+                setPrevisaoNova(nova);
+                limparCamposAjustePrevisaoSeInativos(nova, data_producao_nova.trim().slice(0, 10));
+              }}
               className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
             />
             {errors.previsao_nova && (
@@ -614,8 +659,9 @@ export default function ModalAjustePrevisao({
             <select
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
-              className="w-full rounded-lg bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 focus:ring-2 focus:ring-primary-600 focus:border-transparent"
-              required={motivoObrigatorio}
+              className="w-full rounded-lg bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 focus:ring-2 focus:ring-primary-600 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              required={previsaoSeraAjustada}
+              disabled={!previsaoSeraAjustada}
             >
               <option value="">Selecione um motivo</option>
               {sugestoes.map((s) => (
@@ -628,13 +674,21 @@ export default function ModalAjustePrevisao({
             {loadingSugestoes && (
               <p className="text-slate-500 text-xs mt-1">Carregando motivos...</p>
             )}
+            {!previsaoSeraAjustada && (
+              <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">
+                Motivo, previsão confiável e observação só valem para mudança da previsão de entrega.
+              </p>
+            )}
           </div>
           <div className="mb-4">
-            <label className="flex items-start gap-2 cursor-pointer">
+            <label
+              className={`flex items-start gap-2 ${previsaoSeraAjustada ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+            >
               <input
                 type="checkbox"
                 checked={previsaoConfiavel}
                 onChange={(e) => setPrevisaoConfiavel(e.target.checked)}
+                disabled={!previsaoSeraAjustada}
                 className="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-600"
               />
               <span className="text-sm text-slate-700 dark:text-slate-300">
@@ -652,7 +706,8 @@ export default function ModalAjustePrevisao({
               onChange={(e) => setObservacao(e.target.value)}
               rows={2}
               placeholder="Opcional"
-              className="w-full rounded-lg bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 focus:ring-2 focus:ring-primary-600 focus:border-transparent resize-none placeholder:text-slate-400 dark:placeholder:text-slate-500"
+              disabled={!previsaoSeraAjustada}
+              className="w-full rounded-lg bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 focus:ring-2 focus:ring-primary-600 focus:border-transparent resize-none placeholder:text-slate-400 dark:placeholder:text-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
           <div className="flex gap-3 justify-end">

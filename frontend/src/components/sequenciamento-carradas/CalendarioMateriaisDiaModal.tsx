@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 import type { DemandaCalendarioMateriais, MaterialDiaCalendario } from '../../api/sequenciamentoCarradas';
 import { consultarDisponibilidadeMateriaisDia } from '../../api/sequenciamentoCarradas';
 import { formatDataCurta, toISODate } from './simulacaoCarradas';
+import CalendarioOrigemConsumoModal from './CalendarioOrigemConsumoModal';
 import GradeCelulaModalBtn from '../pcp/GradeCelulaModalBtn';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
@@ -17,7 +18,7 @@ const COLS = [
   'codigo',
   'descricao',
   'saldoInicio',
-  'necessidadeDia',
+  'consumoDia',
   'entradaDia',
   'falta',
 ] as const;
@@ -28,7 +29,7 @@ const COL_LABELS: Record<ColId, string> = {
   codigo: 'Código',
   descricao: 'Descrição',
   saldoInicio: 'Saldo início',
-  necessidadeDia: 'Necessidade',
+  consumoDia: 'Consumo',
   entradaDia: 'Entrada PC',
   falta: 'Falta',
 };
@@ -37,7 +38,7 @@ const DEFAULT_COL_WIDTHS: Record<ColId, number> = {
   codigo: 110,
   descricao: 260,
   saldoInicio: 100,
-  necessidadeDia: 100,
+  consumoDia: 100,
   entradaDia: 100,
   falta: 90,
 };
@@ -45,7 +46,7 @@ const DEFAULT_COL_WIDTHS: Record<ColId, number> = {
 const COL_WIDTH_MIN = 56;
 const COL_WIDTH_MAX = 480;
 
-const NUMERIC_COLS = new Set<ColId>(['saldoInicio', 'necessidadeDia', 'entradaDia', 'falta']);
+const NUMERIC_COLS = new Set<ColId>(['saldoInicio', 'consumoDia', 'entradaDia', 'falta']);
 
 const TH = 'relative px-2 py-2 font-semibold text-slate-700 dark:text-slate-200';
 const TD = 'px-2 py-1.5 border-b border-slate-100 dark:border-slate-700 align-top';
@@ -64,7 +65,7 @@ function textoCelula(row: MaterialDiaCalendario, colId: string): string {
   if (colId === 'codigo') return row.codigo;
   if (colId === 'descricao') return row.descricao || '';
   if (colId === 'saldoInicio') return fmtNum(row.saldoInicio);
-  if (colId === 'necessidadeDia') return fmtNum(row.necessidadeDia);
+  if (colId === 'consumoDia') return fmtNum(row.consumoDia);
   if (colId === 'entradaDia') return fmtNum(row.entradaDia);
   if (colId === 'falta') return fmtNum(row.falta);
   return '';
@@ -72,7 +73,7 @@ function textoCelula(row: MaterialDiaCalendario, colId: string): string {
 
 function valorOrdenacao(row: MaterialDiaCalendario, colId: string): string | number {
   if (colId === 'saldoInicio') return row.saldoInicio;
-  if (colId === 'necessidadeDia') return row.necessidadeDia;
+  if (colId === 'consumoDia') return row.consumoDia;
   if (colId === 'entradaDia') return row.entradaDia;
   if (colId === 'falta') return row.falta;
   return textoCelula(row, colId);
@@ -85,6 +86,8 @@ export type CalendarioMateriaisDiaModalProps = {
   onClose: () => void;
   onAbrirItem: (codigo: string, idProduto: number, descricao: string) => void;
   cacheRef: MutableRefObject<Map<string, MaterialDiaCalendario[]>>;
+  /** Snapshot da sequência: calcula com a base congelada em vez do Nomus ao vivo. */
+  snapshotId?: number | null;
 };
 
 export default function CalendarioMateriaisDiaModal({
@@ -94,10 +97,12 @@ export default function CalendarioMateriaisDiaModal({
   onClose,
   onAbrirItem,
   cacheRef,
+  snapshotId,
 }: CalendarioMateriaisDiaModalProps) {
   const [linhas, setLinhas] = useState<MaterialDiaCalendario[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [origemLinha, setOrigemLinha] = useState<MaterialDiaCalendario | null>(null);
   const [colWidths, setColWidths] = useState<Record<ColId, number>>(() => ({ ...DEFAULT_COL_WIDTHS }));
   const colResizeRef = useRef<{ colId: ColId; startX: number; startW: number } | null>(null);
 
@@ -149,6 +154,10 @@ export default function CalendarioMateriaisDiaModal({
   }, []);
 
   const handleEscape = () => {
+    if (origemLinha) {
+      setOrigemLinha(null);
+      return;
+    }
     if (grade.colunaFiltroAberta) {
       grade.fecharFiltroExcel();
       return;
@@ -168,6 +177,7 @@ export default function CalendarioMateriaisDiaModal({
       setLinhas([]);
       setErro(null);
       setCarregando(false);
+      setOrigemLinha(null);
       return;
     }
     const dataNorm = toISODate(dataIso) || dataIso;
@@ -181,7 +191,7 @@ export default function CalendarioMateriaisDiaModal({
     let cancelled = false;
     setCarregando(true);
     setErro(null);
-    void consultarDisponibilidadeMateriaisDia(demanda, dataNorm).then((r) => {
+    void consultarDisponibilidadeMateriaisDia(demanda, dataNorm, { snapshotId }).then((r) => {
       if (cancelled) return;
       setCarregando(false);
       if (r.error) {
@@ -196,16 +206,17 @@ export default function CalendarioMateriaisDiaModal({
     return () => {
       cancelled = true;
     };
-  }, [open, dataIso, demanda, cacheRef]);
+  }, [open, dataIso, demanda, cacheRef, snapshotId]);
 
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 p-4"
-      role="presentation"
-      onClick={onClose}
-    >
+    <>
+      <div
+        className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 p-4"
+        role="presentation"
+        onClick={onClose}
+      >
       <div
         className="flex max-h-[min(88vh,640px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
         role="dialog"
@@ -222,8 +233,9 @@ export default function CalendarioMateriaisDiaModal({
               Materiais do dia · {formatDataCurta(dataIso)}
             </h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Somente necessidade e falta &gt; 0 no dia (exclui Matéria Prima). Arraste a borda das
-              colunas para ajustar a largura.
+              Somente consumo e falta &gt; 0 no dia (exclui Matéria Prima). Clique em{' '}
+              <strong>Consumo</strong> para ver a origem. Arraste a borda das colunas para ajustar a
+              largura.
             </p>
           </div>
           <button
@@ -254,8 +266,7 @@ export default function CalendarioMateriaisDiaModal({
           {erro && <p className="text-sm text-red-600 dark:text-red-400">{erro}</p>}
           {!carregando && !erro && linhas.length === 0 && (
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Nenhum material com necessidade e falta neste dia (almox secundário, sem Matéria
-              Prima).
+              Nenhum material com consumo e falta neste dia (almox secundário, sem Matéria Prima).
             </p>
           )}
           {!carregando && !erro && linhas.length > 0 && (
@@ -324,7 +335,19 @@ export default function CalendarioMateriaisDiaModal({
                       {r.descricao || '—'}
                     </td>
                     <td className={`${TD} text-right tabular-nums`}>{fmtNum(r.saldoInicio)}</td>
-                    <td className={`${TD} text-right tabular-nums`}>{fmtNum(r.necessidadeDia)}</td>
+                    <td className={`${TD} text-right tabular-nums`}>
+                      {r.consumoDia > 0 ? (
+                        <GradeCelulaModalBtn
+                          onClick={() => setOrigemLinha(r)}
+                          title="Ver origem do consumo"
+                          align="right"
+                        >
+                          {fmtNum(r.consumoDia)}
+                        </GradeCelulaModalBtn>
+                      ) : (
+                        fmtNum(r.consumoDia)
+                      )}
+                    </td>
                     <td className={`${TD} text-right tabular-nums`}>{fmtNum(r.entradaDia)}</td>
                     <td className={`${TD} text-right tabular-nums font-medium`}>{fmtNum(r.falta)}</td>
                   </tr>
@@ -364,6 +387,17 @@ export default function CalendarioMateriaisDiaModal({
           />
         )}
       </div>
-    </div>
+      </div>
+
+      {origemLinha && (
+        <CalendarioOrigemConsumoModal
+          dataIso={toISODate(dataIso) || dataIso}
+          origens={origemLinha.origens ?? []}
+          codigo={origemLinha.codigo}
+          onClose={() => setOrigemLinha(null)}
+          zIndex={145}
+        />
+      )}
+    </>
   );
 }

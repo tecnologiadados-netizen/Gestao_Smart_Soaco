@@ -15,6 +15,11 @@ export const ajustarPrevisaoSchema = z.object({
    * Quando omitido, grava como ajuste base (vale para todas as rotas em que o (PD, item) aparecer).
    */
   rota: z.string().max(500).optional().nullable(),
+  /**
+   * Aplica a nova previsão em todas as rotas em que o (PD, item) aparece hoje: grava um override
+   * por rota além do ajuste base. Sem isso, o base ficaria sombreado pelos overrides existentes.
+   */
+  todas_rotas: z.boolean().optional(),
   /** Quando false, não exibe no histórico dos cards Comunicação Interna. Default true. */
   previsao_confiavel: z.boolean().optional().default(true),
 });

@@ -38,6 +38,10 @@ import {
   mergeLinhasSnapshotVarios,
   SUBTOTAL_ROW_CLASS,
 } from './sequenciamentoCarradasUtils';
+import {
+  mensagemCanalDatasPedido,
+  rotaPermiteAlterarDatasCalendario,
+} from '../../utils/canalReprogramacaoDatas';
 import MultiSelectWithSearch from '../MultiSelectWithSearch';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import GradeFiltroCabecalhoBtn from '../grade/GradeFiltroCabecalhoBtn';
@@ -84,6 +88,11 @@ type Props = {
   estoqueCongelado?: boolean;
   /** ISO de quando linhas+estoque foram capturados (legenda). */
   geradoEm?: string;
+  /**
+   * Snapshot da sequência em visualização. Com ele, materiais, PCs e estoque/empenho
+   * saem da base congelada no Gravar em vez do Nomus ao vivo.
+   */
+  snapshotId?: number | null;
 };
 
 type EscopoAjustePd = 'item' | 'todos_itens_pd';
@@ -241,6 +250,7 @@ export default function CalendarioProducaoModal({
   estoquePorCod = {},
   estoqueCongelado = false,
   geradoEm,
+  snapshotId = null,
 }: Props) {
   const { hasPermission } = useAuth();
   const podeAjustarPrevisao =
@@ -351,7 +361,14 @@ export default function CalendarioProducaoModal({
   const demandaMateriaisKey = useMemo(
     () =>
       JSON.stringify(
-        demandaMateriais.map((d) => [d.codigoPa, d.dataIso, d.qtde, d.pd ?? '', d.setor ?? ''])
+        demandaMateriais.map((d) => [
+          d.codigoPa,
+          d.dataIso,
+          d.qtde,
+          d.pd ?? '',
+          d.setor ?? '',
+          d.carrada ?? '',
+        ])
       ),
     [demandaMateriais]
   );
@@ -379,7 +396,7 @@ export default function CalendarioProducaoModal({
     let cancelled = false;
     setDispMateriais(null);
     setDispCarregando(true);
-    void consultarDisponibilidadeMateriaisSintetica(demanda, { signal: ac.signal })
+    void consultarDisponibilidadeMateriaisSintetica(demanda, { signal: ac.signal, snapshotId })
       .then((r) => {
         if (cancelled || ac.signal.aborted) return;
         setDispCarregando(false);
@@ -402,7 +419,7 @@ export default function CalendarioProducaoModal({
       cancelled = true;
       ac.abort();
     };
-  }, [demandaKeyConsulta]);
+  }, [demandaKeyConsulta, snapshotId]);
 
   const statusPorDataMap = useMemo(() => {
     const m = new Map<string, StatusPorDataMateriais>();
@@ -682,6 +699,14 @@ export default function CalendarioProducaoModal({
       const pedido = linhaSnapshotParaPedido(linha);
       if (!pedido) return;
 
+      const row = pedido as unknown as Record<string, unknown>;
+      const rotaLinha = String(row['Observacoes'] ?? row['Observações'] ?? drill.tipoF ?? '').trim();
+      if (!rotaPermiteAlterarDatasCalendario(rotaLinha) && !rotaPermiteAlterarDatasCalendario(String(drill.tipoF ?? ''))) {
+        setToast(mensagemCanalDatasPedido(row));
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+
       const carradaKeysTodosItens = [...new Set(linhasPd.map((row) => linhaCarradaKey(row)))];
       const pedidosPd = linhasPd
         .map((row) => linhaSnapshotParaPedido(row))
@@ -724,6 +749,22 @@ export default function CalendarioProducaoModal({
       });
     },
     [linhas, sim, baseline, dataInserirRomaneio, dataEmFormacao, drill]
+  );
+
+  const podeReprogramarNoCalendario = useCallback(
+    (pd: string): boolean => {
+      if (drill.nivel !== 'pedidos') return false;
+      if (rotaPermiteAlterarDatasCalendario(String(drill.tipoF ?? ''))) return true;
+      const linhasPd = listarLinhasSnapshotPorPd(linhas, pd);
+      const linha = linhasPd[0];
+      if (!linha) return false;
+      const pedido = linhaSnapshotParaPedido(linha);
+      if (!pedido) return false;
+      const row = pedido as unknown as Record<string, unknown>;
+      const rotaLinha = String(row['Observacoes'] ?? row['Observações'] ?? '').trim();
+      return rotaPermiteAlterarDatasCalendario(rotaLinha);
+    },
+    [drill, linhas]
   );
 
   const solicitarAjustePrevisao = useCallback(
@@ -1385,7 +1426,7 @@ export default function CalendarioProducaoModal({
                           {labelPedidoMapa(r.pd)}
                         </GradeCelulaModalBtn>
                         {r.producaoPorPrevisao && <IndicadorDataPorPrevisao />}
-                        {podeAjustarPrevisao && (
+                        {podeAjustarPrevisao && podeReprogramarNoCalendario(r.pd) && (
                           <button
                             type="button"
                             onClick={() => solicitarAjustePrevisao(r.pd)}
@@ -1464,6 +1505,7 @@ export default function CalendarioProducaoModal({
           dataInserirRomaneio={dataInserirRomaneio}
           getQtdeLinha={getQtdeLinha}
           onClose={() => setSetorDetalhe(null)}
+          snapshotId={snapshotId}
         />
       )}
 
@@ -1594,6 +1636,7 @@ export default function CalendarioProducaoModal({
             setHorizonteItem({ codigo, idProduto, descricao })
           }
           cacheRef={materiaisDiaCacheRef}
+          snapshotId={snapshotId}
         />
       )}
 
@@ -1606,6 +1649,7 @@ export default function CalendarioProducaoModal({
           demanda={demandaMateriais}
           onClose={() => setHorizonteItem(null)}
           cacheRef={horizonteCacheRef}
+          snapshotId={snapshotId}
         />
       )}
 

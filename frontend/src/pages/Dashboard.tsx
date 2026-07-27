@@ -15,6 +15,13 @@ import {
   type ResumoFinanceiro,
 } from '../api/pedidos';
 import { logout } from '../api/auth';
+import { useAuth } from '../contexts/AuthContext';
+import { PERMISSOES } from '../config/permissoes';
+import {
+  pdLabelFromPedidoRow,
+  pedidoElegivelReprogramarGerenciador,
+} from '../utils/canalReprogramacaoDatas';
+import { normalizePdLabelForCompare } from '../utils/rotaCarrada';
 
 const PAGE_SIZE = 100;
 
@@ -39,6 +46,11 @@ function toApiFiltros(f: FiltrosPedidosState) {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
+  const podeAjustarPrevisao =
+    hasPermission(PERMISSOES.PCP_AJUSTAR_PREVISAO) ||
+    hasPermission(PERMISSOES.PCP_TOTAL) ||
+    hasPermission(PERMISSOES.PEDIDOS_EDITAR);
   const [resumo, setResumo] = useState<Resumo | null>(null);
   const [resumoFinanceiro, setResumoFinanceiro] = useState<ResumoFinanceiro | null>(null);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
@@ -49,7 +61,21 @@ export default function Dashboard() {
   const [loadingPedidos, setLoadingPedidos] = useState(true);
   const [filtros, setFiltros] = useState<FiltrosPedidosState>(() => loadFiltrosDashboard(filtrosIniciais));
   const filtrosRef = useRef<FiltrosPedidosState>(filtrosIniciais);
-  const [modalPedido, setModalPedido] = useState<Pedido | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [modalReprogramar, setModalReprogramar] = useState<{
+    pedido: Pedido;
+    demaisItens: Pedido[];
+  } | null>(null);
+  const [pdIncompletoAtual, setPdIncompletoAtual] = useState<{
+    pd: string;
+    selecionados: Pedido[];
+    todosDoPd: Pedido[];
+  } | null>(null);
+  const [pdIncompletoQueue, setPdIncompletoQueue] = useState<
+    Array<{ pd: string; selecionados: Pedido[]; todosDoPd: Pedido[] }>
+  >([]);
+  const reprogramarResolvedRef = useRef<Map<string, Pedido>>(new Map());
+  const [reprogramarLoading, setReprogramarLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [mostrarFiltros, setMostrarFiltros] = useState(true);
 
@@ -131,23 +157,108 @@ export default function Dashboard() {
   }, [filtros]);
 
   const handleAjusteSuccess = (atualizado: Pedido, meta?: AjustePrevisaoSuccessMeta) => {
-    const lista = meta?.atualizadosMesmaCarrada;
+    const lista = meta?.atualizadosMesmaCarrada ?? meta?.todosItensPdAtualizados;
     if (lista && lista.length > 0) {
       const mapById = new Map(lista.map((p) => [String(p.id_pedido ?? '').trim(), p]));
       setPedidos((prev) =>
         prev.map((p) => {
           const id = String(p.id_pedido ?? '').trim();
-          return mapById.get(id) ?? p;
+          return mapById.get(id) ?? (p.id_pedido === atualizado.id_pedido ? atualizado : p);
         })
       );
-      setToast('Previsão replicada na carrada e grade atualizada.');
+      setToast('Datas reprogramadas e grade atualizada.');
     } else {
       setPedidos((prev) => prev.map((p) => (p.id_pedido === atualizado.id_pedido ? atualizado : p)));
       setToast('Previsão atualizada com sucesso.');
     }
+    setSelectedIds(new Set());
+    setModalReprogramar(null);
     carregarResumo();
     carregarResumoFinanceiro();
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const abrirModalReprogramarComItens = (itens: Pedido[]) => {
+    if (itens.length === 0) {
+      setToast('Nenhum item elegível para reprogramar.');
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+    const [primeiro, ...rest] = itens;
+    setModalReprogramar({ pedido: primeiro!, demaisItens: rest });
+  };
+
+  const avancarFilaPdIncompleto = (queue: typeof pdIncompletoQueue) => {
+    if (queue.length === 0) {
+      setPdIncompletoAtual(null);
+      setPdIncompletoQueue([]);
+      abrirModalReprogramarComItens([...reprogramarResolvedRef.current.values()]);
+      return;
+    }
+    const [atual, ...rest] = queue;
+    setPdIncompletoAtual(atual!);
+    setPdIncompletoQueue(rest);
+  };
+
+  const iniciarReprogramar = async () => {
+    const elegiveis = pedidos.filter(
+      (p) =>
+        selectedIds.has(String(p.id_pedido ?? '').trim()) &&
+        pedidoElegivelReprogramarGerenciador(p as unknown as Record<string, unknown>)
+    );
+    if (elegiveis.length === 0) {
+      setToast('Selecione ao menos um pedido de Requisição para reprogramar.');
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+    setReprogramarLoading(true);
+    reprogramarResolvedRef.current = new Map();
+    try {
+      const porPd = new Map<string, Pedido[]>();
+      for (const p of elegiveis) {
+        const pd = pdLabelFromPedidoRow(p as unknown as Record<string, unknown>);
+        if (!pd) {
+          reprogramarResolvedRef.current.set(String(p.id_pedido).trim(), p);
+          continue;
+        }
+        const list = porPd.get(pd) ?? [];
+        list.push(p);
+        porPd.set(pd, list);
+      }
+      const incompletos: Array<{ pd: string; selecionados: Pedido[]; todosDoPd: Pedido[] }> = [];
+      for (const [pd, sel] of porPd) {
+        let todosDoPd: Pedido[] = [];
+        try {
+          const res = await listarPedidos({ pd, limit: 500, page: 1 });
+          todosDoPd = (res.data ?? []).filter(
+            (r) =>
+              pedidoElegivelReprogramarGerenciador(r as unknown as Record<string, unknown>) &&
+              normalizePdLabelForCompare(String((r as Record<string, unknown>)['PD'] ?? '').trim()) === pd
+          );
+          if (todosDoPd.length === 0) todosDoPd = sel;
+        } catch {
+          todosDoPd = sel;
+        }
+        const selIds = new Set(sel.map((s) => String(s.id_pedido).trim()));
+        if (todosDoPd.some((t) => !selIds.has(String(t.id_pedido).trim())) && todosDoPd.length > sel.length) {
+          incompletos.push({ pd, selecionados: sel, todosDoPd });
+        } else {
+          for (const s of sel) reprogramarResolvedRef.current.set(String(s.id_pedido).trim(), s);
+        }
+      }
+      if (incompletos.length > 0) avancarFilaPdIncompleto(incompletos);
+      else abrirModalReprogramarComItens([...reprogramarResolvedRef.current.values()]);
+    } finally {
+      setReprogramarLoading(false);
+    }
+  };
+
+  const responderPdIncompleto = (usarTodos: boolean) => {
+    const atual = pdIncompletoAtual;
+    if (!atual) return;
+    const itens = usarTodos ? atual.todosDoPd : atual.selecionados;
+    for (const p of itens) reprogramarResolvedRef.current.set(String(p.id_pedido).trim(), p);
+    avancarFilaPdIncompleto(pdIncompletoQueue);
   };
 
   const handleLogout = async () => {
@@ -160,43 +271,51 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900">
-      <header className="border-b border-slate-700/50 bg-slate-800/50 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-slate-100">Gestor de Pedidos — Dashboard</h1>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="rounded-lg bg-slate-600 hover:bg-slate-500 px-4 py-2 text-sm font-medium text-slate-200 transition"
-          >
-            Sair
-          </button>
-        </div>
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <header className="border-b border-slate-700/50 bg-slate-900/80 px-4 py-3 flex items-center justify-between">
+        <h1 className="text-lg font-semibold">Dashboard</h1>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="text-sm text-slate-400 hover:text-slate-200"
+        >
+          Sair
+        </button>
       </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        <CardsResumoFinanceiro resumo={resumoFinanceiro} loading={loadingResumoFinanceiro} />
-        <CardsResumo resumo={resumo} loading={loadingResumo} />
-        <div className="flex flex-wrap items-center justify-end gap-3">
+      <main className="p-4 space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <CardsResumo resumo={resumo} loading={loadingResumo} />
+          <CardsResumoFinanceiro resumo={resumoFinanceiro} loading={loadingResumoFinanceiro} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setMostrarFiltros((v) => !v)}
-            className="inline-flex items-center justify-center rounded-lg border border-slate-600 bg-slate-700 p-2 text-slate-200 hover:bg-slate-600"
-            title={mostrarFiltros ? 'Ocultar filtros' : 'Exibir filtros'}
-            aria-label={mostrarFiltros ? 'Ocultar filtros' : 'Exibir filtros'}
+            className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm"
           >
-            {mostrarFiltros ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                <line x1="1" y1="1" x2="23" y2="23" />
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            )}
+            {mostrarFiltros ? 'Ocultar filtros' : 'Mostrar filtros'}
           </button>
+          {podeAjustarPrevisao && (
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedIds.size === 0) {
+                  setToast('Selecione ao menos um pedido de Requisição para reprogramar.');
+                  setTimeout(() => setToast(null), 4000);
+                  return;
+                }
+                void iniciarReprogramar();
+              }}
+              disabled={reprogramarLoading || !!pdIncompletoAtual}
+              className="rounded-lg bg-primary-600 hover:bg-primary-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {reprogramarLoading
+                ? 'Preparando...'
+                : selectedIds.size > 0
+                  ? `Reprogramar (${selectedIds.size})`
+                  : 'Reprogramar'}
+            </button>
+          )}
         </div>
         {mostrarFiltros && (
           <FiltroPedidos filtros={filtros} onChange={setFiltrosComRef} onAplicar={aplicarFiltros} />
@@ -204,7 +323,8 @@ export default function Dashboard() {
         <TabelaPedidos
           pedidos={pedidos}
           loading={loadingPedidos}
-          onAjustar={setModalPedido}
+          selectedIds={podeAjustarPrevisao ? selectedIds : undefined}
+          onSelectionChange={podeAjustarPrevisao ? setSelectedIds : undefined}
         />
         {total > 0 && (
           <div className="flex items-center justify-between rounded-xl border border-slate-700/50 bg-slate-800/50 px-4 py-3 text-sm text-slate-300">
@@ -236,10 +356,53 @@ export default function Dashboard() {
         )}
       </main>
 
-      {modalPedido && (
+      {pdIncompletoAtual && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75">
+          <div className="w-full max-w-md rounded-xl border border-slate-600 bg-slate-800 p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-100 mb-2">
+              PD {pdIncompletoAtual.pd} — itens incompletos
+            </h3>
+            <p className="text-sm text-slate-400 mb-4">
+              Você marcou <strong>{pdIncompletoAtual.selecionados.length}</strong> de{' '}
+              <strong>{pdIncompletoAtual.todosDoPd.length}</strong> itens de requisição deste pedido.
+              Deseja aplicar só nos marcados ou em todos os itens do PD?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => responderPdIncompleto(false)}
+                className="w-full px-4 py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium text-left"
+              >
+                Somente os itens marcados
+              </button>
+              <button
+                type="button"
+                onClick={() => responderPdIncompleto(true)}
+                className="w-full px-4 py-2.5 rounded-lg border border-slate-600 text-slate-200 text-sm font-medium hover:bg-slate-700 text-left"
+              >
+                Todos os itens deste pedido
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPdIncompletoAtual(null);
+                  setPdIncompletoQueue([]);
+                  reprogramarResolvedRef.current = new Map();
+                }}
+                className="w-full px-4 py-2 rounded-lg text-slate-400 text-sm hover:bg-slate-700"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalReprogramar && (
         <ModalAjustePrevisao
-          pedido={modalPedido}
-          onClose={() => setModalPedido(null)}
+          pedido={modalReprogramar.pedido}
+          demaisItens={modalReprogramar.demaisItens}
+          onClose={() => setModalReprogramar(null)}
           onSuccess={handleAjusteSuccess}
           onError={(msg) => setToast(msg)}
         />
