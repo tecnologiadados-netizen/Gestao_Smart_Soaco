@@ -15,6 +15,7 @@ export type PendenciaAprovacaoPdfRow = {
   valorPedido: number | null;
   qtdTitulosAtraso: number | null;
   totalAtraso: number | null;
+  datasVencimento: string[];
 };
 
 const DECISIONS = [
@@ -37,6 +38,14 @@ const PDF = {
 const MARGIN = { left: 8, right: 8, bottom: 10, top: 8 };
 const LOGO_EMAIL_URL = '/logo-soaco-email.png';
 const DECISION_COL_INDEXES = [4, 5, 6, 7];
+
+function formatarDataCurtaPdf(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = iso.slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
 
 function formatarBRL(val: number | null | undefined): string {
   if (val == null) return '—';
@@ -82,7 +91,16 @@ export function mapPendenciasParaAprovacaoPdf(
     valorPedido: item.valorPedido,
     qtdTitulosAtraso: item.qtdTitulosAtraso,
     totalAtraso: item.totalAtraso,
+    datasVencimento: (item.contasAcompanhamento ?? [])
+      .map((c) => formatarDataCurtaPdf(c.dataVencimento))
+      .filter((d) => d !== '—'),
   }));
+}
+
+function textoPedidoFabricacaoPdf(row: PendenciaAprovacaoPdfRow): string {
+  const pedido = row.numeroPedidoExibicao || '—';
+  const valor = formatarBRL(row.valorPedido);
+  return `${pedido}\n${valor}`;
 }
 
 function textoAtrasoPdf(row: PendenciaAprovacaoPdfRow): string {
@@ -90,6 +108,11 @@ function textoAtrasoPdf(row: PendenciaAprovacaoPdfRow): string {
     row.qtdTitulosAtraso != null ? `${row.qtdTitulosAtraso} conta(s)` : '—';
   const valor = formatarBRL(row.totalAtraso);
   return `${qtd}\n${valor}`;
+}
+
+function textoDatasVencimentoPdf(row: PendenciaAprovacaoPdfRow): string {
+  if (!row.datasVencimento.length) return '—';
+  return row.datasVencimento.join('\n');
 }
 
 function desenharIconePessoa(doc: jsPDF, x: number, y: number): void {
@@ -277,9 +300,9 @@ export async function generatePendenciasAprovacaoPdf(input: {
   const head = [
     [
       'Cliente',
-      'Pedido',
-      'Valor',
-      'Atraso',
+      'Pedido em fabricação',
+      'Atrasos de contas em aberto',
+      'Datas de vencimento',
       ...DECISIONS.map((d) => d.header),
       'Assinatura',
     ],
@@ -287,9 +310,9 @@ export async function generatePendenciasAprovacaoPdf(input: {
 
   const body = input.linhas.map((row) => [
     row.clienteNome,
-    row.numeroPedidoExibicao,
-    formatarBRL(row.valorPedido),
+    textoPedidoFabricacaoPdf(row),
     textoAtrasoPdf(row),
+    textoDatasVencimentoPdf(row),
     '',
     '',
     '',
@@ -317,7 +340,7 @@ export async function generatePendenciasAprovacaoPdf(input: {
       fillColor: PDF.primary600,
       textColor: PDF.white,
       fontStyle: 'bold',
-      fontSize: 7,
+      fontSize: 6.5,
       halign: 'center',
       valign: 'middle',
     },
@@ -325,14 +348,14 @@ export async function generatePendenciasAprovacaoPdf(input: {
       fillColor: [248, 250, 252],
     },
     columnStyles: {
-      0: { cellWidth: 52, halign: 'left' },
-      1: { cellWidth: 28, halign: 'left' },
-      2: { cellWidth: 28, halign: 'right' },
+      0: { cellWidth: 48, halign: 'left' },
+      1: { cellWidth: 32, halign: 'left' },
+      2: { cellWidth: 30, halign: 'center' },
       3: { cellWidth: 28, halign: 'center' },
-      4: { cellWidth: 22, halign: 'center' },
-      5: { cellWidth: 22, halign: 'center' },
-      6: { cellWidth: 22, halign: 'center' },
-      7: { cellWidth: 24, halign: 'center' },
+      4: { cellWidth: 20, halign: 'center' },
+      5: { cellWidth: 20, halign: 'center' },
+      6: { cellWidth: 20, halign: 'center' },
+      7: { cellWidth: 22, halign: 'center' },
       8: { minCellHeight: 11 },
     },
     margin: {

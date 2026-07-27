@@ -1075,11 +1075,11 @@ export default function PendenciasCreditoPanel({
             <thead className="bg-blue-700 text-white dark:bg-blue-900">
               <tr>
                 <th className="px-2 py-1.5 font-semibold">Cliente</th>
-                <th className="px-2 py-1.5 font-semibold">Pedido</th>
+                <th className="px-2 py-1.5 font-semibold">Pedido em fabricação</th>
                 <th className="px-2 py-1.5 font-semibold">Status Nomus</th>
-                <th className="px-2 py-1.5 font-semibold">Atraso</th>
+                <th className="px-2 py-1.5 font-semibold">Atrasos de contas em aberto</th>
+                <th className="px-2 py-1.5 font-semibold">Datas de vencimento</th>
                 <th className="px-2 py-1.5 font-semibold">Conta</th>
-                <th className="px-2 py-1.5 font-semibold">Vencimento</th>
                 <th className="px-2 py-1.5 font-semibold">Status conta</th>
                 <th className="px-2 py-1.5 font-semibold">Ação</th>
                 <th
@@ -1241,10 +1241,10 @@ export default function PendenciasCreditoPanel({
                                   <ul className="space-y-0.5">
                                     {contas.map((c) => (
                                       <li
-                                        key={c.codigoConta}
-                                        className="whitespace-nowrap text-[11px] font-medium tabular-nums"
+                                        key={`v-${c.codigoConta}`}
+                                        className="whitespace-nowrap text-[11px] tabular-nums"
                                       >
-                                        {c.codigoConta}
+                                        {formatarDataCurta(c.dataVencimento)}
                                       </li>
                                     ))}
                                   </ul>
@@ -1253,10 +1253,10 @@ export default function PendenciasCreditoPanel({
                                   <ul className="space-y-0.5">
                                     {contas.map((c) => (
                                       <li
-                                        key={`v-${c.codigoConta}`}
-                                        className="whitespace-nowrap text-[11px] tabular-nums"
+                                        key={c.codigoConta}
+                                        className="whitespace-nowrap text-[11px] font-medium tabular-nums"
                                       >
-                                        {formatarDataCurta(c.dataVencimento)}
+                                        {c.codigoConta}
                                       </li>
                                     ))}
                                   </ul>
