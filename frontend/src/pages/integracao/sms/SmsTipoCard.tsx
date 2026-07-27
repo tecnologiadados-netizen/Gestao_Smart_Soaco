@@ -188,12 +188,13 @@ export default function SmsTipoCard({
 
           <div className="md:col-span-2 xl:col-span-3">
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Descrição</label>
-            <input
-              className={inputClass}
+            <textarea
+              className={`${inputClass} min-h-[72px] resize-y`}
               value={t.descricao ?? ''}
               disabled={!podeEditar}
               onChange={(e) => onUpdate({ descricao: e.target.value })}
-              placeholder="Quando esta mensagem é enviada"
+              placeholder="Quando esta mensagem é enviada (ex.: vendedores do escopo)"
+              rows={3}
             />
           </div>
 
