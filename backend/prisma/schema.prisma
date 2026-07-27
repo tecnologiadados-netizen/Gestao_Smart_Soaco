@@ -223,6 +223,7 @@ model WhatsappNotificacaoTipo {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   destinatarios    WhatsappNotificacaoDestinatario[]
+  grupos           WhatsappNotificacaoGrupo[]
 
   @@map("whatsapp_notificacao_tipo")
 }
@@ -236,6 +237,21 @@ model WhatsappNotificacaoDestinatario {
 
   @@unique([tipoId, usuarioId])
   @@map("whatsapp_notificacao_destinatario")
+}
+
+/// Grupos WhatsApp (@g.us) vinculados a um tipo de alerta (Integração → SMS).
+model WhatsappNotificacaoGrupo {
+  id     Int     @id @default(autoincrement())
+  tipoId Int
+  /// JID do grupo, ex.: 120363380975837123@g.us
+  jid    String
+  /// Nome amigável (opcional; preenchido pela Evolution quando possível).
+  nome   String?
+  tipo   WhatsappNotificacaoTipo @relation(fields: [tipoId], references: [id], onDelete: Cascade)
+
+  @@unique([tipoId, jid])
+  @@index([tipoId])
+  @@map("whatsapp_notificacao_grupo")
 }
 
 /// Tipos de notificação por e-mail (Integração → E-mail).

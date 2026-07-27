@@ -13,6 +13,10 @@
 
 import { getEvolutionStoredConfig } from '../data/configRepository.js';
 import { envioNotificacoesHabilitado, logEnvioSuprimido } from '../config/envioNotificacoes.js';
+import {
+  isWhatsAppGroupJid,
+  normalizarDestinoEnvioWhatsApp,
+} from '../utils/whatsappDestino.js';
 
 const DEFAULT_INSTANCE_LABEL = 'gestao-soaco';
 const FETCH_TIMEOUT_MS = 45_000;
@@ -431,7 +435,7 @@ function isTransientSendError(message: string, httpStatus?: number): boolean {
   );
 }
 
-async function sendTextOnce(numberClean: string, text: string, instanceName: string): Promise<void> {
+async function sendTextOnce(destino: string, text: string, instanceName: string): Promise<void> {
   const st = await getConnectionState(instanceName);
   const state = (st?.state ?? '').toLowerCase();
   if (state !== 'connected' && state !== 'open') {
@@ -442,7 +446,7 @@ async function sendTextOnce(numberClean: string, text: string, instanceName: str
 
   await evolutionRequest(`/message/sendText/${encodeURIComponent(instanceName)}`, {
     method: 'POST',
-    body: JSON.stringify({ number: numberClean, text }),
+    body: JSON.stringify({ number: destino, text }),
   });
 }
 
@@ -468,7 +472,7 @@ type SendWhatsAppTextOptions = {
   skipRoboIntro?: boolean;
 };
 
-/** POST /message/sendText/{instance} – com gate de sessão e retry. */
+/** POST /message/sendText/{instance} – telefone ou JID de grupo (@g.us); com gate de sessão e retry. */
 export async function sendWhatsAppTextTo(
   number: string,
   text: string,
@@ -482,9 +486,14 @@ export async function sendWhatsAppTextTo(
   if (!env.url || !env.key) {
     return { ok: false, error: 'Evolution API não configurada (EVOLUTION_API_URL / EVOLUTION_API_KEY).' };
   }
-  const numberClean = number.replace(/\D/g, '');
-  if (!numberClean || numberClean.length < 10) {
-    return { ok: false, error: 'Número inválido' };
+  const destino = normalizarDestinoEnvioWhatsApp(number);
+  if (!destino) {
+    return {
+      ok: false,
+      error: isWhatsAppGroupJid(number)
+        ? 'JID de grupo inválido'
+        : 'Número inválido',
+    };
   }
 
   const payload = opts?.skipRoboIntro ? String(text ?? '') : comIntroducaoRoboWhatsApp(text);
@@ -493,7 +502,7 @@ export async function sendWhatsAppTextTo(
 
   for (let attempt = 0; attempt < SEND_MAX_ATTEMPTS; attempt++) {
     try {
-      await sendTextOnce(numberClean, payload, instanceName);
+      await sendTextOnce(destino, payload, instanceName);
       return { ok: true };
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
@@ -527,6 +536,41 @@ export async function sendWhatsAppTextToLong(number: string, text: string): Prom
 export function delayEntreDestinatariosMs(): number {
   const n = Number(process.env.WHATSAPP_DELAY_ENTRE_DESTINATARIOS_MS);
   return Number.isFinite(n) && n >= 0 ? n : 500;
+}
+
+export type EvolutionWhatsAppGroup = {
+  jid: string;
+  subject: string;
+  size?: number;
+};
+
+/** Lista grupos da instância conectada (GET /group/fetchAllGroups/{instance}). */
+export async function fetchWhatsAppGroups(): Promise<EvolutionWhatsAppGroup[]> {
+  const env = await getResolvedEvolutionEnv();
+  if (!env.url || !env.key) return [];
+  const instanceName = env.instance || DEFAULT_INSTANCE_LABEL;
+  try {
+    const json = await evolutionRequest<unknown>(
+      `/group/fetchAllGroups/${encodeURIComponent(instanceName)}?getParticipants=false`,
+      { method: 'GET' }
+    );
+    const arr = Array.isArray(json) ? json : [];
+    const out: EvolutionWhatsAppGroup[] = [];
+    for (const item of arr) {
+      if (!item || typeof item !== 'object') continue;
+      const r = item as Record<string, unknown>;
+      const id = String(r.id ?? r.jid ?? '').trim();
+      if (!isWhatsAppGroupJid(id)) continue;
+      const jid = normalizarDestinoEnvioWhatsApp(id)!;
+      const subject = String(r.subject ?? r.name ?? '').trim() || jid;
+      const size = typeof r.size === 'number' ? r.size : undefined;
+      out.push({ jid, subject, size });
+    }
+    return out.sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
+  } catch (e) {
+    console.warn('[Evolution] fetchWhatsAppGroups:', e instanceof Error ? e.message : e);
+    return [];
+  }
 }
 
 export function formatarMensagemAlteracaoPrevisao(params: {

@@ -4,6 +4,13 @@
 
 import { prisma } from '../config/prisma.js';
 import { validarCronExpressaoAgendamento } from '../utils/smsCronHorarios.js';
+import { normalizarJidGrupoWhatsApp } from '../utils/whatsappDestino.js';
+import { fetchWhatsAppGroups } from '../services/evolutionApi.js';
+
+export type WhatsappGrupoDestinoRow = {
+  jid: string;
+  nome: string | null;
+};
 
 export type WhatsappNotificacaoTipoRow = {
   id: number;
@@ -19,6 +26,7 @@ export type WhatsappNotificacaoTipoRow = {
   templateMensagem: string | null;
   builderCode: string | null;
   destinatarioIds: number[];
+  grupos: WhatsappGrupoDestinoRow[];
 };
 
 export type WhatsappNotificacaoTipoSaveItem = {
@@ -68,6 +76,7 @@ function mapTipo(
     templateMensagem: string | null;
     builderCode: string | null;
     destinatarios: { usuarioId: number }[];
+    grupos?: { jid: string; nome: string | null }[];
   }
 ): WhatsappNotificacaoTipoRow {
   return {
@@ -84,12 +93,16 @@ function mapTipo(
     templateMensagem: t.templateMensagem,
     builderCode: t.builderCode,
     destinatarioIds: t.destinatarios.map((d) => d.usuarioId),
+    grupos: (t.grupos ?? []).map((g) => ({ jid: g.jid, nome: g.nome })),
   };
 }
 
 export async function listarTiposComDestinatarios(): Promise<WhatsappNotificacaoTipoRow[]> {
   const rows = await prisma.whatsappNotificacaoTipo.findMany({
-    include: { destinatarios: { select: { usuarioId: true } } },
+    include: {
+      destinatarios: { select: { usuarioId: true } },
+      grupos: { select: { jid: true, nome: true }, orderBy: { jid: 'asc' } },
+    },
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
   });
   return rows.map(mapTipo);
@@ -104,6 +117,7 @@ export async function buscarTipoPorCode(code: string) {
           usuario: { select: { id: true, login: true, nome: true, telefone: true, ativo: true } },
         },
       },
+      grupos: { select: { jid: true, nome: true } },
     },
   });
 }
@@ -117,6 +131,7 @@ export async function buscarTipoPorId(id: number) {
           usuario: { select: { id: true, login: true, nome: true, telefone: true, ativo: true } },
         },
       },
+      grupos: { select: { jid: true, nome: true } },
     },
   });
 }
@@ -185,7 +200,13 @@ export async function salvarCatalogoTipos(items: WhatsappNotificacaoTipoSaveItem
   return listarTiposComDestinatarios();
 }
 
-export async function salvarDestinatarios(tipoId: number, usuarioIds: number[]): Promise<WhatsappNotificacaoTipoRow[]> {
+export type GrupoDestinoInput = { jid: string; nome?: string | null };
+
+export async function salvarDestinatarios(
+  tipoId: number,
+  usuarioIds: number[],
+  grupos: GrupoDestinoInput[] = []
+): Promise<WhatsappNotificacaoTipoRow[]> {
   const tipo = await prisma.whatsappNotificacaoTipo.findUnique({ where: { id: tipoId } });
   if (!tipo) throw new Error('Tipo não encontrado.');
 
@@ -195,12 +216,43 @@ export async function salvarDestinatarios(tipoId: number, usuarioIds: number[]):
     if (count !== uniqueIds.length) throw new Error('Um ou mais usuários são inválidos ou inativos.');
   }
 
+  const gruposNorm: { jid: string; nome: string | null }[] = [];
+  const seenJid = new Set<string>();
+  for (const g of grupos) {
+    const jid = normalizarJidGrupoWhatsApp(g.jid);
+    if (!jid) throw new Error(`JID de grupo inválido: "${g.jid}". Use o formato 123456@g.us`);
+    if (seenJid.has(jid)) continue;
+    seenJid.add(jid);
+    gruposNorm.push({ jid, nome: g.nome?.trim() || null });
+  }
+
+  // Tenta preencher nome a partir da Evolution (best-effort).
+  if (gruposNorm.some((g) => !g.nome)) {
+    try {
+      const evo = await fetchWhatsAppGroups();
+      const byJid = new Map(evo.map((x) => [x.jid, x.subject]));
+      for (const g of gruposNorm) {
+        if (!g.nome && byJid.has(g.jid)) g.nome = byJid.get(g.jid) ?? null;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   await prisma.$transaction([
     prisma.whatsappNotificacaoDestinatario.deleteMany({ where: { tipoId } }),
+    prisma.whatsappNotificacaoGrupo.deleteMany({ where: { tipoId } }),
     ...(uniqueIds.length > 0
       ? [
           prisma.whatsappNotificacaoDestinatario.createMany({
             data: uniqueIds.map((usuarioId) => ({ tipoId, usuarioId })),
+          }),
+        ]
+      : []),
+    ...(gruposNorm.length > 0
+      ? [
+          prisma.whatsappNotificacaoGrupo.createMany({
+            data: gruposNorm.map((g) => ({ tipoId, jid: g.jid, nome: g.nome })),
           }),
         ]
       : []),

@@ -14,6 +14,10 @@ import {
   type OrigemNotificacao,
   type TentativaInput,
 } from './notificacaoExecucaoService.js';
+import {
+  normalizarDestinoEnvioWhatsApp,
+  normalizarJidGrupoWhatsApp,
+} from '../utils/whatsappDestino.js';
 
 type TipoComDestinatarios = NonNullable<Awaited<ReturnType<typeof buscarTipoPorCode>>>;
 
@@ -111,11 +115,9 @@ export async function previewMensagemDoTipo(tipoId: number): Promise<{
 }
 
 function normalizarTelefone(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length < 10) return null;
-  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
-  return digits;
+  const d = normalizarDestinoEnvioWhatsApp(raw);
+  if (!d || normalizarJidGrupoWhatsApp(d)) return null;
+  return d;
 }
 
 type DestinoWhatsApp = { numero: string; usuarioId: number | null };
@@ -128,6 +130,14 @@ export function listarDestinosWhatsApp(tipo: TipoComDestinatarios): DestinoWhats
     if (!n) continue;
     if (!byNumero.has(n)) {
       byNumero.set(n, { numero: n, usuarioId: d.usuarioId });
+    }
+  }
+  const grupos = (tipo as { grupos?: { jid: string }[] }).grupos ?? [];
+  for (const g of grupos) {
+    const jid = normalizarJidGrupoWhatsApp(g.jid);
+    if (!jid) continue;
+    if (!byNumero.has(jid)) {
+      byNumero.set(jid, { numero: jid, usuarioId: null });
     }
   }
   return [...byNumero.values()];
@@ -151,7 +161,9 @@ export async function enviarParaDestinatarios(
 ): Promise<{ enviados: number; erros: string[]; tentativas: TentativaInput[]; dryRuns: number }> {
   const destinos = listarDestinosWhatsApp(tipo);
   if (destinos.length === 0) {
-    console.warn(`[whatsappNotificacao] Tipo "${tipo.code}": nenhum destinatário com telefone válido.`);
+    console.warn(
+      `[whatsappNotificacao] Tipo "${tipo.code}": nenhum destinatário (usuário com telefone ou grupo) válido.`
+    );
     return { enviados: 0, erros: [], tentativas: [], dryRuns: 0 };
   }
 

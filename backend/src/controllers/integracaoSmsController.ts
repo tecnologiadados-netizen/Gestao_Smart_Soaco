@@ -49,13 +49,25 @@ export async function putSmsDestinatarios(req: Request, res: Response): Promise<
     res.status(400).json({ error: 'ID inválido.' });
     return;
   }
-  const body = req.body as { usuarioIds?: number[] };
+  const body = req.body as {
+    usuarioIds?: number[];
+    grupos?: Array<{ jid?: string; nome?: string | null } | string>;
+    gruposJids?: string[];
+  };
   if (!Array.isArray(body.usuarioIds)) {
     res.status(400).json({ error: 'Campo "usuarioIds" é obrigatório (array).' });
     return;
   }
+  const gruposRaw = Array.isArray(body.grupos)
+    ? body.grupos
+    : Array.isArray(body.gruposJids)
+      ? body.gruposJids
+      : [];
+  const grupos = gruposRaw.map((g) =>
+    typeof g === 'string' ? { jid: g } : { jid: String(g?.jid ?? ''), nome: g?.nome ?? null }
+  );
   try {
-    const tipos = await salvarDestinatarios(tipoId, body.usuarioIds);
+    const tipos = await salvarDestinatarios(tipoId, body.usuarioIds, grupos);
     res.json({ tipos });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro ao salvar destinatários.';

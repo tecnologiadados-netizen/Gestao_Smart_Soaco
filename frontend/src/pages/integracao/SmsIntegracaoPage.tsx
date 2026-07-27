@@ -9,6 +9,7 @@ import {
   getSmsHistorico,
   saveSmsTipos,
   saveSmsDestinatarios,
+  type WhatsappGrupoDestino,
   type WhatsappNotificacaoTipo,
   type WhatsappNotificacaoTipoSave,
 } from '../../api/integracaoSms';
@@ -17,6 +18,14 @@ import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 import SmsTipoCard from './sms/SmsTipoCard';
 import ModalTesteSmsTipo from './sms/ModalTesteSmsTipo';
 import ModalHistoricoNotificacao from './components/ModalHistoricoNotificacao';
+
+const GROUP_JID_RE = /^([0-9]+(?:-[0-9]+)*)@g\.us$/i;
+
+function normalizarJidGrupoUi(raw: string): string | null {
+  const compact = String(raw ?? '').trim().replace(/\s+/g, '');
+  const m = compact.match(GROUP_JID_RE);
+  return m ? `${m[1]}@g.us` : null;
+}
 
 function novoTipo(sortOrder: number): WhatsappNotificacaoTipoSave {
   return {
@@ -105,6 +114,8 @@ export default function SmsIntegracaoPage() {
   const [filtroUsuario, setFiltroUsuario] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [destEdit, setDestEdit] = useState<Record<number, number[]>>({});
+  const [gruposEdit, setGruposEdit] = useState<Record<number, WhatsappGrupoDestino[]>>({});
+  const [jidDraftByTipo, setJidDraftByTipo] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
   const [savingDest, setSavingDest] = useState<number | null>(null);
   const [testModalTipoId, setTestModalTipoId] = useState<number | null>(null);
@@ -144,8 +155,13 @@ export default function SmsIntegracaoPage() {
       }
       setUsuarios(us);
       const dest: Record<number, number[]> = {};
-      for (const t of res.tipos) dest[t.id] = [...t.destinatarioIds];
+      const grupos: Record<number, WhatsappGrupoDestino[]> = {};
+      for (const t of res.tipos) {
+        dest[t.id] = [...t.destinatarioIds];
+        grupos[t.id] = [...(t.grupos ?? [])];
+      }
       setDestEdit(dest);
+      setGruposEdit(grupos);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Falha ao carregar.');
     } finally {
@@ -167,8 +183,13 @@ export default function SmsIntegracaoPage() {
       setTipos(saved);
       setEditTipos(saved.map(toSave));
       const dest: Record<number, number[]> = {};
-      for (const t of saved) dest[t.id] = [...t.destinatarioIds];
+      const grupos: Record<number, WhatsappGrupoDestino[]> = {};
+      for (const t of saved) {
+        dest[t.id] = [...t.destinatarioIds];
+        grupos[t.id] = [...(t.grupos ?? [])];
+      }
       setDestEdit(dest);
+      setGruposEdit(grupos);
       setOkMsg('Catálogo salvo.');
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erro ao salvar.');
@@ -198,8 +219,15 @@ export default function SmsIntegracaoPage() {
     setErr(null);
     setOkMsg(null);
     try {
-      const { tipos: saved } = await saveSmsDestinatarios(tipoId, destEdit[tipoId] ?? []);
+      const { tipos: saved } = await saveSmsDestinatarios(
+        tipoId,
+        destEdit[tipoId] ?? [],
+        gruposEdit[tipoId] ?? []
+      );
       setTipos(saved);
+      const grupos: Record<number, WhatsappGrupoDestino[]> = {};
+      for (const t of saved) grupos[t.id] = [...(t.grupos ?? [])];
+      setGruposEdit((prev) => ({ ...prev, ...grupos }));
       setOkMsg('Destinatários salvos.');
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erro ao salvar destinatários.');
@@ -217,6 +245,29 @@ export default function SmsIntegracaoPage() {
         [tipoId]: has ? cur.filter((id) => id !== usuarioId) : [...cur, usuarioId],
       };
     });
+  };
+
+  const addGrupo = (tipoId: number) => {
+    const raw = jidDraftByTipo[tipoId] ?? '';
+    const jid = normalizarJidGrupoUi(raw);
+    if (!jid) {
+      setErr('JID de grupo inválido. Use o formato 123456@g.us');
+      return;
+    }
+    setErr(null);
+    setGruposEdit((prev) => {
+      const cur = prev[tipoId] ?? [];
+      if (cur.some((g) => g.jid === jid)) return prev;
+      return { ...prev, [tipoId]: [...cur, { jid, nome: null }] };
+    });
+    setJidDraftByTipo((prev) => ({ ...prev, [tipoId]: '' }));
+  };
+
+  const removeGrupo = (tipoId: number, jid: string) => {
+    setGruposEdit((prev) => ({
+      ...prev,
+      [tipoId]: (prev[tipoId] ?? []).filter((g) => g.jid !== jid),
+    }));
   };
 
   const updateEditTipo = (idx: number, patch: Partial<WhatsappNotificacaoTipoSave>) => {
@@ -330,6 +381,8 @@ export default function SmsIntegracaoPage() {
             const tipoId = saved?.id;
             const isExpanded = expandedId === tipoId;
             const destIds = tipoId != null ? destEdit[tipoId] ?? [] : [];
+            const grupos = tipoId != null ? gruposEdit[tipoId] ?? [] : [];
+            const jidDraft = tipoId != null ? jidDraftByTipo[tipoId] ?? '' : '';
 
             return (
               <SmsTipoCard
@@ -340,6 +393,8 @@ export default function SmsIntegracaoPage() {
                 podeEditar={podeEditar}
                 isExpanded={isExpanded}
                 destIds={destIds}
+                grupos={grupos}
+                jidDraft={jidDraft}
                 usuarios={usuarios}
                 filtroUsuario={filtroUsuario}
                 usuariosFiltrados={usuariosFiltrados}
@@ -351,6 +406,11 @@ export default function SmsIntegracaoPage() {
                 onToggleDest={(usuarioId) => tipoId != null && toggleDest(tipoId, usuarioId)}
                 onSaveDest={() => tipoId != null && void handleSaveDest(tipoId)}
                 onFiltroUsuario={setFiltroUsuario}
+                onJidDraftChange={(value) =>
+                  tipoId != null && setJidDraftByTipo((prev) => ({ ...prev, [tipoId]: value }))
+                }
+                onAddGrupo={() => tipoId != null && addGrupo(tipoId)}
+                onRemoveGrupo={(jid) => tipoId != null && removeGrupo(tipoId, jid)}
               />
             );
           })}

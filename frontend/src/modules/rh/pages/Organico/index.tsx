@@ -5,6 +5,11 @@ import AppLayout from "@rh/components/AppLayout";
 import { cn } from "@rh/lib/utils";
 import { textMatchesSearchQuery } from "@rh/lib/normalize-search-text";
 import {
+  ORGANICO_EMPRESA_SO_ACO,
+  normalizeEmpresaTabName,
+  resolveEmpresaFromOrganicoCells,
+} from "@rh/lib/organico-empresa";
+import {
   buildOrganicoScopeKey,
   ORGANICO_SCOPE_DEFAULTS,
   readOrganicoFiltersStore,
@@ -133,9 +138,8 @@ const TODOS = "Todos";
 const ORGANICO_SHOW_CUSTO_STORAGE_KEY = "organico:showCustoTotal";
 const ORGANICO_REPRESENTANTES_DRAFTS_STORAGE_KEY = "organico:representantes:drafts";
 const STATUS_FILTER_OPTIONS = ["Ativos", "Férias", "Afastados", "Desligados"] as const;
-const ORGANICO_EMPRESA_PADRAO = "SÓ AÇO INDUSTRIAL LTDA";
+const ORGANICO_EMPRESA_PADRAO = ORGANICO_EMPRESA_SO_ACO;
 type OrganicoEmpresaTab = string;
-const ORGANICO_DIRETORIA_IDX = 17;
 const ORGANICO_SO_ACO_SUBTABS = ["Funcionários", "Representantes"] as const;
 const ORGANICO_SETOR_OPTION_DESCRIPTIONS: Record<string, string> = {
   [ORGANICO_REPRESENTANTE_DEFAULT_SETOR]: "Externo - representantes",
@@ -215,40 +219,13 @@ function pruneSelectedFilterValues(prev: string[], allowed: string[]): string[] 
 }
 
 
-function normalizeEmpresaText(value: string): string {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toUpperCase();
-}
-
-function normalizeEmpresaTabName(value: string): string {
-  const raw = String(value ?? "").trim();
-  if (!raw) return ORGANICO_EMPRESA_PADRAO;
-  const norm = normalizeEmpresaText(raw);
-  if (norm.includes("SO ACO") || norm.includes("ACO INDUSTRIAL")) return ORGANICO_EMPRESA_PADRAO;
-  if (norm.includes("SO MOVEIS") || norm.includes("MOVEIS")) return "SÓ MÓVEIS";
-  if (norm.includes("REFRIGER")) return "SO REFRIGERAÇÃO";
-  if (norm.includes("RN MARQUES") || norm.includes("R N MARQUES")) return "R N MARQUES ARAUJO";
-  return raw;
-}
-
 function resolveEmpresaTabFromRow(row: OrganicoSheetRow): OrganicoEmpresaTab {
-  const setor = normalizeEmpresaText(String(row[ORGANICO_IDX.SETOR] ?? "").trim());
-  const area = normalizeEmpresaText(String(row[ORGANICO_IDX.AREA] ?? "").trim());
-  const diretoria = normalizeEmpresaText(String(row[ORGANICO_IDX.DIRETORIA] ?? row[ORGANICO_DIRETORIA_IDX] ?? "").trim());
-
-  const joined = `${setor} ${area} ${diretoria}`;
-  if (joined.includes("REFRIGER")) return normalizeEmpresaTabName("SO REFRIGERAÇÃO");
-  if (joined.includes("MOVEIS") || joined.includes("MOVEL")) return normalizeEmpresaTabName("SÓ MÓVEIS");
-  if (joined.includes("RN MARQUES") || joined.includes("R N MARQUES")) {
-    return normalizeEmpresaTabName("R N MARQUES ARAUJO");
-  }
-  // Histórico local: DIRETORIA guarda o nome da empresa da ficha.
-  if (isOrganicoHistoricoLocal(row) && diretoria) {
-    return normalizeEmpresaTabName(String(row[ORGANICO_IDX.DIRETORIA] ?? "").trim());
-  }
-  return ORGANICO_EMPRESA_PADRAO;
+  return resolveEmpresaFromOrganicoCells({
+    setor: String(row[ORGANICO_IDX.SETOR] ?? "").trim(),
+    area: String(row[ORGANICO_IDX.AREA] ?? "").trim(),
+    diretoria: String(row[ORGANICO_IDX.DIRETORIA] ?? "").trim(),
+    historicoLocal: isOrganicoHistoricoLocal(row),
+  });
 }
 
 function resolveEmpresaTabFromApiFuncionario(
@@ -273,12 +250,11 @@ function resolveEmpresaTabFromApiFuncionario(
       raw?.filialDescricao ??
       "",
   ).trim();
-  const joined = normalizeEmpresaText(
-    `${empresa} ${estrutura} ${departamento} ${String(f.area ?? "")} ${String(f.setor ?? "")}`,
-  );
-  if (joined.includes("REFRIGER")) return normalizeEmpresaTabName("SO REFRIGERAÇÃO");
-  if (joined.includes("MOVEIS") || joined.includes("MOVEL")) return normalizeEmpresaTabName("SÓ MÓVEIS");
-  return ORGANICO_EMPRESA_PADRAO;
+  return resolveEmpresaFromOrganicoCells({
+    setor: String(f.setor ?? ""),
+    area: String(f.area ?? ""),
+    diretoria: `${empresa} ${estrutura} ${departamento}`,
+  });
 }
 
 /** Para montar opções de um multiselect: aplica os demais filtros em cascata (exceto a dimensão `exclude`). */

@@ -17,19 +17,25 @@ import {
   canViewOrganogramaFotos,
 } from "@rh/lib/route-permissions";
 import {
-  LIDER_A_DEFINIR,
   ORGANOGRAMA_VINCULACOES_CONFIG_KEY,
   buildDiretoriasTree,
   mergeVinculacoesComSetores,
   normalizarChave,
   parseOrganogramaVinculacoes,
   type DiretoriaTree,
+  type SetorOrganizacional,
 } from "@rh/lib/organograma-vinculacoes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@rh/components/ui/tabs";
-import { useOrganicoCardFoto } from "@rh/pages/Organico/useOrganicoCardFoto";
 import { useToast } from "@rh/hooks/use-toast";
 import { ORGANICO_IDX, getStatusFromRow } from "@rh/pages/Organico/organico-derive";
 import { OrganogramaVinculosConfigPanel } from "@rh/pages/organograma/OrganogramaVinculosConfigPanel";
+import { OrganogramaHierarquiaPanel } from "@rh/pages/organograma/OrganogramaHierarquiaPanel";
+import {
+  OrganogramaSetorMembrosDialog,
+  contarColaboradoresPorSetorSoAco,
+  type SetorSelecionadoMapa,
+} from "@rh/pages/organograma/OrganogramaSetorMembrosDialog";
+import { cn } from "@rh/lib/utils";
 
 type OrganogramaAba = "mapa-vinculos" | "hierarquia" | "configuracoes";
 
@@ -150,20 +156,25 @@ const NIVEL_ESTILOS: Record<
   },
 };
 
-/** Avatar circular com moldura branca + meio-anel colorido à esquerda (estilo da referência). */
+const NivelBadge = ({ rotulo, nivel }: { rotulo: string; nivel: NivelVisual }) => (
+  <span
+    className={`absolute -top-2 right-4 z-20 rounded-full px-3 py-1 text-[8px] font-bold uppercase tracking-widest shadow-level-1 ${NIVEL_ESTILOS[nivel].badge}`}
+  >
+    {rotulo}
+  </span>
+);
+
+/** Avatar circular com meio-anel (empresa / diretorias). */
 const AvatarComArco = ({
   nome,
   fotoSrc,
   nivel,
   destaque = false,
-  pendente = false,
 }: {
   nome: string;
   fotoSrc?: string | null;
   nivel: NivelVisual;
   destaque?: boolean;
-  /** Setor sem líder imediato definido: avatar neutro com "?". */
-  pendente?: boolean;
 }) => {
   const estilos = NIVEL_ESTILOS[nivel];
   return (
@@ -171,17 +182,15 @@ const AvatarComArco = ({
       <div
         className={`pointer-events-none absolute rounded-full border-r-transparent ${
           destaque ? "-inset-[8px] border-[6px]" : "-inset-[6px] border-[5px]"
-        } ${pendente ? "border-dashed border-muted-foreground/50" : estilos.arco}`}
+        } ${estilos.arco}`}
         aria-hidden="true"
       />
       <div
-        className={`flex h-full w-full items-center justify-center overflow-hidden rounded-full font-bold shadow-level-2 ring-4 ring-card ${
-          pendente ? "bg-muted text-muted-foreground" : estilos.avatar
-        } ${destaque ? "text-lg" : "text-sm"}`}
+        className={`flex h-full w-full items-center justify-center overflow-hidden rounded-full font-bold shadow-level-2 ring-4 ring-card ${estilos.avatar} ${
+          destaque ? "text-lg" : "text-sm"
+        }`}
       >
-        {pendente ? (
-          <span className="text-lg" aria-hidden="true">?</span>
-        ) : fotoSrc ? (
+        {fotoSrc ? (
           <img src={fotoSrc} alt={`Foto de ${nome}`} className="h-full w-full object-cover" />
         ) : (
           iniciais(nome)
@@ -191,149 +200,203 @@ const AvatarComArco = ({
   );
 };
 
-const NivelBadge = ({ rotulo, nivel }: { rotulo: string; nivel: NivelVisual }) => (
-  <span
-    className={`absolute -top-2 right-6 z-20 rounded-full px-3 py-1 text-[8px] font-bold uppercase tracking-widest shadow-level-1 ${NIVEL_ESTILOS[nivel].badge}`}
-  >
-    {rotulo}
-  </span>
-);
-
-const PillCard = ({
-  nome,
-  subtitulo,
-  rotulo,
-  nivel,
-  destaque = false,
-  matricula = "",
-  fotoDisponivel = false,
-  podeBuscarFoto = false,
-  fotoConfigKey,
+/**
+ * Card de diretoria: foto do responsável + nome da diretoria (estrutura).
+ */
+const DiretoriaPill = ({
+  diretoria,
   canEditFoto = false,
 }: {
-  nome: string;
-  subtitulo?: string;
-  rotulo: string;
-  nivel: NivelVisual;
-  /** Cartão maior, com foto em evidência (empresa e diretorias). */
-  destaque?: boolean;
-  matricula?: string;
-  fotoDisponivel?: boolean;
-  podeBuscarFoto?: boolean;
-  /** Foto via rh_config (cards sem colaborador no Orgânico). */
-  fotoConfigKey?: string;
+  diretoria: DiretoriaTree;
   canEditFoto?: boolean;
 }) => {
-  const estilos = NIVEL_ESTILOS[nivel];
-  const { rootRef, fotoSrc } = useOrganicoCardFoto({
-    matricula,
-    nome,
-    fotoDisponivel,
-    podeBuscar: podeBuscarFoto,
-  });
-  const fotoConfigSrc = useOrganogramaFotoConfig(fotoConfigKey);
-  const fotoExibida = fotoConfigSrc ?? fotoSrc;
-  const pendente = nome === LIDER_A_DEFINIR;
+  const estilos = NIVEL_ESTILOS.diretoria;
+  const fotoSrc = useOrganogramaFotoConfig(diretoria.fotoKey);
 
   return (
-    <div ref={rootRef} className={`relative ml-2 pl-2 ${destaque ? "mt-4 pb-3" : "mt-3 pb-2"}`}>
-      <NivelBadge rotulo={rotulo} nivel={nivel} />
-      <div
-        className={`relative flex items-center rounded-full border border-border/40 bg-card shadow-level-2 transition-shadow hover:shadow-level-3 ${
-          destaque
-            ? "min-h-[76px] w-[320px] py-3 pl-[104px] pr-8"
-            : "min-h-[58px] w-[250px] py-2 pl-[76px] pr-6"
-        }`}
-      >
+    <div className="relative ml-2 mt-4 pb-3 pl-2">
+      <NivelBadge rotulo="Diretoria" nivel="diretoria" />
+      <div className="relative flex min-h-[76px] w-[300px] items-center rounded-full border border-border/40 bg-card py-3 pl-[104px] pr-8 shadow-level-2 transition-shadow hover:shadow-level-3">
         <div className="absolute -left-3 top-1/2 z-10 -translate-y-1/2">
-          <AvatarComArco nome={nome} fotoSrc={fotoExibida} nivel={nivel} destaque={destaque} pendente={pendente} />
-          {fotoConfigKey && canEditFoto && (
-            <FotoConfigUploadButton configKey={fotoConfigKey} nome={nome} className="-bottom-1 -right-1" />
+          <AvatarComArco
+            nome={diretoria.diretor}
+            fotoSrc={fotoSrc}
+            nivel="diretoria"
+            destaque
+          />
+          {canEditFoto && (
+            <FotoConfigUploadButton
+              configKey={diretoria.fotoKey}
+              nome={diretoria.diretor}
+              className="-bottom-1 -right-1"
+            />
           )}
         </div>
         <div className="min-w-0 text-left">
-          <p
-            className={`font-bold leading-tight ${pendente ? "italic text-muted-foreground" : estilos.texto} ${
-              destaque ? "text-base" : "text-sm"
-            }`}
-          >
-            {pendente ? "Líder a definir" : nome}
-          </p>
-          {subtitulo && (
-            <p
-              className={`mt-0.5 font-bold uppercase tracking-wider text-muted-foreground ${
-                destaque ? "text-[10px]" : "text-[9px]"
-              }`}
-            >
-              {subtitulo}
-            </p>
-          )}
+          <p className={`text-sm font-bold leading-tight ${estilos.texto}`}>{diretoria.nome}</p>
         </div>
       </div>
     </div>
   );
 };
 
+/**
+ * Card de setor: só nome estrutural; clique abre os colaboradores do Orgânico.
+ */
+const SetorPill = ({
+  titulo,
+  subtitulo,
+  qtdColaboradores = 0,
+  onClick,
+}: {
+  titulo: string;
+  subtitulo?: string;
+  qtdColaboradores?: number;
+  onClick?: () => void;
+}) => {
+  const estilos = NIVEL_ESTILOS.setor;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`Ver colaboradores de ${titulo}`}
+      className="relative mt-1.5 text-left transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-soaco-gold/60"
+    >
+      <NivelBadge rotulo="Setor" nivel="setor" />
+      <span
+        className="absolute -bottom-1.5 right-3 z-20 rounded-full border border-border/60 bg-card px-2 py-0.5 text-[9px] font-bold tabular-nums text-muted-foreground shadow-level-1"
+        title={`${qtdColaboradores} colaborador${qtdColaboradores === 1 ? "" : "es"}`}
+      >
+        {qtdColaboradores}
+      </span>
+      <div className="flex min-h-[46px] w-[200px] cursor-pointer items-center rounded-full border border-border/40 bg-card px-5 py-2 pb-3 shadow-level-2 transition-shadow hover:border-soaco-gold/50 hover:shadow-level-3">
+        <div className="min-w-0 text-left">
+          <p className={`text-[13px] font-bold leading-tight ${estilos.texto}`}>{titulo}</p>
+          {subtitulo ? (
+            <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+              {subtitulo}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </button>
+  );
+};
+
+/** Conector horizontal curto entre nós do mapa (esquerda → direita). */
+const ConectorHorizontal = ({ className }: { className?: string }) => (
+  <div
+    className={cn("h-px w-6 shrink-0 self-center bg-border", className)}
+    aria-hidden="true"
+  />
+);
+
+/**
+ * Ramo horizontal: Diretoria (com foto) → grade de setores (só estrutura).
+ */
 const DiretoriaBranch = ({
   diretoria,
   delay,
-  matriculasComFoto,
-  podeBuscarFotos,
   canEditFotos,
+  contagemPorSetor,
+  onSelecionarSetor,
 }: {
   diretoria: DiretoriaTree;
   delay: number;
-  matriculasComFoto: Set<string>;
-  podeBuscarFotos: boolean;
   canEditFotos: boolean;
+  contagemPorSetor: Map<string, number>;
+  onSelecionarSetor: (payload: { setor: SetorOrganizacional; area: string }) => void;
 }) => {
   const setoresComArea = diretoria.areas.flatMap((area) =>
     area.setores.map((info) => ({ area: area.nome, info })),
   );
-  /** Colunas por diretoria: 2 para poucas equipes, 3 para muitas (usa melhor a largura da tela). */
-  const colunas = Math.min(3, Math.max(2, Math.ceil(setoresComArea.length / 6)));
-  const larguraGrade = colunas * 270 + (colunas - 1) * 16;
+  /** 2–3 colunas conforme a quantidade, para equilibrar altura e largura. */
+  const colunas = Math.min(3, Math.max(2, Math.ceil(setoresComArea.length / 5)));
+  const larguraGrade = colunas * 212 + (colunas - 1) * 12;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.3, delay }}
-      className="flex flex-col items-center"
+      className="flex flex-row items-center"
     >
-      <PillCard
-        nome={diretoria.diretor}
-        subtitulo={diretoria.nome}
-        rotulo="Diretoria"
-        nivel="diretoria"
-        destaque
-        fotoConfigKey={diretoria.fotoKey}
-        canEditFoto={canEditFotos}
-      />
-      <div className="h-6 w-px bg-border" />
-      <div
-        className="flex flex-wrap justify-center gap-x-4 gap-y-4 pt-1"
-        style={{ maxWidth: `${larguraGrade}px` }}
-      >
-        {setoresComArea.map(({ area, info }) => (
-          <PillCard
-            key={`${area}-${info.nome}`}
-            nome={info.lider}
-            subtitulo={`${info.nome} · ${area}`}
-            rotulo="Setor"
-            nivel="setor"
-            matricula={info.matricula}
-            fotoDisponivel={Boolean(info.matricula && matriculasComFoto.has(info.matricula))}
-            podeBuscarFoto={podeBuscarFotos}
-          />
-        ))}
-      </div>
+      <DiretoriaPill diretoria={diretoria} canEditFoto={canEditFotos} />
+      {setoresComArea.length > 0 && (
+        <>
+          <ConectorHorizontal />
+          <div
+            className="flex flex-wrap content-center gap-x-3 gap-y-3 py-1"
+            style={{ maxWidth: `${larguraGrade}px` }}
+          >
+            {setoresComArea.map(({ area, info }) => (
+              <SetorPill
+                key={`${area}-${info.nome}`}
+                titulo={info.nome}
+                subtitulo={area || undefined}
+                qtdColaboradores={contagemPorSetor.get(normalizarChave(info.nome)) ?? 0}
+                onClick={() => onSelecionarSetor({ setor: info, area })}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </motion.div>
   );
 };
 
+/** Nó da empresa à esquerda do mapa horizontal. */
+const EmpresaNode = ({
+  fotoEmpresa,
+  canEditFotos,
+}: {
+  fotoEmpresa: string | null;
+  canEditFotos: boolean;
+}) => (
+  <div className="relative z-10 flex shrink-0 flex-col items-center">
+    <div className="relative z-10 h-28 w-28">
+      <div
+        className="pointer-events-none absolute -inset-[9px] rounded-full border-[7px] border-r-transparent border-soaco-gold"
+        aria-hidden="true"
+      />
+      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-soaco-navy text-3xl font-bold text-white shadow-level-2 ring-4 ring-card">
+        {fotoEmpresa ? (
+          <img
+            src={fotoEmpresa}
+            alt="Logo da Só Aço Industrial Ltda."
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          iniciais("Só Aço Industrial Ltda.")
+        )}
+      </div>
+      {canEditFotos && (
+        <FotoConfigUploadButton
+          configKey={FOTO_EMPRESA_KEY}
+          nome="Só Aço Industrial Ltda."
+          className="bottom-0 right-0"
+        />
+      )}
+    </div>
+    <div className="relative -mt-4">
+      <span className="absolute -top-2.5 right-5 z-10 rounded-full bg-soaco-navy px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-white shadow-level-1">
+        Empresa
+      </span>
+      <div className="rounded-full border border-border/50 bg-card px-10 py-3.5 text-center shadow-level-2">
+        <p className="text-base font-bold text-soaco-navy dark:text-primary-100">
+          Só Aço Industrial Ltda.
+        </p>
+        <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          Organização
+        </p>
+      </div>
+    </div>
+  </div>
+);
+
 const Organograma = () => {
   const [abaAtiva, setAbaAtiva] = useState<OrganogramaAba>("mapa-vinculos");
+  const [setorSelecionado, setSetorSelecionado] = useState<SetorSelecionadoMapa | null>(null);
   const podeBuscarFotos = isApiConfigured() && canViewOrganicoPhotos();
   const canEditFotos = canEditOrganogramaFotos();
   const canEditVinculos = canEditRoute("/organograma");
@@ -364,6 +427,11 @@ const Organograma = () => {
           .filter(Boolean),
       ),
     [fotosResumo],
+  );
+
+  const contagemPorSetor = useMemo(
+    () => contarColaboradoresPorSetorSoAco(organicoRows),
+    [organicoRows],
   );
 
   const setoresAtivos = useMemo(() => {
@@ -429,7 +497,8 @@ const Organograma = () => {
               <div>
                 <h2 className="text-lg font-semibold text-foreground">Mapa de Vínculos Organizacionais</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Quais setores respondem a cada diretoria e quem é o líder imediato de cada setor.
+                  Distribuição lateral dos setores por diretoria — mapeamento de vínculos (não é hierarquia de
+                  cargo). Clique em um setor para ver os colaboradores.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 text-xs">
@@ -455,68 +524,39 @@ const Organograma = () => {
                 </div>
               </div>
             ) : (
-              <div className="overflow-x-auto border border-border bg-muted/30 p-8 shadow-level-1">
-                <div className="flex w-max min-w-full justify-center">
+              <div className="overflow-x-auto border border-border bg-muted/30 p-6 shadow-level-1 sm:p-8">
+                <div className="flex w-max min-w-full items-center py-2">
                   <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.3 }}
-                    className="flex flex-col items-center"
+                    className="flex flex-row items-center"
                   >
-                    <div className="flex flex-col items-center">
-                      <div className="relative z-10 h-28 w-28">
-                        <div
-                          className="pointer-events-none absolute -inset-[9px] rounded-full border-[7px] border-r-transparent border-soaco-gold"
-                          aria-hidden="true"
-                        />
-                        <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-soaco-navy text-3xl font-bold text-white shadow-level-2 ring-4 ring-card">
-                          {fotoEmpresa ? (
-                            <img
-                              src={fotoEmpresa}
-                              alt="Logo da Só Aço Industrial Ltda."
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            iniciais("Só Aço Industrial Ltda.")
-                          )}
-                        </div>
-                        {canEditFotos && (
-                          <FotoConfigUploadButton
-                            configKey={FOTO_EMPRESA_KEY}
-                            nome="Só Aço Industrial Ltda."
-                            className="bottom-0 right-0"
-                          />
-                        )}
-                      </div>
-                      <div className="relative -mt-4">
-                        <span className="absolute -top-2.5 right-5 z-10 rounded-full bg-soaco-navy px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-white shadow-level-1">
-                          Nível A
-                        </span>
-                        <div className="rounded-full border border-border/50 bg-card px-14 py-3.5 text-center shadow-level-2">
-                          <p className="text-lg font-bold text-soaco-navy dark:text-primary-100">
-                            Só Aço Industrial Ltda.
-                          </p>
-                          <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                            Empresa
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="h-6 w-px bg-border" />
-                    <div className="relative flex gap-8">
-                      <div
-                        className="absolute top-0 left-1/2 h-px -translate-x-1/2 bg-border"
-                        style={{ width: "calc(100% - 230px)" }}
-                      />
+                    <EmpresaNode fotoEmpresa={fotoEmpresa} canEditFotos={canEditFotos} />
+                    <ConectorHorizontal className="w-8" />
+                    <div className="flex flex-col gap-10">
                       {diretorias.map((diretoria, i) => (
-                        <div key={diretoria.id} className="flex flex-col items-center">
-                          <div className="h-6 w-px bg-border" />
+                        <div key={diretoria.id} className="relative flex flex-row items-center">
+                          {/* Trilho vertical entre diretorias (centro de cada ramo). */}
+                          {i > 0 && (
+                            <div
+                              className="pointer-events-none absolute bottom-1/2 left-0 h-[calc(50%+1.25rem)] w-px bg-border"
+                              aria-hidden="true"
+                            />
+                          )}
+                          {i < diretorias.length - 1 && (
+                            <div
+                              className="pointer-events-none absolute top-1/2 left-0 h-[calc(50%+1.25rem)] w-px bg-border"
+                              aria-hidden="true"
+                            />
+                          )}
+                          <div className="h-px w-5 shrink-0 bg-border" aria-hidden="true" />
                           <DiretoriaBranch
                             diretoria={diretoria}
-                            delay={0.1 * (i + 1)}
-                            matriculasComFoto={matriculasComFoto}
-                            podeBuscarFotos={podeBuscarFotos}
+                            delay={0.08 * (i + 1)}
                             canEditFotos={canEditFotos}
+                            contagemPorSetor={contagemPorSetor}
+                            onSelecionarSetor={setSetorSelecionado}
                           />
                         </div>
                       ))}
@@ -527,28 +567,37 @@ const Organograma = () => {
             )}
           </TabsContent>
 
-          <TabsContent value="hierarquia" className="mt-0 focus-visible:outline-none">
-            <div className="mb-4">
+          <TabsContent value="hierarquia" className="mt-0 space-y-4 focus-visible:outline-none">
+            <div>
               <h2 className="text-lg font-semibold text-foreground">Hierarquia</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Organograma de hierarquia de lideranças e subordinados.
+                Empresa no topo; as 3 diretorias no mesmo nível, ligadas entre si; abaixo, a escada de cargos de
+                cada uma.
               </p>
             </div>
-            <div className="flex min-h-[320px] items-center justify-center border border-dashed border-border bg-muted/20 p-10 text-center shadow-level-1">
-              <div className="max-w-md space-y-2">
-                <p className="text-sm font-semibold text-foreground">Aba em construção</p>
-                <p className="text-sm text-muted-foreground">
-                  Aqui vamos montar o organograma de hierarquia. O mapa de vínculos permanece na aba Mapa de
-                  Vínculos Organizacionais.
-                </p>
-              </div>
-            </div>
+            <OrganogramaHierarquiaPanel
+              diretorias={diretorias}
+              organicoRows={organicoRows}
+              matriculasComFoto={matriculasComFoto}
+              podeBuscarFotos={podeBuscarFotos}
+            />
           </TabsContent>
 
           <TabsContent value="configuracoes" className="mt-0 focus-visible:outline-none">
             <OrganogramaVinculosConfigPanel canEdit={canEditVinculos} />
           </TabsContent>
         </Tabs>
+
+        <OrganogramaSetorMembrosDialog
+          open={setorSelecionado != null}
+          onOpenChange={(open) => {
+            if (!open) setSetorSelecionado(null);
+          }}
+          selecionado={setorSelecionado}
+          organicoRows={organicoRows}
+          matriculasComFoto={matriculasComFoto}
+          podeBuscarFotos={podeBuscarFotos}
+        />
       </div>
     </AppLayout>
   );

@@ -1,6 +1,7 @@
 import type {
   WhatsappNotificacaoTipo,
   WhatsappNotificacaoTipoSave,
+  WhatsappGrupoDestino,
   UsuarioDestinatario,
   FonteMensagem,
   ModoDisparo,
@@ -31,6 +32,8 @@ type Props = {
   podeEditar: boolean;
   isExpanded: boolean;
   destIds: number[];
+  grupos: WhatsappGrupoDestino[];
+  jidDraft: string;
   usuarios: UsuarioDestinatario[];
   filtroUsuario: string;
   usuariosFiltrados: UsuarioDestinatario[];
@@ -42,6 +45,9 @@ type Props = {
   onToggleDest: (usuarioId: number) => void;
   onSaveDest: () => void;
   onFiltroUsuario: (value: string) => void;
+  onJidDraftChange: (value: string) => void;
+  onAddGrupo: () => void;
+  onRemoveGrupo: (jid: string) => void;
 };
 
 export default function SmsTipoCard({
@@ -51,6 +57,8 @@ export default function SmsTipoCard({
   podeEditar,
   isExpanded,
   destIds,
+  grupos,
+  jidDraft,
   usuarios,
   filtroUsuario,
   usuariosFiltrados,
@@ -62,9 +70,12 @@ export default function SmsTipoCard({
   onToggleDest,
   onSaveDest,
   onFiltroUsuario,
+  onJidDraftChange,
+  onAddGrupo,
+  onRemoveGrupo,
 }: Props) {
   const tipoId = saved?.id;
-  const destSelecionados = destIds.length;
+  const destSelecionados = destIds.length + grupos.length;
   const destSemTelefone = destIds.filter((id) => {
     const u = usuarios.find((x) => x.id === id);
     return u && !u.telefone?.trim();
@@ -262,10 +273,10 @@ export default function SmsTipoCard({
               <div>
                 <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Destinatários</h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Usuários do sistema que receberão esta mensagem via WhatsApp.
+                  Usuários do sistema e/ou grupos WhatsApp (JID) que receberão esta mensagem.
                   {destSemTelefone > 0 && (
                     <span className="text-amber-600 dark:text-amber-400 ml-1">
-                      {destSemTelefone} selecionado(s) sem telefone cadastrado.
+                      {destSemTelefone} usuário(s) sem telefone cadastrado.
                     </span>
                   )}
                 </p>
@@ -281,6 +292,67 @@ export default function SmsTipoCard({
                 </button>
               )}
             </div>
+
+            <div className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Grupos WhatsApp
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Cole o JID do grupo (ex.: <code className="font-mono">120363...@g.us</code>) e clique em Adicionar.
+              </p>
+              {podeEditar && (
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    className={inputClass}
+                    value={jidDraft}
+                    onChange={(e) => onJidDraftChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        onAddGrupo();
+                      }
+                    }}
+                    placeholder="120363380975837123@g.us"
+                  />
+                  <button
+                    type="button"
+                    onClick={onAddGrupo}
+                    className="shrink-0 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 px-4 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600"
+                  >
+                    Adicionar
+                  </button>
+                </div>
+              )}
+              {grupos.length === 0 ? (
+                <p className="text-xs text-slate-500 dark:text-slate-400">Nenhum grupo adicionado.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {grupos.map((g) => (
+                    <li
+                      key={g.jid}
+                      className="flex items-start justify-between gap-2 rounded-md bg-slate-50 dark:bg-slate-900/40 px-3 py-2 text-sm"
+                    >
+                      <span className="min-w-0">
+                        {g.nome && (
+                          <span className="block font-medium text-slate-800 dark:text-slate-100 truncate">{g.nome}</span>
+                        )}
+                        <code className="block text-xs font-mono text-slate-600 dark:text-slate-300 break-all">{g.jid}</code>
+                      </span>
+                      {podeEditar && (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveGrupo(g.jid)}
+                          className="shrink-0 text-xs text-red-600 dark:text-red-400 hover:underline"
+                        >
+                          Remover
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             <input
               className={inputClass}
               value={filtroUsuario}

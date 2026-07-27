@@ -91,6 +91,8 @@ export const ORGANOGRAMA_VINCULACOES_SEED: OrganogramaVinculacao[] = [
   v("FATURAMENTO", "ADMINISTRATIVO", "presidencia", "Ana Lucia Lima de Carvalho", "84", "Sub-Gerente"),
 
   v("ALMOXARIFADO", "PRODUÇÃO", "operacao", "Manoel Luiz de Sousa Junior", "80", "Almoxarife II"),
+  /** Supervisão geral de produção (Wagner / Maucidio) — setor Orgânico "PRODUÇÃO". */
+  v("PRODUÇÃO", "PRODUÇÃO", "operacao", "Maucidio de Sousa Silva", "886", "Supervisor de Produção"),
   v("BALCÃO", "PRODUÇÃO", "operacao", "Ricardo Carvalho Pinto", "96", "Sup. de Refrigeração"),
   v("BEBEDOURO", "PRODUÇÃO", "operacao", "Joao da Cruz Alves de Freitas", "1177", "Lider de Equipe I"),
   v("CHAPARIA", "PRODUÇÃO", "operacao", "Herbert da Silva Chaves", "1478", "Lider de Equipe - V"),

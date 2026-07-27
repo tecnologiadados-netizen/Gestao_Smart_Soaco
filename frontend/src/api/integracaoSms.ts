@@ -3,6 +3,11 @@ import { apiFetch, apiJson } from './client';
 export type FonteMensagem = 'evento' | 'sql_template' | 'codigo';
 export type ModoDisparo = 'evento' | 'cron';
 
+export interface WhatsappGrupoDestino {
+  jid: string;
+  nome: string | null;
+}
+
 export interface WhatsappNotificacaoTipo {
   id: number;
   code: string;
@@ -17,6 +22,7 @@ export interface WhatsappNotificacaoTipo {
   templateMensagem: string | null;
   builderCode: string | null;
   destinatarioIds: number[];
+  grupos: WhatsappGrupoDestino[];
 }
 
 export interface WhatsappNotificacaoTipoSave {
@@ -66,11 +72,12 @@ export async function saveSmsTipos(tipos: WhatsappNotificacaoTipoSave[]): Promis
 
 export async function saveSmsDestinatarios(
   tipoId: number,
-  usuarioIds: number[]
+  usuarioIds: number[],
+  grupos: Array<{ jid: string; nome?: string | null } | string> = []
 ): Promise<{ tipos: WhatsappNotificacaoTipo[] }> {
   const res = await apiFetch(`/api/integracao/sms/tipos/${tipoId}/destinatarios`, {
     method: 'PUT',
-    body: { usuarioIds },
+    body: { usuarioIds, grupos },
   } as { method: string; body: unknown });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
