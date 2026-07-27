@@ -12,6 +12,10 @@ import IndicadorDataPorPrevisao from './sequenciamento-carradas/IndicadorDataPor
 import { resolverDataProducaoExibicaoGerenciador, maxDataProducaoPedidosNormais, dataProducaoCarradaEmFormacaoApartirDe } from '../utils/dataProducaoGerenciador';
 import { LABEL_CARRADA_EM_FORMACAO } from '../utils/rotaCarrada';
 import {
+  mensagemCanalDatasPedido,
+  pedidoElegivelReprogramarGerenciador,
+} from '../utils/canalReprogramacaoDatas';
+import {
   BADGE_GRADE_CLASS,
   classePillStatusPrazo,
   linhaEstaFaturada,
@@ -56,7 +60,6 @@ const COLUMNS: Array<{
   { id: 'data_base_entrega_futura', label: 'Data base entrega futura', keys: ['Data base entrega futura'] },
   { id: 'status', label: 'Status', keys: [] },
   { id: 'historico', label: 'Histórico', keys: [] },
-  { id: 'acao', label: 'Ação', keys: [] },
 ];
 
 /** Colunas que entram no subtotal do rodapé (soma dos valores filtrados). */
@@ -123,7 +126,7 @@ const STORAGE_COL_OCULTAS_PEDIDOS = 'pedidos.colunasOcultas.v1';
 
 /** Colunas com filtro/classificação no cabeçalho (estilo MRP). */
 const COLUNAS_COM_FILTRO_GRADE = COLUMNS.filter(
-  (c) => (c.keys?.length || c.getValue || c.id === 'status') && !['historico', 'acao'].includes(c.id)
+  (c) => (c.keys?.length || c.getValue || c.id === 'status') && c.id !== 'historico'
 ).map((c) => c.id);
 
 function loadColunasOcultasPedidos(): string[] {
@@ -166,8 +169,7 @@ interface TabelaPedidosProps {
   /** Conjunto completo retornado pelo filtro da tela (todas as páginas) para filtros do cabeçalho. */
   pedidos: Pedido[];
   loading?: boolean;
-  onAjustar?: (pedido: Pedido) => void;
-  /** Quando definido, exibe coluna de seleção para reprogramação em lote. */
+  /** Quando definido, exibe coluna de seleção para Reprogramar (só Requisição é marcável). */
   selectedIds?: Set<string>;
   onSelectionChange?: (ids: Set<string>) => void;
   /** Classificação personalizada: níveis (coluna + asc/desc) definidos no popup "Classificar". A grade é ordenada por estes níveis. */
@@ -332,7 +334,6 @@ function mesclarLinhasClientesExpandidos(
 export default function TabelaPedidos({
   pedidos = [],
   loading,
-  onAjustar,
   selectedIds,
   onSelectionChange,
   sortLevels,
@@ -514,21 +515,33 @@ export default function TabelaPedidos({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resetar página ao mudar filtros do cabeçalho
   }, [columnFiltersKey]);
 
+  const listaPaginaElegivel = useMemo(
+    () =>
+      listaPagina.filter((p) =>
+        pedidoElegivelReprogramarGerenciador(p as unknown as Record<string, unknown>)
+      ),
+    [listaPagina]
+  );
+
   const toggleSelectAll = useCallback(() => {
     if (!onSelectionChange || selectedIds == null) return;
-    const allSelected = listaPagina.length > 0 && listaPagina.every((p) => selectedIds.has(normIdPedido(p)));
+    const allSelected =
+      listaPaginaElegivel.length > 0 &&
+      listaPaginaElegivel.every((p) => selectedIds.has(normIdPedido(p)));
     const next = new Set(selectedIds);
     if (allSelected) {
-      listaPagina.forEach((p) => next.delete(normIdPedido(p)));
+      listaPaginaElegivel.forEach((p) => next.delete(normIdPedido(p)));
     } else {
-      listaPagina.forEach((p) => next.add(normIdPedido(p)));
+      listaPaginaElegivel.forEach((p) => next.add(normIdPedido(p)));
     }
     onSelectionChange(next);
-  }, [listaPagina, selectedIds, onSelectionChange]);
+  }, [listaPaginaElegivel, selectedIds, onSelectionChange]);
 
   const toggleSelectOne = useCallback(
-    (id: string) => {
+    (p: Pedido) => {
       if (!onSelectionChange || selectedIds == null) return;
+      const id = normIdPedido(p);
+      if (!pedidoElegivelReprogramarGerenciador(p as unknown as Record<string, unknown>)) return;
       const next = new Set(selectedIds);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -541,10 +554,14 @@ export default function TabelaPedidos({
   useEffect(() => {
     const el = headerCheckRef.current;
     if (!el) return;
-    const some = listaPagina.length > 0 && listaPagina.some((p) => selectedIds?.has(normIdPedido(p)));
-    const all = listaPagina.length > 0 && listaPagina.every((p) => selectedIds?.has(normIdPedido(p)));
+    const some =
+      listaPaginaElegivel.length > 0 &&
+      listaPaginaElegivel.some((p) => selectedIds?.has(normIdPedido(p)));
+    const all =
+      listaPaginaElegivel.length > 0 &&
+      listaPaginaElegivel.every((p) => selectedIds?.has(normIdPedido(p)));
     el.indeterminate = some && !all;
-  }, [listaPagina, selectedIds]);
+  }, [listaPaginaElegivel, selectedIds]);
 
   const subtotais = useMemo(() => {
     const out: Record<string, number> = {};
@@ -776,16 +793,18 @@ export default function TabelaPedidos({
           <tr>
             {showSelection && (
               <th className="sticky top-0 z-30 w-10 border border-primary-500/40 bg-primary-600 p-2 shadow-[0_1px_0_rgba(0,0,0,0.08)]">
-                <label className="flex cursor-pointer items-center justify-center">
+                <label className="flex cursor-pointer items-center justify-center" title="Seleciona apenas Requisição">
                   <input
                     ref={headerCheckRef}
                     type="checkbox"
                     checked={
-                      listaPagina.length > 0 && listaPagina.every((p) => selectedIds?.has(normIdPedido(p)))
+                      listaPaginaElegivel.length > 0 &&
+                      listaPaginaElegivel.every((p) => selectedIds?.has(normIdPedido(p)))
                     }
                     onChange={toggleSelectAll}
-                    className="rounded border-white/40 text-primary-200 focus:ring-primary-300"
-                    aria-label="Selecionar todos visíveis"
+                    disabled={listaPaginaElegivel.length === 0}
+                    className="rounded border-white/40 text-primary-200 focus:ring-primary-300 disabled:opacity-40"
+                    aria-label="Selecionar todas as requisições visíveis"
                   />
                 </label>
               </th>
@@ -805,19 +824,31 @@ export default function TabelaPedidos({
           ) : (
           listaPagina.map((p) => (
             <tr key={p.id_pedido}>
-              {showSelection && (
-                <td className="p-3 w-10">
-                  <label className="flex items-center justify-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds?.has(normIdPedido(p)) ?? false}
-                      onChange={() => toggleSelectOne(normIdPedido(p))}
-                      className="rounded border-slate-300 dark:border-slate-500 text-primary-600 focus:ring-primary-500"
-                      aria-label={`Selecionar pedido ${normIdPedido(p)}`}
-                    />
-                  </label>
-                </td>
-              )}
+              {showSelection && (() => {
+                const elegivel = pedidoElegivelReprogramarGerenciador(
+                  p as unknown as Record<string, unknown>
+                );
+                const title = elegivel
+                  ? `Selecionar pedido ${normIdPedido(p)}`
+                  : mensagemCanalDatasPedido(p as unknown as Record<string, unknown>);
+                return (
+                  <td className="p-3 w-10">
+                    <label
+                      className={`flex items-center justify-center ${elegivel ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+                      title={title}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedIds?.has(normIdPedido(p)) ?? false}
+                        onChange={() => toggleSelectOne(p)}
+                        disabled={!elegivel}
+                        className="rounded border-slate-300 dark:border-slate-500 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed"
+                        aria-label={title}
+                      />
+                    </label>
+                  </td>
+                );
+              })()}
               {colunasVisiveisLista.map((col) => {
                 if (col.id === 'status') {
                   const texto = statusPrincipalPedido(p);
@@ -855,23 +886,6 @@ export default function TabelaPedidos({
                       >
                         <ClockIcon />
                       </button>
-                    </td>
-                  );
-                }
-                if (col.id === 'acao') {
-                  return (
-                    <td key={col.id} className="p-3">
-                      {onAjustar ? (
-                        <button
-                          type="button"
-                          onClick={() => onAjustar(p)}
-                          className="rounded-lg bg-primary-600/80 hover:bg-primary-600 px-3 py-1.5 text-xs font-medium text-white transition whitespace-nowrap"
-                        >
-                          Ajustar previsão
-                        </button>
-                      ) : (
-                        <span className="text-slate-400">—</span>
-                      )}
                     </td>
                   );
                 }

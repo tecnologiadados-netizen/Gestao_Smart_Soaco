@@ -38,6 +38,10 @@ import {
   mergeLinhasSnapshotVarios,
   SUBTOTAL_ROW_CLASS,
 } from './sequenciamentoCarradasUtils';
+import {
+  mensagemCanalDatasPedido,
+  rotaPermiteAlterarDatasCalendario,
+} from '../../utils/canalReprogramacaoDatas';
 import MultiSelectWithSearch from '../MultiSelectWithSearch';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import GradeFiltroCabecalhoBtn from '../grade/GradeFiltroCabecalhoBtn';
@@ -695,6 +699,14 @@ export default function CalendarioProducaoModal({
       const pedido = linhaSnapshotParaPedido(linha);
       if (!pedido) return;
 
+      const row = pedido as unknown as Record<string, unknown>;
+      const rotaLinha = String(row['Observacoes'] ?? row['Observações'] ?? drill.tipoF ?? '').trim();
+      if (!rotaPermiteAlterarDatasCalendario(rotaLinha) && !rotaPermiteAlterarDatasCalendario(String(drill.tipoF ?? ''))) {
+        setToast(mensagemCanalDatasPedido(row));
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+
       const carradaKeysTodosItens = [...new Set(linhasPd.map((row) => linhaCarradaKey(row)))];
       const pedidosPd = linhasPd
         .map((row) => linhaSnapshotParaPedido(row))
@@ -737,6 +749,22 @@ export default function CalendarioProducaoModal({
       });
     },
     [linhas, sim, baseline, dataInserirRomaneio, dataEmFormacao, drill]
+  );
+
+  const podeReprogramarNoCalendario = useCallback(
+    (pd: string): boolean => {
+      if (drill.nivel !== 'pedidos') return false;
+      if (rotaPermiteAlterarDatasCalendario(String(drill.tipoF ?? ''))) return true;
+      const linhasPd = listarLinhasSnapshotPorPd(linhas, pd);
+      const linha = linhasPd[0];
+      if (!linha) return false;
+      const pedido = linhaSnapshotParaPedido(linha);
+      if (!pedido) return false;
+      const row = pedido as unknown as Record<string, unknown>;
+      const rotaLinha = String(row['Observacoes'] ?? row['Observações'] ?? '').trim();
+      return rotaPermiteAlterarDatasCalendario(rotaLinha);
+    },
+    [drill, linhas]
   );
 
   const solicitarAjustePrevisao = useCallback(
@@ -1398,7 +1426,7 @@ export default function CalendarioProducaoModal({
                           {labelPedidoMapa(r.pd)}
                         </GradeCelulaModalBtn>
                         {r.producaoPorPrevisao && <IndicadorDataPorPrevisao />}
-                        {podeAjustarPrevisao && (
+                        {podeAjustarPrevisao && podeReprogramarNoCalendario(r.pd) && (
                           <button
                             type="button"
                             onClick={() => solicitarAjustePrevisao(r.pd)}

@@ -38,6 +38,7 @@ import {
 } from '../services/evolutionApi.js';
 import { responderSycroCardsPorAjusteGerenciador } from '../services/sycroOrderSyncRespostaPrevisao.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
+import { validarDatasReprogramacao, toIsoDateOnly } from '../utils/validarDatasReprogramacao.js';
 import { ajustarPrevisaoSchema, ajustarPrevisaoLoteSchema, ajustarDataProducaoLoteSchema } from '../validators/pedidos.js';
 import { listarPedidosQuerySchema, pedidosEncerradosQuerySchema, pedidosEncerradosTypeaheadQuerySchema } from '../validators/pedidos.js';
 import { prisma } from '../config/prisma.js';
@@ -473,6 +474,23 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
         });
         return;
       }
+      const producaoAtual = toIsoDateOnly(
+        (pedidoAtual as Record<string, unknown>).data_producao as string | Date | null | undefined
+      );
+      const datasErro = validarDatasReprogramacao({
+        previsaoIso: novaStr,
+        producaoIso: producaoAtual || null,
+      });
+      if (datasErro) {
+        res.status(400).json({ error: datasErro });
+        return;
+      }
+    } else {
+      const datasErro = validarDatasReprogramacao({ previsaoIso: dataPrevisao });
+      if (datasErro) {
+        res.status(400).json({ error: datasErro });
+        return;
+      }
     }
 
     const novoAjuste = (id: string, rotaAjuste: string | null): AjusteLoteItem => ({
@@ -781,6 +799,13 @@ export async function ajustarDataProducaoLote(req: Request, res: Response): Prom
       data_producao: new Date(it.data_producao),
       rota: it.rota ?? null,
     }));
+    for (const it of itens) {
+      const datasErro = validarDatasReprogramacao({ producaoIso: it.data_producao });
+      if (datasErro) {
+        res.status(400).json({ error: datasErro, id_pedido: it.id_pedido });
+        return;
+      }
+    }
     const resultado = await registrarDataProducaoLote(itens, usuario);
     invalidatePedidosCache();
     res.json(resultado);

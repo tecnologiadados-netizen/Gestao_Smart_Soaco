@@ -1,7 +1,12 @@
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import type { ExcelFilterDraft, SortDir } from '../../hooks/useGradeFiltrosExcel';
-import { NUMERIC_FILTER_OPTIONS, type NumericFilterOp } from '../../utils/gradeFiltroNumerico';
+import {
+  NUMERIC_FILTER_OPTIONS,
+  parseCellTextAsNumber,
+  parseNumeroFiltroInput,
+  type NumericFilterOp,
+} from '../../utils/gradeFiltroNumerico';
 
 type Props = {
   colunaAberta: string;
@@ -47,7 +52,18 @@ export default function GradeFiltroExcelPortal({
   const key = colunaAberta;
   const valores = valoresUnicosPorColuna[key] ?? [];
   const draft = excelFilterDrafts[key] ?? { search: '', selected: valores };
-  const visiveis = valores.filter((v) => v.toLowerCase().includes(draft.search.trim().toLowerCase()));
+  const searchTrim = draft.search.trim();
+  const visiveis = valores.filter((v) => {
+    if (!searchTrim) return true;
+    // Colunas numéricas: pesquisa exata pelo valor (evita "0" listar 10, 20…).
+    if (showNumericFilters) {
+      const nSearch = parseNumeroFiltroInput(searchTrim);
+      const nVal = parseCellTextAsNumber(v);
+      if (nSearch != null && Number.isFinite(nVal)) return nVal === nSearch;
+      return v.toLowerCase() === searchTrim.toLowerCase();
+    }
+    return v.toLowerCase().includes(searchTrim.toLowerCase());
+  });
   const todosVisiveisSelecionados = visiveis.length > 0 && visiveis.every((v) => draft.selected.includes(v));
   const numericOp = draft.numericOp ?? null;
 

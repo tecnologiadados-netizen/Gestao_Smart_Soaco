@@ -21,6 +21,11 @@ import {
 import { invalidateSycroCardSinalizacaoCache } from '../services/sycroOrderPedidoSinalizacao.js';
 import { isCarradaEmFormacao, LABEL_CARRADA_EM_FORMACAO, rotaFromPedidoRow } from '../utils/rotaCarrada.js';
 import {
+  canalPermitidoPedido,
+  mensagemCanalDatasPedido,
+} from '../utils/canalReprogramacaoDatas.js';
+import { validarDatasReprogramacao } from '../utils/validarDatasReprogramacao.js';
+import {
   codigoWhatsAppTagDisponivel,
   resolverEscopoWhatsAppPorVendedor,
 } from '../utils/sycroOrderVendedorEscopoWhatsApp.js';
@@ -1226,6 +1231,10 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
         res.status(400).json({ error: 'Seu perfil permite apenas inserir comentários neste card. Não é permitido informar nova data de produção.' });
         return;
       }
+      if (novaDataProducaoVal) {
+        res.status(400).json({ error: 'Seu perfil permite apenas inserir comentários neste card. Não é permitido informar nova data de produção.' });
+        return;
+      }
       if (is_urgent !== undefined) {
         res.status(400).json({ error: 'Seu perfil permite apenas inserir comentários neste card. Não é permitido alterar urgência.' });
         return;
@@ -1261,6 +1270,28 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
         error: 'Selecione se aguarda resposta do time comercial ou do time não comercial.',
       });
       return;
+    }
+
+    if (newDateProvided || novaDataProducaoVal) {
+      const rowCanal: Record<string, unknown> = {
+        delivery_method: order.delivery_method,
+        Observacoes: order.delivery_method,
+        TipoF: order.delivery_method,
+      };
+      if (canalPermitidoPedido(rowCanal) !== 'comunicacao_pd') {
+        res.status(400).json({
+          error: mensagemCanalDatasPedido(rowCanal),
+        });
+        return;
+      }
+      const datasErro = validarDatasReprogramacao({
+        previsaoIso: newDateProvided ? String(new_date).trim() : null,
+        producaoIso: novaDataProducaoVal,
+      });
+      if (datasErro) {
+        res.status(400).json({ error: datasErro });
+        return;
+      }
     }
 
     const nextDate = new_date !== undefined && new_date !== null ? String(new_date).trim() : order.current_promised_date;

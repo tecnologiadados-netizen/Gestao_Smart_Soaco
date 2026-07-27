@@ -35,6 +35,11 @@ import {
 } from '../../utils/sycroOrderComercial';
 import { LABEL_CARRADA_EM_FORMACAO, isCarradaEmFormacao } from '../../utils/rotaCarrada';
 import {
+  canalPermitidoPedido,
+  mensagemCanalDatasPedido,
+  validarDatasReprogramacao,
+} from '../../utils/canalReprogramacaoDatas';
+import {
   formatDate,
   getDaysUntilEffectivePrevisao,
 } from '../../components/sycroorder/sycroOrderCardUtils';
@@ -2138,6 +2143,26 @@ function ModalAtualizarPedido({
     if (novaDataPreenchida && producaoPreenchida && new_date.trim().slice(0, 10) < novaDataProducao.trim().slice(0, 10)) {
       setErro('A nova data prometida não pode ser anterior à nova data de produção.');
       return;
+    }
+
+    if (novaDataPreenchida || producaoPreenchida) {
+      const rowCanal = {
+        Observacoes: order.delivery_method,
+        TipoF: order.delivery_method,
+        delivery_method: order.delivery_method,
+      };
+      if (canalPermitidoPedido(rowCanal) !== 'comunicacao_pd') {
+        setErro(mensagemCanalDatasPedido(rowCanal));
+        return;
+      }
+      const datasErro = validarDatasReprogramacao({
+        previsaoIso: novaDataPreenchida ? new_date.trim().slice(0, 10) : null,
+        producaoIso: producaoPreenchida ? novaDataProducao.trim().slice(0, 10) : null,
+      });
+      if (datasErro) {
+        setErro(datasErro);
+        return;
+      }
     }
 
     if (dataAlterada) {

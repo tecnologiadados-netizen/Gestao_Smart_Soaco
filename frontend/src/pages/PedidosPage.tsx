@@ -7,7 +7,6 @@ import TabelaPedidos, { SORT_LEVELS_DEFAULT } from '../components/TabelaPedidos'
 import ModalClassificarPedidos from '../components/ModalClassificarPedidos';
 import FiltroDatasPopover from '../components/FiltroDatasPopover';
 import ModalAjustePrevisao, { type AjustePrevisaoSuccessMeta } from '../components/ModalAjustePrevisao';
-import ModalReprogramacaoLote from '../components/ModalReprogramacaoLote';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSOES } from '../config/permissoes';
 import {
@@ -37,6 +36,11 @@ import {
   resumoTooltipInconsistencia,
   type GrupoInconsistenciaQtdePendente,
 } from '../utils/qtdePendenteInconsistencia';
+import {
+  pdLabelFromPedidoRow,
+  pedidoElegivelReprogramarGerenciador,
+} from '../utils/canalReprogramacaoDatas';
+import { normalizePdLabelForCompare } from '../utils/rotaCarrada';
 
 const PAGE_SIZE = 100;
 /** Limite para varrer todos os registros do filtro atual e detectar inconsistência (evita requisição gigante). */
@@ -122,7 +126,6 @@ export default function PedidosPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [filtros, setFiltros] = useState<FiltrosPedidosState>(() => loadFiltrosPedidos(filtrosIniciais));
-  const [modalPedido, setModalPedido] = useState<Pedido | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
   const [exportGradeLoading, setExportGradeLoading] = useState(false);
@@ -141,7 +144,21 @@ export default function PedidosPage() {
   const [importBloqueio, setImportBloqueio] = useState<ImportacaoBloqueioDetalhe | null>(null);
   const [erroConexaoErp, setErroConexaoErp] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [modalLoteOpen, setModalLoteOpen] = useState(false);
+  /** Pedido âncora + demais itens após resolver PDs incompletos no Reprogramar. */
+  const [modalReprogramar, setModalReprogramar] = useState<{
+    pedido: Pedido;
+    demaisItens: Pedido[];
+  } | null>(null);
+  const [pdIncompletoQueue, setPdIncompletoQueue] = useState<
+    Array<{ pd: string; selecionados: Pedido[]; todosDoPd: Pedido[] }>
+  >([]);
+  const [pdIncompletoAtual, setPdIncompletoAtual] = useState<{
+    pd: string;
+    selecionados: Pedido[];
+    todosDoPd: Pedido[];
+  } | null>(null);
+  const reprogramarResolvedRef = useRef<Map<string, Pedido>>(new Map());
+  const [reprogramarLoading, setReprogramarLoading] = useState(false);
   const [modalClassificarOpen, setModalClassificarOpen] = useState(false);
   const [sortLevelsPersonalizado, setSortLevelsPersonalizado] = useState<{ id: string; dir: 'asc' | 'desc' }[]>(() => [...SORT_LEVELS_DEFAULT]);
   const [modalMaisFiltrosOpen, setModalMaisFiltrosOpen] = useState(false);
@@ -280,12 +297,20 @@ export default function PedidosPage() {
   };
 
   const mergePedidosAposAjuste = (prev: Pedido[], atualizado: Pedido, meta?: AjustePrevisaoSuccessMeta): Pedido[] => {
-    const lista = meta?.atualizadosMesmaCarrada;
-    if (lista && lista.length > 0) {
-      const mapById = new Map(lista.map((p) => [String(p.id_pedido ?? '').trim(), p]));
+    const listaCarrada = meta?.atualizadosMesmaCarrada;
+    const listaPd = meta?.todosItensPdAtualizados;
+    if (listaCarrada && listaCarrada.length > 0) {
+      const mapById = new Map(listaCarrada.map((p) => [String(p.id_pedido ?? '').trim(), p]));
       return prev.map((p) => {
         const id = String(p.id_pedido ?? '').trim();
         return mapById.get(id) ?? p;
+      });
+    }
+    if (listaPd && listaPd.length > 0) {
+      const mapById = new Map(listaPd.map((p) => [String(p.id_pedido ?? '').trim(), p]));
+      return prev.map((p) => {
+        const id = String(p.id_pedido ?? '').trim();
+        return mapById.get(id) ?? (p.id_pedido === atualizado.id_pedido ? atualizado : p);
       });
     }
     return prev.map((p) => (p.id_pedido === atualizado.id_pedido ? atualizado : p));
@@ -294,8 +319,112 @@ export default function PedidosPage() {
   const handleAjusteSuccess = (atualizado: Pedido, meta?: AjustePrevisaoSuccessMeta) => {
     setPedidos((prev) => mergePedidosAposAjuste(prev, atualizado, meta));
     setIncoherenceViewRows((prev) => (prev && prev.length > 0 ? mergePedidosAposAjuste(prev, atualizado, meta) : prev));
-    setToast(meta?.atualizadosMesmaCarrada?.length ? 'Previsão replicada na carrada e grade atualizada.' : 'Previsão atualizada com sucesso.');
+    setSelectedIds(new Set());
+    setModalReprogramar(null);
+    setToast(
+      meta?.atualizadosMesmaCarrada?.length || meta?.todosItensPdAtualizados?.length
+        ? 'Datas reprogramadas e grade atualizada.'
+        : 'Previsão atualizada com sucesso.'
+    );
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const abrirModalReprogramarComItens = (itens: Pedido[]) => {
+    if (itens.length === 0) {
+      setToast('Nenhum item elegível para reprogramar.');
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+    const [primeiro, ...rest] = itens;
+    setModalReprogramar({ pedido: primeiro!, demaisItens: rest });
+  };
+
+  const avancarFilaPdIncompleto = (queue: typeof pdIncompletoQueue) => {
+    if (queue.length === 0) {
+      setPdIncompletoAtual(null);
+      setPdIncompletoQueue([]);
+      const itens = [...reprogramarResolvedRef.current.values()];
+      abrirModalReprogramarComItens(itens);
+      return;
+    }
+    const [atual, ...rest] = queue;
+    setPdIncompletoAtual(atual!);
+    setPdIncompletoQueue(rest);
+  };
+
+  const iniciarReprogramar = async () => {
+    const gradeRows = incoherenceViewRows ?? pedidos;
+    const selecionados = gradeRows.filter((p) => selectedIds.has(String(p.id_pedido ?? '').trim()));
+    const elegiveis = selecionados.filter((p) =>
+      pedidoElegivelReprogramarGerenciador(p as unknown as Record<string, unknown>)
+    );
+    if (elegiveis.length === 0) {
+      setToast('Selecione ao menos um pedido de Requisição para reprogramar.');
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+    if (elegiveis.length < selecionados.length) {
+      setToast('Alguns itens selecionados não são Requisição e foram ignorados.');
+      setTimeout(() => setToast(null), 4000);
+    }
+
+    setReprogramarLoading(true);
+    reprogramarResolvedRef.current = new Map();
+    try {
+      const porPd = new Map<string, Pedido[]>();
+      for (const p of elegiveis) {
+        const pd = pdLabelFromPedidoRow(p as unknown as Record<string, unknown>);
+        if (!pd) {
+          reprogramarResolvedRef.current.set(String(p.id_pedido).trim(), p);
+          continue;
+        }
+        const list = porPd.get(pd) ?? [];
+        list.push(p);
+        porPd.set(pd, list);
+      }
+
+      const incompletos: Array<{ pd: string; selecionados: Pedido[]; todosDoPd: Pedido[] }> = [];
+      for (const [pd, sel] of porPd) {
+        let todosDoPd: Pedido[] = [];
+        try {
+          const res = await listarPedidos({ pd, limit: 500, page: 1 });
+          const rows = (res.data ?? []).filter((r) =>
+            pedidoElegivelReprogramarGerenciador(r as unknown as Record<string, unknown>)
+          );
+          // Se a API não filtrar bem, restringe pelo PD normalizado
+          todosDoPd = rows.filter(
+            (r) =>
+              normalizePdLabelForCompare(String((r as Record<string, unknown>)['PD'] ?? '').trim()) === pd
+          );
+          if (todosDoPd.length === 0) todosDoPd = sel;
+        } catch {
+          todosDoPd = sel;
+        }
+        const selIds = new Set(sel.map((s) => String(s.id_pedido).trim()));
+        const incompleto = todosDoPd.some((t) => !selIds.has(String(t.id_pedido).trim()));
+        if (incompleto && todosDoPd.length > sel.length) {
+          incompletos.push({ pd, selecionados: sel, todosDoPd });
+        } else {
+          for (const s of sel) reprogramarResolvedRef.current.set(String(s.id_pedido).trim(), s);
+        }
+      }
+
+      if (incompletos.length > 0) {
+        avancarFilaPdIncompleto(incompletos);
+      } else {
+        abrirModalReprogramarComItens([...reprogramarResolvedRef.current.values()]);
+      }
+    } finally {
+      setReprogramarLoading(false);
+    }
+  };
+
+  const responderPdIncompleto = (usarTodos: boolean) => {
+    const atual = pdIncompletoAtual;
+    if (!atual) return;
+    const itens = usarTodos ? atual.todosDoPd : atual.selecionados;
+    for (const p of itens) reprogramarResolvedRef.current.set(String(p.id_pedido).trim(), p);
+    avancarFilaPdIncompleto(pdIncompletoQueue);
   };
 
   const exportarXlsx = useCallback(async () => {
@@ -773,13 +902,25 @@ export default function PedidosPage() {
             </svg>
           )}
         </button>
-        {podeAjustarPrevisao && selectedIds.size > 0 && (
+        {podeAjustarPrevisao && (
           <button
             type="button"
-            onClick={() => setModalLoteOpen(true)}
-            className="rounded-lg bg-primary-600 hover:bg-primary-700 px-4 py-2 text-sm font-medium text-white"
+            onClick={() => {
+              if (selectedIds.size === 0) {
+                setToast('Selecione ao menos um pedido de Requisição para reprogramar.');
+                setTimeout(() => setToast(null), 4000);
+                return;
+              }
+              void iniciarReprogramar();
+            }}
+            disabled={reprogramarLoading || !!pdIncompletoAtual}
+            className="rounded-lg bg-primary-600 hover:bg-primary-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
-            Reprogramar em lote ({selectedIds.size} selecionado(s))
+            {reprogramarLoading
+              ? 'Preparando...'
+              : selectedIds.size > 0
+                ? `Reprogramar (${selectedIds.size} selecionado(s))`
+                : 'Reprogramar'}
           </button>
         )}
         <div ref={setGradeToolbarExtrasEl} className="ml-auto flex flex-wrap items-center gap-2 empty:hidden" />
@@ -813,7 +954,6 @@ export default function PedidosPage() {
         <TabelaPedidos
           pedidos={incoherenceViewRows ?? pedidos}
           loading={loading}
-          onAjustar={podeAjustarPrevisao ? setModalPedido : undefined}
           selectedIds={podeAjustarPrevisao ? selectedIds : undefined}
           onSelectionChange={podeAjustarPrevisao ? setSelectedIds : undefined}
           sortLevels={sortLevelsPersonalizado}
@@ -872,36 +1012,54 @@ export default function PedidosPage() {
         onLimpar={limparFiltros}
       />
 
-      {modalPedido && (
-        <ModalAjustePrevisao
-          pedido={modalPedido}
-          onClose={() => setModalPedido(null)}
-          onSuccess={handleAjusteSuccess}
-          onError={(msg) => setToast(msg)}
-        />
+      {pdIncompletoAtual && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
+              PD {pdIncompletoAtual.pd} — itens incompletos
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+              Você marcou <strong>{pdIncompletoAtual.selecionados.length}</strong> de{' '}
+              <strong>{pdIncompletoAtual.todosDoPd.length}</strong> itens de requisição deste pedido.
+              Deseja aplicar a reprogramação só nos itens marcados ou em todos os itens do PD?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => responderPdIncompleto(false)}
+                className="w-full px-4 py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium text-left"
+              >
+                Somente os itens marcados
+              </button>
+              <button
+                type="button"
+                onClick={() => responderPdIncompleto(true)}
+                className="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 text-left"
+              >
+                Todos os itens deste pedido
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPdIncompletoAtual(null);
+                  setPdIncompletoQueue([]);
+                  reprogramarResolvedRef.current = new Map();
+                }}
+                className="w-full px-4 py-2 rounded-lg text-slate-500 dark:text-slate-400 text-sm hover:bg-slate-100 dark:hover:bg-slate-700"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
-      {modalLoteOpen && (
-        <ModalReprogramacaoLote
-          linhas={Array.from(selectedIds).map((id) => {
-            const p = pedidos.find((x) => x.id_pedido === id) as Record<string, unknown> | undefined;
-            const rota = p
-              ? String(p['Observacoes'] ?? p['Observações'] ?? p['rota'] ?? '').trim()
-              : '';
-            return { id_pedido: id, rota: rota || undefined };
-          })}
-          onClose={() => setModalLoteOpen(false)}
-          onSuccess={(resultado) => {
-            setSelectedIds(new Set());
-            setModalLoteOpen(false);
-            const msg =
-              resultado.erros.length > 0
-                ? `${resultado.ok} pedido(s) reprogramado(s). ${resultado.erros.length} erro(s): ${resultado.erros.map((e) => e.id_pedido).join(', ')}`
-                : `${resultado.ok} pedido(s) reprogramado(s) com sucesso.`;
-            setToast(msg);
-            setTimeout(() => setToast(null), 5000);
-            carregarPedidos(page);
-          }}
+      {modalReprogramar && (
+        <ModalAjustePrevisao
+          pedido={modalReprogramar.pedido}
+          demaisItens={modalReprogramar.demaisItens}
+          onClose={() => setModalReprogramar(null)}
+          onSuccess={handleAjusteSuccess}
           onError={(msg) => setToast(msg)}
         />
       )}

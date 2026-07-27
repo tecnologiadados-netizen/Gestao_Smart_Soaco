@@ -16,6 +16,7 @@ import {
   normalizeRotaNameStr,
   rotaFromPedidoRow,
 } from '../utils/rotaCarrada';
+import { validarDatasReprogramacao } from '../utils/canalReprogramacaoDatas';
 
 const ajusteSchema = z.object({
   previsao_nova: z.string().min(1, 'Informe a data'),
@@ -35,12 +36,12 @@ function resolverDataProducaoInicial(
   return pedido ? dataProducaoRealPedido(pedido) : '';
 }
 
-function validarPrevisaoNaoAnteriorProducao(previsaoIso: string, producaoIso: string): string | null {
-  if (!previsaoIso || !producaoIso) return null;
-  if (previsaoIso < producaoIso) {
-    return 'A nova data de previsão não pode ser anterior à data de produção.';
-  }
-  return null;
+function validarDatasCompletas(previsaoIso: string, producaoIso: string): string | null {
+  return validarDatasReprogramacao({
+    previsaoIso: previsaoIso || null,
+    producaoIso: producaoIso || null,
+    exigirNaoAnteriorHoje: true,
+  });
 }
 
 /** Após salvar com replicação na mesma carrada, lista do Gerenciador para essa rota (atualiza todas as linhas visíveis de uma vez). */
@@ -66,6 +67,11 @@ interface ModalAjustePrevisaoProps {
   onSuccess: (atualizado: Pedido, meta?: AjustePrevisaoSuccessMeta) => void;
   onError: (msg: string) => void;
   calendario?: AjustePrevisaoContextoCalendario;
+  /**
+   * Itens adicionais a receber o mesmo ajuste (Reprogramar no Gerenciador).
+   * No calendário, preferir `calendario.demaisItensPd` + `escopoTodosItensPd`.
+   */
+  demaisItens?: Pedido[];
   /**
    * Atualiza a data de produção na simulação do sequenciamento (UI do calendário).
    * A persistência no Gerenciador é feita pelo próprio modal via `data-producao-lote`.
@@ -98,6 +104,7 @@ export default function ModalAjustePrevisao({
   onSuccess,
   onError,
   calendario,
+  demaisItens,
   onSalvarDataProducao,
   onVoltar,
 }: ModalAjustePrevisaoProps) {
@@ -188,8 +195,10 @@ export default function ModalAjustePrevisao({
     setPrevisaoConfiavel(true);
   };
 
-  const demaisItensCalendario = (): Pedido[] =>
-    calendario?.escopoTodosItensPd ? calendario.demaisItensPd ?? [] : [];
+  const demaisItensCalendario = (): Pedido[] => {
+    if (calendario?.escopoTodosItensPd) return calendario.demaisItensPd ?? [];
+    return demaisItens ?? [];
+  };
 
   /**
    * Persiste a data de produção no Gerenciador como override da rota da linha (mesma hierarquia da
@@ -356,7 +365,10 @@ export default function ModalAjustePrevisao({
         calendario.producaoDerivadaPrevisao && producaoMudou && !previsaoMudou
           ? producaoNovaNorm
           : previsaoNovaNorm;
-      const ordemErro = validarPrevisaoNaoAnteriorProducao(previsaoRef, producaoRef);
+      const ordemErro = validarDatasCompletas(
+        previsaoMudou || (calendario.producaoDerivadaPrevisao && producaoMudou) ? previsaoRef : '',
+        producaoMudou ? producaoNovaNorm : previsaoMudou ? producaoRef : ''
+      );
       if (ordemErro) {
         setErrors({ previsao_nova: ordemErro, data_producao_nova: ordemErro });
         onError(ordemErro);
@@ -386,9 +398,9 @@ export default function ModalAjustePrevisao({
         return;
       }
 
-      const ordemErro = validarPrevisaoNaoAnteriorProducao(
-        previsaoNovaNorm,
-        producaoNovaNorm || producaoAtualStr
+      const ordemErro = validarDatasCompletas(
+        previsaoMudou ? previsaoNovaNorm : '',
+        producaoMudou ? producaoNovaNorm : producaoNovaNorm || producaoAtualStr
       );
       if (ordemErro) {
         setErrors({ previsao_nova: ordemErro, data_producao_nova: ordemErro });
@@ -586,7 +598,9 @@ export default function ModalAjustePrevisao({
           <p><span className="font-medium text-slate-700 dark:text-slate-300">Pedido</span> {String(pd)}</p>
           <p>
             <span className="font-medium text-slate-700 dark:text-slate-300">Produto</span>{' '}
-            {calendario?.escopoTodosItensPd ? 'TODOS' : String(cod)}
+            {calendario?.escopoTodosItensPd || (demaisItens && demaisItens.length > 0)
+              ? `TODOS (${1 + (calendario?.escopoTodosItensPd ? calendario.demaisItensPd?.length ?? 0 : demaisItens?.length ?? 0)} itens)`
+              : String(cod)}
           </p>
           <p><span className="font-medium text-slate-700 dark:text-slate-300">Cliente</span> {pedido.cliente}</p>
         </div>

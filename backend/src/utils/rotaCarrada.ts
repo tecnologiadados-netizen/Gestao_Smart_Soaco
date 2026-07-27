@@ -3,7 +3,19 @@
 export const LABEL_CARRADA_EM_FORMACAO = 'Carrada em formação';
 
 export function normalizeRotaNameStr(dm: string): string {
-  return dm.trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  return String(dm ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s*-\s*/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Carrada = rota que começa com "ROTA " (após normalização). */
+export function isCarradaRota(rota?: string | null): boolean {
+  return normalizeRotaNameStr(rota ?? '').startsWith('rota ');
 }
 
 /**
