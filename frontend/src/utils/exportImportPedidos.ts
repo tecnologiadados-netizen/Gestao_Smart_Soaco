@@ -67,29 +67,32 @@ const NUM_FMT_VALOR_CONTABIL = '#,##0.00';
 /** Quantidade (Qtde): formato geral — número sem decimais forçados — ex.: 0, 854. */
 const NUM_FMT_QTDE_GERAL = 'General';
 
-function toDate(value: string | Date): Date | '' {
-  const d = typeof value === 'string' ? new Date(value) : value;
-  if (Number.isNaN((d as Date).getTime())) return '';
-  return d as Date;
-}
-
-/** Retorna Date à meia-noite local (sem hora) para uso interno. */
-function dateOnly(value: Date | string | ''): Date | '' {
-  if (value === '') return '';
-  const d = typeof value === 'string' ? new Date(value) : value;
-  if (d instanceof Date && !Number.isNaN(d.getTime())) {
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  }
-  return '';
+/**
+ * Normaliza qualquer entrada para 'YYYY-MM-DD' com a mesma regra da grade (regex sobre o
+ * prefixo ISO). `new Date('YYYY-MM-DD')` é meia-noite UTC pela spec do JS; lido depois com
+ * getters locais em UTC-3 devolveria o dia anterior.
+ */
+function paraIsoData(value: unknown): string {
+  if (value == null || value === '') return '';
+  const s =
+    value instanceof Date
+      ? Number.isNaN(value.getTime())
+        ? ''
+        : value.toISOString()
+      : String(value).trim();
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  return br ? `${br[3]}-${br[2]}-${br[1]}` : '';
 }
 
 /** Número serial do Excel para a data (inteiro = só data, sem hora). 1 = 1900-01-01. Evita que a barra de fórmulas mostre hora. */
-function toExcelDateSerial(value: Date | string | '' | null): number | null {
-  const d = dateOnly(value);
-  if (d === '') return null;
-  const localMidnight = d instanceof Date ? d : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+function toExcelDateSerial(value: unknown): number | null {
+  const iso = paraIsoData(value);
+  if (!iso) return null;
+  const [y, m, d] = iso.split('-').map(Number);
   const excelEpoch = new Date(1899, 11, 30);
-  return Math.round((localMidnight.getTime() - excelEpoch.getTime()) / (24 * 60 * 60 * 1000));
+  return Math.round((new Date(y!, m! - 1, d!).getTime() - excelEpoch.getTime()) / (24 * 60 * 60 * 1000));
 }
 
 /** Configuração das colunas conforme Colunas.xlsx: ordem e se exibir ou ocultar. */
@@ -220,15 +223,6 @@ const COL_NOVA_PREVISAO = HEADERS.indexOf('Nova previsão');
 const COL_MOTIVO = HEADERS.indexOf('Motivo');
 const COL_PREVISAO_CONFIAVEL = HEADERS.indexOf('Previsão Confiável');
 
-/** Converte valor para Date quando for coluna de data (para Excel aplicar dd/MM/yyyy). */
-function toDateValue(key: string, val: unknown): Date | null {
-  if (isExportBlank(val)) return null;
-  if (typeof val === 'object' && val instanceof Date) return val;
-  const d = typeof val === 'string' ? new Date(val) : val instanceof Date ? val : new Date(Number(val));
-  if (Number.isNaN(d.getTime())) return null;
-  return d;
-}
-
 /** Normaliza número para exibição: inteiro sem decimais ou decimal com 2 casas (evita 854.00000...). */
 function normalizeNumValue(key: string, val: unknown): string | number | Date | null {
   if (isExportBlank(val)) return null;
@@ -244,7 +238,7 @@ export function pedidosToSheetRows(pedidos: Pedido[]): Record<string, ExportCell
   const dataFormacao = dataProducaoCarradaEmFormacaoApartirDe(maxDataProducaoPedidosNormais(pedidos));
   return pedidos.map((p) => {
     const exib = resolverDataProducaoExibicaoGerenciador(p, dataFormacao);
-    const previsaoAtual = exib.carradaEmFormacao ? null : toDate(exib.previsaoAtual);
+    const previsaoAtual = exib.carradaEmFormacao ? '' : exib.previsaoAtual;
     const row: Record<string, ExportCellValue> = {};
     for (const { key } of EXPORT_COLUMNS_CONFIG) {
       if (key === 'idChave') {
@@ -260,26 +254,25 @@ export function pedidosToSheetRows(pedidos: Pedido[]): Record<string, ExportCell
         row[key] = card === 'Card' || card === 'Disponível' ? card : null;
       } else if (DATE_COLUMN_KEYS.has(key)) {
         const val = p[key as keyof Pedido] ?? getField(p, [key]);
-        const dateVal = toDateValue(key, val);
-        row[key] = dateVal ? toExcelDateSerial(dateVal) : null;
+        row[key] = toExcelDateSerial(val);
       } else {
         const val = p[key as keyof Pedido] ?? getField(p, [key]);
         row[key] = normalizeNumValue(key, val);
       }
     }
     row['Igual?'] = null;
-    const emissaoVal = toDateValue('Emissao', getField(p, ['Emissao']));
-    row['Emissao'] = emissaoVal ? toExcelDateSerial(emissaoVal) : null;
-    const dataEntregaVal = toDateValue('Data de entrega', p['Data de entrega' as keyof Pedido] ?? getField(p, ['Data de entrega']));
-    row['Data original'] = dataEntregaVal ? toExcelDateSerial(dataEntregaVal) : null;
+    row['Emissao'] = toExcelDateSerial(getField(p, ['Emissao']));
+    row['Data original'] = toExcelDateSerial(
+      p['Data de entrega' as keyof Pedido] ?? getField(p, ['Data de entrega'])
+    );
     row['Previsão atual'] = exib.carradaEmFormacao
       ? LABEL_CARRADA_EM_FORMACAO
       : toExcelDateSerial(previsaoAtual);
     // Produção real; formação sem real → data efetiva (max+30); badge Prev. → vazia.
     if (exib.carradaEmFormacao) {
-      row['Data de produção'] = toExcelDateSerial(toDate(exib.dataExibicao));
+      row['Data de produção'] = toExcelDateSerial(exib.dataExibicao);
     } else if (exib.dataProducaoReal) {
-      row['Data de produção'] = toExcelDateSerial(toDate(exib.dataProducaoReal));
+      row['Data de produção'] = toExcelDateSerial(exib.dataProducaoReal);
     } else {
       row['Data de produção'] = null;
     }
@@ -308,16 +301,17 @@ export function pedidosToGradeRows(pedidos: Pedido[]): Record<string, ExportCell
   const dataFormacao = dataProducaoCarradaEmFormacaoApartirDe(maxDataProducaoPedidosNormais(pedidos));
   return pedidos.map((p) => {
     const exib = resolverDataProducaoExibicaoGerenciador(p, dataFormacao);
-    const previsaoAtual = exib.carradaEmFormacao ? null : toDate(exib.previsaoAtual);
-    const previsaoAnterior = toDate(p.previsao_anterior ?? p.previsao_entrega ?? '');
-    const dataOriginal = toDateValue('Data de entrega', p['Data de entrega' as keyof Pedido] ?? getField(p, ['Data de entrega']));
+    const previsaoAtual = exib.carradaEmFormacao ? '' : exib.previsaoAtual;
+    const dataOriginal = getField(p, ['Data de entrega', 'dataParametro']);
+    // Mesmo encadeamento de fallback da coluna "Previsão anterior" em TabelaPedidos.
+    const previsaoAnterior = p.previsao_anterior || dataOriginal || p.previsao_entrega || '';
     const emissaoVal = p.Emissao ?? getField(p, ['Emissao']);
     const row: Record<string, ExportCellValue> = {};
     for (const key of GRADE_EXPORT_COLUMNS) {
       if (key === 'idChave') {
         row[key] = exportCell(String(p.id_pedido ?? ''));
       } else if (key === 'Data original') {
-        row[key] = dataOriginal ? toExcelDateSerial(dataOriginal) : null;
+        row[key] = toExcelDateSerial(dataOriginal);
       } else if (key === 'Previsão anterior') {
         row[key] = toExcelDateSerial(previsaoAnterior);
       } else if (key === 'Previsão atual') {
@@ -325,12 +319,10 @@ export function pedidosToGradeRows(pedidos: Pedido[]): Record<string, ExportCell
           ? LABEL_CARRADA_EM_FORMACAO
           : toExcelDateSerial(previsaoAtual);
       } else if (key === 'Emissao') {
-        const dateVal = toDateValue('Emissao', emissaoVal);
-        row[key] = dateVal ? toExcelDateSerial(dateVal) : null;
+        row[key] = toExcelDateSerial(emissaoVal);
       } else if (GRADE_DATE_KEYS.has(key)) {
         const val = p[key as keyof Pedido] ?? getField(p, [key]);
-        const dateVal = toDateValue(key, val);
-        row[key] = dateVal ? toExcelDateSerial(dateVal) : null;
+        row[key] = toExcelDateSerial(val);
       } else if (key === 'Card') {
         const card = String(p.Card ?? '').trim();
         row[key] = card === 'Card' || card === 'Disponível' ? card : null;

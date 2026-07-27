@@ -578,6 +578,11 @@ export async function ajustarPrevisao(
      * Omitir/null = ajuste base (vale em todas as rotas em que o (PD, item) aparecer).
      */
     rota?: string | null;
+    /**
+     * Aplica em todas as rotas em que o (PD, item) aparece hoje: grava um override por rota
+     * além do ajuste base. Sem isso, o base fica sombreado pelos overrides já existentes.
+     */
+    todas_rotas?: boolean;
     /** Quando false, não exibe no histórico dos cards Comunicação Interna. Default true. */
     previsao_confiavel?: boolean;
   }

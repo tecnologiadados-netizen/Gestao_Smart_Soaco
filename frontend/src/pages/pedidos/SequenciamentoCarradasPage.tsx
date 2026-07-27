@@ -1766,6 +1766,7 @@ export default function SequenciamentoCarradasPage() {
           estoquePorCod={estoquePorCodSnapshot}
           estoqueCongelado={estoqueCongeladoSnapshot}
           geradoEm={geradoEmSnapshot}
+          snapshotId={aoVivo ? null : (snapshotVisualizado?.id ?? null)}
         />
       )}
 

@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from 'react';
 import type {
   DemandaCalendarioMateriais,
   HorizonteDiaCalendario,
   OrigemConsumoCalendario,
 } from '../../api/sequenciamentoCarradas';
-import { consultarDisponibilidadeMateriaisItem } from '../../api/sequenciamentoCarradas';
+import {
+  consultarDisponibilidadeMateriaisItem,
+  obterPcPendCongelado,
+} from '../../api/sequenciamentoCarradas';
+import type { RessupAlmoxPcPendLinha } from '../../api/compras';
 import { formatDataCurta } from './simulacaoCarradas';
+import CalendarioOrigemConsumoModal from './CalendarioOrigemConsumoModal';
 import GradeCelulaModalBtn from '../pcp/GradeCelulaModalBtn';
 import ModalPcPendDetalhes from '../ressupAlmox/ModalPcPendDetalhes';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
@@ -75,6 +80,8 @@ export type CalendarioMaterialHorizonteModalProps = {
   demanda: DemandaCalendarioMateriais[];
   onClose: () => void;
   cacheRef: MutableRefObject<Map<string, HorizonteCache>>;
+  /** Snapshot da sequência: calcula e detalha PCs a partir da base congelada. */
+  snapshotId?: number | null;
 };
 
 export default function CalendarioMaterialHorizonteModal({
@@ -85,6 +92,7 @@ export default function CalendarioMaterialHorizonteModal({
   demanda,
   onClose,
   cacheRef,
+  snapshotId,
 }: CalendarioMaterialHorizonteModalProps) {
   const [dados, setDados] = useState<HorizonteCache | null>(null);
   const [carregando, setCarregando] = useState(false);
@@ -128,7 +136,7 @@ export default function CalendarioMaterialHorizonteModal({
     let cancelled = false;
     setCarregando(true);
     setErro(null);
-    void consultarDisponibilidadeMateriaisItem(demanda, codigo).then((r) => {
+    void consultarDisponibilidadeMateriaisItem(demanda, codigo, { snapshotId }).then((r) => {
       if (cancelled) return;
       setCarregando(false);
       if (r.error || !r.data) {
@@ -150,12 +158,19 @@ export default function CalendarioMaterialHorizonteModal({
     return () => {
       cancelled = true;
     };
-  }, [open, codigo, demanda, cacheRef]);
+  }, [open, codigo, demanda, cacheRef, snapshotId]);
 
   const origensFiltradas = useMemo(() => {
     if (!dados || !origemData) return [];
     return dados.origens.filter((o) => o.dataIso === origemData);
   }, [dados, origemData]);
+
+  /** Em snapshot os PCs saem da base congelada; sem snapshot mantém o endpoint ao vivo. */
+  const fetchPcPendCongelado = useCallback(
+    (id: number): Promise<{ data: RessupAlmoxPcPendLinha[]; error?: string }> =>
+      obterPcPendCongelado(snapshotId!, id),
+    [snapshotId]
+  );
 
   const linhasHorizonte = useMemo(() => {
     if (!dados) return [];
@@ -268,65 +283,12 @@ export default function CalendarioMaterialHorizonteModal({
       </div>
 
       {origemData && (
-        <div
-          className="fixed inset-0 z-[160] flex items-center justify-center bg-black/60 p-4"
-          role="presentation"
-          onClick={() => setOrigemData(null)}
-        >
-          <div
-            className="flex max-h-[min(80vh,560px)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
-            role="dialog"
-            aria-modal
-            aria-labelledby="calendario-origem-consumo-titulo"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-600">
-              <h3
-                id="calendario-origem-consumo-titulo"
-                className="text-base font-semibold text-slate-800 dark:text-slate-100"
-              >
-                Origem do consumo · {formatDataCurta(origemData)}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setOrigemData(null)}
-                className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-              >
-                Fechar
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto p-4">
-              {origensFiltradas.length === 0 ? (
-                <p className="text-sm text-slate-500">Sem origem nesta data.</p>
-              ) : (
-                <table className="w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-600">
-                      <th className={`${TH} text-left`}>PA</th>
-                      <th className={`${TH} text-left`}>PD</th>
-                      <th className={`${TH} text-left`}>Setor</th>
-                      <th className={`${TH} text-right`}>Qtde PA</th>
-                      <th className={`${TH} text-right`}>Qtde comp.</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {origensFiltradas.map((o, i) => (
-                      <tr key={`${o.codigoPa}-${o.pd}-${i}`}>
-                        <td className={TD}>{o.codigoPa}</td>
-                        <td className={TD}>{o.pd || '—'}</td>
-                        <td className={TD}>{o.setor || '—'}</td>
-                        <td className={`${TD} text-right tabular-nums`}>{fmtNum(o.qtdePa)}</td>
-                        <td className={`${TD} text-right tabular-nums`}>
-                          {fmtNum(o.qtdeComponente)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        </div>
+        <CalendarioOrigemConsumoModal
+          dataIso={origemData}
+          origens={origensFiltradas}
+          codigo={codigo}
+          onClose={() => setOrigemData(null)}
+        />
       )}
 
       {pcOpen && idProduto != null && (
@@ -336,6 +298,7 @@ export default function CalendarioMaterialHorizonteModal({
           codigo={codigo}
           descricao={descricao}
           onClose={() => setPcOpen(false)}
+          fetchDetalhes={snapshotId != null ? fetchPcPendCongelado : undefined}
         />
       )}
     </>

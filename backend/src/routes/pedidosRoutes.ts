@@ -41,6 +41,10 @@ import {
   deleteSequenciamentoCarradasSnapshot,
 } from '../controllers/sequenciamentoCarradasController.js';
 import {
+  getSequenciamentoSnapshotPcPend,
+  postSequenciamentoConsultaCongelada,
+} from '../controllers/sequenciamentoConsultaCongeladaController.js';
+import {
   postDisponibilidadeMateriaisDia,
   postDisponibilidadeMateriaisItem,
   postDisponibilidadeMateriaisSintetica,
@@ -70,6 +74,14 @@ const writeLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
   message: { error: 'Muitas requisições. Tente novamente em breve.' },
+});
+
+// Consultas congeladas do Calendário: gravam, mas são leitura sob demanda (até 3 chamadas por
+// produto aberto), então o teto do writeLimiter é apertado demais para navegação normal.
+const consultaCongeladaLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: { error: 'Muitas consultas. Tente novamente em breve.' },
 });
 
 const editarPcp = requirePermission(PERMISSOES.PCP_AJUSTAR_PREVISAO, PERMISSOES.PCP_IMPORTAR_XLSX, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_EDITAR);
@@ -107,6 +119,13 @@ router.get('/sequenciamento-carradas/snapshots/:id', verPedidos, getSequenciamen
 router.patch('/sequenciamento-carradas/snapshots/:id', verPedidos, autosaveLimiter, patchSequenciamentoCarradasSnapshot);
 router.post('/sequenciamento-carradas/snapshots/:id/concluir', verPedidos, writeLimiter, postSequenciamentoCarradasSnapshotConcluir);
 router.delete('/sequenciamento-carradas/snapshots/:id', verPedidos, writeLimiter, deleteSequenciamentoCarradasSnapshot);
+router.get('/sequenciamento-carradas/snapshots/:id/pc-pend', verPedidos, getSequenciamentoSnapshotPcPend);
+router.post(
+  '/sequenciamento-carradas/snapshots/:id/consulta-congelada',
+  verPedidos,
+  consultaCongeladaLimiter,
+  postSequenciamentoConsultaCongelada
+);
 router.post(
   '/sequenciamento-carradas/calendario-producao/disponibilidade-materiais',
   verPedidos,

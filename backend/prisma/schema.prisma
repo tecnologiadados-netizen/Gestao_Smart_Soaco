@@ -715,9 +715,33 @@ model SequenciamentoCarradasSnapshot {
   status       String   @default("concluido")
   /// JSON v1: carradas agregadas + linhas completas do Gerenciador.
   payload      String
+  /// JSON com a base congelada do motor de materiais (BOM, saldo almox secundário e PC pendente).
+  /// Coluna separada de `payload` para o autosave do rascunho não reescrever o JSON grande.
+  baseMateriais String?
+
+  consultas SequenciamentoSnapshotConsulta[]
 
   @@index([createdAt])
   @@map("sequenciamento_carradas_snapshot")
+}
+
+/// Consulta ao Nomus congelada sob demanda dentro de um snapshot de sequenciamento.
+/// Na primeira abertura o resultado é persistido e nunca mais muda para aquela sequência.
+model SequenciamentoSnapshotConsulta {
+  id          Int      @id @default(autoincrement())
+  snapshotId  Int
+  /// 'estoque' | 'saldoSetor' | 'empenhoPedido'
+  tipo        String
+  /// Chave da consulta dentro do tipo (ex.: `${codigo}|1`, `${idProduto}`).
+  chave       String
+  payload     String
+  capturadoEm DateTime @default(now())
+
+  snapshot SequenciamentoCarradasSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, tipo, chave])
+  @@index([snapshotId])
+  @@map("sequenciamento_snapshot_consulta")
 }
 
 /// Ticket de suporte interno (abertura por usuário comum e gestão pelo master).

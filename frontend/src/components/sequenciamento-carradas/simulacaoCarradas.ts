@@ -825,6 +825,8 @@ export type DemandaMateriaisCalendarioPayload = {
   dataIso: string;
   pd?: string;
   setor?: string;
+  /** Rota/carrada da linha — exibida na origem do consumo. */
+  carrada?: string;
 };
 
 /**
@@ -847,6 +849,7 @@ export function montarDemandaMateriaisDoCalendario(
       dataIso,
       pd: String(d.pd ?? '').trim() || undefined,
       setor: String(d.setor ?? '').trim() || undefined,
+      carrada: String(d.carrada ?? '').trim() || undefined,
     });
   }
   return out;

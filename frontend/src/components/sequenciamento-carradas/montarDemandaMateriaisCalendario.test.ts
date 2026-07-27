@@ -54,7 +54,43 @@ describe('montarDemandaMateriaisDoCalendario', () => {
     ];
     const out = montarDemandaMateriaisDoCalendario(detalhes);
     expect(out).toEqual([
-      { codigoPa: 'PA-1', qtde: 10, dataIso: '2026-07-23', pd: '100', setor: 'Solda' },
+      {
+        codigoPa: 'PA-1',
+        qtde: 10,
+        dataIso: '2026-07-23',
+        pd: '100',
+        setor: 'Solda',
+        carrada: 'C1',
+      },
     ]);
+  });
+
+  it('leva a carrada para a origem do consumo', () => {
+    const detalhes: CalendarioCelulaDetalhe[] = [
+      {
+        setor: 'Solda',
+        data: '2026-07-23',
+        tipoF: 'A',
+        pd: '100',
+        qtde: 2,
+        cod: '01740',
+        codigoProduto: 'PA-1',
+        carrada: 'ROTA SUL',
+        cliente: 'X',
+      },
+      {
+        setor: 'Solda',
+        data: '2026-07-23',
+        tipoF: 'A',
+        pd: '101',
+        qtde: 4,
+        cod: '01741',
+        codigoProduto: 'PA-1',
+        carrada: '',
+        cliente: 'Y',
+      },
+    ];
+    const out = montarDemandaMateriaisDoCalendario(detalhes);
+    expect(out.map((d) => d.carrada)).toEqual(['ROTA SUL', undefined]);
   });
 });

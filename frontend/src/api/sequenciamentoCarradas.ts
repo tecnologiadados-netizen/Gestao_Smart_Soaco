@@ -220,7 +220,15 @@ export type DemandaCalendarioMateriais = {
   dataIso: string;
   pd?: string;
   setor?: string;
+  /** Rota/carrada da linha — exibida na origem do consumo. */
+  carrada?: string;
 };
+
+/**
+ * Quando informado, o backend calcula com a base congelada no Gravar daquela sequência
+ * (sem consultar o Nomus). Ausente = consulta ao vivo.
+ */
+export type OpcoesFonteCalendario = { snapshotId?: number | null };
 
 export type StatusMaterialDia = 'ok' | 'atencao' | 'falta';
 
@@ -251,11 +259,13 @@ export type MaterialDiaCalendario = {
   idProduto: number;
   codigo: string;
   descricao: string;
-  necessidadeDia: number;
+  consumoDia: number;
   saldoInicio: number;
   entradaDia: number;
   falta: number;
   status: StatusMaterialDia;
+  /** Origem do consumo do dia (mesma fonte da célula). */
+  origens: OrigemConsumoCalendario[];
 };
 
 export type HorizonteDiaCalendario = {
@@ -269,11 +279,9 @@ export type HorizonteDiaCalendario = {
 
 export type OrigemConsumoCalendario = {
   dataIso: string;
-  codigoPa: string;
-  qtdePa: number;
-  qtdeComponente: number;
+  carrada: string;
   pd: string;
-  setor: string;
+  qtdeComponente: number;
 };
 
 async function parseJsonBodyDisponibilidade<T extends { error?: string }>(
@@ -294,7 +302,7 @@ async function parseJsonBodyDisponibilidade<T extends { error?: string }>(
 
 export async function consultarDisponibilidadeMateriaisSintetica(
   demanda: DemandaCalendarioMateriais[],
-  opts?: { signal?: AbortSignal }
+  opts?: { signal?: AbortSignal } & OpcoesFonteCalendario
 ): Promise<{ data?: DisponibilidadeMateriaisSintetica; error?: string }> {
   try {
     const res = await apiFetch(
@@ -303,7 +311,7 @@ export async function consultarDisponibilidadeMateriaisSintetica(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // apiFetch já faz JSON.stringify — passar objeto cru.
-        body: { demanda },
+        body: { demanda, snapshotId: opts?.snapshotId ?? null },
         signal: opts?.signal,
       }
     );
@@ -323,7 +331,8 @@ export async function consultarDisponibilidadeMateriaisSintetica(
 
 export async function consultarDisponibilidadeMateriaisDia(
   demanda: DemandaCalendarioMateriais[],
-  dataIso: string
+  dataIso: string,
+  opts?: OpcoesFonteCalendario
 ): Promise<{
   data?: { consultadoEm: string; dataIso: string; materiais: MaterialDiaCalendario[] };
   error?: string;
@@ -333,7 +342,7 @@ export async function consultarDisponibilidadeMateriaisDia(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: { demanda, dataIso },
+      body: { demanda, dataIso, snapshotId: opts?.snapshotId ?? null },
     }
   );
   const parsed = await parseJsonBodyDisponibilidade<{
@@ -357,7 +366,8 @@ export async function consultarDisponibilidadeMateriaisDia(
 
 export async function consultarDisponibilidadeMateriaisItem(
   demanda: DemandaCalendarioMateriais[],
-  codigoComponente: string
+  codigoComponente: string,
+  opts?: OpcoesFonteCalendario
 ): Promise<{
   data?: {
     consultadoEm: string;
@@ -375,7 +385,7 @@ export async function consultarDisponibilidadeMateriaisItem(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: { demanda, codigoComponente },
+      body: { demanda, codigoComponente, snapshotId: opts?.snapshotId ?? null },
     }
   );
   const parsed = await parseJsonBodyDisponibilidade<{
@@ -402,4 +412,57 @@ export async function consultarDisponibilidadeMateriaisItem(
       origens: b.origens ?? [],
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Consultas congeladas no snapshot da sequência
+// ---------------------------------------------------------------------------
+
+/** PC pendente congelado no Gravar (modal "PC Pend" do Horizonte). */
+export async function obterPcPendCongelado(
+  snapshotId: number,
+  idProduto: number
+): Promise<{ data: PcPendCongeladoLinha[]; error?: string }> {
+  const res = await apiFetch(
+    `/api/pedidos/sequenciamento-carradas/snapshots/${snapshotId}/pc-pend?idProduto=${encodeURIComponent(
+      String(idProduto)
+    )}`
+  );
+  const body = (await res.json().catch(() => ({}))) as { data?: PcPendCongeladoLinha[]; error?: string };
+  if (!res.ok) return { data: [], error: body.error ?? res.statusText };
+  return { data: body.data ?? [] };
+}
+
+export type PcPendCongeladoLinha = { pedidoCompra: string; qtde: number; dataEntrega: string | null };
+
+export type TipoConsultaCongelada = 'estoque' | 'saldoSetor' | 'empenhoPedido';
+
+/**
+ * Consulta congelada sob demanda: a primeira abertura consulta o Nomus e persiste o resultado
+ * no snapshot; as seguintes leem o valor gravado.
+ */
+export async function consultarCongeladaSnapshot<T>(
+  snapshotId: number,
+  tipo: TipoConsultaCongelada,
+  params: { codigo?: string; idProduto?: number; considerarRequisicoes?: boolean }
+): Promise<{ body?: T & { capturadoEm?: string }; error?: string }> {
+  const res = await apiFetch(
+    `/api/pedidos/sequenciamento-carradas/snapshots/${snapshotId}/consulta-congelada`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { tipo, ...params },
+    }
+  );
+  const text = await res.text();
+  let parsed = {} as T & { capturadoEm?: string; error?: string };
+  if (text) {
+    try {
+      parsed = JSON.parse(text) as typeof parsed;
+    } catch {
+      return { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { error: parsed.error ?? res.statusText };
+  return { body: parsed };
 }

@@ -141,6 +141,8 @@ export async function updateSycroOrderOrder(
   body: {
     status?: 'PENDING' | 'FINISHED' | 'ESCALATED';
     new_date?: string;
+    /** Opcional: grava a data de produção dos mesmos itens no Gerenciador. Omitir = não alterar. */
+    nova_data_producao?: string;
     /** Comentário do usuário no card (diálogo) — exibido no histórico. */
     comentario?: string;
     /** Observação complementar ao motivo — enviada ao Gerenciador de Pedidos. */

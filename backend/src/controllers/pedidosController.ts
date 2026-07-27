@@ -17,10 +17,10 @@ import {
   obterMapaMunicipios,
   obterDetalhesCompletosMunicipioMapa,
   obterCargasSeparadasMesmoClienteCidade,
-  registrarAjustePrevisao,
   registrarAjustesPrevisaoLote,
   registrarDataProducaoLote,
   obterMapaRotaPorIdPedido,
+  obterRotasDoItem,
   buscarPedidoPorId,
   listarHistoricoAjustes,
   listarEventosTagDisponivelHistorico,
@@ -29,6 +29,7 @@ import {
   resolverPrevisaoAnteriorNaCadeia,
   invalidatePedidosCache,
 } from '../data/pedidosRepository.js';
+import type { AjusteLoteItem } from '../data/pedidosRepository.js';
 import { obterInconsistenciaQtdePendenteReal } from '../services/qtdePendenteInconsistenciaService.js';
 import { setLastUpload } from '../config/statusApp.js';
 import {
@@ -449,7 +450,7 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
     return;
   }
 
-  const { previsao_nova, motivo, observacao, replicate_carrada, rota, previsao_confiavel } = parsed.data;
+  const { previsao_nova, motivo, observacao, replicate_carrada, rota, todas_rotas, previsao_confiavel } = parsed.data;
   const dataPrevisao = new Date(previsao_nova);
   if (Number.isNaN(dataPrevisao.getTime())) {
     res.status(400).json({ error: 'Data de previsão inválida.' });
@@ -474,92 +475,56 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
       }
     }
 
+    const novoAjuste = (id: string, rotaAjuste: string | null): AjusteLoteItem => ({
+      id_pedido: id,
+      previsao_nova: dataPrevisao,
+      motivo,
+      observacao: observacao ?? null,
+      rota: rotaAjuste,
+      previsao_confiavel: previsao_confiavel !== false,
+    });
+    const ajustes: AjusteLoteItem[] = [];
+
+    if (todas_rotas === true) {
+      // Um override por rota atual do item, mais o base para rotas futuras: só o base ficaria
+      // sombreado nas rotas que já possuem override.
+      const rotasDoItem = await obterRotasDoItem(idPedido);
+      for (const r of [null, ...rotasDoItem]) ajustes.push(novoAjuste(idPedido, r));
+    } else {
+      ajustes.push(novoAjuste(idPedido, rotaOverride));
+    }
+
     if (replicate_carrada === true) {
       if (!pedidoAtual) {
         res.status(404).json({ error: 'Pedido não encontrado.' });
         return;
       }
-      const rota = rotaFromPedidoRow(pedidoAtual as Record<string, unknown>);
-      if (!isCarradaRota(rota) || isExcludedSqlRotaCategory(rota)) {
+      const rotaCarrada = rotaFromPedidoRow(pedidoAtual as Record<string, unknown>);
+      if (!isCarradaRota(rotaCarrada) || isExcludedSqlRotaCategory(rotaCarrada)) {
         res.status(400).json({ error: 'Replicação por carrada não se aplica a esta rota.' });
         return;
       }
-      const { data: rows } = await listarPedidos({ observacoes: rota });
+      const { data: rows } = await listarPedidos({ observacoes: rotaCarrada });
       const idsUnicos = [...new Set(rows.map((r) => String(r.id_pedido ?? '').trim()).filter(Boolean))];
       if (idsUnicos.length === 0) {
         res.status(400).json({ error: 'Nenhum item encontrado para esta rota no Gerenciador.' });
         return;
       }
-      const ajustes = idsUnicos.map((id) => ({
-        id_pedido: id,
-        previsao_nova: dataPrevisao,
-        motivo,
-        observacao: observacao ?? null,
-        // Se o ajuste for por rota (override), replica para os demais PDs da rota mantendo o mesmo escopo.
-        rota: rotaOverride,
-        previsao_confiavel: previsao_confiavel !== false,
-      }));
-      const resultado = await registrarAjustesPrevisaoLote(ajustes, usuario);
-      if (resultado.erros.length > 0) {
-        res.status(503).json({
-          error: resultado.erros[0]?.erro ?? 'Erro ao replicar ajustes na carrada.',
-          detalhes: resultado.erros,
-        });
-        return;
+      // Demais itens da carrada: override na própria rota replicada.
+      for (const id of idsUnicos) {
+        if (id === idPedido) continue;
+        ajustes.push(novoAjuste(id, rotaOverride ?? rotaCarrada));
       }
-      invalidatePedidosCache();
-      const pedido = await buscarPedidoPorId(idPedido);
-      if (!pedido) {
-        res.status(404).json({ error: 'Pedido não encontrado após ajuste.' });
-        return;
-      }
-      try {
-        const novaPrevisaoStr = dataPrevisao.toISOString().slice(0, 10);
-        const pedidoRow = pedido as Record<string, unknown>;
-        const getVal = (keys: string[]) => {
-          for (const k of keys) {
-            const v = pedidoRow[k];
-            if (v != null && String(v).trim() !== '') return String(v).trim();
-          }
-          return '';
-        };
-        const dataEntregaRaw = pedidoRow['Data de entrega'] ?? pedidoRow['dataEntrega'] ?? pedidoRow['Data de Entrega'];
-        const dataEntregaStr =
-          dataEntregaRaw != null
-            ? dataEntregaRaw instanceof Date
-              ? dataEntregaRaw.toISOString().slice(0, 10)
-              : String(dataEntregaRaw).slice(0, 10)
-            : '';
-        const msg = formatarMensagemAlteracaoPrevisao({
-          pedido: getVal(['PD', 'pd']) || undefined,
-          codigo: getVal(['Cod', 'Codigo', 'cod']) || undefined,
-          cliente: (pedido.cliente || getVal(['Cliente', 'cliente']) || '').trim() || undefined,
-          descricao: (pedido.produto || getVal(['Descricao do produto', 'descricao']) || '').trim() || undefined,
-          data_entrega: dataEntregaStr || undefined,
-          previsao_antiga: previsaoAntigaStr,
-          previsao_nova: novaPrevisaoStr,
-          motivo,
-          observacao: observacao ?? null,
-          usuario,
-        });
-        enviarNotificacaoPorTipo('previsao_alteracao', msg).catch(() => {});
-      } catch (_) {
-        // não falha o ajuste se o WhatsApp der erro
-      }
-      await syncSycroRespostaAposAjusteGerenciador(idPedido, usuario, dataPrevisao);
-      res.json(pedido);
-      return;
     }
 
-    await registrarAjustePrevisao(
-      idPedido,
-      dataPrevisao,
-      motivo,
-      usuario,
-      observacao ?? undefined,
-      rotaOverride,
-      previsao_confiavel !== false
-    );
+    const resultado = await registrarAjustesPrevisaoLote(ajustes, usuario);
+    if (resultado.erros.length > 0) {
+      res.status(503).json({
+        error: resultado.erros[0]?.erro ?? 'Erro ao registrar ajuste.',
+        detalhes: resultado.erros,
+      });
+      return;
+    }
     invalidatePedidosCache();
     const pedido = await buscarPedidoPorId(idPedido);
     if (!pedido) {
