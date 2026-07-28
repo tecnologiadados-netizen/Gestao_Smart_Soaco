@@ -290,3 +290,65 @@ export function clearViewerPayload(key: string | null) {
   localStorage.removeItem(key);
   sessionStorage.removeItem(key);
 }
+
+async function storagePathToDataUrl(storagePath: string): Promise<string | null> {
+  const path = storagePath.trim();
+  if (!path.startsWith("/uploads/")) return null;
+  try {
+    const res = await fetch(path);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () =>
+        typeof reader.result === "string"
+          ? resolve(reader.result)
+          : reject(new Error("Falha ao ler arquivo."));
+      reader.onerror = () => reject(new Error("Falha ao ler arquivo."));
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve o arquivo da versão para visualizar/baixar (dataUrl em memória ou disco).
+ */
+export async function resolveVersionArquivoParaAcao(version: {
+  arquivoNome?: string;
+  arquivoDataUrl?: string;
+  anexos?: Array<{ nome: string; dataUrl?: string; storagePath?: string }>;
+}): Promise<{ nome: string; dataUrl: string } | null> {
+  const nome =
+    version.arquivoNome?.trim() ||
+    version.anexos?.find((a) => a.nome?.trim())?.nome?.trim() ||
+    "";
+  if (!nome) return null;
+
+  const dataUrlDireto = version.arquivoDataUrl?.trim();
+  if (dataUrlDireto?.startsWith("data:")) {
+    return { nome, dataUrl: dataUrlDireto };
+  }
+
+  const anexoComData = version.anexos?.find((a) =>
+    a.dataUrl?.trim().startsWith("data:")
+  );
+  if (anexoComData?.dataUrl) {
+    return {
+      nome: anexoComData.nome?.trim() || nome,
+      dataUrl: anexoComData.dataUrl,
+    };
+  }
+
+  const storagePath =
+    version.anexos?.find((a) => a.storagePath?.startsWith("/uploads/"))
+      ?.storagePath ?? null;
+  if (storagePath) {
+    const dataUrl = await storagePathToDataUrl(storagePath);
+    if (dataUrl) return { nome, dataUrl };
+  }
+
+  return null;
+}
+

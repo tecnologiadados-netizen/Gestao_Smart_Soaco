@@ -18,6 +18,10 @@ import {
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
+import {
+  flushQualidadeDocumentsSync,
+  markQualidadeDocumentFilesPending,
+} from "@qualidade/lib/qualidadePersistence";
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_TYPES = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
@@ -50,6 +54,7 @@ export function ConsensoDocumentoPage() {
   const [justificativaReprovacao, setJustificativaReprovacao] = useState("");
   const [modoReprovacao, setModoReprovacao] = useState(false);
   const [error, setError] = useState("");
+  const [sincronizando, setSincronizando] = useState(false);
 
   useEffect(() => {
     if (modoReprovacao) {
@@ -108,13 +113,19 @@ export function ConsensoDocumentoPage() {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result;
-      if (typeof result === "string") {
-        updateConsenso(id, {
-          arquivoNome: file.name,
-          arquivoDataUrl: result,
-          observacoesConsenso: observacoes || undefined,
-        });
-      }
+      if (typeof result !== "string") return;
+      updateConsenso(id, {
+        arquivoNome: file.name,
+        arquivoDataUrl: result,
+        observacoesConsenso: observacoes || undefined,
+      });
+      markQualidadeDocumentFilesPending(id, versaoAtual.id);
+      void flushQualidadeDocumentsSync().catch((err) => {
+        console.error("[qualidade] falha ao gravar anexo do consenso:", err);
+        setError(
+          "Arquivo anexado localmente, mas falhou ao gravar no servidor. Tente novamente."
+        );
+      });
     };
     reader.readAsDataURL(file);
   }
@@ -126,9 +137,12 @@ export function ConsensoDocumentoPage() {
       arquivoDataUrl: "",
       observacoesConsenso: observacoes || undefined,
     });
+    void flushQualidadeDocumentsSync().catch((err) =>
+      console.error("[qualidade] falha ao sincronizar exclusão de anexo:", err)
+    );
   }
 
-  function handleAprovar() {
+  async function handleAprovar() {
     if (!versaoAtual) return;
     setModoReprovacao(false);
     setError("");
@@ -137,16 +151,25 @@ export function ConsensoDocumentoPage() {
       return;
     }
 
-    updateConsenso(id, { observacoesConsenso: observacoes || undefined });
-    const ok = aprovarConsenso(id, observacoes);
-    if (!ok) {
-      setError("Não foi possível aprovar. Verifique o documento anexado.");
-      return;
+    setSincronizando(true);
+    try {
+      updateConsenso(id, { observacoesConsenso: observacoes || undefined });
+      const ok = aprovarConsenso(id, observacoes);
+      if (!ok) {
+        setError("Não foi possível aprovar. Verifique o documento anexado.");
+        return;
+      }
+      await flushQualidadeDocumentsSync();
+      navigate("/qualidade/documentos");
+    } catch (err) {
+      console.error("[qualidade] falha ao aprovar consenso:", err);
+      setError("Aprovação local feita, mas falhou ao gravar no servidor.");
+    } finally {
+      setSincronizando(false);
     }
-    navigate("/qualidade/documentos");
   }
 
-  function handleEnviarParaAprovacao() {
+  async function handleEnviarParaAprovacao() {
     if (!versaoAtual) return;
     setError("");
     if (!versaoAtual.arquivoNome) {
@@ -160,13 +183,26 @@ export function ConsensoDocumentoPage() {
       return;
     }
 
-    updateConsenso(id, { observacoesConsenso: observacoes || undefined });
-    const ok = reenviarParaAprovacao(id, observacoes);
-    if (!ok) {
-      setError("Não foi possível enviar para aprovação. Verifique o anexo.");
-      return;
+    setSincronizando(true);
+    try {
+      updateConsenso(id, { observacoesConsenso: observacoes || undefined });
+      if (versaoAtual.arquivoDataUrl?.startsWith("data:")) {
+        markQualidadeDocumentFilesPending(id, versaoAtual.id);
+      }
+      await flushQualidadeDocumentsSync();
+      const ok = reenviarParaAprovacao(id, observacoes);
+      if (!ok) {
+        setError("Não foi possível enviar para aprovação. Verifique o anexo.");
+        return;
+      }
+      await flushQualidadeDocumentsSync();
+      navigate("/qualidade/documentos");
+    } catch (err) {
+      console.error("[qualidade] falha ao reenviar para aprovação:", err);
+      setError("Não foi possível gravar o anexo no servidor. Tente novamente.");
+    } finally {
+      setSincronizando(false);
     }
-    navigate("/qualidade/documentos");
   }
 
   function handleReprovar() {
@@ -183,6 +219,9 @@ export function ConsensoDocumentoPage() {
 
     const ok = reprovarConsenso(id, justificativaReprovacao.trim());
     if (!ok) return;
+    void flushQualidadeDocumentsSync().catch((err) =>
+      console.error("[qualidade] falha ao sincronizar reprovação:", err)
+    );
     navigate("/qualidade/documentos");
   }
 
@@ -201,14 +240,16 @@ export function ConsensoDocumentoPage() {
               type="button"
               size="lg"
               className="min-w-48"
-              onClick={handleEnviarParaAprovacao}
+              disabled={sincronizando}
+              onClick={() => void handleEnviarParaAprovacao()}
             >
-              Enviar para aprovação
+              {sincronizando ? "Enviando..." : "Enviar para aprovação"}
             </Button>
             <Button
               type="button"
               size="lg"
               variant="outline"
+              disabled={sincronizando}
               onClick={() => navigate("/qualidade/documentos")}
             >
               Cancelar
@@ -220,14 +261,16 @@ export function ConsensoDocumentoPage() {
               type="button"
               size="lg"
               className="min-w-32"
-              onClick={handleAprovar}
+              disabled={sincronizando}
+              onClick={() => void handleAprovar()}
             >
-              Aprovar
+              {sincronizando ? "Salvando..." : "Aprovar"}
             </Button>
             <Button
               type="button"
               size="lg"
               variant="destructive"
+              disabled={sincronizando}
               onClick={handleReprovar}
             >
               {modoReprovacao ? "Confirmar reprovação" : "Reprovar"}
@@ -236,6 +279,7 @@ export function ConsensoDocumentoPage() {
               type="button"
               size="lg"
               variant="outline"
+              disabled={sincronizando}
               onClick={() => navigate("/qualidade/documentos")}
             >
               Cancelar

@@ -1,11 +1,33 @@
-import { useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import html2canvas from "html2canvas";
+import {
+  Download,
+  Expand,
+  FoldVertical,
+  Maximize2,
+  Shrink,
+  UnfoldVertical,
+  Users,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { getConfig } from "@rh/lib/api-client";
 import {
   buildHierarquiaDiretorias,
+  isNoArea,
   type HierarquiaDiretoriaNode,
-  type HierarquiaNivelGrupo,
+  type HierarquiaNo,
   type HierarquiaPessoa,
 } from "@rh/lib/organograma-hierarquia";
 import type { DiretoriaTree } from "@rh/lib/organograma-vinculacoes";
@@ -15,6 +37,83 @@ import { useOrganicoCardFoto } from "@rh/pages/Organico/useOrganicoCardFoto";
 import type { OrganicoRow } from "@rh/types/api";
 
 const FOTO_EMPRESA_KEY = "organograma-foto:empresa";
+
+const MAX_N1_HORIZONTAL = 8;
+/** Permite ver a cadeia inteira (Encaixar / Ctrl+scroll). */
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 1.5;
+const ZOOM_STEP = 0.05;
+
+/** Linhas — contraste no claro e no escuro (tema escuro precisa de traço mais visível). */
+const LINHA = "bg-soaco-navy/50 dark:bg-white/60";
+const LINHA_W = "w-[2px]";
+const LINHA_H = "h-[2px]";
+
+type OrgUiTokens = {
+  fullscreen: boolean;
+  cardWPx: number;
+  stubPx: number;
+  cardW: string;
+  cardHDir: string;
+  cardHGestao: string;
+  cardHLeaf: string;
+  cardSlot: string;
+  cardBase: string;
+  txtCargo: string;
+  txtNomeGestao: string;
+  txtNomeLeaf: string;
+  txtArea: string;
+  txtAreaEyebrow: string;
+  txtMeta: string;
+  contentPad: string;
+};
+
+const UI_NORMAL: OrgUiTokens = {
+  fullscreen: false,
+  cardWPx: 176,
+  stubPx: 28,
+  cardW: "w-[176px]",
+  cardHDir: "h-[128px]",
+  cardHGestao: "h-[124px]",
+  cardHLeaf: "h-[128px]",
+  cardSlot: "w-max min-w-[280px] px-6",
+  cardBase:
+    "box-border flex shrink-0 flex-col items-center overflow-hidden rounded-sm border px-3 py-2.5 text-center shadow-level-1",
+  txtCargo: "text-[9px]",
+  txtNomeGestao: "text-[11px]",
+  txtNomeLeaf: "text-[10px]",
+  txtArea: "text-[11px]",
+  txtAreaEyebrow: "text-[9px]",
+  txtMeta: "text-[9px]",
+  contentPad: "p-8",
+};
+
+/** Tela cheia: cards e tipografia maiores (legível no out-zoom). */
+const UI_FULLSCREEN: OrgUiTokens = {
+  fullscreen: true,
+  cardWPx: 260,
+  stubPx: 36,
+  cardW: "w-[260px]",
+  cardHDir: "h-[178px]",
+  cardHGestao: "h-[172px]",
+  cardHLeaf: "h-[176px]",
+  cardSlot: "w-max min-w-[400px] px-10",
+  cardBase:
+    "box-border flex shrink-0 flex-col items-center overflow-hidden rounded-sm border px-4 py-3.5 text-center shadow-level-1",
+  txtCargo: "text-[13px]",
+  txtNomeGestao: "text-[15px]",
+  txtNomeLeaf: "text-[14px]",
+  txtArea: "text-[15px]",
+  txtAreaEyebrow: "text-[11px]",
+  txtMeta: "text-[12px]",
+  contentPad: "p-12",
+};
+
+const OrgUiContext = createContext<OrgUiTokens>(UI_NORMAL);
+
+function useOrgUi(): OrgUiTokens {
+  return useContext(OrgUiContext);
+}
 
 function iniciais(nome: string): string {
   const partes = nome
@@ -45,13 +144,15 @@ function AvatarPessoa({
   podeBuscarFoto,
   fotoConfigSrc,
   tamanho = "md",
+  variante = "sobre-escuro",
 }: {
   nome: string;
   matricula?: string;
   fotoDisponivel?: boolean;
   podeBuscarFoto?: boolean;
   fotoConfigSrc?: string | null;
-  tamanho?: "sm" | "md" | "lg";
+  tamanho?: "xs" | "sm" | "md" | "lg";
+  variante?: "sobre-escuro" | "sobre-card";
 }) {
   const { rootRef, fotoSrc, isLoading } = useOrganicoCardFoto({
     matricula: matricula ?? "",
@@ -61,14 +162,23 @@ function AvatarPessoa({
   });
   const src = fotoConfigSrc ?? fotoSrc;
   const size =
-    tamanho === "lg" ? "h-14 w-14 text-sm" : tamanho === "sm" ? "h-8 w-8 text-[9px]" : "h-10 w-10 text-[11px]";
+    tamanho === "lg"
+      ? "h-12 w-12 text-sm"
+      : tamanho === "md"
+        ? "h-9 w-9 text-[10px]"
+        : tamanho === "sm"
+          ? "h-6 w-6 text-[8px]"
+          : "h-5 w-5 text-[7px]";
 
   return (
     <div
       ref={rootRef}
       className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted font-bold text-muted-foreground ring-2 ring-card",
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold ring-2",
         size,
+        variante === "sobre-escuro"
+          ? "bg-white/15 text-white ring-white/25"
+          : "bg-muted text-muted-foreground ring-border/40",
       )}
     >
       {src ? (
@@ -82,88 +192,591 @@ function AvatarPessoa({
   );
 }
 
-function PessoaMiniCard({
+/**
+ * Escala de marca Só Aço (claro + escuro):
+ * navy → azul → superfície → texto; dourado só como acento (anel / logo).
+ */
+type NivelVisual = 0 | 1 | 2 | 3;
+
+const CAIXA_NIVEL: Record<
+  NivelVisual,
+  { box: string; title: string; sub: string; meta: string; avatar: "sobre-escuro" | "sobre-card" }
+> = {
+  /** Área — fundo mais claro no escuro para contraste com o canvas preto */
+  0: {
+    box: "border-soaco-navy/30 bg-[#E8EEF5] text-soaco-navy dark:border-white/50 dark:bg-[#3A4556] dark:text-white",
+    title: "text-soaco-navy dark:text-white",
+    sub: "text-soaco-navy/70 dark:text-white/85",
+    meta: "text-soaco-navy/60 dark:text-white/75",
+    avatar: "sobre-card",
+  },
+  /** Respondem à diretoria */
+  1: {
+    box: "border-soaco-blue bg-soaco-blue text-white",
+    title: "text-white",
+    sub: "text-white/90",
+    meta: "text-white/75",
+    avatar: "sobre-escuro",
+  },
+  /** Respondem a esses colaboradores */
+  2: {
+    box: "border-soaco-navy/20 bg-white text-soaco-navy dark:border-white/35 dark:bg-[#222830] dark:text-white",
+    title: "text-soaco-blue dark:text-soaco-gold",
+    sub: "text-soaco-navy dark:text-white/90",
+    meta: "text-soaco-navy/55 dark:text-white/65",
+    avatar: "sobre-card",
+  },
+  /** Grupos aninhados (manutenção, etc.) */
+  3: {
+    box: "border-dashed border-soaco-navy/30 bg-[#F4F5F8] text-soaco-navy dark:border-white/40 dark:bg-[#323B4A] dark:text-white",
+    title: "text-soaco-navy dark:text-white",
+    sub: "text-soaco-navy/80 dark:text-white/85",
+    meta: "text-soaco-navy/55 dark:text-white/65",
+    avatar: "sobre-card",
+  },
+};
+
+/** depth 0 = área · 1 = gestão · 2+ = liderados / grupos */
+function nivelVisual(depth: number): NivelVisual {
+  if (depth <= 0) return 0;
+  if (depth === 1) return 1;
+  if (depth === 2) return 2;
+  return 3;
+}
+
+/** Contagem com ícone — legível no out-zoom sem depender só do texto minúsculo. */
+function MetaContagem({
+  className,
+  children,
+  invisible,
+}: {
+  className?: string;
+  children: ReactNode;
+  invisible?: boolean;
+}) {
+  const ui = useOrgUi();
+  return (
+    <p
+      className={cn(
+        "mt-1.5 flex h-4 w-full shrink-0 items-center justify-center gap-1 font-semibold tabular-nums leading-none",
+        className,
+        invisible && "invisible",
+      )}
+    >
+      <Users
+        className={cn("shrink-0 opacity-90", ui.fullscreen ? "h-3.5 w-3.5" : "h-3 w-3")}
+        aria-hidden="true"
+      />
+      <span className={cn(ui.txtMeta)}>{children}</span>
+    </p>
+  );
+}
+
+function TrilhoFilhos({ children }: { children: ReactNode[] }) {
+  const ui = useOrgUi();
+  const items = children.filter(Boolean);
+  if (items.length === 0) return null;
+
+  if (items.length === 1) {
+    return (
+      <div className="flex flex-col items-center">
+        <div className={cn("h-7 shrink-0", LINHA_W, LINHA)} aria-hidden="true" />
+        {items[0]}
+      </div>
+    );
+  }
+
+  if (items.length > MAX_N1_HORIZONTAL) {
+    return (
+      <div className="flex flex-col items-center">
+        <div className={cn("h-6 shrink-0", LINHA_W, LINHA)} aria-hidden="true" />
+        <div className="grid grid-cols-2 gap-x-10 gap-y-10 sm:grid-cols-3 lg:grid-cols-4">
+          {items.map((child, i) => (
+            <div key={i} className={cn("flex flex-col items-center", ui.cardSlot)}>
+              <div className={cn("h-5 shrink-0", LINHA_W, LINHA)} aria-hidden="true" />
+              {child}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Sem gap entre colunas + sobreposição de 2px: evita “cortes” no zoom (subpixel).
+  return (
+    <div className="flex w-max max-w-none flex-col items-center">
+      <div className={cn("h-6 shrink-0", LINHA_W, LINHA)} aria-hidden="true" />
+      <div className="relative flex items-start justify-center">
+        {items.map((child, i) => (
+          <div key={i} className={cn("relative flex flex-col items-center", ui.cardSlot)}>
+            {i > 0 && (
+              <div
+                className={cn("pointer-events-none absolute top-0 right-1/2", LINHA_H, LINHA)}
+                style={{ width: "calc(50% + 2px)" }}
+                aria-hidden="true"
+              />
+            )}
+            {i < items.length - 1 && (
+              <div
+                className={cn("pointer-events-none absolute top-0 left-1/2", LINHA_H, LINHA)}
+                style={{ width: "calc(50% + 2px)" }}
+                aria-hidden="true"
+              />
+            )}
+            <div className={cn("h-6 shrink-0", LINHA_W, LINHA)} aria-hidden="true" />
+            {child}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Lista vertical com ligamento lateral.
+ * Ocupa largura real no layout (sem translate) para não colidir com a coluna vizinha.
+ */
+function PilhaLateral({ children }: { children: ReactNode[] }) {
+  const ui = useOrgUi();
+  const items = children.filter(Boolean);
+  if (items.length === 0) return null;
+
+  const stubPx = ui.stubPx;
+  const gapPx = ui.fullscreen ? 24 : 20;
+  const dropPx = ui.fullscreen ? 32 : 24;
+
+  // Um único filho: descida vertical direta (evita L quebrado).
+  if (items.length === 1) {
+    return (
+      <div className="flex flex-col items-center">
+        <div className={cn("shrink-0", LINHA_W, LINHA)} style={{ height: dropPx }} aria-hidden="true" />
+        {items[0]}
+      </div>
+    );
+  }
+
+  // Pad esquerdo = largura do card + stub → spine fica sob o centro do card pai.
+  const leftPadPx = ui.cardWPx + stubPx;
+
+  return (
+    <div className="flex w-max flex-col items-stretch">
+      <div className="flex justify-center">
+        <div className={cn("shrink-0", LINHA_W, LINHA)} style={{ height: dropPx }} aria-hidden="true" />
+      </div>
+      <div className="flex flex-row">
+        <div className="shrink-0" style={{ width: leftPadPx }} aria-hidden="true" />
+        <ul
+          className="relative m-0 flex list-none flex-col p-0"
+          style={{ paddingLeft: stubPx, gap: gapPx }}
+        >
+          {items.map((child, i) => (
+            <li key={i} className="relative flex items-center">
+              {/* Trilho vertical contínuo (sobrepõe gaps / junta com o stub de cima). */}
+              {i === 0 ? (
+                <div
+                  className={cn("pointer-events-none absolute", LINHA_W, LINHA)}
+                  style={{ left: -stubPx, top: -dropPx, height: `calc(50% + ${dropPx}px)` }}
+                  aria-hidden="true"
+                />
+              ) : (
+                <div
+                  className={cn("pointer-events-none absolute", LINHA_W, LINHA)}
+                  style={{ left: -stubPx, top: -gapPx, height: `calc(50% + ${gapPx}px)` }}
+                  aria-hidden="true"
+                />
+              )}
+              {i < items.length - 1 && (
+                <div
+                  className={cn("pointer-events-none absolute", LINHA_W, LINHA)}
+                  style={{ left: -stubPx, top: "50%", height: `calc(50% + ${gapPx}px)` }}
+                  aria-hidden="true"
+                />
+              )}
+              {/* Horizontal até o card — +1px de overlap na spine. */}
+              <div
+                className={cn("pointer-events-none absolute top-1/2 -translate-y-1/2", LINHA_H, LINHA)}
+                style={{ left: -(stubPx), width: stubPx + 1 }}
+                aria-hidden="true"
+              />
+              {child}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function CaixaPessoa({
   pessoa,
   matriculasComFoto,
   podeBuscarFotos,
+  depth,
+  fotoConfigSrc,
+  qtdAbaixo,
+  expansivel,
+  aberto,
+  onToggle,
 }: {
   pessoa: HierarquiaPessoa;
   matriculasComFoto: Set<string>;
   podeBuscarFotos: boolean;
+  depth: number;
+  fotoConfigSrc?: string | null;
+  qtdAbaixo?: number;
+  expansivel?: boolean;
+  aberto?: boolean;
+  onToggle?: () => void;
 }) {
-  return (
-    <div
-      className="flex w-full items-center gap-2 rounded-lg border border-border/50 bg-card px-2 py-1.5 shadow-level-1"
-      title={`${pessoa.cargo} · ${pessoa.setor}`}
-    >
+  const ui = useOrgUi();
+  const nv = nivelVisual(depth);
+  const estilo = CAIXA_NIVEL[nv];
+  const isGestao = depth === 1;
+  const temMeta = typeof qtdAbaixo === "number" && qtdAbaixo > 0;
+
+  const inner = (
+    <>
       <AvatarPessoa
         nome={pessoa.nome}
         matricula={pessoa.matricula}
         fotoDisponivel={Boolean(pessoa.matricula && matriculasComFoto.has(pessoa.matricula))}
         podeBuscarFoto={podeBuscarFotos}
-        tamanho="sm"
+        fotoConfigSrc={fotoConfigSrc}
+        tamanho={isGestao ? (ui.fullscreen ? "lg" : "md") : ui.fullscreen ? "sm" : "xs"}
+        variante={estilo.avatar}
       />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[10px] font-bold uppercase leading-tight tracking-wide text-accent-700 dark:text-accent-400">
+      <div className="mt-2 flex min-h-0 w-full flex-1 flex-col justify-start gap-1">
+        <p
+          className={cn(
+            "line-clamp-2 break-words font-bold uppercase leading-snug tracking-wide",
+            ui.txtCargo,
+            estilo.title,
+          )}
+        >
           {pessoa.cargo}
         </p>
-        <p className="truncate text-[11px] font-medium leading-tight text-foreground">{pessoa.nome}</p>
+        <p
+          className={cn(
+            "break-words font-medium leading-snug",
+            isGestao ? cn("line-clamp-2", ui.txtNomeGestao) : cn("line-clamp-3", ui.txtNomeLeaf),
+            estilo.sub,
+          )}
+          title={pessoa.nome}
+        >
+          {pessoa.nome}
+        </p>
       </div>
-    </div>
+      {isGestao || temMeta ? (
+        <MetaContagem className={estilo.meta} invisible={!temMeta}>
+          {temMeta
+            ? `${qtdAbaixo} abaixo${expansivel ? (aberto ? " · −" : " · +") : ""}`
+            : "\u00a0"}
+        </MetaContagem>
+      ) : null}
+    </>
   );
-}
 
-function NivelBloco({
-  nivel,
-  matriculasComFoto,
-  podeBuscarFotos,
-  defaultOpen,
-}: {
-  nivel: HierarquiaNivelGrupo;
-  matriculasComFoto: Set<string>;
-  podeBuscarFotos: boolean;
-  defaultOpen: boolean;
-}) {
-  const [aberto, setAberto] = useState(defaultOpen);
+  const cls = cn(
+    ui.cardBase,
+    ui.cardW,
+    isGestao ? ui.cardHGestao : ui.cardHLeaf,
+    estilo.box,
+    expansivel && "cursor-pointer transition-[box-shadow,opacity] hover:opacity-95",
+    aberto && "ring-2 ring-soaco-gold ring-offset-2 ring-offset-background",
+  );
+
+  if (expansivel && onToggle) {
+    return (
+      <button type="button" onClick={onToggle} className={cls} title={`${pessoa.cargo} · ${pessoa.setor}`}>
+        {inner}
+      </button>
+    );
+  }
 
   return (
-    <div className="w-full">
-      <div className="flex flex-col items-center">
-        <div className="h-3 w-px bg-border" aria-hidden="true" />
-        <button
-          type="button"
-          onClick={() => setAberto((v) => !v)}
-          className="flex w-full max-w-[280px] items-center justify-between gap-2 rounded-full border border-soaco-blue/30 bg-soaco-blue/10 px-3 py-1.5 text-left transition-colors hover:bg-soaco-blue/15"
-        >
-          <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-soaco-blue dark:text-primary-200">
-            {aberto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-            {nivel.label}
-          </span>
-          <span className="rounded-full bg-card px-2 py-0.5 text-[10px] font-bold tabular-nums text-muted-foreground">
-            {nivel.pessoas.length}
-          </span>
-        </button>
-      </div>
-      {aberto && (
-        <>
-          <div className="mx-auto h-3 w-px bg-border" aria-hidden="true" />
-          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-            {nivel.pessoas.map((p) => (
-              <PessoaMiniCard
-                key={p.id}
-                pessoa={p}
-                matriculasComFoto={matriculasComFoto}
-                podeBuscarFotos={podeBuscarFotos}
-              />
-            ))}
-          </div>
-        </>
-      )}
+    <div className={cls} title={`${pessoa.cargo} · ${pessoa.setor}`}>
+      {inner}
     </div>
   );
 }
 
-/** Coluna de uma diretoria — sem “quadro” isolado; pendurada no trilho comum. */
+function CaixaArea({
+  label,
+  qtd,
+  expansivel,
+  aberto,
+  onToggle,
+}: {
+  label: string;
+  qtd: number;
+  expansivel?: boolean;
+  aberto?: boolean;
+  onToggle?: () => void;
+}) {
+  const ui = useOrgUi();
+  const estilo = CAIXA_NIVEL[0];
+  const cls = cn(
+    ui.cardBase,
+    ui.cardW,
+    ui.cardHGestao,
+    estilo.box,
+    expansivel && "cursor-pointer transition-[box-shadow,opacity] hover:opacity-95",
+    aberto && "ring-2 ring-soaco-gold ring-offset-2 ring-offset-background",
+  );
+  const body = (
+    <>
+      <p className={cn("font-bold uppercase tracking-[0.14em]", ui.txtAreaEyebrow, estilo.meta)}>Área</p>
+      <div className="mt-1 flex min-h-0 w-full flex-1 flex-col justify-center">
+        <p
+          className={cn(
+            "line-clamp-3 break-words font-bold uppercase leading-snug tracking-wide",
+            ui.txtArea,
+            estilo.title,
+          )}
+          title={label}
+        >
+          {label}
+        </p>
+      </div>
+      <MetaContagem className={estilo.meta} invisible={qtd <= 0}>
+        {qtd > 0
+          ? `${qtd} no ramo${expansivel ? (aberto ? " · −" : " · +") : ""}`
+          : "\u00a0"}
+      </MetaContagem>
+    </>
+  );
+  if (expansivel && onToggle) {
+    return (
+      <button type="button" onClick={onToggle} className={cls}>
+        {body}
+      </button>
+    );
+  }
+  return <div className={cls}>{body}</div>;
+}
+
+function CaixaGrupo({
+  label,
+  qtd,
+  depth,
+  expansivel,
+  aberto,
+  onToggle,
+}: {
+  label: string;
+  qtd: number;
+  depth: number;
+  expansivel?: boolean;
+  aberto?: boolean;
+  onToggle?: () => void;
+}) {
+  const ui = useOrgUi();
+  const nv = nivelVisual(Math.max(depth, 3));
+  const estilo = CAIXA_NIVEL[nv];
+  const temMeta = qtd > 0;
+  const cls = cn(
+    ui.cardBase,
+    ui.cardW,
+    ui.cardHLeaf,
+    estilo.box,
+    expansivel && "cursor-pointer transition-[box-shadow,opacity] hover:opacity-95",
+    aberto && "ring-2 ring-soaco-gold ring-offset-2 ring-offset-background",
+  );
+  const body = (
+    <>
+      <div className={cn("shrink-0", ui.fullscreen ? "h-7 w-7" : "h-5 w-5")} aria-hidden="true" />
+      <div className="mt-1.5 flex min-h-0 w-full flex-1 flex-col justify-start gap-1">
+        <p
+          className={cn(
+            "line-clamp-3 break-words font-bold uppercase leading-snug tracking-wide",
+            ui.txtCargo,
+            estilo.title,
+          )}
+          title={label}
+        >
+          {label}
+        </p>
+      </div>
+      {temMeta ? (
+        <MetaContagem className={estilo.meta}>
+          {`${qtd} colaborador${qtd === 1 ? "" : "es"}${expansivel ? (aberto ? " · −" : " · +") : ""}`}
+        </MetaContagem>
+      ) : null}
+    </>
+  );
+  if (expansivel && onToggle) {
+    return (
+      <button type="button" onClick={onToggle} className={cls}>
+        {body}
+      </button>
+    );
+  }
+  return <div className={cls}>{body}</div>;
+}
+
+function contarFolhas(nos: HierarquiaNo[]): number {
+  let n = 0;
+  for (const no of nos) {
+    if (no.kind === "pessoa") n += 1;
+    else if (typeof no.qtd === "number") n += no.qtd;
+    n += contarFolhas(no.filhos);
+  }
+  return n;
+}
+
+/** IDs de nós que têm filhos (podem expandir). */
+function coletarExpandiveis(nos: HierarquiaNo[]): string[] {
+  const ids: string[] = [];
+  for (const no of nos) {
+    if (no.filhos.length > 0) {
+      ids.push(no.id);
+      ids.push(...coletarExpandiveis(no.filhos));
+    }
+  }
+  return ids;
+}
+
+function NoOrganograma({
+  no,
+  matriculasComFoto,
+  podeBuscarFotos,
+  depth,
+  abertos,
+  onToggleAberto,
+}: {
+  no: HierarquiaNo;
+  matriculasComFoto: Set<string>;
+  podeBuscarFotos: boolean;
+  depth: number;
+  abertos: Set<string>;
+  onToggleAberto: (id: string) => void;
+}) {
+  const temFilhos = no.filhos.length > 0;
+  const qtd =
+    no.kind === "grupo" && typeof no.qtd === "number"
+      ? no.qtd
+      : temFilhos
+        ? contarFolhas(no.filhos)
+        : 0;
+
+  const isArea = isNoArea(no);
+  const isGestao = depth === 1;
+  const aberto = temFilhos && abertos.has(no.id);
+  const onToggle = temFilhos ? () => onToggleAberto(no.id) : undefined;
+
+  const caixa = isArea ? (
+    <CaixaArea label={no.label} qtd={qtd} expansivel={temFilhos} aberto={aberto} onToggle={onToggle} />
+  ) : no.kind === "grupo" ? (
+    <CaixaGrupo
+      label={no.label}
+      qtd={qtd}
+      depth={depth}
+      expansivel={temFilhos}
+      aberto={aberto}
+      onToggle={onToggle}
+    />
+  ) : (
+    <CaixaPessoa
+      pessoa={no.pessoa}
+      matriculasComFoto={matriculasComFoto}
+      podeBuscarFotos={podeBuscarFotos}
+      depth={depth}
+      qtdAbaixo={temFilhos ? no.filhos.length : undefined}
+      expansivel={temFilhos}
+      aberto={aberto}
+      onToggle={onToggle}
+    />
+  );
+
+  const filhosEls =
+    aberto && temFilhos
+      ? no.filhos.map((filho) => (
+          <NoOrganograma
+            key={filho.id}
+            no={filho}
+            matriculasComFoto={matriculasComFoto}
+            podeBuscarFotos={podeBuscarFotos}
+            depth={depth + 1}
+            abertos={abertos}
+            onToggleAberto={onToggleAberto}
+          />
+        ))
+      : [];
+
+  const ui = useOrgUi();
+  return (
+    <div className="flex w-max flex-col items-center">
+      <div
+        className={cn(
+          "flex shrink-0 flex-col items-center",
+          (isArea || isGestao) && ui.cardHGestao,
+        )}
+      >
+        {caixa}
+      </div>
+      {filhosEls.length > 0 &&
+        (isArea && filhosEls.length > 1 ? (
+          <TrilhoFilhos>{filhosEls}</TrilhoFilhos>
+        ) : (
+          <PilhaLateral>{filhosEls}</PilhaLateral>
+        ))}
+    </div>
+  );
+}
+
+function DiretoriaCard({
+  diretoria,
+  fotoDiretor,
+  onFocar,
+}: {
+  diretoria: HierarquiaDiretoriaNode;
+  fotoDiretor: string | null;
+  onFocar?: () => void;
+}) {
+  const ui = useOrgUi();
+  return (
+    <button
+      type="button"
+      onClick={onFocar}
+      title="Focar neste ramo"
+      className={cn(
+        ui.cardBase,
+        ui.cardW,
+        ui.cardHDir,
+        "border-soaco-navy bg-soaco-navy text-white transition-opacity hover:opacity-95",
+        onFocar && "cursor-pointer",
+      )}
+    >
+      <AvatarPessoa
+        nome={diretoria.diretor}
+        fotoConfigSrc={fotoDiretor}
+        tamanho={ui.fullscreen ? "lg" : "md"}
+      />
+      <div className="mt-2 flex min-h-0 w-full flex-1 flex-col justify-start gap-1">
+        <p
+          className={cn(
+            "line-clamp-2 w-full break-words font-bold uppercase leading-snug tracking-wide text-white",
+            ui.txtCargo,
+          )}
+        >
+          {diretoria.nome}
+        </p>
+        <p
+          className={cn(
+            "line-clamp-2 w-full break-words font-medium leading-snug text-white/85",
+            ui.txtNomeGestao,
+          )}
+        >
+          {diretoria.diretor}
+        </p>
+      </div>
+      <MetaContagem className="text-white/75">
+        {diretoria.qtdPessoas} no organograma
+      </MetaContagem>
+    </button>
+  );
+}
+
 function DiretoriaRamo({
   diretoria,
   matriculasComFoto,
@@ -171,6 +784,10 @@ function DiretoriaRamo({
   isFirst,
   isLast,
   total,
+  abertos,
+  onToggleAberto,
+  onFocar,
+  ramoRef,
 }: {
   diretoria: HierarquiaDiretoriaNode;
   matriculasComFoto: Set<string>;
@@ -178,99 +795,129 @@ function DiretoriaRamo({
   isFirst: boolean;
   isLast: boolean;
   total: number;
+  abertos: Set<string>;
+  onToggleAberto: (id: string) => void;
+  onFocar: () => void;
+  ramoRef?: (el: HTMLDivElement | null) => void;
 }) {
   const fotoDiretor = useFotoConfig(diretoria.fotoKey);
 
+  const ancorasEls = diretoria.ancoras.map((no) => (
+    <NoOrganograma
+      key={no.id}
+      no={no}
+      matriculasComFoto={matriculasComFoto}
+      podeBuscarFotos={podeBuscarFotos}
+      depth={0}
+      abertos={abertos}
+      onToggleAberto={onToggleAberto}
+    />
+  ));
+
   return (
-    <div className="relative flex min-w-0 flex-1 flex-col items-center pt-0">
-      {/* Segmentos do trilho horizontal no mesmo nível */}
+    <div ref={ramoRef} className="relative flex min-w-0 flex-col items-center px-5" data-ramo={diretoria.id}>
       {total > 1 && (
         <>
           {!isFirst && (
             <div
-              className="pointer-events-none absolute top-0 right-1/2 h-px w-1/2 bg-border"
+              className={cn("pointer-events-none absolute top-0 right-1/2", LINHA_H, LINHA)}
+              style={{ width: "calc(50% + 2px)" }}
               aria-hidden="true"
             />
           )}
           {!isLast && (
             <div
-              className="pointer-events-none absolute top-0 left-1/2 h-px w-1/2 bg-border"
+              className={cn("pointer-events-none absolute top-0 left-1/2", LINHA_H, LINHA)}
+              style={{ width: "calc(50% + 2px)" }}
               aria-hidden="true"
             />
           )}
         </>
       )}
-      {/* Queda do trilho até o card da diretoria */}
-      <div className="h-5 w-px bg-border" aria-hidden="true" />
+      <div className={cn("h-6 shrink-0", LINHA_W, LINHA)} aria-hidden="true" />
+      <DiretoriaCard diretoria={diretoria} fotoDiretor={fotoDiretor} onFocar={onFocar} />
 
-      <div className="flex w-full flex-col items-center px-2">
-        <span className="rounded-full bg-soaco-blue px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white">
-          Diretoria
-        </span>
-        <div className="mt-2 flex w-full max-w-[240px] flex-col items-center rounded-xl border border-soaco-blue/40 bg-card px-3 py-3 shadow-level-2">
-          <AvatarPessoa nome={diretoria.diretor} fotoConfigSrc={fotoDiretor} tamanho="lg" />
-          <p className="mt-2 w-full truncate text-center text-[11px] font-bold uppercase tracking-wide text-soaco-blue dark:text-primary-200">
-            {diretoria.nome}
-          </p>
-          <p className="mt-0.5 w-full truncate text-center text-xs font-medium text-foreground">
-            {diretoria.diretor}
-          </p>
-          <p className="mt-1 text-[10px] tabular-nums text-muted-foreground">
-            {diretoria.qtdPessoas} colaborador{diretoria.qtdPessoas === 1 ? "" : "es"}
-          </p>
-        </div>
-
-        <div className="mt-1 flex w-full flex-col items-stretch">
-          {diretoria.niveis.length === 0 ? (
-            <p className="mt-4 text-center text-xs text-muted-foreground">
-              Nenhum colaborador nesta diretoria.
-            </p>
-          ) : (
-            diretoria.niveis.map((nivel, idx) => (
-              <NivelBloco
-                key={nivel.id}
-                nivel={nivel}
-                matriculasComFoto={matriculasComFoto}
-                podeBuscarFotos={podeBuscarFotos}
-                defaultOpen={idx < 2}
-              />
-            ))
-          )}
-        </div>
-      </div>
+      {ancorasEls.length === 0 ? (
+        <p className="mt-4 max-w-[200px] text-center text-xs text-muted-foreground">
+          Nenhum vínculo de gestão nesta diretoria.
+        </p>
+      ) : (
+        <TrilhoFilhos>{ancorasEls}</TrilhoFilhos>
+      )}
     </div>
   );
 }
 
 function EmpresaRaiz({ fotoEmpresa }: { fotoEmpresa: string | null }) {
+  const ui = useOrgUi();
   return (
     <div className="flex flex-col items-center">
-      <span className="rounded-full bg-soaco-navy px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white">
-        Empresa
-      </span>
-      <div className="relative mt-2 flex flex-col items-center">
-        <div className="relative z-10 h-20 w-20">
-          <div
-            className="pointer-events-none absolute -inset-[7px] rounded-full border-[6px] border-r-transparent border-soaco-gold"
-            aria-hidden="true"
-          />
-          <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-soaco-navy text-2xl font-bold text-white shadow-level-2 ring-4 ring-card">
-            {fotoEmpresa ? (
-              <img
-                src={fotoEmpresa}
-                alt="Logo da Só Aço Industrial Ltda."
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              iniciais("Só Aço Industrial Ltda.")
-            )}
-          </div>
-        </div>
-        <div className="relative -mt-3 rounded-full border border-border/50 bg-card px-8 py-2.5 text-center shadow-level-2">
-          <p className="text-sm font-bold text-soaco-navy dark:text-primary-100">Só Aço Industrial Ltda.</p>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Organização</p>
+      <div className={cn("relative z-10", ui.fullscreen ? "h-24 w-24" : "h-16 w-16")}>
+        <div
+          className={cn(
+            "pointer-events-none absolute rounded-full border-r-transparent border-soaco-gold",
+            ui.fullscreen ? "-inset-[8px] border-[6px]" : "-inset-[6px] border-[5px]",
+          )}
+          aria-hidden="true"
+        />
+        <div
+          className={cn(
+            "flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-soaco-navy font-bold text-white shadow-level-2 ring-4 ring-card",
+            ui.fullscreen ? "text-2xl" : "text-xl",
+          )}
+        >
+          {fotoEmpresa ? (
+            <img
+              src={fotoEmpresa}
+              alt="Logo da Só Aço Industrial Ltda."
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            iniciais("Só Aço Industrial Ltda.")
+          )}
         </div>
       </div>
+      <div
+        className={cn(
+          "relative -mt-2 rounded-sm border border-soaco-navy bg-soaco-navy text-center text-white shadow-level-1",
+          ui.fullscreen ? "px-10 py-3.5" : "px-8 py-2.5",
+        )}
+      >
+        <p className={cn("font-bold", ui.fullscreen ? "text-lg" : "text-sm")}>Só Aço Industrial Ltda.</p>
+        <p
+          className={cn(
+            "font-bold uppercase tracking-wider text-white/70",
+            ui.fullscreen ? "text-xs" : "text-[10px]",
+          )}
+        >
+          Organização
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function LegendaOrganograma() {
+  const item = (cls: string, label: string) => (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={cn("inline-block h-3 w-5 shrink-0 rounded-sm border", cls)} aria-hidden="true" />
+      <span>{label}</span>
+    </span>
+  );
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
+      <span className="font-semibold text-foreground">Legenda:</span>
+      {item("border-soaco-gold bg-soaco-navy", "Empresa")}
+      {item("border-soaco-navy bg-soaco-navy", "Diretorias")}
+      {item(
+        "border-soaco-navy/30 bg-[#E8EEF5] dark:border-white/50 dark:bg-[#3A4556]",
+        "Áreas",
+      )}
+      {item("border-soaco-blue bg-soaco-blue", "Respondem à diretoria")}
+      {item(
+        "border-soaco-navy/20 bg-white dark:border-white/35 dark:bg-[#222830]",
+        "Respondem a esses colaboradores",
+      )}
     </div>
   );
 }
@@ -295,6 +942,329 @@ export function OrganogramaHierarquiaPanel({
   const totalPessoas = arvore.reduce((acc, d) => acc + d.qtdPessoas, 0);
   const temVinculos = diretorias.some((d) => d.areas.some((a) => a.setores.length > 0));
 
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const ramoElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [zoom, setZoom] = useState(0.85);
+  const [contentSize, setContentSize] = useState({ w: 0, h: 0 });
+  const [abertos, setAbertos] = useState<Set<string>>(() => new Set());
+  const [exportando, setExportando] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [encaixeTick, setEncaixeTick] = useState(0);
+  const [isPanning, setIsPanning] = useState(false);
+  const uiTokens = isFullscreen ? UI_FULLSCREEN : UI_NORMAL;
+  const panRef = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+    scrollLeft: number;
+    scrollTop: number;
+    moved: boolean;
+  } | null>(null);
+
+  const idsExpandiveis = useMemo(
+    () => arvore.flatMap((d) => coletarExpandiveis(d.ancoras)),
+    [arvore],
+  );
+  const temAlgoAberto = abertos.size > 0;
+
+  const clampZoom = useCallback((z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)), []);
+
+  const medirConteudo = useCallback(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    setContentSize({ w: el.offsetWidth, h: el.offsetHeight });
+  }, []);
+
+  useLayoutEffect(() => {
+    medirConteudo();
+    const el = contentRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => medirConteudo());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [medirConteudo, arvore, abertos, isFullscreen]);
+
+  useLayoutEffect(() => {
+    // Remove IDs que sumiram da árvore (ex.: troca de vínculos).
+    setAbertos((prev) => {
+      if (prev.size === 0) return prev;
+      const valid = new Set(idsExpandiveis);
+      let mudou = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (valid.has(id)) next.add(id);
+        else mudou = true;
+      }
+      return mudou ? next : prev;
+    });
+  }, [idsExpandiveis]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const ativo = document.fullscreenElement === shellRef.current;
+      setIsFullscreen(ativo);
+      if (ativo) setEncaixeTick((n) => n + 1);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  useLayoutEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const onWheel = (e: globalThis.WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+      setZoom((z) => clampZoom(z + delta));
+    };
+    vp.addEventListener("wheel", onWheel, { passive: false });
+    return () => vp.removeEventListener("wheel", onWheel);
+  }, [clampZoom]);
+
+  /** Clique + arraste (ou botão do meio) para navegar no quadro. */
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+
+    const PAN_THRESHOLD_PX = 5;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0 && e.button !== 1) return;
+      // Botão do meio: evita autoscroll nativo e inicia pan na hora.
+      if (e.button === 1) {
+        e.preventDefault();
+        panRef.current = {
+          pointerId: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          scrollLeft: vp.scrollLeft,
+          scrollTop: vp.scrollTop,
+          moved: true,
+        };
+        setIsPanning(true);
+        try {
+          vp.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      // Esquerdo: ainda não captura — senão o click dos cards (área/gestão) some.
+      panRef.current = {
+        pointerId: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        scrollLeft: vp.scrollLeft,
+        scrollTop: vp.scrollTop,
+        moved: false,
+      };
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      const pan = panRef.current;
+      if (!pan || pan.pointerId !== e.pointerId) return;
+      const dx = e.clientX - pan.x;
+      const dy = e.clientY - pan.y;
+      if (!pan.moved) {
+        if (dx * dx + dy * dy < PAN_THRESHOLD_PX * PAN_THRESHOLD_PX) return;
+        pan.moved = true;
+        setIsPanning(true);
+        try {
+          vp.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+      }
+      e.preventDefault();
+      vp.scrollLeft = pan.scrollLeft - dx;
+      vp.scrollTop = pan.scrollTop - dy;
+    };
+
+    const endPan = (e: PointerEvent) => {
+      const pan = panRef.current;
+      if (!pan || pan.pointerId !== e.pointerId) return;
+      const moved = pan.moved;
+      panRef.current = null;
+      setIsPanning(false);
+      try {
+        if (vp.hasPointerCapture(e.pointerId)) vp.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      // Após arrastar, bloqueia o click que dispararia toggle no card.
+      if (moved) {
+        const suppressClick = (ev: MouseEvent) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+        };
+        vp.addEventListener("click", suppressClick, true);
+        window.setTimeout(() => vp.removeEventListener("click", suppressClick, true), 0);
+      }
+    };
+
+    const onLostCapture = () => {
+      if (!panRef.current?.moved) return;
+      panRef.current = null;
+      setIsPanning(false);
+    };
+
+    const onAuxClick = (e: MouseEvent) => {
+      if (e.button === 1) e.preventDefault();
+    };
+
+    vp.addEventListener("pointerdown", onPointerDown);
+    vp.addEventListener("pointermove", onPointerMove);
+    vp.addEventListener("pointerup", endPan);
+    vp.addEventListener("pointercancel", endPan);
+    vp.addEventListener("lostpointercapture", onLostCapture);
+    vp.addEventListener("auxclick", onAuxClick);
+    return () => {
+      vp.removeEventListener("pointerdown", onPointerDown);
+      vp.removeEventListener("pointermove", onPointerMove);
+      vp.removeEventListener("pointerup", endPan);
+      vp.removeEventListener("pointercancel", endPan);
+      vp.removeEventListener("lostpointercapture", onLostCapture);
+      vp.removeEventListener("auxclick", onAuxClick);
+    };
+  }, []);
+
+  const encaixarNaTela = useCallback(() => {
+    const vp = viewportRef.current;
+    const el = contentRef.current;
+    if (!vp || !el) return;
+    const pad = 40;
+    const cw = el.offsetWidth;
+    const ch = el.offsetHeight;
+    if (cw <= 0 || ch <= 0) return;
+    const scale = Math.min((vp.clientWidth - pad) / cw, (vp.clientHeight - pad) / ch, ZOOM_MAX);
+    const next = clampZoom(scale);
+    setContentSize({ w: cw, h: ch });
+    setZoom(next);
+
+    const aplicarScroll = () => {
+      const scaledW = cw * next;
+      const scaledH = ch * next;
+      const left = Math.max(0, (scaledW - vp.clientWidth) / 2);
+      const top = Math.max(0, (scaledH - vp.clientHeight) / 2);
+      vp.scrollTo({ left, top, behavior: "smooth" });
+    };
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(aplicarScroll);
+    });
+  }, [clampZoom]);
+
+  /** Dispara encaixe + centralização após o layout assentar (expandir / tela cheia). */
+  const pedirEncaixeAposLayout = useCallback(() => {
+    setEncaixeTick((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    if (encaixeTick === 0) return;
+    let cancelled = false;
+    const run = () => {
+      if (!cancelled) encaixarNaTela();
+    };
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(run);
+    });
+    // Fullscreen e árvore expandida: viewport/cards ainda mudam após o 1º paint.
+    const t = window.setTimeout(run, 220);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t);
+    };
+  }, [encaixeTick, encaixarNaTela]);
+
+  const alternarTelaCheia = useCallback(async () => {
+    const el = shellRef.current;
+    if (!el) return;
+    try {
+      if (!document.fullscreenElement) {
+        await el.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch {
+      /* navegador pode negar fullscreen */
+    }
+  }, []);
+
+  const onToggleAberto = useCallback((id: string) => {
+    setAbertos((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const recolherTudo = useCallback(() => {
+    setAbertos(new Set());
+    pedirEncaixeAposLayout();
+  }, [pedirEncaixeAposLayout]);
+
+  const expandirTudo = useCallback(() => {
+    setAbertos(new Set(idsExpandiveis));
+    pedirEncaixeAposLayout();
+  }, [idsExpandiveis, pedirEncaixeAposLayout]);
+
+  const focarRamo = useCallback(
+    (diretoriaId: string) => {
+      const vp = viewportRef.current;
+      const ramo = ramoElsRef.current.get(diretoriaId);
+      const content = contentRef.current;
+      if (!vp || !ramo || !content) return;
+
+      setZoom(clampZoom(0.95));
+
+      requestAnimationFrame(() => {
+        const vpRect = vp.getBoundingClientRect();
+        const ramoRect = ramo.getBoundingClientRect();
+        const targetLeft =
+          vp.scrollLeft + (ramoRect.left - vpRect.left) - (vp.clientWidth - ramoRect.width) / 2;
+        const targetTop =
+          vp.scrollTop + (ramoRect.top - vpRect.top) - Math.min(80, vp.clientHeight * 0.1);
+        vp.scrollTo({
+          left: Math.max(0, targetLeft),
+          top: Math.max(0, targetTop),
+          behavior: "smooth",
+        });
+      });
+    },
+    [clampZoom],
+  );
+
+  const exportarPng = useCallback(async () => {
+    const el = contentRef.current;
+    if (!el || exportando) return;
+    setExportando(true);
+    const prevZoom = zoom;
+    try {
+      setZoom(1);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const canvas = await html2canvas(el, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+      const link = document.createElement("a");
+      link.download = `organograma-hierarquia-${new Date().toISOString().slice(0, 10)}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch (err) {
+      console.error("Falha ao exportar organograma:", err);
+    } finally {
+      setZoom(prevZoom);
+      setExportando(false);
+    }
+  }, [exportando, zoom]);
+
   if (!temVinculos) {
     return (
       <div className="flex min-h-[280px] items-center justify-center border border-dashed border-border bg-muted/20 p-10 text-center shadow-level-1">
@@ -308,39 +1278,174 @@ export function OrganogramaHierarquiaPanel({
     );
   }
 
+  const scaledW = contentSize.w > 0 ? contentSize.w * zoom : undefined;
+  const scaledH = contentSize.h > 0 ? contentSize.h * zoom : undefined;
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2 text-xs">
-        <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
-          {arvore.length} diretorias
-        </span>
-        <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
-          {totalPessoas} colaboradores
-        </span>
-      </div>
+    <OrgUiContext.Provider value={uiTokens}>
+      <div
+        ref={shellRef}
+        className={cn(
+          "space-y-3 print:space-y-2",
+          isFullscreen && "flex h-full flex-col gap-2 space-y-0 bg-background p-4",
+        )}
+      >
+        <div className="flex flex-wrap items-center gap-2 text-xs print:hidden">
+          <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
+            {arvore.length} diretorias
+          </span>
+          <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
+            {totalPessoas} no organograma
+          </span>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 border border-border bg-card px-3 py-2 font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
+            title={temAlgoAberto ? "Recolher todos os ramos" : "Expandir todos os ramos"}
+            onClick={temAlgoAberto ? recolherTudo : expandirTudo}
+          >
+            {temAlgoAberto ? (
+              <>
+                <FoldVertical className="h-3.5 w-3.5" />
+                Recolher tudo
+              </>
+            ) : (
+              <>
+                <UnfoldVertical className="h-3.5 w-3.5" />
+                Expandir tudo
+              </>
+            )}
+          </button>
+          <div className="ml-auto flex items-center gap-1 rounded-md border border-border bg-card p-1 shadow-level-1">
+            <button
+              type="button"
+              className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Diminuir zoom"
+              onClick={() => setZoom((z) => clampZoom(z - ZOOM_STEP))}
+            >
+              <ZoomOut className="h-4 w-4" />
+            </button>
+            <span className="min-w-[3.25rem] text-center text-[11px] font-semibold tabular-nums text-foreground">
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              type="button"
+              className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Aumentar zoom"
+              onClick={() => setZoom((z) => clampZoom(z + ZOOM_STEP))}
+            >
+              <ZoomIn className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              className="ml-0.5 flex items-center gap-1 rounded px-2 py-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Encaixar na tela"
+              onClick={encaixarNaTela}
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+              Encaixar
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "ml-0.5 flex items-center gap-1 rounded px-2 py-1.5 text-[11px] font-semibold hover:bg-muted hover:text-foreground",
+                isFullscreen
+                  ? "bg-soaco-navy text-white hover:bg-soaco-navy/90 hover:text-white"
+                  : "text-muted-foreground",
+              )}
+              title={isFullscreen ? "Sair da tela cheia (Esc)" : "Tela cheia — cards maiores"}
+              onClick={() => void alternarTelaCheia()}
+            >
+              {isFullscreen ? (
+                <>
+                  <Shrink className="h-3.5 w-3.5" />
+                  Sair
+                </>
+              ) : (
+                <>
+                  <Expand className="h-3.5 w-3.5" />
+                  Tela cheia
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              className="ml-0.5 flex items-center gap-1 rounded px-2 py-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+              title="Exportar PNG (fundo branco)"
+              disabled={exportando}
+              onClick={() => void exportarPng()}
+            >
+              <Download className="h-3.5 w-3.5" />
+              {exportando ? "Exportando…" : "PNG"}
+            </button>
+          </div>
+        </div>
 
-      <div className="overflow-x-auto border border-border bg-muted/20 p-4 shadow-level-1 sm:p-6">
-        <div className="flex min-w-[720px] flex-col items-center xl:min-w-0">
-          <EmpresaRaiz fotoEmpresa={fotoEmpresa} />
-          {/* Haste central da empresa até o trilho das diretorias */}
-          <div className="h-6 w-px bg-border" aria-hidden="true" />
+        <LegendaOrganograma />
 
-          {/* Três diretorias no mesmo nível, ligadas pelo trilho */}
-          <div className="flex w-full items-start">
-            {arvore.map((diretoria, i) => (
-              <DiretoriaRamo
-                key={diretoria.id}
-                diretoria={diretoria}
-                matriculasComFoto={matriculasComFoto}
-                podeBuscarFotos={podeBuscarFotos}
-                isFirst={i === 0}
-                isLast={i === arvore.length - 1}
-                total={arvore.length}
+        <p className="text-[11px] text-muted-foreground print:hidden">
+          Arraste o quadro para navegar · Clique na diretoria para focar o ramo · Ctrl + scroll para zoom
+          (até {Math.round(ZOOM_MIN * 100)}%) · Encaixar ajusta para ver a cadeia inteira · Tela cheia
+          aumenta cards e letras
+        </p>
+
+        <div
+          ref={viewportRef}
+          className={cn(
+            "relative overflow-auto border border-border bg-[#F4F5F8] shadow-level-1 dark:bg-black print:h-auto print:overflow-visible print:border-0 print:bg-white print:shadow-none",
+            isFullscreen ? "min-h-0 flex-1" : "h-[min(80vh,980px)]",
+            isPanning
+              ? "cursor-grabbing select-none [&_*]:!cursor-grabbing"
+              : "cursor-grab",
+          )}
+        >
+          <div
+            className="relative mx-auto print:!h-auto print:!w-auto"
+            style={{
+              width: scaledW ?? "100%",
+              height: scaledH,
+            }}
+          >
+            <div
+              ref={contentRef}
+              className={cn(
+                "inline-flex flex-col items-center bg-transparent print:bg-white print:p-4",
+                uiTokens.contentPad,
+              )}
+              style={{
+                transform: `scale(${zoom})`,
+                transformOrigin: "top left",
+              }}
+            >
+              <EmpresaRaiz fotoEmpresa={fotoEmpresa} />
+              <div
+                className={cn(isFullscreen ? "h-9" : "h-7", "shrink-0", LINHA_W, LINHA)}
+                aria-hidden="true"
               />
-            ))}
+
+              <div className="flex w-max items-start justify-center">
+                {arvore.map((diretoria, i) => (
+                  <DiretoriaRamo
+                    key={diretoria.id}
+                    diretoria={diretoria}
+                    matriculasComFoto={matriculasComFoto}
+                    podeBuscarFotos={podeBuscarFotos}
+                    isFirst={i === 0}
+                    isLast={i === arvore.length - 1}
+                    total={arvore.length}
+                    abertos={abertos}
+                    onToggleAberto={onToggleAberto}
+                    onFocar={() => focarRamo(diretoria.id)}
+                    ramoRef={(el) => {
+                      if (el) ramoElsRef.current.set(diretoria.id, el);
+                      else ramoElsRef.current.delete(diretoria.id);
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </OrgUiContext.Provider>
   );
 }

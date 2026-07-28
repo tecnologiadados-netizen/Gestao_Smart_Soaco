@@ -16,6 +16,10 @@ import {
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
+import {
+  flushQualidadeDocumentsSync,
+  markQualidadeDocumentFilesPending,
+} from "@qualidade/lib/qualidadePersistence";
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_TYPES = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
@@ -46,6 +50,7 @@ export function ElaborarDocumentoPage() {
   const [observacoes, setObservacoes] = useState("");
   const [error, setError] = useState("");
   const [savedHint, setSavedHint] = useState(false);
+  const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
     if (!versaoAtual) return;
@@ -85,14 +90,14 @@ export function ElaborarDocumentoPage() {
   const processo = departments.find((d) => d.id === doc.setorId);
   const reprovacaoConsenso = getUltimaReprovacao(versaoAtual, "consenso");
 
-  function persistElaboracao() {
+  async function persistArquivoNoServidor(nome: string, dataUrl: string) {
     updateElaboracao(id, {
-      arquivoNome: arquivoNome || undefined,
-      arquivoDataUrl: arquivoDataUrl || undefined,
+      arquivoNome: nome || undefined,
+      arquivoDataUrl: dataUrl || undefined,
       observacoesElaboracao: observacoes || undefined,
     });
-    setSavedHint(true);
-    setTimeout(() => setSavedHint(false), 2500);
+    markQualidadeDocumentFilesPending(id, versaoAtual.id);
+    await flushQualidadeDocumentsSync();
   }
 
   function processarArquivo(file: File) {
@@ -106,17 +111,20 @@ export function ElaborarDocumentoPage() {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result;
-      if (typeof result === "string") {
-        setArquivoNome(file.name);
-        setArquivoDataUrl(result);
-        updateElaboracao(id, {
-          arquivoNome: file.name,
-          arquivoDataUrl: result,
-          observacoesElaboracao: observacoes || undefined,
+      if (typeof result !== "string") return;
+      setArquivoNome(file.name);
+      setArquivoDataUrl(result);
+      void persistArquivoNoServidor(file.name, result)
+        .then(() => {
+          setSavedHint(true);
+          setTimeout(() => setSavedHint(false), 2500);
+        })
+        .catch((err) => {
+          console.error("[qualidade] falha ao gravar anexo da elaboração:", err);
+          setError(
+            "Arquivo anexado localmente, mas falhou ao gravar no servidor. Tente novamente."
+          );
         });
-        setSavedHint(true);
-        setTimeout(() => setSavedHint(false), 2500);
-      }
     };
     reader.readAsDataURL(file);
   }
@@ -130,16 +138,39 @@ export function ElaborarDocumentoPage() {
       arquivoDataUrl: "",
       observacoesElaboracao: observacoes || undefined,
     });
+    void flushQualidadeDocumentsSync().catch((err) =>
+      console.error("[qualidade] falha ao sincronizar exclusão de anexo:", err)
+    );
   }
 
-  function handleEnviarConsenso() {
+  async function handleEnviarConsenso() {
     if (!arquivoNome) {
       setError("Anexe o arquivo inicial antes de enviar para consenso.");
       return;
     }
-    persistElaboracao();
-    enviarParaRevisao(id, versaoAtual.consensoId ?? currentUserId);
-    navigate("/qualidade/documentos");
+    setError("");
+    setEnviando(true);
+    try {
+      updateElaboracao(id, {
+        arquivoNome: arquivoNome || undefined,
+        arquivoDataUrl: arquivoDataUrl || undefined,
+        observacoesElaboracao: observacoes || undefined,
+      });
+      if (arquivoDataUrl.startsWith("data:")) {
+        markQualidadeDocumentFilesPending(id, versaoAtual.id);
+      }
+      await flushQualidadeDocumentsSync();
+      enviarParaRevisao(id, versaoAtual.consensoId ?? currentUserId);
+      await flushQualidadeDocumentsSync();
+      navigate("/qualidade/documentos");
+    } catch (err) {
+      console.error("[qualidade] falha ao enviar para consenso:", err);
+      setError(
+        "Não foi possível gravar o documento no servidor. Verifique a conexão e tente novamente."
+      );
+    } finally {
+      setEnviando(false);
+    }
   }
 
   const origemLabel =
@@ -163,21 +194,23 @@ export function ElaborarDocumentoPage() {
             type="button"
             size="lg"
             className="min-w-40"
-            onClick={handleEnviarConsenso}
+            disabled={enviando}
+            onClick={() => void handleEnviarConsenso()}
           >
-            Enviar para consenso
+            {enviando ? "Enviando..." : "Enviar para consenso"}
           </Button>
           <Button
             type="button"
             size="lg"
             variant="outline"
+            disabled={enviando}
             onClick={() => navigate("/qualidade/documentos")}
           >
             Cancelar
           </Button>
           {savedHint && (
             <span className="self-center text-sm text-brand-blue">
-              Salvo no navegador
+              Salvo no servidor
             </span>
           )}
         </>
