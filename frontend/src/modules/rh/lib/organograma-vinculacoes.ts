@@ -111,6 +111,14 @@ export const ORGANOGRAMA_VINCULACOES_SEED: OrganogramaVinculacao[] = [
   v("QUALIDADE", "QUALIDADE", "operacao", "Lidia Marina Torres Carvalho Moreira", "1577", "Supervisor de Qualidade"),
   v("PCP", "PLANEJAMENTO", "operacao", "Vinicius Rodrigues Barbosa Cavalcante", "1601", "Analista de PCP III"),
   v("T.I - ADMINISTRATIVO", "ADMINISTRATIVO", "operacao", "Joao Wanderson de Freitas e Silva", "1237", "Analista de Suporte Tecnico"),
+  v(
+    "ADMINISTRAÇÃO",
+    "DADOS E PROCESSOS",
+    "operacao",
+    "Davi Lucas Barros Rodrigues",
+    "1724",
+    "Analista de Dados e Processos",
+  ),
   v("GÔNDOLA", "PRODUÇÃO", "operacao", "Naelson Romulo Marreiros Gomes", "1148", "Lider de Equipe I"),
 
   v("RH", "ADMINISTRATIVO", "financeira", LIDER_A_DEFINIR),
@@ -217,10 +225,21 @@ export function mergeVinculacoesComSetores(
     const fromSaved = salvosMap.get(key);
     const fromSeed = seedMap.get(key);
     if (fromSaved) {
+      const semDiretoria = !fromSaved.diretoriaId;
+      const aplicarSeed = semDiretoria && Boolean(fromSeed?.diretoriaId);
       merged.push({
         ...fromSaved,
         setor: row.setor,
         area: fromSaved.area || row.area || fromSeed?.area || "",
+        ...(aplicarSeed
+          ? {
+              diretoriaId: fromSeed!.diretoriaId,
+              liderNome: normalizarLiderExibido(fromSeed!.liderNome),
+              liderMatricula: fromSeed!.liderMatricula,
+              cargo: fromSeed!.cargo,
+              area: fromSaved.area || row.area || fromSeed!.area || "",
+            }
+          : {}),
       });
       continue;
     }

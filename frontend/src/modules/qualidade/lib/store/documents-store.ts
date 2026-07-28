@@ -1256,11 +1256,23 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
                   ...(input.arquivoDataUrl !== undefined
                     ? { arquivoDataUrl: input.arquivoDataUrl || undefined }
                     : {}),
+                  ...(replacingFile && input.arquivoNome && input.arquivoDataUrl
+                    ? {
+                        anexos: [
+                          {
+                            nome: input.arquivoNome,
+                            dataUrl: input.arquivoDataUrl,
+                          },
+                        ],
+                      }
+                    : {}),
+                  ...(removingFile
+                    ? { anexos: undefined, arquivoAtualizadoEm: undefined }
+                    : {}),
                   ...(input.observacoesElaboracao !== undefined
                     ? { observacoesElaboracao: input.observacoesElaboracao }
                     : {}),
                   ...(replacingFile ? { arquivoAtualizadoEm: now } : {}),
-                  ...(removingFile ? { arquivoAtualizadoEm: undefined } : {}),
                 }
               : v
           ),
@@ -1295,6 +1307,16 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
                   ...(input.arquivoDataUrl !== undefined
                     ? { arquivoDataUrl: input.arquivoDataUrl || undefined }
                     : {}),
+                  ...(replacingFile && input.arquivoNome && input.arquivoDataUrl
+                    ? {
+                        anexos: [
+                          {
+                            nome: input.arquivoNome,
+                            dataUrl: input.arquivoDataUrl,
+                          },
+                        ],
+                      }
+                    : {}),
                   ...(replacingFile
                     ? {
                         arquivoAtualizadoEm: now,
@@ -1303,6 +1325,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
                     : {}),
                   ...(removingFile
                     ? {
+                        anexos: undefined,
                         arquivoAtualizadoEm: undefined,
                         requerSubstituicaoConsenso: true,
                       }

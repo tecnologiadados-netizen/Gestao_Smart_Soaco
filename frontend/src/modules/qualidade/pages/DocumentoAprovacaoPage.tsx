@@ -16,6 +16,7 @@ import {
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
+import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
 
 export function AprovacaoDocumentoPage() {
   const params = useParams();
@@ -43,6 +44,7 @@ export function AprovacaoDocumentoPage() {
   const [justificativaReprovacao, setJustificativaReprovacao] = useState("");
   const [modoReprovacao, setModoReprovacao] = useState(false);
   const [error, setError] = useState("");
+  const [sincronizando, setSincronizando] = useState(false);
 
   useEffect(() => {
     if (modoReprovacao) {
@@ -89,15 +91,24 @@ export function AprovacaoDocumentoPage() {
   const processo = departments.find((d) => d.id === doc.setorId);
   const ajustadoNoConsenso = documentoAjustadoNoConsenso(versaoAtual);
 
-  function handleAprovar() {
+  async function handleAprovar() {
     setModoReprovacao(false);
     setError("");
-    const ok = aprovarDocumentoFinal(id, observacoes);
-    if (!ok) {
-      setError("Não foi possível finalizar a aprovação.");
-      return;
+    setSincronizando(true);
+    try {
+      const ok = aprovarDocumentoFinal(id, observacoes);
+      if (!ok) {
+        setError("Não foi possível finalizar a aprovação.");
+        return;
+      }
+      await flushQualidadeDocumentsSync();
+      navigate("/qualidade/documentos");
+    } catch (err) {
+      console.error("[qualidade] falha ao aprovar documento:", err);
+      setError("Aprovação local feita, mas falhou ao gravar no servidor.");
+    } finally {
+      setSincronizando(false);
     }
-    navigate("/qualidade/documentos");
   }
 
   function handleReprovar() {
@@ -114,6 +125,9 @@ export function AprovacaoDocumentoPage() {
 
     const ok = reprovarAprovacao(id, justificativaReprovacao.trim());
     if (!ok) return;
+    void flushQualidadeDocumentsSync().catch((err) =>
+      console.error("[qualidade] falha ao sincronizar reprovação:", err)
+    );
     navigate("/qualidade/documentos");
   }
 
@@ -131,14 +145,16 @@ export function AprovacaoDocumentoPage() {
             type="button"
             size="lg"
             className="min-w-32"
-            onClick={handleAprovar}
+            disabled={sincronizando}
+            onClick={() => void handleAprovar()}
           >
-            Aprovar
+            {sincronizando ? "Salvando..." : "Aprovar"}
           </Button>
           <Button
             type="button"
             size="lg"
             variant="destructive"
+            disabled={sincronizando}
             onClick={handleReprovar}
           >
             {modoReprovacao ? "Confirmar reprovação" : "Reprovar"}
@@ -147,6 +163,7 @@ export function AprovacaoDocumentoPage() {
             type="button"
             size="lg"
             variant="outline"
+            disabled={sincronizando}
             onClick={() => navigate("/qualidade/documentos")}
           >
             Cancelar

@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, FileText, XCircle } from "lucide-react";
 import type { DocumentVersion } from "@qualidade/types/document";
 import type { User } from "@qualidade/types/user";
 import { formatarDataHora } from "@qualidade/lib/utils/dates";
+import { DocumentoArquivoAcoes } from "@qualidade/components/documentos/documento-arquivo-acoes";
 
 interface Props {
   version: DocumentVersion;
@@ -44,25 +45,12 @@ export function DocumentoHistoricoElaboracao({
               aprovação. A versão final para análise está disponível no quadro
               de Consenso.
             </div>
+          ) : ocultarArquivo ? (
+            <p className="text-sm font-medium text-brand-navy">
+              Arquivo disponível para substituição abaixo
+            </p>
           ) : (
-            <>
-              <p className="text-sm font-medium text-brand-navy">
-                {ocultarArquivo
-                  ? "Arquivo disponível para substituição abaixo"
-                  : (version.arquivoNome ?? "Nenhum arquivo anexado")}
-              </p>
-              {!ocultarArquivo &&
-                version.arquivoDataUrl &&
-                version.arquivoNome && (
-                  <a
-                    href={version.arquivoDataUrl}
-                    download={version.arquivoNome}
-                    className="inline-block text-sm font-medium text-brand-blue hover:underline"
-                  >
-                    Baixar arquivo
-                  </a>
-                )}
-            </>
+            <DocumentoArquivoAcoes version={version} />
           )}
 
           {version.observacoesElaboracao && (
@@ -103,22 +91,11 @@ export function DocumentoHistoricoConsenso({ version, users }: Props) {
               </>
             )}
           </p>
-          <p className="text-sm font-medium text-brand-navy">
-            {version.arquivoNome ?? "Nenhum arquivo anexado"}
-          </p>
+          <DocumentoArquivoAcoes version={version} />
           {version.observacoesConsenso && (
             <p className="text-sm text-muted-foreground">
               {version.observacoesConsenso}
             </p>
-          )}
-          {version.arquivoDataUrl && version.arquivoNome && (
-            <a
-              href={version.arquivoDataUrl}
-              download={version.arquivoNome}
-              className="inline-block text-sm font-medium text-brand-blue hover:underline"
-            >
-              Baixar arquivo
-            </a>
           )}
         </div>
       </div>
