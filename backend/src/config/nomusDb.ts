@@ -19,6 +19,7 @@ function parseNomusUrl(url: string): mysql.PoolOptions {
       user: decodeURIComponent(u.username || ''),
       password: decodeURIComponent(u.password || ''),
       database,
+      charset: 'utf8mb4',
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
@@ -32,6 +33,7 @@ function parseNomusUrl(url: string): mysql.PoolOptions {
   } catch {
     return {
       uri: url,
+      charset: 'utf8mb4',
       waitForConnections: true,
       connectionLimit: 5,
       queueLimit: 0,

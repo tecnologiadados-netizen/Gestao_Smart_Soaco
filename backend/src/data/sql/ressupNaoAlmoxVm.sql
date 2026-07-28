@@ -52,4 +52,5 @@ SELECT
     idComponente AS idProduto,
     ROUND(SUM(media_mensal), 2) AS VM
 FROM explosao_venda
+WHERE __EXCLUIR_IDS_PINTADOS__
 GROUP BY idComponente

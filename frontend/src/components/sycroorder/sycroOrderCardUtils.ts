@@ -75,7 +75,7 @@ function getDaysUntilEffectivePrevisao(
   }
 }
 
-export { getDaysUntilEffectivePrevisao };
+export { getDaysUntilEffectivePrevisao, earliestIsoFromPrevisaoField };
 
 /** Texto do selo no card; null se fora da janela de 7 dias. */
 export function entregaProximityLabel(

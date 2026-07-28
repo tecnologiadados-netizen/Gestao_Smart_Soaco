@@ -426,6 +426,29 @@ function formatDateRangePtBr(isoDates: string[]): string | null {
   return `${sorted[0]} a ${sorted[sorted.length - 1]}`;
 }
 
+/** Earliest YYYY-MM-DD from Gerenciador rows relevantes do card (exclui em formação). */
+function earliestPrevisaoGerenciadorFromRows(
+  rowsDoPd: Array<Record<string, unknown>>,
+  selectedItemIds: string[] | null,
+  itemCodesJson: string | null | undefined
+): string {
+  const relevant = resolveRelevantRowsForCard(rowsDoPd, selectedItemIds, itemCodesJson).filter(
+    (r) => !isPedidoEmFormacaoRow(r)
+  );
+  const isos = relevant
+    .map((r) => toIsoDate(r['previsao_entrega_atualizada'] ?? r['previsao_entrega']))
+    .filter((x): x is string => !!x);
+  if (isos.length === 0) {
+    const all = rowsDoPd
+      .filter((r) => !isPedidoEmFormacaoRow(r))
+      .map((r) => toIsoDate(r['previsao_entrega_atualizada'] ?? r['previsao_entrega']))
+      .filter((x): x is string => !!x);
+    if (all.length === 0) return '';
+    return [...all].sort((a, b) => a.localeCompare(b))[0]!;
+  }
+  return [...isos].sort((a, b) => a.localeCompare(b))[0]!;
+}
+
 /** Mesma chave de rota/carrada usada em `buildCarradasInfo` (Observações / Rota do Gerenciador). */
 function rotaDisplayKeyFromRow(r: Record<string, unknown>): string {
   return String(r['Observacoes'] ?? r['Observações'] ?? r['Rota'] ?? r['rota'] ?? '').trim() || 'Sem rota';
@@ -1154,6 +1177,7 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     observacao,
     is_urgent,
     motivo,
+    previsao_confiavel,
     id_pedidos,
     tag_disponivel,
     replicate_carrada,
@@ -1172,6 +1196,8 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     observacao?: string;
     is_urgent?: boolean;
     motivo?: string;
+    /** Quando false, a previsão é provisória (não entra no histórico da Comunicação Interna). Default true. */
+    previsao_confiavel?: boolean;
     /** Quando informado, o ajuste no Gerenciador é aplicado apenas a estes id_pedido (mesmo PD). */
     id_pedidos?: string[];
     /** Quando informado, atualiza a TAG de disponibilidade (DISPONÍVEL / NÃO DISPONÍVEL). */
@@ -1185,6 +1211,7 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
   };
   const comentarioVal = (comentario != null && String(comentario).trim() !== '' ? String(comentario).trim() : null) ?? (observation != null && String(observation).trim() !== '' ? String(observation).trim() : null);
   const observacaoVal = observacao != null && String(observacao).trim() !== '' ? String(observacao).trim() : null;
+  const previsaoConfiavelVal = previsao_confiavel === false ? false : true;
   const novaDataProducaoVal =
     nova_data_producao != null && String(nova_data_producao).trim() !== ''
       ? String(nova_data_producao).trim().slice(0, 10)
@@ -1295,7 +1322,33 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     }
 
     const nextDate = new_date !== undefined && new_date !== null ? String(new_date).trim() : order.current_promised_date;
-    if (newDateProvided) {
+    const prevDateForMotivo = String(order.current_promised_date ?? '').trim().slice(0, 10);
+    const nextDateNorm = String(nextDate ?? '').trim().slice(0, 10);
+    let dataPrometidaRealmenteAlterada =
+      newDateProvided && nextDateNorm !== '' && nextDateNorm !== prevDateForMotivo;
+
+    if (newDateProvided && !dataPrometidaRealmenteAlterada && nextDateNorm) {
+      try {
+        const orderNumber = String(order.order_number ?? '').trim();
+        const { data } = await listarPedidos(
+          orderNumber ? { pd: orderNumber, limit: 500 } : { limit: 500 }
+        );
+        const rows = (data ?? []) as Array<Record<string, unknown>>;
+        const rowsDoPd = rows.filter((row) => gerenciadorRowMatchesOrderNumber(row, orderNumber));
+        const gerEarliest = earliestPrevisaoGerenciadorFromRows(
+          rowsDoPd,
+          parseJsonArray((order as { item_ids_json?: string | null }).item_ids_json),
+          (order as { item_codes_json?: string | null }).item_codes_json
+        );
+        if (gerEarliest && gerEarliest !== nextDateNorm) {
+          dataPrometidaRealmenteAlterada = true;
+        }
+      } catch (e) {
+        console.warn('[SycroOrder] updateOrder: falha ao comparar previsão do Gerenciador', e);
+      }
+    }
+
+    if (dataPrometidaRealmenteAlterada) {
       const motivoTrim = motivo != null ? String(motivo).trim() : '';
       if (!motivoTrim) {
         res.status(400).json({ error: 'Ao informar Nova data prometida, o motivo é obrigatório (mesmas opções do Gerenciador de Pedidos).' });
@@ -1336,7 +1389,8 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     if (tagDesejado !== undefined) updateData.tag_disponivel = tagDesejado ? 1 : 0;
 
     const dateChanged =
-      newDateProvided && String(nextDate ?? '').trim() !== String(prevDate ?? '').trim();
+      newDateProvided &&
+      (String(nextDate ?? '').trim() !== String(prevDate ?? '').trim() || dataPrometidaRealmenteAlterada);
 
     if (comentarioVal && typeof aguarda_resposta === 'boolean') {
       const destinoTimeGravado =
@@ -1441,7 +1495,11 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     }
 
     const ajustaPrevisaoNoGerenciador =
-      nextDate !== prevDate && new_date !== undefined && new_date !== null && motivo != null && String(motivo).trim() !== '';
+      dataPrometidaRealmenteAlterada &&
+      new_date !== undefined &&
+      new_date !== null &&
+      motivo != null &&
+      String(motivo).trim() !== '';
     if (ajustaPrevisaoNoGerenciador || novaDataProducaoVal) {
       try {
         const { data: gerenciadorList } = await listarPedidos({});
@@ -1506,7 +1564,7 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
               user_name ?? login,
               observacaoVal ?? undefined,
               rotaAjuste,
-              true
+              previsaoConfiavelVal
             );
           }
         }

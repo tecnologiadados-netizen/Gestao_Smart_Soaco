@@ -13,6 +13,7 @@ import {
 } from './sqlRegistroColetaPrecos.js';
 import { lookupMetaPedidoEmpenho, lookupPrevisaoPorPedidos } from './consultaEstoqueRepository.js';
 import { obterSaldoPaExplosao } from './ressupNaoAlmoxRepository.js';
+import { resolverFundiveisParesNomus, type FundivelParNomus } from './ressupNaoAlmoxCatalogRepository.js';
 import { PCP_ID_TIPO_PEDIDO_PRODUCAO_ESTOQUE } from './sql/sqlComprasEstoqueFragments.js';
 import { cmpPedidosEmpenho } from '../utils/empenhoPrioridadePedido.js';
 
@@ -995,7 +996,14 @@ export async function listarEmpenhoRessupDetalhePorProduto(
     return { data: null, erro: 'idProduto inválido.' };
   }
   try {
-    const sql = buildEmpenhoRessupDetalheSql(considerarRequisicoes);
+    let pares: FundivelParNomus[] = [];
+    try {
+      pares = await resolverFundiveisParesNomus(pool);
+    } catch (fundErr) {
+      const msg = fundErr instanceof Error ? fundErr.message : String(fundErr);
+      console.warn('[comprasRepository] fundiveis pares (detalhe empenho):', msg);
+    }
+    const sql = buildEmpenhoRessupDetalheSql(considerarRequisicoes, pares);
     const [rows] = await pool.query<Record<string, unknown>[]>(sql, [idProduto]);
     const lista = Array.isArray(rows) ? rows : [];
 
@@ -1101,7 +1109,14 @@ export async function listarEmpenhoRessupPorPedido(
   }
   try {
     // 1) Detalhe por PA (mesma regra da grade) → qtdeNec total e estoque por produto acabado.
-    const detalheSql = buildEmpenhoRessupDetalheSql(considerarRequisicoes);
+    let pares: FundivelParNomus[] = [];
+    try {
+      pares = await resolverFundiveisParesNomus(pool);
+    } catch (fundErr) {
+      const msg = fundErr instanceof Error ? fundErr.message : String(fundErr);
+      console.warn('[comprasRepository] fundiveis pares (empenho por pedido):', msg);
+    }
+    const detalheSql = buildEmpenhoRessupDetalheSql(considerarRequisicoes, pares);
     const [detRowsRaw] = (await pool.query(detalheSql, [idProduto])) as [Record<string, unknown>[], unknown];
     const detRows = Array.isArray(detRowsRaw) ? detRowsRaw : [];
     const porPa = new Map<number, { idPa: number; qtdeNecPa: number; estoquePa: number }>();

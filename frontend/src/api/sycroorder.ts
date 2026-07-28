@@ -149,6 +149,8 @@ export async function updateSycroOrderOrder(
     observacao?: string;
     is_urgent?: boolean;
     motivo?: string;
+    /** Quando false, a previsão é provisória (não entra no histórico da Comunicação Interna). Default true. */
+    previsao_confiavel?: boolean;
     /** Aplicar ajuste apenas a estes id_pedido (quando alteração não é para todos os itens). */
     id_pedidos?: string[];
     /** Replica motivo/observação e nova previsão para todos os itens da mesma rota/carrada no Gerenciador (rotas "ROTA ..."). */

@@ -1,0 +1,94 @@
+Diagnóstico VM = 0 — MP 4052 (Ressup Não Almox)
+Data: 2026-07-27
+Escopo: só cadastro Nomus (sem alteração de código)
+
+================================================================================
+1) PRODUTOS
+================================================================================
+MP 4052  id=6585  GRELHA 0195 300X300MM P/FOGÃO
+  tipoProduto = Materia prima
+  tipoMaterial = Material Secundário
+  coleta = FUNDÍVEIS
+  elegível na grade Não Almox = SIM
+
+PP 4543  id=2152  GRELHA 300X300MM PINTADO P/FOGÃO INDUSTRIAL
+  (par fundível pintado de MP 4052 — frontend/src/data/ressupNaoAlmoxFundiveisPares.json)
+  tipoProduto = Produto intermediário
+  tipoMaterial = Matéria Prima
+  coleta = (null)
+  elegível na grade Não Almox = NÃO
+
+================================================================================
+2) VM ISOLADA (ressupNaoAlmoxVm.sql)
+================================================================================
+MP 4052  → não retorna linha (VM efetiva = 0)
+PP 4543  → VM = 122,50
+
+Critério programação (só padrao=1): mesmo resultado (PP=122,50; MP ausente).
+Diferença ativo/discriminador NÃO é a causa neste item.
+
+================================================================================
+3) BOM
+================================================================================
+MP 4052: 19 pais com lista validada (padrao=1, ativo=1, Original, Produção|Precificação|Parcial).
+         Desses, 0 têm venda nos 6 meses fechados.
+
+PP 4543: está na BOM dos 10 PAs que realmente venderam (ex.: PA 11129, 11132, …).
+         VM nível-1 só nesses PAs ≈ 56,33; total com multi-nível = 122,50.
+
+Lista do PP 4543 (idLista=2208):
+  descricao = "Lista Padrão"
+  padrao=1, ativo=1, discriminador=Original
+  componentes: MP 4052 (qtde 1) e MP 2887 (qtde 0,091)
+
+A explosão de VM SÓ aceita listas cuja descrição seja
+  Lista%Produ__o | Lista%Precifica__o | Lista%Parci%
+"Lista Padrão" NÃO passa → a recursão PARA no PP 4543 e NÃO desce para MP 4052.
+
+Prova manual: forçando a descida PP→filhos pela lista 2208,
+  MP 4052 herdaria VM ≈ 56,33 só do nível PA→PP (e ~122,50 no total multi-nível).
+
+================================================================================
+4) SOMA FUNDÍVEL NA GRADE
+================================================================================
+deduplicarFundiveis soma VM do pintado (PP 4543) na linha do sem pintura (MP 4052).
+Como PP 4543 não entra na grade (Produto intermediário / sem coleta FUNDÍVEIS),
+vmByCodigo não tem o pintado → a soma permanece 0.
+Isso é efeito colateral; a causa raiz da VM zero na explosão é a lista "Lista Padrão".
+
+================================================================================
+5) CAUSA RAIZ
+================================================================================
+VM do MP 4052 = 0 porque:
+  (A) Nenhum PA que contém MP 4052 diretamente vendeu no período; e
+  (B) A demanda real passa por PP 4543, cuja única lista é "Lista Padrão",
+      excluída do filtro de explosão → MP 4052 nunca recebe a VM herdada.
+
+CM = 208 continua correto (consumo físico do MP sem pintura na produção).
+
+Cobertura ~17,9 na tela é artefato do divisor 0,01 quando VM=0 (fora deste escopo).
+
+================================================================================
+6) AÇÃO DE CADASTRO NO NOMUS (recomendada)
+================================================================================
+No produto PP 4543 (id 2152), lista id 2208:
+  Alterar a descrição de "Lista Padrão" para "Lista_Produção"
+  (ou "Lista_Precificacao" / "Lista_Parcial", se for o padrão interno).
+  Manter: padrao=1, ativo=1, discriminador=Original, componentes (MP 4052 qtde 1).
+
+Após o ajuste, reconsultar a VM do MP 4052 (deve aproximar-se de 122,50).
+Scripts de revalidação:
+  backend/scripts/_diagVmMp4052.mjs
+  backend/scripts/_diagVmMp4052b.mjs
+  backend/scripts/_diagVmMp4052c.mjs
+
+NÃO é necessário (neste caso) mudar tipo do PP 4543 nem incluir MP 4052
+nas BOMs dos PAs vendidos, se a lista do PP passar a ser elegível na explosão.
+
+================================================================================
+7) VEREDITO
+================================================================================
+Comportamento do sistema está consistente com a regra atual.
+VM=0 no print NÃO é bug de filtro da tela.
+Correção: cadastro Nomus — renomear a lista do PP 4543 para o padrão
+Produção/Precificação/Parcial aceito pela explosão de VM.

@@ -42,6 +42,7 @@ import {
 import {
   formatDate,
   getDaysUntilEffectivePrevisao,
+  earliestIsoFromPrevisaoField,
 } from '../../components/sycroorder/sycroOrderCardUtils';
 
 function parseFiltroMulti(value: string): string[] {
@@ -1900,7 +1901,7 @@ function ModalNovoPedido({
   );
 }
 
-type DialogStep = null | 'carrada_confirm' | 'todos_itens' | 'sim_motivo' | 'nao_itens';
+type DialogStep = null | 'carrada_confirm' | 'todos_itens' | 'nao_itens';
 
 interface ItemPedido {
   id_pedido: string;
@@ -2080,23 +2081,35 @@ function ModalAtualizarPedido({
   const [dialogStep, setDialogStep] = useState<DialogStep>(null);
   const [carradaCheckLoading, setCarradaCheckLoading] = useState(false);
   const [carradaConfirmRota, setCarradaConfirmRota] = useState('');
-  /** Usuário confirmou replicar data para todos os itens da mesma rota/carrada no Gerenciador. */
-  const [replicateCarradaConfirmed, setReplicateCarradaConfirmed] = useState(false);
   const [motivos, setMotivos] = useState<MotivoSugestao[]>([]);
   const [loadingMotivos, setLoadingMotivos] = useState(false);
   const [motivo, setMotivo] = useState('');
+  const [previsaoConfiavel, setPrevisaoConfiavel] = useState(true);
+  const [observacaoAjuste, setObservacaoAjuste] = useState('');
   const [itensPedido, setItensPedido] = useState<ItemPedido[]>([]);
   const [loadingItens, setLoadingItens] = useState(false);
   const [selectedIdPedidos, setSelectedIdPedidos] = useState<Set<string>>(new Set());
-  const [observacaoItens, setObservacaoItens] = useState('');
-  const [observacaoSim, setObservacaoSim] = useState('');
   const [abrirGerenciarMotivos, setAbrirGerenciarMotivos] = useState(false);
   const pointerStartedOnBackdropAtualizar = useRef(false);
 
   const novaDataPreenchida = new_date.trim() !== '';
-  const dataAlterada =
-    novaDataPreenchida && normalizeDateKeyForCompare(new_date) !== normalizeDateKeyForCompare(order.current_promised_date);
+  const cardDateKey = normalizeDateKeyForCompare(order.current_promised_date);
+  const gerenciadorDateKey = earliestIsoFromPrevisaoField(order.previsao_atual ?? null, '');
+  const novaDateKey = normalizeDateKeyForCompare(new_date);
+  const dataAlteradaVsCard = novaDataPreenchida && novaDateKey !== cardDateKey;
+  const dataAlteradaVsGerenciador =
+    novaDataPreenchida && gerenciadorDateKey !== '' && novaDateKey !== gerenciadorDateKey;
+  /** Alteração real se difere do card OU da previsão consolidada do Gerenciador. */
+  const dataAlterada = dataAlteradaVsCard || dataAlteradaVsGerenciador;
+  const datasCardGerenciadorDivergem =
+    cardDateKey !== '' && gerenciadorDateKey !== '' && cardDateKey !== gerenciadorDateKey;
   const producaoPreenchida = novaDataProducao.trim() !== '';
+
+  const limparCamposAjustePrevisao = useCallback(() => {
+    setMotivo('');
+    setObservacaoAjuste('');
+    setPrevisaoConfiavel(true);
+  }, []);
 
   const carregarMotivos = useCallback(() => {
     setLoadingMotivos(true);
@@ -2105,6 +2118,14 @@ function ModalAtualizarPedido({
       .catch(() => setMotivos([]))
       .finally(() => setLoadingMotivos(false));
   }, []);
+
+  useEffect(() => {
+    if (!dataAlterada) {
+      limparCamposAjustePrevisao();
+      return;
+    }
+    carregarMotivos();
+  }, [dataAlterada, carregarMotivos, limparCamposAjustePrevisao]);
 
   const handleSalvarClick = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2136,7 +2157,14 @@ function ModalAtualizarPedido({
     }
 
     if (querInformarNovaData === 'sim' && novaDataPreenchida && !dataAlterada && !producaoPreenchida) {
-      setErro('Informe uma data diferente da data prometida atual do card para continuar (ou escolha "Não" se for apenas comentário).');
+      setErro(
+        'Informe uma data diferente da previsão atual (card ou Gerenciador) para continuar (ou escolha "Não" se for apenas comentário).'
+      );
+      return;
+    }
+
+    if (dataAlterada && !motivo.trim()) {
+      setErro('Selecione um motivo para a nova data prometida.');
       return;
     }
 
@@ -2156,7 +2184,7 @@ function ModalAtualizarPedido({
         return;
       }
       const datasErro = validarDatasReprogramacao({
-        previsaoIso: novaDataPreenchida ? new_date.trim().slice(0, 10) : null,
+        previsaoIso: dataAlterada ? new_date.trim().slice(0, 10) : null,
         producaoIso: producaoPreenchida ? novaDataProducao.trim().slice(0, 10) : null,
       });
       if (datasErro) {
@@ -2168,7 +2196,6 @@ function ModalAtualizarPedido({
     if (dataAlterada) {
       const dm = (order.delivery_method ?? '').trim();
       if (isExcludedSqlRotaCategory(dm) || !isCarradaRota(dm)) {
-        setReplicateCarradaConfirmed(false);
         setDialogStep('todos_itens');
         return;
       }
@@ -2189,7 +2216,6 @@ function ModalAtualizarPedido({
           setCarradaConfirmRota(dm);
           setDialogStep('carrada_confirm');
         } else {
-          setReplicateCarradaConfirmed(false);
           setDialogStep('todos_itens');
         }
       } catch {
@@ -2199,7 +2225,7 @@ function ModalAtualizarPedido({
       }
       return;
     }
-    // Escolheu informar nova data, mas não alterou: salva apenas com comentário (opcional)
+    // Escolheu informar nova data, mas não alterou: salva produção/comentário sem new_date
     submitDireto();
   };
 
@@ -2208,29 +2234,36 @@ function ModalAtualizarPedido({
     id_pedidos?: string[];
     observacao?: string;
     replicate_carrada?: boolean;
+    previsao_confiavel?: boolean;
   }) => {
     const coment = observation.trim();
     if (!validarAguardaResposta()) return;
-    const informaNovaData = !isCommentOnlyUser && querInformarNovaData === 'sim' && new_date.trim() !== '';
-    const dataAlterada =
-      informaNovaData && new_date.trim().slice(0, 10) !== String(order.current_promised_date ?? '').trim().slice(0, 10);
+    const enviaNovaData =
+      !isCommentOnlyUser &&
+      querInformarNovaData === 'sim' &&
+      dataAlterada;
     setSaving(true);
     try {
       await updateSycroOrderOrder(order.id, {
-        ...(isCommentOnlyUser ? {} : (informaNovaData ? { new_date: new_date.trim() || undefined } : {})),
+        ...(enviaNovaData ? { new_date: new_date.trim() } : {}),
         ...(isCommentOnlyUser || !producaoPreenchida ? {} : { nova_data_producao: novaDataProducao.trim() }),
         ...(tagDisponivelToSet === undefined || tagDisponivelToSet === null ? {} : { tag_disponivel: tagDisponivelToSet }),
         comentario: coment || undefined,
         aguarda_resposta: coment
           ? aguardaRespostaTri === 'sim'
-          : dataAlterada
+          : enviaNovaData
             ? false
             : undefined,
         ...(coment && aguardaRespostaTri === 'sim' && !autorTimeComercial && aguardaRespostaDestinoTime !== 'unset'
           ? { aguarda_resposta_destino_time: aguardaRespostaDestinoTime }
           : {}),
-        observacao: payload?.observacao?.trim() || undefined,
-        motivo: payload?.motivo?.trim() || undefined,
+        ...(enviaNovaData
+          ? {
+              motivo: (payload?.motivo ?? motivo).trim() || undefined,
+              observacao: (payload?.observacao ?? observacaoAjuste).trim() || undefined,
+              previsao_confiavel: payload?.previsao_confiavel ?? previsaoConfiavel,
+            }
+          : {}),
         id_pedidos: payload?.replicate_carrada ? undefined : payload?.id_pedidos?.length ? payload.id_pedidos : undefined,
         replicate_carrada: payload?.replicate_carrada === true ? true : undefined,
       });
@@ -2244,27 +2277,33 @@ function ModalAtualizarPedido({
   };
 
   const handleTodosItensSim = () => {
-    setReplicateCarradaConfirmed(false);
-    setDialogStep('sim_motivo');
-    carregarMotivos();
+    setErro(null);
+    submitDireto({
+      motivo: motivo.trim(),
+      observacao: observacaoAjuste.trim() || undefined,
+      previsao_confiavel: previsaoConfiavel,
+    });
   };
 
   const handleCarradaConfirmSim = () => {
-    setReplicateCarradaConfirmed(true);
-    setDialogStep('sim_motivo');
-    carregarMotivos();
+    setErro(null);
+    submitDireto({
+      motivo: motivo.trim(),
+      observacao: observacaoAjuste.trim() || undefined,
+      previsao_confiavel: previsaoConfiavel,
+      replicate_carrada: true,
+    });
   };
 
   const handleCarradaConfirmNao = () => {
     setDialogStep(null);
     setQuerInformarNovaData(null);
-    setNew_date(order.current_promised_date);
-    setReplicateCarradaConfirmed(false);
+    setNew_date('');
+    limparCamposAjustePrevisao();
     setErro(null);
   };
 
   const handleTodosItensNao = () => {
-    setReplicateCarradaConfirmed(false);
     setDialogStep('nao_itens');
     setLoadingItens(true);
     listarPedidos({ pd: order.order_number, limit: 500 })
@@ -2280,7 +2319,6 @@ function ModalAtualizarPedido({
       })
       .catch(() => setItensPedido([]))
       .finally(() => setLoadingItens(false));
-    carregarMotivos();
   };
 
   const toggleItem = (id: string) => {
@@ -2292,26 +2330,10 @@ function ModalAtualizarPedido({
     });
   };
 
-  const handleSubmitSimMotivo = (e: React.FormEvent) => {
-    e.preventDefault();
-    const motivoTrim = motivo.trim();
-    if (!motivoTrim) {
-      setErro('Selecione um motivo.');
-      return;
-    }
-    setErro(null);
-    submitDireto({
-      motivo: motivoTrim,
-      observacao: observacaoSim.trim() || undefined,
-      replicate_carrada: replicateCarradaConfirmed ? true : undefined,
-    });
-  };
-
   const handleSubmitNaoItens = (e: React.FormEvent) => {
     e.preventDefault();
-    const motivoTrim = motivo.trim();
-    if (!motivoTrim) {
-      setErro('Selecione um motivo.');
+    if (!motivo.trim()) {
+      setErro('Selecione um motivo na tela anterior.');
       return;
     }
     const ids = [...selectedIdPedidos];
@@ -2320,7 +2342,12 @@ function ModalAtualizarPedido({
       return;
     }
     setErro(null);
-    submitDireto({ motivo: motivoTrim, id_pedidos: ids, observacao: observacaoItens.trim() || undefined });
+    submitDireto({
+      motivo: motivo.trim(),
+      id_pedidos: ids,
+      observacao: observacaoAjuste.trim() || undefined,
+      previsao_confiavel: previsaoConfiavel,
+    });
   };
 
   return (
@@ -2352,6 +2379,7 @@ function ModalAtualizarPedido({
                     onClick={() => {
                       setQuerInformarNovaData('sim');
                       setNew_date('');
+                      limparCamposAjustePrevisao();
                     }}
                     className={`px-3 py-2 rounded-lg border text-sm font-medium transition ${
                       querInformarNovaData === 'sim'
@@ -2366,6 +2394,7 @@ function ModalAtualizarPedido({
                     onClick={() => {
                       setQuerInformarNovaData('nao');
                       setNew_date(order.current_promised_date);
+                      limparCamposAjustePrevisao();
                     }}
                     className={`px-3 py-2 rounded-lg border text-sm font-medium transition ${
                       querInformarNovaData === 'nao'
@@ -2385,8 +2414,13 @@ function ModalAtualizarPedido({
                       onChange={(e) => setNew_date(e.target.value)}
                       className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                     />
+                    <p className={`text-xs mt-1.5 ${datasCardGerenciadorDivergem ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                      Atual no card: <strong>{cardDateKey ? formatDate(cardDateKey) : '—'}</strong>
+                      {' · '}Atual no Gerenciador: <strong>{gerenciadorDateKey ? formatDate(gerenciadorDateKey) : '—'}</strong>
+                      {datasCardGerenciadorDivergem ? ' (divergentes — informe a data desejada e o motivo).' : ''}
+                    </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                      Informe a nova data e clique em <strong>Salvar</strong>. Se a rota tiver mais de um pedido, será pedida uma confirmação antes do motivo.
+                      Informe a nova data e o motivo abaixo. Se a rota ou o pedido tiver mais de um item, será pedida uma confirmação de escopo ao salvar.
                     </p>
                   </div>
                 )}
@@ -2404,6 +2438,61 @@ function ModalAtualizarPedido({
                     Deixe em branco para não alterar. Vale para os mesmos itens do Gerenciador que receberem a nova data prometida.
                   </p>
                 </div>
+                {dataAlterada && (
+                  <div className="mt-3 space-y-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-900/40 p-3">
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Motivo</label>
+                        {podeGerenciarMotivos && (
+                          <button
+                            type="button"
+                            onClick={() => setAbrirGerenciarMotivos(true)}
+                            className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                            title="Gerenciar motivos"
+                          >
+                            Gerenciar motivos
+                          </button>
+                        )}
+                      </div>
+                      <select
+                        value={motivo}
+                        onChange={(e) => setMotivo(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                      >
+                        <option value="">Selecione um motivo</option>
+                        {motivos.map((m) => (
+                          <option key={m.id} value={m.descricao}>{m.descricao}</option>
+                        ))}
+                      </select>
+                      {loadingMotivos && <p className="text-xs text-slate-500 mt-1">Carregando motivos...</p>}
+                    </div>
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={previsaoConfiavel}
+                        onChange={(e) => setPrevisaoConfiavel(e.target.checked)}
+                        className="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-600"
+                      />
+                      <span className="text-sm text-slate-700 dark:text-slate-300">
+                        <span className="font-medium">Previsão confiável</span>
+                        <span className="block text-xs text-slate-500 dark:text-slate-400 font-normal mt-0.5">
+                          Desmarque se a data é provisória. Nesse caso, não aparece no histórico da Comunicação Interna.
+                        </span>
+                      </span>
+                    </label>
+                    <div>
+                      <CampoLabelComAjuda label="Observação" ajuda={AJUDA_CAMPO_OBSERVACAO} />
+                      <textarea
+                        value={observacaoAjuste}
+                        onChange={(e) => setObservacaoAjuste(e.target.value)}
+                        rows={2}
+                        placeholder="Opcional — complementar ao motivo no Gerenciador"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-500"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <div>
@@ -2502,14 +2591,15 @@ function ModalAtualizarPedido({
         {dialogStep === 'carrada_confirm' && (
           <div className="p-4 space-y-4">
             <h3 className="font-semibold text-slate-800 dark:text-slate-200">Replicação na mesma carrada</h3>
+            {erro && <p className="text-sm text-red-600 dark:text-red-400">{erro}</p>}
             <p className="text-sm text-slate-600 dark:text-slate-400">
               Este pedido está presente na <strong>{carradaConfirmRota}</strong> e a mesma possui outros pedidos. Quando você informar a nova data deste pedido, essa mesma data será replicada para todos os outros itens de pedido que também estão nessa ROTA (mesmo motivo e observação enviados ao Gerenciador de Pedidos). Deseja continuar?
             </p>
             <div className="flex gap-3">
-              <button type="button" onClick={handleCarradaConfirmSim} className="flex-1 px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium">
+              <button type="button" onClick={handleCarradaConfirmSim} disabled={saving} className="flex-1 px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium disabled:opacity-50">
                 Sim
               </button>
-              <button type="button" onClick={handleCarradaConfirmNao} className="flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium">
+              <button type="button" onClick={handleCarradaConfirmNao} disabled={saving} className="flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium disabled:opacity-50">
                 Não
               </button>
             </div>
@@ -2519,66 +2609,22 @@ function ModalAtualizarPedido({
         {dialogStep === 'todos_itens' && (
           <div className="p-4 space-y-4">
             <h3 className="font-semibold text-slate-800 dark:text-slate-200">Atualizar — {order.order_number}</h3>
+            {erro && <p className="text-sm text-red-600 dark:text-red-400">{erro}</p>}
             <p className="text-sm text-slate-600 dark:text-slate-400">A alteração deve ser para todos os itens do pedido?</p>
             <div className="flex gap-3">
-              <button type="button" onClick={handleTodosItensSim} className="flex-1 px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium">Sim</button>
-              <button type="button" onClick={handleTodosItensNao} className="flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium">Não</button>
+              <button type="button" onClick={handleTodosItensSim} disabled={saving} className="flex-1 px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium disabled:opacity-50">Sim</button>
+              <button type="button" onClick={handleTodosItensNao} disabled={saving} className="flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium disabled:opacity-50">Não</button>
             </div>
             <button type="button" onClick={() => setDialogStep(null)} className="text-sm text-slate-500 dark:text-slate-400 hover:underline">Voltar</button>
           </div>
         )}
 
-        {dialogStep === 'sim_motivo' && (
-          <form onSubmit={handleSubmitSimMotivo} className="p-4 space-y-4 overflow-y-auto">
-            <h3 className="font-semibold text-slate-800 dark:text-slate-200">Atualizar — {order.order_number}</h3>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              {replicateCarradaConfirmed
-                ? 'A alteração será aplicada a todos os itens desta rota no Gerenciador (todos os pedidos que compartilham a mesma carrada). Selecione o motivo.'
-                : 'Alteração para todos os itens deste pedido. Selecione o motivo.'}
-            </p>
-            {erro && <p className="text-sm text-red-600 dark:text-red-400">{erro}</p>}
-            <div>
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Motivo</label>
-                {podeGerenciarMotivos && (
-                  <button type="button" onClick={() => setAbrirGerenciarMotivos(true)} className="text-xs text-primary-600 dark:text-primary-400 hover:underline" title="Gerenciar motivos">Gerenciar motivos</button>
-                )}
-              </div>
-              <select value={motivo} onChange={(e) => setMotivo(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200" required>
-                <option value="">Selecione um motivo</option>
-                {motivos.map((m) => (
-                  <option key={m.id} value={m.descricao}>{m.descricao}</option>
-                ))}
-              </select>
-              {loadingMotivos && <p className="text-xs text-slate-500 mt-1">Carregando motivos...</p>}
-            </div>
-            <div>
-              <CampoLabelComAjuda label="Observação" ajuda={AJUDA_CAMPO_OBSERVACAO} />
-              <textarea value={observacaoSim} onChange={(e) => setObservacaoSim(e.target.value)} rows={2} placeholder="Opcional" className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-500" />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (replicateCarradaConfirmed) {
-                    setDialogStep('carrada_confirm');
-                  } else {
-                    setDialogStep('todos_itens');
-                  }
-                }}
-                className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm"
-              >
-                Voltar
-              </button>
-              <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium disabled:opacity-50">Salvar</button>
-            </div>
-          </form>
-        )}
-
         {dialogStep === 'nao_itens' && (
           <form onSubmit={handleSubmitNaoItens} className="p-4 flex flex-col min-h-0 flex-1 overflow-hidden">
             <h3 className="font-semibold text-slate-800 dark:text-slate-200 shrink-0">Atualizar — {order.order_number}</h3>
-            <p className="text-sm text-slate-600 dark:text-slate-400 shrink-0 mb-2">Selecione os itens que devem receber o ajuste e o motivo.</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400 shrink-0 mb-2">
+              Selecione os itens que devem receber o ajuste. O motivo e a observação já informados serão aplicados a eles.
+            </p>
             {erro && <p className="text-sm text-red-600 dark:text-red-400 shrink-0">{erro}</p>}
             {loadingItens ? (
               <p className="text-sm text-slate-500 py-4">Carregando itens...</p>
@@ -2591,24 +2637,6 @@ function ModalAtualizarPedido({
                       <span className="text-sm text-slate-800 dark:text-slate-200"><strong>{item.cod}</strong> — {item.descricao}</span>
                     </label>
                   ))}
-                </div>
-                <div className="shrink-0 mb-3">
-                  <CampoLabelComAjuda label="Observação" ajuda={AJUDA_CAMPO_OBSERVACAO} />
-                  <textarea value={observacaoItens} onChange={(e) => setObservacaoItens(e.target.value)} rows={2} placeholder="Opcional" className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-500" />
-                </div>
-                <div className="shrink-0 mb-3">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Motivo</label>
-                    {podeGerenciarMotivos && (
-                      <button type="button" onClick={() => setAbrirGerenciarMotivos(true)} className="text-xs text-primary-600 dark:text-primary-400 hover:underline">Gerenciar motivos</button>
-                    )}
-                  </div>
-                  <select value={motivo} onChange={(e) => setMotivo(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200" required>
-                    <option value="">Selecione um motivo</option>
-                    {motivos.map((m) => (
-                      <option key={m.id} value={m.descricao}>{m.descricao}</option>
-                    ))}
-                  </select>
                 </div>
                 <div className="flex justify-end gap-2 pt-2 shrink-0">
                   <button type="button" onClick={() => setDialogStep('todos_itens')} className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm">Voltar</button>

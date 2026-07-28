@@ -184,6 +184,7 @@ explosao_empenho AS (
 empenho_componentes AS (
     SELECT idComponente, SUM(qtde) AS empenho_total
     FROM explosao_empenho
+    WHERE __EXCLUIR_IDS_PINTADOS__
     GROUP BY idComponente
 ),
 
@@ -239,6 +240,7 @@ explosao_venda AS (
 venda_componentes AS (
     SELECT idComponente, SUM(media_mensal) AS media_mensal
     FROM explosao_venda
+    WHERE __EXCLUIR_IDS_PINTADOS__
     GROUP BY idComponente
 )
 

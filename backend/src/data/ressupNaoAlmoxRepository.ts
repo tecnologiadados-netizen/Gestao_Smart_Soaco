@@ -13,9 +13,13 @@ import {
   SQL_REGISTRO_COLETA_LEVE,
 } from './sqlRegistroColetaPrecos.js';
 import {
+  applyExcluirIdsPintadosToken,
   buildMapCodigosPintados,
+  idsPintadosFromPares,
   loadRessupNaoAlmoxCatalogo,
   normalizarCodProduto,
+  resolverFundiveisParesNomus,
+  type FundivelParNomus,
 } from './ressupNaoAlmoxCatalogRepository.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -127,23 +131,26 @@ const ELEGIBILIDADE_PARAMS = [...RESSUP_NAO_ALMOX_TIPOS_MATERIAL, ...RESSUP_NAO_
 
 const BUSCA_OPCOES_LIMITE = 80;
 
-const JOINS_EXTRA = `
+function buildJoinsExtra(pares: FundivelParNomus[]): string {
+  const sqlVm = applyExcluirIdsPintadosToken(SQL_VM.trim(), idsPintadosFromPares(pares));
+  return `
   Left Join (
-    ${SQL_VM.trim()}
+    ${sqlVm}
   ) vm On vm.idProduto = p.id
   Inner Join (
 ${SQL_JOIN_TIPO_MATERIAL}
   ) tmfilt On tmfilt.idProduto = p.id
 `;
+}
 
-function adaptSqlForRessupNaoAlmox(baseSql: string): string {
+function adaptSqlForRessupNaoAlmox(baseSql: string, pares: FundivelParNomus[]): string {
   let sql = baseSql.replace(
     /coalesce\(agpag\.quantidade,0\) as 'Ag Pag'/i,
     "coalesce(agpag.quantidade,0) as 'Ag Pag',\n  Coalesce(vm.VM, 0) As 'VM'"
   );
   sql = sql.replace(
     /  left join usuario u on u\.id = sco\.idUsuario\r?\nWhere\r?\n  \(p\.idTipoProduto In \(5, 13, 14, 6, 10, 16, 21, 22\)\)/i,
-    `${JOINS_EXTRA}\n  left join usuario u on u.id = sco.idUsuario\nWhere\n  (p.ativo = 1)\n  And (tp.nome = 'Materia prima')\n  And (tmfilt.opcao In (${RESSUP_NAO_ALMOX_TIPOS_MATERIAL.map(() => '?').join(', ')}))\n  And (Coalesce(nc.opcao, 'A DEFINIR') In (${RESSUP_NAO_ALMOX_COLETAS.map(() => '?').join(', ')}))`
+    `${buildJoinsExtra(pares)}\n  left join usuario u on u.id = sco.idUsuario\nWhere\n  (p.ativo = 1)\n  And (tp.nome = 'Materia prima')\n  And (tmfilt.opcao In (${RESSUP_NAO_ALMOX_TIPOS_MATERIAL.map(() => '?').join(', ')}))\n  And (Coalesce(nc.opcao, 'A DEFINIR') In (${RESSUP_NAO_ALMOX_COLETAS.map(() => '?').join(', ')}))`
   );
   return sql;
 }
@@ -151,25 +158,30 @@ function adaptSqlForRessupNaoAlmox(baseSql: string): string {
 const EMP_JOIN_START = '\n  Left Join\n  (Select pq.idProdutoComponente As idprod,';
 const EMP_JOIN_END = '  Group By p.id) empd On empd.idprod = p.id\n';
 
-function replaceEmpJoinSql(baseSql: string, considerarRequisicoes: boolean): string {
+function replaceEmpJoinSql(
+  baseSql: string,
+  considerarRequisicoes: boolean,
+  pares: FundivelParNomus[]
+): string {
   const i = baseSql.indexOf(EMP_JOIN_START);
   const j = baseSql.indexOf(EMP_JOIN_END);
   if (i === -1 || j === -1 || j < i) return baseSql;
-  // Mesma regra da Consulta de Estoque / Ressup Almox: abate PA por pai (setores 5/24).
-  const newJoin = buildEmpJoinSql(considerarRequisicoes);
+  const newJoin = buildEmpJoinSql(considerarRequisicoes, pares);
   return baseSql.slice(0, i) + newJoin + baseSql.slice(j + EMP_JOIN_END.length);
 }
 
 function buildSqlRessupNaoAlmoxRegistro(
   considerarRequisicoes: boolean,
-  leve: boolean
+  leve: boolean,
+  pares: FundivelParNomus[] = []
 ): string {
   const base = leve ? SQL_REGISTRO_COLETA_LEVE : SQL_REGISTRO_COLETA_BASE;
-  return adaptSqlForRessupNaoAlmox(replaceEmpJoinSql(base, considerarRequisicoes));
+  return adaptSqlForRessupNaoAlmox(replaceEmpJoinSql(base, considerarRequisicoes, pares), pares);
 }
 
-export const SQL_RESSUP_NAO_ALMOX_REGISTRO = buildSqlRessupNaoAlmoxRegistro(false, false);
-export const SQL_RESSUP_NAO_ALMOX_REGISTRO_LEVE = buildSqlRessupNaoAlmoxRegistro(false, true);
+/** SQL estático (sem exclusão fundíveis) — preferir build em runtime com pares. */
+export const SQL_RESSUP_NAO_ALMOX_REGISTRO = buildSqlRessupNaoAlmoxRegistro(false, false, []);
+export const SQL_RESSUP_NAO_ALMOX_REGISTRO_LEVE = buildSqlRessupNaoAlmoxRegistro(false, true, []);
 
 export type RessupNaoAlmoxModoConsulta = 'leve' | 'completo';
 
@@ -267,13 +279,6 @@ function buildOptionalFilters(
 function deduplicarFundiveis(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   const { fundiveis } = loadRessupNaoAlmoxCatalogo();
   const pintados = buildMapCodigosPintados(fundiveis);
-  const vmByCodigo = new Map<string, number>();
-
-  for (const r of rows) {
-    const cod = String(r['Codigo do Produto'] ?? r.codigo ?? '').trim();
-    const vm = Number(r['VM'] ?? r.vm ?? 0);
-    if (cod) vmByCodigo.set(normalizarCodProduto(cod), Number.isFinite(vm) ? vm : 0);
-  }
 
   const kept: Record<string, unknown>[] = [];
 
@@ -283,13 +288,11 @@ function deduplicarFundiveis(rows: Record<string, unknown>[]): Record<string, un
       kept.push(r);
       continue;
     }
+    // Código com pintura: não entra na grade (demanda fica só no sem pintura).
     if (pintados.has(cod)) continue;
 
     const codPintado = fundiveis[cod];
     if (codPintado) {
-      const vmPintado = vmByCodigo.get(normalizarCodProduto(codPintado)) ?? 0;
-      const vmSem = Number(r['VM'] ?? 0);
-      r['VM'] = Math.round((vmSem + vmPintado) * 100) / 100;
       r['_codigoPintado'] = normalizarCodProduto(codPintado);
     }
     kept.push(r);
@@ -403,7 +406,14 @@ export async function buscarRegistroRessupNaoAlmoxComFiltros(
   if (!pool) return { rows: [], erro: 'NOMUS_DB_URL não configurado' };
 
   const { conditions, params: filterParams } = buildOptionalFilters(filtros);
-  const base = buildSqlRessupNaoAlmoxRegistro(considerarRequisicoes, modo === 'leve');
+  let pares: FundivelParNomus[] = [];
+  try {
+    pares = await resolverFundiveisParesNomus(pool);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[ressupNaoAlmoxRepository] fundiveis pares:', msg);
+  }
+  const base = buildSqlRessupNaoAlmoxRegistro(considerarRequisicoes, modo === 'leve', pares);
   const eligParams = [...ELEGIBILIDADE_PARAMS];
   const sqlParts = [base];
   if (conditions.length > 0) {

@@ -2,6 +2,11 @@ import { readFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
+import {
+  applyExcluirIdsPintadosToken,
+  idsPintadosFromPares,
+  resolverFundiveisParesNomus,
+} from './ressupNaoAlmoxCatalogRepository.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -101,7 +106,15 @@ export async function loadProgramacaoProducaoGrade(): Promise<{
     return { data: [], erro: 'NOMUS_DB_URL não configurado' };
   }
   try {
-    const sql = getSql('programacaoProducaoGrade.sql');
+    let sql = getSql('programacaoProducaoGrade.sql');
+    try {
+      const pares = await resolverFundiveisParesNomus(pool);
+      sql = applyExcluirIdsPintadosToken(sql, idsPintadosFromPares(pares));
+    } catch (fundErr) {
+      const msg = fundErr instanceof Error ? fundErr.message : String(fundErr);
+      console.warn('[programacaoProducao] fundiveis pares:', msg);
+      sql = applyExcluirIdsPintadosToken(sql, []);
+    }
     const [rows] = await pool.query(sql);
     const data = (Array.isArray(rows) ? rows : []).map((r) =>
       mapGradeRow(r as Record<string, unknown>)

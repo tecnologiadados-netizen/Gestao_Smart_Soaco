@@ -4,6 +4,10 @@ import {
   SQL_JOIN_SALDO_CONSULTA,
   sqlFiltroRequisicoesEmpenho,
 } from './sql/sqlComprasEstoqueFragments.js';
+import {
+  sqlFundiveisMapSubquery,
+  type FundivelParNomus,
+} from './ressupNaoAlmoxCatalogRepository.js';
 
 /**
  * SQL para registro da coleta de preços no Nomus.
@@ -744,21 +748,65 @@ const EMP_JOIN_END = '  Group By p.id) empd On empd.idprod = p.id\n';
 /** SQL de registro da coleta com join de empenho parametrizado (Ressup Almox / Não Almox). */
 export function buildSqlRegistroColetaComEmpenho(
   considerarRequisicoes: boolean,
-  leve = false
+  leve = false,
+  paresFundiveis: FundivelParNomus[] = []
 ): string {
   const base = leve ? SQL_REGISTRO_COLETA_LEVE : SQL_REGISTRO_COLETA_BASE;
   const i = base.indexOf(EMP_JOIN_START);
   const j = base.indexOf(EMP_JOIN_END);
   if (i === -1 || j === -1 || j < i) return base;
-  const newJoin = buildEmpJoinSql(considerarRequisicoes);
+  const newJoin = buildEmpJoinSql(considerarRequisicoes, paresFundiveis);
   return base.slice(0, i) + newJoin + base.slice(j + EMP_JOIN_END.length);
+}
+
+/**
+ * Realoca folha pintada (com par fundível) para o id sem pintura e aplica fator BOM.
+ * Pintado deixa de ser dono de empenho; sem pintura herda a quantidade.
+ */
+function applyFundiveisRemapToEmpBlock(block: string, pares: FundivelParNomus[]): string {
+  const mapSql = sqlFundiveisMapSubquery(pares);
+  if (!mapSql) return block;
+
+  let out = block.replace(
+    '(Select pq.idProdutoComponente As idprod,',
+    '(Select Coalesce(fund_emp.id_sem, pq.idProdutoComponente) As idprod,'
+  );
+  out = out.replace(
+    /Coalesce\(pq\.qtdeNecessaria, 0\)/g,
+    'Coalesce(pq.qtdeNecessaria, 0) * Coalesce(fund_emp.fator_sem, 1)'
+  );
+  out = out.replace(
+    'pac On pac.id = pq.idProdutoComponente',
+    'pac On pac.id = Coalesce(fund_emp.id_sem, pq.idProdutoComponente)'
+  );
+  // Join logo após o subquery `pq`, antes de pab/pac/ec (pac referencia fund_emp).
+  const pqClose = ') pq\n    Left Join (Select p.id,';
+  if (!out.includes(pqClose)) {
+    throw new Error('[sqlRegistroColetaPrecos] Falha ao inserir mapa fundíveis no join emp.');
+  }
+  out = out.replace(
+    pqClose,
+    `) pq\n    Left Join (
+    ${mapSql}
+  ) fund_emp On fund_emp.id_pintado = pq.idProdutoComponente
+    Left Join (Select p.id,`
+  );
+  out = out.replace(
+    /Group By pq\.idProdutoComponente\) emp On emp\.idprod = /g,
+    'Group By Coalesce(fund_emp.id_sem, pq.idProdutoComponente)) emp On emp.idprod = '
+  );
+  return out;
 }
 
 /**
  * Bloco LEFT JOIN de empenho (BOM + venda direta) extraído da SQL base.
  * @param considerarRequisicoes quando true, inclui pedidos com attr. Requisitado (313) = Sim
+ * @param paresFundiveis pares pintado→sem; pintado não agrega, demanda vai ao sem pintura
  */
-export function buildEmpJoinSql(considerarRequisicoes: boolean): string {
+export function buildEmpJoinSql(
+  considerarRequisicoes: boolean,
+  paresFundiveis: FundivelParNomus[] = []
+): string {
   const i = SQL_REGISTRO_COLETA_BASE.indexOf(EMP_JOIN_START);
   const j = SQL_REGISTRO_COLETA_BASE.indexOf(EMP_JOIN_END);
   if (i === -1 || j === -1 || j < i) {
@@ -771,18 +819,23 @@ export function buildEmpJoinSql(considerarRequisicoes: boolean): string {
   if (reqFilter) {
     block = block.replace(/Where ip\.status In \(2, 3\)/gi, `Where ip.status In (2, 3)${reqFilter}`);
   }
-  return block;
+  return applyFundiveisRemapToEmpBlock(block, paresFundiveis);
 }
 
 /** Empenho Ressup Não Almox: abate PA via explosão BOM (setor 5), não estoque ec por PA. */
 export function buildEmpJoinSqlNaoAlmox(
   considerarRequisicoes: boolean,
-  saldoPaExplosaoScalarSql: string
+  saldoPaExplosaoScalarSql: string,
+  paresFundiveis: FundivelParNomus[] = []
 ): string {
-  let block = buildEmpJoinSql(considerarRequisicoes);
+  let block = buildEmpJoinSql(considerarRequisicoes, paresFundiveis);
+  const qtdeNec =
+    paresFundiveis.length > 0
+      ? 'Coalesce(pq.qtdeNecessaria, 0) * Coalesce(fund_emp.fator_sem, 1)'
+      : 'Coalesce(pq.qtdeNecessaria, 0)';
   block = block.replace(
     /\(Sum\(Case[\s\S]*?End\) \+ Coalesce\(pac\.saldo, 0\)\)/i,
-    `(Greatest(0, Sum(Coalesce(pq.qtdeNecessaria, 0) * Coalesce(pab.saldo, 0)) - Coalesce((${saldoPaExplosaoScalarSql}), 0)) + Max(Coalesce(pac.saldo, 0)))`
+    `(Greatest(0, Sum(${qtdeNec} * Coalesce(pab.saldo, 0)) - Coalesce((${saldoPaExplosaoScalarSql}), 0)) + Max(Coalesce(pac.saldo, 0)))`
   );
   return block;
 }
@@ -797,8 +850,11 @@ export function buildEmpJoinSqlNaoAlmox(
  *
  * Parâmetro de bind: `idProdutoComponente` (1x).
  */
-export function buildEmpenhoRessupDetalheSql(considerarRequisicoes: boolean): string {
-  const block = buildEmpJoinSql(considerarRequisicoes);
+export function buildEmpenhoRessupDetalheSql(
+  considerarRequisicoes: boolean,
+  paresFundiveis: FundivelParNomus[] = []
+): string {
+  const block = buildEmpJoinSql(considerarRequisicoes, paresFundiveis);
   const fromMarker = '\n  From (Select ft.idprodutopai,';
   const whereMarker = '\n  Where ((Case';
   const fi = block.indexOf(fromMarker);
@@ -806,24 +862,32 @@ export function buildEmpenhoRessupDetalheSql(considerarRequisicoes: boolean): st
   if (fi === -1 || wi === -1 || wi < fi) {
     throw new Error('[sqlRegistroColetaPrecos] Falha ao montar detalhe de empenho Ressup.');
   }
-  // Reaproveita o FROM + joins (pq/pab/pac/ec) verbatim do bloco emp.
   const fromPart = block.slice(fi, wi);
+  const qtdeNecExpr =
+    paresFundiveis.length > 0
+      ? 'Coalesce(pq.qtdeNecessaria, 0) * Coalesce(fund_emp.fator_sem, 1)'
+      : 'Coalesce(pq.qtdeNecessaria, 0)';
   const netExpr =
-    '(Case When ((Coalesce(pq.qtdeNecessaria, 0) * Coalesce(pab.saldo, 0)) - ' +
-    '(Coalesce(pq.qtdeNecessaria, 0) * Coalesce(ec.saldoestoque, 0))) <= 0 Then 0 ' +
-    'Else ((Coalesce(pq.qtdeNecessaria, 0) * Coalesce(pab.saldo, 0)) - ' +
-    '(Coalesce(pq.qtdeNecessaria, 0) * Coalesce(ec.saldoestoque, 0))) End)';
+    `(Case When ((${qtdeNecExpr} * Coalesce(pab.saldo, 0)) - ` +
+    `(${qtdeNecExpr} * Coalesce(ec.saldoestoque, 0))) <= 0 Then 0 ` +
+    `Else ((${qtdeNecExpr} * Coalesce(pab.saldo, 0)) - ` +
+    `(${qtdeNecExpr} * Coalesce(ec.saldoestoque, 0))) End)`;
+  const whereComp =
+    paresFundiveis.length > 0
+      ? 'Coalesce(fund_emp.id_sem, pq.idProdutoComponente) = ?'
+      : 'pq.idProdutoComponente = ?';
+  // fund_emp já entra em fromPart via applyFundiveisRemapToEmpBlock.
   return `Select
   pq.idprodutopai As idPa,
   ppai.nome As codigoPa,
   ppai.descricao As descricaoPa,
-  Coalesce(pq.qtdeNecessaria, 0) As qtdeNecessaria,
+  ${qtdeNecExpr} As qtdeNecessaria,
   Coalesce(pab.saldo, 0) As pedidosPa,
   Coalesce(ec.saldoestoque, 0) As estoquePa,
   Coalesce(pac.saldo, 0) As venda_direta,
   ${netExpr} As net${fromPart}
   Left Join produto ppai On ppai.id = pq.idprodutopai
-  Where pq.idProdutoComponente = ?`;
+  Where ${whereComp}`;
 }
 
 /**
