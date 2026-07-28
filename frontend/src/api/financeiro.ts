@@ -1566,6 +1566,9 @@ export type CarteiraFinanceiraPayload = {
 export type CarteiraFinanceiraFiltrosParams = {
   dataInicio?: string;
   dataFim?: string;
+  /** Filtro por previsão atual (YYYY-MM-DD). */
+  dataPrevisaoIni?: string;
+  dataPrevisaoFim?: string;
   uf?: string[];
   cliente?: string[];
   empresa?: string[];
@@ -1603,6 +1606,8 @@ export async function fetchCarteiraFinanceira(
   const sp = new URLSearchParams();
   if (params.dataInicio) sp.set('dataInicio', params.dataInicio);
   if (params.dataFim) sp.set('dataFim', params.dataFim);
+  if (params.dataPrevisaoIni) sp.set('dataPrevisaoIni', params.dataPrevisaoIni);
+  if (params.dataPrevisaoFim) sp.set('dataPrevisaoFim', params.dataPrevisaoFim);
   if (params.statusPedido) sp.set('statusPedido', params.statusPedido);
   for (const [key, list] of [
     ['uf', params.uf],

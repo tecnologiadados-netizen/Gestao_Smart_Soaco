@@ -15,12 +15,16 @@ function parseListParam(raw: unknown): string[] {
     .filter(Boolean);
 }
 
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
 function parseFiltros(req: Request): CarteiraFinanceiraFiltros {
   const q = req.query;
   const statusRaw = String(q.statusPedido ?? '').trim();
   return {
     dataInicio: String(q.dataInicio ?? '').trim() || undefined,
     dataFim: String(q.dataFim ?? '').trim() || undefined,
+    dataPrevisaoIni: String(q.dataPrevisaoIni ?? '').trim() || undefined,
+    dataPrevisaoFim: String(q.dataPrevisaoFim ?? '').trim() || undefined,
     uf: parseListParam(q.uf),
     cliente: parseListParam(q.cliente),
     empresa: parseListParam(q.empresa),
@@ -32,23 +36,43 @@ function parseFiltros(req: Request): CarteiraFinanceiraFiltros {
   };
 }
 
+function validarParDatas(
+  ini: string | undefined,
+  fim: string | undefined,
+  labelIni: string,
+  labelFim: string
+): string | null {
+  if (ini && !YMD.test(ini)) return `${labelIni} inválida (use YYYY-MM-DD).`;
+  if (fim && !YMD.test(fim)) return `${labelFim} inválida (use YYYY-MM-DD).`;
+  if (ini && fim && fim < ini) {
+    return `Período inválido: ${labelFim} deve ser >= ${labelIni}.`;
+  }
+  return null;
+}
+
 /** GET /api/financeiro/carteira-financeira */
 export async function getCarteiraFinanceira(req: Request, res: Response): Promise<void> {
   const filtros = parseFiltros(req);
-  if (filtros.dataInicio && !/^\d{4}-\d{2}-\d{2}$/.test(filtros.dataInicio)) {
-    res.status(400).json({ error: 'dataInicio inválida (use YYYY-MM-DD).' });
+
+  const erroEmissao = validarParDatas(
+    filtros.dataInicio,
+    filtros.dataFim,
+    'dataInicio',
+    'dataFim'
+  );
+  if (erroEmissao) {
+    res.status(400).json({ error: erroEmissao });
     return;
   }
-  if (filtros.dataFim && !/^\d{4}-\d{2}-\d{2}$/.test(filtros.dataFim)) {
-    res.status(400).json({ error: 'dataFim inválida (use YYYY-MM-DD).' });
-    return;
-  }
-  if (
-    filtros.dataInicio &&
-    filtros.dataFim &&
-    filtros.dataFim < filtros.dataInicio
-  ) {
-    res.status(400).json({ error: 'Período inválido: dataFim deve ser >= dataInicio.' });
+
+  const erroPrevisao = validarParDatas(
+    filtros.dataPrevisaoIni,
+    filtros.dataPrevisaoFim,
+    'dataPrevisaoIni',
+    'dataPrevisaoFim'
+  );
+  if (erroPrevisao) {
+    res.status(400).json({ error: erroPrevisao });
     return;
   }
 

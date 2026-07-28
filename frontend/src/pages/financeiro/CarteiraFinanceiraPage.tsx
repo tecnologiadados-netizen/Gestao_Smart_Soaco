@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import MultiSelectWithSearch from '../../components/MultiSelectWithSearch';
+import FiltroDatasPopover from '../../components/FiltroDatasPopover';
 import {
   fetchCarteiraFinanceira,
   type CarteiraFinanceiraLinha,
@@ -77,9 +78,32 @@ const VAZIO: CarteiraFinanceiraPayload = {
   },
 };
 
+type DatasCarteira = {
+  data_emissao_ini: string;
+  data_emissao_fim: string;
+  data_entrega_ini: string;
+  data_entrega_fim: string;
+  data_previsao_anterior_ini: string;
+  data_previsao_anterior_fim: string;
+  data_previsao_ini: string;
+  data_previsao_fim: string;
+};
+
+function datasCarteiraIniciais(): DatasCarteira {
+  return {
+    data_emissao_ini: defaultDataInicio(),
+    data_emissao_fim: defaultDataFim(),
+    data_entrega_ini: '',
+    data_entrega_fim: '',
+    data_previsao_anterior_ini: '',
+    data_previsao_anterior_fim: '',
+    data_previsao_ini: '',
+    data_previsao_fim: '',
+  };
+}
+
 export default function CarteiraFinanceiraPage() {
-  const [dataInicio, setDataInicio] = useState(defaultDataInicio);
-  const [dataFim, setDataFim] = useState(defaultDataFim);
+  const [datas, setDatas] = useState<DatasCarteira>(datasCarteiraIniciais);
   const [empresaCsv, setEmpresaCsv] = useState('');
   const [ufCsv, setUfCsv] = useState('');
   const [clienteCsv, setClienteCsv] = useState('');
@@ -99,8 +123,10 @@ export default function CarteiraFinanceiraPage() {
     setErro(null);
     try {
       const data = await fetchCarteiraFinanceira({
-        dataInicio,
-        dataFim,
+        dataInicio: datas.data_emissao_ini || undefined,
+        dataFim: datas.data_emissao_fim || undefined,
+        dataPrevisaoIni: datas.data_previsao_ini || undefined,
+        dataPrevisaoFim: datas.data_previsao_fim || undefined,
         empresa: csvToList(empresaCsv),
         uf: csvToList(ufCsv),
         cliente: csvToList(clienteCsv),
@@ -128,7 +154,7 @@ export default function CarteiraFinanceiraPage() {
     } finally {
       setLoading(false);
     }
-  }, [dataInicio, dataFim, empresaCsv, ufCsv, clienteCsv, condicaoCsv, carradaCsv, statusPedido]);
+  }, [datas, empresaCsv, ufCsv, clienteCsv, condicaoCsv, carradaCsv, statusPedido]);
 
   useEffect(() => {
     void carregar();
@@ -137,8 +163,7 @@ export default function CarteiraFinanceiraPage() {
   }, []);
 
   const limparFiltros = () => {
-    setDataInicio(defaultDataInicio());
-    setDataFim(defaultDataFim());
+    setDatas(datasCarteiraIniciais());
     setEmpresaCsv('');
     setUfCsv('');
     setClienteCsv('');
@@ -214,25 +239,7 @@ export default function CarteiraFinanceiraPage() {
         </div>
 
         <div className="px-4 pb-4 space-y-3 border-t border-slate-200 dark:border-slate-700">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 pt-3">
-            <div>
-              <label className={FILTRO_LABEL_CLASS}>Data início</label>
-              <input
-                type="date"
-                value={dataInicio}
-                onChange={(e) => setDataInicio(e.target.value)}
-                className={FILTRO_INPUT_CLASS}
-              />
-            </div>
-            <div>
-              <label className={FILTRO_LABEL_CLASS}>Data fim</label>
-              <input
-                type="date"
-                value={dataFim}
-                onChange={(e) => setDataFim(e.target.value)}
-                className={FILTRO_INPUT_CLASS}
-              />
-            </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 pt-3">
             <MultiSelectWithSearch
               label="Empresa"
               placeholder="Todas"
@@ -304,6 +311,11 @@ export default function CarteiraFinanceiraPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200 dark:border-slate-700">
+            <FiltroDatasPopover
+              filtros={datas}
+              onChange={(updates) => setDatas((prev) => ({ ...prev, ...updates }))}
+              blocos={['emissao', 'previsao_atual']}
+            />
             <button
               type="button"
               className="btn-primary text-sm"
