@@ -16,6 +16,8 @@ function loadSql(): string {
 export type CarteiraFinanceiraFiltros = {
   dataInicio?: string;
   dataFim?: string;
+  dataPrevisaoIni?: string;
+  dataPrevisaoFim?: string;
   uf?: string[];
   cliente?: string[];
   empresa?: string[];
@@ -313,10 +315,20 @@ ${where}
     const linhasBase = rawList.map(mapRow);
     const ids = [...new Set(linhasBase.map((l) => l.id).filter((id) => id > 0))];
     const previsaoMap = await obterPrevisaoAtualizadaPorIdsPedido(ids);
-    const linhas = linhasBase.map((l) => ({
+    let linhas = linhasBase.map((l) => ({
       ...l,
       previsaoAtual: previsaoMap.get(l.id) ?? l.dataParametro ?? null,
     }));
+
+    const prevIni = filtros.dataPrevisaoIni;
+    const prevFim = filtros.dataPrevisaoFim;
+    if (prevIni && /^\d{4}-\d{2}-\d{2}$/.test(prevIni)) {
+      linhas = linhas.filter((l) => l.previsaoAtual != null && l.previsaoAtual >= prevIni);
+    }
+    if (prevFim && /^\d{4}-\d{2}-\d{2}$/.test(prevFim)) {
+      linhas = linhas.filter((l) => l.previsaoAtual != null && l.previsaoAtual <= prevFim);
+    }
+
     const resumo = calcResumo(linhas);
 
     return {

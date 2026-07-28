@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Fragment } from 'react';
 import type { FiltrosPedidosState } from './FiltroPedidos';
 
 function CalendarIcon() {
@@ -9,19 +9,32 @@ function CalendarIcon() {
   );
 }
 
+export type FiltroDatasBloco = 'emissao' | 'entrega' | 'previsao_anterior' | 'previsao_atual';
+
+const BLOCOS_PADRAO: FiltroDatasBloco[] = [
+  'emissao',
+  'entrega',
+  'previsao_anterior',
+  'previsao_atual',
+];
+
+type DatasFiltroKeys = Pick<
+  FiltrosPedidosState,
+  | 'data_emissao_ini'
+  | 'data_emissao_fim'
+  | 'data_entrega_ini'
+  | 'data_entrega_fim'
+  | 'data_previsao_anterior_ini'
+  | 'data_previsao_anterior_fim'
+  | 'data_previsao_ini'
+  | 'data_previsao_fim'
+>;
+
 interface FiltroDatasPopoverProps {
-  filtros: Pick<
-    FiltrosPedidosState,
-    | 'data_emissao_ini'
-    | 'data_emissao_fim'
-    | 'data_entrega_ini'
-    | 'data_entrega_fim'
-    | 'data_previsao_anterior_ini'
-    | 'data_previsao_anterior_fim'
-    | 'data_previsao_ini'
-    | 'data_previsao_fim'
-  >;
-  onChange: (updates: Partial<FiltrosPedidosState>) => void;
+  filtros: DatasFiltroKeys;
+  onChange: (updates: Partial<DatasFiltroKeys>) => void;
+  /** Quais blocos exibir. Padrão: todos (Gestão de Pedidos). */
+  blocos?: FiltroDatasBloco[];
 }
 
 const inputClass =
@@ -74,7 +87,24 @@ function BlocoDatas({
   );
 }
 
-export default function FiltroDatasPopover({ filtros, onChange }: FiltroDatasPopoverProps) {
+function temDataNoBloco(bloco: FiltroDatasBloco, f: DatasFiltroKeys): boolean {
+  switch (bloco) {
+    case 'emissao':
+      return Boolean(f.data_emissao_ini || f.data_emissao_fim);
+    case 'entrega':
+      return Boolean(f.data_entrega_ini || f.data_entrega_fim);
+    case 'previsao_anterior':
+      return Boolean(f.data_previsao_anterior_ini || f.data_previsao_anterior_fim);
+    case 'previsao_atual':
+      return Boolean(f.data_previsao_ini || f.data_previsao_fim);
+  }
+}
+
+export default function FiltroDatasPopover({
+  filtros,
+  onChange,
+  blocos = BLOCOS_PADRAO,
+}: FiltroDatasPopoverProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -88,15 +118,47 @@ export default function FiltroDatasPopover({ filtros, onChange }: FiltroDatasPop
   }, [open]);
 
   const f = filtros;
-  const temAlgumaData =
-    f.data_emissao_ini ||
-    f.data_emissao_fim ||
-    f.data_entrega_ini ||
-    f.data_entrega_fim ||
-    f.data_previsao_anterior_ini ||
-    f.data_previsao_anterior_fim ||
-    f.data_previsao_ini ||
-    f.data_previsao_fim;
+  const temAlgumaData = blocos.some((b) => temDataNoBloco(b, f));
+
+  const definicoes: Record<
+    FiltroDatasBloco,
+    {
+      titulo: string;
+      dataIni: string;
+      dataFim: string;
+      onDataIniChange: (v: string) => void;
+      onDataFimChange: (v: string) => void;
+    }
+  > = {
+    emissao: {
+      titulo: 'Emissão',
+      dataIni: f.data_emissao_ini,
+      dataFim: f.data_emissao_fim,
+      onDataIniChange: (v) => onChange({ data_emissao_ini: v }),
+      onDataFimChange: (v) => onChange({ data_emissao_fim: v }),
+    },
+    entrega: {
+      titulo: 'Data original',
+      dataIni: f.data_entrega_ini,
+      dataFim: f.data_entrega_fim,
+      onDataIniChange: (v) => onChange({ data_entrega_ini: v }),
+      onDataFimChange: (v) => onChange({ data_entrega_fim: v }),
+    },
+    previsao_anterior: {
+      titulo: 'Previsão anterior',
+      dataIni: f.data_previsao_anterior_ini,
+      dataFim: f.data_previsao_anterior_fim,
+      onDataIniChange: (v) => onChange({ data_previsao_anterior_ini: v }),
+      onDataFimChange: (v) => onChange({ data_previsao_anterior_fim: v }),
+    },
+    previsao_atual: {
+      titulo: 'Previsão atual',
+      dataIni: f.data_previsao_ini,
+      dataFim: f.data_previsao_fim,
+      onDataIniChange: (v) => onChange({ data_previsao_ini: v }),
+      onDataFimChange: (v) => onChange({ data_previsao_fim: v }),
+    },
+  };
 
   return (
     <div className="relative shrink-0" ref={ref}>
@@ -124,37 +186,21 @@ export default function FiltroDatasPopover({ filtros, onChange }: FiltroDatasPop
           aria-label="Filtros de data"
         >
           <div className="space-y-5">
-            <BlocoDatas
-              titulo="Emissão"
-              dataIni={f.data_emissao_ini}
-              dataFim={f.data_emissao_fim}
-              onDataIniChange={(v) => onChange({ data_emissao_ini: v })}
-              onDataFimChange={(v) => onChange({ data_emissao_fim: v })}
-            />
-            <hr className="border-slate-200 dark:border-slate-600" />
-            <BlocoDatas
-              titulo="Data original"
-              dataIni={f.data_entrega_ini}
-              dataFim={f.data_entrega_fim}
-              onDataIniChange={(v) => onChange({ data_entrega_ini: v })}
-              onDataFimChange={(v) => onChange({ data_entrega_fim: v })}
-            />
-            <hr className="border-slate-200 dark:border-slate-600" />
-            <BlocoDatas
-              titulo="Previsão anterior"
-              dataIni={f.data_previsao_anterior_ini}
-              dataFim={f.data_previsao_anterior_fim}
-              onDataIniChange={(v) => onChange({ data_previsao_anterior_ini: v })}
-              onDataFimChange={(v) => onChange({ data_previsao_anterior_fim: v })}
-            />
-            <hr className="border-slate-200 dark:border-slate-600" />
-            <BlocoDatas
-              titulo="Previsão atual"
-              dataIni={f.data_previsao_ini}
-              dataFim={f.data_previsao_fim}
-              onDataIniChange={(v) => onChange({ data_previsao_ini: v })}
-              onDataFimChange={(v) => onChange({ data_previsao_fim: v })}
-            />
+            {blocos.map((bloco, i) => {
+              const def = definicoes[bloco];
+              return (
+                <Fragment key={bloco}>
+                  {i > 0 && <hr className="border-slate-200 dark:border-slate-600" />}
+                  <BlocoDatas
+                    titulo={def.titulo}
+                    dataIni={def.dataIni}
+                    dataFim={def.dataFim}
+                    onDataIniChange={def.onDataIniChange}
+                    onDataFimChange={def.onDataFimChange}
+                  />
+                </Fragment>
+              );
+            })}
           </div>
         </div>
       )}

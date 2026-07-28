@@ -144,6 +144,27 @@ export function CarteiraBarrasAgrupadas({
   );
 }
 
+/** Fatias abaixo disso não ganham rótulo externo (evita sobreposição). */
+const PIE_LABEL_MIN_PCT = 0.08;
+
+type PieLabelLineProps = {
+  percent?: number;
+  points?: { x: number; y: number }[];
+  stroke?: string;
+};
+
+function CondicaoLabelLine({ percent = 0, points, stroke }: PieLabelLineProps) {
+  if (percent < PIE_LABEL_MIN_PCT || !points || points.length < 2) return null;
+  return (
+    <polyline
+      points={points.map((p) => `${p.x},${p.y}`).join(' ')}
+      stroke={stroke}
+      fill="none"
+      strokeWidth={1}
+    />
+  );
+}
+
 export function CarteiraPizzaCondicao({
   data,
   onSliceClick,
@@ -152,7 +173,7 @@ export function CarteiraPizzaCondicao({
   onSliceClick?: (chave: string) => void;
 }) {
   const pieData = data.map((d) => ({
-    name: d.chave.length > 28 ? `${d.chave.slice(0, 26)}…` : d.chave,
+    name: d.chave.length > 22 ? `${d.chave.slice(0, 20)}…` : d.chave,
     fullName: d.chave,
     value: d.saldoAReceber,
     qtd: d.qtdPedidos,
@@ -166,21 +187,20 @@ export function CarteiraPizzaCondicao({
       {pieData.length === 0 ? (
         <p className="text-sm text-slate-500 py-8 text-center">Sem dados para o filtro.</p>
       ) : (
-        <ResponsiveContainer width="100%" height={360}>
+        <ResponsiveContainer width="100%" height={400}>
           <PieChart margin={{ top: 8, right: 12, bottom: 8, left: 12 }}>
             <Pie
               data={pieData}
               dataKey="value"
               nameKey="name"
               cx="50%"
-              cy="50%"
-              outerRadius={105}
+              cy="42%"
+              outerRadius={92}
               paddingAngle={1}
-              labelLine={{ strokeWidth: 1 }}
+              labelLine={(props) => <CondicaoLabelLine {...(props as PieLabelLineProps)} />}
               label={({ name, percent }) => {
-                const pct = (percent ?? 0) * 100;
-                if (pct < 2.5) return '';
-                return `${name} (${pct.toFixed(0)}%)`;
+                if ((percent ?? 0) < PIE_LABEL_MIN_PCT) return null;
+                return `${name} (${((percent ?? 0) * 100).toFixed(0)}%)`;
               }}
               cursor={onSliceClick ? 'pointer' : undefined}
               onClick={(entry) => {
@@ -200,6 +220,15 @@ export function CarteiraPizzaCondicao({
                 const qtd = payload?.qtd ?? 0;
                 const label = payload?.fullName ?? String(_name);
                 return [`${formatarReais(Number(value))} · ${qtd} pedidos`, label];
+              }}
+            />
+            <Legend
+              verticalAlign="bottom"
+              align="center"
+              wrapperStyle={{ fontSize: 11, paddingTop: 8, maxHeight: 96, overflowY: 'auto' }}
+              formatter={(value) => {
+                const item = pieData.find((d) => d.name === value);
+                return item?.fullName ?? value;
               }}
             />
           </PieChart>
