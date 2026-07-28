@@ -11,10 +11,10 @@ import {
   TableRow,
 } from "@qualidade/components/ui/table";
 import {
-  downloadDocumentFile,
+  downloadQualidadeArquivo,
   isImageFile,
   isPdfFile,
-  openDocumentFileViewer,
+  openQualidadeArquivo,
 } from "@qualidade/lib/documents/file-actions";
 import {
   criarAnexoVazio,
@@ -81,7 +81,7 @@ export function SgqAnexosTable({
 
   function podeVisualizar(anexo: SgqAnexo) {
     return (
-      Boolean(anexo.dataUrl?.trim()) &&
+      Boolean(anexo.dataUrl?.trim() || anexo.storagePath?.trim()) &&
       (isPdfFile(anexo.nome) || isImageFile(anexo.nome))
     );
   }
@@ -153,33 +153,45 @@ export function SgqAnexosTable({
                         size="icon-sm"
                         title="Visualizar"
                         onClick={() => {
-                          try {
-                            openDocumentFileViewer(
-                              anexo.dataUrl,
-                              anexo.nome,
-                              "view"
-                            );
-                          } catch (err) {
+                          void openQualidadeArquivo(
+                            {
+                              nome: anexo.nome,
+                              dataUrl: anexo.dataUrl,
+                              storagePath: anexo.storagePath,
+                            },
+                            "view"
+                          ).catch((err) => {
                             setErro(
                               err instanceof Error
                                 ? err.message
                                 : "Não foi possível visualizar o arquivo."
                             );
-                          }
+                          });
                         }}
                       >
                         <Eye className="size-4" />
                       </Button>
                     ) : null}
-                    {temArquivo && anexo.dataUrl.trim() ? (
+                    {temArquivo &&
+                    (anexo.dataUrl.trim() || Boolean(anexo.storagePath?.trim())) ? (
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon-sm"
                         title="Baixar"
-                        onClick={() =>
-                          downloadDocumentFile(anexo.dataUrl, anexo.nome)
-                        }
+                        onClick={() => {
+                          void downloadQualidadeArquivo({
+                            nome: anexo.nome,
+                            dataUrl: anexo.dataUrl,
+                            storagePath: anexo.storagePath,
+                          }).catch((err) => {
+                            setErro(
+                              err instanceof Error
+                                ? err.message
+                                : "Não foi possível baixar o arquivo."
+                            );
+                          });
+                        }}
                       >
                         <Download className="size-4" />
                       </Button>

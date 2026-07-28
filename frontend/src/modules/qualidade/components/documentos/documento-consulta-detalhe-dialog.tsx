@@ -34,8 +34,8 @@ import {
   severidadeAlertaValidade,
 } from "@qualidade/lib/documents/validity";
 import {
-  downloadDocumentFile,
-  openDocumentFileViewer,
+  downloadQualidadeArquivo,
+  openQualidadeArquivo,
 } from "@qualidade/lib/documents/file-actions";
 import { buildLocalizacaoOpcoes } from "@qualidade/lib/enderecamentos-sync";
 import { cn } from "@qualidade/lib/utils";
@@ -56,27 +56,54 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
+type ArquivoVersao = {
+  nome: string;
+  dataUrl: string;
+  storagePath?: string;
+};
+
+function arquivoTemConteudo(arquivo: {
+  dataUrl?: string;
+  storagePath?: string;
+}) {
+  return Boolean(arquivo.dataUrl?.trim() || arquivo.storagePath?.trim());
+}
+
 function arquivosDaVersao(
   ver: DocumentVersion | undefined,
   doc?: Document
-): Array<{ nome: string; dataUrl: string }> {
+): ArquivoVersao[] {
   if (!ver) return [];
   if (ver.anexos?.length) {
     return ver.anexos
-      .filter((a) => a.nome?.trim())
-      .map((a) => ({ nome: a.nome, dataUrl: a.dataUrl ?? "" }));
+      .filter((a) => a.nome?.trim() && arquivoTemConteudo(a))
+      .map((a) => ({
+        nome: a.nome,
+        dataUrl: a.dataUrl ?? "",
+        ...(a.storagePath?.trim() ? { storagePath: a.storagePath } : {}),
+      }));
   }
-  const list: Array<{ nome: string; dataUrl: string }> = [];
-  if (ver.arquivoNome) {
+  const list: ArquivoVersao[] = [];
+  if (ver.arquivoNome && arquivoTemConteudo({
+    dataUrl: ver.arquivoDataUrl,
+    storagePath: ver.arquivoStoragePath,
+  })) {
     list.push({
       nome: ver.arquivoNome,
       dataUrl: ver.arquivoDataUrl ?? "",
+      ...(ver.arquivoStoragePath?.trim()
+        ? { storagePath: ver.arquivoStoragePath }
+        : {}),
     });
   }
   for (const a of doc?.externoRegistro?.anexos ?? []) {
-    if (!a.nome?.trim()) continue;
+    if (!a.nome?.trim() || !arquivoTemConteudo(a)) continue;
     if (list.some((x) => x.nome === a.nome)) continue;
-    list.push({ nome: a.nome, dataUrl: a.dataUrl ?? "" });
+    list.push({
+      nome: a.nome,
+      dataUrl: a.dataUrl ?? "",
+      ...(a.storagePath?.trim() ? { storagePath: a.storagePath } : {}),
+    });
   }
   return list;
 }
@@ -200,7 +227,7 @@ export function DocumentoConsultaDetalheDialog({
     () => arquivosDaVersao(versaoAtual, doc),
     [versaoAtual, doc]
   );
-  const temArquivo = arquivosVigentes.some((a) => a.dataUrl?.trim());
+  const temArquivo = arquivosVigentes.some((a) => arquivoTemConteudo(a));
   const revalidacoes = documentId
     ? getRevalidacoesByDocumentId(documentId)
     : [];
@@ -215,14 +242,14 @@ export function DocumentoConsultaDetalheDialog({
     onOpenChange(false);
   }
 
-  function abrirArquivo(
-    arquivo: { nome: string; dataUrl: string },
+  async function abrirArquivo(
+    arquivo: ArquivoVersao,
     mode: "view" | "print"
   ) {
-    if (!arquivo.dataUrl?.trim() || !arquivo.nome?.trim()) return;
+    if (!arquivo.nome?.trim() || !arquivoTemConteudo(arquivo)) return;
     setErroArquivo("");
     try {
-      openDocumentFileViewer(arquivo.dataUrl, arquivo.nome, mode);
+      await openQualidadeArquivo(arquivo, mode);
     } catch (error) {
       setErroArquivo(
         error instanceof Error
@@ -232,11 +259,11 @@ export function DocumentoConsultaDetalheDialog({
     }
   }
 
-  function handleBaixarArquivo(arquivo: { nome: string; dataUrl: string }) {
-    if (!arquivo.dataUrl?.trim() || !arquivo.nome?.trim()) return;
+  async function handleBaixarArquivo(arquivo: ArquivoVersao) {
+    if (!arquivo.nome?.trim() || !arquivoTemConteudo(arquivo)) return;
     setErroArquivo("");
     try {
-      downloadDocumentFile(arquivo.dataUrl, arquivo.nome);
+      await downloadQualidadeArquivo(arquivo);
     } catch {
       setErroArquivo("Não foi possível baixar o arquivo.");
     }
@@ -358,7 +385,7 @@ export function DocumentoConsultaDetalheDialog({
                 ) : (
                   <ul className="space-y-4">
                     {arquivosVigentes.map((arquivo, idx) => {
-                      const disponivel = Boolean(arquivo.dataUrl?.trim());
+                      const disponivel = arquivoTemConteudo(arquivo);
                       return (
                         <li
                           key={`${arquivo.nome}-${idx}`}
@@ -378,7 +405,7 @@ export function DocumentoConsultaDetalheDialog({
                                   size="sm"
                                   className="gap-1.5"
                                   disabled={!disponivel}
-                                  onClick={() => abrirArquivo(arquivo, "view")}
+                                  onClick={() => void abrirArquivo(arquivo, "view")}
                                 >
                                   <ExternalLink className="size-3.5" />
                                   Visualizar
@@ -389,7 +416,7 @@ export function DocumentoConsultaDetalheDialog({
                                   variant="outline"
                                   className="gap-1.5"
                                   disabled={!disponivel}
-                                  onClick={() => abrirArquivo(arquivo, "print")}
+                                  onClick={() => void abrirArquivo(arquivo, "print")}
                                 >
                                   <Printer className="size-3.5" />
                                   Imprimir
@@ -400,7 +427,7 @@ export function DocumentoConsultaDetalheDialog({
                                   variant="outline"
                                   className="gap-1.5"
                                   disabled={!disponivel}
-                                  onClick={() => handleBaixarArquivo(arquivo)}
+                                  onClick={() => void handleBaixarArquivo(arquivo)}
                                 >
                                   <Download className="size-3.5" />
                                   Baixar
@@ -655,16 +682,21 @@ export function DocumentoConsultaDetalheDialog({
                             return (
                               <div className="mt-2 space-y-1.5">
                                 {arquivosRev.map((arquivo, idx) =>
-                                  arquivo.dataUrl ? (
+                                  arquivoTemConteudo(arquivo) ? (
                                     <button
                                       key={`${ver.id}-${arquivo.nome}-${idx}`}
                                       type="button"
-                                      onClick={() =>
-                                        downloadDocumentFile(
-                                          arquivo.dataUrl,
-                                          arquivo.nome
-                                        )
-                                      }
+                                      onClick={() => {
+                                        void downloadQualidadeArquivo(arquivo).catch(
+                                          (error) => {
+                                            setErroArquivo(
+                                              error instanceof Error
+                                                ? error.message
+                                                : "Não foi possível baixar o arquivo."
+                                            );
+                                          }
+                                        );
+                                      }}
                                       className="inline-flex items-center gap-1 text-xs font-medium text-brand-blue hover:underline"
                                     >
                                       <Download className="size-3.5" />

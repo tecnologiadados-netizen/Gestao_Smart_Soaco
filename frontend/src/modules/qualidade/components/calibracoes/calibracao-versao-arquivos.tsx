@@ -2,12 +2,20 @@ import { Download, ExternalLink } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { SgqAnexosTable } from "@qualidade/components/ui/sgq-anexos-table";
 import {
-  downloadDocumentFile,
-  openDocumentFileViewer,
+  downloadQualidadeArquivo,
+  openQualidadeArquivo,
 } from "@qualidade/lib/documents/file-actions";
 import type { EquipmentAnexo } from "@qualidade/types/calibration";
 
-function ArquivoActions({ dataUrl, nome }: { dataUrl: string; nome: string }) {
+function ArquivoActions({
+  dataUrl,
+  storagePath,
+  nome,
+}: {
+  dataUrl?: string;
+  storagePath?: string;
+  nome: string;
+}) {
   return (
     <div className="flex gap-1">
       <Button
@@ -15,7 +23,9 @@ function ArquivoActions({ dataUrl, nome }: { dataUrl: string; nome: string }) {
         variant="ghost"
         size="sm"
         className="h-8 gap-1.5 text-xs text-brand-blue"
-        onClick={() => openDocumentFileViewer(dataUrl, nome, "view")}
+        onClick={() => {
+          void openQualidadeArquivo({ nome, dataUrl, storagePath }, "view");
+        }}
       >
         <ExternalLink className="size-3.5" />
         Visualizar
@@ -25,7 +35,9 @@ function ArquivoActions({ dataUrl, nome }: { dataUrl: string; nome: string }) {
         variant="ghost"
         size="sm"
         className="h-8 gap-1.5 text-xs"
-        onClick={() => downloadDocumentFile(dataUrl, nome)}
+        onClick={() => {
+          void downloadQualidadeArquivo({ nome, dataUrl, storagePath });
+        }}
       >
         <Download className="size-3.5" />
         Baixar
@@ -45,6 +57,7 @@ export function CalibracaoVersaoAnexosList({
     id: `anexo-${index}-${anexo.nome}`,
     nome: anexo.nome,
     dataUrl: anexo.dataUrl,
+    ...(anexo.storagePath ? { storagePath: anexo.storagePath } : {}),
   }));
 
   return (

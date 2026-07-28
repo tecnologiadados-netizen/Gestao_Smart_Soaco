@@ -66,9 +66,10 @@ export function CalibracaoHistoricoSection({
                 {dueStatusLabels[statusCalibracao]}
               </Badge>
             </div>
-            {equipment.laudoDataUrl ? (
+            {equipment.laudoDataUrl || equipment.laudoStoragePath ? (
               <CalibracaoArquivoActions
                 dataUrl={equipment.laudoDataUrl}
+                storagePath={equipment.laudoStoragePath}
                 nome={equipment.laudoNome}
               />
             ) : null}
@@ -106,9 +107,10 @@ export function CalibracaoHistoricoSection({
                   <span className="font-semibold text-brand-navy">
                     Versão {reg.versao}
                   </span>
-                  {reg.laudoDataUrl && reg.laudoNome ? (
+                  {(reg.laudoDataUrl || reg.laudoStoragePath) && reg.laudoNome ? (
                     <CalibracaoArquivoActions
                       dataUrl={reg.laudoDataUrl}
+                      storagePath={reg.laudoStoragePath}
                       nome={reg.laudoNome}
                     />
                   ) : null}

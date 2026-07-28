@@ -166,6 +166,96 @@ export function openDocumentFileViewer(
   }
 }
 
+/** Abre arquivo do SGQ com dataUrl embutido ou storagePath no servidor (/uploads/...). */
+export async function openQualidadeArquivo(
+  arquivo: { nome?: string; dataUrl?: string; storagePath?: string },
+  mode: DocumentFileViewMode = "view"
+): Promise<void> {
+  const nome = arquivo.nome?.trim();
+  if (!nome) throw new Error("Arquivo sem nome.");
+
+  const dataUrl = arquivo.dataUrl?.trim();
+  if (dataUrl?.startsWith("data:")) {
+    openDocumentFileViewer(dataUrl, nome, mode);
+    return;
+  }
+
+  const storagePath = arquivo.storagePath?.trim();
+  if (storagePath?.startsWith("/uploads/")) {
+    if (isPdfFile(nome) || isImageFile(nome)) {
+      const popup = window.open(storagePath, "_blank", "noopener,noreferrer");
+      if (!popup) {
+        throw new Error(
+          "Não foi possível abrir a visualização. Verifique se o navegador bloqueou pop-ups."
+        );
+      }
+      if (mode === "print") {
+        window.setTimeout(() => {
+          try {
+            popup.focus();
+            popup.print();
+          } catch {
+            /* ignore */
+          }
+        }, 700);
+      }
+      return;
+    }
+
+    const res = await fetch(storagePath);
+    if (!res.ok) throw new Error("Não foi possível carregar o arquivo no servidor.");
+    const blob = await res.blob();
+    const reader = new FileReader();
+    const asDataUrl = await new Promise<string>((resolve, reject) => {
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(new Error("Falha ao ler o arquivo."));
+      reader.readAsDataURL(blob);
+    });
+    if (!asDataUrl.startsWith("data:")) {
+      throw new Error("Arquivo inválido no servidor.");
+    }
+    openDocumentFileViewer(asDataUrl, nome, mode);
+    return;
+  }
+
+  throw new Error("Arquivo indisponível para visualização.");
+}
+
+export async function downloadQualidadeArquivo(arquivo: {
+  nome?: string;
+  dataUrl?: string;
+  storagePath?: string;
+}): Promise<void> {
+  const nome = arquivo.nome?.trim();
+  if (!nome) throw new Error("Arquivo sem nome.");
+
+  const dataUrl = arquivo.dataUrl?.trim();
+  if (dataUrl?.startsWith("data:")) {
+    downloadDocumentFile(dataUrl, nome);
+    return;
+  }
+
+  const storagePath = arquivo.storagePath?.trim();
+  if (storagePath?.startsWith("/uploads/")) {
+    const res = await fetch(storagePath);
+    if (!res.ok) throw new Error("Não foi possível baixar o arquivo.");
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = nome;
+    link.rel = "noopener";
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    return;
+  }
+
+  throw new Error("Arquivo indisponível para download.");
+}
+
 export function readViewerPayload(key: string | null) {
   if (!key?.startsWith(VIEWER_STORAGE_PREFIX)) return null;
 

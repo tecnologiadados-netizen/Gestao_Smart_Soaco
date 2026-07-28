@@ -567,7 +567,10 @@ export function EquipamentoEdicaoDialog({
               ) : (
                 <fieldset className="brand-fieldset space-y-3">
                   <legend>Documentação</legend>
-                  {equipment.laudoNome && equipment.laudoDataUrl ? (
+                  {equipment.laudoNome &&
+                  (equipment.laudoDataUrl ||
+                    equipment.laudoStoragePath ||
+                    (equipment.laudoAnexos?.length ?? 0) > 0) ? (
                     <SgqAnexosTable
                       label="Laudo vigente"
                       anexos={
@@ -575,8 +578,19 @@ export function EquipamentoEdicaoDialog({
                           {
                             id: "laudo-vigente",
                             nome: equipment.laudoNome,
-                            dataUrl: equipment.laudoDataUrl,
+                            dataUrl: equipment.laudoDataUrl ?? "",
+                            ...(equipment.laudoStoragePath
+                              ? { storagePath: equipment.laudoStoragePath }
+                              : {}),
                           },
+                          ...(equipment.laudoAnexos ?? []).map((anexo, index) => ({
+                            id: `laudo-anexo-${index}`,
+                            nome: anexo.nome,
+                            dataUrl: anexo.dataUrl ?? "",
+                            ...(anexo.storagePath
+                              ? { storagePath: anexo.storagePath }
+                              : {}),
+                          })),
                         ] satisfies SgqAnexo[]
                       }
                       onChange={() => {}}

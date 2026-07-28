@@ -18,6 +18,8 @@ export interface Equipment {
   proximaCalibracao?: string;
   laudoNome?: string;
   laudoDataUrl?: string;
+  /** Path no servidor quando o bootstrap não embute o binário. */
+  laudoStoragePath?: string;
   laudoAnexos?: EquipmentAnexo[];
   anexos?: EquipmentAnexo[];
   versaoLaudoAtual?: string;
@@ -42,6 +44,7 @@ export interface CalibrationRecord {
   laboratorio?: string;
   laudoNome?: string;
   laudoDataUrl?: string;
+  laudoStoragePath?: string;
   anexos?: EquipmentAnexo[];
   observacoes?: string;
 }

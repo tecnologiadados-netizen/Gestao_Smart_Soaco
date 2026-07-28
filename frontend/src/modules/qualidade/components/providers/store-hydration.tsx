@@ -5,6 +5,8 @@ import {
   startQualidadeAutoSync,
 } from '@qualidade/lib/qualidadePersistence';
 
+const HYDRATE_TIMEOUT_MS = 45_000;
+
 export function StoreHydration({ children }: { children: React.ReactNode }) {
   const { login, profileLoaded } = useAuth();
   const [hydrated, setHydrated] = useState(false);
@@ -19,7 +21,17 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
     setHydrated(false);
     setErro(null);
 
-    // Não liberar a UI por timeout: estado incompleto + auto-sync apagava dados no servidor.
+    // Não liberar a UI por timeout com estado incompleto (isso + auto-sync apagava dados).
+    // Em hang real do bootstrap, mostra erro com retry — sem marcar hydrated.
+    const hangTimer = window.setTimeout(() => {
+      if (!cancelled) {
+        setErro(
+          'O carregamento do módulo Qualidade está demorando demais. Verifique a rede e tente novamente.'
+        );
+        setHydrated(false);
+      }
+    }, HYDRATE_TIMEOUT_MS);
+
     void hydrateQualidadeFromServer(login)
       .then(() => {
         if (!cancelled) {
@@ -37,10 +49,14 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
           );
           setHydrated(false);
         }
+      })
+      .finally(() => {
+        window.clearTimeout(hangTimer);
       });
 
     return () => {
       cancelled = true;
+      window.clearTimeout(hangTimer);
     };
   }, [login, profileLoaded]);
 

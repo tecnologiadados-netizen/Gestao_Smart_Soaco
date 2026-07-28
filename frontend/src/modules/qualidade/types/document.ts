@@ -24,6 +24,7 @@ export interface DocumentVersion {
   alteracoesRevisao?: string;
   arquivoNome?: string;
   arquivoDataUrl?: string;
+  arquivoStoragePath?: string;
   /** Todos os arquivos da revisão (principal + complementares). */
   anexos?: DocumentoAnexoArquivo[];
   observacoesElaboracao?: string;
@@ -81,6 +82,7 @@ export interface DocumentRevalidacao {
   observacoes: string;
   evidenciaNome?: string;
   evidenciaDataUrl?: string;
+  evidenciaStoragePath?: string;
   novaDataValidade: string;
   usuarioId: string;
 }

@@ -16,8 +16,8 @@ import {
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
-  downloadDocumentFile,
-  openDocumentFileViewer,
+  downloadQualidadeArquivo,
+  openQualidadeArquivo,
 } from "@qualidade/lib/documents/file-actions";
 import {
   calcularProximaDataValidade,
@@ -28,6 +28,7 @@ import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-
 import { acaoRevalidacaoSelectLabel } from "@qualidade/lib/utils/select-display";
 import { cn } from "@qualidade/lib/utils";
 import { format, parseISO } from "date-fns";
+import type { DocumentVersion } from "@qualidade/types/document";
 
 interface Props {
   documentId: string | null;
@@ -44,6 +45,36 @@ function toDateInputValue(iso: string): string {
 
 function fromDateInputValue(value: string): string {
   return new Date(`${value}T12:00:00`).toISOString();
+}
+
+function resolverArquivoVersao(ver: DocumentVersion | undefined): {
+  nome: string;
+  dataUrl?: string;
+  storagePath?: string;
+} | null {
+  if (!ver) return null;
+
+  if (
+    ver.arquivoNome?.trim() &&
+    (ver.arquivoDataUrl?.trim() || ver.arquivoStoragePath?.trim())
+  ) {
+    return {
+      nome: ver.arquivoNome,
+      dataUrl: ver.arquivoDataUrl,
+      storagePath: ver.arquivoStoragePath,
+    };
+  }
+
+  const anexo = ver.anexos?.find(
+    (a) => a.nome?.trim() && (a.dataUrl?.trim() || a.storagePath?.trim())
+  );
+  if (!anexo) return null;
+
+  return {
+    nome: anexo.nome,
+    dataUrl: anexo.dataUrl,
+    storagePath: anexo.storagePath,
+  };
 }
 
 type AcaoRevalidacao = "prorrogar" | "nova_revisao" | "";
@@ -77,9 +108,11 @@ export function RevalidarDocumentoDialog({
     [documentId, getVersionsByDocumentId, allVersions]
   );
   const versaoAtual = versoes.find((v) => v.versao === doc?.versaoAtual);
-  const temArquivo = Boolean(
-    versaoAtual?.arquivoDataUrl && versaoAtual?.arquivoNome
+  const arquivoVigente = useMemo(
+    () => resolverArquivoVersao(versaoAtual),
+    [versaoAtual]
   );
+  const temArquivo = Boolean(arquivoVigente);
 
   const [observacoes, setObservacoes] = useState("");
   const [novaDataValidade, setNovaDataValidade] = useState("");
@@ -124,22 +157,12 @@ export function RevalidarDocumentoDialog({
     onOpenChange(false);
   }
 
-  function abrirArquivo(mode: "view" | "print") {
-    if (
-      !temArquivo ||
-      !versaoAtual?.arquivoDataUrl ||
-      !versaoAtual.arquivoNome
-    ) {
-      return;
-    }
+  async function abrirArquivo(mode: "view" | "print") {
+    if (!arquivoVigente) return;
 
     setErroArquivo("");
     try {
-      openDocumentFileViewer(
-        versaoAtual.arquivoDataUrl,
-        versaoAtual.arquivoNome,
-        mode
-      );
+      await openQualidadeArquivo(arquivoVigente, mode);
     } catch (err) {
       setErroArquivo(
         err instanceof Error
@@ -149,15 +172,18 @@ export function RevalidarDocumentoDialog({
     }
   }
 
-  function handleBaixar() {
-    if (
-      !temArquivo ||
-      !versaoAtual?.arquivoDataUrl ||
-      !versaoAtual.arquivoNome
-    ) {
-      return;
+  async function handleBaixar() {
+    if (!arquivoVigente) return;
+    setErroArquivo("");
+    try {
+      await downloadQualidadeArquivo(arquivoVigente);
+    } catch (err) {
+      setErroArquivo(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível baixar o arquivo."
+      );
     }
-    downloadDocumentFile(versaoAtual.arquivoDataUrl, versaoAtual.arquivoNome);
   }
 
   function handleDialogOpenChange(aberto: boolean) {
@@ -279,7 +305,7 @@ export function RevalidarDocumentoDialog({
                 <div className="min-w-0 flex-1">
                   {temArquivo ? (
                     <p className="break-all text-sm font-medium text-brand-navy">
-                      {versaoAtual?.arquivoNome}
+                      {arquivoVigente?.nome}
                     </p>
                   ) : (
                     <p className="text-sm text-muted-foreground">
@@ -296,7 +322,7 @@ export function RevalidarDocumentoDialog({
                   type="button"
                   className="gap-2"
                   disabled={!temArquivo}
-                  onClick={() => abrirArquivo("view")}
+                  onClick={() => void abrirArquivo("view")}
                 >
                   <ExternalLink className="size-4" />
                   Visualizar
@@ -306,7 +332,7 @@ export function RevalidarDocumentoDialog({
                   variant="outline"
                   className="gap-2"
                   disabled={!temArquivo}
-                  onClick={() => abrirArquivo("print")}
+                  onClick={() => void abrirArquivo("print")}
                 >
                   <Printer className="size-4" />
                   Imprimir
@@ -316,7 +342,7 @@ export function RevalidarDocumentoDialog({
                   variant="outline"
                   className="gap-2"
                   disabled={!temArquivo}
-                  onClick={handleBaixar}
+                  onClick={() => void handleBaixar()}
                 >
                   <Download className="size-4" />
                   Baixar
@@ -359,29 +385,13 @@ export function RevalidarDocumentoDialog({
                             </Badge>
                           ) : null}
                         </div>
-                        {isAtual &&
-                        ver.arquivoDataUrl &&
-                        ver.arquivoNome ? (
+                        {isAtual && temArquivo ? (
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
                             className="h-8 gap-1.5 text-xs text-brand-blue"
-                            onClick={() => {
-                              try {
-                                openDocumentFileViewer(
-                                  ver.arquivoDataUrl!,
-                                  ver.arquivoNome!,
-                                  "view"
-                                );
-                              } catch (err) {
-                                setErroArquivo(
-                                  err instanceof Error
-                                    ? err.message
-                                    : "Não foi possível abrir o arquivo."
-                                );
-                              }
-                            }}
+                            onClick={() => void abrirArquivo("view")}
                           >
                             <ExternalLink className="size-3.5" />
                             Visualizar

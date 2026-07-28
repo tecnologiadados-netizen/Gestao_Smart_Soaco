@@ -104,7 +104,10 @@ function persistAnexosToDisk(
   return { json: JSON.stringify(result), touched: true };
 }
 
-function mapAnexosFromJson(anexosJson: string | null | undefined): Array<{
+function mapAnexosFromJson(
+  anexosJson: string | null | undefined,
+  includeDataUrl = true
+): Array<{
   nome: string;
   dataUrl: string;
   storagePath?: string;
@@ -117,9 +120,12 @@ function mapAnexosFromJson(anexosJson: string | null | undefined): Array<{
       const storagePath = a.storagePath?.startsWith('/uploads/qualidade/')
         ? a.storagePath
         : undefined;
-      const dataUrl = storagePath
-        ? readQualidadeAnexoAsDataUrl(storagePath) ?? ''
-        : a.dataUrl ?? '';
+      // Bootstrap leve: só metadata + storagePath (uploads ~1GB — embutir base64 trava a UI).
+      const dataUrl = includeDataUrl
+        ? storagePath
+          ? readQualidadeAnexoAsDataUrl(storagePath) ?? ''
+          : a.dataUrl ?? ''
+        : '';
       return {
         nome,
         dataUrl,
@@ -295,34 +301,24 @@ function mapVersao(
     includeDataUrl && row.arquivoStoragePath
       ? readQualidadeAnexoAsDataUrl(row.arquivoStoragePath)
       : undefined;
-  const anexos = includeDataUrl ? mapAnexosFromJson(row.anexosJson) : [];
+  const anexos = mapAnexosFromJson(row.anexosJson, includeDataUrl);
   // Compat: se não há lista, o arquivo principal vira o único item.
   const anexosResolvidos =
     anexos.length > 0
       ? anexos
-      : row.arquivoNome && dataUrl
+      : row.arquivoNome && (dataUrl || row.arquivoStoragePath)
         ? [
             {
               nome: row.arquivoNome,
-              dataUrl,
+              dataUrl: dataUrl ?? '',
               ...(row.arquivoStoragePath
                 ? { storagePath: row.arquivoStoragePath }
                 : {}),
             },
           ]
-        : row.arquivoNome && row.arquivoStoragePath
-          ? [
-              {
-                nome: row.arquivoNome,
-                dataUrl: includeDataUrl
-                  ? readQualidadeAnexoAsDataUrl(row.arquivoStoragePath) ?? ''
-                  : '',
-                storagePath: row.arquivoStoragePath,
-              },
-            ]
-          : row.arquivoNome
-            ? [{ nome: row.arquivoNome, dataUrl: '' }]
-            : [];
+        : row.arquivoNome
+          ? [{ nome: row.arquivoNome, dataUrl: '' }]
+          : [];
   return {
     id: row.uid,
     documentId: row.documento.uid,
@@ -345,6 +341,7 @@ function mapVersao(
     requerSubstituicaoConsenso: row.requerSubstituicaoConsenso,
     arquivoNome: row.arquivoNome ?? undefined,
     arquivoDataUrl: dataUrl ?? undefined,
+    arquivoStoragePath: row.arquivoStoragePath ?? undefined,
     ...(anexosResolvidos.length ? { anexos: anexosResolvidos } : {}),
     arquivoAtualizadoEm: row.arquivoAtualizadoEm ?? undefined,
   };
@@ -377,27 +374,44 @@ function mapRegistro(row: {
   };
 }
 
-function mapEquipamento(row: {
-  uid: string;
-  codigo: string;
-  descricao: string;
-  local: string;
-  setorUid: string;
-  responsavelLogin: string;
-  fornecedor: string | null;
-  tipoCalibracao: string;
-  frequenciaCalibracaoDias: number;
-  frequenciaVerificacaoDias: number;
-  ultimaCalibracao: string | null;
-  ultimaVerificacao: string | null;
-  proximaCalibracao: string | null;
-  laudoNome: string | null;
-  laudoStoragePath: string | null;
-  versaoLaudoAtual: string | null;
-  anexosJson: string | null;
-  ativo: boolean;
-}) {
-  const anexos = mapAnexosFromJson(row.anexosJson);
+function mapEquipamento(
+  row: {
+    uid: string;
+    codigo: string;
+    descricao: string;
+    local: string;
+    setorUid: string;
+    responsavelLogin: string;
+    fornecedor: string | null;
+    tipoCalibracao: string;
+    frequenciaCalibracaoDias: number;
+    frequenciaVerificacaoDias: number;
+    ultimaCalibracao: string | null;
+    ultimaVerificacao: string | null;
+    proximaCalibracao: string | null;
+    laudoNome: string | null;
+    laudoStoragePath: string | null;
+    versaoLaudoAtual: string | null;
+    anexosJson: string | null;
+    ativo: boolean;
+  },
+  includeDataUrl = true
+) {
+  const anexosMapped = mapAnexosFromJson(row.anexosJson, includeDataUrl);
+  const anexos =
+    anexosMapped.length > 0
+      ? anexosMapped
+      : row.laudoNome && row.laudoStoragePath
+        ? [
+            {
+              nome: row.laudoNome,
+              dataUrl: includeDataUrl
+                ? readQualidadeAnexoAsDataUrl(row.laudoStoragePath) ?? ''
+                : '',
+              storagePath: row.laudoStoragePath,
+            },
+          ]
+        : [];
   return {
     id: row.uid,
     codigo: row.codigo,
@@ -413,32 +427,49 @@ function mapEquipamento(row: {
     ultimaVerificacao: row.ultimaVerificacao ?? undefined,
     proximaCalibracao: row.proximaCalibracao ?? undefined,
     laudoNome: row.laudoNome ?? undefined,
-    laudoDataUrl: row.laudoStoragePath
-      ? readQualidadeAnexoAsDataUrl(row.laudoStoragePath) ?? undefined
-      : undefined,
-    ...(anexos.length
-      ? { laudoAnexos: anexos, anexos }
-      : {}),
+    laudoDataUrl:
+      includeDataUrl && row.laudoStoragePath
+        ? readQualidadeAnexoAsDataUrl(row.laudoStoragePath) ?? undefined
+        : undefined,
+    laudoStoragePath: row.laudoStoragePath ?? undefined,
+    ...(anexos.length ? { laudoAnexos: anexos, anexos } : {}),
     versaoLaudoAtual: row.versaoLaudoAtual ?? undefined,
     ativo: row.ativo,
   };
 }
 
-function mapCalibracao(row: {
-  uid: string;
-  equipamento: { uid: string };
-  versao: string;
-  data: string;
-  tipo: string;
-  resultado: string;
-  responsavelLogin: string;
-  laboratorio: string | null;
-  laudoNome: string | null;
-  laudoStoragePath: string | null;
-  anexosJson: string | null;
-  observacoes: string | null;
-}) {
-  const anexos = mapAnexosFromJson(row.anexosJson);
+function mapCalibracao(
+  row: {
+    uid: string;
+    equipamento: { uid: string };
+    versao: string;
+    data: string;
+    tipo: string;
+    resultado: string;
+    responsavelLogin: string;
+    laboratorio: string | null;
+    laudoNome: string | null;
+    laudoStoragePath: string | null;
+    anexosJson: string | null;
+    observacoes: string | null;
+  },
+  includeDataUrl = true
+) {
+  const anexosMapped = mapAnexosFromJson(row.anexosJson, includeDataUrl);
+  const anexos =
+    anexosMapped.length > 0
+      ? anexosMapped
+      : row.laudoNome && row.laudoStoragePath
+        ? [
+            {
+              nome: row.laudoNome,
+              dataUrl: includeDataUrl
+                ? readQualidadeAnexoAsDataUrl(row.laudoStoragePath) ?? ''
+                : '',
+              storagePath: row.laudoStoragePath,
+            },
+          ]
+        : [];
   return {
     id: row.uid,
     equipmentId: row.equipamento.uid,
@@ -449,9 +480,11 @@ function mapCalibracao(row: {
     responsavelId: row.responsavelLogin,
     laboratorio: row.laboratorio ?? undefined,
     laudoNome: row.laudoNome ?? undefined,
-    laudoDataUrl: row.laudoStoragePath
-      ? readQualidadeAnexoAsDataUrl(row.laudoStoragePath) ?? undefined
-      : undefined,
+    laudoDataUrl:
+      includeDataUrl && row.laudoStoragePath
+        ? readQualidadeAnexoAsDataUrl(row.laudoStoragePath) ?? undefined
+        : undefined,
+    laudoStoragePath: row.laudoStoragePath ?? undefined,
     ...(anexos.length ? { anexos } : {}),
     observacoes: row.observacoes ?? undefined,
   };
@@ -590,16 +623,17 @@ export async function getQualidadeBootstrap() {
     departments: setores.map(mapSetor),
     documentTypes: tipos.map(mapTipo),
     documents: documentos.map(mapDocumento),
-    versions: versoes.map((v) => mapVersao(v, true)),
+    // Sem binários: uploads de qualidade passam de 1GB — embutir base64 no bootstrap
+    // deixa a UI eternamente em "Carregando módulo Qualidade...".
+    versions: versoes.map((v) => mapVersao(v, false)),
     revalidacoes: revalidacoes.map((r) => ({
       id: r.uid,
       documentId: r.documento.uid,
       data: r.data,
       observacoes: r.observacoes,
       evidenciaNome: r.evidenciaNome ?? undefined,
-      evidenciaDataUrl: r.evidenciaStoragePath
-        ? readQualidadeAnexoAsDataUrl(r.evidenciaStoragePath) ?? undefined
-        : undefined,
+      evidenciaStoragePath: r.evidenciaStoragePath ?? undefined,
+      evidenciaDataUrl: undefined,
       novaDataValidade: r.novaDataValidade,
       usuarioId: r.usuarioLogin,
     })),
@@ -615,8 +649,8 @@ export async function getQualidadeBootstrap() {
     registros: registros
       .map(mapRegistro)
       .filter((r) => !isRegistroNomusRncRcc(r.tipo, Boolean(r.origemNomus))),
-    equipment: equipamentos.map(mapEquipamento),
-    calibrationRecords: calibracoes.map(mapCalibracao),
+    equipment: equipamentos.map((e) => mapEquipamento(e, false)),
+    calibrationRecords: calibracoes.map((c) => mapCalibracao(c, false)),
     verificationRecords: verificacoes.map(mapVerificacao),
     avaliacoes: avaliacoes.map(mapAvaliacao),
     tasks: tarefas.filter((t) => !t.concluida).map(mapTarefa),
