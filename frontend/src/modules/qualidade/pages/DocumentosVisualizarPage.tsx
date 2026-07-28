@@ -4,6 +4,7 @@ import { Printer, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Button, buttonVariants } from "@qualidade/components/ui/button";
 import {
+  blobForInlinePreview,
   clearViewerPayload,
   dataUrlToBlob,
   isImageFile,
@@ -80,7 +81,7 @@ function VisualizarDocumentoContent() {
           previewKind === "image" ||
           previewKind === "office-fallback"
         ) {
-          const blob = dataUrlToBlob(payload!.dataUrl);
+          const blob = blobForInlinePreview(payload!.dataUrl, payload!.filename);
           createdUrl = URL.createObjectURL(blob);
           if (!active) {
             URL.revokeObjectURL(createdUrl);

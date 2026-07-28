@@ -123,7 +123,7 @@ interface DocumentsState {
   createNewRevision: (
     documentId: string,
     input: SolicitarRevisaoInput
-  ) => string | null;
+  ) => string | null; // retorna o uid da versão criada
   getNextDocumentCode: (tipoSigla: string) => string;
   getNextRevisionForDocument: (documentId: string) => string;
   getDocumentById: (id: string) => Document | undefined;
@@ -804,7 +804,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
               revalidacoes,
             };
           });
-          return versao;
+          return version.id;
         }
 
         set((state) => {
@@ -866,7 +866,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
           };
         });
 
-        return versao;
+        return version.id;
       },
 
       getVersionsByDocumentId: (id) =>

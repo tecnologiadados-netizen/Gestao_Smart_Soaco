@@ -24,6 +24,29 @@ export function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([decodeURIComponent(data)], { type: mime });
 }
 
+/** Garante MIME adequado para preview inline (PDF/imagem), mesmo se o dataUrl veio como octet-stream. */
+export function blobForInlinePreview(dataUrl: string, filename: string): Blob {
+  const blob = dataUrlToBlob(dataUrl);
+  if (isPdfFile(filename, blob.type) && blob.type !== "application/pdf") {
+    return new Blob([blob], { type: "application/pdf" });
+  }
+  if (isImageFile(filename) && !blob.type.startsWith("image/")) {
+    const ext = getFileExtension(filename);
+    const mimeByExt: Record<string, string> = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      webp: "image/webp",
+      bmp: "image/bmp",
+      svg: "image/svg+xml",
+    };
+    const mime = mimeByExt[ext];
+    if (mime) return new Blob([blob], { type: mime });
+  }
+  return blob;
+}
+
 export function getFileExtension(filename: string) {
   const parts = filename.split(".");
   return parts.length > 1 ? parts.pop()!.toLowerCase() : "";
@@ -67,7 +90,7 @@ export function isOfficeDocumentFile(filename: string, mimeType?: string) {
 }
 
 export function downloadDocumentFile(dataUrl: string, filename: string) {
-  const blob = dataUrlToBlob(dataUrl);
+  const blob = blobForInlinePreview(dataUrl, filename);
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = objectUrl;
@@ -80,25 +103,61 @@ export function downloadDocumentFile(dataUrl: string, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
+/**
+ * Abre visualização/impressão do arquivo.
+ * PDF e imagens usam blob URL (viewer nativo) — evita rota SPA autenticada quebrada.
+ * Demais formatos usam a página viewer com payload em localStorage.
+ */
 export function openDocumentFileViewer(
   dataUrl: string,
   filename: string,
   mode: DocumentFileViewMode
 ) {
+  const blob = blobForInlinePreview(dataUrl, filename);
+  const mime = blob.type;
+
+  if (isPdfFile(filename, mime) || isImageFile(filename, mime)) {
+    const objectUrl = URL.createObjectURL(blob);
+    const popup = window.open(objectUrl, "_blank");
+    if (!popup) {
+      URL.revokeObjectURL(objectUrl);
+      throw new Error(
+        "Não foi possível abrir a visualização. Verifique se o navegador bloqueou pop-ups."
+      );
+    }
+    if (mode === "print") {
+      window.setTimeout(() => {
+        try {
+          popup.focus();
+          popup.print();
+        } catch {
+          /* ignore */
+        }
+      }, 700);
+    }
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 10 * 60 * 1000);
+    return;
+  }
+
   const key = `${VIEWER_STORAGE_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  sessionStorage.setItem(
-    key,
-    JSON.stringify({ dataUrl, filename, mode, createdAt: Date.now() })
-  );
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify({ dataUrl, filename, mode, createdAt: Date.now() })
+    );
+  } catch {
+    throw new Error(
+      "Não foi possível preparar a visualização (armazenamento local indisponível)."
+    );
+  }
 
   const popup = window.open(
     `/documentos/visualizar?k=${encodeURIComponent(key)}`,
-    "_blank",
-    "noopener,noreferrer"
+    "_blank"
   );
 
   if (!popup) {
-    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
     throw new Error(
       "Não foi possível abrir a visualização. Verifique se o navegador bloqueou pop-ups."
     );
@@ -108,7 +167,7 @@ export function openDocumentFileViewer(
 export function readViewerPayload(key: string | null) {
   if (!key?.startsWith(VIEWER_STORAGE_PREFIX)) return null;
 
-  const raw = sessionStorage.getItem(key);
+  const raw = localStorage.getItem(key) ?? sessionStorage.getItem(key);
   if (!raw) return null;
 
   try {
@@ -121,9 +180,8 @@ export function readViewerPayload(key: string | null) {
 
     if (!payload.dataUrl || !payload.filename) return null;
 
-    // Expira após 5 minutos.
     if (Date.now() - payload.createdAt > 5 * 60 * 1000) {
-      sessionStorage.removeItem(key);
+      clearViewerPayload(key);
       return null;
     }
 
@@ -135,5 +193,6 @@ export function readViewerPayload(key: string | null) {
 
 export function clearViewerPayload(key: string | null) {
   if (!key) return;
+  localStorage.removeItem(key);
   sessionStorage.removeItem(key);
 }

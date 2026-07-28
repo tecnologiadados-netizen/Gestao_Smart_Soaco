@@ -188,7 +188,7 @@ export function SolicitarRevisaoDocumentoDialog({
       return;
     }
 
-    const versao = createNewRevision(documentId, {
+    const versaoId = createNewRevision(documentId, {
       elaboradorId: responsaveis.elaboradorId,
       consensoId: fluxoInterno ? responsaveis.consensoId : undefined,
       aprovadorId: fluxoInterno ? responsaveis.aprovadorId : undefined,
@@ -202,22 +202,26 @@ export function SolicitarRevisaoDocumentoDialog({
         : {}),
     });
 
-    if (!versao) {
+    if (!versaoId) {
       setError("Não foi possível solicitar a revisão.");
       return;
     }
 
+    const { markQualidadeDocumentFilesPending, flushQualidadeDocumentsSync } =
+      await import("@qualidade/lib/qualidadePersistence");
     if (fluxoSimplificado && arquivoDataUrl.startsWith("data:")) {
-      const { markQualidadeDocumentFilesPending, flushQualidadeDocumentsSync } =
-        await import("@qualidade/lib/qualidadePersistence");
-      markQualidadeDocumentFilesPending(documentId, versao.id);
-      try {
-        await flushQualidadeDocumentsSync();
-      } catch (err) {
-        console.error("[qualidade] falha ao sincronizar revisão com anexo:", err);
-        setError("Revisão criada localmente, mas falhou ao gravar o anexo no servidor.");
-        return;
-      }
+      markQualidadeDocumentFilesPending(documentId, versaoId);
+    }
+    try {
+      await flushQualidadeDocumentsSync();
+    } catch (err) {
+      console.error("[qualidade] falha ao sincronizar revisão:", err);
+      setError(
+        fluxoSimplificado
+          ? "Revisão criada localmente, mas falhou ao gravar o anexo no servidor."
+          : "Revisão criada localmente, mas falhou ao gravar no servidor. Tente novamente."
+      );
+      return;
     }
 
     onOpenChange(false);

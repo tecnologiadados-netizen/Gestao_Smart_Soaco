@@ -626,92 +626,15 @@ export async function getQualidadeBootstrap() {
 
 // ─── Sync helpers ────────────────────────────────────────────────────────────
 
-async function purgeSgqDocumentsRemovedFromPayload(
-  payloadDocumentUids: string[],
-  payloadVersionUids: string[],
-  payloadAlertaUids: string[],
-  payloadRevalidacaoUids: string[]
-): Promise<void> {
-  const docUids = [...new Set(payloadDocumentUids.filter(Boolean))];
-  const versionUids = [...new Set(payloadVersionUids.filter(Boolean))];
-  const alertaUids = [...new Set(payloadAlertaUids.filter(Boolean))];
-  const revalidacaoUids = [...new Set(payloadRevalidacaoUids.filter(Boolean))];
-
-  if (docUids.length > 0 && versionUids.length > 0) {
-    const orphanVersoes = await prisma.sgqDocumentoVersao.findMany({
-      where: {
-        documento: { uid: { in: docUids } },
-        uid: { notIn: versionUids },
-      },
-      select: { uid: true, arquivoStoragePath: true },
-    });
-    for (const v of orphanVersoes) {
-      deleteQualidadeAnexoIfExists(v.arquivoStoragePath);
-    }
-    if (orphanVersoes.length > 0) {
-      await prisma.sgqDocumentoVersao.deleteMany({
-        where: { uid: { in: orphanVersoes.map((v) => v.uid) } },
-      });
-    }
-  }
-
-  if (docUids.length > 0 && alertaUids.length > 0) {
-    await prisma.sgqDocumentoAlerta.deleteMany({
-      where: {
-        documento: { uid: { in: docUids } },
-        uid: { notIn: alertaUids },
-      },
-    });
-  }
-
-  if (docUids.length > 0 && revalidacaoUids.length > 0) {
-    const orphanRevs = await prisma.sgqDocumentoRevalidacao.findMany({
-      where: {
-        documento: { uid: { in: docUids } },
-        uid: { notIn: revalidacaoUids },
-      },
-      select: { uid: true, evidenciaStoragePath: true },
-    });
-    for (const r of orphanRevs) {
-      deleteQualidadeAnexoIfExists(r.evidenciaStoragePath);
-    }
-    if (orphanRevs.length > 0) {
-      await prisma.sgqDocumentoRevalidacao.deleteMany({
-        where: { uid: { in: orphanRevs.map((r) => r.uid) } },
-      });
-    }
-  }
-
-  if (docUids.length === 0) return;
-
-  const removedDocs = await prisma.sgqDocumento.findMany({
-    where: { uid: { notIn: docUids } },
-    select: {
-      uid: true,
-      versoes: { select: { arquivoStoragePath: true } },
-      revalidacoes: { select: { evidenciaStoragePath: true } },
-    },
-  });
-
-  if (removedDocs.length === 0) return;
-
-  const removedUids = removedDocs.map((d) => d.uid);
-  for (const doc of removedDocs) {
-    for (const v of doc.versoes) {
-      deleteQualidadeAnexoIfExists(v.arquivoStoragePath);
-    }
-    for (const r of doc.revalidacoes) {
-      deleteQualidadeAnexoIfExists(r.evidenciaStoragePath);
-    }
-  }
-
-  await prisma.sgqTarefa.deleteMany({
-    where: { referenciaTipo: 'documento', referenciaId: { in: removedUids } },
-  });
-
-  await prisma.sgqDocumento.deleteMany({
-    where: { uid: { in: removedUids } },
-  });
+/**
+ * Sync de documentos é apenas upsert (aditivo).
+ * NÃO apaga documentos/versões/alertas/revalidações ausentes do payload —
+ * isso causava wipe quando outra aba/usuário sincronizava estado atrasado
+ * (revisões sumiam / documento voltava à revisão 00 / arquivo sumia).
+ * Exclusão real: apenas via deleteQualidadeDocumento (DELETE /documentos/:uid).
+ */
+function compareSgqRevision(a: string, b: string): number {
+  return String(a ?? '').localeCompare(String(b ?? ''), undefined, { numeric: true });
 }
 
 export async function deleteQualidadeDocumento(uid: string): Promise<boolean> {
@@ -904,13 +827,22 @@ export async function syncQualidadeDocuments(payload: {
     if (!uid || !codigo) continue;
 
     const status = String(doc.status ?? 'rascunho');
-    const versaoAtual = String(doc.versaoAtual ?? '01');
+    const versaoPayload = String(doc.versaoAtual ?? '01');
     const prev = existingByUid.get(uid);
+    // Não regredir versaoAtual se o servidor já tem revisão mais nova (sync stale).
+    const versaoRegredida =
+      Boolean(prev) && compareSgqRevision(prev!.versaoAtual, versaoPayload) > 0;
+    const versaoAtual = versaoRegredida ? prev!.versaoAtual : versaoPayload;
+    // Evita stale com rascunho/00 derrubar documento vigente já em revisão maior.
+    const statusFinal =
+      versaoRegredida && prev!.status === 'vigente' && status === 'rascunho'
+        ? 'vigente'
+        : status;
     const permissoes = (doc.permissoes as DocumentoPublicadoInput['permissoes']) ?? null;
     const publicacao = (doc.publicacao as DocumentoPublicadoInput['publicacao']) ?? null;
 
     const eventoPublicacao =
-      status === 'vigente' &&
+      statusFinal === 'vigente' &&
       (!prev ||
         prev.status !== 'vigente' ||
         prev.versaoAtual !== versaoAtual);
@@ -959,10 +891,10 @@ export async function syncQualidadeDocuments(payload: {
         codigo,
         titulo: String(doc.titulo ?? ''),
         origem: String(doc.origem ?? 'interno'),
-        status: String(doc.status ?? 'rascunho'),
+        status: statusFinal,
         tipoUid,
         setorUid,
-        versaoAtual: String(doc.versaoAtual ?? '01'),
+        versaoAtual,
         localizacao: doc.localizacao ? String(doc.localizacao) : null,
         permissoesJson: doc.permissoes ? JSON.stringify(doc.permissoes) : null,
         publicacaoJson: doc.publicacao ? JSON.stringify(doc.publicacao) : null,
@@ -973,10 +905,10 @@ export async function syncQualidadeDocuments(payload: {
       update: {
         codigo,
         titulo: String(doc.titulo ?? ''),
-        status: String(doc.status ?? 'rascunho'),
+        status: statusFinal,
         tipoUid,
         setorUid,
-        versaoAtual: String(doc.versaoAtual ?? '01'),
+        versaoAtual,
         localizacao: doc.localizacao ? String(doc.localizacao) : null,
         permissoesJson: doc.permissoes ? JSON.stringify(doc.permissoes) : null,
         publicacaoJson: doc.publicacao ? JSON.stringify(doc.publicacao) : null,
@@ -1147,10 +1079,7 @@ export async function syncQualidadeDocuments(payload: {
 
   const novasTarefas: NovaTarefaWorkflowInput[] = [];
 
-  // Só substitui pendências de documento — não apaga tarefas de calibração/equipamento.
-  await prisma.sgqTarefa.deleteMany({
-    where: { concluida: false, referenciaTipo: 'documento' },
-  });
+  // Upsert aditivo — NÃO apagar pendências ausentes do payload (multi-aba).
   for (const task of tasks) {
     const uid = String(task.id ?? '');
     if (!uid) continue;
@@ -1285,12 +1214,7 @@ export async function syncQualidadeDocuments(payload: {
     });
   }
 
-  await purgeSgqDocumentsRemovedFromPayload(
-    documents.map((d) => String(d.id ?? '')),
-    versions.map((v) => String(v.id ?? '')),
-    validadeAlertas.map((a) => String(a.id ?? '')),
-    revalidacoes.map((r) => String(r.id ?? ''))
-  );
+  // Sync aditivo: sem purge por ausência no payload (ver comentário acima).
 }
 
 export async function syncQualidadeCalibrations(payload: {
@@ -1302,38 +1226,9 @@ export async function syncQualidadeCalibrations(payload: {
   await migrateEmbeddedAnexosToDisk();
 
   const eqUidToId = new Map<string, number>();
-  const equipmentUids = [
-    ...new Set(
-      payload.equipment
-        .map((eq) => String(eq.id ?? ''))
-        .filter(Boolean)
-    ),
-  ];
-  const calibrationUids = [
-    ...new Set(
-      payload.calibrationRecords
-        .map((cal) => String(cal.id ?? ''))
-        .filter(Boolean)
-    ),
-  ];
-  const verificationUids = [
-    ...new Set(
-      payload.verificationRecords
-        .map((ver) => String(ver.id ?? ''))
-        .filter(Boolean)
-    ),
-  ];
-  const taskUids = [
-    ...new Set(payload.tasks.map((task) => String(task.id ?? '')).filter(Boolean)),
-  ];
 
-  // Remove primeiro o que saiu do payload — evita o equipamento “voltar” no hydrate.
-  await purgeSgqCalibrationsRemovedFromPayload(
-    equipmentUids,
-    calibrationUids,
-    verificationUids,
-    taskUids
-  );
+  // Sync aditivo: NÃO apagar calibrações/verificações/tarefas ausentes do payload
+  // (estado stale multi-aba apagava histórico). Exclusão: deleteQualidadeEquipamento.
 
   for (const eq of payload.equipment) {
     const uid = String(eq.id ?? '');
@@ -1537,61 +1432,6 @@ export async function syncQualidadeCalibrations(payload: {
         prazo: task.prazo ? String(task.prazo) : null,
         concluida: Boolean(task.concluida),
         metadadosJson: JSON.stringify(task),
-      },
-    });
-  }
-}
-
-async function purgeSgqCalibrationsRemovedFromPayload(
-  payloadEquipmentUids: string[],
-  payloadCalibrationUids: string[],
-  payloadVerificationUids: string[],
-  payloadTaskUids: string[]
-): Promise<void> {
-  const eqUids = [...new Set(payloadEquipmentUids.filter(Boolean))];
-  const calUids = [...new Set(payloadCalibrationUids.filter(Boolean))];
-  const verUids = [...new Set(payloadVerificationUids.filter(Boolean))];
-  const taskUids = [...new Set(payloadTaskUids.filter(Boolean))];
-
-  // Payload vazio nunca apaga todos — evita wipe por body inválido / race de hydrate.
-  // Equipamentos NÃO são removidos pelo sync (só via deleteQualidadeEquipamento).
-  // Aqui só limpamos órfãos de calibração/verificação/tarefa dos equipamentos presentes.
-  if (eqUids.length === 0) return;
-
-  if (calUids.length > 0) {
-    const orphanCals = await prisma.sgqCalibracao.findMany({
-      where: {
-        equipamento: { uid: { in: eqUids } },
-        uid: { notIn: calUids },
-      },
-      select: { uid: true, laudoStoragePath: true },
-    });
-    for (const cal of orphanCals) {
-      deleteQualidadeAnexoIfExists(cal.laudoStoragePath);
-    }
-    if (orphanCals.length > 0) {
-      await prisma.sgqCalibracao.deleteMany({
-        where: { uid: { in: orphanCals.map((c) => c.uid) } },
-      });
-    }
-  }
-
-  if (verUids.length > 0) {
-    await prisma.sgqVerificacao.deleteMany({
-      where: {
-        equipamento: { uid: { in: eqUids } },
-        uid: { notIn: verUids },
-      },
-    });
-  }
-
-  // Pendências de equipamento: remove as que saíram do payload (não apaga concluídas).
-  if (taskUids.length > 0) {
-    await prisma.sgqTarefa.deleteMany({
-      where: {
-        referenciaTipo: 'equipamento',
-        concluida: false,
-        uid: { notIn: taskUids },
       },
     });
   }

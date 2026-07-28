@@ -549,7 +549,8 @@ export async function hydrateQualidadeFromServer(currentUserLogin: string) {
     setQualidadeDocumentsHydrating(false);
   }
 
-  // Reconciliação pode recriar pendências perdidas — persiste após liberar o hydrate.
+  // Reconciliação de validade pode ajustar tarefas — persiste sem risco de wipe
+  // (sync de documentos é aditivo; exclusão só via DELETE explícito).
   void flushQualidadeDocumentsSync().catch((err) =>
     console.error('[qualidade] falha ao persistir tarefas reconciliadas:', err)
   );

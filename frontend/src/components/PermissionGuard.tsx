@@ -2,16 +2,15 @@ import { useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import type { ReactNode } from 'react';
 import { ROTA_PERMISSAO, primeiraRotaPermitida } from '../utils/routePermission';
-import { getStoredToken } from '../api/client';
 
 export default function PermissionGuard({ children }: { children: ReactNode }) {
   const location = useLocation();
   const { hasPermission, isMaster, profileLoaded } = useAuth();
   const pathname = location.pathname.replace(/\/$/, '') || '/';
-  const hasToken = !!getStoredToken();
 
-  // Aguarda /api/me antes de negar acesso (evita falso "Sem acesso" em link direto com ?fav=).
-  if (hasToken && !profileLoaded) return <>{children}</>;
+  // Aguarda /api/me antes de negar acesso (cookie ou sessionStorage; evita falso "Sem acesso"
+  // ao abrir abas novas sem token no sessionStorage, ex.: visualização de documentos).
+  if (!profileLoaded) return <>{children}</>;
 
   const permsNecessarias =
     ROTA_PERMISSAO[pathname] ??
