@@ -671,6 +671,48 @@ function compareSgqRevision(a: string, b: string): number {
   return String(a ?? '').localeCompare(String(b ?? ''), undefined, { numeric: true });
 }
 
+/** Ordem das etapas do workflow de documentos (avanço = rank maior). */
+const SGQ_STATUS_RANK: Record<string, number> = {
+  rascunho: 0,
+  em_revisao: 1,
+  em_aprovacao: 2,
+  vigente: 3,
+  obsoleto: 4,
+};
+
+function rankStatusSgq(status: string): number {
+  return SGQ_STATUS_RANK[status] ?? 0;
+}
+
+/** Data da movimentação mais recente da versão (marca o avanço real do fluxo). */
+function ultimaMovimentacaoData(movimentacoes: unknown): string {
+  if (!Array.isArray(movimentacoes)) return '';
+  return movimentacoes.reduce<string>((maior, mov) => {
+    const data = String((mov as { data?: unknown } | null)?.data ?? '');
+    return data > maior ? data : maior;
+  }, '');
+}
+
+async function ultimaMovimentacaoDataServidor(
+  docUid: string,
+  versao: string
+): Promise<string> {
+  const row = await prisma.sgqDocumentoVersao.findFirst({
+    where: { documento: { uid: docUid }, versao },
+    select: { movimentacoesJson: true },
+  });
+  return ultimaMovimentacaoData(parseJson<unknown[]>(row?.movimentacoesJson, []));
+}
+
+/** Tarefas de etapa que deixam de fazer sentido quando o documento avança. */
+const SGQ_TAREFAS_POR_STATUS: Record<string, string> = {
+  rascunho: 'elaborar_documento',
+  em_revisao: 'consenso_documento',
+  em_aprovacao: 'aprovar_documento',
+};
+
+const SGQ_TAREFAS_ETAPA = Object.values(SGQ_TAREFAS_POR_STATUS);
+
 export async function deleteQualidadeDocumento(uid: string): Promise<boolean> {
   const doc = await prisma.sgqDocumento.findUnique({
     where: { uid },
@@ -848,12 +890,24 @@ export async function syncQualidadeDocuments(payload: {
   const { documents, versions, tasks, validadeAlertas, revalidacoes, criadoPorLogin } = payload;
   const docUidToId = new Map<string, number>();
   const docMetaByUid = new Map<string, DocumentoMetaParaEmail>();
+  const statusFinalByUid = new Map<string, string>();
 
   const existingDocs = await prisma.sgqDocumento.findMany({
     select: { uid: true, status: true, versaoAtual: true },
   });
   const existingByUid = new Map(existingDocs.map((d) => [d.uid, d]));
   const publicacoesParaNotificar: DocumentoPublicadoInput[] = [];
+
+  // Documentos cujo snapshot chegou atrasado: versões e tarefas deles são ignoradas.
+  const staleDocUids = new Set<string>();
+  const versionsByDocUid = new Map<string, Array<Record<string, unknown>>>();
+  for (const ver of versions) {
+    const docUid = String(ver.documentId ?? '');
+    if (!docUid) continue;
+    const lista = versionsByDocUid.get(docUid);
+    if (lista) lista.push(ver);
+    else versionsByDocUid.set(docUid, [ver]);
+  }
 
   for (const doc of documents) {
     const uid = String(doc.id ?? '');
@@ -868,10 +922,36 @@ export async function syncQualidadeDocuments(payload: {
       Boolean(prev) && compareSgqRevision(prev!.versaoAtual, versaoPayload) > 0;
     const versaoAtual = versaoRegredida ? prev!.versaoAtual : versaoPayload;
     // Evita stale com rascunho/00 derrubar documento vigente já em revisão maior.
-    const statusFinal =
+    let statusFinal =
       versaoRegredida && prev!.status === 'vigente' && status === 'rascunho'
         ? 'vigente'
         : status;
+
+    if (versaoRegredida) staleDocUids.add(uid);
+
+    // Retrocesso de etapa na mesma revisão só é legítimo quando houve reprovação nova.
+    // Sem isso, uma aba antiga devolvia o documento ao consenso e a pendência de
+    // aprovação sumia para todo mundo na reconciliação seguinte.
+    const etapaRegredida =
+      Boolean(prev) &&
+      !versaoRegredida &&
+      compareSgqRevision(prev!.versaoAtual, versaoPayload) === 0 &&
+      rankStatusSgq(status) < rankStatusSgq(prev!.status);
+
+    if (etapaRegredida) {
+      const verPayload = (versionsByDocUid.get(uid) ?? []).find(
+        (v) => String(v.versao ?? '') === versaoAtual
+      );
+      const movPayload = ultimaMovimentacaoData(verPayload?.movimentacoes);
+      const movServidor = await ultimaMovimentacaoDataServidor(uid, versaoAtual);
+      if (movPayload <= movServidor) {
+        console.warn(
+          `[qualidade-sync] ${codigo}: ignorando retrocesso ${prev!.status} -> ${status} (snapshot desatualizado de ${criadoPorLogin}).`
+        );
+        statusFinal = prev!.status;
+        staleDocUids.add(uid);
+      }
+    }
     const permissoes = (doc.permissoes as DocumentoPublicadoInput['permissoes']) ?? null;
     const publicacao = (doc.publicacao as DocumentoPublicadoInput['publicacao']) ?? null;
 
@@ -951,6 +1031,7 @@ export async function syncQualidadeDocuments(payload: {
       },
     });
     docUidToId.set(uid, saved.id);
+    statusFinalByUid.set(uid, statusFinal);
     docMetaByUid.set(uid, {
       codigo,
       titulo: String(doc.titulo ?? ''),
@@ -964,6 +1045,7 @@ export async function syncQualidadeDocuments(payload: {
     const documentId = String(ver.documentId ?? '');
     const docPk = docUidToId.get(documentId);
     if (!uid || !docPk) continue;
+    if (staleDocUids.has(documentId)) continue;
 
     let arquivoStoragePath: string | null = null;
     let arquivoMimeType: string | null = null;
@@ -1120,6 +1202,7 @@ export async function syncQualidadeDocuments(payload: {
 
     const referenciaTipo = String(task.referenciaTipo ?? 'documento');
     if (referenciaTipo !== 'documento') continue;
+    if (staleDocUids.has(String(task.referenciaId ?? ''))) continue;
 
     const status = String(task.status ?? '');
     const concluida =
@@ -1164,9 +1247,36 @@ export async function syncQualidadeDocuments(payload: {
     });
   }
 
-  if (novasTarefas.length > 0) {
+  // Ao avançar de etapa, a pendência anterior deixa de existir para o usuário —
+  // fechá-la aqui evita pendência fantasma e alerta de prazo de etapa já cumprida.
+  for (const [docUid, statusAtual] of statusFinalByUid) {
+    const tipoEsperado = SGQ_TAREFAS_POR_STATUS[statusAtual];
+    const tiposObsoletos = SGQ_TAREFAS_ETAPA.filter((tipo) => tipo !== tipoEsperado);
+    await prisma.sgqTarefa.updateMany({
+      where: {
+        referenciaTipo: 'documento',
+        referenciaId: docUid,
+        concluida: false,
+        tipo: { in: tiposObsoletos },
+      },
+      data: { concluida: true },
+    });
+  }
+
+  const tarefasParaNotificar = novasTarefas.filter((tarefa) => {
+    if (!SGQ_TAREFAS_ETAPA.includes(tarefa.tipo)) return true;
+    const statusDoc = statusFinalByUid.get(tarefa.referenciaId);
+    if (!statusDoc) return true;
+    return SGQ_TAREFAS_POR_STATUS[statusDoc] === tarefa.tipo;
+  });
+
+  if (tarefasParaNotificar.length > 0) {
     try {
-      const enviados = await notificarNovasTarefasWorkflow(prisma, novasTarefas, docMetaByUid);
+      const enviados = await notificarNovasTarefasWorkflow(
+        prisma,
+        tarefasParaNotificar,
+        docMetaByUid
+      );
       if (enviados > 0) {
         console.info(`[sgq-email] ${enviados} notificação(ões) de tarefa nova enviada(s).`);
       }

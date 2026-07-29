@@ -201,9 +201,16 @@ function atualizarDocumentoVersao(
   };
 }
 
-function withoutPendingDocumentTasks(tasks: Task[], documentId: string) {
-  return tasks.filter(
-    (t) => !(t.referenciaId === documentId && t.status === "pendente")
+/**
+ * Fecha as pendências abertas do documento ao mudar de etapa.
+ * Concluir (em vez de remover do estado) faz o sync gravar o fechamento no
+ * servidor — descartadas, elas voltavam como pendentes no próximo bootstrap.
+ */
+function concluirPendenciasDocumento(tasks: Task[], documentId: string) {
+  return tasks.map((t) =>
+    t.referenciaId === documentId && t.status === "pendente"
+      ? { ...t, status: "concluida" as const }
+      : t
   );
 }
 
@@ -773,7 +780,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
                   )
                 : d
             );
-            let tasks = withoutPendingDocumentTasks(state.tasks, documentId);
+            let tasks = concluirPendenciasDocumento(state.tasks, documentId);
             let validadeAlertas = state.validadeAlertas;
             let revalidacoes = state.revalidacoes;
             const versions = [...state.versions, version];
@@ -817,7 +824,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
                 )
               : d
           );
-          let tasks = withoutPendingDocumentTasks(state.tasks, documentId);
+          let tasks = concluirPendenciasDocumento(state.tasks, documentId);
           let validadeAlertas = state.validadeAlertas;
           let revalidacoes = state.revalidacoes;
           const versions = [...state.versions, version];
@@ -898,7 +905,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
               : d
           ),
           tasks: [
-            ...withoutPendingDocumentTasks(state.tasks, documentId),
+            ...concluirPendenciasDocumento(state.tasks, documentId),
             {
               id: generateId("task"),
               tipo: "consenso_documento",
@@ -966,7 +973,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
               : v
           ),
           tasks: [
-            ...withoutPendingDocumentTasks(state.tasks, documentId),
+            ...concluirPendenciasDocumento(state.tasks, documentId),
             {
               id: generateId("task"),
               tipo: "aprovar_documento",
@@ -1022,7 +1029,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
               : v
           ),
           tasks: [
-            ...withoutPendingDocumentTasks(state.tasks, documentId),
+            ...concluirPendenciasDocumento(state.tasks, documentId),
             {
               id: generateId("task"),
               tipo: "aprovar_documento",
@@ -1079,7 +1086,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
               : v
           ),
           tasks: [
-            ...withoutPendingDocumentTasks(state.tasks, documentId),
+            ...concluirPendenciasDocumento(state.tasks, documentId),
             {
               id: generateId("task"),
               tipo: "elaborar_documento",
@@ -1143,7 +1150,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
             documents,
             state.versions,
             state.validadeAlertas,
-            withoutPendingDocumentTasks(state.tasks, documentId)
+            concluirPendenciasDocumento(state.tasks, documentId)
           );
           return {
             documents,
@@ -1210,7 +1217,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
               : v
           ),
           tasks: [
-            ...withoutPendingDocumentTasks(state.tasks, documentId),
+            ...concluirPendenciasDocumento(state.tasks, documentId),
             {
               id: generateId("task"),
               tipo: "consenso_documento",
