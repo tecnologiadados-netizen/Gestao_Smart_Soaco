@@ -67,9 +67,23 @@ async function registrarMesZerado(mesAno: Date, origem: string): Promise<boolean
 
   const setores = await listSetoresCadastro();
   for (const setor of setores) {
+    // Os valores por nível são fixos do setor: repete o último cadastro no mês novo.
+    const anterior = await prisma.painelProducaoMeta.findFirst({
+      where: { setor, mesAno: { lt: key } },
+      orderBy: { mesAno: 'desc' },
+      select: { valorBronze: true, valorPrata: true, valorAco: true },
+    });
     await prisma.painelProducaoMeta.upsert({
       where: { setor_mesAno: { setor, mesAno: key } },
-      create: { setor, mesAno: key, target: 0, semMeta: false },
+      create: {
+        setor,
+        mesAno: key,
+        target: 0,
+        semMeta: false,
+        valorBronze: anterior?.valorBronze ?? null,
+        valorPrata: anterior?.valorPrata ?? null,
+        valorAco: anterior?.valorAco ?? null,
+      },
       update: {},
     });
   }
@@ -192,6 +206,12 @@ export async function listTargets(setor?: string, mes?: string) {
     mes_ano: r.mesAno,
     target: r.target,
     sem_meta: r.semMeta,
+    meta_bronze: r.metaBronze,
+    meta_prata: r.metaPrata,
+    meta_aco: r.metaAco,
+    valor_bronze: r.valorBronze,
+    valor_prata: r.valorPrata,
+    valor_aco: r.valorAco,
   }));
 }
 
@@ -202,6 +222,32 @@ export async function getTargetInfo(setor: string, mesAno: Date): Promise<{ targ
   });
   if (!row) return { target: 0, sem_meta: false };
   return { target: row.target, sem_meta: row.semMeta };
+}
+
+export type NivelMeta = 'Bronze' | 'Prata' | 'Aço';
+
+export type MetaNiveis = {
+  metas: Record<NivelMeta, number | null>;
+  valores: Record<NivelMeta, number | null>;
+};
+
+export async function getMetaNiveis(setor: string, mes: string): Promise<MetaNiveis> {
+  const key = mesKey(parseYyyyMm(mes));
+  const row = await prisma.painelProducaoMeta.findUnique({
+    where: { setor_mesAno: { setor, mesAno: key } },
+  });
+  return {
+    metas: {
+      Bronze: row?.metaBronze ?? null,
+      Prata: row?.metaPrata ?? null,
+      Aço: row?.metaAco ?? null,
+    },
+    valores: {
+      Bronze: row?.valorBronze ?? null,
+      Prata: row?.valorPrata ?? null,
+      Aço: row?.valorAco ?? null,
+    },
+  };
 }
 
 export async function getTarget(setor: string, mesAno: Date): Promise<number> {
@@ -215,17 +261,35 @@ export async function isSemMeta(setor: string, mesAno: Date): Promise<boolean> {
   return info.sem_meta;
 }
 
+export type TargetNiveisInput = {
+  meta_bronze?: number | null;
+  meta_prata?: number | null;
+  meta_aco?: number | null;
+  valor_bronze?: number | null;
+  valor_prata?: number | null;
+  valor_aco?: number | null;
+};
+
 export async function upsertTarget(
   setor: string,
   mesAno: Date,
   value: number,
   semMeta: boolean,
+  niveis: TargetNiveisInput = {},
 ) {
   const key = mesKey(mesAno);
+  const dados = {
+    metaBronze: niveis.meta_bronze ?? null,
+    metaPrata: niveis.meta_prata ?? null,
+    metaAco: niveis.meta_aco ?? null,
+    valorBronze: niveis.valor_bronze ?? null,
+    valorPrata: niveis.valor_prata ?? null,
+    valorAco: niveis.valor_aco ?? null,
+  };
   const row = await prisma.painelProducaoMeta.upsert({
     where: { setor_mesAno: { setor, mesAno: key } },
-    create: { setor, mesAno: key, target: value, semMeta },
-    update: { target: value, semMeta },
+    create: { setor, mesAno: key, target: value, semMeta, ...dados },
+    update: { target: value, semMeta, ...dados },
   });
   clearPainelProducaoCaches();
   return {
@@ -234,6 +298,12 @@ export async function upsertTarget(
     mes_ano: row.mesAno,
     target: row.target,
     sem_meta: row.semMeta,
+    meta_bronze: row.metaBronze,
+    meta_prata: row.metaPrata,
+    meta_aco: row.metaAco,
+    valor_bronze: row.valorBronze,
+    valor_prata: row.valorPrata,
+    valor_aco: row.valorAco,
   };
 }
 

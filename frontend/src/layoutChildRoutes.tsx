@@ -50,6 +50,7 @@ import ConsultaEstoquePage from './pages/pedidos/ConsultaEstoquePage';
 import PainelProducaoGerencialPage from './pages/pedidos/painel-metas/PainelProducaoGerencialPage';
 import PainelProducaoTvPage from './pages/pedidos/painel-metas/PainelProducaoTvPage';
 import PainelProducaoMetasPage from './pages/pedidos/painel-metas/PainelProducaoMetasPage';
+import PainelProducaoApuracaoPage from './pages/pedidos/painel-metas/PainelProducaoApuracaoPage';
 import PedidosEncerradosPage from './pages/pedidos/PedidosEncerradosPage';
 import SuportePage from './pages/suporte/SuportePage';
 import SuporteConfigPage from './pages/suporte/SuporteConfigPage';
@@ -103,6 +104,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'pedidos/painel-metas/gerencial', element: <ErrorBoundary><PainelProducaoGerencialPage /></ErrorBoundary> },
   { path: 'pedidos/painel-metas/tv', element: <ErrorBoundary><PainelProducaoTvPage /></ErrorBoundary> },
   { path: 'pedidos/painel-metas/metas', element: <ErrorBoundary><PainelProducaoMetasPage /></ErrorBoundary> },
+  { path: 'pedidos/painel-metas/apuracao', element: <ErrorBoundary><PainelProducaoApuracaoPage /></ErrorBoundary> },
   { path: 'suporte', element: <ErrorBoundary><SuportePage /></ErrorBoundary> },
   { path: 'suporte/configuracao', element: <ErrorBoundary><SuporteConfigPage /></ErrorBoundary> },
   { path: 'heatmap', element: <HeatmapPage /> },

@@ -49,6 +49,58 @@ export interface PainelProducaoTargetRow {
   mes_ano: string;
   target: number;
   sem_meta?: boolean;
+  meta_bronze?: number | null;
+  meta_prata?: number | null;
+  meta_aco?: number | null;
+  valor_bronze?: number | null;
+  valor_prata?: number | null;
+  valor_aco?: number | null;
+}
+
+export interface PainelProducaoApuracaoRow {
+  setor: string;
+  mes: string;
+  pedidos_encerrados: number;
+  pedidos_com_alteracao_nao_abonada: number;
+  alteracoes_nao_abonadas: number;
+  media_alteracoes_por_pedido: number;
+  meta_quantitativa: number;
+  producao_realizada: number;
+  unidade: string;
+  percentual_meta_quantitativa: number;
+  percentual_penalizacao_qualitativa: number;
+  meta_atingida: string;
+  meta_nivel_atingido: number | null;
+  valor_nivel: number;
+  valor_a_pagar: number;
+  niveis: Array<{ nivel: string; meta: number | null; valor: number | null; atingido: boolean }>;
+  motivo_nao_abonado: string;
+}
+
+export type PainelProducaoApuracaoDetalheTipo =
+  | 'pedidos_encerrados'
+  | 'pedidos_com_alteracao'
+  | 'alteracoes';
+
+export interface PainelProducaoApuracaoDetalheLinha {
+  pedido: string;
+  cliente: string;
+  codigo_produto: string;
+  descricao: string;
+  status?: string;
+  data_encerramento?: string | null;
+  data_alteracao?: string | null;
+  motivo?: string;
+  usuario?: string;
+}
+
+export interface PainelProducaoApuracaoDetalhe {
+  mes: string;
+  setor: string;
+  tipo: PainelProducaoApuracaoDetalheTipo;
+  titulo: string;
+  total: number;
+  linhas: PainelProducaoApuracaoDetalheLinha[];
 }
 
 async function parseJson<T>(res: Response): Promise<T> {
@@ -91,11 +143,33 @@ export async function fetchPainelProducaoTargets(mes: string): Promise<PainelPro
   return parseJson(res);
 }
 
+export async function fetchPainelProducaoApuracao(
+  mes: string,
+): Promise<PainelProducaoApuracaoRow[]> {
+  const res = await apiFetch(`/api/painel-producao/apuracao?mes=${encodeURIComponent(mes)}`);
+  return parseJson(res);
+}
+
+export async function fetchPainelProducaoApuracaoDetalhe(
+  mes: string,
+  tipo: PainelProducaoApuracaoDetalheTipo,
+): Promise<PainelProducaoApuracaoDetalhe> {
+  const params = new URLSearchParams({ mes, tipo });
+  const res = await apiFetch(`/api/painel-producao/apuracao/detalhe?${params}`);
+  return parseJson(res);
+}
+
 export async function savePainelProducaoTarget(payload: {
   setor: string;
   mes_ano: string;
   target: number;
   sem_meta: boolean;
+  meta_bronze?: number | null;
+  meta_prata?: number | null;
+  meta_aco?: number | null;
+  valor_bronze?: number | null;
+  valor_prata?: number | null;
+  valor_aco?: number | null;
 }): Promise<PainelProducaoTargetRow> {
   const res = await apiFetch('/api/painel-producao/targets', {
     method: 'POST',
