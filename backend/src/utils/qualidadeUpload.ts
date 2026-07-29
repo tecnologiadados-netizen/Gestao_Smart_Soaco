@@ -17,9 +17,12 @@ const ALLOWED_MIME = new Set([
   'image/webp',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'application/msword',
   'application/vnd.ms-excel',
+  'application/vnd.ms-powerpoint',
   'text/plain',
+  'text/csv',
 ]);
 
 export interface IncomingQualidadeAnexo {
@@ -55,7 +58,11 @@ const EXT_MIME: Record<string, string> = {
   '.xls': 'application/vnd.ms-excel',
   '.xlsx':
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx':
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   '.txt': 'text/plain',
+  '.csv': 'text/csv',
 };
 
 function resolveMimeType(fileName: string, mimeType: string): string {

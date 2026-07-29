@@ -24,6 +24,11 @@ import {
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_TYPES = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
 
+function detalharErroServidor(err: unknown): string {
+  const detalhe = err instanceof Error ? err.message.trim() : "";
+  return detalhe ? ` Detalhe: ${detalhe}` : "";
+}
+
 export function ElaborarDocumentoPage() {
   const params = useParams();
   const { push: navigate, exiting } = useTransitionRouter();
@@ -122,7 +127,8 @@ export function ElaborarDocumentoPage() {
         .catch((err) => {
           console.error("[qualidade] falha ao gravar anexo da elaboração:", err);
           setError(
-            "Arquivo anexado localmente, mas falhou ao gravar no servidor. Tente novamente."
+            "Arquivo anexado localmente, mas falhou ao gravar no servidor. Tente novamente." +
+              detalharErroServidor(err)
           );
         });
     };
@@ -166,7 +172,8 @@ export function ElaborarDocumentoPage() {
     } catch (err) {
       console.error("[qualidade] falha ao enviar para consenso:", err);
       setError(
-        "Não foi possível gravar o documento no servidor. Verifique a conexão e tente novamente."
+        "Não foi possível gravar o documento no servidor. Verifique a conexão e tente novamente." +
+          detalharErroServidor(err)
       );
     } finally {
       setEnviando(false);
