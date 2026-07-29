@@ -415,6 +415,9 @@ function DashboardFullscreenButton({
   )
 }
 
+/** Intervalo de autoatualização do painel na TV (sem ação humana). */
+const TV_AUTO_REFRESH_MS = 60_000;
+
 function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao' | 'tv' }) {
   const isTv = variant === 'tv';
   const dashboardRef = useRef<HTMLDivElement>(null);
@@ -527,27 +530,57 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
     else if (meses[0]) setMes(meses[0])
   }, [filtrosProntos, resolving, setor, mes, setores, meses])
 
-  const loadDashboard = useCallback(async (selectedSetor: string, selectedMes: string) => {
+  const loadDashboard = useCallback(async (
+    selectedSetor: string,
+    selectedMes: string,
+    opts?: { silent?: boolean },
+  ) => {
     if (!selectedSetor || !selectedMes) return
 
-    setDashboardLoading(true)
-    setDashboardError(null)
+    const silent = !!opts?.silent
+    if (!silent) {
+      setDashboardLoading(true)
+      setDashboardError(null)
+    }
     try {
       const data = await fetchPainelProducaoDashboard(selectedSetor, selectedMes);
       setDashboard(data)
+      if (silent) setDashboardError(null)
     } catch (err) {
+      // Em refresh silencioso (TV), mantém a última tela válida em vez de apagar o painel.
+      if (silent) return
       setDashboard(null)
       setDashboardError(
         err instanceof Error ? err.message : 'Falha ao carregar dados do painel.',
       )
     } finally {
-      setDashboardLoading(false)
+      if (!silent) setDashboardLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    if (setor && mes) loadDashboard(setor, mes)
+    if (setor && mes) void loadDashboard(setor, mes)
   }, [setor, mes, loadDashboard])
+
+  // Painel TV: atualiza sozinho periodicamente (e ao voltar a ficar visível).
+  useEffect(() => {
+    if (!isTv || !setor || !mes) return
+
+    const refreshSilencioso = () => {
+      if (document.hidden) return
+      void loadDashboard(setor, mes, { silent: true })
+    }
+
+    const id = window.setInterval(refreshSilencioso, TV_AUTO_REFRESH_MS)
+    const onVisibility = () => {
+      if (!document.hidden) refreshSilencioso()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [isTv, setor, mes, loadDashboard])
 
   const color = targetColor(dashboard?.cor_target, dashboard?.percentual_meta)
   const progressWidth = Math.min(Math.max(dashboard?.percentual_meta ?? 0, 0), 100)

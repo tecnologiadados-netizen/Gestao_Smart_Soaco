@@ -395,7 +395,7 @@ const EmpresaNode = ({
 );
 
 const Organograma = () => {
-  const [abaAtiva, setAbaAtiva] = useState<OrganogramaAba>("mapa-vinculos");
+  const [abaAtiva, setAbaAtiva] = useState<OrganogramaAba>("hierarquia");
   const [setorSelecionado, setSetorSelecionado] = useState<SetorSelecionadoMapa | null>(null);
   const podeBuscarFotos = isApiConfigured() && canViewOrganicoPhotos();
   const canEditFotos = canEditOrganogramaFotos();
@@ -471,7 +471,7 @@ const Organograma = () => {
         <div className="mb-6">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Estrutura Organizacional</h1>
           <p className="text-sm text-muted-foreground mt-2">
-            Consultas de organograma da Só Aço Industrial Ltda.: mapa de vínculos, hierarquia e configurações.
+            Consultas de organograma da Só Aço Industrial Ltda.: hierarquia, mapa de vínculos e configurações.
           </p>
         </div>
 
@@ -481,16 +481,32 @@ const Organograma = () => {
           className="space-y-6"
         >
           <TabsList className="inline-flex h-auto min-h-10 w-max min-w-max flex-nowrap justify-start gap-1 whitespace-nowrap bg-muted/80 p-1">
-            <TabsTrigger value="mapa-vinculos" className="shrink-0 text-xs sm:text-sm px-3 sm:px-4">
-              Mapa de Vínculos Organizacionais
-            </TabsTrigger>
             <TabsTrigger value="hierarquia" className="shrink-0 text-xs sm:text-sm px-3 sm:px-4">
               Hierarquia
+            </TabsTrigger>
+            <TabsTrigger value="mapa-vinculos" className="shrink-0 text-xs sm:text-sm px-3 sm:px-4">
+              Mapa de Vínculos Organizacionais
             </TabsTrigger>
             <TabsTrigger value="configuracoes" className="shrink-0 text-xs sm:text-sm px-3 sm:px-4">
               Configurações
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="hierarquia" className="mt-0 space-y-4 focus-visible:outline-none">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Hierarquia</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Empresa no topo; as 3 diretorias no mesmo nível, ligadas entre si; abaixo, a escada de cargos de
+                cada uma.
+              </p>
+            </div>
+            <OrganogramaHierarquiaPanel
+              diretorias={diretorias}
+              organicoRows={organicoRows}
+              matriculasComFoto={matriculasComFoto}
+              podeBuscarFotos={podeBuscarFotos}
+            />
+          </TabsContent>
 
           <TabsContent value="mapa-vinculos" className="mt-0 space-y-4 focus-visible:outline-none">
             <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
@@ -565,22 +581,6 @@ const Organograma = () => {
                 </div>
               </div>
             )}
-          </TabsContent>
-
-          <TabsContent value="hierarquia" className="mt-0 space-y-4 focus-visible:outline-none">
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">Hierarquia</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Empresa no topo; as 3 diretorias no mesmo nível, ligadas entre si; abaixo, a escada de cargos de
-                cada uma.
-              </p>
-            </div>
-            <OrganogramaHierarquiaPanel
-              diretorias={diretorias}
-              organicoRows={organicoRows}
-              matriculasComFoto={matriculasComFoto}
-              podeBuscarFotos={podeBuscarFotos}
-            />
           </TabsContent>
 
           <TabsContent value="configuracoes" className="mt-0 focus-visible:outline-none">
