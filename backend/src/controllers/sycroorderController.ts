@@ -25,10 +25,15 @@ import {
   mensagemCanalDatasPedido,
 } from '../utils/canalReprogramacaoDatas.js';
 import { validarDatasReprogramacao } from '../utils/validarDatasReprogramacao.js';
+import { dispararWhatsAppTagDisponivel } from '../services/sycroOrderTagDisponivelWhatsApp.js';
 import {
-  codigoWhatsAppTagDisponivel,
-  resolverEscopoWhatsAppPorVendedor,
-} from '../utils/sycroOrderVendedorEscopoWhatsApp.js';
+  chavePedidoItem,
+  gerenciadorRowMatchesOrderNumber,
+  parseJsonArray,
+  pickFirstDistinctFromRows,
+  resolveRelevantRowsForCard,
+  rowItemIdKey,
+} from '../utils/sycroOrderCardRows.js';
 
 function isPedidoEmFormacaoRow(r: Record<string, unknown>): boolean {
   return isCarradaEmFormacao(rotaFromPedidoRow(r)) || r['romaneio_como_formacao'] === true;
@@ -73,134 +78,6 @@ function toLocalIsoDateBr(d: Date): string {
   }).format(d);
 }
 
-const WHATSAPP_MAX_PRODUTOS_LISTA = 8;
-
-function truncarTextoWhatsApp(s: string, max: number): string {
-  const t = s.trim();
-  if (t.length <= max) return t;
-  return `${t.slice(0, Math.max(1, max - 1))}…`;
-}
-
-/**
- * Cliente + vendedor + produtos do card (Gerenciador Nomus) para WhatsApp.
- * Lista cada produto em linha própria: código + descrição completa.
- */
-async function resolverClienteEProdutosWhatsApp(
-  orderNumber: string,
-  itemIdsJson: string | null | undefined,
-  itemCodesJson: string | null | undefined
-): Promise<{ cliente: string | null; vendedor: string | null; produtosLinhas: string[] }> {
-  const codesFallback = parseJsonArray(itemCodesJson);
-  try {
-    const { data } = await listarPedidos({ pd: orderNumber });
-    const rows = (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>;
-    const rowsDoPd = rows.filter((r) => gerenciadorRowMatchesOrderNumber(r, orderNumber));
-    const selectedIds = parseJsonArray(itemIdsJson);
-    const relevant = resolveRelevantRowsForCard(rowsDoPd, selectedIds, itemCodesJson);
-    const useRows = relevant.length > 0 ? relevant : rowsDoPd;
-
-    const cliente = pickFirstDistinctFromRows(rowsDoPd, ['Cliente', 'cliente']);
-    const vendedor = pickFirstDistinctFromRows(rowsDoPd, [
-      'Vendedor/Representante',
-      'vendedor/representante',
-      'Vendedor',
-      'vendedor',
-    ]);
-
-    const byCod = new Map<string, string>();
-    for (const r of useRows) {
-      const cod = String(r['Cod'] ?? r['cod'] ?? '').trim();
-      if (!cod || byCod.has(cod)) continue;
-      const desc = String(
-        r['Descricao do produto'] ?? r['Descrição do produto'] ?? r['produto'] ?? ''
-      ).trim();
-      byCod.set(cod, desc);
-    }
-    if (byCod.size === 0 && codesFallback?.length) {
-      for (const c of codesFallback) {
-        const cod = String(c).trim();
-        if (cod) byCod.set(cod, '');
-      }
-    }
-
-    const entries = [...byCod.entries()].filter(([c]) => Boolean(c));
-    if (entries.length === 0) return { cliente, vendedor, produtosLinhas: [] };
-
-    const show = entries.slice(0, WHATSAPP_MAX_PRODUTOS_LISTA);
-    const extra = entries.length - show.length;
-    const produtosLinhas = show.map(([cod, desc]) => (desc ? `${cod} — ${desc}` : cod));
-    if (extra > 0) produtosLinhas.push(`(+${extra} outro${extra === 1 ? '' : 's'})`);
-    return { cliente, vendedor, produtosLinhas };
-  } catch (e) {
-    console.warn('[SycroOrder] WhatsApp: falha ao resolver cliente/produtos:', e);
-    if (codesFallback?.length) {
-      const show = codesFallback.slice(0, WHATSAPP_MAX_PRODUTOS_LISTA).map((c) => String(c).trim()).filter(Boolean);
-      const extra = codesFallback.length - show.length;
-      const produtosLinhas = [...show];
-      if (extra > 0) produtosLinhas.push(`(+${extra} outro${extra === 1 ? '' : 's'})`);
-      return { cliente: null, vendedor: null, produtosLinhas };
-    }
-    return { cliente: null, vendedor: null, produtosLinhas: [] };
-  }
-}
-
-/** WhatsApp (Integração SMS) ao marcar/desmarcar DISPONÍVEL no card Comunicação PD. */
-function dispararWhatsAppTagDisponivel(opts: {
-  available: boolean;
-  orderNumber: string;
-  deliveryMethod: string;
-  promisedDate: string;
-  userName: string;
-  isUrgent?: boolean | number | null;
-  itemIdsJson?: string | null;
-  itemCodesJson?: string | null;
-  /** Comentário/justificativa do modal "Atualizar" (obrigatório ao marcar NÃO DISPONÍVEL). */
-  justificativa?: string | null;
-}): void {
-  const disponivel = opts.available;
-  const titulo = disponivel
-    ? '✅ *Comunicação PD – Pedido disponível*'
-    : '⛔ *Comunicação PD – Pedido não disponível*';
-  const statusLinha = disponivel ? 'DISPONÍVEL' : 'NÃO DISPONÍVEL';
-  const justificativa = opts.justificativa != null ? String(opts.justificativa).trim() : '';
-
-  void (async () => {
-    const { cliente, vendedor, produtosLinhas } = await resolverClienteEProdutosWhatsApp(
-      opts.orderNumber,
-      opts.itemIdsJson,
-      opts.itemCodesJson
-    );
-
-    const escopo = resolverEscopoWhatsAppPorVendedor(vendedor);
-    const code = codigoWhatsAppTagDisponivel(disponivel, escopo);
-
-    let texto = `${titulo}\n\n`;
-    texto += `📄 *Pedido:* ${opts.orderNumber}\n`;
-    if (cliente) texto += `🏢 *Cliente:* ${truncarTextoWhatsApp(cliente, 80)}\n`;
-    if (vendedor) texto += `🧑‍💼 *Vendedor:* ${truncarTextoWhatsApp(vendedor, 80)}\n`;
-    if (produtosLinhas.length === 1) {
-      texto += `📦 *Produto:* ${produtosLinhas[0]}\n`;
-    } else if (produtosLinhas.length > 1) {
-      texto += `📦 *Produtos:*\n`;
-      for (const linha of produtosLinhas) {
-        texto += `• ${linha}\n`;
-      }
-    }
-    texto += `🏷️ *Status:* ${statusLinha}\n`;
-    texto += `🚚 *Entrega:* ${opts.deliveryMethod}\n`;
-    texto += `📅 *Data prometida:* ${formatarDataBR(opts.promisedDate)}\n`;
-    texto += `👤 *Alterado por:* ${opts.userName}\n`;
-    if (opts.isUrgent) texto += `⚠️ *Urgente:* Sim\n`;
-    if (justificativa) {
-      texto += `\n💬 *Justificativa:*\n${truncarTextoWhatsApp(justificativa, 800)}\n`;
-    }
-
-    await enviarNotificacaoPorTipo(code, texto);
-  })().catch((err) => {
-    console.error(`[SycroOrder] WhatsApp tag disponibilidade:`, err);
-  });
-}
-
 /** Resolve usuário atual por login; retorna id, nome e login ou null */
 async function getUsuarioAtual(login: string) {
   if (!login) return null;
@@ -213,106 +90,6 @@ async function getUsuarioAtual(login: string) {
 
 function normalizeLogin(login?: string | null): string {
   return String(login ?? '').trim().toLowerCase();
-}
-
-function parseJsonArray(value: string | null | undefined): string[] | null {
-  if (value == null) return null;
-  const s = String(value).trim();
-  if (!s) return null;
-  try {
-    const arr = JSON.parse(s);
-    if (!Array.isArray(arr)) return null;
-    return arr.map((x) => String(x ?? '').trim()).filter(Boolean);
-  } catch {
-    return null;
-  }
-}
-
-/** Primeiro valor não vazio entre várias chaves possíveis (colunas variam na origem SQL). */
-function getFieldFromRow(row: Record<string, unknown>, keys: string[]): string {
-  for (const k of keys) {
-    const v = row[k];
-    if (v != null && String(v).trim()) return String(v).trim();
-  }
-  return '';
-}
-
-/**
- * Cliente e vendedor são atributos do pedido (PD), não da linha selecionada no card.
- * Usar sempre todas as linhas do PD no Gerenciador — não `relevantRows` filtrado por item_ids_json,
- * pois IDs desatualizados ou incompatíveis deixavam o filtro vazio e sumiam os nomes na capa.
- */
-function pickFirstDistinctFromRows(
-  rows: Array<Record<string, unknown>>,
-  keys: string[]
-): string | null {
-  const values = rows.map((r) => getFieldFromRow(r, keys)).filter(Boolean);
-  return values.length > 0 ? [...new Set(values)][0]! : null;
-}
-
-/**
- * Chave canônica pedido+item (alinhada a pedidosRepository) para casar id_pedido quando o ERP
- * altera o prefixo (ex.: troca de romaneio/carrada na chave).
- */
-function chavePedidoItem(id: string): string {
-  const parts = String(id ?? '')
-    .trim()
-    .split('-');
-  if (parts.length >= 3) {
-    const pedido = parts[parts.length - 2]!.trim();
-    const itemStr = parts[parts.length - 1]!.trim();
-    const numItem = parseInt(itemStr, 10);
-    const itemCanonico = Number.isNaN(numItem) ? itemStr : String(numItem);
-    return `${pedido}-${itemCanonico}`;
-  }
-  if (parts.length === 2) return parts.join('-').trim();
-  return String(id ?? '').trim();
-}
-
-function rowItemIdKey(row: Record<string, unknown>): string {
-  return String(row['id_pedido'] ?? row['idChave'] ?? '').trim();
-}
-
-/**
- * Linhas do Gerenciador do card: filtra por item_ids_json com fallbacks (id canônico, Cod)
- * quando a chave literal mudou após realocação de carrada no ERP.
- */
-function resolveRelevantRowsForCard(
-  rows: Array<Record<string, unknown>>,
-  selectedItemIds: string[] | null,
-  itemCodesJson: string | null | undefined
-): Array<Record<string, unknown>> {
-  if (!selectedItemIds || selectedItemIds.length === 0) {
-    return rows;
-  }
-  const byStrict = rows.filter((r) => selectedItemIds.includes(rowItemIdKey(r)));
-  if (byStrict.length > 0) return byStrict;
-  const selCanon = new Set(selectedItemIds.map((id) => chavePedidoItem(id)));
-  const byCanon = rows.filter((r) => selCanon.has(chavePedidoItem(rowItemIdKey(r))));
-  if (byCanon.length > 0) return byCanon;
-  const codes = parseJsonArray(itemCodesJson);
-  if (codes && codes.length > 0) {
-    const set = new Set(codes.map((c) => String(c).trim()).filter(Boolean));
-    const byCode = rows.filter((r) => set.has(String(r['Cod'] ?? r['cod'] ?? '').trim()));
-    if (byCode.length > 0) return byCode;
-  }
-  return [];
-}
-
-/** "PD 47192" vs "47192" — alinhado ao filtro flexível do Gerenciador (evita lista vazia no PATCH). */
-function normalizePdDigitsForCompare(pd: string): string {
-  const s = String(pd ?? '').trim();
-  const digits = s.replace(/\D+/g, '');
-  return digits || s;
-}
-
-function gerenciadorRowMatchesOrderNumber(row: Record<string, unknown>, orderNumber: string): boolean {
-  const rowPd = String(row['PD'] ?? row['pd'] ?? '').trim();
-  const ord = String(orderNumber ?? '').trim();
-  if (!rowPd || !ord) return false;
-  const a = normalizePdDigitsForCompare(rowPd);
-  const b = normalizePdDigitsForCompare(ord);
-  return a.length > 0 && a === b;
 }
 
 function rotaTextFromGerenciadorRow(row: Record<string, unknown>): string {
