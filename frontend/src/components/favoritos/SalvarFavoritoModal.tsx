@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { buildFavoritoUrl } from '../../config/telasFavoritaveis';
 import { useFavoritos } from '../../contexts/FavoritosContext';
 import type { TelaFavorita } from '../../api/favoritos';
+import { copiarTextoParaClipboard } from '../CopiarTextoBtn';
 
 type SalvarFavoritoModalProps = {
   open: boolean;
@@ -52,7 +53,7 @@ export default function SalvarFavoritoModal({
   function copiarLink() {
     if (!criado) return;
     const url = `${window.location.origin}${buildFavoritoUrl(criado.rota, criado.id)}`;
-    void navigator.clipboard.writeText(url);
+    void copiarTextoParaClipboard(url);
   }
 
   return createPortal(

@@ -8,6 +8,8 @@ import {
   type Pedido,
   type PedidoEncerradoTypeaheadItem,
 } from '../../api/pedidos';
+import { ComoLerBtn } from '../../components/AjudaTelaModal';
+import PedidosEncerradosAjudaModal from './PedidosEncerradosAjudaModal';
 
 const labelClass = 'text-sm font-medium text-slate-700 dark:text-slate-300';
 const inputClass =
@@ -38,6 +40,7 @@ export default function PedidosEncerradosPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [erroConexao, setErroConexao] = useState<string | null>(null);
   const [buscaRealizada, setBuscaRealizada] = useState(false);
+  const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
   const consultaSeqRef = useRef(0);
 
   const carregarPedido = useCallback(async (nomePd: string) => {
@@ -94,11 +97,17 @@ export default function PedidosEncerradosPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4 md:p-6 max-w-[1600px] mx-auto w-full">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Pedidos encerrados</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Consulta itens que não aparecem mais no Gerenciador (status ERP encerrado).
-        </p>
+      <div className="flex flex-wrap items-start gap-2">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Pedidos encerrados</h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Consulta itens que não aparecem mais no Gerenciador (status ERP encerrado).
+          </p>
+        </div>
+        <ComoLerBtn
+          onClick={() => setModalAjudaAberto(true)}
+          title="Como ler Pedidos Encerrados — busca, grade e histórico"
+        />
       </div>
 
       <div className="w-full min-w-0 max-w-xl">
@@ -139,6 +148,7 @@ export default function PedidosEncerradosPage() {
       />
 
       <CarregandoInformacoesOverlay show={loading} mensagem="Consultando pedidos encerrados…" />
+      <PedidosEncerradosAjudaModal aberto={modalAjudaAberto} onClose={() => setModalAjudaAberto(false)} />
     </div>
   );
 }

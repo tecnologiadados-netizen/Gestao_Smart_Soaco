@@ -477,9 +477,12 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
       const producaoAtual = toIsoDateOnly(
         (pedidoAtual as Record<string, unknown>).data_producao as string | Date | null | undefined
       );
+      // Produção atual só entra na ordem previsão ≥ produção; não exigir ≥ hoje
+      // (produção já no passado não pode bloquear reprogramação da previsão).
       const datasErro = validarDatasReprogramacao({
         previsaoIso: novaStr,
         producaoIso: producaoAtual || null,
+        exigirProducaoNaoAnteriorHoje: false,
       });
       if (datasErro) {
         res.status(400).json({ error: datasErro });
@@ -794,18 +797,19 @@ export async function ajustarDataProducaoLote(req: Request, res: Response): Prom
   }
   const usuario = req.user?.login ?? 'anon';
   try {
-    const itens = parsed.data.itens.map((it) => ({
-      id_pedido: String(it.id_pedido).trim(),
-      data_producao: new Date(it.data_producao),
-      rota: it.rota ?? null,
-    }));
-    for (const it of itens) {
+    for (const it of parsed.data.itens) {
+      // Validar o YYYY-MM-DD cru (evita deslocamento de fuso de `new Date('YYYY-MM-DD')`).
       const datasErro = validarDatasReprogramacao({ producaoIso: it.data_producao });
       if (datasErro) {
         res.status(400).json({ error: datasErro, id_pedido: it.id_pedido });
         return;
       }
     }
+    const itens = parsed.data.itens.map((it) => ({
+      id_pedido: String(it.id_pedido).trim(),
+      data_producao: new Date(it.data_producao),
+      rota: it.rota ?? null,
+    }));
     const resultado = await registrarDataProducaoLote(itens, usuario);
     invalidatePedidosCache();
     res.json(resultado);

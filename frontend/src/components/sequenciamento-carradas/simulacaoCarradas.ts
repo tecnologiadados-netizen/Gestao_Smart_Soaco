@@ -253,6 +253,129 @@ export function computarPedidosComEntregaAlterada(
 }
 
 /**
+ * Inclui pedidos vivos do ERP (ex.: inseridos na carrada após o gravar) cuja previsão
+ * preenchida difere da data efetiva da carrada (simulação ou baseline do snapshot).
+ */
+export function expandirPedidosEntregaComLinhasVivas(
+  base: PedidoAlterado[],
+  linhasVivas: Record<string, unknown>[],
+  sim: Map<string, SimEntry>,
+  baseline: Map<string, CarradaBaseline>
+): PedidoAlterado[] {
+  const seen = new Set(base.map((p) => p.idPedido));
+  const out = [...base];
+  for (const row of linhasVivas) {
+    const { carrada: nomeCarrada } = linhaCodCarrada(row);
+    if (isCarradaOrdemFinal(nomeCarrada) || isCarradaEmFormacao(nomeCarrada)) continue;
+    const idPedido = getField(row, ['id_pedido', 'idChave']);
+    if (!idPedido || seen.has(idPedido)) continue;
+    const key = linhaCarradaKey(row);
+    const nova = valorEfetivo(sim, baseline, key, 'dataEntrega');
+    if (!nova) continue;
+    const atual = toISODate(row['previsao_entrega_atualizada'] ?? row['previsao_entrega']);
+    // Só propaga para quem já tem previsão no ERP (evita exigir motivo em linhas sem data).
+    if (!atual || nova === atual) continue;
+    out.push({
+      idPedido,
+      rota: nomeCarrada,
+      pd: getField(row, ['PD', 'pd']) || '—',
+      cliente: getField(row, ['Cliente', 'cliente']),
+      cod: getField(row, ['Cod', 'cod']),
+      descricao: getField(row, ['Descricao do produto', 'Descrição do produto']),
+      qtdePendenteReal: getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']),
+      previsaoAnterior: atual,
+      previsaoNova: nova,
+    });
+    seen.add(idPedido);
+  }
+  return out;
+}
+
+export type CarradaSemDatasUnificadas = {
+  key: string;
+  cod: string;
+  carrada: string;
+  faltaProducao: boolean;
+  faltaEntrega: boolean;
+};
+
+/** @deprecated Use CarradaSemDatasUnificadas */
+export type CarradaSemDataEntrega = CarradaSemDatasUnificadas;
+
+/**
+ * Carradas normais (não especiais / não em formação) sem data de produção e/ou entrega efetiva.
+ * Cobre divergência entre pedidos (baseline vazio) e campo limpo na simulação.
+ */
+export function listarCarradasSemDatasUnificadas(
+  carradas: Array<{ cod: string; carrada: string }>,
+  sim: Map<string, SimEntry>,
+  baseline: Map<string, CarradaBaseline>,
+  keyFn: (c: { cod: string; carrada: string }) => string
+): CarradaSemDatasUnificadas[] {
+  const out: CarradaSemDatasUnificadas[] = [];
+  for (const c of carradas) {
+    if (isCarradaOrdemFinal(c.carrada)) continue;
+    if (isCarradaEmFormacao(c.carrada)) continue;
+    const key = keyFn(c);
+    const faltaProducao = !valorEfetivo(sim, baseline, key, 'dataProducao');
+    const faltaEntrega = !valorEfetivo(sim, baseline, key, 'dataEntrega');
+    if (faltaProducao || faltaEntrega) {
+      out.push({ key, cod: c.cod, carrada: c.carrada, faltaProducao, faltaEntrega });
+    }
+  }
+  return out;
+}
+
+/** Alias mantido para chamadas existentes. */
+export const listarCarradasSemDataEntrega = listarCarradasSemDatasUnificadas;
+
+/** Une listas de carradas sem datas unificadas por chave (preserva ordem da primeira ocorrência). */
+export function mesclarCarradasSemDatasUnificadas(
+  ...listas: CarradaSemDatasUnificadas[][]
+): CarradaSemDatasUnificadas[] {
+  const byKey = new Map<string, CarradaSemDatasUnificadas>();
+  for (const lista of listas) {
+    for (const c of lista) {
+      const prev = byKey.get(c.key);
+      if (!prev) {
+        byKey.set(c.key, { ...c });
+        continue;
+      }
+      prev.faltaProducao = prev.faltaProducao || c.faltaProducao;
+      prev.faltaEntrega = prev.faltaEntrega || c.faltaEntrega;
+    }
+  }
+  return [...byKey.values()];
+}
+
+/** Alias mantido para chamadas existentes. */
+export const mesclarCarradasSemDataEntrega = mesclarCarradasSemDatasUnificadas;
+
+/** Mensagem de bloqueio ao tentar concluir com produção/entrega inconsistentes. */
+export function mensagemBloqueioCarradasSemDatasUnificadas(
+  carradas: CarradaSemDatasUnificadas[]
+): string {
+  if (carradas.length === 0) return '';
+  const nomes = carradas.map((c) => c.carrada);
+  const lista = nomes.slice(0, 5).join('; ');
+  const extra = nomes.length > 5 ? ` (+${nomes.length - 5} outra(s))` : '';
+  const temProd = carradas.some((c) => c.faltaProducao);
+  const temEnt = carradas.some((c) => c.faltaEntrega);
+  let campos: string;
+  if (temProd && temEnt) campos = 'produção e/ou entrega';
+  else if (temProd) campos = 'produção';
+  else campos = 'entrega';
+  return (
+    `Não é possível concluir: há carrada(s) sem data de ${campos} unificada ` +
+    '(pedidos com datas divergentes ou sem data). Preencha as datas antes de registrar motivos. ' +
+    `Carradas: ${lista}${extra}`
+  );
+}
+
+/** Alias mantido para chamadas existentes. */
+export const mensagemBloqueioCarradasSemDataEntrega = mensagemBloqueioCarradasSemDatasUnificadas;
+
+/**
  * Chave canônica pedido+item (ignora prefixo do romaneio; espelha backend `chavePedidoItem`).
  * Ex.: "188240-48121-26250" e "186495-48121-26250" → "48121-26250".
  */
@@ -646,6 +769,14 @@ export function dataProducaoDaLinha(
   if (isCarradaEmFormacao(carrada)) {
     return dataEmFormacao;
   }
+  // Ordem final (Requisição/Retirada/Entrega GT): chave de carrada é compartilhada
+  // (`—` + TipoF). Preferir simulação/baseline por id_pedido — nunca o bucket compartilhado.
+  if (isCarradaOrdemFinal(carrada) || isCarradaOrdemFinal(tipoF)) {
+    const dataItem = valorEfetivoItem(sim, row, 'dataProducao');
+    if (dataItem) return dataItem;
+    if (isPedidoDisponivel(row)) return hojeISO();
+    return '';
+  }
   const key = linhaCarradaKey(row);
   const dataProducao = valorEfetivo(sim, baseline, key, 'dataProducao');
   if (dataProducao) return dataProducao;
@@ -680,6 +811,15 @@ export function resolverDataCalendarioLinha(
   }
   if (isCarradaEmFormacao(carrada)) {
     return dataEmFormacao ? { data: dataEmFormacao, origem: 'producao' } : { data: '', origem: null };
+  }
+  // Ordem final: só por item — ignora override compartilhado em linhaCarradaKey.
+  if (isCarradaOrdemFinal(carrada) || isCarradaOrdemFinal(tipoF)) {
+    const dataItem = valorEfetivoItem(sim, row, 'dataProducao');
+    if (dataItem) return { data: dataItem, origem: 'producao' };
+    if (isPedidoDisponivel(row)) return { data: hojeISO(), origem: 'producao' };
+    const previsao = previsaoAtualDaLinha(row);
+    if (previsao) return { data: previsao, origem: 'previsao' };
+    return { data: '', origem: null };
   }
   const key = linhaCarradaKey(row);
   const dataProducao = valorEfetivo(sim, baseline, key, 'dataProducao');
@@ -983,6 +1123,8 @@ export type CarradaDataInvalida = {
   codigoProduto?: string;
   descricaoProduto?: string;
   tipoF?: string;
+  /** Qtde Pendente Real do snapshot (itens de pedido). */
+  qtdePendenteReal?: number;
   /** Badges alinhados à coluna Status do Gerenciador (só itens de pedido). */
   statusPrazo?: string;
   card?: '' | 'Card' | 'Disponível';
@@ -1096,6 +1238,7 @@ export function listarCarradasComDatasPassadas(
         codigoProduto: getField(row, ['Cod', 'cod']),
         descricaoProduto: getField(row, ['Descricao do produto', 'Descrição do produto']),
         tipoF: getField(row, ['tipoF', 'TipoF', 'tipo_f']),
+        qtdePendenteReal: qtde,
         ...badges,
       });
       if (linha) out.push(linha);
@@ -1298,6 +1441,9 @@ export function datasItemPedidoGerenciador(
   let previsaoAtual: string;
   if (sItem && sItem.dataEntrega !== undefined) {
     previsaoAtual = sItem.dataEntrega;
+  } else if (isCarradaOrdemFinal(carrada)) {
+    // Não cair no bucket compartilhado `—`+TipoF (contaminaria outros pedidos).
+    previsaoAtual = previsaoAtualDaLinha(linha);
   } else {
     const key = linhaCarradaKey(linha);
     const sCarrada = sim.get(key);

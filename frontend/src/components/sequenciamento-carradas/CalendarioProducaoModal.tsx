@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   colunaCalendarioId,
   computarCalendarioProducao,
   dataProducaoInserirRomaneioApartirDe,
   dataProducaoCarradaEmFormacaoApartirDe,
   datasItemPedidoGerenciador,
-  encontrarLinhaSnapshotNoDrill,
   encontrarLinhaSnapshotParaTooltipItem,
   formatDataCurta,
   formatQtdeInt,
@@ -20,6 +20,7 @@ import {
   toISODate,
   tooltipDetalheComDatasEfetivas,
   valorEfetivo,
+  type CalendarioCelulaDetalhe,
   type CarradaBaseline,
   type ColunaCalendario,
   type SimEntry,
@@ -34,13 +35,14 @@ import {
   linhaSnapshotParaPedido,
   listarLinhasSnapshotPorPd,
   listarTooltipDetalhePorPd,
-  mergeLinhasSnapshotAposAjuste,
-  mergeLinhasSnapshotVarios,
+  montarEscopoReplicacaoMesmoRm,
+  type EscopoReplicacaoRm,
   SUBTOTAL_ROW_CLASS,
 } from './sequenciamentoCarradasUtils';
 import {
   mensagemCanalDatasPedido,
-  rotaPermiteAlterarDatasCalendario,
+  rotaPermiteAlterarDatasNoSequenciamentoCalendario,
+  pedidoPermiteAlterarDatasNoSequenciamentoCalendario,
 } from '../../utils/canalReprogramacaoDatas';
 import MultiSelectWithSearch from '../MultiSelectWithSearch';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
@@ -49,6 +51,7 @@ import GradeFiltroExcelPortal from '../grade/GradeFiltroExcelPortal';
 import HeatmapPedidoItensModal from '../HeatmapPedidoItensModal';
 import ModalAjustePrevisao, {
   type AjustePrevisaoContextoCalendario,
+  type AjustePrevisaoSimulacaoMeta,
   type AjustePrevisaoSuccessMeta,
 } from '../ModalAjustePrevisao';
 import GradeCelulaModalBtn from '../pcp/GradeCelulaModalBtn';
@@ -77,6 +80,9 @@ type Props = {
   onClose: () => void;
   onLinhasAtualizadas?: (linhas: Record<string, unknown>[]) => void;
   onEditarDataProducao?: (carradaKey: string, novaData: string) => void;
+  onEditarDataEntrega?: (carradaKey: string, novaData: string) => void;
+  /** Motivo/obs/confiável do modal de reprogramação → estado do rascunho (conclusão). */
+  onRegistrarMotivoSimulacao?: (idsPedido: string[], meta: AjustePrevisaoSimulacaoMeta) => void;
   /** False quando o snapshot já está concluído (somente leitura). */
   editavel?: boolean;
   /**
@@ -104,7 +110,6 @@ type PedidoAjusteState = {
   carradaKeysTodosItens: string[];
   calendario: AjustePrevisaoContextoCalendario;
   escopo: EscopoAjustePd;
-  exibirVoltarEscopo: boolean;
 };
 
 type Drill =
@@ -112,6 +117,64 @@ type Drill =
   | { nivel: 'tipof'; setor: string; data: string }
   | { nivel: 'carradas'; setor: string; data: string; tipoF: string }
   | { nivel: 'pedidos'; setor: string; data: string; tipoF: string; carradaKey: string };
+
+/** TipoFs distintos na célula (setor + data). */
+function tipoFsNaCelula(detalhes: CalendarioCelulaDetalhe[], setor: string, data: string): string[] {
+  const set = new Set<string>();
+  for (const d of detalhes) {
+    if (d.setor === setor && d.data === data) set.add(d.tipoF);
+  }
+  return [...set];
+}
+
+/** Chaves de carrada distintas no TipoF da célula. */
+function carradaKeysNoTipoF(
+  detalhes: CalendarioCelulaDetalhe[],
+  setor: string,
+  data: string,
+  tipoF: string
+): string[] {
+  const set = new Set<string>();
+  for (const d of detalhes) {
+    if (d.setor === setor && d.data === data && d.tipoF === tipoF) {
+      set.add(carradaKey(d.cod, d.carrada));
+    }
+  }
+  return [...set];
+}
+
+/**
+ * Abre o drill a partir da qtde do dia: se só houver um TipoF, pula essa tela;
+ * se esse TipoF tiver só uma carrada, vai direto aos pedidos (nível útil).
+ */
+function drillAposCliqueQtde(
+  detalhes: CalendarioCelulaDetalhe[],
+  setor: string,
+  data: string
+): Drill {
+  const tipos = tipoFsNaCelula(detalhes, setor, data);
+  if (tipos.length !== 1) return { nivel: 'tipof', setor, data };
+  const tipoF = tipos[0]!;
+  const keys = carradaKeysNoTipoF(detalhes, setor, data, tipoF);
+  if (keys.length === 1) {
+    return { nivel: 'pedidos', setor, data, tipoF, carradaKey: keys[0]! };
+  }
+  return { nivel: 'carradas', setor, data, tipoF };
+}
+
+/** Após escolher um TipoF: pula carradas quando há só uma. */
+function drillAposEscolherTipoF(
+  detalhes: CalendarioCelulaDetalhe[],
+  setor: string,
+  data: string,
+  tipoF: string
+): Drill {
+  const keys = carradaKeysNoTipoF(detalhes, setor, data, tipoF);
+  if (keys.length === 1) {
+    return { nivel: 'pedidos', setor, data, tipoF, carradaKey: keys[0]! };
+  }
+  return { nivel: 'carradas', setor, data, tipoF };
+}
 
 type SetorRow = { setor: string };
 
@@ -122,19 +185,6 @@ const TH = 'px-2 py-2 font-semibold text-slate-700 dark:text-slate-200 whitespac
 const TD = 'px-2 py-1.5 text-slate-700 dark:text-slate-200';
 const WEEKEND_TD = 'bg-slate-100/80 dark:bg-slate-900/40';
 const OCIOso_TD = 'bg-slate-50/60 dark:bg-slate-900/20';
-
-function IconAjustarPrevisao() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-      />
-    </svg>
-  );
-}
 
 function diaSemanaIso(iso: string): number | null {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -244,8 +294,10 @@ export default function CalendarioProducaoModal({
   sim,
   baseline,
   onClose,
-  onLinhasAtualizadas,
+  onLinhasAtualizadas: _onLinhasAtualizadas,
   onEditarDataProducao,
+  onEditarDataEntrega,
+  onRegistrarMotivoSimulacao,
   editavel = true,
   estoquePorCod = {},
   estoqueCongelado = false,
@@ -324,9 +376,27 @@ export default function CalendarioProducaoModal({
     linha: TooltipDetalheRow;
     itens: TooltipDetalheRow[];
     setorDestaque: string;
+    selecaoInicial?: string[];
   } | null>(null);
+  /** PD a reabrir no Heatmap após Cancelar/ESC do ajuste (preserva seleção). */
+  const pedidoModalRefreshRef = useRef<{
+    pd: string;
+    setorDestaque: string;
+    selecaoKeys?: string[];
+  } | null>(null);
+  /**
+   * Patches de sim aplicados no mesmo tick do save (antes do setSim do pai propagar).
+   * Usado para reabrir o Heatmap com datas já atualizadas.
+   */
+  const simPatchRef = useRef<Map<string, SimEntry>>(new Map());
   const [pedidoAjustePrevisao, setPedidoAjustePrevisao] = useState<PedidoAjusteState | null>(null);
-  const [escolhaEscopoPd, setEscolhaEscopoPd] = useState<string | null>(null);
+  const [confirmReplicacaoRm, setConfirmReplicacaoRm] = useState<{
+    pd: string;
+    setorDestaque: string;
+    selecaoKeys: string[];
+    marcados: number;
+    escopo: EscopoReplicacaoRm;
+  } | null>(null);
   const [setorDetalhe, setSetorDetalhe] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [vistaCalendario, setVistaCalendario] = useState<'producao' | 'materiais'>('producao');
@@ -593,21 +663,114 @@ export default function CalendarioProducaoModal({
   const pedidoTotal = pedidoRows.reduce((s, r) => s + r.qtde, 0);
 
   const voltarNivel = useCallback(() => {
+    const detalhes = dados.detalhes;
     setDrill((cur) => {
       if (cur.nivel === 'pedidos') {
+        const keys = carradaKeysNoTipoF(detalhes, cur.setor, cur.data, cur.tipoF);
+        if (keys.length <= 1) {
+          // Carrada foi pulada na ida: se TipoF também era único, volta ao calendário.
+          const tipos = tipoFsNaCelula(detalhes, cur.setor, cur.data);
+          if (tipos.length <= 1) return { nivel: 'pivot' };
+          return { nivel: 'tipof', setor: cur.setor, data: cur.data };
+        }
         return { nivel: 'carradas', setor: cur.setor, data: cur.data, tipoF: cur.tipoF };
       }
       if (cur.nivel === 'carradas') {
+        const tipos = tipoFsNaCelula(detalhes, cur.setor, cur.data);
+        if (tipos.length <= 1) return { nivel: 'pivot' };
         return { nivel: 'tipof', setor: cur.setor, data: cur.data };
       }
       if (cur.nivel === 'tipof') return { nivel: 'pivot' };
       return cur;
     });
-  }, []);
+  }, [dados.detalhes]);
 
   const emDrill = drill.nivel !== 'pivot';
 
+  const mergeSimComPatch = useCallback((base: Map<string, SimEntry>, patch: Map<string, SimEntry>) => {
+    if (patch.size === 0) return base;
+    const next = new Map(base);
+    for (const [key, entry] of patch) {
+      next.set(key, { ...next.get(key), ...entry });
+    }
+    return next;
+  }, []);
+
+  const acumularSimPatch = useCallback((key: string, campo: 'dataProducao' | 'dataEntrega', value: string) => {
+    const cur = { ...(simPatchRef.current.get(key) ?? {}) };
+    cur[campo] = value;
+    simPatchRef.current.set(key, cur);
+  }, []);
+
+  const montarPedidoModal = useCallback(
+    (
+      sourceLinhas: Record<string, unknown>[],
+      pd: string,
+      setorDestaque: string,
+      selecaoInicial?: string[],
+      simOverride?: Map<string, SimEntry>
+    ) => {
+      const simEfetivo = simOverride ?? mergeSimComPatch(sim, simPatchRef.current);
+      const linhasPd = listarLinhasSnapshotPorPd(sourceLinhas, pd);
+      const itens = listarTooltipDetalhePorPd(sourceLinhas, pd).map((item) => {
+        const linha = encontrarLinhaSnapshotParaTooltipItem(linhasPd, item);
+        return linha
+          ? tooltipDetalheComDatasEfetivas(
+              item,
+              linha,
+              simEfetivo,
+              baseline,
+              dataInserirRomaneio,
+              dataEmFormacao
+            )
+          : item;
+      });
+      if (itens.length === 0) return;
+      setPedidoModal({
+        linha: itens[0]!,
+        itens,
+        setorDestaque,
+        selecaoInicial: selecaoInicial?.length ? selecaoInicial : undefined,
+      });
+    },
+    [sim, baseline, dataInserirRomaneio, dataEmFormacao, mergeSimComPatch]
+  );
+
+  const abrirModalPedido = useCallback(
+    (pd: string) => {
+      if (drill.nivel !== 'pedidos') return;
+      montarPedidoModal(linhas, pd, drill.setor);
+    },
+    [drill, linhas, montarPedidoModal]
+  );
+
+  const reabrirPedidoModalAposAjuste = useCallback(
+    (sourceLinhas: Record<string, unknown>[]) => {
+      const refresh = pedidoModalRefreshRef.current;
+      if (!refresh) return;
+      // Pós-sucesso: não restaura checkboxes; usa patch local (sim do pai ainda pode estar stale).
+      pedidoModalRefreshRef.current = null;
+      const simEfetivo = mergeSimComPatch(sim, simPatchRef.current);
+      montarPedidoModal(sourceLinhas, refresh.pd, refresh.setorDestaque, undefined, simEfetivo);
+      simPatchRef.current = new Map();
+    },
+    [montarPedidoModal, mergeSimComPatch, sim]
+  );
+
+  /** Esc/Cancel no ajuste: volta ao modal de itens do pedido com a seleção anterior. */
+  const voltarAoPedidoModal = useCallback(() => {
+    setPedidoAjustePrevisao(null);
+    simPatchRef.current = new Map();
+    const refresh = pedidoModalRefreshRef.current;
+    if (!refresh) return;
+    montarPedidoModal(linhas, refresh.pd, refresh.setorDestaque, refresh.selecaoKeys);
+  }, [linhas, montarPedidoModal]);
+
   const handleEscape = useCallback(() => {
+    if (confirmReplicacaoRm) {
+      setConfirmReplicacaoRm(null);
+      return;
+    }
     if (horizonteItem) {
       setHorizonteItem(null);
       return;
@@ -617,11 +780,7 @@ export default function CalendarioProducaoModal({
       return;
     }
     if (pedidoAjustePrevisao) {
-      setPedidoAjustePrevisao(null);
-      return;
-    }
-    if (escolhaEscopoPd) {
-      setEscolhaEscopoPd(null);
+      voltarAoPedidoModal();
       return;
     }
     if (pedidoModal) {
@@ -646,10 +805,10 @@ export default function CalendarioProducaoModal({
     }
     onClose();
   }, [
+    confirmReplicacaoRm,
     horizonteItem,
     materiaisDiaIso,
     pedidoAjustePrevisao,
-    escolhaEscopoPd,
     pedidoModal,
     setorDetalhe,
     grade,
@@ -657,64 +816,68 @@ export default function CalendarioProducaoModal({
     drill.nivel,
     voltarNivel,
     onClose,
+    voltarAoPedidoModal,
   ]);
 
-  const abrirModalPedido = useCallback(
-    (pd: string) => {
-      if (drill.nivel !== 'pedidos') return;
-      const linhasPd = listarLinhasSnapshotPorPd(linhas, pd);
-      const itens = listarTooltipDetalhePorPd(linhas, pd)
-        .map((item) => {
-          const linha = encontrarLinhaSnapshotParaTooltipItem(linhasPd, item);
-          return linha
-            ? tooltipDetalheComDatasEfetivas(item, linha, sim, baseline, dataInserirRomaneio, dataEmFormacao)
-            : item;
-        });
-      if (itens.length === 0) return;
-      setPedidoModal({ linha: itens[0]!, itens, setorDestaque: drill.setor });
-    },
-    [linhas, sim, baseline, dataInserirRomaneio, dataEmFormacao, drill]
-  );
-
   const abrirAjustePrevisao = useCallback(
-    (pd: string, escopo: EscopoAjustePd) => {
+    (
+      pd: string,
+      itensAlvo: Pick<TooltipDetalheRow, 'codigo' | 'rota' | 'pedido'>[],
+      linhasPreSelecionadas?: Record<string, unknown>[]
+    ) => {
       if (drill.nivel !== 'pedidos') return;
-      const linhasPd = listarLinhasSnapshotPorPd(linhas, pd);
-      const linhaDrill = encontrarLinhaSnapshotNoDrill(
-        linhas,
-        pd,
-        {
-          setor: drill.setor,
-          data: drill.data,
-          tipoF: drill.tipoF,
-          carradaKey: drill.carradaKey,
-        },
-        sim,
-        baseline,
-        dataInserirRomaneio,
-        dataEmFormacao
-      );
-      const linha = escopo === 'item' ? linhaDrill : linhaDrill ?? linhasPd[0] ?? null;
+      if (itensAlvo.length === 0 && !(linhasPreSelecionadas && linhasPreSelecionadas.length > 0)) return;
+
+      let linhasSel: Record<string, unknown>[] = [];
+      const seen = new Set<string>();
+
+      if (linhasPreSelecionadas && linhasPreSelecionadas.length > 0) {
+        for (const found of linhasPreSelecionadas) {
+          const id = String(found['id_pedido'] ?? found['idPedido'] ?? linhaCarradaKey(found));
+          if (seen.has(id)) continue;
+          seen.add(id);
+          linhasSel.push(found);
+        }
+      } else {
+        const linhasPd = listarLinhasSnapshotPorPd(linhas, pd);
+        for (const alvo of itensAlvo) {
+          const found = encontrarLinhaSnapshotParaTooltipItem(linhasPd, alvo);
+          if (!found) continue;
+          const id = String(found['id_pedido'] ?? found['idPedido'] ?? linhaCarradaKey(found));
+          if (seen.has(id)) continue;
+          seen.add(id);
+          linhasSel.push(found);
+        }
+      }
+
+      const linha = linhasSel[0] ?? null;
       if (!linha) return;
       const pedido = linhaSnapshotParaPedido(linha);
       if (!pedido) return;
 
       const row = pedido as unknown as Record<string, unknown>;
       const rotaLinha = String(row['Observacoes'] ?? row['Observações'] ?? drill.tipoF ?? '').trim();
-      if (!rotaPermiteAlterarDatasCalendario(rotaLinha) && !rotaPermiteAlterarDatasCalendario(String(drill.tipoF ?? ''))) {
+      if (
+        !rotaPermiteAlterarDatasNoSequenciamentoCalendario(rotaLinha) &&
+        !rotaPermiteAlterarDatasNoSequenciamentoCalendario(String(drill.tipoF ?? '')) &&
+        !pedidoPermiteAlterarDatasNoSequenciamentoCalendario(row)
+      ) {
         setToast(mensagemCanalDatasPedido(row));
         setTimeout(() => setToast(null), 4000);
         return;
       }
 
-      const carradaKeysTodosItens = [...new Set(linhasPd.map((row) => linhaCarradaKey(row)))];
-      const pedidosPd = linhasPd
-        .map((row) => linhaSnapshotParaPedido(row))
+      const escopo: EscopoAjustePd = linhasSel.length > 1 ? 'todos_itens_pd' : 'item';
+      const pedidosSel = linhasSel
+        .map((r) => linhaSnapshotParaPedido(r))
         .filter((p): p is Pedido => p != null);
       const demaisItensPd =
         escopo === 'todos_itens_pd'
-          ? pedidosPd.filter((p) => p.id_pedido !== pedido.id_pedido)
+          ? pedidosSel.filter((p) => p.id_pedido !== pedido.id_pedido)
           : undefined;
+      const carradaKeysTodosItens = [
+        ...new Set(linhasSel.map((r) => linhaCarradaKey(r))),
+      ];
 
       const key = linhaCarradaKey(linha);
       const datasExibidas = datasItemPedidoGerenciador(
@@ -739,7 +902,6 @@ export default function CalendarioProducaoModal({
         carradaKey: key,
         carradaKeysTodosItens,
         escopo,
-        exibirVoltarEscopo: linhasPd.length > 1,
         calendario: {
           dataProducaoAtual,
           producaoDerivadaPrevisao: datasExibidas.producaoPorPrevisao || origem === 'previsao',
@@ -754,82 +916,128 @@ export default function CalendarioProducaoModal({
   const podeReprogramarNoCalendario = useCallback(
     (pd: string): boolean => {
       if (drill.nivel !== 'pedidos') return false;
-      if (rotaPermiteAlterarDatasCalendario(String(drill.tipoF ?? ''))) return true;
+      if (rotaPermiteAlterarDatasNoSequenciamentoCalendario(String(drill.tipoF ?? ''))) return true;
       const linhasPd = listarLinhasSnapshotPorPd(linhas, pd);
       const linha = linhasPd[0];
       if (!linha) return false;
       const pedido = linhaSnapshotParaPedido(linha);
       if (!pedido) return false;
       const row = pedido as unknown as Record<string, unknown>;
+      if (pedidoPermiteAlterarDatasNoSequenciamentoCalendario(row)) return true;
       const rotaLinha = String(row['Observacoes'] ?? row['Observações'] ?? '').trim();
-      return rotaPermiteAlterarDatasCalendario(rotaLinha);
+      return rotaPermiteAlterarDatasNoSequenciamentoCalendario(rotaLinha);
     },
     [drill, linhas]
   );
 
-  const solicitarAjustePrevisao = useCallback(
-    (pd: string) => {
-      const qtdItens = listarLinhasSnapshotPorPd(linhas, pd).length;
-      if (qtdItens <= 1) {
-        abrirAjustePrevisao(pd, 'item');
-        return;
-      }
-      setEscolhaEscopoPd(pd);
+  const handleAjusteSuccess = useCallback(
+    (_atualizado: Pedido, _meta?: AjustePrevisaoSuccessMeta) => {
+      // Feedback "Gravado com sucesso" já foi exibido no ModalAjustePrevisao; só reabre o PD.
+      reabrirPedidoModalAposAjuste(linhas);
     },
-    [linhas, abrirAjustePrevisao]
+    [linhas, reabrirPedidoModalAposAjuste]
   );
 
-  const handleAjusteSuccess = useCallback(
-    (atualizado: Pedido, meta?: AjustePrevisaoSuccessMeta) => {
-      let proximas = mergeLinhasSnapshotAposAjuste(linhas, atualizado, meta);
-      if (meta?.todosItensPdAtualizados?.length) {
-        proximas = mergeLinhasSnapshotVarios(proximas, meta.todosItensPdAtualizados);
-      }
-      onLinhasAtualizadas?.(proximas);
-      const qtdTodos = meta?.todosItensPdAtualizados?.length ?? 0;
-      setToast(
-        meta?.atualizadosMesmaCarrada?.length
-          ? 'Datas aplicadas no Gerenciador (previsão replicada na carrada).'
-          : qtdTodos > 1
-            ? `Datas aplicadas no Gerenciador em ${qtdTodos} itens do pedido.`
-            : 'Datas aplicadas no Gerenciador de Pedidos.'
-      );
-      setTimeout(() => setToast(null), 3000);
-    },
-    [linhas, onLinhasAtualizadas]
-  );
+  const keysEscopoAjuste = useCallback((): string[] => {
+    if (!pedidoAjustePrevisao) return [];
+    return pedidoAjustePrevisao.escopo === 'todos_itens_pd'
+      ? pedidoAjustePrevisao.carradaKeysTodosItens
+      : [pedidoAjustePrevisao.carradaKey];
+  }, [pedidoAjustePrevisao]);
+
+  const idsPedidoEscopoAjuste = useCallback((): string[] => {
+    if (!pedidoAjustePrevisao) return [];
+    const pedidosEscopo =
+      pedidoAjustePrevisao.escopo === 'todos_itens_pd'
+        ? [
+            pedidoAjustePrevisao.pedido,
+            ...(pedidoAjustePrevisao.calendario.demaisItensPd ?? []),
+          ]
+        : [pedidoAjustePrevisao.pedido];
+    return pedidosEscopo
+      .map((p) => String(p.id_pedido ?? '').trim())
+      .filter(Boolean);
+  }, [pedidoAjustePrevisao]);
+
+  const pedidosEscopoAjuste = useCallback((): Pedido[] => {
+    if (!pedidoAjustePrevisao) return [];
+    return pedidoAjustePrevisao.escopo === 'todos_itens_pd'
+      ? [
+          pedidoAjustePrevisao.pedido,
+          ...(pedidoAjustePrevisao.calendario.demaisItensPd ?? []),
+        ]
+      : [pedidoAjustePrevisao.pedido];
+  }, [pedidoAjustePrevisao]);
+
+  const escopoEhOrdemFinal = useCallback((): boolean => {
+    return pedidosEscopoAjuste().some((p) => {
+      const rota = String(
+        (p as Record<string, unknown>)['Observacoes'] ??
+          (p as Record<string, unknown>)['Observações'] ??
+          ''
+      ).trim();
+      return rota && isCarradaOrdemFinal(rota);
+    });
+  }, [pedidosEscopoAjuste]);
 
   const handleSalvarDataProducao = useCallback(
     (novaData: string) => {
       if (!pedidoAjustePrevisao) return;
-      const keys =
-        pedidoAjustePrevisao.escopo === 'todos_itens_pd'
-          ? pedidoAjustePrevisao.carradaKeysTodosItens
-          : [pedidoAjustePrevisao.carradaKey];
-      for (const key of keys) onEditarDataProducao?.(key, novaData);
-
-      // Ordem final (Entrega GT etc.): leitura efetiva usa simItemKey(id_pedido).
-      const pedidosEscopo =
-        pedidoAjustePrevisao.escopo === 'todos_itens_pd'
-          ? [
-              pedidoAjustePrevisao.pedido,
-              ...(pedidoAjustePrevisao.calendario.demaisItensPd ?? []),
-            ]
-          : [pedidoAjustePrevisao.pedido];
-      for (const p of pedidosEscopo) {
-        const id = String(p.id_pedido ?? '').trim();
-        if (!id) continue;
-        const rota = String(
-          (p as Record<string, unknown>)['Observacoes'] ??
-            (p as Record<string, unknown>)['Observações'] ??
-            ''
-        ).trim();
-        if (rota && isCarradaOrdemFinal(rota)) {
-          onEditarDataProducao?.(simItemKey(id), novaData);
+      // Ordem final (Requisição/Retirada/Entrega GT): só simItemKey — a chave
+      // linhaCarradaKey é compartilhada por todo o TipoF e contaminaria os demais.
+      if (escopoEhOrdemFinal()) {
+        for (const id of idsPedidoEscopoAjuste()) {
+          const key = simItemKey(id);
+          acumularSimPatch(key, 'dataProducao', novaData);
+          onEditarDataProducao?.(key, novaData);
         }
+        return;
+      }
+      for (const key of keysEscopoAjuste()) {
+        acumularSimPatch(key, 'dataProducao', novaData);
+        onEditarDataProducao?.(key, novaData);
       }
     },
-    [pedidoAjustePrevisao, onEditarDataProducao]
+    [
+      pedidoAjustePrevisao,
+      onEditarDataProducao,
+      keysEscopoAjuste,
+      idsPedidoEscopoAjuste,
+      escopoEhOrdemFinal,
+      acumularSimPatch,
+    ]
+  );
+
+  const handleSalvarPrevisaoSimulacao = useCallback(
+    (novaData: string, meta: AjustePrevisaoSimulacaoMeta) => {
+      if (!pedidoAjustePrevisao) return;
+      if (escopoEhOrdemFinal()) {
+        for (const id of idsPedidoEscopoAjuste()) {
+          const key = simItemKey(id);
+          acumularSimPatch(key, 'dataEntrega', novaData);
+          onEditarDataEntrega?.(key, novaData);
+        }
+      } else {
+        for (const key of keysEscopoAjuste()) {
+          acumularSimPatch(key, 'dataEntrega', novaData);
+          onEditarDataEntrega?.(key, novaData);
+        }
+      }
+
+      const ids = idsPedidoEscopoAjuste();
+      if (ids.length > 0 && meta.motivo.trim()) {
+        onRegistrarMotivoSimulacao?.(ids, meta);
+      }
+    },
+    [
+      pedidoAjustePrevisao,
+      onEditarDataEntrega,
+      onRegistrarMotivoSimulacao,
+      keysEscopoAjuste,
+      idsPedidoEscopoAjuste,
+      escopoEhOrdemFinal,
+      acumularSimPatch,
+    ]
   );
 
   useRegisterModalEscape({ id: 'seq-carradas-calendario', onClose: handleEscape, zIndex: 130 });
@@ -903,7 +1111,7 @@ export default function CalendarioProducaoModal({
       <td key={colId} className={`${TD} text-right ${weekend ? 'px-1' : ''} ${weekend ? WEEKEND_TD : ''}`}>
         {v > 0 ? (
           <GradeCelulaModalBtn
-            onClick={() => setDrill({ nivel: 'tipof', setor, data: col.iso })}
+            onClick={() => setDrill(drillAposCliqueQtde(dados.detalhes, setor, col.iso))}
             title={titulo}
             align="right"
           >
@@ -924,7 +1132,7 @@ export default function CalendarioProducaoModal({
     <div
       className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4"
       role="presentation"
-      onClick={onClose}
+      onClick={handleEscape}
     >
       <div
         className="flex max-h-[92vh] w-full max-w-[95vw] flex-col rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
@@ -1124,8 +1332,8 @@ export default function CalendarioProducaoModal({
                     </>
                   ) : (dispMateriais?.qtdeMateriaisEscopo ?? 0) === 0 ? (
                     <>
-                      Nenhum componente de almox secundário (setor 2, sem Matéria Prima) na BOM
-                      dos produtos do calendário. O semáforo só cobre esses materiais.
+                      Nenhum componente no escopo do calendário (almox secundário, lista válida, sem
+                      Matéria Prima) na BOM dos produtos do calendário. O semáforo só cobre esses materiais.
                     </>
                   ) : (
                     <>
@@ -1327,12 +1535,14 @@ export default function CalendarioProducaoModal({
                     <td className={TD}>
                       <GradeCelulaModalBtn
                         onClick={() =>
-                          setDrill({
-                            nivel: 'carradas',
-                            setor: drill.setor,
-                            data: drill.data,
-                            tipoF: r.tipoF,
-                          })
+                          setDrill(
+                            drillAposEscolherTipoF(
+                              dados.detalhes,
+                              drill.setor,
+                              drill.data,
+                              r.tipoF
+                            )
+                          )
                         }
                         title="Ver carradas"
                         align="left"
@@ -1426,17 +1636,6 @@ export default function CalendarioProducaoModal({
                           {labelPedidoMapa(r.pd)}
                         </GradeCelulaModalBtn>
                         {r.producaoPorPrevisao && <IndicadorDataPorPrevisao />}
-                        {podeAjustarPrevisao && podeReprogramarNoCalendario(r.pd) && (
-                          <button
-                            type="button"
-                            onClick={() => solicitarAjustePrevisao(r.pd)}
-                            className="rounded p-1 text-slate-500 hover:bg-slate-200 hover:text-primary-700 dark:text-slate-400 dark:hover:bg-slate-600/50 dark:hover:text-primary-300 transition"
-                            title="Reprogramar datas de produção e entrega"
-                            aria-label={`Ajustar previsão do pedido ${labelPedidoMapa(r.pd)}`}
-                          >
-                            <IconAjustarPrevisao />
-                          </button>
-                        )}
                       </div>
                     </td>
                     <td className={`${TD} max-w-[280px] truncate`} title={r.cliente || undefined}>
@@ -1492,9 +1691,109 @@ export default function CalendarioProducaoModal({
           municipioLabel={pedidoModal.linha.municipio || '—'}
           itens={pedidoModal.itens}
           setorDestaque={pedidoModal.setorDestaque}
-          onClose={() => setPedidoModal(null)}
+          selecaoInicial={pedidoModal.selecaoInicial}
+          onClose={() => {
+            pedidoModalRefreshRef.current = null;
+            setPedidoModal(null);
+          }}
+          podeReprogramar={
+            podeAjustarPrevisao && podeReprogramarNoCalendario(pedidoModal.linha.pedido)
+          }
+          onReprogramar={(itensSel) => {
+            const pd = pedidoModal.linha.pedido;
+            const selecaoKeys = itensSel.map((r) => `${r.codigo}\0${r.rota}`);
+            const escopoRm = montarEscopoReplicacaoMesmoRm(itensSel, linhas);
+            if (escopoRm.precisaConfirmar) {
+              setConfirmReplicacaoRm({
+                pd,
+                setorDestaque: pedidoModal.setorDestaque,
+                selecaoKeys,
+                marcados: itensSel.length,
+                escopo: escopoRm,
+              });
+              return;
+            }
+            pedidoModalRefreshRef.current = {
+              pd,
+              setorDestaque: pedidoModal.setorDestaque,
+              selecaoKeys,
+            };
+            setPedidoModal(null);
+            if (escopoRm.linhasSnapshot.length > 0) {
+              abrirAjustePrevisao(pd, itensSel, escopoRm.linhasSnapshot);
+            } else {
+              abrirAjustePrevisao(pd, itensSel);
+            }
+          }}
         />
       )}
+
+      {confirmReplicacaoRm &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[14100] flex items-center justify-center bg-black/60 p-4"
+            role="presentation"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmReplicacaoRm(null);
+            }}
+          >
+            <div
+              className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+              role="dialog"
+              aria-modal
+              aria-labelledby="confirm-rm-titulo"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h4
+                id="confirm-rm-titulo"
+                className="text-sm font-semibold text-slate-900 dark:text-slate-100"
+              >
+                Replicar datas na carrada (RM)
+              </h4>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                Você marcou {confirmReplicacaoRm.marcados} item(ns) de tipof carradas
+                {confirmReplicacaoRm.escopo.rotulosRm.length > 0
+                  ? ` (RM ${confirmReplicacaoRm.escopo.rotulosRm.join(', ')})`
+                  : ''}
+                . A alteração será aplicada a todos os {confirmReplicacaoRm.escopo.qtdItens} itens de{' '}
+                {confirmReplicacaoRm.escopo.qtdPedidos} pedido(s) no mesmo código de romaneio, para que
+                fiquem com as mesmas datas
+                {confirmReplicacaoRm.escopo.extras > 0
+                  ? ` — incluindo ${confirmReplicacaoRm.escopo.extras} item(ns) além do(s) marcado(s)`
+                  : ''}
+                .
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmReplicacaoRm(null)}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-500 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const c = confirmReplicacaoRm;
+                    setConfirmReplicacaoRm(null);
+                    pedidoModalRefreshRef.current = {
+                      pd: c.pd,
+                      setorDestaque: c.setorDestaque,
+                      selecaoKeys: c.selecaoKeys,
+                    };
+                    setPedidoModal(null);
+                    abrirAjustePrevisao(c.pd, c.escopo.itens, c.escopo.linhasSnapshot);
+                  }}
+                  className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700"
+                >
+                  Continuar e reprogramar todos do RM
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {setorDetalhe && (
         <CalendarioSetorProdutosModal
@@ -1509,115 +1808,17 @@ export default function CalendarioProducaoModal({
         />
       )}
 
-      {escolhaEscopoPd && (
-        <div
-          className="fixed inset-0 z-[135] flex items-center justify-center bg-black/75 p-4"
-          role="presentation"
-          onClick={(e) => {
-            e.stopPropagation();
-            setEscolhaEscopoPd(null);
-          }}
-        >
-          <div
-            className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-600 dark:bg-slate-800"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="escolha-escopo-pd-titulo"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3
-              id="escolha-escopo-pd-titulo"
-              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
-            >
-              Alterar datas do pedido
-            </h3>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-              Pedido <strong>{labelPedidoMapa(escolhaEscopoPd)}</strong> — deseja alterar a data somente do
-              item deste pedido ou de <strong>todos os itens</strong> do pedido?
-            </p>
-            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={() => setEscolhaEscopoPd(null)}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const pd = escolhaEscopoPd;
-                  setEscolhaEscopoPd(null);
-                  abrirAjustePrevisao(pd, 'item');
-                }}
-                className="rounded-lg border border-primary-500 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/30"
-              >
-                Somente este item
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const pd = escolhaEscopoPd;
-                  setEscolhaEscopoPd(null);
-                  abrirAjustePrevisao(pd, 'todos_itens_pd');
-                }}
-                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
-              >
-                Todos os itens do pedido
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {pedidoAjustePrevisao && (
         <ModalAjustePrevisao
           pedido={pedidoAjustePrevisao.pedido}
           calendario={pedidoAjustePrevisao.calendario}
-          onSalvarDataProducao={(novaData) => {
-            handleSalvarDataProducao(novaData);
-          }}
-          onVoltar={
-            pedidoAjustePrevisao.exibirVoltarEscopo
-              ? () => {
-                  const pd = pedidoAjustePrevisao.pd;
-                  setPedidoAjustePrevisao(null);
-                  setEscolhaEscopoPd(pd);
-                }
-              : undefined
-          }
+          persistirNoGerenciador={false}
+          onSalvarDataProducao={handleSalvarDataProducao}
+          onSalvarPrevisaoSimulacao={handleSalvarPrevisaoSimulacao}
+          onVoltar={voltarAoPedidoModal}
           onClose={() => setPedidoAjustePrevisao(null)}
           onSuccess={(atualizado, meta) => {
-            const previsaoAnterior = String(
-              pedidoAjustePrevisao.pedido.previsao_entrega_atualizada ?? ''
-            ).slice(0, 10);
-            const previsaoNova = String(atualizado.previsao_entrega_atualizada ?? '').slice(0, 10);
-            const previsaoAlterada = previsaoNova !== previsaoAnterior;
-            const producaoNova = String(
-              (atualizado as Record<string, unknown>).data_producao ?? ''
-            ).slice(0, 10);
-            const producaoAnterior = String(
-              (pedidoAjustePrevisao.pedido as Record<string, unknown>).data_producao ??
-                pedidoAjustePrevisao.calendario.dataProducaoAtual ??
-                ''
-            ).slice(0, 10);
-            const producaoAlterada = !!producaoNova && producaoNova !== producaoAnterior;
-
-            if (previsaoAlterada || meta?.atualizadosMesmaCarrada?.length || meta?.todosItensPdAtualizados?.length) {
-              handleAjusteSuccess(atualizado, meta);
-            } else if (producaoAlterada) {
-              onLinhasAtualizadas?.(
-                mergeLinhasSnapshotAposAjuste(linhas, atualizado, meta)
-              );
-              const msg =
-                pedidoAjustePrevisao.escopo === 'todos_itens_pd'
-                  ? `Data de produção aplicada no Gerenciador em ${pedidoAjustePrevisao.carradaKeysTodosItens.length} carrada(s).`
-                  : 'Data de produção aplicada no Gerenciador de Pedidos.';
-              setToast(msg);
-              setTimeout(() => setToast(null), 3000);
-            } else {
-              handleAjusteSuccess(atualizado, meta);
-            }
+            handleAjusteSuccess(atualizado, meta);
           }}
           onError={(msg) => {
             setToast(msg);
@@ -1654,7 +1855,7 @@ export default function CalendarioProducaoModal({
       )}
 
       {toast && (
-        <div className="fixed bottom-4 right-4 z-[140] rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-800 shadow-lg dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100">
+        <div className="fixed bottom-4 right-4 z-[160] rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-800 shadow-lg dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100">
           {toast}
         </div>
       )}

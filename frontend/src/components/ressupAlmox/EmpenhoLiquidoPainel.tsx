@@ -1,9 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { RessupEmpenhoPedidoResultado } from '../../api/compras';
 import RotuloComDica from './RotuloComDica';
+import ModalEstoquePaDetalhe from './ModalEstoquePaDetalhe';
 import {
   calcularSaldoProjetadoPorPedido,
   DICA_EMPENHO_LIQ_GRADE,
+  DICA_ESTOQUE_PA,
   RUPTURA_CELL_CLASS,
   RUPTURA_ROW_CLASS,
 } from './empenhoModalUtils';
@@ -27,13 +29,13 @@ const DICA_EMP_PD_ESTOQUE =
   'Parte do empenho bruto de pedidos tipo Produção para estoque (ex.: PD 44711). Sempre incluído.';
 const DICA_VENDA_DIRETA =
   'Pedidos que consomem o item diretamente, sem explosão de PA.';
-const DICA_ESTOQUE_PA =
-  'Estoque de produtos acabados (setores 5 e 24) que cobre a demanda do respectivo PA, em unidades do componente.';
-const DICA_ESTOQUE_PA_EXPLOSAO =
-  'Estoque de produtos acabados convertido em unidades do componente (explosão BOM, setor 5).';
 
 type Props = {
   detalhe: RessupEmpenhoPedidoResultado;
+  /** Código do componente (título do modal Estoque em PA). */
+  codigo?: string;
+  /** Descrição do componente. */
+  descricao?: string;
   /** Estoque atual da grade — base do saldo projetado em cascata. */
   saldoAtual?: number;
   /** Rótulo do total destacado (ex.: "Empenho líquido"). */
@@ -49,10 +51,12 @@ function CardsResumo({
   detalhe,
   rotuloTotal,
   compacto,
+  onAbrirEstoquePa,
 }: {
   detalhe: RessupEmpenhoPedidoResultado;
   rotuloTotal: string;
   compacto: boolean;
+  onAbrirEstoquePa?: () => void;
 }) {
   const vendaDireta = detalhe.vendaDireta ?? 0;
   const totalBruto = detalhe.totalBruto ?? 0;
@@ -64,11 +68,18 @@ function CardsResumo({
   const estoquePa = usaExplosaoPa
     ? detalhe.estoquePaExplosao!
     : (detalhe.totalCoberto ?? 0);
-  const dicaEstoquePa = usaExplosaoPa ? DICA_ESTOQUE_PA_EXPLOSAO : DICA_ESTOQUE_PA;
+  const linhasPa = detalhe.linhasEstoquePa ?? [];
+  const cardClicavel = Boolean(onAbrirEstoquePa) && linhasPa.length > 0 && estoquePa > 0;
 
   const gridClass = compacto
     ? 'grid-cols-2'
     : 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-6';
+
+  const cardEstoquePaClass =
+    'rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left dark:border-slate-600 dark:bg-slate-900/40';
+  /** Mesmo padrão das células clicáveis PCP (`GradeCelulaModalBtn`). */
+  const cardEstoquePaClicavelClass =
+    'w-full rounded-lg border border-primary-500/70 bg-primary-600 px-3 py-2 text-left text-white shadow-sm transition hover:bg-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-400/60 dark:border-primary-400 dark:bg-primary-500 dark:hover:bg-primary-400';
 
   return (
     <div className={`grid gap-2 ${gridClass}`}>
@@ -98,14 +109,27 @@ function CardsResumo({
           <div className="text-sm font-medium tabular-nums">{fmt(vendaDireta)}</div>
         </div>
       )}
-      {!compacto && (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-900/40">
-          <div className="text-[11px] text-slate-500 dark:text-slate-400">
-            <RotuloComDica rotulo="Estoque em PA" dica={dicaEstoquePa} />
+      {!compacto &&
+        (cardClicavel ? (
+          <button
+            type="button"
+            className={cardEstoquePaClicavelClass}
+            onClick={onAbrirEstoquePa}
+            title="Ver detalhe do estoque em PA"
+          >
+            <div className="text-[11px] text-white/90">
+              <RotuloComDica rotulo="Estoque em PA" dica={DICA_ESTOQUE_PA} headerClaro />
+            </div>
+            <div className="text-sm font-semibold tabular-nums text-white">{fmt(estoquePa)}</div>
+          </button>
+        ) : (
+          <div className={cardEstoquePaClass}>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+              <RotuloComDica rotulo="Estoque em PA" dica={DICA_ESTOQUE_PA} />
+            </div>
+            <div className="text-sm font-medium tabular-nums">{fmt(estoquePa)}</div>
           </div>
-          <div className="text-sm font-medium tabular-nums">{fmt(estoquePa)}</div>
-        </div>
-      )}
+        ))}
       <div className="rounded-lg border border-primary-200 bg-primary-50/80 px-3 py-2 dark:border-primary-800 dark:bg-primary-900/30">
         <div className="text-[11px]">
           <RotuloComDica rotulo={rotuloTotal} dica={DICA_EMPENHO_LIQ_GRADE} primario />
@@ -122,13 +146,17 @@ function CardsResumo({
  */
 export default function EmpenhoLiquidoPainel({
   detalhe,
+  codigo = '',
+  descricao = '',
   saldoAtual,
   rotuloTotal = 'Empenho Liq (Grade)',
   mostrarCards = true,
   compacto = false,
   layoutSticky = false,
 }: Props) {
+  const [estoquePaOpen, setEstoquePaOpen] = useState(false);
   const totalBruto = detalhe.totalBruto ?? 0;
+  const linhasEstoquePa = detalhe.linhasEstoquePa ?? [];
 
   const linhasComSaldo = useMemo(() => {
     const base = detalhe.linhas ?? [];
@@ -149,7 +177,12 @@ export default function EmpenhoLiquidoPainel({
         </p>
       )}
       {mostrarCards && (
-        <CardsResumo detalhe={detalhe} rotuloTotal={rotuloTotal} compacto={compacto} />
+        <CardsResumo
+          detalhe={detalhe}
+          rotuloTotal={rotuloTotal}
+          compacto={compacto}
+          onAbrirEstoquePa={() => setEstoquePaOpen(true)}
+        />
       )}
     </>
   );
@@ -177,6 +210,19 @@ export default function EmpenhoLiquidoPainel({
               </tr>
             </thead>
             <tbody className="text-slate-700 dark:text-slate-200">
+              {linhasComSaldo && saldoAtual != null && Number.isFinite(saldoAtual) && (
+                <tr className="border-b border-slate-200 bg-slate-50/80 dark:border-slate-600 dark:bg-slate-900/40">
+                  <td className="py-1.5 pr-2 font-medium text-slate-600 dark:text-slate-300">
+                    Estoque atual
+                  </td>
+                  <td className="py-1.5 pr-2 tabular-nums text-slate-400">—</td>
+                  {!compacto && <td className="py-1.5 pr-2 text-slate-400">—</td>}
+                  <td className="py-1.5 pr-2 text-right tabular-nums text-slate-400">—</td>
+                  <td className="py-1.5 text-right tabular-nums font-semibold text-slate-800 dark:text-slate-100">
+                    {fmt(saldoAtual)}
+                  </td>
+                </tr>
+              )}
               {linhasComSaldo
                 ? linhasComSaldo.map((l, i) => (
                     <tr
@@ -235,14 +281,27 @@ export default function EmpenhoLiquidoPainel({
     </>
   );
 
+  const modalEstoquePa = (
+    <ModalEstoquePaDetalhe
+      open={estoquePaOpen}
+      codigo={codigo}
+      descricao={descricao}
+      linhas={linhasEstoquePa}
+      onClose={() => setEstoquePaOpen(false)}
+    />
+  );
+
   if (layoutSticky) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="shrink-0 border-b border-slate-200 pb-3 dark:border-slate-600">
-          {cabecalho}
+      <>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="shrink-0 border-b border-slate-200 pb-3 dark:border-slate-600">
+            {cabecalho}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto pt-2">{tabela}</div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto pt-2">{tabela}</div>
-      </div>
+        {modalEstoquePa}
+      </>
     );
   }
 
@@ -250,6 +309,7 @@ export default function EmpenhoLiquidoPainel({
     <>
       {cabecalho}
       <div className={mostrarCards ? 'mt-3' : undefined}>{tabela}</div>
+      {modalEstoquePa}
     </>
   );
 }

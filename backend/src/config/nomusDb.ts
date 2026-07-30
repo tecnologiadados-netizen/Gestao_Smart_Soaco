@@ -7,6 +7,7 @@
 import mysql from 'mysql2/promise';
 
 let pool: mysql.Pool | null = null;
+let resettingPool: Promise<void> | null = null;
 
 function parseNomusUrl(url: string): mysql.PoolOptions {
   try {
@@ -19,11 +20,12 @@ function parseNomusUrl(url: string): mysql.PoolOptions {
       user: decodeURIComponent(u.username || ''),
       password: decodeURIComponent(u.password || ''),
       database,
-      charset: 'utf8mb4',
+      // Nomus (legado) usa utf8mb4_general_ci; MySQL 8 defaulta literais em 0900_ai_ci.
+      charset: 'utf8mb4_general_ci',
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
-      connectTimeout: 15000,
+      connectTimeout: 20000,
       // Evita ECONNRESET em conexões idle do pool (MySQL wait_timeout).
       enableKeepAlive: true,
       keepAliveInitialDelay: 10_000,
@@ -33,10 +35,11 @@ function parseNomusUrl(url: string): mysql.PoolOptions {
   } catch {
     return {
       uri: url,
-      charset: 'utf8mb4',
+      charset: 'utf8mb4_general_ci',
       waitForConnections: true,
       connectionLimit: 5,
       queueLimit: 0,
+      connectTimeout: 20000,
       enableKeepAlive: true,
       keepAliveInitialDelay: 10_000,
     };
@@ -53,6 +56,29 @@ export function getNomusPool(): mysql.Pool | null {
   return pool;
 }
 
+/** Encerra o pool atual para forçar novas conexões após ETIMEDOUT / connection lost. */
+export async function resetNomusPool(): Promise<void> {
+  if (resettingPool) {
+    await resettingPool;
+    return;
+  }
+  const old = pool;
+  pool = null;
+  if (!old) return;
+  resettingPool = (async () => {
+    try {
+      await old.end();
+    } catch {
+      /* pool já fechado / conexões mortas */
+    }
+  })();
+  try {
+    await resettingPool;
+  } finally {
+    resettingPool = null;
+  }
+}
+
 export function isNomusEnabled(): boolean {
   return !!process.env.NOMUS_DB_URL?.trim();
 }
@@ -67,25 +93,31 @@ export function isNomusTransientConnectionError(err: unknown): boolean {
     code === 'PROTOCOL_CONNECTION_LOST' ||
     code === 'EPIPE' ||
     code === 'ETIMEDOUT' ||
-    /ECONNRESET|PROTOCOL_CONNECTION_LOST|EPIPE|ETIMEDOUT|Connection lost/i.test(msg)
+    code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR' ||
+    /ECONNRESET|PROTOCOL_CONNECTION_LOST|EPIPE|ETIMEDOUT|Connection lost|enqueue after fatal/i.test(msg)
   );
 }
 
-/** Executa query Nomus com retry curto em ECONNRESET / connection lost. */
+/** Executa query Nomus com retry curto; recria o pool após falha de conexão. */
 export async function nomusQueryWithRetry<T = unknown>(
-  pool: mysql.Pool,
+  initialPool: mysql.Pool,
   sql: string,
   params?: unknown[],
   tentativas = 3
 ): Promise<[T, mysql.FieldPacket[]]> {
+  let activePool = initialPool;
   let lastErr: unknown;
   for (let i = 0; i < tentativas; i++) {
     try {
-      return (await pool.query(sql, params)) as [T, mysql.FieldPacket[]];
+      return (await activePool.query(sql, params)) as [T, mysql.FieldPacket[]];
     } catch (err) {
       lastErr = err;
       if (!isNomusTransientConnectionError(err) || i === tentativas - 1) throw err;
-      await new Promise((r) => setTimeout(r, 120 * (i + 1)));
+      await resetNomusPool();
+      const fresh = getNomusPool();
+      if (!fresh) throw err;
+      activePool = fresh;
+      await new Promise((r) => setTimeout(r, 250 * (i + 1)));
     }
   }
   throw lastErr;

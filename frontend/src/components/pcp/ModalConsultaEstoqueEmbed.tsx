@@ -7,7 +7,7 @@ import GradeCelulaModalBtn from './GradeCelulaModalBtn';
 import ModalConsultaEstoqueDetalhe, { fmtQtde } from './ModalConsultaEstoqueDetalhe';
 import EmpenhoLiquidoPainel from '../ressupAlmox/EmpenhoLiquidoPainel';
 import RotuloComDica from '../ressupAlmox/RotuloComDica';
-import { DICA_EMPENHO_LIQ_GRADE } from '../ressupAlmox/empenhoModalUtils';
+import { DICA_EMPENHO_LIQ_GRADE, DICA_ESTOQUE_ATUAL_GRADE, DICA_ESTOQUE_PA_SALDO, isSetorEstoquePa } from '../ressupAlmox/empenhoModalUtils';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import {
@@ -297,6 +297,10 @@ export default function ModalConsultaEstoqueEmbed({
                           <span className="inline-flex justify-center">
                             <RotuloComDica rotulo={c.label} dica={DICA_EMPENHO_LIQ_GRADE} headerClaro />
                           </span>
+                        ) : c.key === 'saldo' ? (
+                          <span className="inline-flex justify-center">
+                            <RotuloComDica rotulo={c.label} dica={DICA_ESTOQUE_ATUAL_GRADE} headerClaro />
+                          </span>
                         ) : (
                           c.label
                         )}
@@ -426,8 +430,8 @@ export default function ModalConsultaEstoqueEmbed({
               const saldoSetor2 = detalheSaldo
                 .filter((s) => s.idSetor === SETOR_ALMOX_SECUNDARIO)
                 .reduce((acc, s) => acc + s.saldo, 0);
-              const saldoMpp = detalheSaldo
-                .filter((s) => s.idSetor !== SETOR_ALMOX_SECUNDARIO)
+              const saldoEstoquePa = detalheSaldo
+                .filter((s) => isSetorEstoquePa(s.idSetor))
                 .reduce((acc, s) => acc + s.saldo, 0);
               const destacarAlmoxSec = saldoSetor2 > 0;
               const totalSaldo = detalhe.linha.saldo;
@@ -439,8 +443,10 @@ export default function ModalConsultaEstoqueEmbed({
                     }`}
                   >
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-900/40">
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400">Estoque MPP</div>
-                      <div className="text-sm font-medium tabular-nums">{fmtQtde(saldoMpp)}</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        <RotuloComDica rotulo="Estoque em PA" dica={DICA_ESTOQUE_PA_SALDO} />
+                      </div>
+                      <div className="text-sm font-medium tabular-nums">{fmtQtde(saldoEstoquePa)}</div>
                     </div>
                     {destacarAlmoxSec && (
                       <div className="rounded-lg border border-amber-300 bg-amber-50/90 px-3 py-2 dark:border-amber-700 dark:bg-amber-900/25">
@@ -476,14 +482,7 @@ export default function ModalConsultaEstoqueEmbed({
                               : ''
                           }`}
                         >
-                          <td className="py-1.5">
-                            {s.setor}
-                            {s.idSetor === SETOR_ALMOX_SECUNDARIO ? (
-                              <span className="ml-1 text-[10px] font-medium text-amber-700 dark:text-amber-300">
-                                (almox secundário)
-                              </span>
-                            ) : null}
-                          </td>
+                          <td className="py-1.5">{s.setor}</td>
                           <td className="py-1.5 text-right tabular-nums">{fmtQtde(s.saldo)}</td>
                         </tr>
                       ))}
@@ -499,6 +498,8 @@ export default function ModalConsultaEstoqueEmbed({
             return (
               <EmpenhoLiquidoPainel
                 detalhe={detalheEmpenhoLiquido}
+                codigo={detalhe.linha.codigo}
+                descricao={detalhe.linha.descricao}
                 saldoAtual={saldoAtual}
                 rotuloTotal="Empenho líquido"
                 mostrarCards

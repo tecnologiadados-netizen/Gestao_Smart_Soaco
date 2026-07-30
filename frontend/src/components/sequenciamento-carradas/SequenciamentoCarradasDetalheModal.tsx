@@ -13,6 +13,7 @@ import {
   formatDateBr,
   formatMoeda,
   formatQtde,
+  isCarradaOrdemFinal,
   listarItensPedido,
   SUBTOTAL_ROW_CLASS,
   type ItemPedidoRow,
@@ -162,6 +163,8 @@ export default function SequenciamentoCarradasDetalheModal({
   });
 
   const linhasFiltradas = useMemo(() => filtrarLinhasCarrada(linhas, carrada), [linhas, carrada]);
+  const especialSemRomaneio = isCarradaOrdemFinal(carrada.carrada);
+  const labelQtde = especialSemRomaneio ? 'Qtde pendente real' : 'Qtde romaneada';
   const pedidos = useMemo(() => agregarPedidosVenda(linhasFiltradas), [linhasFiltradas]);
   const itens = useMemo(() => listarItensPedido(linhasFiltradas), [linhasFiltradas]);
   const produtos = useMemo(() => agregarProdutosVinculados(linhasFiltradas), [linhasFiltradas]);
@@ -349,7 +352,12 @@ export default function SequenciamentoCarradasDetalheModal({
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/50">
                   {ITENS_COLS.map((col) =>
-                    renderTh(col, ITENS_LABELS[col], gradeItens, NUM_ITENS.has(col))
+                    renderTh(
+                      col,
+                      col === 'qtdeRomaneada' ? labelQtde : ITENS_LABELS[col],
+                      gradeItens,
+                      NUM_ITENS.has(col)
+                    )
                   )}
                 </tr>
               </thead>
@@ -407,7 +415,12 @@ export default function SequenciamentoCarradasDetalheModal({
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/50">
                   {PRODUTOS_COLS.map((col) =>
-                    renderTh(col, PRODUTOS_LABELS[col], gradeProdutos, NUM_PRODUTOS.has(col))
+                    renderTh(
+                      col,
+                      col === 'qtdeRomaneada' ? labelQtde : PRODUTOS_LABELS[col],
+                      gradeProdutos,
+                      NUM_PRODUTOS.has(col)
+                    )
                   )}
                 </tr>
               </thead>

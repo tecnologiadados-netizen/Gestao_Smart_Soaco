@@ -29,6 +29,8 @@ type Props = {
   applyButtonLabel?: string;
   /** Ações extras abaixo dos botões de ordenação (ex.: autopreencher Seq.). */
   extraActions?: ReactNode;
+  /** Sobreposição do menu (padrão 13001). Subir quando o modal pai tiver z-index maior. */
+  zIndex?: number;
 };
 
 export default function GradeFiltroExcelPortal({
@@ -48,6 +50,7 @@ export default function GradeFiltroExcelPortal({
   deferSortUntilApply = false,
   applyButtonLabel = 'OK',
   extraActions,
+  zIndex = 13001,
 }: Props) {
   const key = colunaAberta;
   const valores = valoresUnicosPorColuna[key] ?? [];
@@ -127,7 +130,7 @@ export default function GradeFiltroExcelPortal({
         width: Math.max(rect.width, 288),
         maxHeight: Math.max(160, maxHeight),
         overflowY: 'auto',
-        zIndex: 13001,
+        zIndex,
       }}
       className="rounded-lg border border-slate-300 bg-white p-2 text-slate-800 shadow-2xl dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
       onMouseDown={(e) => e.stopPropagation()}

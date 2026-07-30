@@ -24,25 +24,30 @@ export function toIsoDateOnly(value: string | Date | null | undefined): string {
 
 /**
  * - previsão ≥ produção (quando ambas informadas)
- * - cada data informada ≥ hoje (quando exigirNaoAnteriorHoje !== false)
+ * - cada data *nova* informada ≥ hoje (quando exigirNaoAnteriorHoje !== false)
+ *
+ * `exigirProducaoNaoAnteriorHoje: false` quando `producaoIso` é só a produção já gravada
+ * (checagem de ordem previsão ≥ produção) — não bloquear reprogramação de previsão
+ * porque a produção atual já está no passado.
  */
 export function validarDatasReprogramacao(opts: {
   previsaoIso?: string | Date | null;
   producaoIso?: string | Date | null;
   exigirNaoAnteriorHoje?: boolean;
+  /** Default: mesmo valor de `exigirNaoAnteriorHoje`. */
+  exigirProducaoNaoAnteriorHoje?: boolean;
 }): string | null {
   const previsao = toIsoDateOnly(opts.previsaoIso);
   const producao = toIsoDateOnly(opts.producaoIso);
   const exigirHoje = opts.exigirNaoAnteriorHoje !== false;
+  const exigirProdHoje = opts.exigirProducaoNaoAnteriorHoje ?? exigirHoje;
   const hoje = hojeIsoLocal();
 
-  if (exigirHoje) {
-    if (producao && producao < hoje) {
-      return 'A data de produção não pode ser anterior à data de hoje.';
-    }
-    if (previsao && previsao < hoje) {
-      return 'A data de previsão não pode ser anterior à data de hoje.';
-    }
+  if (exigirProdHoje && producao && producao < hoje) {
+    return 'A data de produção não pode ser anterior à data de hoje.';
+  }
+  if (exigirHoje && previsao && previsao < hoje) {
+    return 'A data de previsão não pode ser anterior à data de hoje.';
   }
   if (previsao && producao && previsao < producao) {
     return 'A nova data de previsão não pode ser anterior à data de produção.';

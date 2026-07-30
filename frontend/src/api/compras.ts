@@ -194,6 +194,15 @@ export interface RessupEmpenhoPedidoLinha {
   liquido: number;
 }
 
+export interface RessupEstoquePaLinha {
+  codigo: string;
+  descricao: string;
+  /** Estoque do PA (setores 5/24). */
+  qtdePa: number;
+  /** Estoque PA × qtde BOM do componente. */
+  qtdeComponente: number;
+}
+
 export interface RessupEmpenhoPedidoResultado {
   linhas: RessupEmpenhoPedidoLinha[];
   vendaDireta: number;
@@ -203,8 +212,10 @@ export interface RessupEmpenhoPedidoResultado {
   totalCoberto: number;
   /** Total líquido == coluna "Qtde Empenhada" da grade. */
   totalLiquido: number;
-  /** Estoque PA (explosão BOM) — modal Ressup Não Almox. */
+  /** Estoque PA em unidades do componente (Σ estoque×BOM) — card "Estoque em PA". */
   estoquePaExplosao?: number;
+  /** PAs com estoque que originam o card (Σ qtdeComponente ≈ estoquePaExplosao). */
+  linhasEstoquePa?: RessupEstoquePaLinha[];
 }
 
 /**
