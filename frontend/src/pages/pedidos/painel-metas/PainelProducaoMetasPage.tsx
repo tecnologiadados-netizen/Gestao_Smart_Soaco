@@ -10,15 +10,56 @@ import {
 } from '../../../api/painelProducao';
 import { formatMesLabel } from '../../../utils/painelProducaoFormat';
 import { podeEditarPainelMetas } from '../../../utils/painelProducaoPermissoes';
+import LoaderCirculo from '../../../components/LoaderCirculo';
+import { useDuracaoMinima } from '../../../hooks/useDuracaoMinima';
 
-function LoadingOverlay({ message = 'Carregando...' }: { message?: string }) {
+type CampoMeta =
+  | 'meta_bronze'
+  | 'meta_prata'
+  | 'meta_aco'
+  | 'valor_bronze'
+  | 'valor_prata'
+  | 'valor_aco';
+
+type LinhaMeta = Record<CampoMeta, string>;
+
+const CAMPOS_META: CampoMeta[] = [
+  'meta_bronze',
+  'meta_prata',
+  'meta_aco',
+  'valor_bronze',
+  'valor_prata',
+  'valor_aco',
+];
+
+const LINHA_VAZIA: LinhaMeta = {
+  meta_bronze: '',
+  meta_prata: '',
+  meta_aco: '',
+  valor_bronze: '',
+  valor_prata: '',
+  valor_aco: '',
+};
+
+function paraTexto(valor: number | null | undefined): string {
+  return valor == null ? '' : String(valor);
+}
+
+function paraNumero(texto: string): number | null {
+  const bruto = texto.trim();
+  if (bruto === '') return null;
+  const numero = Number(bruto.replace(/\./g, '').replace(',', '.'));
+  return Number.isFinite(numero) && numero >= 0 ? numero : Number.NaN;
+}
+
+function LoadingOverlay({ message = 'Carregando...', show = true }: { message?: string; show?: boolean }) {
+  const visivel = useDuracaoMinima(show);
+  if (!visivel) return null;
+
   return (
     <div className="loading-overlay" role="status" aria-live="polite" aria-busy="true">
       <div className="loading-overlay-card">
-        <div className="loading-spinner" aria-hidden="true">
-          <span className="loading-spinner-ring" />
-          <span className="loading-spinner-core" />
-        </div>
+        <LoaderCirculo tamanho={64} cores={['#FFAD00', '#9BA3E8']} />
         <p className="loading-overlay-text">{message}</p>
       </div>
     </div>
@@ -32,11 +73,11 @@ export default function PainelProducaoMetasPage() {
   const [setores, setSetores] = useState<string[]>([]);
   const [meses, setMeses] = useState<string[]>([]);
   const [mes, setMes] = useState('');
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [linhas, setLinhas] = useState<Record<string, LinhaMeta>>({});
   const [semMeta, setSemMeta] = useState<Record<string, boolean>>({});
   const [editingSetores, setEditingSetores] = useState<Set<string>>(() => new Set());
   const [editSnapshots, setEditSnapshots] = useState<
-    Record<string, { value: string; semMeta: boolean }>
+    Record<string, { linha: LinhaMeta; semMeta: boolean }>
   >({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -83,13 +124,22 @@ export default function PainelProducaoMetasPage() {
       try {
         const rows: PainelProducaoTargetRow[] = await fetchPainelProducaoTargets(mes);
         if (cancelled) return;
-        const valueMap: Record<string, string> = {};
+        const linhaMap: Record<string, LinhaMeta> = {};
         const semMap: Record<string, boolean> = {};
         for (const row of rows) {
           semMap[row.setor] = !!row.sem_meta;
-          valueMap[row.setor] = row.sem_meta ? '' : String(row.target);
+          linhaMap[row.setor] = row.sem_meta
+            ? { ...LINHA_VAZIA }
+            : {
+                meta_bronze: paraTexto(row.meta_bronze),
+                meta_prata: paraTexto(row.meta_prata),
+                meta_aco: paraTexto(row.meta_aco ?? row.target),
+                valor_bronze: paraTexto(row.valor_bronze),
+                valor_prata: paraTexto(row.valor_prata),
+                valor_aco: paraTexto(row.valor_aco),
+              };
         }
-        setValues(valueMap);
+        setLinhas(linhaMap);
         setSemMeta(semMap);
         setEditingSetores(new Set());
         setEditSnapshots({});
@@ -107,13 +157,22 @@ export default function PainelProducaoMetasPage() {
     };
   }, [mes]);
 
+  function linhaDoSetor(setor: string): LinhaMeta {
+    return linhas[setor] ?? LINHA_VAZIA;
+  }
+
+  function alterarCampo(setor: string, campo: CampoMeta, valor: string) {
+    setLinhas((prev) => ({
+      ...prev,
+      [setor]: { ...(prev[setor] ?? LINHA_VAZIA), [campo]: valor },
+    }));
+    setSuccess(null);
+  }
+
   function startEdit(setor: string) {
     setEditSnapshots((prev) => ({
       ...prev,
-      [setor]: {
-        value: values[setor] ?? '',
-        semMeta: !!semMeta[setor],
-      },
+      [setor]: { linha: linhaDoSetor(setor), semMeta: !!semMeta[setor] },
     }));
     setEditingSetores((prev) => new Set(prev).add(setor));
     setSuccess(null);
@@ -122,7 +181,7 @@ export default function PainelProducaoMetasPage() {
   function cancelEdit(setor: string) {
     const snapshot = editSnapshots[setor];
     if (snapshot) {
-      setValues((prev) => ({ ...prev, [setor]: snapshot.value }));
+      setLinhas((prev) => ({ ...prev, [setor]: snapshot.linha }));
       setSemMeta((prev) => ({ ...prev, [setor]: snapshot.semMeta }));
     }
     setEditingSetores((prev) => {
@@ -140,12 +199,9 @@ export default function PainelProducaoMetasPage() {
   }
 
   function startEditAll() {
-    const snapshots: Record<string, { value: string; semMeta: boolean }> = {};
+    const snapshots: Record<string, { linha: LinhaMeta; semMeta: boolean }> = {};
     for (const setor of setores) {
-      snapshots[setor] = {
-        value: values[setor] ?? '',
-        semMeta: !!semMeta[setor],
-      };
+      snapshots[setor] = { linha: linhaDoSetor(setor), semMeta: !!semMeta[setor] };
     }
     setEditSnapshots(snapshots);
     setEditingSetores(new Set(setores));
@@ -155,11 +211,11 @@ export default function PainelProducaoMetasPage() {
   function cancelEditAll() {
     const setoresEditando = [...editingSetores];
     const snapshots = { ...editSnapshots };
-    setValues((prev) => {
+    setLinhas((prev) => {
       const next = { ...prev };
       for (const setor of setoresEditando) {
         const snapshot = snapshots[setor];
-        if (snapshot) next[setor] = snapshot.value;
+        if (snapshot) next[setor] = snapshot.linha;
       }
       return next;
     });
@@ -193,15 +249,20 @@ export default function PainelProducaoMetasPage() {
   async function saveTarget(setor: string) {
     if (!podeEditar) return;
     const noMeta = !!semMeta[setor];
-    let target = 0;
+    const linha = linhaDoSetor(setor);
+    const numeros: Partial<Record<CampoMeta, number | null>> = {};
+
     if (!noMeta) {
-      const raw = values[setor]?.trim() ?? '';
-      target = raw === '' ? 0 : Number(raw.replace(/\./g, '').replace(',', '.'));
-      if (Number.isNaN(target) || target < 0) {
-        setError(`Valor inválido para ${setor}.`);
-        return;
+      for (const campo of CAMPOS_META) {
+        const numero = paraNumero(linha[campo]);
+        if (Number.isNaN(numero)) {
+          setError(`Valor inválido para ${setor}.`);
+          return;
+        }
+        numeros[campo] = numero;
       }
     }
+
     setSaving(setor);
     setError(null);
     setSuccess(null);
@@ -209,8 +270,10 @@ export default function PainelProducaoMetasPage() {
       await savePainelProducaoTarget({
         setor,
         mes_ano: `${mes}-01`,
-        target,
+        // A meta principal do painel é a do nível mais alto (Aço).
+        target: noMeta ? 0 : numeros.meta_aco ?? 0,
         sem_meta: noMeta,
+        ...numeros,
       });
       setSuccess(
         noMeta
@@ -264,7 +327,7 @@ export default function PainelProducaoMetasPage() {
           </div>
         </header>
 
-        {loading && <LoadingOverlay message="Carregando metas..." />}
+        <LoadingOverlay show={loading} message="Carregando metas..." />
 
         <main className="targets-main">
           <div className="card targets-card">
@@ -309,19 +372,33 @@ export default function PainelProducaoMetasPage() {
             {success && <p className="targets-feedback success">{success}</p>}
 
             <div className="targets-table-wrap">
-              <table className="targets-table">
+              <table className="targets-table targets-table-niveis">
                 <thead>
                   <tr>
-                    <th>Setor</th>
-                    <th>Não haverá meta</th>
-                    <th>Meta</th>
-                    {podeEditar && <th aria-label="Ações" />}
+                    <th rowSpan={2}>Setor</th>
+                    <th rowSpan={2}>Não haverá meta</th>
+                    <th colSpan={3} className="targets-group">
+                      Meta (quantidade)
+                    </th>
+                    <th colSpan={3} className="targets-group">
+                      Valor a pagar (R$)
+                    </th>
+                    {podeEditar && <th rowSpan={2} aria-label="Ações" />}
+                  </tr>
+                  <tr>
+                    <th>Bronze</th>
+                    <th>Prata</th>
+                    <th>Aço</th>
+                    <th>Bronze</th>
+                    <th>Prata</th>
+                    <th>Aço</th>
                   </tr>
                 </thead>
                 <tbody>
                   {setores.map((setor) => {
                     const noMeta = !!semMeta[setor];
                     const editando = editingSetores.has(setor);
+                    const linha = linhaDoSetor(setor);
                     return (
                       <tr
                         key={setor}
@@ -343,7 +420,7 @@ export default function PainelProducaoMetasPage() {
                               onChange={(e) => {
                                 setSemMeta((prev) => ({ ...prev, [setor]: e.target.checked }));
                                 if (e.target.checked) {
-                                  setValues((prev) => ({ ...prev, [setor]: '' }));
+                                  setLinhas((prev) => ({ ...prev, [setor]: { ...LINHA_VAZIA } }));
                                 }
                                 setSuccess(null);
                               }}
@@ -352,22 +429,21 @@ export default function PainelProducaoMetasPage() {
                             <span>Não haverá meta</span>
                           </label>
                         </td>
-                        <td>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            className="targets-input"
-                            value={values[setor] ?? ''}
-                            placeholder={noMeta ? '—' : '0'}
-                            disabled={noMeta || !podeEditar || !editando}
-                            readOnly={!editando}
-                            onChange={(e) => {
-                              setValues((prev) => ({ ...prev, [setor]: e.target.value }));
-                              setSuccess(null);
-                            }}
-                            aria-label={`Meta de ${setor}`}
-                          />
-                        </td>
+                        {CAMPOS_META.map((campo) => (
+                          <td key={campo}>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              className="targets-input"
+                              value={linha[campo]}
+                              placeholder={noMeta ? '—' : '0'}
+                              disabled={noMeta || !podeEditar || !editando}
+                              readOnly={!editando}
+                              onChange={(e) => alterarCampo(setor, campo, e.target.value)}
+                              aria-label={`${campo.replace('_', ' ')} de ${setor}`}
+                            />
+                          </td>
+                        ))}
                         {podeEditar && (
                           <td>
                             <div className="targets-row-actions">
@@ -417,8 +493,8 @@ export default function PainelProducaoMetasPage() {
 
           <p className="targets-hint">
             {podeEditar
-              ? 'Clique em Editar para alterar a meta de um setor. Use "Editar todas" para liberar todos de uma vez.'
-              : 'Visualização das metas de produção por setor.'}
+              ? 'A meta do painel é a do nível Aço. A apuração usa o maior nível alcançado pela produção e paga o valor fixo desse nível, menos a penalização qualitativa.'
+              : 'Visualização das metas de produção por setor e nível.'}
           </p>
         </main>
       </div>

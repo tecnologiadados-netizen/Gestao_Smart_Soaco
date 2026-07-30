@@ -409,12 +409,11 @@ export default function PendenciasComprasPage() {
 
   return (
     <div className="relative flex flex-1 min-h-0 flex-col gap-3 overflow-hidden p-3 md:p-4">
-      {gerandoPdf && (
-        <PendenciasPdfGeneratingOverlay
-          mensagem="Gerando relatório PDF…"
-          subtitulo={comprador?.nome ? `Comprador: ${comprador.nome}` : undefined}
-        />
-      )}
+      <PendenciasPdfGeneratingOverlay
+        show={gerandoPdf}
+        mensagem="Gerando relatório PDF…"
+        subtitulo={comprador?.nome ? `Comprador: ${comprador.nome}` : undefined}
+      />
       <CarregandoInformacoesOverlay
         show={loading}
         mensagem="Consultando pendências no Nomus…"

@@ -4,6 +4,7 @@ import { FavoritosProvider } from './contexts/FavoritosContext';
 import { FavoritoVisaoAtualProvider } from './contexts/FavoritoVisaoAtualContext';
 import RootEntry from './RootEntry';
 import Layout from './components/Layout';
+import TransicaoRotaProvider from './components/TransicaoRotaProvider';
 import { layoutChildRoutes } from './layoutChildRoutes';
 
 const future = { v7_startTransition: true, v7_relativeSplatPath: true } as const;
@@ -29,7 +30,17 @@ export const router = createBrowserRouter(
        * Rota splat: Layout + filhas via <Outlet /> com transição de tela.
        * RootEntry autenticado renderiza <Outlet /> (não <Layout /> direto).
        */
-      children: [{ path: '*', element: <Layout />, children: layoutChildRoutes }],
+      children: [
+        {
+          path: '*',
+          element: (
+            <TransicaoRotaProvider>
+              <Layout />
+            </TransicaoRotaProvider>
+          ),
+          children: layoutChildRoutes,
+        },
+      ],
     },
     { path: '*', element: <Navigate to="/" replace /> },
   ],

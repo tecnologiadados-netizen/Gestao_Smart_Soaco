@@ -1517,11 +1517,20 @@ model CrmCreditoRegularizacaoTitulo {
 
 /// Metas mensais do Painel de Produção (PCP).
 model PainelProducaoMeta {
-  id      Int     @id @default(autoincrement())
-  setor   String
-  mesAno  String  @map("mes_ano")
-  target  Float
-  semMeta Boolean @default(false) @map("sem_meta")
+  id          Int     @id @default(autoincrement())
+  setor       String
+  mesAno      String  @map("mes_ano")
+  /// Meta principal (espelha a meta do nível Aço).
+  target      Float
+  semMeta     Boolean @default(false) @map("sem_meta")
+  /// Volume necessário em cada nível de meta.
+  metaBronze  Float?  @map("meta_bronze")
+  metaPrata   Float?  @map("meta_prata")
+  metaAco     Float?  @map("meta_aco")
+  /// Valor fixo pago em cada nível de meta.
+  valorBronze Float?  @map("valor_bronze")
+  valorPrata  Float?  @map("valor_prata")
+  valorAco    Float?  @map("valor_aco")
 
   @@unique([setor, mesAno])
   @@map("painel_producao_meta")

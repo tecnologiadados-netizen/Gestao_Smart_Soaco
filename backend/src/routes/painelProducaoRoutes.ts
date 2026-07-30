@@ -4,6 +4,8 @@ import { requirePermission } from '../middleware/requirePermission.js';
 import { validateCsrf } from '../middleware/csrf.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import {
+  getPainelProducaoApuracao,
+  getPainelProducaoApuracaoDetalhe,
   getPainelProducaoDashboard,
   getPainelProducaoFilters,
   getPainelProducaoTargets,
@@ -37,6 +39,8 @@ const podeVerTargets = requirePermission(
 
 router.get('/filters', podeVerFiltros, getPainelProducaoFilters);
 router.get('/dashboard', podeVerDashboard, getPainelProducaoDashboard);
+router.get('/apuracao', podeVerDashboard, getPainelProducaoApuracao);
+router.get('/apuracao/detalhe', podeVerDashboard, getPainelProducaoApuracaoDetalhe);
 router.get('/targets', podeVerTargets, getPainelProducaoTargets);
 router.post('/targets', validateCsrf, podeEditarMetas, postPainelProducaoTarget);
 router.post('/meses', validateCsrf, podeEditarMetas, postPainelProducaoMes);

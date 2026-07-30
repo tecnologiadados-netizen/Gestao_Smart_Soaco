@@ -59,6 +59,7 @@ export const PCP_MENU: NavMenuEntry[] = [
       { kind: 'link', to: '/pedidos/painel-metas/gerencial', label: 'Painel Gerencial' },
       { kind: 'link', to: '/pedidos/painel-metas/tv', label: 'Painel TV' },
       { kind: 'link', to: '/pedidos/painel-metas/metas', label: 'Metas' },
+      { kind: 'link', to: '/pedidos/painel-metas/apuracao', label: 'Apuração metas' },
     ],
   },
 ];
@@ -190,6 +191,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/pedidos/painel-metas/gerencial': 'Painel Gerencial',
   '/pedidos/painel-metas/tv': 'Painel TV',
   '/pedidos/painel-metas/metas': 'Metas',
+  '/pedidos/painel-metas/apuracao': 'Apuração metas',
   '/heatmap': 'Roteirizador',
   '/mind-maps': 'Fluxos Decisórios',
   '/compras': 'Compras',
@@ -371,6 +373,7 @@ export function filterPcpMenuChildren(
       if (c.to === '/pedidos/painel-metas/metas') {
         return podeEditarPainelMetas(hasPermission) || podeVerPainelGerencial(hasPermission);
       }
+      if (c.to === '/pedidos/painel-metas/apuracao') return podeVerPainelGerencial(hasPermission);
       return true;
     });
   }
