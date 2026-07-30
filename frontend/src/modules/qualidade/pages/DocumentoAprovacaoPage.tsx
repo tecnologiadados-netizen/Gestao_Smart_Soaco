@@ -111,7 +111,7 @@ export function AprovacaoDocumentoPage() {
     }
   }
 
-  function handleReprovar() {
+  async function handleReprovar() {
     setError("");
     if (!modoReprovacao) {
       setModoReprovacao(true);
@@ -124,11 +124,23 @@ export function AprovacaoDocumentoPage() {
     }
 
     const ok = reprovarAprovacao(id, justificativaReprovacao.trim());
-    if (!ok) return;
-    void flushQualidadeDocumentsSync().catch((err) =>
-      console.error("[qualidade] falha ao sincronizar reprovação:", err)
-    );
-    navigate("/qualidade/documentos");
+    if (!ok) {
+      setError("Não foi possível reprovar. Recarregue a página e tente novamente.");
+      return;
+    }
+
+    setSincronizando(true);
+    try {
+      await flushQualidadeDocumentsSync();
+      navigate("/qualidade/documentos");
+    } catch (err) {
+      console.error("[qualidade] falha ao sincronizar reprovação:", err);
+      setError(
+        "A reprovação não chegou ao servidor. Verifique a conexão e tente novamente."
+      );
+    } finally {
+      setSincronizando(false);
+    }
   }
 
   return (
@@ -155,7 +167,7 @@ export function AprovacaoDocumentoPage() {
             size="lg"
             variant="destructive"
             disabled={sincronizando}
-            onClick={handleReprovar}
+            onClick={() => void handleReprovar()}
           >
             {modoReprovacao ? "Confirmar reprovação" : "Reprovar"}
           </Button>

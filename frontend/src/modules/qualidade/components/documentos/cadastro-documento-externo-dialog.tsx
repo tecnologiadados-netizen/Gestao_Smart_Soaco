@@ -100,7 +100,6 @@ export function CadastroDocumentoExternoDialog({
     const pendentes: string[] = [];
     if (!values.titulo.trim()) pendentes.push("Título");
     if (!values.processoId) pendentes.push("Setor");
-    if (!values.localizacao.trim()) pendentes.push("Localização");
     if (!values.responsavelId) pendentes.push("Responsável");
     if (!values.distEletronica && !values.distFisica) pendentes.push("Distribuição");
     if (pendentes.length > 0) {

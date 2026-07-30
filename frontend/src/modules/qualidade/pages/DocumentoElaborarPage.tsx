@@ -52,6 +52,7 @@ export function ElaborarDocumentoPage() {
 
   const [arquivoNome, setArquivoNome] = useState("");
   const [arquivoDataUrl, setArquivoDataUrl] = useState("");
+  const [arquivoStoragePath, setArquivoStoragePath] = useState("");
   const [observacoes, setObservacoes] = useState("");
   const [error, setError] = useState("");
   const [savedHint, setSavedHint] = useState(false);
@@ -61,6 +62,7 @@ export function ElaborarDocumentoPage() {
     if (!versaoAtual) return;
     setArquivoNome(versaoAtual.arquivoNome ?? "");
     setArquivoDataUrl(versaoAtual.arquivoDataUrl ?? "");
+    setArquivoStoragePath(versaoAtual.arquivoStoragePath ?? "");
     setObservacoes(versaoAtual.observacoesElaboracao ?? "");
   }, [versaoAtual]);
 
@@ -119,6 +121,7 @@ export function ElaborarDocumentoPage() {
       if (typeof result !== "string") return;
       setArquivoNome(file.name);
       setArquivoDataUrl(result);
+      setArquivoStoragePath("");
       void persistArquivoNoServidor(file.name, result)
         .then(() => {
           setSavedHint(true);
@@ -139,6 +142,7 @@ export function ElaborarDocumentoPage() {
     setError("");
     setArquivoNome("");
     setArquivoDataUrl("");
+    setArquivoStoragePath("");
     updateElaboracao(id, {
       arquivoNome: "",
       arquivoDataUrl: "",
@@ -258,6 +262,7 @@ export function ElaborarDocumentoPage() {
             label="Arquivo inicial *"
             arquivoNome={arquivoNome}
             arquivoDataUrl={arquivoDataUrl}
+            arquivoStoragePath={arquivoStoragePath}
             onFileSelect={processarArquivo}
             onRemove={handleExcluirArquivo}
             accept={ACCEPTED_TYPES}

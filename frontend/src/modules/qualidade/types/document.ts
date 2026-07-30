@@ -131,4 +131,9 @@ export interface Document {
   externoRegistro?: DocumentExternoRegistro;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Momento da última transição de etapa. O sync compara este carimbo com o do
+   * servidor para descartar snapshots atrasados que reverteriam o workflow.
+   */
+  statusAtualizadoEm?: string;
 }

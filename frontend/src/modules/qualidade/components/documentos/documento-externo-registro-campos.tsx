@@ -328,7 +328,7 @@ export function DocumentoExternoRegistroCampos({
         </div>
 
         <div className="space-y-2">
-          <Label className="text-base">Localização *</Label>
+          <Label className="text-base">Localização</Label>
           <Select
             value={values.localizacao}
             onValueChange={(v) => v && patch({ localizacao: v })}
