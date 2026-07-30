@@ -32,6 +32,7 @@ import {
 } from "@rh/lib/organograma-hierarquia";
 import type { DiretoriaTree } from "@rh/lib/organograma-vinculacoes";
 import { canViewOrganogramaFotos } from "@rh/lib/route-permissions";
+import { classesQuadroPan, useQuadroPan } from "@rh/hooks/useQuadroPan";
 import { cn } from "@rh/lib/utils";
 import { useOrganicoCardFoto } from "@rh/pages/Organico/useOrganicoCardFoto";
 import type { OrganicoRow } from "@rh/types/api";
@@ -45,7 +46,7 @@ const ZOOM_MAX = 1.5;
 const ZOOM_STEP = 0.05;
 
 /** Linhas — contraste no claro e no escuro (tema escuro precisa de traço mais visível). */
-const LINHA = "bg-soaco-navy/50 dark:bg-white/60";
+const LINHA = "bg-soaco-navy/60 dark:bg-white/65";
 const LINHA_W = "w-[2px]";
 const LINHA_H = "h-[2px]";
 
@@ -78,7 +79,7 @@ const UI_NORMAL: OrgUiTokens = {
   cardHLeaf: "h-[128px]",
   cardSlot: "w-max min-w-[280px] px-6",
   cardBase:
-    "box-border flex shrink-0 flex-col items-center overflow-hidden rounded-sm border px-3 py-2.5 text-center shadow-level-1",
+    "box-border flex shrink-0 flex-col items-center overflow-hidden rounded-md border px-3 py-2.5 text-center shadow-level-2",
   txtCargo: "text-[9px]",
   txtNomeGestao: "text-[11px]",
   txtNomeLeaf: "text-[10px]",
@@ -99,7 +100,7 @@ const UI_FULLSCREEN: OrgUiTokens = {
   cardHLeaf: "h-[176px]",
   cardSlot: "w-max min-w-[400px] px-10",
   cardBase:
-    "box-border flex shrink-0 flex-col items-center overflow-hidden rounded-sm border px-4 py-3.5 text-center shadow-level-1",
+    "box-border flex shrink-0 flex-col items-center overflow-hidden rounded-md border px-4 py-3.5 text-center shadow-level-2",
   txtCargo: "text-[13px]",
   txtNomeGestao: "text-[15px]",
   txtNomeLeaf: "text-[14px]",
@@ -204,10 +205,10 @@ const CAIXA_NIVEL: Record<
 > = {
   /** Área — fundo mais claro no escuro para contraste com o canvas preto */
   0: {
-    box: "border-soaco-navy/30 bg-[#E8EEF5] text-soaco-navy dark:border-white/50 dark:bg-[#3A4556] dark:text-white",
+    box: "border-soaco-navy/40 bg-[#DCE8F8] text-soaco-navy dark:border-white/50 dark:bg-[#3A4556] dark:text-white",
     title: "text-soaco-navy dark:text-white",
-    sub: "text-soaco-navy/70 dark:text-white/85",
-    meta: "text-soaco-navy/60 dark:text-white/75",
+    sub: "text-soaco-navy/75 dark:text-white/85",
+    meta: "text-soaco-navy/70 dark:text-white/75",
     avatar: "sobre-card",
   },
   /** Respondem à diretoria */
@@ -220,18 +221,18 @@ const CAIXA_NIVEL: Record<
   },
   /** Respondem a esses colaboradores */
   2: {
-    box: "border-soaco-navy/20 bg-white text-soaco-navy dark:border-white/35 dark:bg-[#222830] dark:text-white",
+    box: "border-soaco-navy/30 bg-white text-soaco-navy dark:border-white/35 dark:bg-[#222830] dark:text-white",
     title: "text-soaco-blue dark:text-soaco-gold",
     sub: "text-soaco-navy dark:text-white/90",
-    meta: "text-soaco-navy/55 dark:text-white/65",
+    meta: "text-soaco-navy/65 dark:text-white/65",
     avatar: "sobre-card",
   },
   /** Grupos aninhados (manutenção, etc.) */
   3: {
-    box: "border-dashed border-soaco-navy/30 bg-[#F4F5F8] text-soaco-navy dark:border-white/40 dark:bg-[#323B4A] dark:text-white",
+    box: "border-dashed border-soaco-navy/40 bg-[#EBEFF6] text-soaco-navy dark:border-white/40 dark:bg-[#323B4A] dark:text-white",
     title: "text-soaco-navy dark:text-white",
     sub: "text-soaco-navy/80 dark:text-white/85",
-    meta: "text-soaco-navy/55 dark:text-white/65",
+    meta: "text-soaco-navy/65 dark:text-white/65",
     avatar: "sobre-card",
   },
 };
@@ -906,17 +907,15 @@ function LegendaOrganograma() {
   );
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
-      <span className="font-semibold text-foreground">Legenda:</span>
-      {item("border-soaco-gold bg-soaco-navy", "Empresa")}
       {item("border-soaco-navy bg-soaco-navy", "Diretorias")}
       {item(
-        "border-soaco-navy/30 bg-[#E8EEF5] dark:border-white/50 dark:bg-[#3A4556]",
+        "border-soaco-navy/40 bg-[#DCE8F8] dark:border-white/50 dark:bg-[#3A4556]",
         "Áreas",
       )}
-      {item("border-soaco-blue bg-soaco-blue", "Respondem à diretoria")}
+      {item("border-soaco-blue bg-soaco-blue", "Reportes diretos")}
       {item(
-        "border-soaco-navy/20 bg-white dark:border-white/35 dark:bg-[#222830]",
-        "Respondem a esses colaboradores",
+        "border-soaco-navy/30 bg-white dark:border-white/35 dark:bg-[#222830]",
+        "Equipe",
       )}
     </div>
   );
@@ -942,7 +941,6 @@ export function OrganogramaHierarquiaPanel({
   const totalPessoas = arvore.reduce((acc, d) => acc + d.qtdPessoas, 0);
   const temVinculos = diretorias.some((d) => d.areas.some((a) => a.setores.length > 0));
 
-  const viewportRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const ramoElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -952,24 +950,26 @@ export function OrganogramaHierarquiaPanel({
   const [exportando, setExportando] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [encaixeTick, setEncaixeTick] = useState(0);
-  const [isPanning, setIsPanning] = useState(false);
   const uiTokens = isFullscreen ? UI_FULLSCREEN : UI_NORMAL;
-  const panRef = useRef<{
-    pointerId: number;
-    x: number;
-    y: number;
-    scrollLeft: number;
-    scrollTop: number;
-    moved: boolean;
-  } | null>(null);
+
+  const clampZoom = useCallback((z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)), []);
+
+  const {
+    ref: viewportCallbackRef,
+    elementRef: viewportRef,
+    isPanning,
+  } = useQuadroPan({
+    onZoomStep: useCallback(
+      (direcao: 1 | -1) => setZoom((z) => clampZoom(z + direcao * ZOOM_STEP)),
+      [clampZoom],
+    ),
+  });
 
   const idsExpandiveis = useMemo(
     () => arvore.flatMap((d) => coletarExpandiveis(d.ancoras)),
     [arvore],
   );
   const temAlgoAberto = abertos.size > 0;
-
-  const clampZoom = useCallback((z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)), []);
 
   const medirConteudo = useCallback(() => {
     const el = contentRef.current;
@@ -1009,126 +1009,6 @@ export function OrganogramaHierarquiaPanel({
     };
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, []);
-
-  useLayoutEffect(() => {
-    const vp = viewportRef.current;
-    if (!vp) return;
-    const onWheel = (e: globalThis.WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-      setZoom((z) => clampZoom(z + delta));
-    };
-    vp.addEventListener("wheel", onWheel, { passive: false });
-    return () => vp.removeEventListener("wheel", onWheel);
-  }, [clampZoom]);
-
-  /** Clique + arraste (ou botão do meio) para navegar no quadro. */
-  useEffect(() => {
-    const vp = viewportRef.current;
-    if (!vp) return;
-
-    const PAN_THRESHOLD_PX = 5;
-
-    const onPointerDown = (e: PointerEvent) => {
-      if (e.button !== 0 && e.button !== 1) return;
-      // Botão do meio: evita autoscroll nativo e inicia pan na hora.
-      if (e.button === 1) {
-        e.preventDefault();
-        panRef.current = {
-          pointerId: e.pointerId,
-          x: e.clientX,
-          y: e.clientY,
-          scrollLeft: vp.scrollLeft,
-          scrollTop: vp.scrollTop,
-          moved: true,
-        };
-        setIsPanning(true);
-        try {
-          vp.setPointerCapture(e.pointerId);
-        } catch {
-          /* ignore */
-        }
-        return;
-      }
-      // Esquerdo: ainda não captura — senão o click dos cards (área/gestão) some.
-      panRef.current = {
-        pointerId: e.pointerId,
-        x: e.clientX,
-        y: e.clientY,
-        scrollLeft: vp.scrollLeft,
-        scrollTop: vp.scrollTop,
-        moved: false,
-      };
-    };
-
-    const onPointerMove = (e: PointerEvent) => {
-      const pan = panRef.current;
-      if (!pan || pan.pointerId !== e.pointerId) return;
-      const dx = e.clientX - pan.x;
-      const dy = e.clientY - pan.y;
-      if (!pan.moved) {
-        if (dx * dx + dy * dy < PAN_THRESHOLD_PX * PAN_THRESHOLD_PX) return;
-        pan.moved = true;
-        setIsPanning(true);
-        try {
-          vp.setPointerCapture(e.pointerId);
-        } catch {
-          /* ignore */
-        }
-      }
-      e.preventDefault();
-      vp.scrollLeft = pan.scrollLeft - dx;
-      vp.scrollTop = pan.scrollTop - dy;
-    };
-
-    const endPan = (e: PointerEvent) => {
-      const pan = panRef.current;
-      if (!pan || pan.pointerId !== e.pointerId) return;
-      const moved = pan.moved;
-      panRef.current = null;
-      setIsPanning(false);
-      try {
-        if (vp.hasPointerCapture(e.pointerId)) vp.releasePointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
-      }
-      // Após arrastar, bloqueia o click que dispararia toggle no card.
-      if (moved) {
-        const suppressClick = (ev: MouseEvent) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-        };
-        vp.addEventListener("click", suppressClick, true);
-        window.setTimeout(() => vp.removeEventListener("click", suppressClick, true), 0);
-      }
-    };
-
-    const onLostCapture = () => {
-      if (!panRef.current?.moved) return;
-      panRef.current = null;
-      setIsPanning(false);
-    };
-
-    const onAuxClick = (e: MouseEvent) => {
-      if (e.button === 1) e.preventDefault();
-    };
-
-    vp.addEventListener("pointerdown", onPointerDown);
-    vp.addEventListener("pointermove", onPointerMove);
-    vp.addEventListener("pointerup", endPan);
-    vp.addEventListener("pointercancel", endPan);
-    vp.addEventListener("lostpointercapture", onLostCapture);
-    vp.addEventListener("auxclick", onAuxClick);
-    return () => {
-      vp.removeEventListener("pointerdown", onPointerDown);
-      vp.removeEventListener("pointermove", onPointerMove);
-      vp.removeEventListener("pointerup", endPan);
-      vp.removeEventListener("pointercancel", endPan);
-      vp.removeEventListener("lostpointercapture", onLostCapture);
-      vp.removeEventListener("auxclick", onAuxClick);
-    };
   }, []);
 
   const encaixarNaTela = useCallback(() => {
@@ -1267,7 +1147,7 @@ export function OrganogramaHierarquiaPanel({
 
   if (!temVinculos) {
     return (
-      <div className="flex min-h-[280px] items-center justify-center border border-dashed border-border bg-muted/20 p-10 text-center shadow-level-1">
+      <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 p-10 text-center shadow-level-1">
         <div className="max-w-md space-y-2">
           <p className="text-sm font-semibold text-foreground">Nenhum setor vinculado</p>
           <p className="text-sm text-muted-foreground">
@@ -1291,15 +1171,15 @@ export function OrganogramaHierarquiaPanel({
         )}
       >
         <div className="flex flex-wrap items-center gap-2 text-xs print:hidden">
-          <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
+          <span className="rounded-md border border-border bg-card px-3 py-2 font-semibold text-foreground shadow-level-1">
             {arvore.length} diretorias
           </span>
-          <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
+          <span className="rounded-md border border-border bg-card px-3 py-2 font-semibold text-foreground shadow-level-1">
             {totalPessoas} no organograma
           </span>
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 border border-border bg-card px-3 py-2 font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 font-semibold text-muted-foreground shadow-level-1 hover:bg-muted hover:text-foreground"
             title={temAlgoAberto ? "Recolher todos os ramos" : "Expandir todos os ramos"}
             onClick={temAlgoAberto ? recolherTudo : expandirTudo}
           >
@@ -1382,20 +1262,12 @@ export function OrganogramaHierarquiaPanel({
 
         <LegendaOrganograma />
 
-        <p className="text-[11px] text-muted-foreground print:hidden">
-          Arraste o quadro para navegar · Clique na diretoria para focar o ramo · Ctrl + scroll para zoom
-          (até {Math.round(ZOOM_MIN * 100)}%) · Encaixar ajusta para ver a cadeia inteira · Tela cheia
-          aumenta cards e letras
-        </p>
-
         <div
-          ref={viewportRef}
+          ref={viewportCallbackRef}
           className={cn(
-            "relative overflow-auto border border-border bg-[#F4F5F8] shadow-level-1 dark:bg-black print:h-auto print:overflow-visible print:border-0 print:bg-white print:shadow-none",
+            "org-canvas relative touch-none overflow-auto rounded-xl border print:h-auto print:overflow-visible print:border-0 print:bg-white print:shadow-none",
             isFullscreen ? "min-h-0 flex-1" : "h-[min(80vh,980px)]",
-            isPanning
-              ? "cursor-grabbing select-none [&_*]:!cursor-grabbing"
-              : "cursor-grab",
+            classesQuadroPan(isPanning),
           )}
         >
           <div

@@ -249,7 +249,7 @@ export default function SimulacaoCubagemPage() {
   }
 
   if (carregando) {
-    return <CarregandoInformacoesOverlay mensagem="Carregando simulação de cubagem…" />;
+    return <CarregandoInformacoesOverlay show mensagem="Carregando simulação de cubagem…" />;
   }
 
   // Wizard: veículo

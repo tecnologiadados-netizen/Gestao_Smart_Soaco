@@ -10,6 +10,8 @@ import {
 } from '../../../api/painelProducao';
 import { formatMesLabel } from '../../../utils/painelProducaoFormat';
 import { podeEditarPainelMetas } from '../../../utils/painelProducaoPermissoes';
+import LoaderCirculo from '../../../components/LoaderCirculo';
+import { useDuracaoMinima } from '../../../hooks/useDuracaoMinima';
 
 type CampoMeta =
   | 'meta_bronze'
@@ -50,14 +52,14 @@ function paraNumero(texto: string): number | null {
   return Number.isFinite(numero) && numero >= 0 ? numero : Number.NaN;
 }
 
-function LoadingOverlay({ message = 'Carregando...' }: { message?: string }) {
+function LoadingOverlay({ message = 'Carregando...', show = true }: { message?: string; show?: boolean }) {
+  const visivel = useDuracaoMinima(show);
+  if (!visivel) return null;
+
   return (
     <div className="loading-overlay" role="status" aria-live="polite" aria-busy="true">
       <div className="loading-overlay-card">
-        <div className="loading-spinner" aria-hidden="true">
-          <span className="loading-spinner-ring" />
-          <span className="loading-spinner-core" />
-        </div>
+        <LoaderCirculo tamanho={64} cores={['#FFAD00', '#9BA3E8']} />
         <p className="loading-overlay-text">{message}</p>
       </div>
     </div>
@@ -325,7 +327,7 @@ export default function PainelProducaoMetasPage() {
           </div>
         </header>
 
-        {loading && <LoadingOverlay message="Carregando metas..." />}
+        <LoadingOverlay show={loading} message="Carregando metas..." />
 
         <main className="targets-main">
           <div className="card targets-card">

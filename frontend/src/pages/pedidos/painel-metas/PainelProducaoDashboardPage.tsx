@@ -23,6 +23,8 @@ import {
   type PainelProducaoRankingItem,
 } from '../../../api/painelProducao';
 import { formatMesLabel, formatNumber, formatPercent, getChartTheme } from '../../../utils/painelProducaoFormat';
+import LoaderCirculo from '../../../components/LoaderCirculo';
+import { useDuracaoMinima } from '../../../hooks/useDuracaoMinima';
 import { useTelaFavorita } from '../../../hooks/useTelaFavorita';
 import { useRegistrarVisaoFavorito } from '../../../hooks/useRegistrarVisaoFavorito';
 import {
@@ -364,14 +366,20 @@ function RankingPodium({
   )
 }
 
-function LoadingOverlay({ message = 'Atualizando dados...' }: { message?: string }) {
+function LoadingOverlay({
+  message = 'Atualizando dados...',
+  show = true,
+}: {
+  message?: string;
+  show?: boolean;
+}) {
+  const visivel = useDuracaoMinima(show);
+  if (!visivel) return null;
+
   return (
     <div className="loading-overlay" role="status" aria-live="polite" aria-busy="true">
       <div className="loading-overlay-card">
-        <div className="loading-spinner" aria-hidden="true">
-          <span className="loading-spinner-ring" />
-          <span className="loading-spinner-core" />
-        </div>
+        <LoaderCirculo tamanho={64} cores={['#FFAD00', '#9BA3E8']} />
         <p className="loading-overlay-text">{message}</p>
       </div>
     </div>
@@ -692,7 +700,7 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
     <div ref={dashboardRef} className={`dashboard${isTv ? ' dashboard-tv' : ''}`}>
       {renderHeader()}
 
-      {dashboardLoading && <LoadingOverlay />}
+      <LoadingOverlay show={dashboardLoading} />
 
       {dashboardError && !dashboard ? (
         <ErrorState message={dashboardError} />

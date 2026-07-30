@@ -525,54 +525,25 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(6, 16, 24, 0.42);
-  backdrop-filter: blur(4px);
+  background: rgba(6, 16, 24, 0.45);
+  backdrop-filter: blur(12px);
   animation: overlay-fade-in 0.2s ease;
 }
 
 .loading-overlay-card {
-  background: var(--card-bg);
-  border-radius: 12px;
-  border-top: 5px solid var(--gold);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
-  padding: 2.5rem 3.5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.25rem;
-  min-width: 280px;
+  gap: 1rem;
+  padding: 2rem;
   animation: overlay-card-in 0.35s ease;
-}
-
-.loading-spinner {
-  position: relative;
-  width: 72px;
-  height: 72px;
-}
-
-.loading-spinner-ring {
-  position: absolute;
-  inset: 0;
-  border: 5px solid #e8ecf0;
-  border-top-color: var(--gold);
-  border-right-color: var(--navy);
-  border-radius: 50%;
-  animation: spin 0.85s linear infinite;
-}
-
-.loading-spinner-core {
-  position: absolute;
-  inset: 18px;
-  background: linear-gradient(135deg, var(--gold) 0%, #ffc940 100%);
-  border-radius: 50%;
-  animation: pulse-core 1.2s ease-in-out infinite;
 }
 
 .loading-overlay-text {
   margin: 0;
-  font-size: clamp(1.1rem, 2vw, 1.35rem);
-  font-weight: 700;
-  color: var(--navy);
+  font-size: clamp(0.95rem, 1.4vw, 1.1rem);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -591,11 +562,6 @@
     opacity: 1;
     transform: scale(1) translateY(0);
   }
-}
-
-@keyframes pulse-core {
-  0%, 100% { transform: scale(0.85); opacity: 0.75; }
-  50% { transform: scale(1); opacity: 1; }
 }
 
 /* ── Main content grid ── */
@@ -1875,18 +1841,6 @@ button.kpi-card-clickable:hover .kpi-click-hint {
 
 .painel-producao-module[data-theme='dark'] .dashboard .ranking-table tr.highlight {
   background: rgba(255, 174, 0, 0.16);
-}
-
-.painel-producao-module[data-theme='dark'] .dashboard .loading-overlay-card {
-  background: #1a2332;
-}
-
-.painel-producao-module[data-theme='dark'] .dashboard .loading-spinner-ring {
-  border-color: #2d3a50;
-}
-
-.painel-producao-module[data-theme='dark'] .dashboard .loading-overlay-text {
-  color: #e8edf4;
 }
 
 .painel-producao-module[data-theme='dark'] .dashboard .state-message {

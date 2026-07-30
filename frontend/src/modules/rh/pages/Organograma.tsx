@@ -1,8 +1,8 @@
-﻿import { useMemo, useRef, useState, type ChangeEvent } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AppLayout from "@rh/components/AppLayout";
 import { motion } from "framer-motion";
-import { Camera } from "lucide-react";
+import { Camera, Expand, Shrink } from "lucide-react";
 import {
   getConfig,
   getOrganico,
@@ -27,6 +27,7 @@ import {
 } from "@rh/lib/organograma-vinculacoes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@rh/components/ui/tabs";
 import { useToast } from "@rh/hooks/use-toast";
+import { classesQuadroPan, useQuadroPan } from "@rh/hooks/useQuadroPan";
 import { ORGANICO_IDX, getStatusFromRow } from "@rh/pages/Organico/organico-derive";
 import { OrganogramaVinculosConfigPanel } from "@rh/pages/organograma/OrganogramaVinculosConfigPanel";
 import { OrganogramaHierarquiaPanel } from "@rh/pages/organograma/OrganogramaHierarquiaPanel";
@@ -216,7 +217,7 @@ const DiretoriaPill = ({
   return (
     <div className="relative ml-2 mt-4 pb-3 pl-2">
       <NivelBadge rotulo="Diretoria" nivel="diretoria" />
-      <div className="relative flex min-h-[76px] w-[300px] items-center rounded-full border border-border/40 bg-card py-3 pl-[104px] pr-8 shadow-level-2 transition-shadow hover:shadow-level-3">
+      <div className="relative flex min-h-[76px] w-[300px] items-center rounded-full border border-soaco-navy/25 bg-card py-3 pl-[104px] pr-8 shadow-level-2 transition-shadow hover:shadow-level-3 dark:border-white/20">
         <div className="absolute -left-3 top-1/2 z-10 -translate-y-1/2">
           <AvatarComArco
             nome={diretoria.diretor}
@@ -264,12 +265,12 @@ const SetorPill = ({
     >
       <NivelBadge rotulo="Setor" nivel="setor" />
       <span
-        className="absolute -bottom-1.5 right-3 z-20 rounded-full border border-border/60 bg-card px-2 py-0.5 text-[9px] font-bold tabular-nums text-muted-foreground shadow-level-1"
+        className="absolute -bottom-1.5 right-3 z-20 rounded-full border border-soaco-navy/20 bg-card px-2 py-0.5 text-[9px] font-bold tabular-nums text-soaco-navy shadow-level-1 dark:border-white/20 dark:text-white/85"
         title={`${qtdColaboradores} colaborador${qtdColaboradores === 1 ? "" : "es"}`}
       >
         {qtdColaboradores}
       </span>
-      <div className="flex min-h-[46px] w-[200px] cursor-pointer items-center rounded-full border border-border/40 bg-card px-5 py-2 pb-3 shadow-level-2 transition-shadow hover:border-soaco-gold/50 hover:shadow-level-3">
+      <div className="flex min-h-[46px] w-[200px] cursor-pointer items-center rounded-full border border-soaco-navy/20 bg-card px-5 py-2 pb-3 shadow-level-2 transition-shadow hover:border-soaco-gold hover:shadow-level-3 dark:border-white/20">
         <div className="min-w-0 text-left">
           <p className={`text-[13px] font-bold leading-tight ${estilos.texto}`}>{titulo}</p>
           {subtitulo ? (
@@ -283,10 +284,13 @@ const SetorPill = ({
   );
 };
 
+/** Traço dos conectores — visível nos dois temas (o `--border` sozinho some no quadro). */
+const LINHA_MAPA = "bg-soaco-navy/45 dark:bg-white/55";
+
 /** Conector horizontal curto entre nós do mapa (esquerda → direita). */
 const ConectorHorizontal = ({ className }: { className?: string }) => (
   <div
-    className={cn("h-px w-6 shrink-0 self-center bg-border", className)}
+    className={cn("h-[2px] w-6 shrink-0 self-center", LINHA_MAPA, className)}
     aria-hidden="true"
   />
 );
@@ -382,7 +386,7 @@ const EmpresaNode = ({
       <span className="absolute -top-2.5 right-5 z-10 rounded-full bg-soaco-navy px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-white shadow-level-1">
         Empresa
       </span>
-      <div className="rounded-full border border-border/50 bg-card px-10 py-3.5 text-center shadow-level-2">
+      <div className="rounded-full border border-soaco-navy/25 bg-card px-10 py-3.5 text-center shadow-level-2 dark:border-white/20">
         <p className="text-base font-bold text-soaco-navy dark:text-primary-100">
           Só Aço Industrial Ltda.
         </p>
@@ -397,10 +401,35 @@ const EmpresaNode = ({
 const Organograma = () => {
   const [abaAtiva, setAbaAtiva] = useState<OrganogramaAba>("hierarquia");
   const [setorSelecionado, setSetorSelecionado] = useState<SetorSelecionadoMapa | null>(null);
+  const [mapaFullscreen, setMapaFullscreen] = useState(false);
+  const mapaShellRef = useRef<HTMLDivElement>(null);
   const podeBuscarFotos = isApiConfigured() && canViewOrganicoPhotos();
   const canEditFotos = canEditOrganogramaFotos();
   const canEditVinculos = canEditRoute("/organograma");
   const fotoEmpresa = useOrganogramaFotoConfig(FOTO_EMPRESA_KEY);
+  const { ref: mapaRef, isPanning: mapaEmArraste } = useQuadroPan();
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setMapaFullscreen(document.fullscreenElement === mapaShellRef.current);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const alternarMapaTelaCheia = useCallback(async () => {
+    const el = mapaShellRef.current;
+    if (!el) return;
+    try {
+      if (!document.fullscreenElement) {
+        await el.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch {
+      /* navegador pode negar fullscreen */
+    }
+  }, []);
 
   const { data: fotosResumo = [] } = useQuery({
     queryKey: ["organico-fotos-resumo"],
@@ -496,8 +525,7 @@ const Organograma = () => {
             <div>
               <h2 className="text-lg font-semibold text-foreground">Hierarquia</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Empresa no topo; as 3 diretorias no mesmo nível, ligadas entre si; abaixo, a escada de cargos de
-                cada uma.
+                Estrutura de gestão da empresa: diretorias, áreas e equipes.
               </p>
             </div>
             <OrganogramaHierarquiaPanel
@@ -509,78 +537,123 @@ const Organograma = () => {
           </TabsContent>
 
           <TabsContent value="mapa-vinculos" className="mt-0 space-y-4 focus-visible:outline-none">
-            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">Mapa de Vínculos Organizacionais</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Distribuição lateral dos setores por diretoria — mapeamento de vínculos (não é hierarquia de
-                  cargo). Clique em um setor para ver os colaboradores.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
-                  {diretorias.length} diretorias
-                </span>
-                <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
-                  {totalAreas} áreas
-                </span>
-                <span className="border border-border bg-card px-3 py-2 font-semibold text-foreground">
-                  {totalSetores} setores
-                </span>
-              </div>
-            </div>
-
-            {totalSetores === 0 ? (
-              <div className="flex min-h-[280px] items-center justify-center border border-dashed border-border bg-muted/20 p-10 text-center shadow-level-1">
-                <div className="max-w-md space-y-2">
-                  <p className="text-sm font-semibold text-foreground">Nenhum vínculo configurado</p>
-                  <p className="text-sm text-muted-foreground">
-                    Abra a aba Configurações para vincular os setores às diretorias e definir os líderes.
+            <div
+              ref={mapaShellRef}
+              className={cn(
+                "space-y-4",
+                mapaFullscreen && "flex h-full flex-col gap-3 space-y-0 bg-background p-4",
+              )}
+            >
+              <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Mapa de Vínculos Organizacionais</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Setores vinculados a cada diretoria.
                   </p>
                 </div>
-              </div>
-            ) : (
-              <div className="overflow-x-auto border border-border bg-muted/30 p-6 shadow-level-1 sm:p-8">
-                <div className="flex w-max min-w-full items-center py-2">
-                  <motion.div
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="flex flex-row items-center"
-                  >
-                    <EmpresaNode fotoEmpresa={fotoEmpresa} canEditFotos={canEditFotos} />
-                    <ConectorHorizontal className="w-8" />
-                    <div className="flex flex-col gap-10">
-                      {diretorias.map((diretoria, i) => (
-                        <div key={diretoria.id} className="relative flex flex-row items-center">
-                          {/* Trilho vertical entre diretorias (centro de cada ramo). */}
-                          {i > 0 && (
-                            <div
-                              className="pointer-events-none absolute bottom-1/2 left-0 h-[calc(50%+1.25rem)] w-px bg-border"
-                              aria-hidden="true"
-                            />
-                          )}
-                          {i < diretorias.length - 1 && (
-                            <div
-                              className="pointer-events-none absolute top-1/2 left-0 h-[calc(50%+1.25rem)] w-px bg-border"
-                              aria-hidden="true"
-                            />
-                          )}
-                          <div className="h-px w-5 shrink-0 bg-border" aria-hidden="true" />
-                          <DiretoriaBranch
-                            diretoria={diretoria}
-                            delay={0.08 * (i + 1)}
-                            canEditFotos={canEditFotos}
-                            contagemPorSetor={contagemPorSetor}
-                            onSelecionarSetor={setSetorSelecionado}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </motion.div>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="rounded-md border border-border bg-card px-3 py-2 font-semibold text-foreground shadow-level-1">
+                    {diretorias.length} diretorias
+                  </span>
+                  <span className="rounded-md border border-border bg-card px-3 py-2 font-semibold text-foreground shadow-level-1">
+                    {totalAreas} áreas
+                  </span>
+                  <span className="rounded-md border border-border bg-card px-3 py-2 font-semibold text-foreground shadow-level-1">
+                    {totalSetores} setores
+                  </span>
+                  {totalSetores > 0 && (
+                    <button
+                      type="button"
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 font-semibold shadow-level-1 hover:bg-muted hover:text-foreground",
+                        mapaFullscreen
+                          ? "bg-soaco-navy text-white hover:bg-soaco-navy/90 hover:text-white"
+                          : "bg-card text-muted-foreground",
+                      )}
+                      title={mapaFullscreen ? "Sair da tela cheia (Esc)" : "Tela cheia"}
+                      onClick={() => void alternarMapaTelaCheia()}
+                    >
+                      {mapaFullscreen ? (
+                        <>
+                          <Shrink className="h-3.5 w-3.5" />
+                          Sair
+                        </>
+                      ) : (
+                        <>
+                          <Expand className="h-3.5 w-3.5" />
+                          Tela cheia
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
+
+              {totalSetores === 0 ? (
+                <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 p-10 text-center shadow-level-1">
+                  <div className="max-w-md space-y-2">
+                    <p className="text-sm font-semibold text-foreground">Nenhum vínculo configurado</p>
+                    <p className="text-sm text-muted-foreground">
+                      Abra a aba Configurações para vincular os setores às diretorias e definir os líderes.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  ref={mapaRef}
+                  className={cn(
+                    "org-canvas touch-none overflow-auto rounded-xl border p-6 sm:p-8",
+                    mapaFullscreen ? "min-h-0 flex-1" : "max-h-[min(78vh,900px)]",
+                    classesQuadroPan(mapaEmArraste),
+                  )}
+                >
+                  <div className="flex w-max min-w-full items-center py-2">
+                    <motion.div
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="flex flex-row items-center"
+                    >
+                      <EmpresaNode fotoEmpresa={fotoEmpresa} canEditFotos={canEditFotos} />
+                      <ConectorHorizontal className="w-8" />
+                      <div className="flex flex-col gap-10">
+                        {diretorias.map((diretoria, i) => (
+                          <div key={diretoria.id} className="relative flex flex-row items-center">
+                            {/* Trilho vertical entre diretorias (centro de cada ramo). */}
+                            {i > 0 && (
+                              <div
+                                className={cn(
+                                  "pointer-events-none absolute bottom-1/2 left-0 h-[calc(50%+1.25rem)] w-[2px]",
+                                  LINHA_MAPA,
+                                )}
+                                aria-hidden="true"
+                              />
+                            )}
+                            {i < diretorias.length - 1 && (
+                              <div
+                                className={cn(
+                                  "pointer-events-none absolute top-1/2 left-0 h-[calc(50%+1.25rem)] w-[2px]",
+                                  LINHA_MAPA,
+                                )}
+                                aria-hidden="true"
+                              />
+                            )}
+                            <div className={cn("h-[2px] w-5 shrink-0", LINHA_MAPA)} aria-hidden="true" />
+                            <DiretoriaBranch
+                              diretoria={diretoria}
+                              delay={0.08 * (i + 1)}
+                              canEditFotos={canEditFotos}
+                              contagemPorSetor={contagemPorSetor}
+                              onSelecionarSetor={setSetorSelecionado}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  </div>
+                </div>
+              )}
+            </div>
           </TabsContent>
 
           <TabsContent value="configuracoes" className="mt-0 focus-visible:outline-none">

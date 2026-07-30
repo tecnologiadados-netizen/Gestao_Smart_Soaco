@@ -974,16 +974,15 @@ export default function CrmFinanceiroPage() {
           )}
         </section>
 
-        {exibirOverlayCliente && (
-          <LoadingOverlay
-            mensagem={
-              selecao?.tipo === "grupo"
-                ? "Carregando dados do grupo"
-                : "Carregando dados do cliente"
-            }
-            subtitulo={labelSelecao(selecao)}
-          />
-        )}
+        <LoadingOverlay
+          show={exibirOverlayCliente}
+          mensagem={
+            selecao?.tipo === "grupo"
+              ? "Carregando dados do grupo"
+              : "Carregando dados do cliente"
+          }
+          subtitulo={labelSelecao(selecao) ?? undefined}
+        />
 
         {gerandoRelatorio && (
           <PdfGeneratingOverlay

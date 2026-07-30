@@ -11,6 +11,8 @@ import {
 import { MonthFilter } from '../../../components/painel-producao/MonthFilter';
 import { PainelProducaoShell } from '../../../components/painel-producao/PainelProducaoShell';
 import { formatMesLabel } from '../../../utils/painelProducaoFormat';
+import LoaderCirculo from '../../../components/LoaderCirculo';
+import { useDuracaoMinima } from '../../../hooks/useDuracaoMinima';
 
 function formatNumero(valor: number, maxDecimals = 2): string {
   return new Intl.NumberFormat('pt-BR', {
@@ -32,14 +34,14 @@ function portalTarget(): HTMLElement {
   );
 }
 
-function LoadingOverlay() {
+function LoadingOverlay({ show = true }: { show?: boolean }) {
+  const visivel = useDuracaoMinima(show);
+  if (!visivel) return null;
+
   return (
     <div className="loading-overlay" role="status" aria-live="polite" aria-busy="true">
       <div className="loading-overlay-card">
-        <div className="loading-spinner" aria-hidden="true">
-          <span className="loading-spinner-ring" />
-          <span className="loading-spinner-core" />
-        </div>
+        <LoaderCirculo tamanho={64} cores={['#FFAD00', '#9BA3E8']} />
         <p className="loading-overlay-text">Apurando metas...</p>
       </div>
     </div>
@@ -416,7 +418,7 @@ export default function PainelProducaoApuracaoPage() {
           </div>
         </header>
 
-        {loading && <LoadingOverlay />}
+        <LoadingOverlay show={loading} />
 
         <main className="apuracao-main">
           <div className="card apuracao-card">

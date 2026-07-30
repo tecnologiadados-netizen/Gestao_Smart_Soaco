@@ -1,14 +1,23 @@
+import LoaderCirculo from './LoaderCirculo';
+import { LOADER_DURACAO_MINIMA_MS, useDuracaoMinima } from '../hooks/useDuracaoMinima';
+
 /**
- * Overlay escuro com spinner e texto — uso durante carregamento de filtros,
- * gravação de análises, etc.
+ * Overlay de vidro fosco com a animação padrão e texto — uso durante
+ * carregamento de filtros, gravação de análises, etc.
  * - `viewport`: tela inteira (bloqueia menu e abas).
  * - `contained`: somente o pai `relative` (aba atual — menu e outras abas livres).
+ *
+ * Fica visível por `duracaoMinimaMs` mesmo que a resposta volte antes, para a
+ * animação não piscar.
  */
 export type CarregandoInformacoesOverlayProps = {
   show: boolean;
   mensagem?: string;
   mode?: 'viewport' | 'contained';
   className?: string;
+  duracaoMinimaMs?: number;
+  /** Inline para vencer o z-index das classes utilitárias quando preciso cobrir o menu. */
+  zIndex?: number;
 };
 
 export default function CarregandoInformacoesOverlay({
@@ -16,8 +25,12 @@ export default function CarregandoInformacoesOverlay({
   mensagem = 'Carregando informações...',
   mode = 'viewport',
   className = '',
+  duracaoMinimaMs = LOADER_DURACAO_MINIMA_MS,
+  zIndex,
 }: CarregandoInformacoesOverlayProps) {
-  if (!show) return null;
+  const visivel = useDuracaoMinima(show, duracaoMinimaMs);
+
+  if (!visivel) return null;
 
   const position =
     mode === 'viewport'
@@ -26,16 +39,14 @@ export default function CarregandoInformacoesOverlay({
 
   return (
     <div
-      className={`${position} bg-black/95 backdrop-blur-[2px] ${className}`.trim()}
+      className={`${position} bg-slate-950/45 backdrop-blur-md ${className}`.trim()}
+      style={zIndex === undefined ? undefined : { zIndex }}
       role="status"
       aria-live="polite"
       aria-busy="true"
     >
       <div className="flex flex-col items-center gap-4 px-8 py-10">
-        <div className="relative h-12 w-12 shrink-0" aria-hidden>
-          <div className="absolute inset-0 rounded-full border-[3px] border-accent-500/25" />
-          <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-accent-500 border-r-primary-600/40 animate-spin" />
-        </div>
+        <LoaderCirculo tamanho={48} cores={['#FFAD00', '#9BA3E8']} className="shrink-0" />
         <p className="max-w-sm text-center text-sm font-medium tracking-tight text-white/90">{mensagem}</p>
       </div>
     </div>
