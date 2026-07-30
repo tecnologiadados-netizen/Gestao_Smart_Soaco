@@ -68,27 +68,30 @@ function getPressStyle(
   }
 }
 
-function Button({
-  className,
-  variant = "default",
-  size = "default",
-  disabled,
-  loading = false,
-  style,
-  children,
-  ref,
-  onPointerDown,
-  onPointerUp,
-  onPointerLeave,
-  onPointerCancel,
-  onKeyDown,
-  onKeyUp,
-  ...props
-}: ButtonPrimitive.Props &
+type ButtonProps = Omit<ButtonPrimitive.Props, "ref"> &
   VariantProps<typeof buttonVariants> & {
     loading?: boolean
-    ref?: React.Ref<HTMLButtonElement>
-  }) {
+  }
+
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  {
+    className,
+    variant = "default",
+    size = "default",
+    disabled,
+    loading = false,
+    style,
+    children,
+    onPointerDown,
+    onPointerUp,
+    onPointerLeave,
+    onPointerCancel,
+    onKeyDown,
+    onKeyUp,
+    ...props
+  },
+  ref
+) {
   const [pressed, setPressed] = React.useState(false)
   const pressStartedAtRef = React.useRef(0)
   const releaseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
@@ -195,6 +198,6 @@ function Button({
       </span>
     </ButtonPrimitive>
   )
-}
+})
 
 export { Button, buttonVariants }

@@ -205,7 +205,7 @@ export function ConsensoDocumentoPage() {
     }
   }
 
-  function handleReprovar() {
+  async function handleReprovar() {
     setError("");
     if (!modoReprovacao) {
       setModoReprovacao(true);
@@ -218,11 +218,23 @@ export function ConsensoDocumentoPage() {
     }
 
     const ok = reprovarConsenso(id, justificativaReprovacao.trim());
-    if (!ok) return;
-    void flushQualidadeDocumentsSync().catch((err) =>
-      console.error("[qualidade] falha ao sincronizar reprovação:", err)
-    );
-    navigate("/qualidade/documentos");
+    if (!ok) {
+      setError("Não foi possível reprovar. Recarregue a página e tente novamente.");
+      return;
+    }
+
+    setSincronizando(true);
+    try {
+      await flushQualidadeDocumentsSync();
+      navigate("/qualidade/documentos");
+    } catch (err) {
+      console.error("[qualidade] falha ao sincronizar reprovação:", err);
+      setError(
+        "A reprovação não chegou ao servidor. Verifique a conexão e tente novamente."
+      );
+    } finally {
+      setSincronizando(false);
+    }
   }
 
   return (
@@ -271,7 +283,7 @@ export function ConsensoDocumentoPage() {
               size="lg"
               variant="destructive"
               disabled={sincronizando}
-              onClick={handleReprovar}
+              onClick={() => void handleReprovar()}
             >
               {modoReprovacao ? "Confirmar reprovação" : "Reprovar"}
             </Button>
@@ -321,6 +333,7 @@ export function ConsensoDocumentoPage() {
             label="Documento ajustado *"
             arquivoNome={versaoAtual.arquivoNome}
             arquivoDataUrl={versaoAtual.arquivoDataUrl}
+            arquivoStoragePath={versaoAtual.arquivoStoragePath}
             onFileSelect={processarArquivo}
             onRemove={handleExcluirArquivoConsenso}
             accept={ACCEPTED_TYPES}

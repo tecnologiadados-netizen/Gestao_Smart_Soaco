@@ -248,6 +248,7 @@ function mapDocumento(row: {
   externoRegistroJson: string | null;
   createdAt: Date;
   updatedAt: Date;
+  statusAtualizadoEm?: string | null;
 }) {
   return {
     id: row.uid,
@@ -265,6 +266,7 @@ function mapDocumento(row: {
     externoRegistro: parseJson(row.externoRegistroJson, undefined),
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
+    statusAtualizadoEm: row.statusAtualizadoEm ?? undefined,
   };
 }
 
@@ -893,7 +895,7 @@ export async function syncQualidadeDocuments(payload: {
   const statusFinalByUid = new Map<string, string>();
 
   const existingDocs = await prisma.sgqDocumento.findMany({
-    select: { uid: true, status: true, versaoAtual: true },
+    select: { uid: true, status: true, versaoAtual: true, statusAtualizadoEm: true },
   });
   const existingByUid = new Map(existingDocs.map((d) => [d.uid, d]));
   const publicacoesParaNotificar: DocumentoPublicadoInput[] = [];
@@ -929,29 +931,46 @@ export async function syncQualidadeDocuments(payload: {
 
     if (versaoRegredida) staleDocUids.add(uid);
 
-    // Retrocesso de etapa na mesma revisão só é legítimo quando houve reprovação nova.
-    // Sem isso, uma aba antiga devolvia o documento ao consenso e a pendência de
-    // aprovação sumia para todo mundo na reconciliação seguinte.
-    const etapaRegredida =
+    // Toda mudança de etapa na mesma revisão precisa vir de um snapshot mais novo
+    // que o gravado. Sem isso qualquer aba com estado antigo desfazia a transição
+    // — inclusive devolvendo ao consenso um documento que acabara de ser reprovado.
+    const statusAtualizadoEm = doc.statusAtualizadoEm
+      ? String(doc.statusAtualizadoEm)
+      : '';
+    const etapaMudou =
       Boolean(prev) &&
       !versaoRegredida &&
       compareSgqRevision(prev!.versaoAtual, versaoPayload) === 0 &&
-      rankStatusSgq(status) < rankStatusSgq(prev!.status);
+      status !== prev!.status;
 
-    if (etapaRegredida) {
-      const verPayload = (versionsByDocUid.get(uid) ?? []).find(
-        (v) => String(v.versao ?? '') === versaoAtual
-      );
-      const movPayload = ultimaMovimentacaoData(verPayload?.movimentacoes);
-      const movServidor = await ultimaMovimentacaoDataServidor(uid, versaoAtual);
-      if (movPayload <= movServidor) {
+    if (etapaMudou) {
+      const carimboServidor = prev!.statusAtualizadoEm ?? '';
+      // Sem carimbo dos dois lados (dados anteriores a esta coluna) cai no critério
+      // antigo: retrocesso só passa com movimentação de reprovação mais recente.
+      const desatualizado =
+        statusAtualizadoEm || carimboServidor
+          ? statusAtualizadoEm <= carimboServidor
+          : rankStatusSgq(status) < rankStatusSgq(prev!.status) &&
+            ultimaMovimentacaoData(
+              (versionsByDocUid.get(uid) ?? []).find(
+                (v) => String(v.versao ?? '') === versaoAtual
+              )?.movimentacoes
+            ) <= (await ultimaMovimentacaoDataServidor(uid, versaoAtual));
+
+      if (desatualizado) {
         console.warn(
-          `[qualidade-sync] ${codigo}: ignorando retrocesso ${prev!.status} -> ${status} (snapshot desatualizado de ${criadoPorLogin}).`
+          `[qualidade-sync] ${codigo}: ignorando mudança ${prev!.status} -> ${status} (snapshot desatualizado de ${criadoPorLogin}).`
         );
         statusFinal = prev!.status;
         staleDocUids.add(uid);
       }
     }
+
+    // Snapshot recusado não pode avançar o relógio, senão o próximo envio válido
+    // seria descartado por parecer mais antigo.
+    const carimboFinal = staleDocUids.has(uid)
+      ? prev?.statusAtualizadoEm ?? null
+      : statusAtualizadoEm || prev?.statusAtualizadoEm || null;
     const permissoes = (doc.permissoes as DocumentoPublicadoInput['permissoes']) ?? null;
     const publicacao = (doc.publicacao as DocumentoPublicadoInput['publicacao']) ?? null;
 
@@ -1015,11 +1034,13 @@ export async function syncQualidadeDocuments(payload: {
         validadeJson: doc.validade ? JSON.stringify(doc.validade) : null,
         externoRegistroJson: externoRegistroSanitizado,
         criadoPorLogin,
+        statusAtualizadoEm: carimboFinal,
       },
       update: {
         codigo,
         titulo: String(doc.titulo ?? ''),
         status: statusFinal,
+        statusAtualizadoEm: carimboFinal,
         tipoUid,
         setorUid,
         versaoAtual,

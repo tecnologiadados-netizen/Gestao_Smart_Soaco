@@ -198,7 +198,17 @@ function atualizarDocumentoVersao(
     versaoAtual: versao,
     codigo: formatDocumentCodigo(doc.codigo, versao),
     updatedAt: now,
+    statusAtualizadoEm: now,
   };
+}
+
+/**
+ * Aplica a transição de etapa carimbando o momento. Sem esse carimbo o servidor
+ * não distingue um avanço real de um snapshot antigo reenviando a etapa
+ * anterior — era assim que uma aba desatualizada desfazia uma reprovação.
+ */
+function comStatus(doc: Document, status: DocumentStatus, now: string): Document {
+  return { ...doc, status, updatedAt: now, statusAtualizadoEm: now };
 }
 
 /**
@@ -524,6 +534,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
           externoRegistro: input.externoRegistro,
           createdAt: now,
           updatedAt: now,
+          statusAtualizadoEm: now,
         };
         const version: DocumentVersion = {
           id: generateId("ver"),
@@ -901,7 +912,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         set((state) => ({
           documents: state.documents.map((d) =>
             d.id === documentId
-              ? { ...d, status: "em_revisao" as DocumentStatus, updatedAt: now }
+              ? comStatus(d, "em_revisao", now)
               : d
           ),
           tasks: [
@@ -952,11 +963,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         set((state) => ({
           documents: state.documents.map((d) =>
             d.id === documentId
-              ? {
-                  ...d,
-                  status: "em_aprovacao" as DocumentStatus,
-                  updatedAt: now,
-                }
+              ? comStatus(d, "em_aprovacao", now)
               : d
           ),
           versions: state.versions.map((v) =>
@@ -1012,11 +1019,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         set((state) => ({
           documents: state.documents.map((d) =>
             d.id === documentId
-              ? {
-                  ...d,
-                  status: "em_aprovacao" as DocumentStatus,
-                  updatedAt: now,
-                }
+              ? comStatus(d, "em_aprovacao", now)
               : d
           ),
           versions: state.versions.map((v) =>
@@ -1077,7 +1080,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         set((state) => ({
           documents: state.documents.map((d) =>
             d.id === documentId
-              ? { ...d, status: "rascunho" as DocumentStatus, updatedAt: now }
+              ? comStatus(d, "rascunho", now)
               : d
           ),
           versions: state.versions.map((v) =>
@@ -1130,11 +1133,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         set((state) => {
           const documents = state.documents.map((d) => {
             if (d.id !== documentId) return d;
-            const updated: Document = {
-              ...d,
-              status: "vigente",
-              updatedAt: now,
-            };
+            const updated: Document = comStatus(d, "vigente", now);
             if (d.validade?.ativa && !d.validade.dataValidade) {
               updated.validade = {
                 ...d.validade,
@@ -1201,7 +1200,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         set((state) => ({
           documents: state.documents.map((d) =>
             d.id === documentId
-              ? { ...d, status: "em_revisao" as DocumentStatus, updatedAt: now }
+              ? comStatus(d, "em_revisao", now)
               : d
           ),
           versions: state.versions.map((v) =>
@@ -1359,7 +1358,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         set((state) => ({
           documents: state.documents.map((d) =>
             d.id === documentId
-              ? { ...d, status: "obsoleto" as DocumentStatus, updatedAt: now }
+              ? comStatus(d, "obsoleto", now)
               : d
           ),
         }));

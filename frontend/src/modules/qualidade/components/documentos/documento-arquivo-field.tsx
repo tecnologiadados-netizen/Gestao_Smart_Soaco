@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { SgqAnexosTable } from "@qualidade/components/ui/sgq-anexos-table";
-import type { SgqAnexo } from "@qualidade/types/registro-anexo";
+import { anexoTemArquivo, type SgqAnexo } from "@qualidade/types/registro-anexo";
 
 const DEFAULT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
 
@@ -8,6 +8,8 @@ interface DocumentoArquivoFieldProps {
   label: string;
   arquivoNome?: string;
   arquivoDataUrl?: string;
+  /** Arquivo já gravado no servidor. O bootstrap não devolve base64. */
+  arquivoStoragePath?: string;
   onFileSelect: (file: File) => void;
   onRemove: () => void;
   accept?: string;
@@ -19,6 +21,7 @@ export function DocumentoArquivoField({
   label,
   arquivoNome,
   arquivoDataUrl,
+  arquivoStoragePath,
   onFileSelect,
   onRemove,
   accept = DEFAULT_ACCEPT,
@@ -27,38 +30,42 @@ export function DocumentoArquivoField({
 }: DocumentoArquivoFieldProps) {
   const [rascunho, setRascunho] = useState<SgqAnexo[]>([]);
 
+  const temArquivo = Boolean(
+    arquivoNome?.trim() &&
+      (arquivoDataUrl?.trim() || arquivoStoragePath?.trim())
+  );
+
   useEffect(() => {
-    if (arquivoNome?.trim() && arquivoDataUrl?.trim()) {
-      setRascunho([]);
-    }
-  }, [arquivoNome, arquivoDataUrl]);
+    if (temArquivo) setRascunho([]);
+  }, [temArquivo]);
 
   const anexos = useMemo<SgqAnexo[]>(() => {
-    if (arquivoNome?.trim() && arquivoDataUrl?.trim()) {
+    if (temArquivo) {
       return [
         {
           id: "arquivo-principal",
-          nome: arquivoNome,
-          dataUrl: arquivoDataUrl,
+          nome: arquivoNome!,
+          dataUrl: arquivoDataUrl ?? "",
+          ...(arquivoStoragePath ? { storagePath: arquivoStoragePath } : {}),
         },
       ];
     }
     return rascunho;
-  }, [arquivoNome, arquivoDataUrl, rascunho]);
+  }, [temArquivo, arquivoNome, arquivoDataUrl, arquivoStoragePath, rascunho]);
 
   function handleChange(next: SgqAnexo[]) {
-    const preenchidos = next.filter((a) => a.nome.trim() && a.dataUrl.trim());
+    const preenchidos = next.filter(anexoTemArquivo);
 
     if (preenchidos.length === 0) {
       setRascunho(next);
-      if (arquivoNome?.trim() || arquivoDataUrl?.trim()) {
-        onRemove();
-      }
+      if (temArquivo) onRemove();
       return;
     }
 
     setRascunho([]);
     const principal = preenchidos[0]!;
+    // Sem base64 o arquivo veio do servidor e segue inalterado — nada a reenviar.
+    if (!principal.dataUrl.trim()) return;
     if (
       principal.nome !== (arquivoNome ?? "") ||
       principal.dataUrl !== (arquivoDataUrl ?? "")

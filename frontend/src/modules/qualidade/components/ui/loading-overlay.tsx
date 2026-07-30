@@ -1,4 +1,5 @@
-import { Loader2 } from "lucide-react";
+import LoaderCirculo from "../../../../components/LoaderCirculo";
+import { useDuracaoMinima } from "../../../../hooks/useDuracaoMinima";
 import { cn } from "@qualidade/lib/utils";
 
 interface Props {
@@ -8,7 +9,9 @@ interface Props {
 }
 
 export function LoadingOverlay({ open, message = "Carregando...", className }: Props) {
-  if (!open) return null;
+  const visivel = useDuracaoMinima(open);
+
+  if (!visivel) return null;
 
   return (
     <div
@@ -18,7 +21,7 @@ export function LoadingOverlay({ open, message = "Carregando...", className }: P
       aria-busy="true"
     >
       <div className="sgq-loader-card">
-        <Loader2 className="sgq-loader-spinner size-10 text-primary" aria-hidden />
+        <LoaderCirculo tamanho={48} className="text-primary" />
         <p className="text-sm font-medium text-foreground">{message}</p>
       </div>
     </div>

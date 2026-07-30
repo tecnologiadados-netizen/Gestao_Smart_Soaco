@@ -51,7 +51,7 @@ export function DocumentoEnderecamentoFieldset({
       <legend className="text-base">Endereçamento</legend>
 
       <div className="space-y-2">
-        <Label className="text-base">Localização *</Label>
+        <Label className="text-base">Localização</Label>
         <Select value={value} onValueChange={(v) => v && onChange(v)}>
           <SelectTrigger className={selectTriggerClass}>
             <SelectValue placeholder="Selecione onde o documento está armazenado">

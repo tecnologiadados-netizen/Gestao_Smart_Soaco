@@ -126,7 +126,6 @@ export function CadastroDocumentoInternoDialog({
     if (!responsaveis.elaboradorId) return "Selecione o elaborador.";
     if (!responsaveis.consensoId) return "Selecione o responsável pelo consenso.";
     if (!responsaveis.aprovadorId) return "Selecione o aprovador.";
-    if (!localizacao.trim()) return "Selecione a localização do documento.";
     if (departments.length === 0) {
       return "Nenhum setor cadastrado. Cadastre setores em Qualidade → Configurações.";
     }
