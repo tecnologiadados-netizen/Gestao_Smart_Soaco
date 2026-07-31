@@ -17,6 +17,7 @@ import {
 } from './programacaoProducaoCatalogoRuntime';
 import { fetchProgramacaoProducaoCatalogo, listProgramacaoProducaoRecursos } from '../api/programacaoProducao';
 import { medidasPecaDoCatalogo } from './programacaoProducaoMedidasPeca';
+import { textoResumoOpsNomus } from './programacaoProducaoOpsNomus';
 
 export type DownloadProgramacaoProducaoPdfOpts = {
   codigoProgramacao: string;
@@ -32,8 +33,8 @@ type CellDef = string | { content: string; rowSpan?: number };
 
 type PdfRowMeta = {
   qtde: string;
-  med1: string;
-  med2: string;
+  med1?: string;
+  med2?: string;
 };
 
 /** Mesma paleta do relatório de pendências de compras. */
@@ -48,9 +49,33 @@ const PDF = {
 
 const MARGIN = { left: 8, right: 8, bottom: 10, top: 8 };
 const FOOTER_PAGINA_MM = 8;
-const COL_RATIOS = [0.05, 0.08, 0.14, 0.18, 0.07, 0.07, 0.07, 0.1, 0.24] as const;
-/** Qtde a produzir, Med 1, Med 2 — badge azul. */
-const COLS_BADGE = new Set([4, 5, 6]);
+
+/** Manual: Seq, Cód, Desc, Roteiro, Qtde, Med1, Med2, Chapa, Obs */
+const COL_RATIOS_MANUAL = [0.05, 0.08, 0.14, 0.18, 0.07, 0.07, 0.07, 0.1, 0.24] as const;
+/** Perfiladeira: Seq, Cód, Desc, Roteiro, Qtde, Obs, OP Nomus */
+const COL_RATIOS_PERFILADEIRA = [0.05, 0.09, 0.18, 0.16, 0.08, 0.22, 0.22] as const;
+
+const HEAD_MANUAL = [
+  'Sequência',
+  'Código',
+  'Desc Simpl',
+  'Roteiro',
+  'Qtde a produzir',
+  'Med 1',
+  'Med 2',
+  'Chapa',
+  'Observação',
+] as const;
+
+const HEAD_PERFILADEIRA = [
+  'Sequência',
+  'Código',
+  'Desc Simpl',
+  'Roteiro',
+  'Qtde a produzir',
+  'Observação',
+  'OP Nomus',
+] as const;
 
 const TITULO_TIPO: Record<TipoImpressaoProgramacaoProducao, string> = {
   manual: 'MANUAL',
@@ -255,15 +280,25 @@ function desenharCabecalhoProgramacaoPdf(
   return linhaBaseY + 2.5;
 }
 
-function textoBadgeColuna(meta: PdfRowMeta, col: number): string {
-  const map: Record<number, string> = {
-    4: meta.qtde,
-    5: meta.med1,
-    6: meta.med2,
-  };
-  const texto = String(map[col] ?? '').trim();
-  if (texto && texto !== '—') return texto;
-  return col === 4 ? '0' : '—';
+function textoBadgeColuna(meta: PdfRowMeta, col: number, tipoImpressao: TipoImpressaoProgramacaoProducao): string {
+  if (col === 4) {
+    const texto = String(meta.qtde ?? '').trim();
+    return texto && texto !== '—' ? texto : '0';
+  }
+  if (tipoImpressao === 'manual') {
+    const map: Record<number, string | undefined> = {
+      5: meta.med1,
+      6: meta.med2,
+    };
+    const texto = String(map[col] ?? '').trim();
+    if (texto && texto !== '—') return texto;
+    return '—';
+  }
+  return '—';
+}
+
+function colsBadge(tipoImpressao: TipoImpressaoProgramacaoProducao): Set<number> {
+  return tipoImpressao === 'manual' ? new Set([4, 5, 6]) : new Set([4]);
 }
 
 function montarTabelaPdf(
@@ -275,6 +310,7 @@ function montarTabelaPdf(
   const rowsMeta: PdfRowMeta[] = [];
   const linhasPdf = ordenarLinhasParaPdf(linhas);
   let totalProdutos = 0;
+  const isPerfiladeira = tipoImpressao === 'perfiladeira';
 
   for (const l of linhasPdf) {
     const qp = migrarQtdeProduzirLegado(l.qtde_produzir);
@@ -282,10 +318,8 @@ function montarTabelaPdf(
     if (!roteirosFiltrados.length) continue;
 
     totalProdutos += 1;
-    const medidas = medidasPecaDoCatalogo(l.cod_componente);
-    const med1 = textoMedidaPdf(medidas?.med1);
-    const med2 = textoMedidaPdf(medidas?.med2);
     const observacao = l.observacao?.trim() || '—';
+    const opNomus = textoResumoOpsNomus(l);
 
     const roteiroLinhas = roteirosFiltrados.map((r) => ({
       roteiro: textoSequenciaRoteiroPdf(r.sequencia, recursos),
@@ -298,12 +332,34 @@ function montarTabelaPdf(
     const cod = l.cod_componente ?? '—';
     const desc = l.descricao_simplificada?.trim() || '—';
 
-    const meta0: PdfRowMeta = {
+    if (isPerfiladeira) {
+      rowsMeta.push({ qtde: roteiroLinhas[0]!.qtde });
+      body.push([
+        { content: seq, rowSpan: n },
+        { content: cod, rowSpan: n },
+        { content: desc, rowSpan: n },
+        roteiroLinhas[0]!.roteiro,
+        roteiroLinhas[0]!.qtde,
+        { content: observacao, rowSpan: n },
+        { content: opNomus, rowSpan: n },
+      ]);
+
+      for (let i = 1; i < n; i++) {
+        rowsMeta.push({ qtde: roteiroLinhas[i]!.qtde });
+        body.push([roteiroLinhas[i]!.roteiro, roteiroLinhas[i]!.qtde]);
+      }
+      continue;
+    }
+
+    const medidas = medidasPecaDoCatalogo(l.cod_componente);
+    const med1 = textoMedidaPdf(medidas?.med1);
+    const med2 = textoMedidaPdf(medidas?.med2);
+
+    rowsMeta.push({
       qtde: roteiroLinhas[0]!.qtde,
       med1,
       med2,
-    };
-    rowsMeta.push(meta0);
+    });
     body.push([
       { content: seq, rowSpan: n },
       { content: cod, rowSpan: n },
@@ -364,7 +420,9 @@ export async function buildProgramacaoProducaoPdfDoc(
   opts: DownloadProgramacaoProducaoPdfOpts
 ): Promise<jsPDF> {
   const { codigoProgramacao, dataCriacao, responsavel, linhas, logoBase64, tipoImpressao } = opts;
-  await resolverCatalogoPdf();
+  if (tipoImpressao === 'manual') {
+    await resolverCatalogoPdf();
+  }
   const recursos = await resolverRecursosPdf(opts.recursos);
 
   const { body, rowsMeta, totalProdutos } = montarTabelaPdf(linhas, recursos, tipoImpressao);
@@ -380,7 +438,10 @@ export async function buildProgramacaoProducaoPdfDoc(
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
   const tableWidth = pageW - MARGIN.left - MARGIN.right;
-  const colWidths = COL_RATIOS.map((r) => tableWidth * r);
+  const colRatios = tipoImpressao === 'perfiladeira' ? COL_RATIOS_PERFILADEIRA : COL_RATIOS_MANUAL;
+  const colWidths = colRatios.map((r) => tableWidth * r);
+  const head = tipoImpressao === 'perfiladeira' ? [...HEAD_PERFILADEIRA] : [...HEAD_MANUAL];
+  const badgeCols = colsBadge(tipoImpressao);
 
   const tableStartY = desenharCabecalhoProgramacaoPdf(doc, pageW, {
     tipoImpressao,
@@ -392,23 +453,32 @@ export async function buildProgramacaoProducaoPdfDoc(
     logoBase64,
   });
 
+  const columnStyles: Record<number, object> = {
+    0: { cellWidth: colWidths[0], halign: 'center' },
+    1: { cellWidth: colWidths[1], halign: 'left', fontStyle: 'bold' },
+    2: { cellWidth: colWidths[2], halign: 'left' },
+    3: { cellWidth: colWidths[3], halign: 'left' },
+    4: { cellWidth: colWidths[4], halign: 'center' },
+  };
+
+  if (tipoImpressao === 'perfiladeira') {
+    columnStyles[5] = { cellWidth: colWidths[5], halign: 'left' };
+    columnStyles[6] = { cellWidth: colWidths[6], halign: 'left' };
+  } else {
+    columnStyles[5] = { cellWidth: colWidths[5], halign: 'center' };
+    columnStyles[6] = { cellWidth: colWidths[6], halign: 'center' };
+    columnStyles[7] = { cellWidth: colWidths[7], halign: 'left' };
+    columnStyles[8] = { cellWidth: colWidths[8], halign: 'left' };
+  }
+
+  const headLeftCols =
+    tipoImpressao === 'perfiladeira' ? [0, 1, 2, 3, 5, 6] : [0, 1, 2, 3, 7, 8];
+
   autoTable(doc, {
     startY: tableStartY,
     margin: { ...MARGIN, bottom: FOOTER_PAGINA_MM },
     tableWidth,
-    head: [
-      [
-        'Sequência',
-        'Código',
-        'Desc Simpl',
-        'Roteiro',
-        'Qtde a produzir',
-        'Med 1',
-        'Med 2',
-        'Chapa',
-        'Observação',
-      ],
-    ],
+    head: [head],
     body,
     styles: {
       font: 'helvetica',
@@ -432,20 +502,10 @@ export async function buildProgramacaoProducaoPdfDoc(
       lineColor: PDF.primary500,
       lineWidth: 0.25,
     },
-    columnStyles: {
-      0: { cellWidth: colWidths[0], halign: 'center' },
-      1: { cellWidth: colWidths[1], halign: 'left', fontStyle: 'bold' },
-      2: { cellWidth: colWidths[2], halign: 'left' },
-      3: { cellWidth: colWidths[3], halign: 'left' },
-      4: { cellWidth: colWidths[4], halign: 'center' },
-      5: { cellWidth: colWidths[5], halign: 'center' },
-      6: { cellWidth: colWidths[6], halign: 'center' },
-      7: { cellWidth: colWidths[7], halign: 'left' },
-      8: { cellWidth: colWidths[8], halign: 'left' },
-    },
+    columnStyles,
     didParseCell: (data) => {
       if (data.section === 'head') {
-        if ([0, 1, 2, 3, 7, 8].includes(data.column.index)) {
+        if (headLeftCols.includes(data.column.index)) {
           data.cell.styles.halign = 'left';
         }
         return;
@@ -454,16 +514,16 @@ export async function buildProgramacaoProducaoPdfDoc(
 
       data.cell.styles.fillColor = PDF.white;
 
-      if (COLS_BADGE.has(data.column.index)) {
+      if (badgeCols.has(data.column.index)) {
         data.cell.text = [];
       }
     },
     didDrawCell: (data) => {
       if (data.section !== 'body') return;
       const meta = rowsMeta[data.row.index];
-      if (!meta || !COLS_BADGE.has(data.column.index)) return;
+      if (!meta || !badgeCols.has(data.column.index)) return;
 
-      const texto = textoBadgeColuna(meta, data.column.index);
+      const texto = textoBadgeColuna(meta, data.column.index, tipoImpressao);
       if (texto === '—') {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7.5);
