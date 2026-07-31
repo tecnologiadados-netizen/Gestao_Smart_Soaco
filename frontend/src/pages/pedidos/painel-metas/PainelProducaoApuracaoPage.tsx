@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   fetchPainelProducaoApuracao,
   fetchPainelProducaoApuracaoDetalhe,
   fetchPainelProducaoFilters,
+  type PainelProducaoApuracaoArea,
   type PainelProducaoApuracaoDetalhe,
   type PainelProducaoApuracaoDetalheTipo,
   type PainelProducaoApuracaoRow,
@@ -53,14 +54,15 @@ function ApuracaoDetalheTabela({
 }: {
   detalhe: PainelProducaoApuracaoDetalhe;
 }) {
-  const mostraAlteracao = detalhe.tipo === 'alteracoes';
+  const mostraAlteracao =
+    detalhe.tipo === 'alteracoes' || detalhe.tipo === 'alteracoes_ruptura';
   return (
     <div className="apuracao-tooltip-body">
       <div className="apuracao-tooltip-header">
         <strong>{detalhe.titulo}</strong>
         <span>
           {formatNumero(detalhe.total, 0)}
-          {detalhe.tipo === 'alteracoes' ? ' alterações' : ' pedidos'}
+          {mostraAlteracao ? ' alterações' : ' pedidos'}
           {detalhe.linhas.length !== detalhe.total
             ? ` · ${formatNumero(detalhe.linhas.length, 0)} itens`
             : ''}
@@ -107,7 +109,7 @@ function ApuracaoDetalheTabela({
   );
 }
 
-function ApuracaoMemorialCalculo({ row }: { row: PainelProducaoApuracaoRow }) {
+function ApuracaoMemorialMontagem({ row }: { row: PainelProducaoApuracaoRow }) {
   return (
     <div className="apuracao-tooltip-body">
       <div className="apuracao-tooltip-header">
@@ -174,14 +176,441 @@ function ApuracaoMemorialCalculo({ row }: { row: PainelProducaoApuracaoRow }) {
   );
 }
 
+function ApuracaoMemorialProducao({
+  row,
+  detalhe,
+  loading,
+  erro,
+  cacheRef,
+}: {
+  row: PainelProducaoApuracaoRow;
+  detalhe: PainelProducaoApuracaoDetalhe | null;
+  loading: boolean;
+  erro: string | null;
+  cacheRef: MutableRefObject<Map<string, PainelProducaoApuracaoDetalhe>>;
+}) {
+  return (
+    <div className="apuracao-tooltip-body">
+      <div className="apuracao-tooltip-header">
+        <strong>Memorial de cálculo</strong>
+        <span>{row.setor}</span>
+      </div>
+      <div className="apuracao-memorial">
+        <div className="apuracao-memorial-row">
+          <span>Condição mínima (3 setores)</span>
+          <strong className={row.elegivel_minimo_setores ? '' : 'is-desconto'}>
+            {row.elegivel_minimo_setores ? 'Atendida' : 'Não atendida'}
+            <small>
+              {formatNumero(row.setores_atingiram_meta ?? 0, 0)} setor(es) com nível atingido
+            </small>
+          </strong>
+        </div>
+        <div className="apuracao-memorial-row">
+          <span>Distribuição</span>
+          <strong>
+            Bronze {row.distribuicao_niveis?.Bronze ?? 0} · Prata{' '}
+            {row.distribuicao_niveis?.Prata ?? 0} · Aço {row.distribuicao_niveis?.Aço ?? 0}
+          </strong>
+        </div>
+        <div className="apuracao-memorial-row">
+          <span>Valor bruto</span>
+          <strong>{formatMoeda(row.valor_bruto ?? row.valor_nivel)}</strong>
+        </div>
+        <div className="apuracao-memorial-row">
+          <span>Parcelas com impacto (ruptura PP)</span>
+          <strong className={(row.parcelas_penalizadas ?? 0) > 0 ? 'is-desconto' : ''}>
+            {formatNumero(row.parcelas_penalizadas ?? 0, 0)}
+          </strong>
+        </div>
+        <div className="apuracao-memorial-row is-total">
+          <span>Valor a pagar</span>
+          <strong>{formatMoeda(row.valor_a_pagar)}</strong>
+        </div>
+      </div>
+
+      {loading && <p className="apuracao-tooltip-state">Carregando parcelas…</p>}
+      {erro && <p className="apuracao-tooltip-state is-error">{erro}</p>}
+
+      {!loading && !erro && detalhe?.parcelas && (
+        <TabelaParcelasProducao
+          parcelas={detalhe.parcelas}
+          mes={row.mes}
+          cacheRef={cacheRef}
+        />
+      )}
+    </div>
+  );
+}
+
+function TabelaParcelasProducao({
+  parcelas,
+  totalLabel,
+  mes,
+  cacheRef,
+}: {
+  parcelas: NonNullable<PainelProducaoApuracaoDetalhe['parcelas']>;
+  totalLabel?: string;
+  mes: string;
+  cacheRef: MutableRefObject<Map<string, PainelProducaoApuracaoDetalhe>>;
+}) {
+  return (
+    <div className="apuracao-memorial-niveis">
+      {totalLabel && (
+        <div className="apuracao-tooltip-header apuracao-contexto-subheader">
+          <span />
+          <span>{totalLabel}</span>
+        </div>
+      )}
+      <table className="apuracao-tooltip-table">
+        <thead>
+          <tr>
+            <th>Setor montagem</th>
+            <th>Nível</th>
+            <th>Base</th>
+            <th>Média ruptura</th>
+            <th>Herdado</th>
+            <th>Parcela</th>
+          </tr>
+        </thead>
+        <tbody>
+          {parcelas.map((parcela) => (
+            <tr
+              key={parcela.setor_montagem}
+              className={parcela.impacto_producao ? 'is-penalizado' : undefined}
+            >
+              <td>{parcela.setor_montagem}</td>
+              <td>{parcela.nivel ?? '—'}</td>
+              <td>{formatMoeda(parcela.valor_base)}</td>
+              <td>
+                <CelulaMediaRuptura
+                  mes={mes}
+                  setor={parcela.setor_montagem}
+                  media={parcela.media_ruptura}
+                  alteracoes={parcela.alteracoes_ruptura}
+                  pedidos={parcela.pedidos_com_ruptura}
+                  cacheRef={cacheRef}
+                />
+              </td>
+              <td>
+                {parcela.impacto_producao
+                  ? `−${formatNumero(parcela.percentual_herdado, 0)}%`
+                  : '—'}
+              </td>
+              <td>{formatMoeda(parcela.parcela_final)}</td>
+            </tr>
+          ))}
+          {parcelas.length === 0 && (
+            <tr>
+              <td colSpan={6}>Nenhum setor neste contexto.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CelulaMediaRuptura({
+  mes,
+  setor,
+  media,
+  alteracoes,
+  pedidos,
+  cacheRef,
+}: {
+  mes: string;
+  setor: string;
+  media: number;
+  alteracoes: number;
+  pedidos: number;
+  cacheRef: MutableRefObject<Map<string, PainelProducaoApuracaoDetalhe>>;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [detalhe, setDetalhe] = useState<PainelProducaoApuracaoDetalhe | null>(null);
+
+  async function open() {
+    if (alteracoes <= 0) return;
+    setAberto(true);
+    const key = `${mes}:${setor}:alteracoes_ruptura`;
+    const cached = cacheRef.current.get(key);
+    if (cached) {
+      setDetalhe(cached);
+      setErro(null);
+      return;
+    }
+    setLoading(true);
+    setErro(null);
+    try {
+      const data = await fetchPainelProducaoApuracaoDetalhe(mes, 'alteracoes_ruptura', setor);
+      cacheRef.current.set(key, data);
+      setDetalhe(data);
+    } catch (err) {
+      setDetalhe(null);
+      setErro(err instanceof Error ? err.message : 'Falha ao carregar as alterações.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function close() {
+    setAberto(false);
+  }
+
+  useEffect(() => {
+    if (!aberto) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        close();
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [aberto]);
+
+  return (
+    <>
+      <button
+        type="button"
+        className={`apuracao-celula-valor apuracao-media-ruptura${alteracoes > 0 ? ' is-clickable' : ''}`}
+        disabled={alteracoes <= 0}
+        aria-expanded={aberto}
+        aria-haspopup="dialog"
+        onClick={(event) => {
+          event.stopPropagation();
+          if (aberto) {
+            close();
+            return;
+          }
+          void open();
+        }}
+      >
+        {formatNumero(media)}
+        <small className="apuracao-cell-hint">
+          {' '}
+          ({formatNumero(alteracoes, 0)}/{formatNumero(pedidos, 0)})
+        </small>
+      </button>
+      {aberto &&
+        createPortal(
+          <div
+            className="apuracao-tooltip-overlay apuracao-tooltip-overlay-nested"
+            onClick={(event) => {
+              event.stopPropagation();
+              close();
+            }}
+          >
+            <div
+              className="apuracao-tooltip is-wide"
+              role="dialog"
+              aria-label={`Alterações por ruptura de PP — ${setor}`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="apuracao-tooltip-close"
+                aria-label="Fechar detalhe"
+                onClick={close}
+              >
+                ×
+              </button>
+              {loading && <p className="apuracao-tooltip-state">Carregando alterações…</p>}
+              {erro && <p className="apuracao-tooltip-state is-error">{erro}</p>}
+              {!loading && !erro && detalhe && <ApuracaoDetalheTabela detalhe={detalhe} />}
+            </div>
+          </div>,
+          portalTarget(),
+        )}
+    </>
+  );
+}
+
+type ContextoProducaoFiltro =
+  | { tipo: 'nivel'; nivel: 'Bronze' | 'Prata' | 'Aço' }
+  | { tipo: 'penalizadas' };
+
+async function carregarParcelasProducao(
+  row: PainelProducaoApuracaoRow,
+  cacheRef: MutableRefObject<Map<string, PainelProducaoApuracaoDetalhe>>,
+): Promise<PainelProducaoApuracaoDetalhe> {
+  const key = `${row.mes}:${row.setor}:memorial_producao`;
+  const cached = cacheRef.current.get(key);
+  if (cached) return cached;
+  const data = await fetchPainelProducaoApuracaoDetalhe(
+    row.mes,
+    'memorial_producao',
+    row.setor,
+  );
+  cacheRef.current.set(key, data);
+  return data;
+}
+
+function CelulaContextoProducao({
+  row,
+  valor,
+  filtro,
+  className,
+  cacheRef,
+  children,
+}: {
+  row: PainelProducaoApuracaoRow;
+  valor: number;
+  filtro: ContextoProducaoFiltro;
+  className?: string;
+  cacheRef: MutableRefObject<Map<string, PainelProducaoApuracaoDetalhe>>;
+  children: ReactNode;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [parcelas, setParcelas] = useState<
+    NonNullable<PainelProducaoApuracaoDetalhe['parcelas']>
+  >([]);
+
+  const titulo =
+    filtro.tipo === 'nivel'
+      ? `Setores com meta ${filtro.nivel}`
+      : 'Parcelas penalizadas (ruptura PP ≥ 2)';
+
+  async function open() {
+    if (valor <= 0) return;
+    setAberto(true);
+    setLoading(true);
+    setErro(null);
+    try {
+      const data = await carregarParcelasProducao(row, cacheRef);
+      const todas = data.parcelas ?? [];
+      const filtradas =
+        filtro.tipo === 'nivel'
+          ? todas.filter((p) => p.nivel === filtro.nivel)
+          : todas.filter((p) => p.impacto_producao);
+      setParcelas(filtradas);
+    } catch (err) {
+      setParcelas([]);
+      setErro(err instanceof Error ? err.message : 'Falha ao carregar o contexto.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function close() {
+    setAberto(false);
+  }
+
+  useEffect(() => {
+    if (!aberto) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') close();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [aberto]);
+
+  return (
+    <td className={className}>
+      <div className={`apuracao-celula-detalhe${valor > 0 ? ' is-clickable' : ''}`}>
+        <button
+          type="button"
+          className="apuracao-celula-valor"
+          disabled={valor <= 0}
+          aria-expanded={aberto}
+          aria-haspopup="dialog"
+          onClick={() => {
+            if (aberto) {
+              close();
+              return;
+            }
+            void open();
+          }}
+        >
+          {children}
+        </button>
+        {aberto &&
+          createPortal(
+            <div className="apuracao-tooltip-overlay" onClick={close}>
+              <div
+                className="apuracao-tooltip apuracao-tooltip-memorial is-wide"
+                role="dialog"
+                aria-label={titulo}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="apuracao-tooltip-close"
+                  aria-label="Fechar detalhe"
+                  onClick={close}
+                >
+                  ×
+                </button>
+                <div className="apuracao-tooltip-body">
+                  <div className="apuracao-tooltip-header">
+                    <strong>{titulo}</strong>
+                    <span>
+                      {formatNumero(valor, 0)}{' '}
+                      {filtro.tipo === 'nivel' ? 'setor(es)' : 'parcela(s)'}
+                    </span>
+                  </div>
+                  {loading && <p className="apuracao-tooltip-state">Carregando detalhe…</p>}
+                  {erro && <p className="apuracao-tooltip-state is-error">{erro}</p>}
+                  {!loading && !erro && (
+                    <TabelaParcelasProducao
+                      parcelas={parcelas}
+                      mes={row.mes}
+                      cacheRef={cacheRef}
+                      totalLabel={
+                        filtro.tipo === 'nivel'
+                          ? `Base unitária: ${formatMoeda(
+                              filtro.nivel === 'Bronze'
+                                ? 8.3
+                                : filtro.nivel === 'Prata'
+                                  ? 16.6
+                                  : 25,
+                            )}`
+                          : 'Média ruptura ≥ 2 → herda penalização da montagem'
+                      }
+                    />
+                  )}
+                </div>
+              </div>
+            </div>,
+            portalTarget(),
+          )}
+      </div>
+    </td>
+  );
+}
+
 function CelulaMemorialValor({
   row,
   className,
+  cacheRef,
 }: {
   row: PainelProducaoApuracaoRow;
   className?: string;
+  cacheRef: MutableRefObject<Map<string, PainelProducaoApuracaoDetalhe>>;
 }) {
   const [aberto, setAberto] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [detalhe, setDetalhe] = useState<PainelProducaoApuracaoDetalhe | null>(null);
+  const isProducao = row.area === 'producao';
+
+  async function carregarMemorialProducao() {
+    if (!isProducao) return;
+    setLoading(true);
+    setErro(null);
+    try {
+      const data = await carregarParcelasProducao(row, cacheRef);
+      setDetalhe(data);
+    } catch (err) {
+      setDetalhe(null);
+      setErro(err instanceof Error ? err.message : 'Falha ao carregar o memorial.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function close() {
     setAberto(false);
@@ -204,7 +633,11 @@ function CelulaMemorialValor({
           className="apuracao-celula-valor"
           aria-expanded={aberto}
           aria-haspopup="dialog"
-          onClick={() => setAberto((atual) => !atual)}
+          onClick={() => {
+            const next = !aberto;
+            setAberto(next);
+            if (next && isProducao) void carregarMemorialProducao();
+          }}
         >
           {formatMoeda(row.valor_a_pagar)}
         </button>
@@ -212,7 +645,7 @@ function CelulaMemorialValor({
           createPortal(
             <div className="apuracao-tooltip-overlay" onClick={close}>
               <div
-                className="apuracao-tooltip apuracao-tooltip-memorial"
+                className={`apuracao-tooltip apuracao-tooltip-memorial${isProducao ? ' is-wide' : ''}`}
                 role="dialog"
                 aria-label="Memorial de cálculo"
                 onClick={(event) => event.stopPropagation()}
@@ -225,7 +658,17 @@ function CelulaMemorialValor({
                 >
                   ×
                 </button>
-                <ApuracaoMemorialCalculo row={row} />
+                {isProducao ? (
+                  <ApuracaoMemorialProducao
+                    row={row}
+                    detalhe={detalhe}
+                    loading={loading}
+                    erro={erro}
+                    cacheRef={cacheRef}
+                  />
+                ) : (
+                  <ApuracaoMemorialMontagem row={row} />
+                )}
               </div>
             </div>,
             portalTarget(),
@@ -237,6 +680,7 @@ function CelulaMemorialValor({
 
 function CelulaComDetalhe({
   mes,
+  setor,
   tipo,
   valor,
   className,
@@ -244,6 +688,7 @@ function CelulaComDetalhe({
   cacheRef,
 }: {
   mes: string;
+  setor: string;
   tipo: PainelProducaoApuracaoDetalheTipo;
   valor: number;
   className?: string;
@@ -256,8 +701,8 @@ function CelulaComDetalhe({
   const [detalhe, setDetalhe] = useState<PainelProducaoApuracaoDetalhe | null>(null);
 
   async function carregar() {
-    if (!mes || valor <= 0) return;
-    const key = `${mes}:${tipo}`;
+    if (!mes || !setor || valor <= 0) return;
+    const key = `${mes}:${setor}:${tipo}`;
     const cached = cacheRef.current.get(key);
     if (cached) {
       setDetalhe(cached);
@@ -267,7 +712,7 @@ function CelulaComDetalhe({
     setLoading(true);
     setErro(null);
     try {
-      const data = await fetchPainelProducaoApuracaoDetalhe(mes, tipo);
+      const data = await fetchPainelProducaoApuracaoDetalhe(mes, tipo, setor);
       cacheRef.current.set(key, data);
       setDetalhe(data);
     } catch (err) {
@@ -318,10 +763,7 @@ function CelulaComDetalhe({
         </button>
         {aberto &&
           createPortal(
-            <div
-              className="apuracao-tooltip-overlay"
-              onClick={close}
-            >
+            <div className="apuracao-tooltip-overlay" onClick={close}>
               <div
                 className="apuracao-tooltip"
                 role="dialog"
@@ -351,10 +793,16 @@ function CelulaComDetalhe({
 export default function PainelProducaoApuracaoPage() {
   const [meses, setMeses] = useState<string[]>([]);
   const [mes, setMes] = useState('');
+  const [area, setArea] = useState<PainelProducaoApuracaoArea>('montagem');
   const [rows, setRows] = useState<PainelProducaoApuracaoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const detalheCacheRef = useRef(new Map<string, PainelProducaoApuracaoDetalhe>());
+
+  const rowsFiltradas = useMemo(
+    () => rows.filter((row) => row.area === area),
+    [rows, area],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -408,6 +856,18 @@ export default function PainelProducaoApuracaoPage() {
         <header className="header">
           <div className="title-bar">Apuração de Metas</div>
           <div className="filters">
+            <label className="apuracao-area-filter" htmlFor="apuracao-area-select">
+              <span>Área</span>
+              <select
+                id="apuracao-area-select"
+                value={area}
+                disabled={loading}
+                onChange={(e) => setArea(e.target.value as PainelProducaoApuracaoArea)}
+              >
+                <option value="montagem">Montagem</option>
+                <option value="producao">Produção</option>
+              </select>
+            </label>
             <MonthFilter
               id="apuracao-mes-select"
               mes={mes}
@@ -424,10 +884,14 @@ export default function PainelProducaoApuracaoPage() {
           <div className="card apuracao-card">
             <div className="apuracao-card-header">
               <div>
-                <h2>Validação — {formatMesLabel(mes)}</h2>
+                <h2>
+                  Validação — {formatMesLabel(mes)} ·{' '}
+                  {area === 'montagem' ? 'Montagem' : 'Produção'}
+                </h2>
                 <p>
-                  Fase inicial restrita ao setor de Móveis de aço. Clique nas células
-                  destacadas para ver o detalhe.
+                  {area === 'montagem'
+                    ? 'Todos os setores de montagem ativos. Os setores com cadastro de níveis incompleto são exibidos, mas não alimentam Perfiladeiras.'
+                    : 'Perfiladeiras: valor indireto conforme níveis atingidos pelos setores de montagem. Clique no valor a pagar para o memorial.'}
                 </p>
               </div>
             </div>
@@ -435,97 +899,212 @@ export default function PainelProducaoApuracaoPage() {
             {error && <p className="targets-feedback error">{error}</p>}
 
             <div className="apuracao-table-wrap">
-              <table className="apuracao-table">
-                <thead>
-                  <tr>
-                    <th>Setor</th>
-                    <th>Pedidos encerrados no mês</th>
-                    <th>Pedidos com alteração não abonada</th>
-                    <th>Alterações não abonadas</th>
-                    <th>Média de alteração por PD</th>
-                    <th>Meta quantitativa</th>
-                    <th>Realizado</th>
-                    <th>Atingimento quantitativo</th>
-                    <th>Penalização qualitativa</th>
-                    <th>Meta atingida</th>
-                    <th>Valor a pagar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={`${row.setor}-${row.mes}`}>
-                      <td className="apuracao-setor">{row.setor}</td>
-                      <CelulaComDetalhe
-                        mes={mes}
-                        tipo="pedidos_encerrados"
-                        valor={row.pedidos_encerrados}
-                        cacheRef={detalheCacheRef}
-                      >
-                        {formatNumero(row.pedidos_encerrados, 0)}
-                      </CelulaComDetalhe>
-                      <CelulaComDetalhe
-                        mes={mes}
-                        tipo="pedidos_com_alteracao"
-                        valor={row.pedidos_com_alteracao_nao_abonada}
-                        cacheRef={detalheCacheRef}
-                      >
-                        {formatNumero(row.pedidos_com_alteracao_nao_abonada, 0)}
-                      </CelulaComDetalhe>
-                      <CelulaComDetalhe
-                        mes={mes}
-                        tipo="alteracoes"
-                        valor={row.alteracoes_nao_abonadas}
-                        cacheRef={detalheCacheRef}
-                      >
-                        {formatNumero(row.alteracoes_nao_abonadas, 0)}
-                      </CelulaComDetalhe>
-                      <td className="apuracao-media">
-                        {formatNumero(row.media_alteracoes_por_pedido)}
-                      </td>
-                      <td>
-                        {formatNumero(row.meta_quantitativa)} {row.unidade}
-                      </td>
-                      <td>
-                        {formatNumero(row.producao_realizada)} {row.unidade}
-                      </td>
-                      <td>{formatNumero(row.percentual_meta_quantitativa)}%</td>
-                      <td
-                        className={
-                          row.percentual_penalizacao_qualitativa > 0
-                            ? 'apuracao-penalizado'
-                            : 'apuracao-integral'
-                        }
-                      >
-                        −{formatNumero(row.percentual_penalizacao_qualitativa, 0)}%
-                      </td>
-                      <td className="apuracao-nivel">{row.meta_atingida}</td>
-                      <CelulaMemorialValor row={row} className="apuracao-resultado" />
-                    </tr>
-                  ))}
-                  {!loading && rows.length === 0 && !error && (
+              {area === 'montagem' ? (
+                <table className="apuracao-table">
+                  <thead>
                     <tr>
-                      <td colSpan={11} className="apuracao-empty">
-                        Nenhum dado encontrado para o mês.
-                      </td>
+                      <th>Setor</th>
+                      <th>Pedidos encerrados no mês</th>
+                      <th>Pedidos com alteração não abonada</th>
+                      <th>Alterações não abonadas</th>
+                      <th>Média de alteração por PD</th>
+                      <th>Meta quantitativa</th>
+                      <th>Realizado</th>
+                      <th>Atingimento quantitativo</th>
+                      <th>Penalização qualitativa</th>
+                      <th>Meta atingida</th>
+                      <th>Valor a pagar</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {rowsFiltradas.map((row) => (
+                      <tr key={`${row.setor}-${row.mes}`}>
+                        <td className="apuracao-setor">
+                          {row.setor}
+                          {!row.cadastro_niveis_completo && (
+                            <small className="apuracao-setor-alerta">
+                              Níveis incompletos
+                            </small>
+                          )}
+                        </td>
+                        <CelulaComDetalhe
+                          mes={mes}
+                          setor={row.setor}
+                          tipo="pedidos_encerrados"
+                          valor={row.pedidos_encerrados}
+                          cacheRef={detalheCacheRef}
+                        >
+                          {formatNumero(row.pedidos_encerrados, 0)}
+                        </CelulaComDetalhe>
+                        <CelulaComDetalhe
+                          mes={mes}
+                          setor={row.setor}
+                          tipo="pedidos_com_alteracao"
+                          valor={row.pedidos_com_alteracao_nao_abonada}
+                          cacheRef={detalheCacheRef}
+                        >
+                          {formatNumero(row.pedidos_com_alteracao_nao_abonada, 0)}
+                        </CelulaComDetalhe>
+                        <CelulaComDetalhe
+                          mes={mes}
+                          setor={row.setor}
+                          tipo="alteracoes"
+                          valor={row.alteracoes_nao_abonadas}
+                          cacheRef={detalheCacheRef}
+                        >
+                          {formatNumero(row.alteracoes_nao_abonadas, 0)}
+                        </CelulaComDetalhe>
+                        <td className="apuracao-media">
+                          {formatNumero(row.media_alteracoes_por_pedido)}
+                        </td>
+                        <td>
+                          {formatNumero(row.meta_quantitativa)} {row.unidade}
+                        </td>
+                        <td>
+                          {formatNumero(row.producao_realizada)} {row.unidade}
+                        </td>
+                        <td>{formatNumero(row.percentual_meta_quantitativa)}%</td>
+                        <td
+                          className={
+                            row.percentual_penalizacao_qualitativa > 0
+                              ? 'apuracao-penalizado'
+                              : 'apuracao-integral'
+                          }
+                        >
+                          −{formatNumero(row.percentual_penalizacao_qualitativa, 0)}%
+                        </td>
+                        <td className="apuracao-nivel">{row.meta_atingida}</td>
+                        <CelulaMemorialValor
+                          row={row}
+                          className="apuracao-resultado"
+                          cacheRef={detalheCacheRef}
+                        />
+                      </tr>
+                    ))}
+                    {!loading && rowsFiltradas.length === 0 && !error && (
+                      <tr>
+                        <td colSpan={11} className="apuracao-empty">
+                          Nenhum setor de montagem ativo encontrado para o mês.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="apuracao-table">
+                  <thead>
+                    <tr>
+                      <th>Setor</th>
+                      <th>Setores com meta</th>
+                      <th>Bronze</th>
+                      <th>Prata</th>
+                      <th>Aço</th>
+                      <th>Valor bruto</th>
+                      <th>Parcelas penalizadas</th>
+                      <th>Condição mínima</th>
+                      <th>Valor a pagar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rowsFiltradas.map((row) => (
+                      <tr key={`${row.setor}-${row.mes}`}>
+                        <td className="apuracao-setor">{row.setor}</td>
+                        <td>{formatNumero(row.setores_atingiram_meta ?? 0, 0)}</td>
+                        <CelulaContextoProducao
+                          row={row}
+                          valor={row.distribuicao_niveis?.Bronze ?? 0}
+                          filtro={{ tipo: 'nivel', nivel: 'Bronze' }}
+                          cacheRef={detalheCacheRef}
+                        >
+                          {formatNumero(row.distribuicao_niveis?.Bronze ?? 0, 0)}
+                        </CelulaContextoProducao>
+                        <CelulaContextoProducao
+                          row={row}
+                          valor={row.distribuicao_niveis?.Prata ?? 0}
+                          filtro={{ tipo: 'nivel', nivel: 'Prata' }}
+                          cacheRef={detalheCacheRef}
+                        >
+                          {formatNumero(row.distribuicao_niveis?.Prata ?? 0, 0)}
+                        </CelulaContextoProducao>
+                        <CelulaContextoProducao
+                          row={row}
+                          valor={row.distribuicao_niveis?.Aço ?? 0}
+                          filtro={{ tipo: 'nivel', nivel: 'Aço' }}
+                          cacheRef={detalheCacheRef}
+                        >
+                          {formatNumero(row.distribuicao_niveis?.Aço ?? 0, 0)}
+                        </CelulaContextoProducao>
+                        <td>{formatMoeda(row.valor_bruto ?? 0)}</td>
+                        <CelulaContextoProducao
+                          row={row}
+                          valor={row.parcelas_penalizadas ?? 0}
+                          filtro={{ tipo: 'penalizadas' }}
+                          className={
+                            (row.parcelas_penalizadas ?? 0) > 0
+                              ? 'apuracao-penalizado'
+                              : undefined
+                          }
+                          cacheRef={detalheCacheRef}
+                        >
+                          {formatNumero(row.parcelas_penalizadas ?? 0, 0)}
+                        </CelulaContextoProducao>
+                        <td
+                          className={
+                            row.elegivel_minimo_setores
+                              ? 'apuracao-integral'
+                              : 'apuracao-penalizado'
+                          }
+                        >
+                          {row.elegivel_minimo_setores ? 'OK (≥ 3)' : 'Insuficiente'}
+                        </td>
+                        <CelulaMemorialValor
+                          row={row}
+                          className="apuracao-resultado"
+                          cacheRef={detalheCacheRef}
+                        />
+                      </tr>
+                    ))}
+                    {!loading && rowsFiltradas.length === 0 && !error && (
+                      <tr>
+                        <td colSpan={9} className="apuracao-empty">
+                          Nenhum dado de produção para o mês.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
 
-            {rows[0] && (
+            {rowsFiltradas[0] && (
               <div className="apuracao-legenda">
-                <span>
-                  Justificativa não abonada para a montagem:{' '}
-                  <strong>{rows[0].motivo_nao_abonado}</strong>.
-                </span>
-                <span>
-                  Média = alterações não abonadas ÷ pedidos com alteração não abonada.
-                </span>
-                <span>
-                  Valor a pagar = valor fixo do nível atingido − penalização qualitativa. Os níveis
-                  e seus valores são cadastrados em Painel Metas → Cadastro de Metas.
-                </span>
+                {area === 'montagem' ? (
+                  <>
+                    <span>
+                      Penalização pela média de alterações não abonadas (
+                      <strong>{rowsFiltradas[0].motivo_nao_abonado}</strong>
+                      ), conforme as faixas cadastradas para o mês. Setores com penalizações
+                      desligadas pagam o valor integral.
+                    </span>
+                    <span>
+                      Valor a pagar = valor do nível atingido com o desconto aplicado. Setores com
+                      níveis incompletos não entram em Perfiladeiras.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span>
+                      Perfiladeiras: Bronze <strong>R$ 8,30</strong>, Prata{' '}
+                      <strong>R$ 16,60</strong>, Aço <strong>R$ 25,00</strong> por setor de montagem
+                      — mínimo de <strong>3 setores</strong>.
+                    </span>
+                    <span>
+                      Herda o desconto da montagem só se a média de ruptura de PP (
+                      <strong>{rowsFiltradas[0].motivo_nao_abonado}</strong>) for ≥ 2 e o setor
+                      estiver com penalizações ativas.
+                    </span>
+                  </>
+                )}
               </div>
             )}
           </div>

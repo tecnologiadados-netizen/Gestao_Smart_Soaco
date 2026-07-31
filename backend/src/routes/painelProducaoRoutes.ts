@@ -7,10 +7,13 @@ import {
   getPainelProducaoApuracao,
   getPainelProducaoApuracaoDetalhe,
   getPainelProducaoDashboard,
+  getPainelProducaoFaixasDesconto,
   getPainelProducaoFilters,
   getPainelProducaoTargets,
   postPainelProducaoMes,
   postPainelProducaoTarget,
+  putPainelProducaoFaixasDesconto,
+  putPainelProducaoSetorPenalizacao,
 } from '../controllers/painelProducaoController.js';
 
 const router = Router();
@@ -43,6 +46,9 @@ router.get('/apuracao', podeVerDashboard, getPainelProducaoApuracao);
 router.get('/apuracao/detalhe', podeVerDashboard, getPainelProducaoApuracaoDetalhe);
 router.get('/targets', podeVerTargets, getPainelProducaoTargets);
 router.post('/targets', validateCsrf, podeEditarMetas, postPainelProducaoTarget);
+router.get('/faixas-desconto', podeVerTargets, getPainelProducaoFaixasDesconto);
+router.put('/faixas-desconto', validateCsrf, podeEditarMetas, putPainelProducaoFaixasDesconto);
+router.put('/setor-penalizacao', validateCsrf, podeEditarMetas, putPainelProducaoSetorPenalizacao);
 router.post('/meses', validateCsrf, podeEditarMetas, postPainelProducaoMes);
 
 export default router;

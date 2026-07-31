@@ -3,14 +3,20 @@ import { getDashboard, getFilters } from '../services/painelProducao/painelProdu
 import {
   advanceNextMonth,
   listTargets,
+  setConsiderarPenalizacoesSetor,
   upsertTarget,
 } from '../services/painelProducao/painelProducaoTargetsService.js';
 import {
   APURACAO_DETALHE_TIPOS,
-  getApuracaoDetalheMoveisAco,
-  getApuracaoMetaMoveisAco,
+  getApuracaoDetalhe,
+  getApuracaoMetas,
   type ApuracaoDetalheTipo,
 } from '../services/painelProducao/painelProducaoApuracaoService.js';
+import {
+  listarFaixasDesconto,
+  salvarFaixasDesconto,
+  type FaixaDescontoInput,
+} from '../services/painelProducao/painelProducaoFaixasService.js';
 
 function parseMesAnoBody(mesAno: string): Date {
   const parts = mesAno.split('-');
@@ -50,8 +56,8 @@ export async function getPainelProducaoApuracao(req: Request, res: Response) {
     return;
   }
   try {
-    const data = await getApuracaoMetaMoveisAco(mes);
-    res.json([data]);
+    const data = await getApuracaoMetas(mes);
+    res.json(data);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: msg });
@@ -61,6 +67,7 @@ export async function getPainelProducaoApuracao(req: Request, res: Response) {
 export async function getPainelProducaoApuracaoDetalhe(req: Request, res: Response) {
   const mes = String(req.query.mes ?? '').trim();
   const tipo = String(req.query.tipo ?? '').trim() as ApuracaoDetalheTipo;
+  const setor = String(req.query.setor ?? '').trim();
   if (!/^\d{4}-\d{2}$/.test(mes)) {
     res.status(400).json({ error: 'Parâmetro mes (YYYY-MM) é obrigatório.' });
     return;
@@ -71,8 +78,12 @@ export async function getPainelProducaoApuracaoDetalhe(req: Request, res: Respon
     });
     return;
   }
+  if (!setor) {
+    res.status(400).json({ error: 'Parâmetro setor é obrigatório.' });
+    return;
+  }
   try {
-    const data = await getApuracaoDetalheMoveisAco(mes, tipo);
+    const data = await getApuracaoDetalhe(mes, tipo, setor);
     res.json(data);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -136,5 +147,73 @@ export async function postPainelProducaoMes(req: Request, res: Response) {
     const msg = err instanceof Error ? err.message : String(err);
     const status = msg.includes('já está cadastrado') ? 409 : 500;
     res.status(status).json({ error: msg });
+  }
+}
+
+export async function putPainelProducaoSetorPenalizacao(req: Request, res: Response) {
+  const mes = String(req.body?.mes ?? '').trim();
+  const setor = String(req.body?.setor ?? '').trim();
+  if (!/^\d{4}-\d{2}$/.test(mes)) {
+    res.status(400).json({ error: 'Campo mes (YYYY-MM) é obrigatório.' });
+    return;
+  }
+  if (!setor) {
+    res.status(400).json({ error: 'Campo setor é obrigatório.' });
+    return;
+  }
+  if (typeof req.body?.considerar_penalizacoes !== 'boolean') {
+    res.status(400).json({ error: 'Campo considerar_penalizacoes (boolean) é obrigatório.' });
+    return;
+  }
+  try {
+    const result = await setConsiderarPenalizacoesSetor(
+      mes,
+      setor,
+      req.body.considerar_penalizacoes,
+    );
+    res.json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+}
+
+export async function getPainelProducaoFaixasDesconto(req: Request, res: Response) {
+  const mes = String(req.query.mes ?? '').trim();
+  if (!/^\d{4}-\d{2}$/.test(mes)) {
+    res.status(400).json({ error: 'Parâmetro mes (YYYY-MM) é obrigatório.' });
+    return;
+  }
+  try {
+    res.json(await listarFaixasDesconto(mes));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+}
+
+export async function putPainelProducaoFaixasDesconto(req: Request, res: Response) {
+  const mes = String(req.body?.mes ?? '').trim();
+  if (!/^\d{4}-\d{2}$/.test(mes)) {
+    res.status(400).json({ error: 'Campo mes (YYYY-MM) é obrigatório.' });
+    return;
+  }
+  if (!Array.isArray(req.body?.faixas)) {
+    res.status(400).json({ error: 'Campo faixas deve ser uma lista.' });
+    return;
+  }
+
+  const faixas: FaixaDescontoInput[] = req.body.faixas.map((faixa: Record<string, unknown>) => ({
+    media_min: Number(faixa?.media_min),
+    media_max:
+      faixa?.media_max == null || faixa.media_max === '' ? null : Number(faixa.media_max),
+    percentual_desconto: Number(faixa?.percentual_desconto),
+  }));
+
+  try {
+    res.json(await salvarFaixasDesconto(mes, faixas));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: msg });
   }
 }

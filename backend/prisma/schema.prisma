@@ -54,10 +54,13 @@ model PedidoDataProducao {
 }
 
 model MotivoSugestao {
-  id        Int      @id @default(autoincrement())
-  descricao String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                       Int      @id @default(autoincrement())
+  descricao                String   @unique
+  abonada                  Boolean  @default(true)
+  /// Preenchido quando não abonada: montagem, producao ou ambos.
+  aplicacaoNaoAbonada      String?  @map("aplicacao_nao_abonada")
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 }
 
 // Motivos da alteração da data de entrega do pedido de compra (Integração Nomus) – cadastro separado da aba Pedidos
@@ -1381,6 +1384,10 @@ model CrmCreditoPendencia {
   pdfAssinadoEm           DateTime? @map("pdf_assinado_em")
   pdfAssinadoPorLogin     String?   @map("pdf_assinado_por_login")
   encerrada            Boolean   @default(false)
+  /// Soft-archive (ex.: saiu da carência/alerta) — preserva ação, obs e histórico.
+  arquivadaEm          DateTime? @map("arquivada_em")
+  /// FORA_CARENCIA | FORA_ALERTA | manual etc.
+  motivoArquivo        String?   @map("motivo_arquivo")
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
   eventos              CrmCreditoPendenciaEvento[]
@@ -1388,6 +1395,7 @@ model CrmCreditoPendencia {
   @@index([clienteChave])
   @@index([encerrada, alertaEm])
   @@index([acao])
+  @@index([arquivadaEm])
   @@map("crm_credito_pendencia")
 }
 
@@ -1531,6 +1539,8 @@ model PainelProducaoMeta {
   valorBronze Float?  @map("valor_bronze")
   valorPrata  Float?  @map("valor_prata")
   valorAco    Float?  @map("valor_aco")
+  /// Quando false, a apuração deste setor ignora a penalização qualitativa.
+  considerarPenalizacoes Boolean @default(true) @map("considerar_penalizacoes")
 
   @@unique([setor, mesAno])
   @@map("painel_producao_meta")
@@ -1543,6 +1553,20 @@ model PainelProducaoMes {
   criadoEm DateTime @default(now()) @map("criado_em")
 
   @@map("painel_producao_mes")
+}
+
+/// Faixas mensais de desconto qualitativo, comuns a todos os setores de montagem.
+model PainelProducaoFaixaDesconto {
+  id                  Int    @id @default(autoincrement())
+  mesAno              String @map("mes_ano")
+  mediaMin            Float  @map("media_min")
+  mediaMax            Float? @map("media_max")
+  percentualDesconto  Float  @map("percentual_desconto")
+  ordem               Int
+
+  @@unique([mesAno, ordem])
+  @@index([mesAno])
+  @@map("painel_producao_faixa_desconto")
 }
 
 /// Prioridade fixa manual no relatório Pendências compras (por comprador — compartilhada entre usuários).

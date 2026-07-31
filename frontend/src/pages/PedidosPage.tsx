@@ -8,6 +8,7 @@ import TabelaPedidos, { SORT_LEVELS_DEFAULT } from '../components/TabelaPedidos'
 import ModalClassificarPedidos from '../components/ModalClassificarPedidos';
 import FiltroDatasPopover from '../components/FiltroDatasPopover';
 import ModalAjustePrevisao, { type AjustePrevisaoSuccessMeta } from '../components/ModalAjustePrevisao';
+import ModalGerenciarMotivos from '../components/ModalGerenciarMotivos';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSOES } from '../config/permissoes';
 import {
@@ -122,6 +123,11 @@ export default function PedidosPage() {
   const podeExportarGrade = hasPermission(PERMISSOES.PCP_EXPORTAR_GRADE) || hasPermission(PERMISSOES.PCP_TOTAL) || hasPermission(PERMISSOES.PEDIDOS_EDITAR);
   const podeImportarXlsx = hasPermission(PERMISSOES.PCP_IMPORTAR_XLSX) || hasPermission(PERMISSOES.PCP_TOTAL) || hasPermission(PERMISSOES.PEDIDOS_EDITAR);
   const podeAjustarPrevisao = hasPermission(PERMISSOES.PCP_AJUSTAR_PREVISAO) || hasPermission(PERMISSOES.PCP_TOTAL) || hasPermission(PERMISSOES.PEDIDOS_EDITAR);
+  const podeGerenciarJustificativas =
+    hasPermission(PERMISSOES.PCP_MOTIVO_CRIAR) ||
+    hasPermission(PERMISSOES.PCP_MOTIVO_EDITAR) ||
+    hasPermission(PERMISSOES.PCP_MOTIVO_EXCLUIR) ||
+    hasPermission(PERMISSOES.PCP_TOTAL);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -164,6 +170,7 @@ export default function PedidosPage() {
   const [sortLevelsPersonalizado, setSortLevelsPersonalizado] = useState<{ id: string; dir: 'asc' | 'desc' }[]>(() => [...SORT_LEVELS_DEFAULT]);
   const [modalMaisFiltrosOpen, setModalMaisFiltrosOpen] = useState(false);
   const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
+  const [modalJustificativasAberto, setModalJustificativasAberto] = useState(false);
   const [totalExibidosGrade, setTotalExibidosGrade] = useState(0);
   const incoherenceFullRowsRef = useRef<Pedido[] | null>(null);
   const [incoherenceHasIssue, setIncoherenceHasIssue] = useState(false);
@@ -773,6 +780,15 @@ export default function PedidosPage() {
             </span>
           )}
         </button>
+        {podeGerenciarJustificativas && (
+          <button
+            type="button"
+            onClick={() => setModalJustificativasAberto(true)}
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+          >
+            Justificativas
+          </button>
+        )}
         {(podeExportarXlsx || podeExportarGrade || podeImportarXlsx || podeAjustarPrevisao) && (
           <>
             {podeExportarXlsx && (
@@ -1050,6 +1066,13 @@ export default function PedidosPage() {
           demaisItens={modalReprogramar.demaisItens}
           onClose={() => setModalReprogramar(null)}
           onSuccess={handleAjusteSuccess}
+          onError={(msg) => setToast(msg)}
+        />
+      )}
+
+      {modalJustificativasAberto && (
+        <ModalGerenciarMotivos
+          onClose={() => setModalJustificativasAberto(false)}
           onError={(msg) => setToast(msg)}
         />
       )}

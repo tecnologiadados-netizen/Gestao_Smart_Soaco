@@ -15,6 +15,7 @@ import { buildSystemEmailHtml } from './emailHtmlTemplate.js';
 import { sendSystemEmail } from './systemEmail.js';
 import {
   deepLinkPendenciasCrm,
+  limparPendenciasForaDaCarencia,
   upsertPendenciasFromAlerta,
 } from './crmCreditoPendenciasService.js';
 
@@ -245,6 +246,14 @@ export async function executarAlertasCreditoPedidoAtraso(
         `${alerta.clienteNome}: ${err instanceof Error ? err.message : String(err)}`
       );
     }
+  }
+
+  try {
+    await limparPendenciasForaDaCarencia(prisma, alertas);
+  } catch (err) {
+    erros.push(
+      `Limpeza pendências: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
 
   return { enviados, ignorados, erros };

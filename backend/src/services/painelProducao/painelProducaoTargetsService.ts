@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { prisma } from '../../config/prisma.js';
 import { clearPainelProducaoCaches } from './painelProducaoCache.js';
+import { copiarFaixasParaMes } from './painelProducaoFaixasService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CSV_PATH = path.join(__dirname, '../../../data/painel-producao-target.csv');
@@ -67,11 +68,16 @@ async function registrarMesZerado(mesAno: Date, origem: string): Promise<boolean
 
   const setores = await listSetoresCadastro();
   for (const setor of setores) {
-    // Os valores por nível são fixos do setor: repete o último cadastro no mês novo.
-    const anterior = await prisma.painelProducaoMeta.findFirst({
+    // Valores e flag de penalização: repete o último cadastro do setor.
+    const metaAnterior = await prisma.painelProducaoMeta.findFirst({
       where: { setor, mesAno: { lt: key } },
       orderBy: { mesAno: 'desc' },
-      select: { valorBronze: true, valorPrata: true, valorAco: true },
+      select: {
+        valorBronze: true,
+        valorPrata: true,
+        valorAco: true,
+        considerarPenalizacoes: true,
+      },
     });
     await prisma.painelProducaoMeta.upsert({
       where: { setor_mesAno: { setor, mesAno: key } },
@@ -80,13 +86,15 @@ async function registrarMesZerado(mesAno: Date, origem: string): Promise<boolean
         mesAno: key,
         target: 0,
         semMeta: false,
-        valorBronze: anterior?.valorBronze ?? null,
-        valorPrata: anterior?.valorPrata ?? null,
-        valorAco: anterior?.valorAco ?? null,
+        valorBronze: metaAnterior?.valorBronze ?? null,
+        valorPrata: metaAnterior?.valorPrata ?? null,
+        valorAco: metaAnterior?.valorAco ?? null,
+        considerarPenalizacoes: metaAnterior?.considerarPenalizacoes ?? true,
       },
       update: {},
     });
   }
+  await copiarFaixasParaMes(key);
   return true;
 }
 
@@ -212,6 +220,7 @@ export async function listTargets(setor?: string, mes?: string) {
     valor_bronze: r.valorBronze,
     valor_prata: r.valorPrata,
     valor_aco: r.valorAco,
+    considerar_penalizacoes: r.considerarPenalizacoes,
   }));
 }
 
@@ -304,6 +313,7 @@ export async function upsertTarget(
     valor_bronze: row.valorBronze,
     valor_prata: row.valorPrata,
     valor_aco: row.valorAco,
+    considerar_penalizacoes: row.considerarPenalizacoes,
   };
 }
 
@@ -322,4 +332,50 @@ export async function listMesesMeta(): Promise<string[]> {
     orderBy: { mesAno: 'desc' },
   });
   return fallback.map((r) => r.mesAno.slice(0, 7));
+}
+
+export async function getConsiderarPenalizacoes(mes: string, setor: string): Promise<boolean> {
+  const key = mesKey(parseYyyyMm(mes));
+  const row = await prisma.painelProducaoMeta.findUnique({
+    where: { setor_mesAno: { setor, mesAno: key } },
+    select: { considerarPenalizacoes: true },
+  });
+  return row?.considerarPenalizacoes ?? true;
+}
+
+export async function setConsiderarPenalizacoesSetor(
+  mes: string,
+  setor: string,
+  considerar: boolean,
+): Promise<{
+  mes: string;
+  setor: string;
+  considerar_penalizacoes: boolean;
+}> {
+  const key = mesKey(parseYyyyMm(mes));
+  const existente = await prisma.painelProducaoMeta.findUnique({
+    where: { setor_mesAno: { setor, mesAno: key } },
+  });
+  if (existente) {
+    await prisma.painelProducaoMeta.update({
+      where: { setor_mesAno: { setor, mesAno: key } },
+      data: { considerarPenalizacoes: considerar },
+    });
+  } else {
+    await prisma.painelProducaoMeta.create({
+      data: {
+        setor,
+        mesAno: key,
+        target: 0,
+        semMeta: false,
+        considerarPenalizacoes: considerar,
+      },
+    });
+  }
+  clearPainelProducaoCaches();
+  return {
+    mes: mesLabelYyyyMm(key),
+    setor,
+    considerar_penalizacoes: considerar,
+  };
 }

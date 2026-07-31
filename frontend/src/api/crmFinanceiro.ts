@@ -269,6 +269,16 @@ export type PendenciaCreditoItem = {
   pdfAssinadoEm: string | null;
   pdfAssinadoPorLogin: string | null;
   temPdfAssinado: boolean;
+  updatedAt?: string;
+  arquivadaEm?: string | null;
+  motivoArquivo?: string | null;
+};
+
+export type SyncPendenciasResumo = {
+  upserted: number;
+  arquivadas: number;
+  removidas: number;
+  detalhes: string[];
 };
 
 export type TituloRegularizacaoItem = {
@@ -352,12 +362,13 @@ export async function fetchCrmPendenciasCredito(params?: {
   itens: PendenciaCreditoItem[];
   contagens: Record<SituacaoFilaPendencia, number>;
   situacaoFila: SituacaoFilaPendencia;
+  syncResumo: SyncPendenciasResumo | null;
 }> {
   const res = await apiFetch(
     `/api/financeiro/crm/pendencias-credito${buildParams({
       cliente: params?.cliente ?? undefined,
       syncAlertas: params?.syncAlertas ? '1' : undefined,
-      syncNomus: params?.syncNomus === false ? '0' : undefined,
+      syncNomus: params?.syncNomus === false ? '0' : params?.syncNomus ? '1' : '0',
       situacao: params?.situacao ?? 'INADIMPLENTES',
     })}`,
   );
@@ -365,6 +376,7 @@ export async function fetchCrmPendenciasCredito(params?: {
     itens?: PendenciaCreditoItem[];
     contagens?: Record<SituacaoFilaPendencia, number>;
     situacaoFila?: SituacaoFilaPendencia;
+    syncResumo?: SyncPendenciasResumo | null;
     error?: string;
   };
   if (!res.ok) {
@@ -378,6 +390,7 @@ export async function fetchCrmPendenciasCredito(params?: {
       FINALIZADOS: 0,
     },
     situacaoFila: body.situacaoFila ?? params?.situacao ?? 'INADIMPLENTES',
+    syncResumo: body.syncResumo ?? null,
   };
 }
 
@@ -387,6 +400,7 @@ export async function salvarCrmPendenciaAcao(
     acao: AcaoPendenciaCredito;
     observacao?: string | null;
     pedidoDestino?: string | null;
+    updatedAt?: string | null;
   },
 ): Promise<{
   pendencia: PendenciaCreditoItem;
