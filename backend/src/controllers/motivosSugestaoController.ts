@@ -26,7 +26,13 @@ export async function postMotivoSugestao(req: Request, res: Response): Promise<v
     return;
   }
   try {
-    const row = await criarMotivoSugestao(parsed.data.descricao);
+    const row = await criarMotivoSugestao({
+      descricao: parsed.data.descricao,
+      abonada: parsed.data.abonada,
+      aplicacaoNaoAbonada: parsed.data.abonada
+        ? null
+        : parsed.data.aplicacao_nao_abonada ?? null,
+    });
     res.status(201).json(row);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro ao criar motivo.';
@@ -66,7 +72,13 @@ export async function putMotivoSugestao(req: Request, res: Response): Promise<vo
       res.status(401).json({ error: 'Senha incorreta. Operação cancelada.' });
       return;
     }
-    const row = await atualizarMotivoSugestao(id, parsed.data.descricao);
+    const row = await atualizarMotivoSugestao(id, {
+      descricao: parsed.data.descricao,
+      abonada: parsed.data.abonada,
+      aplicacaoNaoAbonada: parsed.data.abonada
+        ? null
+        : parsed.data.aplicacao_nao_abonada ?? null,
+    });
     res.json(row);
   } catch (err) {
     if ((err as { code?: string }).code === 'P2025') {

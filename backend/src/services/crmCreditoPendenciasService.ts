@@ -235,11 +235,19 @@ export async function upsertPendenciasFromAlerta(
     });
 
     if (existente) {
-      // Não reabre linhas já finalizadas (canceladas / liberadas após regularização)
-      if (existente.encerrada) {
+      // Soft-archive por fora do alerta/carência: reabre se o cliente voltou a ser elegível
+      // (preserva ação/obs). Encerramento “de verdade” (cancelado/liberado) não reabre.
+      const arquivadoForaEscopo =
+        existente.encerrada &&
+        existente.arquivadaEm != null &&
+        (existente.motivoArquivo === 'FORA_ALERTA' ||
+          existente.motivoArquivo === 'FORA_CARENCIA');
+
+      if (existente.encerrada && !arquivadoForaEscopo) {
         count++;
         continue;
       }
+
       await prisma.crmCreditoPendencia.update({
         where: { id: existente.id },
         data: {
@@ -252,9 +260,26 @@ export async function upsertPendenciasFromAlerta(
           totalAtraso,
           maiorAtrasoDias,
           contasAtrasoJson,
-          // Mantém alertaEm original — base do prazo de execução (SLA).
+          ...(arquivadoForaEscopo
+            ? {
+                encerrada: false,
+                arquivadaEm: null,
+                motivoArquivo: null,
+                alertaEm: agora,
+              }
+            : {}),
+          // Mantém alertaEm original quando não reabre — base do prazo (SLA).
         },
       });
+      if (arquivadoForaEscopo) {
+        await prisma.crmCreditoPendenciaEvento.create({
+          data: {
+            pendenciaId: existente.id,
+            tipo: 'REABERTO',
+            detalhe: 'Cliente voltou ao alerta de crédito — pendência reaberta (ação/obs preservadas)',
+          },
+        });
+      }
       // Sem evento ALERTA reiterado — histórico só registra e-mails enviados e ações
     } else {
       await prisma.crmCreditoPendencia.create({
@@ -281,25 +306,34 @@ export async function upsertPendenciasFromAlerta(
 export async function sincronizarPendenciasComAlertasAtuais(
   prisma: PrismaClient,
   alertas: AlertaCreditoParaPendencia[]
-): Promise<number> {
-  let total = 0;
+): Promise<{ upserted: number; limpeza: LimpezaPendenciasResumo }> {
+  let upserted = 0;
   for (const alerta of alertas) {
-    total += await upsertPendenciasFromAlerta(prisma, alerta);
+    upserted += await upsertPendenciasFromAlerta(prisma, alerta);
   }
-  await limparPendenciasForaDaCarencia(prisma, alertas);
-  return total;
+  const limpeza = await limparPendenciasForaDaCarencia(prisma, alertas);
+  return { upserted, limpeza };
 }
 
 /**
- * Remove da grade linhas abertas sem ação confirmada no Nomus que:
+ * Remove ou arquiva linhas abertas que:
  * - não estão mais nos alertas elegíveis (abaixo da carência / sem atraso), ou
  * - ainda têm snapshot de atraso abaixo da carência.
+ *
+ * Com ação/obs (rascunho): soft-archive → Finalizados (preserva histórico).
+ * Sem rastro: hard-delete (não havia nada a rastrear).
  * Mantém quem já confirmou ação (pausa/cancelamento/realocação) ou está encerrada.
  */
+export type LimpezaPendenciasResumo = {
+  arquivadas: number;
+  removidas: number;
+  detalhes: string[];
+};
+
 export async function limparPendenciasForaDaCarencia(
   prisma: PrismaClient,
   alertas: AlertaCreditoParaPendencia[]
-): Promise<number> {
+): Promise<LimpezaPendenciasResumo> {
   const { CARENCIA_DIAS_ATRASO } = await import(
     './financeiroCreditoPedidoAtrasoEmailService.js'
   );
@@ -309,18 +343,23 @@ export async function limparPendenciasForaDaCarencia(
   );
 
   const abertas = await prisma.crmCreditoPendencia.findMany({
-    where: { encerrada: false },
+    where: { encerrada: false, arquivadaEm: null },
     select: {
       id: true,
       clienteChave: true,
+      clienteNome: true,
+      numeroPedido: true,
       acao: true,
+      observacao: true,
       statusNomusSnapshot: true,
       emailAcaoEnviadoEm: true,
       maiorAtrasoDias: true,
     },
   });
 
-  let removidas = 0;
+  const resumo: LimpezaPendenciasResumo = { arquivadas: 0, removidas: 0, detalhes: [] };
+  const agora = new Date();
+
   for (const row of abertas) {
     const confirmada =
       Boolean(row.emailAcaoEnviadoEm) ||
@@ -332,11 +371,40 @@ export async function limparPendenciasForaDaCarencia(
       row.maiorAtrasoDias != null && row.maiorAtrasoDias < CARENCIA_DIAS_ATRASO;
 
     if (!elegivel || abaixoCarencia) {
-      await prisma.crmCreditoPendencia.delete({ where: { id: row.id } });
-      removidas++;
+      const motivo = !elegivel ? 'FORA_ALERTA' : 'FORA_CARENCIA';
+      const motivoLabel =
+        motivo === 'FORA_ALERTA'
+          ? 'Cliente saiu do alerta de crédito (sem atraso elegível)'
+          : `Atraso abaixo da carência de ${CARENCIA_DIAS_ATRASO} dias`;
+      const temRastro = Boolean(row.acao?.trim() || row.observacao?.trim());
+      const pedLabel = formatarNumeroPedidoExibicao(row.numeroPedido);
+
+      if (temRastro) {
+        await prisma.crmCreditoPendencia.update({
+          where: { id: row.id },
+          data: {
+            encerrada: true,
+            arquivadaEm: agora,
+            motivoArquivo: motivo,
+          },
+        });
+        await prisma.crmCreditoPendenciaEvento.create({
+          data: {
+            pendenciaId: row.id,
+            tipo: 'ARQUIVADO',
+            detalhe: `${motivoLabel} — movido para Finalizados (rascunho preservado)`,
+          },
+        });
+        resumo.arquivadas++;
+        resumo.detalhes.push(`${pedLabel}: arquivado (${motivoLabel})`);
+      } else {
+        await prisma.crmCreditoPendencia.delete({ where: { id: row.id } });
+        resumo.removidas++;
+        resumo.detalhes.push(`${pedLabel}: removido (sem ação/obs)`);
+      }
     }
   }
-  return removidas;
+  return resumo;
 }
 
 export type PendenciaCreditoDto = {
@@ -407,6 +475,10 @@ export type PendenciaCreditoDto = {
   pdfAssinadoEm: string | null;
   pdfAssinadoPorLogin: string | null;
   temPdfAssinado: boolean;
+  /** ISO do updatedAt — optimistic lock no save. */
+  updatedAt: string;
+  arquivadaEm: string | null;
+  motivoArquivo: string | null;
 };
 
 function parseContasAtrasoSnapshot(
@@ -492,6 +564,9 @@ function toDto(
     pdfAssinadoEm?: Date | null;
     pdfAssinadoPorLogin?: string | null;
     encerrada: boolean;
+    updatedAt?: Date;
+    arquivadaEm?: Date | null;
+    motivoArquivo?: string | null;
   },
   prazoHorasSemAcao = 48
 ): PendenciaCreditoDto {
@@ -565,6 +640,9 @@ function toDto(
     pdfAssinadoEm: row.pdfAssinadoEm?.toISOString() ?? null,
     pdfAssinadoPorLogin: row.pdfAssinadoPorLogin ?? null,
     temPdfAssinado: Boolean(row.pdfAssinadoStoragePath),
+    updatedAt: (row.updatedAt ?? row.alertaEm).toISOString(),
+    arquivadaEm: row.arquivadaEm?.toISOString() ?? null,
+    motivoArquivo: row.motivoArquivo ?? null,
   };
 }
 
@@ -614,7 +692,7 @@ async function enriquecerContadoresCliente(
       by: ['pendenciaId', 'tipo'],
       where: {
         pendenciaId: { in: todosIds },
-        tipo: { in: ['EMAIL', 'ACAO'] },
+        tipo: { in: ['EMAIL', 'ACAO', 'ACAO_RASCUNHO'] },
       },
       _count: { _all: true },
     });
@@ -624,7 +702,7 @@ async function enriquecerContadoresCliente(
       const c = contagem.get(chave);
       if (!c) continue;
       if (ev.tipo === 'EMAIL') c.acaoEmail += ev._count._all;
-      if (ev.tipo === 'ACAO') c.acoes += ev._count._all;
+      if (ev.tipo === 'ACAO' || ev.tipo === 'ACAO_RASCUNHO') c.acoes += ev._count._all;
     }
   }
 
@@ -932,26 +1010,35 @@ export async function listarHistoricoClientePendencias(
   const eventos = await prisma.crmCreditoPendenciaEvento.findMany({
     where: {
       pendenciaId: { in: pendencias.map((p) => p.id) },
-      OR: [
-        { tipo: { in: ['EMAIL', 'LIBERACAO', 'FINALIZADO', 'EMAIL_SLA', 'ACAO'] } },
-        {
-          tipo: 'ACAO',
-          NOT: { detalhe: { contains: 'rascunho' } },
-        },
-      ],
+      tipo: {
+        in: [
+          'EMAIL',
+          'LIBERACAO',
+          'FINALIZADO',
+          'EMAIL_SLA',
+          'ACAO',
+          'ACAO_RASCUNHO',
+          'ARQUIVADO',
+          'REABERTO',
+          'PDF_ASSINADO',
+        ],
+      },
     },
     orderBy: { createdAt: 'desc' },
     take: 200,
   });
 
   const tipoLabel: Record<string, string> = {
-    ACAO: 'Ação registrada',
+    ACAO: 'Ação confirmada',
+    ACAO_RASCUNHO: 'Rascunho de ação',
     EMAIL: 'E-mail de ação',
     EMAIL_ALERTA: 'E-mail de alerta',
     EMAIL_REGULARIZADO: 'E-mail de regularização',
     EMAIL_SLA: 'E-mail SLA (prazo sem ação)',
     LIBERACAO: 'Liberação confirmada',
     FINALIZADO: 'Finalizado',
+    ARQUIVADO: 'Arquivado (fora do alerta)',
+    REABERTO: 'Reaberto no alerta',
     PDF_ASSINADO: 'PDF assinado',
   };
 
@@ -1301,6 +1388,8 @@ export async function salvarAcaoPendenciaCredito(
     pedidoDestino?: string | null;
     usuarioLogin: string | null;
     usuarioNome: string | null;
+    /** Optimistic lock — ISO do updatedAt conhecido pelo cliente. */
+    updatedAt?: string | null;
   }
 ): Promise<SalvarAcaoPendenciaResultado> {
   if (!ACOES_PENDENCIA.includes(input.acao)) {
@@ -1310,6 +1399,22 @@ export async function salvarAcaoPendenciaCredito(
   const row = await prisma.crmCreditoPendencia.findUnique({ where: { id: input.id } });
   if (!row) throw new Error('Pendência não encontrada.');
   if (row.encerrada) throw new Error('Esta pendência já está encerrada.');
+
+  if (!row.pdfAssinadoStoragePath) {
+    throw new Error(
+      'Anexe o PDF assinado pelo gestor antes de salvar a ação (inclusive como rascunho).'
+    );
+  }
+
+  if (input.updatedAt) {
+    const clientTs = new Date(input.updatedAt).getTime();
+    const serverTs = row.updatedAt.getTime();
+    if (Number.isFinite(clientTs) && Math.abs(serverTs - clientTs) > 1000) {
+      throw new Error(
+        'Esta linha foi alterada por outro usuário. Feche o formulário, atualize a tabela e tente de novo.'
+      );
+    }
+  }
 
   // Verificação rápida do status atual no Nomus (usuário pode ter antecipado)
   const statuses = await listarStatusPedidosCreditoPorIds([row.idPedido]);
@@ -1346,12 +1451,22 @@ export async function salvarAcaoPendenciaCredito(
     },
   });
 
-  // Rascunho não gera evento de histórico — só ações confirmadas no Nomus
   let dto = toDto(updated);
   const instrucao = instrucaoNomusParaAcao(input.acao);
   const confirmado = nomusConfirmadoParaAcao(input.acao, statusNomus);
 
   if (!confirmado) {
+    // Sempre registra rascunho no histórico (rastreio)
+    if (conteudoMudou || !row.acao) {
+      await prisma.crmCreditoPendenciaEvento.create({
+        data: {
+          pendenciaId: updated.id,
+          tipo: 'ACAO_RASCUNHO',
+          detalhe: `${LABEL_ACAO[input.acao]}${pedidoDestino ? ` → ${pedidoDestino}` : ''}${observacao ? ` | ${observacao}` : ''} — aguardando confirmação no Nomus`,
+          usuarioLogin: input.usuarioLogin,
+        },
+      });
+    }
     const [pendencia] = await enriquecerContadoresCliente(prisma, [dto]);
     return {
       pendencia,
@@ -1360,13 +1475,14 @@ export async function salvarAcaoPendenciaCredito(
       emailEnviado: false,
       aguardandoConfirmacaoNomus: true,
       mensagem:
-        `${instrucao} A ação ficou em rascunho. Quando o status estiver atualizado no Nomus, anexe o PDF assinado pelo gestor e clique em Confirmar / salvar — só então o e-mail será enviado.`,
+        `${instrucao} Ação salva como rascunho (PDF e histórico registrados). Quando o status estiver atualizado no Nomus, confirme — só então o e-mail será enviado.`,
     };
   }
 
+  // PDF já validado no início; mantém checagem defensiva na confirmação
   if (!updated.pdfAssinadoStoragePath) {
     throw new Error(
-      'Anexe o PDF assinado pelo gestor antes de confirmar a ação. Use o campo de anexo na linha do pedido.'
+      'Anexe o PDF assinado pelo gestor antes de confirmar a ação. Use o formulário da pendência.'
     );
   }
 

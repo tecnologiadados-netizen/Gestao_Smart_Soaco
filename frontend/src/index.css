@@ -313,81 +313,6 @@ input[type='number'].input-num-com-spinner {
   animation: dfc-load-float 1.6s ease-in-out infinite;
 }
 
-/* Loader padrão do sistema — ponto cai, forma o anel e despenca.
-   Ciclo de 1.25s: dois loops fecham em 2.5s (ver LOADER_CICLO_MS). */
-.loader-circulo {
-  display: inline-block;
-  animation: loader-circulo-queda 1.25s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-}
-
-.loader-circulo svg {
-  display: block;
-  overflow: visible;
-}
-
-.loader-circulo-traco {
-  animation: loader-circulo-traco 1.25s ease-in-out infinite;
-}
-
-@keyframes loader-circulo-queda {
-  0% {
-    transform: translateY(-90%);
-    opacity: 0;
-  }
-  10%,
-  88% {
-    transform: translateY(0);
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(90%);
-    opacity: 0;
-  }
-}
-
-/* pathLength=100 normaliza o traço: 25 = fundo, 75 = topo, independente do raio. */
-@keyframes loader-circulo-traco {
-  0%,
-  10% {
-    r: 2.6px;
-    stroke-dasharray: 0.5 100;
-    stroke-dashoffset: -25;
-  }
-  40% {
-    r: 20px;
-    stroke-dasharray: 25 100;
-    stroke-dashoffset: -25;
-  }
-  58% {
-    r: 20px;
-    stroke-dasharray: 50 100;
-    stroke-dashoffset: -25;
-  }
-  76% {
-    r: 20px;
-    stroke-dasharray: 25 100;
-    stroke-dashoffset: -50;
-  }
-  90%,
-  100% {
-    r: 2.6px;
-    stroke-dasharray: 0.5 100;
-    stroke-dashoffset: -75;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .loader-circulo {
-    animation: none;
-  }
-
-  .loader-circulo-traco {
-    animation: none;
-    stroke-dasharray: 40 100;
-    stroke-dashoffset: -25;
-  }
-}
-
 /* ── Só Aço — componentes reutilizáveis ── */
 @layer components {
   .btn-primary {
@@ -717,7 +642,8 @@ body.table-col-resizing {
   animation: soaco-page-enter 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* Loader padrão do sistema — ponto cai, forma o anel e despenca */
+/* Loader padrão do sistema — ponto cai, forma o anel e despenca.
+   Ciclo de 1.25s: dois loops fecham em 2.5s (ver LOADER_CICLO_MS). */
 .loader-circulo {
   display: inline-block;
   animation: loader-circulo-queda 1.25s cubic-bezier(0.45, 0, 0.55, 1) infinite;

@@ -29,17 +29,30 @@ export async function getCrmPendenciasCredito(req: Request, res: Response): Prom
   try {
     const cliente = typeof req.query.cliente === 'string' ? req.query.cliente : null;
     const syncAlertas = req.query.syncAlertas === '1';
-    const syncNomus = req.query.syncNomus !== '0';
+    const syncNomus = req.query.syncNomus === '1';
     const situacaoRaw =
       typeof req.query.situacao === 'string' ? req.query.situacao.trim().toUpperCase() : '';
     const situacaoFila = SITUACOES_FILA.includes(situacaoRaw as SituacaoFilaPendencia)
       ? (situacaoRaw as SituacaoFilaPendencia)
       : 'INADIMPLENTES';
 
+    let syncResumo: {
+      upserted: number;
+      arquivadas: number;
+      removidas: number;
+      detalhes: string[];
+    } | null = null;
+
     if (syncAlertas) {
       try {
         const alertas = await listarAlertasCreditoPendentes();
-        await sincronizarPendenciasComAlertasAtuais(prisma, alertas);
+        const sync = await sincronizarPendenciasComAlertasAtuais(prisma, alertas);
+        syncResumo = {
+          upserted: sync.upserted,
+          arquivadas: sync.limpeza.arquivadas,
+          removidas: sync.limpeza.removidas,
+          detalhes: sync.limpeza.detalhes.slice(0, 20),
+        };
       } catch (err) {
         console.warn('Sync alertas → pendências (parcial):', err);
       }
@@ -50,7 +63,7 @@ export async function getCrmPendenciasCredito(req: Request, res: Response): Prom
       situacaoFila,
       syncNomus,
     });
-    res.json({ itens, contagens, situacaoFila });
+    res.json({ itens, contagens, situacaoFila, syncResumo });
   } catch (error) {
     console.error('Erro ao listar pendências de crédito:', error);
     res.status(500).json({ error: 'Não foi possível carregar as pendências de crédito.' });
@@ -90,6 +103,7 @@ export async function postCrmPendenciaAcao(req: Request, res: Response): Promise
       pedidoDestino: req.body?.pedidoDestino ?? null,
       usuarioLogin: login,
       usuarioNome: nome,
+      updatedAt: typeof req.body?.updatedAt === 'string' ? req.body.updatedAt : null,
     });
 
     res.json({
@@ -102,7 +116,8 @@ export async function postCrmPendenciaAcao(req: Request, res: Response): Promise
       msg.includes('destinatário') ||
       msg.includes('destino') ||
       msg.includes('inválida') ||
-      msg.includes('Anexe o PDF')
+      msg.includes('Anexe o PDF') ||
+      msg.includes('alterada por outro usuário')
         ? 400
         : msg.includes('não encontrada')
           ? 404

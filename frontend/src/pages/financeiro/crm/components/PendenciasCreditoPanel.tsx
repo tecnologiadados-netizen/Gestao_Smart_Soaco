@@ -2,18 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Clock } from 'lucide-react';
 import {
-  anexarCrmPendenciaPdfAssinado,
   baixarCrmPendenciaPdfAssinado,
-  confirmarCrmPendenciaLiberacao,
   fetchCrmPendenciasContasCliente,
   fetchCrmPendenciasCredito,
   fetchCrmPendenciasEmailConfig,
   fetchCrmPendenciasHistorico,
   fetchCrmPendenciasUsuarios,
-  removerCrmPendenciaPdfAssinado,
-  salvarCrmPendenciaAcao,
   salvarCrmPendenciasEmailConfig,
-  type AcaoPendenciaCredito,
   type HistoricoPendenciaEvento,
   type MonitorRegularizacaoCliente,
   type PendenciaCreditoItem,
@@ -29,6 +24,7 @@ import {
   downloadPendenciasAprovacaoPdf,
   mapPendenciasParaAprovacaoPdf,
 } from '../lib/generate-pendencias-aprovacao-pdf';
+import { ModalTratarPendenciaCredito } from './ModalTratarPendenciaCredito';
 
 const FILAS: Array<{ id: SituacaoFilaPendencia; label: string }> = [
   { id: 'INADIMPLENTES', label: 'Inadimplentes — aguardando ação' },
@@ -67,27 +63,6 @@ function formatarDataCurta(iso: string | null | undefined): string {
 
 function labelUsuario(u: UsuarioDestinatarioPendencia): string {
   return u.nome?.trim() || u.login;
-}
-
-const ACOES: { value: AcaoPendenciaCredito; label: string }[] = [
-  { value: 'CANCELADO', label: 'Pedido cancelado' },
-  { value: 'PAUSADO', label: 'Pedido pausado' },
-  { value: 'REALOCAR_MATERIAL', label: 'Realocar material' },
-  { value: 'SEGUIR_PRODUCAO', label: 'Seguir com produção' },
-];
-
-function precisaPdfParaConfirmar(
-  item: PendenciaCreditoItem,
-  acaoSel: AcaoPendenciaCredito | '',
-): boolean {
-  if (!acaoSel || item.temPdfAssinado) return false;
-  if (item.aguardandoConfirmacaoNomus) return true;
-  if (acaoSel === 'SEGUIR_PRODUCAO') return true;
-  const st = item.statusNomus;
-  if (st == null) return false;
-  if (acaoSel === 'PAUSADO' || acaoSel === 'REALOCAR_MATERIAL') return st === 1;
-  if (acaoSel === 'CANCELADO') return st === 6 || st >= 4;
-  return false;
 }
 
 type Props = {
@@ -292,8 +267,7 @@ export default function PendenciasCreditoPanel({
     FINALIZADOS: 0,
   });
   const [carregando, setCarregando] = useState(true);
-  const [salvandoId, setSalvandoId] = useState<number | null>(null);
-  const [pdfUploadingId, setPdfUploadingId] = useState<number | null>(null);
+  const [sincronizando, setSincronizando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [mensagemNomus, setMensagemNomus] = useState<{
@@ -302,9 +276,7 @@ export default function PendenciasCreditoPanel({
     pedido: string;
   } | null>(null);
   const [filtroCliente, setFiltroCliente] = useState(clienteInicial ?? '');
-
-  const [draftAcao, setDraftAcao] = useState<Record<number, AcaoPendenciaCredito | ''>>({});
-  const [draftObs, setDraftObs] = useState<Record<number, string>>({});
+  const [tratarItem, setTratarItem] = useState<PendenciaCreditoItem | null>(null);
 
   const [usuarios, setUsuarios] = useState<UsuarioDestinatarioPendencia[]>([]);
   const [idsTo, setIdsTo] = useState<number[]>([]);
@@ -382,46 +354,81 @@ export default function PendenciasCreditoPanel({
       syncNomus?: boolean;
       cliente?: string;
       situacao?: SituacaoFilaPendencia;
+      /** Evita flicker do “Carregando…” em refresh automático. */
+      silencioso?: boolean;
     }) => {
-      setCarregando(true);
-      setErro(null);
+      const silencioso = Boolean(opts?.silencioso);
+      const syncAlertas = opts?.syncAlertas ?? false;
+      const syncNomus = opts?.syncNomus ?? false;
+      const comSyncPesado = syncAlertas || syncNomus;
+
+      if (!silencioso) setCarregando(true);
+      if (comSyncPesado) setSincronizando(true);
+      if (!silencioso) setErro(null);
       contasCacheRef.current.clear();
       const situacao = opts?.situacao ?? situacaoFila;
       try {
         const cliente = opts?.cliente ?? filtroCliente;
         const data = await fetchCrmPendenciasCredito({
           cliente: cliente || null,
-          syncAlertas: opts?.syncAlertas ?? false,
-          // Listagem rápida por padrão; sync Nomus só no Atualizar.
-          syncNomus: opts?.syncNomus ?? false,
+          syncAlertas,
+          syncNomus,
           situacao,
         });
         const lista = data.itens;
         setItens(lista);
         setContagens(data.contagens);
-        setDraftAcao((prev) => {
-          const next = { ...prev };
-          for (const item of lista) {
-            if (next[item.id] === undefined) {
-              next[item.id] = (item.acao as AcaoPendenciaCredito) || '';
-            }
+        if (data.syncResumo) {
+          const sr = data.syncResumo;
+          const partes: string[] = [];
+          if (sr.arquivadas > 0) {
+            partes.push(
+              `${sr.arquivadas} rascunho(s) arquivado(s) em Finalizados (histórico preservado)`,
+            );
           }
-          return next;
-        });
-        setDraftObs((prev) => {
-          const next = { ...prev };
-          for (const item of lista) {
-            if (next[item.id] === undefined) next[item.id] = item.observacao ?? '';
+          if (sr.removidas > 0) {
+            partes.push(`${sr.removidas} linha(s) sem ação removida(s) (fora do alerta)`);
           }
-          return next;
+          if (partes.length > 0) {
+            setAviso(partes.join(' · '));
+          }
+        }
+        setTratarItem((atual) => {
+          if (!atual) return null;
+          return lista.find((i) => i.id === atual.id) ?? null;
         });
       } catch (e) {
-        setErro(e instanceof Error ? e.message : 'Falha ao carregar pendências');
+        if (!silencioso) {
+          setErro(e instanceof Error ? e.message : 'Falha ao carregar pendências');
+        }
       } finally {
-        setCarregando(false);
+        if (!silencioso) setCarregando(false);
+        if (comSyncPesado) setSincronizando(false);
       }
     },
     [filtroCliente, situacaoFila],
+  );
+
+  /** Abertura rápida (SQLite) + sync Nomus/alertas em segundo plano. */
+  const carregarComSyncEmBackground = useCallback(
+    async (opts?: { cliente?: string; situacao?: SituacaoFilaPendencia }) => {
+      const cliente = opts?.cliente ?? filtroCliente;
+      const situacao = opts?.situacao ?? situacaoFila;
+      await carregar({
+        cliente: cliente || undefined,
+        situacao,
+        syncAlertas: false,
+        syncNomus: false,
+      });
+      void carregar({
+        cliente: cliente || undefined,
+        situacao,
+        syncAlertas: true,
+        syncNomus: true,
+        silencioso: true,
+      });
+    },
+    [carregar, filtroCliente, situacaoFila],
   );
 
   const carregarEmailConfig = useCallback(async () => {
@@ -456,8 +463,8 @@ export default function PendenciasCreditoPanel({
   }, []);
 
   useEffect(() => {
-    // Abertura rápida: só lê o banco. Sync Nomus/alertas fica no botão Atualizar.
-    void carregar({ syncAlertas: false, syncNomus: false, cliente: clienteInicial ?? '' });
+    // F5 / abertura: grade na hora (banco local), sync pesado em background.
+    void carregarComSyncEmBackground({ cliente: clienteInicial ?? '' });
     void carregarEmailConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- montagem / deep link inicial
   }, []);
@@ -465,18 +472,33 @@ export default function PendenciasCreditoPanel({
   useEffect(() => {
     if (clienteInicial != null && clienteInicial !== filtroCliente) {
       setFiltroCliente(clienteInicial);
-      void carregar({ cliente: clienteInicial, syncAlertas: false, syncNomus: false });
+      void carregarComSyncEmBackground({ cliente: clienteInicial });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteInicial]);
 
-  const handleAtualizarTabela = () => {
-    void carregar({
-      syncAlertas: true,
-      syncNomus: true,
-      cliente: filtroCliente || undefined,
-    });
-  };
+  // Refresh automático a cada 3 min + ao voltar para a aba (sempre em background).
+  useEffect(() => {
+    const REFRESH_MS = 3 * 60 * 1000;
+    const refreshSilencioso = () => {
+      void carregar({
+        cliente: filtroCliente || undefined,
+        situacao: situacaoFila,
+        syncAlertas: true,
+        syncNomus: true,
+        silencioso: true,
+      });
+    };
+    const id = window.setInterval(refreshSilencioso, REFRESH_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshSilencioso();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [carregar, filtroCliente, situacaoFila]);
 
   const handleEmitirPdfAprovacao = () => {
     void (async () => {
@@ -591,128 +613,36 @@ export default function PendenciasCreditoPanel({
     else setIdsGestorCc((prev) => prev.filter((x) => x !== id));
   };
 
-  const handleSalvarAcao = async (item: PendenciaCreditoItem) => {
-    const acao = draftAcao[item.id];
-    if (!acao) {
-      setErro('Selecione uma ação para o pedido.');
-      return;
-    }
-    if (precisaPdfParaConfirmar(item, acao)) {
-      setErro('Anexe o PDF assinado pelo gestor antes de confirmar a ação.');
-      return;
-    }
-    setSalvandoId(item.id);
+  const handlePendenciaSalvaNoModal = async (
+    pendencia: PendenciaCreditoItem,
+    mensagem: string,
+    titulo: string,
+  ) => {
+    setMensagemNomus({
+      titulo,
+      mensagem,
+      pedido: pendencia.numeroPedidoExibicao,
+    });
+    setTratarItem(null);
     setErro(null);
-    try {
-      const result = await salvarCrmPendenciaAcao(item.id, {
-        acao,
-        observacao: draftObs[item.id] ?? '',
-      });
-      setMensagemNomus({
-        titulo: result.emailEnviado
-          ? 'Confirmado — e-mail enviado'
-          : result.aguardandoConfirmacaoNomus
-            ? 'Ação salva em rascunho'
-            : result.pendencia.encerrada
-              ? 'Pedido finalizado'
-              : 'Ação registrada',
-        mensagem:
-          result.mensagem ||
-          result.instrucaoNomus ||
-          'A ação foi salva.',
-        pedido: item.numeroPedidoExibicao,
-      });
-      if (result.pendencia.encerrada || result.pendencia.situacaoFila !== situacaoFila) {
-        await carregar({ situacao: situacaoFila });
-      } else {
-        setItens((prev) =>
-          prev.map((row) => {
-            if (row.id === item.id) return result.pendencia;
-            if (
-              result.pendencia.clienteChave &&
-              row.clienteChave === result.pendencia.clienteChave
-            ) {
-              return {
-                ...row,
-                qtdEmailsAlerta: result.pendencia.qtdEmailsAlerta,
-                qtdEmailsAcao: result.pendencia.qtdEmailsAcao,
-                qtdEmailsTotal: result.pendencia.qtdEmailsTotal,
-                qtdAcoesRegistradas: result.pendencia.qtdAcoesRegistradas,
-              };
-            }
-            return row;
-          }),
-        );
-        setDraftAcao((prev) => ({
-          ...prev,
-          [item.id]: (result.pendencia.acao as AcaoPendenciaCredito) || acao,
-        }));
-        setDraftObs((prev) => ({ ...prev, [item.id]: result.pendencia.observacao ?? '' }));
-      }
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Falha ao salvar ação');
-    } finally {
-      setSalvandoId(null);
-    }
-  };
-
-  const handleConfirmarLiberacao = async (item: PendenciaCreditoItem) => {
-    setSalvandoId(item.id);
-    setErro(null);
-    try {
-      const result = await confirmarCrmPendenciaLiberacao(item.id);
-      setMensagemNomus({
-        titulo: result.pendencia.encerrada
-          ? 'Liberação confirmada'
-          : 'Aguardando Nomus',
-        mensagem: result.mensagem || result.instrucaoNomus || 'Processado.',
-        pedido: item.numeroPedidoExibicao,
-      });
-      if (result.pendencia.encerrada || result.pendencia.situacaoFila !== situacaoFila) {
-        await carregar({ situacao: situacaoFila });
-      } else {
-        setItens((prev) =>
-          prev.map((row) => (row.id === item.id ? result.pendencia : row)),
-        );
-      }
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Falha ao confirmar liberação');
-    } finally {
-      setSalvandoId(null);
-    }
-  };
-
-  const atualizarPendenciaLocal = (pendencia: PendenciaCreditoItem) => {
-    setItens((prev) => prev.map((row) => (row.id === pendencia.id ? pendencia : row)));
-  };
-
-  const handleAnexarPdfAssinado = async (item: PendenciaCreditoItem, file: File | null) => {
-    if (!file) return;
-    setPdfUploadingId(item.id);
-    setErro(null);
-    setAviso(null);
-    try {
-      const pendencia = await anexarCrmPendenciaPdfAssinado(item.id, file);
-      atualizarPendenciaLocal(pendencia);
-      setAviso(`PDF assinado anexado em ${item.numeroPedidoExibicao}.`);
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Falha ao anexar PDF');
-    } finally {
-      setPdfUploadingId(null);
-    }
-  };
-
-  const handleRemoverPdfAssinado = async (item: PendenciaCreditoItem) => {
-    setPdfUploadingId(item.id);
-    setErro(null);
-    try {
-      const pendencia = await removerCrmPendenciaPdfAssinado(item.id);
-      atualizarPendenciaLocal(pendencia);
-      setAviso('PDF assinado removido.');
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Falha ao remover PDF');
-    } finally {
-      setPdfUploadingId(null);
+    if (pendencia.encerrada || pendencia.situacaoFila !== situacaoFila) {
+      await carregar({ situacao: situacaoFila });
+    } else {
+      setItens((prev) =>
+        prev.map((row) => {
+          if (row.id === pendencia.id) return pendencia;
+          if (pendencia.clienteChave && row.clienteChave === pendencia.clienteChave) {
+            return {
+              ...row,
+              qtdEmailsAlerta: pendencia.qtdEmailsAlerta,
+              qtdEmailsAcao: pendencia.qtdEmailsAcao,
+              qtdEmailsTotal: pendencia.qtdEmailsTotal,
+              qtdAcoesRegistradas: pendencia.qtdAcoesRegistradas,
+            };
+          }
+          return row;
+        }),
+      );
     }
   };
 
@@ -727,7 +657,12 @@ export default function PendenciasCreditoPanel({
 
   const trocarFila = (fila: SituacaoFilaPendencia) => {
     setSituacaoFila(fila);
-    void carregar({ situacao: fila });
+    // Troca de aba: leitura rápida do banco (sem sync Nomus).
+    void carregar({
+      situacao: fila,
+      syncAlertas: false,
+      syncNomus: false,
+    });
   };
 
   const abrirHistoricoCliente = async (
@@ -787,6 +722,10 @@ export default function PendenciasCreditoPanel({
 
   const aguardandoAcao = useMemo(
     () => itens.filter((i) => !i.acao).length,
+    [itens],
+  );
+  const comAcaoPendente = useMemo(
+    () => itens.filter((i) => Boolean(i.acao) && !i.encerrada).length,
     [itens],
   );
 
@@ -1033,9 +972,13 @@ export default function PendenciasCreditoPanel({
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2.5 dark:border-slate-700">
           <div className="text-sm text-slate-600 dark:text-slate-400">
-            {situacaoFila === 'INADIMPLENTES' && aguardandoAcao > 0 ? (
+            {situacaoFila === 'INADIMPLENTES' ? (
               <span className="font-medium text-amber-700 dark:text-amber-400">
-                {aguardandoAcao} aguardando ação
+                {itens.length} na fila
+                {aguardandoAcao > 0 ? ` · ${aguardandoAcao} sem ação` : ''}
+                {comAcaoPendente > 0
+                  ? ` · ${comAcaoPendente} com ação (rascunho/confirmada)`
+                  : ''}
               </span>
             ) : situacaoFila === 'REGULARIZADOS' ? (
               <span className="font-medium text-emerald-700 dark:text-emerald-400">
@@ -1050,6 +993,11 @@ export default function PendenciasCreditoPanel({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {sincronizando ? (
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Atualizando Nomus em segundo plano…
+              </span>
+            ) : null}
             <button
               type="button"
               onClick={handleEmitirPdfAprovacao}
@@ -1058,14 +1006,6 @@ export default function PendenciasCreditoPanel({
               className="rounded-lg border border-emerald-700 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Emitir PDF aprovação
-            </button>
-            <button
-              type="button"
-              onClick={handleAtualizarTabela}
-              disabled={carregando}
-              className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
-            >
-              {carregando ? 'Atualizando…' : 'Atualizar'}
             </button>
           </div>
         </div>
@@ -1089,7 +1029,7 @@ export default function PendenciasCreditoPanel({
                   Tempo / prazo
                 </th>
                 <th className="px-2 py-1.5 font-semibold">Observação</th>
-                <th className="px-2 py-1.5 font-semibold" />
+                <th className="px-2 py-1.5 font-semibold">Tratar</th>
                 <th
                   className="px-2 py-1.5 text-center font-semibold"
                   title="Histórico, e-mails e ações do cliente"
@@ -1102,7 +1042,7 @@ export default function PendenciasCreditoPanel({
               {carregando && itens.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={11}
+                    colSpan={12}
                     className="px-3 py-8 text-center text-slate-500 dark:text-slate-400"
                   >
                     Carregando…
@@ -1111,7 +1051,7 @@ export default function PendenciasCreditoPanel({
               ) : itens.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={11}
+                    colSpan={12}
                     className="px-3 py-8 text-center text-slate-500 dark:text-slate-400"
                   >
                     {situacaoFila === 'INADIMPLENTES'
@@ -1131,7 +1071,6 @@ export default function PendenciasCreditoPanel({
                       : 'bg-slate-50/80 dark:bg-slate-800/40';
 
                   return grupo.pedidos.map((item, pedidoIdx) => {
-                    const acaoSel = draftAcao[item.id] ?? '';
                     const isPrimeira = pedidoIdx === 0;
                     const isUltima = pedidoIdx === rowSpan - 1;
 
@@ -1282,127 +1221,38 @@ export default function PendenciasCreditoPanel({
                             );
                           })()}
                         <td className="min-w-[9.5rem] max-w-[11rem] px-2 py-1.5 align-middle">
-                          {situacaoFila === 'REGULARIZADOS' ? (
-                            <div>
-                              <div className="break-words whitespace-normal font-medium leading-snug text-emerald-800 dark:text-emerald-300">
-                                Confirmar liberação
-                              </div>
-                              <div className="mt-0.5 break-words whitespace-normal text-[10px] leading-snug text-slate-500 dark:text-slate-400">
-                                {item.acaoLabel ?? 'Pausado / realocado'}
-                                {item.acaoPorNome || item.acaoPorLogin
-                                  ? ` · ${item.acaoPorNome || item.acaoPorLogin}`
-                                  : ''}
-                              </div>
+                          <div>
+                            <div className="break-words whitespace-normal font-medium leading-snug text-slate-800 dark:text-slate-200">
+                              {situacaoFila === 'REGULARIZADOS'
+                                ? 'Confirmar liberação'
+                                : item.acaoLabel ?? 'Aguardando ação…'}
                             </div>
-                          ) : situacaoFila === 'FINALIZADOS' ? (
-                            <div>
-                              <div className="break-words whitespace-normal font-medium leading-snug text-slate-800 dark:text-slate-200">
-                                {item.acaoLabel ?? '—'}
-                              </div>
+                            {(item.acaoPorNome || item.acaoPorLogin) && (
                               <div className="mt-0.5 break-words whitespace-normal text-[10px] leading-snug text-slate-500 dark:text-slate-400">
-                                Encerrado
-                                {item.acaoPorNome || item.acaoPorLogin
-                                  ? ` · ${item.acaoPorNome || item.acaoPorLogin}`
-                                  : ''}
+                                {item.acaoPorNome || item.acaoPorLogin}
                               </div>
-                              {item.temPdfAssinado ? (
-                                <button
-                                  type="button"
-                                  onClick={() => void handleBaixarPdfAssinado(item)}
-                                  className="mt-0.5 block max-w-full break-words whitespace-normal text-left text-[10px] font-medium leading-snug text-blue-700 hover:underline dark:text-blue-400"
-                                  title={item.pdfAssinadoNome ?? 'PDF assinado'}
-                                >
-                                  PDF: {item.pdfAssinadoNome ?? 'Ver'}
-                                </button>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <>
-                              <select
-                                value={acaoSel}
-                                onChange={(e) => {
-                                  const value = e.target.value as AcaoPendenciaCredito | '';
-                                  setDraftAcao((prev) => ({
-                                    ...prev,
-                                    [item.id]: value,
-                                  }));
-                                }}
-                                className="w-full rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                            )}
+                            {item.aguardandoConfirmacaoNomus && (
+                              <span className="mt-0.5 inline-block rounded bg-amber-100 px-1 py-px text-[10px] font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                                Rascunho · Nomus
+                              </span>
+                            )}
+                            {item.motivoArquivo && situacaoFila === 'FINALIZADOS' && (
+                              <span className="mt-0.5 inline-block rounded bg-slate-200 px-1 py-px text-[10px] font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                                Arquivado
+                              </span>
+                            )}
+                            {item.temPdfAssinado ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleBaixarPdfAssinado(item)}
+                                className="mt-0.5 block max-w-full break-words whitespace-normal text-left text-[10px] font-medium leading-snug text-blue-700 hover:underline dark:text-blue-400"
+                                title={item.pdfAssinadoNome ?? 'PDF assinado'}
                               >
-                                <option value="">Aguardando ação…</option>
-                                {ACOES.map((a) => (
-                                  <option key={a.value} value={a.value}>
-                                    {a.label}
-                                  </option>
-                                ))}
-                              </select>
-                              {item.acaoLabel && (
-                                <div
-                                  className="mt-0.5 break-words whitespace-normal text-[10px] leading-snug text-slate-500 dark:text-slate-400"
-                                  title={`Salvo: ${item.acaoLabel}${
-                                    item.acaoPorNome || item.acaoPorLogin
-                                      ? ` · ${item.acaoPorNome || item.acaoPorLogin}`
-                                      : ''
-                                  }`}
-                                >
-                                  Salvo: {item.acaoLabel}
-                                  {item.acaoPorNome || item.acaoPorLogin
-                                    ? ` · ${item.acaoPorNome || item.acaoPorLogin}`
-                                    : ''}
-                                </div>
-                              )}
-                              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                                {item.temPdfAssinado ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleBaixarPdfAssinado(item)}
-                                      className="max-w-full break-words whitespace-normal text-left text-[10px] font-medium leading-snug text-blue-700 hover:underline dark:text-blue-400"
-                                      title={item.pdfAssinadoNome ?? 'PDF assinado'}
-                                    >
-                                      PDF: {item.pdfAssinadoNome ?? 'Ver'}
-                                    </button>
-                                    {!item.emailAcaoEnviado && (
-                                      <button
-                                        type="button"
-                                        onClick={() => void handleRemoverPdfAssinado(item)}
-                                        disabled={pdfUploadingId === item.id}
-                                        className="text-[10px] text-red-600 hover:underline disabled:opacity-50 dark:text-red-400"
-                                      >
-                                        Remover
-                                      </button>
-                                    )}
-                                  </>
-                                ) : (
-                                  <label
-                                    className="inline-flex cursor-pointer items-center text-[10px] font-medium text-emerald-800 hover:text-emerald-950 dark:text-emerald-300 dark:hover:text-emerald-200"
-                                    title={
-                                      precisaPdfParaConfirmar(item, acaoSel)
-                                        ? 'Obrigatório para confirmar (após Nomus / Seguir produção)'
-                                        : 'Anexar PDF assinado pelo gestor'
-                                    }
-                                  >
-                                    <input
-                                      type="file"
-                                      accept="application/pdf,.pdf"
-                                      className="sr-only"
-                                      disabled={pdfUploadingId === item.id}
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0] ?? null;
-                                        e.target.value = '';
-                                        void handleAnexarPdfAssinado(item, file);
-                                      }}
-                                    />
-                                    {pdfUploadingId === item.id
-                                      ? 'Enviando…'
-                                      : precisaPdfParaConfirmar(item, acaoSel)
-                                        ? 'Anexar PDF *'
-                                        : 'Anexar PDF'}
-                                  </label>
-                                )}
-                              </div>
-                            </>
-                          )}
+                                PDF: {item.pdfAssinadoNome ?? 'Ver'}
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="whitespace-nowrap px-2 py-1.5 align-middle">
                           {(() => {
@@ -1420,77 +1270,34 @@ export default function PendenciasCreditoPanel({
                           })()}
                         </td>
                         <td className="min-w-[9rem] max-w-[12rem] px-2 py-1.5 align-middle">
-                          {situacaoFila === 'FINALIZADOS' ? (
-                            <div
-                              className="break-words whitespace-normal text-[11px] leading-snug text-slate-600 dark:text-slate-300"
-                              title={item.observacao?.trim() || undefined}
-                            >
-                              {item.observacao?.trim() || '—'}
-                              {item.pedidoDestino ? (
-                                <div className="mt-0.5 break-words text-[10px] text-slate-500">
-                                  Destino: {item.pedidoDestino}
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <>
-                              <input
-                                type="text"
-                                value={draftObs[item.id] ?? ''}
-                                onChange={(e) =>
-                                  setDraftObs((prev) => ({
-                                    ...prev,
-                                    [item.id]: e.target.value,
-                                  }))
-                                }
-                                placeholder="Obs."
-                                disabled={situacaoFila === 'REGULARIZADOS'}
-                                className="w-full rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-900 placeholder:text-slate-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-                              />
-                              {situacaoFila === 'REGULARIZADOS' && item.pedidoDestino ? (
-                                <div className="mt-0.5 text-[10px] text-slate-500">
-                                  Destino: {item.pedidoDestino}
-                                </div>
-                              ) : null}
-                            </>
-                          )}
+                          <div
+                            className="break-words whitespace-normal text-[11px] leading-snug text-slate-600 dark:text-slate-300"
+                            title={item.observacao?.trim() || undefined}
+                          >
+                            {item.observacao?.trim() || '—'}
+                            {item.pedidoDestino ? (
+                              <div className="mt-0.5 break-words text-[10px] text-slate-500">
+                                Destino: {item.pedidoDestino}
+                              </div>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="px-2 py-1.5 align-middle">
                           {situacaoFila === 'FINALIZADOS' ? (
-                            <span className="text-[10px] text-slate-400">—</span>
-                          ) : situacaoFila === 'REGULARIZADOS' ? (
                             <button
                               type="button"
-                              onClick={() => void handleConfirmarLiberacao(item)}
-                              disabled={salvandoId === item.id}
-                              className="rounded bg-emerald-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+                              onClick={() => setTratarItem(item)}
+                              className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                             >
-                              {salvandoId === item.id
-                                ? 'Confirmando…'
-                                : 'Confirmar'}
+                              Ver
                             </button>
                           ) : (
                             <button
                               type="button"
-                              onClick={() => void handleSalvarAcao(item)}
-                              disabled={
-                                salvandoId === item.id ||
-                                !acaoSel ||
-                                precisaPdfParaConfirmar(item, acaoSel) ||
-                                pdfUploadingId === item.id
-                              }
-                              title={
-                                precisaPdfParaConfirmar(item, acaoSel)
-                                  ? 'Anexe o PDF assinado pelo gestor antes de confirmar'
-                                  : undefined
-                              }
-                              className="rounded bg-blue-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+                              onClick={() => setTratarItem(item)}
+                              className="rounded bg-blue-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-800"
                             >
-                              {salvandoId === item.id
-                                ? 'Salvando…'
-                                : item.aguardandoConfirmacaoNomus
-                                  ? 'Confirmar'
-                                  : 'Salvar'}
+                              {situacaoFila === 'REGULARIZADOS' ? 'Liberar' : 'Tratar'}
                             </button>
                           )}
                         </td>
@@ -1539,6 +1346,17 @@ export default function PendenciasCreditoPanel({
           </table>
         </div>
       </section>
+
+      {tratarItem && (
+        <ModalTratarPendenciaCredito
+          item={tratarItem}
+          situacaoFila={situacaoFila}
+          onClose={() => setTratarItem(null)}
+          onSaved={(pendencia, mensagem, titulo) =>
+            void handlePendenciaSalvaNoModal(pendencia, mensagem, titulo)
+          }
+        />
+      )}
 
       {historicoCliente &&
         createPortal(
@@ -1612,15 +1430,21 @@ export default function PendenciasCreditoPanel({
                       ev.tipo === 'EMAIL_REGULARIZADO';
                     const isAcao =
                       ev.tipo === 'ACAO' ||
+                      ev.tipo === 'ACAO_RASCUNHO' ||
                       ev.tipo === 'LIBERACAO' ||
                       ev.tipo === 'FINALIZADO' ||
+                      ev.tipo === 'ARQUIVADO' ||
+                      ev.tipo === 'REABERTO' ||
                       ev.tipo === 'PDF_ASSINADO';
                     const mostrarPedido =
                       Boolean(ev.numeroPedidoExibicao) &&
                       (ev.tipo === 'ACAO' ||
+                        ev.tipo === 'ACAO_RASCUNHO' ||
                         ev.tipo === 'EMAIL' ||
                         ev.tipo === 'LIBERACAO' ||
                         ev.tipo === 'FINALIZADO' ||
+                        ev.tipo === 'ARQUIVADO' ||
+                        ev.tipo === 'REABERTO' ||
                         ev.tipo === 'PDF_ASSINADO');
                     return (
                     <li

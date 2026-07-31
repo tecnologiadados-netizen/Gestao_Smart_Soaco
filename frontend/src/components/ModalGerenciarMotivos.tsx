@@ -24,7 +24,11 @@ export default function ModalGerenciarMotivos({
   const [loading, setLoading] = useState(true);
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [editandoTexto, setEditandoTexto] = useState('');
+  const [editandoAbonada, setEditandoAbonada] = useState(true);
+  const [editandoAplicacao, setEditandoAplicacao] = useState<'montagem' | 'producao' | 'ambos'>('montagem');
   const [novoTexto, setNovoTexto] = useState('');
+  const [novaAbonada, setNovaAbonada] = useState(true);
+  const [novaAplicacao, setNovaAplicacao] = useState<'montagem' | 'producao' | 'ambos'>('montagem');
   const [salvando, setSalvando] = useState(false);
   const [modalSenha, setModalSenha] = useState<{ tipo: 'editar' } | { tipo: 'excluir'; id: number } | null>(null);
   const [senhaConfirmacao, setSenhaConfirmacao] = useState('');
@@ -54,9 +58,15 @@ export default function ModalGerenciarMotivos({
     if (!t) return;
     setSalvando(true);
     try {
-      const novo = await criarMotivoSugestao(t);
+      const novo = await criarMotivoSugestao({
+        descricao: t,
+        abonada: novaAbonada,
+        aplicacao_nao_abonada: novaAbonada ? null : novaAplicacao,
+      });
       setLista((prev) => [...prev, novo].sort((a, b) => a.descricao.localeCompare(b.descricao)));
       setNovoTexto('');
+      setNovaAbonada(true);
+      setNovaAplicacao('montagem');
       onAtualizado?.();
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Erro ao cadastrar.');
@@ -68,6 +78,8 @@ export default function ModalGerenciarMotivos({
   const handleEditar = (m: MotivoSugestao) => {
     setEditandoId(m.id);
     setEditandoTexto(m.descricao);
+    setEditandoAbonada(m.abonada);
+    setEditandoAplicacao(m.aplicacaoNaoAbonada ?? 'montagem');
   };
 
   const handleSalvarEdicao = () => {
@@ -96,7 +108,15 @@ export default function ModalGerenciarMotivos({
     try {
       if (modalSenha?.tipo === 'editar' && editandoId != null) {
         const t = editandoTexto.trim();
-        const atualizado = await atualizarMotivoSugestao(editandoId, t, senha);
+        const atualizado = await atualizarMotivoSugestao(
+          editandoId,
+          {
+            descricao: t,
+            abonada: editandoAbonada,
+            aplicacao_nao_abonada: editandoAbonada ? null : editandoAplicacao,
+          },
+          senha,
+        );
         setLista((prev) =>
           prev.map((s) => (s.id === editandoId ? atualizado : s)).sort((a, b) => a.descricao.localeCompare(b.descricao))
         );
@@ -123,32 +143,65 @@ export default function ModalGerenciarMotivos({
         className="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-xl max-w-3xl w-full p-6 max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Gerenciar motivos de alteração</h3>
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+          Gestão de justificativas
+        </h3>
+        <p className="mt-1 mb-4 text-sm text-slate-500 dark:text-slate-400">
+          Cadastre as justificativas e defina se elas afetam a apuração da Montagem, da Produção ou de ambas.
+        </p>
 
         {!podeGerenciar && (
           <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">Apenas usuários autorizados (master, admin ou grupo Administrador) podem criar, editar ou excluir motivos.</p>
         )}
 
         {podeGerenciar && (
-          <div className="flex gap-2 mb-4">
-            <input
-              type="text"
-              value={novoTexto}
-              onChange={(e) => setNovoTexto(e.target.value)}
-              placeholder="Novo motivo"
-              className="flex-1 rounded-lg bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-600 placeholder:text-slate-400 dark:placeholder:text-slate-500"
-              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleCriar())}
-            />
-            <button
-              type="button"
-              onClick={handleCriar}
-              disabled={!novoTexto.trim() || salvando}
-              className="p-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white transition-colors"
-              title="Inserir"
-              aria-label="Inserir"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            </button>
+          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-600 dark:bg-slate-700/50">
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_150px_180px_auto]">
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                Nova justificativa
+                <input
+                  type="text"
+                  value={novoTexto}
+                  onChange={(e) => setNovoTexto(e.target.value)}
+                  placeholder="Digite a justificativa"
+                  className="mt-1 w-full rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-600 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                />
+              </label>
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                Classificação
+                <select
+                  value={novaAbonada ? 'abonada' : 'nao_abonada'}
+                  onChange={(e) => setNovaAbonada(e.target.value === 'abonada')}
+                  className="mt-1 w-full rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm"
+                >
+                  <option value="abonada">Abonada</option>
+                  <option value="nao_abonada">Não abonada</option>
+                </select>
+              </label>
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                Aplicação
+                <select
+                  value={novaAplicacao}
+                  disabled={novaAbonada}
+                  onChange={(e) =>
+                    setNovaAplicacao(e.target.value as 'montagem' | 'producao' | 'ambos')
+                  }
+                  className="mt-1 w-full rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm disabled:opacity-50"
+                >
+                  <option value="montagem">Montagem</option>
+                  <option value="producao">Produção</option>
+                  <option value="ambos">Montagem e Produção</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={handleCriar}
+                disabled={!novoTexto.trim() || salvando}
+                className="self-end rounded-lg bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 text-sm font-medium text-white transition-colors"
+              >
+                {salvando ? 'Cadastrando…' : 'Cadastrar'}
+              </button>
+            </div>
           </div>
         )}
 
@@ -157,17 +210,42 @@ export default function ModalGerenciarMotivos({
         ) : (
           <ul className="space-y-2 overflow-y-auto flex-1 min-h-0 pr-1">
             {lista.map((s) => (
-              <li key={s.id} className="flex items-center gap-2 text-sm">
+              <li
+                key={s.id}
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-600"
+              >
                 {podeGerenciar && editandoId === s.id ? (
                   <>
                     <input
                       type="text"
                       value={editandoTexto}
                       onChange={(e) => setEditandoTexto(e.target.value)}
-                      className="flex-1 rounded bg-slate-100 dark:bg-slate-600 border border-slate-300 dark:border-slate-500 text-slate-900 dark:text-slate-100 px-2 py-1.5 text-sm"
+                      className="min-w-[220px] flex-1 rounded bg-slate-100 dark:bg-slate-600 border border-slate-300 dark:border-slate-500 text-slate-900 dark:text-slate-100 px-2 py-1.5 text-sm"
                       autoFocus
                       onKeyDown={(e) => e.key === 'Enter' && handleSalvarEdicao()}
                     />
+                    <select
+                      value={editandoAbonada ? 'abonada' : 'nao_abonada'}
+                      onChange={(e) => setEditandoAbonada(e.target.value === 'abonada')}
+                      className="rounded border border-slate-300 bg-slate-100 px-2 py-1.5 text-sm dark:border-slate-500 dark:bg-slate-600"
+                    >
+                      <option value="abonada">Abonada</option>
+                      <option value="nao_abonada">Não abonada</option>
+                    </select>
+                    <select
+                      value={editandoAplicacao}
+                      disabled={editandoAbonada}
+                      onChange={(e) =>
+                        setEditandoAplicacao(
+                          e.target.value as 'montagem' | 'producao' | 'ambos',
+                        )
+                      }
+                      className="rounded border border-slate-300 bg-slate-100 px-2 py-1.5 text-sm disabled:opacity-50 dark:border-slate-500 dark:bg-slate-600"
+                    >
+                      <option value="montagem">Montagem</option>
+                      <option value="producao">Produção</option>
+                      <option value="ambos">Montagem e Produção</option>
+                    </select>
                     <button
                       type="button"
                       onClick={handleSalvarEdicao}
@@ -190,7 +268,26 @@ export default function ModalGerenciarMotivos({
                   </>
                 ) : (
                   <>
-                    <span className="text-slate-800 dark:text-slate-200 flex-1 min-w-0 break-words">{s.descricao}</span>
+                    <span className="text-slate-800 dark:text-slate-200 flex-1 min-w-[220px] break-words">
+                      {s.descricao}
+                    </span>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                        s.abonada
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                      }`}
+                    >
+                      {s.abonada
+                        ? 'Abonada'
+                        : `Não abonada · ${
+                            s.aplicacaoNaoAbonada === 'ambos'
+                              ? 'Montagem e Produção'
+                              : s.aplicacaoNaoAbonada === 'producao'
+                                ? 'Produção'
+                                : 'Montagem'
+                          }`}
+                    </span>
                     {podeGerenciar && (
                       <>
                         <button

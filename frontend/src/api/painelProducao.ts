@@ -55,9 +55,21 @@ export interface PainelProducaoTargetRow {
   valor_bronze?: number | null;
   valor_prata?: number | null;
   valor_aco?: number | null;
+  considerar_penalizacoes?: boolean;
 }
 
+export interface PainelProducaoFaixaDesconto {
+  id?: number;
+  media_min: number;
+  media_max: number | null;
+  percentual_desconto: number;
+  ordem: number;
+}
+
+export type PainelProducaoApuracaoArea = 'montagem' | 'producao';
+
 export interface PainelProducaoApuracaoRow {
+  area: PainelProducaoApuracaoArea;
   setor: string;
   mes: string;
   pedidos_encerrados: number;
@@ -75,12 +87,21 @@ export interface PainelProducaoApuracaoRow {
   valor_a_pagar: number;
   niveis: Array<{ nivel: string; meta: number | null; valor: number | null; atingido: boolean }>;
   motivo_nao_abonado: string;
+  cadastro_niveis_completo: boolean;
+  setores_atingiram_meta?: number;
+  distribuicao_niveis?: { Bronze: number; Prata: number; Aço: number };
+  valor_bruto?: number;
+  parcelas_penalizadas?: number;
+  elegivel_minimo_setores?: boolean;
+  considerar_penalizacoes?: boolean;
 }
 
 export type PainelProducaoApuracaoDetalheTipo =
   | 'pedidos_encerrados'
   | 'pedidos_com_alteracao'
-  | 'alteracoes';
+  | 'alteracoes'
+  | 'alteracoes_ruptura'
+  | 'memorial_producao';
 
 export interface PainelProducaoApuracaoDetalheLinha {
   pedido: string;
@@ -94,6 +115,19 @@ export interface PainelProducaoApuracaoDetalheLinha {
   usuario?: string;
 }
 
+export interface PainelProducaoApuracaoParcelaProducao {
+  setor_montagem: string;
+  nivel: string | null;
+  valor_base: number;
+  pedidos_com_ruptura: number;
+  alteracoes_ruptura: number;
+  media_ruptura: number;
+  percentual_herdado: number;
+  impacto_producao: boolean;
+  desconto: number;
+  parcela_final: number;
+}
+
 export interface PainelProducaoApuracaoDetalhe {
   mes: string;
   setor: string;
@@ -101,6 +135,12 @@ export interface PainelProducaoApuracaoDetalhe {
   titulo: string;
   total: number;
   linhas: PainelProducaoApuracaoDetalheLinha[];
+  parcelas?: PainelProducaoApuracaoParcelaProducao[];
+  valor_bruto?: number;
+  valor_a_pagar?: number;
+  elegivel_minimo_setores?: boolean;
+  min_setores?: number;
+  setores_atingiram_meta?: number;
 }
 
 async function parseJson<T>(res: Response): Promise<T> {
@@ -143,6 +183,15 @@ export async function fetchPainelProducaoTargets(mes: string): Promise<PainelPro
   return parseJson(res);
 }
 
+export async function fetchPainelProducaoFaixasDesconto(
+  mes: string,
+): Promise<PainelProducaoFaixaDesconto[]> {
+  const res = await apiFetch(
+    `/api/painel-producao/faixas-desconto?mes=${encodeURIComponent(mes)}`,
+  );
+  return parseJson(res);
+}
+
 export async function fetchPainelProducaoApuracao(
   mes: string,
 ): Promise<PainelProducaoApuracaoRow[]> {
@@ -153,8 +202,9 @@ export async function fetchPainelProducaoApuracao(
 export async function fetchPainelProducaoApuracaoDetalhe(
   mes: string,
   tipo: PainelProducaoApuracaoDetalheTipo,
+  setor: string,
 ): Promise<PainelProducaoApuracaoDetalhe> {
-  const params = new URLSearchParams({ mes, tipo });
+  const params = new URLSearchParams({ mes, tipo, setor });
   const res = await apiFetch(`/api/painel-producao/apuracao/detalhe?${params}`);
   return parseJson(res);
 }
@@ -173,6 +223,33 @@ export async function savePainelProducaoTarget(payload: {
 }): Promise<PainelProducaoTargetRow> {
   const res = await apiFetch('/api/painel-producao/targets', {
     method: 'POST',
+    body: payload,
+  });
+  return parseJson(res);
+}
+
+export async function savePainelProducaoSetorPenalizacao(payload: {
+  mes: string;
+  setor: string;
+  considerar_penalizacoes: boolean;
+}): Promise<{ mes: string; setor: string; considerar_penalizacoes: boolean }> {
+  const res = await apiFetch('/api/painel-producao/setor-penalizacao', {
+    method: 'PUT',
+    body: payload,
+  });
+  return parseJson(res);
+}
+
+export async function savePainelProducaoFaixasDesconto(payload: {
+  mes: string;
+  faixas: Array<{
+    media_min: number;
+    media_max: number | null;
+    percentual_desconto: number;
+  }>;
+}): Promise<PainelProducaoFaixaDesconto[]> {
+  const res = await apiFetch('/api/painel-producao/faixas-desconto', {
+    method: 'PUT',
     body: payload,
   });
   return parseJson(res);

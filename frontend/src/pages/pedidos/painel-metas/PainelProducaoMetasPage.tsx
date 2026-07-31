@@ -3,10 +3,13 @@ import { MonthFilter } from '../../../components/painel-producao/MonthFilter';
 import { PainelProducaoShell } from '../../../components/painel-producao/PainelProducaoShell';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
+  fetchPainelProducaoFaixasDesconto,
   fetchPainelProducaoFilters,
   fetchPainelProducaoTargets,
+  savePainelProducaoFaixasDesconto,
+  savePainelProducaoSetorPenalizacao,
   savePainelProducaoTarget,
-  type PainelProducaoTargetRow,
+  type PainelProducaoFaixaDesconto,
 } from '../../../api/painelProducao';
 import { formatMesLabel } from '../../../utils/painelProducaoFormat';
 import { podeEditarPainelMetas } from '../../../utils/painelProducaoPermissoes';
@@ -22,6 +25,13 @@ type CampoMeta =
   | 'valor_aco';
 
 type LinhaMeta = Record<CampoMeta, string>;
+type GuiaCadastro = 'metas' | 'faixas';
+type LinhaFaixa = {
+  key: string;
+  media_min: string;
+  media_max: string;
+  percentual_desconto: string;
+};
 
 const CAMPOS_META: CampoMeta[] = [
   'meta_bronze',
@@ -52,6 +62,20 @@ function paraNumero(texto: string): number | null {
   return Number.isFinite(numero) && numero >= 0 ? numero : Number.NaN;
 }
 
+function paraDecimal(texto: string): number {
+  const numero = Number(texto.trim().replace(',', '.'));
+  return Number.isFinite(numero) && numero >= 0 ? numero : Number.NaN;
+}
+
+function faixaParaLinha(faixa: PainelProducaoFaixaDesconto): LinhaFaixa {
+  return {
+    key: String(faixa.id ?? faixa.ordem),
+    media_min: String(faixa.media_min).replace('.', ','),
+    media_max: faixa.media_max == null ? '' : String(faixa.media_max).replace('.', ','),
+    percentual_desconto: String(faixa.percentual_desconto).replace('.', ','),
+  };
+}
+
 function LoadingOverlay({ message = 'Carregando...', show = true }: { message?: string; show?: boolean }) {
   const visivel = useDuracaoMinima(show);
   if (!visivel) return null;
@@ -73,14 +97,23 @@ export default function PainelProducaoMetasPage() {
   const [setores, setSetores] = useState<string[]>([]);
   const [meses, setMeses] = useState<string[]>([]);
   const [mes, setMes] = useState('');
+  const [guia, setGuia] = useState<GuiaCadastro>('metas');
   const [linhas, setLinhas] = useState<Record<string, LinhaMeta>>({});
   const [semMeta, setSemMeta] = useState<Record<string, boolean>>({});
+  const [considerarPenalizacoes, setConsiderarPenalizacoes] = useState<Record<string, boolean>>(
+    {},
+  );
   const [editingSetores, setEditingSetores] = useState<Set<string>>(() => new Set());
   const [editSnapshots, setEditSnapshots] = useState<
     Record<string, { linha: LinhaMeta; semMeta: boolean }>
   >({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [savingPenalizacaoSetor, setSavingPenalizacaoSetor] = useState<string | null>(null);
+  const [faixas, setFaixas] = useState<LinhaFaixa[]>([]);
+  const [faixasSnapshot, setFaixasSnapshot] = useState<LinhaFaixa[]>([]);
+  const [editandoFaixas, setEditandoFaixas] = useState(false);
+  const [savingFaixas, setSavingFaixas] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -122,12 +155,17 @@ export default function PainelProducaoMetasPage() {
       setError(null);
       setSuccess(null);
       try {
-        const rows: PainelProducaoTargetRow[] = await fetchPainelProducaoTargets(mes);
+        const [rows, faixasCarregadas] = await Promise.all([
+          fetchPainelProducaoTargets(mes),
+          fetchPainelProducaoFaixasDesconto(mes),
+        ]);
         if (cancelled) return;
         const linhaMap: Record<string, LinhaMeta> = {};
         const semMap: Record<string, boolean> = {};
+        const penalMap: Record<string, boolean> = {};
         for (const row of rows) {
           semMap[row.setor] = !!row.sem_meta;
+          penalMap[row.setor] = row.considerar_penalizacoes !== false;
           linhaMap[row.setor] = row.sem_meta
             ? { ...LINHA_VAZIA }
             : {
@@ -141,6 +179,10 @@ export default function PainelProducaoMetasPage() {
         }
         setLinhas(linhaMap);
         setSemMeta(semMap);
+        setConsiderarPenalizacoes(penalMap);
+        setFaixas(faixasCarregadas.map(faixaParaLinha));
+        setFaixasSnapshot([]);
+        setEditandoFaixas(false);
         setEditingSetores(new Set());
         setEditSnapshots({});
       } catch (err) {
@@ -156,6 +198,107 @@ export default function PainelProducaoMetasPage() {
       cancelled = true;
     };
   }, [mes]);
+
+  async function alternarPenalizacaoSetor(setor: string) {
+    if (!mes || !podeEditar || savingPenalizacaoSetor) return;
+    const atual = considerarPenalizacoes[setor] !== false;
+    const novoValor = !atual;
+    setSavingPenalizacaoSetor(setor);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await savePainelProducaoSetorPenalizacao({
+        mes,
+        setor,
+        considerar_penalizacoes: novoValor,
+      });
+      setConsiderarPenalizacoes((prev) => ({
+        ...prev,
+        [setor]: result.considerar_penalizacoes,
+      }));
+      setSuccess(
+        result.considerar_penalizacoes
+          ? `Penalizações ativadas para ${setor}.`
+          : `Penalizações desligadas para ${setor}.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao atualizar penalizações.');
+    } finally {
+      setSavingPenalizacaoSetor(null);
+    }
+  }
+
+  function iniciarEdicaoFaixas() {
+    setFaixasSnapshot(faixas.map((faixa) => ({ ...faixa })));
+    setEditandoFaixas(true);
+    setError(null);
+    setSuccess(null);
+  }
+
+  function cancelarEdicaoFaixas() {
+    setFaixas(faixasSnapshot.map((faixa) => ({ ...faixa })));
+    setFaixasSnapshot([]);
+    setEditandoFaixas(false);
+    setError(null);
+    setSuccess(null);
+  }
+
+  function alterarFaixa(key: string, campo: keyof Omit<LinhaFaixa, 'key'>, valor: string) {
+    setFaixas((prev) =>
+      prev.map((faixa) => (faixa.key === key ? { ...faixa, [campo]: valor } : faixa)),
+    );
+    setSuccess(null);
+  }
+
+  function adicionarFaixa() {
+    setFaixas((prev) => [
+      ...prev,
+      {
+        key: `nova-${Date.now()}`,
+        media_min: '',
+        media_max: '',
+        percentual_desconto: '',
+      },
+    ]);
+  }
+
+  function removerFaixa(key: string) {
+    setFaixas((prev) => prev.filter((faixa) => faixa.key !== key));
+  }
+
+  async function salvarFaixas() {
+    setSavingFaixas(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const payload = faixas.map((faixa, index) => {
+        const mediaMin = paraDecimal(faixa.media_min);
+        const mediaMax = faixa.media_max.trim() === '' ? null : paraDecimal(faixa.media_max);
+        const desconto = paraDecimal(faixa.percentual_desconto);
+        if (
+          Number.isNaN(mediaMin) ||
+          (mediaMax != null && Number.isNaN(mediaMax)) ||
+          Number.isNaN(desconto)
+        ) {
+          throw new Error(`Preencha corretamente os valores da faixa ${index + 1}.`);
+        }
+        return {
+          media_min: mediaMin,
+          media_max: mediaMax,
+          percentual_desconto: desconto,
+        };
+      });
+      const salvas = await savePainelProducaoFaixasDesconto({ mes, faixas: payload });
+      setFaixas(salvas.map(faixaParaLinha));
+      setFaixasSnapshot([]);
+      setEditandoFaixas(false);
+      setSuccess('Faixas de desconto salvas com sucesso.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao salvar faixas de desconto.');
+    } finally {
+      setSavingFaixas(false);
+    }
+  }
 
   function linhaDoSetor(setor: string): LinhaMeta {
     return linhas[setor] ?? LINHA_VAZIA;
@@ -331,9 +474,33 @@ export default function PainelProducaoMetasPage() {
 
         <main className="targets-main">
           <div className="card targets-card">
+            <div className="targets-tabs" role="tablist" aria-label="Cadastro de metas">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={guia === 'metas'}
+                className={guia === 'metas' ? 'is-active' : undefined}
+                onClick={() => setGuia('metas')}
+              >
+                Metas por setor
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={guia === 'faixas'}
+                className={guia === 'faixas' ? 'is-active' : undefined}
+                onClick={() => setGuia('faixas')}
+              >
+                Faixas de desconto
+              </button>
+            </div>
+
             <div className="targets-card-header">
-              <h2>Metas por setor — {formatMesLabel(mes)}</h2>
-              {podeEditar && (
+              <h2>
+                {guia === 'metas' ? 'Metas por setor' : 'Faixas de desconto'} —{' '}
+                {formatMesLabel(mes)}
+              </h2>
+              {podeEditar && guia === 'metas' && (
                 <div className="targets-header-actions">
                   {algumEditando ? (
                     <>
@@ -366,12 +533,46 @@ export default function PainelProducaoMetasPage() {
                   )}
                 </div>
               )}
+              {podeEditar && guia === 'faixas' && (
+                <div className="targets-header-actions">
+                  {editandoFaixas ? (
+                    <>
+                      <button
+                        type="button"
+                        className="targets-cancel-all"
+                        onClick={cancelarEdicaoFaixas}
+                        disabled={savingFaixas}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        className="targets-save-all"
+                        onClick={() => void salvarFaixas()}
+                        disabled={savingFaixas || faixas.length === 0}
+                      >
+                        {savingFaixas ? 'Salvando…' : 'Salvar faixas'}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="targets-edit-all"
+                      onClick={iniciarEdicaoFaixas}
+                    >
+                      Editar faixas
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {error && <p className="targets-feedback error">{error}</p>}
             {success && <p className="targets-feedback success">{success}</p>}
 
-            <div className="targets-table-wrap">
+            {guia === 'metas' ? (
+              <>
+                <div className="targets-table-wrap">
               <table className="targets-table targets-table-niveis">
                 <thead>
                   <tr>
@@ -383,6 +584,7 @@ export default function PainelProducaoMetasPage() {
                     <th colSpan={3} className="targets-group">
                       Valor a pagar (R$)
                     </th>
+                    <th rowSpan={2}>Penalizações</th>
                     {podeEditar && <th rowSpan={2} aria-label="Ações" />}
                   </tr>
                   <tr>
@@ -444,6 +646,34 @@ export default function PainelProducaoMetasPage() {
                             />
                           </td>
                         ))}
+                        <td>
+                          {(() => {
+                            const penalAtiva = considerarPenalizacoes[setor] !== false;
+                            const salvandoPenal = savingPenalizacaoSetor === setor;
+                            return (
+                              <button
+                                type="button"
+                                className={`targets-penalizacoes-btn${penalAtiva ? ' is-on' : ' is-off'}`}
+                                onClick={() => void alternarPenalizacaoSetor(setor)}
+                                disabled={
+                                  !podeEditar || noMeta || !!saving || !!savingPenalizacaoSetor
+                                }
+                                title={
+                                  penalAtiva
+                                    ? 'Clique para não aplicar penalizações neste setor'
+                                    : 'Clique para aplicar penalizações neste setor'
+                                }
+                                aria-pressed={penalAtiva}
+                              >
+                                {salvandoPenal
+                                  ? '…'
+                                  : penalAtiva
+                                    ? 'Ativas'
+                                    : 'Desligadas'}
+                              </button>
+                            );
+                          })()}
+                        </td>
                         {podeEditar && (
                           <td>
                             <div className="targets-row-actions">
@@ -484,17 +714,113 @@ export default function PainelProducaoMetasPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+                </div>
 
-            {setores.length === 0 && (
-              <p className="state-message">Nenhum setor encontrado.</p>
+                {setores.length === 0 && (
+                  <p className="state-message">Nenhum setor encontrado.</p>
+                )}
+              </>
+            ) : (
+              <div className="targets-faixas">
+                <p className="targets-faixas-intro">
+                  Estas faixas valem para todos os setores de montagem no mês selecionado.
+                </p>
+                <div className="targets-table-wrap">
+                  <table className="targets-table targets-faixas-table">
+                    <thead>
+                      <tr>
+                        <th>Média inicial</th>
+                        <th>Média final</th>
+                        <th>Desconto (%)</th>
+                        {editandoFaixas && <th aria-label="Ações" />}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {faixas.map((faixa, index) => (
+                        <tr key={faixa.key}>
+                          <td>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              className="targets-input"
+                              value={faixa.media_min}
+                              readOnly={!editandoFaixas}
+                              onChange={(event) =>
+                                alterarFaixa(faixa.key, 'media_min', event.target.value)
+                              }
+                              aria-label={`Média inicial da faixa ${index + 1}`}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              className="targets-input"
+                              value={faixa.media_max}
+                              placeholder="Sem limite"
+                              readOnly={!editandoFaixas}
+                              onChange={(event) =>
+                                alterarFaixa(faixa.key, 'media_max', event.target.value)
+                              }
+                              aria-label={`Média final da faixa ${index + 1}`}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              className="targets-input"
+                              value={faixa.percentual_desconto}
+                              readOnly={!editandoFaixas}
+                              onChange={(event) =>
+                                alterarFaixa(
+                                  faixa.key,
+                                  'percentual_desconto',
+                                  event.target.value,
+                                )
+                              }
+                              aria-label={`Desconto da faixa ${index + 1}`}
+                            />
+                          </td>
+                          {editandoFaixas && (
+                            <td>
+                              <button
+                                type="button"
+                                className="targets-cancel-btn"
+                                onClick={() => removerFaixa(faixa.key)}
+                                disabled={faixas.length === 1}
+                              >
+                                Remover
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {editandoFaixas && (
+                  <button
+                    type="button"
+                    className="targets-add-faixa"
+                    onClick={adicionarFaixa}
+                  >
+                    Adicionar faixa
+                  </button>
+                )}
+                <p className="targets-faixas-note">
+                  Deixe a média final vazia somente na última faixa para representar “sem limite”.
+                </p>
+              </div>
             )}
           </div>
 
           <p className="targets-hint">
-            {podeEditar
-              ? 'A meta do painel é a do nível Aço. A apuração usa o maior nível alcançado pela produção e paga o valor fixo desse nível, menos a penalização qualitativa.'
-              : 'Visualização das metas de produção por setor e nível.'}
+            {guia === 'metas'
+              ? podeEditar
+                ? 'A meta do painel é a do nível Aço. Em cada setor, use Penalizações para ligar ou desligar o desconto qualitativo na apuração.'
+                : 'Visualização das metas de produção por setor e nível.'
+              : 'A apuração da montagem usa automaticamente as faixas cadastradas para este mês.'}
           </p>
         </main>
       </div>

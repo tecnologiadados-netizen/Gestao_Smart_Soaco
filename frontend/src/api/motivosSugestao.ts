@@ -3,18 +3,26 @@ import { apiFetch, apiJson } from './client';
 export interface MotivoSugestao {
   id: number;
   descricao: string;
+  abonada: boolean;
+  aplicacaoNaoAbonada: 'montagem' | 'producao' | 'ambos' | null;
   createdAt: string;
   updatedAt: string;
 }
+
+export type MotivoSugestaoDados = {
+  descricao: string;
+  abonada: boolean;
+  aplicacao_nao_abonada: 'montagem' | 'producao' | 'ambos' | null;
+};
 
 export async function listarMotivosSugestao(): Promise<MotivoSugestao[]> {
   return apiJson<MotivoSugestao[]>('/api/motivos-sugestao');
 }
 
-export async function criarMotivoSugestao(descricao: string): Promise<MotivoSugestao> {
+export async function criarMotivoSugestao(dados: MotivoSugestaoDados): Promise<MotivoSugestao> {
   const res = await apiFetch('/api/motivos-sugestao', {
     method: 'POST',
-    body: { descricao: descricao.trim() },
+    body: { ...dados, descricao: dados.descricao.trim() },
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -25,12 +33,12 @@ export async function criarMotivoSugestao(descricao: string): Promise<MotivoSuge
 
 export async function atualizarMotivoSugestao(
   id: number,
-  descricao: string,
+  dados: MotivoSugestaoDados,
   senha: string
 ): Promise<MotivoSugestao> {
   const res = await apiFetch(`/api/motivos-sugestao/${id}`, {
     method: 'PUT',
-    body: { descricao: descricao.trim(), senha: senha.trim() },
+    body: { ...dados, descricao: dados.descricao.trim(), senha: senha.trim() },
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));

@@ -3,12 +3,9 @@ import { z } from 'zod';
 import { ajustarDataProducaoLote, listarPedidos, type DataProducaoLoteItem, type Pedido } from '../api/pedidos';
 import { dataProducaoRealPedido } from '../utils/dataProducaoGerenciador';
 import { listarMotivosSugestao, type MotivoSugestao } from '../api/motivosSugestao';
-import ModalGerenciarMotivos from './ModalGerenciarMotivos';
 import CampoLabelComAjuda, { AJUDA_CAMPO_OBSERVACAO } from './CampoLabelComAjuda';
 import SequenciamentoDateField from './sequenciamento-carradas/SequenciamentoDateField';
 import { montarItensDataProducaoCalendario, rotaPayloadAjusteDoCalendario } from './sequenciamento-carradas/ajustePrevisaoCalendario';
-import { useAuth } from '../contexts/AuthContext';
-import { PERMISSOES } from '../config/permissoes';
 import {
   isCarradaRota,
   isExcludedSqlRotaCategory,
@@ -148,7 +145,6 @@ export default function ModalAjustePrevisao({
   const [errors, setErrors] = useState<{ previsao_nova?: string; data_producao_nova?: string; motivo?: string }>({});
   const [sugestoes, setSugestoes] = useState<MotivoSugestao[]>([]);
   const [loadingSugestoes, setLoadingSugestoes] = useState(false);
-  const [abrirGerenciar, setAbrirGerenciar] = useState(false);
   const [flowStep, setFlowStep] = useState<FlowStep>('form');
   const [carradaRotaNome, setCarradaRotaNome] = useState('');
   const [carradaCheckLoading, setCarradaCheckLoading] = useState(false);
@@ -156,12 +152,6 @@ export default function ModalAjustePrevisao({
   const pendingRef = useRef<PendingDecision | null>(null);
   const pendingProducaoRef = useRef<string | null>(null);
   const sucessoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { hasPermission } = useAuth();
-  const podeGerenciarMotivos =
-    hasPermission(PERMISSOES.PCP_MOTIVO_CRIAR) ||
-    hasPermission(PERMISSOES.PCP_MOTIVO_EDITAR) ||
-    hasPermission(PERMISSOES.PCP_MOTIVO_EXCLUIR) ||
-    hasPermission(PERMISSOES.PCP_TOTAL);
 
   const carregarSugestoes = () => {
     setLoadingSugestoes(true);
@@ -847,22 +837,8 @@ export default function ModalAjustePrevisao({
             </>
           )}
           <div className="mb-4">
-            <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="mb-1">
               <label className="block text-xs text-slate-400">Motivo</label>
-              {podeGerenciarMotivos && (
-                <button
-                  type="button"
-                  onClick={() => setAbrirGerenciar(true)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-600 transition-colors"
-                  title="Gerenciar motivos"
-                  aria-label="Gerenciar motivos"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                  </svg>
-                </button>
-              )}
             </div>
             <select
               value={motivo}
@@ -1021,13 +997,6 @@ export default function ModalAjustePrevisao({
         )}
       </div>
 
-      {abrirGerenciar && podeGerenciarMotivos && (
-        <ModalGerenciarMotivos
-          onClose={() => setAbrirGerenciar(false)}
-          onError={onError}
-          onAtualizado={carregarSugestoes}
-        />
-      )}
     </div>
   );
 }
