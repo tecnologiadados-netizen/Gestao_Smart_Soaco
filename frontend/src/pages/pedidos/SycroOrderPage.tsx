@@ -1287,6 +1287,8 @@ export default function SycroOrderPage() {
           </div>
         </div>
       )}
+
+      <SycroOrderAjudaModal aberto={modalAjudaAberto} onClose={() => setModalAjudaAberto(false)} />
     </div>
   );
 }
@@ -2661,7 +2663,6 @@ function ModalAtualizarPedido({
             onAtualizado={carregarMotivos}
           />
         )}
-        <SycroOrderAjudaModal aberto={modalAjudaAberto} onClose={() => setModalAjudaAberto(false)} />
       </div>
     </div>
   );
