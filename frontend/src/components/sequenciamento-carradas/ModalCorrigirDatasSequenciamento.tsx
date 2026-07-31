@@ -59,8 +59,14 @@ const COL_LABELS: Record<string, string> = {
 type Props = {
   invalidas: CarradaDataInvalida[];
   onEditar: (key: string, campo: 'dataProducao' | 'dataEntrega', value: string) => void;
-  onContinuar: () => void;
-  onClose: () => void;
+  /** Omitido no modo embutido (mesclado com motivos). */
+  onContinuar?: () => void;
+  onClose?: () => void;
+  /**
+   * Embutido no modal de conclusão: só banner + grade (sem overlay/rodapé).
+   * Default false = modal standalone (legado).
+   */
+  embedded?: boolean;
 };
 
 function textoCelulaFiltro(c: CarradaDataInvalida, colId: string): string {
@@ -225,6 +231,7 @@ export default function ModalCorrigirDatasSequenciamento({
   onEditar,
   onContinuar,
   onClose,
+  embedded = false,
 }: Props) {
   const hoje = hojeISO();
   const aindaInvalidas = invalidas.some((c) => !c.concluida);
@@ -307,10 +314,15 @@ export default function ModalCorrigirDatasSequenciamento({
       grade.fecharFiltroExcel();
       return;
     }
-    onClose();
+    onClose?.();
   };
 
-  useRegisterModalEscape({ id: 'seq-corrigir-datas', onClose: handleEscape, zIndex: 140 });
+  useRegisterModalEscape({
+    id: 'seq-corrigir-datas',
+    onClose: handleEscape,
+    zIndex: 140,
+    enabled: !embedded,
+  });
 
   const handleDateKey = (
     e: React.KeyboardEvent<HTMLButtonElement>,
@@ -347,45 +359,52 @@ export default function ModalCorrigirDatasSequenciamento({
     </th>
   );
 
-  return (
+  const bannerDatas = (
     <div
-      className="fixed inset-0 z-[140] flex items-center justify-center bg-black/70 p-4"
-      role="presentation"
-      onClick={onClose}
+      className={
+        embedded
+          ? 'shrink-0 border-b border-amber-200 bg-amber-50/80 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/30'
+          : 'shrink-0 border-b border-slate-200 px-4 py-3 dark:border-slate-600'
+      }
     >
-      <div
-        className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="corrigir-datas-titulo"
-        onClick={(e) => e.stopPropagation()}
+      {!embedded ? (
+        <h2 id="corrigir-datas-titulo" className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+          Corrigir datas antes de concluir
+        </h2>
+      ) : (
+        <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+          Datas a corrigir
+        </h3>
+      )}
+      <p
+        className={`text-sm text-slate-600 dark:text-slate-400 ${embedded ? 'mt-0.5 text-xs text-amber-900/90 dark:text-amber-100/80' : 'mt-1'}`}
       >
-        <div className="shrink-0 border-b border-slate-200 px-4 py-3 dark:border-slate-600">
-          <h2 id="corrigir-datas-titulo" className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-            Corrigir datas antes de concluir
-          </h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            {temPrevisaoVencida ? (
-              <>
-                Há {temItensPedido ? 'itens' : 'carradas'} com previsão de entrega anterior a hoje (
-                {formatDataCurta(hoje)}). Antes de registrar os motivos, ajuste as datas de produção e entrega
-                abaixo para refletir o planejamento atual.
-                {qtdConcluidas > 0 ? (
-                  <> Itens já corrigidos permanecem na lista com fundo verde.</>
-                ) : null}
-              </>
-            ) : (
-              <>
-                Há {temItensPedido ? 'itens' : 'carradas'} com data de produção ou entrega anterior a hoje (
-                {formatDataCurta(hoje)}). Ajuste as datas abaixo para continuar.
-                {qtdConcluidas > 0 ? (
-                  <> Itens já corrigidos permanecem na lista com fundo verde.</>
-                ) : null}
-              </>
-            )}
-          </p>
-        </div>
+        {temPrevisaoVencida ? (
+          <>
+            Há {temItensPedido ? 'itens' : 'carradas'} com previsão de entrega anterior a hoje (
+            {formatDataCurta(hoje)}). Ajuste as datas de produção e entrega abaixo
+            {embedded ? ' e informe os motivos na seção seguinte' : ' para refletir o planejamento atual'}
+            .
+            {qtdConcluidas > 0 ? (
+              <> Itens já corrigidos permanecem na lista com fundo verde.</>
+            ) : null}
+          </>
+        ) : (
+          <>
+            Há {temItensPedido ? 'itens' : 'carradas'} com data de produção ou entrega anterior a hoje (
+            {formatDataCurta(hoje)}). Ajuste as datas abaixo
+            {embedded ? ' e informe os motivos na seção seguinte' : ' para continuar'}.
+            {qtdConcluidas > 0 ? (
+              <> Itens já corrigidos permanecem na lista com fundo verde.</>
+            ) : null}
+          </>
+        )}
+      </p>
+    </div>
+  );
 
+  const corpoTabela = (
+    <>
         {grade.temFiltrosOuOrdem && (
           <div className="flex shrink-0 items-center justify-end border-b border-slate-200 px-4 py-1.5 dark:border-slate-600">
             <button
@@ -398,7 +417,10 @@ export default function ModalCorrigirDatasSequenciamento({
           </div>
         )}
 
-        <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-auto">
+        <div
+          ref={grade.tableScrollRef}
+          className={embedded ? 'max-h-[40vh] overflow-auto' : 'min-h-0 flex-1 overflow-auto'}
+        >
           <table className="w-full border-collapse text-left text-sm">
             <thead>
               <tr>
@@ -682,7 +704,33 @@ export default function ModalCorrigirDatasSequenciamento({
             onCancelar={grade.fecharFiltroExcel}
           />
         )}
+    </>
+  );
 
+  if (embedded) {
+    return (
+      <div className="flex shrink-0 flex-col border-b border-slate-200 dark:border-slate-600">
+        {bannerDatas}
+        {corpoTabela}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[140] flex items-center justify-center bg-black/70 p-4"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="corrigir-datas-titulo"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {bannerDatas}
+        {corpoTabela}
         <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 px-4 py-3 dark:border-slate-600">
           <button
             type="button"

@@ -10,6 +10,7 @@ import {
   resolverDataCalendarioLinha,
   encontrarLinhaSnapshotNoDrill,
   linhaCarradaKey,
+  simItemKey,
   computarBaselines,
   listarCarradasComDatasPassadas,
   atualizarEstadoLinhaCorrigirDatas,
@@ -231,6 +232,62 @@ describe('Fallback previsão atual no calendário', () => {
     const detA = dados.detalhes.find((d) => d.codigoProduto === 'PA 11398');
     expect(detA?.producaoPorPrevisao).toBeUndefined();
     expect(detA?.data).toBe('2026-08-17');
+  });
+
+  it('ordem final: simItemKey altera só o item; chave compartilhada do TipoF não contamina os demais', () => {
+    const linhaA: Record<string, unknown> = {
+      id_pedido: '100-43915-11398',
+      RM: '',
+      Observacoes: '5-Requisicao',
+      data_producao: '2026-08-17',
+      previsao_entrega_atualizada: '2026-08-19',
+      'Qtde Pendente Real': 2,
+      'Setor de Producao': 'Balcões',
+      PD: '43915',
+      Cod: 'PA 11398',
+    };
+    const linhaB: Record<string, unknown> = {
+      id_pedido: '100-43916-11399',
+      RM: '',
+      Observacoes: '5-Requisicao',
+      data_producao: '2026-08-20',
+      previsao_entrega_atualizada: '2026-08-22',
+      'Qtde Pendente Real': 1,
+      'Setor de Producao': 'Balcões',
+      PD: '43916',
+      Cod: 'PA 11399',
+    };
+    const bl = computarBaselines([linhaA, linhaB]);
+    const sharedKey = linhaCarradaKey(linhaA);
+    expect(sharedKey).toBe(linhaCarradaKey(linhaB));
+
+    // Residual/legado: override na chave compartilhada NÃO deve mover B (nem A se item não tem sim).
+    const simContaminado = new Map<string, SimEntry>([
+      [sharedKey, { dataProducao: '2026-09-01', dataEntrega: '2026-09-05' }],
+    ]);
+    expect(resolverDataCalendarioLinha(linhaA, simContaminado, bl).data).toBe('2026-08-17');
+    expect(resolverDataCalendarioLinha(linhaB, simContaminado, bl).data).toBe('2026-08-20');
+    expect(datasItemPedidoGerenciador(linhaB, simContaminado, bl).previsaoAtual).toBe('2026-08-22');
+
+    // Gravação correta: só simItemKey(A) move A.
+    const simItem = new Map<string, SimEntry>([
+      [simItemKey('100-43915-11398'), { dataProducao: '2026-09-10', dataEntrega: '2026-09-12' }],
+    ]);
+    expect(resolverDataCalendarioLinha(linhaA, simItem, bl)).toEqual({
+      data: '2026-09-10',
+      origem: 'producao',
+    });
+    expect(resolverDataCalendarioLinha(linhaB, simItem, bl)).toEqual({
+      data: '2026-08-20',
+      origem: 'producao',
+    });
+    expect(datasItemPedidoGerenciador(linhaA, simItem, bl).previsaoAtual).toBe('2026-09-12');
+    expect(datasItemPedidoGerenciador(linhaB, simItem, bl).previsaoAtual).toBe('2026-08-22');
+
+    const dados = computarCalendarioProducao([linhaA, linhaB], simItem, bl);
+    expect(dados.totalPorData.get('2026-09-10')).toBe(2);
+    expect(dados.totalPorData.get('2026-08-20')).toBe(1);
+    expect(dados.totalPorData.get('2026-08-17')).toBeUndefined();
   });
 
   it('exclui linha sem data_producao e sem previsão', () => {

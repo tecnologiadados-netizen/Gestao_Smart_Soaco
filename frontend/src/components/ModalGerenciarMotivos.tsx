@@ -118,7 +118,7 @@ export default function ModalGerenciarMotivos({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 dark:bg-black/80" onClick={onClose}>
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/75 dark:bg-black/80" onClick={onClose}>
       <div
         className="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-xl max-w-3xl w-full p-6 max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}

@@ -6,6 +6,7 @@ import {
 } from '../services/disponibilidadeMateriaisCalendarioService.js';
 import { listarPedidos } from './pedidosRepository.js';
 import { getProgramacaoSetorialEstoqueSaldo } from './programacaoSetorialRepository.js';
+import { isCarradaEmFormacao } from '../utils/rotaCarrada.js';
 
 export const SEQUENCIAMENTO_PAYLOAD_MAX_CHARS = 24 * 1024 * 1024;
 
@@ -391,6 +392,77 @@ function computarBaselinesRepo(linhas: Record<string, unknown>[]): Map<string, B
   return out;
 }
 
+function valorEfetivoDataRepo(
+  simByKey: Map<string, { dataProducao?: string | null; dataEntrega?: string | null }>,
+  baseline: Map<string, BaselineRepo>,
+  key: string,
+  campo: 'dataProducao' | 'dataEntrega'
+): string {
+  const s = simByKey.get(key);
+  const raw = s?.[campo];
+  if (raw != null && String(raw).trim() !== '') return String(raw).trim();
+  if (raw === '') return '';
+  return baseline.get(key)?.[campo] ?? '';
+}
+
+function listarCarradasSemDatasUnificadasRepo(
+  carradas: SequenciamentoCarradaAgregada[],
+  simByKey: Map<string, { dataProducao?: string | null; dataEntrega?: string | null }>,
+  baseline: Map<string, BaselineRepo>
+): Array<{ key: string; cod: string; carrada: string; faltaProducao: boolean; faltaEntrega: boolean }> {
+  const out: Array<{
+    key: string;
+    cod: string;
+    carrada: string;
+    faltaProducao: boolean;
+    faltaEntrega: boolean;
+  }> = [];
+  for (const c of carradas) {
+    if (isCarradaOrdemFinal(c.carrada)) continue;
+    if (isCarradaEmFormacao(c.carrada)) continue;
+    const key = carradaKeyRepo(c.cod, c.carrada);
+    const faltaProducao = !valorEfetivoDataRepo(simByKey, baseline, key, 'dataProducao');
+    const faltaEntrega = !valorEfetivoDataRepo(simByKey, baseline, key, 'dataEntrega');
+    if (faltaProducao || faltaEntrega) {
+      out.push({ key, cod: c.cod, carrada: c.carrada, faltaProducao, faltaEntrega });
+    }
+  }
+  return out;
+}
+
+function mensagemBloqueioCarradasSemDatasUnificadasRepo(
+  carradas: Array<{ carrada: string; faltaProducao: boolean; faltaEntrega: boolean }>
+): string {
+  if (carradas.length === 0) return '';
+  const nomes = carradas.map((c) => c.carrada);
+  const lista = nomes.slice(0, 5).join('; ');
+  const extra = nomes.length > 5 ? ` (+${nomes.length - 5} outra(s))` : '';
+  const temProd = carradas.some((c) => c.faltaProducao);
+  const temEnt = carradas.some((c) => c.faltaEntrega);
+  let campos: string;
+  if (temProd && temEnt) campos = 'produção e/ou entrega';
+  else if (temProd) campos = 'produção';
+  else campos = 'entrega';
+  return (
+    `Não é possível concluir: há carrada(s) sem data de ${campos} unificada ` +
+    '(pedidos com datas divergentes ou sem data). Preencha as datas antes de registrar motivos. ' +
+    `Carradas: ${lista}${extra}`
+  );
+}
+
+function simByKeyFromPayload(simulacao: SequenciamentoSimulacao | null | undefined): Map<
+  string,
+  { dataProducao?: string | null; dataEntrega?: string | null }
+> {
+  const map = new Map<string, { dataProducao?: string | null; dataEntrega?: string | null }>();
+  if (!simulacao?.itens) return map;
+  for (const it of simulacao.itens) {
+    if (!it.chave) continue;
+    map.set(it.chave, { dataProducao: it.dataProducao, dataEntrega: it.dataEntrega });
+  }
+  return map;
+}
+
 /** Simulação do snapshot concluído mais recente (nunca usa rascunho). */
 export async function obterSimulacaoUltimoSnapshotConcluido(): Promise<SequenciamentoSimulacao | null> {
   const row = await prisma.sequenciamentoCarradasSnapshot.findFirst({
@@ -602,13 +674,91 @@ export async function atualizarSimulacaoSnapshot(
 /** Marca o snapshot como concluído (status final; somente leitura). */
 export async function concluirSnapshotSequenciamento(
   id: number
-): Promise<{ ok: true } | { ok: false; error: string; notFound?: boolean }> {
+): Promise<
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+      notFound?: boolean;
+      carradasSemDataEntrega?: string[];
+    }
+> {
   const row = await prisma.sequenciamentoCarradasSnapshot.findUnique({
     where: { id },
-    select: { id: true, status: true },
+    select: { id: true, status: true, payload: true },
   });
   if (!row) return { ok: false, error: 'Snapshot não encontrado.', notFound: true };
   if (row.status === 'concluido') return { ok: true };
+
+  let payload: SequenciamentoCarradasPayload | null = null;
+  try {
+    const parsed = JSON.parse(row.payload) as unknown;
+    const val = validarPayloadSequenciamento(parsed);
+    if (val.ok) payload = val.payload;
+  } catch {
+    payload = null;
+  }
+  if (!payload) {
+    return { ok: false, error: 'Payload do snapshot ilegível; não é possível concluir.' };
+  }
+
+  const simulacao =
+    payload.version === 2
+      ? sanitizarSimulacao((payload as SequenciamentoCarradasPayloadV2).simulacao)
+      : null;
+  const simByKey = simByKeyFromPayload(simulacao);
+  const baselineSnap = computarBaselinesRepo(payload.linhas);
+  const semSnap = listarCarradasSemDatasUnificadasRepo(payload.carradas, simByKey, baselineSnap);
+
+  // Revalida composição ao vivo: bloqueia só se as datas efetivas do snapshot também estiverem vazias.
+  let semLive: Array<{
+    key: string;
+    cod: string;
+    carrada: string;
+    faltaProducao: boolean;
+    faltaEntrega: boolean;
+  }> = [];
+  try {
+    const { payload: vivo, erroConexao } = await montarPayloadSequenciamento();
+    if (!erroConexao) {
+      const blLive = computarBaselinesRepo(vivo.linhas);
+      const keysSnap = new Set(payload.carradas.map((c) => carradaKeyRepo(c.cod, c.carrada)));
+      const carradasLiveNoSnap = vivo.carradas.filter((c) => keysSnap.has(carradaKeyRepo(c.cod, c.carrada)));
+      semLive = listarCarradasSemDatasUnificadasRepo(carradasLiveNoSnap, simByKey, blLive).filter((c) => {
+        const faltaProdSnap = !valorEfetivoDataRepo(simByKey, baselineSnap, c.key, 'dataProducao');
+        const faltaEntSnap = !valorEfetivoDataRepo(simByKey, baselineSnap, c.key, 'dataEntrega');
+        return faltaProdSnap || faltaEntSnap;
+      });
+    }
+  } catch (err) {
+    console.error(
+      '[sequenciamento] revalidação ao vivo no concluir falhou:',
+      err instanceof Error ? err.message : err
+    );
+  }
+
+  const byKey = new Map<
+    string,
+    { key: string; cod: string; carrada: string; faltaProducao: boolean; faltaEntrega: boolean }
+  >();
+  for (const c of [...semSnap, ...semLive]) {
+    const prev = byKey.get(c.key);
+    if (!prev) {
+      byKey.set(c.key, { ...c });
+      continue;
+    }
+    prev.faltaProducao = prev.faltaProducao || c.faltaProducao;
+    prev.faltaEntrega = prev.faltaEntrega || c.faltaEntrega;
+  }
+  const semDatas = [...byKey.values()];
+  if (semDatas.length > 0) {
+    return {
+      ok: false,
+      error: mensagemBloqueioCarradasSemDatasUnificadasRepo(semDatas),
+      carradasSemDataEntrega: semDatas.map((c) => c.carrada),
+    };
+  }
+
   await prisma.sequenciamentoCarradasSnapshot.update({
     where: { id },
     data: { status: 'concluido', updatedAt: new Date() },

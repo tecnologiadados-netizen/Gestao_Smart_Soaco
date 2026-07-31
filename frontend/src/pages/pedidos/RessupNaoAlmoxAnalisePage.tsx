@@ -79,6 +79,8 @@ import {
   persistRessupNaoAlmoxColWidths,
   readRessupNaoAlmoxColWidths,
 } from '../../utils/ressupNaoAlmoxGradeUi';
+import { ComoLerBtn } from '../../components/AjudaTelaModal';
+import RessupNaoAlmoxAjudaModal from './RessupNaoAlmoxAjudaModal';
 import { downloadRessupNaoAlmoxPdf } from '../../utils/exportRessupNaoAlmoxPdf';
 import { imageUrlToDataUrl } from '../../utils/imageDataUrl';
 import { normalizarCodProduto } from '../../utils/ressupNaoAlmoxDescricaoSimplificada';
@@ -702,6 +704,7 @@ export default function RessupNaoAlmoxAnalisePage() {
   const [colWidths, setColWidths] = useState<Record<string, number>>(readRessupNaoAlmoxColWidths);
   const colResizeRef = useRef<{ colKey: ColKey; startX: number; startW: number } | null>(null);
   const [confirmSairAberto, setConfirmSairAberto] = useState(false);
+  const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
 
   const [gravandoAnalise, setGravandoAnalise] = useState(false);
   const [salvandoAlteracoes, setSalvandoAlteracoes] = useState(false);
@@ -2033,6 +2036,10 @@ export default function RessupNaoAlmoxAnalisePage() {
             </p>
           </div>
           <div ref={novaAnaliseWrapRef} className="flex shrink-0 flex-wrap items-center gap-2 self-start">
+            <ComoLerBtn
+              onClick={() => setModalAjudaAberto(true)}
+              title="Como ler o Ressup Não Almox — coletas, VM, estoque e cascata"
+            />
             {mostrarGradeAnalise && (
               <button
                 type="button"
@@ -3161,8 +3168,7 @@ export default function RessupNaoAlmoxAnalisePage() {
               Deseja considerar <strong>requisições de loja</strong> no cálculo de <strong>Empenho</strong>?
             </p>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Requisições = pedidos com atributo Requisitado (313) = Sim. Pedidos{' '}
-              <strong>Produção para estoque</strong> entram sempre, em Sim ou Não.
+              Requisições = pedidos com atributo Requisição = Sim.
             </p>
             <div className="mt-4 flex items-center justify-between gap-2">
               <button
@@ -3286,6 +3292,7 @@ export default function RessupNaoAlmoxAnalisePage() {
           </div>
         </div>
       )}
+      <RessupNaoAlmoxAjudaModal aberto={modalAjudaAberto} onClose={() => setModalAjudaAberto(false)} />
     </div>
   );
 }

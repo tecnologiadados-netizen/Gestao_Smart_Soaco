@@ -1073,6 +1073,16 @@ export interface RessupEmpenhoPedidoLinha {
   liquido: number;
 }
 
+/** Linha do modal analítico do card "Estoque em PA". */
+export interface RessupEstoquePaLinha {
+  codigo: string;
+  descricao: string;
+  /** Estoque do PA (setores 5/24). */
+  qtdePa: number;
+  /** Estoque PA × qtde BOM do componente. */
+  qtdeComponente: number;
+}
+
 export interface RessupEmpenhoPedidoResultado {
   linhas: RessupEmpenhoPedidoLinha[];
   vendaDireta: number;
@@ -1084,17 +1094,19 @@ export interface RessupEmpenhoPedidoResultado {
   totalCoberto: number;
   /** Total líquido == coluna "Qtde Empenhada" da grade. */
   totalLiquido: number;
-  /** Estoque PA em unidades de componente (explosão BOM) — exibido no card do modal Não Almox. */
+  /** Estoque PA em unidades de componente (Σ estoque×BOM Almox; explosão setor 5 no Não Almox). */
   estoquePaExplosao?: number;
+  /** PAs com estoque que originam o card "Estoque em PA" (Σ qtdeComponente ≈ estoquePaExplosao). */
+  linhasEstoquePa?: RessupEstoquePaLinha[];
 }
 
 /**
  * Detalhe do empenho do Ressup POR PEDIDO de venda, com a MESMA regra/abatimento da grade.
  *
- * O estoque de produto acabado (PA) abate a demanda cobrindo as entregas mais próximas primeiro
- * (waterfall por data de entrega). Como o open por (PA, pedido) espelha exatamente o bloco `pab`
- * e a venda direta espelha `pac`/`empd`, a soma do empenho líquido por pedido é IGUAL ao valor
- * exibido na coluna "Qtde Empenhada" — inclusive para itens vendidos só diretamente (sem BOM).
+ * Empenho líquido = max(0, bruto BOM − estoque em PA) + venda direta.
+ * O estoque de PA (Σ estoque×BOM / explosão) cobre as entregas mais próximas primeiro
+ * (waterfall global). A soma do empenho líquido por pedido é IGUAL ao valor
+ * exibido na coluna "Qtde Empenhada".
  */
 export async function listarEmpenhoRessupPorPedido(
   idProduto: number,
@@ -1119,23 +1131,60 @@ export async function listarEmpenhoRessupPorPedido(
     const detalheSql = buildEmpenhoRessupDetalheSql(considerarRequisicoes, pares);
     const [detRowsRaw] = (await pool.query(detalheSql, [idProduto])) as [Record<string, unknown>[], unknown];
     const detRows = Array.isArray(detRowsRaw) ? detRowsRaw : [];
-    const porPa = new Map<number, { idPa: number; qtdeNecPa: number; estoquePa: number }>();
+    const porPa = new Map<
+      number,
+      { idPa: number; qtdeNecPa: number; estoquePa: number; codigo: string; descricao: string }
+    >();
     for (const r of detRows) {
       const idPa = Number(r.idPa ?? 0);
       if (idPa <= 0) continue;
       const qtdeNec = Number(r.qtdeNecessaria ?? 0) || 0;
       const estoquePa = Number(r.estoquePa ?? 0) || 0;
+      const codigo = String(r.codigoPa ?? '').trim();
+      const descricao = String(r.descricaoPa ?? '').trim();
       const ex = porPa.get(idPa);
-      if (ex) ex.qtdeNecPa += qtdeNec;
-      else porPa.set(idPa, { idPa, qtdeNecPa: qtdeNec, estoquePa });
+      if (ex) {
+        ex.qtdeNecPa += qtdeNec;
+        if (!ex.codigo && codigo) ex.codigo = codigo;
+        if (!ex.descricao && descricao) ex.descricao = descricao;
+      } else {
+        porPa.set(idPa, { idPa, qtdeNecPa: qtdeNec, estoquePa, codigo, descricao });
+      }
     }
     const paIds = [...porPa.keys()];
 
-    let estoquePaExplosao = 0;
+    // Card "Estoque em PA": estoque equivalente em unidades do componente (Σ estoque×BOM),
+    // não a cobertura da demanda (totalCoberto). Empenho líquido permanece por PA.
+    const estoquePaEquivAlmox = [...porPa.values()].reduce(
+      (s, p) => s + p.estoquePa * p.qtdeNecPa,
+      0
+    );
+    let estoquePaExplosao = estoquePaEquivAlmox;
     if (modoNaoAlmox) {
       const { saldo } = await obterSaldoPaExplosao(idProduto);
       estoquePaExplosao = saldo;
     }
+
+    const pasComEstoque = [...porPa.values()]
+      .filter((p) => p.estoquePa > 0.0001)
+      .sort((a, b) => {
+        const ca = a.estoquePa * a.qtdeNecPa;
+        const cb = b.estoquePa * b.qtdeNecPa;
+        if (cb !== ca) return cb - ca;
+        return a.codigo.localeCompare(b.codigo, 'pt-BR');
+      });
+    const estoquePaExplosaoArred = arred2(estoquePaExplosao);
+    const totalLinhasAlmox = arred2(estoquePaEquivAlmox);
+    const qtdeCompVals = arredDistribuido(
+      pasComEstoque.map((p) => p.estoquePa * p.qtdeNecPa),
+      totalLinhasAlmox
+    );
+    const linhasEstoquePa: RessupEstoquePaLinha[] = pasComEstoque.map((p, i) => ({
+      codigo: p.codigo || '—',
+      descricao: p.descricao || '—',
+      qtdePa: arred2(p.estoquePa),
+      qtdeComponente: qtdeCompVals[i],
+    }));
 
     // 2) Open por (PA, pedido) + 3) venda direta por pedido (em paralelo).
     const diretoSql = buildRessupDiretoPorPedidoSql(considerarRequisicoes);
@@ -1202,8 +1251,9 @@ export async function listarEmpenhoRessupPorPedido(
       }
     };
 
-    // Waterfall: estoque de PA cobre as entregas mais próximas primeiro.
-    if (modoNaoAlmox) {
+    // Waterfall global: estoque em PA (Σ estoque×BOM / explosão) cobre entregas mais próximas.
+    // Empenho líquido = max(0, bruto BOM − estoque PA) + venda direta (igual à grade).
+    {
       const brutoPorPedido = new Map<number, number>();
       for (const [idPa, pedidos] of openPorPa) {
         const meta = porPa.get(idPa);
@@ -1223,23 +1273,8 @@ export async function listarEmpenhoRessupPorPedido(
         restante -= coberto;
         addAcc(idPedido, bruto, liquido);
       }
-    } else {
-      for (const [idPa, pedidos] of openPorPa) {
-        const meta = porPa.get(idPa);
-        if (!meta || meta.qtdeNecPa <= 0) continue;
-        const ordenados = [...pedidos].sort((a, b) =>
-          cmpPedidosEmpenho(chaveSort(a.idPedido), chaveSort(b.idPedido))
-        );
-        let restante = meta.estoquePa;
-        for (const ped of ordenados) {
-          const coberto = Math.min(Math.max(0, restante), ped.open);
-          const netOpen = ped.open - coberto;
-          restante -= coberto;
-          addAcc(ped.idPedido, meta.qtdeNecPa * ped.open, meta.qtdeNecPa * netOpen);
-        }
-      }
     }
-    // Venda direta não sofre abatimento: bruto == líquido.
+    // Venda direta não sofre abatimento de PA: bruto == líquido (espelha +pac na grade).
     let vendaDiretaRaw = 0;
     for (const [idPedido, q] of diretoPorPedido) {
       addAcc(idPedido, q, q);
@@ -1259,7 +1294,11 @@ export async function listarEmpenhoRessupPorPedido(
       else if (meta?.idTipoPedido === PCP_ID_TIPO_PEDIDO_PRODUCAO_ESTOQUE) empenhoPdEstoqueRaw += a.brutoRaw;
     }
     const totalBruto = arred2(totalBrutoRaw);
-    const totalLiquido = arred2(totalLiquidoRaw);
+    // Garante card = max(0, bruto − PA) + efeito da venda direta já embutido no waterfall.
+    const totalLiquidoAlvo = arred2(
+      Math.max(0, totalBrutoRaw - vendaDiretaRaw - estoquePaExplosao) + vendaDiretaRaw
+    );
+    const totalLiquido = totalLiquidoAlvo;
 
     // Ordena por data/carrada/pedido e arredonda mantendo Σ linhas == total (= grade).
     const entradas = [...acc.values()]
@@ -1283,9 +1322,10 @@ export async function listarEmpenhoRessupPorPedido(
         empenhoRequisicao: arred2(empenhoRequisicaoRaw),
         empenhoPdEstoque: arred2(empenhoPdEstoqueRaw),
         totalBruto,
-        totalCoberto: arred2(totalBrutoRaw - totalLiquidoRaw),
+        totalCoberto: arred2(totalBruto - totalLiquido),
         totalLiquido,
-        ...(modoNaoAlmox ? { estoquePaExplosao: arred2(estoquePaExplosao) } : {}),
+        estoquePaExplosao: estoquePaExplosaoArred,
+        linhasEstoquePa,
       },
     };
   } catch (err) {

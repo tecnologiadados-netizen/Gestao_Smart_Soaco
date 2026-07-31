@@ -191,13 +191,10 @@ GROUP BY c.idProduto, DATE(f.dataEntrada)
     sauc.idProduto
   Left Join
   (Select pq.idProdutoComponente As idprod,
-    (Sum(Case
-      When ((Coalesce(pq.qtdeNecessaria, 0) * Coalesce(pab.saldo, 0)) -
-      (Coalesce(pq.qtdeNecessaria, 0) * Coalesce(ec.saldoestoque, 0))) <=
-      0 Then 0
-      Else ((Coalesce(pq.qtdeNecessaria, 0) * Coalesce(pab.saldo, 0)) -
-      (Coalesce(pq.qtdeNecessaria, 0) * Coalesce(ec.saldoestoque, 0)))
-    End) + Coalesce(pac.saldo, 0)) As qtdempenhada
+    (Greatest(0,
+      Sum(Coalesce(pq.qtdeNecessaria, 0) * Coalesce(pab.saldo, 0)) -
+      Sum(Coalesce(pq.qtdeNecessaria, 0) * Coalesce(ec.saldoestoque, 0))
+    ) + Coalesce(pac.saldo, 0)) As qtdempenhada
   From (Select ft.idprodutopai,
       Coalesce(Coalesce(Coalesce(Coalesce(ft.idcomponente5, ft.idcomponente4),
       ft.idcomponente3), ft.idcomponente2), ft.idcomponente1) As
@@ -614,12 +611,8 @@ WHERE rn = 1
 GROUP BY idProduto, cod) ssf On ssf.idProduto = p.id
       Left Join tipoproduto tp On tp.id = p.idTipoProduto
     Where (tp.id In (8, 15)) And (p.ativo = 1)) ec On ec.id = pq.idprodutopai
-  Where ((Case
-      When ((Coalesce(pq.qtdeNecessaria, 0) * Coalesce(pab.saldo, 0)) -
-      (Coalesce(pq.qtdeNecessaria, 0) * Coalesce(ec.saldoestoque, 0))) <=
-      0 Then 0
-      Else ((Coalesce(pq.qtdeNecessaria, 0) * Coalesce(pab.saldo, 0)) -
-      (Coalesce(pq.qtdeNecessaria, 0) * Coalesce(ec.saldoestoque, 0))) End) > 0
+  Where ((Coalesce(pq.qtdeNecessaria, 0) * Coalesce(pab.saldo, 0)) > 0
+    Or (Coalesce(pq.qtdeNecessaria, 0) * Coalesce(ec.saldoestoque, 0)) > 0
     Or (Coalesce(pac.saldo, 0) > 0))
   Group By pq.idProdutoComponente) emp On emp.idprod = p.id
   Left Join
@@ -833,8 +826,9 @@ export function buildEmpJoinSqlNaoAlmox(
     paresFundiveis.length > 0
       ? 'Coalesce(pq.qtdeNecessaria, 0) * Coalesce(fund_emp.fator_sem, 1)'
       : 'Coalesce(pq.qtdeNecessaria, 0)';
+  // Abatimento global: bruto BOM − explosão (substitui Sum(nec×estoque) do join Almox).
   block = block.replace(
-    /\(Sum\(Case[\s\S]*?End\) \+ Coalesce\(pac\.saldo, 0\)\)/i,
+    /\(Greatest\(0,\s*Sum\([\s\S]*?ec\.saldoestoque, 0\)\)\s*\) \+ Coalesce\(pac\.saldo, 0\)\)/i,
     `(Greatest(0, Sum(${qtdeNec} * Coalesce(pab.saldo, 0)) - Coalesce((${saldoPaExplosaoScalarSql}), 0)) + Max(Coalesce(pac.saldo, 0)))`
   );
   return block;
@@ -856,9 +850,11 @@ export function buildEmpenhoRessupDetalheSql(
 ): string {
   const block = buildEmpJoinSql(considerarRequisicoes, paresFundiveis);
   const fromMarker = '\n  From (Select ft.idprodutopai,';
-  const whereMarker = '\n  Where ((Case';
+  // Where pode ter qtdeNec reescrito por fundíveis (* fator_sem).
+  const whereRe = /\n  Where \(\(/;
   const fi = block.indexOf(fromMarker);
-  const wi = block.indexOf(whereMarker);
+  const wiMatch = whereRe.exec(block.slice(fi >= 0 ? fi : 0));
+  const wi = wiMatch && fi >= 0 ? fi + (wiMatch.index ?? 0) : -1;
   if (fi === -1 || wi === -1 || wi < fi) {
     throw new Error('[sqlRegistroColetaPrecos] Falha ao montar detalhe de empenho Ressup.');
   }
@@ -867,6 +863,7 @@ export function buildEmpenhoRessupDetalheSql(
     paresFundiveis.length > 0
       ? 'Coalesce(pq.qtdeNecessaria, 0) * Coalesce(fund_emp.fator_sem, 1)'
       : 'Coalesce(pq.qtdeNecessaria, 0)';
+  // Contribuição líquida informativa por PA (não é o total da grade — o líquido é global bruto−PA).
   const netExpr =
     `(Case When ((${qtdeNecExpr} * Coalesce(pab.saldo, 0)) - ` +
     `(${qtdeNecExpr} * Coalesce(ec.saldoestoque, 0))) <= 0 Then 0 ` +
@@ -941,15 +938,11 @@ Having saldo > 0.0001`;
 }
 
 /**
- * Empenho BOM para consulta de estoque: não abate estoque de PA nos setores 5/24
- * (saldo em acabados aparece na coluna Saldo; empenho reflete pedidos em aberto).
+ * Empenho BOM para consulta de estoque (escopo por pedido): mesma regra bruto − PA
+ * da grade Ressup; só reforça empresa = 1 no join de pedidos.
  */
 export function buildEmpJoinSqlConsultaEstoque(considerarRequisicoes: boolean): string {
   let block = buildEmpJoinSql(considerarRequisicoes);
-  block = block.replace(
-    /\(Coalesce\(pq\.qtdeNecessaria, 0\) \* Coalesce\(ec\.saldoestoque, 0\)\)/gi,
-    '0'
-  );
   block = block.replace(
     /left join pedido pd on pd\.id = ip\.idPedido/gi,
     'Inner Join pedido pd On pd.id = ip.idPedido And pd.idEmpresa = 1'

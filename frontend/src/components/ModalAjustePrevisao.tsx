@@ -17,6 +17,7 @@ import {
   rotaFromPedidoRow,
 } from '../utils/rotaCarrada';
 import { validarDatasReprogramacao } from '../utils/canalReprogramacaoDatas';
+import { formatDataCurta } from './sequenciamento-carradas/simulacaoCarradas';
 
 const ajusteSchema = z.object({
   previsao_nova: z.string().min(1, 'Informe a data'),
@@ -36,11 +37,17 @@ function resolverDataProducaoInicial(
   return pedido ? dataProducaoRealPedido(pedido) : '';
 }
 
-function validarDatasCompletas(previsaoIso: string, producaoIso: string): string | null {
+function validarDatasCompletas(
+  previsaoIso: string,
+  producaoIso: string,
+  /** true quando o usuário está gravando uma nova produção (não a já existente). */
+  producaoEhAlteracao: boolean
+): string | null {
   return validarDatasReprogramacao({
     previsaoIso: previsaoIso || null,
     producaoIso: producaoIso || null,
     exigirNaoAnteriorHoje: true,
+    exigirProducaoNaoAnteriorHoje: producaoEhAlteracao,
   });
 }
 
@@ -61,6 +68,12 @@ export type AjustePrevisaoContextoCalendario = {
   demaisItensPd?: Pedido[];
 };
 
+export type AjustePrevisaoSimulacaoMeta = {
+  motivo: string;
+  observacao?: string;
+  previsao_confiavel: boolean;
+};
+
 interface ModalAjustePrevisaoProps {
   pedido: Pedido | null;
   onClose: () => void;
@@ -74,9 +87,19 @@ interface ModalAjustePrevisaoProps {
   demaisItens?: Pedido[];
   /**
    * Atualiza a data de produção na simulação do sequenciamento (UI do calendário).
-   * A persistência no Gerenciador é feita pelo próprio modal via `data-producao-lote`.
+   * Com `persistirNoGerenciador` (default), o modal também grava via `data-producao-lote`.
    */
   onSalvarDataProducao?: (novaData: string) => void;
+  /**
+   * Atualiza a previsão/entrega só na simulação (rascunho do sequenciamento).
+   * Usado quando `persistirNoGerenciador={false}`.
+   */
+  onSalvarPrevisaoSimulacao?: (novaData: string, meta: AjustePrevisaoSimulacaoMeta) => void;
+  /**
+   * Default true (Gerenciador / Comunicação PD). False no calendário em rascunho:
+   * só atualiza a simulação; Gerenciador só na conclusão do sequenciamento.
+   */
+  persistirNoGerenciador?: boolean;
   /** Volta à etapa anterior (ex.: escolha de escopo no calendário). */
   onVoltar?: () => void;
 }
@@ -106,14 +129,17 @@ export default function ModalAjustePrevisao({
   calendario,
   demaisItens,
   onSalvarDataProducao,
+  onSalvarPrevisaoSimulacao,
+  persistirNoGerenciador = true,
   onVoltar,
 }: ModalAjustePrevisaoProps) {
   const [previsao_nova, setPrevisaoNova] = useState(() => {
+    if (calendario) return '';
     if (!pedido?.previsao_entrega_atualizada) return '';
     return String(pedido.previsao_entrega_atualizada).slice(0, 10);
   });
   const [data_producao_nova, setDataProducaoNova] = useState(() =>
-    resolverDataProducaoInicial(pedido, calendario)
+    calendario ? '' : resolverDataProducaoInicial(pedido, calendario)
   );
   const [motivo, setMotivo] = useState('');
   const [observacao, setObservacao] = useState('');
@@ -126,8 +152,10 @@ export default function ModalAjustePrevisao({
   const [flowStep, setFlowStep] = useState<FlowStep>('form');
   const [carradaRotaNome, setCarradaRotaNome] = useState('');
   const [carradaCheckLoading, setCarradaCheckLoading] = useState(false);
+  const [feedbackSucesso, setFeedbackSucesso] = useState(false);
   const pendingRef = useRef<PendingDecision | null>(null);
   const pendingProducaoRef = useRef<string | null>(null);
+  const sucessoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { hasPermission } = useAuth();
   const podeGerenciarMotivos =
     hasPermission(PERMISSOES.PCP_MOTIVO_CRIAR) ||
@@ -148,20 +176,36 @@ export default function ModalAjustePrevisao({
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (sucessoTimerRef.current) clearTimeout(sucessoTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!pedido) return;
     setFlowStep('form');
     setCarradaRotaNome('');
     pendingRef.current = null;
     pendingProducaoRef.current = null;
-    setPrevisaoNova(
-      pedido.previsao_entrega_atualizada ? String(pedido.previsao_entrega_atualizada).slice(0, 10) : ''
-    );
-    setDataProducaoNova(resolverDataProducaoInicial(pedido, calendario));
+    setFeedbackSucesso(false);
+    if (sucessoTimerRef.current) {
+      clearTimeout(sucessoTimerRef.current);
+      sucessoTimerRef.current = null;
+    }
+    if (calendario) {
+      setPrevisaoNova('');
+      setDataProducaoNova('');
+    } else {
+      setPrevisaoNova(
+        pedido.previsao_entrega_atualizada ? String(pedido.previsao_entrega_atualizada).slice(0, 10) : ''
+      );
+      setDataProducaoNova(resolverDataProducaoInicial(pedido, calendario));
+    }
     setMotivo('');
     setObservacao('');
     setPrevisaoConfiavel(true);
     setErrors({});
-  }, [pedido?.id_pedido, calendario?.dataProducaoAtual]);
+  }, [pedido?.id_pedido, calendario?.dataProducaoAtual, !!calendario]);
 
   if (!pedido) return null;
 
@@ -176,8 +220,13 @@ export default function ModalAjustePrevisao({
 
   const previsaoNovaForm = previsao_nova.trim().slice(0, 10);
   const producaoNovaForm = data_producao_nova.trim().slice(0, 10);
-  const previsaoMudouForm = !previsaoAtualStr || previsaoNovaForm !== previsaoAtualStr;
-  const producaoMudouForm = producaoNovaForm !== producaoAtualStr;
+  /** No calendário, campo vazio = não alterar aquela data. */
+  const previsaoMudouForm = calendario
+    ? !!previsaoNovaForm && previsaoNovaForm !== previsaoAtualStr
+    : !previsaoAtualStr || previsaoNovaForm !== previsaoAtualStr;
+  const producaoMudouForm = calendario
+    ? !!producaoNovaForm && producaoNovaForm !== producaoAtualStr
+    : producaoNovaForm !== producaoAtualStr;
   /**
    * Motivo, previsão confiável e observação descrevem a mudança de previsão. Quando só a data de
    * produção muda, não há ajuste de previsão e esses campos ficam fora do fluxo.
@@ -187,12 +236,22 @@ export default function ModalAjustePrevisao({
 
   /** Evita deixar motivo/observação preenchidos e desabilitados quando a previsão volta ao valor atual. */
   const limparCamposAjustePrevisaoSeInativos = (previsaoIso: string, producaoIso: string) => {
-    const previsaoMuda = !previsaoAtualStr || previsaoIso !== previsaoAtualStr;
-    const producaoMuda = producaoIso !== producaoAtualStr;
+    const previsaoMuda = calendario
+      ? !!previsaoIso && previsaoIso !== previsaoAtualStr
+      : !previsaoAtualStr || previsaoIso !== previsaoAtualStr;
+    const producaoMuda = calendario
+      ? !!producaoIso && producaoIso !== producaoAtualStr
+      : producaoIso !== producaoAtualStr;
     if (previsaoMuda || (!!calendario && calendario.producaoDerivadaPrevisao && producaoMuda)) return;
     setMotivo('');
     setObservacao('');
     setPrevisaoConfiavel(true);
+  };
+
+  const fecharOuVoltar = () => {
+    if (feedbackSucesso) return;
+    if (onVoltar) onVoltar();
+    else onClose();
   };
 
   const demaisItensCalendario = (): Pedido[] => {
@@ -200,12 +259,29 @@ export default function ModalAjustePrevisao({
     return demaisItens ?? [];
   };
 
+  /** Exibe "Gravado com sucesso" e só então fecha / volta ao modal anterior. */
+  const concluirComSucesso = (atualizado: Pedido, meta?: AjustePrevisaoSuccessMeta) => {
+    setFeedbackSucesso(true);
+    setLoading(false);
+    if (sucessoTimerRef.current) clearTimeout(sucessoTimerRef.current);
+    sucessoTimerRef.current = setTimeout(() => {
+      sucessoTimerRef.current = null;
+      onSuccess(atualizado, meta);
+      onClose();
+    }, 1100);
+  };
+
   /**
    * Persiste a data de produção no Gerenciador como override da rota da linha (mesma hierarquia da
    * grade) e atualiza a simulação do calendário quando houver.
    * `rotasTodasDoItem` preenchido: grava também o base e um override por rota do item.
+   * Com `persistirNoGerenciador={false}` só atualiza a simulação.
    */
   const persistirDataProducao = async (novaData: string, rotasTodasDoItem: string[] = []) => {
+    if (!persistirNoGerenciador) {
+      onSalvarDataProducao?.(novaData);
+      return;
+    }
     const itens = montarItensDataProducaoCalendario(pedido, novaData, demaisItensCalendario());
     if (itens.length === 0) {
       throw new Error('Não foi possível montar o lote de data de produção (pedido sem id).');
@@ -222,6 +298,29 @@ export default function ModalAjustePrevisao({
       throw new Error(r.erros[0]?.erro ?? 'Erro ao gravar data de produção no Gerenciador.');
     }
     onSalvarDataProducao?.(novaData);
+  };
+
+  /** Aplica produção/previsão só no Map sim (rascunho) e fecha o modal. */
+  const salvarSomenteSimulacao = (opts: {
+    producao?: string;
+    previsao?: string;
+    motivo?: string;
+    observacao?: string;
+    previsao_confiavel?: boolean;
+  }) => {
+    if (opts.producao) onSalvarDataProducao?.(opts.producao);
+    if (opts.previsao) {
+      onSalvarPrevisaoSimulacao?.(opts.previsao, {
+        motivo: opts.motivo ?? '',
+        observacao: opts.observacao,
+        previsao_confiavel: opts.previsao_confiavel !== false,
+      });
+    }
+    concluirComSucesso({
+      ...pedido,
+      ...(opts.producao ? { data_producao: opts.producao } : {}),
+      ...(opts.previsao ? { previsao_entrega_atualizada: opts.previsao } : {}),
+    } as Pedido);
   };
 
   const aplicarDataProducaoPendente = async (decision: PendingDecision) => {
@@ -298,11 +397,9 @@ export default function ModalAjustePrevisao({
         todosItensPdAtualizados:
           outrosAtualizados.length > 0 ? [atualizado, ...outrosAtualizados] : meta?.todosItensPdAtualizados,
       };
-      onSuccess(atualizado, metaFinal);
-      onClose();
+      concluirComSucesso(atualizado, metaFinal);
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Erro ao ajustar previsão.');
-    } finally {
       setLoading(false);
     }
   };
@@ -329,8 +426,12 @@ export default function ModalAjustePrevisao({
 
     const previsaoNovaNorm = previsao_nova.trim().slice(0, 10);
     const producaoNovaNorm = data_producao_nova.trim().slice(0, 10);
-    const previsaoMudou = !previsaoAtualStr || previsaoNovaNorm !== previsaoAtualStr;
-    const producaoMudou = producaoNovaNorm !== producaoAtualStr;
+    const previsaoMudou = calendario
+      ? !!previsaoNovaNorm && previsaoNovaNorm !== previsaoAtualStr
+      : !previsaoAtualStr || previsaoNovaNorm !== previsaoAtualStr;
+    const producaoMudou = calendario
+      ? !!producaoNovaNorm && producaoNovaNorm !== producaoAtualStr
+      : producaoNovaNorm !== producaoAtualStr;
 
     /** Grava só a data de produção e fecha (nenhum ajuste de previsão envolvido). */
     const salvarSomenteProducao = async (rotasTodasDoItem: string[] = []) => {
@@ -339,17 +440,19 @@ export default function ModalAjustePrevisao({
         onError('Informe a nova data de produção.');
         return;
       }
+      if (!persistirNoGerenciador) {
+        salvarSomenteSimulacao({ producao: producaoNovaNorm });
+        return;
+      }
       setLoading(true);
       try {
         await persistirDataProducao(producaoNovaNorm, rotasTodasDoItem);
-        onSuccess({
+        concluirComSucesso({
           ...pedido,
           data_producao: producaoNovaNorm,
         } as Pedido);
-        onClose();
       } catch (err) {
         onError(err instanceof Error ? err.message : 'Erro ao gravar data de produção.');
-      } finally {
         setLoading(false);
       }
     };
@@ -367,7 +470,8 @@ export default function ModalAjustePrevisao({
           : previsaoNovaNorm;
       const ordemErro = validarDatasCompletas(
         previsaoMudou || (calendario.producaoDerivadaPrevisao && producaoMudou) ? previsaoRef : '',
-        producaoMudou ? producaoNovaNorm : previsaoMudou ? producaoRef : ''
+        producaoMudou ? producaoNovaNorm : previsaoMudou ? producaoRef : '',
+        producaoMudou
       );
       if (ordemErro) {
         setErrors({ previsao_nova: ordemErro, data_producao_nova: ordemErro });
@@ -400,7 +504,8 @@ export default function ModalAjustePrevisao({
 
       const ordemErro = validarDatasCompletas(
         previsaoMudou ? previsaoNovaNorm : '',
-        producaoMudou ? producaoNovaNorm : producaoNovaNorm || producaoAtualStr
+        producaoMudou ? producaoNovaNorm : producaoNovaNorm || producaoAtualStr,
+        producaoMudou
       );
       if (ordemErro) {
         setErrors({ previsao_nova: ordemErro, data_producao_nova: ordemErro });
@@ -449,6 +554,19 @@ export default function ModalAjustePrevisao({
       return;
     }
     setErrors({});
+
+    if (!persistirNoGerenciador && dataComConfiavel) {
+      const producaoSim =
+        producaoMudou && !calendario?.producaoDerivadaPrevisao ? producaoNovaNorm : undefined;
+      salvarSomenteSimulacao({
+        producao: producaoSim,
+        previsao: previsaoEfetiva,
+        motivo: dataComConfiavel.motivo,
+        observacao: dataComConfiavel.observacao,
+        previsao_confiavel: dataComConfiavel.previsao_confiavel,
+      });
+      return;
+    }
 
     if (producaoMudou && !calendario?.producaoDerivadaPrevisao && producaoNovaNorm) {
       pendingProducaoRef.current = producaoNovaNorm;
@@ -586,11 +704,39 @@ export default function ModalAjustePrevisao({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[145] flex items-center justify-center p-4 bg-black/75"
+      onClick={feedbackSucesso ? undefined : fecharOuVoltar}
+    >
       <div
-        className="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-xl max-w-md w-full p-6"
+        className={`relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-xl w-full p-6 ${
+          calendario ? 'max-w-lg' : 'max-w-md'
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
+        {feedbackSucesso ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center" role="status">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
+            </div>
+            <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">Gravado com sucesso</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Retornando…</p>
+          </div>
+        ) : (
+          <>
         <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">
           {calendario ? 'Reprogramar datas do pedido' : 'Ajustar previsão de entrega'}
         </h3>
@@ -605,39 +751,101 @@ export default function ModalAjustePrevisao({
           <p><span className="font-medium text-slate-700 dark:text-slate-300">Cliente</span> {pedido.cliente}</p>
         </div>
         <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Nova data de produção</label>
-            <SequenciamentoDateField
-              fullWidth
-              value={data_producao_nova}
-              onChange={(nova) => {
-                setDataProducaoNova(nova);
-                const previsaoForm = previsao_nova.trim().slice(0, 10);
-                const previsaoAjustada = nova && (!previsaoForm || previsaoForm < nova) ? nova : previsaoForm;
-                if (previsaoAjustada !== previsaoForm) setPrevisaoNova(previsaoAjustada);
-                limparCamposAjustePrevisaoSeInativos(previsaoAjustada, nova);
-              }}
-              className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
-            />
-            {errors.data_producao_nova && (
-              <p className="text-amber-400 text-xs mt-1">{errors.data_producao_nova}</p>
-            )}
-          </div>
-          <div className="mb-4">
-            <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Nova data de previsão</label>
-            <SequenciamentoDateField
-              fullWidth
-              value={previsao_nova}
-              onChange={(nova) => {
-                setPrevisaoNova(nova);
-                limparCamposAjustePrevisaoSeInativos(nova, data_producao_nova.trim().slice(0, 10));
-              }}
-              className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
-            />
-            {errors.previsao_nova && (
-              <p className="text-amber-400 text-xs mt-1">{errors.previsao_nova}</p>
-            )}
-          </div>
+          {calendario ? (
+            <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-3">
+              <div>
+                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">
+                  Data de produção atual
+                </label>
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm tabular-nums text-slate-800 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-100">
+                  {producaoAtualStr ? formatDataCurta(producaoAtualStr) : '—'}
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">
+                  Nova data de produção
+                </label>
+                <SequenciamentoDateField
+                  fullWidth
+                  value={data_producao_nova}
+                  onChange={(nova) => {
+                    setDataProducaoNova(nova);
+                    const previsaoForm = previsao_nova.trim().slice(0, 10);
+                    const deveElevar = !!nova && !!previsaoForm && previsaoForm < nova;
+                    const previsaoAjustada = deveElevar ? nova : previsaoForm;
+                    if (previsaoAjustada !== previsaoForm) setPrevisaoNova(previsaoAjustada);
+                    limparCamposAjustePrevisaoSeInativos(previsaoAjustada, nova);
+                  }}
+                  className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
+                />
+                {errors.data_producao_nova && (
+                  <p className="text-amber-400 text-xs mt-1">{errors.data_producao_nova}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">
+                  Previsão atual
+                </label>
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm tabular-nums text-slate-800 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-100">
+                  {previsaoAtualStr ? formatDataCurta(previsaoAtualStr) : '—'}
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">
+                  Nova data de previsão
+                </label>
+                <SequenciamentoDateField
+                  fullWidth
+                  value={previsao_nova}
+                  onChange={(nova) => {
+                    setPrevisaoNova(nova);
+                    limparCamposAjustePrevisaoSeInativos(nova, data_producao_nova.trim().slice(0, 10));
+                  }}
+                  className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
+                />
+                {errors.previsao_nova && (
+                  <p className="text-amber-400 text-xs mt-1">{errors.previsao_nova}</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="mb-4">
+                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Nova data de produção</label>
+                <SequenciamentoDateField
+                  fullWidth
+                  value={data_producao_nova}
+                  onChange={(nova) => {
+                    setDataProducaoNova(nova);
+                    const previsaoForm = previsao_nova.trim().slice(0, 10);
+                    const previsaoAjustada =
+                      nova && (!previsaoForm || previsaoForm < nova) ? nova : previsaoForm;
+                    if (previsaoAjustada !== previsaoForm) setPrevisaoNova(previsaoAjustada);
+                    limparCamposAjustePrevisaoSeInativos(previsaoAjustada, nova);
+                  }}
+                  className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
+                />
+                {errors.data_producao_nova && (
+                  <p className="text-amber-400 text-xs mt-1">{errors.data_producao_nova}</p>
+                )}
+              </div>
+              <div className="mb-4">
+                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Nova data de previsão</label>
+                <SequenciamentoDateField
+                  fullWidth
+                  value={previsao_nova}
+                  onChange={(nova) => {
+                    setPrevisaoNova(nova);
+                    limparCamposAjustePrevisaoSeInativos(nova, data_producao_nova.trim().slice(0, 10));
+                  }}
+                  className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
+                />
+                {errors.previsao_nova && (
+                  <p className="text-amber-400 text-xs mt-1">{errors.previsao_nova}</p>
+                )}
+              </div>
+            </>
+          )}
           <div className="mb-4">
             <div className="flex items-center justify-between gap-2 mb-1">
               <label className="block text-xs text-slate-400">Motivo</label>
@@ -713,20 +921,11 @@ export default function ModalAjustePrevisao({
           <div className="flex gap-3 justify-end">
             <button
               type="button"
-              onClick={onClose}
+              onClick={fecharOuVoltar}
               className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-800 dark:text-slate-100 text-sm font-medium"
             >
               Cancelar
             </button>
-            {onVoltar && (
-              <button
-                type="button"
-                onClick={onVoltar}
-                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-sm font-medium"
-              >
-                Voltar
-              </button>
-            )}
             <button
               type="submit"
               disabled={loading || carradaCheckLoading}
@@ -818,9 +1017,11 @@ export default function ModalAjustePrevisao({
             </div>
           </div>
         )}
+          </>
+        )}
       </div>
 
-            {abrirGerenciar && podeGerenciarMotivos && (
+      {abrirGerenciar && podeGerenciarMotivos && (
         <ModalGerenciarMotivos
           onClose={() => setAbrirGerenciar(false)}
           onError={onError}

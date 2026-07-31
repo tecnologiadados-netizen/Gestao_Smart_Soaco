@@ -3,7 +3,11 @@ import {
   chavePedidoItemCanon,
   computarBaselines,
   computarItensDataProducao,
+  expandirPedidosEntregaComLinhasVivas,
   detectarExcessoQtdeRomaneadaCanon,
+  listarCarradasSemDatasUnificadas,
+  mensagemBloqueioCarradasSemDatasUnificadas,
+  mesclarCarradasSemDatasUnificadas,
   linhaCarradaKey,
   type SimEntry,
 } from './simulacaoCarradas';
@@ -206,5 +210,164 @@ describe('detectarExcessoQtdeRomaneadaCanon', () => {
       }),
     ];
     expect(detectarExcessoQtdeRomaneadaCanon(linhas)).toHaveLength(0);
+  });
+});
+
+describe('listarCarradasSemDatasUnificadas', () => {
+  const keyFn = (c: { cod: string; carrada: string }) => `${c.cod}\x1e${c.carrada}`;
+
+  it('bloqueia carrada normal com datas de entrega divergentes', () => {
+    const linhas = [
+      {
+        RM: COD,
+        Observacoes: CARRADA,
+        id_pedido: '1',
+        previsao_entrega_atualizada: '2026-07-31',
+        data_producao: '2026-07-30',
+      },
+      {
+        RM: COD,
+        Observacoes: CARRADA,
+        id_pedido: '2',
+        previsao_entrega_atualizada: '2026-08-05',
+        data_producao: '2026-07-30',
+      },
+    ];
+    const bl = computarBaselines(linhas);
+    const key = linhaCarradaKey(linhas[0]!);
+    expect(bl.get(key)?.dataEntregaDivergente).toBe(true);
+    const sem = listarCarradasSemDatasUnificadas([{ cod: COD, carrada: CARRADA }], new Map(), bl, keyFn);
+    expect(sem).toHaveLength(1);
+    expect(sem[0]?.faltaEntrega).toBe(true);
+    expect(sem[0]?.faltaProducao).toBe(false);
+    expect(sem[0]?.carrada).toBe(CARRADA);
+  });
+
+  it('bloqueia carrada normal com datas de produção divergentes', () => {
+    const linhas = [
+      {
+        RM: COD,
+        Observacoes: CARRADA,
+        id_pedido: '1',
+        previsao_entrega_atualizada: '2026-08-05',
+        data_producao: '2026-07-30',
+      },
+      {
+        RM: COD,
+        Observacoes: CARRADA,
+        id_pedido: '2',
+        previsao_entrega_atualizada: '2026-08-05',
+        data_producao: '2026-08-01',
+      },
+    ];
+    const bl = computarBaselines(linhas);
+    const sem = listarCarradasSemDatasUnificadas([{ cod: COD, carrada: CARRADA }], new Map(), bl, keyFn);
+    expect(sem).toHaveLength(1);
+    expect(sem[0]?.faltaProducao).toBe(true);
+    expect(sem[0]?.faltaEntrega).toBe(false);
+  });
+
+  it('libera quando a simulação unifica produção e entrega', () => {
+    const linhas = [
+      {
+        RM: COD,
+        Observacoes: CARRADA,
+        id_pedido: '1',
+        previsao_entrega_atualizada: '2026-07-31',
+        data_producao: '2026-07-30',
+      },
+      {
+        RM: COD,
+        Observacoes: CARRADA,
+        id_pedido: '2',
+        previsao_entrega_atualizada: '2026-08-05',
+        data_producao: '2026-08-01',
+      },
+    ];
+    const bl = computarBaselines(linhas);
+    const key = linhaCarradaKey(linhas[0]!);
+    const sim = new Map<string, SimEntry>([
+      [key, { dataEntrega: '2026-08-05', dataProducao: '2026-08-01' }],
+    ]);
+    expect(listarCarradasSemDatasUnificadas([{ cod: COD, carrada: CARRADA }], sim, bl, keyFn)).toHaveLength(
+      0
+    );
+  });
+
+  it('ignora especiais e em formação', () => {
+    const especiais = [
+      { cod: '—', carrada: '1-Retirada na So Aço' },
+      { cod: '—', carrada: '3-Entrega em Grande Teresina' },
+      { cod: '—', carrada: '4-Inserir em Romaneio' },
+      { cod: '—', carrada: '5-Requisicao' },
+      { cod: '01600', carrada: 'ROTA EM CONSTRUCAO' },
+    ];
+    const bl = new Map();
+    expect(listarCarradasSemDatasUnificadas(especiais, new Map(), bl, keyFn)).toHaveLength(0);
+  });
+
+  it('monta mensagem listando as carradas', () => {
+    const msg = mensagemBloqueioCarradasSemDatasUnificadas([
+      { key: 'a', cod: COD, carrada: CARRADA, faltaProducao: false, faltaEntrega: true },
+    ]);
+    expect(msg).toContain(CARRADA);
+    expect(msg).toContain('entrega');
+    expect(msg).toContain('Preencha as datas');
+  });
+
+  it('mescla listas sem duplicar chave e une flags', () => {
+    const a = [{ key: 'k1', cod: '1', carrada: 'A', faltaProducao: true, faltaEntrega: false }];
+    const b = [
+      { key: 'k1', cod: '1', carrada: 'A', faltaProducao: false, faltaEntrega: true },
+      { key: 'k2', cod: '2', carrada: 'B', faltaProducao: false, faltaEntrega: true },
+    ];
+    expect(mesclarCarradasSemDatasUnificadas(a, b)).toEqual([
+      { key: 'k1', cod: '1', carrada: 'A', faltaProducao: true, faltaEntrega: true },
+      { key: 'k2', cod: '2', carrada: 'B', faltaProducao: false, faltaEntrega: true },
+    ]);
+  });
+});
+
+describe('expandirPedidosEntregaComLinhasVivas', () => {
+  it('inclui pedido vivo cuja previsão difere da data efetiva da carrada', () => {
+    const linhasVivas = [
+      {
+        RM: COD,
+        Observacoes: CARRADA,
+        id_pedido: '10',
+        PD: '49600',
+        Cliente: 'A',
+        Cod: 'PA1',
+        'Descricao do produto': 'X',
+        'Qtde Pendente Real': 1,
+        previsao_entrega_atualizada: '2026-07-31',
+      },
+      {
+        RM: COD,
+        Observacoes: CARRADA,
+        id_pedido: '20',
+        PD: '49649',
+        Cliente: 'B',
+        Cod: 'PA2',
+        'Descricao do produto': 'Y',
+        'Qtde Pendente Real': 2,
+        previsao_entrega_atualizada: '2026-08-10',
+      },
+    ];
+    // Baseline do snapshot antigo (ainda unificado); pedido 20 entrou depois no ERP.
+    const blSnap = new Map([
+      [
+        `${COD}\x1e${CARRADA}`,
+        {
+          dataEntrega: '2026-07-31',
+          dataProducao: '',
+          dataEntregaDivergente: false,
+          dataProducaoDivergente: false,
+        },
+      ],
+    ]);
+    const alterados = expandirPedidosEntregaComLinhasVivas([], linhasVivas, new Map(), blSnap);
+    expect(alterados.map((p) => p.idPedido)).toEqual(['20']);
+    expect(alterados[0]?.previsaoNova).toBe('2026-07-31');
   });
 });
