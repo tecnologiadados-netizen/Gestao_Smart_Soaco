@@ -92,7 +92,11 @@ export async function postSequenciamentoCarradasSnapshotConcluir(req: Request, r
     }
     const r = await concluirSnapshotSequenciamento(id);
     if (!r.ok) {
-      res.status(r.notFound ? 404 : 409).json({ error: r.error });
+      const status = r.notFound ? 404 : 409;
+      res.status(status).json({
+        error: r.error,
+        ...(r.carradasSemDataEntrega ? { carradas_sem_data_entrega: r.carradasSemDataEntrega } : {}),
+      });
       return;
     }
     res.json({ ok: true, status: 'concluido' });

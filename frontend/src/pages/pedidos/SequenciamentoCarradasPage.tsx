@@ -18,7 +18,6 @@ import { ajustarDataProducaoLote, ajustarPrevisaoLote } from '../../api/pedidos'
 import SequenciamentoCarradasDetalheModal from '../../components/sequenciamento-carradas/SequenciamentoCarradasDetalheModal';
 import CalendarioProducaoModal from '../../components/sequenciamento-carradas/CalendarioProducaoModal';
 import ConfirmacaoSimulacaoModal from '../../components/sequenciamento-carradas/ConfirmacaoSimulacaoModal';
-import ModalCorrigirDatasSequenciamento from '../../components/sequenciamento-carradas/ModalCorrigirDatasSequenciamento';
 import { useGradeFiltrosExcel, type ExcelFilterDraft } from '../../hooks/useGradeFiltrosExcel';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
@@ -44,6 +43,7 @@ import {
   computarItensDataProducao,
   detectarExcessoQtdeRomaneadaCanon,
   computarPedidosComEntregaAlterada,
+  expandirPedidosEntregaComLinhasVivas,
   dataProducaoCarradaEmFormacaoApartirDe,
   formatDataCurta,
   maxDataProducaoCarradasNormais,
@@ -53,6 +53,9 @@ import {
   toISODate,
   valorEfetivo,
   listarCarradasComDatasPassadas,
+  listarCarradasSemDatasUnificadas,
+  mensagemBloqueioCarradasSemDatasUnificadas,
+  mesclarCarradasSemDatasUnificadas,
   atualizarEstadoLinhaCorrigirDatas,
   type CarradaDataInvalida,
   isSimItemKey,
@@ -69,6 +72,8 @@ import {
   type EditColKey,
 } from '../../components/sequenciamento-carradas/sequenciamentoGradeUi';
 import SequenciamentoDateField from '../../components/sequenciamento-carradas/SequenciamentoDateField';
+import { ComoLerBtn } from '../../components/AjudaTelaModal';
+import SequenciamentoCarradasAjudaModal from './SequenciamentoCarradasAjudaModal';
 
 const BTN_PRIMARY =
   'inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed';
@@ -205,10 +210,15 @@ export default function SequenciamentoCarradasPage() {
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [dropPosition, setDropPosition] = useState<'before' | 'after'>('before');
   const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('idle');
+  const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
   const [calendarioAberto, setCalendarioAberto] = useState(false);
   const [confirmacaoAberta, setConfirmacaoAberta] = useState(false);
-  const [corrigirDatasAberta, setCorrigirDatasAberta] = useState(false);
   const [corrigirDatasSnapshot, setCorrigirDatasSnapshot] = useState<CarradaDataInvalida[]>([]);
+  /** Linhas do ERP no momento de Concluir (inclui pedidos movidos após o gravar). */
+  const [linhasAoVivoConfirmacao, setLinhasAoVivoConfirmacao] = useState<Record<string, unknown>[] | null>(
+    null
+  );
+  const [validandoEntrega, setValidandoEntrega] = useState(false);
   const [salvandoConfirmacao, setSalvandoConfirmacao] = useState(false);
   const [erroConfirmacao, setErroConfirmacao] = useState<string | null>(null);
   const [motivoPorId, setMotivoPorId] = useState<Record<string, string>>({});
@@ -309,7 +319,7 @@ export default function SequenciamentoCarradasPage() {
     columnIds: [...COL_IDS],
     getCellText,
     valueForSort,
-    defaultSortLevels: [],
+    defaultSortLevels: [{ id: 'dataProducao', dir: 'asc' }],
   });
 
   const carradasFinais = useMemo(() => {
@@ -330,34 +340,64 @@ export default function SequenciamentoCarradasPage() {
   );
 
   const linhasCorrigirDatasModal = useMemo(() => {
-    if (!corrigirDatasAberta || corrigirDatasSnapshot.length === 0) return [];
+    if (!confirmacaoAberta || corrigirDatasSnapshot.length === 0) return [];
     return corrigirDatasSnapshot.map((snap) =>
       atualizarEstadoLinhaCorrigirDatas(snap, sim, baseline, linhasSnapshot)
     );
-  }, [corrigirDatasAberta, corrigirDatasSnapshot, sim, baseline, linhasSnapshot]);
+  }, [confirmacaoAberta, corrigirDatasSnapshot, sim, baseline, linhasSnapshot]);
 
-  const abrirCorrigirDatas = useCallback(() => {
+  const abrirCorrigirDatas = useCallback(async () => {
     setErroConfirmacao(null);
-    const invalidas = listarCarradasComDatasPassadas(
-      carradasFinais,
-      sim,
-      baseline,
-      carradaKeyDe,
-      undefined,
-      linhasSnapshot
-    );
-    if (invalidas.length === 0) {
-      setConfirmacaoAberta(true);
-      return;
-    }
-    setCorrigirDatasSnapshot(invalidas);
-    setCorrigirDatasAberta(true);
-  }, [carradasFinais, sim, baseline, linhasSnapshot]);
-
-  const fecharCorrigirDatas = useCallback(() => {
-    setCorrigirDatasAberta(false);
+    setFeedbackGravacao(null);
+    setLinhasAoVivoConfirmacao(null);
     setCorrigirDatasSnapshot([]);
-  }, []);
+    setValidandoEntrega(true);
+    try {
+      const semSnap = listarCarradasSemDatasUnificadas(carradasFinais, sim, baseline, carradaKeyDe);
+
+      const live = await consultarSequenciamentoAoVivo();
+      if (live.error || !live.data?.payload) {
+        setFeedbackGravacao(
+          `Não foi possível revalidar a composição no ERP antes de concluir: ${live.error ?? 'resposta inválida.'}`
+        );
+        return;
+      }
+      const linhasVivas = live.data.payload.linhas ?? [];
+      const carradasVivas = live.data.payload.carradas ?? [];
+      const blLive = computarBaselines(linhasVivas);
+      const keysSnap = new Set(carradasFinais.map(carradaKeyDe));
+      const carradasLiveNoSnap = carradasVivas.filter((c) => keysSnap.has(carradaKeyDe(c)));
+      // Só bloqueia pelo vivo se a grade também não tiver datas efetivas (sim/baseline do snapshot).
+      const semLive = listarCarradasSemDatasUnificadas(carradasLiveNoSnap, sim, blLive, carradaKeyDe).filter(
+        (c) => {
+          const faltaProdSnap = !valorEfetivo(sim, baseline, c.key, 'dataProducao');
+          const faltaEntSnap = !valorEfetivo(sim, baseline, c.key, 'dataEntrega');
+          return faltaProdSnap || faltaEntSnap;
+        }
+      );
+      const semDatas = mesclarCarradasSemDatasUnificadas(semSnap, semLive);
+      if (semDatas.length > 0) {
+        setFeedbackGravacao(mensagemBloqueioCarradasSemDatasUnificadas(semDatas));
+        return;
+      }
+
+      setLinhasAoVivoConfirmacao(linhasVivas);
+
+      const invalidas = listarCarradasComDatasPassadas(
+        carradasFinais,
+        sim,
+        baseline,
+        carradaKeyDe,
+        undefined,
+        linhasSnapshot
+      );
+      // Uma única etapa: datas vencidas (se houver) + motivos no mesmo modal.
+      setCorrigirDatasSnapshot(invalidas);
+      setConfirmacaoAberta(true);
+    } finally {
+      setValidandoEntrega(false);
+    }
+  }, [carradasFinais, sim, baseline, linhasSnapshot]);
 
   const subtotal = useMemo(() => subtotalCarradas(carradasFinais), [carradasFinais]);
 
@@ -388,10 +428,11 @@ export default function SequenciamentoCarradasPage() {
     return out;
   }, [linhasSnapshot]);
 
-  const pedidosEntrega = useMemo(
-    () => computarPedidosComEntregaAlterada(linhasSnapshot, sim, baseline),
-    [linhasSnapshot, sim, baseline]
-  );
+  const pedidosEntrega = useMemo(() => {
+    const base = computarPedidosComEntregaAlterada(linhasSnapshot, sim, baseline);
+    if (!linhasAoVivoConfirmacao) return base;
+    return expandirPedidosEntregaComLinhasVivas(base, linhasAoVivoConfirmacao, sim, baseline);
+  }, [linhasAoVivoConfirmacao, linhasSnapshot, sim, baseline]);
   const itensProducao = useMemo(
     () => computarItensDataProducao(linhasSnapshot, sim, baseline),
     [linhasSnapshot, sim, baseline]
@@ -1141,6 +1182,7 @@ export default function SequenciamentoCarradasPage() {
           }
           setConfirmacaoAberta(false);
           setCorrigirDatasSnapshot([]);
+          setLinhasAoVivoConfirmacao(null);
           setFeedbackGravacao(`${resumo} e snapshot concluído.`);
           setHistoricoVersao((v) => v + 1);
           await abrirSnapshot(snapshotVisualizado.id);
@@ -1148,6 +1190,7 @@ export default function SequenciamentoCarradasPage() {
         }
         setConfirmacaoAberta(false);
         setCorrigirDatasSnapshot([]);
+        setLinhasAoVivoConfirmacao(null);
         setFeedbackGravacao(`${resumo} com sucesso.`);
         resetarSimulacao();
         await handleConsultar();
@@ -1197,41 +1240,47 @@ export default function SequenciamentoCarradasPage() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Sequenciamento carradas</h1>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            {mostrarHistorico ? (
-              'Histórico de snapshots gravados do Gerenciador de Pedidos.'
-            ) : snapshotVisualizado ? (
-              snapshotVisualizado.aoVivo ? (
-                <>
-                  <span className="font-medium text-primary-600 dark:text-primary-400">Em consulta</span> ·{' '}
-                  {formatDateTimeBr(snapshotVisualizado.createdAt)} · {snapshotVisualizado.carradaCount} carradas
-                </>
+        <div className="flex flex-wrap items-start gap-2">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Sequenciamento carradas</h1>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              {mostrarHistorico ? (
+                'Histórico de snapshots gravados do Gerenciador de Pedidos.'
+              ) : snapshotVisualizado ? (
+                snapshotVisualizado.aoVivo ? (
+                  <>
+                    <span className="font-medium text-primary-600 dark:text-primary-400">Em consulta</span> ·{' '}
+                    {formatDateTimeBr(snapshotVisualizado.createdAt)} · {snapshotVisualizado.carradaCount} carradas
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium">Snapshot {snapshotVisualizado.cod}</span>
+                    {snapshotVisualizado.status && (
+                      <>
+                        {' '}
+                        ·{' '}
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${classStatusComAutosave(snapshotVisualizado.status, autosaveStatus)}`}
+                          role={isRascunho && autosaveStatus !== 'idle' ? 'status' : undefined}
+                        >
+                          {labelStatusComAutosave(snapshotVisualizado.status, autosaveStatus)}
+                        </span>
+                      </>
+                    )}
+                    {' '}
+                    · {formatDateTimeBr(snapshotVisualizado.createdAt)} · {snapshotVisualizado.usuarioLogin} ·{' '}
+                    {snapshotVisualizado.carradaCount} carradas
+                  </>
+                )
               ) : (
-                <>
-                  <span className="font-medium">Snapshot {snapshotVisualizado.cod}</span>
-                  {snapshotVisualizado.status && (
-                    <>
-                      {' '}
-                      ·{' '}
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${classStatusComAutosave(snapshotVisualizado.status, autosaveStatus)}`}
-                        role={isRascunho && autosaveStatus !== 'idle' ? 'status' : undefined}
-                      >
-                        {labelStatusComAutosave(snapshotVisualizado.status, autosaveStatus)}
-                      </span>
-                    </>
-                  )}
-                  {' '}
-                  · {formatDateTimeBr(snapshotVisualizado.createdAt)} · {snapshotVisualizado.usuarioLogin} ·{' '}
-                  {snapshotVisualizado.carradaCount} carradas
-                </>
-              )
-            ) : (
-              'Visualização do snapshot.'
-            )}
-          </p>
+                'Visualização do snapshot.'
+              )}
+            </p>
+          </div>
+          <ComoLerBtn
+            onClick={() => setModalAjudaAberto(true)}
+            title="Como ler o Sequenciamento — modos, datas, calendário e materiais"
+          />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {!mostrarHistorico && (
@@ -1274,11 +1323,11 @@ export default function SequenciamentoCarradasPage() {
               {editavel && (
                 <button
                   type="button"
-                  onClick={() => abrirCorrigirDatas()}
-                  disabled={gravando}
+                  onClick={() => void abrirCorrigirDatas()}
+                  disabled={gravando || validandoEntrega}
                   className={BTN_PRIMARY}
                 >
-                  Registrar Motivos
+                  {validandoEntrega ? 'Validando...' : 'Concluir'}
                 </button>
               )}
             </>
@@ -1762,6 +1811,30 @@ export default function SequenciamentoCarradasPage() {
           onClose={() => setCalendarioAberto(false)}
           onLinhasAtualizadas={setLinhasSnapshot}
           onEditarDataProducao={(key, novaData) => editarData(key, 'dataProducao', novaData)}
+          onEditarDataEntrega={(key, novaData) => editarData(key, 'dataEntrega', novaData)}
+          onRegistrarMotivoSimulacao={(idsPedido, meta) => {
+            setMotivoPorId((prev) => {
+              const next = { ...prev };
+              for (const id of idsPedido) next[id] = meta.motivo;
+              return next;
+            });
+            setObservacaoPorId((prev) => {
+              const next = { ...prev };
+              for (const id of idsPedido) {
+                if (meta.observacao?.trim()) next[id] = meta.observacao.slice(0, 1000);
+                else delete next[id];
+              }
+              return next;
+            });
+            setPrevisaoConfiavelPorId((prev) => {
+              const next = { ...prev };
+              for (const id of idsPedido) {
+                if (meta.previsao_confiavel === false) next[id] = false;
+                else delete next[id];
+              }
+              return next;
+            });
+          }}
           editavel={editavel}
           estoquePorCod={estoquePorCodSnapshot}
           estoqueCongelado={estoqueCongeladoSnapshot}
@@ -1770,25 +1843,19 @@ export default function SequenciamentoCarradasPage() {
         />
       )}
 
-      {corrigirDatasAberta && (
-        <ModalCorrigirDatasSequenciamento
-          invalidas={linhasCorrigirDatasModal}
-          onEditar={editarData}
-          onContinuar={() => {
-            if (linhasCorrigirDatasModal.every((l) => l.concluida)) {
-              setCorrigirDatasAberta(false);
-              setConfirmacaoAberta(true);
-            }
-          }}
-          onClose={fecharCorrigirDatas}
-        />
-      )}
+      <SequenciamentoCarradasAjudaModal
+        aberto={modalAjudaAberto}
+        onClose={() => setModalAjudaAberto(false)}
+      />
 
       {confirmacaoAberta && (
         <ConfirmacaoSimulacaoModal
           pedidosEntrega={pedidosEntrega}
           qtdCarradasSomenteProducao={qtdCarradasSomenteProducao}
           excessosQtdeRomaneada={excessosQtdeRomaneada}
+          invalidasDatas={linhasCorrigirDatasModal}
+          linhasSnapshot={linhasSnapshot}
+          onEditarData={editarData}
           salvando={salvandoConfirmacao}
           erro={erroConfirmacao}
           motivoPorId={motivoPorId}
@@ -1801,16 +1868,8 @@ export default function SequenciamentoCarradasPage() {
           onClose={() => {
             setConfirmacaoAberta(false);
             setCorrigirDatasSnapshot([]);
+            setLinhasAoVivoConfirmacao(null);
           }}
-          onVoltar={
-            corrigirDatasSnapshot.length > 0
-              ? () => {
-                  setConfirmacaoAberta(false);
-                  setErroConfirmacao(null);
-                  setCorrigirDatasAberta(true);
-                }
-              : undefined
-          }
         />
       )}
 

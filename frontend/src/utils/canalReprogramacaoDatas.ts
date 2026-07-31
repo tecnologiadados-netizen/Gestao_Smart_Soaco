@@ -115,6 +115,42 @@ export function rotaPermiteAlterarDatasCalendario(rota: string): boolean {
   return false;
 }
 
+/**
+ * No Calendário do Sequenciamento também libera retirada, entrega G. Teresina e requisição.
+ * Datas desses tipos são por item/PD (não unificam entre pedidos da categoria).
+ * Não altera a matriz de canais do Gerenciador / Comunicação PD.
+ */
+export function categoriaPermiteAlterarDatasNoSequenciamentoCalendario(
+  cat: CategoriaReprogramacaoDatas
+): boolean {
+  switch (cat) {
+    case 'carrada':
+    case 'inserir_romaneio':
+    case 'requisicao':
+    case 'retirada':
+    case 'entrega_grande_teresina':
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function pedidoPermiteAlterarDatasNoSequenciamentoCalendario(
+  row: Record<string, unknown>
+): boolean {
+  return categoriaPermiteAlterarDatasNoSequenciamentoCalendario(classificarCategoriaReprogramacao(row));
+}
+
+/** Rota/TipoF no drill do calendário do sequenciamento (inclui especiais). */
+export function rotaPermiteAlterarDatasNoSequenciamentoCalendario(rota: string): boolean {
+  const n = norm(rota);
+  if (!n) return false;
+  if (isRequisicaoTexto(n) || isRetiradaTexto(n) || isEntregaGrandeTeresinaTexto(n)) return true;
+  if (isInserirRomaneioTexto(n)) return true;
+  if (isCarradaRota(rota) || n.includes('carradas')) return true;
+  return false;
+}
+
 export function mensagemCanalDatasPedido(row: Record<string, unknown>): string {
   const canal = canalPermitidoPedido(row);
   switch (canal) {
@@ -145,25 +181,29 @@ export function hojeIsoLocal(): string {
 /**
  * Valida datas de reprogramação.
  * - previsão ≥ produção (quando ambas informadas)
- * - cada data informada ≥ hoje
+ * - cada data *nova* informada ≥ hoje
+ *
+ * Use `exigirProducaoNaoAnteriorHoje: false` quando `producaoIso` é a produção já gravada
+ * (só para ordem previsão ≥ produção), não uma data que o usuário está gravando agora.
  */
 export function validarDatasReprogramacao(opts: {
   previsaoIso?: string | null;
   producaoIso?: string | null;
   exigirNaoAnteriorHoje?: boolean;
+  /** Default: mesmo valor de `exigirNaoAnteriorHoje`. */
+  exigirProducaoNaoAnteriorHoje?: boolean;
 }): string | null {
   const previsao = String(opts.previsaoIso ?? '').trim().slice(0, 10);
   const producao = String(opts.producaoIso ?? '').trim().slice(0, 10);
   const exigirHoje = opts.exigirNaoAnteriorHoje !== false;
+  const exigirProdHoje = opts.exigirProducaoNaoAnteriorHoje ?? exigirHoje;
   const hoje = hojeIsoLocal();
 
-  if (exigirHoje) {
-    if (producao && producao < hoje) {
-      return 'A data de produção não pode ser anterior à data de hoje.';
-    }
-    if (previsao && previsao < hoje) {
-      return 'A data de previsão não pode ser anterior à data de hoje.';
-    }
+  if (exigirProdHoje && producao && producao < hoje) {
+    return 'A data de produção não pode ser anterior à data de hoje.';
+  }
+  if (exigirHoje && previsao && previsao < hoje) {
+    return 'A data de previsão não pode ser anterior à data de hoje.';
   }
   if (previsao && producao && previsao < producao) {
     return 'A nova data de previsão não pode ser anterior à data de produção.';

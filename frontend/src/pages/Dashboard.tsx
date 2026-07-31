@@ -409,7 +409,7 @@ export default function Dashboard() {
       )}
 
       {toast && (
-        <div className="fixed bottom-4 right-4 rounded-lg bg-slate-700 border border-slate-600 px-4 py-2 text-slate-100 shadow-lg z-50">
+        <div className="fixed bottom-4 right-4 z-[160] rounded-lg bg-slate-700 border border-slate-600 px-4 py-2 text-slate-100 shadow-lg">
           {toast}
         </div>
       )}

@@ -76,6 +76,8 @@ import {
   persistRessupColWidths,
   readRessupColWidths,
 } from '../../utils/ressupAlmoxGradeUi';
+import { ComoLerBtn } from '../../components/AjudaTelaModal';
+import RessupAlmoxAjudaModal from './RessupAlmoxAjudaModal';
 
 const COL_DEFS = [
   { key: 'codigo', label: 'Código' },
@@ -571,6 +573,7 @@ export default function RessupAlmoxAnalisePage() {
   const [colWidths, setColWidths] = useState<Record<string, number>>(readRessupColWidths);
   const colResizeRef = useRef<{ colKey: ColKey; startX: number; startW: number } | null>(null);
   const [confirmSairAberto, setConfirmSairAberto] = useState(false);
+  const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
   const [considerarRequisicoes, setConsiderarRequisicoes] = useState(false);
   const [confirmRequisicoesAberto, setConfirmRequisicoesAberto] = useState(false);
   const [filtroCompraRecorrente, setFiltroCompraRecorrente] = useState<'' | 'Sim' | 'Não'>('');
@@ -1766,6 +1769,10 @@ export default function RessupAlmoxAnalisePage() {
             </p>
           </div>
           <div ref={novaAnaliseWrapRef} className="flex shrink-0 flex-wrap items-center gap-2 self-start">
+            <ComoLerBtn
+              onClick={() => setModalAjudaAberto(true)}
+              title="Como ler o Ressup Almox — ciclo, saldo, cobertura e aprovação"
+            />
             {mostrarGradeAnalise && (
               <button
                 type="button"
@@ -2904,8 +2911,7 @@ export default function RessupAlmoxAnalisePage() {
               Deseja considerar <strong>requisições de loja</strong> no cálculo de <strong>Empenho</strong>?
             </p>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Requisições = pedidos com atributo Requisitado (313) = Sim. Pedidos{' '}
-              <strong>Produção para estoque</strong> entram sempre, em Sim ou Não.
+              Requisições = pedidos com atributo Requisição = Sim.
             </p>
             <div className="mt-4 flex items-center justify-between gap-2">
               <button
@@ -2976,6 +2982,7 @@ export default function RessupAlmoxAnalisePage() {
           </div>
         </div>
       )}
+      <RessupAlmoxAjudaModal aberto={modalAjudaAberto} onClose={() => setModalAjudaAberto(false)} />
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
-import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
+import { getNomusPool, isNomusEnabled, nomusQueryWithRetry } from '../config/nomusDb.js';
 import { setLastSyncErp } from '../config/statusApp.js';
 import { geocodeMunicipio, geocodeFromCache, chaveLocal } from '../services/geocode.js';
 import { aplicarSinalizacaoCardPedidos, carregarCardsComunicador, pedidoLinhaAlocadaComunicador } from '../services/sycroOrderPedidoSinalizacao.js';
@@ -1018,7 +1018,7 @@ export async function listarPedidos(filtros: FiltrosPedidos = {}): Promise<{
     if (cachePedidos && cachePedidos.expiresAt > now) {
       resultado = cachePedidos.data;
     } else {
-      const [rows] = await pool.query(SQL_BASE_NOMUS);
+      const [rows] = await nomusQueryWithRetry(pool, SQL_BASE_NOMUS);
       const list = (Array.isArray(rows) ? rows : []) as Record<string, unknown>[];
       const linhasLookup: LinhaLookup[] = list
         .map((r) => ({
@@ -1189,7 +1189,7 @@ export async function listarPedidosEncerrados(pd: string): Promise<{
       '/*PD_ENCERRADOS_FILTER*/',
       mysql.escape(pdNome),
     );
-    const [rows] = await pool.query(sqlEncerrados);
+    const [rows] = await nomusQueryWithRetry(pool, sqlEncerrados);
     const list = (Array.isArray(rows) ? rows : []) as Record<string, unknown>[];
     const linhasLookup: LinhaLookup[] = list
       .map((r) => ({

@@ -27,6 +27,8 @@ import SycroOrderKanbanCard, { type SycroOrderKanbanCardActions } from '../../co
 import ModalFaturadoEntregue from '../../components/sycroorder/ModalFaturadoEntregue';
 import HelpTooltipIcon from '../../components/HelpTooltipIcon';
 import CampoLabelComAjuda, { AJUDA_CAMPO_MENSAGEM, AJUDA_CAMPO_OBSERVACAO } from '../../components/CampoLabelComAjuda';
+import { ComoLerBtn } from '../../components/AjudaTelaModal';
+import SycroOrderAjudaModal from './SycroOrderAjudaModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { PERMISSOES } from '../../config/permissoes';
 import {
@@ -424,6 +426,7 @@ export default function SycroOrderPage() {
   const [notifFilter, setNotifFilter] = useState<'todas' | 'lidas' | 'nao_lidas'>('nao_lidas');
   const [notifTogglingId, setNotifTogglingId] = useState<number | null>(null);
   const [mostrarFiltros, setMostrarFiltros] = useState(true);
+  const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
   const [history, setHistory] = useState<SycroOrderHistoryItem[]>([]);
   const [historicoPrazoOriginal, setHistoricoPrazoOriginal] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<SycroOrderNotification[]>([]);
@@ -705,6 +708,10 @@ export default function SycroOrderPage() {
       <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
         <div className="flex shrink-0 items-center gap-3 pb-2">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">Comunicação PD</h2>
+          <ComoLerBtn
+            onClick={() => setModalAjudaAberto(true)}
+            title="Como ler a Comunicação PD — kanban, fila e previsão"
+          />
           <button
             type="button"
             onClick={() => setMostrarFiltros((v) => !v)}
@@ -2654,6 +2661,7 @@ function ModalAtualizarPedido({
             onAtualizado={carregarMotivos}
           />
         )}
+        <SycroOrderAjudaModal aberto={modalAjudaAberto} onClose={() => setModalAjudaAberto(false)} />
       </div>
     </div>
   );

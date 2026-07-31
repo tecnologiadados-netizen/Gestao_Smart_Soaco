@@ -1,7 +1,7 @@
 import type { SequenciamentoCarradaAgregada } from '../../api/sequenciamentoCarradas';
 import type { Pedido, TooltipDetalheRow } from '../../api/pedidos';
 import type { AjustePrevisaoSuccessMeta } from '../ModalAjustePrevisao';
-import { normalizeRotaNameStr } from '../../utils/rotaCarrada';
+import { isCarradaRota, normalizeRotaNameStr } from '../../utils/rotaCarrada';
 
 function getField(row: Record<string, unknown>, keys: string[]): string {
   for (const k of keys) {
@@ -42,6 +42,152 @@ export function isCarradaOrdemFinal(carrada: string): boolean {
     n.startsWith('3-entrega') ||
     n.startsWith('5-requisicao')
   );
+}
+
+/** Tipof "CARRADAS" (rota ROTA …), excluindo especiais sem romaneio. */
+export function itemEhTipofCarradas(row: Pick<TooltipDetalheRow, 'rota'>): boolean {
+  const rota = String(row.rota ?? '').trim();
+  return isCarradaRota(rota) && !isCarradaOrdemFinal(rota);
+}
+
+function rmNorm(rm: unknown): string {
+  const s = String(rm ?? '').trim();
+  return s === '—' ? '' : s;
+}
+
+/** RMs tipof carradas presentes na seleção. */
+export function rmsCarradasDosItens(escolhidos: Pick<TooltipDetalheRow, 'rm' | 'rota'>[]): string[] {
+  const rms = new Set<string>();
+  for (const r of escolhidos) {
+    if (!itemEhTipofCarradas(r)) continue;
+    const rm = rmNorm(r.rm);
+    if (rm) rms.add(rm);
+  }
+  return [...rms];
+}
+
+export type EscopoReplicacaoRm = {
+  /** Linhas do snapshot (todos os PDs) no(s) RM(s) da seleção. */
+  linhasSnapshot: Record<string, unknown>[];
+  /** Itens tooltip correspondentes (para contagem / modal). */
+  itens: TooltipDetalheRow[];
+  extras: number;
+  rotulosRm: string[];
+  qtdItens: number;
+  qtdPedidos: number;
+  precisaConfirmar: boolean;
+};
+
+/**
+ * Escopo de reprogramação tipof CARRADAS: todos os itens de todos os pedidos
+ * que compartilham o mesmo código de romaneio (RM), para datas únicas na carrada.
+ */
+export function montarEscopoReplicacaoMesmoRm(
+  escolhidos: TooltipDetalheRow[],
+  linhasSnapshot: Record<string, unknown>[]
+): EscopoReplicacaoRm {
+  const rms = new Set(rmsCarradasDosItens(escolhidos));
+  if (rms.size === 0) {
+    return {
+      linhasSnapshot: [],
+      itens: escolhidos,
+      extras: 0,
+      rotulosRm: [],
+      qtdItens: escolhidos.length,
+      qtdPedidos: new Set(escolhidos.map((e) => e.pedido).filter(Boolean)).size,
+      precisaConfirmar: false,
+    };
+  }
+
+  const linhasRm: Record<string, unknown>[] = [];
+  const pds = new Set<string>();
+  for (const row of linhasSnapshot) {
+    const rm = rmNorm(getField(row, ['RM', 'rm']));
+    if (!rm || !rms.has(rm)) continue;
+    const rota = getField(row, ['Observacoes', 'Observacoes ', 'Observações']);
+    if (!isCarradaRota(rota) || isCarradaOrdemFinal(rota)) continue;
+    linhasRm.push(row);
+    const pd = getField(row, ['PD', 'pd']);
+    if (pd) pds.add(pd);
+  }
+
+  const itens = listarTooltipDetalheDeLinhas(linhasRm);
+  const escolhidoKeys = new Set(escolhidos.map((r) => `${r.pedido}\0${r.codigo}\0${r.rota}`));
+  let extras = 0;
+  for (const it of itens) {
+    const k = `${it.pedido}\0${it.codigo}\0${it.rota}`;
+    if (!escolhidoKeys.has(k)) extras++;
+  }
+
+  return {
+    linhasSnapshot: linhasRm,
+    itens,
+    extras,
+    rotulosRm: [...rms],
+    qtdItens: itens.length,
+    qtdPedidos: pds.size,
+    precisaConfirmar: extras > 0 || pds.size > 1 || itens.length > escolhidos.length,
+  };
+}
+
+/** Converte linhas do snapshot em TooltipDetalheRow (mesma regra de listarTooltipDetalhePorPd). */
+export function listarTooltipDetalheDeLinhas(linhas: Record<string, unknown>[]): TooltipDetalheRow[] {
+  return linhas
+    .map((row) => {
+      const rm = getField(row, ['RM', 'rm']);
+      const rota = getField(row, ['Observacoes', 'Observacoes ', 'Observações']);
+      const municipio = getField(row, ['Municipio de entrega', 'Município de entrega']);
+      const uf = getField(row, ['UF', 'uf']);
+      return {
+        rm: rm === '—' ? '' : rm,
+        rota: !rota || rota === 'Sem Rota' ? '' : rota,
+        dataEmissao: emissaoParaIso(getField(row, ['Emissao', 'emissao'])),
+        pedido: getField(row, ['PD', 'pd']),
+        cliente: getField(row, ['Cliente', 'cliente']),
+        tipoPedido: getField(row, ['Tipo Pedido', 'tipo pedido', 'TipoPedido']),
+        setorProducao: getField(row, ['Setor de Producao', 'Setor de produção']) || '(vazio)',
+        municipio: municipio && uf ? `${municipio} (${uf})` : municipio,
+        aVista: getField(row, ['A Vista', 'A vista', 'aVista']),
+        valorPendente: getNumber(row, ['Saldo a Faturar Real', 'Valor Pendente Real']),
+        codigo: getField(row, ['Cod', 'cod']),
+        produto: getField(row, ['Descricao do produto', 'Descrição do produto']),
+        qtdePendenteReal: getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']),
+        dataProducao: (() => {
+          const raw = row['data_producao'] ?? row['dataProducao'];
+          if (raw instanceof Date && !Number.isNaN(raw.getTime())) return raw.toISOString().slice(0, 10);
+          return emissaoParaIso(getField(row, ['data_producao', 'dataProducao']));
+        })(),
+      };
+    })
+    .sort((a, b) =>
+      (a.codigo || '').localeCompare(b.codigo || '', 'pt-BR', { numeric: true, sensitivity: 'base' })
+    );
+}
+
+/** @deprecated Use montarEscopoReplicacaoMesmoRm — mantido para compat de testes antigos. */
+export function expandirItensMesmaCarradaDoPedido(
+  escolhidos: TooltipDetalheRow[],
+  todosDoPedido: TooltipDetalheRow[]
+): { expandido: TooltipDetalheRow[]; extras: number; rotulosRm: string[] } {
+  const rms = new Set(rmsCarradasDosItens(escolhidos));
+  if (rms.size === 0) {
+    return { expandido: escolhidos, extras: 0, rotulosRm: [] };
+  }
+  const seen = new Set(escolhidos.map((r) => `${r.codigo}\0${r.rota}`));
+  const expandido = [...escolhidos];
+  for (const row of todosDoPedido) {
+    if (!itemEhTipofCarradas(row)) continue;
+    if (!rms.has(rmNorm(row.rm))) continue;
+    const k = `${row.codigo}\0${row.rota}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    expandido.push(row);
+  }
+  return {
+    expandido,
+    extras: expandido.length - escolhidos.length,
+    rotulosRm: [...rms],
+  };
 }
 
 /** Categoria "Inserir em Romaneio" (nome da carrada/rota ou TipoF). */
@@ -234,6 +380,20 @@ export type ProdutoVinculadoRow = {
   qtdeRomaneada: number;
 };
 
+/**
+ * Quantidade exibida no detalhe da carrada.
+ * Em especiais (sem romaneio) a "Qtde Romaneada" do ERP é 0; usa-se "Qtde Pendente Real",
+ * que é a quantidade base do "Saldo a Faturar Real" no Gerenciador.
+ */
+function qtdeExibidaDetalheCarrada(row: Record<string, unknown>): number {
+  const carrada = getField(row, ['Observacoes', 'Observacoes ', 'Observações', 'carrada']);
+  const tipoF = getField(row, ['tipoF', 'TipoF', 'tipo_f']);
+  if (isCarradaOrdemFinal(carrada) || isCarradaOrdemFinal(tipoF)) {
+    return getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']);
+  }
+  return getNumber(row, ['Qtde Romaneada', 'Qtde romaneada']);
+}
+
 export function agregarPedidosVenda(linhas: Record<string, unknown>[]): PedidoVendaRow[] {
   const map = new Map<string, PedidoVendaRow>();
   for (const row of linhas) {
@@ -266,7 +426,7 @@ export function listarItensPedido(linhas: Record<string, unknown>[]): ItemPedido
       emissao: getField(row, ['Emissao', 'emissao']),
       codigo: getField(row, ['Cod', 'cod']),
       descricao: getField(row, ['Descricao do produto', 'Descrição do produto']),
-      qtdeRomaneada: getNumber(row, ['Qtde Romaneada', 'Qtde romaneada']),
+      qtdeRomaneada: qtdeExibidaDetalheCarrada(row),
       precoUnitario: getNumber(row, ['Valor Unitario com desconto + IPI do item PD']),
       total: getNumber(row, ['Saldo a Faturar Real', 'Valor Romaneado']),
       status: getField(row, ['Stauts', 'Status', 'status']),
@@ -402,44 +562,16 @@ export function listarTooltipDetalhePorPd(
   linhas: Record<string, unknown>[],
   pd: string
 ): TooltipDetalheRow[] {
-  return linhas
-    .filter((row) => pedidoMatch(getField(row, ['PD', 'pd']), pd))
-    .map((row) => {
-      const rm = getField(row, ['RM', 'rm']);
-      const rota = getField(row, ['Observacoes', 'Observacoes ', 'Observações']);
-      const municipio = getField(row, ['Municipio de entrega', 'Município de entrega']);
-      const uf = getField(row, ['UF', 'uf']);
-      return {
-        rm: rm === '—' ? '' : rm,
-        rota: !rota || rota === 'Sem Rota' ? '' : rota,
-        dataEmissao: emissaoParaIso(getField(row, ['Emissao', 'emissao'])),
-        pedido: getField(row, ['PD', 'pd']),
-        cliente: getField(row, ['Cliente', 'cliente']),
-        tipoPedido: getField(row, ['Tipo Pedido', 'tipo pedido', 'TipoPedido']),
-        setorProducao: getField(row, ['Setor de Producao', 'Setor de produção']) || '(vazio)',
-        municipio: municipio && uf ? `${municipio} (${uf})` : municipio,
-        aVista: getField(row, ['A Vista', 'A vista', 'aVista']),
-        valorPendente: getNumber(row, ['Saldo a Faturar Real', 'Valor Pendente Real']),
-        codigo: getField(row, ['Cod', 'cod']),
-        produto: getField(row, ['Descricao do produto', 'Descrição do produto']),
-        qtdePendenteReal: getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']),
-        dataProducao: (() => {
-          const raw = row['data_producao'] ?? row['dataProducao'];
-          if (raw instanceof Date && !Number.isNaN(raw.getTime())) return raw.toISOString().slice(0, 10);
-          return emissaoParaIso(getField(row, ['data_producao', 'dataProducao']));
-        })(),
-      };
-    })
-    .sort((a, b) =>
-      (a.codigo || '').localeCompare(b.codigo || '', 'pt-BR', { numeric: true, sensitivity: 'base' })
-    );
+  return listarTooltipDetalheDeLinhas(
+    linhas.filter((row) => pedidoMatch(getField(row, ['PD', 'pd']), pd))
+  );
 }
 
 export function agregarProdutosVinculados(linhas: Record<string, unknown>[]): ProdutoVinculadoRow[] {
   const map = new Map<string, ProdutoVinculadoRow>();
   for (const row of linhas) {
     const codigo = getField(row, ['Cod', 'cod']) || '—';
-    const qtde = getNumber(row, ['Qtde Romaneada', 'Qtde romaneada']);
+    const qtde = qtdeExibidaDetalheCarrada(row);
     const existing = map.get(codigo);
     if (existing) {
       existing.qtdeRomaneada += qtde;

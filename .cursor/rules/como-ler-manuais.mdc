@@ -1,0 +1,38 @@
+---
+description: Manter manuais "Como ler" sincronizados com regras de negócio das telas
+alwaysApply: true
+---
+
+# Manuais “Como ler” — manutenção obrigatória
+
+Telas com botão **Como ler** têm um modal `*AjudaModal` que documenta o comportamento real da tela (categorias, fórmulas, status, cascata grade↔modal, etc.).
+
+## Obrigação
+
+Sempre que alterar **regras de negócio** em uma tela que já tem “Como ler” (ou no backend/SQL que alimenta essa tela), **atualize o `*AjudaModal` correspondente na mesma entrega**, mesmo que o usuário não peça atualização do manual.
+
+Exemplos de mudança que exigem sync do manual:
+
+- Cálculos (saldo projetado, empenho líquido, cobertura, previsão, corte)
+- Status/ciclos (`em_processamento` → `processado` → `concluido`)
+- Categorias/rotas, filtros, validações de gravação/conclusão
+- Integridade grade = modal (fonte SQL/regra do detalhe)
+- Fluxos de Kanban, replicação de datas, setores ocultos, roteiros/OPs
+
+## Onde editar
+
+- Shell de UI: `frontend/src/components/AjudaTelaModal.tsx` (`ComoLerBtn` + layout do modal)
+- Conteúdo por tela: wrappers `*AjudaModal.tsx` (ex.: `PedidosAjudaModal`, `ConsultaEstoqueAjudaModal`, …)
+- Não inventar CMS/Markdown externo — conteúdo permanece em TypeScript no wrapper
+
+## Telas cobertas hoje
+
+Gerenciador de Pedidos, DRE, Sequenciamento, Consulta de Estoque, Ressup Almox, Ressup Não Almox, Pedidos Encerrados, Comunicação PD, Programação Setorial, Programação de Produção (Recurso 1000).
+
+## Telas novas
+
+Novas telas analíticas PCP com grade/fluxo próprio devem ganhar “Como ler” no mesmo padrão (`ComoLerBtn` + wrapper com `SECOES` via `AjudaTelaModal`).
+
+## Critério de pronto
+
+O texto do manual deve refletir o comportamento **após** a mudança. Se a grade e o modal analítico mudaram de regra, as seções “O que é” / “Como ler na prática” / detalhes devem acompanhar.

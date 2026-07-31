@@ -9,6 +9,8 @@ import {
 import { imageUrlToDataUrl } from '../../utils/imageDataUrl';
 import { filterSnapshotLinhasByRules } from '../../utils/programacaoSetorialSnapshotFilters';
 import { downloadProgramacaoSnapshotPdf, formatPeriodoLabelBr, type SnapshotLinhaPdf } from '../../utils/programacaoSetorialSnapshotPdf';
+import { ComoLerBtn } from '../../components/AjudaTelaModal';
+import ProgramacaoSetorialAjudaModal from './ProgramacaoSetorialAjudaModal';
 
 /** Formato gravado em `dadosProgramacao` ao salvar no gerador. */
 type SnapshotLinha = {
@@ -92,6 +94,7 @@ export default function ProgramacaoSetorialPainelPage() {
   const [erro, setErro] = useState<string | null>(null);
 
   const [showGeradorModal, setShowGeradorModal] = useState(false);
+  const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
   const [visualizacaoRegistro, setVisualizacaoRegistro] = useState<ProgramacaoSetorialRegistro | null>(null);
   const [pdfAcaoMsg, setPdfAcaoMsg] = useState<string | null>(null);
 
@@ -271,9 +274,15 @@ export default function ProgramacaoSetorialPainelPage() {
       {erro && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{erro}</div>}
 
       <div className="card-panel p-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Programações Setoriais</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Abertas: {totalAbertas} | Total: {registros.length}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Programações Setoriais</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Abertas: {totalAbertas} | Total: {registros.length}</p>
+          </div>
+          <ComoLerBtn
+            onClick={() => setModalAjudaAberto(true)}
+            title="Como ler a Programação Setorial — geração, snapshot e PDF"
+          />
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -596,6 +605,7 @@ export default function ProgramacaoSetorialPainelPage() {
         datasSomenteLeitura={impressaoCongelada}
         confirmLabel={salvandoCongelamentoImpressao ? 'Gravando datas…' : 'Confirmar e Gerar PDF'}
       />
+      <ProgramacaoSetorialAjudaModal aberto={modalAjudaAberto} onClose={() => setModalAjudaAberto(false)} />
     </div>
   );
 }

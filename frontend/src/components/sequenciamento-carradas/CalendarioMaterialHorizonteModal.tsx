@@ -20,8 +20,12 @@ function fmtNum(n: number): string {
   return n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-const TH = 'px-2 py-2 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap';
+const TH =
+  'px-2 py-2 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap bg-slate-50 dark:bg-slate-900';
 const TD = 'px-2 py-1.5 border-b border-slate-100 dark:border-slate-700';
+
+/** Igual ao calendário: gap ≥5 dias sem movimento vira linha "...". */
+const GAP_OCIOSO_MIN_DIAS = 5;
 
 type HorizonteCache = {
   idProduto: number;
@@ -33,7 +37,8 @@ type HorizonteCache = {
 };
 
 /** Linha do horizonte com saldo início/projetado em carry livre (pode ser negativo). */
-type HorizonteLinhaExibicao = {
+export type HorizonteLinhaDia = {
+  tipo: 'dia';
   data: string;
   consumo: number;
   entrada: number;
@@ -41,21 +46,38 @@ type HorizonteLinhaExibicao = {
   saldoProjetado: number;
 };
 
+export type HorizonteLinhaOciosa = {
+  tipo: 'ocioso';
+  /** Data do último dia com movimento antes do gap. */
+  de: string;
+  /** Data do próximo dia com movimento após o gap. */
+  ate: string;
+  saldoInicio: number;
+  saldoProjetado: number;
+};
+
+export type HorizonteLinhaExibicao = HorizonteLinhaDia | HorizonteLinhaOciosa;
+
+function temMovimento(consumo: number, entrada: number): boolean {
+  return consumo > 0 || entrada > 0;
+}
+
 /**
  * Carry de exibição: saldo projetado do dia vira saldo início do seguinte (sem floor em 0).
  * Não altera o motor de falta/semáforo do backend.
  */
-function montarLinhasHorizonteComCarry(
+export function montarLinhasHorizonteComCarry(
   dias: HorizonteDiaCalendario[],
   saldoInicial: number
-): HorizonteLinhaExibicao[] {
-  const out: HorizonteLinhaExibicao[] = [];
+): HorizonteLinhaDia[] {
+  const out: HorizonteLinhaDia[] = [];
   let saldo = Number.isFinite(saldoInicial) ? saldoInicial : 0;
   for (const d of dias) {
     const saldoInicio = Math.round(saldo * 100) / 100;
     const saldoProjetado =
       Math.round((saldoInicio - d.consumo + d.entrada) * 100) / 100;
     out.push({
+      tipo: 'dia',
       data: d.data,
       consumo: d.consumo,
       entrada: d.entrada,
@@ -63,6 +85,48 @@ function montarLinhasHorizonteComCarry(
       saldoProjetado,
     });
     saldo = saldoProjetado;
+  }
+  return out;
+}
+
+/**
+ * Trunca na última data com consumo/entrada, remove dias antes da 1ª com movimento
+ * e colapsa gaps longos (≥5 dias) em uma linha ociosa — espelha `montarEixoDatasCalendario`.
+ */
+export function compactarLinhasHorizonte(linhas: HorizonteLinhaDia[]): HorizonteLinhaExibicao[] {
+  const idxsMovimento: number[] = [];
+  for (let i = 0; i < linhas.length; i++) {
+    const l = linhas[i]!;
+    if (temMovimento(l.consumo, l.entrada)) idxsMovimento.push(i);
+  }
+  if (idxsMovimento.length === 0) return [];
+
+  const out: HorizonteLinhaExibicao[] = [];
+  for (let a = 0; a < idxsMovimento.length; a++) {
+    const idx = idxsMovimento[a]!;
+    const atual = linhas[idx]!;
+    if (a === 0) {
+      out.push(atual);
+      continue;
+    }
+    const prevIdx = idxsMovimento[a - 1]!;
+    const gapDias = idx - prevIdx - 1;
+    if (gapDias >= GAP_OCIOSO_MIN_DIAS) {
+      const primeiroVazio = linhas[prevIdx + 1]!;
+      const ultimoVazio = linhas[idx - 1]!;
+      out.push({
+        tipo: 'ocioso',
+        de: linhas[prevIdx]!.data,
+        ate: atual.data,
+        saldoInicio: primeiroVazio.saldoInicio,
+        saldoProjetado: ultimoVazio.saldoProjetado,
+      });
+    } else if (gapDias > 0) {
+      for (let j = prevIdx + 1; j < idx; j++) {
+        out.push(linhas[j]!);
+      }
+    }
+    out.push(atual);
   }
   return out;
 }
@@ -174,7 +238,7 @@ export default function CalendarioMaterialHorizonteModal({
 
   const linhasHorizonte = useMemo(() => {
     if (!dados) return [];
-    return montarLinhasHorizonteComCarry(dados.dias, dados.saldoInicial);
+    return compactarLinhasHorizonte(montarLinhasHorizonteComCarry(dados.dias, dados.saldoInicial));
   }, [dados]);
 
   if (!open) return null;
@@ -223,15 +287,20 @@ export default function CalendarioMaterialHorizonteModal({
             </button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto p-4">
+          <div className="min-h-0 flex-1 overflow-auto">
             {carregando && (
-              <p className="text-sm text-slate-500 dark:text-slate-400">Carregando horizonte…</p>
+              <p className="p-4 text-sm text-slate-500 dark:text-slate-400">Carregando horizonte…</p>
             )}
-            {erro && <p className="text-sm text-red-600 dark:text-red-400">{erro}</p>}
-            {!carregando && !erro && dados && (
+            {erro && <p className="p-4 text-sm text-red-600 dark:text-red-400">{erro}</p>}
+            {!carregando && !erro && dados && linhasHorizonte.length === 0 && (
+              <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
+                Sem consumo nem entrada PC no horizonte deste material.
+              </p>
+            )}
+            {!carregando && !erro && dados && linhasHorizonte.length > 0 && (
               <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/50">
+                <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.08)]">
+                  <tr className="border-b border-slate-200 dark:border-slate-600">
                     <th className={`${TH} text-left`}>Data</th>
                     <th className={`${TH} text-right`}>Saldo início</th>
                     <th className={`${TH} text-right`}>Consumo</th>
@@ -240,41 +309,65 @@ export default function CalendarioMaterialHorizonteModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {linhasHorizonte.map((d) => (
-                    <tr key={d.data} className={classSaldoProjetado(d.saldoProjetado)}>
-                      <td className={TD}>{formatDataCurta(d.data)}</td>
-                      <td className={`${TD} text-right tabular-nums`}>{fmtNum(d.saldoInicio)}</td>
-                      <td className={`${TD} text-right tabular-nums`}>
-                        {d.consumo > 0 ? (
-                          <GradeCelulaModalBtn
-                            onClick={() => setOrigemData(d.data)}
-                            title="Ver origem do consumo"
-                            align="right"
-                          >
-                            {fmtNum(d.consumo)}
-                          </GradeCelulaModalBtn>
-                        ) : (
-                          fmtNum(d.consumo)
-                        )}
-                      </td>
-                      <td className={`${TD} text-right tabular-nums`}>
-                        {d.entrada > 0 && idProduto != null ? (
-                          <GradeCelulaModalBtn
-                            onClick={() => setPcOpen(true)}
-                            title="Ver pedidos de compra"
-                            align="right"
-                          >
-                            {fmtNum(d.entrada)}
-                          </GradeCelulaModalBtn>
-                        ) : (
-                          fmtNum(d.entrada)
-                        )}
-                      </td>
-                      <td className={`${TD} text-right tabular-nums font-medium`}>
-                        {fmtNum(d.saldoProjetado)}
-                      </td>
-                    </tr>
-                  ))}
+                  {linhasHorizonte.map((row) => {
+                    if (row.tipo === 'ocioso') {
+                      const titulo = `Período sem movimento (${formatDataCurta(row.de)} – ${formatDataCurta(row.ate)})`;
+                      return (
+                        <tr
+                          key={`ocioso:${row.de}:${row.ate}`}
+                          className="bg-slate-50/80 dark:bg-slate-900/40"
+                          title={titulo}
+                        >
+                          <td className={`${TD} text-center text-slate-400 dark:text-slate-500`}>
+                            …
+                          </td>
+                          <td className={`${TD} text-right tabular-nums text-slate-400`}>
+                            {fmtNum(row.saldoInicio)}
+                          </td>
+                          <td className={`${TD} text-center text-slate-300 dark:text-slate-600`}>—</td>
+                          <td className={`${TD} text-center text-slate-300 dark:text-slate-600`}>—</td>
+                          <td className={`${TD} text-right tabular-nums text-slate-400`}>
+                            {fmtNum(row.saldoProjetado)}
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return (
+                      <tr key={row.data} className={classSaldoProjetado(row.saldoProjetado)}>
+                        <td className={TD}>{formatDataCurta(row.data)}</td>
+                        <td className={`${TD} text-right tabular-nums`}>{fmtNum(row.saldoInicio)}</td>
+                        <td className={`${TD} text-right tabular-nums`}>
+                          {row.consumo > 0 ? (
+                            <GradeCelulaModalBtn
+                              onClick={() => setOrigemData(row.data)}
+                              title="Ver origem do consumo"
+                              align="right"
+                            >
+                              {fmtNum(row.consumo)}
+                            </GradeCelulaModalBtn>
+                          ) : (
+                            fmtNum(row.consumo)
+                          )}
+                        </td>
+                        <td className={`${TD} text-right tabular-nums`}>
+                          {row.entrada > 0 && idProduto != null ? (
+                            <GradeCelulaModalBtn
+                              onClick={() => setPcOpen(true)}
+                              title="Ver pedidos de compra"
+                              align="right"
+                            >
+                              {fmtNum(row.entrada)}
+                            </GradeCelulaModalBtn>
+                          ) : (
+                            fmtNum(row.entrada)
+                          )}
+                        </td>
+                        <td className={`${TD} text-right tabular-nums font-medium`}>
+                          {fmtNum(row.saldoProjetado)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

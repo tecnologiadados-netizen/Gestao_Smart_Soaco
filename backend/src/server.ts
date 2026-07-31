@@ -25,6 +25,7 @@ import { iniciarCronsSgqEmailNotificacao } from './scheduler/sgqEmailNotificacao
 import { iniciarCronsEmailNotificacao } from './scheduler/emailNotificacaoCron.js';
 import { logStatusEnvioNotificacoes } from './config/envioNotificacoes.js';
 import { backfillAguardaRespostaLabelsForPendingOrders } from './services/sycroOrderAguardaRespostaLabel.js';
+import { sincronizarDescricaoEscopoWhatsAppComunicacaoPd } from './services/sycroOrderEscopoWhatsAppSync.js';
 import { ensureGrupoMaster } from './config/ensureGrupoMaster.js';
 import { initPainelProducaoMetas } from './services/painelProducao/painelProducaoTargetsService.js';
 
@@ -117,6 +118,14 @@ function main(): void {
           }
         } catch (e) {
           console.warn('[startup] Backfill aguarda resposta SycroOrder:', (e as Error)?.message ?? e);
+        }
+        try {
+          const n = await sincronizarDescricaoEscopoWhatsAppComunicacaoPd();
+          if (n > 0) {
+            console.log(`[startup] Comunicação PD: descrição de ${n} tipo(s) SMS sincronizada.`);
+          }
+        } catch (e) {
+          console.warn('[startup] Sincronizar escopo Loja/Indústria SMS:', (e as Error)?.message ?? e);
         }
         logStatusEnvioNotificacoes();
         iniciarCronsWhatsappNotificacao();

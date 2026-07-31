@@ -42,4 +42,26 @@ export function calcularSaldoProjetadoPorPedido(
 
 /** Texto da dica do empenho líquido (grade / Qtde Emp). */
 export const DICA_EMPENHO_LIQ_GRADE =
-  'Valor da grade: bruto menos cobertura pelo estoque em PA (setores 5/24).';
+  'Valor da grade equivale a max(0, empenho bruto − estoque em PA).';
+
+/** Texto da dica da coluna Estoque atual (Consulta de Estoque). */
+export const DICA_ESTOQUE_ATUAL_GRADE =
+  'Total do saldo de estoque do somatório dos setores parametrizados. Para itens que fazem parte da BOM e estão no setor de PA compondo o produto pai, tal quantidade não está sendo somada ao estoque atual, visto que essa quantidade já está sendo considerada para resultar no empenho líquido.';
+
+/** Setores de produto acabado (PRODUTOS ACABADOS / equivalente). */
+export const SETORES_ESTOQUE_PA = [5, 24] as const;
+
+export function isSetorEstoquePa(idSetor: number): boolean {
+  return (SETORES_ESTOQUE_PA as readonly number[]).includes(idSetor);
+}
+
+/**
+ * Tip do card Estoque em PA no Empenho (estoque×BOM em unidades do componente).
+ * Abatido integralmente do empenho bruto (piso 0) para obter o empenho líquido.
+ */
+export const DICA_ESTOQUE_PA =
+  'Estoque de produtos acabados convertido em unidades do componente via BOM (setores 5 e 24). Subtraído do empenho bruto para obter o empenho líquido (mínimo 0).';
+
+/** Tip do card Estoque em PA no modal Estoque atual (saldo próprio nos setores 5/24). */
+export const DICA_ESTOQUE_PA_SALDO =
+  'Estoque de produtos acabados (setores 5 e 24).';

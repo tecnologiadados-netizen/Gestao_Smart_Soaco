@@ -6,7 +6,7 @@ import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoes
 import ModalPcPendDetalhes from '../../components/ressupAlmox/ModalPcPendDetalhes';
 import EmpenhoLiquidoPainel from '../../components/ressupAlmox/EmpenhoLiquidoPainel';
 import RotuloComDica from '../../components/ressupAlmox/RotuloComDica';
-import { DICA_EMPENHO_LIQ_GRADE } from '../../components/ressupAlmox/empenhoModalUtils';
+import { DICA_EMPENHO_LIQ_GRADE, DICA_ESTOQUE_ATUAL_GRADE, DICA_ESTOQUE_PA_SALDO, isSetorEstoquePa } from '../../components/ressupAlmox/empenhoModalUtils';
 import type { RessupAlmoxPcPendLinha, RessupEmpenhoPedidoResultado } from '../../api/compras';
 import { obterRessupEmpenhoPorPedido } from '../../api/compras';
 import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
@@ -42,6 +42,8 @@ import {
   type ScDetalhe,
 } from '../../api/consultaEstoque';
 import { SETOR_ALMOX_SECUNDARIO } from '../../utils/ressupNaoAlmoxColetas';
+import { ComoLerBtn } from '../../components/AjudaTelaModal';
+import ConsultaEstoqueAjudaModal from './ConsultaEstoqueAjudaModal';
 import {
   getOrderLabelsForConsultaEstoqueCol,
   isConsultaEstoqueColNumeric,
@@ -167,6 +169,7 @@ export default function ConsultaEstoquePage() {
   const [mostrarGrade, setMostrarGrade] = useState(false);
   const [loading, setLoading] = useState(false);
   const [erroApi, setErroApi] = useState<string | null>(null);
+  const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
   const [considerarRequisicoes, setConsiderarRequisicoes] = useState(false);
   const [confirmRequisicoesAberto, setConfirmRequisicoesAberto] = useState(false);
   const [confirmVolumeAberto, setConfirmVolumeAberto] = useState(false);
@@ -562,11 +565,17 @@ export default function ConsultaEstoquePage() {
         mode="contained"
       />
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Consulta de Estoque</h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Visualização em tempo real — sem histórico gravado.
-          </p>
+        <div className="flex flex-wrap items-start gap-2">
+          <div>
+            <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Consulta de Estoque</h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Visualização em tempo real — sem histórico gravado.
+            </p>
+          </div>
+          <ComoLerBtn
+            onClick={() => setModalAjudaAberto(true)}
+            title="Como ler a Consulta de Estoque — saldo, empenho e filtros"
+          />
         </div>
         <button type="button" className={BTN_PRIMARY} onClick={handleConsultarClick}>
           Consultar estoque
@@ -650,6 +659,10 @@ export default function ConsultaEstoquePage() {
                         {c.key === 'empenho' ? (
                           <span className="inline-flex justify-center">
                             <RotuloComDica rotulo={c.label} dica={DICA_EMPENHO_LIQ_GRADE} headerClaro />
+                          </span>
+                        ) : c.key === 'saldo' ? (
+                          <span className="inline-flex justify-center">
+                            <RotuloComDica rotulo={c.label} dica={DICA_ESTOQUE_ATUAL_GRADE} headerClaro />
                           </span>
                         ) : (
                           c.label
@@ -959,8 +972,8 @@ export default function ConsultaEstoquePage() {
               const saldoSetor2 = detalheSaldo
                 .filter((s) => s.idSetor === SETOR_ALMOX_SECUNDARIO)
                 .reduce((acc, s) => acc + s.saldo, 0);
-              const saldoMpp = detalheSaldo
-                .filter((s) => s.idSetor !== SETOR_ALMOX_SECUNDARIO)
+              const saldoEstoquePa = detalheSaldo
+                .filter((s) => isSetorEstoquePa(s.idSetor))
                 .reduce((acc, s) => acc + s.saldo, 0);
               const destacarAlmoxSec = saldoSetor2 > 0;
               const totalSaldo = detalhe.linha.saldo;
@@ -972,8 +985,10 @@ export default function ConsultaEstoquePage() {
                     }`}
                   >
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-900/40">
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400">Estoque MPP</div>
-                      <div className="text-sm font-medium tabular-nums">{fmtQtde(saldoMpp)}</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        <RotuloComDica rotulo="Estoque em PA" dica={DICA_ESTOQUE_PA_SALDO} />
+                      </div>
+                      <div className="text-sm font-medium tabular-nums">{fmtQtde(saldoEstoquePa)}</div>
                     </div>
                     {destacarAlmoxSec && (
                       <div className="rounded-lg border border-amber-300 bg-amber-50/90 px-3 py-2 dark:border-amber-700 dark:bg-amber-900/25">
@@ -1007,14 +1022,7 @@ export default function ConsultaEstoquePage() {
                               : ''
                           }`}
                         >
-                          <td className="py-1.5">
-                            {s.setor}
-                            {s.idSetor === SETOR_ALMOX_SECUNDARIO ? (
-                              <span className="ml-1 text-[10px] font-medium text-amber-700 dark:text-amber-300">
-                                (almox secundário)
-                              </span>
-                            ) : null}
-                          </td>
+                          <td className="py-1.5">{s.setor}</td>
                           <td className="py-1.5 text-right tabular-nums">{fmtQtde(s.saldo)}</td>
                         </tr>
                       ))}
@@ -1031,6 +1039,8 @@ export default function ConsultaEstoquePage() {
               return (
                 <EmpenhoLiquidoPainel
                   detalhe={detalheEmpenhoLiquido}
+                  codigo={detalhe.linha.codigo}
+                  descricao={detalhe.linha.descricao}
                   saldoAtual={saldoAtual}
                   rotuloTotal="Empenho líquido"
                   mostrarCards
@@ -1045,6 +1055,7 @@ export default function ConsultaEstoquePage() {
           }}
         </ModalConsultaEstoqueDetalhe>
       )}
+      <ConsultaEstoqueAjudaModal aberto={modalAjudaAberto} onClose={() => setModalAjudaAberto(false)} />
     </div>
   );
 }

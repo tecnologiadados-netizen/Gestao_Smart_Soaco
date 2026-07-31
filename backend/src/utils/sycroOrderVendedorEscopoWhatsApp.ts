@@ -11,6 +11,7 @@ export const VENDEDORES_WHATSAPP_LOJA = [
   'GILVANIA EVANGELISTA SAMPAIO',
   'MIRIAM DA SILVA NEPOMUCENO',
   'LARISSA CRISTINE PINHEIRO DOS SANTOS',
+  'MARIA LEOPOLDINA ARAUJO MARQUES',
 ] as const;
 
 /** Vendedores que disparam alertas da Indústria. */

@@ -113,6 +113,8 @@ export default function ModalEmpenhoRessup({
           {!carregando && !erro && detalhe && (
             <EmpenhoLiquidoPainel
               detalhe={detalhe}
+              codigo={codigo}
+              descricao={descricao}
               saldoAtual={saldoAtual}
               rotuloTotal="Empenho líquido"
               mostrarCards

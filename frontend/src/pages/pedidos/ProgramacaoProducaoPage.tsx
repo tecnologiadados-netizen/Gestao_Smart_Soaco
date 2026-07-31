@@ -30,6 +30,8 @@ import {
   podeVerProgramacaoProducao,
 } from '../../utils/programacaoProducaoPermissoes';
 import type { TipoImpressaoProgramacaoProducao } from '../../utils/programacaoProducaoRoteiros';
+import { ComoLerBtn } from '../../components/AjudaTelaModal';
+import ProgramacaoProducaoAjudaModal from './ProgramacaoProducaoAjudaModal';
 
 type TelaProgramacao = 'lista' | { modo: 'editar' | 'visualizar'; programacaoId?: string };
 
@@ -83,6 +85,7 @@ export default function ProgramacaoProducaoPage() {
   } | null>(null);
   const [modalPdf, setModalPdf] = useState<ProgramacaoProducaoListItem | null>(null);
   const [erroModalPdf, setErroModalPdf] = useState<string | null>(null);
+  const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
   const carregar = useCallback(async () => {
     setLoading(true);
     setErro(null);
@@ -336,16 +339,22 @@ export default function ProgramacaoProducaoPage() {
   return (
     <div className="relative flex flex-col flex-1 min-h-0 p-3 max-w-[1920px] mx-auto w-full">
       <div className="mb-2 flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between shrink-0">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-primary-600 dark:text-primary-400 uppercase tracking-wide leading-none mb-0.5">
-            PCP
-          </p>
-          <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100 leading-tight">
-            Programação de produção
-          </h1>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            Registros de programações de produção.
-          </p>
+        <div className="flex min-w-0 flex-wrap items-start gap-2">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-primary-600 dark:text-primary-400 uppercase tracking-wide leading-none mb-0.5">
+              PCP
+            </p>
+            <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100 leading-tight">
+              Programação de produção
+            </h1>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Registros de programações de produção.
+            </p>
+          </div>
+          <ComoLerBtn
+            onClick={() => setModalAjudaAberto(true)}
+            title="Como ler a Programação de Produção (Recurso 1000)"
+          />
         </div>
         {canEdit && (
           <button type="button" onClick={abrirNovo} className={BTN_PRIMARY}>
@@ -553,6 +562,7 @@ export default function ProgramacaoProducaoPage() {
           </div>
         </div>
       )}
+      <ProgramacaoProducaoAjudaModal aberto={modalAjudaAberto} onClose={() => setModalAjudaAberto(false)} />
     </div>
   );
 }
