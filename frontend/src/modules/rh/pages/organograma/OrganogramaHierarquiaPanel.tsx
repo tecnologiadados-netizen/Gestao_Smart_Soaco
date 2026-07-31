@@ -32,7 +32,7 @@ import {
 } from "@rh/lib/organograma-hierarquia";
 import type { DiretoriaTree } from "@rh/lib/organograma-vinculacoes";
 import { canViewOrganogramaFotos } from "@rh/lib/route-permissions";
-import { classesQuadroPan, useQuadroPan } from "@rh/hooks/useQuadroPan";
+import { classesQuadroPan, useQuadroPan, type QuadroPanOffset } from "@rh/hooks/useQuadroPan";
 import { cn } from "@rh/lib/utils";
 import { useOrganicoCardFoto } from "@rh/pages/Organico/useOrganicoCardFoto";
 import type { OrganicoRow } from "@rh/types/api";
@@ -40,7 +40,7 @@ import type { OrganicoRow } from "@rh/types/api";
 const FOTO_EMPRESA_KEY = "organograma-foto:empresa";
 
 const MAX_N1_HORIZONTAL = 8;
-/** Permite ver a cadeia inteira (Encaixar / Ctrl+scroll). */
+/** Permite ver a cadeia inteira (Encaixar / scroll do mouse). */
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 1.5;
 const ZOOM_STEP = 0.05;
@@ -945,7 +945,9 @@ export function OrganogramaHierarquiaPanel({
   const contentRef = useRef<HTMLDivElement>(null);
   const ramoElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const [zoom, setZoom] = useState(0.85);
-  const [contentSize, setContentSize] = useState({ w: 0, h: 0 });
+  const panOffsetRef = useRef<QuadroPanOffset>({ x: 0, y: 0 });
+  const panRafRef = useRef<number | null>(null);
+  const [panOffset, setPanOffset] = useState<QuadroPanOffset>({ x: 0, y: 0 });
   const [abertos, setAbertos] = useState<Set<string>>(() => new Set());
   const [exportando, setExportando] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -954,37 +956,47 @@ export function OrganogramaHierarquiaPanel({
 
   const clampZoom = useCallback((z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)), []);
 
+  const aplicarPanOffset = useCallback((next: QuadroPanOffset, imediato = false) => {
+    panOffsetRef.current = next;
+    if (imediato) {
+      if (panRafRef.current != null) {
+        window.cancelAnimationFrame(panRafRef.current);
+        panRafRef.current = null;
+      }
+      setPanOffset(next);
+      return;
+    }
+    // Um setState por frame — arrastar sem re-render a cada pixel.
+    if (panRafRef.current != null) return;
+    panRafRef.current = window.requestAnimationFrame(() => {
+      panRafRef.current = null;
+      setPanOffset(panOffsetRef.current);
+    });
+  }, []);
+
   const {
     ref: viewportCallbackRef,
     elementRef: viewportRef,
     isPanning,
   } = useQuadroPan({
+    zoomComScroll: true,
+    panOffsetRef,
+    onPanOffsetChange: aplicarPanOffset,
     onZoomStep: useCallback(
       (direcao: 1 | -1) => setZoom((z) => clampZoom(z + direcao * ZOOM_STEP)),
       [clampZoom],
     ),
   });
 
+  useEffect(() => {
+    if (!isPanning) setPanOffset(panOffsetRef.current);
+  }, [isPanning]);
+
   const idsExpandiveis = useMemo(
     () => arvore.flatMap((d) => coletarExpandiveis(d.ancoras)),
     [arvore],
   );
   const temAlgoAberto = abertos.size > 0;
-
-  const medirConteudo = useCallback(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    setContentSize({ w: el.offsetWidth, h: el.offsetHeight });
-  }, []);
-
-  useLayoutEffect(() => {
-    medirConteudo();
-    const el = contentRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => medirConteudo());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [medirConteudo, arvore, abertos, isFullscreen]);
 
   useLayoutEffect(() => {
     // Remove IDs que sumiram da árvore (ex.: troca de vínculos).
@@ -1011,36 +1023,43 @@ export function OrganogramaHierarquiaPanel({
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
+  const centralizarConteudo = useCallback(
+    (scale: number, cw: number, ch: number, vpW: number, vpH: number) => {
+      aplicarPanOffset(
+        {
+          x: (vpW - cw * scale) / 2,
+          y: (vpH - ch * scale) / 2,
+        },
+        true,
+      );
+    },
+    [aplicarPanOffset],
+  );
+
   const encaixarNaTela = useCallback(() => {
     const vp = viewportRef.current;
     const el = contentRef.current;
     if (!vp || !el) return;
-    const pad = 40;
+    const pad = 48;
+    // offsetWidth/Height ignoram o transform — medem o tamanho lógico do organograma.
     const cw = el.offsetWidth;
     const ch = el.offsetHeight;
     if (cw <= 0 || ch <= 0) return;
     const scale = Math.min((vp.clientWidth - pad) / cw, (vp.clientHeight - pad) / ch, ZOOM_MAX);
     const next = clampZoom(scale);
-    setContentSize({ w: cw, h: ch });
     setZoom(next);
+    centralizarConteudo(next, cw, ch, vp.clientWidth, vp.clientHeight);
+  }, [clampZoom, centralizarConteudo, viewportRef]);
 
-    const aplicarScroll = () => {
-      const scaledW = cw * next;
-      const scaledH = ch * next;
-      const left = Math.max(0, (scaledW - vp.clientWidth) / 2);
-      const top = Math.max(0, (scaledH - vp.clientHeight) / 2);
-      vp.scrollTo({ left, top, behavior: "smooth" });
-    };
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(aplicarScroll);
-    });
-  }, [clampZoom]);
-
-  /** Dispara encaixe + centralização após o layout assentar (expandir / tela cheia). */
+  /** Dispara encaixe + centralização após o layout assentar (expandir / tela cheia / 1ª carga). */
   const pedirEncaixeAposLayout = useCallback(() => {
     setEncaixeTick((n) => n + 1);
   }, []);
+
+  useEffect(() => {
+    if (!temVinculos) return;
+    pedirEncaixeAposLayout();
+  }, [temVinculos, arvore.length, pedirEncaixeAposLayout]);
 
   useEffect(() => {
     if (encaixeTick === 0) return;
@@ -1051,7 +1070,6 @@ export function OrganogramaHierarquiaPanel({
     const raf = requestAnimationFrame(() => {
       requestAnimationFrame(run);
     });
-    // Fullscreen e árvore expandida: viewport/cards ainda mudam após o 1º paint.
     const t = window.setTimeout(run, 220);
     return () => {
       cancelled = true;
@@ -1097,26 +1115,23 @@ export function OrganogramaHierarquiaPanel({
     (diretoriaId: string) => {
       const vp = viewportRef.current;
       const ramo = ramoElsRef.current.get(diretoriaId);
-      const content = contentRef.current;
-      if (!vp || !ramo || !content) return;
+      if (!vp || !ramo) return;
 
-      setZoom(clampZoom(0.95));
+      const nextZoom = clampZoom(0.95);
+      setZoom(nextZoom);
 
       requestAnimationFrame(() => {
-        const vpRect = vp.getBoundingClientRect();
-        const ramoRect = ramo.getBoundingClientRect();
-        const targetLeft =
-          vp.scrollLeft + (ramoRect.left - vpRect.left) - (vp.clientWidth - ramoRect.width) / 2;
-        const targetTop =
-          vp.scrollTop + (ramoRect.top - vpRect.top) - Math.min(80, vp.clientHeight * 0.1);
-        vp.scrollTo({
-          left: Math.max(0, targetLeft),
-          top: Math.max(0, targetTop),
-          behavior: "smooth",
+        requestAnimationFrame(() => {
+          const vpRect = vp.getBoundingClientRect();
+          const ramoRect = ramo.getBoundingClientRect();
+          const cur = panOffsetRef.current;
+          const dx = vpRect.left + vp.clientWidth / 2 - (ramoRect.left + ramoRect.width / 2);
+          const dy = vpRect.top + Math.min(80, vp.clientHeight * 0.12) - ramoRect.top;
+          aplicarPanOffset({ x: cur.x + dx, y: cur.y + dy }, true);
         });
       });
     },
-    [clampZoom],
+    [aplicarPanOffset, clampZoom, viewportRef],
   );
 
   const exportarPng = useCallback(async () => {
@@ -1124,8 +1139,10 @@ export function OrganogramaHierarquiaPanel({
     if (!el || exportando) return;
     setExportando(true);
     const prevZoom = zoom;
+    const prevPan = panOffsetRef.current;
     try {
       setZoom(1);
+      aplicarPanOffset({ x: 0, y: 0 }, true);
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       const canvas = await html2canvas(el, {
         backgroundColor: "#ffffff",
@@ -1141,9 +1158,10 @@ export function OrganogramaHierarquiaPanel({
       console.error("Falha ao exportar organograma:", err);
     } finally {
       setZoom(prevZoom);
+      aplicarPanOffset(prevPan, true);
       setExportando(false);
     }
-  }, [exportando, zoom]);
+  }, [aplicarPanOffset, exportando, zoom]);
 
   if (!temVinculos) {
     return (
@@ -1157,9 +1175,6 @@ export function OrganogramaHierarquiaPanel({
       </div>
     );
   }
-
-  const scaledW = contentSize.w > 0 ? contentSize.w * zoom : undefined;
-  const scaledH = contentSize.h > 0 ? contentSize.h * zoom : undefined;
 
   return (
     <OrgUiContext.Provider value={uiTokens}>
@@ -1265,55 +1280,48 @@ export function OrganogramaHierarquiaPanel({
         <div
           ref={viewportCallbackRef}
           className={cn(
-            "org-canvas relative touch-none overflow-auto rounded-xl border print:h-auto print:overflow-visible print:border-0 print:bg-white print:shadow-none",
+            "org-canvas relative touch-none overflow-hidden rounded-xl border print:h-auto print:overflow-visible print:border-0 print:bg-white print:shadow-none",
             isFullscreen ? "min-h-0 flex-1" : "h-[min(80vh,980px)]",
             classesQuadroPan(isPanning),
           )}
         >
           <div
-            className="relative mx-auto print:!h-auto print:!w-auto"
+            ref={contentRef}
+            className={cn(
+              "inline-flex w-max flex-col items-center bg-transparent print:bg-white print:p-4",
+              uiTokens.contentPad,
+            )}
             style={{
-              width: scaledW ?? "100%",
-              height: scaledH,
+              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+              transformOrigin: "0 0",
+              willChange: isPanning ? "transform" : undefined,
             }}
           >
+            <EmpresaRaiz fotoEmpresa={fotoEmpresa} />
             <div
-              ref={contentRef}
-              className={cn(
-                "inline-flex flex-col items-center bg-transparent print:bg-white print:p-4",
-                uiTokens.contentPad,
-              )}
-              style={{
-                transform: `scale(${zoom})`,
-                transformOrigin: "top left",
-              }}
-            >
-              <EmpresaRaiz fotoEmpresa={fotoEmpresa} />
-              <div
-                className={cn(isFullscreen ? "h-9" : "h-7", "shrink-0", LINHA_W, LINHA)}
-                aria-hidden="true"
-              />
+              className={cn(isFullscreen ? "h-9" : "h-7", "shrink-0", LINHA_W, LINHA)}
+              aria-hidden="true"
+            />
 
-              <div className="flex w-max items-start justify-center">
-                {arvore.map((diretoria, i) => (
-                  <DiretoriaRamo
-                    key={diretoria.id}
-                    diretoria={diretoria}
-                    matriculasComFoto={matriculasComFoto}
-                    podeBuscarFotos={podeBuscarFotos}
-                    isFirst={i === 0}
-                    isLast={i === arvore.length - 1}
-                    total={arvore.length}
-                    abertos={abertos}
-                    onToggleAberto={onToggleAberto}
-                    onFocar={() => focarRamo(diretoria.id)}
-                    ramoRef={(el) => {
-                      if (el) ramoElsRef.current.set(diretoria.id, el);
-                      else ramoElsRef.current.delete(diretoria.id);
-                    }}
-                  />
-                ))}
-              </div>
+            <div className="flex w-max items-start justify-center">
+              {arvore.map((diretoria, i) => (
+                <DiretoriaRamo
+                  key={diretoria.id}
+                  diretoria={diretoria}
+                  matriculasComFoto={matriculasComFoto}
+                  podeBuscarFotos={podeBuscarFotos}
+                  isFirst={i === 0}
+                  isLast={i === arvore.length - 1}
+                  total={arvore.length}
+                  abertos={abertos}
+                  onToggleAberto={onToggleAberto}
+                  onFocar={() => focarRamo(diretoria.id)}
+                  ramoRef={(el) => {
+                    if (el) ramoElsRef.current.set(diretoria.id, el);
+                    else ramoElsRef.current.delete(diretoria.id);
+                  }}
+                />
+              ))}
             </div>
           </div>
         </div>

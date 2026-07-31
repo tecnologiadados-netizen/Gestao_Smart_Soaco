@@ -427,6 +427,32 @@ function buildAncorasOperacao(
     areas.push(noArea("ti", "T.I", [noPessoa(ti, ramoLiderados(ti, universo, used))]));
   }
 
+  const isSesmt = (p: HierarquiaPessoa) => {
+    const c = cargoN(p.cargo);
+    const s = setorN(p.setor);
+    return (
+      s.includes("sesmt") ||
+      c.includes("seg. trabalho") ||
+      c.includes("seguranca do trabalho") ||
+      (c.includes("tec") && c.includes("seg") && c.includes("trabalho"))
+    );
+  };
+  const sesmtPessoas = takeAll(membros, (p) => !used.has(p.id) && isSesmt(p));
+  if (sesmtPessoas.length > 0) {
+    const lider =
+      takeFirst(sesmtPessoas, (p) => {
+        const c = cargoN(p.cargo);
+        return c.includes("tec") && c.includes("seg");
+      }) ?? sesmtPessoas[0];
+    for (const p of sesmtPessoas) used.add(p.id);
+    const colegas = sesmtPessoas.filter((p) => p.id !== lider.id).map((p) => noPessoa(p));
+    areas.push(
+      noArea("sesmt", "SESMT", [
+        noPessoa(lider, [...colegas, ...ramoLiderados(lider, universo, used)]),
+      ]),
+    );
+  }
+
   return areas;
 }
 
@@ -498,13 +524,13 @@ function buildAncorasFinanceira(
       (no) => no.kind === "pessoa" && !isServicosGerais(no.pessoa) && !isPortaria(no.pessoa),
     );
     areas.push(
-      noArea("servicos-gerais", "Serviços gerais", [
+      noArea("servicos-gerais", "Faturamento", [
         noPessoa(sub, [...servGerais.map((p) => noPessoa(p)), ...outros], `p:${sub.id}:fin`),
       ]),
     );
   } else if (servGerais.length > 0) {
     areas.push(
-      noArea("servicos-gerais", "Serviços gerais", [
+      noArea("servicos-gerais", "Faturamento", [
         noGrupo(
           "sub-ger-fin",
           "Sub-gerente",

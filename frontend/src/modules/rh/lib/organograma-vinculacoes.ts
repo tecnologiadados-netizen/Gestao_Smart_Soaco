@@ -103,7 +103,7 @@ export const ORGANOGRAMA_VINCULACOES_SEED: OrganogramaVinculacao[] = [
   v("PERFILADEIRAS", "PRODUÇÃO", "operacao", "Jorge Lemos Ribeiro", "168", "Operador Líder I"),
   v("PINTURA", "PRODUÇÃO", "operacao", "Rian Mateus Alves Fernandes", "530", "Lider de Equipe - III"),
   v("POLICORTE", "PRODUÇÃO", "operacao", "Herbert da Silva Chaves", "1478", "Lider de Equipe - V"),
-  v("SESMT - ADMINISTRATIVO", "PRODUÇÃO", "operacao", "Francisco de Jesus Alves Silva", "1769", "Tec. Seg. Trabalho"),
+  v("SESMT - ADMINISTRATIVO", "SESMT", "operacao", "Francisco de Jesus Alves Silva", "1769", "Tec. Seg. Trabalho"),
   v("SOLDA - PRODUÇÃO", "PRODUÇÃO", "operacao", "Claudiano Ferreira de Macedo", "87", "Supervisor de Solda e Pintura"),
   v("EMBALAGEM", "PRODUÇÃO", "operacao", "Josenildo Santos Coelho", "897", "Lider de Equipe II"),
   v("ESTOQUE", "PRODUÇÃO", "operacao", "Josenildo Santos Coelho", "897", "Lider de Equipe II"),

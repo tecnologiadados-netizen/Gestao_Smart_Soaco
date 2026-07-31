@@ -1,29 +1,66 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 
 /** Distância mínima (px) antes de assumir o gesto — abaixo disso continua sendo clique. */
 const LIMIAR_PAN_PX = 5;
 
+export type QuadroPanOffset = { x: number; y: number };
+
 type OpcoesQuadroPan = {
   /** Ctrl/⌘ + scroll. Recebe 1 para aproximar e -1 para afastar. */
   onZoomStep?: (direcao: 1 | -1) => void;
+  /**
+   * Se true, a roda do mouse dá zoom sem precisar de Ctrl/⌘.
+   * Use em quadros com pan por translate (hierarquia). No mapa com scroll nativo,
+   * deixe false para a roda continuar rolando o conteúdo.
+   */
+  zoomComScroll?: boolean;
+  /**
+   * Pan por translate (não depende de scroll).
+   * Se omitido, usa scrollLeft/scrollTop do próprio elemento.
+   */
+  panOffsetRef?: MutableRefObject<QuadroPanOffset>;
+  onPanOffsetChange?: (next: QuadroPanOffset) => void;
 };
 
+function alvoBloqueiaPan(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest("input, textarea, select, option, [contenteditable='true'], [data-no-pan]"),
+  );
+}
+
 /**
- * Arrastar-para-navegar (pan) em quadros roláveis: organograma, mapa de vínculos, etc.
+ * Arrastar-para-navegar (pan) em quadros: organograma, mapa de vínculos, etc.
  *
- * Usa ref de callback de propósito: o quadro costuma ser renderizado só depois que os
- * dados chegam, e um `useEffect([])` registraria os listeners enquanto o elemento ainda
- * não existe — deixando o arraste e o zoom inertes.
+ * Usa ref de callback: o quadro só entra no DOM depois dos dados — um
+ * `useEffect([])` deixaria o arraste inerte.
  */
-export function useQuadroPan({ onZoomStep }: OpcoesQuadroPan = {}) {
+export function useQuadroPan({
+  onZoomStep,
+  zoomComScroll = false,
+  panOffsetRef,
+  onPanOffsetChange,
+}: OpcoesQuadroPan = {}) {
   const [isPanning, setIsPanning] = useState(false);
   const elementRef = useRef<HTMLDivElement | null>(null);
   const desconectarRef = useRef<(() => void) | null>(null);
   const onZoomStepRef = useRef(onZoomStep);
+  const zoomComScrollRef = useRef(zoomComScroll);
+  const panOffsetRefRef = useRef(panOffsetRef);
+  const onPanOffsetChangeRef = useRef(onPanOffsetChange);
 
   useEffect(() => {
     onZoomStepRef.current = onZoomStep;
   }, [onZoomStep]);
+
+  useEffect(() => {
+    zoomComScrollRef.current = zoomComScroll;
+  }, [zoomComScroll]);
+
+  useEffect(() => {
+    panOffsetRefRef.current = panOffsetRef;
+    onPanOffsetChangeRef.current = onPanOffsetChange;
+  }, [panOffsetRef, onPanOffsetChange]);
 
   useEffect(() => () => desconectarRef.current?.(), []);
 
@@ -40,9 +77,14 @@ export function useQuadroPan({ onZoomStep }: OpcoesQuadroPan = {}) {
       y: 0,
       scrollLeft: 0,
       scrollTop: 0,
+      panX: 0,
+      panY: 0,
       ativo: false,
       arrastou: false,
     };
+
+    const usaOffset = () =>
+      Boolean(panOffsetRefRef.current && onPanOffsetChangeRef.current);
 
     const capturar = (pointerId: number) => {
       try {
@@ -52,16 +94,36 @@ export function useQuadroPan({ onZoomStep }: OpcoesQuadroPan = {}) {
       }
     };
 
+    const aplicarPan = (clientX: number, clientY: number) => {
+      const dx = clientX - estado.x;
+      const dy = clientY - estado.y;
+      if (usaOffset()) {
+        onPanOffsetChangeRef.current!({
+          x: estado.panX + dx,
+          y: estado.panY + dy,
+        });
+        return;
+      }
+      node.scrollLeft = estado.scrollLeft - dx;
+      node.scrollTop = estado.scrollTop - dy;
+    };
+
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0 && e.button !== 1) return;
+      if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 1) return;
+      if (alvoBloqueiaPan(e.target)) return;
+
       estado.pointerId = e.pointerId;
       estado.x = e.clientX;
       estado.y = e.clientY;
       estado.scrollLeft = node.scrollLeft;
       estado.scrollTop = node.scrollTop;
+      const origin = panOffsetRefRef.current?.current;
+      estado.panX = origin?.x ?? 0;
+      estado.panY = origin?.y ?? 0;
       estado.ativo = true;
       estado.arrastou = false;
-      // Botão do meio: evita o autoscroll nativo e já assume o gesto.
+
       if (e.button === 1) {
         e.preventDefault();
         estado.arrastou = true;
@@ -81,8 +143,7 @@ export function useQuadroPan({ onZoomStep }: OpcoesQuadroPan = {}) {
         capturar(e.pointerId);
       }
       e.preventDefault();
-      node.scrollLeft = estado.scrollLeft - dx;
-      node.scrollTop = estado.scrollTop - dy;
+      aplicarPan(e.clientX, e.clientY);
     };
 
     const encerrarPan = (e: PointerEvent) => {
@@ -97,7 +158,6 @@ export function useQuadroPan({ onZoomStep }: OpcoesQuadroPan = {}) {
       } catch {
         /* ignore */
       }
-      // Depois de arrastar, bloqueia o clique que abriria modal / alternaria o card.
       if (arrastou) {
         const suprimirClique = (ev: MouseEvent) => {
           ev.preventDefault();
@@ -109,7 +169,7 @@ export function useQuadroPan({ onZoomStep }: OpcoesQuadroPan = {}) {
     };
 
     const onLostCapture = () => {
-      if (!estado.arrastou) return;
+      if (!estado.ativo) return;
       estado.ativo = false;
       estado.arrastou = false;
       estado.pointerId = -1;
@@ -120,29 +180,30 @@ export function useQuadroPan({ onZoomStep }: OpcoesQuadroPan = {}) {
       if (e.button === 1) e.preventDefault();
     };
 
-    // Fotos e logos são arrastáveis por padrão: o drag nativo cancelaria o pan.
     const onDragStart = (e: DragEvent) => e.preventDefault();
 
     const onWheel = (e: WheelEvent) => {
-      if (!onZoomStepRef.current || (!e.ctrlKey && !e.metaKey)) return;
+      if (!onZoomStepRef.current) return;
+      const livre = zoomComScrollRef.current;
+      if (!livre && !e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       onZoomStepRef.current(e.deltaY > 0 ? -1 : 1);
     };
 
-    node.addEventListener("pointerdown", onPointerDown);
-    node.addEventListener("pointermove", onPointerMove);
-    node.addEventListener("pointerup", encerrarPan);
-    node.addEventListener("pointercancel", encerrarPan);
+    node.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", encerrarPan);
+    document.addEventListener("pointercancel", encerrarPan);
     node.addEventListener("lostpointercapture", onLostCapture);
     node.addEventListener("auxclick", onAuxClick);
     node.addEventListener("dragstart", onDragStart);
     node.addEventListener("wheel", onWheel, { passive: false });
 
     desconectarRef.current = () => {
-      node.removeEventListener("pointerdown", onPointerDown);
-      node.removeEventListener("pointermove", onPointerMove);
-      node.removeEventListener("pointerup", encerrarPan);
-      node.removeEventListener("pointercancel", encerrarPan);
+      node.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", encerrarPan);
+      document.removeEventListener("pointercancel", encerrarPan);
       node.removeEventListener("lostpointercapture", onLostCapture);
       node.removeEventListener("auxclick", onAuxClick);
       node.removeEventListener("dragstart", onDragStart);

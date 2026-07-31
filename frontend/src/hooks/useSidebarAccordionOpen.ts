@@ -1,30 +1,21 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 const STORAGE_KEY = 'sidebar_accordion_open';
 
-function readOpenKeys(): Set<string> {
-  if (typeof window === 'undefined') return new Set();
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((x): x is string => typeof x === 'string'));
-  } catch {
-    return new Set();
-  }
-}
-
+/**
+ * Accordion da sidebar: sempre começa recolhido ao abrir o sistema.
+ * Expansões valem só na sessão atual (não persistem no localStorage).
+ */
 export function useSidebarAccordionOpen() {
-  const [accordionOpen, setAccordionOpen] = useState<Set<string>>(readOpenKeys);
-
-  useEffect(() => {
+  const [accordionOpen, setAccordionOpen] = useState<Set<string>>(() => {
+    // Limpa estado antigo gravado em versões anteriores.
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([...accordionOpen]));
+      localStorage.removeItem(STORAGE_KEY);
     } catch {
-      // ignore quota / private mode
+      // ignore
     }
-  }, [accordionOpen]);
+    return new Set();
+  });
 
   const toggleAccordion = useCallback((key: string) => {
     setAccordionOpen((prev) => {
