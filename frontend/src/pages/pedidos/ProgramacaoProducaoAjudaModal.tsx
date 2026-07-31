@@ -26,9 +26,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'pdf',
     titulo: 'PDF Perfiladeira 1000',
     oQueE:
-      'Tipo de impressão “Perfiladeira” corresponde ao Recurso 1000 (Perfiladeira 1000), distinto do PDF manual.',
+      'Tipo de impressão “Perfiladeira” corresponde ao Recurso 1000 (Perfiladeira 1000), distinto do PDF manual. Colunas: Sequência, Código, Desc Simpl, Roteiro, Qtde a produzir, Observação (da grade) e OP Nomus. Não inclui Med 1, Med 2 nem Chapa.',
     comoLe:
-      'Escolha o tipo certo no modal de PDF: Perfiladeira para o layout da 1000; manual para o restante.',
+      'Escolha Perfiladeira no modal de PDF para o layout da 1000. Observação e OP Nomus vêm do que foi registrado na programação; o PDF manual mantém Med 1/Med 2/Chapa.',
   },
   {
     id: 'ops',
