@@ -15,6 +15,11 @@ export const MODULO_AREA_OUTRO_LABEL = 'Outro';
 
 export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
   {
+    code: 'producao',
+    label: 'Produção',
+    permissoes: [PERMISSOES.PRODUCAO_VER, PERMISSOES.PRODUCAO_TOTAL],
+  },
+  {
     code: 'pcp',
     label: 'PCP',
     permissoes: [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],

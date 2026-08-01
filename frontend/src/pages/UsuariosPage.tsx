@@ -45,6 +45,7 @@ const atualizarUsuarioSchema = z.object({
 });
 
 const SECOES_PERMISSOES: Record<string, string> = {
+  producao: 'Produção',
   pcp: 'PCP',
   usuarios: 'Usuários',
   grupos: 'Grupos de usuários',
@@ -65,6 +66,7 @@ const SECOES_PERMISSOES: Record<string, string> = {
 };
 
 const ORDEM_SECOES_PERMISSOES = [
+  'Produção',
   'PCP',
   'Usuários',
   'Grupos de usuários',

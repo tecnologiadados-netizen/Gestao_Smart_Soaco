@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { PERMISSOES, type CodigoPermissao } from '../../config/permissoes';
 import {
+  PRODUCAO_MENU,
   PCP_MENU,
   COMUNICACAO_INTERNA_SUBMENUS,
   COMPRAS_MENU,
@@ -52,6 +53,16 @@ function MenuIcon({ children }: { children: ReactNode }) {
 }
 
 const ICONS = {
+  producao: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 21h18M5 21V10l4-3v3l4-3v14M13 21V8l4-2v15M9 13h.01M17 13h.01"
+      />
+    </svg>
+  ),
   pcp: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -353,6 +364,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const { accordionOpen, toggleAccordion } = useSidebarAccordionOpen();
 
+  const isProducaoActive = pathname.startsWith('/producao');
   const isPcpActive = pathname.startsWith('/pedidos');
   const isLogisticaActive =
     pathname.startsWith('/logistica') || pathname === '/heatmap';
@@ -369,6 +381,9 @@ export default function Sidebar({
   const isFinanceiroActive = pathname.startsWith('/financeiro');
   const isGestaoUsuariosActive = pathname.startsWith('/usuarios');
   const isSuporteActive = pathname.startsWith('/suporte');
+
+  const showProducao =
+    hasPermission(PERMISSOES.PRODUCAO_VER) || hasPermission(PERMISSOES.PRODUCAO_TOTAL);
 
   const showPcp =
     hasPermission(PERMISSOES.PCP_VER_TELA) ||
@@ -400,6 +415,30 @@ export default function Sidebar({
       onMouseLeave={onCollapse}
     >
       <nav className="scrollbar-app flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-2 py-3">
+        {showProducao && (
+          <SidebarSection
+            id="producao"
+            label="Produção"
+            icon={ICONS.producao}
+            active={isProducaoActive}
+            sidebarOpen={open}
+            onExpand={onExpand}
+            accordionOpen={accordionOpen}
+            toggleAccordion={toggleAccordion}
+          >
+            <NavMenuTree
+              entries={PRODUCAO_MENU}
+              pathname={pathname}
+              sidebarOpen={open}
+              accordionOpen={accordionOpen}
+              toggleAccordion={toggleAccordion}
+              onNavigate={onNavigate}
+              hasPermission={hasPermission}
+              prefix="producao"
+            />
+          </SidebarSection>
+        )}
+
         {showPcp && (
           <SidebarSection
             id="pcp"

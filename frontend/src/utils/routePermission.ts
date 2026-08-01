@@ -20,6 +20,7 @@ import {
 import { PERMISSOES_ACESSO_COMERCIAL_PAINEL } from '../config/comercialPermissoes';
 
 export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
+  '/producao/camasi': [PERMISSOES.PRODUCAO_VER, PERMISSOES.PRODUCAO_TOTAL],
   '/pedidos/dash-entregas': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.DASHBOARD_VER, PERMISSOES.PEDIDOS_VER],
   '/pedidos/sequenciamento-carradas': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
@@ -106,6 +107,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
 export const ROTAS_APENAS_MASTER = ['/situacao-api', '/whatsapp'];
 
 export const ROTAS_ORDEM = [
+  '/producao/camasi',
   '/pedidos/dash-entregas',
   '/pedidos',
   '/pedidos/encerrados',
