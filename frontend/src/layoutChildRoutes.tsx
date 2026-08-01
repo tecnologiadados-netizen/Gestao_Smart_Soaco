@@ -63,10 +63,12 @@ import SimulacaoCubagemPage from './pages/logistica/SimulacaoCubagemPage';
 import { qualidadeRoutes } from './modules/qualidade/qualidadeRoutes';
 import { rhRoutes } from './modules/rh/rhRoutes';
 import PainelComercialPage from './pages/comercial/PainelComercialPage';
+import ProducaoCamasiPage from './pages/producao/ProducaoCamasiPage';
 
 /** Rotas filhas do layout autenticado (espelham appRouter). */
 export const layoutChildRoutes: RouteObject[] = [
   { index: true, element: <InicioPage /> },
+  { path: 'producao/camasi', element: <ErrorBoundary><ProducaoCamasiPage /></ErrorBoundary> },
   { path: 'pedidos/dash-entregas', element: <ErrorBoundary><DashboardPage /></ErrorBoundary> },
   { path: 'pedidos/sequenciamento-carradas', element: <ErrorBoundary><SequenciamentoCarradasPage /></ErrorBoundary> },
   { path: 'pedidos', element: <ErrorBoundary><PedidosPage /></ErrorBoundary> },

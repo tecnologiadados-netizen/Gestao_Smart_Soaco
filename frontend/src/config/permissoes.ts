@@ -47,6 +47,10 @@ export const PERMISSOES = {
   FLUXOS_EDITAR: 'fluxos.editar',
 
   // --- Novos códigos (enforcement real) ---
+  // Produção (Camasi / máquinas)
+  PRODUCAO_VER: 'producao.ver',
+  PRODUCAO_TOTAL: 'producao.total',
+
   // PCP (Gerenciador de Pedidos)
   PCP_VER_TELA: 'pcp.ver',
   PCP_EXPORTAR_XLSX: 'pcp.exportar_xlsx',

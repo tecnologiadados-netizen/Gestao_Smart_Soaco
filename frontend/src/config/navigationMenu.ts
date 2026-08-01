@@ -14,6 +14,10 @@ export type FinanceiroMenuEntry =
   | { kind: 'link'; to: string; label: string }
   | { kind: 'submenu'; label: string; children: { to: string; label: string }[] };
 
+export const PRODUCAO_MENU: NavMenuEntry[] = [
+  { kind: 'link', to: '/producao/camasi', label: 'Produção Camasi' },
+];
+
 export const PCP_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/pedidos/dash-entregas', label: 'Painel Pedidos em aberto' },
   { kind: 'link', to: '/pedidos/sequenciamento-carradas', label: 'Sequenciamento carradas' },
@@ -170,6 +174,7 @@ export const GESTAO_USUARIOS_SUBMENUS: { to: string; label: string }[] = [
 /** Rotas que podem ser abertas no sistema (path → label). Usado na busca rápida e menus. */
 export const PATH_LABELS: Record<string, string> = {
   '/': 'Início',
+  '/producao/camasi': 'Produção Camasi',
   '/pedidos/dash-entregas': 'Painel Pedidos em aberto',
   '/pedidos/sequenciamento-carradas': 'Sequenciamento carradas',
   '/pedidos': 'Gerenciador de Pedidos',

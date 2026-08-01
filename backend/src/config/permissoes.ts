@@ -52,6 +52,10 @@ export const PERMISSOES = {
   FLUXOS_EDITAR: 'fluxos.editar',
 
   // --- Novos códigos (enforcement real) ---
+  // Produção (Camasi / máquinas)
+  PRODUCAO_VER: 'producao.ver',
+  PRODUCAO_TOTAL: 'producao.total',
+
   // PCP (Gerenciador de Pedidos)
   PCP_VER_TELA: 'pcp.ver',
   PCP_EXPORTAR_XLSX: 'pcp.exportar_xlsx',
@@ -162,6 +166,10 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.FLUXOS_VER,
   PERMISSOES.FLUXOS_EDITAR,
 
+  // Produção
+  PERMISSOES.PRODUCAO_VER,
+  PERMISSOES.PRODUCAO_TOTAL,
+
   // PCP
   PERMISSOES.PCP_VER_TELA,
   PERMISSOES.PCP_EXPORTAR_XLSX,
@@ -269,6 +277,10 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.LOGISTICA_CUBAGEM_EDITAR]: 'Cubagem — editar cadastros',
   [PERMISSOES.FLUXOS_VER]: 'Ver Fluxos Decisórios (mapas mentais)',
   [PERMISSOES.FLUXOS_EDITAR]: 'Editar e excluir mapas mentais',
+
+  // Produção
+  [PERMISSOES.PRODUCAO_VER]: 'Ver Produção (Camasi)',
+  [PERMISSOES.PRODUCAO_TOTAL]: 'Produção — permissão total',
 
   // PCP
   [PERMISSOES.PCP_VER_TELA]: 'Visualizar tela de gerenciador de pedidos',

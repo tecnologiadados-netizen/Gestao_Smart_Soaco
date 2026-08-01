@@ -1,5 +1,6 @@
 import { PERMISSOES, type CodigoPermissao } from '../config/permissoes';
 import {
+  PRODUCAO_MENU,
   PCP_MENU,
   COMUNICACAO_INTERNA_SUBMENUS,
   COMPRAS_MENU,
@@ -88,6 +89,10 @@ function rotaPermitida(path: string, hasPermission: HasPermission): boolean {
 export function buildTelasBuscaRapidaForUser(ctx: BuildTelasBuscaRapidaCtx): TelaBuscaRapida[] {
   const { hasPermission, isMaster, grupo } = ctx;
   const telas: TelaBuscaRapida[] = [];
+
+  if (hasPermission(PERMISSOES.PRODUCAO_VER) || hasPermission(PERMISSOES.PRODUCAO_TOTAL)) {
+    telas.push(...flattenNavMenu(PRODUCAO_MENU, hasPermission, 'Produção'));
+  }
 
   if (hasPermission(PERMISSOES.PCP_VER_TELA)) {
     telas.push(...flattenNavMenu(PCP_MENU, hasPermission, 'PCP', true));
