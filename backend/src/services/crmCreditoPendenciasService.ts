@@ -4,6 +4,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { resolveAppBaseUrl } from '../config/appBaseUrl.js';
+import { isClienteParceiroCreditoExcluido } from '../data/financeiroCreditoClientesParceiros.js';
 import {
   formatarNumeroPedidoExibicao,
   labelStatusItemPedidoCompleto,
@@ -898,7 +899,9 @@ export async function listarPendenciasCredito(
     );
   }
 
-  let result = rows.map((r) => toDto(r, prazoHoras));
+  let result = rows
+    .map((r) => toDto(r, prazoHoras))
+    .filter((r) => !isClienteParceiroCreditoExcluido(r.clienteNome));
   if (clienteFiltro) {
     const match = criarMatcherTextoLivre(clienteFiltro);
     result = result.filter(

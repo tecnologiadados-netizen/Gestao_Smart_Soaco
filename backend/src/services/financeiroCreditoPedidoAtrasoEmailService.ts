@@ -4,6 +4,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { listarContasReceberPorPessoa } from '../data/crmFinanceiro/crmDashboardService.js';
+import { isClienteParceiroCreditoExcluido } from '../data/financeiroCreditoClientesParceiros.js';
 import {
   agruparPedidosAbertosPorCliente,
   formatarNumeroPedidoExibicao,
@@ -89,7 +90,10 @@ async function logSent(
 
 export async function listarAlertasCreditoPendentes(): Promise<AlertaCreditoCliente[]> {
   const pedidos = await listarPedidosAbertosCredito();
-  const porCliente = agruparPedidosAbertosPorCliente(pedidos);
+  // Parceiros do grupo (R N Marques, Só Móveis) — requisições internas, fora da fila.
+  const porCliente = agruparPedidosAbertosPorCliente(pedidos).filter(
+    (g) => !isClienteParceiroCreditoExcluido(g.clienteNome)
+  );
   const alertas: AlertaCreditoCliente[] = [];
 
   // Limita concorrência no Nomus (evita 15s+ sequencial por cliente).
