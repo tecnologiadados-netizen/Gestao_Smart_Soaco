@@ -1124,7 +1124,14 @@ export default function SequenciamentoCarradasPage() {
   );
 
   const handleConfirmarAplicar = useCallback(
-    async (motivos: Record<string, string>) => {
+    async (
+      motivos: Record<string, string>,
+      anexoAssinatura: {
+        fileName: string;
+        mimeType?: string;
+        contentBase64: string;
+      } | null
+    ) => {
       setSalvandoConfirmacao(true);
       setErroConfirmacao(null);
       try {
@@ -1158,7 +1165,10 @@ export default function SequenciamentoCarradasPage() {
             rota: p.rota,
             apply_rota: true,
           }));
-          await ajustarPrevisaoLote(ajustes);
+          await ajustarPrevisaoLote(
+            ajustes,
+            anexoAssinatura ? { anexo_assinatura: anexoAssinatura } : undefined
+          );
         }
         if (itensProducao.length > 0) {
           const rProd = await ajustarDataProducaoLote(itensProducao);

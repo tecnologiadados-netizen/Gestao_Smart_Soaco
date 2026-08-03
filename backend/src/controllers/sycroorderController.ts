@@ -9,6 +9,7 @@ import {
   registrarDataProducaoLote,
   invalidatePedidosCache,
 } from '../data/pedidosRepository.js';
+import { resolverAnexoAssinaturaObrigatorio } from '../services/previsaoAssinaturaService.js';
 import { getPermissoesUsuario } from '../middleware/requirePermission.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import {
@@ -960,6 +961,7 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     replicate_carrada,
     aguarda_resposta,
     aguarda_resposta_destino_time,
+    anexo_assinatura,
   } = req.body as {
     status?: OrderStatus;
     new_date?: string;
@@ -985,6 +987,11 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     aguarda_resposta?: boolean;
     /** Autor fora do time comercial + aguarda_resposta true: comercial | nao_comercial. */
     aguarda_resposta_destino_time?: string;
+    anexo_assinatura?: {
+      fileName: string;
+      mimeType?: string;
+      contentBase64: string;
+    } | null;
   };
   const comentarioVal = (comentario != null && String(comentario).trim() !== '' ? String(comentario).trim() : null) ?? (observation != null && String(observation).trim() !== '' ? String(observation).trim() : null);
   const observacaoVal = observacao != null && String(observacao).trim() !== '' ? String(observacao).trim() : null;
@@ -1332,6 +1339,28 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
         }
 
         if (ajustaPrevisaoNoGerenciador) {
+          let anexoPersistido;
+          try {
+            anexoPersistido = await resolverAnexoAssinaturaObrigatorio({
+              motivos: [motivoTrim],
+              anexo: anexo_assinatura,
+            });
+          } catch (anexoErr) {
+            res.status(400).json({
+              error:
+                anexoErr instanceof Error
+                  ? anexoErr.message
+                  : 'PDF de assinatura obrigatório.',
+            });
+            return;
+          }
+          const anexoParaLinha = anexoPersistido
+            ? {
+                path: anexoPersistido.path,
+                nome: anexoPersistido.nome,
+                grupoId: anexoPersistido.grupoId,
+              }
+            : null;
           for (const idPedido of idsPedido) {
             const rotaAjuste = rotaReplicate ?? resolveRotaForIdPedido(rowsDoPd, idPedido);
             await registrarAjustePrevisao(
@@ -1341,7 +1370,8 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
               user_name ?? login,
               observacaoVal ?? undefined,
               rotaAjuste,
-              previsaoConfiavelVal
+              previsaoConfiavelVal,
+              anexoParaLinha,
             );
           }
         }

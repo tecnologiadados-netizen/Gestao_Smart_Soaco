@@ -15,6 +15,7 @@ import {
   SETOR_EXCLUIDOS,
   SETOR_PEDIDOS_CUTOVER,
   SETOR_PESO,
+  canonicalizeSetorPainel,
 } from './painelProducaoConstants.js';
 import { loadPesoBomMap } from './painelProducaoPesoBom.js';
 import {
@@ -118,7 +119,7 @@ async function loadSetorMap(pool: Pool): Promise<Map<number, string>> {
   const [rows] = await pool.query<RowDataPacket[]>(SQL_SETOR_MAP);
   const mapping = new Map<number, string>();
   for (const row of rows) {
-    mapping.set(Number(row.id), String(row.setor));
+    mapping.set(Number(row.id), canonicalizeSetorPainel(String(row.setor)));
   }
   return mapping;
 }

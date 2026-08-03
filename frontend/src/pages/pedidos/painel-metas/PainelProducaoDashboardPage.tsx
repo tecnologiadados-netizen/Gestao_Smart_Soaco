@@ -764,6 +764,8 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
                     producao={dashboard.producao}
                     pedidosDetalhe={dashboard.pedidos_detalhe ?? []}
                     resetKey={`${setor}-${mes}`}
+                    setor={setor}
+                    mes={mes}
                     icon={<KpiIconProduction />}
                   />
                 ) : (

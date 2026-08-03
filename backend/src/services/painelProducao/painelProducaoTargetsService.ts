@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { prisma } from '../../config/prisma.js';
 import { clearPainelProducaoCaches } from './painelProducaoCache.js';
+import { canonicalizeSetorPainel, SETOR_MOVEIS_MELAMINICO } from './painelProducaoConstants.js';
 import { copiarFaixasParaMes } from './painelProducaoFaixasService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -28,13 +29,44 @@ function nextMonth(mesAno: Date): Date {
   return new Date(mesAno.getFullYear(), mesAno.getMonth() + 1, 1);
 }
 
+/** Remove grafias duplicadas (ex.: melaminico / melamínico) no cadastro. */
+export async function unificarSetoresMelaminicoDuplicados(): Promise<void> {
+  const alias = 'Móveis em melaminico';
+  const canon = SETOR_MOVEIS_MELAMINICO;
+  const aliases = await prisma.painelProducaoMeta.findMany({ where: { setor: alias } });
+  if (aliases.length === 0) return;
+
+  for (const row of aliases) {
+    const existente = await prisma.painelProducaoMeta.findUnique({
+      where: { setor_mesAno: { setor: canon, mesAno: row.mesAno } },
+    });
+    if (existente) {
+      await prisma.painelProducaoMeta.delete({ where: { id: row.id } });
+    } else {
+      await prisma.painelProducaoMeta.update({
+        where: { id: row.id },
+        data: { setor: canon },
+      });
+    }
+  }
+  clearPainelProducaoCaches();
+}
+
 async function listSetoresCadastro(): Promise<string[]> {
   const rows = await prisma.painelProducaoMeta.findMany({
     select: { setor: true },
     distinct: ['setor'],
     orderBy: { setor: 'asc' },
   });
-  return rows.map((r) => r.setor);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of rows) {
+    const setor = canonicalizeSetorPainel(r.setor);
+    if (!setor || seen.has(setor)) continue;
+    seen.add(setor);
+    out.push(setor);
+  }
+  return out.sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
 
 async function initPainelMesesFromTargets(): Promise<void> {
@@ -99,6 +131,7 @@ async function registrarMesZerado(mesAno: Date, origem: string): Promise<boolean
 }
 
 export async function ensureCurrentMonth(): Promise<string | null> {
+  await unificarSetoresMelaminicoDuplicados();
   const hoje = new Date();
   const mesAtual = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
   await initPainelMesesFromTargets();
@@ -167,7 +200,7 @@ export async function initPainelProducaoMetas(): Promise<void> {
 
     for (let i = 1; i < lines.length; i++) {
       const cols = parseCsvLine(lines[i]);
-      const setor = cols[setorIdx]?.trim();
+      const setor = canonicalizeSetorPainel(cols[setorIdx]?.trim() ?? '');
       const mesRaw = cols[mesIdx]?.trim();
       const targetRaw = cols[targetIdx]?.trim();
       if (!setor || !mesRaw || !targetRaw) continue;
@@ -182,6 +215,7 @@ export async function initPainelProducaoMetas(): Promise<void> {
     }
   }
 
+  await unificarSetoresMelaminicoDuplicados();
   await initPainelMesesFromTargets();
 
   const mesesDistintos = await prisma.painelProducaoMeta.findMany({
@@ -201,16 +235,17 @@ export async function initPainelProducaoMetas(): Promise<void> {
 }
 
 export async function listTargets(setor?: string, mes?: string) {
+  const setorCanon = setor ? canonicalizeSetorPainel(setor) : undefined;
   const rows = await prisma.painelProducaoMeta.findMany({
     where: {
-      ...(setor ? { setor } : {}),
+      ...(setorCanon ? { setor: setorCanon } : {}),
       ...(mes ? { mesAno: { startsWith: mes } } : {}),
     },
     orderBy: [{ mesAno: 'desc' }, { setor: 'asc' }],
   });
   return rows.map((r) => ({
     id: r.id,
-    setor: r.setor,
+    setor: canonicalizeSetorPainel(r.setor),
     mes_ano: r.mesAno,
     target: r.target,
     sem_meta: r.semMeta,
@@ -226,8 +261,9 @@ export async function listTargets(setor?: string, mes?: string) {
 
 export async function getTargetInfo(setor: string, mesAno: Date): Promise<{ target: number; sem_meta: boolean }> {
   const key = mesKey(mesAno);
+  const setorCanon = canonicalizeSetorPainel(setor);
   const row = await prisma.painelProducaoMeta.findUnique({
-    where: { setor_mesAno: { setor, mesAno: key } },
+    where: { setor_mesAno: { setor: setorCanon, mesAno: key } },
   });
   if (!row) return { target: 0, sem_meta: false };
   return { target: row.target, sem_meta: row.semMeta };
@@ -242,8 +278,9 @@ export type MetaNiveis = {
 
 export async function getMetaNiveis(setor: string, mes: string): Promise<MetaNiveis> {
   const key = mesKey(parseYyyyMm(mes));
+  const setorCanon = canonicalizeSetorPainel(setor);
   const row = await prisma.painelProducaoMeta.findUnique({
-    where: { setor_mesAno: { setor, mesAno: key } },
+    where: { setor_mesAno: { setor: setorCanon, mesAno: key } },
   });
   return {
     metas: {
@@ -287,6 +324,7 @@ export async function upsertTarget(
   niveis: TargetNiveisInput = {},
 ) {
   const key = mesKey(mesAno);
+  const setorCanon = canonicalizeSetorPainel(setor);
   const dados = {
     metaBronze: niveis.meta_bronze ?? null,
     metaPrata: niveis.meta_prata ?? null,
@@ -296,8 +334,8 @@ export async function upsertTarget(
     valorAco: niveis.valor_aco ?? null,
   };
   const row = await prisma.painelProducaoMeta.upsert({
-    where: { setor_mesAno: { setor, mesAno: key } },
-    create: { setor, mesAno: key, target: value, semMeta, ...dados },
+    where: { setor_mesAno: { setor: setorCanon, mesAno: key } },
+    create: { setor: setorCanon, mesAno: key, target: value, semMeta, ...dados },
     update: { target: value, semMeta, ...dados },
   });
   clearPainelProducaoCaches();
@@ -336,8 +374,9 @@ export async function listMesesMeta(): Promise<string[]> {
 
 export async function getConsiderarPenalizacoes(mes: string, setor: string): Promise<boolean> {
   const key = mesKey(parseYyyyMm(mes));
+  const setorCanon = canonicalizeSetorPainel(setor);
   const row = await prisma.painelProducaoMeta.findUnique({
-    where: { setor_mesAno: { setor, mesAno: key } },
+    where: { setor_mesAno: { setor: setorCanon, mesAno: key } },
     select: { considerarPenalizacoes: true },
   });
   return row?.considerarPenalizacoes ?? true;
@@ -353,18 +392,19 @@ export async function setConsiderarPenalizacoesSetor(
   considerar_penalizacoes: boolean;
 }> {
   const key = mesKey(parseYyyyMm(mes));
+  const setorCanon = canonicalizeSetorPainel(setor);
   const existente = await prisma.painelProducaoMeta.findUnique({
-    where: { setor_mesAno: { setor, mesAno: key } },
+    where: { setor_mesAno: { setor: setorCanon, mesAno: key } },
   });
   if (existente) {
     await prisma.painelProducaoMeta.update({
-      where: { setor_mesAno: { setor, mesAno: key } },
+      where: { setor_mesAno: { setor: setorCanon, mesAno: key } },
       data: { considerarPenalizacoes: considerar },
     });
   } else {
     await prisma.painelProducaoMeta.create({
       data: {
-        setor,
+        setor: setorCanon,
         mesAno: key,
         target: 0,
         semMeta: false,
@@ -375,7 +415,7 @@ export async function setConsiderarPenalizacoesSetor(
   clearPainelProducaoCaches();
   return {
     mes: mesLabelYyyyMm(key),
-    setor,
+    setor: setorCanon,
     considerar_penalizacoes: considerar,
   };
 }

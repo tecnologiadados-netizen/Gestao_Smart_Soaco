@@ -9,9 +9,11 @@ import {
   type PainelProducaoApuracaoDetalheTipo,
   type PainelProducaoApuracaoRow,
 } from '../../../api/painelProducao';
+import { resolveUploadUrl } from '../../../api/client';
 import { MonthFilter } from '../../../components/painel-producao/MonthFilter';
 import { PainelProducaoShell } from '../../../components/painel-producao/PainelProducaoShell';
 import { formatMesLabel } from '../../../utils/painelProducaoFormat';
+import { exportarApuracaoDetalheExcel } from '../../../utils/painelProducaoExcelExport';
 import LoaderCirculo from '../../../components/LoaderCirculo';
 import { useDuracaoMinima } from '../../../hooks/useDuracaoMinima';
 
@@ -56,17 +58,43 @@ function ApuracaoDetalheTabela({
 }) {
   const mostraAlteracao =
     detalhe.tipo === 'alteracoes' || detalhe.tipo === 'alteracoes_ruptura';
+  const [exportando, setExportando] = useState(false);
+
+  async function baixarExcel() {
+    if (detalhe.linhas.length === 0 || exportando) return;
+    setExportando(true);
+    try {
+      await exportarApuracaoDetalheExcel(detalhe);
+    } catch (err) {
+      console.error(err);
+      window.alert(err instanceof Error ? err.message : 'Falha ao gerar o Excel.');
+    } finally {
+      setExportando(false);
+    }
+  }
+
   return (
     <div className="apuracao-tooltip-body">
       <div className="apuracao-tooltip-header">
         <strong>{detalhe.titulo}</strong>
-        <span>
-          {formatNumero(detalhe.total, 0)}
-          {mostraAlteracao ? ' alterações' : ' pedidos'}
-          {detalhe.linhas.length !== detalhe.total
-            ? ` · ${formatNumero(detalhe.linhas.length, 0)} itens`
-            : ''}
-        </span>
+        <div className="apuracao-tooltip-header-actions">
+          <span>
+            {formatNumero(detalhe.total, 0)}
+            {mostraAlteracao ? ' alterações' : ' pedidos'}
+            {detalhe.linhas.length !== detalhe.total
+              ? ` · ${formatNumero(detalhe.linhas.length, 0)} itens`
+              : ''}
+          </span>
+          <button
+            type="button"
+            className="apuracao-tooltip-export"
+            onClick={() => void baixarExcel()}
+            disabled={detalhe.linhas.length === 0 || exportando}
+            title="Baixar dados em Excel"
+          >
+            {exportando ? 'Gerando…' : 'Excel'}
+          </button>
+        </div>
       </div>
       <div className="apuracao-tooltip-scroll">
         <table className="apuracao-tooltip-table">
@@ -76,11 +104,13 @@ function ApuracaoDetalheTabela({
               <th>Cliente</th>
               <th>Produto</th>
               <th>Descrição</th>
+              <th>Quantidade</th>
               {!mostraAlteracao && <th>Status</th>}
               {!mostraAlteracao && <th>Encerramento</th>}
               {mostraAlteracao && <th>Data alteração</th>}
               {mostraAlteracao && <th>Motivo</th>}
               {mostraAlteracao && <th>Usuário</th>}
+              {mostraAlteracao && <th>Anexo</th>}
             </tr>
           </thead>
           <tbody>
@@ -90,16 +120,35 @@ function ApuracaoDetalheTabela({
                 <td>{linha.cliente}</td>
                 <td>{linha.codigo_produto}</td>
                 <td className="apuracao-tooltip-desc">{linha.descricao}</td>
+                <td className="apuracao-tooltip-qtde">
+                  {linha.quantidade == null ? '—' : formatNumero(linha.quantidade)}
+                </td>
                 {!mostraAlteracao && <td>{linha.status ?? '—'}</td>}
                 {!mostraAlteracao && <td>{linha.data_encerramento ?? '—'}</td>}
                 {mostraAlteracao && <td>{linha.data_alteracao ?? '—'}</td>}
                 {mostraAlteracao && <td>{linha.motivo ?? '—'}</td>}
                 {mostraAlteracao && <td>{linha.usuario ?? '—'}</td>}
+                {mostraAlteracao && (
+                  <td>
+                    {linha.anexo_assinatura_path ? (
+                      <a
+                        href={resolveUploadUrl(linha.anexo_assinatura_path)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary-600 hover:underline"
+                      >
+                        {linha.anexo_assinatura_nome?.trim() || 'PDF'}
+                      </a>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
             {detalhe.linhas.length === 0 && (
               <tr>
-                <td colSpan={mostraAlteracao ? 7 : 6}>Nenhum registro.</td>
+                <td colSpan={mostraAlteracao ? 9 : 7}>Nenhum registro.</td>
               </tr>
             )}
           </tbody>

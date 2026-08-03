@@ -34,9 +34,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'historico',
     titulo: 'Histórico de alterações',
     oQueE:
-      'Ícone/ação abre o mesmo histórico de previsão e motivos usado no Gerenciador.',
+      'Ícone/ação abre o mesmo histórico de previsão e motivos usado no Gerenciador, com justificativa e download do PDF assinado quando houver anexo.',
     comoLe:
-      'Consulte motivos e datas reprogramadas mesmo depois do encerramento — útil para auditoria e comunicação comercial.',
+      'Consulte motivos, datas reprogramadas e o PDF de assinatura mesmo depois do encerramento — útil para auditoria e comunicação comercial.',
   },
 ];
 

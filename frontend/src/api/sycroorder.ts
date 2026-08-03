@@ -161,6 +161,12 @@ export async function updateSycroOrderOrder(
     aguarda_resposta?: boolean;
     /** Autor fora do time comercial + aguarda_resposta true: comercial | nao_comercial. */
     aguarda_resposta_destino_time?: 'comercial' | 'nao_comercial';
+    /** PDF assinado — obrigatório quando o motivo é não abonado. */
+    anexo_assinatura?: {
+      fileName: string;
+      mimeType?: string;
+      contentBase64: string;
+    } | null;
   }
 ): Promise<{ success: boolean }> {
   return apiJson<{ success: boolean }>(`/api/sycroorder/orders/${id}`, {

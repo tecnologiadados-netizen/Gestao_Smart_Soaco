@@ -24,7 +24,8 @@ const MAPAS: Record<string, Par[]> = {
     { de: 'G??ndolas', para: 'Gôndolas' },
     { de: 'M??veis de a??o', para: 'Móveis de aço' },
     { de: 'M??veis em melam??nico', para: 'Móveis em melamínico' },
-    { de: 'M??veis em melaminico', para: 'Móveis em melaminico' },
+    { de: 'M??veis em melaminico', para: 'Móveis em melamínico' },
+    { de: 'Móveis em melaminico', para: 'Móveis em melamínico' },
   ],
   'grupo_usuario.nome': [
     { de: 'Operador Escrit??rio', para: 'Operador Escritório' },

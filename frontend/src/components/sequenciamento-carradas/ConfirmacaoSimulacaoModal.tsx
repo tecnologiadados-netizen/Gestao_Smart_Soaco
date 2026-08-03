@@ -35,6 +35,8 @@ import {
   montarLinhasConclusao,
   type LinhaConclusao,
 } from './confirmacaoLinhasConclusao';
+import { lerPdfAssinatura, type AnexoAssinaturaPayload } from '../../utils/lerPdfAssinatura';
+import CampoAnexoAssinaturaPdf from '../CampoAnexoAssinaturaPdf';
 
 export type { LinhaConclusao } from './confirmacaoLinhasConclusao';
 export { montarLinhasConclusao } from './confirmacaoLinhasConclusao';
@@ -62,7 +64,10 @@ type Props = {
   onPrevisaoConfiavelPorIdChange: (
     updater: (prev: Record<string, boolean>) => Record<string, boolean>
   ) => void;
-  onConfirmar: (motivoPorIdPedido: Record<string, string>) => void;
+  onConfirmar: (
+    motivoPorIdPedido: Record<string, string>,
+    anexoAssinatura: AnexoAssinaturaPayload | null
+  ) => void;
   onClose: () => void;
 };
 
@@ -488,6 +493,8 @@ export default function ConfirmacaoSimulacaoModal({
   const [recentes, setRecentes] = useState<string[]>(() => lerMotivosRecentes());
   const [validacao, setValidacao] = useState<string | null>(null);
   const [obsModal, setObsModal] = useState<ObsModalState | null>(null);
+  const [anexoAssinatura, setAnexoAssinatura] = useState<AnexoAssinaturaPayload | null>(null);
+  const [anexoNome, setAnexoNome] = useState('');
 
   const linhas = useMemo(
     () => montarLinhasConclusao(invalidasDatas, pedidosEntrega, linhasSnapshot),
@@ -598,6 +605,37 @@ export default function ConfirmacaoSimulacaoModal({
     return [...ids];
   }, [linhas, motivoPorId]);
 
+  const exigeAnexoAssinatura = useMemo(() => {
+    const descNaoAbonadas = new Set(
+      motivos.filter((m) => m.abonada === false).map((m) => m.descricao)
+    );
+    if (descNaoAbonadas.size === 0) return false;
+    for (const l of linhas) {
+      if (!l.exigeMotivo || !l.idPedido) continue;
+      const m = motivoPorId[l.idPedido]?.trim();
+      if (m && descNaoAbonadas.has(m)) return true;
+    }
+    return false;
+  }, [linhas, motivoPorId, motivos]);
+
+  const onChangeAnexoPdf = async (file: File | null) => {
+    if (!file) {
+      setAnexoAssinatura(null);
+      setAnexoNome('');
+      return;
+    }
+    try {
+      const payload = await lerPdfAssinatura(file);
+      setAnexoAssinatura(payload);
+      setAnexoNome(payload.fileName);
+      setValidacao(null);
+    } catch (err) {
+      setAnexoAssinatura(null);
+      setAnexoNome('');
+      setValidacao(err instanceof Error ? err.message : 'Não foi possível ler o PDF.');
+    }
+  };
+
   const confirmar = () => {
     if (excessosQtdeRomaneada.length > 0) {
       setValidacao(
@@ -615,8 +653,14 @@ export default function ConfirmacaoSimulacaoModal({
       );
       return;
     }
+    if (exigeAnexoAssinatura && !anexoAssinatura) {
+      setValidacao(
+        'Há justificativa não abonada: anexe um PDF assinado antes de concluir.'
+      );
+      return;
+    }
     setValidacao(null);
-    onConfirmar(motivoPorId);
+    onConfirmar(motivoPorId, exigeAnexoAssinatura ? anexoAssinatura : null);
   };
 
   const editar = onEditarData;
@@ -1159,6 +1203,20 @@ export default function ConfirmacaoSimulacaoModal({
         )}
 
         <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 px-4 py-3 dark:border-slate-600">
+          {exigeAnexoAssinatura && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-600/60 dark:bg-amber-950/30">
+              <CampoAnexoAssinaturaPdf
+                className="max-w-xl"
+                anexoNome={anexoNome}
+                onFileChange={(file) => void onChangeAnexoPdf(file)}
+                ajuda={
+                  anexoNome
+                    ? `Arquivo: ${anexoNome}`
+                    : 'Baixe o modelo, assine e anexe. Um único PDF vale para todos os ajustes com motivo não abonado.'
+                }
+              />
+            </div>
+          )}
           {(validacao || erro) && (
             <p className="text-sm text-red-600 dark:text-red-300" role="alert">
               {validacao ?? erro}

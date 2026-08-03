@@ -108,11 +108,14 @@ export interface PainelProducaoApuracaoDetalheLinha {
   cliente: string;
   codigo_produto: string;
   descricao: string;
+  quantidade?: number | null;
   status?: string;
   data_encerramento?: string | null;
   data_alteracao?: string | null;
   motivo?: string;
   usuario?: string;
+  anexo_assinatura_path?: string | null;
+  anexo_assinatura_nome?: string | null;
 }
 
 export interface PainelProducaoApuracaoParcelaProducao {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { HistoricoItem, Pedido } from '../api/pedidos';
 import { obterHistorico } from '../api/pedidos';
+import { resolveUploadUrl } from '../api/client';
 
 function getField(row: Pedido, keys: string[]): string {
   for (const k of keys) {
@@ -265,6 +266,18 @@ export default function ModalHistoricoPedido({
                     )}
                     {!isComentarioSycro && item.observacao && (
                       <div className="mt-1 text-slate-500 dark:text-slate-400">Observação: {item.observacao}</div>
+                    )}
+                    {isAjustePrevisao && item.anexo_assinatura_path && (
+                      <div className="mt-1">
+                        <a
+                          href={resolveUploadUrl(item.anexo_assinatura_path)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+                        >
+                          {item.anexo_assinatura_nome?.trim() || 'Ver PDF assinado'}
+                        </a>
+                      </div>
                     )}
                   </li>
                 );

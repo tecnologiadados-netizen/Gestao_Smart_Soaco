@@ -1,5 +1,14 @@
 import { z } from 'zod';
 
+export const anexoAssinaturaSchema = z
+  .object({
+    fileName: z.string().min(1).max(255),
+    mimeType: z.string().max(100).optional(),
+    contentBase64: z.string().min(1),
+  })
+  .optional()
+  .nullable();
+
 export const ajustarPrevisaoSchema = z.object({
   previsao_nova: z.string().refine(
     (v) => !Number.isNaN(new Date(v).getTime()),
@@ -22,6 +31,8 @@ export const ajustarPrevisaoSchema = z.object({
   todas_rotas: z.boolean().optional(),
   /** Quando false, não exibe no histórico dos cards Comunicação Interna. Default true. */
   previsao_confiavel: z.boolean().optional().default(true),
+  /** PDF assinado do responsável — obrigatório quando o motivo é não abonado. */
+  anexo_assinatura: anexoAssinaturaSchema,
 });
 
 export type AjustarPrevisaoInput = z.infer<typeof ajustarPrevisaoSchema>;
@@ -48,6 +59,12 @@ const itemAjusteLoteSchema = z.object({
 
 export const ajustarPrevisaoLoteSchema = z.object({
   ajustes: z.array(itemAjusteLoteSchema).min(1).max(1000),
+  /** PDF único da operação — aplicado às linhas com motivo não abonado. */
+  anexo_assinatura: anexoAssinaturaSchema,
+  /**
+   * Quando true (importação XLSX), não exige PDF mesmo com justificativa não abonada.
+   */
+  isento_anexo_assinatura: z.boolean().optional(),
 });
 
 export type AjustarPrevisaoLoteInput = z.infer<typeof ajustarPrevisaoLoteSchema>;

@@ -222,7 +222,14 @@ export function normalizeRotaForChave(rota: string | null | undefined): string {
 
 /** Último e penúltimo ajuste por idChave (para Previsão atual e Previsão anterior). */
 type AjusteInfo = {
-  ultimo: { previsao_nova: Date; motivo: string | null; observacao: string | null; previsao_confiavel: boolean };
+  ultimo: {
+    previsao_nova: Date;
+    motivo: string | null;
+    observacao: string | null;
+    previsao_confiavel: boolean;
+    anexo_assinatura_path: string | null;
+    anexo_assinatura_nome: string | null;
+  };
   penultimo: Date | null;
   /** Origem do ajuste exibido como "atual". */
   origem: 'override' | 'base';
@@ -243,6 +250,8 @@ type AjusteRow = {
   observacao: string | null;
   data_ajuste: unknown;
   previsao_confiavel: boolean;
+  anexoAssinaturaPath: string | null;
+  anexoAssinaturaNome: string | null;
 };
 
 /** Item de entrada para o lookup hierárquico: idChave (idRomaneio-idPedido-idProduto) + rota da linha. */
@@ -271,6 +280,8 @@ async function obterUltimoEPenultimoPorPedido(linhas: LinhaLookup[]): Promise<Ma
         observacao: true,
         data_ajuste: true,
         previsao_confiavel: true,
+        anexoAssinaturaPath: true,
+        anexoAssinaturaNome: true,
       },
       orderBy: [{ data_ajuste: 'desc' }, { id: 'desc' }],
     });
@@ -361,6 +372,8 @@ async function obterUltimoEPenultimoPorPedido(linhas: LinhaLookup[]): Promise<Ma
             motivo: ultimo.motivo,
             observacao: ultimo.observacao ?? null,
             previsao_confiavel: ultimo.previsao_confiavel !== false,
+            anexo_assinatura_path: ultimo.anexoAssinaturaPath ?? null,
+            anexo_assinatura_nome: ultimo.anexoAssinaturaNome ?? null,
           },
           penultimo: penultimoRaw != null ? parseDateFromDb(penultimoRaw) : null,
           origem: 'override',
@@ -374,6 +387,8 @@ async function obterUltimoEPenultimoPorPedido(linhas: LinhaLookup[]): Promise<Ma
             motivo: ultimo.motivo,
             observacao: ultimo.observacao ?? null,
             previsao_confiavel: ultimo.previsao_confiavel !== false,
+            anexo_assinatura_path: ultimo.anexoAssinaturaPath ?? null,
+            anexo_assinatura_nome: ultimo.anexoAssinaturaNome ?? null,
           },
           penultimo: penultimo != null ? parseDateFromDb(penultimo) : null,
           origem: 'base',
@@ -388,7 +403,14 @@ async function obterUltimoEPenultimoPorPedido(linhas: LinhaLookup[]): Promise<Ma
         if (aviso) {
           // Linha ainda não tem ajuste, mas houve override em rota órfã para o mesmo (PD, item).
           result.set(idChave, {
-            ultimo: { previsao_nova: new Date(0), motivo: null, observacao: null, previsao_confiavel: true },
+            ultimo: {
+              previsao_nova: new Date(0),
+              motivo: null,
+              observacao: null,
+              previsao_confiavel: true,
+              anexo_assinatura_path: null,
+              anexo_assinatura_nome: null,
+            },
             penultimo: null,
             origem: 'base',
             carradaMigrada: aviso,
@@ -467,6 +489,8 @@ function rowNomusToPedido(
   let previsaoAtualizada = temAjusteReal ? info!.ultimo.previsao_nova : previsaoOriginal;
   const motivoAjuste = temAjusteReal ? info!.ultimo.motivo : null;
   const observacaoAjuste = temAjusteReal ? info!.ultimo.observacao : null;
+  const anexoAssinaturaPath = temAjusteReal ? info!.ultimo.anexo_assinatura_path : null;
+  const anexoAssinaturaNome = temAjusteReal ? info!.ultimo.anexo_assinatura_nome : null;
   const dataOriginalRaw = row['Data de entrega'] ?? row['dataParametro'];
   const previsaoAnteriorFallback =
     dataOriginalRaw != null ? new Date(dataOriginalRaw as string | Date) : previsaoOriginal;
@@ -543,6 +567,8 @@ function rowNomusToPedido(
     previsao_anterior: previsaoAnterior,
     motivo_ultimo_ajuste: motivoAjuste,
     observacao_ultimo_ajuste: observacaoAjuste,
+    anexo_assinatura_path: anexoAssinaturaPath,
+    anexo_assinatura_nome: anexoAssinaturaNome,
     origem_ultimo_ajuste: origemAjuste,
     previsao_atual_confiavel: previsaoAtualConfiavel,
     carrada_migrada: carradaMigrada,
@@ -2535,6 +2561,12 @@ function toNoonUTC(d: Date): Date {
  *   - `rota` omitido/null/'' -> ajuste BASE (vale em todas as rotas em que o (PD, item) aparecer).
  *   - `rota` informado       -> override APENAS naquela rota (armazenado normalizado).
  */
+export type AnexoAssinaturaAjuste = {
+  path: string;
+  nome: string;
+  grupoId: string;
+};
+
 export async function registrarAjustePrevisao(
   idPedido: string,
   previsaoNova: Date,
@@ -2542,7 +2574,8 @@ export async function registrarAjustePrevisao(
   usuario: string,
   observacao?: string | null,
   rota?: string | null,
-  previsaoConfiavel = true
+  previsaoConfiavel = true,
+  anexoAssinatura?: AnexoAssinaturaAjuste | null,
 ): Promise<void> {
   const dataNormalizada = toNoonUTC(previsaoNova);
   const idNorm = (idPedido ?? '').trim();
@@ -2557,6 +2590,9 @@ export async function registrarAjustePrevisao(
         observacao: observacao ?? null,
         usuario,
         previsao_confiavel: previsaoConfiavel,
+        anexoAssinaturaPath: anexoAssinatura?.path ?? null,
+        anexoAssinaturaNome: anexoAssinatura?.nome ?? null,
+        anexoAssinaturaGrupoId: anexoAssinatura?.grupoId ?? null,
       },
     });
   });
@@ -2671,6 +2707,7 @@ export interface AjusteLoteItem {
   rota?: string | null;
   /** Quando false, não exibe no histórico dos cards Comunicação Interna. Default true. */
   previsao_confiavel?: boolean;
+  anexoAssinatura?: AnexoAssinaturaAjuste | null;
 }
 
 export interface RegistrarAjustesLoteResult {
@@ -2705,6 +2742,9 @@ export async function registrarAjustesPrevisaoLote(
     motivo: string;
     observacao: string | null;
     previsao_confiavel: boolean;
+    anexoAssinaturaPath: string | null;
+    anexoAssinaturaNome: string | null;
+    anexoAssinaturaGrupoId: string | null;
   }[] = [];
   let skipped = 0;
 
@@ -2727,6 +2767,9 @@ export async function registrarAjustesPrevisaoLote(
       motivo: a.motivo,
       observacao,
       previsao_confiavel: a.previsao_confiavel !== false,
+      anexoAssinaturaPath: a.anexoAssinatura?.path ?? null,
+      anexoAssinaturaNome: a.anexoAssinatura?.nome ?? null,
+      anexoAssinaturaGrupoId: a.anexoAssinatura?.grupoId ?? null,
     });
   }
 
@@ -2743,6 +2786,9 @@ export async function registrarAjustesPrevisaoLote(
           usuario,
           data_ajuste: dataAjusteRequest,
           previsao_confiavel: a.previsao_confiavel,
+          anexoAssinaturaPath: a.anexoAssinaturaPath,
+          anexoAssinaturaNome: a.anexoAssinaturaNome,
+          anexoAssinaturaGrupoId: a.anexoAssinaturaGrupoId,
         })),
       });
       // Mantém a grade de Gestão de Pedidos consistente imediatamente após ajuste em lote.
@@ -3123,6 +3169,8 @@ export type HistoricoAjusteRow = {
   usuario: string;
   data_ajuste: Date;
   previsao_confiavel: boolean;
+  anexo_assinatura_path: string | null;
+  anexo_assinatura_nome: string | null;
 };
 
 /**
@@ -3186,6 +3234,8 @@ export async function listarHistoricoAjustes(
     usuario: string;
     data_ajuste: unknown;
     previsao_confiavel: boolean;
+    anexoAssinaturaPath?: string | null;
+    anexoAssinaturaNome?: string | null;
   }): HistoricoAjusteRow => ({
     id: r.id,
     id_pedido: r.id_pedido,
@@ -3196,6 +3246,8 @@ export async function listarHistoricoAjustes(
     usuario: r.usuario,
     data_ajuste: parseDateFromDb(r.data_ajuste),
     previsao_confiavel: r.previsao_confiavel !== false,
+    anexo_assinatura_path: r.anexoAssinaturaPath ?? null,
+    anexo_assinatura_nome: r.anexoAssinaturaNome ?? null,
   });
 
   type Row = {
@@ -3208,6 +3260,8 @@ export async function listarHistoricoAjustes(
     usuario: string;
     data_ajuste: unknown;
     previsao_confiavel: boolean;
+    anexoAssinaturaPath: string | null;
+    anexoAssinaturaNome: string | null;
   };
   let rows: Row[] = [];
 
@@ -3227,6 +3281,8 @@ export async function listarHistoricoAjustes(
         usuario: r.usuario,
         data_ajuste: r.data_ajuste,
         previsao_confiavel: r.previsao_confiavel !== false,
+        anexoAssinaturaPath: r.anexoAssinaturaPath ?? null,
+        anexoAssinaturaNome: r.anexoAssinaturaNome ?? null,
       })) as Row[];
   } catch (_) {
     rows = [];

@@ -15,6 +15,8 @@ import {
 } from '../utils/rotaCarrada';
 import { validarDatasReprogramacao } from '../utils/canalReprogramacaoDatas';
 import { formatDataCurta } from './sequenciamento-carradas/simulacaoCarradas';
+import { lerPdfAssinatura, type AnexoAssinaturaPayload } from '../utils/lerPdfAssinatura';
+import CampoAnexoAssinaturaPdf from './CampoAnexoAssinaturaPdf';
 
 const ajusteSchema = z.object({
   previsao_nova: z.string().min(1, 'Informe a data'),
@@ -105,7 +107,13 @@ type FlowStep = 'form' | 'multiplas_rotas' | 'carrada_confirm';
 
 /** Decisão acumulada ao longo dos steps do fluxo. */
 type PendingDecision = {
-  data: { previsao_nova: string; motivo: string; observacao?: string; previsao_confiavel: boolean };
+  data: {
+    previsao_nova: string;
+    motivo: string;
+    observacao?: string;
+    previsao_confiavel: boolean;
+    anexo_assinatura?: AnexoAssinaturaPayload | null;
+  };
   /** Override por rota (padrão: Observacoes da linha). null só quando a linha não tem rota. */
   rotaOverride: string | null;
   /** Usuário escolheu explicitamente aplicar em todas as rotas em que o item aparece. */
@@ -141,6 +149,8 @@ export default function ModalAjustePrevisao({
   const [motivo, setMotivo] = useState('');
   const [observacao, setObservacao] = useState('');
   const [previsaoConfiavel, setPrevisaoConfiavel] = useState(true);
+  const [anexoAssinatura, setAnexoAssinatura] = useState<AnexoAssinaturaPayload | null>(null);
+  const [anexoNome, setAnexoNome] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ previsao_nova?: string; data_producao_nova?: string; motivo?: string }>({});
   const [sugestoes, setSugestoes] = useState<MotivoSugestao[]>([]);
@@ -194,6 +204,8 @@ export default function ModalAjustePrevisao({
     setMotivo('');
     setObservacao('');
     setPrevisaoConfiavel(true);
+    setAnexoAssinatura(null);
+    setAnexoNome('');
     setErrors({});
   }, [pedido?.id_pedido, calendario?.dataProducaoAtual, !!calendario]);
 
@@ -224,6 +236,9 @@ export default function ModalAjustePrevisao({
   const previsaoSeraAjustada =
     previsaoMudouForm || (!!calendario && calendario.producaoDerivadaPrevisao && producaoMudouForm);
 
+  const motivoSelecionado = sugestoes.find((s) => s.descricao === motivo);
+  const exigeAnexo = previsaoSeraAjustada && motivoSelecionado?.abonada === false;
+
   /** Evita deixar motivo/observação preenchidos e desabilitados quando a previsão volta ao valor atual. */
   const limparCamposAjustePrevisaoSeInativos = (previsaoIso: string, producaoIso: string) => {
     const previsaoMuda = calendario
@@ -236,6 +251,42 @@ export default function ModalAjustePrevisao({
     setMotivo('');
     setObservacao('');
     setPrevisaoConfiavel(true);
+    setAnexoAssinatura(null);
+    setAnexoNome('');
+  };
+
+  const limparAnexoAssinatura = () => {
+    setAnexoAssinatura(null);
+    setAnexoNome('');
+  };
+
+  const onChangeMotivo = (valor: string) => {
+    setMotivo(valor);
+    const sel = sugestoes.find((s) => s.descricao === valor);
+    if (!sel || sel.abonada !== false) limparAnexoAssinatura();
+  };
+
+  const onChangeAnexoPdf = async (file: File | null) => {
+    if (!file) {
+      limparAnexoAssinatura();
+      return;
+    }
+    try {
+      const payload = await lerPdfAssinatura(file);
+      setAnexoAssinatura(payload);
+      setAnexoNome(payload.fileName);
+      setErrors((prev) => {
+        if (!prev.motivo) return prev;
+        const next = { ...prev };
+        delete next.motivo;
+        return next;
+      });
+    } catch (err) {
+      limparAnexoAssinatura();
+      const msg = err instanceof Error ? err.message : 'Não foi possível ler o PDF.';
+      setErrors((prev) => ({ ...prev, motivo: msg }));
+      onError(msg);
+    }
   };
 
   const fecharOuVoltar = () => {
@@ -339,6 +390,7 @@ export default function ModalAjustePrevisao({
         rota: rotaPayloadPrincipal,
         todas_rotas: decision.forcarBase === true ? true : undefined,
         previsao_confiavel: decision.data.previsao_confiavel,
+        anexo_assinatura: decision.data.anexo_assinatura ?? undefined,
       });
       let meta: AjustePrevisaoSuccessMeta | undefined;
       if (replicateCarrada) {
@@ -375,6 +427,7 @@ export default function ModalAjustePrevisao({
             observacao: decision.data.observacao || null,
             rota: rotaPayload,
             previsao_confiavel: decision.data.previsao_confiavel,
+            anexo_assinatura: decision.data.anexo_assinatura ?? undefined,
           });
           if (producaoPendente) {
             upd = { ...upd, data_producao: producaoPendente } as Pedido;
@@ -533,7 +586,11 @@ export default function ModalAjustePrevisao({
 
     const parsed = ajusteSchema.safeParse({ previsao_nova: previsaoEfetiva, motivo, observacao });
     const dataComConfiavel = parsed.success
-      ? { ...parsed.data, previsao_confiavel: previsaoConfiavel }
+      ? {
+          ...parsed.data,
+          previsao_confiavel: previsaoConfiavel,
+          anexo_assinatura: anexoAssinatura,
+        }
       : null;
     if (!parsed.success) {
       const fieldErrors: Record<string, string> = {};
@@ -545,6 +602,7 @@ export default function ModalAjustePrevisao({
     }
     setErrors({});
 
+    // Simulação (calendário rascunho): não exige PDF.
     if (!persistirNoGerenciador && dataComConfiavel) {
       const producaoSim =
         producaoMudou && !calendario?.producaoDerivadaPrevisao ? producaoNovaNorm : undefined;
@@ -555,6 +613,13 @@ export default function ModalAjustePrevisao({
         observacao: dataComConfiavel.observacao,
         previsao_confiavel: dataComConfiavel.previsao_confiavel,
       });
+      return;
+    }
+
+    if (precisaAjustePrevisao && persistirNoGerenciador && exigeAnexo && !anexoAssinatura) {
+      const msg = 'Anexe o PDF assinado da justificativa não abonada.';
+      setErrors({ motivo: msg });
+      onError(msg);
       return;
     }
 
@@ -842,7 +907,7 @@ export default function ModalAjustePrevisao({
             </div>
             <select
               value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
+              onChange={(e) => onChangeMotivo(e.target.value)}
               className="w-full rounded-lg bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 focus:ring-2 focus:ring-primary-600 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
               required={previsaoSeraAjustada}
               disabled={!previsaoSeraAjustada}
@@ -862,6 +927,14 @@ export default function ModalAjustePrevisao({
               <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">
                 Motivo, previsão confiável e observação só valem para mudança da previsão de entrega.
               </p>
+            )}
+            {exigeAnexo && persistirNoGerenciador && (
+              <CampoAnexoAssinaturaPdf
+                className="mt-3"
+                anexoNome={anexoNome}
+                onFileChange={(file) => void onChangeAnexoPdf(file)}
+                ajuda={`Justificativa não abonada: baixe o modelo, assine e anexe o PDF${anexoNome ? ` — ${anexoNome}` : ''}.`}
+              />
             )}
           </div>
           <div className="mb-4">

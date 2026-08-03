@@ -122,6 +122,11 @@ const SECOES: SecaoAjuda[] = [
         texto:
           'Se você desmarcar “Previsão confiável”, a data vale na grade mas não entra no histórico da Comunicação Interna — use para datas ainda em negociação.',
       },
+      {
+        titulo: 'Justificativa não abonada (PDF)',
+        texto:
+          'Se o motivo escolhido for não abonado, é obrigatório anexar um PDF assinado antes de gravar (há link para baixar o modelo). O arquivo fica disponível no histórico do pedido.',
+      },
     ],
   },
   {

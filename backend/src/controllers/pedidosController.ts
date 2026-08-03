@@ -44,6 +44,10 @@ import { listarPedidosQuerySchema, pedidosEncerradosQuerySchema, pedidosEncerrad
 import { prisma } from '../config/prisma.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import { getPermissoesUsuario } from '../middleware/requirePermission.js';
+import {
+  motivoExigeAnexoAssinatura,
+  resolverAnexoAssinaturaObrigatorio,
+} from '../services/previsaoAssinaturaService.js';
 
 function normalizeRotaName(dm: string): string {
   return String(dm ?? '')
@@ -451,7 +455,7 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
     return;
   }
 
-  const { previsao_nova, motivo, observacao, replicate_carrada, rota, todas_rotas, previsao_confiavel } = parsed.data;
+  const { previsao_nova, motivo, observacao, replicate_carrada, rota, todas_rotas, previsao_confiavel, anexo_assinatura } = parsed.data;
   const dataPrevisao = new Date(previsao_nova);
   if (Number.isNaN(dataPrevisao.getTime())) {
     res.status(400).json({ error: 'Data de previsão inválida.' });
@@ -463,6 +467,26 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
 
   const usuario = req.user?.login ?? 'anon';
   try {
+    let anexoPersistido;
+    try {
+      anexoPersistido = await resolverAnexoAssinaturaObrigatorio({
+        motivos: [motivo],
+        anexo: anexo_assinatura,
+      });
+    } catch (anexoErr) {
+      res.status(400).json({
+        error: anexoErr instanceof Error ? anexoErr.message : 'PDF de assinatura obrigatório.',
+      });
+      return;
+    }
+    const anexoParaLinha = anexoPersistido
+      ? {
+          path: anexoPersistido.path,
+          nome: anexoPersistido.nome,
+          grupoId: anexoPersistido.grupoId,
+        }
+      : null;
+
     const pedidoAtual = await buscarPedidoPorId(idPedido);
     let previsaoAntigaStr = '—';
     if (pedidoAtual) {
@@ -503,6 +527,7 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
       observacao: observacao ?? null,
       rota: rotaAjuste,
       previsao_confiavel: previsao_confiavel !== false,
+      anexoAssinatura: anexoParaLinha,
     });
     const ajustes: AjusteLoteItem[] = [];
 
@@ -728,26 +753,53 @@ export async function ajustarPrevisaoLote(req: Request, res: Response): Promise<
 
   // Usuário da requisição atual (quem está importando)
   const usuario = req.user?.login ?? 'anon';
+  let anexoPersistido;
+  try {
+    anexoPersistido = await resolverAnexoAssinaturaObrigatorio({
+      motivos: itensComPrevisaoValida.map((a) => a.motivo ?? ''),
+      anexo: parsed.data.anexo_assinatura,
+      isento: parsed.data.isento_anexo_assinatura === true,
+    });
+  } catch (anexoErr) {
+    res.status(400).json({
+      error: anexoErr instanceof Error ? anexoErr.message : 'PDF de assinatura obrigatório.',
+    });
+    return;
+  }
+
   const mapaRotaGerenciador = await obterMapaRotaPorIdPedido(
     itensComPrevisaoValida.map((a) => a.id_pedido)
   );
-  const ajustes = itensComPrevisaoValida.map((a) => {
-    const idNorm = String(a.id_pedido ?? '').trim();
-    const rotaPlanilha = typeof a.rota === 'string' ? a.rota.trim() : '';
-    const rotaGerenciador = mapaRotaGerenciador.get(idNorm) ?? '';
-    const rotaEfetiva = rotaPlanilha || rotaGerenciador;
-    const overrideExplicito = a.apply_rota === true && rotaPlanilha !== '';
-    const usarOverride = overrideExplicito || rotaEfetiva !== '';
-    return {
-      id_pedido: idNorm,
-      previsao_nova: new Date(a.previsao_nova!),
-      motivo: a.motivo ?? '',
-      observacao: a.observacao ?? null,
-      // Importação: override na rota da linha (planilha ou Gerenciador) para atualizar a Previsão atual exibida.
-      rota: usarOverride ? rotaEfetiva : null,
-      previsao_confiavel: a.previsao_confiavel !== false,
-    };
-  });
+  const ajustes = await Promise.all(
+    itensComPrevisaoValida.map(async (a) => {
+      const idNorm = String(a.id_pedido ?? '').trim();
+      const rotaPlanilha = typeof a.rota === 'string' ? a.rota.trim() : '';
+      const rotaGerenciador = mapaRotaGerenciador.get(idNorm) ?? '';
+      const rotaEfetiva = rotaPlanilha || rotaGerenciador;
+      const overrideExplicito = a.apply_rota === true && rotaPlanilha !== '';
+      const usarOverride = overrideExplicito || rotaEfetiva !== '';
+      const motivoLinha = a.motivo ?? '';
+      const exigeAnexoLinha =
+        anexoPersistido != null && (await motivoExigeAnexoAssinatura(motivoLinha));
+      return {
+        id_pedido: idNorm,
+        previsao_nova: new Date(a.previsao_nova!),
+        motivo: motivoLinha,
+        observacao: a.observacao ?? null,
+        // Importação: override na rota da linha (planilha ou Gerenciador) para atualizar a Previsão atual exibida.
+        rota: usarOverride ? rotaEfetiva : null,
+        previsao_confiavel: a.previsao_confiavel !== false,
+        anexoAssinatura:
+          exigeAnexoLinha && anexoPersistido
+            ? {
+                path: anexoPersistido.path,
+                nome: anexoPersistido.nome,
+                grupoId: anexoPersistido.grupoId,
+              }
+            : null,
+      };
+    }),
+  );
   const resultados = await registrarAjustesPrevisaoLote(ajustes, usuario);
   invalidatePedidosCache();
   setLastUpload();
@@ -896,6 +948,8 @@ export async function getHistorico(req: Request, res: Response): Promise<void> {
         usuario: h.usuario,
         data_ajuste: h.data_ajuste,
         previsao_confiavel: h.previsao_confiavel,
+        anexo_assinatura_path: h.anexo_assinatura_path,
+        anexo_assinatura_nome: h.anexo_assinatura_nome,
         tipo_evento: 'ajuste_previsao' as const,
       };
     });

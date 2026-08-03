@@ -59,7 +59,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Ao concluir, datas/previsões vencidas e mudanças de previsão ficam na mesma grade: Pedido, Cliente, Código, Descrição, Carrada, datas, Qtde, Motivo, Obs. (ícone) e Confiável. Todo item com id de pedido nessa grade exige motivo (não só os que já tinham previsão alterada no rascunho). Motivos do calendário já entram nesse estado.',
     comoLe:
-      'Uma única grade larga: corrija datas anteriores a hoje, preencha motivo/obs/confiável na mesma linha (fundo verde quando ok) e clique em Concluir. Carradas ROTA com vários pedidos aparecem desdobradas por item (com qtde e motivo). Datas ou motivos incompletos impedem fechar.',
+      'Uma única grade larga: corrija datas anteriores a hoje, preencha motivo/obs/confiável na mesma linha (fundo verde quando ok) e clique em Concluir. Carradas ROTA com vários pedidos aparecem desdobradas por item (com qtde e motivo). Datas ou motivos incompletos impedem fechar. Se algum motivo for não abonado, anexe um PDF assinado (um arquivo vale para todo o lote) antes de concluir.',
   },
   {
     id: 'financeiro',

@@ -46,6 +46,8 @@ import {
   getDaysUntilEffectivePrevisao,
   earliestIsoFromPrevisaoField,
 } from '../../components/sycroorder/sycroOrderCardUtils';
+import { lerPdfAssinatura, type AnexoAssinaturaPayload } from '../../utils/lerPdfAssinatura';
+import CampoAnexoAssinaturaPdf from '../../components/CampoAnexoAssinaturaPdf';
 
 function parseFiltroMulti(value: string): string[] {
   if (!value?.trim()) return [];
@@ -1287,7 +1289,6 @@ export default function SycroOrderPage() {
           </div>
         </div>
       )}
-
       <SycroOrderAjudaModal aberto={modalAjudaAberto} onClose={() => setModalAjudaAberto(false)} />
     </div>
   );
@@ -2095,6 +2096,8 @@ function ModalAtualizarPedido({
   const [motivo, setMotivo] = useState('');
   const [previsaoConfiavel, setPrevisaoConfiavel] = useState(true);
   const [observacaoAjuste, setObservacaoAjuste] = useState('');
+  const [anexoAssinatura, setAnexoAssinatura] = useState<AnexoAssinaturaPayload | null>(null);
+  const [anexoNome, setAnexoNome] = useState('');
   const [itensPedido, setItensPedido] = useState<ItemPedido[]>([]);
   const [loadingItens, setLoadingItens] = useState(false);
   const [selectedIdPedidos, setSelectedIdPedidos] = useState<Set<string>>(new Set());
@@ -2114,11 +2117,42 @@ function ModalAtualizarPedido({
     cardDateKey !== '' && gerenciadorDateKey !== '' && cardDateKey !== gerenciadorDateKey;
   const producaoPreenchida = novaDataProducao.trim() !== '';
 
+  const limparAnexoAssinatura = useCallback(() => {
+    setAnexoAssinatura(null);
+    setAnexoNome('');
+  }, []);
+
   const limparCamposAjustePrevisao = useCallback(() => {
     setMotivo('');
     setObservacaoAjuste('');
     setPrevisaoConfiavel(true);
-  }, []);
+    limparAnexoAssinatura();
+  }, [limparAnexoAssinatura]);
+
+  const motivoSelecionado = motivos.find((m) => m.descricao === motivo);
+  const exigeAnexo = dataAlterada && motivoSelecionado?.abonada === false;
+
+  const onChangeMotivo = (valor: string) => {
+    setMotivo(valor);
+    const sel = motivos.find((m) => m.descricao === valor);
+    if (!sel || sel.abonada !== false) limparAnexoAssinatura();
+  };
+
+  const onChangeAnexoPdf = async (file: File | null) => {
+    if (!file) {
+      limparAnexoAssinatura();
+      return;
+    }
+    try {
+      const payload = await lerPdfAssinatura(file);
+      setAnexoAssinatura(payload);
+      setAnexoNome(payload.fileName);
+      setErro(null);
+    } catch (err) {
+      limparAnexoAssinatura();
+      setErro(err instanceof Error ? err.message : 'Não foi possível ler o PDF.');
+    }
+  };
 
   const carregarMotivos = useCallback(() => {
     setLoadingMotivos(true);
@@ -2174,6 +2208,11 @@ function ModalAtualizarPedido({
 
     if (dataAlterada && !motivo.trim()) {
       setErro('Selecione um motivo para a nova data prometida.');
+      return;
+    }
+
+    if (dataAlterada && exigeAnexo && !anexoAssinatura) {
+      setErro('Anexe o PDF assinado da justificativa não abonada.');
       return;
     }
 
@@ -2271,6 +2310,7 @@ function ModalAtualizarPedido({
               motivo: (payload?.motivo ?? motivo).trim() || undefined,
               observacao: (payload?.observacao ?? observacaoAjuste).trim() || undefined,
               previsao_confiavel: payload?.previsao_confiavel ?? previsaoConfiavel,
+              ...(anexoAssinatura ? { anexo_assinatura: anexoAssinatura } : {}),
             }
           : {}),
         id_pedidos: payload?.replicate_carrada ? undefined : payload?.id_pedidos?.length ? payload.id_pedidos : undefined,
@@ -2465,7 +2505,7 @@ function ModalAtualizarPedido({
                       </div>
                       <select
                         value={motivo}
-                        onChange={(e) => setMotivo(e.target.value)}
+                        onChange={(e) => onChangeMotivo(e.target.value)}
                         required
                         className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                       >
@@ -2475,6 +2515,14 @@ function ModalAtualizarPedido({
                         ))}
                       </select>
                       {loadingMotivos && <p className="text-xs text-slate-500 mt-1">Carregando motivos...</p>}
+                      {exigeAnexo && (
+                        <CampoAnexoAssinaturaPdf
+                          className="mt-2"
+                          anexoNome={anexoNome}
+                          onFileChange={(file) => void onChangeAnexoPdf(file)}
+                          ajuda={`Justificativa não abonada: baixe o modelo, assine e anexe o PDF${anexoNome ? ` — ${anexoNome}` : ''}.`}
+                        />
+                      )}
                     </div>
                     <label className="flex items-start gap-2 cursor-pointer">
                       <input

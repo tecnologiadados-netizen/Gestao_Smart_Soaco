@@ -54,6 +54,7 @@ type ItemEncerradoRow = {
   descricao: string | null;
   status: number;
   data_encerramento: Date | string | null;
+  quantidade: number | null;
 };
 
 type AjusteRow = {
@@ -62,6 +63,8 @@ type AjusteRow = {
   data_ajuste: Date;
   motivo: string;
   usuario: string;
+  anexo_assinatura_path: string | null;
+  anexo_assinatura_nome: string | null;
 };
 
 export type ApuracaoMetaSetor = {
@@ -98,11 +101,14 @@ export type ApuracaoDetalheLinha = {
   cliente: string;
   codigo_produto: string;
   descricao: string;
+  quantidade?: number | null;
   status?: string;
   data_encerramento?: string | null;
   data_alteracao?: string | null;
   motivo?: string;
   usuario?: string;
+  anexo_assinatura_path?: string | null;
+  anexo_assinatura_nome?: string | null;
 };
 
 export type ParcelaProducaoDetalhe = {
@@ -331,7 +337,8 @@ async function carregarItensEncerradosDoSetor(
       p.nome AS codigo_produto,
       p.descricao AS descricao,
       ip.status AS status,
-      ip.dataHoraEncerramento AS data_encerramento
+      ip.dataHoraEncerramento AS data_encerramento,
+      ip.qtde AS quantidade
     FROM itempedido ip
     INNER JOIN pedido pd ON pd.id = ip.idPedido
     INNER JOIN produto p ON p.id = ip.idProduto
@@ -345,15 +352,8 @@ async function carregarItensEncerradosDoSetor(
     WHERE pd.idEmpresa IN (1, 2)
       AND ip.status IN (4, 5)
       AND TRIM(sp.opcao) = ?
-      AND pd.id IN (
-        SELECT DISTINCT ip2.idPedido
-        FROM itempedido ip2
-        INNER JOIN pedido pd2 ON pd2.id = ip2.idPedido
-        WHERE pd2.idEmpresa IN (1, 2)
-          AND ip2.status IN (4, 5)
-          AND ip2.dataHoraEncerramento >= ?
-          AND ip2.dataHoraEncerramento < ?
-      )
+      AND ip.dataHoraEncerramento >= ?
+      AND ip.dataHoraEncerramento < ?
     ORDER BY pd.nome ASC, p.nome ASC, ip.dataHoraEncerramento ASC
   `;
 
@@ -383,6 +383,8 @@ async function carregarAjustesPorMotivo(
       data_ajuste: true,
       motivo: true,
       usuario: true,
+      anexoAssinaturaPath: true,
+      anexoAssinaturaNome: true,
     },
     orderBy: [{ data_ajuste: 'asc' }, { id: 'asc' }],
   });
@@ -391,17 +393,30 @@ async function carregarAjustesPorMotivo(
   for (const ajuste of ajustes) {
     const item = itemPorChave.get(chavePedidoItem(ajuste.id_pedido));
     if (!item) continue;
-    vinculados.push({ ajuste, item });
+    vinculados.push({
+      ajuste: {
+        id: ajuste.id,
+        id_pedido: ajuste.id_pedido,
+        data_ajuste: ajuste.data_ajuste,
+        motivo: ajuste.motivo,
+        usuario: ajuste.usuario,
+        anexo_assinatura_path: ajuste.anexoAssinaturaPath ?? null,
+        anexo_assinatura_nome: ajuste.anexoAssinaturaNome ?? null,
+      },
+      item,
+    });
   }
   return vinculados;
 }
 
 function linhaPedidoProduto(item: ItemEncerradoRow): ApuracaoDetalheLinha {
+  const qtde = Number(item.quantidade);
   return {
     pedido: String(item.pd ?? '').trim(),
     cliente: String(item.cliente ?? '').trim() || '—',
     codigo_produto: String(item.codigo_produto ?? '').trim() || '—',
     descricao: String(item.descricao ?? '').trim() || '—',
+    quantidade: Number.isFinite(qtde) ? qtde : null,
     status: statusLabel(Number(item.status)),
     data_encerramento: formatDateTimeBr(item.data_encerramento),
   };
@@ -707,6 +722,8 @@ export async function getApuracaoDetalhe(
       data_alteracao: formatDateTimeBr(ajuste.data_ajuste),
       motivo: ajuste.motivo,
       usuario: ajuste.usuario,
+      anexo_assinatura_path: ajuste.anexo_assinatura_path,
+      anexo_assinatura_nome: ajuste.anexo_assinatura_nome,
     })),
   );
 

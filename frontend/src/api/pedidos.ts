@@ -514,6 +514,9 @@ export interface HistoricoItem {
   previsao_confiavel?: boolean;
   tipo_evento?: HistoricoTipoEvento;
   tag_disponivel?: boolean;
+  /** Caminho do PDF assinado (justificativa não abonada), quando houver. */
+  anexo_assinatura_path?: string | null;
+  anexo_assinatura_nome?: string | null;
 }
 
 export async function obterHistorico(
@@ -585,6 +588,12 @@ export async function ajustarPrevisao(
     todas_rotas?: boolean;
     /** Quando false, não exibe no histórico dos cards Comunicação Interna. Default true. */
     previsao_confiavel?: boolean;
+    /** PDF assinado — obrigatório quando o motivo é não abonado. */
+    anexo_assinatura?: {
+      fileName: string;
+      mimeType?: string;
+      contentBase64: string;
+    } | null;
   }
 ): Promise<Pedido> {
   const res = await apiFetch(`/api/pedidos/${encodeURIComponent(idPedido)}/ajustar-previsao`, {
@@ -623,10 +632,25 @@ export type AjustePrevisaoLoteResultado = {
 };
 
 /** Ajusta previsão de vários pedidos em uma única requisição (evita 429 na importação). */
-export async function ajustarPrevisaoLote(ajustes: AjustePrevisaoLoteItem[]): Promise<AjustePrevisaoLoteResultado> {
+export async function ajustarPrevisaoLote(
+  ajustes: AjustePrevisaoLoteItem[],
+  opcoes?: {
+    anexo_assinatura?: {
+      fileName: string;
+      mimeType?: string;
+      contentBase64: string;
+    } | null;
+    /** Importação XLSX: não exige PDF mesmo com justificativa não abonada. */
+    isento_anexo_assinatura?: boolean;
+  },
+): Promise<AjustePrevisaoLoteResultado> {
   const res = await apiFetch('/api/pedidos/ajustar-previsao-lote', {
     method: 'POST',
-    body: { ajustes },
+    body: {
+      ajustes,
+      anexo_assinatura: opcoes?.anexo_assinatura,
+      isento_anexo_assinatura: opcoes?.isento_anexo_assinatura,
+    },
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));

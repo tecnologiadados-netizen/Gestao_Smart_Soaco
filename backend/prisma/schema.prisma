@@ -27,6 +27,11 @@ model PedidoPrevisaoAjuste {
   data_ajuste   DateTime @default(now())
   /// Quando false, altera a previsão efetiva mas não entra no histórico dos cards Comunicação Interna.
   previsao_confiavel Boolean @default(true)
+  /// PDF de assinatura do responsável (obrigatório em justificativas não abonadas, exceto import XLSX).
+  anexoAssinaturaPath    String? @map("anexo_assinatura_path")
+  anexoAssinaturaNome    String? @map("anexo_assinatura_nome")
+  /// UUID da operação — várias linhas do mesmo ajuste compartilham o mesmo arquivo.
+  anexoAssinaturaGrupoId String? @map("anexo_assinatura_grupo_id")
 
   @@index([id_pedido])
   @@index([id_pedido, rota])

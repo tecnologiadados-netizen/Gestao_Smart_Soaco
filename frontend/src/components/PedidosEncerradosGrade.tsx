@@ -155,7 +155,11 @@ export default function PedidosEncerradosGrade({
         </table>
       </div>
 
-      <ModalHistoricoPedido pedido={historicoPedido} open={historicoOpen} onClose={fecharHistorico} />
+      <ModalHistoricoPedido
+        pedido={historicoPedido}
+        open={historicoOpen}
+        onClose={fecharHistorico}
+      />
     </>
   );
 }

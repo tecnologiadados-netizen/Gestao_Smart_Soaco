@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { formatNumber } from '../../utils/painelProducaoFormat';
+import { exportarPedidosDashboardExcel } from '../../utils/painelProducaoExcelExport';
 import type { PainelProducaoPedidoDetalhe } from '../../api/painelProducao';
 
 interface ProducaoPedidosKpiProps {
@@ -8,6 +9,8 @@ interface ProducaoPedidosKpiProps {
   pedidosDetalhe: PainelProducaoPedidoDetalhe[];
   resetKey: string;
   icon: ReactNode;
+  setor?: string;
+  mes?: string;
 }
 
 export function ProducaoPedidosKpi({
@@ -15,8 +18,11 @@ export function ProducaoPedidosKpi({
   pedidosDetalhe,
   resetKey,
   icon,
+  setor,
+  mes,
 }: ProducaoPedidosKpiProps) {
   const [open, setOpen] = useState(false);
+  const [exportando, setExportando] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const popoverId = useId();
 
@@ -39,6 +45,19 @@ export function ProducaoPedidosKpi({
       document.removeEventListener('keydown', handleEscape);
     };
   }, [open]);
+
+  async function baixarExcel() {
+    if (pedidosDetalhe.length === 0 || exportando) return;
+    setExportando(true);
+    try {
+      await exportarPedidosDashboardExcel(pedidosDetalhe, { setor, mes });
+    } catch (err) {
+      console.error(err);
+      window.alert(err instanceof Error ? err.message : 'Falha ao gerar o Excel.');
+    } finally {
+      setExportando(false);
+    }
+  }
 
   return (
     <div className="kpi-pedidos-wrap" ref={wrapRef}>
@@ -68,9 +87,23 @@ export function ProducaoPedidosKpi({
         >
           <div className="pedidos-detalhe-header">
             <h3>Pedidos contabilizados</h3>
-            <span className="pedidos-detalhe-count">
-              {pedidosDetalhe.length} pedido{pedidosDetalhe.length !== 1 ? 's' : ''}
-            </span>
+            <div className="pedidos-detalhe-header-actions">
+              <span className="pedidos-detalhe-count">
+                {pedidosDetalhe.length} pedido{pedidosDetalhe.length !== 1 ? 's' : ''}
+              </span>
+              <button
+                type="button"
+                className="apuracao-tooltip-export"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void baixarExcel();
+                }}
+                disabled={pedidosDetalhe.length === 0 || exportando}
+                title="Baixar dados em Excel"
+              >
+                {exportando ? 'Gerando…' : 'Excel'}
+              </button>
+            </div>
           </div>
           {pedidosDetalhe.length > 0 ? (
             <ul className="pedidos-detalhe-list">

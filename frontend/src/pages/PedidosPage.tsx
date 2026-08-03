@@ -542,7 +542,9 @@ export default function PedidosPage() {
             previsao_confiavel: linha.previsao_confiavel !== false,
           };
         });
-        const resultado = await ajustarPrevisaoLote(ajustes);
+        const resultado = await ajustarPrevisaoLote(ajustes, {
+          isento_anexo_assinatura: true,
+        });
         ok += resultado.ok;
         resultado.erros.forEach((e) => errosLista.push(`Pedido ${e.id_pedido}: ${e.erro}`));
         processados = Math.min(inicio + TAMANHO_LOTE, comPrevisao.length);
