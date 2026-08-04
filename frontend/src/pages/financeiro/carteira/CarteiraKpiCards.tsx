@@ -41,7 +41,7 @@ function CardPrincipal({
 
 export default function CarteiraKpiCards({ resumo, loading }: Props) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-pdf-block>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <CardPrincipal
           label="Saldo a Receber"

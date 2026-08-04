@@ -23,10 +23,17 @@ const podeEditarMetas = requirePermission(
   PERMISSOES.PCP_PAINEL_METAS_EDITAR,
   PERMISSOES.PCP_TOTAL,
 );
+const podeEditarFaixas = requirePermission(
+  PERMISSOES.PCP_PAINEL_METAS_FAIXAS_EDITAR,
+  PERMISSOES.PCP_PAINEL_METAS_EDITAR,
+  PERMISSOES.PCP_TOTAL,
+);
 const podeVerFiltros = requirePermission(
   PERMISSOES.PCP_PAINEL_GERENCIAL_VER,
   PERMISSOES.PCP_PAINEL_TV_VER,
+  PERMISSOES.PCP_PAINEL_APURACAO_VER,
   PERMISSOES.PCP_PAINEL_METAS_EDITAR,
+  PERMISSOES.PCP_PAINEL_METAS_FAIXAS_EDITAR,
   PERMISSOES.PCP_TOTAL,
 );
 const podeVerDashboard = requirePermission(
@@ -34,20 +41,26 @@ const podeVerDashboard = requirePermission(
   PERMISSOES.PCP_PAINEL_TV_VER,
   PERMISSOES.PCP_TOTAL,
 );
+const podeVerApuracao = requirePermission(
+  PERMISSOES.PCP_PAINEL_APURACAO_VER,
+  PERMISSOES.PCP_PAINEL_GERENCIAL_VER,
+  PERMISSOES.PCP_TOTAL,
+);
 const podeVerTargets = requirePermission(
   PERMISSOES.PCP_PAINEL_GERENCIAL_VER,
   PERMISSOES.PCP_PAINEL_METAS_EDITAR,
+  PERMISSOES.PCP_PAINEL_METAS_FAIXAS_EDITAR,
   PERMISSOES.PCP_TOTAL,
 );
 
 router.get('/filters', podeVerFiltros, getPainelProducaoFilters);
 router.get('/dashboard', podeVerDashboard, getPainelProducaoDashboard);
-router.get('/apuracao', podeVerDashboard, getPainelProducaoApuracao);
-router.get('/apuracao/detalhe', podeVerDashboard, getPainelProducaoApuracaoDetalhe);
+router.get('/apuracao', podeVerApuracao, getPainelProducaoApuracao);
+router.get('/apuracao/detalhe', podeVerApuracao, getPainelProducaoApuracaoDetalhe);
 router.get('/targets', podeVerTargets, getPainelProducaoTargets);
 router.post('/targets', validateCsrf, podeEditarMetas, postPainelProducaoTarget);
 router.get('/faixas-desconto', podeVerTargets, getPainelProducaoFaixasDesconto);
-router.put('/faixas-desconto', validateCsrf, podeEditarMetas, putPainelProducaoFaixasDesconto);
+router.put('/faixas-desconto', validateCsrf, podeEditarFaixas, putPainelProducaoFaixasDesconto);
 router.put('/setor-penalizacao', validateCsrf, podeEditarMetas, putPainelProducaoSetorPenalizacao);
 router.post('/meses', validateCsrf, podeEditarMetas, postPainelProducaoMes);
 

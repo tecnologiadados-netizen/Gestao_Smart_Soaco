@@ -1,7 +1,8 @@
 import { PERMISSOES, type CodigoPermissao } from './permissoes';
 import { podeAcessarRotaFinanceiro } from '../utils/financeiroPermissoes';
 import {
-  podeEditarPainelMetas,
+  podeAcessarCadastroMetas,
+  podeVerPainelApuracao,
   podeVerPainelGerencial,
   podeVerPainelTv,
 } from '../utils/painelProducaoPermissoes';
@@ -376,9 +377,9 @@ export function filterPcpMenuChildren(
       if (c.to === '/pedidos/painel-metas/gerencial') return podeVerPainelGerencial(hasPermission);
       if (c.to === '/pedidos/painel-metas/tv') return podeVerPainelTv(hasPermission);
       if (c.to === '/pedidos/painel-metas/metas') {
-        return podeEditarPainelMetas(hasPermission) || podeVerPainelGerencial(hasPermission);
+        return podeAcessarCadastroMetas(hasPermission);
       }
-      if (c.to === '/pedidos/painel-metas/apuracao') return podeVerPainelGerencial(hasPermission);
+      if (c.to === '/pedidos/painel-metas/apuracao') return podeVerPainelApuracao(hasPermission);
       return true;
     });
   }

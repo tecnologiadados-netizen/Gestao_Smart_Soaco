@@ -88,7 +88,7 @@ export default function CarteiraTabela({ linhas }: Props) {
   }
 
   return (
-    <div className="card-panel p-4">
+    <div className="card-panel p-4" data-pdf-block data-pdf-table>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
           Detalhamento ({filtradas.length.toLocaleString('pt-BR')} linhas)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MultiSelectWithSearch from '../../components/MultiSelectWithSearch';
 import FiltroDatasPopover from '../../components/FiltroDatasPopover';
 import {
@@ -27,6 +27,7 @@ import {
   type CarteiraDimensao,
 } from './carteira/carteiraAggregates';
 import { exportCarteiraFinanceiraXlsx } from './carteira/exportCarteiraFinanceiraXlsx';
+import { exportCarteiraFinanceiraPdf } from './carteira/exportCarteiraFinanceiraPdf';
 import {
   clearFiltrosCarteira,
   loadFiltrosCarteira,
@@ -183,7 +184,9 @@ export default function CarteiraFinanceiraPage() {
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [exportando, setExportando] = useState(false);
+  const [exportandoPdf, setExportandoPdf] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const pdfAreaRef = useRef<HTMLDivElement>(null);
 
   const persistir = useCallback(
     (
@@ -394,6 +397,19 @@ export default function CarteiraFinanceiraPage() {
     }
   };
 
+  const onExportPdf = async () => {
+    const el = pdfAreaRef.current;
+    if (!el) return;
+    setExportandoPdf(true);
+    try {
+      await exportCarteiraFinanceiraPdf(el, linhas);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExportandoPdf(false);
+    }
+  };
+
   const opcoes = opcoesBase.uf.length || opcoesBase.empresa.length || opcoesBase.observacoes.length
     ? opcoesBase
     : payload.opcoes;
@@ -417,14 +433,25 @@ export default function CarteiraFinanceiraPage() {
               Saldo a receber, a faturar e romaneado por pedido
             </p>
           </div>
-          <button
-            type="button"
-            className="btn-secondary text-sm"
-            disabled={exportando || loading || linhas.length === 0}
-            onClick={() => void onExport()}
-          >
-            {exportando ? 'Exportando…' : 'Exportar Excel'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              disabled={exportando || exportandoPdf || loading || linhas.length === 0}
+              onClick={() => void onExport()}
+            >
+              {exportando ? 'Exportando…' : 'Exportar Excel'}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              disabled={exportando || exportandoPdf || loading || !loaded || linhas.length === 0}
+              onClick={() => void onExportPdf()}
+              title="Exporta espelho visual dos cards, gráficos e tabela"
+            >
+              {exportandoPdf ? 'Gerando PDF…' : 'Exportar PDF'}
+            </button>
+          </div>
         </div>
 
         <div className="px-4 pb-4 space-y-3 border-t border-slate-200 dark:border-slate-700">
@@ -529,58 +556,65 @@ export default function CarteiraFinanceiraPage() {
         </div>
       )}
 
-      <CarteiraKpiCards resumo={resumo} loading={loading && !loaded} />
+      <div ref={pdfAreaRef} className="flex flex-col gap-4">
+        <CarteiraKpiCards resumo={resumo} loading={loading && !loaded} />
 
-      {!loading && loaded && linhas.length === 0 && !erro && (
-        <div className="card-panel py-12 text-center text-slate-500 text-sm">
-          Sem dados para o filtro selecionado.
-        </div>
-      )}
-
-      {(linhas.length > 0 || loading) && (
-        <>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <CarteiraBarrasAgrupadas
-              title="Por UF"
-              data={porUf}
-              layout="vertical"
-              height={Math.max(320, 280 + Math.min(porUf.length, 12) * 8)}
-              onBarClick={(chave) => abrirDetalhe('uf', chave)}
-            />
-            <CarteiraBarrasAgrupadas
-              title="Por Carradas/Rota (Top 10 + Outros)"
-              data={porCarrada}
-              layout="vertical"
-              onBarClick={(chave) => abrirDetalhe('carrada', chave)}
-            />
-            <CarteiraDonutStatus
-              data={porStatus}
-              onSliceClick={(chave) => abrirDetalhe('status', chave)}
-            />
-            <CarteiraPizzaCondicao
-              data={porCondicao}
-              onSliceClick={(chave) => abrirDetalhe('condicao', chave)}
-            />
-            <div className="xl:col-span-2">
-              <CarteiraBarrasAgrupadas
-                title="Por Cliente (Top 15)"
-                data={porCliente}
-                layout="vertical"
-                height={Math.max(360, 300 + Math.min(porCliente.length, 15) * 8)}
-                onBarClick={(chave) => abrirDetalhe('cliente', chave)}
-              />
-            </div>
+        {!loading && loaded && linhas.length === 0 && !erro && (
+          <div className="card-panel py-12 text-center text-slate-500 text-sm" data-pdf-block>
+            Sem dados para o filtro selecionado.
           </div>
-          <CarteiraTabela linhas={linhas} />
-          <CarteiraDetalheModal
-            aberto={detalhe != null}
-            titulo={detalhe?.titulo ?? ''}
-            subtitulo={detalhe?.subtitulo}
-            pedidos={detalhe?.pedidos ?? []}
-            onClose={() => setDetalhe(null)}
-          />
-        </>
-      )}
+        )}
+
+        {(linhas.length > 0 || loading) && (
+          <>
+            <div className="flex flex-col gap-4">
+              <div data-pdf-block className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <CarteiraBarrasAgrupadas
+                  title="Por UF"
+                  data={porUf}
+                  layout="vertical"
+                  height={Math.max(320, 280 + Math.min(porUf.length, 12) * 8)}
+                  onBarClick={(chave) => abrirDetalhe('uf', chave)}
+                />
+                <CarteiraBarrasAgrupadas
+                  title="Por Carradas/Rota (Top 10 + Outros)"
+                  data={porCarrada}
+                  layout="vertical"
+                  onBarClick={(chave) => abrirDetalhe('carrada', chave)}
+                />
+              </div>
+              <div data-pdf-block className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <CarteiraDonutStatus
+                  data={porStatus}
+                  onSliceClick={(chave) => abrirDetalhe('status', chave)}
+                />
+                <CarteiraPizzaCondicao
+                  data={porCondicao}
+                  onSliceClick={(chave) => abrirDetalhe('condicao', chave)}
+                />
+              </div>
+              <div data-pdf-block>
+                <CarteiraBarrasAgrupadas
+                  title="Por Cliente (Top 15)"
+                  data={porCliente}
+                  layout="vertical"
+                  height={Math.max(360, 300 + Math.min(porCliente.length, 15) * 8)}
+                  onBarClick={(chave) => abrirDetalhe('cliente', chave)}
+                />
+              </div>
+            </div>
+            <CarteiraTabela linhas={linhas} />
+          </>
+        )}
+      </div>
+
+      <CarteiraDetalheModal
+        aberto={detalhe != null}
+        titulo={detalhe?.titulo ?? ''}
+        subtitulo={detalhe?.subtitulo}
+        pedidos={detalhe?.pedidos ?? []}
+        onClose={() => setDetalhe(null)}
+      />
     </div>
   );
 }

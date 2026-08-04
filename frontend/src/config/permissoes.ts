@@ -66,7 +66,9 @@ export const PERMISSOES = {
   PCP_REGRAS_ENTREGA_EDITAR: 'pcp.regras_entrega.editar',
   PCP_PAINEL_GERENCIAL_VER: 'pcp.painel_gerencial.ver',
   PCP_PAINEL_TV_VER: 'pcp.painel_tv.ver',
+  PCP_PAINEL_APURACAO_VER: 'pcp.painel_apuracao.ver',
   PCP_PAINEL_METAS_EDITAR: 'pcp.painel_metas.editar',
+  PCP_PAINEL_METAS_FAIXAS_EDITAR: 'pcp.painel_metas.faixas_editar',
 
   // Usuários / Grupos de usuários
   USUARIOS_TELA_VER: 'usuarios.tela.ver',

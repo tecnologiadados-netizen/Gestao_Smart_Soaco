@@ -12,7 +12,7 @@ import {
   type PainelProducaoFaixaDesconto,
 } from '../../../api/painelProducao';
 import { formatMesLabel } from '../../../utils/painelProducaoFormat';
-import { podeEditarPainelMetas } from '../../../utils/painelProducaoPermissoes';
+import { podeEditarFaixasDesconto, podeEditarPainelMetas } from '../../../utils/painelProducaoPermissoes';
 import LoaderCirculo from '../../../components/LoaderCirculo';
 import { useDuracaoMinima } from '../../../hooks/useDuracaoMinima';
 
@@ -93,6 +93,7 @@ function LoadingOverlay({ message = 'Carregando...', show = true }: { message?: 
 export default function PainelProducaoMetasPage() {
   const { hasPermission } = useAuth();
   const podeEditar = podeEditarPainelMetas(hasPermission);
+  const podeEditarFaixas = podeEditarFaixasDesconto(hasPermission);
 
   const [setores, setSetores] = useState<string[]>([]);
   const [meses, setMeses] = useState<string[]>([]);
@@ -533,7 +534,7 @@ export default function PainelProducaoMetasPage() {
                   )}
                 </div>
               )}
-              {podeEditar && guia === 'faixas' && (
+              {podeEditarFaixas && guia === 'faixas' && (
                 <div className="targets-header-actions">
                   {editandoFaixas ? (
                     <>
@@ -820,7 +821,9 @@ export default function PainelProducaoMetasPage() {
               ? podeEditar
                 ? 'A meta do painel é a do nível Aço. Em cada setor, use Penalizações para ligar ou desligar o desconto qualitativo na apuração.'
                 : 'Visualização das metas de produção por setor e nível.'
-              : 'A apuração da montagem usa automaticamente as faixas cadastradas para este mês.'}
+              : podeEditarFaixas
+                ? 'A apuração da montagem usa automaticamente as faixas cadastradas para este mês. Use Editar faixas para alterar.'
+                : 'A apuração da montagem usa automaticamente as faixas cadastradas para este mês.'}
           </p>
         </main>
       </div>

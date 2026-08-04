@@ -4,6 +4,8 @@ import { PERMISSOES_ACESSO_FLUXOS } from './fluxosPermissoes';
 import { PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO } from './programacaoProducaoPermissoes';
 import { PERMISSOES_ROTA_SUPORTE_CHAMADOS } from './suportePermissoes';
 import {
+  PERMISSOES_ACESSO_PAINEL_APURACAO,
+  PERMISSOES_ACESSO_PAINEL_FAIXAS,
   PERMISSOES_ACESSO_PAINEL_GERENCIAL,
   PERMISSOES_ACESSO_PAINEL_METAS,
   PERMISSOES_ACESSO_PAINEL_TV,
@@ -46,9 +48,10 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/pedidos/painel-metas/gerencial': PERMISSOES_ACESSO_PAINEL_GERENCIAL,
   '/pedidos/painel-metas/metas': [
     ...PERMISSOES_ACESSO_PAINEL_METAS,
+    ...PERMISSOES_ACESSO_PAINEL_FAIXAS,
     ...PERMISSOES_ACESSO_PAINEL_GERENCIAL,
   ],
-  '/pedidos/painel-metas/apuracao': PERMISSOES_ACESSO_PAINEL_GERENCIAL,
+  '/pedidos/painel-metas/apuracao': PERMISSOES_ACESSO_PAINEL_APURACAO,
   '/heatmap': [PERMISSOES.HEATMAP_VER],
   '/mind-maps': PERMISSOES_ACESSO_FLUXOS,
   '/compras': [PERMISSOES.COMPRAS_VER],
