@@ -27,6 +27,12 @@ import {
   type CarteiraDimensao,
 } from './carteira/carteiraAggregates';
 import { exportCarteiraFinanceiraXlsx } from './carteira/exportCarteiraFinanceiraXlsx';
+import {
+  clearFiltrosCarteira,
+  loadFiltrosCarteira,
+  saveFiltrosCarteira,
+  type FiltrosCarteiraState,
+} from '../../utils/persistFiltros';
 
 const DIM_TITULO: Record<CarteiraDimensao, string> = {
   uf: 'Por UF',
@@ -40,14 +46,21 @@ const FILTRO_INPUT_CLASS =
   'w-full rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-600 focus:border-transparent';
 const FILTRO_LABEL_CLASS = 'block text-xs text-slate-500 dark:text-slate-400 mb-1';
 
+function ymdLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function defaultDataInicio(): string {
   const d = new Date();
   d.setMonth(d.getMonth() - 3);
-  return d.toISOString().slice(0, 10);
+  return ymdLocal(d);
 }
 
 function defaultDataFim(): string {
-  return new Date().toISOString().slice(0, 10);
+  return ymdLocal(new Date());
 }
 
 function csvToList(csv: string): string[] {
@@ -55,6 +68,17 @@ function csvToList(csv: string): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+function mergeSorted(prev: string[], next: string[]): string[] {
+  const set = new Set<string>();
+  for (const v of prev) {
+    if (v.trim()) set.add(v.trim());
+  }
+  for (const v of next) {
+    if (v.trim()) set.add(v.trim());
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
 
 const VAZIO: CarteiraFinanceiraPayload = {
@@ -102,14 +126,57 @@ function datasCarteiraIniciais(): DatasCarteira {
   };
 }
 
+function filtrosCarteiraDefaults(): FiltrosCarteiraState {
+  return {
+    ...datasCarteiraIniciais(),
+    empresaCsv: '',
+    ufCsv: '',
+    clienteCsv: '',
+    condicaoCsv: '',
+    carradaCsv: '',
+    statusPedido: '',
+  };
+}
+
+function snapshotFiltros(
+  datas: DatasCarteira,
+  empresaCsv: string,
+  ufCsv: string,
+  clienteCsv: string,
+  condicaoCsv: string,
+  carradaCsv: string,
+  statusPedido: string
+): FiltrosCarteiraState {
+  return {
+    ...datas,
+    empresaCsv,
+    ufCsv,
+    clienteCsv,
+    condicaoCsv,
+    carradaCsv,
+    statusPedido,
+  };
+}
+
 export default function CarteiraFinanceiraPage() {
-  const [datas, setDatas] = useState<DatasCarteira>(datasCarteiraIniciais);
-  const [empresaCsv, setEmpresaCsv] = useState('');
-  const [ufCsv, setUfCsv] = useState('');
-  const [clienteCsv, setClienteCsv] = useState('');
-  const [condicaoCsv, setCondicaoCsv] = useState('');
-  const [carradaCsv, setCarradaCsv] = useState('');
-  const [statusPedido, setStatusPedido] = useState('');
+  const inicial = useMemo(() => loadFiltrosCarteira(filtrosCarteiraDefaults()), []);
+
+  const [datas, setDatas] = useState<DatasCarteira>({
+    data_emissao_ini: inicial.data_emissao_ini,
+    data_emissao_fim: inicial.data_emissao_fim,
+    data_entrega_ini: inicial.data_entrega_ini,
+    data_entrega_fim: inicial.data_entrega_fim,
+    data_previsao_anterior_ini: inicial.data_previsao_anterior_ini,
+    data_previsao_anterior_fim: inicial.data_previsao_anterior_fim,
+    data_previsao_ini: inicial.data_previsao_ini,
+    data_previsao_fim: inicial.data_previsao_fim,
+  });
+  const [empresaCsv, setEmpresaCsv] = useState(inicial.empresaCsv);
+  const [ufCsv, setUfCsv] = useState(inicial.ufCsv);
+  const [clienteCsv, setClienteCsv] = useState(inicial.clienteCsv);
+  const [condicaoCsv, setCondicaoCsv] = useState(inicial.condicaoCsv);
+  const [carradaCsv, setCarradaCsv] = useState(inicial.carradaCsv);
+  const [statusPedido, setStatusPedido] = useState(inicial.statusPedido);
 
   const [payload, setPayload] = useState<CarteiraFinanceiraPayload>(VAZIO);
   const [opcoesBase, setOpcoesBase] = useState(VAZIO.opcoes);
@@ -118,58 +185,178 @@ export default function CarteiraFinanceiraPage() {
   const [exportando, setExportando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  const carregar = useCallback(async () => {
-    setLoading(true);
-    setErro(null);
-    try {
-      const data = await fetchCarteiraFinanceira({
-        dataInicio: datas.data_emissao_ini || undefined,
-        dataFim: datas.data_emissao_fim || undefined,
-        dataPrevisaoIni: datas.data_previsao_ini || undefined,
-        dataPrevisaoFim: datas.data_previsao_fim || undefined,
-        empresa: csvToList(empresaCsv),
-        uf: csvToList(ufCsv),
-        cliente: csvToList(clienteCsv),
-        condicaoPagamento: csvToList(condicaoCsv),
-        observacoes: csvToList(carradaCsv),
-        statusPedido: statusPedido || undefined,
-      });
-      setPayload(data);
-      if (data.erro) setErro(data.erro);
-      setOpcoesBase((prev) => ({
-        uf: prev.uf.length ? prev.uf : data.opcoes.uf,
-        cliente: prev.cliente.length >= data.opcoes.cliente.length ? prev.cliente : data.opcoes.cliente,
-        empresa: prev.empresa.length ? prev.empresa : data.opcoes.empresa,
-        condicaoPagamento: prev.condicaoPagamento.length
-          ? prev.condicaoPagamento
-          : data.opcoes.condicaoPagamento,
-        tipoF: prev.tipoF.length ? prev.tipoF : data.opcoes.tipoF,
-        observacoes: prev.observacoes.length ? prev.observacoes : data.opcoes.observacoes,
-      }));
-      setLoaded(true);
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
-      setPayload(VAZIO);
-      setLoaded(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [datas, empresaCsv, ufCsv, clienteCsv, condicaoCsv, carradaCsv, statusPedido]);
+  const persistir = useCallback(
+    (
+      nextDatas: DatasCarteira,
+      nextEmpresa: string,
+      nextUf: string,
+      nextCliente: string,
+      nextCondicao: string,
+      nextCarrada: string,
+      nextStatus: string
+    ) => {
+      saveFiltrosCarteira(
+        snapshotFiltros(
+          nextDatas,
+          nextEmpresa,
+          nextUf,
+          nextCliente,
+          nextCondicao,
+          nextCarrada,
+          nextStatus
+        )
+      );
+    },
+    []
+  );
+
+  const carregarCom = useCallback(
+    async (args: {
+      datas: DatasCarteira;
+      empresaCsv: string;
+      ufCsv: string;
+      clienteCsv: string;
+      condicaoCsv: string;
+      carradaCsv: string;
+      statusPedido: string;
+      /** Se true, zera o cache de opções e reconstrói a partir deste resultado. */
+      resetOpcoes?: boolean;
+    }) => {
+      const {
+        datas: d,
+        empresaCsv: emp,
+        ufCsv: uf,
+        clienteCsv: cli,
+        condicaoCsv: cond,
+        carradaCsv: carr,
+        statusPedido: st,
+        resetOpcoes,
+      } = args;
+
+      persistir(d, emp, uf, cli, cond, carr, st);
+      setLoading(true);
+      setErro(null);
+      try {
+        const data = await fetchCarteiraFinanceira({
+          dataInicio: d.data_emissao_ini || undefined,
+          dataFim: d.data_emissao_fim || undefined,
+          dataPrevisaoIni: d.data_previsao_ini || undefined,
+          dataPrevisaoFim: d.data_previsao_fim || undefined,
+          empresa: csvToList(emp),
+          uf: csvToList(uf),
+          cliente: csvToList(cli),
+          condicaoPagamento: csvToList(cond),
+          observacoes: csvToList(carr),
+          statusPedido: st || undefined,
+        });
+        setPayload(data);
+        if (data.erro) setErro(data.erro);
+        setOpcoesBase((prev) => {
+          const base = resetOpcoes ? VAZIO.opcoes : prev;
+          return {
+            uf: mergeSorted(base.uf, data.opcoes.uf),
+            cliente: mergeSorted(base.cliente, data.opcoes.cliente),
+            empresa: mergeSorted(base.empresa, data.opcoes.empresa),
+            condicaoPagamento: mergeSorted(base.condicaoPagamento, data.opcoes.condicaoPagamento),
+            tipoF: mergeSorted(base.tipoF, data.opcoes.tipoF),
+            observacoes: mergeSorted(base.observacoes, data.opcoes.observacoes),
+          };
+        });
+        setLoaded(true);
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : String(e));
+        setPayload(VAZIO);
+        setLoaded(true);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [persistir]
+  );
+
+  const carregar = useCallback(() => {
+    return carregarCom({
+      datas,
+      empresaCsv,
+      ufCsv,
+      clienteCsv,
+      condicaoCsv,
+      carradaCsv,
+      statusPedido,
+    });
+  }, [
+    carregarCom,
+    datas,
+    empresaCsv,
+    ufCsv,
+    clienteCsv,
+    condicaoCsv,
+    carradaCsv,
+    statusPedido,
+  ]);
 
   useEffect(() => {
-    void carregar();
-    // carga inicial
+    void carregarCom({
+      datas: {
+        data_emissao_ini: inicial.data_emissao_ini,
+        data_emissao_fim: inicial.data_emissao_fim,
+        data_entrega_ini: inicial.data_entrega_ini,
+        data_entrega_fim: inicial.data_entrega_fim,
+        data_previsao_anterior_ini: inicial.data_previsao_anterior_ini,
+        data_previsao_anterior_fim: inicial.data_previsao_anterior_fim,
+        data_previsao_ini: inicial.data_previsao_ini,
+        data_previsao_fim: inicial.data_previsao_fim,
+      },
+      empresaCsv: inicial.empresaCsv,
+      ufCsv: inicial.ufCsv,
+      clienteCsv: inicial.clienteCsv,
+      condicaoCsv: inicial.condicaoCsv,
+      carradaCsv: inicial.carradaCsv,
+      statusPedido: inicial.statusPedido,
+      resetOpcoes: true,
+    });
+    // carga inicial (inclui filtros restaurados do sessionStorage)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Persiste enquanto o usuário edita (F5 mantém mesmo antes de Aplicar)
+  useEffect(() => {
+    persistir(datas, empresaCsv, ufCsv, clienteCsv, condicaoCsv, carradaCsv, statusPedido);
+  }, [
+    datas,
+    empresaCsv,
+    ufCsv,
+    clienteCsv,
+    condicaoCsv,
+    carradaCsv,
+    statusPedido,
+    persistir,
+  ]);
+
   const limparFiltros = () => {
-    setDatas(datasCarteiraIniciais());
+    const limpo = filtrosCarteiraDefaults();
+    const nextDatas = datasCarteiraIniciais();
+    setDatas(nextDatas);
     setEmpresaCsv('');
     setUfCsv('');
     setClienteCsv('');
     setCondicaoCsv('');
     setCarradaCsv('');
     setStatusPedido('');
+    clearFiltrosCarteira();
+    setOpcoesBase(VAZIO.opcoes);
+    void carregarCom({
+      datas: nextDatas,
+      empresaCsv: '',
+      ufCsv: '',
+      clienteCsv: '',
+      condicaoCsv: '',
+      carradaCsv: '',
+      statusPedido: '',
+      resetOpcoes: true,
+    });
+    // regrava o default limpo (clear + save do padrão)
+    saveFiltrosCarteira(limpo);
   };
 
   const [detalhe, setDetalhe] = useState<{
@@ -207,7 +394,9 @@ export default function CarteiraFinanceiraPage() {
     }
   };
 
-  const opcoes = opcoesBase.uf.length || opcoesBase.empresa.length ? opcoesBase : payload.opcoes;
+  const opcoes = opcoesBase.uf.length || opcoesBase.empresa.length || opcoesBase.observacoes.length
+    ? opcoesBase
+    : payload.opcoes;
   const opcoesEmpresa = opcoes.empresa.length ? opcoes.empresa : csvToList(empresaCsv);
   const opcoesUf = opcoes.uf.length ? opcoes.uf : csvToList(ufCsv);
   const opcoesCliente = opcoes.cliente.length ? opcoes.cliente : csvToList(clienteCsv);

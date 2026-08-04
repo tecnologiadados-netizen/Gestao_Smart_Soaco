@@ -143,3 +143,45 @@ export function clearGradeFiltrosPedidos(): void {
     // ignore
   }
 }
+
+const KEY_CARTEIRA = 'filtros-carteira-financeira';
+
+export type FiltrosCarteiraState = {
+  data_emissao_ini: string;
+  data_emissao_fim: string;
+  data_entrega_ini: string;
+  data_entrega_fim: string;
+  data_previsao_anterior_ini: string;
+  data_previsao_anterior_fim: string;
+  data_previsao_ini: string;
+  data_previsao_fim: string;
+  empresaCsv: string;
+  ufCsv: string;
+  clienteCsv: string;
+  condicaoCsv: string;
+  carradaCsv: string;
+  statusPedido: string;
+};
+
+/** Carrega filtros da Carteira Financeira (merge com defaults). */
+export function loadFiltrosCarteira(defaults: FiltrosCarteiraState): FiltrosCarteiraState {
+  return mergeWithDefaults(safeParse(KEY_CARTEIRA, null), defaults);
+}
+
+/** Salva filtros da Carteira Financeira (sobrevive a F5 na mesma aba). */
+export function saveFiltrosCarteira(f: FiltrosCarteiraState): void {
+  try {
+    sessionStorage.setItem(KEY_CARTEIRA, safeStringify(f));
+  } catch {
+    // ignore
+  }
+}
+
+/** Remove filtros persistidos da Carteira Financeira. */
+export function clearFiltrosCarteira(): void {
+  try {
+    sessionStorage.removeItem(KEY_CARTEIRA);
+  } catch {
+    // ignore
+  }
+}
