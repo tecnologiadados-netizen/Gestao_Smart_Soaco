@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import type { CarteiraFinanceiraLinha } from '../../../api/financeiro';
+import type { FiltrosCarteiraState } from '../../../utils/persistFiltros';
 
 /** Largura fixa da captura — força grade 2 colunas estável (breakpoint xl). */
 const PDF_CAPTURE_WIDTH_PX = 1200;
@@ -57,6 +58,92 @@ function fmtDate(iso: string | null | undefined): string {
 
 function fmtReais(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function fmtPeriodo(ini: string, fim: string): string | null {
+  if (!ini && !fim) return null;
+  if (ini && fim) return `${fmtDate(ini)} a ${fmtDate(fim)}`;
+  if (ini) return `a partir de ${fmtDate(ini)}`;
+  return `até ${fmtDate(fim)}`;
+}
+
+function fmtListaCsv(csv: string): string | null {
+  const itens = csv
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (itens.length === 0) return null;
+  return itens.join(', ');
+}
+
+/** Monta o texto dos filtros ativos para o cabeçalho do PDF. */
+export function montarResumoFiltrosCarteiraPdf(filtros: FiltrosCarteiraState): string[] {
+  const partes: string[] = [];
+
+  const emissao = fmtPeriodo(filtros.data_emissao_ini, filtros.data_emissao_fim);
+  if (emissao) partes.push(`Emissão: ${emissao}`);
+
+  const entrega = fmtPeriodo(filtros.data_entrega_ini, filtros.data_entrega_fim);
+  if (entrega) partes.push(`Data original: ${entrega}`);
+
+  const prevAnt = fmtPeriodo(filtros.data_previsao_anterior_ini, filtros.data_previsao_anterior_fim);
+  if (prevAnt) partes.push(`Previsão anterior: ${prevAnt}`);
+
+  const prevAtual = fmtPeriodo(filtros.data_previsao_ini, filtros.data_previsao_fim);
+  if (prevAtual) partes.push(`Previsão atual: ${prevAtual}`);
+
+  const empresa = fmtListaCsv(filtros.empresaCsv);
+  if (empresa) partes.push(`Empresa: ${empresa}`);
+
+  const uf = fmtListaCsv(filtros.ufCsv);
+  if (uf) partes.push(`UF: ${uf}`);
+
+  const cliente = fmtListaCsv(filtros.clienteCsv);
+  if (cliente) partes.push(`Cliente: ${cliente}`);
+
+  const condicao = fmtListaCsv(filtros.condicaoCsv);
+  if (condicao) partes.push(`Condição: ${condicao}`);
+
+  const carrada = fmtListaCsv(filtros.carradaCsv);
+  if (carrada) partes.push(`Carrada/Rota: ${carrada}`);
+
+  if (filtros.statusPedido.trim()) {
+    partes.push(`Status: ${filtros.statusPedido.trim()}`);
+  }
+
+  return partes.length > 0 ? partes : ['Sem filtros aplicados'];
+}
+
+function desenharCabecalhoFiltros(
+  pdf: jsPDF,
+  filtros: FiltrosCarteiraState | undefined,
+  margin: number,
+  usableW: number
+): number {
+  let y = margin;
+
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(14);
+  pdf.setTextColor(30, 41, 59);
+  pdf.text('Carteira Financeira', margin, y + 4);
+  y += 8;
+
+  if (!filtros) return y + 2;
+
+  const partes = montarResumoFiltrosCarteiraPdf(filtros);
+  const linhaFiltros = `Filtros: ${partes.join(' · ')}`;
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(8);
+  pdf.setTextColor(71, 85, 105);
+  const linhas = pdf.splitTextToSize(linhaFiltros, usableW) as string[];
+  pdf.text(linhas, margin, y + 2);
+  y += linhas.length * 3.4 + 4;
+
+  pdf.setDrawColor(203, 213, 225);
+  pdf.setLineWidth(0.2);
+  pdf.line(margin, y, margin + usableW, y);
+  return y + 3;
 }
 
 function celulaPdf(linha: CarteiraFinanceiraLinha, col: (typeof COLS)[number]): string {
@@ -247,10 +334,12 @@ function adicionarTabelaDetalhamento(
 
 /**
  * PDF: espelho visual dos cards/gráficos + tabela completa (todas as linhas/colunas via autoTable).
+ * O cabeçalho traz o título e o resumo dos filtros aplicados (rotas, datas, UF, etc.).
  */
 export async function exportCarteiraFinanceiraPdf(
   root: HTMLElement,
-  linhas: CarteiraFinanceiraLinha[]
+  linhas: CarteiraFinanceiraLinha[],
+  filtros?: FiltrosCarteiraState
 ): Promise<void> {
   const blocks = Array.from(root.querySelectorAll<HTMLElement>('[data-pdf-block]')).filter(
     (el) =>
@@ -277,8 +366,8 @@ export async function exportCarteiraFinanceiraPdf(
     const usableW = pdfW - 2 * margin;
     const usableH = pdfH - 2 * margin - footerH;
 
-    let y = margin;
-    let pageUsed = false;
+    let y = desenharCabecalhoFiltros(pdf, filtros, margin, usableW);
+    let pageUsed = true;
 
     for (const block of blocks) {
       const canvas = await capturarBloco(block);

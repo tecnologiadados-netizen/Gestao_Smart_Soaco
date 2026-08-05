@@ -402,7 +402,11 @@ export default function CarteiraFinanceiraPage() {
     if (!el) return;
     setExportandoPdf(true);
     try {
-      await exportCarteiraFinanceiraPdf(el, linhas);
+      await exportCarteiraFinanceiraPdf(
+        el,
+        linhas,
+        snapshotFiltros(datas, empresaCsv, ufCsv, clienteCsv, condicaoCsv, carradaCsv, statusPedido)
+      );
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
     } finally {
