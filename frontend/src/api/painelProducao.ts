@@ -101,7 +101,8 @@ export type PainelProducaoApuracaoDetalheTipo =
   | 'pedidos_com_alteracao'
   | 'alteracoes'
   | 'alteracoes_ruptura'
-  | 'memorial_producao';
+  | 'memorial_producao'
+  | 'producao_realizada';
 
 export interface PainelProducaoApuracaoDetalheLinha {
   pedido: string;
