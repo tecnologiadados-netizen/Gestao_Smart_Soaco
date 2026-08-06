@@ -12,6 +12,8 @@ import {
   getApuracaoMetas,
   type ApuracaoDetalheTipo,
 } from '../services/painelProducao/painelProducaoApuracaoService.js';
+import { clearPainelProducaoCaches } from '../services/painelProducao/painelProducaoCache.js';
+import { clearApuracaoItensMesCache } from '../services/painelProducao/painelProducaoApuracaoService.js';
 import {
   listarFaixasDesconto,
   salvarFaixasDesconto,
@@ -55,7 +57,17 @@ export async function getPainelProducaoApuracao(req: Request, res: Response) {
     res.status(400).json({ error: 'Parâmetro mes (YYYY-MM) é obrigatório.' });
     return;
   }
+  const refresh =
+    req.query.refresh === '1' ||
+    req.query.refresh === 'true' ||
+    String(req.query.refresh ?? '').toLowerCase() === 'sim';
   try {
+    // Após correção de setor no ERP, limpa mapa de setor + produção em cache
+    // para a apuração refletir o atributo atual do produto.
+    if (refresh) {
+      clearPainelProducaoCaches();
+      clearApuracaoItensMesCache();
+    }
     const data = await getApuracaoMetas(mes);
     res.json(data);
   } catch (err) {

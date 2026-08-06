@@ -13,6 +13,12 @@ const TOKEN_KEY = 'gestor_token';
 
 const HINT = ' Na pasta raiz execute: npm run dev';
 
+function withDevHint(message: string): string {
+  // Evita duplicar o hint quando o backend já orienta a rodar npm run dev.
+  if (/npm run dev/i.test(message)) return message;
+  return message + HINT;
+}
+
 export async function login(loginUser: string, senha: string): Promise<LoginResponse> {
   let res: Response;
   try {
@@ -29,7 +35,7 @@ export async function login(loginUser: string, senha: string): Promise<LoginResp
       msg.includes('CONNECTION_REFUSED') ||
       msg.includes('Connection refused')
     ) {
-      throw new Error('Não foi possível conectar ao servidor.' + HINT);
+      throw new Error(withDevHint('Não foi possível conectar ao servidor.'));
     }
     throw err;
   }
@@ -40,16 +46,16 @@ export async function login(loginUser: string, senha: string): Promise<LoginResp
       body = text ? JSON.parse(text) : {};
     } catch {
       if (res.status >= 500 || res.status === 503) {
-        throw new Error('Servidor indisponível. Tente novamente.' + HINT);
+        throw new Error(withDevHint('Servidor indisponível. Tente novamente.'));
       }
     }
     const msg = body.error;
     // 503 = serviço indisponível (backend não quebra com 500)
     if (res.status === 503) {
-      throw new Error((msg ?? 'Servidor temporariamente indisponível.') + HINT);
+      throw new Error(withDevHint(msg ?? 'Servidor temporariamente indisponível.'));
     }
     if (res.status >= 500) {
-      throw new Error((msg ?? 'Erro no servidor. Tente novamente.') + HINT);
+      throw new Error(withDevHint(msg ?? 'Erro no servidor. Tente novamente.'));
     }
     throw new Error(msg ?? 'Login ou senha inválidos.');
   }

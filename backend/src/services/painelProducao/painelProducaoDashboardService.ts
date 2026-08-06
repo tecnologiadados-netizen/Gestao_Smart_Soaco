@@ -25,6 +25,7 @@ import {
   listMesesMeta,
   listSetoresMeta,
 } from './painelProducaoTargetsService.js';
+import { SQL_PEDIDOS_ATENDIDOS_POR_DOC_SAIDA } from './painelProducaoPedidosAtendidosSql.js';
 
 const SQL_PRODUCAO_PA = `
 SELECT
@@ -59,22 +60,8 @@ WHERE nfe.status IN (1, 3, 4)
   AND nfe.numero <> '77669'
 `;
 
-const SQL_PEDIDOS_ATENDIDOS = `
-SELECT
-    ip.idProduto AS id_produto,
-    DATE(pe.dataEmissao) AS dt,
-    pe.id AS id_pedido,
-    pe.nome AS codigo_pedido,
-    COALESCE(pec.nomeRazaoSocial, '—') AS cliente,
-    pd.nome AS codigo_produto,
-    COALESCE(NULLIF(pd.descricao, ''), NULLIF(pd.descricaoNFe, ''), '—') AS descricao_produto
-FROM itempedido ip
-INNER JOIN pedido pe ON ip.idPedido = pe.id
-LEFT JOIN pessoa pec ON pe.idCliente = pec.id
-INNER JOIN produto pd ON ip.idProduto = pd.id
-WHERE pe.dataEmissao >= ? AND pe.dataEmissao < ?
-  AND ip.status IN (3, 4)
-`;
+/** A partir do cutover: conta no mês do último doc. de saída do pedido (não dataEmissao do PD). */
+const SQL_PEDIDOS_ATENDIDOS = SQL_PEDIDOS_ATENDIDOS_POR_DOC_SAIDA
 
 const SQL_SETOR_MAP = `
 SELECT p.id, COALESCE(alo.opcao, 'A definir') AS setor
@@ -124,12 +111,25 @@ async function loadSetorMap(pool: Pool): Promise<Map<number, string>> {
   return mapping;
 }
 
+/** Evita stampede: N setores pedindo o mesmo ano/histórico ao mesmo tempo. */
+const setorMapInflight = new Map<string, Promise<Map<number, string>>>();
+const yearRowsInflight = new Map<string, Promise<YearRowsBundle>>();
+
 async function getSetorMap(pool: Pool): Promise<Map<number, string>> {
   const cached = setorMapCache.get('map');
   if (cached) return cached;
-  const mapping = await loadSetorMap(pool);
-  setorMapCache.set('map', mapping);
-  return mapping;
+  const existing = setorMapInflight.get('map');
+  if (existing) return existing;
+  const promise = loadSetorMap(pool)
+    .then((mapping) => {
+      setorMapCache.set('map', mapping);
+      return mapping;
+    })
+    .finally(() => {
+      setorMapInflight.delete('map');
+    });
+  setorMapInflight.set('map', promise);
+  return promise;
 }
 
 function monthEnd(start: Date): Date {
@@ -176,6 +176,7 @@ async function fetchPedidoRows(pool: Pool, inicio: Date, fim: Date): Promise<Ped
     cliente: String(r.cliente ?? '—'),
     codigo_produto: String(r.codigo_produto ?? '—'),
     descricao_produto: String(r.descricao_produto ?? '—'),
+    data_atendimento: r.data_atendimento ?? r.dt ?? null,
   }));
 }
 
@@ -184,13 +185,23 @@ async function fetchYearRows(pool: Pool, ano: number): Promise<YearRowsBundle> {
   const cached = yearRowsCache.get(cacheKey);
   if (cached) return cached;
 
-  const [inicio, fim] = yearBounds(ano);
-  const paRows = await fetchPaRows(pool, inicio, fim);
-  const gondRows = await fetchGondRows(pool, inicio, fim);
-  const pedidoRows = await fetchPedidoRows(pool, inicio, fim);
-  const result: YearRowsBundle = [paRows, gondRows, pedidoRows];
-  yearRowsCache.set(cacheKey, result);
-  return result;
+  const existing = yearRowsInflight.get(cacheKey);
+  if (existing) return existing;
+
+  const promise = (async (): Promise<YearRowsBundle> => {
+    const [inicio, fim] = yearBounds(ano);
+    const paRows = await fetchPaRows(pool, inicio, fim);
+    const gondRows = await fetchGondRows(pool, inicio, fim);
+    const pedidoRows = await fetchPedidoRows(pool, inicio, fim);
+    const result: YearRowsBundle = [paRows, gondRows, pedidoRows];
+    yearRowsCache.set(cacheKey, result);
+    return result;
+  })().finally(() => {
+    yearRowsInflight.delete(cacheKey);
+  });
+
+  yearRowsInflight.set(cacheKey, promise);
+  return promise;
 }
 
 async function fetchHistoricoRows(pool: Pool, anoLimite: number): Promise<YearRowsBundle> {
@@ -199,20 +210,136 @@ async function fetchHistoricoRows(pool: Pool, anoLimite: number): Promise<YearRo
   const cached = yearRowsCache.get(cacheKey);
   if (cached) return cached;
 
-  const paRows: PaRow[] = [];
-  const gondRows: GondRow[] = [];
-  const pedidoRows: PedidoRow[] = [];
+  const existing = yearRowsInflight.get(cacheKey);
+  if (existing) return existing;
 
-  for (let ano = inicioAno; ano <= anoLimite; ano++) {
-    const [pa, gond, ped] = await fetchYearRows(pool, ano);
-    paRows.push(...pa);
-    gondRows.push(...gond);
-    pedidoRows.push(...ped);
+  const promise = (async (): Promise<YearRowsBundle> => {
+    const paRows: PaRow[] = [];
+    const gondRows: GondRow[] = [];
+    const pedidoRows: PedidoRow[] = [];
+
+    // Anos em paralelo (com dedupe por ano) — bem mais rápido que serial.
+    const bundles = await Promise.all(
+      Array.from({ length: anoLimite - inicioAno + 1 }, (_, i) =>
+        fetchYearRows(pool, inicioAno + i),
+      ),
+    );
+    for (const [pa, gond, ped] of bundles) {
+      paRows.push(...pa);
+      gondRows.push(...gond);
+      pedidoRows.push(...ped);
+    }
+
+    const result: YearRowsBundle = [paRows, gondRows, pedidoRows];
+    yearRowsCache.set(cacheKey, result);
+    return result;
+  })().finally(() => {
+    yearRowsInflight.delete(cacheKey);
+  });
+
+  yearRowsInflight.set(cacheKey, promise);
+  return promise;
+}
+
+/**
+ * Aquece mapa de setor + produção só do mês (caminho da apuração).
+ */
+export async function warmupPainelProducaoCaches(mes: string): Promise<void> {
+  const pool = getNomusPool();
+  if (!pool) return;
+  if (!/^\d{4}-\d{2}$/.test(mes)) return;
+  const mesDt = parseMes(mes);
+  const fim = monthEnd(mesDt);
+  await getSetorMap(pool);
+  await fetchMonthRows(pool, mes, mesDt, fim);
+}
+
+async function fetchMonthRows(
+  pool: Pool,
+  mes: string,
+  inicio: Date,
+  fim: Date,
+): Promise<YearRowsBundle> {
+  const cacheKey = `month:${mes}`;
+  const cached = yearRowsCache.get(cacheKey);
+  if (cached) return cached;
+
+  const existing = yearRowsInflight.get(cacheKey);
+  if (existing) return existing;
+
+  const promise = (async (): Promise<YearRowsBundle> => {
+    const [paRows, gondRows, pedidoRows] = await Promise.all([
+      fetchPaRows(pool, inicio, fim),
+      fetchGondRows(pool, inicio, fim),
+      fetchPedidoRows(pool, inicio, fim),
+    ]);
+    const result: YearRowsBundle = [paRows, gondRows, pedidoRows];
+    yearRowsCache.set(cacheKey, result);
+    return result;
+  })().finally(() => {
+    yearRowsInflight.delete(cacheKey);
+  });
+
+  yearRowsInflight.set(cacheKey, promise);
+  return promise;
+}
+
+/**
+ * Resumo leve para a grade de apuração (só produção/meta do mês).
+ * Não monta ranking, por_dia nem histórico — bem mais rápido que getDashboard.
+ */
+export async function getProducaoResumoApuracao(
+  setor: string,
+  mes: string,
+): Promise<{
+  meta: number;
+  producao: number;
+  unidade: string;
+  percentual_meta: number;
+  sem_meta: boolean;
+}> {
+  const cacheKey = `resumo-ap:${setor}:${mes}`;
+  const cached = dashboardCache.get(cacheKey) as
+    | {
+        meta: number;
+        producao: number;
+        unidade: string;
+        percentual_meta: number;
+        sem_meta: boolean;
+      }
+    | null;
+  if (cached) return cached;
+
+  const pool = getNomusPool();
+  if (!pool) {
+    throw new Error('Conexão Nomus não configurada (NOMUS_DB_URL).');
   }
 
-  const result: YearRowsBundle = [paRows, gondRows, pedidoRows];
-  yearRowsCache.set(cacheKey, result);
-  return result;
+  const mesDt = parseMes(mes);
+  const fim = monthEnd(mesDt);
+
+  const setorMap = await getSetorMap(pool);
+  const [paRows, gondRows, pedidoRows] = await fetchMonthRows(pool, mes, mesDt, fim);
+  const producaoRaw = sumProducao(paRows, gondRows, pedidoRows, setorMap, setor, mesDt, fim);
+  const producao = Math.round(producaoRaw * 100) / 100;
+  const semMeta = await isSemMeta(setor, mesDt);
+  const meta = await getTarget(setor, mesDt);
+  const pctRatio = semMeta ? 0 : meta ? producao / meta : 0;
+  const unidade = SETOR_PESO.has(setor)
+    ? usesPedidos(setor, mesDt)
+      ? 'pedidos'
+      : 'kg'
+    : 'un';
+
+  const payload = {
+    meta,
+    producao,
+    unidade,
+    percentual_meta: Math.round(pctRatio * 100 * 100) / 100,
+    sem_meta: semMeta,
+  };
+  dashboardCache.set(cacheKey, payload);
+  return payload;
 }
 
 function rowSetor(setorMap: Map<number, string>, idProduto: number): string {
@@ -268,6 +395,7 @@ function pedidosDetalhe(
     {
       codigo_pedido: string;
       cliente: string;
+      data_atendimento: Date | string | null;
       itens: { codigo: string; descricao: string }[];
       _itemKeys: Set<string>;
     }
@@ -283,6 +411,7 @@ function pedidosDetalhe(
       byPedido.set(pid, {
         codigo_pedido: row.codigo_pedido || '—',
         cliente: row.cliente || '—',
+        data_atendimento: row.data_atendimento ?? row.dt ?? null,
         itens: [],
         _itemKeys: new Set(),
       });
