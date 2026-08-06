@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, FileText, XCircle } from "lucide-react";
 import type { DocumentVersion } from "@qualidade/types/document";
 import type { User } from "@qualidade/types/user";
 import { formatarDataHora } from "@qualidade/lib/utils/dates";
+import { labelResponsavel } from "@qualidade/lib/utils/select-display";
 import { DocumentoArquivoAcoes } from "@qualidade/components/documentos/documento-arquivo-acoes";
 
 interface Props {
@@ -18,7 +19,7 @@ export function DocumentoHistoricoElaboracao({
   ocultarArquivo?: boolean;
   documentoAjustadoNoConsenso?: boolean;
 }) {
-  const elaborador = users.find((u) => u.id === version.elaboradorId);
+  const elaboradorNome = labelResponsavel(users, version.elaboradorId);
 
   return (
     <fieldset className="brand-fieldset space-y-4">
@@ -32,7 +33,7 @@ export function DocumentoHistoricoElaboracao({
           <p className="text-sm text-muted-foreground">
             Elaborado por{" "}
             <span className="font-medium text-foreground">
-              {elaborador?.nome ?? "—"}
+              {elaboradorNome}
             </span>
             {!documentoAjustadoNoConsenso && version.arquivoAtualizadoEm && (
               <> · Atualizado em {formatarDataHora(version.arquivoAtualizadoEm)}</>
@@ -65,7 +66,7 @@ export function DocumentoHistoricoElaboracao({
 }
 
 export function DocumentoHistoricoConsenso({ version, users }: Props) {
-  const responsavelConsenso = users.find((u) => u.id === version.consensoId);
+  const consensoNome = labelResponsavel(users, version.consensoId);
 
   return (
     <fieldset className="brand-fieldset space-y-4">
@@ -79,7 +80,7 @@ export function DocumentoHistoricoConsenso({ version, users }: Props) {
           <p className="text-sm text-muted-foreground">
             Registrado por{" "}
             <span className="font-medium text-foreground">
-              {responsavelConsenso?.nome ?? "—"}
+              {consensoNome}
             </span>
             {version.arquivoAtualizadoEm && (
               <> · Atualizado em {formatarDataHora(version.arquivoAtualizadoEm)}</>
@@ -116,7 +117,7 @@ export function DocumentoLogsProcesso({ version, users }: Props) {
       ) : (
         <ul className="space-y-3">
           {movimentacoes.map((mov) => {
-            const usuario = users.find((u) => u.id === mov.usuarioId);
+            const usuarioNome = labelResponsavel(users, mov.usuarioId);
             const aprovou = mov.acao === "aprovacao";
             return (
               <li
@@ -133,7 +134,7 @@ export function DocumentoLogsProcesso({ version, users }: Props) {
                     <p className="font-medium leading-snug">
                       {mov.etapa === "consenso" ? "Consenso" : "Aprovação"} —{" "}
                       {aprovou ? "Aprovado" : "Reprovado"} por{" "}
-                      {usuario?.nome ?? "—"}
+                      {usuarioNome}
                     </p>
                     <p className="text-muted-foreground">
                       {formatarDataHora(mov.data)}

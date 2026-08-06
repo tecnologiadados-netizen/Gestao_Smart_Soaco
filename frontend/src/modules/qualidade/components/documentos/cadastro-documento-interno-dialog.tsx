@@ -174,6 +174,8 @@ export function CadastroDocumentoInternoDialog({
   const categoria =
     documentTypes.find((t) => t.id === categoriaId) ??
     categorias.find((t) => t.id === categoriaId);
+  /** Migrados sem tipo (ou tipo removido) podem preencher a categoria na edição. */
+  const categoriaTravada = isEdicao && Boolean(categoria);
   const categoriaLabel = documentTypeSelectLabel(documentTypes, categoriaId);
   const setorLabel = departmentSelectLabel(departments, processoId, "sigla-nome");
   const codigoExibicao = useMemo(() => {
@@ -207,6 +209,7 @@ export function CadastroDocumentoInternoDialog({
         if (isEdicao && documentId) {
           updateDocumentCadastro(documentId, {
             titulo,
+            tipoId: categoriaId,
             setorId: processoId,
             localizacao: localizacao.trim(),
             elaboradorId: responsaveis.elaboradorId || currentUserId,
@@ -303,7 +306,7 @@ export function CadastroDocumentoInternoDialog({
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label className="text-base">Categoria *</Label>
-                    {isEdicao ? (
+                    {categoriaTravada ? (
                       <div
                         className="flex min-h-10 items-center rounded-lg border-2 border-brand-blue/30 bg-muted/40 px-3 text-base text-brand-navy"
                         aria-readonly="true"
@@ -333,9 +336,14 @@ export function CadastroDocumentoInternoDialog({
                         </SelectContent>
                       </Select>
                     )}
-                    {isEdicao ? (
+                    {categoriaTravada ? (
                       <p className="text-xs text-muted-foreground">
                         A categoria não pode ser alterada após o cadastro.
+                      </p>
+                    ) : isEdicao ? (
+                      <p className="text-xs text-muted-foreground">
+                        Documento sem categoria — selecione para completar o
+                        cadastro.
                       </p>
                     ) : null}
                   </div>

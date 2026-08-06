@@ -27,6 +27,7 @@
     "reenviar:whatsapp-tag-disponivel": "tsx scripts/reenviar-whatsapp-tag-disponivel.ts",
     "seed:cubagem-inicial": "tsx scripts/seed-cubagem-inicial.ts",
     "import:rh-migration": "tsx scripts/import-rh-migration-export.ts",
+    "import:sgq-documentos": "tsx scripts/import-sgq-documentos-migracao.ts",
     "reimport:rh-fotos": "tsx scripts/reimport-rh-fotos.ts",
     "seed:rh-grupos": "tsx scripts/seed-rh-grupos-permissoes.ts"
   },

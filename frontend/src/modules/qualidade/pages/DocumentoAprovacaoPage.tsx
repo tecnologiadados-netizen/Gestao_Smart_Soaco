@@ -17,6 +17,7 @@ import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
+import { labelResponsavel } from "@qualidade/lib/utils/select-display";
 
 export function AprovacaoDocumentoPage() {
   const params = useParams();
@@ -205,7 +206,7 @@ export function AprovacaoDocumentoPage() {
             <legend className="text-base">Consenso</legend>
             <p className="text-sm text-muted-foreground">
               Registrado por{" "}
-              {users.find((u) => u.id === versaoAtual.consensoId)?.nome ?? "—"}
+              {labelResponsavel(users, versaoAtual.consensoId)}
               {versaoAtual.dataRevisao && (
                 <>
                   {" "}

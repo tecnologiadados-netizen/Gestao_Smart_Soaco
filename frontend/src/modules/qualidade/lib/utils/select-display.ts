@@ -18,6 +18,20 @@ export function userSelectLabel(
   return users.find((u) => u.id === id)?.nome;
 }
 
+/**
+ * Rótulo de responsável: nome do usuário vinculado, ou o texto livre
+ * guardado no campo (ex.: migracao de ex-colaboradores).
+ */
+export function labelResponsavel(
+  users: User[],
+  id: string | null | undefined,
+  fallback = "—"
+): string {
+  const raw = (id ?? "").trim();
+  if (!raw) return fallback;
+  return users.find((u) => u.id === raw)?.nome ?? raw;
+}
+
 export function departmentSelectLabel(
   departments: Department[],
   id: string,

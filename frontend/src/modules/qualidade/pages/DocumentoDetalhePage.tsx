@@ -21,6 +21,7 @@ import {
   getDocumentStatusVariant,
 } from "@qualidade/lib/utils/status-labels";
 import { formatarData, formatarDataHora } from "@qualidade/lib/utils/dates";
+import { labelResponsavel } from "@qualidade/lib/utils/select-display";
 import { SolicitarRevisaoDocumentoDialog } from "@qualidade/components/documentos/solicitar-revisao-documento-dialog";
 
 export function DocumentoDetalhePage() {
@@ -116,12 +117,10 @@ export function DocumentoDetalhePage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {versions.map((ver, idx) => {
-                const elaborador = users.find((u) => u.id === ver.elaboradorId);
-                const consensoVer = users.find((u) => u.id === ver.consensoId);
-                const revisorVer = users.find((u) => u.id === ver.revisorId);
-                const aprovadorVer = users.find(
-                  (u) => u.id === ver.aprovadorId
-                );
+                const elaboradorNome = labelResponsavel(users, ver.elaboradorId);
+                const consensoNome = labelResponsavel(users, ver.consensoId);
+                const revisorNome = labelResponsavel(users, ver.revisorId);
+                const aprovadorNome = labelResponsavel(users, ver.aprovadorId);
                 return (
                   <div key={ver.id}>
                     {idx > 0 && <Separator className="mb-4" />}
@@ -132,33 +131,33 @@ export function DocumentoDetalhePage() {
                       <div className="flex-1">
                         <p className="font-medium">Revisão {ver.versao}</p>
                         <p className="text-sm text-muted-foreground">
-                          Elaborado por {elaborador?.nome} em{" "}
+                          Elaborado por {elaboradorNome} em{" "}
                           {formatarData(ver.dataElaboracao)}
                           {ver.prazos ? ` · Prazo: ${ver.prazos.elaboracao} dias` : ""}
                         </p>
-                        {consensoVer && (
+                        {ver.consensoId && (
                           <p className="text-sm text-muted-foreground">
-                            Consenso: {consensoVer.nome}
+                            Consenso: {consensoNome}
                             {ver.prazos
                               ? ` · Prazo: ${ver.prazos.consenso} dias`
                               : ""}
                           </p>
                         )}
-                        {aprovadorVer && !ver.dataAprovacao && ver.prazos && (
+                        {ver.aprovadorId && !ver.dataAprovacao && ver.prazos && (
                           <p className="text-sm text-muted-foreground">
-                            Aprovador: {aprovadorVer.nome} · Prazo:{" "}
+                            Aprovador: {aprovadorNome} · Prazo:{" "}
                             {ver.prazos.aprovacao} dias
                           </p>
                         )}
                         {ver.dataRevisao && (
                           <p className="text-sm text-muted-foreground">
-                            Revisado por {revisorVer?.nome} em{" "}
+                            Revisado por {revisorNome} em{" "}
                             {formatarData(ver.dataRevisao)}
                           </p>
                         )}
                         {ver.dataAprovacao && (
                           <p className="text-sm text-muted-foreground">
-                            Aprovado por {aprovadorVer?.nome} em{" "}
+                            Aprovado por {aprovadorNome} em{" "}
                             {formatarData(ver.dataAprovacao)}
                           </p>
                         )}

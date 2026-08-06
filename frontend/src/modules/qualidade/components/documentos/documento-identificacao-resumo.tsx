@@ -1,4 +1,5 @@
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
+import { labelResponsavel } from "@qualidade/lib/utils/select-display";
 import type { Document, DocumentVersion } from "@qualidade/types/document";
 import type { Department, DocumentType, User } from "@qualidade/types/user";
 
@@ -20,9 +21,9 @@ export function DocumentoIdentificacaoResumo({
   processo,
   users,
 }: Props) {
-  const elaborador = users.find((u) => u.id === version.elaboradorId);
-  const consenso = users.find((u) => u.id === version.consensoId);
-  const aprovador = users.find((u) => u.id === version.aprovadorId);
+  const elaboradorNome = labelResponsavel(users, version.elaboradorId);
+  const consensoNome = labelResponsavel(users, version.consensoId);
+  const aprovadorNome = labelResponsavel(users, version.aprovadorId);
 
   return (
     <fieldset className="brand-fieldset space-y-4">
@@ -59,7 +60,7 @@ export function DocumentoIdentificacaoResumo({
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-lg border border-brand-blue-muted/60 bg-background/80 p-3 text-sm">
           <p className="font-semibold text-brand-blue">Elaborador</p>
-          <p className="mt-1">{elaborador?.nome ?? "—"}</p>
+          <p className="mt-1">{elaboradorNome}</p>
           {version.prazos && (
             <p className="text-muted-foreground">
               Prazo: {version.prazos.elaboracao} dias
@@ -68,7 +69,7 @@ export function DocumentoIdentificacaoResumo({
         </div>
         <div className="rounded-lg border border-brand-blue-muted/60 bg-background/80 p-3 text-sm">
           <p className="font-semibold text-brand-blue">Consenso</p>
-          <p className="mt-1">{consenso?.nome ?? "—"}</p>
+          <p className="mt-1">{consensoNome}</p>
           {version.prazos && (
             <p className="text-muted-foreground">
               Prazo: {version.prazos.consenso} dias
@@ -77,7 +78,7 @@ export function DocumentoIdentificacaoResumo({
         </div>
         <div className="rounded-lg border border-brand-blue-muted/60 bg-background/80 p-3 text-sm">
           <p className="font-semibold text-brand-blue">Aprovador</p>
-          <p className="mt-1">{aprovador?.nome ?? "—"}</p>
+          <p className="mt-1">{aprovadorNome}</p>
           {version.prazos && (
             <p className="text-muted-foreground">
               Prazo: {version.prazos.aprovacao} dias
