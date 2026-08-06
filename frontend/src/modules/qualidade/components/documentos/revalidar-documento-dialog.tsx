@@ -25,7 +25,7 @@ import {
 } from "@qualidade/lib/documents/validity";
 import { formatarData } from "@qualidade/lib/utils/dates";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
-import { acaoRevalidacaoSelectLabel } from "@qualidade/lib/utils/select-display";
+import { acaoRevalidacaoSelectLabel, labelResponsavel } from "@qualidade/lib/utils/select-display";
 import { cn } from "@qualidade/lib/utils";
 import { format, parseISO } from "date-fns";
 import type { DocumentVersion } from "@qualidade/types/document";
@@ -357,8 +357,9 @@ export function RevalidarDocumentoDialog({
               <legend className="text-base">Histórico de revisões</legend>
               <ul className="space-y-2">
                 {versoes.map((ver) => {
-                  const elaborador = users.find(
-                    (u) => u.id === ver.elaboradorId
+                  const elaboradorNome = labelResponsavel(
+                    users,
+                    ver.elaboradorId
                   );
                   const isAtual = ver.versao === doc.versaoAtual;
                   return (
@@ -399,7 +400,7 @@ export function RevalidarDocumentoDialog({
                         ) : null}
                       </div>
                       <p className="mt-1 text-muted-foreground">
-                        Elaborado por {elaborador?.nome ?? "—"} em{" "}
+                        Elaborado por {elaboradorNome} em{" "}
                         {formatarData(ver.dataElaboracao)}
                       </p>
                     </li>

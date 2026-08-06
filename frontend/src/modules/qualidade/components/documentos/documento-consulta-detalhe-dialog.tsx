@@ -24,6 +24,7 @@ import {
 } from "@qualidade/lib/utils/status-labels";
 import { formatarData, formatarDataHora } from "@qualidade/lib/utils/dates";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
+import { labelResponsavel } from "@qualidade/lib/utils/select-display";
 import {
   calcularDiasRestantesValidade,
   calcularProximaDataValidade,
@@ -475,24 +476,21 @@ export function DocumentoConsultaDetalheDialog({
                   <div className="grid gap-x-8 gap-y-5 sm:grid-cols-3">
                     <MetaItem
                       label="Elaborador"
-                      value={
-                        users.find((u) => u.id === versaoAtual?.elaboradorId)
-                          ?.nome ?? "—"
-                      }
+                      value={labelResponsavel(
+                        users,
+                        versaoAtual?.elaboradorId
+                      )}
                     />
                     <MetaItem
                       label="Consenso"
-                      value={
-                        users.find((u) => u.id === versaoAtual?.consensoId)
-                          ?.nome ?? "—"
-                      }
+                      value={labelResponsavel(users, versaoAtual?.consensoId)}
                     />
                     <MetaItem
                       label="Aprovador"
-                      value={
-                        users.find((u) => u.id === versaoAtual?.aprovadorId)
-                          ?.nome ?? "—"
-                      }
+                      value={labelResponsavel(
+                        users,
+                        versaoAtual?.aprovadorId
+                      )}
                     />
                     {versaoAtual?.prazos && (
                       <div className="sm:col-span-3">
@@ -507,10 +505,10 @@ export function DocumentoConsultaDetalheDialog({
                 ) : (
                   <MetaItem
                     label="Responsável"
-                    value={
-                      users.find((u) => u.id === versaoAtual?.elaboradorId)
-                        ?.nome ?? "—"
-                    }
+                    value={labelResponsavel(
+                      users,
+                      versaoAtual?.elaboradorId
+                    )}
                   />
                 )}
               </SecaoPainel>
@@ -645,11 +643,13 @@ export function DocumentoConsultaDetalheDialog({
               <SecaoPainel titulo="Revisões" defaultOpen>
                 <ul className="space-y-3">
                   {versoes.map((ver) => {
-                    const elaborador = users.find(
-                      (u) => u.id === ver.elaboradorId
+                    const elaboradorNome = labelResponsavel(
+                      users,
+                      ver.elaboradorId
                     );
-                    const aprovador = users.find(
-                      (u) => u.id === ver.aprovadorId
+                    const aprovadorNome = labelResponsavel(
+                      users,
+                      ver.aprovadorId
                     );
                     const isAtual = ver.versao === doc.versaoAtual;
                     return (
@@ -718,19 +718,19 @@ export function DocumentoConsultaDetalheDialog({
                         <p className="mt-1.5 text-muted-foreground">
                           {doc.origem === "interno" ? (
                             <>
-                              Elaborado por {elaborador?.nome ?? "—"} em{" "}
+                              Elaborado por {elaboradorNome} em{" "}
                               {formatarData(ver.dataElaboracao)}
                             </>
                           ) : (
                             <>
-                              Responsável: {elaborador?.nome ?? "—"} ·{" "}
+                              Responsável: {elaboradorNome} ·{" "}
                               {formatarData(ver.dataElaboracao)}
                             </>
                           )}
                         </p>
                         {doc.origem === "interno" && ver.dataAprovacao && (
                           <p className="text-muted-foreground">
-                            Aprovado por {aprovador?.nome ?? "—"} em{" "}
+                            Aprovado por {aprovadorNome} em{" "}
                             {formatarData(ver.dataAprovacao)}
                           </p>
                         )}

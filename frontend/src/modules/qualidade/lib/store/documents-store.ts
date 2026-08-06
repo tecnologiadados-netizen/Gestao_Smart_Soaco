@@ -71,6 +71,7 @@ interface RevalidarDocumentoInput {
 
 interface UpdateDocumentCadastroInput {
   titulo: string;
+  tipoId?: string;
   setorId: string;
   elaboradorId: string;
   consensoId?: string;
@@ -609,6 +610,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
               ? {
                   ...d,
                   titulo: input.titulo.trim(),
+                  ...(input.tipoId ? { tipoId: input.tipoId } : {}),
                   setorId: input.setorId,
                   localizacao: input.localizacao,
                   permissoes: input.permissoes,
