@@ -1,6 +1,6 @@
 import { prisma } from '../../config/prisma.js';
 import { getNomusPool, nomusQueryWithRetry } from '../../config/nomusDb.js';
-import { getDashboard } from './painelProducaoDashboardService.js';
+import { getDashboard, getProducaoResumoApuracao, warmupPainelProducaoCaches } from './painelProducaoDashboardService.js';
 import {
   getConsiderarPenalizacoes,
   getMetaNiveis,
@@ -15,6 +15,12 @@ import {
   type FaixaDescontoInput,
 } from './painelProducaoFaixasService.js';
 import { listarDescricoesNaoAbonadas } from '../../data/motivosSugestaoRepository.js';
+import {
+  SQL_PEDIDO_DATA_ATENDIMENTO,
+  STATUS_ITEM_ATENDIDO_SQL,
+  STATUS_ITEM_TERMINAL_SQL,
+} from './painelProducaoPedidosAtendidosSql.js';
+import { canonicalizeSetorPainel } from './painelProducaoConstants.js';
 
 export const NIVEL_NAO_ATINGIDO = 'Não atingida';
 export const SETOR_PERFILADEIRAS = 'Perfiladeiras';
@@ -56,6 +62,7 @@ type ItemEncerradoRow = {
   status: number;
   data_encerramento: Date | string | null;
   quantidade: number | null;
+  setor?: string | null;
 };
 
 type AjusteRow = {
@@ -321,49 +328,93 @@ async function listarSetoresMontagemAtivos(mes: string): Promise<SetorMontagemCa
   return ativos.sort((a, b) => a.setor.localeCompare(b.setor, 'pt-BR'));
 }
 
+/** Cache curto do mês (dedupe entre grade + modais na mesma requisição / Atualizar). */
+const itensMesInflight = new Map<string, Promise<Map<string, ItemEncerradoRow[]>>>();
+const itensMesCache = new Map<string, { ts: number; data: Map<string, ItemEncerradoRow[]> }>();
+const ITENS_MES_TTL_MS = 90_000;
+
+export function clearApuracaoItensMesCache(): void {
+  itensMesCache.clear();
+  itensMesInflight.clear();
+}
+
+async function carregarItensEncerradosDoMes(
+  mes: string,
+): Promise<Map<string, ItemEncerradoRow[]>> {
+  const cached = itensMesCache.get(mes);
+  if (cached && Date.now() - cached.ts < ITENS_MES_TTL_MS) return cached.data;
+
+  const existing = itensMesInflight.get(mes);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    const pool = getNomusPool();
+    if (!pool) throw new Error('Conexão Nomus não configurada (NOMUS_DB_URL).');
+    const { inicio, fim } = limitesMes(mes);
+
+    // Uma query para todos os setores (em vez de N queries iguais filtrando setor).
+    const sql = `
+      SELECT
+        TRIM(sp.opcao) AS setor,
+        TRIM(pd.nome) AS pd,
+        pd.id AS id_pedido,
+        p.id AS id_produto,
+        pe.nome AS cliente,
+        p.nome AS codigo_produto,
+        p.descricao AS descricao,
+        ip.status AS status,
+        ult.data_atendimento AS data_encerramento,
+        ip.qtde AS quantidade
+      FROM itempedido ip
+      INNER JOIN pedido pd ON pd.id = ip.idPedido
+      INNER JOIN produto p ON p.id = ip.idProduto
+      LEFT JOIN pessoa pe ON pe.id = pd.idCliente
+      INNER JOIN (
+        SELECT apv.idProduto, alo.opcao
+        FROM atributoprodutovalor apv
+        INNER JOIN atributolistaopcao alo ON alo.id = apv.idListaOpcao
+        WHERE apv.idAtributo = 679
+      ) sp ON sp.idProduto = p.id
+      INNER JOIN (
+${SQL_PEDIDO_DATA_ATENDIMENTO}
+      ) ult ON ult.id_pedido = pd.id
+      WHERE pd.idEmpresa IN (1, 2)
+        AND ip.status IN (${STATUS_ITEM_ATENDIDO_SQL})
+        AND NOT EXISTS (
+          SELECT 1
+          FROM itempedido ipx
+          WHERE ipx.idPedido = pd.id
+            AND ipx.status NOT IN (${STATUS_ITEM_TERMINAL_SQL})
+        )
+        AND TRIM(sp.opcao) <> ''
+      ORDER BY sp.opcao ASC, pd.nome ASC, p.nome ASC, ult.data_atendimento ASC
+    `;
+
+    const [rows] = await nomusQueryWithRetry<ItemEncerradoRow[]>(pool, sql, [inicio, fim]);
+    const porSetor = new Map<string, ItemEncerradoRow[]>();
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const setor = canonicalizeSetorPainel(String(row.setor ?? '').trim());
+      if (!setor) continue;
+      const lista = porSetor.get(setor) ?? [];
+      lista.push(row);
+      porSetor.set(setor, lista);
+    }
+    itensMesCache.set(mes, { ts: Date.now(), data: porSetor });
+    return porSetor;
+  })().finally(() => {
+    itensMesInflight.delete(mes);
+  });
+
+  itensMesInflight.set(mes, promise);
+  return promise;
+}
+
 async function carregarItensEncerradosDoSetor(
   mes: string,
   setor: string,
 ): Promise<ItemEncerradoRow[]> {
-  const pool = getNomusPool();
-  if (!pool) throw new Error('Conexão Nomus não configurada (NOMUS_DB_URL).');
-  const { inicio, fim } = limitesMes(mes);
-
-  const sql = `
-    SELECT
-      TRIM(pd.nome) AS pd,
-      pd.id AS id_pedido,
-      p.id AS id_produto,
-      pe.nome AS cliente,
-      p.nome AS codigo_produto,
-      p.descricao AS descricao,
-      ip.status AS status,
-      ip.dataHoraEncerramento AS data_encerramento,
-      ip.qtde AS quantidade
-    FROM itempedido ip
-    INNER JOIN pedido pd ON pd.id = ip.idPedido
-    INNER JOIN produto p ON p.id = ip.idProduto
-    LEFT JOIN pessoa pe ON pe.id = pd.idCliente
-    INNER JOIN (
-      SELECT apv.idProduto, alo.opcao
-      FROM atributoprodutovalor apv
-      INNER JOIN atributolistaopcao alo ON alo.id = apv.idListaOpcao
-      WHERE apv.idAtributo = 679
-    ) sp ON sp.idProduto = p.id
-    WHERE pd.idEmpresa IN (1, 2)
-      AND ip.status IN (4, 5)
-      AND TRIM(sp.opcao) = ?
-      AND ip.dataHoraEncerramento >= ?
-      AND ip.dataHoraEncerramento < ?
-    ORDER BY pd.nome ASC, p.nome ASC, ip.dataHoraEncerramento ASC
-  `;
-
-  const [rows] = await nomusQueryWithRetry<ItemEncerradoRow[]>(
-    pool,
-    sql,
-    [setor, inicio, fim],
-  );
-  return Array.isArray(rows) ? rows : [];
+  const porSetor = await carregarItensEncerradosDoMes(mes);
+  return porSetor.get(canonicalizeSetorPainel(setor)) ?? [];
 }
 
 async function carregarAjustesPorMotivo(
@@ -452,8 +503,9 @@ async function apurarSetorMontagem(
   faixasDesconto: FaixaDescontoInput[],
   motivosMontagem: string[],
   motivosProducao: string[],
+  itensPrecarregados?: ItemEncerradoRow[],
 ): Promise<MontagemInterna> {
-  const itens = await carregarItensEncerradosDoSetor(mes, setor);
+  const itens = itensPrecarregados ?? (await carregarItensEncerradosDoSetor(mes, setor));
   const pedidosEncerrados = new Set(itens.map((item) => item.pd)).size;
 
   const vinculadosEstimativa = await carregarAjustesPorMotivo(
@@ -472,12 +524,7 @@ async function apurarSetorMontagem(
   const alteracoesRuptura = vinculadosRuptura.length;
   const mediaRuptura = calcularMediaAlteracoes(alteracoesRuptura, pedidosComRuptura);
 
-  const dashboard = (await getDashboard(setor, mes)) as {
-    meta?: number;
-    producao?: number;
-    unidade?: string;
-    percentual_meta?: number;
-  };
+  const dashboard = await getProducaoResumoApuracao(setor, mes);
   const percentualQuantitativo = Number(dashboard.percentual_meta ?? 0);
   const producaoRealizada = Number(dashboard.producao ?? 0);
 
@@ -599,6 +646,13 @@ export async function getApuracaoMetas(mes: string): Promise<ApuracaoMetaSetor[]
     listarDescricoesNaoAbonadas('producao'),
   ]);
   const setores = await listarSetoresMontagemAtivos(mes);
+
+  // 1 query de itens + 1 aquecimento do histórico Nomus (evita stampede N setores).
+  const [, itensPorSetor] = await Promise.all([
+    warmupPainelProducaoCaches(mes),
+    carregarItensEncerradosDoMes(mes),
+  ]);
+
   const montagens = await Promise.all(
     setores.map(async ({ setor }) => {
       const considerar = await getConsiderarPenalizacoes(mes, setor);
@@ -609,6 +663,7 @@ export async function getApuracaoMetas(mes: string): Promise<ApuracaoMetaSetor[]
         faixasDesconto,
         motivosMontagem,
         motivosProducao,
+        itensPorSetor.get(canonicalizeSetorPainel(setor)) ?? [],
       );
     }),
   );
@@ -665,6 +720,9 @@ export async function getApuracaoDetalhe(
           cliente: pedido.cliente || '—',
           codigo_produto: item.codigo || '—',
           descricao: item.descricao || '—',
+          data_encerramento: formatDateTimeBr(
+            (pedido as { data_atendimento?: Date | string | null }).data_atendimento ?? null,
+          ),
         });
       }
     }
@@ -686,6 +744,10 @@ export async function getApuracaoDetalhe(
     ]);
     const setores = await listarSetoresMontagemAtivos(mes);
     const elegiveis = setores.filter((s) => s.niveisCompletos);
+    const [, itensPorSetor] = await Promise.all([
+      warmupPainelProducaoCaches(mes),
+      carregarItensEncerradosDoMes(mes),
+    ]);
     const montagens = await Promise.all(
       elegiveis.map(async ({ setor: setorMontagem }) => {
         const considerar = await getConsiderarPenalizacoes(mes, setorMontagem);
@@ -696,6 +758,7 @@ export async function getApuracaoDetalhe(
           faixasDesconto,
           motivosMontagem,
           motivosProducao,
+          itensPorSetor.get(canonicalizeSetorPainel(setorMontagem)) ?? [],
         );
       }),
     );
@@ -736,7 +799,7 @@ export async function getApuracaoDetalhe(
       mes,
       setor,
       tipo,
-      titulo: 'Pedidos encerrados no mês',
+      titulo: 'Pedidos atendidos no mês (doc. de saída)',
       total: new Set(itens.map((item) => item.pd)).size,
       linhas,
     };

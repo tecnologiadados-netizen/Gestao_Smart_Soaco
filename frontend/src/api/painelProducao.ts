@@ -198,8 +198,11 @@ export async function fetchPainelProducaoFaixasDesconto(
 
 export async function fetchPainelProducaoApuracao(
   mes: string,
+  opts?: { refresh?: boolean },
 ): Promise<PainelProducaoApuracaoRow[]> {
-  const res = await apiFetch(`/api/painel-producao/apuracao?mes=${encodeURIComponent(mes)}`);
+  const params = new URLSearchParams({ mes });
+  if (opts?.refresh) params.set('refresh', '1');
+  const res = await apiFetch(`/api/painel-producao/apuracao?${params}`);
   return parseJson(res);
 }
 

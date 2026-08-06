@@ -61,6 +61,8 @@ export type PedidoRow = {
   cliente: string;
   codigo_produto: string;
   descricao_produto: string;
+  /** Emissão do último documento de saída que atendeu o pedido. */
+  data_atendimento?: Date | string | null;
 };
 
 export type YearRowsBundle = [PaRow[], GondRow[], PedidoRow[]];
@@ -68,4 +70,6 @@ export type YearRowsBundle = [PaRow[], GondRow[], PedidoRow[]];
 export function clearPainelProducaoCaches(): void {
   dashboardCache.clear();
   yearRowsCache.clear();
+  setorMapCache.clear();
+  produtoPesoCache.clear();
 }

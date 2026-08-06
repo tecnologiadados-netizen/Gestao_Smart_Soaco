@@ -110,13 +110,15 @@ function ajustarLarguras(sheet: ExcelJS.Worksheet, widths: number[]): void {
   });
 }
 
-/** Exporta o detalhe tabular da Apuração (pedidos encerrados / alterações). */
+/** Exporta o detalhe tabular da Apuração (pedidos atendidos / alterações). */
 export async function exportarApuracaoDetalheExcel(
   detalhe: PainelProducaoApuracaoDetalhe,
 ): Promise<void> {
   const mostraAlteracao =
     detalhe.tipo === 'alteracoes' || detalhe.tipo === 'alteracoes_ruptura';
-  const mostraEncerramento = !mostraAlteracao && detalhe.tipo !== 'producao_realizada';
+  const mostraStatus =
+    detalhe.tipo === 'pedidos_encerrados' || detalhe.tipo === 'pedidos_com_alteracao';
+  const mostraDocSaida = !mostraAlteracao;
 
   const headers = mostraAlteracao
     ? [
@@ -130,9 +132,11 @@ export async function exportarApuracaoDetalheExcel(
         'Usuário',
         'Anexo PDF',
       ]
-    : mostraEncerramento
-      ? ['Pedido', 'Cliente', 'Produto', 'Descrição', 'Quantidade', 'Status', 'Encerramento']
-      : ['Pedido', 'Cliente', 'Produto', 'Descrição', 'Quantidade'];
+    : mostraStatus
+      ? ['Pedido', 'Cliente', 'Produto', 'Descrição', 'Quantidade', 'Status', 'Doc. de saída']
+      : mostraDocSaida
+        ? ['Pedido', 'Cliente', 'Produto', 'Descrição', 'Quantidade', 'Doc. de saída']
+        : ['Pedido', 'Cliente', 'Produto', 'Descrição', 'Quantidade'];
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Gestão Smart';
@@ -178,7 +182,7 @@ export async function exportarApuracaoDetalheExcel(
           linha.usuario ?? '',
           linha.anexo_assinatura_nome?.trim() || (linha.anexo_assinatura_path ? 'PDF anexado' : ''),
         ]
-      : mostraEncerramento
+      : mostraStatus
         ? [
             linha.pedido,
             linha.cliente,
@@ -188,13 +192,22 @@ export async function exportarApuracaoDetalheExcel(
             linha.status ?? '',
             linha.data_encerramento ?? '',
           ]
-        : [
-            linha.pedido,
-            linha.cliente,
-            linha.codigo_produto,
-            linha.descricao,
-            linha.quantidade ?? '',
-          ];
+        : mostraDocSaida
+          ? [
+              linha.pedido,
+              linha.cliente,
+              linha.codigo_produto,
+              linha.descricao,
+              linha.quantidade ?? '',
+              linha.data_encerramento ?? '',
+            ]
+          : [
+              linha.pedido,
+              linha.cliente,
+              linha.codigo_produto,
+              linha.descricao,
+              linha.quantidade ?? '',
+            ];
     values.forEach((v, i) => {
       sheet.getCell(rowNumber, i + 1).value = v;
     });
@@ -217,9 +230,11 @@ export async function exportarApuracaoDetalheExcel(
     sheet,
     mostraAlteracao
       ? [14, 28, 12, 44, 12, 18, 36, 16, 28]
-      : mostraEncerramento
+      : mostraStatus
         ? [14, 28, 12, 44, 12, 20, 20]
-        : [14, 28, 12, 44, 12],
+        : mostraDocSaida
+          ? [14, 28, 12, 44, 12, 20]
+          : [14, 28, 12, 44, 12],
   );
 
   const mesSlug = slugArquivo(detalhe.mes || 'mes');

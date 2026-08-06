@@ -14,6 +14,7 @@ import { MonthFilter } from '../../../components/painel-producao/MonthFilter';
 import { PainelProducaoShell } from '../../../components/painel-producao/PainelProducaoShell';
 import { formatMesLabel } from '../../../utils/painelProducaoFormat';
 import { exportarApuracaoDetalheExcel } from '../../../utils/painelProducaoExcelExport';
+import { exportarApuracaoMetasPdf } from '../../../utils/painelProducaoApuracaoPdf';
 import LoaderCirculo from '../../../components/LoaderCirculo';
 import { useDuracaoMinima } from '../../../hooks/useDuracaoMinima';
 
@@ -58,7 +59,9 @@ function ApuracaoDetalheTabela({
 }) {
   const mostraAlteracao =
     detalhe.tipo === 'alteracoes' || detalhe.tipo === 'alteracoes_ruptura';
-  const mostraEncerramento = !mostraAlteracao && detalhe.tipo !== 'producao_realizada';
+  const mostraStatus =
+    detalhe.tipo === 'pedidos_encerrados' || detalhe.tipo === 'pedidos_com_alteracao';
+  const mostraDocSaida = !mostraAlteracao;
   const [exportando, setExportando] = useState(false);
 
   async function baixarExcel() {
@@ -74,7 +77,7 @@ function ApuracaoDetalheTabela({
     }
   }
 
-  const colSpan = mostraAlteracao ? 9 : mostraEncerramento ? 7 : 5;
+  const colSpan = mostraAlteracao ? 9 : mostraStatus ? 7 : mostraDocSaida ? 6 : 5;
 
   return (
     <div className="apuracao-tooltip-body">
@@ -108,8 +111,8 @@ function ApuracaoDetalheTabela({
               <th>Produto</th>
               <th>Descrição</th>
               <th>Quantidade</th>
-              {mostraEncerramento && <th>Status</th>}
-              {mostraEncerramento && <th>Encerramento</th>}
+              {mostraStatus && <th>Status</th>}
+              {mostraDocSaida && <th>Doc. de saída</th>}
               {mostraAlteracao && <th>Data alteração</th>}
               {mostraAlteracao && <th>Motivo</th>}
               {mostraAlteracao && <th>Usuário</th>}
@@ -126,8 +129,8 @@ function ApuracaoDetalheTabela({
                 <td className="apuracao-tooltip-qtde">
                   {linha.quantidade == null ? '—' : formatNumero(linha.quantidade)}
                 </td>
-                {mostraEncerramento && <td>{linha.status ?? '—'}</td>}
-                {mostraEncerramento && <td>{linha.data_encerramento ?? '—'}</td>}
+                {mostraStatus && <td>{linha.status ?? '—'}</td>}
+                {mostraDocSaida && <td>{linha.data_encerramento ?? '—'}</td>}
                 {mostraAlteracao && <td>{linha.data_alteracao ?? '—'}</td>}
                 {mostraAlteracao && <td>{linha.motivo ?? '—'}</td>}
                 {mostraAlteracao && <td>{linha.usuario ?? '—'}</td>}
@@ -975,6 +978,7 @@ export default function PainelProducaoApuracaoPage() {
   const [rows, setRows] = useState<PainelProducaoApuracaoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exportandoPdf, setExportandoPdf] = useState(false);
   const detalheCacheRef = useRef(new Map<string, PainelProducaoApuracaoDetalhe>());
 
   const rowsFiltradas = useMemo(
@@ -1028,6 +1032,40 @@ export default function PainelProducaoApuracaoPage() {
     };
   }, [mes]);
 
+  async function atualizarApuracao() {
+    if (!mes || loading) return;
+    detalheCacheRef.current.clear();
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchPainelProducaoApuracao(mes, { refresh: true });
+      setRows(data);
+    } catch (err) {
+      setRows([]);
+      setError(err instanceof Error ? err.message : 'Falha ao apurar as metas.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function baixarPdfGrade() {
+    if (exportandoPdf || loading || rowsFiltradas.length === 0) return;
+    setExportandoPdf(true);
+    try {
+      await exportarApuracaoMetasPdf({
+        mes,
+        mesLabel: formatMesLabel(mes),
+        areaLabel: area === 'montagem' ? 'Montagem' : 'Produção',
+        rows: rowsFiltradas,
+      });
+    } catch (err) {
+      console.error(err);
+      window.alert(err instanceof Error ? err.message : 'Falha ao gerar o PDF.');
+    } finally {
+      setExportandoPdf(false);
+    }
+  }
+
   return (
     <PainelProducaoShell>
       <div className="dashboard apuracao-page">
@@ -1053,6 +1091,15 @@ export default function PainelProducaoApuracaoPage() {
               onChange={setMes}
               disabled={loading}
             />
+            <button
+              type="button"
+              className="apuracao-refresh-btn"
+              onClick={() => void atualizarApuracao()}
+              disabled={loading || !mes}
+              title="Recarrega do Nomus (limpa cache). Use após corrigir o setor do produto no ERP."
+            >
+              {loading ? 'Atualizando…' : 'Atualizar'}
+            </button>
           </div>
         </header>
 
@@ -1072,6 +1119,15 @@ export default function PainelProducaoApuracaoPage() {
                     : 'Perfiladeiras: valor indireto conforme níveis atingidos pelos setores de montagem. Clique no valor a pagar para o memorial.'}
                 </p>
               </div>
+              <button
+                type="button"
+                className="apuracao-pdf-btn"
+                onClick={() => void baixarPdfGrade()}
+                disabled={loading || exportandoPdf || rowsFiltradas.length === 0}
+                title="Baixar PDF da tabela (formato padrão do sistema)"
+              >
+                {exportandoPdf ? 'Gerando…' : 'PDF'}
+              </button>
             </div>
 
             {error && <p className="targets-feedback error">{error}</p>}
@@ -1082,7 +1138,7 @@ export default function PainelProducaoApuracaoPage() {
                   <thead>
                     <tr>
                       <th>Setor</th>
-                      <th>Pedidos encerrados no mês</th>
+                      <th>Pedidos atendidos no mês</th>
                       <th>Pedidos com alteração não abonada</th>
                       <th>Alterações não abonadas</th>
                       <th>Média de alteração por PD</th>
