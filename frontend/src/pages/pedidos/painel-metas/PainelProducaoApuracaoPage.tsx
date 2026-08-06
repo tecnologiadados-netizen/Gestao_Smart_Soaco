@@ -58,6 +58,7 @@ function ApuracaoDetalheTabela({
 }) {
   const mostraAlteracao =
     detalhe.tipo === 'alteracoes' || detalhe.tipo === 'alteracoes_ruptura';
+  const mostraEncerramento = !mostraAlteracao && detalhe.tipo !== 'producao_realizada';
   const [exportando, setExportando] = useState(false);
 
   async function baixarExcel() {
@@ -72,6 +73,8 @@ function ApuracaoDetalheTabela({
       setExportando(false);
     }
   }
+
+  const colSpan = mostraAlteracao ? 9 : mostraEncerramento ? 7 : 5;
 
   return (
     <div className="apuracao-tooltip-body">
@@ -105,8 +108,8 @@ function ApuracaoDetalheTabela({
               <th>Produto</th>
               <th>Descrição</th>
               <th>Quantidade</th>
-              {!mostraAlteracao && <th>Status</th>}
-              {!mostraAlteracao && <th>Encerramento</th>}
+              {mostraEncerramento && <th>Status</th>}
+              {mostraEncerramento && <th>Encerramento</th>}
               {mostraAlteracao && <th>Data alteração</th>}
               {mostraAlteracao && <th>Motivo</th>}
               {mostraAlteracao && <th>Usuário</th>}
@@ -123,8 +126,8 @@ function ApuracaoDetalheTabela({
                 <td className="apuracao-tooltip-qtde">
                   {linha.quantidade == null ? '—' : formatNumero(linha.quantidade)}
                 </td>
-                {!mostraAlteracao && <td>{linha.status ?? '—'}</td>}
-                {!mostraAlteracao && <td>{linha.data_encerramento ?? '—'}</td>}
+                {mostraEncerramento && <td>{linha.status ?? '—'}</td>}
+                {mostraEncerramento && <td>{linha.data_encerramento ?? '—'}</td>}
                 {mostraAlteracao && <td>{linha.data_alteracao ?? '—'}</td>}
                 {mostraAlteracao && <td>{linha.motivo ?? '—'}</td>}
                 {mostraAlteracao && <td>{linha.usuario ?? '—'}</td>}
@@ -148,7 +151,7 @@ function ApuracaoDetalheTabela({
             ))}
             {detalhe.linhas.length === 0 && (
               <tr>
-                <td colSpan={mostraAlteracao ? 9 : 7}>Nenhum registro.</td>
+                <td colSpan={colSpan}>Nenhum registro.</td>
               </tr>
             )}
           </tbody>
@@ -839,6 +842,93 @@ function CelulaComDetalhe({
   );
 }
 
+function CelulaMetaQuantitativa({ row }: { row: PainelProducaoApuracaoRow }) {
+  const [aberto, setAberto] = useState(false);
+  const clicavel = row.niveis.some((n) => n.meta != null);
+
+  function close() {
+    setAberto(false);
+  }
+
+  useEffect(() => {
+    if (!aberto) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') close();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [aberto]);
+
+  return (
+    <td>
+      <div className={`apuracao-celula-detalhe${clicavel ? ' is-clickable' : ''}`}>
+        <button
+          type="button"
+          className="apuracao-celula-valor"
+          disabled={!clicavel}
+          aria-expanded={aberto}
+          aria-haspopup="dialog"
+          onClick={() => {
+            if (!clicavel) return;
+            setAberto((v) => !v);
+          }}
+        >
+          {formatNumero(row.meta_quantitativa)} {row.unidade}
+        </button>
+        {aberto &&
+          createPortal(
+            <div className="apuracao-tooltip-overlay" onClick={close}>
+              <div
+                className="apuracao-tooltip"
+                role="dialog"
+                aria-label="Metas quantitativas por nível"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="apuracao-tooltip-close"
+                  aria-label="Fechar detalhe"
+                  onClick={close}
+                >
+                  ×
+                </button>
+                <div className="apuracao-tooltip-body">
+                  <div className="apuracao-tooltip-header">
+                    <strong>Metas quantitativas por nível</strong>
+                    <span>
+                      {row.setor} · grade = Aço ({formatNumero(row.meta_quantitativa)} {row.unidade})
+                    </span>
+                  </div>
+                  <div className="apuracao-memorial-niveis">
+                    <table className="apuracao-tooltip-table">
+                      <thead>
+                        <tr>
+                          <th>Nível</th>
+                          <th>Meta ({row.unidade})</th>
+                          <th>Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {row.niveis.map((nivel) => (
+                          <tr key={nivel.nivel} className={nivel.atingido ? 'is-atingido' : undefined}>
+                            <td>{nivel.nivel}</td>
+                            <td>{nivel.meta == null ? '—' : formatNumero(nivel.meta)}</td>
+                            <td>{nivel.valor == null ? '—' : formatMoeda(nivel.valor)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>,
+            portalTarget(),
+          )}
+      </div>
+    </td>
+  );
+}
+
 export default function PainelProducaoApuracaoPage() {
   const [meses, setMeses] = useState<string[]>([]);
   const [mes, setMes] = useState('');
@@ -1006,12 +1096,22 @@ export default function PainelProducaoApuracaoPage() {
                         <td className="apuracao-media">
                           {formatNumero(row.media_alteracoes_por_pedido)}
                         </td>
-                        <td>
-                          {formatNumero(row.meta_quantitativa)} {row.unidade}
-                        </td>
-                        <td>
-                          {formatNumero(row.producao_realizada)} {row.unidade}
-                        </td>
+                        <CelulaMetaQuantitativa row={row} />
+                        {row.unidade === 'pedidos' ? (
+                          <CelulaComDetalhe
+                            mes={mes}
+                            setor={row.setor}
+                            tipo="producao_realizada"
+                            valor={row.producao_realizada}
+                            cacheRef={detalheCacheRef}
+                          >
+                            {formatNumero(row.producao_realizada)} {row.unidade}
+                          </CelulaComDetalhe>
+                        ) : (
+                          <td>
+                            {formatNumero(row.producao_realizada)} {row.unidade}
+                          </td>
+                        )}
                         <td>{formatNumero(row.percentual_meta_quantitativa)}%</td>
                         <td
                           className={

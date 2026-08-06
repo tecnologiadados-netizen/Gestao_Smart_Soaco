@@ -41,6 +41,7 @@ export const APURACAO_DETALHE_TIPOS = [
   'alteracoes',
   'alteracoes_ruptura',
   'memorial_producao',
+  'producao_realizada',
 ] as const;
 
 export type ApuracaoDetalheTipo = (typeof APURACAO_DETALHE_TIPOS)[number];
@@ -633,6 +634,50 @@ export async function getApuracaoDetalhe(
   tipo: ApuracaoDetalheTipo,
   setor: string,
 ): Promise<ApuracaoDetalhePayload> {
+  if (tipo === 'producao_realizada') {
+    const dashboard = (await getDashboard(setor, mes)) as {
+      unidade?: string;
+      producao?: number;
+      pedidos_detalhe?: Array<{
+        codigo_pedido: string;
+        cliente: string;
+        itens: Array<{ codigo: string; descricao: string }>;
+      }>;
+    };
+    const unidade = String(dashboard.unidade ?? 'un');
+    if (unidade !== 'pedidos') {
+      return {
+        mes,
+        setor,
+        tipo,
+        titulo: 'Produção realizada',
+        total: 0,
+        linhas: [],
+      };
+    }
+    const pedidos = dashboard.pedidos_detalhe ?? [];
+    const linhas: ApuracaoDetalheLinha[] = [];
+    for (const pedido of pedidos) {
+      const itens = pedido.itens.length > 0 ? pedido.itens : [{ codigo: '—', descricao: '—' }];
+      for (const item of itens) {
+        linhas.push({
+          pedido: pedido.codigo_pedido || '—',
+          cliente: pedido.cliente || '—',
+          codigo_produto: item.codigo || '—',
+          descricao: item.descricao || '—',
+        });
+      }
+    }
+    return {
+      mes,
+      setor,
+      tipo,
+      titulo: 'Pedidos contabilizados na produção',
+      total: pedidos.length,
+      linhas: ordenarLinhasPorPedido(linhas),
+    };
+  }
+
   if (tipo === 'memorial_producao' || setor === SETOR_PERFILADEIRAS) {
     const [faixasDesconto, motivosMontagem, motivosProducao] = await Promise.all([
       listarFaixasDesconto(mes),

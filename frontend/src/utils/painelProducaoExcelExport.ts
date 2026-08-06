@@ -116,6 +116,7 @@ export async function exportarApuracaoDetalheExcel(
 ): Promise<void> {
   const mostraAlteracao =
     detalhe.tipo === 'alteracoes' || detalhe.tipo === 'alteracoes_ruptura';
+  const mostraEncerramento = !mostraAlteracao && detalhe.tipo !== 'producao_realizada';
 
   const headers = mostraAlteracao
     ? [
@@ -129,7 +130,9 @@ export async function exportarApuracaoDetalheExcel(
         'Usuário',
         'Anexo PDF',
       ]
-    : ['Pedido', 'Cliente', 'Produto', 'Descrição', 'Quantidade', 'Status', 'Encerramento'];
+    : mostraEncerramento
+      ? ['Pedido', 'Cliente', 'Produto', 'Descrição', 'Quantidade', 'Status', 'Encerramento']
+      : ['Pedido', 'Cliente', 'Produto', 'Descrição', 'Quantidade'];
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Gestão Smart';
@@ -175,15 +178,23 @@ export async function exportarApuracaoDetalheExcel(
           linha.usuario ?? '',
           linha.anexo_assinatura_nome?.trim() || (linha.anexo_assinatura_path ? 'PDF anexado' : ''),
         ]
-      : [
-          linha.pedido,
-          linha.cliente,
-          linha.codigo_produto,
-          linha.descricao,
-          linha.quantidade ?? '',
-          linha.status ?? '',
-          linha.data_encerramento ?? '',
-        ];
+      : mostraEncerramento
+        ? [
+            linha.pedido,
+            linha.cliente,
+            linha.codigo_produto,
+            linha.descricao,
+            linha.quantidade ?? '',
+            linha.status ?? '',
+            linha.data_encerramento ?? '',
+          ]
+        : [
+            linha.pedido,
+            linha.cliente,
+            linha.codigo_produto,
+            linha.descricao,
+            linha.quantidade ?? '',
+          ];
     values.forEach((v, i) => {
       sheet.getCell(rowNumber, i + 1).value = v;
     });
@@ -206,7 +217,9 @@ export async function exportarApuracaoDetalheExcel(
     sheet,
     mostraAlteracao
       ? [14, 28, 12, 44, 12, 18, 36, 16, 28]
-      : [14, 28, 12, 44, 12, 20, 20],
+      : mostraEncerramento
+        ? [14, 28, 12, 44, 12, 20, 20]
+        : [14, 28, 12, 44, 12],
   );
 
   const mesSlug = slugArquivo(detalhe.mes || 'mes');
