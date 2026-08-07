@@ -2323,14 +2323,38 @@ button.kpi-card-clickable:hover .kpi-click-hint {
   vertical-align: middle;
 }
 
+.targets-table-niveis {
+  min-width: 1180px;
+}
+
 .targets-table-niveis th.targets-group {
   text-align: center;
   border-left: 1px solid #e8ecf0;
   border-right: 1px solid #e8ecf0;
 }
 
+.targets-table-niveis thead tr:nth-child(2) th {
+  min-width: 96px;
+  text-align: center;
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+}
+
+.targets-table-niveis td.targets-cell-num {
+  min-width: 96px;
+  width: 96px;
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+}
+
 .targets-table-niveis .targets-input {
-  max-width: 110px;
+  width: 100%;
+  min-width: 4.75rem;
+  max-width: none;
+  box-sizing: border-box;
+  padding: 0.45rem 0.55rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .targets-input {
@@ -2343,6 +2367,7 @@ button.kpi-card-clickable:hover .kpi-click-hint {
   font-weight: 600;
   color: var(--text-dark);
   background: #fff;
+  box-sizing: border-box;
 }
 
 .targets-input:focus {
