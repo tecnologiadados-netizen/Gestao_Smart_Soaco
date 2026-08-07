@@ -633,7 +633,7 @@ export default function PainelProducaoMetasPage() {
                           </label>
                         </td>
                         {CAMPOS_META.map((campo) => (
-                          <td key={campo}>
+                          <td key={campo} className="targets-cell-num">
                             <input
                               type="text"
                               inputMode="decimal"
