@@ -2036,11 +2036,14 @@ button.kpi-card-clickable:hover .kpi-click-hint {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  max-width: 880px;
+  min-width: 0;
+  width: 100%;
 }
 
 .targets-card {
   padding: 1.25rem 1.5rem;
+  min-width: 0;
+  width: 100%;
 }
 
 .targets-tabs {
@@ -2299,11 +2302,14 @@ button.kpi-card-clickable:hover .kpi-click-hint {
 
 .targets-table-wrap {
   overflow-x: auto;
+  width: 100%;
+  min-width: 0;
 }
 
 .targets-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: auto;
 }
 
 .targets-table th {
