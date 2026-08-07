@@ -15,6 +15,8 @@ type Props = {
   /** Texto de ajuda abaixo do input (default genérico). */
   ajuda?: string;
   className?: string;
+  /** Quando false, exibe o campo como opcional (default: true). */
+  obrigatorio?: boolean;
 };
 
 /**
@@ -26,6 +28,7 @@ export default function CampoAnexoAssinaturaPdf({
   anexoNome,
   ajuda,
   className = '',
+  obrigatorio = true,
 }: Props) {
   const { hasPermission } = useAuth();
   const podeBaixarWord =
@@ -38,7 +41,12 @@ export default function CampoAnexoAssinaturaPdf({
     <div className={`space-y-1 ${className}`.trim()}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
-          PDF assinado <span className="text-amber-600 dark:text-amber-400">(obrigatório)</span>
+          PDF assinado{' '}
+          {obrigatorio ? (
+            <span className="text-amber-600 dark:text-amber-400">(obrigatório)</span>
+          ) : (
+            <span className="text-slate-500 dark:text-slate-400">(opcional)</span>
+          )}
         </label>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           <a

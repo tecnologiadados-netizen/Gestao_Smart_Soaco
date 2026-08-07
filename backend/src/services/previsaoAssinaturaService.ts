@@ -57,7 +57,10 @@ export function persistirAnexoAssinaturaFromPayload(
 }
 
 /**
- * Valida e, se necessário, persiste o PDF.
+ * Valida e persiste o PDF de assinatura.
+ * - Motivo não abonado (salvo isento): PDF obrigatório.
+ * - PDF enviado: sempre grava e devolve path (mesmo com motivo abonado), para não se perder no histórico.
+ * - Import XLSX (`isento`): não exige nem persiste.
  * @throws Error com mensagem amigável quando obrigatório e ausente/inválido.
  */
 export async function resolverAnexoAssinaturaObrigatorio(opts: {
@@ -66,15 +69,22 @@ export async function resolverAnexoAssinaturaObrigatorio(opts: {
   /** Import XLSX: não exige PDF. */
   isento?: boolean;
 }): Promise<AnexoAssinaturaPersistido | null> {
-  const exige = await algumMotivoExigeAnexoAssinatura(opts.motivos);
-  if (!exige) return null;
   if (opts.isento) return null;
 
-  const persistido = persistirAnexoAssinaturaFromPayload(opts.anexo);
-  if (!persistido) {
+  const exige = await algumMotivoExigeAnexoAssinatura(opts.motivos);
+  const temAnexo = Boolean(opts.anexo?.contentBase64?.trim());
+
+  if (exige && !temAnexo) {
     throw new Error(
       'Justificativa não abonada exige o PDF assinado do responsável.',
     );
+  }
+
+  if (!temAnexo) return null;
+
+  const persistido = persistirAnexoAssinaturaFromPayload(opts.anexo);
+  if (!persistido) {
+    throw new Error('Não foi possível gravar o PDF de assinatura.');
   }
   return persistido;
 }
