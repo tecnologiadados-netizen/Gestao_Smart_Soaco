@@ -2131,11 +2131,11 @@ function ModalAtualizarPedido({
 
   const motivoSelecionado = motivos.find((m) => m.descricao === motivo);
   const exigeAnexo = dataAlterada && motivoSelecionado?.abonada === false;
+  /** Campo de PDF: obrigatório se não abonado; opcional (e sempre persistido) se abonado. */
+  const mostrarCampoAnexo = dataAlterada && Boolean(motivo.trim());
 
   const onChangeMotivo = (valor: string) => {
     setMotivo(valor);
-    const sel = motivos.find((m) => m.descricao === valor);
-    if (!sel || sel.abonada !== false) limparAnexoAssinatura();
   };
 
   const onChangeAnexoPdf = async (file: File | null) => {
@@ -2515,12 +2515,17 @@ function ModalAtualizarPedido({
                         ))}
                       </select>
                       {loadingMotivos && <p className="text-xs text-slate-500 mt-1">Carregando motivos...</p>}
-                      {exigeAnexo && (
+                      {mostrarCampoAnexo && (
                         <CampoAnexoAssinaturaPdf
                           className="mt-2"
                           anexoNome={anexoNome}
+                          obrigatorio={exigeAnexo}
                           onFileChange={(file) => void onChangeAnexoPdf(file)}
-                          ajuda={`Justificativa não abonada: baixe o modelo, assine e anexe o PDF${anexoNome ? ` — ${anexoNome}` : ''}.`}
+                          ajuda={
+                            exigeAnexo
+                              ? `Justificativa não abonada: baixe o modelo, assine e anexe o PDF${anexoNome ? ` — ${anexoNome}` : ''}.`
+                              : `Opcional: anexe o PDF assinado para auditoria no histórico${anexoNome ? ` — ${anexoNome}` : ''}.`
+                          }
                         />
                       )}
                     </div>

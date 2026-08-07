@@ -55,9 +55,9 @@ const SECOES: SecaoAjuda[] = [
         texto: 'Complemento do motivo de reprogramação no Gerenciador — não substitui a mensagem do chat.',
       },
       {
-        titulo: 'Justificativa não abonada (PDF)',
+        titulo: 'Justificativa (PDF)',
         texto:
-          'Com motivo não abonado e nova data prometida, baixe o modelo, assine e anexe o PDF antes de salvar. O link fica no histórico do pedido.',
+          'Com nova data prometida, o PDF assinado fica disponível para anexar. Em motivo não abonado é obrigatório; em motivo abonado é opcional — se anexar, o arquivo é gravado no histórico do pedido (Gerenciador / Pedidos Encerrados).',
       },
     ],
   },

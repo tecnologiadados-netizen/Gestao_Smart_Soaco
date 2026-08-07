@@ -45,7 +45,6 @@ import { prisma } from '../config/prisma.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import { getPermissoesUsuario } from '../middleware/requirePermission.js';
 import {
-  motivoExigeAnexoAssinatura,
   resolverAnexoAssinaturaObrigatorio,
 } from '../services/previsaoAssinaturaService.js';
 
@@ -770,36 +769,33 @@ export async function ajustarPrevisaoLote(req: Request, res: Response): Promise<
   const mapaRotaGerenciador = await obterMapaRotaPorIdPedido(
     itensComPrevisaoValida.map((a) => a.id_pedido)
   );
-  const ajustes = await Promise.all(
-    itensComPrevisaoValida.map(async (a) => {
-      const idNorm = String(a.id_pedido ?? '').trim();
-      const rotaPlanilha = typeof a.rota === 'string' ? a.rota.trim() : '';
-      const rotaGerenciador = mapaRotaGerenciador.get(idNorm) ?? '';
-      const rotaEfetiva = rotaPlanilha || rotaGerenciador;
-      const overrideExplicito = a.apply_rota === true && rotaPlanilha !== '';
-      const usarOverride = overrideExplicito || rotaEfetiva !== '';
-      const motivoLinha = a.motivo ?? '';
-      const exigeAnexoLinha =
-        anexoPersistido != null && (await motivoExigeAnexoAssinatura(motivoLinha));
-      return {
-        id_pedido: idNorm,
-        previsao_nova: new Date(a.previsao_nova!),
-        motivo: motivoLinha,
-        observacao: a.observacao ?? null,
-        // Importação: override na rota da linha (planilha ou Gerenciador) para atualizar a Previsão atual exibida.
-        rota: usarOverride ? rotaEfetiva : null,
-        previsao_confiavel: a.previsao_confiavel !== false,
-        anexoAssinatura:
-          exigeAnexoLinha && anexoPersistido
-            ? {
-                path: anexoPersistido.path,
-                nome: anexoPersistido.nome,
-                grupoId: anexoPersistido.grupoId,
-              }
-            : null,
-      };
-    }),
-  );
+  const anexoParaLinha = anexoPersistido
+    ? {
+        path: anexoPersistido.path,
+        nome: anexoPersistido.nome,
+        grupoId: anexoPersistido.grupoId,
+      }
+    : null;
+  const ajustes = itensComPrevisaoValida.map((a) => {
+    const idNorm = String(a.id_pedido ?? '').trim();
+    const rotaPlanilha = typeof a.rota === 'string' ? a.rota.trim() : '';
+    const rotaGerenciador = mapaRotaGerenciador.get(idNorm) ?? '';
+    const rotaEfetiva = rotaPlanilha || rotaGerenciador;
+    const overrideExplicito = a.apply_rota === true && rotaPlanilha !== '';
+    const usarOverride = overrideExplicito || rotaEfetiva !== '';
+    const motivoLinha = a.motivo ?? '';
+    return {
+      id_pedido: idNorm,
+      previsao_nova: new Date(a.previsao_nova!),
+      motivo: motivoLinha,
+      observacao: a.observacao ?? null,
+      // Importação: override na rota da linha (planilha ou Gerenciador) para atualizar a Previsão atual exibida.
+      rota: usarOverride ? rotaEfetiva : null,
+      previsao_confiavel: a.previsao_confiavel !== false,
+      // PDF enviado no lote grava em todas as linhas (não só nas não abonadas).
+      anexoAssinatura: anexoParaLinha,
+    };
+  });
   const resultados = await registrarAjustesPrevisaoLote(ajustes, usuario);
   invalidatePedidosCache();
   setLastUpload();

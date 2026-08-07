@@ -1331,14 +1331,22 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
           }
         }
 
+        // Pedido já saiu da listagem do Gerenciador: ainda assim grava no histórico
+        // com os id_pedido do card, para o PDF/motivo não se perderem (Encerrados/histórico).
         if (idsPedido.length === 0) {
-          console.warn('[SycroOrder] updateOrder: nenhum id_pedido para registrar previsão no Gerenciador', {
+          idsPedido = sortedUnique(
+            parseJsonArray((order as { item_ids_json?: string | null }).item_ids_json).filter(Boolean),
+          );
+        }
+
+        if (idsPedido.length === 0) {
+          console.warn('[SycroOrder] updateOrder: nenhum id_pedido para registrar no Gerenciador', {
             orderId: order.id,
             orderNumber,
           });
         }
 
-        if (ajustaPrevisaoNoGerenciador) {
+        if (ajustaPrevisaoNoGerenciador && idsPedido.length > 0) {
           let anexoPersistido;
           try {
             anexoPersistido = await resolverAnexoAssinaturaObrigatorio({
@@ -1362,7 +1370,8 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
               }
             : null;
           for (const idPedido of idsPedido) {
-            const rotaAjuste = rotaReplicate ?? resolveRotaForIdPedido(rowsDoPd, idPedido);
+            const rotaAjuste =
+              rotaReplicate ?? resolveRotaForIdPedido(rowsDoPd, idPedido) ?? (dm || null);
             await registrarAjustePrevisao(
               idPedido,
               dataNova,
@@ -1374,6 +1383,11 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
               anexoParaLinha,
             );
           }
+        } else if (ajustaPrevisaoNoGerenciador && idsPedido.length === 0) {
+          console.error(
+            '[SycroOrder] updateOrder: alteração de data sem id_pedido — histórico/PDF não gravados',
+            { orderId: order.id, orderNumber },
+          );
         }
 
         // Data de produção: mesmo escopo de itens e mesma rota usados na previsão.

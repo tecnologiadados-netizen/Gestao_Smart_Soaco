@@ -618,6 +618,16 @@ export default function ConfirmacaoSimulacaoModal({
     return false;
   }, [linhas, motivoPorId, motivos]);
 
+  /** PDF opcional quando há motivos; obrigatório se algum for não abonado. */
+  const mostrarCampoAnexo = useMemo(() => {
+    if (exigeAnexoAssinatura) return true;
+    for (const l of linhas) {
+      if (!l.exigeMotivo || !l.idPedido) continue;
+      if (motivoPorId[l.idPedido]?.trim()) return true;
+    }
+    return false;
+  }, [exigeAnexoAssinatura, linhas, motivoPorId]);
+
   const onChangeAnexoPdf = async (file: File | null) => {
     if (!file) {
       setAnexoAssinatura(null);
@@ -660,7 +670,7 @@ export default function ConfirmacaoSimulacaoModal({
       return;
     }
     setValidacao(null);
-    onConfirmar(motivoPorId, exigeAnexoAssinatura ? anexoAssinatura : null);
+    onConfirmar(motivoPorId, anexoAssinatura);
   };
 
   const editar = onEditarData;
@@ -1203,16 +1213,19 @@ export default function ConfirmacaoSimulacaoModal({
         )}
 
         <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 px-4 py-3 dark:border-slate-600">
-          {exigeAnexoAssinatura && (
+          {mostrarCampoAnexo && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-600/60 dark:bg-amber-950/30">
               <CampoAnexoAssinaturaPdf
                 className="max-w-xl"
                 anexoNome={anexoNome}
+                obrigatorio={exigeAnexoAssinatura}
                 onFileChange={(file) => void onChangeAnexoPdf(file)}
                 ajuda={
                   anexoNome
                     ? `Arquivo: ${anexoNome}`
-                    : 'Baixe o modelo, assine e anexe. Um único PDF vale para todos os ajustes com motivo não abonado.'
+                    : exigeAnexoAssinatura
+                      ? 'Baixe o modelo, assine e anexe. Um único PDF vale para todos os ajustes do lote.'
+                      : 'Opcional: anexe PDF assinado para auditoria. Um único arquivo vale para todo o lote.'
                 }
               />
             </div>

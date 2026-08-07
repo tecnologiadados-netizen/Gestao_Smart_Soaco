@@ -238,6 +238,7 @@ export default function ModalAjustePrevisao({
 
   const motivoSelecionado = sugestoes.find((s) => s.descricao === motivo);
   const exigeAnexo = previsaoSeraAjustada && motivoSelecionado?.abonada === false;
+  const mostrarCampoAnexo = previsaoSeraAjustada && persistirNoGerenciador && Boolean(motivo.trim());
 
   /** Evita deixar motivo/observação preenchidos e desabilitados quando a previsão volta ao valor atual. */
   const limparCamposAjustePrevisaoSeInativos = (previsaoIso: string, producaoIso: string) => {
@@ -262,8 +263,6 @@ export default function ModalAjustePrevisao({
 
   const onChangeMotivo = (valor: string) => {
     setMotivo(valor);
-    const sel = sugestoes.find((s) => s.descricao === valor);
-    if (!sel || sel.abonada !== false) limparAnexoAssinatura();
   };
 
   const onChangeAnexoPdf = async (file: File | null) => {
@@ -928,12 +927,17 @@ export default function ModalAjustePrevisao({
                 Motivo, previsão confiável e observação só valem para mudança da previsão de entrega.
               </p>
             )}
-            {exigeAnexo && persistirNoGerenciador && (
+            {mostrarCampoAnexo && (
               <CampoAnexoAssinaturaPdf
                 className="mt-3"
                 anexoNome={anexoNome}
+                obrigatorio={exigeAnexo}
                 onFileChange={(file) => void onChangeAnexoPdf(file)}
-                ajuda={`Justificativa não abonada: baixe o modelo, assine e anexe o PDF${anexoNome ? ` — ${anexoNome}` : ''}.`}
+                ajuda={
+                  exigeAnexo
+                    ? `Justificativa não abonada: baixe o modelo, assine e anexe o PDF${anexoNome ? ` — ${anexoNome}` : ''}.`
+                    : `Opcional: anexe o PDF assinado para auditoria no histórico${anexoNome ? ` — ${anexoNome}` : ''}.`
+                }
               />
             )}
           </div>
