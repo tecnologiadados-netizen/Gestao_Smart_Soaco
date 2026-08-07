@@ -23,7 +23,15 @@ import {
 import { canonicalizeSetorPainel } from './painelProducaoConstants.js';
 
 export const NIVEL_NAO_ATINGIDO = 'Não atingida';
-export const SETOR_PERFILADEIRAS = 'Perfiladeiras';
+/** Setores da área Produção — mesma regra indireta (parcelas por montagem). */
+export const SETORES_PRODUCAO = [
+  'Perfiladeiras',
+  'Corte e Dobra',
+  'Solda',
+  'Pintura',
+] as const;
+export type SetorProducao = (typeof SETORES_PRODUCAO)[number];
+export const SETOR_PERFILADEIRAS: SetorProducao = 'Perfiladeiras';
 export const AREA_MONTAGEM = 'montagem' as const;
 export const AREA_PRODUCAO = 'producao' as const;
 
@@ -32,7 +40,7 @@ export type ApuracaoArea = typeof AREA_MONTAGEM | typeof AREA_PRODUCAO;
 const LABEL_NAO_ABONADO_MONTAGEM = 'Justificativas não abonadas para Montagem';
 const LABEL_NAO_ABONADO_PRODUCAO = 'Justificativas não abonadas para Produção';
 
-/** Valores unitários fixos da política para o setor de produção (Perfiladeiras). */
+/** Valores unitários fixos da política para cada setor de produção. */
 export const VALOR_UNITARIO_PRODUCAO: Record<NivelMeta, number> = {
   Bronze: 8.3,
   Prata: 16.6,
@@ -40,6 +48,10 @@ export const VALOR_UNITARIO_PRODUCAO: Record<NivelMeta, number> = {
 };
 
 export const MIN_SETORES_MONTAGEM_PERFILADEIRAS = 3;
+
+export function isSetorProducao(setor: string): setor is SetorProducao {
+  return (SETORES_PRODUCAO as readonly string[]).includes(setor);
+}
 
 export const APURACAO_DETALHE_TIPOS = [
   'pedidos_encerrados',
@@ -96,7 +108,7 @@ export type ApuracaoMetaSetor = {
   motivo_nao_abonado: string;
   cadastro_niveis_completo: boolean;
   considerar_penalizacoes?: boolean;
-  /** Campos exclusivos da linha de Perfiladeiras (área produção). */
+  /** Campos exclusivos das linhas da área produção. */
   setores_atingiram_meta?: number;
   distribuicao_niveis?: { Bronze: number; Prata: number; Aço: number };
   valor_bruto?: number;
@@ -139,7 +151,7 @@ export type ApuracaoDetalhePayload = {
   titulo: string;
   total: number;
   linhas: ApuracaoDetalheLinha[];
-  /** Memorial de Perfiladeiras. */
+  /** Memorial de cálculo dos setores de produção. */
   parcelas?: ParcelaProducaoDetalhe[];
   valor_bruto?: number;
   valor_a_pagar?: number;
@@ -314,7 +326,7 @@ type SetorMontagemCadastro = {
 
 /**
  * A grade exibe todo setor ativo. A condição de níveis completos é usada
- * separadamente para decidir quais setores alimentam Perfiladeiras.
+ * separadamente para decidir quais setores alimentam a área Produção.
  */
 async function listarSetoresMontagemAtivos(mes: string): Promise<SetorMontagemCadastro[]> {
   const setores = await listSetoresMeta();
@@ -594,7 +606,11 @@ function montarParcelasProducao(montagens: MontagemInterna[]): ParcelaProducaoDe
   });
 }
 
-function resumoPerfiladeiras(mes: string, parcelas: ParcelaProducaoDetalhe[]): ApuracaoMetaSetor {
+function resumoSetorProducao(
+  mes: string,
+  setor: SetorProducao,
+  parcelas: ParcelaProducaoDetalhe[],
+): ApuracaoMetaSetor {
   const consolidado = consolidarPerfiladeiras(
     parcelas.map((p) => ({
       nivel: p.nivel,
@@ -606,7 +622,7 @@ function resumoPerfiladeiras(mes: string, parcelas: ParcelaProducaoDetalhe[]): A
 
   return {
     area: AREA_PRODUCAO,
-    setor: SETOR_PERFILADEIRAS,
+    setor,
     mes,
     pedidos_encerrados: 0,
     pedidos_com_alteracao_nao_abonada: 0,
@@ -670,8 +686,10 @@ export async function getApuracaoMetas(mes: string): Promise<ApuracaoMetaSetor[]
   const linhasMontagem = montagens.map((m) => m.resumo);
   const montagensElegiveis = montagens.filter((m) => m.resumo.cadastro_niveis_completo);
   const parcelas = montarParcelasProducao(montagensElegiveis);
-  const perfiladeiras = resumoPerfiladeiras(mes, parcelas);
-  return [...linhasMontagem, perfiladeiras];
+  const linhasProducao = SETORES_PRODUCAO.map((setor) =>
+    resumoSetorProducao(mes, setor, parcelas),
+  );
+  return [...linhasMontagem, ...linhasProducao];
 }
 
 /** @deprecated use getApuracaoMetas */
@@ -736,7 +754,8 @@ export async function getApuracaoDetalhe(
     };
   }
 
-  if (tipo === 'memorial_producao' || setor === SETOR_PERFILADEIRAS) {
+  if (tipo === 'memorial_producao' || isSetorProducao(setor)) {
+    const setorProducao = isSetorProducao(setor) ? setor : SETOR_PERFILADEIRAS;
     const [faixasDesconto, motivosMontagem, motivosProducao] = await Promise.all([
       listarFaixasDesconto(mes),
       listarDescricoesNaoAbonadas('montagem'),
@@ -773,9 +792,9 @@ export async function getApuracaoDetalhe(
     );
     return {
       mes,
-      setor: SETOR_PERFILADEIRAS,
+      setor: setorProducao,
       tipo: 'memorial_producao',
-      titulo: 'Memorial de cálculo — Perfiladeiras',
+      titulo: `Memorial de cálculo — ${setorProducao}`,
       total: parcelas.length,
       linhas: [],
       parcelas,

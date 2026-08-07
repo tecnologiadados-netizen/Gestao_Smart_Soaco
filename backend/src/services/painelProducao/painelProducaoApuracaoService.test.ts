@@ -73,7 +73,7 @@ describe('apuração qualitativa das metas', () => {
   });
 });
 
-describe('apuração de Perfiladeiras (área produção)', () => {
+describe('apuração dos setores de produção', () => {
   it('usa os valores unitários da política', () => {
     expect(VALOR_UNITARIO_PRODUCAO.Bronze).toBe(8.3);
     expect(VALOR_UNITARIO_PRODUCAO.Prata).toBe(16.6);
