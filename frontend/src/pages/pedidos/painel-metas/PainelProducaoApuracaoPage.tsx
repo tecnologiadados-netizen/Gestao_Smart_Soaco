@@ -1076,8 +1076,8 @@ export default function PainelProducaoApuracaoPage() {
                 </h2>
                 <p>
                   {area === 'montagem'
-                    ? 'Todos os setores de montagem ativos. Os setores com cadastro de níveis incompleto são exibidos, mas não alimentam Perfiladeiras.'
-                    : 'Perfiladeiras: valor indireto conforme níveis atingidos pelos setores de montagem. Clique no valor a pagar para o memorial.'}
+                    ? 'Todos os setores de montagem ativos. Os setores com cadastro de níveis incompleto são exibidos, mas não alimentam os setores de produção.'
+                    : 'Setores de produção (Perfiladeiras, Corte e Dobra, Solda e Pintura): valor indireto conforme níveis atingidos pela montagem. Clique no valor a pagar para o memorial.'}
                 </p>
               </div>
               <button
@@ -1293,15 +1293,16 @@ export default function PainelProducaoApuracaoPage() {
                     </span>
                     <span>
                       Valor a pagar = valor do nível atingido com o desconto aplicado. Setores com
-                      níveis incompletos não entram em Perfiladeiras.
+                      níveis incompletos não entram nos setores de produção.
                     </span>
                   </>
                 ) : (
                   <>
                     <span>
-                      Perfiladeiras: Bronze <strong>R$ 8,30</strong>, Prata{' '}
-                      <strong>R$ 16,60</strong>, Aço <strong>R$ 25,00</strong> por setor de montagem
-                      — mínimo de <strong>3 setores</strong>.
+                      Perfiladeiras, Corte e Dobra, Solda e Pintura: Bronze{' '}
+                      <strong>R$ 8,30</strong>, Prata <strong>R$ 16,60</strong>, Aço{' '}
+                      <strong>R$ 25,00</strong> por setor de montagem — mínimo de{' '}
+                      <strong>3 setores</strong>.
                     </span>
                     <span>
                       Herda o desconto da montagem só se a média de ruptura de PP (
