@@ -132,6 +132,8 @@ SELECT
 	MAX(ef_base.datasBaseEF) AS 'Data base entrega futura',
 	emp.opcao AS 'Venda por qual empresa?',
 	vr.nome AS 'Vendedor/Representante',
+	MAX(atr.Conta) AS 'Conta',
+	MAX(atr.`Status conta`) AS 'Status conta',
 	CASE
 		WHEN (CASE
 			WHEN (de.observacoes IS NULL
@@ -240,6 +242,43 @@ LEFT JOIN tipopedido tpd ON
 	tpd.id = pd.idTipoPedido
 LEFT JOIN pessoa pe ON
 	pe.id = pd.idCliente
+LEFT JOIN (
+	SELECT
+		af.idPessoa,
+		GROUP_CONCAT(
+			CONCAT(af.id, '|', ROUND(af.saldoBaixar, 2))
+			ORDER BY af.dataVencimento ASC, af.id ASC
+			SEPARATOR '||'
+		) AS Conta,
+		GROUP_CONCAT(
+			CONCAT('Em atraso|', DATE_FORMAT(af.dataVencimento, '%Y-%m-%d'))
+			ORDER BY af.dataVencimento ASC, af.id ASC
+			SEPARATOR '||'
+		) AS `Status conta`
+	FROM
+		agendamentofinanceiro af
+	LEFT JOIN nfe nfes ON
+		nfes.idDocumentoEstoque = af.idDocumentoSaida
+	LEFT JOIN nfe nfee ON
+		nfee.idDocumentoEstoque = af.idDocumentoEntrada
+	LEFT JOIN nfse ON
+		nfse.idDocumentoServico = af.idDocumentoSaida
+	WHERE
+		af.discriminador IN ('R', 'CR', 'NCC')
+		AND af.tipoConta IN (1, 3)
+		AND IFNULL(af.baixada, 0) = 0
+		AND af.dataVencimento < CURDATE()
+		AND af.saldoBaixar > 0
+		AND af.idEmpresa IN (1, 2, 3, 5)
+		AND NOT (
+			COALESCE(nfes.status = 7, 0)
+			OR COALESCE(nfee.status = 7, 0)
+			OR COALESCE(nfse.status = 4, 0)
+		)
+	GROUP BY
+		af.idPessoa
+) atr ON
+	atr.idPessoa = pe.id
 LEFT JOIN tributacao t ON
 	t.idItemPedido = ip.id
 LEFT JOIN (

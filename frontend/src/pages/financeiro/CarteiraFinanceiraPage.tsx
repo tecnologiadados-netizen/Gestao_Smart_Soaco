@@ -40,7 +40,7 @@ const DIM_TITULO: Record<CarteiraDimensao, string> = {
   carrada: 'Por Carrada/Rota',
   cliente: 'Por Cliente',
   condicao: 'Por Condição de Pagamento',
-  status: 'Por Status',
+  status: 'Por Status de entrega',
 };
 
 const FILTRO_INPUT_CLASS =
@@ -517,7 +517,7 @@ export default function CarteiraFinanceiraPage() {
               minWidth="160px"
             />
             <div>
-              <label className={FILTRO_LABEL_CLASS}>Status do Pedido</label>
+              <label className={FILTRO_LABEL_CLASS}>Status de entrega</label>
               <select
                 value={statusPedido}
                 onChange={(e) => setStatusPedido(e.target.value)}
