@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { CarteiraFinanceiraLinha } from '../../../api/financeiro';
 import { criarMatcherTextoLivre } from '../../../utils/textoLivreBusca';
+import { useColumnResize } from '../crm/hooks/useColumnResize';
 import { formatarReais } from '../dashboard/dashboardFormat';
 import { parseContasAtraso, parseStatusContasAtraso } from './carteiraContasAtraso';
 
@@ -8,28 +9,56 @@ const PAGE_SIZE = 50;
 
 type SortKey = keyof CarteiraFinanceiraLinha;
 
-const COLS: { key: SortKey; label: string; money?: boolean; date?: boolean }[] = [
-  { key: 'PD', label: 'PD' },
-  { key: 'Emissao', label: 'Emissão', date: true },
-  { key: 'previsaoAtual', label: 'Previsão Atual', date: true },
-  { key: 'Cliente', label: 'Cliente' },
-  { key: 'UF', label: 'UF' },
-  { key: 'Municipio de entrega', label: 'Município' },
-  { key: 'ObservacaoPedido', label: 'Observação do pedido' },
-  { key: 'Observacoes', label: 'Carrada/Rota' },
-  { key: 'Condicao de pagamento do pedido de venda', label: 'Cond. Pagamento' },
-  { key: 'StatusPedido', label: 'Status de entrega' },
-  { key: 'Valor Romaneado', label: 'Saldo Romaneado', money: true },
-  { key: 'Saldo a Faturar Real', label: 'Saldo a Faturar Real', money: true },
-  { key: 'Saldo a Receber', label: 'Saldo a Receber', money: true },
-  { key: 'Venda por qual empresa?', label: 'Empresa' },
-  { key: 'tipoF', label: 'Tipo' },
-  { key: 'RM', label: 'RM' },
-  { key: 'Data de entrega', label: 'Data entrega', date: true },
-  { key: 'Vendedor/Representante', label: 'Vendedor' },
-  { key: 'Conta', label: 'Conta' },
-  { key: 'Status conta', label: 'Status conta' },
+const COLS: {
+  key: SortKey;
+  label: string;
+  money?: boolean;
+  date?: boolean;
+  /** Permite quebra de linha na célula (útil em observação). */
+  wrap?: boolean;
+  defaultWidth: number;
+}[] = [
+  { key: 'PD', label: 'PD', defaultWidth: 88 },
+  { key: 'Emissao', label: 'Emissão', date: true, defaultWidth: 92 },
+  { key: 'previsaoAtual', label: 'Previsão Atual', date: true, defaultWidth: 100 },
+  { key: 'Cliente', label: 'Cliente', defaultWidth: 160 },
+  { key: 'UF', label: 'UF', defaultWidth: 44 },
+  { key: 'Municipio de entrega', label: 'Município', defaultWidth: 110 },
+  {
+    key: 'ObservacaoPedido',
+    label: 'Observação do pedido',
+    wrap: true,
+    defaultWidth: 280,
+  },
+  { key: 'Observacoes', label: 'Carrada/Rota', defaultWidth: 150 },
+  {
+    key: 'Condicao de pagamento do pedido de venda',
+    label: 'Cond. Pagamento',
+    defaultWidth: 120,
+  },
+  { key: 'StatusPedido', label: 'Status de entrega', defaultWidth: 100 },
+  { key: 'Valor Romaneado', label: 'Saldo Romaneado', money: true, defaultWidth: 110 },
+  {
+    key: 'Saldo a Faturar Real',
+    label: 'Saldo a Faturar Real',
+    money: true,
+    defaultWidth: 120,
+  },
+  { key: 'Saldo a Receber', label: 'Saldo a Receber', money: true, defaultWidth: 110 },
+  { key: 'Venda por qual empresa?', label: 'Empresa', defaultWidth: 100 },
+  { key: 'tipoF', label: 'Tipo', defaultWidth: 80 },
+  { key: 'RM', label: 'RM', defaultWidth: 80 },
+  { key: 'Data de entrega', label: 'Data entrega', date: true, defaultWidth: 92 },
+  { key: 'Vendedor/Representante', label: 'Vendedor', defaultWidth: 120 },
+  { key: 'Conta', label: 'Conta', defaultWidth: 100 },
+  { key: 'Status conta', label: 'Status conta', defaultWidth: 110 },
 ];
+
+const COL_IDS = COLS.map((c) => c.key) as SortKey[];
+
+const DEFAULT_WIDTHS = Object.fromEntries(
+  COLS.map((c) => [c.key, c.defaultWidth]),
+) as Record<SortKey, number>;
 
 type Props = { linhas: CarteiraFinanceiraLinha[] };
 
@@ -45,12 +74,15 @@ export default function CarteiraTabela({ linhas }: Props) {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(0);
 
+  const { tableRef, startResize } = useColumnResize(COL_IDS, DEFAULT_WIDTHS, {
+    minWidthPx: 48,
+    storageKey: 'carteira-financeira-detalhe-col-widths-v1',
+  });
+
   const filtradas = useMemo(() => {
     const match = criarMatcherTextoLivre(busca);
     if (!busca.trim()) return linhas;
-    return linhas.filter((l) =>
-      COLS.some((c) => match(String(l[c.key] ?? '')))
-    );
+    return linhas.filter((l) => COLS.some((c) => match(String(l[c.key] ?? ''))));
   }, [linhas, busca]);
 
   const ordenadas = useMemo(() => {
@@ -93,7 +125,7 @@ export default function CarteiraTabela({ linhas }: Props) {
 
   return (
     <div className="card-panel p-4" data-pdf-block data-pdf-table>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
           Detalhamento ({filtradas.length.toLocaleString('pt-BR')} linhas)
         </h3>
@@ -105,21 +137,53 @@ export default function CarteiraTabela({ linhas }: Props) {
             setPage(0);
           }}
           placeholder="Busca global (use % como curinga)"
-          className="rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-sm px-3 py-1.5 w-full sm:w-72"
+          className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-700 sm:w-72"
         />
       </div>
+      <p className="mb-2 text-[11px] text-slate-500 dark:text-slate-400">
+        Arraste a borda direita do cabeçalho para ajustar a largura das colunas.
+      </p>
       <div className="overflow-x-auto">
-        <table className="min-w-full text-xs">
+        <table
+          ref={tableRef}
+          className="table-crm text-xs"
+          style={{ tableLayout: 'fixed', width: 'max-content' }}
+        >
+          <colgroup>
+            {COLS.map((c) => (
+              <col key={c.key} />
+            ))}
+          </colgroup>
           <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-600 text-left text-slate-500">
-              {COLS.map((c) => (
+            <tr className="border-b border-slate-200 text-left text-slate-500 dark:border-slate-600">
+              {COLS.map((c, idx) => (
                 <th
                   key={c.key}
-                  className={`py-2 px-2 whitespace-nowrap cursor-pointer hover:text-slate-800 dark:hover:text-slate-200 ${c.money ? 'text-right' : ''}`}
-                  onClick={() => toggleSort(c.key)}
+                  className={`relative py-2 px-2 ${c.money ? 'text-right' : ''}`}
                 >
-                  {c.label}
-                  {sortKey === c.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                  <button
+                    type="button"
+                    className={`w-full cursor-pointer whitespace-nowrap text-left hover:text-slate-800 dark:hover:text-slate-200 ${
+                      c.money ? 'text-right' : ''
+                    }`}
+                    onClick={() => toggleSort(c.key)}
+                  >
+                    {c.label}
+                    {sortKey === c.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                  </button>
+                  {idx < COLS.length - 1 ? (
+                    <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={`Redimensionar coluna ${c.label}`}
+                      className="col-resize-handle"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        startResize(c.key, event.clientX);
+                      }}
+                    />
+                  ) : null}
                 </th>
               ))}
             </tr>
@@ -128,14 +192,14 @@ export default function CarteiraTabela({ linhas }: Props) {
             {slice.map((l, i) => (
               <tr
                 key={`${l.id}-${l.RM ?? ''}-${i}`}
-                className="border-b border-slate-100 dark:border-slate-700/60 hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-700/60 dark:hover:bg-slate-800/40"
               >
                 {COLS.map((c) => {
                   const v = l[c.key];
                   if (c.key === 'StatusPedido') {
                     const atrasado = v === 'Atrasado';
                     return (
-                      <td key={c.key} className="py-1.5 px-2">
+                      <td key={c.key} className="px-2 py-1.5">
                         <span
                           className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${
                             atrasado
@@ -152,17 +216,20 @@ export default function CarteiraTabela({ linhas }: Props) {
                     const itens = parseStatusContasAtraso(v as string | null);
                     if (itens.length === 0) {
                       return (
-                        <td key={c.key} className="py-1.5 px-2 text-slate-400">
+                        <td key={c.key} className="px-2 py-1.5 text-slate-400">
                           —
                         </td>
                       );
                     }
                     return (
-                      <td key={c.key} className="py-1.5 px-2">
+                      <td key={c.key} className="px-2 py-1.5">
                         <ul className="space-y-1">
                           {itens.map((item, idx) => (
-                            <li key={`${item.status}-${item.vencimento ?? ''}-${idx}`} className="space-y-0.5">
-                              <span className="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                            <li
+                              key={`${item.status}-${item.vencimento ?? ''}-${idx}`}
+                              className="space-y-0.5"
+                            >
+                              <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
                                 {item.status}
                               </span>
                               {item.vencimento ? (
@@ -180,18 +247,20 @@ export default function CarteiraTabela({ linhas }: Props) {
                     const contas = parseContasAtraso(v as string | null);
                     if (contas.length === 0) {
                       return (
-                        <td key={c.key} className="py-1.5 px-2 text-slate-400">
+                        <td key={c.key} className="px-2 py-1.5 text-slate-400">
                           —
                         </td>
                       );
                     }
                     return (
-                      <td key={c.key} className="py-1.5 px-2">
+                      <td key={c.key} className="px-2 py-1.5">
                         <ul
                           className="space-y-1"
                           title={contas
                             .map((ct) =>
-                              ct.valor != null ? `${ct.codigo} · ${formatarReais(ct.valor)}` : ct.codigo
+                              ct.valor != null
+                                ? `${ct.codigo} · ${formatarReais(ct.valor)}`
+                                : ct.codigo,
                             )
                             .join(', ')}
                         >
@@ -213,21 +282,33 @@ export default function CarteiraTabela({ linhas }: Props) {
                   }
                   if (c.money) {
                     return (
-                      <td key={c.key} className="py-1.5 px-2 text-right whitespace-nowrap tabular-nums">
+                      <td
+                        key={c.key}
+                        className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums"
+                      >
                         {formatarReais(Number(v) || 0)}
                       </td>
                     );
                   }
                   if (c.date) {
                     return (
-                      <td key={c.key} className="py-1.5 px-2 whitespace-nowrap">
+                      <td key={c.key} className="whitespace-nowrap px-2 py-1.5">
                         {fmtDate(v as string | null)}
                       </td>
                     );
                   }
+                  const texto = String(v ?? '—');
                   return (
-                    <td key={c.key} className="py-1.5 px-2 max-w-[180px] truncate" title={String(v ?? '')}>
-                      {String(v ?? '—')}
+                    <td
+                      key={c.key}
+                      className={`px-2 py-1.5 ${
+                        c.wrap
+                          ? 'break-words whitespace-normal align-top'
+                          : 'truncate whitespace-nowrap'
+                      }`}
+                      title={texto}
+                    >
+                      {texto}
                     </td>
                   );
                 })}
@@ -242,50 +323,50 @@ export default function CarteiraTabela({ linhas }: Props) {
             )}
           </tbody>
           <tfoot>
-            <tr className="border-t-2 border-slate-300 dark:border-slate-500 font-semibold">
+            <tr className="border-t-2 border-slate-300 font-semibold dark:border-slate-500">
               {COLS.map((c) => {
                 if (c.key === 'Saldo a Receber') {
                   return (
-                    <td key={c.key} className="py-2 px-2 text-right tabular-nums">
+                    <td key={c.key} className="px-2 py-2 text-right tabular-nums">
                       {formatarReais(totais.receber)}
                     </td>
                   );
                 }
                 if (c.key === 'Saldo a Faturar Real') {
                   return (
-                    <td key={c.key} className="py-2 px-2 text-right tabular-nums">
+                    <td key={c.key} className="px-2 py-2 text-right tabular-nums">
                       {formatarReais(totais.faturarReal)}
                     </td>
                   );
                 }
                 if (c.key === 'Valor Romaneado') {
                   return (
-                    <td key={c.key} className="py-2 px-2 text-right tabular-nums">
+                    <td key={c.key} className="px-2 py-2 text-right tabular-nums">
                       {formatarReais(totais.romaneado)}
                     </td>
                   );
                 }
                 if (c.key === 'PD') {
                   return (
-                    <td key={c.key} className="py-2 px-2">
+                    <td key={c.key} className="px-2 py-2">
                       Total
                     </td>
                   );
                 }
-                return <td key={c.key} className="py-2 px-2" />;
+                return <td key={c.key} className="px-2 py-2" />;
               })}
             </tr>
           </tfoot>
         </table>
       </div>
-      <div className="flex items-center justify-between mt-3 text-xs text-slate-500">
+      <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
         <span>
           Página {pageSafe + 1} de {totalPages}
         </span>
         <div className="flex gap-2">
           <button
             type="button"
-            className="btn-secondary text-xs px-3 py-1"
+            className="btn-secondary px-3 py-1 text-xs"
             disabled={pageSafe <= 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
           >
@@ -293,7 +374,7 @@ export default function CarteiraTabela({ linhas }: Props) {
           </button>
           <button
             type="button"
-            className="btn-secondary text-xs px-3 py-1"
+            className="btn-secondary px-3 py-1 text-xs"
             disabled={pageSafe >= totalPages - 1}
             onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
           >
