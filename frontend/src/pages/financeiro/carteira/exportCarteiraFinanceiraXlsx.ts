@@ -1,5 +1,6 @@
 import { Workbook, type Worksheet } from 'exceljs';
 import type { CarteiraFinanceiraLinha } from '../../../api/financeiro';
+import { formatarReais } from '../dashboard/dashboardFormat';
 import {
   aggPorCarrada,
   aggPorCliente,
@@ -7,6 +8,10 @@ import {
   aggPorUf,
   type MetricasAgg,
 } from './carteiraAggregates';
+import {
+  formatContasAtrasoTexto,
+  formatStatusContasAtrasoTexto,
+} from './carteiraContasAtraso';
 
 const DATE_FMT = 'dd/mm/yyyy';
 const MONEY_FMT = 'R$ #,##0.00';
@@ -23,6 +28,12 @@ function toExcelDate(iso: string | null): Date | null {
   if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
   const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
   return new Date(y!, m! - 1, d!);
+}
+
+function fmtDateBr(iso: string | null): string {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso ?? '';
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}/${y}`;
 }
 
 function styleHeader(ws: Worksheet, colCount: number) {
@@ -125,9 +136,11 @@ const DETALHE_COLS: { key: keyof CarteiraFinanceiraLinha; label: string; kind: '
   { key: 'Data base entrega futura', label: 'Data base entrega futura', kind: 'text' },
   { key: 'Venda por qual empresa?', label: 'Venda por qual empresa?', kind: 'text' },
   { key: 'Vendedor/Representante', label: 'Vendedor/Representante', kind: 'text' },
+  { key: 'Conta', label: 'Conta', kind: 'text' },
+  { key: 'Status conta', label: 'Status conta', kind: 'text' },
   { key: 'dataParametro', label: 'dataParametro', kind: 'date' },
   { key: 'tipoF', label: 'tipoF', kind: 'text' },
-  { key: 'StatusPedido', label: 'StatusPedido', kind: 'text' },
+  { key: 'StatusPedido', label: 'Status de entrega', kind: 'text' },
 ];
 
 function nomeArquivo(): string {
@@ -150,6 +163,10 @@ export async function exportCarteiraFinanceiraXlsx(linhas: CarteiraFinanceiraLin
   for (const l of linhas) {
     const values = DETALHE_COLS.map((c) => {
       const v = l[c.key];
+      if (c.key === 'Conta') return formatContasAtrasoTexto(v as string | null, formatarReais);
+      if (c.key === 'Status conta') {
+        return formatStatusContasAtrasoTexto(v as string | null, fmtDateBr);
+      }
       if (c.kind === 'date') return toExcelDate(v as string | null);
       if (c.kind === 'money') return Number(v) || 0;
       return v ?? '';

@@ -3,6 +3,10 @@ import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import type { CarteiraFinanceiraLinha } from '../../../api/financeiro';
 import type { FiltrosCarteiraState } from '../../../utils/persistFiltros';
+import {
+  formatContasAtrasoTexto,
+  formatStatusContasAtrasoTexto,
+} from './carteiraContasAtraso';
 
 /** Largura fixa da captura — força grade 2 colunas estável (breakpoint xl). */
 const PDF_CAPTURE_WIDTH_PX = 1200;
@@ -23,7 +27,7 @@ const COLS: {
   { key: 'Municipio de entrega', label: 'Município' },
   { key: 'Observacoes', label: 'Carrada/Rota' },
   { key: 'Condicao de pagamento do pedido de venda', label: 'Cond. Pagamento' },
-  { key: 'StatusPedido', label: 'Status' },
+  { key: 'StatusPedido', label: 'Status de entrega' },
   { key: 'Valor Romaneado', label: 'Saldo Romaneado', money: true },
   { key: 'Saldo a Faturar Real', label: 'Saldo a Faturar Real', money: true },
   { key: 'Saldo a Receber', label: 'Saldo a Receber', money: true },
@@ -32,6 +36,8 @@ const COLS: {
   { key: 'RM', label: 'RM' },
   { key: 'Data de entrega', label: 'Data entrega', date: true },
   { key: 'Vendedor/Representante', label: 'Vendedor' },
+  { key: 'Conta', label: 'Conta' },
+  { key: 'Status conta', label: 'Status conta' },
 ];
 
 function nomeArquivo(): string {
@@ -108,7 +114,7 @@ export function montarResumoFiltrosCarteiraPdf(filtros: FiltrosCarteiraState): s
   if (carrada) partes.push(`Carrada/Rota: ${carrada}`);
 
   if (filtros.statusPedido.trim()) {
-    partes.push(`Status: ${filtros.statusPedido.trim()}`);
+    partes.push(`Status de entrega: ${filtros.statusPedido.trim()}`);
   }
 
   return partes.length > 0 ? partes : ['Sem filtros aplicados'];
@@ -151,6 +157,12 @@ function celulaPdf(linha: CarteiraFinanceiraLinha, col: (typeof COLS)[number]): 
   if (col.money) return fmtReais(Number(v) || 0);
   if (col.date) return fmtDate(v as string | null);
   if (v == null || v === '') return '—';
+  if (col.key === 'Conta') {
+    return formatContasAtrasoTexto(String(v), fmtReais) || '—';
+  }
+  if (col.key === 'Status conta') {
+    return formatStatusContasAtrasoTexto(String(v), fmtDate) || '—';
+  }
   return String(v);
 }
 
@@ -306,7 +318,9 @@ function adicionarTabelaDetalhamento(
       COLS.map((c, i) => {
         if (c.money) return [i, { halign: 'right' as const }];
         if (c.key === 'UF' || c.key === 'tipoF') return [i, { halign: 'center' as const, cellWidth: 10 }];
-        if (c.key === 'StatusPedido') return [i, { halign: 'center' as const, cellWidth: 16 }];
+        if (c.key === 'StatusPedido') return [i, { halign: 'center' as const, cellWidth: 24 }];
+        if (c.key === 'Status conta') return [i, { halign: 'center' as const, cellWidth: 20 }];
+        if (c.key === 'Conta') return [i, { cellWidth: 22 }];
         if (c.key === 'PD' || c.key === 'RM') return [i, { cellWidth: 16 }];
         return [i, {}];
       })
@@ -326,6 +340,22 @@ function adicionarTabelaDetalhamento(
         } else if (txt === 'Em dia') {
           data.cell.styles.textColor = [4, 120, 87];
           data.cell.styles.fontStyle = 'bold';
+        }
+      }
+      if (data.section === 'body' && COLS[data.column.index]?.key === 'Status conta') {
+        const txt = String(data.cell.raw ?? '');
+        if (txt.includes('Em atraso')) {
+          data.cell.styles.textColor = [180, 83, 9];
+          data.cell.styles.fontStyle = 'bold';
+        }
+        if (txt.includes('\n')) {
+          data.cell.text = txt.split('\n');
+        }
+      }
+      if (data.section === 'body' && COLS[data.column.index]?.key === 'Conta') {
+        const txt = String(data.cell.raw ?? '');
+        if (txt.includes('\n')) {
+          data.cell.text = txt.split('\n');
         }
       }
     },

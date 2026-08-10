@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { CarteiraFinanceiraLinha } from '../../../api/financeiro';
 import { criarMatcherTextoLivre } from '../../../utils/textoLivreBusca';
 import { formatarReais } from '../dashboard/dashboardFormat';
+import { parseContasAtraso, parseStatusContasAtraso } from './carteiraContasAtraso';
 
 const PAGE_SIZE = 50;
 
@@ -16,7 +17,7 @@ const COLS: { key: SortKey; label: string; money?: boolean; date?: boolean }[] =
   { key: 'Municipio de entrega', label: 'Município' },
   { key: 'Observacoes', label: 'Carrada/Rota' },
   { key: 'Condicao de pagamento do pedido de venda', label: 'Cond. Pagamento' },
-  { key: 'StatusPedido', label: 'Status' },
+  { key: 'StatusPedido', label: 'Status de entrega' },
   { key: 'Valor Romaneado', label: 'Saldo Romaneado', money: true },
   { key: 'Saldo a Faturar Real', label: 'Saldo a Faturar Real', money: true },
   { key: 'Saldo a Receber', label: 'Saldo a Receber', money: true },
@@ -25,6 +26,8 @@ const COLS: { key: SortKey; label: string; money?: boolean; date?: boolean }[] =
   { key: 'RM', label: 'RM' },
   { key: 'Data de entrega', label: 'Data entrega', date: true },
   { key: 'Vendedor/Representante', label: 'Vendedor' },
+  { key: 'Conta', label: 'Conta' },
+  { key: 'Status conta', label: 'Status conta' },
 ];
 
 type Props = { linhas: CarteiraFinanceiraLinha[] };
@@ -141,6 +144,69 @@ export default function CarteiraTabela({ linhas }: Props) {
                         >
                           {String(v ?? '—')}
                         </span>
+                      </td>
+                    );
+                  }
+                  if (c.key === 'Status conta') {
+                    const itens = parseStatusContasAtraso(v as string | null);
+                    if (itens.length === 0) {
+                      return (
+                        <td key={c.key} className="py-1.5 px-2 text-slate-400">
+                          —
+                        </td>
+                      );
+                    }
+                    return (
+                      <td key={c.key} className="py-1.5 px-2">
+                        <ul className="space-y-1">
+                          {itens.map((item, idx) => (
+                            <li key={`${item.status}-${item.vencimento ?? ''}-${idx}`} className="space-y-0.5">
+                              <span className="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                                {item.status}
+                              </span>
+                              {item.vencimento ? (
+                                <div className="whitespace-nowrap text-[10px] tabular-nums text-slate-600 dark:text-slate-300">
+                                  {fmtDate(item.vencimento)}
+                                </div>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                    );
+                  }
+                  if (c.key === 'Conta') {
+                    const contas = parseContasAtraso(v as string | null);
+                    if (contas.length === 0) {
+                      return (
+                        <td key={c.key} className="py-1.5 px-2 text-slate-400">
+                          —
+                        </td>
+                      );
+                    }
+                    return (
+                      <td key={c.key} className="py-1.5 px-2">
+                        <ul
+                          className="space-y-1"
+                          title={contas
+                            .map((ct) =>
+                              ct.valor != null ? `${ct.codigo} · ${formatarReais(ct.valor)}` : ct.codigo
+                            )
+                            .join(', ')}
+                        >
+                          {contas.map((ct) => (
+                            <li key={ct.codigo} className="leading-tight">
+                              <div className="whitespace-nowrap text-[11px] font-medium tabular-nums">
+                                {ct.codigo}
+                              </div>
+                              {ct.valor != null ? (
+                                <div className="whitespace-nowrap text-[10px] tabular-nums text-slate-600 dark:text-slate-300">
+                                  {formatarReais(ct.valor)}
+                                </div>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
                       </td>
                     );
                   }

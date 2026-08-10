@@ -1534,6 +1534,8 @@ export type CarteiraFinanceiraLinha = {
   'Data base entrega futura': string | null;
   'Venda por qual empresa?': string | null;
   'Vendedor/Representante': string | null;
+  Conta: string | null;
+  'Status conta': string | null;
   dataParametro: string | null;
   tipoF: string | null;
   StatusPedido: string | null;

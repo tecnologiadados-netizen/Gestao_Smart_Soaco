@@ -57,6 +57,8 @@ export type CarteiraFinanceiraLinha = {
   'Data base entrega futura': string | null;
   'Venda por qual empresa?': string | null;
   'Vendedor/Representante': string | null;
+  Conta: string | null;
+  'Status conta': string | null;
   dataParametro: string | null;
   tipoF: string | null;
   StatusPedido: string | null;
@@ -153,6 +155,8 @@ function mapRow(raw: Record<string, unknown>): CarteiraFinanceiraLinha {
     'Data base entrega futura': toStr(raw['Data base entrega futura']),
     'Venda por qual empresa?': toStr(raw['Venda por qual empresa?']),
     'Vendedor/Representante': toStr(raw['Vendedor/Representante']),
+    Conta: toStr(raw.Conta),
+    'Status conta': toStr(raw['Status conta']),
     dataParametro: toDateStr(raw.dataParametro),
     tipoF: toStr(raw.tipoF),
     StatusPedido: toStr(raw.StatusPedido),

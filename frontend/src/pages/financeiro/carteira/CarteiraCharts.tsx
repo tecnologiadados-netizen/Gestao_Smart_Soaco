@@ -370,7 +370,7 @@ export function CarteiraDonutStatus({
           compact ? 'text-xs mb-1' : 'text-sm mb-2'
         }`}
       >
-        Distribuição por Status
+        Distribuição por Status de entrega
       </h3>
       {pieData.length === 0 ? (
         <p className="text-sm text-slate-500 py-8 text-center">Sem dados para o filtro.</p>
