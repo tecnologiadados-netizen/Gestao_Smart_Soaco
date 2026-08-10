@@ -1840,8 +1840,8 @@ export async function removerPdfAssinadoPendenciaCredito(
   const row = await prisma.crmCreditoPendencia.findUnique({ where: { id: input.id } });
   if (!row) throw new Error('Pendência não encontrada.');
   if (row.encerrada) throw new Error('Esta pendência já está encerrada.');
-  if (row.emailAcaoEnviadoEm) {
-    throw new Error('Não é possível remover o PDF após a confirmação e envio do e-mail.');
+  if (!row.pdfAssinadoStoragePath && !row.pdfAssinadoNome) {
+    throw new Error('Nenhum PDF assinado anexado nesta pendência.');
   }
 
   deleteCrmCreditoPdfIfExists(row.pdfAssinadoStoragePath);

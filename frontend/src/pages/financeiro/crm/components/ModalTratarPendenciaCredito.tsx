@@ -373,7 +373,7 @@ export function ModalTratarPendenciaCredito({
                     >
                       {item.pdfAssinadoNome ?? 'Baixar PDF'}
                     </button>
-                    {!item.emailAcaoEnviado && (
+                    {!item.encerrada && (
                       <button
                         type="button"
                         disabled={pdfUploading}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Clock } from 'lucide-react';
+import { ChevronDown, Clock, Trash2 } from 'lucide-react';
 import {
   baixarCrmPendenciaPdfAssinado,
   fetchCrmPendenciasContasCliente,
@@ -8,6 +8,7 @@ import {
   fetchCrmPendenciasEmailConfig,
   fetchCrmPendenciasHistorico,
   fetchCrmPendenciasUsuarios,
+  removerCrmPendenciaPdfAssinado,
   salvarCrmPendenciasEmailConfig,
   type HistoricoPendenciaEvento,
   type MonitorRegularizacaoCliente,
@@ -277,6 +278,7 @@ export default function PendenciasCreditoPanel({
   } | null>(null);
   const [filtroCliente, setFiltroCliente] = useState(clienteInicial ?? '');
   const [tratarItem, setTratarItem] = useState<PendenciaCreditoItem | null>(null);
+  const [removendoPdfId, setRemovendoPdfId] = useState<number | null>(null);
 
   const [usuarios, setUsuarios] = useState<UsuarioDestinatarioPendencia[]>([]);
   const [idsTo, setIdsTo] = useState<number[]>([]);
@@ -652,6 +654,31 @@ export default function PendenciasCreditoPanel({
       await baixarCrmPendenciaPdfAssinado(item.id, item.pdfAssinadoNome);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao baixar PDF');
+    }
+  };
+
+  const handleRemoverPdfAssinado = async (item: PendenciaCreditoItem) => {
+    if (item.encerrada) return;
+    const nome = item.pdfAssinadoNome ?? 'PDF anexado';
+    if (
+      !window.confirm(
+        `Excluir o arquivo "${nome}" desta linha?\n\nEssa ação remove o anexo incorreto e fica registrada no histórico.`,
+      )
+    ) {
+      return;
+    }
+    setRemovendoPdfId(item.id);
+    setErro(null);
+    setAviso(null);
+    try {
+      const pendencia = await removerCrmPendenciaPdfAssinado(item.id);
+      setItens((prev) => prev.map((row) => (row.id === pendencia.id ? pendencia : row)));
+      setTratarItem((atual) => (atual?.id === pendencia.id ? pendencia : atual));
+      setAviso('PDF removido da linha.');
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao remover PDF');
+    } finally {
+      setRemovendoPdfId(null);
     }
   };
 
@@ -1243,14 +1270,28 @@ export default function PendenciasCreditoPanel({
                               </span>
                             )}
                             {item.temPdfAssinado ? (
-                              <button
-                                type="button"
-                                onClick={() => void handleBaixarPdfAssinado(item)}
-                                className="mt-0.5 block max-w-full break-words whitespace-normal text-left text-[10px] font-medium leading-snug text-blue-700 hover:underline dark:text-blue-400"
-                                title={item.pdfAssinadoNome ?? 'PDF assinado'}
-                              >
-                                PDF: {item.pdfAssinadoNome ?? 'Ver'}
-                              </button>
+                              <div className="mt-0.5 flex max-w-full items-start gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleBaixarPdfAssinado(item)}
+                                  className="min-w-0 flex-1 break-words whitespace-normal text-left text-[10px] font-medium leading-snug text-blue-700 hover:underline dark:text-blue-400"
+                                  title={item.pdfAssinadoNome ?? 'PDF assinado'}
+                                >
+                                  PDF: {item.pdfAssinadoNome ?? 'Ver'}
+                                </button>
+                                {!item.encerrada ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleRemoverPdfAssinado(item)}
+                                    disabled={removendoPdfId === item.id}
+                                    className="shrink-0 rounded p-0.5 text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                                    title="Excluir PDF desta linha"
+                                    aria-label="Excluir PDF desta linha"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
+                              </div>
                             ) : null}
                           </div>
                         </td>
