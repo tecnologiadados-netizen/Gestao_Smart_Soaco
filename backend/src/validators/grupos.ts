@@ -30,5 +30,12 @@ export const atualizarGrupoSchema = z.object({
   logoutInatividadeMinutos: logoutInatividadeMinutosField,
 });
 
+/** Duplica um grupo herdando apenas permissões (app + RH). */
+export const duplicarGrupoSchema = z.object({
+  nome: z.string().min(1, 'Nome é obrigatório').max(100),
+  descricao: z.string().max(500).optional().nullable(),
+});
+
 export type CriarGrupoInput = z.infer<typeof criarGrupoSchema>;
 export type AtualizarGrupoInput = z.infer<typeof atualizarGrupoSchema>;
+export type DuplicarGrupoInput = z.infer<typeof duplicarGrupoSchema>;

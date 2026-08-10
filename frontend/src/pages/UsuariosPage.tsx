@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { listarUsuarios, criarUsuario, atualizarUsuario, excluirUsuario, type Usuario } from '../api/usuarios';
-import { listarGrupos, listarPermissoes, criarGrupo, atualizarGrupo, excluirGrupo, obterRhPermissoesGrupo, type Grupo, type PermissaoItem } from '../api/grupos';
+import { listarGrupos, listarPermissoes, criarGrupo, atualizarGrupo, excluirGrupo, duplicarGrupo, obterRhPermissoesGrupo, type Grupo, type PermissaoItem } from '../api/grupos';
 import GrupoRhPermissoesPanel, { createDefaultRhGroupPermissions } from '../components/rh/GrupoRhPermissoesPanel';
 import type { RhGroupPermissions } from '@rh/lib/rh-permissions';
 import { cloneGroupPermissions } from '@rh/lib/rh-permissions';
@@ -244,6 +244,12 @@ export default function UsuariosPage() {
   const [modalCriarUsuarioOpen, setModalCriarUsuarioOpen] = useState(false);
   const [modalEditarUsuarioOpen, setModalEditarUsuarioOpen] = useState(false);
   const [modalGrupoOpen, setModalGrupoOpen] = useState(false);
+  const [modalDuplicarGrupoOpen, setModalDuplicarGrupoOpen] = useState(false);
+  const [grupoOrigemDuplicar, setGrupoOrigemDuplicar] = useState<Grupo | null>(null);
+  const [duplicarNome, setDuplicarNome] = useState('');
+  const [duplicarDescricao, setDuplicarDescricao] = useState('');
+  const [salvandoDuplicar, setSalvandoDuplicar] = useState(false);
+  const [formErrorDuplicar, setFormErrorDuplicar] = useState('');
 
   const [login, setLogin] = useState('');
   const [senha, setSenha] = useState('');
@@ -676,6 +682,54 @@ export default function UsuariosPage() {
     }
   };
 
+  const abrirDuplicarGrupo = (g: Grupo) => {
+    setGrupoOrigemDuplicar(g);
+    setDuplicarNome(`${g.nome} (cópia)`);
+    setDuplicarDescricao(`Cópia de ${g.nome}`);
+    setFormErrorDuplicar('');
+    setModalDuplicarGrupoOpen(true);
+  };
+
+  const fecharDuplicarGrupo = () => {
+    setModalDuplicarGrupoOpen(false);
+    setGrupoOrigemDuplicar(null);
+    setDuplicarNome('');
+    setDuplicarDescricao('');
+    setFormErrorDuplicar('');
+    setSalvandoDuplicar(false);
+  };
+
+  const handleSubmitDuplicarGrupo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!grupoOrigemDuplicar) return;
+    setFormErrorDuplicar('');
+    const nome = duplicarNome.trim();
+    if (!nome) {
+      setFormErrorDuplicar('Nome do novo grupo é obrigatório.');
+      return;
+    }
+    if (isGrupoMasterNome(nome)) {
+      setFormErrorDuplicar('O nome Master é reservado ao grupo de acesso total do sistema.');
+      return;
+    }
+    setSalvandoDuplicar(true);
+    try {
+      const origemNome = grupoOrigemDuplicar.nome;
+      const novo = await duplicarGrupo(grupoOrigemDuplicar.id, {
+        nome,
+        descricao: duplicarDescricao.trim() || null,
+      });
+      await carregar();
+      fecharDuplicarGrupo();
+      showToast(`Grupo duplicado. Permissões herdadas de "${origemNome}".`);
+      abrirEditarGrupo(novo);
+    } catch (err) {
+      setFormErrorDuplicar(err instanceof Error ? err.message : 'Erro ao duplicar grupo.');
+    } finally {
+      setSalvandoDuplicar(false);
+    }
+  };
+
   if (forbidden) {
     return (
       <div className="space-y-6">
@@ -769,8 +823,9 @@ export default function UsuariosPage() {
                     <td className="py-2 text-slate-800 dark:text-slate-200 font-medium">{g.nome}</td>
                     <td className="py-2 text-slate-600 dark:text-slate-400">{g.descricao || '—'} · {g.ativo ? 'Ativo' : 'Inativo'}</td>
                     <td className="py-2 text-slate-600 dark:text-slate-400">{g.totalUsuarios ?? 0}</td>
-                    <td className="py-2 flex gap-2">
+                    <td className="py-2 flex flex-wrap gap-2">
                       <button type="button" onClick={() => abrirEditarGrupo(g)} className="text-primary-600 dark:text-primary-400 hover:underline text-sm">Editar</button>
+                      <button type="button" onClick={() => abrirDuplicarGrupo(g)} className="text-emerald-700 dark:text-emerald-400 hover:underline text-sm" title="Cria um novo grupo herdando apenas as permissões">Duplicar</button>
                       {!(g.isGrupoMaster || isGrupoMasterNome(g.nome)) && (
                         <button type="button" onClick={() => handleExcluirGrupo(g)} className="text-amber-600 dark:text-amber-400 hover:underline text-sm">Excluir</button>
                       )}
@@ -949,6 +1004,54 @@ export default function UsuariosPage() {
                 {salvandoGrupo ? 'Salvando...' : editandoGrupoId ? 'Salvar alterações' : 'Criar grupo'}
               </button>
               <button type="button" onClick={fecharFormGrupo} className="rounded-lg border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm">Cancelar</button>
+            </div>
+          </form>
+        </ModalContainer>
+      )}
+
+      {modalDuplicarGrupoOpen && grupoOrigemDuplicar && (
+        <ModalContainer title="Duplicar grupo" onClose={fecharDuplicarGrupo}>
+          <form onSubmit={(e) => void handleSubmitDuplicarGrupo(e)} className="space-y-4">
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              O novo grupo herda as <strong>permissões</strong> de{' '}
+              <strong>{grupoOrigemDuplicar.nome}</strong> (incluindo permissões RH, se houver).
+              Usuários, tela inicial e logout por inatividade <strong>não</strong> são copiados.
+            </p>
+            <div>
+              <label className="block text-xs mb-1">Nome do novo grupo *</label>
+              <input
+                value={duplicarNome}
+                onChange={(e) => setDuplicarNome(e.target.value)}
+                className="w-full rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-xs mb-1">Descrição</label>
+              <input
+                value={duplicarDescricao}
+                onChange={(e) => setDuplicarDescricao(e.target.value)}
+                className="w-full rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm"
+              />
+            </div>
+            {formErrorDuplicar && (
+              <p className="text-amber-600 dark:text-amber-400 text-sm">{formErrorDuplicar}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={salvandoDuplicar}
+                className="rounded-lg bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white px-4 py-2 text-sm font-medium"
+              >
+                {salvandoDuplicar ? 'Duplicando…' : 'Duplicar e editar'}
+              </button>
+              <button
+                type="button"
+                onClick={fecharDuplicarGrupo}
+                className="rounded-lg border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm"
+              >
+                Cancelar
+              </button>
             </div>
           </form>
         </ModalContainer>

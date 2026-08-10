@@ -90,6 +90,22 @@ export async function excluirGrupo(id: number): Promise<void> {
   }
 }
 
+/** Duplica o grupo herdando apenas permissões (app + RH). Sem usuários nem tela/logout. */
+export async function duplicarGrupo(
+  id: number,
+  payload: { nome: string; descricao?: string | null },
+): Promise<Grupo> {
+  const res = await apiFetch(`/api/grupos/${id}/duplicar`, {
+    method: 'POST',
+    body: payload,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Erro ao duplicar grupo' }));
+    throw new Error((err as { error?: string }).error ?? 'Erro ao duplicar grupo');
+  }
+  return res.json();
+}
+
 export async function obterRhPermissoesContexto(): Promise<RhPermissoesContexto> {
   return apiJson<RhPermissoesContexto>('/api/grupos/rh-permissoes-contexto');
 }
