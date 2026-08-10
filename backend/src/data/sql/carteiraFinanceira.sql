@@ -15,6 +15,7 @@ SELECT
 		WHEN (de.observacoes IS NULL) THEN '4-Inserir em Romaneio'
 		ELSE de.observacoes
 	END AS 'Observacoes',
+	pd.observacao AS 'ObservacaoPedido',
 	de.codigo AS 'RM',
 	tpd.nome AS 'Tipo Pedido',
 	pd.nome AS 'PD',
@@ -488,6 +489,7 @@ GROUP BY
 	pd.id,
 	pd.nome,
 	pd.dataEmissao,
+	pd.observacao,
 	de.id,
 	de.codigo,
 	de.observacoes,

@@ -15,6 +15,7 @@ const COLS: { key: SortKey; label: string; money?: boolean; date?: boolean }[] =
   { key: 'Cliente', label: 'Cliente' },
   { key: 'UF', label: 'UF' },
   { key: 'Municipio de entrega', label: 'Município' },
+  { key: 'ObservacaoPedido', label: 'Observação do pedido' },
   { key: 'Observacoes', label: 'Carrada/Rota' },
   { key: 'Condicao de pagamento do pedido de venda', label: 'Cond. Pagamento' },
   { key: 'StatusPedido', label: 'Status de entrega' },

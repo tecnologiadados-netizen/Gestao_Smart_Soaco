@@ -1509,6 +1509,7 @@ export type CarteiraFinanceiraLinha = {
   idEmpresa: number;
   id: number;
   Observacoes: string | null;
+  ObservacaoPedido: string | null;
   RM: string | null;
   'Tipo Pedido': string | null;
   PD: string | null;

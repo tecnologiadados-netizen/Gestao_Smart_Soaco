@@ -32,6 +32,7 @@ export type CarteiraFinanceiraLinha = {
   idEmpresa: number;
   id: number;
   Observacoes: string | null;
+  ObservacaoPedido: string | null;
   RM: string | null;
   'Tipo Pedido': string | null;
   PD: string | null;
@@ -130,6 +131,7 @@ function mapRow(raw: Record<string, unknown>): CarteiraFinanceiraLinha {
     idEmpresa: toInt(raw.idEmpresa),
     id: toInt(raw.id),
     Observacoes: toStr(raw.Observacoes),
+    ObservacaoPedido: toStr(raw.ObservacaoPedido),
     RM: toStr(raw.RM),
     'Tipo Pedido': toStr(raw['Tipo Pedido']),
     PD: toStr(raw.PD),
