@@ -40,7 +40,6 @@ export interface DashboardReportInput {
 
 const BAIXADOS_COLUMN_IDS = [
   "codigo",
-  "dataEmissao",
   "dataCompetencia",
   "dataVencimento",
   "dataBaixa",
@@ -52,6 +51,7 @@ const BAIXADOS_COLUMN_IDS = [
   "comentariosAgendamento",
   "comentariosLancamento",
   "nfeOrigem",
+  "dataEmissao",
   "totalDias",
   "valorAteVencimento",
   "valorBaixado",
@@ -70,6 +70,7 @@ const BAIXADOS_PDF_COLUMN_IDS = [
   "comentariosAgendamento",
   "comentariosLancamento",
   "nfeOrigem",
+  "dataEmissao",
   "totalDias",
   "valorAteVencimento",
   "valorBaixado",
@@ -81,26 +82,28 @@ const BAIXADOS_PDF_COL_IDX = {
   dataVencimento: 0,
   comentariosAgendamento: 6,
   comentariosLancamento: 7,
-  totalDias: 9,
-  valorJuros: 13,
+  dataEmissao: 9,
+  totalDias: 10,
+  valorJuros: 14,
 } as const;
 
 /** Proporções relativas das colunas de recebimentos/pagamentos no PDF. */
 const BAIXADOS_PDF_COLUMN_WIDTHS_MM: readonly number[] = [
-  14, // dataVencimento
-  11, // dataRecebimento
-  10, // formaPagamento
-  14, // contaBancaria
-  12, // pessoa
-  17, // descricao
-  9, // comentariosAgendamento
-  9, // comentariosLancamento
-  9, // nfeOrigem
-  8, // totalDias
-  16, // valorAteVencimento
-  16, // valorBaixado
-  14, // valorRecebido
-  15, // valorJuros
+  13, // dataVencimento
+  10, // dataRecebimento
+  9, // formaPagamento
+  13, // contaBancaria
+  11, // pessoa
+  15, // descricao
+  8, // comentariosAgendamento
+  8, // comentariosLancamento
+  8, // nfeOrigem
+  10, // dataEmissao
+  7, // totalDias
+  14, // valorAteVencimento
+  14, // valorBaixado
+  13, // valorRecebido
+  13, // valorJuros
 ];
 
 const PDF_TABLE_MARGIN_HORIZONTAL_MM = 8;
@@ -139,8 +142,8 @@ function baixadosPdfColumnStyles(doc: jsPDF): NonNullable<UserOptions["columnSty
       cellWidth,
       fontSize: 5.5,
       ...(index === BAIXADOS_PDF_COL_IDX.totalDias ? { halign: "center" as const } : {}),
-      ...(index >= 10 ? { halign: "right" as const } : {}),
-      ...(index === 11 ? { fontStyle: "bold" as const } : {}),
+      ...(index >= 11 ? { halign: "right" as const } : {}),
+      ...(index === 12 ? { fontStyle: "bold" as const } : {}),
     };
   });
   return styles;
@@ -206,7 +209,6 @@ function baixadosColumnLabels(aba: AbaRelatorio): Record<BaixadosColumnId, strin
 
   return {
     codigo: "Código",
-    dataEmissao: "Data de Emissão NF",
     dataCompetencia: "Competência",
     dataVencimento: "Data vencim.",
     dataBaixa: "Data baixa",
@@ -218,6 +220,7 @@ function baixadosColumnLabels(aba: AbaRelatorio): Record<BaixadosColumnId, strin
     comentariosAgendamento: "Comentário Cont. a Receber",
     comentariosLancamento: "Comentário Recebimentos",
     nfeOrigem: "NF-e origem",
+    dataEmissao: "Data de Emissão NF",
     totalDias: "Total de dias",
     valorAteVencimento: "Valor até a data de vencimento",
     valorBaixado: "Valor baixado",
@@ -273,6 +276,7 @@ function baixadosPdfHeaders(aba: AbaRelatorio): string[] {
     if (id === "dataRecebimento") {
       return aba === "receber" ? "Data recebim." : "Data pagam.";
     }
+    if (id === "dataEmissao") return "Emissão NF";
     if (id === "valorAteVencimento") return "Valor até venc.";
     if (id === "valorBaixado") return "Valor baixado";
     if (id === "valorRecebido") {
@@ -970,7 +974,8 @@ export function generateDashboardPdf(input: DashboardReportInput): jsPDF {
       const isDataOuValor =
         data.column.index === BAIXADOS_PDF_COL_IDX.dataVencimento ||
         data.column.index === 1 ||
-        data.column.index >= 10;
+        data.column.index === BAIXADOS_PDF_COL_IDX.dataEmissao ||
+        data.column.index >= 11;
 
       if (isDataOuValor) {
         data.cell.styles.fontSize = 5.5;
@@ -979,12 +984,13 @@ export function generateDashboardPdf(input: DashboardReportInput): jsPDF {
 
       if (
         data.column.index === BAIXADOS_PDF_COL_IDX.dataVencimento ||
-        data.column.index === 1
+        data.column.index === 1 ||
+        data.column.index === BAIXADOS_PDF_COL_IDX.dataEmissao
       ) {
         data.cell.styles.halign = "left";
       }
 
-      if (data.column.index >= 10) {
+      if (data.column.index >= 11) {
         data.cell.styles.halign = "right";
       }
 

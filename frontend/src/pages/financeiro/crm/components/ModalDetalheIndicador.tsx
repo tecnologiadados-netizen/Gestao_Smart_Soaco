@@ -215,7 +215,6 @@ function linhasCsvRecebimentos(
   return [
     [
       "Código",
-      "Data de Emissão NF",
       "Competência",
       "Vencimento",
       "Data baixa",
@@ -227,6 +226,7 @@ function linhasCsvRecebimentos(
       "Comentário Cont. a Receber",
       "Comentário Recebimentos",
       "NF-e origem",
+      "Data de Emissão NF",
       "Total de dias",
       "Valor até a data de vencimento",
       "Valor baixado",
@@ -235,7 +235,6 @@ function linhasCsvRecebimentos(
     ],
     ...recebimentos.map((recebimento) => [
       recebimento.codigo,
-      dataSerialExcel(recebimento.dataEmissao),
       dataSerialExcel(recebimento.dataCompetencia),
       dataSerialExcel(recebimento.dataVencimento),
       dataSerialExcel(recebimento.dataBaixa),
@@ -247,6 +246,7 @@ function linhasCsvRecebimentos(
       formatText(recebimento.comentariosAgendamento),
       formatText(recebimento.comentariosLancamento),
       formatText(recebimento.nfeOrigem),
+      dataSerialExcel(recebimento.dataEmissao),
       recebimento.totalDias == null ? "—" : recebimento.totalDias,
       formatNumeroPlanilha(recebimento.valorAteVencimento),
       formatNumeroPlanilha(recebimento.valorBaixado),

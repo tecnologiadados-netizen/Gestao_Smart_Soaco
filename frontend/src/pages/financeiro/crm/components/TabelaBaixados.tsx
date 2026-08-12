@@ -16,7 +16,6 @@ import CabecalhoSecaoCrm from "./CabecalhoSecaoCrm";
 
 const COLUMN_IDS = [
   "codigo",
-  "dataEmissao",
   "dataCompetencia",
   "dataVencimento",
   "dataBaixa",
@@ -28,6 +27,7 @@ const COLUMN_IDS = [
   "comentariosAgendamento",
   "comentariosLancamento",
   "nfeOrigem",
+  "dataEmissao",
   "totalDias",
   "valorAteVencimento",
   "valorBaixado",
@@ -40,7 +40,6 @@ type ColumnId = (typeof COLUMN_IDS)[number];
 /** Larguras iniciais em pixels */
 const DEFAULT_COLUMN_WIDTHS: Record<ColumnId, number> = {
   codigo: 80,
-  dataEmissao: 96,
   dataCompetencia: 96,
   dataVencimento: 96,
   dataBaixa: 96,
@@ -52,6 +51,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnId, number> = {
   comentariosAgendamento: 160,
   comentariosLancamento: 160,
   nfeOrigem: 104,
+  dataEmissao: 96,
   totalDias: 80,
   valorAteVencimento: 128,
   valorBaixado: 120,
@@ -61,7 +61,6 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnId, number> = {
 
 export const BAIXADOS_MODAL_COLUMN_WIDTHS: Record<ColumnId, number> = {
   codigo: 80,
-  dataEmissao: 100,
   dataCompetencia: 100,
   dataVencimento: 100,
   dataBaixa: 100,
@@ -73,6 +72,7 @@ export const BAIXADOS_MODAL_COLUMN_WIDTHS: Record<ColumnId, number> = {
   comentariosAgendamento: 170,
   comentariosLancamento: 170,
   nfeOrigem: 110,
+  dataEmissao: 100,
   totalDias: 80,
   valorAteVencimento: 128,
   valorBaixado: 120,
@@ -146,11 +146,6 @@ function valorJurosClass(row: Recebimento): string {
 function buildColunas(tipo: "receber" | "pagar"): Record<ColumnId, ColunaDef> {
   return {
     codigo: { id: "codigo", label: "Código", wrap: false },
-    dataEmissao: {
-      id: "dataEmissao",
-      label: "Data de\nEmissão NF",
-      wrap: true,
-    },
     dataVencimento: {
       id: "dataVencimento",
       label: "Data vencim.",
@@ -199,6 +194,11 @@ function buildColunas(tipo: "receber" | "pagar"): Record<ColumnId, ColunaDef> {
     nfeOrigem: {
       id: "nfeOrigem",
       label: "NF-e origem",
+      wrap: true,
+    },
+    dataEmissao: {
+      id: "dataEmissao",
+      label: "Data de\nEmissão NF",
       wrap: true,
     },
     totalDias: {
@@ -257,7 +257,6 @@ function BaixadoRow({
   return (
     <tr className={rowClass}>
       <td className={`${td} cell-nowrap font-mono text-xs`}>{row.codigo}</td>
-      <td className={`${td} cell-nowrap`}>{formatDate(row.dataEmissao)}</td>
       <td className={`${td} cell-nowrap`}>{formatDate(row.dataCompetencia)}</td>
       <td className={`${td} cell-wrap`}>
         <span className="block whitespace-nowrap">
@@ -300,6 +299,7 @@ function BaixadoRow({
         {formatText(row.comentariosLancamento)}
       </td>
       <td className={`${td} cell-wrap`}>{formatText(row.nfeOrigem)}</td>
+      <td className={`${td} cell-nowrap`}>{formatDate(row.dataEmissao)}</td>
       <td
         className={`${td} cell-nowrap text-center ${totalDiasClass(row, row.totalDias)}`}
         title={
