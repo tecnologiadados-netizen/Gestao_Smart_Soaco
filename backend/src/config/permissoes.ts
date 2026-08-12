@@ -123,6 +123,11 @@ export const PERMISSOES = {
 
   // Permissão legado (mantida para compatibilidade)
   USUARIOS_GERENCIAR: 'usuarios.gerenciar',
+
+  // Loja — estoque de kits (filtro/engate remanescentes)
+  LOJA_KITS_VER: 'loja.kits.ver',
+  LOJA_KITS_MOVIMENTAR: 'loja.kits.movimentar',
+  LOJA_KITS_INVENTARIO: 'loja.kits.inventario',
 } as const;
 
 export type CodigoPermissao = (typeof PERMISSOES)[keyof typeof PERMISSOES];
@@ -234,6 +239,11 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
 
   // legado
   PERMISSOES.USUARIOS_GERENCIAR,
+
+  // Loja
+  PERMISSOES.LOJA_KITS_VER,
+  PERMISSOES.LOJA_KITS_MOVIMENTAR,
+  PERMISSOES.LOJA_KITS_INVENTARIO,
 ];
 
 export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
@@ -350,4 +360,9 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
 
   // legado
   [PERMISSOES.USUARIOS_GERENCIAR]: 'Gerenciar usuários e grupos',
+
+  // Loja
+  [PERMISSOES.LOJA_KITS_VER]: 'Loja — ver controle de estoque de kits',
+  [PERMISSOES.LOJA_KITS_MOVIMENTAR]: 'Loja — registrar entrada/saída de kits',
+  [PERMISSOES.LOJA_KITS_INVENTARIO]: 'Loja — confirmar inventário de kits',
 };

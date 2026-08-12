@@ -114,6 +114,11 @@ export const PERMISSOES = {
 
   // legado (mantido por compatibilidade)
   USUARIOS_GERENCIAR: 'usuarios.gerenciar',
+
+  // Loja — estoque de kits (filtro/engate remanescentes)
+  LOJA_KITS_VER: 'loja.kits.ver',
+  LOJA_KITS_MOVIMENTAR: 'loja.kits.movimentar',
+  LOJA_KITS_INVENTARIO: 'loja.kits.inventario',
 } as const;
 
 export type CodigoPermissao = (typeof PERMISSOES)[keyof typeof PERMISSOES];

@@ -30,6 +30,7 @@ import PainelFinanceiroComercialPage from './pages/financeiro/PainelFinanceiroCo
 import RenegociacaoContratosPage from './pages/financeiro/RenegociacaoContratosPage';
 import CrmFinanceiroPage from './pages/financeiro/CrmFinanceiroPage';
 import CarteiraFinanceiraPage from './pages/financeiro/CarteiraFinanceiraPage';
+import EstoqueKitsPage from './pages/loja/EstoqueKitsPage';
 import SycroOrderPage from './pages/pedidos/SycroOrderPage';
 import MRPPage from './pages/pedidos/MRPPage';
 import MRPManagerPage from './pages/pedidos/MRPManagerPage';
@@ -134,6 +135,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'financeiro/renegociacao-contratos', element: <RenegociacaoContratosPage /> },
   { path: 'financeiro/crm', element: <ErrorBoundary><CrmFinanceiroPage /></ErrorBoundary> },
   { path: 'comercial/painel', element: <ErrorBoundary><PainelComercialPage /></ErrorBoundary> },
+  { path: 'loja/estoque-kits', element: <ErrorBoundary><EstoqueKitsPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/veiculos', element: <ErrorBoundary><VeiculosPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/produtos', element: <ErrorBoundary><ProdutosCubagemPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/simulacao', element: <ErrorBoundary><SimulacaoCubagemPage /></ErrorBoundary> },

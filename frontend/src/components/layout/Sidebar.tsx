@@ -11,6 +11,7 @@ import {
   QUALIDADE_MENU,
   RH_MENU,
   COMERCIAL_MENU,
+  LOJA_MENU,
   type FinanceiroMenuEntry,
   type NavMenuEntry,
   filterPcpMenuChildren,
@@ -113,6 +114,16 @@ const ICONS = {
   financeiro: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  loja: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 9l1.5-4.5A2 2 0 016.4 3h11.2a2 2 0 011.9 1.5L21 9M3 9h18M3 9v10a2 2 0 002 2h14a2 2 0 002-2V9M9 21V12h6v9"
+      />
     </svg>
   ),
   integracao: (
@@ -379,6 +390,7 @@ export default function Sidebar({
   const isRhActive = pathname.startsWith('/rh');
   const isComercialActive = pathname.startsWith('/comercial');
   const isFinanceiroActive = pathname.startsWith('/financeiro');
+  const isLojaActive = pathname.startsWith('/loja');
   const isGestaoUsuariosActive = pathname.startsWith('/usuarios');
   const isSuporteActive = pathname.startsWith('/suporte');
 
@@ -702,6 +714,32 @@ export default function Sidebar({
                 </div>
               ),
             )}
+          </SidebarSection>
+        )}
+
+        {(hasPermission(PERMISSOES.LOJA_KITS_VER) ||
+          hasPermission(PERMISSOES.LOJA_KITS_MOVIMENTAR) ||
+          hasPermission(PERMISSOES.LOJA_KITS_INVENTARIO)) && (
+          <SidebarSection
+            id="loja"
+            label="Loja"
+            icon={ICONS.loja}
+            active={isLojaActive}
+            sidebarOpen={open}
+            onExpand={onExpand}
+            accordionOpen={accordionOpen}
+            toggleAccordion={toggleAccordion}
+          >
+            <NavMenuTree
+              entries={LOJA_MENU}
+              pathname={pathname}
+              sidebarOpen={open}
+              accordionOpen={accordionOpen}
+              toggleAccordion={toggleAccordion}
+              onNavigate={onNavigate}
+              hasPermission={hasPermission}
+              prefix="loja"
+            />
           </SidebarSection>
         )}
 

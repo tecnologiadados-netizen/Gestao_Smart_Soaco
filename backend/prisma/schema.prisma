@@ -2149,3 +2149,69 @@ model RhOrganicoLogSancaoFingerprint {
 
   @@map("rh_organico_log_sancao_fingerprint")
 }
+
+/// Produtos de kit da loja (Filtro, Engate, etc.) — estoque remanescente de bebedouros.
+model LojaKitProduto {
+  id             Int      @id @default(autoincrement())
+  codigo         String   @unique
+  descricao      String
+  estoqueInicial Int      @default(0) @map("estoque_inicial")
+  ativo          Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  movimentacoes LojaKitMovimentacao[]
+  inventarioItens LojaKitInventarioItem[]
+
+  @@map("loja_kit_produto")
+}
+
+/// Movimentação de estoque de kits (entrada / saída / ajuste de inventário).
+model LojaKitMovimentacao {
+  id              Int      @id @default(autoincrement())
+  produtoId       Int      @map("produto_id")
+  /// entrada | saida | inventario
+  tipo            String
+  quantidade      Int
+  pd              String?
+  usuarioId       Int?     @map("usuario_id")
+  responsavelNome String   @map("responsavel_nome")
+  observacao      String?
+  inventarioId    Int?     @map("inventario_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  produto    LojaKitProduto     @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  inventario LojaKitInventario? @relation(fields: [inventarioId], references: [id], onDelete: SetNull)
+
+  @@index([produtoId, createdAt])
+  @@index([tipo, createdAt])
+  @@index([inventarioId])
+  @@map("loja_kit_movimentacao")
+}
+
+model LojaKitInventario {
+  id              Int      @id @default(autoincrement())
+  observacao      String?
+  usuarioId       Int?     @map("usuario_id")
+  responsavelNome String   @map("responsavel_nome")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  itens         LojaKitInventarioItem[]
+  movimentacoes LojaKitMovimentacao[]
+
+  @@map("loja_kit_inventario")
+}
+
+model LojaKitInventarioItem {
+  id          Int @id @default(autoincrement())
+  inventarioId Int @map("inventario_id")
+  produtoId   Int @map("produto_id")
+  qtdSistema  Int @map("qtd_sistema")
+  qtdContada  Int @map("qtd_contada")
+
+  inventario LojaKitInventario @relation(fields: [inventarioId], references: [id], onDelete: Cascade)
+  produto    LojaKitProduto    @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@unique([inventarioId, produtoId])
+  @@map("loja_kit_inventario_item")
+}

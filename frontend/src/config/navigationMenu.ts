@@ -149,6 +149,10 @@ export const COMERCIAL_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/comercial/painel', label: 'Painel Comercial' },
 ];
 
+export const LOJA_MENU: NavMenuEntry[] = [
+  { kind: 'link', to: '/loja/estoque-kits', label: 'Controle de estoque de kits' },
+];
+
 export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
   { kind: 'link', to: '/financeiro/carteira-financeira', label: 'Carteira Financeira' },
   { kind: 'link', to: '/financeiro/crm', label: 'CRM Financeiro' },
@@ -228,6 +232,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/financeiro/carteira-financeira': 'Carteira Financeira',
   '/financeiro/painel-financeiro-comercial': 'Painel Financeiro-Comercial',
   '/comercial/painel': 'Painel Comercial',
+  '/loja/estoque-kits': 'Controle de estoque de kits',
   '/financeiro/renegociacao-contratos': 'Simulação de Renegociação',
   '/financeiro/crm': 'CRM Financeiro',
   '/relatorios': 'Relatórios',
