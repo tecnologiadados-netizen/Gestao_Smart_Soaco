@@ -111,6 +111,7 @@ const DETALHE_COLS: { key: keyof CarteiraFinanceiraLinha; label: string; kind: '
   { key: 'idEmpresa', label: 'idEmpresa', kind: 'text' },
   { key: 'id', label: 'id', kind: 'text' },
   { key: 'Observacoes', label: 'Observacoes', kind: 'text' },
+  { key: 'ObservacaoPedido', label: 'Observacao do pedido', kind: 'text' },
   { key: 'RM', label: 'RM', kind: 'text' },
   { key: 'Tipo Pedido', label: 'Tipo Pedido', kind: 'text' },
   { key: 'PD', label: 'PD', kind: 'text' },

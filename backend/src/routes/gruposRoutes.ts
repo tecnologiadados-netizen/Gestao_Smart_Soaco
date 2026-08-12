@@ -9,6 +9,7 @@ import {
   criarGrupo,
   atualizarGrupo,
   excluirGrupo,
+  duplicarGrupo,
   obterRhPermissoesContexto,
   obterRhPermissoesGrupo,
 } from '../controllers/gruposController.js';
@@ -41,6 +42,12 @@ router.post(
   validateCsrf,
   requirePermission(PERMISSOES.GRUPOS_CRIAR, PERMISSOES.GRUPOS_TOTAL, PERMISSOES.USUARIOS_GERENCIAR),
   criarGrupo
+);
+router.post(
+  '/:id/duplicar',
+  validateCsrf,
+  requirePermission(PERMISSOES.GRUPOS_CRIAR, PERMISSOES.GRUPOS_TOTAL, PERMISSOES.USUARIOS_GERENCIAR),
+  duplicarGrupo
 );
 // PUT é por ação (permissoes/nome/ativo) e validação granular acontece no controller.
 router.put('/:id', validateCsrf, atualizarGrupo);

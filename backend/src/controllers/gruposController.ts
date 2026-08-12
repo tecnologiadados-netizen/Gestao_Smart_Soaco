@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { prisma } from '../config/prisma.js';
 import { LABELS_PERMISSOES, PERMISSOES, type CodigoPermissao } from '../config/permissoes.js';
-import { criarGrupoSchema, atualizarGrupoSchema } from '../validators/grupos.js';
+import { criarGrupoSchema, atualizarGrupoSchema, duplicarGrupoSchema } from '../validators/grupos.js';
 import { getPermissoesUsuario } from '../middleware/requirePermission.js';
 import { validarTelaPrincipalParaPermissoesGrupo } from '../config/telaPrincipalGrupo.js';
 import {
@@ -139,6 +139,91 @@ export async function criarGrupo(req: Request, res: Response): Promise<void> {
     }
     console.error('criarGrupo', err);
     res.status(503).json({ error: 'Erro ao criar grupo.' });
+  }
+}
+
+/**
+ * POST /api/grupos/:id/duplicar — cria cópia herdando só permissões (app + RH).
+ * Não copia usuários, tela inicial nem logout por inatividade.
+ */
+export async function duplicarGrupo(req: Request, res: Response): Promise<void> {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) {
+    res.status(400).json({ error: 'ID inválido.' });
+    return;
+  }
+  const parsed = duplicarGrupoSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Dados inválidos', details: parsed.error.flatten() });
+    return;
+  }
+  const nome = parsed.data.nome.trim();
+  if (isGrupoMasterNome(nome)) {
+    res.status(400).json({ error: `O nome "${GRUPO_MASTER_NOME}" é reservado ao grupo de acesso total do sistema.` });
+    return;
+  }
+  try {
+    const origem = await prisma.grupoUsuario.findUnique({
+      where: { id },
+      select: { id: true, nome: true, descricao: true, permissoes: true },
+    });
+    if (!origem) {
+      res.status(404).json({ error: 'Grupo de origem não encontrado.' });
+      return;
+    }
+
+    const permissoesJson = isGrupoMasterNome(origem.nome)
+      ? serializePermissoesMaster()
+      : serializePermissoes(parsePermissoes(origem.permissoes));
+    const descricao =
+      parsed.data.descricao !== undefined
+        ? parsed.data.descricao?.trim() || null
+        : `Cópia de ${origem.nome}`;
+
+    const grupo = await prisma.grupoUsuario.create({
+      data: {
+        nome,
+        descricao,
+        permissoes: permissoesJson,
+        telaPrincipalInicial: null,
+        logoutInatividadeMinutos: null,
+        ativo: true,
+      },
+      select: {
+        id: true,
+        nome: true,
+        descricao: true,
+        permissoes: true,
+        telaPrincipalInicial: true,
+        logoutInatividadeMinutos: true,
+        ativo: true,
+      },
+    });
+
+    const rhOrigem = await getGrupoPermissions(origem.id);
+    await setGrupoPermissions(grupo.id, normalizeRhPermissions(rhOrigem));
+
+    res.status(201).json({
+      id: grupo.id,
+      nome: grupo.nome,
+      descricao: grupo.descricao,
+      permissoes: parsePermissoes(grupo.permissoes),
+      telaPrincipalInicial: grupo.telaPrincipalInicial ?? null,
+      logoutInatividadeMinutos: grupo.logoutInatividadeMinutos ?? null,
+      ativo: grupo.ativo,
+      totalUsuarios: 0,
+      isGrupoMaster: false,
+      origemId: origem.id,
+      origemNome: origem.nome,
+    });
+  } catch (err) {
+    const e = err as { code?: string };
+    if (e.code === 'P2002') {
+      res.status(400).json({ error: 'Já existe um grupo com este nome.' });
+      return;
+    }
+    console.error('duplicarGrupo', err);
+    res.status(503).json({ error: 'Erro ao duplicar grupo.' });
   }
 }
 
