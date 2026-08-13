@@ -14,6 +14,8 @@ describe('sycroOrderVendedorEscopoWhatsApp', () => {
     expect(resolverEscopoWhatsAppPorVendedor('ANTONIO LUIS PEREIRA DE SOUSA')).toBe('loja');
     expect(resolverEscopoWhatsAppPorVendedor('miriam da silva nepomuceno')).toBe('loja');
     expect(resolverEscopoWhatsAppPorVendedor('MARIA LEOPOLDINA ARAUJO MARQUES')).toBe('loja');
+    expect(resolverEscopoWhatsAppPorVendedor('ROBERTO')).toBe('loja');
+    expect(resolverEscopoWhatsAppPorVendedor('Roberto')).toBe('loja');
   });
 
   it('mapeia Indústria', () => {
