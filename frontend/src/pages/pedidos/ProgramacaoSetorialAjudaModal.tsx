@@ -34,9 +34,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'tabelas',
     titulo: 'Programação × Atendidos pelo Estoque',
     oQueE:
-      'Duas tabelas: o que precisa produzir versus o que já está coberto por estoque.',
+      'Duas tabelas: o que precisa produzir versus o que já está coberto por estoque de produto acabado (setor PA no Nomus). O saldo de Intermediários CONT não entra nesse abate — é estoque não controlado e não reduz a quantidade a produzir.',
     comoLe:
-      'Priorize a tabela de programação para capacidade. A de atendidos pelo estoque evita programar o que já tem cobertura.',
+      'Priorize a tabela de programação para capacidade. A de atendidos pelo estoque cobre só o que há em PA; Intermediários CONT não “some” da carga de Gôndolas nem de Corte e Dobra.',
   },
   {
     id: 'painel',

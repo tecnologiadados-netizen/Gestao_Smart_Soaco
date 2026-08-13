@@ -37,7 +37,9 @@ WITH ultimos_saldos AS (
   LEFT JOIN movimentacaoproducao mp ON mp.id = sep.idMovimentacao
   LEFT JOIN tipomovimentacao tm ON tm.id = mp.idTipoMovimentacao
   LEFT JOIN tipoproduto tp ON tp.id = p.idTipoProduto
-  WHERE sep.idSetorEstoque IN (5, 24)
+  -- Setor 5 = PA (produto acabado). Setor 24 = Intermediários CONT (estoque
+  -- não controlado) fica de fora: não deve abater a quantidade a produzir.
+  WHERE sep.idSetorEstoque = 5
     AND tp.id IN (8, 15)
     AND p.ativo = 1
     AND se.idEmpresa = 1
