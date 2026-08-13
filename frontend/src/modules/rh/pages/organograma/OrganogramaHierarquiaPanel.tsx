@@ -74,12 +74,12 @@ const UI_NORMAL: OrgUiTokens = {
   cardWPx: 176,
   stubPx: 28,
   cardW: "w-[176px]",
-  cardHDir: "h-[128px]",
-  cardHGestao: "h-[124px]",
-  cardHLeaf: "h-[128px]",
+  cardHDir: "min-h-[152px]",
+  cardHGestao: "min-h-[164px]",
+  cardHLeaf: "min-h-[168px]",
   cardSlot: "w-max min-w-[280px] px-6",
   cardBase:
-    "box-border flex shrink-0 flex-col items-center overflow-hidden rounded-md border px-3 py-2.5 text-center shadow-level-2",
+    "box-border flex shrink-0 flex-col items-center overflow-visible rounded-md border px-3 py-2.5 text-center shadow-level-2",
   txtCargo: "text-[9px]",
   txtNomeGestao: "text-[11px]",
   txtNomeLeaf: "text-[10px]",
@@ -95,12 +95,12 @@ const UI_FULLSCREEN: OrgUiTokens = {
   cardWPx: 260,
   stubPx: 36,
   cardW: "w-[260px]",
-  cardHDir: "h-[178px]",
-  cardHGestao: "h-[172px]",
-  cardHLeaf: "h-[176px]",
+  cardHDir: "min-h-[198px]",
+  cardHGestao: "min-h-[208px]",
+  cardHLeaf: "min-h-[214px]",
   cardSlot: "w-max min-w-[400px] px-10",
   cardBase:
-    "box-border flex shrink-0 flex-col items-center overflow-hidden rounded-md border px-4 py-3.5 text-center shadow-level-2",
+    "box-border flex shrink-0 flex-col items-center overflow-visible rounded-md border px-4 py-3.5 text-center shadow-level-2",
   txtCargo: "text-[13px]",
   txtNomeGestao: "text-[15px]",
   txtNomeLeaf: "text-[14px]",
@@ -237,7 +237,7 @@ const CAIXA_NIVEL: Record<
   },
 };
 
-/** depth 0 = área · 1 = gestão · 2+ = liderados / grupos */
+/** depth 0 = área · 1 = gestão · 2 = equipe · 3+ = grupos aninhados */
 function nivelVisual(depth: number): NivelVisual {
   if (depth <= 0) return 0;
   if (depth === 1) return 1;
@@ -259,7 +259,7 @@ function MetaContagem({
   return (
     <p
       className={cn(
-        "mt-1.5 flex h-4 w-full shrink-0 items-center justify-center gap-1 font-semibold tabular-nums leading-none",
+        "mt-1.5 flex min-h-5 w-full shrink-0 items-center justify-center gap-1 font-semibold tabular-nums leading-normal",
         className,
         invisible && "invisible",
       )}
@@ -334,6 +334,64 @@ function TrilhoFilhos({ children }: { children: ReactNode[] }) {
 }
 
 /**
+ * Equipe do liderado: à direita do card, em duas linhas horizontais.
+ */
+function EquipeLateralDuasLinhas({ children }: { children: ReactNode[] }) {
+  const ui = useOrgUi();
+  const items = children.filter(Boolean);
+  if (items.length === 0) return null;
+
+  const cols = Math.max(1, Math.ceil(items.length / 2));
+  const row1 = items.slice(0, cols);
+  const row2 = items.slice(cols);
+  const colGap = ui.fullscreen ? 8 : 6;
+  const rowGap = ui.fullscreen ? 8 : 6;
+  const stem = ui.fullscreen ? 22 : 16;
+  const tick = ui.fullscreen ? 12 : 10;
+  const compactH = ui.fullscreen ? 128 : 110;
+
+  const Row = ({ rowItems }: { rowItems: ReactNode[] }) => (
+    <div className="flex items-center" style={{ gap: colGap }}>
+      {rowItems.map((child, i) => (
+        <div key={i} className="shrink-0">
+          {child}
+        </div>
+      ))}
+    </div>
+  );
+
+  if (row2.length === 0) {
+    return (
+      <div className="flex items-center">
+        <div className={cn("shrink-0", LINHA_H, LINHA)} style={{ width: stem }} aria-hidden="true" />
+        <Row rowItems={row1} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center">
+      <div className={cn("shrink-0", LINHA_H, LINHA)} style={{ width: stem }} aria-hidden="true" />
+      <div className="relative flex flex-col justify-center" style={{ gap: rowGap }}>
+        <div
+          className={cn("pointer-events-none absolute", LINHA_W, LINHA)}
+          style={{ left: 0, top: compactH / 2, height: compactH + rowGap }}
+          aria-hidden="true"
+        />
+        <div className="flex items-center">
+          <div className={cn("shrink-0", LINHA_H, LINHA)} style={{ width: tick }} aria-hidden="true" />
+          <Row rowItems={row1} />
+        </div>
+        <div className="flex items-center">
+          <div className={cn("shrink-0", LINHA_H, LINHA)} style={{ width: tick }} aria-hidden="true" />
+          <Row rowItems={row2} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Lista vertical com ligamento lateral.
  * Ocupa largura real no layout (sem translate) para não colidir com a coluna vizinha.
  */
@@ -358,10 +416,12 @@ function PilhaLateral({ children }: { children: ReactNode[] }) {
 
   // Pad esquerdo = largura do card + stub → spine fica sob o centro do card pai.
   const leftPadPx = ui.cardWPx + stubPx;
+  const spineX = leftPadPx;
 
   return (
     <div className="flex w-max flex-col items-stretch">
-      <div className="flex justify-center">
+      <div className="flex">
+        <div className="shrink-0" style={{ width: Math.max(0, spineX - 1) }} aria-hidden="true" />
         <div className={cn("shrink-0", LINHA_W, LINHA)} style={{ height: dropPx }} aria-hidden="true" />
       </div>
       <div className="flex flex-row">
@@ -376,7 +436,7 @@ function PilhaLateral({ children }: { children: ReactNode[] }) {
               {i === 0 ? (
                 <div
                   className={cn("pointer-events-none absolute", LINHA_W, LINHA)}
-                  style={{ left: -stubPx, top: -dropPx, height: `calc(50% + ${dropPx}px)` }}
+                  style={{ left: -stubPx, top: -(dropPx + 2), height: `calc(50% + ${dropPx + 2}px)` }}
                   aria-hidden="true"
                 />
               ) : (
@@ -430,10 +490,11 @@ function CaixaPessoa({
   onToggle?: () => void;
 }) {
   const ui = useOrgUi();
-  const nv = nivelVisual(depth);
+  const nv = nivelVisual(Math.min(depth, 2));
   const estilo = CAIXA_NIVEL[nv];
   const isGestao = depth === 1;
-  const temMeta = typeof qtdAbaixo === "number" && qtdAbaixo > 0;
+  const compacto = depth >= 3;
+  const temMeta = !compacto && typeof qtdAbaixo === "number" && qtdAbaixo > 0;
 
   const inner = (
     <>
@@ -443,14 +504,19 @@ function CaixaPessoa({
         fotoDisponivel={Boolean(pessoa.matricula && matriculasComFoto.has(pessoa.matricula))}
         podeBuscarFoto={podeBuscarFotos}
         fotoConfigSrc={fotoConfigSrc}
-        tamanho={isGestao ? (ui.fullscreen ? "lg" : "md") : ui.fullscreen ? "sm" : "xs"}
+        tamanho={compacto ? "xs" : isGestao ? (ui.fullscreen ? "lg" : "md") : ui.fullscreen ? "sm" : "xs"}
         variante={estilo.avatar}
       />
-      <div className="mt-2 flex min-h-0 w-full flex-1 flex-col justify-start gap-1">
+      <div
+        className={cn(
+          "flex w-full flex-col justify-start",
+          compacto ? "mt-1 gap-0.5" : "mt-1.5 gap-0.5",
+        )}
+      >
         <p
           className={cn(
-            "line-clamp-2 break-words font-bold uppercase leading-snug tracking-wide",
-            ui.txtCargo,
+            "break-words font-bold uppercase leading-[1.5] tracking-wide py-px",
+            compacto ? (ui.fullscreen ? "text-[10px]" : "text-[9px]") : ui.txtCargo,
             estilo.title,
           )}
         >
@@ -458,17 +524,34 @@ function CaixaPessoa({
         </p>
         <p
           className={cn(
-            "break-words font-medium leading-snug",
-            isGestao ? cn("line-clamp-2", ui.txtNomeGestao) : cn("line-clamp-3", ui.txtNomeLeaf),
+            "break-words font-medium uppercase leading-[1.5] py-px",
+            compacto
+              ? ui.fullscreen
+                ? "text-[12px]"
+                : "text-[10px]"
+              : isGestao
+                ? ui.txtNomeGestao
+                : ui.txtNomeLeaf,
             estilo.sub,
           )}
           title={pessoa.nome}
         >
           {pessoa.nome}
         </p>
+        {!compacto && pessoa.setor ? (
+          <p
+            className={cn(
+              "break-words font-semibold uppercase leading-[1.5] py-px",
+              compacto ? "text-[8px]" : ui.txtMeta,
+              estilo.meta,
+            )}
+          >
+            Setor: {pessoa.setor}
+          </p>
+        ) : null}
       </div>
       {isGestao || temMeta ? (
-        <MetaContagem className={estilo.meta} invisible={!temMeta}>
+        <MetaContagem className={cn(estilo.meta, "uppercase")} invisible={!temMeta}>
           {temMeta
             ? `${qtdAbaixo} abaixo${expansivel ? (aberto ? " · −" : " · +") : ""}`
             : "\u00a0"}
@@ -479,8 +562,11 @@ function CaixaPessoa({
 
   const cls = cn(
     ui.cardBase,
-    ui.cardW,
-    isGestao ? ui.cardHGestao : ui.cardHLeaf,
+    compacto
+      ? ui.fullscreen
+        ? "min-h-[128px] w-[186px] px-2 py-2"
+        : "min-h-[110px] w-[148px] px-2 py-1.5"
+      : cn(ui.cardW, isGestao ? ui.cardHGestao : ui.cardHLeaf),
     estilo.box,
     expansivel && "cursor-pointer transition-[box-shadow,opacity] hover:opacity-95",
     aberto && "ring-2 ring-soaco-gold ring-offset-2 ring-offset-background",
@@ -488,7 +574,15 @@ function CaixaPessoa({
 
   if (expansivel && onToggle) {
     return (
-      <button type="button" onClick={onToggle} className={cls} title={`${pessoa.cargo} · ${pessoa.setor}`}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        className={cls}
+        title={`${pessoa.cargo} · ${pessoa.setor}`}
+      >
         {inner}
       </button>
     );
@@ -527,10 +621,10 @@ function CaixaArea({
   const body = (
     <>
       <p className={cn("font-bold uppercase tracking-[0.14em]", ui.txtAreaEyebrow, estilo.meta)}>Área</p>
-      <div className="mt-1 flex min-h-0 w-full flex-1 flex-col justify-center">
+      <div className="mt-1 flex w-full flex-1 flex-col justify-center">
         <p
           className={cn(
-            "line-clamp-3 break-words font-bold uppercase leading-snug tracking-wide",
+            "break-words font-bold uppercase leading-[1.5] tracking-wide py-px",
             ui.txtArea,
             estilo.title,
           )}
@@ -586,10 +680,10 @@ function CaixaGrupo({
   const body = (
     <>
       <div className={cn("shrink-0", ui.fullscreen ? "h-7 w-7" : "h-5 w-5")} aria-hidden="true" />
-      <div className="mt-1.5 flex min-h-0 w-full flex-1 flex-col justify-start gap-1">
+      <div className="mt-1.5 flex w-full flex-1 flex-col justify-start gap-0.5">
         <p
           className={cn(
-            "line-clamp-3 break-words font-bold uppercase leading-snug tracking-wide",
+            "break-words font-bold uppercase leading-[1.5] tracking-wide py-px",
             ui.txtCargo,
             estilo.title,
           )}
@@ -705,19 +799,31 @@ function NoOrganograma({
       : [];
 
   const ui = useOrgUi();
+  const equipeNaLateral = !isArea && depth >= 2 && filhosEls.length > 0;
+  const pilhaAbaixo = !isArea && isGestao && filhosEls.length > 1;
+  const cardOffsetPx = pilhaAbaixo ? ui.stubPx + ui.cardWPx / 2 : 0;
+
   return (
-    <div className="flex w-max flex-col items-center">
+    <div
+      className={cn(
+        "flex w-max",
+        equipeNaLateral ? "flex-row items-center" : pilhaAbaixo ? "flex-col items-start" : "flex-col items-center",
+      )}
+    >
       <div
         className={cn(
           "flex shrink-0 flex-col items-center",
           (isArea || isGestao) && ui.cardHGestao,
         )}
+        style={cardOffsetPx ? { marginLeft: cardOffsetPx } : undefined}
       >
         {caixa}
       </div>
       {filhosEls.length > 0 &&
         (isArea && filhosEls.length > 1 ? (
           <TrilhoFilhos>{filhosEls}</TrilhoFilhos>
+        ) : equipeNaLateral ? (
+          <EquipeLateralDuasLinhas>{filhosEls}</EquipeLateralDuasLinhas>
         ) : (
           <PilhaLateral>{filhosEls}</PilhaLateral>
         ))}
@@ -753,10 +859,10 @@ function DiretoriaCard({
         fotoConfigSrc={fotoDiretor}
         tamanho={ui.fullscreen ? "lg" : "md"}
       />
-      <div className="mt-2 flex min-h-0 w-full flex-1 flex-col justify-start gap-1">
+      <div className="mt-2 flex w-full flex-col justify-start gap-0.5">
         <p
           className={cn(
-            "line-clamp-2 w-full break-words font-bold uppercase leading-snug tracking-wide text-white",
+            "w-full break-words font-bold uppercase leading-[1.5] tracking-wide py-px text-white",
             ui.txtCargo,
           )}
         >
@@ -764,7 +870,7 @@ function DiretoriaCard({
         </p>
         <p
           className={cn(
-            "line-clamp-2 w-full break-words font-medium leading-snug text-white/85",
+            "w-full break-words font-medium uppercase leading-[1.5] py-px text-white/85",
             ui.txtNomeGestao,
           )}
         >
@@ -1138,18 +1244,49 @@ export function OrganogramaHierarquiaPanel({
     const el = contentRef.current;
     if (!el || exportando) return;
     setExportando(true);
-    const prevZoom = zoom;
-    const prevPan = panOffsetRef.current;
+
+    const pad = 56;
+    const holder = document.createElement("div");
+    holder.style.cssText =
+      "position:fixed;left:0;top:0;z-index:-1;pointer-events:none;opacity:1;background:#ffffff;";
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.style.transform = "none";
+    clone.style.willChange = "auto";
+    clone.style.padding = `${pad}px`;
+    clone.style.backgroundColor = "#ffffff";
+    clone.style.overflow = "visible";
+    holder.appendChild(clone);
+    document.body.appendChild(holder);
+
     try {
-      setZoom(1);
-      aplicarPanOffset({ x: 0, y: 0 }, true);
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      const canvas = await html2canvas(el, {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+
+      const width = Math.ceil(Math.max(clone.scrollWidth, clone.offsetWidth));
+      const height = Math.ceil(Math.max(clone.scrollHeight, clone.offsetHeight));
+
+      const canvas = await html2canvas(clone, {
         backgroundColor: "#ffffff",
         scale: 2,
         useCORS: true,
         logging: false,
+        width,
+        height,
+        windowWidth: Math.max(width, 1),
+        windowHeight: Math.max(height, 1),
+        scrollX: 0,
+        scrollY: 0,
+        x: 0,
+        y: 0,
+        onclone: (_doc, cloned) => {
+          cloned.style.transform = "none";
+          cloned.style.willChange = "auto";
+          cloned.style.overflow = "visible";
+          cloned.style.padding = `${pad}px`;
+        },
       });
+
       const link = document.createElement("a");
       link.download = `organograma-hierarquia-${new Date().toISOString().slice(0, 10)}.png`;
       link.href = canvas.toDataURL("image/png");
@@ -1157,11 +1294,10 @@ export function OrganogramaHierarquiaPanel({
     } catch (err) {
       console.error("Falha ao exportar organograma:", err);
     } finally {
-      setZoom(prevZoom);
-      aplicarPanOffset(prevPan, true);
+      holder.remove();
       setExportando(false);
     }
-  }, [aplicarPanOffset, exportando, zoom]);
+  }, [exportando]);
 
   if (!temVinculos) {
     return (

@@ -103,6 +103,26 @@ function sortPessoas(a: HierarquiaPessoa, b: HierarquiaPessoa): number {
   return byCargo !== 0 ? byCargo : a.nome.localeCompare(b.nome, "pt-BR");
 }
 
+/**
+ * Ordem visual dos liderados diretos (primeiro = topo). Não altera cargo/setor/gestor.
+ * Chave = nome do gestor. Valores = nomes dos liderados, de cima para baixo.
+ */
+const ORDEM_CARDS_LIDERADOS: Record<string, string[]> = {
+  "antonio wagner alves de sousa": ["ricardo carvalho pinto"],
+};
+
+function sortLideradosDoGestor(gestorNome: string, a: HierarquiaPessoa, b: HierarquiaPessoa): number {
+  const ordem = ORDEM_CARDS_LIDERADOS[nomeKey(gestorNome)] ?? [];
+  const rank = (p: HierarquiaPessoa) => {
+    const i = ordem.findIndex((n) => nomeKey(p.nome) === n);
+    return i === -1 ? ordem.length : i;
+  };
+  const ra = rank(a);
+  const rb = rank(b);
+  if (ra !== rb) return ra - rb;
+  return sortPessoas(a, b);
+}
+
 function parsePessoas(organicoRows: OrganicoRow[]): HierarquiaPessoa[] {
   const byId = new Map<string, HierarquiaPessoa>();
   for (const row of organicoRows) {
@@ -235,7 +255,7 @@ function subordinadosDe(gestor: HierarquiaPessoa, universo: HierarquiaPessoa[]):
   return universo.filter((p) => p.id !== gestor.id && nomeKey(p.gestorImediato) === g);
 }
 
-/** Liderados diretos (pessoas) — exclusão de outras âncoras N.1. */
+/** Liderados diretos — exclusão de outras âncoras N.1. Aninha a equipe de cada liderado. */
 function ramoLiderados(
   gestor: HierarquiaPessoa,
   universo: HierarquiaPessoa[],
@@ -243,9 +263,9 @@ function ramoLiderados(
 ): HierarquiaNo[] {
   const list = subordinadosDe(gestor, universo)
     .filter((p) => !excludeIds.has(p.id))
-    .sort(sortPessoas);
+    .sort((a, b) => sortLideradosDoGestor(gestor.nome, a, b));
   for (const p of list) excludeIds.add(p.id);
-  return list.map((p) => noPessoa(p));
+  return list.map((p) => noPessoa(p, ramoLiderados(p, universo, excludeIds)));
 }
 
 /** Miro — Diretoria Comercial / Presidência. */
