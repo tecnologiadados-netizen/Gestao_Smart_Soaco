@@ -75,7 +75,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Ao marcar DISPONÍVEL ou NÃO DISPONÍVEL, o sistema envia WhatsApp (Integração → SMS) para o grupo do escopo do vendedor do PD no Nomus.',
     comoLe:
-      'O escopo é o nome do vendedor (sem acento, maiúsculas). Lista da Loja: Gilvania, Miriam, Larissa Cristine, Maria Leopoldina e Roberto. Lista da Indústria: Antonio Luis, Marcos Amorim, Idelgasto, Airton Representações, James, Jonas, Larisse Narlla, Maria Clara, Gold e Henrique Representação. Vendedor fora das duas listas (ou sem vendedor) cai na Indústria.',
+      'O escopo é o nome do vendedor (sem acento, maiúsculas). Lista da Loja: Gilvania, Miriam, Larissa Cristine, Maria Leopoldina e Roberto. Lista da Indústria: Antonio Luis, Marcos Amorim, Idelgasto, Airton Representações, James, Jonas, Larisse Narlla, Maria Clara, Gold e Henrique Representação. Vendedor fora das duas listas (ou sem vendedor) cai na Indústria. Cliente, vendedor e descrição dos produtos vêm do Gerenciador; se o PD já saiu da lista ativa, o alerta busca em Pedidos Encerrados.',
   },
 ];
 

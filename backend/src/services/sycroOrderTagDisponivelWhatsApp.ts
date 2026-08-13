@@ -3,7 +3,7 @@
  * Texto centralizado aqui para o disparo do card e o reenvio por script gerarem a mesma mensagem.
  */
 
-import { listarPedidos } from '../data/pedidosRepository.js';
+import { listarPedidos, listarPedidosEncerrados } from '../data/pedidosRepository.js';
 import { enviarNotificacaoPorTipo } from './whatsappNotificacaoService.js';
 import {
   codigoWhatsAppTagDisponivel,
@@ -56,8 +56,15 @@ export async function resolverClienteEProdutosWhatsApp(
   const codesFallback = parseJsonArray(itemCodesJson);
   try {
     const { data } = await listarPedidos({ pd: orderNumber });
-    const rows = (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>;
-    const rowsDoPd = rows.filter((r) => gerenciadorRowMatchesOrderNumber(r, orderNumber));
+    let rows = (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>;
+    let rowsDoPd = rows.filter((r) => gerenciadorRowMatchesOrderNumber(r, orderNumber));
+    // Reenvio / PD já fora do Gerenciador ativo: busca em Pedidos Encerrados.
+    if (rowsDoPd.length === 0) {
+      const encerrados = await listarPedidosEncerrados(orderNumber);
+      rows = (Array.isArray(encerrados.data) ? encerrados.data : []) as Array<Record<string, unknown>>;
+      rowsDoPd = rows.filter((r) => gerenciadorRowMatchesOrderNumber(r, orderNumber));
+      if (rowsDoPd.length === 0) rowsDoPd = rows;
+    }
     const selectedIds = parseJsonArray(itemIdsJson);
     const relevant = resolveRelevantRowsForCard(rowsDoPd, selectedIds, itemCodesJson);
     const useRows = relevant.length > 0 ? relevant : rowsDoPd;
