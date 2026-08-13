@@ -134,62 +134,27 @@ export async function listarMovimentacoes(filtro: ListarMovimentacoesFiltro = {}
     pd: r.pd,
     usuarioId: r.usuarioId,
     responsavelNome: r.responsavelNome,
+    conferenteNome: r.conferenteNome,
     observacao: r.observacao,
     inventarioId: r.inventarioId,
     createdAt: r.createdAt.toISOString(),
   }));
 }
 
-export async function registrarMovimentacao(input: {
+function mapMovimentacaoRow(row: {
+  id: number;
   produtoId: number;
-  tipo: 'entrada' | 'saida';
+  tipo: string;
   quantidade: number;
-  pd: string;
-  documentoSaida: string;
-  produtoPedidoCodigo: string;
-  produtoPedidoDescricao?: string | null;
+  pd: string | null;
   usuarioId: number | null;
   responsavelNome: string;
+  conferenteNome: string | null;
+  observacao: string | null;
+  inventarioId: number | null;
+  createdAt: Date;
+  produto: { codigo: string; descricao: string };
 }) {
-  const produto = await prisma.lojaKitProduto.findFirst({
-    where: { id: input.produtoId, ativo: true },
-  });
-  if (!produto) {
-    throw Object.assign(new Error('Kit não encontrado ou inativo.'), { status: 404 });
-  }
-
-  if (input.tipo === 'saida') {
-    const saldos = await calcularSaldos();
-    const saldo = saldos.get(input.produtoId)?.saldo ?? 0;
-    if (input.quantidade > saldo) {
-      throw Object.assign(
-        new Error(`Estoque insuficiente. Disponível: ${saldo}`),
-        { status: 400 },
-      );
-    }
-  }
-
-  const pd = input.pd.trim();
-  const doc = input.documentoSaida.trim();
-  const prodCod = input.produtoPedidoCodigo.trim();
-  const prodDesc = input.produtoPedidoDescricao?.trim() || '';
-  const observacao = prodDesc
-    ? `Doc. saída: ${doc} | Produto: ${prodCod} — ${prodDesc}`
-    : `Doc. saída: ${doc} | Produto: ${prodCod}`;
-
-  const row = await prisma.lojaKitMovimentacao.create({
-    data: {
-      produtoId: input.produtoId,
-      tipo: input.tipo,
-      quantidade: input.quantidade,
-      pd,
-      usuarioId: input.usuarioId,
-      responsavelNome: input.responsavelNome,
-      observacao,
-    },
-    include: { produto: { select: { codigo: true, descricao: true } } },
-  });
-
   return {
     id: row.id,
     produtoId: row.produtoId,
@@ -200,10 +165,124 @@ export async function registrarMovimentacao(input: {
     pd: row.pd,
     usuarioId: row.usuarioId,
     responsavelNome: row.responsavelNome,
+    conferenteNome: row.conferenteNome,
     observacao: row.observacao,
     inventarioId: row.inventarioId,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+async function quantidadeJaLancadaNoPd(
+  produtoId: number,
+  tipo: 'entrada' | 'saida',
+  pd: string,
+): Promise<number> {
+  const agg = await prisma.lojaKitMovimentacao.aggregate({
+    where: { produtoId, tipo, pd, inventarioId: null },
+    _sum: { quantidade: true },
+  });
+  return agg._sum.quantidade ?? 0;
+}
+
+export async function registrarMovimentacao(input: {
+  produtoId?: number;
+  kitCompleto?: boolean;
+  tipo: 'entrada' | 'saida';
+  quantidade: number;
+  quantidadeMaxPedido: number;
+  pd: string;
+  documentoSaida?: string | null;
+  sequenciaShop9?: number;
+  ordemMovimentoShop9?: number;
+  conferenteNome?: string | null;
+  produtoPedidoCodigo: string;
+  produtoPedidoDescricao?: string | null;
+  usuarioId: number | null;
+  responsavelNome: string;
+}) {
+  const alvos = input.kitCompleto
+    ? await listarProdutosAtivos()
+    : [
+        await prisma.lojaKitProduto.findFirst({
+          where: { id: input.produtoId, ativo: true },
+        }),
+      ].filter((p): p is NonNullable<typeof p> => p != null);
+
+  if (alvos.length === 0) {
+    throw Object.assign(new Error('Kit não encontrado ou inativo.'), { status: 404 });
+  }
+
+  if (input.quantidade > input.quantidadeMaxPedido) {
+    throw Object.assign(
+      new Error(
+        `A quantidade não pode ser maior que a do produto (${input.quantidadeMaxPedido} unid.).`,
+      ),
+      { status: 400 },
+    );
+  }
+
+  const pd = input.pd.trim();
+  const saldos = input.tipo === 'saida' ? await calcularSaldos() : null;
+
+  for (const produto of alvos) {
+    const jaLancado = await quantidadeJaLancadaNoPd(produto.id, input.tipo, pd);
+    if (jaLancado + input.quantidade > input.quantidadeMaxPedido) {
+      const restante = Math.max(0, input.quantidadeMaxPedido - jaLancado);
+      throw Object.assign(
+        new Error(
+          restante === 0
+            ? `${produto.descricao}: este vínculo já atingiu a quantidade (${input.quantidadeMaxPedido} unid.).`
+            : `${produto.descricao}: quantidade excede o limite. Restante: ${restante} unid.`,
+        ),
+        { status: 400 },
+      );
+    }
+    if (input.tipo === 'saida') {
+      const saldo = saldos?.get(produto.id)?.saldo ?? 0;
+      if (input.quantidade > saldo) {
+        throw Object.assign(
+          new Error(`Estoque insuficiente de ${produto.descricao}. Disponível: ${saldo}`),
+          { status: 400 },
+        );
+      }
+    }
+  }
+
+  const doc = input.documentoSaida?.trim() || '';
+  const prodCod = input.produtoPedidoCodigo.trim();
+  const prodDesc = input.produtoPedidoDescricao?.trim() || '';
+  const kitLabel = input.kitCompleto ? ' | Kit completo' : '';
+  const origem =
+    input.tipo === 'saida' && input.sequenciaShop9 != null
+      ? `Seq. Shop9: ${input.sequenciaShop9}${
+          input.ordemMovimentoShop9 != null ? ` (ordem ${input.ordemMovimentoShop9})` : ''
+        }`
+      : `Doc. saída: ${doc}`;
+  const conferente = input.conferenteNome?.trim() || '';
+  const conferenteLabel = conferente ? ` | Conferente: ${conferente}` : '';
+  const observacao = prodDesc
+    ? `${origem} | Produto: ${prodCod} — ${prodDesc}${kitLabel}${conferenteLabel}`
+    : `${origem} | Produto: ${prodCod}${kitLabel}${conferenteLabel}`;
+
+  const rows = await prisma.$transaction(
+    alvos.map((produto) =>
+      prisma.lojaKitMovimentacao.create({
+        data: {
+          produtoId: produto.id,
+          tipo: input.tipo,
+          quantidade: input.quantidade,
+          pd,
+          usuarioId: input.usuarioId,
+          responsavelNome: input.responsavelNome,
+          conferenteNome: conferente || null,
+          observacao,
+        },
+        include: { produto: { select: { codigo: true, descricao: true } } },
+      }),
+    ),
+  );
+
+  return mapMovimentacaoRow(rows[0]!);
 }
 
 export async function listarInventarios(limit = 50) {

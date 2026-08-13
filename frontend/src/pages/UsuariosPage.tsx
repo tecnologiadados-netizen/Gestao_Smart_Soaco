@@ -92,6 +92,14 @@ function agruparPermissoes(permissoes: PermissaoItem[]): { secao: string; itens:
   const map = new Map<string, PermissaoItem[]>();
   for (const p of permissoes) {
     if (isPermissaoPrioridadePendenciasUsuario(p.codigo)) continue;
+    if (
+      p.codigo === PERMISSOES.LOJA_KITS_VER
+      || p.codigo === PERMISSOES.LOJA_KITS_MOVIMENTAR
+      || p.codigo === PERMISSOES.LOJA_KITS_INVENTARIO
+    ) {
+      if (!map.has('Loja')) map.set('Loja', []);
+      continue;
+    }
     const prefix = p.codigo.split('.')[0] ?? '';
     const secao = SECOES_PERMISSOES[prefix];
     if (!secao) continue;
@@ -577,6 +585,43 @@ export default function UsuariosPage() {
     setGrupoPermissoes((prev) => (prev.includes(codigo) ? prev.filter((p) => p !== codigo) : [...prev, codigo]));
   };
 
+  const temLojaKitsModulo = grupoPermissoes.includes(PERMISSOES.LOJA_KITS_VER)
+    || grupoPermissoes.includes(PERMISSOES.LOJA_KITS_MOVIMENTAR);
+  const temLojaKitsInventario = grupoPermissoes.includes(PERMISSOES.LOJA_KITS_INVENTARIO);
+
+  const toggleLojaKitsModulo = () => {
+    if (editandoGrupoMaster) return;
+    setGrupoPermissoes((prev) => {
+      const ligado = prev.includes(PERMISSOES.LOJA_KITS_VER) || prev.includes(PERMISSOES.LOJA_KITS_MOVIMENTAR);
+      if (ligado) {
+        return prev.filter(
+          (p) =>
+            p !== PERMISSOES.LOJA_KITS_VER
+            && p !== PERMISSOES.LOJA_KITS_MOVIMENTAR
+            && p !== PERMISSOES.LOJA_KITS_INVENTARIO,
+        );
+      }
+      return [...new Set([...prev, PERMISSOES.LOJA_KITS_VER, PERMISSOES.LOJA_KITS_MOVIMENTAR])];
+    });
+  };
+
+  const toggleLojaKitsInventario = () => {
+    if (editandoGrupoMaster) return;
+    setGrupoPermissoes((prev) => {
+      if (prev.includes(PERMISSOES.LOJA_KITS_INVENTARIO)) {
+        return prev.filter((p) => p !== PERMISSOES.LOJA_KITS_INVENTARIO);
+      }
+      return [
+        ...new Set([
+          ...prev,
+          PERMISSOES.LOJA_KITS_VER,
+          PERMISSOES.LOJA_KITS_MOVIMENTAR,
+          PERMISSOES.LOJA_KITS_INVENTARIO,
+        ]),
+      ];
+    });
+  };
+
   const togglePrioridadePendenciasUsuario = (usuarioId: number, codigo: string) => {
     if (editandoGrupoMaster) return;
     setPrioridadePendenciasPorUsuario((prev) => {
@@ -971,14 +1016,53 @@ export default function UsuariosPage() {
               {agruparPermissoes(permissoesLista).map(({ secao, itens }) => (
                 <div key={secao} className="rounded-lg border border-slate-200 dark:border-slate-600/50 p-3 bg-slate-50/50 dark:bg-slate-800/30">
                   <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2 uppercase tracking-wide">{secao}</div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-2">
-                    {itens.map((p) => (
-                      <label key={p.codigo} className="flex items-center gap-2 text-sm cursor-pointer text-slate-800 dark:text-slate-100">
-                        <input type="checkbox" checked={grupoPermissoes.includes(p.codigo)} onChange={() => togglePermissao(p.codigo)} disabled={editandoGrupoMaster} />
-                        {p.label}
-                      </label>
-                    ))}
-                  </div>
+                  {secao === 'Loja' ? (
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer text-slate-800 dark:text-slate-100">
+                          <input
+                            type="checkbox"
+                            checked={temLojaKitsModulo}
+                            onChange={toggleLojaKitsModulo}
+                            disabled={editandoGrupoMaster}
+                          />
+                          Controle de estoque de kits
+                        </label>
+                        <label
+                          className={`ml-6 pl-3 border-l-2 border-slate-300 dark:border-slate-600 flex items-center gap-2 text-sm text-slate-800 dark:text-slate-100 ${
+                            temLojaKitsModulo && !editandoGrupoMaster ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={temLojaKitsInventario}
+                            onChange={toggleLojaKitsInventario}
+                            disabled={editandoGrupoMaster || !temLojaKitsModulo}
+                          />
+                          Inventário
+                        </label>
+                      </div>
+                      {itens.length > 0 ? (
+                        <div className="flex flex-wrap gap-x-4 gap-y-2">
+                          {itens.map((p) => (
+                            <label key={p.codigo} className="flex items-center gap-2 text-sm cursor-pointer text-slate-800 dark:text-slate-100">
+                              <input type="checkbox" checked={grupoPermissoes.includes(p.codigo)} onChange={() => togglePermissao(p.codigo)} disabled={editandoGrupoMaster} />
+                              {p.label}
+                            </label>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
+                      {itens.map((p) => (
+                        <label key={p.codigo} className="flex items-center gap-2 text-sm cursor-pointer text-slate-800 dark:text-slate-100">
+                          <input type="checkbox" checked={grupoPermissoes.includes(p.codigo)} onChange={() => togglePermissao(p.codigo)} disabled={editandoGrupoMaster} />
+                          {p.label}
+                        </label>
+                      ))}
+                    </div>
+                  )}
                   {secao === 'Compras' ? (
                     <QuadroPrioridadePendenciasGrupo
                       editandoGrupoId={editandoGrupoId}

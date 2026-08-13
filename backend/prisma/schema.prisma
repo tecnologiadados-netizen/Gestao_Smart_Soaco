@@ -2176,6 +2176,8 @@ model LojaKitMovimentacao {
   pd              String?
   usuarioId       Int?     @map("usuario_id")
   responsavelNome String   @map("responsavel_nome")
+  /// Quem entregou / conferiu a saída do kit (loja).
+  conferenteNome  String?  @map("conferente_nome")
   observacao      String?
   inventarioId    Int?     @map("inventario_id")
   createdAt       DateTime @default(now()) @map("created_at")

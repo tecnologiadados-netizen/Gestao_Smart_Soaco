@@ -30,6 +30,7 @@ export type LojaKitMovimentacao = {
   pd: string | null;
   usuarioId: number | null;
   responsavelNome: string;
+  conferenteNome: string | null;
   observacao: string | null;
   inventarioId: number | null;
   createdAt: string;
@@ -68,6 +69,21 @@ export type LojaKitItemDocumentoSaidaNomus = {
   quantidade: number;
   pedidoId: string;
   pedidoNumero: string;
+};
+
+export type LojaKitSequenciaShop9 = {
+  ordem: number;
+  sequencia: number;
+  data: string;
+  clienteNome: string;
+  filialNome: string;
+  operacaoNome: string;
+};
+
+export type LojaKitItemSequenciaShop9 = {
+  codigo: string;
+  descricao: string;
+  quantidade: number;
 };
 
 async function handleError(res: Response, fallback: string): Promise<never> {
@@ -110,6 +126,29 @@ export async function fetchLojaEstoqueKitsItensDocumentoSaidaNomus(
   return r.data;
 }
 
+export async function fetchLojaEstoqueKitsSequenciasShop9(params?: {
+  q?: string;
+  limit?: number;
+}): Promise<LojaKitSequenciaShop9[]> {
+  const sp = new URLSearchParams();
+  if (params?.q?.trim()) sp.set('q', params.q.trim());
+  if (params?.limit != null) sp.set('limit', String(params.limit));
+  const qs = sp.toString();
+  const r = await apiJson<{ data: LojaKitSequenciaShop9[] }>(
+    `/api/loja/estoque-kits/sequencias-shop9${qs ? `?${qs}` : ''}`,
+  );
+  return r.data;
+}
+
+export async function fetchLojaEstoqueKitsItensSequenciaShop9(
+  ordem: number,
+): Promise<LojaKitItemSequenciaShop9[]> {
+  const r = await apiJson<{ data: LojaKitItemSequenciaShop9[] }>(
+    `/api/loja/estoque-kits/sequencias-shop9/${encodeURIComponent(String(ordem))}/itens`,
+  );
+  return r.data;
+}
+
 export async function fetchLojaEstoqueKitsMovimentacoes(params?: {
   tipo?: 'entrada' | 'saida' | 'inventario';
   produtoId?: number;
@@ -127,11 +166,16 @@ export async function fetchLojaEstoqueKitsMovimentacoes(params?: {
 }
 
 export async function postLojaEstoqueKitsMovimentacao(body: {
-  produtoId: number;
+  produtoId?: number;
+  kitCompleto?: boolean;
   tipo: 'entrada' | 'saida';
   quantidade: number;
-  pd: string;
-  documentoSaida: string;
+  pd?: string;
+  documentoSaida?: string;
+  documentoId?: string;
+  sequenciaShop9?: number;
+  ordemMovimentoShop9?: number;
+  conferenteNome?: string | null;
   produtoPedidoCodigo: string;
   produtoPedidoDescricao?: string | null;
 }): Promise<LojaKitMovimentacao> {

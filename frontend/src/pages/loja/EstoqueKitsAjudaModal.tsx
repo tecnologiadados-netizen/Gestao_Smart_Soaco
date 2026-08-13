@@ -16,17 +16,17 @@ const SECOES: SecaoAjuda[] = [
   },
   {
     id: 'lancamento',
-    titulo: 'Lançamento por documento de saída',
+    titulo: 'Entrada (Nomus) e saída (Shop9)',
     oQueE:
-      'Só entram movimentações ligadas a documento de saída do Nomus. O fluxo começa pela escolha do tipo (entrada ou saída); em seguida o sistema pede o documento, o pedido vinculado e os produtos/quantidades.',
+      'Entrada fica amarrada ao documento de saída do Nomus e ao pedido de venda. Saída fica amarrada à sequência de venda do Shop9 e exige o responsável pela entrega / conferente. A quantidade vem do produto vinculado e não pode ser alterada.',
     comoLe:
-      '1) Escolha Entrada ou Saída. 2) Digite o número do documento de saída e selecione na lista. 3) Confira o pedido vinculado. 4) Escolha o produto do documento (quantidade preenche sozinha). 5) Informe o kit (Filtro/Engate) e confirme. Na grade Últimas movimentações, use o ▾ de cada coluna para filtrar/ordenar.',
+      'Entrada: 1) Escolha Entrada. 2) Informe o documento de saída Nomus. 3) Confira o pedido e o produto. 4) Escolha Kit completo, Filtro ou Engate e confirme. Saída: 1) Escolha Saída. 2) Informe a sequência Shop9. 3) Selecione o responsável pela entrega / conferente (Francisco Cássio, João Victor ou Iran). 4) Confira o produto da sequência. 5) Escolha o kit e confirme. Kit completo lança a quantidade em Filtro e Engate. Se escolher só Filtro ou só Engate, os dados ficam travados e basta confirmar. Na grade, a coluna PD / Seq. mostra o pedido (entrada) ou SEQ nnnn (saída); Conferente aparece nas saídas.',
   },
   {
     id: 'produtos',
-    titulo: 'Estoque atual e resumo',
+    titulo: 'Estoque atual',
     oQueE:
-      'No topo, quatro indicadores: saldo total na loja, unidades de entrada, unidades de saída e quantidade de inventários (com total de registros no histórico). Abaixo, o saldo de cada kit (Filtro/Engate) com entradas e saídas do item.',
+      'A aba Estoque atual mostra o saldo de cada kit (Filtro e Engate) com as entradas e saídas acumuladas do item.',
     comoLe:
       'Cards em destaque vermelho / selo “Estoque baixo” aparecem quando o saldo do kit fica abaixo de 10 unidades. Entradas e saídas nos cards do kit são em unidades acumuladas daquele produto.',
   },
@@ -46,8 +46,8 @@ export default function EstoqueKitsAjudaModal({ aberto, onClose }: EstoqueKitsAj
       aberto={aberto}
       onClose={onClose}
       titulo="Como ler — Estoque de kits da loja"
-      subtitulo="Documento de saída Nomus, pedido vinculado, kit e inventário."
-      introducao="Controle dos kits remanescentes na loja, sempre amarrado a um documento de saída do Nomus e ao pedido de venda vinculado."
+      subtitulo="Entrada pelo Nomus, saída pela sequência Shop9, kit e inventário."
+      introducao="Controle dos kits remanescentes na loja: entrada amarrada ao documento/pedido Nomus; saída amarrada à sequência de venda do Shop9."
       secoes={SECOES}
       tituloId="loja-estoque-kits-ajuda-titulo"
     />

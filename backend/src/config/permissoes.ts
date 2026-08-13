@@ -362,7 +362,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.USUARIOS_GERENCIAR]: 'Gerenciar usuários e grupos',
 
   // Loja
-  [PERMISSOES.LOJA_KITS_VER]: 'Loja — ver controle de estoque de kits',
-  [PERMISSOES.LOJA_KITS_MOVIMENTAR]: 'Loja — registrar entrada/saída de kits',
-  [PERMISSOES.LOJA_KITS_INVENTARIO]: 'Loja — confirmar inventário de kits',
+  [PERMISSOES.LOJA_KITS_VER]: 'Controle de estoque de kits',
+  [PERMISSOES.LOJA_KITS_MOVIMENTAR]: 'Lançar entrada e saída de kits',
+  [PERMISSOES.LOJA_KITS_INVENTARIO]: 'Inventário',
 };

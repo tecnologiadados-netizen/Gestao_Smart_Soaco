@@ -7,8 +7,10 @@ import {
   getLojaEstoqueKitsDocumentosSaidaNomus,
   getLojaEstoqueKitsInventarios,
   getLojaEstoqueKitsItensDocumentoSaidaNomus,
+  getLojaEstoqueKitsItensSequenciaShop9,
   getLojaEstoqueKitsMovimentacoes,
   getLojaEstoqueKitsResumo,
+  getLojaEstoqueKitsSequenciasShop9,
   postLojaEstoqueKitsInventario,
   postLojaEstoqueKitsMovimentacao,
 } from '../controllers/lojaEstoqueKitsController.js';
@@ -25,6 +27,8 @@ const podeVer = requirePermission(
 router.get('/resumo', podeVer, getLojaEstoqueKitsResumo);
 router.get('/documentos-saida', podeVer, getLojaEstoqueKitsDocumentosSaidaNomus);
 router.get('/documentos-saida/:documentoId/itens', podeVer, getLojaEstoqueKitsItensDocumentoSaidaNomus);
+router.get('/sequencias-shop9', podeVer, getLojaEstoqueKitsSequenciasShop9);
+router.get('/sequencias-shop9/:ordem/itens', podeVer, getLojaEstoqueKitsItensSequenciaShop9);
 router.get('/movimentacoes', podeVer, getLojaEstoqueKitsMovimentacoes);
 router.post(
   '/movimentacoes',

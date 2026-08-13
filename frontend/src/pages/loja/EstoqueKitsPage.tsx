@@ -9,8 +9,10 @@ import {
   fetchLojaEstoqueKitsDocumentosSaidaNomus,
   fetchLojaEstoqueKitsInventarios,
   fetchLojaEstoqueKitsItensDocumentoSaidaNomus,
+  fetchLojaEstoqueKitsItensSequenciaShop9,
   fetchLojaEstoqueKitsMovimentacoes,
   fetchLojaEstoqueKitsResumo,
+  fetchLojaEstoqueKitsSequenciasShop9,
   postLojaEstoqueKitsInventario,
   postLojaEstoqueKitsMovimentacao,
   type LojaKitDocumentoSaidaNomus,
@@ -18,10 +20,22 @@ import {
   type LojaKitItemDocumentoSaidaNomus,
   type LojaKitMovimentacao,
   type LojaKitResumo,
+  type LojaKitSequenciaShop9,
 } from '../../api/lojaEstoqueKits';
 import EstoqueKitsAjudaModal from './EstoqueKitsAjudaModal';
 
 type Aba = 'estoque' | 'lancamento' | 'inventario';
+type KitSelecao = number | 'completo' | '';
+
+const CONFERENTES_SAIDA = [
+  'FRANCISCO CASSIO PEREIRA DA SILVA',
+  'JOAO VICTOR DOS SANTOS NASCIMENTO',
+  'IRAN RIBEIRO BOMFIM',
+] as const;
+
+function qtdDoPedido(quantidade: number): number {
+  return Math.max(1, Math.round(quantidade) || 1);
+}
 
 function fmtDataEmissao(iso: string): string {
   const texto = iso.trim();
@@ -73,7 +87,7 @@ export default function EstoqueKitsPage() {
   const [recentes, setRecentes] = useState<LojaKitMovimentacao[]>([]);
   const [inventarios, setInventarios] = useState<LojaKitInventario[]>([]);
 
-  const [kitId, setKitId] = useState<number | ''>('');
+  const [kitId, setKitId] = useState<KitSelecao>('');
   const [tipoMov, setTipoMov] = useState<'entrada' | 'saida' | null>(null);
   const [docTermo, setDocTermo] = useState('');
   const [documentoSelecionado, setDocumentoSelecionado] =
@@ -85,7 +99,13 @@ export default function EstoqueKitsPage() {
   const [itensCarregando, setItensCarregando] = useState(false);
   const [pedidoIdSel, setPedidoIdSel] = useState('');
   const [produtoPedidoCodigo, setProdutoPedidoCodigo] = useState('');
-  const [qty, setQty] = useState('');
+  const [seqTermo, setSeqTermo] = useState('');
+  const [sequenciaSelecionada, setSequenciaSelecionada] =
+    useState<LojaKitSequenciaShop9 | null>(null);
+  const [seqOpcoes, setSeqOpcoes] = useState<LojaKitSequenciaShop9[]>([]);
+  const [seqAberto, setSeqAberto] = useState(false);
+  const [seqCarregando, setSeqCarregando] = useState(false);
+  const [conferenteNome, setConferenteNome] = useState('');
   const [salvando, setSalvando] = useState(false);
 
   const [contagem, setContagem] = useState<Record<number, string>>({});
@@ -93,14 +113,15 @@ export default function EstoqueKitsPage() {
   const [salvandoInv, setSalvandoInv] = useState(false);
 
   const produtos = resumo?.produtos ?? [];
-  const saldoTotalLoja = useMemo(
-    () => produtos.reduce((s, p) => s + p.saldo, 0),
-    [produtos],
-  );
   const pedidosDoDoc = documentoSelecionado?.pedidos ?? [];
   const itensFiltrados = useMemo(
-    () => (pedidoIdSel ? itensDoc.filter((i) => i.pedidoId === pedidoIdSel) : itensDoc),
-    [itensDoc, pedidoIdSel],
+    () =>
+      tipoMov === 'saida'
+        ? itensDoc
+        : pedidoIdSel
+          ? itensDoc.filter((i) => i.pedidoId === pedidoIdSel)
+          : itensDoc,
+    [itensDoc, pedidoIdSel, tipoMov],
   );
   const produtoPedidoSel =
     itensFiltrados.find((i) => i.codigo === produtoPedidoCodigo) ?? null;
@@ -108,6 +129,11 @@ export default function EstoqueKitsPage() {
     pedidosDoDoc.find((p) => p.pedidoId === pedidoIdSel)?.numero ??
     produtoPedidoSel?.pedidoNumero ??
     '';
+  const qtdPedidoVinculada = produtoPedidoSel
+    ? qtdDoPedido(produtoPedidoSel.quantidade)
+    : null;
+  const kitEspecifico = typeof kitId === 'number';
+  const camposTravados = kitEspecifico;
 
   const carregarBase = useCallback(async () => {
     setLoading(true);
@@ -152,7 +178,7 @@ export default function EstoqueKitsPage() {
   }, [aba, carregarInventarios]);
 
   useEffect(() => {
-    if (aba !== 'lancamento' || !tipoMov) return;
+    if (aba !== 'lancamento' || tipoMov !== 'entrada') return;
     let cancelled = false;
     const handle = window.setTimeout(() => {
       void (async () => {
@@ -180,11 +206,40 @@ export default function EstoqueKitsPage() {
   }, [aba, docTermo, tipoMov]);
 
   useEffect(() => {
+    if (aba !== 'lancamento' || tipoMov !== 'saida') return;
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        setSeqCarregando(true);
+        try {
+          const lista = await fetchLojaEstoqueKitsSequenciasShop9({
+            q: seqTermo.trim() || undefined,
+            limit: seqTermo.trim().length >= 2 ? 50 : 20,
+          });
+          if (!cancelled) setSeqOpcoes(lista);
+        } catch (e) {
+          if (!cancelled) {
+            setSeqOpcoes([]);
+            setErro(e instanceof Error ? e.message : 'Erro ao buscar sequências no Shop9.');
+          }
+        } finally {
+          if (!cancelled) setSeqCarregando(false);
+        }
+      })();
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [aba, seqTermo, tipoMov]);
+
+  useEffect(() => {
+    if (tipoMov === 'saida') return;
     if (!documentoSelecionado) {
       setItensDoc([]);
       setPedidoIdSel('');
       setProdutoPedidoCodigo('');
-      setQty('');
+      setKitId('');
       return;
     }
     let cancelled = false;
@@ -209,11 +264,10 @@ export default function EstoqueKitsPage() {
           : itens;
         if (itensDoPedido.length === 1) {
           setProdutoPedidoCodigo(itensDoPedido[0].codigo);
-          setQty(String(Math.max(1, Math.round(itensDoPedido[0].quantidade)) || 1));
         } else {
           setProdutoPedidoCodigo('');
-          setQty('');
         }
+        setKitId('');
       } catch (e) {
         if (!cancelled) {
           setItensDoc([]);
@@ -226,7 +280,50 @@ export default function EstoqueKitsPage() {
     return () => {
       cancelled = true;
     };
-  }, [documentoSelecionado]);
+  }, [documentoSelecionado, tipoMov]);
+
+  useEffect(() => {
+    if (tipoMov !== 'saida') return;
+    if (!sequenciaSelecionada) {
+      setItensDoc([]);
+      setProdutoPedidoCodigo('');
+      setKitId('');
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setItensCarregando(true);
+      try {
+        const itens = await fetchLojaEstoqueKitsItensSequenciaShop9(sequenciaSelecionada.ordem);
+        if (cancelled) return;
+        const mapped: LojaKitItemDocumentoSaidaNomus[] = itens.map((i) => ({
+          codigo: i.codigo,
+          descricao: i.descricao,
+          quantidade: i.quantidade,
+          pedidoId: '',
+          pedidoNumero: '',
+        }));
+        setItensDoc(mapped);
+        setPedidoIdSel('');
+        if (mapped.length === 1) {
+          setProdutoPedidoCodigo(mapped[0].codigo);
+        } else {
+          setProdutoPedidoCodigo('');
+        }
+        setKitId('');
+      } catch (e) {
+        if (!cancelled) {
+          setItensDoc([]);
+          setErro(e instanceof Error ? e.message : 'Erro ao carregar itens da sequência Shop9.');
+        }
+      } finally {
+        if (!cancelled) setItensCarregando(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sequenciaSelecionada, tipoMov]);
 
   const responsavelLabel = useMemo(
     () => nome?.trim() || login || '—',
@@ -242,7 +339,10 @@ export default function EstoqueKitsPage() {
     setPedidoIdSel('');
     setProdutoPedidoCodigo('');
     setKitId('');
-    setQty('');
+    setSeqTermo('');
+    setSequenciaSelecionada(null);
+    setSeqOpcoes([]);
+    setConferenteNome('');
   }
 
   async function registrar() {
@@ -254,25 +354,38 @@ export default function EstoqueKitsPage() {
       setErro('Sem permissão para movimentar estoque de kits.');
       return;
     }
-    if (!documentoSelecionado) {
-      setErro('Selecione o documento de saída no Nomus.');
+    if (tipoMov === 'entrada') {
+      if (!documentoSelecionado) {
+        setErro('Selecione o documento de saída no Nomus.');
+        return;
+      }
+      if (!pedidoIdSel || !pedidoNumeroSel) {
+        setErro('Selecione o pedido vinculado ao documento.');
+        return;
+      }
+    } else if (!sequenciaSelecionada) {
+      setErro('Selecione a sequência Shop9.');
       return;
     }
-    if (!pedidoIdSel || !pedidoNumeroSel) {
-      setErro('Selecione o pedido vinculado ao documento.');
+    if (tipoMov === 'saida' && !conferenteNome.trim()) {
+      setErro('Informe o responsável pela entrega / conferente.');
       return;
     }
     if (!produtoPedidoCodigo || !produtoPedidoSel) {
-      setErro('Selecione o produto do documento.');
+      setErro(
+        tipoMov === 'saida'
+          ? 'Selecione o produto da sequência Shop9.'
+          : 'Selecione o produto do documento.',
+      );
       return;
     }
     if (kitId === '') {
-      setErro('Selecione o kit (Filtro ou Engate).');
+      setErro('Selecione o kit (completo, Filtro ou Engate).');
       return;
     }
-    const quantidade = Number.parseInt(qty, 10);
-    if (!Number.isFinite(quantidade) || quantidade < 1) {
-      setErro('Informe uma quantidade válida.');
+    const quantidade = qtdPedidoVinculada;
+    if (quantidade == null) {
+      setErro('Selecione o produto para vincular a quantidade.');
       return;
     }
     setSalvando(true);
@@ -280,15 +393,29 @@ export default function EstoqueKitsPage() {
     setOkMsg(null);
     try {
       await postLojaEstoqueKitsMovimentacao({
-        produtoId: kitId,
+        ...(kitId === 'completo' ? { kitCompleto: true } : { produtoId: kitId }),
         tipo: tipoMov,
         quantidade,
-        pd: pedidoNumeroSel,
-        documentoSaida: documentoSelecionado.numero,
         produtoPedidoCodigo: produtoPedidoSel.codigo,
         produtoPedidoDescricao: produtoPedidoSel.descricao,
+        ...(tipoMov === 'entrada' && documentoSelecionado
+          ? {
+              pd: pedidoNumeroSel,
+              documentoSaida: documentoSelecionado.numero,
+              documentoId: documentoSelecionado.documentoId,
+            }
+          : {
+              sequenciaShop9: sequenciaSelecionada?.sequencia,
+              ordemMovimentoShop9: sequenciaSelecionada?.ordem,
+              conferenteNome: conferenteNome.trim(),
+            }),
       });
-      setOkMsg(tipoMov === 'entrada' ? 'Entrada registrada.' : 'Saída registrada.');
+      const acao = tipoMov === 'entrada' ? 'Entrada' : 'Saída';
+      setOkMsg(
+        kitId === 'completo'
+          ? `${acao} registrada no Filtro e no Engate.`
+          : `${acao} registrada.`,
+      );
       limparLancamento({ manterTipo: true });
       await carregarBase();
     } catch (e) {
@@ -391,59 +518,6 @@ export default function EstoqueKitsPage() {
         <>
           {aba === 'estoque' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="card-panel border-l-4 border-l-primary-500 bg-primary-50/60 p-4 dark:bg-primary-950/20">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Saldo na loja
-                  </div>
-                  <div className="mt-2 text-3xl font-extrabold tabular-nums leading-none text-primary-700 dark:text-accent-400">
-                    {saldoTotalLoja}
-                    <span className="ml-1.5 text-sm font-medium text-slate-400">unid.</span>
-                  </div>
-                  <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    {produtos.length} kit{produtos.length === 1 ? '' : 's'} controlado
-                    {produtos.length === 1 ? '' : 's'}
-                  </div>
-                </div>
-                <div className="card-panel border-l-4 border-l-emerald-500 bg-emerald-50/70 p-4 dark:bg-emerald-950/25">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Entradas
-                  </div>
-                  <div className="mt-2 text-3xl font-extrabold tabular-nums leading-none text-emerald-700 dark:text-emerald-300">
-                    {resumo?.totais.entradas ?? 0}
-                    <span className="ml-1.5 text-sm font-medium text-slate-400">unid.</span>
-                  </div>
-                  <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    Kits que ficaram na loja
-                  </div>
-                </div>
-                <div className="card-panel border-l-4 border-l-rose-500 bg-rose-50/70 p-4 dark:bg-rose-950/25">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Saídas
-                  </div>
-                  <div className="mt-2 text-3xl font-extrabold tabular-nums leading-none text-rose-700 dark:text-rose-300">
-                    {resumo?.totais.saidas ?? 0}
-                    <span className="ml-1.5 text-sm font-medium text-slate-400">unid.</span>
-                  </div>
-                  <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    Kits retirados / entregues
-                  </div>
-                </div>
-                <div className="card-panel border-l-4 border-l-violet-500 bg-violet-50/70 p-4 dark:bg-violet-950/25">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Inventários
-                  </div>
-                  <div className="mt-2 text-3xl font-extrabold tabular-nums leading-none text-violet-700 dark:text-violet-300">
-                    {resumo?.totais.inventarios ?? 0}
-                    <span className="ml-1.5 text-sm font-medium text-slate-400">contagens</span>
-                  </div>
-                  <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    {resumo?.totais.registros ?? 0} registro
-                    {(resumo?.totais.registros ?? 0) === 1 ? '' : 's'} no histórico
-                  </div>
-                </div>
-              </div>
-
               <div>
                 <h2 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">
                   Saldo por kit
@@ -574,7 +648,7 @@ export default function EstoqueKitsPage() {
                         Alterar tipo
                       </button>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       <label className="block text-xs font-medium text-slate-500">
                         Responsável
                         <input
@@ -583,56 +657,133 @@ export default function EstoqueKitsPage() {
                           className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
                         />
                       </label>
-                      <div className="relative block text-xs font-medium text-slate-500">
-                        Documento de saída
-                        <input
-                          value={docTermo}
-                          onChange={(e) => {
-                            setDocTermo(e.target.value);
-                            setDocumentoSelecionado(null);
-                            setDocsAberto(true);
-                          }}
-                          onFocus={() => setDocsAberto(true)}
-                          onBlur={() => {
-                            window.setTimeout(() => setDocsAberto(false), 150);
-                          }}
-                          placeholder="Nº do documento de saída…"
-                          autoComplete="off"
-                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
-                        />
-                        {docsCarregando && (
-                          <span className="absolute right-2 top-8 text-[10px] text-slate-400">…</span>
-                        )}
-                        {docsAberto && docsOpcoes.length > 0 && (
-                          <ul className="absolute z-40 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800">
-                            {docsOpcoes.map((d) => (
-                              <li key={d.documentoId}>
-                                <button
-                                  type="button"
-                                  className="flex w-full flex-col items-start px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700"
-                                  onMouseDown={(e) => e.preventDefault()}
-                                  onClick={() => {
-                                    setDocumentoSelecionado(d);
-                                    setDocTermo(d.numero);
-                                    setDocsAberto(false);
-                                  }}
-                                >
-                                  <span className="text-sm font-semibold text-primary-700 dark:text-accent-400">
-                                    {d.numero}
-                                    {d.dataEmissao ? ` · ${fmtDataEmissao(d.dataEmissao)}` : ''}
-                                  </span>
-                                  <span className="line-clamp-1 text-[11px] text-slate-500">
-                                    {d.clienteNome || '—'}
-                                    {d.pedidos.length > 0
-                                      ? ` · PD ${d.pedidos.map((p) => p.numero).join(', ')}`
-                                      : ''}
-                                  </span>
-                                </button>
-                              </li>
+                      {tipoMov === 'saida' ? (
+                        <div className="relative block text-xs font-medium text-slate-500">
+                          Sequência Shop9
+                          <input
+                            value={seqTermo}
+                            onChange={(e) => {
+                              setSeqTermo(e.target.value);
+                              setSequenciaSelecionada(null);
+                              setKitId('');
+                              setSeqAberto(true);
+                            }}
+                            onFocus={() => {
+                              if (!camposTravados) setSeqAberto(true);
+                            }}
+                            onBlur={() => {
+                              window.setTimeout(() => setSeqAberto(false), 150);
+                            }}
+                            placeholder="Nº da sequência…"
+                            autoComplete="off"
+                            disabled={camposTravados}
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-70 dark:border-slate-600 dark:bg-slate-900 dark:disabled:bg-slate-800"
+                          />
+                          {seqCarregando && (
+                            <span className="absolute right-2 top-8 text-[10px] text-slate-400">…</span>
+                          )}
+                          {seqAberto && !camposTravados && seqOpcoes.length > 0 && (
+                            <ul className="absolute z-40 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800">
+                              {seqOpcoes.map((s) => (
+                                <li key={s.ordem}>
+                                  <button
+                                    type="button"
+                                    className="flex w-full flex-col items-start px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => {
+                                      setSequenciaSelecionada(s);
+                                      setSeqTermo(String(s.sequencia));
+                                      setSeqAberto(false);
+                                    }}
+                                  >
+                                    <span className="text-sm font-semibold text-primary-700 dark:text-accent-400">
+                                      {s.sequencia}
+                                      {s.data ? ` · ${fmtDataEmissao(s.data)}` : ''}
+                                    </span>
+                                    <span className="line-clamp-1 text-[11px] text-slate-500">
+                                      {s.clienteNome || '—'}
+                                      {s.filialNome ? ` · ${s.filialNome}` : ''}
+                                    </span>
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="relative block text-xs font-medium text-slate-500">
+                          Documento de saída
+                          <input
+                            value={docTermo}
+                            onChange={(e) => {
+                              setDocTermo(e.target.value);
+                              setDocumentoSelecionado(null);
+                              setKitId('');
+                              setDocsAberto(true);
+                            }}
+                            onFocus={() => {
+                              if (!camposTravados) setDocsAberto(true);
+                            }}
+                            onBlur={() => {
+                              window.setTimeout(() => setDocsAberto(false), 150);
+                            }}
+                            placeholder="Nº do documento de saída…"
+                            autoComplete="off"
+                            disabled={camposTravados}
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-70 dark:border-slate-600 dark:bg-slate-900 dark:disabled:bg-slate-800"
+                          />
+                          {docsCarregando && (
+                            <span className="absolute right-2 top-8 text-[10px] text-slate-400">…</span>
+                          )}
+                          {docsAberto && !camposTravados && docsOpcoes.length > 0 && (
+                            <ul className="absolute z-40 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800">
+                              {docsOpcoes.map((d) => (
+                                <li key={d.documentoId}>
+                                  <button
+                                    type="button"
+                                    className="flex w-full flex-col items-start px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => {
+                                      setDocumentoSelecionado(d);
+                                      setDocTermo(d.numero);
+                                      setDocsAberto(false);
+                                    }}
+                                  >
+                                    <span className="text-sm font-semibold text-primary-700 dark:text-accent-400">
+                                      {d.numero}
+                                      {d.dataEmissao ? ` · ${fmtDataEmissao(d.dataEmissao)}` : ''}
+                                    </span>
+                                    <span className="line-clamp-1 text-[11px] text-slate-500">
+                                      {d.clienteNome || '—'}
+                                      {d.pedidos.length > 0
+                                        ? ` · PD ${d.pedidos.map((p) => p.numero).join(', ')}`
+                                        : ''}
+                                    </span>
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+                      {tipoMov === 'saida' && (
+                        <label className="block text-xs font-medium text-slate-500">
+                          Responsável pela entrega / conferente
+                          <select
+                            value={conferenteNome}
+                            onChange={(e) => setConferenteNome(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+                          >
+                            <option value="">Selecione…</option>
+                            {CONFERENTES_SAIDA.map((nome) => (
+                              <option key={nome} value={nome}>
+                                {nome}
+                              </option>
                             ))}
-                          </ul>
-                        )}
-                      </div>
+                          </select>
+                        </label>
+                      )}
+                      {tipoMov !== 'saida' && (
                       <label className="block text-xs font-medium text-slate-500">
                         Pedido vinculado
                         {pedidosDoDoc.length <= 1 ? (
@@ -654,16 +805,16 @@ export default function EstoqueKitsPage() {
                             onChange={(e) => {
                               const id = e.target.value;
                               setPedidoIdSel(id);
+                              setKitId('');
                               const itens = itensDoc.filter((i) => i.pedidoId === id);
                               if (itens.length === 1) {
                                 setProdutoPedidoCodigo(itens[0].codigo);
-                                setQty(String(Math.max(1, Math.round(itens[0].quantidade)) || 1));
                               } else {
                                 setProdutoPedidoCodigo('');
-                                setQty('');
                               }
                             }}
-                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+                            disabled={camposTravados}
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-70 dark:border-slate-600 dark:bg-slate-900 dark:disabled:bg-slate-800"
                           >
                             <option value="">Selecione…</option>
                             {pedidosDoDoc.map((p) => (
@@ -674,45 +825,20 @@ export default function EstoqueKitsPage() {
                           </select>
                         )}
                       </label>
-                      <label className="block text-xs font-medium text-slate-500">
-                        Produto (do documento)
-                        <select
-                          value={produtoPedidoCodigo}
-                          disabled={!documentoSelecionado || itensCarregando || !pedidoIdSel}
-                          onChange={(e) => {
-                            const codigo = e.target.value;
-                            setProdutoPedidoCodigo(codigo);
-                            const item = itensFiltrados.find((i) => i.codigo === codigo);
-                            if (item) {
-                              setQty(String(Math.max(1, Math.round(item.quantidade)) || 1));
-                            } else {
-                              setQty('');
-                            }
-                          }}
-                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900"
-                        >
-                          <option value="">
-                            {!documentoSelecionado
-                              ? 'Selecione o documento…'
-                              : itensCarregando
-                                ? 'Carregando…'
-                                : 'Selecione…'}
-                          </option>
-                          {itensFiltrados.map((item) => (
-                            <option key={`${item.pedidoId}-${item.codigo}`} value={item.codigo}>
-                              {item.codigo} — {item.descricao} (qtd {item.quantidade})
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                      )}
                       <label className="block text-xs font-medium text-slate-500">
                         Kit (estoque)
                         <select
                           value={kitId === '' ? '' : String(kitId)}
-                          onChange={(e) => setKitId(e.target.value ? Number(e.target.value) : '')}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === 'completo') setKitId('completo');
+                            else setKitId(v ? Number(v) : '');
+                          }}
                           className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
                         >
                           <option value="">Selecione…</option>
+                          <option value="completo">Kit completo (Filtro + Engate)</option>
                           {produtos.map((p) => (
                             <option key={p.produtoId} value={p.produtoId}>
                               {p.codigo} — {p.descricao} (saldo {p.saldo})
@@ -720,17 +846,125 @@ export default function EstoqueKitsPage() {
                           ))}
                         </select>
                       </label>
-                      <label className="block text-xs font-medium text-slate-500">
-                        Quantidade
-                        <input
-                          type="number"
-                          min={1}
-                          value={qty}
-                          onChange={(e) => setQty(e.target.value)}
-                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
-                        />
-                      </label>
                     </div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_11rem]">
+                      <label className="block min-w-0 text-xs font-medium text-slate-500">
+                        {tipoMov === 'saida' ? 'Produto (da sequência)' : 'Produto (do documento)'}
+                        {itensFiltrados.length <= 1 ? (
+                          <div className="mt-1 min-h-[2.75rem] rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm leading-snug text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                            {tipoMov === 'saida'
+                              ? !sequenciaSelecionada
+                                ? <span className="text-slate-400">Selecione a sequência…</span>
+                                : itensCarregando
+                                  ? 'Carregando…'
+                                  : produtoPedidoSel
+                                    ? (
+                                        <>
+                                          <span className="font-semibold text-primary-700 dark:text-accent-400">
+                                            {produtoPedidoSel.codigo}
+                                          </span>
+                                          <span className="whitespace-normal break-words">
+                                            {' '}
+                                            — {produtoPedidoSel.descricao}
+                                          </span>
+                                        </>
+                                      )
+                                    : '—'
+                              : !documentoSelecionado
+                                ? <span className="text-slate-400">Selecione o documento…</span>
+                                : itensCarregando
+                                  ? 'Carregando…'
+                                  : produtoPedidoSel
+                                    ? (
+                                        <>
+                                          <span className="font-semibold text-primary-700 dark:text-accent-400">
+                                            {produtoPedidoSel.codigo}
+                                          </span>
+                                          <span className="whitespace-normal break-words">
+                                            {' '}
+                                            — {produtoPedidoSel.descricao}
+                                          </span>
+                                        </>
+                                      )
+                                    : '—'}
+                          </div>
+                        ) : (
+                          <>
+                            <select
+                              value={produtoPedidoCodigo}
+                              disabled={
+                                camposTravados ||
+                                itensCarregando ||
+                                (tipoMov === 'saida'
+                                  ? !sequenciaSelecionada
+                                  : !documentoSelecionado || !pedidoIdSel)
+                              }
+                              onChange={(e) => {
+                                const codigo = e.target.value;
+                                setProdutoPedidoCodigo(codigo);
+                                setKitId('');
+                              }}
+                              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900"
+                            >
+                              <option value="">
+                                {tipoMov === 'saida'
+                                  ? !sequenciaSelecionada
+                                    ? 'Selecione a sequência…'
+                                    : itensCarregando
+                                      ? 'Carregando…'
+                                      : 'Selecione…'
+                                  : !documentoSelecionado
+                                    ? 'Selecione o documento…'
+                                    : itensCarregando
+                                      ? 'Carregando…'
+                                      : 'Selecione…'}
+                              </option>
+                              {itensFiltrados.map((item) => (
+                                <option key={`${item.pedidoId}-${item.codigo}`} value={item.codigo}>
+                                  {item.codigo} — {item.descricao} (qtd {item.quantidade})
+                                </option>
+                              ))}
+                            </select>
+                            {produtoPedidoSel && (
+                              <div className="mt-1.5 whitespace-normal break-words text-sm leading-snug text-slate-700 dark:text-slate-200">
+                                <span className="font-semibold text-primary-700 dark:text-accent-400">
+                                  {produtoPedidoSel.codigo}
+                                </span>
+                                {' '}
+                                — {produtoPedidoSel.descricao}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </label>
+                      <div className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-800">
+                        <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                          Quantidade
+                        </div>
+                        <div className="mt-1 text-3xl font-extrabold tabular-nums leading-none text-slate-800 dark:text-slate-100">
+                          {qtdPedidoVinculada != null ? qtdPedidoVinculada : '—'}
+                          {qtdPedidoVinculada != null && (
+                            <span className="ml-1 text-sm font-medium text-slate-400">unid.</span>
+                          )}
+                        </div>
+                        <div className="mt-1.5 text-[11px] text-slate-400">
+                          Qtd. do produto {tipoMov === 'saida' ? 'na sequência' : 'no pedido'}
+                        </div>
+                      </div>
+                    </div>
+                    {kitId === 'completo' && qtdPedidoVinculada != null && (
+                      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                        Kit completo: será lançada a quantidade (
+                        {qtdPedidoVinculada} unid.) em cada item (Filtro e Engate).
+                      </p>
+                    )}
+                    {kitEspecifico && (
+                      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                        Dados preenchidos pelo pedido. Basta confirmar a{' '}
+                        {tipoMov === 'entrada' ? 'entrada' : 'saída'} — os demais campos não podem ser
+                        alterados.
+                      </p>
+                    )}
                     <div className="mt-4 flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -893,6 +1127,7 @@ type MovColId =
   | 'tipo'
   | 'dataHora'
   | 'responsavel'
+  | 'conferente'
   | 'pd'
   | 'codigo'
   | 'descricao'
@@ -902,6 +1137,7 @@ const MOV_COLS: MovColId[] = [
   'tipo',
   'dataHora',
   'responsavel',
+  'conferente',
   'pd',
   'codigo',
   'descricao',
@@ -912,7 +1148,8 @@ const MOV_COL_LABELS: Record<MovColId, string> = {
   tipo: 'Tipo',
   dataHora: 'Data/Hora',
   responsavel: 'Responsável',
-  pd: 'PD',
+  conferente: 'Conferente',
+  pd: 'PD / Seq.',
   codigo: 'Código',
   descricao: 'Descrição',
   qtd: 'Qtd',
@@ -926,6 +1163,8 @@ function cellTextMov(r: LojaKitMovimentacao, col: MovColId): string {
       return fmtDataHora(r.createdAt);
     case 'responsavel':
       return r.responsavelNome || '—';
+    case 'conferente':
+      return r.conferenteNome?.trim() || '—';
     case 'pd':
       return r.pd?.trim() || '—';
     case 'codigo':
@@ -1036,6 +1275,7 @@ function TabelaMovs({ rows }: { rows: LojaKitMovimentacao[] }) {
                   </td>
                   <td className="whitespace-nowrap px-2 py-1.5">{fmtDataHora(r.createdAt)}</td>
                   <td className="px-2 py-1.5">{r.responsavelNome}</td>
+                  <td className="px-2 py-1.5">{r.conferenteNome?.trim() || '—'}</td>
                   <td className="px-2 py-1.5">{r.pd || '—'}</td>
                   <td className="px-2 py-1.5">{r.codigo}</td>
                   <td className="px-2 py-1.5">{r.descricao}</td>
