@@ -7,7 +7,6 @@ export type EscopoWhatsAppComunicacaoPd = 'loja' | 'industria';
 
 /** Vendedores que disparam alertas da Loja (match normalizado). */
 export const VENDEDORES_WHATSAPP_LOJA = [
-  'ANTONIO LUIS PEREIRA DE SOUSA',
   'GILVANIA EVANGELISTA SAMPAIO',
   'MIRIAM DA SILVA NEPOMUCENO',
   'LARISSA CRISTINE PINHEIRO DOS SANTOS',
@@ -17,6 +16,7 @@ export const VENDEDORES_WHATSAPP_LOJA = [
 
 /** Vendedores que disparam alertas da Indústria. */
 export const VENDEDORES_WHATSAPP_INDUSTRIA = [
+  'ANTONIO LUIS PEREIRA DE SOUSA',
   'MARCOS AMORIM',
   'IDELGASTO ALVES CAMPELO',
   'J. A. DE P. ROCHA - AIRTON REPRESENTAÇÕES',
