@@ -12,6 +12,7 @@ export const VENDEDORES_WHATSAPP_LOJA = [
   'MIRIAM DA SILVA NEPOMUCENO',
   'LARISSA CRISTINE PINHEIRO DOS SANTOS',
   'MARIA LEOPOLDINA ARAUJO MARQUES',
+  'ROBERTO',
 ] as const;
 
 /** Vendedores que disparam alertas da Indústria. */

@@ -69,6 +69,14 @@ const SECOES: SecaoAjuda[] = [
     comoLe:
       'Antes de abrir card novo, confira se já existe comunicação ativa para o mesmo PD. Use o histórico para não repetir perguntas ao comercial.',
   },
+  {
+    id: 'whatsapp',
+    titulo: 'Alerta WhatsApp (Loja × Indústria)',
+    oQueE:
+      'Ao marcar DISPONÍVEL ou NÃO DISPONÍVEL, o sistema envia WhatsApp (Integração → SMS) para o grupo do escopo do vendedor do PD no Nomus.',
+    comoLe:
+      'O escopo é o nome do vendedor (sem acento, maiúsculas). Lista da Loja: Antonio Luis, Gilvania, Miriam, Larissa Cristine, Maria Leopoldina e Roberto. Lista da Indústria: Marcos Amorim, Idelgasto, Airton Representações, James, Jonas, Larisse Narlla, Maria Clara, Gold e Henrique Representação. Vendedor fora das duas listas (ou sem vendedor) cai na Indústria.',
+  },
 ];
 
 export default function SycroOrderAjudaModal({ aberto, onClose }: SycroOrderAjudaModalProps) {
