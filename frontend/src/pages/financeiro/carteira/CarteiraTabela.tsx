@@ -24,17 +24,17 @@ const COLS: {
   { key: 'Cliente', label: 'Cliente', defaultWidth: 160 },
   { key: 'UF', label: 'UF', defaultWidth: 44 },
   { key: 'Municipio de entrega', label: 'Município', defaultWidth: 110 },
-  {
-    key: 'ObservacaoPedido',
-    label: 'Observação do pedido',
-    wrap: true,
-    defaultWidth: 280,
-  },
   { key: 'Observacoes', label: 'Carrada/Rota', defaultWidth: 150 },
   {
     key: 'Condicao de pagamento do pedido de venda',
     label: 'Cond. Pagamento',
     defaultWidth: 120,
+  },
+  {
+    key: 'ObservacaoPedido',
+    label: 'Observação do pedido',
+    wrap: true,
+    defaultWidth: 280,
   },
   { key: 'StatusPedido', label: 'Status de entrega', defaultWidth: 100 },
   { key: 'Valor Romaneado', label: 'Saldo Romaneado', money: true, defaultWidth: 110 },
