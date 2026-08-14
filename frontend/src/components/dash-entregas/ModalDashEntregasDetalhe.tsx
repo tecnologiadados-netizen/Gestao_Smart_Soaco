@@ -59,10 +59,15 @@ function filtrosParaApi(f: DashEntregasDrillFiltro): Omit<FiltrosPedidos, 'page'
     subgrupo1: f.subgrupo1,
     subgrupo2: f.subgrupo2,
     setor_producao: f.setor_producao,
+    uf: f.uf,
+    vendedor: f.vendedor,
+    municipio_entrega: f.municipio_entrega,
+    metodo: f.metodo,
+    tipo_pedido: f.tipo_pedido,
+    requisicao_loja: f.requisicao_loja,
     data_ini: f.data_ini,
     data_fim: f.data_fim,
     faixa_atraso: f.faixa_atraso,
-    excluir_requisicao: true,
     sort_levels: [{ id: 'valor_pendente_real', dir: 'desc' }],
   };
 }

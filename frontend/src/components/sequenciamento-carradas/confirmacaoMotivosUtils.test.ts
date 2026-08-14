@@ -3,6 +3,7 @@ import {
   agruparAlteradosPorPedido,
   grupoPedidoMotivoConcluido,
   itemMotivoConcluido,
+  itemPrevisaoConfiavelEscolhida,
   motivoComumIds,
   observacaoComumIds,
   previsaoConfiavelComumIds,
@@ -55,15 +56,26 @@ describe('observacaoComumIds', () => {
 });
 
 describe('previsaoConfiavel', () => {
-  it('trata ausente como true', () => {
-    expect(previsaoConfiavelEfetiva('x', {})).toBe(true);
+  it('trata ausente como null (não escolhido)', () => {
+    expect(previsaoConfiavelEfetiva('x', {})).toBe(null);
+    expect(previsaoConfiavelEfetiva('x', { x: null })).toBe(null);
     expect(previsaoConfiavelEfetiva('x', { x: false })).toBe(false);
+    expect(previsaoConfiavelEfetiva('x', { x: true })).toBe(true);
   });
 
   it('detecta valor comum ou divergência', () => {
-    expect(previsaoConfiavelComumIds(['a', 'b'], {})).toBe(true);
+    expect(previsaoConfiavelComumIds(['a', 'b'], {})).toBe(null);
     expect(previsaoConfiavelComumIds(['a', 'b'], { a: false, b: false })).toBe(false);
+    expect(previsaoConfiavelComumIds(['a', 'b'], { a: true, b: true })).toBe(true);
     expect(previsaoConfiavelComumIds(['a', 'b'], { a: false })).toBe(null);
+    expect(previsaoConfiavelComumIds(['a', 'b'], { a: false, b: true })).toBe(null);
+  });
+
+  it('exige escolha explícita Sim/Não', () => {
+    expect(itemPrevisaoConfiavelEscolhida('x', {})).toBe(false);
+    expect(itemPrevisaoConfiavelEscolhida('x', { x: null })).toBe(false);
+    expect(itemPrevisaoConfiavelEscolhida('x', { x: true })).toBe(true);
+    expect(itemPrevisaoConfiavelEscolhida('x', { x: false })).toBe(true);
   });
 });
 

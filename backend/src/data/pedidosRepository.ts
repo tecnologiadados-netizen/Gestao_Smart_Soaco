@@ -76,12 +76,21 @@ export interface FiltrosPedidos {
   motivo?: string;
   vendedor?: string;
   tipo_f?: string;
+  /** Tipo Pedido Nomus (Assistência, Padrão, etc.). */
+  tipo_pedido?: string;
   status?: string;
   metodo?: string;
   forma_pagamento?: string;
   descricao_produto?: string;
   a_vista?: string;
   requisicao_loja?: string;
+  /**
+   * Filtro do Gerenciador (Mais filtros):
+   * - sim: último ajuste com previsão confiável
+   * - nao: último ajuste marcado como não confiável
+   * - branco: sem ajuste real de previsão (ainda não escolhido)
+   */
+  previsao_confiavel?: 'sim' | 'nao' | 'branco';
   /** Faixa de aging para drill-down do Dash Entregas (em_dia, atraso_1_7, …). */
   faixa_atraso?: string;
   /** Quando true, exclui pedidos classificados como requisição (Dash Entregas). */
@@ -496,7 +505,10 @@ function rowNomusToPedido(
     dataOriginalRaw != null ? new Date(dataOriginalRaw as string | Date) : previsaoOriginal;
   let previsaoAnterior = info?.penultimo ?? previsaoAnteriorFallback;
   const origemAjuste = temAjusteReal ? info!.origem : null;
-  const previsaoAtualConfiavel = temAjusteReal ? info!.ultimo.previsao_confiavel : true;
+  /** null = sem ajuste real (em branco na UI/filtro); true/false só após escolha explícita. */
+  const previsaoAtualConfiavel: boolean | null = temAjusteReal
+    ? info!.ultimo.previsao_confiavel !== false
+    : null;
   const carradaMigrada = info?.carradaMigrada ?? null;
   const dataProducao = dataProducaoPorId?.get(idChave) ?? null;
 
@@ -985,19 +997,22 @@ function applyFiltrosPedidos(resultado: PedidoRow[], filtros: FiltrosPedidos): P
     getField(p, ['Vendedor/Representante', 'vendedor/representante'])
   );
   resultado = filterByMultiExact(resultado, filtros.tipo_f, (p) => getTipoFExibicao(p));
-  resultado = filterByMultiExact(resultado, filtros.status, (p) => {
-    let s = getField(p, ['Status', 'status']);
-    if (!s) s = getField(p, ['StatusPedido', 'statusPedido']);
-    if (!s) {
-      const previsao = p.previsao_entrega_atualizada ?? p.previsao_entrega;
-      const atrasado = previsao ? getDateOnlyTimestamp(new Date(previsao)) < getDateOnlyTimestamp(new Date()) : false;
-      s = atrasado ? 'Atrasado' : 'Em dia';
-    }
-    return s;
-  });
+  resultado = filterByMultiExact(resultado, filtros.tipo_pedido, (p) =>
+    getField(p, ['Tipo Pedido', 'tipo pedido', 'TipoPedido'])
+  );
+  resultado = filterByMultiExact(resultado, filtros.status, (p) => statusPedidoGrade(p));
   resultado = filterByMultiExact(resultado, filtros.metodo, (p) =>
     getField(p, ['Metodo de Entrega', 'metodo de entrega'])
   );
+  if (filtros.previsao_confiavel === 'sim') {
+    resultado = resultado.filter((p) => p.previsao_atual_confiavel === true);
+  } else if (filtros.previsao_confiavel === 'nao') {
+    resultado = resultado.filter((p) => p.previsao_atual_confiavel === false);
+  } else if (filtros.previsao_confiavel === 'branco') {
+    resultado = resultado.filter(
+      (p) => p.previsao_atual_confiavel == null
+    );
+  }
   resultado = filterByMultiText(resultado, filtros.forma_pagamento, (p) =>
     getField(p, ['Forma de Pagamento', 'forma de pagamento'])
   );
@@ -1876,6 +1891,8 @@ export interface DashEntregasAnalytics {
     porSubgrupo1: ConcentracaoResumo[];
     porSubgrupo2: ConcentracaoResumo[];
     porSetorProducao: ConcentracaoResumo[];
+    porUf: ConcentracaoResumo[];
+    porVendedor: ConcentracaoResumo[];
   };
 }
 
@@ -1893,9 +1910,25 @@ function getObservacaoPedido(p: PedidoRow): string {
   return String(obsRaw || 'Sem Observacoes').trim() || 'Sem Observacoes';
 }
 
+/** Remove campos de paginação/sort e flags de drill que não fazem parte do recorte global do painel. */
+function filtrosBaseDashEntregas(filtros: FiltrosPedidos = {}): FiltrosPedidos {
+  const {
+    page: _page,
+    limit: _limit,
+    sort_levels: _sort,
+    faixa_atraso: _faixa,
+    atrasados: _atrasados,
+    excluir_requisicao: _excluir,
+    ...rest
+  } = filtros;
+  return rest;
+}
+
 /** Agregações do Dash Entregas em uma única passagem (reutiliza cache de listarPedidos). */
-export async function obterDashEntregasAnalytics(): Promise<DashEntregasAnalytics> {
-  const { data: pedidos } = await listarPedidos({ excluir_requisicao: true });
+export async function obterDashEntregasAnalytics(
+  filtros: FiltrosPedidos = {}
+): Promise<DashEntregasAnalytics> {
+  const { data: pedidos } = await listarPedidos(filtrosBaseDashEntregas(filtros));
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
@@ -1903,6 +1936,8 @@ export async function obterDashEntregasAnalytics(): Promise<DashEntregasAnalytic
   const concentracaoSub1 = new Map<string, { valor: number; quantidade: number }>();
   const concentracaoSub2 = new Map<string, { valor: number; quantidade: number }>();
   const concentracaoSetor = new Map<string, { valor: number; quantidade: number }>();
+  const concentracaoUf = new Map<string, { valor: number; quantidade: number }>();
+  const concentracaoVendedor = new Map<string, { valor: number; quantidade: number }>();
 
   let entregaHoje = 0;
   let atrasados = 0;
@@ -1942,6 +1977,8 @@ export async function obterDashEntregasAnalytics(): Promise<DashEntregasAnalytic
     addConcentracao(concentracaoSub1, getField(p, ['Subgrupo1', 'subgrupo1']), valor);
     addConcentracao(concentracaoSub2, getField(p, ['Subgrupo2', 'subgrupo2']), valor);
     addConcentracao(concentracaoSetor, getField(p, ['Setor de Producao', 'Setor de produção']), valor);
+    addConcentracao(concentracaoUf, getField(p, ['UF', 'uf']), valor);
+    addConcentracao(concentracaoVendedor, getField(p, ['Vendedor/Representante', 'vendedor/representante']), valor);
 
     const atrasado = pedidoGradeEstaAtrasado(p);
     const obs = getObservacaoPedido(p);
@@ -2064,6 +2101,8 @@ export async function obterDashEntregasAnalytics(): Promise<DashEntregasAnalytic
       porSubgrupo1: buildConcentracao(concentracaoSub1),
       porSubgrupo2: buildConcentracao(concentracaoSub2),
       porSetorProducao: buildConcentracao(concentracaoSetor),
+      porUf: buildConcentracao(concentracaoUf),
+      porVendedor: buildConcentracao(concentracaoVendedor),
     },
   };
 }
@@ -2096,8 +2135,10 @@ export interface TipoFLeadTimeResumo {
 }
 
 /** Lead time médio (dias até previsão original) por TipoF — drill-down lead time nível 1. */
-export async function obterDashEntregasLeadTimeTipoF(): Promise<TipoFLeadTimeResumo[]> {
-  const { data: pedidos } = await listarPedidos({ excluir_requisicao: true });
+export async function obterDashEntregasLeadTimeTipoF(
+  filtros: FiltrosPedidos = {}
+): Promise<TipoFLeadTimeResumo[]> {
+  const { data: pedidos } = await listarPedidos(filtrosBaseDashEntregas(filtros));
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
   const map = new Map<string, { somaDias: number; count: number }>();
@@ -2120,9 +2161,15 @@ export async function obterDashEntregasLeadTimeTipoF(): Promise<TipoFLeadTimeRes
 }
 
 /** Saldo pendente por TipoF dentro de uma faixa de aging (drill-down nível 1). */
-export async function obterDashEntregasAgingTipoF(faixaAtraso: string): Promise<TipoFValorResumo[]> {
+export async function obterDashEntregasAgingTipoF(
+  faixaAtraso: string,
+  filtros: FiltrosPedidos = {}
+): Promise<TipoFValorResumo[]> {
   const faixa = faixaAtraso.trim().toLowerCase();
-  const { data: pedidos } = await listarPedidos({ faixa_atraso: faixa, excluir_requisicao: true });
+  const { data: pedidos } = await listarPedidos({
+    ...filtrosBaseDashEntregas(filtros),
+    faixa_atraso: faixa,
+  });
   const map = new Map<string, { valor: number; quantidade: number }>();
   for (const p of pedidos) {
     const label = getTipoFExibicao(p);
@@ -2135,6 +2182,112 @@ export async function obterDashEntregasAgingTipoF(faixaAtraso: string): Promise<
   return [...map.entries()]
     .map(([tipoF, v]) => ({ tipoF, valor: v.valor, quantidade: v.quantidade }))
     .sort((a, b) => b.valor - a.valor);
+}
+
+export interface DashEntregasFiltrosOpcoes {
+  rotas: string[];
+  ufs: string[];
+  municipios: string[];
+  vendedores: string[];
+  tiposF: string[];
+  metodos: string[];
+  requisicoes: string[];
+  tiposPedido: string[];
+  clientes: string[];
+  gruposProduto: string[];
+  subgrupos1: string[];
+  subgrupos2: string[];
+}
+
+type DimensaoFiltroDash =
+  | 'observacoes'
+  | 'uf'
+  | 'municipio_entrega'
+  | 'vendedor'
+  | 'tipo_f'
+  | 'metodo'
+  | 'requisicao_loja'
+  | 'tipo_pedido'
+  | 'cliente'
+  | 'grupo_produto'
+  | 'subgrupo1'
+  | 'subgrupo2';
+
+function coletarValoresDistintos(
+  pedidos: PedidoRow[],
+  getVal: (p: PedidoRow) => string
+): string[] {
+  const set = new Set<string>();
+  for (const p of pedidos) {
+    const v = getVal(p).trim();
+    if (v) set.add(v);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/**
+ * Opções encadeadas do Dash Entregas: cada dimensão omite o próprio filtro
+ * e aplica os demais, para cascata entre selects.
+ */
+export async function obterDashEntregasFiltrosOpcoes(
+  filtros: FiltrosPedidos = {}
+): Promise<DashEntregasFiltrosOpcoes> {
+  const base = filtrosBaseDashEntregas(filtros);
+
+  async function opcoesDim(
+    omit: DimensaoFiltroDash,
+    getVal: (p: PedidoRow) => string
+  ): Promise<string[]> {
+    const f: FiltrosPedidos = { ...base };
+    delete f[omit];
+    const { data } = await listarPedidos(f);
+    return coletarValoresDistintos(data, getVal);
+  }
+
+  const [
+    rotas,
+    ufs,
+    municipios,
+    vendedores,
+    tiposF,
+    metodos,
+    requisicoes,
+    tiposPedido,
+    clientes,
+    gruposProduto,
+    subgrupos1,
+    subgrupos2,
+  ] = await Promise.all([
+    opcoesDim('observacoes', (p) => getField(p, ['Observacoes', 'Observacoes ', 'Observações'])),
+    opcoesDim('uf', (p) => getField(p, ['UF', 'uf'])),
+    opcoesDim('municipio_entrega', (p) => getField(p, ['Municipio de entrega', 'municipio de entrega'])),
+    opcoesDim('vendedor', (p) => getField(p, ['Vendedor/Representante', 'vendedor/representante'])),
+    opcoesDim('tipo_f', (p) => getTipoFExibicao(p)),
+    opcoesDim('metodo', (p) => getField(p, ['Metodo de Entrega', 'metodo de entrega'])),
+    opcoesDim('requisicao_loja', (p) =>
+      getField(p, ['Requisicao de loja do grupo?', 'requisicao de loja do grupo?'])
+    ),
+    opcoesDim('tipo_pedido', (p) => getField(p, ['Tipo Pedido', 'tipo pedido', 'TipoPedido'])),
+    opcoesDim('cliente', (p) => String(p.cliente ?? '')),
+    opcoesDim('grupo_produto', (p) => getField(p, ['Grupo de produto', 'grupo de produto'])),
+    opcoesDim('subgrupo1', (p) => getField(p, ['Subgrupo1', 'subgrupo1'])),
+    opcoesDim('subgrupo2', (p) => getField(p, ['Subgrupo2', 'subgrupo2'])),
+  ]);
+
+  return {
+    rotas,
+    ufs,
+    municipios,
+    vendedores,
+    tiposF,
+    metodos,
+    requisicoes,
+    tiposPedido,
+    clientes,
+    gruposProduto,
+    subgrupos1,
+    subgrupos2,
+  };
 }
 
 const MAX_DETALHES_TOOLTIP = 80;

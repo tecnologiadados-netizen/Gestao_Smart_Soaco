@@ -75,6 +75,10 @@ function buildFiltrosPedidosApi(
     tipo_f: f.tipo_f || undefined,
     status: f.status || undefined,
     metodo: f.metodo || undefined,
+    previsao_confiavel:
+      f.previsao_confiavel === 'sim' || f.previsao_confiavel === 'nao' || f.previsao_confiavel === 'branco'
+        ? f.previsao_confiavel
+        : undefined,
     sort_levels: Array.isArray(sortLevelsArg) && sortLevelsArg.length > 0 ? sortLevelsArg : undefined,
   };
 }
@@ -115,6 +119,7 @@ const filtrosIniciais: FiltrosPedidosState = {
   tipo_f: '',
   status: '',
   metodo: '',
+  previsao_confiavel: '',
 };
 
 export default function PedidosPage() {

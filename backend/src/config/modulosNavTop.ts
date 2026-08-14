@@ -24,6 +24,23 @@ export const MODULO_AREA_OUTRO_LABEL = 'Outro';
 /** Botões principais da barra superior (sem submenus). */
 export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
   {
+    code: 'kpis',
+    label: 'KPIs',
+    permissoes: [
+      PERMISSOES.KPIS_VER,
+      PERMISSOES.KPIS_PAINEL_PRODUCAO_CAMASI_VER,
+      PERMISSOES.KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER,
+      PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER,
+      PERMISSOES.PRODUCAO_VER,
+      PERMISSOES.PRODUCAO_TOTAL,
+      PERMISSOES.PCP_VER_TELA,
+      PERMISSOES.PCP_TOTAL,
+      PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
+      PERMISSOES.DASHBOARD_VER,
+      PERMISSOES.PEDIDOS_VER,
+    ],
+  },
+  {
     code: 'producao',
     label: 'Produção',
     permissoes: [PERMISSOES.PRODUCAO_VER, PERMISSOES.PRODUCAO_TOTAL],

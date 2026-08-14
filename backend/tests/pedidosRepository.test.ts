@@ -53,14 +53,26 @@ describe('pedidosRepository', () => {
     expect(pedidoEhRequisicao({ ...base, TipoF: 'ROTA Teresina', Observacoes: 'ROTA Teresina' })).toBe(false);
   });
 
-  it('obterDashEntregasAnalytics retorna resumo, rotas, aging e topClientesAtrasados', async () => {
+  it('obterDashEntregasAnalytics retorna resumo, rotas, aging, topClientes e concentrações UF/vendedor', async () => {
     const result = await obterDashEntregasAnalytics();
     expect(result).toHaveProperty('resumo');
     expect(result).toHaveProperty('rotas');
     expect(result).toHaveProperty('aging');
     expect(result).toHaveProperty('topClientesAtrasados');
+    expect(result).toHaveProperty('concentracao');
     expect(Array.isArray(result.rotas)).toBe(true);
     expect(Array.isArray(result.aging)).toBe(true);
     expect(result.aging.length).toBe(6);
+    expect(result.concentracao).toHaveProperty('porUf');
+    expect(result.concentracao).toHaveProperty('porVendedor');
+    expect(Array.isArray(result.concentracao.porUf)).toBe(true);
+    expect(Array.isArray(result.concentracao.porVendedor)).toBe(true);
+  });
+
+  it('pedido com tipo_pedido e requisicao_loja passa pelos filtros', async () => {
+    const result = await listarPedidos({ tipo_pedido: '___inexistente___' });
+    expect(result).toHaveProperty('data');
+    expect(Array.isArray(result.data)).toBe(true);
+    expect(result.data.length).toBe(0);
   });
 });

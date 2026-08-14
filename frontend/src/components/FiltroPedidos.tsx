@@ -28,6 +28,8 @@ export interface FiltrosPedidosState {
   tipo_f: string;
   status: string;
   metodo: string;
+  /** Mais filtros: '' | 'sim' | 'nao' | 'branco' */
+  previsao_confiavel: string;
 }
 
 export type FiltroPedidosVariant = 'completo' | 'modal';
@@ -41,6 +43,7 @@ export function countFiltrosModalAtivos(f: FiltrosPedidosState): number {
   if (f.vendedor?.trim()) n++;
   if (f.status?.trim()) n++;
   if (f.metodo?.trim()) n++;
+  if (f.previsao_confiavel?.trim()) n++;
   return n;
 }
 
@@ -52,7 +55,7 @@ interface FiltroPedidosProps {
   onChange: (f: FiltrosPedidosState) => void;
   onAplicar: () => void;
   onLimpar?: () => void;
-  /** `modal`: vendedor, status e método. `completo`: todos os filtros (outras telas). */
+  /** `modal`: vendedor, status, método e previsão confiável. `completo`: todos os filtros (outras telas). */
   variant?: FiltroPedidosVariant;
 }
 
@@ -79,6 +82,7 @@ export const defaultFiltros: FiltrosPedidosState = {
   tipo_f: '',
   status: '',
   metodo: '',
+  previsao_confiavel: '',
   data_ini: '',
   data_fim: '',
 };
@@ -195,6 +199,19 @@ export default function FiltroPedidos({
             optionLabel="métodos"
             dropdownZIndex={DROPDOWN_Z_MODAL}
           />
+          <div className="shrink-0" style={{ minWidth: '180px' }}>
+            <label className={labelClass}>Previsão confiável</label>
+            <select
+              value={f.previsao_confiavel || ''}
+              onChange={(e) => update('previsao_confiavel', e.target.value)}
+              className={inputClass}
+            >
+              <option value="">Todos</option>
+              <option value="sim">Confiáveis</option>
+              <option value="nao">Não confiáveis</option>
+              <option value="branco">Em branco</option>
+            </select>
+          </div>
         </>
       )}
       {isCompleto && (

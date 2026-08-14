@@ -15,6 +15,12 @@ import {
   mesLabel,
 } from '../data/camasiTempoProducaoRepository.js';
 
+const PERMISSOES_ACESSO_PRODUCAO_CAMASI = [
+  PERMISSOES.KPIS_PAINEL_PRODUCAO_CAMASI_VER,
+  PERMISSOES.PRODUCAO_VER,
+  PERMISSOES.PRODUCAO_TOTAL,
+] as const;
+
 const router = Router();
 router.use(requireAuth);
 
@@ -59,7 +65,7 @@ function async503(handler: RequestHandler): RequestHandler {
  */
 router.get(
   '/status',
-  requirePermission(PERMISSOES.PRODUCAO_VER, PERMISSOES.PRODUCAO_TOTAL),
+  requirePermission(...PERMISSOES_ACESSO_PRODUCAO_CAMASI),
   async503(async (_req, res) => {
     const enabled = isCamasiEnabled();
     const database = getCamasiDatabasePath();
@@ -87,7 +93,7 @@ router.get(
  */
 router.get(
   '/dashboard',
-  requirePermission(PERMISSOES.PRODUCAO_VER, PERMISSOES.PRODUCAO_TOTAL),
+  requirePermission(...PERMISSOES_ACESSO_PRODUCAO_CAMASI),
   async503(async (req, res) => {
     const parsed = periodoSchema.safeParse({
       dataIni: String(req.query.dataIni ?? ''),
@@ -118,7 +124,7 @@ router.get(
  */
 router.get(
   '/dashboard/dias',
-  requirePermission(PERMISSOES.PRODUCAO_VER, PERMISSOES.PRODUCAO_TOTAL),
+  requirePermission(...PERMISSOES_ACESSO_PRODUCAO_CAMASI),
   async503(async (req, res) => {
     const parsed = diasSchema.safeParse({
       dataIni: String(req.query.dataIni ?? ''),

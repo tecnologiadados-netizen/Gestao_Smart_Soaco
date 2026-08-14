@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
@@ -155,6 +156,8 @@ function detalheModalCacheKey(
 }
 
 export default function ConsultaEstoquePage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [filtrosPopoverAberto, setFiltrosPopoverAberto] = useState(false);
   const [opcoesCarregando, setOpcoesCarregando] = useState(false);
   const [opcoesFiltro, setOpcoesFiltro] = useState<OpcoesFiltroConsultaEstoque>(EMPTY_OPCOES);
@@ -346,6 +349,32 @@ export default function ConsultaEstoquePage() {
     },
     []
   );
+
+  /** Hidrata filtros vindos do Painel de Cobertura de Estoque. */
+  useEffect(() => {
+    const st = location.state as {
+      coberturaEstoqueFiltros?: {
+        filtros: FiltrosConsultaEstoqueState;
+        pedidoFiltro: PedidoFiltroConsultaEstoque;
+        considerarRequisicoes: boolean;
+      };
+    } | null;
+    const incoming = st?.coberturaEstoqueFiltros;
+    if (!incoming) return;
+    navigate(location.pathname, { replace: true, state: null });
+    setFiltros(incoming.filtros);
+    setPedidoFiltro(incoming.pedidoFiltro);
+    setConsiderarRequisicoes(Boolean(incoming.considerarRequisicoes));
+    if (!filtrosConsultaTemAlgumSelecionado(incoming.filtros, incoming.pedidoFiltro.pedido)) {
+      setFiltrosPopoverAberto(true);
+      return;
+    }
+    void executarConsulta(
+      incoming.filtros,
+      incoming.pedidoFiltro,
+      Boolean(incoming.considerarRequisicoes)
+    );
+  }, [location.state, location.pathname, navigate, executarConsulta]);
 
   const buscarPedidoAsync = useCallback(async (term: string) => {
     const q = term.trim();

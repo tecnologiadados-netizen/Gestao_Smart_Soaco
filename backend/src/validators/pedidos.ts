@@ -31,6 +31,8 @@ export const ajustarPrevisaoSchema = z.object({
   todas_rotas: z.boolean().optional(),
   /** Quando false, não exibe no histórico dos cards Comunicação Interna. Default true. */
   previsao_confiavel: z.boolean().optional().default(true),
+  /** Confirma uma data já preenchida automaticamente, registrando a validação no histórico. */
+  confirmacao_data: z.boolean().optional(),
   /** PDF assinado do responsável — obrigatório quando o motivo é não abonado. */
   anexo_assinatura: anexoAssinaturaSchema,
 });
@@ -107,12 +109,14 @@ export const listarPedidosQuerySchema = z.object({
   motivo: z.string().optional(),
   vendedor: z.string().optional(),
   tipo_f: z.string().optional(),
+  tipo_pedido: z.string().optional(),
   status: z.string().optional(),
   metodo: z.string().optional(),
   forma_pagamento: z.string().optional(),
   descricao_produto: z.string().optional(),
   a_vista: z.string().optional(),
   requisicao_loja: z.string().optional(),
+  previsao_confiavel: z.enum(['sim', 'nao', 'branco']).optional(),
   faixa_atraso: z
     .enum(['em_dia', 'atraso_1_7', 'atraso_8_15', 'atraso_16_30', 'atraso_31_60', 'atraso_60_mais'])
     .optional(),

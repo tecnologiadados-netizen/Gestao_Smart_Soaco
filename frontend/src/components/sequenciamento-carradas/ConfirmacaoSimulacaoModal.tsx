@@ -26,6 +26,7 @@ import {
 } from '../../utils/statusPedidoBadges';
 import { chavePedidoGrupo } from './corrigirDatasSequenciamentoUtils';
 import {
+  itemPrevisaoConfiavelEscolhida,
   motivoComumIds,
   observacaoComumIds,
   previsaoConfiavelComumIds,
@@ -37,6 +38,7 @@ import {
 } from './confirmacaoLinhasConclusao';
 import { lerPdfAssinatura, type AnexoAssinaturaPayload } from '../../utils/lerPdfAssinatura';
 import CampoAnexoAssinaturaPdf from '../CampoAnexoAssinaturaPdf';
+import TogglePrevisaoConfiavel, { type PrevisaoConfiavelTri } from '../TogglePrevisaoConfiavel';
 
 export type { LinhaConclusao } from './confirmacaoLinhasConclusao';
 export { montarLinhasConclusao } from './confirmacaoLinhasConclusao';
@@ -60,9 +62,9 @@ type Props = {
   onMotivoPorIdChange: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
   observacaoPorId: Record<string, string>;
   onObservacaoPorIdChange: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
-  previsaoConfiavelPorId: Record<string, boolean>;
+  previsaoConfiavelPorId: Record<string, boolean | null>;
   onPrevisaoConfiavelPorIdChange: (
-    updater: (prev: Record<string, boolean>) => Record<string, boolean>
+    updater: (prev: Record<string, boolean | null>) => Record<string, boolean | null>
   ) => void;
   onConfirmar: (
     motivoPorIdPedido: Record<string, string>,
@@ -351,40 +353,27 @@ function MotivoPicker({
   );
 }
 
-function ConfiavelCheckbox({
-  checked,
-  indeterminate = false,
+function ConfiavelToggleCelula({
+  value,
   onChange,
-  disabled = false,
-  title = 'Previsão confiável',
 }: {
-  checked: boolean;
-  indeterminate?: boolean;
-  onChange: (v: boolean) => void;
-  disabled?: boolean;
-  title?: string;
+  value: PrevisaoConfiavelTri;
+  onChange: (v: PrevisaoConfiavelTri) => void;
 }) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.indeterminate = indeterminate;
-  }, [indeterminate]);
   return (
-    <input
-      ref={ref}
-      type="checkbox"
-      checked={checked}
-      disabled={disabled}
-      title={title}
-      aria-label={title}
-      onChange={(e) => onChange(e.target.checked)}
-      className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600 disabled:opacity-50 dark:border-slate-600"
+    <TogglePrevisaoConfiavel
+      value={value}
+      onChange={onChange}
+      compact
+      showHelp={false}
+      className="min-w-[7.5rem]"
     />
   );
 }
 
-function classeLinha(l: LinhaConclusao, motivoOk: boolean): string {
-  if (l.datasOk && (!l.exigeMotivo || motivoOk)) return TR_CONCLUIDA;
-  if (!l.datasOk || (l.exigeMotivo && !motivoOk)) return TR_PENDENTE;
+function classeLinha(l: LinhaConclusao, linhaOk: boolean): string {
+  if (l.datasOk && (!l.exigeMotivo || linhaOk)) return TR_CONCLUIDA;
+  if (!l.datasOk || (l.exigeMotivo && !linhaOk)) return TR_PENDENTE;
   return TR_ROW;
 }
 
@@ -583,12 +572,12 @@ export default function ConfirmacaoSimulacaoModal({
   );
 
   const selecionarConfiavel = useCallback(
-    (ids: string[], confiavel: boolean) => {
+    (ids: string[], confiavel: PrevisaoConfiavelTri) => {
       onPrevisaoConfiavelPorIdChange((prev) => {
         const next = { ...prev };
         for (const id of ids) {
-          if (confiavel) delete next[id];
-          else next[id] = false;
+          if (confiavel === true || confiavel === false) next[id] = confiavel;
+          else delete next[id];
         }
         return next;
       });
@@ -604,6 +593,26 @@ export default function ConfirmacaoSimulacaoModal({
     }
     return [...ids];
   }, [linhas, motivoPorId]);
+
+  const pendentesConfiavelIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const l of linhas) {
+      if (!l.exigeMotivo || !l.idPedido) continue;
+      if (!itemPrevisaoConfiavelEscolhida(l.idPedido, previsaoConfiavelPorId)) ids.add(l.idPedido);
+    }
+    return [...ids];
+  }, [linhas, previsaoConfiavelPorId]);
+
+  const linhaMotivoConfiavelOk = useCallback(
+    (l: LinhaConclusao): boolean => {
+      if (!l.exigeMotivo || !l.idPedido) return true;
+      return (
+        !!motivoPorId[l.idPedido]?.trim() &&
+        itemPrevisaoConfiavelEscolhida(l.idPedido, previsaoConfiavelPorId)
+      );
+    },
+    [motivoPorId, previsaoConfiavelPorId]
+  );
 
   const exigeAnexoAssinatura = useMemo(() => {
     const descNaoAbonadas = new Set(
@@ -660,6 +669,12 @@ export default function ConfirmacaoSimulacaoModal({
     if (pendentesMotivoIds.length > 0) {
       setValidacao(
         `Selecione um motivo para todos os itens com data/previsão a ajustar (${pendentesMotivoIds.length} sem motivo).`
+      );
+      return;
+    }
+    if (pendentesConfiavelIds.length > 0) {
+      setValidacao(
+        `Escolha Sim ou Não em Previsão confiável para todos os itens (${pendentesConfiavelIds.length} sem escolha).`
       );
       return;
     }
@@ -846,8 +861,8 @@ export default function ConfirmacaoSimulacaoModal({
         </td>
         <td className="px-2 py-2 text-center align-middle">
           {l.exigeMotivo && id ? (
-            <ConfiavelCheckbox
-              checked={previsaoConfiavelEfetiva(id, previsaoConfiavelPorId)}
+            <ConfiavelToggleCelula
+              value={previsaoConfiavelEfetiva(id, previsaoConfiavelPorId)}
               onChange={(v) => selecionarConfiavel([id], v)}
             />
           ) : (
@@ -962,10 +977,9 @@ export default function ConfirmacaoSimulacaoModal({
                 {entries.flatMap((entry) => {
                   if (entry.kind === 'solo') {
                     const l = entry.row;
-                    const motivoOk =
-                      !l.exigeMotivo || (!!l.idPedido && !!motivoPorId[l.idPedido]?.trim());
+                    const linhaOk = linhaMotivoConfiavelOk(l);
                     return [
-                      <tr key={l.key} className={classeLinha(l, motivoOk)}>
+                      <tr key={l.key} className={classeLinha(l, linhaOk)}>
                         <td className="py-2 pl-4 pr-2 font-mono text-slate-800 dark:text-slate-200">
                           {l.idPedido ? labelPedidoMapa(l.pedido) : '—'}
                         </td>
@@ -1013,11 +1027,9 @@ export default function ConfirmacaoSimulacaoModal({
                     card: grupo.itens.find((i) => i.card)?.card,
                     faturado: grupo.itens.some((i) => i.faturado),
                   };
-                  const grupoTodoOk = grupo.itens.every((i) => {
-                    const mOk =
-                      !i.exigeMotivo || (!!i.idPedido && !!motivoPorId[i.idPedido]?.trim());
-                    return i.datasOk && mOk;
-                  });
+                  const grupoTodoOk = grupo.itens.every(
+                    (i) => i.datasOk && linhaMotivoConfiavelOk(i)
+                  );
                   const previsaoGrupo = grupo.itens.find((i) => i.previsaoPassada && i.previsaoAtual);
                   const exigeMotivoGrupo = grupo.itens.some((i) => i.exigeMotivo);
                   const temProducaoGrupo = grupo.itens.some((i) => !!i.dataProducao);
@@ -1025,10 +1037,9 @@ export default function ConfirmacaoSimulacaoModal({
 
                   return grupo.itens.map((l, itemIdx) => {
                     const isFirst = itemIdx === 0;
-                    const motivoOk =
-                      !l.exigeMotivo || (!!l.idPedido && !!motivoPorId[l.idPedido]?.trim());
+                    const linhaOk = linhaMotivoConfiavelOk(l);
                     return (
-                      <tr key={`${l.key}-${l.idPedido ?? itemIdx}`} className={classeLinha(l, motivoOk)}>
+                      <tr key={`${l.key}-${l.idPedido ?? itemIdx}`} className={classeLinha(l, linhaOk)}>
                         {isFirst ? (
                           <td rowSpan={rowSpan} className={`${TD_MESCLADA} pl-4 pr-2 font-mono`}>
                             <div className="flex flex-col items-center justify-center gap-0.5">
@@ -1107,14 +1118,15 @@ export default function ConfirmacaoSimulacaoModal({
                                         })
                                       }
                                     />
-                                    <label className="flex items-center gap-1 text-[10px] text-slate-600 dark:text-slate-300">
-                                      <ConfiavelCheckbox
-                                        checked={confiavelComum !== false}
-                                        indeterminate={confiavelComum === null}
+                                    <div className="flex flex-col items-center gap-1">
+                                      <span className="text-[10px] text-slate-600 dark:text-slate-300">
+                                        Confiável
+                                      </span>
+                                      <ConfiavelToggleCelula
+                                        value={confiavelComum}
                                         onChange={(v) => selecionarConfiavel(idsPedido, v)}
                                       />
-                                      Confiável
-                                    </label>
+                                    </div>
                                   </div>
                                 </div>
                               ) : null}
@@ -1137,7 +1149,7 @@ export default function ConfirmacaoSimulacaoModal({
                         ) : null}
                         <td className="px-2 py-2 align-middle font-mono text-slate-800 dark:text-slate-200">
                           <span>{l.codigo}</span>
-                          {l.datasOk && motivoOk ? (
+                          {l.datasOk && linhaOk ? (
                             <span className="ml-1.5 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
                               Concluído
                             </span>
@@ -1247,13 +1259,23 @@ export default function ConfirmacaoSimulacaoModal({
             <button
               type="button"
               onClick={confirmar}
-              disabled={salvando || excessosQtdeRomaneada.length > 0 || aindaDatasInvalidas}
+              disabled={
+                salvando ||
+                excessosQtdeRomaneada.length > 0 ||
+                aindaDatasInvalidas ||
+                pendentesMotivoIds.length > 0 ||
+                pendentesConfiavelIds.length > 0
+              }
               title={
                 excessosQtdeRomaneada.length > 0
                   ? 'Resolva o excesso de quantidade romaneada vs pendente'
                   : aindaDatasInvalidas
                     ? 'Corrija todas as datas anteriores a hoje'
-                    : undefined
+                    : pendentesMotivoIds.length > 0
+                      ? 'Selecione o motivo de todos os itens'
+                      : pendentesConfiavelIds.length > 0
+                        ? 'Escolha Sim ou Não em Previsão confiável'
+                        : undefined
               }
               className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
             >

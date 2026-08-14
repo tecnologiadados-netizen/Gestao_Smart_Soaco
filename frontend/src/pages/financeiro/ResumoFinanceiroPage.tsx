@@ -31,6 +31,7 @@ const filtrosIniciais: FiltrosPedidosState = {
   tipo_f: '',
   status: '',
   metodo: '',
+  previsao_confiavel: '',
 };
 
 function formatDataCol(iso: string): string {

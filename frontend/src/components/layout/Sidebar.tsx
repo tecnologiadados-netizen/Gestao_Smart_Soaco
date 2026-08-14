@@ -22,6 +22,7 @@ import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from '../../uti
 import { podeVerMenuFinanceiro } from '../../utils/financeiroPermissoes';
 import { useSidebarAccordionOpen } from '../../hooks/useSidebarAccordionOpen';
 import { PERMISSOES_ACESSO_PAINEL_METAS_QUALQUER } from '../../utils/painelProducaoPermissoes';
+import { podeAcessarHubKpis } from '../../config/kpisCatalog';
 
 const SIDEBAR_LINK =
   'block rounded-md px-3 py-2 text-sm transition min-h-[36px] truncate';
@@ -54,6 +55,16 @@ function MenuIcon({ children }: { children: ReactNode }) {
 }
 
 const ICONS = {
+  kpis: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 13h4v8H3v-8zm7-6h4v14h-4V7zm7-4h4v18h-4V3z"
+      />
+    </svg>
+  ),
   producao: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
       <path
@@ -375,6 +386,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const { accordionOpen, toggleAccordion } = useSidebarAccordionOpen();
 
+  const isKpisActive = pathname === '/kpis' || pathname.startsWith('/kpis/');
   const isProducaoActive = pathname.startsWith('/producao');
   const isPcpActive = pathname.startsWith('/pedidos');
   const isLogisticaActive =
@@ -394,8 +406,12 @@ export default function Sidebar({
   const isGestaoUsuariosActive = pathname.startsWith('/usuarios');
   const isSuporteActive = pathname.startsWith('/suporte');
 
+  const showKpis = podeAcessarHubKpis(hasPermission);
+
+  // Seção Produção só aparece se ainda houver itens no menu (painéis migrados para KPIs saem daqui)
   const showProducao =
-    hasPermission(PERMISSOES.PRODUCAO_VER) || hasPermission(PERMISSOES.PRODUCAO_TOTAL);
+    PRODUCAO_MENU.length > 0 &&
+    (hasPermission(PERMISSOES.PRODUCAO_VER) || hasPermission(PERMISSOES.PRODUCAO_TOTAL));
 
   const showPcp =
     hasPermission(PERMISSOES.PCP_VER_TELA) ||
@@ -427,6 +443,22 @@ export default function Sidebar({
       onMouseLeave={onCollapse}
     >
       <nav className="scrollbar-app flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-2 py-3">
+        {showKpis && (
+          <NavLink
+            to="/kpis"
+            title="KPIs"
+            onClick={onNavigate}
+            className={`${SIDEBAR_SECTION_BTN} mb-0.5 ${
+              isKpisActive ? SIDEBAR_SECTION_ACTIVE : SIDEBAR_SECTION_IDLE
+            }`}
+          >
+            <MenuIcon>{ICONS.kpis}</MenuIcon>
+            <SidebarLabel open={open}>
+              <span className="truncate">KPIs</span>
+            </SidebarLabel>
+          </NavLink>
+        )}
+
         {showProducao && (
           <SidebarSection
             id="producao"
@@ -566,7 +598,9 @@ export default function Sidebar({
           </SidebarSection>
         )}
 
-        {(hasPermission(PERMISSOES.COMERCIAL_VER) || hasPermission(PERMISSOES.COMERCIAL_PAINEL_VER)) && (
+        {(hasPermission(PERMISSOES.COMERCIAL_VER) ||
+          hasPermission(PERMISSOES.COMERCIAL_PAINEL_VER) ||
+          hasPermission(PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER)) && (
           <SidebarSection
             id="comercial"
             label="Comercial"

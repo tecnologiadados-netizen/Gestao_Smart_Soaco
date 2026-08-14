@@ -332,12 +332,12 @@ export default function HeatmapPedidoItensModal({
                 >
                   <span>{titulo}</span>
                   <CopiarTextoBtn texto={pdNum} title="Copiar número do pedido" />
-                  {dataEmissaoFmt ? (
-                    <span className="ml-1 font-normal text-slate-500 dark:text-slate-400">
-                      · {dataEmissaoFmt}
-                    </span>
-                  ) : null}
                 </h3>
+                {dataEmissaoFmt ? (
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    Data de emissão {dataEmissaoFmt}
+                  </p>
+                ) : null}
                 {clienteLabel ? (
                   <p className="mt-0.5 text-xs font-medium text-slate-700 dark:text-slate-200">
                     {clienteLabel}

@@ -85,6 +85,7 @@ const COL_IDS = [
   'carrada',
   'dataProducao',
   'dataEntrega',
+  'confiavel',
   'saldoAFaturar',
   'percentualEmDia',
   'adiantamento',
@@ -98,6 +99,7 @@ const COL_LABELS: Record<(typeof COL_IDS)[number], string> = {
   carrada: 'Carrada',
   dataProducao: 'Data de produção',
   dataEntrega: 'Data de entrega',
+  confiavel: 'Confiável',
   saldoAFaturar: 'Saldo a faturar',
   percentualEmDia: '% Em dia',
   adiantamento: 'Adiantamento',
@@ -107,23 +109,46 @@ const COL_LABELS: Record<(typeof COL_IDS)[number], string> = {
 const PRIORIDADE_INPUT_CLASS =
   'w-12 rounded-md border border-slate-300 bg-white px-1 py-1 text-center text-xs text-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:disabled:bg-slate-800';
 
-const COL_TH_CLASS: Partial<Record<(typeof COL_IDS)[number], string>> = {
-  dataProducao: 'w-[8.5rem]',
-  dataEntrega: 'w-[8.5rem]',
-  saldoAFaturar: 'w-28',
-  percentualEmDia: 'w-24',
-  adiantamento: 'w-28',
-  valorAVistaAte10d: 'w-28',
+const COLUMN_PREFERENCES_STORAGE_KEY = 'sequenciamento-carradas:column-preferences:v2';
+
+const DEFAULT_COLUMN_WIDTHS: Record<(typeof COL_IDS)[number], number> = {
+  cod: 64,
+  carrada: 160,
+  dataProducao: 100,
+  dataEntrega: 100,
+  confiavel: 95,
+  saldoAFaturar: 85,
+  percentualEmDia: 65,
+  adiantamento: 85,
+  valorAVistaAte10d: 100,
 };
 
-const COL_TD_CLASS: Partial<Record<(typeof COL_IDS)[number], string>> = {
-  dataProducao: 'w-[8.5rem]',
-  dataEntrega: 'w-[8.5rem]',
-  saldoAFaturar: 'w-28 text-right tabular-nums',
-  percentualEmDia: 'w-24 text-right tabular-nums',
-  adiantamento: 'w-28 text-right tabular-nums',
-  valorAVistaAte10d: 'w-28 text-right tabular-nums',
+type ColumnPreferences = {
+  visible: Record<(typeof COL_IDS)[number], boolean>;
+  widths: Record<(typeof COL_IDS)[number], number>;
 };
+
+function loadColumnPreferences(): ColumnPreferences {
+  const defaults: ColumnPreferences = {
+    visible: Object.fromEntries(COL_IDS.map((id) => [id, true])) as ColumnPreferences['visible'],
+    widths: { ...DEFAULT_COLUMN_WIDTHS },
+  };
+  try {
+    const saved = window.localStorage.getItem(COLUMN_PREFERENCES_STORAGE_KEY);
+    if (!saved) return defaults;
+    const parsed = JSON.parse(saved) as Partial<ColumnPreferences>;
+    for (const id of COL_IDS) {
+      if (typeof parsed.visible?.[id] === 'boolean') defaults.visible[id] = parsed.visible[id];
+      const width = parsed.widths?.[id];
+      if (typeof width === 'number' && Number.isFinite(width)) {
+        defaults.widths[id] = Math.min(720, Math.max(72, Math.round(width)));
+      }
+    }
+  } catch {
+    // Preferências corrompidas não devem impedir a abertura da grade.
+  }
+  return defaults;
+}
 
 type SnapshotVisualizado = {
   id: number | null;
@@ -213,6 +238,12 @@ export default function SequenciamentoCarradasPage() {
   const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
   const [calendarioAberto, setCalendarioAberto] = useState(false);
   const [confirmacaoAberta, setConfirmacaoAberta] = useState(false);
+  const [columnPreferences, setColumnPreferences] = useState<ColumnPreferences>(loadColumnPreferences);
+  const [columnMenuOpen, setColumnMenuOpen] = useState(false);
+  const columnMenuRef = useRef<HTMLDivElement>(null);
+  const columnResizeRef = useRef<{ id: (typeof COL_IDS)[number]; startX: number; startWidth: number } | null>(
+    null
+  );
   const [corrigirDatasSnapshot, setCorrigirDatasSnapshot] = useState<CarradaDataInvalida[]>([]);
   /** Linhas do ERP no momento de Concluir (inclui pedidos movidos após o gravar). */
   const [linhasAoVivoConfirmacao, setLinhasAoVivoConfirmacao] = useState<Record<string, unknown>[] | null>(
@@ -223,7 +254,9 @@ export default function SequenciamentoCarradasPage() {
   const [erroConfirmacao, setErroConfirmacao] = useState<string | null>(null);
   const [motivoPorId, setMotivoPorId] = useState<Record<string, string>>({});
   const [observacaoPorId, setObservacaoPorId] = useState<Record<string, string>>({});
-  const [previsaoConfiavelPorId, setPrevisaoConfiavelPorId] = useState<Record<string, boolean>>({});
+  const [previsaoConfiavelPorId, setPrevisaoConfiavelPorId] = useState<Record<string, boolean | null>>(
+    {}
+  );
   const [menuHistorico, setMenuHistorico] = useState<{
     item: SequenciamentoSnapshotListItem;
     top: number;
@@ -249,6 +282,47 @@ export default function SequenciamentoCarradasPage() {
   /** Reordenação visual liberada em consulta ao vivo e em rascunho editável. */
   const podeArrastar = emConsulta || editavel;
 
+  const visibleColumns = useMemo(
+    () => COL_IDS.filter((id) => columnPreferences.visible[id]),
+    [columnPreferences.visible]
+  );
+
+  useEffect(() => {
+    window.localStorage.setItem(COLUMN_PREFERENCES_STORAGE_KEY, JSON.stringify(columnPreferences));
+  }, [columnPreferences]);
+
+  useEffect(() => {
+    if (!columnMenuOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (event.target instanceof Node && !columnMenuRef.current?.contains(event.target)) {
+        setColumnMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+  }, [columnMenuOpen]);
+
+  useEffect(() => {
+    const onMouseMove = (event: MouseEvent) => {
+      const resize = columnResizeRef.current;
+      if (!resize) return;
+      const width = Math.min(720, Math.max(72, resize.startWidth + event.clientX - resize.startX));
+      setColumnPreferences((prev) => ({
+        ...prev,
+        widths: { ...prev.widths, [resize.id]: width },
+      }));
+    };
+    const onMouseUp = () => {
+      columnResizeRef.current = null;
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
   const baseline = useMemo(() => computarBaselines(linhasSnapshot), [linhasSnapshot]);
 
   const efProducao = useCallback(
@@ -259,7 +333,30 @@ export default function SequenciamentoCarradasPage() {
     (key: string) => valorEfetivo(sim, baseline, key, 'dataEntrega'),
     [sim, baseline]
   );
-
+  const confiabilidadeCarrada = useCallback(
+    (key: string): boolean | null => {
+      const valores = new Set<boolean | 'blank'>();
+      for (const row of linhasSnapshot) {
+        if (linhaCarradaKey(row) !== key) continue;
+        const idPedido = String(row.id_pedido ?? row.idChave ?? '').trim();
+        const escolhido = idPedido ? previsaoConfiavelPorId[idPedido] : undefined;
+        let valor: boolean | 'blank';
+        if (escolhido === true || escolhido === false) {
+          valor = escolhido;
+        } else if (row.previsao_atual_confiavel === true || row.previsao_atual_confiavel === false) {
+          valor = row.previsao_atual_confiavel;
+        } else {
+          valor = 'blank';
+        }
+        valores.add(valor);
+        if (valores.size > 1) return null;
+      }
+      if (valores.size !== 1) return null;
+      const only = [...valores][0]!;
+      return only === 'blank' ? null : only;
+    },
+    [linhasSnapshot, previsaoConfiavelPorId]
+  );
   const getCellText = useCallback(
     (c: SequenciamentoCarradaAgregada, colId: string): string => {
       const key = carradaKeyDe(c);
@@ -272,6 +369,10 @@ export default function SequenciamentoCarradasPage() {
           return formatDataCurta(efProducao(key));
         case 'dataEntrega':
           return formatDataCurta(efEntrega(key));
+        case 'confiavel': {
+          const valor = confiabilidadeCarrada(key);
+          return valor === null ? '' : valor ? 'Confiável' : 'Não confiável';
+        }
         case 'saldoAFaturar':
           return formatMoeda(c.saldoAFaturar);
         case 'percentualEmDia':
@@ -284,7 +385,7 @@ export default function SequenciamentoCarradasPage() {
           return '';
       }
     },
-    [efProducao, efEntrega]
+    [efProducao, efEntrega, confiabilidadeCarrada]
   );
 
   const valueForSort = useCallback(
@@ -299,6 +400,10 @@ export default function SequenciamentoCarradasPage() {
           return efProducao(key) || '9999-12-31';
         case 'dataEntrega':
           return efEntrega(key) || '9999-12-31';
+        case 'confiavel': {
+          const valor = confiabilidadeCarrada(key);
+          return valor === null ? '' : valor ? 'Confiável' : 'Não confiável';
+        }
         case 'saldoAFaturar':
           return c.saldoAFaturar;
         case 'percentualEmDia':
@@ -311,7 +416,7 @@ export default function SequenciamentoCarradasPage() {
           return '';
       }
     },
-    [efProducao, efEntrega]
+    [efProducao, efEntrega, confiabilidadeCarrada]
   );
 
   const grade = useGradeFiltrosExcel<SequenciamentoCarradaAgregada>({
@@ -333,7 +438,6 @@ export default function SequenciamentoCarradasPage() {
     }
     return garantirEspeciaisNoFim(result);
   }, [grade.rowsExibidas, ordemManual]);
-
   const carradasNormais = useMemo(
     () => carradasFinais.filter((c) => !isCarradaOrdemFinal(c.carrada)),
     [carradasFinais]
@@ -588,11 +692,16 @@ export default function SequenciamentoCarradasPage() {
         if (req !== detalheReqRef.current) return;
         if (r.error) {
           setDetalheErro(r.error);
+          setFeedbackGravacao(r.error);
           return;
         }
         const data = r.data;
         if (!data?.payload) {
-          setDetalheErro('Snapshot sem dados legíveis.');
+          const msg =
+            `Snapshot ${data?.cod ?? id} sem dados legíveis (payload vazio ou inválido). ` +
+            'Exclua este rascunho e use Consultar → Gravar para gerar um novo.';
+          setDetalheErro(msg);
+          setFeedbackGravacao(msg);
           return;
         }
         const somenteLeitura = opts?.somenteLeitura === true || data.status === 'concluido';
@@ -611,7 +720,9 @@ export default function SequenciamentoCarradasPage() {
         );
       } catch (e) {
         if (req !== detalheReqRef.current) return;
-        setDetalheErro(e instanceof Error ? e.message : String(e));
+        const msg = e instanceof Error ? e.message : String(e);
+        setDetalheErro(msg);
+        setFeedbackGravacao(msg);
       } finally {
         if (req === detalheReqRef.current) setDetalheCarregando(false);
       }
@@ -747,11 +858,13 @@ export default function SequenciamentoCarradasPage() {
         ? Object.fromEntries(observacoesKeys.map((k) => [k, observacaoPorId[k]!.slice(0, 1000)]))
         : undefined;
     const confiavelKeys = Object.keys(previsaoConfiavelPorId).filter(
-      (k) => previsaoConfiavelPorId[k] === false
+      (k) => previsaoConfiavelPorId[k] === true || previsaoConfiavelPorId[k] === false
     );
     const previsaoConfiavel =
       confiavelKeys.length > 0
-        ? Object.fromEntries(confiavelKeys.map((k) => [k, false as boolean]))
+        ? Object.fromEntries(
+            confiavelKeys.map((k) => [k, previsaoConfiavelPorId[k] as boolean])
+          )
         : undefined;
     const prioridadesFiltradas = Object.fromEntries(
       Object.entries(prioridades).filter(([chave, v]) => {
@@ -1160,7 +1273,7 @@ export default function SequenciamentoCarradasPage() {
             observacao: observacaoPorId[p.idPedido]?.trim()
               ? observacaoPorId[p.idPedido]!.slice(0, 1000)
               : null,
-            previsao_confiavel: previsaoConfiavelPorId[p.idPedido] !== false,
+            previsao_confiavel: previsaoConfiavelPorId[p.idPedido] === true,
             previsao_atual: p.previsaoAnterior,
             rota: p.rota,
             apply_rota: true,
@@ -1224,9 +1337,47 @@ export default function SequenciamentoCarradasPage() {
     ]
   );
 
+  const startColumnResize = (event: React.MouseEvent<HTMLButtonElement>, id: (typeof COL_IDS)[number]) => {
+    event.preventDefault();
+    event.stopPropagation();
+    columnResizeRef.current = {
+      id,
+      startX: event.clientX,
+      startWidth: columnPreferences.widths[id],
+    };
+  };
+
+  const ocultarColuna = (id: (typeof COL_IDS)[number]) => {
+    if (visibleColumns.length <= 1) return;
+    grade.fecharFiltroExcel();
+    grade.clearColumnFilter(id);
+    grade.setSortState((prev) => (prev?.key === id ? null : prev));
+    grade.setSortLevels((prev) => prev.filter((level) => level.id !== id));
+    setColumnPreferences((prev) => ({
+      ...prev,
+      visible: { ...prev.visible, [id]: false },
+    }));
+  };
+
+  const reexibirColuna = (id: (typeof COL_IDS)[number]) => {
+    setColumnPreferences((prev) => ({
+      ...prev,
+      visible: { ...prev.visible, [id]: true },
+    }));
+  };
+
+  const reexibirTodasColunas = () => {
+    setColumnPreferences((prev) => ({
+      ...prev,
+      visible: Object.fromEntries(COL_IDS.map((id) => [id, true])) as ColumnPreferences['visible'],
+    }));
+    setColumnMenuOpen(false);
+  };
+
+  const hiddenColumns = COL_IDS.filter((id) => !columnPreferences.visible[id]);
+
   const renderTh = (colId: (typeof COL_IDS)[number]) => {
     const numerica = COL_NUMERICAS.has(colId);
-    const extra = COL_TH_CLASS[colId] ?? '';
     const labelClass =
       colId === 'valorAVistaAte10d'
         ? 'max-w-[6rem] whitespace-normal break-words text-[10px] leading-tight'
@@ -1234,15 +1385,42 @@ export default function SequenciamentoCarradasPage() {
     return (
       <th
         key={colId}
-        className={`sticky top-0 z-20 border border-primary-500/40 bg-primary-600 px-2 py-2.5 align-middle font-semibold text-white shadow-[0_1px_0_rgba(0,0,0,0.08)] ${extra}`}
+        style={{ width: columnPreferences.widths[colId], minWidth: columnPreferences.widths[colId] }}
+        className="sticky top-0 z-20 border border-primary-500/40 bg-primary-600 px-2 py-2.5 align-middle font-semibold text-white shadow-[0_1px_0_rgba(0,0,0,0.08)]"
       >
         <div className={`flex items-center gap-1 ${numerica ? 'justify-end' : 'justify-between'}`}>
           <span className={labelClass}>{COL_LABELS[colId]}</span>
-          <GradeFiltroCabecalhoBtn
-            ativo={grade.colunaComFiltroAtivo(colId)}
-            onClick={(e) => grade.abrirFiltroExcel(colId, e)}
-          />
+          <span className="flex shrink-0 flex-col gap-0.5">
+            <GradeFiltroCabecalhoBtn
+              ativo={grade.colunaComFiltroAtivo(colId)}
+              onClick={(e) => grade.abrirFiltroExcel(colId, e)}
+            />
+            <button
+              type="button"
+              onClick={() => ocultarColuna(colId)}
+              disabled={visibleColumns.length <= 1}
+              className="inline-flex items-center justify-center rounded border border-white/25 px-1 py-0.5 text-white/80 hover:bg-white/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              title="Ocultar coluna"
+              aria-label={`Ocultar coluna ${COL_LABELS[colId]}`}
+            >
+              <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 3l18 18M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58M9.88 5.08A9.77 9.77 0 0112 4c5 0 8.27 4.11 9.54 6.06a1.75 1.75 0 010 1.88 16.2 16.2 0 01-2.1 2.64M6.1 6.1a16.46 16.46 0 00-3.64 3.96 1.75 1.75 0 000 1.88C3.73 13.89 7 18 12 18a9.77 9.77 0 004.17-.94"
+                />
+              </svg>
+            </button>
+          </span>
         </div>
+        <button
+          type="button"
+          className="absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none bg-transparent hover:bg-white/50"
+          onMouseDown={(event) => startColumnResize(event, colId)}
+          aria-label={`Redimensionar coluna ${COL_LABELS[colId]}`}
+          title="Arraste para ajustar a largura"
+        />
       </th>
     );
   };
@@ -1309,6 +1487,55 @@ export default function SequenciamentoCarradasPage() {
                   Limpar filtros/ordem
                 </button>
               )}
+              {hiddenColumns.length > 0 && (
+                <div className="relative" ref={columnMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setColumnMenuOpen((open) => !open)}
+                    className={BTN_SECONDARY}
+                    aria-expanded={columnMenuOpen}
+                    aria-haspopup="dialog"
+                  >
+                    Colunas ocultas
+                    <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs text-primary-700 dark:bg-primary-900/40 dark:text-primary-200">
+                      {hiddenColumns.length}
+                    </span>
+                  </button>
+                  {columnMenuOpen && (
+                    <div
+                      role="dialog"
+                      aria-label="Reexibir colunas ocultas"
+                      className="absolute right-0 z-40 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-600 dark:bg-slate-800"
+                    >
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 dark:border-slate-600">
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Reexibir colunas</p>
+                        <button
+                          type="button"
+                          onClick={reexibirTodasColunas}
+                          className="text-xs font-medium text-primary-600 hover:underline dark:text-primary-300"
+                        >
+                          Reexibir todas
+                        </button>
+                      </div>
+                      <div className="mt-2 max-h-64 overflow-auto">
+                        {hiddenColumns.map((id) => (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => reexibirColuna(id)}
+                            className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                          >
+                            <span>{COL_LABELS[id]}</span>
+                            <span className="shrink-0 text-xs font-medium text-primary-600 dark:text-primary-300">
+                              Reexibir
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <button type="button" onClick={() => void fecharVisualizacao()} className={BTN_SECONDARY}>
                 ← Voltar ao histórico
               </button>
@@ -1369,9 +1596,17 @@ export default function SequenciamentoCarradasPage() {
           {historicoCarregando && (
             <p className="text-sm text-slate-500 dark:text-slate-400">Carregando histórico...</p>
           )}
+          {detalheCarregando && !historicoCarregando && (
+            <p className="text-sm text-slate-500 dark:text-slate-400">Abrindo snapshot...</p>
+          )}
           {historicoErro && !historicoCarregando && (
             <p className="text-sm text-red-600 dark:text-red-300" role="alert">
               {historicoErro}
+            </p>
+          )}
+          {detalheErro && !detalheCarregando && (
+            <p className="mb-3 text-sm text-red-600 dark:text-red-300" role="alert">
+              {detalheErro}
             </p>
           )}
           {!historicoCarregando && !historicoErro && historicoLista.length === 0 && (
@@ -1447,7 +1682,7 @@ export default function SequenciamentoCarradasPage() {
               </p>
             )}
             {!detalheCarregando && !detalheErro && (
-              <table className="w-full border-separate border-spacing-0 text-left text-sm">
+              <table className="w-full table-fixed border-separate border-spacing-0 text-left text-sm">
                 <thead className="sticky top-0 z-10">
                   <tr>
                     {podeArrastar && (
@@ -1475,9 +1710,9 @@ export default function SequenciamentoCarradasPage() {
                     {podeArrastar && (
                       <th className="sticky top-0 z-20 w-8 border border-primary-500/40 bg-primary-600 px-1 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.08)]" />
                     )}
-                    {renderTh('cod')}
-                    {renderTh('carrada')}
-                    {renderTh('dataProducao')}
+                    {visibleColumns.includes('cod') && renderTh('cod')}
+                    {visibleColumns.includes('carrada') && renderTh('carrada')}
+                    {visibleColumns.includes('dataProducao') && renderTh('dataProducao')}
                     {editavel && (
                       <th className="sticky top-0 z-20 w-12 border border-primary-500/40 bg-primary-600 px-0.5 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.08)]">
                         <div className="flex flex-col items-center gap-0.5">
@@ -1502,11 +1737,12 @@ export default function SequenciamentoCarradasPage() {
                         </div>
                       </th>
                     )}
-                    {renderTh('dataEntrega')}
-                    {renderTh('saldoAFaturar')}
-                    {renderTh('percentualEmDia')}
-                    {renderTh('adiantamento')}
-                    {renderTh('valorAVistaAte10d')}
+                    {visibleColumns.includes('dataEntrega') && renderTh('dataEntrega')}
+                    {visibleColumns.includes('confiavel') && renderTh('confiavel')}
+                    {visibleColumns.includes('saldoAFaturar') && renderTh('saldoAFaturar')}
+                    {visibleColumns.includes('percentualEmDia') && renderTh('percentualEmDia')}
+                    {visibleColumns.includes('adiantamento') && renderTh('adiantamento')}
+                    {visibleColumns.includes('valorAVistaAte10d') && renderTh('valorAVistaAte10d')}
                   </tr>
                 </thead>
                 <tbody>
@@ -1514,7 +1750,7 @@ export default function SequenciamentoCarradasPage() {
                     <tr>
                       <td
                         colSpan={
-                          COL_IDS.length + (podeArrastar ? 2 : 0) + (editavel ? 1 : 0)
+                          visibleColumns.length + (podeArrastar ? 2 : 0) + (editavel ? 1 : 0)
                         }
                         className="py-4 text-center text-slate-500 dark:text-slate-400"
                       >
@@ -1594,7 +1830,11 @@ export default function SequenciamentoCarradasPage() {
                                 {carradaEspecial ? '' : '⠿'}
                               </td>
                             )}
-                            <td className="py-2 px-2 font-mono text-slate-800 dark:text-slate-200">
+                            {visibleColumns.includes('cod') && (
+                            <td
+                              style={{ width: columnPreferences.widths.cod, minWidth: columnPreferences.widths.cod }}
+                              className="py-2 px-2 font-mono text-slate-800 dark:text-slate-200"
+                            >
                               <GradeCelulaModalBtn
                                 onClick={() => setCarradaDetalhe(c)}
                                 title="Ver detalhe da carrada"
@@ -1603,16 +1843,28 @@ export default function SequenciamentoCarradasPage() {
                                 {c.cod}
                               </GradeCelulaModalBtn>
                             </td>
-                            <td className="max-w-[280px] py-2 px-2 text-slate-800 dark:text-slate-200">
+                            )}
+                            {visibleColumns.includes('carrada') && (
+                            <td
+                              style={{ width: columnPreferences.widths.carrada, minWidth: columnPreferences.widths.carrada }}
+                              className="py-2 px-2 text-slate-800 dark:text-slate-200"
+                            >
                               <GradeCelulaModalBtn
                                 onClick={() => setCarradaDetalhe(c)}
                                 title={c.carrada}
                                 align="left"
                               >
-                                <span className="max-w-[16rem] truncate">{c.carrada}</span>
+                                <span className="truncate" style={{ maxWidth: columnPreferences.widths.carrada - 20 }}>
+                                  {c.carrada}
+                                </span>
                               </GradeCelulaModalBtn>
                             </td>
-                            <td className={`py-2 px-2 ${COL_TD_CLASS.dataProducao ?? ''}`}>
+                            )}
+                            {visibleColumns.includes('dataProducao') && (
+                            <td
+                              style={{ width: columnPreferences.widths.dataProducao, minWidth: columnPreferences.widths.dataProducao }}
+                              className="py-2 px-2"
+                            >
                               {carradaEmFormacao ? (
                                 <span
                                   className="text-xs tabular-nums text-slate-700 dark:text-slate-200"
@@ -1626,6 +1878,7 @@ export default function SequenciamentoCarradasPage() {
                                 <SequenciamentoDateField
                                   value={toISODate(efProducao(key))}
                                   disabled={!editavel}
+                                  fullWidth
                                   rowKey={key}
                                   colKey="dataProducao"
                                   className="text-xs"
@@ -1634,6 +1887,7 @@ export default function SequenciamentoCarradasPage() {
                                 />
                               )}
                             </td>
+                            )}
                             {editavel && (
                               <td className="w-12 px-0.5 py-2 text-center align-middle">
                                 {!carradaEspecial && !carradaEmFormacao && (
@@ -1668,7 +1922,11 @@ export default function SequenciamentoCarradasPage() {
                                 )}
                               </td>
                             )}
-                            <td className={`py-2 px-2 ${COL_TD_CLASS.dataEntrega ?? ''}`}>
+                            {visibleColumns.includes('dataEntrega') && (
+                            <td
+                              style={{ width: columnPreferences.widths.dataEntrega, minWidth: columnPreferences.widths.dataEntrega }}
+                              className="py-2 px-2"
+                            >
                               {carradaEmFormacao ? (
                                 <span
                                   className="text-xs font-medium text-amber-700 dark:text-amber-300"
@@ -1680,6 +1938,7 @@ export default function SequenciamentoCarradasPage() {
                                 <SequenciamentoDateField
                                   value={toISODate(efEntrega(key))}
                                   disabled={!editavel}
+                                  fullWidth
                                   rowKey={key}
                                   colKey="dataEntrega"
                                   className="text-xs"
@@ -1688,13 +1947,37 @@ export default function SequenciamentoCarradasPage() {
                                 />
                               )}
                             </td>
+                            )}
+                            {visibleColumns.includes('confiavel') && (
                             <td
-                              className={`py-2 px-2 text-slate-800 dark:text-slate-200 ${COL_TD_CLASS.saldoAFaturar ?? 'text-right tabular-nums'}`}
+                              style={{ width: columnPreferences.widths.confiavel, minWidth: columnPreferences.widths.confiavel }}
+                              className="py-2 px-2 text-center"
+                            >
+                              {(() => {
+                                const valor = confiabilidadeCarrada(key);
+                                if (valor === null) return null;
+                                return (
+                                  <span
+                                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classPercentualEmDia(valor ? 100 : 0)}`}
+                                  >
+                                    {valor ? 'Confiável' : 'Não confiável'}
+                                  </span>
+                                );
+                              })()}
+                            </td>
+                            )}
+                            {visibleColumns.includes('saldoAFaturar') && (
+                            <td
+                              style={{ width: columnPreferences.widths.saldoAFaturar, minWidth: columnPreferences.widths.saldoAFaturar }}
+                              className="py-2 px-2 text-right tabular-nums text-slate-800 dark:text-slate-200"
                             >
                               {formatMoeda(c.saldoAFaturar)}
                             </td>
+                            )}
+                            {visibleColumns.includes('percentualEmDia') && (
                             <td
-                              className={`py-2 px-2 ${COL_TD_CLASS.percentualEmDia ?? 'text-right tabular-nums'}`}
+                              style={{ width: columnPreferences.widths.percentualEmDia, minWidth: columnPreferences.widths.percentualEmDia }}
+                              className="py-2 px-2 text-right tabular-nums"
                             >
                               <span
                                 className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classPercentualEmDia(c.percentualEmDia ?? 0)}`}
@@ -1702,42 +1985,52 @@ export default function SequenciamentoCarradasPage() {
                                 {formatPercentual(c.percentualEmDia ?? 0)}
                               </span>
                             </td>
+                            )}
+                            {visibleColumns.includes('adiantamento') && (
                             <td
-                              className={`py-2 px-2 text-slate-800 dark:text-slate-200 ${COL_TD_CLASS.adiantamento ?? 'text-right tabular-nums'}`}
+                              style={{ width: columnPreferences.widths.adiantamento, minWidth: columnPreferences.widths.adiantamento }}
+                              className="py-2 px-2 text-right tabular-nums text-slate-800 dark:text-slate-200"
                             >
                               {formatMoeda(c.adiantamento)}
                             </td>
+                            )}
+                            {visibleColumns.includes('valorAVistaAte10d') && (
                             <td
-                              className={`py-2 px-2 text-slate-800 dark:text-slate-200 ${COL_TD_CLASS.valorAVistaAte10d ?? 'text-right tabular-nums'}`}
+                              style={{ width: columnPreferences.widths.valorAVistaAte10d, minWidth: columnPreferences.widths.valorAVistaAte10d }}
+                              className="py-2 px-2 text-right tabular-nums text-slate-800 dark:text-slate-200"
                             >
                               {formatMoeda(c.valorAVistaAte10d)}
                             </td>
+                            )}
                           </tr>
                         );
                       })}
                       <tr className={SUBTOTAL_ROW_CLASS}>
-                        <td
-                          className="py-2 px-2 text-slate-800 dark:text-slate-100"
-                          colSpan={(podeArrastar ? 2 : 0) + 3 + (editavel ? 1 : 0)}
-                        >
-                          Subtotal
-                        </td>
-                        <td className="py-2 px-2 text-right tabular-nums text-slate-800 dark:text-slate-100">
-                          {formatMoeda(subtotal.saldoAFaturar)}
-                        </td>
-                        <td className="py-2 px-2 text-right tabular-nums">
-                          <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classPercentualEmDia(subtotal.percentualEmDia)}`}
+                        {podeArrastar && <td colSpan={2} />}
+                        {editavel && <td />}
+                        {visibleColumns.map((colId, index) => (
+                          <td
+                            key={colId}
+                            style={{ width: columnPreferences.widths[colId], minWidth: columnPreferences.widths[colId] }}
+                            className={`py-2 px-2 ${
+                              COL_NUMERICAS.has(colId)
+                                ? 'text-right tabular-nums'
+                                : 'text-slate-800 dark:text-slate-100'
+                            }`}
                           >
-                            {formatPercentual(subtotal.percentualEmDia)}
-                          </span>
-                        </td>
-                        <td className="py-2 px-2 text-right tabular-nums text-slate-800 dark:text-slate-100">
-                          {formatMoeda(subtotal.adiantamento)}
-                        </td>
-                        <td className="py-2 px-2 text-right tabular-nums text-slate-800 dark:text-slate-100">
-                          {formatMoeda(subtotal.valorAVistaAte10d)}
-                        </td>
+                            {index === 0 && <span className="font-medium">Subtotal</span>}
+                            {colId === 'saldoAFaturar' && formatMoeda(subtotal.saldoAFaturar)}
+                            {colId === 'percentualEmDia' && (
+                              <span
+                                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classPercentualEmDia(subtotal.percentualEmDia)}`}
+                              >
+                                {formatPercentual(subtotal.percentualEmDia)}
+                              </span>
+                            )}
+                            {colId === 'adiantamento' && formatMoeda(subtotal.adiantamento)}
+                            {colId === 'valorAVistaAte10d' && formatMoeda(subtotal.valorAVistaAte10d)}
+                          </td>
+                        ))}
                       </tr>
                     </>
                   )}
@@ -1839,8 +2132,7 @@ export default function SequenciamentoCarradasPage() {
             setPrevisaoConfiavelPorId((prev) => {
               const next = { ...prev };
               for (const id of idsPedido) {
-                if (meta.previsao_confiavel === false) next[id] = false;
-                else delete next[id];
+                next[id] = meta.previsao_confiavel;
               }
               return next;
             });

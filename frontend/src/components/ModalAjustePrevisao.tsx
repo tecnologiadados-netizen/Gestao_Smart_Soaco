@@ -17,6 +17,7 @@ import { validarDatasReprogramacao } from '../utils/canalReprogramacaoDatas';
 import { formatDataCurta } from './sequenciamento-carradas/simulacaoCarradas';
 import { lerPdfAssinatura, type AnexoAssinaturaPayload } from '../utils/lerPdfAssinatura';
 import CampoAnexoAssinaturaPdf from './CampoAnexoAssinaturaPdf';
+import TogglePrevisaoConfiavel, { type PrevisaoConfiavelTri } from './TogglePrevisaoConfiavel';
 
 const ajusteSchema = z.object({
   previsao_nova: z.string().min(1, 'Informe a data'),
@@ -60,7 +61,10 @@ export type AjustePrevisaoSuccessMeta = {
 /** Contexto extra ao abrir o modal pelo Calendário de produção. */
 export type AjustePrevisaoContextoCalendario = {
   dataProducaoAtual: string;
-  /** Retirada/requisição/etc.: a coluna do calendário usa a previsão de entrega. */
+  /**
+   * Legado: quando true, alterar só a “produção” também dispara fluxo de previsão.
+   * No calendário em rascunho abre sempre false — produção e previsão são independentes no Map sim.
+   */
   producaoDerivadaPrevisao: boolean;
   /** Replica alterações de previsão aos demais itens do mesmo PD. */
   escopoTodosItensPd?: boolean;
@@ -148,11 +152,16 @@ export default function ModalAjustePrevisao({
   );
   const [motivo, setMotivo] = useState('');
   const [observacao, setObservacao] = useState('');
-  const [previsaoConfiavel, setPrevisaoConfiavel] = useState(true);
+  const [previsaoConfiavel, setPrevisaoConfiavel] = useState<PrevisaoConfiavelTri>(null);
   const [anexoAssinatura, setAnexoAssinatura] = useState<AnexoAssinaturaPayload | null>(null);
   const [anexoNome, setAnexoNome] = useState('');
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ previsao_nova?: string; data_producao_nova?: string; motivo?: string }>({});
+  const [errors, setErrors] = useState<{
+    previsao_nova?: string;
+    data_producao_nova?: string;
+    motivo?: string;
+    previsao_confiavel?: string;
+  }>({});
   const [sugestoes, setSugestoes] = useState<MotivoSugestao[]>([]);
   const [loadingSugestoes, setLoadingSugestoes] = useState(false);
   const [flowStep, setFlowStep] = useState<FlowStep>('form');
@@ -203,7 +212,7 @@ export default function ModalAjustePrevisao({
     }
     setMotivo('');
     setObservacao('');
-    setPrevisaoConfiavel(true);
+    setPrevisaoConfiavel(null);
     setAnexoAssinatura(null);
     setAnexoNome('');
     setErrors({});
@@ -222,19 +231,25 @@ export default function ModalAjustePrevisao({
 
   const previsaoNovaForm = previsao_nova.trim().slice(0, 10);
   const producaoNovaForm = data_producao_nova.trim().slice(0, 10);
-  /** No calendário, campo vazio = não alterar aquela data. */
-  const previsaoMudouForm = calendario
+  /**
+   * No calendário, campo “nova” preenchido = intenção de gravar aquela data (inclui confirmar a
+   * atual copiando o mesmo valor). Vazio = não alterar aquele campo.
+   */
+  const producaoMudouForm = calendario
+    ? !!producaoNovaForm
+    : producaoNovaForm !== producaoAtualStr;
+  /** Previsão só “muda de verdade” quando a nova data difere da atual (motivo/confiável). */
+  const previsaoDataAlteradaForm = calendario
     ? !!previsaoNovaForm && previsaoNovaForm !== previsaoAtualStr
     : !previsaoAtualStr || previsaoNovaForm !== previsaoAtualStr;
-  const producaoMudouForm = calendario
-    ? !!producaoNovaForm && producaoNovaForm !== producaoAtualStr
-    : producaoNovaForm !== producaoAtualStr;
   /**
-   * Motivo, previsão confiável e observação descrevem a mudança de previsão. Quando só a data de
-   * produção muda, não há ajuste de previsão e esses campos ficam fora do fluxo.
+   * Motivo, previsão confiável e observação: só quando a data de previsão realmente muda.
+   * Confirmar a mesma previsão (atual = nova) não exige motivo.
    */
   const previsaoSeraAjustada =
-    previsaoMudouForm || (!!calendario && calendario.producaoDerivadaPrevisao && producaoMudouForm);
+    previsaoDataAlteradaForm ||
+    (!!calendario && calendario.producaoDerivadaPrevisao && producaoMudouForm);
+  const camposPrevisaoAtivos = previsaoSeraAjustada;
 
   const motivoSelecionado = sugestoes.find((s) => s.descricao === motivo);
   const exigeAnexo = previsaoSeraAjustada && motivoSelecionado?.abonada === false;
@@ -242,16 +257,17 @@ export default function ModalAjustePrevisao({
 
   /** Evita deixar motivo/observação preenchidos e desabilitados quando a previsão volta ao valor atual. */
   const limparCamposAjustePrevisaoSeInativos = (previsaoIso: string, producaoIso: string) => {
-    const previsaoMuda = calendario
+    const previsaoDataMudou = calendario
       ? !!previsaoIso && previsaoIso !== previsaoAtualStr
       : !previsaoAtualStr || previsaoIso !== previsaoAtualStr;
     const producaoMuda = calendario
-      ? !!producaoIso && producaoIso !== producaoAtualStr
+      ? !!producaoIso
       : producaoIso !== producaoAtualStr;
-    if (previsaoMuda || (!!calendario && calendario.producaoDerivadaPrevisao && producaoMuda)) return;
+    if (previsaoDataMudou || (!!calendario && calendario.producaoDerivadaPrevisao && producaoMuda)) {
+      return;
+    }
     setMotivo('');
     setObservacao('');
-    setPrevisaoConfiavel(true);
     setAnexoAssinatura(null);
     setAnexoNome('');
   };
@@ -259,6 +275,36 @@ export default function ModalAjustePrevisao({
   const limparAnexoAssinatura = () => {
     setAnexoAssinatura(null);
     setAnexoNome('');
+  };
+
+  /** Copia a data atual para o campo “nova” correspondente; a gravação fica no Salvar. */
+  const replicarDataAtualParaNova = (campo: 'producao' | 'previsao') => {
+    if (!calendario) return;
+    if (campo === 'producao') {
+      if (!producaoAtualStr) return;
+      setDataProducaoNova(producaoAtualStr);
+      const previsaoForm = previsao_nova.trim().slice(0, 10);
+      const deveElevar = !!previsaoForm && previsaoForm < producaoAtualStr;
+      const previsaoAjustada = deveElevar ? producaoAtualStr : previsaoForm;
+      if (previsaoAjustada !== previsaoForm) setPrevisaoNova(previsaoAjustada);
+      limparCamposAjustePrevisaoSeInativos(previsaoAjustada, producaoAtualStr);
+      setErrors((prev) => {
+        if (!prev.data_producao_nova) return prev;
+        const next = { ...prev };
+        delete next.data_producao_nova;
+        return next;
+      });
+      return;
+    }
+    if (!previsaoAtualStr) return;
+    setPrevisaoNova(previsaoAtualStr);
+    limparCamposAjustePrevisaoSeInativos(previsaoAtualStr, data_producao_nova.trim().slice(0, 10));
+    setErrors((prev) => {
+      if (!prev.previsao_nova && !prev.previsao_confiavel) return prev;
+      const next = { ...prev };
+      delete next.previsao_nova;
+      return next;
+    });
   };
 
   const onChangeMotivo = (valor: string) => {
@@ -468,12 +514,14 @@ export default function ModalAjustePrevisao({
 
     const previsaoNovaNorm = previsao_nova.trim().slice(0, 10);
     const producaoNovaNorm = data_producao_nova.trim().slice(0, 10);
+    /** Produção: no calendário, campo preenchido = aplicar (mesmo valor = confirmar atual). */
+    const producaoMudou = calendario
+      ? !!producaoNovaNorm
+      : producaoNovaNorm !== producaoAtualStr;
+    /** Previsão: só conta alteração real de data (atual ≠ nova). */
     const previsaoMudou = calendario
       ? !!previsaoNovaNorm && previsaoNovaNorm !== previsaoAtualStr
       : !previsaoAtualStr || previsaoNovaNorm !== previsaoAtualStr;
-    const producaoMudou = calendario
-      ? !!producaoNovaNorm && producaoNovaNorm !== producaoAtualStr
-      : producaoNovaNorm !== producaoAtualStr;
 
     /** Grava só a data de produção e fecha (nenhum ajuste de previsão envolvido). */
     const salvarSomenteProducao = async (rotasTodasDoItem: string[] = []) => {
@@ -584,27 +632,32 @@ export default function ModalAjustePrevisao({
     }
 
     const parsed = ajusteSchema.safeParse({ previsao_nova: previsaoEfetiva, motivo, observacao });
-    const dataComConfiavel = parsed.success
-      ? {
-          ...parsed.data,
-          previsao_confiavel: previsaoConfiavel,
-          anexo_assinatura: anexoAssinatura,
-        }
-      : null;
-    if (!parsed.success) {
+    if (!parsed.success || previsaoConfiavel === null) {
       const fieldErrors: Record<string, string> = {};
-      const flat = parsed.error.flatten().fieldErrors;
-      if (flat?.previsao_nova?.[0]) fieldErrors.previsao_nova = flat.previsao_nova[0];
-      if (flat?.motivo?.[0]) fieldErrors.motivo = flat.motivo[0];
+      if (!parsed.success) {
+        const flat = parsed.error.flatten().fieldErrors;
+        if (flat?.previsao_nova?.[0]) fieldErrors.previsao_nova = flat.previsao_nova[0];
+        if (flat?.motivo?.[0]) fieldErrors.motivo = flat.motivo[0];
+      }
+      if (previsaoConfiavel === null) {
+        fieldErrors.previsao_confiavel = 'Escolha Sim ou Não em Previsão confiável.';
+        onError('Escolha Sim ou Não em Previsão confiável.');
+      }
       setErrors(fieldErrors);
       return;
     }
+    const dataComConfiavel = {
+      ...parsed.data,
+      previsao_confiavel: previsaoConfiavel,
+      anexo_assinatura: anexoAssinatura,
+    };
     setErrors({});
 
     // Simulação (calendário rascunho): não exige PDF.
-    if (!persistirNoGerenciador && dataComConfiavel) {
-      const producaoSim =
-        producaoMudou && !calendario?.producaoDerivadaPrevisao ? producaoNovaNorm : undefined;
+    // Produção e previsão são independentes: se o usuário informou produção, grava no sim
+    // mesmo quando o item estava só com fallback Prev. (senão o calendário não reposiciona).
+    if (!persistirNoGerenciador) {
+      const producaoSim = producaoMudou && producaoNovaNorm ? producaoNovaNorm : undefined;
       salvarSomenteSimulacao({
         producao: producaoSim,
         previsao: previsaoEfetiva,
@@ -622,7 +675,7 @@ export default function ModalAjustePrevisao({
       return;
     }
 
-    if (producaoMudou && !calendario?.producaoDerivadaPrevisao && producaoNovaNorm) {
+    if (producaoMudou && producaoNovaNorm) {
       pendingProducaoRef.current = producaoNovaNorm;
     } else {
       pendingProducaoRef.current = null;
@@ -691,7 +744,7 @@ export default function ModalAjustePrevisao({
     }
 
     const decision: PendingDecision = {
-      data: dataComConfiavel!,
+      data: dataComConfiavel,
       // Override na Observacoes da linha: a grade resolve override da rota antes do ajuste base,
       // então gravar base deixaria a nova data invisível sempre que a linha já tivesse override.
       rotaOverride: rotaAtual.trim() ? rotaAtual.trim() : null,
@@ -814,6 +867,15 @@ export default function ModalAjustePrevisao({
                 <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm tabular-nums text-slate-800 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-100">
                   {producaoAtualStr ? formatDataCurta(producaoAtualStr) : '—'}
                 </p>
+                {producaoAtualStr ? (
+                  <button
+                    type="button"
+                    onClick={() => replicarDataAtualParaNova('producao')}
+                    className="mt-1.5 text-xs font-medium text-primary-700 hover:underline dark:text-primary-300"
+                  >
+                    Confirmar esta data
+                  </button>
+                ) : null}
               </div>
               <div>
                 <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">
@@ -843,6 +905,15 @@ export default function ModalAjustePrevisao({
                 <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm tabular-nums text-slate-800 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-100">
                   {previsaoAtualStr ? formatDataCurta(previsaoAtualStr) : '—'}
                 </p>
+                {previsaoAtualStr ? (
+                  <button
+                    type="button"
+                    onClick={() => replicarDataAtualParaNova('previsao')}
+                    className="mt-1.5 text-xs font-medium text-primary-700 hover:underline dark:text-primary-300"
+                  >
+                    Confirmar esta data
+                  </button>
+                ) : null}
               </div>
               <div>
                 <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">
@@ -909,7 +980,7 @@ export default function ModalAjustePrevisao({
               onChange={(e) => onChangeMotivo(e.target.value)}
               className="w-full rounded-lg bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 focus:ring-2 focus:ring-primary-600 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
               required={previsaoSeraAjustada}
-              disabled={!previsaoSeraAjustada}
+              disabled={!camposPrevisaoAtivos}
             >
               <option value="">Selecione um motivo</option>
               {sugestoes.map((s) => (
@@ -922,9 +993,10 @@ export default function ModalAjustePrevisao({
             {loadingSugestoes && (
               <p className="text-slate-500 text-xs mt-1">Carregando motivos...</p>
             )}
-            {!previsaoSeraAjustada && (
+            {!camposPrevisaoAtivos && (
               <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">
-                Motivo, previsão confiável e observação só valem para mudança da previsão de entrega.
+                Motivo e observação só valem quando a nova previsão difere da atual. “Confirmar esta
+                data” só copia para o campo nova; use Salvar para gravar.
               </p>
             )}
             {mostrarCampoAnexo && (
@@ -942,23 +1014,17 @@ export default function ModalAjustePrevisao({
             )}
           </div>
           <div className="mb-4">
-            <label
-              className={`flex items-start gap-2 ${previsaoSeraAjustada ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
-            >
-              <input
-                type="checkbox"
-                checked={previsaoConfiavel}
-                onChange={(e) => setPrevisaoConfiavel(e.target.checked)}
-                disabled={!previsaoSeraAjustada}
-                className="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-600"
-              />
-              <span className="text-sm text-slate-700 dark:text-slate-300">
-                <span className="font-medium">Previsão confiável</span>
-                <span className="block text-xs text-slate-500 dark:text-slate-400 font-normal mt-0.5">
-                  Desmarque se a data é provisória. Nesse caso, não aparece no histórico da Comunicação Interna.
-                </span>
-              </span>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+              Previsão confiável
             </label>
+            <TogglePrevisaoConfiavel
+              value={previsaoConfiavel}
+              onChange={setPrevisaoConfiavel}
+              showHelp={false}
+            />
+            {errors.previsao_confiavel && (
+              <p className="text-amber-400 text-xs mt-1">{errors.previsao_confiavel}</p>
+            )}
           </div>
           <div className="mb-4">
             <CampoLabelComAjuda label="Observação" ajuda={AJUDA_CAMPO_OBSERVACAO} className="text-xs text-slate-500 dark:text-slate-400" />
@@ -967,7 +1033,7 @@ export default function ModalAjustePrevisao({
               onChange={(e) => setObservacao(e.target.value)}
               rows={2}
               placeholder="Opcional"
-              disabled={!previsaoSeraAjustada}
+              disabled={!camposPrevisaoAtivos}
               className="w-full rounded-lg bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 focus:ring-2 focus:ring-primary-600 focus:border-transparent resize-none placeholder:text-slate-400 dark:placeholder:text-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
@@ -981,7 +1047,11 @@ export default function ModalAjustePrevisao({
             </button>
             <button
               type="submit"
-              disabled={loading || carradaCheckLoading}
+              disabled={
+                loading ||
+                carradaCheckLoading ||
+                (previsaoSeraAjustada && previsaoConfiavel === null)
+              }
               className="px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white text-sm font-medium"
             >
               {carradaCheckLoading ? 'Verificando rota...' : loading ? 'Salvando...' : 'Salvar'}

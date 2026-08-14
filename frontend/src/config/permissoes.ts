@@ -18,6 +18,7 @@ export const PERMISSOES = {
   PRECIFICACAO_GERAR: 'precificacao.gerar',
   COMERCIAL_VER: 'comercial.ver',
   COMERCIAL_PAINEL_VER: 'comercial.painel.ver',
+  COMERCIAL_HISTORICO_VENDAS_VER: 'comercial.historico_vendas.ver',
   QUALIDADE_VER: 'qualidade.ver',
   RH_VER: 'rh.ver',
   RH_CONFIGURAR: 'rh.configurar',
@@ -47,7 +48,13 @@ export const PERMISSOES = {
   FLUXOS_EDITAR: 'fluxos.editar',
 
   // --- Novos códigos (enforcement real) ---
-  // Produção (Camasi / máquinas)
+  // KPIs (hub de painéis)
+  KPIS_VER: 'kpis.ver',
+  KPIS_PAINEL_PRODUCAO_CAMASI_VER: 'kpis.painel.producao_camasi.ver',
+  KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER: 'kpis.painel.pedidos_em_aberto.ver',
+  KPIS_PAINEL_COBERTURA_ESTOQUE_VER: 'kpis.painel.cobertura_estoque.ver',
+
+  // Produção (Camasi / máquinas) — legado; acesso também via hub KPIs
   PRODUCAO_VER: 'producao.ver',
   PRODUCAO_TOTAL: 'producao.total',
 

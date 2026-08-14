@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { criarMatcherTextoLivre } from '../utils/textoLivreBusca';
 
 /** Separador entre valores no `value` (Gerenciador e demais telas: vírgula; Ressup Almox: pipe). */
@@ -42,6 +43,8 @@ export interface MultiSelectWithSearchProps {
   onSearchAsync?: (term: string) => Promise<string[]>;
   /** Lista ainda carregando no servidor (ex.: opções de filtro). */
   optionsLoading?: boolean;
+  /** Renderiza o dropdown em portal com posição fixa — evita corte por container com rolagem (modais). */
+  dropdownPortal?: boolean;
 }
 
 export default function MultiSelectWithSearch({
@@ -65,13 +68,22 @@ export default function MultiSelectWithSearch({
   minSearchChars = 0,
   onSearchAsync,
   optionsLoading = false,
+  dropdownPortal = false,
 }: MultiSelectWithSearchProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [asyncOptions, setAsyncOptions] = useState<string[]>([]);
   const [asyncLoading, setAsyncLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const portalRef = useRef<HTMLDivElement>(null);
   const inputSearchRef = useRef<HTMLInputElement>(null);
+  const [portalPos, setPortalPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
   const selected = parseValue(value, valueSeparator);
 
   const displayFor = useMemo(() => {
@@ -118,11 +130,47 @@ export default function MultiSelectWithSearch({
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const alvo = e.target as Node;
+      if (ref.current?.contains(alvo)) return;
+      if (portalRef.current?.contains(alvo)) return;
+      setOpen(false);
     };
     document.addEventListener('click', handler, true);
     return () => document.removeEventListener('click', handler, true);
   }, [open]);
+
+  const recalcularPosicao = useCallback(() => {
+    if (!dropdownPortal || !btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const margem = 8;
+    const alturaDesejada = parseInt(dropdownMaxHeight, 10) || 280;
+    const espacoAbaixo = window.innerHeight - rect.bottom - margem;
+    const espacoAcima = rect.top - margem;
+    const abrirAcima = espacoAbaixo < Math.min(alturaDesejada, 200) && espacoAcima > espacoAbaixo;
+    const maxHeight = Math.max(160, Math.min(alturaDesejada, abrirAcima ? espacoAcima : espacoAbaixo));
+    const largura = Math.max(rect.width, 220);
+    setPortalPos({
+      top: abrirAcima ? rect.top - maxHeight - 4 : rect.bottom + 4,
+      left: Math.max(margem, Math.min(rect.left, window.innerWidth - largura - margem)),
+      width: largura,
+      maxHeight,
+    });
+  }, [dropdownPortal, dropdownMaxHeight]);
+
+  useEffect(() => {
+    if (!dropdownPortal || !open) {
+      setPortalPos(null);
+      return;
+    }
+    recalcularPosicao();
+    const handler = () => recalcularPosicao();
+    window.addEventListener('resize', handler);
+    window.addEventListener('scroll', handler, true);
+    return () => {
+      window.removeEventListener('resize', handler);
+      window.removeEventListener('scroll', handler, true);
+    };
+  }, [dropdownPortal, open, recalcularPosicao]);
 
   useEffect(() => {
     if (open) {
@@ -158,6 +206,74 @@ export default function MultiSelectWithSearch({
         : `${selected.length} ${optionLabel}`;
 
   const panelMaxW = dropdownMaxWidth ?? '100%';
+  const listaMaxHeight =
+    dropdownPortal && portalPos ? `${Math.max(96, portalPos.maxHeight - 56)}px` : dropdownListMaxHeight;
+
+  const painel = (
+    <>
+      <div className="shrink-0 border-b border-slate-200 p-2 dark:border-slate-600">
+        <input
+          ref={inputSearchRef}
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Pesquisar..."
+          className="w-full rounded-md border border-slate-300 bg-slate-100 px-2.5 py-1.5 text-sm text-slate-800 focus:border-transparent focus:ring-2 focus:ring-primary-500 dark:border-slate-500 dark:bg-slate-600 dark:text-slate-100"
+        />
+      </div>
+      <div className="overflow-y-auto overflow-x-hidden py-1" style={{ maxHeight: listaMaxHeight }}>
+        {filteredOptions.length > 0 && (
+          <label className="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-600">
+            <input
+              type="checkbox"
+              checked={filteredOptions.every((o) => selected.includes(o))}
+              onChange={selectAll}
+              className="rounded border-slate-400 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="font-medium text-slate-700 dark:text-slate-100">Selecionar todos</span>
+          </label>
+        )}
+        {(asyncLoading || optionsLoading) && (
+          <p className="px-3 py-2 text-sm text-slate-600 dark:text-slate-300">Carregando…</p>
+        )}
+        {!asyncLoading && !optionsLoading && minSearchChars > 0 && !onSearchAsync && search.trim().length < minSearchChars && (
+          <p className="px-3 py-2 text-sm text-slate-600 dark:text-slate-300">
+            Digite pelo menos {minSearchChars} caracteres para pesquisar.
+          </p>
+        )}
+        {!asyncLoading && !optionsLoading && onSearchAsync && search.trim().length < (minSearchChars || 2) && (
+          <p className="px-3 py-2 text-sm text-slate-600 dark:text-slate-300">
+            Digite pelo menos {minSearchChars || 2} caracteres para buscar no ERP.
+          </p>
+        )}
+        {!asyncLoading && !optionsLoading && filteredOptions.length === 0 && !(minSearchChars > 0 && search.trim().length < minSearchChars) ? (
+          <p className="px-3 py-2 text-sm text-slate-600 dark:text-slate-300">Nenhum resultado</p>
+        ) : !asyncLoading && !optionsLoading ? (
+          filteredOptions.map((opt) => {
+            const texto = displayFor(opt);
+            return (
+              <label
+                key={opt}
+                className="flex min-w-0 cursor-pointer items-start gap-2 px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-600"
+                title={texto}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(opt)}
+                  onChange={() => toggle(opt)}
+                  className="mt-0.5 shrink-0 rounded border-slate-400 text-primary-600 focus:ring-primary-500"
+                />
+                <span className="min-w-0 flex-1 line-clamp-2 break-words leading-snug">{texto}</span>
+              </label>
+            );
+          })
+        ) : null}
+      </div>
+    </>
+  );
+
+  const painelClasses =
+    'flex min-w-0 flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-700';
 
   return (
     <div
@@ -170,6 +286,7 @@ export default function MultiSelectWithSearch({
     >
       <label className={labelClass}>{label}</label>
       <button
+        ref={btnRef}
         type="button"
         disabled={disabled}
         onClick={() => !disabled && setOpen((o) => !o)}
@@ -178,74 +295,34 @@ export default function MultiSelectWithSearch({
         <span className="min-w-0 flex-1 truncate">{labelText}</span>
         <span className="text-slate-400 shrink-0">{open ? '▲' : '▼'}</span>
       </button>
-      {open && (
+      {open && !dropdownPortal && (
         <div
-          className="absolute left-0 top-full mt-1 flex w-full min-w-0 flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-700"
+          className={`absolute left-0 top-full mt-1 w-full ${painelClasses}`}
           style={{ zIndex: dropdownZIndex, maxWidth: panelMaxW, maxHeight: dropdownMaxHeight }}
         >
-          <div className="shrink-0 border-b border-slate-200 p-2 dark:border-slate-600">
-            <input
-              ref={inputSearchRef}
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Pesquisar..."
-              className="w-full rounded-md border border-slate-300 bg-slate-100 px-2.5 py-1.5 text-sm text-slate-800 focus:border-transparent focus:ring-2 focus:ring-primary-500 dark:border-slate-500 dark:bg-slate-600 dark:text-slate-100"
-            />
-          </div>
-          <div
-            className="overflow-y-auto overflow-x-hidden py-1"
-            style={{ maxHeight: dropdownListMaxHeight }}
-          >
-            {filteredOptions.length > 0 && (
-              <label className="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-600">
-                <input
-                  type="checkbox"
-                  checked={filteredOptions.every((o) => selected.includes(o))}
-                  onChange={selectAll}
-                  className="rounded border-slate-400 text-primary-600 focus:ring-primary-500"
-                />
-                <span className="font-medium text-slate-500 dark:text-slate-400">Selecionar todos</span>
-              </label>
-            )}
-            {(asyncLoading || optionsLoading) && (
-              <p className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">Carregando…</p>
-            )}
-            {!asyncLoading && !optionsLoading && minSearchChars > 0 && !onSearchAsync && search.trim().length < minSearchChars && (
-              <p className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">
-                Digite pelo menos {minSearchChars} caracteres para pesquisar.
-              </p>
-            )}
-            {!asyncLoading && !optionsLoading && onSearchAsync && search.trim().length < (minSearchChars || 2) && (
-              <p className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">
-                Digite pelo menos {minSearchChars || 2} caracteres para buscar no ERP.
-              </p>
-            )}
-            {!asyncLoading && !optionsLoading && filteredOptions.length === 0 && !(minSearchChars > 0 && search.trim().length < minSearchChars) ? (
-              <p className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">Nenhum resultado</p>
-            ) : !asyncLoading && !optionsLoading ? (
-              filteredOptions.map((opt) => {
-                const texto = displayFor(opt);
-                return (
-                  <label
-                    key={opt}
-                    className="flex min-w-0 cursor-pointer items-start gap-2 px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-600"
-                    title={texto}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(opt)}
-                      onChange={() => toggle(opt)}
-                      className="mt-0.5 shrink-0 rounded border-slate-400 text-primary-600 focus:ring-primary-500"
-                    />
-                    <span className="min-w-0 flex-1 line-clamp-2 break-words leading-snug">{texto}</span>
-                  </label>
-                );
-              })
-            ) : null}
-          </div>
+          {painel}
         </div>
       )}
+      {open &&
+        dropdownPortal &&
+        portalPos &&
+        createPortal(
+          <div
+            ref={portalRef}
+            className={painelClasses}
+            style={{
+              position: 'fixed',
+              top: portalPos.top,
+              left: portalPos.left,
+              width: portalPos.width,
+              maxHeight: portalPos.maxHeight,
+              zIndex: dropdownZIndex,
+            }}
+          >
+            {painel}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { listarMotivosSugestao, type MotivoSugestao } from '../api/motivosSugestao';
 import { ajustarPrevisaoLote, type AjustePrevisaoLoteResultado } from '../api/pedidos';
 import { isCarradaRota, isExcludedSqlRotaCategory } from '../utils/rotaCarrada';
+import TogglePrevisaoConfiavel, { type PrevisaoConfiavelTri } from './TogglePrevisaoConfiavel';
 
 const schema = z.object({
   previsao_nova: z.string().min(1, 'Informe a data'),
@@ -28,11 +29,15 @@ export default function ModalReprogramacaoLote({
   const [previsao_nova, setPrevisaoNova] = useState('');
   const [motivo, setMotivo] = useState('');
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ previsao_nova?: string; motivo?: string }>({});
+  const [errors, setErrors] = useState<{
+    previsao_nova?: string;
+    motivo?: string;
+    previsao_confiavel?: string;
+  }>({});
   const [sugestoes, setSugestoes] = useState<MotivoSugestao[]>([]);
   const [loadingSugestoes, setLoadingSugestoes] = useState(false);
   const [aplicarPorRota, setAplicarPorRota] = useState(false);
-  const [previsaoConfiavel, setPrevisaoConfiavel] = useState(true);
+  const [previsaoConfiavel, setPrevisaoConfiavel] = useState<PrevisaoConfiavelTri>(null);
 
   // Quantidade de linhas com rota considerada "carrada elegível" — habilita o toggle de override por rota.
   const totalLinhasComRotaCarrada = useMemo(() => {
@@ -57,6 +62,19 @@ export default function ModalReprogramacaoLote({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const parsed = schema.safeParse({ previsao_nova, motivo });
+    if (previsaoConfiavel === null) {
+      const fieldErrors: Record<string, string> = {
+        previsao_confiavel: 'Escolha Sim ou Não em Previsão confiável.',
+      };
+      if (!parsed.success) {
+        const flat = parsed.error.flatten().fieldErrors;
+        if (flat?.previsao_nova?.[0]) fieldErrors.previsao_nova = flat.previsao_nova[0];
+        if (flat?.motivo?.[0]) fieldErrors.motivo = flat.motivo[0];
+      }
+      setErrors(fieldErrors);
+      onError('Escolha Sim ou Não em Previsão confiável.');
+      return;
+    }
     if (!parsed.success) {
       const fieldErrors: Record<string, string> = {};
       const flat = parsed.error.flatten().fieldErrors;
@@ -152,20 +170,16 @@ export default function ModalReprogramacaoLote({
             )}
           </div>
           <div className="mb-4">
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={previsaoConfiavel}
-                onChange={(e) => setPrevisaoConfiavel(e.target.checked)}
-                className="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-600"
-              />
-              <span className="text-sm text-slate-700 dark:text-slate-300">
-                <span className="font-medium">Previsão confiável</span>
-                <span className="block text-xs text-slate-500 dark:text-slate-400 font-normal mt-0.5">
-                  Desmarque se a data é provisória (não aparece no histórico da Comunicação Interna).
-                </span>
-              </span>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+              Previsão confiável
             </label>
+            <TogglePrevisaoConfiavel
+              value={previsaoConfiavel}
+              onChange={setPrevisaoConfiavel}
+            />
+            {errors.previsao_confiavel && (
+              <p className="text-amber-400 text-xs mt-1">{errors.previsao_confiavel}</p>
+            )}
           </div>
 
           {totalLinhasComRotaCarrada > 0 && (
@@ -195,7 +209,7 @@ export default function ModalReprogramacaoLote({
             </button>
             <button
               type="submit"
-              disabled={loading || excedeLimite}
+              disabled={loading || excedeLimite || previsaoConfiavel === null}
               className="px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white text-sm font-medium"
             >
               {loading ? 'Salvando...' : `Reprogramar ${linhas.length} pedido(s)`}

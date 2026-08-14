@@ -43,6 +43,11 @@ type Props = {
   /** Botão só com ícone (ex.: aplicar data em lote). */
   iconOnly?: boolean;
   iconTitle?: string;
+  /**
+   * Classe z-index do popover (portal). Em modais com overlay alto (ex. calendário z-14200)
+   * use algo acima, senão o calendário abre “atrás” e parece que o campo não responde.
+   */
+  popoverZClass?: string;
 };
 
 /**
@@ -62,6 +67,7 @@ export default function SequenciamentoDateField({
   fullWidth = false,
   iconOnly = false,
   iconTitle,
+  popoverZClass = 'z-[200]',
 }: Props) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -193,7 +199,7 @@ export default function SequenciamentoDateField({
             ref={popoverRef}
             role="dialog"
             aria-label="Calendário"
-            className="fixed z-[200] rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+            className={`fixed ${popoverZClass} rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-600 dark:bg-slate-800`}
             style={{ top: pos.top, left: pos.left }}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}

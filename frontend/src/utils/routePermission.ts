@@ -19,11 +19,21 @@ import {
   PERMISSOES_ACESSO_FINANCEIRO_CRM,
   PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA,
 } from './financeiroPermissoes';
-import { PERMISSOES_ACESSO_COMERCIAL_PAINEL } from '../config/comercialPermissoes';
+import {
+  PERMISSOES_ACESSO_HUB_KPIS,
+  PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE,
+  PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO,
+  PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI,
+} from '../config/kpisCatalog';
+import {
+  PERMISSOES_ACESSO_COMERCIAL_PAINEL,
+  PERMISSOES_ACESSO_COMERCIAL_HISTORICO_VENDAS,
+} from '../config/comercialPermissoes';
 
 export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
-  '/producao/camasi': [PERMISSOES.PRODUCAO_VER, PERMISSOES.PRODUCAO_TOTAL],
-  '/pedidos/dash-entregas': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.DASHBOARD_VER, PERMISSOES.PEDIDOS_VER],
+  '/kpis': PERMISSOES_ACESSO_HUB_KPIS,
+  '/producao/camasi': PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI,
+  '/pedidos/dash-entregas': PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO,
   '/pedidos/sequenciamento-carradas': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos/encerrados': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
@@ -44,6 +54,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/pedidos/ressup-almox': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos/ressup-nao-almox': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos/consulta-estoque': [PERMISSOES.PCP_CONSULTA_ESTOQUE_VER, PERMISSOES.PCP_TOTAL],
+  '/pedidos/cobertura-estoque': PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE,
   '/pedidos/painel-metas/tv': PERMISSOES_ACESSO_PAINEL_TV,
   '/pedidos/painel-metas/gerencial': PERMISSOES_ACESSO_PAINEL_GERENCIAL,
   '/pedidos/painel-metas/metas': [
@@ -84,6 +95,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/financeiro/crm': PERMISSOES_ACESSO_FINANCEIRO_CRM,
   '/financeiro/carteira-financeira': PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA,
   '/comercial/painel': PERMISSOES_ACESSO_COMERCIAL_PAINEL,
+  '/comercial/historico-vendas': PERMISSOES_ACESSO_COMERCIAL_HISTORICO_VENDAS,
   '/loja/estoque-kits': [
     PERMISSOES.LOJA_KITS_VER,
     PERMISSOES.LOJA_KITS_MOVIMENTAR,
@@ -115,6 +127,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
 export const ROTAS_APENAS_MASTER = ['/situacao-api', '/whatsapp'];
 
 export const ROTAS_ORDEM = [
+  '/kpis',
   '/producao/camasi',
   '/pedidos/dash-entregas',
   '/pedidos',
@@ -131,6 +144,7 @@ export const ROTAS_ORDEM = [
   '/pedidos/ressup-almox',
   '/pedidos/ressup-nao-almox',
   '/pedidos/consulta-estoque',
+  '/pedidos/cobertura-estoque',
   '/pedidos/painel-metas/tv',
   '/pedidos/painel-metas/gerencial',
   '/pedidos/painel-metas/metas',
@@ -160,6 +174,7 @@ export const ROTAS_ORDEM = [
   '/financeiro/crm',
   '/financeiro/carteira-financeira',
   '/comercial/painel',
+  '/comercial/historico-vendas',
   '/loja/estoque-kits',
   '/logistica/cubagem/veiculos',
   '/logistica/cubagem/produtos',

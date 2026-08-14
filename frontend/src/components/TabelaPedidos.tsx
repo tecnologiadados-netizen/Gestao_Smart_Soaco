@@ -889,6 +889,28 @@ export default function TabelaPedidos({
                     </td>
                   );
                 }
+                if (col.id === 'pd') {
+                  const numeroPedido = getField(p, col.keys ?? []) || String(p.id_pedido ?? '');
+                  const confiavel = p.previsao_atual_confiavel;
+                  return (
+                    <td key={col.id} className="p-3">
+                      <div className="flex flex-col items-start gap-1">
+                        <span className="font-medium text-slate-800 dark:text-slate-100">{numeroPedido || '—'}</span>
+                        {confiavel === true || confiavel === false ? (
+                          <span
+                            className={`text-xs font-medium ${
+                              confiavel
+                                ? 'text-emerald-700 dark:text-emerald-300'
+                                : 'text-rose-700 dark:text-rose-300'
+                            }`}
+                          >
+                            {confiavel ? 'Confiável' : 'Não confiável'}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                  );
+                }
                 if (col.id === 'cod') {
                   const codigo = getField(p, col.keys ?? []);
                   return (

@@ -3,6 +3,23 @@ import { PERMISSOES, type CodigoPermissao } from './permissoes';
 /** Opções da lista "Tela principal ao iniciar" (valores persistidos no grupo). */
 export const OPCOES_TELA_PRINCIPAL: { key: string; label: string; requiredAny: CodigoPermissao[] }[] = [
   {
+    key: 'kpis',
+    label: 'KPIs',
+    requiredAny: [
+      PERMISSOES.KPIS_VER,
+      PERMISSOES.KPIS_PAINEL_PRODUCAO_CAMASI_VER,
+      PERMISSOES.KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER,
+      PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER,
+      PERMISSOES.PRODUCAO_VER,
+      PERMISSOES.PRODUCAO_TOTAL,
+      PERMISSOES.PCP_VER_TELA,
+      PERMISSOES.PCP_TOTAL,
+      PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
+      PERMISSOES.DASHBOARD_VER,
+      PERMISSOES.PEDIDOS_VER,
+    ],
+  },
+  {
     key: 'gerenciador_pedidos',
     label: 'Gerenciador de pedidos',
     requiredAny: [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],

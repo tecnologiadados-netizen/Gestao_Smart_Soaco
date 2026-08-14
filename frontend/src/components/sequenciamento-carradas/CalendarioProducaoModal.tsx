@@ -20,12 +20,24 @@ import {
   toISODate,
   tooltipDetalheComDatasEfetivas,
   valorEfetivo,
+  type CalendarioAAlocarItem,
   type CalendarioCelulaDetalhe,
   type CarradaBaseline,
   type ColunaCalendario,
   type SimEntry,
 } from './simulacaoCarradas';
 import IndicadorDataPorPrevisao from './IndicadorDataPorPrevisao';
+
+function BadgeSemCarrada() {
+  return (
+    <span
+      className="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold leading-none text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/40 dark:text-amber-200"
+      title="Inserir em Romaneio ≥ corte com produção alocada — ainda sem ROTA/carrada formada"
+    >
+      Sem carrada
+    </span>
+  );
+}
 import CalendarioSetorProdutosModal from './CalendarioSetorProdutosModal';
 import CalendarioMateriaisDiaModal from './CalendarioMateriaisDiaModal';
 import CalendarioMaterialHorizonteModal from './CalendarioMaterialHorizonteModal';
@@ -312,6 +324,7 @@ export default function CalendarioProducaoModal({
       hasPermission(PERMISSOES.PEDIDOS_EDITAR));
 
   const [filtroPd, setFiltroPd] = useState('');
+  const [somentePrev, setSomentePrev] = useState(false);
 
   const qtdePorRow = useMemo(() => {
     const porIndex = montarQtdeLiquidaDoSnapshot(linhas, estoquePorCod);
@@ -363,13 +376,28 @@ export default function CalendarioProducaoModal({
     [maxProducaoNormais]
   );
 
+  /** Quando ativo, só entra no calendário o que cai em Prev. (célula com *). */
+  const linhasCalendario = useMemo(() => {
+    if (!somentePrev) return linhasFiltradas;
+    return linhasFiltradas.filter((row) => {
+      const { origem } = resolverDataCalendarioLinha(
+        row,
+        sim,
+        baseline,
+        dataInserirRomaneio,
+        dataEmFormacao
+      );
+      return origem === 'previsao';
+    });
+  }, [linhasFiltradas, somentePrev, sim, baseline, dataInserirRomaneio, dataEmFormacao]);
+
   const dados = useMemo(
     () =>
-      computarCalendarioProducao(linhasFiltradas, sim, baseline, (row) => getQtdeLinha(row), {
+      computarCalendarioProducao(linhasCalendario, sim, baseline, (row) => getQtdeLinha(row), {
         dataInserirRomaneio,
         dataEmFormacao,
       }),
-    [linhasFiltradas, sim, baseline, getQtdeLinha, dataInserirRomaneio, dataEmFormacao]
+    [linhasCalendario, sim, baseline, getQtdeLinha, dataInserirRomaneio, dataEmFormacao]
   );
   const [drill, setDrill] = useState<Drill>({ nivel: 'pivot' });
   const [pedidoModal, setPedidoModal] = useState<{
@@ -390,6 +418,8 @@ export default function CalendarioProducaoModal({
    */
   const simPatchRef = useRef<Map<string, SimEntry>>(new Map());
   const [pedidoAjustePrevisao, setPedidoAjustePrevisao] = useState<PedidoAjusteState | null>(null);
+  /** Painel A alocar expandido (default aberto). */
+  const [painelAAlocarAberto, setPainelAAlocarAberto] = useState(true);
   const [confirmReplicacaoRm, setConfirmReplicacaoRm] = useState<{
     pd: string;
     setorDestaque: string;
@@ -582,19 +612,50 @@ export default function CalendarioProducaoModal({
     return { porColId, geral };
   }, [grade.rowsExibidas, colunas, valorCelula]);
 
+  /** Subtotais do rodapé: carradas/demais vs romaneio pendente (semCarrada). */
+  const totaisDesdobrados = useMemo(() => {
+    const setoresVisiveis = new Set(grade.rowsExibidas.map((r) => r.setor));
+    const porData = new Map<string, { carradas: number; romaneio: number }>();
+    let geralCarradas = 0;
+    let geralRomaneio = 0;
+    for (const d of dados.detalhes) {
+      if (!setoresVisiveis.has(d.setor)) continue;
+      const cur = porData.get(d.data) ?? { carradas: 0, romaneio: 0 };
+      if (d.semCarrada) {
+        cur.romaneio += d.qtde;
+        geralRomaneio += d.qtde;
+      } else {
+        cur.carradas += d.qtde;
+        geralCarradas += d.qtde;
+      }
+      porData.set(d.data, cur);
+    }
+    return { porData, geralCarradas, geralRomaneio, geral: geralCarradas + geralRomaneio };
+  }, [grade.rowsExibidas, dados.detalhes]);
+
+  const aAlocarResumo = useMemo(() => {
+    const itens = dados.aAlocar;
+    const qtde = itens.reduce((s, i) => s + i.qtde, 0);
+    return { itens, qtde, n: itens.length };
+  }, [dados.aAlocar]);
+
   const tipoFRows = useMemo(() => {
     if (drill.nivel !== 'tipof') return [];
-    const map = new Map<string, { qtde: number; producaoPorPrevisao: boolean }>();
+    const map = new Map<
+      string,
+      { qtde: number; producaoPorPrevisao: boolean; semCarrada: boolean }
+    >();
     for (const d of dados.detalhes) {
       if (d.setor === drill.setor && d.data === drill.data) {
-        const cur = map.get(d.tipoF) ?? { qtde: 0, producaoPorPrevisao: false };
+        const cur = map.get(d.tipoF) ?? { qtde: 0, producaoPorPrevisao: false, semCarrada: false };
         cur.qtde += d.qtde;
         if (d.producaoPorPrevisao) cur.producaoPorPrevisao = true;
+        if (d.semCarrada) cur.semCarrada = true;
         map.set(d.tipoF, cur);
       }
     }
     return [...map.entries()]
-      .map(([tipoF, { qtde, producaoPorPrevisao }]) => ({ tipoF, qtde, producaoPorPrevisao }))
+      .map(([tipoF, v]) => ({ tipoF, ...v }))
       .sort((a, b) => b.qtde - a.qtde);
   }, [drill, dados.detalhes]);
 
@@ -602,7 +663,7 @@ export default function CalendarioProducaoModal({
     if (drill.nivel !== 'carradas') return [];
     const map = new Map<
       string,
-      { cod: string; carrada: string; qtde: number; producaoPorPrevisao: boolean }
+      { cod: string; carrada: string; qtde: number; producaoPorPrevisao: boolean; semCarrada: boolean }
     >();
     for (const d of dados.detalhes) {
       if (d.setor === drill.setor && d.data === drill.data && d.tipoF === drill.tipoF) {
@@ -612,9 +673,11 @@ export default function CalendarioProducaoModal({
           carrada: d.carrada,
           qtde: 0,
           producaoPorPrevisao: false,
+          semCarrada: false,
         };
         cur.qtde += d.qtde;
         if (d.producaoPorPrevisao) cur.producaoPorPrevisao = true;
+        if (d.semCarrada) cur.semCarrada = true;
         map.set(key, cur);
       }
     }
@@ -625,7 +688,10 @@ export default function CalendarioProducaoModal({
 
   const pedidoRows = useMemo(() => {
     if (drill.nivel !== 'pedidos') return [];
-    const map = new Map<string, { qtde: number; producaoPorPrevisao: boolean; cliente: string }>();
+    const map = new Map<
+      string,
+      { qtde: number; producaoPorPrevisao: boolean; semCarrada: boolean; cliente: string }
+    >();
     for (const d of dados.detalhes) {
       if (
         d.setor === drill.setor &&
@@ -633,20 +699,21 @@ export default function CalendarioProducaoModal({
         d.tipoF === drill.tipoF &&
         carradaKey(d.cod, d.carrada) === drill.carradaKey
       ) {
-        const cur = map.get(d.pd) ?? { qtde: 0, producaoPorPrevisao: false, cliente: '' };
+        const cur = map.get(d.pd) ?? {
+          qtde: 0,
+          producaoPorPrevisao: false,
+          semCarrada: false,
+          cliente: '',
+        };
         cur.qtde += d.qtde;
         if (d.producaoPorPrevisao) cur.producaoPorPrevisao = true;
+        if (d.semCarrada) cur.semCarrada = true;
         if (!cur.cliente && d.cliente) cur.cliente = d.cliente;
         map.set(d.pd, cur);
       }
     }
     return [...map.entries()]
-      .map(([pd, { qtde, producaoPorPrevisao, cliente }]) => ({
-        pd,
-        qtde,
-        producaoPorPrevisao,
-        cliente,
-      }))
+      .map(([pd, v]) => ({ pd, ...v }))
       .sort((a, b) => comparePedidoAsc(a.pd, b.pd));
   }, [drill, dados.detalhes]);
 
@@ -654,6 +721,14 @@ export default function CalendarioProducaoModal({
     const set = new Set<string>();
     for (const d of dados.detalhes) {
       if (d.producaoPorPrevisao) set.add(`${d.setor}\0${d.data}`);
+    }
+    return set;
+  }, [dados.detalhes]);
+
+  const celulasComSemCarrada = useMemo(() => {
+    const set = new Set<string>();
+    for (const d of dados.detalhes) {
+      if (d.semCarrada) set.add(`${d.setor}\0${d.data}`);
     }
     return set;
   }, [dados.detalhes]);
@@ -887,13 +962,6 @@ export default function CalendarioProducaoModal({
         dataInserirRomaneio,
         dataEmFormacao
       );
-      const { origem } = resolverDataCalendarioLinha(
-        linha,
-        sim,
-        baseline,
-        dataInserirRomaneio,
-        dataEmFormacao
-      );
       const dataProducaoAtual =
         datasExibidas.dataProducao || datasExibidas.dataCalendario || valorEfetivo(sim, baseline, key, 'dataProducao');
       setPedidoAjustePrevisao({
@@ -904,13 +972,72 @@ export default function CalendarioProducaoModal({
         escopo,
         calendario: {
           dataProducaoAtual,
-          producaoDerivadaPrevisao: datasExibidas.producaoPorPrevisao || origem === 'previsao',
+          // Produção e previsão são independentes na simulação; Prev./* só some
+          // quando dataProducao entra no Map sim (igual ao painel A alocar).
+          producaoDerivadaPrevisao: false,
           escopoTodosItensPd: escopo === 'todos_itens_pd',
           demaisItensPd,
         },
       });
     },
     [linhas, sim, baseline, dataInserirRomaneio, dataEmFormacao, drill]
+  );
+
+  /** Abre ModalAjustePrevisao a partir do painel A alocar (sem exigir drill de pedidos). */
+  const abrirAlocarDoPainel = useCallback(
+    (item: CalendarioAAlocarItem) => {
+      let linha: Record<string, unknown> | null = null;
+      if (item.idPedido) {
+        linha =
+          linhasFiltradas.find(
+            (r) => String(r['id_pedido'] ?? r['idChave'] ?? '').trim() === item.idPedido
+          ) ?? null;
+      }
+      if (!linha && item.indexLinha >= 0 && item.indexLinha < linhasFiltradas.length) {
+        linha = linhasFiltradas[item.indexLinha] ?? null;
+      }
+      if (!linha) {
+        setToast('Não foi possível localizar o item no snapshot para alocar.');
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+      const pedido = linhaSnapshotParaPedido(linha);
+      if (!pedido) {
+        setToast('Item sem id de pedido — não é possível alocar data.');
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+      const row = pedido as unknown as Record<string, unknown>;
+      if (!pedidoPermiteAlterarDatasNoSequenciamentoCalendario(row)) {
+        const rotaLinha = String(row['Observacoes'] ?? row['Observações'] ?? '').trim();
+        if (!rotaPermiteAlterarDatasNoSequenciamentoCalendario(rotaLinha)) {
+          setToast(mensagemCanalDatasPedido(row));
+          setTimeout(() => setToast(null), 4000);
+          return;
+        }
+      }
+      const key = linhaCarradaKey(linha);
+      const datasExibidas = datasItemPedidoGerenciador(
+        linha,
+        sim,
+        baseline,
+        dataInserirRomaneio,
+        dataEmFormacao
+      );
+      setPedidoAjustePrevisao({
+        pedido,
+        pd: item.pd,
+        carradaKey: key,
+        carradaKeysTodosItens: [key],
+        escopo: 'item',
+        calendario: {
+          dataProducaoAtual: datasExibidas.dataProducao || '',
+          producaoDerivadaPrevisao: false,
+          escopoTodosItensPd: false,
+        },
+      });
+    },
+    [linhasFiltradas, sim, baseline, dataInserirRomaneio, dataEmFormacao]
   );
 
   const podeReprogramarNoCalendario = useCallback(
@@ -1103,21 +1230,29 @@ export default function CalendarioProducaoModal({
     const v = valorCelula(setor, col.iso);
     const weekend = isFimDeSemana(col.iso);
     const temPrevisaoFallback = celulasComPrevisao.has(`${setor}\0${col.iso}`);
+    const temSemCarrada = celulasComSemCarrada.has(`${setor}\0${col.iso}`);
     const tituloBase = 'Ver detalhamento por TipoF';
-    const titulo = temPrevisaoFallback
-      ? `${tituloBase} (contém itens posicionados pela previsão atual — Prev.)`
-      : tituloBase;
+    const tituloParts = [tituloBase];
+    if (temPrevisaoFallback) {
+      tituloParts.push('(contém itens posicionados pela previsão atual — Prev.)');
+    }
+    if (temSemCarrada) {
+      tituloParts.push('(contém Inserir em Romaneio ≥ corte sem carrada formada)');
+    }
     return (
       <td key={colId} className={`${TD} text-right ${weekend ? 'px-1' : ''} ${weekend ? WEEKEND_TD : ''}`}>
         {v > 0 ? (
           <GradeCelulaModalBtn
             onClick={() => setDrill(drillAposCliqueQtde(dados.detalhes, setor, col.iso))}
-            title={titulo}
+            title={tituloParts.join(' ')}
             align="right"
           >
-            <span className="inline-flex items-center gap-0.5">
-              {formatQtdeInt(v)}
-              {temPrevisaoFallback ? <span className="text-amber-200">*</span> : null}
+            <span className="inline-flex flex-col items-end gap-0.5">
+              <span className="inline-flex items-center gap-0.5">
+                {formatQtdeInt(v)}
+                {temPrevisaoFallback ? <span className="text-amber-200">*</span> : null}
+              </span>
+              {temSemCarrada ? <BadgeSemCarrada /> : null}
             </span>
           </GradeCelulaModalBtn>
         ) : (
@@ -1132,14 +1267,17 @@ export default function CalendarioProducaoModal({
     <div
       className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4"
       role="presentation"
-      onClick={handleEscape}
+      onMouseDown={(e) => {
+        // Clique no escurecido = Esc / Voltar (não no painel do dialog).
+        if (e.target === e.currentTarget) handleEscape();
+      }}
     >
       <div
         className="flex max-h-[92vh] w-full max-w-[95vw] flex-col rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
         role="dialog"
         aria-modal="true"
         aria-labelledby="calendario-producao-titulo"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-600">
           <h2 id="calendario-producao-titulo" className="text-lg font-semibold text-slate-800 dark:text-slate-100">
@@ -1149,7 +1287,7 @@ export default function CalendarioProducaoModal({
             {emDrill && (
               <button
                 type="button"
-                onClick={voltarNivel}
+                onClick={handleEscape}
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
               >
                 ← Voltar
@@ -1174,28 +1312,6 @@ export default function CalendarioProducaoModal({
                 <span>= sem data de produção, usando previsão atual</span>
               </span>
             </div>
-            <span className="text-slate-500 dark:text-slate-400">
-              {estoqueCongelado ? (
-                <>
-                  Quantidades líquidas após abater estoque congelado no sequenciamento
-                  {geradoEm ? ` (${formatGeradoEmLegenda(geradoEm)})` : ''}.
-                </>
-              ) : (
-                <>
-                  Snapshot sem estoque congelado (legado); quantidades como se o saldo fosse 0. Grave
-                  um novo sequenciamento para congelar o estoque.
-                </>
-              )}
-            </span>
-            <span className="text-slate-500 dark:text-slate-400">
-              Semáforo nas datas: disponibilidade de materiais (almox secundário + PC)
-              {dispCarregando
-                ? ' — consultando…'
-                : dispMateriais?.consultadoEm
-                  ? ` — ${formatGeradoEmLegenda(dispMateriais.consultadoEm)}`
-                  : ''}
-              {dispErro ? ` — erro: ${dispErro}` : ''}.
-            </span>
           </div>
           <div className="flex flex-wrap items-end gap-2">
             <div className="inline-flex rounded-lg border border-slate-300 p-0.5 dark:border-slate-600">
@@ -1240,6 +1356,18 @@ export default function CalendarioProducaoModal({
                 fillContainer
               />
             </div>
+            <button
+              type="button"
+              onClick={() => setSomentePrev((ativo) => !ativo)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                somentePrev
+                  ? 'bg-primary-600 text-white'
+                  : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+              }`}
+              title="Exibir somente quantidades posicionadas pela previsão (células com *)"
+            >
+              Somente Prev.
+            </button>
             {pdsSelecionados.length > 0 && (
               <button
                 type="button"
@@ -1310,6 +1438,124 @@ export default function CalendarioProducaoModal({
             >
               Limpar filtros/ordem
             </button>
+          </div>
+        )}
+
+        {drill.nivel === 'pivot' && vistaCalendario === 'producao' && aAlocarResumo.n > 0 && (
+          <div className="mx-4 mt-3 shrink-0 overflow-hidden rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-700/50 dark:bg-amber-950/30">
+            <button
+              type="button"
+              onClick={() => setPainelAAlocarAberto((v) => !v)}
+              className="flex w-full flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-100 px-3 py-2 text-left dark:border-amber-700/50 dark:bg-amber-900/40"
+              aria-expanded={painelAAlocarAberto}
+            >
+              <span className="inline-flex items-center gap-2 text-sm font-bold text-amber-900 dark:text-amber-100">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className={`h-4 w-4 shrink-0 transition-transform ${painelAAlocarAberto ? 'rotate-90' : ''}`}
+                  aria-hidden
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                A alocar — Inserir em Romaneio (≥ corte)
+              </span>
+              <span className="rounded-full border border-amber-200 bg-white px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-600 dark:bg-slate-800 dark:text-amber-200">
+                {aAlocarResumo.n} item(ns) · qtde {formatQtdeInt(aAlocarResumo.qtde)}
+              </span>
+            </button>
+            {painelAAlocarAberto && (
+              <>
+                <div className="max-h-48 overflow-auto">
+                  <table className="w-full border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-amber-100 bg-orange-50/80 dark:border-amber-800/40 dark:bg-amber-950/40">
+                        <th className="px-2.5 py-1.5 text-left font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                          Pedido
+                        </th>
+                        <th className="px-2.5 py-1.5 text-left font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                          Cliente
+                        </th>
+                        <th className="px-2.5 py-1.5 text-left font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                          Cód
+                        </th>
+                        <th className="px-2.5 py-1.5 text-left font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                          Descrição
+                        </th>
+                        <th className="px-2.5 py-1.5 text-left font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                          Setor
+                        </th>
+                        <th className="px-2.5 py-1.5 text-right font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                          Qtde
+                        </th>
+                        <th className="px-2.5 py-1.5 text-left font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                          Previsão ref.
+                        </th>
+                        <th className="px-2.5 py-1.5 text-left font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                          Ação
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aAlocarResumo.itens.map((item) => (
+                        <tr
+                          key={`${item.idPedido || item.pd}-${item.codigoProduto}-${item.indexLinha}`}
+                          className="border-b border-amber-100/80 last:border-0 dark:border-amber-900/40"
+                        >
+                          <td className="px-2.5 py-1.5 font-semibold text-primary-700 dark:text-primary-300">
+                            {labelPedidoMapa(item.pd)}
+                          </td>
+                          <td
+                            className="max-w-[180px] truncate px-2.5 py-1.5 text-slate-700 dark:text-slate-200"
+                            title={item.cliente || undefined}
+                          >
+                            {item.cliente || '—'}
+                          </td>
+                          <td className="whitespace-nowrap px-2.5 py-1.5 font-medium tabular-nums text-slate-800 dark:text-slate-100">
+                            {item.codigoProduto || '—'}
+                          </td>
+                          <td
+                            className="max-w-[220px] truncate px-2.5 py-1.5 text-slate-700 dark:text-slate-200"
+                            title={item.descricaoProduto || undefined}
+                          >
+                            {item.descricaoProduto || '—'}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-slate-700 dark:text-slate-200">{item.setor}</td>
+                          <td className="px-2.5 py-1.5 text-right font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                            {formatQtdeInt(item.qtde)}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-slate-600 dark:text-slate-300">
+                            {item.previsaoRef ? formatDataCurta(item.previsaoRef) : '—'}
+                            <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
+                              só referência — não posiciona no pivô
+                            </span>
+                          </td>
+                          <td className="px-2.5 py-1.5">
+                            <button
+                              type="button"
+                              onClick={() => abrirAlocarDoPainel(item)}
+                              className="rounded-md bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-primary-700"
+                            >
+                              Alocar data…
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="border-t border-amber-200 bg-amber-50/80 px-3 py-1.5 text-[11px] text-amber-900 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-amber-200">
+                  Demanda ainda sem ROTA / carrada formada. Não entra na carga das colunas de data nem na
+                  demanda de materiais até você alocar uma data de produção (rascunho do sequenciamento).
+                  Motivo/observação só são exigidos se você também alterar a previsão.
+                </p>
+              </>
+            )}
           </div>
         )}
 
@@ -1470,7 +1716,9 @@ export default function CalendarioProducaoModal({
             vistaCalendario === 'producao' &&
             (colunas.length === 0 ? (
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Nenhum item com data de produção ou previsão atual para montar o calendário.
+                {aAlocarResumo.n > 0
+                  ? 'Nenhum item com data de produção no pivô. Use o painel A alocar acima para definir produção dos Inserir em Romaneio ≥ corte.'
+                  : 'Nenhum item com data de produção ou previsão atual para montar o calendário.'}
               </p>
             ) : (
               <table className="border-collapse text-sm">
@@ -1506,16 +1754,51 @@ export default function CalendarioProducaoModal({
                           </td>
                         );
                       }
+                      const desd = totaisDesdobrados.porData.get(col.iso) ?? {
+                        carradas: 0,
+                        romaneio: 0,
+                      };
+                      const total = desd.carradas + desd.romaneio;
                       return (
                         <td
                           key={colId}
                           className={`${TD} text-right tabular-nums ${isFimDeSemana(col.iso) ? `px-1 ${WEEKEND_TD}` : ''}`}
                         >
-                          {formatQtdeInt(totais.porColId.get(colId) ?? 0)}
+                          {totaisDesdobrados.geralRomaneio > 0 || desd.romaneio > 0 ? (
+                            <div className="flex flex-col items-end gap-0.5 text-[11px] leading-tight">
+                              <span className="font-semibold text-slate-600 dark:text-slate-300">
+                                Carradas {formatQtdeInt(desd.carradas)}
+                              </span>
+                              <span className="font-semibold text-amber-800 dark:text-amber-300">
+                                Romaneio pend. {formatQtdeInt(desd.romaneio)}
+                              </span>
+                              <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                Total {formatQtdeInt(total)}
+                              </span>
+                            </div>
+                          ) : (
+                            formatQtdeInt(totais.porColId.get(colId) ?? 0)
+                          )}
                         </td>
                       );
                     })}
-                    <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(totais.geral)}</td>
+                    <td className={`${TD} text-right tabular-nums`}>
+                      {totaisDesdobrados.geralRomaneio > 0 ? (
+                        <div className="flex flex-col items-end gap-0.5 text-[11px] leading-tight">
+                          <span className="font-semibold text-slate-600 dark:text-slate-300">
+                            Carradas {formatQtdeInt(totaisDesdobrados.geralCarradas)}
+                          </span>
+                          <span className="font-semibold text-amber-800 dark:text-amber-300">
+                            Romaneio pend. {formatQtdeInt(totaisDesdobrados.geralRomaneio)}
+                          </span>
+                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                            Total {formatQtdeInt(totaisDesdobrados.geral)}
+                          </span>
+                        </div>
+                      ) : (
+                        formatQtdeInt(totais.geral)
+                      )}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -1555,6 +1838,11 @@ export default function CalendarioProducaoModal({
                       {r.producaoPorPrevisao ? (
                         <span className="ml-0.5 text-amber-600 dark:text-amber-400" title="Inclui itens posicionados pela previsão">
                           *
+                        </span>
+                      ) : null}
+                      {r.semCarrada ? (
+                        <span className="ml-1 inline-block align-middle">
+                          <BadgeSemCarrada />
                         </span>
                       ) : null}
                     </td>
@@ -1599,6 +1887,7 @@ export default function CalendarioProducaoModal({
                           {r.carrada}
                         </GradeCelulaModalBtn>
                         {r.producaoPorPrevisao && <IndicadorDataPorPrevisao />}
+                        {r.semCarrada && <BadgeSemCarrada />}
                       </div>
                     </td>
                     <td className={`${TD} text-right tabular-nums`}>{formatQtdeInt(r.qtde)}</td>
@@ -1636,6 +1925,7 @@ export default function CalendarioProducaoModal({
                           {labelPedidoMapa(r.pd)}
                         </GradeCelulaModalBtn>
                         {r.producaoPorPrevisao && <IndicadorDataPorPrevisao />}
+                        {r.semCarrada && <BadgeSemCarrada />}
                       </div>
                     </td>
                     <td className={`${TD} max-w-[280px] truncate`} title={r.cliente || undefined}>

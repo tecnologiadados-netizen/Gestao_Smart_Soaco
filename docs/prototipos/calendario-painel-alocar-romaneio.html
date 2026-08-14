@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Protótipo — Painel “A alocar” no Calendário de produção</title>
+  <style>
+    :root {
+      --slate-50: #f8fafc;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1;
+      --slate-400: #94a3b8;
+      --slate-500: #64748b;
+      --slate-600: #475569;
+      --slate-700: #334155;
+      --slate-800: #1e293b;
+      --slate-900: #0f172a;
+      --primary-100: #dbeafe;
+      --primary-200: #bfdbfe;
+      --primary-600: #2563eb;
+      --primary-700: #1d4ed8;
+      --primary-800: #1e40af;
+      --amber-50: #fffbeb;
+      --amber-100: #fef3c7;
+      --amber-200: #fde68a;
+      --amber-700: #b45309;
+      --amber-800: #92400e;
+      --amber-900: #78350f;
+      --rose-50: #fff1f2;
+      --rose-100: #ffe4e6;
+      --rose-600: #e11d48;
+      --emerald-50: #ecfdf5;
+      --emerald-700: #047857;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);
+      color: var(--slate-800);
+      padding: 24px 16px 48px;
+    }
+
+    .page-head {
+      max-width: 1100px;
+      margin: 0 auto 20px;
+      color: #e2e8f0;
+    }
+    .page-head h1 {
+      margin: 0 0 8px;
+      font-size: 1.35rem;
+      font-weight: 650;
+      color: #fff;
+    }
+    .page-head p {
+      margin: 0;
+      font-size: 0.9rem;
+      color: var(--slate-300);
+      line-height: 1.45;
+      max-width: 70ch;
+    }
+
+    .mode-bar {
+      max-width: 1100px;
+      margin: 0 auto 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .mode-bar .label {
+      font-size: 0.8rem;
+      color: var(--slate-300);
+      margin-right: 4px;
+    }
+    .mode-btn {
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      background: rgba(15, 23, 42, 0.55);
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .mode-btn:hover { background: rgba(30, 41, 59, 0.9); }
+    .mode-btn.active {
+      background: var(--primary-600);
+      border-color: var(--primary-600);
+      color: #fff;
+    }
+
+    .backdrop {
+      max-width: 1100px;
+      margin: 0 auto;
+      background: rgba(2, 6, 23, 0.35);
+      border-radius: 16px;
+      padding: 12px;
+    }
+
+    .modal {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - 160px);
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--slate-200);
+      flex-shrink: 0;
+    }
+    .modal-header h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 650;
+      color: var(--slate-800);
+    }
+    .header-actions { display: flex; gap: 8px; }
+    .btn {
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      border: 1px solid var(--slate-300);
+      background: #fff;
+      color: var(--slate-600);
+    }
+    .btn:hover { background: var(--slate-100); }
+    .btn-primary {
+      background: var(--primary-600);
+      border-color: var(--primary-600);
+      color: #fff;
+      font-weight: 600;
+    }
+    .btn-primary:hover { background: var(--primary-700); }
+    .btn-sm { padding: 4px 10px; font-size: 0.78rem; }
+
+    .legend {
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--slate-200);
+      font-size: 0.75rem;
+      color: var(--slate-600);
+      line-height: 1.45;
+      flex-shrink: 0;
+      background: var(--slate-50);
+    }
+    .legend strong { color: var(--slate-700); }
+    .badge-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      vertical-align: middle;
+    }
+
+    .tabs {
+      display: inline-flex;
+      border: 1px solid var(--slate-300);
+      border-radius: 8px;
+      padding: 2px;
+      margin-left: auto;
+    }
+    .tab {
+      border: 0;
+      background: transparent;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--slate-600);
+      cursor: default;
+    }
+    .tab.active { background: var(--primary-600); color: #fff; }
+
+    .legend-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      align-items: flex-end;
+      justify-content: space-between;
+    }
+
+    .callout {
+      margin: 0;
+      padding: 10px 16px;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      border-bottom: 1px solid var(--slate-200);
+      flex-shrink: 0;
+    }
+    .callout.hoje {
+      background: var(--rose-50);
+      color: #9f1239;
+      border-bottom-color: var(--rose-100);
+    }
+    .callout.proposta {
+      background: var(--emerald-50);
+      color: var(--emerald-700);
+      border-bottom-color: #a7f3d0;
+    }
+
+    .panel-alocar {
+      margin: 12px 16px 0;
+      border: 1px solid var(--amber-200);
+      border-radius: 10px;
+      background: var(--amber-50);
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .panel-alocar.hidden { display: none; }
+    .panel-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--amber-200);
+      background: var(--amber-100);
+    }
+    .panel-head h3 {
+      margin: 0;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--amber-900);
+    }
+    .panel-count {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--amber-800);
+      background: #fff;
+      border: 1px solid var(--amber-200);
+      border-radius: 999px;
+      padding: 2px 10px;
+    }
+    .panel-body { padding: 0; }
+    .panel-note {
+      padding: 8px 12px;
+      font-size: 0.72rem;
+      color: var(--amber-800);
+      border-top: 1px solid var(--amber-200);
+      background: #fffbeb;
+    }
+    .panel-empty {
+      padding: 16px 12px;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--emerald-700);
+      background: var(--emerald-50);
+    }
+
+    table.panel-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    table.panel-table th {
+      text-align: left;
+      padding: 8px 10px;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--amber-800);
+      background: #fff7ed;
+      border-bottom: 1px solid var(--amber-200);
+    }
+    table.panel-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--amber-100);
+      color: var(--slate-700);
+      vertical-align: middle;
+    }
+    table.panel-table tr:last-child td { border-bottom: 0; }
+    .pd-link {
+      color: var(--primary-700);
+      font-weight: 700;
+      background: none;
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .ref-muted { color: var(--slate-500); font-size: 0.72rem; }
+
+    .scroll {
+      overflow: auto;
+      padding: 12px 16px 16px;
+      flex: 1;
+      min-height: 280px;
+    }
+
+    .pivot {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      background: #fff;
+    }
+    .pivot th, .pivot td {
+      border: 1px solid var(--slate-200);
+      padding: 8px 10px;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .pivot th {
+      background: var(--slate-100);
+      color: var(--slate-700);
+      font-weight: 650;
+      font-size: 0.75rem;
+    }
+    .pivot th.setor, .pivot td.setor {
+      text-align: left;
+      position: sticky;
+      left: 0;
+      background: var(--slate-50);
+      z-index: 1;
+      font-weight: 600;
+      color: var(--slate-800);
+    }
+    .pivot th.setor { background: var(--slate-100); z-index: 2; }
+    .pivot td.cell {
+      cursor: pointer;
+      color: var(--primary-700);
+      font-weight: 650;
+    }
+    .pivot td.cell:hover { background: var(--primary-100); }
+    .pivot td.cell.empty { color: var(--slate-300); cursor: default; font-weight: 400; }
+    .pivot td.cell.empty:hover { background: transparent; }
+    .pivot tfoot td {
+      background: var(--slate-50);
+      font-weight: 700;
+      color: var(--slate-800);
+      font-size: 0.78rem;
+    }
+    .subtotais {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      align-items: flex-end;
+      font-size: 0.68rem;
+      font-weight: 600;
+      line-height: 1.25;
+    }
+    .subtotais .carradas { color: var(--slate-600); }
+    .subtotais .romaneio { color: var(--amber-800); }
+    .subtotais .total { color: var(--slate-900); font-size: 0.78rem; }
+
+    .cell-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+    .badge-sem-carrada {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: var(--amber-900);
+      background: var(--amber-100);
+      border: 1px solid var(--amber-200);
+      border-radius: 999px;
+      padding: 1px 7px;
+      letter-spacing: 0.01em;
+    }
+    .qtde-romaneio {
+      color: var(--amber-800);
+      font-weight: 700;
+    }
+    .qtde-carrada { color: var(--primary-700); font-weight: 700; }
+
+    .drill {
+      margin-top: 14px;
+      border: 1px solid var(--slate-200);
+      border-radius: 10px;
+      overflow: hidden;
+      display: none;
+    }
+    .drill.visible { display: block; }
+    .drill-head {
+      padding: 8px 12px;
+      background: var(--slate-100);
+      font-size: 0.8rem;
+      font-weight: 650;
+      color: var(--slate-700);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .drill-body { padding: 10px 12px; font-size: 0.82rem; }
+    .drill-body table { width: 100%; border-collapse: collapse; }
+    .drill-body th, .drill-body td {
+      text-align: left;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--slate-100);
+      font-size: 0.8rem;
+    }
+    .drill-body th {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: var(--slate-500);
+    }
+    .warn {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: var(--rose-50);
+      color: #9f1239;
+      font-size: 0.78rem;
+    }
+
+    /* Modal alocar */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      z-index: 50;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .overlay.open { display: flex; }
+    .dialog {
+      background: #fff;
+      border-radius: 12px;
+      width: min(420px, 100%);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+    }
+    .dialog-h {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--slate-200);
+      font-weight: 700;
+      color: var(--slate-800);
+    }
+    .dialog-b { padding: 14px 16px; font-size: 0.85rem; color: var(--slate-600); }
+    .dialog-b p { margin: 0 0 12px; }
+    .date-opts {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .date-opt {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--slate-200);
+      border-radius: 8px;
+      padding: 10px 12px;
+      cursor: pointer;
+    }
+    .date-opt:hover { border-color: var(--primary-600); background: #eff6ff; }
+    .date-opt input { accent-color: var(--primary-600); }
+    .dialog-f {
+      padding: 12px 16px;
+      border-top: 1px solid var(--slate-200);
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .foot-hint {
+      max-width: 1100px;
+      margin: 16px auto 0;
+      font-size: 0.78rem;
+      color: var(--slate-400);
+      line-height: 1.4;
+    }
+    .foot-hint code {
+      background: rgba(15, 23, 42, 0.5);
+      padding: 1px 6px;
+      border-radius: 4px;
+      color: #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-head">
+    <h1>Protótipo — Painel “A alocar” no Calendário de produção</h1>
+    <p>
+      Demonstração visual (fora do sistema). Compare o comportamento atual com a proposta:
+      itens <strong>Inserir em Romaneio ≥ corte</strong> ficam num painel à vista, fora das colunas de data,
+      até o usuário alocar uma data de produção — e então entram no dia com badge <strong>Sem carrada</strong>
+      e subtotal separado.
+    </p>
+  </div>
+
+  <div class="mode-bar">
+    <span class="label">Modo:</span>
+    <button type="button" class="mode-btn active" data-mode="hoje" id="btnHoje">Como está hoje</button>
+    <button type="button" class="mode-btn" data-mode="proposta" id="btnProposta">Proposta — painel A alocar</button>
+    <button type="button" class="btn btn-sm" id="btnReset" style="margin-left:auto;color:#e2e8f0;border-color:rgba(148,163,184,.45);background:transparent;">
+      Resetar alocação
+    </button>
+  </div>
+
+  <div class="backdrop">
+    <div class="modal" role="dialog" aria-labelledby="titulo-modal">
+      <div class="modal-header">
+        <h2 id="titulo-modal">Calendário de produção</h2>
+        <div class="header-actions">
+          <button type="button" class="btn" disabled>← Voltar</button>
+          <button type="button" class="btn" disabled>Fechar</button>
+        </div>
+      </div>
+
+      <div class="legend">
+        <div class="legend-row">
+          <div>
+            <div>Datas do calendário baseadas na data de produção. <span class="badge-inline"><strong>*</strong> = sem data de produção, usando previsão atual</span></div>
+            <div id="legendaExtra" style="margin-top:4px;color:var(--slate-500);"></div>
+          </div>
+          <div class="tabs" aria-hidden="true">
+            <span class="tab active">Produção</span>
+            <span class="tab">Materiais críticos</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="callout" class="callout hoje"></div>
+
+      <div id="painelAlocar" class="panel-alocar hidden">
+        <div class="panel-head">
+          <h3>A alocar — Inserir em Romaneio (≥ corte)</h3>
+          <span class="panel-count" id="painelCount">1 item · qtde 1</span>
+        </div>
+        <div class="panel-body" id="painelBody"></div>
+        <div class="panel-note" id="painelNote">
+          Demanda ainda <strong>sem ROTA / carrada formada</strong>. Não entra na carga “fechada” das colunas de data
+          até você alocar. Previsão ref. = regra automática (emissão + dias ≥ corte) ou ajuste legado — só referência.
+        </div>
+      </div>
+
+      <div class="scroll">
+        <table class="pivot" id="pivot">
+          <thead>
+            <tr>
+              <th class="setor">Setor</th>
+              <th>24/06</th>
+              <th>03/07</th>
+              <th>07/07</th>
+              <th>10/07</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody id="pivotBody"></tbody>
+          <tfoot id="pivotFoot"></tfoot>
+        </table>
+
+        <div class="drill" id="drill">
+          <div class="drill-head">
+            <span id="drillTitle">Drill</span>
+            <button type="button" class="btn btn-sm" id="drillClose">Fechar drill</button>
+          </div>
+          <div class="drill-body" id="drillBody"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="foot-hint">
+    Arquivo: <code>docs/prototipos/calendario-painel-alocar-romaneio.html</code> —
+    abra no Chrome/Edge (duplo clique ou arraste para o navegador). Protótipo estático; não altera o app.
+  </p>
+
+  <div class="overlay" id="overlay" role="dialog" aria-modal="true">
+    <div class="dialog">
+      <div class="dialog-h">Alocar data de produção</div>
+      <div class="dialog-b">
+        <p id="dialogDesc">PD 48885 — Móveis de aço · qtde 1</p>
+        <div class="date-opts">
+          <label class="date-opt"><input type="radio" name="dataAloc" value="2026-07-03" checked /> 03/07/2026 <span class="ref-muted">(sugestão regra emissão+45)</span></label>
+          <label class="date-opt"><input type="radio" name="dataAloc" value="2026-07-07" /> 07/07/2026</label>
+          <label class="date-opt"><input type="radio" name="dataAloc" value="2026-07-10" /> 10/07/2026</label>
+        </div>
+      </div>
+      <div class="dialog-f">
+        <button type="button" class="btn" id="dialogCancel">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="dialogConfirm">Confirmar alocação</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DATAS = ['2026-06-24', '2026-07-03', '2026-07-07', '2026-07-10'];
+    const LABELS = { '2026-06-24': '24/06', '2026-07-03': '03/07', '2026-07-07': '07/07', '2026-07-10': '10/07' };
+
+    /** Carga de carradas formadas (ROTA) — mesma em ambos os modos */
+    const CARRADAS = {
+      'Móveis de aço': { '2026-06-24': 12, '2026-07-03': 40, '2026-07-07': 28, '2026-07-10': 15 },
+      Pintura: { '2026-06-24': 8, '2026-07-03': 22, '2026-07-07': 18, '2026-07-10': 10 },
+    };
+
+    /** Item Inserir em Romaneio ≥ corte (caso PD 48885) */
+    const ITEM_ROMANEIO = {
+      id: '48885-pa5894',
+      pd: 'PD 48885',
+      cliente: 'NORTE REFRIGERAÇÃO LTDA — BELÉM-PA',
+      setor: 'Móveis de aço',
+      qtde: 1,
+      previsaoRef: '03/07/2026',
+      previsaoLegado: '24/06/2026',
+      dataHojeMisturada: '2026-06-24', // hoje: ajuste manual coloca na coluna 24/06
+    };
+
+    let mode = 'hoje'; // 'hoje' | 'proposta'
+    let alocado = null; // { data: 'YYYY-MM-DD' } | null
+
+    const el = (id) => document.getElementById(id);
+
+    function somaSetor(mapa) {
+      return DATAS.reduce((s, d) => s + (mapa[d] || 0), 0);
+    }
+
+    function render() {
+      document.querySelectorAll('.mode-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.mode === mode);
+      });
+
+      const callout = el('callout');
+      const legendaExtra = el('legendaExtra');
+      const painel = el('painelAlocar');
+
+      if (mode === 'hoje') {
+        callout.className = 'callout hoje';
+        callout.innerHTML =
+          '<strong>Problema atual:</strong> o PD 48885 (Inserir em Romaneio ≥ corte) <strong>soma na coluna 24/06</strong> junto com as carradas. ' +
+          'Parece carga confirmada de produção — mas o pedido ainda <strong>não está em carrada formada</strong>. Só se descobre no drill TipoF.';
+        legendaExtra.textContent = 'Quantidades líquidas (demo). Sem distinção visual entre carrada e romaneio pendente.';
+        painel.classList.add('hidden');
+      } else {
+        callout.className = 'callout proposta';
+        callout.innerHTML =
+          '<strong>Proposta:</strong> itens ≥ corte em Inserir em Romaneio ficam no painel <strong>A alocar</strong> (sempre visível). ' +
+          'Não inflacionam as colunas de data até o usuário alocar. Depois da alocação, entram no dia com badge <strong>Sem carrada</strong> e subtotal separado.';
+        legendaExtra.innerHTML =
+          'Badge <span class="badge-sem-carrada">Sem carrada</span> = demanda alocada na data, ainda sem ROTA. Painel = ainda sem data de produção planejada.';
+        painel.classList.remove('hidden');
+        renderPainel();
+      }
+
+      renderPivot();
+      el('drill').classList.remove('visible');
+    }
+
+    function renderPainel() {
+      const body = el('painelBody');
+      const count = el('painelCount');
+      if (alocado) {
+        count.textContent = '0 itens · qtde 0';
+        body.innerHTML = '<div class="panel-empty">Nada pendente — todos os itens ≥ corte já foram alocados em uma data.</div>';
+        el('painelNote').style.display = 'none';
+        return;
+      }
+      el('painelNote').style.display = '';
+      count.textContent = '1 item · qtde 1';
+      body.innerHTML = `
+        <table class="panel-table">
+          <thead>
+            <tr>
+              <th>Pedido</th>
+              <th>Cliente</th>
+              <th>Setor</th>
+              <th>Qtde</th>
+              <th>Previsão ref.</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><button type="button" class="pd-link">${ITEM_ROMANEIO.pd}</button></td>
+              <td>${ITEM_ROMANEIO.cliente}</td>
+              <td>${ITEM_ROMANEIO.setor}</td>
+              <td style="font-variant-numeric:tabular-nums;font-weight:700">${ITEM_ROMANEIO.qtde}</td>
+              <td>
+                <div>${ITEM_ROMANEIO.previsaoRef}</div>
+                <div class="ref-muted">regra emissão+45 · legado ajuste ${ITEM_ROMANEIO.previsaoLegado}</div>
+              </td>
+              <td><button type="button" class="btn btn-primary btn-sm" id="btnAlocar">Alocar data…</button></td>
+            </tr>
+          </tbody>
+        </table>`;
+      el('btnAlocar').addEventListener('click', openDialog);
+    }
+
+    function qtdeRomaneioNaCelula(setor, data) {
+      if (mode !== 'proposta' || !alocado) return 0;
+      if (ITEM_ROMANEIO.setor !== setor) return 0;
+      return alocado.data === data ? ITEM_ROMANEIO.qtde : 0;
+    }
+
+    function qtdeHojeMisturada(setor, data) {
+      if (mode !== 'hoje') return 0;
+      if (ITEM_ROMANEIO.setor !== setor) return 0;
+      return data === ITEM_ROMANEIO.dataHojeMisturada ? ITEM_ROMANEIO.qtde : 0;
+    }
+
+    function renderPivot() {
+      const setores = Object.keys(CARRADAS);
+      const body = el('pivotBody');
+      const foot = el('pivotFoot');
+
+      let html = '';
+      const totCarradaPorData = Object.fromEntries(DATAS.map((d) => [d, 0]));
+      const totRomPorData = Object.fromEntries(DATAS.map((d) => [d, 0]));
+      let totGeralCarrada = 0;
+      let totGeralRom = 0;
+
+      for (const setor of setores) {
+        html += `<tr><td class="setor">${setor}</td>`;
+        let rowCarrada = 0;
+        let rowRom = 0;
+        for (const d of DATAS) {
+          const c = CARRADAS[setor][d] || 0;
+          const rProp = qtdeRomaneioNaCelula(setor, d);
+          const rHoje = qtdeHojeMisturada(setor, d);
+          const r = mode === 'hoje' ? rHoje : rProp;
+          const totalCel = c + r;
+          rowCarrada += c;
+          rowRom += r;
+          totCarradaPorData[d] += c;
+          totRomPorData[d] += r;
+
+          if (totalCel === 0) {
+            html += `<td class="cell empty">—</td>`;
+          } else if (mode === 'hoje') {
+            html += `<td class="cell" data-setor="${setor}" data-data="${d}" data-kind="hoje">${totalCel}</td>`;
+          } else if (r > 0 && c > 0) {
+            html += `<td class="cell" data-setor="${setor}" data-data="${d}" data-kind="misto">
+              <div class="cell-stack">
+                <span class="qtde-carrada">${c}</span>
+                <span class="qtde-romaneio">${r} <span class="badge-sem-carrada">Sem carrada</span></span>
+              </div>
+            </td>`;
+          } else if (r > 0) {
+            html += `<td class="cell" data-setor="${setor}" data-data="${d}" data-kind="romaneio">
+              <div class="cell-stack">
+                <span class="qtde-romaneio">${r}</span>
+                <span class="badge-sem-carrada">Sem carrada</span>
+              </div>
+            </td>`;
+          } else {
+            html += `<td class="cell" data-setor="${setor}" data-data="${d}" data-kind="carrada">${c}</td>`;
+          }
+        }
+        totGeralCarrada += rowCarrada;
+        totGeralRom += rowRom;
+        const rowTotal = rowCarrada + rowRom;
+        html += `<td style="font-weight:700">${rowTotal}</td></tr>`;
+      }
+      body.innerHTML = html;
+
+      body.querySelectorAll('td.cell:not(.empty)').forEach((td) => {
+        td.addEventListener('click', () => openDrill(td.dataset.setor, td.dataset.data, td.dataset.kind));
+      });
+
+      // Footer
+      if (mode === 'proposta') {
+        let footCells = '<td class="setor">Total</td>';
+        for (const d of DATAS) {
+          const c = totCarradaPorData[d];
+          const r = totRomPorData[d];
+          const t = c + r;
+          footCells += `<td><div class="subtotais">
+            <span class="carradas">Carradas ${c}</span>
+            <span class="romaneio">Romaneio pend. ${r}</span>
+            <span class="total">Total ${t}</span>
+          </div></td>`;
+        }
+        footCells += `<td><div class="subtotais">
+          <span class="carradas">Carradas ${totGeralCarrada}</span>
+          <span class="romaneio">Romaneio pend. ${totGeralRom}</span>
+          <span class="total">Total ${totGeralCarrada + totGeralRom}</span>
+        </div></td>`;
+        foot.innerHTML = `<tr>${footCells}</tr>`;
+      } else {
+        let footCells = '<td class="setor">Total</td>';
+        let g = 0;
+        for (const d of DATAS) {
+          const t = totCarradaPorData[d] + totRomPorData[d];
+          g += t;
+          footCells += `<td>${t}</td>`;
+        }
+        footCells += `<td>${g}</td>`;
+        foot.innerHTML = `<tr>${footCells}</tr>`;
+      }
+    }
+
+    function openDrill(setor, data, kind) {
+      const drill = el('drill');
+      const title = el('drillTitle');
+      const body = el('drillBody');
+      title.textContent = `Calendário / ${setor} · ${LABELS[data]}`;
+
+      const c = CARRADAS[setor][data] || 0;
+      const rHoje = qtdeHojeMisturada(setor, data);
+      const rProp = qtdeRomaneioNaCelula(setor, data);
+
+      if (mode === 'hoje') {
+        body.innerHTML = `
+          <p style="margin:0 0 8px;color:var(--slate-600);font-size:0.8rem">
+            Drill TipoF (hoje o usuário precisa chegar aqui para ver a mistura):
+          </p>
+          <table>
+            <thead><tr><th>TipoF</th><th>Qtde</th></tr></thead>
+            <tbody>
+              <tr><td>Carradas (ROTAs)</td><td>${c}</td></tr>
+              ${rHoje ? `<tr><td><strong>Inserir em Romaneio</strong></td><td><strong>${rHoje}</strong></td></tr>` : ''}
+            </tbody>
+          </table>
+          ${
+            rHoje
+              ? `<div class="warn">A qtde ${c + rHoje} da célula misturava carradas (${c}) + Inserir em Romaneio (${rHoje}) sem aviso na grade.</div>
+                 <table style="margin-top:10px">
+                   <thead><tr><th>Pedido</th><th>Cliente</th><th>Qtde pendente</th></tr></thead>
+                   <tbody>
+                     <tr><td><strong>${ITEM_ROMANEIO.pd}</strong></td><td>${ITEM_ROMANEIO.cliente}</td><td>1</td></tr>
+                   </tbody>
+                 </table>`
+              : ''
+          }`;
+      } else {
+        body.innerHTML = `
+          <table>
+            <thead><tr><th>Origem</th><th>Qtde</th><th>Marcação</th></tr></thead>
+            <tbody>
+              <tr><td>Carradas (ROTAs)</td><td>${c}</td><td>—</td></tr>
+              ${
+                rProp
+                  ? `<tr><td>Inserir em Romaneio (≥ corte)</td><td>${rProp}</td><td><span class="badge-sem-carrada">Sem carrada</span></td></tr>`
+                  : '<tr><td colspan="3" style="color:var(--slate-400)">Sem romaneio pendente neste dia</td></tr>'
+              }
+            </tbody>
+          </table>
+          ${
+            rProp
+              ? `<table style="margin-top:10px">
+                   <thead><tr><th>Pedido</th><th>Cliente</th><th>Qtde</th></tr></thead>
+                   <tbody><tr><td>${ITEM_ROMANEIO.pd}</td><td>${ITEM_ROMANEIO.cliente}</td><td>1</td></tr></tbody>
+                 </table>`
+              : ''
+          }`;
+      }
+      drill.classList.add('visible');
+    }
+
+    function openDialog() {
+      el('overlay').classList.add('open');
+    }
+    function closeDialog() {
+      el('overlay').classList.remove('open');
+    }
+
+    el('dialogCancel').addEventListener('click', closeDialog);
+    el('overlay').addEventListener('click', (e) => {
+      if (e.target === el('overlay')) closeDialog();
+    });
+    el('dialogConfirm').addEventListener('click', () => {
+      const checked = document.querySelector('input[name="dataAloc"]:checked');
+      alocado = { data: checked.value };
+      closeDialog();
+      render();
+    });
+
+    el('btnHoje').addEventListener('click', () => {
+      mode = 'hoje';
+      render();
+    });
+    el('btnProposta').addEventListener('click', () => {
+      mode = 'proposta';
+      render();
+    });
+    el('btnReset').addEventListener('click', () => {
+      alocado = null;
+      render();
+    });
+    el('drillClose').addEventListener('click', () => el('drill').classList.remove('visible'));
+
+    render();
+  </script>
+</body>
+</html>

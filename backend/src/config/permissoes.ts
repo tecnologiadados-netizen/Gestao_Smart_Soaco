@@ -22,6 +22,7 @@ export const PERMISSOES = {
   PRECIFICACAO_GERAR: 'precificacao.gerar',
   COMERCIAL_VER: 'comercial.ver',
   COMERCIAL_PAINEL_VER: 'comercial.painel.ver',
+  COMERCIAL_HISTORICO_VENDAS_VER: 'comercial.historico_vendas.ver',
   QUALIDADE_VER: 'qualidade.ver',
   RH_VER: 'rh.ver',
   RH_CONFIGURAR: 'rh.configurar',
@@ -52,7 +53,13 @@ export const PERMISSOES = {
   FLUXOS_EDITAR: 'fluxos.editar',
 
   // --- Novos códigos (enforcement real) ---
-  // Produção (Camasi / máquinas)
+  // KPIs (hub de painéis)
+  KPIS_VER: 'kpis.ver',
+  KPIS_PAINEL_PRODUCAO_CAMASI_VER: 'kpis.painel.producao_camasi.ver',
+  KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER: 'kpis.painel.pedidos_em_aberto.ver',
+  KPIS_PAINEL_COBERTURA_ESTOQUE_VER: 'kpis.painel.cobertura_estoque.ver',
+
+  // Produção (Camasi / máquinas) — legado; acesso também via hub KPIs
   PRODUCAO_VER: 'producao.ver',
   PRODUCAO_TOTAL: 'producao.total',
 
@@ -148,6 +155,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.PRECIFICACAO_GERAR,
   PERMISSOES.COMERCIAL_VER,
   PERMISSOES.COMERCIAL_PAINEL_VER,
+  PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER,
   PERMISSOES.QUALIDADE_VER,
   PERMISSOES.RH_VER,
   PERMISSOES.RH_CONFIGURAR,
@@ -172,6 +180,12 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.LOGISTICA_CUBAGEM_EDITAR,
   PERMISSOES.FLUXOS_VER,
   PERMISSOES.FLUXOS_EDITAR,
+
+  // KPIs
+  PERMISSOES.KPIS_VER,
+  PERMISSOES.KPIS_PAINEL_PRODUCAO_CAMASI_VER,
+  PERMISSOES.KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER,
+  PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER,
 
   // Produção
   PERMISSOES.PRODUCAO_VER,
@@ -266,6 +280,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.PRECIFICACAO_GERAR]: 'Gerar precificação',
   [PERMISSOES.COMERCIAL_VER]: 'Ver Comercial',
   [PERMISSOES.COMERCIAL_PAINEL_VER]: 'Painel Comercial',
+  [PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER]: 'Histórico de Vendas',
   [PERMISSOES.QUALIDADE_VER]: 'Ver Qualidade',
   [PERMISSOES.RH_VER]: 'Ver RH (Gestão de Pessoas)',
   [PERMISSOES.RH_CONFIGURAR]: 'Configurar RH (usuários e grupos)',
@@ -292,9 +307,15 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.FLUXOS_VER]: 'Ver Fluxos Decisórios (mapas mentais)',
   [PERMISSOES.FLUXOS_EDITAR]: 'Editar e excluir mapas mentais',
 
+  // KPIs
+  [PERMISSOES.KPIS_VER]: 'KPIs — acessar hub de painéis',
+  [PERMISSOES.KPIS_PAINEL_PRODUCAO_CAMASI_VER]: 'KPIs — painel Produção Camasi',
+  [PERMISSOES.KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER]: 'KPIs — painel Pedidos em aberto',
+  [PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER]: 'KPIs — painel Cobertura de Estoque',
+
   // Produção
-  [PERMISSOES.PRODUCAO_VER]: 'Ver Produção (Camasi)',
-  [PERMISSOES.PRODUCAO_TOTAL]: 'Produção — permissão total',
+  [PERMISSOES.PRODUCAO_VER]: 'Ver Produção Camasi (legado; preferir KPIs)',
+  [PERMISSOES.PRODUCAO_TOTAL]: 'Produção — permissão total (legado)',
 
   // PCP
   [PERMISSOES.PCP_VER_TELA]: 'Visualizar tela de gerenciador de pedidos',
