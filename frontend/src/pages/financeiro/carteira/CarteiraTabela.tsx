@@ -18,6 +18,7 @@ const COLS: {
   wrap?: boolean;
   defaultWidth: number;
 }[] = [
+  { key: 'Venda por qual empresa?', label: 'Empresa', defaultWidth: 100 },
   { key: 'PD', label: 'PD', defaultWidth: 88 },
   { key: 'Emissao', label: 'Emissão', date: true, defaultWidth: 92 },
   { key: 'previsaoAtual', label: 'Previsão Atual', date: true, defaultWidth: 100 },
@@ -45,7 +46,6 @@ const COLS: {
     defaultWidth: 120,
   },
   { key: 'Saldo a Receber', label: 'Saldo a Receber', money: true, defaultWidth: 110 },
-  { key: 'Venda por qual empresa?', label: 'Empresa', defaultWidth: 100 },
   { key: 'tipoF', label: 'Tipo', defaultWidth: 80 },
   { key: 'RM', label: 'RM', defaultWidth: 80 },
   { key: 'Data de entrega', label: 'Data entrega', date: true, defaultWidth: 92 },

@@ -108,6 +108,7 @@ function metricRows(aggs: MetricasAgg[], extra?: (a: MetricasAgg) => (string | n
 }
 
 const DETALHE_COLS: { key: keyof CarteiraFinanceiraLinha; label: string; kind: 'text' | 'money' | 'date' }[] = [
+  { key: 'Venda por qual empresa?', label: 'Empresa', kind: 'text' },
   { key: 'idEmpresa', label: 'idEmpresa', kind: 'text' },
   { key: 'id', label: 'id', kind: 'text' },
   { key: 'Observacoes', label: 'Carrada/Rota', kind: 'text' },
@@ -135,7 +136,6 @@ const DETALHE_COLS: { key: keyof CarteiraFinanceiraLinha; label: string; kind: '
   { key: 'Saldo a Faturar Real', label: 'Saldo a Faturar Real', kind: 'money' },
   { key: 'Saldo a Receber', label: 'Saldo a Receber', kind: 'money' },
   { key: 'Data base entrega futura', label: 'Data base entrega futura', kind: 'text' },
-  { key: 'Venda por qual empresa?', label: 'Venda por qual empresa?', kind: 'text' },
   { key: 'Vendedor/Representante', label: 'Vendedor/Representante', kind: 'text' },
   { key: 'Conta', label: 'Conta', kind: 'text' },
   { key: 'Status conta', label: 'Status conta', kind: 'text' },

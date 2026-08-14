@@ -19,6 +19,7 @@ const COLS: {
   money?: boolean;
   date?: boolean;
 }[] = [
+  { key: 'Venda por qual empresa?', label: 'Empresa' },
   { key: 'PD', label: 'PD' },
   { key: 'Emissao', label: 'Emissão', date: true },
   { key: 'previsaoAtual', label: 'Previsão Atual', date: true },
@@ -32,7 +33,6 @@ const COLS: {
   { key: 'Valor Romaneado', label: 'Saldo Romaneado', money: true },
   { key: 'Saldo a Faturar Real', label: 'Saldo a Faturar Real', money: true },
   { key: 'Saldo a Receber', label: 'Saldo a Receber', money: true },
-  { key: 'Venda por qual empresa?', label: 'Empresa' },
   { key: 'tipoF', label: 'Tipo' },
   { key: 'RM', label: 'RM' },
   { key: 'Data de entrega', label: 'Data entrega', date: true },
