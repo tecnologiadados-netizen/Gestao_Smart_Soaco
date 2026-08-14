@@ -11,7 +11,6 @@ describe('sycroOrderVendedorEscopoWhatsApp', () => {
   });
 
   it('mapeia Loja', () => {
-    expect(resolverEscopoWhatsAppPorVendedor('ANTONIO LUIS PEREIRA DE SOUSA')).toBe('loja');
     expect(resolverEscopoWhatsAppPorVendedor('miriam da silva nepomuceno')).toBe('loja');
     expect(resolverEscopoWhatsAppPorVendedor('MARIA LEOPOLDINA ARAUJO MARQUES')).toBe('loja');
     expect(resolverEscopoWhatsAppPorVendedor('ROBERTO')).toBe('loja');
@@ -19,6 +18,8 @@ describe('sycroOrderVendedorEscopoWhatsApp', () => {
   });
 
   it('mapeia Indústria', () => {
+    expect(resolverEscopoWhatsAppPorVendedor('ANTONIO LUIS PEREIRA DE SOUSA')).toBe('industria');
+    expect(resolverEscopoWhatsAppPorVendedor('antonio luis pereira de sousa')).toBe('industria');
     expect(resolverEscopoWhatsAppPorVendedor('LARISSE NARLLA')).toBe('industria');
     expect(resolverEscopoWhatsAppPorVendedor('Gold Representações')).toBe('industria');
   });
