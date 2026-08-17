@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import type { SequenciamentoCarradaAgregada } from '../../api/sequenciamentoCarradas';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
@@ -36,6 +37,8 @@ type Props = {
     alteracoes: Record<string, PrevisaoConfiavelTri>
   ) => Promise<void> | void;
   onClose: () => void;
+  /** Empilha acima de outros modais (ex.: calendário de produção). */
+  zIndex?: number;
 };
 
 const TH = 'py-2 px-2 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap';
@@ -169,12 +172,15 @@ export default function SequenciamentoCarradasDetalheModal({
   previsaoConfiavelPorId = {},
   onSalvarConfiabilidade,
   onClose,
+  zIndex = 130,
 }: Props) {
   const [aba, setAba] = useState<AbaDetalhe>('pedidos');
   const [consultaCodigo, setConsultaCodigo] = useState<string | null>(null);
   const [confirmarSaida, setConfirmarSaida] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
+  const zConfirm = zIndex + 15;
+  const zConsulta = zIndex + 10;
 
   const linhasFiltradas = useMemo(() => filtrarLinhasCarrada(linhas, carrada), [linhas, carrada]);
   const especialSemRomaneio = isCarradaOrdemFinal(carrada.carrada);
@@ -269,7 +275,7 @@ export default function SequenciamentoCarradasDetalheModal({
   useRegisterModalEscape({
     id: 'seq-carradas-detalhe',
     onClose: solicitarFechamento,
-    zIndex: 130,
+    zIndex,
     enabled: !consultaCodigo && !confirmarSaida && !salvando,
   });
 
@@ -374,10 +380,11 @@ export default function SequenciamentoCarradasDetalheModal({
       </span>
     );
 
-  return (
+  return createPortal(
     <>
     <div
-      className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 flex items-center justify-center bg-black/70 p-4"
+      style={{ zIndex }}
       role="presentation"
       onClick={solicitarFechamento}
     >
@@ -668,7 +675,8 @@ export default function SequenciamentoCarradasDetalheModal({
     </div>
     {confirmarSaida ? (
       <div
-        className="fixed inset-0 z-[145] flex items-center justify-center bg-black/50 p-4"
+        className="fixed inset-0 flex items-center justify-center bg-black/50 p-4"
+        style={{ zIndex: zConfirm }}
         role="presentation"
         onClick={() => !salvando && setConfirmarSaida(false)}
       >
@@ -726,9 +734,10 @@ export default function SequenciamentoCarradasDetalheModal({
       <ModalConsultaEstoqueEmbed
         codigo={consultaCodigo}
         onClose={() => setConsultaCodigo(null)}
-        zIndexBase={140}
+        zIndexBase={zConsulta}
       />
     ) : null}
-    </>
+    </>,
+    document.body
   );
 }

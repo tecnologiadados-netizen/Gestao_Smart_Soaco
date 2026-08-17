@@ -50,6 +50,7 @@ function BadgeSemCarrada() {
 import CalendarioSetorProdutosModal from './CalendarioSetorProdutosModal';
 import CalendarioMateriaisDiaModal from './CalendarioMateriaisDiaModal';
 import CalendarioMaterialHorizonteModal from './CalendarioMaterialHorizonteModal';
+import SequenciamentoCarradasDetalheModal from './SequenciamentoCarradasDetalheModal';
 import {
   comparePedidoAsc,
   isCarradaOrdemFinal,
@@ -92,9 +93,12 @@ import {
   type DisponibilidadeMateriaisSintetica,
   type MaterialCriticoCalendario,
   type MaterialDiaCalendario,
+  type SequenciamentoCarradaAgregada,
   type StatusMaterialDia,
+  type StatusPorCelulaMateriais,
   type StatusPorDataMateriais,
 } from '../../api/sequenciamentoCarradas';
+import type { PrevisaoConfiavelTri } from '../TogglePrevisaoConfiavel';
 
 type Props = {
   linhas: Record<string, unknown>[];
@@ -127,6 +131,12 @@ type Props = {
    * Precedência no calendário: override → snapshot → em branco.
    */
   previsaoConfiavelPorId?: Record<string, boolean | null>;
+  /** True quando a grade do sequenciamento é consulta ao vivo (não snapshot). */
+  aoVivo?: boolean;
+  /** Persiste Confiável ao sair do detalhe da carrada aberto pelo breadcrumb. */
+  onSalvarConfiabilidade?: (
+    alteracoes: Record<string, PrevisaoConfiavelTri>
+  ) => Promise<void> | void;
 };
 
 type EscopoAjustePd = 'item' | 'todos_itens_pd';
@@ -303,25 +313,27 @@ function formatGeradoEmLegenda(iso: string | undefined): string {
   return d.toLocaleString('pt-BR');
 }
 
-function tituloStatusMateriais(st: StatusPorDataMateriais | undefined): string {
+function tituloStatusMateriais(st: StatusPorDataMateriais | StatusPorCelulaMateriais | undefined): string {
   if (!st) return 'Disponibilidade de materiais não carregada';
   if (st.status === 'falta') {
-    return `${st.qtdeMateriaisFalta} material(is) em falta neste dia — clique para detalhar`;
+    return `${st.qtdeMateriaisFalta} material(is) em falta neste contexto — clique para detalhar`;
   }
   if (st.status === 'atencao') {
     return `${st.qtdeMateriaisAtencao} material(is) cobertos só com PC do dia — clique para detalhar`;
   }
-  return 'Materiais OK neste dia — clique para ver';
+  return 'Materiais OK neste contexto — clique para ver';
 }
 
 function SemaforoMateriais({
   status,
   title,
   onClick,
+  className = 'ml-0.5',
 }: {
   status: StatusMaterialDia | undefined;
   title: string;
   onClick: () => void;
+  className?: string;
 }) {
   const cor =
     status === 'falta'
@@ -339,7 +351,7 @@ function SemaforoMateriais({
         onClick();
       }}
       title={title}
-      className={`ml-0.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ${cor} hover:scale-125`}
+      className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ${cor} hover:scale-125 ${className}`}
       aria-label={title}
     />
   );
@@ -360,6 +372,8 @@ export default function CalendarioProducaoModal({
   geradoEm,
   snapshotId = null,
   previsaoConfiavelPorId = {},
+  aoVivo = false,
+  onSalvarConfiabilidade,
 }: Props) {
   const { hasPermission } = useAuth();
   const podeAjustarPrevisao =
@@ -581,11 +595,13 @@ export default function CalendarioProducaoModal({
     escopo: EscopoReplicacaoRm;
   } | null>(null);
   const [setorDetalhe, setSetorDetalhe] = useState<string | null>(null);
+  const [carradaDetalhe, setCarradaDetalhe] = useState<SequenciamentoCarradaAgregada | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [dispMateriais, setDispMateriais] = useState<DisponibilidadeMateriaisSintetica | null>(null);
   const [dispCarregando, setDispCarregando] = useState(false);
   const [dispErro, setDispErro] = useState<string | null>(null);
   const [materiaisDiaIso, setMateriaisDiaIso] = useState<string | null>(null);
+  const [materiaisDiaSetor, setMateriaisDiaSetor] = useState<string | null>(null);
   const [horizonteItem, setHorizonteItem] = useState<{
     codigo: string;
     idProduto: number | null;
@@ -678,6 +694,24 @@ export default function CalendarioProducaoModal({
     for (const s of dispMateriais?.statusPorData ?? []) m.set(s.data, s);
     return m;
   }, [dispMateriais]);
+
+  const statusPorCelulaMap = useMemo(() => {
+    const m = new Map<string, StatusPorCelulaMateriais>();
+    for (const s of dispMateriais?.statusPorCelula ?? []) {
+      m.set(`${s.setor}\0${s.data}`, s);
+    }
+    return m;
+  }, [dispMateriais]);
+
+  const abrirMateriaisDia = useCallback((dataIso: string, setor?: string | null) => {
+    setMateriaisDiaIso(toISODate(dataIso) || dataIso);
+    setMateriaisDiaSetor(setor?.trim() || null);
+  }, []);
+
+  const fecharMateriaisDia = useCallback(() => {
+    setMateriaisDiaIso(null);
+    setMateriaisDiaSetor(null);
+  }, []);
 
   const colunas = useMemo(() => montarEixoDatasCalendario(dados.totalPorData), [dados.totalPorData]);
 
@@ -891,6 +925,30 @@ export default function CalendarioProducaoModal({
     return 'Carrada';
   }, [drill, dados.detalhes]);
 
+  /** Payload mínimo para o modal de detalhe da carrada (mesma tela da grade principal). */
+  const carradaDrillAgregada = useMemo((): SequenciamentoCarradaAgregada | null => {
+    if (drill.nivel !== 'pedidos') return null;
+    for (const d of dados.detalhes) {
+      if (
+        d.setor === drill.setor &&
+        d.data === drill.data &&
+        d.tipoF === drill.tipoF &&
+        carradaKey(d.cod, d.carrada) === drill.carradaKey
+      ) {
+        return {
+          cod: String(d.cod ?? '').trim() || '—',
+          carrada: String(d.carrada ?? '').trim() || 'Sem Rota',
+          saldoAFaturar: 0,
+          saldoEmDia: 0,
+          percentualEmDia: 0,
+          adiantamento: 0,
+          valorAVistaAte10d: 0,
+        };
+      }
+    }
+    return null;
+  }, [drill, dados.detalhes]);
+
   const pedidoRows = useMemo(() => {
     if (drill.nivel !== 'pedidos') return [];
     const map = new Map<
@@ -1084,12 +1142,16 @@ export default function CalendarioProducaoModal({
       setConfirmReplicacaoRm(null);
       return;
     }
+    if (carradaDetalhe) {
+      setCarradaDetalhe(null);
+      return;
+    }
     if (horizonteItem) {
       setHorizonteItem(null);
       return;
     }
     if (materiaisDiaIso) {
-      setMateriaisDiaIso(null);
+      fecharMateriaisDia();
       return;
     }
     if (pedidoAjustePrevisao) {
@@ -1121,8 +1183,10 @@ export default function CalendarioProducaoModal({
     onClose();
   }, [
     confirmReplicacaoRm,
+    carradaDetalhe,
     horizonteItem,
     materiaisDiaIso,
+    fecharMateriaisDia,
     pedidoAjustePrevisao,
     pedidoModal,
     setorDetalhe,
@@ -1429,6 +1493,14 @@ export default function CalendarioProducaoModal({
   );
 
   useRegisterModalEscape({ id: 'seq-carradas-calendario', onClose: handleEscape, zIndex: 130 });
+  // Overlay de confirmação RM (z-14100 visual) precisa ser o topo do Escape —
+  // senão o ESC fecha o modal do PD (z-14000) atrás.
+  useRegisterModalEscape({
+    id: 'seq-carradas-confirm-rm',
+    onClose: () => setConfirmReplicacaoRm(null),
+    zIndex: 14100,
+    enabled: !!confirmReplicacaoRm,
+  });
 
   /** Com modal do PD aberto (sem split), bloqueia drill. No split ambos ficam navegáveis. */
   const interacaoCalendarioBloqueada = !!(
@@ -1500,7 +1572,7 @@ export default function CalendarioProducaoModal({
             <SemaforoMateriais
               status={st?.status}
               title={tituloStatusMateriais(st)}
-              onClick={() => runSeInterativo(() => setMateriaisDiaIso(toISODate(col.iso) || col.iso))}
+              onClick={() => runSeInterativo(() => abrirMateriaisDia(col.iso))}
             />
           )}
           {!ocioso && (
@@ -1529,6 +1601,10 @@ export default function CalendarioProducaoModal({
     const temSemCarrada = celulasComSemCarrada.has(`${setor}\0${col.iso}`);
     const statusConfiavel = celulasStatusConfiavel.get(`${setor}\0${col.iso}`) ?? [];
     const statusConfiavelVisivel = filtrarStatusConfiavelVisivel(statusConfiavel, iconesVisiveis);
+    const stCelula = statusPorCelulaMap.get(`${setor}\0${col.iso}`);
+    const statusMateriaisCelula: StatusMaterialDia | undefined = dispCarregando
+      ? undefined
+      : stCelula?.status ?? (dispMateriais ? 'ok' : undefined);
     const tituloBase = 'Ver detalhamento por TipoF';
     const tituloParts = [tituloBase];
     if (temPrevisaoFallback) {
@@ -1543,26 +1619,45 @@ export default function CalendarioProducaoModal({
     return (
       <td key={colId} className={`${TD} text-right ${weekend ? 'px-1' : ''} ${weekend ? WEEKEND_TD : ''}`}>
         {v > 0 ? (
-          <GradeCelulaModalBtn
-            onClick={() =>
-              runSeInterativo(() => setDrill(drillAposCliqueQtde(dados.detalhes, setor, col.iso)))
-            }
-            title={
-              interacaoCalendarioBloqueada
-                ? 'Feche o painel do pedido para navegar no calendário'
-                : tituloParts.join(' ')
-            }
-            align="right"
-          >
-            <span className="inline-flex flex-col items-end gap-0.5">
-              <span className="inline-flex items-center gap-0.5">
-                {formatQtdeInt(v)}
-                {temPrevisaoFallback && iconesVisiveis.previsao ? <IndicadorDataPorPrevisao /> : null}
-                <IndicadoresPrevisaoConfiavel statuses={statusConfiavelVisivel} />
+          <span className="inline-flex items-center justify-end gap-1">
+            <SemaforoMateriais
+              status={statusMateriaisCelula}
+              title={tituloStatusMateriais(
+                stCelula ??
+                  (statusMateriaisCelula === 'ok'
+                    ? {
+                        setor,
+                        data: col.iso,
+                        status: 'ok',
+                        qtdeMateriaisFalta: 0,
+                        qtdeMateriaisAtencao: 0,
+                      }
+                    : undefined)
+              )}
+              className="mr-0"
+              onClick={() => runSeInterativo(() => abrirMateriaisDia(col.iso, setor))}
+            />
+            <GradeCelulaModalBtn
+              onClick={() =>
+                runSeInterativo(() => setDrill(drillAposCliqueQtde(dados.detalhes, setor, col.iso)))
+              }
+              title={
+                interacaoCalendarioBloqueada
+                  ? 'Feche o painel do pedido para navegar no calendário'
+                  : tituloParts.join(' ')
+              }
+              align="right"
+            >
+              <span className="inline-flex flex-col items-end gap-0.5">
+                <span className="inline-flex items-center gap-0.5">
+                  {formatQtdeInt(v)}
+                  {temPrevisaoFallback && iconesVisiveis.previsao ? <IndicadorDataPorPrevisao /> : null}
+                  <IndicadoresPrevisaoConfiavel statuses={statusConfiavelVisivel} />
+                </span>
+                {temSemCarrada ? <BadgeSemCarrada /> : null}
               </span>
-              {temSemCarrada ? <BadgeSemCarrada /> : null}
-            </span>
-          </GradeCelulaModalBtn>
+            </GradeCelulaModalBtn>
+          </span>
         ) : (
           <span className="text-slate-300 dark:text-slate-600">—</span>
         )}
@@ -1841,12 +1936,23 @@ export default function CalendarioProducaoModal({
             {drill.nivel === 'pedidos' && (
               <>
                 <span className="text-slate-400">/</span>
-                <span
-                  className="rounded bg-primary-100 px-2 py-1 font-medium text-primary-800 dark:bg-primary-900/40 dark:text-primary-200"
-                  title={labelCarradaDrill}
+                <GradeCelulaModalBtn
+                  align="left"
+                  onClick={() =>
+                    runSeInterativo(() => {
+                      if (carradaDrillAgregada) setCarradaDetalhe(carradaDrillAgregada);
+                    })
+                  }
+                  title={
+                    interacaoCalendarioBloqueada
+                      ? 'Feche o painel do pedido para navegar no calendário'
+                      : carradaDrillAgregada
+                        ? `Abrir detalhe da carrada: ${labelCarradaDrill}`
+                        : labelCarradaDrill
+                  }
                 >
                   Carrada: {labelCarradaDrill}
-                </span>
+                </GradeCelulaModalBtn>
               </>
             )}
           </div>
@@ -2082,9 +2188,7 @@ export default function CalendarioProducaoModal({
                             <td className={TD}>
                               <GradeCelulaModalBtn
                                 onClick={() =>
-                                  setMateriaisDiaIso(
-                                    toISODate(m.primeiraDataFalta) || m.primeiraDataFalta
-                                  )
+                                  abrirMateriaisDia(m.primeiraDataFalta)
                                 }
                                 title="Ver materiais deste dia"
                                 align="left"
@@ -2591,6 +2695,19 @@ export default function CalendarioProducaoModal({
         />
       )}
 
+      {carradaDetalhe && (
+        <SequenciamentoCarradasDetalheModal
+          carrada={carradaDetalhe}
+          linhas={linhas}
+          aoVivo={aoVivo}
+          editavel={editavel}
+          previsaoConfiavelPorId={previsaoConfiavelPorId}
+          onSalvarConfiabilidade={onSalvarConfiabilidade}
+          onClose={() => setCarradaDetalhe(null)}
+          zIndex={14100}
+        />
+      )}
+
       {pedidoAjustePrevisao && (
         <ModalAjustePrevisao
           pedido={pedidoAjustePrevisao.pedido}
@@ -2616,12 +2733,13 @@ export default function CalendarioProducaoModal({
           open
           dataIso={materiaisDiaIso}
           demanda={demandaMateriais}
-          onClose={() => setMateriaisDiaIso(null)}
+          onClose={fecharMateriaisDia}
           onAbrirItem={(codigo, idProduto, descricao) =>
             setHorizonteItem({ codigo, idProduto, descricao })
           }
           cacheRef={materiaisDiaCacheRef}
           snapshotId={snapshotId}
+          setor={materiaisDiaSetor}
         />
       )}
 

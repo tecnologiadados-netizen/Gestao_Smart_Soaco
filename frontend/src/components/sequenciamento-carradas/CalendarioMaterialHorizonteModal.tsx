@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from 'react';
+import { createPortal } from 'react-dom';
 import type {
   DemandaCalendarioMateriais,
   HorizonteDiaCalendario,
@@ -177,7 +178,7 @@ export default function CalendarioMaterialHorizonteModal({
       }
       onClose();
     },
-    zIndex: 150,
+    zIndex: 14200,
     enabled: open,
   });
 
@@ -246,10 +247,10 @@ export default function CalendarioMaterialHorizonteModal({
   const idProduto = dados?.idProduto ?? idProdutoHint ?? null;
   const descricao = dados?.descricao || descricaoHint || '';
 
-  return (
+  return createPortal(
     <>
       <div
-        className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 p-4"
+        className="fixed inset-0 z-[14200] flex items-center justify-center bg-black/60 p-4"
         role="presentation"
         onClick={onClose}
       >
@@ -381,6 +382,7 @@ export default function CalendarioMaterialHorizonteModal({
           origens={origensFiltradas}
           codigo={codigo}
           onClose={() => setOrigemData(null)}
+          zIndex={14250}
         />
       )}
 
@@ -394,6 +396,7 @@ export default function CalendarioMaterialHorizonteModal({
           fetchDetalhes={snapshotId != null ? fetchPcPendCongelado : undefined}
         />
       )}
-    </>
+    </>,
+    document.body
   );
 }

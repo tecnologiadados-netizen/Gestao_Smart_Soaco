@@ -28,6 +28,9 @@ const ajusteSchema = z.object({
   observacao: z.string().max(1000).optional(),
 });
 
+/** Acima do overlay flutuante do Reprogramar (z-14150) e do modal padrão (z-145). */
+const Z_DATE_POPOVER = 'z-[14200]';
+
 /**
  * Data de produção atual do formulário: no calendário vem do contexto da coluna; no Gerenciador,
  * do valor real gravado no pedido (vazio quando a grade só exibe a previsão como fallback).
@@ -971,6 +974,7 @@ export default function ModalAjustePrevisao({
                     limparCamposAjustePrevisaoSeInativos(previsaoAjustada, nova);
                   }}
                   className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
+                  popoverZClass={Z_DATE_POPOVER}
                 />
                 {errors.data_producao_nova && (
                   <p className="text-amber-400 text-xs mt-1">{errors.data_producao_nova}</p>
@@ -1005,6 +1009,7 @@ export default function ModalAjustePrevisao({
                     limparCamposAjustePrevisaoSeInativos(nova, data_producao_nova.trim().slice(0, 10));
                   }}
                   className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
+                  popoverZClass={Z_DATE_POPOVER}
                 />
                 {errors.previsao_nova && (
                   <p className="text-amber-400 text-xs mt-1">{errors.previsao_nova}</p>
@@ -1027,6 +1032,7 @@ export default function ModalAjustePrevisao({
                     limparCamposAjustePrevisaoSeInativos(previsaoAjustada, nova);
                   }}
                   className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
+                  popoverZClass={Z_DATE_POPOVER}
                 />
                 {errors.data_producao_nova && (
                   <p className="text-amber-400 text-xs mt-1">{errors.data_producao_nova}</p>
@@ -1042,6 +1048,7 @@ export default function ModalAjustePrevisao({
                     limparCamposAjustePrevisaoSeInativos(nova, data_producao_nova.trim().slice(0, 10));
                   }}
                   className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700"
+                  popoverZClass={Z_DATE_POPOVER}
                 />
                 {errors.previsao_nova && (
                   <p className="text-amber-400 text-xs mt-1">{errors.previsao_nova}</p>

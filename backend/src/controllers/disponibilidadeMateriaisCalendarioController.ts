@@ -103,7 +103,8 @@ export async function postDisponibilidadeMateriaisDia(req: Request, res: Respons
     const body = req.body as Record<string, unknown>;
     // Aceita dataIso ou data; normaliza dd/MM/yyyy → YYYY-MM-DD.
     const dataIso = normalizarDataIsoCalendario(body?.dataIso ?? body?.data);
-    const r = await obterMateriaisDoDia(fonte.pool, demanda, dataIso, fonte.base);
+    const setor = body?.setor != null ? String(body.setor) : undefined;
+    const r = await obterMateriaisDoDia(fonte.pool, demanda, dataIso, fonte.base, setor);
     if (!r.ok) {
       res.status(400).json({ error: r.error });
       return;

@@ -239,6 +239,14 @@ export type StatusPorDataMateriais = {
   qtdeMateriaisAtencao: number;
 };
 
+export type StatusPorCelulaMateriais = {
+  setor: string;
+  data: string;
+  status: StatusMaterialDia;
+  qtdeMateriaisFalta: number;
+  qtdeMateriaisAtencao: number;
+};
+
 export type MaterialCriticoCalendario = {
   idProduto: number;
   codigo: string;
@@ -251,6 +259,7 @@ export type DisponibilidadeMateriaisSintetica = {
   consultadoEm: string;
   datas: string[];
   statusPorData: StatusPorDataMateriais[];
+  statusPorCelula?: StatusPorCelulaMateriais[];
   materiaisCriticos: MaterialCriticoCalendario[];
   qtdeMateriaisEscopo?: number;
 };
@@ -301,6 +310,7 @@ export type OrigemConsumoCalendario = {
   carrada: string;
   pd: string;
   qtdeComponente: number;
+  setor?: string;
 };
 
 async function parseJsonBodyDisponibilidade<T extends { error?: string }>(
@@ -351,7 +361,7 @@ export async function consultarDisponibilidadeMateriaisSintetica(
 export async function consultarDisponibilidadeMateriaisDia(
   demanda: DemandaCalendarioMateriais[],
   dataIso: string,
-  opts?: OpcoesFonteCalendario
+  opts?: OpcoesFonteCalendario & { setor?: string | null }
 ): Promise<{
   data?: { consultadoEm: string; dataIso: string; materiais: MaterialDiaCalendario[] };
   error?: string;
@@ -361,7 +371,12 @@ export async function consultarDisponibilidadeMateriaisDia(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: { demanda, dataIso, snapshotId: opts?.snapshotId ?? null },
+      body: {
+        demanda,
+        dataIso,
+        snapshotId: opts?.snapshotId ?? null,
+        setor: opts?.setor?.trim() || undefined,
+      },
     }
   );
   const parsed = await parseJsonBodyDisponibilidade<{

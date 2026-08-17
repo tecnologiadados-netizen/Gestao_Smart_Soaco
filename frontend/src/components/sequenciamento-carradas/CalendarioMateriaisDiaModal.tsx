@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { createPortal } from 'react-dom';
 import type {
   DemandaCalendarioMateriais,
   EntradaPcExibicaoCalendario,
@@ -125,6 +126,8 @@ export type CalendarioMateriaisDiaModalProps = {
   cacheRef: MutableRefObject<Map<string, MaterialDiaCalendario[]>>;
   /** Snapshot da sequência: calcula com a base congelada em vez do Nomus ao vivo. */
   snapshotId?: number | null;
+  /** Filtra materiais/origens ao setor da célula (bolinha da grade). */
+  setor?: string | null;
 };
 
 export default function CalendarioMateriaisDiaModal({
@@ -135,6 +138,7 @@ export default function CalendarioMateriaisDiaModal({
   onAbrirItem,
   cacheRef,
   snapshotId,
+  setor = null,
 }: CalendarioMateriaisDiaModalProps) {
   const [linhas, setLinhas] = useState<MaterialDiaCalendario[]>([]);
   const [carregando, setCarregando] = useState(false);
@@ -215,7 +219,7 @@ export default function CalendarioMateriaisDiaModal({
   useRegisterModalEscape({
     id: 'calendario-materiais-dia',
     onClose: handleEscape,
-    zIndex: 140,
+    zIndex: 14100,
     enabled: open,
   });
 
@@ -233,7 +237,9 @@ export default function CalendarioMateriaisDiaModal({
     agPagCacheRef.current.clear();
     scCacheRef.current.clear();
     const dataNorm = toISODate(dataIso) || dataIso;
-    const cached = cacheRef.current.get(dataNorm);
+    const setorNorm = String(setor ?? '').trim();
+    const cacheKey = setorNorm ? `${dataNorm}\0${setorNorm}` : dataNorm;
+    const cached = cacheRef.current.get(cacheKey);
     if (cached) {
       setLinhas(cached);
       setErro(null);
@@ -243,7 +249,10 @@ export default function CalendarioMateriaisDiaModal({
     let cancelled = false;
     setCarregando(true);
     setErro(null);
-    void consultarDisponibilidadeMateriaisDia(demanda, dataNorm, { snapshotId }).then((r) => {
+    void consultarDisponibilidadeMateriaisDia(demanda, dataNorm, {
+      snapshotId,
+      setor: setorNorm || null,
+    }).then((r) => {
       if (cancelled) return;
       setCarregando(false);
       if (r.error) {
@@ -252,13 +261,13 @@ export default function CalendarioMateriaisDiaModal({
         return;
       }
       const mats = r.data?.materiais ?? [];
-      cacheRef.current.set(dataNorm, mats);
+      cacheRef.current.set(cacheKey, mats);
       setLinhas(mats);
     });
     return () => {
       cancelled = true;
     };
-  }, [open, dataIso, demanda, cacheRef, snapshotId]);
+  }, [open, dataIso, demanda, cacheRef, snapshotId, setor]);
 
   const fetchPcPend = useCallback(
     (id: number): Promise<{ data: RessupAlmoxPcPendLinha[]; error?: string }> =>
@@ -308,10 +317,12 @@ export default function CalendarioMateriaisDiaModal({
 
   if (!open) return null;
 
-  return (
+  const setorLabel = String(setor ?? '').trim();
+
+  return createPortal(
     <>
       <div
-        className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 p-4"
+        className="fixed inset-0 z-[14100] flex items-center justify-center bg-black/60 p-4"
         role="presentation"
         onClick={onClose}
       >
@@ -329,11 +340,14 @@ export default function CalendarioMateriaisDiaModal({
               className="text-lg font-semibold text-slate-800 dark:text-slate-100"
             >
               Materiais do dia · {formatDataCurta(dataIso)}
+              {setorLabel ? ` · ${setorLabel}` : ''}
             </h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Somente consumo e falta &gt; 0 no dia (exclui Matéria Prima). Clique em{' '}
-              <strong>Consumo</strong> para ver a origem; em <strong>Entrada PC</strong> para PC /
-              Pré Compra / Solicitação. Arraste a borda das colunas para ajustar a largura.
+              {setorLabel
+                ? 'Materiais em falta com consumo deste setor no dia (exclui Matéria Prima). '
+                : 'Somente consumo e falta > 0 no dia (exclui Matéria Prima). '}
+              Clique em <strong>Consumo</strong> para ver a origem; em <strong>Entrada PC</strong> para
+              PC / Pré Compra / Solicitação. Arraste a borda das colunas para ajustar a largura.
             </p>
           </div>
           <button
@@ -525,7 +539,7 @@ export default function CalendarioMateriaisDiaModal({
           origens={origemLinha.origens ?? []}
           codigo={origemLinha.codigo}
           onClose={() => setOrigemLinha(null)}
-          zIndex={145}
+          zIndex={14150}
         />
       )}
 
@@ -550,7 +564,7 @@ export default function CalendarioMateriaisDiaModal({
           detailKey={`ag-pag-${detalheEntrada.linha.idProduto}`}
           onLoad={carregarAgPag}
           backdropMode="fixed"
-          zIndex={145}
+          zIndex={14150}
         >
           {({ carregando: c, erro: e }) => {
             if (c) return <p className="py-6 text-center text-slate-500">Carregando…</p>;
@@ -569,7 +583,7 @@ export default function CalendarioMateriaisDiaModal({
           detailKey={`sc-${detalheEntrada.linha.idProduto}`}
           onLoad={carregarSc}
           backdropMode="fixed"
-          zIndex={145}
+          zIndex={14150}
         >
           {({ carregando: c, erro: e }) => {
             if (c) return <p className="py-6 text-center text-slate-500">Carregando…</p>;
@@ -578,6 +592,7 @@ export default function CalendarioMateriaisDiaModal({
           }}
         </ModalConsultaEstoqueDetalhe>
       )}
-    </>
+    </>,
+    document.body
   );
 }
