@@ -138,6 +138,8 @@ export function listarTooltipDetalheDeLinhas(linhas: Record<string, unknown>[]):
       const rota = getField(row, ['Observacoes', 'Observacoes ', 'Observações']);
       const municipio = getField(row, ['Municipio de entrega', 'Município de entrega']);
       const uf = getField(row, ['UF', 'uf']);
+      const idPedido = getField(row, ['id_pedido', 'idChave']);
+      const observacaoPedido = getField(row, ['observacaoPedido', 'ObservacaoPedido']).trim();
       return {
         rm: rm === '—' ? '' : rm,
         rota: !rota || rota === 'Sem Rota' ? '' : rota,
@@ -152,6 +154,8 @@ export function listarTooltipDetalheDeLinhas(linhas: Record<string, unknown>[]):
         codigo: getField(row, ['Cod', 'cod']),
         produto: getField(row, ['Descricao do produto', 'Descrição do produto']),
         qtdePendenteReal: getNumber(row, ['Qtde Pendente Real', 'qtde pendente real']),
+        idPedido: idPedido || undefined,
+        ...(observacaoPedido ? { observacaoPedido } : {}),
         dataProducao: (() => {
           const raw = row['data_producao'] ?? row['dataProducao'];
           if (raw instanceof Date && !Number.isNaN(raw.getTime())) return raw.toISOString().slice(0, 10);
@@ -354,6 +358,8 @@ export function filtrarLinhasCarrada(
 }
 
 export type PedidoVendaRow = {
+  /** IDs reais dos itens do PD; nunca usar o texto do PD para persistir. */
+  idsPedido: string[];
   pedido: string;
   cliente: string;
   emissao: string;
@@ -363,6 +369,9 @@ export type PedidoVendaRow = {
 };
 
 export type ItemPedidoRow = {
+  idPedido: string;
+  /** Todos os IDs do mesmo PD dentro desta carrada. Mantém as duas abas coerentes. */
+  idsPedido: string[];
   pedido: string;
   cliente: string;
   emissao: string;
@@ -398,12 +407,15 @@ export function agregarPedidosVenda(linhas: Record<string, unknown>[]): PedidoVe
   const map = new Map<string, PedidoVendaRow>();
   for (const row of linhas) {
     const pd = getField(row, ['PD', 'pd']) || '—';
+    const idPedido = getField(row, ['id_pedido', 'idChave']);
     const existing = map.get(pd);
     const total = getNumber(row, ['Saldo a Faturar Real', 'Valor Pendente Real']);
     if (existing) {
       existing.total += total;
+      if (idPedido && !existing.idsPedido.includes(idPedido)) existing.idsPedido.push(idPedido);
     } else {
       map.set(pd, {
+        idsPedido: idPedido ? [idPedido] : [],
         pedido: pd,
         cliente: getField(row, ['Cliente', 'cliente']),
         emissao: getField(row, ['Emissao', 'emissao']),
@@ -419,9 +431,24 @@ export function agregarPedidosVenda(linhas: Record<string, unknown>[]): PedidoVe
 }
 
 export function listarItensPedido(linhas: Record<string, unknown>[]): ItemPedidoRow[] {
+  const idsPorPd = new Map<string, string[]>();
+  for (const row of linhas) {
+    const pd = getField(row, ['PD', 'pd']) || '—';
+    const idPedido = getField(row, ['id_pedido', 'idChave']);
+    if (!idPedido) continue;
+    const ids = idsPorPd.get(pd) ?? [];
+    if (!ids.includes(idPedido)) ids.push(idPedido);
+    idsPorPd.set(pd, ids);
+  }
+
   return linhas
-    .map((row) => ({
-      pedido: getField(row, ['PD', 'pd']) || '—',
+    .map((row) => {
+      const pedido = getField(row, ['PD', 'pd']) || '—';
+      const idPedido = getField(row, ['id_pedido', 'idChave']);
+      return {
+      idPedido,
+      idsPedido: idsPorPd.get(pedido) ?? (idPedido ? [idPedido] : []),
+      pedido,
       cliente: getField(row, ['Cliente', 'cliente']),
       emissao: getField(row, ['Emissao', 'emissao']),
       codigo: getField(row, ['Cod', 'cod']),
@@ -430,7 +457,8 @@ export function listarItensPedido(linhas: Record<string, unknown>[]): ItemPedido
       precoUnitario: getNumber(row, ['Valor Unitario com desconto + IPI do item PD']),
       total: getNumber(row, ['Saldo a Faturar Real', 'Valor Romaneado']),
       status: getField(row, ['Stauts', 'Status', 'status']),
-    }))
+    };
+    })
     .sort(
       (a, b) =>
         comparePedidoAsc(a.pedido, b.pedido) ||

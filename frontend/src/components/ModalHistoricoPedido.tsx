@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { HistoricoItem, Pedido } from '../api/pedidos';
 import { obterHistorico } from '../api/pedidos';
 import { resolveUploadUrl } from '../api/client';
+import { normalizeRotaNameStr } from '../utils/rotaCarrada';
 
 function getField(row: Pedido, keys: string[]): string {
   for (const k of keys) {
@@ -16,7 +17,7 @@ function rotaDaLinha(pedido: Pedido | null): string {
   return getField(pedido, ['Observacoes', 'Observacoes ', 'Observações', 'rota', 'observacoes']).trim();
 }
 
-function formatDate(value: string | Date): string {
+function formatDate(value: string | Date | null | undefined): string {
   if (value == null) return '-';
   const s = typeof value === 'string' ? value : value.toISOString?.() ?? '';
   const match = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -32,13 +33,113 @@ function formatDateTime(value: string): string {
   return d.toLocaleString('pt-BR');
 }
 
-function formatPrevisaoAlteracao(item: HistoricoItem): string {
+function samePrevisaoDay(
+  a: string | Date | null | undefined,
+  b: string | Date | null | undefined
+): boolean {
+  const fa = formatDate(a);
+  const fb = formatDate(b);
+  return fa !== '-' && fb !== '-' && fa === fb;
+}
+
+/** Motivo automático da conclusão do sequenciamento (só troca Confiável). */
+export function isMotivoConfirmacaoConfiavel(motivo: string | null | undefined): boolean {
+  const m = String(motivo ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '');
+  return m.startsWith('confirmacao de previsao confiavel');
+}
+
+function isAjusteOuRegra(item: HistoricoItem): boolean {
+  return (
+    item.tipo_evento === 'ajuste_previsao' ||
+    item.tipo_evento === 'regra_carrada' ||
+    !item.tipo_evento
+  );
+}
+
+export type DeltaAjusteHistorico = {
+  dataMudou: boolean;
+  mudouConfiavel: boolean;
+  confiavelAtual: boolean;
+  confiavelAnterior: boolean | null;
+  soConfiavel: boolean;
+  textoPrevisao: string | null;
+  textoConfiavel: string | null;
+  mostrarMotivo: boolean;
+  mostrarRota: boolean;
+};
+
+/**
+ * Decide o que exibir no card: só o que mudou em relação ao ajuste anterior
+ * (e omite rota quando já está no cabeçalho do modal).
+ */
+export function montarDeltaAjusteHistorico(
+  item: HistoricoItem,
+  itemAnterior: HistoricoItem | null,
+  rotaCabecalho: string
+): DeltaAjusteHistorico {
   const nova = formatDate(item.previsao_nova ?? '');
-  const anterior = item.previsao_anterior ? formatDate(item.previsao_anterior) : null;
-  if (anterior && anterior !== nova && nova !== '-') {
-    return `Nova previsão: de ${anterior} para ${nova}`;
+  const anteriorApi = item.previsao_anterior ? formatDate(item.previsao_anterior) : null;
+  const dataMudou = Boolean(anteriorApi && anteriorApi !== nova && nova !== '-');
+
+  const confiavelAtual = item.previsao_confiavel !== false;
+  const confiavelAnterior =
+    itemAnterior && isAjusteOuRegra(itemAnterior)
+      ? itemAnterior.previsao_confiavel !== false
+      : null;
+  const mudouConfiavel =
+    confiavelAnterior != null ? confiavelAnterior !== confiavelAtual : false;
+
+  const soConfiavel =
+    !dataMudou &&
+    (mudouConfiavel ||
+      (isMotivoConfirmacaoConfiavel(item.motivo) && samePrevisaoDay(item.previsao_nova, item.previsao_anterior)));
+
+  let textoPrevisao: string | null = null;
+  if (dataMudou) {
+    textoPrevisao = `Nova previsão: de ${anteriorApi} para ${nova}`;
+  } else if (!soConfiavel && nova !== '-') {
+    // Primeiro registro / sem anterior comparável: mantém a data visível.
+    textoPrevisao = `Nova previsão: ${nova}`;
   }
-  return `Nova previsão: ${nova}`;
+
+  let textoConfiavel: string | null = null;
+  if (soConfiavel || mudouConfiavel) {
+    if (confiavelAnterior != null) {
+      textoConfiavel = confiavelAtual
+        ? 'Previsão confiável: de Não confiável para Confiável'
+        : 'Previsão confiável: de Confiável para Não confiável';
+    } else {
+      textoConfiavel = confiavelAtual
+        ? 'Previsão confiável: Confiável'
+        : 'Previsão confiável: Não confiável';
+    }
+  }
+
+  const motivoTrim = String(item.motivo ?? '').trim();
+  const mostrarMotivo =
+    Boolean(motivoTrim) &&
+    !(soConfiavel && isMotivoConfirmacaoConfiavel(motivoTrim));
+
+  const rotaItem = item.rota != null ? String(item.rota).trim() : '';
+  const rotaCabNorm = normalizeRotaNameStr(rotaCabecalho);
+  const rotaItemNorm = rotaItem ? normalizeRotaNameStr(rotaItem) : '';
+  const mostrarRota = Boolean(rotaItem) && (!rotaCabNorm || rotaItemNorm !== rotaCabNorm);
+
+  return {
+    dataMudou,
+    mudouConfiavel,
+    confiavelAtual,
+    confiavelAnterior,
+    soConfiavel,
+    textoPrevisao,
+    textoConfiavel,
+    mostrarMotivo,
+    mostrarRota,
+  };
 }
 
 export interface ModalHistoricoPedidoProps {
@@ -101,6 +202,23 @@ export default function ModalHistoricoPedido({
     });
   }, [historico]);
 
+  /** Próximo ajuste/regra mais antigo na lista (já ordenada do mais recente ao mais antigo). */
+  const anteriorAjustePorIndice = useMemo(() => {
+    const map = new Map<number, HistoricoItem | null>();
+    for (let i = 0; i < historicoOrdenado.length; i++) {
+      let ant: HistoricoItem | null = null;
+      for (let j = i + 1; j < historicoOrdenado.length; j++) {
+        const cand = historicoOrdenado[j]!;
+        if (isAjusteOuRegra(cand)) {
+          ant = cand;
+          break;
+        }
+      }
+      map.set(i, ant);
+    }
+    return map;
+  }, [historicoOrdenado]);
+
   const fechar = useCallback(() => {
     onClose();
   }, [onClose]);
@@ -141,11 +259,15 @@ export default function ModalHistoricoPedido({
               return (
                 <span className="block text-sm font-normal mt-0.5 space-y-0.5">
                   {parts.map((p, i) => (
-                    <span key={i} className="block">{p}</span>
+                    <span key={i} className="block">
+                      {p}
+                    </span>
                   ))}
                 </span>
               );
-            })() : <span className="text-sm font-normal">{idPedido}</span>}
+            })() : (
+              <span className="text-sm font-normal">{idPedido}</span>
+            )}
           </h2>
           <button
             type="button"
@@ -160,16 +282,15 @@ export default function ModalHistoricoPedido({
           {loadingHistorico && (
             <p className="text-slate-500 dark:text-slate-400 text-center py-4">Carregando...</p>
           )}
-          {historicoError && (
-            <p className="text-amber-400 text-center py-4">{historicoError}</p>
-          )}
+          {historicoError && <p className="text-amber-400 text-center py-4">{historicoError}</p>}
           {!loadingHistorico && !historicoError && historico.length === 0 && (
-            <p className="text-slate-500 dark:text-slate-400 text-center py-4">Nenhuma alteração registrada.</p>
+            <p className="text-slate-500 dark:text-slate-400 text-center py-4">
+              Nenhuma alteração registrada.
+            </p>
           )}
           {!loadingHistorico && historicoOrdenado.length > 0 && (
             <ul className="space-y-3">
-              {historicoOrdenado.map((item) => {
-                const naoConfiavel = item.previsao_confiavel === false;
+              {historicoOrdenado.map((item, idx) => {
                 const isTagDisponivel = item.tipo_evento === 'tag_disponivel';
                 const isComentarioSycro = item.tipo_evento === 'comentario_sycro';
                 const isRegraCarrada = item.tipo_evento === 'regra_carrada';
@@ -179,6 +300,22 @@ export default function ModalHistoricoPedido({
                 const tagDisponivel = item.tag_disponivel === true;
                 const rotaItem = item.rota != null ? String(item.rota).trim() : '';
                 const isAjusteBase = isAjustePrevisao && !rotaItem;
+
+                const delta =
+                  isAjustePrevisao || isRegraCarrada
+                    ? montarDeltaAjusteHistorico(
+                        item,
+                        anteriorAjustePorIndice.get(idx) ?? null,
+                        rotaLinha
+                      )
+                    : null;
+                const naoConfiavel = delta ? !delta.confiavelAtual : item.previsao_confiavel === false;
+                const mostrarBadgeConfiavel =
+                  (isAjustePrevisao || isRegraCarrada) &&
+                  !isTagDisponivel &&
+                  !isComentarioSycro &&
+                  (delta?.mudouConfiavel || delta?.soConfiavel || naoConfiavel);
+
                 return (
                   <li
                     key={item.id}
@@ -186,14 +323,16 @@ export default function ModalHistoricoPedido({
                       isComentarioSycro
                         ? 'border-primary-400 dark:border-primary-500 bg-primary-50/40 dark:bg-primary-950/20'
                         : isRegraCarrada
-                        ? 'border-amber-400 dark:border-amber-500 bg-amber-50/50 dark:bg-amber-950/20'
-                        : isTagDisponivel
-                        ? tagDisponivel
-                          ? 'border-emerald-400 dark:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20'
-                          : 'border-slate-300 dark:border-slate-500 bg-slate-50 dark:bg-slate-800/50'
-                        : naoConfiavel
-                        ? 'border-red-500 dark:border-red-400 bg-red-50/50 dark:bg-red-950/20'
-                        : 'border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50'
+                          ? 'border-amber-400 dark:border-amber-500 bg-amber-50/50 dark:bg-amber-950/20'
+                          : isTagDisponivel
+                            ? tagDisponivel
+                              ? 'border-emerald-400 dark:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20'
+                              : 'border-slate-300 dark:border-slate-500 bg-slate-50 dark:bg-slate-800/50'
+                            : naoConfiavel
+                              ? 'border-red-500 dark:border-red-400 bg-red-50/50 dark:bg-red-950/20'
+                              : delta?.soConfiavel
+                                ? 'border-emerald-400 dark:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20'
+                                : 'border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50'
                     }`}
                   >
                     <div className="flex justify-between gap-2 text-slate-600 dark:text-slate-300">
@@ -236,36 +375,61 @@ export default function ModalHistoricoPedido({
                             Carrada
                           </span>
                         )}
-                        {!isTagDisponivel && !isComentarioSycro && !isRegraCarrada && naoConfiavel && (
-                          <span
-                            className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:text-red-300 border border-red-500 dark:border-red-400"
-                            title="Esta alteração não entra no histórico da Comunicação Interna"
-                          >
-                            Não confiável
-                          </span>
-                        )}
+                        {mostrarBadgeConfiavel &&
+                          (naoConfiavel ? (
+                            <span
+                              className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:text-red-300 border border-red-500 dark:border-red-400"
+                              title="Esta alteração não entra no histórico da Comunicação Interna"
+                            >
+                              Não confiável
+                            </span>
+                          ) : (
+                            <span
+                              className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-200 border border-emerald-500 dark:border-emerald-400"
+                              title="Previsão confiável — entra no histórico da Comunicação Interna"
+                            >
+                              Confiável
+                            </span>
+                          ))}
                         <span className="text-slate-500 dark:text-slate-400">{item.usuario}</span>
                       </span>
                     </div>
                     {isComentarioSycro ? (
-                      <div className="mt-1 text-slate-700 dark:text-slate-200 leading-relaxed">{item.observacao}</div>
+                      <div className="mt-1 text-slate-700 dark:text-slate-200 leading-relaxed">
+                        {item.observacao}
+                      </div>
                     ) : isTagDisponivel ? (
                       <div className="mt-1 text-slate-700 dark:text-slate-200">
                         <strong>{item.motivo}</strong>
                       </div>
                     ) : (
-                      <div className="mt-1 text-slate-700 dark:text-slate-200">
-                        <strong>{formatPrevisaoAlteracao(item)}</strong>
-                      </div>
+                      <>
+                        {delta?.textoPrevisao && (
+                          <div className="mt-1 text-slate-700 dark:text-slate-200">
+                            <strong>{delta.textoPrevisao}</strong>
+                          </div>
+                        )}
+                        {delta?.textoConfiavel && (
+                          <div className="mt-1 text-slate-700 dark:text-slate-200">
+                            <strong>{delta.textoConfiavel}</strong>
+                          </div>
+                        )}
+                      </>
                     )}
-                    {isAjustePrevisao && rotaItem && (
+                    {delta?.mostrarRota && (
                       <div className="mt-1 text-slate-500 dark:text-slate-400">Rota: {rotaItem}</div>
                     )}
-                    {!isTagDisponivel && !isComentarioSycro && item.motivo && (
-                      <div className="mt-1 text-slate-500 dark:text-slate-400">Motivo: {item.motivo}</div>
-                    )}
+                    {!isTagDisponivel &&
+                      !isComentarioSycro &&
+                      (delta ? delta.mostrarMotivo : Boolean(item.motivo)) && (
+                        <div className="mt-1 text-slate-500 dark:text-slate-400">
+                          Motivo: {item.motivo}
+                        </div>
+                      )}
                     {!isComentarioSycro && item.observacao && (
-                      <div className="mt-1 text-slate-500 dark:text-slate-400">Observação: {item.observacao}</div>
+                      <div className="mt-1 text-slate-500 dark:text-slate-400">
+                        Observação: {item.observacao}
+                      </div>
                     )}
                     {isAjustePrevisao && item.anexo_assinatura_path && (
                       <div className="mt-1">

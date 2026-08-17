@@ -219,6 +219,17 @@ if (fs.existsSync(spaIndex)) {
       res.status(404).json({ error: 'Rota da API não encontrada.' });
       return;
     }
+    // JS/CSS com hash ausente não podem cair no index.html — o browser tenta
+    // executar HTML como módulo e a tela fica em branco.
+    if (
+      req.path.startsWith('/assets/') ||
+      req.path.startsWith('/src/') ||
+      req.path.startsWith('/@') ||
+      /\.[a-z0-9]+$/i.test(req.path)
+    ) {
+      res.status(404).type('text/plain').send('Arquivo estático não encontrado.');
+      return;
+    }
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.sendFile(spaIndex);
   });

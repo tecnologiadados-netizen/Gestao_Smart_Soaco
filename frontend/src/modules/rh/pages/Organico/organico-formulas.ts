@@ -122,8 +122,8 @@ export function calcularFormulasRow(row: OrganicoSheetRow, opts?: CalcularFormul
   const v62 = roundMoney(v52 * n(62));
   cells[63] = v62;
 
-  // 66: INCRE $$6 = 65*BM
-  const v65 = roundMoney(65 * n(65));
+  // 66: INCRE $$6 = 67.54*BN (cota salário família × QTD Filhos)
+  const v65 = roundMoney(67.54 * n(65));
   cells[66] = v65;
 
   // 69: INCRE $$7 = BA*BP

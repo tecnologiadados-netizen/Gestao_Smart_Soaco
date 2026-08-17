@@ -1466,6 +1466,67 @@ model CrmRegistroInadimplenteContato {
   @@map("crm_registro_inadimplente_contato")
 }
 
+/// Responsável padrão das tarefas de cobrança (inadimplentes Nomus/Shop9).
+model CrmInadimplenteTarefaConfig {
+  id                   Int      @id @default(1)
+  responsavelUsuarioId Int?     @map("responsavel_usuario_id")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  updatedByLogin       String?  @map("updated_by_login")
+
+  @@map("crm_inadimplente_tarefa_config")
+}
+
+/// Fila de cobrança: 1 tarefa por cliente + empresa + conta a receber (Nomus ou Shop9).
+model CrmInadimplenteTarefa {
+  id                   Int      @id @default(autoincrement())
+  origem               String
+  codigoConta          String   @map("codigo_conta")
+  clienteNome          String   @map("cliente_nome")
+  clienteChave         String   @map("cliente_chave")
+  empresaId            Int?     @map("empresa_id")
+  empresaNome          String?  @map("empresa_nome")
+  banco                String?
+  tipo                 String?
+  vencimento           String?
+  pagamento            String?
+  dataBaixa            String?  @map("data_baixa")
+  valor                Float    @default(0)
+  diasAtraso           Int      @default(0) @map("dias_atraso")
+  nfPd                 String?  @map("nf_pd")
+  descricao            String?
+  vendedor             String?
+  /// aberta | em_contato | concluida
+  status               String   @default("aberta")
+  responsavelUsuarioId Int?     @map("responsavel_usuario_id")
+  concluidaEm          DateTime? @map("concluida_em")
+  lastSeenAt           DateTime @map("last_seen_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  contatos             CrmInadimplenteTarefaContato[]
+
+  @@unique([origem, codigoConta])
+  @@index([status, vencimento])
+  @@index([clienteChave])
+  @@index([responsavelUsuarioId])
+  @@map("crm_inadimplente_tarefa")
+}
+
+model CrmInadimplenteTarefaContato {
+  id             Int                   @id @default(autoincrement())
+  tarefaId       Int                   @map("tarefa_id")
+  dataContato    DateTime?             @map("data_contato")
+  texto          String
+  origem         String                @default("manual")
+  criadoPorLogin String?               @map("criado_por_login")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  tarefa         CrmInadimplenteTarefa @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+
+  @@index([tarefaId, dataContato])
+  @@index([tarefaId, createdAt])
+  @@map("crm_inadimplente_tarefa_contato")
+}
+
 /// Config singleton: IDs de usuários (To/Cc) do e-mail disparado ao salvar ação na aba Pendências.
 /// Campos destinatarios_* guardam JSON de number[] (usuario.id).
 model CrmCreditoPendenciaEmailConfig {

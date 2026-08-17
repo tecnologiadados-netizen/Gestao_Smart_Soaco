@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { z } from 'zod';
 import { ajustarDataProducaoLote, listarPedidos, type DataProducaoLoteItem, type Pedido } from '../api/pedidos';
 import { dataProducaoRealPedido } from '../utils/dataProducaoGerenciador';
@@ -18,6 +19,8 @@ import { formatDataCurta } from './sequenciamento-carradas/simulacaoCarradas';
 import { lerPdfAssinatura, type AnexoAssinaturaPayload } from '../utils/lerPdfAssinatura';
 import CampoAnexoAssinaturaPdf from './CampoAnexoAssinaturaPdf';
 import TogglePrevisaoConfiavel, { type PrevisaoConfiavelTri } from './TogglePrevisaoConfiavel';
+import CopiarTextoBtn, { numeroPedidoLimpo } from './CopiarTextoBtn';
+import { useModalFlutuante } from '../hooks/useModalFlutuante';
 
 const ajusteSchema = z.object({
   previsao_nova: z.string().min(1, 'Informe a data'),
@@ -105,6 +108,11 @@ interface ModalAjustePrevisaoProps {
   persistirNoGerenciador?: boolean;
   /** Volta à etapa anterior (ex.: escolha de escopo no calendário). */
   onVoltar?: () => void;
+  /**
+   * `flutuanteCalendario`: centralizado, arrastável e redimensionável (calendário visível atrás).
+   * Default `modal`: centralizado com fundo escurecido.
+   */
+  varianteLayout?: 'modal' | 'flutuanteCalendario';
 }
 
 type FlowStep = 'form' | 'multiplas_rotas' | 'carrada_confirm';
@@ -141,7 +149,16 @@ export default function ModalAjustePrevisao({
   onSalvarPrevisaoSimulacao,
   persistirNoGerenciador = true,
   onVoltar,
+  varianteLayout = 'modal',
 }: ModalAjustePrevisaoProps) {
+  const isFlutuante = varianteLayout === 'flutuanteCalendario';
+  const flutuante = useModalFlutuante({
+    enabled: isFlutuante,
+    open: !!pedido,
+    defaultSize: { w: 512, h: 640 },
+    minSize: { w: 360, h: 400 },
+    resetKey: String(pedido?.id_pedido ?? ''),
+  });
   const [previsao_nova, setPrevisaoNova] = useState(() => {
     if (calendario) return '';
     if (!pedido?.previsao_entrega_atualizada) return '';
@@ -243,8 +260,8 @@ export default function ModalAjustePrevisao({
     ? !!previsaoNovaForm && previsaoNovaForm !== previsaoAtualStr
     : !previsaoAtualStr || previsaoNovaForm !== previsaoAtualStr;
   /**
-   * Motivo, previsão confiável e observação: só quando a data de previsão realmente muda.
-   * Confirmar a mesma previsão (atual = nova) não exige motivo.
+   * Motivo e observação: só quando a data de previsão realmente muda (atual ≠ nova).
+   * Confirmar a mesma previsão ou só alterar Confiável no rascunho não exige motivo.
    */
   const previsaoSeraAjustada =
     previsaoDataAlteradaForm ||
@@ -270,6 +287,12 @@ export default function ModalAjustePrevisao({
     setObservacao('');
     setAnexoAssinatura(null);
     setAnexoNome('');
+    setErrors((prev) => {
+      if (!prev.motivo && !prev.previsao_confiavel) return prev;
+      const next = { ...prev };
+      delete next.motivo;
+      return next;
+    });
   };
 
   const limparAnexoAssinatura = () => {
@@ -395,17 +418,20 @@ export default function ModalAjustePrevisao({
     previsao_confiavel?: boolean;
   }) => {
     if (opts.producao) onSalvarDataProducao?.(opts.producao);
-    if (opts.previsao) {
-      onSalvarPrevisaoSimulacao?.(opts.previsao, {
+    const temConfiavel = opts.previsao_confiavel === true || opts.previsao_confiavel === false;
+    if (opts.previsao || temConfiavel) {
+      // Sem mudança de previsão, ainda propaga Confiável/motivo para o rascunho.
+      onSalvarPrevisaoSimulacao?.(opts.previsao ?? previsaoAtualStr ?? opts.producao ?? '', {
         motivo: opts.motivo ?? '',
         observacao: opts.observacao,
-        previsao_confiavel: opts.previsao_confiavel !== false,
+        previsao_confiavel: temConfiavel ? opts.previsao_confiavel! : opts.previsao_confiavel !== false,
       });
     }
     concluirComSucesso({
       ...pedido,
       ...(opts.producao ? { data_producao: opts.producao } : {}),
       ...(opts.previsao ? { previsao_entrega_atualizada: opts.previsao } : {}),
+      ...(temConfiavel ? { previsao_atual_confiavel: opts.previsao_confiavel } : {}),
     } as Pedido);
   };
 
@@ -531,6 +557,14 @@ export default function ModalAjustePrevisao({
         return;
       }
       if (!persistirNoGerenciador) {
+        if (previsaoConfiavel === true || previsaoConfiavel === false) {
+          // Confirmar produção + Confiável, sem mudança de previsão → sem motivo.
+          salvarSomenteSimulacao({
+            producao: producaoNovaNorm,
+            previsao_confiavel: previsaoConfiavel,
+          });
+          return;
+        }
         salvarSomenteSimulacao({ producao: producaoNovaNorm });
         return;
       }
@@ -548,8 +582,22 @@ export default function ModalAjustePrevisao({
     };
 
     if (calendario) {
-      if (!producaoMudou && !previsaoMudou) {
+      const soConfiavelRascunho =
+        !persistirNoGerenciador &&
+        !producaoMudou &&
+        !previsaoMudou &&
+        (previsaoConfiavel === true || previsaoConfiavel === false);
+
+      if (!producaoMudou && !previsaoMudou && !soConfiavelRascunho) {
         onError('Nenhuma data foi alterada.');
+        return;
+      }
+
+      if (soConfiavelRascunho) {
+        // Só Confiável (previsão atual = nova) → sem motivo.
+        salvarSomenteSimulacao({
+          previsao_confiavel: previsaoConfiavel,
+        });
         return;
       }
 
@@ -810,15 +858,26 @@ export default function ModalAjustePrevisao({
     await runSave(decision);
   };
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[145] flex items-center justify-center p-4 bg-black/75"
-      onClick={feedbackSucesso ? undefined : fecharOuVoltar}
+      className={
+        isFlutuante
+          ? 'pointer-events-none fixed inset-0 z-[14150]'
+          : 'fixed inset-0 z-[145] flex items-center justify-center bg-black/75 p-4'
+      }
+      onClick={isFlutuante || feedbackSucesso ? undefined : fecharOuVoltar}
     >
       <div
-        className={`relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-xl w-full p-6 ${
-          calendario ? 'max-w-lg' : 'max-w-md'
-        }`}
+        className={
+          isFlutuante
+            ? `pointer-events-auto relative flex flex-col overflow-auto rounded-xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-600 dark:bg-slate-800 ${
+                flutuante.dragging ? 'select-none' : ''
+              }`
+            : `relative w-full rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-600 dark:bg-slate-800 ${
+                calendario ? 'max-w-lg' : 'max-w-md'
+              }`
+        }
+        style={flutuante.panelStyle}
         onClick={(e) => e.stopPropagation()}
       >
         {feedbackSucesso ? (
@@ -844,16 +903,35 @@ export default function ModalAjustePrevisao({
           </div>
         ) : (
           <>
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">
+        <h3
+          className={`mb-3 text-lg font-semibold text-slate-900 dark:text-slate-100 ${
+            isFlutuante
+              ? `cursor-grab touch-none ${flutuante.dragging ? 'cursor-grabbing' : ''}`
+              : ''
+          }`}
+          title={isFlutuante ? 'Arraste para mover o modal' : undefined}
+          onPointerDown={isFlutuante ? flutuante.onDragPointerDown : undefined}
+          onPointerMove={isFlutuante ? flutuante.onDragPointerMove : undefined}
+          onPointerUp={isFlutuante ? flutuante.onDragPointerEnd : undefined}
+          onPointerCancel={isFlutuante ? flutuante.onDragPointerEnd : undefined}
+        >
           {calendario ? 'Reprogramar datas do pedido' : 'Ajustar previsão de entrega'}
         </h3>
         <div className="text-sm text-slate-600 dark:text-slate-400 space-y-1 mb-4">
-          <p><span className="font-medium text-slate-700 dark:text-slate-300">Pedido</span> {String(pd)}</p>
+          <p className="inline-flex items-center gap-1">
+            <span className="font-medium text-slate-700 dark:text-slate-300">Pedido</span> {String(pd)}
+            <CopiarTextoBtn texto={numeroPedidoLimpo(String(pd))} title="Copiar número do pedido" />
+          </p>
           <p>
             <span className="font-medium text-slate-700 dark:text-slate-300">Produto</span>{' '}
             {calendario?.escopoTodosItensPd || (demaisItens && demaisItens.length > 0)
               ? `TODOS (${1 + (calendario?.escopoTodosItensPd ? calendario.demaisItensPd?.length ?? 0 : demaisItens?.length ?? 0)} itens)`
-              : String(cod)}
+              : (
+                <span className="inline-flex items-center gap-1">
+                  {String(cod)}
+                  <CopiarTextoBtn texto={String(cod)} title="Copiar código do produto" />
+                </span>
+              )}
           </p>
           <p><span className="font-medium text-slate-700 dark:text-slate-300">Cliente</span> {pedido.cliente}</p>
         </div>
@@ -1142,8 +1220,31 @@ export default function ModalAjustePrevisao({
         )}
           </>
         )}
+        {isFlutuante ? (
+          <button
+            type="button"
+            aria-label="Redimensionar modal"
+            title="Arraste para redimensionar"
+            data-no-drag
+            className="absolute bottom-0 right-0 z-20 h-5 w-5 cursor-se-resize touch-none rounded-br-xl border-l border-t border-slate-300/80 bg-slate-200/90 hover:bg-slate-300 dark:border-slate-500 dark:bg-slate-600/90 dark:hover:bg-slate-500"
+            onPointerDown={flutuante.onResizePointerDown}
+            onPointerMove={flutuante.onResizePointerMove}
+            onPointerUp={flutuante.onResizePointerEnd}
+            onPointerCancel={flutuante.onResizePointerEnd}
+          >
+            <span className="sr-only">Redimensionar</span>
+            <svg
+              className="pointer-events-none absolute bottom-0.5 right-0.5 h-3 w-3 text-slate-500 dark:text-slate-300"
+              viewBox="0 0 12 12"
+              aria-hidden
+            >
+              <path fill="currentColor" d="M12 12H8V10h2V8h2v4zM10 8H8V6h2V4h2v4zM6 6H4V4h2V2h2v4z" />
+            </svg>
+          </button>
+        ) : null}
       </div>
 
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -1,7 +1,7 @@
 /**
  * Consultas do Calendário de produção congeladas dentro de um snapshot de sequência.
  *
- * - PC Pend (Entrada PC) sai direto da base congelada no Gravar.
+ * - PC Pend / Ag Pag / SC (coluna Entrada PC) saem direto da base congelada no Gravar.
  * - Consulta de estoque / saldo por setor / empenho por pedido são congeladas sob demanda:
  *   a primeira abertura consulta o Nomus e persiste o resultado, que nunca mais muda.
  */
@@ -13,7 +13,11 @@ import {
   obterBaseMateriaisSnapshot,
   obterOuCongelarConsultaSnapshot,
 } from '../data/sequenciamentoCarradasRepository.js';
-import { pcPendentesCongeladasDoProduto } from '../services/disponibilidadeMateriaisCalendarioService.js';
+import {
+  agPagCongeladasDoProduto,
+  pcPendModalLinhasDoProduto,
+  scCongeladasDoProduto,
+} from '../services/disponibilidadeMateriaisCalendarioService.js';
 
 function parseId(valor: unknown): number | null {
   const n = parseInt(String(valor ?? ''), 10);
@@ -22,7 +26,7 @@ function parseId(valor: unknown): number | null {
 
 /**
  * GET /api/pedidos/sequenciamento-carradas/snapshots/:id/pc-pend?idProduto=
- * Detalhe de PC pendente congelado (modal "PC Pend" do Horizonte).
+ * Detalhe de PC pendente congelado (modal "PC Pend" do Horizonte / Materiais do dia).
  */
 export async function getSequenciamentoSnapshotPcPend(req: Request, res: Response): Promise<void> {
   const id = parseId(req.params.id);
@@ -37,15 +41,75 @@ export async function getSequenciamentoSnapshotPcPend(req: Request, res: Respons
       res.status(404).json({ error: 'Snapshot sem base de materiais congelada.', data: [] });
       return;
     }
-    const data = pcPendentesCongeladasDoProduto(base, idProduto).map((l) => ({
-      pedidoCompra: l.pedidoCompra,
-      qtde: l.qtde,
-      dataEntrega: l.dataEntrega,
-    }));
+    const data = pcPendModalLinhasDoProduto(base, idProduto);
     res.json({ data, capturadoEm: base.capturadoEm });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[sequenciamentoConsultaCongelada] pcPend:', msg);
+    res.status(503).json({ error: msg, data: [] });
+  }
+}
+
+/**
+ * GET /api/pedidos/sequenciamento-carradas/snapshots/:id/ag-pag?idProduto=
+ * Detalhe de Ag Pag congelado (modal "Pré Compra" do Materiais do dia).
+ */
+export async function getSequenciamentoSnapshotAgPag(req: Request, res: Response): Promise<void> {
+  const id = parseId(req.params.id);
+  const idProduto = parseId(req.query.idProduto);
+  if (id == null || idProduto == null) {
+    res.status(400).json({ error: 'Parâmetros inválidos.', data: [] });
+    return;
+  }
+  try {
+    const base = await obterBaseMateriaisSnapshot(id);
+    if (!base) {
+      res.status(404).json({ error: 'Snapshot sem base de materiais congelada.', data: [] });
+      return;
+    }
+    const data = agPagCongeladasDoProduto(base, idProduto).map((l) => ({
+      cotacao: l.cotacao,
+      dataEmissao: l.dataEmissao,
+      comprador: l.comprador,
+      scCodigos: l.scCodigos,
+      qtde: l.qtde,
+    }));
+    res.json({ data, capturadoEm: base.capturadoEm });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[sequenciamentoConsultaCongelada] agPag:', msg);
+    res.status(503).json({ error: msg, data: [] });
+  }
+}
+
+/**
+ * GET /api/pedidos/sequenciamento-carradas/snapshots/:id/solicitacao?idProduto=
+ * Detalhe de SC congelada (modal "Solicitação de Compra" do Materiais do dia).
+ */
+export async function getSequenciamentoSnapshotSolicitacao(req: Request, res: Response): Promise<void> {
+  const id = parseId(req.params.id);
+  const idProduto = parseId(req.query.idProduto);
+  if (id == null || idProduto == null) {
+    res.status(400).json({ error: 'Parâmetros inválidos.', data: [] });
+    return;
+  }
+  try {
+    const base = await obterBaseMateriaisSnapshot(id);
+    if (!base) {
+      res.status(404).json({ error: 'Snapshot sem base de materiais congelada.', data: [] });
+      return;
+    }
+    const data = scCongeladasDoProduto(base, idProduto).map((l) => ({
+      codigo: l.codigo,
+      usuario: l.usuario,
+      dataEmissao: l.dataEmissao,
+      dataNecessidade: l.dataNecessidade,
+      saldo: l.saldo,
+    }));
+    res.json({ data, capturadoEm: base.capturadoEm });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[sequenciamentoConsultaCongelada] solicitacao:', msg);
     res.status(503).json({ error: msg, data: [] });
   }
 }

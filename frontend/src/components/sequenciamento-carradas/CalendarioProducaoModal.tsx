@@ -27,6 +27,15 @@ import {
   type SimEntry,
 } from './simulacaoCarradas';
 import IndicadorDataPorPrevisao from './IndicadorDataPorPrevisao';
+import IndicadoresPrevisaoConfiavel, { IndicadorPrevisaoConfiavel } from './IndicadorPrevisaoConfiavel';
+import {
+  agregarStatusConfiavel,
+  linhaPassaFiltroConfiavel,
+  mapaStatusConfiavelPorId,
+  statusConfiavelDaLinha,
+  statusConfiavelDoDetalhe,
+  type StatusConfiavelCalendario,
+} from './previsaoConfiavelCalendario';
 
 function BadgeSemCarrada() {
   return (
@@ -67,12 +76,14 @@ import ModalAjustePrevisao, {
   type AjustePrevisaoSuccessMeta,
 } from '../ModalAjustePrevisao';
 import GradeCelulaModalBtn from '../pcp/GradeCelulaModalBtn';
+import CopiarTextoBtn, { numeroPedidoLimpo } from '../CopiarTextoBtn';
 import { labelPedidoMapa } from '../../utils/mapaMunicipioPedido';
 import { normalizePdLabelForCompare } from '../../utils/rotaCarrada';
 import {
   montarQtdeLiquidaDoSnapshot,
 } from '../../utils/abaterSaldoEstoqueProgramacao';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
+import { useModalFlutuante, tamanhoViewport } from '../../hooks/useModalFlutuante';
 import { useAuth } from '../../contexts/AuthContext';
 import { PERMISSOES } from '../../config/permissoes';
 import type { Pedido, TooltipDetalheRow } from '../../api/pedidos';
@@ -111,6 +122,11 @@ type Props = {
    * saem da base congelada no Gravar em vez do Nomus ao vivo.
    */
   snapshotId?: number | null;
+  /**
+   * Overrides de previsão confiável do rascunho (id_pedido → true/false/null).
+   * Precedência no calendário: override → snapshot → em branco.
+   */
+  previsaoConfiavelPorId?: Record<string, boolean | null>;
 };
 
 type EscopoAjustePd = 'item' | 'todos_itens_pd';
@@ -192,6 +208,21 @@ type SetorRow = { setor: string };
 
 const COL_SETOR = 'setor';
 const COL_TOTAL = '__total';
+type IconeCalendario = 'previsao' | StatusConfiavelCalendario;
+
+const ICONES_CALENDARIO_INICIAIS: Record<IconeCalendario, boolean> = {
+  previsao: true,
+  sim: true,
+  nao: true,
+  branco: true,
+};
+
+function filtrarStatusConfiavelVisivel(
+  statuses: StatusConfiavelCalendario[],
+  iconesVisiveis: Record<IconeCalendario, boolean>
+): StatusConfiavelCalendario[] {
+  return statuses.filter((status) => iconesVisiveis[status]);
+}
 
 const TH = 'px-2 py-2 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap';
 const TD = 'px-2 py-1.5 text-slate-700 dark:text-slate-200';
@@ -244,6 +275,19 @@ function pdPassaFiltro(pdLinha: string, selecionados: string[]): boolean {
     const digitosSel = normalizePdLabelForCompare(sel);
     return !!digitosLinha && !!digitosSel && digitosLinha === digitosSel;
   });
+}
+
+function tipoFDaLinha(row: Record<string, unknown>): string {
+  for (const k of ['tipoF', 'TipoF', 'tipo_f']) {
+    const v = row[k];
+    if (v != null && String(v).trim()) return String(v).trim();
+  }
+  return '';
+}
+
+function tipoFPassaFiltro(valorLinha: string, selecionados: string[]): boolean {
+  if (selecionados.length === 0) return true;
+  return selecionados.some((sel) => sel.trim().toUpperCase() === valorLinha.trim().toUpperCase());
 }
 
 const FILTRO_PD_LABEL_CLASS = 'block text-xs text-slate-500 dark:text-slate-400 mb-1';
@@ -315,6 +359,7 @@ export default function CalendarioProducaoModal({
   estoqueCongelado = false,
   geradoEm,
   snapshotId = null,
+  previsaoConfiavelPorId = {},
 }: Props) {
   const { hasPermission } = useAuth();
   const podeAjustarPrevisao =
@@ -324,7 +369,15 @@ export default function CalendarioProducaoModal({
       hasPermission(PERMISSOES.PEDIDOS_EDITAR));
 
   const [filtroPd, setFiltroPd] = useState('');
+  const [filtroTipoF, setFiltroTipoF] = useState('');
+  const [filtroConfiavel, setFiltroConfiavel] = useState('');
   const [somentePrev, setSomentePrev] = useState(false);
+  const [iconesVisiveis, setIconesVisiveis] = useState<Record<IconeCalendario, boolean>>(
+    ICONES_CALENDARIO_INICIAIS
+  );
+  const alternarIcone = useCallback((icone: IconeCalendario) => {
+    setIconesVisiveis((atual) => ({ ...atual, [icone]: !atual[icone] }));
+  }, []);
 
   const qtdePorRow = useMemo(() => {
     const porIndex = montarQtdeLiquidaDoSnapshot(linhas, estoquePorCod);
@@ -349,6 +402,15 @@ export default function CalendarioProducaoModal({
     return [...set].sort(comparePedidoAsc);
   }, [linhas]);
 
+  const opcoesTipoF = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of linhas) {
+      const tipoF = tipoFDaLinha(row);
+      if (tipoF) set.add(tipoF);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+  }, [linhas]);
+
   const pdsSelecionados = useMemo(
     () =>
       filtroPd
@@ -358,10 +420,71 @@ export default function CalendarioProducaoModal({
     [filtroPd]
   );
 
+  const tiposFSelecionados = useMemo(
+    () =>
+      filtroTipoF
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    [filtroTipoF]
+  );
+
+  const confiavelSelecionados = useMemo(
+    () =>
+      filtroConfiavel
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    [filtroConfiavel]
+  );
+
+  const temFiltroAtivo = useMemo(() => {
+    const pdParcial =
+      pdsSelecionados.length > 0 &&
+      (opcoesPd.length === 0 || pdsSelecionados.length < opcoesPd.length);
+    const tipoFParcial =
+      tiposFSelecionados.length > 0 &&
+      (opcoesTipoF.length === 0 || tiposFSelecionados.length < opcoesTipoF.length);
+    const confiavelParcial =
+      confiavelSelecionados.length > 0 && confiavelSelecionados.length < 3;
+    return pdParcial || tipoFParcial || confiavelParcial || somentePrev;
+  }, [
+    pdsSelecionados,
+    opcoesPd.length,
+    tiposFSelecionados,
+    opcoesTipoF.length,
+    confiavelSelecionados,
+    somentePrev,
+  ]);
+
+  const statusPorIdPedido = useMemo(
+    () => mapaStatusConfiavelPorId(linhas, previsaoConfiavelPorId),
+    [linhas, previsaoConfiavelPorId]
+  );
+
   const linhasFiltradas = useMemo(() => {
-    if (pdsSelecionados.length === 0) return linhas;
-    return linhas.filter((row) => pdPassaFiltro(pdDaLinha(row), pdsSelecionados));
-  }, [linhas, pdsSelecionados]);
+    let rows = linhas;
+    if (pdsSelecionados.length > 0) {
+      rows = rows.filter((row) => pdPassaFiltro(pdDaLinha(row), pdsSelecionados));
+    }
+    if (tiposFSelecionados.length > 0) {
+      rows = rows.filter((row) =>
+        tipoFPassaFiltro(tipoFDaLinha(row), tiposFSelecionados)
+      );
+    }
+    if (confiavelSelecionados.length > 0) {
+      rows = rows.filter((row) =>
+        linhaPassaFiltroConfiavel(statusConfiavelDaLinha(row, previsaoConfiavelPorId), confiavelSelecionados)
+      );
+    }
+    return rows;
+  }, [
+    linhas,
+    pdsSelecionados,
+    tiposFSelecionados,
+    confiavelSelecionados,
+    previsaoConfiavelPorId,
+  ]);
 
   const maxProducaoNormais = useMemo(
     () => maxDataProducaoCarradasNormais(linhas, sim, baseline),
@@ -376,7 +499,7 @@ export default function CalendarioProducaoModal({
     [maxProducaoNormais]
   );
 
-  /** Quando ativo, só entra no calendário o que cai em Prev. (célula com *). */
+  /** Quando ativo, só entra no calendário o que cai em ⚠️ (posição pela previsão). */
   const linhasCalendario = useMemo(() => {
     if (!somentePrev) return linhasFiltradas;
     return linhasFiltradas.filter((row) => {
@@ -400,12 +523,42 @@ export default function CalendarioProducaoModal({
     [linhasCalendario, sim, baseline, getQtdeLinha, dataInserirRomaneio, dataEmFormacao]
   );
   const [drill, setDrill] = useState<Drill>({ nivel: 'pivot' });
+
+  useEffect(() => {
+    setDrill({ nivel: 'pivot' });
+  }, [filtroPd, filtroTipoF, filtroConfiavel, somentePrev]);
   const [pedidoModal, setPedidoModal] = useState<{
     linha: TooltipDetalheRow;
     itens: TooltipDetalheRow[];
     setorDestaque: string;
     selecaoInicial?: string[];
   } | null>(null);
+  /**
+   * Split: modal do PD no topo + pivô do calendário abaixo (ambos navegáveis).
+   * Guarda o drill anterior para restaurar ao ocultar.
+   */
+  const [splitComPedido, setSplitComPedido] = useState(false);
+  const drillAntesSplitRef = useRef<Drill | null>(null);
+  const [vistaCalendario, setVistaCalendario] = useState<'producao' | 'materiais'>('producao');
+
+  const encerrarSplitComPedido = useCallback(() => {
+    setSplitComPedido(false);
+    const previo = drillAntesSplitRef.current;
+    drillAntesSplitRef.current = null;
+    if (previo) setDrill(previo);
+  }, []);
+
+  const toggleSplitComPedido = useCallback(() => {
+    if (splitComPedido) {
+      encerrarSplitComPedido();
+      return;
+    }
+    drillAntesSplitRef.current = drill.nivel === 'pivot' ? null : drill;
+    setDrill({ nivel: 'pivot' });
+    setVistaCalendario('producao');
+    setSplitComPedido(true);
+  }, [splitComPedido, drill, encerrarSplitComPedido]);
+
   /** PD a reabrir no Heatmap após Cancelar/ESC do ajuste (preserva seleção). */
   const pedidoModalRefreshRef = useRef<{
     pd: string;
@@ -429,7 +582,6 @@ export default function CalendarioProducaoModal({
   } | null>(null);
   const [setorDetalhe, setSetorDetalhe] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [vistaCalendario, setVistaCalendario] = useState<'producao' | 'materiais'>('producao');
   const [dispMateriais, setDispMateriais] = useState<DisponibilidadeMateriaisSintetica | null>(null);
   const [dispCarregando, setDispCarregando] = useState(false);
   const [dispErro, setDispErro] = useState<string | null>(null);
@@ -643,27 +795,51 @@ export default function CalendarioProducaoModal({
     if (drill.nivel !== 'tipof') return [];
     const map = new Map<
       string,
-      { qtde: number; producaoPorPrevisao: boolean; semCarrada: boolean }
+      {
+        qtde: number;
+        producaoPorPrevisao: boolean;
+        semCarrada: boolean;
+        statusSet: Set<StatusConfiavelCalendario>;
+      }
     >();
     for (const d of dados.detalhes) {
       if (d.setor === drill.setor && d.data === drill.data) {
-        const cur = map.get(d.tipoF) ?? { qtde: 0, producaoPorPrevisao: false, semCarrada: false };
+        const cur = map.get(d.tipoF) ?? {
+          qtde: 0,
+          producaoPorPrevisao: false,
+          semCarrada: false,
+          statusSet: new Set(),
+        };
         cur.qtde += d.qtde;
         if (d.producaoPorPrevisao) cur.producaoPorPrevisao = true;
         if (d.semCarrada) cur.semCarrada = true;
+        cur.statusSet.add(statusConfiavelDoDetalhe(d.idPedido, statusPorIdPedido));
         map.set(d.tipoF, cur);
       }
     }
     return [...map.entries()]
-      .map(([tipoF, v]) => ({ tipoF, ...v }))
+      .map(([tipoF, v]) => ({
+        tipoF,
+        qtde: v.qtde,
+        producaoPorPrevisao: v.producaoPorPrevisao,
+        semCarrada: v.semCarrada,
+        statusConfiavel: agregarStatusConfiavel(v.statusSet),
+      }))
       .sort((a, b) => b.qtde - a.qtde);
-  }, [drill, dados.detalhes]);
+  }, [drill, dados.detalhes, statusPorIdPedido]);
 
   const carradaRows = useMemo(() => {
     if (drill.nivel !== 'carradas') return [];
     const map = new Map<
       string,
-      { cod: string; carrada: string; qtde: number; producaoPorPrevisao: boolean; semCarrada: boolean }
+      {
+        cod: string;
+        carrada: string;
+        qtde: number;
+        producaoPorPrevisao: boolean;
+        semCarrada: boolean;
+        statusSet: Set<StatusConfiavelCalendario>;
+      }
     >();
     for (const d of dados.detalhes) {
       if (d.setor === drill.setor && d.data === drill.data && d.tipoF === drill.tipoF) {
@@ -674,23 +850,58 @@ export default function CalendarioProducaoModal({
           qtde: 0,
           producaoPorPrevisao: false,
           semCarrada: false,
+          statusSet: new Set(),
         };
         cur.qtde += d.qtde;
         if (d.producaoPorPrevisao) cur.producaoPorPrevisao = true;
         if (d.semCarrada) cur.semCarrada = true;
+        cur.statusSet.add(statusConfiavelDoDetalhe(d.idPedido, statusPorIdPedido));
         map.set(key, cur);
       }
     }
     return [...map.entries()]
-      .map(([key, v]) => ({ key, ...v }))
+      .map(([key, v]) => ({
+        key,
+        cod: v.cod,
+        carrada: v.carrada,
+        qtde: v.qtde,
+        producaoPorPrevisao: v.producaoPorPrevisao,
+        semCarrada: v.semCarrada,
+        statusConfiavel: agregarStatusConfiavel(v.statusSet),
+      }))
       .sort((a, b) => b.qtde - a.qtde || a.cod.localeCompare(b.cod, 'pt-BR'));
+  }, [drill, dados.detalhes, statusPorIdPedido]);
+
+  /** Rótulo do breadcrumb no nível pedidos: Cód · nome da carrada. */
+  const labelCarradaDrill = useMemo(() => {
+    if (drill.nivel !== 'pedidos') return '';
+    for (const d of dados.detalhes) {
+      if (
+        d.setor === drill.setor &&
+        d.data === drill.data &&
+        d.tipoF === drill.tipoF &&
+        carradaKey(d.cod, d.carrada) === drill.carradaKey
+      ) {
+        const cod = (d.cod || '').trim();
+        const nome = (d.carrada || '').trim() || 'Sem Rota';
+        if (cod && cod !== '—') return `${cod} · ${nome}`;
+        return nome;
+      }
+    }
+    return 'Carrada';
   }, [drill, dados.detalhes]);
 
   const pedidoRows = useMemo(() => {
     if (drill.nivel !== 'pedidos') return [];
     const map = new Map<
       string,
-      { qtde: number; producaoPorPrevisao: boolean; semCarrada: boolean; cliente: string }
+      {
+        qtde: number;
+        producaoPorPrevisao: boolean;
+        semCarrada: boolean;
+        cliente: string;
+        statusSet: Set<StatusConfiavelCalendario>;
+      }
     >();
     for (const d of dados.detalhes) {
       if (
@@ -704,18 +915,27 @@ export default function CalendarioProducaoModal({
           producaoPorPrevisao: false,
           semCarrada: false,
           cliente: '',
+          statusSet: new Set(),
         };
         cur.qtde += d.qtde;
         if (d.producaoPorPrevisao) cur.producaoPorPrevisao = true;
         if (d.semCarrada) cur.semCarrada = true;
+        cur.statusSet.add(statusConfiavelDoDetalhe(d.idPedido, statusPorIdPedido));
         if (!cur.cliente && d.cliente) cur.cliente = d.cliente;
         map.set(d.pd, cur);
       }
     }
     return [...map.entries()]
-      .map(([pd, v]) => ({ pd, ...v }))
+      .map(([pd, v]) => ({
+        pd,
+        qtde: v.qtde,
+        producaoPorPrevisao: v.producaoPorPrevisao,
+        semCarrada: v.semCarrada,
+        cliente: v.cliente,
+        statusConfiavel: agregarStatusConfiavel(v.statusSet),
+      }))
       .sort((a, b) => comparePedidoAsc(a.pd, b.pd));
-  }, [drill, dados.detalhes]);
+  }, [drill, dados.detalhes, statusPorIdPedido]);
 
   const celulasComPrevisao = useMemo(() => {
     const set = new Set<string>();
@@ -732,6 +952,24 @@ export default function CalendarioProducaoModal({
     }
     return set;
   }, [dados.detalhes]);
+
+  const celulasStatusConfiavel = useMemo(() => {
+    const map = new Map<string, Set<StatusConfiavelCalendario>>();
+    for (const d of dados.detalhes) {
+      const key = `${d.setor}\0${d.data}`;
+      let set = map.get(key);
+      if (!set) {
+        set = new Set();
+        map.set(key, set);
+      }
+      set.add(statusConfiavelDoDetalhe(d.idPedido, statusPorIdPedido));
+    }
+    const out = new Map<string, StatusConfiavelCalendario[]>();
+    for (const [key, set] of map) {
+      out.set(key, agregarStatusConfiavel(set));
+    }
+    return out;
+  }, [dados.detalhes, statusPorIdPedido]);
 
   const tipoFTotal = tipoFRows.reduce((s, r) => s + r.qtde, 0);
   const carradaTotal = carradaRows.reduce((s, r) => s + r.qtde, 0);
@@ -859,6 +1097,8 @@ export default function CalendarioProducaoModal({
       return;
     }
     if (pedidoModal) {
+      pedidoModalRefreshRef.current = null;
+      encerrarSplitComPedido();
       setPedidoModal(null);
       return;
     }
@@ -892,6 +1132,7 @@ export default function CalendarioProducaoModal({
     voltarNivel,
     onClose,
     voltarAoPedidoModal,
+    encerrarSplitComPedido,
   ]);
 
   const abrirAjustePrevisao = useCallback(
@@ -900,7 +1141,13 @@ export default function CalendarioProducaoModal({
       itensAlvo: Pick<TooltipDetalheRow, 'codigo' | 'rota' | 'pedido'>[],
       linhasPreSelecionadas?: Record<string, unknown>[]
     ) => {
-      if (drill.nivel !== 'pedidos') return;
+      const drillPedidos =
+        drill.nivel === 'pedidos'
+          ? drill
+          : drillAntesSplitRef.current?.nivel === 'pedidos'
+            ? drillAntesSplitRef.current
+            : null;
+      if (!drillPedidos) return;
       if (itensAlvo.length === 0 && !(linhasPreSelecionadas && linhasPreSelecionadas.length > 0)) return;
 
       let linhasSel: Record<string, unknown>[] = [];
@@ -931,10 +1178,12 @@ export default function CalendarioProducaoModal({
       if (!pedido) return;
 
       const row = pedido as unknown as Record<string, unknown>;
-      const rotaLinha = String(row['Observacoes'] ?? row['Observações'] ?? drill.tipoF ?? '').trim();
+      const rotaLinha = String(
+        row['Observacoes'] ?? row['Observações'] ?? drillPedidos.tipoF ?? ''
+      ).trim();
       if (
         !rotaPermiteAlterarDatasNoSequenciamentoCalendario(rotaLinha) &&
-        !rotaPermiteAlterarDatasNoSequenciamentoCalendario(String(drill.tipoF ?? '')) &&
+        !rotaPermiteAlterarDatasNoSequenciamentoCalendario(String(drillPedidos.tipoF ?? '')) &&
         !pedidoPermiteAlterarDatasNoSequenciamentoCalendario(row)
       ) {
         setToast(mensagemCanalDatasPedido(row));
@@ -972,7 +1221,7 @@ export default function CalendarioProducaoModal({
         escopo,
         calendario: {
           dataProducaoAtual,
-          // Produção e previsão são independentes na simulação; Prev./* só some
+          // Produção e previsão são independentes na simulação; ⚠️ só some
           // quando dataProducao entra no Map sim (igual ao painel A alocar).
           producaoDerivadaPrevisao: false,
           escopoTodosItensPd: escopo === 'todos_itens_pd',
@@ -1042,8 +1291,16 @@ export default function CalendarioProducaoModal({
 
   const podeReprogramarNoCalendario = useCallback(
     (pd: string): boolean => {
-      if (drill.nivel !== 'pedidos') return false;
-      if (rotaPermiteAlterarDatasNoSequenciamentoCalendario(String(drill.tipoF ?? ''))) return true;
+      const drillPedidos =
+        drill.nivel === 'pedidos'
+          ? drill
+          : drillAntesSplitRef.current?.nivel === 'pedidos'
+            ? drillAntesSplitRef.current
+            : null;
+      if (!drillPedidos) return false;
+      if (rotaPermiteAlterarDatasNoSequenciamentoCalendario(String(drillPedidos.tipoF ?? ''))) {
+        return true;
+      }
       const linhasPd = listarLinhasSnapshotPorPd(linhas, pd);
       const linha = linhasPd[0];
       if (!linha) return false;
@@ -1138,21 +1395,25 @@ export default function CalendarioProducaoModal({
   const handleSalvarPrevisaoSimulacao = useCallback(
     (novaData: string, meta: AjustePrevisaoSimulacaoMeta) => {
       if (!pedidoAjustePrevisao) return;
-      if (escopoEhOrdemFinal()) {
-        for (const id of idsPedidoEscopoAjuste()) {
-          const key = simItemKey(id);
-          acumularSimPatch(key, 'dataEntrega', novaData);
-          onEditarDataEntrega?.(key, novaData);
-        }
-      } else {
-        for (const key of keysEscopoAjuste()) {
-          acumularSimPatch(key, 'dataEntrega', novaData);
-          onEditarDataEntrega?.(key, novaData);
+      const dataNorm = String(novaData ?? '').trim().slice(0, 10);
+      if (dataNorm) {
+        if (escopoEhOrdemFinal()) {
+          for (const id of idsPedidoEscopoAjuste()) {
+            const key = simItemKey(id);
+            acumularSimPatch(key, 'dataEntrega', dataNorm);
+            onEditarDataEntrega?.(key, dataNorm);
+          }
+        } else {
+          for (const key of keysEscopoAjuste()) {
+            acumularSimPatch(key, 'dataEntrega', dataNorm);
+            onEditarDataEntrega?.(key, dataNorm);
+          }
         }
       }
 
       const ids = idsPedidoEscopoAjuste();
-      if (ids.length > 0 && meta.motivo.trim()) {
+      // Sempre registra motivo/obs/confiável no rascunho (mesmo sem mudança efetiva de data).
+      if (ids.length > 0) {
         onRegistrarMotivoSimulacao?.(ids, meta);
       }
     },
@@ -1168,6 +1429,41 @@ export default function CalendarioProducaoModal({
   );
 
   useRegisterModalEscape({ id: 'seq-carradas-calendario', onClose: handleEscape, zIndex: 130 });
+
+  /** Com modal do PD aberto (sem split), bloqueia drill. No split ambos ficam navegáveis. */
+  const interacaoCalendarioBloqueada = !!(
+    (pedidoModal && !splitComPedido) ||
+    pedidoAjustePrevisao ||
+    confirmReplicacaoRm
+  );
+
+  const runSeInterativo = (fn: () => void) => {
+    if (interacaoCalendarioBloqueada) return;
+    fn();
+  };
+
+  const janelaCalendario = useModalFlutuante({
+    enabled: true,
+    open: true,
+    defaultSize: {
+      // Margem ~5% em cada lado / ~11% na altura para o canto SE de redimensionar
+      // e o botão Fechar ficarem acessíveis (96% colava na borda da viewport).
+      w: Math.round(tamanhoViewport().w * 0.9),
+      h: Math.round(tamanhoViewport().h * 0.78),
+    },
+    minSize: { w: 560, h: 280 },
+    resetKey: 'calendario-producao',
+  });
+
+  useEffect(() => {
+    // rAF: aplica depois do layout do modal do PD, evitando “nascer” cortado.
+    const id = window.requestAnimationFrame(() => {
+      if (splitComPedido) janelaCalendario.aplicarBaseSplit();
+      else janelaCalendario.aplicarCentroPadrao();
+    });
+    return () => window.cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage ao toggle split
+  }, [splitComPedido]);
 
   const renderTh = (colId: string) => {
     const isSetor = colId === COL_SETOR;
@@ -1204,7 +1500,7 @@ export default function CalendarioProducaoModal({
             <SemaforoMateriais
               status={st?.status}
               title={tituloStatusMateriais(st)}
-              onClick={() => setMateriaisDiaIso(toISODate(col.iso) || col.iso)}
+              onClick={() => runSeInterativo(() => setMateriaisDiaIso(toISODate(col.iso) || col.iso))}
             />
           )}
           {!ocioso && (
@@ -1231,26 +1527,38 @@ export default function CalendarioProducaoModal({
     const weekend = isFimDeSemana(col.iso);
     const temPrevisaoFallback = celulasComPrevisao.has(`${setor}\0${col.iso}`);
     const temSemCarrada = celulasComSemCarrada.has(`${setor}\0${col.iso}`);
+    const statusConfiavel = celulasStatusConfiavel.get(`${setor}\0${col.iso}`) ?? [];
+    const statusConfiavelVisivel = filtrarStatusConfiavelVisivel(statusConfiavel, iconesVisiveis);
     const tituloBase = 'Ver detalhamento por TipoF';
     const tituloParts = [tituloBase];
     if (temPrevisaoFallback) {
-      tituloParts.push('(contém itens posicionados pela previsão atual — Prev.)');
+      tituloParts.push('(contém itens posicionados pela previsão atual — ⚠️)');
     }
     if (temSemCarrada) {
       tituloParts.push('(contém Inserir em Romaneio ≥ corte sem carrada formada)');
     }
+    if (statusConfiavel.includes('sim')) tituloParts.push('(contém Confiável)');
+    if (statusConfiavel.includes('nao')) tituloParts.push('(contém Não confiável)');
+    if (statusConfiavel.includes('branco')) tituloParts.push('(contém Em branco)');
     return (
       <td key={colId} className={`${TD} text-right ${weekend ? 'px-1' : ''} ${weekend ? WEEKEND_TD : ''}`}>
         {v > 0 ? (
           <GradeCelulaModalBtn
-            onClick={() => setDrill(drillAposCliqueQtde(dados.detalhes, setor, col.iso))}
-            title={tituloParts.join(' ')}
+            onClick={() =>
+              runSeInterativo(() => setDrill(drillAposCliqueQtde(dados.detalhes, setor, col.iso)))
+            }
+            title={
+              interacaoCalendarioBloqueada
+                ? 'Feche o painel do pedido para navegar no calendário'
+                : tituloParts.join(' ')
+            }
             align="right"
           >
             <span className="inline-flex flex-col items-end gap-0.5">
               <span className="inline-flex items-center gap-0.5">
                 {formatQtdeInt(v)}
-                {temPrevisaoFallback ? <span className="text-amber-200">*</span> : null}
+                {temPrevisaoFallback && iconesVisiveis.previsao ? <IndicadorDataPorPrevisao /> : null}
+                <IndicadoresPrevisaoConfiavel statuses={statusConfiavelVisivel} />
               </span>
               {temSemCarrada ? <BadgeSemCarrada /> : null}
             </span>
@@ -1264,26 +1572,35 @@ export default function CalendarioProducaoModal({
 
   return (
     <>
+    {createPortal(
     <div
-      className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4"
+      className="pointer-events-none fixed inset-0 z-[130] bg-black/50"
       role="presentation"
-      onMouseDown={(e) => {
-        // Clique no escurecido = Esc / Voltar (não no painel do dialog).
-        if (e.target === e.currentTarget) handleEscape();
-      }}
     >
       <div
-        className="flex max-h-[92vh] w-full max-w-[95vw] flex-col rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
+        className={`pointer-events-auto relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800 ${
+          janelaCalendario.dragging ? 'select-none' : ''
+        }`}
+        style={janelaCalendario.panelStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby="calendario-producao-titulo"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-600">
+        <div
+          className={`flex shrink-0 cursor-grab items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 touch-none dark:border-slate-600 ${
+            janelaCalendario.dragging ? 'cursor-grabbing' : ''
+          }`}
+          title="Arraste para mover o calendário"
+          onPointerDown={janelaCalendario.onDragPointerDown}
+          onPointerMove={janelaCalendario.onDragPointerMove}
+          onPointerUp={janelaCalendario.onDragPointerEnd}
+          onPointerCancel={janelaCalendario.onDragPointerEnd}
+        >
           <h2 id="calendario-producao-titulo" className="text-lg font-semibold text-slate-800 dark:text-slate-100">
             Calendário de produção
           </h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" data-no-drag>
             {emDrill && (
               <button
                 type="button"
@@ -1304,13 +1621,67 @@ export default function CalendarioProducaoModal({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b border-slate-200 px-4 py-2 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-400">
-          <div className="flex min-w-0 flex-col gap-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span>Datas do calendário baseadas na data de produção.</span>
-              <span className="inline-flex items-center gap-1">
-                <IndicadorDataPorPrevisao />
-                <span>= sem data de produção, usando previsão atual</span>
-              </span>
+          <div className="grid min-w-0 max-w-xl grid-cols-1 gap-x-6 gap-y-0.5 sm:grid-cols-2">
+            <div className="flex flex-col gap-0.5">
+              <span>Datas do calendário baseadas na data de produção</span>
+              <button
+                type="button"
+                onClick={() => alternarIcone('previsao')}
+                aria-pressed={iconesVisiveis.previsao}
+                title={`${iconesVisiveis.previsao ? 'Ocultar' : 'Exibir'} ícone de previsão`}
+                className={`inline-flex w-fit items-start gap-1 rounded px-1 text-left ${
+                  iconesVisiveis.previsao
+                    ? 'hover:bg-slate-100 dark:hover:bg-slate-700'
+                    : 'opacity-45 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <IndicadorDataPorPrevisao className="mt-px" />
+                <span>= sem data de produção, usando previsão atual.</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => alternarIcone('sim')}
+                aria-pressed={iconesVisiveis.sim}
+                title={`${iconesVisiveis.sim ? 'Ocultar' : 'Exibir'} ícone Confiável`}
+                className={`inline-flex w-fit items-center gap-1 rounded px-1 text-left ${
+                  iconesVisiveis.sim
+                    ? 'hover:bg-slate-100 dark:hover:bg-slate-700'
+                    : 'opacity-45 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <IndicadorPrevisaoConfiavel status="sim" />
+                <span>= Confiável</span>
+              </button>
+            </div>
+            <div className="flex flex-col justify-end gap-0.5">
+              <button
+                type="button"
+                onClick={() => alternarIcone('nao')}
+                aria-pressed={iconesVisiveis.nao}
+                title={`${iconesVisiveis.nao ? 'Ocultar' : 'Exibir'} ícone Não confiável`}
+                className={`inline-flex w-fit items-center gap-1 rounded px-1 text-left ${
+                  iconesVisiveis.nao
+                    ? 'hover:bg-slate-100 dark:hover:bg-slate-700'
+                    : 'opacity-45 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <IndicadorPrevisaoConfiavel status="nao" />
+                <span>= Não confiável</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => alternarIcone('branco')}
+                aria-pressed={iconesVisiveis.branco}
+                title={`${iconesVisiveis.branco ? 'Ocultar' : 'Exibir'} ícone Em branco`}
+                className={`inline-flex w-fit items-center gap-1 rounded px-1 text-left ${
+                  iconesVisiveis.branco
+                    ? 'hover:bg-slate-100 dark:hover:bg-slate-700'
+                    : 'opacity-45 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <IndicadorPrevisaoConfiavel status="branco" />
+                <span>= Em branco</span>
+              </button>
             </div>
           </div>
           <div className="flex flex-wrap items-end gap-2">
@@ -1356,6 +1727,41 @@ export default function CalendarioProducaoModal({
                 fillContainer
               />
             </div>
+            <div className="min-w-[11rem] max-w-[14rem]">
+              <MultiSelectWithSearch
+                label="TipoF"
+                placeholder="Todos"
+                options={opcoesTipoF}
+                value={filtroTipoF}
+                onChange={setFiltroTipoF}
+                labelClass={FILTRO_PD_LABEL_CLASS}
+                inputClass={FILTRO_PD_INPUT_CLASS}
+                minWidth="11rem"
+                optionLabel="opções"
+                dropdownZIndex={FILTRO_PD_DROPDOWN_Z}
+                fillContainer
+              />
+            </div>
+            <div className="min-w-[11rem] max-w-[14rem]">
+              <MultiSelectWithSearch
+                label="Confiável"
+                placeholder="Todos"
+                options={['sim', 'nao', 'branco']}
+                labelByValue={{
+                  sim: 'Confiáveis',
+                  nao: 'Não confiáveis',
+                  branco: 'Em branco',
+                }}
+                value={filtroConfiavel}
+                onChange={setFiltroConfiavel}
+                labelClass={FILTRO_PD_LABEL_CLASS}
+                inputClass={FILTRO_PD_INPUT_CLASS}
+                minWidth="11rem"
+                optionLabel="opções"
+                dropdownZIndex={FILTRO_PD_DROPDOWN_Z}
+                fillContainer
+              />
+            </div>
             <button
               type="button"
               onClick={() => setSomentePrev((ativo) => !ativo)}
@@ -1364,18 +1770,23 @@ export default function CalendarioProducaoModal({
                   ? 'bg-primary-600 text-white'
                   : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
               }`}
-              title="Exibir somente quantidades posicionadas pela previsão (células com *)"
+              title="Exibir somente quantidades posicionadas pela previsão (células com ⚠️)"
             >
-              Somente Prev.
+              Somente ⚠️
             </button>
-            {pdsSelecionados.length > 0 && (
+            {temFiltroAtivo && (
               <button
                 type="button"
-                onClick={() => setFiltroPd('')}
+                onClick={() => {
+                  setFiltroPd('');
+                  setFiltroTipoF('');
+                  setFiltroConfiavel('');
+                  setSomentePrev(false);
+                }}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                title="Limpar filtro de pedido"
+                title="Limpar filtros de pedido, TipoF, confiável e somente ⚠️"
               >
-                Limpar pedido
+                Limpar filtros
               </button>
             )}
           </div>
@@ -1386,16 +1797,22 @@ export default function CalendarioProducaoModal({
           <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-slate-200 px-4 py-2 text-xs dark:border-slate-600">
             <button
               type="button"
-              onClick={() => setDrill({ nivel: 'pivot' })}
-              className="rounded px-2 py-1 font-medium text-primary-700 hover:bg-slate-100 dark:text-primary-300 dark:hover:bg-slate-700"
+              onClick={() => runSeInterativo(() => setDrill({ nivel: 'pivot' }))}
+              disabled={interacaoCalendarioBloqueada}
+              className="rounded px-2 py-1 font-medium text-primary-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-300 dark:hover:bg-slate-700"
             >
               Calendário
             </button>
             <span className="text-slate-400">/</span>
             <button
               type="button"
-              onClick={() => setDrill({ nivel: 'tipof', setor: drill.setor, data: drill.data })}
-              className={`rounded px-2 py-1 font-medium ${drill.nivel === 'tipof' ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200' : 'text-primary-700 hover:bg-slate-100 dark:text-primary-300 dark:hover:bg-slate-700'}`}
+              onClick={() =>
+                runSeInterativo(() =>
+                  setDrill({ nivel: 'tipof', setor: drill.setor, data: drill.data })
+                )
+              }
+              disabled={interacaoCalendarioBloqueada}
+              className={`rounded px-2 py-1 font-medium disabled:cursor-not-allowed disabled:opacity-50 ${drill.nivel === 'tipof' ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200' : 'text-primary-700 hover:bg-slate-100 dark:text-primary-300 dark:hover:bg-slate-700'}`}
             >
               {drill.setor} · {formatDataCurta(drill.data)}
             </button>
@@ -1405,14 +1822,17 @@ export default function CalendarioProducaoModal({
                 <button
                   type="button"
                   onClick={() =>
-                    setDrill({
-                      nivel: 'carradas',
-                      setor: drill.setor,
-                      data: drill.data,
-                      tipoF: drill.tipoF,
-                    })
+                    runSeInterativo(() =>
+                      setDrill({
+                        nivel: 'carradas',
+                        setor: drill.setor,
+                        data: drill.data,
+                        tipoF: drill.tipoF,
+                      })
+                    )
                   }
-                  className={`rounded px-2 py-1 font-medium ${drill.nivel === 'carradas' ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200' : 'text-primary-700 hover:bg-slate-100 dark:text-primary-300 dark:hover:bg-slate-700'}`}
+                  disabled={interacaoCalendarioBloqueada}
+                  className={`rounded px-2 py-1 font-medium disabled:cursor-not-allowed disabled:opacity-50 ${drill.nivel === 'carradas' ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200' : 'text-primary-700 hover:bg-slate-100 dark:text-primary-300 dark:hover:bg-slate-700'}`}
                 >
                   TipoF: {drill.tipoF}
                 </button>
@@ -1421,8 +1841,11 @@ export default function CalendarioProducaoModal({
             {drill.nivel === 'pedidos' && (
               <>
                 <span className="text-slate-400">/</span>
-                <span className="rounded bg-primary-100 px-2 py-1 font-medium text-primary-800 dark:bg-primary-900/40 dark:text-primary-200">
-                  Carrada
+                <span
+                  className="rounded bg-primary-100 px-2 py-1 font-medium text-primary-800 dark:bg-primary-900/40 dark:text-primary-200"
+                  title={labelCarradaDrill}
+                >
+                  Carrada: {labelCarradaDrill}
                 </span>
               </>
             )}
@@ -1538,8 +1961,9 @@ export default function CalendarioProducaoModal({
                           <td className="px-2.5 py-1.5">
                             <button
                               type="button"
-                              onClick={() => abrirAlocarDoPainel(item)}
-                              className="rounded-md bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-primary-700"
+                              onClick={() => runSeInterativo(() => abrirAlocarDoPainel(item))}
+                              disabled={interacaoCalendarioBloqueada}
+                              className="rounded-md bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               Alocar data…
                             </button>
@@ -1635,19 +2059,22 @@ export default function CalendarioProducaoModal({
                         {gradeCriticos.rowsExibidas.map((m) => (
                           <tr key={m.codigo} className="border-b border-slate-100 dark:border-slate-700">
                             <td className={TD}>
-                              <GradeCelulaModalBtn
-                                onClick={() =>
-                                  setHorizonteItem({
-                                    codigo: m.codigo,
-                                    idProduto: m.idProduto,
-                                    descricao: m.descricao,
-                                  })
-                                }
-                                title="Ver horizonte do material"
-                                align="left"
-                              >
-                                {m.codigo}
-                              </GradeCelulaModalBtn>
+                              <span className="inline-flex items-center gap-1">
+                                <GradeCelulaModalBtn
+                                  onClick={() =>
+                                    setHorizonteItem({
+                                      codigo: m.codigo,
+                                      idProduto: m.idProduto,
+                                      descricao: m.descricao,
+                                    })
+                                  }
+                                  title="Ver horizonte do material"
+                                  align="left"
+                                >
+                                  {m.codigo}
+                                </GradeCelulaModalBtn>
+                                <CopiarTextoBtn texto={m.codigo} title="Copiar código do material" />
+                              </span>
                             </td>
                             <td className={`${TD} max-w-[16rem] truncate`} title={m.descricao}>
                               {m.descricao || '—'}
@@ -1730,8 +2157,12 @@ export default function CalendarioProducaoModal({
                     <tr key={setor} className="border-b border-slate-100 dark:border-slate-700">
                       <td className={`${TD} sticky left-0 z-10 bg-white dark:bg-slate-800`}>
                         <GradeCelulaModalBtn
-                          onClick={() => setSetorDetalhe(setor)}
-                          title="Ver códigos e descrições do setor"
+                          onClick={() => runSeInterativo(() => setSetorDetalhe(setor))}
+                          title={
+                            interacaoCalendarioBloqueada
+                              ? 'Feche o painel do pedido para navegar no calendário'
+                              : 'Ver códigos e descrições do setor'
+                          }
                           align="left"
                         >
                           {setor}
@@ -1818,33 +2249,42 @@ export default function CalendarioProducaoModal({
                     <td className={TD}>
                       <GradeCelulaModalBtn
                         onClick={() =>
-                          setDrill(
-                            drillAposEscolherTipoF(
-                              dados.detalhes,
-                              drill.setor,
-                              drill.data,
-                              r.tipoF
+                          runSeInterativo(() =>
+                            setDrill(
+                              drillAposEscolherTipoF(
+                                dados.detalhes,
+                                drill.setor,
+                                drill.data,
+                                r.tipoF
+                              )
                             )
                           )
                         }
-                        title="Ver carradas"
+                        title={
+                          interacaoCalendarioBloqueada
+                            ? 'Feche o painel do pedido para navegar no calendário'
+                            : 'Ver carradas'
+                        }
                         align="left"
                       >
                         {r.tipoF}
                       </GradeCelulaModalBtn>
                     </td>
                     <td className={`${TD} text-right tabular-nums`}>
-                      {formatQtdeInt(r.qtde)}
-                      {r.producaoPorPrevisao ? (
-                        <span className="ml-0.5 text-amber-600 dark:text-amber-400" title="Inclui itens posicionados pela previsão">
-                          *
-                        </span>
-                      ) : null}
-                      {r.semCarrada ? (
-                        <span className="ml-1 inline-block align-middle">
-                          <BadgeSemCarrada />
-                        </span>
-                      ) : null}
+                      <span className="inline-flex items-center justify-end gap-0.5">
+                        {formatQtdeInt(r.qtde)}
+                        {r.producaoPorPrevisao && iconesVisiveis.previsao ? (
+                          <IndicadorDataPorPrevisao />
+                        ) : null}
+                        <IndicadoresPrevisaoConfiavel
+                          statuses={filtrarStatusConfiavelVisivel(r.statusConfiavel, iconesVisiveis)}
+                        />
+                        {r.semCarrada ? (
+                          <span className="ml-0.5 inline-block align-middle">
+                            <BadgeSemCarrada />
+                          </span>
+                        ) : null}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -1873,20 +2313,29 @@ export default function CalendarioProducaoModal({
                       <div className="flex items-center gap-1.5">
                         <GradeCelulaModalBtn
                           onClick={() =>
-                            setDrill({
-                              nivel: 'pedidos',
-                              setor: drill.setor,
-                              data: drill.data,
-                              tipoF: drill.tipoF,
-                              carradaKey: r.key,
-                            })
+                            runSeInterativo(() =>
+                              setDrill({
+                                nivel: 'pedidos',
+                                setor: drill.setor,
+                                data: drill.data,
+                                tipoF: drill.tipoF,
+                                carradaKey: r.key,
+                              })
+                            )
                           }
-                          title="Ver pedidos"
+                          title={
+                            interacaoCalendarioBloqueada
+                              ? 'Feche o painel do pedido para navegar no calendário'
+                              : 'Ver pedidos'
+                          }
                           align="left"
                         >
                           {r.carrada}
                         </GradeCelulaModalBtn>
-                        {r.producaoPorPrevisao && <IndicadorDataPorPrevisao />}
+                        {r.producaoPorPrevisao && iconesVisiveis.previsao && <IndicadorDataPorPrevisao />}
+                        <IndicadoresPrevisaoConfiavel
+                          statuses={filtrarStatusConfiavelVisivel(r.statusConfiavel, iconesVisiveis)}
+                        />
                         {r.semCarrada && <BadgeSemCarrada />}
                       </div>
                     </td>
@@ -1918,13 +2367,24 @@ export default function CalendarioProducaoModal({
                     <td className={TD}>
                       <div className="flex items-center gap-1.5">
                         <GradeCelulaModalBtn
-                          onClick={() => abrirModalPedido(r.pd)}
-                          title="Ver itens do pedido"
+                          onClick={() => runSeInterativo(() => abrirModalPedido(r.pd))}
+                          title={
+                            interacaoCalendarioBloqueada
+                              ? 'Feche o painel do pedido para navegar no calendário'
+                              : 'Ver itens do pedido'
+                          }
                           align="left"
                         >
                           {labelPedidoMapa(r.pd)}
                         </GradeCelulaModalBtn>
-                        {r.producaoPorPrevisao && <IndicadorDataPorPrevisao />}
+                        <CopiarTextoBtn
+                          texto={numeroPedidoLimpo(r.pd)}
+                          title="Copiar número do pedido"
+                        />
+                        {r.producaoPorPrevisao && iconesVisiveis.previsao && <IndicadorDataPorPrevisao />}
+                        <IndicadoresPrevisaoConfiavel
+                          statuses={filtrarStatusConfiavelVisivel(r.statusConfiavel, iconesVisiveis)}
+                        />
                         {r.semCarrada && <BadgeSemCarrada />}
                       </div>
                     </td>
@@ -1971,19 +2431,46 @@ export default function CalendarioProducaoModal({
           />
         )}
         </>
+        <button
+          type="button"
+          aria-label="Redimensionar calendário"
+          title="Arraste para redimensionar"
+          data-no-drag
+          className="absolute bottom-0 right-0 z-20 h-5 w-5 cursor-se-resize touch-none rounded-br-xl border-l border-t border-slate-300/80 bg-slate-200/90 hover:bg-slate-300 dark:border-slate-500 dark:bg-slate-600/90 dark:hover:bg-slate-500"
+          onPointerDown={janelaCalendario.onResizePointerDown}
+          onPointerMove={janelaCalendario.onResizePointerMove}
+          onPointerUp={janelaCalendario.onResizePointerEnd}
+          onPointerCancel={janelaCalendario.onResizePointerEnd}
+        >
+          <span className="sr-only">Redimensionar</span>
+          <svg
+            className="pointer-events-none absolute bottom-0.5 right-0.5 h-3 w-3 text-slate-500 dark:text-slate-300"
+            viewBox="0 0 12 12"
+            aria-hidden
+          >
+            <path fill="currentColor" d="M12 12H8V10h2V8h2v4zM10 8H8V6h2V4h2v4zM6 6H4V4h2V2h2v4z" />
+          </svg>
+        </button>
       </div>
-    </div>
+    </div>,
+    document.body
+    )}
 
       {pedidoModal && (
         <HeatmapPedidoItensModal
           open
+          varianteLayout="flutuanteCalendario"
           linha={pedidoModal.linha}
           municipioLabel={pedidoModal.linha.municipio || '—'}
           itens={pedidoModal.itens}
           setorDestaque={pedidoModal.setorDestaque}
           selecaoInicial={pedidoModal.selecaoInicial}
+          statusConfiavelPorIdPedido={statusPorIdPedido}
+          visualizandoCalendario={splitComPedido}
+          onToggleVisualizarCalendario={toggleSplitComPedido}
           onClose={() => {
             pedidoModalRefreshRef.current = null;
+            encerrarSplitComPedido();
             setPedidoModal(null);
           }}
           podeReprogramar={
@@ -2008,12 +2495,15 @@ export default function CalendarioProducaoModal({
               setorDestaque: pedidoModal.setorDestaque,
               selecaoKeys,
             };
-            setPedidoModal(null);
+            // Abrir ajuste ANTES de limpar o split: drillAntesSplitRef ainda tem o nível pedidos.
             if (escopoRm.linhasSnapshot.length > 0) {
               abrirAjustePrevisao(pd, itensSel, escopoRm.linhasSnapshot);
             } else {
               abrirAjustePrevisao(pd, itensSel);
             }
+            setSplitComPedido(false);
+            drillAntesSplitRef.current = null;
+            setPedidoModal(null);
           }}
         />
       )}
@@ -2072,8 +2562,11 @@ export default function CalendarioProducaoModal({
                       setorDestaque: c.setorDestaque,
                       selecaoKeys: c.selecaoKeys,
                     };
-                    setPedidoModal(null);
+                    // Abrir ajuste ANTES de limpar o split (mesmo motivo do onReprogramar).
                     abrirAjustePrevisao(c.pd, c.escopo.itens, c.escopo.linhasSnapshot);
+                    setSplitComPedido(false);
+                    drillAntesSplitRef.current = null;
+                    setPedidoModal(null);
                   }}
                   className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700"
                 >
@@ -2102,6 +2595,7 @@ export default function CalendarioProducaoModal({
         <ModalAjustePrevisao
           pedido={pedidoAjustePrevisao.pedido}
           calendario={pedidoAjustePrevisao.calendario}
+          varianteLayout="flutuanteCalendario"
           persistirNoGerenciador={false}
           onSalvarDataProducao={handleSalvarDataProducao}
           onSalvarPrevisaoSimulacao={handleSalvarPrevisaoSimulacao}

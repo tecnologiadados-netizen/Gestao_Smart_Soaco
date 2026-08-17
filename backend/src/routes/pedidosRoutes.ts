@@ -42,7 +42,9 @@ import {
   deleteSequenciamentoCarradasSnapshot,
 } from '../controllers/sequenciamentoCarradasController.js';
 import {
+  getSequenciamentoSnapshotAgPag,
   getSequenciamentoSnapshotPcPend,
+  getSequenciamentoSnapshotSolicitacao,
   postSequenciamentoConsultaCongelada,
 } from '../controllers/sequenciamentoConsultaCongeladaController.js';
 import {
@@ -122,6 +124,12 @@ router.patch('/sequenciamento-carradas/snapshots/:id', verPedidos, autosaveLimit
 router.post('/sequenciamento-carradas/snapshots/:id/concluir', verPedidos, writeLimiter, postSequenciamentoCarradasSnapshotConcluir);
 router.delete('/sequenciamento-carradas/snapshots/:id', verPedidos, writeLimiter, deleteSequenciamentoCarradasSnapshot);
 router.get('/sequenciamento-carradas/snapshots/:id/pc-pend', verPedidos, getSequenciamentoSnapshotPcPend);
+router.get('/sequenciamento-carradas/snapshots/:id/ag-pag', verPedidos, getSequenciamentoSnapshotAgPag);
+router.get(
+  '/sequenciamento-carradas/snapshots/:id/solicitacao',
+  verPedidos,
+  getSequenciamentoSnapshotSolicitacao
+);
 router.post(
   '/sequenciamento-carradas/snapshots/:id/consulta-congelada',
   verPedidos,

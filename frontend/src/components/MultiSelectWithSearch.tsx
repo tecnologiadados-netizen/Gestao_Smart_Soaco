@@ -104,6 +104,15 @@ export default function MultiSelectWithSearch({
     });
   }, [options, search, labelByValue, onSearchAsync, asyncOptions, minSearchChars, selected]);
 
+  /** Mantém as opções já marcadas visíveis no início da lista em qualquer filtro. */
+  const orderedOptions = useMemo(() => {
+    const selectedSet = new Set(selected);
+    return [
+      ...filteredOptions.filter((opt) => selectedSet.has(opt)),
+      ...filteredOptions.filter((opt) => !selectedSet.has(opt)),
+    ];
+  }, [filteredOptions, selected]);
+
   useEffect(() => {
     if (!onSearchAsync || !open) return;
     const q = search.trim();
@@ -198,11 +207,16 @@ export default function MultiSelectWithSearch({
     }
   };
 
+  const todosSelecionados =
+    options.length > 0 &&
+    selected.length === options.length &&
+    options.every((o) => selected.includes(o));
+
   const labelText =
-    selected.length === 0
+    selected.length === 0 || todosSelecionados
       ? placeholder
       : selected.length === 1
-        ? displayFor(selected[0])
+        ? displayFor(selected[0]!)
         : `${selected.length} ${optionLabel}`;
 
   const panelMaxW = dropdownMaxWidth ?? '100%';
@@ -222,11 +236,11 @@ export default function MultiSelectWithSearch({
         />
       </div>
       <div className="overflow-y-auto overflow-x-hidden py-1" style={{ maxHeight: listaMaxHeight }}>
-        {filteredOptions.length > 0 && (
+        {orderedOptions.length > 0 && (
           <label className="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-600">
             <input
               type="checkbox"
-              checked={filteredOptions.every((o) => selected.includes(o))}
+              checked={orderedOptions.every((o) => selected.includes(o))}
               onChange={selectAll}
               className="rounded border-slate-400 text-primary-600 focus:ring-primary-500"
             />
@@ -246,10 +260,10 @@ export default function MultiSelectWithSearch({
             Digite pelo menos {minSearchChars || 2} caracteres para buscar no ERP.
           </p>
         )}
-        {!asyncLoading && !optionsLoading && filteredOptions.length === 0 && !(minSearchChars > 0 && search.trim().length < minSearchChars) ? (
+        {!asyncLoading && !optionsLoading && orderedOptions.length === 0 && !(minSearchChars > 0 && search.trim().length < minSearchChars) ? (
           <p className="px-3 py-2 text-sm text-slate-600 dark:text-slate-300">Nenhum resultado</p>
         ) : !asyncLoading && !optionsLoading ? (
-          filteredOptions.map((opt) => {
+          orderedOptions.map((opt) => {
             const texto = displayFor(opt);
             return (
               <label

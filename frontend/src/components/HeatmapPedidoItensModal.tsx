@@ -3,9 +3,12 @@ import { createPortal } from 'react-dom';
 import type { TooltipDetalheRow } from '../api/pedidos';
 import { formatDataCurta } from './sequenciamento-carradas/simulacaoCarradas';
 import IndicadorDataPorPrevisao from './sequenciamento-carradas/IndicadorDataPorPrevisao';
+import { IndicadorPrevisaoConfiavel } from './sequenciamento-carradas/IndicadorPrevisaoConfiavel';
+import { statusConfiavelDoDetalhe, type StatusConfiavelCalendario } from './sequenciamento-carradas/previsaoConfiavelCalendario';
 import { labelPedidoMapa } from '../utils/mapaMunicipioPedido';
 import { formatQtdeParaInput } from '../utils/heatmapAjusteCargaGradeUi';
 import { useGradeFiltrosExcel } from '../hooks/useGradeFiltrosExcel';
+import { useModalFlutuante } from '../hooks/useModalFlutuante';
 import GradeFiltroCabecalhoBtn from './grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from './grade/GradeFiltroExcelPortal';
 import { useRegisterModalEscape } from '../contexts/ModalStackContext';
@@ -131,6 +134,8 @@ function valueForSort(row: TooltipDetalheRow, colId: string): string | number {
   }
 }
 
+export type HeatmapPedidoItensVarianteLayout = 'modal' | 'flutuanteCalendario';
+
 export default function HeatmapPedidoItensModal({
   open,
   linha,
@@ -141,6 +146,10 @@ export default function HeatmapPedidoItensModal({
   podeReprogramar = false,
   onReprogramar,
   selecaoInicial,
+  statusConfiavelPorIdPedido,
+  varianteLayout = 'modal',
+  visualizandoCalendario = false,
+  onToggleVisualizarCalendario,
 }: {
   open: boolean;
   linha: TooltipDetalheRow;
@@ -155,11 +164,46 @@ export default function HeatmapPedidoItensModal({
   onReprogramar?: (itens: TooltipDetalheRow[]) => void;
   /** Keys (`codigo\0rota`) a restaurar ao reabrir após Cancelar/ESC do ajuste. */
   selecaoInicial?: string[];
+  /** Status Confiável por id_pedido (calendário do sequenciamento). */
+  statusConfiavelPorIdPedido?: Map<string, StatusConfiavelCalendario>;
+  /**
+   * `flutuanteCalendario`: centralizado, arrastável e redimensionável (calendário visível atrás).
+   * Default `modal`: centralizado com fundo escurecido.
+   */
+  varianteLayout?: HeatmapPedidoItensVarianteLayout;
+  /** Modo split: calendário pivô visível abaixo deste modal. */
+  visualizandoCalendario?: boolean;
+  /** Alterna o modo split (só no fluxo do calendário). */
+  onToggleVisualizarCalendario?: () => void;
 }) {
+  const isFlutuante = varianteLayout === 'flutuanteCalendario';
   const [consultaCodigo, setConsultaCodigo] = useState<string | null>(null);
   const [selecionados, setSelecionados] = useState<Set<string>>(() => new Set());
   const masterCheckRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  const flutuante = useModalFlutuante({
+    enabled: isFlutuante,
+    open,
+    defaultSize: { w: 896, h: 560 },
+    minSize: { w: 420, h: 280 },
+    resetKey: String(linha.pedido ?? ''),
+  });
+
+  const visualizandoPrevRef = useRef(visualizandoCalendario);
+  useEffect(() => {
+    if (!isFlutuante || !open) {
+      visualizandoPrevRef.current = visualizandoCalendario;
+      return;
+    }
+    const prev = visualizandoPrevRef.current;
+    visualizandoPrevRef.current = visualizandoCalendario;
+    // Só reaplica layout no toggle do split — não no open (o hook já centraliza sem piscada).
+    if (visualizandoCalendario === prev) return;
+    if (visualizandoCalendario) flutuante.aplicarTopoSplit();
+    else flutuante.aplicarCentroPadrao();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage ao toggle do split
+  }, [isFlutuante, open, visualizandoCalendario]);
 
   const rowsBase = useMemo(
     () =>
@@ -248,6 +292,10 @@ export default function HeatmapPedidoItensModal({
   const clienteLabel = String(linha.cliente ?? '').trim();
   const tipoPedidoLabel = String(linha.tipoPedido ?? '').trim();
   const meta = [linha.rota, linha.rm ? `RM ${linha.rm}` : ''].filter(Boolean).join(' · ');
+  const observacaoPedido =
+    String(linha.observacaoPedido ?? '').trim() ||
+    itens.map((i) => String(i.observacaoPedido ?? '').trim()).find(Boolean) ||
+    '';
 
   const toggleMaster = () => {
     setSelecionados((prev) => {
@@ -309,52 +357,93 @@ export default function HeatmapPedidoItensModal({
   return createPortal(
     <>
       <div
-        className="fixed inset-0 z-[14000] flex items-center justify-center bg-black/70 p-4"
+        className={
+          isFlutuante
+            ? 'pointer-events-none fixed inset-0 z-[14000]'
+            : 'fixed inset-0 z-[14000] flex items-center justify-center bg-black/70 p-4'
+        }
         role="presentation"
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
+        onClick={
+          isFlutuante
+            ? undefined
+            : (e) => {
+                e.stopPropagation();
+                onClose();
+              }
+        }
       >
         <div
-          className="flex max-h-[min(85vh,560px)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+          className={
+            isFlutuante
+              ? `pointer-events-auto relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800 ${
+                  flutuante.dragging ? 'select-none' : ''
+                }`
+              : 'flex max-h-[min(85vh,560px)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800'
+          }
+          style={flutuante.panelStyle}
           role="dialog"
           aria-modal
           aria-labelledby="heatmap-pedido-itens-titulo"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="shrink-0 border-b border-slate-200 px-4 py-3 dark:border-slate-600">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h3
-                  id="heatmap-pedido-itens-titulo"
-                  className="inline-flex flex-wrap items-center gap-1 text-sm font-semibold text-slate-800 dark:text-slate-100"
-                >
-                  <span>{titulo}</span>
-                  <CopiarTextoBtn texto={pdNum} title="Copiar número do pedido" />
-                </h3>
-                {dataEmissaoFmt ? (
-                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                    Data de emissão {dataEmissaoFmt}
-                  </p>
-                ) : null}
-                {clienteLabel ? (
-                  <p className="mt-0.5 text-xs font-medium text-slate-700 dark:text-slate-200">
-                    {clienteLabel}
-                  </p>
-                ) : null}
-                {tipoPedidoLabel ? (
-                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{tipoPedidoLabel}</p>
-                ) : null}
-                <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">{municipioLabel}</p>
-                {meta && (
-                  <p
-                    className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400"
-                    title={meta}
+          <div
+            className={`shrink-0 border-b border-slate-200 px-4 py-3 dark:border-slate-600 ${
+              isFlutuante
+                ? `cursor-grab touch-none ${flutuante.dragging ? 'cursor-grabbing' : ''}`
+                : ''
+            }`}
+            title={isFlutuante ? 'Arraste para mover o modal' : undefined}
+            onPointerDown={isFlutuante ? flutuante.onDragPointerDown : undefined}
+            onPointerMove={isFlutuante ? flutuante.onDragPointerMove : undefined}
+            onPointerUp={isFlutuante ? flutuante.onDragPointerEnd : undefined}
+            onPointerCancel={isFlutuante ? flutuante.onDragPointerEnd : undefined}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 flex-1 flex-wrap items-start gap-x-6 gap-y-2">
+                <div className="min-w-0 max-w-md">
+                  <h3
+                    id="heatmap-pedido-itens-titulo"
+                    className="inline-flex flex-wrap items-center gap-1 text-sm font-semibold text-slate-800 dark:text-slate-100"
                   >
-                    {meta}
-                  </p>
-                )}
+                    <span>{titulo}</span>
+                    <CopiarTextoBtn texto={pdNum} title="Copiar número do pedido" />
+                  </h3>
+                  {dataEmissaoFmt ? (
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      Data de emissão {dataEmissaoFmt}
+                    </p>
+                  ) : null}
+                  {clienteLabel ? (
+                    <p className="mt-0.5 text-xs font-medium text-slate-700 dark:text-slate-200">
+                      {clienteLabel}
+                    </p>
+                  ) : null}
+                  {tipoPedidoLabel ? (
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{tipoPedidoLabel}</p>
+                  ) : null}
+                  <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">{municipioLabel}</p>
+                  {meta && (
+                    <p
+                      className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400"
+                      title={meta}
+                    >
+                      {meta}
+                    </p>
+                  )}
+                </div>
+                {observacaoPedido ? (
+                  <div className="min-w-0 max-w-sm flex-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Observações
+                    </p>
+                    <p
+                      className="mt-0.5 whitespace-pre-wrap break-words text-xs text-slate-700 dark:text-slate-200"
+                      title={observacaoPedido}
+                    >
+                      {observacaoPedido}
+                    </p>
+                  </div>
+                ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 {Object.keys(grade.columnFilters).length > 0 ? (
@@ -394,12 +483,43 @@ export default function HeatmapPedidoItensModal({
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-4 py-3">
-            {setorDestaque ? (
-              <p className="mb-2 text-[11px] text-slate-500 dark:text-slate-400">
-                Itens do setor{' '}
-                <span className="font-medium text-sky-700 dark:text-sky-300">{setorDestaque}</span>{' '}
-                destacados em azul.
-              </p>
+            {setorDestaque || (isFlutuante && onToggleVisualizarCalendario) ? (
+              <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                {setorDestaque ? (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Itens do setor{' '}
+                    <span className="font-medium text-sky-700 dark:text-sky-300">{setorDestaque}</span>{' '}
+                    destacados em azul.
+                  </p>
+                ) : null}
+                {isFlutuante && onToggleVisualizarCalendario ? (
+                  <button
+                    type="button"
+                    data-no-drag
+                    onClick={onToggleVisualizarCalendario}
+                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium ${
+                      visualizandoCalendario
+                        ? 'border-sky-500/70 bg-sky-50 text-sky-800 dark:border-sky-400/50 dark:bg-sky-950/40 dark:text-sky-200'
+                        : 'border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-500 dark:text-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                    title={
+                      visualizandoCalendario
+                        ? 'Ocultar o calendário abaixo e recentralizar este modal'
+                        : 'Mostrar o calendário de produção abaixo deste modal'
+                    }
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                    {visualizandoCalendario ? 'Ocultar calendário' : 'Visualizar calendário'}
+                  </button>
+                ) : null}
+              </div>
             ) : null}
             {rowsBase.length === 0 ? (
               <p className="py-6 text-center text-sm text-slate-500">
@@ -470,6 +590,14 @@ export default function HeatmapPedidoItensModal({
                               <span className="inline-flex items-center gap-1">
                                 {textoDataProducao(row)}
                                 {row.producaoPorPrevisao ? <IndicadorDataPorPrevisao /> : null}
+                                {statusConfiavelPorIdPedido ? (
+                                  <IndicadorPrevisaoConfiavel
+                                    status={statusConfiavelDoDetalhe(
+                                      row.idPedido,
+                                      statusConfiavelPorIdPedido
+                                    )}
+                                  />
+                                ) : null}
                               </span>
                             </td>
                             <td className="whitespace-nowrap py-1.5 px-2 tabular-nums">
@@ -486,13 +614,16 @@ export default function HeatmapPedidoItensModal({
                             </td>
                             <td className="py-1.5 px-2 font-mono">
                               {row.codigo ? (
-                                <GradeCelulaModalBtn
-                                  onClick={() => setConsultaCodigo(row.codigo)}
-                                  title={`Consultar estoque de ${row.codigo}`}
-                                  align="left"
-                                >
-                                  {row.codigo}
-                                </GradeCelulaModalBtn>
+                                <span className="inline-flex items-center gap-1">
+                                  <GradeCelulaModalBtn
+                                    onClick={() => setConsultaCodigo(row.codigo)}
+                                    title={`Consultar estoque de ${row.codigo}`}
+                                    align="left"
+                                  >
+                                    {row.codigo}
+                                  </GradeCelulaModalBtn>
+                                  <CopiarTextoBtn texto={row.codigo} title="Copiar código do produto" />
+                                </span>
                               ) : (
                                 '—'
                               )}
@@ -534,6 +665,28 @@ export default function HeatmapPedidoItensModal({
               Fechar
             </button>
           </div>
+          {isFlutuante ? (
+            <button
+              type="button"
+              aria-label="Redimensionar modal"
+              title="Arraste para redimensionar"
+              data-no-drag
+              className="absolute bottom-0 right-0 z-20 h-5 w-5 cursor-se-resize touch-none rounded-br-xl border-l border-t border-slate-300/80 bg-slate-200/90 hover:bg-slate-300 dark:border-slate-500 dark:bg-slate-600/90 dark:hover:bg-slate-500"
+              onPointerDown={flutuante.onResizePointerDown}
+              onPointerMove={flutuante.onResizePointerMove}
+              onPointerUp={flutuante.onResizePointerEnd}
+              onPointerCancel={flutuante.onResizePointerEnd}
+            >
+              <span className="sr-only">Redimensionar</span>
+              <svg
+                className="pointer-events-none absolute bottom-0.5 right-0.5 h-3 w-3 text-slate-500 dark:text-slate-300"
+                viewBox="0 0 12 12"
+                aria-hidden
+              >
+                <path fill="currentColor" d="M12 12H8V10h2V8h2v4zM10 8H8V6h2V4h2v4zM6 6H4V4h2V2h2v4z" />
+              </svg>
+            </button>
+          ) : null}
         </div>
       </div>
 

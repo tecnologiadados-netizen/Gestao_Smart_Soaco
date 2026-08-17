@@ -120,12 +120,17 @@ const SECOES: SecaoAjuda[] = [
       {
         titulo: 'Previsão provisória (não confiável)',
         texto:
-          'No toggle “Previsão confiável”, escolha Sim ou Não (o controle sempre abre no meio). Não = data provisória: vale na grade, mas não entra no histórico da Comunicação Interna — use para datas ainda em negociação. Sem ajuste real, a coluna Pedido fica em branco (sem selo Confiável/Não confiável). Em Mais filtros dá para filtrar Confiáveis, Não confiáveis ou Em branco.',
+          'No toggle “Previsão confiável”, escolha Sim ou Não (o controle sempre abre no meio). Não = data provisória: vale na grade, mas não entra no histórico da Comunicação Interna — use para datas ainda em negociação. Sem ajuste real, a coluna Pedido fica em branco (sem selo Confiável/Não confiável). Em Mais filtros, todos os campos são de múltipla escolha: vendedor, status, método de entrega, previsão confiável, tipo de pedido, grupo/subgrupos, requisição, empresa da venda, TipoF e entrada/a vista até 10 dias.',
       },
       {
         titulo: 'Justificativa (PDF)',
         texto:
           'Ao alterar a previsão, você pode anexar o PDF assinado. Em motivo não abonado o anexo é obrigatório; em motivo abonado é opcional. Se o arquivo for enviado, ele fica disponível no histórico do pedido (incluindo Pedidos Encerrados).',
+      },
+      {
+        titulo: 'Histórico de alterações',
+        texto:
+          'No modal de histórico, cada card mostra só o que mudou naquele registro (data, Confiável, motivo, observação, anexo). Rota já está no cabeçalho e não se repete no card. Quando a conclusão do sequenciamento só confirma a data vigente e troca Confiável, o card destaca “de Não confiável para Confiável” (ou o inverso), com quem e quando — sem reexibir data nem o motivo automático.',
       },
     ],
   },

@@ -23,6 +23,8 @@ const filtrosIniciais: FiltrosPedidosState = {
   data_previsao_fim: '',
   atrasados: false,
   grupo_produto: '',
+  subgrupo1: '',
+  subgrupo2: '',
   setor_producao: '',
   uf: '',
   municipio_entrega: '',
@@ -31,6 +33,10 @@ const filtrosIniciais: FiltrosPedidosState = {
   tipo_f: '',
   status: '',
   metodo: '',
+  tipo_pedido: '',
+  requisicao_loja: '',
+  empresa: '',
+  a_vista: '',
   previsao_confiavel: '',
 };
 

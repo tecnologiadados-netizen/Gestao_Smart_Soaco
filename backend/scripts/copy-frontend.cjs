@@ -14,5 +14,16 @@ if (!fs.existsSync(src)) {
   process.exit(1);
 }
 fs.mkdirSync(dest, { recursive: true });
+const destAssets = path.join(dest, 'assets');
+if (fs.existsSync(destAssets)) {
+  fs.rmSync(destAssets, { recursive: true, force: true });
+}
 fs.cpSync(src, dest, { recursive: true });
+const indexHtml = fs.readFileSync(path.join(dest, 'index.html'), 'utf8');
+const refs = [...indexHtml.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((m) => m[1]);
+const missing = refs.filter((rel) => !fs.existsSync(path.join(dest, rel)));
+if (missing.length) {
+  console.error('Frontend copiado, mas o index.html aponta para arquivos ausentes:', missing.join(', '));
+  process.exit(1);
+}
 console.log('Frontend copiado para backend/public');

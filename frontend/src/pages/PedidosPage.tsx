@@ -67,6 +67,8 @@ function buildFiltrosPedidosApi(
     data_fim: f.data_previsao_fim || undefined,
     atrasados: f.atrasados || undefined,
     grupo_produto: f.grupo_produto || undefined,
+    subgrupo1: f.subgrupo1 || undefined,
+    subgrupo2: f.subgrupo2 || undefined,
     setor_producao: f.setor_producao || undefined,
     uf: f.uf || undefined,
     municipio_entrega: f.municipio_entrega || undefined,
@@ -75,10 +77,17 @@ function buildFiltrosPedidosApi(
     tipo_f: f.tipo_f || undefined,
     status: f.status || undefined,
     metodo: f.metodo || undefined,
-    previsao_confiavel:
-      f.previsao_confiavel === 'sim' || f.previsao_confiavel === 'nao' || f.previsao_confiavel === 'branco'
-        ? f.previsao_confiavel
-        : undefined,
+    tipo_pedido: f.tipo_pedido || undefined,
+    requisicao_loja: f.requisicao_loja || undefined,
+    empresa: f.empresa || undefined,
+    a_vista: f.a_vista || undefined,
+    previsao_confiavel: (() => {
+      const raw = String(f.previsao_confiavel ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s): s is 'sim' | 'nao' | 'branco' => s === 'sim' || s === 'nao' || s === 'branco');
+      return raw.length > 0 ? raw.join(',') : undefined;
+    })(),
     sort_levels: Array.isArray(sortLevelsArg) && sortLevelsArg.length > 0 ? sortLevelsArg : undefined,
   };
 }
@@ -111,6 +120,8 @@ const filtrosIniciais: FiltrosPedidosState = {
   data_previsao_fim: '',
   atrasados: false,
   grupo_produto: '',
+  subgrupo1: '',
+  subgrupo2: '',
   setor_producao: '',
   uf: '',
   municipio_entrega: '',
@@ -119,6 +130,10 @@ const filtrosIniciais: FiltrosPedidosState = {
   tipo_f: '',
   status: '',
   metodo: '',
+  tipo_pedido: '',
+  requisicao_loja: '',
+  empresa: '',
+  a_vista: '',
   previsao_confiavel: '',
 };
 

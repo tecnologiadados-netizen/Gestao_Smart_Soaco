@@ -7,6 +7,15 @@ function fmtQtde(n: number): string {
   return n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
+/** Normaliza data do modal para dd/mm/yyyy (mesma face da Consulta de Estoque). */
+function fmtDataEntregaPc(valor: string | null | undefined): string {
+  if (valor == null || String(valor).trim() === '') return '—';
+  const t = String(valor).trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  return t;
+}
+
 export type ModalPcPendDetalhesProps = {
   open: boolean;
   idProduto: number | null;
@@ -119,7 +128,7 @@ export default function ModalPcPendDetalhes({
                   <tr key={`${row.pedidoCompra}-${i}`} className="border-b border-slate-100 dark:border-slate-700">
                     <td className="py-1.5 pr-2 font-mono">{row.pedidoCompra || '—'}</td>
                     <td className="py-1.5 pr-2 text-right tabular-nums">{fmtQtde(row.qtde)}</td>
-                    <td className="py-1.5 text-right whitespace-nowrap">{row.dataEntrega ?? '—'}</td>
+                    <td className="py-1.5 text-right whitespace-nowrap">{fmtDataEntregaPc(row.dataEntrega)}</td>
                   </tr>
                 ))}
                 <tr className="border-t-2 border-primary-200 bg-primary-50/80 font-semibold dark:border-primary-800 dark:bg-primary-900/30">

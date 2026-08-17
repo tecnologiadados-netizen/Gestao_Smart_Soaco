@@ -261,11 +261,30 @@ export type MaterialDiaCalendario = {
   descricao: string;
   consumoDia: number;
   saldoInicio: number;
+  /** Entrada numérica do dia (motor) — base do cálculo de falta. */
   entradaDia: number;
   falta: number;
   status: StatusMaterialDia;
   /** Origem do consumo do dia (mesma fonte da célula). */
   origens: OrigemConsumoCalendario[];
+  /**
+   * Texto prioritário da coluna Entrada PC (não altera falta).
+   * Ausente em respostas legadas → UI cai no número de `entradaDia`.
+   */
+  entradaPc?: EntradaPcExibicaoCalendario;
+};
+
+export type EntradaPcFonteCalendario =
+  | 'entrada_dia'
+  | 'pc_aberta'
+  | 'ag_pag'
+  | 'solicitacao'
+  | 'nenhuma';
+
+export type EntradaPcExibicaoCalendario = {
+  fonte: EntradaPcFonteCalendario;
+  texto: string;
+  clicavel: boolean;
 };
 
 export type HorizonteDiaCalendario = {
@@ -418,7 +437,7 @@ export async function consultarDisponibilidadeMateriaisItem(
 // Consultas congeladas no snapshot da sequência
 // ---------------------------------------------------------------------------
 
-/** PC pendente congelado no Gravar (modal "PC Pend" do Horizonte). */
+/** PC pendente congelado no Gravar (modal "PC Pend" do Horizonte / Materiais do dia). */
 export async function obterPcPendCongelado(
   snapshotId: number,
   idProduto: number
@@ -434,6 +453,52 @@ export async function obterPcPendCongelado(
 }
 
 export type PcPendCongeladoLinha = { pedidoCompra: string; qtde: number; dataEntrega: string | null };
+
+export type AgPagCongeladoLinha = {
+  cotacao: string;
+  dataEmissao: string | null;
+  comprador: string;
+  scCodigos: string;
+  qtde: number;
+};
+
+export type ScCongeladoLinha = {
+  codigo: number;
+  usuario: string;
+  dataEmissao: string | null;
+  dataNecessidade: string | null;
+  saldo: number;
+};
+
+/** Ag Pag congelada no Gravar (modal "Pré Compra" do Materiais do dia). */
+export async function obterAgPagCongelado(
+  snapshotId: number,
+  idProduto: number
+): Promise<{ data: AgPagCongeladoLinha[]; error?: string }> {
+  const res = await apiFetch(
+    `/api/pedidos/sequenciamento-carradas/snapshots/${snapshotId}/ag-pag?idProduto=${encodeURIComponent(
+      String(idProduto)
+    )}`
+  );
+  const body = (await res.json().catch(() => ({}))) as { data?: AgPagCongeladoLinha[]; error?: string };
+  if (!res.ok) return { data: [], error: body.error ?? res.statusText };
+  return { data: body.data ?? [] };
+}
+
+/** SC congelada no Gravar (modal "Solicitação de Compra" do Materiais do dia). */
+export async function obterScCongelado(
+  snapshotId: number,
+  idProduto: number
+): Promise<{ data: ScCongeladoLinha[]; error?: string }> {
+  const res = await apiFetch(
+    `/api/pedidos/sequenciamento-carradas/snapshots/${snapshotId}/solicitacao?idProduto=${encodeURIComponent(
+      String(idProduto)
+    )}`
+  );
+  const body = (await res.json().catch(() => ({}))) as { data?: ScCongeladoLinha[]; error?: string };
+  if (!res.ok) return { data: [], error: body.error ?? res.statusText };
+  return { data: body.data ?? [] };
+}
 
 export type TipoConsultaCongelada = 'estoque' | 'saldoSetor' | 'empenhoPedido';
 

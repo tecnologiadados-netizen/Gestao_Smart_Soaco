@@ -14,7 +14,7 @@ import {
   type SequenciamentoSnapshotListItem,
   type SequenciamentoSnapshotStatus,
 } from '../../api/sequenciamentoCarradas';
-import { ajustarDataProducaoLote, ajustarPrevisaoLote } from '../../api/pedidos';
+import { ajustarDataProducaoLote, ajustarPrevisao, ajustarPrevisaoLote } from '../../api/pedidos';
 import SequenciamentoCarradasDetalheModal from '../../components/sequenciamento-carradas/SequenciamentoCarradasDetalheModal';
 import CalendarioProducaoModal from '../../components/sequenciamento-carradas/CalendarioProducaoModal';
 import ConfirmacaoSimulacaoModal from '../../components/sequenciamento-carradas/ConfirmacaoSimulacaoModal';
@@ -22,6 +22,7 @@ import { useGradeFiltrosExcel, type ExcelFilterDraft } from '../../hooks/useGrad
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
 import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
+import CopiarTextoBtn from '../../components/CopiarTextoBtn';
 import {
   formatDateTimeBr,
   formatMoeda,
@@ -57,6 +58,8 @@ import {
   mensagemBloqueioCarradasSemDatasUnificadas,
   mesclarCarradasSemDatasUnificadas,
   atualizarEstadoLinhaCorrigirDatas,
+  previsaoAtualDaLinha,
+  valorEfetivoItem,
   type CarradaDataInvalida,
   isSimItemKey,
   idPedidoDeSimItemKey,
@@ -72,6 +75,9 @@ import {
   type EditColKey,
 } from '../../components/sequenciamento-carradas/sequenciamentoGradeUi';
 import SequenciamentoDateField from '../../components/sequenciamento-carradas/SequenciamentoDateField';
+import TogglePrevisaoConfiavel, {
+  type PrevisaoConfiavelTri,
+} from '../../components/TogglePrevisaoConfiavel';
 import { ComoLerBtn } from '../../components/AjudaTelaModal';
 import SequenciamentoCarradasAjudaModal from './SequenciamentoCarradasAjudaModal';
 
@@ -116,7 +122,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<(typeof COL_IDS)[number], number> = {
   carrada: 160,
   dataProducao: 100,
   dataEntrega: 100,
-  confiavel: 95,
+  confiavel: 112,
   saldoAFaturar: 85,
   percentualEmDia: 65,
   adiantamento: 85,
@@ -357,6 +363,30 @@ export default function SequenciamentoCarradasPage() {
     },
     [linhasSnapshot, previsaoConfiavelPorId]
   );
+  /**
+   * A escolha na grade é uma decisão para a carrada inteira: todos os itens
+   * de pedido com a mesma chave recebem o override no rascunho.
+   */
+  const editarConfiabilidadeCarrada = useCallback(
+    (key: string, confiavel: PrevisaoConfiavelTri) => {
+      const idsPedido = new Set<string>();
+      for (const row of linhasSnapshot) {
+        if (linhaCarradaKey(row) !== key) continue;
+        const id = String(row.id_pedido ?? row.idChave ?? '').trim();
+        if (id) idsPedido.add(id);
+      }
+      if (idsPedido.size === 0) return;
+      setPrevisaoConfiavelPorId((prev) => {
+        const next = { ...prev };
+        for (const id of idsPedido) {
+          if (confiavel === true || confiavel === false) next[id] = confiavel;
+          else delete next[id];
+        }
+        return next;
+      });
+    },
+    [linhasSnapshot]
+  );
   const getCellText = useCallback(
     (c: SequenciamentoCarradaAgregada, colId: string): string => {
       const key = carradaKeyDe(c);
@@ -593,12 +623,61 @@ export default function SequenciamentoCarradasPage() {
   }, [grade]);
 
   const flushRascunho = useCallback(async (id: number) => {
-    const simulacao = pendingSimulacaoRef.current ?? autosavePayloadRef.current();
-    if (!simulacao) return;
+    // A função atual é atualizada durante o render; evita gravar o payload
+    // pendente anterior quando uma ação pede salvar imediatamente.
+    const simulacao = autosavePayloadRef.current() ?? pendingSimulacaoRef.current;
+    if (!simulacao) return true;
     setAutosaveStatus('saving');
     const r = await atualizarSequenciamentoSnapshot(id, simulacao);
     setAutosaveStatus(r.ok ? 'saved' : 'error');
+    return r.ok;
   }, []);
+
+  /**
+   * O detalhe da carrada edita em memória e só chega ao rascunho ao escolher
+   * "Salvar e sair". Assim, descartar não corre contra o autosave.
+   */
+  const salvarConfiabilidadeDetalhe = useCallback(
+    async (alteracoes: Record<string, PrevisaoConfiavelTri>) => {
+      let mapaApos: Record<string, boolean | null> = {};
+      setPrevisaoConfiavelPorId((prev) => {
+        const next = { ...prev };
+        for (const [id, valor] of Object.entries(alteracoes)) {
+          if (valor === true || valor === false) next[id] = valor;
+          else delete next[id];
+        }
+        mapaApos = next;
+        return next;
+      });
+
+      const id = snapshotVisualizado?.id;
+      if (!id || !editavel) return;
+
+      // Flush com o mapa já mesclado, sem depender do debounce/ref anterior.
+      const base = autosavePayloadRef.current() ?? pendingSimulacaoRef.current;
+      const confiavelKeys = Object.keys(mapaApos).filter(
+        (k) => mapaApos[k] === true || mapaApos[k] === false
+      );
+      const previsaoConfiavel =
+        confiavelKeys.length > 0
+          ? Object.fromEntries(confiavelKeys.map((k) => [k, mapaApos[k] as boolean]))
+          : undefined;
+      const simulacao = {
+        ...(base ?? { ordem: [], itens: [] }),
+        ...(previsaoConfiavel ? { previsaoConfiavel } : {}),
+      };
+      if (!previsaoConfiavel && base && 'previsaoConfiavel' in base) {
+        delete (simulacao as { previsaoConfiavel?: unknown }).previsaoConfiavel;
+      }
+      pendingSimulacaoRef.current = simulacao;
+      flushSimulacaoRef.current = simulacao;
+      setAutosaveStatus('saving');
+      const r = await atualizarSequenciamentoSnapshot(id, simulacao);
+      setAutosaveStatus(r.ok ? 'saved' : 'error');
+      if (!r.ok) throw new Error('Não foi possível salvar o rascunho. Tente novamente.');
+    },
+    [snapshotVisualizado?.id, editavel]
+  );
 
   const fecharVisualizacao = useCallback(async () => {
     const id = snapshotVisualizado?.id;
@@ -1283,6 +1362,56 @@ export default function SequenciamentoCarradasPage() {
             anexoAssinatura ? { anexo_assinatura: anexoAssinatura } : undefined
           );
         }
+
+        // Só Confiável (sem mudança de entrega): o lote rejeita data igual.
+        // Usa o endpoint unitário com confirmacao_data para gravar no Gerenciador.
+        const idsEntrega = new Set(pedidosEntrega.map((p) => p.idPedido));
+        const idsConfiavelSo: Array<{
+          idPedido: string;
+          confiavel: boolean;
+          previsao: string;
+          rota: string;
+        }> = [];
+        for (const [idPedido, valor] of Object.entries(previsaoConfiavelPorId)) {
+          if (valor !== true && valor !== false) continue;
+          if (idsEntrega.has(idPedido)) continue;
+          const row = linhasSnapshot.find(
+            (r) => String(r.id_pedido ?? r.idChave ?? '').trim() === idPedido
+          );
+          if (!row) continue;
+          const snap = row.previsao_atual_confiavel;
+          if (snap === valor) continue;
+          const previsao =
+            valorEfetivoItem(sim, row, 'dataEntrega') || previsaoAtualDaLinha(row);
+          if (!previsao) continue;
+          const { carrada } = linhaCodCarrada(row);
+          idsConfiavelSo.push({
+            idPedido,
+            confiavel: valor,
+            previsao,
+            rota: carrada,
+          });
+        }
+        if (idsConfiavelSo.length > 0) {
+          await Promise.all(
+            idsConfiavelSo.map((item) =>
+              ajustarPrevisao(item.idPedido, {
+                previsao_nova: item.previsao,
+                motivo:
+                  motivos[item.idPedido]?.trim() ||
+                  'Confirmação de previsão confiável (sequenciamento)',
+                observacao: observacaoPorId[item.idPedido]?.trim()
+                  ? observacaoPorId[item.idPedido]!.slice(0, 1000)
+                  : null,
+                previsao_confiavel: item.confiavel,
+                confirmacao_data: true,
+                rota: item.rota || null,
+                anexo_assinatura: anexoAssinatura,
+              })
+            )
+          );
+        }
+
         if (itensProducao.length > 0) {
           const rProd = await ajustarDataProducaoLote(itensProducao);
           if (rProd.erros?.length) {
@@ -1292,6 +1421,7 @@ export default function SequenciamentoCarradasPage() {
         const simulacao = montarSimulacaoPayload();
         const partes: string[] = [];
         if (pedidosEntrega.length > 0) partes.push('previsões');
+        if (idsConfiavelSo.length > 0) partes.push('previsão confiável');
         if (itensProducao.length > 0) partes.push('datas de produção');
         const resumo =
           partes.length > 0
@@ -1329,6 +1459,8 @@ export default function SequenciamentoCarradasPage() {
       itensProducao,
       observacaoPorId,
       previsaoConfiavelPorId,
+      linhasSnapshot,
+      sim,
       montarSimulacaoPayload,
       snapshotVisualizado?.id,
       abrirSnapshot,
@@ -1835,13 +1967,16 @@ export default function SequenciamentoCarradasPage() {
                               style={{ width: columnPreferences.widths.cod, minWidth: columnPreferences.widths.cod }}
                               className="py-2 px-2 font-mono text-slate-800 dark:text-slate-200"
                             >
-                              <GradeCelulaModalBtn
-                                onClick={() => setCarradaDetalhe(c)}
-                                title="Ver detalhe da carrada"
-                                align="left"
-                              >
-                                {c.cod}
-                              </GradeCelulaModalBtn>
+                              <span className="inline-flex items-center gap-1">
+                                <GradeCelulaModalBtn
+                                  onClick={() => setCarradaDetalhe(c)}
+                                  title="Ver detalhe da carrada"
+                                  align="left"
+                                >
+                                  {c.cod}
+                                </GradeCelulaModalBtn>
+                                <CopiarTextoBtn texto={c.cod} title="Copiar código do romaneio" />
+                              </span>
                             </td>
                             )}
                             {visibleColumns.includes('carrada') && (
@@ -1953,17 +2088,32 @@ export default function SequenciamentoCarradasPage() {
                               style={{ width: columnPreferences.widths.confiavel, minWidth: columnPreferences.widths.confiavel }}
                               className="py-2 px-2 text-center"
                             >
-                              {(() => {
-                                const valor = confiabilidadeCarrada(key);
-                                if (valor === null) return null;
-                                return (
+                              {editavel && !carradaEspecial ? (
+                                <TogglePrevisaoConfiavel
+                                  value={confiabilidadeCarrada(key)}
+                                  onChange={(valor) => editarConfiabilidadeCarrada(key, valor)}
+                                  compact
+                                  showHelp={false}
+                                  className="min-w-[102px]"
+                                />
+                              ) : (
+                                (() => {
+                                  const valor = confiabilidadeCarrada(key);
+                                  if (valor === null) return null;
+                                  return (
                                   <span
                                     className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classPercentualEmDia(valor ? 100 : 0)}`}
+                                    title={
+                                      carradaEspecial
+                                        ? 'Carrada especial: Confiável só pode ser alterado na conclusão ou no reprogramar do item'
+                                        : undefined
+                                    }
                                   >
                                     {valor ? 'Confiável' : 'Não confiável'}
                                   </span>
-                                );
-                              })()}
+                                  );
+                                })()
+                              )}
                             </td>
                             )}
                             {visibleColumns.includes('saldoAFaturar') && (
@@ -2102,6 +2252,9 @@ export default function SequenciamentoCarradasPage() {
           carrada={carradaDetalhe}
           linhas={linhasSnapshot}
           aoVivo={aoVivo}
+          editavel={editavel}
+          previsaoConfiavelPorId={previsaoConfiavelPorId}
+          onSalvarConfiabilidade={salvarConfiabilidadeDetalhe}
           onClose={() => setCarradaDetalhe(null)}
         />
       )}
@@ -2116,11 +2269,13 @@ export default function SequenciamentoCarradasPage() {
           onEditarDataProducao={(key, novaData) => editarData(key, 'dataProducao', novaData)}
           onEditarDataEntrega={(key, novaData) => editarData(key, 'dataEntrega', novaData)}
           onRegistrarMotivoSimulacao={(idsPedido, meta) => {
-            setMotivoPorId((prev) => {
-              const next = { ...prev };
-              for (const id of idsPedido) next[id] = meta.motivo;
-              return next;
-            });
+            if (meta.motivo.trim()) {
+              setMotivoPorId((prev) => {
+                const next = { ...prev };
+                for (const id of idsPedido) next[id] = meta.motivo;
+                return next;
+              });
+            }
             setObservacaoPorId((prev) => {
               const next = { ...prev };
               for (const id of idsPedido) {
@@ -2142,6 +2297,7 @@ export default function SequenciamentoCarradasPage() {
           estoqueCongelado={estoqueCongeladoSnapshot}
           geradoEm={geradoEmSnapshot}
           snapshotId={aoVivo ? null : (snapshotVisualizado?.id ?? null)}
+          previsaoConfiavelPorId={previsaoConfiavelPorId}
         />
       )}
 
@@ -2157,6 +2313,8 @@ export default function SequenciamentoCarradasPage() {
           excessosQtdeRomaneada={excessosQtdeRomaneada}
           invalidasDatas={linhasCorrigirDatasModal}
           linhasSnapshot={linhasSnapshot}
+          sim={sim}
+          baseline={baseline}
           onEditarData={editarData}
           salvando={salvandoConfirmacao}
           erro={erroConfirmacao}
@@ -2168,9 +2326,12 @@ export default function SequenciamentoCarradasPage() {
           onPrevisaoConfiavelPorIdChange={(updater) => setPrevisaoConfiavelPorId(updater)}
           onConfirmar={handleConfirmarAplicar}
           onClose={() => {
+            const id = snapshotVisualizado?.id;
+            if (id && editavel) {
+              void flushRascunho(id);
+            }
+            // Mantém sim / motivos / obs / confiável; só oculta o modal.
             setConfirmacaoAberta(false);
-            setCorrigirDatasSnapshot([]);
-            setLinhasAoVivoConfirmacao(null);
           }}
         />
       )}

@@ -7,6 +7,7 @@ import {
   dataProducaoInserirRomaneioApartirDe,
   maxDataProducaoCarradasNormais,
   computarCalendarioProducao,
+  compararSetoresCalendarioProducao,
   resolverDataCalendarioLinha,
   encontrarLinhaSnapshotNoDrill,
   linhaCarradaKey,
@@ -19,6 +20,27 @@ import {
   type SimEntry,
   type CarradaBaseline,
 } from './simulacaoCarradas';
+
+describe('compararSetoresCalendarioProducao', () => {
+  it('coloca (vazio), Não considerar na meta e Outros no fim, nesta ordem', () => {
+    const setores = [
+      'Outros',
+      'Balcões',
+      '(vazio)',
+      'Porta Paletes',
+      'Não considerar na meta',
+      'Fogões',
+    ];
+    expect([...setores].sort(compararSetoresCalendarioProducao)).toEqual([
+      'Balcões',
+      'Fogões',
+      'Porta Paletes',
+      '(vazio)',
+      'Não considerar na meta',
+      'Outros',
+    ]);
+  });
+});
 
 describe('montarEixoDatasCalendario', () => {
   it('descarta colunas antes da primeira data com saldo', () => {

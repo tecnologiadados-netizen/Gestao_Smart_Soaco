@@ -116,7 +116,8 @@ export const listarPedidosQuerySchema = z.object({
   descricao_produto: z.string().optional(),
   a_vista: z.string().optional(),
   requisicao_loja: z.string().optional(),
-  previsao_confiavel: z.enum(['sim', 'nao', 'branco']).optional(),
+  empresa: z.string().optional(),
+  previsao_confiavel: z.string().optional(),
   faixa_atraso: z
     .enum(['em_dia', 'atraso_1_7', 'atraso_8_15', 'atraso_16_30', 'atraso_31_60', 'atraso_60_mais'])
     .optional(),

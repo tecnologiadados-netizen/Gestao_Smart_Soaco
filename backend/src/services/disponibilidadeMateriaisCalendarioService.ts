@@ -9,7 +9,9 @@
 import type { Pool } from 'mysql2/promise';
 import { nomusQueryWithRetry } from '../config/nomusDb.js';
 import { loadBomListaMateriaisAcabadoSql, loadComponentesEscopoCalendarioMateriaisSql } from '../data/bomListaMateriaisSql.js';
+import { calcularSaldoSc } from '../data/consultaEstoqueRepository.js';
 import { RESSUP_NAO_ALMOX_ATTR_TIPO_MATERIAL } from '../data/ressupNaoAlmoxRepository.js';
+import { STATUS_COTACAO_AGPAG_SQL } from '../data/sql/sqlComprasEstoqueFragments.js';
 import { mppDiaIsoDataPrevisao } from '../controllers/mppController.js';
 import {
   arred2,
@@ -39,6 +41,40 @@ export type DemandaCalendarioLinha = {
   carrada?: string;
 };
 
+/** Linha de Ag Pag (cotação status 1–3) congelada / detalhe. */
+export type AgPagLinhaCongelada = {
+  idProduto: number;
+  cotacao: string;
+  dataEmissao: string | null;
+  comprador: string;
+  scCodigos: string;
+  qtde: number;
+};
+
+/** Linha de Solicitação de Compra aberta congelada / detalhe. */
+export type ScLinhaCongelada = {
+  idProduto: number;
+  codigo: number;
+  usuario: string;
+  dataEmissao: string | null;
+  dataNecessidade: string | null;
+  saldo: number;
+};
+
+/**
+ * Fonte exibida na coluna Entrada PC do modal Materiais do dia.
+ * Prioridade (quando entrada do dia = 0): pc_aberta → ag_pag → solicitacao → nenhuma.
+ * Com entrada do dia > 0: sempre `entrada_dia` (número), sem misturar outras fontes.
+ */
+export type EntradaPcFonte = 'entrada_dia' | 'pc_aberta' | 'ag_pag' | 'solicitacao' | 'nenhuma';
+
+export type EntradaPcExibicao = {
+  fonte: EntradaPcFonte;
+  /** Texto único da célula (nunca combina fontes). */
+  texto: string;
+  clicavel: boolean;
+};
+
 /**
  * Entradas do motor congeladas no momento do Gravar da sequência.
  * Com ela o cálculo roda sem tocar no Nomus, mantendo semáforos e modais estáticos.
@@ -53,7 +89,28 @@ export type BaseMateriaisCongelada = {
   bom: { idPa: number; idComp: number; cod: string; desc: string; qtdePorPa: number }[];
   saldoPorIdComp: Record<string, number>;
   /** PC pendente linha a linha — alimenta a entrada diária e o modal "PC Pend". */
-  pcLinhas: { idProduto: number; pedidoCompra: string; dataEntrega: string; qtde: number }[];
+  pcLinhas: {
+    idProduto: number;
+    pedidoCompra: string;
+    /** Data no eixo do calendário (atrasado/NULL → hoje), ISO YYYY-MM-DD. */
+    dataEntrega: string;
+    /**
+     * Data original formatada como na Consulta de Estoque (`dd/mm/yyyy` ou null).
+     * Ausente em snapshots legados — o endpoint do modal cai no ISO formatado.
+     */
+    dataEntregaExibicao?: string | null;
+    qtde: number;
+  }[];
+  /**
+   * Ag Pag abertas no momento do Gravar (opcional em snapshots legados).
+   * Só alimenta a coluna Entrada PC / modal — não entra no cálculo de falta.
+   */
+  agPagLinhas?: AgPagLinhaCongelada[];
+  /**
+   * SCs abertas com saldo > 0 no momento do Gravar (opcional em snapshots legados).
+   * Só alimenta a coluna Entrada PC / modal — não entra no cálculo de falta.
+   */
+  scLinhas?: ScLinhaCongelada[];
 };
 
 export type StatusPorDataRow = {
@@ -77,11 +134,14 @@ export type MaterialDiaRow = {
   descricao: string;
   consumoDia: number;
   saldoInicio: number;
+  /** Entrada numérica do dia (motor) — base do cálculo de falta; não misturar com avisos. */
   entradaDia: number;
   falta: number;
   status: StatusMaterialDia;
   /** Origem do consumo do dia (mesma fonte da célula, garante grade == modal). */
   origens: OrigemConsumoRow[];
+  /** Texto prioritário da coluna Entrada PC (não altera falta). */
+  entradaPc: EntradaPcExibicao;
 };
 
 export type HorizonteDiaRow = {
@@ -126,6 +186,10 @@ type EngineResult = {
   materiaisCriticos: MaterialCriticoRow[];
   qtdeMateriaisEscopo: number;
   itens: ItemInterno[];
+  /** Linhas analíticas para prioridade/modais da coluna Entrada PC (não afetam falta). */
+  pcLinhas: PcLinhaPendente[];
+  agPagLinhas: AgPagLinhaCongelada[];
+  scLinhas: ScLinhaCongelada[];
 };
 
 function isoDateOnlyValid(s: string): boolean {
@@ -398,11 +462,14 @@ async function saldoSetor2PorIds(pool: Pool, ids: number[]): Promise<Map<number,
 type PcLinhaPendente = {
   idProduto: number;
   pedidoCompra: string;
+  /** Data no eixo (atrasado/NULL → hoje), ISO. */
   dataEntrega: string;
+  /** Data original `dd/mm/yyyy` (igual Consulta de Estoque); null se ERP sem data. */
+  dataEntregaExibicao: string | null;
   qtde: number;
 };
 
-/** PC pendente linha a linha (não agrega em MIN) — atrasado/NULL → hoje. */
+/** PC pendente linha a linha (não agrega em MIN) — atrasado/NULL → hoje no eixo. */
 async function pcPendentePorProduto(
   pool: Pool,
   ids: number[],
@@ -421,7 +488,11 @@ async function pcPendentePorProduto(
         WHEN i.dataEntrega IS NULL THEN CURDATE()
         WHEN CAST(i.dataEntrega AS DATE) < CURDATE() THEN CURDATE()
         ELSE CAST(i.dataEntrega AS DATE)
-      END AS dataEntrega,
+      END AS dataEntregaEixo,
+      CASE
+        WHEN i.dataEntrega IS NULL THEN NULL
+        ELSE DATE_FORMAT(CAST(i.dataEntrega AS DATE), '%d/%m/%Y')
+      END AS dataEntregaExibicao,
       ROUND(COALESCE(i.qtde, 0) - COALESCE(i.qtdeAtendida, 0), 2) AS qtde
     FROM itempedidocompra i
     LEFT JOIN pedidocompra pc ON pc.id = i.idPedidoCompra
@@ -435,10 +506,15 @@ async function pcPendentePorProduto(
       if (!Number.isFinite(id) || id <= 0) continue;
       const q = arred2(num(r.qtde));
       if (q <= 0) continue;
+      const exib =
+        r.dataEntregaExibicao != null && String(r.dataEntregaExibicao).trim() !== ''
+          ? String(r.dataEntregaExibicao).trim()
+          : null;
       out.push({
         idProduto: id,
         pedidoCompra: String(r.pedidoCompra ?? '').trim(),
-        dataEntrega: diaEntradaPc(r.dataEntrega, hoje),
+        dataEntrega: diaEntradaPc(r.dataEntregaEixo, hoje),
+        dataEntregaExibicao: exib,
         qtde: q,
       });
     }
@@ -471,8 +547,168 @@ function agruparEntradasPcPorDia(
   return map;
 }
 
+function fmtDataBrIso(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function fmtNumEntradaPc(n: number): string {
+  if (!Number.isFinite(n)) return '0';
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
 /**
- * Captura as entradas do motor (BOM, saldo do almox secundário e PC pendente) para congelar
+ * Resolve o texto único da coluna Entrada PC (Materiais do dia).
+ * Quando há entrada no dia, mostra o número; senão prioriza PC aberto → Pré Compra → SC → 0.
+ * Não altera o cálculo de falta (usa só `entradaDia` numérico do motor).
+ */
+export function resolverEntradaPcExibicao(args: {
+  entradaDia: number;
+  pcLinhas: { dataEntrega: string; qtde: number }[];
+  temAgPag: boolean;
+  temSolicitacao: boolean;
+}): EntradaPcExibicao {
+  const entrada = arred2(args.entradaDia);
+  if (entrada > 0) {
+    return { fonte: 'entrada_dia', texto: fmtNumEntradaPc(entrada), clicavel: true };
+  }
+
+  const pcs = args.pcLinhas.filter((l) => arred2(l.qtde) > 0 && !!String(l.dataEntrega ?? '').trim());
+  if (pcs.length > 0) {
+    let dataMin = pcs[0]!.dataEntrega;
+    for (const p of pcs) {
+      if (p.dataEntrega < dataMin) dataMin = p.dataEntrega;
+    }
+    const qtde = arred2(
+      pcs.filter((p) => p.dataEntrega === dataMin).reduce((s, p) => s + arred2(p.qtde), 0)
+    );
+    return {
+      fonte: 'pc_aberta',
+      texto: `${fmtDataBrIso(dataMin)} - ${fmtNumEntradaPc(qtde)}`,
+      clicavel: true,
+    };
+  }
+
+  if (args.temAgPag) {
+    return { fonte: 'ag_pag', texto: 'Pré Compra', clicavel: true };
+  }
+  if (args.temSolicitacao) {
+    return { fonte: 'solicitacao', texto: 'Solicitação de Compra', clicavel: true };
+  }
+  return { fonte: 'nenhuma', texto: '0', clicavel: false };
+}
+
+/** Ag Pag abertas (cotação status 1–3) linha a linha — mesma regra do detalhe Consulta de Estoque. */
+async function agPagAbertasPorProduto(pool: Pool, ids: number[]): Promise<AgPagLinhaCongelada[]> {
+  const out: AgPagLinhaCongelada[] = [];
+  if (ids.length === 0) return out;
+  for (let i = 0; i < ids.length; i += IDS_CHUNK) {
+    const chunk = ids.slice(i, i + IDS_CHUNK);
+    const placeholders = chunk.map(() => '?').join(', ');
+    const sql = `
+    SELECT
+      icc.idProduto AS idProduto,
+      cc.nome AS cotacao,
+      DATE_FORMAT(CAST(cc.dataEmissao AS DATE), '%d/%m/%Y') AS dataEmissao,
+      COALESCE(NULLIF(TRIM(u.nome), ''), NULLIF(TRIM(f.nome), ''), NULLIF(TRIM(pe.nome), ''), '—') AS comprador,
+      COALESCE(GROUP_CONCAT(DISTINCT CAST(sc.id AS CHAR) ORDER BY sc.id SEPARATOR ','), '') AS scCodigos,
+      ROUND(icc.qtde, 2) AS qtde
+    FROM itemcotacaocompra icc
+    INNER JOIN cotacaocompra cc ON cc.id = icc.idCotacaoCompra
+    LEFT JOIN usuario u ON u.id = cc.idComprador
+    LEFT JOIN funcionario f ON f.id = u.idFuncionario
+    LEFT JOIN pessoa pe ON pe.id = cc.idComprador
+    LEFT JOIN solicitacaocompra_itemcotacaocompra scicc ON scicc.idItemCotacaoCompra = icc.id
+    LEFT JOIN solicitacaocompra sc ON sc.id = scicc.idSolicitacaoCompra
+    WHERE icc.idProduto IN (${placeholders})
+      AND cc.status IN (${STATUS_COTACAO_AGPAG_SQL})
+    GROUP BY icc.id, icc.idProduto, cc.id, cc.nome, cc.dataEmissao, icc.qtde, u.nome, f.nome, pe.nome
+    ORDER BY icc.idProduto, cc.dataEmissao, cc.nome
+  `;
+    const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(pool, sql, chunk);
+    for (const r of Array.isArray(rows) ? rows : []) {
+      const idProduto = Number(r.idProduto);
+      const qtde = arred2(num(r.qtde));
+      if (!Number.isFinite(idProduto) || idProduto <= 0 || qtde <= 0) continue;
+      out.push({
+        idProduto,
+        cotacao: String(r.cotacao ?? '').trim() || '—',
+        dataEmissao: r.dataEmissao != null && String(r.dataEmissao).trim() !== '' ? String(r.dataEmissao) : null,
+        comprador: String(r.comprador ?? '').trim() || '—',
+        scCodigos: String(r.scCodigos ?? '').trim(),
+        qtde,
+      });
+    }
+  }
+  return out;
+}
+
+/** SCs abertas (status 2/6) com saldo > 0 — mesma regra do detalhe Consulta de Estoque. */
+async function scAbertasPorProduto(pool: Pool, ids: number[]): Promise<ScLinhaCongelada[]> {
+  const out: ScLinhaCongelada[] = [];
+  if (ids.length === 0) return out;
+  for (let i = 0; i < ids.length; i += IDS_CHUNK) {
+    const chunk = ids.slice(i, i + IDS_CHUNK);
+    const placeholders = chunk.map(() => '?').join(', ');
+    const sql = `
+    SELECT
+      sc.idProduto AS idProduto,
+      sc.id AS codigo,
+      u.nome AS usuario,
+      DATE_FORMAT(CAST(sc.dataEmissao AS DATE), '%d/%m/%Y') AS dataEmissao,
+      DATE_FORMAT(CAST(sc.dataNecessidade AS DATE), '%d/%m/%Y') AS dataNecessidade,
+      ROUND(GREATEST(0, sc.quantidade), 2) AS qtdeSolicitada,
+      ROUND(COALESCE(ate.qtdeAtendida, 0), 2) AS qtdeComprada,
+      ROUND(COALESCE(cot.qtdeEmCotacao, 0), 2) AS qtdeEmCotacao
+    FROM solicitacaocompra sc
+    LEFT JOIN usuario u ON u.id = sc.idUsuario
+    LEFT JOIN (
+      SELECT idSolicitacaoCompra, SUM(qtdeAtendida) AS qtdeAtendida
+      FROM solicitacaocompraitempedidocompra
+      GROUP BY idSolicitacaoCompra
+    ) ate ON ate.idSolicitacaoCompra = sc.id
+    LEFT JOIN (
+      SELECT scicc.idSolicitacaoCompra, SUM(scicc.qtdeAtendida) AS qtdeEmCotacao
+      FROM solicitacaocompra_itemcotacaocompra scicc
+      INNER JOIN itemcotacaocompra icc ON icc.id = scicc.idItemCotacaoCompra
+      INNER JOIN cotacaocompra cc ON cc.id = icc.idCotacaoCompra
+      WHERE cc.status IN (${STATUS_COTACAO_AGPAG_SQL})
+      GROUP BY scicc.idSolicitacaoCompra
+    ) cot ON cot.idSolicitacaoCompra = sc.id
+    WHERE sc.idProduto IN (${placeholders})
+      AND sc.status IN (2, 6)
+      AND sc.lixeira IS NULL
+    ORDER BY sc.idProduto, sc.dataNecessidade, sc.id
+  `;
+    const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(pool, sql, chunk);
+    for (const r of Array.isArray(rows) ? rows : []) {
+      const idProduto = Number(r.idProduto);
+      if (!Number.isFinite(idProduto) || idProduto <= 0) continue;
+      const saldo = calcularSaldoSc(
+        num(r.qtdeSolicitada),
+        num(r.qtdeComprada),
+        num(r.qtdeEmCotacao)
+      );
+      if (!(saldo > 0)) continue;
+      out.push({
+        idProduto,
+        codigo: Number(r.codigo ?? 0),
+        usuario: String(r.usuario ?? '').trim() || '—',
+        dataEmissao: r.dataEmissao != null && String(r.dataEmissao).trim() !== '' ? String(r.dataEmissao) : null,
+        dataNecessidade:
+          r.dataNecessidade != null && String(r.dataNecessidade).trim() !== ''
+            ? String(r.dataNecessidade)
+            : null,
+        saldo: arred2(saldo),
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Captura as entradas do motor (BOM, saldo do almox secundário, PC, Ag Pag e SC) para congelar
  * junto ao snapshot da sequência. `codigosPa` deve conter todos os PAs das linhas gravadas.
  */
 export async function capturarBaseMateriaisCongelada(
@@ -488,9 +724,11 @@ export async function capturarBaseMateriaisCongelada(
   const bomSec = await filtrarBomEscopoCalendario(pool, bomRows);
 
   const idsItens = [...new Set(bomSec.map((b) => b.idComponente))];
-  const [saldos, pcLinhas] = await Promise.all([
+  const [saldos, pcLinhas, agPagLinhas, scLinhas] = await Promise.all([
     saldoSetor2PorIds(pool, idsItens),
     pcPendentePorProduto(pool, idsItens, hoje),
+    agPagAbertasPorProduto(pool, idsItens),
+    scAbertasPorProduto(pool, idsItens),
   ]);
 
   const saldoPorIdComp: Record<string, number> = {};
@@ -510,6 +748,8 @@ export async function capturarBaseMateriaisCongelada(
     })),
     saldoPorIdComp,
     pcLinhas,
+    agPagLinhas,
+    scLinhas,
   };
 }
 
@@ -520,7 +760,75 @@ export function pcPendentesCongeladasDoProduto(
 ): PcLinhaPendente[] {
   return base.pcLinhas
     .filter((l) => l.idProduto === idProduto)
-    .sort((a, b) => a.dataEntrega.localeCompare(b.dataEntrega));
+    .map((l) => ({
+      idProduto: l.idProduto,
+      pedidoCompra: l.pedidoCompra,
+      dataEntrega: l.dataEntrega,
+      dataEntregaExibicao:
+        l.dataEntregaExibicao !== undefined
+          ? l.dataEntregaExibicao
+          : fmtDataBrIso(l.dataEntrega) || null,
+      qtde: l.qtde,
+    }))
+    .sort((a, b) => {
+      // Ordena pela data de exibição (dd/mm/yyyy → yyyymmdd) alinhada à Consulta de Estoque.
+      const ka = chaveOrdenacaoDataExibicao(a.dataEntregaExibicao) ?? a.dataEntrega;
+      const kb = chaveOrdenacaoDataExibicao(b.dataEntregaExibicao) ?? b.dataEntrega;
+      const dc = ka.localeCompare(kb);
+      if (dc !== 0) return dc;
+      return a.pedidoCompra.localeCompare(b.pedidoCompra, 'pt-BR');
+    });
+}
+
+/** Formato do modal PC Pend — mesma face da Consulta de Estoque (`dd/mm/yyyy` ou null). */
+export function pcPendModalLinhasDoProduto(
+  base: BaseMateriaisCongelada,
+  idProduto: number
+): { pedidoCompra: string; qtde: number; dataEntrega: string | null }[] {
+  return pcPendentesCongeladasDoProduto(base, idProduto).map((l) => ({
+    pedidoCompra: l.pedidoCompra,
+    qtde: l.qtde,
+    dataEntrega: l.dataEntregaExibicao,
+  }));
+}
+
+function chaveOrdenacaoDataExibicao(br: string | null | undefined): string | null {
+  if (!br?.trim()) return null;
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(br.trim());
+  if (!m) return null;
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
+/** Ag Pag congeladas do produto (modal Pré Compra em snapshot). */
+export function agPagCongeladasDoProduto(
+  base: BaseMateriaisCongelada,
+  idProduto: number
+): AgPagLinhaCongelada[] {
+  return (base.agPagLinhas ?? [])
+    .filter((l) => l.idProduto === idProduto && l.qtde > 0)
+    .sort((a, b) => {
+      const da = a.dataEmissao ?? '';
+      const db = b.dataEmissao ?? '';
+      const dc = da.localeCompare(db);
+      if (dc !== 0) return dc;
+      return a.cotacao.localeCompare(b.cotacao, 'pt-BR');
+    });
+}
+
+/** SCs congeladas do produto (modal Solicitação de Compra em snapshot). */
+export function scCongeladasDoProduto(
+  base: BaseMateriaisCongelada,
+  idProduto: number
+): ScLinhaCongelada[] {
+  return (base.scLinhas ?? [])
+    .filter((l) => l.idProduto === idProduto && l.saldo > 0)
+    .sort((a, b) => {
+      const da = a.dataNecessidade ?? '';
+      const db = b.dataNecessidade ?? '';
+      const dc = da.localeCompare(db);
+      if (dc !== 0) return dc;
+      return a.codigo - b.codigo;
+    });
 }
 
 function montarDatasCalendario(demanda: DemandaCalendarioLinha[], hoje: string): string[] {
@@ -562,6 +870,9 @@ export async function computarEngineDisponibilidade(
         materiaisCriticos: [],
         qtdeMateriaisEscopo: 0,
         itens: [],
+        pcLinhas: [],
+        agPagLinhas: [],
+        scLinhas: [],
       },
     };
   }
@@ -648,16 +959,27 @@ export async function computarEngineDisponibilidade(
   const idsItens = [...itensMap.keys()];
   let saldos: Map<number, number>;
   let entradas: Map<number, Map<string, number>>;
+  let pcLinhas: PcLinhaPendente[];
+  let agPagLinhas: AgPagLinhaCongelada[];
+  let scLinhas: ScLinhaCongelada[];
   if (base) {
     saldos = new Map(idsItens.map((id) => [id, arred2(num(base.saldoPorIdComp[String(id)]))]));
-    entradas = agruparEntradasPcPorDia(base.pcLinhas, hoje);
+    pcLinhas = base.pcLinhas;
+    agPagLinhas = base.agPagLinhas ?? [];
+    scLinhas = base.scLinhas ?? [];
+    entradas = agruparEntradasPcPorDia(pcLinhas, hoje);
   } else {
-    [saldos, entradas] = await Promise.all([
+    const [saldosLive, pcLive, agLive, scLive] = await Promise.all([
       saldoSetor2PorIds(pool!, idsItens),
-      pcPendentePorProduto(pool!, idsItens, hoje).then((linhas) =>
-        agruparEntradasPcPorDia(linhas, hoje)
-      ),
+      pcPendentePorProduto(pool!, idsItens, hoje),
+      agPagAbertasPorProduto(pool!, idsItens),
+      scAbertasPorProduto(pool!, idsItens),
     ]);
+    saldos = saldosLive;
+    pcLinhas = pcLive;
+    agPagLinhas = agLive;
+    scLinhas = scLive;
+    entradas = agruparEntradasPcPorDia(pcLinhas, hoje);
   }
 
   for (const [id, it] of itensMap) {
@@ -751,6 +1073,9 @@ export async function computarEngineDisponibilidade(
       materiaisCriticos,
       qtdeMateriaisEscopo: itens.length,
       itens,
+      pcLinhas,
+      agPagLinhas,
+      scLinhas,
     },
   };
 }
@@ -826,6 +1151,18 @@ export async function obterMateriaisDoDia(
   }
 
   const materiais: MaterialDiaRow[] = [];
+  const agPorProduto = new Set(r.data.agPagLinhas.map((l) => l.idProduto));
+  const scPorProduto = new Set(r.data.scLinhas.map((l) => l.idProduto));
+  const pcsPorProduto = new Map<number, PcLinhaPendente[]>();
+  for (const l of r.data.pcLinhas) {
+    let arr = pcsPorProduto.get(l.idProduto);
+    if (!arr) {
+      arr = [];
+      pcsPorProduto.set(l.idProduto, arr);
+    }
+    arr.push(l);
+  }
+
   for (const item of r.data.itens) {
     const diasCel = r.data.datas.map((d) => ({
       consumo: item.consumoPorDia.get(d) ?? 0,
@@ -840,6 +1177,12 @@ export async function obterMateriaisDoDia(
     const falta = nAcum[idx]!;
     if (!(falta > 0) || !(consumo > 0)) continue;
     const status = statusCelulaMaterialDia(consumo, saldoInicio, entrada, falta);
+    const entradaPc = resolverEntradaPcExibicao({
+      entradaDia: entrada,
+      pcLinhas: pcsPorProduto.get(item.idProduto) ?? [],
+      temAgPag: agPorProduto.has(item.idProduto),
+      temSolicitacao: scPorProduto.has(item.idProduto),
+    });
     materiais.push({
       idProduto: item.idProduto,
       codigo: item.codigo,
@@ -850,6 +1193,7 @@ export async function obterMateriaisDoDia(
       falta: arred2(falta),
       status,
       origens: agregarOrigens(item.origens, dataIso),
+      entradaPc,
     });
   }
 

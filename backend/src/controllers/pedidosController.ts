@@ -591,6 +591,7 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
       observacao: observacao ?? null,
       rota: rotaAjuste,
       previsao_confiavel: previsao_confiavel !== false,
+      confirmacaoData: confirmacao_data === true,
       anexoAssinatura: anexoParaLinha,
     });
     const ajustes: AjusteLoteItem[] = [];

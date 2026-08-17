@@ -10,7 +10,6 @@ import {
   GESTAO_USUARIOS_SUBMENUS,
   QUALIDADE_MENU,
   RH_MENU,
-  COMERCIAL_MENU,
   LOJA_MENU,
   type FinanceiroMenuEntry,
   type NavMenuEntry,
@@ -400,7 +399,6 @@ export default function Sidebar({
   const isEngenhariaActive = pathname.startsWith('/engenharia');
   const isQualidadeActive = pathname.startsWith('/qualidade');
   const isRhActive = pathname.startsWith('/rh');
-  const isComercialActive = pathname.startsWith('/comercial');
   const isFinanceiroActive = pathname.startsWith('/financeiro');
   const isLojaActive = pathname.startsWith('/loja');
   const isGestaoUsuariosActive = pathname.startsWith('/usuarios');
@@ -443,6 +441,30 @@ export default function Sidebar({
       onMouseLeave={onCollapse}
     >
       <nav className="scrollbar-app flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-2 py-3">
+        {suporteItems.length > 0 && (
+          <SidebarSection
+            id="suporte"
+            label="Suporte"
+            icon={ICONS.suporte}
+            active={isSuporteActive}
+            sidebarOpen={open}
+            onExpand={onExpand}
+            accordionOpen={accordionOpen}
+            toggleAccordion={toggleAccordion}
+            badge={supportUnreadCount}
+          >
+            {suporteItems.map((item) => (
+              <SidebarNavLink
+                key={item.to}
+                to={item.to}
+                label={item.label}
+                sidebarOpen={open}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </SidebarSection>
+        )}
+
         {showKpis && (
           <NavLink
             to="/kpis"
@@ -459,26 +481,49 @@ export default function Sidebar({
           </NavLink>
         )}
 
-        {showProducao && (
+        {hasPermission(PERMISSOES.COMUNICACAO_TELA_VER) && (
           <SidebarSection
-            id="producao"
-            label="Produção"
-            icon={ICONS.producao}
-            active={isProducaoActive}
+            id="comunicacao"
+            label="Comunicação interna"
+            icon={ICONS.comunicacao}
+            active={isComunicacaoActive}
+            sidebarOpen={open}
+            onExpand={onExpand}
+            accordionOpen={accordionOpen}
+            toggleAccordion={toggleAccordion}
+          >
+            {COMUNICACAO_INTERNA_SUBMENUS.map((item) => (
+              <SidebarNavLink
+                key={item.to}
+                to={item.to}
+                label={item.label}
+                sidebarOpen={open}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </SidebarSection>
+        )}
+
+        {showLogistica && (
+          <SidebarSection
+            id="logistica"
+            label="Logística"
+            icon={ICONS.logistica}
+            active={isLogisticaActive}
             sidebarOpen={open}
             onExpand={onExpand}
             accordionOpen={accordionOpen}
             toggleAccordion={toggleAccordion}
           >
             <NavMenuTree
-              entries={PRODUCAO_MENU}
+              entries={logisticaMenu}
               pathname={pathname}
               sidebarOpen={open}
               accordionOpen={accordionOpen}
               toggleAccordion={toggleAccordion}
               onNavigate={onNavigate}
               hasPermission={hasPermission}
-              prefix="producao"
+              prefix="logistica"
             />
           </SidebarSection>
         )}
@@ -507,71 +552,28 @@ export default function Sidebar({
           </SidebarSection>
         )}
 
-        {showLogistica && (
+        {showProducao && (
           <SidebarSection
-            id="logistica"
-            label="Logística"
-            icon={ICONS.logistica}
-            active={isLogisticaActive}
+            id="producao"
+            label="Produção"
+            icon={ICONS.producao}
+            active={isProducaoActive}
             sidebarOpen={open}
             onExpand={onExpand}
             accordionOpen={accordionOpen}
             toggleAccordion={toggleAccordion}
           >
             <NavMenuTree
-              entries={logisticaMenu}
+              entries={PRODUCAO_MENU}
               pathname={pathname}
               sidebarOpen={open}
               accordionOpen={accordionOpen}
               toggleAccordion={toggleAccordion}
               onNavigate={onNavigate}
               hasPermission={hasPermission}
-              prefix="logistica"
+              prefix="producao"
             />
           </SidebarSection>
-        )}
-
-        {hasPermission(PERMISSOES.COMUNICACAO_TELA_VER) && (
-          <SidebarSection
-            id="comunicacao"
-            label="Comunicação interna"
-            icon={ICONS.comunicacao}
-            active={isComunicacaoActive}
-            sidebarOpen={open}
-            onExpand={onExpand}
-            accordionOpen={accordionOpen}
-            toggleAccordion={toggleAccordion}
-          >
-            {COMUNICACAO_INTERNA_SUBMENUS.map((item) => (
-              <SidebarNavLink
-                key={item.to}
-                to={item.to}
-                label={item.label}
-                sidebarOpen={open}
-                onNavigate={onNavigate}
-              />
-            ))}
-          </SidebarSection>
-        )}
-
-        {(hasPermission(PERMISSOES.FLUXOS_VER) || hasPermission(PERMISSOES.FLUXOS_EDITAR)) && (
-          <NavLink
-            to="/mind-maps"
-            title="Fluxos Decisórios"
-            onClick={onNavigate}
-            className={({ isActive }) =>
-              `${SIDEBAR_SECTION_BTN} mb-0.5 ${
-                isActive || pathname.startsWith('/mind-maps')
-                  ? SIDEBAR_SECTION_ACTIVE
-                  : SIDEBAR_SECTION_IDLE
-              }`
-            }
-          >
-            <MenuIcon>{ICONS.fluxos}</MenuIcon>
-            <SidebarLabel open={open}>
-              <span className="truncate">Fluxos Decisórios</span>
-            </SidebarLabel>
-          </NavLink>
         )}
 
         {hasPermission(PERMISSOES.COMPRAS_VER) && (
@@ -594,32 +596,6 @@ export default function Sidebar({
               onNavigate={onNavigate}
               hasPermission={hasPermission}
               prefix="compras"
-            />
-          </SidebarSection>
-        )}
-
-        {(hasPermission(PERMISSOES.COMERCIAL_VER) ||
-          hasPermission(PERMISSOES.COMERCIAL_PAINEL_VER) ||
-          hasPermission(PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER)) && (
-          <SidebarSection
-            id="comercial"
-            label="Comercial"
-            icon={ICONS.comercial}
-            active={isComercialActive}
-            sidebarOpen={open}
-            onExpand={onExpand}
-            accordionOpen={accordionOpen}
-            toggleAccordion={toggleAccordion}
-          >
-            <NavMenuTree
-              entries={COMERCIAL_MENU}
-              pathname={pathname}
-              sidebarOpen={open}
-              accordionOpen={accordionOpen}
-              toggleAccordion={toggleAccordion}
-              onNavigate={onNavigate}
-              hasPermission={hasPermission}
-              prefix="comercial"
             />
           </SidebarSection>
         )}
@@ -667,34 +643,6 @@ export default function Sidebar({
               onNavigate={onNavigate}
               hasPermission={hasPermission}
               prefix="qualidade"
-            />
-          </SidebarSection>
-        )}
-
-        {hasPermission(PERMISSOES.RH_VER) && (
-          <SidebarSection
-            id="rh"
-            label="RH"
-            icon={ICONS.rh}
-            active={isRhActive}
-            sidebarOpen={open}
-            onExpand={onExpand}
-            accordionOpen={accordionOpen}
-            toggleAccordion={toggleAccordion}
-          >
-            <NavMenuTree
-              entries={RH_MENU.filter((entry) =>
-                entry.kind === 'link' && entry.to === '/rh/configuracoes'
-                  ? hasPermission(PERMISSOES.RH_CONFIGURAR)
-                  : true,
-              )}
-              pathname={pathname}
-              sidebarOpen={open}
-              accordionOpen={accordionOpen}
-              toggleAccordion={toggleAccordion}
-              onNavigate={onNavigate}
-              hasPermission={hasPermission}
-              prefix="rh"
             />
           </SidebarSection>
         )}
@@ -777,27 +725,51 @@ export default function Sidebar({
           </SidebarSection>
         )}
 
-        {integracaoItems.length > 0 && (
+        {(hasPermission(PERMISSOES.FLUXOS_VER) || hasPermission(PERMISSOES.FLUXOS_EDITAR)) && (
+          <NavLink
+            to="/mind-maps"
+            title="Fluxos Decisórios"
+            onClick={onNavigate}
+            className={({ isActive }) =>
+              `${SIDEBAR_SECTION_BTN} mb-0.5 ${
+                isActive || pathname.startsWith('/mind-maps')
+                  ? SIDEBAR_SECTION_ACTIVE
+                  : SIDEBAR_SECTION_IDLE
+              }`
+            }
+          >
+            <MenuIcon>{ICONS.fluxos}</MenuIcon>
+            <SidebarLabel open={open}>
+              <span className="truncate">Fluxos Decisórios</span>
+            </SidebarLabel>
+          </NavLink>
+        )}
+
+        {hasPermission(PERMISSOES.RH_VER) && (
           <SidebarSection
-            id="integracao"
-            label="Integração"
-            icon={ICONS.integracao}
-            active={isIntegracaoActive}
+            id="rh"
+            label="RH"
+            icon={ICONS.rh}
+            active={isRhActive}
             sidebarOpen={open}
             onExpand={onExpand}
             accordionOpen={accordionOpen}
             toggleAccordion={toggleAccordion}
           >
-            {integracaoItems.map((item) => (
-              <SidebarNavLink
-                key={item.to}
-                to={item.to}
-                label={item.label}
-                sidebarOpen={open}
-                onNavigate={onNavigate}
-                title={item.label}
-              />
-            ))}
+            <NavMenuTree
+              entries={RH_MENU.filter((entry) =>
+                entry.kind === 'link' && entry.to === '/rh/configuracoes'
+                  ? hasPermission(PERMISSOES.RH_CONFIGURAR)
+                  : true,
+              )}
+              pathname={pathname}
+              sidebarOpen={open}
+              accordionOpen={accordionOpen}
+              toggleAccordion={toggleAccordion}
+              onNavigate={onNavigate}
+              hasPermission={hasPermission}
+              prefix="rh"
+            />
           </SidebarSection>
         )}
 
@@ -824,25 +796,25 @@ export default function Sidebar({
           </SidebarSection>
         )}
 
-        {suporteItems.length > 0 && (
+        {integracaoItems.length > 0 && (
           <SidebarSection
-            id="suporte"
-            label="Suporte"
-            icon={ICONS.suporte}
-            active={isSuporteActive}
+            id="integracao"
+            label="Integração"
+            icon={ICONS.integracao}
+            active={isIntegracaoActive}
             sidebarOpen={open}
             onExpand={onExpand}
             accordionOpen={accordionOpen}
             toggleAccordion={toggleAccordion}
-            badge={supportUnreadCount}
           >
-            {suporteItems.map((item) => (
+            {integracaoItems.map((item) => (
               <SidebarNavLink
                 key={item.to}
                 to={item.to}
                 label={item.label}
                 sidebarOpen={open}
                 onNavigate={onNavigate}
+                title={item.label}
               />
             ))}
           </SidebarSection>

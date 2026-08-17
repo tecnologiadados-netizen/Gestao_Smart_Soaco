@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { History, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { History, Pencil, Plus, Trash2, X } from 'lucide-react';
 import {
   createCrmRegistroInadimplente,
   deleteCrmRegistroInadimplente,
@@ -255,7 +255,6 @@ function optionFromTexto(texto: string): OptionItem | null {
 export default function RegistroInadimplentesPanel() {
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<RegistroInadimplente[]>([]);
-  const [totalDb, setTotalDb] = useState(0);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -280,6 +279,7 @@ export default function RegistroInadimplentesPanel() {
     getCellText: (r, c) => cellText(r, c as ColumnId),
     valueForSort: (r, c) => sortValue(r, c as ColumnId),
     defaultSortLevels: [{ id: 'vencimento', dir: 'desc' }],
+    dateColumnIds: ['vencimento', 'pagamento'],
   });
 
   const totalPages = Math.max(1, Math.ceil(grade.rowsExibidas.length / PAGE_SIZE));
@@ -302,7 +302,6 @@ export default function RegistroInadimplentesPanel() {
         pageSize: 5000,
       });
       setRows(result.data);
-      setTotalDb(result.total);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao carregar.');
     } finally {
@@ -426,45 +425,46 @@ export default function RegistroInadimplentesPanel() {
     }
   }
 
-  const resumo = useMemo(() => {
-    const somaFiltrada = grade.rowsExibidas.reduce((acc, r) => acc + (r.total ?? 0), 0);
-    return { somaFiltrada };
-  }, [grade.rowsExibidas]);
-
   return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-            Registro de Inadimplentes
-          </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Histórico importado da planilha de vencidos. Clique em Obs para ver e registrar contatos de
-            cobrança. Use ▾ no cabeçalho para filtrar/ordenar; arraste a borda da coluna para
-            redimensionar.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => grade.limparFiltrosGrade()}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-            title="Limpar filtros e ordenação da grade"
-          >
-            Limpar filtros
-          </button>
-          <button
-            type="button"
-            onClick={() => void carregar()}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-          >
-            <RefreshCw className="size-3.5" />
-            Atualizar
-          </button>
+    <section className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {totalPages > 1 ? (
+          <div className="flex gap-1">
+            <button
+              type="button"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="h-7 rounded-lg border border-slate-300 px-2 text-xs font-semibold disabled:opacity-40 dark:border-slate-600"
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="h-7 rounded-lg border border-slate-300 px-2 text-xs font-semibold disabled:opacity-40 dark:border-slate-600"
+            >
+              Próxima
+            </button>
+          </div>
+        ) : (
+          <span />
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {grade.temFiltrosOuOrdem ? (
+            <button
+              type="button"
+              onClick={() => grade.limparFiltrosGrade()}
+              className="inline-flex h-7 items-center rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+              title="Limpar filtros e ordenação da grade"
+            >
+              Limpar filtros
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={abrirNovo}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-700 px-3 text-xs font-semibold text-white shadow hover:bg-blue-800"
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-blue-700 px-2.5 text-xs font-semibold text-white shadow hover:bg-blue-800"
           >
             <Plus className="size-3.5" />
             Novo registro
@@ -473,13 +473,13 @@ export default function RegistroInadimplentesPanel() {
       </div>
 
       {erro ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-800">
           {erro}
         </div>
       ) : null}
 
       <div className="table-crm-section">
-        <div ref={grade.tableScrollRef} className="overflow-auto max-h-[calc(100vh-14rem)]">
+        <div ref={grade.tableScrollRef} className="overflow-auto max-h-[calc(100vh-12rem)]">
           <table
             ref={tableRef}
             className="table-crm w-full border-collapse text-left text-xs leading-snug"
@@ -622,38 +622,11 @@ export default function RegistroInadimplentesPanel() {
             onAplicar={grade.aplicarFiltroExcel}
             onCancelar={grade.fecharFiltroExcel}
             showNumericFilters={grade.colunaFiltroAberta === 'total'}
+            showDateRangeFilters={
+              grade.colunaFiltroAberta === 'vencimento' || grade.colunaFiltroAberta === 'pagamento'
+            }
           />
         ) : null}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-300">
-        <p>
-          {grade.rowsExibidas.length.toLocaleString('pt-BR')} exibido(s)
-          {totalDb !== grade.rowsExibidas.length
-            ? ` de ${totalDb.toLocaleString('pt-BR')}`
-            : ''}
-          {' · '}
-          página {page}/{totalPages}
-          {resumo.somaFiltrada > 0 ? ` · soma ${moneyBr(resumo.somaFiltrada)}` : ''}
-        </p>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={page <= 1 || loading}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="h-8 rounded-lg border border-slate-300 px-3 disabled:opacity-40 dark:border-slate-600"
-          >
-            Anterior
-          </button>
-          <button
-            type="button"
-            disabled={page >= totalPages || loading}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            className="h-8 rounded-lg border border-slate-300 px-3 disabled:opacity-40 dark:border-slate-600"
-          >
-            Próxima
-          </button>
-        </div>
       </div>
 
       {formOpen &&

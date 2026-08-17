@@ -5,7 +5,12 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient; prismaP
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    log:
+      process.env.PRISMA_LOG_QUERIES === 'true'
+        ? ['query', 'error', 'warn']
+        : process.env.NODE_ENV === 'development'
+          ? ['error', 'warn']
+          : ['error'],
   });
 
 /** WAL + busy_timeout reduzem risco de "database disk image is malformed" em SQLite sob carga. */

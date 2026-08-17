@@ -394,33 +394,6 @@ input[type='number'].input-num-com-spinner {
 }
 
 /* CRM Financeiro — tabelas e painel */
-.pdf-generating-icon-wrap {
-  position: relative;
-  display: flex;
-  height: 3.5rem;
-  width: 3.5rem;
-  align-items: center;
-  justify-content: center;
-}
-
-.pdf-generating-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  border: 3px solid #d1fae5;
-  border-top-color: #059669;
-  animation: crm-spin-ring 0.85s linear infinite;
-}
-
-.pdf-generating-icon {
-  position: relative;
-  z-index: 1;
-  height: 1.75rem;
-  width: 1.75rem;
-  color: #047857;
-  animation: crm-spin-ring 1.1s linear infinite;
-}
-
 .table-crm {
   width: 100%;
   min-width: 100%;
@@ -561,6 +534,8 @@ input[type='number'].input-num-com-spinner {
 
 .table-crm .cell-nowrap {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .table-crm th.sortable {
