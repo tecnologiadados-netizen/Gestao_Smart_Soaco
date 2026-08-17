@@ -7,32 +7,49 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
+const MARGEM = 8;
+
+/**
+ * Área realmente ocupada por `position: fixed`. `window.innerWidth/innerHeight`
+ * incluem barra de rolagem e ignoram zoom do navegador, o que empurrava o modal
+ * para fora da tela (canto de redimensionar inacessível).
+ */
+export function tamanhoViewport(): ModalFlutuanteSize {
+  if (typeof window === 'undefined') return { w: 1280, h: 800 };
+  const vv = window.visualViewport;
+  const w = vv?.width || document.documentElement.clientWidth || window.innerWidth;
+  const h = vv?.height || document.documentElement.clientHeight || window.innerHeight;
+  return { w: Math.round(w), h: Math.round(h) };
+}
+
 function centerPos(w: number, h: number): ModalFlutuantePos {
   if (typeof window === 'undefined') return { x: 40, y: 40 };
-  const margin = 8;
-  const cw = Math.min(w, window.innerWidth - margin * 2);
-  const ch = Math.min(h, window.innerHeight - margin * 2);
+  const vp = tamanhoViewport();
+  const cw = Math.min(w, vp.w - MARGEM * 2);
+  const ch = Math.min(h, vp.h - MARGEM * 2);
   return {
-    x: Math.max(margin, Math.round((window.innerWidth - cw) / 2)),
-    y: Math.max(margin, Math.round((window.innerHeight - ch) / 2)),
+    x: Math.max(MARGEM, Math.round((vp.w - cw) / 2)),
+    y: Math.max(MARGEM, Math.round((vp.h - ch) / 2)),
   };
 }
 
 function clampPos(pos: ModalFlutuantePos, size: ModalFlutuanteSize): ModalFlutuantePos {
   if (typeof window === 'undefined') return pos;
-  const maxX = Math.max(8, window.innerWidth - Math.min(size.w, window.innerWidth - 16));
-  const maxY = Math.max(8, window.innerHeight - Math.min(size.h, window.innerHeight - 16));
+  const vp = tamanhoViewport();
+  const maxX = Math.max(MARGEM, vp.w - MARGEM - Math.min(size.w, vp.w - MARGEM * 2));
+  const maxY = Math.max(MARGEM, vp.h - MARGEM - Math.min(size.h, vp.h - MARGEM * 2));
   return {
-    x: clamp(pos.x, 8, maxX),
-    y: clamp(pos.y, 8, maxY),
+    x: clamp(pos.x, MARGEM, maxX),
+    y: clamp(pos.y, MARGEM, maxY),
   };
 }
 
 function clampSize(size: ModalFlutuanteSize, minW: number, minH: number): ModalFlutuanteSize {
   if (typeof window === 'undefined') return size;
+  const vp = tamanhoViewport();
   return {
-    w: clamp(size.w, minW, window.innerWidth - 16),
-    h: clamp(size.h, minH, window.innerHeight - 16),
+    w: clamp(size.w, minW, Math.max(minW, vp.w - MARGEM * 2)),
+    h: clamp(size.h, minH, Math.max(minH, vp.h - MARGEM * 2)),
   };
 }
 
@@ -203,15 +220,15 @@ export function useModalFlutuante(opts: {
   /** Encaixa o modal no topo (~36% da tela) para caber o calendário abaixo. */
   const aplicarTopoSplit = useCallback(() => {
     if (!opts.enabled || typeof window === 'undefined') return;
-    const margin = 8;
-    const availW = Math.max(minW, window.innerWidth - margin * 2);
-    const topBand = Math.round(window.innerHeight * 0.36);
+    const vp = tamanhoViewport();
+    const availW = Math.max(minW, vp.w - MARGEM * 2);
+    const topBand = Math.round(vp.h * 0.36);
     const w = clamp(Math.min(1100, availW), minW, availW);
-    const h = clamp(topBand, minH, window.innerHeight - margin * 2 - 120);
+    const h = clamp(topBand, minH, vp.h - MARGEM * 2 - 120);
     setSize({ w, h });
     setPos({
-      x: margin + Math.round((availW - w) / 2),
-      y: margin,
+      x: MARGEM + Math.round((availW - w) / 2),
+      y: MARGEM,
     });
   }, [opts.enabled, minW, minH]);
 
@@ -221,16 +238,16 @@ export function useModalFlutuante(opts: {
    */
   const aplicarBaseSplit = useCallback(() => {
     if (!opts.enabled || typeof window === 'undefined') return;
-    const margin = 8;
     const gap = 8;
+    const vp = tamanhoViewport();
     // Mesma faixa do aplicarTopoSplit (não usa minH do calendário, para alinhar).
-    const topBand = Math.round(window.innerHeight * 0.36);
-    const y = margin + topBand + gap;
+    const topBand = Math.round(vp.h * 0.36);
+    const y = MARGEM + topBand + gap;
     const base = clampSize(defaultSizeRef.current, minW, minH);
-    const w = Math.min(base.w, window.innerWidth - margin * 2);
-    const h = Math.min(base.h, Math.max(160, window.innerHeight - y - margin));
+    const w = Math.min(base.w, vp.w - MARGEM * 2);
+    const h = Math.min(base.h, Math.max(160, vp.h - y - MARGEM));
     setSize({ w, h });
-    setPos({ x: Math.max(margin, Math.round((window.innerWidth - w) / 2)), y });
+    setPos({ x: Math.max(MARGEM, Math.round((vp.w - w) / 2)), y });
   }, [opts.enabled, minW, minH]);
 
   /** Volta ao centro com o tamanho padrão. */
@@ -241,6 +258,9 @@ export function useModalFlutuante(opts: {
     setPos(centerPos(next.w, next.h));
   }, [opts.enabled, minW, minH]);
 
+  // `100vw` inclui a barra de rolagem — usar a viewport medida evita que o
+  // painel ultrapasse a área visível e leve o canto de resize para fora.
+  const vpAtual = typeof window === 'undefined' ? null : tamanhoViewport();
   const panelStyle: CSSProperties | undefined = opts.enabled
     ? {
         position: 'fixed',
@@ -248,8 +268,8 @@ export function useModalFlutuante(opts: {
         top: pos.y,
         width: size.w,
         height: size.h,
-        maxWidth: 'calc(100vw - 16px)',
-        maxHeight: 'calc(100vh - 16px)',
+        maxWidth: vpAtual ? vpAtual.w - MARGEM * 2 : undefined,
+        maxHeight: vpAtual ? vpAtual.h - MARGEM * 2 : undefined,
       }
     : undefined;
 

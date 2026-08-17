@@ -83,7 +83,7 @@ import {
   montarQtdeLiquidaDoSnapshot,
 } from '../../utils/abaterSaldoEstoqueProgramacao';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
-import { useModalFlutuante } from '../../hooks/useModalFlutuante';
+import { useModalFlutuante, tamanhoViewport } from '../../hooks/useModalFlutuante';
 import { useAuth } from '../../contexts/AuthContext';
 import { PERMISSOES } from '../../config/permissoes';
 import type { Pedido, TooltipDetalheRow } from '../../api/pedidos';
@@ -277,15 +277,15 @@ function pdPassaFiltro(pdLinha: string, selecionados: string[]): boolean {
   });
 }
 
-function requisicaoDaLinha(row: Record<string, unknown>): string {
-  for (const k of ['Requisicao de loja do grupo?', 'requisicao de loja do grupo?']) {
+function tipoFDaLinha(row: Record<string, unknown>): string {
+  for (const k of ['tipoF', 'TipoF', 'tipo_f']) {
     const v = row[k];
     if (v != null && String(v).trim()) return String(v).trim();
   }
   return '';
 }
 
-function requisicaoPassaFiltro(valorLinha: string, selecionados: string[]): boolean {
+function tipoFPassaFiltro(valorLinha: string, selecionados: string[]): boolean {
   if (selecionados.length === 0) return true;
   return selecionados.some((sel) => sel.trim().toUpperCase() === valorLinha.trim().toUpperCase());
 }
@@ -369,7 +369,7 @@ export default function CalendarioProducaoModal({
       hasPermission(PERMISSOES.PEDIDOS_EDITAR));
 
   const [filtroPd, setFiltroPd] = useState('');
-  const [filtroRequisicao, setFiltroRequisicao] = useState('');
+  const [filtroTipoF, setFiltroTipoF] = useState('');
   const [filtroConfiavel, setFiltroConfiavel] = useState('');
   const [somentePrev, setSomentePrev] = useState(false);
   const [iconesVisiveis, setIconesVisiveis] = useState<Record<IconeCalendario, boolean>>(
@@ -402,11 +402,11 @@ export default function CalendarioProducaoModal({
     return [...set].sort(comparePedidoAsc);
   }, [linhas]);
 
-  const opcoesRequisicao = useMemo(() => {
+  const opcoesTipoF = useMemo(() => {
     const set = new Set<string>();
     for (const row of linhas) {
-      const req = requisicaoDaLinha(row);
-      if (req) set.add(req);
+      const tipoF = tipoFDaLinha(row);
+      if (tipoF) set.add(tipoF);
     }
     return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
   }, [linhas]);
@@ -420,13 +420,13 @@ export default function CalendarioProducaoModal({
     [filtroPd]
   );
 
-  const requisicoesSelecionadas = useMemo(
+  const tiposFSelecionados = useMemo(
     () =>
-      filtroRequisicao
+      filtroTipoF
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean),
-    [filtroRequisicao]
+    [filtroTipoF]
   );
 
   const confiavelSelecionados = useMemo(
@@ -442,17 +442,17 @@ export default function CalendarioProducaoModal({
     const pdParcial =
       pdsSelecionados.length > 0 &&
       (opcoesPd.length === 0 || pdsSelecionados.length < opcoesPd.length);
-    const requisicaoParcial =
-      requisicoesSelecionadas.length > 0 &&
-      (opcoesRequisicao.length === 0 || requisicoesSelecionadas.length < opcoesRequisicao.length);
+    const tipoFParcial =
+      tiposFSelecionados.length > 0 &&
+      (opcoesTipoF.length === 0 || tiposFSelecionados.length < opcoesTipoF.length);
     const confiavelParcial =
       confiavelSelecionados.length > 0 && confiavelSelecionados.length < 3;
-    return pdParcial || requisicaoParcial || confiavelParcial || somentePrev;
+    return pdParcial || tipoFParcial || confiavelParcial || somentePrev;
   }, [
     pdsSelecionados,
     opcoesPd.length,
-    requisicoesSelecionadas,
-    opcoesRequisicao.length,
+    tiposFSelecionados,
+    opcoesTipoF.length,
     confiavelSelecionados,
     somentePrev,
   ]);
@@ -467,9 +467,9 @@ export default function CalendarioProducaoModal({
     if (pdsSelecionados.length > 0) {
       rows = rows.filter((row) => pdPassaFiltro(pdDaLinha(row), pdsSelecionados));
     }
-    if (requisicoesSelecionadas.length > 0) {
+    if (tiposFSelecionados.length > 0) {
       rows = rows.filter((row) =>
-        requisicaoPassaFiltro(requisicaoDaLinha(row), requisicoesSelecionadas)
+        tipoFPassaFiltro(tipoFDaLinha(row), tiposFSelecionados)
       );
     }
     if (confiavelSelecionados.length > 0) {
@@ -481,7 +481,7 @@ export default function CalendarioProducaoModal({
   }, [
     linhas,
     pdsSelecionados,
-    requisicoesSelecionadas,
+    tiposFSelecionados,
     confiavelSelecionados,
     previsaoConfiavelPorId,
   ]);
@@ -526,7 +526,7 @@ export default function CalendarioProducaoModal({
 
   useEffect(() => {
     setDrill({ nivel: 'pivot' });
-  }, [filtroPd, filtroRequisicao, filtroConfiavel, somentePrev]);
+  }, [filtroPd, filtroTipoF, filtroConfiavel, somentePrev]);
   const [pedidoModal, setPedidoModal] = useState<{
     linha: TooltipDetalheRow;
     itens: TooltipDetalheRow[];
@@ -871,6 +871,25 @@ export default function CalendarioProducaoModal({
       }))
       .sort((a, b) => b.qtde - a.qtde || a.cod.localeCompare(b.cod, 'pt-BR'));
   }, [drill, dados.detalhes, statusPorIdPedido]);
+
+  /** Rótulo do breadcrumb no nível pedidos: Cód · nome da carrada. */
+  const labelCarradaDrill = useMemo(() => {
+    if (drill.nivel !== 'pedidos') return '';
+    for (const d of dados.detalhes) {
+      if (
+        d.setor === drill.setor &&
+        d.data === drill.data &&
+        d.tipoF === drill.tipoF &&
+        carradaKey(d.cod, d.carrada) === drill.carradaKey
+      ) {
+        const cod = (d.cod || '').trim();
+        const nome = (d.carrada || '').trim() || 'Sem Rota';
+        if (cod && cod !== '—') return `${cod} · ${nome}`;
+        return nome;
+      }
+    }
+    return 'Carrada';
+  }, [drill, dados.detalhes]);
 
   const pedidoRows = useMemo(() => {
     if (drill.nivel !== 'pedidos') return [];
@@ -1427,8 +1446,10 @@ export default function CalendarioProducaoModal({
     enabled: true,
     open: true,
     defaultSize: {
-      w: typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.82) : 1100,
-      h: typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.57) : 560,
+      // Margem ~5% em cada lado / ~11% na altura para o canto SE de redimensionar
+      // e o botão Fechar ficarem acessíveis (96% colava na borda da viewport).
+      w: Math.round(tamanhoViewport().w * 0.9),
+      h: Math.round(tamanhoViewport().h * 0.78),
     },
     minSize: { w: 560, h: 280 },
     resetKey: 'calendario-producao',
@@ -1551,6 +1572,7 @@ export default function CalendarioProducaoModal({
 
   return (
     <>
+    {createPortal(
     <div
       className="pointer-events-none fixed inset-0 z-[130] bg-black/50"
       role="presentation"
@@ -1707,11 +1729,11 @@ export default function CalendarioProducaoModal({
             </div>
             <div className="min-w-[11rem] max-w-[14rem]">
               <MultiSelectWithSearch
-                label="Requisição"
+                label="TipoF"
                 placeholder="Todos"
-                options={opcoesRequisicao}
-                value={filtroRequisicao}
-                onChange={setFiltroRequisicao}
+                options={opcoesTipoF}
+                value={filtroTipoF}
+                onChange={setFiltroTipoF}
                 labelClass={FILTRO_PD_LABEL_CLASS}
                 inputClass={FILTRO_PD_INPUT_CLASS}
                 minWidth="11rem"
@@ -1757,12 +1779,12 @@ export default function CalendarioProducaoModal({
                 type="button"
                 onClick={() => {
                   setFiltroPd('');
-                  setFiltroRequisicao('');
+                  setFiltroTipoF('');
                   setFiltroConfiavel('');
                   setSomentePrev(false);
                 }}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                title="Limpar filtros de pedido, requisição, confiável e somente ⚠️"
+                title="Limpar filtros de pedido, TipoF, confiável e somente ⚠️"
               >
                 Limpar filtros
               </button>
@@ -1819,8 +1841,11 @@ export default function CalendarioProducaoModal({
             {drill.nivel === 'pedidos' && (
               <>
                 <span className="text-slate-400">/</span>
-                <span className="rounded bg-primary-100 px-2 py-1 font-medium text-primary-800 dark:bg-primary-900/40 dark:text-primary-200">
-                  Carrada
+                <span
+                  className="rounded bg-primary-100 px-2 py-1 font-medium text-primary-800 dark:bg-primary-900/40 dark:text-primary-200"
+                  title={labelCarradaDrill}
+                >
+                  Carrada: {labelCarradaDrill}
                 </span>
               </>
             )}
@@ -2427,7 +2452,9 @@ export default function CalendarioProducaoModal({
           </svg>
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
+    )}
 
       {pedidoModal && (
         <HeatmapPedidoItensModal
