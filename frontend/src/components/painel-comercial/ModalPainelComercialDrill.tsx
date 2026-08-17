@@ -6,6 +6,20 @@ import { formatMoeda, formatNumero } from './painelComercialUtils';
 
 export type DrillItem = { key: string; label: string; valor: number; qtde: number; pedidos: number };
 
+export type DrillWhere = {
+  mes?: string;
+  grupoProduto?: string;
+  subgrupo1?: string;
+  subgrupo2?: string;
+  vendedor?: string;
+  regiao?: string;
+  uf?: string;
+  municipio?: string;
+  cliente?: string;
+  codigoProduto?: string;
+  pd?: string;
+};
+
 export default function ModalPainelComercialDrill({
   open,
   modalId,
@@ -16,6 +30,8 @@ export default function ModalPainelComercialDrill({
   where,
   onClose,
   onItemClick,
+  loadDrill,
+  itemClickTitle = 'Clique para ver a grade detalhada',
 }: {
   open: boolean;
   modalId: string;
@@ -23,21 +39,14 @@ export default function ModalPainelComercialDrill({
   subtitulo?: string;
   filtros: FiltrosPainelComercialVendas;
   dim: DrillDim;
-  where?: {
-    mes?: string;
-    grupoProduto?: string;
-    subgrupo1?: string;
-    subgrupo2?: string;
-    vendedor?: string;
-    regiao?: string;
-    uf?: string;
-    municipio?: string;
-    cliente?: string;
-    codigoProduto?: string;
-    pd?: string;
-  };
+  where?: DrillWhere;
   onClose: () => void;
   onItemClick: (item: DrillItem) => void;
+  loadDrill?: (
+    filtros: FiltrosPainelComercialVendas,
+    params: { dim: DrillDim } & DrillWhere
+  ) => Promise<{ items: DrillItem[] }>;
+  itemClickTitle?: string;
 }) {
   const [dados, setDados] = useState<DrillItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,7 +57,8 @@ export default function ModalPainelComercialDrill({
     setLoading(true);
     setErro(null);
     try {
-      const res = await obterPainelComercialVendasDrill(filtros, { dim, ...where });
+      const fetchFn = loadDrill ?? obterPainelComercialVendasDrill;
+      const res = await fetchFn(filtros, { dim, ...where });
       setDados(res.items ?? []);
     } catch (e) {
       setDados([]);
@@ -56,7 +66,7 @@ export default function ModalPainelComercialDrill({
     } finally {
       setLoading(false);
     }
-  }, [dim, filtros, open, where]);
+  }, [dim, filtros, loadDrill, open, where]);
 
   useEffect(() => {
     if (!open) {
@@ -122,7 +132,7 @@ export default function ModalPainelComercialDrill({
                     type="button"
                     onClick={() => onItemClick(d)}
                     className="grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-3 rounded-lg px-1 py-1.5 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                    title="Clique para ver a grade detalhada"
+                    title={itemClickTitle}
                   >
                     <span className="truncate text-xs font-medium text-slate-700 dark:text-slate-200">{d.label}</span>
                     <div className="relative h-7 overflow-hidden rounded-md bg-slate-100 dark:bg-slate-800">
@@ -148,4 +158,3 @@ export default function ModalPainelComercialDrill({
     document.body
   );
 }
-

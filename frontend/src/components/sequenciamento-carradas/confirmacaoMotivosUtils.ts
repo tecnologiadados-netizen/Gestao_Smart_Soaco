@@ -52,20 +52,33 @@ export function observacaoComumIds(ids: string[], observacaoPorId: Record<string
   return ids.every((id) => (observacaoPorId[id] ?? '') === primeiro) ? primeiro : '';
 }
 
-/** Previsão confiável efetiva (ausente = true). */
-export function previsaoConfiavelEfetiva(idPedido: string, map: Record<string, boolean>): boolean {
-  return map[idPedido] !== false;
+/** Previsão confiável efetiva (ausente ou null = não escolhido). */
+export function previsaoConfiavelEfetiva(
+  idPedido: string,
+  map: Record<string, boolean | null | undefined>
+): boolean | null {
+  const v = map[idPedido];
+  if (v === true || v === false) return v;
+  return null;
+}
+
+/** True quando o usuário já escolheu Sim ou Não (não está no meio). */
+export function itemPrevisaoConfiavelEscolhida(
+  idPedido: string,
+  map: Record<string, boolean | null | undefined>
+): boolean {
+  return previsaoConfiavelEfetiva(idPedido, map) !== null;
 }
 
 /**
  * Valor comum de previsão confiável entre ids.
- * `null` = divergente entre os itens.
+ * `null` = divergente entre os itens, ou todos sem escolha.
  */
 export function previsaoConfiavelComumIds(
   ids: string[],
-  map: Record<string, boolean>
+  map: Record<string, boolean | null | undefined>
 ): boolean | null {
-  if (ids.length === 0) return true;
+  if (ids.length === 0) return null;
   const primeiro = previsaoConfiavelEfetiva(ids[0]!, map);
   return ids.every((id) => previsaoConfiavelEfetiva(id, map) === primeiro) ? primeiro : null;
 }

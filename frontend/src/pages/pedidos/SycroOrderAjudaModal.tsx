@@ -55,6 +55,11 @@ const SECOES: SecaoAjuda[] = [
         texto: 'Complemento do motivo de reprogramação no Gerenciador — não substitui a mensagem do chat.',
       },
       {
+        titulo: 'Previsão confiável',
+        texto:
+          'No toggle, escolha Sim ou Não (sempre abre no meio). Não = data provisória: vale na grade, mas não entra no histórico da Comunicação Interna. Sem escolha no meio, o salvamento é bloqueado.',
+      },
+      {
         titulo: 'Justificativa (PDF)',
         texto:
           'Com nova data prometida, o PDF assinado fica disponível para anexar. Em motivo não abonado é obrigatório; em motivo abonado é opcional — se anexar, o arquivo é gravado no histórico do pedido (Gerenciador / Pedidos Encerrados).',

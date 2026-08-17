@@ -13,6 +13,7 @@ import {
   obterDashEntregasAnalytics,
   obterDashEntregasAgingTipoF,
   obterDashEntregasLeadTimeTipoF,
+  obterDashEntregasFiltrosOpcoes,
   obterFiltrosOpcoes,
   obterMapaMunicipios,
   obterDetalhesCompletosMunicipioMapa,
@@ -306,10 +307,18 @@ export async function getResumoObservacoes(req: Request, res: Response): Promise
 
 /**
  * GET /api/pedidos/dash-entregas-analytics - KPIs, rotas, aging e top clientes em uma requisição.
+ * Aceita os mesmos query params de listar pedidos (filtros do painel).
  */
-export async function getDashEntregasAnalytics(_req: Request, res: Response): Promise<void> {
+export async function getDashEntregasAnalytics(req: Request, res: Response): Promise<void> {
+  const parsed = listarPedidosQuerySchema.safeParse(req.query);
+  const filtros = parsed.success ? parsed.data : {};
+  const { page: _pg, limit: _lm, ...filtrosDash } = filtros as {
+    page?: number;
+    limit?: number;
+    [k: string]: unknown;
+  };
   try {
-    const data = await obterDashEntregasAnalytics();
+    const data = await obterDashEntregasAnalytics(filtrosDash as Parameters<typeof obterDashEntregasAnalytics>[0]);
     res.json(data);
   } catch (err) {
     console.error('getDashEntregasAnalytics', err);
@@ -321,13 +330,28 @@ export async function getDashEntregasAnalytics(_req: Request, res: Response): Pr
  * GET /api/pedidos/dash-entregas-aging-tipof?faixa_atraso= — saldo por TipoF em uma faixa de aging.
  */
 export async function getDashEntregasAgingTipoF(req: Request, res: Response): Promise<void> {
-  const faixa = typeof req.query.faixa_atraso === 'string' ? req.query.faixa_atraso.trim() : '';
+  const parsed = listarPedidosQuerySchema.safeParse(req.query);
+  const filtros = parsed.success ? parsed.data : {};
+  const faixa =
+    (typeof req.query.faixa_atraso === 'string' ? req.query.faixa_atraso.trim() : '') ||
+    (typeof (filtros as { faixa_atraso?: string }).faixa_atraso === 'string'
+      ? String((filtros as { faixa_atraso?: string }).faixa_atraso).trim()
+      : '');
   if (!faixa) {
     res.status(400).json({ error: 'Parâmetro faixa_atraso é obrigatório.' });
     return;
   }
+  const { page: _pg, limit: _lm, faixa_atraso: _fa, ...filtrosDash } = filtros as {
+    page?: number;
+    limit?: number;
+    faixa_atraso?: string;
+    [k: string]: unknown;
+  };
   try {
-    const data = await obterDashEntregasAgingTipoF(faixa);
+    const data = await obterDashEntregasAgingTipoF(
+      faixa,
+      filtrosDash as Parameters<typeof obterDashEntregasAgingTipoF>[1]
+    );
     res.json(data);
   } catch (err) {
     console.error('getDashEntregasAgingTipoF', err);
@@ -338,13 +362,44 @@ export async function getDashEntregasAgingTipoF(req: Request, res: Response): Pr
 /**
  * GET /api/pedidos/dash-entregas-leadtime-tipof — saldo por TipoF para drill-down do lead time.
  */
-export async function getDashEntregasLeadTimeTipoF(_req: Request, res: Response): Promise<void> {
+export async function getDashEntregasLeadTimeTipoF(req: Request, res: Response): Promise<void> {
+  const parsed = listarPedidosQuerySchema.safeParse(req.query);
+  const filtros = parsed.success ? parsed.data : {};
+  const { page: _pg, limit: _lm, ...filtrosDash } = filtros as {
+    page?: number;
+    limit?: number;
+    [k: string]: unknown;
+  };
   try {
-    const data = await obterDashEntregasLeadTimeTipoF();
+    const data = await obterDashEntregasLeadTimeTipoF(
+      filtrosDash as Parameters<typeof obterDashEntregasLeadTimeTipoF>[0]
+    );
     res.json(data);
   } catch (err) {
     console.error('getDashEntregasLeadTimeTipoF', err);
     res.status(503).json({ error: 'Erro ao obter saldo por TipoF (lead time).' });
+  }
+}
+
+/**
+ * GET /api/pedidos/dash-entregas-filtros-opcoes — opções encadeadas dos filtros do painel.
+ */
+export async function getDashEntregasFiltrosOpcoes(req: Request, res: Response): Promise<void> {
+  const parsed = listarPedidosQuerySchema.safeParse(req.query);
+  const filtros = parsed.success ? parsed.data : {};
+  const { page: _pg, limit: _lm, ...filtrosDash } = filtros as {
+    page?: number;
+    limit?: number;
+    [k: string]: unknown;
+  };
+  try {
+    const opcoes = await obterDashEntregasFiltrosOpcoes(
+      filtrosDash as Parameters<typeof obterDashEntregasFiltrosOpcoes>[0]
+    );
+    res.json(opcoes);
+  } catch (err) {
+    console.error('getDashEntregasFiltrosOpcoes', err);
+    res.status(503).json({ error: 'Erro ao obter opções de filtros do Dash Entregas.' });
   }
 }
 
@@ -454,7 +509,17 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
     return;
   }
 
-  const { previsao_nova, motivo, observacao, replicate_carrada, rota, todas_rotas, previsao_confiavel, anexo_assinatura } = parsed.data;
+  const {
+    previsao_nova,
+    motivo,
+    observacao,
+    replicate_carrada,
+    rota,
+    todas_rotas,
+    previsao_confiavel,
+    confirmacao_data,
+    anexo_assinatura,
+  } = parsed.data;
   const dataPrevisao = new Date(previsao_nova);
   if (Number.isNaN(dataPrevisao.getTime())) {
     res.status(400).json({ error: 'Data de previsão inválida.' });
@@ -491,7 +556,7 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
     if (pedidoAtual) {
       previsaoAntigaStr = new Date(pedidoAtual.previsao_entrega_atualizada).toISOString().slice(0, 10);
       const novaStr = dataPrevisao.toISOString().slice(0, 10);
-      if (previsaoAntigaStr === novaStr) {
+      if (previsaoAntigaStr === novaStr && confirmacao_data !== true) {
         res.status(400).json({
           error: 'A data não foi alterada. Informe uma data diferente da previsão atual para salvar.',
         });
@@ -576,7 +641,8 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
       res.status(404).json({ error: 'Pedido não encontrado após ajuste.' });
       return;
     }
-    try {
+    if (confirmacao_data !== true) {
+      try {
       const novaPrevisaoStr = dataPrevisao.toISOString().slice(0, 10);
       const pedidoRow = pedido as Record<string, unknown>;
       const getVal = (keys: string[]) => {
@@ -603,10 +669,13 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
         usuario,
       });
       enviarNotificacaoPorTipo('previsao_alteracao', msg).catch(() => {});
-    } catch (_) {
-      // não falha o ajuste se o WhatsApp der erro
+      } catch (_) {
+        // não falha o ajuste se o WhatsApp der erro
+      }
     }
-    await syncSycroRespostaAposAjusteGerenciador(idPedido, usuario, dataPrevisao);
+    if (confirmacao_data !== true) {
+      await syncSycroRespostaAposAjusteGerenciador(idPedido, usuario, dataPrevisao);
+    }
     res.json(pedido);
   } catch (err) {
     console.error('ajustarPrevisao', err);

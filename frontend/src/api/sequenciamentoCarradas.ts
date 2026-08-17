@@ -28,7 +28,7 @@ export type SequenciamentoSimulacao = {
   motivos?: Record<string, string>;
   /** Rascunho de observa??es por id_pedido (mesmo fluxo do Gerenciador). */
   observacoes?: Record<string, string>;
-  /** Previs?o confi?vel por id_pedido (`false` = provis?ria). Ausente = true. */
+  /** Previsão confiável por id_pedido (`true`/`false` explícitos). Ausente = ainda não escolhido. */
   previsaoConfiavel?: Record<string, boolean>;
 };
 

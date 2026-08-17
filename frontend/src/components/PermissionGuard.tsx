@@ -14,6 +14,7 @@ export default function PermissionGuard({ children }: { children: ReactNode }) {
 
   const permsNecessarias =
     ROTA_PERMISSAO[pathname] ??
+    (pathname.startsWith('/kpis/') ? ROTA_PERMISSAO['/kpis'] : undefined) ??
     (pathname.startsWith('/qualidade/') ? ROTA_PERMISSAO['/qualidade'] : undefined);
   if (permsNecessarias && !permsNecessarias.some((p) => hasPermission(p))) {
     const redirect = primeiraRotaPermitida(hasPermission, isMaster);

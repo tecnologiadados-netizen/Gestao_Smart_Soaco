@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { obterDashEntregasLeadTimeTipoF, type TipoFLeadTimeResumo } from '../../api/pedidos';
+import {
+  obterDashEntregasLeadTimeTipoF,
+  type FiltrosPedidos,
+  type TipoFLeadTimeResumo,
+} from '../../api/pedidos';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { formatLeadTimeDias, formatNumero } from './dashEntregasUtils';
 
@@ -8,6 +12,7 @@ type Props = {
   open: boolean;
   titulo: string;
   subtitulo?: string;
+  filtrosGlobais?: Omit<FiltrosPedidos, 'page' | 'limit'>;
   onClose: () => void;
   onTipoFClick: (item: TipoFLeadTimeResumo) => void;
 };
@@ -16,6 +21,7 @@ export default function ModalDashEntregasLeadTimeTipoF({
   open,
   titulo,
   subtitulo,
+  filtrosGlobais = {},
   onClose,
   onTipoFClick,
 }: Props) {
@@ -28,7 +34,7 @@ export default function ModalDashEntregasLeadTimeTipoF({
     setLoading(true);
     setErro(null);
     try {
-      const res = await obterDashEntregasLeadTimeTipoF();
+      const res = await obterDashEntregasLeadTimeTipoF(filtrosGlobais);
       setDados(res);
     } catch (e) {
       setDados([]);
@@ -36,7 +42,7 @@ export default function ModalDashEntregasLeadTimeTipoF({
     } finally {
       setLoading(false);
     }
-  }, [open]);
+  }, [open, filtrosGlobais]);
 
   useEffect(() => {
     if (!open) {

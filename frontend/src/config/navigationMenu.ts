@@ -15,12 +15,9 @@ export type FinanceiroMenuEntry =
   | { kind: 'link'; to: string; label: string }
   | { kind: 'submenu'; label: string; children: { to: string; label: string }[] };
 
-export const PRODUCAO_MENU: NavMenuEntry[] = [
-  { kind: 'link', to: '/producao/camasi', label: 'Produção Camasi' },
-];
+export const PRODUCAO_MENU: NavMenuEntry[] = [];
 
 export const PCP_MENU: NavMenuEntry[] = [
-  { kind: 'link', to: '/pedidos/dash-entregas', label: 'Painel Pedidos em aberto' },
   { kind: 'link', to: '/pedidos/sequenciamento-carradas', label: 'Sequenciamento carradas' },
   { kind: 'link', to: '/pedidos', label: 'Gerenciador de pedidos' },
   { kind: 'link', to: '/pedidos/encerrados', label: 'Pedidos encerrados' },
@@ -147,6 +144,7 @@ export const RH_MENU: NavMenuEntry[] = [
 
 export const COMERCIAL_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/comercial/painel', label: 'Painel Comercial' },
+  { kind: 'link', to: '/comercial/historico-vendas', label: 'Histórico de Vendas' },
 ];
 
 export const LOJA_MENU: NavMenuEntry[] = [
@@ -179,6 +177,10 @@ export const GESTAO_USUARIOS_SUBMENUS: { to: string; label: string }[] = [
 /** Rotas que podem ser abertas no sistema (path → label). Usado na busca rápida e menus. */
 export const PATH_LABELS: Record<string, string> = {
   '/': 'Início',
+  '/kpis': 'KPIs',
+  '/kpis/producao': 'KPIs › Produção',
+  '/kpis/comercial': 'KPIs › Comercial',
+  '/kpis/estoque': 'KPIs › Estoque',
   '/producao/camasi': 'Produção Camasi',
   '/pedidos/dash-entregas': 'Painel Pedidos em aberto',
   '/pedidos/sequenciamento-carradas': 'Sequenciamento carradas',
@@ -198,6 +200,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/pedidos/ressup-almox': 'Ressup Almox',
   '/pedidos/ressup-nao-almox': 'Ressup Não Almox',
   '/pedidos/consulta-estoque': 'Consulta de Estoque',
+  '/pedidos/cobertura-estoque': 'Cobertura de Estoque',
   '/pedidos/painel-metas/gerencial': 'Painel Gerencial',
   '/pedidos/painel-metas/tv': 'Painel TV',
   '/pedidos/painel-metas/metas': 'Metas',
@@ -232,6 +235,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/financeiro/carteira-financeira': 'Carteira Financeira',
   '/financeiro/painel-financeiro-comercial': 'Painel Financeiro-Comercial',
   '/comercial/painel': 'Painel Comercial',
+  '/comercial/historico-vendas': 'Histórico de Vendas',
   '/loja/estoque-kits': 'Controle de estoque de kits',
   '/financeiro/renegociacao-contratos': 'Simulação de Renegociação',
   '/financeiro/crm': 'CRM Financeiro',
@@ -280,6 +284,9 @@ export function navMenuEntryAtivo(entry: NavMenuEntry, pathname: string): boolea
 
 export function getLabelForPath(path: string): string {
   if (path.startsWith('/mind-maps')) return PATH_LABELS['/mind-maps'] ?? 'Fluxos Decisórios';
+  if (path === '/kpis' || path.startsWith('/kpis/')) {
+    return PATH_LABELS[path] ?? PATH_LABELS['/kpis'] ?? 'KPIs';
+  }
   if (path.startsWith('/pedidos/programacao-producao/recursos')) {
     return PATH_LABELS['/pedidos/programacao-producao/recursos'] ?? 'Recursos';
   }

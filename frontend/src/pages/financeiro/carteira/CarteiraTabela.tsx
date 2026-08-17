@@ -18,23 +18,24 @@ const COLS: {
   wrap?: boolean;
   defaultWidth: number;
 }[] = [
+  { key: 'Venda por qual empresa?', label: 'Empresa', defaultWidth: 100 },
   { key: 'PD', label: 'PD', defaultWidth: 88 },
   { key: 'Emissao', label: 'Emissão', date: true, defaultWidth: 92 },
   { key: 'previsaoAtual', label: 'Previsão Atual', date: true, defaultWidth: 100 },
   { key: 'Cliente', label: 'Cliente', defaultWidth: 160 },
   { key: 'UF', label: 'UF', defaultWidth: 44 },
   { key: 'Municipio de entrega', label: 'Município', defaultWidth: 110 },
-  {
-    key: 'ObservacaoPedido',
-    label: 'Observação do pedido',
-    wrap: true,
-    defaultWidth: 280,
-  },
   { key: 'Observacoes', label: 'Carrada/Rota', defaultWidth: 150 },
   {
     key: 'Condicao de pagamento do pedido de venda',
     label: 'Cond. Pagamento',
     defaultWidth: 120,
+  },
+  {
+    key: 'ObservacaoPedido',
+    label: 'Observação do pedido',
+    wrap: true,
+    defaultWidth: 280,
   },
   { key: 'StatusPedido', label: 'Status de entrega', defaultWidth: 100 },
   { key: 'Valor Romaneado', label: 'Saldo Romaneado', money: true, defaultWidth: 110 },
@@ -45,7 +46,6 @@ const COLS: {
     defaultWidth: 120,
   },
   { key: 'Saldo a Receber', label: 'Saldo a Receber', money: true, defaultWidth: 110 },
-  { key: 'Venda por qual empresa?', label: 'Empresa', defaultWidth: 100 },
   { key: 'tipoF', label: 'Tipo', defaultWidth: 80 },
   { key: 'RM', label: 'RM', defaultWidth: 80 },
   { key: 'Data de entrega', label: 'Data entrega', date: true, defaultWidth: 92 },

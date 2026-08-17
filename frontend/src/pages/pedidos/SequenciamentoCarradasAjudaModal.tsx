@@ -43,7 +43,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Visão por data de produção com quantidades líquidas após abater estoque congelado, com drill por setor, PD e item.',
     comoLe:
-      'Use para ver carga diária e gargalos. As quantidades já consideram o estoque “congelado” no momento da simulação — não é o saldo bruto do ERP. No drill da qtde do dia: se houver só um TipoF, essa tela é pulada; se esse TipoF tiver só uma carrada, abre direto a lista de pedidos. Em rascunho, “Reprogramar” no PD altera só a simulação (produção/previsão no Map sim); o Gerenciador e demais módulos só mudam quando o sequenciamento for concluído. Em tipofs especiais (Requisição, Retirada, Entrega Grande Teresina), só os itens marcados no checkbox mudam — não todos os pedidos daquele TipoF. Em tipof carradas (rota ROTA …), ao marcar ao menos um item o sistema confirma e replica as datas a todos os itens de todos os pedidos no mesmo código de romaneio (RM), para datas únicas na carrada.',
+      'Use para ver carga diária e gargalos. As quantidades já consideram o estoque “congelado” no momento da simulação — não é o saldo bruto do ERP. O botão “Somente Prev.” filtra a grade para mostrar só as quantidades com * (itens sem data de produção, posicionados pela previsão atual). No drill da qtde do dia: se houver só um TipoF, essa tela é pulada; se esse TipoF tiver só uma carrada, abre direto a lista de pedidos. Em rascunho, “Reprogramar” no PD altera só a simulação (produção/previsão no Map sim): a data de produção informada remove o indicador Prev./* e reposiciona a célula nas novas datas; o Gerenciador e demais módulos só mudam quando o sequenciamento for concluído. “Confirmar esta data” (abaixo da data atual) copia essa data para o campo nova correspondente; a gravação só ocorre ao clicar em Salvar (com motivo/confiável quando a previsão estiver envolvida). Em tipofs especiais (Requisição, Retirada, Entrega Grande Teresina), só os itens marcados no checkbox mudam — não todos os pedidos daquele TipoF. Em tipof carradas (rota ROTA …), ao marcar ao menos um item o sistema confirma e replica as datas a todos os itens de todos os pedidos no mesmo código de romaneio (RM), para datas únicas na carrada.',
   },
   {
     id: 'semaforo',
@@ -59,7 +59,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Ao concluir, datas/previsões vencidas e mudanças de previsão ficam na mesma grade: Pedido, Cliente, Código, Descrição, Carrada, datas, Qtde, Motivo, Obs. (ícone) e Confiável. Todo item com id de pedido nessa grade exige motivo (não só os que já tinham previsão alterada no rascunho). Motivos do calendário já entram nesse estado.',
     comoLe:
-      'Uma única grade larga: corrija datas anteriores a hoje, preencha motivo/obs/confiável na mesma linha (fundo verde quando ok) e clique em Concluir. Carradas ROTA com vários pedidos aparecem desdobradas por item (com qtde e motivo). Datas ou motivos incompletos impedem fechar. Com motivos preenchidos, você pode anexar um PDF assinado (obrigatório se algum for não abonado; opcional nos demais). Um arquivo vale para todo o lote e fica no histórico de cada item.',
+      'Uma única grade larga: corrija datas anteriores a hoje, preencha motivo/obs e o toggle Previsão confiável (Não / meio / Sim — sempre inicia no meio; Sim ou Não obrigatório para concluir) na mesma linha (fundo verde quando ok) e clique em Concluir. Carradas ROTA com vários pedidos aparecem desdobradas por item (com qtde e motivo). Datas, motivos ou confiável incompletos impedem fechar. Com motivos preenchidos, você pode anexar um PDF assinado (obrigatório se algum for não abonado; opcional nos demais). Um arquivo vale para todo o lote e fica no histórico de cada item.',
   },
   {
     id: 'financeiro',
@@ -68,6 +68,14 @@ const SECOES: SecaoAjuda[] = [
       'Saldo a faturar, adiantamento, valor à vista (≤ 10 dias) e percentual “Em dia” apoiam a leitura comercial da fila.',
     comoLe:
       'Leia o % Em dia junto com a sequência: priorizar só por valor sem olhar prazo costuma empurrar atrasados. O semáforo financeiro não substitui o de materiais.',
+  },
+  {
+    id: 'colunas',
+    titulo: 'Colunas e largura da grade',
+    oQueE:
+      'Cada cabeçalho tem o ícone de olho riscado para ocultar aquela informação. As colunas ocultas ficam reunidas no botão “Colunas ocultas”, e a escolha e a largura são guardadas neste navegador.',
+    comoLe:
+      'Use o ícone de olho riscado no cabeçalho para ocultar a coluna e “Colunas ocultas” para reexibi-la individualmente ou todas de uma vez. Para aumentar ou reduzir a largura, arraste a borda direita do cabeçalho.',
   },
 ];
 

@@ -11,8 +11,13 @@ export interface Pedido {
   previsao_anterior?: string;
   /** Origem do último ajuste exibido: 'override' (rota específica) ou 'base' (vale em todas as rotas). null = sem ajuste. */
   origem_ultimo_ajuste?: 'override' | 'base' | null;
-  /** false quando o último ajuste efetivo foi marcado como previsão não confiável. */
-  previsao_atual_confiavel?: boolean;
+  /**
+   * Tri-estado da previsão confiável do último ajuste efetivo:
+   * - true: confiável
+   * - false: não confiável
+   * - null/undefined: em branco (sem ajuste real de previsão)
+   */
+  previsao_atual_confiavel?: boolean | null;
   /**
    * Aviso "carrada migrada": existem ajustes (overrides) por rota para este (PD, item) em rotas que
    * NÃO aparecem mais na leitura atual do Nomus. Exibido como badge na grade para alertar o PCP.
@@ -89,6 +94,8 @@ export interface DashEntregasAnalytics {
     porSubgrupo1: ConcentracaoResumo[];
     porSubgrupo2: ConcentracaoResumo[];
     porSetorProducao: ConcentracaoResumo[];
+    porUf: ConcentracaoResumo[];
+    porVendedor: ConcentracaoResumo[];
   };
 }
 
@@ -124,6 +131,12 @@ export interface DashEntregasDrillFiltro {
   subgrupo1?: string;
   subgrupo2?: string;
   setor_producao?: string;
+  uf?: string;
+  vendedor?: string;
+  municipio_entrega?: string;
+  metodo?: string;
+  tipo_pedido?: string;
+  requisicao_loja?: string;
   data_ini?: string;
   data_fim?: string;
   faixa_atraso?: DashEntregasFaixaAtraso;
@@ -164,12 +177,15 @@ export interface FiltrosPedidos {
   motivo?: string;
   vendedor?: string;
   tipo_f?: string;
+  tipo_pedido?: string;
   status?: string;
   metodo?: string;
   forma_pagamento?: string;
   descricao_produto?: string;
   a_vista?: string;
   requisicao_loja?: string;
+  /** Mais filtros: sim | nao | branco */
+  previsao_confiavel?: 'sim' | 'nao' | 'branco';
   faixa_atraso?: DashEntregasFaixaAtraso;
   excluir_requisicao?: boolean;
   page?: number;
@@ -186,6 +202,15 @@ export interface ListaPedidosResponse {
 }
 
 export async function listarPedidos(filtros: FiltrosPedidos = {}): Promise<ListaPedidosResponse> {
+  const params = filtrosPedidosToSearchParams(filtros);
+  const qs = params.toString();
+  return apiJson<ListaPedidosResponse>(`/api/pedidos${qs ? `?${qs}` : ''}`);
+}
+
+/** Serializa filtros de pedidos para query string (lista, export, dash, heatmap). */
+export function filtrosPedidosToSearchParams(
+  filtros: Omit<FiltrosPedidos, 'page' | 'limit'> & { page?: number; limit?: number } = {}
+): URLSearchParams {
   const params = new URLSearchParams();
   if (filtros.cliente) params.set('cliente', filtros.cliente);
   if (filtros.observacoes) params.set('observacoes', filtros.observacoes);
@@ -201,18 +226,22 @@ export async function listarPedidos(filtros: FiltrosPedidos = {}): Promise<Lista
   if (filtros.data_fim) params.set('data_fim', filtros.data_fim);
   if (filtros.atrasados === true) params.set('atrasados', 'true');
   if (filtros.grupo_produto) params.set('grupo_produto', filtros.grupo_produto);
+  if (filtros.subgrupo1) params.set('subgrupo1', filtros.subgrupo1);
+  if (filtros.subgrupo2) params.set('subgrupo2', filtros.subgrupo2);
   if (filtros.setor_producao) params.set('setor_producao', filtros.setor_producao);
   if (filtros.uf) params.set('uf', filtros.uf);
   if (filtros.municipio_entrega) params.set('municipio_entrega', filtros.municipio_entrega);
   if (filtros.motivo) params.set('motivo', filtros.motivo);
   if (filtros.vendedor) params.set('vendedor', filtros.vendedor);
   if (filtros.tipo_f) params.set('tipo_f', filtros.tipo_f);
+  if (filtros.tipo_pedido) params.set('tipo_pedido', filtros.tipo_pedido);
   if (filtros.status) params.set('status', filtros.status);
   if (filtros.metodo) params.set('metodo', filtros.metodo);
   if (filtros.forma_pagamento) params.set('forma_pagamento', filtros.forma_pagamento);
   if (filtros.descricao_produto) params.set('descricao_produto', filtros.descricao_produto);
   if (filtros.a_vista) params.set('a_vista', filtros.a_vista);
   if (filtros.requisicao_loja) params.set('requisicao_loja', filtros.requisicao_loja);
+  if (filtros.previsao_confiavel) params.set('previsao_confiavel', filtros.previsao_confiavel);
   if (filtros.faixa_atraso) params.set('faixa_atraso', filtros.faixa_atraso);
   if (filtros.excluir_requisicao === true) params.set('excluir_requisicao', 'true');
   if (filtros.page != null) params.set('page', String(filtros.page));
@@ -220,8 +249,7 @@ export async function listarPedidos(filtros: FiltrosPedidos = {}): Promise<Lista
   if (Array.isArray(filtros.sort_levels) && filtros.sort_levels.length > 0) {
     params.set('sort_levels', JSON.stringify(filtros.sort_levels));
   }
-  const qs = params.toString();
-  return apiJson<ListaPedidosResponse>(`/api/pedidos${qs ? `?${qs}` : ''}`);
+  return params;
 }
 
 /** Lista pedidos com entrega na data informada (para tooltip do dashboard). */
@@ -237,38 +265,7 @@ export async function listarPedidosPorDataEntrega(data: string): Promise<Pedido[
 
 /** Lista todos os pedidos (sem paginação) para exportação XLSX. */
 export async function listarPedidosExport(filtros: Omit<FiltrosPedidos, 'page' | 'limit'> = {}): Promise<ListaPedidosResponse> {
-  const params = new URLSearchParams();
-  if (filtros.cliente) params.set('cliente', filtros.cliente);
-  if (filtros.observacoes) params.set('observacoes', filtros.observacoes);
-  if (filtros.pd) params.set('pd', filtros.pd);
-  if (filtros.cod) params.set('cod', filtros.cod);
-  if (filtros.data_emissao_ini) params.set('data_emissao_ini', filtros.data_emissao_ini);
-  if (filtros.data_emissao_fim) params.set('data_emissao_fim', filtros.data_emissao_fim);
-  if (filtros.data_entrega_ini) params.set('data_entrega_ini', filtros.data_entrega_ini);
-  if (filtros.data_entrega_fim) params.set('data_entrega_fim', filtros.data_entrega_fim);
-  if (filtros.data_previsao_anterior_ini) params.set('data_previsao_anterior_ini', filtros.data_previsao_anterior_ini);
-  if (filtros.data_previsao_anterior_fim) params.set('data_previsao_anterior_fim', filtros.data_previsao_anterior_fim);
-  if (filtros.data_ini) params.set('data_ini', filtros.data_ini);
-  if (filtros.data_fim) params.set('data_fim', filtros.data_fim);
-  if (filtros.atrasados === true) params.set('atrasados', 'true');
-  if (filtros.grupo_produto) params.set('grupo_produto', filtros.grupo_produto);
-  if (filtros.setor_producao) params.set('setor_producao', filtros.setor_producao);
-  if (filtros.uf) params.set('uf', filtros.uf);
-  if (filtros.municipio_entrega) params.set('municipio_entrega', filtros.municipio_entrega);
-  if (filtros.motivo) params.set('motivo', filtros.motivo);
-  if (filtros.vendedor) params.set('vendedor', filtros.vendedor);
-  if (filtros.tipo_f) params.set('tipo_f', filtros.tipo_f);
-  if (filtros.status) params.set('status', filtros.status);
-  if (filtros.metodo) params.set('metodo', filtros.metodo);
-  if (filtros.forma_pagamento) params.set('forma_pagamento', filtros.forma_pagamento);
-  if (filtros.descricao_produto) params.set('descricao_produto', filtros.descricao_produto);
-  if (filtros.a_vista) params.set('a_vista', filtros.a_vista);
-  if (filtros.requisicao_loja) params.set('requisicao_loja', filtros.requisicao_loja);
-  if (filtros.faixa_atraso) params.set('faixa_atraso', filtros.faixa_atraso);
-  if (filtros.excluir_requisicao === true) params.set('excluir_requisicao', 'true');
-  if (Array.isArray(filtros.sort_levels) && filtros.sort_levels.length > 0) {
-    params.set('sort_levels', JSON.stringify(filtros.sort_levels));
-  }
+  const params = filtrosPedidosToSearchParams(filtros);
   const qs = params.toString();
   return apiJson<ListaPedidosResponse>(`/api/pedidos/export${qs ? `?${qs}` : ''}`);
 }
@@ -349,19 +346,54 @@ export async function getResumoFinanceiroGrade(
   );
 }
 
-export async function obterDashEntregasAnalytics(): Promise<DashEntregasAnalytics> {
-  return apiJson<DashEntregasAnalytics>('/api/pedidos/dash-entregas-analytics');
+export async function obterDashEntregasAnalytics(
+  filtros: Omit<FiltrosPedidos, 'page' | 'limit'> = {}
+): Promise<DashEntregasAnalytics> {
+  const params = filtrosPedidosToSearchParams(filtros);
+  const qs = params.toString();
+  return apiJson<DashEntregasAnalytics>(`/api/pedidos/dash-entregas-analytics${qs ? `?${qs}` : ''}`);
 }
 
 export async function obterDashEntregasAgingTipoF(
-  faixaAtraso: DashEntregasFaixaAtraso
+  faixaAtraso: DashEntregasFaixaAtraso,
+  filtros: Omit<FiltrosPedidos, 'page' | 'limit' | 'faixa_atraso'> = {}
 ): Promise<TipoFValorResumo[]> {
-  const params = new URLSearchParams({ faixa_atraso: faixaAtraso });
+  const params = filtrosPedidosToSearchParams(filtros);
+  params.set('faixa_atraso', faixaAtraso);
   return apiJson<TipoFValorResumo[]>(`/api/pedidos/dash-entregas-aging-tipof?${params.toString()}`);
 }
 
-export async function obterDashEntregasLeadTimeTipoF(): Promise<TipoFLeadTimeResumo[]> {
-  return apiJson<TipoFLeadTimeResumo[]>('/api/pedidos/dash-entregas-leadtime-tipof');
+export async function obterDashEntregasLeadTimeTipoF(
+  filtros: Omit<FiltrosPedidos, 'page' | 'limit'> = {}
+): Promise<TipoFLeadTimeResumo[]> {
+  const params = filtrosPedidosToSearchParams(filtros);
+  const qs = params.toString();
+  return apiJson<TipoFLeadTimeResumo[]>(`/api/pedidos/dash-entregas-leadtime-tipof${qs ? `?${qs}` : ''}`);
+}
+
+export interface DashEntregasFiltrosOpcoes {
+  rotas: string[];
+  ufs: string[];
+  municipios: string[];
+  vendedores: string[];
+  tiposF: string[];
+  metodos: string[];
+  requisicoes: string[];
+  tiposPedido: string[];
+  clientes: string[];
+  gruposProduto: string[];
+  subgrupos1: string[];
+  subgrupos2: string[];
+}
+
+export async function obterDashEntregasFiltrosOpcoes(
+  filtros: Omit<FiltrosPedidos, 'page' | 'limit'> = {}
+): Promise<DashEntregasFiltrosOpcoes> {
+  const params = filtrosPedidosToSearchParams(filtros);
+  const qs = params.toString();
+  return apiJson<DashEntregasFiltrosOpcoes>(
+    `/api/pedidos/dash-entregas-filtros-opcoes${qs ? `?${qs}` : ''}`
+  );
 }
 
 export async function obterResumoObservacoes(): Promise<ObservacaoResumo[]> {
@@ -588,6 +620,8 @@ export async function ajustarPrevisao(
     todas_rotas?: boolean;
     /** Quando false, não exibe no histórico dos cards Comunicação Interna. Default true. */
     previsao_confiavel?: boolean;
+    /** Registra a validação de uma data automática, mesmo sem alterá-la. */
+    confirmacao_data?: boolean;
     /** PDF assinado — obrigatório quando o motivo é não abonado. */
     anexo_assinatura?: {
       fileName: string;

@@ -108,10 +108,10 @@ function metricRows(aggs: MetricasAgg[], extra?: (a: MetricasAgg) => (string | n
 }
 
 const DETALHE_COLS: { key: keyof CarteiraFinanceiraLinha; label: string; kind: 'text' | 'money' | 'date' }[] = [
+  { key: 'Venda por qual empresa?', label: 'Empresa', kind: 'text' },
   { key: 'idEmpresa', label: 'idEmpresa', kind: 'text' },
   { key: 'id', label: 'id', kind: 'text' },
-  { key: 'Observacoes', label: 'Observacoes', kind: 'text' },
-  { key: 'ObservacaoPedido', label: 'Observacao do pedido', kind: 'text' },
+  { key: 'Observacoes', label: 'Carrada/Rota', kind: 'text' },
   { key: 'RM', label: 'RM', kind: 'text' },
   { key: 'Tipo Pedido', label: 'Tipo Pedido', kind: 'text' },
   { key: 'PD', label: 'PD', kind: 'text' },
@@ -125,6 +125,7 @@ const DETALHE_COLS: { key: keyof CarteiraFinanceiraLinha; label: string; kind: '
   { key: 'Municipio de entrega', label: 'Municipio de entrega', kind: 'text' },
   { key: 'Forma de Pagamento', label: 'Forma de Pagamento', kind: 'text' },
   { key: 'Condicao de pagamento do pedido de venda', label: 'Condicao de pagamento do pedido de venda', kind: 'text' },
+  { key: 'ObservacaoPedido', label: 'Observacao do pedido', kind: 'text' },
   { key: 'Valor Original Pedido', label: 'Valor Original Pedido', kind: 'money' },
   { key: 'Valor Total', label: 'Valor Total', kind: 'money' },
   { key: 'Valor Pendente', label: 'Valor Pendente', kind: 'money' },
@@ -135,7 +136,6 @@ const DETALHE_COLS: { key: keyof CarteiraFinanceiraLinha; label: string; kind: '
   { key: 'Saldo a Faturar Real', label: 'Saldo a Faturar Real', kind: 'money' },
   { key: 'Saldo a Receber', label: 'Saldo a Receber', kind: 'money' },
   { key: 'Data base entrega futura', label: 'Data base entrega futura', kind: 'text' },
-  { key: 'Venda por qual empresa?', label: 'Venda por qual empresa?', kind: 'text' },
   { key: 'Vendedor/Representante', label: 'Vendedor/Representante', kind: 'text' },
   { key: 'Conta', label: 'Conta', kind: 'text' },
   { key: 'Status conta', label: 'Status conta', kind: 'text' },
@@ -221,7 +221,7 @@ export async function exportCarteiraFinanceiraXlsx(linhas: CarteiraFinanceiraLin
   addResumoSheet(
     wb,
     'Resumo Carradas',
-    ['Observações/Rota', 'Saldo a Receber', 'Saldo a Faturar', 'Saldo Romaneado', 'Qtd Pedidos'],
+    ['Carrada/Rota', 'Saldo a Receber', 'Saldo a Faturar', 'Saldo Romaneado', 'Qtd Pedidos'],
     metricRows(aggPorCarrada(linhas, 99999)),
     [2, 3, 4]
   );

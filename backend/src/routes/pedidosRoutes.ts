@@ -19,6 +19,7 @@ import {
   getDashEntregasAnalytics,
   getDashEntregasAgingTipoF,
   getDashEntregasLeadTimeTipoF,
+  getDashEntregasFiltrosOpcoes,
   getFiltrosOpcoes,
   getMapaMunicipios,
   getMapaMunicipioDetalhes,
@@ -100,6 +101,7 @@ router.get('/observacoes-resumo', verPedidos, getResumoObservacoes);
 router.get('/dash-entregas-analytics', verPedidos, getDashEntregasAnalytics);
 router.get('/dash-entregas-aging-tipof', verPedidos, getDashEntregasAgingTipoF);
 router.get('/dash-entregas-leadtime-tipof', verPedidos, getDashEntregasLeadTimeTipoF);
+router.get('/dash-entregas-filtros-opcoes', verPedidos, getDashEntregasFiltrosOpcoes);
 router.get('/resumo-motivos', verPedidos, getResumoMotivos);
 router.get('/filtros-opcoes', verPedidos, getFiltrosOpcoes);
 router.get('/mapa-municipios', verPedidos, getMapaMunicipios);

@@ -3,6 +3,7 @@ import {
   obterDashEntregasAgingTipoF,
   type AgingFaixaResumo,
   type DashEntregasFaixaAtraso,
+  type FiltrosPedidos,
   type TipoFValorResumo,
 } from '../../api/pedidos';
 import ModalDashEntregasTipoFChart from './ModalDashEntregasTipoFChart';
@@ -11,15 +12,22 @@ import { formatMoedaDash, formatNumero } from './dashEntregasUtils';
 type Props = {
   open: boolean;
   faixa: AgingFaixaResumo | null;
+  filtrosGlobais?: Omit<FiltrosPedidos, 'page' | 'limit' | 'faixa_atraso'>;
   onClose: () => void;
   onTipoFClick: (faixa: AgingFaixaResumo, item: TipoFValorResumo) => void;
 };
 
-export default function ModalDashEntregasAgingTipoF({ open, faixa, onClose, onTipoFClick }: Props) {
+export default function ModalDashEntregasAgingTipoF({
+  open,
+  faixa,
+  filtrosGlobais = {},
+  onClose,
+  onTipoFClick,
+}: Props) {
   const fetchData = useCallback(async () => {
     if (!faixa) return [];
-    return obterDashEntregasAgingTipoF(faixa.faixa as DashEntregasFaixaAtraso);
-  }, [faixa]);
+    return obterDashEntregasAgingTipoF(faixa.faixa as DashEntregasFaixaAtraso, filtrosGlobais);
+  }, [faixa, filtrosGlobais]);
 
   if (!faixa) return null;
 

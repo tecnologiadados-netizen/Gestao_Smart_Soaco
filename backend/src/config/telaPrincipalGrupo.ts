@@ -2,6 +2,7 @@ import { PERMISSOES, type CodigoPermissao } from './permissoes.js';
 
 /** Valores persistidos em `GrupoUsuario.telaPrincipalInicial`. */
 export const TELA_PRINCIPAL_KEYS = [
+  'kpis',
   'gerenciador_pedidos',
   'dash_mrp',
   'programacao_setorial',
@@ -22,6 +23,23 @@ export const TELA_PRINCIPAL_MAP: Record<
   TelaPrincipalKey,
   { path: string; label: string; requiredAny: CodigoPermissao[] }
 > = {
+  kpis: {
+    path: '/kpis',
+    label: 'KPIs',
+    requiredAny: [
+      PERMISSOES.KPIS_VER,
+      PERMISSOES.KPIS_PAINEL_PRODUCAO_CAMASI_VER,
+      PERMISSOES.KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER,
+      PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER,
+      PERMISSOES.PRODUCAO_VER,
+      PERMISSOES.PRODUCAO_TOTAL,
+      PERMISSOES.PCP_VER_TELA,
+      PERMISSOES.PCP_TOTAL,
+      PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
+      PERMISSOES.DASHBOARD_VER,
+      PERMISSOES.PEDIDOS_VER,
+    ],
+  },
   gerenciador_pedidos: {
     path: '/pedidos',
     label: 'Gerenciador de pedidos',

@@ -27,6 +27,7 @@ import SycroOrderKanbanCard, { type SycroOrderKanbanCardActions } from '../../co
 import ModalFaturadoEntregue from '../../components/sycroorder/ModalFaturadoEntregue';
 import HelpTooltipIcon from '../../components/HelpTooltipIcon';
 import CampoLabelComAjuda, { AJUDA_CAMPO_MENSAGEM, AJUDA_CAMPO_OBSERVACAO } from '../../components/CampoLabelComAjuda';
+import TogglePrevisaoConfiavel, { type PrevisaoConfiavelTri } from '../../components/TogglePrevisaoConfiavel';
 import { ComoLerBtn } from '../../components/AjudaTelaModal';
 import SycroOrderAjudaModal from './SycroOrderAjudaModal';
 import { useAuth } from '../../contexts/AuthContext';
@@ -2094,7 +2095,7 @@ function ModalAtualizarPedido({
   const [motivos, setMotivos] = useState<MotivoSugestao[]>([]);
   const [loadingMotivos, setLoadingMotivos] = useState(false);
   const [motivo, setMotivo] = useState('');
-  const [previsaoConfiavel, setPrevisaoConfiavel] = useState(true);
+  const [previsaoConfiavel, setPrevisaoConfiavel] = useState<PrevisaoConfiavelTri>(null);
   const [observacaoAjuste, setObservacaoAjuste] = useState('');
   const [anexoAssinatura, setAnexoAssinatura] = useState<AnexoAssinaturaPayload | null>(null);
   const [anexoNome, setAnexoNome] = useState('');
@@ -2125,7 +2126,7 @@ function ModalAtualizarPedido({
   const limparCamposAjustePrevisao = useCallback(() => {
     setMotivo('');
     setObservacaoAjuste('');
-    setPrevisaoConfiavel(true);
+    setPrevisaoConfiavel(null);
     limparAnexoAssinatura();
   }, [limparAnexoAssinatura]);
 
@@ -2208,6 +2209,11 @@ function ModalAtualizarPedido({
 
     if (dataAlterada && !motivo.trim()) {
       setErro('Selecione um motivo para a nova data prometida.');
+      return;
+    }
+
+    if (dataAlterada && previsaoConfiavel === null) {
+      setErro('Escolha Sim ou Não em Previsão confiável.');
       return;
     }
 
@@ -2309,7 +2315,7 @@ function ModalAtualizarPedido({
           ? {
               motivo: (payload?.motivo ?? motivo).trim() || undefined,
               observacao: (payload?.observacao ?? observacaoAjuste).trim() || undefined,
-              previsao_confiavel: payload?.previsao_confiavel ?? previsaoConfiavel,
+              previsao_confiavel: payload?.previsao_confiavel ?? (previsaoConfiavel ?? undefined),
               ...(anexoAssinatura ? { anexo_assinatura: anexoAssinatura } : {}),
             }
           : {}),
@@ -2327,6 +2333,10 @@ function ModalAtualizarPedido({
 
   const handleTodosItensSim = () => {
     setErro(null);
+    if (previsaoConfiavel === null) {
+      setErro('Escolha Sim ou Não em Previsão confiável.');
+      return;
+    }
     submitDireto({
       motivo: motivo.trim(),
       observacao: observacaoAjuste.trim() || undefined,
@@ -2336,6 +2346,10 @@ function ModalAtualizarPedido({
 
   const handleCarradaConfirmSim = () => {
     setErro(null);
+    if (previsaoConfiavel === null) {
+      setErro('Escolha Sim ou Não em Previsão confiável.');
+      return;
+    }
     submitDireto({
       motivo: motivo.trim(),
       observacao: observacaoAjuste.trim() || undefined,
@@ -2391,6 +2405,10 @@ function ModalAtualizarPedido({
       return;
     }
     setErro(null);
+    if (previsaoConfiavel === null) {
+      setErro('Escolha Sim ou Não em Previsão confiável.');
+      return;
+    }
     submitDireto({
       motivo: motivo.trim(),
       id_pedidos: ids,
@@ -2529,20 +2547,15 @@ function ModalAtualizarPedido({
                         />
                       )}
                     </div>
-                    <label className="flex items-start gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={previsaoConfiavel}
-                        onChange={(e) => setPrevisaoConfiavel(e.target.checked)}
-                        className="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-600"
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Previsão confiável
+                      </label>
+                      <TogglePrevisaoConfiavel
+                        value={previsaoConfiavel}
+                        onChange={setPrevisaoConfiavel}
                       />
-                      <span className="text-sm text-slate-700 dark:text-slate-300">
-                        <span className="font-medium">Previsão confiável</span>
-                        <span className="block text-xs text-slate-500 dark:text-slate-400 font-normal mt-0.5">
-                          Desmarque se a data é provisória. Nesse caso, não aparece no histórico da Comunicação Interna.
-                        </span>
-                      </span>
-                    </label>
+                    </div>
                     <div>
                       <CampoLabelComAjuda label="Observação" ajuda={AJUDA_CAMPO_OBSERVACAO} />
                       <textarea
@@ -2643,7 +2656,7 @@ function ModalAtualizarPedido({
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={onClose} className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm">Cancelar</button>
-              <button type="submit" disabled={saving || carradaCheckLoading} className="px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium disabled:opacity-50">
+              <button type="submit" disabled={saving || carradaCheckLoading || (dataAlterada && previsaoConfiavel === null)} className="px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium disabled:opacity-50">
                 {carradaCheckLoading ? 'Verificando rota...' : 'Salvar'}
               </button>
             </div>

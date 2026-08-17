@@ -6,6 +6,13 @@ import {
   type DrillContexto,
   type FiltrosPainelComercialVendas,
 } from '../data/painelComercialVendasRepository.js';
+import {
+  obterHistoricoVendasAnalytics,
+  obterHistoricoVendasDrill,
+  obterHistoricoVendasSerieFatia,
+  type DrillContexto as HistoricoDrillContexto,
+  type FiltrosHistoricoVendas,
+} from '../data/historicoVendasRepository.js';
 
 function getStrQuery(req: Request, key: string): string | undefined {
   const v = req.query[key];
@@ -30,6 +37,10 @@ function parseFiltros(req: Request): FiltrosPainelComercialVendas {
     produto: getStrQuery(req, 'produto'),
     pd: getStrQuery(req, 'pd'),
   };
+}
+
+function parseFiltrosHistorico(req: Request): FiltrosHistoricoVendas {
+  return parseFiltros(req) as FiltrosHistoricoVendas;
 }
 
 function parseCtx(req: Request): DrillContexto {
@@ -60,6 +71,10 @@ function parseCtx(req: Request): DrillContexto {
   if (pdCodigo) where.pdCodigo = pdCodigo as any;
 
   return { dim, where: Object.keys(where).length ? where : undefined };
+}
+
+function parseCtxHistorico(req: Request): HistoricoDrillContexto {
+  return parseCtx(req) as HistoricoDrillContexto;
 }
 
 export async function getPainelComercialVendasAnalytics(req: Request, res: Response): Promise<void> {
@@ -97,6 +112,45 @@ export async function getPainelComercialVendasDetalhe(req: Request, res: Respons
     res.json({ rows: data.rows });
   } catch (err) {
     console.error('getPainelComercialVendasDetalhe', err);
+    res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
+  }
+}
+
+export async function getHistoricoVendasAnalytics(req: Request, res: Response): Promise<void> {
+  try {
+    const filtros = parseFiltrosHistorico(req);
+    const data = await obterHistoricoVendasAnalytics(filtros);
+    res.json(data);
+  } catch (err) {
+    console.error('getHistoricoVendasAnalytics', err);
+    res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
+  }
+}
+
+export async function getHistoricoVendasDrill(req: Request, res: Response): Promise<void> {
+  try {
+    const filtros = parseFiltrosHistorico(req);
+    const ctx = parseCtxHistorico(req);
+    const data = await obterHistoricoVendasDrill(filtros, ctx);
+    res.json({ items: data });
+  } catch (err) {
+    console.error('getHistoricoVendasDrill', err);
+    res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
+  }
+}
+
+export async function getHistoricoVendasSerieFatia(req: Request, res: Response): Promise<void> {
+  try {
+    const filtros = parseFiltrosHistorico(req);
+    const ctx = parseCtxHistorico(req);
+    const data = await obterHistoricoVendasSerieFatia(filtros, { where: ctx.where });
+    if (data.erro) {
+      res.status(400).json({ error: data.erro, serieMensal: [] });
+      return;
+    }
+    res.json({ serieMensal: data.serieMensal });
+  } catch (err) {
+    console.error('getHistoricoVendasSerieFatia', err);
     res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
   }
 }

@@ -120,7 +120,7 @@ const SECOES: SecaoAjuda[] = [
       {
         titulo: 'Previsão provisória (não confiável)',
         texto:
-          'Se você desmarcar “Previsão confiável”, a data vale na grade mas não entra no histórico da Comunicação Interna — use para datas ainda em negociação.',
+          'No toggle “Previsão confiável”, escolha Sim ou Não (o controle sempre abre no meio). Não = data provisória: vale na grade, mas não entra no histórico da Comunicação Interna — use para datas ainda em negociação. Sem ajuste real, a coluna Pedido fica em branco (sem selo Confiável/Não confiável). Em Mais filtros dá para filtrar Confiáveis, Não confiáveis ou Em branco.',
       },
       {
         titulo: 'Justificativa (PDF)',

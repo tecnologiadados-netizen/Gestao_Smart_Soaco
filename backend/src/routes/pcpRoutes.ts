@@ -15,6 +15,7 @@ import {
   postContarConsultaEstoque,
   postConsultarEstoque,
 } from '../controllers/consultaEstoqueController.js';
+import { postPainelCoberturaEstoque } from '../controllers/coberturaEstoqueController.js';
 import {
   getRegrasDataEntrega,
   postRegraDataEntregaVersao,
@@ -23,7 +24,11 @@ import {
 const router = Router();
 router.use(requireAuth);
 
-const podeConsultaEstoque = requirePermission(PERMISSOES.PCP_CONSULTA_ESTOQUE_VER);
+const podeConsultaEstoque = requirePermission(
+  PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
+  PERMISSOES.PCP_TOTAL,
+  PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER
+);
 
 const podeVerRegrasEntrega = requirePermission(
   PERMISSOES.PCP_REGRAS_ENTREGA_VER,
@@ -72,6 +77,7 @@ router.get(
 );
 router.post('/consulta-estoque/contar', podeConsultaEstoque, async503(postContarConsultaEstoque));
 router.post('/consulta-estoque/consultar', podeConsultaEstoque, async503(postConsultarEstoque));
+router.post('/cobertura-estoque/painel', podeConsultaEstoque, async503(postPainelCoberturaEstoque));
 router.get(
   '/consulta-estoque/detalhe/saldo',
   podeConsultaEstoque,

@@ -94,7 +94,7 @@ describe('Inserir em Romaneio — data de produção', () => {
     expect(dataProducaoDaLinha(linhaRomaneio, new Map(), baseline, '', dataEmFormacao)).toBe('2026-08-09');
   });
 
-  it('valor ≥ corte: posiciona em emissão + 45 dias', () => {
+  it('valor ≥ corte sem produção explícita: fora do pivô e em aAlocar', () => {
     const linhas: Record<string, unknown>[] = [
       {
         RM: '01677',
@@ -114,6 +114,9 @@ describe('Inserir em Romaneio — data de produção', () => {
         'Qtde Pendente Real': 120,
         'Setor de Producao': 'Solda',
         PD: '47776',
+        id_pedido: '100-47776-1',
+        Cliente: 'Cliente Teste',
+        Cod: 'PA 1',
       },
     ];
     const key = linhaCarradaKey(linhas[0]!);
@@ -122,7 +125,36 @@ describe('Inserir em Romaneio — data de produção', () => {
     ]);
     const dados = computarCalendarioProducao(linhas, new Map(), baseline);
     expect(dados.totalPorData.get('2026-07-10')).toBe(10);
-    expect(dados.totalPorData.get('2026-02-15')).toBe(120);
+    expect(dados.totalPorData.get('2026-02-15')).toBeUndefined();
+    expect(dados.aAlocar).toHaveLength(1);
+    expect(dados.aAlocar[0]?.pd).toBe('47776');
+    expect(dados.aAlocar[0]?.qtde).toBe(120);
+    expect(dados.aAlocar[0]?.previsaoRef).toBe('2026-02-15');
+  });
+
+  it('valor ≥ corte com simItemKey: entra no pivô com semCarrada', () => {
+    const linhaRomaneio: Record<string, unknown> = {
+      RM: '—',
+      Observacoes: '4-Inserir em Romaneio',
+      tipoF: 'Inserir em Romaneio',
+      'Valor Pedido Total': 50000,
+      Emissao: '2026-01-01',
+      previsao_entrega_atualizada: '2026-02-15',
+      'Qtde Pendente Real': 5,
+      'Setor de Producao': 'Móveis de aço',
+      PD: '48885',
+      id_pedido: '0000000-48895-26250',
+      Cliente: 'NORTE REFRIGERAÇÃO',
+      Cod: 'PA 5894',
+    };
+    const sim = new Map<string, SimEntry>([
+      [simItemKey('0000000-48895-26250'), { dataProducao: '2026-07-03' }],
+    ]);
+    const dados = computarCalendarioProducao([linhaRomaneio], sim, new Map());
+    expect(dados.aAlocar).toHaveLength(0);
+    expect(dados.totalPorData.get('2026-07-03')).toBe(5);
+    expect(dados.detalhes[0]?.semCarrada).toBe(true);
+    expect(dados.detalhes[0]?.data).toBe('2026-07-03');
   });
 
   it('filtro só romaneio abaixo do corte usa dataEmFormacao do snapshot completo', () => {
@@ -189,6 +221,52 @@ describe('Fallback previsão atual no calendário', () => {
     const dados = computarCalendarioProducao([linha], sim, bl);
     expect(dados.totalPorData.get('2026-08-20')).toBe(10);
     expect(dados.detalhes[0]?.producaoPorPrevisao).toBeUndefined();
+  });
+
+  it('rascunho: sim dataProducao em item Prev. (Requisição) reposiciona e remove producaoPorPrevisao', () => {
+    const idAjuste = '100-49899-11005';
+    const linhaAjuste: Record<string, unknown> = {
+      id_pedido: idAjuste,
+      RM: '',
+      Observacoes: '5-Requisicao',
+      previsao_entrega_atualizada: '2026-08-13',
+      'Qtde Pendente Real': 1,
+      'Setor de Producao': 'Balcões',
+      PD: '49899',
+      Cod: 'PA 11005',
+    };
+    const linhaFica: Record<string, unknown> = {
+      id_pedido: '100-49412-8526',
+      RM: '',
+      Observacoes: '5-Requisicao',
+      previsao_entrega_atualizada: '2026-08-13',
+      'Qtde Pendente Real': 3,
+      'Setor de Producao': 'Balcões',
+      PD: '49412',
+      Cod: 'PA 8526',
+    };
+    const bl = computarBaselines([linhaAjuste, linhaFica]);
+
+    const antes = computarCalendarioProducao([linhaAjuste, linhaFica], new Map(), bl);
+    expect(antes.totalPorData.get('2026-08-13')).toBe(4);
+    expect(antes.detalhes.every((d) => d.producaoPorPrevisao)).toBe(true);
+
+    const simApos = new Map<string, SimEntry>([
+      [simItemKey(idAjuste), { dataProducao: '2026-09-07', dataEntrega: '2026-09-09' }],
+    ]);
+    expect(resolverDataCalendarioLinha(linhaAjuste, simApos, bl)).toEqual({
+      data: '2026-09-07',
+      origem: 'producao',
+    });
+    const depois = computarCalendarioProducao([linhaAjuste, linhaFica], simApos, bl);
+    expect(depois.totalPorData.get('2026-08-13')).toBe(3);
+    expect(depois.totalPorData.get('2026-09-07')).toBe(1);
+    const detAjuste = depois.detalhes.find((d) => d.codigoProduto === 'PA 11005');
+    expect(detAjuste?.data).toBe('2026-09-07');
+    expect(detAjuste?.producaoPorPrevisao).toBeUndefined();
+    const detFica = depois.detalhes.find((d) => d.codigoProduto === 'PA 8526');
+    expect(detFica?.data).toBe('2026-08-13');
+    expect(detFica?.producaoPorPrevisao).toBe(true);
   });
 
   it('5-Requisicao com datas divergentes usa data_producao da linha (sem Prev.)', () => {

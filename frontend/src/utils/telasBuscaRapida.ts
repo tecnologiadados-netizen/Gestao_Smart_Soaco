@@ -1,5 +1,12 @@
 import { PERMISSOES, type CodigoPermissao } from '../config/permissoes';
 import {
+  KPI_PAINEIS,
+  KPI_PASTAS,
+  pastaHubPath,
+  podeAcessarHubKpis,
+  podeVerKpiPainel,
+} from '../config/kpisCatalog';
+import {
   PRODUCAO_MENU,
   PCP_MENU,
   COMUNICACAO_INTERNA_SUBMENUS,
@@ -90,7 +97,32 @@ export function buildTelasBuscaRapidaForUser(ctx: BuildTelasBuscaRapidaCtx): Tel
   const { hasPermission, isMaster, grupo } = ctx;
   const telas: TelaBuscaRapida[] = [];
 
-  if (hasPermission(PERMISSOES.PRODUCAO_VER) || hasPermission(PERMISSOES.PRODUCAO_TOTAL)) {
+  if (podeAcessarHubKpis(hasPermission)) {
+    telas.push({ path: '/kpis', label: PATH_LABELS['/kpis'] ?? 'KPIs', contexto: 'KPIs' });
+    for (const pasta of KPI_PASTAS) {
+      const paineis = KPI_PAINEIS.filter(
+        (p) => p.pastaId === pasta.id && podeVerKpiPainel(p, hasPermission)
+      );
+      if (paineis.length === 0) continue;
+      telas.push({
+        path: pastaHubPath(pasta.id),
+        label: pasta.label,
+        contexto: 'KPIs',
+      });
+      for (const painel of paineis) {
+        telas.push({
+          path: painel.to,
+          label: painel.label,
+          contexto: `KPIs › ${pasta.label}`,
+        });
+      }
+    }
+  }
+
+  if (
+    PRODUCAO_MENU.length > 0 &&
+    (hasPermission(PERMISSOES.PRODUCAO_VER) || hasPermission(PERMISSOES.PRODUCAO_TOTAL))
+  ) {
     telas.push(...flattenNavMenu(PRODUCAO_MENU, hasPermission, 'Produção'));
   }
 

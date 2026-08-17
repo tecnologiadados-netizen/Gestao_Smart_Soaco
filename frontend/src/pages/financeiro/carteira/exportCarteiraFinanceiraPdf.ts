@@ -19,20 +19,20 @@ const COLS: {
   money?: boolean;
   date?: boolean;
 }[] = [
+  { key: 'Venda por qual empresa?', label: 'Empresa' },
   { key: 'PD', label: 'PD' },
   { key: 'Emissao', label: 'Emissão', date: true },
   { key: 'previsaoAtual', label: 'Previsão Atual', date: true },
   { key: 'Cliente', label: 'Cliente' },
   { key: 'UF', label: 'UF' },
   { key: 'Municipio de entrega', label: 'Município' },
-  { key: 'ObservacaoPedido', label: 'Observação do pedido' },
   { key: 'Observacoes', label: 'Carrada/Rota' },
   { key: 'Condicao de pagamento do pedido de venda', label: 'Cond. Pagamento' },
+  { key: 'ObservacaoPedido', label: 'Observação do pedido' },
   { key: 'StatusPedido', label: 'Status de entrega' },
   { key: 'Valor Romaneado', label: 'Saldo Romaneado', money: true },
   { key: 'Saldo a Faturar Real', label: 'Saldo a Faturar Real', money: true },
   { key: 'Saldo a Receber', label: 'Saldo a Receber', money: true },
-  { key: 'Venda por qual empresa?', label: 'Empresa' },
   { key: 'tipoF', label: 'Tipo' },
   { key: 'RM', label: 'RM' },
   { key: 'Data de entrega', label: 'Data entrega', date: true },

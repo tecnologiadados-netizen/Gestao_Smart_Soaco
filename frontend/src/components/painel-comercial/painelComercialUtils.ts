@@ -43,6 +43,28 @@ export function mesesAtrasYmd(months: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/** Início do mês corrente menos N meses fechados (1º dia). Ex.: N=3 em ago → 01/mai. */
+export function inicioMesesFechadosMaisCorrenteYmd(mesesFechados: number): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - mesesFechados);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+/** Diferença em meses calendário entre duas datas YYYY-MM-DD (fim >= ini). */
+export function mesesEntreYmd(dataIni: string, dataFim: string): number | null {
+  const mIni = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dataIni ?? '').trim());
+  const mFim = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dataFim ?? '').trim());
+  if (!mIni || !mFim) return null;
+  const y1 = Number(mIni[1]);
+  const mo1 = Number(mIni[2]);
+  const y2 = Number(mFim[1]);
+  const mo2 = Number(mFim[2]);
+  if (![y1, mo1, y2, mo2].every(Number.isFinite)) return null;
+  const meses = (y2 - y1) * 12 + (mo2 - mo1);
+  return meses < 0 ? null : meses;
+}
+
 export function formatYmdBr(ymd: string): string {
   const v = String(ymd ?? '').trim();
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);

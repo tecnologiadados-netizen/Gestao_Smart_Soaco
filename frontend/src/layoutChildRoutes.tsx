@@ -48,6 +48,7 @@ import RessupNaoAlmoxAnalisePage from './pages/pedidos/RessupNaoAlmoxAnalisePage
 import SequenciamentoCarradasPage from './pages/pedidos/SequenciamentoCarradasPage';
 import RegrasDataEntregaPage from './pages/pedidos/RegrasDataEntregaPage';
 import ConsultaEstoquePage from './pages/pedidos/ConsultaEstoquePage';
+import CoberturaEstoquePage from './pages/pedidos/CoberturaEstoquePage';
 import PainelProducaoGerencialPage from './pages/pedidos/painel-metas/PainelProducaoGerencialPage';
 import PainelProducaoTvPage from './pages/pedidos/painel-metas/PainelProducaoTvPage';
 import PainelProducaoMetasPage from './pages/pedidos/painel-metas/PainelProducaoMetasPage';
@@ -64,11 +65,16 @@ import SimulacaoCubagemPage from './pages/logistica/SimulacaoCubagemPage';
 import { qualidadeRoutes } from './modules/qualidade/qualidadeRoutes';
 import { rhRoutes } from './modules/rh/rhRoutes';
 import PainelComercialPage from './pages/comercial/PainelComercialPage';
+import HistoricoVendasPage from './pages/comercial/HistoricoVendasPage';
 import ProducaoCamasiPage from './pages/producao/ProducaoCamasiPage';
+import KpisHubPage from './pages/kpis/KpisHubPage';
+import KpisPastaPage from './pages/kpis/KpisPastaPage';
 
 /** Rotas filhas do layout autenticado (espelham appRouter). */
 export const layoutChildRoutes: RouteObject[] = [
   { index: true, element: <InicioPage /> },
+  { path: 'kpis', element: <ErrorBoundary><KpisHubPage /></ErrorBoundary> },
+  { path: 'kpis/:pastaId', element: <ErrorBoundary><KpisPastaPage /></ErrorBoundary> },
   { path: 'producao/camasi', element: <ErrorBoundary><ProducaoCamasiPage /></ErrorBoundary> },
   { path: 'pedidos/dash-entregas', element: <ErrorBoundary><DashboardPage /></ErrorBoundary> },
   { path: 'pedidos/sequenciamento-carradas', element: <ErrorBoundary><SequenciamentoCarradasPage /></ErrorBoundary> },
@@ -104,6 +110,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'pedidos/ressup-almox', element: <ErrorBoundary><RessupAlmoxAnalisePage /></ErrorBoundary> },
   { path: 'pedidos/ressup-nao-almox', element: <ErrorBoundary><RessupNaoAlmoxAnalisePage /></ErrorBoundary> },
   { path: 'pedidos/consulta-estoque', element: <ErrorBoundary><ConsultaEstoquePage /></ErrorBoundary> },
+  { path: 'pedidos/cobertura-estoque', element: <ErrorBoundary><CoberturaEstoquePage /></ErrorBoundary> },
   { path: 'pedidos/painel-metas/gerencial', element: <ErrorBoundary><PainelProducaoGerencialPage /></ErrorBoundary> },
   { path: 'pedidos/painel-metas/tv', element: <ErrorBoundary><PainelProducaoTvPage /></ErrorBoundary> },
   { path: 'pedidos/painel-metas/metas', element: <ErrorBoundary><PainelProducaoMetasPage /></ErrorBoundary> },
@@ -135,6 +142,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'financeiro/renegociacao-contratos', element: <RenegociacaoContratosPage /> },
   { path: 'financeiro/crm', element: <ErrorBoundary><CrmFinanceiroPage /></ErrorBoundary> },
   { path: 'comercial/painel', element: <ErrorBoundary><PainelComercialPage /></ErrorBoundary> },
+  { path: 'comercial/historico-vendas', element: <ErrorBoundary><HistoricoVendasPage /></ErrorBoundary> },
   { path: 'loja/estoque-kits', element: <ErrorBoundary><EstoqueKitsPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/veiculos', element: <ErrorBoundary><VeiculosPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/produtos', element: <ErrorBoundary><ProdutosCubagemPage /></ErrorBoundary> },

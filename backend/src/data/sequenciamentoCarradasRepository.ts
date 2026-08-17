@@ -45,6 +45,10 @@ export type SequenciamentoSimulacao = {
   prioridades?: Record<string, number>;
   /** Rascunho de motivos por id_pedido (registro de motivos do fluxo de confirmação). */
   motivos?: Record<string, string>;
+  /** Rascunho de observações por id_pedido. */
+  observacoes?: Record<string, string>;
+  /** Previsão confiável por id_pedido (`true`/`false` explícitos). */
+  previsaoConfiavel?: Record<string, boolean>;
 };
 
 export type SequenciamentoSnapshotStatus = 'rascunho' | 'concluido';
@@ -270,6 +274,18 @@ export function sanitizarSimulacao(raw: unknown): SequenciamentoSimulacao | null
       if (typeof v === 'string' && v.trim()) motivos[k] = v;
     }
   }
+  const observacoes: Record<string, string> = {};
+  if (r.observacoes && typeof r.observacoes === 'object' && !Array.isArray(r.observacoes)) {
+    for (const [k, v] of Object.entries(r.observacoes as Record<string, unknown>)) {
+      if (typeof v === 'string' && v.trim()) observacoes[k] = v.slice(0, 1000);
+    }
+  }
+  const previsaoConfiavel: Record<string, boolean> = {};
+  if (r.previsaoConfiavel && typeof r.previsaoConfiavel === 'object' && !Array.isArray(r.previsaoConfiavel)) {
+    for (const [k, v] of Object.entries(r.previsaoConfiavel as Record<string, unknown>)) {
+      if (v === true || v === false) previsaoConfiavel[k] = v;
+    }
+  }
   const prioridades: Record<string, number> = {};
   if (r.prioridades && typeof r.prioridades === 'object' && !Array.isArray(r.prioridades)) {
     for (const [k, v] of Object.entries(r.prioridades as Record<string, unknown>)) {
@@ -277,12 +293,25 @@ export function sanitizarSimulacao(raw: unknown): SequenciamentoSimulacao | null
     }
   }
   const temMotivos = Object.keys(motivos).length > 0;
+  const temObservacoes = Object.keys(observacoes).length > 0;
+  const temPrevisaoConfiavel = Object.keys(previsaoConfiavel).length > 0;
   const temPrioridades = Object.keys(prioridades).length > 0;
-  if (ordem.length === 0 && itens.length === 0 && !temMotivos && !temPrioridades) return null;
+  if (
+    ordem.length === 0 &&
+    itens.length === 0 &&
+    !temMotivos &&
+    !temObservacoes &&
+    !temPrevisaoConfiavel &&
+    !temPrioridades
+  ) {
+    return null;
+  }
   return {
     ordem,
     itens,
     ...(temMotivos ? { motivos } : {}),
+    ...(temObservacoes ? { observacoes } : {}),
+    ...(temPrevisaoConfiavel ? { previsaoConfiavel } : {}),
     ...(temPrioridades ? { prioridades } : {}),
   };
 }

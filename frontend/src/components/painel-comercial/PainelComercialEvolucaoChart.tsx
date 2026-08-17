@@ -7,10 +7,17 @@ export default function PainelComercialEvolucaoChart({
   series,
   loading,
   onPointClick,
+  title = 'Evolução mensal (valor)',
+  subtitle = 'Clique em um mês para detalhar.',
+  compact = false,
 }: {
   series: SerieMes[];
   loading?: boolean;
-  onPointClick: (mes: string) => void;
+  onPointClick?: (mes: string) => void;
+  title?: string;
+  subtitle?: string;
+  /** Remove borda/card externo (uso em modal). */
+  compact?: boolean;
 }) {
   const chartWrapRef = useRef<HTMLDivElement>(null);
   const [W, setW] = useState(640);
@@ -48,9 +55,13 @@ export default function PainelComercialEvolucaoChart({
     return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
   }, [points]);
 
+  const shell = compact
+    ? 'flex min-h-[280px] flex-col'
+    : 'card-panel flex min-h-[320px] flex-col p-5';
+
   if (loading) {
     return (
-      <div className="card-panel min-h-[320px] animate-pulse p-5">
+      <div className={`${shell} animate-pulse ${compact ? '' : ''}`}>
         <div className="mb-4 h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
         <div className="h-[240px] rounded bg-slate-200 dark:bg-slate-700" />
       </div>
@@ -59,19 +70,20 @@ export default function PainelComercialEvolucaoChart({
 
   if (!series.length) {
     return (
-      <div className="card-panel flex min-h-[320px] items-center justify-center p-5 text-slate-500">
+      <div className={`${shell} items-center justify-center text-slate-500`}>
         Sem dados de evolução.
       </div>
     );
   }
 
   const maxY = Math.max(...series.map((s) => s.valor), 1);
+  const clicavel = typeof onPointClick === 'function';
 
   return (
-    <div className="card-panel flex min-h-[320px] flex-col p-5">
+    <div className={shell}>
       <div className="mb-4 shrink-0">
-        <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">Evolução mensal (valor)</h3>
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Clique em um mês para detalhar.</p>
+        <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">{title}</h3>
+        {subtitle ? <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{subtitle}</p> : null}
       </div>
 
       <div ref={chartWrapRef} className="relative w-full min-h-[220px] flex-1 min-w-0">
@@ -83,8 +95,8 @@ export default function PainelComercialEvolucaoChart({
                 cx={p.x}
                 cy={p.y}
                 r={5}
-                className="fill-primary-500/85 hover:fill-primary-600 cursor-pointer"
-                onClick={() => onPointClick(p.mes)}
+                className={`fill-primary-500/85 ${clicavel ? 'hover:fill-primary-600 cursor-pointer' : ''}`}
+                onClick={clicavel ? () => onPointClick!(p.mes) : undefined}
               />
               <title>{`${labelMesCurto(p.mes)}\n${formatMoeda(p.valor)}\n${p.pedidos} PDs · ${p.qtde} un.`}</title>
             </g>

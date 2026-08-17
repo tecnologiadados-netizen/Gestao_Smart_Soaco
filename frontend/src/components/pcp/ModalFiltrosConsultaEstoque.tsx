@@ -136,254 +136,246 @@ export default function ModalFiltrosConsultaEstoque({
 
   return (
     <div
-      className="absolute inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-[10040] flex items-center justify-center bg-black/70 p-4"
       onClick={onClose}
       role="presentation"
     >
       <div
-        className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-600 dark:bg-slate-800 dark:shadow-black/40 overflow-x-hidden overflow-y-auto"
-        style={{
-          resize: 'both',
-          overflowX: 'hidden',
-          overflowY: 'auto',
-          width: 'min(calc(100vw - 2rem), 72rem)',
-          height: 'min(calc(100vh - 4rem), 36rem)',
-          minWidth: '20rem',
-          minHeight: '16rem',
-          maxWidth: 'calc(100vw - 2rem)',
-          maxHeight: 'calc(100vh - 2rem)',
-        }}
+        className="flex max-h-[min(100vh-2rem,40rem)] w-[min(calc(100vw-2rem),72rem)] min-w-[20rem] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800 dark:shadow-black/40"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Filtros — consulta de estoque"
       >
-        <div className="relative min-h-[14rem]">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           <CarregandoInformacoesOverlay
             show={carregando}
             mensagem="Carregando opções de filtro…"
             mode="contained"
             className="rounded-lg"
           />
-          <div className={carregando ? 'pointer-events-none opacity-50' : undefined}>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+          <div
+            className={`flex min-h-0 flex-1 flex-col overflow-hidden ${carregando ? 'pointer-events-none opacity-50' : ''}`}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-600">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Filtros
               </p>
               <button
                 type="button"
                 onClick={onClose}
-                className="ml-2 flex items-center justify-center w-6 h-6 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-500 dark:hover:text-slate-200 dark:hover:bg-slate-700 transition-colors"
+                className="ml-2 flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-200"
                 aria-label="Fechar painel de filtros"
               >
                 ×
               </button>
             </div>
 
-            <div className="grid min-w-0 grid-cols-1 items-end gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div className="min-w-0 xl:col-span-3">
-                <SingleSelectWithSearch
-                  label="Pedido de venda"
-                  placeholder="Todos"
-                  options={pedidoFiltro.pedido ? [pedidoFiltro.pedido] : []}
-                  value={pedidoFiltro.pedido}
-                  onChange={onPedidoChange}
-                  labelClass={labelClass}
-                  inputClass={inputClass}
-                  onSearchAsync={onBuscarPedido}
-                  fillContainer
-                  listMaxHeight="200px"
-                />
-                {pedidoFiltro.pedido && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                    {pedidoCompleto ? (
-                      <>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-                          Visualização:{' '}
-                          <strong>{rotuloModoPedido(pedidoFiltro.modoPedido!)}</strong>
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
+              <div className="grid min-w-0 grid-cols-1 items-end gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="min-w-0 xl:col-span-3">
+                  <SingleSelectWithSearch
+                    label="Pedido de venda"
+                    placeholder="Todos"
+                    options={pedidoFiltro.pedido ? [pedidoFiltro.pedido] : []}
+                    value={pedidoFiltro.pedido}
+                    onChange={onPedidoChange}
+                    labelClass={labelClass}
+                    inputClass={inputClass}
+                    onSearchAsync={onBuscarPedido}
+                    fillContainer
+                    listMaxHeight="200px"
+                  />
+                  {pedidoFiltro.pedido && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                      {pedidoCompleto ? (
+                        <>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                            Visualização:{' '}
+                            <strong>{rotuloModoPedido(pedidoFiltro.modoPedido!)}</strong>
+                          </span>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                            Empenho:{' '}
+                            <strong>{rotuloEmpenhoEscopo(pedidoFiltro.empenhoEscopo!)}</strong>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={onAlterarEscolhasPedido}
+                            className="text-primary-600 hover:underline dark:text-primary-400"
+                          >
+                            Alterar
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-amber-700 dark:text-amber-300">
+                          Selecione como visualizar o pedido e como calcular o empenho.
                         </span>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-                          Empenho:{' '}
-                          <strong>{rotuloEmpenhoEscopo(pedidoFiltro.empenhoEscopo!)}</strong>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={onAlterarEscolhasPedido}
-                          className="text-primary-600 hover:underline dark:text-primary-400"
-                        >
-                          Alterar
-                        </button>
-                      </>
-                    ) : (
-                      <span className="text-amber-700 dark:text-amber-300">
-                        Selecione como visualizar o pedido e como calcular o empenho.
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0">
-                <MultiSelectWithSearch
-                  label="Código do Produto"
-                  placeholder="Todos"
-                  options={opcoes.codigos}
-                  value={filtros.codigos}
-                  onChange={(v) => onChange({ codigos: v })}
-                  labelClass={labelClass}
-                  inputClass={inputClass}
-                  optionLabel="códigos"
-                  valueSeparator="|"
-                  fillContainer
-                  minSearchChars={2}
-                  onSearchAsync={onBuscarCodigo}
-                />
-              </div>
-              <div className="min-w-0">
-                <MultiSelectWithSearch
-                  label="Descrição do Produto"
-                  placeholder="Todas"
-                  options={opcoes.descricoes}
-                  value={filtros.descricoes}
-                  onChange={(v) => onChange({ descricoes: v })}
-                  labelClass={labelClass}
-                  inputClass={inputClass}
-                  optionLabel="descrições"
-                  valueSeparator="|"
-                  fillContainer
-                  minSearchChars={2}
-                  onSearchAsync={onBuscarDescricao}
-                />
-              </div>
-              <div className="min-w-0">
-                <MultiSelectWithSearch
-                  label="Tipo de produto"
-                  placeholder="Todos"
-                  options={opcoes.tipos}
-                  value={filtros.tipos}
-                  onChange={(v) => onChange({ tipos: v })}
-                  labelClass={labelClass}
-                  inputClass={inputClass}
-                  optionLabel="tipos"
-                  valueSeparator="|"
-                  fillContainer
-                />
-              </div>
-              <div className="min-w-0">
-                <MultiSelectWithSearch
-                  label="Grupo de produto"
-                  placeholder="Todos"
-                  options={opcoes.grupos}
-                  value={filtros.grupos}
-                  onChange={(v) => onChange({ grupos: v })}
-                  labelClass={labelClass}
-                  inputClass={inputClass}
-                  optionLabel="grupos"
-                  valueSeparator="|"
-                  fillContainer
-                />
-              </div>
-              <div className="min-w-0">
-                <MultiSelectWithSearch
-                  label="Nome da coleta"
-                  placeholder="Todas"
-                  options={opcoes.coletas}
-                  value={filtros.coletas}
-                  onChange={(v) => onChange({ coletas: v })}
-                  labelClass={labelClass}
-                  inputClass={inputClass}
-                  optionLabel="coletas"
-                  valueSeparator="|"
-                  fillContainer
-                />
-              </div>
-              <div className="min-w-0">
-                <MultiSelectWithSearch
-                  label="Setor produção"
-                  placeholder="Todos"
-                  options={opcoes.setoresProducao}
-                  value={filtros.setoresProducao}
-                  onChange={(v) => onChange({ setoresProducao: v })}
-                  labelClass={labelClass}
-                  inputClass={inputClass}
-                  optionLabel="setores"
-                  valueSeparator="|"
-                  fillContainer
-                />
-              </div>
-              <div className="min-w-0">
-                <MultiSelectWithSearch
-                  label="Subgrupo 1"
-                  placeholder="Todos"
-                  options={opcoes.subgrupo1}
-                  value={filtros.subgrupo1}
-                  onChange={(v) => onChange({ subgrupo1: v })}
-                  labelClass={labelClass}
-                  inputClass={inputClass}
-                  valueSeparator="|"
-                  fillContainer
-                />
-              </div>
-              <div className="min-w-0">
-                <MultiSelectWithSearch
-                  label="Subgrupo 2"
-                  placeholder="Todos"
-                  options={opcoes.subgrupo2}
-                  value={filtros.subgrupo2}
-                  onChange={(v) => onChange({ subgrupo2: v })}
-                  labelClass={labelClass}
-                  inputClass={inputClass}
-                  valueSeparator="|"
-                  fillContainer
-                />
-              </div>
-              <div className="min-w-0">
-                <label className={labelClass} htmlFor="filtro-com-empenho">
-                  Com empenho?
-                </label>
-                <select
-                  id="filtro-com-empenho"
-                  className={inputClass}
-                  value={filtros.comEmpenho}
-                  onChange={(e) => onChange({ comEmpenho: e.target.value as FiltroSimNaoTodos })}
-                >
-                  <option value="todos">Todos</option>
-                  <option value="sim">Sim</option>
-                  <option value="nao">Não</option>
-                </select>
-              </div>
-              <div className="min-w-0">
-                <label className={labelClass} htmlFor="filtro-com-saldo-estoque">
-                  Com saldo de estoque?
-                </label>
-                <select
-                  id="filtro-com-saldo-estoque"
-                  className={inputClass}
-                  value={filtros.comSaldoEstoque}
-                  onChange={(e) =>
-                    onChange({ comSaldoEstoque: e.target.value as FiltroSimNaoTodos })
-                  }
-                >
-                  <option value="todos">Todos</option>
-                  <option value="sim">Sim</option>
-                  <option value="nao">Não</option>
-                </select>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <MultiSelectWithSearch
+                    label="Código do Produto"
+                    placeholder="Todos"
+                    options={opcoes.codigos}
+                    value={filtros.codigos}
+                    onChange={(v) => onChange({ codigos: v })}
+                    labelClass={labelClass}
+                    inputClass={inputClass}
+                    optionLabel="códigos"
+                    valueSeparator="|"
+                    fillContainer
+                    minSearchChars={2}
+                    onSearchAsync={onBuscarCodigo}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <MultiSelectWithSearch
+                    label="Descrição do Produto"
+                    placeholder="Todas"
+                    options={opcoes.descricoes}
+                    value={filtros.descricoes}
+                    onChange={(v) => onChange({ descricoes: v })}
+                    labelClass={labelClass}
+                    inputClass={inputClass}
+                    optionLabel="descrições"
+                    valueSeparator="|"
+                    fillContainer
+                    minSearchChars={2}
+                    onSearchAsync={onBuscarDescricao}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <MultiSelectWithSearch
+                    label="Tipo de produto"
+                    placeholder="Todos"
+                    options={opcoes.tipos}
+                    value={filtros.tipos}
+                    onChange={(v) => onChange({ tipos: v })}
+                    labelClass={labelClass}
+                    inputClass={inputClass}
+                    optionLabel="tipos"
+                    valueSeparator="|"
+                    fillContainer
+                  />
+                </div>
+                <div className="min-w-0">
+                  <MultiSelectWithSearch
+                    label="Grupo de produto"
+                    placeholder="Todos"
+                    options={opcoes.grupos}
+                    value={filtros.grupos}
+                    onChange={(v) => onChange({ grupos: v })}
+                    labelClass={labelClass}
+                    inputClass={inputClass}
+                    optionLabel="grupos"
+                    valueSeparator="|"
+                    fillContainer
+                  />
+                </div>
+                <div className="min-w-0">
+                  <MultiSelectWithSearch
+                    label="Nome da coleta"
+                    placeholder="Todas"
+                    options={opcoes.coletas}
+                    value={filtros.coletas}
+                    onChange={(v) => onChange({ coletas: v })}
+                    labelClass={labelClass}
+                    inputClass={inputClass}
+                    optionLabel="coletas"
+                    valueSeparator="|"
+                    fillContainer
+                  />
+                </div>
+                <div className="min-w-0">
+                  <MultiSelectWithSearch
+                    label="Setor produção"
+                    placeholder="Todos"
+                    options={opcoes.setoresProducao}
+                    value={filtros.setoresProducao}
+                    onChange={(v) => onChange({ setoresProducao: v })}
+                    labelClass={labelClass}
+                    inputClass={inputClass}
+                    optionLabel="setores"
+                    valueSeparator="|"
+                    fillContainer
+                  />
+                </div>
+                <div className="min-w-0">
+                  <MultiSelectWithSearch
+                    label="Subgrupo 1"
+                    placeholder="Todos"
+                    options={opcoes.subgrupo1}
+                    value={filtros.subgrupo1}
+                    onChange={(v) => onChange({ subgrupo1: v })}
+                    labelClass={labelClass}
+                    inputClass={inputClass}
+                    valueSeparator="|"
+                    fillContainer
+                  />
+                </div>
+                <div className="min-w-0">
+                  <MultiSelectWithSearch
+                    label="Subgrupo 2"
+                    placeholder="Todos"
+                    options={opcoes.subgrupo2}
+                    value={filtros.subgrupo2}
+                    onChange={(v) => onChange({ subgrupo2: v })}
+                    labelClass={labelClass}
+                    inputClass={inputClass}
+                    valueSeparator="|"
+                    fillContainer
+                  />
+                </div>
+                <div className="min-w-0">
+                  <label className={labelClass} htmlFor="filtro-com-empenho">
+                    Com empenho?
+                  </label>
+                  <select
+                    id="filtro-com-empenho"
+                    className={inputClass}
+                    value={filtros.comEmpenho}
+                    onChange={(e) => onChange({ comEmpenho: e.target.value as FiltroSimNaoTodos })}
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="sim">Sim</option>
+                    <option value="nao">Não</option>
+                  </select>
+                </div>
+                <div className="min-w-0">
+                  <label className={labelClass} htmlFor="filtro-com-saldo-estoque">
+                    Com saldo de estoque?
+                  </label>
+                  <select
+                    id="filtro-com-saldo-estoque"
+                    className={inputClass}
+                    value={filtros.comSaldoEstoque}
+                    onChange={(e) =>
+                      onChange({ comSaldoEstoque: e.target.value as FiltroSimNaoTodos })
+                    }
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="sim">Sim</option>
+                    <option value="nao">Não</option>
+                  </select>
+                </div>
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-slate-200 px-4 py-3 dark:border-slate-600">
               <button type="button" onClick={onFiltrar} disabled={carregando} className={BTN_FILTRAR}>
                 Filtrar
               </button>
               <button type="button" onClick={onLimpar} disabled={carregando} className={BTN_LIMPAR}>
                 Limpar filtros
               </button>
+              {msgFiltro && (
+                <p className="w-full text-sm text-amber-700 dark:text-amber-300" role="alert">
+                  {msgFiltro}
+                </p>
+              )}
             </div>
-
-            {msgFiltro && (
-              <p className="mt-3 text-sm text-amber-700 dark:text-amber-300" role="alert">
-                {msgFiltro}
-              </p>
-            )}
           </div>
         </div>
       </div>
