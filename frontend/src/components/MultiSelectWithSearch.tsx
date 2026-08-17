@@ -198,11 +198,16 @@ export default function MultiSelectWithSearch({
     }
   };
 
+  const todosSelecionados =
+    options.length > 0 &&
+    selected.length === options.length &&
+    options.every((o) => selected.includes(o));
+
   const labelText =
-    selected.length === 0
+    selected.length === 0 || todosSelecionados
       ? placeholder
       : selected.length === 1
-        ? displayFor(selected[0])
+        ? displayFor(selected[0]!)
         : `${selected.length} ${optionLabel}`;
 
   const panelMaxW = dropdownMaxWidth ?? '100%';

@@ -5,12 +5,18 @@ import {
   linhaCodCarrada,
   simItemKey,
   carradaKey,
+  toISODate,
+  valorEfetivo,
+  valorEfetivoItem,
+  type CarradaBaseline,
   type CarradaDataInvalida,
   type PedidoAlterado,
+  type SimEntry,
 } from './simulacaoCarradas';
 import { isCarradaOrdemFinal } from './sequenciamentoCarradasUtils';
 import { isCarradaEmFormacao } from '../../utils/rotaCarrada';
 import { statusBadgeFieldsFromRow } from '../../utils/statusPedidoBadges';
+import { itemPrevisaoConfiavelEscolhida } from './confirmacaoMotivosUtils';
 
 /** Linha da grade única do modal Concluir (datas + motivos). */
 export type LinhaConclusao = {
@@ -21,6 +27,8 @@ export type LinhaConclusao = {
   codigo: string;
   descricao: string;
   carrada: string;
+  /** Data de emissão do PD (ISO), quando disponível no snapshot. */
+  dataEmissao?: string;
   dataProducao: string;
   dataEntrega: string;
   producaoPassada: boolean;
@@ -36,14 +44,67 @@ export type LinhaConclusao = {
   faturado?: boolean;
 };
 
+export type MontarLinhasConclusaoOpts = {
+  /** Simulação atual — preenche datas efetivas em linhas só-motivo. */
+  sim?: Map<string, SimEntry>;
+  baseline?: Map<string, CarradaBaseline>;
+};
+
 function simKeyPedidoAlterado(p: PedidoAlterado): string {
   if (isCarradaOrdemFinal(p.rota)) return simItemKey(p.idPedido);
   return carradaKey(p.cod || '—', p.rota);
 }
 
+function emissaoDaLinha(row: Record<string, unknown> | undefined): string {
+  if (!row) return '';
+  return toISODate(getField(row, ['Emissao', 'emissao']));
+}
+
+function rowPorIdPedido(
+  linhasSnapshot: Record<string, unknown>[],
+  idPedido: string | undefined
+): Record<string, unknown> | undefined {
+  if (!idPedido) return undefined;
+  return linhasSnapshot.find((r) => getField(r, ['id_pedido', 'idChave']) === idPedido);
+}
+
+/** Datas efetivas da simulação (item especial ou carrada agregada). */
+export function datasEfetivasPedidoAlterado(
+  ped: PedidoAlterado,
+  linhasSnapshot: Record<string, unknown>[],
+  sim?: Map<string, SimEntry>,
+  baseline?: Map<string, CarradaBaseline>
+): { dataProducao: string; dataEntrega: string } {
+  let dataProducao = '';
+  let dataEntrega = ped.previsaoNova || '';
+  if (!sim) return { dataProducao, dataEntrega };
+
+  const row = rowPorIdPedido(linhasSnapshot, ped.idPedido);
+  if (isCarradaOrdemFinal(ped.rota)) {
+    if (row) {
+      dataProducao = valorEfetivoItem(sim, row, 'dataProducao');
+      const ent = valorEfetivoItem(sim, row, 'dataEntrega');
+      if (ent) dataEntrega = ent;
+    } else {
+      const s = sim.get(simItemKey(ped.idPedido));
+      if (s?.dataProducao) dataProducao = s.dataProducao;
+      if (s?.dataEntrega) dataEntrega = s.dataEntrega;
+    }
+    return { dataProducao, dataEntrega };
+  }
+
+  const key = simKeyPedidoAlterado(ped);
+  const bl = baseline ?? new Map<string, CarradaBaseline>();
+  dataProducao = valorEfetivo(sim, bl, key, 'dataProducao');
+  const ent = valorEfetivo(sim, bl, key, 'dataEntrega');
+  if (ent) dataEntrega = ent;
+  return { dataProducao, dataEntrega };
+}
+
 function linhaFromInvalidaItem(
   inv: CarradaDataInvalida,
-  ped: PedidoAlterado | undefined
+  ped: PedidoAlterado | undefined,
+  dataEmissao = ''
 ): LinhaConclusao {
   return {
     key: inv.key,
@@ -53,6 +114,7 @@ function linhaFromInvalidaItem(
     codigo: inv.codigoProduto || inv.cod || ped?.cod || '—',
     descricao: inv.descricaoProduto || ped?.descricao || '',
     carrada: inv.carrada,
+    dataEmissao,
     dataProducao: inv.dataProducao,
     dataEntrega: inv.dataEntrega,
     producaoPassada: !!inv.producaoPassada,
@@ -97,6 +159,7 @@ function expandirItensDaCarrada(
       descricao:
         getField(row, ['Descricao do produto', 'Descrição do produto']) || ped?.descricao || '',
       carrada: inv.carrada,
+      dataEmissao: emissaoDaLinha(row),
       dataProducao: inv.dataProducao,
       dataEntrega: inv.dataEntrega,
       producaoPassada: !!inv.producaoPassada,
@@ -117,11 +180,13 @@ function expandirItensDaCarrada(
 /**
  * Une datas vencidas + pedidos com previsão alterada numa grade plana.
  * Carradas agregadas (sem idPedido) são expandidas nos itens do snapshot.
+ * Com `opts.sim`, linhas só-motivo recebem as datas efetivas da simulação.
  */
 export function montarLinhasConclusao(
   invalidas: CarradaDataInvalida[],
   pedidosEntrega: PedidoAlterado[],
-  linhasSnapshot: Record<string, unknown>[] = []
+  linhasSnapshot: Record<string, unknown>[] = [],
+  opts?: MontarLinhasConclusaoOpts
 ): LinhaConclusao[] {
   const pedById = new Map(pedidosEntrega.map((p) => [p.idPedido, p]));
   const usados = new Set<string>();
@@ -130,7 +195,8 @@ export function montarLinhasConclusao(
   for (const inv of invalidas) {
     if (inv.idPedido) {
       usados.add(inv.idPedido);
-      out.push(linhaFromInvalidaItem(inv, pedById.get(inv.idPedido)));
+      const row = rowPorIdPedido(linhasSnapshot, inv.idPedido);
+      out.push(linhaFromInvalidaItem(inv, pedById.get(inv.idPedido), emissaoDaLinha(row)));
       continue;
     }
 
@@ -149,6 +215,13 @@ export function montarLinhasConclusao(
 
   for (const ped of pedidosEntrega) {
     if (usados.has(ped.idPedido)) continue;
+    const row = rowPorIdPedido(linhasSnapshot, ped.idPedido);
+    const { dataProducao, dataEntrega } = datasEfetivasPedidoAlterado(
+      ped,
+      linhasSnapshot,
+      opts?.sim,
+      opts?.baseline
+    );
     out.push({
       key: simKeyPedidoAlterado(ped),
       idPedido: ped.idPedido,
@@ -157,8 +230,9 @@ export function montarLinhasConclusao(
       codigo: ped.cod || '—',
       descricao: ped.descricao || '',
       carrada: ped.rota,
-      dataProducao: '',
-      dataEntrega: ped.previsaoNova,
+      dataEmissao: emissaoDaLinha(row),
+      dataProducao,
+      dataEntrega,
       producaoPassada: false,
       entregaPassada: false,
       datasOk: true,
@@ -168,4 +242,18 @@ export function montarLinhasConclusao(
   }
 
   return out;
+}
+
+/** Linha pronta para o filtro Concluídos (datas ok + motivo/confiável quando exigidos). */
+export function linhaConclusaoPronta(
+  l: LinhaConclusao,
+  motivoPorId: Record<string, string>,
+  previsaoConfiavelPorId: Record<string, boolean | null>
+): boolean {
+  if (!l.datasOk) return false;
+  if (!l.exigeMotivo || !l.idPedido) return true;
+  return (
+    !!motivoPorId[l.idPedido]?.trim() &&
+    itemPrevisaoConfiavelEscolhida(l.idPedido, previsaoConfiavelPorId)
+  );
 }

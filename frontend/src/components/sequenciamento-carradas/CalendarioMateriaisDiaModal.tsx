@@ -1,9 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import type { DemandaCalendarioMateriais, MaterialDiaCalendario } from '../../api/sequenciamentoCarradas';
-import { consultarDisponibilidadeMateriaisDia } from '../../api/sequenciamentoCarradas';
+import type {
+  DemandaCalendarioMateriais,
+  EntradaPcExibicaoCalendario,
+  MaterialDiaCalendario,
+} from '../../api/sequenciamentoCarradas';
+import {
+  consultarDisponibilidadeMateriaisDia,
+  obterAgPagCongelado,
+  obterPcPendCongelado,
+  obterScCongelado,
+} from '../../api/sequenciamentoCarradas';
+import { obterCotacaoDetalhe, obterScDetalhe, type CotacaoDetalhe, type ScDetalhe } from '../../api/consultaEstoque';
+import type { RessupAlmoxPcPendLinha } from '../../api/compras';
 import { formatDataCurta, toISODate } from './simulacaoCarradas';
 import CalendarioOrigemConsumoModal from './CalendarioOrigemConsumoModal';
 import GradeCelulaModalBtn from '../pcp/GradeCelulaModalBtn';
+import CopiarTextoBtn from '../CopiarTextoBtn';
+import ModalPcPendDetalhes from '../ressupAlmox/ModalPcPendDetalhes';
+import ModalConsultaEstoqueDetalhe from '../pcp/ModalConsultaEstoqueDetalhe';
+import TabelaDetalheCotacao from '../pcp/TabelaDetalheCotacao';
+import TabelaDetalheSolicitacao from '../pcp/TabelaDetalheSolicitacao';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import GradeFiltroCabecalhoBtn from '../grade/GradeFiltroCabecalhoBtn';
@@ -12,6 +28,15 @@ import GradeFiltroExcelPortal from '../grade/GradeFiltroExcelPortal';
 function fmtNum(n: number): string {
   if (!Number.isFinite(n)) return '—';
   return n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+/** Fallback para respostas legadas sem `entradaPc`. */
+function entradaPcDaLinha(row: MaterialDiaCalendario): EntradaPcExibicaoCalendario {
+  if (row.entradaPc) return row.entradaPc;
+  if (row.entradaDia > 0) {
+    return { fonte: 'entrada_dia', texto: fmtNum(row.entradaDia), clicavel: true };
+  }
+  return { fonte: 'nenhuma', texto: fmtNum(row.entradaDia), clicavel: false };
 }
 
 const COLS = [
@@ -35,18 +60,18 @@ const COL_LABELS: Record<ColId, string> = {
 };
 
 const DEFAULT_COL_WIDTHS: Record<ColId, number> = {
-  codigo: 110,
+  codigo: 140,
   descricao: 260,
   saldoInicio: 100,
   consumoDia: 100,
-  entradaDia: 100,
+  entradaDia: 160,
   falta: 90,
 };
 
 const COL_WIDTH_MIN = 56;
 const COL_WIDTH_MAX = 480;
 
-const NUMERIC_COLS = new Set<ColId>(['saldoInicio', 'consumoDia', 'entradaDia', 'falta']);
+const NUMERIC_COLS = new Set<ColId>(['saldoInicio', 'consumoDia', 'falta']);
 
 const TH = 'relative px-2 py-2 font-semibold text-slate-700 dark:text-slate-200';
 const TD = 'px-2 py-1.5 border-b border-slate-100 dark:border-slate-700 align-top';
@@ -66,7 +91,7 @@ function textoCelula(row: MaterialDiaCalendario, colId: string): string {
   if (colId === 'descricao') return row.descricao || '';
   if (colId === 'saldoInicio') return fmtNum(row.saldoInicio);
   if (colId === 'consumoDia') return fmtNum(row.consumoDia);
-  if (colId === 'entradaDia') return fmtNum(row.entradaDia);
+  if (colId === 'entradaDia') return entradaPcDaLinha(row).texto;
   if (colId === 'falta') return fmtNum(row.falta);
   return '';
 }
@@ -74,10 +99,22 @@ function textoCelula(row: MaterialDiaCalendario, colId: string): string {
 function valorOrdenacao(row: MaterialDiaCalendario, colId: string): string | number {
   if (colId === 'saldoInicio') return row.saldoInicio;
   if (colId === 'consumoDia') return row.consumoDia;
-  if (colId === 'entradaDia') return row.entradaDia;
+  if (colId === 'entradaDia') {
+    const ep = entradaPcDaLinha(row);
+    if (ep.fonte === 'entrada_dia') return row.entradaDia;
+    if (ep.fonte === 'pc_aberta') return ep.texto;
+    if (ep.fonte === 'ag_pag') return 'Pré Compra';
+    if (ep.fonte === 'solicitacao') return 'Solicitação de Compra';
+    return 0;
+  }
   if (colId === 'falta') return row.falta;
   return textoCelula(row, colId);
 }
+
+type DetalheEntradaPc =
+  | { tipo: 'pc'; linha: MaterialDiaCalendario }
+  | { tipo: 'ag_pag'; linha: MaterialDiaCalendario }
+  | { tipo: 'solicitacao'; linha: MaterialDiaCalendario };
 
 export type CalendarioMateriaisDiaModalProps = {
   open: boolean;
@@ -103,8 +140,14 @@ export default function CalendarioMateriaisDiaModal({
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [origemLinha, setOrigemLinha] = useState<MaterialDiaCalendario | null>(null);
+  const [detalheEntrada, setDetalheEntrada] = useState<DetalheEntradaPc | null>(null);
+  const [detalheAgPag, setDetalheAgPag] = useState<CotacaoDetalhe[]>([]);
+  const [detalheSc, setDetalheSc] = useState<ScDetalhe[]>([]);
   const [colWidths, setColWidths] = useState<Record<ColId, number>>(() => ({ ...DEFAULT_COL_WIDTHS }));
   const colResizeRef = useRef<{ colId: ColId; startX: number; startW: number } | null>(null);
+  const pcCacheRef = useRef(new Map<number, RessupAlmoxPcPendLinha[]>());
+  const agPagCacheRef = useRef(new Map<number, CotacaoDetalhe[]>());
+  const scCacheRef = useRef(new Map<number, ScDetalhe[]>());
 
   const grade = useGradeFiltrosExcel<MaterialDiaCalendario>({
     rows: linhas,
@@ -154,6 +197,10 @@ export default function CalendarioMateriaisDiaModal({
   }, []);
 
   const handleEscape = () => {
+    if (detalheEntrada) {
+      setDetalheEntrada(null);
+      return;
+    }
     if (origemLinha) {
       setOrigemLinha(null);
       return;
@@ -178,8 +225,13 @@ export default function CalendarioMateriaisDiaModal({
       setErro(null);
       setCarregando(false);
       setOrigemLinha(null);
+      setDetalheEntrada(null);
       return;
     }
+    // Garante data do modal PC no formato da Consulta (evita cache ISO de sessão anterior).
+    pcCacheRef.current.clear();
+    agPagCacheRef.current.clear();
+    scCacheRef.current.clear();
     const dataNorm = toISODate(dataIso) || dataIso;
     const cached = cacheRef.current.get(dataNorm);
     if (cached) {
@@ -208,6 +260,52 @@ export default function CalendarioMateriaisDiaModal({
     };
   }, [open, dataIso, demanda, cacheRef, snapshotId]);
 
+  const fetchPcPend = useCallback(
+    (id: number): Promise<{ data: RessupAlmoxPcPendLinha[]; error?: string }> =>
+      obterPcPendCongelado(snapshotId!, id),
+    [snapshotId]
+  );
+
+  const carregarAgPag = useCallback(async () => {
+    if (!detalheEntrada || detalheEntrada.tipo !== 'ag_pag') return {};
+    const idProduto = detalheEntrada.linha.idProduto;
+    const cached = agPagCacheRef.current.get(idProduto);
+    if (cached) {
+      setDetalheAgPag(cached);
+      return {};
+    }
+    const r =
+      snapshotId != null
+        ? await obterAgPagCongelado(snapshotId, idProduto)
+        : await obterCotacaoDetalhe(idProduto);
+    if (r.error) {
+      setDetalheAgPag([]);
+      return { error: r.error };
+    }
+    agPagCacheRef.current.set(idProduto, r.data);
+    setDetalheAgPag(r.data);
+    return {};
+  }, [detalheEntrada, snapshotId]);
+
+  const carregarSc = useCallback(async () => {
+    if (!detalheEntrada || detalheEntrada.tipo !== 'solicitacao') return {};
+    const idProduto = detalheEntrada.linha.idProduto;
+    const cached = scCacheRef.current.get(idProduto);
+    if (cached) {
+      setDetalheSc(cached);
+      return {};
+    }
+    const r =
+      snapshotId != null ? await obterScCongelado(snapshotId, idProduto) : await obterScDetalhe(idProduto);
+    if (r.error) {
+      setDetalheSc([]);
+      return { error: r.error };
+    }
+    scCacheRef.current.set(idProduto, r.data);
+    setDetalheSc(r.data);
+    return {};
+  }, [detalheEntrada, snapshotId]);
+
   if (!open) return null;
 
   return (
@@ -234,8 +332,8 @@ export default function CalendarioMateriaisDiaModal({
             </h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               Somente consumo e falta &gt; 0 no dia (exclui Matéria Prima). Clique em{' '}
-              <strong>Consumo</strong> para ver a origem. Arraste a borda das colunas para ajustar a
-              largura.
+              <strong>Consumo</strong> para ver a origem; em <strong>Entrada PC</strong> para PC /
+              Pré Compra / Solicitação. Arraste a borda das colunas para ajustar a largura.
             </p>
           </div>
           <button
@@ -285,7 +383,7 @@ export default function CalendarioMateriaisDiaModal({
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/50">
                   {COLS.map((colId) => {
-                    const numeric = NUMERIC_COLS.has(colId);
+                    const numeric = NUMERIC_COLS.has(colId) || colId === 'entradaDia';
                     return (
                       <th
                         key={colId}
@@ -317,41 +415,73 @@ export default function CalendarioMateriaisDiaModal({
                 </tr>
               </thead>
               <tbody>
-                {grade.rowsExibidas.map((r) => (
-                  <tr
-                    key={r.codigo}
-                    className={`border-b border-slate-100 dark:border-slate-700 ${classStatus(r.status)}`}
-                  >
-                    <td className={TD}>
-                      <GradeCelulaModalBtn
-                        onClick={() => onAbrirItem(r.codigo, r.idProduto, r.descricao)}
-                        title="Ver horizonte do material"
-                        align="left"
-                      >
-                        {r.codigo}
-                      </GradeCelulaModalBtn>
-                    </td>
-                    <td className={`${TD} whitespace-normal break-words`}>
-                      {r.descricao || '—'}
-                    </td>
-                    <td className={`${TD} text-right tabular-nums`}>{fmtNum(r.saldoInicio)}</td>
-                    <td className={`${TD} text-right tabular-nums`}>
-                      {r.consumoDia > 0 ? (
-                        <GradeCelulaModalBtn
-                          onClick={() => setOrigemLinha(r)}
-                          title="Ver origem do consumo"
-                          align="right"
-                        >
-                          {fmtNum(r.consumoDia)}
-                        </GradeCelulaModalBtn>
-                      ) : (
-                        fmtNum(r.consumoDia)
-                      )}
-                    </td>
-                    <td className={`${TD} text-right tabular-nums`}>{fmtNum(r.entradaDia)}</td>
-                    <td className={`${TD} text-right tabular-nums font-medium`}>{fmtNum(r.falta)}</td>
-                  </tr>
-                ))}
+                {grade.rowsExibidas.map((r) => {
+                  const ep = entradaPcDaLinha(r);
+                  return (
+                    <tr
+                      key={r.codigo}
+                      className={`border-b border-slate-100 dark:border-slate-700 ${classStatus(r.status)}`}
+                    >
+                      <td className={TD}>
+                        <span className="inline-flex items-center gap-1">
+                          <GradeCelulaModalBtn
+                            onClick={() => onAbrirItem(r.codigo, r.idProduto, r.descricao)}
+                            title="Ver horizonte do material"
+                            align="left"
+                          >
+                            {r.codigo}
+                          </GradeCelulaModalBtn>
+                          <CopiarTextoBtn texto={r.codigo} title="Copiar código" />
+                        </span>
+                      </td>
+                      <td className={`${TD} whitespace-normal break-words`}>
+                        {r.descricao || '—'}
+                      </td>
+                      <td className={`${TD} text-right tabular-nums`}>{fmtNum(r.saldoInicio)}</td>
+                      <td className={`${TD} text-right tabular-nums`}>
+                        {r.consumoDia > 0 ? (
+                          <GradeCelulaModalBtn
+                            onClick={() => setOrigemLinha(r)}
+                            title="Ver origem do consumo"
+                            align="right"
+                          >
+                            {fmtNum(r.consumoDia)}
+                          </GradeCelulaModalBtn>
+                        ) : (
+                          fmtNum(r.consumoDia)
+                        )}
+                      </td>
+                      <td className={`${TD} text-right tabular-nums`}>
+                        {ep.clicavel ? (
+                          <GradeCelulaModalBtn
+                            onClick={() => {
+                              if (ep.fonte === 'entrada_dia' || ep.fonte === 'pc_aberta') {
+                                setDetalheEntrada({ tipo: 'pc', linha: r });
+                              } else if (ep.fonte === 'ag_pag') {
+                                setDetalheEntrada({ tipo: 'ag_pag', linha: r });
+                              } else if (ep.fonte === 'solicitacao') {
+                                setDetalheEntrada({ tipo: 'solicitacao', linha: r });
+                              }
+                            }}
+                            title={
+                              ep.fonte === 'ag_pag'
+                                ? 'Ver Pré Compra (Ag Pag)'
+                                : ep.fonte === 'solicitacao'
+                                  ? 'Ver solicitações de compra'
+                                  : 'Ver pedidos de compra'
+                            }
+                            align="right"
+                          >
+                            {ep.texto}
+                          </GradeCelulaModalBtn>
+                        ) : (
+                          ep.texto
+                        )}
+                      </td>
+                      <td className={`${TD} text-right tabular-nums font-medium`}>{fmtNum(r.falta)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -397,6 +527,56 @@ export default function CalendarioMateriaisDiaModal({
           onClose={() => setOrigemLinha(null)}
           zIndex={145}
         />
+      )}
+
+      {detalheEntrada?.tipo === 'pc' && (
+        <ModalPcPendDetalhes
+          open
+          idProduto={detalheEntrada.linha.idProduto}
+          codigo={detalheEntrada.linha.codigo}
+          descricao={detalheEntrada.linha.descricao}
+          onClose={() => setDetalheEntrada(null)}
+          cacheRef={pcCacheRef}
+          fetchDetalhes={snapshotId != null ? fetchPcPend : undefined}
+        />
+      )}
+
+      {detalheEntrada?.tipo === 'ag_pag' && (
+        <ModalConsultaEstoqueDetalhe
+          open
+          titulo={`Ag Pag — ${detalheEntrada.linha.codigo}`}
+          subtitulo={detalheEntrada.linha.descricao}
+          onClose={() => setDetalheEntrada(null)}
+          detailKey={`ag-pag-${detalheEntrada.linha.idProduto}`}
+          onLoad={carregarAgPag}
+          backdropMode="fixed"
+          zIndex={145}
+        >
+          {({ carregando: c, erro: e }) => {
+            if (c) return <p className="py-6 text-center text-slate-500">Carregando…</p>;
+            if (e) return <p className="text-red-600">{e}</p>;
+            return <TabelaDetalheCotacao linhas={detalheAgPag} />;
+          }}
+        </ModalConsultaEstoqueDetalhe>
+      )}
+
+      {detalheEntrada?.tipo === 'solicitacao' && (
+        <ModalConsultaEstoqueDetalhe
+          open
+          titulo={`Solicitação de compra — ${detalheEntrada.linha.codigo}`}
+          subtitulo={detalheEntrada.linha.descricao}
+          onClose={() => setDetalheEntrada(null)}
+          detailKey={`sc-${detalheEntrada.linha.idProduto}`}
+          onLoad={carregarSc}
+          backdropMode="fixed"
+          zIndex={145}
+        >
+          {({ carregando: c, erro: e }) => {
+            if (c) return <p className="py-6 text-center text-slate-500">Carregando…</p>;
+            if (e) return <p className="text-red-600">{e}</p>;
+            return <TabelaDetalheSolicitacao linhas={detalheSc} />;
+          }}
+        </ModalConsultaEstoqueDetalhe>
       )}
     </>
   );

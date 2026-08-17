@@ -36,7 +36,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Ícone/ação abre o mesmo histórico de previsão e motivos usado no Gerenciador, com justificativa e download do PDF assinado quando houver anexo.',
     comoLe:
-      'Consulte motivos, datas reprogramadas e o PDF de assinatura mesmo depois do encerramento — útil para auditoria e comunicação comercial.',
+      'Cada card destaca só o que mudou naquele momento (data, Confiável, motivo/obs/anexo). Rota já aparece no cabeçalho e não é repetida. Confirmação só de Confiável (sem mudança de data) aparece com selo Confiável/Não confiável, sem reexibir data nem motivo automático.',
   },
 ];
 

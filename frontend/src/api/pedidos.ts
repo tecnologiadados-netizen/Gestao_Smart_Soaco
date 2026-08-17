@@ -184,8 +184,9 @@ export interface FiltrosPedidos {
   descricao_produto?: string;
   a_vista?: string;
   requisicao_loja?: string;
-  /** Mais filtros: sim | nao | branco */
-  previsao_confiavel?: 'sim' | 'nao' | 'branco';
+  empresa?: string;
+  /** Mais filtros: sim | nao | branco (CSV multi). */
+  previsao_confiavel?: string;
   faixa_atraso?: DashEntregasFaixaAtraso;
   excluir_requisicao?: boolean;
   page?: number;
@@ -241,6 +242,7 @@ export function filtrosPedidosToSearchParams(
   if (filtros.descricao_produto) params.set('descricao_produto', filtros.descricao_produto);
   if (filtros.a_vista) params.set('a_vista', filtros.a_vista);
   if (filtros.requisicao_loja) params.set('requisicao_loja', filtros.requisicao_loja);
+  if (filtros.empresa) params.set('empresa', filtros.empresa);
   if (filtros.previsao_confiavel) params.set('previsao_confiavel', filtros.previsao_confiavel);
   if (filtros.faixa_atraso) params.set('faixa_atraso', filtros.faixa_atraso);
   if (filtros.excluir_requisicao === true) params.set('excluir_requisicao', 'true');
@@ -409,11 +411,17 @@ export interface FiltrosOpcoes {
   municipios: string[];
   formasPagamento: string[];
   gruposProduto: string[];
+  subgrupos1: string[];
+  subgrupos2: string[];
   pds: string[];
   setores: string[];
   vendedores: string[];
   clientes: string[];
   codigos: string[];
+  requisicoes: string[];
+  tiposPedido: string[];
+  empresas: string[];
+  aVista: string[];
 }
 
 export async function obterFiltrosOpcoes(): Promise<FiltrosOpcoes> {
@@ -473,6 +481,10 @@ export interface TooltipDetalheRow {
   producaoPorPrevisao?: boolean;
   /** Constr/cont ou romaneio &lt; corte — previsão exibe "Carrada em formação". */
   carradaEmFormacao?: boolean;
+  /** id_pedido / idChave do snapshot (para status Confiável no modal do PD). */
+  idPedido?: string;
+  /** Texto livre do pedido no ERP (`pd.observacao`), distinto de Observacoes/rota. */
+  observacaoPedido?: string;
 }
 
 export type CorBolhaMapa = 'vermelho' | 'verde' | 'amarelo' | 'roxo' | 'preto';

@@ -8,6 +8,7 @@ import GradeFiltroExcelPortal from './grade/GradeFiltroExcelPortal';
 import GradeFiltroCabecalhoBtn from './grade/GradeFiltroCabecalhoBtn';
 import GradeCelulaModalBtn from './pcp/GradeCelulaModalBtn';
 import ModalConsultaEstoqueEmbed from './pcp/ModalConsultaEstoqueEmbed';
+import CopiarTextoBtn, { numeroPedidoLimpo } from './CopiarTextoBtn';
 import IndicadorDataPorPrevisao from './sequenciamento-carradas/IndicadorDataPorPrevisao';
 import { resolverDataProducaoExibicaoGerenciador, maxDataProducaoPedidosNormais, dataProducaoCarradaEmFormacaoApartirDe } from '../utils/dataProducaoGerenciador';
 import { LABEL_CARRADA_EM_FORMACAO } from '../utils/rotaCarrada';
@@ -895,7 +896,13 @@ export default function TabelaPedidos({
                   return (
                     <td key={col.id} className="p-3">
                       <div className="flex flex-col items-start gap-1">
-                        <span className="font-medium text-slate-800 dark:text-slate-100">{numeroPedido || '—'}</span>
+                        <span className="inline-flex items-center gap-1 font-medium text-slate-800 dark:text-slate-100">
+                          {numeroPedido || '—'}
+                          <CopiarTextoBtn
+                            texto={numeroPedidoLimpo(numeroPedido) || numeroPedido}
+                            title="Copiar número do pedido"
+                          />
+                        </span>
                         {confiavel === true || confiavel === false ? (
                           <span
                             className={`text-xs font-medium ${
@@ -916,13 +923,16 @@ export default function TabelaPedidos({
                   return (
                     <td key={col.id} className="p-3 font-mono text-slate-700 dark:text-slate-200">
                       {codigo ? (
-                        <GradeCelulaModalBtn
-                          onClick={() => setConsultaCodigo(codigo)}
-                          title={`Consultar estoque de ${codigo}`}
-                          align="left"
-                        >
-                          {codigo}
-                        </GradeCelulaModalBtn>
+                        <span className="inline-flex items-center gap-1">
+                          <GradeCelulaModalBtn
+                            onClick={() => setConsultaCodigo(codigo)}
+                            title={`Consultar estoque de ${codigo}`}
+                            align="left"
+                          >
+                            {codigo}
+                          </GradeCelulaModalBtn>
+                          <CopiarTextoBtn texto={codigo} title="Copiar código do produto" />
+                        </span>
                       ) : (
                         '—'
                       )}

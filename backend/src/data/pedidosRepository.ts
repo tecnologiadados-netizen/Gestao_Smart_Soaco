@@ -84,13 +84,14 @@ export interface FiltrosPedidos {
   descricao_produto?: string;
   a_vista?: string;
   requisicao_loja?: string;
+  empresa?: string;
   /**
    * Filtro do Gerenciador (Mais filtros):
    * - sim: último ajuste com previsão confiável
    * - nao: último ajuste marcado como não confiável
    * - branco: sem ajuste real de previsão (ainda não escolhido)
    */
-  previsao_confiavel?: 'sim' | 'nao' | 'branco';
+  previsao_confiavel?: string;
   /** Faixa de aging para drill-down do Dash Entregas (em_dia, atraso_1_7, …). */
   faixa_atraso?: string;
   /** Quando true, exclui pedidos classificados como requisição (Dash Entregas). */
@@ -1004,14 +1005,21 @@ function applyFiltrosPedidos(resultado: PedidoRow[], filtros: FiltrosPedidos): P
   resultado = filterByMultiExact(resultado, filtros.metodo, (p) =>
     getField(p, ['Metodo de Entrega', 'metodo de entrega'])
   );
-  if (filtros.previsao_confiavel === 'sim') {
-    resultado = resultado.filter((p) => p.previsao_atual_confiavel === true);
-  } else if (filtros.previsao_confiavel === 'nao') {
-    resultado = resultado.filter((p) => p.previsao_atual_confiavel === false);
-  } else if (filtros.previsao_confiavel === 'branco') {
-    resultado = resultado.filter(
-      (p) => p.previsao_atual_confiavel == null
+  if (filtros.previsao_confiavel?.trim()) {
+    const sel = new Set(
+      filtros.previsao_confiavel
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter((s): s is 'sim' | 'nao' | 'branco' => s === 'sim' || s === 'nao' || s === 'branco')
     );
+    if (sel.size > 0) {
+      resultado = resultado.filter((p) => {
+        if (sel.has('sim') && p.previsao_atual_confiavel === true) return true;
+        if (sel.has('nao') && p.previsao_atual_confiavel === false) return true;
+        if (sel.has('branco') && p.previsao_atual_confiavel == null) return true;
+        return false;
+      });
+    }
   }
   resultado = filterByMultiText(resultado, filtros.forma_pagamento, (p) =>
     getField(p, ['Forma de Pagamento', 'forma de pagamento'])
@@ -1024,6 +1032,9 @@ function applyFiltrosPedidos(resultado: PedidoRow[], filtros: FiltrosPedidos): P
   );
   resultado = filterByMultiExact(resultado, filtros.requisicao_loja, (p) =>
     getField(p, ['Requisicao de loja do grupo?', 'requisicao de loja do grupo?'])
+  );
+  resultado = filterByMultiExact(resultado, filtros.empresa, (p) =>
+    getField(p, ['Venda por qual empresa?', 'venda por qual empresa?'])
   );
   if (filtros.faixa_atraso?.trim()) {
     const hojeFaixa = new Date();
@@ -2337,6 +2348,8 @@ export interface TooltipDetalheRow {
   qtdePendenteReal: number;
   /** ISO YYYY-MM-DD — data de produção real (pode estar vazia). */
   dataProducao?: string;
+  /** Texto livre do pedido no ERP (`pd.observacao`), distinto de Observacoes/rota. */
+  observacaoPedido?: string;
 }
 
 /** Converte data do pedido para ISO YYYY-MM-DD (sem horário). */
@@ -2367,6 +2380,7 @@ function pedidoToTooltipDetalheRow(p: PedidoRow, valorPendente: number): Tooltip
   const cliente = String(p.cliente ?? getField(p, ['Cliente', 'cliente']) ?? '').trim();
   const tipoPedido = getField(p, ['Tipo Pedido', 'tipo pedido', 'TipoPedido']).trim();
   const dataProducao = toDateOnlyIsoTooltip(p.data_producao ?? p['data_producao']);
+  const observacaoPedido = getField(p, ['observacaoPedido', 'ObservacaoPedido']).trim();
   return {
     rm,
     rota,
@@ -2381,6 +2395,7 @@ function pedidoToTooltipDetalheRow(p: PedidoRow, valorPendente: number): Tooltip
     produto,
     qtdePendenteReal,
     ...(dataProducao ? { dataProducao } : {}),
+    ...(observacaoPedido ? { observacaoPedido } : {}),
   };
 }
 
@@ -2611,11 +2626,17 @@ export interface FiltrosOpcoes {
   municipios: string[];
   formasPagamento: string[];
   gruposProduto: string[];
+  subgrupos1: string[];
+  subgrupos2: string[];
   pds: string[];
   setores: string[];
   vendedores: string[];
   clientes: string[];
   codigos: string[];
+  requisicoes: string[];
+  tiposPedido: string[];
+  empresas: string[];
+  aVista: string[];
 }
 
 /** Retorna valores distintos para os filtros (lista de pedidos e heatmap). */
@@ -2629,11 +2650,17 @@ export async function obterFiltrosOpcoes(): Promise<FiltrosOpcoes> {
   const municipiosSet = new Set<string>();
   const formasPagamentoSet = new Set<string>();
   const gruposProdutoSet = new Set<string>();
+  const subgrupos1Set = new Set<string>();
+  const subgrupos2Set = new Set<string>();
   const pdsSet = new Set<string>();
   const setoresSet = new Set<string>();
   const vendedoresSet = new Set<string>();
   const clientesSet = new Set<string>();
   const codigosSet = new Set<string>();
+  const requisicoesSet = new Set<string>();
+  const tiposPedidoSet = new Set<string>();
+  const empresasSet = new Set<string>();
+  const aVistaSet = new Set<string>();
 
   for (const p of pedidos) {
     const rota = getField(p, ['Observacoes', 'Observacoes ', 'Observações']);
@@ -2666,6 +2693,12 @@ export async function obterFiltrosOpcoes(): Promise<FiltrosOpcoes> {
     const grupo = getField(p, ['Grupo de produto', 'grupo de produto']);
     if (grupo) gruposProdutoSet.add(grupo);
 
+    const subgrupo1 = getField(p, ['Subgrupo1', 'subgrupo1']);
+    if (subgrupo1) subgrupos1Set.add(subgrupo1);
+
+    const subgrupo2 = getField(p, ['Subgrupo2', 'subgrupo2']);
+    if (subgrupo2) subgrupos2Set.add(subgrupo2);
+
     const pd = getField(p, ['PD', 'pd']);
     if (pd) pdsSet.add(pd);
 
@@ -2680,6 +2713,18 @@ export async function obterFiltrosOpcoes(): Promise<FiltrosOpcoes> {
 
     const cod = getField(p, ['Cod', 'cod']);
     if (cod) codigosSet.add(cod);
+
+    const requisicao = getField(p, ['Requisicao de loja do grupo?', 'requisicao de loja do grupo?']);
+    if (requisicao) requisicoesSet.add(requisicao);
+
+    const tipoPedido = getField(p, ['Tipo Pedido', 'tipo pedido', 'TipoPedido']);
+    if (tipoPedido) tiposPedidoSet.add(tipoPedido);
+
+    const empresa = getField(p, ['Venda por qual empresa?', 'venda por qual empresa?']);
+    if (empresa) empresasSet.add(empresa);
+
+    const aVista = getField(p, ['Entrada/A vista Ate 10d', 'Entrada/A vista Ate 10d ', 'entrada/a vista ate 10d']);
+    if (aVista) aVistaSet.add(aVista);
   }
 
   return {
@@ -2691,11 +2736,17 @@ export async function obterFiltrosOpcoes(): Promise<FiltrosOpcoes> {
     municipios: [...municipiosSet].sort(),
     formasPagamento: [...formasPagamentoSet].sort(),
     gruposProduto: [...gruposProdutoSet].sort(),
+    subgrupos1: [...subgrupos1Set].sort(),
+    subgrupos2: [...subgrupos2Set].sort(),
     pds: [...pdsSet].sort(),
     setores: [...setoresSet].sort(),
     vendedores: [...vendedoresSet].sort(),
     clientes: [...clientesSet].sort(),
     codigos: [...codigosSet].sort(),
+    requisicoes: [...requisicoesSet].sort(),
+    tiposPedido: [...tiposPedidoSet].sort(),
+    empresas: [...empresasSet].sort(),
+    aVista: [...aVistaSet].sort(),
   };
 }
 
@@ -2757,35 +2808,39 @@ export async function registrarAjustePrevisao(
 /**
  * Última previsão "efetiva" por (id_pedido, rota) — usada apenas para deduplicar inserts no lote.
  * Respeita a hierarquia override > base do (PD, item).
+ * Também devolve a confiabilidade vigente, para que uma confirmação de data que altera
+ * apenas "Confiável" não seja descartada pelo dedupe.
  */
 async function obterUltimaPrevisaoPorChave(
   chaves: { id_pedido: string; rota: string | null }[]
-): Promise<Map<string, Date>> {
+): Promise<Map<string, { previsao: Date; confiavel: boolean }>> {
   if (chaves.length === 0) return new Map();
   const rows = await prisma.pedidoPrevisaoAjuste.findMany({
-    select: { id_pedido: true, rota: true, previsao_nova: true },
+    select: { id_pedido: true, rota: true, previsao_nova: true, previsao_confiavel: true },
     orderBy: [{ data_ajuste: 'desc' }, { id: 'desc' }],
   });
+  type Efetiva = { previsao: Date; confiavel: boolean };
   // canon -> base mais recente
-  const baseByCanon = new Map<string, Date>();
+  const baseByCanon = new Map<string, Efetiva>();
   // canon -> rota_norm -> override mais recente
-  const overrideByCanonRota = new Map<string, Map<string, Date>>();
+  const overrideByCanonRota = new Map<string, Map<string, Efetiva>>();
   for (const r of rows) {
     const canon = chavePedidoItem(String(r.id_pedido ?? '').trim());
     if (!canon) continue;
     const rotaNorm = normalizeRotaForChave(r.rota);
+    const efetiva: Efetiva = { previsao: r.previsao_nova, confiavel: r.previsao_confiavel !== false };
     if (!rotaNorm) {
-      if (!baseByCanon.has(canon)) baseByCanon.set(canon, r.previsao_nova);
+      if (!baseByCanon.has(canon)) baseByCanon.set(canon, efetiva);
     } else {
       let byRota = overrideByCanonRota.get(canon);
       if (!byRota) {
-        byRota = new Map<string, Date>();
+        byRota = new Map<string, Efetiva>();
         overrideByCanonRota.set(canon, byRota);
       }
-      if (!byRota.has(rotaNorm)) byRota.set(rotaNorm, r.previsao_nova);
+      if (!byRota.has(rotaNorm)) byRota.set(rotaNorm, efetiva);
     }
   }
-  const map = new Map<string, Date>();
+  const map = new Map<string, Efetiva>();
   for (const k of chaves) {
     const idNorm = String(k.id_pedido ?? '').trim();
     if (!idNorm) continue;
@@ -2860,6 +2915,11 @@ export interface AjusteLoteItem {
   rota?: string | null;
   /** Quando false, não exibe no histórico dos cards Comunicação Interna. Default true. */
   previsao_confiavel?: boolean;
+  /**
+   * Confirmação explícita da data vigente (sem alterá-la). Permite gravar quando a única
+   * mudança é `previsao_confiavel`; o dedupe por data igual continua valendo se nada mudou.
+   */
+  confirmacaoData?: boolean;
   anexoAssinatura?: AnexoAssinaturaAjuste | null;
 }
 
@@ -2908,9 +2968,13 @@ export async function registrarAjustesPrevisaoLote(
     const nova = new Date(a.previsao_nova);
     const mapKey = `${idNorm}|${rotaNorm}`;
     const atual = ultimaPrevisaoPorChave.get(mapKey);
-    if (atual && toDateOnly(atual) === toDateOnly(nova)) {
-      skipped += 1;
-      continue;
+    const confiavelNova = a.previsao_confiavel !== false;
+    if (atual && toDateOnly(atual.previsao) === toDateOnly(nova)) {
+      const mudouConfiavel = atual.confiavel !== confiavelNova;
+      if (!(a.confirmacaoData === true && mudouConfiavel)) {
+        skipped += 1;
+        continue;
+      }
     }
     const observacao = a.observacao != null && String(a.observacao).trim() !== '' ? String(a.observacao).trim() : null;
     toInsert.push({

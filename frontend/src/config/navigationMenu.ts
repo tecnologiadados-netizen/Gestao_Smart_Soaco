@@ -142,10 +142,8 @@ export const RH_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/rh/configuracoes', label: 'Configurações' },
 ];
 
-export const COMERCIAL_MENU: NavMenuEntry[] = [
-  { kind: 'link', to: '/comercial/painel', label: 'Painel Comercial' },
-  { kind: 'link', to: '/comercial/historico-vendas', label: 'Histórico de Vendas' },
-];
+/** Menu lateral Comercial removido — painéis migrados para KPIs › Comercial. */
+export const COMERCIAL_MENU: NavMenuEntry[] = [];
 
 export const LOJA_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/loja/estoque-kits', label: 'Controle de estoque de kits' },

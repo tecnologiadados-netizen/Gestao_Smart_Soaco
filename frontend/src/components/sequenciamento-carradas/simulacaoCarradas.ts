@@ -906,6 +906,35 @@ export type ComputarCalendarioProducaoOpts = {
   dataEmFormacao?: string;
 };
 
+/** Setores residuais no fim da grade (antes do Total Geral), nesta ordem. */
+const SETORES_CALENDARIO_NO_FIM = ['(vazio)', 'Não considerar na meta', 'Outros'] as const;
+
+function normalizarRotuloSetorCalendario(setor: string): string {
+  return setor
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/** 0 = setor normal; 1..n = posição entre os residuais do fim. */
+function rankSetorCalendarioFim(setor: string): number {
+  const n = normalizarRotuloSetorCalendario(setor);
+  const idx = SETORES_CALENDARIO_NO_FIM.findIndex((s) => normalizarRotuloSetorCalendario(s) === n);
+  return idx < 0 ? 0 : idx + 1;
+}
+
+/** Demais setores A–Z; depois (vazio), Não considerar na meta e Outros. */
+export function compararSetoresCalendarioProducao(a: string, b: string): number {
+  const ra = rankSetorCalendarioFim(a);
+  const rb = rankSetorCalendarioFim(b);
+  const ga = ra === 0 ? 0 : 1;
+  const gb = rb === 0 ? 0 : 1;
+  if (ga !== gb) return ga - gb;
+  if (ra !== 0 && rb !== 0) return ra - rb;
+  return a.localeCompare(b, 'pt-BR', { sensitivity: 'base' });
+}
+
 export function computarCalendarioProducao(
   linhas: Record<string, unknown>[],
   sim: Map<string, SimEntry>,
@@ -1012,9 +1041,9 @@ export function computarCalendarioProducao(
   }
 
   const datas = [...datasSet].sort();
-  const setores = [...setoresSet].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+  const setores = [...setoresSet].sort(compararSetoresCalendarioProducao);
   aAlocar.sort((a, b) => {
-    const c = a.setor.localeCompare(b.setor, 'pt-BR', { sensitivity: 'base' });
+    const c = compararSetoresCalendarioProducao(a.setor, b.setor);
     if (c !== 0) return c;
     return a.pd.localeCompare(b.pd, 'pt-BR', { sensitivity: 'base' });
   });

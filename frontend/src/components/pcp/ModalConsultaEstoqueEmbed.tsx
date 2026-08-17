@@ -5,6 +5,7 @@ import GradeFiltroCabecalhoBtn from '../grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../grade/GradeFiltroExcelPortal';
 import GradeCelulaModalBtn from './GradeCelulaModalBtn';
 import ModalConsultaEstoqueDetalhe, { fmtQtde } from './ModalConsultaEstoqueDetalhe';
+import CopiarTextoBtn from '../CopiarTextoBtn';
 import EmpenhoLiquidoPainel from '../ressupAlmox/EmpenhoLiquidoPainel';
 import RotuloComDica from '../ressupAlmox/RotuloComDica';
 import { DICA_EMPENHO_LIQ_GRADE, DICA_ESTOQUE_ATUAL_GRADE, DICA_ESTOQUE_PA_SALDO, isSetorEstoquePa } from '../ressupAlmox/empenhoModalUtils';
@@ -231,8 +232,9 @@ export default function ModalConsultaEstoqueEmbed({
 
       <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-600">
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+          <h2 className="inline-flex items-center gap-1 text-lg font-semibold text-slate-800 dark:text-slate-100">
             Consulta de estoque — {codigo}
+            <CopiarTextoBtn texto={codigo} title="Copiar código do produto" />
           </h2>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
             {legenda ?? 'Visualização em tempo real.'} Clique em Empenho ou Estoque para detalhar.

@@ -20,6 +20,8 @@ export interface FiltrosPedidosState {
   data_fim?: string;
   atrasados: boolean;
   grupo_produto: string;
+  subgrupo1: string;
+  subgrupo2: string;
   setor_producao: string;
   uf: string;
   municipio_entrega: string;
@@ -28,7 +30,11 @@ export interface FiltrosPedidosState {
   tipo_f: string;
   status: string;
   metodo: string;
-  /** Mais filtros: '' | 'sim' | 'nao' | 'branco' */
+  tipo_pedido: string;
+  requisicao_loja: string;
+  empresa: string;
+  a_vista: string;
+  /** Mais filtros: '' ou lista CSV 'sim' | 'nao' | 'branco' (multi). */
   previsao_confiavel: string;
 }
 
@@ -44,6 +50,14 @@ export function countFiltrosModalAtivos(f: FiltrosPedidosState): number {
   if (f.status?.trim()) n++;
   if (f.metodo?.trim()) n++;
   if (f.previsao_confiavel?.trim()) n++;
+  if (f.tipo_pedido?.trim()) n++;
+  if (f.grupo_produto?.trim()) n++;
+  if (f.subgrupo1?.trim()) n++;
+  if (f.subgrupo2?.trim()) n++;
+  if (f.requisicao_loja?.trim()) n++;
+  if (f.empresa?.trim()) n++;
+  if (f.tipo_f?.trim()) n++;
+  if (f.a_vista?.trim()) n++;
   return n;
 }
 
@@ -55,7 +69,7 @@ interface FiltroPedidosProps {
   onChange: (f: FiltrosPedidosState) => void;
   onAplicar: () => void;
   onLimpar?: () => void;
-  /** `modal`: vendedor, status, método e previsão confiável. `completo`: todos os filtros (outras telas). */
+  /** `modal`: filtros analíticos do Gerenciador. `completo`: todos os filtros (outras telas). */
   variant?: FiltroPedidosVariant;
 }
 
@@ -74,6 +88,8 @@ export const defaultFiltros: FiltrosPedidosState = {
   data_previsao_fim: '',
   atrasados: false,
   grupo_produto: '',
+  subgrupo1: '',
+  subgrupo2: '',
   setor_producao: '',
   uf: '',
   municipio_entrega: '',
@@ -82,6 +98,10 @@ export const defaultFiltros: FiltrosPedidosState = {
   tipo_f: '',
   status: '',
   metodo: '',
+  tipo_pedido: '',
+  requisicao_loja: '',
+  empresa: '',
+  a_vista: '',
   previsao_confiavel: '',
   data_ini: '',
   data_fim: '',
@@ -99,11 +119,17 @@ const defaultOpcoes: FiltrosOpcoes = {
   municipios: [],
   formasPagamento: [],
   gruposProduto: [],
+  subgrupos1: [],
+  subgrupos2: [],
   pds: [],
   setores: [],
   vendedores: [],
   clientes: [],
   codigos: [],
+  requisicoes: [],
+  tiposPedido: [],
+  empresas: [],
+  aVista: [],
 };
 
 /** Normaliza valor salvo: aceita vírgula ou pipe (legado) e envia vírgula ao backend. */
@@ -188,7 +214,7 @@ export default function FiltroPedidos({
             dropdownZIndex={DROPDOWN_Z_MODAL}
           />
           <MultiSelectWithSearch
-            label="Método"
+            label="Método de entrega"
             placeholder="Todos"
             options={opcoes.metodos}
             value={f.metodo}
@@ -196,22 +222,122 @@ export default function FiltroPedidos({
             labelClass={labelClass}
             inputClass={inputClass}
             minWidth="200px"
-            optionLabel="métodos"
+            optionLabel="métodos de entrega"
             dropdownZIndex={DROPDOWN_Z_MODAL}
           />
-          <div className="shrink-0" style={{ minWidth: '180px' }}>
-            <label className={labelClass}>Previsão confiável</label>
-            <select
-              value={f.previsao_confiavel || ''}
-              onChange={(e) => update('previsao_confiavel', e.target.value)}
-              className={inputClass}
-            >
-              <option value="">Todos</option>
-              <option value="sim">Confiáveis</option>
-              <option value="nao">Não confiáveis</option>
-              <option value="branco">Em branco</option>
-            </select>
-          </div>
+          <MultiSelectWithSearch
+            label="Tipo de pedido"
+            placeholder="Todos"
+            options={opcoes.tiposPedido}
+            value={f.tipo_pedido}
+            onChange={handleMultiChange('tipo_pedido')}
+            labelClass={labelClass}
+            inputClass={inputClass}
+            minWidth="180px"
+            optionLabel="tipos"
+            dropdownZIndex={DROPDOWN_Z_MODAL}
+          />
+          <MultiSelectWithSearch
+            label="Grupo de produto"
+            placeholder="Todos"
+            options={opcoes.gruposProduto}
+            value={f.grupo_produto}
+            onChange={handleMultiChange('grupo_produto')}
+            labelClass={labelClass}
+            inputClass={inputClass}
+            minWidth="180px"
+            optionLabel="grupos"
+            dropdownZIndex={DROPDOWN_Z_MODAL}
+          />
+          <MultiSelectWithSearch
+            label="Subgrupo1"
+            placeholder="Todos"
+            options={opcoes.subgrupos1}
+            value={f.subgrupo1}
+            onChange={handleMultiChange('subgrupo1')}
+            labelClass={labelClass}
+            inputClass={inputClass}
+            minWidth="180px"
+            optionLabel="subgrupos"
+            dropdownZIndex={DROPDOWN_Z_MODAL}
+          />
+          <MultiSelectWithSearch
+            label="Subgrupo2"
+            placeholder="Todos"
+            options={opcoes.subgrupos2}
+            value={f.subgrupo2}
+            onChange={handleMultiChange('subgrupo2')}
+            labelClass={labelClass}
+            inputClass={inputClass}
+            minWidth="180px"
+            optionLabel="subgrupos"
+            dropdownZIndex={DROPDOWN_Z_MODAL}
+          />
+          <MultiSelectWithSearch
+            label="Requisição"
+            placeholder="Todos"
+            options={opcoes.requisicoes}
+            value={f.requisicao_loja}
+            onChange={handleMultiChange('requisicao_loja')}
+            labelClass={labelClass}
+            inputClass={inputClass}
+            minWidth="150px"
+            optionLabel="opções"
+            dropdownZIndex={DROPDOWN_Z_MODAL}
+          />
+          <MultiSelectWithSearch
+            label="Venda por qual empresa?"
+            placeholder="Todas"
+            options={opcoes.empresas}
+            value={f.empresa}
+            onChange={handleMultiChange('empresa')}
+            labelClass={labelClass}
+            inputClass={inputClass}
+            minWidth="190px"
+            optionLabel="empresas"
+            dropdownZIndex={DROPDOWN_Z_MODAL}
+          />
+          <MultiSelectWithSearch
+            label="TipoF"
+            placeholder="Todos"
+            options={opcoes.categorias}
+            value={f.tipo_f}
+            onChange={handleMultiChange('tipo_f')}
+            labelClass={labelClass}
+            inputClass={inputClass}
+            minWidth="150px"
+            optionLabel="tipos"
+            dropdownZIndex={DROPDOWN_Z_MODAL}
+          />
+          <MultiSelectWithSearch
+            label="Entrada/A vista Ate 10d"
+            placeholder="Todos"
+            options={opcoes.aVista}
+            value={f.a_vista}
+            onChange={handleMultiChange('a_vista')}
+            labelClass={labelClass}
+            inputClass={inputClass}
+            minWidth="190px"
+            optionLabel="opções"
+            dropdownZIndex={DROPDOWN_Z_MODAL}
+          />
+          <MultiSelectWithSearch
+            label="Previsão confiável"
+            placeholder="Todos"
+            options={['sim', 'nao', 'branco']}
+            labelByValue={{
+              sim: 'Confiáveis',
+              nao: 'Não confiáveis',
+              branco: 'Em branco',
+            }}
+            value={f.previsao_confiavel}
+            onChange={handleMultiChange('previsao_confiavel')}
+            labelClass={labelClass}
+            inputClass={inputClass}
+            minWidth="180px"
+            optionLabel="opções"
+            dropdownZIndex={DROPDOWN_Z_MODAL}
+          />
         </>
       )}
       {isCompleto && (
@@ -338,7 +464,7 @@ export default function FiltroPedidos({
             optionLabel="status"
           />
           <MultiSelectWithSearch
-            label="Método"
+            label="Método de entrega"
             placeholder="Todos"
             options={opcoes.metodos}
             value={f.metodo}
@@ -346,7 +472,7 @@ export default function FiltroPedidos({
             labelClass={labelClass}
             inputClass={inputClass}
             minWidth="180px"
-            optionLabel="métodos"
+            optionLabel="métodos de entrega"
           />
           <MultiSelectWithSearch
             label="Grupo de produto"
