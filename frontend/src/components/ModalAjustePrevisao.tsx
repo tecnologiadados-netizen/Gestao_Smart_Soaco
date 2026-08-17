@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { z } from 'zod';
 import { ajustarDataProducaoLote, listarPedidos, type DataProducaoLoteItem, type Pedido } from '../api/pedidos';
 import { dataProducaoRealPedido } from '../utils/dataProducaoGerenciador';
@@ -857,11 +858,11 @@ export default function ModalAjustePrevisao({
     await runSave(decision);
   };
 
-  return (
+  return createPortal(
     <div
       className={
         isFlutuante
-          ? 'pointer-events-none fixed inset-0 z-[14050]'
+          ? 'pointer-events-none fixed inset-0 z-[14150]'
           : 'fixed inset-0 z-[145] flex items-center justify-center bg-black/75 p-4'
       }
       onClick={isFlutuante || feedbackSucesso ? undefined : fecharOuVoltar}
@@ -1243,6 +1244,7 @@ export default function ModalAjustePrevisao({
         ) : null}
       </div>
 
-    </div>
+    </div>,
+    document.body
   );
 }
