@@ -21,6 +21,7 @@ import { filtrarPorEmpresasSelecionadas, labelEmpresaDfc, resolverIdEmpresaDfc }
 import { resolverIdContaFinanceiroDfc } from './dfcShop9PlanoContasMap.js';
 import { formatSqlDateYmd as formatYmd } from './dfcDateUtils.js';
 import type { DfcContribuicaoLinha } from './dfcContribuicaoRepository.js';
+import { aplicarLimiteDetalhe, LIMITE_DETALHE_MODAL } from './detalheLimite.js';
 
 export { formatYmd };
 
@@ -31,7 +32,7 @@ const SQL_TEMPLATE = readFileSync(join(__dirname, 'sql', 'dfcNomusFinanceiro.sql
 const DATA_VENCIMENTO_MIN = '2024-12-01';
 const DATA_LANCAMENTO_MIN = '2024-01-01';
 const CACHE_MS = 90_000;
-const CACHE_VERSION = 18;
+const CACHE_VERSION = 19;
 export const DFC_EMPRESAS_CARGA = [1, 2, 3, 4];
 
 export type NomusDiscriminadorDfc = 'P' | 'R' | 'LR' | 'LP';
@@ -57,6 +58,9 @@ export type NomusFinanceiroRow = {
   nomeRazaoSocial: string | null;
   clienteFornecedor: string | null;
   tipoRef: DfcTipoRefLancamento;
+  comentarios: string | null;
+  formaPagamento: string | null;
+  idPedido: number | null;
 };
 
 let rowsCache: { at: number; v: number; rows: NomusFinanceiroRow[] } | null = null;
@@ -137,6 +141,9 @@ function mapRawRow(r: Record<string, unknown>, tipoRefBloco: DfcTipoRefLancament
     nomeRazaoSocial: r.nomeRazaoSocial != null ? String(r.nomeRazaoSocial) : null,
     clienteFornecedor: r.clienteFornecedor != null ? String(r.clienteFornecedor) : null,
     tipoRef,
+    comentarios: r.comentarios != null ? String(r.comentarios).trim() || null : null,
+    formaPagamento: r.formaPagamento != null ? String(r.formaPagamento).trim() || null : null,
+    idPedido: r.idPedido != null && Number.isFinite(Number(r.idPedido)) ? toInt(r.idPedido) : null,
   };
 }
 
@@ -512,6 +519,36 @@ export async function queryDfcNomusProjecaoAgregado(params: {
   return { linhas: mapParaLinhas(map, granularidade), erro };
 }
 
+function montarDetalheNomus(
+  r: NomusFinanceiroRow,
+  idConta: number,
+  dataBaixa: string | null,
+  valor: number,
+  situacao: 'Realizado' | 'Projetado',
+): DfcAgendamentoDetalheRow {
+  return {
+    id: r.codigoConta,
+    descricaoLancamento: r.descricaoLancamento,
+    nome: r.nomeRazaoSocial ?? r.clienteFornecedor,
+    dataVencimento: formatYmd(r.dataVencimento),
+    dataBaixa,
+    dataCompetencia: formatYmd(r.dataCompetencia),
+    valorBaixado: valor,
+    tipoRef: r.tipoRef,
+    idEmpresa: idEmpresaResolvidoNomus(r),
+    idContaFinanceiro: idConta,
+    empresa: empresaDetalheNomus(r),
+    origem: 'Nomus',
+    situacao,
+    contaBancaria: r.contaBancaria,
+    planoContas: r.planoContas,
+    formaPagamento: r.formaPagamento,
+    comentarios: r.comentarios,
+    idPedido: r.idPedido,
+    tipoMovimento: r.tipoConta || null,
+  };
+}
+
 export async function queryDfcNomusDetalhe(params: {
   modo: 'retro' | 'proj';
   dataInicio: string;
@@ -523,6 +560,8 @@ export async function queryDfcNomusDetalhe(params: {
   periodoBucket?: string | null;
   discriminadores: NomusDiscriminadorDfc[];
   filtroPrioridade?: DfcPrioridadeFilterResolvido;
+  todasContas?: boolean;
+  limite?: number | null;
 }): Promise<{ detalhes: DfcAgendamentoDetalheRow[]; erro?: string }> {
   const {
     modo,
@@ -535,9 +574,11 @@ export async function queryDfcNomusDetalhe(params: {
     periodoBucket,
     discriminadores,
     filtroPrioridade,
+    todasContas = false,
+    limite,
   } = params;
   const idsSet = new Set(idsContaFinanceiro.filter((n) => n > 0));
-  if (idsSet.size === 0) return { detalhes: [] };
+  if (!todasContas && idsSet.size === 0) return { detalhes: [] };
 
   const { rows: raw, erro } = await carregarLinhasNomusFinanceiro();
   if (erro && raw.length === 0) return { detalhes: [], erro };
@@ -549,7 +590,8 @@ export async function queryDfcNomusDetalhe(params: {
   for (const r of rows) {
     if (!linhaIncluirDiscriminador(r, discriminadores)) continue;
     const idConta = resolverIdContaNomus(r);
-    if (idConta == null || !idsSet.has(idConta)) continue;
+    if (idConta == null) continue;
+    if (!todasContas && !idsSet.has(idConta)) continue;
     if (
       filtroPrioridade &&
       !linhaPassaFiltroPrioridade(
@@ -569,18 +611,7 @@ export async function queryDfcNomusDetalhe(params: {
       const periodo = periodoFromYmd(dataBaixa, granularidade);
       if (periodoBucket && periodo !== periodoBucket) continue;
       if (r.valorBaixado === 0) continue;
-      detalhes.push({
-        id: r.codigoConta,
-        descricaoLancamento: r.descricaoLancamento,
-        nome: r.nomeRazaoSocial ?? r.clienteFornecedor,
-        dataVencimento: formatYmd(r.dataVencimento),
-        dataBaixa,
-        valorBaixado: r.valorBaixado,
-        tipoRef: r.tipoRef,
-        idEmpresa: idEmpresaResolvidoNomus(r),
-        idContaFinanceiro: idConta,
-        empresa: empresaDetalheNomus(r),
-      });
+      detalhes.push(montarDetalheNomus(r, idConta, dataBaixa, r.valorBaixado, 'Realizado'));
       continue;
     }
 
@@ -592,20 +623,10 @@ export async function queryDfcNomusDetalhe(params: {
     const periodo = periodoFromYmd(dataVenc, granularidade);
     if (periodoBucket && periodo !== periodoBucket) continue;
     if (r.saldoBaixar <= 0) continue;
-    detalhes.push({
-      id: r.codigoConta,
-      descricaoLancamento: r.descricaoLancamento,
-      nome: r.nomeRazaoSocial ?? r.clienteFornecedor,
-      dataVencimento: dataVenc,
-      dataBaixa: null,
-      valorBaixado: r.saldoBaixar,
-      tipoRef: r.tipoRef,
-      idEmpresa: idEmpresaResolvidoNomus(r),
-      idContaFinanceiro: idConta,
-      empresa: empresaDetalheNomus(r),
-    });
+    detalhes.push(montarDetalheNomus(r, idConta, null, r.saldoBaixar, 'Projetado'));
   }
 
   detalhes.sort((a, b) => b.valorBaixado - a.valorBaixado);
-  return { detalhes: detalhes.slice(0, 2000), erro };
+  const { detalhes: cortados } = aplicarLimiteDetalhe(detalhes, limite, LIMITE_DETALHE_MODAL);
+  return { detalhes: cortados, erro };
 }

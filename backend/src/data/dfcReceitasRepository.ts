@@ -351,6 +351,8 @@ export async function queryDfcReceitasProjecaoDetalhe(params: {
   idsContaFinanceiro: number[];
   periodoBucket?: string | null;
   filtroPrioridade?: DfcPrioridadeFilterResolvido;
+  todasContas?: boolean;
+  limite?: number | null;
 }): Promise<{ detalhes: DfcAgendamentoDetalheRow[]; erro?: string }> {
   return queryDfcNomusDetalhe({
     modo: 'proj',
@@ -363,6 +365,8 @@ export async function queryDfcReceitasProjecaoDetalhe(params: {
     periodoBucket: params.periodoBucket,
     discriminadores: ['R', 'LR'],
     filtroPrioridade: params.filtroPrioridade,
+    todasContas: params.todasContas,
+    limite: params.limite,
   });
 }
 
@@ -375,6 +379,8 @@ export async function queryDfcReceitasDetalhe(params: {
   idsContaFinanceiro: number[];
   periodoBucket?: string | null;
   filtroPrioridade?: DfcPrioridadeFilterResolvido;
+  todasContas?: boolean;
+  limite?: number | null;
 }): Promise<{ detalhes: DfcAgendamentoDetalheRow[]; erro?: string }> {
   return queryDfcNomusDetalhe({
     modo: 'retro',
@@ -387,5 +393,7 @@ export async function queryDfcReceitasDetalhe(params: {
     periodoBucket: params.periodoBucket,
     discriminadores: ['R', 'LR'],
     filtroPrioridade: params.filtroPrioridade,
+    todasContas: params.todasContas,
+    limite: params.limite,
   });
 }

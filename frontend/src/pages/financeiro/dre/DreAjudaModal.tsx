@@ -78,6 +78,21 @@ const SECOES: SecaoAjuda[] = [
     comoLe:
       'É o indicador de “quanto a operação gerou de resultado líquido” no filtro escolhido. Compare com o faturamento bruto (análise vertical) e com meses anteriores para ver se a empresa está melhorando de verdade ou só girando mais volume com menos margem.',
   },
+  {
+    id: 'excel',
+    titulo: 'Exportar Excel',
+    oQueE:
+      'Gera um XLSX com a árvore da DRE (mesmos números da grade) e as linhas analíticas do período: receitas, devoluções e saídas por competência — sem o recorte dos modais.',
+    comoLe:
+      'Clique em Aplicar e depois em Exportar Excel (ao lado de Como ler). A DRE não projeta caixa futuro: meses à frente tendem a ficar vazios. O “pra frente” (baixa vs vencimento e PDs) está no DFC.',
+    detalhes: [
+      {
+        titulo: 'Abas',
+        texto:
+          'Filtros (intervalo, visão, empresas, plano, MKP, rateio), DRE (árvore com AV/AH/Total/Média e MKP se ativo), Receitas (NF/item), Devoluções e Saídas (Nomus + Shop9 por competência). A soma das abas analíticas por conta/período deve bater com a célula da árvore.',
+      },
+    ],
+  },
 ];
 
 export default function DreAjudaModal({ aberto, onClose }: DreAjudaModalProps) {

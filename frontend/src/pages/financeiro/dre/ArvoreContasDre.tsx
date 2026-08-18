@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useMemo, useState } from 'react';
+import { Fragment, forwardRef, useCallback, useImperativeHandle, useMemo, useState } from 'react';
 import estruturaJson from './estruturaDreArvore.json';
 import { rotuloPeriodoCabecalho } from '../dfc/dfcPeriodos';
 import DfcDetalheLancamentosModal from '../dfc/DfcDetalheLancamentosModal';
@@ -45,6 +45,7 @@ import {
 } from './dreDetalhePlano';
 import { isProvisaoCalculadaDre } from './dreProvisoesFolha';
 import { DFC_EMPRESAS_TODAS, DFC_ID_EMPRESA_ACO, DFC_ID_EMPRESA_MOVEIS } from '../dfc/dfcEmpresas';
+import { montarLinhasExportDre, type DreGradeExportLinha } from './dreGradeExport';
 
 export type DreEstruturaNo = {
   pathKey: string;
@@ -118,6 +119,10 @@ export type ArvoreContasDreProps = {
   idsPorPathKeyShop9?: Record<string, number[]>;
   /** Catálogo Shop9 por pathKey — drill-down rateio (relacao PC, sem recorte de filtro). */
   shop9OrdensCatalogoPorPathKey?: Record<string, number[]>;
+};
+
+export type DreArvoreExportHandle = {
+  snapshotExportacao: () => DreGradeExportLinha[];
 };
 
 const STICKY_COLS = [
@@ -393,7 +398,7 @@ function empresaDevolucaoNomus(node: DreEstruturaNo): number | null {
   return DEVOLUCAO_NOMUS_EMPRESA_POR_CODIGO[node.codigo] ?? null;
 }
 
-export default function ArvoreContasDre({
+const ArvoreContasDre = forwardRef<DreArvoreExportHandle, ArvoreContasDreProps>(function ArvoreContasDre({
   periodos,
   valoresPorConta,
   granularidade,
@@ -431,7 +436,7 @@ export default function ArvoreContasDre({
   idsPorPathKeySaidas = {},
   idsPorPathKeyShop9 = {},
   shop9OrdensCatalogoPorPathKey = {},
-}: ArvoreContasDreProps) {
+}: ArvoreContasDreProps, ref) {
   const roots = useMemo(
     () => (estruturaJson as unknown as { roots: DreEstruturaNo[] }).roots,
     [],
@@ -680,6 +685,23 @@ export default function ArvoreContasDre({
   const nMesesPeriodo = useMemo(
     () => contarMesesPeriodo(periodos, granularidade),
     [periodos, granularidade],
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      snapshotExportacao: () =>
+        montarLinhasExportDre({
+          roots,
+          somasPorPathKey,
+          periodos,
+          receitaBrutaPorPeriodo,
+          receitaBrutaTotal,
+          nMesesPeriodo,
+          mkpAtivo,
+        }),
+    }),
+    [roots, somasPorPathKey, periodos, receitaBrutaPorPeriodo, receitaBrutaTotal, nMesesPeriodo, mkpAtivo],
   );
 
   const temPivot = periodos.length > 0;
@@ -1358,4 +1380,6 @@ export default function ArvoreContasDre({
       </div>
     </div>
   );
-}
+});
+
+export default ArvoreContasDre;

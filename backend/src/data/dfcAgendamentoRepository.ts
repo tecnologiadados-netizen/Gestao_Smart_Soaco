@@ -115,6 +115,17 @@ export interface DfcAgendamentoDetalheRow {
   idContaFinanceiro: number | null;
   /** Nome da empresa (Nomus/Shop9) para exibição no modal. */
   empresa: string | null;
+  /** Origem do lançamento (export Excel / detalhe ampliado). */
+  origem?: 'Nomus' | 'Shop9';
+  /** Caixa já ocorrido (baixa) vs à frente (vencimento). */
+  situacao?: 'Realizado' | 'Projetado';
+  contaBancaria?: string | null;
+  planoContas?: string | null;
+  formaPagamento?: string | null;
+  comentarios?: string | null;
+  idPedido?: number | null;
+  /** Discriminador Nomus (P/R/LP/LR) quando disponível. */
+  tipoMovimento?: string | null;
 }
 
 function formatYmdFromSqlDate(v: unknown): string | null {
@@ -134,6 +145,8 @@ export async function queryDfcAgendamentosDetalhe(params: {
   idsContaFinanceiro: number[];
   periodoBucket?: string | null;
   filtroPrioridade?: DfcPrioridadeFilterResolvido;
+  todasContas?: boolean;
+  limite?: number | null;
 }): Promise<{ detalhes: DfcAgendamentoDetalheRow[]; erro?: string }> {
   return queryDfcNomusDetalhe({
     modo: 'retro',
@@ -146,6 +159,8 @@ export async function queryDfcAgendamentosDetalhe(params: {
     periodoBucket: params.periodoBucket,
     discriminadores: ['P'],
     filtroPrioridade: params.filtroPrioridade,
+    todasContas: params.todasContas,
+    limite: params.limite,
   });
 }
 
@@ -208,6 +223,8 @@ export async function queryDfcAgendamentosProjecaoDetalhe(params: {
   idsContaFinanceiro: number[];
   periodoBucket?: string | null;
   filtroPrioridade?: DfcPrioridadeFilterResolvido;
+  todasContas?: boolean;
+  limite?: number | null;
 }): Promise<{ detalhes: DfcAgendamentoDetalheRow[]; erro?: string }> {
   return queryDfcNomusDetalhe({
     modo: 'proj',
@@ -220,6 +237,8 @@ export async function queryDfcAgendamentosProjecaoDetalhe(params: {
     periodoBucket: params.periodoBucket,
     discriminadores: ['P'],
     filtroPrioridade: params.filtroPrioridade,
+    todasContas: params.todasContas,
+    limite: params.limite,
   });
 }
 

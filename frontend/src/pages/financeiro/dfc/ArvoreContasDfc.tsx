@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import estruturaJson from './estruturaDfcArvore.json';
 import { rotuloPeriodoCabecalho } from './dfcPeriodos';
 import { EMPRESA_LABELS } from './dfcEmpresas';
@@ -18,6 +18,7 @@ import {
   type DfcPrioridade,
 } from '../../../api/dfcPrioridade';
 import { criarMatcherTextoLivre } from '../../../utils/textoLivreBusca';
+import { montarLinhasExportDfc, type DfcGradeExportLinha } from './dfcGradeExport';
 
 export type DfcEstruturaNo = {
   pathKey: string;
@@ -80,6 +81,10 @@ export type ArvoreContasDfcProps = {
   saldosPorConta?: DfcSaldoBancarioContaGrade[];
   /** Falha ao carregar saldos LF (exibido na grade). */
   erroSaldosBancarios?: string | null;
+};
+
+export type DfcArvoreExportHandle = {
+  snapshotExportacao: () => DfcGradeExportLinha[];
 };
 
 export const DFC_NOME_PROJECAO_RECEITAS = 'Projeção de Receitas';
@@ -532,7 +537,7 @@ type DetalheLancamentosState = {
   titulo: string;
 } | null;
 
-export default function ArvoreContasDfc({
+const ArvoreContasDfc = forwardRef<DfcArvoreExportHandle, ArvoreContasDfcProps>(function ArvoreContasDfc({
   periodos,
   valoresPorConta,
   granularidade,
@@ -558,7 +563,7 @@ export default function ArvoreContasDfc({
   saldosFinaisPorPeriodo = {},
   saldosPorConta = [],
   erroSaldosBancarios = null,
-}: ArvoreContasDfcProps) {
+}: ArvoreContasDfcProps, ref) {
   const rootsRaw = useMemo(
     () => (estruturaJson as unknown as { roots: DfcEstruturaNo[] }).roots,
     []
@@ -619,6 +624,21 @@ export default function ArvoreContasDfc({
         cruzamentosFluxo
       ),
     [roots, idsPorPathKey, periodos, valoresPorConta, projecaoReceitasPorPeriodo, cruzamentosFluxo]
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      snapshotExportacao: () =>
+        montarLinhasExportDfc({
+          roots,
+          somasPorPathKey,
+          periodos,
+          saldosIniciaisPorPeriodo,
+          saldosFinaisPorPeriodo,
+        }),
+    }),
+    [roots, somasPorPathKey, periodos, saldosIniciaisPorPeriodo, saldosFinaisPorPeriodo],
   );
 
   const mostrarEmpresaSaldo = idEmpresas.length !== 1;
@@ -1041,7 +1061,7 @@ export default function ArvoreContasDfc({
                           onAbrirProjecaoDetalhe(undefined, `Total · ${node.nome} · ${dataInicio} → ${dataFim}`);
                           return;
                         }
-                        if (isRaizOperacional || ids.length === 0) return;
+                        if (isRaizFluxoFormula || ids.length === 0) return;
                         abrirDetalhe(ids, undefined, `Total · ${dataInicio} → ${dataFim}`);
                       }}
                     >
@@ -1075,4 +1095,6 @@ export default function ArvoreContasDfc({
       </div>
     </div>
   );
-}
+});
+
+export default ArvoreContasDfc;
