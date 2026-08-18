@@ -2298,6 +2298,8 @@ export default function SequenciamentoCarradasPage() {
           geradoEm={geradoEmSnapshot}
           snapshotId={aoVivo ? null : (snapshotVisualizado?.id ?? null)}
           previsaoConfiavelPorId={previsaoConfiavelPorId}
+          aoVivo={aoVivo}
+          onSalvarConfiabilidade={salvarConfiabilidadeDetalhe}
         />
       )}
 

@@ -120,6 +120,15 @@ export type StatusPorDataRow = {
   qtdeMateriaisAtencao: number;
 };
 
+/** Semáforo por célula (setor × data) — mesma regra do modal filtrado por setor. */
+export type StatusPorCelulaRow = {
+  setor: string;
+  data: string;
+  status: StatusMaterialDia;
+  qtdeMateriaisFalta: number;
+  qtdeMateriaisAtencao: number;
+};
+
 export type MaterialCriticoRow = {
   idProduto: number;
   codigo: string;
@@ -158,12 +167,16 @@ export type OrigemConsumoRow = {
   carrada: string;
   pd: string;
   qtdeComponente: number;
+  /** Setor de produção da demanda (célula do calendário). */
+  setor: string;
 };
 
 export type DisponibilidadeSintetico = {
   consultadoEm: string;
   datas: string[];
   statusPorData: StatusPorDataRow[];
+  /** Status por setor×data (bolinha ao lado da qtde na grade). */
+  statusPorCelula: StatusPorCelulaRow[];
   materiaisCriticos: MaterialCriticoRow[];
   /** Quantos componentes de almox secundário entraram no horizonte. */
   qtdeMateriaisEscopo: number;
@@ -183,6 +196,7 @@ type EngineResult = {
   consultadoEm: string;
   datas: string[];
   statusPorData: StatusPorDataRow[];
+  statusPorCelula: StatusPorCelulaRow[];
   materiaisCriticos: MaterialCriticoRow[];
   qtdeMateriaisEscopo: number;
   itens: ItemInterno[];
@@ -867,6 +881,7 @@ export async function computarEngineDisponibilidade(
         consultadoEm,
         datas: [],
         statusPorData: [],
+        statusPorCelula: [],
         materiaisCriticos: [],
         qtdeMateriaisEscopo: 0,
         itens: [],
@@ -952,6 +967,7 @@ export async function computarEngineDisponibilidade(
         carrada: d.carrada ?? '',
         pd: d.pd ?? '',
         qtdeComponente: consumo,
+        setor: d.setor ?? '',
       });
     }
   }
@@ -1040,23 +1056,56 @@ export async function computarEngineDisponibilidade(
     }
   }
 
+  // Semáforo por célula: material em falta no dia ∩ consumo do setor naquele dia.
+  const faltaPorCelula = new Map<string, number>();
+
   for (let i = 0; i < datas.length; i++) {
     // Semáforo alinhado ao modal: só materiais com falta (nAcum > 0) no dia.
     const relevantes: StatusMaterialDia[] = [];
     let falta = 0;
+    const dataIso = datas[i]!;
     for (const c of calcs) {
       const n = c.nAcum[i] ?? 0;
       if (!(n > 0)) continue;
       relevantes.push('falta');
       falta += 1;
+      const setoresNoDia = new Set<string>();
+      for (const o of c.item.origens) {
+        if (o.dataIso !== dataIso) continue;
+        const setor = String(o.setor ?? '').trim();
+        if (setor) setoresNoDia.add(setor);
+      }
+      for (const setor of setoresNoDia) {
+        const key = `${setor}\0${dataIso}`;
+        faltaPorCelula.set(key, (faltaPorCelula.get(key) ?? 0) + 1);
+      }
     }
     statusPorData.push({
-      data: datas[i]!,
+      data: dataIso,
       status: relevantes.length ? statusDiaAgregado(relevantes) : 'ok',
       qtdeMateriaisFalta: falta,
       qtdeMateriaisAtencao: 0,
     });
   }
+
+  const statusPorCelula: StatusPorCelulaRow[] = [];
+  for (const [key, qtde] of faltaPorCelula) {
+    const sep = key.indexOf('\0');
+    const setor = key.slice(0, sep);
+    const data = key.slice(sep + 1);
+    statusPorCelula.push({
+      setor,
+      data,
+      status: 'falta',
+      qtdeMateriaisFalta: qtde,
+      qtdeMateriaisAtencao: 0,
+    });
+  }
+  statusPorCelula.sort((a, b) => {
+    const dc = a.data.localeCompare(b.data);
+    if (dc !== 0) return dc;
+    return a.setor.localeCompare(b.setor, 'pt-BR', { sensitivity: 'base' });
+  });
 
   materiaisCriticos.sort((a, b) => {
     const dc = a.descricao.localeCompare(b.descricao, 'pt-BR', { sensitivity: 'base' });
@@ -1070,6 +1119,7 @@ export async function computarEngineDisponibilidade(
       consultadoEm,
       datas,
       statusPorData,
+      statusPorCelula,
       materiaisCriticos,
       qtdeMateriaisEscopo: itens.length,
       itens,
@@ -1080,22 +1130,31 @@ export async function computarEngineDisponibilidade(
   };
 }
 
-/** Compacta origens por (data, carrada, pd); `filtroData` restringe a um único dia. */
-function agregarOrigens(origens: OrigemConsumoRow[], filtroData?: string): OrigemConsumoRow[] {
+/** Compacta origens por (data, carrada, pd, setor); `filtroData`/`filtroSetor` restringem. */
+function agregarOrigens(
+  origens: OrigemConsumoRow[],
+  filtroData?: string,
+  filtroSetor?: string
+): OrigemConsumoRow[] {
+  const setorNorm = filtroSetor != null ? String(filtroSetor).trim() : '';
   const map = new Map<string, OrigemConsumoRow>();
   for (const o of origens) {
     if (filtroData && o.dataIso !== filtroData) continue;
-    const key = `${o.dataIso}\0${o.carrada}\0${o.pd}`;
+    if (setorNorm && String(o.setor ?? '').trim() !== setorNorm) continue;
+    const setor = String(o.setor ?? '').trim();
+    const key = `${o.dataIso}\0${o.carrada}\0${o.pd}\0${setor}`;
     const prev = map.get(key);
     if (prev) {
       prev.qtdeComponente = arred2(prev.qtdeComponente + o.qtdeComponente);
     } else {
-      map.set(key, { ...o, qtdeComponente: arred2(o.qtdeComponente) });
+      map.set(key, { ...o, setor, qtdeComponente: arred2(o.qtdeComponente) });
     }
   }
   return [...map.values()].sort((a, b) => {
     const dc = a.dataIso.localeCompare(b.dataIso);
     if (dc !== 0) return dc;
+    const sc = a.setor.localeCompare(b.setor, 'pt-BR', { sensitivity: 'base' });
+    if (sc !== 0) return sc;
     const cc = a.carrada.localeCompare(b.carrada, 'pt-BR', { sensitivity: 'base' });
     if (cc !== 0) return cc;
     return a.pd.localeCompare(b.pd, 'pt-BR');
@@ -1115,6 +1174,7 @@ export async function obterDisponibilidadeSintetica(
       consultadoEm: r.data.consultadoEm,
       datas: r.data.datas,
       statusPorData: r.data.statusPorData,
+      statusPorCelula: r.data.statusPorCelula,
       materiaisCriticos: r.data.materiaisCriticos,
       qtdeMateriaisEscopo: r.data.qtdeMateriaisEscopo,
     },
@@ -1125,7 +1185,9 @@ export async function obterMateriaisDoDia(
   pool: Pool | null,
   demanda: DemandaCalendarioLinha[],
   dataRaw: string,
-  base?: BaseMateriaisCongelada | null
+  base?: BaseMateriaisCongelada | null,
+  /** Quando informado, só materiais com consumo do setor na data (bolinha da célula). */
+  setorFiltroRaw?: string | null
 ): Promise<
   | {
       ok: true;
@@ -1140,6 +1202,7 @@ export async function obterMateriaisDoDia(
       error: `Data inválida (“${String(dataRaw ?? '').trim() || 'vazia'}”). Use YYYY-MM-DD.`,
     };
   }
+  const setorFiltro = String(setorFiltroRaw ?? '').trim();
   const r = await computarEngineDisponibilidade(pool, demanda, base);
   if (!r.ok) return r;
   const idx = r.data.datas.indexOf(dataIso);
@@ -1175,7 +1238,13 @@ export async function obterMateriaisDoDia(
     const entrada = diasCel[idx]!.entrada;
     const saldoInicio = saldosInicio[idx]!;
     const falta = nAcum[idx]!;
-    if (!(falta > 0) || !(consumo > 0)) continue;
+    if (!(falta > 0)) continue;
+    const origens = agregarOrigens(item.origens, dataIso, setorFiltro || undefined);
+    if (setorFiltro) {
+      if (origens.length === 0) continue;
+    } else if (!(consumo > 0)) {
+      continue;
+    }
     const status = statusCelulaMaterialDia(consumo, saldoInicio, entrada, falta);
     const entradaPc = resolverEntradaPcExibicao({
       entradaDia: entrada,
@@ -1183,16 +1252,19 @@ export async function obterMateriaisDoDia(
       temAgPag: agPorProduto.has(item.idProduto),
       temSolicitacao: scPorProduto.has(item.idProduto),
     });
+    const consumoExibicao = setorFiltro
+      ? arred2(origens.reduce((s, o) => s + o.qtdeComponente, 0))
+      : arred2(consumo);
     materiais.push({
       idProduto: item.idProduto,
       codigo: item.codigo,
       descricao: item.descricao,
-      consumoDia: arred2(consumo),
+      consumoDia: consumoExibicao,
       saldoInicio: arred2(saldoInicio),
       entradaDia: arred2(entrada),
       falta: arred2(falta),
       status,
-      origens: agregarOrigens(item.origens, dataIso),
+      origens,
       entradaPc,
     });
   }

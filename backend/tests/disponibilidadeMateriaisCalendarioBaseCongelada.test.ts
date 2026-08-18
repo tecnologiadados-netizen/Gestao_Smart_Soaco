@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  obterDisponibilidadeSintetica,
   obterHorizonteItem,
   obterMateriaisDoDia,
   type BaseMateriaisCongelada,
@@ -63,9 +64,9 @@ describe('motor de disponibilidade com base congelada', () => {
     if (!r.ok) return;
 
     expect(r.data.origens).toEqual([
-      { dataIso: '2026-07-24', carrada: 'ROTA A', pd: '100', qtdeComponente: 6 },
-      { dataIso: '2026-07-24', carrada: 'ROTA A', pd: '101', qtdeComponente: 2 },
-      { dataIso: '2026-07-25', carrada: 'ROTA B', pd: '102', qtdeComponente: 4 },
+      { dataIso: '2026-07-24', carrada: 'ROTA A', pd: '100', qtdeComponente: 6, setor: 'Solda' },
+      { dataIso: '2026-07-24', carrada: 'ROTA A', pd: '101', qtdeComponente: 2, setor: 'Solda' },
+      { dataIso: '2026-07-25', carrada: 'ROTA B', pd: '102', qtdeComponente: 4, setor: 'Pintura' },
     ]);
   });
 
@@ -90,8 +91,40 @@ describe('motor de disponibilidade com base congelada', () => {
     if (!r.ok) return;
 
     expect(r.data.origens).toEqual([
-      { dataIso: '2026-07-24', carrada: 'ROTA A', pd: '100', qtdeComponente: 6 },
+      { dataIso: '2026-07-24', carrada: 'ROTA A', pd: '100', qtdeComponente: 6, setor: '' },
     ]);
+  });
+
+  it('statusPorCelula marca só setores com consumo do material em falta no dia', async () => {
+    const r = await obterDisponibilidadeSintetica(null, DEMANDA, BASE);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    const cel24 = r.data.statusPorCelula.filter((c) => c.data === '2026-07-24');
+    expect(cel24).toEqual([
+      {
+        setor: 'Solda',
+        data: '2026-07-24',
+        status: 'falta',
+        qtdeMateriaisFalta: 1,
+        qtdeMateriaisAtencao: 0,
+      },
+    ]);
+    expect(cel24.some((c) => c.setor === 'Pintura')).toBe(false);
+  });
+
+  it('materiais do dia filtrados por setor — grade == modal da célula', async () => {
+    const r = await obterMateriaisDoDia(null, DEMANDA, '2026-07-24', BASE, 'Solda');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.materiais).toHaveLength(1);
+    expect(r.data.materiais[0]!.origens.every((o) => o.setor === 'Solda')).toBe(true);
+    expect(r.data.materiais[0]!.consumoDia).toBe(8);
+
+    const rPintura = await obterMateriaisDoDia(null, DEMANDA, '2026-07-24', BASE, 'Pintura');
+    expect(rPintura.ok).toBe(true);
+    if (!rPintura.ok) return;
+    expect(rPintura.data.materiais).toHaveLength(0);
   });
 
   it('sem base e sem pool devolve erro em vez de consultar o ERP', async () => {
