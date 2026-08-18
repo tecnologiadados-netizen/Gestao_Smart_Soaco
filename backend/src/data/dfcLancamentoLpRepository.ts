@@ -4,6 +4,7 @@
  */
 
 import type { DfcAgendamentoDetalheRow, DfcAgendamentoLinha, DfcAgendamentoGranularidade } from './dfcAgendamentoRepository.js';
+import { aplicarLimiteDetalhe, LIMITE_DETALHE_MODAL } from './detalheLimite.js';
 import type { DfcPrioridadeFilterResolvido } from './dfcPrioridadeFilter.js';
 import { queryDfcNomusDetalhe, queryDfcNomusRetroAgregado } from './dfcNomusRepository.js';
 import { formatSqlDatePeriod, formatSqlDateYmd } from './dfcDateUtils.js';
@@ -93,6 +94,8 @@ export async function queryDfcLancamentosLpDetalhe(params: {
   idsContaFinanceiro: number[];
   periodoBucket?: string | null;
   filtroPrioridade?: DfcPrioridadeFilterResolvido;
+  todasContas?: boolean;
+  limite?: number | null;
 }): Promise<{ detalhes: DfcAgendamentoDetalheRow[]; erro?: string }> {
   return queryDfcNomusDetalhe({
     modo: 'retro',
@@ -105,6 +108,8 @@ export async function queryDfcLancamentosLpDetalhe(params: {
     periodoBucket: params.periodoBucket,
     discriminadores: ['LP'],
     filtroPrioridade: params.filtroPrioridade,
+    todasContas: params.todasContas,
+    limite: params.limite,
   });
 }
 
@@ -134,23 +139,22 @@ export function mergeDfcAgregadoLinhas(
   return out;
 }
 
-const MAX_DETALHE = 2000;
+const MAX_DETALHE = LIMITE_DETALHE_MODAL;
 
 /** Une detalhe agendamento + detalhe LP, ordena por valor e respeita limite. */
 export function mergeDfcDetalheOrdenado(
   a: DfcAgendamentoDetalheRow[],
-  b: DfcAgendamentoDetalheRow[]
+  b: DfcAgendamentoDetalheRow[],
+  limite: number | null = MAX_DETALHE,
 ): { detalhes: DfcAgendamentoDetalheRow[]; truncado: boolean } {
-  return mergeDfcDetalheOrdenadoMany([a, b]);
+  return mergeDfcDetalheOrdenadoMany([a, b], limite);
 }
 
 /** Une vários conjuntos de detalhe (ex.: P + LP + receitas R/LR), ordena e aplica um único limite. */
 export function mergeDfcDetalheOrdenadoMany(
-  parts: DfcAgendamentoDetalheRow[][]
+  parts: DfcAgendamentoDetalheRow[][],
+  limite: number | null = MAX_DETALHE,
 ): { detalhes: DfcAgendamentoDetalheRow[]; truncado: boolean } {
   const m = parts.flat().sort((u, v) => v.valorBaixado - u.valorBaixado);
-  return {
-    detalhes: m.slice(0, MAX_DETALHE),
-    truncado: m.length > MAX_DETALHE,
-  };
+  return aplicarLimiteDetalhe(m, limite, MAX_DETALHE);
 }

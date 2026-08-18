@@ -17,6 +17,7 @@ import {
   listarIdsContaPorPathKeyDre,
 } from './drePlanoContasMap.js';
 import type { DfcAgendamentoDetalheRow, DfcAgendamentoGranularidade } from './dfcAgendamentoRepository.js';
+import { aplicarLimiteDetalhe, LIMITE_DETALHE_MODAL } from './detalheLimite.js';
 import { labelEmpresaDfc } from './dfcShop9Empresa.js';
 import { linhaPassaFornecedoresRateio } from '../utils/dreRateioFornecedorMatch.js';
 import { aplicarRateioInssNasLinhasSaidas, resolverPathKeyInssPoolAgregacao } from './dreInssRateio.js';
@@ -248,7 +249,7 @@ async function carregarSaidasNomusSoAcoDre(params: {
   }
 }
 
-const MAX_DETALHE_DRE_NOMUS = 2000;
+const MAX_DETALHE_DRE_NOMUS = LIMITE_DETALHE_MODAL;
 
 function periodoFromYmdDetalhe(ymd: string, granularidade: DfcAgendamentoGranularidade): string {
   return granularidade === 'mes' ? ymd.slice(0, 7) : ymd;
@@ -264,9 +265,12 @@ export async function queryDreNomusSaidasDetalhe(params: {
   idsContaFinanceiro: number[];
   granularidade: DfcAgendamentoGranularidade;
   periodoBucket?: string | null;
+  todasContas?: boolean;
+  limite?: number | null;
 }): Promise<{ detalhes: DfcAgendamentoDetalheRow[]; erro?: string }> {
+  const todasContas = params.todasContas === true;
   const idsSet = new Set(params.idsContaFinanceiro.filter((n) => n > 0));
-  if (idsSet.size === 0) return { detalhes: [] };
+  if (!todasContas && idsSet.size === 0) return { detalhes: [] };
   if (!isNomusEnabled()) {
     return { detalhes: [], erro: 'Nomus: NOMUS_DB_URL não configurado (detalhe DRE)' };
   }
@@ -297,7 +301,7 @@ export async function queryDreNomusSaidasDetalhe(params: {
     for (const r of listAg) {
       const row = r as Record<string, unknown>;
       const idCf = row.idContaFinanceiro != null ? Math.trunc(Number(row.idContaFinanceiro)) : 0;
-      if (!idCf || !idsSet.has(idCf)) continue;
+      if (!idCf || (!todasContas && !idsSet.has(idCf))) continue;
 
       const valor = extrairValorLinha(row);
       if (valor <= 0) continue;
@@ -326,6 +330,7 @@ export async function queryDreNomusSaidasDetalhe(params: {
         idEmpresa,
         idContaFinanceiro: idCf,
         empresa: idEmpresa > 0 ? labelEmpresaDfc(idEmpresa) : null,
+        origem: 'Nomus',
       });
       idsVistos.add(chave);
     }
@@ -333,7 +338,7 @@ export async function queryDreNomusSaidasDetalhe(params: {
     for (const r of listLp) {
       const row = r as Record<string, unknown>;
       const idCf = row.idContaFinanceiro != null ? Math.trunc(Number(row.idContaFinanceiro)) : 0;
-      if (!idCf || !idsSet.has(idCf)) continue;
+      if (!idCf || (!todasContas && !idsSet.has(idCf))) continue;
 
       const valor = extrairValorLinha(row);
       if (valor <= 0) continue;
@@ -362,12 +367,14 @@ export async function queryDreNomusSaidasDetalhe(params: {
         idEmpresa,
         idContaFinanceiro: idCf,
         empresa: idEmpresa > 0 ? labelEmpresaDfc(idEmpresa) : null,
+        origem: 'Nomus',
       });
       idsVistos.add(chave);
     }
 
     detalhes.sort((a, b) => b.valorBaixado - a.valorBaixado);
-    return { detalhes: detalhes.slice(0, MAX_DETALHE_DRE_NOMUS) };
+    const { detalhes: cortados } = aplicarLimiteDetalhe(detalhes, params.limite, MAX_DETALHE_DRE_NOMUS);
+    return { detalhes: cortados };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[queryDreNomusSaidasDetalhe]', msg);

@@ -6,6 +6,7 @@ import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
+import { LIMITE_DETALHE_DRE_MODAL, limiteSqlBind } from './detalheLimite.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -13,7 +14,7 @@ function loadSql(name: string): string {
   return readFileSync(join(__dirname, 'sql', name), 'utf-8');
 }
 
-const MAX_DETALHE_LINHAS = 8000;
+const MAX_DETALHE_LINHAS = LIMITE_DETALHE_DRE_MODAL;
 const PSM_PEDIDO_EMISAO_MIN = '2024-01-01';
 const ID_EMPRESA_MOVEIS = 2;
 
@@ -103,6 +104,7 @@ export async function queryDreReceitaMoveisDiretoDetalhe(params: {
   dataInicio: string;
   dataFim: string;
   idEmpresaSaida?: number;
+  limite?: number | null;
 }): Promise<{ detalhes: DreReceitaMoveisDiretoDetalheRow[]; truncado?: boolean; erro?: string }> {
   if (!isNomusEnabled()) {
     return { detalhes: [], erro: 'Nomus não configurado (NOMUS_DB_URL).' };
@@ -117,14 +119,15 @@ export async function queryDreReceitaMoveisDiretoDetalhe(params: {
     params.dataInicio,
     params.dataFim,
     idEmpresa,
-    MAX_DETALHE_LINHAS + 1,
+    limiteSqlBind(params.limite, MAX_DETALHE_LINHAS),
   ];
 
   try {
     const [rows] = await pool.query(loadSql('dreReceitaMoveisDiretoDetalhe.sql'), args);
     const list = rows as Record<string, unknown>[];
-    const truncado = list.length > MAX_DETALHE_LINHAS;
-    const slice = truncado ? list.slice(0, MAX_DETALHE_LINHAS) : list;
+    const cap = limiteSqlBind(params.limite, MAX_DETALHE_LINHAS) - 1;
+    const truncado = list.length > cap;
+    const slice = truncado ? list.slice(0, cap) : list;
     const detalhes = slice.map((r) => ({
       idItemDocumentoEstoque: toInt(r.idItemDocumentoEstoque),
       idItemPedido: r.idItemPedido != null ? toInt(r.idItemPedido) : null,

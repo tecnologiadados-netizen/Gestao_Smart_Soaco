@@ -6,13 +6,14 @@ import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
+import { LIMITE_DETALHE_DRE_MODAL, limiteSqlBind } from './detalheLimite.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function loadSql(name: string): string {
   return readFileSync(join(__dirname, 'sql', name), 'utf-8');
 }
-const MAX_DETALHE_LINHAS = 8000;
+const MAX_DETALHE_LINHAS = LIMITE_DETALHE_DRE_MODAL;
 
 export type DreReceitaVendasAgregadoRow = {
   mes: number;
@@ -120,6 +121,7 @@ export async function queryDreReceitaVendasDetalhe(params: {
   dataFim: string;
   idEmpresaSaida?: number;
   grupoProduto?: string;
+  limite?: number | null;
 }): Promise<{ detalhes: DreReceitaVendasDetalheRow[]; truncado?: boolean; erro?: string }> {
   if (!isNomusEnabled()) {
     return { detalhes: [], erro: 'Nomus não configurado (NOMUS_DB_URL).' };
@@ -138,14 +140,15 @@ export async function queryDreReceitaVendasDetalhe(params: {
     idEmpresa,
     grupoFiltro,
     grupoFiltro,
-    MAX_DETALHE_LINHAS + 1,
+    limiteSqlBind(params.limite, MAX_DETALHE_LINHAS),
   ];
 
   try {
     const [rows] = await pool.query(loadSql('dreReceitaVendasDetalhe.sql'), args);
     const list = rows as Record<string, unknown>[];
-    const truncado = list.length > MAX_DETALHE_LINHAS;
-    const slice = truncado ? list.slice(0, MAX_DETALHE_LINHAS) : list;
+    const cap = limiteSqlBind(params.limite, MAX_DETALHE_LINHAS) - 1;
+    const truncado = list.length > cap;
+    const slice = truncado ? list.slice(0, cap) : list;
     const detalhes = slice
       .map((r) => ({
       idItemDocumentoEstoque: toInt(r.idItemDocumentoEstoque),

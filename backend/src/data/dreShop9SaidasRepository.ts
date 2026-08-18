@@ -24,6 +24,7 @@ import {
   ehPlanoSimplesNacionalShop9Dre,
 } from './dreShop9SaidasUtils.js';
 import type { DfcAgendamentoDetalheRow, DfcAgendamentoGranularidade } from './dfcAgendamentoRepository.js';
+import { aplicarLimiteDetalhe, LIMITE_DETALHE_MODAL } from './detalheLimite.js';
 import {
   labelEmpresaDfc,
   resolverIdEmpresaShop9SaidasDre,
@@ -357,7 +358,7 @@ export async function carregarSaidasShop9SoAcoDre(params: {
   }
 }
 
-const MAX_DETALHE_DRE_SHOP9 = 2000;
+const MAX_DETALHE_DRE_SHOP9 = LIMITE_DETALHE_MODAL;
 
 /**
  * Detalhe DRE Shop9 — mesma base da grade (competência + Ordem_Plano_Contas3).
@@ -369,9 +370,12 @@ export async function queryDreShop9SaidasDetalhe(params: {
   idsPlanoContas3: number[];
   granularidade: DfcAgendamentoGranularidade;
   periodoBucket?: string | null;
+  todasContas?: boolean;
+  limite?: number | null;
 }): Promise<{ detalhes: DfcAgendamentoDetalheRow[]; erro?: string }> {
+  const todasContas = params.todasContas === true;
   const idsSet = new Set(params.idsPlanoContas3.filter((n) => n > 0));
-  if (idsSet.size === 0) return { detalhes: [] };
+  if (!todasContas && idsSet.size === 0) return { detalhes: [] };
 
   const idEmpresasShop9 = empresasComSaidasShop9Dre(params.idEmpresas);
   if (!idEmpresasShop9.length) return { detalhes: [] };
@@ -400,7 +404,7 @@ export async function queryDreShop9SaidasDetalhe(params: {
 
     for (const row of rows) {
       const idPlano = row.ordemPlanoContas3;
-      if (idPlano == null || !idsSet.has(idPlano)) continue;
+      if (idPlano == null || (!todasContas && !idsSet.has(idPlano))) continue;
 
       const valor = Math.abs(row.valorBase);
       if (valor <= 0) continue;
@@ -431,12 +435,14 @@ export async function queryDreShop9SaidasDetalhe(params: {
         idEmpresa,
         idContaFinanceiro: idPlano,
         empresa: idEmpresa > 0 ? labelEmpresaDfc(idEmpresa) : row.empresa,
+        origem: 'Shop9',
       });
       if (row.ordem > 0) ordensVistas.add(row.ordem);
     }
 
     detalhes.sort((a, b) => b.valorBaixado - a.valorBaixado);
-    return { detalhes: detalhes.slice(0, MAX_DETALHE_DRE_SHOP9) };
+    const { detalhes: cortados } = aplicarLimiteDetalhe(detalhes, params.limite, MAX_DETALHE_DRE_SHOP9);
+    return { detalhes: cortados };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[queryDreShop9SaidasDetalhe]', msg);

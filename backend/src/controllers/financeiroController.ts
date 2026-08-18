@@ -11,7 +11,7 @@ import {
   type DfcAgendamentoLinha,
 } from '../data/dfcAgendamentoRepository.js';
 import { queryDfcKpis } from '../data/dfcKpisRepository.js';
-import { DFC_EMPRESAS_CARGA } from '../data/dfcNomusRepository.js';
+import { DFC_EMPRESAS_CARGA, listarContasBancariasNoPeriodoNomus } from '../data/dfcNomusRepository.js';
 import { normalizarIdsEmpresasDfc } from '../data/dfcShop9Empresa.js';
 import {
   listarContasBancariasDasContribuicoes,
@@ -90,6 +90,8 @@ import {
 import { buscarClientesPoliticaComercialNomus } from '../data/politicaComercialClientesRepository.js';
 import { DEFAULT_POLITICA_COMERCIAL } from '../services/painelComercialConformidade.js';
 import { resolverFiltroPrioridade } from '../data/dfcPrioridadeFilter.js';
+import { LIMITE_DETALHE_EXPORT, LIMITE_DETALHE_MODAL } from '../data/detalheLimite.js';
+import { labelEmpresaDfc } from '../data/dfcShop9Empresa.js';
 import {
   DFC_PRIORIDADES_VALIDAS,
   ehDfcPrioridadeValida,
@@ -381,6 +383,193 @@ export async function getDfcProjecaoReceitasDetalhe(req: Request, res: Response)
   res.json({ linhas, erro });
 }
 
+type CarregarDfcLancamentosArgs = {
+  dataInicio: string;
+  dataFim: string;
+  granularidade: DfcAgendamentoGranularidade;
+  idEmpresas: number[];
+  contasBancarias: string[];
+  idsUniq: number[];
+  periodoOpt: string | null;
+  prioridades: DfcPrioridade[];
+  todasContas: boolean;
+  limite: number | null;
+  logPrefix: string;
+};
+
+async function carregarDfcLancamentosDetalhe(args: CarregarDfcLancamentosArgs): Promise<{
+  detalhes: DfcAgendamentoDetalheRow[];
+  truncado: boolean;
+  erroFatal?: string;
+}> {
+  const {
+    dataInicio,
+    dataFim,
+    granularidade,
+    idEmpresas,
+    contasBancarias,
+    idsUniq,
+    periodoOpt,
+    prioridades,
+    todasContas,
+    limite,
+    logPrefix,
+  } = args;
+
+  const hoje = hojeYmd();
+  const amanha = amanhaYmd();
+  const bucketEhFuturo = periodoOpt != null && periodoOpt > hoje;
+  const bucketEhPassado = periodoOpt != null && periodoOpt <= hoje;
+  const retroFim = minDate(dataFim, hoje);
+  const temRetro = dataInicio <= retroFim && !bucketEhFuturo;
+  const projInicio = maxDate(dataInicio, amanha);
+  const temProj = projInicio <= dataFim && !bucketEhPassado;
+
+  const filtroPrioridade = await resolverFiltroPrioridade({ prioridades, idEmpresas });
+  const extra = { todasContas, limite };
+
+  const { detalhes: detalhesLp, erro: erroLp } = await queryDfcLancamentosLpDetalhe({
+    dataLancamentoInicio: dataInicio,
+    dataLancamentoFim: dataFim,
+    granularidade,
+    idEmpresas,
+    contasBancarias,
+    idsContaFinanceiro: idsUniq,
+    periodoBucket: periodoOpt,
+    filtroPrioridade,
+    ...extra,
+  });
+  if (erroLp) console.error(`[${logPrefix}] LP:`, erroLp);
+
+  let detalhesAg: DfcAgendamentoDetalheRow[] = [];
+  let detalhesRec: DfcAgendamentoDetalheRow[] = [];
+  let detalhesProjPg: DfcAgendamentoDetalheRow[] = [];
+  let detalhesProjRec: DfcAgendamentoDetalheRow[] = [];
+
+  const useShop9 = isShop9Enabled() && contasBancarias.length === 0;
+
+  if (temRetro) {
+    if (useShop9) {
+      const { detalhes: dShop9, erro: eShop9 } = await queryDfcShop9Detalhe({
+        modo: 'retro',
+        dataInicio,
+        dataFim: retroFim,
+        granularidade,
+        idEmpresas,
+        idsContaFinanceiro: idsUniq,
+        periodoBucket: periodoOpt,
+        ...extra,
+      });
+      if (eShop9) console.error(`[${logPrefix}] Shop9 retrospectivo:`, eShop9);
+      else detalhesAg = dShop9;
+    }
+
+    const { detalhes: dPgNomus, erro: eAg } = await queryDfcAgendamentosDetalhe({
+      dataBaixaInicio: dataInicio,
+      dataBaixaFim: retroFim,
+      granularidade,
+      idEmpresas,
+      contasBancarias,
+      idsContaFinanceiro: idsUniq,
+      periodoBucket: periodoOpt,
+      filtroPrioridade,
+      ...extra,
+    });
+    if (eAg) {
+      if (!useShop9) return { detalhes: [], truncado: false, erroFatal: eAg };
+      console.error(`[${logPrefix}] pagamentos retrospectivos Nomus:`, eAg);
+    } else if (useShop9) {
+      detalhesAg = [...detalhesAg, ...dPgNomus];
+    } else {
+      detalhesAg = dPgNomus;
+    }
+
+    const { detalhes: dRec, erro: eRec } = await queryDfcReceitasDetalhe({
+      dataBaixaInicio: dataInicio,
+      dataBaixaFim: retroFim,
+      granularidade,
+      idEmpresas,
+      contasBancarias,
+      idsContaFinanceiro: idsUniq,
+      periodoBucket: periodoOpt,
+      filtroPrioridade,
+      ...extra,
+    });
+    if (eRec) console.error(`[${logPrefix}] receitas retrospectivas:`, eRec);
+    else detalhesRec = dRec;
+  }
+
+  if (temProj) {
+    if (useShop9) {
+      const { detalhes: dShop9, erro: eShop9 } = await queryDfcShop9Detalhe({
+        modo: 'proj',
+        dataInicio: projInicio,
+        dataFim,
+        granularidade,
+        idEmpresas,
+        idsContaFinanceiro: idsUniq,
+        periodoBucket: periodoOpt,
+        ...extra,
+      });
+      if (eShop9) console.error(`[${logPrefix}] projeção Shop9:`, eShop9);
+      else detalhesProjPg = dShop9;
+    }
+
+    const { detalhes: dPgNomus, erro: ePg } = await queryDfcAgendamentosProjecaoDetalhe({
+      dataVencimentoInicio: projInicio,
+      dataVencimentoFim: dataFim,
+      granularidade,
+      idEmpresas,
+      contasBancarias,
+      idsContaFinanceiro: idsUniq,
+      periodoBucket: periodoOpt,
+      filtroPrioridade,
+      ...extra,
+    });
+    if (ePg) console.error(`[${logPrefix}] projeção pagamentos Nomus:`, ePg);
+    else if (useShop9) detalhesProjPg = [...detalhesProjPg, ...dPgNomus];
+    else detalhesProjPg = dPgNomus;
+
+    const { detalhes: dRec, erro: eRec } = await queryDfcReceitasProjecaoDetalhe({
+      dataVencimentoInicio: projInicio,
+      dataVencimentoFim: dataFim,
+      granularidade,
+      idEmpresas,
+      contasBancarias,
+      idsContaFinanceiro: idsUniq,
+      periodoBucket: periodoOpt,
+      filtroPrioridade,
+      ...extra,
+    });
+    if (eRec) console.error(`[${logPrefix}] projeção receitas Nomus:`, eRec);
+    else detalhesProjRec = dRec;
+  }
+
+  return mergeDfcDetalheOrdenadoMany(
+    [detalhesAg, erroLp ? [] : detalhesLp, detalhesRec, detalhesProjPg, detalhesProjRec],
+    limite,
+  );
+}
+
+function validarPeriodoDfcDetalhe(
+  dataInicio: string,
+  dataFim: string,
+  granularidade: DfcAgendamentoGranularidade,
+): string | null {
+  if (!DATE_RE.test(dataInicio) || !DATE_RE.test(dataFim)) {
+    return 'Informe dataInicio e dataFim no formato YYYY-MM-DD.';
+  }
+  const dIni = parseDate(dataInicio);
+  const dFim = parseDate(dataFim);
+  if (!dIni || !dFim || dFim < dIni) {
+    return 'Período inválido: dataFim deve ser >= dataInicio.';
+  }
+  if (granularidade === 'dia' && diffDaysInclusive(dIni, dFim) > 120) {
+    return 'No modo diário o intervalo máximo é 120 dias. Use visão mensal ou reduza o período.';
+  }
+  return null;
+}
+
 /**
  * GET /api/financeiro/dfc/agendamentos-efetivos-detalhe
  * Query: dataInicio, dataFim, granularidade, idEmpresas=1,2, ids (csv de idContaFinanceiro),
@@ -398,22 +587,9 @@ export async function getDfcAgendamentosDetalhe(req: Request, res: Response): Pr
   const idsRaw = String(req.query.ids ?? '').trim();
   const periodoOpt = String(req.query.periodo ?? '').trim() || null;
 
-  if (!DATE_RE.test(dataInicio) || !DATE_RE.test(dataFim)) {
-    res.status(400).json({ error: 'Informe dataInicio e dataFim no formato YYYY-MM-DD.' });
-    return;
-  }
-
-  const dIni = parseDate(dataInicio);
-  const dFim = parseDate(dataFim);
-  if (!dIni || !dFim || dFim < dIni) {
-    res.status(400).json({ error: 'Período inválido: dataFim deve ser >= dataInicio.' });
-    return;
-  }
-
-  if (granularidade === 'dia' && diffDaysInclusive(dIni, dFim) > 120) {
-    res.status(400).json({
-      error: 'No modo diário o intervalo máximo é 120 dias. Use visão mensal ou reduza o período.',
-    });
+  const erroPeriodo = validarPeriodoDfcDetalhe(dataInicio, dataFim, granularidade);
+  if (erroPeriodo) {
+    res.status(400).json({ error: erroPeriodo });
     return;
   }
 
@@ -439,148 +615,91 @@ export async function getDfcAgendamentosDetalhe(req: Request, res: Response): Pr
     }
   }
 
-  // ── Divisão: passado/hoje = efetivos; futuro = projeção ────────────────────
-  const hoje = hojeYmd();
-  const amanha = amanhaYmd();
-
-  // Determina se o período/bucket é futuro (projeção) ou passado (efetivo)
-  // Se periodoBucket informado, usa ele para decidir; se não, consulta ambos e mescla.
-  const bucketEhFuturo = periodoOpt != null && periodoOpt > hoje;
-  const bucketEhPassado = periodoOpt != null && periodoOpt <= hoje;
-
-  const retroFim = minDate(dataFim, hoje);
-  const temRetro = dataInicio <= retroFim && !bucketEhFuturo;
-
-  const projInicio = maxDate(dataInicio, amanha);
-  const temProj = projInicio <= dataFim && !bucketEhPassado;
-
-  const filtroPrioridade = await resolverFiltroPrioridade({ prioridades, idEmpresas });
-
-  // LP cobre o intervalo completo (sem divisão)
-  const { detalhes: detalhesLp, erro: erroLp } = await queryDfcLancamentosLpDetalhe({
-    dataLancamentoInicio: dataInicio,
-    dataLancamentoFim: dataFim,
+  const result = await carregarDfcLancamentosDetalhe({
+    dataInicio,
+    dataFim,
     granularidade,
     idEmpresas,
     contasBancarias,
-    idsContaFinanceiro: idsUniq,
-    periodoBucket: periodoOpt,
-    filtroPrioridade,
+    idsUniq,
+    periodoOpt,
+    prioridades,
+    todasContas: false,
+    limite: LIMITE_DETALHE_MODAL,
+    logPrefix: 'getDfcAgendamentosDetalhe',
   });
-  if (erroLp) console.error('[getDfcAgendamentosDetalhe] LP:', erroLp);
-
-  let detalhesAg: DfcAgendamentoDetalheRow[] = [];
-  let detalhesRec: DfcAgendamentoDetalheRow[] = [];
-  let detalhesProjPg: DfcAgendamentoDetalheRow[] = [];
-  let detalhesProjRec: DfcAgendamentoDetalheRow[] = [];
-
-  const useShop9 = isShop9Enabled() && contasBancarias.length === 0;
-
-  if (temRetro) {
-    if (useShop9) {
-      const { detalhes: dShop9, erro: eShop9 } = await queryDfcShop9Detalhe({
-        modo: 'retro',
-        dataInicio,
-        dataFim: retroFim,
-        granularidade,
-        idEmpresas,
-        idsContaFinanceiro: idsUniq,
-        periodoBucket: periodoOpt,
-      });
-      if (eShop9) console.error('[getDfcAgendamentosDetalhe] Shop9 retrospectivo:', eShop9);
-      else detalhesAg = dShop9;
-    }
-
-    const { detalhes: dPgNomus, erro: eAg } = await queryDfcAgendamentosDetalhe({
-      dataBaixaInicio: dataInicio,
-      dataBaixaFim: retroFim,
-      granularidade,
-      idEmpresas,
-      contasBancarias,
-      idsContaFinanceiro: idsUniq,
-      periodoBucket: periodoOpt,
-      filtroPrioridade,
-    });
-    if (eAg) {
-      if (!useShop9) {
-        res.status(503).json({ detalhes: [], erro: eAg });
-        return;
-      }
-      console.error('[getDfcAgendamentosDetalhe] pagamentos retrospectivos Nomus:', eAg);
-    } else if (useShop9) {
-      detalhesAg = [...detalhesAg, ...dPgNomus];
-    } else {
-      detalhesAg = dPgNomus;
-    }
-
-    const { detalhes: dRec, erro: eRec } = await queryDfcReceitasDetalhe({
-      dataBaixaInicio: dataInicio,
-      dataBaixaFim: retroFim,
-      granularidade,
-      idEmpresas,
-      contasBancarias,
-      idsContaFinanceiro: idsUniq,
-      periodoBucket: periodoOpt,
-      filtroPrioridade,
-    });
-    if (eRec) console.error('[getDfcAgendamentosDetalhe] receitas retrospectivas:', eRec);
-    else detalhesRec = dRec;
+  if (result.erroFatal) {
+    res.status(503).json({ detalhes: [], erro: result.erroFatal });
+    return;
   }
-
-  if (temProj) {
-    if (useShop9) {
-      const { detalhes: dShop9, erro: eShop9 } = await queryDfcShop9Detalhe({
-        modo: 'proj',
-        dataInicio: projInicio,
-        dataFim,
-        granularidade,
-        idEmpresas,
-        idsContaFinanceiro: idsUniq,
-        periodoBucket: periodoOpt,
-      });
-      if (eShop9) console.error('[getDfcAgendamentosDetalhe] projeção Shop9:', eShop9);
-      else detalhesProjPg = dShop9;
-    }
-
-    const { detalhes: dPgNomus, erro: ePg } = await queryDfcAgendamentosProjecaoDetalhe({
-      dataVencimentoInicio: projInicio,
-      dataVencimentoFim: dataFim,
-      granularidade,
-      idEmpresas,
-      contasBancarias,
-      idsContaFinanceiro: idsUniq,
-      periodoBucket: periodoOpt,
-      filtroPrioridade,
-    });
-    if (ePg) console.error('[getDfcAgendamentosDetalhe] projeção pagamentos Nomus:', ePg);
-    else if (useShop9) detalhesProjPg = [...detalhesProjPg, ...dPgNomus];
-    else detalhesProjPg = dPgNomus;
-
-    const { detalhes: dRec, erro: eRec } = await queryDfcReceitasProjecaoDetalhe({
-      dataVencimentoInicio: projInicio,
-      dataVencimentoFim: dataFim,
-      granularidade,
-      idEmpresas,
-      contasBancarias,
-      idsContaFinanceiro: idsUniq,
-      periodoBucket: periodoOpt,
-      filtroPrioridade,
-    });
-    if (eRec) console.error('[getDfcAgendamentosDetalhe] projeção receitas Nomus:', eRec);
-    else detalhesProjRec = dRec;
-  }
-
-  const { detalhes, truncado } = mergeDfcDetalheOrdenadoMany([
-    detalhesAg,
-    erroLp ? [] : detalhesLp,
-    detalhesRec,
-    detalhesProjPg,
-    detalhesProjRec,
-  ]);
 
   res.json({
-    detalhes,
-    truncado,
+    detalhes: result.detalhes,
+    truncado: result.truncado,
+    granularidade,
+    dataInicio,
+    dataFim,
+    idEmpresas,
+  });
+}
+
+/**
+ * GET /api/financeiro/dfc/export/lancamentos
+ * Mesma regra da grade/modal, sem o corte de 2000 linhas.
+ */
+export async function getDfcExportLancamentos(req: Request, res: Response): Promise<void> {
+  const dataInicio = String(req.query.dataInicio ?? '').trim();
+  const dataFim = String(req.query.dataFim ?? '').trim();
+  const granularidadeRaw = String(req.query.granularidade ?? 'mes').trim().toLowerCase();
+  const granularidade: DfcAgendamentoGranularidade =
+    granularidadeRaw === 'dia' ? 'dia' : 'mes';
+  const idEmpresas = parseIdEmpresas(req.query);
+  const contasBancarias = parseContasBancarias(req.query);
+  const prioridades = parsePrioridades(req.query);
+  const idsRaw = String(req.query.ids ?? '').trim();
+
+  const erroPeriodo = validarPeriodoDfcDetalhe(dataInicio, dataFim, granularidade);
+  if (erroPeriodo) {
+    res.status(400).json({ error: erroPeriodo });
+    return;
+  }
+
+  const idsContaFinanceiro = idsRaw
+    .split(/[,;\s]+/)
+    .map((s) => Math.trunc(Number(s)))
+    .filter((n) => n > 0);
+  const idsUniq = [...new Set(idsContaFinanceiro)];
+  const todasContas = idsUniq.length === 0;
+
+  const result = await carregarDfcLancamentosDetalhe({
+    dataInicio,
+    dataFim,
+    granularidade,
+    idEmpresas,
+    contasBancarias,
+    idsUniq,
+    periodoOpt: null,
+    prioridades,
+    todasContas,
+    limite: null,
+    logPrefix: 'getDfcExportLancamentos',
+  });
+  if (result.erroFatal) {
+    res.status(503).json({ detalhes: [], erro: result.erroFatal });
+    return;
+  }
+
+  const avisos: string[] = [];
+  if (result.truncado) {
+    avisos.push(
+      `Volume extremo: o Excel foi limitado a ${LIMITE_DETALHE_EXPORT.toLocaleString('pt-BR')} lançamentos.`,
+    );
+  }
+
+  res.json({
+    detalhes: result.detalhes,
+    truncado: result.truncado,
+    avisos,
     granularidade,
     dataInicio,
     dataFim,
@@ -1797,3 +1916,148 @@ export async function putDreRateioConfig(req: Request, res: Response): Promise<v
     res.status(500).json({ error: msg });
   }
 }
+
+const ID_EMPRESA_DRE_ACO = 1;
+const ID_EMPRESA_DRE_MOVEIS = 2;
+
+type DreExportReceitaLinha = Record<string, unknown> & {
+  canal: string;
+  empresa: string;
+};
+
+function mapearReceitaExport(
+  rows: Array<Record<string, unknown>>,
+  canal: string,
+  idEmpresa: number,
+): DreExportReceitaLinha[] {
+  const empresa = labelEmpresaDfc(idEmpresa);
+  return rows.map((r) => ({
+    ...r,
+    canal,
+    empresa,
+    percMarkup: r.percMarkup ?? null,
+    valorIndireto: r.valorIndireto ?? null,
+  }));
+}
+
+/**
+ * GET /api/financeiro/dre/export/detalhe
+ * Receitas + devoluções + saídas do intervalo, sem o corte dos modais.
+ */
+export async function getDreExportDetalhe(req: Request, res: Response): Promise<void> {
+  const dataInicio = String(req.query.dataInicio ?? '').trim();
+  const dataFim = String(req.query.dataFim ?? '').trim();
+  const granularidadeRaw = String(req.query.granularidade ?? 'mes').trim().toLowerCase();
+  const granularidade: DfcAgendamentoGranularidade =
+    granularidadeRaw === 'dia' ? 'dia' : 'mes';
+  const idEmpresas = parseIdEmpresas(req.query);
+
+  const erroPeriodo = validarPeriodoDfcDetalhe(dataInicio, dataFim, granularidade);
+  if (erroPeriodo) {
+    res.status(400).json({ error: erroPeriodo });
+    return;
+  }
+
+  const incluirAco = idEmpresas.includes(ID_EMPRESA_DRE_ACO);
+  const incluirMoveis = idEmpresas.includes(ID_EMPRESA_DRE_MOVEIS);
+  const idEmpresaIndireta = incluirAco ? ID_EMPRESA_DRE_ACO : ID_EMPRESA_DRE_MOVEIS;
+  const avisos: string[] = [];
+  let truncado = false;
+
+  const [
+    vendasRes,
+    moveisRes,
+    indiretaRes,
+    devolAcoRes,
+    devolMoveisRes,
+    saidasNomusRes,
+    saidasShop9Res,
+  ] = await Promise.all([
+    incluirAco
+      ? queryDreReceitaVendasDetalhe({ dataInicio, dataFim, idEmpresaSaida: ID_EMPRESA_DRE_ACO, limite: null })
+      : Promise.resolve({ detalhes: [] as Array<Record<string, unknown>>, truncado: false as boolean | undefined, erro: undefined as string | undefined }),
+    incluirMoveis
+      ? queryDreReceitaMoveisDiretoDetalhe({ dataInicio, dataFim, idEmpresaSaida: ID_EMPRESA_DRE_MOVEIS, limite: null })
+      : Promise.resolve({ detalhes: [] as Array<Record<string, unknown>>, truncado: false as boolean | undefined, erro: undefined as string | undefined }),
+    incluirAco || incluirMoveis
+      ? queryDreReceitaIndiretaDetalhe({ dataInicio, dataFim, idEmpresaSaida: idEmpresaIndireta, limite: null })
+      : Promise.resolve({ detalhes: [] as Array<Record<string, unknown>>, truncado: false as boolean | undefined, erro: undefined as string | undefined }),
+    incluirAco
+      ? queryDreDevolucoesDetalhe({ dataInicio, dataFim, idEmpresaEntrada: ID_EMPRESA_DRE_ACO, limite: null })
+      : Promise.resolve({ detalhes: [] as Array<Record<string, unknown>>, truncado: false as boolean | undefined, erro: undefined as string | undefined }),
+    incluirMoveis
+      ? queryDreDevolucoesDetalhe({ dataInicio, dataFim, idEmpresaEntrada: ID_EMPRESA_DRE_MOVEIS, limite: null })
+      : Promise.resolve({ detalhes: [] as Array<Record<string, unknown>>, truncado: false as boolean | undefined, erro: undefined as string | undefined }),
+    queryDreNomusSaidasDetalhe({
+      dataInicio,
+      dataFim,
+      idEmpresas,
+      idsContaFinanceiro: [],
+      granularidade,
+      todasContas: true,
+      limite: null,
+    }),
+    isShop9Enabled()
+      ? queryDreShop9SaidasDetalhe({
+          dataInicio,
+          dataFim,
+          idEmpresas,
+          idsPlanoContas3: [],
+          granularidade,
+          todasContas: true,
+          limite: null,
+        })
+      : Promise.resolve({ detalhes: [] as DfcAgendamentoDetalheRow[], erro: undefined as string | undefined }),
+  ]);
+
+  const erros = [
+    vendasRes.erro,
+    moveisRes.erro,
+    indiretaRes.erro,
+    devolAcoRes.erro,
+    devolMoveisRes.erro,
+    saidasNomusRes.erro,
+    saidasShop9Res.erro,
+  ].filter((e): e is string => Boolean(e));
+  for (const e of erros) avisos.push(e);
+
+  if (vendasRes.truncado || moveisRes.truncado || indiretaRes.truncado || devolAcoRes.truncado || devolMoveisRes.truncado) {
+    truncado = true;
+    avisos.push(
+      `Volume extremo: alguma aba analítica foi limitada a ${LIMITE_DETALHE_EXPORT.toLocaleString('pt-BR')} linhas.`,
+    );
+  }
+
+  const receitas: DreExportReceitaLinha[] = [
+    ...mapearReceitaExport(vendasRes.detalhes as Array<Record<string, unknown>>, 'Vendas Só Aço', ID_EMPRESA_DRE_ACO),
+    ...mapearReceitaExport(moveisRes.detalhes as Array<Record<string, unknown>>, 'Direto Só Móveis', ID_EMPRESA_DRE_MOVEIS),
+    ...mapearReceitaExport(
+      indiretaRes.detalhes as Array<Record<string, unknown>>,
+      'Indireto',
+      idEmpresaIndireta,
+    ),
+  ];
+
+  const devolucoes = [
+    ...((devolAcoRes.detalhes ?? []).map((r) => ({ ...r, empresa: labelEmpresaDfc(ID_EMPRESA_DRE_ACO) }))),
+    ...((devolMoveisRes.detalhes ?? []).map((r) => ({ ...r, empresa: labelEmpresaDfc(ID_EMPRESA_DRE_MOVEIS) }))),
+  ];
+
+  const saidas = [
+    ...(saidasNomusRes.detalhes ?? []),
+    ...(saidasShop9Res.detalhes ?? []),
+  ].sort((a, b) => b.valorBaixado - a.valorBaixado);
+
+  res.json({
+    receitas,
+    devolucoes,
+    saidas,
+    truncado,
+    avisos,
+    dataInicio,
+    dataFim,
+    idEmpresas,
+    granularidade,
+  });
+}
+

@@ -26,6 +26,7 @@ import {
 } from './dfcShop9PlanoContasMap.js';
 import { formatSqlDateYmd as formatYmd } from './dfcDateUtils.js';
 import type { DfcContribuicaoLinha } from './dfcContribuicaoRepository.js';
+import { aplicarLimiteDetalhe, LIMITE_DETALHE_MODAL } from './detalheLimite.js';
 
 export { formatYmd };
 
@@ -395,6 +396,8 @@ export async function queryDfcShop9Detalhe(params: {
   idEmpresas: number[];
   idsContaFinanceiro: number[];
   periodoBucket?: string | null;
+  todasContas?: boolean;
+  limite?: number | null;
 }): Promise<{ detalhes: DfcAgendamentoDetalheRow[]; erro?: string }> {
   const {
     modo,
@@ -404,9 +407,11 @@ export async function queryDfcShop9Detalhe(params: {
     idEmpresas,
     idsContaFinanceiro,
     periodoBucket,
+    todasContas = false,
+    limite,
   } = params;
   const idsSet = new Set(idsContaFinanceiro.filter((n) => n > 0));
-  if (idsSet.size === 0) return { detalhes: [] };
+  if (!todasContas && idsSet.size === 0) return { detalhes: [] };
 
   const { rows: raw, erro } = await carregarLinhasShop9Financeiro();
   if (erro && raw.length === 0) return { detalhes: [], erro };
@@ -419,7 +424,8 @@ export async function queryDfcShop9Detalhe(params: {
   for (const r of rows) {
     if (!shop9LinhaUsavel(r)) continue;
     const idConta = resolverIdContaShop9(r);
-    if (idConta == null || !idsSet.has(idConta)) continue;
+    if (idConta == null) continue;
+    if (!todasContas && !idsSet.has(idConta)) continue;
 
     if (modo === 'retro') {
       if (shop9LinhaEmAberto(r)) continue;
@@ -439,6 +445,8 @@ export async function queryDfcShop9Detalhe(params: {
         idEmpresa: empresaParaIdNomus(r),
         idContaFinanceiro: idConta,
         empresa: empresaDetalheShop9(r),
+        origem: 'Shop9',
+        situacao: 'Realizado',
       });
       continue;
     }
@@ -462,12 +470,15 @@ export async function queryDfcShop9Detalhe(params: {
       idEmpresa: empresaParaIdNomus(r),
       idContaFinanceiro: idConta,
       empresa: empresaDetalheShop9(r),
+      origem: 'Shop9',
+      situacao: 'Projetado',
     });
   }
 
   const detalhesUnicos = deduplicarDetalheShop9(detalhes);
   detalhesUnicos.sort((a, b) => b.valorBaixado - a.valorBaixado);
-  return { detalhes: detalhesUnicos.slice(0, 2000), erro };
+  const { detalhes: cortados } = aplicarLimiteDetalhe(detalhesUnicos, limite, LIMITE_DETALHE_MODAL);
+  return { detalhes: cortados, erro };
 }
 
 function pushContribuicaoShop9(
