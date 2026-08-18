@@ -125,12 +125,6 @@ function Bolinha({
   );
 }
 
-type Props = {
-  serie: PontoSerieInadimplencia[];
-  acumulado: Acumulado;
-  onPonto?: (ponto: PontoSerieInadimplencia, modo: SerieId) => void;
-};
-
 function GraficoSerie({
   rows,
   width,
