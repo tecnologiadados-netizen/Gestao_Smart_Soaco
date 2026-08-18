@@ -262,6 +262,14 @@ export interface DfcAgendamentoDetalheLinha {
   idContaFinanceiro: number | null;
   /** Nome da empresa (exibi??o no modal de detalhe). */
   empresa?: string | null;
+  origem?: 'Nomus' | 'Shop9';
+  situacao?: 'Realizado' | 'Projetado';
+  contaBancaria?: string | null;
+  planoContas?: string | null;
+  formaPagamento?: string | null;
+  comentarios?: string | null;
+  idPedido?: number | null;
+  tipoMovimento?: string | null;
 }
 
 export interface DfcKpis {
@@ -1642,6 +1650,115 @@ export async function fetchCarteiraFinanceira(
       tipoF: Array.isArray(body.opcoes?.tipoF) ? body.opcoes.tipoF : [],
       observacoes: Array.isArray(body.opcoes?.observacoes) ? body.opcoes.observacoes : [],
     },
+    erro: body.erro,
+  };
+}
+
+export type DreExportReceitaLinha = DreReceitaVendasDetalheLinha & {
+  canal: string;
+  empresa: string;
+  percMarkup?: number | null;
+  valorIndireto?: number | null;
+};
+
+export type DreExportDevolucaoLinha = DreDevolucoesDetalheLinha & {
+  empresa?: string;
+};
+
+export async function fetchDreExportDetalhe(params: {
+  dataInicio: string;
+  dataFim: string;
+  granularidade: 'dia' | 'mes';
+  idEmpresas?: number[];
+}): Promise<{
+  receitas: DreExportReceitaLinha[];
+  devolucoes: DreExportDevolucaoLinha[];
+  saidas: DfcAgendamentoDetalheLinha[];
+  truncado?: boolean;
+  avisos: string[];
+  erro?: string;
+}> {
+  const sp = new URLSearchParams();
+  sp.set('dataInicio', params.dataInicio);
+  sp.set('dataFim', params.dataFim);
+  sp.set('granularidade', params.granularidade);
+  const emps = params.idEmpresas?.filter((n) => n > 0) ?? [];
+  if (emps.length > 0) sp.set('idEmpresas', emps.join(','));
+  const res = await apiFetch(`/api/financeiro/dre/export/detalhe?${sp.toString()}`);
+  const body = (await res.json().catch(() => ({}))) as {
+    receitas?: DreExportReceitaLinha[];
+    devolucoes?: DreExportDevolucaoLinha[];
+    saidas?: DfcAgendamentoDetalheLinha[];
+    truncado?: boolean;
+    avisos?: string[];
+    erro?: string;
+    error?: string;
+  };
+  if (!res.ok) {
+    return {
+      receitas: [],
+      devolucoes: [],
+      saidas: [],
+      avisos: [],
+      erro: body.error ?? body.erro ?? res.statusText,
+    };
+  }
+  return {
+    receitas: Array.isArray(body.receitas) ? body.receitas : [],
+    devolucoes: Array.isArray(body.devolucoes) ? body.devolucoes : [],
+    saidas: Array.isArray(body.saidas) ? body.saidas : [],
+    truncado: body.truncado === true,
+    avisos: Array.isArray(body.avisos) ? body.avisos : [],
+    erro: body.erro,
+  };
+}
+
+export async function fetchDfcExportLancamentos(params: {
+  dataInicio: string;
+  dataFim: string;
+  granularidade: 'dia' | 'mes';
+  idEmpresas?: number[];
+  contasBancarias?: string[];
+  prioridades?: DfcPrioridade[];
+  ids?: number[];
+}): Promise<{
+  detalhes: DfcAgendamentoDetalheLinha[];
+  truncado?: boolean;
+  avisos: string[];
+  erro?: string;
+}> {
+  const sp = new URLSearchParams();
+  sp.set('dataInicio', params.dataInicio);
+  sp.set('dataFim', params.dataFim);
+  sp.set('granularidade', params.granularidade);
+  const emps = params.idEmpresas?.length ? params.idEmpresas : [1, 2, 3, 4];
+  sp.set('idEmpresas', emps.join(','));
+  if (params.ids && params.ids.length > 0) {
+    sp.set('ids', params.ids.filter((n) => n > 0).join(','));
+  }
+  appendContasBancariasQuery(sp, params.contasBancarias);
+  if (params.prioridades && params.prioridades.length > 0) {
+    sp.set('prioridades', params.prioridades.join(','));
+  }
+  const res = await apiFetch(`/api/financeiro/dfc/export/lancamentos?${sp.toString()}`);
+  const body = (await res.json().catch(() => ({}))) as {
+    detalhes?: DfcAgendamentoDetalheLinha[];
+    truncado?: boolean;
+    avisos?: string[];
+    erro?: string;
+    error?: string;
+  };
+  if (!res.ok) {
+    return {
+      detalhes: [],
+      avisos: [],
+      erro: body.error ?? body.erro ?? res.statusText,
+    };
+  }
+  return {
+    detalhes: Array.isArray(body.detalhes) ? body.detalhes : [],
+    truncado: body.truncado === true,
+    avisos: Array.isArray(body.avisos) ? body.avisos : [],
     erro: body.erro,
   };
 }

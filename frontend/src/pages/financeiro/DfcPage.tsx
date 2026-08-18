@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLayoutFoco } from '../../contexts/LayoutFocoContext';
-import ArvoreContasDfc from './dfc/ArvoreContasDfc';
+import ArvoreContasDfc, { type DfcArvoreExportHandle } from './dfc/ArvoreContasDfc';
 import DfcPrioridadeModal from './dfc/DfcPrioridadeModal';
 import DfcSaldoFaturarModal from './dfc/DfcSaldoFaturarModal';
 import DfcVencidoPagarModal from './dfc/DfcVencidoPagarModal';
 import DfcProjecaoReceitasModal from './dfc/DfcProjecaoReceitasModal';
 import DfcEndividamentoBancarioModal from './dfc/DfcEndividamentoBancarioModal';
 import DfcCarregandoModal from './dfc/DfcCarregandoModal';
+import DfcAjudaModal from './dfc/DfcAjudaModal';
+import { ComoLerBtn } from '../../components/AjudaTelaModal';
+import { exportDfcXlsx } from './dfc/exportDfcXlsx';
 import { DFC_EMPRESA_OPCOES, DFC_EMPRESAS_TODAS, DFC_ID_EMPRESA_ACO, projecaoReceitasAplicaParaEmpresas } from './dfc/dfcEmpresas';
 import MultiSelectWithSearch from '../../components/MultiSelectWithSearch';
 import { listarOpcoesPlanoContasDfc } from './dfc/dfcPlanoContasOpcoes';
@@ -18,8 +21,11 @@ import {
   fetchDfcAgendamentosEfetivos,
   fetchDfcKpis,
   fetchDfcProjecaoReceitas,
+  fetchDfcProjecaoReceitasDetalhe,
   fetchDfcEndividamentoBancario,
   fetchDfcSaldosBancarios,
+  fetchDfcDespesasPagamentoEmAberto,
+  fetchDfcExportLancamentos,
   type DfcContribuicaoLinha,
   type DfcEndividamentoBancarioResponse,
   type DfcKpis,
@@ -119,6 +125,9 @@ const KPI_CARD_CLASS =
 
 export default function DfcPage() {
   const dfcShellRef = useRef<HTMLDivElement>(null);
+  const arvoreRef = useRef<DfcArvoreExportHandle>(null);
+  const [exportando, setExportando] = useState(false);
+  const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
   const { modoFoco, alternarModoFoco, sairModoFoco } = useLayoutFoco();
 
   // Restaura o header ao sair da página DFC
@@ -481,6 +490,89 @@ export default function DfcPage() {
 
   const filtrosDesabilitados = !dadosJaCarregados;
 
+  const exportarExcel = useCallback(async () => {
+    const grade = arvoreRef.current?.snapshotExportacao() ?? [];
+    if (!dadosJaCarregados || loading || grade.length === 0) return;
+    const ini = aplicadoDataInicio || dataInicio;
+    const fim = aplicadoDataFim || dataFim;
+    setExportando(true);
+    try {
+      const [lanc, proj, venc] = await Promise.all([
+        fetchDfcExportLancamentos({
+          dataInicio: ini,
+          dataFim: fim,
+          granularidade: aplicadoGranularidade,
+          idEmpresas: idEmpresasEfetivas,
+          contasBancarias: filtrosContaBancaria,
+          prioridades: prioridadesSelecionadas,
+          ids: idsPlanoContasFiltro.length > 0 ? idsPlanoContasFiltro : undefined,
+        }),
+        projecaoReceitasHabilitada
+          ? fetchDfcProjecaoReceitasDetalhe({
+              dataInicio: ini,
+              dataFim: fim,
+              granularidade: aplicadoGranularidade,
+              idEmpresas: idEmpresasEfetivas,
+            })
+          : Promise.resolve({ linhas: [], erro: undefined as string | undefined }),
+        fetchDfcDespesasPagamentoEmAberto({
+          dataInicio: ini,
+          dataFim: fim,
+          idEmpresas: idEmpresasEfetivas.length > 0 ? idEmpresasEfetivas : DFC_EMPRESAS_TODAS,
+        }),
+      ]);
+      const avisos = [...(lanc.avisos ?? [])];
+      if (lanc.erro) avisos.push(lanc.erro);
+      if (proj.erro) avisos.push(proj.erro);
+      if (venc.erro) avisos.push(venc.erro);
+      await exportDfcXlsx({
+        filtros: {
+          dataInicio: ini,
+          dataFim: fim,
+          granularidade: aplicadoGranularidade,
+          empresas: idEmpresasEfetivas.map((id) => LABEL_EMPRESA[String(id)] ?? String(id)).join(', '),
+          banco: filtrosContaBancaria.join(', '),
+          prioridade: prioridadesSelecionadas.map((p) => DFC_PRIORIDADE_LABEL[p]).join(', '),
+          plano: idsPlanoContasFiltro.map((id) => LABEL_PLANO[String(id)] ?? String(id)).join(', '),
+        },
+        periodos,
+        grade,
+        kpis,
+        endividamentoTotal: endividamento.total,
+        lancamentos: lanc.detalhes,
+        projecao: proj.linhas,
+        saldosPorConta,
+        vencidos: venc.linhas.filter((l) => l.situacao === 'vencido'),
+        prioridadesContasMap,
+        prioridadesLancsMap,
+        avisos,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExportando(false);
+    }
+  }, [
+    dadosJaCarregados,
+    loading,
+    aplicadoDataInicio,
+    aplicadoDataFim,
+    dataInicio,
+    dataFim,
+    aplicadoGranularidade,
+    idEmpresasEfetivas,
+    filtrosContaBancaria,
+    prioridadesSelecionadas,
+    idsPlanoContasFiltro,
+    projecaoReceitasHabilitada,
+    periodos,
+    kpis,
+    endividamento.total,
+    saldosPorConta,
+    prioridadesContasMap,
+    prioridadesLancsMap,
+  ]);
+
   const focoMaximo = modoFoco && !faixaFiltrosVisivel;
   const mostrarPainelFiltros = !modoFoco || faixaFiltrosVisivel;
 
@@ -494,7 +586,9 @@ export default function DfcPage() {
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 min-w-0 pr-2">
             DFC — Demonstração dos Fluxos de Caixa
           </h2>
-          <button
+          <div className="flex items-center gap-2 shrink-0">
+            <ComoLerBtn onClick={() => setModalAjudaAberto(true)} title="Como ler a DFC — realizado vs projetado" />
+            <button
             type="button"
             onClick={alternarModoFoco}
             className="shrink-0 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition"
@@ -505,6 +599,7 @@ export default function DfcPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
             </svg>
           </button>
+          </div>
         </div>
       ) : null}
 
@@ -668,6 +763,14 @@ export default function DfcPage() {
               </button>
               <button
                 type="button"
+                className="btn-secondary text-sm"
+                disabled={exportando || loading || !dadosJaCarregados}
+                onClick={() => void exportarExcel()}
+              >
+                {exportando ? 'Exportando…' : 'Exportar Excel'}
+              </button>
+              <button
+                type="button"
                 onClick={() => void carregar()}
                 disabled={bloqueioDiario}
                 className="px-5 py-2 rounded-lg text-sm font-semibold bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
@@ -689,6 +792,7 @@ export default function DfcPage() {
       ) : null}
 
       <DfcCarregandoModal aberto={loading} />
+      <DfcAjudaModal aberto={modalAjudaAberto} onClose={() => setModalAjudaAberto(false)} />
 
       {!loading && !dadosJaCarregados && !error ? (
         <p className="text-sm text-slate-500 dark:text-slate-400 shrink-0 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
@@ -870,6 +974,7 @@ export default function DfcPage() {
 
       <div className={`min-h-0 w-full ${modoFoco ? 'flex-1 flex flex-col' : ''}`}>
         <ArvoreContasDfc
+          ref={arvoreRef}
           periodos={periodos}
           valoresPorConta={valoresPorConta}
           granularidade={aplicadoGranularidade}

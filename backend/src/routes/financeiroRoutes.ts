@@ -16,6 +16,8 @@ import { getCarteiraFinanceira } from '../controllers/carteiraFinanceiraControll
 import {
   getDfcAgendamentosEfetivos,
   getDfcAgendamentosDetalhe,
+  getDfcExportLancamentos,
+  getDreExportDetalhe,
   getDfcContasBancarias,
   getDfcDespesasPagamentoEmAberto,
   getDfcDespesasPagamentoFornecedorOpcoes,
@@ -136,6 +138,7 @@ router.get('/dfc/agendamentos-efetivos', verFinanceiroDfc, getDfcAgendamentosEfe
 router.get('/dfc/projecao-receitas', verFinanceiroDfc, getDfcProjecaoReceitas);
 router.get('/dfc/projecao-receitas/detalhe', verFinanceiroDfc, getDfcProjecaoReceitasDetalhe);
 router.get('/dfc/agendamentos-efetivos-detalhe', verFinanceiroDfc, getDfcAgendamentosDetalhe);
+router.get('/dfc/export/lancamentos', verFinanceiroDfc, getDfcExportLancamentos);
 router.get('/dfc/contas-bancarias', verFinanceiroDfc, getDfcContasBancarias);
 router.get('/dfc/despesas-pagamento-em-aberto', verFinanceiroDfc, getDfcDespesasPagamentoEmAberto);
 router.get('/dfc/despesas-em-aberto-fornecedor-opcoes', verFinanceiroDfc, getDfcDespesasPagamentoFornecedorOpcoes);
@@ -167,6 +170,7 @@ router.delete('/dre/relacao-pc', verFinanceiroDre, deleteDreRelacaoPcOverrides);
 router.get('/dre/rateio-config', verFinanceiroDre, getDreRateioConfig);
 router.put('/dre/rateio-config', verFinanceiroDre, putDreRateioConfig);
 router.get('/dre/dashboard', verFinanceiroDre, getDreDashboard);
+router.get('/dre/export/detalhe', verFinanceiroDre, getDreExportDetalhe);
 
 // Prioridade DFC (plano de contas + lançamento)
 router.get('/dfc/prioridades/opcoes', verFinanceiroDfc, getOpcoesPrioridade);

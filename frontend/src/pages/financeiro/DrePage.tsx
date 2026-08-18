@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLayoutFoco } from '../../contexts/LayoutFocoContext';
-import ArvoreContasDre from './dre/ArvoreContasDre';
+import ArvoreContasDre, { type DreArvoreExportHandle } from './dre/ArvoreContasDre';
 import DreMkpModal from './dre/DreMkpModal';
 import DreAjudaModal from './dre/DreAjudaModal';
 import DreRateioEmpresasModal from './dre/DreRateioEmpresasModal';
 import DreRelacaoPcModal from './dre/DreRelacaoPcModal';
 import DfcCarregandoModal from './dfc/DfcCarregandoModal';
+import { ComoLerBtn } from '../../components/AjudaTelaModal';
+import { fetchDreExportDetalhe } from '../../api/financeiro';
+import { exportDreXlsx } from './dre/exportDreXlsx';
 import { DFC_EMPRESA_OPCOES, DFC_EMPRESAS_TODAS, DFC_ID_EMPRESA_ACO, DFC_ID_EMPRESA_MOVEIS, DFC_ID_EMPRESA_REFRIGERACAO, DFC_ID_EMPRESA_RN_MARQUES } from './dfc/dfcEmpresas';
 import { listarOpcoesPlanoContasDre } from './dre/drePlanoContasOpcoes';
 import { listarPeriodosDfc } from './dfc/dfcPeriodos';
@@ -83,6 +86,8 @@ function diffDaysInclusiveYmd(a: string, b: string): number | null {
 
 export default function DrePage() {
   const dreShellRef = useRef<HTMLDivElement>(null);
+  const arvoreRef = useRef<DreArvoreExportHandle>(null);
+  const [exportando, setExportando] = useState(false);
   const { modoFoco, alternarModoFoco, sairModoFoco } = useLayoutFoco();
 
   useEffect(() => () => sairModoFoco(), [sairModoFoco]);
@@ -92,6 +97,8 @@ export default function DrePage() {
   const [granularidade, setGranularidade] = useState<'dia' | 'mes'>('mes');
   const [periodos, setPeriodos] = useState<string[]>(() => listarPeriodosDfc(inicioAnoLocalYmd(), hojeLocalYmd(), 'mes'));
   const [aplicadoGranularidade, setAplicadoGranularidade] = useState<'dia' | 'mes'>('mes');
+  const [aplicadoDataInicio, setAplicadoDataInicio] = useState('');
+  const [aplicadoDataFim, setAplicadoDataFim] = useState('');
   const [saidasLinhas, setSaidasLinhas] = useState<DreSaidasSoAcoLinhaApi[]>([]);
   /** Saídas Ref+RN integrais — total do Simples (4.14) para rateio quando filtro recorta uma empresa. */
   const [saidasLinhasRateioBase, setSaidasLinhasRateioBase] = useState<DreSaidasSoAcoLinhaApi[]>([]);
@@ -389,6 +396,8 @@ export default function DrePage() {
       ]);
       if (seq !== carregarSeqRef.current) return;
       setAplicadoIdEmpresas(f.idEmpresas);
+      setAplicadoDataInicio(f.dataInicio);
+      setAplicadoDataFim(f.dataFim);
       setIdsPorPathKeySaidas(saidasRes.idsPorPathKey ?? {});
       setIdsPorPathKeyShop9(saidasRes.idsPorPathKeyShop9 ?? {});
       setShop9OrdensCatalogoPorPathKey(saidasRes.shop9OrdensCatalogoPorPathKey ?? {});
@@ -491,6 +500,64 @@ export default function DrePage() {
     [filtrosPlanoContas],
   );
 
+  const exportarExcel = useCallback(async () => {
+    const grade = arvoreRef.current?.snapshotExportacao() ?? [];
+    if (!receitaCarregada || grade.length === 0 || loading) return;
+    const ini = aplicadoDataInicio || dataInicio;
+    const fim = aplicadoDataFim || dataFim;
+    setExportando(true);
+    try {
+      const detalhe = await fetchDreExportDetalhe({
+        dataInicio: ini,
+        dataFim: fim,
+        granularidade: aplicadoGranularidade,
+        idEmpresas: aplicadoIdEmpresas,
+      });
+      const avisos = [...(detalhe.avisos ?? [])];
+      if (detalhe.erro) avisos.push(detalhe.erro);
+      const empresasLabel = aplicadoIdEmpresas
+        .map((id) => LABEL_EMPRESA[String(id)] ?? String(id))
+        .join(', ');
+      const planoLabel = idsPlanoContasFiltro
+        .map((id) => LABEL_PLANO[String(id)] ?? String(id))
+        .join(', ');
+      await exportDreXlsx({
+        filtros: {
+          dataInicio: ini,
+          dataFim: fim,
+          granularidade: aplicadoGranularidade,
+          empresas: empresasLabel,
+          planoContas: planoLabel,
+          mkpAtivo,
+          rateioLigado: (rateioConfig.regras ?? []).length > 0,
+        },
+        periodos,
+        grade,
+        receitas: detalhe.receitas,
+        devolucoes: detalhe.devolucoes,
+        saidas: detalhe.saidas,
+        avisos,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExportando(false);
+    }
+  }, [
+    receitaCarregada,
+    loading,
+    aplicadoDataInicio,
+    aplicadoDataFim,
+    dataInicio,
+    dataFim,
+    aplicadoGranularidade,
+    aplicadoIdEmpresas,
+    idsPlanoContasFiltro,
+    mkpAtivo,
+    rateioConfig.regras,
+    periodos,
+  ]);
+
   const idEmpresaSaidaNomus = aplicadoIdEmpresas.includes(DFC_ID_EMPRESA_ACO)
     ? DFC_ID_EMPRESA_ACO
     : aplicadoIdEmpresas[0] ?? DFC_ID_EMPRESA_ACO;
@@ -521,20 +588,14 @@ export default function DrePage() {
                 Demonstração do Resultado do Exercício
               </p>
             </div>
+            <ComoLerBtn onClick={() => setModalAjudaAberto(true)} title="Como ler a DRE — o que cada bloco significa" />
             <button
               type="button"
-              onClick={() => setModalAjudaAberto(true)}
-              title="Como ler a DRE — o que cada bloco significa"
-              className="inline-flex items-center gap-1.5 self-center px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+              className="btn-secondary text-sm"
+              disabled={exportando || loading || !receitaCarregada}
+              onClick={() => void exportarExcel()}
             >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
-                />
-              </svg>
-              Como ler
+              {exportando ? 'Exportando…' : 'Exportar Excel'}
             </button>
           </div>
           <button
@@ -843,6 +904,7 @@ export default function DrePage() {
 
       <div className={modoFoco ? 'flex-1 min-h-0 flex flex-col' : ''}>
       <ArvoreContasDre
+        ref={arvoreRef}
         periodos={periodos}
         valoresPorConta={{}}
         saidasLinhas={saidasLinhas}
