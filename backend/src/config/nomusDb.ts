@@ -25,7 +25,7 @@ function parseNomusUrl(url: string): mysql.PoolOptions {
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
-      connectTimeout: 20000,
+      connectTimeout: 45_000,
       // Evita ECONNRESET em conexões idle do pool (MySQL wait_timeout).
       enableKeepAlive: true,
       keepAliveInitialDelay: 10_000,
@@ -39,7 +39,7 @@ function parseNomusUrl(url: string): mysql.PoolOptions {
       waitForConnections: true,
       connectionLimit: 5,
       queueLimit: 0,
-      connectTimeout: 20000,
+      connectTimeout: 45_000,
       enableKeepAlive: true,
       keepAliveInitialDelay: 10_000,
     };
@@ -103,7 +103,7 @@ export async function nomusQueryWithRetry<T = unknown>(
   initialPool: mysql.Pool,
   sql: string,
   params?: unknown[],
-  tentativas = 3
+  tentativas = 2
 ): Promise<[T, mysql.FieldPacket[]]> {
   let activePool = initialPool;
   let lastErr: unknown;
@@ -117,7 +117,7 @@ export async function nomusQueryWithRetry<T = unknown>(
       const fresh = getNomusPool();
       if (!fresh) throw err;
       activePool = fresh;
-      await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+      await new Promise((r) => setTimeout(r, 800 * (i + 1)));
     }
   }
   throw lastErr;

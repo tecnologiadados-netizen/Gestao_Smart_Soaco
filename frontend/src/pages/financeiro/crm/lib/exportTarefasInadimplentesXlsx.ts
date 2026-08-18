@@ -5,7 +5,7 @@ const HEADERS = [
   'Data vencim.',
   'Data baixa',
   'Data recebim.',
-  'Origem',
+  'Origem Sist.',
   'Empresa',
   'Cliente',
   'Conta',

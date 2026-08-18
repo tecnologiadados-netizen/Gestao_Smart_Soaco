@@ -1,21 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FileSpreadsheet, History, X } from 'lucide-react';
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   fetchCrmInadimplentePainel,
   fetchCrmInadimplentePainelDetalhe,
   type FatiaPainelInadimplencia,
+  type PontoSerieInadimplencia,
   type TarefaInadimplente,
   type TituloPainelInadimplencia,
 } from '../../../../api/crmFinanceiro';
 import GradeFiltroCabecalhoBtn from '../../../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../../../components/grade/GradeFiltroExcelPortal';
 import { useGradeFiltrosExcel } from '../../../../hooks/useGradeFiltrosExcel';
-import { formatarPct, formatarReais } from '../../dashboard/dashboardFormat';
+import { parseDateRangeFilter } from '../../../../utils/gradeFiltroData';
+import { formatarPct, formatarReais, rotuloPeriodoMes } from '../../dashboard/dashboardFormat';
 import { getPrimeiroDiaUtilDoVencimento } from '../lib/atraso-recebimento';
 import { downloadPainelInadimplenciaDetalheXlsx } from '../lib/exportPainelInadimplenciaDetalheXlsx';
 import { CelulaDataVencimento, textoFiltroDataVencimento } from './CelulaDataVencimento';
+import EvolucaoInadimplenciaChart from './EvolucaoInadimplenciaChart';
+import LoadingOverlay from './LoadingOverlay';
 import ModalHistoricoContatosTarefa from './ModalHistoricoContatosTarefa';
 
 const FILTRO_LABEL = 'mb-1 block text-xs text-slate-500 dark:text-slate-400';
@@ -35,7 +39,7 @@ const PIE_PALETTE = [
   '#64748b',
 ];
 
-const FATIA_VAZIA: FatiaPainelInadimplencia = { chave: '', valor: 0, qtd: 0 };
+const FATIA_VAZIA: FatiaPainelInadimplencia = { chave: '', valor: 0, qtd: 0, qtdNomus: 0, qtdShop9: 0 };
 
 function ymdLocal(d: Date): string {
   const y = d.getFullYear();
@@ -48,13 +52,6 @@ function periodoUltimosDoisMeses(): { de: string; ate: string } {
   const ate = new Date();
   const de = new Date(ate.getFullYear(), ate.getMonth() - 2, ate.getDate());
   return { de: ymdLocal(de), ate: ymdLocal(ate) };
-}
-
-function formatYmd(ymd: string | null): string {
-  if (!ymd) return '—';
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd);
-  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
-  return ymd;
 }
 
 function parseYmdLocal(ymd: string | null): Date | null {
@@ -129,85 +126,152 @@ function tituloParaTarefa(row: TituloPainelInadimplencia): TarefaInadimplente | 
   };
 }
 
+function corTextoSobre(hex: string): string {
+  const n = Number.parseInt(hex.replace('#', ''), 16);
+  if (!Number.isFinite(n)) return '#fff';
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.62 ? '#0f172a' : '#fff';
+}
+
 function PizzaValor({
   titulo,
   fatias,
   onFatia,
+  maxBarrasVisiveis,
 }: {
   titulo: string;
   fatias: SliceRow[];
   onFatia: (f: SliceRow) => void;
+  maxBarrasVisiveis?: number;
 }) {
   const total = fatias.reduce((acc, f) => acc + f.valor, 0);
+  const rows = fatias
+    .map((f) => ({
+      ...f,
+      pct: total > 0 ? (f.valor / total) * 100 : 0,
+    }))
+    .sort((a, b) => b.pct - a.pct);
+  const maxPct = rows.reduce((m, r) => Math.max(m, r.pct), 0);
+  const xMax = Math.max(10, Math.ceil(maxPct / 10) * 10);
+  const altura = rows.length * 34 + 32;
+  const alturaVisivel =
+    maxBarrasVisiveis != null && rows.length > maxBarrasVisiveis
+      ? maxBarrasVisiveis * 34 + 32
+      : altura;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-      <h3 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">{titulo}</h3>
+    <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+      <h3 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">{titulo}</h3>
+      <p className="mb-3 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+        Atraso no período (pago após o prazo efetivo ou ainda aberto).
+      </p>
       {fatias.length === 0 ? (
-        <p className="py-10 text-center text-sm text-slate-500">Sem títulos em aberto neste período.</p>
+        <p className="py-10 text-center text-sm text-slate-500">Sem atraso neste período.</p>
       ) : (
-        <div className="grid grid-cols-1 items-center gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-          <div className="h-56 w-full">
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie
-                  data={fatias}
-                  dataKey="valor"
-                  nameKey="chave"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={48}
-                  outerRadius={84}
-                  paddingAngle={1.5}
-                  cursor="pointer"
-                  onClick={(_, index) => {
-                    const row = fatias[index];
-                    if (row) onFatia(row);
-                  }}
-                >
-                  {fatias.map((f) => (
-                    <Cell key={f.chave} fill={f.cor} stroke="transparent" />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(v, _n, item) => {
-                    const row = item?.payload as SliceRow | undefined;
-                    const pct = total > 0 ? (Number(v) / total) * 100 : 0;
-                    return [
-                      `${formatarReais(Number(v) || 0)} (${formatarPct(pct)}) · ${row?.qtd ?? 0} tít.`,
-                      row?.chave ?? '',
-                    ];
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+        <div
+          className={alturaVisivel < altura ? 'w-full overflow-y-scroll overscroll-contain' : 'w-full'}
+          style={{ height: alturaVisivel }}
+        >
+          <div style={{ height: altura }} className="w-full">
+            <ResponsiveContainer width="100%" height={altura}>
+            <BarChart
+              data={rows}
+              layout="vertical"
+              margin={{ top: 4, right: 28, left: 4, bottom: 4 }}
+              barCategoryGap="18%"
+            >
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-slate-200 dark:stroke-slate-700" />
+              <XAxis
+                type="number"
+                domain={[0, xMax]}
+                tickFormatter={(v) => `${Number(v).toFixed(0)}%`}
+                tick={{ fontSize: 11 }}
+              />
+              <YAxis
+                type="category"
+                dataKey="chave"
+                width={132}
+                interval={0}
+                tick={{ fontSize: 11 }}
+              />
+              <Tooltip
+                cursor={{ fill: 'rgba(148, 163, 184, 0.12)' }}
+                wrapperStyle={{ zIndex: 20, outline: 'none' }}
+                content={({ active, payload }) => {
+                  if (!active || !payload?.[0]?.payload) return null;
+                  const row = payload[0].payload as SliceRow & { pct: number };
+                  return (
+                    <div className="max-w-xs rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 shadow-md dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                      <p className="mb-1 font-semibold text-slate-900 dark:text-slate-50">{row.chave}</p>
+                      <p className="tabular-nums">
+                        {formatarReais(row.valor)} ({formatarPct(row.pct)}) · {row.qtd.toLocaleString('pt-BR')} tít.
+                      </p>
+                      <p className="mt-1.5 tabular-nums text-slate-600 dark:text-slate-300">
+                        Nomus: {(row.qtdNomus ?? 0).toLocaleString('pt-BR')} tít.
+                      </p>
+                      <p className="tabular-nums text-slate-600 dark:text-slate-300">
+                        Shop9: {(row.qtdShop9 ?? 0).toLocaleString('pt-BR')} tít.
+                      </p>
+                    </div>
+                  );
+                }}
+              />
+              <Bar
+                dataKey="pct"
+                maxBarSize={22}
+                cursor="pointer"
+                isAnimationActive={false}
+                onClick={(item) => {
+                  const row = (item as { payload?: SliceRow })?.payload;
+                  if (row) onFatia(row);
+                }}
+                label={(props) => {
+                  const x = Number(props.x) || 0;
+                  const y = Number(props.y) || 0;
+                  const w = Number(props.width) || 0;
+                  const h = Number(props.height) || 0;
+                  const idx = Number(props.index) || 0;
+                  const row = rows[idx];
+                  if (!row) return null;
+                  const dentro = w >= 44;
+                  return (
+                    <text
+                      x={dentro ? x + w - 6 : x + w + 4}
+                      y={y + h / 2}
+                      textAnchor={dentro ? 'end' : 'start'}
+                      dominantBaseline="middle"
+                      fill={dentro ? corTextoSobre(row.cor) : undefined}
+                      className={
+                        dentro
+                          ? 'pointer-events-none tabular-nums'
+                          : 'pointer-events-none tabular-nums fill-slate-700 dark:fill-slate-200'
+                      }
+                      fontSize={11}
+                      fontWeight={700}
+                    >
+                      {formatarPct(row.pct)}
+                    </text>
+                  );
+                }}
+              >
+                {rows.map((r) => (
+                  <Cell key={r.chave} fill={r.cor} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
           </div>
-          <ul className="space-y-1 text-xs">
-            {fatias.map((f) => {
-              const pct = total > 0 ? (f.valor / total) * 100 : 0;
-              return (
-                <li key={f.chave}>
-                  <button
-                    type="button"
-                    onClick={() => onFatia(f)}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/80"
-                  >
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: f.cor }} />
-                    <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">{f.chave}</span>
-                    <span className="shrink-0 tabular-nums font-medium text-slate-800 dark:text-slate-100">
-                      {formatarReais(f.valor)}
-                    </span>
-                    <span className="w-12 shrink-0 text-right tabular-nums text-slate-500">{formatarPct(pct)}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
         </div>
       )}
       {total > 0 ? (
-        <p className="mt-2 text-right text-xs font-semibold tabular-nums text-slate-700 dark:text-slate-200">
-          Total {formatarReais(total)}
+        <p className="mt-auto pt-2 text-right text-[11px] leading-snug text-slate-600 dark:text-slate-300">
+          <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-200">
+            Total {formatarReais(total)}
+          </span>
+          <span className="mt-0.5 block font-normal">inclui o que ainda está em aberto</span>
         </p>
       ) : null}
     </div>
@@ -247,6 +311,7 @@ function CardRecuperado({
 const DETALHE_COLS = [
   'cliente',
   'empresa',
+  'origem',
   'conta',
   'condicao',
   'vencimento',
@@ -261,8 +326,9 @@ type DetalheColId = (typeof DETALHE_COLS)[number];
 const DETALHE_COL_LABELS: Record<DetalheColId, string> = {
   cliente: 'Cliente',
   empresa: 'Empresa',
+  origem: 'Origem Sist.',
   conta: 'Conta',
-  condicao: 'Condição',
+  condicao: 'Forma',
   vencimento: 'Vencim.',
   recebimento: 'Recebim.',
   atraso: 'Dias atraso',
@@ -272,6 +338,63 @@ const DETALHE_COL_LABELS: Record<DetalheColId, string> = {
 
 const DETALHE_NUMERIC = new Set<DetalheColId>(['atraso', 'valor', 'tratativas']);
 const DETALHE_DATAS = new Set<DetalheColId>(['vencimento', 'recebimento']);
+const DETALHE_ORDEM_SERVIDOR = new Set<string>([
+  'vencimento',
+  'recebimento',
+  'cliente',
+  'empresa',
+  'conta',
+  'condicao',
+  'valor',
+  'atraso',
+]);
+
+type ConsultaDetalhe = {
+  ordem: string;
+  dir: 'asc' | 'desc';
+  vencDe: string;
+  vencAte: string;
+  recDe: string;
+  recAte: string;
+};
+
+const CONSULTA_DETALHE_PADRAO: ConsultaDetalhe = {
+  ordem: 'vencimento',
+  dir: 'desc',
+  vencDe: '',
+  vencAte: '',
+  recDe: '',
+  recAte: '',
+};
+
+function intersectPeriodo(panelDe: string, panelAte: string, colDe: string, colAte: string): { de: string; ate: string } {
+  const starts = [panelDe, colDe].filter(Boolean);
+  const ends = [panelAte, colAte].filter(Boolean);
+  return {
+    de: starts.length ? starts.reduce((a, b) => (a > b ? a : b)) : '',
+    ate: ends.length ? ends.reduce((a, b) => (a < b ? a : b)) : '',
+  };
+}
+
+function consultaFromGrade(
+  sortState: { key: string; direction: 'asc' | 'desc' } | null,
+  sortLevels: { id: string; dir: 'asc' | 'desc' }[],
+  columnFilters: Record<string, string>,
+): ConsultaDetalhe {
+  const col = sortState?.key ?? sortLevels[0]?.id ?? 'vencimento';
+  const dir = sortState?.direction ?? sortLevels[0]?.dir ?? 'desc';
+  const ordem = DETALHE_ORDEM_SERVIDOR.has(col) ? col : 'vencimento';
+  const venc = parseDateRangeFilter(columnFilters.vencimento ?? '');
+  const rec = parseDateRangeFilter(columnFilters.recebimento ?? '');
+  return {
+    ordem,
+    dir,
+    vencDe: venc?.from ?? '',
+    vencAte: venc?.to ?? '',
+    recDe: rec?.from ?? '',
+    recAte: rec?.to ?? '',
+  };
+}
 
 function detalheCellText(row: TituloPainelInadimplencia, col: DetalheColId): string {
   switch (col) {
@@ -279,6 +402,8 @@ function detalheCellText(row: TituloPainelInadimplencia, col: DetalheColId): str
       return row.clienteNome;
     case 'empresa':
       return row.empresaNome?.trim() || '—';
+    case 'origem':
+      return (row.origem ?? '').toUpperCase();
     case 'conta':
       return row.codigoConta;
     case 'condicao':
@@ -286,7 +411,7 @@ function detalheCellText(row: TituloPainelInadimplencia, col: DetalheColId): str
     case 'vencimento':
       return textoFiltroDataVencimento(row.vencimento);
     case 'recebimento':
-      return formatYmd(row.pagamento ?? row.dataBaixa);
+      return textoFiltroDataVencimento(row.pagamento ?? row.dataBaixa);
     case 'atraso': {
       const dias = diasAtrasoTitulo(row);
       return dias == null ? '—' : `${dias}d`;
@@ -323,25 +448,36 @@ function ModalDetalhe({
   titulo,
   linhas,
   qtdConsolidado,
+  valorUniverso,
   carregando,
   carregandoMais,
   hasMore,
+  guiaAuditoria,
+  onGuiaAuditoria,
   onCarregarMais,
   onClose,
   onAbrirTratativas,
+  onConsultaServidor,
+  onExportarUniverso,
 }: {
   titulo: string;
   linhas: TituloPainelInadimplencia[];
   qtdConsolidado: number;
+  valorUniverso: number | null;
   carregando: boolean;
   carregandoMais: boolean;
   hasMore: boolean;
+  guiaAuditoria?: { ativa: 'principal' | 'vencido'; labelPrincipal: string };
+  onGuiaAuditoria?: (guia: 'principal' | 'vencido') => void;
   onCarregarMais: () => void;
   onClose: () => void;
   onAbrirTratativas: (row: TituloPainelInadimplencia) => void;
+  onConsultaServidor: (consulta: ConsultaDetalhe) => void;
+  onExportarUniverso: () => Promise<TituloPainelInadimplencia[]>;
 }) {
   const [exportando, setExportando] = useState(false);
   const [erroExport, setErroExport] = useState('');
+  const skipConsultaRef = useRef(true);
 
   const grade = useGradeFiltrosExcel<TituloPainelInadimplencia>({
     rows: linhas,
@@ -352,14 +488,26 @@ function ModalDetalhe({
     dateColumnIds: ['vencimento', 'recebimento'],
   });
 
+  const onConsultaRef = useRef(onConsultaServidor);
+  onConsultaRef.current = onConsultaServidor;
+
+  useEffect(() => {
+    if (skipConsultaRef.current) {
+      skipConsultaRef.current = false;
+      return;
+    }
+    onConsultaRef.current(consultaFromGrade(grade.sortState, grade.sortLevels, grade.columnFilters));
+  }, [grade.sortState, grade.sortLevels, grade.columnFilters]);
+
   const total = grade.rowsExibidas.reduce((acc, r) => acc + (Number.isFinite(r.valor) ? r.valor : 0), 0);
 
   const exportarXlsx = async () => {
     setErroExport('');
     setExportando(true);
     try {
+      const linhas = await onExportarUniverso();
       await downloadPainelInadimplenciaDetalheXlsx({
-        linhas: grade.rowsExibidas,
+        linhas,
         titulo,
         diasAtraso: diasAtrasoTitulo,
       });
@@ -384,7 +532,9 @@ function ModalDetalhe({
                 ? 'Carregando…'
                 : `${grade.rowsExibidas.length.toLocaleString('pt-BR')} de ${qtdConsolidado.toLocaleString('pt-BR')} título${
                     qtdConsolidado === 1 ? '' : 's'
-                  } · ${formatarReais(total)} nesta lista`}
+                  } no universo${
+                    valorUniverso != null ? ` · ${formatarReais(valorUniverso)} no universo` : ''
+                  } · ${formatarReais(total)} nesta página`}
             </p>
             {erroExport ? <p className="mt-1 text-xs text-amber-700">{erroExport}</p> : null}
           </div>
@@ -400,10 +550,10 @@ function ModalDetalhe({
             ) : null}
             <button
               type="button"
-              disabled={carregando || exportando || grade.rowsExibidas.length === 0}
+              disabled={carregando || exportando || qtdConsolidado === 0}
               onClick={() => void exportarXlsx()}
               className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-              title="Exportar as linhas visíveis (com filtro) em Excel"
+              title="Exportar todos os títulos do universo em Excel"
             >
               <FileSpreadsheet className="size-3.5" />
               {exportando ? 'Exportando…' : 'Exportar Excel'}
@@ -413,6 +563,46 @@ function ModalDetalhe({
             </button>
           </div>
         </div>
+        {guiaAuditoria && onGuiaAuditoria ? (
+          <div
+            role="tablist"
+            aria-label="Universo do detalhe"
+            className="flex shrink-0 gap-0 border-b border-slate-200 bg-slate-50 px-4 dark:border-slate-600 dark:bg-slate-900/50"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={guiaAuditoria.ativa === 'principal'}
+              onClick={() => onGuiaAuditoria('principal')}
+              className={`relative px-4 py-2.5 text-xs font-semibold transition-colors ${
+                guiaAuditoria.ativa === 'principal'
+                  ? 'text-blue-700 dark:text-blue-300'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+              }`}
+            >
+              {guiaAuditoria.labelPrincipal}
+              {guiaAuditoria.ativa === 'principal' ? (
+                <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-t bg-blue-600 dark:bg-blue-400" aria-hidden />
+              ) : null}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={guiaAuditoria.ativa === 'vencido'}
+              onClick={() => onGuiaAuditoria('vencido')}
+              className={`relative px-4 py-2.5 text-xs font-semibold transition-colors ${
+                guiaAuditoria.ativa === 'vencido'
+                  ? 'text-blue-700 dark:text-blue-300'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+              }`}
+            >
+              Todos os vencimentos
+              {guiaAuditoria.ativa === 'vencido' ? (
+                <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-t bg-blue-600 dark:bg-blue-400" aria-hidden />
+              ) : null}
+            </button>
+          </div>
+        ) : null}
         <div ref={grade.tableScrollRef} className="relative max-h-[70vh] overflow-auto">
           <table className="w-full text-left text-xs">
             <thead className="sticky top-0 z-20 bg-blue-700 text-white">
@@ -444,12 +634,15 @@ function ModalDetalhe({
                 <tr key={`${r.origem}:${r.codigoConta}`} className="border-b border-slate-100 dark:border-slate-800">
                   <td className="px-2 py-1.5 text-slate-800 dark:text-slate-100">{r.clienteNome}</td>
                   <td className="px-2 py-1.5 text-slate-600 dark:text-slate-300">{r.empresaNome ?? '—'}</td>
+                  <td className="px-2 py-1.5 uppercase text-slate-600 dark:text-slate-300">{r.origem}</td>
                   <td className="px-2 py-1.5 tabular-nums">{r.codigoConta}</td>
                   <td className="px-2 py-1.5">{r.tipo?.trim() || '—'}</td>
                   <td className="px-2 py-1.5">
                     <CelulaDataVencimento value={r.vencimento} />
                   </td>
-                  <td className="px-2 py-1.5 tabular-nums">{formatYmd(r.pagamento ?? r.dataBaixa)}</td>
+                  <td className="px-2 py-1.5">
+                    <CelulaDataVencimento value={r.pagamento ?? r.dataBaixa} />
+                  </td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-slate-700 dark:text-slate-200">
                     {dias == null ? '—' : `${dias}d`}
                   </td>
@@ -523,10 +716,19 @@ function ModalDetalhe({
 
 type PedidoDetalhe = {
   titulo: string;
-  universo: 'aberto' | 'recuperado';
+  universo: 'aberto' | 'recuperado' | 'atraso_lote' | 'vencido';
   classe: 'empresa' | 'condicao' | 'total' | 'mesmo_mes' | 'outros_meses';
   chave?: string;
   qtd: number;
+  vencDe?: string;
+  vencAte?: string;
+  auditoriaMes?: {
+    tituloPrincipal: string;
+    universoPrincipal: 'atraso_lote' | 'aberto';
+    qtdPrincipal: number;
+    tituloVencido: string;
+    qtdVencido: number;
+  };
 };
 
 const DETALHE_PAGE = 400;
@@ -537,21 +739,46 @@ export default function PainelInadimplenciaPanel() {
   const [erro, setErro] = useState('');
   const [dataDe, setDataDe] = useState(padrao.de);
   const [dataAte, setDataAte] = useState(padrao.ate);
+  const [rascunhoDe, setRascunhoDe] = useState(padrao.de);
+  const [rascunhoAte, setRascunhoAte] = useState(padrao.ate);
   const [porEmpresa, setPorEmpresa] = useState<SliceRow[]>([]);
   const [porCondicao, setPorCondicao] = useState<SliceRow[]>([]);
   const [totalRecuperado, setTotalRecuperado] = useState(FATIA_VAZIA);
   const [mesmoMes, setMesmoMes] = useState(FATIA_VAZIA);
   const [outrosMeses, setOutrosMeses] = useState(FATIA_VAZIA);
+  const [serieMensal, setSerieMensal] = useState<PontoSerieInadimplencia[]>([]);
   const [pedidoDetalhe, setPedidoDetalhe] = useState<PedidoDetalhe | null>(null);
   const [linhasDetalhe, setLinhasDetalhe] = useState<TituloPainelInadimplencia[]>([]);
   const [hasMoreDetalhe, setHasMoreDetalhe] = useState(false);
   const [carregandoDetalhe, setCarregandoDetalhe] = useState(false);
   const [carregandoMais, setCarregandoMais] = useState(false);
   const [tarefaHist, setTarefaHist] = useState<TarefaInadimplente | null>(null);
-  const detalheCacheRef = useRef(new Map<string, { data: TituloPainelInadimplencia[]; hasMore: boolean }>());
+  const [consultaDetalhe, setConsultaDetalhe] = useState<ConsultaDetalhe>(CONSULTA_DETALHE_PADRAO);
+  const [totalDetalhe, setTotalDetalhe] = useState<number | null>(null);
+  const [valorTotalDetalhe, setValorTotalDetalhe] = useState<number | null>(null);
+  const consultaDetalheRef = useRef(CONSULTA_DETALHE_PADRAO);
+  const detalheCacheRef = useRef(
+    new Map<
+      string,
+      { data: TituloPainelInadimplencia[]; hasMore: boolean; total: number | null; valorTotal: number | null }
+    >(),
+  );
 
-  const chaveDetalhe = (pedido: PedidoDetalhe, offset: number) =>
-    [dataDe, dataAte, pedido.universo, pedido.classe, pedido.chave ?? '', String(offset)].join('|');
+  const chaveDetalhe = (pedido: PedidoDetalhe, offset: number, consulta: ConsultaDetalhe) =>
+    [
+      pedido.vencDe ?? dataDe,
+      pedido.vencAte ?? dataAte,
+      pedido.universo,
+      pedido.classe,
+      pedido.chave ?? '',
+      consulta.ordem,
+      consulta.dir,
+      consulta.vencDe,
+      consulta.vencAte,
+      consulta.recDe,
+      consulta.recAte,
+      String(offset),
+    ].join('|');
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -567,6 +794,7 @@ export default function PainelInadimplenciaPanel() {
       setTotalRecuperado(result.recuperado.total);
       setMesmoMes(result.recuperado.mesmoMes);
       setOutrosMeses(result.recuperado.outrosMeses);
+      setSerieMensal(result.serieMensal ?? []);
       if (result.erros.length) setErro(result.erros.join(' · '));
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao carregar o painel.');
@@ -579,32 +807,85 @@ export default function PainelInadimplenciaPanel() {
     void carregar();
   }, [carregar]);
 
-  const buscarPagina = async (pedido: PedidoDetalhe, offset: number) => {
-    const key = chaveDetalhe(pedido, offset);
+  const buscarPagina = async (pedido: PedidoDetalhe, offset: number, consulta: ConsultaDetalhe) => {
+    const key = chaveDetalhe(pedido, offset, consulta);
     const cached = detalheCacheRef.current.get(key);
     if (cached) return cached;
+    const venc = intersectPeriodo(
+      pedido.vencDe ?? dataDe,
+      pedido.vencAte ?? dataAte,
+      consulta.vencDe,
+      consulta.vencAte,
+    );
     const result = await fetchCrmInadimplentePainelDetalhe({
-      de: dataDe || undefined,
-      ate: dataAte || undefined,
+      de: venc.de || undefined,
+      ate: venc.ate || undefined,
+      recDe: consulta.recDe || undefined,
+      recAte: consulta.recAte || undefined,
       universo: pedido.universo,
       classe: pedido.classe,
       chave: pedido.chave,
       offset,
       limit: DETALHE_PAGE,
+      ordem: consulta.ordem,
+      dir: consulta.dir,
     });
     detalheCacheRef.current.set(key, result);
     return result;
   };
 
+  const listarUniversoDetalhe = async () => {
+    const pedido = pedidoDetalhe;
+    if (!pedido) return [];
+    const consulta = consultaDetalheRef.current;
+    const venc = intersectPeriodo(
+      pedido.vencDe ?? dataDe,
+      pedido.vencAte ?? dataAte,
+      consulta.vencDe,
+      consulta.vencAte,
+    );
+    const pageSize = 800;
+    const acc: TituloPainelInadimplencia[] = [];
+    let offset = 0;
+    for (;;) {
+      const result = await fetchCrmInadimplentePainelDetalhe({
+        de: venc.de || undefined,
+        ate: venc.ate || undefined,
+        recDe: consulta.recDe || undefined,
+        recAte: consulta.recAte || undefined,
+        universo: pedido.universo,
+        classe: pedido.classe,
+        chave: pedido.chave,
+        offset,
+        limit: pageSize,
+        ordem: consulta.ordem,
+        dir: consulta.dir,
+        completo: true,
+      });
+      acc.push(...result.data);
+      if (result.data.length < pageSize) break;
+      offset += result.data.length;
+      if (offset >= 80_000) break;
+    }
+    return acc;
+  };
+
   const abrirDetalhe = async (pedido: PedidoDetalhe) => {
+    const consulta = CONSULTA_DETALHE_PADRAO;
+    consultaDetalheRef.current = consulta;
+    setConsultaDetalhe(consulta);
     setPedidoDetalhe(pedido);
     setLinhasDetalhe([]);
     setHasMoreDetalhe(false);
+    setTotalDetalhe(null);
+    setValorTotalDetalhe(null);
     setCarregandoDetalhe(true);
     try {
-      const result = await buscarPagina(pedido, 0);
+      const result = await buscarPagina(pedido, 0, consulta);
       setLinhasDetalhe(result.data);
       setHasMoreDetalhe(result.hasMore);
+      if (result.total != null) setTotalDetalhe(result.total);
+      if (result.valorTotal != null) setValorTotalDetalhe(result.valorTotal);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao carregar o detalhe.');
       setPedidoDetalhe(null);
@@ -613,11 +894,36 @@ export default function PainelInadimplenciaPanel() {
     }
   };
 
+  const aplicarConsultaServidor = useCallback(
+    async (consulta: ConsultaDetalhe) => {
+      const pedido = pedidoDetalhe;
+      if (!pedido) return;
+      if (JSON.stringify(consultaDetalheRef.current) === JSON.stringify(consulta)) return;
+      consultaDetalheRef.current = consulta;
+      setConsultaDetalhe(consulta);
+      setLinhasDetalhe([]);
+      setHasMoreDetalhe(false);
+      setCarregandoDetalhe(true);
+      try {
+        const result = await buscarPagina(pedido, 0, consulta);
+        setLinhasDetalhe(result.data);
+        setHasMoreDetalhe(result.hasMore);
+        if (result.total != null) setTotalDetalhe(result.total);
+        if (result.valorTotal != null) setValorTotalDetalhe(result.valorTotal);
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : 'Falha ao carregar o detalhe.');
+      } finally {
+        setCarregandoDetalhe(false);
+      }
+    },
+    [pedidoDetalhe, dataDe, dataAte],
+  );
+
   const carregarMaisDetalhe = async () => {
     if (!pedidoDetalhe || carregandoMais) return;
     setCarregandoMais(true);
     try {
-      const result = await buscarPagina(pedidoDetalhe, linhasDetalhe.length);
+      const result = await buscarPagina(pedidoDetalhe, linhasDetalhe.length, consultaDetalheRef.current);
       setLinhasDetalhe((atual) => [...atual, ...result.data]);
       setHasMoreDetalhe(result.hasMore);
     } catch (e) {
@@ -628,15 +934,16 @@ export default function PainelInadimplenciaPanel() {
   };
 
   const padraoAtual = periodoUltimosDoisMeses();
-  const periodoDoisMeses = dataDe === padraoAtual.de && dataAte === padraoAtual.ate;
-  const periodoCompleto = !dataDe && !dataAte;
+  const periodoDoisMeses = rascunhoDe === padraoAtual.de && rascunhoAte === padraoAtual.ate;
+  const periodoCompleto = !rascunhoDe && !rascunhoAte;
+  const filtrosPendentes = rascunhoDe !== dataDe || rascunhoAte !== dataAte;
 
   return (
     <section className="space-y-3">
       {erro ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm text-amber-900">{erro}</p>
       ) : null}
-      {loading ? <p className="text-sm text-slate-500">Carregando indicadores…</p> : null}
+      <LoadingOverlay show={loading} mensagem="Carregando indicadores..." subtitulo="Painel de inadimplência" />
 
       <div className="flex flex-wrap items-end gap-3">
         <div>
@@ -646,9 +953,9 @@ export default function PainelInadimplenciaPanel() {
           <input
             id="painel-inad-de"
             type="date"
-            value={dataDe}
-            max={dataAte || undefined}
-            onChange={(e) => setDataDe(e.target.value)}
+            value={rascunhoDe}
+            max={rascunhoAte || undefined}
+            onChange={(e) => setRascunhoDe(e.target.value)}
             className={FILTRO_INPUT}
           />
         </div>
@@ -659,9 +966,9 @@ export default function PainelInadimplenciaPanel() {
           <input
             id="painel-inad-ate"
             type="date"
-            value={dataAte}
-            min={dataDe || undefined}
-            onChange={(e) => setDataAte(e.target.value)}
+            value={rascunhoAte}
+            min={rascunhoDe || undefined}
+            onChange={(e) => setRascunhoAte(e.target.value)}
             className={FILTRO_INPUT}
           />
         </div>
@@ -669,8 +976,8 @@ export default function PainelInadimplenciaPanel() {
           type="button"
           onClick={() => {
             const p = periodoUltimosDoisMeses();
-            setDataDe(p.de);
-            setDataAte(p.ate);
+            setRascunhoDe(p.de);
+            setRascunhoAte(p.ate);
           }}
           className={`inline-flex h-8 items-center rounded-lg border px-2.5 text-xs font-semibold ${
             periodoDoisMeses
@@ -683,8 +990,8 @@ export default function PainelInadimplenciaPanel() {
         <button
           type="button"
           onClick={() => {
-            setDataDe('');
-            setDataAte('');
+            setRascunhoDe('');
+            setRascunhoAte('');
           }}
           className={`inline-flex h-8 items-center rounded-lg border px-2.5 text-xs font-semibold ${
             periodoCompleto
@@ -694,6 +1001,19 @@ export default function PainelInadimplenciaPanel() {
         >
           Período completo
         </button>
+        {filtrosPendentes ? (
+          <button
+            type="button"
+            onClick={() => {
+              setPedidoDetalhe(null);
+              setDataDe(rascunhoDe);
+              setDataAte(rascunhoAte);
+            }}
+            className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-2.5 text-xs font-semibold text-white hover:bg-primary-700"
+          >
+            Aplicar filtro
+          </button>
+        ) : null}
       </div>
 
       <div>
@@ -739,14 +1059,14 @@ export default function PainelInadimplenciaPanel() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+      <div className="grid grid-cols-1 items-stretch gap-3 xl:grid-cols-2">
         <PizzaValor
-          titulo="Inadimplência por empresa"
+          titulo="Índice de atraso por empresa"
           fatias={porEmpresa}
           onFatia={(f) =>
             void abrirDetalhe({
               titulo: `Por empresa — ${f.chave}`,
-              universo: 'aberto',
+              universo: 'atraso_lote',
               classe: 'empresa',
               chave: f.chave,
               qtd: f.qtd,
@@ -754,12 +1074,13 @@ export default function PainelInadimplenciaPanel() {
           }
         />
         <PizzaValor
-          titulo="Inadimplência por condição de pagamento"
+          titulo="Atraso por forma de pagamento"
           fatias={porCondicao}
+          maxBarrasVisiveis={5}
           onFatia={(f) =>
             void abrirDetalhe({
-              titulo: `Por condição — ${f.chave}`,
-              universo: 'aberto',
+              titulo: `Por forma — ${f.chave}`,
+              universo: 'atraso_lote',
               classe: 'condicao',
               chave: f.chave,
               qtd: f.qtd,
@@ -768,16 +1089,94 @@ export default function PainelInadimplenciaPanel() {
         />
       </div>
 
+      <EvolucaoInadimplenciaChart
+        serie={serieMensal}
+        onPonto={(ponto, modo) => {
+          const [y, m] = ponto.mes.split('-').map(Number);
+          const last = new Date(y, m, 0).getDate();
+          const de = `${ponto.mes}-01`;
+          const ate = `${ponto.mes}-${String(last).padStart(2, '0')}`;
+          const mesLabel = rotuloPeriodoMes(ponto.mes);
+          if (modo === 'pctAtraso') {
+            void abrirDetalhe({
+              titulo: `Índice de atraso — ${mesLabel}`,
+              universo: 'atraso_lote',
+              classe: 'total',
+              qtd: ponto.qtdAtraso,
+              vencDe: de,
+              vencAte: ate,
+              auditoriaMes: {
+                tituloPrincipal: `Índice de atraso — ${mesLabel}`,
+                universoPrincipal: 'atraso_lote',
+                qtdPrincipal: ponto.qtdAtraso,
+                tituloVencido: `Todos os vencimentos — ${mesLabel}`,
+                qtdVencido: ponto.qtdVencido,
+              },
+            });
+            return;
+          }
+          void abrirDetalhe({
+            titulo: `% inadimplente — ${mesLabel}`,
+            universo: 'aberto',
+            classe: 'total',
+            qtd: ponto.qtdAberto,
+            vencDe: de,
+            vencAte: ate,
+            auditoriaMes: {
+              tituloPrincipal: `% inadimplente — ${mesLabel}`,
+              universoPrincipal: 'aberto',
+              qtdPrincipal: ponto.qtdAberto,
+              tituloVencido: `Todos os vencimentos — ${mesLabel}`,
+              qtdVencido: ponto.qtdVencido,
+            },
+          });
+        }}
+      />
+
       {pedidoDetalhe ? (
         <ModalDetalhe
-          key={`${pedidoDetalhe.universo}:${pedidoDetalhe.classe}:${pedidoDetalhe.chave ?? ''}`}
+          key={`${pedidoDetalhe.universo}:${pedidoDetalhe.classe}:${pedidoDetalhe.chave ?? ''}:${pedidoDetalhe.vencDe ?? ''}`}
           titulo={pedidoDetalhe.titulo}
           linhas={linhasDetalhe}
-          qtdConsolidado={pedidoDetalhe.qtd}
+          qtdConsolidado={totalDetalhe ?? pedidoDetalhe.qtd}
+          valorUniverso={valorTotalDetalhe}
           carregando={carregandoDetalhe}
           carregandoMais={carregandoMais}
           hasMore={hasMoreDetalhe}
+          guiaAuditoria={
+            pedidoDetalhe.auditoriaMes
+              ? {
+                  ativa: pedidoDetalhe.universo === 'vencido' ? 'vencido' : 'principal',
+                  labelPrincipal:
+                    pedidoDetalhe.auditoriaMes.universoPrincipal === 'aberto' ? 'Em aberto' : 'Atraso',
+                }
+              : undefined
+          }
+          onGuiaAuditoria={
+            pedidoDetalhe.auditoriaMes
+              ? (guia) => {
+                  const aud = pedidoDetalhe.auditoriaMes!;
+                  if (guia === 'vencido') {
+                    void abrirDetalhe({
+                      ...pedidoDetalhe,
+                      titulo: aud.tituloVencido,
+                      universo: 'vencido',
+                      qtd: aud.qtdVencido,
+                    });
+                    return;
+                  }
+                  void abrirDetalhe({
+                    ...pedidoDetalhe,
+                    titulo: aud.tituloPrincipal,
+                    universo: aud.universoPrincipal,
+                    qtd: aud.qtdPrincipal,
+                  });
+                }
+              : undefined
+          }
           onCarregarMais={() => void carregarMaisDetalhe()}
+          onConsultaServidor={(c) => void aplicarConsultaServidor(c)}
+          onExportarUniverso={() => listarUniversoDetalhe()}
           onClose={() => {
             setPedidoDetalhe(null);
             setLinhasDetalhe([]);

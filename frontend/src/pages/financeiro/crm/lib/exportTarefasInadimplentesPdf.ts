@@ -22,7 +22,7 @@ const HEAD = [
   'Vencim.',
   'Baixa',
   'Recebim.',
-  'Origem',
+  'Origem Sist.',
   'Empresa',
   'Cliente',
   'Conta',

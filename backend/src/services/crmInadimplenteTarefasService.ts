@@ -18,6 +18,7 @@ import {
   DFC_NOMUS_EMPRESA_RN_MARQUES,
   resolverIdEmpresaDfc,
 } from '../data/dfcShop9Empresa.js';
+import { nomeShop9Condicao } from '../data/crmFinanceiro/shop9TipoConta.js';
 import { isNomusEnabled } from '../config/nomusDb.js';
 import { criarMatcherTextoLivre } from '../utils/textoLivreBusca.js';
 import { formatDataContatoBr } from '../utils/parseObsInadimplente.js';
@@ -513,7 +514,11 @@ async function listarTitulosShop9(): Promise<{ titulos: TituloInadimplenteFonte[
         empresaId: emp.empresaId,
         empresaNome: emp.empresaNome,
         banco: r.banco != null ? String(r.banco) : null,
-        tipo: r.tipoConta != null ? String(r.tipoConta) : 'Receber',
+        tipo: nomeShop9Condicao({
+          tipoConta: r.tipoConta != null ? String(r.tipoConta) : null,
+          administradora: r.administradoraNome != null ? String(r.administradoraNome) : null,
+          parcela: r.parcelaDescricao != null ? String(r.parcelaDescricao) : null,
+        }),
         vencimento: toYmd(r.dataVencimento),
         valor: Math.abs(toNum(r.valorSaldo)),
         diasAtraso: Math.max(0, Math.trunc(toNum(r.diasAtraso))),

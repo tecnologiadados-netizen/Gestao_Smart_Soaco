@@ -925,6 +925,8 @@ export type FatiaPainelInadimplencia = {
   chave: string;
   valor: number;
   qtd: number;
+  qtdNomus?: number;
+  qtdShop9?: number;
 };
 
 export type TituloPainelInadimplencia = {
@@ -941,6 +943,18 @@ export type TituloPainelInadimplencia = {
   tarefaId: number | null;
 };
 
+export type PontoSerieInadimplencia = {
+  mes: string;
+  valorVencido: number;
+  qtdVencido: number;
+  valorAtraso: number;
+  qtdAtraso: number;
+  valorAberto: number;
+  qtdAberto: number;
+  pctAtraso: number;
+  pctInadimplente: number;
+};
+
 export type ResumoPainelInadimplencia = {
   porEmpresa: FatiaPainelInadimplencia[];
   porCondicao: FatiaPainelInadimplencia[];
@@ -948,6 +962,14 @@ export type ResumoPainelInadimplencia = {
     total: FatiaPainelInadimplencia;
     mesmoMes: FatiaPainelInadimplencia;
     outrosMeses: FatiaPainelInadimplencia;
+  };
+  serieMensal: PontoSerieInadimplencia[];
+  acumulado: {
+    pctAtraso: number;
+    pctInadimplente: number;
+    valorVencido: number;
+    valorAtraso: number;
+    valorAberto: number;
   };
   erros: string[];
 };
@@ -972,32 +994,49 @@ export async function fetchCrmInadimplentePainel(params?: {
 export async function fetchCrmInadimplentePainelDetalhe(params: {
   de?: string;
   ate?: string;
-  universo: 'aberto' | 'recuperado';
+  recDe?: string;
+  recAte?: string;
+  universo: 'aberto' | 'recuperado' | 'atraso_lote' | 'vencido';
   classe: 'empresa' | 'condicao' | 'total' | 'mesmo_mes' | 'outros_meses';
   chave?: string;
   offset?: number;
   limit?: number;
-}): Promise<{ data: TituloPainelInadimplencia[]; hasMore: boolean }> {
+  ordem?: string;
+  dir?: 'asc' | 'desc';
+  completo?: boolean;
+}): Promise<{ data: TituloPainelInadimplencia[]; hasMore: boolean; total: number | null; valorTotal: number | null }> {
   const res = await apiFetch(
     `/api/financeiro/crm/inadimplente-painel/detalhe${buildParams({
       de: params.de,
       ate: params.ate,
+      recDe: params.recDe,
+      recAte: params.recAte,
       universo: params.universo,
       classe: params.classe,
       chave: params.chave,
       offset: params.offset ?? 0,
       limit: params.limit ?? 400,
+      ordem: params.ordem,
+      dir: params.dir,
+      completo: params.completo ? 1 : undefined,
     })}`,
   );
   const body = (await res.json().catch(() => ({}))) as {
     data?: TituloPainelInadimplencia[];
     hasMore?: boolean;
+    total?: number;
+    valorTotal?: number;
     error?: string;
   };
   if (!res.ok) {
     throw new Error(body.error ?? 'Falha ao carregar o detalhe do painel');
   }
-  return { data: body.data ?? [], hasMore: Boolean(body.hasMore) };
+  return {
+    data: body.data ?? [],
+    hasMore: Boolean(body.hasMore),
+    total: typeof body.total === 'number' && body.total >= 0 ? body.total : null,
+    valorTotal: typeof body.valorTotal === 'number' && body.valorTotal >= 0 ? body.valorTotal : null,
+  };
 }
 
 export async function fetchCrmInadimplenteTarefas(params?: {

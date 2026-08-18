@@ -6,8 +6,9 @@ import { formatWeekday } from './formatters';
 const HEADERS = [
   'Cliente',
   'Empresa',
+  'Origem Sist.',
   'Conta',
-  'Condição',
+  'Forma',
   'Data vencim.',
   'Dia da semana',
   'Feriado',
@@ -73,6 +74,7 @@ export async function downloadPainelInadimplenciaDetalheXlsx(input: {
     const excelRow = ws.addRow([
       row.clienteNome,
       row.empresaNome?.trim() || '',
+      (row.origem ?? '').toUpperCase(),
       row.codigoConta,
       row.tipo?.trim() || '',
       ymdToDate(venc),
@@ -83,22 +85,22 @@ export async function downloadPainelInadimplenciaDetalheXlsx(input: {
       Number.isFinite(row.valor) ? row.valor : 0,
       row.contatosCount,
     ]);
-    excelRow.getCell(5).numFmt = 'dd/mm/yyyy';
-    excelRow.getCell(8).numFmt = 'dd/mm/yyyy';
-    excelRow.getCell(10).numFmt = MONEY_FMT;
+    excelRow.getCell(6).numFmt = 'dd/mm/yyyy';
+    excelRow.getCell(9).numFmt = 'dd/mm/yyyy';
+    excelRow.getCell(11).numFmt = MONEY_FMT;
   }
 
   const total = input.linhas.reduce((acc, r) => acc + (Number.isFinite(r.valor) ? r.valor : 0), 0);
-  const totalRow = ws.addRow(['', '', '', '', '', '', '', 'Total', '', total, '']);
+  const totalRow = ws.addRow(['', '', '', '', '', '', '', '', 'Total', '', total, '']);
   totalRow.font = { bold: true };
-  totalRow.getCell(10).numFmt = MONEY_FMT;
+  totalRow.getCell(11).numFmt = MONEY_FMT;
 
   ws.autoFilter = {
     from: { row: 1, column: 1 },
     to: { row: 1, column: HEADERS.length },
   };
 
-  const widths = [32, 22, 12, 22, 14, 16, 10, 14, 12, 14, 12];
+  const widths = [32, 22, 12, 12, 22, 14, 16, 10, 14, 12, 14, 12];
   widths.forEach((w, i) => {
     ws.getColumn(i + 1).width = w;
   });

@@ -41,7 +41,7 @@ const COL_LABELS: Record<ColumnId, string> = {
   vencimento: 'Data vencim.',
   dataBaixa: 'Data baixa',
   pagamento: 'Data recebim.',
-  origem: 'Origem',
+  origem: 'Origem Sist.',
   empresa: 'Empresa',
   cliente: 'Cliente',
   conta: 'Conta',
@@ -110,7 +110,7 @@ function cellText(row: TarefaInadimplente, col: ColumnId): string {
     case 'dataBaixa':
       return formatYmd(row.dataBaixa);
     case 'pagamento':
-      return formatYmd(row.pagamento);
+      return textoFiltroDataVencimento(row.pagamento);
     case 'origem':
       return row.origem.toUpperCase();
     case 'empresa':
@@ -409,7 +409,9 @@ export default function TarefasInadimplentesPanel() {
                       <CelulaDataVencimento value={row.vencimento} />
                     </td>
                     <td className={`${td} cell-nowrap`}>{formatYmd(row.dataBaixa)}</td>
-                    <td className={`${td} cell-nowrap`}>{formatYmd(row.pagamento)}</td>
+                    <td className={`${td} cell-wrap`}>
+                      <CelulaDataVencimento value={row.pagamento} />
+                    </td>
                     <td className={`${td} cell-nowrap uppercase`}>{row.origem}</td>
                     <td className={`${td} cell-wrap`}>{row.empresaNome ?? '—'}</td>
                     <td

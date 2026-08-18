@@ -26,7 +26,9 @@ export async function getCrmInadimplentePainel(req: Request, res: Response): Pro
 
 export async function getCrmInadimplentePainelDetalhe(req: Request, res: Response): Promise<void> {
   try {
-    const universo = req.query.universo === 'aberto' ? 'aberto' : 'recuperado';
+    const universoRaw = String(req.query.universo ?? 'recuperado');
+    const universo: PainelDetalheFiltro['universo'] =
+      universoRaw === 'aberto' || universoRaw === 'atraso_lote' || universoRaw === 'vencido' ? universoRaw : 'recuperado';
     const classeRaw = String(req.query.classe ?? 'total');
     const classes: PainelDetalheFiltro['classe'][] = [
       'empresa',
@@ -40,14 +42,34 @@ export async function getCrmInadimplentePainelDetalhe(req: Request, res: Respons
       : 'total';
     const offset = Number.parseInt(String(req.query.offset ?? '0'), 10);
     const limit = Number.parseInt(String(req.query.limit ?? '400'), 10);
+    const ordemRaw = String(req.query.ordem ?? 'vencimento');
+    const ordens: PainelDetalheFiltro['ordem'][] = [
+      'vencimento',
+      'recebimento',
+      'cliente',
+      'empresa',
+      'conta',
+      'condicao',
+      'valor',
+      'atraso',
+    ];
+    const ordem = ordens.includes(ordemRaw as PainelDetalheFiltro['ordem'])
+      ? (ordemRaw as PainelDetalheFiltro['ordem'])
+      : 'vencimento';
+    const dir = req.query.dir === 'asc' ? 'asc' : 'desc';
     const result = await listarDetalhePainelInadimplencia({
       vencimentoDe: ymdQuery(req.query.de),
       vencimentoAte: ymdQuery(req.query.ate),
+      recebimentoDe: ymdQuery(req.query.recDe),
+      recebimentoAte: ymdQuery(req.query.recAte),
       universo,
       classe,
       chave: typeof req.query.chave === 'string' ? req.query.chave : null,
       offset: Number.isFinite(offset) ? offset : 0,
       limit: Number.isFinite(limit) ? limit : 400,
+      ordem,
+      dir,
+      completo: req.query.completo === '1' || req.query.completo === 'true',
     });
     res.json(result);
   } catch (error) {
