@@ -545,6 +545,42 @@ export function buildDatasPagamentoNomusPorIdsQuery(ids: number[]): { sql: strin
   return { sql, params: unicos };
 }
 
+/** Lançamentos de recebimento vinculados à conta (mesma regra da tela Recebimentos do Nomus). */
+export function buildLancamentosRecebimentoNomusPorIdsQuery(ids: number[]): {
+  sql: string;
+  params: QueryParams;
+} {
+  const unicos = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+  if (unicos.length === 0) {
+    return {
+      sql: `SELECT lf.id AS codigoLancamento, lf.idAgendamentoRecebimento AS codigoConta,
+                   NULL AS dataLancamento, 0 AS valor
+            FROM lancamentofinanceiro lf WHERE 1 = 0`,
+      params: [],
+    };
+  }
+  const placeholders = unicos.map(() => '?').join(', ');
+  const sql = `
+    SELECT
+      lf.id AS codigoLancamento,
+      lf.idAgendamentoRecebimento AS codigoConta,
+      DATE(lf.dataLancamento) AS dataLancamento,
+      lf.valor AS valor,
+      lf.comentarios AS comentarios,
+      fp.nome AS formaPagamento,
+      cb.nome AS contaBancaria
+    FROM lancamentofinanceiro lf
+    LEFT JOIN agendamentofinanceiro af ON af.id = lf.idAgendamentoRecebimento
+    LEFT JOIN formapagamento fp ON fp.id = COALESCE(lf.idFormaPagamento, af.idFormaPagamento)
+    LEFT JOIN contabancaria cb ON cb.id = COALESCE(lf.idContaBancaria, af.idContaBancaria)
+    WHERE lf.idAgendamentoRecebimento IN (${placeholders})
+      AND IFNULL(lf.valor, 0) > 0
+      AND UPPER(TRIM(COALESCE(lf.comentarios, ''))) <> 'TITULO DESCONTADO'
+    ORDER BY lf.dataLancamento ASC, lf.id ASC
+  `;
+  return { sql, params: unicos };
+}
+
 /** Confere se os ids de agendamento ainda existem no Nomus. */
 export function buildAgendamentosNomusExistemQuery(ids: number[]): { sql: string; params: QueryParams } {
   const unicos = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];

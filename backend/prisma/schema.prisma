@@ -1503,6 +1503,7 @@ model CrmInadimplenteTarefa {
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
   contatos             CrmInadimplenteTarefaContato[]
+  recebimentosAcordo   CrmInadimplenteTarefaRecebimento[]
 
   @@unique([origem, codigoConta])
   @@index([status, vencimento])
@@ -1516,6 +1517,12 @@ model CrmInadimplenteTarefaContato {
   tarefaId       Int                   @map("tarefa_id")
   dataContato    DateTime?             @map("data_contato")
   texto          String
+  /// padrao | negociacao — filtro futuro da fila/relatórios.
+  tipo           String                @default("padrao")
+  categoria      String?
+  justificativa  String?
+  /// JSON da negociação (valores, formas, parcelas). Ver negociacaoCobranca.ts.
+  metaJson       String?               @map("meta_json")
   origem         String                @default("manual")
   criadoPorLogin String?               @map("criado_por_login")
   createdAt      DateTime              @default(now()) @map("created_at")
@@ -1524,7 +1531,23 @@ model CrmInadimplenteTarefaContato {
 
   @@index([tarefaId, dataContato])
   @@index([tarefaId, createdAt])
+  @@index([tipo])
+  @@index([categoria])
   @@map("crm_inadimplente_tarefa_contato")
+}
+
+/// Baixas lançadas no acordo (Gestão). O título pode continuar atrasado no ERP.
+model CrmInadimplenteTarefaRecebimento {
+  id             Int                   @id @default(autoincrement())
+  tarefaId       Int                   @map("tarefa_id")
+  data           String
+  valor          Float
+  criadoPorLogin String?               @map("criado_por_login")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  tarefa         CrmInadimplenteTarefa @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+
+  @@index([tarefaId, data])
+  @@map("crm_inadimplente_tarefa_recebimento")
 }
 
 /// Config singleton: IDs de usuários (To/Cc) do e-mail disparado ao salvar ação na aba Pendências.

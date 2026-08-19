@@ -721,6 +721,13 @@ export type ContatoInadimplenteInput = {
   texto: string;
 };
 
+export type ContatoTarefaInput = ContatoInadimplenteInput & {
+  tipo?: string | null;
+  categoria?: string | null;
+  justificativa?: string | null;
+  meta?: unknown;
+};
+
 export async function fetchCrmRegistroInadimplentes(params?: {
   q?: string;
   page?: number;
@@ -891,6 +898,39 @@ export type TarefaInadimplente = {
   lastSeenAt: string;
   createdAt: string;
   updatedAt: string;
+  temAcordo?: boolean;
+  acordo?: AcordoAcompanhamentoTarefa | null;
+};
+
+export type AcordoParcelaAcompanhamento = {
+  n: number;
+  tipo: string;
+  data: string;
+  valor: number;
+  forma: string;
+  valorRecebido: number;
+  saldo: number;
+};
+
+export type AcordoAcompanhamentoTarefa = {
+  valorOriginal: number;
+  valorJuros: number;
+  valorNegociado: number;
+  valorRecebido: number;
+  saldo: number;
+  proximaParcela: string | null;
+  parcelas: AcordoParcelaAcompanhamento[];
+  recebimentos: {
+    id: number;
+    data: string;
+    valor: number;
+    criadoPorLogin: string | null;
+    origem?: string | null;
+    codigoConta?: string | null;
+    formaPagamento?: string | null;
+    contaBancaria?: string | null;
+    comentarios?: string | null;
+  }[];
 };
 
 export type SyncTarefasInadimplente = {
@@ -907,6 +947,10 @@ export type ContatoTarefaInadimplente = {
   dataContato: string | null;
   dataContatoBr: string | null;
   texto: string;
+  tipo: string;
+  categoria: string | null;
+  justificativa: string | null;
+  meta: unknown;
   origem: string;
   criadoPorLogin: string | null;
   createdAt: string;
@@ -1140,7 +1184,7 @@ export async function fetchCrmInadimplenteTarefaContatos(
 
 export async function createCrmInadimplenteTarefaContato(
   tarefaId: number,
-  payload: ContatoInadimplenteInput,
+  payload: ContatoTarefaInput,
 ): Promise<ContatoTarefaInadimplente> {
   const res = await apiFetch(`/api/financeiro/crm/inadimplente-tarefas/${tarefaId}/contatos`, {
     method: 'POST',
@@ -1156,7 +1200,7 @@ export async function createCrmInadimplenteTarefaContato(
 export async function updateCrmInadimplenteTarefaContato(
   tarefaId: number,
   contatoId: number,
-  payload: ContatoInadimplenteInput,
+  payload: ContatoTarefaInput,
 ): Promise<ContatoTarefaInadimplente> {
   const res = await apiFetch(
     `/api/financeiro/crm/inadimplente-tarefas/${tarefaId}/contatos/${contatoId}`,
@@ -1181,5 +1225,35 @@ export async function deleteCrmInadimplenteTarefaContato(
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? 'Falha ao excluir tratativa');
   }
+}
+
+export async function createCrmInadimplenteTarefaRecebimento(
+  tarefaId: number,
+  payload: { data: string; valor: number },
+): Promise<TarefaInadimplente> {
+  const res = await apiFetch(`/api/financeiro/crm/inadimplente-tarefas/${tarefaId}/recebimentos`, {
+    method: 'POST',
+    body: payload,
+  });
+  const body = (await res.json().catch(() => ({}))) as TarefaInadimplente & { error?: string };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao registrar recebimento do acordo');
+  }
+  return body;
+}
+
+export async function deleteCrmInadimplenteTarefaRecebimento(
+  tarefaId: number,
+  recebimentoId: number,
+): Promise<TarefaInadimplente> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/inadimplente-tarefas/${tarefaId}/recebimentos/${recebimentoId}`,
+    { method: 'DELETE' },
+  );
+  const body = (await res.json().catch(() => ({}))) as TarefaInadimplente & { error?: string };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao excluir recebimento do acordo');
+  }
+  return body;
 }
 

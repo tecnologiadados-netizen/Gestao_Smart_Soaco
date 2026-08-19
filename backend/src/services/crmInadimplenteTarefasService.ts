@@ -7,6 +7,7 @@ import {
   buildAgendamentosNomusExistemQuery,
   buildContasAtrasoInadimplenteQuery,
   buildDatasPagamentoNomusPorIdsQuery,
+  buildLancamentosRecebimentoNomusPorIdsQuery,
   buildSucessorAgendamentoNomusQuery,
 } from '../data/crmFinanceiro/crmQueries.js';
 import { nomusQuery } from '../data/crmFinanceiro/nomusQuery.js';
@@ -22,6 +23,12 @@ import { nomeShop9Condicao } from '../data/crmFinanceiro/shop9TipoConta.js';
 import { isNomusEnabled } from '../config/nomusDb.js';
 import { criarMatcherTextoLivre } from '../utils/textoLivreBusca.js';
 import { formatDataContatoBr } from '../utils/parseObsInadimplente.js';
+import {
+  montarAcordoAcompanhamento,
+  parseMetaAcordo,
+  type AcordoAcompanhamentoDto,
+  type ReciboAcordoErp,
+} from './crmInadimplenteAcordo.js';
 import {
   listarUsuariosParaDestinatarioPendencia,
   type UsuarioDestinatarioPendencia,
@@ -84,6 +91,18 @@ export type TarefaInadimplenteDto = {
   lastSeenAt: string;
   createdAt: string;
   updatedAt: string;
+  temAcordo: boolean;
+  acordo: AcordoAcompanhamentoDto | null;
+};
+
+const INCLUDE_TAREFA_ACORDO = {
+  _count: { select: { contatos: true } },
+  contatos: {
+    where: { tipo: 'negociacao' },
+    orderBy: { createdAt: 'desc' as const },
+    take: 1,
+    select: { metaJson: true },
+  },
 };
 
 export type ContatoTarefaDto = {
@@ -92,10 +111,23 @@ export type ContatoTarefaDto = {
   dataContato: string | null;
   dataContatoBr: string | null;
   texto: string;
+  tipo: string;
+  categoria: string | null;
+  justificativa: string | null;
+  meta: unknown;
   origem: string;
   criadoPorLogin: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ContatoTarefaInput = {
+  dataContato?: string | null;
+  texto: string;
+  tipo?: string | null;
+  categoria?: string | null;
+  justificativa?: string | null;
+  meta?: unknown;
 };
 
 export type ClienteContatoErp = {
@@ -227,6 +259,119 @@ async function mapearDatasPagamentoErp(
   for (const [codigo, datas] of nMap) out.set(`nomus:${codigo}`, datas);
   for (const [codigo, datas] of sMap) out.set(`shop9:${codigo}`, datas);
   return out;
+}
+
+async function listarRecebimentosNomusPorContas(codigos: string[]): Promise<Map<string, ReciboAcordoErp[]>> {
+  const map = new Map<string, ReciboAcordoErp[]>();
+  const ids = idsNumericos(codigos);
+  if (ids.length === 0 || !isNomusEnabled()) return map;
+  try {
+    for (const chunk of fatiar(ids, 400)) {
+      const q = buildLancamentosRecebimentoNomusPorIdsQuery(chunk);
+      const rows = await nomusQuery<{
+        codigoLancamento: unknown;
+        codigoConta: unknown;
+        dataLancamento: unknown;
+        valor: unknown;
+        comentarios: unknown;
+        formaPagamento: unknown;
+        contaBancaria: unknown;
+      }>(q.sql, q.params);
+      for (const r of rows) {
+        const codigo = String(r.codigoConta ?? '');
+        const data = toYmd(r.dataLancamento);
+        const valor = Number(r.valor);
+        if (!codigo || !data || !Number.isFinite(valor) || valor <= 0) continue;
+        const lista = map.get(codigo) ?? [];
+        lista.push({
+          id: Number(r.codigoLancamento) || lista.length + 1,
+          data,
+          valor,
+          criadoPorLogin: null,
+          origem: 'nomus',
+          codigoConta: codigo,
+          formaPagamento: String(r.formaPagamento ?? '').trim() || null,
+          contaBancaria: String(r.contaBancaria ?? '').trim() || null,
+          comentarios: String(r.comentarios ?? '').trim() || null,
+        });
+        map.set(codigo, lista);
+      }
+    }
+  } catch {
+    return map;
+  }
+  return map;
+}
+
+async function listarRecebimentosShop9PorContas(codigos: string[]): Promise<Map<string, ReciboAcordoErp[]>> {
+  const map = new Map<string, ReciboAcordoErp[]>();
+  const ids = idsNumericos(codigos);
+  if (ids.length === 0 || !isShop9Enabled()) return map;
+  try {
+    const pool = await getShop9Pool();
+    if (!pool) return map;
+    for (const chunk of fatiar(ids, 400)) {
+      const result = await pool.request().query(`
+        SELECT
+          fc.Ordem AS codigoConta,
+          CAST(fc.Data_Quitacao AS DATE) AS dataQuitacao,
+          ISNULL(fc.Valor_Quitado, 0) AS valorQuitado
+        FROM Financeiro_Contas fc
+        WHERE fc.Ordem IN (${chunk.join(',')})
+          AND ISNULL(fc.Valor_Quitado, 0) > 0
+      `);
+      for (const r of (result.recordset ?? []) as Record<string, unknown>[]) {
+        const codigo = String(r.codigoConta ?? '');
+        const valor = Number(r.valorQuitado);
+        if (!codigo || !Number.isFinite(valor) || valor <= 0) continue;
+        map.set(codigo, [
+          {
+            id: Number(r.codigoConta) || 0,
+            data: toYmd(r.dataQuitacao) ?? '',
+            valor,
+            criadoPorLogin: null,
+            origem: 'shop9',
+            codigoConta: codigo,
+            formaPagamento: null,
+            contaBancaria: null,
+            comentarios: null,
+          },
+        ]);
+      }
+    }
+  } catch {
+    return map;
+  }
+  return map;
+}
+
+async function mapearRecebimentosErpAcordo(
+  itens: { origem: string; codigoConta: string }[],
+): Promise<Map<string, ReciboAcordoErp[]>> {
+  const out = new Map<string, ReciboAcordoErp[]>();
+  if (itens.length === 0) return out;
+  const nomus = itens.filter((i) => i.origem === 'nomus').map((i) => i.codigoConta);
+  const shop9 = itens.filter((i) => i.origem === 'shop9').map((i) => i.codigoConta);
+  const [nMap, sMap] = await Promise.all([
+    listarRecebimentosNomusPorContas(nomus),
+    listarRecebimentosShop9PorContas(shop9),
+  ]);
+  for (const [codigo, recs] of nMap) out.set(`nomus:${codigo}`, recs);
+  for (const [codigo, recs] of sMap) out.set(`shop9:${codigo}`, recs);
+  return out;
+}
+
+async function mapTarefasComErp(
+  rows: Parameters<typeof mapTarefa>[0][],
+  resp: Map<number, { nome: string | null; login: string }>,
+): Promise<TarefaInadimplenteDto[]> {
+  const comAcordo = rows.filter((r) => parseMetaAcordo(r.contatos?.[0]?.metaJson ?? null));
+  const recsMap = await mapearRecebimentosErpAcordo(
+    comAcordo.map((r) => ({ origem: r.origem, codigoConta: r.codigoConta })),
+  );
+  return rows.map((r) =>
+    mapTarefa(r, resp, recsMap.get(`${r.origem}:${r.codigoConta}`) ?? []),
+  );
 }
 
 async function listarIdsNomusExistentes(codigos: string[]): Promise<Set<string>> {
@@ -569,10 +714,14 @@ function mapTarefa(
     createdAt: Date;
     updatedAt: Date;
     _count?: { contatos: number };
+    contatos?: { metaJson: string | null }[];
   },
   resp: Map<number, { nome: string | null; login: string }>,
+  recebimentosErp: ReciboAcordoErp[] = [],
 ): TarefaInadimplenteDto {
   const u = row.responsavelUsuarioId != null ? resp.get(row.responsavelUsuarioId) : undefined;
+  const meta = parseMetaAcordo(row.contatos?.[0]?.metaJson ?? null);
+  const acordo = meta ? montarAcordoAcompanhamento(meta, recebimentosErp) : null;
   return {
     id: row.id,
     origem: row.origem,
@@ -600,6 +749,8 @@ function mapTarefa(
     lastSeenAt: row.lastSeenAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    temAcordo: acordo != null,
+    acordo,
   };
 }
 
@@ -779,13 +930,13 @@ export async function listarTarefasInadimplentes(opts?: {
   const status = opts?.status?.trim();
   const rows = await prisma.crmInadimplenteTarefa.findMany({
     where: status && status !== 'todas' ? { status } : undefined,
-    include: { _count: { select: { contatos: true } } },
+    include: INCLUDE_TAREFA_ACORDO,
     orderBy: [{ status: 'asc' }, { vencimento: 'asc' }, { id: 'asc' }],
   });
   const resp = await nomesResponsaveis(
     rows.map((r) => r.responsavelUsuarioId).filter((id): id is number => id != null),
   );
-  let data = rows.map((r) => mapTarefa(r, resp));
+  let data = await mapTarefasComErp(rows, resp);
   const q = opts?.q?.trim();
   if (q) {
     const match = criarMatcherTextoLivre(q);
@@ -809,7 +960,7 @@ export async function atualizarTarefaInadimplente(
 ): Promise<TarefaInadimplenteDto | null> {
   const existing = await prisma.crmInadimplenteTarefa.findUnique({
     where: { id },
-    include: { _count: { select: { contatos: true } } },
+    include: INCLUDE_TAREFA_ACORDO,
   });
   if (!existing) return null;
   if (patch.responsavelUsuarioId != null) {
@@ -829,12 +980,43 @@ export async function atualizarTarefaInadimplente(
         ? { responsavelUsuarioId: patch.responsavelUsuarioId }
         : {}),
     },
-    include: { _count: { select: { contatos: true } } },
+    include: INCLUDE_TAREFA_ACORDO,
   });
   const resp = await nomesResponsaveis(
     row.responsavelUsuarioId != null ? [row.responsavelUsuarioId] : [],
   );
-  return mapTarefa(row, resp);
+  const mapped = await mapTarefasComErp([row], resp);
+  return mapped[0] ?? null;
+}
+
+function parseMetaJson(raw: string | null | undefined): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function normalizarTipoTratativa(tipo: string | null | undefined, categoria: string | null | undefined): string {
+  const t = String(tipo ?? '').trim().toLowerCase();
+  if (t === 'negociacao') return 'negociacao';
+  if (String(categoria ?? '').trim() === 'Negociar com cliente') return 'negociacao';
+  return 'padrao';
+}
+
+function serializarMeta(meta: unknown, tipo: string): string | null {
+  if (tipo !== 'negociacao') return null;
+  if (meta == null || meta === '') throw new Error('Informe os dados da negociação.');
+  if (typeof meta === 'string') {
+    try {
+      JSON.parse(meta);
+    } catch {
+      throw new Error('JSON da negociação inválido.');
+    }
+    return meta;
+  }
+  return JSON.stringify(meta);
 }
 
 function mapContato(row: {
@@ -842,6 +1024,10 @@ function mapContato(row: {
   tarefaId: number;
   dataContato: Date | null;
   texto: string;
+  tipo?: string | null;
+  categoria?: string | null;
+  justificativa?: string | null;
+  metaJson?: string | null;
   origem: string;
   criadoPorLogin: string | null;
   createdAt: Date;
@@ -853,6 +1039,10 @@ function mapContato(row: {
     dataContato: row.dataContato ? row.dataContato.toISOString() : null,
     dataContatoBr: formatDataContatoBr(row.dataContato),
     texto: row.texto,
+    tipo: row.tipo === 'negociacao' ? 'negociacao' : 'padrao',
+    categoria: row.categoria ?? null,
+    justificativa: row.justificativa ?? null,
+    meta: parseMetaJson(row.metaJson),
     origem: row.origem,
     criadoPorLogin: row.criadoPorLogin,
     createdAt: row.createdAt.toISOString(),
@@ -1365,19 +1555,27 @@ export async function listContatosTarefa(tarefaId: number): Promise<{
 
 export async function createContatoTarefa(
   tarefaId: number,
-  input: { dataContato?: string | null; texto: string },
+  input: ContatoTarefaInput,
   login: string | null,
 ): Promise<ContatoTarefaDto | null> {
   const existing = await prisma.crmInadimplenteTarefa.findUnique({ where: { id: tarefaId } });
   if (!existing) return null;
   const texto = String(input.texto ?? '').trim();
   if (!texto) throw new Error('Informe o texto da tratativa.');
+  const categoria = String(input.categoria ?? '').trim() || null;
+  const justificativa = String(input.justificativa ?? '').trim() || null;
+  const tipo = normalizarTipoTratativa(input.tipo, categoria);
+  const metaJson = serializarMeta(input.meta, tipo);
   const dataContato = input.dataContato ? new Date(`${input.dataContato}T12:00:00`) : new Date();
   const row = await prisma.crmInadimplenteTarefaContato.create({
     data: {
       tarefaId,
       dataContato: Number.isNaN(dataContato.getTime()) ? new Date() : dataContato,
       texto,
+      tipo,
+      categoria,
+      justificativa,
+      metaJson,
       origem: 'manual',
       criadoPorLogin: login,
     },
@@ -1394,7 +1592,7 @@ export async function createContatoTarefa(
 export async function updateContatoTarefa(
   tarefaId: number,
   contatoId: number,
-  input: { dataContato?: string | null; texto: string },
+  input: ContatoTarefaInput,
 ): Promise<ContatoTarefaDto | null> {
   const existing = await prisma.crmInadimplenteTarefaContato.findFirst({
     where: { id: contatoId, tarefaId },
@@ -1402,11 +1600,19 @@ export async function updateContatoTarefa(
   if (!existing) return null;
   const texto = String(input.texto ?? '').trim();
   if (!texto) throw new Error('Informe o texto da tratativa.');
+  const categoria = String(input.categoria ?? '').trim() || null;
+  const justificativa = String(input.justificativa ?? '').trim() || null;
+  const tipo = normalizarTipoTratativa(input.tipo, categoria);
+  const metaJson = serializarMeta(input.meta, tipo);
   const dataContato = input.dataContato ? new Date(`${input.dataContato}T12:00:00`) : existing.dataContato;
   const row = await prisma.crmInadimplenteTarefaContato.update({
     where: { id: contatoId },
     data: {
       texto,
+      tipo,
+      categoria,
+      justificativa,
+      metaJson,
       dataContato:
         dataContato && !Number.isNaN(dataContato.getTime()) ? dataContato : existing.dataContato,
     },
@@ -1421,4 +1627,60 @@ export async function deleteContatoTarefa(tarefaId: number, contatoId: number): 
   if (!existing) return false;
   await prisma.crmInadimplenteTarefaContato.delete({ where: { id: contatoId } });
   return true;
+}
+
+async function recarregarTarefaDto(id: number): Promise<TarefaInadimplenteDto | null> {
+  const row = await prisma.crmInadimplenteTarefa.findUnique({
+    where: { id },
+    include: INCLUDE_TAREFA_ACORDO,
+  });
+  if (!row) return null;
+  const resp = await nomesResponsaveis(
+    row.responsavelUsuarioId != null ? [row.responsavelUsuarioId] : [],
+  );
+  const mapped = await mapTarefasComErp([row], resp);
+  return mapped[0] ?? null;
+}
+
+function parseDataYmd(raw: string): string | null {
+  const s = String(raw ?? '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+export async function criarRecebimentoAcordo(
+  tarefaId: number,
+  input: { data?: string; valor?: number },
+  login: string | null,
+): Promise<TarefaInadimplenteDto | null> {
+  const tarefa = await recarregarTarefaDto(tarefaId);
+  if (!tarefa) return null;
+  if (!tarefa.acordo) throw new Error('Esta conta não possui acordo de negociação.');
+  const data = parseDataYmd(input.data ?? '');
+  if (!data) throw new Error('Informe a data do recebimento (AAAA-MM-DD).');
+  const valor = Math.round((Number(input.valor) + Number.EPSILON) * 100) / 100;
+  if (!Number.isFinite(valor) || valor <= 0) throw new Error('Informe um valor maior que zero.');
+  if (valor - tarefa.acordo.saldo > 0.009) {
+    throw new Error(
+      `O valor excede o saldo do acordo (${tarefa.acordo.saldo.toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+      })}).`,
+    );
+  }
+  await prisma.crmInadimplenteTarefaRecebimento.create({
+    data: { tarefaId, data, valor, criadoPorLogin: login },
+  });
+  return recarregarTarefaDto(tarefaId);
+}
+
+export async function excluirRecebimentoAcordo(
+  tarefaId: number,
+  recebimentoId: number,
+): Promise<TarefaInadimplenteDto | null> {
+  const existing = await prisma.crmInadimplenteTarefaRecebimento.findFirst({
+    where: { id: recebimentoId, tarefaId },
+  });
+  if (!existing) return null;
+  await prisma.crmInadimplenteTarefaRecebimento.delete({ where: { id: recebimentoId } });
+  return recarregarTarefaDto(tarefaId);
 }

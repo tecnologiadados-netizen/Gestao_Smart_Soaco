@@ -103,10 +103,12 @@ import {
 } from '../controllers/crmRegistroInadimplentesController.js';
 import {
   deleteCrmInadimplenteTarefaContato,
+  deleteCrmInadimplenteTarefaRecebimento,
   getCrmInadimplenteTarefaConfig,
   getCrmInadimplenteTarefaContatos,
   getCrmInadimplenteTarefas,
   postCrmInadimplenteTarefaContato,
+  postCrmInadimplenteTarefaRecebimento,
   postCrmInadimplenteTarefasSync,
   putCrmInadimplenteTarefa,
   putCrmInadimplenteTarefaConfig,
@@ -264,6 +266,16 @@ router.delete(
   '/crm/inadimplente-tarefas/:id/contatos/:contatoId',
   verFinanceiroCrmPendencias,
   deleteCrmInadimplenteTarefaContato
+);
+router.post(
+  '/crm/inadimplente-tarefas/:id/recebimentos',
+  verFinanceiroCrmPendencias,
+  postCrmInadimplenteTarefaRecebimento
+);
+router.delete(
+  '/crm/inadimplente-tarefas/:id/recebimentos/:recebimentoId',
+  verFinanceiroCrmPendencias,
+  deleteCrmInadimplenteTarefaRecebimento
 );
 
 router.get('/crm/registro-inadimplentes', verFinanceiroCrmPendencias, getCrmRegistroInadimplentes);

@@ -13,10 +13,15 @@ import { downloadTarefasInadimplentesPdf } from '../lib/exportTarefasInadimplent
 import { downloadTarefasInadimplentesXlsx } from '../lib/exportTarefasInadimplentesXlsx';
 import { ANOS_PRESCRICAO_TITULO, isTituloPrescrito } from '../lib/titulo-prescrito';
 import { CelulaDataVencimento, textoFiltroDataVencimento } from './CelulaDataVencimento';
+import GradeAcordosInadimplentes from './GradeAcordosInadimplentes';
 import ModalHistoricoContatosTarefa from './ModalHistoricoContatosTarefa';
 import PdfGeneratingOverlay from './PdfGeneratingOverlay';
 
-type FilaTarefa = 'prioridade' | 'prescritos';
+type FilaTarefa = 'prioridade' | 'prescritos' | 'negociados';
+
+function tarefaTemAcordo(r: TarefaInadimplente): boolean {
+  return Boolean(r.temAcordo && r.acordo);
+}
 
 const COLUMN_IDS = [
   'vencimento',
@@ -177,21 +182,31 @@ export default function TarefasInadimplentesPanel() {
   });
 
   const nPrioridade = useMemo(
-    () => rows.filter((r) => r.status !== 'concluida' && !isTituloPrescrito(r.vencimento)).length,
+    () =>
+      rows.filter(
+        (r) => r.status !== 'concluida' && !tarefaTemAcordo(r) && !isTituloPrescrito(r.vencimento),
+      ).length,
     [rows],
   );
   const nPrescritos = useMemo(
-    () => rows.filter((r) => r.status !== 'concluida' && isTituloPrescrito(r.vencimento)).length,
+    () =>
+      rows.filter(
+        (r) => r.status !== 'concluida' && !tarefaTemAcordo(r) && isTituloPrescrito(r.vencimento),
+      ).length,
+    [rows],
+  );
+  const nNegociados = useMemo(
+    () => rows.filter((r) => r.status !== 'concluida' && tarefaTemAcordo(r)).length,
     [rows],
   );
 
-  const rowsFila = useMemo(
-    () =>
-      rows.filter((r) =>
-        fila === 'prescritos' ? isTituloPrescrito(r.vencimento) : !isTituloPrescrito(r.vencimento),
-      ),
-    [rows, fila],
-  );
+  const rowsFila = useMemo(() => {
+    if (fila === 'negociados') return rows.filter((r) => tarefaTemAcordo(r));
+    return rows.filter((r) => {
+      if (tarefaTemAcordo(r)) return false;
+      return fila === 'prescritos' ? isTituloPrescrito(r.vencimento) : !isTituloPrescrito(r.vencimento);
+    });
+  }, [rows, fila]);
 
   const grade = useGradeFiltrosExcel<TarefaInadimplente>({
     rows: rowsFila,
@@ -229,7 +244,8 @@ export default function TarefasInadimplentesPanel() {
     void carregar();
   }, [carregar]);
 
-  const tituloFilaExport = fila === 'prescritos' ? 'Prescritos' : 'Prioridade';
+  const tituloFilaExport =
+    fila === 'prescritos' ? 'Prescritos' : fila === 'negociados' ? 'Acordos' : 'Prioridade';
 
   const exportarPdf = useCallback(async () => {
     setErro('');
@@ -297,37 +313,57 @@ export default function TarefasInadimplentesPanel() {
             Prescritos
             {!loading ? ` (${nPrescritos.toLocaleString('pt-BR')})` : ''}
           </button>
+          <button
+            type="button"
+            title="Contas com acordo de cobrança. No ERP continuam atrasadas; aqui acompanham as parcelas."
+            onClick={() => {
+              setFila('negociados');
+              grade.limparFiltrosGrade();
+            }}
+            className={`rounded-md px-3 py-1 text-sm font-semibold ${
+              fila === 'negociados'
+                ? 'bg-blue-700 text-white shadow'
+                : 'text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-700'
+            }`}
+          >
+            Acordos
+            {!loading ? ` (${nNegociados.toLocaleString('pt-BR')})` : ''}
+          </button>
         </div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            disabled={loading || exportandoPdf || exportandoXlsx || grade.rowsExibidas.length === 0}
-            onClick={() => void exportarPdf()}
-            className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-            title="Exportar a grade visível em PDF"
-          >
-            <FileDown className="size-3.5" />
-            {exportandoPdf ? 'Gerando PDF…' : 'Exportar PDF'}
-          </button>
-          <button
-            type="button"
-            disabled={loading || exportandoPdf || exportandoXlsx || grade.rowsExibidas.length === 0}
-            onClick={() => void exportarXlsx()}
-            className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-            title="Exportar a grade visível em Excel"
-          >
-            <FileSpreadsheet className="size-3.5" />
-            {exportandoXlsx ? 'Exportando…' : 'Exportar Excel'}
-          </button>
-          {grade.temFiltrosOuOrdem ? (
-            <button
-              type="button"
-              onClick={() => grade.limparFiltrosGrade()}
-              className="inline-flex h-7 shrink-0 items-center rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-              title="Limpar filtros e ordenação da grade"
-            >
-              Limpar filtros
-            </button>
+          {fila !== 'negociados' ? (
+            <>
+              <button
+                type="button"
+                disabled={loading || exportandoPdf || exportandoXlsx || grade.rowsExibidas.length === 0}
+                onClick={() => void exportarPdf()}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                title="Exportar a grade visível em PDF"
+              >
+                <FileDown className="size-3.5" />
+                {exportandoPdf ? 'Gerando PDF…' : 'Exportar PDF'}
+              </button>
+              <button
+                type="button"
+                disabled={loading || exportandoPdf || exportandoXlsx || grade.rowsExibidas.length === 0}
+                onClick={() => void exportarXlsx()}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                title="Exportar a grade visível em Excel"
+              >
+                <FileSpreadsheet className="size-3.5" />
+                {exportandoXlsx ? 'Exportando…' : 'Exportar Excel'}
+              </button>
+              {grade.temFiltrosOuOrdem ? (
+                <button
+                  type="button"
+                  onClick={() => grade.limparFiltrosGrade()}
+                  className="inline-flex h-7 shrink-0 items-center rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                  title="Limpar filtros e ordenação da grade"
+                >
+                  Limpar filtros
+                </button>
+              ) : null}
+            </>
           ) : null}
         </div>
       </div>
@@ -336,6 +372,14 @@ export default function TarefasInadimplentesPanel() {
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm text-amber-900">{erro}</p>
       ) : null}
 
+      {fila === 'negociados' ? (
+        <GradeAcordosInadimplentes
+          rows={rowsFila}
+          loading={loading}
+          onRefresh={() => void carregar()}
+          onOpenHistorico={setTarefaHist}
+        />
+      ) : (
       <div className="table-crm-section">
         <div ref={grade.tableScrollRef} className="overflow-auto max-h-[calc(100vh-12rem)]">
           <table
@@ -504,8 +548,9 @@ export default function TarefasInadimplentesPanel() {
           />
         ) : null}
       </div>
+      )}
 
-      {!loading ? (
+      {!loading && fila !== 'negociados' ? (
         <p className="text-[11px] leading-none text-slate-500 dark:text-slate-400">
           {grade.rowsExibidas.length.toLocaleString('pt-BR')} linha
           {grade.rowsExibidas.length === 1 ? '' : 's'}

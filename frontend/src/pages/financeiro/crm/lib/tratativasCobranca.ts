@@ -68,7 +68,17 @@ export const CATEGORIAS_TRATATIVA: CategoriaTratativa[] = [
       { id: 49, nome: 'Outro' },
     ],
   },
+  {
+    id: 5,
+    nome: 'Negociar com cliente',
+    filhos: [{ id: 51, nome: 'Acordo' }],
+  },
 ];
+
+export const CATEGORIA_NEGOCIAR_ID = 5;
+export const FILHO_ACORDO_NEGOCIACAO_ID = 51;
+export const TIPO_TRATATIVA_PADRAO = 'padrao';
+export const TIPO_TRATATIVA_NEGOCIACAO = 'negociacao';
 
 export const SEPARADOR_TRATATIVA = ' › ';
 

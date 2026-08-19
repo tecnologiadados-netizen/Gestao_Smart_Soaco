@@ -2,7 +2,9 @@ import type { Request, Response } from 'express';
 import {
   atualizarTarefaInadimplente,
   createContatoTarefa,
+  criarRecebimentoAcordo,
   deleteContatoTarefa,
+  excluirRecebimentoAcordo,
   listarTarefasInadimplentes,
   listContatosTarefa,
   obterConfigResponsavel,
@@ -125,10 +127,24 @@ export async function postCrmInadimplenteTarefaContato(req: Request, res: Respon
       res.status(400).json({ error: 'ID inválido.' });
       return;
     }
-    const body = (req.body ?? {}) as { dataContato?: string | null; texto?: string };
+    const body = (req.body ?? {}) as {
+      dataContato?: string | null;
+      texto?: string;
+      tipo?: string | null;
+      categoria?: string | null;
+      justificativa?: string | null;
+      meta?: unknown;
+    };
     const created = await createContatoTarefa(
       id,
-      { dataContato: body.dataContato, texto: String(body.texto ?? '') },
+      {
+        dataContato: body.dataContato,
+        texto: String(body.texto ?? ''),
+        tipo: body.tipo,
+        categoria: body.categoria,
+        justificativa: body.justificativa,
+        meta: body.meta,
+      },
       getLogin(req),
     );
     if (!created) {
@@ -150,10 +166,21 @@ export async function putCrmInadimplenteTarefaContato(req: Request, res: Respons
       res.status(400).json({ error: 'ID inválido.' });
       return;
     }
-    const body = (req.body ?? {}) as { dataContato?: string | null; texto?: string };
+    const body = (req.body ?? {}) as {
+      dataContato?: string | null;
+      texto?: string;
+      tipo?: string | null;
+      categoria?: string | null;
+      justificativa?: string | null;
+      meta?: unknown;
+    };
     const updated = await updateContatoTarefa(id, contatoId, {
       dataContato: body.dataContato,
       texto: String(body.texto ?? ''),
+      tipo: body.tipo,
+      categoria: body.categoria,
+      justificativa: body.justificativa,
+      meta: body.meta,
     });
     if (!updated) {
       res.status(404).json({ error: 'Contato não encontrado.' });
@@ -182,6 +209,46 @@ export async function deleteCrmInadimplenteTarefaContato(req: Request, res: Resp
     res.status(204).end();
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao excluir contato.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function postCrmInadimplenteTarefaRecebimento(req: Request, res: Response): Promise<void> {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: 'ID inválido.' });
+      return;
+    }
+    const body = (req.body ?? {}) as { data?: string; valor?: number };
+    const updated = await criarRecebimentoAcordo(id, body, getLogin(req));
+    if (!updated) {
+      res.status(404).json({ error: 'Tarefa não encontrada.' });
+      return;
+    }
+    res.status(201).json(updated);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao registrar recebimento.';
+    res.status(400).json({ error: message });
+  }
+}
+
+export async function deleteCrmInadimplenteTarefaRecebimento(req: Request, res: Response): Promise<void> {
+  try {
+    const id = Number(req.params.id);
+    const recebimentoId = Number(req.params.recebimentoId);
+    if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(recebimentoId) || recebimentoId <= 0) {
+      res.status(400).json({ error: 'ID inválido.' });
+      return;
+    }
+    const updated = await excluirRecebimentoAcordo(id, recebimentoId);
+    if (!updated) {
+      res.status(404).json({ error: 'Recebimento não encontrado.' });
+      return;
+    }
+    res.json(updated);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao excluir recebimento.';
     res.status(500).json({ error: message });
   }
 }
