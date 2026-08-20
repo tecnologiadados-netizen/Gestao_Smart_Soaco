@@ -1,4 +1,6 @@
-/* DFC Nomus — script de negócio (2 UNION). Placeholders: {{EMP_IN}}, {{DATA_VENCIMENTO_MIN}} */
+/* DFC Nomus — script de negócio (2 UNION). Placeholders: {{EMP_IN}}, {{DATA_VENCIMENTO_MIN}}
+   Pedido de compra (af.idPedidoCompra) fica de fora — mesmo critério dos KPIs/DRE:
+   compromisso de PC não é conta a pagar de documento. */
 select
     lf.idContaBancaria,
     cb.nome,
@@ -65,6 +67,7 @@ left join (
     on td.idAgendamentoRecebimento = af.id
 where af.idEmpresa in ({{EMP_IN}})
   and af.dataVencimento >= '{{DATA_VENCIMENTO_MIN}}'
+  and af.idPedidoCompra is null
   and coalesce(td.comentarios, af.comentarios, '') not like '%DESCONTADO ANTECI%'
 
 union all

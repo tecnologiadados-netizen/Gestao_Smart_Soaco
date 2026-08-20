@@ -2,7 +2,7 @@
  * Saldo a faturar (parcelas de PD) para a DFC — consulta Nomus + previsão do Gerenciador de Pedidos.
  */
 
-import { getNomusPool } from '../config/nomusDb.js';
+import { getNomusPool, nomusQueryWithRetry } from '../config/nomusDb.js';
 import { getPrevisaoPorPedidoIdMap } from './pedidosRepository.js';
 import {
   pcpEntregaFuturaNfeStatusSqlInList,
@@ -668,7 +668,7 @@ export async function queryDfcSaldoFaturar(
     const previsaoPromise = opts.skipPrevisao
       ? Promise.resolve(new Map<number, string>())
       : getPrevisaoPorPedidoIdMap();
-    const [[rows], mapaPrevisao] = await Promise.all([pool.query(sql, args), previsaoPromise]);
+    const [[rows], mapaPrevisao] = await Promise.all([nomusQueryWithRetry(pool, sql, args), previsaoPromise]);
     const list = (Array.isArray(rows) ? rows : []) as Record<string, unknown>[];
     const hasMore = list.length > limit;
     const slice = hasMore ? list.slice(0, limit) : list;

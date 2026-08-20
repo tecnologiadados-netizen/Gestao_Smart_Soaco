@@ -1363,3 +1363,328 @@ export async function enviarParaFinanceiro(coletaId: number): Promise<{ ok: bool
   if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
   return { ok: true };
 }
+
+/* ─── Double CheckIn ─────────────────────────────────────────────────────── */
+
+export type DoubleCheckInNota = {
+  idDocumento: number;
+  numeroDocumentoFiscal: string | null;
+  numeroNfe: string | null;
+  dataEmissao: string | null;
+  idParceiro: number | null;
+  nomeParceiro: string | null;
+  qtdeItens: number;
+  conferido?: boolean;
+  conferidoEm?: string | null;
+  conferidoPor?: string | null;
+};
+
+export type DoubleCheckInHistoricoEntrada = {
+  idDocumento: number;
+  numeroDocumentoFiscal: string | null;
+  numeroNfe: string | null;
+  dataEmissao: string | null;
+  nomeParceiro: string | null;
+  valorUnitario: number;
+  qtde: number;
+};
+
+export type DoubleCheckInItem = {
+  idItem: number;
+  idProduto: number;
+  codigoProduto: string | null;
+  nomeProduto: string | null;
+  descricaoProduto: string | null;
+  unidadeMedida: string | null;
+  qtde: number;
+  valorUnitario: number;
+  valorTotal: number;
+  variacaoPct: number | null;
+  foraLimiar: boolean;
+  historico: DoubleCheckInHistoricoEntrada[];
+};
+
+export type DoubleCheckInUsuarioDest = {
+  id: number;
+  login: string;
+  nome: string | null;
+  telefone: string | null;
+  ativo: boolean;
+};
+
+export async function fetchDoubleCheckInNotas(params: {
+  dataInicio: string;
+  dataFim: string;
+}): Promise<{ notas: DoubleCheckInNota[]; erro?: string }> {
+  const sp = new URLSearchParams();
+  sp.set('dataInicio', params.dataInicio);
+  sp.set('dataFim', params.dataFim);
+  const res = await apiFetch(`/api/compras/double-checkin/notas?${sp}`);
+  const body = (await res.json().catch(() => ({}))) as {
+    notas?: DoubleCheckInNota[];
+    erro?: string;
+    error?: string;
+  };
+  if (!res.ok) {
+    return { notas: [], erro: body.erro ?? body.error ?? res.statusText };
+  }
+  return { notas: Array.isArray(body.notas) ? body.notas : [] };
+}
+
+export async function fetchDoubleCheckInItens(
+  idDocumento: number
+): Promise<{ itens: DoubleCheckInItem[]; limiarPct: number; dataEmissao: string | null; erro?: string }> {
+  const res = await apiFetch(`/api/compras/double-checkin/notas/${idDocumento}/itens`);
+  const body = (await res.json().catch(() => ({}))) as {
+    itens?: DoubleCheckInItem[];
+    limiarPct?: number;
+    dataEmissao?: string | null;
+    erro?: string;
+    error?: string;
+  };
+  if (!res.ok) {
+    return {
+      itens: [],
+      limiarPct: 10,
+      dataEmissao: null,
+      erro: body.erro ?? body.error ?? res.statusText,
+    };
+  }
+  return {
+    itens: Array.isArray(body.itens) ? body.itens : [],
+    limiarPct: typeof body.limiarPct === 'number' ? body.limiarPct : 10,
+    dataEmissao: body.dataEmissao ?? null,
+  };
+}
+
+export async function fetchDoubleCheckInStatus(
+  ids: number[]
+): Promise<{
+  status: Array<{ idDocumento: number; temForaLimiar: boolean }>;
+  limiarPct: number;
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/compras/double-checkin/status', {
+    method: 'POST',
+    body: { ids },
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    status?: Array<{ idDocumento: number; temForaLimiar: boolean }>;
+    limiarPct?: number;
+    erro?: string;
+    error?: string;
+  };
+  if (!res.ok) {
+    return {
+      status: [],
+      limiarPct: 10,
+      erro: body.erro ?? body.error ?? res.statusText,
+    };
+  }
+  return {
+    status: Array.isArray(body.status) ? body.status : [],
+    limiarPct: typeof body.limiarPct === 'number' ? body.limiarPct : 10,
+  };
+}
+
+export async function conferirDoubleCheckIn(params: {
+  idDocumento: number;
+  senha: string;
+}): Promise<{
+  ok: boolean;
+  conferido?: boolean;
+  conferidoEm?: string | null;
+  conferidoPor?: string | null;
+  jaConferido?: boolean;
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/compras/double-checkin/conferir', {
+    method: 'POST',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    conferido?: boolean;
+    conferidoEm?: string | null;
+    conferidoPor?: string | null;
+    jaConferido?: boolean;
+    error?: string;
+  };
+  if (!res.ok) {
+    return { ok: false, erro: body.error ?? res.statusText };
+  }
+  return {
+    ok: true,
+    conferido: body.conferido ?? true,
+    conferidoEm: body.conferidoEm ?? null,
+    conferidoPor: body.conferidoPor ?? null,
+    jaConferido: body.jaConferido,
+  };
+}
+
+export async function fetchDoubleCheckInParametros(): Promise<{
+  limiarPct: number;
+  alertaDesde?: string;
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/compras/double-checkin/parametros');
+  const body = (await res.json().catch(() => ({}))) as {
+    limiarPct?: number;
+    alertaDesde?: string;
+    error?: string;
+  };
+  if (!res.ok) return { limiarPct: 10, erro: body.error ?? res.statusText };
+  return {
+    limiarPct: typeof body.limiarPct === 'number' ? body.limiarPct : 10,
+    alertaDesde: typeof body.alertaDesde === 'string' ? body.alertaDesde : undefined,
+  };
+}
+
+export async function saveDoubleCheckInParametros(
+  limiarPct: number
+): Promise<{ limiarPct: number; erro?: string }> {
+  const res = await apiFetch('/api/compras/double-checkin/parametros', {
+    method: 'PUT',
+    body: { limiarPct },
+  });
+  const body = (await res.json().catch(() => ({}))) as { limiarPct?: number; error?: string };
+  if (!res.ok) return { limiarPct, erro: body.error ?? res.statusText };
+  return { limiarPct: typeof body.limiarPct === 'number' ? body.limiarPct : limiarPct };
+}
+
+export async function fetchDoubleCheckInDestinatarios(): Promise<{
+  tipoId: number;
+  usuarioIds: number[];
+  grupos: { jid: string; nome: string | null }[];
+  usuarios: DoubleCheckInUsuarioDest[];
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/compras/double-checkin/destinatarios');
+  const body = (await res.json().catch(() => ({}))) as {
+    tipoId?: number;
+    usuarioIds?: number[];
+    grupos?: { jid: string; nome: string | null }[];
+    usuarios?: DoubleCheckInUsuarioDest[];
+    error?: string;
+  };
+  if (!res.ok) {
+    return {
+      tipoId: 0,
+      usuarioIds: [],
+      grupos: [],
+      usuarios: [],
+      erro: body.error ?? res.statusText,
+    };
+  }
+  return {
+    tipoId: body.tipoId ?? 0,
+    usuarioIds: Array.isArray(body.usuarioIds) ? body.usuarioIds : [],
+    grupos: Array.isArray(body.grupos) ? body.grupos : [],
+    usuarios: Array.isArray(body.usuarios) ? body.usuarios : [],
+  };
+}
+
+export async function saveDoubleCheckInDestinatarios(params: {
+  usuarioIds: number[];
+  grupos?: { jid: string; nome?: string | null }[];
+}): Promise<{ ok: boolean; erro?: string }> {
+  const res = await apiFetch('/api/compras/double-checkin/destinatarios', {
+    method: 'PUT',
+    body: {
+      usuarioIds: params.usuarioIds,
+      grupos: params.grupos ?? [],
+    },
+  });
+  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) return { ok: false, erro: body.error ?? res.statusText };
+  return { ok: true };
+}
+
+export async function syncDoubleCheckIn(params: {
+  dataInicio: string;
+  dataFim: string;
+}): Promise<{
+  notas: DoubleCheckInNota[];
+  alertasEnviados: number;
+  alertasBaseline?: number;
+  limiarPct: number;
+  alertaDesde?: string;
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/compras/double-checkin/sincronizar', {
+    method: 'POST',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    notas?: DoubleCheckInNota[];
+    alertasEnviados?: number;
+    alertasBaseline?: number;
+    limiarPct?: number;
+    alertaDesde?: string;
+    erro?: string;
+    error?: string;
+  };
+  if (!res.ok) {
+    return {
+      notas: [],
+      alertasEnviados: 0,
+      limiarPct: 10,
+      erro: body.erro ?? body.error ?? res.statusText,
+    };
+  }
+  return {
+    notas: Array.isArray(body.notas) ? body.notas : [],
+    alertasEnviados: body.alertasEnviados ?? 0,
+    alertasBaseline: body.alertasBaseline ?? 0,
+    limiarPct: typeof body.limiarPct === 'number' ? body.limiarPct : 10,
+    alertaDesde: typeof body.alertaDesde === 'string' ? body.alertaDesde : undefined,
+  };
+}
+
+export type DoubleCheckInDashboard = {
+  dataInicio: string;
+  dataFim: string;
+  kpis: {
+    qtdeNotas: number;
+    qtdeItens: number;
+    mediaItensPorNota: number | null;
+    qtdeConferidas: number;
+    qtdePendentes: number;
+    pctConferencia: number | null;
+    qtdeComAtencao: number;
+    pctAtencao: number | null;
+    mediaNotasPorDia: number | null;
+    tempoMedioConferenciaDias: number | null;
+  };
+  serieDiaria: Array<{
+    data: string;
+    notas: number;
+    itens: number;
+    variacaoNotasPct: number | null;
+  }>;
+  porTipo: Array<{ idTipoMovimentacao: number; nomeTipo: string; notas: number }>;
+  topParceiros: Array<{
+    idParceiro: number | null;
+    nomeParceiro: string | null;
+    notas: number;
+    itens: number;
+  }>;
+};
+
+export async function fetchDoubleCheckInDashboard(params: {
+  dataInicio: string;
+  dataFim: string;
+}): Promise<{ data?: DoubleCheckInDashboard; erro?: string }> {
+  const sp = new URLSearchParams();
+  sp.set('dataInicio', params.dataInicio);
+  sp.set('dataFim', params.dataFim);
+  const res = await apiFetch(`/api/compras/double-checkin/dashboard?${sp}`);
+  const body = (await res.json().catch(() => ({}))) as DoubleCheckInDashboard & {
+    error?: string;
+    erro?: string;
+  };
+  if (!res.ok) {
+    return { erro: body.erro ?? body.error ?? res.statusText };
+  }
+  return { data: body };
+}

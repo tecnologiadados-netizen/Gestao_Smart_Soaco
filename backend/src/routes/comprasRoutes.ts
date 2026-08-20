@@ -1,9 +1,22 @@
 import { Router, type RequestHandler } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/requirePermission.js';
+import { requireMasterOrAdmin } from '../middleware/requireMasterOrAdmin.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import { getProdutosColeta, getRessupAlmoxRegistroPreview, getRessupAlmoxPcPendDetalhes, getRessupEmpenhoDetalhes, getRessupEmpenhoPorPedido, getOpcoesFiltroRessupAlmox, getBuscarOpcoesFiltroRessupAlmox, postOpcoesFiltroCascataRessupAlmox, postRessupAlmoxAnalise, putRessupAlmoxAnalise, patchRessupAlmoxAnaliseProcessar, patchRessupAlmoxAnaliseConcluir, getRessupAlmoxAnalises, getRessupAlmoxAnaliseById, getRessupNaoAlmoxRegistroPreview, getRessupNaoAlmoxPcPendDetalhes, getOpcoesFiltroRessupNaoAlmox, getBuscarOpcoesFiltroRessupNaoAlmox, postOpcoesFiltroCascataRessupNaoAlmox, getRessupNaoAlmoxEstoque, getRessupNaoAlmoxCatalogo, putRessupNaoAlmoxCatalogoDescricao, putRessupNaoAlmoxCatalogoFundivel, postRessupNaoAlmoxAnalise, putRessupNaoAlmoxAnalise, patchRessupNaoAlmoxAnaliseProcessar, patchRessupNaoAlmoxAnaliseConcluir, getRessupNaoAlmoxAnalises, getRessupNaoAlmoxAnaliseById, getColetasPrecos, getColetasPrecosDebug, getOpcoesFiltroColetas, getOpcoesVinculoFinalizacao, getOpcoesVinculoErroOperacional, getVinculosDerivadosColeta, getVinculosDerivadosPreview, getDashboardErrosVinculoOperacional, getColetasBloqueantes, postCienciaColeta, postConfirmarColeta, getFornecedores, getCondicoesPagamento, getFormasPagamento, putColetaFornecedores, getPrecosColeta, getPrecosCotacao, postPrecosCotacao, patchObservacoesColeta, patchEnviarAprovacao, patchCancelarCotacao, patchReabrirColeta, patchFinalizarCotacao, patchRegistroQtdeAprovada, patchEnviarFinanceiro, deleteColetaPrecos, deleteColetaItem, deleteColetaTodosItens, postColetaItens, getPendenciasComprasOpcoesComprador, getPendenciasComprasConsultar, getPendenciasComprasSaldoSetores, putPendenciasComprasPrioridadeFixa, deletePendenciasComprasPrioridadeFixa, getPendenciasComprasPrioridadeFixaHistorico } from '../controllers/comprasController.js';
 import { getPreCompraCotacoes, getPreCompraSugestoes, getPreCompraFornecedores, getPreCompraContatos, getPreCompraPdf } from '../controllers/preCompraController.js';
+import {
+  getDoubleCheckInDashboard,
+  getDoubleCheckInDestinatariosCtrl,
+  getDoubleCheckInItens,
+  getDoubleCheckInNotas,
+  getDoubleCheckInParametros,
+  postDoubleCheckInConferir,
+  postDoubleCheckInSincronizar,
+  postDoubleCheckInStatus,
+  putDoubleCheckInDestinatarios,
+  putDoubleCheckInParametros,
+} from '../controllers/doubleCheckInController.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -421,6 +434,57 @@ router.get(
   '/rotina/pendencias/prioridade-fixa/historico',
   requirePermission(PERMISSOES.COMPRAS_VER),
   async503(getPendenciasComprasPrioridadeFixaHistorico)
+);
+
+router.get(
+  '/double-checkin/notas',
+  requirePermission(PERMISSOES.COMPRAS_VER),
+  async503(getDoubleCheckInNotas)
+);
+router.get(
+  '/double-checkin/notas/:idDocumento/itens',
+  requirePermission(PERMISSOES.COMPRAS_VER),
+  async503(getDoubleCheckInItens)
+);
+router.post(
+  '/double-checkin/status',
+  requirePermission(PERMISSOES.COMPRAS_VER),
+  async503(postDoubleCheckInStatus)
+);
+router.get(
+  '/double-checkin/dashboard',
+  requirePermission(PERMISSOES.COMPRAS_VER),
+  async503(getDoubleCheckInDashboard)
+);
+router.post(
+  '/double-checkin/conferir',
+  requirePermission(PERMISSOES.COMPRAS_VER),
+  async503(postDoubleCheckInConferir)
+);
+router.get(
+  '/double-checkin/parametros',
+  requirePermission(PERMISSOES.COMPRAS_VER),
+  async503(getDoubleCheckInParametros)
+);
+router.put(
+  '/double-checkin/parametros',
+  requirePermission(PERMISSOES.COMPRAS_VER),
+  async503(putDoubleCheckInParametros)
+);
+router.get(
+  '/double-checkin/destinatarios',
+  requireMasterOrAdmin,
+  async503(getDoubleCheckInDestinatariosCtrl)
+);
+router.put(
+  '/double-checkin/destinatarios',
+  requireMasterOrAdmin,
+  async503(putDoubleCheckInDestinatarios)
+);
+router.post(
+  '/double-checkin/sincronizar',
+  requirePermission(PERMISSOES.COMPRAS_VER),
+  async503(postDoubleCheckInSincronizar)
 );
 
 export default router;

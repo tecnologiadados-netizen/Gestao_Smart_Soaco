@@ -83,41 +83,60 @@ export function isNomusEnabled(): boolean {
   return !!process.env.NOMUS_DB_URL?.trim();
 }
 
+function nomusErrCode(err: unknown): string {
+  return err && typeof err === 'object' && 'code' in err
+    ? String((err as { code?: unknown }).code ?? '')
+    : '';
+}
+
+function nomusErrMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err ?? '');
+}
+
+/** Pool mysql2 encerrado / fatal — precisa recriar, senão as outras queries da DFC caem em 503. */
+export function isNomusPoolDeadError(err: unknown): boolean {
+  const code = nomusErrCode(err);
+  const msg = nomusErrMsg(err);
+  return (
+    code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR' ||
+    /Pool is closed|enqueue after fatal|PROTOCOL_ENQUEUE_AFTER_FATAL/i.test(msg)
+  );
+}
+
 /** Erros de conexão transitórios do MySQL (vale retry 1–2x). */
 export function isNomusTransientConnectionError(err: unknown): boolean {
-  const code =
-    err && typeof err === 'object' && 'code' in err ? String((err as { code?: unknown }).code ?? '') : '';
-  const msg = err instanceof Error ? err.message : String(err ?? '');
+  const code = nomusErrCode(err);
+  const msg = nomusErrMsg(err);
+  if (isNomusPoolDeadError(err)) return true;
   return (
     code === 'ECONNRESET' ||
     code === 'PROTOCOL_CONNECTION_LOST' ||
     code === 'EPIPE' ||
     code === 'ETIMEDOUT' ||
-    code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR' ||
-    /ECONNRESET|PROTOCOL_CONNECTION_LOST|EPIPE|ETIMEDOUT|Connection lost|enqueue after fatal/i.test(msg)
+    /ECONNRESET|PROTOCOL_CONNECTION_LOST|EPIPE|ETIMEDOUT|Connection lost/i.test(msg)
   );
 }
 
-/** Executa query Nomus com retry curto; recria o pool após falha de conexão. */
+/** Executa query Nomus com retry curto. Só recria o pool se ele estiver morto (não em timeout). */
 export async function nomusQueryWithRetry<T = unknown>(
-  initialPool: mysql.Pool,
+  _initialPool: mysql.Pool,
   sql: string,
   params?: unknown[],
   tentativas = 2
 ): Promise<[T, mysql.FieldPacket[]]> {
-  let activePool = initialPool;
   let lastErr: unknown;
   for (let i = 0; i < tentativas; i++) {
+    const activePool = getNomusPool();
+    if (!activePool) throw lastErr ?? new Error('NOMUS_DB_URL não configurado');
     try {
       return (await activePool.query(sql, params)) as [T, mysql.FieldPacket[]];
     } catch (err) {
       lastErr = err;
       if (!isNomusTransientConnectionError(err) || i === tentativas - 1) throw err;
-      await resetNomusPool();
-      const fresh = getNomusPool();
-      if (!fresh) throw err;
-      activePool = fresh;
-      await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+      if (isNomusPoolDeadError(err)) {
+        await resetNomusPool();
+      }
+      await new Promise((r) => setTimeout(r, 250 * (i + 1)));
     }
   }
   throw lastErr;
