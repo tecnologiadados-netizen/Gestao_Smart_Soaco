@@ -906,6 +906,79 @@ button.kpi-card-clickable:hover .kpi-click-hint {
   background: linear-gradient(180deg, #7950f2 0%, #5f3dc4 100%);
 }
 
+.kpi-card-meta {
+  min-height: clamp(118px, 12vh, 148px);
+}
+
+.kpi-value-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.kpi-meta-niveis {
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.7rem;
+  width: 100%;
+}
+
+.kpi-meta-nivel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.kpi-meta-nivel-symbol {
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.kpi-meta-nivel-symbol svg {
+  display: block;
+}
+
+.kpi-meta-nivel-symbol--bronze svg {
+  fill: #cd7f32;
+}
+
+.kpi-meta-nivel-symbol--prata svg {
+  fill: #9aa3ad;
+}
+
+.kpi-meta-nivel-symbol--aco svg {
+  fill: #4a6fa5;
+}
+
+.kpi-meta-nivel-nome {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #6b7280;
+}
+
+.kpi-meta-nivel-valor {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--text-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-meta-nivel--principal .kpi-meta-nivel-nome,
+.kpi-meta-nivel--principal .kpi-meta-nivel-valor {
+  color: var(--text-dark);
+}
+
+.kpi-value-row .kpi-meta-nivel-symbol svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* ── Progress bar (glass + RYG spectrum) ── */
 .progress-card-glass {
   padding: 0.9rem 1.15rem 1rem;
@@ -1580,6 +1653,23 @@ button.kpi-card-clickable:hover .kpi-click-hint {
   flex-shrink: 0;
 }
 
+.dashboard-tv .left-panel-tv .kpi-meta-niveis {
+  gap: 0.45rem 1rem;
+}
+
+.dashboard-tv .left-panel-tv .kpi-meta-nivel-nome {
+  font-size: clamp(0.78rem, 1.15vw, 0.95rem);
+}
+
+.dashboard-tv .left-panel-tv .kpi-meta-nivel-valor {
+  font-size: clamp(0.85rem, 1.3vw, 1.05rem);
+}
+
+.dashboard-tv .left-panel-tv .kpi-meta-nivel-symbol svg {
+  width: 15px;
+  height: 15px;
+}
+
 /* ── States ── */
 .state-message {
   display: flex;
@@ -1785,6 +1875,22 @@ button.kpi-card-clickable:hover .kpi-click-hint {
 
 .painel-producao-module[data-theme='dark'] .dashboard .kpi-sub {
   color: #7a8699;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .kpi-meta-nivel-nome {
+  color: #9aa3b2;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .kpi-meta-nivel-valor {
+  color: #e8edf4;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .kpi-meta-nivel-symbol--prata svg {
+  fill: #c5cdd8;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .kpi-meta-nivel-symbol--aco svg {
+  fill: #7ea0c9;
 }
 
 .painel-producao-module[data-theme='dark'] .dashboard .progress-card-glass {
