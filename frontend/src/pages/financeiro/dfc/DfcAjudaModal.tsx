@@ -12,7 +12,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'A DFC mostra o caixa no tempo. Até hoje entra o que já saiu ou entrou na conta (data de baixa / quitação). A partir de amanhã entra o que ainda está em aberto, pelo vencimento e pelo saldo a baixar.',
     comoLe:
-      'Se o período “vai para frente”, a grade já mistura as duas fatias. No Excel a coluna Situação marca cada lançamento como Realizado ou Projetado. Esticar a data fim na DRE não faz o mesmo: a DRE é competência (NF emitida), não previsão de caixa.',
+      'Se o período “vai para frente”, a grade já mistura as duas fatias. No Excel a coluna Situação marca cada lançamento como Realizado ou Projetado. Esticar a data fim na DRE não faz o mesmo: a DRE é competência (NF emitida), não previsão de caixa. Parcelas de pedido de compra (descrição “Pedido de compra PCxxxx”) não entram: só conta a pagar de documento (NF).',
   },
   {
     id: 'projecao-pd',

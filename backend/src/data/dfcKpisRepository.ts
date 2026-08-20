@@ -3,11 +3,12 @@
  * Recebimentos, Pagamentos, Vencidos, A Vencer, Saldo Bancário.
  */
 
-import { getNomusPool } from '../config/nomusDb.js';
+import { getNomusPool, nomusQueryWithRetry } from '../config/nomusDb.js';
 import {
   montarFragmentoFiltroPrioridade,
   type DfcPrioridadeFilterResolvido,
 } from './dfcPrioridadeFilter.js';
+import { sqlAfMarcadoReprogramadoNomus } from './dfcReprogramadoMarcador.js';
 
 export interface DfcKpis {
   recebimentos: number;
@@ -115,19 +116,37 @@ FROM (
 ) u
 `.trim();
 
-  // ── Vencidos a pagar (P) — vencimento DENTRO do período, já vencido (< hoje
-  //    ou < dataFim se dataFim é passado), e ainda não baixado ───────────────
+  const marcadoRepro = sqlAfMarcadoReprogramadoNomus('af');
+
+  // ── Vencidos a pagar (P) ──────────────────────────────────────────────────
+  //    (1) clássicos: vencimento no período, já vencido, em aberto (regra original)
+  //    (2) reprogramados: mesma janela de «a vencer», marcados REPROGR na descrição
+  //        (vencimento empurrado; não conta em aVencerPagar)
   const sqlVencidosPagar = `
-SELECT COALESCE(SUM(af.saldoBaixar), 0) AS total
-FROM agendamentofinanceiro af
-WHERE DATE(af.dataVencimento) BETWEEN ? AND ?
-  AND DATE(af.dataVencimento) < LEAST(?, CURDATE())
-  AND af.dataBaixa IS NULL
-  AND af.saldoBaixar > 0
-  AND af.idEmpresa IN (${empIn})
-  AND af.idPedidoCompra IS NULL
-  AND af.discriminador = 'P'
-  ${fragAf.sql}
+SELECT COALESCE(SUM(u.saldoBaixar), 0) AS total
+FROM (
+  SELECT af.saldoBaixar AS saldoBaixar
+  FROM agendamentofinanceiro af
+  WHERE DATE(af.dataVencimento) BETWEEN ? AND ?
+    AND DATE(af.dataVencimento) < LEAST(?, CURDATE())
+    AND af.dataBaixa IS NULL
+    AND af.saldoBaixar > 0
+    AND af.idEmpresa IN (${empIn})
+    AND af.idPedidoCompra IS NULL
+    AND af.discriminador = 'P'
+    ${fragAf.sql}
+  UNION ALL
+  SELECT af.saldoBaixar AS saldoBaixar
+  FROM agendamentofinanceiro af
+  WHERE DATE(af.dataVencimento) BETWEEN GREATEST(?, CURDATE()) AND ?
+    AND af.dataBaixa IS NULL
+    AND af.saldoBaixar > 0
+    AND af.idEmpresa IN (${empIn})
+    AND af.idPedidoCompra IS NULL
+    AND af.discriminador = 'P'
+    AND ${marcadoRepro}
+    ${fragAf.sql}
+) u
 `.trim();
 
   // ── Vencidos a receber (R) — vencimento DENTRO do período, já vencido,
@@ -145,7 +164,7 @@ WHERE DATE(af.dataVencimento) BETWEEN ? AND ?
 `.trim();
 
   // ── A Vencer a pagar (P) — vencimento DENTRO do período, ainda não vencido
-  //    (>= hoje), não baixado ───────────────────────────────────────────────
+  //    (>= hoje), não baixado; exclui REPROGR (esses vão em vencidosPagar) ───
   const sqlAVencerPagar = `
 SELECT COALESCE(SUM(af.saldoBaixar), 0) AS total
 FROM agendamentofinanceiro af
@@ -155,6 +174,7 @@ WHERE DATE(af.dataVencimento) BETWEEN GREATEST(?, CURDATE()) AND ?
   AND af.idEmpresa IN (${empIn})
   AND af.idPedidoCompra IS NULL
   AND af.discriminador = 'P'
+  AND NOT ${marcadoRepro}
   ${fragAf.sql}
 `.trim();
 
@@ -193,19 +213,22 @@ WHERE DATE(lf.dataLancamento) <= ?
       [rowsAVR],
       [rowsSaldo],
     ] = await Promise.all([
-      pool.query(sqlRecebimentos, [
+      nomusQueryWithRetry(pool, sqlRecebimentos, [
         dataInicio, dataFim, ...empArgs, ...fragAfLf.args,
         dataInicio, dataFim, ...empArgs, ...fragLf.args,
       ]),
-      pool.query(sqlPagamentos, [
+      nomusQueryWithRetry(pool, sqlPagamentos, [
         dataInicio, dataFim, ...empArgs, ...fragAf.args,
         dataInicio, dataFim, ...empArgs, ...fragLf.args,
       ]),
-      pool.query(sqlVencidosPagar, [dataInicio, dataFim, dataFim, ...empArgs, ...fragAf.args]),
-      pool.query(sqlVencidosReceber, [dataInicio, dataFim, dataFim, ...empArgs, ...fragAf.args]),
-      pool.query(sqlAVencerPagar, [dataInicio, dataFim, ...empArgs, ...fragAf.args]),
-      pool.query(sqlAVencerReceber, [dataInicio, dataFim, ...empArgs, ...fragAf.args]),
-      pool.query(sqlSaldo, [dataFim, ...empArgs]),
+      nomusQueryWithRetry(pool, sqlVencidosPagar, [
+        dataInicio, dataFim, dataFim, ...empArgs, ...fragAf.args,
+        dataInicio, dataFim, ...empArgs, ...fragAf.args,
+      ]),
+      nomusQueryWithRetry(pool, sqlVencidosReceber, [dataInicio, dataFim, dataFim, ...empArgs, ...fragAf.args]),
+      nomusQueryWithRetry(pool, sqlAVencerPagar, [dataInicio, dataFim, ...empArgs, ...fragAf.args]),
+      nomusQueryWithRetry(pool, sqlAVencerReceber, [dataInicio, dataFim, ...empArgs, ...fragAf.args]),
+      nomusQueryWithRetry(pool, sqlSaldo, [dataFim, ...empArgs]),
     ]) as [[Record<string, unknown>[], unknown], [Record<string, unknown>[], unknown], [Record<string, unknown>[], unknown], [Record<string, unknown>[], unknown], [Record<string, unknown>[], unknown], [Record<string, unknown>[], unknown], [Record<string, unknown>[], unknown]];
 
     const kpis: DfcKpis = {

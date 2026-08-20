@@ -5,7 +5,7 @@
   "description": "API backend para gestão de previsão de entrega de pedidos (Nomus ERP)",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "cross-env APP_PORT=4000 tsx watch src/server.ts",
+    "dev": "cross-env APP_PORT=4000 tsx watch --exclude ./var --exclude ./prisma/dev.db --exclude ./prisma/dev.db-shm --exclude ./prisma/dev.db-wal src/server.ts",
     "dev:stable": "cross-env APP_PORT=4000 tsx src/server.ts",
     "build": "node scripts/build-backend.cjs",
     "build:frontend": "cd ../frontend && npm run build && cd ../backend && node scripts/copy-frontend.cjs",

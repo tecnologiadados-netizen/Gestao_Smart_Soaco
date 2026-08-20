@@ -6,7 +6,7 @@
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { getNomusPool } from '../config/nomusDb.js';
+import { getNomusPool, nomusQueryWithRetry } from '../config/nomusDb.js';
 import type {
   DfcAgendamentoDetalheRow,
   DfcAgendamentoGranularidade,
@@ -32,7 +32,7 @@ const SQL_TEMPLATE = readFileSync(join(__dirname, 'sql', 'dfcNomusFinanceiro.sql
 const DATA_VENCIMENTO_MIN = '2024-12-01';
 const DATA_LANCAMENTO_MIN = '2024-01-01';
 const CACHE_MS = 90_000;
-const CACHE_VERSION = 19;
+const CACHE_VERSION = 20;
 export const DFC_EMPRESAS_CARGA = [1, 2, 3, 4];
 
 export type NomusDiscriminadorDfc = 'P' | 'R' | 'LR' | 'LP';
@@ -173,7 +173,7 @@ export async function carregarLinhasNomusFinanceiro(force = false): Promise<{
     for (let i = 0; i < blocos.length; i++) {
       const tipoRefBloco: DfcTipoRefLancamento = i === 0 ? 'A' : 'L';
       try {
-        const [result] = await pool.query(blocos[i]);
+        const [result] = await nomusQueryWithRetry(pool, blocos[i]);
         const list = Array.isArray(result) ? result : [];
         for (const r of list) brutas.push(mapRawRow(r as Record<string, unknown>, tipoRefBloco));
       } catch (errBloco) {

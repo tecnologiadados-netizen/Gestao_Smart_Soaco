@@ -212,6 +212,29 @@ model Config {
   @@map("config")
 }
 
+/// Dedup de alerta WhatsApp do Double CheckIn (1 envio por documento Nomus).
+model DoubleCheckInAlertaEnviado {
+  id                 Int      @id @default(autoincrement())
+  idDocumentoEstoque Int      @unique
+  enviadoEm          DateTime @default(now())
+  /// Resumo curto dos itens fora do limiar (auditoria).
+  resumo             String?
+
+  @@map("double_checkin_alerta_enviado")
+}
+
+/// Conferência manual da NF de entrada (Double CheckIn), com senha do usuário.
+model DoubleCheckInConferido {
+  id                 Int      @id @default(autoincrement())
+  idDocumentoEstoque Int      @unique
+  conferidoEm        DateTime @default(now())
+  usuarioId          Int
+  usuarioLogin       String
+
+  @@index([usuarioId])
+  @@map("double_checkin_conferido")
+}
+
 /// Tipos de mensagem automática WhatsApp (Integração → SMS)
 model WhatsappNotificacaoTipo {
   id               Int      @id @default(autoincrement())
