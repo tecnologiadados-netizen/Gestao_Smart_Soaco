@@ -65,6 +65,7 @@ app.use('/uploads', express.static(uploadsRoot, { maxAge: 0 }));
 if (process.env.FORCE_HTTPS_REDIRECT === 'true') {
   app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.path.startsWith('/.well-known')) return next();
+    if (req.path === '/health') return next();
     if (req.secure) return next();
     const host = (req.headers.host || '').split(':')[0];
     if (!host) return next();
