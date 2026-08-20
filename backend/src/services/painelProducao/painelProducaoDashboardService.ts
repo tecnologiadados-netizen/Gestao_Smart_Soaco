@@ -20,6 +20,7 @@ import {
 import { loadPesoBomMap } from './painelProducaoPesoBom.js';
 import {
   ensureCurrentMonth,
+  getMetaNiveis,
   getTarget,
   isSemMeta,
   listMesesMeta,
@@ -642,8 +643,11 @@ async function buildDashboard(setor: string, mes: string) {
   );
   const ranking = await rankingMes(paRows, gondRows, pedidoRows, setorMap, mesDt, fim);
 
-  const semMeta = await isSemMeta(setor, mesDt);
-  const meta = await getTarget(setor, mesDt);
+  const [semMeta, meta, niveis] = await Promise.all([
+    isSemMeta(setor, mesDt),
+    getTarget(setor, mesDt),
+    getMetaNiveis(setor, mes),
+  ]);
   const pctRatio = semMeta ? 0 : meta ? producao / meta : 0;
   const pctDisplay = pctRatio * 100;
   const unidade = SETOR_PESO.has(setor)
@@ -659,6 +663,9 @@ async function buildDashboard(setor: string, mes: string) {
     titulo: `SETOR DE ${setor.toUpperCase()}`,
     producao: Math.round(producao * 100) / 100,
     meta,
+    meta_bronze: niveis.metas.Bronze,
+    meta_prata: niveis.metas.Prata,
+    meta_aco: niveis.metas.Aço,
     sem_meta: semMeta,
     percentual_meta: Math.round(pctDisplay * 100) / 100,
     cor_target: semMeta ? null : corTarget(pctRatio),

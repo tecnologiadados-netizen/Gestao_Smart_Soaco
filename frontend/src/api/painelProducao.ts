@@ -33,6 +33,9 @@ export interface PainelProducaoDashboard {
   mes: string;
   producao: number;
   meta: number;
+  meta_bronze?: number | null;
+  meta_prata?: number | null;
+  meta_aco?: number | null;
   sem_meta?: boolean;
   percentual_meta: number;
   cor_target?: string;
