@@ -198,8 +198,9 @@ export const TITULO_DESCONTADO_COND = `(
 
 export const EXCLUIR_TITULO_DESCONTADO = ` AND NOT ${TITULO_DESCONTADO_COND} `;
 const LF_RECEBIDO_VALIDO = `${TEM_RECEBIMENTO_OU_BAIXA} AND NOT ${TITULO_DESCONTADO_COND}`;
-const AGENDAMENTO_ABERTO_EFETIVO = `(${AGENDAMENTO_PENDENTE} OR (${AGENDAMENTO_BAIXADA} AND ${TITULO_DESCONTADO_COND}))`;
-const VALOR_ABERTO_EFETIVO = `CASE
+/** Pendente ou baixado FIDC (comentário TITULO DESCONTADO) — ainda em aberto no CRM. */
+export const AGENDAMENTO_ABERTO_EFETIVO = `(${AGENDAMENTO_PENDENTE} OR (${AGENDAMENTO_BAIXADA} AND ${TITULO_DESCONTADO_COND}))`;
+export const VALOR_ABERTO_EFETIVO = `CASE
   WHEN ${AGENDAMENTO_PENDENTE} THEN af.saldoBaixar
   WHEN ${AGENDAMENTO_BAIXADA} AND ${TITULO_DESCONTADO_COND} THEN af.valorBaixar
   ELSE 0
@@ -491,6 +492,144 @@ export function buildContasQuery(
       pessoaFilter.params,
       empresaFilter.params,
     ),
+  };
+}
+
+/** Contas a receber vencidas — sync da fila de tarefas de inadimplentes. */
+export function buildContasAtrasoInadimplenteQuery(): { sql: string; params: QueryParams } {
+  const empresaFilter = buildEmpresaFilter(null);
+  const sql = `
+    SELECT
+      af.id AS codigo,
+      af.idEmpresa AS empresaId,
+      e.nome AS empresa,
+      cb.nome AS contaBancaria,
+      fp.nome AS formaPagamento,
+      pes.nome AS pessoa,
+      af.dataVencimento AS dataVencimento,
+      af.descricaoLancamento AS descricao,
+      IFNULL(nfse.numero, IFNULL(nfee.numero, IFNULL(nfes.numero, dee.numeroNFS))) AS nfeOrigem,
+      IF(af.discriminador IN ('R', 'CR', 'NCC'), af.saldoBaixar, -(af.saldoBaixar)) AS valorSaldo,
+      DATEDIFF(CURDATE(), af.dataVencimento) AS diasAtraso
+    ${BASE_FROM_CONTAS_DETALHE}
+    WHERE af.discriminador IN ${RECEBER_DISCRIMINADORES}
+      AND ${TIPO_CONTA_UTILIZADO}
+      AND af.saldoBaixar > 0
+      ${EXCLUIR_NF_ORIGEM_CANCELADA}
+      AND ${AGENDAMENTO_PENDENTE}
+      AND af.dataVencimento < CURDATE()
+      ${empresaFilter.clause}
+    ORDER BY af.dataVencimento ASC, af.id ASC
+  `;
+  return { sql, params: empresaFilter.params };
+}
+
+/** Data de baixa e data efetiva de recebimento (mesma regra da análise de crédito). */
+export function buildDatasPagamentoNomusPorIdsQuery(ids: number[]): { sql: string; params: QueryParams } {
+  const unicos = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+  if (unicos.length === 0) {
+    return {
+      sql: 'SELECT af.id AS codigo, NULL AS dataBaixa, NULL AS dataRecebimento FROM agendamentofinanceiro af WHERE 1 = 0',
+      params: [],
+    };
+  }
+  const placeholders = unicos.map(() => '?').join(', ');
+  const sql = `
+    SELECT
+      af.id AS codigo,
+      DATE(af.dataBaixa) AS dataBaixa,
+      DATE(${DATA_REFERENCIA_RECEBIMENTO}) AS dataRecebimento
+    FROM agendamentofinanceiro af
+    WHERE af.id IN (${placeholders})
+  `;
+  return { sql, params: unicos };
+}
+
+/** Lançamentos de recebimento vinculados à conta (mesma regra da tela Recebimentos do Nomus). */
+export function buildLancamentosRecebimentoNomusPorIdsQuery(ids: number[]): {
+  sql: string;
+  params: QueryParams;
+} {
+  const unicos = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+  if (unicos.length === 0) {
+    return {
+      sql: `SELECT lf.id AS codigoLancamento, lf.idAgendamentoRecebimento AS codigoConta,
+                   NULL AS dataLancamento, 0 AS valor
+            FROM lancamentofinanceiro lf WHERE 1 = 0`,
+      params: [],
+    };
+  }
+  const placeholders = unicos.map(() => '?').join(', ');
+  const sql = `
+    SELECT
+      lf.id AS codigoLancamento,
+      lf.idAgendamentoRecebimento AS codigoConta,
+      DATE(lf.dataLancamento) AS dataLancamento,
+      lf.valor AS valor,
+      lf.comentarios AS comentarios,
+      fp.nome AS formaPagamento,
+      cb.nome AS contaBancaria
+    FROM lancamentofinanceiro lf
+    LEFT JOIN agendamentofinanceiro af ON af.id = lf.idAgendamentoRecebimento
+    LEFT JOIN formapagamento fp ON fp.id = COALESCE(lf.idFormaPagamento, af.idFormaPagamento)
+    LEFT JOIN contabancaria cb ON cb.id = COALESCE(lf.idContaBancaria, af.idContaBancaria)
+    WHERE lf.idAgendamentoRecebimento IN (${placeholders})
+      AND IFNULL(lf.valor, 0) > 0
+      AND UPPER(TRIM(COALESCE(lf.comentarios, ''))) <> 'TITULO DESCONTADO'
+    ORDER BY lf.dataLancamento ASC, lf.id ASC
+  `;
+  return { sql, params: unicos };
+}
+
+/** Confere se os ids de agendamento ainda existem no Nomus. */
+export function buildAgendamentosNomusExistemQuery(ids: number[]): { sql: string; params: QueryParams } {
+  const unicos = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+  if (unicos.length === 0) {
+    return {
+      sql: 'SELECT af.id AS codigo FROM agendamentofinanceiro af WHERE 1 = 0',
+      params: [],
+    };
+  }
+  const placeholders = unicos.map(() => '?').join(', ');
+  return {
+    sql: `SELECT af.id AS codigo FROM agendamentofinanceiro af WHERE af.id IN (${placeholders})`,
+    params: unicos,
+  };
+}
+
+/** Agendamento mais recente no Nomus com mesmo cliente + vencimento + valor (substitui id antigo). */
+export function buildSucessorAgendamentoNomusQuery(params: {
+  pessoa: string;
+  vencimentoYmd: string;
+  valor: number;
+  empresaNome?: string | null;
+}): { sql: string; params: QueryParams } {
+  const sql = `
+    SELECT
+      af.id AS codigo,
+      DATE(af.dataBaixa) AS dataBaixa,
+      IFNULL(af.baixada, 0) AS baixada,
+      af.saldoBaixar AS saldoBaixar
+    FROM agendamentofinanceiro af
+    INNER JOIN pessoa pes ON pes.id = af.idPessoa
+    LEFT JOIN empresa e ON e.id = af.idEmpresa
+    WHERE pes.nome = ?
+      AND DATE(af.dataVencimento) = ?
+      AND ABS(IFNULL(af.valorBaixar, 0) - ?) < 0.05
+      AND af.discriminador IN ${RECEBER_DISCRIMINADORES}
+      AND ${TIPO_CONTA_UTILIZADO}
+      AND IFNULL(af.cancelada, 0) = 0
+    ORDER BY (e.nome = ?) DESC, af.id DESC
+    LIMIT 1
+  `;
+  return {
+    sql,
+    params: [
+      params.pessoa,
+      params.vencimentoYmd,
+      params.valor,
+      (params.empresaNome ?? '').trim(),
+    ],
   };
 }
 
@@ -988,4 +1127,93 @@ export function buildPessoasLookupQuery(search?: string | null): {
     `,
     params,
   };
+}
+
+function ymdValido(value?: string | null): value is string {
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value.trim()));
+}
+
+function clausulaVencimentoPeriodo(
+  coluna: string,
+  vencimentoDe?: string | null,
+  vencimentoAte?: string | null,
+): { clause: string; params: QueryParams } {
+  const params: QueryParams = [];
+  let clause = '';
+  if (ymdValido(vencimentoDe)) {
+    clause += ` AND DATE(${coluna}) >= ? `;
+    params.push(vencimentoDe.trim());
+  }
+  if (ymdValido(vencimentoAte)) {
+    clause += ` AND DATE(${coluna}) <= ? `;
+    params.push(vencimentoAte.trim());
+  }
+  return { clause, params };
+}
+
+/** Abertos vencidos (Nomus) para o painel — histórico do ERP, com recorte opcional de vencimento. */
+export function buildPainelInadimplenciaAbertosNomusQuery(opts?: {
+  vencimentoDe?: string | null;
+  vencimentoAte?: string | null;
+}): { sql: string; params: QueryParams } {
+  const empresaFilter = buildEmpresaFilter(null);
+  const periodo = clausulaVencimentoPeriodo('af.dataVencimento', opts?.vencimentoDe, opts?.vencimentoAte);
+  const sql = `
+    SELECT
+      af.id AS codigo,
+      af.idEmpresa AS empresaId,
+      e.nome AS empresa,
+      cb.nome AS contaBancaria,
+      fp.nome AS formaPagamento,
+      pes.nome AS pessoa,
+      af.dataVencimento AS dataVencimento,
+      IFNULL(nfse.numero, IFNULL(nfee.numero, IFNULL(nfes.numero, dee.numeroNFS))) AS nfeOrigem,
+      IF(af.discriminador IN ('R', 'CR', 'NCC'), af.saldoBaixar, -(af.saldoBaixar)) AS valorSaldo
+    ${BASE_FROM_CONTAS_DETALHE}
+    WHERE af.discriminador IN ${RECEBER_DISCRIMINADORES}
+      AND ${TIPO_CONTA_UTILIZADO}
+      AND af.saldoBaixar > 0
+      ${EXCLUIR_NF_ORIGEM_CANCELADA}
+      AND ${AGENDAMENTO_PENDENTE}
+      AND af.dataVencimento < CURDATE()
+      ${empresaFilter.clause}
+      ${periodo.clause}
+  `;
+  return { sql, params: [...empresaFilter.params, ...periodo.params] };
+}
+
+/** Baixados pagos após o vencimento (Nomus) — recuperado do painel. */
+export function buildPainelInadimplenciaRecuperadosNomusQuery(opts?: {
+  vencimentoDe?: string | null;
+  vencimentoAte?: string | null;
+}): { sql: string; params: QueryParams } {
+  const empresaFilter = buildEmpresaFilter(null);
+  const periodo = clausulaVencimentoPeriodo('af.dataVencimento', opts?.vencimentoDe, opts?.vencimentoAte);
+  const dataPag = `DATE(${DATA_REFERENCIA_RECEBIMENTO})`;
+  const sql = `
+    SELECT
+      af.id AS codigo,
+      af.idEmpresa AS empresaId,
+      e.nome AS empresa,
+      cb.nome AS contaBancaria,
+      fp.nome AS formaPagamento,
+      pes.nome AS pessoa,
+      DATE(af.dataVencimento) AS dataVencimento,
+      DATE(af.dataBaixa) AS dataBaixa,
+      ${dataPag} AS dataRecebimento,
+      ABS(IFNULL(af.valorBaixado, IFNULL(af.valorBaixar, 0))) AS valor,
+      IFNULL(nfse.numero, IFNULL(nfee.numero, IFNULL(nfes.numero, dee.numeroNFS))) AS nfeOrigem
+    ${BASE_FROM_CONTAS_DETALHE}
+    WHERE af.discriminador IN ${RECEBER_DISCRIMINADORES}
+      AND ${TIPO_CONTA_UTILIZADO}
+      AND ${AGENDAMENTO_BAIXADA}
+      AND IFNULL(af.cancelada, 0) = 0
+      ${EXCLUIR_NF_ORIGEM_CANCELADA}
+      AND af.dataVencimento IS NOT NULL
+      AND ${DATA_REFERENCIA_RECEBIMENTO} IS NOT NULL
+      AND ${dataPag} > DATE(af.dataVencimento)
+      ${empresaFilter.clause}
+      ${periodo.clause}
+  `;
+  return { sql, params: [...empresaFilter.params, ...periodo.params] };
 }

@@ -24,6 +24,8 @@ type Props = {
   sortDescLabel?: string;
   /** Exibe filtros numéricos estilo Excel (somente colunas numéricas). */
   showNumericFilters?: boolean;
+  /** Substitui a lista de valores por data início / data fim. */
+  showDateRangeFilters?: boolean;
   /** Ordenação só é aplicada ao clicar em Ordenar (não ao escolher A/Z). */
   deferSortUntilApply?: boolean;
   applyButtonLabel?: string;
@@ -47,6 +49,7 @@ export default function GradeFiltroExcelPortal({
   sortAscLabel = 'A↧ Classificar de A a Z',
   sortDescLabel = 'Z↧ Classificar de Z a A',
   showNumericFilters = false,
+  showDateRangeFilters = false,
   deferSortUntilApply = false,
   applyButtonLabel = 'OK',
   extraActions,
@@ -150,6 +153,42 @@ export default function GradeFiltroExcelPortal({
         </>
       ) : null}
 
+      {showDateRangeFilters ? (
+        <>
+          <div className="my-2 border-t border-slate-200 dark:border-slate-600" />
+          <p className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Período
+          </p>
+          <label className="mt-1 block space-y-0.5 px-1">
+            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">Data início</span>
+            <input
+              type="date"
+              value={draft.dateFrom ?? ''}
+              onChange={(e) => patchDraft({ dateFrom: e.target.value })}
+              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+            />
+          </label>
+          <label className="mt-1.5 block space-y-0.5 px-1">
+            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">Data fim</span>
+            <input
+              type="date"
+              value={draft.dateTo ?? ''}
+              onChange={(e) => patchDraft({ dateTo: e.target.value })}
+              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+            />
+          </label>
+          <div className="mt-1.5 flex justify-end px-1">
+            <button
+              type="button"
+              onClick={() => patchDraft({ dateFrom: '', dateTo: '' })}
+              className="rounded px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              Limpar datas
+            </button>
+          </div>
+        </>
+      ) : null}
+
       {showNumericFilters && (
         <>
           <div className="my-2 border-t border-slate-200 dark:border-slate-600" />
@@ -213,48 +252,54 @@ export default function GradeFiltroExcelPortal({
         </>
       )}
 
-      <div className="my-2 border-t border-slate-200 dark:border-slate-600" />
-      <input
-        type="text"
-        value={draft.search}
-        onChange={(e) => patchDraft({ search: e.target.value })}
-        placeholder="Pesquisar"
-        className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
-        autoFocus={!numericOp}
-      />
-      <div className="mt-2 max-h-44 overflow-auto rounded border border-slate-200 p-1 dark:border-slate-600">
-        <label className="flex items-center gap-2 px-1 py-1 text-xs font-medium">
+      {!showDateRangeFilters ? (
+        <>
+          <div className="my-2 border-t border-slate-200 dark:border-slate-600" />
           <input
-            type="checkbox"
-            checked={todosVisiveisSelecionados}
-            onChange={(e) => {
-              const checked = e.target.checked;
-              setExcelFilterDrafts((prev) => {
-                const atual = prev[key] ?? { search: '', selected: valores };
-                const set = new Set(atual.selected);
-                for (const v of visiveis) {
-                  if (checked) set.add(v);
-                  else set.delete(v);
-                }
-                return { ...prev, [key]: { ...atual, selected: [...set] } };
-              });
-            }}
+            type="text"
+            value={draft.search}
+            onChange={(e) => patchDraft({ search: e.target.value })}
+            placeholder="Pesquisar"
+            className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+            autoFocus={!numericOp}
           />
-          (Selecionar tudo)
-        </label>
-        {visiveis.map((value) => (
-          <label key={value} className="flex items-center gap-2 px-1 py-0.5 text-xs">
-            <input
-              type="checkbox"
-              checked={draft.selected.includes(value)}
-              onChange={(e) => toggle(value, e.target.checked)}
-            />
-            <span className="truncate" title={value}>
-              {value}
-            </span>
-          </label>
-        ))}
-      </div>
+          <div className="mt-2 max-h-44 overflow-auto rounded border border-slate-200 p-1 dark:border-slate-600">
+            <label className="flex items-center gap-2 px-1 py-1 text-xs font-medium">
+              <input
+                type="checkbox"
+                checked={todosVisiveisSelecionados}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setExcelFilterDrafts((prev) => {
+                    const atual = prev[key] ?? { search: '', selected: valores };
+                    const set = new Set(atual.selected);
+                    for (const v of visiveis) {
+                      if (checked) set.add(v);
+                      else set.delete(v);
+                    }
+                    return { ...prev, [key]: { ...atual, selected: [...set] } };
+                  });
+                }}
+              />
+              (Selecionar tudo)
+            </label>
+            {visiveis.map((value) => (
+              <label key={value} className="flex items-center gap-2 px-1 py-0.5 text-xs">
+                <input
+                  type="checkbox"
+                  checked={draft.selected.includes(value)}
+                  onChange={(e) => toggle(value, e.target.checked)}
+                />
+                <span className="truncate" title={value}>
+                  {value}
+                </span>
+              </label>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="my-2 border-t border-slate-200 dark:border-slate-600" />
+      )}
       <div className="mt-2 flex justify-end gap-2">
         <button
           type="button"

@@ -721,6 +721,13 @@ export type ContatoInadimplenteInput = {
   texto: string;
 };
 
+export type ContatoTarefaInput = ContatoInadimplenteInput & {
+  tipo?: string | null;
+  categoria?: string | null;
+  justificativa?: string | null;
+  meta?: unknown;
+};
+
 export async function fetchCrmRegistroInadimplentes(params?: {
   q?: string;
   page?: number;
@@ -863,3 +870,390 @@ export async function deleteCrmRegistroInadimplenteContato(
     throw new Error(body.error ?? 'Falha ao excluir contato');
   }
 }
+
+export type TarefaInadimplente = {
+  id: number;
+  origem: string;
+  codigoConta: string;
+  clienteNome: string;
+  clienteChave: string;
+  empresaId: number | null;
+  empresaNome: string | null;
+  banco: string | null;
+  tipo: string | null;
+  vencimento: string | null;
+  pagamento: string | null;
+  dataBaixa: string | null;
+  valor: number;
+  diasAtraso: number;
+  nfPd: string | null;
+  descricao: string | null;
+  vendedor: string | null;
+  status: string;
+  responsavelUsuarioId: number | null;
+  responsavelNome: string | null;
+  responsavelLogin: string | null;
+  contatosCount: number;
+  concluidaEm: string | null;
+  lastSeenAt: string;
+  createdAt: string;
+  updatedAt: string;
+  temAcordo?: boolean;
+  acordo?: AcordoAcompanhamentoTarefa | null;
+};
+
+export type AcordoParcelaAcompanhamento = {
+  n: number;
+  tipo: string;
+  data: string;
+  valor: number;
+  forma: string;
+  valorRecebido: number;
+  saldo: number;
+};
+
+export type AcordoAcompanhamentoTarefa = {
+  valorOriginal: number;
+  valorJuros: number;
+  valorNegociado: number;
+  valorRecebido: number;
+  saldo: number;
+  proximaParcela: string | null;
+  parcelas: AcordoParcelaAcompanhamento[];
+  recebimentos: {
+    id: number;
+    data: string;
+    valor: number;
+    criadoPorLogin: string | null;
+    origem?: string | null;
+    codigoConta?: string | null;
+    formaPagamento?: string | null;
+    contaBancaria?: string | null;
+    comentarios?: string | null;
+  }[];
+};
+
+export type SyncTarefasInadimplente = {
+  fontes: number;
+  criadas: number;
+  atualizadas: number;
+  concluidas: number;
+  erros: string[];
+};
+
+export type ContatoTarefaInadimplente = {
+  id: number;
+  tarefaId: number;
+  dataContato: string | null;
+  dataContatoBr: string | null;
+  texto: string;
+  tipo: string;
+  categoria: string | null;
+  justificativa: string | null;
+  meta: unknown;
+  origem: string;
+  criadoPorLogin: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ConfigResponsavelTarefa = {
+  responsavelUsuarioId: number | null;
+  responsavel: UsuarioDestinatarioPendencia | null;
+  usuarios: UsuarioDestinatarioPendencia[];
+  updatedAt: string | null;
+  updatedByLogin: string | null;
+};
+
+export type FatiaPainelInadimplencia = {
+  chave: string;
+  valor: number;
+  qtd: number;
+  qtdNomus?: number;
+  qtdShop9?: number;
+};
+
+export type TituloPainelInadimplencia = {
+  origem: string;
+  codigoConta: string;
+  clienteNome: string;
+  empresaNome: string | null;
+  tipo: string | null;
+  vencimento: string | null;
+  pagamento: string | null;
+  dataBaixa: string | null;
+  valor: number;
+  contatosCount: number;
+  tarefaId: number | null;
+};
+
+export type PontoSerieInadimplencia = {
+  mes: string;
+  valorVencido: number;
+  qtdVencido: number;
+  valorAtraso: number;
+  qtdAtraso: number;
+  valorAberto: number;
+  qtdAberto: number;
+  pctAtraso: number;
+  pctInadimplente: number;
+};
+
+export type ResumoPainelInadimplencia = {
+  porEmpresa: FatiaPainelInadimplencia[];
+  porCondicao: FatiaPainelInadimplencia[];
+  recuperado: {
+    total: FatiaPainelInadimplencia;
+    mesmoMes: FatiaPainelInadimplencia;
+    outrosMeses: FatiaPainelInadimplencia;
+  };
+  serieMensal: PontoSerieInadimplencia[];
+  acumulado: {
+    pctAtraso: number;
+    pctInadimplente: number;
+    valorVencido: number;
+    valorAtraso: number;
+    valorAberto: number;
+  };
+  erros: string[];
+};
+
+export async function fetchCrmInadimplentePainel(params?: {
+  de?: string;
+  ate?: string;
+}): Promise<ResumoPainelInadimplencia> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/inadimplente-painel${buildParams({
+      de: params?.de,
+      ate: params?.ate,
+    })}`,
+  );
+  const body = (await res.json().catch(() => ({}))) as ResumoPainelInadimplencia & { error?: string };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao carregar o painel de inadimplência');
+  }
+  return body;
+}
+
+export async function fetchCrmInadimplentePainelDetalhe(params: {
+  de?: string;
+  ate?: string;
+  recDe?: string;
+  recAte?: string;
+  universo: 'aberto' | 'recuperado' | 'atraso_lote' | 'vencido';
+  classe: 'empresa' | 'condicao' | 'total' | 'mesmo_mes' | 'outros_meses';
+  chave?: string;
+  offset?: number;
+  limit?: number;
+  ordem?: string;
+  dir?: 'asc' | 'desc';
+  completo?: boolean;
+}): Promise<{ data: TituloPainelInadimplencia[]; hasMore: boolean; total: number | null; valorTotal: number | null }> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/inadimplente-painel/detalhe${buildParams({
+      de: params.de,
+      ate: params.ate,
+      recDe: params.recDe,
+      recAte: params.recAte,
+      universo: params.universo,
+      classe: params.classe,
+      chave: params.chave,
+      offset: params.offset ?? 0,
+      limit: params.limit ?? 400,
+      ordem: params.ordem,
+      dir: params.dir,
+      completo: params.completo ? 1 : undefined,
+    })}`,
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    data?: TituloPainelInadimplencia[];
+    hasMore?: boolean;
+    total?: number;
+    valorTotal?: number;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao carregar o detalhe do painel');
+  }
+  return {
+    data: body.data ?? [],
+    hasMore: Boolean(body.hasMore),
+    total: typeof body.total === 'number' && body.total >= 0 ? body.total : null,
+    valorTotal: typeof body.valorTotal === 'number' && body.valorTotal >= 0 ? body.valorTotal : null,
+  };
+}
+
+export async function fetchCrmInadimplenteTarefas(params?: {
+  q?: string;
+  status?: string;
+  sync?: boolean;
+}): Promise<{ data: TarefaInadimplente[]; sync: SyncTarefasInadimplente | null }> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/inadimplente-tarefas${buildParams({
+      q: params?.q,
+      status: params?.status,
+      sync: params?.sync ? '1' : undefined,
+    })}`,
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    data?: TarefaInadimplente[];
+    sync?: SyncTarefasInadimplente | null;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao carregar tarefas de inadimplentes');
+  }
+  return { data: body.data ?? [], sync: body.sync ?? null };
+}
+
+export async function syncCrmInadimplenteTarefas(): Promise<SyncTarefasInadimplente> {
+  const res = await apiFetch('/api/financeiro/crm/inadimplente-tarefas/sync', { method: 'POST' });
+  const body = (await res.json().catch(() => ({}))) as {
+    sync?: SyncTarefasInadimplente;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao sincronizar Nomus/Shop9');
+  }
+  return body.sync ?? { fontes: 0, criadas: 0, atualizadas: 0, concluidas: 0, erros: [] };
+}
+
+export async function fetchCrmInadimplenteTarefaConfig(): Promise<ConfigResponsavelTarefa> {
+  const res = await apiFetch('/api/financeiro/crm/inadimplente-tarefas/config');
+  const body = (await res.json().catch(() => ({}))) as ConfigResponsavelTarefa & { error?: string };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao carregar responsável');
+  }
+  return body;
+}
+
+export async function salvarCrmInadimplenteTarefaConfig(
+  responsavelUsuarioId: number | null,
+): Promise<ConfigResponsavelTarefa> {
+  const res = await apiFetch('/api/financeiro/crm/inadimplente-tarefas/config', {
+    method: 'PUT',
+    body: { responsavelUsuarioId },
+  });
+  const body = (await res.json().catch(() => ({}))) as ConfigResponsavelTarefa & { error?: string };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao salvar responsável');
+  }
+  return body;
+}
+
+export async function updateCrmInadimplenteTarefa(
+  id: number,
+  payload: { status?: string; responsavelUsuarioId?: number | null },
+): Promise<TarefaInadimplente> {
+  const res = await apiFetch(`/api/financeiro/crm/inadimplente-tarefas/${id}`, {
+    method: 'PUT',
+    body: payload,
+  });
+  const body = (await res.json().catch(() => ({}))) as TarefaInadimplente & { error?: string };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao atualizar tarefa');
+  }
+  return body;
+}
+
+export type ClienteContatoErp = {
+  email: string | null;
+  telefone: string | null;
+};
+
+export async function fetchCrmInadimplenteTarefaContatos(
+  tarefaId: number,
+): Promise<{ data: ContatoTarefaInadimplente[]; clienteContato: ClienteContatoErp }> {
+  const res = await apiFetch(`/api/financeiro/crm/inadimplente-tarefas/${tarefaId}/contatos`);
+  const body = (await res.json().catch(() => ({}))) as {
+    data?: ContatoTarefaInadimplente[];
+    clienteContato?: ClienteContatoErp;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao carregar tratativas');
+  }
+  return {
+    data: body.data ?? [],
+    clienteContato: {
+      email: body.clienteContato?.email?.trim() || null,
+      telefone: body.clienteContato?.telefone?.trim() || null,
+    },
+  };
+}
+
+export async function createCrmInadimplenteTarefaContato(
+  tarefaId: number,
+  payload: ContatoTarefaInput,
+): Promise<ContatoTarefaInadimplente> {
+  const res = await apiFetch(`/api/financeiro/crm/inadimplente-tarefas/${tarefaId}/contatos`, {
+    method: 'POST',
+    body: payload,
+  });
+  const body = (await res.json().catch(() => ({}))) as ContatoTarefaInadimplente & { error?: string };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao registrar tratativa');
+  }
+  return body;
+}
+
+export async function updateCrmInadimplenteTarefaContato(
+  tarefaId: number,
+  contatoId: number,
+  payload: ContatoTarefaInput,
+): Promise<ContatoTarefaInadimplente> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/inadimplente-tarefas/${tarefaId}/contatos/${contatoId}`,
+    { method: 'PUT', body: payload },
+  );
+  const body = (await res.json().catch(() => ({}))) as ContatoTarefaInadimplente & { error?: string };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao atualizar tratativa');
+  }
+  return body;
+}
+
+export async function deleteCrmInadimplenteTarefaContato(
+  tarefaId: number,
+  contatoId: number,
+): Promise<void> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/inadimplente-tarefas/${tarefaId}/contatos/${contatoId}`,
+    { method: 'DELETE' },
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? 'Falha ao excluir tratativa');
+  }
+}
+
+export async function createCrmInadimplenteTarefaRecebimento(
+  tarefaId: number,
+  payload: { data: string; valor: number },
+): Promise<TarefaInadimplente> {
+  const res = await apiFetch(`/api/financeiro/crm/inadimplente-tarefas/${tarefaId}/recebimentos`, {
+    method: 'POST',
+    body: payload,
+  });
+  const body = (await res.json().catch(() => ({}))) as TarefaInadimplente & { error?: string };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao registrar recebimento do acordo');
+  }
+  return body;
+}
+
+export async function deleteCrmInadimplenteTarefaRecebimento(
+  tarefaId: number,
+  recebimentoId: number,
+): Promise<TarefaInadimplente> {
+  const res = await apiFetch(
+    `/api/financeiro/crm/inadimplente-tarefas/${tarefaId}/recebimentos/${recebimentoId}`,
+    { method: 'DELETE' },
+  );
+  const body = (await res.json().catch(() => ({}))) as TarefaInadimplente & { error?: string };
+  if (!res.ok) {
+    throw new Error(body.error ?? 'Falha ao excluir recebimento do acordo');
+  }
+  return body;
+}
+

@@ -151,6 +151,22 @@ function KpiIconMeta() {
   )
 }
 
+function KpiMetaNivelSymbol({ nivel }: { nivel: 'bronze' | 'prata' | 'aco' }) {
+  return (
+    <span className={`kpi-meta-nivel-symbol kpi-meta-nivel-symbol--${nivel}`} aria-hidden="true">
+      <svg viewBox="0 0 16 16" width="12" height="12">
+        <circle cx="8" cy="8" r="7" />
+        <circle cx="8" cy="8" r="3.4" fill="none" stroke="rgba(255,255,255,0.72)" strokeWidth="1.35" />
+      </svg>
+    </span>
+  )
+}
+
+function formatMetaNivel(valor: number | null | undefined): string {
+  if (valor == null || !Number.isFinite(valor) || valor <= 0) return '—'
+  return formatNumber(valor)
+}
+
 function MetaLineDot({
   cx,
   cy,
@@ -789,8 +805,29 @@ function PainelProducaoDashboardPage({ variant = 'gestao' }: { variant?: 'gestao
                       <KpiIconMeta />
                     </div>
                     <div className="kpi-label">Meta</div>
-                    <div className="kpi-value">{formatNumber(dashboard.meta)}</div>
-                    <div className="kpi-sub">Referência do período</div>
+                    <div className="kpi-value-row">
+                      <KpiMetaNivelSymbol nivel="aco" />
+                      <div className="kpi-value">{formatNumber(dashboard.meta_aco ?? dashboard.meta)}</div>
+                    </div>
+                    <ul className="kpi-meta-niveis" aria-label="Metas por nível">
+                      <li className="kpi-meta-nivel" title="Meta bronze">
+                        <KpiMetaNivelSymbol nivel="bronze" />
+                        <span className="kpi-meta-nivel-nome">Bronze</span>
+                        <span className="kpi-meta-nivel-valor">{formatMetaNivel(dashboard.meta_bronze)}</span>
+                      </li>
+                      <li className="kpi-meta-nivel" title="Meta prata">
+                        <KpiMetaNivelSymbol nivel="prata" />
+                        <span className="kpi-meta-nivel-nome">Prata</span>
+                        <span className="kpi-meta-nivel-valor">{formatMetaNivel(dashboard.meta_prata)}</span>
+                      </li>
+                      <li className="kpi-meta-nivel kpi-meta-nivel--principal" title="Meta aço (principal)">
+                        <KpiMetaNivelSymbol nivel="aco" />
+                        <span className="kpi-meta-nivel-nome">Aço</span>
+                        <span className="kpi-meta-nivel-valor">
+                          {formatMetaNivel(dashboard.meta_aco ?? dashboard.meta)}
+                        </span>
+                      </li>
+                    </ul>
                   </div>
                   <div className="kpi-accent" aria-hidden="true" />
                 </div>

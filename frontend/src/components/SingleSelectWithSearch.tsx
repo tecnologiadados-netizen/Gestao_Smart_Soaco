@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useId } from 'react';
 import { CLASSE_INPUT_BUSCA_DROPDOWN, criarPropsInputBuscaDropdown } from '../utils/inputBuscaDropdown';
+import { criarMatcherTextoLivre } from '../utils/textoLivreBusca';
 
 export interface OptionItem {
   id: number;
@@ -36,6 +37,8 @@ export interface SingleSelectWithSearchProps {
   dropdownZIndex?: number;
   /** Ocupa 100% da largura do pai (grades/modais). */
   fillContainer?: boolean;
+  /** Abre a lista no fluxo (não sobrepõe). Evita corte em modais com rolagem. */
+  dropdownInFlow?: boolean;
 }
 
 const SEARCH_DEBOUNCE_MS = 350;
@@ -61,6 +64,7 @@ export default function SingleSelectWithSearch({
   listMaxHeight = '180px',
   dropdownZIndex = 200,
   fillContainer = false,
+  dropdownInFlow = false,
 }: SingleSelectWithSearchProps) {
   const buscaServidor = Boolean(onSearchAsync ?? onSearchChange);
   const minCharsBusca = minSearchChars ?? (buscaServidor ? 2 : 0);
@@ -91,12 +95,8 @@ export default function SingleSelectWithSearch({
     }
     if (onSearchChange) return options;
     if (!search.trim()) return options;
-    const q = search.trim().toLowerCase();
-    return options.filter(
-      (o) =>
-        (o.nome ?? '').toLowerCase().includes(q) ||
-        (o.descricao ?? '').toLowerCase().includes(q)
-    );
+    const match = criarMatcherTextoLivre(search);
+    return options.filter((o) => match(o.nome ?? '') || match(o.descricao ?? ''));
   }, [options, search, onSearchChange, onSearchAsync, asyncOptions, value]);
 
   const listaCarregando = onSearchAsync ? asyncLoading : searchLoading;
@@ -205,7 +205,11 @@ export default function SingleSelectWithSearch({
       </button>
       {open && (
         <div
-          className="absolute left-0 top-full mt-1 flex w-full min-w-0 flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-700"
+          className={
+            dropdownInFlow
+              ? 'relative mt-1 flex w-full min-w-0 flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-700'
+              : 'absolute left-0 top-full mt-1 flex w-full min-w-0 flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-700'
+          }
           style={{ zIndex: dropdownZIndex, maxHeight: listMaxPx + 52 }}
           role="listbox"
         >

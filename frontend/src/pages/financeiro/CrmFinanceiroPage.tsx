@@ -44,7 +44,7 @@ import {
   PERMISSOES_EDITAR_CRM_PENDENCIAS_DESTINATARIOS,
 } from "../../utils/financeiroPermissoes";
 import PendenciasCreditoPanel from "./crm/components/PendenciasCreditoPanel";
-import RegistroInadimplentesPanel from "./crm/components/RegistroInadimplentesPanel";
+import InadimplentesHub from "./crm/components/InadimplentesHub";
 import { useSearchParams } from "react-router-dom";
 
 function chaveSelecao(s: SelecaoClienteCrm | null): string | null {
@@ -913,7 +913,7 @@ export default function CrmFinanceiroPage() {
 
         {guiaPainel === "inadimplentes" ? (
           podeVerPendencias ? (
-            <RegistroInadimplentesPanel />
+            <InadimplentesHub podeEditarResponsavel={podeEditarDestinatariosPendencias} />
           ) : (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-800">
               Você não tem permissão para a guia Registro de Inadimplentes.
@@ -984,12 +984,11 @@ export default function CrmFinanceiroPage() {
           subtitulo={labelSelecao(selecao) ?? undefined}
         />
 
-        {gerandoRelatorio && (
-          <PdfGeneratingOverlay
-            mensagem="Gerando relatório em PDF..."
-            subtitulo={labelSelecao(selecao) ?? undefined}
-          />
-        )}
+        <PdfGeneratingOverlay
+          show={gerandoRelatorio}
+          mensagem="Gerando relatório em PDF…"
+          subtitulo={labelSelecao(selecao) ?? undefined}
+        />
 
         {erro && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-800">

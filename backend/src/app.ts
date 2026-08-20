@@ -61,11 +61,17 @@ app.use(
 fs.mkdirSync(uploadsRoot, { recursive: true });
 app.use('/uploads', express.static(uploadsRoot, { maxAge: 0 }));
 
-// Só ative no .env após HTTPS na 443 estar OK (senão redireciona para um site que ainda não responde em TLS).
+// Só ative no .env se o Node receber HTTP direto na borda (sem Caddy/nginx TLS).
+// Atrás do Caddy: deixe FORCE_HTTPS_REDIRECT=false e TRUST_PROXY=true — senão loop 301.
 if (process.env.FORCE_HTTPS_REDIRECT === 'true') {
   app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.path.startsWith('/.well-known')) return next();
-    if (req.secure) return next();
+    if (req.path === '/health') return next();
+    const forwarded = String(req.headers['x-forwarded-proto'] || '')
+      .split(',')[0]
+      ?.trim()
+      .toLowerCase();
+    if (req.secure || forwarded === 'https') return next();
     const host = (req.headers.host || '').split(':')[0];
     if (!host) return next();
     return res.redirect(301, `https://${host}${req.originalUrl || '/'}`);
@@ -217,6 +223,17 @@ if (fs.existsSync(spaIndex)) {
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
       res.status(404).json({ error: 'Rota da API não encontrada.' });
+      return;
+    }
+    // JS/CSS com hash ausente não podem cair no index.html — o browser tenta
+    // executar HTML como módulo e a tela fica em branco.
+    if (
+      req.path.startsWith('/assets/') ||
+      req.path.startsWith('/src/') ||
+      req.path.startsWith('/@') ||
+      /\.[a-z0-9]+$/i.test(req.path)
+    ) {
+      res.status(404).type('text/plain').send('Arquivo estático não encontrado.');
       return;
     }
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');

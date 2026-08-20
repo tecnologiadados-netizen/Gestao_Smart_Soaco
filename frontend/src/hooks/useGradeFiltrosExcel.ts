@@ -9,6 +9,13 @@ import {
   type NumericFilterOp,
 } from '../utils/gradeFiltroNumerico';
 import {
+  cellToYmd,
+  encodeDateRangeFilter,
+  isDateRangeFilter,
+  matchesDateRangeFilter,
+  parseDateRangeFilter,
+} from '../utils/gradeFiltroData';
+import {
   clearGradeFiltrosPedidos,
   loadGradeFiltrosPedidos,
   saveGradeFiltrosPedidos,
@@ -22,6 +29,8 @@ export type ExcelFilterDraft = {
   numericOp?: NumericFilterOp | null;
   numericV1?: string;
   numericV2?: string;
+  dateFrom?: string;
+  dateTo?: string;
   /** Direção escolhida no menu; aplicada ao confirmar (Ordenar). */
   sortDir?: SortDir | null;
 };
@@ -38,7 +47,8 @@ export function rowMatchesColumnFilters<T>(
   getCellText: (row: T, columnId: string) => string,
   excludeKey?: string,
   getNumericValue?: (row: T, columnId: string) => number,
-  getCellFilterValues?: (row: T, columnId: string) => string[] | null
+  getCellFilterValues?: (row: T, columnId: string) => string[] | null,
+  getDateValue?: (row: T, columnId: string) => string | null,
 ): boolean {
   for (const [key, value] of Object.entries(filters)) {
     if (!value?.trim() || key === excludeKey) continue;
@@ -48,15 +58,18 @@ export function rowMatchesColumnFilters<T>(
       if (!matchesNumericColumnFilter(n, value)) return false;
       continue;
     }
+    if (isDateRangeFilter(value)) {
+      const ymd = getDateValue?.(row, key) ?? cellToYmd(getCellText(row, key));
+      if (!matchesDateRangeFilter(ymd, value)) return false;
+      continue;
+    }
     const selected = value.split(FILTER_SEP).filter(Boolean);
     const multi = getCellFilterValues?.(row, key);
     if (multi) {
-      // Checklist Excel: correspondência exata (nunca "contém").
       if (!multi.some((t) => selected.includes(t))) return false;
       continue;
     }
     const cellText = getCellText(row, key);
-    // Um ou vários valores do checklist — sempre igualdade exata.
     if (!selected.includes(cellText)) return false;
   }
   return true;
@@ -72,27 +85,31 @@ export type UseGradeFiltrosExcelOptions<T> = {
   rows: T[];
   columnIds: string[];
   getCellText: (row: T, columnId: string) => string;
-  /** Valores múltiplos por célula (ex.: badges na coluna Status). Null = texto único via getCellText. */
   getCellFilterValues?: (row: T, columnId: string) => string[] | null;
   valueForSort?: (row: T, columnId: string) => string | number;
   defaultSortLevels?: SortLevel[];
-  /** Substitui comparação padrão (ex.: vazios sempre no final). */
   compareRows?: (
     a: T,
     b: T,
     levels: SortLevel[],
     getSortValue: (row: T, columnId: string) => string | number
   ) => number;
-  /**
-   * Se true, restaura/persiste filtros Excel e sortState da grade em sessionStorage
-   * (escopo: sessão da aba; 1º acesso limpo).
-   */
   persistGradeFilters?: boolean;
+  defaultColumnFilters?: Record<string, string>;
+  dateColumnIds?: string[];
 };
 
 export function sortLevelsIguais(a: SortLevel[], b: SortLevel[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((l, i) => l.id === b[i]?.id && l.dir === b[i]?.dir);
+}
+
+function columnFiltersIguais(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    if ((a[k] ?? '').trim() !== (b[k] ?? '').trim()) return false;
+  }
+  return true;
 }
 
 export function compareRowsBySortLevels<T>(
@@ -124,9 +141,11 @@ export function useGradeFiltrosExcel<T>({
   defaultSortLevels = [],
   compareRows,
   persistGradeFilters = false,
+  defaultColumnFilters = {},
+  dateColumnIds = [],
 }: UseGradeFiltrosExcelOptions<T>) {
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>(() =>
-    persistGradeFilters ? loadGradeFiltrosPedidos().columnFilters : {}
+    persistGradeFilters ? loadGradeFiltrosPedidos().columnFilters : { ...defaultColumnFilters }
   );
   const [excelFilterDrafts, setExcelFilterDrafts] = useState<Record<string, ExcelFilterDraft>>({});
   const [colunaFiltroAberta, setColunaFiltroAberta] = useState<string | null>(null);
@@ -145,9 +164,25 @@ export function useGradeFiltrosExcel<T>({
   const valoresUnicosRef = useRef<Record<string, string[]>>({});
   const columnFiltersRef = useRef(columnFilters);
   columnFiltersRef.current = columnFilters;
+  const dateColumnIdsRef = useRef(dateColumnIds);
+  dateColumnIdsRef.current = dateColumnIds;
 
   const getSortValue = useCallback(
     (row: T, columnId: string) => (valueForSort ? valueForSort(row, columnId) : getCellText(row, columnId)),
+    [getCellText, valueForSort]
+  );
+
+  const getDateValueForFilter = useCallback(
+    (row: T, columnId: string): string | null => {
+      if (valueForSort) {
+        const v = valueForSort(row, columnId);
+        if (typeof v === 'string') {
+          const ymd = cellToYmd(v);
+          if (ymd) return ymd;
+        }
+      }
+      return cellToYmd(getCellText(row, columnId));
+    },
     [getCellText, valueForSort]
   );
 
@@ -156,7 +191,17 @@ export function useGradeFiltrosExcel<T>({
     for (const colId of columnIds) {
       const values = new Set<string>();
       for (const row of rows) {
-        if (!rowMatchesColumnFilters(row, columnFilters, getCellText, colId, undefined, getCellFilterValues))
+        if (
+          !rowMatchesColumnFilters(
+            row,
+            columnFilters,
+            getCellText,
+            colId,
+            undefined,
+            getCellFilterValues,
+            getDateValueForFilter,
+          )
+        )
           continue;
         const multi = getCellFilterValues?.(row, colId);
         if (multi) {
@@ -168,7 +213,7 @@ export function useGradeFiltrosExcel<T>({
       out[colId] = [...values].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' }));
     }
     return out;
-  }, [rows, columnIds, getCellText, getCellFilterValues, columnFilters]);
+  }, [rows, columnIds, getCellText, getCellFilterValues, columnFilters, getDateValueForFilter]);
 
   valoresUnicosRef.current = valoresUnicosPorColuna;
 
@@ -180,6 +225,18 @@ export function useGradeFiltrosExcel<T>({
       return next;
     });
   }, []);
+
+  const aplicarIntervaloData = useCallback(
+    (key: string, draft: ExcelFilterDraft | undefined): boolean => {
+      if (!dateColumnIdsRef.current.includes(key)) return false;
+      const from = (draft?.dateFrom ?? '').trim();
+      const to = (draft?.dateTo ?? '').trim();
+      if (!from && !to) setFiltroColuna(key, '');
+      else setFiltroColuna(key, encodeDateRangeFilter(from, to));
+      return true;
+    },
+    [setFiltroColuna]
+  );
 
   const abrirFiltroExcel = useCallback((key: string, e: MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -194,6 +251,8 @@ export function useGradeFiltrosExcel<T>({
       let numericOp: NumericFilterOp | null = null;
       let numericV1 = '';
       let numericV2 = '';
+      let dateFrom = '';
+      let dateTo = '';
       if (filtroAtual === FILTER_NONE) {
         selected = [];
       } else if (filtroAtual && isNumericColumnFilter(filtroAtual)) {
@@ -204,6 +263,11 @@ export function useGradeFiltrosExcel<T>({
           numericV1 = String(spec.v1);
           numericV2 = spec.v2 != null ? String(spec.v2) : '';
         }
+      } else if (filtroAtual && isDateRangeFilter(filtroAtual)) {
+        selected = valores;
+        const spec = parseDateRangeFilter(filtroAtual);
+        dateFrom = spec?.from ?? '';
+        dateTo = spec?.to ?? '';
       } else if (filtroAtual) {
         selected = filtroAtual.split(FILTER_SEP).filter(Boolean);
       } else {
@@ -213,7 +277,7 @@ export function useGradeFiltrosExcel<T>({
         sortState?.key === key ? sortState.direction : null;
       setExcelFilterDrafts((drafts) => ({
         ...drafts,
-        [key]: { search: '', selected, numericOp, numericV1, numericV2, sortDir },
+        [key]: { search: '', selected, numericOp, numericV1, numericV2, dateFrom, dateTo, sortDir },
       }));
       setFiltroAbertoRect({ top: rect.bottom + 4, left: rect.left, width: 288 });
       return key;
@@ -229,6 +293,10 @@ export function useGradeFiltrosExcel<T>({
     (key: string) => {
       const draft = excelFilterDraftsRef.current[key];
       const valores = valoresUnicosRef.current[key] ?? [];
+      if (aplicarIntervaloData(key, draft)) {
+        fecharFiltroExcel();
+        return;
+      }
       if (draft?.numericOp && draft.numericV1?.trim()) {
         const n1 = parseNumeroFiltroInput(draft.numericV1);
         if (n1 != null) {
@@ -255,7 +323,7 @@ export function useGradeFiltrosExcel<T>({
       }
       fecharFiltroExcel();
     },
-    [setFiltroColuna, fecharFiltroExcel]
+    [setFiltroColuna, fecharFiltroExcel, aplicarIntervaloData]
   );
 
   useEffect(() => {
@@ -301,12 +369,12 @@ export function useGradeFiltrosExcel<T>({
         getCellText,
         undefined,
         getNumericValueForFilter,
-        getCellFilterValues
+        getCellFilterValues,
+        getDateValueForFilter,
       )
     );
-  }, [rows, deferredColumnFilters, getCellText, getCellFilterValues, getNumericValueForFilter]);
+  }, [rows, deferredColumnFilters, getCellText, getCellFilterValues, getNumericValueForFilter, getDateValueForFilter]);
 
-  /** Ordenação rápida pelo menu da coluna (sortState) tem prioridade sobre classificação personalizada (sortLevels). */
   const levelsToUse = useMemo((): SortLevel[] => {
     if (sortState) return [{ id: sortState.key, dir: sortState.direction }];
     if (sortLevels.length > 0) return sortLevels;
@@ -320,8 +388,8 @@ export function useGradeFiltrosExcel<T>({
   }, [rowsFiltradas, levelsToUse, getSortValue, compareRows]);
 
   const temFiltrosColuna = useMemo(
-    () => Object.values(columnFilters).some((v) => v?.trim()),
-    [columnFilters]
+    () => !columnFiltersIguais(columnFilters, defaultColumnFilters),
+    [columnFilters, defaultColumnFilters]
   );
 
   const sortDiferenteDoPadrao =
@@ -335,21 +403,24 @@ export function useGradeFiltrosExcel<T>({
   }, [persistGradeFilters, columnFilters, sortState]);
 
   const limparFiltrosGrade = useCallback(() => {
-    setColumnFilters({});
+    setColumnFilters({ ...defaultColumnFilters });
     setExcelFilterDrafts({});
     setSortState(null);
     setSortLevels([...defaultSortLevels]);
     fecharFiltroExcel();
     if (persistGradeFilters) clearGradeFiltrosPedidos();
-  }, [fecharFiltroExcel, defaultSortLevels, persistGradeFilters]);
+  }, [fecharFiltroExcel, defaultSortLevels, persistGradeFilters, defaultColumnFilters]);
 
-  /** Confirma ordenação e/ou filtro da coluna (botão OK/Ordenar), sem reaplicar ao editar linhas. */
   const confirmarMenuExcelColuna = useCallback(
     (key: string) => {
       const draft = excelFilterDraftsRef.current[key];
       if (draft?.sortDir) {
         setSortState({ key, direction: draft.sortDir });
         setSortLevels([]);
+      }
+      if (aplicarIntervaloData(key, draft)) {
+        fecharFiltroExcel();
+        return;
       }
       const valores = valoresUnicosRef.current[key] ?? [];
       if (draft?.numericOp && draft.numericV1?.trim()) {
@@ -378,7 +449,7 @@ export function useGradeFiltrosExcel<T>({
       }
       fecharFiltroExcel();
     },
-    [setFiltroColuna, fecharFiltroExcel]
+    [setFiltroColuna, fecharFiltroExcel, aplicarIntervaloData]
   );
 
   const clearColumnFilter = useCallback((key: string) => {

@@ -35,10 +35,7 @@ export function isVencimentoDiaNaoUtil(
 }
 
 /** Próximo dia útil após o vencimento quando este cai em sábado, domingo ou feriado. */
-export function getPrazoEfetivoPagamento(
-  dataVencimento: string,
-  dataPagamento?: string | null,
-): Date | null {
+export function getPrimeiroDiaUtilDoVencimento(dataVencimento: string): Date | null {
   const vencimento = parseLocalDate(dataVencimento);
   if (!vencimento) return null;
 
@@ -50,6 +47,19 @@ export function getPrazoEfetivoPagamento(
   while (isVencimentoDiaNaoUtil(toIsoDate(prazo))) {
     prazo = addDays(prazo, 1);
   }
+  return prazo;
+}
+
+/** Próximo dia útil após o vencimento quando este cai em sábado, domingo ou feriado. */
+export function getPrazoEfetivoPagamento(
+  dataVencimento: string,
+  dataPagamento?: string | null,
+): Date | null {
+  const vencimento = parseLocalDate(dataVencimento);
+  if (!vencimento) return null;
+
+  let prazo = getPrimeiroDiaUtilDoVencimento(dataVencimento);
+  if (!prazo) return null;
 
   const pagamento = dataPagamento ? parseLocalDate(dataPagamento) : null;
   if (pagamento && pagamento >= vencimento) {

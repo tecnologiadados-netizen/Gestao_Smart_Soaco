@@ -101,6 +101,23 @@ import {
   putCrmRegistroInadimplente,
   putCrmRegistroInadimplenteContato,
 } from '../controllers/crmRegistroInadimplentesController.js';
+import {
+  deleteCrmInadimplenteTarefaContato,
+  deleteCrmInadimplenteTarefaRecebimento,
+  getCrmInadimplenteTarefaConfig,
+  getCrmInadimplenteTarefaContatos,
+  getCrmInadimplenteTarefas,
+  postCrmInadimplenteTarefaContato,
+  postCrmInadimplenteTarefaRecebimento,
+  postCrmInadimplenteTarefasSync,
+  putCrmInadimplenteTarefa,
+  putCrmInadimplenteTarefaConfig,
+  putCrmInadimplenteTarefaContato,
+} from '../controllers/crmInadimplenteTarefasController.js';
+import {
+  getCrmInadimplentePainel,
+  getCrmInadimplentePainelDetalhe,
+} from '../controllers/crmInadimplentePainelController.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -217,6 +234,48 @@ router.post(
   '/crm/pendencias-credito/:id/confirmar-liberacao',
   verFinanceiroCrmPendencias,
   postCrmPendenciaConfirmarLiberacao
+);
+
+router.get('/crm/inadimplente-painel', verFinanceiroCrmPendencias, getCrmInadimplentePainel);
+router.get('/crm/inadimplente-painel/detalhe', verFinanceiroCrmPendencias, getCrmInadimplentePainelDetalhe);
+router.get('/crm/inadimplente-tarefas', verFinanceiroCrmPendencias, getCrmInadimplenteTarefas);
+router.post('/crm/inadimplente-tarefas/sync', verFinanceiroCrmPendencias, postCrmInadimplenteTarefasSync);
+router.get('/crm/inadimplente-tarefas/config', verFinanceiroCrmPendencias, getCrmInadimplenteTarefaConfig);
+router.put(
+  '/crm/inadimplente-tarefas/config',
+  editarCrmPendenciasDestinatarios,
+  putCrmInadimplenteTarefaConfig
+);
+router.put('/crm/inadimplente-tarefas/:id', verFinanceiroCrmPendencias, putCrmInadimplenteTarefa);
+router.get(
+  '/crm/inadimplente-tarefas/:id/contatos',
+  verFinanceiroCrmPendencias,
+  getCrmInadimplenteTarefaContatos
+);
+router.post(
+  '/crm/inadimplente-tarefas/:id/contatos',
+  verFinanceiroCrmPendencias,
+  postCrmInadimplenteTarefaContato
+);
+router.put(
+  '/crm/inadimplente-tarefas/:id/contatos/:contatoId',
+  verFinanceiroCrmPendencias,
+  putCrmInadimplenteTarefaContato
+);
+router.delete(
+  '/crm/inadimplente-tarefas/:id/contatos/:contatoId',
+  verFinanceiroCrmPendencias,
+  deleteCrmInadimplenteTarefaContato
+);
+router.post(
+  '/crm/inadimplente-tarefas/:id/recebimentos',
+  verFinanceiroCrmPendencias,
+  postCrmInadimplenteTarefaRecebimento
+);
+router.delete(
+  '/crm/inadimplente-tarefas/:id/recebimentos/:recebimentoId',
+  verFinanceiroCrmPendencias,
+  deleteCrmInadimplenteTarefaRecebimento
 );
 
 router.get('/crm/registro-inadimplentes', verFinanceiroCrmPendencias, getCrmRegistroInadimplentes);

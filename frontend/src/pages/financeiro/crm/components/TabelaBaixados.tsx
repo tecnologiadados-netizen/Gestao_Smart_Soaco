@@ -13,6 +13,7 @@ import { useColumnResize } from "../hooks/useColumnResize";
 import { useMultiSort } from "../hooks/useMultiSort";
 import type { Recebimento } from "../lib/types";
 import CabecalhoSecaoCrm from "./CabecalhoSecaoCrm";
+import { CelulaDataVencimento } from "./CelulaDataVencimento";
 
 const COLUMN_IDS = [
   "codigo",
@@ -275,7 +276,9 @@ function BaixadoRow({
         )}
       </td>
       <td className={`${td} cell-nowrap`}>{formatDate(row.dataBaixa)}</td>
-      <td className={`${td} cell-nowrap`}>{formatDate(row.dataRecebimento)}</td>
+      <td className={`${td} cell-wrap`}>
+        <CelulaDataVencimento value={row.dataRecebimento} />
+      </td>
       <td className={`${td} cell-wrap`}>{row.formaPagamento ?? "—"}</td>
       <td className={`${td} cell-wrap`}>{row.contaBancaria ?? "—"}</td>
       <td className={`${td} cell-wrap`}>{row.pessoa ?? "—"}</td>

@@ -121,6 +121,19 @@ export function isRecebimentoNoPrazoEfetivo(recebimento: Recebimento): boolean {
   return totalDias != null && totalDias >= 0;
 }
 
+/** Pagamento depois do prazo efetivo (venceu em dia útil, ou após o 1º dia útil se sáb/dom/feriado). */
+export function isPagamentoEfetivamenteAtrasado(
+  dataVencimento: string | null | undefined,
+  dataPagamento: string | null | undefined,
+): boolean {
+  if (!dataVencimento || !dataPagamento) return false;
+  const pagamento = parseLocalDate(dataPagamento);
+  if (!pagamento) return false;
+  const prazo = getPrazoEfetivoPagamento(dataVencimento, dataPagamento);
+  if (!prazo) return false;
+  return diffDays(prazo, pagamento) < 0;
+}
+
 /** Atraso bruto no banco, mas desconsiderado por vencimento em dia não útil. */
 export function isRecebimentoDesconsideradoPorDiaNaoUtil(
   recebimento: Recebimento,

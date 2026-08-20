@@ -237,7 +237,7 @@ function calcResumo(linhas: CarteiraFinanceiraLinha[]): CarteiraFinanceiraResumo
 
   for (const l of linhas) {
     saldoAReceber += l['Saldo a Receber'];
-    saldoAFaturar += l['Valor Pendente'];
+    saldoAFaturar += l['Saldo a Faturar Real'];
     saldoRomaneado += l['Valor Romaneado'];
     const pd = l.PD ?? String(l.id);
     pds.add(pd);

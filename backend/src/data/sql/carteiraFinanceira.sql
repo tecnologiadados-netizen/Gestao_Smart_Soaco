@@ -78,9 +78,17 @@ SELECT
 		* (
 			CASE
 				WHEN de.id IS NULL THEN
-					((ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)) - IFNULL(trm.totalRomaneadoItem, 0)
+					GREATEST(0, (
+						GREATEST(0,
+							(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+							- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+						)
+					) - IFNULL(trm.totalRomaneadoItem, 0))
 				WHEN IFNULL(trm.totalRomaneadoItem, 0) > 0 THEN
-					((ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0))
+					GREATEST(0,
+						(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+						- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+					)
 					* (IFNULL(prm.qtdeVinculada, 0) / trm.totalRomaneadoItem)
 				ELSE 0
 			END
@@ -93,10 +101,29 @@ SELECT
 	SUM(IFNULL(nfef.valorTotalComDesconto, 0) + IFNULL(t.valorIPI, 0)) AS 'Valor Faturado Entrega Futura + IPI',
 	SUM(CASE WHEN de.observacoes IS NULL 
         THEN (CASE WHEN de.codigo IS NULL 
-                   THEN ((ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0))
-                   ELSE IFNULL(prm.qtdeVinculada, 0) END)
+                   THEN GREATEST(0,
+						(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+						- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+					)
+                   WHEN IFNULL(trm.totalRomaneadoItem, 0) > 0 THEN
+					GREATEST(0,
+						(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+						- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+					) * (IFNULL(prm.qtdeVinculada, 0) / trm.totalRomaneadoItem)
+                   ELSE 0 END)
              * ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI / 100, 0), 2) + IFNULL(ip.valorTotalComDesconto, 0)) / ip.qtde)
-        ELSE ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI / 100, 0), 2) + IFNULL(ip.valorTotalComDesconto, 0)) / ip.qtde) * IFNULL(prm.qtdeVinculada, 0)
+        ELSE ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI / 100, 0), 2) + IFNULL(ip.valorTotalComDesconto, 0)) / ip.qtde)
+             * CASE
+				WHEN IFNULL(trm.totalRomaneadoItem, 0) > 0 THEN
+					GREATEST(0,
+						(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+						- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+					) * (IFNULL(prm.qtdeVinculada, 0) / trm.totalRomaneadoItem)
+				ELSE GREATEST(0,
+					(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+					- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+				)
+			END
     END) AS 'Saldo a Faturar Real',
 	case
 		when 
@@ -106,28 +133,85 @@ SELECT
 		
         	SUM(CASE WHEN de.observacoes IS NULL 
         THEN (CASE WHEN de.codigo IS NULL 
-                   THEN ((ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0))
-                   ELSE IFNULL(prm.qtdeVinculada, 0) END)
+                   THEN GREATEST(0,
+						(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+						- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+					)
+                   WHEN IFNULL(trm.totalRomaneadoItem, 0) > 0 THEN
+					GREATEST(0,
+						(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+						- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+					) * (IFNULL(prm.qtdeVinculada, 0) / trm.totalRomaneadoItem)
+                   ELSE 0 END)
              * ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI / 100, 0), 2) + IFNULL(ip.valorTotalComDesconto, 0)) / ip.qtde)
-        ELSE ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI / 100, 0), 2) + IFNULL(ip.valorTotalComDesconto, 0)) / ip.qtde) * IFNULL(prm.qtdeVinculada, 0)
+        ELSE ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI / 100, 0), 2) + IFNULL(ip.valorTotalComDesconto, 0)) / ip.qtde)
+             * CASE
+				WHEN IFNULL(trm.totalRomaneadoItem, 0) > 0 THEN
+					GREATEST(0,
+						(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+						- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+					) * (IFNULL(prm.qtdeVinculada, 0) / trm.totalRomaneadoItem)
+				ELSE GREATEST(0,
+					(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+					- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+				)
+			END
     END)
         
 		else
 		
 			SUM(CASE WHEN de.observacoes IS NULL 
         THEN (CASE WHEN de.codigo IS NULL 
-                   THEN ((ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0))
-                   ELSE IFNULL(prm.qtdeVinculada, 0) END)
+                   THEN GREATEST(0,
+						(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+						- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+					)
+                   WHEN IFNULL(trm.totalRomaneadoItem, 0) > 0 THEN
+					GREATEST(0,
+						(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+						- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+					) * (IFNULL(prm.qtdeVinculada, 0) / trm.totalRomaneadoItem)
+                   ELSE 0 END)
              * ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI / 100, 0), 2) + IFNULL(ip.valorTotalComDesconto, 0)) / ip.qtde)
-        ELSE ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI / 100, 0), 2) + IFNULL(ip.valorTotalComDesconto, 0)) / ip.qtde) * IFNULL(prm.qtdeVinculada, 0)
+        ELSE ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI / 100, 0), 2) + IFNULL(ip.valorTotalComDesconto, 0)) / ip.qtde)
+             * CASE
+				WHEN IFNULL(trm.totalRomaneadoItem, 0) > 0 THEN
+					GREATEST(0,
+						(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+						- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+					) * (IFNULL(prm.qtdeVinculada, 0) / trm.totalRomaneadoItem)
+				ELSE GREATEST(0,
+					(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+					- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+				)
+			END
     END) -
 	
              ((adt.valorAdiantamento / MAX(totped.valorTotalPedido)) * SUM(CASE WHEN de.observacoes IS NULL 
         THEN (CASE WHEN de.codigo IS NULL 
-                   THEN ((ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0))
-                   ELSE IFNULL(prm.qtdeVinculada, 0) END)
+                   THEN GREATEST(0,
+						(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+						- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+					)
+                   WHEN IFNULL(trm.totalRomaneadoItem, 0) > 0 THEN
+					GREATEST(0,
+						(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+						- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+					) * (IFNULL(prm.qtdeVinculada, 0) / trm.totalRomaneadoItem)
+                   ELSE 0 END)
              * ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI / 100, 0), 2) + IFNULL(ip.valorTotalComDesconto, 0)) / ip.qtde)
-        ELSE ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI / 100, 0), 2) + IFNULL(ip.valorTotalComDesconto, 0)) / ip.qtde) * IFNULL(prm.qtdeVinculada, 0)
+        ELSE ((ROUND(ip.valorTotalComDesconto * IFNULL(t.aliquotaIPI / 100, 0), 2) + IFNULL(ip.valorTotalComDesconto, 0)) / ip.qtde)
+             * CASE
+				WHEN IFNULL(trm.totalRomaneadoItem, 0) > 0 THEN
+					GREATEST(0,
+						(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+						- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+					) * (IFNULL(prm.qtdeVinculada, 0) / trm.totalRomaneadoItem)
+				ELSE GREATEST(0,
+					(ip.qtde - ip.qtdeAtendida) + COALESCE(devol.qtdDevolvida, 0)
+					- GREATEST(0, COALESCE(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+				)
+			END
     END))
 	end as 'Saldo a Receber',
 	MAX(ef_base.datasBaseEF) AS 'Data base entrega futura',
@@ -347,13 +431,14 @@ LEFT JOIN formapagamento fp ON
 LEFT JOIN (
 	SELECT
 		ideipv.idItemPedidoVenda,
-		SUM(IFNULL(ide.valorTotalComDesconto, 0)) AS valorTotalComDesconto
+		SUM(IFNULL(ide.valorTotalComDesconto, 0)) AS valorTotalComDesconto,
+		SUM(IFNULL(ide.qtde, 0)) AS qtdFaturadaEF
 	FROM
 		itemdocumentoestoque_itempedidovenda ideipv
 	LEFT JOIN itemdocumentoestoque ide ON
 		ide.id = ideipv.idItemDocumentoEstoque
 	LEFT JOIN documentoestoque de_nf ON
-		de_nf.id = ide.idDocumentoSaida
+		de_nf.id = COALESCE(ide.idDocumentoSaida, ide.idDocumentoEstoque)
 	LEFT JOIN nfe nfe_nf ON
 		nfe_nf.idDocumentoEstoque = de_nf.id
 	WHERE
@@ -372,7 +457,7 @@ LEFT JOIN (
 	LEFT JOIN itemdocumentoestoque ide ON
 		ide.id = ideipv.idItemDocumentoEstoque
 	LEFT JOIN documentoestoque de_nf ON
-		de_nf.id = ide.idDocumentoSaida
+		de_nf.id = COALESCE(ide.idDocumentoSaida, ide.idDocumentoEstoque)
 	LEFT JOIN nfe nfe_nf ON
 		nfe_nf.idDocumentoEstoque = de_nf.id
 	WHERE
@@ -438,7 +523,9 @@ LEFT JOIN (
 	LEFT JOIN tipomovimentacao tm ON
 		ide.idTipoMovimentacao = tm.id
 	WHERE
-		tm.id IN (52, 55)
+		-- 52 = devolução de venda (reabre saldo a faturar).
+		-- 55 = reabertura de PD com NF antecipada: a NF já faturou; não soma de novo.
+		tm.id = 52
 			AND ide.idItemOrigemDevolucao IS NOT NULL
 			AND ip.status IN (2, 3)
 		GROUP BY
