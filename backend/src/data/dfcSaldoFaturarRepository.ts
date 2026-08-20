@@ -80,13 +80,19 @@ select
                 round(ip.valorTotalComDesconto * ifnull(t.aliquotaIPI / 100, 0), 2)
                 + ifnull(ip.valorTotalComDesconto, 0)
             ) / ip.qtde
-        ) * ((ip.qtde - ip.qtdeAtendida) + coalesce(devol.qtdDevolvida, 0))
+        ) * greatest(0,
+            (ip.qtde - ip.qtdeAtendida) + coalesce(devol.qtdDevolvida, 0)
+            - greatest(0, coalesce(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+        )
     ) as 'Valor Pendente',
     emp.opcao as 'Venda por qual empresa?',
     vr.nome as 'Vendedor/Representante',
     AVG(adt.valorAdiantamento) as 'Valor Adiantamento',
     sum(
-        ((ip.qtde - ip.qtdeAtendida) + coalesce(devol.qtdDevolvida, 0))
+        greatest(0,
+            (ip.qtde - ip.qtdeAtendida) + coalesce(devol.qtdDevolvida, 0)
+            - greatest(0, coalesce(nfef.qtdFaturadaEF, 0) - ip.qtdeAtendida)
+        )
         *
         (
             (
@@ -168,6 +174,7 @@ select
 	    select
 	        ideipv.idItemPedidoVenda,
 	        sum(ifnull(ide.valorTotalComDesconto, 0)) as valorTotalComDesconto,
+	        sum(ifnull(ide.qtde, 0)) as qtdFaturadaEF,
 	        sum(ifnull(t.valorIPI, 0)) as valorIPI
 	    from itemdocumentoestoque_itempedidovenda ideipv
 	    left join itemdocumentoestoque ide on ide.id = ideipv.idItemDocumentoEstoque
@@ -219,7 +226,9 @@ select
 	        on ideipv.idItemDocumentoEstoque = ide.idItemOrigemDevolucao 
 	    left join itempedido ip on ip.id = ideipv.idItemPedidoVenda 
 	    left join tipomovimentacao tm on ide.idTipoMovimentacao = tm.id
-	    where tm.id in (52, 55)
+	    -- 52 = devolução de venda (reabre saldo a faturar).
+	    -- 55 = reabertura de PD com NF antecipada: não reabre saldo financeiro.
+	    where tm.id = 52
 	      and ide.idItemOrigemDevolucao is not null
 	      and ip.status in (2,3)
 	    group by ip.id

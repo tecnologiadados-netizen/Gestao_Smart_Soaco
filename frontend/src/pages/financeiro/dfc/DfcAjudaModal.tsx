@@ -20,7 +20,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Linha extra da árvore (1.1.3) com o saldo a faturar das parcelas de pedido de venda Só Aço, na data projetada de vencimento. Fins de semana vão para a terça seguinte.',
     comoLe:
-      'Aparece ao filtrar todas as empresas ou Só Aço. Clique na célula para ver as parcelas. O Excel traz essa lista na aba Projeção de receitas.',
+      'Aparece ao filtrar todas as empresas ou Só Aço. Clique na célula para ver as parcelas. O Excel traz essa lista na aba Projeção de receitas. Pedido com NF antecipada (tipos 48/82/44/150 autorizada) não entra de novo no saldo a faturar, mesmo depois da reabertura de PD (movimento 55). Devolução de venda (52) continua reabrindo o saldo.',
   },
   {
     id: 'excel',

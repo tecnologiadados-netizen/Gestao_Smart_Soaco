@@ -28,7 +28,7 @@ function aggBy(
       map.set(chave, row);
     }
     row.saldoAReceber += l['Saldo a Receber'] || 0;
-    row.saldoAFaturar += l['Valor Pendente'] || 0;
+    row.saldoAFaturar += l['Saldo a Faturar Real'] || 0;
     row.saldoRomaneado += l['Valor Romaneado'] || 0;
     row.pds.add(l.PD ?? String(l.id));
   }
@@ -139,7 +139,7 @@ export function consolidarPedidosDetalhe(
     if (l.Emissao && (!row.emissao || l.Emissao < row.emissao)) row.emissao = l.Emissao;
     const prev = l.previsaoAtual ?? l.dataParametro;
     if (prev && (!row.previsaoAtual || prev < row.previsaoAtual)) row.previsaoAtual = prev;
-    row.saldoAFaturar += l['Valor Pendente'] || 0;
+    row.saldoAFaturar += l['Saldo a Faturar Real'] || 0;
     row.saldoAReceber += l['Saldo a Receber'] || 0;
     row.saldoRomaneado += l['Valor Romaneado'] || 0;
   }
@@ -154,7 +154,7 @@ export function calcResumoLocal(linhas: CarteiraFinanceiraLinha[]): CarteiraFina
   const atrasados = new Set<string>();
   for (const l of linhas) {
     saldoAReceber += l['Saldo a Receber'] || 0;
-    saldoAFaturar += l['Valor Pendente'] || 0;
+    saldoAFaturar += l['Saldo a Faturar Real'] || 0;
     saldoRomaneado += l['Valor Romaneado'] || 0;
     const pd = l.PD ?? String(l.id);
     pds.add(pd);
