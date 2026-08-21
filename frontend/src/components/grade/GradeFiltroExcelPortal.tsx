@@ -10,7 +10,7 @@ import {
 
 type Props = {
   colunaAberta: string;
-  rect: { top: number; left: number; width: number };
+  rect: { top: number; left: number; width: number; bottom?: number };
   dropdownRef: React.RefObject<HTMLDivElement | null>;
   excelFilterDrafts: Record<string, ExcelFilterDraft>;
   setExcelFilterDrafts: React.Dispatch<React.SetStateAction<Record<string, ExcelFilterDraft>>>;
@@ -116,12 +116,17 @@ export default function GradeFiltroExcelPortal({
 
   const menuMaxH = 420;
   const margin = 8;
-  const spaceBelow = window.innerHeight - rect.top - margin;
-  const flipUp = spaceBelow < 200 && rect.top > spaceBelow + 80;
-  const top = flipUp ? Math.max(margin, rect.top - menuMaxH - margin) : rect.top;
-  const maxHeight = flipUp
-    ? Math.min(menuMaxH, rect.top - margin * 2)
-    : Math.min(menuMaxH, spaceBelow);
+  const btnTop = rect.bottom != null ? rect.top : Math.max(0, rect.top - 4);
+  const btnBottom = rect.bottom ?? rect.top;
+  const spaceBelow = window.innerHeight - btnBottom - margin;
+  const spaceAbove = btnTop - margin;
+  const minSpaceDown = 120;
+  const openUp = spaceBelow < minSpaceDown && spaceAbove > spaceBelow;
+  const menuH = openUp
+    ? Math.min(menuMaxH, Math.max(160, spaceAbove - margin))
+    : Math.min(menuMaxH, Math.max(160, spaceBelow - margin));
+  const top = openUp ? Math.max(margin, btnTop - menuH - 4) : btnBottom + 4;
+  const maxHeight = menuH;
 
   return createPortal(
     <div

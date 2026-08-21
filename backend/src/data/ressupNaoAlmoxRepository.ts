@@ -145,8 +145,8 @@ ${SQL_JOIN_TIPO_MATERIAL}
 
 function adaptSqlForRessupNaoAlmox(baseSql: string, pares: FundivelParNomus[]): string {
   let sql = baseSql.replace(
-    /coalesce\(agpag\.quantidade,0\) as 'Ag Pag'/i,
-    "coalesce(agpag.quantidade,0) as 'Ag Pag',\n  Coalesce(vm.VM, 0) As 'VM'"
+    /coalesce\(agpag\.quantidade,0\) as '(?:Pré Compra|Ag Pag)'/i,
+    "coalesce(agpag.quantidade,0) as 'Pré Compra',\n  Coalesce(vm.VM, 0) As 'VM'"
   );
   sql = sql.replace(
     /  left join usuario u on u\.id = sco\.idUsuario\r?\nWhere\r?\n  \(p\.idTipoProduto In \(5, 13, 14, 6, 10, 16, 21, 22\)\)/i,

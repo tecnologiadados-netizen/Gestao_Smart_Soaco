@@ -394,6 +394,8 @@ export default function CalendarioMaterialHorizonteModal({
           descricao={descricao}
           onClose={() => setPcOpen(false)}
           fetchDetalhes={snapshotId != null ? fetchPcPendCongelado : undefined}
+          overlayFixed
+          zIndexClass="z-[14250]"
         />
       )}
     </>,

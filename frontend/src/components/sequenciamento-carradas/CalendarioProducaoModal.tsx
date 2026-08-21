@@ -62,6 +62,7 @@ import {
   SUBTOTAL_ROW_CLASS,
 } from './sequenciamentoCarradasUtils';
 import {
+  classificarCategoriaReprogramacao,
   mensagemCanalDatasPedido,
   rotaPermiteAlterarDatasNoSequenciamentoCalendario,
   pedidoPermiteAlterarDatasNoSequenciamentoCalendario,
@@ -238,6 +239,22 @@ const TH = 'px-2 py-2 font-semibold text-slate-700 dark:text-slate-200 whitespac
 const TD = 'px-2 py-1.5 text-slate-700 dark:text-slate-200';
 const WEEKEND_TD = 'bg-slate-100/80 dark:bg-slate-900/40';
 const OCIOso_TD = 'bg-slate-50/60 dark:bg-slate-900/20';
+
+/** Hover da qtde: só estas quatro linhas, nesta ordem. */
+const HOVER_TIPOF_LINHAS = [
+  { key: 'carrada', label: 'Carradas' },
+  { key: 'retirada', label: 'Retirada' },
+  { key: 'entrega_grande_teresina', label: 'Entrega G. The' },
+  { key: 'requisicao', label: 'Requisição' },
+] as const;
+
+type HoverTipoFKey = (typeof HOVER_TIPOF_LINHAS)[number]['key'];
+
+function categoriaHoverTipoF(tipoF: string): HoverTipoFKey {
+  const cat = classificarCategoriaReprogramacao({ TipoF: tipoF });
+  if (cat === 'retirada' || cat === 'entrega_grande_teresina' || cat === 'requisicao') return cat;
+  return 'carrada';
+}
 
 function diaSemanaIso(iso: string): number | null {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -536,6 +553,30 @@ export default function CalendarioProducaoModal({
       }),
     [linhasCalendario, sim, baseline, getQtdeLinha, dataInserirRomaneio, dataEmFormacao]
   );
+
+  /** Hover da qtde: Carradas / Retirada / Entrega G. The / Requisição (mesmos detalhes da grade). */
+  const tipoFPorCelula = useMemo(() => {
+    const acc = new Map<string, Record<HoverTipoFKey, number>>();
+    for (const d of dados.detalhes) {
+      const key = `${d.setor}\0${d.data}`;
+      const cur = acc.get(key) ?? {
+        carrada: 0,
+        retirada: 0,
+        entrega_grande_teresina: 0,
+        requisicao: 0,
+      };
+      cur[categoriaHoverTipoF(d.tipoF)] += d.qtde;
+      acc.set(key, cur);
+    }
+    const map = new Map<string, string>();
+    for (const [key, qtdes] of acc) {
+      map.set(
+        key,
+        HOVER_TIPOF_LINHAS.map((linha) => `${linha.label}: ${formatQtdeInt(qtdes[linha.key])}`).join('\n')
+      );
+    }
+    return map;
+  }, [dados.detalhes]);
   const [drill, setDrill] = useState<Drill>({ nivel: 'pivot' });
 
   useEffect(() => {
@@ -1605,17 +1646,9 @@ export default function CalendarioProducaoModal({
     const statusMateriaisCelula: StatusMaterialDia | undefined = dispCarregando
       ? undefined
       : stCelula?.status ?? (dispMateriais ? 'ok' : undefined);
-    const tituloBase = 'Ver detalhamento por TipoF';
-    const tituloParts = [tituloBase];
-    if (temPrevisaoFallback) {
-      tituloParts.push('(contém itens posicionados pela previsão atual — ⚠️)');
-    }
-    if (temSemCarrada) {
-      tituloParts.push('(contém Inserir em Romaneio ≥ corte sem carrada formada)');
-    }
-    if (statusConfiavel.includes('sim')) tituloParts.push('(contém Confiável)');
-    if (statusConfiavel.includes('nao')) tituloParts.push('(contém Não confiável)');
-    if (statusConfiavel.includes('branco')) tituloParts.push('(contém Em branco)');
+    const tituloHover =
+      tipoFPorCelula.get(`${setor}\0${col.iso}`) ??
+      HOVER_TIPOF_LINHAS.map((linha) => `${linha.label}: 0`).join('\n');
     return (
       <td key={colId} className={`${TD} text-right ${weekend ? 'px-1' : ''} ${weekend ? WEEKEND_TD : ''}`}>
         {v > 0 ? (
@@ -1644,7 +1677,7 @@ export default function CalendarioProducaoModal({
               title={
                 interacaoCalendarioBloqueada
                   ? 'Feche o painel do pedido para navegar no calendário'
-                  : tituloParts.join(' ')
+                  : tituloHover
               }
               align="right"
             >

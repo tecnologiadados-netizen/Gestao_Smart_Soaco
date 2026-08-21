@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import { useCallback, useMemo, useRef, useState, useEffect, type PointerEvent as ReactPointerEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
@@ -50,6 +50,14 @@ import {
   isConsultaEstoqueColNumeric,
   SORT_DEFAULT_CONSULTA_ESTOQUE,
 } from '../../utils/consultaEstoqueGradeSort';
+import {
+  clampConsultaEstoqueColWidth,
+  CONSULTA_ESTOQUE_DEFAULT_COL_WIDTHS,
+  loadConsultaEstoqueColunasOcultas,
+  persistConsultaEstoqueColunasOcultas,
+  persistConsultaEstoqueColWidths,
+  readConsultaEstoqueColWidths,
+} from '../../utils/consultaEstoqueGradeUi';
 
 const COLS = [
   { key: 'codigo', label: 'Código', clickable: false, align: 'left' as const },
@@ -58,7 +66,7 @@ const COLS = [
   { key: 'empenho', label: 'Empenho', clickable: true as const, align: 'center' as const },
   { key: 'saldo', label: 'Estoque atual', clickable: true as const, align: 'center' as const },
   { key: 'solicitacao', label: 'Solicitação', clickable: true as const, align: 'center' as const },
-  { key: 'cotacao', label: 'Ag Pag', clickable: true as const, align: 'center' as const },
+  { key: 'cotacao', label: 'Pré Compra', clickable: true as const, align: 'center' as const },
   { key: 'pedidoCompra', label: 'Pedido compra', clickable: true as const, align: 'center' as const },
   { key: 'saldoProjetado', label: 'Saldo projetado', clickable: false, align: 'center' as const },
 ] as const;
@@ -68,6 +76,10 @@ type ColKey = (typeof COLS)[number]['key'];
 const NUM_KEYS = ['empenho', 'saldo', 'solicitacao', 'cotacao', 'pedidoCompra', 'saldoProjetado'] as const;
 
 const COL_KEYS: ColKey[] = COLS.map((c) => c.key);
+
+function isNumKey(k: string): k is (typeof NUM_KEYS)[number] {
+  return (NUM_KEYS as readonly string[]).includes(k);
+}
 
 const SALDO_PROJETADO_NEG_CLASS = 'bg-red-50 dark:bg-red-950/40';
 
@@ -91,6 +103,7 @@ const EMPTY_FILTROS: FiltrosConsultaEstoqueState = {
   setoresProducao: '',
   subgrupo1: '',
   subgrupo2: '',
+  familias: '',
   comEmpenho: 'todos',
   comSaldoEstoque: 'todos',
 };
@@ -100,12 +113,21 @@ const CONSULTA_ESTOQUE_CONFIRM_ROWS = 50;
 const BTN_PRIMARY =
   'inline-flex items-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50';
 
+const BTN_COLUNAS_OCULTAS =
+  'inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700';
+
 type DetalheModal =
   | { tipo: 'saldo'; linha: ConsultaEstoqueLinha }
   | { tipo: 'empenho'; linha: ConsultaEstoqueLinha }
   | { tipo: 'solicitacao'; linha: ConsultaEstoqueLinha }
   | { tipo: 'cotacao'; linha: ConsultaEstoqueLinha }
   | { tipo: 'pc'; linha: ConsultaEstoqueLinha };
+
+function detalheTipoDaColuna(k: ColKey): DetalheModal['tipo'] | null {
+  if (k === 'saldo' || k === 'empenho' || k === 'solicitacao' || k === 'cotacao') return k;
+  if (k === 'pedidoCompra') return 'pc';
+  return null;
+}
 
 type DetalheCachePayload =
   | SaldoSetorDetalhe[]
@@ -187,6 +209,11 @@ export default function ConsultaEstoquePage() {
   const [detalheEmpenhoLiquido, setDetalheEmpenhoLiquido] = useState<RessupEmpenhoPedidoResultado | null>(null);
   const [detalheSc, setDetalheSc] = useState<ScDetalhe[]>([]);
   const [detalheCotacao, setDetalheCotacao] = useState<CotacaoDetalhe[]>([]);
+  const [colunasOcultas, setColunasOcultas] = useState<string[]>(() => loadConsultaEstoqueColunasOcultas());
+  const [colunasOcultasOpen, setColunasOcultasOpen] = useState(false);
+  const [colWidths, setColWidths] = useState<Record<string, number>>(readConsultaEstoqueColWidths);
+  const colunasOcultasRef = useRef<HTMLDivElement>(null);
+  const colResizeRef = useRef<{ colKey: ColKey; startX: number; startW: number } | null>(null);
 
   const opcoesCarregadasRef = useRef(false);
   const filtrosRef = useRef(filtros);
@@ -240,6 +267,105 @@ export default function ConsultaEstoquePage() {
     valueForSort,
     defaultSortLevels: SORT_DEFAULT_CONSULTA_ESTOQUE,
   });
+
+  const idsColunasValidas = useMemo(() => new Set(COL_KEYS), []);
+
+  useEffect(() => {
+    persistConsultaEstoqueColunasOcultas(colunasOcultas);
+  }, [colunasOcultas]);
+
+  useEffect(() => {
+    if (!colunasOcultasOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (colunasOcultasRef.current && !colunasOcultasRef.current.contains(e.target as Node)) {
+        setColunasOcultasOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [colunasOcultasOpen]);
+
+  useEffect(() => {
+    const ocultasValidas = colunasOcultas.filter((k) => idsColunasValidas.has(k as ColKey));
+    if (ocultasValidas.length >= COLS.length) ocultasValidas.pop();
+    if (ocultasValidas.length !== colunasOcultas.length || ocultasValidas.some((k, i) => k !== colunasOcultas[i])) {
+      setColunasOcultas(ocultasValidas);
+    }
+  }, [idsColunasValidas, colunasOcultas]);
+
+  const colunasVisiveisLista = useMemo(
+    () => COLS.filter((c) => !colunasOcultas.includes(c.key)),
+    [colunasOcultas]
+  );
+
+  const colunasOcultasLista = useMemo(
+    () => COLS.filter((c) => colunasOcultas.includes(c.key)),
+    [colunasOcultas]
+  );
+
+  const larguraMinimaTabela = useMemo(() => {
+    let w = 0;
+    for (const col of colunasVisiveisLista) {
+      w += colWidths[col.key] ?? CONSULTA_ESTOQUE_DEFAULT_COL_WIDTHS[col.key] ?? 96;
+    }
+    return w;
+  }, [colunasVisiveisLista, colWidths]);
+
+  const ocultarColuna = (colKey: ColKey) => {
+    if (colunasVisiveisLista.length <= 1) return;
+    grade.fecharFiltroExcel();
+    grade.clearColumnFilter(colKey);
+    grade.setSortState((prev) => (prev?.key === colKey ? null : prev));
+    grade.setSortLevels((prev) => prev.filter((l) => l.id !== colKey));
+    setColunasOcultas((prev) => (prev.includes(colKey) ? prev : [...prev, colKey]));
+  };
+
+  const reexibirColuna = (colKey: ColKey) => {
+    setColunasOcultas((prev) => prev.filter((k) => k !== colKey));
+  };
+
+  const reexibirTodasColunas = () => {
+    setColunasOcultas([]);
+    setColunasOcultasOpen(false);
+  };
+
+  const onColResizePointerDown = useCallback(
+    (colKey: ColKey, e: ReactPointerEvent<HTMLSpanElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      colResizeRef.current = {
+        colKey,
+        startX: e.clientX,
+        startW: colWidths[colKey] ?? CONSULTA_ESTOQUE_DEFAULT_COL_WIDTHS[colKey] ?? 96,
+      };
+    },
+    [colWidths]
+  );
+
+  const onColResizePointerMove = useCallback((e: ReactPointerEvent<HTMLSpanElement>) => {
+    const d = colResizeRef.current;
+    if (!d) return;
+    const delta = e.clientX - d.startX;
+    setColWidths((prev) => ({
+      ...prev,
+      [d.colKey]: clampConsultaEstoqueColWidth(d.startW + delta),
+    }));
+  }, []);
+
+  const onColResizePointerEnd = useCallback((e: ReactPointerEvent<HTMLSpanElement>) => {
+    if (!colResizeRef.current) return;
+    colResizeRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* */
+    }
+    setColWidths((w) => {
+      persistConsultaEstoqueColWidths(w);
+      return w;
+    });
+  }, []);
 
   const gradeResetRef = useRef<() => void>(() => {});
   gradeResetRef.current = () => {
@@ -606,9 +732,62 @@ export default function ConsultaEstoquePage() {
             title="Como ler a Consulta de Estoque — saldo, empenho e filtros"
           />
         </div>
-        <button type="button" className={BTN_PRIMARY} onClick={handleConsultarClick}>
-          Consultar estoque
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {colunasOcultasLista.length > 0 && (
+            <div className="relative" ref={colunasOcultasRef}>
+              <button
+                type="button"
+                onClick={() => setColunasOcultasOpen((o) => !o)}
+                className={BTN_COLUNAS_OCULTAS}
+                aria-expanded={colunasOcultasOpen}
+                aria-haspopup="true"
+              >
+                Colunas ocultas
+                <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs text-primary-700 dark:bg-primary-900/40 dark:text-primary-200">
+                  {colunasOcultasLista.length}
+                </span>
+              </button>
+              {colunasOcultasOpen && (
+                <div
+                  className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 text-slate-800 shadow-xl dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  role="dialog"
+                  aria-label="Reexibir colunas ocultas"
+                >
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 dark:border-slate-600">
+                    <p className="text-sm font-semibold">Reexibir colunas</p>
+                    <button
+                      type="button"
+                      onClick={reexibirTodasColunas}
+                      className="text-xs font-medium text-primary-600 hover:underline dark:text-primary-300"
+                    >
+                      Reexibir todas
+                    </button>
+                  </div>
+                  <div className="mt-2 max-h-64 overflow-auto scrollbar-app">
+                    {colunasOcultasLista.map((col) => (
+                      <button
+                        key={col.key}
+                        type="button"
+                        onClick={() => reexibirColuna(col.key)}
+                        className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700"
+                      >
+                        <span className="truncate" title={col.label}>
+                          {col.label}
+                        </span>
+                        <span className="shrink-0 text-xs font-medium text-primary-600 dark:text-primary-300">
+                          Reexibir
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <button type="button" className={BTN_PRIMARY} onClick={handleConsultarClick}>
+            Consultar estoque
+          </button>
+        </div>
       </div>
 
       {erroApi && (
@@ -666,25 +845,32 @@ export default function ConsultaEstoquePage() {
           ref={grade.tableScrollRef}
           className="min-h-0 flex-1 overflow-auto overscroll-contain"
         >
-          <table className="w-full min-w-[960px] border-collapse text-xs">
+          <table
+            className="w-full border-separate border-spacing-0 text-xs"
+            style={{ tableLayout: 'fixed', minWidth: larguraMinimaTabela }}
+          >
+            <colgroup>
+              {colunasVisiveisLista.map((col) => (
+                <col
+                  key={col.key}
+                  style={{ width: colWidths[col.key] ?? CONSULTA_ESTOQUE_DEFAULT_COL_WIDTHS[col.key] ?? 96 }}
+                />
+              ))}
+            </colgroup>
             <thead className="sticky top-0 z-10">
               <tr className="bg-primary-600 text-white">
-                {COLS.map((c) => {
+                {colunasVisiveisLista.map((c) => {
                   const sortAtivo =
                     grade.sortState?.key === c.key || grade.sortLevels.some((l) => l.id === c.key);
                   return (
                   <th
                     key={c.key}
-                    className={`relative border border-primary-500/40 bg-primary-600 px-2 py-2 font-semibold ${
+                    className={`sticky top-0 z-30 relative border border-primary-500/40 bg-primary-600 px-2 py-2 font-semibold shadow-[0_1px_0_rgba(0,0,0,0.08)] ${
                       c.align === 'center' ? 'text-center' : 'text-left'
                     }`}
                   >
-                    <div
-                      className={`flex min-w-0 items-start gap-1 ${
-                        c.align === 'center' ? 'justify-center' : 'justify-between'
-                      }`}
-                    >
-                      <span className="min-w-0 flex-1 leading-tight">
+                    <div className="flex min-w-0 items-start justify-between gap-1">
+                      <span className="min-w-0 flex-1 whitespace-normal break-words leading-tight" title={c.label}>
                         {c.key === 'empenho' ? (
                           <span className="inline-flex justify-center">
                             <RotuloComDica rotulo={c.label} dica={DICA_EMPENHO_LIQ_GRADE} headerClaro />
@@ -697,11 +883,41 @@ export default function ConsultaEstoquePage() {
                           c.label
                         )}
                       </span>
-                      <GradeFiltroCabecalhoBtn
-                        ativo={grade.colunaComFiltroAtivo(c.key) || sortAtivo}
-                        onClick={(e) => grade.abrirFiltroExcel(c.key, e)}
-                      />
+                      <span className="flex shrink-0 flex-col gap-0.5">
+                        <GradeFiltroCabecalhoBtn
+                          ativo={grade.colunaComFiltroAtivo(c.key) || sortAtivo}
+                          onClick={(e) => grade.abrirFiltroExcel(c.key, e)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => ocultarColuna(c.key)}
+                          disabled={colunasVisiveisLista.length <= 1}
+                          className="inline-flex items-center justify-center rounded border border-white/25 px-1 py-0.5 text-white/80 hover:bg-white/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          title="Ocultar coluna"
+                          aria-label={`Ocultar coluna ${c.label}`}
+                        >
+                          <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M3 3l18 18M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58M9.88 5.08A9.77 9.77 0 0112 4c5 0 8.27 4.11 9.54 6.06a1.75 1.75 0 010 1.88 16.2 16.2 0 01-2.1 2.64M6.1 6.1a16.46 16.46 0 00-3.64 3.96 1.75 1.75 0 000 1.88C3.73 13.89 7 18 12 18a9.77 9.77 0 004.17-.94"
+                            />
+                          </svg>
+                        </button>
+                      </span>
                     </div>
+                    <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={`Redimensionar coluna ${c.label}`}
+                      title="Arraste para ajustar a largura"
+                      className="absolute right-0 top-0 z-20 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-sky-300/60 active:bg-sky-300"
+                      onPointerDown={(e) => onColResizePointerDown(c.key, e)}
+                      onPointerMove={onColResizePointerMove}
+                      onPointerUp={onColResizePointerEnd}
+                      onPointerCancel={onColResizePointerEnd}
+                    />
                   </th>
                   );
                 })}
@@ -710,21 +926,21 @@ export default function ConsultaEstoquePage() {
             <tbody>
               {!mostrarGrade && (
                 <tr>
-                  <td colSpan={COLS.length} className="py-12 text-center text-slate-500">
+                  <td colSpan={colunasVisiveisLista.length} className="py-12 text-center text-slate-500">
                     Clique em &quot;Consultar estoque&quot; para definir filtros e carregar a grade.
                   </td>
                 </tr>
               )}
               {mostrarGrade && linhas.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={COLS.length} className="py-8 text-center text-slate-500">
+                  <td colSpan={colunasVisiveisLista.length} className="py-8 text-center text-slate-500">
                     Nenhum produto encontrado.
                   </td>
                 </tr>
               )}
               {mostrarGrade && linhas.length > 0 && grade.rowsExibidas.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={COLS.length} className="py-8 text-center text-slate-500">
+                  <td colSpan={colunasVisiveisLista.length} className="py-8 text-center text-slate-500">
                     Nenhum produto com os filtros da grade. Ajuste ou limpe os filtros por coluna.
                   </td>
                 </tr>
@@ -735,32 +951,45 @@ export default function ConsultaEstoquePage() {
                     key={row.idProduto}
                     className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
                   >
-                    <td className="px-2 py-1.5 font-mono">{row.codigo}</td>
-                    <td className="px-2 py-1.5 max-w-[240px] truncate" title={row.descricao}>
-                      {row.descricao}
-                    </td>
-                    <td className="px-2 py-1.5">{row.unidadeMedida || '—'}</td>
-                    {NUM_KEYS.map((k) => {
-                      const clickable = k !== 'saldoProjetado';
-                      const val = row[k];
-                      const saldoNegativo = k === 'saldoProjetado' && val <= 0;
+                    {colunasVisiveisLista.map((col) => {
+                      if (col.key === 'codigo') {
+                        return (
+                          <td key={col.key} className="overflow-hidden px-2 py-1.5 font-mono truncate">
+                            {row.codigo}
+                          </td>
+                        );
+                      }
+                      if (col.key === 'descricao') {
+                        return (
+                          <td key={col.key} className="overflow-hidden px-2 py-1.5 truncate" title={row.descricao}>
+                            {row.descricao}
+                          </td>
+                        );
+                      }
+                      if (col.key === 'und') {
+                        return (
+                          <td key={col.key} className="overflow-hidden px-2 py-1.5">
+                            {row.unidadeMedida || '—'}
+                          </td>
+                        );
+                      }
+                      if (!isNumKey(col.key)) return null;
+                      const val = row[col.key];
+                      const clickable = col.clickable;
+                      const saldoNegativo = col.key === 'saldoProjetado' && val <= 0;
+                      const tipoDetalhe = detalheTipoDaColuna(col.key);
                       return (
                         <td
-                          key={k}
-                          className={`px-2 py-1.5 text-center tabular-nums ${
+                          key={col.key}
+                          className={`overflow-hidden px-2 py-1.5 text-center tabular-nums ${
                             saldoNegativo ? SALDO_PROJETADO_NEG_CLASS : ''
                           }`}
                         >
-                          {clickable ? (
+                          {clickable && tipoDetalhe ? (
                             <GradeCelulaModalBtn
                               onClick={() =>
                                 setDetalhe({
-                                  tipo:
-                                    k === 'solicitacao'
-                                      ? 'solicitacao'
-                                      : k === 'pedidoCompra'
-                                        ? 'pc'
-                                        : k,
+                                  tipo: tipoDetalhe,
                                   linha: row,
                                 })
                               }
@@ -985,7 +1214,7 @@ export default function ConsultaEstoquePage() {
                 ? `Empenho — ${detalhe.linha.codigo}`
                 : detalhe.tipo === 'solicitacao'
                   ? `Solicitação de compra — ${detalhe.linha.codigo}`
-                  : `Ag Pag — ${detalhe.linha.codigo}`
+                  : `Pré Compra — ${detalhe.linha.codigo}`
           }
           subtitulo={detalhe.linha.descricao}
           onClose={() => setDetalhe(null)}

@@ -1,5 +1,5 @@
 /**
- * Pendências compras — produtos com SC e/ou Ag Pag por comprador (atributo 674).
+ * Pendências compras — produtos com SC e/ou Pré Compra por comprador (atributo 674).
  */
 
 import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
@@ -474,7 +474,7 @@ export async function consultarPendenciasCompras(
     const linhasBase = (Array.isArray(rows) ? rows : []).map((r, indiceOrdemAutomatica) => {
       const solicitacao = Number(r.solicitacao ?? 0);
       const agPag = Number(r.agPag ?? 0);
-      /** Datas só quando há saldo real em Solicitação (não quando já virou Ag Pag ou PC). */
+      /** Datas só quando há saldo real em Solicitação (não quando já virou Pré Compra ou PC). */
       const exibirDatasSc = solicitacao > 0;
       return {
         idProduto: Number(r.idProduto ?? 0),

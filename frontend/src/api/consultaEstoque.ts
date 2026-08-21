@@ -23,6 +23,8 @@ export type OpcoesFiltroConsultaEstoque = {
   setoresProducao: string[];
   subgrupo1: string[];
   subgrupo2: string[];
+  /** Famílias Nomus — painel Cobertura. */
+  familias?: string[];
 };
 
 export type ModoPedidoConsultaEstoque = 'diretos' | 'componentes';
@@ -38,11 +40,13 @@ export type FiltrosConsultaEstoquePayload = {
   setoresProducao?: string[];
   subgrupo1?: string[];
   subgrupo2?: string[];
+  familias?: string[];
   idPedido?: number;
   modoPedido?: ModoPedidoConsultaEstoque;
   empenhoEscopo?: EmpenhoEscopoConsultaEstoque;
   comEmpenho?: FiltroSimNaoTodos;
   comSaldoEstoque?: FiltroSimNaoTodos;
+  somenteAlmoxSecundario?: boolean;
 };
 
 export type PedidoGerenciadorTypeaheadItem = {
@@ -77,6 +81,7 @@ function filtrosToQueryParams(filtros: FiltrosConsultaEstoquePayload): URLSearch
   append('setoresProducao', filtros.setoresProducao);
   append('subgrupo1', filtros.subgrupo1);
   append('subgrupo2', filtros.subgrupo2);
+  if (filtros.somenteAlmoxSecundario) qs.set('somenteAlmoxSecundario', '1');
   return qs;
 }
 

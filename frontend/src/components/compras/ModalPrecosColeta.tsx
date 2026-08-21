@@ -76,7 +76,7 @@ const COLUNAS_PRECOS: { keys: string[]; label: string; decimals?: number; date?:
   { keys: ['Consumo Medio', 'consumo medio'], label: 'Consumo Medio', decimals: 2 },
   { keys: ['Saldo em Estoque Antes UE', 'saldo em estoque antes ue'], label: 'Saldo em Estoque Antes Ultima Entrada', decimals: 2 },
   { keys: ['Qtde Empenhada', 'qtde empenhada', 'Qtdempenhada'], label: 'Qtde Empenhada', decimals: 2 },
-  { keys: ['Ag Pag', 'ag pag'], label: 'Ag Pag', decimals: 2 },
+  { keys: ['Pré Compra', 'pré compra', 'Ag Pag', 'ag pag'], label: 'Pré Compra', decimals: 2 },
 ];
 
 function getRowValue(row: Record<string, unknown>, keys: string[]): unknown {

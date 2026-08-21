@@ -15,7 +15,7 @@ import {
   postContarConsultaEstoque,
   postConsultarEstoque,
 } from '../controllers/consultaEstoqueController.js';
-import { postPainelCoberturaEstoque } from '../controllers/coberturaEstoqueController.js';
+import { postPainelCoberturaEstoque, getFamiliasCoberturaEstoque } from '../controllers/coberturaEstoqueController.js';
 import {
   getRegrasDataEntrega,
   postRegraDataEntregaVersao,
@@ -78,6 +78,11 @@ router.get(
 router.post('/consulta-estoque/contar', podeConsultaEstoque, async503(postContarConsultaEstoque));
 router.post('/consulta-estoque/consultar', podeConsultaEstoque, async503(postConsultarEstoque));
 router.post('/cobertura-estoque/painel', podeConsultaEstoque, async503(postPainelCoberturaEstoque));
+router.get(
+  '/cobertura-estoque/familias',
+  podeConsultaEstoque,
+  async503(getFamiliasCoberturaEstoque)
+);
 router.get(
   '/consulta-estoque/detalhe/saldo',
   podeConsultaEstoque,

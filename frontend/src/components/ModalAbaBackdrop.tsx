@@ -8,6 +8,8 @@ type ModalAbaBackdropProps = {
   /** z-index Tailwind (padrão acima da grade, abaixo do menu global). */
   zIndexClass?: string;
   className?: string;
+  /** Overlay em tela cheia (modais empilhados via portal). */
+  overlayFixed?: boolean;
 };
 
 /**
@@ -19,6 +21,7 @@ export default function ModalAbaBackdrop({
   children,
   zIndexClass = 'z-[14000]',
   className = '',
+  overlayFixed = false,
 }: ModalAbaBackdropProps) {
   const zIndexNumber = useMemo(() => {
     const m = zIndexClass.match(/\[(\d+)\]/);
@@ -36,7 +39,7 @@ export default function ModalAbaBackdrop({
 
   return (
     <div
-      className={`absolute inset-0 ${zIndexClass} flex items-center justify-center bg-black/70 p-4 ${className}`.trim()}
+      className={`${overlayFixed ? 'fixed' : 'absolute'} inset-0 ${zIndexClass} flex items-center justify-center bg-black/70 p-4 ${className}`.trim()}
       role="presentation"
       onClick={onClose}
     >

@@ -479,7 +479,7 @@ export default function CalendarioMateriaisDiaModal({
                             }}
                             title={
                               ep.fonte === 'ag_pag'
-                                ? 'Ver Pré Compra (Ag Pag)'
+                                ? 'Ver Pré Compra'
                                 : ep.fonte === 'solicitacao'
                                   ? 'Ver solicitações de compra'
                                   : 'Ver pedidos de compra'
@@ -552,13 +552,15 @@ export default function CalendarioMateriaisDiaModal({
           onClose={() => setDetalheEntrada(null)}
           cacheRef={pcCacheRef}
           fetchDetalhes={snapshotId != null ? fetchPcPend : undefined}
+          overlayFixed
+          zIndexClass="z-[14150]"
         />
       )}
 
       {detalheEntrada?.tipo === 'ag_pag' && (
         <ModalConsultaEstoqueDetalhe
           open
-          titulo={`Ag Pag — ${detalheEntrada.linha.codigo}`}
+          titulo={`Pré Compra — ${detalheEntrada.linha.codigo}`}
           subtitulo={detalheEntrada.linha.descricao}
           onClose={() => setDetalheEntrada(null)}
           detailKey={`ag-pag-${detalheEntrada.linha.idProduto}`}

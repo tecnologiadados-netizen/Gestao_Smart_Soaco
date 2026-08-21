@@ -18,13 +18,13 @@ import ModalHistoricoVendasEvolucao from '../../components/painel-comercial/Moda
 import {
   formatMoeda,
   formatNumero,
-  hojeYmd,
   formatYmdBr,
-  inicioMesesFechadosMaisCorrenteYmd,
   mesesEntreYmd,
+  PAINEL_COMERCIAL_MAX_MESES,
+  periodoDisponivelPadraoYmd,
 } from '../../components/painel-comercial/painelComercialUtils';
 
-const MAX_MESES = 48;
+const MAX_MESES = PAINEL_COMERCIAL_MAX_MESES;
 
 type ModalState =
   | null
@@ -44,8 +44,7 @@ type ModalState =
 
 function filtroDefault(): FiltrosHistoricoVendas {
   return {
-    dataIni: inicioMesesFechadosMaisCorrenteYmd(3),
-    dataFim: hojeYmd(),
+    ...periodoDisponivelPadraoYmd(),
     comparacaoBase: 'ano_anterior',
   };
 }
@@ -299,7 +298,6 @@ export default function HistoricoVendasPage() {
           }
         />
       </div>
-
       <ModalPainelComercialDrill
         open={modal?.tipo === 'drill'}
         modalId="historico-vendas-drill"

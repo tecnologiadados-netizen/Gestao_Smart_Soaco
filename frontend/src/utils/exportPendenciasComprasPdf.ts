@@ -51,7 +51,7 @@ const PDF = {
 
 const COL_RATIOS = [0.06, 0.245, 0.083, 0.09, 0.078, 0.072, 0.062, 0.115, 0.088, 0.107] as const;
 const MARGIN = { left: 8, right: 8, bottom: 10, top: 8 };
-/** Solicitação, Ag Pag, PC, Estoque Atual — sempre com badge azul (como GradeCelulaModalBtn). */
+/** Solicitação, Pré Compra, PC, Estoque Atual — sempre com badge azul (como GradeCelulaModalBtn). */
 const COLS_BADGE = new Set([4, 5, 6, 7]);
 /** Estoque Antes da Últ. Entrada — texto simples; estilo especial p/ "(Verificar com PCP)" / "Não controlado". */
 const COL_ESTOQUE_ANTES = 9;
@@ -77,7 +77,7 @@ const LEGENDA_PDF_BLOCOS: LegendaPdfBloco[] = [
     coluna: 'Cód',
     itens: [
       { texto: 'Estoque zerado e possui solicitação', cor: PDF.codigo.zerado_com_sc },
-      { texto: 'Estoque zerado e possui Ag Pag (sobrepõe SC)', cor: PDF.codigo.zerado_com_agpag },
+      { texto: 'Estoque zerado e possui Pré Compra (sobrepõe SC)', cor: PDF.codigo.zerado_com_agpag },
       {
         texto: 'Todas as datas de necessidade superiores a 40 dias',
         cor: PDF.codigo.necessidade_acima_40d,
@@ -85,10 +85,10 @@ const LEGENDA_PDF_BLOCOS: LegendaPdfBloco[] = [
     ],
   },
   {
-    coluna: 'Ag Pag',
+    coluna: 'Pré Compra',
     itens: [
-      { texto: 'Ag Pag com menos de 24h', cor: PDF.agPag.menos_24h },
-      { texto: 'Ag Pag com 24h ou mais', cor: PDF.agPag.mais_24h },
+      { texto: 'Pré Compra com menos de 24h', cor: PDF.agPag.menos_24h },
+      { texto: 'Pré Compra com 24h ou mais', cor: PDF.agPag.mais_24h },
     ],
   },
   {
@@ -241,7 +241,7 @@ function desenharIconeImpressora(doc: jsPDF, x: number, y: number): void {
 
 /** Texto explicativo do critério de inclusão no relatório. */
 const REGRAS_RELATORIO_TEXTO =
-  'Só entram no relatório produtos que possuem solicitação de compra em aberto ou solicitações de pagamento (Ag Pag) em aberto.';
+  'Só entram no relatório produtos que possuem solicitação de compra em aberto ou Pré Compra em aberto.';
 
 function desenharCabecalhoPendenciasPdf(
   doc: jsPDF,
@@ -450,7 +450,7 @@ export async function downloadPendenciasComprasPdf(
       'Emissão da SC',
       'Necessidade da SC',
       'Solicitação',
-      'Ag Pag',
+      'Pré Compra',
       'PC',
       'Estoque Atual',
       'Últ. Entrada',
