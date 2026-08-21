@@ -11,6 +11,8 @@
     "dev:fe-all": "npm run dev:frontend",
     "dev:stop": "node scripts/kill-ports.cjs",
     "dev:start": "node scripts/start-dev.cjs",
+    "dev:isolado": "node scripts/start-dev-isolado.cjs",
+    "dev:isolado:stop": "node scripts/stop-dev-isolado.cjs",
     "dev:wait-fe": "wait-on -t 45000 http://127.0.0.1:4000/health && npm run dev:frontend",
     "dev:full": "npm install && npm run dev:full:backend && npm run dev:full:frontend && npm run dev",
     "dev:full:backend": "npm install --prefix backend && npm run generate --prefix backend",

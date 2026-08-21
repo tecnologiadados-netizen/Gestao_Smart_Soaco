@@ -108,19 +108,54 @@ function janelasMsDoDia(ymd: string, escala: RecursoEscala): { startMs: number; 
   return out;
 }
 
-export function overlapHorasComJanelas(
+export type MsInterval = { startMs: number; endMs: number };
+
+export function recortarIntervaloNasJanelas(
   startMs: number,
   endMs: number,
-  janelas: { startMs: number; endMs: number }[]
-): number {
-  if (!(endMs > startMs) || janelas.length === 0) return 0;
-  let acc = 0;
+  janelas: MsInterval[]
+): MsInterval[] {
+  if (!(endMs > startMs) || janelas.length === 0) return [];
+  const out: MsInterval[] = [];
   for (const w of janelas) {
     const a = Math.max(startMs, w.startMs);
     const b = Math.min(endMs, w.endMs);
-    if (b > a) acc += (b - a) / MS_HORA;
+    if (b > a) out.push({ startMs: a, endMs: b });
+  }
+  return out;
+}
+
+/** Une intervalos sobrepostos/contíguos (mesma linha do tempo). */
+export function unirIntervalos(intervals: MsInterval[]): MsInterval[] {
+  if (intervals.length === 0) return [];
+  const sorted = [...intervals].sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+  const out: MsInterval[] = [{ ...sorted[0]! }];
+  for (let i = 1; i < sorted.length; i++) {
+    const cur = sorted[i]!;
+    const last = out[out.length - 1]!;
+    if (cur.startMs <= last.endMs) {
+      last.endMs = Math.max(last.endMs, cur.endMs);
+    } else {
+      out.push({ ...cur });
+    }
+  }
+  return out;
+}
+
+export function horasDosIntervalos(intervals: MsInterval[]): number {
+  let acc = 0;
+  for (const iv of intervals) {
+    if (iv.endMs > iv.startMs) acc += (iv.endMs - iv.startMs) / MS_HORA;
   }
   return acc;
+}
+
+export function overlapHorasComJanelas(
+  startMs: number,
+  endMs: number,
+  janelas: MsInterval[]
+): number {
+  return horasDosIntervalos(recortarIntervaloNasJanelas(startMs, endMs, janelas));
 }
 
 /** Horas de um intervalo [inicio,fim] que caem nas faixas do dia (DATA). */
@@ -134,6 +169,29 @@ export function horasIntervaloNaEscala(
   return overlapHorasComJanelas(startMs, endMs, janelasMsDoDia(ymd, escala));
 }
 
+/** Pedaços do intervalo que caem nas faixas da escala no dia. */
+export function intervalosNaEscalaDoDia(
+  ymd: string,
+  startMs: number,
+  endMs: number,
+  escala: RecursoEscala | null | undefined
+): MsInterval[] {
+  if (!(endMs > startMs)) return [];
+  if (!escala || escalaEstaVazia(escala)) {
+    return [{ startMs, endMs }];
+  }
+  return recortarIntervaloNasJanelas(startMs, endMs, janelasMsDoDia(ymd, escala));
+}
+
+/** Horas previstas de escala em um único dia (YYYY-MM-DD). */
+export function horasEscalaNoDia(
+  ymd: string,
+  escala: RecursoEscala | null | undefined
+): number {
+  if (!escala || escalaEstaVazia(escala)) return 0;
+  return horasDosIntervalos(janelasMsDoDia(ymd, escala));
+}
+
 /** Soma das faixas em cada dia do período [dataIni, dataFim] inclusive. */
 export function horasEscalaNoPeriodo(
   dataIni: string,
@@ -144,20 +202,13 @@ export function horasEscalaNoPeriodo(
   const ini = new Date(`${dataIni}T00:00:00`);
   const fim = new Date(`${dataFim}T00:00:00`);
   if (Number.isNaN(ini.getTime()) || Number.isNaN(fim.getTime())) return 0;
-  let minutosFaixa = 0;
-  for (const f of escala.faixas) {
-    const a = hhMmParaMinutos(f.inicio);
-    const b = hhMmParaMinutos(f.fim);
-    if (a == null || b == null || b <= a) continue;
-    minutosFaixa += b - a;
-  }
-  if (minutosFaixa <= 0) return 0;
-  const horasDia = minutosFaixa / 60;
   let total = 0;
   const cur = new Date(ini.getTime());
   while (cur.getTime() <= fim.getTime()) {
-    const wd = cur.getDay();
-    if (escala.diasSemana.includes(wd)) total += horasDia;
+    const y = cur.getFullYear();
+    const mo = String(cur.getMonth() + 1).padStart(2, '0');
+    const d = String(cur.getDate()).padStart(2, '0');
+    total += horasEscalaNoDia(`${y}-${mo}-${d}`, escala);
     cur.setDate(cur.getDate() + 1);
   }
   return total;

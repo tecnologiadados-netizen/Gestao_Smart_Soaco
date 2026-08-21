@@ -41,16 +41,20 @@ export default defineConfig(({ mode }) => {
   const disableHmr = env.VITE_DISABLE_HMR === 'true';
   const hmrClientPort = env.VITE_HMR_CLIENT_PORT ? parseInt(env.VITE_HMR_CLIENT_PORT, 10) : undefined;
   const devOrigin = env.VITE_DEV_ORIGIN?.trim() || undefined;
+  // Ambiente isolado (ex.: paralelo à produção): VITE_API_PROXY_TARGET=http://127.0.0.1:4001
+  const apiProxyTarget =
+    (env.VITE_API_PROXY_TARGET || process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:4000').trim();
+  const apiProxyPortLabel = apiProxyTarget.replace(/^https?:\/\//, '');
 
   const server: NonNullable<UserConfig['server']> = {
-    port: 5190, // porta fixa do Vite (dev)
+    port: 5190, // default; CLI `--port` (run-vite-loop) sobrescreve
     host: '0.0.0.0',
     strictPort: true,
     // true = qualquer Host — acesso por IP/domínio em dev
     allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:4000',
+        target: apiProxyTarget,
         changeOrigin: true,
         secure: false,
         timeout: 900000,
@@ -82,7 +86,7 @@ export default defineConfig(({ mode }) => {
             const now = Date.now();
             if (now - lastApiLog >= API_LOG_INTERVAL_MS) {
               lastApiLog = now;
-              console.warn('[proxy /api] Backend inacessível (porta 4000). Confira se o backend está rodando.');
+              console.warn(`[proxy /api] Backend inacessível (${apiProxyPortLabel}). Confira se o backend está rodando.`);
             }
             if (res && !(res as import('http').ServerResponse).headersSent)
               (res as import('http').ServerResponse)
@@ -92,7 +96,7 @@ export default defineConfig(({ mode }) => {
         },
       },
       '/auth': {
-        target: 'http://127.0.0.1:4000',
+        target: apiProxyTarget,
         changeOrigin: true,
         secure: false,
         timeout: 900000,
@@ -124,7 +128,7 @@ export default defineConfig(({ mode }) => {
             const now = Date.now();
             if (now - lastAuthLog >= AUTH_LOG_INTERVAL_MS) {
               lastAuthLog = now;
-              console.warn('[proxy /auth] Backend inacessível (porta 4000). Confira se o backend está rodando.');
+              console.warn(`[proxy /auth] Backend inacessível (${apiProxyPortLabel}). Confira se o backend está rodando.`);
             }
             if (res && !(res as import('http').ServerResponse).headersSent)
               (res as import('http').ServerResponse)
@@ -134,18 +138,18 @@ export default defineConfig(({ mode }) => {
         },
       },
       '/uploads': {
-        target: 'http://127.0.0.1:4000',
+        target: apiProxyTarget,
         changeOrigin: true,
         secure: false,
         timeout: 120000,
       },
       '/.well-known': {
-        target: 'http://127.0.0.1:4000',
+        target: apiProxyTarget,
         changeOrigin: true,
         timeout: 10000,
       },
       '/health': {
-        target: 'http://127.0.0.1:4000',
+        target: apiProxyTarget,
         changeOrigin: true,
         timeout: 10000,
         selfHandleResponse: true,

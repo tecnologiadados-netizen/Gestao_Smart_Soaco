@@ -64,6 +64,16 @@ export type CamasiProducaoValida = {
   peca: string;
 };
 
+export type CamasiResumoDia = {
+  data: string;
+  escalaHoras: number;
+  paradoHoras: number;
+  producaoHoras: number;
+  paradoSomaEventos: number;
+  temSobreposicao: boolean;
+  qtdeParadas: number;
+};
+
 export type CamasiDashboardResponse = {
   dataIni: string;
   dataFim: string;
@@ -74,6 +84,7 @@ export type CamasiDashboardResponse = {
   pioresDiasParado: CamasiDiaParadoAgg[];
   paradasValidas?: CamasiParadaValida[];
   producaoValidas?: CamasiProducaoValida[];
+  resumoDias?: CamasiResumoDia[];
   escala?: {
     recursoCod: string | null;
     recursoNome: string | null;

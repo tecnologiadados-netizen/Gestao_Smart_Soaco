@@ -5,7 +5,12 @@
 import { queryCamasi } from '../config/camasiFirebirdDb.js';
 import {
   escalaEstaVazia,
+  horasDosIntervalos,
+  horasEscalaNoDia,
   horasIntervaloNaEscala,
+  intervalosNaEscalaDoDia,
+  unirIntervalos,
+  type MsInterval,
   type RecursoEscala,
 } from '../utils/recursoEscalaTrabalho.js';
 
@@ -80,6 +85,18 @@ export type CamasiProducaoValida = {
   horas: number;
   minutos: number;
   peca: string;
+};
+
+/** Memorial do dia: parado por união de intervalos; produção = escala − parado. */
+export type CamasiResumoDia = {
+  data: string;
+  escalaHoras: number;
+  paradoHoras: number;
+  producaoHoras: number;
+  /** Soma das durações por evento (pode > paradoHoras se houver sobreposição). */
+  paradoSomaEventos: number;
+  temSobreposicao: boolean;
+  qtdeParadas: number;
 };
 
 export type CamasiDiaAgg = {
@@ -353,7 +370,7 @@ export async function listTempoProducao(
 
 export function buildDashboardResumo(
   rows: TempoProducaoRow[],
-  opts?: { horasEscala?: number | null }
+  opts?: { horasEscala?: number | null; escala?: RecursoEscala | null }
 ): {
   kpis: CamasiDashboardKpis;
   porMes: CamasiMesAgg[];
@@ -362,22 +379,25 @@ export function buildDashboardResumo(
   pioresDiasParado: CamasiDiaParadoAgg[];
   paradasValidas: CamasiParadaValida[];
   producaoValidas: CamasiProducaoValida[];
+  resumoDias: CamasiResumoDia[];
 } {
-  let horasProducao = 0;
-  let horasParado = 0;
+  const escala = opts?.escala ?? null;
   let qtdeParadas = 0;
 
   const mesMap = new Map<string, { horasProducao: number; horasParado: number }>();
   const motivoMap = new Map<string, { horas: number; qtde: number }>();
   const pecaMap = new Map<string, { horasProducao: number; horasParado: number }>();
-  const diaParadoMap = new Map<string, { horas: number; qtde: number }>();
   const paradasValidas: CamasiParadaValida[] = [];
   const producaoValidas: CamasiProducaoValida[] = [];
 
+  type DiaAcc = {
+    paradoPieces: MsInterval[];
+    paradoSomaEventos: number;
+    qtdeParadas: number;
+  };
+  const diaAcc = new Map<string, DiaAcc>();
+
   for (const row of rows) {
-    horasProducao += row.horasProducao;
-    horasParado += row.horasParado;
-    if (row.horasParado > 0) qtdeParadas += 1;
     if (row.horasProducao > 0) {
       producaoValidas.push({
         id: row.id,
@@ -390,23 +410,13 @@ export function buildDashboardResumo(
       });
     }
 
-    const mes = row.data.slice(0, 7);
-    const mAgg = mesMap.get(mes) ?? { horasProducao: 0, horasParado: 0 };
-    mAgg.horasProducao += row.horasProducao;
-    mAgg.horasParado += row.horasParado;
-    mesMap.set(mes, mAgg);
-
     if (row.horasParado > 0) {
+      qtdeParadas += 1;
       const motivo = motivoLabel(row);
       const mot = motivoMap.get(motivo) ?? { horas: 0, qtde: 0 };
       mot.horas += row.horasParado;
       mot.qtde += 1;
       motivoMap.set(motivo, mot);
-
-      const dia = diaParadoMap.get(row.data) ?? { horas: 0, qtde: 0 };
-      dia.horas += row.horasParado;
-      dia.qtde += 1;
-      diaParadoMap.set(row.data, dia);
 
       paradasValidas.push({
         id: row.id,
@@ -419,6 +429,19 @@ export function buildDashboardResumo(
         justificativa: motivo,
         observacao: row.obsMotivo,
       });
+
+      const acc = diaAcc.get(row.data) ?? {
+        paradoPieces: [],
+        paradoSomaEventos: 0,
+        qtdeParadas: 0,
+      };
+      acc.paradoSomaEventos += row.horasParado;
+      acc.qtdeParadas += 1;
+      const iv = intervaloEfetivoMs(row.data, row.inicioParado, row.fimParado, 'parado');
+      if (iv) {
+        acc.paradoPieces.push(...intervalosNaEscalaDoDia(row.data, iv.startMs, iv.endMs, escala));
+      }
+      diaAcc.set(row.data, acc);
     }
 
     const peca = pecaLabel(row);
@@ -426,6 +449,67 @@ export function buildDashboardResumo(
     pAgg.horasProducao += row.horasProducao;
     pAgg.horasParado += row.horasParado;
     pecaMap.set(peca, pAgg);
+  }
+
+  const allDays = new Set<string>();
+  for (const row of rows) allDays.add(row.data);
+
+  const resumoDias: CamasiResumoDia[] = [];
+  for (const data of allDays) {
+    const acc = diaAcc.get(data) ?? {
+      paradoPieces: [],
+      paradoSomaEventos: 0,
+      qtdeParadas: 0,
+    };
+    const uniao = unirIntervalos(acc.paradoPieces);
+    const paradoHoras = horasDosIntervalos(uniao);
+    const escalaHoras = horasEscalaNoDia(data, escala);
+    const producaoHoras =
+      escala && !escalaEstaVazia(escala)
+        ? Math.max(0, escalaHoras - paradoHoras)
+        : 0;
+    const temSobreposicao = acc.paradoSomaEventos - paradoHoras > 0.05;
+    resumoDias.push({
+      data,
+      escalaHoras: round1(escalaHoras),
+      paradoHoras: round1(paradoHoras),
+      producaoHoras: round1(producaoHoras),
+      paradoSomaEventos: round1(acc.paradoSomaEventos),
+      temSobreposicao,
+      qtdeParadas: acc.qtdeParadas,
+    });
+
+    const mes = data.slice(0, 7);
+    const mAgg = mesMap.get(mes) ?? { horasProducao: 0, horasParado: 0 };
+    mAgg.horasParado += paradoHoras;
+    mAgg.horasProducao += producaoHoras;
+    mesMap.set(mes, mAgg);
+  }
+  resumoDias.sort((a, b) => b.data.localeCompare(a.data));
+
+  let horasParado = 0;
+  let horasProducao = 0;
+  for (const d of resumoDias) {
+    horasParado += d.paradoHoras;
+    horasProducao += d.producaoHoras;
+  }
+
+  // Sem escala: fallback legado (soma por evento) para não zerar o painel.
+  if (!escala || escalaEstaVazia(escala)) {
+    horasProducao = 0;
+    horasParado = 0;
+    for (const row of rows) {
+      horasProducao += row.horasProducao;
+      horasParado += row.horasParado;
+    }
+    mesMap.clear();
+    for (const row of rows) {
+      const mes = row.data.slice(0, 7);
+      const mAgg = mesMap.get(mes) ?? { horasProducao: 0, horasParado: 0 };
+      mAgg.horasProducao += row.horasProducao;
+      mAgg.horasParado += row.horasParado;
+      mesMap.set(mes, mAgg);
+    }
   }
 
   const total = horasProducao + horasParado;
@@ -473,12 +557,12 @@ export function buildDashboardResumo(
     }))
     .sort((a, b) => b.horasProducao + b.horasParado - (a.horasProducao + a.horasParado));
 
-  const pioresDiasParado: CamasiDiaParadoAgg[] = [...diaParadoMap.entries()]
-    .map(([data, v]) => ({
-      data,
-      horas: round1(v.horas),
-      qtde: v.qtde,
-      pct: horasParado > 0 ? round1((v.horas / horasParado) * 100) : 0,
+  const pioresDiasParado: CamasiDiaParadoAgg[] = resumoDias
+    .map((d) => ({
+      data: d.data,
+      horas: d.paradoHoras,
+      qtde: d.qtdeParadas,
+      pct: horasParado > 0 ? round1((d.paradoHoras / horasParado) * 100) : 0,
     }))
     .sort((a, b) => b.horas - a.horas || b.qtde - a.qtde)
     .slice(0, TOP_DIAS_PARADO);
@@ -496,14 +580,37 @@ export function buildDashboardResumo(
       a.id - b.id
   );
 
-  return { kpis, porMes, motivos, pecas, pioresDiasParado, paradasValidas, producaoValidas };
+  return { kpis, porMes, motivos, pecas, pioresDiasParado, paradasValidas, producaoValidas, resumoDias };
 }
 
 export function buildDiasDoMes(
   rows: TempoProducaoRow[],
   mes: string,
-  tipo: 'producao' | 'parado'
+  tipo: 'producao' | 'parado',
+  escala?: RecursoEscala | null
 ): { dias: CamasiDiaAgg[]; totalHoras: number } {
+  if (tipo === 'parado' && escala && !escalaEstaVazia(escala)) {
+    const byDay = new Map<string, MsInterval[]>();
+    for (const row of rows) {
+      if (!row.data.startsWith(mes) || row.horasParado <= 0) continue;
+      const iv = intervaloEfetivoMs(row.data, row.inicioParado, row.fimParado, 'parado');
+      if (!iv) continue;
+      const pieces = intervalosNaEscalaDoDia(row.data, iv.startMs, iv.endMs, escala);
+      const acc = byDay.get(row.data) ?? [];
+      acc.push(...pieces);
+      byDay.set(row.data, acc);
+    }
+    const diaMap = new Map<string, number>();
+    for (const [data, pieces] of byDay) {
+      diaMap.set(data, horasDosIntervalos(unirIntervalos(pieces)));
+    }
+    const totalHoras = round1([...diaMap.values()].reduce((s, h) => s + h, 0));
+    const dias = [...diaMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([data, horas]) => ({ data, horas: round1(horas) }));
+    return { dias, totalHoras };
+  }
+
   const diaMap = new Map<string, number>();
   for (const row of rows) {
     if (!row.data.startsWith(mes)) continue;

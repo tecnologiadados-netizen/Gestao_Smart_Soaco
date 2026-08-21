@@ -13,6 +13,22 @@ export function formatHoras(v: number | null | undefined): string {
   }).format(v)} h`;
 }
 
+/**
+ * Formato compacto didático a partir de horas decimais.
+ * Ex.: 8.75 → "08h e 45min" | 2 → "02h" | 0.5 → "30min" | 0 → "00h"
+ */
+export function formatHorasDidatico(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return '—';
+  const minutosTotal = Math.round(v * 60);
+  if (minutosTotal <= 0) return '00h';
+  if (minutosTotal < 60) return `${String(minutosTotal).padStart(2, '0')}min`;
+  const horas = Math.floor(minutosTotal / 60);
+  const minutos = minutosTotal % 60;
+  const parteHoras = `${String(horas).padStart(2, '0')}h`;
+  if (minutos === 0) return parteHoras;
+  return `${parteHoras} e ${String(minutos).padStart(2, '0')}min`;
+}
+
 function pluralPt(n: number, singular: string, plural: string): string {
   return n === 1 ? `${n} ${singular}` : `${n} ${plural}`;
 }
