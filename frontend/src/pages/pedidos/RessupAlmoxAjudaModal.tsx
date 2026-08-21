@@ -18,7 +18,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'saldo',
     titulo: 'Saldo projetado e cobertura',
     oQueE:
-      'Saldo projetado = −Empenho + Solicitação + Estoque atual + PC Pend + Ag Pag. Cobertura = saldo ÷ CM (se CM = 0, o divisor usa 0,01).',
+      'Saldo projetado = −Empenho + Solicitação + Estoque atual + PC Pend + Pré Compra. Cobertura = saldo ÷ CM (se CM = 0, o divisor usa 0,01).',
     comoLe:
       'Saldo baixo ou cobertura curta indica prioridade de compra. Compare com CM e com o dia da compra recorrente do item.',
   },

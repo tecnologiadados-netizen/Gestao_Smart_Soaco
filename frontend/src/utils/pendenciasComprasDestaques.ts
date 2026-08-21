@@ -52,7 +52,7 @@ export const LEGENDA_PENDENCIAS = [
   { coluna: 'Cód', texto: 'Estoque zerado e possui solicitação', classe: CODIGO_CLASS.zerado_com_sc },
   {
     coluna: 'Cód',
-    texto: 'Estoque zerado e possui Ag Pag (sobrepõe a regra de SC)',
+    texto: 'Estoque zerado e possui Pré Compra (sobrepõe a regra de SC)',
     classe: CODIGO_CLASS.zerado_com_agpag,
   },
   {
@@ -60,8 +60,8 @@ export const LEGENDA_PENDENCIAS = [
     texto: 'Todas as datas de necessidade superiores a 40 dias',
     classe: CODIGO_CLASS.necessidade_acima_40d,
   },
-  { coluna: 'Ag Pag', texto: 'Ag Pag com menos de 24h', classe: AGPAG_CLASS.menos_24h },
-  { coluna: 'Ag Pag', texto: 'Ag Pag com 24h ou mais', classe: AGPAG_CLASS.mais_24h },
+  { coluna: 'Pré Compra', texto: 'Pré Compra com menos de 24h', classe: AGPAG_CLASS.menos_24h },
+  { coluna: 'Pré Compra', texto: 'Pré Compra com 24h ou mais', classe: AGPAG_CLASS.mais_24h },
   {
     coluna: 'PC',
     texto: 'PC com data de entrega superior à data de necessidade da solicitação',

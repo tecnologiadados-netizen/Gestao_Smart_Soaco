@@ -206,7 +206,7 @@ function mapRow(r: Record<string, unknown>): VendaHistoricoRow {
   return {
     pdId: toNum(r.pdId),
     pdCodigo: toStr(r.pdCodigo) || '—',
-    dataEmissao: toStr(r.dataEmissao) || '—',
+    dataEmissao: normalizeEmissaoYmd(r.dataEmissao) ?? '—',
     mes: toStr(r.mes) || '—',
     cliente: toStr(r.cliente) || '—',
     vendedor: toStr(r.vendedor) || '—',
@@ -263,22 +263,43 @@ async function carregarBasePeriodo(dataIni: string, dataFim: string): Promise<{ 
   return { rows };
 }
 
-function aplicarFiltrosInMemory(rows: VendaHistoricoRow[], f: Partial<FiltrosHistoricoVendas>): VendaHistoricoRow[] {
+function matchFiltroCampo(
+  valor: string,
+  filtro: string | undefined,
+  mode: 'eq' | 'includes'
+): boolean {
+  const raw = String(filtro ?? '').trim();
+  if (!raw) return true;
   const norm = (s: string) => s.trim().toLowerCase();
   const eq = (a: string, b: string) => norm(a) === norm(b);
   const includes = (a: string, b: string) => norm(a).includes(norm(b));
+  const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return true;
+  if (parts.length === 1) {
+    const p = parts[0]!;
+    return mode === 'eq' ? eq(valor, p) : includes(valor, p);
+  }
+  return parts.some((p) => eq(valor, p));
+}
 
+function aplicarFiltrosInMemory(rows: VendaHistoricoRow[], f: Partial<FiltrosHistoricoVendas>): VendaHistoricoRow[] {
   return rows.filter((r) => {
-    if (f.pd && !includes(r.pdCodigo, f.pd)) return false;
-    if (f.grupoProduto && !includes(r.grupoProduto, f.grupoProduto)) return false;
-    if (f.subgrupo1 && !includes(r.subgrupo1, f.subgrupo1)) return false;
-    if (f.subgrupo2 && !includes(r.subgrupo2, f.subgrupo2)) return false;
-    if (f.vendedor && !includes(r.vendedor, f.vendedor)) return false;
-    if (f.regiao && !includes(r.regiao, f.regiao)) return false;
-    if (f.uf && !eq(r.uf, f.uf)) return false;
-    if (f.municipio && !includes(r.municipio, f.municipio)) return false;
-    if (f.cliente && !includes(r.cliente, f.cliente)) return false;
-    if (f.produto && !(includes(r.codigoProduto, f.produto) || includes(r.descricaoProduto, f.produto))) return false;
+    if (f.pd && !matchFiltroCampo(r.pdCodigo, f.pd, 'includes')) return false;
+    if (f.grupoProduto && !matchFiltroCampo(r.grupoProduto, f.grupoProduto, 'includes')) return false;
+    if (f.subgrupo1 && !matchFiltroCampo(r.subgrupo1, f.subgrupo1, 'includes')) return false;
+    if (f.subgrupo2 && !matchFiltroCampo(r.subgrupo2, f.subgrupo2, 'includes')) return false;
+    if (f.vendedor && !matchFiltroCampo(r.vendedor, f.vendedor, 'includes')) return false;
+    if (f.regiao && !matchFiltroCampo(r.regiao, f.regiao, 'includes')) return false;
+    if (f.uf && !matchFiltroCampo(r.uf, f.uf, 'eq')) return false;
+    if (f.municipio && !matchFiltroCampo(r.municipio, f.municipio, 'includes')) return false;
+    if (f.cliente && !matchFiltroCampo(r.cliente, f.cliente, 'includes')) return false;
+    if (
+      f.produto &&
+      !matchFiltroCampo(r.codigoProduto, f.produto, 'includes') &&
+      !matchFiltroCampo(r.descricaoProduto, f.produto, 'includes')
+    ) {
+      return false;
+    }
     return true;
   });
 }
@@ -445,6 +466,90 @@ function winnersLosersPorProduto(
   const ganhadores = [...sortable].sort((a, b) => b.valorVarPct! - a.valorVarPct!).slice(0, limit);
   const perdedores = [...sortable].sort((a, b) => a.valorVarPct! - b.valorVarPct!).slice(0, limit);
   return { ganhadores, perdedores };
+}
+
+export async function carregarHistoricoVendasBasePeriodo(
+  dataIni: string,
+  dataFim: string
+): Promise<{ rows: VendaHistoricoRow[]; erro?: string }> {
+  const periodoErro = validarPeriodoMaximo(dataIni, dataFim);
+  if (periodoErro) return { rows: [], erro: periodoErro };
+  return carregarBasePeriodo(dataIni, dataFim);
+}
+
+export function extrairOpcoesFiltroHistorico(rows: VendaHistoricoRow[]): {
+  municipios: string[];
+  ufs: string[];
+  vendedores: string[];
+  regioes: string[];
+  gruposProduto: string[];
+} {
+  const sortPt = (a: string, b: string) => a.localeCompare(b, 'pt-BR');
+  const uniq = (fn: (r: VendaHistoricoRow) => string) => {
+    const set = new Set<string>();
+    for (const r of rows) {
+      const v = fn(r).trim();
+      if (v) set.add(v);
+    }
+    return [...set].sort(sortPt);
+  };
+  return {
+    municipios: uniq((r) => r.municipio),
+    ufs: uniq((r) => r.uf),
+    vendedores: uniq((r) => r.vendedor),
+    regioes: uniq((r) => r.regiao),
+    gruposProduto: uniq((r) => r.grupoProduto),
+  };
+}
+
+export function periodoDadosEmissao(rows: VendaHistoricoRow[]): { dataIni: string; dataFim: string } | null {
+  if (!rows.length) return null;
+  let minMs = Infinity;
+  let maxMs = -Infinity;
+  let minYmd = '';
+  let maxYmd = '';
+  for (const r of rows) {
+    const ymd = normalizeEmissaoYmd(r.dataEmissao);
+    if (!ymd) continue;
+    const ms = new Date(`${ymd}T12:00:00`).getTime();
+    if (!Number.isFinite(ms)) continue;
+    if (ms < minMs) {
+      minMs = ms;
+      minYmd = ymd;
+    }
+    if (ms > maxMs) {
+      maxMs = ms;
+      maxYmd = ymd;
+    }
+  }
+  return minYmd && maxYmd ? { dataIni: minYmd, dataFim: maxYmd } : null;
+}
+
+function normalizeEmissaoYmd(v: unknown): string | null {
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    return toLocalYmd(v);
+  }
+  const raw = String(v ?? '').trim();
+  if (!raw || raw === '—') return null;
+  const iso = /^(\d{4}-\d{2}-\d{2})/.exec(raw);
+  if (iso) return iso[1]!;
+  const br = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  const d = new Date(raw);
+  if (!Number.isNaN(d.getTime())) return toLocalYmd(d);
+  return null;
+}
+
+export { normalizeEmissaoYmd };
+
+export async function carregarHistoricoVendasFiltrado(
+  filtros: FiltrosHistoricoVendas
+): Promise<{ rows: VendaHistoricoRow[]; erro?: string }> {
+  const periodoErro = validarPeriodoMaximo(filtros.dataIni, filtros.dataFim);
+  if (periodoErro) return { rows: [], erro: periodoErro };
+  const cur = await carregarBasePeriodo(filtros.dataIni, filtros.dataFim);
+  if (cur.erro) return { rows: [], erro: cur.erro };
+  return { rows: aplicarFiltrosInMemory(cur.rows, filtros) };
 }
 
 function periodoComparacao(dataIni: string, dataFim: string, base: ComparacaoBase): { dataIni: string; dataFim: string } | null {

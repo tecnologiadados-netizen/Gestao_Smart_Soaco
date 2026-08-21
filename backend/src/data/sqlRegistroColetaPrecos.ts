@@ -60,7 +60,7 @@ Select
   ds.opcao As 'Dia da Semana',
   Coalesce(ic.opcao, 'Sem Definição') As 'Item Crítico',
   Coalesce(cr.opcao, 'Sem Definição') As 'Compra Recorrente',
-  coalesce(agpag.quantidade,0) as 'Ag Pag'
+  coalesce(agpag.quantidade,0) as 'Pré Compra'
 From
   produto p
   Left Join

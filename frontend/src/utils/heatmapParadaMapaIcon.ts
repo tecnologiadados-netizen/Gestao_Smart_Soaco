@@ -108,3 +108,18 @@ export function iconeParadaRota(seq: number): L.DivIcon {
 export function iconeParadaSelecao(): L.DivIcon {
   return iconeParadaDiv('sel', '#ea580c');
 }
+
+let iconeBandeiraFiltroCache: L.DivIcon | null = null;
+
+/** Bandeira no município destacado pelo filtro da tela (sem alterar zoom). */
+export function iconeBandeiraFiltro(): L.DivIcon {
+  if (!iconeBandeiraFiltroCache) {
+    iconeBandeiraFiltroCache = L.divIcon({
+      className: 'heatmap-filtro-bandeira',
+      html: `<div style="pointer-events:none;font-size:28px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.45))" aria-hidden="true">🚩</div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 28],
+    });
+  }
+  return iconeBandeiraFiltroCache;
+}

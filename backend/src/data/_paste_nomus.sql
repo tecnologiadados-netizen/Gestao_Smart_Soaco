@@ -41,7 +41,7 @@ Select
   Coalesce(emp.qtdempenhada, 0) As 'Qtde Empenhada',
   nc.opcao As 'Nome Coleta',
   ds.opcao As 'Dia da Semana',
-  coalesce(agpag.quantidade,0) as 'Ag Pag'
+  coalesce(agpag.quantidade,0) as 'Pré Compra'
 From
   produto p
   Left Join

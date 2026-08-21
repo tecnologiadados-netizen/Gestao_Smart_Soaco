@@ -416,7 +416,7 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
                 <th className="border border-slate-300 px-0.5 py-0.5 text-center font-semibold align-middle" style={{ wordBreak: 'break-word', fontSize: '0.9em' }}>Ultimo Fornecedor</th>
                 <th className="border border-slate-300 px-0.5 py-0.5 text-center font-semibold align-middle" style={{ fontSize: '0.95em' }}>Preço Ant</th>
                 <th className="border border-slate-300 px-0.5 py-0.5 text-center font-semibold align-middle" style={{ fontSize: '0.95em' }}>PC Pend</th>
-                <th className="border border-slate-300 px-0.5 py-0.5 text-center font-semibold align-middle" style={{ fontSize: '0.95em' }}>Ag Pag</th>
+                <th className="border border-slate-300 px-0.5 py-0.5 text-center font-semibold align-middle" style={{ fontSize: '0.95em' }}>Pré Compra</th>
               </tr>
             </thead>
             <tbody>
@@ -440,8 +440,8 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
                 const precoAnt = getRowValue(row, ['Custo Unitario Compra', 'custo unitario compra']);
                 /** Coluna do SQL Nomus `As 'PC'` (itempedidocompra status 3,2,4); não usar PC_Aguardando Liberacao. */
                 const pcPend = getRowValue(row, ['PC', 'pc']);
-                /** SQL Nomus: `coalesce(agpag.quantidade,0) as 'Ag Pag'` */
-                const agPag = getRowValue(row, ['Ag Pag', 'ag pag']);
+                /** SQL Nomus: `coalesce(agpag.quantidade,0) as 'Pré Compra'` (legado: 'Ag Pag') */
+                const agPag = getRowValue(row, ['Pré Compra', 'pré compra', 'Ag Pag', 'ag pag']);
                 const qtdSolicit = getRowValue(row, ['Qtd Liberada', 'qtd liberada']);
                 const solicitanteSc = String(getRowValue(row, ['Usuario', 'usuario']) ?? '').trim();
                 const dataNecess = getRowValue(row, ['Data Necessidade', 'data necessidade']);

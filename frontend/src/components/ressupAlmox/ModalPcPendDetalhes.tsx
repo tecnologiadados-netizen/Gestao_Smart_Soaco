@@ -26,6 +26,10 @@ export type ModalPcPendDetalhesProps = {
   cacheRef?: MutableRefObject<Map<number, RessupAlmoxPcPendLinha[]>>;
   /** Permite usar endpoint próprio (ex.: Ressup Não Almox). */
   fetchDetalhes?: (idProduto: number) => Promise<{ data: RessupAlmoxPcPendLinha[]; error?: string }>;
+  /** z-index Tailwind do overlay (padrão da aba). */
+  zIndexClass?: string;
+  /** Overlay `fixed` em tela cheia — necessário quando o pai já é um modal em portal. */
+  overlayFixed?: boolean;
 };
 
 export default function ModalPcPendDetalhes({
@@ -36,6 +40,8 @@ export default function ModalPcPendDetalhes({
   onClose,
   cacheRef,
   fetchDetalhes,
+  zIndexClass,
+  overlayFixed = false,
 }: ModalPcPendDetalhesProps) {
   const [linhas, setLinhas] = useState<RessupAlmoxPcPendLinha[]>([]);
   const [carregando, setCarregando] = useState(false);
@@ -80,7 +86,7 @@ export default function ModalPcPendDetalhes({
   const totalQtde = linhas.reduce((s, l) => s + (Number.isFinite(l.qtde) ? l.qtde : 0), 0);
 
   return (
-    <ModalAbaBackdrop onClose={onClose}>
+    <ModalAbaBackdrop onClose={onClose} zIndexClass={zIndexClass} overlayFixed={overlayFixed}>
       <div
         className="flex max-h-[min(85vh,480px)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
         role="dialog"

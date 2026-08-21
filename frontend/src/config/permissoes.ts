@@ -19,6 +19,7 @@ export const PERMISSOES = {
   COMERCIAL_VER: 'comercial.ver',
   COMERCIAL_PAINEL_VER: 'comercial.painel.ver',
   COMERCIAL_HISTORICO_VENDAS_VER: 'comercial.historico_vendas.ver',
+  COMERCIAL_RFV_VER: 'comercial.rfv.ver',
   QUALIDADE_VER: 'qualidade.ver',
   RH_VER: 'rh.ver',
   RH_CONFIGURAR: 'rh.configurar',

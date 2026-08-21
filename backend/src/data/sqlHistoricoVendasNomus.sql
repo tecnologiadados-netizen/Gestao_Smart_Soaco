@@ -40,7 +40,7 @@ item_ajustado AS (
 SELECT
   p.id AS pdId,
   p.nome AS pdCodigo,
-  DATE(p.dataEmissao) AS dataEmissao,
+  DATE_FORMAT(p.dataEmissao, '%Y-%m-%d') AS dataEmissao,
   DATE_FORMAT(p.dataEmissao, '%Y-%m') AS mes,
   COALESCE(pec.nomeRazaoSocial, pec.nome, '—') AS cliente,
   COALESCE(vr.nome, '—') AS vendedor,

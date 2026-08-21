@@ -10,7 +10,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'cascata',
     titulo: 'Grade sintética e clique na célula',
     oQueE:
-      'A grade traz só valores consolidados (estoque, empenho, SC, Ag Pag, PC, saldo projetado). O detalhe analítico abre sob demanda ao clicar na célula.',
+      'A grade traz só valores consolidados (estoque, empenho, SC, Pré Compra, PC, saldo projetado). O detalhe analítico abre sob demanda ao clicar na célula.',
     comoLe:
       'Clique na célula para ver o modal com a mesma regra/fonte do número da grade. O detalhe fica em cache até um novo “Filtrar/Consultar”; a soma do modal deve bater com a coluna.',
   },
@@ -18,7 +18,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'saldo',
     titulo: 'Saldo projetado',
     oQueE:
-      'Indicador de disponibilidade líquida do item: estoque − empenho + solicitação + Ag Pag + pedido de compra.',
+      'Indicador de disponibilidade líquida do item: estoque − empenho + solicitação + Pré Compra + pedido de compra.',
     comoLe:
       'Valor ≤ 0 fica em destaque (vermelho): há risco de ruptura se o empenho for consumido antes das entradas. Não é o estoque físico sozinho — já desconta o comprometido e soma entradas esperadas.',
   },
@@ -53,6 +53,14 @@ const SECOES: SecaoAjuda[] = [
       'O estoque atual da grade é o somatório do saldo nos setores parametrizados. Quantidade de componente que já está no setor de PA compondo o produto pai (via BOM) não entra nesse somatório — já é abatida no empenho líquido (bruto − estoque em PA).',
     comoLe:
       'No modal de saldo, leia setor a setor. Use a dica (?) no cabeçalho de Estoque atual e de Empenho para lembrar essa separação entre saldo físico parametrizado e estoque em PA.',
+  },
+  {
+    id: 'colunas',
+    titulo: 'Colunas e largura da grade',
+    oQueE:
+      'Cada cabeçalho tem o ícone de olho riscado para ocultar aquela informação. As colunas ocultas ficam reunidas no botão “Colunas ocultas”, e a escolha e a largura são guardadas neste navegador.',
+    comoLe:
+      'Use o ícone de olho riscado no cabeçalho para ocultar a coluna e “Colunas ocultas” para reexibi-la individualmente ou todas de uma vez. Para aumentar ou reduzir a largura, arraste a borda direita do cabeçalho.',
   },
 ];
 

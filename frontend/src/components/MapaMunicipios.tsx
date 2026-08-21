@@ -5,7 +5,8 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { obterMapaMunicipios, type MapaMunicipioItem, type CorBolhaMapa, type MapaMunicipiosResponse, type FiltrosPedidos } from '../api/pedidos';
 import { PONTO_RETORNO_TERESINA } from '../utils/heatmapRoteirizador';
-import { iconeParadaRota, iconeParadaSelecao } from '../utils/heatmapParadaMapaIcon';
+import { iconeBandeiraFiltro, iconeParadaRota, iconeParadaSelecao } from '../utils/heatmapParadaMapaIcon';
+import { criarMatcherTextoLivre } from '../utils/textoLivreBusca';
 import { aplicarZoomRoteiroNoMapa, type PontoMapaRoteiro } from '../utils/heatmapMapaBoundsRoteiro';
 import HeatmapDetalhesPedidosTable from './HeatmapDetalhesPedidosTable';
 
@@ -110,6 +111,21 @@ function PopupConteudo({ item }: { item: MapaMunicipioItem }) {
       />
     </div>
   );
+}
+
+function parseMultiFiltro(value: string | undefined): string[] {
+  if (!value?.trim()) return [];
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function criarMatcherMunicipiosFiltro(termos: string[]): (municipio: string) => boolean {
+  if (termos.length === 0) return () => false;
+  if (termos.length === 1) return criarMatcherTextoLivre(termos[0]!);
+  const matchers = termos.map((t) => criarMatcherTextoLivre(t));
+  return (municipio) => matchers.some((m) => m(municipio));
 }
 
 /** Ajusta o zoom para caber todos os pontos (quando há dados). */
@@ -284,6 +300,25 @@ export default function MapaMunicipios({
   mapaOverlaySuperiorEsquerdo,
 }: MapaMunicipiosProps) {
   const filtros = filtrosProp ?? FILTROS_VAZIOS;
+  const municipiosFiltroDestaque = useMemo(
+    () => parseMultiFiltro(filtros.municipio_entrega),
+    [filtros.municipio_entrega]
+  );
+  const matcherMunicipioDestaque = useMemo(
+    () => criarMatcherMunicipiosFiltro(municipiosFiltroDestaque),
+    [municipiosFiltroDestaque]
+  );
+  const filtrosMapa = useMemo(() => {
+    const { municipio_entrega: _municipio, ...resto } = filtros;
+    return resto;
+  }, [filtros]);
+  const filtrosMapaKey = useMemo(() => {
+    const params = new URLSearchParams();
+    Object.entries(filtrosMapa).forEach(([k, v]) => {
+      if (v !== undefined && v !== '' && k !== 'page' && k !== 'limit') params.set(k, String(v));
+    });
+    return params.toString();
+  }, [filtrosMapa]);
   const [resposta, setResposta] = useState<MapaMunicipiosResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -291,11 +326,11 @@ export default function MapaMunicipios({
   useEffect(() => {
     setLoading(true);
     setErro(null);
-    obterMapaMunicipios(filtros)
+    obterMapaMunicipios(filtrosMapa)
       .then(setResposta)
       .catch(() => setErro('Não foi possível carregar o mapa.'))
       .finally(() => setLoading(false));
-  }, [filtros]);
+  }, [filtrosMapaKey]);
 
   const dados = resposta?.itens ?? DADOS_VAZIOS;
 
@@ -351,6 +386,12 @@ export default function MapaMunicipios({
       </h3>
       <p className="text-xs text-slate-500 dark:text-slate-400 px-4 pb-1 shrink-0">
         Tamanho da bolha = valor pendente. <strong>Teresina/PI</strong> é a base (sempre ativa). <strong>Ctrl+clique</strong> em outra bolha para incluir a cidade; clique normal abre detalhes. Use <strong>Roteirizar</strong> para o percurso Teresina → cidade → Teresina.
+        {municipiosFiltroDestaque.length > 0 && (
+          <>
+            {' '}
+            Com filtro de município, a cidade filtrada é marcada com <span aria-hidden>🚩</span> (demais cidades permanecem visíveis).
+          </>
+        )}
       </p>
       <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 pb-2 shrink-0 text-xs">
         <span className="flex items-center gap-1.5">
@@ -412,18 +453,28 @@ export default function MapaMunicipios({
             const key = mapaMunicipioChave(item, i);
             const raioKm = raioPorItem.get(key) ?? RAIO_MIN_KM;
             const cores = CORES_BOLHA[item.cor ?? 'verde'];
+            const destaqueFiltro = matcherMunicipioDestaque(item.municipio);
             return (
-              <BolhaMunicipioMapa
-                key={key}
-                item={item}
-                raioKm={raioKm}
-                cores={cores}
-                chave={key}
-                roteirizadorChaves={roteirizadorChaves}
-                roteirizadorChaveBaseFixa={roteirizadorChaveBaseFixa}
-                onRoteirizadorToggleChave={onRoteirizadorToggleChave}
-                sequenciaParada={paradaSequenciaPorChave?.get(key)}
-              />
+              <Fragment key={key}>
+                <BolhaMunicipioMapa
+                  item={item}
+                  raioKm={raioKm}
+                  cores={cores}
+                  chave={key}
+                  roteirizadorChaves={roteirizadorChaves}
+                  roteirizadorChaveBaseFixa={roteirizadorChaveBaseFixa}
+                  onRoteirizadorToggleChave={onRoteirizadorToggleChave}
+                  sequenciaParada={paradaSequenciaPorChave?.get(key)}
+                />
+                {destaqueFiltro && (
+                  <Marker
+                    position={[item.lat, item.lng]}
+                    icon={iconeBandeiraFiltro()}
+                    interactive={false}
+                    zIndexOffset={900}
+                  />
+                )}
+              </Fragment>
             );
           })}
           <Pane name="heatmap-rota-viaria" style={{ zIndex: 360 }}>

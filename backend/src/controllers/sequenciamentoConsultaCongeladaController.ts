@@ -1,7 +1,7 @@
 /**
  * Consultas do Calendário de produção congeladas dentro de um snapshot de sequência.
  *
- * - PC Pend / Ag Pag / SC (coluna Entrada PC) saem direto da base congelada no Gravar.
+ * - PC Pend / Pré Compra / SC (coluna Entrada PC) saem direto da base congelada no Gravar.
  * - Consulta de estoque / saldo por setor / empenho por pedido são congeladas sob demanda:
  *   a primeira abertura consulta o Nomus e persiste o resultado, que nunca mais muda.
  */
@@ -52,7 +52,7 @@ export async function getSequenciamentoSnapshotPcPend(req: Request, res: Respons
 
 /**
  * GET /api/pedidos/sequenciamento-carradas/snapshots/:id/ag-pag?idProduto=
- * Detalhe de Ag Pag congelado (modal "Pré Compra" do Materiais do dia).
+ * Detalhe de Pré Compra congelado (modal do Materiais do dia).
  */
 export async function getSequenciamentoSnapshotAgPag(req: Request, res: Response): Promise<void> {
   const id = parseId(req.params.id);
