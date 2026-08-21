@@ -41,6 +41,16 @@ export type MedidasPecaCatalogEntry = {
   med2: number | null;
 };
 
+export type RecursoEscalaFaixa = {
+  inicio: string;
+  fim: string;
+};
+
+export type RecursoEscala = {
+  diasSemana: number[];
+  faixas: RecursoEscalaFaixa[];
+};
+
 export type ProgramacaoProducaoRecurso = {
   cod: string;
   nome: string;
@@ -50,6 +60,8 @@ export type ProgramacaoProducaoRecurso = {
   atualizadoPorNome: string | null;
   createdAt: string;
   updatedAt: string;
+  escala?: RecursoEscala | null;
+  painelCamasi?: boolean;
 };
 
 /** Ordem de produção aberta no Nomus (recurso 124). */

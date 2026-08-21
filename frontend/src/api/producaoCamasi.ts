@@ -10,6 +10,7 @@ export type CamasiStatusResponse = {
 export type CamasiDashboardKpis = {
   horasProducao: number;
   horasParado: number;
+  horasEscala?: number | null;
   disponibilidadePct: number | null;
   qtdeParadas: number;
 };
@@ -34,6 +35,35 @@ export type CamasiPecaAgg = {
   horasParado: number;
 };
 
+export type CamasiDiaParadoAgg = {
+  data: string;
+  horas: number;
+  qtde: number;
+  pct: number;
+};
+
+export type CamasiParadaValida = {
+  id: number;
+  data: string;
+  inicioParado: string | null;
+  fimParado: string | null;
+  horas: number;
+  minutos?: number;
+  peca: string;
+  justificativa: string;
+  observacao: string | null;
+};
+
+export type CamasiProducaoValida = {
+  id: number;
+  data: string;
+  inicioProducao: string | null;
+  fimProducao: string | null;
+  horas: number;
+  minutos?: number;
+  peca: string;
+};
+
 export type CamasiDashboardResponse = {
   dataIni: string;
   dataFim: string;
@@ -41,6 +71,16 @@ export type CamasiDashboardResponse = {
   porMes: CamasiMesAgg[];
   motivos: CamasiMotivoAgg[];
   pecas: CamasiPecaAgg[];
+  pioresDiasParado: CamasiDiaParadoAgg[];
+  paradasValidas?: CamasiParadaValida[];
+  producaoValidas?: CamasiProducaoValida[];
+  escala?: {
+    recursoCod: string | null;
+    recursoNome: string | null;
+    diasSemana: number[];
+    faixas: { inicio: string; fim: string }[];
+    horasEscala: number | null;
+  } | null;
 };
 
 export type CamasiDiaAgg = {

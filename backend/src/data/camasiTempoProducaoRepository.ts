@@ -3,6 +3,11 @@
  */
 
 import { queryCamasi } from '../config/camasiFirebirdDb.js';
+import {
+  escalaEstaVazia,
+  horasIntervaloNaEscala,
+  type RecursoEscala,
+} from '../utils/recursoEscalaTrabalho.js';
 
 export type TempoProducaoRow = {
   id: number;
@@ -23,6 +28,7 @@ export type TempoProducaoRow = {
 export type CamasiDashboardKpis = {
   horasProducao: number;
   horasParado: number;
+  horasEscala: number | null;
   disponibilidadePct: number | null;
   qtdeParadas: number;
 };
@@ -47,10 +53,41 @@ export type CamasiPecaAgg = {
   horasParado: number;
 };
 
+export type CamasiDiaParadoAgg = {
+  data: string; // YYYY-MM-DD
+  horas: number;
+  qtde: number;
+  pct: number;
+};
+
+export type CamasiParadaValida = {
+  id: number;
+  data: string;
+  inicioParado: string | null;
+  fimParado: string | null;
+  horas: number;
+  minutos: number;
+  peca: string;
+  justificativa: string;
+  observacao: string | null;
+};
+
+export type CamasiProducaoValida = {
+  id: number;
+  data: string;
+  inicioProducao: string | null;
+  fimProducao: string | null;
+  horas: number;
+  minutos: number;
+  peca: string;
+};
+
 export type CamasiDiaAgg = {
   data: string; // YYYY-MM-DD
   horas: number;
 };
+
+const TOP_DIAS_PARADO = 20;
 
 const SQL_TEMPO_PRODUCAO = `
 SELECT
@@ -189,6 +226,45 @@ export function horasEntreParado(
   return ms <= 0 ? 0 : ms / MS_HORA;
 }
 
+function intervaloEfetivoMs(
+  dataYmd: string,
+  inicioHms: string | null,
+  fimHms: string | null,
+  tipo: 'producao' | 'parado'
+): { startMs: number; endMs: number } | null {
+  const iv = parseIntervaloMs(dataYmd, inicioHms, fimHms);
+  if (!iv) return null;
+  let { startMs, endMs } = iv;
+  if (endMs >= startMs) {
+    return endMs > startMs ? { startMs, endMs } : null;
+  }
+  if (tipo === 'producao') {
+    endMs += 24 * MS_HORA;
+    return endMs > startMs ? { startMs, endMs } : null;
+  }
+  const gapHoras = (startMs - endMs) / MS_HORA;
+  if (gapHoras < OVERNIGHT_MIN_HORAS) return null;
+  endMs += 24 * MS_HORA;
+  return endMs > startMs ? { startMs, endMs } : null;
+}
+
+export function horasNaEscala(
+  dataYmd: string,
+  inicioHms: string | null,
+  fimHms: string | null,
+  tipo: 'producao' | 'parado',
+  escala: RecursoEscala | null | undefined
+): number {
+  if (!escala || escalaEstaVazia(escala)) {
+    return tipo === 'producao'
+      ? horasEntre(dataYmd, inicioHms, fimHms)
+      : horasEntreParado(dataYmd, inicioHms, fimHms);
+  }
+  const iv = intervaloEfetivoMs(dataYmd, inicioHms, fimHms, tipo);
+  if (!iv) return 0;
+  return horasIntervaloNaEscala(dataYmd, iv.startMs, iv.endMs, escala);
+}
+
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
@@ -237,6 +313,15 @@ function mapRow(raw: Record<string, unknown>): TempoProducaoRow | null {
   };
 }
 
+function aplicarEscalaNaRow(row: TempoProducaoRow, escala: RecursoEscala | null | undefined): TempoProducaoRow {
+  if (!escala || escalaEstaVazia(escala)) return row;
+  return {
+    ...row,
+    horasProducao: horasNaEscala(row.data, row.inicioProducao, row.fimProducao, 'producao', escala),
+    horasParado: horasNaEscala(row.data, row.inicioParado, row.fimParado, 'parado', escala),
+  };
+}
+
 export function motivoLabel(row: TempoProducaoRow): string {
   return row.nomeMotivo || row.motivoParado || '(sem motivo)';
 }
@@ -252,21 +337,31 @@ export function mesLabel(mes: string): string {
   return `${MESES_ABREV[idx]}/${y}`;
 }
 
-export async function listTempoProducao(dataIni: string, dataFim: string): Promise<TempoProducaoRow[]> {
+export async function listTempoProducao(
+  dataIni: string,
+  dataFim: string,
+  escala?: RecursoEscala | null
+): Promise<TempoProducaoRow[]> {
   const raw = await queryCamasi<Record<string, unknown>>(SQL_TEMPO_PRODUCAO, [dataIni, dataFim]);
   const out: TempoProducaoRow[] = [];
   for (const r of raw) {
     const mapped = mapRow(r);
-    if (mapped) out.push(mapped);
+    if (mapped) out.push(aplicarEscalaNaRow(mapped, escala));
   }
   return out;
 }
 
-export function buildDashboardResumo(rows: TempoProducaoRow[]): {
+export function buildDashboardResumo(
+  rows: TempoProducaoRow[],
+  opts?: { horasEscala?: number | null }
+): {
   kpis: CamasiDashboardKpis;
   porMes: CamasiMesAgg[];
   motivos: CamasiMotivoAgg[];
   pecas: CamasiPecaAgg[];
+  pioresDiasParado: CamasiDiaParadoAgg[];
+  paradasValidas: CamasiParadaValida[];
+  producaoValidas: CamasiProducaoValida[];
 } {
   let horasProducao = 0;
   let horasParado = 0;
@@ -275,11 +370,25 @@ export function buildDashboardResumo(rows: TempoProducaoRow[]): {
   const mesMap = new Map<string, { horasProducao: number; horasParado: number }>();
   const motivoMap = new Map<string, { horas: number; qtde: number }>();
   const pecaMap = new Map<string, { horasProducao: number; horasParado: number }>();
+  const diaParadoMap = new Map<string, { horas: number; qtde: number }>();
+  const paradasValidas: CamasiParadaValida[] = [];
+  const producaoValidas: CamasiProducaoValida[] = [];
 
   for (const row of rows) {
     horasProducao += row.horasProducao;
     horasParado += row.horasParado;
     if (row.horasParado > 0) qtdeParadas += 1;
+    if (row.horasProducao > 0) {
+      producaoValidas.push({
+        id: row.id,
+        data: row.data,
+        inicioProducao: row.inicioProducao,
+        fimProducao: row.fimProducao,
+        horas: round1(row.horasProducao),
+        minutos: Math.round(row.horasProducao * 60),
+        peca: pecaLabel(row),
+      });
+    }
 
     const mes = row.data.slice(0, 7);
     const mAgg = mesMap.get(mes) ?? { horasProducao: 0, horasParado: 0 };
@@ -293,6 +402,23 @@ export function buildDashboardResumo(rows: TempoProducaoRow[]): {
       mot.horas += row.horasParado;
       mot.qtde += 1;
       motivoMap.set(motivo, mot);
+
+      const dia = diaParadoMap.get(row.data) ?? { horas: 0, qtde: 0 };
+      dia.horas += row.horasParado;
+      dia.qtde += 1;
+      diaParadoMap.set(row.data, dia);
+
+      paradasValidas.push({
+        id: row.id,
+        data: row.data,
+        inicioParado: row.inicioParado,
+        fimParado: row.fimParado,
+        horas: round1(row.horasParado),
+        minutos: Math.round(row.horasParado * 60),
+        peca: pecaLabel(row),
+        justificativa: motivo,
+        observacao: row.obsMotivo,
+      });
     }
 
     const peca = pecaLabel(row);
@@ -303,10 +429,20 @@ export function buildDashboardResumo(rows: TempoProducaoRow[]): {
   }
 
   const total = horasProducao + horasParado;
+  const horasEscala =
+    opts?.horasEscala != null && Number.isFinite(opts.horasEscala) && opts.horasEscala > 0
+      ? opts.horasEscala
+      : null;
   const kpis: CamasiDashboardKpis = {
     horasProducao: round1(horasProducao),
     horasParado: round1(horasParado),
-    disponibilidadePct: total > 0 ? round1((horasProducao / total) * 100) : null,
+    horasEscala: horasEscala != null ? round1(horasEscala) : null,
+    disponibilidadePct:
+      horasEscala != null
+        ? round1((horasProducao / horasEscala) * 100)
+        : total > 0
+          ? round1((horasProducao / total) * 100)
+          : null,
     qtdeParadas,
   };
 
@@ -337,7 +473,30 @@ export function buildDashboardResumo(rows: TempoProducaoRow[]): {
     }))
     .sort((a, b) => b.horasProducao + b.horasParado - (a.horasProducao + a.horasParado));
 
-  return { kpis, porMes, motivos, pecas };
+  const pioresDiasParado: CamasiDiaParadoAgg[] = [...diaParadoMap.entries()]
+    .map(([data, v]) => ({
+      data,
+      horas: round1(v.horas),
+      qtde: v.qtde,
+      pct: horasParado > 0 ? round1((v.horas / horasParado) * 100) : 0,
+    }))
+    .sort((a, b) => b.horas - a.horas || b.qtde - a.qtde)
+    .slice(0, TOP_DIAS_PARADO);
+
+  paradasValidas.sort(
+    (a, b) =>
+      b.data.localeCompare(a.data) ||
+      (a.inicioParado ?? '99:99:99').localeCompare(b.inicioParado ?? '99:99:99') ||
+      a.id - b.id
+  );
+  producaoValidas.sort(
+    (a, b) =>
+      b.data.localeCompare(a.data) ||
+      (a.inicioProducao ?? '99:99:99').localeCompare(b.inicioProducao ?? '99:99:99') ||
+      a.id - b.id
+  );
+
+  return { kpis, porMes, motivos, pecas, pioresDiasParado, paradasValidas, producaoValidas };
 }
 
 export function buildDiasDoMes(

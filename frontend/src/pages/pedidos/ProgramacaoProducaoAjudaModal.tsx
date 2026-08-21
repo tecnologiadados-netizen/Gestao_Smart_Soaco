@@ -15,6 +15,14 @@ const SECOES: SecaoAjuda[] = [
       'Monte roteiros e quantidades em processamento; processe para travar a base; conclua quando OPs/validações estiverem ok.',
   },
   {
+    id: 'escala',
+    titulo: 'Escala de trabalho dos recursos',
+    oQueE:
+      'Cada recurso pode ter faixas de funcionamento no mesmo dia (ex.: 07:00–11:30 e 13:00–17:15) e dias da semana. O intervalo entre faixas (almoço) não é parada real. A Perfiladeira 1000 (R001) alimenta o painel Produção Camasi.',
+    comoLe:
+      'Cadastre a escala em PCP → Configuração → Recursos. O painel Camasi só conta produção e paradas que cruzam essas faixas; hora extra fica de fora por enquanto.',
+  },
+  {
     id: 'roteiros',
     titulo: 'Roteiros e recursos',
     oQueE:

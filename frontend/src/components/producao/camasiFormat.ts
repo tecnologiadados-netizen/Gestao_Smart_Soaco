@@ -1,3 +1,10 @@
+export function formatHmsCurto(hms: string | null | undefined): string {
+  if (!hms) return '—';
+  const m = String(hms).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return hms;
+  return `${m[1].padStart(2, '0')}:${m[2]}`;
+}
+
 export function formatHoras(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return '—';
   return `${new Intl.NumberFormat('pt-BR', {
@@ -6,10 +13,38 @@ export function formatHoras(v: number | null | undefined): string {
   }).format(v)} h`;
 }
 
+function pluralPt(n: number, singular: string, plural: string): string {
+  return n === 1 ? `${n} ${singular}` : `${n} ${plural}`;
+}
+
+/** Ex.: "12 minutos" | "2 horas e 38 minutos" | "1 hora". */
+export function formatDuracaoDidatica(minutosTotal: number | null | undefined): string {
+  if (minutosTotal == null || !Number.isFinite(minutosTotal)) return '—';
+  const m = Math.round(minutosTotal);
+  if (m <= 0) return 'menos de 1 minuto';
+  if (m < 60) return pluralPt(m, 'minuto', 'minutos');
+  const horas = Math.floor(m / 60);
+  const minutos = m % 60;
+  const parteHoras = pluralPt(horas, 'hora', 'horas');
+  if (minutos === 0) return parteHoras;
+  return `${parteHoras} e ${pluralPt(minutos, 'minuto', 'minutos')}`;
+}
+
 export function formatYmdBr(ymd: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd ?? '').trim());
   if (!m) return ymd || '—';
   return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+const DIAS_SEMANA_ABREV = ['dom.', 'seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.'];
+
+/** Ex.: "qua. 19/08/2026" */
+export function formatYmdBrComSemana(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd ?? '').trim());
+  if (!m) return formatYmdBr(ymd);
+  const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const dia = DIAS_SEMANA_ABREV[dt.getDay()] ?? '';
+  return `${dia} ${m[3]}/${m[2]}/${m[1]}`;
 }
 
 export function hojeYmd(): string {

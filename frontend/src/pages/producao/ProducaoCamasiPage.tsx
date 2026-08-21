@@ -17,12 +17,19 @@ import {
 import { useTheme } from '../../contexts/ThemeContext';
 import { getChartTheme } from '../../utils/painelProducaoFormat';
 import ModalCamasiDias, { type CamasiDiasModalParams } from '../../components/producao/ModalCamasiDias';
+import ModalCamasiKpi, { type CamasiKpiModalTipo } from '../../components/producao/ModalCamasiKpi';
 import {
+  formatDuracaoDidatica,
+  formatHmsCurto,
   formatHoras,
   formatYmdBr,
+  formatYmdBrComSemana,
   hojeYmd,
   mesesAtrasYmd,
 } from '../../components/producao/camasiFormat';
+import { formatEscalaResumo } from '../../utils/recursoEscalaLabel';
+import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../utils/textoLivreBusca';
+import { classesBlocoDia } from '../../components/producao/camasiTabelaDia';
 
 type Filtros = { dataIni: string; dataFim: string };
 
@@ -35,11 +42,13 @@ function KpiCard({
   value,
   sub,
   loading,
+  onClick,
 }: {
   title: string;
   value: string;
   sub: string;
   loading?: boolean;
+  onClick?: () => void;
 }) {
   if (loading) {
     return (
@@ -51,13 +60,20 @@ function KpiCard({
     );
   }
   return (
-    <div className="card-panel p-4">
+    <button
+      type="button"
+      onClick={onClick}
+      className="card-panel w-full p-4 text-left transition hover:ring-2 hover:ring-primary-400/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+    >
       <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">{title}</p>
       <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-50">
         {value}
       </p>
       <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{sub}</p>
-    </div>
+      <p className="mt-1.5 text-[10px] font-medium text-primary-600 dark:text-primary-400">
+        Clique para ver o detalhe
+      </p>
+    </button>
   );
 }
 
@@ -74,6 +90,8 @@ export default function ProducaoCamasiPage() {
 
   const detalheCacheRef = useRef(new Map<string, CamasiDiasResponse>());
   const [modalParams, setModalParams] = useState<CamasiDiasModalParams | null>(null);
+  const [kpiModal, setKpiModal] = useState<CamasiKpiModalTipo | null>(null);
+  const [filtroParadas, setFiltroParadas] = useState('');
 
   const carregar = useCallback(async (f: Filtros) => {
     setLoading(true);
@@ -105,6 +123,7 @@ export default function ProducaoCamasiPage() {
     }
     detalheCacheRef.current.clear();
     setModalParams(null);
+    setKpiModal(null);
     setFiltros({ ...draft });
   }, [draft]);
 
@@ -140,13 +159,36 @@ export default function ProducaoCamasiPage() {
     [data]
   );
 
-  const motivosDisplay = (data?.motivos ?? []).slice(0, 15);
+  const motivosDisplay = (data?.motivos ?? []).slice(0, 12);
   const maxMotivo = Math.max(...motivosDisplay.map((m) => m.horas), 1);
   const pecasDisplay = (data?.pecas ?? []).slice(0, 20);
   const maxPeca = Math.max(
     ...pecasDisplay.map((p) => p.horasProducao + p.horasParado),
     1
   );
+  const pioresDias = data?.pioresDiasParado ?? [];
+  const maxDiaParado = Math.max(...pioresDias.map((d) => d.horas), 1);
+
+  const paradasValidas = data?.paradasValidas ?? [];
+  const matchParada = useMemo(() => criarMatcherTextoLivre(filtroParadas), [filtroParadas]);
+  const paradasFiltradas = useMemo(
+    () =>
+      paradasValidas.filter(
+        (p) =>
+          matchParada(p.justificativa) ||
+          matchParada(p.peca) ||
+          matchParada(p.observacao ?? '') ||
+          matchParada(formatYmdBr(p.data))
+      ),
+    [paradasValidas, matchParada]
+  );
+  const indiceDiaParada = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of paradasFiltradas) {
+      if (!map.has(p.data)) map.set(p.data, map.size);
+    }
+    return map;
+  }, [paradasFiltradas]);
 
   const kpis = data?.kpis;
 
@@ -158,11 +200,24 @@ export default function ProducaoCamasiPage() {
             Produção Camasi
           </h1>
           <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-            Tempo de produção e paradas da máquina
+            Paradas reais dentro da escala
             {data
               ? ` · ${formatYmdBr(data.dataIni)} a ${formatYmdBr(data.dataFim)}`
               : ''}
           </p>
+          {data?.escala ? (
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Escala {data.escala.recursoNome ?? data.escala.recursoCod}:{' '}
+              {formatEscalaResumo({
+                diasSemana: data.escala.diasSemana,
+                faixas: data.escala.faixas,
+              })}
+            </p>
+          ) : data && !data.escala ? (
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+              Sem escala na Perfiladeira 1000 — cadastre em PCP → Recursos para recortar as paradas.
+            </p>
+          ) : null}
           {filtrosPendentes && (
             <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">
               Filtros alterados — clique em Filtrar para atualizar os indicadores.
@@ -217,15 +272,17 @@ export default function ProducaoCamasiPage() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           loading={loading}
-          title="Produção"
-          value={formatHoras(kpis?.horasProducao ?? 0)}
-          sub="Horas em produção no período"
+          title="Eventos de parada"
+          value={new Intl.NumberFormat('pt-BR').format(kpis?.qtdeParadas ?? 0)}
+          sub="Quantidade de paradas no período"
+          onClick={() => setKpiModal('eventos')}
         />
         <KpiCard
           loading={loading}
-          title="Parado"
+          title="Tempo parado"
           value={formatHoras(kpis?.horasParado ?? 0)}
-          sub="Horas parado no período"
+          sub="Tempo total de parada no período"
+          onClick={() => setKpiModal('parado')}
         />
         <KpiCard
           loading={loading}
@@ -238,14 +295,137 @@ export default function ProducaoCamasiPage() {
                 }).format(kpis.disponibilidadePct)}%`
               : '—'
           }
-          sub="Produção ÷ (produção + parado)"
+          sub={
+            kpis?.horasEscala
+              ? `Produção ÷ ${formatHoras(kpis.horasEscala)} de escala`
+              : 'Produção ÷ (produção + parado)'
+          }
+          onClick={() => setKpiModal('disponibilidade')}
         />
         <KpiCard
           loading={loading}
-          title="Eventos de parada"
-          value={new Intl.NumberFormat('pt-BR').format(kpis?.qtdeParadas ?? 0)}
-          sub="Registros com tempo parado"
+          title="Produção"
+          value={formatHoras(kpis?.horasProducao ?? 0)}
+          sub="Horas em produção no período"
+          onClick={() => setKpiModal('producao')}
         />
+      </div>
+
+      <div className="mt-3 grid gap-3 xl:grid-cols-2">
+        <div className="card-panel flex min-h-[420px] flex-col p-5">
+          <div className="mb-4 shrink-0">
+            <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
+              Principais motivos de parada
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Só paradas que cruzam a escala — horas, participação e quantidade de eventos
+            </p>
+          </div>
+          {loading ? (
+            <div className="flex flex-1 items-center justify-center text-slate-500">Carregando…</div>
+          ) : motivosDisplay.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center text-slate-500">Sem paradas no período.</div>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+              {motivosDisplay.map((m, idx) => {
+                const pctBar = (m.horas / maxMotivo) * 100;
+                return (
+                  <div
+                    key={m.motivo}
+                    className="grid grid-cols-[auto_minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-3"
+                  >
+                    <span className="w-5 text-right text-[11px] font-semibold tabular-nums text-slate-400">
+                      {idx + 1}
+                    </span>
+                    <span
+                      className="truncate text-xs font-medium text-slate-700 dark:text-slate-200"
+                      title={m.motivo}
+                    >
+                      {m.motivo}
+                    </span>
+                    <div className="relative h-8 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800">
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-lg bg-amber-500/80 dark:bg-amber-400/70"
+                        style={{ width: `${Math.max(pctBar, m.horas > 0 ? 2 : 0)}%` }}
+                      />
+                      <span className="relative z-10 flex h-full items-center px-2 text-[11px] font-semibold text-slate-800 dark:text-slate-100">
+                        {formatHoras(m.horas)}
+                      </span>
+                    </div>
+                    <div className="min-w-[5.5rem] text-right text-[11px] text-slate-500 dark:text-slate-400">
+                      {m.pct.toFixed(1).replace('.', ',')}% · {m.qtde}x
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="card-panel flex min-h-[420px] flex-col p-5">
+          <div className="mb-4 shrink-0">
+            <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
+              Dias com maior tempo de parada
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Top {pioresDias.length || 20} dias do período, do maior para o menor tempo parado
+            </p>
+          </div>
+          {loading ? (
+            <div className="flex flex-1 items-center justify-center text-slate-500">Carregando…</div>
+          ) : pioresDias.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center text-slate-500">Sem paradas no período.</div>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="sticky top-0 bg-white dark:bg-slate-900">
+                  <tr className="border-b border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                    <th className="w-8 pb-2 pr-2 font-semibold">#</th>
+                    <th className="pb-2 pr-2 font-semibold">Dia</th>
+                    <th className="pb-2 pr-2 text-right font-semibold">Parado</th>
+                    <th className="pb-2 pr-2 text-right font-semibold">Eventos</th>
+                    <th className="pb-2 font-semibold">Do período</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pioresDias.map((d, idx) => {
+                    const pctBar = (d.horas / maxDiaParado) * 100;
+                    return (
+                      <tr
+                        key={d.data}
+                        className="border-b border-slate-100 dark:border-slate-800"
+                      >
+                        <td className="py-2 pr-2 tabular-nums text-slate-400">{idx + 1}</td>
+                        <td className="py-2 pr-2 font-medium text-slate-700 dark:text-slate-200">
+                          {formatYmdBrComSemana(d.data)}
+                        </td>
+                        <td className="py-2 pr-2 text-right tabular-nums font-semibold text-amber-700 dark:text-amber-300">
+                          {formatHoras(d.horas)}
+                        </td>
+                        <td className="py-2 pr-2 text-right tabular-nums text-slate-600 dark:text-slate-300">
+                          {new Intl.NumberFormat('pt-BR').format(d.qtde)}
+                        </td>
+                        <td className="py-2">
+                          <div className="flex items-center gap-2">
+                            <div className="relative h-5 min-w-[4.5rem] flex-1 overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
+                              <div
+                                className="absolute inset-y-0 left-0 bg-amber-500/80 dark:bg-amber-400/70"
+                                style={{ width: `${Math.max(pctBar, d.horas > 0 ? 4 : 0)}%` }}
+                              />
+                            </div>
+                            <span className="w-10 text-right tabular-nums text-[11px] text-slate-500 dark:text-slate-400">
+                              {d.pct.toFixed(1).replace('.', ',')}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="mt-3 grid gap-3 xl:grid-cols-2">
@@ -348,54 +528,7 @@ export default function ProducaoCamasiPage() {
         </div>
       </div>
 
-      <div className="mt-3 grid gap-3 xl:grid-cols-2">
-        <div className="card-panel flex min-h-[380px] flex-col p-5">
-          <div className="mb-4 shrink-0">
-            <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
-              Motivos de parada
-            </h3>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Horas paradas por motivo
-            </p>
-          </div>
-          {loading ? (
-            <div className="flex flex-1 items-center justify-center text-slate-500">Carregando…</div>
-          ) : motivosDisplay.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center text-slate-500">Sem paradas no período.</div>
-          ) : (
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
-              {motivosDisplay.map((m) => {
-                const pctBar = (m.horas / maxMotivo) * 100;
-                return (
-                  <div
-                    key={m.motivo}
-                    className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-3"
-                  >
-                    <span
-                      className="truncate text-xs font-medium text-slate-700 dark:text-slate-200"
-                      title={m.motivo}
-                    >
-                      {m.motivo}
-                    </span>
-                    <div className="relative h-8 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800">
-                      <div
-                        className="absolute inset-y-0 left-0 rounded-lg bg-amber-500/80 dark:bg-amber-400/70"
-                        style={{ width: `${Math.max(pctBar, m.horas > 0 ? 2 : 0)}%` }}
-                      />
-                      <span className="relative z-10 flex h-full items-center px-2 text-[11px] font-semibold text-slate-800 dark:text-slate-100">
-                        {formatHoras(m.horas)}
-                      </span>
-                    </div>
-                    <div className="min-w-[4.5rem] text-right text-[11px] text-slate-500 dark:text-slate-400">
-                      {m.pct.toFixed(1).replace('.', ',')}% · {m.qtde}x
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
+      <div className="mt-3">
         <div className="card-panel flex min-h-[380px] flex-col p-5">
           <div className="mb-4 shrink-0">
             <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
@@ -464,6 +597,112 @@ export default function ProducaoCamasiPage() {
         </div>
       </div>
 
+      <div className="mt-3">
+        <div className="card-panel flex max-h-[520px] min-h-[280px] flex-col p-5">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2 shrink-0">
+            <div>
+              <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
+                Paradas válidas
+              </h3>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                Cada evento com tempo parado dentro da escala · {paradasValidas.length} registro
+                {paradasValidas.length === 1 ? '' : 's'}
+              </p>
+            </div>
+            <input
+              type="search"
+              className="w-full max-w-sm rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
+              value={filtroParadas}
+              onChange={(e) => setFiltroParadas(e.target.value)}
+            />
+          </div>
+          {loading ? (
+            <div className="flex flex-1 items-center justify-center text-slate-500">Carregando…</div>
+          ) : paradasFiltradas.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center text-slate-500">
+              {paradasValidas.length === 0 ? 'Sem paradas válidas no período.' : 'Nenhum registro no filtro.'}
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700">
+              <table className="w-full border-collapse text-left text-xs">
+                <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800">
+                  <tr className="text-slate-600 dark:text-slate-300">
+                    <th className="px-2 py-2 text-center font-semibold">Data</th>
+                    <th className="px-2 py-2 font-semibold">Início</th>
+                    <th className="px-2 py-2 font-semibold">Fim</th>
+                    <th className="px-2 py-2 text-right font-semibold">Duração</th>
+                    <th className="px-2 py-2 font-semibold">Peça</th>
+                    <th className="px-2 py-2 font-semibold">Justificativa</th>
+                    <th className="px-2 py-2 font-semibold">Observação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paradasFiltradas.map((p, idx) => {
+                    const diaAnterior = idx > 0 ? paradasFiltradas[idx - 1]!.data : null;
+                    const mostraData = p.data !== diaAnterior;
+                    let rowSpan = 1;
+                    if (mostraData) {
+                      for (let i = idx + 1; i < paradasFiltradas.length; i++) {
+                        if (paradasFiltradas[i]!.data !== p.data) break;
+                        rowSpan += 1;
+                      }
+                    }
+                    let inicioIdx = idx;
+                    while (inicioIdx > 0 && paradasFiltradas[inicioIdx - 1]!.data === p.data) {
+                      inicioIdx -= 1;
+                    }
+                    const { tr, dataTd } = classesBlocoDia(
+                      indiceDiaParada.get(p.data) ?? 0,
+                      idx - inicioIdx,
+                      mostraData
+                    );
+                    return (
+                      <tr key={p.id} className={tr}>
+                        {mostraData ? (
+                          <td
+                            rowSpan={rowSpan}
+                            className={`whitespace-nowrap px-3 py-2 text-center align-middle text-xs font-bold tabular-nums ${dataTd}`}
+                          >
+                            {formatYmdBrComSemana(p.data)}
+                          </td>
+                        ) : null}
+                        <td className="whitespace-nowrap px-2 py-2 tabular-nums">
+                          {formatHmsCurto(p.inicioParado)}
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-2 tabular-nums">
+                          {formatHmsCurto(p.fimParado)}
+                        </td>
+                        <td className="px-2 py-2 text-right font-medium text-amber-800 dark:text-amber-300">
+                          {formatDuracaoDidatica(
+                            p.minutos ?? Math.round((p.horas ?? 0) * 60)
+                          )}
+                        </td>
+                        <td className="max-w-[10rem] truncate px-2 py-2" title={p.peca}>
+                          {p.peca}
+                        </td>
+                        <td className="max-w-[14rem] px-2 py-2 font-medium text-slate-800 dark:text-slate-100" title={p.justificativa}>
+                          {p.justificativa}
+                        </td>
+                        <td className="max-w-[12rem] truncate px-2 py-2 text-slate-500 dark:text-slate-400" title={p.observacao ?? ''}>
+                          {p.observacao || '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <ModalCamasiKpi
+        open={!!kpiModal}
+        tipo={kpiModal}
+        data={data}
+        onClose={() => setKpiModal(null)}
+      />
       <ModalCamasiDias
         open={!!modalParams}
         params={modalParams}

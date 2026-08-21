@@ -9,6 +9,7 @@ import type {
   ProgramacaoProducaoListItem,
   ProgramacaoProducaoRecurso,
   ProgramacaoProducaoSalva,
+  RecursoEscala,
 } from '../components/programacao-producao/types';
 
 export async function listProgramacoesProducao(): Promise<ProgramacaoProducaoListItem[]> {
@@ -41,8 +42,14 @@ export async function listProgramacaoProducaoRecursos(): Promise<ProgramacaoProd
   return r.data ?? [];
 }
 
-export async function createProgramacaoProducaoRecurso(nome: string): Promise<ProgramacaoProducaoRecurso> {
-  const res = await apiFetch('/api/programacao-producao/recursos', { method: 'POST', body: { nome } });
+export async function createProgramacaoProducaoRecurso(
+  nome: string,
+  escala?: RecursoEscala | null
+): Promise<ProgramacaoProducaoRecurso> {
+  const res = await apiFetch('/api/programacao-producao/recursos', {
+    method: 'POST',
+    body: { nome, escala: escala ?? null },
+  });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error ?? 'Erro ao criar recurso.');
@@ -53,11 +60,12 @@ export async function createProgramacaoProducaoRecurso(nome: string): Promise<Pr
 
 export async function updateProgramacaoProducaoRecurso(
   cod: string,
-  nome: string
+  nome: string,
+  escala?: RecursoEscala | null
 ): Promise<ProgramacaoProducaoRecurso> {
   const res = await apiFetch(`/api/programacao-producao/recursos/${encodeURIComponent(cod)}`, {
     method: 'PUT',
-    body: { nome },
+    body: { nome, escala: escala ?? null },
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
