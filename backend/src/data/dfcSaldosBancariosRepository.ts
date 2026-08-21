@@ -6,7 +6,7 @@
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { getNomusPool } from '../config/nomusDb.js';
+import { getNomusPool, nomusQueryWithRetry } from '../config/nomusDb.js';
 import { formatSqlDateYmd } from './dfcDateUtils.js';
 import { ehContaBancariaInativaDfc } from './dfcContasCaixaConstantes.js';
 
@@ -135,8 +135,8 @@ export async function queryDfcSaldosBancarios(params: {
 
   try {
     const [[rowsAbertura], [rowsMov]] = await Promise.all([
-      pool.query(SQL_ABERTURA, [dataInicio]),
-      pool.query(SQL_MOV, [movInicio, dataFim]),
+      nomusQueryWithRetry(pool, SQL_ABERTURA, [dataInicio]),
+      nomusQueryWithRetry(pool, SQL_MOV, [movInicio, dataFim]),
     ]);
 
     const abertura = new Map<string, number>();

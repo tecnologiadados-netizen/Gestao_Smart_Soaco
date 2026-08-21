@@ -180,6 +180,38 @@ function Stop-GitOrfaosNoProjeto {
     Start-Sleep -Seconds 1
 }
 
+function Invoke-GitNative {
+    param(
+        [string]$GitExe,
+        [string[]]$GitArgs,
+        [string]$StdInText = ""
+    )
+    # Com $ErrorActionPreference=Stop, progresso do git em stderr (ex.: "Updating files: 87%")
+    # vira ErrorRecord e aborta o deploy mesmo com exit 0. Isola stderr e checa so LASTEXITCODE.
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        if ($StdInText) {
+            $output = $StdInText | & $GitExe @GitArgs 2>&1
+        } else {
+            $output = & $GitExe @GitArgs 2>&1
+        }
+        $code = $LASTEXITCODE
+        foreach ($line in @($output)) {
+            if ($null -eq $line) { continue }
+            $text = if ($line -is [System.Management.Automation.ErrorRecord]) {
+                $line.ToString()
+            } else {
+                "$line"
+            }
+            if ($text.Trim()) { Write-Host $text }
+        }
+        return $code
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+}
+
 function Sync-GitComOriginMain {
     param([string]$GitExe)
     $env:GIT_TERMINAL_PROMPT = '0'
@@ -188,8 +220,8 @@ function Sync-GitComOriginMain {
     for ($attempt = 1; $attempt -le 8; $attempt++) {
         Stop-GitOrfaosNoProjeto
 
-        & $GitExe -c gc.auto=0 fetch origin main
-        if ($LASTEXITCODE -ne 0) {
+        $fetchCode = Invoke-GitNative -GitExe $GitExe -GitArgs @('-c', 'gc.auto=0', 'fetch', 'origin', 'main', '--progress')
+        if ($fetchCode -ne 0) {
             Write-Host "git fetch falhou (tentativa $attempt)..." -ForegroundColor Yellow
             Start-Sleep -Seconds 4
             continue
@@ -198,8 +230,11 @@ function Sync-GitComOriginMain {
         $resetOk = $false
         for ($r = 1; $r -le 5; $r++) {
             $stdin = ('y' + [Environment]::NewLine) * 15
-            $stdin | & $GitExe -c gc.auto=0 reset --hard origin/main 2>&1 | Out-Host
-            if ($LASTEXITCODE -eq 0) {
+            # --quiet evita "Updating files: N%" no stderr (falso positivo no PowerShell)
+            $resetCode = Invoke-GitNative -GitExe $GitExe -StdInText $stdin -GitArgs @(
+                '-c', 'gc.auto=0', 'reset', '--hard', 'origin/main', '--quiet'
+            )
+            if ($resetCode -eq 0) {
                 $resetOk = $true
                 break
             }
@@ -322,8 +357,10 @@ $npmInstallPendente = $false
 try {
     $branch = & $Git branch --show-current
     if ($branch -ne "main") {
-        & $Git fetch origin
-        & $Git checkout main
+        $co = Invoke-GitNative -GitExe $Git -GitArgs @('fetch', 'origin')
+        if ($co -ne 0) { throw "git fetch origin falhou ao mudar para main." }
+        $co = Invoke-GitNative -GitExe $Git -GitArgs @('checkout', 'main', '--quiet')
+        if ($co -ne 0) { throw "git checkout main falhou." }
     }
 
     Write-Host "[1/8] Sincronizando com origin/main (sistema ONLINE)..." -ForegroundColor Cyan
@@ -419,15 +456,25 @@ try {
         }
     }
 
-    $deadlineHealth = (Get-Date).AddSeconds(25)
+    $deadlineHealth = (Get-Date).AddSeconds(40)
     $resp = $null
     while ((Get-Date) -lt $deadlineHealth) {
         try {
-            $resp = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 5
+            # Preferir curl (nao segue 301 para HTTPS) se o redirect ainda estiver ativo.
+            $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+            if ($curl) {
+                $raw = & curl.exe -sS -m 5 --max-redirs 0 "http://127.0.0.1:$port/health" 2>$null
+                if ($LASTEXITCODE -eq 0 -and $raw) {
+                    $resp = $raw | ConvertFrom-Json
+                }
+            } else {
+                $resp = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 5
+            }
             if ($resp.ok -eq $true) { break }
         } catch {
-            Start-Sleep -Milliseconds 800
+            $resp = $null
         }
+        Start-Sleep -Milliseconds 800
     }
     if ($null -eq $resp -or $resp.ok -ne $true) { throw "Health check falhou." }
 

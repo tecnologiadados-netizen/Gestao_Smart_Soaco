@@ -3,7 +3,7 @@
  * Filtro por data de baixa; agregação por conta e dia ou mês.
  */
 
-import { getNomusPool } from '../config/nomusDb.js';
+import { getNomusPool, nomusQueryWithRetry } from '../config/nomusDb.js';
 import { type DfcPrioridadeFilterResolvido } from './dfcPrioridadeFilter.js';
 import type { DfcTipoRefLancamento } from './dfcPrioridadeConstantes.js';
 import {
@@ -360,7 +360,7 @@ LIMIT 2000
   const args: unknown[] = [...argsBranch1, ...argsBranch2];
 
   try {
-    const [rows] = (await pool.query(sql, args)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await nomusQueryWithRetry(pool, sql, args)) as [Record<string, unknown>[], unknown];
     const list = Array.isArray(rows) ? rows : [];
     const linhas: DfcDespesaPagamentoEmAbertoRow[] = list.map((r) => {
       const sit = r.situacao ?? r['situacao'];
@@ -427,7 +427,7 @@ LIMIT 800
   const args: unknown[] = [dataInicio, dataFim, dataFim, dataInicio, dataFim, ...idEmpresas];
 
   try {
-    const [rows] = (await pool.query(sql, args)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await nomusQueryWithRetry(pool, sql, args)) as [Record<string, unknown>[], unknown];
     const list = Array.isArray(rows) ? rows : [];
     const nomes = list.map((r) => String(r.nome ?? r['nome'] ?? '').trim()).filter(Boolean);
     return { nomes: [...new Set(nomes)] };
