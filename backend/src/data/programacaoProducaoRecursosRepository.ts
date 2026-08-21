@@ -1,10 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import {
+  CAMASI_RECURSO_COD,
+  normalizarEscala,
+  type RecursoEscala,
+} from '../utils/recursoEscalaTrabalho.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VAR_DIR = join(__dirname, '..', '..', 'var', 'programacao-producao-catalog');
 const RECURSOS_FILE = join(VAR_DIR, 'recursos.json');
+
+export type { RecursoEscala };
 
 export type ProgramacaoProducaoRecurso = {
   cod: string;
@@ -15,6 +22,9 @@ export type ProgramacaoProducaoRecurso = {
   atualizadoPorNome: string | null;
   createdAt: string;
   updatedAt: string;
+  escala?: RecursoEscala | null;
+  /** Recurso cuja escala alimenta o painel Produção Camasi. */
+  painelCamasi?: boolean;
 };
 
 type RecursosStore = {
@@ -31,7 +41,23 @@ function readStore(): RecursosStore {
   try {
     const raw = JSON.parse(readFileSync(RECURSOS_FILE, 'utf-8')) as Partial<RecursosStore>;
     const recursos = Array.isArray(raw.recursos) ? raw.recursos : [];
-    return { recursos: recursos.filter((r) => r && typeof r.cod === 'string' && typeof r.nome === 'string') };
+    return {
+      recursos: recursos
+        .filter((r) => r && typeof r.cod === 'string' && typeof r.nome === 'string')
+        .map((r) => {
+          let escala: RecursoEscala | null = null;
+          try {
+            escala = normalizarEscala(r.escala);
+          } catch {
+            escala = null;
+          }
+          return {
+            ...r,
+            escala,
+            painelCamasi: r.painelCamasi === true,
+          };
+        }),
+    };
   } catch {
     return { recursos: [] };
   }
@@ -64,10 +90,12 @@ export function listProgramacaoProducaoRecursos(): ProgramacaoProducaoRecurso[] 
 
 export function createProgramacaoProducaoRecurso(
   nome: string,
-  usuario: { login: string; nome: string | null }
+  usuario: { login: string; nome: string | null },
+  escalaRaw?: unknown
 ): ProgramacaoProducaoRecurso {
   const texto = normalizarNome(nome);
   if (!texto) throw new Error('Informe o nome do recurso.');
+  const escala = normalizarEscala(escalaRaw);
   const store = readStore();
   const dup = store.recursos.some((r) => r.nome.toLowerCase() === texto.toLowerCase());
   if (dup) throw new Error('Já existe um recurso com este nome.');
@@ -81,6 +109,7 @@ export function createProgramacaoProducaoRecurso(
     atualizadoPorNome: usuario.nome,
     createdAt: now,
     updatedAt: now,
+    escala,
   };
   store.recursos.push(recurso);
   writeStore(store);
@@ -90,7 +119,8 @@ export function createProgramacaoProducaoRecurso(
 export function updateProgramacaoProducaoRecurso(
   cod: string,
   nome: string,
-  usuario: { login: string; nome: string | null }
+  usuario: { login: string; nome: string | null },
+  escalaRaw?: unknown
 ): ProgramacaoProducaoRecurso {
   const key = cod.trim();
   if (!key) throw new Error('Código do recurso inválido.');
@@ -102,9 +132,11 @@ export function updateProgramacaoProducaoRecurso(
   const dup = store.recursos.some((r, i) => i !== idx && r.nome.toLowerCase() === texto.toLowerCase());
   if (dup) throw new Error('Já existe um recurso com este nome.');
   const prev = store.recursos[idx]!;
+  const escala = escalaRaw === undefined ? prev.escala ?? null : normalizarEscala(escalaRaw);
   const atualizado: ProgramacaoProducaoRecurso = {
     ...prev,
     nome: texto,
+    escala,
     atualizadoPorLogin: usuario.login,
     atualizadoPorNome: usuario.nome,
     updatedAt: new Date().toISOString(),
@@ -112,6 +144,11 @@ export function updateProgramacaoProducaoRecurso(
   store.recursos[idx] = atualizado;
   writeStore(store);
   return atualizado;
+}
+
+export function getRecursoPainelCamasi(): ProgramacaoProducaoRecurso | null {
+  const list = listProgramacaoProducaoRecursos();
+  return list.find((r) => r.painelCamasi) ?? list.find((r) => r.cod === CAMASI_RECURSO_COD) ?? null;
 }
 
 export function deleteProgramacaoProducaoRecurso(cod: string): void {

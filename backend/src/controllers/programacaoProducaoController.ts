@@ -479,7 +479,7 @@ export async function getProgramacaoProducaoRecursos(_req: Request, res: Respons
 export async function postProgramacaoProducaoRecurso(req: Request, res: Response): Promise<void> {
   const nome = typeof req.body?.nome === 'string' ? req.body.nome : '';
   try {
-    const data = createProgramacaoProducaoRecurso(nome, usuarioReq(req));
+    const data = createProgramacaoProducaoRecurso(nome, usuarioReq(req), req.body?.escala);
     res.status(201).json({ data });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -492,7 +492,7 @@ export async function putProgramacaoProducaoRecurso(req: Request, res: Response)
   const cod = String(req.params.cod ?? '').trim();
   const nome = typeof req.body?.nome === 'string' ? req.body.nome : '';
   try {
-    const data = updateProgramacaoProducaoRecurso(cod, nome, usuarioReq(req));
+    const data = updateProgramacaoProducaoRecurso(cod, nome, usuarioReq(req), req.body?.escala);
     res.json({ data });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

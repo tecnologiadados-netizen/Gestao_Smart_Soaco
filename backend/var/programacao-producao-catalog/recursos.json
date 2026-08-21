@@ -3,6 +3,14 @@
     {
       "cod": "R001",
       "nome": "Perfiladeira 1000",
+      "painelCamasi": true,
+      "escala": {
+        "diasSemana": [1, 2, 3, 4, 5],
+        "faixas": [
+          { "inicio": "07:00", "fim": "11:30" },
+          { "inicio": "13:00", "fim": "17:15" }
+        ]
+      },
       "criadoPorLogin": "marquesfilho",
       "criadoPorNome": null,
       "atualizadoPorLogin": "marquesfilho",

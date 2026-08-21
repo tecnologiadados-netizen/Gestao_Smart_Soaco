@@ -8,6 +8,11 @@ import {
   isCamasiEnabled,
   testCamasiConnection,
 } from '../config/camasiFirebirdDb.js';
+import { getRecursoPainelCamasi } from '../data/programacaoProducaoRecursosRepository.js';
+import {
+  escalaEstaVazia,
+  horasEscalaNoPeriodo,
+} from '../utils/recursoEscalaTrabalho.js';
 import {
   buildDashboardResumo,
   buildDiasDoMes,
@@ -48,12 +53,23 @@ const diasSchema = periodoSchema.and(
 function async503(handler: RequestHandler): RequestHandler {
   return (req, res, next) => {
     Promise.resolve(handler(req, res, next)).catch((err) => {
-      console.error('[producaoCamasiRoutes]', err instanceof Error ? err.message : String(err));
+      const detalhe = err instanceof Error ? err.message : String(err);
+      console.error('[producaoCamasiRoutes]', detalhe);
       if (!res.headersSent) {
-        res.status(503).json({
-          error: 'Serviço temporariamente indisponível. Tente novamente.',
-          detalhe: err instanceof Error ? err.message : String(err),
-        });
+        const host = process.env.CAMASI_FDB_HOST?.trim() || '127.0.0.1';
+        const port = process.env.CAMASI_FDB_PORT?.trim() || '3050';
+        const rede =
+          detalhe.includes('ENETUNREACH') ||
+          detalhe.includes('EHOSTUNREACH') ||
+          detalhe.includes('ETIMEDOUT') ||
+          detalhe.includes('timeout');
+        const recusado = detalhe.includes('ECONNREFUSED');
+        const error = recusado
+          ? `Não foi possível conectar ao Firebird da Camasi (${host}:${port}). O RICMAQ não está escutando nessa porta.`
+          : rede
+            ? `O PC do banco Camasi (${host}) está desligado ou fora da rede. Ligue a máquina do RICMAQ e clique em Atualizar.`
+            : `Não foi possível ler o banco da Camasi: ${detalhe}`;
+        res.status(503).json({ error, detalhe });
       }
     });
   };
@@ -109,11 +125,23 @@ router.get(
     }
 
     const { dataIni, dataFim } = parsed.data;
-    const rows = await listTempoProducao(dataIni, dataFim);
-    const resumo = buildDashboardResumo(rows);
+    const recurso = getRecursoPainelCamasi();
+    const escala = recurso?.escala && !escalaEstaVazia(recurso.escala) ? recurso.escala : null;
+    const horasEscala = escala ? horasEscalaNoPeriodo(dataIni, dataFim, escala) : null;
+    const rows = await listTempoProducao(dataIni, dataFim, escala);
+    const resumo = buildDashboardResumo(rows, { horasEscala });
     res.json({
       dataIni,
       dataFim,
+      escala: escala
+        ? {
+            recursoCod: recurso?.cod ?? null,
+            recursoNome: recurso?.nome ?? null,
+            diasSemana: escala.diasSemana,
+            faixas: escala.faixas,
+            horasEscala: resumo.kpis.horasEscala,
+          }
+        : null,
       ...resumo,
     });
   })
@@ -142,7 +170,9 @@ router.get(
     }
 
     const { dataIni, dataFim, mes, tipo } = parsed.data;
-    const rows = await listTempoProducao(dataIni, dataFim);
+    const recurso = getRecursoPainelCamasi();
+    const escala = recurso?.escala && !escalaEstaVazia(recurso.escala) ? recurso.escala : null;
+    const rows = await listTempoProducao(dataIni, dataFim, escala);
     const { dias, totalHoras } = buildDiasDoMes(rows, mes, tipo);
     res.json({
       dataIni,

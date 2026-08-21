@@ -8,9 +8,10 @@ import {
   listProgramacaoProducaoRecursos,
   updateProgramacaoProducaoRecurso,
 } from '../../api/programacaoProducao';
-import type { ProgramacaoProducaoRecurso } from '../../components/programacao-producao/types';
+import type { ProgramacaoProducaoRecurso, RecursoEscala, RecursoEscalaFaixa } from '../../components/programacao-producao/types';
 import { patchCatalogoRecursosRuntime } from '../../utils/programacaoProducaoCatalogoRuntime';
 import { usuarioRecursoLabel } from '../../utils/programacaoProducaoRoteiros';
+import { DIAS_SEMANA_ESCALA, formatEscalaResumo } from '../../utils/recursoEscalaLabel';
 import {
   podeEditarProgramacaoProducao,
   podeVerProgramacaoProducao,
@@ -35,6 +36,11 @@ export default function ProgramacaoProducaoRecursosPage() {
   const [filtro, setFiltro] = useState('');
   const [modal, setModal] = useState<'novo' | { editar: ProgramacaoProducaoRecurso } | null>(null);
   const [nomeForm, setNomeForm] = useState('');
+  const [diasForm, setDiasForm] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [faixasForm, setFaixasForm] = useState<RecursoEscalaFaixa[]>([
+    { inicio: '07:00', fim: '11:30' },
+    { inicio: '13:00', fim: '17:15' },
+  ]);
   const [salvando, setSalvando] = useState(false);
   const [confirmExcluir, setConfirmExcluir] = useState<ProgramacaoProducaoRecurso | null>(null);
   const [excluindo, setExcluindo] = useState(false);
@@ -70,14 +76,34 @@ export default function ProgramacaoProducaoRecursosPage() {
 
   const abrirNovo = () => {
     setNomeForm('');
+    setDiasForm([1, 2, 3, 4, 5]);
+    setFaixasForm([
+      { inicio: '07:00', fim: '11:30' },
+      { inicio: '13:00', fim: '17:15' },
+    ]);
     setModal('novo');
     setErro(null);
   };
 
   const abrirEditar = (r: ProgramacaoProducaoRecurso) => {
     setNomeForm(r.nome);
+    setDiasForm(r.escala?.diasSemana?.length ? [...r.escala.diasSemana] : [1, 2, 3, 4, 5]);
+    setFaixasForm(
+      r.escala?.faixas?.length
+        ? r.escala.faixas.map((f) => ({ inicio: f.inicio, fim: f.fim }))
+        : [
+            { inicio: '07:00', fim: '11:30' },
+            { inicio: '13:00', fim: '17:15' },
+          ]
+    );
     setModal({ editar: r });
     setErro(null);
+  };
+
+  const escalaDoForm = (): RecursoEscala | null => {
+    const faixas = faixasForm.filter((f) => f.inicio.trim() && f.fim.trim());
+    if (!faixas.length || !diasForm.length) return null;
+    return { diasSemana: [...diasForm], faixas };
   };
 
   const salvar = async () => {
@@ -85,10 +111,11 @@ export default function ProgramacaoProducaoRecursosPage() {
     setSalvando(true);
     setErro(null);
     try {
+      const escala = escalaDoForm();
       if (modal === 'novo') {
-        await createProgramacaoProducaoRecurso(nomeForm);
+        await createProgramacaoProducaoRecurso(nomeForm, escala);
       } else if (modal && typeof modal === 'object' && 'editar' in modal) {
-        await updateProgramacaoProducaoRecurso(modal.editar.cod, nomeForm);
+        await updateProgramacaoProducaoRecurso(modal.editar.cod, nomeForm, escala);
       }
       setModal(null);
       await carregar();
@@ -170,6 +197,9 @@ export default function ProgramacaoProducaoRecursosPage() {
               <th className="text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-200">
                 Recurso
               </th>
+              <th className="text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-200">
+                Escala de trabalho
+              </th>
               <th className="text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-200 w-40">
                 Usuário
               </th>
@@ -184,7 +214,7 @@ export default function ProgramacaoProducaoRecursosPage() {
             {filtrados.length === 0 ? (
               <tr>
                 <td
-                  colSpan={canEdit ? 4 : 3}
+                  colSpan={canEdit ? 5 : 4}
                   className="px-3 py-8 text-center text-slate-500 dark:text-slate-400"
                 >
                   {loading ? 'Carregando…' : 'Nenhum recurso cadastrado.'}
@@ -198,6 +228,14 @@ export default function ProgramacaoProducaoRecursosPage() {
                 >
                   <td className="px-3 py-2 font-mono text-xs">{r.cod}</td>
                   <td className="px-3 py-2">{r.nome}</td>
+                  <td className="px-3 py-2 text-xs text-slate-600 dark:text-slate-400">
+                    {formatEscalaResumo(r.escala)}
+                    {r.painelCamasi || r.cod === 'R001' ? (
+                      <span className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800 dark:bg-sky-900/50 dark:text-sky-200">
+                        Camasi
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-3 py-2 text-slate-600 dark:text-slate-400 text-xs">
                     {usuarioRecursoLabel(r)}
                   </td>
@@ -232,7 +270,7 @@ export default function ProgramacaoProducaoRecursosPage() {
           onClick={() => !salvando && setModal(null)}
         >
           <div
-            className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+            className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-600 dark:bg-slate-800"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -250,6 +288,92 @@ export default function ProgramacaoProducaoRecursosPage() {
                 autoFocus
               />
             </label>
+            <div className="mt-4">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                Escala de trabalho
+              </span>
+              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                Faixas em que a máquina deve produzir. Intervalos entre faixas (ex.: almoço) não
+                contam como parada real no painel Camasi.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {DIAS_SEMANA_ESCALA.map((d) => {
+                  const on = diasForm.includes(d.valor);
+                  return (
+                    <button
+                      key={d.valor}
+                      type="button"
+                      disabled={!canEdit || salvando}
+                      onClick={() =>
+                        setDiasForm((prev) =>
+                          prev.includes(d.valor)
+                            ? prev.filter((x) => x !== d.valor)
+                            : [...prev, d.valor]
+                        )
+                      }
+                      className={`rounded-md px-2 py-1 text-[11px] font-medium ${
+                        on
+                          ? 'bg-primary-600 text-white'
+                          : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      {d.curto}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-3 space-y-2">
+                {faixasForm.map((f, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input
+                      type="time"
+                      className={`${INPUT} py-1.5`}
+                      value={f.inicio}
+                      disabled={!canEdit || salvando}
+                      onChange={(e) =>
+                        setFaixasForm((prev) =>
+                          prev.map((x, i) => (i === idx ? { ...x, inicio: e.target.value } : x))
+                        )
+                      }
+                    />
+                    <span className="text-xs text-slate-500">até</span>
+                    <input
+                      type="time"
+                      className={`${INPUT} py-1.5`}
+                      value={f.fim}
+                      disabled={!canEdit || salvando}
+                      onChange={(e) =>
+                        setFaixasForm((prev) =>
+                          prev.map((x, i) => (i === idx ? { ...x, fim: e.target.value } : x))
+                        )
+                      }
+                    />
+                    {faixasForm.length > 1 && canEdit && (
+                      <button
+                        type="button"
+                        className="text-xs text-red-600 hover:underline dark:text-red-400"
+                        disabled={salvando}
+                        onClick={() => setFaixasForm((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        Remover
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {canEdit && (
+                <button
+                  type="button"
+                  className="mt-2 text-xs font-medium text-primary-600 hover:underline dark:text-primary-400"
+                  disabled={salvando}
+                  onClick={() =>
+                    setFaixasForm((prev) => [...prev, { inicio: '13:00', fim: '17:15' }])
+                  }
+                >
+                  + Faixa
+                </button>
+              )}
+            </div>
             {erro && (
               <p className="mt-2 text-sm text-red-600 dark:text-red-300" role="alert">
                 {erro}
