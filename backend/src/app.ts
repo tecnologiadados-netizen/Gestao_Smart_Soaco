@@ -38,6 +38,7 @@ import emailSettingsRoutes from './routes/emailSettingsRoutes.js';
 import painelProducaoRoutes from './routes/painelProducaoRoutes.js';
 import producaoCamasiRoutes from './routes/producaoCamasiRoutes.js';
 import lojaEstoqueKitsRoutes from './routes/lojaEstoqueKitsRoutes.js';
+import recebimentoRoutes from './routes/recebimentoRoutes.js';
 import { csrfProtect } from './middleware/csrf.js';
 
 const app = express();
@@ -184,6 +185,7 @@ app.use('/api/email-settings', emailSettingsRoutes);
 app.use('/api/painel-producao', painelProducaoRoutes);
 app.use('/api/producao-camasi', producaoCamasiRoutes);
 app.use('/api/loja/estoque-kits', lojaEstoqueKitsRoutes);
+app.use('/api/recebimento', recebimentoRoutes);
 
 // Header em todas as respostas para conferir na outra máquina se está rodando o build novo
 export const BUILD_ID = 'pedidos-no-csrf-v1';

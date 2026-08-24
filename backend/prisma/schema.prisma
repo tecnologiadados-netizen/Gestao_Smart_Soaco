@@ -235,6 +235,28 @@ model DoubleCheckInConferido {
   @@map("double_checkin_conferido")
 }
 
+/// Conferência às cegas (Recebimento): andamento local do DE de pré-entrada.
+model RecebimentoConferencia {
+  id                    Int      @id @default(autoincrement())
+  idDocumentoEstoque    Int      @unique
+  numeroDocumento       String?
+  status                String   @default("AGUARDANDO_CONFERENTE")
+  conferenteUsuarioId   Int?
+  conferenteLogin       String?
+  conferenteNome        String?
+  atribuidoEm           DateTime?
+  atribuidoPorUsuarioId Int?
+  atribuidoPorLogin     String?
+  iniciadoEm            DateTime?
+  finalizadoEm          DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([status])
+  @@index([conferenteUsuarioId])
+  @@map("recebimento_conferencia")
+}
+
 /// Tipos de mensagem automática WhatsApp (Integração → SMS)
 model WhatsappNotificacaoTipo {
   id               Int      @id @default(autoincrement())

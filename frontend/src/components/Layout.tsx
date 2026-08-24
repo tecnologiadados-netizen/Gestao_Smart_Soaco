@@ -9,6 +9,7 @@ import {
   buildFinanceiroMenuForUser,
   buildIntegracaoSubmenusForUser,
   buildLogisticaMenuForUser,
+  buildRecebimentoMenuForUser,
 } from '../config/navigationMenu';
 import PermissionGuard from './PermissionGuard';
 import { getSycroOrderNotifications } from '../api/sycroorder';
@@ -152,6 +153,11 @@ function LayoutInner() {
     [hasPermission],
   );
 
+  const recebimentoMenu = useMemo(
+    () => buildRecebimentoMenuForUser(hasPermission),
+    [hasPermission],
+  );
+
   const handleLogout = useCallback(async () => {
     try {
       await logout(login);
@@ -202,6 +208,7 @@ function LayoutInner() {
           hasPermission={hasPermission}
           isMaster={isMaster}
           logisticaMenu={logisticaMenu}
+          recebimentoMenu={recebimentoMenu}
           integracaoItems={integracaoItems}
           financeiroMenu={financeiroMenu}
           supportUnreadCount={supportUnreadCount}

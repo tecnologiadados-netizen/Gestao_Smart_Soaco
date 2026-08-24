@@ -20,6 +20,11 @@ import {
   PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA,
 } from './financeiroPermissoes';
 import {
+  PERMISSOES_ACESSO_DIGITACAO_CONFERENCIA,
+  PERMISSOES_ACESSO_GESTAO_MESA,
+  PERMISSOES_ACESSO_RECEBIMENTO,
+} from './recebimentoPermissoes';
+import {
   PERMISSOES_ACESSO_HUB_KPIS,
   PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE,
   PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO,
@@ -105,6 +110,9 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/logistica/cubagem/veiculos': [PERMISSOES.LOGISTICA_VER, PERMISSOES.LOGISTICA_TOTAL, PERMISSOES.LOGISTICA_CUBAGEM_VER],
   '/logistica/cubagem/produtos': [PERMISSOES.LOGISTICA_VER, PERMISSOES.LOGISTICA_TOTAL, PERMISSOES.LOGISTICA_CUBAGEM_VER],
   '/logistica/cubagem/simulacao': [PERMISSOES.LOGISTICA_VER, PERMISSOES.LOGISTICA_TOTAL, PERMISSOES.LOGISTICA_CUBAGEM_VER],
+  '/recebimento': PERMISSOES_ACESSO_RECEBIMENTO,
+  '/recebimento/mesa': PERMISSOES_ACESSO_GESTAO_MESA,
+  '/recebimento/digitacao': PERMISSOES_ACESSO_DIGITACAO_CONFERENCIA,
   '/relatorios': [PERMISSOES.RELATORIOS_VER],
   '/integracao': [PERMISSOES.INTEGRACAO_VER],
   '/integracao/alteracao-data-entrega-compra': [PERMISSOES.INTEGRACAO_VER],
@@ -182,6 +190,9 @@ export const ROTAS_ORDEM = [
   '/logistica/cubagem/veiculos',
   '/logistica/cubagem/produtos',
   '/logistica/cubagem/simulacao',
+  '/recebimento',
+  '/recebimento/mesa',
+  '/recebimento/digitacao',
   '/relatorios',
   '/integracao',
   '/integracao/alteracao-data-entrega-compra',

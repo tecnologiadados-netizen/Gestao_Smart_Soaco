@@ -49,6 +49,11 @@ export const PERMISSOES = {
   LOGISTICA_CUBAGEM_VER: 'logistica.cubagem.ver',
   LOGISTICA_CUBAGEM_EDITAR: 'logistica.cubagem.editar',
 
+  // Recebimento (conferência às cegas)
+  RECEBIMENTO_MESA: 'recebimento.mesa',
+  RECEBIMENTO_CONFERENTE: 'recebimento.conferente',
+  RECEBIMENTO_TOTAL: 'recebimento.total',
+
   // Fluxos Decisórios (mapas mentais)
   FLUXOS_VER: 'fluxos.ver',
   FLUXOS_EDITAR: 'fluxos.editar',
@@ -180,6 +185,9 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.LOGISTICA_TOTAL,
   PERMISSOES.LOGISTICA_CUBAGEM_VER,
   PERMISSOES.LOGISTICA_CUBAGEM_EDITAR,
+  PERMISSOES.RECEBIMENTO_MESA,
+  PERMISSOES.RECEBIMENTO_CONFERENTE,
+  PERMISSOES.RECEBIMENTO_TOTAL,
   PERMISSOES.FLUXOS_VER,
   PERMISSOES.FLUXOS_EDITAR,
 
@@ -307,6 +315,9 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.LOGISTICA_TOTAL]: 'Logística — permissão total',
   [PERMISSOES.LOGISTICA_CUBAGEM_VER]: 'Cubagem — visualizar',
   [PERMISSOES.LOGISTICA_CUBAGEM_EDITAR]: 'Cubagem — editar cadastros',
+  [PERMISSOES.RECEBIMENTO_MESA]: 'Mesa',
+  [PERMISSOES.RECEBIMENTO_CONFERENTE]: 'Recebimento',
+  [PERMISSOES.RECEBIMENTO_TOTAL]: 'Permissão total',
   [PERMISSOES.FLUXOS_VER]: 'Ver Fluxos Decisórios (mapas mentais)',
   [PERMISSOES.FLUXOS_EDITAR]: 'Editar e excluir mapas mentais',
 

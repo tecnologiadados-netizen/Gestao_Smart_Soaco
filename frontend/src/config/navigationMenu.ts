@@ -1,6 +1,10 @@
 import { PERMISSOES, type CodigoPermissao } from './permissoes';
 import { podeAcessarRotaFinanceiro } from '../utils/financeiroPermissoes';
 import {
+  podeAcessarDigitacaoConferencia,
+  podeAcessarGestaoMesa,
+} from '../utils/recebimentoPermissoes';
+import {
   podeAcessarCadastroMetas,
   podeVerPainelApuracao,
   podeVerPainelGerencial,
@@ -77,6 +81,11 @@ export const LOGISTICA_MENU: NavMenuEntry[] = [
       { kind: 'link', to: '/logistica/cubagem/simulacao', label: 'Simulação' },
     ],
   },
+];
+
+export const RECEBIMENTO_MENU: NavMenuEntry[] = [
+  { kind: 'link', to: '/recebimento/mesa', label: 'Gestão Mesa' },
+  { kind: 'link', to: '/recebimento/digitacao', label: 'Digitação conferência' },
 ];
 
 export const COMUNICACAO_INTERNA_SUBMENUS: { to: string; label: string }[] = [
@@ -257,6 +266,9 @@ export const PATH_LABELS: Record<string, string> = {
   '/logistica/cubagem/veiculos': 'Veículos',
   '/logistica/cubagem/produtos': 'Dimensões de Produtos',
   '/logistica/cubagem/simulacao': 'Simulação de Cubagem',
+  '/recebimento': 'Recebimento',
+  '/recebimento/mesa': 'Gestão Mesa',
+  '/recebimento/digitacao': 'Digitação conferência',
   '/sem-acesso': 'Sem acesso',
 };
 
@@ -346,6 +358,20 @@ export function buildFinanceiroMenuForUser(hasPermission: HasPermission): Financ
     }
     const children = entry.children.filter((c) => podeAcessarRotaFinanceiro(c.to, hasPermission));
     if (children.length > 0) filtered.push({ ...entry, children });
+  }
+  return filtered;
+}
+
+export function buildRecebimentoMenuForUser(hasPermission: HasPermission): NavMenuEntry[] {
+  const filtered: NavMenuEntry[] = [];
+  for (const entry of RECEBIMENTO_MENU) {
+    if (entry.kind !== 'link') continue;
+    if (entry.to === '/recebimento/mesa' && podeAcessarGestaoMesa(hasPermission)) {
+      filtered.push(entry);
+    }
+    if (entry.to === '/recebimento/digitacao' && podeAcessarDigitacaoConferencia(hasPermission)) {
+      filtered.push(entry);
+    }
   }
   return filtered;
 }

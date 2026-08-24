@@ -19,6 +19,7 @@ import {
 } from '../../config/navigationMenu';
 import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from '../../utils/suportePermissoes';
 import { podeVerMenuFinanceiro } from '../../utils/financeiroPermissoes';
+import { podeVerMenuRecebimento } from '../../utils/recebimentoPermissoes';
 import { useSidebarAccordionOpen } from '../../hooks/useSidebarAccordionOpen';
 import { PERMISSOES_ACESSO_PAINEL_METAS_QUALQUER } from '../../utils/painelProducaoPermissoes';
 import { podeAcessarHubKpis } from '../../config/kpisCatalog';
@@ -82,6 +83,16 @@ const ICONS = {
   logistica: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10m10 0h4l4-4V9a1 1 0 00-1-1h-4m-4 0V6a1 1 0 011-1h2a1 1 0 011 1v1m-6 9h6" />
+    </svg>
+  ),
+  recebimento: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+      />
     </svg>
   ),
   comunicacao: (
@@ -164,6 +175,7 @@ export interface SidebarProps {
   hasPermission: HasPermission;
   isMaster: boolean;
   logisticaMenu: NavMenuEntry[];
+  recebimentoMenu: NavMenuEntry[];
   integracaoItems: { to: string; label: string }[];
   financeiroMenu: FinanceiroMenuEntry[];
   supportUnreadCount: number;
@@ -379,6 +391,7 @@ export default function Sidebar({
   hasPermission,
   isMaster,
   logisticaMenu,
+  recebimentoMenu,
   integracaoItems,
   financeiroMenu,
   supportUnreadCount,
@@ -392,6 +405,7 @@ export default function Sidebar({
     pathname.startsWith('/logistica') || pathname === '/heatmap';
   const isComunicacaoActive = pathname === '/pedidos/sycroorder';
   const isComprasActive = pathname.startsWith('/compras');
+  const isRecebimentoActive = pathname.startsWith('/recebimento');
   const isIntegracaoActive =
     pathname.startsWith('/integracao') ||
     pathname.startsWith('/whatsapp') ||
@@ -596,6 +610,30 @@ export default function Sidebar({
               onNavigate={onNavigate}
               hasPermission={hasPermission}
               prefix="compras"
+            />
+          </SidebarSection>
+        )}
+
+        {podeVerMenuRecebimento(hasPermission) && recebimentoMenu.length > 0 && (
+          <SidebarSection
+            id="recebimento"
+            label="Recebimento"
+            icon={ICONS.recebimento}
+            active={isRecebimentoActive}
+            sidebarOpen={open}
+            onExpand={onExpand}
+            accordionOpen={accordionOpen}
+            toggleAccordion={toggleAccordion}
+          >
+            <NavMenuTree
+              entries={recebimentoMenu}
+              pathname={pathname}
+              sidebarOpen={open}
+              accordionOpen={accordionOpen}
+              toggleAccordion={toggleAccordion}
+              onNavigate={onNavigate}
+              hasPermission={hasPermission}
+              prefix="recebimento"
             />
           </SidebarSection>
         )}

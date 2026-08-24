@@ -63,6 +63,9 @@ import MindMapsPage, { MindMapsLegacyRedirect } from './pages/mind-maps/MindMaps
 import VeiculosPage from './pages/logistica/VeiculosPage';
 import ProdutosCubagemPage from './pages/logistica/ProdutosCubagemPage';
 import SimulacaoCubagemPage from './pages/logistica/SimulacaoCubagemPage';
+import RecebimentoRedirectPage from './pages/recebimento/RecebimentoRedirectPage';
+import RecebimentoPlaceholderPage from './pages/recebimento/RecebimentoPlaceholderPage';
+import GestaoMesaPage from './pages/recebimento/GestaoMesaPage';
 import { qualidadeRoutes } from './modules/qualidade/qualidadeRoutes';
 import { rhRoutes } from './modules/rh/rhRoutes';
 import PainelComercialPage from './pages/comercial/PainelComercialPage';
@@ -151,6 +154,9 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'logistica/cubagem/veiculos', element: <ErrorBoundary><VeiculosPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/produtos', element: <ErrorBoundary><ProdutosCubagemPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/simulacao', element: <ErrorBoundary><SimulacaoCubagemPage /></ErrorBoundary> },
+  { path: 'recebimento', element: <ErrorBoundary><RecebimentoRedirectPage /></ErrorBoundary> },
+  { path: 'recebimento/mesa', element: <ErrorBoundary><GestaoMesaPage /></ErrorBoundary> },
+  { path: 'recebimento/digitacao', element: <ErrorBoundary><RecebimentoPlaceholderPage variante="digitacao" /></ErrorBoundary> },
   { path: 'relatorios', element: <RelatoriosPage /> },
   { path: 'integracao', element: <IntegracaoPage /> },
   { path: 'integracao/alteracao-data-entrega-compra', element: <AlteracaoDataEntregaCompraPage /> },

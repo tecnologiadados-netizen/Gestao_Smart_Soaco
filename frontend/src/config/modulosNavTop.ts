@@ -54,6 +54,15 @@ export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
   { code: 'heatmap', label: 'Roteirizador', permissoes: [PERMISSOES.HEATMAP_VER] },
   { code: 'fluxos_decisorios', label: 'Fluxos Decisórios', permissoes: [...PERMISSOES_ACESSO_FLUXOS] },
   { code: 'compras', label: 'Compras', permissoes: [PERMISSOES.COMPRAS_VER] },
+  {
+    code: 'recebimento',
+    label: 'Recebimento',
+    permissoes: [
+      PERMISSOES.RECEBIMENTO_MESA,
+      PERMISSOES.RECEBIMENTO_CONFERENTE,
+      PERMISSOES.RECEBIMENTO_TOTAL,
+    ],
+  },
   { code: 'engenharia', label: 'Engenharia', permissoes: [PERMISSOES.PRECIFICACAO_VER] },
   { code: 'qualidade', label: 'Qualidade', permissoes: [PERMISSOES.QUALIDADE_VER] },
   { code: 'financeiro', label: 'Financeiro', permissoes: [...PERMISSOES_ACESSO_FINANCEIRO_MENU] },
