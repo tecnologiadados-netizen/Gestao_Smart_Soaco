@@ -3,8 +3,8 @@ import type {
   DfcAgendamentoDetalheLinha,
   DfcDespesaPagamentoEmAbertoLinha,
   DfcKpis,
+  DfcProjecaoReceitaParcelaLinha,
   DfcSaldoBancarioContaGrade,
-  DfcSaldoFaturarLinha,
 } from '../../../api/financeiro';
 import { DFC_PRIORIDADE_LABEL, type DfcPrioridade } from '../../../api/dfcPrioridade';
 import { rotuloPeriodoCabecalho } from './dfcPeriodos';
@@ -54,7 +54,7 @@ export async function exportDfcXlsx(params: {
   kpis: DfcKpis;
   endividamentoTotal: number;
   lancamentos: DfcAgendamentoDetalheLinha[];
-  projecao: DfcSaldoFaturarLinha[];
+  projecao: DfcProjecaoReceitaParcelaLinha[];
   saldosPorConta: DfcSaldoBancarioContaGrade[];
   vencidos: DfcDespesaPagamentoEmAbertoLinha[];
   prioridadesContasMap: Record<string, DfcPrioridade>;
@@ -97,7 +97,7 @@ export async function exportDfcXlsx(params: {
       ['Endividamento bancário', endividamentoTotal],
       [
         'Observação',
-        'Até hoje: caixa realizado (data de baixa). A partir de amanhã: projetado (vencimento / saldo a baixar). Projeção de Receitas (1.1.3) = parcelas de PD Só Aço.',
+        'Até hoje: caixa realizado (data de baixa). A partir de amanhã: projetado (vencimento / saldo a baixar). Projeção 1.1.3.1 = Saldo a Receber (Carteira) rateado por cp.regra.',
       ],
     ],
     avisos,
@@ -177,15 +177,18 @@ export async function exportDfcXlsx(params: {
   autosize(wsLanc, lancHeaders.length);
 
   const projHeaders = [
+    'Sublinha',
     'PD',
     'Parcela',
+    'Dias regra',
     'Cliente',
     'Vendedor',
     'UF',
-    'Município',
     'Condição',
-    'Valor pendente',
-    'Saldo a faturar',
+    'Regra',
+    'Saldo a receber (PD)',
+    'Valor parcela',
+    'Previsão',
     'Data projetada vencimento',
   ];
   const wsProj = wb.addWorksheet('Projeção de receitas');
@@ -193,20 +196,24 @@ export async function exportDfcXlsx(params: {
   styleHeader(wsProj, projHeaders.length);
   for (const r of projecao) {
     const row = wsProj.addRow([
+      r.sublinha,
       r.pd ?? '',
-      r.parc ?? r.idParcela ?? '',
+      `${r.indiceParcela}/${r.qtdeParcelas}`,
+      r.diasRegra,
       r.cliente ?? '',
       r.vendedorRepresentante ?? '',
       r.uf ?? '',
-      r.municipioEntrega ?? '',
       r.condicaoPagamento ?? '',
-      r.valorPendente,
-      r.saldoFaturarReal,
+      r.regra ?? '',
+      r.saldoAReceberTotal,
+      r.valorParcela,
+      toExcelDate(r.dataPrevisao),
       toExcelDate(r.dataProjVenc),
     ]);
-    row.getCell(8).numFmt = MONEY_FMT;
-    row.getCell(9).numFmt = MONEY_FMT;
-    if (row.getCell(10).value instanceof Date) row.getCell(10).numFmt = DATE_FMT;
+    row.getCell(10).numFmt = MONEY_FMT;
+    row.getCell(11).numFmt = MONEY_FMT;
+    if (row.getCell(12).value instanceof Date) row.getCell(12).numFmt = DATE_FMT;
+    if (row.getCell(13).value instanceof Date) row.getCell(13).numFmt = DATE_FMT;
   }
   autosize(wsProj, projHeaders.length);
 

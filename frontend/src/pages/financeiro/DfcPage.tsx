@@ -148,6 +148,9 @@ export default function DfcPage() {
   const [saldosPorConta, setSaldosPorConta] = useState<DfcSaldoBancarioContaGrade[]>([]);
   const [erroSaldosBancarios, setErroSaldosBancarios] = useState<string | null>(null);
   const [projecaoReceitasPorPeriodo, setProjecaoReceitasPorPeriodo] = useState<Record<string, number>>({});
+  const [projecaoReceitasPorSublinha, setProjecaoReceitasPorSublinha] = useState<
+    Record<string, Record<string, number>>
+  >({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filtrosEmpresaCsv, setFiltrosEmpresaCsv] = useState('');
@@ -170,7 +173,11 @@ export default function DfcPage() {
   const [modalPrioridadeAberto, setModalPrioridadeAberto] = useState(false);
   const [modalSaldoFaturarAberto, setModalSaldoFaturarAberto] = useState(false);
   const [modalVencidoPagarAberto, setModalVencidoPagarAberto] = useState(false);
-  const [modalProjecao, setModalProjecao] = useState<{ periodo?: string; titulo: string } | null>(null);
+  const [modalProjecao, setModalProjecao] = useState<{
+    periodo?: string;
+    titulo: string;
+    sublinha?: string;
+  } | null>(null);
   const [modalEndividamentoAberto, setModalEndividamentoAberto] = useState(false);
   const [endividamento, setEndividamento] = useState<DfcEndividamentoBancarioResponse>(ENDIVIDAMENTO_ZERO);
   const [prioridadesContasMap, setPrioridadesContasMap] = useState<Record<string, DfcPrioridade>>({});
@@ -303,6 +310,7 @@ export default function DfcPage() {
         setSaldosPorConta([]);
         setErroSaldosBancarios(null);
         setProjecaoReceitasPorPeriodo({});
+        setProjecaoReceitasPorSublinha({});
         setContasBancariasOpcoes([]);
         setKpisBase(kpisRes);
         setEndividamento({ ...ENDIVIDAMENTO_ZERO, dataInicio: f.dataInicio, dataFim: f.dataFim });
@@ -321,6 +329,7 @@ export default function DfcPage() {
       setSaldosPorConta(res.saldosPorConta ?? []);
       setErroSaldosBancarios(res.erroSaldosBancarios ?? null);
       setProjecaoReceitasPorPeriodo(projRes.porPeriodo ?? {});
+      setProjecaoReceitasPorSublinha(projRes.porSublinha ?? {});
       setKpisBase(kpisRes);
       setEndividamento(endivRes);
       if (projRes.erro) {
@@ -337,6 +346,7 @@ export default function DfcPage() {
       setSaldosPorConta([]);
       setErroSaldosBancarios(null);
       setProjecaoReceitasPorPeriodo({});
+      setProjecaoReceitasPorSublinha({});
       setEndividamento({ ...ENDIVIDAMENTO_ZERO, dataInicio: f.dataInicio, dataFim: f.dataFim });
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -354,7 +364,7 @@ export default function DfcPage() {
     [filtrosEmpresaIds],
   );
 
-  /** Projeção de receitas (saldo a faturar Só Aço) — entra na grade quando Só Aço está no filtro. */
+  /** Projeção de receitas (Carteira Só Aço + sublinhas) — entra na grade quando Só Aço está no filtro. */
   const projecaoReceitasHabilitada = useMemo(
     () => projecaoReceitasAplicaParaEmpresas(idEmpresasEfetivas),
     [idEmpresasEfetivas],
@@ -363,6 +373,11 @@ export default function DfcPage() {
   const projecaoReceitasPorPeriodoEfetiva = useMemo(
     () => (projecaoReceitasHabilitada ? projecaoReceitasPorPeriodo : {}),
     [projecaoReceitasHabilitada, projecaoReceitasPorPeriodo],
+  );
+
+  const projecaoReceitasPorSublinhaEfetiva = useMemo(
+    () => (projecaoReceitasHabilitada ? projecaoReceitasPorSublinha : {}),
+    [projecaoReceitasHabilitada, projecaoReceitasPorSublinha],
   );
 
   useEffect(() => {
@@ -825,6 +840,7 @@ export default function DfcPage() {
           granularidade={aplicadoGranularidade}
           idEmpresas={[DFC_ID_EMPRESA_ACO]}
           periodo={modalProjecao.periodo}
+          sublinha={modalProjecao.sublinha}
         />
       ) : null}
 
@@ -993,13 +1009,14 @@ export default function DfcPage() {
           prioridadesLancsMap={prioridadesLancsMap}
           onPrioridadeLancAtualizada={aplicarPrioridadeLancNoMapa}
           projecaoReceitasPorPeriodo={projecaoReceitasPorPeriodoEfetiva}
+          projecaoReceitasPorSublinha={projecaoReceitasPorSublinhaEfetiva}
           saldosIniciaisPorPeriodo={saldosIniciaisPorPeriodo}
           saldosFinaisPorPeriodo={saldosFinaisPorPeriodo}
           saldosPorConta={saldosPorConta}
           erroSaldosBancarios={erroSaldosBancarios}
           onAbrirProjecaoDetalhe={
             projecaoReceitasHabilitada
-              ? (periodo, titulo) => setModalProjecao({ periodo, titulo })
+              ? (periodo, titulo, sublinha) => setModalProjecao({ periodo, titulo, sublinha })
               : undefined
           }
           onDetalheFechado={() => {
