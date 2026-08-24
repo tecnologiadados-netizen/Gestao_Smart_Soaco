@@ -23,6 +23,12 @@ import {
   resolverIdEmpresaDfc,
 } from '../data/dfcShop9Empresa.js';
 import {
+  aplicarRetratoNaSerie,
+  dataCivilFortaleza,
+  limitesMes,
+  listarRetratosOficiais,
+} from './crmInadimplenciaRetrato.js';
+import {
   nomeShop9Condicao,
   SHOP9_ADMINISTRADORA_JOIN,
   sqlShop9CondicaoNome,
@@ -70,6 +76,8 @@ export type PontoSerieInadimplenciaDto = {
   qtdAberto: number;
   pctAtraso: number;
   pctInadimplente: number;
+  fonteInadimplente?: 'retrato' | 'ao_vivo';
+  retratoCapturadoEm?: string | null;
 };
 
 export type PainelInadimplenciaResumo = {
@@ -86,6 +94,7 @@ export type PainelInadimplenciaResumo = {
     pctInadimplente: number;
     valorVencido: number;
     valorAtraso: number;
+    qtdAtraso: number;
     valorAberto: number;
   };
   erros: string[];
@@ -404,6 +413,7 @@ function pontoFromBruto(b: PontoSerieBruto): PontoSerieInadimplenciaDto {
     qtdAberto: b.qtdAberto,
     pctAtraso: pct(b.valorAtraso, b.valorVencido),
     pctInadimplente: pct(b.valorAberto, b.valorVencido),
+    fonteInadimplente: 'ao_vivo',
   };
 }
 
@@ -678,14 +688,22 @@ export async function obterResumoPainelInadimplencia(opts: PainelPeriodo): Promi
     serNomus.erro,
     serShop9.erro,
   ]);
-  const serieMensal = completarSerie(mesclarSerie([serNomus.pontos, serShop9.pontos]), opts);
+  const serieViva = completarSerie(mesclarSerie([serNomus.pontos, serShop9.pontos]), opts);
+  let serieMensal = serieViva;
+  try {
+    const retratos = await listarRetratosOficiais();
+    serieMensal = aplicarRetratoNaSerie(serieViva, retratos, dataCivilFortaleza().mes);
+  } catch (e) {
+    erros.push(e instanceof Error ? e.message : String(e));
+  }
   const acc = serieMensal.reduce(
     (s, p) => ({
       valorVencido: s.valorVencido + p.valorVencido,
       valorAtraso: s.valorAtraso + p.valorAtraso,
+      qtdAtraso: s.qtdAtraso + p.qtdAtraso,
       valorAberto: s.valorAberto + p.valorAberto,
     }),
-    { valorVencido: 0, valorAtraso: 0, valorAberto: 0 },
+    { valorVencido: 0, valorAtraso: 0, qtdAtraso: 0, valorAberto: 0 },
   );
   return {
     porEmpresa: mesclarFatiasPorOrigem(empNomus.fatias, abShop9.empresa),
@@ -703,6 +721,32 @@ export async function obterResumoPainelInadimplencia(opts: PainelPeriodo): Promi
     },
     erros,
   };
+}
+
+export async function obterPontoSerieMes(mes: string): Promise<{
+  ponto: PontoSerieInadimplenciaDto;
+  erros: string[];
+  confiavel: boolean;
+}> {
+  const { de, ate } = limitesMes(mes);
+  const opts: PainelPeriodo = { vencimentoDe: de, vencimentoAte: ate };
+  const [serNomus, serShop9] = await Promise.all([serieNomus(opts), serieShop9(opts)]);
+  const erros = unicosErros([serNomus.erro, serShop9.erro]);
+  const nomusOk = !isNomusEnabled() || !serNomus.erro;
+  const shop9Ok = !isShop9Enabled() || !serShop9.erro;
+  const serie = completarSerie(mesclarSerie([serNomus.pontos, serShop9.pontos]), opts);
+  const ponto =
+    serie.find((p) => p.mes === mes) ??
+    pontoFromBruto({
+      mes,
+      qtdVencido: 0,
+      valorVencido: 0,
+      qtdAberto: 0,
+      valorAberto: 0,
+      qtdAtraso: 0,
+      valorAtraso: 0,
+    });
+  return { ponto, erros, confiavel: nomusOk && shop9Ok };
 }
 
 async function contatosDosCodigos(

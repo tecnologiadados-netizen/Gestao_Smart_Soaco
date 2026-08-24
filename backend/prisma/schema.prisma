@@ -1618,6 +1618,32 @@ model CrmInadimplenteTarefaRecebimento {
   @@map("crm_inadimplente_tarefa_recebimento")
 }
 
+/// Retrato mensal do % inadimplente (espelho da virada). Meses oficiais não são sobrescritos.
+model CrmInadimplenciaMesRetrato {
+  id               Int      @id @default(autoincrement())
+  /// YYYY-MM
+  mes              String
+  valorVencido     Float    @default(0) @map("valor_vencido")
+  qtdVencido       Int      @default(0) @map("qtd_vencido")
+  valorAberto      Float    @default(0) @map("valor_aberto")
+  qtdAberto        Int      @default(0) @map("qtd_aberto")
+  pctInadimplente  Float    @default(0) @map("pct_inadimplente")
+  valorAtraso      Float    @default(0) @map("valor_atraso")
+  qtdAtraso        Int      @default(0) @map("qtd_atraso")
+  pctAtraso        Float    @default(0) @map("pct_atraso")
+  /// false = foto de trabalho do mês corrente (pode atualizar); true = virada, imutável.
+  oficial          Boolean  @default(false)
+  /// true se a foto oficial saiu depois do dia 1 do mês seguinte.
+  atrasado         Boolean  @default(false)
+  capturadoEm      DateTime @map("capturado_em")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@unique([mes])
+  @@index([oficial, mes])
+  @@map("crm_inadimplencia_mes_retrato")
+}
+
 /// Config singleton: IDs de usuários (To/Cc) do e-mail disparado ao salvar ação na aba Pendências.
 /// Campos destinatarios_* guardam JSON de number[] (usuario.id).
 model CrmCreditoPendenciaEmailConfig {

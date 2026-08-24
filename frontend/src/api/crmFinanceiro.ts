@@ -997,6 +997,8 @@ export type PontoSerieInadimplencia = {
   qtdAberto: number;
   pctAtraso: number;
   pctInadimplente: number;
+  fonteInadimplente?: 'retrato' | 'ao_vivo';
+  retratoCapturadoEm?: string | null;
 };
 
 export type ResumoPainelInadimplencia = {
@@ -1013,6 +1015,7 @@ export type ResumoPainelInadimplencia = {
     pctInadimplente: number;
     valorVencido: number;
     valorAtraso: number;
+    qtdAtraso: number;
     valorAberto: number;
   };
   erros: string[];

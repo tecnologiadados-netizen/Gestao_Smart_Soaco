@@ -282,11 +282,13 @@ function CardRecuperado({
   titulo,
   fatia,
   destaque,
+  legenda,
   onClick,
 }: {
   titulo: string;
   fatia: FatiaPainelInadimplencia;
   destaque?: boolean;
+  legenda?: string;
   onClick: () => void;
 }) {
   return (
@@ -303,6 +305,7 @@ function CardRecuperado({
       <p className="mt-2 text-xl font-bold tabular-nums text-slate-900 dark:text-slate-50">{formatarReais(fatia.valor)}</p>
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         {fatia.qtd.toLocaleString('pt-BR')} título{fatia.qtd === 1 ? '' : 's'}
+        {legenda ? <span className="mt-0.5 block font-normal">{legenda}</span> : null}
       </p>
     </button>
   );
@@ -459,6 +462,7 @@ function ModalDetalhe({
   onAbrirTratativas,
   onConsultaServidor,
   onExportarUniverso,
+  avisoRetrato,
 }: {
   titulo: string;
   linhas: TituloPainelInadimplencia[];
@@ -474,6 +478,7 @@ function ModalDetalhe({
   onAbrirTratativas: (row: TituloPainelInadimplencia) => void;
   onConsultaServidor: (consulta: ConsultaDetalhe) => void;
   onExportarUniverso: () => Promise<TituloPainelInadimplencia[]>;
+  avisoRetrato?: string;
 }) {
   const [exportando, setExportando] = useState(false);
   const [erroExport, setErroExport] = useState('');
@@ -537,6 +542,11 @@ function ModalDetalhe({
                   } · ${formatarReais(total)} nesta página`}
             </p>
             {erroExport ? <p className="mt-1 text-xs text-amber-700">{erroExport}</p> : null}
+            {avisoRetrato ? (
+              <p className="mt-1.5 max-w-xl text-[11px] leading-snug text-amber-800 dark:text-amber-300">
+                {avisoRetrato}
+              </p>
+            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {grade.temFiltrosOuOrdem ? (
@@ -722,6 +732,7 @@ type PedidoDetalhe = {
   qtd: number;
   vencDe?: string;
   vencAte?: string;
+  avisoRetrato?: string;
   auditoriaMes?: {
     tituloPrincipal: string;
     universoPrincipal: 'atraso_lote' | 'aberto';
@@ -746,6 +757,7 @@ export default function PainelInadimplenciaPanel() {
   const [totalRecuperado, setTotalRecuperado] = useState(FATIA_VAZIA);
   const [mesmoMes, setMesmoMes] = useState(FATIA_VAZIA);
   const [outrosMeses, setOutrosMeses] = useState(FATIA_VAZIA);
+  const [totalQueAtrasou, setTotalQueAtrasou] = useState(FATIA_VAZIA);
   const [serieMensal, setSerieMensal] = useState<PontoSerieInadimplencia[]>([]);
   const [pedidoDetalhe, setPedidoDetalhe] = useState<PedidoDetalhe | null>(null);
   const [linhasDetalhe, setLinhasDetalhe] = useState<TituloPainelInadimplencia[]>([]);
@@ -794,7 +806,13 @@ export default function PainelInadimplenciaPanel() {
       setTotalRecuperado(result.recuperado.total);
       setMesmoMes(result.recuperado.mesmoMes);
       setOutrosMeses(result.recuperado.outrosMeses);
-      setSerieMensal(result.serieMensal ?? []);
+      const serie = result.serieMensal ?? [];
+      setSerieMensal(serie);
+      setTotalQueAtrasou({
+        chave: 'Total que atrasou',
+        valor: result.acumulado?.valorAtraso ?? serie.reduce((s, p) => s + p.valorAtraso, 0),
+        qtd: result.acumulado?.qtdAtraso ?? serie.reduce((s, p) => s + p.qtdAtraso, 0),
+      });
       if (result.erros.length) setErro(result.erros.join(' · '));
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao carregar o painel.');
@@ -1018,9 +1036,22 @@ export default function PainelInadimplenciaPanel() {
 
       <div>
         <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">Recuperado</h3>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <CardRecuperado
             destaque
+            titulo="Total que atrasou"
+            fatia={totalQueAtrasou}
+            legenda="inclui o que ainda está em aberto"
+            onClick={() =>
+              void abrirDetalhe({
+                titulo: 'Total que atrasou',
+                universo: 'atraso_lote',
+                classe: 'total',
+                qtd: totalQueAtrasou.qtd,
+              })
+            }
+          />
+          <CardRecuperado
             titulo="Total recuperado"
             fatia={totalRecuperado}
             onClick={() =>
@@ -1122,6 +1153,10 @@ export default function PainelInadimplenciaPanel() {
             qtd: ponto.qtdAberto,
             vencDe: de,
             vencAte: ate,
+            avisoRetrato:
+              ponto.fonteInadimplente === 'retrato'
+                ? `O ${formatarPct(ponto.pctInadimplente)} do gráfico é o retrato da virada. A lista abaixo é quem ainda está em aberto hoje — pode ser menor se alguém pagou depois.`
+                : undefined,
             auditoriaMes: {
               tituloPrincipal: `% inadimplente — ${mesLabel}`,
               universoPrincipal: 'aberto',
@@ -1143,6 +1178,7 @@ export default function PainelInadimplenciaPanel() {
           carregando={carregandoDetalhe}
           carregandoMais={carregandoMais}
           hasMore={hasMoreDetalhe}
+          avisoRetrato={pedidoDetalhe.avisoRetrato}
           guiaAuditoria={
             pedidoDetalhe.auditoriaMes
               ? {
