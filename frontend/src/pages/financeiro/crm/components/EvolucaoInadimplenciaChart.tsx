@@ -11,6 +11,13 @@ type Props = {
 };
 type Row = PontoSerieInadimplencia & { label: string };
 
+function rotuloRetrato(iso?: string | null): string {
+  if (!iso) return 'virada do mês';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 'virada do mês';
+  return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
 function TooltipPonto({
   active,
   payload,
@@ -26,7 +33,12 @@ function TooltipPonto({
   const qtdVencido = p.qtdVencido;
   const numerador = modo === 'pctAtraso' ? p.valorAtraso : p.valorAberto;
   const qtdNum = modo === 'pctAtraso' ? p.qtdAtraso : p.qtdAberto;
-  const pct = p.valorVencido > 0 ? (numerador / p.valorVencido) * 100 : 0;
+  const pctRetrato = modo === 'pctInadimplente' && p.fonteInadimplente === 'retrato';
+  const pct = pctRetrato
+    ? p.pctInadimplente
+    : p.valorVencido > 0
+      ? (numerador / p.valorVencido) * 100
+      : 0;
   const resto = Math.max(0, vencido - numerador);
   const qtdResto = Math.max(0, qtdVencido - qtdNum);
 
@@ -51,14 +63,23 @@ function TooltipPonto({
       ) : (
         <>
           <p className="mt-1 tabular-nums">
-            Ainda em aberto: {formatarReais(numerador)} ({formatarPct(pct)}) · {qtdNum.toLocaleString('pt-BR')} tít.
+            {pctRetrato ? 'Aberto na virada' : 'Ainda em aberto'}: {formatarReais(numerador)} ({formatarPct(pct)}) ·{' '}
+            {qtdNum.toLocaleString('pt-BR')} tít.
           </p>
-          <p className="tabular-nums text-slate-500 dark:text-slate-400">
-            Já regularizado: {formatarReais(resto)} · {qtdResto.toLocaleString('pt-BR')} tít.
-          </p>
-          <p className="mt-1.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
-            % inadimplente = ainda em aberto hoje ÷ vencido no mês.
-          </p>
+          {pctRetrato ? (
+            <p className="mt-1.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+              Retrato de {rotuloRetrato(p.retratoCapturadoEm)}. Pagamentos posteriores não alteram este ponto.
+            </p>
+          ) : (
+            <>
+              <p className="tabular-nums text-slate-500 dark:text-slate-400">
+                Já regularizado: {formatarReais(resto)} · {qtdResto.toLocaleString('pt-BR')} tít.
+              </p>
+              <p className="mt-1.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                % inadimplente = ainda em aberto hoje ÷ vencido no mês.
+              </p>
+            </>
+          )}
         </>
       )}
     </div>
@@ -119,6 +140,7 @@ function Bolinha({
           className="pointer-events-none tabular-nums text-white dark:text-slate-900"
         >
           {formatarPct(valor)}
+          {dataKey === 'pctInadimplente' && payload?.fonteInadimplente === 'retrato' ? '*' : ''}
         </text>
       ) : null}
     </g>
@@ -262,6 +284,9 @@ export default function EvolucaoInadimplenciaChart({ serie, onPonto }: Props) {
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
           Evolução no período (por vencimento)
         </h3>
+        <p className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+          % inadimplente: mês atual ao vivo; meses com * usam o retrato da virada (não mudam se o cliente pagar depois).
+        </p>
       </div>
       <div ref={boxRef} className="w-full min-w-0">
         {rows.length === 0 ? (
