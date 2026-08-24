@@ -8,6 +8,16 @@ import SmsHorariosAgendamento from '../sms/SmsHorariosAgendamento';
 const inputClass =
   'w-full rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent';
 
+const DISPARO_LABEL: Record<string, string> = {
+  cron: 'Agendado',
+  evento: 'Evento no sistema',
+};
+
+const DISPARO_BADGE: Record<string, string> = {
+  cron: 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200',
+  evento: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200',
+};
+
 type Props = {
   tipo: EmailNotificacaoTipoSave;
   idx: number;
@@ -71,6 +81,13 @@ export default function EmailTipoCard({
           </span>
           <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
             Builder em código
+          </span>
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+              DISPARO_BADGE[t.modoDisparo] ?? DISPARO_BADGE.cron
+            }`}
+          >
+            {DISPARO_LABEL[t.modoDisparo] ?? DISPARO_LABEL.cron}
           </span>
           <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
             {t.label || 'Novo tipo de e-mail'}
@@ -172,13 +189,22 @@ export default function EmailTipoCard({
             </label>
           </div>
 
-          <div className="md:col-span-2 xl:col-span-4">
-            <SmsHorariosAgendamento
-              cronExpressao={t.cronExpressao}
-              disabled={!podeEditar}
-              onChange={(cronExpressao) => onUpdate({ cronExpressao })}
-            />
-          </div>
+          {t.modoDisparo === 'cron' ? (
+            <div className="md:col-span-2 xl:col-span-4">
+              <SmsHorariosAgendamento
+                cronExpressao={t.cronExpressao}
+                disabled={!podeEditar}
+                onChange={(cronExpressao) => onUpdate({ cronExpressao })}
+              />
+            </div>
+          ) : (
+            <div className="md:col-span-2 xl:col-span-4">
+              <p className="rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50/70 dark:bg-sky-900/20 px-3 py-2 text-xs text-sky-800 dark:text-sky-200">
+                Disparo por evento: o e-mail sai no momento em que a condição ocorre no sistema. Não
+                usa agendamento — basta ativar o tipo e salvar os destinatários.
+              </p>
+            </div>
+          )}
         </div>
 
         {t.builderCode && (

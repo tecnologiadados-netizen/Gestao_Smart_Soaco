@@ -28,7 +28,7 @@ function toSave(t: EmailNotificacaoTipo): EmailNotificacaoTipoSave {
     ativo: t.ativo,
     sortOrder: t.sortOrder,
     fonteMensagem: 'codigo',
-    modoDisparo: 'cron',
+    modoDisparo: t.modoDisparo === 'evento' ? 'evento' : 'cron',
     cronExpressao: t.cronExpressao,
     builderCode: t.builderCode,
   };
@@ -242,8 +242,8 @@ export default function EmailIntegracaoPage() {
             E-mail — Notificações automáticas
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-3xl">
-            Configure alertas por e-mail, horários de envio e destinatários. O alerta de crédito
-            monitora clientes com pedido em aberto e contas a receber em atraso.
+            Configure alertas por e-mail, destinatários e, quando for o caso, horários de envio.
+            Alertas por evento saem no momento da ocorrência; os agendados seguem o cron.
           </p>
         </div>
         {podeEditar && (

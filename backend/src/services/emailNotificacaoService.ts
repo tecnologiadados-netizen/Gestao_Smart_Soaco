@@ -26,6 +26,10 @@ import {
   executarAlertasSlaSemAcao,
   previewAlertaSlaSemAcao,
 } from './crmCreditoSlaSemAcaoService.js';
+import {
+  executarAlertaComentarioOrganicoAmostra,
+  previewAlertaComentarioOrganico,
+} from './organicoComentarioAlertaEmailService.js';
 import { envioNotificacoesHabilitado } from '../config/envioNotificacoes.js';
 import {
   comExecucaoRegistrada,
@@ -60,6 +64,12 @@ const BUILDERS: Record<string, (ctx: BuilderContext) => Promise<BuilderResult>> 
     executarAlertasSlaSemAcao(ctx.prisma, ctx.destinatarios, {
       ignorarDedup: ctx.ignorarDedup,
     }),
+  rh_organico_comentario_sensivel: (ctx) => {
+    if (!ctx.ignorarDedup) {
+      return Promise.resolve({ enviados: 0, ignorados: 0, erros: [] });
+    }
+    return executarAlertaComentarioOrganicoAmostra(ctx.prisma, ctx.destinatarios);
+  },
 };
 
 export function listarEmailsDestinatarios(tipo: TipoComDestinatarios): string[] {
@@ -288,6 +298,16 @@ export async function previewEmailDoTipo(tipoId: number): Promise<{
 
   if (builderCode === 'financeiro_credito_sla_sem_acao') {
     const preview = await previewAlertaSlaSemAcao(prisma);
+    return {
+      subject: preview.subject,
+      html: preview.html,
+      resumo: preview.resumo,
+      quantidadeAlertas: preview.quantidade,
+    };
+  }
+
+  if (builderCode === 'rh_organico_comentario_sensivel') {
+    const preview = await previewAlertaComentarioOrganico();
     return {
       subject: preview.subject,
       html: preview.html,

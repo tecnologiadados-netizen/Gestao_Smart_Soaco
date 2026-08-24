@@ -1,7 +1,7 @@
 import { apiFetch, apiJson } from './client';
 
 export type FonteMensagemEmail = 'codigo';
-export type ModoDisparoEmail = 'cron';
+export type ModoDisparoEmail = 'cron' | 'evento';
 
 export interface EmailNotificacaoTipo {
   id: number;

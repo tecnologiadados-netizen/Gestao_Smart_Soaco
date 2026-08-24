@@ -28,6 +28,7 @@ import {
 import { replaceOrganicoSafe } from '../repositories/replaceRepository.js';
 import { notImplemented, s, sendError } from '../utils/rhHelpers.js';
 import { fetchSecullumFuncionarios } from '../services/secullumService.js';
+import { dispararAlertasComentariosOrganico } from '../../services/organicoComentarioAlertaEmailService.js';
 import { fetchNomusRepresentantes } from '../services/nomusRepresentantesService.js';
 
 function authCtx(req: Request) {
@@ -144,6 +145,12 @@ export async function addOrganicoComentarioHandler(req: Request, res: Response) 
       colaboradorMatricula,
       createdBy: actor,
       entries: mapped,
+    });
+    void dispararAlertasComentariosOrganico(created).catch((err) => {
+      console.error(
+        '[addOrganicoComentario] alerta e-mail:',
+        err instanceof Error ? err.message : err
+      );
     });
     res.json(Array.isArray(body.entries) && body.entries.length > 0 ? created : created[0] ?? null);
   } catch (e) {
