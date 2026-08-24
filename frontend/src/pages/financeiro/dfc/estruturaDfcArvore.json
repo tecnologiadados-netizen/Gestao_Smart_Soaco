@@ -45,7 +45,35 @@
                   "tipo": "S",
                   "macro": "OPERACIONAL",
                   "codigo": "1.1.3",
-                  "children": [],
+                  "children": [
+                    {
+                      "id": null,
+                      "nome": "Projeção de Receita Carteira",
+                      "tipo": "S",
+                      "macro": "OPERACIONAL",
+                      "codigo": "1.1.3.1",
+                      "children": [],
+                      "pathKey": "M0/0/0/2/0"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Projeção de Entradas",
+                      "tipo": "S",
+                      "macro": "OPERACIONAL",
+                      "codigo": "1.1.3.2",
+                      "children": [],
+                      "pathKey": "M0/0/0/2/1"
+                    },
+                    {
+                      "id": null,
+                      "nome": "Projeção de Vendas à Vista",
+                      "tipo": "S",
+                      "macro": "OPERACIONAL",
+                      "codigo": "1.1.3.4",
+                      "children": [],
+                      "pathKey": "M0/0/0/2/2"
+                    }
+                  ],
                   "pathKey": "M0/0/0/2"
                 }
               ],

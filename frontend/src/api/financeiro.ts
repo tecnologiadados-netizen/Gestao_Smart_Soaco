@@ -39,13 +39,33 @@ export interface DfcAgendamentosEfetivosResponse {
   erro?: string;
 }
 
+export interface DfcProjecaoReceitaParcelaLinha {
+  sublinha: string;
+  idEmpresa: number;
+  idPedido: number;
+  pd: string | null;
+  cliente: string | null;
+  condicaoPagamento: string | null;
+  regra: string | null;
+  diasRegra: number;
+  indiceParcela: number;
+  qtdeParcelas: number;
+  saldoAReceberTotal: number;
+  valorParcela: number;
+  dataPrevisao: string | null;
+  dataProjVenc: string;
+  uf: string | null;
+  vendedorRepresentante: string | null;
+}
+
 export async function fetchDfcProjecaoReceitasDetalhe(params: {
   dataInicio: string;
   dataFim: string;
   granularidade: 'dia' | 'mes';
   idEmpresas?: number[];
   periodo?: string;
-}): Promise<{ linhas: DfcSaldoFaturarLinha[]; erro?: string }> {
+  sublinha?: string;
+}): Promise<{ linhas: DfcProjecaoReceitaParcelaLinha[]; erro?: string }> {
   const sp = new URLSearchParams();
   sp.set('dataInicio', params.dataInicio);
   sp.set('dataFim', params.dataFim);
@@ -53,9 +73,10 @@ export async function fetchDfcProjecaoReceitasDetalhe(params: {
   const emps = params.idEmpresas ?? [1];
   if (emps.length > 0) sp.set('idEmpresas', emps.join(','));
   if (params.periodo) sp.set('periodo', params.periodo);
+  if (params.sublinha?.trim()) sp.set('sublinha', params.sublinha.trim());
   const res = await apiFetch(`/api/financeiro/dfc/projecao-receitas/detalhe?${sp.toString()}`);
   const body = (await res.json().catch(() => ({}))) as {
-    linhas?: DfcSaldoFaturarLinha[];
+    linhas?: DfcProjecaoReceitaParcelaLinha[];
     erro?: string;
     error?: string;
   };
@@ -141,7 +162,11 @@ export async function fetchDfcProjecaoReceitas(params: {
   dataFim: string;
   granularidade: 'dia' | 'mes';
   idEmpresas?: number[];
-}): Promise<{ porPeriodo: Record<string, number>; erro?: string }> {
+}): Promise<{
+  porPeriodo: Record<string, number>;
+  porSublinha: Record<string, Record<string, number>>;
+  erro?: string;
+}> {
   const sp = new URLSearchParams();
   sp.set('dataInicio', params.dataInicio);
   sp.set('dataFim', params.dataFim);
@@ -151,14 +176,16 @@ export async function fetchDfcProjecaoReceitas(params: {
   const res = await apiFetch(`/api/financeiro/dfc/projecao-receitas?${sp.toString()}`);
   const body = (await res.json().catch(() => ({}))) as {
     porPeriodo?: Record<string, number>;
+    porSublinha?: Record<string, Record<string, number>>;
     erro?: string;
     error?: string;
   };
   if (!res.ok) {
-    return { porPeriodo: {}, erro: body.error ?? body.erro ?? res.statusText };
+    return { porPeriodo: {}, porSublinha: {}, erro: body.error ?? body.erro ?? res.statusText };
   }
   return {
     porPeriodo: body.porPeriodo && typeof body.porPeriodo === 'object' ? body.porPeriodo : {},
+    porSublinha: body.porSublinha && typeof body.porSublinha === 'object' ? body.porSublinha : {},
     erro: body.erro,
   };
 }

@@ -69,10 +69,12 @@ export type ArvoreContasDfcProps = {
   ) => void;
   /** Disparado ao fechar o modal de detalhe (para recarregar a DFC se necessário). */
   onDetalheFechado?: () => void;
-  /** Valores da linha «Projeção de Receitas» (saldo a faturar por Data Proj Venc). */
+  /** Valores por sublinha de Projeção de Receitas (1.1.3.x). Pai = roll-up dos filhos. */
+  projecaoReceitasPorSublinha?: Record<string, Record<string, number>>;
+  /** @deprecated Preferir projecaoReceitasPorSublinha; mantido como soma total p/ cruzamento legado. */
   projecaoReceitasPorPeriodo?: Record<string, number>;
-  /** Abre modal com parcelas da projeção (período = coluna clicada; omitir = intervalo inteiro). */
-  onAbrirProjecaoDetalhe?: (periodo: string | undefined, titulo: string) => void;
+  /** Abre modal com parcelas da projeção (sublinha = filho clicado; omitir = todas). */
+  onAbrirProjecaoDetalhe?: (periodo: string | undefined, titulo: string, sublinha?: string) => void;
   /** Saldos bancários (LF) agregados por coluna — linha acima do Fluxo Operacional. */
   saldosIniciaisPorPeriodo?: Record<string, number>;
   /** Saldos bancários ao fim do período — linha após Outras movimentações. */
@@ -88,12 +90,27 @@ export type DfcArvoreExportHandle = {
 };
 
 export const DFC_NOME_PROJECAO_RECEITAS = 'Projeção de Receitas';
+export const DFC_NOME_PROJECAO_RECEITA_CARTEIRA = 'Projeção de Receita Carteira';
+export const DFC_NOME_PROJECAO_ENTRADAS = 'Projeção de Entradas';
+export const DFC_NOME_PROJECAO_VENDAS_AVISTA = 'Projeção de Vendas à Vista';
+export const DFC_NOMES_SUBLINHAS_PROJECAO_RECEITAS = [
+  DFC_NOME_PROJECAO_RECEITA_CARTEIRA,
+  DFC_NOME_PROJECAO_ENTRADAS,
+  DFC_NOME_PROJECAO_VENDAS_AVISTA,
+] as const;
 export const DFC_PROJECAO_RECEITAS_TOOLTIP_SO_ACO =
-  'Projeção de Receitas (saldo a faturar Só Aço): incluída ao filtrar todas as empresas ou Só Aço. Fins de semana vão para a terça seguinte.';
+  'Projeção de Receitas: 1.1.3.1 usa Saldo a Receber da Carteira (Só Aço), rateado pelos dias de condicaopagamento.regra a partir da previsão. Fins de semana → terça. Entradas e à vista ainda sem regra.';
 export const DFC_NOME_SALDOS_INICIAIS = 'Saldos iniciais das contas bancárias';
 export const DFC_NOME_SALDOS_FINAIS = 'Saldos finais';
 export const DFC_CHAVE_SALDO_INICIAIS = '__dfc_saldo_iniciais__';
 export const DFC_CHAVE_SALDO_FINAIS = '__dfc_saldo_finais__';
+
+function ehNoProjecaoReceitas(nome: string): boolean {
+  return (
+    nome === DFC_NOME_PROJECAO_RECEITAS ||
+    (DFC_NOMES_SUBLINHAS_PROJECAO_RECEITAS as readonly string[]).includes(nome)
+  );
+}
 
 /** Larguras e `left` cumulativo das colunas fixas (px). Cód. integrado na coluna Conta. */
 const STICKY_COLS = [
@@ -485,7 +502,7 @@ function montarSomasPorPathKey(
   idsPorPathKey: Map<string, number[]>,
   periodos: string[],
   valoresPorConta: Record<number, Record<string, number>>,
-  projecaoReceitasPorPeriodo: Record<string, number>,
+  projecaoReceitasPorSublinha: Record<string, Record<string, number>>,
   cruzamentosFluxo: CruzamentoFluxo[]
 ): Map<string, Record<string, number>> {
   const geracaoPorPeriodo = somasGeracaoDeCaixaPorPeriodo(periodos, cruzamentosFluxo);
@@ -494,9 +511,10 @@ function montarSomasPorPathKey(
     n.children?.forEach(visit);
     const porP: Record<string, number> = {};
     const filhos = n.children ?? [];
-    if (n.nome === DFC_NOME_PROJECAO_RECEITAS) {
+    if ((DFC_NOMES_SUBLINHAS_PROJECAO_RECEITAS as readonly string[]).includes(n.nome)) {
+      const mapa = projecaoReceitasPorSublinha[n.nome] ?? {};
       for (const p of periodos) {
-        porP[p] = projecaoReceitasPorPeriodo[p] ?? 0;
+        porP[p] = mapa[p] ?? 0;
       }
     } else if (n.nome === DFC_NOME_GERACAO_CAIXA) {
       for (const p of periodos) {
@@ -557,6 +575,7 @@ const ArvoreContasDfc = forwardRef<DfcArvoreExportHandle, ArvoreContasDfcProps>(
   prioridadesLancsMap = {},
   onPrioridadeLancAtualizada,
   onDetalheFechado,
+  projecaoReceitasPorSublinha = {},
   projecaoReceitasPorPeriodo = {},
   onAbrirProjecaoDetalhe,
   saldosIniciaisPorPeriodo = {},
@@ -573,7 +592,7 @@ const ArvoreContasDfc = forwardRef<DfcArvoreExportHandle, ArvoreContasDfcProps>(
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [detalheAberto, setDetalheAberto] = useState<DetalheLancamentosState>(null);
 
-  /** Exibe 1.1.3 Projeção de Receitas sem precisar expandir manualmente RECEITAS OPERACIONAIS. */
+  /** Exibe 1.1.3 e filhos sem precisar expandir manualmente. */
   useEffect(() => {
     if (periodos.length === 0) return;
     const pkRec = pathKeyReceitasOperacionais(roots);
@@ -581,10 +600,22 @@ const ArvoreContasDfc = forwardRef<DfcArvoreExportHandle, ArvoreContasDfcProps>(
     const pkEntradas = op?.children?.find(
       (c) => c.nome === 'Entradas operacionais' || c.nome === 'Entradas',
     )?.pathKey;
+    let pkProj: string | undefined;
+    function walk(nodes: DfcEstruturaNo[]) {
+      for (const n of nodes) {
+        if (n.nome === DFC_NOME_PROJECAO_RECEITAS) {
+          pkProj = n.pathKey;
+          return;
+        }
+        if (n.children?.length) walk(n.children);
+      }
+    }
+    walk(roots);
     setExpanded((prev) => {
       const next = new Set(prev);
       if (pkEntradas) next.add(pkEntradas);
       if (pkRec) next.add(pkRec);
+      if (pkProj) next.add(pkProj);
       return next;
     });
   }, [roots, periodos.length]);
@@ -620,10 +651,10 @@ const ArvoreContasDfc = forwardRef<DfcArvoreExportHandle, ArvoreContasDfcProps>(
         idsPorPathKey,
         periodos,
         valoresPorConta,
-        projecaoReceitasPorPeriodo,
+        projecaoReceitasPorSublinha,
         cruzamentosFluxo
       ),
-    [roots, idsPorPathKey, periodos, valoresPorConta, projecaoReceitasPorPeriodo, cruzamentosFluxo]
+    [roots, idsPorPathKey, periodos, valoresPorConta, projecaoReceitasPorSublinha, cruzamentosFluxo]
   );
 
   useImperativeHandle(
@@ -843,7 +874,11 @@ const ArvoreContasDfc = forwardRef<DfcArvoreExportHandle, ArvoreContasDfcProps>(
               const isResumoEntradasFluxo = cruz != null && node.pathKey === cruz.pathKeyEntradas;
               const isResumoSaidasFluxo = cruz != null && node.pathKey === cruz.pathKeySaidas;
               const isResumoFluxoFormula = isResumoEntradasFluxo || isResumoSaidasFluxo;
-              const isProjecaoReceitas = node.nome === DFC_NOME_PROJECAO_RECEITAS;
+              const isProjecaoReceitas = ehNoProjecaoReceitas(node.nome);
+              const sublinhaProjecao =
+                (DFC_NOMES_SUBLINHAS_PROJECAO_RECEITAS as readonly string[]).includes(node.nome)
+                  ? node.nome
+                  : undefined;
               /** Qualquer nó sintético de "Saídas" em qualquer fluxo */
               const isSaidasNode =
                 isResumoSaidasFluxo ||
@@ -907,7 +942,11 @@ const ArvoreContasDfc = forwardRef<DfcArvoreExportHandle, ArvoreContasDfcProps>(
                     onClick={(e) => {
                       e.stopPropagation();
                       if (isProjecaoReceitas && onAbrirProjecaoDetalhe) {
-                        onAbrirProjecaoDetalhe(undefined, `${node.nome} · ${dataInicio} → ${dataFim}`);
+                        onAbrirProjecaoDetalhe(
+                          undefined,
+                          `${node.nome} · ${dataInicio} → ${dataFim}`,
+                          sublinhaProjecao,
+                        );
                         return;
                       }
                       if (ids.length === 0) return;
@@ -990,7 +1029,8 @@ const ArvoreContasDfc = forwardRef<DfcArvoreExportHandle, ArvoreContasDfcProps>(
                               if (podeDrillProj) {
                                 onAbrirProjecaoDetalhe!(
                                   p,
-                                  `${DFC_NOME_PROJECAO_RECEITAS} · ${rotuloPeriodoCabecalho(p, granularidade)}`,
+                                  `${node.nome} · ${rotuloPeriodoCabecalho(p, granularidade)}`,
+                                  sublinhaProjecao,
                                 );
                                 return;
                               }
