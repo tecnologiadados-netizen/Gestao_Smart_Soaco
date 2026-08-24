@@ -340,7 +340,7 @@ model EmailNotificacaoTipo {
   sortOrder        Int      @default(0)
   /// codigo (builder em código)
   fonteMensagem    String   @default("codigo")
-  /// cron
+  /// cron | evento
   modoDisparo      String   @default("cron")
   cronExpressao    String?
   builderCode      String?

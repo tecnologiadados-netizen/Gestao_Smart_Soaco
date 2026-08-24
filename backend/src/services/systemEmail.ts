@@ -308,7 +308,13 @@ export async function sendSystemEmail(
         'Credencial de e-mail bloqueada. Reconfigure em Credenciais.'
     );
   }
-  await sendEmailViaGmailApi(settings, incluirLogoPadraoInline(input));
+  try {
+    await sendEmailViaGmailApi(settings, incluirLogoPadraoInline(input));
+  } catch (e) {
+    console.error('[systemEmail] Falha no envio:', e instanceof Error ? e.message : e);
+    await markEmailCredentialError(prisma, settings.id, e).catch(() => undefined);
+    throw e;
+  }
 }
 
 export async function markEmailCredentialError(

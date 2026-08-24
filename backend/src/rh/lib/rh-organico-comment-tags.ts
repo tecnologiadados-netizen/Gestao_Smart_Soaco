@@ -49,6 +49,13 @@ const LEGACY_DEFAULT_TAG_ID_MAP: Record<string, string> = {
   denuncia_ocorrencia: '22',
 };
 
+export const RH_ORGANICO_COMMENT_TONE_OPTIONS = [
+  { id: 'positive', label: '🟢 Positivo' },
+  { id: 'neutral', label: '🟡 Neutro' },
+  { id: 'negative', label: '🔴 Negativo' },
+  { id: 'sensitive', label: '🔴🔒 Sensível' },
+] as const;
+
 export const RH_ORGANICO_COMMENT_VISIBILITY_OPTIONS = [
   { id: 'public', label: '🔓 Público' },
   { id: 'restricted', label: '🔐 Restrito' },
@@ -57,7 +64,7 @@ export const RH_ORGANICO_COMMENT_VISIBILITY_OPTIONS = [
 
 export type RhOrganicoCommentVisibilityId = (typeof RH_ORGANICO_COMMENT_VISIBILITY_OPTIONS)[number]['id'];
 
-export type RhOrganicoCommentToneId = (typeof RH_ORGANICO_COMMENT_TAG_OPTIONS)[number]['tone'];
+export type RhOrganicoCommentToneId = (typeof RH_ORGANICO_COMMENT_TONE_OPTIONS)[number]['id'];
 export type RhOrganicoCommentTagOption = {
   id: string;
   tone: RhOrganicoCommentToneId;
@@ -65,7 +72,7 @@ export type RhOrganicoCommentTagOption = {
 };
 
 function isValidToneId(value: string): value is RhOrganicoCommentToneId {
-  return RH_ORGANICO_COMMENT_TAG_OPTIONS.some((item) => item.tone === value);
+  return RH_ORGANICO_COMMENT_TONE_OPTIONS.some((item) => item.id === value);
 }
 
 function isNumericTagId(value: string): boolean {
@@ -141,4 +148,28 @@ export function buildRhCommentVisibilityAccess(defaultValue = true): Record<RhOr
   return Object.fromEntries(
     RH_ORGANICO_COMMENT_VISIBILITY_OPTIONS.map((item) => [item.id, defaultValue]),
   ) as Record<RhOrganicoCommentVisibilityId, boolean>;
+}
+
+export function getRhCommentToneLabel(tone: RhOrganicoCommentToneId | string): string {
+  return RH_ORGANICO_COMMENT_TONE_OPTIONS.find((item) => item.id === tone)?.label ?? String(tone);
+}
+
+export function getRhCommentTagLabel(
+  tagId: string,
+  options: RhOrganicoCommentTagOption[] = [...RH_ORGANICO_COMMENT_TAG_OPTIONS],
+): string {
+  const normalizedTagId = normalizeRhCommentTagId(tagId);
+  return options.find((item) => item.id === normalizedTagId || item.id === tagId)?.label ?? String(tagId);
+}
+
+export function getRhCommentTagTone(
+  tagId: string,
+  options: RhOrganicoCommentTagOption[] = [...RH_ORGANICO_COMMENT_TAG_OPTIONS],
+): RhOrganicoCommentToneId {
+  const normalizedTagId = normalizeRhCommentTagId(tagId);
+  return options.find((item) => item.id === normalizedTagId || item.id === tagId)?.tone ?? 'neutral';
+}
+
+export function getRhCommentVisibilityLabel(visibility: RhOrganicoCommentVisibilityId | string): string {
+  return RH_ORGANICO_COMMENT_VISIBILITY_OPTIONS.find((item) => item.id === visibility)?.label ?? String(visibility);
 }
