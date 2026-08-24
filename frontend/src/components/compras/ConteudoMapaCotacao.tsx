@@ -173,22 +173,70 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
   const fmtMoeda = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtPerc = (v: number) => (v === 0 ? '0,00%' : `${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`);
 
-  /** Largura do conteúdo em px = largura útil A4 paisagem (297mm - 16mm margem ≈ 1061px). Preenche 100% da largura do papel. */
+  /** Largura útil A4 paisagem (297mm − 16mm margem ≈ 1061px @ 96dpi). */
   const PDF_CONTENT_WIDTH_PX = 1061;
+
+  /** Pesos relativos das colunas fixas; fornecedores recebem peso 8 cada. */
+  const COL_PESOS_FIXOS = [
+    4, 11, 4, 9, // código, descrição, und, observações
+    4, 3, 5, 5, 4, 5, 4, 4, 4, 5, 4, 6, 4, 3, 3, // demais colunas
+  ] as const;
+  const COL_PESO_FORNECEDOR = 8;
+
+  const colWidthsPercent = useMemo(() => {
+    const pesos = [
+      ...COL_PESOS_FIXOS.slice(0, 4),
+      ...Array.from({ length: fornecedores.length }, () => COL_PESO_FORNECEDOR),
+      ...COL_PESOS_FIXOS.slice(4),
+    ];
+    const total = pesos.reduce((s, p) => s + p, 0);
+    return pesos.map((p) => `${((p / total) * 100).toFixed(3)}%`);
+  }, [fornecedores.length]);
 
   const exportarPDF = async () => {
     const el = reportRef.current;
     if (!el) return;
     setExportando(true);
-    const origWidth = el.style.width;
-    const origMinWidth = el.style.minWidth;
     const scale = 2;
+
+    const holder = document.createElement('div');
+    holder.style.cssText = 'position:fixed;left:0;top:0;z-index:-1;pointer-events:none;opacity:1;background:#ffffff;overflow:visible;';
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.style.width = `${PDF_CONTENT_WIDTH_PX}px`;
+    clone.style.minWidth = `${PDF_CONTENT_WIDTH_PX}px`;
+    clone.style.maxWidth = `${PDF_CONTENT_WIDTH_PX}px`;
+    clone.style.boxSizing = 'border-box';
+    clone.style.overflow = 'visible';
+    clone.style.background = '#ffffff';
+    clone.style.color = '#000000';
+    clone.querySelectorAll('table').forEach((table) => {
+      const t = table as HTMLElement;
+      t.style.width = '100%';
+      t.style.minWidth = '100%';
+      t.style.maxWidth = '100%';
+      t.style.tableLayout = 'fixed';
+    });
+    clone.querySelectorAll('td, th').forEach((cell) => {
+      const c = cell as HTMLElement;
+      c.style.overflow = 'hidden';
+      c.style.verticalAlign = 'top';
+    });
+    clone.querySelectorAll('.flex').forEach((node) => {
+      const n = node as HTMLElement;
+      n.style.display = 'block';
+      n.style.width = '100%';
+    });
+    holder.appendChild(clone);
+    document.body.appendChild(holder);
+
     try {
-      el.style.width = `${PDF_CONTENT_WIDTH_PX}px`;
-      el.style.minWidth = `${PDF_CONTENT_WIDTH_PX}px`;
-      const w = el.scrollWidth;
-      const h = el.scrollHeight;
-      const canvas = await html2canvas(el, {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+
+      const w = PDF_CONTENT_WIDTH_PX;
+      const h = Math.ceil(clone.scrollHeight);
+      const canvas = await html2canvas(clone, {
         width: w,
         height: h,
         scale,
@@ -197,10 +245,19 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
         backgroundColor: '#ffffff',
         scrollX: 0,
         scrollY: 0,
+        windowWidth: w,
+        windowHeight: Math.max(h, 1),
+        x: 0,
+        y: 0,
+        onclone: (_doc, clonedRoot) => {
+          clonedRoot.style.width = `${PDF_CONTENT_WIDTH_PX}px`;
+          clonedRoot.style.maxWidth = `${PDF_CONTENT_WIDTH_PX}px`;
+          clonedRoot.style.overflow = 'visible';
+          clonedRoot.style.background = '#ffffff';
+        },
       });
 
-      // Medir tabela ANTES de restaurar estilos; posições relativas ao topo do conteúdo de el
-      const table = el.querySelector('table');
+      const table = clone.querySelector('table');
       const thead = table?.querySelector('thead');
       const tbodyRows = table?.querySelectorAll('tbody tr');
       let headerBlockPx = 0;
@@ -209,20 +266,10 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
       if (table && thead && tbodyRows && tbodyRows.length > 0) {
         const tableEl = table as HTMLElement;
         const theadEl = thead as HTMLElement;
-        let tableTop = 0;
-        let cur: HTMLElement | null = tableEl;
-        while (cur && cur !== el) {
-          tableTop += cur.offsetTop;
-          cur = cur.offsetParent as HTMLElement | null;
-          if (cur && !el.contains(cur)) break;
-        }
-        if (cur !== el) tableTop = (tableEl.getBoundingClientRect().top - el.getBoundingClientRect().top) + (el.scrollTop || 0);
-        headerBlockPx = tableTop * scale;
+        headerBlockPx = tableEl.offsetTop * scale;
         theadHeightPx = theadEl.offsetHeight * scale;
         rowHeightsPx = Array.from(tbodyRows).map((tr) => (tr as HTMLElement).offsetHeight * scale);
       }
-      el.style.width = origWidth;
-      el.style.minWidth = origMinWidth;
 
       const pdf = new jsPDF('l', 'mm', 'a4');
       const pdfW = pdf.internal.pageSize.getWidth();
@@ -321,11 +368,8 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
       pdf.save(`Mapa-Cotacao-Coleta-${coleta.id}-${formatarDataShort(coleta.dataCriacao).replace(/\//g, '-')}.pdf`);
     } catch (e) {
       console.error(e);
-      if (el) {
-        el.style.width = origWidth;
-        el.style.minWidth = origMinWidth;
-      }
     } finally {
+      holder.remove();
       setExportando(false);
     }
   };
@@ -391,6 +435,11 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
           </div>
 
           <table className="w-full border-collapse border border-slate-300 table-fixed" style={{ fontSize: 'inherit', writingMode: 'horizontal-tb', width: '100%', minWidth: '100%', tableLayout: 'fixed' }}>
+            <colgroup>
+              {colWidthsPercent.map((width, i) => (
+                <col key={i} style={{ width }} />
+              ))}
+            </colgroup>
             <thead>
               <tr className="bg-primary-600 text-white">
                 <th className="border border-slate-300 px-0.5 py-0.5 text-center font-semibold align-middle" style={{ fontSize: '0.95em' }}>Código</th>
@@ -458,16 +507,16 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
                     <td className="border border-slate-300 px-0.5 py-0.5 whitespace-nowrap align-top text-black" style={{ fontSize: '0.95em' }}>{codigo}</td>
                     <td className="border border-slate-300 px-0.5 py-0.5 align-top break-words text-black" style={{ wordBreak: 'break-word', fontSize: '0.95em' }}>{descricao || '—'}</td>
                     <td className="border border-slate-300 px-0.5 py-0.5 text-center whitespace-nowrap align-top text-black" style={{ fontSize: '0.95em' }}>{undMedida || '—'}</td>
-                    <td className="border border-slate-300 px-0.5 py-0.5 align-top break-words text-black" style={{ wordBreak: 'break-word', fontSize: '0.95em' }}>{apenasNomeFornecedor(observacoes) || '—'}</td>
+                    <td className="border border-slate-300 px-0.5 py-0.5 align-top break-words text-black" style={{ wordBreak: 'break-word', fontSize: '0.95em' }}>{observacoes.trim() || '—'}</td>
                     {fornecedores.map((f) => {
                       const item = getCotacaoItem(idProduto, f.idPessoa);
                       return (
                         <td key={f.idPessoa} className="border border-slate-300 px-0.5 py-0.5 text-center align-top overflow-hidden text-black" style={{ fontSize: '0.9em', color: 'black' }}>
                           {item != null ? (
-                            <div className="flex flex-col items-center gap-0 leading-tight min-w-0 w-full break-words text-black" style={{ wordBreak: 'break-word', color: 'black' }}>
-                              <span className="font-medium">Preço NF: R$ {fmtMoeda(item.precoNF)}</span>
-                              <span>IPI: {fmtPerc(item.percIPI)} | ICMS: {fmtPerc(item.percICMS)}</span>
-                              <span className="font-medium">Total: R$ {fmtMoeda(item.precoTotal)}</span>
+                            <div className="leading-tight text-center text-black" style={{ wordBreak: 'break-word', color: 'black' }}>
+                              <div className="font-medium">Preço NF: R$ {fmtMoeda(item.precoNF)}</div>
+                              <div>IPI: {fmtPerc(item.percIPI)} | ICMS: {fmtPerc(item.percICMS)}</div>
+                              <div className="font-medium">Total: R$ {fmtMoeda(item.precoTotal)}</div>
                             </div>
                           ) : (
                             '—'
