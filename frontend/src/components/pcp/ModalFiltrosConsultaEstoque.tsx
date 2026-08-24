@@ -1,6 +1,7 @@
 import MultiSelectWithSearch from '../MultiSelectWithSearch';
 import SingleSelectWithSearch, { type OptionItem } from '../SingleSelectWithSearch';
 import CarregandoInformacoesOverlay from '../CarregandoInformacoesOverlay';
+import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import type {
   EmpenhoEscopoConsultaEstoque,
   ModoPedidoConsultaEstoque,
@@ -28,9 +29,20 @@ export type FiltrosConsultaEstoqueState = {
   setoresProducao: string;
   subgrupo1: string;
   subgrupo2: string;
+  /** Pipe-separated — só Cobertura. */
+  familias: string;
   comEmpenho: FiltroSimNaoTodos;
   comSaldoEstoque: FiltroSimNaoTodos;
 };
+
+export const ORIGENS_EMPENHO_COBERTURA = ['Pedidos de venda', 'Requisições de loja'] as const;
+export const ORIGENS_EMPENHO_COBERTURA_TODAS = ORIGENS_EMPENHO_COBERTURA.join('|');
+
+export function origensEmpenhoIncluiRequisicoes(origens: string): boolean {
+  const sel = origens.split('|').map((s) => s.trim()).filter(Boolean);
+  if (sel.length === 0) return true;
+  return sel.includes('Requisições de loja');
+}
 
 export type PedidoFiltroConsultaEstoque = {
   pedido: OptionItem | null;
@@ -45,6 +57,10 @@ type Props = {
   filtros: FiltrosConsultaEstoqueState;
   pedidoFiltro: PedidoFiltroConsultaEstoque;
   opcoes: OpcoesFiltroConsultaEstoque;
+  /** `cobertura` oculta pedido, tipo, grupo, setor, subgrupos e sim/não de empenho/saldo. */
+  modo?: 'consulta' | 'cobertura';
+  origensEmpenho?: string;
+  onOrigensEmpenhoChange?: (v: string) => void;
   onBuscarPedido?: (term: string) => Promise<OptionItem[]>;
   onClose: () => void;
   onChange: (patch: Partial<FiltrosConsultaEstoqueState>) => void;
@@ -71,6 +87,7 @@ export function filtrosConsultaTemAlgumSelecionado(
     f.tipos.trim() !== '' ||
     f.grupos.trim() !== '' ||
     f.coletas.trim() !== '' ||
+    f.familias.trim() !== '' ||
     f.setoresProducao.trim() !== '' ||
     f.subgrupo1.trim() !== '' ||
     f.subgrupo2.trim() !== ''
@@ -90,6 +107,7 @@ export function filtrosStateToPayload(
     setoresProducao: splitPipe(f.setoresProducao),
     subgrupo1: splitPipe(f.subgrupo1),
     subgrupo2: splitPipe(f.subgrupo2),
+    familias: splitPipe(f.familias),
     comEmpenho: f.comEmpenho,
     comSaldoEstoque: f.comSaldoEstoque,
   };
@@ -117,6 +135,9 @@ export default function ModalFiltrosConsultaEstoque({
   filtros,
   pedidoFiltro,
   opcoes,
+  modo = 'consulta',
+  origensEmpenho = '',
+  onOrigensEmpenhoChange,
   onBuscarPedido,
   onClose,
   onChange,
@@ -127,8 +148,16 @@ export default function ModalFiltrosConsultaEstoque({
   onBuscarCodigo,
   onBuscarDescricao,
 }: Props) {
+  useRegisterModalEscape({
+    id: modo === 'cobertura' ? 'cobertura-estoque-filtros' : 'consulta-estoque-filtros',
+    onClose,
+    zIndex: 10040,
+    enabled: open,
+  });
+
   if (!open) return null;
 
+  const isCobertura = modo === 'cobertura';
   const pedidoCompleto =
     pedidoFiltro.pedido != null &&
     pedidoFiltro.modoPedido != null &&
@@ -145,7 +174,7 @@ export default function ModalFiltrosConsultaEstoque({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Filtros — consulta de estoque"
+        aria-label={isCobertura ? 'Filtros — cobertura de estoque' : 'Filtros — consulta de estoque'}
       >
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           <CarregandoInformacoesOverlay
@@ -173,47 +202,51 @@ export default function ModalFiltrosConsultaEstoque({
 
             <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
               <div className="grid min-w-0 grid-cols-1 items-end gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <div className="min-w-0 xl:col-span-3">
-                  <SingleSelectWithSearch
-                    label="Pedido de venda"
-                    placeholder="Todos"
-                    options={pedidoFiltro.pedido ? [pedidoFiltro.pedido] : []}
-                    value={pedidoFiltro.pedido}
-                    onChange={onPedidoChange}
-                    labelClass={labelClass}
-                    inputClass={inputClass}
-                    onSearchAsync={onBuscarPedido}
-                    fillContainer
-                    listMaxHeight="200px"
-                  />
-                  {pedidoFiltro.pedido && (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                      {pedidoCompleto ? (
-                        <>
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-                            Visualização:{' '}
-                            <strong>{rotuloModoPedido(pedidoFiltro.modoPedido!)}</strong>
+                {!isCobertura && (
+                  <div className="min-w-0 xl:col-span-3">
+                    <SingleSelectWithSearch
+                      label="Pedido de venda"
+                      placeholder="Todos"
+                      options={pedidoFiltro.pedido ? [pedidoFiltro.pedido] : []}
+                      value={pedidoFiltro.pedido}
+                      onChange={onPedidoChange}
+                      labelClass={labelClass}
+                      inputClass={inputClass}
+                      onSearchAsync={onBuscarPedido}
+                      fillContainer
+                    dropdownPortal
+                    dropdownZIndex={10100}
+                      listMaxHeight="200px"
+                    />
+                    {pedidoFiltro.pedido && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                        {pedidoCompleto ? (
+                          <>
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                              Visualização:{' '}
+                              <strong>{rotuloModoPedido(pedidoFiltro.modoPedido!)}</strong>
+                            </span>
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                              Empenho:{' '}
+                              <strong>{rotuloEmpenhoEscopo(pedidoFiltro.empenhoEscopo!)}</strong>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={onAlterarEscolhasPedido}
+                              className="text-primary-600 hover:underline dark:text-primary-400"
+                            >
+                              Alterar
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-amber-700 dark:text-amber-300">
+                            Selecione como visualizar o pedido e como calcular o empenho.
                           </span>
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-                            Empenho:{' '}
-                            <strong>{rotuloEmpenhoEscopo(pedidoFiltro.empenhoEscopo!)}</strong>
-                          </span>
-                          <button
-                            type="button"
-                            onClick={onAlterarEscolhasPedido}
-                            className="text-primary-600 hover:underline dark:text-primary-400"
-                          >
-                            Alterar
-                          </button>
-                        </>
-                      ) : (
-                        <span className="text-amber-700 dark:text-amber-300">
-                          Selecione como visualizar o pedido e como calcular o empenho.
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="min-w-0">
                   <MultiSelectWithSearch
                     label="Código do Produto"
@@ -226,6 +259,8 @@ export default function ModalFiltrosConsultaEstoque({
                     optionLabel="códigos"
                     valueSeparator="|"
                     fillContainer
+                    dropdownPortal
+                    dropdownZIndex={10100}
                     minSearchChars={2}
                     onSearchAsync={onBuscarCodigo}
                   />
@@ -242,38 +277,48 @@ export default function ModalFiltrosConsultaEstoque({
                     optionLabel="descrições"
                     valueSeparator="|"
                     fillContainer
+                    dropdownPortal
+                    dropdownZIndex={10100}
                     minSearchChars={2}
                     onSearchAsync={onBuscarDescricao}
                   />
                 </div>
-                <div className="min-w-0">
-                  <MultiSelectWithSearch
-                    label="Tipo de produto"
-                    placeholder="Todos"
-                    options={opcoes.tipos}
-                    value={filtros.tipos}
-                    onChange={(v) => onChange({ tipos: v })}
-                    labelClass={labelClass}
-                    inputClass={inputClass}
-                    optionLabel="tipos"
-                    valueSeparator="|"
-                    fillContainer
-                  />
-                </div>
-                <div className="min-w-0">
-                  <MultiSelectWithSearch
-                    label="Grupo de produto"
-                    placeholder="Todos"
-                    options={opcoes.grupos}
-                    value={filtros.grupos}
-                    onChange={(v) => onChange({ grupos: v })}
-                    labelClass={labelClass}
-                    inputClass={inputClass}
-                    optionLabel="grupos"
-                    valueSeparator="|"
-                    fillContainer
-                  />
-                </div>
+                {!isCobertura && (
+                  <div className="min-w-0">
+                    <MultiSelectWithSearch
+                      label="Tipo de produto"
+                      placeholder="Todos"
+                      options={opcoes.tipos}
+                      value={filtros.tipos}
+                      onChange={(v) => onChange({ tipos: v })}
+                      labelClass={labelClass}
+                      inputClass={inputClass}
+                      optionLabel="tipos"
+                      valueSeparator="|"
+                      fillContainer
+                    dropdownPortal
+                    dropdownZIndex={10100}
+                    />
+                  </div>
+                )}
+                {!isCobertura && (
+                  <div className="min-w-0">
+                    <MultiSelectWithSearch
+                      label="Grupo de produto"
+                      placeholder="Todos"
+                      options={opcoes.grupos}
+                      value={filtros.grupos}
+                      onChange={(v) => onChange({ grupos: v })}
+                      labelClass={labelClass}
+                      inputClass={inputClass}
+                      optionLabel="grupos"
+                      valueSeparator="|"
+                      fillContainer
+                    dropdownPortal
+                    dropdownZIndex={10100}
+                    />
+                  </div>
+                )}
                 <div className="min-w-0">
                   <MultiSelectWithSearch
                     label="Nome da coleta"
@@ -286,80 +331,116 @@ export default function ModalFiltrosConsultaEstoque({
                     optionLabel="coletas"
                     valueSeparator="|"
                     fillContainer
+                    dropdownPortal
+                    dropdownZIndex={10100}
                   />
                 </div>
-                <div className="min-w-0">
-                  <MultiSelectWithSearch
-                    label="Setor produção"
-                    placeholder="Todos"
-                    options={opcoes.setoresProducao}
-                    value={filtros.setoresProducao}
-                    onChange={(v) => onChange({ setoresProducao: v })}
-                    labelClass={labelClass}
-                    inputClass={inputClass}
-                    optionLabel="setores"
-                    valueSeparator="|"
-                    fillContainer
-                  />
-                </div>
-                <div className="min-w-0">
-                  <MultiSelectWithSearch
-                    label="Subgrupo 1"
-                    placeholder="Todos"
-                    options={opcoes.subgrupo1}
-                    value={filtros.subgrupo1}
-                    onChange={(v) => onChange({ subgrupo1: v })}
-                    labelClass={labelClass}
-                    inputClass={inputClass}
-                    valueSeparator="|"
-                    fillContainer
-                  />
-                </div>
-                <div className="min-w-0">
-                  <MultiSelectWithSearch
-                    label="Subgrupo 2"
-                    placeholder="Todos"
-                    options={opcoes.subgrupo2}
-                    value={filtros.subgrupo2}
-                    onChange={(v) => onChange({ subgrupo2: v })}
-                    labelClass={labelClass}
-                    inputClass={inputClass}
-                    valueSeparator="|"
-                    fillContainer
-                  />
-                </div>
-                <div className="min-w-0">
-                  <label className={labelClass} htmlFor="filtro-com-empenho">
-                    Com empenho?
-                  </label>
-                  <select
-                    id="filtro-com-empenho"
-                    className={inputClass}
-                    value={filtros.comEmpenho}
-                    onChange={(e) => onChange({ comEmpenho: e.target.value as FiltroSimNaoTodos })}
-                  >
-                    <option value="todos">Todos</option>
-                    <option value="sim">Sim</option>
-                    <option value="nao">Não</option>
-                  </select>
-                </div>
-                <div className="min-w-0">
-                  <label className={labelClass} htmlFor="filtro-com-saldo-estoque">
-                    Com saldo de estoque?
-                  </label>
-                  <select
-                    id="filtro-com-saldo-estoque"
-                    className={inputClass}
-                    value={filtros.comSaldoEstoque}
-                    onChange={(e) =>
-                      onChange({ comSaldoEstoque: e.target.value as FiltroSimNaoTodos })
-                    }
-                  >
-                    <option value="todos">Todos</option>
-                    <option value="sim">Sim</option>
-                    <option value="nao">Não</option>
-                  </select>
-                </div>
+                {isCobertura && (
+                  <div className="min-w-0">
+                    <MultiSelectWithSearch
+                      label="Família"
+                      placeholder="Todas"
+                      options={opcoes.familias ?? []}
+                      value={filtros.familias}
+                      onChange={(v) => onChange({ familias: v })}
+                      labelClass={labelClass}
+                      inputClass={inputClass}
+                      optionLabel="famílias"
+                      valueSeparator="|"
+                      fillContainer
+                      dropdownPortal
+                      dropdownZIndex={10100}
+                    />
+                  </div>
+                )}
+                {!isCobertura && (
+                  <div className="min-w-0">
+                    <MultiSelectWithSearch
+                      label="Setor produção"
+                      placeholder="Todos"
+                      options={opcoes.setoresProducao}
+                      value={filtros.setoresProducao}
+                      onChange={(v) => onChange({ setoresProducao: v })}
+                      labelClass={labelClass}
+                      inputClass={inputClass}
+                      optionLabel="setores"
+                      valueSeparator="|"
+                      fillContainer
+                    dropdownPortal
+                    dropdownZIndex={10100}
+                    />
+                  </div>
+                )}
+                {!isCobertura && (
+                  <div className="min-w-0">
+                    <MultiSelectWithSearch
+                      label="Subgrupo 1"
+                      placeholder="Todos"
+                      options={opcoes.subgrupo1}
+                      value={filtros.subgrupo1}
+                      onChange={(v) => onChange({ subgrupo1: v })}
+                      labelClass={labelClass}
+                      inputClass={inputClass}
+                      valueSeparator="|"
+                      fillContainer
+                    dropdownPortal
+                    dropdownZIndex={10100}
+                    />
+                  </div>
+                )}
+                {!isCobertura && (
+                  <div className="min-w-0">
+                    <MultiSelectWithSearch
+                      label="Subgrupo 2"
+                      placeholder="Todos"
+                      options={opcoes.subgrupo2}
+                      value={filtros.subgrupo2}
+                      onChange={(v) => onChange({ subgrupo2: v })}
+                      labelClass={labelClass}
+                      inputClass={inputClass}
+                      valueSeparator="|"
+                      fillContainer
+                    dropdownPortal
+                    dropdownZIndex={10100}
+                    />
+                  </div>
+                )}
+                {!isCobertura && (
+                  <div className="min-w-0">
+                    <label className={labelClass} htmlFor="filtro-com-empenho">
+                      Com empenho?
+                    </label>
+                    <select
+                      id="filtro-com-empenho"
+                      className={inputClass}
+                      value={filtros.comEmpenho}
+                      onChange={(e) => onChange({ comEmpenho: e.target.value as FiltroSimNaoTodos })}
+                    >
+                      <option value="todos">Todos</option>
+                      <option value="sim">Sim</option>
+                      <option value="nao">Não</option>
+                    </select>
+                  </div>
+                )}
+                {!isCobertura && (
+                  <div className="min-w-0">
+                    <label className={labelClass} htmlFor="filtro-com-saldo-estoque">
+                      Com saldo de estoque?
+                    </label>
+                    <select
+                      id="filtro-com-saldo-estoque"
+                      className={inputClass}
+                      value={filtros.comSaldoEstoque}
+                      onChange={(e) =>
+                        onChange({ comSaldoEstoque: e.target.value as FiltroSimNaoTodos })
+                      }
+                    >
+                      <option value="todos">Todos</option>
+                      <option value="sim">Sim</option>
+                      <option value="nao">Não</option>
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 

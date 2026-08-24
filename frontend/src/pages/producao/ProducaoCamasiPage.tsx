@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
+  Legend,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -12,11 +12,10 @@ import {
 import {
   fetchCamasiDashboard,
   type CamasiDashboardResponse,
-  type CamasiDiasResponse,
+  type CamasiParadaValida,
 } from '../../api/producaoCamasi';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getChartTheme } from '../../utils/painelProducaoFormat';
-import ModalCamasiDias, { type CamasiDiasModalParams } from '../../components/producao/ModalCamasiDias';
 import ModalCamasiKpi, { type CamasiKpiModalTipo } from '../../components/producao/ModalCamasiKpi';
 import {
   formatDuracaoDidatica,
@@ -28,13 +27,191 @@ import {
   mesesAtrasYmd,
 } from '../../components/producao/camasiFormat';
 import { formatEscalaResumo } from '../../utils/recursoEscalaLabel';
-import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../utils/textoLivreBusca';
+import { horasEscalaNoDia } from '../../utils/recursoEscalaHoras';
 import { classesBlocoDia } from '../../components/producao/camasiTabelaDia';
+import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
+import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
+import SequenciamentoDateField from '../../components/sequenciamento-carradas/SequenciamentoDateField';
+import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 
 type Filtros = { dataIni: string; dataFim: string };
 
+const PARADAS_COL_IDS = [
+  'data',
+  'inicio',
+  'fim',
+  'duracao',
+  'peca',
+  'justificativa',
+  'observacao',
+] as const;
+type ParadaColId = (typeof PARADAS_COL_IDS)[number];
+
+const PARADAS_COL_LABELS: Record<ParadaColId, string> = {
+  data: 'Data',
+  inicio: 'Início',
+  fim: 'Fim',
+  duracao: 'Duração',
+  peca: 'Peça',
+  justificativa: 'Justificativa',
+  observacao: 'Observação',
+};
+
+function minutosParada(p: CamasiParadaValida): number {
+  return p.minutos ?? Math.round((p.horas ?? 0) * 60);
+}
+
+function getParadaCellText(row: CamasiParadaValida, colId: string): string {
+  switch (colId as ParadaColId) {
+    case 'data':
+      return formatYmdBr(row.data);
+    case 'inicio':
+      return formatHmsCurto(row.inicioParado);
+    case 'fim':
+      return formatHmsCurto(row.fimParado);
+    case 'duracao':
+      return formatDuracaoDidatica(minutosParada(row));
+    case 'peca':
+      return row.peca || '—';
+    case 'justificativa':
+      return row.justificativa || '—';
+    case 'observacao':
+      return row.observacao?.trim() || '—';
+    default:
+      return '';
+  }
+}
+
+function getParadaSortValue(row: CamasiParadaValida, colId: string): string | number {
+  switch (colId as ParadaColId) {
+    case 'data':
+      return row.data;
+    case 'inicio':
+      return row.inicioParado ?? '';
+    case 'fim':
+      return row.fimParado ?? '';
+    case 'duracao':
+      return minutosParada(row);
+    case 'peca':
+      return row.peca;
+    case 'justificativa':
+      return row.justificativa;
+    case 'observacao':
+      return row.observacao ?? '';
+    default:
+      return '';
+  }
+}
+
 function filtroDefault(): Filtros {
   return { dataIni: mesesAtrasYmd(12), dataFim: hojeYmd() };
+}
+
+const MESES_ABREV = [
+  'Jan',
+  'Fev',
+  'Mar',
+  'Abr',
+  'Mai',
+  'Jun',
+  'Jul',
+  'Ago',
+  'Set',
+  'Out',
+  'Nov',
+  'Dez',
+] as const;
+
+function ymdRange(dataIni: string, dataFim: string): string[] {
+  const out: string[] = [];
+  const cur = new Date(`${dataIni}T00:00:00`);
+  const fim = new Date(`${dataFim}T00:00:00`);
+  if (Number.isNaN(cur.getTime()) || Number.isNaN(fim.getTime()) || cur > fim) return out;
+  while (cur.getTime() <= fim.getTime()) {
+    const y = cur.getFullYear();
+    const mo = String(cur.getMonth() + 1).padStart(2, '0');
+    const d = String(cur.getDate()).padStart(2, '0');
+    out.push(`${y}-${mo}-${d}`);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+type PontoPrevistoParado = {
+  chave: string;
+  label: string;
+  previsto: number;
+  parado: number;
+  /** previsto − parado (não negativo). */
+  producao: number;
+};
+
+function pontoComProducao(
+  base: Omit<PontoPrevistoParado, 'producao'>
+): PontoPrevistoParado {
+  return {
+    ...base,
+    producao: round1(Math.max(0, base.previsto - base.parado)),
+  };
+}
+
+/** Série prevista × parado × produção: diária até 62 dias; mensal em períodos longos. */
+function buildSeriePrevistoParado(
+  dataIni: string,
+  dataFim: string,
+  escala: CamasiDashboardResponse['escala'] | null | undefined,
+  resumoDias: { data: string; paradoHoras: number }[] | undefined
+): PontoPrevistoParado[] {
+  const paradoMap = new Map<string, number>();
+  for (const d of resumoDias ?? []) {
+    paradoMap.set(d.data, d.paradoHoras);
+  }
+  const dias = ymdRange(dataIni, dataFim);
+  if (dias.length === 0) return [];
+
+  if (dias.length <= 62) {
+    const pontos: PontoPrevistoParado[] = [];
+    for (const ymd of dias) {
+      const previsto = round1(horasEscalaNoDia(ymd, escala));
+      const parado = round1(paradoMap.get(ymd) ?? 0);
+      if (previsto <= 0 && parado <= 0) continue;
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+      pontos.push(
+        pontoComProducao({
+          chave: ymd,
+          label: m ? `${m[3]}/${m[2]}` : ymd,
+          previsto,
+          parado,
+        })
+      );
+    }
+    return pontos;
+  }
+
+  const mesMap = new Map<string, { previsto: number; parado: number }>();
+  for (const ymd of dias) {
+    const mes = ymd.slice(0, 7);
+    const acc = mesMap.get(mes) ?? { previsto: 0, parado: 0 };
+    acc.previsto += horasEscalaNoDia(ymd, escala);
+    acc.parado += paradoMap.get(ymd) ?? 0;
+    mesMap.set(mes, acc);
+  }
+  return [...mesMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([mes, v]) => {
+      const [y, mo] = mes.split('-');
+      const idx = Number(mo) - 1;
+      return pontoComProducao({
+        chave: mes,
+        label: idx >= 0 && idx < 12 ? `${MESES_ABREV[idx]}/${y}` : mes,
+        previsto: round1(v.previsto),
+        parado: round1(v.parado),
+      });
+    });
 }
 
 function KpiCard({
@@ -88,10 +265,8 @@ export default function ProducaoCamasiPage() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
-  const detalheCacheRef = useRef(new Map<string, CamasiDiasResponse>());
-  const [modalParams, setModalParams] = useState<CamasiDiasModalParams | null>(null);
   const [kpiModal, setKpiModal] = useState<CamasiKpiModalTipo | null>(null);
-  const [filtroParadas, setFiltroParadas] = useState('');
+  const [motivoModal, setMotivoModal] = useState<string | null>(null);
 
   const carregar = useCallback(async (f: Filtros) => {
     setLoading(true);
@@ -116,72 +291,41 @@ export default function ProducaoCamasiPage() {
     [draft, filtros]
   );
 
-  const aplicarFiltros = useCallback(() => {
-    if (draft.dataIni > draft.dataFim) {
-      setErro('Data início deve ser menor ou igual à data fim.');
-      return;
-    }
-    detalheCacheRef.current.clear();
-    setModalParams(null);
-    setKpiModal(null);
-    setFiltros({ ...draft });
-  }, [draft]);
+  const chartPrevistoParado = useMemo(() => {
+    if (!data) return [];
+    return buildSeriePrevistoParado(data.dataIni, data.dataFim, data.escala, data.resumoDias);
+  }, [data]);
 
-  const abrirMes = useCallback(
-    (mes: string, tipo: 'producao' | 'parado') => {
-      setModalParams({
-        dataIni: filtros.dataIni,
-        dataFim: filtros.dataFim,
-        mes,
-        tipo,
-      });
-    },
-    [filtros]
-  );
-
-  const chartProducao = useMemo(
-    () =>
-      (data?.porMes ?? []).map((m) => ({
-        mes: m.mes,
-        label: m.label,
-        horas: m.horasProducao,
-      })),
-    [data]
-  );
-
-  const chartParado = useMemo(
-    () =>
-      (data?.porMes ?? []).map((m) => ({
-        mes: m.mes,
-        label: m.label,
-        horas: m.horasParado,
-      })),
-    [data]
-  );
+  const chartPrevistoParadoGranularidade =
+    chartPrevistoParado.length > 0 && chartPrevistoParado[0]?.chave.length === 10
+      ? 'dia'
+      : 'mês';
 
   const motivosDisplay = (data?.motivos ?? []).slice(0, 12);
   const maxMotivo = Math.max(...motivosDisplay.map((m) => m.horas), 1);
-  const pecasDisplay = (data?.pecas ?? []).slice(0, 20);
-  const maxPeca = Math.max(
-    ...pecasDisplay.map((p) => p.horasProducao + p.horasParado),
-    1
-  );
-  const pioresDias = data?.pioresDiasParado ?? [];
-  const maxDiaParado = Math.max(...pioresDias.map((d) => d.horas), 1);
 
   const paradasValidas = data?.paradasValidas ?? [];
-  const matchParada = useMemo(() => criarMatcherTextoLivre(filtroParadas), [filtroParadas]);
-  const paradasFiltradas = useMemo(
-    () =>
-      paradasValidas.filter(
-        (p) =>
-          matchParada(p.justificativa) ||
-          matchParada(p.peca) ||
-          matchParada(p.observacao ?? '') ||
-          matchParada(formatYmdBr(p.data))
-      ),
-    [paradasValidas, matchParada]
+  const getParadaCellTextCb = useCallback(
+    (row: CamasiParadaValida, colId: string) => getParadaCellText(row, colId),
+    []
   );
+  const getParadaSortValueCb = useCallback(
+    (row: CamasiParadaValida, colId: string) => getParadaSortValue(row, colId),
+    []
+  );
+  const gradeParadas = useGradeFiltrosExcel<CamasiParadaValida>({
+    rows: paradasValidas,
+    columnIds: [...PARADAS_COL_IDS],
+    getCellText: getParadaCellTextCb,
+    valueForSort: getParadaSortValueCb,
+    defaultSortLevels: [{ id: 'data', dir: 'asc' }],
+    dateColumnIds: ['data'],
+  });
+  const {
+    rowsExibidas: paradasFiltradas,
+    limparFiltrosGrade: limparFiltrosParadas,
+    temFiltrosOuOrdem: temFiltrosParadas,
+  } = gradeParadas;
   const indiceDiaParada = useMemo(() => {
     const map = new Map<string, number>();
     for (const p of paradasFiltradas) {
@@ -189,6 +333,17 @@ export default function ProducaoCamasiPage() {
     }
     return map;
   }, [paradasFiltradas]);
+
+  const aplicarFiltros = useCallback(() => {
+    if (draft.dataIni > draft.dataFim) {
+      setErro('Data início deve ser menor ou igual à data fim.');
+      return;
+    }
+    setKpiModal(null);
+    setMotivoModal(null);
+    limparFiltrosParadas();
+    setFiltros({ ...draft });
+  }, [draft, limparFiltrosParadas]);
 
   const kpis = data?.kpis;
 
@@ -228,21 +383,27 @@ export default function ProducaoCamasiPage() {
           <div className="grid grid-cols-2 gap-2">
             <label className="text-xs text-slate-600 dark:text-slate-300">
               Início
-              <input
-                value={draft.dataIni}
-                onChange={(e) => setDraft((d) => ({ ...d, dataIni: e.target.value }))}
-                type="date"
-                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-              />
+              <div className="mt-1">
+                <SequenciamentoDateField
+                  value={draft.dataIni}
+                  onChange={(iso) => setDraft((d) => ({ ...d, dataIni: iso }))}
+                  fullWidth
+                  placeholder="dd/mm/aaaa"
+                  className="!border-slate-200 !bg-white !py-1 shadow-sm dark:!border-slate-700 dark:!bg-slate-900"
+                />
+              </div>
             </label>
             <label className="text-xs text-slate-600 dark:text-slate-300">
               Fim
-              <input
-                value={draft.dataFim}
-                onChange={(e) => setDraft((d) => ({ ...d, dataFim: e.target.value }))}
-                type="date"
-                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-              />
+              <div className="mt-1">
+                <SequenciamentoDateField
+                  value={draft.dataFim}
+                  onChange={(iso) => setDraft((d) => ({ ...d, dataFim: iso }))}
+                  fullWidth
+                  placeholder="dd/mm/aaaa"
+                  className="!border-slate-200 !bg-white !py-1 shadow-sm dark:!border-slate-700 dark:!bg-slate-900"
+                />
+              </div>
             </label>
           </div>
           <button
@@ -275,50 +436,153 @@ export default function ProducaoCamasiPage() {
           title="Eventos de parada"
           value={new Intl.NumberFormat('pt-BR').format(kpis?.qtdeParadas ?? 0)}
           sub="Quantidade de paradas no período"
-          onClick={() => setKpiModal('eventos')}
+          onClick={() => {
+            setMotivoModal(null);
+            setKpiModal('eventos');
+          }}
         />
         <KpiCard
           loading={loading}
           title="Tempo parado"
           value={formatHoras(kpis?.horasParado ?? 0)}
           sub="Tempo total de parada no período"
-          onClick={() => setKpiModal('parado')}
+          onClick={() => {
+            setMotivoModal(null);
+            setKpiModal('parado');
+          }}
         />
         <KpiCard
           loading={loading}
-          title="Disponibilidade"
-          value={
-            kpis?.disponibilidadePct != null
-              ? `${new Intl.NumberFormat('pt-BR', {
-                  minimumFractionDigits: 1,
-                  maximumFractionDigits: 1,
-                }).format(kpis.disponibilidadePct)}%`
-              : '—'
-          }
+          title="Tempo previsto de produção"
+          value={kpis?.horasEscala != null ? formatHoras(kpis.horasEscala) : '—'}
           sub={
-            kpis?.horasEscala
-              ? `Produção ÷ ${formatHoras(kpis.horasEscala)} de escala`
-              : 'Produção ÷ (produção + parado)'
+            data?.escala?.recursoNome
+              ? `Escala do recurso ${data.escala.recursoNome}`
+              : 'Horas de escala no período'
           }
-          onClick={() => setKpiModal('disponibilidade')}
+          onClick={() => {
+            setMotivoModal(null);
+            setKpiModal('previsto');
+          }}
         />
         <KpiCard
           loading={loading}
           title="Produção"
           value={formatHoras(kpis?.horasProducao ?? 0)}
-          sub="Horas em produção no período"
-          onClick={() => setKpiModal('producao')}
+          sub={
+            kpis?.disponibilidadePct != null
+              ? `Disponibilidade ${new Intl.NumberFormat('pt-BR', {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                }).format(kpis.disponibilidadePct)}% · produção ÷ escala`
+              : 'Horas em produção no período'
+          }
+          onClick={() => {
+            setMotivoModal(null);
+            setKpiModal('producao');
+          }}
         />
       </div>
 
-      <div className="mt-3 grid gap-3 xl:grid-cols-2">
+      <div className="card-panel mt-3 p-5">
+        <div className="mb-3">
+          <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
+            Previsto × parado ao longo do período
+          </h3>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            No detalhe ao passar o mouse: produção = previsto − parado
+            {chartPrevistoParadoGranularidade === 'dia'
+              ? ' — por dia (período curto)'
+              : ' — por mês (período longo)'}
+          </p>
+        </div>
+        {loading ? (
+          <div className="flex h-[300px] items-center justify-center text-slate-500">Carregando…</div>
+        ) : chartPrevistoParado.length === 0 ? (
+          <div className="flex h-[300px] items-center justify-center text-slate-500">
+            Sem dados de escala ou paradas no período.
+          </div>
+        ) : (
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartPrevistoParado} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
+                <CartesianGrid stroke={chartTheme.grid} strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: chartTheme.tick, fontSize: 11 }}
+                  axisLine={{ stroke: chartTheme.axis }}
+                  interval="preserveStartEnd"
+                  minTickGap={chartPrevistoParadoGranularidade === 'dia' ? 28 : 8}
+                />
+                <YAxis
+                  tick={{ fill: chartTheme.tick, fontSize: 11 }}
+                  axisLine={{ stroke: chartTheme.axis }}
+                  tickFormatter={(v) => `${v}`}
+                />
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const row = payload[0]?.payload as PontoPrevistoParado | undefined;
+                    if (!row) return null;
+                    return (
+                      <div
+                        className="rounded-md px-3 py-2 text-sm shadow-md"
+                        style={chartTheme.tooltip}
+                      >
+                        <p className="mb-1.5 font-semibold">{String(label)}</p>
+                        <p className="tabular-nums" style={{ color: isDark ? '#60a5fa' : '#2563eb' }}>
+                          Tempo previsto: {formatHoras(row.previsto)}
+                        </p>
+                        <p className="tabular-nums" style={{ color: isDark ? '#fbbf24' : '#d97706' }}>
+                          Tempo parado: {formatHoras(row.parado)}
+                        </p>
+                        <p
+                          className="mt-1 border-t border-slate-200 pt-1 font-medium tabular-nums dark:border-slate-600"
+                          style={{ color: isDark ? '#34d399' : '#059669' }}
+                        >
+                          Tempo de produção: {formatHoras(row.producao)}
+                        </p>
+                      </div>
+                    );
+                  }}
+                />
+                <Legend
+                  formatter={(value) =>
+                    value === 'previsto' ? 'Tempo previsto de produção' : 'Tempo parado'
+                  }
+                />
+                <Line
+                  type="monotone"
+                  dataKey="previsto"
+                  name="previsto"
+                  stroke={isDark ? '#60a5fa' : '#2563eb'}
+                  strokeWidth={2}
+                  dot={chartPrevistoParadoGranularidade === 'dia' ? false : { r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="parado"
+                  name="parado"
+                  stroke={isDark ? '#fbbf24' : '#d97706'}
+                  strokeWidth={2}
+                  dot={chartPrevistoParadoGranularidade === 'dia' ? false : { r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3">
         <div className="card-panel flex min-h-[420px] flex-col p-5">
           <div className="mb-4 shrink-0">
             <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
               Principais motivos de parada
             </h3>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Só paradas que cruzam a escala — horas, participação e quantidade de eventos
+              Só paradas que cruzam a escala — clique na barra para ver os eventos do motivo
             </p>
           </div>
           {loading ? (
@@ -330,9 +594,15 @@ export default function ProducaoCamasiPage() {
               {motivosDisplay.map((m, idx) => {
                 const pctBar = (m.horas / maxMotivo) * 100;
                 return (
-                  <div
+                  <button
                     key={m.motivo}
-                    className="grid grid-cols-[auto_minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-3"
+                    type="button"
+                    onClick={() => {
+                      setMotivoModal(m.motivo);
+                      setKpiModal('parado');
+                    }}
+                    className="grid w-full grid-cols-[auto_minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-3 rounded-lg px-1 py-0.5 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-slate-800/60"
+                    title={`Ver paradas de ${m.motivo}`}
                   >
                     <span className="w-5 text-right text-[11px] font-semibold tabular-nums text-slate-400">
                       {idx + 1}
@@ -355,243 +625,9 @@ export default function ProducaoCamasiPage() {
                     <div className="min-w-[5.5rem] text-right text-[11px] text-slate-500 dark:text-slate-400">
                       {m.pct.toFixed(1).replace('.', ',')}% · {m.qtde}x
                     </div>
-                  </div>
+                  </button>
                 );
               })}
-            </div>
-          )}
-        </div>
-
-        <div className="card-panel flex min-h-[420px] flex-col p-5">
-          <div className="mb-4 shrink-0">
-            <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
-              Dias com maior tempo de parada
-            </h3>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Top {pioresDias.length || 20} dias do período, do maior para o menor tempo parado
-            </p>
-          </div>
-          {loading ? (
-            <div className="flex flex-1 items-center justify-center text-slate-500">Carregando…</div>
-          ) : pioresDias.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center text-slate-500">Sem paradas no período.</div>
-          ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="sticky top-0 bg-white dark:bg-slate-900">
-                  <tr className="border-b border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                    <th className="w-8 pb-2 pr-2 font-semibold">#</th>
-                    <th className="pb-2 pr-2 font-semibold">Dia</th>
-                    <th className="pb-2 pr-2 text-right font-semibold">Parado</th>
-                    <th className="pb-2 pr-2 text-right font-semibold">Eventos</th>
-                    <th className="pb-2 font-semibold">Do período</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pioresDias.map((d, idx) => {
-                    const pctBar = (d.horas / maxDiaParado) * 100;
-                    return (
-                      <tr
-                        key={d.data}
-                        className="border-b border-slate-100 dark:border-slate-800"
-                      >
-                        <td className="py-2 pr-2 tabular-nums text-slate-400">{idx + 1}</td>
-                        <td className="py-2 pr-2 font-medium text-slate-700 dark:text-slate-200">
-                          {formatYmdBrComSemana(d.data)}
-                        </td>
-                        <td className="py-2 pr-2 text-right tabular-nums font-semibold text-amber-700 dark:text-amber-300">
-                          {formatHoras(d.horas)}
-                        </td>
-                        <td className="py-2 pr-2 text-right tabular-nums text-slate-600 dark:text-slate-300">
-                          {new Intl.NumberFormat('pt-BR').format(d.qtde)}
-                        </td>
-                        <td className="py-2">
-                          <div className="flex items-center gap-2">
-                            <div className="relative h-5 min-w-[4.5rem] flex-1 overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
-                              <div
-                                className="absolute inset-y-0 left-0 bg-amber-500/80 dark:bg-amber-400/70"
-                                style={{ width: `${Math.max(pctBar, d.horas > 0 ? 4 : 0)}%` }}
-                              />
-                            </div>
-                            <span className="w-10 text-right tabular-nums text-[11px] text-slate-500 dark:text-slate-400">
-                              {d.pct.toFixed(1).replace('.', ',')}%
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-3 xl:grid-cols-2">
-        <div className="card-panel p-5">
-          <div className="mb-3">
-            <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
-              Produção por mês
-            </h3>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Clique na barra para ver o detalhe por dia
-            </p>
-          </div>
-          {loading ? (
-            <div className="flex h-[280px] items-center justify-center text-slate-500">Carregando…</div>
-          ) : chartProducao.length === 0 ? (
-            <div className="flex h-[280px] items-center justify-center text-slate-500">Sem dados.</div>
-          ) : (
-            <div className="h-[280px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartProducao} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
-                  <CartesianGrid stroke={chartTheme.grid} strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 11 }} axisLine={{ stroke: chartTheme.axis }} />
-                  <YAxis
-                    tick={{ fill: chartTheme.tick, fontSize: 11 }}
-                    axisLine={{ stroke: chartTheme.axis }}
-                    tickFormatter={(v) => `${v}`}
-                  />
-                  <Tooltip
-                    contentStyle={chartTheme.tooltip}
-                    formatter={(value) => [formatHoras(Number(value)), 'Produção']}
-                    labelFormatter={(label) => String(label)}
-                  />
-                  <Bar
-                    dataKey="horas"
-                    radius={[4, 4, 0, 0]}
-                    cursor="pointer"
-                    onClick={(data) => {
-                      const payload = data as { mes?: string; payload?: { mes?: string } };
-                      const mes = payload?.mes ?? payload?.payload?.mes;
-                      if (mes) abrirMes(mes, 'producao');
-                    }}
-                  >
-                    {chartProducao.map((entry) => (
-                      <Cell key={entry.mes} fill={isDark ? '#34d399' : '#059669'} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-
-        <div className="card-panel p-5">
-          <div className="mb-3">
-            <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
-              Parado por mês
-            </h3>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Clique na barra para ver o detalhe por dia
-            </p>
-          </div>
-          {loading ? (
-            <div className="flex h-[280px] items-center justify-center text-slate-500">Carregando…</div>
-          ) : chartParado.length === 0 ? (
-            <div className="flex h-[280px] items-center justify-center text-slate-500">Sem dados.</div>
-          ) : (
-            <div className="h-[280px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartParado} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
-                  <CartesianGrid stroke={chartTheme.grid} strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 11 }} axisLine={{ stroke: chartTheme.axis }} />
-                  <YAxis
-                    tick={{ fill: chartTheme.tick, fontSize: 11 }}
-                    axisLine={{ stroke: chartTheme.axis }}
-                    tickFormatter={(v) => `${v}`}
-                  />
-                  <Tooltip
-                    contentStyle={chartTheme.tooltip}
-                    formatter={(value) => [formatHoras(Number(value)), 'Parado']}
-                    labelFormatter={(label) => String(label)}
-                  />
-                  <Bar
-                    dataKey="horas"
-                    radius={[4, 4, 0, 0]}
-                    cursor="pointer"
-                    onClick={(data) => {
-                      const payload = data as { mes?: string; payload?: { mes?: string } };
-                      const mes = payload?.mes ?? payload?.payload?.mes;
-                      if (mes) abrirMes(mes, 'parado');
-                    }}
-                  >
-                    {chartParado.map((entry) => (
-                      <Cell key={entry.mes} fill={isDark ? '#fbbf24' : '#d97706'} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-3">
-        <div className="card-panel flex min-h-[380px] flex-col p-5">
-          <div className="mb-4 shrink-0">
-            <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
-              Por peça
-            </h3>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Produção e parado por peça (NOME_OPERADOR)
-            </p>
-          </div>
-          {loading ? (
-            <div className="flex flex-1 items-center justify-center text-slate-500">Carregando…</div>
-          ) : pecasDisplay.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center text-slate-500">Sem dados.</div>
-          ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="sticky top-0 bg-white dark:bg-slate-900">
-                  <tr className="border-b border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                    <th className="pb-2 pr-2 font-semibold">Peça</th>
-                    <th className="pb-2 pr-2 text-right font-semibold">Produção</th>
-                    <th className="pb-2 pr-2 text-right font-semibold">Parado</th>
-                    <th className="pb-2 font-semibold">Mix</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pecasDisplay.map((p) => {
-                    const total = p.horasProducao + p.horasParado;
-                    const pctBar = (total / maxPeca) * 100;
-                    const pctProd = total > 0 ? (p.horasProducao / total) * 100 : 0;
-                    return (
-                      <tr
-                        key={p.peca}
-                        className="border-b border-slate-100 dark:border-slate-800"
-                      >
-                        <td className="max-w-[10rem] truncate py-2 pr-2 font-medium text-slate-700 dark:text-slate-200" title={p.peca}>
-                          {p.peca}
-                        </td>
-                        <td className="py-2 pr-2 text-right tabular-nums text-emerald-700 dark:text-emerald-300">
-                          {formatHoras(p.horasProducao)}
-                        </td>
-                        <td className="py-2 pr-2 text-right tabular-nums text-amber-700 dark:text-amber-300">
-                          {formatHoras(p.horasParado)}
-                        </td>
-                        <td className="py-2">
-                          <div className="relative h-5 w-28 overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
-                            <div
-                              className="absolute inset-y-0 left-0 bg-emerald-500/80 dark:bg-emerald-400/70"
-                              style={{ width: `${(pctBar * pctProd) / 100}%` }}
-                            />
-                            <div
-                              className="absolute inset-y-0 bg-amber-500/80 dark:bg-amber-400/70"
-                              style={{
-                                left: `${(pctBar * pctProd) / 100}%`,
-                                width: `${(pctBar * (100 - pctProd)) / 100}%`,
-                              }}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
             </div>
           )}
         </div>
@@ -605,17 +641,25 @@ export default function ProducaoCamasiPage() {
                 Paradas válidas
               </h3>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Cada evento com tempo parado dentro da escala · {paradasValidas.length} registro
-                {paradasValidas.length === 1 ? '' : 's'}
+                Cada evento com tempo parado dentro da escala ·{' '}
+                {temFiltrosParadas
+                  ? `${paradasFiltradas.length} de ${paradasValidas.length}`
+                  : paradasValidas.length}{' '}
+                registro
+                {(temFiltrosParadas ? paradasFiltradas.length : paradasValidas.length) === 1
+                  ? ''
+                  : 's'}
               </p>
             </div>
-            <input
-              type="search"
-              className="w-full max-w-sm rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-              placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
-              value={filtroParadas}
-              onChange={(e) => setFiltroParadas(e.target.value)}
-            />
+            {temFiltrosParadas ? (
+              <button
+                type="button"
+                onClick={limparFiltrosParadas}
+                className="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+              >
+                Limpar filtros
+              </button>
+            ) : null}
           </div>
           {loading ? (
             <div className="flex flex-1 items-center justify-center text-slate-500">Carregando…</div>
@@ -624,17 +668,46 @@ export default function ProducaoCamasiPage() {
               {paradasValidas.length === 0 ? 'Sem paradas válidas no período.' : 'Nenhum registro no filtro.'}
             </div>
           ) : (
-            <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700">
+            <div
+              ref={gradeParadas.tableScrollRef}
+              className="relative min-h-0 flex-1 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700"
+            >
               <table className="w-full border-collapse text-left text-xs">
-                <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800">
-                  <tr className="text-slate-600 dark:text-slate-300">
-                    <th className="px-2 py-2 text-center font-semibold">Data</th>
-                    <th className="px-2 py-2 font-semibold">Início</th>
-                    <th className="px-2 py-2 font-semibold">Fim</th>
-                    <th className="px-2 py-2 text-right font-semibold">Duração</th>
-                    <th className="px-2 py-2 font-semibold">Peça</th>
-                    <th className="px-2 py-2 font-semibold">Justificativa</th>
-                    <th className="px-2 py-2 font-semibold">Observação</th>
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-primary-600 text-white">
+                    {PARADAS_COL_IDS.map((colId) => {
+                      const sortAtivo =
+                        gradeParadas.sortState?.key === colId ||
+                        gradeParadas.sortLevels.some((l) => l.id === colId);
+                      const alignRight = colId === 'duracao';
+                      const alignCenter = colId === 'data';
+                      return (
+                        <th
+                          key={colId}
+                          className={`border border-primary-500/40 px-2 py-2 font-semibold ${
+                            alignCenter ? 'text-center' : alignRight ? 'text-right' : 'text-left'
+                          }`}
+                        >
+                          <div
+                            className={`flex min-w-0 items-start gap-1 ${
+                              alignCenter
+                                ? 'justify-center'
+                                : alignRight
+                                  ? 'justify-end'
+                                  : 'justify-between'
+                            }`}
+                          >
+                            <span className="min-w-0 flex-1 leading-tight">
+                              {PARADAS_COL_LABELS[colId]}
+                            </span>
+                            <GradeFiltroCabecalhoBtn
+                              ativo={gradeParadas.colunaComFiltroAtivo(colId) || sortAtivo}
+                              onClick={(e) => gradeParadas.abrirFiltroExcel(colId, e)}
+                            />
+                          </div>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -674,9 +747,7 @@ export default function ProducaoCamasiPage() {
                           {formatHmsCurto(p.fimParado)}
                         </td>
                         <td className="px-2 py-2 text-right font-medium text-amber-800 dark:text-amber-300">
-                          {formatDuracaoDidatica(
-                            p.minutos ?? Math.round((p.horas ?? 0) * 60)
-                          )}
+                          {formatDuracaoDidatica(minutosParada(p))}
                         </td>
                         <td className="max-w-[10rem] truncate px-2 py-2" title={p.peca}>
                           {p.peca}
@@ -692,6 +763,30 @@ export default function ProducaoCamasiPage() {
                   })}
                 </tbody>
               </table>
+              {gradeParadas.colunaFiltroAberta && gradeParadas.filtroAbertoRect ? (
+                <GradeFiltroExcelPortal
+                  colunaAberta={gradeParadas.colunaFiltroAberta}
+                  rect={gradeParadas.filtroAbertoRect}
+                  dropdownRef={gradeParadas.filtroDropdownRef}
+                  excelFilterDrafts={gradeParadas.excelFilterDrafts}
+                  setExcelFilterDrafts={gradeParadas.setExcelFilterDrafts}
+                  valoresUnicosPorColuna={gradeParadas.valoresUnicosPorColuna}
+                  onSortAsc={(colId) => {
+                    gradeParadas.setSortState({ key: colId, direction: 'asc' });
+                    gradeParadas.setSortLevels([]);
+                    gradeParadas.fecharFiltroExcel();
+                  }}
+                  onSortDesc={(colId) => {
+                    gradeParadas.setSortState({ key: colId, direction: 'desc' });
+                    gradeParadas.setSortLevels([]);
+                    gradeParadas.fecharFiltroExcel();
+                  }}
+                  onAplicar={gradeParadas.aplicarFiltroExcel}
+                  onCancelar={gradeParadas.fecharFiltroExcel}
+                  showNumericFilters={gradeParadas.colunaFiltroAberta === 'duracao'}
+                  showDateRangeFilters={gradeParadas.colunaFiltroAberta === 'data'}
+                />
+              ) : null}
             </div>
           )}
         </div>
@@ -701,13 +796,11 @@ export default function ProducaoCamasiPage() {
         open={!!kpiModal}
         tipo={kpiModal}
         data={data}
-        onClose={() => setKpiModal(null)}
-      />
-      <ModalCamasiDias
-        open={!!modalParams}
-        params={modalParams}
-        cacheRef={detalheCacheRef}
-        onClose={() => setModalParams(null)}
+        motivoFiltro={motivoModal}
+        onClose={() => {
+          setKpiModal(null);
+          setMotivoModal(null);
+        }}
       />
     </div>
   );

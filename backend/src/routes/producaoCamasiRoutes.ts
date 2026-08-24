@@ -129,7 +129,7 @@ router.get(
     const escala = recurso?.escala && !escalaEstaVazia(recurso.escala) ? recurso.escala : null;
     const horasEscala = escala ? horasEscalaNoPeriodo(dataIni, dataFim, escala) : null;
     const rows = await listTempoProducao(dataIni, dataFim, escala);
-    const resumo = buildDashboardResumo(rows, { horasEscala });
+    const resumo = buildDashboardResumo(rows, { horasEscala, escala });
     res.json({
       dataIni,
       dataFim,
@@ -173,7 +173,7 @@ router.get(
     const recurso = getRecursoPainelCamasi();
     const escala = recurso?.escala && !escalaEstaVazia(recurso.escala) ? recurso.escala : null;
     const rows = await listTempoProducao(dataIni, dataFim, escala);
-    const { dias, totalHoras } = buildDiasDoMes(rows, mes, tipo);
+    const { dias, totalHoras } = buildDiasDoMes(rows, mes, tipo, escala);
     res.json({
       dataIni,
       dataFim,

@@ -8,7 +8,7 @@ import {
 } from '../src/services/disponibilidadeMateriaisCalendarioService.js';
 
 describe('resolverEntradaPcExibicao', () => {
-  it('com entrada no dia exibe o número e ignora PC/Ag Pag/SC', () => {
+  it('com entrada no dia exibe o número e ignora PC/Pré Compra/SC', () => {
     const r = resolverEntradaPcExibicao({
       entradaDia: 12.5,
       pcLinhas: [{ dataEntrega: '2026-08-01', qtde: 100 }],
@@ -35,7 +35,7 @@ describe('resolverEntradaPcExibicao', () => {
     expect(r.clicavel).toBe(true);
   });
 
-  it('sem PC exibe Pré Compra quando há Ag Pag (acima de SC)', () => {
+  it('sem PC exibe Pré Compra quando há Pré Compra aberta (acima de SC)', () => {
     const r = resolverEntradaPcExibicao({
       entradaDia: 0,
       pcLinhas: [],
@@ -45,7 +45,7 @@ describe('resolverEntradaPcExibicao', () => {
     expect(r).toEqual({ fonte: 'ag_pag', texto: 'Pré Compra', clicavel: true });
   });
 
-  it('sem PC e sem Ag Pag exibe Solicitação de Compra', () => {
+  it('sem PC e sem Pré Compra exibe Solicitação de Compra', () => {
     const r = resolverEntradaPcExibicao({
       entradaDia: 0,
       pcLinhas: [],
@@ -184,7 +184,7 @@ describe('Materiais do dia — prioridade Entrada PC sem alterar falta', () => {
     expect(m.entradaPc).toEqual({ fonte: 'ag_pag', texto: 'Pré Compra', clicavel: true });
   });
 
-  it('sem PC e sem Ag Pag exibe Solicitação de Compra', async () => {
+  it('sem PC e sem Pré Compra exibe Solicitação de Compra', async () => {
     const baseSoSc: BaseMateriaisCongelada = {
       ...BASE,
       pcLinhas: [],

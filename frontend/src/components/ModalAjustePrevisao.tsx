@@ -43,6 +43,24 @@ function resolverDataProducaoInicial(
   return pedido ? dataProducaoRealPedido(pedido) : '';
 }
 
+/** Normaliza emissão do snapshot/Gerenciador para ISO YYYY-MM-DD. */
+function dataEmissaoDoPedido(pedido: Pedido | null): string {
+  if (!pedido) return '';
+  const raw = String(
+    pedido['Emissao'] ??
+      pedido['emissao'] ??
+      pedido['dataEmissao'] ??
+      pedido['data_emissao'] ??
+      ''
+  ).trim();
+  if (!raw) return '';
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  return raw.slice(0, 10);
+}
+
 function validarDatasCompletas(
   previsaoIso: string,
   producaoIso: string,
@@ -242,6 +260,10 @@ export default function ModalAjustePrevisao({
 
   const pd = (pedido as Record<string, unknown>)['PD'] ?? pedido.id_pedido;
   const cod = (pedido as Record<string, unknown>)['Cod'] ?? pedido.produto ?? '—';
+  const dataEmissaoFmt = (() => {
+    const emissao = dataEmissaoDoPedido(pedido);
+    return emissao ? formatDataCurta(emissao) : '—';
+  })();
 
   const previsaoAtualStr = pedido?.previsao_entrega_atualizada
     ? String(pedido.previsao_entrega_atualizada).slice(0, 10)
@@ -924,6 +946,10 @@ export default function ModalAjustePrevisao({
           <p className="inline-flex items-center gap-1">
             <span className="font-medium text-slate-700 dark:text-slate-300">Pedido</span> {String(pd)}
             <CopiarTextoBtn texto={numeroPedidoLimpo(String(pd))} title="Copiar número do pedido" />
+          </p>
+          <p>
+            <span className="font-medium text-slate-700 dark:text-slate-300">Data de emissão</span>{' '}
+            {dataEmissaoFmt}
           </p>
           <p>
             <span className="font-medium text-slate-700 dark:text-slate-300">Produto</span>{' '}

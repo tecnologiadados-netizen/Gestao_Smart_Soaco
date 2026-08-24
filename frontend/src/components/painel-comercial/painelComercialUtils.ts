@@ -43,6 +43,16 @@ export function mesesAtrasYmd(months: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/** Período máximo permitido (48 meses) — padrão “todo o histórico disponível” nos painéis comerciais. */
+export const PAINEL_COMERCIAL_MAX_MESES = 48;
+
+export function periodoDisponivelPadraoYmd(): { dataIni: string; dataFim: string } {
+  return {
+    dataIni: mesesAtrasYmd(PAINEL_COMERCIAL_MAX_MESES),
+    dataFim: hojeYmd(),
+  };
+}
+
 /** Início do mês corrente menos N meses fechados (1º dia). Ex.: N=3 em ago → 01/mai. */
 export function inicioMesesFechadosMaisCorrenteYmd(mesesFechados: number): string {
   const d = new Date();
@@ -67,8 +77,12 @@ export function mesesEntreYmd(dataIni: string, dataFim: string): number | null {
 
 export function formatYmdBr(ymd: string): string {
   const v = String(ymd ?? '').trim();
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
-  if (!m) return v || '—';
-  return `${m[3]}/${m[2]}/${m[1]}`;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const d = new Date(v);
+  if (!Number.isNaN(d.getTime())) {
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+  return v || '—';
 }
 

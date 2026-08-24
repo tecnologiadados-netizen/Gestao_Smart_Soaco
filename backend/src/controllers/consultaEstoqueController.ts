@@ -60,6 +60,7 @@ function filtrosFromBody(body: unknown): FiltrosConsultaEstoque {
     empenhoEscopo: parseEmpenhoEscopo(f.empenhoEscopo),
     comEmpenho: parseSimNaoTodos(f.comEmpenho),
     comSaldoEstoque: parseSimNaoTodos(f.comSaldoEstoque),
+    somenteAlmoxSecundario: f.somenteAlmoxSecundario === true,
   };
 }
 
@@ -100,6 +101,7 @@ export async function getBuscarOpcoesFiltro(req: Request, res: Response): Promis
     setoresProducao: parseCommaQuery(req.query.setoresProducao),
     subgrupo1: parseCommaQuery(req.query.subgrupo1),
     subgrupo2: parseCommaQuery(req.query.subgrupo2),
+    somenteAlmoxSecundario: req.query.somenteAlmoxSecundario === '1' || req.query.somenteAlmoxSecundario === 'true',
   };
   const { data, erro } = await buscarOpcoesFiltroCampo(campo, q, filtros);
   if (erro) {

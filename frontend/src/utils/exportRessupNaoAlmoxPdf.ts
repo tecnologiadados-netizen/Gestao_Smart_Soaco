@@ -55,7 +55,7 @@ export function downloadRessupNaoAlmoxPdf(opts: DownloadRessupNaoAlmoxPdfOpts): 
       'Qtde solicit',
       'Estoque atual',
       'PC',
-      'Ag Pag',
+      'Pré Compra',
       'Saldo projetado',
     ],
   ];

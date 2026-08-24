@@ -50,10 +50,15 @@ function isDevStackCommandLine(cmd, projectRootNorm) {
   // Só encerramos processos DESTE projeto. Identificação principal: caminho real da raiz
   // aparece na linha de comando (node vite.js, tsx, concurrently, scripts .cjs). Marcador
   // legado e nome da pasta ficam como dica extra, mas o caminho é o que garante robustez.
+  // NÃO usar PROJECT_MARKER legado aqui: "gestorpedidosSoAco" também casa com
+  // "gestorpedidosSoAco-dev" e vice-versa — arriscaria matar a produção :4000.
   const belongsToProject =
     (!!rootNorm && c.includes(rootNorm)) ||
-    (!!dirName && c.includes(`/${dirName}/`)) ||
-    c.includes(PROJECT_MARKER.toLowerCase());
+    (!!dirName &&
+      (c.includes(`/${dirName}/`) ||
+        c.includes(`\\${dirName}\\`) ||
+        c.includes(`/${dirName}`) ||
+        c.includes(`\\${dirName}`)));
   if (!belongsToProject) return false;
 
   return DEV_CMD_PATTERNS.some((re) => re.test(c));

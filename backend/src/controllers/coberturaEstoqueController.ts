@@ -1,13 +1,12 @@
 import type { Request, Response } from 'express';
 import {
-  filtrosConsultaTemAlgum,
   validarFiltrosPedidoConsultaEstoque,
   type EmpenhoEscopoConsultaEstoque,
   type FiltroSimNaoTodos,
   type FiltrosConsultaEstoque,
   type ModoPedidoConsultaEstoque,
 } from '../data/consultaEstoqueRepository.js';
-import { consultarPainelCoberturaEstoque } from '../data/coberturaEstoqueRepository.js';
+import { consultarPainelCoberturaEstoque, consultarNomesFamiliaProduto } from '../data/coberturaEstoqueRepository.js';
 import {
   STATUS_COBERTURA_ORDEM,
   type StatusCoberturaEstoque,
@@ -50,11 +49,13 @@ function filtrosFromBody(body: unknown): FiltrosConsultaEstoque {
     setoresProducao: parseStringArray(f.setoresProducao),
     subgrupo1: parseStringArray(f.subgrupo1),
     subgrupo2: parseStringArray(f.subgrupo2),
+    familias: parseStringArray(f.familias),
     idPedido,
     modoPedido: parseModoPedido(f.modoPedido),
     empenhoEscopo: parseEmpenhoEscopo(f.empenhoEscopo),
     comEmpenho: parseSimNaoTodos(f.comEmpenho),
     comSaldoEstoque: parseSimNaoTodos(f.comSaldoEstoque),
+    somenteAlmoxSecundario: f.somenteAlmoxSecundario === true,
   };
 }
 
@@ -66,10 +67,6 @@ function parseStatus(v: unknown): StatusCoberturaEstoque | null {
 export async function postPainelCoberturaEstoque(req: Request, res: Response): Promise<void> {
   const body = req.body;
   const filtros = filtrosFromBody(body);
-  if (!filtrosConsultaTemAlgum(filtros)) {
-    res.status(400).json({ error: 'Informe ao menos um filtro.', data: null });
-    return;
-  }
   const erroPedido = validarFiltrosPedidoConsultaEstoque(filtros);
   if (erroPedido) {
     res.status(400).json({ error: erroPedido, data: null });
@@ -103,5 +100,14 @@ export async function postPainelCoberturaEstoque(req: Request, res: Response): P
     return;
   }
 
+  res.json({ data });
+}
+
+export async function getFamiliasCoberturaEstoque(_req: Request, res: Response): Promise<void> {
+  const { data, erro } = await consultarNomesFamiliaProduto();
+  if (erro && data.length === 0) {
+    res.status(503).json({ error: erro, data: [] });
+    return;
+  }
   res.json({ data });
 }

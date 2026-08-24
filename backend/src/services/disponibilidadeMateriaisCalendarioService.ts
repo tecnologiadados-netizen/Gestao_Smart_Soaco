@@ -41,7 +41,7 @@ export type DemandaCalendarioLinha = {
   carrada?: string;
 };
 
-/** Linha de Ag Pag (cotação status 1–3) congelada / detalhe. */
+/** Linha de Pré Compra (cotação status 1–3) congelada / detalhe. */
 export type AgPagLinhaCongelada = {
   idProduto: number;
   cotacao: string;
@@ -102,7 +102,7 @@ export type BaseMateriaisCongelada = {
     qtde: number;
   }[];
   /**
-   * Ag Pag abertas no momento do Gravar (opcional em snapshots legados).
+   * Pré Compra abertas no momento do Gravar (opcional em snapshots legados).
    * Só alimenta a coluna Entrada PC / modal — não entra no cálculo de falta.
    */
   agPagLinhas?: AgPagLinhaCongelada[];
@@ -613,7 +613,7 @@ export function resolverEntradaPcExibicao(args: {
   return { fonte: 'nenhuma', texto: '0', clicavel: false };
 }
 
-/** Ag Pag abertas (cotação status 1–3) linha a linha — mesma regra do detalhe Consulta de Estoque. */
+/** Pré Compra abertas (cotação status 1–3) linha a linha — mesma regra do detalhe Consulta de Estoque. */
 async function agPagAbertasPorProduto(pool: Pool, ids: number[]): Promise<AgPagLinhaCongelada[]> {
   const out: AgPagLinhaCongelada[] = [];
   if (ids.length === 0) return out;
@@ -722,7 +722,7 @@ async function scAbertasPorProduto(pool: Pool, ids: number[]): Promise<ScLinhaCo
 }
 
 /**
- * Captura as entradas do motor (BOM, saldo do almox secundário, PC, Ag Pag e SC) para congelar
+ * Captura as entradas do motor (BOM, saldo do almox secundário, PC, Pré Compra e SC) para congelar
  * junto ao snapshot da sequência. `codigosPa` deve conter todos os PAs das linhas gravadas.
  */
 export async function capturarBaseMateriaisCongelada(
@@ -813,7 +813,7 @@ function chaveOrdenacaoDataExibicao(br: string | null | undefined): string | nul
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
-/** Ag Pag congeladas do produto (modal Pré Compra em snapshot). */
+/** Pré Compra congeladas do produto (modal Pré Compra em snapshot). */
 export function agPagCongeladasDoProduto(
   base: BaseMateriaisCongelada,
   idProduto: number

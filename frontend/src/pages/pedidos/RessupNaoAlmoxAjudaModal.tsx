@@ -42,7 +42,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'saldo',
     titulo: 'Saldo projetado',
     oQueE:
-      'Mesma ideia do Almox: −Empenho + Solicitação + Estoque efetivo + PC Pend + Ag Pag.',
+      'Mesma ideia do Almox: −Empenho + Solicitação + Estoque efetivo + PC Pend + Pré Compra.',
     comoLe:
       'Vermelho/ruptura sinaliza prioridade. Clique em Empenho/PC Pend para validar a conta no modal (soma = célula).',
   },

@@ -81,6 +81,14 @@ export const KPI_PAINEIS: KpiPainelDef[] = [
     permissoes: [PERMISSOES.COMERCIAL_VER, PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER],
   },
   {
+    id: 'classificacao-rfv',
+    pastaId: 'comercial',
+    label: 'Classificação RFV',
+    capaTitulo: 'CLASSIFICAÇÃO RFV',
+    to: '/comercial/classificacao-rfv',
+    permissoes: [PERMISSOES.COMERCIAL_VER, PERMISSOES.COMERCIAL_RFV_VER],
+  },
+  {
     id: 'cobertura-estoque',
     pastaId: 'estoque',
     label: 'Cobertura de Estoque',
@@ -177,4 +185,11 @@ export const PERMISSOES_ACESSO_PAINEL_HISTORICO_VENDAS: CodigoPermissao[] =
   getKpiPainel('historico-vendas')?.permissoes ?? [
     PERMISSOES.COMERCIAL_VER,
     PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER,
+  ];
+
+/** Permissões da rota Classificação RFV. */
+export const PERMISSOES_ACESSO_PAINEL_RFV: CodigoPermissao[] =
+  getKpiPainel('classificacao-rfv')?.permissoes ?? [
+    PERMISSOES.COMERCIAL_VER,
+    PERMISSOES.COMERCIAL_RFV_VER,
   ];

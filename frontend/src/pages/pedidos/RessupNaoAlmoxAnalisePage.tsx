@@ -138,7 +138,7 @@ const COL_DEFS = [
   { key: 'dataUltEntrada', label: 'Data Ult Entrada' },
   { key: 'precoAnt', label: 'Preço Ant' },
   { key: 'pcPend', label: 'PC Pend' },
-  { key: 'agPag', label: 'Ag Pag' },
+  { key: 'agPag', label: 'Pré Compra' },
   { key: 'saldoProjetado', label: 'Saldo projetado' },
 ] as const;
 
@@ -312,7 +312,7 @@ function getQtdeEmpNumerico(row: Record<string, unknown>): number {
 }
 
 function getAgPagNumerico(row: Record<string, unknown>): number {
-  const n = Number(getRowValue(row, ['Ag Pag', 'ag pag']) ?? 0);
+  const n = Number(getRowValue(row, ['Pré Compra', 'pré compra', 'Ag Pag', 'ag pag']) ?? 0);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -410,7 +410,7 @@ function fmtPreco(v: unknown): string {
   return `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/** Saldo projetado = −Qtde Emp + Qtd Solicit. + Estoq Atual (modal) + PC Pend + Ag Pag */
+/** Saldo projetado = −Qtde Emp + Qtd Solicit. + Estoq Atual (modal) + PC Pend + Pré Compra */
 function calcSaldoProjetado(row: Record<string, unknown>, userInput?: RowUserInputs): number | null {
   const estFromInput = estoqueExibicaoGrade(userInput);
   const est =
@@ -419,7 +419,7 @@ function calcSaldoProjetado(row: Record<string, unknown>, userInput?: RowUserInp
   const emp = Number(getRowValue(row, ['Qtde Empenhada', 'qtde empenhada']) ?? 0);
   const qLiv = Number(getRowValue(row, ['Qtd Liberada', 'qtd liberada']) ?? 0);
   const pc = Number(getRowValue(row, ['PC', 'pc']) ?? 0);
-  const ag = Number(getRowValue(row, ['Ag Pag', 'ag pag']) ?? 0);
+  const ag = Number(getRowValue(row, ['Pré Compra', 'pré compra', 'Ag Pag', 'ag pag']) ?? 0);
   if (![est, emp, qLiv, pc, ag].some((n) => Number.isFinite(n))) return null;
   return (
     (Number.isFinite(est) ? est : 0) -
@@ -563,7 +563,7 @@ function getRessupCell(
     case 'pcPend':
       return fmtNum(getRowValue(row, ['PC', 'pc']));
     case 'agPag':
-      return fmtNum(getRowValue(row, ['Ag Pag', 'ag pag']));
+      return fmtNum(getRowValue(row, ['Pré Compra', 'pré compra', 'Ag Pag', 'ag pag']));
     case 'coleta':
       return String(getRowValue(row, ['Nome Coleta', 'nome coleta']) ?? '').trim() || '—';
     case 'saldoProjetado':
@@ -3039,7 +3039,7 @@ export default function RessupNaoAlmoxAnalisePage() {
                                         descricao: getRessupCell(row, 'descricao', inputs),
                                       })
                                     }
-                                    title="Ver cotações aguardando pagamento"
+                                    title="Ver Pré Compra"
                                   >
                                     {val}
                                   </GradeCelulaModalBtn>
@@ -3127,7 +3127,7 @@ export default function RessupNaoAlmoxAnalisePage() {
           titulo={
             detalheConsultaModal.tipo === 'solicitacao'
               ? `Solicitação de compra — ${detalheConsultaModal.codigo}`
-              : `Ag Pag — ${detalheConsultaModal.codigo}`
+              : `Pré Compra — ${detalheConsultaModal.codigo}`
           }
           subtitulo={detalheConsultaModal.descricao}
           onClose={() => setDetalheConsultaModal(null)}

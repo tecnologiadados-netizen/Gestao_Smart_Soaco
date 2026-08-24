@@ -13,6 +13,7 @@ import {
   type DrillContexto as HistoricoDrillContexto,
   type FiltrosHistoricoVendas,
 } from '../data/historicoVendasRepository.js';
+import { obterRfvClientesAnalytics, type FiltrosRfvClientes } from '../data/rfvClientesRepository.js';
 
 function getStrQuery(req: Request, key: string): string | undefined {
   const v = req.query[key];
@@ -151,6 +152,17 @@ export async function getHistoricoVendasSerieFatia(req: Request, res: Response):
     res.json({ serieMensal: data.serieMensal });
   } catch (err) {
     console.error('getHistoricoVendasSerieFatia', err);
+    res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
+  }
+}
+
+export async function getRfvClientesAnalytics(req: Request, res: Response): Promise<void> {
+  try {
+    const filtros = parseFiltrosHistorico(req) as FiltrosRfvClientes;
+    const data = await obterRfvClientesAnalytics(filtros);
+    res.json(data);
+  } catch (err) {
+    console.error('getRfvClientesAnalytics', err);
     res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
   }
 }

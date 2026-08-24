@@ -88,7 +88,7 @@ export function sqlFiltroRequisicoesEmpenho(considerarRequisicoes: boolean): str
   return considerarRequisicoes ? '' : SQL_NOT_EXISTS_REQUISICAO_ATTR313;
 }
 
-/** Cotação (Ag Pag): Preparação, Coleta de preços, Decisão de compra. */
+/** Cotação (Pré Compra): Preparação, Coleta de preços, Decisão de compra. */
 export const STATUS_COTACAO_AGPAG_SQL = '1, 2, 3';
 
 export const OPCAO_FILTRO_VAZIO = '(vazio)';

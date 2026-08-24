@@ -149,9 +149,12 @@ export function useGradeFiltrosExcel<T>({
   );
   const [excelFilterDrafts, setExcelFilterDrafts] = useState<Record<string, ExcelFilterDraft>>({});
   const [colunaFiltroAberta, setColunaFiltroAberta] = useState<string | null>(null);
-  const [filtroAbertoRect, setFiltroAbertoRect] = useState<{ top: number; left: number; width: number } | null>(
-    null
-  );
+  const [filtroAbertoRect, setFiltroAbertoRect] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    bottom?: number;
+  } | null>(null);
   const [sortState, setSortState] = useState<SortState>(() =>
     persistGradeFilters ? loadGradeFiltrosPedidos().sortState : null
   );
@@ -279,7 +282,12 @@ export function useGradeFiltrosExcel<T>({
         ...drafts,
         [key]: { search: '', selected, numericOp, numericV1, numericV2, dateFrom, dateTo, sortDir },
       }));
-      setFiltroAbertoRect({ top: rect.bottom + 4, left: rect.left, width: 288 });
+      setFiltroAbertoRect({
+        top: rect.top,
+        bottom: rect.bottom,
+        left: rect.left,
+        width: rect.width,
+      });
       return key;
     });
   }, [sortState]);
@@ -343,9 +351,22 @@ export function useGradeFiltrosExcel<T>({
     if (!colunaFiltroAberta) return;
     const el = tableScrollRef.current;
     if (!el) return;
-    const handle = () => fecharFiltroExcel();
+    let lastScrollLeft = el.scrollLeft;
+    const handle = () => {
+      if (el.scrollLeft !== lastScrollLeft) {
+        lastScrollLeft = el.scrollLeft;
+        fecharFiltroExcel();
+      }
+    };
     el.addEventListener('scroll', handle, { passive: true });
     return () => el.removeEventListener('scroll', handle);
+  }, [colunaFiltroAberta, fecharFiltroExcel]);
+
+  useEffect(() => {
+    if (!colunaFiltroAberta) return;
+    const handle = () => fecharFiltroExcel();
+    window.addEventListener('resize', handle);
+    return () => window.removeEventListener('resize', handle);
   }, [colunaFiltroAberta, fecharFiltroExcel]);
 
   const deferredColumnFilters = useDeferredValue(columnFilters);

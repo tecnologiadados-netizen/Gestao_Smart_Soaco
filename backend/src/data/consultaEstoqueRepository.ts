@@ -20,6 +20,7 @@ import {
   SQL_SALDO_AGREGADO_PARA_PRODUTOS_FILTRADOS,
   STATUS_COTACAO_AGPAG_SQL,
   TIPOS_PRODUTO_CONSULTA_SQL,
+  NOMUS_SETOR_ESTOQUE_PADRAO,
 } from './sql/sqlComprasEstoqueFragments.js';
 import { termoParaPadraoLikeSql } from '../utils/textoLivreBusca.js';
 
@@ -41,11 +42,15 @@ export interface FiltrosConsultaEstoque {
   setoresProducao?: string[];
   subgrupo1?: string[];
   subgrupo2?: string[];
+  /** Só painel Cobertura — filtrado após enriquecimento Nomus (familiaproduto). */
+  familias?: string[];
   idPedido?: number;
   modoPedido?: ModoPedidoConsultaEstoque;
   empenhoEscopo?: EmpenhoEscopoConsultaEstoque;
   comEmpenho?: FiltroSimNaoTodos;
   comSaldoEstoque?: FiltroSimNaoTodos;
+  /** Só produtos com vínculo em produtoempresa_setorestoque no almoxarifado secundário (setor 2). */
+  somenteAlmoxSecundario?: boolean;
 }
 
 export interface PedidoGerenciadorTypeaheadItem {
@@ -78,6 +83,8 @@ export interface OpcoesFiltroConsultaEstoque {
   setoresProducao: string[];
   subgrupo1: string[];
   subgrupo2: string[];
+  /** Nomes de familiaproduto (+ “Sem família”); usado na Cobertura. */
+  familias?: string[];
 }
 
 export type CampoFiltroConsultaEstoque =
@@ -281,6 +288,15 @@ function buildFiltroConditions(
       )`);
       params.push(idPedido);
     }
+  }
+
+  if (filtros.somenteAlmoxSecundario) {
+    conditions.push(`Exists (
+      Select 1
+      From produtoempresa_setorestoque pese_s2
+      Where pese_s2.idProdutoEmpresa = pe.id
+        And pese_s2.idSetorEstoque = ${NOMUS_SETOR_ESTOQUE_PADRAO.MATERIAL_SECUNDARIO}
+    )`);
   }
 
   return { conditions, params };
@@ -780,12 +796,13 @@ export async function contarConsultaEstoque(
 export async function consultarEstoque(params: {
   filtros: FiltrosConsultaEstoque;
   considerarRequisicoes: boolean;
+  permitirSemFiltro?: boolean;
 }): Promise<{
   data: ConsultaEstoqueRow[];
   total: number;
   erro?: string;
 }> {
-  if (!filtrosConsultaTemAlgum(params.filtros)) {
+  if (!params.permitirSemFiltro && !filtrosConsultaTemAlgum(params.filtros)) {
     return { data: [], total: 0, erro: 'Informe ao menos um filtro.' };
   }
 

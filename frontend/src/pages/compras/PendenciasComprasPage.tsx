@@ -65,7 +65,7 @@ const COLS = [
   { key: 'dataEmissao', label: 'Emissão da SC', clickable: false, align: 'center' as const },
   { key: 'dataNecessidade', label: 'Necessidade da SC', clickable: false, align: 'center' as const },
   { key: 'solicitacao', label: 'Solicitação', clickable: true as const, align: 'center' as const },
-  { key: 'agPag', label: 'Ag Pag', clickable: true as const, align: 'center' as const },
+  { key: 'agPag', label: 'Pré Compra', clickable: true as const, align: 'center' as const },
   { key: 'pedidoCompra', label: 'PC', clickable: true as const, align: 'center' as const },
   { key: 'estoqueAtual', label: 'Estoque Atual', clickable: true as const, align: 'center' as const },
   { key: 'dataUltimaEntrada', label: 'Data Última Entrada', clickable: false, align: 'center' as const },
@@ -424,7 +424,7 @@ export default function PendenciasComprasPage() {
         <div>
           <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Pendências compras</h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Produtos com solicitações ou Ag Pag em aberto, por comprador.
+            Produtos com solicitações ou Pré Compra em aberto, por comprador.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -799,7 +799,7 @@ export default function PendenciasComprasPage() {
             : detalhe?.tipo === 'solicitacao'
               ? `Solicitação — ${detalhe.linha.codigo}`
               : detalhe?.tipo === 'cotacao'
-                ? `Ag Pag — ${detalhe.linha.codigo}`
+                ? `Pré Compra — ${detalhe.linha.codigo}`
                 : ''
         }
         subtitulo={detalhe?.linha.descricao ?? ''}

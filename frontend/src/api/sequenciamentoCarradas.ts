@@ -485,7 +485,7 @@ export type ScCongeladoLinha = {
   saldo: number;
 };
 
-/** Ag Pag congelada no Gravar (modal "Pré Compra" do Materiais do dia). */
+/** Pré Compra congelada no Gravar (modal do Materiais do dia). */
 export async function obterAgPagCongelado(
   snapshotId: number,
   idProduto: number
