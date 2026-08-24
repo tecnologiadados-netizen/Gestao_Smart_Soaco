@@ -33,11 +33,11 @@ import {
   obterPainelComercialDashboard,
   obterItensPedidoPainelComercial,
 } from '../data/painelComercialRepository.js';
+import { queryDfcSaldoFaturar } from '../data/dfcSaldoFaturarRepository.js';
 import {
-  queryDfcSaldoFaturar,
   queryDfcProjecaoReceitasPorPeriodo,
   queryDfcProjecaoReceitasDetalhe,
-} from '../data/dfcSaldoFaturarRepository.js';
+} from '../data/dfcProjecaoReceitasRepository.js';
 import { queryDfcSaldosBancarios } from '../data/dfcSaldosBancariosRepository.js';
 import { agregarSaldosBancariosParaGrade } from '../data/dfcSaldosBancariosAgregar.js';
 import { resolverContasCaixaInicialFinal } from '../data/dfcContasCaixaConstantes.js';
@@ -283,7 +283,7 @@ export async function getDfcShop9Status(_req: Request, res: Response): Promise<v
 
 /**
  * GET /api/financeiro/dfc/projecao-receitas
- * Saldo a faturar agregado por Data Proj Venc (linha «Projeção de Receitas»).
+ * Sublinha 1.1.3.1 = Saldo a Receber (Carteira) rateado por cp.regra; pai 1.1.3 = soma.
  */
 export async function getDfcProjecaoReceitas(req: Request, res: Response): Promise<void> {
   const dataInicio = String(req.query.dataInicio ?? '').trim();
@@ -307,7 +307,11 @@ export async function getDfcProjecaoReceitas(req: Request, res: Response): Promi
   if (projSaldoRes.erro) {
     console.error('[getDfcProjecaoReceitas]', projSaldoRes.erro);
   }
-  res.json({ porPeriodo: projSaldoRes.porPeriodo, erro: projSaldoRes.erro });
+  res.json({
+    porPeriodo: projSaldoRes.porPeriodo,
+    porSublinha: projSaldoRes.porSublinha,
+    erro: projSaldoRes.erro,
+  });
 }
 
 /**
@@ -356,7 +360,7 @@ export async function getDfcSaldosBancarios(req: Request, res: Response): Promis
 
 /**
  * GET /api/financeiro/dfc/projecao-receitas/detalhe
- * Parcelas da projeção (saldo/parcelas por Data Proj Venc).
+ * Parcelas da projeção (Carteira / regra). Query opcional: sublinha, periodo.
  */
 export async function getDfcProjecaoReceitasDetalhe(req: Request, res: Response): Promise<void> {
   const dataInicio = String(req.query.dataInicio ?? '').trim();
@@ -366,6 +370,7 @@ export async function getDfcProjecaoReceitasDetalhe(req: Request, res: Response)
     granularidadeRaw === 'dia' ? 'dia' : 'mes';
   const idEmpresas = parseIdEmpresas(req.query);
   const periodo = String(req.query.periodo ?? '').trim() || undefined;
+  const sublinha = String(req.query.sublinha ?? '').trim() || undefined;
 
   if (!DATE_RE.test(dataInicio) || !DATE_RE.test(dataFim)) {
     res.status(400).json({ error: 'Informe dataInicio e dataFim no formato YYYY-MM-DD.' });
@@ -378,6 +383,7 @@ export async function getDfcProjecaoReceitasDetalhe(req: Request, res: Response)
     granularidade,
     idEmpresas,
     periodo,
+    sublinha,
   });
   if (erro) console.error('[getDfcProjecaoReceitasDetalhe]', erro);
   res.json({ linhas, erro });
@@ -424,6 +430,12 @@ async function carregarDfcLancamentosDetalhe(args: CarregarDfcLancamentosArgs): 
   const temRetro = dataInicio <= retroFim && !bucketEhFuturo;
   const projInicio = maxDate(dataInicio, amanha);
   const temProj = projInicio <= dataFim && !bucketEhPassado;
+  /** Receitas Nomus (conta 2 inclui hoje): mês corrente / dia de hoje ainda entram na projeção. */
+  const projInicioRec = maxDate(dataInicio, hoje);
+  const periodoRecPassado =
+    periodoOpt != null &&
+    (granularidade === 'mes' ? periodoOpt < hoje.slice(0, 7) : periodoOpt < hoje);
+  const temProjRec = projInicioRec <= dataFim && !periodoRecPassado;
 
   const filtroPrioridade = await resolverFiltroPrioridade({ prioridades, idEmpresas });
   const extra = { todasContas, limite };
@@ -529,9 +541,11 @@ async function carregarDfcLancamentosDetalhe(args: CarregarDfcLancamentosArgs): 
     if (ePg) console.error(`[${logPrefix}] projeção pagamentos Nomus:`, ePg);
     else if (useShop9) detalhesProjPg = [...detalhesProjPg, ...dPgNomus];
     else detalhesProjPg = dPgNomus;
+  }
 
+  if (temProjRec) {
     const { detalhes: dRec, erro: eRec } = await queryDfcReceitasProjecaoDetalhe({
-      dataVencimentoInicio: projInicio,
+      dataVencimentoInicio: projInicioRec,
       dataVencimentoFim: dataFim,
       granularidade,
       idEmpresas,

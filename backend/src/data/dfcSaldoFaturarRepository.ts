@@ -482,7 +482,8 @@ function linhaEntraProjecaoReceitas(
 /** pd.idEmpresa da projeção de receitas (saldo a faturar) — exclusivamente Só Aço. */
 const ID_EMPRESA_PROJECAO_RECEITAS = 1;
 
-export async function queryDfcProjecaoReceitasPorPeriodo(params: {
+/** @deprecated Preferir dfcProjecaoReceitasRepository — saldo a faturar / parcela (legado). */
+export async function queryDfcProjecaoReceitasPorPeriodoSaldoFaturarLegacy(params: {
   dataInicio: string;
   dataFim: string;
   granularidade: 'dia' | 'mes';
@@ -516,13 +517,12 @@ export async function queryDfcProjecaoReceitasPorPeriodo(params: {
   }
 }
 
-/** Parcelas que compõem a linha «Projeção de Receitas» (detalhe ao clicar na árvore). */
-export async function queryDfcProjecaoReceitasDetalhe(params: {
+/** @deprecated Preferir dfcProjecaoReceitasRepository. */
+export async function queryDfcProjecaoReceitasDetalheSaldoFaturarLegacy(params: {
   dataInicio: string;
   dataFim: string;
   granularidade: 'dia' | 'mes';
   idEmpresas?: number[];
-  /** Bucket YYYY-MM ou YYYY-MM-DD; omitir = todos os períodos do filtro. */
   periodo?: string;
 }): Promise<{ linhas: DfcSaldoFaturarLinha[]; erro?: string }> {
   void params.idEmpresas;

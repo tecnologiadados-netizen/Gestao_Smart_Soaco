@@ -18,7 +18,10 @@ import {
 } from './dfcPrioridadeFilter.js';
 import type { DfcTipoRefLancamento } from './dfcPrioridadeConstantes.js';
 import { filtrarPorEmpresasSelecionadas, labelEmpresaDfc, resolverIdEmpresaDfc } from './dfcShop9Empresa.js';
-import { resolverIdContaFinanceiroDfc } from './dfcShop9PlanoContasMap.js';
+import {
+  DFC_ID_RECEITA_VENDAS_PRODUTO,
+  resolverIdContaFinanceiroDfc,
+} from './dfcShop9PlanoContasMap.js';
 import { formatSqlDateYmd as formatYmd } from './dfcDateUtils.js';
 import type { DfcContribuicaoLinha } from './dfcContribuicaoRepository.js';
 import { aplicarLimiteDetalhe, LIMITE_DETALHE_MODAL } from './detalheLimite.js';
@@ -32,7 +35,8 @@ const SQL_TEMPLATE = readFileSync(join(__dirname, 'sql', 'dfcNomusFinanceiro.sql
 const DATA_VENCIMENTO_MIN = '2024-12-01';
 const DATA_LANCAMENTO_MIN = '2024-01-01';
 const CACHE_MS = 90_000;
-const CACHE_VERSION = 20;
+/** Bump ao alterar SQL/colunas mapeadas ou regras de projeção (ex.: receita vendas produto). */
+const CACHE_VERSION = 21;
 export const DFC_EMPRESAS_CARGA = [1, 2, 3, 4];
 
 export type NomusDiscriminadorDfc = 'P' | 'R' | 'LR' | 'LP';
@@ -61,6 +65,9 @@ export type NomusFinanceiroRow = {
   comentarios: string | null;
   formaPagamento: string | null;
   idPedido: number | null;
+  /** parcelapagamento.geraAdiantamento — só NULL conta como “vazio” no filtro da conta 2. */
+  geraAdiantamento: number | null;
+  idDocumentoSaida: number | null;
 };
 
 let rowsCache: { at: number; v: number; rows: NomusFinanceiroRow[] } | null = null;
@@ -116,10 +123,17 @@ function sqlBlocosCarga(): string[] {
   return parts;
 }
 
+function idOpcionalPositivo(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
+}
+
 function mapRawRow(r: Record<string, unknown>, tipoRefBloco: DfcTipoRefLancamento): NomusFinanceiroRow {
   const tipoRefRaw = String(r.tipoRef ?? r['tipoRef'] ?? tipoRefBloco).trim().toUpperCase();
   const tipoRef: DfcTipoRefLancamento = tipoRefRaw === 'L' ? 'L' : 'A';
   const contaBancariaRaw = r.contaBancaria ?? r['contaBancaria'] ?? r.nome ?? r['nome'];
+  const geraRaw = r.geraAdiantamento ?? r['geraAdiantamento'];
   return {
     idContaBancaria: r.idContaBancaria != null ? toInt(r.idContaBancaria) : null,
     contaBancaria: contaBancariaRaw != null ? String(contaBancariaRaw).trim() || null : null,
@@ -143,8 +157,32 @@ function mapRawRow(r: Record<string, unknown>, tipoRefBloco: DfcTipoRefLancament
     tipoRef,
     comentarios: r.comentarios != null ? String(r.comentarios).trim() || null : null,
     formaPagamento: r.formaPagamento != null ? String(r.formaPagamento).trim() || null : null,
-    idPedido: r.idPedido != null && Number.isFinite(Number(r.idPedido)) ? toInt(r.idPedido) : null,
+    idPedido: idOpcionalPositivo(r.idPedido ?? r['idPedido']),
+    geraAdiantamento: geraRaw == null || geraRaw === '' ? null : toInt(geraRaw),
+    idDocumentoSaida: idOpcionalPositivo(r.idDocumentoSaida ?? r['idDocumentoSaida']),
   };
+}
+
+/**
+ * Projeção Contas a Receber → «Receitas de Vendas de Produto» (id 2):
+ * (1) idDocumentoSaida preenchido, ou
+ * (2) geraAdiantamento IS NULL e idDocumentoSaida vazio e idPedido vazio.
+ */
+function linhaPassaFiltroReceitaVendasProdutoProj(r: NomusFinanceiroRow): boolean {
+  if (r.idDocumentoSaida != null) return true;
+  return r.geraAdiantamento == null && r.idDocumentoSaida == null && r.idPedido == null;
+}
+
+/** Conta 2: vencimento >= hoje; demais contas: vencimento > hoje. */
+function vencimentoEntraProjecaoNomus(ymd: string, hoje: string, idConta: number): boolean {
+  if (idConta === DFC_ID_RECEITA_VENDAS_PRODUTO) return ymd >= hoje;
+  return ymd > hoje;
+}
+
+/** Exclui da projeção títulos da conta 2 que não passam no filtro de documento/adiantamento. */
+function linhaProjecaoContaOk(r: NomusFinanceiroRow, idConta: number): boolean {
+  if (idConta !== DFC_ID_RECEITA_VENDAS_PRODUTO) return true;
+  return linhaPassaFiltroReceitaVendasProdutoProj(r);
 }
 
 export async function carregarLinhasNomusFinanceiro(force = false): Promise<{
@@ -333,11 +371,21 @@ function linhaPossuiMovimentoNoPeriodoDfc(
     if (baixa && baixa >= dataInicio && baixa <= retroFim) return true;
   }
 
-  const projInicio = maxYmd(dataInicio, amanhaYmdLocal());
-  if (projInicio <= dataFim && linhaEmAberto(r)) {
-    const venc = formatYmd(r.dataVencimento);
-    if (venc && venc > hoje && venc >= projInicio && venc <= dataFim) return true;
-  }
+  const projInicioPadrao = maxYmd(dataInicio, amanhaYmdLocal());
+  const projInicioRvp = maxYmd(dataInicio, hoje);
+  if (!linhaEmAberto(r)) return false;
+  if (projInicioRvp > dataFim && projInicioPadrao > dataFim) return false;
+
+  const venc = formatYmd(r.dataVencimento);
+  if (!venc) return false;
+  const idConta = resolverIdContaNomus(r);
+  if (idConta == null || idConta <= 0) return false;
+  if (!linhaProjecaoContaOk(r, idConta)) return false;
+  if (!vencimentoEntraProjecaoNomus(venc, hoje, idConta)) return false;
+  const inicioProj =
+    idConta === DFC_ID_RECEITA_VENDAS_PRODUTO ? projInicioRvp : projInicioPadrao;
+  if (inicioProj > dataFim) return false;
+  if (venc >= inicioProj && venc <= dataFim) return true;
 
   return false;
 }
@@ -380,7 +428,9 @@ export async function coletarContribuicoesNomus(params: {
   const contribuicoes: DfcContribuicaoLinha[] = [];
   const hoje = hojeYmdLocal();
   const retroFim = minYmd(dataFim, hoje);
-  const projInicio = maxYmd(dataInicio, amanhaYmdLocal());
+  const projInicioPadrao = maxYmd(dataInicio, amanhaYmdLocal());
+  /** Conta 2 (Receitas de Vendas de Produto): inclui vencimento de hoje. */
+  const projInicioRvp = maxYmd(dataInicio, hoje);
 
   if (dataInicio <= retroFim) {
     for (const r of rows) {
@@ -395,19 +445,23 @@ export async function coletarContribuicoesNomus(params: {
     }
   }
 
-  if (projInicio <= dataFim) {
+  if (projInicioRvp <= dataFim) {
     for (const r of rows) {
       if (!linhaIncluirDiscriminador(r, ['P', 'R', 'LR'])) continue;
       if (!linhaEmAberto(r)) continue;
       const t = tipoContaNorm(r.tipoConta);
       if (t === 'LP') continue;
       const ymd = formatYmd(r.dataVencimento);
-      if (!ymd || ymd <= hoje) continue;
-      if (ymd < projInicio || ymd > dataFim) continue;
+      if (!ymd) continue;
       const saldo = r.saldoBaixar;
       if (saldo <= 0) continue;
       const idConta = resolverIdContaNomus(r);
       if (idConta == null || idConta <= 0) continue;
+      if (!linhaProjecaoContaOk(r, idConta)) continue;
+      if (!vencimentoEntraProjecaoNomus(ymd, hoje, idConta)) continue;
+      const projInicio =
+        idConta === DFC_ID_RECEITA_VENDAS_PRODUTO ? projInicioRvp : projInicioPadrao;
+      if (ymd < projInicio || ymd > dataFim) continue;
       pushContribuicaoNomus(contribuicoes, r, idConta, ymd, saldo);
     }
   }
@@ -494,12 +548,14 @@ export async function queryDfcNomusProjecaoAgregado(params: {
     if (!ehReceita && !linhaEmAberto(r)) continue;
     if (ehReceita && formatYmd(r.dataBaixa)) continue;
     const ymd = formatYmd(r.dataVencimento);
-    if (!ymd || ymd <= hoje) continue;
-    if (ymd < dataVencimentoInicio || ymd > dataVencimentoFim) continue;
+    if (!ymd) continue;
     const saldo = r.saldoBaixar;
     if (saldo <= 0) continue;
     const idConta = resolverIdContaNomus(r);
     if (idConta == null || idConta <= 0) continue;
+    if (!linhaProjecaoContaOk(r, idConta)) continue;
+    if (!vencimentoEntraProjecaoNomus(ymd, hoje, idConta)) continue;
+    if (ymd < dataVencimentoInicio || ymd > dataVencimentoFim) continue;
     if (
       filtroPrioridade &&
       !linhaPassaFiltroPrioridade(
@@ -618,7 +674,9 @@ export async function queryDfcNomusDetalhe(params: {
     if (!linhaEmAberto(r)) continue;
     if (r.tipoRef === 'L' && formatYmd(r.dataBaixa)) continue;
     const dataVenc = formatYmd(r.dataVencimento);
-    if (!dataVenc || dataVenc <= hoje) continue;
+    if (!dataVenc) continue;
+    if (!linhaProjecaoContaOk(r, idConta)) continue;
+    if (!vencimentoEntraProjecaoNomus(dataVenc, hoje, idConta)) continue;
     if (dataVenc < dataInicio || dataVenc > dataFim) continue;
     const periodo = periodoFromYmd(dataVenc, granularidade);
     if (periodoBucket && periodo !== periodoBucket) continue;
