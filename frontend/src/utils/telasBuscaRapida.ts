@@ -8,7 +8,8 @@ import {
 } from '../config/kpisCatalog';
 import {
   PRODUCAO_MENU,
-  PCP_MENU,
+  buildPcpMenuForUser,
+  podeVerSecaoPcp,
   COMUNICACAO_INTERNA_SUBMENUS,
   COMPRAS_MENU,
   ENGENHARIA_SUBMENUS,
@@ -128,8 +129,8 @@ export function buildTelasBuscaRapidaForUser(ctx: BuildTelasBuscaRapidaCtx): Tel
     telas.push(...flattenNavMenu(PRODUCAO_MENU, hasPermission, 'Produção'));
   }
 
-  if (hasPermission(PERMISSOES.PCP_VER_TELA)) {
-    telas.push(...flattenNavMenu(PCP_MENU, hasPermission, 'PCP', true));
+  if (podeVerSecaoPcp(hasPermission)) {
+    telas.push(...flattenNavMenu(buildPcpMenuForUser(hasPermission), hasPermission, 'PCP', true));
   }
 
   const logisticaMenu = buildLogisticaMenuForUser(hasPermission);

@@ -5,6 +5,10 @@ import { requirePermission } from '../middleware/requirePermission.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import { PERMISSOES_ACESSO_FINANCEIRO_RESUMO } from '../utils/financeiroPermissoes.js';
 import {
+  PERMISSOES_ACESSO_SEQUENCIAMENTO_CARRADAS,
+  PERMISSOES_EDITAR_SEQUENCIAMENTO_CARRADAS,
+} from '../utils/sequenciamentoCarradasPermissoes.js';
+import {
   getPedidos,
   getPedidosEncerrados,
   getPedidosEncerradosTypeahead,
@@ -92,6 +96,9 @@ const exportarXlsxPcp = requirePermission(PERMISSOES.PCP_EXPORTAR_XLSX, PERMISSO
 const ajustarUnicoPcp = requirePermission(PERMISSOES.PCP_AJUSTAR_PREVISAO, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_EDITAR);
 const ajustarLotePcp = requirePermission(PERMISSOES.PCP_IMPORTAR_XLSX, PERMISSOES.PCP_AJUSTAR_PREVISAO, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_EDITAR);
 
+const verSequenciamentoCarradas = requirePermission(...PERMISSOES_ACESSO_SEQUENCIAMENTO_CARRADAS);
+const editarSequenciamentoCarradas = requirePermission(...PERMISSOES_EDITAR_SEQUENCIAMENTO_CARRADAS);
+
 router.get('/', verPedidos, getPedidos);
 router.get('/export', exportarXlsxPcp, getPedidosExport);
 router.get('/resumo', verPedidos, getResumo);
@@ -116,41 +123,41 @@ const autosaveLimiter = rateLimit({
   message: { error: 'Muitas requisições. Tente novamente em breve.' },
 });
 
-router.get('/sequenciamento-carradas/consulta-ao-vivo', verPedidos, getSequenciamentoCarradasConsultaAoVivo);
-router.get('/sequenciamento-carradas/snapshots', verPedidos, getSequenciamentoCarradasSnapshots);
-router.post('/sequenciamento-carradas/snapshots', verPedidos, writeLimiter, postSequenciamentoCarradasSnapshot);
-router.get('/sequenciamento-carradas/snapshots/:id', verPedidos, getSequenciamentoCarradasSnapshotById);
-router.patch('/sequenciamento-carradas/snapshots/:id', verPedidos, autosaveLimiter, patchSequenciamentoCarradasSnapshot);
-router.post('/sequenciamento-carradas/snapshots/:id/concluir', verPedidos, writeLimiter, postSequenciamentoCarradasSnapshotConcluir);
-router.delete('/sequenciamento-carradas/snapshots/:id', verPedidos, writeLimiter, deleteSequenciamentoCarradasSnapshot);
-router.get('/sequenciamento-carradas/snapshots/:id/pc-pend', verPedidos, getSequenciamentoSnapshotPcPend);
-router.get('/sequenciamento-carradas/snapshots/:id/ag-pag', verPedidos, getSequenciamentoSnapshotAgPag);
+router.get('/sequenciamento-carradas/consulta-ao-vivo', verSequenciamentoCarradas, getSequenciamentoCarradasConsultaAoVivo);
+router.get('/sequenciamento-carradas/snapshots', verSequenciamentoCarradas, getSequenciamentoCarradasSnapshots);
+router.post('/sequenciamento-carradas/snapshots', editarSequenciamentoCarradas, writeLimiter, postSequenciamentoCarradasSnapshot);
+router.get('/sequenciamento-carradas/snapshots/:id', verSequenciamentoCarradas, getSequenciamentoCarradasSnapshotById);
+router.patch('/sequenciamento-carradas/snapshots/:id', editarSequenciamentoCarradas, autosaveLimiter, patchSequenciamentoCarradasSnapshot);
+router.post('/sequenciamento-carradas/snapshots/:id/concluir', editarSequenciamentoCarradas, writeLimiter, postSequenciamentoCarradasSnapshotConcluir);
+router.delete('/sequenciamento-carradas/snapshots/:id', editarSequenciamentoCarradas, writeLimiter, deleteSequenciamentoCarradasSnapshot);
+router.get('/sequenciamento-carradas/snapshots/:id/pc-pend', verSequenciamentoCarradas, getSequenciamentoSnapshotPcPend);
+router.get('/sequenciamento-carradas/snapshots/:id/ag-pag', verSequenciamentoCarradas, getSequenciamentoSnapshotAgPag);
 router.get(
   '/sequenciamento-carradas/snapshots/:id/solicitacao',
-  verPedidos,
+  verSequenciamentoCarradas,
   getSequenciamentoSnapshotSolicitacao
 );
 router.post(
   '/sequenciamento-carradas/snapshots/:id/consulta-congelada',
-  verPedidos,
+  verSequenciamentoCarradas,
   consultaCongeladaLimiter,
   postSequenciamentoConsultaCongelada
 );
 router.post(
   '/sequenciamento-carradas/calendario-producao/disponibilidade-materiais',
-  verPedidos,
+  verSequenciamentoCarradas,
   writeLimiter,
   postDisponibilidadeMateriaisSintetica
 );
 router.post(
   '/sequenciamento-carradas/calendario-producao/disponibilidade-materiais/dia',
-  verPedidos,
+  verSequenciamentoCarradas,
   writeLimiter,
   postDisponibilidadeMateriaisDia
 );
 router.post(
   '/sequenciamento-carradas/calendario-producao/disponibilidade-materiais/item',
-  verPedidos,
+  verSequenciamentoCarradas,
   writeLimiter,
   postDisponibilidadeMateriaisItem
 );

@@ -80,6 +80,8 @@ import TogglePrevisaoConfiavel, {
 } from '../../components/TogglePrevisaoConfiavel';
 import { ComoLerBtn } from '../../components/AjudaTelaModal';
 import SequenciamentoCarradasAjudaModal from './SequenciamentoCarradasAjudaModal';
+import { useAuth } from '../../contexts/AuthContext';
+import { podeCriarSequenciamentoCarradas } from '../../utils/sequenciamentoCarradasPermissoes';
 
 const BTN_PRIMARY =
   'inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed';
@@ -206,6 +208,9 @@ function aplicarPayload(
 }
 
 export default function SequenciamentoCarradasPage() {
+  const { hasPermission } = useAuth();
+  const podeCriar = podeCriarSequenciamentoCarradas(hasPermission);
+
   const [mostrarHistorico, setMostrarHistorico] = useState(true);
   const [historicoLista, setHistoricoLista] = useState<SequenciamentoSnapshotListItem[]>([]);
   const [historicoCarregando, setHistoricoCarregando] = useState(false);
@@ -286,7 +291,7 @@ export default function SequenciamentoCarradasPage() {
   /** Datas editáveis apenas em snapshot rascunho aberto para edição. */
   const editavel = isRascunho && !snapshotVisualizado?.somenteLeitura;
   /** Reordenação visual liberada em consulta ao vivo e em rascunho editável. */
-  const podeArrastar = emConsulta || editavel;
+  const podeArrastar = podeCriar && (emConsulta || editavel);
 
   const visibleColumns = useMemo(
     () => COL_IDS.filter((id) => columnPreferences.visible[id]),
@@ -1679,7 +1684,7 @@ export default function SequenciamentoCarradasPage() {
               >
                 Calendário de produção
               </button>
-              {emConsulta && (
+              {emConsulta && podeCriar && (
                 <button
                   type="button"
                   onClick={() => void handleGravar()}
@@ -1689,7 +1694,7 @@ export default function SequenciamentoCarradasPage() {
                   {gravando ? 'Gravando...' : 'Gravar'}
                 </button>
               )}
-              {editavel && (
+              {editavel && podeCriar && (
                 <button
                   type="button"
                   onClick={() => void abrirCorrigirDatas()}
@@ -2358,6 +2363,8 @@ export default function SequenciamentoCarradasPage() {
             >
               Visualizar
             </button>
+            {podeCriar && (
+              <>
             <button
               type="button"
               role="menuitem"
@@ -2397,6 +2404,8 @@ export default function SequenciamentoCarradasPage() {
             >
               Excluir
             </button>
+              </>
+            )}
           </div>,
           document.body
         )}

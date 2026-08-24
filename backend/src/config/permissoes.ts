@@ -80,6 +80,8 @@ export const PERMISSOES = {
   PCP_MOTIVO_EXCLUIR: 'pcp.motivo.excluir',
   PCP_TOTAL: 'pcp.total',
   PCP_CONSULTA_ESTOQUE_VER: 'pcp.consulta_estoque.ver',
+  PCP_SEQUENCIAMENTO_CARRADAS_VER: 'pcp.sequenciamento_carradas.ver',
+  PCP_SEQUENCIAMENTO_CARRADAS_CRIAR: 'pcp.sequenciamento_carradas.criar',
   PCP_REGRAS_ENTREGA_VER: 'pcp.regras_entrega.ver',
   PCP_REGRAS_ENTREGA_EDITAR: 'pcp.regras_entrega.editar',
   PCP_PAINEL_GERENCIAL_VER: 'pcp.painel_gerencial.ver',
@@ -212,6 +214,8 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.PCP_MOTIVO_EXCLUIR,
   PERMISSOES.PCP_TOTAL,
   PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
+  PERMISSOES.PCP_SEQUENCIAMENTO_CARRADAS_VER,
+  PERMISSOES.PCP_SEQUENCIAMENTO_CARRADAS_CRIAR,
   PERMISSOES.PCP_REGRAS_ENTREGA_VER,
   PERMISSOES.PCP_REGRAS_ENTREGA_EDITAR,
   PERMISSOES.PCP_PAINEL_GERENCIAL_VER,
@@ -342,6 +346,10 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.PCP_MOTIVO_CRIAR]: 'Criar nova justificativa',
   [PERMISSOES.PCP_TOTAL]: 'Permissão total',
   [PERMISSOES.PCP_CONSULTA_ESTOQUE_VER]: 'Consulta de Estoque (PCP)',
+  [PERMISSOES.PCP_SEQUENCIAMENTO_CARRADAS_VER]:
+    'Sequenciamento carradas — visualizar e consultar',
+  [PERMISSOES.PCP_SEQUENCIAMENTO_CARRADAS_CRIAR]:
+    'Sequenciamento carradas — criar e concluir',
   [PERMISSOES.PCP_REGRAS_ENTREGA_VER]: 'Regras data de entrega — visualizar',
   [PERMISSOES.PCP_REGRAS_ENTREGA_EDITAR]: 'Regras data de entrega — editar',
   [PERMISSOES.PCP_PAINEL_GERENCIAL_VER]: 'Painel Metas — Painel Gerencial',

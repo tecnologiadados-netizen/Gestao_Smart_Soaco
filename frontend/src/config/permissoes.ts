@@ -75,6 +75,8 @@ export const PERMISSOES = {
   PCP_MOTIVO_EXCLUIR: 'pcp.motivo.excluir',
   PCP_TOTAL: 'pcp.total',
   PCP_CONSULTA_ESTOQUE_VER: 'pcp.consulta_estoque.ver',
+  PCP_SEQUENCIAMENTO_CARRADAS_VER: 'pcp.sequenciamento_carradas.ver',
+  PCP_SEQUENCIAMENTO_CARRADAS_CRIAR: 'pcp.sequenciamento_carradas.criar',
   PCP_REGRAS_ENTREGA_VER: 'pcp.regras_entrega.ver',
   PCP_REGRAS_ENTREGA_EDITAR: 'pcp.regras_entrega.editar',
   PCP_PAINEL_GERENCIAL_VER: 'pcp.painel_gerencial.ver',

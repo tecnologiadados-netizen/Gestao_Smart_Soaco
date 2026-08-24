@@ -10,6 +10,7 @@ import {
   podeVerPainelGerencial,
   podeVerPainelTv,
 } from '../utils/painelProducaoPermissoes';
+import { podeAcessarSequenciamentoCarradas } from '../utils/sequenciamentoCarradasPermissoes';
 
 export type NavMenuEntry =
   | { kind: 'link'; to: string; label: string }
@@ -392,6 +393,52 @@ export function buildLogisticaMenuForUser(hasPermission: HasPermission): NavMenu
     }
   }
   return filtered;
+}
+
+function podeAcessarGerenciadorPedidos(hasPermission: HasPermission): boolean {
+  return (
+    hasPermission(PERMISSOES.PCP_VER_TELA) ||
+    hasPermission(PERMISSOES.PCP_TOTAL) ||
+    hasPermission(PERMISSOES.PEDIDOS_VER)
+  );
+}
+
+/** Menu lateral PCP filtrado por permissão (inclui sequenciamento granular). */
+export function buildPcpMenuForUser(hasPermission: HasPermission): NavMenuEntry[] {
+  const filtered: NavMenuEntry[] = [];
+  const podeGerenciador = podeAcessarGerenciadorPedidos(hasPermission);
+
+  for (const entry of PCP_MENU) {
+    if (entry.kind === 'link') {
+      if (entry.to === '/pedidos/sequenciamento-carradas') {
+        if (podeAcessarSequenciamentoCarradas(hasPermission)) filtered.push(entry);
+        continue;
+      }
+      if (podeGerenciador) filtered.push(entry);
+      continue;
+    }
+
+    if (entry.label === 'Estoque' || entry.label === 'Painel Metas') {
+      const children = filterPcpMenuChildren(entry, hasPermission);
+      if (children.length > 0) filtered.push({ ...entry, children });
+      continue;
+    }
+
+    if (entry.label === 'Programação') {
+      if (!podeGerenciador) continue;
+      const children = filterPcpMenuChildren(entry, hasPermission);
+      if (children.length > 0) filtered.push({ ...entry, children });
+      continue;
+    }
+
+    if (podeGerenciador) filtered.push(entry);
+  }
+
+  return filtered;
+}
+
+export function podeVerSecaoPcp(hasPermission: HasPermission): boolean {
+  return buildPcpMenuForUser(hasPermission).length > 0;
 }
 
 /** Filtra entradas do menu PCP conforme permissões (mesma lógica do menu horizontal). */
