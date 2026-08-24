@@ -2,7 +2,7 @@
  * Painel de Cobertura de Estoque — agrega sobre a mesma consulta da Consulta de Estoque.
  * Recorte fixo: itens com empenho líquido > 0 e vínculo ao almoxarifado secundário (setor 2).
  */
-import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
+import { formatNomusErroConexao, isNomusEnabled, queryNomus } from '../config/nomusDb.js';
 import {
   consultarEstoque,
   type FiltrosConsultaEstoque,
@@ -33,8 +33,7 @@ async function consultarConsumoMedioPorIds(ids: number[]): Promise<Map<number, n
   const unicos = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))];
   if (unicos.length === 0) return map;
 
-  const pool = getNomusPool();
-  if (!pool || !isNomusEnabled()) return map;
+  if (!isNomusEnabled()) return map;
 
   for (let i = 0; i < unicos.length; i += CM_CHUNK) {
     const chunk = unicos.slice(i, i + CM_CHUNK);
@@ -72,7 +71,7 @@ Group By a.idProduto
 `.trim();
 
     try {
-      const [rows] = (await pool.query(sql, [...chunk, ...chunk])) as [
+      const [rows] = (await queryNomus(sql, [...chunk, ...chunk])) as [
         Record<string, unknown>[],
         unknown,
       ];
@@ -100,8 +99,7 @@ async function consultarCompradorPorIds(ids: number[]): Promise<Map<number, stri
   const unicos = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))];
   if (unicos.length === 0) return map;
 
-  const pool = getNomusPool();
-  if (!pool || !isNomusEnabled()) return map;
+  if (!isNomusEnabled()) return map;
 
   for (let i = 0; i < unicos.length; i += CM_CHUNK) {
     const chunk = unicos.slice(i, i + CM_CHUNK);
@@ -115,7 +113,7 @@ Where apv.idAtributo = ${NOMUS_ATRIBUTO_COMPRADOR}
   And apv.idProduto In (${ph})
 `.trim();
     try {
-      const [rows] = (await pool.query(sql, chunk)) as [Record<string, unknown>[], unknown];
+      const [rows] = (await queryNomus(sql, chunk)) as [Record<string, unknown>[], unknown];
       for (const r of Array.isArray(rows) ? rows : []) {
         const id = Number(r.idProduto ?? 0);
         if (id <= 0) continue;
@@ -136,8 +134,7 @@ async function consultarFamiliaProdutoPorIds(ids: number[]): Promise<Map<number,
   const unicos = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))];
   if (unicos.length === 0) return map;
 
-  const pool = getNomusPool();
-  if (!pool || !isNomusEnabled()) return map;
+  if (!isNomusEnabled()) return map;
 
   for (let i = 0; i < unicos.length; i += CM_CHUNK) {
     const chunk = unicos.slice(i, i + CM_CHUNK);
@@ -150,7 +147,7 @@ Left Join familiaproduto fp On p.idFamiliaProduto = fp.id
 Where p.id In (${ph})
 `.trim();
     try {
-      const [rows] = (await pool.query(sql, chunk)) as [Record<string, unknown>[], unknown];
+      const [rows] = (await queryNomus(sql, chunk)) as [Record<string, unknown>[], unknown];
       for (const r of Array.isArray(rows) ? rows : []) {
         const id = Number(r.idProduto ?? 0);
         if (id <= 0) continue;
@@ -171,8 +168,7 @@ async function consultarUltimoPrecoEntradaPorIds(ids: number[]): Promise<Map<num
   const unicos = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))];
   if (unicos.length === 0) return map;
 
-  const pool = getNomusPool();
-  if (!pool || !isNomusEnabled()) return map;
+  if (!isNomusEnabled()) return map;
 
   const tipos = [...TIPOS_MOVIMENTACAO_PRECO_COBERTURA];
   const tiposPh = placeholders(tipos.length);
@@ -200,7 +196,7 @@ Where ranked.rn = 1
 `.trim();
 
     try {
-      const [rows] = (await pool.query(sql, [...tipos, ...chunk])) as [
+      const [rows] = (await queryNomus(sql, [...tipos, ...chunk])) as [
         Record<string, unknown>[],
         unknown,
       ];
@@ -222,17 +218,62 @@ Where ranked.rn = 1
   return map;
 }
 
+/**
+ * Última data de movimentação no almox secundário (entrada ou saída nos setores 2/19).
+ * Produtos sem linha no mapa = nunca movimentaram nesse recorte.
+ */
+async function consultarUltimaMovimentacaoEstoquePorIds(
+  ids: number[]
+): Promise<Map<number, string>> {
+  const map = new Map<number, string>();
+  const unicos = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))];
+  if (unicos.length === 0) return map;
+
+  if (!isNomusEnabled()) return map;
+
+  for (let i = 0; i < unicos.length; i += CM_CHUNK) {
+    const chunk = unicos.slice(i, i + CM_CHUNK);
+    const ph = placeholders(chunk.length);
+    const sql = `
+Select mp.idProduto As idProduto,
+  Date_Format(Max(mp.data), '%Y-%m-%d') As ultimaMovimentacao
+From movimentacaoproducao mp
+Where mp.idProduto In (${ph})
+  And (
+    mp.idSetorEstoqueSaida In (2, 19)
+    Or mp.idSetorEstoqueEntrada In (2, 19)
+  )
+Group By mp.idProduto
+`.trim();
+    try {
+      const [rows] = (await queryNomus(sql, chunk)) as [Record<string, unknown>[], unknown];
+      for (const r of Array.isArray(rows) ? rows : []) {
+        const id = Number(r.idProduto ?? 0);
+        const data = String(r.ultimaMovimentacao ?? '').trim();
+        if (id <= 0 || !data) continue;
+        map.set(id, data);
+      }
+    } catch (err) {
+      console.error(
+        '[coberturaEstoqueRepository] consultarUltimaMovimentacaoEstoquePorIds:',
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
+  return map;
+}
+
 /** Nomes distintos de família de produto (cadastro Nomus) para o filtro do painel. */
 export async function consultarNomesFamiliaProduto(): Promise<{
   data: string[];
   erro?: string;
 }> {
-  const pool = getNomusPool();
-  if (!pool || !isNomusEnabled()) {
+  if (!isNomusEnabled()) {
     return { data: [], erro: 'Nomus indisponível' };
   }
   try {
-    const [rows] = (await pool.query(`
+    const [rows] = (await queryNomus(`
 Select Distinct Trim(fp.nome) As familia
 From familiaproduto fp
 Where fp.nome Is Not Null And Trim(fp.nome) <> ''
@@ -248,7 +289,7 @@ Order By 1
       '[coberturaEstoqueRepository] consultarNomesFamiliaProduto:',
       err instanceof Error ? err.message : err
     );
-    return { data: [], erro: err instanceof Error ? err.message : String(err) };
+    return { data: [], erro: formatNomusErroConexao(err) };
   }
 }
 
@@ -261,10 +302,14 @@ export async function consultarPainelCoberturaEstoque(params: {
   data: (ReturnType<typeof agregarCoberturaEstoque> & { familiasDisponiveis: string[] }) | null;
   erro?: string;
 }> {
-  // Universo atual: comEmpenho 'sim'. No 2º momento, remover este forçamento
-  // para incluir Empenho = 0 (visão Sem giro) — regras de status já toleram essas linhas.
+  // comEmpenho vem do filtro do painel (toggle "somente produtos com empenho").
+  // Almox secundário continua fixo. Regras de status já toleram Empenho = 0.
   const { data, erro } = await consultarEstoque({
-    filtros: { ...params.filtros, comEmpenho: 'sim', somenteAlmoxSecundario: true },
+    filtros: {
+      ...params.filtros,
+      comEmpenho: params.filtros.comEmpenho ?? 'todos',
+      somenteAlmoxSecundario: true,
+    },
     considerarRequisicoes: params.considerarRequisicoes,
     permitirSemFiltro: true,
   });
@@ -274,11 +319,12 @@ export async function consultarPainelCoberturaEstoque(params: {
   }
 
   const ids = data.map((r) => r.idProduto);
-  const [cmMap, compradorMap, precoMap, familiaMap] = await Promise.all([
+  const [cmMap, compradorMap, precoMap, familiaMap, ultimaMovMap] = await Promise.all([
     consultarConsumoMedioPorIds(ids),
     consultarCompradorPorIds(ids),
     consultarUltimoPrecoEntradaPorIds(ids),
     consultarFamiliaProdutoPorIds(ids),
+    consultarUltimaMovimentacaoEstoquePorIds(ids),
   ]);
   let comCm = data.map((r) => ({
     ...r,
@@ -286,6 +332,7 @@ export async function consultarPainelCoberturaEstoque(params: {
     comprador: compradorMap.get(r.idProduto) ?? 'A definir',
     precoUnitario: precoMap.get(r.idProduto) ?? null,
     familiaProduto: familiaMap.get(r.idProduto) ?? 'Sem família',
+    ultimaMovimentacaoEstoque: ultimaMovMap.get(r.idProduto) ?? null,
   }));
 
   // Opções do filtro = famílias presentes no universo do painel (antes do filtro de família).

@@ -20,7 +20,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'O Status (cards e coluna) avalia nesta ordem e para no primeiro match: (1) Empenho > 0, Estoque < Empenho e PC ≥ faltante → Aguardando PC; (2) Empenho > 0 e Estoque < Empenho → Ruptura; (3) CM = 0, Empenho = 0 e Estoque > 0 → Sem giro; (4) CM = 0 → Sem histórico; (5) cobertura < 0,5 → Crítico; (6) < 1 → Atenção; (7) ≤ 3 → Saudável; (8) > 3 → Excesso.',
     comoLe:
-      'Os seis cards do topo contam Ruptura, Aguardando PC, Crítico, Atenção, Saudável e Excesso. Clique no card para filtrar grade e carga. Sem giro / Sem histórico existem tipados para o 2º momento (universo com Empenho = 0); no recorte atual quase não aparecem.',
+      'Acima dos seis cards de Status ficam três totais em R$: Valor em estoque (saldo × preço, sem descontar empenho nem PC), Valor em estoque firme ((estoque − empenho) × preço) e Valor sem movimentação (saldo × preço só dos itens sem entrada/saída no almox secundário há ≥ 60 dias, ou sem histórico). Esses totais usam o universo do Filtrar e não encolhem ao clicar em recortes — clique em um deles para filtrar grade, gráficos e carga (itens com preço; sem movimentação restringe aos parados há ≥ 60 dias). Os seis cards abaixo contam Ruptura, Aguardando PC, Crítico, Atenção, Saudável e Excesso — clique para filtrar grade e carga. Sem giro / Sem histórico aparecem no universo padrão (com e sem empenho).',
   },
   {
     id: 'barras',
@@ -42,17 +42,17 @@ const SECOES: SecaoAjuda[] = [
     id: 'visoes',
     titulo: 'Três visões da grade',
     oQueE:
-      'Acima da tabela: Atende venda (Empenho > 0 — universo atual), Cobertura (CM > 0) e Sem giro (CM = 0 e Empenho = 0). As abas só filtram a grade; KPIs e gráficos do topo continuam no recorte de cards/barras/comprador.',
+      'Acima da tabela: Atende venda (Empenho > 0), Cobertura (CM > 0) e Sem giro (CM = 0 e Empenho = 0). As abas só filtram a grade; KPIs e gráficos do topo continuam no recorte de cards/barras/comprador.',
     comoLe:
-      'Hoje a visão Sem giro fica vazia até o painel incluir itens sem empenho. Mantenha Atende venda para o dia a dia de compra; use Cobertura para olhar só quem tem histórico de consumo.',
+      'Com o toggle “somente com empenho” desligado (padrão), a visão Sem giro pode trazer itens. Ligado no modal Filtrar, restringe o painel a empenho &gt; 0 e Sem giro fica vazia. Mantenha Atende venda para o dia a dia de compra; use Cobertura para olhar só quem tem histórico de consumo.',
   },
   {
     id: 'capital',
     titulo: 'Distribuição do capital',
     oQueE:
-      'Barras por faixa, pizza por família e Top 10 usam valor firme = (estoque − empenho) × preço. Na pizza, cada produto com valor firme negativo é ignorado e não reduz a soma da família. O badge Sem preço conta códigos sem entrada qualificada válida.',
+      'Barras por faixa, pizza por família e Top 10 usam valor firme = (estoque − empenho) × preço — o mesmo do card “Valor em estoque firme”. O card “Valor em estoque” é o bruto (saldo × preço), sem descontar empenho nem PC. O card “Valor sem movimentação” soma o mesmo bruto só para itens cuja última movimentação no almox secundário (setores 2/19, entrada ou saída) tem 60 dias ou mais — ou nunca movimentaram. Na pizza, cada produto com valor firme negativo é ignorado e não reduz a soma da família. O badge Sem preço conta códigos sem entrada qualificada válida.',
     comoLe:
-      'Clique na faixa, na família, no produto do Top 10 ou em Sem preço para filtrar a grade. Respeitam o recorte de Status/barra ativo.',
+      'Clique na faixa, na família, no produto do Top 10 ou em Sem preço para filtrar a grade. Respeitam o recorte de valor/Status/barra ativo. Os três cards de valor do topo também são clicáveis (mesmo critério de cada total) e mostram sempre o valor consolidado do painel após Filtrar.',
   },
   {
     id: 'comprador',
@@ -66,25 +66,25 @@ const SECOES: SecaoAjuda[] = [
     id: 'preco',
     titulo: 'Preço unitário e valor firme',
     oQueE:
-      'Preço = última entrada entre “Compra para material almox secundário”, “Compra para industrialização” e “AJUSTE PARA ATUALIZAR PREÇO DA ÚLTIMA COMPRA (TRIB INCLUÍDA)”, com valor unitário > 0 (incluindo preços fracionários baixos como 0,002). Não se descarta mais por arredondamento a 2 casas nem por limiar 0,005 — a entrada recente prevalece sobre preços antigos.',
+      'Preço = última entrada entre “Compra para material almox secundário”, “Compra para industrialização” e “AJUSTE PARA ATUALIZAR PREÇO DA ÚLTIMA COMPRA (TRIB INCLUÍDA)”, com valor unitário > 0 (incluindo preços fracionários baixos como 0,002). Não se descarta mais por arredondamento a 2 casas nem por limiar 0,005 — a entrada recente prevalece sobre preços antigos. Valor em estoque = saldo × preço; valor firme = (saldo − empenho) × preço; valor sem movimentação = saldo × preço dos itens sem mov. há ≥ 60 dias. Pedido de compra não entra nesses totais.',
     comoLe:
-      'Na grade, preços &lt; R$ 0,01 aparecem com até 4 casas. Sem preço só quando não há nenhuma entrada qualificada com valor &gt; 0; esses itens entram no badge Sem preço e ficam de fora das somas em R$ e do Top 10.',
+      'Na grade, preços &lt; R$ 0,01 aparecem com até 4 casas. Sem preço só quando não há nenhuma entrada qualificada com valor &gt; 0; esses itens entram no badge Sem preço e ficam de fora das somas em R$ (cards, barras, pizza e Top 10).',
   },
   {
     id: 'fonte',
     titulo: 'Mesma fonte da Consulta de Estoque',
     oQueE:
-      'Saldo, empenho líquido, SC, Pré Compra, PC e projetado usam as mesmas regras/SQL da Consulta de Estoque. O universo atual continua Empenho > 0 e almox secundário.',
+      'Saldo, empenho líquido, SC, Pré Compra, PC e projetado usam as mesmas regras/SQL da Consulta de Estoque. O painel fixa almox secundário. Por padrão inclui produtos com e sem empenho; no modal Filtrar, o toggle “Considerar somente produtos com empenho?” restringe a empenho &gt; 0.',
     comoLe:
-      'Células reabrem os mesmos modais analíticos. O toggle “Considerar empenho de requisições?” refaz a consulta na hora.',
+      'Células reabrem os mesmos modais analíticos. O toggle “Considerar empenho de requisições?” no topo refaz a consulta na hora. O toggle de empenho fica no modal Filtrar e só vale após clicar em Filtrar.',
   },
   {
     id: 'filtros',
     titulo: 'Filtros e Excel',
     oQueE:
-      'Filtrar (código/descrição/coleta/família — opções de família só com itens aptos ao painel), Limpar filtros no topo (também limpa KPI/faixas clicadas), recorte por capital, visão da grade, funil Excel e exportação.',
+      'Toggles no topo (requisições) e no modal Filtrar (somente com empenho, código/descrição/coleta/família), Limpar filtros no topo (também limpa KPI/faixas clicadas e volta o universo ao padrão com/sem empenho), recorte por capital, visão da grade, funil Excel e exportação.',
     comoLe:
-      'Limpar filtros no topo zera o modal e desmarca cards/barras/comprador/capital. “Limpar recorte” tira só o recorte visual. “Limpar filtros da grade” desfaz só funil/ordem. O Excel exporta todas as linhas do recorte+visão+funil (valor real de cobertura, sem teto visual).',
+      'Limpar filtros no topo zera o modal, desmarca cards/barras/comprador/capital e restaura o universo padrão (com e sem empenho). “Limpar recorte” tira só o recorte visual. “Limpar filtros da grade” desfaz só funil/ordem. O Excel exporta todas as linhas do recorte+visão+funil (valor real de cobertura, sem teto visual).',
   },
 ];
 

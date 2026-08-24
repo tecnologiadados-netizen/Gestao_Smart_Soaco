@@ -141,3 +141,25 @@ export async function nomusQueryWithRetry<T = unknown>(
   }
   throw lastErr;
 }
+
+/** Mensagem amigável para falhas de rede/conexão com o Nomus. */
+export function formatNomusErroConexao(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  if (/ETIMEDOUT|ECONNREFUSED|ENOTFOUND|ECONNRESET|EHOSTUNREACH|Connection lost|getaddrinfo/i.test(msg)) {
+    return 'Não foi possível conectar ao Nomus (ERP). Verifique rede/VPN e tente novamente.';
+  }
+  return msg;
+}
+
+/** Obtém pool Nomus e executa query com retry curto. */
+export async function queryNomus<T = unknown>(
+  sql: string,
+  params?: unknown[],
+  tentativas = 3
+): Promise<[T, mysql.FieldPacket[]]> {
+  const pool = getNomusPool();
+  if (!pool || !isNomusEnabled()) {
+    throw new Error('NOMUS_DB_URL não configurado');
+  }
+  return nomusQueryWithRetry(pool, sql, params, tentativas);
+}
