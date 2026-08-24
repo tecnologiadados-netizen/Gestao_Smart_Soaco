@@ -86,7 +86,7 @@ const EMPTY_FILTROS: FiltrosConsultaEstoqueState = {
   subgrupo1: '',
   subgrupo2: '',
   familias: '',
-  comEmpenho: 'sim',
+  comEmpenho: 'todos',
   comSaldoEstoque: 'todos',
 };
 
@@ -96,10 +96,10 @@ const EMPTY_PEDIDO: PedidoFiltroConsultaEstoque = {
   empenhoEscopo: null,
 };
 
-function payloadCobertura(filtros: FiltrosConsultaEstoqueState) {
+function payloadCobertura(filtros: FiltrosConsultaEstoqueState, somenteComEmpenho: boolean) {
   return {
     ...filtrosStateToPayload(filtros),
-    comEmpenho: 'sim' as const,
+    comEmpenho: (somenteComEmpenho ? 'sim' : 'todos') as const,
     somenteAlmoxSecundario: true,
   };
 }
@@ -141,7 +141,7 @@ const ATENDE_TXT: Record<ClasseAtendimento, string> = {
 const VISOES_GRADE: { id: VisaoGradeCobertura; label: string; title: string }[] = [
   { id: 'atende_venda', label: 'Atende venda', title: 'Itens com empenho > 0' },
   { id: 'cobertura', label: 'Cobertura', title: 'Itens com CM > 0' },
-  { id: 'sem_giro', label: 'Sem giro', title: 'CM = 0 e empenho = 0 (preparado para 2º momento)' },
+  { id: 'sem_giro', label: 'Sem giro', title: 'CM = 0 e empenho = 0' },
 ];
 
 const BARRA_BG: Record<BarraFirme, string> = {
@@ -258,6 +258,20 @@ function fmtAtendeVenda(pct: number | null | undefined): string {
 
 function statusDaLinha(row: CoberturaEstoqueLinha): KpiFirme {
   return row.statusPainel ?? row.kpiFirme;
+}
+
+type CardValorCobertura = 'estoque' | 'firme' | 'sem_mov_60d';
+
+const LABELS_CARD_VALOR: Record<CardValorCobertura, string> = {
+  estoque: 'Valor em estoque',
+  firme: 'Valor em estoque firme',
+  sem_mov_60d: 'Valor sem movimentação',
+};
+
+function itemPassaCardValor(row: CoberturaEstoqueLinha, card: CardValorCobertura): boolean {
+  if (card === 'estoque') return row.valorEstoque != null;
+  if (card === 'firme') return row.valorFirme != null;
+  return row.semMovimentacao60d === true && row.valorEstoque != null;
 }
 
 function passaVisaoGrade(row: CoberturaEstoqueLinha, visao: VisaoGradeCobertura): boolean {
@@ -417,7 +431,10 @@ export default function CoberturaEstoquePage() {
   const [loading, setLoading] = useState(true);
   const [origensEmpenho, setOrigensEmpenho] = useState(ORIGENS_EMPENHO_COBERTURA_TODAS);
   const [considerarRequisicoesAplicado, setConsiderarRequisicoesAplicado] = useState(true);
+  const [somenteComEmpenho, setSomenteComEmpenho] = useState(false);
+  const [somenteComEmpenhoDraft, setSomenteComEmpenhoDraft] = useState(false);
   const [painel, setPainel] = useState<PainelCoberturaEstoqueData | null>(null);
+  const [cardValorAtivo, setCardValorAtivo] = useState<CardValorCobertura | null>(null);
   const [kpiAtivo, setKpiAtivo] = useState<KpiFirme | null>(null);
   const [barraAtiva, setBarraAtiva] = useState<BarraFirme | null>(null);
   const [compradorAtivo, setCompradorAtivo] = useState<string | null>(null);
@@ -453,7 +470,7 @@ export default function CoberturaEstoquePage() {
     let cancelled = false;
     const t = window.setTimeout(() => {
       void (async () => {
-        const payload = payloadCobertura(filtros);
+        const payload = payloadCobertura(filtros, somenteComEmpenho);
         const r = await obterOpcoesFiltroCascataConsultaEstoque(payload);
         if (!cancelled && r.data) {
           setOpcoes((prev) => ({
@@ -468,58 +485,76 @@ export default function CoberturaEstoquePage() {
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [filtros]);
+  }, [filtros, somenteComEmpenho]);
 
-  const executarPainel = useCallback(async (req: boolean, f: FiltrosConsultaEstoqueState) => {
-    const seq = ++reqSeqRef.current;
-    setErro(null);
-    setLoading(true);
-    detalheCacheRef.current.clear();
-    limparFiltrosGradeRef.current();
-    setKpiAtivo(null);
-    setBarraAtiva(null);
-    setCompradorAtivo(null);
-    setKpiCompradorAtivo(null);
-    setFiltroSemPreco(false);
-    setProdutoTopCapitalAtivo(null);
-    setFamiliaCapitalAtiva(null);
-    setVisaoGrade('atende_venda');
-    const r = await obterPainelCoberturaEstoque({
-      filtros: payloadCobertura(f),
-      considerarRequisicoes: req,
-    });
-    if (seq !== reqSeqRef.current) return;
-    setLoading(false);
-    if (r.error) {
-      setErro(r.error);
-      setPainel(null);
-      return;
-    }
-    setPainel(r.data);
-    if (r.data?.familiasDisponiveis) {
-      setOpcoes((prev) => ({ ...prev, familias: r.data!.familiasDisponiveis! }));
-    }
-    setConsiderarRequisicoesAplicado(req);
-    setFiltrosOpen(false);
-  }, []);
+  const executarPainel = useCallback(
+    async (req: boolean, f: FiltrosConsultaEstoqueState, soComEmpenho: boolean) => {
+      const seq = ++reqSeqRef.current;
+      setErro(null);
+      setLoading(true);
+      detalheCacheRef.current.clear();
+      limparFiltrosGradeRef.current();
+      setCardValorAtivo(null);
+      setKpiAtivo(null);
+      setBarraAtiva(null);
+      setCompradorAtivo(null);
+      setKpiCompradorAtivo(null);
+      setFiltroSemPreco(false);
+      setProdutoTopCapitalAtivo(null);
+      setFamiliaCapitalAtiva(null);
+      setVisaoGrade('atende_venda');
+      const r = await obterPainelCoberturaEstoque({
+        filtros: payloadCobertura(f, soComEmpenho),
+        considerarRequisicoes: req,
+      });
+      if (seq !== reqSeqRef.current) return;
+      setLoading(false);
+      if (r.error) {
+        setErro(r.error);
+        setPainel(null);
+        return;
+      }
+      setPainel(r.data);
+      if (r.data?.familiasDisponiveis) {
+        setOpcoes((prev) => ({ ...prev, familias: r.data!.familiasDisponiveis! }));
+      }
+      setConsiderarRequisicoesAplicado(req);
+      setSomenteComEmpenho(soComEmpenho);
+      setFiltrosOpen(false);
+    },
+    []
+  );
 
   useEffect(() => {
-    void executarPainel(true, EMPTY_FILTROS);
-  }, [executarPainel]);
+    void executarPainel(
+      origensEmpenhoIncluiRequisicoes(origensEmpenho),
+      EMPTY_FILTROS,
+      somenteComEmpenho
+    );
+    // Só reage à origem de empenho (requisições). O toggle de "somente com empenho"
+    // dispara via onClick com o valor novo — evita resetar filtros do modal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intencional: não incluir somenteComEmpenho
+  }, [executarPainel, origensEmpenho]);
 
   const handleFiltrar = () => {
     setMsgFiltro(null);
-    void executarPainel(origensEmpenhoIncluiRequisicoes(origensEmpenho), filtros);
+    setSomenteComEmpenho(somenteComEmpenhoDraft);
+    void executarPainel(
+      origensEmpenhoIncluiRequisicoes(origensEmpenho),
+      filtros,
+      somenteComEmpenhoDraft
+    );
   };
 
   const itensPorFaixa = useMemo(() => {
     if (!painel) return [];
     return painel.itens.filter((i) => {
+      if (cardValorAtivo && !itemPassaCardValor(i, cardValorAtivo)) return false;
       if (barraAtiva) return i.faixaFirme === barraAtiva;
       if (kpiAtivo) return statusDaLinha(i) === kpiAtivo;
       return true;
     });
-  }, [painel, barraAtiva, kpiAtivo]);
+  }, [painel, cardValorAtivo, barraAtiva, kpiAtivo]);
 
   const itensRecortePainel = useMemo(() => {
     if (!filtroSemPreco) return itensPorFaixa;
@@ -784,7 +819,23 @@ export default function CoberturaEstoquePage() {
     URL.revokeObjectURL(url);
   }, [grade.rowsExibidas, getCellText, valueForSort]);
 
+  const selecionarCardValor = (card: CardValorCobertura) => {
+    setCompradorAtivo(null);
+    setKpiCompradorAtivo(null);
+    setFiltroSemPreco(false);
+    setProdutoTopCapitalAtivo(null);
+    setFamiliaCapitalAtiva(null);
+    setKpiAtivo(null);
+    setBarraAtiva(null);
+    if (cardValorAtivo === card) {
+      setCardValorAtivo(null);
+      return;
+    }
+    setCardValorAtivo(card);
+  };
+
   const selecionarKpi = (kpi: KpiFirme) => {
+    setCardValorAtivo(null);
     setCompradorAtivo(null);
     setKpiCompradorAtivo(null);
     setFiltroSemPreco(false);
@@ -799,6 +850,7 @@ export default function CoberturaEstoquePage() {
   };
 
   const selecionarBarra = (barra: BarraFirme) => {
+    setCardValorAtivo(null);
     setCompradorAtivo(null);
     setKpiCompradorAtivo(null);
     setFiltroSemPreco(false);
@@ -833,6 +885,7 @@ export default function CoberturaEstoquePage() {
   };
 
   const selecionarSemPreco = () => {
+    setCardValorAtivo(null);
     setCompradorAtivo(null);
     setKpiCompradorAtivo(null);
     setProdutoTopCapitalAtivo(null);
@@ -851,6 +904,7 @@ export default function CoberturaEstoquePage() {
   };
 
   const limparRecorte = () => {
+    setCardValorAtivo(null);
     setKpiAtivo(null);
     setBarraAtiva(null);
     setCompradorAtivo(null);
@@ -861,6 +915,7 @@ export default function CoberturaEstoquePage() {
   };
 
   const recorteAtivo =
+    cardValorAtivo != null ||
     kpiAtivo != null ||
     barraAtiva != null ||
     compradorAtivo != null ||
@@ -868,13 +923,20 @@ export default function CoberturaEstoquePage() {
     produtoTopCapitalAtivo != null ||
     familiaCapitalAtiva != null;
 
-  const temFiltrosParaLimpar = filtrosConsultaTemAlgumSelecionado(filtros) || recorteAtivo;
+  const temFiltrosParaLimpar =
+    filtrosConsultaTemAlgumSelecionado(filtros) || somenteComEmpenho || recorteAtivo;
 
   const handleLimparFiltrosTopo = () => {
     setMsgFiltro(null);
-    if (filtrosConsultaTemAlgumSelecionado(filtros)) {
+    if (filtrosConsultaTemAlgumSelecionado(filtros) || somenteComEmpenho) {
       setFiltros(EMPTY_FILTROS);
-      void executarPainel(origensEmpenhoIncluiRequisicoes(origensEmpenho), EMPTY_FILTROS);
+      setSomenteComEmpenho(false);
+      setSomenteComEmpenhoDraft(false);
+      void executarPainel(
+        origensEmpenhoIncluiRequisicoes(origensEmpenho),
+        EMPTY_FILTROS,
+        false
+      );
       return;
     }
     limparRecorte();
@@ -886,6 +948,7 @@ export default function CoberturaEstoquePage() {
   };
 
   const rotuloRecorte = [
+    cardValorAtivo ? LABELS_CARD_VALOR[cardValorAtivo] : null,
     barraAtiva ? LABELS_BARRA_FIRME[barraAtiva] : kpiAtivo ? LABELS_KPI_FIRME[kpiAtivo] : null,
     filtroSemPreco ? 'Sem preço' : null,
     compradorAtivo,
@@ -947,7 +1010,7 @@ export default function CoberturaEstoquePage() {
       <CarregandoInformacoesOverlay
         show={loading}
         mensagem="Calculando cobertura de estoque…"
-        mode="contained"
+        mode="viewport"
       />
 
       <div className="mx-auto w-full max-w-[1920px] space-y-5">
@@ -973,7 +1036,7 @@ export default function CoberturaEstoquePage() {
                     ? ORIGENS_EMPENHO_COBERTURA_TODAS
                     : 'Pedidos de venda';
                   setOrigensEmpenho(nextOrigens);
-                  void executarPainel(proximo, filtros);
+                  void executarPainel(proximo, filtros, somenteComEmpenho);
                 }}
                 className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50 ${
                   origensEmpenhoIncluiRequisicoes(origensEmpenho)
@@ -1003,7 +1066,14 @@ export default function CoberturaEstoquePage() {
             >
               Limpar filtros
             </button>
-            <button type="button" className="btn-primary" onClick={() => setFiltrosOpen(true)}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                setSomenteComEmpenhoDraft(somenteComEmpenho);
+                setFiltrosOpen(true);
+              }}
+            >
               Filtrar
             </button>
           </div>
@@ -1025,6 +1095,60 @@ export default function CoberturaEstoquePage() {
 
         {painel && (
           <>
+            <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <button
+                type="button"
+                onClick={() => selecionarCardValor('estoque')}
+                className={`card-panel border-l-4 border-l-slate-500 p-4 text-left transition hover:shadow-soaco-lg ${
+                  cardValorAtivo === 'estoque' ? 'ring-2 ring-primary-600' : ''
+                }`}
+              >
+                <p className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
+                  {fmtCapital(painel.valorEstoqueTotal)}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  Valor em estoque
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">qtde × preço</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => selecionarCardValor('firme')}
+                className={`card-panel border-l-4 border-l-emerald-600 p-4 text-left transition hover:shadow-soaco-lg ${
+                  cardValorAtivo === 'firme' ? 'ring-2 ring-primary-600' : ''
+                }`}
+              >
+                <p
+                  className={`text-2xl font-bold tabular-nums ${
+                    (painel.valorFirmeTotal ?? 0) < 0
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-emerald-700 dark:text-emerald-400'
+                  }`}
+                >
+                  {fmtCapital(painel.valorFirmeTotal)}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  Valor em estoque firme
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">(estoque − empenho) × preço</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => selecionarCardValor('sem_mov_60d')}
+                className={`card-panel border-l-4 border-l-amber-500 p-4 text-left transition hover:shadow-soaco-lg ${
+                  cardValorAtivo === 'sem_mov_60d' ? 'ring-2 ring-primary-600' : ''
+                }`}
+              >
+                <p className="text-2xl font-bold tabular-nums text-amber-700 dark:text-amber-300">
+                  {fmtCapital(painel.valorEstoqueSemMov60dTotal)}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  Valor sem movimentação
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">sem mov. nos últimos 60 dias</p>
+              </button>
+            </section>
+
             <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               {KPIS_FIRME_ORDEM.map((kpi) => {
                 const t = painel.kpisFirme.find((x) => x.kpi === kpi);
@@ -1790,22 +1914,29 @@ export default function CoberturaEstoquePage() {
         pedidoFiltro={EMPTY_PEDIDO}
         opcoes={opcoes}
         modo="cobertura"
+        somenteComEmpenho={somenteComEmpenhoDraft}
+        onSomenteComEmpenhoChange={setSomenteComEmpenhoDraft}
         onClose={() => setFiltrosOpen(false)}
-        onChange={(patch) => setFiltros((f) => ({ ...f, ...patch, comEmpenho: 'sim' }))}
+        onChange={(patch) => setFiltros((f) => ({ ...f, ...patch }))}
         onPedidoChange={() => undefined}
         onAlterarEscolhasPedido={() => undefined}
         onLimpar={() => {
           setFiltros(EMPTY_FILTROS);
+          setSomenteComEmpenhoDraft(false);
           setMsgFiltro(null);
         }}
         onFiltrar={handleFiltrar}
         onBuscarCodigo={(term) =>
-          buscarOpcoesFiltroConsultaEstoque('codigo', term, payloadCobertura(filtros)).then((r) => r.data)
-        }
-        onBuscarDescricao={(term) =>
-          buscarOpcoesFiltroConsultaEstoque('descricao', term, payloadCobertura(filtros)).then(
+          buscarOpcoesFiltroConsultaEstoque('codigo', term, payloadCobertura(filtros, somenteComEmpenho)).then(
             (r) => r.data
           )
+        }
+        onBuscarDescricao={(term) =>
+          buscarOpcoesFiltroConsultaEstoque(
+            'descricao',
+            term,
+            payloadCobertura(filtros, somenteComEmpenho)
+          ).then((r) => r.data)
         }
       />
 

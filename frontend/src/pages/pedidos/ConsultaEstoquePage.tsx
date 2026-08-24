@@ -180,7 +180,7 @@ function detalheModalCacheKey(
 export default function ConsultaEstoquePage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [filtrosPopoverAberto, setFiltrosPopoverAberto] = useState(false);
+  const [filtrosPopoverAberto, setFiltrosPopoverAberto] = useState(true);
   const [opcoesCarregando, setOpcoesCarregando] = useState(false);
   const [opcoesFiltro, setOpcoesFiltro] = useState<OpcoesFiltroConsultaEstoque>(EMPTY_OPCOES);
   const [filtros, setFiltros] = useState<FiltrosConsultaEstoqueState>(EMPTY_FILTROS);
@@ -395,6 +395,13 @@ export default function ConsultaEstoquePage() {
     }
   }, []);
 
+  /** Abre com modal de filtros: carrega opções na montagem (mesmo critério do botão Consultar). */
+  useEffect(() => {
+    if (!opcoesCarregadasRef.current) {
+      void carregarOpcoes();
+    }
+  }, [carregarOpcoes]);
+
   /** Cascata só para dimensões de catálogo (evita query Nomus a cada busca de código/descrição). */
   const cascataDeps = useMemo(
     () =>
@@ -495,6 +502,7 @@ export default function ConsultaEstoquePage() {
       setFiltrosPopoverAberto(true);
       return;
     }
+    setFiltrosPopoverAberto(false);
     void executarConsulta(
       incoming.filtros,
       incoming.pedidoFiltro,

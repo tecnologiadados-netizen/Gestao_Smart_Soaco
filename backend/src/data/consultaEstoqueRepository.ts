@@ -2,7 +2,13 @@
  * Consulta de Estoque (PCP) — leitura Nomus em etapas (filtros → grade agregada → detalhes sob demanda).
  */
 
-import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
+import {
+  formatNomusErroConexao,
+  getNomusPool,
+  isNomusEnabled,
+  nomusQueryWithRetry,
+  queryNomus,
+} from '../config/nomusDb.js';
 import { listarPcPendDetalhesPorProduto } from './comprasRepository.js';
 import { obterDataBasePorIdsPedido } from './pedidosRepository.js';
 import { loadBomListaMateriaisAcabadoSemProdutoSql } from './bomListaMateriaisSql.js';
@@ -442,7 +448,7 @@ async function queryDistinct(
   const joinsAttr = comJoinAtributos ? SQL_JOINS_ATRIBUTOS_FILTRO : '';
   const sql = `Select Distinct ${selectExpr} As v ${SQL_FROM_PRODUTO_JOINS}${joinsAttr}${SQL_WHERE_PRODUTO_CONSULTA}${whereExtra} Order By v Limit 8000`;
   try {
-    const [rows] = (await pool.query(sql, params)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await nomusQueryWithRetry(pool, sql, params)) as [Record<string, unknown>[], unknown];
     return (Array.isArray(rows) ? rows : [])
       .map((r) => String(r.v ?? '').trim())
       .filter((v) => v.length > 0);
@@ -520,7 +526,7 @@ export async function listarOpcoesFiltroConsultaEstoque(): Promise<{
     opcoesFiltroCache = { data, expiresAt: now + OPCOES_FILTRO_CACHE_TTL_MS };
     return { data };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     console.error('[consultaEstoqueRepository] listarOpcoesFiltro:', msg);
     return { data: EMPTY_OPCOES, erro: msg };
   }
@@ -566,7 +572,7 @@ export async function listarOpcoesFiltroCascata(
       },
     };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     return { data: EMPTY_OPCOES, erro: msg };
   }
 }
@@ -605,7 +611,7 @@ export async function buscarOpcoesFiltroCampo(
   const sql = `Select Distinct ${selectExpr} As v ${SQL_FROM_PRODUTO_BASE}${whereExtra}${buscaSql} Order By v Limit ${BUSCA_LIMITE}`;
 
   try {
-    const [rows] = (await pool.query(sql, [...params, ...buscaParams])) as [
+    const [rows] = (await nomusQueryWithRetry(pool, sql, [...params, ...buscaParams])) as [
       Record<string, unknown>[],
       unknown,
     ];
@@ -614,7 +620,7 @@ export async function buscarOpcoesFiltroCampo(
       .filter(Boolean);
     return { data };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     return { data: [], erro: msg };
   }
 }
@@ -662,7 +668,7 @@ async function consultarEmpenhoLiquidoPorIds(
       sql = buildEmpenhoLiquidoBatchSql(considerarRequisicoes, ids.length);
       params = [...ids, ...ids, ...ids];
     }
-    const [rows] = (await pool.query(sql, params)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await nomusQueryWithRetry(pool, sql, params)) as [Record<string, unknown>[], unknown];
     for (const r of Array.isArray(rows) ? rows : []) {
       const id = Number(r.idProduto ?? 0);
       if (id <= 0) continue;
@@ -723,7 +729,7 @@ Group By idProduto
 `.trim();
 
   try {
-    const [rows] = (await pool.query(sql, ids)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await nomusQueryWithRetry(pool, sql, ids)) as [Record<string, unknown>[], unknown];
     for (const r of Array.isArray(rows) ? rows : []) {
       const id = Number(r.idProduto ?? 0);
       if (id <= 0) continue;
@@ -783,11 +789,11 @@ export async function contarConsultaEstoque(
   const { sql, params: sqlParams } = buildContagemSql(filtros);
 
   try {
-    const [rows] = (await pool.query(sql, sqlParams)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await queryNomus(sql, sqlParams)) as [Record<string, unknown>[], unknown];
     const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
     return { total: Number(row?.total ?? 0) };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     console.error('[consultaEstoqueRepository] contarConsultaEstoque:', msg);
     return { total: 0, erro: msg };
   }
@@ -819,7 +825,7 @@ export async function consultarEstoque(params: {
   const { sql, params: sqlParams } = buildConsultaSql(params.filtros);
 
   try {
-    const [rows] = (await pool.query(sql, sqlParams)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await queryNomus(sql, sqlParams)) as [Record<string, unknown>[], unknown];
     const baseRows = Array.isArray(rows) ? rows : [];
 
     const ids = baseRows.map((r) => Number(r.idProduto ?? 0)).filter((id) => id > 0);
@@ -844,7 +850,7 @@ export async function consultarEstoque(params: {
 
     return { data: all, total: all.length };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     console.error('[consultaEstoqueRepository] consultarEstoque:', msg);
     return { data: [], total: 0, erro: msg };
   }
@@ -942,8 +948,8 @@ export async function listarSaldoDetalhePorProduto(
   if (!pool || !isNomusEnabled()) return { data: [], erro: 'NOMUS_DB_URL não configurado' };
   try {
     const [[saldoRows], [vincRows]] = (await Promise.all([
-      pool.query(SQL_SALDO_DETALHE, [idProduto, idProduto]),
-      pool.query(SQL_SETOR2_VINCULO, [idProduto]),
+      nomusQueryWithRetry(pool, SQL_SALDO_DETALHE, [idProduto, idProduto]),
+      nomusQueryWithRetry(pool, SQL_SETOR2_VINCULO, [idProduto]),
     ])) as [[Record<string, unknown>[], unknown], [Record<string, unknown>[], unknown]];
 
     const data = (Array.isArray(saldoRows) ? saldoRows : []).map((r) => ({
@@ -956,7 +962,10 @@ export async function listarSaldoDetalhePorProduto(
       Array.isArray(vincRows) && vincRows[0] && Number((vincRows[0] as Record<string, unknown>).tem_setor2 ?? 0) === 1
     );
     if (temSetor2 && !data.some((r) => r.idSetor === 2)) {
-      const [nomeRows] = (await pool.query(SQL_NOME_SETOR, [2])) as [Record<string, unknown>[], unknown];
+      const [nomeRows] = (await nomusQueryWithRetry(pool, SQL_NOME_SETOR, [2])) as [
+        Record<string, unknown>[],
+        unknown,
+      ];
       const setorNome = String((Array.isArray(nomeRows) ? nomeRows[0] : undefined)?.nome ?? 'Setor 2').trim();
       data.unshift({ idSetor: 2, setor: setorNome, saldo: 0 });
     }
@@ -964,7 +973,7 @@ export async function listarSaldoDetalhePorProduto(
     data.sort((a, b) => a.setor.localeCompare(b.setor, 'pt-BR'));
     return { data };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     return { data: [], erro: msg };
   }
 }
@@ -1033,7 +1042,7 @@ Where pd.id In (${placeholders})
 Group By pd.id, pd.idTipoPedido
 `.trim();
   try {
-    const [rows] = (await pool.query(sql, idsPedido)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await nomusQueryWithRetry(pool, sql, idsPedido)) as [Record<string, unknown>[], unknown];
     for (const r of Array.isArray(rows) ? rows : []) {
       const id = Number(r.idPedido ?? 0);
       if (id <= 0) continue;
@@ -1106,7 +1115,7 @@ export async function listarScDetalhePorProduto(
   if (!pool || !isNomusEnabled()) return { data: [], erro: 'NOMUS_DB_URL não configurado' };
 
   try {
-    const [scRows] = (await pool.query(SQL_SC_DETALHE, [idProduto])) as [
+    const [scRows] = (await nomusQueryWithRetry(pool, SQL_SC_DETALHE, [idProduto])) as [
       Record<string, unknown>[],
       unknown,
     ];
@@ -1125,7 +1134,7 @@ export async function listarScDetalhePorProduto(
 
     return { data };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     return { data: [], erro: msg };
   }
 }
@@ -1159,7 +1168,7 @@ export async function listarCotacaoDetalhePorProduto(
   const pool = getNomusPool();
   if (!pool || !isNomusEnabled()) return { data: [], erro: 'NOMUS_DB_URL não configurado' };
   try {
-    const [rows] = (await pool.query(SQL_COTACAO_DETALHE, [idProduto])) as [
+    const [rows] = (await nomusQueryWithRetry(pool, SQL_COTACAO_DETALHE, [idProduto])) as [
       Record<string, unknown>[],
       unknown,
     ];
@@ -1172,7 +1181,7 @@ export async function listarCotacaoDetalhePorProduto(
     }));
     return { data };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     return { data: [], erro: msg };
   }
 }
@@ -1254,7 +1263,7 @@ export async function buscarPedidosGerenciadorTypeahead(termo: string): Promise<
     Limit ${PEDIDOS_GERENCIADOR_TYPEAHEAD_LIMITE}`;
 
   try {
-    const [rows] = (await pool.query(sql, [like, alvoLike])) as [
+    const [rows] = (await nomusQueryWithRetry(pool, sql, [like, alvoLike])) as [
       Array<{ id: number; nome: string; cliente: string | null; dataEmissao: Date | string }>,
       unknown,
     ];
@@ -1269,7 +1278,7 @@ export async function buscarPedidosGerenciadorTypeahead(termo: string): Promise<
     }));
     return { data };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     console.error('[buscarPedidosGerenciadorTypeahead] Nomus falhou:', msg);
     return { data: [], erro: msg };
   }

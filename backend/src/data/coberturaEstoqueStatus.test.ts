@@ -6,7 +6,9 @@ import {
   calcCoberturaMeses,
   calcCoberturaMesesNullable,
   calcFaltante,
+  calcValorEstoqueBruto,
   calcValorFirmeMonetario,
+  isSemMovimentacaoEstoque,
   classificarBarraFirme,
   classificarCoberturaEstoque,
   classificarKpiFirme,
@@ -118,6 +120,7 @@ function row(
     comprador: partial.comprador,
     precoUnitario: partial.precoUnitario ?? null,
     familiaProduto: partial.familiaProduto ?? 'Sem família',
+    ultimaMovimentacaoEstoque: partial.ultimaMovimentacaoEstoque,
   };
 }
 
@@ -208,7 +211,7 @@ describe('casos de aceite v2', () => {
     expect(linha.acaoSugerida.chave).toBe('avaliar_descarte');
   });
 
-  it('preço nulo → valorFirme e valorFaltante null', () => {
+  it('preço nulo → valorEstoque, valorFirme e valorFaltante null', () => {
     const linha = montarLinhaCobertura(
       row({
         codigo: 'NP 001',
@@ -220,6 +223,7 @@ describe('casos de aceite v2', () => {
       })
     );
     expect(linha.precoUnitario).toBeNull();
+    expect(linha.valorEstoque).toBeNull();
     expect(linha.valorFirme).toBeNull();
     expect(linha.valorFaltante).toBeNull();
     expect(linha.statusPainel).toBe('ruptura');
@@ -237,6 +241,7 @@ describe('casos de aceite v2', () => {
       })
     );
     expect(linha.precoUnitario).toBe(0.002);
+    expect(linha.valorEstoque).toBe(0.2);
     expect(linha.valorFirme).toBe(0.18);
   });
 
@@ -318,10 +323,23 @@ describe('agregarCoberturaEstoque', () => {
       );
       expect(item.coberturaFirme).toBe(item.cobertura);
       expect(item.statusPainel).toBe(item.kpiFirme);
+      expect(item.valorEstoque).toBe(calcValorEstoqueBruto(item.saldo, item.precoUnitario));
       expect(item.valorFirme).toBe(
         calcValorFirmeMonetario(item.saldo, item.empenho, item.precoUnitario)
       );
     }
+
+    const esperadoEstoque = agg.itens
+      .filter((i) => i.valorEstoque != null)
+      .reduce((s, i) => s + (i.valorEstoque ?? 0), 0);
+    const esperadoFirme = agg.itens
+      .filter((i) => i.valorFirme != null)
+      .reduce((s, i) => s + (i.valorFirme ?? 0), 0);
+    expect(agg.valorEstoqueTotal).toBeCloseTo(esperadoEstoque, 2);
+    expect(agg.valorFirmeTotal).toBeCloseTo(esperadoFirme, 2);
+    expect(agg.valorEstoqueTotal).toBeGreaterThan(0);
+    // Sem data de movimentação → todos entram no card 60d (mesmo universo com preço).
+    expect(agg.valorEstoqueSemMov60dTotal).toBeCloseTo(esperadoEstoque, 2);
 
     const c1 = agg.porComprador.find((c) => c.comprador === 'Comprador 1');
     expect(c1?.ruptura).toBe(1);
@@ -343,6 +361,65 @@ describe('agregarCoberturaEstoque', () => {
     ]);
     expect(agg.barrasFirme.reduce((s, t) => s + t.itens, 0)).toBe(1);
     expect(agg.itens.find((i) => i.codigo === 'CM0')?.statusPainel).toBe('sem_historico');
+  });
+});
+
+describe('calcValorEstoqueBruto', () => {
+  it('calcula saldo x preco e retorna null sem preco', () => {
+    expect(calcValorEstoqueBruto(10, 2.64)).toBe(26.4);
+    expect(calcValorEstoqueBruto(1, 10)).toBe(10);
+    expect(calcValorEstoqueBruto(10, null)).toBeNull();
+    expect(calcValorEstoqueBruto(10, 0)).toBeNull();
+  });
+});
+
+describe('isSemMovimentacaoEstoque', () => {
+  const ref = new Date(2026, 7, 24); // 24/08/2026
+
+  it('sem data ou inválida → true', () => {
+    expect(isSemMovimentacaoEstoque(null, 60, ref)).toBe(true);
+    expect(isSemMovimentacaoEstoque(undefined, 60, ref)).toBe(true);
+    expect(isSemMovimentacaoEstoque('xyz', 60, ref)).toBe(true);
+  });
+
+  it('movimentação recente → false; há 60+ dias → true', () => {
+    expect(isSemMovimentacaoEstoque('2026-08-20', 60, ref)).toBe(false);
+    expect(isSemMovimentacaoEstoque('2026-06-25', 60, ref)).toBe(true); // exatamente 60 dias
+    expect(isSemMovimentacaoEstoque('2026-05-01', 60, ref)).toBe(true);
+  });
+});
+
+describe('valorEstoqueSemMov60dTotal', () => {
+  it('soma só itens sem movimentação recente e com preço', () => {
+    const agg = agregarCoberturaEstoque([
+      row({
+        codigo: 'PARADO',
+        saldo: 10,
+        empenho: 1,
+        saldoProjetado: 9,
+        precoUnitario: 5,
+        ultimaMovimentacaoEstoque: '2026-01-01',
+      }),
+      row({
+        codigo: 'RECENTE',
+        saldo: 20,
+        empenho: 1,
+        saldoProjetado: 19,
+        precoUnitario: 3,
+        ultimaMovimentacaoEstoque: new Date().toISOString().slice(0, 10),
+      }),
+      row({
+        codigo: 'SEM_PRECO',
+        saldo: 50,
+        empenho: 1,
+        saldoProjetado: 49,
+        precoUnitario: null,
+        ultimaMovimentacaoEstoque: '2020-01-01',
+      }),
+    ]);
+    expect(agg.valorEstoqueSemMov60dTotal).toBe(50); // 10 × 5
+    expect(agg.itens.find((i) => i.codigo === 'PARADO')?.semMovimentacao60d).toBe(true);
+    expect(agg.itens.find((i) => i.codigo === 'RECENTE')?.semMovimentacao60d).toBe(false);
   });
 });
 
