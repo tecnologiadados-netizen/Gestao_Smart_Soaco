@@ -56,6 +56,7 @@ const SECOES_PERMISSOES: Record<string, string> = {
   heatmap: 'Roteirizador',
   fluxos: 'Fluxos Decisórios',
   compras: 'Compras',
+  recebimento: 'Recebimento',
   precificacao: 'Engenharia',
   qualidade: 'Qualidade',
   relatorios: 'Relatórios',
@@ -79,6 +80,7 @@ const ORDEM_SECOES_PERMISSOES = [
   'Roteirizador',
   'Fluxos Decisórios',
   'Compras',
+  'Recebimento',
   'Engenharia',
   'Qualidade',
   'Relatórios',
@@ -100,6 +102,14 @@ function agruparPermissoes(permissoes: PermissaoItem[]): { secao: string; itens:
       || p.codigo === PERMISSOES.LOJA_KITS_INVENTARIO
     ) {
       if (!map.has('Loja')) map.set('Loja', []);
+      continue;
+    }
+    if (
+      p.codigo === PERMISSOES.RECEBIMENTO_MESA
+      || p.codigo === PERMISSOES.RECEBIMENTO_CONFERENTE
+      || p.codigo === PERMISSOES.RECEBIMENTO_TOTAL
+    ) {
+      if (!map.has('Recebimento')) map.set('Recebimento', []);
       continue;
     }
     const prefix = p.codigo.split('.')[0] ?? '';
@@ -591,6 +601,57 @@ export default function UsuariosPage() {
     || grupoPermissoes.includes(PERMISSOES.LOJA_KITS_MOVIMENTAR);
   const temLojaKitsInventario = grupoPermissoes.includes(PERMISSOES.LOJA_KITS_INVENTARIO);
 
+  const temRecebimentoTotal = grupoPermissoes.includes(PERMISSOES.RECEBIMENTO_TOTAL);
+  const temRecebimentoMesa =
+    temRecebimentoTotal || grupoPermissoes.includes(PERMISSOES.RECEBIMENTO_MESA);
+  const temRecebimentoDigitacao =
+    temRecebimentoTotal || grupoPermissoes.includes(PERMISSOES.RECEBIMENTO_CONFERENTE);
+
+  const setPermissaoGrupo = (codigo: string, ligado: boolean, prev: string[]) => {
+    if (ligado) return prev.includes(codigo) ? prev : [...prev, codigo];
+    return prev.filter((p) => p !== codigo);
+  };
+
+  const toggleRecebimentoMesa = () => {
+    if (editandoGrupoMaster) return;
+    setGrupoPermissoes((prev) => {
+      const ligado = prev.includes(PERMISSOES.RECEBIMENTO_TOTAL) || prev.includes(PERMISSOES.RECEBIMENTO_MESA);
+      if (ligado) {
+        return prev.filter((p) => p !== PERMISSOES.RECEBIMENTO_MESA && p !== PERMISSOES.RECEBIMENTO_TOTAL);
+      }
+      return setPermissaoGrupo(PERMISSOES.RECEBIMENTO_MESA, true, prev);
+    });
+  };
+
+  const toggleRecebimentoDigitacao = () => {
+    if (editandoGrupoMaster) return;
+    setGrupoPermissoes((prev) => {
+      const ligado =
+        prev.includes(PERMISSOES.RECEBIMENTO_TOTAL) || prev.includes(PERMISSOES.RECEBIMENTO_CONFERENTE);
+      if (ligado) {
+        return prev.filter((p) => p !== PERMISSOES.RECEBIMENTO_CONFERENTE && p !== PERMISSOES.RECEBIMENTO_TOTAL);
+      }
+      return setPermissaoGrupo(PERMISSOES.RECEBIMENTO_CONFERENTE, true, prev);
+    });
+  };
+
+  const toggleRecebimentoTotal = () => {
+    if (editandoGrupoMaster) return;
+    setGrupoPermissoes((prev) => {
+      if (prev.includes(PERMISSOES.RECEBIMENTO_TOTAL)) {
+        return prev.filter((p) => p !== PERMISSOES.RECEBIMENTO_TOTAL);
+      }
+      return [
+        ...new Set([
+          ...prev,
+          PERMISSOES.RECEBIMENTO_MESA,
+          PERMISSOES.RECEBIMENTO_CONFERENTE,
+          PERMISSOES.RECEBIMENTO_TOTAL,
+        ]),
+      ];
+    });
+  };
+
   const toggleLojaKitsModulo = () => {
     if (editandoGrupoMaster) return;
     setGrupoPermissoes((prev) => {
@@ -1018,7 +1079,62 @@ export default function UsuariosPage() {
               {agruparPermissoes(permissoesLista).map(({ secao, itens }) => (
                 <div key={secao} className="rounded-lg border border-slate-200 dark:border-slate-600/50 p-3 bg-slate-50/50 dark:bg-slate-800/30">
                   <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2 uppercase tracking-wide">{secao}</div>
-                  {secao === 'Loja' ? (
+                  {secao === 'Recebimento' ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Módulos do menu Recebimento. Mesa delibera o conferente; Recebimento é a digitação às cegas.
+                      </p>
+                      <label
+                        className={`flex items-center gap-2 text-sm text-slate-800 dark:text-slate-100 ${
+                          editandoGrupoMaster ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={temRecebimentoMesa}
+                          onChange={toggleRecebimentoMesa}
+                          disabled={editandoGrupoMaster}
+                        />
+                        Mesa
+                      </label>
+                      <label
+                        className={`flex items-center gap-2 text-sm text-slate-800 dark:text-slate-100 ${
+                          editandoGrupoMaster ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={temRecebimentoDigitacao}
+                          onChange={toggleRecebimentoDigitacao}
+                          disabled={editandoGrupoMaster}
+                        />
+                        Recebimento
+                      </label>
+                      <label
+                        className={`flex items-center gap-2 text-sm text-slate-800 dark:text-slate-100 ${
+                          editandoGrupoMaster ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={temRecebimentoTotal}
+                          onChange={toggleRecebimentoTotal}
+                          disabled={editandoGrupoMaster}
+                        />
+                        Permissão total
+                      </label>
+                      {itens.length > 0 ? (
+                        <div className="flex flex-wrap gap-x-4 gap-y-2">
+                          {itens.map((p) => (
+                            <label key={p.codigo} className="flex items-center gap-2 text-sm cursor-pointer text-slate-800 dark:text-slate-100">
+                              <input type="checkbox" checked={grupoPermissoes.includes(p.codigo)} onChange={() => togglePermissao(p.codigo)} disabled={editandoGrupoMaster} />
+                              {p.label}
+                            </label>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : secao === 'Loja' ? (
                     <div className="space-y-2">
                       <div className="space-y-1">
                         <label className="flex items-center gap-2 text-sm cursor-pointer text-slate-800 dark:text-slate-100">

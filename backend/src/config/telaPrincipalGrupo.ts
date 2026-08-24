@@ -11,6 +11,8 @@ export const TELA_PRINCIPAL_KEYS = [
   'dashboard_compras',
   'coleta_precos',
   'pre_compra',
+  'gestao_mesa',
+  'digitacao_conferencia',
   'precificacao',
   'resumo_financeiro',
   'painel_tv',
@@ -84,6 +86,16 @@ export const TELA_PRINCIPAL_MAP: Record<
     path: '/compras/pre-compra',
     label: 'Pré Compra',
     requiredAny: [PERMISSOES.COMPRAS_VER],
+  },
+  gestao_mesa: {
+    path: '/recebimento/mesa',
+    label: 'Recebimento — Gestão Mesa',
+    requiredAny: [PERMISSOES.RECEBIMENTO_MESA, PERMISSOES.RECEBIMENTO_TOTAL],
+  },
+  digitacao_conferencia: {
+    path: '/recebimento/digitacao',
+    label: 'Recebimento — Digitação conferência',
+    requiredAny: [PERMISSOES.RECEBIMENTO_CONFERENTE, PERMISSOES.RECEBIMENTO_TOTAL],
   },
   precificacao: {
     path: '/engenharia/precificacao',

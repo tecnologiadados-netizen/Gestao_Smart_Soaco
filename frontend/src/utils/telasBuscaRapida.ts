@@ -21,9 +21,11 @@ import {
   buildIntegracaoSubmenusForUser,
   buildFinanceiroMenuForUser,
   buildLogisticaMenuForUser,
+  buildRecebimentoMenuForUser,
 } from '../config/navigationMenu';
 import { PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO } from './programacaoProducaoPermissoes';
 import { podeVerMenuFinanceiro } from './financeiroPermissoes';
+import { podeVerMenuRecebimento } from './recebimentoPermissoes';
 import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from './suportePermissoes';
 import { ROTA_PERMISSAO } from './routePermission';
 import { criarMatcherTextoLivre, normalizarTextoBusca } from './textoLivreBusca';
@@ -147,6 +149,11 @@ export function buildTelasBuscaRapidaForUser(ctx: BuildTelasBuscaRapidaCtx): Tel
 
   if (hasPermission(PERMISSOES.COMPRAS_VER)) {
     telas.push(...flattenNavMenu(COMPRAS_MENU, hasPermission, 'Compras'));
+  }
+
+  const recebimentoMenu = buildRecebimentoMenuForUser(hasPermission);
+  if (podeVerMenuRecebimento(hasPermission) && recebimentoMenu.length > 0) {
+    telas.push(...flattenNavMenu(recebimentoMenu, hasPermission, 'Recebimento'));
   }
 
   if (hasPermission(PERMISSOES.PRECIFICACAO_VER)) {

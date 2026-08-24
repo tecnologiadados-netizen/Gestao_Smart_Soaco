@@ -65,6 +65,16 @@ export const OPCOES_TELA_PRINCIPAL: { key: string; label: string; requiredAny: C
     requiredAny: [PERMISSOES.COMPRAS_VER],
   },
   {
+    key: 'gestao_mesa',
+    label: 'Recebimento — Gestão Mesa',
+    requiredAny: [PERMISSOES.RECEBIMENTO_MESA, PERMISSOES.RECEBIMENTO_TOTAL],
+  },
+  {
+    key: 'digitacao_conferencia',
+    label: 'Recebimento — Digitação conferência',
+    requiredAny: [PERMISSOES.RECEBIMENTO_CONFERENTE, PERMISSOES.RECEBIMENTO_TOTAL],
+  },
+  {
     key: 'precificacao',
     label: 'Precificação',
     requiredAny: [PERMISSOES.PRECIFICACAO_VER],

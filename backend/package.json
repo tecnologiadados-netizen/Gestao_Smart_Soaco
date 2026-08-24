@@ -13,7 +13,7 @@
     "migrate": "prisma migrate deploy",
     "migrate:dev": "prisma migrate dev",
     "generate": "prisma generate",
-    "test": "vitest run",
+    "test": "node scripts/run-tests.cjs",
     "test:watch": "vitest",
     "seed": "tsx prisma/seed.ts",
     "seed:municipios": "tsx prisma/seed-municipios.ts",

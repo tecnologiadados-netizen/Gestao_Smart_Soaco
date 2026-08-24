@@ -45,6 +45,11 @@ export const PERMISSOES = {
   LOGISTICA_CUBAGEM_VER: 'logistica.cubagem.ver',
   LOGISTICA_CUBAGEM_EDITAR: 'logistica.cubagem.editar',
 
+  // Recebimento (conferência às cegas)
+  RECEBIMENTO_MESA: 'recebimento.mesa',
+  RECEBIMENTO_CONFERENTE: 'recebimento.conferente',
+  RECEBIMENTO_TOTAL: 'recebimento.total',
+
   FLUXOS_VER: 'fluxos.ver',
   FLUXOS_EDITAR: 'fluxos.editar',
 
