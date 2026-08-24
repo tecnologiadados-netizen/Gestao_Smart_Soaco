@@ -132,3 +132,122 @@ export async function postRecebimentoMesaDeliberar(params: {
     atribuidoEm: body.atribuidoEm ?? null,
   };
 }
+
+export type RecebimentoPendenciaConferente = {
+  idDocumento: number;
+  numeroDocumentoFiscal: string | null;
+  numeroNfe: string | null;
+  dataEmissao: string | null;
+  dataEntrada: string | null;
+  nomeParceiro: string | null;
+  tipoMovimentacao: string | null;
+  status: RecebimentoStatusCodigo;
+  statusLabel: string;
+  atribuidoEm: string | null;
+};
+
+export type RecebimentoProdutoConferente = {
+  idItem: number;
+  idProduto: number;
+  codigoProduto: string | null;
+  descricaoProduto: string | null;
+  unidadeMedida: string | null;
+  tentativasUsadas: number;
+  tentativasMax: number;
+  conferido: boolean;
+  qtdeInformada: number | null;
+};
+
+export type RecebimentoDigitacaoDetalhe = RecebimentoPendenciaConferente & {
+  produtos: RecebimentoProdutoConferente[];
+};
+
+export type RecebimentoTentativaResultado = {
+  acertou: boolean;
+  tentativasUsadas: number;
+  tentativasRestantes: number;
+  conferido: boolean;
+  esgotado: boolean;
+  retornouMesa: boolean;
+  status: RecebimentoStatusCodigo;
+  statusLabel: string;
+  produto: RecebimentoProdutoConferente;
+};
+
+export async function fetchRecebimentoDigitacaoPendencias(): Promise<{
+  pendencias: RecebimentoPendenciaConferente[];
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/recebimento/digitacao/pendencias');
+  const body = (await res.json().catch(() => ({}))) as {
+    pendencias?: RecebimentoPendenciaConferente[];
+    error?: string;
+    erro?: string;
+  };
+  if (!res.ok) {
+    return {
+      pendencias: body.pendencias ?? [],
+      erro: body.error ?? body.erro ?? res.statusText,
+    };
+  }
+  return {
+    pendencias: body.pendencias ?? [],
+    erro: body.erro,
+  };
+}
+
+export async function fetchRecebimentoDigitacaoDocumento(
+  idDocumento: number
+): Promise<RecebimentoDigitacaoDetalhe> {
+  return apiJson<RecebimentoDigitacaoDetalhe>(`/api/recebimento/digitacao/documentos/${idDocumento}`);
+}
+
+export async function postRecebimentoDigitacaoItem(params: {
+  idDocumento: number;
+  idItem: number;
+  qtde: number;
+}): Promise<RecebimentoTentativaResultado> {
+  const res = await apiFetch(`/api/recebimento/digitacao/documentos/${params.idDocumento}/itens`, {
+    method: 'POST',
+    body: { idItem: params.idItem, qtde: params.qtde },
+  });
+  const body = (await res.json().catch(() => ({}))) as RecebimentoTentativaResultado & {
+    error?: string;
+  };
+  if (!res.ok || !body.produto) {
+    throw new Error(body.error ?? res.statusText);
+  }
+  return {
+    acertou: body.acertou === true,
+    tentativasUsadas: body.tentativasUsadas ?? 0,
+    tentativasRestantes: body.tentativasRestantes ?? 0,
+    conferido: body.conferido === true,
+    esgotado: body.esgotado === true,
+    retornouMesa: body.retornouMesa === true,
+    status: body.status ?? 'EM_CONFERENCIA',
+    statusLabel: body.statusLabel ?? '',
+    produto: body.produto,
+  };
+}
+
+export async function postRecebimentoDigitacaoDevolver(idDocumento: number): Promise<{
+  status: RecebimentoStatusCodigo;
+  statusLabel: string;
+}> {
+  const res = await apiFetch(`/api/recebimento/digitacao/documentos/${idDocumento}/devolver`, {
+    method: 'POST',
+    body: {},
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    status?: RecebimentoStatusCodigo;
+    statusLabel?: string;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error ?? res.statusText);
+  }
+  return {
+    status: body.status ?? 'CONFERIDO',
+    statusLabel: body.statusLabel ?? 'Conferido — aguardando Mesa',
+  };
+}

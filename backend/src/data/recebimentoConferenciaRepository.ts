@@ -175,6 +175,144 @@ export async function deliberarConferente(params: {
       atribuidoEm: agora,
       atribuidoPorUsuarioId: params.atribuidoPor.id,
       atribuidoPorLogin: params.atribuidoPor.login,
+      finalizadoEm: null,
+    },
+  });
+  if (existente) {
+    await prisma.recebimentoConferenciaItem.deleteMany({ where: { conferenciaId: row.id } });
+  }
+  return mapRow(row);
+}
+
+export async function listarPendenciasConferente(
+  conferenteUsuarioId: number
+): Promise<RecebimentoConferenciaLocal[]> {
+  const rows = await prisma.recebimentoConferencia.findMany({
+    where: {
+      conferenteUsuarioId,
+      status: RECEBIMENTO_STATUS.EM_CONFERENCIA,
+    },
+    orderBy: [{ atribuidoEm: 'desc' }, { id: 'desc' }],
+  });
+  return rows.map(mapRow);
+}
+
+export const RECEBIMENTO_TENTATIVAS_MAX = 3;
+
+export function qtdeFisicaConfere(informada: number, esperada: number): boolean {
+  if (!Number.isFinite(informada) || !Number.isFinite(esperada)) return false;
+  return Math.abs(Number(informada.toFixed(4)) - Number(esperada.toFixed(4))) < 0.00005;
+}
+
+export type RecebimentoContagemLinha = {
+  id: number;
+  codigoInformado: string;
+  qtdeInformada: number;
+  idItemDocumento: number | null;
+  idProduto: number | null;
+  descricaoProduto: string | null;
+  unidadeMedida: string | null;
+  tentativas: number;
+  conferido: boolean;
+};
+
+function mapItem(row: {
+  id: number;
+  codigoInformado: string;
+  qtdeInformada: number;
+  idItemDocumento: number | null;
+  idProduto: number | null;
+  descricaoProduto: string | null;
+  unidadeMedida: string | null;
+  tentativas: number;
+  conferido: boolean;
+}): RecebimentoContagemLinha {
+  return {
+    id: row.id,
+    codigoInformado: row.codigoInformado,
+    qtdeInformada: row.qtdeInformada,
+    idItemDocumento: row.idItemDocumento,
+    idProduto: row.idProduto,
+    descricaoProduto: row.descricaoProduto,
+    unidadeMedida: row.unidadeMedida,
+    tentativas: row.tentativas,
+    conferido: row.conferido,
+  };
+}
+
+export async function listarItensContagem(conferenciaId: number): Promise<RecebimentoContagemLinha[]> {
+  const rows = await prisma.recebimentoConferenciaItem.findMany({
+    where: { conferenciaId },
+    orderBy: { id: 'asc' },
+  });
+  return rows.map(mapItem);
+}
+
+export async function registrarTentativaContagem(params: {
+  conferenciaId: number;
+  idItemDocumento: number;
+  codigoInformado: string;
+  qtdeInformada: number;
+  idProduto: number | null;
+  descricaoProduto: string | null;
+  unidadeMedida: string | null;
+  acertou: boolean;
+}): Promise<{ tentativas: number; conferido: boolean; esgotado: boolean }> {
+  const existente = await prisma.recebimentoConferenciaItem.findFirst({
+    where: { conferenciaId: params.conferenciaId, idItemDocumento: params.idItemDocumento },
+  });
+  if (existente?.conferido) {
+    throw new Error('Este item já foi conferido.');
+  }
+  if ((existente?.tentativas ?? 0) >= RECEBIMENTO_TENTATIVAS_MAX) {
+    throw new Error('As 3 tentativas deste item já foram usadas.');
+  }
+
+  const tentativas = (existente?.tentativas ?? 0) + 1;
+  const conferido = params.acertou;
+  const data = {
+    codigoInformado: params.codigoInformado,
+    qtdeInformada: params.qtdeInformada,
+    idProduto: params.idProduto,
+    descricaoProduto: params.descricaoProduto,
+    unidadeMedida: params.unidadeMedida,
+    tentativas,
+    conferido,
+  };
+
+  if (existente) {
+    await prisma.recebimentoConferenciaItem.update({ where: { id: existente.id }, data });
+  } else {
+    await prisma.recebimentoConferenciaItem.create({
+      data: {
+        conferenciaId: params.conferenciaId,
+        idItemDocumento: params.idItemDocumento,
+        ...data,
+      },
+    });
+  }
+
+  await prisma.recebimentoConferencia.updateMany({
+    where: { id: params.conferenciaId, iniciadoEm: null },
+    data: { iniciadoEm: new Date() },
+  });
+
+  return {
+    tentativas,
+    conferido,
+    esgotado: !conferido && tentativas >= RECEBIMENTO_TENTATIVAS_MAX,
+  };
+}
+
+export async function devolverConferenciaParaMesa(
+  conferenciaId: number,
+  status: RecebimentoStatus = RECEBIMENTO_STATUS.CONFERIDO
+): Promise<RecebimentoConferenciaLocal> {
+  const row = await prisma.recebimentoConferencia.update({
+    where: { id: conferenciaId },
+    data: {
+      status,
+      finalizadoEm: new Date(),
     },
   });
   return mapRow(row);

@@ -251,10 +251,33 @@ model RecebimentoConferencia {
   finalizadoEm          DateTime?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+  itens                 RecebimentoConferenciaItem[]
 
   @@index([status])
   @@index([conferenteUsuarioId])
   @@map("recebimento_conferencia")
+}
+
+/// Tentativas do conferente por item do documento (qtde da NF só no servidor).
+model RecebimentoConferenciaItem {
+  id               Int      @id @default(autoincrement())
+  conferenciaId    Int
+  codigoInformado  String
+  qtdeInformada    Float
+  idItemDocumento  Int?
+  idProduto        Int?
+  descricaoProduto String?
+  unidadeMedida    String?
+  tentativas       Int      @default(0)
+  conferido        Boolean  @default(false)
+  conferencia      RecebimentoConferencia @relation(fields: [conferenciaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([conferenciaId, idItemDocumento])
+  @@index([conferenciaId])
+  @@map("recebimento_conferencia_item")
 }
 
 /// Tipos de mensagem automática WhatsApp (Integração → SMS)

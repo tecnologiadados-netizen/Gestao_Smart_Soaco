@@ -4,9 +4,13 @@ import { validateCsrf } from '../middleware/csrf.js';
 import { requirePermission } from '../middleware/requirePermission.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import {
+  getRecebimentoDigitacaoDocumento,
+  getRecebimentoDigitacaoPendencias,
   getRecebimentoMesaConferentes,
   getRecebimentoMesaDocumentos,
   getRecebimentoMesaItens,
+  postRecebimentoDigitacaoDevolver,
+  postRecebimentoDigitacaoItem,
   postRecebimentoMesaDeliberar,
 } from '../controllers/recebimentoController.js';
 
@@ -14,6 +18,7 @@ const router = Router();
 router.use(requireAuth);
 
 const verMesa = requirePermission(PERMISSOES.RECEBIMENTO_MESA, PERMISSOES.RECEBIMENTO_TOTAL);
+const verConferente = requirePermission(PERMISSOES.RECEBIMENTO_CONFERENTE, PERMISSOES.RECEBIMENTO_TOTAL);
 
 function async503(handler: RequestHandler): RequestHandler {
   return (req, res, next) => {
@@ -38,6 +43,21 @@ router.post(
   validateCsrf,
   verMesa,
   async503(postRecebimentoMesaDeliberar)
+);
+
+router.get('/digitacao/pendencias', verConferente, async503(getRecebimentoDigitacaoPendencias));
+router.get('/digitacao/documentos/:id', verConferente, async503(getRecebimentoDigitacaoDocumento));
+router.post(
+  '/digitacao/documentos/:id/itens',
+  validateCsrf,
+  verConferente,
+  async503(postRecebimentoDigitacaoItem)
+);
+router.post(
+  '/digitacao/documentos/:id/devolver',
+  validateCsrf,
+  verConferente,
+  async503(postRecebimentoDigitacaoDevolver)
 );
 
 export default router;

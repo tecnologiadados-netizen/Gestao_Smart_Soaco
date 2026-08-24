@@ -143,6 +143,78 @@ WHERE ide.idDocumentoEstoque = ?
 ORDER BY ide.id ASC
 `.trim();
 
+const SQL_DOCUMENTOS_POR_IDS = `
+SELECT
+  de.id AS idDocumento,
+  de.numeroDocumentoFiscal AS numeroDocumentoFiscal,
+  nfe.numero AS numeroNfe,
+  DATE(de.dataEmissao) AS dataEmissao,
+  DATE(de.dataEntrada) AS dataEntrada,
+  de.idParceiro AS idParceiro,
+  pe.nome AS nomeParceiro,
+  tm.id AS idTipoMovimentacao,
+  tm.nome AS tipoMovimentacao
+FROM documentoestoque de
+INNER JOIN tipomovimentacao tm ON tm.id = de.idTipoMovimentacao
+LEFT JOIN pessoa pe ON pe.id = de.idParceiro
+LEFT JOIN nfe ON nfe.idDocumentoEstoque = de.id
+WHERE de.idEmpresaEntrada = ${RECEBIMENTO_ID_EMPRESA_SO_ACO}
+  AND de.id IN (__IDS__)
+`.trim();
+
+const SQL_LOOKUP_CODIGO = `
+SELECT
+  ide.id AS idItem,
+  ide.idProduto AS idProduto,
+  p.nome AS codigoProduto,
+  p.descricao AS descricaoProduto,
+  um.nome AS unidadeMedida
+FROM itemdocumentoestoque ide
+INNER JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
+LEFT JOIN produto p ON p.id = ide.idProduto
+LEFT JOIN unidademedida um ON um.id = p.idUnidadeMedida
+WHERE ide.idDocumentoEstoque = ?
+  AND de.idEmpresaEntrada = ${RECEBIMENTO_ID_EMPRESA_SO_ACO}
+  AND ide.discriminador = 'ItemDocumentoEntrada'
+  AND TRIM(p.nome) = ?
+ORDER BY ide.id ASC
+LIMIT 1
+`.trim();
+
+export type RecebimentoCabecalhoCego = {
+  idDocumento: number;
+  numeroDocumentoFiscal: string | null;
+  numeroNfe: string | null;
+  dataEmissao: string | null;
+  dataEntrada: string | null;
+  idParceiro: number | null;
+  nomeParceiro: string | null;
+  idTipoMovimentacao: number;
+  tipoMovimentacao: string | null;
+};
+
+export type RecebimentoProdutoLookup = {
+  idItem: number;
+  idProduto: number;
+  codigoProduto: string | null;
+  descricaoProduto: string | null;
+  unidadeMedida: string | null;
+};
+
+function mapCabecalho(r: Record<string, unknown>): RecebimentoCabecalhoCego {
+  return {
+    idDocumento: toInt(r.idDocumento),
+    numeroDocumentoFiscal: strOrNull(r.numeroDocumentoFiscal),
+    numeroNfe: strOrNull(r.numeroNfe),
+    dataEmissao: formatSqlDateYmd(r.dataEmissao),
+    dataEntrada: formatSqlDateYmd(r.dataEntrada),
+    idParceiro: r.idParceiro != null ? toInt(r.idParceiro) : null,
+    nomeParceiro: strOrNull(r.nomeParceiro),
+    idTipoMovimentacao: toInt(r.idTipoMovimentacao),
+    tipoMovimentacao: strOrNull(r.tipoMovimentacao),
+  };
+}
+
 export async function queryTiposPreEntradaNomus(): Promise<{
   tipos: RecebimentoTipoMovimentacao[];
   erro?: string;
@@ -239,5 +311,58 @@ export async function queryItensDocumentoPreEntradaNomus(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { itens: [], erro: msg };
+  }
+}
+
+export async function queryCabecalhosDocumentosNomus(
+  idsDocumento: number[]
+): Promise<{ documentos: RecebimentoCabecalhoCego[]; erro?: string }> {
+  const ids = [...new Set(idsDocumento.map((n) => Math.trunc(Number(n))).filter((n) => n > 0))];
+  if (ids.length === 0) return { documentos: [] };
+  if (!isNomusEnabled()) return { documentos: [], erro: 'NOMUS_DB_URL não configurado' };
+  const pool = getNomusPool();
+  if (!pool) return { documentos: [], erro: 'NOMUS_DB_URL não configurado' };
+
+  try {
+    const sql = SQL_DOCUMENTOS_POR_IDS.replace('__IDS__', ids.join(', '));
+    const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(pool, sql);
+    const list = Array.isArray(rows) ? rows : [];
+    return { documentos: list.map(mapCabecalho) };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { documentos: [], erro: msg };
+  }
+}
+
+export async function lookupProdutoCodigoDocumentoNomus(
+  idDocumento: number,
+  codigo: string
+): Promise<{ produto: RecebimentoProdutoLookup | null; erro?: string }> {
+  if (!isNomusEnabled()) return { produto: null, erro: 'NOMUS_DB_URL não configurado' };
+  const pool = getNomusPool();
+  if (!pool) return { produto: null, erro: 'NOMUS_DB_URL não configurado' };
+  const codigoTrim = codigo.trim();
+  if (!codigoTrim) return { produto: null };
+
+  try {
+    const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(
+      pool,
+      SQL_LOOKUP_CODIGO,
+      [idDocumento, codigoTrim]
+    );
+    const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
+    if (!row) return { produto: null };
+    return {
+      produto: {
+        idItem: toInt(row.idItem),
+        idProduto: toInt(row.idProduto),
+        codigoProduto: strOrNull(row.codigoProduto),
+        descricaoProduto: strOrNull(row.descricaoProduto),
+        unidadeMedida: strOrNull(row.unidadeMedida),
+      },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { produto: null, erro: msg };
   }
 }

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Navigate } from 'react-router-dom';
-import { Eye, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Eye, RefreshCw } from 'lucide-react';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
+import LoaderCirculo from '../../components/LoaderCirculo';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
 import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
@@ -141,6 +142,8 @@ export default function GestaoMesaPage() {
   const [conferenteId, setConferenteId] = useState<number | ''>('');
   const [deliberando, setDeliberando] = useState(false);
   const [deliberarErro, setDeliberarErro] = useState<string | null>(null);
+  const [feedbackDeliberacao, setFeedbackDeliberacao] = useState<'off' | 'loading' | 'ok'>('off');
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const filtrar = useCallback(async () => {
     setLoading(true);
@@ -172,6 +175,12 @@ export default function GestaoMesaPage() {
       .then(setConferentes)
       .catch(() => setConferentes([]));
   }, [podeMesa]);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    };
+  }, []);
 
   const grade = useGradeFiltrosExcel<RecebimentoDocumentoGrade>({
     rows: documentos,
@@ -244,12 +253,18 @@ export default function GestaoMesaPage() {
     if (!modalDoc || conferenteId === '' || detalheLoading || !detalhe) return;
     setDeliberando(true);
     setDeliberarErro(null);
+    setFeedbackDeliberacao('loading');
+    const iniciadoEm = Date.now();
     try {
       const r = await postRecebimentoMesaDeliberar({
         idDocumento: modalDoc.idDocumento,
         conferenteUsuarioId: conferenteId,
         numeroDocumento: modalDoc.numeroDocumentoFiscal,
       });
+      const restanteAnimacao = Math.max(0, 900 - (Date.now() - iniciadoEm));
+      if (restanteAnimacao > 0) {
+        await new Promise((resolve) => setTimeout(resolve, restanteAnimacao));
+      }
       aplicarDeliberacaoNaGrade(modalDoc.idDocumento, {
         status: r.status,
         statusLabel: r.statusLabel,
@@ -258,11 +273,25 @@ export default function GestaoMesaPage() {
         conferenteNome: r.conferenteNome,
         atribuidoEm: r.atribuidoEm,
       });
+      setModalDoc(null);
+      setDetalhe(null);
+      setFeedbackDeliberacao('ok');
+      if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = setTimeout(() => {
+        setFeedbackDeliberacao('off');
+        feedbackTimerRef.current = null;
+      }, 1400);
     } catch (e) {
+      setFeedbackDeliberacao('off');
       setDeliberarErro(e instanceof Error ? e.message : 'Não foi possível deliberar o conferente.');
     } finally {
       setDeliberando(false);
     }
+  };
+
+  const fecharModalDocumento = () => {
+    if (feedbackDeliberacao !== 'off') return;
+    setModalDoc(null);
   };
 
   if (!podeMesa) return <Navigate to="/sem-acesso" replace />;
@@ -441,7 +470,7 @@ export default function GestaoMesaPage() {
             className="fixed inset-0 z-[10050] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-[1px]"
             role="dialog"
             aria-modal="true"
-            onClick={() => setModalDoc(null)}
+            onClick={fecharModalDocumento}
           >
             <div
               className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
@@ -458,7 +487,12 @@ export default function GestaoMesaPage() {
                   </p>
                   <div className="mt-2">{badgeStatus(modalDoc.status, modalDoc.statusLabel)}</div>
                 </div>
-                <button type="button" className={btnSecondary} onClick={() => setModalDoc(null)}>
+                <button
+                  type="button"
+                  className={btnSecondary}
+                  onClick={fecharModalDocumento}
+                  disabled={feedbackDeliberacao !== 'off'}
+                >
                   Fechar
                 </button>
               </div>
@@ -522,7 +556,7 @@ export default function GestaoMesaPage() {
                       value={conferenteBusca}
                       onChange={(e) => setConferenteBusca(e.target.value)}
                       placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
-                      disabled={detalheLoading || !detalhe}
+                      disabled={detalheLoading || !detalhe || deliberando}
                     />
                   </div>
                   <div className="min-w-[16rem] flex-1">
@@ -531,7 +565,7 @@ export default function GestaoMesaPage() {
                       className={`${inputClass} w-full`}
                       value={conferenteId === '' ? '' : String(conferenteId)}
                       onChange={(e) => setConferenteId(e.target.value ? Number(e.target.value) : '')}
-                      disabled={detalheLoading || !detalhe}
+                      disabled={detalheLoading || !detalhe || deliberando}
                     >
                       <option value="">Selecione…</option>
                       {conferentesFiltrados.map((c) => (
@@ -561,6 +595,29 @@ export default function GestaoMesaPage() {
                   </p>
                 )}
               </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {feedbackDeliberacao !== 'off' &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10100] flex items-center justify-center bg-slate-950/45 backdrop-blur-md"
+            role="status"
+            aria-live="polite"
+            aria-busy={feedbackDeliberacao === 'loading'}
+          >
+            <div className="flex flex-col items-center gap-4 px-8 py-10">
+              {feedbackDeliberacao === 'loading' ? (
+                <LoaderCirculo tamanho={48} cores={['#FFAD00', '#9BA3E8']} className="shrink-0" />
+              ) : (
+                <CheckCircle2 className="h-12 w-12 text-emerald-400" aria-hidden />
+              )}
+              <p className="max-w-sm text-center text-sm font-medium tracking-tight text-white/90">
+                {feedbackDeliberacao === 'loading' ? 'Carregando...' : 'Conferente selecionado'}
+              </p>
             </div>
           </div>,
           document.body
