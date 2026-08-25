@@ -6,7 +6,7 @@ import { apiFetch } from './client';
 
 export const DFC_PRIORIDADES = [1, 2, 3, 4] as const;
 export type DfcPrioridade = (typeof DFC_PRIORIDADES)[number];
-export type DfcTipoRefLancamento = 'A' | 'L';
+export type DfcTipoRefLancamento = 'A' | 'L' | 'S';
 
 export const DFC_PRIORIDADE_LABEL: Record<DfcPrioridade, string> = {
   1: 'Pagamento Prioritário',

@@ -63,7 +63,7 @@ export type ArvoreContasDfcProps = {
    */
   onPrioridadeLancAtualizada?: (
     idEmpresa: number,
-    tipoRef: 'A' | 'L',
+    tipoRef: 'A' | 'L' | 'S',
     idRef: number,
     prioridade: DfcPrioridade | null,
   ) => void;
@@ -377,8 +377,12 @@ function fundoListraNeutra(rowIdx: number): string {
  */
 function corFundoLinha(node: DfcEstruturaNo, rowIdx: number): string {
   if (isLinhaRaizFluxoDfc(node)) return 'bg-slate-200 dark:bg-slate-700 font-semibold';
+  // Sublinhas 1.1.3.x: fundo de folha (branco), não o azul de sintético com filhos
+  if ((DFC_NOMES_SUBLINHAS_PROJECAO_RECEITAS as readonly string[]).includes(node.nome)) {
+    return fundoListraNeutra(rowIdx);
+  }
   if (node.tipo === 'S') return 'bg-primary-50 dark:bg-slate-800';
-  return rowIdx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-50 dark:bg-slate-900';
+  return fundoListraNeutra(rowIdx);
 }
 
 function isDescendantPath(desc: string, ancestor: string): boolean {

@@ -31,6 +31,14 @@ const SECOES: SecaoAjuda[] = [
       'Ex.: regra 30,45,60 e previsão 25/07 → parcelas em 24/08, 08/09 e 23/09 (previsão + N dias), valor = saldo a receber ÷ 3. Fins de semana vão para a terça seguinte. Clique na célula para ver as parcelas. Aparece ao filtrar todas as empresas ou Só Aço.',
   },
   {
+    id: 'prioridade-pagamento',
+    titulo: 'Prioridade de pagamento',
+    oQueE:
+      'Classificação de contas e títulos a pagar (1–4) para filtrar a DFC. Override por lançamento prevalece sobre a do plano de contas.',
+    comoLe:
+      'Na aba Plano de Contas, cada linha é conta × empresa (inclui RN e Só Refrigeração). Na aba Lançamento entram títulos em aberto: Nomus (agendamentos P sem pedido de compra) e Shop9 (Financeiro_Contas a pagar — RN/Refrigeração), no intervalo da DFC ampliado em +90 dias para a vencer. Prioridade Shop9 usa tipoRef S (Ordem do título). A DRE não tem esta classificação por lançamento — só a DFC.',
+  },
+  {
     id: 'excel',
     titulo: 'Exportar Excel',
     oQueE:

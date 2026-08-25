@@ -9,7 +9,12 @@ import {
   type DfcAgendamentoGranularidade,
   type DfcAgendamentoDetalheRow,
   type DfcAgendamentoLinha,
+  type DfcDespesaPagamentoEmAbertoRow,
 } from '../data/dfcAgendamentoRepository.js';
+import {
+  queryDfcShop9DespesasPagamentoEmAberto,
+  queryDfcShop9DespesasPagamentoFornecedorOpcoes,
+} from '../data/dfcShop9Repository.js';
 import { queryDfcKpis } from '../data/dfcKpisRepository.js';
 import { DFC_EMPRESAS_CARGA, listarContasBancariasNoPeriodoNomus } from '../data/dfcNomusRepository.js';
 import { normalizarIdsEmpresasDfc } from '../data/dfcShop9Empresa.js';
@@ -109,6 +114,23 @@ const DFC_LABEL_ENDIVIDAMENTO_POR_CONTA: Record<number, string> = {
   289: 'Dívida Bancária Principal',
   371: 'Dívida Bancária Juros',
 };
+
+/** Une despesas Nomus + Shop9 (vencido primeiro) e limita o payload. */
+function mergeDespesasPagamentoEmAberto(
+  nomus: DfcDespesaPagamentoEmAbertoRow[],
+  shop9: DfcDespesaPagamentoEmAbertoRow[],
+  limite = 3000
+): DfcDespesaPagamentoEmAbertoRow[] {
+  const all = [...nomus, ...shop9];
+  all.sort((a, b) => {
+    if (a.situacao !== b.situacao) return a.situacao === 'vencido' ? -1 : 1;
+    const da = a.dataVencimento ?? '';
+    const db = b.dataVencimento ?? '';
+    if (da !== db) return da < db ? -1 : 1;
+    return b.id - a.id;
+  });
+  return all.length > limite ? all.slice(0, limite) : all;
+}
 
 function parseDate(s: string): Date | null {
   if (!DATE_RE.test(s)) return null;
@@ -769,7 +791,8 @@ export async function getDfcKpis(req: Request, res: Response): Promise<void> {
  * Query: dataInicio, dataFim (YYYY-MM-DD), idEmpresas=1,2,
  * idsContaFinanceiro=1,2 ou idContaFinanceiro=? (opcional),
  * repetir ?fornecedor=nome para filtrar favorecidos.
- * Retorna agendamentos P em aberto (vencidos + a vencer), critério alinhado aos KPIs da DFC.
+ * Retorna agendamentos P em aberto Nomus + contas a pagar abertas Shop9
+ * (vencidos + a vencer), critério alinhado aos KPIs da DFC.
  */
 export async function getDfcDespesasPagamentoEmAberto(req: Request, res: Response): Promise<void> {
   const dataInicio = String(req.query.dataInicio ?? '').trim();
@@ -790,23 +813,46 @@ export async function getDfcDespesasPagamentoEmAberto(req: Request, res: Respons
     return;
   }
 
-  const { linhas, erro } = await queryDfcDespesasPagamentoEmAberto({
+  const filtroConta = idsContaFinanceiro.length > 0 ? idsContaFinanceiro : undefined;
+  const filtroForn = nomesFornecedor.length > 0 ? nomesFornecedor : undefined;
+
+  const [nomus, shop9] = await Promise.all([
+    queryDfcDespesasPagamentoEmAberto({
+      dataInicio,
+      dataFim,
+      idEmpresas,
+      idsContaFinanceiro: filtroConta,
+      nomesFornecedor: filtroForn,
+    }),
+    queryDfcShop9DespesasPagamentoEmAberto({
+      dataInicio,
+      dataFim,
+      idEmpresas,
+      idsContaFinanceiro: filtroConta,
+      nomesFornecedor: filtroForn,
+    }),
+  ]);
+
+  if (nomus.erro && shop9.erro && nomus.linhas.length === 0 && shop9.linhas.length === 0) {
+    res.status(503).json({ error: nomus.erro || shop9.erro });
+    return;
+  }
+
+  const linhas = mergeDespesasPagamentoEmAberto(nomus.linhas, shop9.linhas);
+  const aviso =
+    linhas.length === 0 ? nomus.erro || shop9.erro || undefined : undefined;
+  res.json({
+    linhas,
     dataInicio,
     dataFim,
     idEmpresas,
-    idsContaFinanceiro: idsContaFinanceiro.length > 0 ? idsContaFinanceiro : undefined,
-    nomesFornecedor: nomesFornecedor.length > 0 ? nomesFornecedor : undefined,
+    erro: aviso,
   });
-  if (erro) {
-    res.status(503).json({ error: erro });
-    return;
-  }
-  res.json({ linhas, dataInicio, dataFim, idEmpresas });
 }
 
 /**
  * GET /api/financeiro/dfc/despesas-em-aberto-fornecedor-opcoes
- * Lista distinta de favorecidos (pessoa) no mesmo critério de despesas P em aberto da DFC.
+ * Lista distinta de favorecidos (pessoa Nomus + fornecedor Shop9) no mesmo critério de despesas em aberto.
  */
 export async function getDfcDespesasPagamentoFornecedorOpcoes(req: Request, res: Response): Promise<void> {
   const dataInicio = String(req.query.dataInicio ?? '').trim();
@@ -825,16 +871,20 @@ export async function getDfcDespesasPagamentoFornecedorOpcoes(req: Request, res:
     return;
   }
 
-  const { nomes, erro } = await queryDfcDespesasPagamentoFornecedorOpcoes({
-    dataInicio,
-    dataFim,
-    idEmpresas,
-  });
-  if (erro) {
-    res.status(503).json({ error: erro });
+  const [nomus, shop9] = await Promise.all([
+    queryDfcDespesasPagamentoFornecedorOpcoes({ dataInicio, dataFim, idEmpresas }),
+    queryDfcShop9DespesasPagamentoFornecedorOpcoes({ dataInicio, dataFim, idEmpresas }),
+  ]);
+
+  if (nomus.erro && shop9.erro && nomus.nomes.length === 0 && shop9.nomes.length === 0) {
+    res.status(503).json({ error: nomus.erro || shop9.erro });
     return;
   }
-  res.json({ nomes });
+
+  const nomes = [...new Set([...(nomus.nomes ?? []), ...(shop9.nomes ?? [])])].sort((a, b) =>
+    a.localeCompare(b, 'pt-BR')
+  );
+  res.json({ nomes, erro: nomus.erro || shop9.erro || undefined });
 }
 
 /**

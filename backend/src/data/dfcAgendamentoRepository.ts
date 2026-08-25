@@ -254,6 +254,9 @@ export interface DfcDespesaPagamentoEmAbertoRow {
   nome: string | null;
   dataVencimento: string | null;
   saldoBaixar: number;
+  /** Nomus agendamento = A; Shop9 Financeiro_Contas = S. */
+  tipoRef?: 'A' | 'S';
+  origem?: 'Nomus' | 'Shop9';
 }
 
 /**
@@ -375,6 +378,8 @@ LIMIT 2000
         nome: r.nome != null ? String(r.nome) : null,
         dataVencimento: formatYmdFromSqlDate(r.dataVencimento ?? r['dataVencimento']),
         saldoBaixar: toNum(r.saldoBaixar ?? r['saldoBaixar']),
+        tipoRef: 'A',
+        origem: 'Nomus',
       };
     });
     return { linhas };

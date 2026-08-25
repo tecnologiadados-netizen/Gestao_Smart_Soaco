@@ -12,6 +12,8 @@ import type {
   DfcAgendamentoDetalheRow,
   DfcAgendamentoGranularidade,
   DfcAgendamentoLinha,
+  DfcDespesaPagamentoEmAbertoRow,
+  DfcDespesaPagamentoSituacao,
 } from './dfcAgendamentoRepository.js';
 import {
   filtrarPorEmpresasSelecionadas,
@@ -32,11 +34,12 @@ export { formatYmd };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_FINANCEIRO = readFileSync(join(__dirname, 'sql', 'dfcShop9Financeiro.sql'), 'utf-8');
+const SQL_DESPESAS_EM_ABERTO = readFileSync(join(__dirname, 'sql', 'dfcShop9DespesasEmAberto.sql'), 'utf-8');
 const DATA_EMISSAO_MIN = '2024-01-01';
 const DATA_RELACAO_MIN = '2023-01-01';
 const CACHE_MS = 90_000;
 /** Bump ao alterar SQL/colunas ou regras de filtro empresa. */
-const CACHE_VERSION = 11;
+const CACHE_VERSION = 12;
 
 function hojeYmdLocal(): string {
   const d = new Date();
@@ -88,6 +91,8 @@ export type Shop9FinanceiroRow = {
   planoContas: string | null;
   valorBaixado: number;
   saldoBaixar: number;
+  /** Valor do título (abre/vencido); saldoBaixar no SQL só preenche vencimento futuro. */
+  valorTotalCalculado: number;
   empresa: string | null;
   nomeRazaoSocial: string | null;
   clienteFornecedor: string | null;
@@ -144,6 +149,7 @@ function mapRawRow(r: Record<string, unknown>): Shop9FinanceiroRow {
     planoContas: r.planoContas != null ? String(r.planoContas) : null,
     valorBaixado: toNum(r.valorBaixado ?? r['valorBaixado']),
     saldoBaixar: toNum(r.saldoBaixar ?? r['saldoBaixar']),
+    valorTotalCalculado: toNum(r.valorTotalCalculado ?? r['valorTotalCalculado']),
     empresa: r.empresa != null ? String(r.empresa) : null,
     nomeRazaoSocial: r.nomeRazaoSocial != null ? String(r.nomeRazaoSocial) : null,
     clienteFornecedor: r.clienteFornecedor != null ? String(r.clienteFornecedor) : null,
@@ -546,6 +552,135 @@ export async function coletarContribuicoesShop9(params: {
   }
 
   return { contribuicoes, erro };
+}
+
+/**
+ * Contas a pagar (P) em aberto no Shop9 — SQL dedicado (rápido), mesmo recorte de datas
+ * dos KPIs Nomus (vencido / a vencer). Usado na classificação por lançamento (RN / Refrigeração).
+ */
+export async function queryDfcShop9DespesasPagamentoEmAberto(params: {
+  dataInicio: string;
+  dataFim: string;
+  idEmpresas: number[];
+  idsContaFinanceiro?: number[];
+  nomesFornecedor?: string[];
+}): Promise<{ linhas: DfcDespesaPagamentoEmAbertoRow[]; erro?: string }> {
+  const { dataInicio, dataFim, idEmpresas } = params;
+  if (!isShop9Enabled()) return { linhas: [] };
+  if (idEmpresas.length === 0) return { linhas: [] };
+
+  const pool = await getShop9Pool();
+  if (!pool) return { linhas: [], erro: 'Shop9: falha ao conectar' };
+
+  let raw: Shop9FinanceiroRow[] = [];
+  try {
+    const req = pool.request();
+    req.input('dataInicio', sql.Date, new Date(`${dataInicio}T12:00:00`));
+    req.input('dataFim', sql.Date, new Date(`${dataFim}T12:00:00`));
+    const result = await req.query(SQL_DESPESAS_EM_ABERTO);
+    const list = Array.isArray(result.recordset) ? result.recordset : [];
+    raw = list.map((r) => mapRawRow(r as Record<string, unknown>));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[dfcShop9Repository] queryDfcShop9DespesasPagamentoEmAberto:', msg);
+    return { linhas: [], erro: msg };
+  }
+
+  const idsEmp = new Set(normalizarIdsEmpresasDfc(idEmpresas));
+  const idsConta =
+    params.idsContaFinanceiro && params.idsContaFinanceiro.length > 0
+      ? new Set(params.idsContaFinanceiro.map((n) => Math.trunc(Number(n))).filter((n) => n > 0))
+      : null;
+  const nomesForn =
+    params.nomesFornecedor && params.nomesFornecedor.length > 0
+      ? new Set(params.nomesFornecedor.map((s) => s.trim()).filter(Boolean))
+      : null;
+
+  const hoje = hojeYmdLocal();
+  const limVencido = dataFim < hoje ? dataFim : hoje;
+  const iniAVencer = dataInicio > hoje ? dataInicio : hoje;
+
+  const linhas: DfcDespesaPagamentoEmAbertoRow[] = [];
+  for (const r of raw) {
+    if (!shop9LinhaUsavel(r)) continue;
+    if (r.tipoConta.trim().toUpperCase() !== 'P') continue;
+
+    const saldo =
+      r.saldoBaixar > 0
+        ? r.saldoBaixar
+        : r.valorTotalCalculado > 0
+          ? r.valorTotalCalculado
+          : 0;
+    if (!(saldo > 0)) continue;
+
+    const idEmpresa = empresaParaIdNomus(r);
+    if (!idsEmp.has(idEmpresa)) continue;
+
+    const idConta = resolverIdContaShop9(r);
+    if (idsConta && (idConta == null || !idsConta.has(idConta))) continue;
+
+    const nome =
+      (r.clienteFornecedor && r.clienteFornecedor.trim()) ||
+      (r.nomeRazaoSocial && r.nomeRazaoSocial.trim()) ||
+      null;
+    if (nomesForn) {
+      if (!nome || !nomesForn.has(nome.trim())) continue;
+    }
+
+    const ymd = formatYmd(r.dataVencimento);
+    if (!ymd) continue;
+
+    let situacao: DfcDespesaPagamentoSituacao | null = null;
+    if (ymd >= dataInicio && ymd <= dataFim && ymd < limVencido) {
+      situacao = 'vencido';
+    } else if (ymd >= iniAVencer && ymd <= dataFim) {
+      situacao = 'a_vencer';
+    }
+    if (!situacao) continue;
+
+    const id = r.ordemFinanceira > 0 ? r.ordemFinanceira : r.codigoConta;
+    if (!(id > 0)) continue;
+
+    linhas.push({
+      situacao,
+      id,
+      idEmpresa,
+      idContaFinanceiro: idConta,
+      descricaoLancamento: r.descricaoLancamento,
+      nome,
+      dataVencimento: ymd,
+      saldoBaixar: saldo,
+      tipoRef: 'S',
+      origem: 'Shop9',
+    });
+  }
+
+  linhas.sort((a, b) => {
+    if (a.situacao !== b.situacao) return a.situacao === 'vencido' ? -1 : 1;
+    const da = a.dataVencimento ?? '';
+    const db = b.dataVencimento ?? '';
+    if (da !== db) return da < db ? -1 : 1;
+    return b.id - a.id;
+  });
+
+  return { linhas };
+}
+
+/** Favorecidos distintos dos abertos a pagar Shop9 (mesmo universo da classificação). */
+export async function queryDfcShop9DespesasPagamentoFornecedorOpcoes(params: {
+  dataInicio: string;
+  dataFim: string;
+  idEmpresas: number[];
+}): Promise<{ nomes: string[]; erro?: string }> {
+  const { linhas, erro } = await queryDfcShop9DespesasPagamentoEmAberto(params);
+  const nomes = [
+    ...new Set(
+      linhas
+        .map((l) => (l.nome ?? '').trim())
+        .filter(Boolean)
+    ),
+  ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return { nomes, erro };
 }
 
 function amanhaYmdLocal(): string {

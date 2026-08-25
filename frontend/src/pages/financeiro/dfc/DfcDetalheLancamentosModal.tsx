@@ -136,7 +136,7 @@ export type DfcDetalheLancamentosModalProps = {
    */
   onPrioridadeLancAtualizada?: (
     idEmpresa: number,
-    tipoRef: 'A' | 'L',
+    tipoRef: 'A' | 'L' | 'S',
     idRef: number,
     prioridade: DfcPrioridade | null,
   ) => void;

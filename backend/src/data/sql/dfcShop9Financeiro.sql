@@ -121,6 +121,7 @@ SELECT
     THEN ISNULL(b.Valor_Total_Calculado, 0)
     ELSE 0
   END AS saldoBaixar,
+  ISNULL(b.Valor_Total_Calculado, 0) AS valorTotalCalculado,
   b.Ordem_Filial AS idEmpresa,
   b.Filial AS empresa,
   fl.Nome AS nomeFilial,
