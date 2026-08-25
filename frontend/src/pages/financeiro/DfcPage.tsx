@@ -214,7 +214,7 @@ export default function DfcPage() {
   );
 
   const aplicarPrioridadeLancNoMapa = useCallback(
-    (idEmpresa: number, tipoRef: 'A' | 'L', idRef: number, prioridade: DfcPrioridade | null) => {
+    (idEmpresa: number, tipoRef: 'A' | 'L' | 'S', idRef: number, prioridade: DfcPrioridade | null) => {
       const k = `${idEmpresa}#${tipoRef}#${idRef}`;
       setPrioridadesLancsMap((prev) => {
         if (prioridade == null) {

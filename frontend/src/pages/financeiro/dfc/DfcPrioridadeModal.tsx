@@ -23,6 +23,7 @@ import {
 } from '../../../api/financeiro';
 import MultiSelectWithSearch from '../../../components/MultiSelectWithSearch';
 import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../../utils/textoLivreBusca';
+import { DFC_EMPRESA_OPCOES, DFC_EMPRESAS_TODAS } from './dfcEmpresas';
 import estruturaJson from './estruturaDfcArvore.json';
 
 type EstruturaNo = {
@@ -42,11 +43,12 @@ interface ContaAnalitica {
   macro: string;
 }
 
-const EMPRESAS_PADRAO = [
-  { id: 1, label: 'Só Aço' },
-  { id: 2, label: 'Só Móveis' },
-  { id: 3, label: 'Só Refrigeração' },
-  { id: 4, label: 'RN Marques' },
+const EMPRESAS_PADRAO = DFC_EMPRESA_OPCOES.map((o) => ({ id: o.id, label: o.label }));
+
+/** Chips de filtro do modal: cada loja + todas (inclui RN e Refrigeração). */
+const FILTRO_EMPRESA_OPCOES: { label: string; ids: number[] }[] = [
+  ...DFC_EMPRESA_OPCOES.map((o) => ({ label: o.label, ids: [o.id] })),
+  { label: 'Todas', ids: [...DFC_EMPRESAS_TODAS] },
 ];
 
 const nfBrl = new Intl.NumberFormat('pt-BR', {
@@ -113,6 +115,10 @@ function chaveLanc(idEmpresa: number, tipoRef: DfcTipoRefLancamento, idRef: numb
   return `${idEmpresa}#${tipoRef}#${idRef}`;
 }
 
+function tipoRefDespesa(row: DfcDespesaPagamentoEmAbertoLinha): DfcTipoRefLancamento {
+  return row.tipoRef === 'S' ? 'S' : 'A';
+}
+
 /** Valor interno do multiselect de filtro «Sem prioridade» (efetiva = nem override nem plano). */
 const FILTRO_PRIORIDADE_SEM = '__dfc_sem_pri__';
 
@@ -127,7 +133,7 @@ export type DfcPrioridadeModalProps = {
   /** Intervalo das datas da faixa de filtros da DFC (KPIs «Vencidos / A vencer a pagar»). */
   dataInicio: string;
   dataFim: string;
-  /** Empresas atualmente selecionadas no filtro principal da DFC (default das abas). */
+  /** Empresas atualmente selecionadas no filtro principal da DFC (mantido p/ API; o modal lista as 4 lojas). */
   idEmpresas: number[];
   /**
    * Atualização cirúrgica do mapa de prioridade de plano de contas (sem recarregar a DFC).
@@ -148,7 +154,7 @@ export type DfcPrioridadeModalProps = {
     idRef: number,
     prioridade: DfcPrioridade | null,
   ) => void;
-  /** Rótulo das empresas (1 → "Só Aço", 2 → "Só Móveis"). */
+  /** Rótulo das empresas (1→Só Aço … 4→RN Marques). */
   empresas?: Array<{ id: number; label: string }>;
 };
 
@@ -159,7 +165,6 @@ export default function DfcPrioridadeModal({
   onClose,
   dataInicio,
   dataFim,
-  idEmpresas,
   onPrioridadeContaAtualizada,
   onPrioridadeLancAtualizada,
   empresas = EMPRESAS_PADRAO,
@@ -176,7 +181,7 @@ export default function DfcPrioridadeModal({
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  /** Filtro de empresa local da aba "Classificar Plano de Contas" (padrão = empresas da DFC). */
+  /** Filtro de empresa local da aba "Classificar Plano de Contas" (abre com as 4 lojas). */
   const [empresasFiltroContas, setEmpresasFiltroContas] = useState<number[]>([]);
   /** Múltiplas contas: ids numéricos unidos por `|` (componente Gerenciador de Pedidos). */
   const [filtroPipePlanoContas, setFiltroPipePlanoContas] = useState('');
@@ -229,11 +234,25 @@ export default function DfcPrioridadeModal({
     return m;
   }, []);
 
-  /** Empresas usadas para carregar dados (segue o filtro da DFC ou tudo, se vazio). */
-  const empresasUtilizadas = useMemo(
-    () => (idEmpresas.length > 0 ? idEmpresas : empresas.map((e) => e.id)),
-    [idEmpresas, empresas]
-  );
+  /** Sempre as 4 lojas — classificação de contas a pagar não fica presa ao filtro da grade DFC. */
+  const empresasUtilizadas = useMemo(() => empresas.map((e) => e.id), [empresas]);
+
+  /**
+   * Horizonte da lista de lançamentos: garante pelo menos hoje+90 dias,
+   * para listar a vencer Shop9 (RN/Refrigeração) mesmo se a DFC termina «hoje».
+   */
+  const dataFimDespesas = useMemo(() => {
+    const base = (dataFim || '').slice(0, 10);
+    const agora = new Date();
+    agora.setHours(12, 0, 0, 0);
+    agora.setDate(agora.getDate() + 90);
+    const y = agora.getFullYear();
+    const m = String(agora.getMonth() + 1).padStart(2, '0');
+    const day = String(agora.getDate()).padStart(2, '0');
+    const horizonte = `${y}-${m}-${day}`;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(base)) return horizonte;
+    return base >= horizonte ? base : horizonte;
+  }, [dataFim]);
 
   /** Empresas efetivamente filtradas dentro da aba "contas" (subconjunto do permitido). */
   const empresasFiltroContasEfetivas = useMemo(
@@ -299,31 +318,33 @@ export default function DfcPrioridadeModal({
     ];
     const r = await fetchDfcDespesasPagamentoEmAberto({
       dataInicio,
-      dataFim,
+      dataFim: dataFimDespesas,
       idEmpresas: empresasFiltroLancsEfetivas,
       idsContaFinanceiro: idsCf.length > 0 ? idsCf : undefined,
       nomesFornecedor: nomesFf.length > 0 ? nomesFf : undefined,
     });
     setCarregandoDespesas(false);
-    if (r.erro) setErro(r.erro);
-    else setDespesasAberto(r.linhas);
-  }, [dataInicio, dataFim, empresasFiltroLancsEfetivas, filtroPipePlanoContas, filtroPipeFornecedores]);
+    // Sempre aplica as linhas (Nomus e/ou Shop9). `erro` pode ser aviso parcial.
+    setDespesasAberto(Array.isArray(r.linhas) ? r.linhas : []);
+    if (r.erro && (!r.linhas || r.linhas.length === 0)) setErro(r.erro);
+    else if (r.erro) setMensagem(`Aviso: ${r.erro}`);
+  }, [dataInicio, dataFimDespesas, empresasFiltroLancsEfetivas, filtroPipePlanoContas, filtroPipeFornecedores]);
 
   useEffect(() => {
     if (!aberto || aba !== 'lancamentos') return;
     let cancelled = false;
     void fetchDfcDespesasPagamentoFornecedorOpcoes({
       dataInicio,
-      dataFim,
+      dataFim: dataFimDespesas,
       idEmpresas: empresasFiltroLancsEfetivas,
     }).then((r) => {
       if (cancelled) return;
-      if (!r.erro) setFornecedoresNomeOpcoes(Array.isArray(r.nomes) ? r.nomes : []);
+      if (Array.isArray(r.nomes)) setFornecedoresNomeOpcoes(r.nomes);
     });
     return () => {
       cancelled = true;
     };
-  }, [aberto, aba, dataInicio, dataFim, empresasFiltroLancsEfetivas]);
+  }, [aberto, aba, dataInicio, dataFimDespesas, empresasFiltroLancsEfetivas]);
 
   useEffect(() => {
     if (!aberto) return;
@@ -346,13 +367,14 @@ export default function DfcPrioridadeModal({
     setFiltroTexto('');
     setMensagem(null);
     setErro(null);
-    setEmpresasFiltroContas([]);
-    setEmpresasFiltroLancs([]);
+    // Sempre abre com as 4 lojas (classificação não depende do filtro da grade)
+    setEmpresasFiltroContas(empresas.map((e) => e.id));
+    setEmpresasFiltroLancs(empresas.map((e) => e.id));
     setFiltroPipePlanoContas('');
     setFiltroPipeFornecedores('');
     setFiltroPipePrioridades('');
     setFornecedoresNomeOpcoes([]);
-  }, [aberto]);
+  }, [aberto, empresas]);
 
   useEffect(() => {
     if (!aberto) return;
@@ -397,7 +419,7 @@ export default function DfcPrioridadeModal({
     const filtroPrioAtivo = priSel.length > 0;
 
     function prioridadeEfetiva(row: DfcDespesaPagamentoEmAbertoLinha): DfcPrioridade | null {
-      const ov = mapaLancs.get(chaveLanc(row.idEmpresa, 'A', row.id))?.prioridade ?? null;
+      const ov = mapaLancs.get(chaveLanc(row.idEmpresa, tipoRefDespesa(row), row.id))?.prioridade ?? null;
       if (ov != null) return ov as DfcPrioridade;
       return prioridadePlanoPorRow(row, mapaContas);
     }
@@ -538,7 +560,8 @@ export default function DfcPrioridadeModal({
 
   const alterarPrioridadeDespesa = useCallback(
     async (row: DfcDespesaPagamentoEmAbertoLinha, novo: DfcPrioridade | null) => {
-      const chave = chaveLanc(row.idEmpresa, 'A', row.id);
+      const tipoRef = tipoRefDespesa(row);
+      const chave = chaveLanc(row.idEmpresa, tipoRef, row.id);
       setSalvandoPrioridadeChave(chave);
       setErro(null);
       setMensagem(null);
@@ -546,14 +569,14 @@ export default function DfcPrioridadeModal({
       const patchMapa = (prior: DfcPrioridade | null) => {
         setLancsPrioridade((prev) => {
           const sem = prev.filter(
-            (l) => !(l.idEmpresa === row.idEmpresa && l.tipoRef === 'A' && l.idRef === row.id)
+            (l) => !(l.idEmpresa === row.idEmpresa && l.tipoRef === tipoRef && l.idRef === row.id)
           );
           if (prior == null) return sem;
           return [
             ...sem,
             {
               idEmpresa: row.idEmpresa,
-              tipoRef: 'A' as const,
+              tipoRef,
               idRef: row.id,
               idContaFinanceiro: row.idContaFinanceiro,
               prioridade: prior,
@@ -569,7 +592,7 @@ export default function DfcPrioridadeModal({
 
       try {
         if (novo == null) {
-          const r = await removerPrioridadeLancamento(row.idEmpresa, 'A', row.id);
+          const r = await removerPrioridadeLancamento(row.idEmpresa, tipoRef, row.id);
           if (!r.ok) {
             setLancsPrioridade(snapshot);
             setErro(r.erro ?? 'Falha ao remover.');
@@ -578,7 +601,7 @@ export default function DfcPrioridadeModal({
         } else {
           const r = await salvarPrioridadeLancamento({
             idEmpresa: row.idEmpresa,
-            tipoRef: 'A',
+            tipoRef,
             idRef: row.id,
             idContaFinanceiro: row.idContaFinanceiro,
             prioridade: novo,
@@ -589,7 +612,7 @@ export default function DfcPrioridadeModal({
             return;
           }
         }
-        onPrioridadeLancAtualizada?.(row.idEmpresa, 'A', row.id, novo);
+        onPrioridadeLancAtualizada?.(row.idEmpresa, tipoRef, row.id, novo);
       } finally {
         setSalvandoPrioridadeChave(null);
       }
@@ -607,10 +630,10 @@ export default function DfcPrioridadeModal({
       setMensagem(null);
       setSalvando(true);
       const itens = linhasDespesasFiltradas
-        .filter((row) => linhasSelecionadas.has(chaveLanc(row.idEmpresa, 'A', row.id)))
+        .filter((row) => linhasSelecionadas.has(chaveLanc(row.idEmpresa, tipoRefDespesa(row), row.id)))
         .map((row) => ({
           idEmpresa: row.idEmpresa,
-          tipoRef: 'A' as DfcTipoRefLancamento,
+          tipoRef: tipoRefDespesa(row),
           idRef: row.id,
           idContaFinanceiro: row.idContaFinanceiro ?? undefined,
         }));
@@ -676,7 +699,7 @@ export default function DfcPrioridadeModal({
               Prioridade de pagamento
             </h2>
             <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
-              Classifique planos de contas e lançamentos. Use o filtro para focar a DFC.
+              Classifique planos de contas e lançamentos (Nomus + Shop9). Use o filtro para focar a DFC.
               Override por lançamento prevalece sobre a do plano de contas.
             </p>
           </div>
@@ -739,13 +762,8 @@ export default function DfcPrioridadeModal({
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 py-4">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Empresa:</span>
-                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-600 overflow-hidden bg-slate-50 dark:bg-slate-700">
-                  {([
-                    { label: 'Só Aço', ids: [1] },
-                    { label: 'Só Móveis', ids: [2] },
-                    { label: 'Ambas', ids: [1, 2] },
-                  ] as { label: string; ids: number[] }[]).map((opt, i) => {
-                    // Compara contra a seleção efetiva da aba
+                <div className="inline-flex flex-wrap rounded-lg border border-slate-200 dark:border-slate-600 overflow-hidden bg-slate-50 dark:bg-slate-700">
+                  {FILTRO_EMPRESA_OPCOES.map((opt, i) => {
                     const sel = empresasFiltroContasEfetivas;
                     const ativo = sel.length === opt.ids.length && opt.ids.every((id) => sel.includes(id));
                     return (
@@ -916,12 +934,8 @@ export default function DfcPrioridadeModal({
                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
                   Empresa:
                 </span>
-                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-600 overflow-hidden bg-slate-50 dark:bg-slate-700">
-                  {([
-                    { label: 'Só Aço', ids: [1] },
-                    { label: 'Só Móveis', ids: [2] },
-                    { label: 'Ambas', ids: [1, 2] },
-                  ] as { label: string; ids: number[] }[]).map((opt, i) => {
+                <div className="inline-flex flex-wrap rounded-lg border border-slate-200 dark:border-slate-600 overflow-hidden bg-slate-50 dark:bg-slate-700">
+                  {FILTRO_EMPRESA_OPCOES.map((opt, i) => {
                     const sel = empresasFiltroLancsEfetivas;
                     const ativo = sel.length === opt.ids.length && opt.ids.every((id) => sel.includes(id));
                     return (
@@ -1000,14 +1014,14 @@ export default function DfcPrioridadeModal({
                   }}
                   className="mb-0.5 shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
-                  Recarregar Nomus
+                  Recarregar lista
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     setLinhasSelecionadas((prev) => {
                       const todasKeys = linhasDespesasFiltradas.map((row) =>
-                        chaveLanc(row.idEmpresa, 'A', row.id)
+                        chaveLanc(row.idEmpresa, tipoRefDespesa(row), row.id)
                       );
                       if (prev.size === todasKeys.length) return new Set();
                       return new Set(todasKeys);
@@ -1053,7 +1067,8 @@ export default function DfcPrioridadeModal({
                       </tr>
                     ) : (
                       linhasDespesasFiltradas.map((row) => {
-                        const k = chaveLanc(row.idEmpresa, 'A', row.id);
+                        const tipoRef = tipoRefDespesa(row);
+                        const k = chaveLanc(row.idEmpresa, tipoRef, row.id);
                         const checked = linhasSelecionadas.has(k);
                         const conta =
                           row.idContaFinanceiro != null
@@ -1079,7 +1094,14 @@ export default function DfcPrioridadeModal({
                               />
                             </td>
                             <td className="px-2 py-1.5 align-top">{seloSituacaoDespesa(row.situacao)}</td>
-                            <td className="px-2 py-1.5 align-top">{labelEmpresa(row.idEmpresa)}</td>
+                            <td className="px-2 py-1.5 align-top">
+                              {labelEmpresa(row.idEmpresa)}
+                              {row.origem === 'Shop9' ? (
+                                <span className="ml-1 inline-flex rounded border border-slate-300 bg-slate-100 px-1 text-[9px] font-semibold uppercase text-slate-600 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                                  Shop9
+                                </span>
+                              ) : null}
+                            </td>
                             <td className="px-2 py-1.5 align-top text-xs text-slate-600 dark:text-slate-300 truncate max-w-[14rem]" title={conta ? `${conta.codigo} ${conta.nome}` : undefined}>
                               {conta ? (
                                 <span>

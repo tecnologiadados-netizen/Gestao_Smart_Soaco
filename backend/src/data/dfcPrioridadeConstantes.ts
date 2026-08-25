@@ -26,13 +26,13 @@ export const DFC_PRIORIDADE_LABEL: Record<DfcPrioridade, string> = {
   [DFC_PRIORIDADE.NAO_PAGAR]: 'Não realizar pagamento',
 };
 
-/** 'A' = agendamentofinanceiro.id ; 'L' = lancamentofinanceiro.id (Nomus). */
-export type DfcTipoRefLancamento = 'A' | 'L';
+/** 'A' = agendamentofinanceiro.id ; 'L' = lancamentofinanceiro.id (Nomus) ; 'S' = Financeiro_Contas.Ordem (Shop9). */
+export type DfcTipoRefLancamento = 'A' | 'L' | 'S';
 
 export function ehDfcPrioridadeValida(n: unknown): n is DfcPrioridade {
   return typeof n === 'number' && DFC_PRIORIDADES_VALIDAS.includes(n as DfcPrioridade);
 }
 
 export function ehTipoRefValido(s: unknown): s is DfcTipoRefLancamento {
-  return s === 'A' || s === 'L';
+  return s === 'A' || s === 'L' || s === 'S';
 }

@@ -268,7 +268,7 @@ export async function putPrioridadeLancamento(req: Request, res: Response): Prom
     return;
   }
   if (!ehTipoRefValido(tipoRef)) {
-    res.status(400).json({ erro: 'tipoRef deve ser "A" (agendamento) ou "L" (lançamento direto).' });
+    res.status(400).json({ erro: 'tipoRef deve ser "A" (agendamento Nomus), "L" (lançamento) ou "S" (Shop9).' });
     return;
   }
   if (!Number.isFinite(idRef) || idRef <= 0) {

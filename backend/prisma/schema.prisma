@@ -1006,8 +1006,8 @@ model DfcPrioridadeConta {
   @@map("dfc_prioridade_conta")
 }
 
-/// Prioridade aplicada a lançamento (override). tipoRef: 'A' = agendamentofinanceiro.id, 'L' = lancamentofinanceiro.id.
-/// idContaFinanceiro espelha o Nomus (cache local) — permite filtrar pelos planos sem ida à origem.
+/// Prioridade aplicada a lançamento (override). tipoRef: 'A' = agendamentofinanceiro.id, 'L' = lancamentofinanceiro.id, 'S' = Financeiro_Contas.Ordem (Shop9).
+/// idContaFinanceiro espelha o Nomus/árvore DFC (cache local) — permite filtrar pelos planos sem ida à origem.
 model DfcPrioridadeLancamento {
   id                Int      @id @default(autoincrement())
   idEmpresa         Int
