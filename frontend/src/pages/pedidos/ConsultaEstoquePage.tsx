@@ -195,15 +195,9 @@ export default function ConsultaEstoquePage() {
   const [loading, setLoading] = useState(false);
   const [erroApi, setErroApi] = useState<string | null>(null);
   const [modalAjudaAberto, setModalAjudaAberto] = useState(false);
-  const [considerarRequisicoes, setConsiderarRequisicoes] = useState(false);
-  const [confirmRequisicoesAberto, setConfirmRequisicoesAberto] = useState(false);
+  const [considerarRequisicoes, setConsiderarRequisicoes] = useState(true);
   const [confirmVolumeAberto, setConfirmVolumeAberto] = useState(false);
   const [confirmVolumeTotal, setConfirmVolumeTotal] = useState(0);
-  const [pendingConsulta, setPendingConsulta] = useState<{
-    filtros: FiltrosConsultaEstoqueState;
-    pedidoFiltro: PedidoFiltroConsultaEstoque;
-    considerarRequisicoes: boolean;
-  } | null>(null);
   const [detalhe, setDetalhe] = useState<DetalheModal | null>(null);
   const [detalheSaldo, setDetalheSaldo] = useState<SaldoSetorDetalhe[]>([]);
   const [detalheEmpenhoLiquido, setDetalheEmpenhoLiquido] = useState<RessupEmpenhoPedidoResultado | null>(null);
@@ -478,7 +472,6 @@ export default function ConsultaEstoquePage() {
       }
       setLinhas(r.data);
       setMostrarGrade(true);
-      setPendingConsulta(null);
     },
     []
   );
@@ -621,7 +614,7 @@ export default function ConsultaEstoquePage() {
       setConfirmVolumeAberto(true);
       return;
     }
-    setConfirmRequisicoesAberto(true);
+    void executarConsulta(filtros, pedidoFiltro, considerarRequisicoes);
   };
 
   const confirmarVolume = (sim: boolean) => {
@@ -630,26 +623,14 @@ export default function ConsultaEstoquePage() {
       setFiltrosPopoverAberto(true);
       return;
     }
-    setConfirmRequisicoesAberto(true);
+    void executarConsulta(filtros, pedidoFiltro, considerarRequisicoes);
   };
 
-  const confirmarRequisicoes = (sim: boolean) => {
-    setConsiderarRequisicoes(sim);
-    setConfirmRequisicoesAberto(false);
-    if (pendingConsulta) {
-      void executarConsulta(
-        pendingConsulta.filtros,
-        pendingConsulta.pedidoFiltro,
-        sim
-      );
-    } else {
-      void executarConsulta(filtros, pedidoFiltro, sim);
-    }
-  };
-
-  const voltarConfirmRequisicoes = () => {
-    setConfirmRequisicoesAberto(false);
-    setFiltrosPopoverAberto(true);
+  const handleToggleRequisicoes = () => {
+    const proximo = !considerarRequisicoes;
+    setConsiderarRequisicoes(proximo);
+    if (!mostrarGrade) return;
+    void executarConsulta(filtrosRef.current, pedidoFiltroRef.current, proximo);
   };
 
   const cellNum = (n: number) => fmtQtde(n);
@@ -833,12 +814,28 @@ export default function ConsultaEstoquePage() {
                   <span className="text-slate-400">·</span>
                 </>
               )}
-              <span>
-                Requisições de loja:{' '}
-                <strong className="text-slate-800 dark:text-slate-100">
-                  {considerarRequisicoes ? 'Sim' : 'Não'}
-                </strong>
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={considerarRequisicoes}
+                  aria-label="Considerar requisições de loja no empenho"
+                  disabled={loading}
+                  onClick={handleToggleRequisicoes}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50 ${
+                    considerarRequisicoes ? 'bg-primary-600' : 'bg-slate-300 dark:bg-slate-600'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ease-in-out ${
+                      considerarRequisicoes ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+                <span className="font-medium text-slate-800 dark:text-slate-100">
+                  Requisições de loja
+                </span>
+              </div>
             </div>
             {linhas.length > 0 && (
               <span className="tabular-nums text-slate-500 dark:text-slate-400">
@@ -1161,41 +1158,6 @@ export default function ConsultaEstoquePage() {
               >
                 Sim
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {confirmRequisicoesAberto && (
-        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
-          <div className="max-w-md rounded-xl bg-white p-5 shadow-xl dark:bg-slate-800">
-            <p className="text-sm text-slate-800 dark:text-slate-100">
-              Deseja considerar requisições no cálculo de <strong>Empenho</strong>?
-            </p>
-            <div className="mt-4 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
-                onClick={voltarConfirmRequisicoes}
-              >
-                ← Voltar
-              </button>
-              <div className="flex gap-2">
-              <button
-                type="button"
-                className="rounded-lg border px-3 py-1.5 text-sm"
-                onClick={() => confirmarRequisicoes(false)}
-              >
-                Não
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm text-white"
-                onClick={() => confirmarRequisicoes(true)}
-              >
-                Sim
-              </button>
-              </div>
             </div>
           </div>
         </div>

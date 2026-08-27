@@ -15,22 +15,30 @@ const VEICULOS_INICIAIS: Array<{
   alturaMm: number | null;
   larguraMm: number | null;
   profundidadeMm: number | null;
+  tamanho: 'Pequeno' | 'Médio' | 'Grande Menor' | 'Grande Maior';
 }> = [
-  { modelo: 'ACCELO 815 - M.BENZ', placa: 'PIW7H75', alturaMm: 2940, larguraMm: 2180, profundidadeMm: 6890 },
-  { modelo: 'ACCELO 815 - M.BENZ', placa: 'NIW6C51', alturaMm: 2940, larguraMm: 2070, profundidadeMm: 6890 },
-  { modelo: 'F350 G - FORD', placa: 'NIG7F97', alturaMm: 2180, larguraMm: 2070, profundidadeMm: 3360 },
-  { modelo: 'F350 G - FORD', placa: 'LVU1H85', alturaMm: 2100, larguraMm: 2080, profundidadeMm: 3420 },
-  { modelo: 'F350 G - FORD', placa: 'LVU1H95', alturaMm: 2100, larguraMm: 2080, profundidadeMm: 3420 },
-  { modelo: '24.280 CRM 6X2 - VW', placa: 'OEE4C36', alturaMm: 3000, larguraMm: 2480, profundidadeMm: 11170 },
-  { modelo: 'IVECO DAILY - FIAT', placa: 'OUC6G80', alturaMm: 2090, larguraMm: 2070, profundidadeMm: 4380 },
-  { modelo: 'IVECO DAILY - FIAT', placa: 'OUC6G70', alturaMm: 2090, larguraMm: 2070, profundidadeMm: 4380 },
-  { modelo: 'ATEGO 1419 - M.BENZ', placa: 'RSM1F99', alturaMm: 3030, larguraMm: 2470, profundidadeMm: 9880 },
-  { modelo: 'ATEGO 1419 - M.BENZ', placa: 'RSQ9B26', alturaMm: 3010, larguraMm: 2470, profundidadeMm: 8380 },
-  { modelo: '710 - M.BENZ', placa: 'NHY8E04', alturaMm: null, larguraMm: null, profundidadeMm: null },
-  { modelo: 'F350 G - FORD', placa: 'OEA1H17', alturaMm: null, larguraMm: null, profundidadeMm: null },
-  { modelo: 'ATEGO 1419 - M.BENZ', placa: 'PIX1F44', alturaMm: null, larguraMm: null, profundidadeMm: null },
-  { modelo: '24.250 CNC 6X2 - VW', placa: 'NIW6D58', alturaMm: null, larguraMm: null, profundidadeMm: null },
-  { modelo: '24.250 CNC 6X2 - VW', placa: 'NIB5502', alturaMm: null, larguraMm: null, profundidadeMm: null },
+  { modelo: 'ACCELO 815 - M.BENZ', placa: 'PIW7H75', alturaMm: 2940, larguraMm: 2180, profundidadeMm: 6890, tamanho: 'Grande Menor' },
+  { modelo: 'ACCELO 815 - M.BENZ', placa: 'NIW6C51', alturaMm: 2940, larguraMm: 2070, profundidadeMm: 6890, tamanho: 'Grande Menor' },
+  { modelo: 'F350 G - FORD', placa: 'NIG7F97', alturaMm: 2180, larguraMm: 2070, profundidadeMm: 3360, tamanho: 'Pequeno' },
+  { modelo: 'F350 G - FORD', placa: 'LVU1H85', alturaMm: 2100, larguraMm: 2080, profundidadeMm: 3420, tamanho: 'Pequeno' },
+  { modelo: 'F350 G - FORD', placa: 'LVU1H95', alturaMm: 2100, larguraMm: 2080, profundidadeMm: 3420, tamanho: 'Pequeno' },
+  { modelo: '24.280 CRM 6X2 - VW', placa: 'OEE4C36', alturaMm: 3000, larguraMm: 2480, profundidadeMm: 11170, tamanho: 'Grande Maior' },
+  { modelo: 'IVECO DAILY - FIAT', placa: 'OUC6G80', alturaMm: 2090, larguraMm: 2070, profundidadeMm: 4380, tamanho: 'Pequeno' },
+  { modelo: 'IVECO DAILY - FIAT', placa: 'OUC6G70', alturaMm: 2090, larguraMm: 2070, profundidadeMm: 4380, tamanho: 'Pequeno' },
+  { modelo: 'ATEGO 1419 - M.BENZ', placa: 'RSM1F99', alturaMm: 3030, larguraMm: 2470, profundidadeMm: 9880, tamanho: 'Médio' },
+  { modelo: 'ATEGO 1419 - M.BENZ', placa: 'RSQ9B26', alturaMm: 3010, larguraMm: 2470, profundidadeMm: 8380, tamanho: 'Médio' },
+  { modelo: '710 - M.BENZ', placa: 'NHY8E04', alturaMm: null, larguraMm: null, profundidadeMm: null, tamanho: 'Médio' },
+  { modelo: 'F350 G - FORD', placa: 'OEA1H17', alturaMm: null, larguraMm: null, profundidadeMm: null, tamanho: 'Pequeno' },
+  { modelo: 'ATEGO 1419 - M.BENZ', placa: 'PIX1F44', alturaMm: null, larguraMm: null, profundidadeMm: null, tamanho: 'Médio' },
+  { modelo: '24.250 CNC 6X2 - VW', placa: 'NIW6D58', alturaMm: null, larguraMm: null, profundidadeMm: null, tamanho: 'Grande Maior' },
+  { modelo: '24.250 CNC 6X2 - VW', placa: 'NIB5502', alturaMm: null, larguraMm: null, profundidadeMm: null, tamanho: 'Grande Maior' },
+];
+
+const TAMANHOS_INICIAIS: Array<{ nome: string; consumoKmL: number; ordem: number }> = [
+  { nome: 'Pequeno', consumoKmL: 5, ordem: 1 },
+  { nome: 'Médio', consumoKmL: 4.5, ordem: 2 },
+  { nome: 'Grande Menor', consumoKmL: 4, ordem: 3 },
+  { nome: 'Grande Maior', consumoKmL: 3, ordem: 4 },
 ];
 
 const PRODUTOS_INICIAIS: Array<{
@@ -66,6 +74,27 @@ const PRODUTOS_INICIAIS: Array<{
 async function main() {
   console.log('=== Carga inicial Cubagem ===\n');
 
+  const tamanhoPorNome = new Map<string, number>();
+  for (const t of TAMANHOS_INICIAIS) {
+    const row = await prisma.logTamanhoCategoria.upsert({
+      where: { nome: t.nome },
+      create: {
+        nome: t.nome,
+        consumoKmL: t.consumoKmL,
+        ativo: true,
+        ordem: t.ordem,
+      },
+      update: {
+        consumoKmL: t.consumoKmL,
+        ativo: true,
+        ordem: t.ordem,
+      },
+    });
+    tamanhoPorNome.set(t.nome, row.id);
+    console.log(`Tamanho ${t.nome}: ${t.consumoKmL} km/L`);
+  }
+  console.log(`\nCategorias de tamanho: ${TAMANHOS_INICIAIS.length} registradas.\n`);
+
   let veiculosOk = 0;
   for (const v of VEICULOS_INICIAIS) {
     await upsertVeiculoPorPlaca({
@@ -75,11 +104,12 @@ async function main() {
       larguraMm: v.larguraMm,
       profundidadeMm: v.profundidadeMm,
       ativo: true,
+      tamanhoCategoriaId: tamanhoPorNome.get(v.tamanho) ?? null,
     });
     veiculosOk++;
     const dim =
       v.alturaMm != null ? `${v.alturaMm}×${v.larguraMm}×${v.profundidadeMm} mm` : 'dimensões pendentes';
-    console.log(`Veículo ${v.placa}: ${dim}`);
+    console.log(`Veículo ${v.placa}: ${dim} · ${v.tamanho}`);
   }
   console.log(`\nVeículos: ${veiculosOk} registrados.\n`);
 

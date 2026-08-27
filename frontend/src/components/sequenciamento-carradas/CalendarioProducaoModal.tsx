@@ -100,6 +100,10 @@ import {
   type StatusPorDataMateriais,
 } from '../../api/sequenciamentoCarradas';
 import type { PrevisaoConfiavelTri } from '../TogglePrevisaoConfiavel';
+import {
+  loadFiltrosCalendarioProducao,
+  saveFiltrosCalendarioProducao,
+} from '../../utils/persistFiltros';
 
 type Props = {
   linhas: Record<string, unknown>[];
@@ -399,16 +403,30 @@ export default function CalendarioProducaoModal({
       hasPermission(PERMISSOES.PCP_TOTAL) ||
       hasPermission(PERMISSOES.PEDIDOS_EDITAR));
 
-  const [filtroPd, setFiltroPd] = useState('');
-  const [filtroTipoF, setFiltroTipoF] = useState('');
-  const [filtroConfiavel, setFiltroConfiavel] = useState('');
-  const [somentePrev, setSomentePrev] = useState(false);
+  const filtrosIniciais = useMemo(() => loadFiltrosCalendarioProducao(), []);
+  const [filtroPd, setFiltroPd] = useState(filtrosIniciais.filtroPd);
+  const [filtroTipoF, setFiltroTipoF] = useState(filtrosIniciais.filtroTipoF);
+  const [filtroConfiavel, setFiltroConfiavel] = useState(filtrosIniciais.filtroConfiavel);
+  const [somentePrev, setSomentePrev] = useState(filtrosIniciais.somentePrev);
+  const [vistaCalendario, setVistaCalendario] = useState<'producao' | 'materiais'>(
+    filtrosIniciais.vistaCalendario
+  );
   const [iconesVisiveis, setIconesVisiveis] = useState<Record<IconeCalendario, boolean>>(
     ICONES_CALENDARIO_INICIAIS
   );
   const alternarIcone = useCallback((icone: IconeCalendario) => {
     setIconesVisiveis((atual) => ({ ...atual, [icone]: !atual[icone] }));
   }, []);
+
+  useEffect(() => {
+    saveFiltrosCalendarioProducao({
+      filtroPd,
+      filtroTipoF,
+      filtroConfiavel,
+      somentePrev,
+      vistaCalendario,
+    });
+  }, [filtroPd, filtroTipoF, filtroConfiavel, somentePrev, vistaCalendario]);
 
   const qtdePorRow = useMemo(() => {
     const porIndex = montarQtdeLiquidaDoSnapshot(linhas, estoquePorCod);
@@ -594,7 +612,6 @@ export default function CalendarioProducaoModal({
    */
   const [splitComPedido, setSplitComPedido] = useState(false);
   const drillAntesSplitRef = useRef<Drill | null>(null);
-  const [vistaCalendario, setVistaCalendario] = useState<'producao' | 'materiais'>('producao');
 
   const encerrarSplitComPedido = useCallback(() => {
     setSplitComPedido(false);

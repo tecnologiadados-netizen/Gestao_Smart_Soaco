@@ -71,8 +71,7 @@ export default function ModalHistoricoVendasEvolucao({
   const resumo = useMemo(() => {
     const valor = series.reduce((s, x) => s + x.valor, 0);
     const qtde = series.reduce((s, x) => s + x.qtde, 0);
-    const pedidos = series.reduce((s, x) => s + x.pedidos, 0);
-    return { valor, qtde, pedidos };
+    return { valor, qtde };
   }, [series]);
 
   if (!open) return null;
@@ -91,7 +90,7 @@ export default function ModalHistoricoVendasEvolucao({
             {subtitulo && <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{subtitulo}</p>}
             {!loading && !erro && series.length > 0 && (
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {formatMoeda(resumo.valor)} · {formatNumero(resumo.pedidos)} PDs · {formatNumero(resumo.qtde)} un. no período filtrado
+                {formatMoeda(resumo.valor)} · {formatNumero(resumo.qtde)} un. no período filtrado
               </p>
             )}
           </div>
@@ -113,7 +112,7 @@ export default function ModalHistoricoVendasEvolucao({
               loading={loading}
               compact
               title="Evolução mensal da fatia"
-              subtitle="Valor vendido por mês no período filtrado."
+              subtitle="Valor e unidades vendidas por mês no período filtrado."
             />
           )}
         </div>

@@ -6,6 +6,7 @@ import {
   buscarPedidosVendaNomus,
   buscarPessoasNomus,
   buscarProdutosNomus,
+  buscarRncPainelNomus,
 } from '../data/qualidadeNomusRepository.js';
 import {
   getQualidadeBootstrap,
@@ -138,6 +139,16 @@ export async function getQualidadeDocumentosEntrada(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Erro ao buscar documentos de entrada.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function getQualidadeRncPainel(_req: Request, res: Response): Promise<void> {
+  try {
+    const result = await buscarRncPainelNomus();
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao buscar painel de RNC.';
     res.status(500).json({ error: message });
   }
 }

@@ -14,6 +14,7 @@ import type { PedidoAlterado } from './simulacaoCarradas';
 function pedido(partial: Partial<PedidoAlterado> & Pick<PedidoAlterado, 'idPedido' | 'pd'>): PedidoAlterado {
   return {
     rota: 'ROTA A',
+    chaveSim: 'PA 1\x1eROTA A',
     cliente: 'Cliente',
     cod: 'PA 1',
     descricao: 'Produto',

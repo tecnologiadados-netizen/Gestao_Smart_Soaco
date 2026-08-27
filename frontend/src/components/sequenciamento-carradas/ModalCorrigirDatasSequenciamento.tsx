@@ -141,6 +141,7 @@ function PedidoLoteDataPicker({
       iconOnly
       iconTitle={titulo}
       className={iconClassName}
+      minDate={hojeISO()}
       onChange={onSelecionar}
     />
   );
@@ -176,6 +177,7 @@ function renderInputsDataItem(
           className={`text-xs ${
             c.producaoPassada ? 'border-red-400 ring-1 ring-red-300' : ''
           } ${divergeProducao ? 'border-amber-400 ring-1 ring-amber-200' : ''}`}
+          minDate={hojeISO()}
           onChange={(iso) => onEditar(c.key, 'dataProducao', iso)}
           onKeyDown={(e) => handleDateKey(e, c.key, 'dataProducao')}
         />
@@ -218,6 +220,7 @@ function renderInputsDataItem(
           className={`text-xs ${
             c.entregaPassada ? 'border-red-400 ring-1 ring-red-300' : ''
           } ${divergeEntrega ? 'border-amber-400 ring-1 ring-amber-200' : ''}`}
+          minDate={hojeISO()}
           onChange={(iso) => onEditar(c.key, 'dataEntrega', iso)}
           onKeyDown={(e) => handleDateKey(e, c.key, 'dataEntrega')}
         />

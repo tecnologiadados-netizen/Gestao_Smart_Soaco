@@ -358,9 +358,9 @@ export default function ModalFiltrosConsultaEstoque({
                   </div>
                 )}
                 {isCobertura && (
-                  <div className="min-w-0 xl:col-span-3">
+                  <div className="min-w-0">
                     <p className={labelClass}>Universo do painel</p>
-                    <div className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-slate-600 dark:bg-slate-900/40">
+                    <div className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 dark:border-slate-600 dark:bg-slate-900/40">
                       <button
                         type="button"
                         role="switch"
@@ -368,23 +368,20 @@ export default function ModalFiltrosConsultaEstoque({
                         aria-label="Considerar somente produtos com empenho"
                         disabled={carregando}
                         onClick={() => onSomenteComEmpenhoChange?.(!somenteComEmpenho)}
-                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50 ${
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50 ${
                           somenteComEmpenho ? 'bg-primary-600' : 'bg-slate-300 dark:bg-slate-600'
                         }`}
                       >
                         <span
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200 ease-in-out ${
-                            somenteComEmpenho ? 'translate-x-5' : 'translate-x-0'
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ease-in-out ${
+                            somenteComEmpenho ? 'translate-x-4' : 'translate-x-0'
                           }`}
                         />
                       </button>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                      <span className="text-sm font-medium leading-snug text-slate-700 dark:text-slate-200">
                         Considerar somente produtos com empenho?
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Desligado (padrão): inclui itens com e sem empenho. Ligado: restringe a empenho &gt; 0.
-                    </p>
                   </div>
                 )}
                 {!isCobertura && (

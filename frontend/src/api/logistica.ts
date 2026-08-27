@@ -1,5 +1,21 @@
 import { apiFetch, apiJson } from './client';
 
+export type TamanhoCategoria = {
+  id: number;
+  nome: string;
+  consumoKmL: number;
+  ativo: boolean;
+  ordem: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TamanhoCategoriaResumo = {
+  id: number;
+  nome: string;
+  consumoKmL: number;
+};
+
 export type Veiculo = {
   id: number;
   placa: string;
@@ -16,6 +32,8 @@ export type Veiculo = {
   ano: number | null;
   motoristaPadrao: string | null;
   ativo: boolean;
+  tamanhoCategoriaId: number | null;
+  tamanho: TamanhoCategoriaResumo | null;
   status: 'dimensionado' | 'pendente';
   createdAt: string;
   updatedAt: string;
@@ -76,6 +94,14 @@ export type VeiculoInput = {
   ano?: number | null;
   motoristaPadrao?: string | null;
   ativo?: boolean;
+  tamanhoCategoriaId?: number | null;
+};
+
+export type TamanhoCategoriaInput = {
+  nome: string;
+  consumoKmL: number;
+  ativo?: boolean;
+  ordem?: number;
 };
 
 export type ProdutoCubagemInput = {
@@ -121,6 +147,37 @@ export async function atualizarVeiculo(id: number, body: VeiculoInput): Promise<
 export async function excluirVeiculo(id: number): Promise<void> {
   const res = await apiFetch(`/api/logistica/cubagem/veiculos/${id}`, { method: 'DELETE' });
   if (!res.ok) await handleError(res, 'Erro ao excluir veículo.');
+}
+
+export async function listarTamanhosCategorias(apenasAtivos = false): Promise<TamanhoCategoria[]> {
+  const qs = apenasAtivos ? '?apenasAtivos=true' : '';
+  const r = await apiJson<{ data: TamanhoCategoria[] }>(`/api/logistica/cubagem/tamanhos${qs}`);
+  return r.data ?? [];
+}
+
+export async function criarTamanhoCategoria(body: TamanhoCategoriaInput): Promise<TamanhoCategoria> {
+  const res = await apiFetch('/api/logistica/cubagem/tamanhos', { method: 'POST', body: body as unknown });
+  if (!res.ok) await handleError(res, 'Erro ao criar categoria.');
+  const r = (await res.json()) as { data: TamanhoCategoria };
+  return r.data;
+}
+
+export async function atualizarTamanhoCategoria(
+  id: number,
+  body: TamanhoCategoriaInput
+): Promise<TamanhoCategoria> {
+  const res = await apiFetch(`/api/logistica/cubagem/tamanhos/${id}`, {
+    method: 'PUT',
+    body: body as unknown,
+  });
+  if (!res.ok) await handleError(res, 'Erro ao atualizar categoria.');
+  const r = (await res.json()) as { data: TamanhoCategoria };
+  return r.data;
+}
+
+export async function excluirTamanhoCategoria(id: number): Promise<void> {
+  const res = await apiFetch(`/api/logistica/cubagem/tamanhos/${id}`, { method: 'DELETE' });
+  if (!res.ok) await handleError(res, 'Erro ao excluir categoria.');
 }
 
 export type FiltrosProdutosCubagem = {

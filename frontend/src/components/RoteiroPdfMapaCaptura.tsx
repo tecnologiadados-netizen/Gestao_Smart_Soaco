@@ -93,8 +93,8 @@ export default function RoteiroPdfMapaCaptura({ polyline, paradas, onPronto }: R
       touchZoom={false}
     >
       <TileLayer
-        attribution=""
-        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <AjustaBoundsEPronto polyline={polyline} paradas={paradas} onProntoRef={onProntoRef} />
       <Pane name="pdf-rota" style={{ zIndex: 400 }}>

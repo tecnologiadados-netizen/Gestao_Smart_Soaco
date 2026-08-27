@@ -5,15 +5,19 @@ import { requirePermission } from '../middleware/requirePermission.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import {
   deleteProdutoCubagemHandler,
+  deleteTamanho,
   deleteVeiculo,
   getPedidoItensCubagem,
   getProdutoCubagemById,
   getProdutosCubagem,
+  getTamanhos,
   getVeiculoById,
   getVeiculos,
   postSimulacaoCalcular,
+  postTamanho,
   postVeiculo,
   putProdutoCubagem,
+  putTamanho,
   putVeiculo,
 } from '../controllers/cubagemController.js';
 
@@ -30,6 +34,12 @@ const editarCubagem = requirePermission(
   PERMISSOES.LOGISTICA_CUBAGEM_EDITAR,
   PERMISSOES.LOGISTICA_TOTAL
 );
+
+// Tamanhos / categorias de consumo
+router.get('/cubagem/tamanhos', verLogistica, getTamanhos);
+router.post('/cubagem/tamanhos', validateCsrf, editarCubagem, postTamanho);
+router.put('/cubagem/tamanhos/:id', validateCsrf, editarCubagem, putTamanho);
+router.delete('/cubagem/tamanhos/:id', validateCsrf, editarCubagem, deleteTamanho);
 
 // Veículos (placa + dimensões da carroceria)
 router.get('/cubagem/veiculos', verLogistica, getVeiculos);

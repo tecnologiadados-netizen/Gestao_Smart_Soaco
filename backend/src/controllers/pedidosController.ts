@@ -562,19 +562,25 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
         });
         return;
       }
-      const producaoAtual = toIsoDateOnly(
-        (pedidoAtual as Record<string, unknown>).data_producao as string | Date | null | undefined
-      );
-      // Produção atual só entra na ordem previsão ≥ produção; não exigir ≥ hoje
-      // (produção já no passado não pode bloquear reprogramação da previsão).
-      const datasErro = validarDatasReprogramacao({
-        previsaoIso: novaStr,
-        producaoIso: producaoAtual || null,
-        exigirProducaoNaoAnteriorHoje: false,
-      });
-      if (datasErro) {
-        res.status(400).json({ error: datasErro });
-        return;
+      // Confirmação de confiabilidade sem mudança de data: não valida datas —
+      // registrar "confiável" sobre a previsão que já existe no ERP não pode ser
+      // bloqueado por inconsistência pré-existente (ex.: produção > previsão).
+      const somenteConfirmacao = confirmacao_data === true && previsaoAntigaStr === novaStr;
+      if (!somenteConfirmacao) {
+        const producaoAtual = toIsoDateOnly(
+          (pedidoAtual as Record<string, unknown>).data_producao as string | Date | null | undefined
+        );
+        // Produção atual só entra na ordem previsão ≥ produção; não exigir ≥ hoje
+        // (produção já no passado não pode bloquear reprogramação da previsão).
+        const datasErro = validarDatasReprogramacao({
+          previsaoIso: novaStr,
+          producaoIso: producaoAtual || null,
+          exigirProducaoNaoAnteriorHoje: false,
+        });
+        if (datasErro) {
+          res.status(400).json({ error: datasErro });
+          return;
+        }
       }
     } else {
       const datasErro = validarDatasReprogramacao({ previsaoIso: dataPrevisao });
@@ -818,6 +824,30 @@ export async function ajustarPrevisaoLote(req: Request, res: Response): Promise<
   if (itensComPrevisaoValida.length === 0) {
     res.status(400).json({ error: 'Nenhum item com data de nova previsão válida para processar.' });
     return;
+  }
+
+  for (const a of itensComPrevisaoValida) {
+    const idNorm = String(a.id_pedido ?? '').trim();
+    const pedidoAtual = await buscarPedidoPorId(idNorm);
+    if (!pedidoAtual) continue;
+    const producaoAtual = toIsoDateOnly(
+      (pedidoAtual as Record<string, unknown>).data_producao as string | Date | null | undefined
+    );
+    const rawPrev = String(a.previsao_nova ?? '').trim();
+    const previsaoStr = /^\d{4}-\d{2}-\d{2}$/.test(rawPrev)
+      ? rawPrev.slice(0, 10)
+      : new Date(a.previsao_nova!).toISOString().slice(0, 10);
+    const datasErro = validarDatasReprogramacao({
+      previsaoIso: previsaoStr,
+      producaoIso: producaoAtual || null,
+      exigirProducaoNaoAnteriorHoje: false,
+    });
+    if (datasErro) {
+      const row = pedidoAtual as Record<string, unknown>;
+      const pd = String(row['PD'] ?? row['pd'] ?? '').trim();
+      res.status(400).json({ error: datasErro, id_pedido: idNorm, pd: pd || undefined });
+      return;
+    }
   }
 
   // Usuário da requisição atual (quem está importando)

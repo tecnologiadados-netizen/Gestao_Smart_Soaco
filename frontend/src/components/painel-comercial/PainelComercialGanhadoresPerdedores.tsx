@@ -1,4 +1,4 @@
-import { formatMoeda, formatPct, classVar } from './painelComercialUtils';
+import { formatMoeda, formatPct, classVar, PAINEL_PALETTE } from './painelComercialUtils';
 
 type Row = {
   codigoProduto: string;
@@ -13,13 +13,18 @@ function Tabela({
   title,
   rows,
   onRowClick,
+  accentColor,
 }: {
   title: string;
   rows: Row[];
   onRowClick: (row: Row) => void;
+  accentColor: string;
 }) {
   return (
-    <div className="card-panel flex min-h-[320px] flex-col p-5">
+    <div
+      className="card-panel flex min-h-[320px] flex-col border-t-4 p-5"
+      style={{ borderTopColor: accentColor }}
+    >
       <div className="mb-3 shrink-0">
         <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">{title}</h3>
         <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Variação por produto (valor).</p>
@@ -99,8 +104,18 @@ export default function PainelComercialGanhadoresPerdedores({
 
   return (
     <div className="grid gap-3 xl:grid-cols-2">
-      <Tabela title="Ganhadores (alta)" rows={ganhadores} onRowClick={(r) => onProdutoClick(r.codigoProduto)} />
-      <Tabela title="Perdedores (queda)" rows={perdedores} onRowClick={(r) => onProdutoClick(r.codigoProduto)} />
+      <Tabela
+        title="Ganhadores (alta)"
+        rows={ganhadores}
+        accentColor={PAINEL_PALETTE.ganhadores}
+        onRowClick={(r) => onProdutoClick(r.codigoProduto)}
+      />
+      <Tabela
+        title="Perdedores (queda)"
+        rows={perdedores}
+        accentColor={PAINEL_PALETTE.perdedores}
+        onRowClick={(r) => onProdutoClick(r.codigoProduto)}
+      />
     </div>
   );
 }

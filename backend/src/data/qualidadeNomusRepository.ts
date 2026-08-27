@@ -842,6 +842,157 @@ export async function buscarDocumentosEntradaNomus(
   };
 }
 
+/** Modelo FOR-SA-0021 — Relatório de Não Conformidade (RNC). */
+const RNC_MODELO_NOME = 'FOR-SA-0021 RELATÓRIO DE NÃO CONFORMIDADE (RNC)';
+const RNC_ATTR_DATA_OCORRENCIA = 50;
+const RNC_ATTR_PRAZO_EXECUCAO = 47;
+const RNC_ATTR_RESPONSAVEL_ACAO_IMEDIATA = 46;
+const RNC_ATTR_STATUS = 449;
+const RNC_STATUS_EM_ANDAMENTO = 'Em andamento';
+
+export interface RncPainelItem {
+  id: number;
+  codigoDocumento: string;
+  dataOcorrencia: string | null;
+  statusRnc: string;
+  prazoExecucao: string | null;
+  responsavel: string | null;
+}
+
+export interface RncPainelIndicadores {
+  total: number;
+  noPrazo: number;
+  vencidas: number;
+  semPrazo: number;
+  responsaveis: number;
+}
+
+/** Converte data BR (DD/MM/YYYY) ou ISO parcial para YYYY-MM-DD. */
+function dataBrParaIso(valor: unknown): string | null {
+  const raw = String(valor ?? '').trim();
+  if (!raw) return null;
+  const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  return null;
+}
+
+function hojeIsoLocal(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function calcularIndicadoresRnc(itens: RncPainelItem[]): RncPainelIndicadores {
+  const hoje = hojeIsoLocal();
+  let noPrazo = 0;
+  let vencidas = 0;
+  let semPrazo = 0;
+  const responsaveis = new Set<string>();
+
+  for (const item of itens) {
+    const resp = item.responsavel?.trim();
+    if (resp) responsaveis.add(resp.toLocaleLowerCase('pt-BR'));
+
+    if (!item.prazoExecucao) {
+      semPrazo += 1;
+      continue;
+    }
+    if (item.prazoExecucao >= hoje) noPrazo += 1;
+    else vencidas += 1;
+  }
+
+  return {
+    total: itens.length,
+    noPrazo,
+    vencidas,
+    semPrazo,
+    responsaveis: responsaveis.size,
+  };
+}
+
+/**
+ * Painel RNC: documentos FOR-SA-0021 em andamento com ocorrência desde 2025.
+ * Usa tabelas base (documento + atributos) — equivalente semântico a dwlc_documentos.
+ */
+export async function buscarRncPainelNomus(): Promise<{
+  itens: RncPainelItem[];
+  indicadores: RncPainelIndicadores;
+  source: 'erp' | 'indisponivel';
+}> {
+  const pool = getNomusPool();
+  if (!pool) {
+    return {
+      itens: [],
+      indicadores: { total: 0, noPrazo: 0, vencidas: 0, semPrazo: 0, responsaveis: 0 },
+      source: 'indisponivel',
+    };
+  }
+
+  const sql = `
+    SELECT
+      d.id,
+      d.codigo AS codigoDocumento,
+      data_oc.valor AS dataOcorrencia,
+      status_opt.opcao AS statusRnc,
+      prazo.valor AS prazoExecucao,
+      resp.valor AS responsavel
+    FROM documento d
+    INNER JOIN modelodocumento md
+      ON md.id = d.idDocumento
+     AND md.nome = ?
+    INNER JOIN atributodocumentovalor status_av
+      ON status_av.idDocumento = d.id
+     AND status_av.idAtributo = ?
+    INNER JOIN atributolistaopcao status_opt
+      ON status_opt.id = status_av.idListaOpcao
+     AND status_opt.opcao = ?
+    LEFT JOIN atributodocumentovalor data_oc
+      ON data_oc.idDocumento = d.id
+     AND data_oc.idAtributo = ?
+    LEFT JOIN atributodocumentovalor prazo
+      ON prazo.idDocumento = d.id
+     AND prazo.idAtributo = ?
+    LEFT JOIN atributodocumentovalor resp
+      ON resp.idDocumento = d.id
+     AND resp.idAtributo = ?
+    WHERE data_oc.valor IS NOT NULL
+      AND TRIM(data_oc.valor) <> ''
+      AND STR_TO_DATE(data_oc.valor, '%d/%m/%Y') >= '2025-01-01'
+    ORDER BY STR_TO_DATE(data_oc.valor, '%d/%m/%Y') DESC, d.id DESC
+  `;
+
+  const [rows] = await pool.query<RowDataPacket[]>(sql, [
+    RNC_MODELO_NOME,
+    RNC_ATTR_STATUS,
+    RNC_STATUS_EM_ANDAMENTO,
+    RNC_ATTR_DATA_OCORRENCIA,
+    RNC_ATTR_PRAZO_EXECUCAO,
+    RNC_ATTR_RESPONSAVEL_ACAO_IMEDIATA,
+  ]);
+
+  const itens: RncPainelItem[] = (rows as Record<string, unknown>[]).map((row) => ({
+    id: Number(row.id),
+    codigoDocumento: String(row.codigoDocumento ?? '').trim(),
+    dataOcorrencia: dataBrParaIso(row.dataOcorrencia),
+    statusRnc: String(row.statusRnc ?? '').trim() || RNC_STATUS_EM_ANDAMENTO,
+    prazoExecucao: dataBrParaIso(row.prazoExecucao),
+    responsavel: (() => {
+      const v = String(row.responsavel ?? '').trim();
+      return v || null;
+    })(),
+  }));
+
+  return {
+    itens,
+    indicadores: calcularIndicadoresRnc(itens),
+    source: 'erp',
+  };
+}
+
 export function qualidadeNomusDisponivel(): boolean {
   return isNomusEnabled();
 }

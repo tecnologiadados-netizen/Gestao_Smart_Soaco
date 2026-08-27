@@ -15,7 +15,7 @@ import {
   rotaFromPedidoRow,
 } from '../utils/rotaCarrada';
 import { validarDatasReprogramacao } from '../utils/canalReprogramacaoDatas';
-import { formatDataCurta } from './sequenciamento-carradas/simulacaoCarradas';
+import { formatDataCurta, hojeISO } from './sequenciamento-carradas/simulacaoCarradas';
 import { lerPdfAssinatura, type AnexoAssinaturaPayload } from '../utils/lerPdfAssinatura';
 import CampoAnexoAssinaturaPdf from './CampoAnexoAssinaturaPdf';
 import TogglePrevisaoConfiavel, { type PrevisaoConfiavelTri } from './TogglePrevisaoConfiavel';
@@ -328,14 +328,16 @@ export default function ModalAjustePrevisao({
   /** Copia a data atual para o campo “nova” correspondente; a gravação fica no Salvar. */
   const replicarDataAtualParaNova = (campo: 'producao' | 'previsao') => {
     if (!calendario) return;
+    const hoje = hojeISO();
     if (campo === 'producao') {
       if (!producaoAtualStr) return;
-      setDataProducaoNova(producaoAtualStr);
+      const producaoAlvo = producaoAtualStr < hoje ? hoje : producaoAtualStr;
+      setDataProducaoNova(producaoAlvo);
       const previsaoForm = previsao_nova.trim().slice(0, 10);
-      const deveElevar = !!previsaoForm && previsaoForm < producaoAtualStr;
-      const previsaoAjustada = deveElevar ? producaoAtualStr : previsaoForm;
+      const deveElevar = !!previsaoForm && previsaoForm < producaoAlvo;
+      const previsaoAjustada = deveElevar ? producaoAlvo : previsaoForm;
       if (previsaoAjustada !== previsaoForm) setPrevisaoNova(previsaoAjustada);
-      limparCamposAjustePrevisaoSeInativos(previsaoAjustada, producaoAtualStr);
+      limparCamposAjustePrevisaoSeInativos(previsaoAjustada, producaoAlvo);
       setErrors((prev) => {
         if (!prev.data_producao_nova) return prev;
         const next = { ...prev };
@@ -345,8 +347,9 @@ export default function ModalAjustePrevisao({
       return;
     }
     if (!previsaoAtualStr) return;
-    setPrevisaoNova(previsaoAtualStr);
-    limparCamposAjustePrevisaoSeInativos(previsaoAtualStr, data_producao_nova.trim().slice(0, 10));
+    const previsaoAlvo = previsaoAtualStr < hoje ? hoje : previsaoAtualStr;
+    setPrevisaoNova(previsaoAlvo);
+    limparCamposAjustePrevisaoSeInativos(previsaoAlvo, data_producao_nova.trim().slice(0, 10));
     setErrors((prev) => {
       if (!prev.previsao_nova && !prev.previsao_confiavel) return prev;
       const next = { ...prev };
@@ -991,6 +994,7 @@ export default function ModalAjustePrevisao({
                 <SequenciamentoDateField
                   fullWidth
                   value={data_producao_nova}
+                  minDate={hojeISO()}
                   onChange={(nova) => {
                     setDataProducaoNova(nova);
                     const previsaoForm = previsao_nova.trim().slice(0, 10);
@@ -1030,6 +1034,7 @@ export default function ModalAjustePrevisao({
                 <SequenciamentoDateField
                   fullWidth
                   value={previsao_nova}
+                  minDate={hojeISO()}
                   onChange={(nova) => {
                     setPrevisaoNova(nova);
                     limparCamposAjustePrevisaoSeInativos(nova, data_producao_nova.trim().slice(0, 10));
@@ -1049,6 +1054,7 @@ export default function ModalAjustePrevisao({
                 <SequenciamentoDateField
                   fullWidth
                   value={data_producao_nova}
+                  minDate={hojeISO()}
                   onChange={(nova) => {
                     setDataProducaoNova(nova);
                     const previsaoForm = previsao_nova.trim().slice(0, 10);
@@ -1069,6 +1075,7 @@ export default function ModalAjustePrevisao({
                 <SequenciamentoDateField
                   fullWidth
                   value={previsao_nova}
+                  minDate={hojeISO()}
                   onChange={(nova) => {
                     setPrevisaoNova(nova);
                     limparCamposAjustePrevisaoSeInativos(nova, data_producao_nova.trim().slice(0, 10));

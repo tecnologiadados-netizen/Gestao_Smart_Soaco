@@ -5,9 +5,11 @@ import {
   linhaCodCarrada,
   simItemKey,
   carradaKey,
+  hojeISO,
   toISODate,
   valorEfetivo,
   valorEfetivoItem,
+  previsaoAtualDaLinha,
   type CarradaBaseline,
   type CarradaDataInvalida,
   type PedidoAlterado,
@@ -35,7 +37,7 @@ export type LinhaConclusao = {
   entregaPassada: boolean;
   previsaoPassada?: boolean;
   previsaoAtual?: string;
-  /** Datas válidas (≥ hoje) ou linha só de motivo (sem data vencida). */
+  /** Datas válidas (≥ hoje e entrega ≥ produção). */
   datasOk: boolean;
   qtdePendenteReal: number;
   exigeMotivo: boolean;
@@ -50,7 +52,30 @@ export type MontarLinhasConclusaoOpts = {
   baseline?: Map<string, CarradaBaseline>;
 };
 
+/** Flags de datas para linha do modal Concluir. */
+export function calcularFlagsDatasLinha(
+  dataProducao: string,
+  dataEntrega: string,
+  hoje: string = hojeISO()
+): {
+  producaoPassada: boolean;
+  entregaPassada: boolean;
+  datasOk: boolean;
+} {
+  const producaoPassada = !!dataProducao && dataProducao < hoje;
+  const entregaPassada = !!dataEntrega && dataEntrega < hoje;
+  const ordemOk = !dataProducao || !dataEntrega || dataEntrega >= dataProducao;
+  const datasOk =
+    !!dataProducao &&
+    dataProducao >= hoje &&
+    !!dataEntrega &&
+    dataEntrega >= hoje &&
+    ordemOk;
+  return { producaoPassada, entregaPassada, datasOk };
+}
+
 function simKeyPedidoAlterado(p: PedidoAlterado): string {
+  if (p.chaveSim) return p.chaveSim;
   if (isCarradaOrdemFinal(p.rota)) return simItemKey(p.idPedido);
   return carradaKey(p.cod || '—', p.rota);
 }
@@ -178,6 +203,20 @@ function expandirItensDaCarrada(
 }
 
 /**
+ * Ordenação padrão do modal Concluir: produção → carrada → pedido → descrição.
+ */
+export function compararLinhasConclusao(a: LinhaConclusao, b: LinhaConclusao): number {
+  const prodA = a.dataProducao || '9999-12-31';
+  const prodB = b.dataProducao || '9999-12-31';
+  if (prodA !== prodB) return prodA.localeCompare(prodB);
+  const carr = a.carrada.localeCompare(b.carrada, 'pt-BR', { sensitivity: 'base' });
+  if (carr !== 0) return carr;
+  const pd = a.pedido.localeCompare(b.pedido, 'pt-BR', { numeric: true });
+  if (pd !== 0) return pd;
+  return a.descricao.localeCompare(b.descricao, 'pt-BR', { sensitivity: 'base' });
+}
+
+/**
  * Une datas vencidas + pedidos com previsão alterada numa grade plana.
  * Carradas agregadas (sem idPedido) são expandidas nos itens do snapshot.
  * Com `opts.sim`, linhas só-motivo recebem as datas efetivas da simulação.
@@ -209,7 +248,6 @@ export function montarLinhasConclusao(
       continue;
     }
 
-    // Sem itens no snapshot: mantém agregada (sem Motivo).
     out.push(linhaFromInvalidaItem(inv, undefined));
   }
 
@@ -222,6 +260,7 @@ export function montarLinhasConclusao(
       opts?.sim,
       opts?.baseline
     );
+    const flags = calcularFlagsDatasLinha(dataProducao, dataEntrega);
     out.push({
       key: simKeyPedidoAlterado(ped),
       idPedido: ped.idPedido,
@@ -233,14 +272,69 @@ export function montarLinhasConclusao(
       dataEmissao: emissaoDaLinha(row),
       dataProducao,
       dataEntrega,
-      producaoPassada: false,
-      entregaPassada: false,
-      datasOk: true,
+      producaoPassada: flags.producaoPassada,
+      entregaPassada: flags.entregaPassada,
+      datasOk: flags.datasOk,
       qtdePendenteReal: ped.qtdePendenteReal,
       exigeMotivo: true,
     });
   }
 
+  return out;
+}
+
+/** Item cuja única alteração é a escolha de "Previsão confiável" (sem mudança de entrega). */
+export type ItemConfiavelSo = {
+  idPedido: string;
+  confiavel: boolean;
+  /** Previsão efetiva enviada ao Gerenciador na confirmação (`confirmacao_data`). */
+  previsao: string;
+  /** Rota/carrada da linha (override por rota no ajuste). */
+  rota: string;
+  /** PD para identificar a linha em mensagens de erro. */
+  pd: string;
+};
+
+/**
+ * Pedidos com escolha de "Previsão confiável" divergente do snapshot e SEM mudança
+ * de entrega (o lote rejeita data igual — vão pelo endpoint unitário com
+ * `confirmacao_data`).
+ *
+ * Regras:
+ * - Carradas em formação ficam de fora: datas não são gerenciadas nesta tela e a
+ *   previsão antiga da linha poderia conflitar com a produção do Gerenciador.
+ * - Carrada normal usa a data efetiva da carrada (sim/baseline), igual à grade;
+ *   carrada especial (ordem final) usa a data efetiva do item.
+ */
+export function computarIdsConfiavelSo(
+  previsaoConfiavelPorId: Record<string, boolean | null>,
+  idsEntrega: Set<string>,
+  linhasSnapshot: Record<string, unknown>[],
+  sim: Map<string, SimEntry>,
+  baseline: Map<string, CarradaBaseline>
+): ItemConfiavelSo[] {
+  const out: ItemConfiavelSo[] = [];
+  for (const [idPedido, valor] of Object.entries(previsaoConfiavelPorId)) {
+    if (valor !== true && valor !== false) continue;
+    if (idsEntrega.has(idPedido)) continue;
+    const row = rowPorIdPedido(linhasSnapshot, idPedido);
+    if (!row) continue;
+    if (row['previsao_atual_confiavel'] === valor) continue;
+    const { carrada } = linhaCodCarrada(row);
+    if (isCarradaEmFormacao(carrada)) continue;
+    const previsao = isCarradaOrdemFinal(carrada)
+      ? valorEfetivoItem(sim, row, 'dataEntrega') || previsaoAtualDaLinha(row)
+      : valorEfetivo(sim, baseline, linhaCarradaKey(row), 'dataEntrega') ||
+        previsaoAtualDaLinha(row);
+    if (!previsao) continue;
+    out.push({
+      idPedido,
+      confiavel: valor,
+      previsao,
+      rota: carrada,
+      pd: getField(row, ['PD', 'pd']) || idPedido,
+    });
+  }
   return out;
 }
 

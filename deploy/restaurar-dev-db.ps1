@@ -44,6 +44,16 @@ if (Test-Path $dbDest) {
 Copy-Item $Origem $dbDest -Force
 Write-Host "Banco restaurado: $dbDest ($((Get-Item $dbDest).Length) bytes)"
 
+# WAL/SHM do banco anterior não podem permanecer — SQLite aplica o journal
+# antigo sobre o arquivo novo e resulta em "database disk image is malformed".
+foreach ($suffix in @('-wal', '-shm', '-journal')) {
+  $side = "$dbDest$suffix"
+  if (Test-Path $side) {
+    Remove-Item $side -Force
+    Write-Host "Removido arquivo auxiliar órfão: $(Split-Path $side -Leaf)"
+  }
+}
+
 Push-Location (Join-Path $root 'backend')
 npm run migrate
 Pop-Location

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Pencil, Trash2 } from 'lucide-react';
 import type { RoteiroResultado } from '../utils/heatmapRoteirizador';
 import { labelTeresinaBase } from '../utils/heatmapTeresinaBase';
 import {
@@ -11,6 +12,8 @@ import {
   contagemExclusoesMunicipio,
   type SelecionadoComChave,
 } from '../utils/heatmapRoteiroRelatorio';
+import { fmtPctFrete, pctFrete } from '../utils/heatmapRoteiroFrete';
+import type { TamanhoCategoria } from '../api/logistica';
 
 export type { SelecionadoComChave } from '../utils/heatmapRoteiroRelatorio';
 
@@ -27,6 +30,10 @@ export default function HeatmapRoteirizadorPanel({
   salvandoPdf,
   onAjustarCarga,
   onRestaurarSimulacao,
+  precoCombustivel,
+  categorias,
+  categoriaId,
+  onCategoriaChange,
 }: {
   loading: boolean;
   resultado: RoteiroResultado | null;
@@ -40,6 +47,10 @@ export default function HeatmapRoteirizadorPanel({
   salvandoPdf?: boolean;
   onAjustarCarga: (chave: string) => void;
   onRestaurarSimulacao: () => void;
+  precoCombustivel: number;
+  categorias: TamanhoCategoria[];
+  categoriaId: number | null;
+  onCategoriaChange: (id: number | null) => void;
 }) {
   const temSimulacao = exclusoesSimulacao.size > 0 || (ajustesQtdeSimulacao?.size ?? 0) > 0;
   const vendaPorLabelParada = useMemo(
@@ -56,14 +67,44 @@ export default function HeatmapRoteirizadorPanel({
     [selecionados, exclusoesSimulacao, ajustesQtdeSimulacao]
   );
 
+  const categoriaAtiva = useMemo(
+    () => (categoriaId != null ? categorias.find((c) => c.id === categoriaId) ?? null : null),
+    [categorias, categoriaId]
+  );
+  const consumoKmL = categoriaAtiva?.consumoKmL ?? 0;
+
+  const pctTotal = useMemo(() => {
+    if (!resultado || !(consumoKmL > 0)) return null;
+    return pctFrete(resultado.totalKm, consumoKmL, precoCombustivel, totalVendaSimulada);
+  }, [resultado, consumoKmL, precoCombustivel, totalVendaSimulada]);
+
   return (
     <div
-      className="min-h-0 max-h-full w-[min(22rem,calc(100vw-2rem))] flex-1 overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+      className="min-h-0 max-h-full w-[min(34rem,calc(100vw-2rem))] flex-1 overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-2xl dark:border-slate-600 dark:bg-slate-800"
       role="dialog"
       aria-label="Resultado da roteirização"
     >
       <div className="flex items-start justify-between gap-2 border-b border-slate-200 pb-2 dark:border-slate-600">
-        <h3 className="font-semibold text-slate-800 dark:text-slate-100">Roteirização</h3>
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <h3 className="font-semibold text-slate-800 dark:text-slate-100">Roteirização</h3>
+          <select
+            className="max-w-[9.5rem] rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:border-slate-500 dark:bg-slate-700 dark:text-slate-100"
+            value={categoriaId ?? ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              onCategoriaChange(v ? Number(v) : null);
+            }}
+            title="Categoria para simulação de % frete"
+            aria-label="Categoria do veículo para simulação"
+          >
+            <option value="">Categoria…</option>
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome} ({c.consumoKmL.toLocaleString('pt-BR')} km/L)
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
           {temSimulacao && (
             <button
@@ -170,6 +211,13 @@ export default function HeatmapRoteirizadorPanel({
               <dd className="font-semibold text-slate-800 dark:text-slate-100">
                 {fmtKmRoteiro(resultado.totalKm)} <span className="text-slate-400 dark:text-slate-500">|</span>{' '}
                 {fmtBrlRoteiro(totalVendaSimulada)}
+                {pctTotal != null && (
+                  <>
+                    {' '}
+                    <span className="text-slate-400 dark:text-slate-500">|</span>{' '}
+                    <span title="% frete (combustível / valor)">{fmtPctFrete(pctTotal)} frete</span>
+                  </>
+                )}
               </dd>
               {temSimulacao && (
                 <dd className="mt-0.5 text-[10px] font-normal text-slate-500 dark:text-slate-400">
@@ -188,25 +236,48 @@ export default function HeatmapRoteirizadorPanel({
                 const nExc = sel
                   ? contagemExclusoesMunicipio(sel.item.detalhes ?? [], sel.chave, exclusoesSimulacao)
                   : 0;
+                const pctTrecho =
+                  consumoKmL > 0 ? pctFrete(p.distanciaKm, consumoKmL, precoCombustivel, venda) : null;
                 return (
                   <li key={idx} className="border-l-2 border-primary-400 pl-1.5 dark:border-primary-500">
-                    <div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5">
+                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                       <span className="font-mono text-[10px] font-semibold text-primary-700 dark:text-primary-300">
                         {idx + 1}.
                       </span>
                       <span className="font-semibold">{p.para}</span>
                       {sel && (
-                        <button
-                          type="button"
-                          onClick={() => onAjustarCarga(sel.chave)}
-                          className="text-[10px] font-medium text-primary-600 underline-offset-2 hover:underline dark:text-primary-400"
-                        >
-                          ajustar
-                        </button>
+                        <span className="inline-flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => onAjustarCarga(sel.chave)}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/40"
+                            title="Ajustar carga"
+                            aria-label="Ajustar carga"
+                          >
+                            <Pencil className="size-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRemover(sel.chave)}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-900/30"
+                            title="Remover da roteirização"
+                            aria-label="Remover da roteirização"
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        </span>
                       )}
                       <span className="text-slate-500 dark:text-slate-400">({fmtKmRoteiro(p.distanciaKm)})</span>
                       <span className="text-slate-500 dark:text-slate-400">|</span>
                       <span className="font-medium text-slate-700 dark:text-slate-200">{fmtBrlRoteiro(venda)}</span>
+                      {pctTrecho != null && (
+                        <>
+                          <span className="text-slate-500 dark:text-slate-400">|</span>
+                          <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300">
+                            {fmtPctFrete(pctTrecho)} frete
+                          </span>
+                        </>
+                      )}
                       {nExc > 0 && (
                         <span className="text-[10px] text-amber-700 dark:text-amber-300">
                           (−{nExc} ite{nExc > 1 ? 'ns' : 'm'})

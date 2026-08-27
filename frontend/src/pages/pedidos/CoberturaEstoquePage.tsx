@@ -63,6 +63,7 @@ import RotuloComDica from '../../components/ressupAlmox/RotuloComDica';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import { useGradeScrollIncremental } from '../../hooks/useGradeScrollIncremental';
 import CoberturaEstoqueAjudaModal from './CoberturaEstoqueAjudaModal';
+import KpiPainelVoltarLink from '../../components/kpis/KpiPainelVoltarLink';
 
 const EMPTY_OPCOES: OpcoesFiltroConsultaEstoque = {
   codigos: [],
@@ -139,10 +140,14 @@ const ATENDE_TXT: Record<ClasseAtendimento, string> = {
 };
 
 const VISOES_GRADE: { id: VisaoGradeCobertura; label: string; title: string }[] = [
+  { id: 'todos', label: 'Todos', title: 'Todos os itens do recorte ativo' },
   { id: 'atende_venda', label: 'Atende venda', title: 'Itens com empenho > 0' },
   { id: 'cobertura', label: 'Cobertura', title: 'Itens com CM > 0' },
   { id: 'sem_giro', label: 'Sem giro', title: 'CM = 0 e empenho = 0' },
 ];
+
+const BTN_LIMPAR_FILTROS =
+  'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600';
 
 const BARRA_BG: Record<BarraFirme, string> = {
   lt0: 'bg-red-600',
@@ -275,6 +280,7 @@ function itemPassaCardValor(row: CoberturaEstoqueLinha, card: CardValorCobertura
 }
 
 function passaVisaoGrade(row: CoberturaEstoqueLinha, visao: VisaoGradeCobertura): boolean {
+  if (visao === 'todos') return true;
   if (visao === 'atende_venda') return (Number(row.empenho) || 0) > 0;
   if (visao === 'cobertura') return (Number(row.consumoMedio) || 0) > 0;
   return (Number(row.consumoMedio) || 0) <= 0 && (Number(row.empenho) || 0) === 0;
@@ -459,7 +465,7 @@ export default function CoberturaEstoquePage() {
   const [filtroSemPreco, setFiltroSemPreco] = useState(false);
   const [produtoTopCapitalAtivo, setProdutoTopCapitalAtivo] = useState<number | null>(null);
   const [familiaCapitalAtiva, setFamiliaCapitalAtiva] = useState<string | null>(null);
-  const [visaoGrade, setVisaoGrade] = useState<VisaoGradeCobertura>('atende_venda');
+  const [visaoGrade, setVisaoGrade] = useState<VisaoGradeCobertura>('todos');
   const reqSeqRef = useRef(0);
   const detalheCacheRef = useRef(new Map<string, unknown>());
   const limparFiltrosGradeRef = useRef<() => void>(() => {});
@@ -519,7 +525,7 @@ export default function CoberturaEstoquePage() {
       setFiltroSemPreco(false);
       setProdutoTopCapitalAtivo(null);
       setFamiliaCapitalAtiva(null);
-      setVisaoGrade('atende_venda');
+      setVisaoGrade('todos');
       const r = await obterPainelCoberturaEstoque({
         filtros: payloadCobertura(f, soComEmpenho),
         considerarRequisicoes: req,
@@ -1034,12 +1040,15 @@ export default function CoberturaEstoquePage() {
 
       <div className="mx-auto w-full max-w-[1920px] space-y-5">
         <header className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">
-            <RotuloComDica
-              rotulo="Cobertura de Estoque"
-              dica="Visão gerencial do almoxarifado secundário — Atendimento da venda (estoque ÷ empenho) e Cobertura em meses (estoque − empenho) ÷ CM, sem divisor 0,01."
-            />
-          </h1>
+          <div className="flex min-w-0 flex-col gap-1">
+            <KpiPainelVoltarLink painelId="cobertura-estoque" />
+            <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">
+              <RotuloComDica
+                rotulo="Cobertura de Estoque"
+                dica="Visão gerencial do almoxarifado secundário — Atendimento da venda (estoque ÷ empenho) e Cobertura em meses (estoque − empenho) ÷ CM, sem divisor 0,01."
+              />
+            </h1>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 dark:border-slate-600 dark:bg-slate-800">
               <button
@@ -1078,7 +1087,7 @@ export default function CoberturaEstoquePage() {
             <ComoLerBtn onClick={() => setAjudaAberta(true)} title="Como ler a Cobertura de Estoque" />
             <button
               type="button"
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
+              className={BTN_LIMPAR_FILTROS}
               disabled={loading || !temFiltrosParaLimpar}
               onClick={handleLimparFiltrosTopo}
               title="Limpa filtros do modal e faixas/KPI/comprador/capital clicados"
@@ -1263,6 +1272,8 @@ export default function CoberturaEstoquePage() {
                     Carga por comprador
                   </h2>
                   <p className="text-[10px] text-slate-500">
+                    <span className="font-medium text-slate-700 dark:text-slate-200">itens</span>
+                    {' · '}
                     <span className="font-medium text-red-600">ruptura</span>
                     {' — '}
                     <span className="font-medium text-violet-600">aguard. PC</span>
@@ -1301,7 +1312,16 @@ export default function CoberturaEstoquePage() {
                               >
                                 {c.comprador}
                               </span>
-                              <span className="flex shrink-0 gap-2 text-[11px] tabular-nums">
+                              <span className="flex shrink-0 items-center gap-2 text-[11px] tabular-nums">
+                                <span
+                                  className="font-semibold text-slate-700 dark:text-slate-200"
+                                  title={`${c.itens} itens no recorte (bate com a grade na visão Todos)`}
+                                >
+                                  {c.itens}
+                                </span>
+                                <span className="text-slate-300 dark:text-slate-600" aria-hidden>
+                                  |
+                                </span>
                                 <span className="text-red-600">{c.ruptura}</span>
                                 <span className="text-violet-600">{c.aguardandoPc}</span>
                                 <span className="text-orange-500">{c.critico}</span>
@@ -1651,10 +1671,10 @@ export default function CoberturaEstoquePage() {
                   {grade.temFiltrosOuOrdem && (
                     <button
                       type="button"
-                      className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                      className={BTN_LIMPAR_FILTROS}
                       onClick={() => grade.limparFiltrosGrade()}
                     >
-                      Limpar filtros da grade
+                      Limpar filtros
                     </button>
                   )}
                   <button

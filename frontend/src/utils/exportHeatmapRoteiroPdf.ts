@@ -25,6 +25,7 @@ import {
 } from './heatmapRoteiroCargaSort';
 import { PONTO_RETORNO_TERESINA } from './heatmapRoteirizador';
 import { formatQtdeParaInput } from './heatmapAjusteCargaGradeUi';
+import { fmtPctFrete, fmtPrecoCombustivelBrl, pctFrete } from './heatmapRoteiroFrete';
 
 export type GerarPdfRoteiroHeatmapInput = {
   selecionados: SelecionadoComChave[];
@@ -33,6 +34,9 @@ export type GerarPdfRoteiroHeatmapInput = {
   ajustesQtdeSimulacao?: AjustesQtdeSimulacao;
   /** Elemento raiz do mapa Leaflet (`.leaflet-container`). */
   mapaElement: HTMLElement;
+  precoCombustivel?: number;
+  consumoKmL?: number;
+  categoriaNome?: string | null;
 };
 
 function nomeArquivoPdf(): string {
@@ -50,6 +54,9 @@ export async function gerarPdfRoteiroHeatmap({
   exclusoesSimulacao,
   ajustesQtdeSimulacao,
   mapaElement,
+  precoCombustivel = 0,
+  consumoKmL = 0,
+  categoriaNome = null,
 }: GerarPdfRoteiroHeatmapInput): Promise<void> {
   const exclusoes = exclusoesSimulacao ?? new Set<string>();
   const temExclusoes = simulacaoCargaAtiva(exclusoes, ajustesQtdeSimulacao);
@@ -139,7 +146,28 @@ export async function gerarPdfRoteiroHeatmap({
   y += 5;
   doc.setFont('helvetica', 'normal');
   const totV = totalVendaSelecionados(selecionados, exclusoes, ajustesQtdeSimulacao);
-  doc.text(`${fmtKmRoteiro(resultado.totalKm)}  |  ${fmtBrlRoteiro(totV)}`, margin, y);
+  const pctTotal =
+    consumoKmL > 0 ? pctFrete(resultado.totalKm, consumoKmL, precoCombustivel, totV) : null;
+  const totalLine =
+    pctTotal != null
+      ? `${fmtKmRoteiro(resultado.totalKm)}  |  ${fmtBrlRoteiro(totV)}  |  ${fmtPctFrete(pctTotal)} frete`
+      : `${fmtKmRoteiro(resultado.totalKm)}  |  ${fmtBrlRoteiro(totV)}`;
+  doc.text(totalLine, margin, y);
+  if (categoriaNome || precoCombustivel > 0) {
+    y += 4;
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    const parts: string[] = [];
+    if (categoriaNome) {
+      parts.push(
+        `Categoria: ${categoriaNome}${consumoKmL > 0 ? ` (${consumoKmL.toLocaleString('pt-BR')} km/L)` : ''}`
+      );
+    }
+    if (precoCombustivel > 0) parts.push(`Pr. combustível: ${fmtPrecoCombustivelBrl(precoCombustivel)}`);
+    doc.text(parts.join(' · '), margin, y);
+    doc.setFontSize(9);
+    doc.setTextColor(30, 41, 59);
+  }
   if (temExclusoes) {
     y += 4;
     doc.setFontSize(8);
@@ -155,12 +183,20 @@ export async function gerarPdfRoteiroHeatmap({
 
   const vendaMap = vendaPorLabelSelecionados(selecionados, exclusoes, ajustesQtdeSimulacao);
   const body: (string | number)[][] = [
-    ['0', PONTO_RETORNO_TERESINA.label, '—', '—'],
+    ['0', PONTO_RETORNO_TERESINA.label, '—', '—', '—'],
     ...resultado.pernas.map((p, idx) => {
       const v = vendaMap.get(p.para) ?? 0;
-      return [`${idx + 1}`, p.para, fmtKmRoteiro(p.distanciaKm), fmtBrlRoteiro(v)];
+      const pct =
+        consumoKmL > 0 ? pctFrete(p.distanciaKm, consumoKmL, precoCombustivel, v) : null;
+      return [
+        `${idx + 1}`,
+        p.para,
+        fmtKmRoteiro(p.distanciaKm),
+        fmtBrlRoteiro(v),
+        fmtPctFrete(pct),
+      ];
     }),
-    ['↩', 'Retorno Teresina, PI', fmtKmRoteiro(resultado.retornoKm), '—'],
+    ['↩', 'Retorno Teresina, PI', fmtKmRoteiro(resultado.retornoKm), '—', '—'],
   ];
 
   if (y > pageH - 55) {
@@ -170,17 +206,18 @@ export async function gerarPdfRoteiroHeatmap({
 
   autoTable(doc as any, {
     startY: y,
-    head: [['#', 'Parada', 'Trecho', 'Valor (saldo)']],
+    head: [['#', 'Parada', 'Trecho', 'Valor (saldo)', '% Frete']],
     body,
     theme: 'striped',
     headStyles: { fillColor: [15, 23, 42], textColor: 255, fontStyle: 'bold', halign: 'center' },
     bodyStyles: { valign: 'middle' },
-    styles: { fontSize: 8.8, cellPadding: 1.8, lineColor: [200, 210, 225], lineWidth: 0.15 },
+    styles: { fontSize: 8.5, cellPadding: 1.6, lineColor: [200, 210, 225], lineWidth: 0.15 },
     columnStyles: {
-      0: { cellWidth: 11, halign: 'center' },
-      1: { cellWidth: 68 },
-      2: { cellWidth: 34, halign: 'right' },
-      3: { cellWidth: 42, halign: 'right' },
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 58 },
+      2: { cellWidth: 28, halign: 'right' },
+      3: { cellWidth: 36, halign: 'right' },
+      4: { cellWidth: 24, halign: 'right' },
     },
     margin: { left: margin, right: margin },
     alternateRowStyles: { fillColor: [248, 250, 252] },

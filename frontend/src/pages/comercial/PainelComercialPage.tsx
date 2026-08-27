@@ -14,6 +14,7 @@ import PainelComercialGanhadoresPerdedores from '../../components/painel-comerci
 import ModalPainelComercialDrill from '../../components/painel-comercial/ModalPainelComercialDrill';
 import ModalPainelComercialDetalhe, { type DetalheContexto } from '../../components/painel-comercial/ModalPainelComercialDetalhe';
 import { formatMoeda, formatNumero, mesesAtrasYmd, hojeYmd, formatYmdBr } from '../../components/painel-comercial/painelComercialUtils';
+import KpiPainelVoltarLink from '../../components/kpis/KpiPainelVoltarLink';
 
 type DrillState =
   | null
@@ -132,6 +133,7 @@ export default function PainelComercialPage() {
     <div className="px-4 py-5 md:px-6">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
+          <KpiPainelVoltarLink painelId="painel-comercial" className="mb-1" />
           <h1 className="truncate text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Painel Comercial</h1>
           <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
             Termômetro de vendas (Só Aço). {headerResumo}

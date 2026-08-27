@@ -26,6 +26,7 @@ import ModalFiltrosDashEntregas, {
   type FiltrosDashEntregasState,
 } from '../components/dash-entregas/ModalFiltrosDashEntregas';
 import { formatMoedaDash } from '../components/dash-entregas/dashEntregasUtils';
+import KpiPainelVoltarLink from '../components/kpis/KpiPainelVoltarLink';
 
 function hojeYmd(): string {
   const d = new Date();
@@ -305,6 +306,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
+          <KpiPainelVoltarLink painelId="pedidos-em-aberto" className="mb-1" />
           <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">
             Painel Pedidos em aberto — análise de saldo pendente
           </h2>

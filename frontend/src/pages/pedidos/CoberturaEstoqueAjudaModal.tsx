@@ -40,11 +40,11 @@ const SECOES: SecaoAjuda[] = [
   },
   {
     id: 'visoes',
-    titulo: 'Três visões da grade',
+    titulo: 'Visões da grade',
     oQueE:
-      'Acima da tabela: Atende venda (Empenho > 0), Cobertura (CM > 0) e Sem giro (CM = 0 e Empenho = 0). As abas só filtram a grade; KPIs e gráficos do topo continuam no recorte de cards/barras/comprador.',
+      'Acima da tabela: Todos (consolida o recorte), Atende venda (Empenho > 0), Cobertura (CM > 0) e Sem giro (CM = 0 e Empenho = 0). As abas só filtram a grade; KPIs e gráficos do topo continuam no recorte de cards/barras/comprador.',
     comoLe:
-      'Com o toggle “somente com empenho” desligado (padrão), a visão Sem giro pode trazer itens. Ligado no modal Filtrar, restringe o painel a empenho &gt; 0 e Sem giro fica vazia. Mantenha Atende venda para o dia a dia de compra; use Cobertura para olhar só quem tem histórico de consumo.',
+      'O padrão é Todos — a contagem da grade bate com o total de itens do comprador no recorte. Use Atende venda para o dia a dia de compra; Cobertura para quem tem histórico de consumo; Sem giro para parados sem empenho. Com o toggle “somente com empenho” ligado no modal Filtrar, Sem giro fica vazia.',
   },
   {
     id: 'capital',
@@ -58,9 +58,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'comprador',
     titulo: 'Carga por comprador',
     oQueE:
-      'Barras empilhadas com urgência: Ruptura + Aguardando PC + Crítico + Atenção. Comprador vem do cadastro Nomus; sem cadastro → “A definir”.',
+      'Lista compradores com alguma urgência (Ruptura + Aguardando PC + Crítico + Atenção). O número em destaque é o total de itens daquele comprador no recorte (mesmo universo da grade na visão Todos). Os quatro números coloridos e a barra são só a fatia de urgência.',
     comoLe:
-      'Clique na linha do comprador ou em um segmento colorido (status) para filtrar a tabela.',
+      'Clique na linha do comprador para filtrar a tabela por ele (visão Todos = mesma quantidade do total). Clique em um segmento colorido para filtrar só aquele status. A barra não inclui Saudável, Excesso, Sem giro nem Sem histórico — por isso a soma colorida pode ser menor que o total de itens.',
   },
   {
     id: 'preco',
@@ -84,7 +84,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Toggles no topo (requisições) e no modal Filtrar (somente com empenho, código/descrição/coleta/família), Limpar filtros no topo (também limpa KPI/faixas clicadas e volta o universo ao padrão com/sem empenho), recorte por capital, visão da grade, funil Excel e exportação.',
     comoLe:
-      'Limpar filtros no topo zera o modal, desmarca cards/barras/comprador/capital e restaura o universo padrão (com e sem empenho). “Limpar recorte” tira só o recorte visual. “Limpar filtros da grade” desfaz só funil/ordem. O Excel exporta todas as linhas do recorte+visão+funil (valor real de cobertura, sem teto visual).',
+      'Limpar filtros no topo zera o modal, desmarca cards/barras/comprador/capital e restaura o universo padrão (com e sem empenho). “Limpar recorte” tira só o recorte visual. “Limpar filtros” na grade desfaz só funil/ordem das colunas. O Excel exporta todas as linhas do recorte+visão+funil (valor real de cobertura, sem teto visual).',
   },
 ];
 

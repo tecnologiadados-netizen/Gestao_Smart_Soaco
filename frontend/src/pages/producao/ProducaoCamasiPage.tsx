@@ -17,6 +17,7 @@ import {
 import { useTheme } from '../../contexts/ThemeContext';
 import { getChartTheme } from '../../utils/painelProducaoFormat';
 import ModalCamasiKpi, { type CamasiKpiModalTipo } from '../../components/producao/ModalCamasiKpi';
+import KpiPainelVoltarLink from '../../components/kpis/KpiPainelVoltarLink';
 import {
   formatDuracaoDidatica,
   formatHmsCurto,
@@ -351,6 +352,7 @@ export default function ProducaoCamasiPage() {
     <div className="px-4 py-5 md:px-6">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
+          <KpiPainelVoltarLink painelId="producao-camasi" className="mb-1" />
           <h1 className="truncate text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             Produção Camasi
           </h1>

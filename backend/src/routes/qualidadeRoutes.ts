@@ -10,6 +10,7 @@ import {
   getQualidadePedidosVenda,
   getQualidadePessoas,
   getQualidadeProdutos,
+  getQualidadeRncPainel,
   getQualidadeResponsaveisHandler,
   postQualidadeRccPdf,
   postQualidadeRegistrosImportHandler,
@@ -84,6 +85,9 @@ router.get('/documentos-entrada', (req, res, next) => {
 });
 router.get('/pedidos-venda', (req, res, next) => {
   getQualidadePedidosVenda(req, res).catch(next);
+});
+router.get('/rnc-painel', (req, res, next) => {
+  getQualidadeRncPainel(req, res).catch(next);
 });
 router.post('/registros/rnc/pdf', (req, res, next) => {
   postQualidadeRncPdf(req, res).catch(next);

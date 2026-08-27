@@ -239,7 +239,7 @@ export type PainelCoberturaEstoqueData = {
   familiasDisponiveis?: string[];
 };
 
-export type VisaoGradeCobertura = 'atende_venda' | 'cobertura' | 'sem_giro';
+export type VisaoGradeCobertura = 'todos' | 'atende_venda' | 'cobertura' | 'sem_giro';
 
 export async function obterPainelCoberturaEstoque(params: {
   filtros: FiltrosConsultaEstoquePayload;

@@ -48,7 +48,7 @@ export interface HistoricoVendasAnalytics {
   topGrupos: { key: string; label: string; valor: number; qtde: number; pedidos: number; valorVarPct?: number | null }[];
   topSubgrupo1: { key: string; label: string; valor: number; qtde: number; pedidos: number; valorVarPct?: number | null }[];
   topVendedores: { key: string; label: string; valor: number; qtde: number; pedidos: number; valorVarPct?: number | null }[];
-  topRegioes: { key: string; label: string; valor: number; qtde: number; pedidos: number; valorVarPct?: number | null }[];
+  topUfs: { key: string; label: string; valor: number; qtde: number; pedidos: number; valorVarPct?: number | null }[];
   mixGrupos: { grupoProduto: string; valor: number; pct: number }[];
   ganhadores: {
     codigoProduto: string;

@@ -1029,6 +1029,21 @@ model DfcPrioridadeLancamento {
 
 // --- Logística / Cubagem (extensão local; produtos vêm do Nomus) ---
 
+/// Categoria de tamanho do veículo (consumo km/L para simulação de frete).
+model LogTamanhoCategoria {
+  id          Int      @id @default(autoincrement())
+  nome        String   @unique
+  consumoKmL  Float
+  ativo       Boolean  @default(true)
+  ordem       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  veiculos LogVeiculo[]
+
+  @@map("cubagem_tamanho_categoria")
+}
+
 /// Veículo (placa) com dimensões úteis da carroceria — cada caminhão tem sua própria carroceria.
 model LogVeiculo {
   id                    Int      @id @default(autoincrement())
@@ -1046,9 +1061,13 @@ model LogVeiculo {
   ano                   Int?
   motoristaPadrao       String?
   ativo                 Boolean  @default(true)
+  tamanhoCategoriaId    Int?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
+  tamanhoCategoria LogTamanhoCategoria? @relation(fields: [tamanhoCategoriaId], references: [id], onDelete: SetNull)
+
+  @@index([tamanhoCategoriaId])
   @@map("cubagem_veiculo")
 }
 

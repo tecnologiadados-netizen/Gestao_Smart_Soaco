@@ -88,6 +88,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/qualidade/documentos': [PERMISSOES.QUALIDADE_VER],
   '/qualidade/calibracoes': [PERMISSOES.QUALIDADE_VER],
   '/qualidade/registros': [PERMISSOES.QUALIDADE_VER],
+  '/qualidade/rnc': [PERMISSOES.QUALIDADE_VER],
   '/qualidade/configuracoes': [PERMISSOES.QUALIDADE_VER],
   '/rh': [PERMISSOES.RH_VER],
   '/rh/dashboard': [PERMISSOES.RH_VER],

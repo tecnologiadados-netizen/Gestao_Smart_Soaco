@@ -28,7 +28,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Valor da grade = max(0, empenho bruto − estoque em PA): o estoque de produto acabado (via BOM) abate o bruto por completo (piso 0).',
     comoLe:
-      'A coluna da grade e o total do modal de empenho usam a mesma lógica. Ative “considerar requisições” se quiser incluir empenhos com atributo Requisitado no cálculo.',
+      'A coluna da grade e o total do modal de empenho usam a mesma lógica. O toggle “Requisições de loja” (padrão Sim) inclui empenhos com atributo Requisitado; ao alterar, a consulta é refeita na hora.',
   },
   {
     id: 'pedido',
