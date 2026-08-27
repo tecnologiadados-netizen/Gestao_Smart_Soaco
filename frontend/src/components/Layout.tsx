@@ -6,6 +6,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSOES } from '../config/permissoes';
 import {
+  buildComprasMenuForUser,
   buildFinanceiroMenuForUser,
   buildIntegracaoSubmenusForUser,
   buildLogisticaMenuForUser,
@@ -157,6 +158,10 @@ function LayoutInner() {
     () => buildRecebimentoMenuForUser(hasPermission),
     [hasPermission],
   );
+  const comprasMenu = useMemo(
+    () => buildComprasMenuForUser(hasPermission),
+    [hasPermission],
+  );
 
   const handleLogout = useCallback(async () => {
     try {
@@ -209,6 +214,7 @@ function LayoutInner() {
           isMaster={isMaster}
           logisticaMenu={logisticaMenu}
           recebimentoMenu={recebimentoMenu}
+          comprasMenu={comprasMenu}
           integracaoItems={integracaoItems}
           financeiroMenu={financeiroMenu}
           supportUnreadCount={supportUnreadCount}

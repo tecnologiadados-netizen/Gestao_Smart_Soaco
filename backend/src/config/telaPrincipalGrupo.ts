@@ -11,6 +11,7 @@ export const TELA_PRINCIPAL_KEYS = [
   'dashboard_compras',
   'coleta_precos',
   'pre_compra',
+  'double_checkin',
   'gestao_mesa',
   'digitacao_conferencia',
   'precificacao',
@@ -86,6 +87,11 @@ export const TELA_PRINCIPAL_MAP: Record<
     path: '/compras/pre-compra',
     label: 'Pré Compra',
     requiredAny: [PERMISSOES.COMPRAS_VER],
+  },
+  double_checkin: {
+    path: '/compras/double-checkin',
+    label: 'Double Check NFe',
+    requiredAny: [PERMISSOES.COMPRAS_DOUBLE_CHECKIN],
   },
   gestao_mesa: {
     path: '/recebimento/mesa',

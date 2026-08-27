@@ -80,7 +80,7 @@ export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
     label: 'Fluxos Decisórios',
     permissoes: [PERMISSOES.FLUXOS_VER, PERMISSOES.FLUXOS_EDITAR],
   },
-  { code: 'compras', label: 'Compras', permissoes: [PERMISSOES.COMPRAS_VER] },
+  { code: 'compras', label: 'Compras', permissoes: [PERMISSOES.COMPRAS_VER, PERMISSOES.COMPRAS_DOUBLE_CHECKIN] },
   {
     code: 'recebimento',
     label: 'Recebimento',

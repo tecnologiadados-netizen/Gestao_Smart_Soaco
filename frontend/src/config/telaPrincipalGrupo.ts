@@ -65,6 +65,11 @@ export const OPCOES_TELA_PRINCIPAL: { key: string; label: string; requiredAny: C
     requiredAny: [PERMISSOES.COMPRAS_VER],
   },
   {
+    key: 'double_checkin',
+    label: 'Double Check NFe',
+    requiredAny: [PERMISSOES.COMPRAS_DOUBLE_CHECKIN],
+  },
+  {
     key: 'gestao_mesa',
     label: 'Recebimento — Gestão Mesa',
     requiredAny: [PERMISSOES.RECEBIMENTO_MESA, PERMISSOES.RECEBIMENTO_TOTAL],

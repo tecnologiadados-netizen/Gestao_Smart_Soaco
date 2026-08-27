@@ -14,6 +14,7 @@ export type DoubleCheckInNota = {
   idDocumento: number;
   numeroDocumentoFiscal: string | null;
   numeroNfe: string | null;
+  dataEntrada: string | null;
   dataEmissao: string | null;
   idParceiro: number | null;
   nomeParceiro: string | null;
@@ -68,6 +69,7 @@ SELECT
   de.id AS idDocumento,
   de.numeroDocumentoFiscal AS numeroDocumentoFiscal,
   nfe.numero AS numeroNfe,
+  DATE(de.dataEntrada) AS dataEntrada,
   DATE(de.dataEmissao) AS dataEmissao,
   de.idParceiro AS idParceiro,
   pe.nome AS nomeParceiro,
@@ -77,17 +79,18 @@ LEFT JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
 LEFT JOIN pessoa pe ON pe.id = de.idParceiro
 LEFT JOIN tipomovimentacao tp ON tp.id = de.idTipoMovimentacao
 LEFT JOIN nfe ON nfe.idDocumentoEstoque = de.id
-WHERE DATE(de.dataEmissao) BETWEEN ? AND ?
+WHERE DATE(de.dataEntrada) BETWEEN ? AND ?
   AND ide.discriminador = 'ItemDocumentoEntrada'
   AND tp.id IN (${TIPOS_IN})
 GROUP BY
   de.id,
   de.numeroDocumentoFiscal,
   nfe.numero,
+  DATE(de.dataEntrada),
   DATE(de.dataEmissao),
   de.idParceiro,
   pe.nome
-ORDER BY DATE(de.dataEmissao) DESC, de.id DESC
+ORDER BY DATE(de.dataEntrada) DESC, de.id DESC
 LIMIT 2000
 `.trim();
 
@@ -97,6 +100,7 @@ SELECT
   tp.nome AS tipoMovimentacao,
   de.numeroDocumentoFiscal AS numeroDocumentoFiscal,
   nfe.numero AS numeroNfe,
+  DATE(de.dataEntrada) AS dataEntrada,
   DATE(de.dataEmissao) AS dataEmissao,
   de.idParceiro AS idParceiro,
   pe.nome AS nomeParceiro,
@@ -175,6 +179,7 @@ export async function queryDoubleCheckInNotas(params: {
       idDocumento: toInt(r.idDocumento ?? r['idDocumento']),
       numeroDocumentoFiscal: strOrNull(r.numeroDocumentoFiscal ?? r['numeroDocumentoFiscal']),
       numeroNfe: strOrNull(r.numeroNfe ?? r['numeroNfe']),
+      dataEntrada: formatSqlDateYmd(r.dataEntrada ?? r['dataEntrada']),
       dataEmissao: formatSqlDateYmd(r.dataEmissao ?? r['dataEmissao']),
       idParceiro: r.idParceiro != null ? toInt(r.idParceiro) : null,
       nomeParceiro: strOrNull(r.nomeParceiro ?? r['nomeParceiro']),
@@ -454,17 +459,17 @@ export type DoubleCheckInDashboardResult = {
 
 const SQL_DASH_SERIE = `
 SELECT
-  DATE(de.dataEmissao) AS dia,
+  DATE(de.dataEntrada) AS dia,
   COUNT(DISTINCT de.id) AS notas,
   COUNT(ide.id) AS itens
 FROM itemdocumentoestoque ide
 INNER JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
 INNER JOIN tipomovimentacao tp ON tp.id = de.idTipoMovimentacao
-WHERE DATE(de.dataEmissao) BETWEEN ? AND ?
+WHERE DATE(de.dataEntrada) BETWEEN ? AND ?
   AND ide.discriminador = 'ItemDocumentoEntrada'
   AND de.idTipoMovimentacao IN (${TIPOS_IN})
-GROUP BY DATE(de.dataEmissao)
-ORDER BY DATE(de.dataEmissao) ASC
+GROUP BY DATE(de.dataEntrada)
+ORDER BY DATE(de.dataEntrada) ASC
 `.trim();
 
 const SQL_DASH_TIPO = `
@@ -475,7 +480,7 @@ SELECT
 FROM itemdocumentoestoque ide
 INNER JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
 INNER JOIN tipomovimentacao tp ON tp.id = de.idTipoMovimentacao
-WHERE DATE(de.dataEmissao) BETWEEN ? AND ?
+WHERE DATE(de.dataEntrada) BETWEEN ? AND ?
   AND ide.discriminador = 'ItemDocumentoEntrada'
   AND de.idTipoMovimentacao IN (${TIPOS_IN})
 GROUP BY tp.id, tp.nome
@@ -491,7 +496,7 @@ SELECT
 FROM itemdocumentoestoque ide
 INNER JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
 LEFT JOIN pessoa pe ON pe.id = de.idParceiro
-WHERE DATE(de.dataEmissao) BETWEEN ? AND ?
+WHERE DATE(de.dataEntrada) BETWEEN ? AND ?
   AND ide.discriminador = 'ItemDocumentoEntrada'
   AND de.idTipoMovimentacao IN (${TIPOS_IN})
 GROUP BY de.idParceiro, pe.nome
@@ -502,10 +507,10 @@ LIMIT 5
 const SQL_DASH_IDS = `
 SELECT DISTINCT
   de.id AS idDocumento,
-  DATE(de.dataEmissao) AS dataEmissao
+  DATE(de.dataEntrada) AS dataEntrada
 FROM itemdocumentoestoque ide
 INNER JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
-WHERE DATE(de.dataEmissao) BETWEEN ? AND ?
+WHERE DATE(de.dataEntrada) BETWEEN ? AND ?
   AND ide.discriminador = 'ItemDocumentoEntrada'
   AND de.idTipoMovimentacao IN (${TIPOS_IN})
 `.trim();
@@ -567,7 +572,7 @@ export async function queryDoubleCheckInDashboard(params: {
     const dataPorDoc = new Map<number, string>();
     for (const r of idsList) {
       const id = toInt(r.idDocumento ?? r['idDocumento']);
-      const d = formatSqlDateYmd(r.dataEmissao ?? r['dataEmissao']);
+      const d = formatSqlDateYmd(r.dataEntrada ?? r['dataEntrada']);
       if (id > 0 && d) dataPorDoc.set(id, d);
     }
 

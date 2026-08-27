@@ -10,6 +10,8 @@ export const PERMISSOES = {
   HEATMAP_VER: 'heatmap.ver',
   COMPRAS_VER: 'compras.ver',
   COMPRAS_EDITAR: 'compras.editar',
+  /** Double Check NFe — conferência de entradas (acesso isolado). */
+  COMPRAS_DOUBLE_CHECKIN: 'compras.double_checkin',
   COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1: 'compras.pendencias.prioridade.comprador_1',
   COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2: 'compras.pendencias.prioridade.comprador_2',
   COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3: 'compras.pendencias.prioridade.comprador_3',
@@ -20,6 +22,7 @@ export const PERMISSOES = {
   COMERCIAL_PAINEL_VER: 'comercial.painel.ver',
   COMERCIAL_HISTORICO_VENDAS_VER: 'comercial.historico_vendas.ver',
   COMERCIAL_RFV_VER: 'comercial.rfv.ver',
+  COMERCIAL_COMISSIONAMENTO_VER: 'comercial.comissionamento.ver',
   QUALIDADE_VER: 'qualidade.ver',
   RH_VER: 'rh.ver',
   RH_CONFIGURAR: 'rh.configurar',

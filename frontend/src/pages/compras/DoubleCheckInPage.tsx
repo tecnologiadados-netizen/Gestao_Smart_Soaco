@@ -443,7 +443,7 @@ export default function DoubleCheckInPage() {
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-4">
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className={labelClass}>Data início</label>
+            <label className={labelClass}>Entrada início</label>
             <input
               type="date"
               className={inputClass}
@@ -452,7 +452,7 @@ export default function DoubleCheckInPage() {
             />
           </div>
           <div>
-            <label className={labelClass}>Data fim</label>
+            <label className={labelClass}>Entrada fim</label>
             <input
               type="date"
               className={inputClass}
@@ -506,6 +506,7 @@ export default function DoubleCheckInPage() {
             <tr>
               <th className="px-3 py-2.5 font-semibold">Nº Doc. Fiscal</th>
               <th className="px-3 py-2.5 font-semibold">Nº NF-e</th>
+              <th className="px-3 py-2.5 font-semibold">Entrada</th>
               <th className="px-3 py-2.5 font-semibold">Emissão</th>
               <th className="px-3 py-2.5 font-semibold">ID Parceiro</th>
               <th className="px-3 py-2.5 font-semibold">Parceiro</th>
@@ -518,7 +519,7 @@ export default function DoubleCheckInPage() {
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {notasPagina.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={10} className="px-3 py-8 text-center text-slate-500">
                   Nenhuma entrada no período.
                 </td>
               </tr>
@@ -538,6 +539,7 @@ export default function DoubleCheckInPage() {
                   >
                     <td className="px-3 py-2 tabular-nums">{n.numeroDocumentoFiscal ?? '—'}</td>
                     <td className="px-3 py-2 tabular-nums">{n.numeroNfe ?? '—'}</td>
+                    <td className="px-3 py-2">{fmtDataBr(n.dataEntrada)}</td>
                     <td className="px-3 py-2">{fmtDataBr(n.dataEmissao)}</td>
                     <td className="px-3 py-2 tabular-nums">{n.idParceiro ?? '—'}</td>
                     <td className="px-3 py-2 max-w-[18rem] truncate" title={n.nomeParceiro ?? undefined}>
@@ -682,9 +684,9 @@ export default function DoubleCheckInPage() {
                     Itens da entrada
                   </h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Doc {modalNota.numeroDocumentoFiscal ?? '—'} · NF-e {modalNota.numeroNfe ?? '—'} ·{' '}
-                    {fmtDataBr(modalNota.dataEmissao)} · {modalNota.nomeParceiro ?? '—'} · limiar ±
-                    {detalheLimiar}%
+                    Doc {modalNota.numeroDocumentoFiscal ?? '—'} · NF-e {modalNota.numeroNfe ?? '—'} ·
+                    Entrada {fmtDataBr(modalNota.dataEntrada)} · Emissão {fmtDataBr(modalNota.dataEmissao)} ·{' '}
+                    {modalNota.nomeParceiro ?? '—'} · limiar ±{detalheLimiar}%
                   </p>
                 </div>
                 <button

@@ -67,7 +67,7 @@ export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
   },
   { code: 'heatmap', label: 'Roteirizador', permissoes: [PERMISSOES.HEATMAP_VER] },
   { code: 'fluxos_decisorios', label: 'Fluxos Decisórios', permissoes: [...PERMISSOES_ACESSO_FLUXOS] },
-  { code: 'compras', label: 'Compras', permissoes: [PERMISSOES.COMPRAS_VER] },
+  { code: 'compras', label: 'Compras', permissoes: [PERMISSOES.COMPRAS_VER, PERMISSOES.COMPRAS_DOUBLE_CHECKIN] },
   {
     code: 'recebimento',
     label: 'Recebimento',

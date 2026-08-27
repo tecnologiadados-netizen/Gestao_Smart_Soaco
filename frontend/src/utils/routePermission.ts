@@ -24,6 +24,7 @@ import {
   PERMISSOES_ACESSO_GESTAO_MESA,
   PERMISSOES_ACESSO_RECEBIMENTO,
 } from './recebimentoPermissoes';
+import { PERMISSOES_ACESSO_DOUBLE_CHECKIN } from './doubleCheckInPermissoes';
 import {
   PERMISSOES_ACESSO_HUB_KPIS,
   PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE,
@@ -32,6 +33,7 @@ import {
   PERMISSOES_ACESSO_PAINEL_COMERCIAL_KPI,
   PERMISSOES_ACESSO_PAINEL_HISTORICO_VENDAS,
   PERMISSOES_ACESSO_PAINEL_RFV,
+  PERMISSOES_ACESSO_PAINEL_COMISSIONAMENTO,
 } from '../config/kpisCatalog';
 
 export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
@@ -75,12 +77,12 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/pedidos/painel-metas/apuracao': PERMISSOES_ACESSO_PAINEL_APURACAO,
   '/heatmap': [PERMISSOES.HEATMAP_VER],
   '/mind-maps': PERMISSOES_ACESSO_FLUXOS,
-  '/compras': [PERMISSOES.COMPRAS_VER],
+  '/compras': [PERMISSOES.COMPRAS_VER, ...PERMISSOES_ACESSO_DOUBLE_CHECKIN],
   '/compras/dashboard': [PERMISSOES.COMPRAS_VER],
   '/compras/coletas-precos': [PERMISSOES.COMPRAS_VER],
   '/compras/pre-compra': [PERMISSOES.COMPRAS_VER],
   '/compras/painel-rupturas': [PERMISSOES.COMPRAS_VER],
-  '/compras/double-checkin': [PERMISSOES.COMPRAS_VER],
+  '/compras/double-checkin': PERMISSOES_ACESSO_DOUBLE_CHECKIN,
   '/compras/rotina/pendencias': [PERMISSOES.COMPRAS_VER],
   '/engenharia': [PERMISSOES.PRECIFICACAO_VER],
   '/engenharia/precificacao': [PERMISSOES.PRECIFICACAO_VER],
@@ -109,6 +111,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/comercial/painel': PERMISSOES_ACESSO_PAINEL_COMERCIAL_KPI,
   '/comercial/historico-vendas': PERMISSOES_ACESSO_PAINEL_HISTORICO_VENDAS,
   '/comercial/classificacao-rfv': PERMISSOES_ACESSO_PAINEL_RFV,
+  '/comercial/comissionamento': PERMISSOES_ACESSO_PAINEL_COMISSIONAMENTO,
   '/loja/estoque-kits': [
     PERMISSOES.LOJA_KITS_VER,
     PERMISSOES.LOJA_KITS_MOVIMENTAR,
@@ -193,6 +196,7 @@ export const ROTAS_ORDEM = [
   '/comercial/painel',
   '/comercial/historico-vendas',
   '/comercial/classificacao-rfv',
+  '/comercial/comissionamento',
   '/loja/estoque-kits',
   '/logistica/cubagem/veiculos',
   '/logistica/cubagem/produtos',

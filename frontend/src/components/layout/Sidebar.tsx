@@ -4,7 +4,6 @@ import { PERMISSOES, type CodigoPermissao } from '../../config/permissoes';
 import {
   PRODUCAO_MENU,
   COMUNICACAO_INTERNA_SUBMENUS,
-  COMPRAS_MENU,
   ENGENHARIA_SUBMENUS,
   GESTAO_USUARIOS_SUBMENUS,
   QUALIDADE_MENU,
@@ -20,6 +19,7 @@ import {
 import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from '../../utils/suportePermissoes';
 import { podeVerMenuFinanceiro } from '../../utils/financeiroPermissoes';
 import { podeVerMenuRecebimento } from '../../utils/recebimentoPermissoes';
+import { podeVerMenuCompras } from '../../utils/doubleCheckInPermissoes';
 import { useSidebarAccordionOpen } from '../../hooks/useSidebarAccordionOpen';
 import { podeAcessarHubKpis } from '../../config/kpisCatalog';
 
@@ -175,6 +175,7 @@ export interface SidebarProps {
   isMaster: boolean;
   logisticaMenu: NavMenuEntry[];
   recebimentoMenu: NavMenuEntry[];
+  comprasMenu: NavMenuEntry[];
   integracaoItems: { to: string; label: string }[];
   financeiroMenu: FinanceiroMenuEntry[];
   supportUnreadCount: number;
@@ -391,6 +392,7 @@ export default function Sidebar({
   isMaster,
   logisticaMenu,
   recebimentoMenu,
+  comprasMenu,
   integracaoItems,
   financeiroMenu,
   supportUnreadCount,
@@ -587,7 +589,7 @@ export default function Sidebar({
           </SidebarSection>
         )}
 
-        {hasPermission(PERMISSOES.COMPRAS_VER) && (
+        {podeVerMenuCompras(hasPermission) && comprasMenu.length > 0 && (
           <SidebarSection
             id="compras"
             label="Compras"
@@ -599,7 +601,7 @@ export default function Sidebar({
             toggleAccordion={toggleAccordion}
           >
             <NavMenuTree
-              entries={COMPRAS_MENU}
+              entries={comprasMenu}
               pathname={pathname}
               sidebarOpen={open}
               accordionOpen={accordionOpen}

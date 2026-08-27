@@ -1370,6 +1370,7 @@ export type DoubleCheckInNota = {
   idDocumento: number;
   numeroDocumentoFiscal: string | null;
   numeroNfe: string | null;
+  dataEntrada: string | null;
   dataEmissao: string | null;
   idParceiro: number | null;
   nomeParceiro: string | null;

@@ -438,37 +438,37 @@ router.get(
 
 router.get(
   '/double-checkin/notas',
-  requirePermission(PERMISSOES.COMPRAS_VER),
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getDoubleCheckInNotas)
 );
 router.get(
   '/double-checkin/notas/:idDocumento/itens',
-  requirePermission(PERMISSOES.COMPRAS_VER),
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getDoubleCheckInItens)
 );
 router.post(
   '/double-checkin/status',
-  requirePermission(PERMISSOES.COMPRAS_VER),
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(postDoubleCheckInStatus)
 );
 router.get(
   '/double-checkin/dashboard',
-  requirePermission(PERMISSOES.COMPRAS_VER),
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getDoubleCheckInDashboard)
 );
 router.post(
   '/double-checkin/conferir',
-  requirePermission(PERMISSOES.COMPRAS_VER),
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(postDoubleCheckInConferir)
 );
 router.get(
   '/double-checkin/parametros',
-  requirePermission(PERMISSOES.COMPRAS_VER),
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getDoubleCheckInParametros)
 );
 router.put(
   '/double-checkin/parametros',
-  requirePermission(PERMISSOES.COMPRAS_VER),
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(putDoubleCheckInParametros)
 );
 router.get(
@@ -483,7 +483,7 @@ router.put(
 );
 router.post(
   '/double-checkin/sincronizar',
-  requirePermission(PERMISSOES.COMPRAS_VER),
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(postDoubleCheckInSincronizar)
 );
 

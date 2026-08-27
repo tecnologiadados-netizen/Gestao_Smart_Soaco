@@ -10,6 +10,8 @@ export const PERMISSOES = {
   HEATMAP_VER: 'heatmap.ver',
   COMPRAS_VER: 'compras.ver',
   COMPRAS_EDITAR: 'compras.editar',
+  /** Double Check NFe — conferência de entradas (acesso isolado). */
+  COMPRAS_DOUBLE_CHECKIN: 'compras.double_checkin',
   /** Pendências compras — editar prioridade fixa do Comprador 1. */
   COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1: 'compras.pendencias.prioridade.comprador_1',
   /** Pendências compras — editar prioridade fixa do Comprador 2. */
@@ -24,6 +26,7 @@ export const PERMISSOES = {
   COMERCIAL_PAINEL_VER: 'comercial.painel.ver',
   COMERCIAL_HISTORICO_VENDAS_VER: 'comercial.historico_vendas.ver',
   COMERCIAL_RFV_VER: 'comercial.rfv.ver',
+  COMERCIAL_COMISSIONAMENTO_VER: 'comercial.comissionamento.ver',
   QUALIDADE_VER: 'qualidade.ver',
   RH_VER: 'rh.ver',
   RH_CONFIGURAR: 'rh.configurar',
@@ -155,6 +158,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.HEATMAP_VER,
   PERMISSOES.COMPRAS_VER,
   PERMISSOES.COMPRAS_EDITAR,
+  PERMISSOES.COMPRAS_DOUBLE_CHECKIN,
   PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1,
   PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2,
   PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3,
@@ -165,6 +169,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.COMERCIAL_PAINEL_VER,
   PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER,
   PERMISSOES.COMERCIAL_RFV_VER,
+  PERMISSOES.COMERCIAL_COMISSIONAMENTO_VER,
   PERMISSOES.QUALIDADE_VER,
   PERMISSOES.RH_VER,
   PERMISSOES.RH_CONFIGURAR,
@@ -282,6 +287,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.HEATMAP_VER]: 'Ver Roteirizador',
   [PERMISSOES.COMPRAS_VER]: 'Ver Compras (Coletas de preços)',
   [PERMISSOES.COMPRAS_EDITAR]: 'Todas as funcionalidades (Compras)',
+  [PERMISSOES.COMPRAS_DOUBLE_CHECKIN]: 'Double Check NFe',
   [PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1]:
     'Pendências compras — editar prioridade fixa (Comprador 1) — por usuário',
   [PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2]:
@@ -296,6 +302,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.COMERCIAL_PAINEL_VER]: 'Painel Comercial',
   [PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER]: 'Histórico de Vendas',
   [PERMISSOES.COMERCIAL_RFV_VER]: 'Classificação RFV',
+  [PERMISSOES.COMERCIAL_COMISSIONAMENTO_VER]: 'Análise de Comissionamento',
   [PERMISSOES.QUALIDADE_VER]: 'Ver Qualidade',
   [PERMISSOES.RH_VER]: 'Ver RH (Gestão de Pessoas)',
   [PERMISSOES.RH_CONFIGURAR]: 'Configurar RH (usuários e grupos)',

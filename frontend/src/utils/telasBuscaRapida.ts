@@ -11,7 +11,6 @@ import {
   buildPcpMenuForUser,
   podeVerSecaoPcp,
   COMUNICACAO_INTERNA_SUBMENUS,
-  COMPRAS_MENU,
   ENGENHARIA_SUBMENUS,
   QUALIDADE_MENU,
   GESTAO_USUARIOS_SUBMENUS,
@@ -23,10 +22,12 @@ import {
   buildFinanceiroMenuForUser,
   buildLogisticaMenuForUser,
   buildRecebimentoMenuForUser,
+  buildComprasMenuForUser,
 } from '../config/navigationMenu';
 import { PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO } from './programacaoProducaoPermissoes';
 import { podeVerMenuFinanceiro } from './financeiroPermissoes';
 import { podeVerMenuRecebimento } from './recebimentoPermissoes';
+import { podeVerMenuCompras } from './doubleCheckInPermissoes';
 import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from './suportePermissoes';
 import { ROTA_PERMISSAO } from './routePermission';
 import { criarMatcherTextoLivre, normalizarTextoBusca } from './textoLivreBusca';
@@ -148,8 +149,9 @@ export function buildTelasBuscaRapidaForUser(ctx: BuildTelasBuscaRapidaCtx): Tel
     telas.push({ path: '/mind-maps', label: PATH_LABELS['/mind-maps'] ?? 'Fluxos Decisórios' });
   }
 
-  if (hasPermission(PERMISSOES.COMPRAS_VER)) {
-    telas.push(...flattenNavMenu(COMPRAS_MENU, hasPermission, 'Compras'));
+  const comprasMenu = buildComprasMenuForUser(hasPermission);
+  if (podeVerMenuCompras(hasPermission) && comprasMenu.length > 0) {
+    telas.push(...flattenNavMenu(comprasMenu, hasPermission, 'Compras'));
   }
 
   const recebimentoMenu = buildRecebimentoMenuForUser(hasPermission);
