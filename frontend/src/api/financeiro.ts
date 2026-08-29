@@ -18,6 +18,8 @@ export interface DfcContribuicaoLinha {
   codigoConta: number;
   tipoRef: 'A' | 'L';
   dataBucket: string;
+  /** Realizado = baixa; Projetado = título em aberto por vencimento. */
+  situacao?: 'Realizado' | 'Projetado';
 }
 
 export interface DfcAgendamentosEfetivosResponse {

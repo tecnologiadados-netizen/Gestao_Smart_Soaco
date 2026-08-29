@@ -29,7 +29,7 @@ export type DfcExportFiltros = {
   granularidade: 'dia' | 'mes';
   empresas: string;
   banco: string;
-  prioridade: string;
+  cenarios: string;
   plano: string;
 };
 
@@ -86,7 +86,7 @@ export async function exportDfcXlsx(params: {
       ['Agrupamento', filtros.granularidade === 'dia' ? 'Dia' : 'Mês'],
       ['Empresas', filtros.empresas || 'Todas'],
       ['Banco', filtros.banco || 'Todas'],
-      ['Prioridade', filtros.prioridade || 'Todas'],
+      ['Cenários', filtros.cenarios || 'Todos'],
       ['Plano de contas', filtros.plano || 'Todas'],
       ['Recebimentos', kpis.recebimentos],
       ['Pagamentos', kpis.pagamentos],

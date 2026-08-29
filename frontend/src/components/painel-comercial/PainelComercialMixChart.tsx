@@ -76,7 +76,7 @@ export default function PainelComercialMixChart({
                 className="cursor-pointer hover:opacity-100"
                 onClick={(e) => onSliceClick(s.grupoProduto, e)}
               >
-                <title>{`${s.grupoProduto}\n${s.pct.toFixed(1)}%\n${formatMoeda(s.valor)}`}</title>
+                <title>{`${s.grupoProduto}\n${s.pct.toFixed(1)}%\n${formatMoeda(s.valor)}\nClique para detalhar`}</title>
               </path>
             ))}
             <circle cx={60} cy={60} r={26} fill="var(--tw-prose-body)" opacity={0.06} />

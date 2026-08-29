@@ -94,7 +94,7 @@ import {
 } from '../data/politicaComercialPainelRepository.js';
 import { buscarClientesPoliticaComercialNomus } from '../data/politicaComercialClientesRepository.js';
 import { DEFAULT_POLITICA_COMERCIAL } from '../services/painelComercialConformidade.js';
-import { resolverFiltroPrioridade } from '../data/dfcPrioridadeFilter.js';
+import { resolverFiltroPrioridade, type DfcPrioridadeFilterResolvido } from '../data/dfcPrioridadeFilter.js';
 import { LIMITE_DETALHE_EXPORT, LIMITE_DETALHE_MODAL } from '../data/detalheLimite.js';
 import { labelEmpresaDfc } from '../data/dfcShop9Empresa.js';
 import {
@@ -105,6 +105,16 @@ import {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH_RE = /^\d{4}-\d{2}$/;
+
+/** Cenários não se aplicam ao realizado — desliga o filtro de prioridade nas queries retro. */
+const SEM_FILTRO_CENARIOS: DfcPrioridadeFilterResolvido = {
+  semFiltro: true,
+  contasAprovadas: [],
+  refsAfAprovadas: [],
+  refsAfReprovadas: [],
+  refsLfAprovadas: [],
+  refsLfReprovadas: [],
+};
 
 const MAX_IDS_DETALHE = 400;
 const DFC_IDS_CONTA_ENDIVIDAMENTO_BANCARIO = [314, 321, 289, 371] as const;
@@ -459,7 +469,7 @@ async function carregarDfcLancamentosDetalhe(args: CarregarDfcLancamentosArgs): 
     (granularidade === 'mes' ? periodoOpt < hoje.slice(0, 7) : periodoOpt < hoje);
   const temProjRec = projInicioRec <= dataFim && !periodoRecPassado;
 
-  const filtroPrioridade = await resolverFiltroPrioridade({ prioridades, idEmpresas });
+  const filtroCenarios = await resolverFiltroPrioridade({ prioridades, idEmpresas });
   const extra = { todasContas, limite };
 
   const { detalhes: detalhesLp, erro: erroLp } = await queryDfcLancamentosLpDetalhe({
@@ -470,7 +480,7 @@ async function carregarDfcLancamentosDetalhe(args: CarregarDfcLancamentosArgs): 
     contasBancarias,
     idsContaFinanceiro: idsUniq,
     periodoBucket: periodoOpt,
-    filtroPrioridade,
+    filtroPrioridade: SEM_FILTRO_CENARIOS,
     ...extra,
   });
   if (erroLp) console.error(`[${logPrefix}] LP:`, erroLp);
@@ -506,7 +516,7 @@ async function carregarDfcLancamentosDetalhe(args: CarregarDfcLancamentosArgs): 
       contasBancarias,
       idsContaFinanceiro: idsUniq,
       periodoBucket: periodoOpt,
-      filtroPrioridade,
+      filtroPrioridade: SEM_FILTRO_CENARIOS,
       ...extra,
     });
     if (eAg) {
@@ -526,7 +536,7 @@ async function carregarDfcLancamentosDetalhe(args: CarregarDfcLancamentosArgs): 
       contasBancarias,
       idsContaFinanceiro: idsUniq,
       periodoBucket: periodoOpt,
-      filtroPrioridade,
+      filtroPrioridade: SEM_FILTRO_CENARIOS,
       ...extra,
     });
     if (eRec) console.error(`[${logPrefix}] receitas retrospectivas:`, eRec);
@@ -557,7 +567,7 @@ async function carregarDfcLancamentosDetalhe(args: CarregarDfcLancamentosArgs): 
       contasBancarias,
       idsContaFinanceiro: idsUniq,
       periodoBucket: periodoOpt,
-      filtroPrioridade,
+      filtroPrioridade: filtroCenarios,
       ...extra,
     });
     if (ePg) console.error(`[${logPrefix}] projeção pagamentos Nomus:`, ePg);
@@ -574,7 +584,7 @@ async function carregarDfcLancamentosDetalhe(args: CarregarDfcLancamentosArgs): 
       contasBancarias,
       idsContaFinanceiro: idsUniq,
       periodoBucket: periodoOpt,
-      filtroPrioridade,
+      filtroPrioridade: filtroCenarios,
       ...extra,
     });
     if (eRec) console.error(`[${logPrefix}] projeção receitas Nomus:`, eRec);

@@ -89,6 +89,14 @@ export const KPI_PAINEIS: KpiPainelDef[] = [
     permissoes: [PERMISSOES.COMERCIAL_VER, PERMISSOES.COMERCIAL_RFV_VER],
   },
   {
+    id: 'analise-comissionamento',
+    pastaId: 'comercial',
+    label: 'Análise de Comissionamento',
+    capaTitulo: 'COMISSIONAMENTO',
+    to: '/comercial/comissionamento',
+    permissoes: [PERMISSOES.COMERCIAL_VER, PERMISSOES.COMERCIAL_COMISSIONAMENTO_VER],
+  },
+  {
     id: 'cobertura-estoque',
     pastaId: 'estoque',
     label: 'Cobertura de Estoque',
@@ -192,4 +200,11 @@ export const PERMISSOES_ACESSO_PAINEL_RFV: CodigoPermissao[] =
   getKpiPainel('classificacao-rfv')?.permissoes ?? [
     PERMISSOES.COMERCIAL_VER,
     PERMISSOES.COMERCIAL_RFV_VER,
+  ];
+
+/** Permissões da rota Análise de Comissionamento. */
+export const PERMISSOES_ACESSO_PAINEL_COMISSIONAMENTO: CodigoPermissao[] =
+  getKpiPainel('analise-comissionamento')?.permissoes ?? [
+    PERMISSOES.COMERCIAL_VER,
+    PERMISSOES.COMERCIAL_COMISSIONAMENTO_VER,
   ];

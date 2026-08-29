@@ -86,6 +86,53 @@ O script executa automaticamente:
 
 ---
 
+## Camasi / Firebird (painel `/producao/camasi`)
+
+O painel le um banco **Firebird** (nao o SQLite). O arquivo no Google Drive
+(`G:\Meu Drive\DADOS.CAMASI\R_drive\Dados\Terminais\01\LOCAL.FDB`) e a fonte;
+o Firebird Server **nao enxerga** a letra `G:` do Drive for Desktop — use
+sempre uma copia em disco fixo.
+
+### Neste PC (antes de validar)
+
+1. Google Drive for Desktop logado (conta `tecnologia.dados@…`).
+2. Duplo clique em `sync-camasi-fdb.bat` (ou `npm run camasi:sync-fdb`).
+3. Confirme `C:\bdcamasi\LOCAL.FDB` e Firebird 2.5 na porta 3050
+   (`npm run camasi:setup-firebird` se precisar).
+4. `backend\.env` deve ter:
+   - `CAMASI_FDB_PATH=C:\bdcamasi\LOCAL.FDB`
+   - `CAMASI_FDB_HOST=127.0.0.1`
+   - `CAMASI_FDB_PORT=3050`
+   - `CAMASI_FDB_USER=SYSDBA`
+   - `CAMASI_FDB_PASSWORD=masterkey`
+5. Teste: `http://127.0.0.1:4000/api/producao-camasi/status` e a tela `/producao/camasi`.
+
+### Na VPS (producao) — uma vez + a cada atualizacao do .FDB
+
+A VPS **nao** tem o Google Drive. Copie o `LOCAL.FDB` para la (RDP, share, etc.):
+
+```powershell
+# Na VPS (Administrador), apos colocar o arquivo:
+#   C:\bdcamasi\LOCAL.FDB
+
+powershell -ExecutionPolicy Bypass -File scripts/setup-camasi-firebird.ps1 `
+  -FdbPath "C:\bdcamasi\LOCAL.FDB"
+
+# Em C:\apps\gestor-pedidos\backend\.env (ou pasta do projeto na VPS):
+# CAMASI_FDB_PATH=C:\bdcamasi\LOCAL.FDB
+# CAMASI_FDB_HOST=127.0.0.1
+# CAMASI_FDB_PORT=3050
+# CAMASI_FDB_USER=SYSDBA
+# CAMASI_FDB_PASSWORD=masterkey
+
+Restart-Service GestorPedidosSoaco
+# Validar: https://gsmartsoaco.com.br/api/producao-camasi/status
+```
+
+**Nao** coloque senha da conta Google no `.env`. So SYSDBA/masterkey do Firebird.
+
+---
+
 ## Checklist antes do deploy
 
 - [ ] PR mergeado em `main` no GitHub
@@ -93,6 +140,7 @@ O script executa automaticamente:
 - [ ] Migrations Prisma revisadas (se houver)
 - [ ] Equipe avisada (deploy pode causar alguns segundos de indisponibilidade)
 - [ ] (Auto-deploy) Runner **Idle** em Settings → Actions → Runners
+- [ ] (Camasi) `C:\bdcamasi\LOCAL.FDB` atualizado na VPS + vars `CAMASI_FDB_*` no `.env` de producao
 
 ---
 
@@ -131,6 +179,7 @@ Logs do servico: `backend/logs/service-stdout.log`, `service-stderr.log`
 | Servico nao encontrado | Rodar `setup-prod-service.ps1` como Administrador |
 | `npm` nao reconhecido no terminal | Use `.\deploy-producao.bat` ou `$env:Path = "C:\Program Files\nodejs;$env:Path"` |
 | `EPERM` no `prisma generate` | Backend dev na porta 4000. Rode `npm run dev:stop` ou deixe o script parar sozinho e tente de novo |
+| Camasi: nao conecta / arquivo ausente | Confirme `C:\bdcamasi\LOCAL.FDB` e Firebird 3050. No PC com Drive: `sync-camasi-fdb.bat`. Na VPS: copie o `.FDB` manualmente (sem `G:`) |
 
 ---
 

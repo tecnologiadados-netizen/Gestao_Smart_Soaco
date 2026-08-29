@@ -10,9 +10,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'realizado-projetado',
     titulo: 'Realizado vs projetado',
     oQueE:
-      'A DFC mostra o caixa no tempo. Até hoje entra o que já saiu ou entrou na conta (data de baixa / quitação). A partir de amanhã entra o que ainda está em aberto, pelo vencimento e pelo saldo a baixar — com exceção da linha Receitas de Vendas de Produto (Nomus), que também inclui o vencimento de hoje.',
+      'A DFC mostra o caixa no tempo. Títulos já quitados entram pela data de baixa (realizado). Títulos em aberto entram pelo vencimento a partir de hoje (projetado), usando o saldo a baixar.',
     comoLe:
-      'Se o período “vai para frente”, a grade já mistura as duas fatias. No Excel a coluna Situação marca cada lançamento como Realizado ou Projetado. Esticar a data fim na DRE não faz o mesmo: a DRE é competência (NF emitida), não previsão de caixa. Parcelas de pedido de compra (descrição “Pedido de compra PCxxxx”) não entram: só conta a pagar de documento (NF).',
+      'Na coluna de hoje você vê tanto o que já entrou/saiu da conta quanto o que ainda vence hoje e está em aberto. No Excel a coluna Situação marca cada lançamento como Realizado ou Projetado. Use a aba Resumido para a visão agrupada (Saldo, A receber, A pagar, Sem Priorização, Saldo final). O botão Dashboard abre KPIs e o resumo no modal. Parcelas de pedido de compra (descrição “Pedido de compra PCxxxx”) não entram: só conta a pagar de documento (NF).',
   },
   {
     id: 'receita-vendas-produto',
@@ -31,10 +31,18 @@ const SECOES: SecaoAjuda[] = [
       'Ex.: regra 30,45,60 e previsão 25/07 → parcelas em 24/08, 08/09 e 23/09 (previsão + N dias), valor = saldo a receber ÷ 3. Fins de semana vão para a terça seguinte. Clique na célula para ver as parcelas. Aparece ao filtrar todas as empresas ou Só Aço.',
   },
   {
+    id: 'cenarios',
+    titulo: 'Cenários',
+    oQueE:
+      'Filtro multiselect nos filtros principais da DFC. Cada opção (1–4) corresponde à classificação de prioridade de pagamento cadastrada no plano de contas ou por lançamento.',
+    comoLe:
+      'Cenários afetam somente títulos a vencer (receitas e saídas projetadas). O realizado (baixas no passado e hoje) sempre aparece, mesmo com cenário selecionado. Na aba Resumida, A receber e A pagar respeitam o cenário; a linha Sem Priorização continua mostrando todos os títulos projetados sem classificação. Para cadastrar ou alterar prioridades, use o botão «Prioridade de pagamento».',
+  },
+  {
     id: 'prioridade-pagamento',
     titulo: 'Prioridade de pagamento',
     oQueE:
-      'Classificação de contas e títulos a pagar (1–4) para filtrar a DFC. Override por lançamento prevalece sobre a do plano de contas.',
+      'Classificação de contas e títulos a pagar (1–4) para organizar a projeção de saídas. Override por lançamento prevalece sobre a do plano de contas.',
     comoLe:
       'Na aba Plano de Contas, cada linha é conta × empresa (inclui RN e Só Refrigeração). Na aba Lançamento entram títulos em aberto: Nomus (agendamentos P sem pedido de compra) e Shop9 (Financeiro_Contas a pagar — RN/Refrigeração), no intervalo da DFC ampliado em +90 dias para a vencer. Prioridade Shop9 usa tipoRef S (Ordem do título). A DRE não tem esta classificação por lançamento — só a DFC.',
   },

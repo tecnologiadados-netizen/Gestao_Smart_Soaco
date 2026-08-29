@@ -144,7 +144,7 @@ export default function PainelComercialEvolucaoChart({
                   className={clicavel ? 'cursor-pointer hover:opacity-100' : undefined}
                   onClick={clicavel ? (e) => onPointClick!(b.mes, e) : undefined}
                 >
-                  <title>{`${labelMesCurto(b.mes)}\n${formatMoeda(b.valor)}\n${formatNumero(b.qtde)} un.`}</title>
+                  <title>{`${labelMesCurto(b.mes)}\nVenda: ${formatMoeda(b.valor)}\nQtde: ${formatNumero(b.qtde)}\nPedidos: ${formatNumero(b.pedidos)}\nClique para detalhar`}</title>
                 </rect>
                 {showValues && b.yVal > 0 && (
                   <text
