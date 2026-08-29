@@ -493,6 +493,7 @@ function pushContribuicaoShop9(
   idConta: number,
   dataBucket: string,
   valor: number,
+  situacao: 'Realizado' | 'Projetado',
 ): void {
   if (!idConta || !dataBucket || !Number.isFinite(valor) || valor === 0) return;
   out.push({
@@ -504,6 +505,7 @@ function pushContribuicaoShop9(
     codigoConta: r.ordemFinanceira,
     tipoRef: 'L',
     dataBucket,
+    situacao,
   });
 }
 
@@ -521,8 +523,7 @@ export async function coletarContribuicoesShop9(params: {
   const contribuicoes: DfcContribuicaoLinha[] = [];
   const hoje = hojeYmdLocal();
   const retroFim = dataFim < hoje ? dataFim : hoje;
-  const amanha = amanhaYmdLocal();
-  const projInicio = dataInicio >= amanha ? dataInicio : amanha;
+  const projInicio = dataInicio >= hoje ? dataInicio : hoje;
 
   if (dataInicio <= retroFim) {
     for (const r of rows) {
@@ -532,7 +533,7 @@ export async function coletarContribuicoesShop9(params: {
       if (!ymd || ymd < dataInicio || ymd > retroFim) continue;
       const idConta = resolverIdContaShop9(r);
       if (idConta == null) continue;
-      pushContribuicaoShop9(contribuicoes, r, idConta, ymd, r.valorBaixado);
+      pushContribuicaoShop9(contribuicoes, r, idConta, ymd, r.valorBaixado, 'Realizado');
     }
   }
 
@@ -541,13 +542,13 @@ export async function coletarContribuicoesShop9(params: {
       if (!shop9LinhaUsavel(r)) continue;
       if (!shop9LinhaEmAberto(r)) continue;
       const ymd = formatYmd(r.dataVencimento);
-      if (!ymd || ymd <= hoje) continue;
+      if (!ymd || ymd < hoje) continue;
       if (ymd < projInicio || ymd > dataFim) continue;
       const saldo = r.saldoBaixar;
       if (saldo <= 0) continue;
       const idConta = resolverIdContaShop9(r);
       if (idConta == null) continue;
-      pushContribuicaoShop9(contribuicoes, r, idConta, ymd, saldo);
+      pushContribuicaoShop9(contribuicoes, r, idConta, ymd, saldo, 'Projetado');
     }
   }
 
@@ -681,12 +682,6 @@ export async function queryDfcShop9DespesasPagamentoFornecedorOpcoes(params: {
     ),
   ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   return { nomes, erro };
-}
-
-function amanhaYmdLocal(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export async function testarConexaoShop9(): Promise<{ ok: boolean; linhas?: number; erro?: string }> {

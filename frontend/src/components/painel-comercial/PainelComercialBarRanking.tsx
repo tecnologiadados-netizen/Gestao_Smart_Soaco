@@ -88,7 +88,7 @@ export default function PainelComercialBarRanking({
                 onClick={(e) => onRowClick(d, e)}
                 className="truncate text-left text-xs font-medium text-slate-700 hover:opacity-80 dark:text-slate-200"
                 style={{ color: undefined }}
-                title={d.label}
+                title={`Venda: ${formatMoeda(d.valor)}\nQtde: ${formatNumero(d.qtde)}\nPedidos: ${formatNumero(d.pedidos)}\nClique para detalhar`}
               >
                 {d.label}
               </button>
@@ -96,7 +96,7 @@ export default function PainelComercialBarRanking({
                 type="button"
                 onClick={(e) => onRowClick(d, e)}
                 className="group relative h-8 overflow-hidden rounded-lg bg-slate-100 text-left dark:bg-slate-800"
-                title={`Valor: ${formatMoeda(d.valor)} · Unidades: ${formatNumero(d.qtde)}`}
+                title={`Venda: ${formatMoeda(d.valor)}\nQtde: ${formatNumero(d.qtde)}\nPedidos: ${formatNumero(d.pedidos)}\nClique para detalhar`}
               >
                 <div
                   className="absolute inset-y-0 left-0 rounded-lg transition-all group-hover:brightness-110"

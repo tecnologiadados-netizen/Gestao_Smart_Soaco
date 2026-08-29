@@ -88,12 +88,6 @@ function hojeYmdLocal(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function amanhaYmdLocal(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 function minYmd(a: string, b: string): string {
   return a <= b ? a : b;
 }
@@ -173,10 +167,9 @@ function linhaPassaFiltroReceitaVendasProdutoProj(r: NomusFinanceiroRow): boolea
   return r.geraAdiantamento == null && r.idDocumentoSaida == null && r.idPedido == null;
 }
 
-/** Conta 2: vencimento >= hoje; demais contas: vencimento > hoje. */
-function vencimentoEntraProjecaoNomus(ymd: string, hoje: string, idConta: number): boolean {
-  if (idConta === DFC_ID_RECEITA_VENDAS_PRODUTO) return ymd >= hoje;
-  return ymd > hoje;
+/** Títulos em aberto entram na projeção a partir do vencimento de hoje (inclusive). */
+function vencimentoEntraProjecaoNomus(ymd: string, hoje: string, _idConta: number): boolean {
+  return ymd >= hoje;
 }
 
 /** Exclui da projeção títulos da conta 2 que não passam no filtro de documento/adiantamento. */
@@ -371,10 +364,9 @@ function linhaPossuiMovimentoNoPeriodoDfc(
     if (baixa && baixa >= dataInicio && baixa <= retroFim) return true;
   }
 
-  const projInicioPadrao = maxYmd(dataInicio, amanhaYmdLocal());
-  const projInicioRvp = maxYmd(dataInicio, hoje);
+  const projInicio = maxYmd(dataInicio, hoje);
   if (!linhaEmAberto(r)) return false;
-  if (projInicioRvp > dataFim && projInicioPadrao > dataFim) return false;
+  if (projInicio > dataFim) return false;
 
   const venc = formatYmd(r.dataVencimento);
   if (!venc) return false;
@@ -382,10 +374,7 @@ function linhaPossuiMovimentoNoPeriodoDfc(
   if (idConta == null || idConta <= 0) return false;
   if (!linhaProjecaoContaOk(r, idConta)) return false;
   if (!vencimentoEntraProjecaoNomus(venc, hoje, idConta)) return false;
-  const inicioProj =
-    idConta === DFC_ID_RECEITA_VENDAS_PRODUTO ? projInicioRvp : projInicioPadrao;
-  if (inicioProj > dataFim) return false;
-  if (venc >= inicioProj && venc <= dataFim) return true;
+  if (venc >= projInicio && venc <= dataFim) return true;
 
   return false;
 }
@@ -400,6 +389,7 @@ function pushContribuicaoNomus(
   idConta: number,
   dataBucket: string,
   valor: number,
+  situacao: 'Realizado' | 'Projetado',
 ): void {
   if (!idConta || !dataBucket || !Number.isFinite(valor) || valor === 0) return;
   out.push({
@@ -411,6 +401,7 @@ function pushContribuicaoNomus(
     codigoConta: r.codigoConta,
     tipoRef: r.tipoRef,
     dataBucket,
+    situacao,
   });
 }
 
@@ -428,9 +419,7 @@ export async function coletarContribuicoesNomus(params: {
   const contribuicoes: DfcContribuicaoLinha[] = [];
   const hoje = hojeYmdLocal();
   const retroFim = minYmd(dataFim, hoje);
-  const projInicioPadrao = maxYmd(dataInicio, amanhaYmdLocal());
-  /** Conta 2 (Receitas de Vendas de Produto): inclui vencimento de hoje. */
-  const projInicioRvp = maxYmd(dataInicio, hoje);
+  const projInicio = maxYmd(dataInicio, hoje);
 
   if (dataInicio <= retroFim) {
     for (const r of rows) {
@@ -441,11 +430,11 @@ export async function coletarContribuicoesNomus(params: {
       if (t !== 'P' && t !== 'LP' && linhaEmAberto(r)) continue;
       const idConta = resolverIdContaNomus(r);
       if (idConta == null || idConta <= 0) continue;
-      pushContribuicaoNomus(contribuicoes, r, idConta, ymd, r.valorBaixado);
+      pushContribuicaoNomus(contribuicoes, r, idConta, ymd, r.valorBaixado, 'Realizado');
     }
   }
 
-  if (projInicioRvp <= dataFim) {
+  if (projInicio <= dataFim) {
     for (const r of rows) {
       if (!linhaIncluirDiscriminador(r, ['P', 'R', 'LR'])) continue;
       if (!linhaEmAberto(r)) continue;
@@ -459,10 +448,8 @@ export async function coletarContribuicoesNomus(params: {
       if (idConta == null || idConta <= 0) continue;
       if (!linhaProjecaoContaOk(r, idConta)) continue;
       if (!vencimentoEntraProjecaoNomus(ymd, hoje, idConta)) continue;
-      const projInicio =
-        idConta === DFC_ID_RECEITA_VENDAS_PRODUTO ? projInicioRvp : projInicioPadrao;
       if (ymd < projInicio || ymd > dataFim) continue;
-      pushContribuicaoNomus(contribuicoes, r, idConta, ymd, saldo);
+      pushContribuicaoNomus(contribuicoes, r, idConta, ymd, saldo, 'Projetado');
     }
   }
 

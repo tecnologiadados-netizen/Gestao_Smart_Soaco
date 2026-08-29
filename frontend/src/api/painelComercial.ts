@@ -227,8 +227,7 @@ export async function putPoliticaComercialPainel(
   const sp = new URLSearchParams({ escopo });
   const res = await apiFetch(`/api/financeiro/painel-comercial/politica?${sp.toString()}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(politica),
+    body: politica,
   });
   const body = (await res.json().catch(() => ({}))) as {
     politica?: PoliticaComercialPainel;
