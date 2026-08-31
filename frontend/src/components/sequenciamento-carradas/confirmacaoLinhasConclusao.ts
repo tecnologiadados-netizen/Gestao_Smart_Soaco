@@ -1,4 +1,5 @@
 import {
+  chavePedidoItemCanon,
   getField,
   getNumber,
   linhaCarradaKey,
@@ -296,6 +297,47 @@ export type ItemConfiavelSo = {
 };
 
 /**
+ * Pedidos ainda abertos no ERP (consulta ao vivo na abertura do modal Concluir).
+ * `null` = não filtrar (lista viva indisponível → fail-open).
+ */
+export function criarMatcherIdsVivosErp(
+  linhasVivas: Record<string, unknown>[] | null | undefined
+): ((idPedido: string) => boolean) | null {
+  if (!linhasVivas) return null;
+  const ids = new Set<string>();
+  const canons = new Set<string>();
+  for (const row of linhasVivas) {
+    const id = getField(row, ['id_pedido', 'idChave']);
+    if (!id) continue;
+    ids.add(id);
+    const canon = chavePedidoItemCanon(id);
+    if (canon) canons.add(canon);
+  }
+  return (idPedido: string) => {
+    const id = String(idPedido ?? '').trim();
+    if (!id) return false;
+    if (ids.has(id)) return true;
+    const canon = chavePedidoItemCanon(id);
+    return !!canon && canons.has(canon);
+  };
+}
+
+export function filtrarItensAindaVivosNoErp<T>(
+  itens: T[],
+  getId: (item: T) => string,
+  aindaVivo: ((idPedido: string) => boolean) | null
+): { vivos: T[]; ignorados: T[] } {
+  if (!aindaVivo) return { vivos: itens, ignorados: [] };
+  const vivos: T[] = [];
+  const ignorados: T[] = [];
+  for (const item of itens) {
+    if (aindaVivo(getId(item))) vivos.push(item);
+    else ignorados.push(item);
+  }
+  return { vivos, ignorados };
+}
+
+/**
  * Pedidos com escolha de "Previsão confiável" divergente do snapshot e SEM mudança
  * de entrega (o lote rejeita data igual — vão pelo endpoint unitário com
  * `confirmacao_data`).
@@ -305,18 +347,21 @@ export type ItemConfiavelSo = {
  *   previsão antiga da linha poderia conflitar com a produção do Gerenciador.
  * - Carrada normal usa a data efetiva da carrada (sim/baseline), igual à grade;
  *   carrada especial (ordem final) usa a data efetiva do item.
+ * - `aindaVivo`, quando informado, exclui pedidos que já saíram do ERP (baixados).
  */
 export function computarIdsConfiavelSo(
   previsaoConfiavelPorId: Record<string, boolean | null>,
   idsEntrega: Set<string>,
   linhasSnapshot: Record<string, unknown>[],
   sim: Map<string, SimEntry>,
-  baseline: Map<string, CarradaBaseline>
+  baseline: Map<string, CarradaBaseline>,
+  aindaVivo?: ((idPedido: string) => boolean) | null
 ): ItemConfiavelSo[] {
   const out: ItemConfiavelSo[] = [];
   for (const [idPedido, valor] of Object.entries(previsaoConfiavelPorId)) {
     if (valor !== true && valor !== false) continue;
     if (idsEntrega.has(idPedido)) continue;
+    if (aindaVivo && !aindaVivo(idPedido)) continue;
     const row = rowPorIdPedido(linhasSnapshot, idPedido);
     if (!row) continue;
     if (row['previsao_atual_confiavel'] === valor) continue;

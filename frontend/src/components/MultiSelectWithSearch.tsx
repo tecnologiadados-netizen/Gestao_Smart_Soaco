@@ -92,8 +92,8 @@ export default function MultiSelectWithSearch({
 
   const filteredOptions = useMemo(() => {
     if (onSearchAsync) {
-      const merged = new Set([...asyncOptions, ...selected]);
-      return [...merged];
+      const vistos = new Set(asyncOptions);
+      return [...asyncOptions, ...selected.filter((s) => !vistos.has(s))];
     }
     if (minSearchChars > 0 && search.trim().length < minSearchChars) return [];
     if (!search.trim()) return options;
@@ -103,15 +103,6 @@ export default function MultiSelectWithSearch({
       return match(d) || match(o);
     });
   }, [options, search, labelByValue, onSearchAsync, asyncOptions, minSearchChars, selected]);
-
-  /** Mantém as opções já marcadas visíveis no início da lista em qualquer filtro. */
-  const orderedOptions = useMemo(() => {
-    const selectedSet = new Set(selected);
-    return [
-      ...filteredOptions.filter((opt) => selectedSet.has(opt)),
-      ...filteredOptions.filter((opt) => !selectedSet.has(opt)),
-    ];
-  }, [filteredOptions, selected]);
 
   useEffect(() => {
     if (!onSearchAsync || !open) return;
@@ -236,11 +227,11 @@ export default function MultiSelectWithSearch({
         />
       </div>
       <div className="overflow-y-auto overflow-x-hidden py-1" style={{ maxHeight: listaMaxHeight }}>
-        {orderedOptions.length > 0 && (
+        {filteredOptions.length > 0 && (
           <label className="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-600">
             <input
               type="checkbox"
-              checked={orderedOptions.every((o) => selected.includes(o))}
+              checked={filteredOptions.every((o) => selected.includes(o))}
               onChange={selectAll}
               className="rounded border-slate-400 text-primary-600 focus:ring-primary-500"
             />
@@ -260,10 +251,10 @@ export default function MultiSelectWithSearch({
             Digite pelo menos {minSearchChars || 2} caracteres para buscar no ERP.
           </p>
         )}
-        {!asyncLoading && !optionsLoading && orderedOptions.length === 0 && !(minSearchChars > 0 && search.trim().length < minSearchChars) ? (
+        {!asyncLoading && !optionsLoading && filteredOptions.length === 0 && !(minSearchChars > 0 && search.trim().length < minSearchChars) ? (
           <p className="px-3 py-2 text-sm text-slate-600 dark:text-slate-300">Nenhum resultado</p>
         ) : !asyncLoading && !optionsLoading ? (
-          orderedOptions.map((opt) => {
+          filteredOptions.map((opt) => {
             const texto = displayFor(opt);
             return (
               <label

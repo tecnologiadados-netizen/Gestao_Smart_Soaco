@@ -75,7 +75,11 @@ import {
 } from '../../components/sequenciamento-carradas/sequenciamentoGradeUi';
 import SequenciamentoDateField from '../../components/sequenciamento-carradas/SequenciamentoDateField';
 import { entregaAposEditarProducao } from '../../components/sequenciamento-carradas/syncProducaoEntregaSequenciamento';
-import { computarIdsConfiavelSo } from '../../components/sequenciamento-carradas/confirmacaoLinhasConclusao';
+import {
+  computarIdsConfiavelSo,
+  criarMatcherIdsVivosErp,
+  filtrarItensAindaVivosNoErp,
+} from '../../components/sequenciamento-carradas/confirmacaoLinhasConclusao';
 import TogglePrevisaoConfiavel, {
   type PrevisaoConfiavelTri,
 } from '../../components/TogglePrevisaoConfiavel';
@@ -1352,8 +1356,23 @@ export default function SequenciamentoCarradasPage() {
           );
           return;
         }
-        if (itensProducao.length > 0) {
-          const rProd = await ajustarDataProducaoLote(itensProducao);
+        const aindaVivo = criarMatcherIdsVivosErp(linhasAoVivoConfirmacao);
+        const { vivos: producaoVivos, ignorados: producaoIgnorados } = filtrarItensAindaVivosNoErp(
+          itensProducao,
+          (it) => it.id_pedido,
+          aindaVivo
+        );
+        const { vivos: entregaVivos, ignorados: entregaIgnorados } = filtrarItensAindaVivosNoErp(
+          pedidosEntrega,
+          (p) => p.idPedido,
+          aindaVivo
+        );
+        const idsIgnorados = new Set<string>();
+        for (const it of producaoIgnorados) idsIgnorados.add(it.id_pedido);
+        for (const it of entregaIgnorados) idsIgnorados.add(it.idPedido);
+
+        if (producaoVivos.length > 0) {
+          const rProd = await ajustarDataProducaoLote(producaoVivos);
           if (rProd.erros?.length) {
             const e0 = rProd.erros[0];
             throw new Error(
@@ -1363,8 +1382,8 @@ export default function SequenciamentoCarradasPage() {
             );
           }
         }
-        if (pedidosEntrega.length > 0) {
-          const ajustes = pedidosEntrega.map((p) => ({
+        if (entregaVivos.length > 0) {
+          const ajustes = entregaVivos.map((p) => ({
             id_pedido: p.idPedido,
             previsao_nova: p.previsaoNova,
             motivo: motivos[p.idPedido] ?? '',
@@ -1384,14 +1403,25 @@ export default function SequenciamentoCarradasPage() {
 
         // Só Confiável (sem mudança de entrega): o lote rejeita data igual.
         // Usa o endpoint unitário com confirmacao_data para gravar no Gerenciador.
-        const idsEntrega = new Set(pedidosEntrega.map((p) => p.idPedido));
-        const idsConfiavelSo = computarIdsConfiavelSo(
+        const idsEntrega = new Set(entregaVivos.map((p) => p.idPedido));
+        const idsConfiavelSoTodos = computarIdsConfiavelSo(
           previsaoConfiavelPorId,
           idsEntrega,
           linhasSnapshot,
           sim,
           baseline
         );
+        const idsConfiavelSo = computarIdsConfiavelSo(
+          previsaoConfiavelPorId,
+          idsEntrega,
+          linhasSnapshot,
+          sim,
+          baseline,
+          aindaVivo
+        );
+        for (const item of idsConfiavelSoTodos) {
+          if (aindaVivo && !aindaVivo(item.idPedido)) idsIgnorados.add(item.idPedido);
+        }
         if (idsConfiavelSo.length > 0) {
           await Promise.all(
             idsConfiavelSo.map(async (item) => {
@@ -1419,13 +1449,18 @@ export default function SequenciamentoCarradasPage() {
 
         const simulacao = montarSimulacaoPayload();
         const partes: string[] = [];
-        if (itensProducao.length > 0) partes.push('datas de produção');
-        if (pedidosEntrega.length > 0) partes.push('previsões');
+        if (producaoVivos.length > 0) partes.push('datas de produção');
+        if (entregaVivos.length > 0) partes.push('previsões');
         if (idsConfiavelSo.length > 0) partes.push('previsão confiável');
         const resumo =
           partes.length > 0
             ? `${partes.join(' e ')} aplicadas no Gerenciador`
             : 'Alterações aplicadas';
+        const nIgnorados = idsIgnorados.size;
+        const sufixoIgnorados =
+          nIgnorados > 0
+            ? ` ${nIgnorados} pedido(s) baixado(s) no ERP foram ignorados.`
+            : '';
         if (snapshotVisualizado?.id) {
           const r = await concluirSequenciamentoSnapshot(snapshotVisualizado.id, simulacao);
           if (!r.ok) {
@@ -1435,7 +1470,7 @@ export default function SequenciamentoCarradasPage() {
           setConfirmacaoAberta(false);
           setCorrigirDatasSnapshot([]);
           setLinhasAoVivoConfirmacao(null);
-          setFeedbackGravacao(`${resumo} e snapshot concluído.`);
+          setFeedbackGravacao(`${resumo} e snapshot concluído.${sufixoIgnorados}`);
           setHistoricoVersao((v) => v + 1);
           await abrirSnapshot(snapshotVisualizado.id);
           return;
@@ -1443,7 +1478,7 @@ export default function SequenciamentoCarradasPage() {
         setConfirmacaoAberta(false);
         setCorrigirDatasSnapshot([]);
         setLinhasAoVivoConfirmacao(null);
-        setFeedbackGravacao(`${resumo} com sucesso.`);
+        setFeedbackGravacao(`${resumo} com sucesso.${sufixoIgnorados}`);
         resetarSimulacao();
         await handleConsultar();
       } catch (e) {
@@ -1456,6 +1491,7 @@ export default function SequenciamentoCarradasPage() {
       excessosQtdeRomaneada,
       pedidosEntrega,
       itensProducao,
+      linhasAoVivoConfirmacao,
       observacaoPorId,
       previsaoConfiavelPorId,
       linhasSnapshot,

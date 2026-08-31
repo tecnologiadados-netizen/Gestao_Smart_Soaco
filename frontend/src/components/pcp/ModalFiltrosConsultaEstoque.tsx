@@ -4,7 +4,9 @@ import CarregandoInformacoesOverlay from '../CarregandoInformacoesOverlay';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import type {
   EmpenhoEscopoConsultaEstoque,
+  EmpenhoProdutoEscopoConsultaEstoque,
   ModoPedidoConsultaEstoque,
+  ModoProdutoConsultaEstoque,
   OpcoesFiltroConsultaEstoque,
 } from '../../api/consultaEstoque';
 
@@ -50,12 +52,24 @@ export type PedidoFiltroConsultaEstoque = {
   empenhoEscopo: EmpenhoEscopoConsultaEstoque | null;
 };
 
+export type ProdutoFiltroConsultaEstoque = {
+  modoProduto: ModoProdutoConsultaEstoque | null;
+  empenhoEscopo: EmpenhoProdutoEscopoConsultaEstoque | null;
+};
+
+export const EMPTY_PRODUTO_FILTRO: ProdutoFiltroConsultaEstoque = {
+  modoProduto: null,
+  empenhoEscopo: null,
+};
+
 type Props = {
   open: boolean;
   carregando: boolean;
   msgFiltro: string | null;
   filtros: FiltrosConsultaEstoqueState;
   pedidoFiltro: PedidoFiltroConsultaEstoque;
+  produtoFiltro?: ProdutoFiltroConsultaEstoque;
+  onAlterarEscolhasProduto?: () => void;
   opcoes: OpcoesFiltroConsultaEstoque;
   /** `cobertura` oculta pedido, tipo, grupo, setor, subgrupos e sim/não de empenho/saldo. */
   modo?: 'consulta' | 'cobertura';
@@ -96,9 +110,14 @@ export function filtrosConsultaTemAlgumSelecionado(
   );
 }
 
+export function produtoFiltroTemTermo(f: FiltrosConsultaEstoqueState): boolean {
+  return f.codigos.trim() !== '' || f.descricoes.trim() !== '';
+}
+
 export function filtrosStateToPayload(
   f: FiltrosConsultaEstoqueState,
-  pedidoFiltro?: PedidoFiltroConsultaEstoque
+  pedidoFiltro?: PedidoFiltroConsultaEstoque,
+  produtoFiltro?: ProdutoFiltroConsultaEstoque
 ) {
   const base = {
     codigos: splitPipe(f.codigos),
@@ -112,6 +131,12 @@ export function filtrosStateToPayload(
     familias: splitPipe(f.familias),
     comEmpenho: f.comEmpenho,
     comSaldoEstoque: f.comSaldoEstoque,
+    ...(produtoFiltroTemTermo(f)
+      ? {
+          modoProduto: produtoFiltro?.modoProduto ?? undefined,
+          empenhoProdutoEscopo: produtoFiltro?.empenhoEscopo ?? undefined,
+        }
+      : {}),
   };
   if (!pedidoFiltro?.pedido) return base;
   return {
@@ -130,12 +155,22 @@ export function rotuloEmpenhoEscopo(escopo: EmpenhoEscopoConsultaEstoque): strin
   return escopo === 'pedido' ? 'Somente deste pedido' : 'Todos os pedidos';
 }
 
+export function rotuloModoProduto(modo: ModoProdutoConsultaEstoque): string {
+  return modo === 'diretos' ? 'Item filtrado' : 'Componentes do item';
+}
+
+export function rotuloEmpenhoProdutoEscopo(escopo: EmpenhoProdutoEscopoConsultaEstoque): string {
+  return escopo === 'produto' ? 'Somente do item filtrado' : 'Todos os pedidos';
+}
+
 export default function ModalFiltrosConsultaEstoque({
   open,
   carregando,
   msgFiltro,
   filtros,
   pedidoFiltro,
+  produtoFiltro = EMPTY_PRODUTO_FILTRO,
+  onAlterarEscolhasProduto,
   opcoes,
   modo = 'consulta',
   origensEmpenho = '',
@@ -162,6 +197,9 @@ export default function ModalFiltrosConsultaEstoque({
   if (!open) return null;
 
   const isCobertura = modo === 'cobertura';
+  const temTermoProduto = produtoFiltroTemTermo(filtros);
+  const produtoCompleto =
+    produtoFiltro.modoProduto != null && produtoFiltro.empenhoEscopo != null;
   const pedidoCompleto =
     pedidoFiltro.pedido != null &&
     pedidoFiltro.modoPedido != null &&
@@ -287,6 +325,37 @@ export default function ModalFiltrosConsultaEstoque({
                     onSearchAsync={onBuscarDescricao}
                   />
                 </div>
+                {!isCobertura && temTermoProduto && (
+                  <div className="min-w-0 xl:col-span-3">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      {produtoCompleto ? (
+                        <>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                            Produto filtrado:{' '}
+                            <strong>{rotuloModoProduto(produtoFiltro.modoProduto!)}</strong>
+                          </span>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                            Empenho:{' '}
+                            <strong>
+                              {rotuloEmpenhoProdutoEscopo(produtoFiltro.empenhoEscopo!)}
+                            </strong>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={onAlterarEscolhasProduto}
+                            className="text-primary-600 hover:underline dark:text-primary-400"
+                          >
+                            Alterar
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-amber-700 dark:text-amber-300">
+                          Selecione como visualizar o produto filtrado e como calcular o empenho.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
                 {!isCobertura && (
                   <div className="min-w-0">
                     <MultiSelectWithSearch

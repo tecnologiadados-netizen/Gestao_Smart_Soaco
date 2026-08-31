@@ -118,14 +118,14 @@ function CardsResumo({
             title="Ver detalhe do estoque em PA"
           >
             <div className="text-[11px] text-white/90">
-              <RotuloComDica rotulo="Estoque em PA" dica={DICA_ESTOQUE_PA} headerClaro />
+              <RotuloComDica rotulo="Estoque MP em PA" dica={DICA_ESTOQUE_PA} headerClaro />
             </div>
             <div className="text-sm font-semibold tabular-nums text-white">{fmt(estoquePa)}</div>
           </button>
         ) : (
           <div className={cardEstoquePaClass}>
             <div className="text-[11px] text-slate-500 dark:text-slate-400">
-              <RotuloComDica rotulo="Estoque em PA" dica={DICA_ESTOQUE_PA} />
+              <RotuloComDica rotulo="Estoque MP em PA" dica={DICA_ESTOQUE_PA} />
             </div>
             <div className="text-sm font-medium tabular-nums">{fmt(estoquePa)}</div>
           </div>

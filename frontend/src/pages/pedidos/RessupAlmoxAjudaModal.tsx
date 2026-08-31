@@ -44,7 +44,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Filtros por código, descrição, coleta e dia da semana da compra, além do flag de requisições. Snapshot mescla API com edições do usuário.',
     comoLe:
-      'Use o dia da compra para montar a lista do dia. Ao reabrir um histórico, a tela pode reconsultar o ERP e mesclar com o que você já editou.',
+      'Nome da coleta e Dia da compra são seleção exata da lista: a grade traz apenas as opções marcadas, sem correspondência parcial pelo nome. Código e descrição continuam como busca de texto (aceitam % para refinar). Use o dia da compra para montar a lista do dia. Ao reabrir um histórico, a tela pode reconsultar o ERP e mesclar com o que você já editou.',
   },
   {
     id: 'integridade',

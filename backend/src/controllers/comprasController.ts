@@ -242,11 +242,16 @@ export async function getRessupEmpenhoPorPedido(req: Request, res: Response): Pr
   const idPedidoFiltroRaw = Number(req.query.idPedidoFiltro);
   const idPedidoFiltro =
     Number.isFinite(idPedidoFiltroRaw) && idPedidoFiltroRaw > 0 ? idPedidoFiltroRaw : undefined;
+  const idsProdutosPaiEscopo = String(req.query.idsProdutosPaiEscopo ?? '')
+    .split(',')
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
   const { data, erro } = await listarEmpenhoRessupPorPedido(
     idProduto,
     considerarRequisicoes,
     modoNaoAlmox,
-    idPedidoFiltro
+    idPedidoFiltro,
+    idsProdutosPaiEscopo
   );
   if (erro) {
     res.status(503).json({ error: erro, data: null });

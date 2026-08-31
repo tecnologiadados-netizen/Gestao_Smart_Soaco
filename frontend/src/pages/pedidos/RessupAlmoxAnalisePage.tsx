@@ -610,6 +610,7 @@ export default function RessupAlmoxAnalisePage() {
   const [historicoDetalheCarregando, setHistoricoDetalheCarregando] = useState(false);
   const [historicoDetalheErro, setHistoricoDetalheErro] = useState<string | null>(null);
   const [opcoesCarregando, setOpcoesCarregando] = useState(false);
+  const [opcoesErro, setOpcoesErro] = useState<string | null>(null);
   const detalheHistoricoReqRef = useRef(0);
   const novaAnaliseWrapRef = useRef<HTMLDivElement>(null);
   /** Caches em memória dos detalhes (PC Pend, Empenho) — reabrir = instantâneo até novo Filtrar. */
@@ -621,8 +622,13 @@ export default function RessupAlmoxAnalisePage() {
 
   const carregarOpcoes = useCallback(async () => {
     setOpcoesCarregando(true);
+    setOpcoesErro(null);
     try {
       const r = await obterOpcoesFiltroRessupAlmox();
+      if (r.error) {
+        setOpcoesErro(r.error);
+        return;
+      }
       opcoesCarregadasRef.current = true;
       setOpcoesFiltro({
         codigos: [],
@@ -631,8 +637,8 @@ export default function RessupAlmoxAnalisePage() {
         diasSemana: r.diasSemana ?? [],
         items: [],
       });
-    } catch {
-      setOpcoesFiltro({ codigos: [], descricoes: [], coletas: [], diasSemana: [], items: [] });
+    } catch (err) {
+      setOpcoesErro(err instanceof Error ? err.message : 'Falha ao carregar as opções dos filtros.');
     } finally {
       setOpcoesCarregando(false);
     }
@@ -1898,6 +1904,7 @@ export default function RessupAlmoxAnalisePage() {
                   optionLabel="coletas"
                   valueSeparator="|"
                   fillContainer
+                  optionsLoading={opcoesCarregando}
                 />
                 </div>
                 <div className="min-w-0">
@@ -1912,6 +1919,7 @@ export default function RessupAlmoxAnalisePage() {
                   optionLabel="dias"
                   valueSeparator="|"
                   fillContainer
+                  optionsLoading={opcoesCarregando}
                 />
                 </div>
               </div>
@@ -1943,6 +1951,19 @@ export default function RessupAlmoxAnalisePage() {
                 <p className="mt-3 text-sm text-amber-700 dark:text-amber-300" role="alert">
                   {msgFiltro}
                 </p>
+              )}
+              {opcoesErro && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-red-600 dark:text-red-400" role="alert">
+                  <span>Não foi possível carregar as opções de coleta e dia da compra: {opcoesErro}</span>
+                  <button
+                    type="button"
+                    onClick={() => void carregarOpcoes()}
+                    disabled={opcoesCarregando}
+                    className={BTN_SECONDARY}
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
               )}
               </div>
               </div>

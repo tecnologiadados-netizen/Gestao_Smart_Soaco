@@ -50,9 +50,17 @@ const SECOES: SecaoAjuda[] = [
     id: 'estoques',
     titulo: 'Estoques da linha',
     oQueE:
-      'PA Nomus, estoque em produção (informado), bobina e MP alternativa (setores 19/20) apoiam a leitura da linha.',
+      'PA Nomus, estoque em produção (informado), bobina e MP alternativa (setores 19/20) apoiam a leitura da linha. A coluna Estoque mostra o Total = PA Nomus + estoque em produção.',
     comoLe:
       'Use esses campos para decidir se falta material ou se há alternativa. Eles não substituem a validação de OP na conclusão.',
+  },
+  {
+    id: 'saldo-projetado',
+    titulo: 'Saldo Projetado, Qtde MP Faltante e Cobertura',
+    oQueE:
+      'Saldo Projetado = Estoque Total (PA Nomus + estoque em produção) − Empenho. Qtde MP Faltante = (Empenho − Estoque Total, mínimo zero) × peso unitário da bobina. Cobertura = Saldo Projetado ÷ VM (VM zerada deixa a cobertura em branco).',
+    comoLe:
+      'As três colunas recalculam na hora quando você informa o estoque em produção no modal de Estoque, por isso o inventário precisa estar correto antes de decidir produção ou compra. Programações gravadas antes desta mudança continuam exibindo o cálculo antigo, que considerava apenas o PA Nomus — a nova base vale só para programações criadas a partir de agora.',
   },
   {
     id: 'inventario',

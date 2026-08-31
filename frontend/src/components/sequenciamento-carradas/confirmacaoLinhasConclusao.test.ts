@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   compararLinhasConclusao,
   computarIdsConfiavelSo,
+  criarMatcherIdsVivosErp,
   datasEfetivasPedidoAlterado,
+  filtrarItensAindaVivosNoErp,
   linhaConclusaoPronta,
   montarLinhasConclusao,
 } from './confirmacaoLinhasConclusao';
@@ -474,6 +476,74 @@ describe('computarIdsConfiavelSo', () => {
       new Map()
     );
     expect(itens).toEqual([]);
+  });
+
+  it('exclui pedido ausente da lista viva do ERP (baixado no Nomus)', () => {
+    const aindaVivo = criarMatcherIdsVivosErp([
+      { id_pedido: 'normal-1', PD: 'PD 100' },
+    ]);
+    const itens = computarIdsConfiavelSo(
+      { 'normal-1': true, 'especial-1': true },
+      new Set<string>(),
+      snapshot,
+      new Map<string, SimEntry>(),
+      new Map(),
+      aindaVivo
+    );
+    expect(itens).toHaveLength(1);
+    expect(itens[0]!.idPedido).toBe('normal-1');
+  });
+
+  it('reconhece o mesmo item quando o id vivo mudou o prefixo de romaneio', () => {
+    const snapBaixado = [
+      {
+        id_pedido: '186495-49898-2',
+        PD: 'PD 49898',
+        Observacoes: '2-Retirada na So Moveis',
+        previsao_atual_confiavel: false,
+        previsao_entrega_atualizada: '2026-08-10',
+      },
+    ];
+    const aindaVivo = criarMatcherIdsVivosErp([
+      { id_pedido: '188240-49898-2', PD: 'PD 49898' },
+    ]);
+    const itens = computarIdsConfiavelSo(
+      { '186495-49898-2': true },
+      new Set<string>(),
+      snapBaixado,
+      new Map<string, SimEntry>(),
+      new Map(),
+      aindaVivo
+    );
+    expect(itens).toHaveLength(1);
+    expect(itens[0]!.pd).toBe('PD 49898');
+  });
+});
+
+describe('criarMatcherIdsVivosErp', () => {
+  it('não filtra quando a lista viva é null (fail-open)', () => {
+    expect(criarMatcherIdsVivosErp(null)).toBeNull();
+    const { vivos, ignorados } = filtrarItensAindaVivosNoErp(
+      [{ id: 'a' }, { id: 'b' }],
+      (x) => x.id,
+      null
+    );
+    expect(vivos).toHaveLength(2);
+    expect(ignorados).toHaveLength(0);
+  });
+
+  it('separa vivos e baixados por id e por chave canônica', () => {
+    const aindaVivo = criarMatcherIdsVivosErp([
+      { id_pedido: '188240-49898-2' },
+      { idChave: 'vivo-1' },
+    ]);
+    const { vivos, ignorados } = filtrarItensAindaVivosNoErp(
+      [{ id: 'vivo-1' }, { id: '186495-49898-2' }, { id: 'baixado-9' }],
+      (x) => x.id,
+      aindaVivo
+    );
+    expect(vivos.map((x) => x.id)).toEqual(['vivo-1', '186495-49898-2']);
+    expect(ignorados.map((x) => x.id)).toEqual(['baixado-9']);
   });
 });
 

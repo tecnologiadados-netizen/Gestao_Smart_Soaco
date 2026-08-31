@@ -272,11 +272,12 @@ function buildSqlAndParams(filtros: FiltrosProdutosColeta): { sql: string; param
     params.push(termoParaPadraoLikeSql(fo));
   }
 
+  // Seleção da lista fechada: igualdade (ver buscarRegistroColetaNomusComFiltros).
   if (coletas.length > 0) {
     const ors: string[] = [];
     for (const co of coletas) {
-      ors.push('Coalesce(nc.opcao, \'A DEFINIR\') LIKE ?');
-      params.push(termoParaPadraoLikeSql(co));
+      ors.push('Coalesce(nc.opcao, \'A DEFINIR\') = ?');
+      params.push(co);
     }
     conditions.push(`(${ors.join(' Or ')})`);
   } else if (filtros.coleta?.trim()) {
@@ -442,6 +443,26 @@ async function listarDistinctOpcaoRessupAlmox(
 }
 
 /**
+ * Carga inicial: opções vêm da lista do atributo (tabela pequena), evitando varrer `produto`
+ * com os joins de coleta/dia — a cascata filtrada continua usando o FROM completo.
+ */
+async function listarOpcoesAtributoRessupAlmox(
+  pool: NonNullable<ReturnType<typeof getNomusPool>>,
+  campo: 'coleta' | 'diaSemana'
+): Promise<string[]> {
+  const idAtributo = campo === 'coleta' ? 650 : 651;
+  const semValor = campo === 'coleta' ? 'A DEFINIR' : 'A Definir';
+  const [rows] = await pool.query<Record<string, unknown>[]>(
+    'Select opcao From atributolistaopcao Where idAtributo = ? And Coalesce(ativo, 1) = 1',
+    [idAtributo]
+  );
+  const opcoes = (Array.isArray(rows) ? rows : [])
+    .map((r) => String(r.opcao ?? '').trim())
+    .filter(Boolean);
+  return [...new Set([...opcoes, semValor])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/**
  * Opções iniciais do Ressup Almox — somente coletas (código/descrição via typeahead no servidor).
  */
 export async function listarOpcoesFiltroRessupAlmox(): Promise<{
@@ -463,8 +484,8 @@ export async function listarOpcoesFiltroRessupAlmox(): Promise<{
   }
   try {
     const [coletas, diasSemana] = await Promise.all([
-      listarDistinctOpcaoRessupAlmox(pool, 'coleta', {}),
-      listarDistinctOpcaoRessupAlmox(pool, 'diaSemana', {}),
+      listarOpcoesAtributoRessupAlmox(pool, 'coleta'),
+      listarOpcoesAtributoRessupAlmox(pool, 'diaSemana'),
     ]);
     const data: OpcoesFiltroRessupAlmox = { codigos: [], descricoes: [], coletas, diasSemana, items: [] };
     opcoesFiltroRessupAlmoxCache = { data, expiresAt: now + OPCOES_FILTRO_RESSUP_ALMOX_CACHE_TTL_MS };
@@ -483,6 +504,18 @@ export async function listarOpcoesFiltroCascataRessupAlmox(
   const pool = getNomusPool();
   if (!pool) {
     return { data: { codigos: [], descricoes: [], coletas: [], diasSemana: [], items: [] }, erro: 'NOMUS_DB_URL não configurado' };
+  }
+  const semFiltros =
+    dedupTermos(filtros.codigos).length === 0 &&
+    dedupTermos(filtros.descricoes).length === 0 &&
+    dedupTermos(filtros.coletas).length === 0 &&
+    dedupTermos(filtros.diasSemana).length === 0 &&
+    !filtros.codigo?.trim() &&
+    !filtros.descricao?.trim() &&
+    !filtros.coleta?.trim() &&
+    !filtros.diaSemana?.trim();
+  if (semFiltros) {
+    return listarOpcoesFiltroRessupAlmox();
   }
   try {
     const [coletas, diasSemana] = await Promise.all([
@@ -731,11 +764,13 @@ export async function buscarRegistroColetaNomusComFiltros(
     params.push(termoParaPadraoLikeSql(d));
   }
 
+  // Seleção da lista fechada: igualdade. Com LIKE '%termo%' e collation sem acento,
+  // "LÃS" casaria "HOMEPLAST" e traria coletas não escolhidas para a grade.
   if (coletas.length > 0) {
     const ors: string[] = [];
     for (const co of coletas) {
-      ors.push("Coalesce(nc.opcao, 'A DEFINIR') LIKE ?");
-      params.push(termoParaPadraoLikeSql(co));
+      ors.push("Coalesce(nc.opcao, 'A DEFINIR') = ?");
+      params.push(co);
     }
     conditions.push(`(${ors.join(' Or ')})`);
   } else if (filtros.coleta?.trim()) {
@@ -1112,7 +1147,9 @@ export async function listarEmpenhoRessupPorPedido(
   idProduto: number,
   considerarRequisicoes: boolean,
   modoNaoAlmox = false,
-  idPedidoFiltro?: number
+  idPedidoFiltro?: number,
+  /** Escopo "somente do item filtrado": só pedidos que contêm estes produtos. */
+  idsProdutosPaiEscopo?: number[]
 ): Promise<{ data: RessupEmpenhoPedidoResultado | null; erro?: string }> {
   const pool = getNomusPool();
   if (!pool) return { data: null, erro: 'NOMUS_DB_URL não configurado' };
@@ -1149,6 +1186,15 @@ export async function listarEmpenhoRessupPorPedido(
         if (!ex.descricao && descricao) ex.descricao = descricao;
       } else {
         porPa.set(idPa, { idPa, qtdeNecPa: qtdeNec, estoquePa, codigo, descricao });
+      }
+    }
+    // Escopo "somente do item filtrado": só a demanda dos PAs filtrados entra, e o estoque
+    // em PA abatido é o desses mesmos PAs, limitado à demanda de cada um (igual à grade).
+    const paisEscopo = (idsProdutosPaiEscopo ?? []).filter((id) => Number.isFinite(id) && id > 0);
+    const escopoPorPa = paisEscopo.length > 0 ? new Set(paisEscopo) : null;
+    if (escopoPorPa) {
+      for (const idPa of [...porPa.keys()]) {
+        if (!escopoPorPa.has(idPa)) porPa.delete(idPa);
       }
     }
     const paIds = [...porPa.keys()];
@@ -1213,10 +1259,11 @@ export async function listarEmpenhoRessupPorPedido(
       openPorPa.set(idPa, arr);
     }
     const diretoPorPedido = new Map<number, number>();
+    const contaVendaDireta = !escopoPorPa || escopoPorPa.has(idProduto);
     for (const r of diretoRows) {
       const idPedido = Number(r.idPedido ?? 0);
       const q = Number(r.saldo ?? 0) || 0;
-      if (idPedido <= 0 || q <= 0 || !filtraPedido(idPedido)) continue;
+      if (!contaVendaDireta || idPedido <= 0 || q <= 0 || !filtraPedido(idPedido)) continue;
       pedidoNome.set(idPedido, String(r.pedido ?? '').trim());
       diretoPorPedido.set(idPedido, (diretoPorPedido.get(idPedido) ?? 0) + q);
     }
@@ -1253,7 +1300,24 @@ export async function listarEmpenhoRessupPorPedido(
 
     // Waterfall global: estoque em PA (Σ estoque×BOM / explosão) cobre entregas mais próximas.
     // Empenho líquido = max(0, bruto BOM − estoque PA) + venda direta (igual à grade).
-    {
+    const pisoPorPa = escopoPorPa != null || idPedidoFiltro != null;
+    if (pisoPorPa) {
+      // Escopo restrito (item filtrado ou um PD): o piso é por PA — o estoque de um PA não abate a demanda de outro.
+      for (const [idPa, pedidos] of openPorPa) {
+        const meta = porPa.get(idPa);
+        if (!meta || meta.qtdeNecPa <= 0) continue;
+        let restantePa = meta.estoquePa * meta.qtdeNecPa;
+        const ordenados = [...pedidos].sort((a, b) =>
+          cmpPedidosEmpenho(chaveSort(a.idPedido), chaveSort(b.idPedido))
+        );
+        for (const ped of ordenados) {
+          const bruto = meta.qtdeNecPa * ped.open;
+          const coberto = Math.min(Math.max(0, restantePa), bruto);
+          restantePa -= coberto;
+          addAcc(ped.idPedido, bruto, bruto - coberto);
+        }
+      }
+    } else {
       const brutoPorPedido = new Map<number, number>();
       for (const [idPa, pedidos] of openPorPa) {
         const meta = porPa.get(idPa);
@@ -1295,9 +1359,9 @@ export async function listarEmpenhoRessupPorPedido(
     }
     const totalBruto = arred2(totalBrutoRaw);
     // Garante card = max(0, bruto − PA) + efeito da venda direta já embutido no waterfall.
-    const totalLiquidoAlvo = arred2(
-      Math.max(0, totalBrutoRaw - vendaDiretaRaw - estoquePaExplosao) + vendaDiretaRaw
-    );
+    const totalLiquidoAlvo = pisoPorPa
+      ? arred2(totalLiquidoRaw)
+      : arred2(Math.max(0, totalBrutoRaw - vendaDiretaRaw - estoquePaExplosao) + vendaDiretaRaw);
     const totalLiquido = totalLiquidoAlvo;
 
     // Ordena por data/carrada/pedido e arredonda mantendo Σ linhas == total (= grade).

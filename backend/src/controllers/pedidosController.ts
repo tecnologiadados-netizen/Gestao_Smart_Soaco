@@ -40,6 +40,10 @@ import {
 import { responderSycroCardsPorAjusteGerenciador } from '../services/sycroOrderSyncRespostaPrevisao.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
 import { validarDatasReprogramacao, toIsoDateOnly } from '../utils/validarDatasReprogramacao.js';
+import {
+  isPedidoBaixadoStub,
+  resolverRespostaPedidoAposAjuste,
+} from '../utils/respostaPedidoAposAjuste.js';
 import { ajustarPrevisaoSchema, ajustarPrevisaoLoteSchema, ajustarDataProducaoLoteSchema } from '../validators/pedidos.js';
 import { listarPedidosQuerySchema, pedidosEncerradosQuerySchema, pedidosEncerradosTypeaheadQuerySchema } from '../validators/pedidos.js';
 import { prisma } from '../config/prisma.js';
@@ -643,9 +647,14 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
       return;
     }
     invalidatePedidosCache();
-    const pedido = await buscarPedidoPorId(idPedido);
-    if (!pedido) {
-      res.status(404).json({ error: 'Pedido não encontrado após ajuste.' });
+    const pedido = resolverRespostaPedidoAposAjuste(
+      await buscarPedidoPorId(idPedido),
+      pedidoAtual,
+      idPedido
+    );
+    // Pedido baixado no Nomus após o ajuste: não bloquear (o SQLite já gravou).
+    if (isPedidoBaixadoStub(pedido)) {
+      res.json(pedido);
       return;
     }
     if (confirmacao_data !== true) {

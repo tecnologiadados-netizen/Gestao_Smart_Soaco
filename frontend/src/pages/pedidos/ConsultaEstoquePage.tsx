@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState, useEffect, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
@@ -15,13 +16,19 @@ import ModalConsultaEstoqueDetalhe, { fmtQtde } from '../../components/pcp/Modal
 import TabelaDetalheSolicitacao from '../../components/pcp/TabelaDetalheSolicitacao';
 import TabelaDetalheCotacao from '../../components/pcp/TabelaDetalheCotacao';
 import ModalFiltrosConsultaEstoque, {
+  EMPTY_PRODUTO_FILTRO,
   filtrosConsultaTemAlgumSelecionado,
   filtrosStateToPayload,
+  produtoFiltroTemTermo,
   rotuloEmpenhoEscopo,
+  rotuloEmpenhoProdutoEscopo,
   rotuloModoPedido,
+  rotuloModoProduto,
   type FiltrosConsultaEstoqueState,
   type PedidoFiltroConsultaEstoque,
+  type ProdutoFiltroConsultaEstoque,
 } from '../../components/pcp/ModalFiltrosConsultaEstoque';
+import ModalEscolhasConsultaEstoque from '../../components/pcp/ModalEscolhasConsultaEstoque';
 import type { OptionItem } from '../../components/SingleSelectWithSearch';
 import {
   contarConsultaEstoque,
@@ -36,7 +43,9 @@ import {
   type ConsultaEstoqueLinha,
   type CotacaoDetalhe,
   type EmpenhoEscopoConsultaEstoque,
+  type EmpenhoProdutoEscopoConsultaEstoque,
   type ModoPedidoConsultaEstoque,
+  type ModoProdutoConsultaEstoque,
   type OpcoesFiltroConsultaEstoque,
   type PedidoGerenciadorTypeaheadItem,
   type SaldoSetorDetalhe,
@@ -44,6 +53,7 @@ import {
 } from '../../api/consultaEstoque';
 import { SETOR_ALMOX_SECUNDARIO } from '../../utils/ressupNaoAlmoxColetas';
 import { ComoLerBtn } from '../../components/AjudaTelaModal';
+import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import ConsultaEstoqueAjudaModal from './ConsultaEstoqueAjudaModal';
 import {
   getOrderLabelsForConsultaEstoqueCol,
@@ -58,6 +68,9 @@ import {
   persistConsultaEstoqueColWidths,
   readConsultaEstoqueColWidths,
 } from '../../utils/consultaEstoqueGradeUi';
+
+/** Acima do modal de filtros (10040) e de seus dropdowns em portal (10100). */
+const MODAL_Z_ESCOLHAS_PEDIDO = 10120;
 
 const COLS = [
   { key: 'codigo', label: 'Código', clickable: false, align: 'left' as const },
@@ -148,6 +161,13 @@ type ConsultaPedidoResumo = {
   idPedido: number;
 };
 
+type ConsultaProdutoResumo = {
+  modoProduto: ModoProdutoConsultaEstoque;
+  empenhoEscopo: EmpenhoProdutoEscopoConsultaEstoque;
+  /** Pais resolvidos pelo backend — o modal usa o mesmo escopo da grade. */
+  idsProdutosPaiEscopo: number[];
+};
+
 function formatDateBr(iso: string): string {
   const s = iso.trim().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return iso;
@@ -168,12 +188,18 @@ function detalheModalCacheKey(
   tipo: Exclude<DetalheModal['tipo'], 'pc'>,
   idProduto: number,
   considerarRequisicoes: boolean,
-  empenhoCtx?: { escopo: EmpenhoEscopoConsultaEstoque; idPedido?: number }
+  empenhoCtx?: {
+    escopo?: EmpenhoEscopoConsultaEstoque;
+    idPedido?: number;
+    produtoEscopo?: EmpenhoProdutoEscopoConsultaEstoque;
+  }
 ): string {
-  const emp =
-    empenhoCtx?.escopo === 'pedido' && empenhoCtx.idPedido
-      ? `-pd${empenhoCtx.idPedido}`
-      : '-empTodos';
+  let emp = '-empTodos';
+  if (empenhoCtx?.escopo === 'pedido' && empenhoCtx.idPedido) {
+    emp = `-pd${empenhoCtx.idPedido}`;
+  } else if (empenhoCtx?.produtoEscopo === 'produto') {
+    emp = '-empProdFiltrado';
+  }
   return `${tipo}-${idProduto}-${considerarRequisicoes ? '1' : '0'}${tipo === 'empenho' ? emp : ''}`;
 }
 
@@ -189,6 +215,13 @@ export default function ConsultaEstoquePage() {
   const [pedidoPendenteEscolha, setPedidoPendenteEscolha] = useState<OptionItem | null>(null);
   const [escolhaModoTemp, setEscolhaModoTemp] = useState<ModoPedidoConsultaEstoque | null>(null);
   const [consultaPedidoResumo, setConsultaPedidoResumo] = useState<ConsultaPedidoResumo | null>(null);
+  const [produtoFiltro, setProdutoFiltro] =
+    useState<ProdutoFiltroConsultaEstoque>(EMPTY_PRODUTO_FILTRO);
+  const [confirmEscolhasProdutoAberto, setConfirmEscolhasProdutoAberto] = useState(false);
+  const [escolhaModoProdutoTemp, setEscolhaModoProdutoTemp] =
+    useState<ModoProdutoConsultaEstoque | null>(null);
+  const [consultaProdutoResumo, setConsultaProdutoResumo] =
+    useState<ConsultaProdutoResumo | null>(null);
   const [msgFiltro, setMsgFiltro] = useState<string | null>(null);
   const [linhas, setLinhas] = useState<ConsultaEstoqueLinha[]>([]);
   const [mostrarGrade, setMostrarGrade] = useState(false);
@@ -212,12 +245,16 @@ export default function ConsultaEstoquePage() {
   const opcoesCarregadasRef = useRef(false);
   const filtrosRef = useRef(filtros);
   const pedidoFiltroRef = useRef(pedidoFiltro);
+  const produtoFiltroRef = useRef(produtoFiltro);
   const consultaPedidoResumoRef = useRef(consultaPedidoResumo);
+  const consultaProdutoResumoRef = useRef(consultaProdutoResumo);
   const detalheCacheRef = useRef(new Map<string, DetalheCachePayload>());
   const pcDetalheCacheRef = useRef(new Map<number, RessupAlmoxPcPendLinha[]>());
   filtrosRef.current = filtros;
   pedidoFiltroRef.current = pedidoFiltro;
+  produtoFiltroRef.current = produtoFiltro;
   consultaPedidoResumoRef.current = consultaPedidoResumo;
+  consultaProdutoResumoRef.current = consultaProdutoResumo;
 
   const getCellText = useCallback((row: ConsultaEstoqueLinha, colId: string): string => {
     switch (colId) {
@@ -442,14 +479,15 @@ export default function ConsultaEstoquePage() {
     async (
       f: FiltrosConsultaEstoqueState,
       pf: PedidoFiltroConsultaEstoque,
-      req: boolean
+      req: boolean,
+      prodF: ProdutoFiltroConsultaEstoque = EMPTY_PRODUTO_FILTRO
     ) => {
       detalheCacheRef.current.clear();
       pcDetalheCacheRef.current.clear();
       gradeResetRef.current();
       setLoading(true);
       setErroApi(null);
-      const payload = filtrosStateToPayload(f, pf);
+      const payload = filtrosStateToPayload(f, pf, prodF);
       const r = await consultarEstoque({
         filtros: payload,
         considerarRequisicoes: req,
@@ -469,6 +507,15 @@ export default function ConsultaEstoquePage() {
         });
       } else {
         setConsultaPedidoResumo(null);
+      }
+      if (produtoFiltroTemTermo(f) && prodF.modoProduto && prodF.empenhoEscopo) {
+        setConsultaProdutoResumo({
+          modoProduto: prodF.modoProduto,
+          empenhoEscopo: prodF.empenhoEscopo,
+          idsProdutosPaiEscopo: r.idsProdutosPaiEscopo ?? [],
+        });
+      } else {
+        setConsultaProdutoResumo(null);
       }
       setLinhas(r.data);
       setMostrarGrade(true);
@@ -496,10 +543,16 @@ export default function ConsultaEstoquePage() {
       return;
     }
     setFiltrosPopoverAberto(false);
+    // Cobertura não tem o modal de escolhas do produto: mantém o comportamento clássico.
+    const produtoIncoming: ProdutoFiltroConsultaEstoque = produtoFiltroTemTermo(incoming.filtros)
+      ? { modoProduto: 'diretos', empenhoEscopo: 'todos' }
+      : EMPTY_PRODUTO_FILTRO;
+    setProdutoFiltro(produtoIncoming);
     void executarConsulta(
       incoming.filtros,
       incoming.pedidoFiltro,
-      Boolean(incoming.considerarRequisicoes)
+      Boolean(incoming.considerarRequisicoes),
+      produtoIncoming
     );
   }, [location.state, location.pathname, navigate, executarConsulta]);
 
@@ -538,7 +591,52 @@ export default function ConsultaEstoquePage() {
   const handleLimparFiltros = () => {
     setFiltros(EMPTY_FILTROS);
     setPedidoFiltro(EMPTY_PEDIDO_FILTRO);
+    setProdutoFiltro(EMPTY_PRODUTO_FILTRO);
     setMsgFiltro(null);
+  };
+
+  /** Selecionar código/descrição abre o modal de escolhas (mesmo gatilho do PD). */
+  const handleFiltrosChange = (patch: Partial<FiltrosConsultaEstoqueState>) => {
+    const proximos = { ...filtros, ...patch };
+    setFiltros(proximos);
+    const mexeuEmProduto = 'codigos' in patch || 'descricoes' in patch;
+    if (!mexeuEmProduto) return;
+    if (!produtoFiltroTemTermo(proximos)) {
+      setProdutoFiltro(EMPTY_PRODUTO_FILTRO);
+      setConfirmEscolhasProdutoAberto(false);
+      setEscolhaModoProdutoTemp(null);
+      return;
+    }
+    if (produtoFiltro.modoProduto && produtoFiltro.empenhoEscopo) return;
+    setEscolhaModoProdutoTemp(produtoFiltro.modoProduto);
+    setConfirmEscolhasProdutoAberto(true);
+  };
+
+  const confirmarEscolhasProduto = (escopo: EmpenhoProdutoEscopoConsultaEstoque) => {
+    if (!escolhaModoProdutoTemp) return;
+    setProdutoFiltro({ modoProduto: escolhaModoProdutoTemp, empenhoEscopo: escopo });
+    setConfirmEscolhasProdutoAberto(false);
+    setEscolhaModoProdutoTemp(null);
+  };
+
+  const cancelarEscolhasProduto = () => {
+    setConfirmEscolhasProdutoAberto(false);
+    setEscolhaModoProdutoTemp(null);
+    if (!produtoFiltro.modoProduto || !produtoFiltro.empenhoEscopo) {
+      setProdutoFiltro(EMPTY_PRODUTO_FILTRO);
+    }
+  };
+
+  useRegisterModalEscape({
+    id: 'consulta-estoque-escolhas-produto',
+    onClose: cancelarEscolhasProduto,
+    zIndex: MODAL_Z_ESCOLHAS_PEDIDO,
+    enabled: confirmEscolhasProdutoAberto,
+  });
+
+  const handleAlterarEscolhasProduto = () => {
+    setEscolhaModoProdutoTemp(produtoFiltro.modoProduto);
+    setConfirmEscolhasProdutoAberto(true);
   };
 
   const handlePedidoChange = (pedido: OptionItem | null) => {
@@ -580,6 +678,13 @@ export default function ConsultaEstoquePage() {
     }
   };
 
+  useRegisterModalEscape({
+    id: 'consulta-estoque-escolhas-pedido',
+    onClose: cancelarEscolhasPedido,
+    zIndex: MODAL_Z_ESCOLHAS_PEDIDO,
+    enabled: confirmEscolhasPedidoAberto && !!pedidoPendenteEscolha,
+  });
+
   const handleAlterarEscolhasPedido = () => {
     if (!pedidoFiltro.pedido) return;
     setPedidoPendenteEscolha(pedidoFiltro.pedido);
@@ -596,12 +701,19 @@ export default function ConsultaEstoquePage() {
       setMsgFiltro('Conclua as escolhas do pedido de venda (visualização e empenho).');
       return;
     }
+    if (
+      produtoFiltroTemTermo(filtros) &&
+      (!produtoFiltro.modoProduto || !produtoFiltro.empenhoEscopo)
+    ) {
+      setMsgFiltro('Conclua as escolhas do produto filtrado (visualização e empenho).');
+      return;
+    }
     setMsgFiltro(null);
     setErroApi(null);
     setFiltrosPopoverAberto(false);
     setLoading(true);
     const countRes = await contarConsultaEstoque({
-      filtros: filtrosStateToPayload(filtros, pedidoFiltro),
+      filtros: filtrosStateToPayload(filtros, pedidoFiltro, produtoFiltro),
     });
     setLoading(false);
     if (countRes.error) {
@@ -614,7 +726,7 @@ export default function ConsultaEstoquePage() {
       setConfirmVolumeAberto(true);
       return;
     }
-    void executarConsulta(filtros, pedidoFiltro, considerarRequisicoes);
+    void executarConsulta(filtros, pedidoFiltro, considerarRequisicoes, produtoFiltro);
   };
 
   const confirmarVolume = (sim: boolean) => {
@@ -623,21 +735,35 @@ export default function ConsultaEstoquePage() {
       setFiltrosPopoverAberto(true);
       return;
     }
-    void executarConsulta(filtros, pedidoFiltro, considerarRequisicoes);
+    void executarConsulta(filtros, pedidoFiltro, considerarRequisicoes, produtoFiltro);
   };
+
+  useRegisterModalEscape({
+    id: 'consulta-estoque-confirma-volume',
+    onClose: () => confirmarVolume(false),
+    zIndex: MODAL_Z_ESCOLHAS_PEDIDO,
+    enabled: confirmVolumeAberto,
+  });
 
   const handleToggleRequisicoes = () => {
     const proximo = !considerarRequisicoes;
     setConsiderarRequisicoes(proximo);
     if (!mostrarGrade) return;
-    void executarConsulta(filtrosRef.current, pedidoFiltroRef.current, proximo);
+    void executarConsulta(
+      filtrosRef.current,
+      pedidoFiltroRef.current,
+      proximo,
+      produtoFiltroRef.current
+    );
   };
 
   const cellNum = (n: number) => fmtQtde(n);
 
-  const empenhoCtx = consultaPedidoResumo
-    ? { escopo: consultaPedidoResumo.empenhoEscopo, idPedido: consultaPedidoResumo.idPedido }
-    : undefined;
+  const empenhoCtx = {
+    escopo: consultaPedidoResumo?.empenhoEscopo,
+    idPedido: consultaPedidoResumo?.idPedido,
+    produtoEscopo: consultaProdutoResumo?.empenhoEscopo,
+  };
 
   const detailKey =
     detalhe && detalhe.tipo !== 'pc'
@@ -648,9 +774,11 @@ export default function ConsultaEstoquePage() {
     if (!detalhe || detalhe.tipo === 'pc') return {};
     const id = detalhe.linha.idProduto;
     const resumo = consultaPedidoResumoRef.current;
-    const ctx = resumo
-      ? { escopo: resumo.empenhoEscopo, idPedido: resumo.idPedido }
-      : undefined;
+    const ctx = {
+      escopo: resumo?.empenhoEscopo,
+      idPedido: resumo?.idPedido,
+      produtoEscopo: consultaProdutoResumoRef.current?.empenhoEscopo,
+    };
     const cacheKey = detalheModalCacheKey(detalhe.tipo, id, considerarRequisicoes, ctx);
     const cached = detalheCacheRef.current.get(cacheKey);
     if (cached) {
@@ -670,11 +798,17 @@ export default function ConsultaEstoquePage() {
     if (detalhe.tipo === 'empenho') {
       const idPedidoFiltro =
         resumo?.empenhoEscopo === 'pedido' ? resumo.idPedido : undefined;
+      const resumoProduto = consultaProdutoResumoRef.current;
+      const paisEscopo =
+        !idPedidoFiltro && resumoProduto?.empenhoEscopo === 'produto'
+          ? resumoProduto.idsProdutosPaiEscopo
+          : undefined;
       const rLiquido = await obterRessupEmpenhoPorPedido(
         id,
         considerarRequisicoes,
         false,
-        idPedidoFiltro
+        idPedidoFiltro,
+        paisEscopo
       );
       if (!rLiquido.error && rLiquido.data) detalheCacheRef.current.set(cacheKey, rLiquido.data);
       setDetalheEmpenhoLiquido(rLiquido.data);
@@ -809,6 +943,24 @@ export default function ConsultaEstoquePage() {
                     Empenho:{' '}
                     <strong className="text-slate-800 dark:text-slate-100">
                       {rotuloEmpenhoEscopo(consultaPedidoResumo.empenhoEscopo)}
+                    </strong>
+                  </span>
+                  <span className="text-slate-400">·</span>
+                </>
+              )}
+              {consultaProdutoResumo && (
+                <>
+                  <span>
+                    Produto filtrado:{' '}
+                    <strong className="text-slate-800 dark:text-slate-100">
+                      {rotuloModoProduto(consultaProdutoResumo.modoProduto)}
+                    </strong>
+                  </span>
+                  <span className="text-slate-400">·</span>
+                  <span>
+                    Empenho:{' '}
+                    <strong className="text-slate-800 dark:text-slate-100">
+                      {rotuloEmpenhoProdutoEscopo(consultaProdutoResumo.empenhoEscopo)}
                     </strong>
                   </span>
                   <span className="text-slate-400">·</span>
@@ -1020,10 +1172,12 @@ export default function ConsultaEstoquePage() {
         msgFiltro={msgFiltro}
         filtros={filtros}
         pedidoFiltro={pedidoFiltro}
+        produtoFiltro={produtoFiltro}
+        onAlterarEscolhasProduto={handleAlterarEscolhasProduto}
         opcoes={opcoesFiltro}
         onBuscarPedido={buscarPedidoAsync}
         onClose={() => setFiltrosPopoverAberto(false)}
-        onChange={(patch) => setFiltros((prev) => ({ ...prev, ...patch }))}
+        onChange={handleFiltrosChange}
         onPedidoChange={handlePedidoChange}
         onAlterarEscolhasPedido={handleAlterarEscolhasPedido}
         onLimpar={handleLimparFiltros}
@@ -1058,86 +1212,75 @@ export default function ConsultaEstoquePage() {
         />
       )}
 
-      {confirmEscolhasPedidoAberto && pedidoPendenteEscolha && (
-        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
-          <div className="max-w-lg rounded-xl bg-white p-5 shadow-xl dark:bg-slate-800">
-            <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
-              Pedido <strong>{pedidoPendenteEscolha.nome}</strong>
-            </p>
-            <p className="mt-3 text-sm text-slate-700 dark:text-slate-200">
-              Como visualizar os produtos?
-            </p>
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-              <button
-                type="button"
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm text-left ${
-                  escolhaModoTemp === 'diretos'
-                    ? 'border-primary-500 bg-primary-50 dark:border-primary-500 dark:bg-primary-900/30'
-                    : 'border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700'
-                }`}
-                onClick={() => setEscolhaModoTemp('diretos')}
-              >
-                <span className="font-medium">Itens diretos do pedido</span>
-                <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
-                  Produtos nas linhas do pedido
-                </span>
-              </button>
-              <button
-                type="button"
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm text-left ${
-                  escolhaModoTemp === 'componentes'
-                    ? 'border-primary-500 bg-primary-50 dark:border-primary-500 dark:bg-primary-900/30'
-                    : 'border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700'
-                }`}
-                onClick={() => setEscolhaModoTemp('componentes')}
-              >
-                <span className="font-medium">Componentes do pedido</span>
-                <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
-                  Explosão BOM dos itens
-                </span>
-              </button>
-            </div>
-            <p className="mt-4 text-sm text-slate-700 dark:text-slate-200">
-              Como calcular o empenho?
-            </p>
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-              <button
-                type="button"
-                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-left hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700"
-                onClick={() => confirmarEscolhasPedido('pedido')}
-                disabled={!escolhaModoTemp}
-              >
-                <span className="font-medium">Somente deste pedido</span>
-              </button>
-              <button
-                type="button"
-                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-left hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700"
-                onClick={() => confirmarEscolhasPedido('todos')}
-                disabled={!escolhaModoTemp}
-              >
-                <span className="font-medium">Todos os pedidos do sistema</span>
-              </button>
-            </div>
-            {!escolhaModoTemp && (
-              <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-                Escolha primeiro como visualizar os produtos.
-              </p>
-            )}
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
-                onClick={cancelarEscolhasPedido}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ModalEscolhasConsultaEstoque
+        open={confirmEscolhasPedidoAberto && !!pedidoPendenteEscolha}
+        zIndex={MODAL_Z_ESCOLHAS_PEDIDO}
+        contexto={
+          <>
+            Pedido <strong>{pedidoPendenteEscolha?.nome}</strong>
+          </>
+        }
+        perguntaModo="Como visualizar os produtos?"
+        opcoesModo={[
+          {
+            valor: 'diretos',
+            titulo: 'Itens diretos do pedido',
+            descricao: 'Produtos nas linhas do pedido',
+          },
+          {
+            valor: 'componentes',
+            titulo: 'Componentes do pedido',
+            descricao: 'Explosão BOM dos itens',
+          },
+        ]}
+        modoSelecionado={escolhaModoTemp}
+        onSelecionarModo={setEscolhaModoTemp}
+        perguntaEscopo="Como calcular o empenho?"
+        opcoesEscopo={[
+          { valor: 'pedido', titulo: 'Somente deste pedido' },
+          { valor: 'todos', titulo: 'Todos os pedidos do sistema' },
+        ]}
+        onConfirmar={confirmarEscolhasPedido}
+        onCancelar={cancelarEscolhasPedido}
+      />
 
-      {confirmVolumeAberto && (
-        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
+      <ModalEscolhasConsultaEstoque
+        open={confirmEscolhasProdutoAberto}
+        zIndex={MODAL_Z_ESCOLHAS_PEDIDO}
+        contexto="Produto filtrado"
+        perguntaModo="Como visualizar os produtos?"
+        opcoesModo={[
+          {
+            valor: 'diretos',
+            titulo: 'Item filtrado',
+            descricao: 'O próprio produto informado no filtro',
+          },
+          {
+            valor: 'componentes',
+            titulo: 'Componentes do item filtrado',
+            descricao: 'Explosão BOM (sem o item pai)',
+          },
+        ]}
+        modoSelecionado={escolhaModoProdutoTemp}
+        onSelecionarModo={setEscolhaModoProdutoTemp}
+        perguntaEscopo="Como calcular o empenho?"
+        opcoesEscopo={[
+          {
+            valor: 'produto',
+            titulo: 'Somente do item filtrado',
+            descricao: 'Apenas a demanda do item filtrado',
+          },
+          { valor: 'todos', titulo: 'Todos os pedidos do sistema' },
+        ]}
+        onConfirmar={confirmarEscolhasProduto}
+        onCancelar={cancelarEscolhasProduto}
+      />
+
+      {confirmVolumeAberto && createPortal(
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black/70 p-4"
+          style={{ zIndex: MODAL_Z_ESCOLHAS_PEDIDO }}
+        >
           <div className="max-w-md rounded-xl bg-white p-5 shadow-xl dark:bg-slate-800">
             <p className="text-sm text-slate-800 dark:text-slate-100">
               Sua busca irá trazer o resultado de <strong>{confirmVolumeTotal}</strong> produtos, deseja
@@ -1160,7 +1303,8 @@ export default function ConsultaEstoquePage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {detalhe?.tipo === 'pc' && (
