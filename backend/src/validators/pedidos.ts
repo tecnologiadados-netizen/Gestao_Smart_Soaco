@@ -57,6 +57,11 @@ const itemAjusteLoteSchema = z.object({
   /** Coluna Igual? do arquivo (true = Nova previsão = Previsão atual). Importação rejeitada se qualquer linha tiver igual: true. */
   igual: z.boolean().optional(),
   previsao_confiavel: z.boolean().optional(),
+  /**
+   * Confirma a data vigente (sem alterá-la) para gravar só Confiável.
+   * Quando true, o lote aceita Nova previsão = Previsão atual.
+   */
+  confirmacao_data: z.boolean().optional(),
 });
 
 export const ajustarPrevisaoLoteSchema = z.object({

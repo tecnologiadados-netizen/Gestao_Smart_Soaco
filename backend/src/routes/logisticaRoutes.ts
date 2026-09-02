@@ -30,13 +30,21 @@ const verLogistica = requirePermission(
   PERMISSOES.LOGISTICA_CUBAGEM_VER
 );
 
+/** Leitura de categorias (consumo km/L) — usada também no % frete do Roteirizador. */
+const verTamanhosCategorias = requirePermission(
+  PERMISSOES.LOGISTICA_VER,
+  PERMISSOES.LOGISTICA_TOTAL,
+  PERMISSOES.LOGISTICA_CUBAGEM_VER,
+  PERMISSOES.HEATMAP_VER
+);
+
 const editarCubagem = requirePermission(
   PERMISSOES.LOGISTICA_CUBAGEM_EDITAR,
   PERMISSOES.LOGISTICA_TOTAL
 );
 
 // Tamanhos / categorias de consumo
-router.get('/cubagem/tamanhos', verLogistica, getTamanhos);
+router.get('/cubagem/tamanhos', verTamanhosCategorias, getTamanhos);
 router.post('/cubagem/tamanhos', validateCsrf, editarCubagem, postTamanho);
 router.put('/cubagem/tamanhos/:id', validateCsrf, editarCubagem, putTamanho);
 router.delete('/cubagem/tamanhos/:id', validateCsrf, editarCubagem, deleteTamanho);

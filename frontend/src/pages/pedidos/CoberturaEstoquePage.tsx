@@ -43,11 +43,11 @@ import {
   obterPainelCoberturaEstoque,
   type AcaoSugeridaCobertura,
   type BarraFirme,
+  type ChaveAcaoCobertura,
   type ClasseAtendimento,
   type CoberturaEstoqueLinha,
   type KpiFirme,
   type PainelCoberturaEstoqueData,
-  type TotaisCompradorCobertura,
   type VisaoGradeCobertura,
 } from '../../api/coberturaEstoque';
 import { obterRessupEmpenhoPorPedido, type RessupEmpenhoPedidoResultado } from '../../api/compras';
@@ -376,6 +376,11 @@ function itemSemPrecoValido(row: CoberturaEstoqueLinha): boolean {
   return row.precoUnitario == null || row.precoUnitario === 0;
 }
 
+/** Sem preço qualificado e saldo físico > 0 no almox secundário. */
+function itemSemPrecoComEstoque(row: CoberturaEstoqueLinha): boolean {
+  return itemSemPrecoValido(row) && (Number(row.saldo) || 0) > 0;
+}
+
 /**
  * Faixa efetiva para capital / clique na barra &lt; 0:
  * itens sem CM (cobertura null) com valor firme negativo entram em `lt0`.
@@ -403,38 +408,58 @@ function contagemItensPorFaixa(itens: CoberturaEstoqueLinha[]): Map<BarraFirme, 
   return acc;
 }
 
-function agregarCargaPorComprador(linhas: CoberturaEstoqueLinha[]): TotaisCompradorCobertura[] {
-  const map = new Map<string, TotaisCompradorCobertura>();
-  for (const row of linhas) {
-    const st = statusDaLinha(row);
-    const atual = map.get(row.comprador) ?? {
-      comprador: row.comprador,
-      itens: 0,
-      ruptura: 0,
-      aguardandoPc: 0,
-      critico: 0,
-      atencao: 0,
-    };
-    atual.itens += 1;
-    if (st === 'ruptura') atual.ruptura += 1;
-    else if (st === 'aguardando_pc') atual.aguardandoPc += 1;
-    else if (st === 'critico') atual.critico += 1;
-    else if (st === 'atencao') atual.atencao += 1;
-    map.set(row.comprador, atual);
-  }
-  const rank = (n: string) => {
-    const m = /^Comprador\s+(\d+)$/i.exec(n);
-    if (m) return Number(m[1]);
-    if (n === 'A definir') return 1000;
-    return 100;
-  };
-  return [...map.values()].sort(
-    (a, b) => rank(a.comprador) - rank(b.comprador) || a.comprador.localeCompare(b.comprador, 'pt-BR')
-  );
+type TotaisAcaoCobertura = {
+  chave: ChaveAcaoCobertura;
+  texto: string;
+  prioridade: AcaoSugeridaCobertura['prioridade'];
+  itens: number;
+  valorFaltante: number;
+};
+
+const ACAO_BAR_BG: Record<string, string> = {
+  comprar_agora: 'bg-red-600',
+  cobrar_pc: 'bg-violet-600',
+  acelerar_sc_agpag: 'bg-rose-500',
+  converter_sc: 'bg-orange-500',
+  abrir_sc_urgente: 'bg-amber-500',
+  programar_sc: 'bg-yellow-500',
+  suspender_compra: 'bg-sky-600',
+  bloquear_reposicao: 'bg-cyan-500',
+  avaliar_descarte: 'bg-slate-500',
+  validar_cadastro: 'bg-slate-400',
+  sem_acao: 'bg-emerald-500',
+};
+
+function barraAcaoClass(chave: string, prioridade: AcaoSugeridaCobertura['prioridade']): string {
+  if (ACAO_BAR_BG[chave]) return ACAO_BAR_BG[chave]!;
+  if (prioridade === 'urgente') return 'bg-red-600';
+  if (prioridade === 'atencao') return 'bg-orange-500';
+  return 'bg-slate-400';
 }
 
-function urgenciaComprador(c: TotaisCompradorCobertura): number {
-  return c.ruptura + c.aguardandoPc + c.critico + c.atencao;
+function agregarFilaAcao(linhas: CoberturaEstoqueLinha[]): TotaisAcaoCobertura[] {
+  const map = new Map<ChaveAcaoCobertura, TotaisAcaoCobertura>();
+  for (const row of linhas) {
+    const acao = row.acaoSugerida;
+    if (!acao) continue;
+    const atual = map.get(acao.chave) ?? {
+      chave: acao.chave,
+      texto: acao.texto,
+      prioridade: acao.prioridade,
+      itens: 0,
+      valorFaltante: 0,
+    };
+    atual.itens += 1;
+    if (row.valorFaltante != null && Number.isFinite(row.valorFaltante)) {
+      atual.valorFaltante += row.valorFaltante;
+    }
+    map.set(acao.chave, atual);
+  }
+  return [...map.values()].sort((a, b) => {
+    const pr = rankAcao(a.prioridade) - rankAcao(b.prioridade);
+    if (pr !== 0) return pr;
+    return b.itens - a.itens;
+  });
 }
 
 type DetalheModal =
@@ -460,8 +485,7 @@ export default function CoberturaEstoquePage() {
   const [cardValorAtivo, setCardValorAtivo] = useState<CardValorCobertura | null>(null);
   const [kpiAtivo, setKpiAtivo] = useState<KpiFirme | null>(null);
   const [barraAtiva, setBarraAtiva] = useState<BarraFirme | null>(null);
-  const [compradorAtivo, setCompradorAtivo] = useState<string | null>(null);
-  const [kpiCompradorAtivo, setKpiCompradorAtivo] = useState<KpiFirme | null>(null);
+  const [acaoAtiva, setAcaoAtiva] = useState<ChaveAcaoCobertura | null>(null);
   const [filtroSemPreco, setFiltroSemPreco] = useState(false);
   const [produtoTopCapitalAtivo, setProdutoTopCapitalAtivo] = useState<number | null>(null);
   const [familiaCapitalAtiva, setFamiliaCapitalAtiva] = useState<string | null>(null);
@@ -520,8 +544,7 @@ export default function CoberturaEstoquePage() {
       setCardValorAtivo(null);
       setKpiAtivo(null);
       setBarraAtiva(null);
-      setCompradorAtivo(null);
-      setKpiCompradorAtivo(null);
+      setAcaoAtiva(null);
       setFiltroSemPreco(false);
       setProdutoTopCapitalAtivo(null);
       setFamiliaCapitalAtiva(null);
@@ -581,12 +604,10 @@ export default function CoberturaEstoquePage() {
 
   const itensRecortePainel = useMemo(() => {
     if (!filtroSemPreco) return itensPorFaixa;
-    return itensPorFaixa.filter(itemSemPrecoValido);
+    return itensPorFaixa.filter(itemSemPrecoComEstoque);
   }, [itensPorFaixa, filtroSemPreco]);
 
-  const cargaPorComprador = useMemo(() => {
-    return agregarCargaPorComprador(itensRecortePainel).filter((c) => urgenciaComprador(c) > 0);
-  }, [itensRecortePainel]);
+  const filaAcao = useMemo(() => agregarFilaAcao(itensRecortePainel), [itensRecortePainel]);
 
   const fatiasCapitalFamilia = useMemo(
     () => agruparCapitalPorFamiliaPie(itensRecortePainel),
@@ -603,8 +624,7 @@ export default function CoberturaEstoquePage() {
       if (!passaVisaoGrade(i, visaoGrade)) return false;
       if (produtoTopCapitalAtivo != null && i.idProduto !== produtoTopCapitalAtivo) return false;
       if (!itemPassaFiltroFamiliaCapital(i, familiaCapitalAtiva, familiasPiePrincipais)) return false;
-      if (compradorAtivo && i.comprador !== compradorAtivo) return false;
-      if (kpiCompradorAtivo && statusDaLinha(i) !== kpiCompradorAtivo) return false;
+      if (acaoAtiva && i.acaoSugerida?.chave !== acaoAtiva) return false;
       return true;
     });
   }, [
@@ -613,8 +633,7 @@ export default function CoberturaEstoquePage() {
     produtoTopCapitalAtivo,
     familiaCapitalAtiva,
     familiasPiePrincipais,
-    compradorAtivo,
-    kpiCompradorAtivo,
+    acaoAtiva,
   ]);
 
   const contagemFaixaRecorte = useMemo(
@@ -634,8 +653,8 @@ export default function CoberturaEstoquePage() {
     return acc;
   }, [itensRecortePainel]);
 
-  const semPrecoNoRecorte = useMemo(
-    () => itensPorFaixa.filter(itemSemPrecoValido).length,
+  const semPrecoComEstoqueNoRecorte = useMemo(
+    () => itensPorFaixa.filter(itemSemPrecoComEstoque).length,
     [itensPorFaixa]
   );
 
@@ -761,10 +780,10 @@ export default function CoberturaEstoquePage() {
     return Math.max(1, ...caps);
   }, [capitalPorFaixa]);
 
-  const maxCarga = useMemo(() => {
-    if (!cargaPorComprador.length) return 1;
-    return Math.max(1, ...cargaPorComprador.map(urgenciaComprador));
-  }, [cargaPorComprador]);
+  const maxFilaAcao = useMemo(() => {
+    if (!filaAcao.length) return 1;
+    return Math.max(1, ...filaAcao.map((a) => a.itens));
+  }, [filaAcao]);
 
   const abrirDetalhe = (d: DetalheModal) => {
     setDetalhe(d);
@@ -845,8 +864,7 @@ export default function CoberturaEstoquePage() {
   }, [grade.rowsExibidas, getCellText, valueForSort]);
 
   const selecionarCardValor = (card: CardValorCobertura) => {
-    setCompradorAtivo(null);
-    setKpiCompradorAtivo(null);
+    setAcaoAtiva(null);
     setFiltroSemPreco(false);
     setProdutoTopCapitalAtivo(null);
     setFamiliaCapitalAtiva(null);
@@ -861,8 +879,7 @@ export default function CoberturaEstoquePage() {
 
   const selecionarKpi = (kpi: KpiFirme) => {
     setCardValorAtivo(null);
-    setCompradorAtivo(null);
-    setKpiCompradorAtivo(null);
+    setAcaoAtiva(null);
     setFiltroSemPreco(false);
     setProdutoTopCapitalAtivo(null);
     setFamiliaCapitalAtiva(null);
@@ -876,8 +893,7 @@ export default function CoberturaEstoquePage() {
 
   const selecionarBarra = (barra: BarraFirme) => {
     setCardValorAtivo(null);
-    setCompradorAtivo(null);
-    setKpiCompradorAtivo(null);
+    setAcaoAtiva(null);
     setFiltroSemPreco(false);
     setProdutoTopCapitalAtivo(null);
     setFamiliaCapitalAtiva(null);
@@ -890,29 +906,13 @@ export default function CoberturaEstoquePage() {
     setKpiAtivo(BARRA_PARA_KPI[barra]);
   };
 
-  const selecionarComprador = (comprador: string) => {
-    if (compradorAtivo === comprador && kpiCompradorAtivo == null) {
-      setCompradorAtivo(null);
-      return;
-    }
-    setCompradorAtivo(comprador);
-    setKpiCompradorAtivo(null);
-  };
-
-  const selecionarSegmento = (comprador: string, kpi: KpiFirme) => {
-    if (compradorAtivo === comprador && kpiCompradorAtivo === kpi) {
-      setCompradorAtivo(null);
-      setKpiCompradorAtivo(null);
-      return;
-    }
-    setCompradorAtivo(comprador);
-    setKpiCompradorAtivo(kpi);
+  const selecionarAcao = (chave: ChaveAcaoCobertura) => {
+    setAcaoAtiva((prev) => (prev === chave ? null : chave));
   };
 
   const selecionarSemPreco = () => {
     setCardValorAtivo(null);
-    setCompradorAtivo(null);
-    setKpiCompradorAtivo(null);
+    setAcaoAtiva(null);
     setProdutoTopCapitalAtivo(null);
     setFamiliaCapitalAtiva(null);
     setFiltroSemPreco((v) => !v);
@@ -932,8 +932,7 @@ export default function CoberturaEstoquePage() {
     setCardValorAtivo(null);
     setKpiAtivo(null);
     setBarraAtiva(null);
-    setCompradorAtivo(null);
-    setKpiCompradorAtivo(null);
+    setAcaoAtiva(null);
     setFiltroSemPreco(false);
     setProdutoTopCapitalAtivo(null);
     setFamiliaCapitalAtiva(null);
@@ -943,7 +942,7 @@ export default function CoberturaEstoquePage() {
     cardValorAtivo != null ||
     kpiAtivo != null ||
     barraAtiva != null ||
-    compradorAtivo != null ||
+    acaoAtiva != null ||
     filtroSemPreco ||
     produtoTopCapitalAtivo != null ||
     familiaCapitalAtiva != null;
@@ -975,9 +974,8 @@ export default function CoberturaEstoquePage() {
   const rotuloRecorte = [
     cardValorAtivo ? LABELS_CARD_VALOR[cardValorAtivo] : null,
     barraAtiva ? LABELS_BARRA_FIRME[barraAtiva] : kpiAtivo ? LABELS_KPI_FIRME[kpiAtivo] : null,
-    filtroSemPreco ? 'Sem preço' : null,
-    compradorAtivo,
-    kpiCompradorAtivo && compradorAtivo ? LABELS_KPI_FIRME[kpiCompradorAtivo] : null,
+    filtroSemPreco ? 'Sem preço com estoque' : null,
+    acaoAtiva ? filaAcao.find((a) => a.chave === acaoAtiva)?.texto ?? 'Ação' : null,
     produtoTopCapitalAtivo != null
       ? (() => {
           const p = itensRecortePainel.find((i) => i.idProduto === produtoTopCapitalAtivo);
@@ -1090,7 +1088,7 @@ export default function CoberturaEstoquePage() {
               className={BTN_LIMPAR_FILTROS}
               disabled={loading || !temFiltrosParaLimpar}
               onClick={handleLimparFiltrosTopo}
-              title="Limpa filtros do modal e faixas/KPI/comprador/capital clicados"
+              title="Limpa filtros do modal e faixas/KPI/ação/capital clicados"
             >
               Limpar filtros
             </button>
@@ -1269,148 +1267,68 @@ export default function CoberturaEstoquePage() {
               <div className="card-panel p-4">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-soaco-navy dark:text-soaco-white">
-                    Carga por comprador
+                    Fila de ação
                   </h2>
                   <p className="text-[10px] text-slate-500">
-                    <span className="font-medium text-slate-700 dark:text-slate-200">itens</span>
-                    {' · '}
-                    <span className="font-medium text-red-600">ruptura</span>
+                    <span className="font-medium text-red-600">urgente</span>
                     {' — '}
-                    <span className="font-medium text-violet-600">aguard. PC</span>
+                    <span className="font-medium text-orange-500">atenção</span>
                     {' — '}
-                    <span className="font-medium text-orange-500">crítico</span>
-                    {' — '}
-                    <span className="font-medium text-amber-500">atenção</span>
+                    <span className="font-medium text-slate-500">acompanhar</span>
                   </p>
                 </div>
-                {cargaPorComprador.length === 0 ? (
+                {filaAcao.length === 0 ? (
                   <p className="py-8 text-center text-xs text-slate-500">
-                    Nenhum comprador com ruptura, aguardando PC, crítico ou atenção neste recorte.
+                    Nenhuma ação sugerida neste recorte.
                   </p>
                 ) : (
-                  <ul className="space-y-3">
-                    {cargaPorComprador.map((c) => {
-                      const total = urgenciaComprador(c);
-                      const largura = (total / maxCarga) * 100;
-                      const ativo = compradorAtivo === c.comprador;
+                  <ul className="space-y-2.5">
+                    {filaAcao.map((a) => {
+                      const largura = (a.itens / maxFilaAcao) * 100;
+                      const ativo = acaoAtiva === a.chave;
                       return (
-                        <li key={c.comprador}>
+                        <li key={a.chave}>
                           <button
                             type="button"
-                            onClick={() => selecionarComprador(c.comprador)}
+                            onClick={() => selecionarAcao(a.chave)}
                             className={`w-full rounded-md px-1 py-1 text-left transition ${
                               ativo
                                 ? 'bg-slate-200 ring-1 ring-sky-500 dark:bg-slate-800 dark:ring-sky-400'
                                 : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
                             }`}
+                            title={`${a.texto}: ${a.itens} itens (bate com a grade na visão Todos)`}
                           >
                             <div className="mb-1 flex items-center justify-between gap-2">
                               <span
-                                className={`truncate text-xs font-medium ${
-                                  ativo ? 'text-slate-900 dark:text-white' : 'text-slate-800 dark:text-slate-100'
+                                className={`truncate text-xs ${
+                                  ativo
+                                    ? 'font-semibold text-slate-900 dark:text-white'
+                                    : classNameAcao(a.prioridade)
                                 }`}
                               >
-                                {c.comprador}
+                                {a.texto}
                               </span>
-                              <span className="flex shrink-0 items-center gap-2 text-[11px] tabular-nums">
-                                <span
-                                  className="font-semibold text-slate-700 dark:text-slate-200"
-                                  title={`${c.itens} itens no recorte (bate com a grade na visão Todos)`}
-                                >
-                                  {c.itens}
+                              <span className="flex shrink-0 items-center gap-1.5 text-[11px] tabular-nums text-slate-600 dark:text-slate-300">
+                                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                                  {a.itens}
                                 </span>
-                                <span className="text-slate-300 dark:text-slate-600" aria-hidden>
-                                  |
-                                </span>
-                                <span className="text-red-600">{c.ruptura}</span>
-                                <span className="text-violet-600">{c.aguardandoPc}</span>
-                                <span className="text-orange-500">{c.critico}</span>
-                                <span className="text-amber-500">{c.atencao}</span>
+                                {a.valorFaltante > 0 ? (
+                                  <>
+                                    <span className="text-slate-300 dark:text-slate-600" aria-hidden>
+                                      ·
+                                    </span>
+                                    <span title="Soma do valor faltante (empenho − estoque) × preço">
+                                      {fmtCapitalBar(a.valorFaltante)}
+                                    </span>
+                                  </>
+                                ) : null}
                               </span>
                             </div>
-                            <div className="h-3 overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
-                              <div className="flex h-full" style={{ width: `${largura}%` }}>
-                                {c.ruptura > 0 && (
-                                  <span
-                                    role="button"
-                                    tabIndex={0}
-                                    className={`h-full bg-red-600 ${kpiCompradorAtivo === 'ruptura' && ativo ? 'ring-1 ring-white' : ''}`}
-                                    style={{ width: `${(c.ruptura / total) * 100}%` }}
-                                    title={`${c.ruptura} ruptura`}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      selecionarSegmento(c.comprador, 'ruptura');
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        selecionarSegmento(c.comprador, 'ruptura');
-                                      }
-                                    }}
-                                  />
-                                )}
-                                {c.aguardandoPc > 0 && (
-                                  <span
-                                    role="button"
-                                    tabIndex={0}
-                                    className={`h-full bg-violet-600 ${kpiCompradorAtivo === 'aguardando_pc' && ativo ? 'ring-1 ring-white' : ''}`}
-                                    style={{ width: `${(c.aguardandoPc / total) * 100}%` }}
-                                    title={`${c.aguardandoPc} aguardando PC`}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      selecionarSegmento(c.comprador, 'aguardando_pc');
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        selecionarSegmento(c.comprador, 'aguardando_pc');
-                                      }
-                                    }}
-                                  />
-                                )}
-                                {c.critico > 0 && (
-                                  <span
-                                    role="button"
-                                    tabIndex={0}
-                                    className={`h-full bg-orange-500 ${kpiCompradorAtivo === 'critico' && ativo ? 'ring-1 ring-white' : ''}`}
-                                    style={{ width: `${(c.critico / total) * 100}%` }}
-                                    title={`${c.critico} crítico`}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      selecionarSegmento(c.comprador, 'critico');
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        selecionarSegmento(c.comprador, 'critico');
-                                      }
-                                    }}
-                                  />
-                                )}
-                                {c.atencao > 0 && (
-                                  <span
-                                    role="button"
-                                    tabIndex={0}
-                                    className={`h-full bg-amber-400 ${kpiCompradorAtivo === 'atencao' && ativo ? 'ring-1 ring-white' : ''}`}
-                                    style={{ width: `${(c.atencao / total) * 100}%` }}
-                                    title={`${c.atencao} atenção`}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      selecionarSegmento(c.comprador, 'atencao');
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        selecionarSegmento(c.comprador, 'atencao');
-                                      }
-                                    }}
-                                  />
-                                )}
-                              </div>
+                            <div className="h-2.5 overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
+                              <span
+                                className={`block h-full rounded ${barraAcaoClass(a.chave, a.prioridade)}`}
+                                style={{ width: `${Math.max(largura, a.itens > 0 ? 4 : 0)}%` }}
+                              />
                             </div>
                           </button>
                         </li>
@@ -1442,19 +1360,19 @@ export default function CoberturaEstoquePage() {
                           ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-500 dark:border-sky-400 dark:bg-sky-950/40 dark:ring-sky-400'
                           : 'border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800/60 dark:hover:bg-slate-800'
                       }`}
-                      title="Filtrar itens sem preço de entrada qualificada ou com preço zero"
+                      title="Filtrar produtos sem preço de entrada qualificada (ou preço zero) com saldo físico > 0"
                     >
                       <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        Sem preço
+                        Sem preço com estoque
                       </p>
                       <p
                         className={`text-xl font-bold tabular-nums leading-tight ${
                           filtroSemPreco ? 'text-sky-700 dark:text-sky-300' : 'text-slate-800 dark:text-slate-100'
                         }`}
                       >
-                        {semPrecoNoRecorte}
+                        {semPrecoComEstoqueNoRecorte}
                       </p>
-                      <p className="text-[9px] text-slate-400">códigos no recorte</p>
+                      <p className="text-[9px] text-slate-400">produtos no recorte</p>
                     </button>
                   </div>
                   <div

@@ -339,8 +339,7 @@ export function filtrarItensAindaVivosNoErp<T>(
 
 /**
  * Pedidos com escolha de "Previsão confiável" divergente do snapshot e SEM mudança
- * de entrega (o lote rejeita data igual — vão pelo endpoint unitário com
- * `confirmacao_data`).
+ * de entrega (o lote de previsão aceita data igual quando `confirmacao_data`).
  *
  * Regras:
  * - Carradas em formação ficam de fora: datas não são gerenciadas nesta tela e a

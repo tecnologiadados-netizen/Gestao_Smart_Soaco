@@ -21,6 +21,7 @@ type KpiItem = {
   sub: string;
   accent: string;
   border: string;
+  topColor: string;
   destaque?: boolean;
 };
 
@@ -53,8 +54,9 @@ export default function DashEntregasKpiCards({ resumo, loading, onDrill }: Props
       label: 'Saldo pendente total',
       valor: formatMoedaDash(totalValor, true),
       sub: `${formatNumero(totalPedidos)} pedidos em aberto`,
-      accent: 'text-primary-600 dark:text-primary-400',
-      border: 'border-primary-500/20 hover:border-primary-500/50',
+      accent: 'text-sky-600 dark:text-sky-400',
+      border: 'border-sky-500/20 hover:border-sky-500/50',
+      topColor: '#0ea5e9',
       destaque: true,
     },
     {
@@ -64,6 +66,7 @@ export default function DashEntregasKpiCards({ resumo, loading, onDrill }: Props
       sub: `${pctAtrasado}% do saldo · ${formatNumero(atrasadosPedidos)} pedidos`,
       accent: 'text-amber-600 dark:text-amber-400',
       border: 'border-amber-500/25 hover:border-amber-500/60',
+      topColor: '#f59e0b',
     },
     {
       key: 'em_dia',
@@ -72,14 +75,16 @@ export default function DashEntregasKpiCards({ resumo, loading, onDrill }: Props
       sub: `${pctEmDia}% do saldo · ${formatNumero(emDiaPedidos)} pedidos`,
       accent: 'text-emerald-600 dark:text-emerald-400',
       border: 'border-emerald-500/25 hover:border-emerald-500/60',
+      topColor: '#22c55e',
     },
     {
       key: 'entrega_hoje',
       label: 'Entrega hoje',
       valor: formatMoedaDash(entregaHojeValor, true),
       sub: `${formatNumero(entregaHojePedidos)} pedidos com previsão hoje`,
-      accent: 'text-sky-600 dark:text-sky-400',
-      border: 'border-sky-500/25 hover:border-sky-500/60',
+      accent: 'text-violet-600 dark:text-violet-400',
+      border: 'border-violet-500/25 hover:border-violet-500/60',
+      topColor: '#8b5cf6',
     },
   ];
 
@@ -91,9 +96,10 @@ export default function DashEntregasKpiCards({ resumo, loading, onDrill }: Props
             key={c.key}
             type="button"
             onClick={() => onDrill(c.key)}
-            className={`group rounded-2xl border bg-white/80 p-5 text-left shadow-sm transition-all hover:shadow-md dark:bg-slate-900/80 ${c.border} ${
-              c.destaque ? 'ring-1 ring-primary-500/10' : ''
+            className={`group rounded-2xl border border-t-4 bg-white/80 p-5 text-left shadow-sm transition-all hover:shadow-md dark:bg-slate-900/80 ${c.border} ${
+              c.destaque ? 'ring-1 ring-sky-500/10' : ''
             }`}
+            style={{ borderTopColor: c.topColor }}
             title="Clique para ver os pedidos de origem"
           >
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -111,13 +117,14 @@ export default function DashEntregasKpiCards({ resumo, loading, onDrill }: Props
       <button
         type="button"
         onClick={() => onDrill('lead_time')}
-        className="flex w-full items-center justify-between rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-left transition hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800/50 dark:hover:border-slate-600"
+        className="flex w-full items-center justify-between rounded-xl border border-t-4 border-slate-200/80 bg-slate-50/80 px-4 py-3 text-left transition hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800/50 dark:hover:border-slate-600"
+        style={{ borderTopColor: '#6366f1' }}
         title="Clique para ver saldo por TipoF"
       >
         <span className="text-sm text-slate-600 dark:text-slate-300">
           Lead time médio (dias até a previsão original)
         </span>
-        <span className="text-lg font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+        <span className="text-lg font-semibold tabular-nums text-indigo-700 dark:text-indigo-300">
           {resumo.leadTimeMedioDias ?? '—'}
         </span>
       </button>

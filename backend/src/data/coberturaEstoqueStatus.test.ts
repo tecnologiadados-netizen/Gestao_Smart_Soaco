@@ -14,6 +14,8 @@ import {
   classificarKpiFirme,
   classificarStatusPainel,
   compareLinhasPainelV2,
+  filtrarUniversoPainelCobertura,
+  itemAptoUniversoPainelCobertura,
   montarLinhaCobertura,
   sugerirAcaoCobertura,
   type ConsultaEstoqueRowComCm,
@@ -291,6 +293,78 @@ describe('calcAtendimento / calcFaltante', () => {
     expect(calcAtendimento(5, 10)).toBe(0.5);
     expect(calcFaltante(5, 10)).toBe(5);
     expect(calcFaltante(15, 10)).toBe(0);
+  });
+});
+
+describe('itemAptoUniversoPainelCobertura', () => {
+  it('exclui quando CM, empenho, estoque, SC e Pré Compra são zero', () => {
+    expect(
+      itemAptoUniversoPainelCobertura({
+        consumoMedio: 0,
+        saldo: 0,
+        empenho: 0,
+        solicitacao: 0,
+        cotacao: 0,
+      })
+    ).toBe(false);
+  });
+
+  it('mantém se qualquer um dos cinco campos for > 0', () => {
+    expect(
+      itemAptoUniversoPainelCobertura({
+        consumoMedio: 1,
+        saldo: 0,
+        empenho: 0,
+        solicitacao: 0,
+        cotacao: 0,
+      })
+    ).toBe(true);
+    expect(
+      itemAptoUniversoPainelCobertura({
+        consumoMedio: 0,
+        saldo: 5,
+        empenho: 0,
+        solicitacao: 0,
+        cotacao: 0,
+      })
+    ).toBe(true);
+    expect(
+      itemAptoUniversoPainelCobertura({
+        consumoMedio: 0,
+        saldo: 0,
+        empenho: 2,
+        solicitacao: 0,
+        cotacao: 0,
+      })
+    ).toBe(true);
+    expect(
+      itemAptoUniversoPainelCobertura({
+        consumoMedio: 0,
+        saldo: 0,
+        empenho: 0,
+        solicitacao: 3,
+        cotacao: 0,
+      })
+    ).toBe(true);
+    expect(
+      itemAptoUniversoPainelCobertura({
+        consumoMedio: 0,
+        saldo: 0,
+        empenho: 0,
+        solicitacao: 0,
+        cotacao: 4,
+      })
+    ).toBe(true);
+  });
+
+  it('filtrarUniversoPainelCobertura remove só os totalmente zerados nos cinco campos', () => {
+    const rows = [
+      row({ codigo: 'Z', saldo: 0, empenho: 0, saldoProjetado: 0, consumoMedio: 0 }),
+      row({ codigo: 'A', saldo: 1, empenho: 0, saldoProjetado: 1, consumoMedio: 0 }),
+    ];
+    const filtrado = filtrarUniversoPainelCobertura(rows);
+    expect(filtrado).toHaveLength(1);
+    expect(filtrado[0]?.codigo).toBe('A');
   });
 });
 

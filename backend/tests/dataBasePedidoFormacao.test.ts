@@ -34,7 +34,7 @@ describe('dataBasePedidoFormacao', () => {
     ).toBe('2026-10-14');
   });
 
-  it('formação preferencialmente usa data_producao real', () => {
+  it('formação usa só overlay e ignora data_producao gravada', () => {
     expect(
       resolverDataBasePedido(
         {
@@ -44,7 +44,17 @@ describe('dataBasePedidoFormacao', () => {
         },
         '2026-10-14'
       )
-    ).toBe('2026-08-20');
+    ).toBe('2026-10-14');
+  });
+
+  it('formação sem overlay não cai na produção real nem na previsão ERP', () => {
+    expect(
+      resolverDataBasePedido({
+        Observacoes: 'Carrada constr',
+        data_producao: '2026-08-20',
+        previsao_entrega_atualizada: '2026-07-08',
+      })
+    ).toBe('');
   });
 
   it('pedido normal: data_producao ?? previsão', () => {

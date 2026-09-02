@@ -568,7 +568,7 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
                     <ul className="mt-2 space-y-1.5 text-xs border-t border-amber-200/60 dark:border-amber-800/60 pt-2">
                       {c.itens.map((it, idx) => (
                         <li key={`${it.pd}-${it.previsao}-${idx}`}>
-                          PD <span className="font-mono">{it.pd || '—'}</span>
+                          <span className="font-mono">{it.pd || '—'}</span>
                           {' — '}
                           data <span className="font-medium">{it.previsao || '—'}</span>
                         </li>

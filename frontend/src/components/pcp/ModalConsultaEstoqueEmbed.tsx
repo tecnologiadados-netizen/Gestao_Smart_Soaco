@@ -5,6 +5,11 @@ import GradeFiltroCabecalhoBtn from '../grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../grade/GradeFiltroExcelPortal';
 import GradeCelulaModalBtn from './GradeCelulaModalBtn';
 import ModalConsultaEstoqueDetalhe, { fmtQtde } from './ModalConsultaEstoqueDetalhe';
+import ModalEscolhasConsultaEstoque from './ModalEscolhasConsultaEstoque';
+import {
+  rotuloEmpenhoProdutoEscopo,
+  rotuloModoProduto,
+} from './ModalFiltrosConsultaEstoque';
 import CopiarTextoBtn from '../CopiarTextoBtn';
 import EmpenhoLiquidoPainel from '../ressupAlmox/EmpenhoLiquidoPainel';
 import RotuloComDica from '../ressupAlmox/RotuloComDica';
@@ -15,6 +20,8 @@ import {
   consultarEstoque,
   obterSaldoDetalhe,
   type ConsultaEstoqueLinha,
+  type EmpenhoProdutoEscopoConsultaEstoque,
+  type ModoProdutoConsultaEstoque,
   type SaldoSetorDetalhe,
 } from '../../api/consultaEstoque';
 import { obterRessupEmpenhoPorPedido, type RessupEmpenhoPedidoResultado } from '../../api/compras';
@@ -40,6 +47,11 @@ const NUM_KEYS = ['empenho', 'saldo', 'saldoProjetado'] as const;
 
 const SALDO_PROJETADO_NEG_CLASS = 'bg-red-50 dark:bg-red-950/40';
 const Z_MAIN_DEFAULT = 132;
+
+type EscolhasProdutoEmbed = {
+  modoProduto: ModoProdutoConsultaEstoque;
+  empenhoEscopo: EmpenhoProdutoEscopoConsultaEstoque;
+};
 
 type DetalheModal =
   | { tipo: 'saldo'; linha: ConsultaEstoqueLinha }
@@ -88,10 +100,15 @@ export default function ModalConsultaEstoqueEmbed({
 }: Props) {
   const zMain = zIndexBase;
   const zDetalhe = zIndexBase + 1;
+  const zEscolhas = zIndexBase + 2;
   const [linhas, setLinhas] = useState<ConsultaEstoqueLinha[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [erroApi, setErroApi] = useState<string | null>(null);
   const [considerarRequisicoes, setConsiderarRequisicoes] = useState(true);
+  const [escolhasProduto, setEscolhasProduto] = useState<EscolhasProdutoEmbed | null>(null);
+  const [confirmEscolhasAberto, setConfirmEscolhasAberto] = useState(!fontes);
+  const [escolhaModoTemp, setEscolhaModoTemp] = useState<ModoProdutoConsultaEstoque | null>(null);
+  const [idsProdutosPaiEscopo, setIdsProdutosPaiEscopo] = useState<number[]>([]);
   const [detalhe, setDetalhe] = useState<DetalheModal | null>(null);
   const [detalheSaldo, setDetalheSaldo] = useState<SaldoSetorDetalhe[]>([]);
   const [detalheEmpenhoLiquido, setDetalheEmpenhoLiquido] = useState<RessupEmpenhoPedidoResultado | null>(
@@ -100,7 +117,11 @@ export default function ModalConsultaEstoqueEmbed({
 
   const detalheCacheRef = useRef(new Map<string, DetalheCachePayload>());
   const considerarRef = useRef(considerarRequisicoes);
+  const escolhasRef = useRef(escolhasProduto);
+  const idsPaisEscopoRef = useRef(idsProdutosPaiEscopo);
   considerarRef.current = considerarRequisicoes;
+  escolhasRef.current = escolhasProduto;
+  idsPaisEscopoRef.current = idsProdutosPaiEscopo;
 
   const getCellText = useCallback((row: ConsultaEstoqueLinha, colId: string): string => {
     switch (colId) {
@@ -143,7 +164,10 @@ export default function ModalConsultaEstoqueEmbed({
   });
 
   const carregarConsulta = useCallback(
-    async (req: boolean) => {
+    async (req: boolean, escolhas?: EscolhasProdutoEmbed | null) => {
+      const e = escolhas ?? escolhasRef.current;
+      if (!fontes && !e) return;
+
       detalheCacheRef.current.clear();
       setDetalhe(null);
       setLoading(true);
@@ -151,7 +175,11 @@ export default function ModalConsultaEstoqueEmbed({
       const r = fontes
         ? await fontes.consultar(codigo.trim(), req)
         : await consultarEstoque({
-            filtros: { codigos: [codigo.trim()] },
+            filtros: {
+              codigos: [codigo.trim()],
+              modoProduto: e!.modoProduto,
+              empenhoProdutoEscopo: e!.empenhoEscopo,
+            },
             considerarRequisicoes: req,
           });
       setLoading(false);
@@ -160,14 +188,49 @@ export default function ModalConsultaEstoqueEmbed({
         setLinhas([]);
         return;
       }
+      if (!fontes) setIdsProdutosPaiEscopo(r.idsProdutosPaiEscopo ?? []);
       setLinhas(r.data);
     },
     [codigo, fontes]
   );
 
   useEffect(() => {
-    void carregarConsulta(considerarRequisicoes);
-  }, [carregarConsulta, considerarRequisicoes]);
+    if (fontes) {
+      void carregarConsulta(considerarRequisicoes);
+      return;
+    }
+    setEscolhasProduto(null);
+    setConfirmEscolhasAberto(true);
+    setEscolhaModoTemp(null);
+    setIdsProdutosPaiEscopo([]);
+    setLinhas([]);
+    setErroApi(null);
+    setLoading(false);
+  }, [codigo, fontes]);
+
+  useEffect(() => {
+    if (fontes || !escolhasProduto) return;
+    void carregarConsulta(considerarRequisicoes, escolhasProduto);
+  }, [carregarConsulta, considerarRequisicoes, escolhasProduto, fontes]);
+
+  const confirmarEscolhasProduto = (escopo: EmpenhoProdutoEscopoConsultaEstoque) => {
+    if (!escolhaModoTemp) return;
+    setEscolhasProduto({ modoProduto: escolhaModoTemp, empenhoEscopo: escopo });
+    setConfirmEscolhasAberto(false);
+  };
+
+  const cancelarEscolhasProduto = () => {
+    if (escolhasProduto) {
+      setConfirmEscolhasAberto(false);
+      return;
+    }
+    onClose();
+  };
+
+  const abrirAlterarEscolhas = () => {
+    setEscolhaModoTemp(escolhasProduto?.modoProduto ?? null);
+    setConfirmEscolhasAberto(true);
+  };
 
   const detailKey =
     detalhe != null
@@ -190,9 +253,11 @@ export default function ModalConsultaEstoqueEmbed({
       setDetalheSaldo(r.data);
       return { error: r.error };
     }
+    const paisEscopo =
+      escolhasRef.current?.empenhoEscopo === 'produto' ? idsPaisEscopoRef.current : undefined;
     const rLiquido = fontes
       ? await fontes.empenhoPorPedido(id, considerarRef.current)
-      : await obterRessupEmpenhoPorPedido(id, considerarRef.current, false);
+      : await obterRessupEmpenhoPorPedido(id, considerarRef.current, false, undefined, paisEscopo);
     if (!rLiquido.error && rLiquido.data) detalheCacheRef.current.set(cacheKey, rLiquido.data);
     setDetalheEmpenhoLiquido(rLiquido.data);
     return { error: rLiquido.error };
@@ -251,15 +316,30 @@ export default function ModalConsultaEstoqueEmbed({
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-2 text-xs dark:border-slate-600">
-        <label className="inline-flex cursor-pointer items-center gap-2 text-slate-600 dark:text-slate-300">
-          <input
-            type="checkbox"
-            checked={considerarRequisicoes}
-            onChange={(e) => setConsiderarRequisicoes(e.target.checked)}
-            className="rounded border-slate-300"
-          />
-          Considerar requisições de loja no empenho
-        </label>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <label className="inline-flex cursor-pointer items-center gap-2 text-slate-600 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={considerarRequisicoes}
+              onChange={(e) => setConsiderarRequisicoes(e.target.checked)}
+              className="rounded border-slate-300"
+            />
+            Considerar requisições de loja no empenho
+          </label>
+          {!fontes && escolhasProduto && (
+            <span className="text-slate-500 dark:text-slate-400">
+              {rotuloModoProduto(escolhasProduto.modoProduto)} · Empenho:{' '}
+              {rotuloEmpenhoProdutoEscopo(escolhasProduto.empenhoEscopo)}
+              <button
+                type="button"
+                className="ml-2 text-primary-600 hover:underline dark:text-primary-400"
+                onClick={abrirAlterarEscolhas}
+              >
+                Alterar
+              </button>
+            </span>
+          )}
+        </div>
         {linhas.length > 0 && (
           <span className="tabular-nums text-slate-500 dark:text-slate-400">
             {grade.rowsExibidas.length === linhas.length
@@ -514,23 +594,65 @@ export default function ModalConsultaEstoqueEmbed({
     </>
   );
 
-  return createPortal(
-    <div
-      className="fixed inset-0 flex items-center justify-center bg-black/70 p-4"
-      style={{ zIndex: zMain }}
-      role="presentation"
-      onClick={onClose}
-    >
-      <div
-        className="relative flex max-h-[min(90vh,720px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
-        role="dialog"
-        aria-modal
-        aria-labelledby="consulta-estoque-embed-titulo"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {conteudo}
-      </div>
-    </div>,
-    document.body
+  return (
+    <>
+      {createPortal(
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black/70 p-4"
+          style={{ zIndex: zMain }}
+          role="presentation"
+          onClick={onClose}
+        >
+          <div
+            className="relative flex max-h-[min(90vh,720px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+            role="dialog"
+            aria-modal
+            aria-labelledby="consulta-estoque-embed-titulo"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {conteudo}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {!fontes && (
+        <ModalEscolhasConsultaEstoque
+          open={confirmEscolhasAberto}
+          zIndex={zEscolhas}
+          contexto={
+            <>
+              Produto <strong>{codigo}</strong>
+            </>
+          }
+          perguntaModo="Como visualizar os produtos?"
+          opcoesModo={[
+            {
+              valor: 'diretos',
+              titulo: 'Item filtrado',
+              descricao: 'O próprio produto informado',
+            },
+            {
+              valor: 'componentes',
+              titulo: 'Componentes do item filtrado',
+              descricao: 'Explosão BOM (sem o item pai)',
+            },
+          ]}
+          modoSelecionado={escolhaModoTemp}
+          onSelecionarModo={setEscolhaModoTemp}
+          perguntaEscopo="Como calcular o empenho?"
+          opcoesEscopo={[
+            {
+              valor: 'produto',
+              titulo: 'Somente do item filtrado',
+              descricao: 'Apenas a demanda do item filtrado',
+            },
+            { valor: 'todos', titulo: 'Todos os pedidos do sistema' },
+          ]}
+          onConfirmar={confirmarEscolhasProduto}
+          onCancelar={cancelarEscolhasProduto}
+        />
+      )}
+    </>
   );
 }

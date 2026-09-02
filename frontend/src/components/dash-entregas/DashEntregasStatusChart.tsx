@@ -69,7 +69,7 @@ export default function DashEntregasStatusChart({
   const strokeEmDia = (animando.pctE / 100) * circumference;
 
   return (
-    <div className="card-panel flex h-full min-h-[340px] flex-col p-5">
+    <div className="card-panel flex h-full min-h-[340px] flex-col border-t-4 border-t-emerald-500 p-5">
       <div className="mb-4 shrink-0">
         <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
           Composição do saldo pendente

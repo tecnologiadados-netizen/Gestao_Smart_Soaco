@@ -39,6 +39,14 @@ const SECOES: SecaoAjuda[] = [
       'Priorize a tabela de programação para capacidade. A de atendidos pelo estoque cobre só o que há em PA; Intermediários CONT não “some” da carga de Gôndolas nem de Corte e Dobra.',
   },
   {
+    id: 'carradas-mesma-data',
+    titulo: 'Validação de datas nas Carradas',
+    oQueE:
+      'Ao salvar, pedidos do tipo Carradas da mesma observação de rota precisam ter a mesma data base (produção efetiva). Se houver mais de uma data na mesma carrada, o save é bloqueado com o detalhe das datas e dos PDs.',
+    comoLe:
+      'A data base segue a regra do Gerenciador: produção gravada (ou previsão) nas carradas normais; em formação (construção/cont ou romaneio abaixo do corte) usa sempre max das normais + 30 dias e ignora data_producao gravada. Unifique as datas no Gerenciador / Sequenciamento antes de gerar a programação.',
+  },
+  {
     id: 'painel',
     titulo: 'Painel de programações',
     oQueE:

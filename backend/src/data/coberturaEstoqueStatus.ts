@@ -449,6 +449,26 @@ export type ConsultaEstoqueRowComCm = ConsultaEstoqueRow & {
   ultimaMovimentacaoEstoque?: string | null;
 };
 
+/** Exclui do painel itens sem movimento, estoque, empenho, SC e Pré Compra (PC pode permanecer). */
+export function itemAptoUniversoPainelCobertura(row: {
+  consumoMedio?: number;
+  saldo: number;
+  empenho: number;
+  solicitacao?: number;
+  cotacao?: number;
+}): boolean {
+  const cm = Number(row.consumoMedio) || 0;
+  const saldo = Number(row.saldo) || 0;
+  const empenho = Number(row.empenho) || 0;
+  const sc = Number(row.solicitacao) || 0;
+  const cotacao = Number(row.cotacao) || 0;
+  return !(cm === 0 && empenho === 0 && saldo === 0 && sc === 0 && cotacao === 0);
+}
+
+export function filtrarUniversoPainelCobertura<T extends ConsultaEstoqueRowComCm>(rows: T[]): T[] {
+  return rows.filter(itemAptoUniversoPainelCobertura);
+}
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }

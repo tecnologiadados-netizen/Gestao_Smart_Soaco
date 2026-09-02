@@ -29,6 +29,7 @@ import {
 } from './regrasDataEntregaRepository.js';
 import { DEFAULT_REGRA_DATA_ENTREGA, type RegraDataEntregaConfig } from '../config/regrasDataEntrega.js';
 import { buildDataBasePorPedidoIdMap, type PedidoParaDataBase } from '../utils/dataBasePedidoFormacao.js';
+import { mensagemErroPersistenciaSqlite } from '../utils/sqliteErroPersistencia.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_FILE = 'sqlBasePedidosNomus.sql';
@@ -825,7 +826,7 @@ export async function getPrevisaoPorPedidoIdMap(): Promise<Map<number, string>> 
 
 /**
  * Mapa pd.id → data base (YYYY-MM-DD): `data_producao` (preferencial) com fallback para previsão atual.
- * Formação (constr/cont ou romaneio &lt; corte): produção real ou max(normais)+30 — nunca previsão ERP.
+ * Formação (constr/cont ou romaneio &lt; corte): sempre max(normais)+30 — ignora data_producao gravada e previsão ERP.
  * Uma carga / 90s — evita SQL do gerenciador por página.
  */
 export async function getDataBasePorPedidoIdMap(): Promise<Map<number, string>> {
@@ -3018,7 +3019,8 @@ export async function registrarAjustesPrevisaoLote(
     }));
     return { ok: toInsert.length + skipped, erros: [], applied };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Erro ao registrar ajuste em lote';
+    console.error('registrarAjustesPrevisaoLote', err);
+    const msg = mensagemErroPersistenciaSqlite(err);
     return {
       ok: 0,
       erros: ajustes.map((a) => ({ id_pedido: a.id_pedido, erro: msg })),

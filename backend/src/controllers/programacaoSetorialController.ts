@@ -47,7 +47,7 @@ function toPlanningItem(row: any, dataProducaoEmFormacao = ''): PlanningItem | n
   const qtdePend = Number(row?.['Qtde Pendente Real'] ?? 0) || 0;
   if (qtdePend <= 0) return null;
 
-  // Data base alinhada ao Gerenciador (formação → max+30; senão produção ?? previsão).
+  // Data base alinhada ao Gerenciador (formação → só max+30; senão produção ?? previsão).
   const dataBaseIso = resolverDataBasePedido(row as PedidoParaDataBase, dataProducaoEmFormacao);
   const dataBase = dataBaseIso
     ? (() => {

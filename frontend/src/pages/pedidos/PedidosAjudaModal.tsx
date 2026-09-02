@@ -61,7 +61,7 @@ const SECOES: SecaoAjuda[] = [
       {
         titulo: 'Carrada em formação',
         texto:
-          'Rotas cujo nome indica construção/contingência aparecem como “Carrada em formação”: a grade não mostra data de entrega/previsão nesses casos, até a rota se consolidar.',
+          'Rotas cujo nome indica construção/contingência aparecem como “Carrada em formação”: a grade não mostra data de entrega/previsão nesses casos, até a rota se consolidar. A data de produção exibida (e usada em Empenho, Consulta de Estoque e Programação Setorial) é sempre a maior data de produção das carradas normais + 30 dias — a data_producao eventualmente gravada no pedido é ignorada enquanto a rota estiver em formação.',
       },
     ],
   },

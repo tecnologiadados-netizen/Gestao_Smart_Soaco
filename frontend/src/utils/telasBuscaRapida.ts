@@ -24,12 +24,11 @@ import {
   buildRecebimentoMenuForUser,
   buildComprasMenuForUser,
 } from '../config/navigationMenu';
-import { PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO } from './programacaoProducaoPermissoes';
 import { podeVerMenuFinanceiro } from './financeiroPermissoes';
 import { podeVerMenuRecebimento } from './recebimentoPermissoes';
 import { podeVerMenuCompras } from './doubleCheckInPermissoes';
 import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from './suportePermissoes';
-import { ROTA_PERMISSAO } from './routePermission';
+import { resolverPermissoesRota } from './routePermission';
 import { criarMatcherTextoLivre, normalizarTextoBusca } from './textoLivreBusca';
 
 export type TelaBuscaRapida = {
@@ -85,13 +84,10 @@ function flattenFinanceiroMenu(entries: FinanceiroMenuEntry[], contexto = 'Finan
 }
 
 function rotaPermitida(path: string, hasPermission: HasPermission): boolean {
-  if (path === '/pedidos/programacao-producao/recursos') {
-    return PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO.some((p) => hasPermission(p));
-  }
   if (path === '/usuarios/grupos') {
     return hasPermission(PERMISSOES.USUARIOS_GERENCIAR);
   }
-  const perms = ROTA_PERMISSAO[path];
+  const perms = resolverPermissoesRota(path);
   if (!perms) return false;
   return perms.some((p) => hasPermission(p));
 }

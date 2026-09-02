@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/requirePermission.js';
 import { validateCsrf } from '../middleware/csrf.js';
 import { PERMISSOES } from '../config/permissoes.js';
+import { PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE } from '../utils/kpisPermissoes.js';
 import {
   getCotacaoDetalheConsultaEstoque,
   getBuscarOpcoesFiltro,
@@ -26,9 +27,10 @@ router.use(requireAuth);
 
 const podeConsultaEstoque = requirePermission(
   PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
-  PERMISSOES.PCP_TOTAL,
-  PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER
+  PERMISSOES.PCP_TOTAL
 );
+
+const podeCoberturaEstoque = requirePermission(...PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE);
 
 const podeVerRegrasEntrega = requirePermission(
   PERMISSOES.PCP_REGRAS_ENTREGA_VER,
@@ -77,10 +79,10 @@ router.get(
 );
 router.post('/consulta-estoque/contar', podeConsultaEstoque, async503(postContarConsultaEstoque));
 router.post('/consulta-estoque/consultar', podeConsultaEstoque, async503(postConsultarEstoque));
-router.post('/cobertura-estoque/painel', podeConsultaEstoque, async503(postPainelCoberturaEstoque));
+router.post('/cobertura-estoque/painel', podeCoberturaEstoque, async503(postPainelCoberturaEstoque));
 router.get(
   '/cobertura-estoque/familias',
-  podeConsultaEstoque,
+  podeCoberturaEstoque,
   async503(getFamiliasCoberturaEstoque)
 );
 router.get(

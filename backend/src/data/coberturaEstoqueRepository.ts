@@ -10,6 +10,7 @@ import {
 import { NOMUS_ATRIBUTO_COMPRADOR } from './sql/sqlComprasEstoqueFragments.js';
 import {
   agregarCoberturaEstoque,
+  itemAptoUniversoPainelCobertura,
   type StatusCoberturaEstoque,
 } from './coberturaEstoqueStatus.js';
 
@@ -326,14 +327,16 @@ export async function consultarPainelCoberturaEstoque(params: {
     consultarFamiliaProdutoPorIds(ids),
     consultarUltimaMovimentacaoEstoquePorIds(ids),
   ]);
-  let comCm = data.map((r) => ({
-    ...r,
-    consumoMedio: cmMap.get(r.idProduto) ?? 0,
-    comprador: compradorMap.get(r.idProduto) ?? 'A definir',
-    precoUnitario: precoMap.get(r.idProduto) ?? null,
-    familiaProduto: familiaMap.get(r.idProduto) ?? 'Sem família',
-    ultimaMovimentacaoEstoque: ultimaMovMap.get(r.idProduto) ?? null,
-  }));
+  let comCm = data
+    .map((r) => ({
+      ...r,
+      consumoMedio: cmMap.get(r.idProduto) ?? 0,
+      comprador: compradorMap.get(r.idProduto) ?? 'A definir',
+      precoUnitario: precoMap.get(r.idProduto) ?? null,
+      familiaProduto: familiaMap.get(r.idProduto) ?? 'Sem família',
+      ultimaMovimentacaoEstoque: ultimaMovMap.get(r.idProduto) ?? null,
+    }))
+    .filter(itemAptoUniversoPainelCobertura);
 
   // Opções do filtro = famílias presentes no universo do painel (antes do filtro de família).
   const familiasDisponiveis = [

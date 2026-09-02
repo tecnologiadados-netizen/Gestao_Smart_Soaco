@@ -45,6 +45,19 @@ describe('resolverDataProducaoExibicaoGerenciador', () => {
     expect(r.previsaoExibicaoLabel).toBe('Carrada em formação');
   });
 
+  it('carrada em formação sem overlay ignora data_producao gravada', () => {
+    const r = resolverDataProducaoExibicaoGerenciador(
+      pedido({
+        Observacoes: 'ROTA CONSTRUCAO NORTE',
+        data_producao: '2026-01-01',
+        previsao_entrega_atualizada: '2026-02-01',
+      })
+    );
+    expect(r.carradaEmFormacao).toBe(true);
+    expect(r.dataExibicao).toBe('');
+    expect(r.dataProducaoReal).toBe('2026-01-01');
+  });
+
   it('romaneio_como_formacao: produção = max+30 e previsão com rótulo', () => {
     const r = resolverDataProducaoExibicaoGerenciador(
       pedido({

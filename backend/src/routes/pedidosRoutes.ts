@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/requirePermission.js';
 import { PERMISSOES } from '../config/permissoes.js';
+import { PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO } from '../utils/kpisPermissoes.js';
 import { PERMISSOES_ACESSO_FINANCEIRO_RESUMO } from '../utils/financeiroPermissoes.js';
 import {
   PERMISSOES_ACESSO_SEQUENCIAMENTO_CARRADAS,
@@ -75,7 +76,7 @@ const verPedidos = requirePermission(
 );
 
 const verFinanceiro = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_RESUMO, PERMISSOES.PCP_TOTAL);
-
+const verDashEntregas = requirePermission(...PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO);
 // Rate limit para rotas de escrita (ajustar previsão)
 const writeLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -107,10 +108,10 @@ router.get('/resumo-financeiro-grade', verFinanceiro, getResumoFinanceiroGrade);
 router.get('/resumo-status-tipof', verPedidos, getResumoStatusPorTipoF);
 router.get('/tabela-status-tipof', verPedidos, getTabelaStatusPorTipoF);
 router.get('/observacoes-resumo', verPedidos, getResumoObservacoes);
-router.get('/dash-entregas-analytics', verPedidos, getDashEntregasAnalytics);
-router.get('/dash-entregas-aging-tipof', verPedidos, getDashEntregasAgingTipoF);
-router.get('/dash-entregas-leadtime-tipof', verPedidos, getDashEntregasLeadTimeTipoF);
-router.get('/dash-entregas-filtros-opcoes', verPedidos, getDashEntregasFiltrosOpcoes);
+router.get('/dash-entregas-analytics', verDashEntregas, getDashEntregasAnalytics);
+router.get('/dash-entregas-aging-tipof', verDashEntregas, getDashEntregasAgingTipoF);
+router.get('/dash-entregas-leadtime-tipof', verDashEntregas, getDashEntregasLeadTimeTipoF);
+router.get('/dash-entregas-filtros-opcoes', verDashEntregas, getDashEntregasFiltrosOpcoes);
 router.get('/resumo-motivos', verPedidos, getResumoMotivos);
 router.get('/filtros-opcoes', verPedidos, getFiltrosOpcoes);
 router.get('/mapa-municipios', verPedidos, getMapaMunicipios);

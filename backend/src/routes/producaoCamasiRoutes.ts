@@ -2,7 +2,7 @@ import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/requirePermission.js';
-import { PERMISSOES } from '../config/permissoes.js';
+import { PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI } from '../utils/kpisPermissoes.js';
 import {
   getCamasiDatabasePath,
   isCamasiEnabled,
@@ -20,11 +20,7 @@ import {
   mesLabel,
 } from '../data/camasiTempoProducaoRepository.js';
 
-const PERMISSOES_ACESSO_PRODUCAO_CAMASI = [
-  PERMISSOES.KPIS_PAINEL_PRODUCAO_CAMASI_VER,
-  PERMISSOES.PRODUCAO_VER,
-  PERMISSOES.PRODUCAO_TOTAL,
-] as const;
+const PERMISSOES_ACESSO_PRODUCAO_CAMASI = PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI;
 
 const router = Router();
 router.use(requireAuth);

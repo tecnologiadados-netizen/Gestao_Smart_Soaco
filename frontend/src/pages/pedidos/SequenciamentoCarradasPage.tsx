@@ -14,7 +14,7 @@ import {
   type SequenciamentoSnapshotListItem,
   type SequenciamentoSnapshotStatus,
 } from '../../api/sequenciamentoCarradas';
-import { ajustarDataProducaoLote, ajustarPrevisao, ajustarPrevisaoLote } from '../../api/pedidos';
+import { ajustarDataProducaoLote, ajustarPrevisaoLote } from '../../api/pedidos';
 import SequenciamentoCarradasDetalheModal from '../../components/sequenciamento-carradas/SequenciamentoCarradasDetalheModal';
 import CalendarioProducaoModal from '../../components/sequenciamento-carradas/CalendarioProducaoModal';
 import ConfirmacaoSimulacaoModal from '../../components/sequenciamento-carradas/ConfirmacaoSimulacaoModal';
@@ -80,6 +80,7 @@ import {
   criarMatcherIdsVivosErp,
   filtrarItensAindaVivosNoErp,
 } from '../../components/sequenciamento-carradas/confirmacaoLinhasConclusao';
+import { materializarPrevisaoConfiavelDoSnapshot } from '../../components/sequenciamento-carradas/confirmacaoMotivosUtils';
 import TogglePrevisaoConfiavel, {
   type PrevisaoConfiavelTri,
 } from '../../components/TogglePrevisaoConfiavel';
@@ -537,6 +538,10 @@ export default function SequenciamentoCarradasPage() {
       );
       // Uma única etapa: datas vencidas (se houver) + motivos no mesmo modal.
       setCorrigirDatasSnapshot(invalidas);
+      // Replica Confiável efetivo da grade (override → snapshot) para o modal.
+      setPrevisaoConfiavelPorId((prev) =>
+        materializarPrevisaoConfiavelDoSnapshot(prev, linhasSnapshot)
+      );
       setConfirmacaoAberta(true);
     } finally {
       setValidandoEntrega(false);
@@ -1395,14 +1400,23 @@ export default function SequenciamentoCarradasPage() {
             rota: p.rota,
             apply_rota: true,
           }));
-          await ajustarPrevisaoLote(
+          const rEnt = await ajustarPrevisaoLote(
             ajustes,
             anexoAssinatura ? { anexo_assinatura: anexoAssinatura } : undefined
           );
+          if (rEnt.erros?.length) {
+            const e0 = rEnt.erros[0];
+            const ped = entregaVivos.find((p) => p.idPedido === e0?.id_pedido);
+            throw new Error(
+              ped
+                ? `${ped.pd} (${ped.rota}): ${e0?.erro ?? 'Erro ao gravar previsão.'}`
+                : (e0?.erro ?? 'Erro ao gravar previsão.')
+            );
+          }
         }
 
-        // Só Confiável (sem mudança de entrega): o lote rejeita data igual.
-        // Usa o endpoint unitário com confirmacao_data para gravar no Gerenciador.
+        // Só Confiável (sem mudança de entrega): uma requisição de lote com
+        // confirmacao_data — evita 429 e escrita concorrente no SQLite.
         const idsEntrega = new Set(entregaVivos.map((p) => p.idPedido));
         const idsConfiavelSoTodos = computarIdsConfiavelSo(
           previsaoConfiavelPorId,
@@ -1423,28 +1437,33 @@ export default function SequenciamentoCarradasPage() {
           if (aindaVivo && !aindaVivo(item.idPedido)) idsIgnorados.add(item.idPedido);
         }
         if (idsConfiavelSo.length > 0) {
-          await Promise.all(
-            idsConfiavelSo.map(async (item) => {
-              try {
-                await ajustarPrevisao(item.idPedido, {
-                  previsao_nova: item.previsao,
-                  motivo:
-                    motivos[item.idPedido]?.trim() ||
-                    'Confirmação de previsão confiável (sequenciamento)',
-                  observacao: observacaoPorId[item.idPedido]?.trim()
-                    ? observacaoPorId[item.idPedido]!.slice(0, 1000)
-                    : null,
-                  previsao_confiavel: item.confiavel,
-                  confirmacao_data: true,
-                  rota: item.rota || null,
-                  anexo_assinatura: anexoAssinatura,
-                });
-              } catch (e) {
-                const msg = e instanceof Error ? e.message : String(e);
-                throw new Error(`${item.pd} (${item.rota}): ${msg}`);
-              }
-            })
+          const rConf = await ajustarPrevisaoLote(
+            idsConfiavelSo.map((item) => ({
+              id_pedido: item.idPedido,
+              previsao_nova: item.previsao,
+              motivo:
+                motivos[item.idPedido]?.trim() ||
+                'Confirmação de previsão confiável (sequenciamento)',
+              observacao: observacaoPorId[item.idPedido]?.trim()
+                ? observacaoPorId[item.idPedido]!.slice(0, 1000)
+                : null,
+              previsao_atual: item.previsao,
+              previsao_confiavel: item.confiavel,
+              confirmacao_data: true,
+              rota: item.rota || undefined,
+              apply_rota: true,
+            })),
+            anexoAssinatura ? { anexo_assinatura: anexoAssinatura } : undefined
           );
+          if (rConf.erros?.length) {
+            const e0 = rConf.erros[0];
+            const item = idsConfiavelSo.find((i) => i.idPedido === e0?.id_pedido);
+            throw new Error(
+              item
+                ? `${item.pd} (${item.rota}): ${e0?.erro ?? 'Erro ao gravar previsão confiável.'}`
+                : (e0?.erro ?? 'Erro ao gravar previsão confiável.')
+            );
+          }
         }
 
         const simulacao = montarSimulacaoPayload();

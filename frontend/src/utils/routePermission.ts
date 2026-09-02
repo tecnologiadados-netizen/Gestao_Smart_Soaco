@@ -33,6 +33,7 @@ import {
   PERMISSOES_ACESSO_PAINEL_COMERCIAL_KPI,
   PERMISSOES_ACESSO_PAINEL_HISTORICO_VENDAS,
   PERMISSOES_ACESSO_PAINEL_RFV,
+  PERMISSOES_ACESSO_PAINEL_COMISSIONAMENTO,
 } from '../config/kpisCatalog';
 
 export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
@@ -50,6 +51,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/pedidos/encerrados': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos/programacao-setorial': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos/programacao-producao': PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO,
+  '/pedidos/programacao-producao/recursos': PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO,
   '/pedidos/regras-data-entrega': [
     PERMISSOES.PCP_REGRAS_ENTREGA_VER,
     PERMISSOES.PCP_REGRAS_ENTREGA_EDITAR,
@@ -110,6 +112,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/comercial/painel': PERMISSOES_ACESSO_PAINEL_COMERCIAL_KPI,
   '/comercial/historico-vendas': PERMISSOES_ACESSO_PAINEL_HISTORICO_VENDAS,
   '/comercial/classificacao-rfv': PERMISSOES_ACESSO_PAINEL_RFV,
+  '/comercial/comissionamento': PERMISSOES_ACESSO_PAINEL_COMISSIONAMENTO,
   '/loja/estoque-kits': [
     PERMISSOES.LOJA_KITS_VER,
     PERMISSOES.LOJA_KITS_MOVIMENTAR,
@@ -151,6 +154,7 @@ export const ROTAS_ORDEM = [
   '/pedidos/encerrados',
   '/pedidos/programacao-setorial',
   '/pedidos/programacao-producao',
+  '/pedidos/programacao-producao/recursos',
   '/pedidos/sycroorder',
   '/suporte',
   '/suporte/configuracao',
@@ -194,6 +198,7 @@ export const ROTAS_ORDEM = [
   '/comercial/painel',
   '/comercial/historico-vendas',
   '/comercial/classificacao-rfv',
+  '/comercial/comissionamento',
   '/loja/estoque-kits',
   '/logistica/cubagem/veiculos',
   '/logistica/cubagem/produtos',
@@ -214,6 +219,22 @@ export const ROTAS_ORDEM = [
   '/situacao-api',
   '/whatsapp',
 ] as const;
+
+export function resolverPermissoesRota(pathname: string): CodigoPermissao[] | undefined {
+  const normalized = pathname.replace(/\/$/, '') || '/';
+
+  if (ROTA_PERMISSAO[normalized]) return ROTA_PERMISSAO[normalized];
+  if (normalized.startsWith('/kpis/')) return ROTA_PERMISSAO['/kpis'];
+  if (normalized.startsWith('/qualidade/')) return ROTA_PERMISSAO['/qualidade'];
+
+  let best: string | undefined;
+  for (const route of Object.keys(ROTA_PERMISSAO)) {
+    if (normalized === route || normalized.startsWith(`${route}/`)) {
+      if (!best || route.length > best.length) best = route;
+    }
+  }
+  return best ? ROTA_PERMISSAO[best] : undefined;
+}
 
 export function primeiraRotaPermitida(hasPermission: (codigo: CodigoPermissao) => boolean, _isMaster = false): string | null {
   for (const path of ROTAS_ORDEM) {
