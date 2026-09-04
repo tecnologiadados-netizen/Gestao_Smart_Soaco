@@ -200,6 +200,25 @@ export default function TarefasInadimplentesPanel() {
     [rows],
   );
 
+  const indicadorClientesNegociacao = useMemo(() => {
+    const abertas = rows.filter((r) => r.status !== 'concluida');
+    const chave = (r: TarefaInadimplente) =>
+      (r.clienteChave || r.clienteNome).trim().toLowerCase() || String(r.id);
+    const inadimplentes = new Set(abertas.map(chave));
+    const emNegociacao = new Set(
+      abertas
+        .filter((r) => tarefaTemAcordo(r) && (r.acordo?.saldo ?? 0) > 0.009)
+        .map(chave),
+    );
+    const total = inadimplentes.size;
+    const negociando = emNegociacao.size;
+    return {
+      negociando,
+      total,
+      percentual: total > 0 ? (negociando / total) * 100 : 0,
+    };
+  }, [rows]);
+
   const rowsFila = useMemo(() => {
     if (fila === 'negociados') return rows.filter((r) => tarefaTemAcordo(r));
     return rows.filter((r) => {
@@ -376,6 +395,7 @@ export default function TarefasInadimplentesPanel() {
         <GradeAcordosInadimplentes
           rows={rowsFila}
           loading={loading}
+          indicadorClientesNegociacao={indicadorClientesNegociacao}
           onRefresh={() => void carregar()}
           onOpenHistorico={setTarefaHist}
         />

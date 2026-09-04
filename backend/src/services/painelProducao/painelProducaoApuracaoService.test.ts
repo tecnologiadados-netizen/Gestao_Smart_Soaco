@@ -11,6 +11,11 @@ import {
   niveisCompletos,
   VALOR_UNITARIO_PRODUCAO,
 } from './painelProducaoApuracaoService.js';
+import {
+  SQL_PEDIDO_DATA_ATENDIMENTO,
+  SQL_PEDIDOS_ATENDIDOS_POR_DOC_SAIDA,
+  TIPOS_MOVIMENTACAO_EXCLUIDOS_META,
+} from './painelProducaoPedidosAtendidosSql.js';
 
 describe('apuração qualitativa das metas', () => {
   it('calcula a média sobre os pedidos com alteração não abonada', () => {
@@ -138,5 +143,15 @@ describe('apuração dos setores de produção', () => {
     expect(consolidado.valorBruto).toBe(49.9);
     expect(consolidado.valorFinal).toBe(42.4);
     expect(consolidado.parcelasPenalizadas).toBe(1);
+  });
+});
+
+describe('pedidos atendidos — exclusão de remessa depósito fechado', () => {
+  it('exclui CFOP 5905 (tipo Nomus 163) da data de atendimento da meta', () => {
+    expect(TIPOS_MOVIMENTACAO_EXCLUIDOS_META).toContain(163);
+    expect(SQL_PEDIDO_DATA_ATENDIMENTO).toContain('NOT IN (163)');
+    expect(SQL_PEDIDO_DATA_ATENDIMENTO).toContain('%5905%');
+    expect(SQL_PEDIDO_DATA_ATENDIMENTO).toContain('%6905%');
+    expect(SQL_PEDIDOS_ATENDIDOS_POR_DOC_SAIDA).toContain('NOT IN (163)');
   });
 });

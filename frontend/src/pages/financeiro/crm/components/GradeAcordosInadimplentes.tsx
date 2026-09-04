@@ -129,11 +129,18 @@ function sortValue(row: TarefaInadimplente, col: ColumnId): string | number {
 type Props = {
   rows: TarefaInadimplente[];
   loading: boolean;
+  indicadorClientesNegociacao: { negociando: number; total: number; percentual: number };
   onRefresh: () => void;
   onOpenHistorico: (row: TarefaInadimplente) => void;
 };
 
-export default function GradeAcordosInadimplentes({ rows, loading, onRefresh, onOpenHistorico }: Props) {
+export default function GradeAcordosInadimplentes({
+  rows,
+  loading,
+  indicadorClientesNegociacao,
+  onRefresh,
+  onOpenHistorico,
+}: Props) {
   const [abertaId, setAbertaId] = useState<number | null>(null);
   const [detalheRecebimentos, setDetalheRecebimentos] = useState<TarefaInadimplente | null>(null);
 
@@ -168,7 +175,7 @@ export default function GradeAcordosInadimplentes({ rows, loading, onRefresh, on
 
   return (
     <div className="space-y-2">
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Valor negociado</p>
           <p className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
@@ -185,6 +192,25 @@ export default function GradeAcordosInadimplentes({ rows, loading, onRefresh, on
           <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Saldo a receber</p>
           <p className="text-sm font-semibold tabular-nums text-amber-800 dark:text-amber-300">
             {moneyBr(totais.saldo)}
+          </p>
+        </div>
+        <div
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+          title="Clientes únicos com acordo em aberto sobre o total de clientes com título em atraso (Prioridade, Prescritos e Acordos)."
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            Clientes em negociação
+          </p>
+          <p className="text-sm font-semibold tabular-nums text-sky-700 dark:text-sky-300">
+            {indicadorClientesNegociacao.percentual.toLocaleString('pt-BR', {
+              maximumFractionDigits: 1,
+              minimumFractionDigits: 1,
+            })}
+            %
+          </p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            {indicadorClientesNegociacao.negociando.toLocaleString('pt-BR')} de{' '}
+            {indicadorClientesNegociacao.total.toLocaleString('pt-BR')} inadimplentes
           </p>
         </div>
       </div>
