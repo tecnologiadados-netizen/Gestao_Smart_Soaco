@@ -36,6 +36,15 @@ const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.join(__dirname, '..');
 
+/** Caminho do .db: URLs `file:` do Prisma SQLite são relativas a `prisma/schema.prisma`. */
+function resolveSqlitePathFromDbUrl(dbUrl: string): string | null {
+  if (!dbUrl.startsWith('file:')) return null;
+  const rest = dbUrl.slice('file:'.length).replace(/^\/\/\//, '').replace(/^\/\//, '').split('?')[0];
+  if (!rest) return null;
+  if (path.isAbsolute(rest) || /^[A-Za-z]:[\\/]/.test(rest)) return rest;
+  return path.resolve(path.join(backendRoot, 'prisma'), rest);
+}
+
 // Em produção encerra o processo; em dev só registra (evita queda ao salvar arquivos / Nomus lento).
 function setupProcessHandlers(): void {
   const exitOnFatal = process.env.NODE_ENV === 'production';
@@ -60,13 +69,34 @@ async function ensureDbReady(): Promise<void> {
     console.warn('[startup] Migrate deploy falhou (pode ser normal na primeira vez):', (e as Error)?.message ?? e);
   }
   await ensureSqlitePragmas();
-  const userCount = await prisma.usuario.count().catch(() => 0);
+  const dbUrl = process.env.DB_URL?.trim() ?? '';
+  console.log(`[startup] SQLite DB_URL=${dbUrl || '(não definido)'}`);
+  let userCount: number;
+  try {
+    userCount = await prisma.usuario.count();
+  } catch (e) {
+    console.error(
+      '[startup] Falha ao contar usuários — seed automático NÃO será executado:',
+      (e as Error)?.message ?? e
+    );
+    throw e;
+  }
+  console.log(`[startup] ${userCount} usuário(s) na base local.`);
   if (userCount === 0) {
-    console.log('[startup] Nenhum usuário na base; executando seed (master/123, admin/admin123)...');
-    try {
-      await execAsync('npx tsx prisma/seed.ts', { cwd: backendRoot });
-    } catch (e) {
-      console.error('[startup] Erro ao executar seed:', (e as Error)?.message ?? e);
+    const sqlitePath = resolveSqlitePathFromDbUrl(dbUrl);
+    const sqliteBytes =
+      sqlitePath && fs.existsSync(sqlitePath) ? fs.statSync(sqlitePath).size : 0;
+    if (sqliteBytes > 512 * 1024) {
+      console.error(
+        `[startup] 0 usuários mas o arquivo SQLite tem ${sqliteBytes} bytes (${sqlitePath}). Seed automático abortado — confira DB_URL.`
+      );
+    } else {
+      console.log('[startup] Nenhum usuário na base; executando seed (master/123, admin/admin123)...');
+      try {
+        await execAsync('npx tsx prisma/seed.ts', { cwd: backendRoot });
+      } catch (e) {
+        console.error('[startup] Erro ao executar seed:', (e as Error)?.message ?? e);
+      }
     }
   } else if (userCount <= 2 && process.env.NODE_ENV === 'production') {
     console.warn(
@@ -105,7 +135,7 @@ function main(): void {
     process.exit(1);
   }
 
-  // No dev via raiz (npm run dev), run-backend-loop passa APP_PORT=4000; load-dotenv usa override:false para não sobrescrever
+  // No dev via raiz (npm run dev), run-backend-loop passa APP_PORT=4000; load-dotenv preserva essa porta.
   const port = env.APP_PORT;
   if (process.env.NODE_ENV !== 'production' && port !== 4000) {
     console.warn(`[startup] Backend na porta ${port}. Proxy e wait-on esperam 4000 — use APP_PORT=4000 ou rode "npm run dev" na raiz.`);

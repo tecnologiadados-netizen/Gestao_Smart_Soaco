@@ -13,15 +13,17 @@ const npmScript = stable ? 'dev:stable' : 'dev';
 
 function run() {
   appendDevLog('run-backend-loop', `Subindo backend (${npmScript})`);
+  const env = {
+    ...process.env,
+    APP_PORT: process.env.APP_PORT || '4000',
+    NODE_OPTIONS: [process.env.NODE_OPTIONS, '--max-old-space-size=6144'].filter(Boolean).join(' '),
+  };
+  delete env.DB_URL;
   const child = spawn('npm', ['run', npmScript], {
     cwd: backendDir,
     stdio: 'inherit',
     shell: true,
-    env: {
-      ...process.env,
-      APP_PORT: process.env.APP_PORT || '4000',
-      NODE_OPTIONS: [process.env.NODE_OPTIONS, '--max-old-space-size=6144'].filter(Boolean).join(' '),
-    },
+    env,
   });
 
   child.on('exit', (code, signal) => {

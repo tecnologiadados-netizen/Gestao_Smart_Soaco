@@ -153,7 +153,7 @@ function renderInputsDataItem(
     divergeProducao?: boolean;
     divergeEntrega?: boolean;
     onEditar: Props['onEditar'];
-    handleDateKey: (e: KeyboardEvent<HTMLButtonElement>, rowKey: string, colKey: DateColKey) => void;
+    handleDateKey: (e: KeyboardEvent<HTMLElement>, rowKey: string, colKey: DateColKey) => void;
     replicarProducaoNaEntrega: (key: string, dataProducao: string) => void;
     replicarEntregaNaProducao: (key: string, dataEntrega: string) => void;
   }
@@ -328,7 +328,7 @@ export default function ModalCorrigirDatasSequenciamento({
   });
 
   const handleDateKey = (
-    e: React.KeyboardEvent<HTMLButtonElement>,
+    e: KeyboardEvent<HTMLElement>,
     rowKey: string,
     colKey: DateColKey
   ) => {

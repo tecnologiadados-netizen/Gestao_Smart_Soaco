@@ -50,10 +50,14 @@ child = spawn('npm', ['run', npmScript, '--ignore-scripts'], {
   cwd: root,
   stdio: 'inherit',
   shell: true,
-  env: {
-    ...process.env,
-    DEV_STABLE: stable ? '1' : process.env.DEV_STABLE,
-  },
+  env: (() => {
+    const env = {
+      ...process.env,
+      DEV_STABLE: stable ? '1' : process.env.DEV_STABLE,
+    };
+    delete env.DB_URL;
+    return env;
+  })(),
 });
 
 child.on('exit', (code, signal) => {

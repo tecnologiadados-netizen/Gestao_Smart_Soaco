@@ -28,7 +28,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'A simulação recalcula datas sobre um baseline (ERP + ajustes). Produção e entrega podem ser editadas e, em alguns fluxos, replicadas entre si.',
     comoLe:
-      'Nos campos de produção e entrega, só é possível selecionar a data de hoje ou datas futuras (dias anteriores ficam desabilitados no calendário). Se as datas da carrada não estiverem unificadas, a gravação pode ser bloqueada com aviso. Carrada em formação oculta a entrega e usa produção = maior data das demais + 30 dias.',
+      'Nos campos de produção e entrega, dá para digitar dd/mm/aaaa ou escolher no calendário (ícone). Só hoje ou datas futuras (dias anteriores ficam desabilitados no calendário e são recusados na digitação). Se as datas da carrada não estiverem unificadas, a gravação pode ser bloqueada com aviso. Carrada em formação oculta a entrega e usa produção = maior data das demais + 30 dias.',
     detalhes: [
       {
         titulo: 'Inserir em Romaneio',

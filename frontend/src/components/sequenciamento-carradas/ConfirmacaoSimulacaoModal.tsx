@@ -496,7 +496,7 @@ function agruparPorPedido(
 
 type DatasHandlers = {
   editar: ((key: string, campo: 'dataProducao' | 'dataEntrega', value: string) => void) | undefined;
-  onDateKey: (e: KeyboardEvent<HTMLButtonElement>, rowKey: string, colKey: DateColKey) => void;
+  onDateKey: (e: KeyboardEvent<HTMLElement>, rowKey: string, colKey: DateColKey) => void;
 };
 
 const DatasCelulas = memo(function DatasCelulas({
@@ -1262,7 +1262,7 @@ export default function ConfirmacaoSimulacaoModal({
   );
 
   const handleDateKey = useCallback(
-    (e: KeyboardEvent<HTMLButtonElement>, rowKey: string, colKey: DateColKey) => {
+    (e: KeyboardEvent<HTMLElement>, rowKey: string, colKey: DateColKey) => {
       if (e.key !== 'Tab' && e.key !== 'Enter') return;
       if (e.key === 'Tab') {
         e.preventDefault();

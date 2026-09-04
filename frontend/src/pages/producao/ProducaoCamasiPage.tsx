@@ -519,7 +519,7 @@ export default function ProducaoCamasiPage() {
                 <YAxis
                   tick={{ fill: chartTheme.tick, fontSize: 11 }}
                   axisLine={{ stroke: chartTheme.axis }}
-                  tickFormatter={(v) => `${v}`}
+                  tickFormatter={(v) => formatHoras(Number(v))}
                 />
                 <Tooltip
                   content={({ active, payload, label }) => {
@@ -620,7 +620,7 @@ export default function ProducaoCamasiPage() {
                         className="absolute inset-y-0 left-0 rounded-lg bg-amber-500/80 dark:bg-amber-400/70"
                         style={{ width: `${Math.max(pctBar, m.horas > 0 ? 2 : 0)}%` }}
                       />
-                      <span className="relative z-10 flex h-full items-center px-2 text-[11px] font-semibold text-slate-800 dark:text-slate-100">
+                      <span className="relative z-10 flex h-full items-center px-2 text-[11px] font-semibold tabular-nums text-slate-800 dark:text-slate-100">
                         {formatHoras(m.horas)}
                       </span>
                     </div>

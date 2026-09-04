@@ -16,6 +16,7 @@ import {
   formatYmdBrComSemana,
 } from './camasiFormat';
 import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../utils/textoLivreBusca';
+import { DIAS_SEMANA_ESCALA, formatEscalaResumo } from '../../utils/recursoEscalaLabel';
 import { classesBlocoDia } from './camasiTabelaDia';
 
 export type CamasiKpiModalTipo = 'eventos' | 'parado' | 'previsto' | 'producao';
@@ -117,6 +118,76 @@ function TabelaAgrupadaPorDia<T extends { id: number; data: string }>({
         })}
       </tbody>
     </table>
+  );
+}
+
+type CamasiEscala = NonNullable<CamasiDashboardResponse['escala']>;
+
+function labelDiasEscala(diasSemana: number[]): string {
+  const set = new Set(diasSemana);
+  return DIAS_SEMANA_ESCALA.filter((d) => set.has(d.valor))
+    .map((d) => d.label)
+    .join(', ');
+}
+
+function BlocoEscalaEmUso({ escala, destaque }: { escala: CamasiEscala; destaque?: boolean }) {
+  const nome = escala.recursoNome?.trim() || escala.recursoCod || 'Recurso';
+  const dias = labelDiasEscala(escala.diasSemana);
+  return (
+    <div
+      className={
+        destaque
+          ? 'rounded-lg border border-indigo-200 bg-indigo-50/90 px-4 py-3 dark:border-indigo-800 dark:bg-indigo-950/50'
+          : 'rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/60'
+      }
+    >
+      <p
+        className={
+          destaque
+            ? 'text-[11px] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300'
+            : 'text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400'
+        }
+      >
+        Escala em uso
+      </p>
+      <p
+        className={
+          destaque
+            ? 'mt-1 text-base font-semibold text-slate-900 dark:text-slate-50'
+            : 'mt-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100'
+        }
+      >
+        {nome}
+        {escala.recursoCod ? (
+          <span className="ml-1.5 text-xs font-normal text-slate-500 dark:text-slate-400">
+            ({escala.recursoCod})
+          </span>
+        ) : null}
+      </p>
+      <p className={destaque ? 'mt-1 text-sm text-slate-700 dark:text-slate-200' : 'mt-0.5 text-xs text-slate-600 dark:text-slate-300'}>
+        {dias}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {escala.faixas.map((f) => (
+          <span
+            key={`${f.inicio}-${f.fim}`}
+            className={
+              destaque
+                ? 'inline-flex items-center rounded-md bg-white px-2.5 py-1 text-sm font-semibold tabular-nums text-indigo-900 shadow-sm ring-1 ring-indigo-200 dark:bg-slate-900 dark:text-indigo-100 dark:ring-indigo-700'
+                : 'inline-flex items-center rounded bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-800 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-600'
+            }
+          >
+            {f.inicio}–{f.fim}
+          </span>
+        ))}
+      </div>
+      {destaque ? (
+        <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+          Só entra o tempo nestas faixas (intervalo de almoço e fora da jornada não entram). Cadastro em
+          PCP → Recursos.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -239,9 +310,14 @@ export default function ModalCamasiKpi({
     },
     previsto: {
       titulo: 'Tempo previsto de produção',
-      sub: kpis?.horasEscala
-        ? `Escala no período: ${formatHoras(kpis.horasEscala)} — produção ÷ escala = disponibilidade.`
-        : 'Cadastre a escala do recurso para calcular o tempo previsto.',
+      sub: data?.escala
+        ? `${data.escala.recursoNome ?? data.escala.recursoCod}: ${formatEscalaResumo({
+            diasSemana: data.escala.diasSemana,
+            faixas: data.escala.faixas,
+          })} · ${formatHoras(kpis?.horasEscala ?? 0)} no período (produção ÷ escala = disponibilidade).`
+        : kpis?.horasEscala
+          ? `Escala no período: ${formatHoras(kpis.horasEscala)} — produção ÷ escala = disponibilidade.`
+          : 'Cadastre a escala do recurso para calcular o tempo previsto.',
     },
   };
 
@@ -352,6 +428,12 @@ export default function ModalCamasiKpi({
           </button>
         </div>
 
+        {tipo !== 'previsto' && data?.escala ? (
+          <div className="border-b border-slate-100 px-5 py-2 dark:border-slate-800">
+            <BlocoEscalaEmUso escala={data.escala} />
+          </div>
+        ) : null}
+
         {tipo !== 'previsto' && !filtrandoMotivo && (
           <div className="border-b border-slate-100 px-5 py-2 dark:border-slate-800">
             <input
@@ -369,6 +451,7 @@ export default function ModalCamasiKpi({
           <div className={tipo === 'previsto' ? 'pt-5' : 'pt-3'}>
           {tipo === 'previsto' ? (
             <div className="space-y-4">
+              {data?.escala ? <BlocoEscalaEmUso escala={data.escala} destaque /> : null}
               <table className="w-full text-sm">
                 <tbody>
                   <tr className="border-b border-slate-100 dark:border-slate-800">

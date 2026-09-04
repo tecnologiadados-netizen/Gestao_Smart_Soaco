@@ -5,29 +5,20 @@ export function formatHmsCurto(hms: string | null | undefined): string {
   return `${m[1].padStart(2, '0')}:${m[2]}`;
 }
 
+/** Padrão do módulo Camasi: horas decimais → HH:MM:SS (pode passar de 24h no período). */
 export function formatHoras(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return '—';
-  return `${new Intl.NumberFormat('pt-BR', {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  }).format(v)} h`;
+  if (v == null || !Number.isFinite(v) || v < 0) return '—';
+  const totalSec = Math.round(v * 3600);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-/**
- * Formato compacto didático a partir de horas decimais.
- * Ex.: 8.75 → "08h e 45min" | 2 → "02h" | 0.5 → "30min" | 0 → "00h"
- */
-export function formatHorasDidatico(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return '—';
-  const minutosTotal = Math.round(v * 60);
-  if (minutosTotal <= 0) return '00h';
-  if (minutosTotal < 60) return `${String(minutosTotal).padStart(2, '0')}min`;
-  const horas = Math.floor(minutosTotal / 60);
-  const minutos = minutosTotal % 60;
-  const parteHoras = `${String(horas).padStart(2, '0')}h`;
-  if (minutos === 0) return parteHoras;
-  return `${parteHoras} e ${String(minutos).padStart(2, '0')}min`;
-}
+export const formatHorasHms = formatHoras;
+
+/** @deprecated Use formatHoras (HH:MM:SS). Mantido para chamadas antigas do modal. */
+export const formatHorasDidatico = formatHoras;
 
 function pluralPt(n: number, singular: string, plural: string): string {
   return n === 1 ? `${n} ${singular}` : `${n} ${plural}`;

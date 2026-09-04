@@ -24,11 +24,14 @@ if (!result.ok) {
 sleep(3500);
 console.log('[start-dev] Iniciando stack (DEV_FORCE=1, portas já liberadas)...');
 
+const env = { ...process.env, DEV_FORCE: '1' };
+delete env.DB_URL;
+
 const child = spawn('npm', ['run', 'dev', '--ignore-scripts'], {
   cwd: root,
   stdio: 'inherit',
   shell: true,
-  env: { ...process.env, DEV_FORCE: '1' },
+  env,
 });
 
 child.on('exit', (code) => process.exit(code ?? 0));
