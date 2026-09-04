@@ -20,6 +20,8 @@ export type DfcContribuicaoLinha = {
   tipoRef: 'A' | 'L';
   /** Data (YYYY-MM-DD) para formar o período (baixa ou vencimento, conforme origem). */
   dataBucket: string;
+  /** Realizado = baixa no passado; Projetado = título em aberto por vencimento. */
+  situacao: 'Realizado' | 'Projetado';
 };
 
 export async function queryDfcContribuicoesCompletas(params: {

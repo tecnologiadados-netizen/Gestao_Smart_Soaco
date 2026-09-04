@@ -1,10 +1,11 @@
+import { createPortal } from 'react-dom';
 import LoaderCirculo from './LoaderCirculo';
 import { LOADER_DURACAO_MINIMA_MS, useDuracaoMinima } from '../hooks/useDuracaoMinima';
 
 /**
  * Overlay de vidro fosco com a animação padrão e texto — uso durante
  * carregamento de filtros, gravação de análises, etc.
- * - `viewport`: tela inteira (bloqueia menu e abas).
+ * - `viewport`: tela inteira via portal (evita recorte por `transform` em ancestrais).
  * - `contained`: somente o pai `relative` (aba atual — menu e outras abas livres).
  *
  * Fica visível por `duracaoMinimaMs` mesmo que a resposta volte antes, para a
@@ -34,10 +35,10 @@ export default function CarregandoInformacoesOverlay({
 
   const position =
     mode === 'viewport'
-      ? 'fixed inset-0 z-[100] flex items-center justify-center'
+      ? 'fixed inset-0 z-[10050] flex items-center justify-center'
       : 'absolute inset-0 z-50 flex min-h-[12rem] items-center justify-center rounded-b-xl';
 
-  return (
+  const overlay = (
     <div
       className={`${position} bg-slate-950/45 backdrop-blur-md ${className}`.trim()}
       style={zIndex === undefined ? undefined : { zIndex }}
@@ -51,4 +52,10 @@ export default function CarregandoInformacoesOverlay({
       </div>
     </div>
   );
+
+  if (mode === 'viewport' && typeof document !== 'undefined') {
+    return createPortal(overlay, document.body);
+  }
+
+  return overlay;
 }

@@ -8,9 +8,9 @@ import {
 } from '../config/kpisCatalog';
 import {
   PRODUCAO_MENU,
-  PCP_MENU,
+  buildPcpMenuForUser,
+  podeVerSecaoPcp,
   COMUNICACAO_INTERNA_SUBMENUS,
-  COMPRAS_MENU,
   ENGENHARIA_SUBMENUS,
   QUALIDADE_MENU,
   GESTAO_USUARIOS_SUBMENUS,
@@ -22,12 +22,13 @@ import {
   buildFinanceiroMenuForUser,
   buildLogisticaMenuForUser,
   buildRecebimentoMenuForUser,
+  buildComprasMenuForUser,
 } from '../config/navigationMenu';
-import { PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO } from './programacaoProducaoPermissoes';
 import { podeVerMenuFinanceiro } from './financeiroPermissoes';
 import { podeVerMenuRecebimento } from './recebimentoPermissoes';
+import { podeVerMenuCompras } from './doubleCheckInPermissoes';
 import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from './suportePermissoes';
-import { ROTA_PERMISSAO } from './routePermission';
+import { resolverPermissoesRota } from './routePermission';
 import { criarMatcherTextoLivre, normalizarTextoBusca } from './textoLivreBusca';
 
 export type TelaBuscaRapida = {
@@ -83,13 +84,10 @@ function flattenFinanceiroMenu(entries: FinanceiroMenuEntry[], contexto = 'Finan
 }
 
 function rotaPermitida(path: string, hasPermission: HasPermission): boolean {
-  if (path === '/pedidos/programacao-producao/recursos') {
-    return PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO.some((p) => hasPermission(p));
-  }
   if (path === '/usuarios/grupos') {
     return hasPermission(PERMISSOES.USUARIOS_GERENCIAR);
   }
-  const perms = ROTA_PERMISSAO[path];
+  const perms = resolverPermissoesRota(path);
   if (!perms) return false;
   return perms.some((p) => hasPermission(p));
 }
@@ -128,8 +126,8 @@ export function buildTelasBuscaRapidaForUser(ctx: BuildTelasBuscaRapidaCtx): Tel
     telas.push(...flattenNavMenu(PRODUCAO_MENU, hasPermission, 'Produção'));
   }
 
-  if (hasPermission(PERMISSOES.PCP_VER_TELA)) {
-    telas.push(...flattenNavMenu(PCP_MENU, hasPermission, 'PCP', true));
+  if (podeVerSecaoPcp(hasPermission)) {
+    telas.push(...flattenNavMenu(buildPcpMenuForUser(hasPermission), hasPermission, 'PCP', true));
   }
 
   const logisticaMenu = buildLogisticaMenuForUser(hasPermission);
@@ -147,8 +145,9 @@ export function buildTelasBuscaRapidaForUser(ctx: BuildTelasBuscaRapidaCtx): Tel
     telas.push({ path: '/mind-maps', label: PATH_LABELS['/mind-maps'] ?? 'Fluxos Decisórios' });
   }
 
-  if (hasPermission(PERMISSOES.COMPRAS_VER)) {
-    telas.push(...flattenNavMenu(COMPRAS_MENU, hasPermission, 'Compras'));
+  const comprasMenu = buildComprasMenuForUser(hasPermission);
+  if (podeVerMenuCompras(hasPermission) && comprasMenu.length > 0) {
+    telas.push(...flattenNavMenu(comprasMenu, hasPermission, 'Compras'));
   }
 
   const recebimentoMenu = buildRecebimentoMenuForUser(hasPermission);

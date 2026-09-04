@@ -1,6 +1,6 @@
 /**
  * Data base (produção efetiva) alinhada ao Gerenciador:
- * formação (constr/cont ou romaneio &lt; corte) → data_producao real ou max(normais)+30;
+ * formação (constr/cont ou romaneio &lt; corte) → sempre max(normais)+30 (ignora data_producao gravada);
  * demais → data_producao ?? previsão.
  */
 
@@ -107,16 +107,16 @@ export function maxDataProducaoPedidosNormais(pedidos: PedidoParaDataBase[]): st
 
 /**
  * Data efetiva de produção/consumo (Empenho, Consulta Estoque, etc.).
- * Formação: nunca usa previsão ERP; usa produção real ou max+30.
+ * Formação: nunca usa previsão ERP nem data_producao gravada; só max+30 (overlay).
  */
 export function resolverDataBasePedido(
   p: PedidoParaDataBase,
   dataProducaoEmFormacao = ''
 ): string {
-  const dataProducaoReal = toIsoDateYmd(p.data_producao);
   if (isPedidoEmFormacao(p)) {
-    return dataProducaoReal || dataProducaoEmFormacao || '';
+    return dataProducaoEmFormacao || '';
   }
+  const dataProducaoReal = toIsoDateYmd(p.data_producao);
   const previsao = toIsoDateYmd(p.previsao_entrega_atualizada ?? p.previsao_entrega);
   return dataProducaoReal || previsao || '';
 }

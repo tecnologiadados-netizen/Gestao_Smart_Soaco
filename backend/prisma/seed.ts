@@ -19,6 +19,7 @@ const PERM_ALL = JSON.stringify([
   'fluxos.ver',
   'fluxos.editar',
   'compras.ver',
+  'compras.double_checkin',
   'relatorios.ver',
   'integracao.ver',
   'rh.ver',
@@ -33,6 +34,7 @@ const PERM_OPERADOR = JSON.stringify([
   'fluxos.ver',
   'fluxos.editar',
   'compras.ver',
+  'compras.double_checkin',
   'relatorios.ver',
   'integracao.ver',
 ]);

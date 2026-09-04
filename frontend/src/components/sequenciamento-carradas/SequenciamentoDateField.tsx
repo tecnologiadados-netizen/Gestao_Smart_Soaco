@@ -48,6 +48,11 @@ type Props = {
    * use algo acima, senão o calendário abre “atrás” e parece que o campo não responde.
    */
   popoverZClass?: string;
+  /**
+   * Data mínima selecionável (YYYY-MM-DD, local).
+   * Dias anteriores ficam desabilitados no calendário e são ignorados no onChange.
+   */
+  minDate?: string;
 };
 
 /**
@@ -68,6 +73,7 @@ export default function SequenciamentoDateField({
   iconOnly = false,
   iconTitle,
   popoverZClass = 'z-[200]',
+  minDate,
 }: Props) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -76,6 +82,7 @@ export default function SequenciamentoDateField({
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
   const selected = isoToDate(value);
+  const minDateObj = minDate ? isoToDate(minDate) : undefined;
 
   const syncMonthFromValue = useCallback(() => {
     setMonth(isoToDate(value) ?? new Date());
@@ -238,9 +245,12 @@ export default function SequenciamentoDateField({
               onMonthChange={setMonth}
               hideNavigation
               selected={selected}
+              disabled={minDateObj ? { before: minDateObj } : undefined}
               onSelect={(d) => {
                 if (!d) return;
-                onChange(dateToIso(d));
+                const iso = dateToIso(d);
+                if (minDate && iso < minDate) return;
+                onChange(iso);
                 fechar();
                 triggerRef.current?.focus();
               }}
@@ -263,7 +273,8 @@ export default function SequenciamentoDateField({
                   '[&>button]:bg-primary-600 [&>button]:text-white [&>button]:hover:bg-primary-700',
                 today: '[&>button]:font-bold [&>button]:text-primary-700 dark:[&>button]:text-primary-300',
                 outside: '[&>button]:text-slate-300 dark:[&>button]:text-slate-600',
-                disabled: '[&>button]:opacity-40',
+                disabled:
+                  '[&>button]:pointer-events-none [&>button]:opacity-40 [&>button]:cursor-not-allowed',
               }}
             />
           </div>,

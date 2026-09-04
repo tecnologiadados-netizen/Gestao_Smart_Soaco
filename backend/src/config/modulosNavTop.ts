@@ -48,7 +48,21 @@ export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
   {
     code: 'pcp',
     label: 'PCP',
-    permissoes: [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
+    permissoes: [
+      PERMISSOES.PCP_VER_TELA,
+      PERMISSOES.PCP_TOTAL,
+      PERMISSOES.PEDIDOS_VER,
+      PERMISSOES.PCP_SEQUENCIAMENTO_CARRADAS_VER,
+      PERMISSOES.PCP_SEQUENCIAMENTO_CARRADAS_CRIAR,
+      PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
+      PERMISSOES.PCP_PAINEL_GERENCIAL_VER,
+      PERMISSOES.PCP_PAINEL_TV_VER,
+      PERMISSOES.PCP_PAINEL_APURACAO_VER,
+      PERMISSOES.PCP_PAINEL_METAS_EDITAR,
+      PERMISSOES.PCP_PAINEL_METAS_FAIXAS_EDITAR,
+      PERMISSOES.PCP_REGRAS_ENTREGA_VER,
+      PERMISSOES.PCP_REGRAS_ENTREGA_EDITAR,
+    ],
   },
   {
     code: 'comunicacao_interna',
@@ -66,7 +80,7 @@ export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
     label: 'Fluxos Decisórios',
     permissoes: [PERMISSOES.FLUXOS_VER, PERMISSOES.FLUXOS_EDITAR],
   },
-  { code: 'compras', label: 'Compras', permissoes: [PERMISSOES.COMPRAS_VER] },
+  { code: 'compras', label: 'Compras', permissoes: [PERMISSOES.COMPRAS_VER, PERMISSOES.COMPRAS_DOUBLE_CHECKIN] },
   {
     code: 'recebimento',
     label: 'Recebimento',

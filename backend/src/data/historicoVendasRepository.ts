@@ -179,7 +179,7 @@ export interface HistoricoVendasAnalyticsDto {
   topGrupos: RankingItem[];
   topSubgrupo1: RankingItem[];
   topVendedores: RankingItem[];
-  topRegioes: RankingItem[];
+  topUfs: RankingItem[];
   mixGrupos: { grupoProduto: string; valor: number; pct: number }[];
   ganhadores: GanhadorPerdedor[];
   perdedores: GanhadorPerdedor[];
@@ -412,7 +412,14 @@ function topRanking(rows: VendaHistoricoRow[], dim: DrillDim, limit: number, bas
       valorVarPct: baseAgg ? pctChange(a.valor, baseAgg.valor) : undefined,
     });
   }
-  return items.sort((a, b) => b.valor - a.valor).slice(0, limit);
+  // União dos tops por valor e por qtde — o frontend escolhe a métrica e recorta.
+  const byValor = [...items].sort((a, b) => b.valor - a.valor).slice(0, limit);
+  const byQtde = [...items].sort((a, b) => b.qtde - a.qtde).slice(0, limit);
+  const map = new Map<string, RankingItem>();
+  for (const x of byValor) map.set(x.key, x);
+  for (const x of byQtde) map.set(x.key, x);
+  // Ordem padrão por valor (concentração e consumidores que usam [0]).
+  return [...map.values()].sort((a, b) => b.valor - a.valor);
 }
 
 function mixPorGrupo(rows: VendaHistoricoRow[], limit: number): { grupoProduto: string; valor: number; pct: number }[] {
@@ -590,7 +597,7 @@ function emptyAnalytics(ini: string, fim: string, comparacaoBase: ComparacaoBase
     topGrupos: [],
     topSubgrupo1: [],
     topVendedores: [],
-    topRegioes: [],
+    topUfs: [],
     mixGrupos: [],
     ganhadores: [],
     perdedores: [],
@@ -647,7 +654,7 @@ export async function obterHistoricoVendasAnalytics(filtros: FiltrosHistoricoVen
     topGrupos: topRanking(curRows, 'grupo', 12, baseRows),
     topSubgrupo1: topRanking(curRows, 'subgrupo1', 12, baseRows),
     topVendedores: topRanking(curRows, 'vendedor', 12, baseRows),
-    topRegioes: topRanking(curRows, 'regiao', 12, baseRows),
+    topUfs: topRanking(curRows, 'uf', 12, baseRows),
     mixGrupos: mixPorGrupo(curRows, 6),
     ...winnersLosersPorProduto(curRows, baseRows, 10),
   };

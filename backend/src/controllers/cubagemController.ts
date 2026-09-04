@@ -2,15 +2,21 @@ import type { Request, Response } from 'express';
 import { isNomusEnabled } from '../config/nomusDb.js';
 import { listarPedidos } from '../data/pedidosRepository.js';
 import {
+  atualizarTamanhoCategoria,
   atualizarVeiculo,
+  criarTamanhoCategoria,
   criarVeiculo,
   excluirProdutoCubagem,
+  excluirTamanhoCategoria,
   excluirVeiculo,
+  listarTamanhosCategorias,
   listarVeiculos,
   obterCubagemPorIdProduto,
+  obterTamanhoCategoria,
   obterVeiculo,
   salvarProdutoCubagem,
   type ProdutoCubagemInput,
+  type TamanhoCategoriaInput,
   type VeiculoInput,
 } from '../data/cubagemRepository.js';
 import {
@@ -58,6 +64,22 @@ function parseVeiculoBody(body: Record<string, unknown>): VeiculoInput {
     ano: parseIntOpcional(body.ano),
     motoristaPadrao: body.motoristaPadrao != null ? String(body.motoristaPadrao) : null,
     ativo: body.ativo !== false,
+    tamanhoCategoriaId: parseIntOpcional(body.tamanhoCategoriaId),
+  };
+}
+
+function parseTamanhoBody(body: Record<string, unknown>): TamanhoCategoriaInput {
+  const nome = String(body.nome ?? '').trim();
+  if (!nome) throw new Error('Nome da categoria é obrigatório.');
+  const consumoKmL = Number(body.consumoKmL);
+  if (!Number.isFinite(consumoKmL) || consumoKmL <= 0) {
+    throw new Error('Consumo (km/L) deve ser maior que zero.');
+  }
+  return {
+    nome,
+    consumoKmL,
+    ativo: body.ativo !== false,
+    ordem: body.ordem != null ? Math.round(Number(body.ordem)) || 0 : 0,
   };
 }
 
@@ -118,6 +140,59 @@ function handleError(res: Response, err: unknown, fallback = 'Erro ao processar 
     return;
   }
   res.status(400).json({ error: msg });
+}
+
+// --- Tamanhos (categorias) ---
+
+export async function getTamanhos(req: Request, res: Response): Promise<void> {
+  try {
+    const apenasAtivos = req.query.apenasAtivos === 'true';
+    const data = await listarTamanhosCategorias(apenasAtivos);
+    res.json({ data });
+  } catch (err) {
+    handleError(res, err);
+  }
+}
+
+export async function postTamanho(req: Request, res: Response): Promise<void> {
+  try {
+    const input = parseTamanhoBody(req.body as Record<string, unknown>);
+    const data = await criarTamanhoCategoria(input);
+    res.status(201).json({ data });
+  } catch (err) {
+    handleError(res, err);
+  }
+}
+
+export async function putTamanho(req: Request, res: Response): Promise<void> {
+  try {
+    const id = Number(req.params.id);
+    const existente = await obterTamanhoCategoria(id);
+    if (!existente) {
+      res.status(404).json({ error: 'Categoria de tamanho não encontrada.' });
+      return;
+    }
+    const input = parseTamanhoBody(req.body as Record<string, unknown>);
+    const data = await atualizarTamanhoCategoria(id, input);
+    res.json({ data });
+  } catch (err) {
+    handleError(res, err);
+  }
+}
+
+export async function deleteTamanho(req: Request, res: Response): Promise<void> {
+  try {
+    const id = Number(req.params.id);
+    const existente = await obterTamanhoCategoria(id);
+    if (!existente) {
+      res.status(404).json({ error: 'Categoria de tamanho não encontrada.' });
+      return;
+    }
+    await excluirTamanhoCategoria(id);
+    res.json({ ok: true });
+  } catch (err) {
+    handleError(res, err);
+  }
 }
 
 // --- Veículos ---

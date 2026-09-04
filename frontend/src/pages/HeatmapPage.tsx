@@ -26,6 +26,14 @@ import { isTeresinaMapaItem } from '../utils/heatmapTeresinaBase';
 import RoteiroPdfMapaCaptura from '../components/RoteiroPdfMapaCaptura';
 import { gerarPdfRoteiroHeatmap } from '../utils/exportHeatmapRoteiroPdf';
 import {
+  fmtPrecoCombustivelBrl,
+  readStoredCategoriaRoteiroId,
+  readStoredPrecoCombustivel,
+  writeStoredCategoriaRoteiroId,
+  writeStoredPrecoCombustivel,
+} from '../utils/heatmapRoteiroFrete';
+import { listarTamanhosCategorias, type TamanhoCategoria } from '../api/logistica';
+import {
   obterMatrizDistanciasKm,
   enriquecerRotaComGeometriaOsrm,
   PONTO_RETORNO_TERESINA,
@@ -106,7 +114,15 @@ export default function HeatmapPage() {
     selecionados: { item: MapaMunicipioItem; chave: string }[];
     exclusoesSimulacao: Set<string>;
     ajustesQtdeSimulacao: Map<string, number>;
+    precoCombustivel: number;
+    consumoKmL: number;
+    categoriaNome: string | null;
   } | null>(null);
+  const [precoCombustivel, setPrecoCombustivel] = useState(readStoredPrecoCombustivel);
+  const [editandoPrecoCombustivel, setEditandoPrecoCombustivel] = useState(false);
+  const [draftPrecoCombustivel, setDraftPrecoCombustivel] = useState('');
+  const [categoriasTamanho, setCategoriasTamanho] = useState<TamanhoCategoria[]>([]);
+  const [categoriaRoteiroId, setCategoriaRoteiroId] = useState<number | null>(readStoredCategoriaRoteiroId);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -143,6 +159,29 @@ export default function HeatmapPage() {
   useEffect(() => {
     saveFiltrosHeatmap(filtros);
   }, [filtros]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const cats = await listarTamanhosCategorias(true);
+        if (cancelled) return;
+        setCategoriasTamanho(cats);
+        setCategoriaRoteiroId((prev) => {
+          if (prev != null && cats.some((c) => c.id === prev)) return prev;
+          const medio = cats.find((c) => c.nome === 'Médio') ?? cats[0] ?? null;
+          const next = medio?.id ?? null;
+          writeStoredCategoriaRoteiroId(next);
+          return next;
+        });
+      } catch {
+        if (!cancelled) setCategoriasTamanho([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const aplicarFiltros = useCallback(() => {
     setExclusoesSimulacao(new Set());
@@ -401,6 +440,14 @@ export default function HeatmapPage() {
     [paradasPdfMapa]
   );
 
+  const categoriaRoteiroAtiva = useMemo(
+    () =>
+      categoriaRoteiroId != null
+        ? categoriasTamanho.find((c) => c.id === categoriaRoteiroId) ?? null
+        : null,
+    [categoriasTamanho, categoriaRoteiroId]
+  );
+
   const iniciarExportPdfRoteiro = useCallback(() => {
     if (!roteiroResultado || !rotaPolyline || rotaPolyline.length < 2 || pdfExportando) return;
     setPdfExportando(true);
@@ -412,6 +459,9 @@ export default function HeatmapPage() {
       selecionados: selecionadosEnriquecidos,
       exclusoesSimulacao: new Set(exclusoesSimulacao),
       ajustesQtdeSimulacao: new Map(ajustesQtdeSimulacao),
+      precoCombustivel,
+      consumoKmL: categoriaRoteiroAtiva?.consumoKmL ?? 0,
+      categoriaNome: categoriaRoteiroAtiva?.nome ?? null,
     });
   }, [
     roteiroResultado,
@@ -421,6 +471,8 @@ export default function HeatmapPage() {
     exclusoesSimulacao,
     ajustesQtdeSimulacao,
     pdfExportando,
+    precoCombustivel,
+    categoriaRoteiroAtiva,
   ]);
 
   /** Ordem de visita (1-based) por chave do município no mapa, após «Roteirizar». */
@@ -593,6 +645,58 @@ export default function HeatmapPage() {
     >
       <div className="flex flex-wrap items-center gap-3 shrink-0">
         <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">Roteirizador</h2>
+        {editandoPrecoCombustivel ? (
+          <form
+            className="inline-flex items-center gap-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const n = Number(String(draftPrecoCombustivel).replace(',', '.'));
+              if (Number.isFinite(n) && n >= 0) {
+                setPrecoCombustivel(n);
+                writeStoredPrecoCombustivel(n);
+              }
+              setEditandoPrecoCombustivel(false);
+            }}
+          >
+            <label className="sr-only" htmlFor="heatmap-preco-combustivel">
+              Preço do combustível
+            </label>
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Pr. Combustível: R$</span>
+            <input
+              id="heatmap-preco-combustivel"
+              autoFocus
+              className="w-20 rounded border border-primary-400 bg-white px-1.5 py-1 text-xs dark:border-primary-500 dark:bg-slate-700 dark:text-slate-100"
+              value={draftPrecoCombustivel}
+              onChange={(e) => setDraftPrecoCombustivel(e.target.value)}
+              onBlur={() => {
+                const n = Number(String(draftPrecoCombustivel).replace(',', '.'));
+                if (Number.isFinite(n) && n >= 0) {
+                  setPrecoCombustivel(n);
+                  writeStoredPrecoCombustivel(n);
+                }
+                setEditandoPrecoCombustivel(false);
+              }}
+              inputMode="decimal"
+            />
+          </form>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setDraftPrecoCombustivel(
+                precoCombustivel.toLocaleString('pt-BR', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })
+              );
+              setEditandoPrecoCombustivel(true);
+            }}
+            className="rounded-lg border border-amber-400/80 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-950 hover:bg-amber-100 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-900/50"
+            title="Clique para editar o preço do combustível"
+          >
+            Pr. Combustível: {fmtPrecoCombustivelBrl(precoCombustivel)}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setMostrarFiltros((v) => !v)}
@@ -726,7 +830,7 @@ export default function HeatmapPage() {
               paradasRoteiro={paradasRoteiroMapa.length > 0 ? paradasRoteiroMapa : undefined}
               mapaOverlaySuperiorEsquerdo={
                 <div className="pointer-events-none absolute inset-0 z-[1100]">
-                  <div className="pointer-events-auto absolute bottom-3 left-3 top-[5.25rem] flex max-h-[calc(100%-5.25rem-0.75rem)] max-w-[min(22rem,calc(100%-1.5rem))] flex-col items-stretch gap-2 overflow-hidden">
+                  <div className="pointer-events-auto absolute bottom-3 left-3 top-[5.25rem] flex max-h-[calc(100%-5.25rem-0.75rem)] max-w-[min(34rem,calc(100%-1.5rem))] flex-col items-stretch gap-2 overflow-hidden">
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
                       <button
                         type="button"
@@ -773,6 +877,13 @@ export default function HeatmapPage() {
                           salvandoPdf={pdfExportando}
                           onAjustarCarga={setAjusteCargaChave}
                           onRestaurarSimulacao={restaurarSimulacaoToda}
+                          precoCombustivel={precoCombustivel}
+                          categorias={categoriasTamanho}
+                          categoriaId={categoriaRoteiroId}
+                          onCategoriaChange={(id) => {
+                            setCategoriaRoteiroId(id);
+                            writeStoredCategoriaRoteiroId(id);
+                          }}
                         />
                       </div>
                     )}
@@ -886,6 +997,9 @@ export default function HeatmapPage() {
                     exclusoesSimulacao: snapPdf.exclusoesSimulacao,
                     ajustesQtdeSimulacao: snapPdf.ajustesQtdeSimulacao,
                     mapaElement: containerEl,
+                    precoCombustivel: snapPdf.precoCombustivel,
+                    consumoKmL: snapPdf.consumoKmL,
+                    categoriaNome: snapPdf.categoriaNome,
                   });
                 } catch {
                   /* PDF pode abrir sem mapa se captura falhar */

@@ -3,9 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { PERMISSOES, type CodigoPermissao } from '../../config/permissoes';
 import {
   PRODUCAO_MENU,
-  PCP_MENU,
   COMUNICACAO_INTERNA_SUBMENUS,
-  COMPRAS_MENU,
   ENGENHARIA_SUBMENUS,
   GESTAO_USUARIOS_SUBMENUS,
   QUALIDADE_MENU,
@@ -13,6 +11,7 @@ import {
   LOJA_MENU,
   type FinanceiroMenuEntry,
   type NavMenuEntry,
+  buildPcpMenuForUser,
   filterPcpMenuChildren,
   navMenuEntryAtivo,
   navPathAtivo,
@@ -20,8 +19,8 @@ import {
 import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from '../../utils/suportePermissoes';
 import { podeVerMenuFinanceiro } from '../../utils/financeiroPermissoes';
 import { podeVerMenuRecebimento } from '../../utils/recebimentoPermissoes';
+import { podeVerMenuCompras } from '../../utils/doubleCheckInPermissoes';
 import { useSidebarAccordionOpen } from '../../hooks/useSidebarAccordionOpen';
-import { PERMISSOES_ACESSO_PAINEL_METAS_QUALQUER } from '../../utils/painelProducaoPermissoes';
 import { podeAcessarHubKpis } from '../../config/kpisCatalog';
 
 const SIDEBAR_LINK =
@@ -176,6 +175,7 @@ export interface SidebarProps {
   isMaster: boolean;
   logisticaMenu: NavMenuEntry[];
   recebimentoMenu: NavMenuEntry[];
+  comprasMenu: NavMenuEntry[];
   integracaoItems: { to: string; label: string }[];
   financeiroMenu: FinanceiroMenuEntry[];
   supportUnreadCount: number;
@@ -392,6 +392,7 @@ export default function Sidebar({
   isMaster,
   logisticaMenu,
   recebimentoMenu,
+  comprasMenu,
   integracaoItems,
   financeiroMenu,
   supportUnreadCount,
@@ -425,10 +426,8 @@ export default function Sidebar({
     PRODUCAO_MENU.length > 0 &&
     (hasPermission(PERMISSOES.PRODUCAO_VER) || hasPermission(PERMISSOES.PRODUCAO_TOTAL));
 
-  const showPcp =
-    hasPermission(PERMISSOES.PCP_VER_TELA) ||
-    hasPermission(PERMISSOES.PCP_TOTAL) ||
-    PERMISSOES_ACESSO_PAINEL_METAS_QUALQUER.some((p) => hasPermission(p));
+  const pcpMenu = buildPcpMenuForUser(hasPermission);
+  const showPcp = pcpMenu.length > 0;
 
   const showLogistica =
     (hasPermission(PERMISSOES.LOGISTICA_VER) ||
@@ -554,7 +553,7 @@ export default function Sidebar({
             toggleAccordion={toggleAccordion}
           >
             <NavMenuTree
-              entries={PCP_MENU}
+              entries={pcpMenu}
               pathname={pathname}
               sidebarOpen={open}
               accordionOpen={accordionOpen}
@@ -590,7 +589,7 @@ export default function Sidebar({
           </SidebarSection>
         )}
 
-        {hasPermission(PERMISSOES.COMPRAS_VER) && (
+        {podeVerMenuCompras(hasPermission) && comprasMenu.length > 0 && (
           <SidebarSection
             id="compras"
             label="Compras"
@@ -602,7 +601,7 @@ export default function Sidebar({
             toggleAccordion={toggleAccordion}
           >
             <NavMenuTree
-              entries={COMPRAS_MENU}
+              entries={comprasMenu}
               pathname={pathname}
               sidebarOpen={open}
               accordionOpen={accordionOpen}

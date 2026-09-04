@@ -213,11 +213,19 @@ function compareSort(a: string | number | unknown, b: string | number | unknown)
 
 const DATE_COLUMN_IDS = ['emissao', 'data_original', 'previsao_anterior', 'previsao_atual', 'data_producao'];
 
-function pedidoTextoCelula(p: Pedido, colId: string): string {
+function pedidoTextoCelula(p: Pedido, colId: string, dataProducaoEmFormacao = ''): string {
   const col = COLUMNS.find((c) => c.id === colId);
   if (!col) return '—';
   if (colId === 'status') {
     return statusPrincipalPedido(p);
+  }
+  if (colId === 'data_producao' || colId === 'previsao_atual') {
+    const exib = resolverDataProducaoExibicaoGerenciador(p, dataProducaoEmFormacao);
+    if (colId === 'previsao_atual') {
+      if (exib.carradaEmFormacao) return exib.previsaoExibicaoLabel ?? LABEL_CARRADA_EM_FORMACAO;
+      return exib.previsaoAtual ? formatDate(exib.previsaoAtual) : '—';
+    }
+    return exib.dataExibicao ? formatDate(exib.dataExibicao) : '—';
   }
   const raw = col.getValue ? col.getValue(p) : getField(p, col.keys ?? []);
   if (DATE_COLUMN_IDS.includes(colId)) return formatDate(raw as string);
@@ -401,7 +409,10 @@ export default function TabelaPedidos({
     [colunasOcultas]
   );
 
-  const getCellText = useCallback((p: Pedido, colId: string) => pedidoTextoCelula(p, colId), []);
+  const getCellText = useCallback(
+    (p: Pedido, colId: string) => pedidoTextoCelula(p, colId, dataProducaoEmFormacao),
+    [dataProducaoEmFormacao]
+  );
 
   const getCellFilterValues = useCallback((p: Pedido, colId: string) => {
     if (colId === 'status') return statusFlagsPedido(p);

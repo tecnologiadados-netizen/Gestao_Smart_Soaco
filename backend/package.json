@@ -43,6 +43,7 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.0",
     "express-rate-limit": "^7.4.0",
+    "gestorpedidos-soaco": "file:..",
     "jsonwebtoken": "^9.0.2",
     "mssql": "^12.5.4",
     "multer": "^2.2.0",

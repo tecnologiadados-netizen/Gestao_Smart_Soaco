@@ -3,7 +3,11 @@ import type {
   LinhaProgramacaoProducao,
   ProgramacaoProducaoGradeRowApi,
 } from './types';
-import { ESTOQUE_PROCESSO_VAZIO, QTDE_PRODUZIR_VAZIO } from './programacaoProducaoCalculos';
+import {
+  CALC_ESTOQUE_V,
+  ESTOQUE_PROCESSO_VAZIO,
+  QTDE_PRODUZIR_VAZIO,
+} from './programacaoProducaoCalculos';
 import type { QtdeProduzir } from './types';
 import { migrarQtdeProduzirLegado } from '../../utils/programacaoProducaoRoteiros';
 import {
@@ -57,6 +61,7 @@ export function linhaVaziaFromGrade(row: ProgramacaoProducaoGradeRowApi): LinhaP
     kg_bobina_necessario: row.kg_bobina_necessario,
     saldo_projetado: row.saldo_projetado,
     cobertura_meses: row.cobertura_meses,
+    calc_estoque_v: CALC_ESTOQUE_V,
     descricao_simplificada: descricaoSimplificadaDoCatalogo(row.cod_componente),
     grupo_produto: grupoProdutoDoCatalogo(row.cod_componente),
     bobinas_alternativas: [],
@@ -103,6 +108,7 @@ export function mergeDadosComGrade(
       : nomus.bobinas_alternativas;
     return syncBobinaAlternativaDisplay({
       ...nomus,
+      calc_estoque_v: prev.calc_estoque_v,
       descricao_simplificada: descPrev,
       grupo_produto: grupoPrev,
       bobinas_alternativas: bobinas,

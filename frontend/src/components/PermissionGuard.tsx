@@ -1,7 +1,7 @@
 import { useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import type { ReactNode } from 'react';
-import { ROTA_PERMISSAO, primeiraRotaPermitida } from '../utils/routePermission';
+import { resolverPermissoesRota, primeiraRotaPermitida } from '../utils/routePermission';
 
 export default function PermissionGuard({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -12,10 +12,7 @@ export default function PermissionGuard({ children }: { children: ReactNode }) {
   // ao abrir abas novas sem token no sessionStorage, ex.: visualização de documentos).
   if (!profileLoaded) return <>{children}</>;
 
-  const permsNecessarias =
-    ROTA_PERMISSAO[pathname] ??
-    (pathname.startsWith('/kpis/') ? ROTA_PERMISSAO['/kpis'] : undefined) ??
-    (pathname.startsWith('/qualidade/') ? ROTA_PERMISSAO['/qualidade'] : undefined);
+  const permsNecessarias = resolverPermissoesRota(pathname);
   if (permsNecessarias && !permsNecessarias.some((p) => hasPermission(p))) {
     const redirect = primeiraRotaPermitida(hasPermission, isMaster);
     if (redirect != null && redirect !== pathname) return <Navigate to={redirect} replace />;

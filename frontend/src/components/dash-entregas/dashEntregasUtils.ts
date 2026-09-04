@@ -2,6 +2,41 @@ import type { Pedido } from '../../api/pedidos';
 
 const KEYS_VALOR = ['Saldo a Faturar Real', 'Valor Pendente Real', 'Valor Pendente'];
 
+/** Paleta do Painel Pedidos em aberto — mesma linguagem visual do Histórico de Vendas. */
+export const DASH_PALETTE = {
+  barras: [
+    '#0ea5e9',
+    '#14b8a6',
+    '#22c55e',
+    '#84cc16',
+    '#eab308',
+    '#f59e0b',
+    '#f97316',
+    '#ef4444',
+    '#ec4899',
+    '#a855f7',
+    '#6366f1',
+    '#3b82f6',
+    '#06b6d4',
+  ],
+  grupoProduto: '#3b82f6',
+  setorProducao: '#14b8a6',
+  subgrupo1: '#a855f7',
+  subgrupo2: '#ec4899',
+  uf: '#f59e0b',
+  vendedor: '#22c55e',
+  status: '#6366f1',
+  aging: '#ef4444',
+  rotas: '#0ea5e9',
+  topClientes: '#f43f5e',
+} as const;
+
+/** Cor da barra pela posição no ranking; o offset diferencia cards vizinhos. */
+export function corBarraDash(idx: number, offset = 0): string {
+  const paleta = DASH_PALETTE.barras;
+  return paleta[(idx + offset) % paleta.length]!;
+}
+
 export function formatMoedaDash(valor: number, compact = false): string {
   if (!Number.isFinite(valor)) return '—';
   if (compact && Math.abs(valor) >= 1_000_000) {

@@ -44,11 +44,7 @@ export const KPI_PAINEIS: KpiPainelDef[] = [
     label: 'Produção Camasi',
     capaTitulo: 'PRODUÇÃO CAMASI',
     to: '/producao/camasi',
-    permissoes: [
-      PERMISSOES.KPIS_PAINEL_PRODUCAO_CAMASI_VER,
-      PERMISSOES.PRODUCAO_VER,
-      PERMISSOES.PRODUCAO_TOTAL,
-    ],
+    permissoes: [PERMISSOES.KPIS_PAINEL_PRODUCAO_CAMASI_VER],
   },
   {
     id: 'pedidos-em-aberto',
@@ -56,13 +52,7 @@ export const KPI_PAINEIS: KpiPainelDef[] = [
     label: 'Painel Pedidos em aberto',
     capaTitulo: 'PEDIDOS EM ABERTO',
     to: '/pedidos/dash-entregas',
-    permissoes: [
-      PERMISSOES.KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER,
-      PERMISSOES.PCP_VER_TELA,
-      PERMISSOES.PCP_TOTAL,
-      PERMISSOES.DASHBOARD_VER,
-      PERMISSOES.PEDIDOS_VER,
-    ],
+    permissoes: [PERMISSOES.KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER],
   },
   {
     id: 'painel-comercial',
@@ -89,16 +79,20 @@ export const KPI_PAINEIS: KpiPainelDef[] = [
     permissoes: [PERMISSOES.COMERCIAL_VER, PERMISSOES.COMERCIAL_RFV_VER],
   },
   {
+    id: 'analise-comissionamento',
+    pastaId: 'comercial',
+    label: 'Análise de Comissionamento',
+    capaTitulo: 'COMISSIONAMENTO',
+    to: '/comercial/comissionamento',
+    permissoes: [PERMISSOES.COMERCIAL_VER, PERMISSOES.COMERCIAL_COMISSIONAMENTO_VER],
+  },
+  {
     id: 'cobertura-estoque',
     pastaId: 'estoque',
     label: 'Cobertura de Estoque',
     capaTitulo: 'COBERTURA ESTOQUE',
     to: '/pedidos/cobertura-estoque',
-    permissoes: [
-      PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER,
-      PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
-      PERMISSOES.PCP_TOTAL,
-    ],
+    permissoes: [PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER],
   },
 ];
 
@@ -149,29 +143,15 @@ export const PERMISSOES_ACESSO_HUB_KPIS: CodigoPermissao[] = uniqPermissoes([
 
 /** Permissões da rota do painel Produção Camasi. */
 export const PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI: CodigoPermissao[] =
-  getKpiPainel('producao-camasi')?.permissoes ?? [
-    PERMISSOES.KPIS_PAINEL_PRODUCAO_CAMASI_VER,
-    PERMISSOES.PRODUCAO_VER,
-    PERMISSOES.PRODUCAO_TOTAL,
-  ];
+  getKpiPainel('producao-camasi')?.permissoes ?? [PERMISSOES.KPIS_PAINEL_PRODUCAO_CAMASI_VER];
 
 /** Permissões da rota do painel Pedidos em aberto. */
 export const PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO: CodigoPermissao[] =
-  getKpiPainel('pedidos-em-aberto')?.permissoes ?? [
-    PERMISSOES.KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER,
-    PERMISSOES.PCP_VER_TELA,
-    PERMISSOES.PCP_TOTAL,
-    PERMISSOES.DASHBOARD_VER,
-    PERMISSOES.PEDIDOS_VER,
-  ];
+  getKpiPainel('pedidos-em-aberto')?.permissoes ?? [PERMISSOES.KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER];
 
 /** Permissões da rota do painel Cobertura de Estoque. */
 export const PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE: CodigoPermissao[] =
-  getKpiPainel('cobertura-estoque')?.permissoes ?? [
-    PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER,
-    PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
-    PERMISSOES.PCP_TOTAL,
-  ];
+  getKpiPainel('cobertura-estoque')?.permissoes ?? [PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER];
 
 /** Permissões da rota do Painel Comercial. */
 export const PERMISSOES_ACESSO_PAINEL_COMERCIAL_KPI: CodigoPermissao[] =
@@ -192,4 +172,11 @@ export const PERMISSOES_ACESSO_PAINEL_RFV: CodigoPermissao[] =
   getKpiPainel('classificacao-rfv')?.permissoes ?? [
     PERMISSOES.COMERCIAL_VER,
     PERMISSOES.COMERCIAL_RFV_VER,
+  ];
+
+/** Permissões da rota Análise de Comissionamento. */
+export const PERMISSOES_ACESSO_PAINEL_COMISSIONAMENTO: CodigoPermissao[] =
+  getKpiPainel('analise-comissionamento')?.permissoes ?? [
+    PERMISSOES.COMERCIAL_VER,
+    PERMISSOES.COMERCIAL_COMISSIONAMENTO_VER,
   ];

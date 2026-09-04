@@ -62,6 +62,25 @@ export function previsaoConfiavelEfetiva(
   return null;
 }
 
+/**
+ * Materializa no mapa do rascunho o Confiável efetivo da grade (override → snapshot)
+ * para ids que ainda não têm escolha explícita. Usado ao abrir o modal Concluir.
+ */
+export function materializarPrevisaoConfiavelDoSnapshot(
+  map: Record<string, boolean | null>,
+  linhasSnapshot: Record<string, unknown>[]
+): Record<string, boolean | null> {
+  const next = { ...map };
+  for (const row of linhasSnapshot) {
+    const id = String(row.id_pedido ?? row.idChave ?? '').trim();
+    if (!id) continue;
+    if (next[id] === true || next[id] === false) continue;
+    const snap = row.previsao_atual_confiavel;
+    if (snap === true || snap === false) next[id] = snap;
+  }
+  return next;
+}
+
 /** True quando o usuário já escolheu Sim ou Não (não está no meio). */
 export function itemPrevisaoConfiavelEscolhida(
   idPedido: string,

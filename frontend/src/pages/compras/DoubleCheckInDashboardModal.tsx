@@ -236,7 +236,7 @@ export default function DoubleCheckInDashboardModal({ aberto, onClose }: Props) 
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
               Dashboard Double Check NFe
             </h2>
-            <p className="text-xs text-slate-500">Indicadores do período (padrão: mês corrente)</p>
+            <p className="text-xs text-slate-500">Indicadores por data de entrada (padrão: mês corrente)</p>
           </div>
         </div>
         <button type="button" className={btnSecondary} onClick={onClose} aria-label="Fechar">
@@ -248,7 +248,7 @@ export default function DoubleCheckInDashboardModal({ aberto, onClose }: Props) 
       <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className={labelClass}>Data início</label>
+            <label className={labelClass}>Entrada início</label>
             <input
               type="date"
               className={inputClass}
@@ -257,7 +257,7 @@ export default function DoubleCheckInDashboardModal({ aberto, onClose }: Props) 
             />
           </div>
           <div>
-            <label className={labelClass}>Data fim</label>
+            <label className={labelClass}>Entrada fim</label>
             <input
               type="date"
               className={inputClass}

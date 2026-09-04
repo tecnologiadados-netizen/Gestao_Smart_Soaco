@@ -226,13 +226,17 @@ export async function obterRessupEmpenhoPorPedido(
   idProduto: number,
   considerarRequisicoes = false,
   modoNaoAlmox = false,
-  idPedidoFiltro?: number
+  idPedidoFiltro?: number,
+  idsProdutosPaiEscopo?: number[]
 ): Promise<{ data: RessupEmpenhoPedidoResultado | null; error?: string }> {
   const qs = new URLSearchParams({ idProduto: String(idProduto) });
   if (considerarRequisicoes) qs.set('considerarRequisicoes', 'true');
   if (modoNaoAlmox) qs.set('modoNaoAlmox', 'true');
   if (idPedidoFiltro != null && idPedidoFiltro > 0) {
     qs.set('idPedidoFiltro', String(idPedidoFiltro));
+  }
+  if (idsProdutosPaiEscopo?.length) {
+    qs.set('idsProdutosPaiEscopo', idsProdutosPaiEscopo.join(','));
   }
   const res = await apiFetch(`/api/compras/ressup/empenho-por-pedido?${qs}`);
   const text = await res.text();
@@ -1370,6 +1374,7 @@ export type DoubleCheckInNota = {
   idDocumento: number;
   numeroDocumentoFiscal: string | null;
   numeroNfe: string | null;
+  dataEntrada: string | null;
   dataEmissao: string | null;
   idParceiro: number | null;
   nomeParceiro: string | null;

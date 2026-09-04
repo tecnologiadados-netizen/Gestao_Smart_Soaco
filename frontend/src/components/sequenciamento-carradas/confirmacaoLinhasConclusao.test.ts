@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  compararLinhasConclusao,
+  computarIdsConfiavelSo,
+  criarMatcherIdsVivosErp,
   datasEfetivasPedidoAlterado,
+  filtrarItensAindaVivosNoErp,
   linhaConclusaoPronta,
   montarLinhasConclusao,
 } from './confirmacaoLinhasConclusao';
+import {
+  aplicarProducaoComSyncEntrega,
+  entregaAposEditarProducao,
+} from './syncProducaoEntregaSequenciamento';
 import {
   carradaKey,
   simItemKey,
@@ -13,6 +21,21 @@ import {
 } from './simulacaoCarradas';
 import { isCarradaOrdemFinal } from './sequenciamentoCarradasUtils';
 
+function pedidoAlterado(
+  partial: Partial<PedidoAlterado> & Pick<PedidoAlterado, 'idPedido' | 'pd' | 'chaveSim'>
+): PedidoAlterado {
+  return {
+    rota: 'ROTA A',
+    cliente: 'Cliente',
+    cod: 'PA 1',
+    descricao: 'Produto',
+    qtdePendenteReal: 1,
+    previsaoAnterior: '2026-07-01',
+    previsaoNova: '2027-08-01',
+    ...partial,
+  };
+}
+
 describe('montarLinhasConclusao', () => {
   it('une invalida com pedido por idPedido e inclui só-motivo', () => {
     const invalidas: CarradaDataInvalida[] = [
@@ -20,8 +43,8 @@ describe('montarLinhasConclusao', () => {
         key: 'item:1',
         cod: 'PA 1',
         carrada: '5-Requisicao',
-        dataProducao: '2026-07-31',
-        dataEntrega: '2026-07-31',
+        dataProducao: '2027-07-31',
+        dataEntrega: '2027-07-31',
         producaoPassada: false,
         entregaPassada: false,
         idPedido: '1',
@@ -32,9 +55,11 @@ describe('montarLinhasConclusao', () => {
         concluida: true,
       },
     ];
+    const chave2 = simItemKey('2');
     const pedidos: PedidoAlterado[] = [
-      {
+      pedidoAlterado({
         idPedido: '1',
+        chaveSim: simItemKey('1'),
         rota: '5-Requisicao',
         pd: 'PD 1',
         cliente: 'Cliente A',
@@ -42,10 +67,11 @@ describe('montarLinhasConclusao', () => {
         descricao: 'Item A',
         qtdePendenteReal: 10,
         previsaoAnterior: '2026-06-30',
-        previsaoNova: '2026-07-31',
-      },
-      {
+        previsaoNova: '2027-07-31',
+      }),
+      pedidoAlterado({
         idPedido: '2',
+        chaveSim: chave2,
         rota: '5-Requisicao',
         pd: 'PD 2',
         cliente: 'Cliente B',
@@ -53,24 +79,29 @@ describe('montarLinhasConclusao', () => {
         descricao: 'Item B',
         qtdePendenteReal: 5,
         previsaoAnterior: '2026-07-01',
-        previsaoNova: '2026-08-01',
-      },
+        previsaoNova: '2027-08-01',
+      }),
     ];
+    const sim = new Map<string, SimEntry>([
+      [chave2, { dataProducao: '2027-07-28', dataEntrega: '2027-08-01' }],
+    ]);
 
-    const linhas = montarLinhasConclusao(invalidas, pedidos);
+    const linhas = montarLinhasConclusao(invalidas, pedidos, [], { sim });
     expect(linhas).toHaveLength(2);
     expect(linhas[0]!.idPedido).toBe('1');
     expect(linhas[0]!.exigeMotivo).toBe(true);
     expect(linhas[0]!.qtdePendenteReal).toBe(10);
     expect(linhas[1]!.idPedido).toBe('2');
     expect(linhas[1]!.datasOk).toBe(true);
-    expect(linhas[1]!.dataEntrega).toBe('2026-08-01');
+    expect(linhas[1]!.dataEntrega).toBe('2027-08-01');
   });
 
   it('só-motivo recebe datas efetivas da simulação (item especial)', () => {
+    const chave = simItemKey('2');
     const pedidos: PedidoAlterado[] = [
-      {
+      pedidoAlterado({
         idPedido: '2',
+        chaveSim: chave,
         rota: '5-Requisicao',
         pd: 'PD 2',
         cliente: 'Cliente B',
@@ -78,11 +109,11 @@ describe('montarLinhasConclusao', () => {
         descricao: 'Item B',
         qtdePendenteReal: 5,
         previsaoAnterior: '2026-07-01',
-        previsaoNova: '2026-08-01',
-      },
+        previsaoNova: '2027-08-01',
+      }),
     ];
     const sim = new Map<string, SimEntry>([
-      [simItemKey('2'), { dataProducao: '2026-07-28', dataEntrega: '2026-08-01' }],
+      [chave, { dataProducao: '2027-07-28', dataEntrega: '2027-08-01' }],
     ]);
     const snapshot = [
       {
@@ -96,33 +127,59 @@ describe('montarLinhasConclusao', () => {
     ];
     const linhas = montarLinhasConclusao([], pedidos, snapshot, { sim });
     expect(linhas).toHaveLength(1);
-    expect(linhas[0]!.dataProducao).toBe('2026-07-28');
-    expect(linhas[0]!.dataEntrega).toBe('2026-08-01');
+    expect(linhas[0]!.dataProducao).toBe('2027-07-28');
+    expect(linhas[0]!.dataEntrega).toBe('2027-08-01');
     expect(linhas[0]!.dataEmissao).toBe('2026-06-15');
-    expect(linhas[0]!.key).toBe(simItemKey('2'));
+    expect(linhas[0]!.key).toBe(chave);
   });
 
-  it('só-motivo de carrada ROTA usa chave de carrada na simulação', () => {
+  it('só-motivo de carrada ROTA usa chave RM+carrada (não Cod produto)', () => {
+    const key = carradaKey('01748', 'ROTA PIAUI');
     const pedidos: PedidoAlterado[] = [
-      {
+      pedidoAlterado({
         idPedido: '10',
+        chaveSim: key,
         rota: 'ROTA PIAUI',
         pd: 'PD 10',
         cliente: 'Cliente A',
-        cod: '01748',
+        cod: '5445',
         descricao: 'Item 1',
         qtdePendenteReal: 3,
         previsaoAnterior: '2026-07-01',
-        previsaoNova: '2026-08-10',
-      },
+        previsaoNova: '2027-08-10',
+      }),
     ];
-    const key = carradaKey('01748', 'ROTA PIAUI');
     const sim = new Map<string, SimEntry>([
-      [key, { dataProducao: '2026-08-05', dataEntrega: '2026-08-10' }],
+      [key, { dataProducao: '2027-08-05', dataEntrega: '2027-08-10' }],
     ]);
     const linhas = montarLinhasConclusao([], pedidos, [], { sim });
-    expect(linhas[0]!.dataProducao).toBe('2026-08-05');
-    expect(linhas[0]!.dataEntrega).toBe('2026-08-10');
+    expect(linhas[0]!.dataProducao).toBe('2027-08-05');
+    expect(linhas[0]!.dataEntrega).toBe('2027-08-10');
+    expect(linhas[0]!.key).toBe(key);
+  });
+
+  it('Belém: Cod produto 5445 e RM 01741 — modal lê sim da carrada', () => {
+    const key = carradaKey('01741', 'ROTA BELEM 09 - LIBERADA');
+    const pedidos: PedidoAlterado[] = [
+      pedidoAlterado({
+        idPedido: '48249',
+        chaveSim: key,
+        rota: 'ROTA BELEM 09 - LIBERADA',
+        pd: 'PD 48249',
+        cliente: 'NORTE REFRIGERACAO',
+        cod: '5445',
+        descricao: 'Armário',
+        qtdePendenteReal: 40,
+        previsaoAnterior: '2026-08-03',
+        previsaoNova: '2027-09-03',
+      }),
+    ];
+    const sim = new Map<string, SimEntry>([
+      [key, { dataProducao: '2027-09-01', dataEntrega: '2027-09-03' }],
+    ]);
+    const linhas = montarLinhasConclusao([], pedidos, [], { sim });
+    expect(linhas[0]!.dataProducao).toBe('2027-09-01');
+    expect(linhas[0]!.dataEntrega).toBe('2027-09-03');
     expect(linhas[0]!.key).toBe(key);
   });
 
@@ -152,8 +209,8 @@ describe('montarLinhasConclusao', () => {
         key,
         cod: '01748',
         carrada: 'ROTA PIAUI',
-        dataProducao: '2026-07-29',
-        dataEntrega: '2026-07-30',
+        dataProducao: '2027-07-29',
+        dataEntrega: '2027-07-30',
         producaoPassada: false,
         entregaPassada: false,
         concluida: true,
@@ -198,8 +255,8 @@ describe('montarLinhasConclusao', () => {
         key: 'item:99',
         cod: 'PA 99',
         carrada: '1-Retirada na So Aço',
-        dataProducao: '2026-07-29',
-        dataEntrega: '2026-07-29',
+        dataProducao: '2027-07-29',
+        dataEntrega: '2027-07-29',
         producaoPassada: false,
         entregaPassada: false,
         previsaoPassada: true,
@@ -221,10 +278,64 @@ describe('montarLinhasConclusao', () => {
   });
 });
 
+describe('compararLinhasConclusao', () => {
+  it('ordena por produção, carrada, pedido e descrição', () => {
+    const a = {
+      key: 'a',
+      pedido: 'PD 2',
+      cliente: '',
+      codigo: '',
+      descricao: 'B',
+      carrada: 'ROTA B',
+      dataProducao: '2027-09-01',
+      dataEntrega: '',
+      producaoPassada: false,
+      entregaPassada: false,
+      datasOk: true,
+      qtdePendenteReal: 1,
+      exigeMotivo: true,
+    };
+    const b = {
+      key: 'b',
+      pedido: 'PD 1',
+      cliente: '',
+      codigo: '',
+      descricao: 'A',
+      carrada: 'ROTA A',
+      dataProducao: '2027-09-01',
+      dataEntrega: '',
+      producaoPassada: false,
+      entregaPassada: false,
+      datasOk: true,
+      qtdePendenteReal: 1,
+      exigeMotivo: true,
+    };
+    const c = {
+      key: 'c',
+      pedido: 'PD 3',
+      cliente: '',
+      codigo: '',
+      descricao: 'C',
+      carrada: 'ROTA A',
+      dataProducao: '2027-08-01',
+      dataEntrega: '',
+      producaoPassada: false,
+      entregaPassada: false,
+      datasOk: true,
+      qtdePendenteReal: 1,
+      exigeMotivo: true,
+    };
+    const sorted = [a, b, c].sort(compararLinhasConclusao);
+    expect(sorted.map((l) => l.pedido)).toEqual(['PD 3', 'PD 1', 'PD 2']);
+  });
+});
+
 describe('datasEfetivasPedidoAlterado', () => {
   it('usa simItemKey para especiais', () => {
-    const ped: PedidoAlterado = {
+    const chave = simItemKey('7');
+    const ped: PedidoAlterado = pedidoAlterado({
       idPedido: '7',
+      chaveSim: chave,
       rota: '5-Requisicao',
       pd: 'PD 7',
       cliente: 'C',
@@ -232,15 +343,15 @@ describe('datasEfetivasPedidoAlterado', () => {
       descricao: '',
       qtdePendenteReal: 1,
       previsaoAnterior: '2026-01-01',
-      previsaoNova: '2026-09-01',
-    };
+      previsaoNova: '2027-09-01',
+    });
     expect(isCarradaOrdemFinal(ped.rota)).toBe(true);
     const sim = new Map<string, SimEntry>([
-      [simItemKey('7'), { dataProducao: '2026-08-20', dataEntrega: '2026-08-25' }],
+      [chave, { dataProducao: '2027-08-20', dataEntrega: '2027-08-25' }],
     ]);
     const d = datasEfetivasPedidoAlterado(ped, [], sim);
-    expect(d.dataProducao).toBe('2026-08-20');
-    expect(d.dataEntrega).toBe('2026-08-25');
+    expect(d.dataProducao).toBe('2027-08-20');
+    expect(d.dataEntrega).toBe('2027-08-25');
   });
 });
 
@@ -253,8 +364,8 @@ describe('linhaConclusaoPronta', () => {
     codigo: 'C',
     descricao: '',
     carrada: 'ROTA X',
-    dataProducao: '2026-08-01',
-    dataEntrega: '2026-08-02',
+    dataProducao: '2027-08-01',
+    dataEntrega: '2027-08-02',
     producaoPassada: false,
     entregaPassada: false,
     datasOk: true,
@@ -272,35 +383,198 @@ describe('linhaConclusaoPronta', () => {
   });
 });
 
-describe('produção anterior à entrega (regra de sync)', () => {
-  it('quando produção < entrega, a entrega deve receber a produção', () => {
-    const producao = '2026-08-10';
-    const entrega = '2026-08-20';
-    const calls: Array<{ campo: string; value: string }> = [];
-    const editar = (_key: string, campo: 'dataProducao' | 'dataEntrega', value: string) => {
-      calls.push({ campo, value });
-    };
-    editar('k', 'dataProducao', producao);
-    if (producao && entrega && producao < entrega) {
-      editar('k', 'dataEntrega', producao);
-    }
-    expect(calls).toEqual([
-      { campo: 'dataProducao', value: '2026-08-10' },
-      { campo: 'dataEntrega', value: '2026-08-10' },
-    ]);
+describe('computarIdsConfiavelSo', () => {
+  const key = carradaKey('01741', 'ROTA BELEM 09 - LIBERADA');
+  const snapshot = [
+    {
+      id_pedido: 'normal-1',
+      PD: 'PD 100',
+      RM: '01741',
+      Observacoes: 'ROTA BELEM 09 - LIBERADA',
+      previsao_atual_confiavel: false,
+      previsao_entrega_atualizada: '2026-08-03',
+      data_producao: '2026-08-01',
+    },
+    {
+      id_pedido: 'formacao-1',
+      PD: 'PD 200',
+      RM: '01750',
+      Observacoes: 'ROTA BELEM 01 - CONSTRUÇÃO',
+      previsao_atual_confiavel: false,
+      previsao_entrega_atualizada: '2026-08-30',
+      data_producao: '2026-10-18',
+    },
+    {
+      id_pedido: 'especial-1',
+      PD: 'PD 300',
+      Observacoes: '5-Requisicao',
+      previsao_atual_confiavel: false,
+      previsao_entrega_atualizada: '2026-08-10',
+      data_producao: '2026-08-05',
+    },
+  ];
+
+  it('exclui carradas em formação', () => {
+    const itens = computarIdsConfiavelSo(
+      { 'formacao-1': true },
+      new Set<string>(),
+      snapshot,
+      new Map<string, SimEntry>(),
+      new Map()
+    );
+    expect(itens).toEqual([]);
   });
 
-  it('quando produção >= entrega, não força entrega para trás neste sync', () => {
-    const producao = '2026-08-20';
-    const entrega = '2026-08-10';
+  it('carrada normal usa a data efetiva da carrada (sim), não a previsão antiga da linha', () => {
+    const sim = new Map<string, SimEntry>([
+      [key, { dataProducao: '2026-09-01', dataEntrega: '2026-09-03' }],
+    ]);
+    const itens = computarIdsConfiavelSo({ 'normal-1': true }, new Set<string>(), snapshot, sim, new Map());
+    expect(itens).toHaveLength(1);
+    expect(itens[0]!.previsao).toBe('2026-09-03');
+    expect(itens[0]!.rota).toBe('ROTA BELEM 09 - LIBERADA');
+    expect(itens[0]!.pd).toBe('PD 100');
+  });
+
+  it('carrada normal sem sim cai na previsão atual da linha', () => {
+    const itens = computarIdsConfiavelSo(
+      { 'normal-1': true },
+      new Set<string>(),
+      snapshot,
+      new Map<string, SimEntry>(),
+      new Map()
+    );
+    expect(itens).toHaveLength(1);
+    expect(itens[0]!.previsao).toBe('2026-08-03');
+  });
+
+  it('carrada especial usa a data efetiva do item', () => {
+    const sim = new Map<string, SimEntry>([
+      [simItemKey('especial-1'), { dataEntrega: '2026-09-15' }],
+    ]);
+    const itens = computarIdsConfiavelSo(
+      { 'especial-1': true },
+      new Set<string>(),
+      snapshot,
+      sim,
+      new Map()
+    );
+    expect(itens).toHaveLength(1);
+    expect(itens[0]!.previsao).toBe('2026-09-15');
+    expect(itens[0]!.confiavel).toBe(true);
+  });
+
+  it('ignora ids em pedidosEntrega e escolhas iguais ao snapshot', () => {
+    const itens = computarIdsConfiavelSo(
+      { 'normal-1': true, 'especial-1': false },
+      new Set<string>(['normal-1']),
+      [
+        ...snapshot.slice(0, 2),
+        { ...snapshot[2]!, previsao_atual_confiavel: false },
+      ],
+      new Map<string, SimEntry>(),
+      new Map()
+    );
+    expect(itens).toEqual([]);
+  });
+
+  it('exclui pedido ausente da lista viva do ERP (baixado no Nomus)', () => {
+    const aindaVivo = criarMatcherIdsVivosErp([
+      { id_pedido: 'normal-1', PD: 'PD 100' },
+    ]);
+    const itens = computarIdsConfiavelSo(
+      { 'normal-1': true, 'especial-1': true },
+      new Set<string>(),
+      snapshot,
+      new Map<string, SimEntry>(),
+      new Map(),
+      aindaVivo
+    );
+    expect(itens).toHaveLength(1);
+    expect(itens[0]!.idPedido).toBe('normal-1');
+  });
+
+  it('reconhece o mesmo item quando o id vivo mudou o prefixo de romaneio', () => {
+    const snapBaixado = [
+      {
+        id_pedido: '186495-49898-2',
+        PD: 'PD 49898',
+        Observacoes: '2-Retirada na So Moveis',
+        previsao_atual_confiavel: false,
+        previsao_entrega_atualizada: '2026-08-10',
+      },
+    ];
+    const aindaVivo = criarMatcherIdsVivosErp([
+      { id_pedido: '188240-49898-2', PD: 'PD 49898' },
+    ]);
+    const itens = computarIdsConfiavelSo(
+      { '186495-49898-2': true },
+      new Set<string>(),
+      snapBaixado,
+      new Map<string, SimEntry>(),
+      new Map(),
+      aindaVivo
+    );
+    expect(itens).toHaveLength(1);
+    expect(itens[0]!.pd).toBe('PD 49898');
+  });
+});
+
+describe('criarMatcherIdsVivosErp', () => {
+  it('não filtra quando a lista viva é null (fail-open)', () => {
+    expect(criarMatcherIdsVivosErp(null)).toBeNull();
+    const { vivos, ignorados } = filtrarItensAindaVivosNoErp(
+      [{ id: 'a' }, { id: 'b' }],
+      (x) => x.id,
+      null
+    );
+    expect(vivos).toHaveLength(2);
+    expect(ignorados).toHaveLength(0);
+  });
+
+  it('separa vivos e baixados por id e por chave canônica', () => {
+    const aindaVivo = criarMatcherIdsVivosErp([
+      { id_pedido: '188240-49898-2' },
+      { idChave: 'vivo-1' },
+    ]);
+    const { vivos, ignorados } = filtrarItensAindaVivosNoErp(
+      [{ id: 'vivo-1' }, { id: '186495-49898-2' }, { id: 'baixado-9' }],
+      (x) => x.id,
+      aindaVivo
+    );
+    expect(vivos.map((x) => x.id)).toEqual(['vivo-1', '186495-49898-2']);
+    expect(ignorados.map((x) => x.id)).toEqual(['baixado-9']);
+  });
+});
+
+describe('sync produção × entrega', () => {
+  it('entregaAposEditarProducao mantém entrega quando produção <= entrega', () => {
+    expect(entregaAposEditarProducao('2027-09-01', '2027-09-03')).toBeNull();
+    expect(entregaAposEditarProducao('2027-09-03', '2027-09-03')).toBeNull();
+  });
+
+  it('entregaAposEditarProducao eleva entrega quando produção > entrega', () => {
+    expect(entregaAposEditarProducao('2027-09-05', '2027-09-03')).toBe('2027-09-05');
+  });
+
+  it('aplicarProducaoComSyncEntrega não puxa entrega para baixo', () => {
     const calls: Array<{ campo: string; value: string }> = [];
     const editar = (_key: string, campo: 'dataProducao' | 'dataEntrega', value: string) => {
       calls.push({ campo, value });
     };
-    editar('k', 'dataProducao', producao);
-    if (producao && entrega && producao < entrega) {
-      editar('k', 'dataEntrega', producao);
-    }
-    expect(calls).toEqual([{ campo: 'dataProducao', value: '2026-08-20' }]);
+    aplicarProducaoComSyncEntrega(editar, 'k', '2027-09-01', '2027-09-03');
+    expect(calls).toEqual([{ campo: 'dataProducao', value: '2027-09-01' }]);
+  });
+
+  it('aplicarProducaoComSyncEntrega eleva entrega quando produção > entrega', () => {
+    const calls: Array<{ campo: string; value: string }> = [];
+    const editar = (_key: string, campo: 'dataProducao' | 'dataEntrega', value: string) => {
+      calls.push({ campo, value });
+    };
+    aplicarProducaoComSyncEntrega(editar, 'k', '2027-09-10', '2027-09-03');
+    expect(calls).toEqual([
+      { campo: 'dataProducao', value: '2027-09-10' },
+      { campo: 'dataEntrega', value: '2027-09-10' },
+    ]);
   });
 });

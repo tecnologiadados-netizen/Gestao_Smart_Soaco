@@ -16,9 +16,10 @@ import { useCalibrationsStore } from '@qualidade/lib/store/calibrations-store';
 import { NovoDocumentoNav } from '@qualidade/components/documentos/novo-documento-nav';
 import { ValidadeNotificacoesBell } from '@qualidade/components/documentos/validade-notificacoes-bell';
 
-type Module = 'documentos' | 'calibracoes' | 'registros' | 'configuracoes';
+type Module = 'documentos' | 'calibracoes' | 'registros' | 'rnc' | 'configuracoes';
 
 function getActiveModule(pathname: string): Module {
+  if (pathname.startsWith('/qualidade/rnc')) return 'rnc';
   if (pathname.startsWith('/qualidade/registros') || pathname.startsWith('/qualidade/avaliacao-fornecedor')) {
     return 'registros';
   }
@@ -52,6 +53,8 @@ function getNavItems(module: Module): NavItem[] {
         { label: 'Início', href: '/qualidade/registros', icon: Home },
         { label: 'Consulta', href: '/qualidade/registros/consulta', icon: Search },
       ];
+    case 'rnc':
+      return [];
     case 'configuracoes':
       return [
         { label: 'Início', href: '/qualidade/configuracoes', icon: Home },
@@ -85,6 +88,8 @@ export function QualidadeSubnav() {
       : activeModule === 'calibracoes'
         ? calPending
         : 0;
+
+  if (activeModule === 'rnc') return null;
 
   return (
     <div className="sgq-subnav mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm">

@@ -1,5 +1,5 @@
 import type { ClienteAtrasadoResumo } from '../../api/pedidos';
-import { formatMoedaDash, formatNumero } from './dashEntregasUtils';
+import { corBarraDash, DASH_PALETTE, formatMoedaDash, formatNumero } from './dashEntregasUtils';
 
 type Props = {
   data: ClienteAtrasadoResumo[];
@@ -32,7 +32,10 @@ export default function DashEntregasTopClientesChart({ data, loading, onClienteC
   const maxValor = Math.max(...data.map((d) => d.valorAtrasado), 1);
 
   return (
-    <div className="card-panel flex min-h-[320px] flex-col p-5">
+    <div
+      className="card-panel flex min-h-[320px] flex-col border-t-4 p-5"
+      style={{ borderTopColor: DASH_PALETTE.topClientes }}
+    >
       <div className="mb-4 shrink-0">
         <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
           Maiores exposições financeiras em atraso
@@ -42,6 +45,7 @@ export default function DashEntregasTopClientesChart({ data, loading, onClienteC
       <div className="flex min-h-0 flex-1 flex-col gap-2.5">
         {data.map((d, idx) => {
           const pct = (d.valorAtrasado / maxValor) * 100;
+          const cor = corBarraDash(idx, 7);
           return (
             <button
               key={d.cliente}
@@ -51,16 +55,23 @@ export default function DashEntregasTopClientesChart({ data, loading, onClienteC
               title="Clique para ver os pedidos deste cliente"
             >
               <span className="text-xs font-bold text-slate-400">{idx + 1}</span>
-              <span className="truncate text-xs font-medium text-slate-700 group-hover:text-primary-600 dark:text-slate-200">
+              <span className="truncate text-xs font-medium text-slate-700 group-hover:opacity-80 dark:text-slate-200">
                 {d.cliente}
               </span>
               <div className="relative h-6 overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
                 <div
-                  className="absolute inset-y-0 left-0 rounded bg-amber-500/80 transition group-hover:bg-amber-500"
-                  style={{ width: `${Math.max(pct, 2)}%` }}
+                  className="absolute inset-y-0 left-0 rounded transition group-hover:brightness-110"
+                  style={{
+                    width: `${Math.max(pct, 2)}%`,
+                    backgroundColor: cor,
+                    opacity: 0.85,
+                  }}
                 />
               </div>
-              <span className="min-w-[88px] text-right text-xs font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+              <span
+                className="min-w-[88px] text-right text-xs font-semibold tabular-nums"
+                style={{ color: cor }}
+              >
                 {formatMoedaDash(d.valorAtrasado, true)}
                 <span className="block text-[10px] font-normal text-slate-500">
                   {formatNumero(d.quantidade)} itens

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { TipoFValorResumo } from '../../api/pedidos';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
-import { formatMoedaDash, formatNumero } from './dashEntregasUtils';
+import { corBarraDash, formatMoedaDash, formatNumero } from './dashEntregasUtils';
 
 type Props = {
   open: boolean;
@@ -100,9 +100,10 @@ export default function ModalDashEntregasTipoFChart({
             <div className="py-12 text-center text-slate-500">Sem dados.</div>
           ) : (
             <div className="space-y-3">
-              {dados.map((d) => {
+              {dados.map((d, idx) => {
                 const pct = totalValor > 0 ? Math.round((d.valor / totalValor) * 100) : 0;
                 const barPct = (d.valor / maxValor) * 100;
+                const cor = corBarraDash(idx, 3);
                 return (
                   <button
                     key={d.tipoF}
@@ -116,8 +117,12 @@ export default function ModalDashEntregasTipoFChart({
                     </span>
                     <div className="relative h-7 overflow-hidden rounded-md bg-slate-100 dark:bg-slate-800">
                       <div
-                        className="absolute inset-y-0 left-0 rounded-md bg-primary-500 transition hover:brightness-110"
-                        style={{ width: `${Math.max(barPct, d.valor > 0 ? 2 : 0)}%` }}
+                        className="absolute inset-y-0 left-0 rounded-md transition hover:brightness-110"
+                        style={{
+                          width: `${Math.max(barPct, d.valor > 0 ? 2 : 0)}%`,
+                          backgroundColor: cor,
+                          opacity: 0.9,
+                        }}
                       />
                       <span className="relative z-10 flex h-full items-center px-2 text-[11px] font-medium text-slate-700 dark:text-slate-200">
                         {formatMoedaDash(d.valor, true)}

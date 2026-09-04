@@ -8,6 +8,8 @@ import DfcProjecaoReceitasModal from './dfc/DfcProjecaoReceitasModal';
 import DfcEndividamentoBancarioModal from './dfc/DfcEndividamentoBancarioModal';
 import DfcCarregandoModal from './dfc/DfcCarregandoModal';
 import DfcAjudaModal from './dfc/DfcAjudaModal';
+import DfcDashboardModal from './dfc/DfcDashboardModal';
+import DfcResumoGrade from './dfc/DfcResumoGrade';
 import { ComoLerBtn } from '../../components/AjudaTelaModal';
 import { exportDfcXlsx } from './dfc/exportDfcXlsx';
 import { DFC_EMPRESA_OPCOES, DFC_EMPRESAS_TODAS, DFC_ID_EMPRESA_ACO, projecaoReceitasAplicaParaEmpresas } from './dfc/dfcEmpresas';
@@ -179,6 +181,8 @@ export default function DfcPage() {
     sublinha?: string;
   } | null>(null);
   const [modalEndividamentoAberto, setModalEndividamentoAberto] = useState(false);
+  const [modalDashboardAberto, setModalDashboardAberto] = useState(false);
+  const [abaVisao, setAbaVisao] = useState<'detalhado' | 'resumido'>('detalhado');
   const [endividamento, setEndividamento] = useState<DfcEndividamentoBancarioResponse>(ENDIVIDAMENTO_ZERO);
   const [prioridadesContasMap, setPrioridadesContasMap] = useState<Record<string, DfcPrioridade>>({});
   const [prioridadesLancsMap, setPrioridadesLancsMap] = useState<Record<string, DfcPrioridade>>({});
@@ -214,7 +218,7 @@ export default function DfcPage() {
   );
 
   const aplicarPrioridadeLancNoMapa = useCallback(
-    (idEmpresa: number, tipoRef: 'A' | 'L', idRef: number, prioridade: DfcPrioridade | null) => {
+    (idEmpresa: number, tipoRef: 'A' | 'L' | 'S', idRef: number, prioridade: DfcPrioridade | null) => {
       const k = `${idEmpresa}#${tipoRef}#${idRef}`;
       setPrioridadesLancsMap((prev) => {
         if (prioridade == null) {
@@ -430,10 +434,54 @@ export default function DfcPage() {
     ],
   );
 
+  /** Sem filtro de prioridade — usado na visão resumida (linha Sem Priorização). */
+  const contribuicoesResumo = useMemo(
+    () =>
+      filtrarContribuicoes(
+        contribuicoesBase,
+        {
+          idEmpresas: idEmpresasFiltroGrade,
+          contasBancarias: filtrosContaBancaria,
+          prioridades: [],
+          idsPlanoContas: idsPlanoContasFiltro,
+        },
+        prioridadesContasMap,
+        prioridadesLancsMap,
+      ),
+    [
+      contribuicoesBase,
+      idEmpresasFiltroGrade,
+      filtrosContaBancaria,
+      idsPlanoContasFiltro,
+      prioridadesContasMap,
+      prioridadesLancsMap,
+    ],
+  );
+
+  const filtrosResumoDashboard = useMemo(
+    () => ({
+      empresas:
+        idEmpresasEfetivas.length > 0
+          ? idEmpresasEfetivas.map((id) => LABEL_EMPRESA[String(id)] ?? String(id)).join(', ')
+          : '',
+      banco: filtrosContaBancaria.join(', '),
+      cenarios: prioridadesSelecionadas.map((p) => DFC_PRIORIDADE_LABEL[p]).join(', '),
+      plano: idsPlanoContasFiltro.map((id) => LABEL_PLANO[String(id)] ?? String(id)).join(', '),
+    }),
+    [
+      idEmpresasEfetivas,
+      filtrosContaBancaria,
+      prioridadesSelecionadas,
+      idsPlanoContasFiltro,
+    ],
+  );
+
   const valoresPorConta = useMemo(
     () => agregarContribuicoesParaGrade(contribuicoesFiltradas, aplicadoGranularidade),
     [contribuicoesFiltradas, aplicadoGranularidade],
   );
+
+  const valoresPorContaResumo = valoresPorConta;
 
   const dadosJaCarregados = contribuicoesBase.length > 0;
   const temFiltroSaldos =
@@ -547,7 +595,7 @@ export default function DfcPage() {
           granularidade: aplicadoGranularidade,
           empresas: idEmpresasEfetivas.map((id) => LABEL_EMPRESA[String(id)] ?? String(id)).join(', '),
           banco: filtrosContaBancaria.join(', '),
-          prioridade: prioridadesSelecionadas.map((p) => DFC_PRIORIDADE_LABEL[p]).join(', '),
+          cenarios: prioridadesSelecionadas.map((p) => DFC_PRIORIDADE_LABEL[p]).join(', '),
           plano: idsPlanoContasFiltro.map((id) => LABEL_PLANO[String(id)] ?? String(id)).join(', '),
         },
         periodos,
@@ -722,7 +770,7 @@ export default function DfcPage() {
                 dropdownMaxWidth="320px"
               />
               <MultiSelectWithSearch
-                label="Prioridade"
+                label="Cenários"
                 placeholder="Todas"
                 options={OPCOES_PRIORIDADE_IDS}
                 value={filtrosPrioridadeCsv}
@@ -731,7 +779,7 @@ export default function DfcPage() {
                 inputClass={DFC_FILTRO_INPUT_CLASS}
                 labelByValue={LABEL_PRIORIDADE}
                 minWidth="150px"
-                optionLabel="prioridades"
+                optionLabel="cenários"
                 disabled={filtrosDesabilitados}
                 dropdownZIndex={200}
                 dropdownMaxWidth="360px"
@@ -754,6 +802,18 @@ export default function DfcPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200 dark:border-slate-600">
+              <button
+                type="button"
+                onClick={() => setModalDashboardAberto(true)}
+                disabled={!dadosJaCarregados || loading}
+                title="Dashboard com KPIs e resumo da DFC"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
+                </svg>
+                Dashboard
+              </button>
               <button
                 type="button"
                 onClick={() => setModalSaldoFaturarAberto(true)}
@@ -853,6 +913,29 @@ export default function DfcPage() {
           dados={endividamento}
         />
       ) : null}
+
+      <DfcDashboardModal
+        aberto={modalDashboardAberto}
+        onClose={() => setModalDashboardAberto(false)}
+        dataInicio={aplicadoDataInicio || dataInicio}
+        dataFim={aplicadoDataFim || dataFim}
+        granularidade={aplicadoGranularidade}
+        periodos={periodos}
+        kpis={kpis}
+        endividamento={endividamento}
+        valoresPorConta={valoresPorContaResumo}
+        projecaoReceitasPorPeriodo={projecaoReceitasPorPeriodoEfetiva}
+        saldosIniciaisPorPeriodo={saldosIniciaisPorPeriodo}
+        saldosFinaisPorPeriodo={saldosFinaisPorPeriodo}
+        contribuicoesFiltradas={contribuicoesFiltradas}
+        contribuicoesSemPriorizacao={contribuicoesResumo}
+        prioridadesContasMap={prioridadesContasMap}
+        prioridadesLancsMap={prioridadesLancsMap}
+        idEmpresas={idEmpresasEfetivas.length > 0 ? idEmpresasEfetivas : DFC_EMPRESAS_TODAS}
+        contasBancarias={filtrosContaBancaria}
+        onPrioridadeLancAtualizada={aplicarPrioridadeLancNoMapa}
+        filtrosResumo={filtrosResumoDashboard}
+      />
 
       <DfcPrioridadeModal
         aberto={modalPrioridadeAberto}
@@ -988,7 +1071,54 @@ export default function DfcPage() {
       </div>
       ) : null}
 
+      {!modoFoco && dadosJaCarregados ? (
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            Visualização
+          </span>
+          <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-600 overflow-hidden bg-slate-50 dark:bg-slate-700">
+            {(['detalhado', 'resumido'] as const).map((v, i) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setAbaVisao(v)}
+                className={`px-3.5 py-1.5 text-xs font-semibold transition ${
+                  i > 0 ? 'border-l border-slate-200 dark:border-slate-600' : ''
+                } ${
+                  abaVisao === v
+                    ? 'bg-primary-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600'
+                }`}
+              >
+                {v === 'detalhado' ? 'Detalhado' : 'Resumido'}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className={`min-h-0 w-full ${modoFoco ? 'flex-1 flex flex-col' : ''}`}>
+        {abaVisao === 'resumido' && !modoFoco ? (
+          <DfcResumoGrade
+            periodos={periodos}
+            granularidade={aplicadoGranularidade}
+            dataInicio={aplicadoDataInicio || dataInicio}
+            dataFim={aplicadoDataFim || dataFim}
+            idEmpresas={idEmpresasEfetivas.length > 0 ? idEmpresasEfetivas : DFC_EMPRESAS_TODAS}
+            contasBancarias={filtrosContaBancaria}
+            valoresPorConta={valoresPorContaResumo}
+            projecaoReceitasPorPeriodo={projecaoReceitasPorPeriodoEfetiva}
+            saldosIniciaisPorPeriodo={saldosIniciaisPorPeriodo}
+            saldosFinaisPorPeriodo={saldosFinaisPorPeriodo}
+            contribuicoesFiltradas={contribuicoesFiltradas}
+            contribuicoesSemPriorizacao={contribuicoesResumo}
+            prioridadesContasMap={prioridadesContasMap}
+            prioridadesLancsMap={prioridadesLancsMap}
+            onPrioridadeLancAtualizada={aplicarPrioridadeLancNoMapa}
+            loading={loading}
+            error={error}
+          />
+        ) : (
         <ArvoreContasDfc
           ref={arvoreRef}
           periodos={periodos}
@@ -1023,6 +1153,7 @@ export default function DfcPage() {
             houveMudancaPrioridadeRef.current = false;
           }}
         />
+        )}
       </div>
     </div>
   );

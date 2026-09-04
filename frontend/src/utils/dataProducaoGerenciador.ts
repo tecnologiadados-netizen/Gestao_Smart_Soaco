@@ -62,7 +62,9 @@ export function dataProducaoCarradaEmFormacaoApartirDe(maxDataCarradas: string):
   return addDaysIso(maxDataCarradas, 30);
 }
 
-/** Data de produção exibida no Gerenciador: produção real ou fallback da previsão atual. */
+/** Data de produção exibida no Gerenciador: produção real ou fallback da previsão atual.
+ * Em formação: sempre max(normais)+30 (overlay), ignorando data_producao gravada.
+ */
 export function resolverDataProducaoExibicaoGerenciador(
   p: Pedido,
   dataProducaoEmFormacao = ''
@@ -73,7 +75,7 @@ export function resolverDataProducaoExibicaoGerenciador(
 
   if (isCarradaEmFormacao(rota) || isRomaneioComoFormacao(p)) {
     return {
-      dataExibicao: dataProducaoEmFormacao || dataProducaoReal,
+      dataExibicao: dataProducaoEmFormacao || '',
       dataProducaoReal,
       previsaoAtual: '',
       producaoPorPrevisao: false,

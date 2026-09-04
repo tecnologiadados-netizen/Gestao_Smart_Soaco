@@ -32,6 +32,56 @@ export function labelMesCurto(ym: string): string {
   return d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
 }
 
+/** Rótulo compacto para eixo de gráficos (ex.: ago/25). */
+export function labelMesEixo(ym: string): string {
+  const d = new Date(`${ym}-01T12:00:00`);
+  if (Number.isNaN(d.getTime())) return ym;
+  const mes = d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
+  const ano = String(d.getFullYear()).slice(-2);
+  return `${mes}/${ano}`;
+}
+
+/** Converte YYYY-MM no intervalo completo do mês. */
+export function mesParaPeriodoYmd(ym: string): { dataIni: string; dataFim: string } | null {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(ym ?? '').trim());
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  if (!Number.isFinite(y) || mo < 1 || mo > 12) return null;
+  const last = new Date(y, mo, 0).getDate();
+  return {
+    dataIni: `${m[1]}-${m[2]}-01`,
+    dataFim: `${m[1]}-${m[2]}-${String(last).padStart(2, '0')}`,
+  };
+}
+
+/** Paleta clean para o painel comercial / histórico. */
+export const PAINEL_PALETTE = {
+  barras: [
+    '#0ea5e9',
+    '#14b8a6',
+    '#22c55e',
+    '#84cc16',
+    '#eab308',
+    '#f59e0b',
+    '#f97316',
+    '#ef4444',
+    '#ec4899',
+    '#a855f7',
+    '#6366f1',
+    '#3b82f6',
+    '#06b6d4',
+  ],
+  mix: ['#3b82f6', '#14b8a6', '#f59e0b', '#ec4899', '#8b5cf6', '#f97316', '#64748b'],
+  grupos: '#3b82f6',
+  vendedores: '#10b981',
+  uf: '#f59e0b',
+  subgrupo: '#06b6d4',
+  ganhadores: '#10b981',
+  perdedores: '#f43f5e',
+} as const;
+
+
 export function hojeYmd(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

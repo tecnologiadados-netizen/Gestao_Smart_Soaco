@@ -182,8 +182,11 @@ export function carradaAlterada(
 export type PedidoAlterado = {
   idPedido: string;
   rota: string;
+  /** Chave do Map sim (RM+carrada ou item especial). */
+  chaveSim: string;
   pd: string;
   cliente: string;
+  /** Código do produto (PA …) — só exibição. */
   cod: string;
   descricao: string;
   qtdePendenteReal: number;
@@ -215,6 +218,7 @@ export function computarPedidosComEntregaAlterada(
       out.push({
         idPedido,
         rota: nomeCarrada,
+        chaveSim: simItemKey(idPedido),
         pd: getField(row, ['PD', 'pd']) || '—',
         cliente: getField(row, ['Cliente', 'cliente']),
         cod: getField(row, ['Cod', 'cod']),
@@ -240,6 +244,7 @@ export function computarPedidosComEntregaAlterada(
     out.push({
       idPedido,
       rota: carrada,
+      chaveSim: key,
       pd: getField(row, ['PD', 'pd']) || '—',
       cliente: getField(row, ['Cliente', 'cliente']),
       cod: getField(row, ['Cod', 'cod']),
@@ -278,6 +283,7 @@ export function expandirPedidosEntregaComLinhasVivas(
     out.push({
       idPedido,
       rota: nomeCarrada,
+      chaveSim: key,
       pd: getField(row, ['PD', 'pd']) || '—',
       cliente: getField(row, ['Cliente', 'cliente']),
       cod: getField(row, ['Cod', 'cod']),

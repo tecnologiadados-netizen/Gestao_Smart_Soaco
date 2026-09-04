@@ -3,7 +3,12 @@ import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/requirePermission.js';
 import { PERMISSOES } from '../config/permissoes.js';
+import { PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO } from '../utils/kpisPermissoes.js';
 import { PERMISSOES_ACESSO_FINANCEIRO_RESUMO } from '../utils/financeiroPermissoes.js';
+import {
+  PERMISSOES_ACESSO_SEQUENCIAMENTO_CARRADAS,
+  PERMISSOES_EDITAR_SEQUENCIAMENTO_CARRADAS,
+} from '../utils/sequenciamentoCarradasPermissoes.js';
 import {
   getPedidos,
   getPedidosEncerrados,
@@ -71,7 +76,7 @@ const verPedidos = requirePermission(
 );
 
 const verFinanceiro = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_RESUMO, PERMISSOES.PCP_TOTAL);
-
+const verDashEntregas = requirePermission(...PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO);
 // Rate limit para rotas de escrita (ajustar previsão)
 const writeLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -92,6 +97,9 @@ const exportarXlsxPcp = requirePermission(PERMISSOES.PCP_EXPORTAR_XLSX, PERMISSO
 const ajustarUnicoPcp = requirePermission(PERMISSOES.PCP_AJUSTAR_PREVISAO, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_EDITAR);
 const ajustarLotePcp = requirePermission(PERMISSOES.PCP_IMPORTAR_XLSX, PERMISSOES.PCP_AJUSTAR_PREVISAO, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_EDITAR);
 
+const verSequenciamentoCarradas = requirePermission(...PERMISSOES_ACESSO_SEQUENCIAMENTO_CARRADAS);
+const editarSequenciamentoCarradas = requirePermission(...PERMISSOES_EDITAR_SEQUENCIAMENTO_CARRADAS);
+
 router.get('/', verPedidos, getPedidos);
 router.get('/export', exportarXlsxPcp, getPedidosExport);
 router.get('/resumo', verPedidos, getResumo);
@@ -100,10 +108,10 @@ router.get('/resumo-financeiro-grade', verFinanceiro, getResumoFinanceiroGrade);
 router.get('/resumo-status-tipof', verPedidos, getResumoStatusPorTipoF);
 router.get('/tabela-status-tipof', verPedidos, getTabelaStatusPorTipoF);
 router.get('/observacoes-resumo', verPedidos, getResumoObservacoes);
-router.get('/dash-entregas-analytics', verPedidos, getDashEntregasAnalytics);
-router.get('/dash-entregas-aging-tipof', verPedidos, getDashEntregasAgingTipoF);
-router.get('/dash-entregas-leadtime-tipof', verPedidos, getDashEntregasLeadTimeTipoF);
-router.get('/dash-entregas-filtros-opcoes', verPedidos, getDashEntregasFiltrosOpcoes);
+router.get('/dash-entregas-analytics', verDashEntregas, getDashEntregasAnalytics);
+router.get('/dash-entregas-aging-tipof', verDashEntregas, getDashEntregasAgingTipoF);
+router.get('/dash-entregas-leadtime-tipof', verDashEntregas, getDashEntregasLeadTimeTipoF);
+router.get('/dash-entregas-filtros-opcoes', verDashEntregas, getDashEntregasFiltrosOpcoes);
 router.get('/resumo-motivos', verPedidos, getResumoMotivos);
 router.get('/filtros-opcoes', verPedidos, getFiltrosOpcoes);
 router.get('/mapa-municipios', verPedidos, getMapaMunicipios);
@@ -116,41 +124,41 @@ const autosaveLimiter = rateLimit({
   message: { error: 'Muitas requisições. Tente novamente em breve.' },
 });
 
-router.get('/sequenciamento-carradas/consulta-ao-vivo', verPedidos, getSequenciamentoCarradasConsultaAoVivo);
-router.get('/sequenciamento-carradas/snapshots', verPedidos, getSequenciamentoCarradasSnapshots);
-router.post('/sequenciamento-carradas/snapshots', verPedidos, writeLimiter, postSequenciamentoCarradasSnapshot);
-router.get('/sequenciamento-carradas/snapshots/:id', verPedidos, getSequenciamentoCarradasSnapshotById);
-router.patch('/sequenciamento-carradas/snapshots/:id', verPedidos, autosaveLimiter, patchSequenciamentoCarradasSnapshot);
-router.post('/sequenciamento-carradas/snapshots/:id/concluir', verPedidos, writeLimiter, postSequenciamentoCarradasSnapshotConcluir);
-router.delete('/sequenciamento-carradas/snapshots/:id', verPedidos, writeLimiter, deleteSequenciamentoCarradasSnapshot);
-router.get('/sequenciamento-carradas/snapshots/:id/pc-pend', verPedidos, getSequenciamentoSnapshotPcPend);
-router.get('/sequenciamento-carradas/snapshots/:id/ag-pag', verPedidos, getSequenciamentoSnapshotAgPag);
+router.get('/sequenciamento-carradas/consulta-ao-vivo', verSequenciamentoCarradas, getSequenciamentoCarradasConsultaAoVivo);
+router.get('/sequenciamento-carradas/snapshots', verSequenciamentoCarradas, getSequenciamentoCarradasSnapshots);
+router.post('/sequenciamento-carradas/snapshots', editarSequenciamentoCarradas, writeLimiter, postSequenciamentoCarradasSnapshot);
+router.get('/sequenciamento-carradas/snapshots/:id', verSequenciamentoCarradas, getSequenciamentoCarradasSnapshotById);
+router.patch('/sequenciamento-carradas/snapshots/:id', editarSequenciamentoCarradas, autosaveLimiter, patchSequenciamentoCarradasSnapshot);
+router.post('/sequenciamento-carradas/snapshots/:id/concluir', editarSequenciamentoCarradas, writeLimiter, postSequenciamentoCarradasSnapshotConcluir);
+router.delete('/sequenciamento-carradas/snapshots/:id', editarSequenciamentoCarradas, writeLimiter, deleteSequenciamentoCarradasSnapshot);
+router.get('/sequenciamento-carradas/snapshots/:id/pc-pend', verSequenciamentoCarradas, getSequenciamentoSnapshotPcPend);
+router.get('/sequenciamento-carradas/snapshots/:id/ag-pag', verSequenciamentoCarradas, getSequenciamentoSnapshotAgPag);
 router.get(
   '/sequenciamento-carradas/snapshots/:id/solicitacao',
-  verPedidos,
+  verSequenciamentoCarradas,
   getSequenciamentoSnapshotSolicitacao
 );
 router.post(
   '/sequenciamento-carradas/snapshots/:id/consulta-congelada',
-  verPedidos,
+  verSequenciamentoCarradas,
   consultaCongeladaLimiter,
   postSequenciamentoConsultaCongelada
 );
 router.post(
   '/sequenciamento-carradas/calendario-producao/disponibilidade-materiais',
-  verPedidos,
+  verSequenciamentoCarradas,
   writeLimiter,
   postDisponibilidadeMateriaisSintetica
 );
 router.post(
   '/sequenciamento-carradas/calendario-producao/disponibilidade-materiais/dia',
-  verPedidos,
+  verSequenciamentoCarradas,
   writeLimiter,
   postDisponibilidadeMateriaisDia
 );
 router.post(
   '/sequenciamento-carradas/calendario-producao/disponibilidade-materiais/item',
-  verPedidos,
+  verSequenciamentoCarradas,
   writeLimiter,
   postDisponibilidadeMateriaisItem
 );

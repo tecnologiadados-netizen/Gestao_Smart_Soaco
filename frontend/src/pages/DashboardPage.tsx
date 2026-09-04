@@ -25,7 +25,8 @@ import ModalFiltrosDashEntregas, {
   filtrosDashToApi,
   type FiltrosDashEntregasState,
 } from '../components/dash-entregas/ModalFiltrosDashEntregas';
-import { formatMoedaDash } from '../components/dash-entregas/dashEntregasUtils';
+import { DASH_PALETTE, formatMoedaDash } from '../components/dash-entregas/dashEntregasUtils';
+import KpiPainelVoltarLink from '../components/kpis/KpiPainelVoltarLink';
 
 function hojeYmd(): string {
   const d = new Date();
@@ -305,6 +306,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
+          <KpiPainelVoltarLink painelId="pedidos-em-aberto" className="mb-1" />
           <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">
             Painel Pedidos em aberto — análise de saldo pendente
           </h2>
@@ -339,6 +341,8 @@ export default function DashboardPage() {
           data={analytics?.concentracao?.porGrupoProduto ?? []}
           totalValorBase={totalValorBase}
           loading={loading}
+          accentColor={DASH_PALETTE.grupoProduto}
+          paletaOffset={0}
           onItemClick={(item) => handleConcentracao('grupo_produto', item, 'Grupo')}
         />
         <DashEntregasConcentracaoCard
@@ -347,6 +351,8 @@ export default function DashboardPage() {
           data={analytics?.concentracao?.porSetorProducao ?? []}
           totalValorBase={totalValorBase}
           loading={loading}
+          accentColor={DASH_PALETTE.setorProducao}
+          paletaOffset={2}
           onItemClick={(item) => handleConcentracao('setor_producao', item, 'Setor')}
         />
       </section>
@@ -358,6 +364,8 @@ export default function DashboardPage() {
           data={analytics?.concentracao?.porSubgrupo1 ?? []}
           totalValorBase={totalValorBase}
           loading={loading}
+          accentColor={DASH_PALETTE.subgrupo1}
+          paletaOffset={4}
           onItemClick={(item) => handleConcentracao('subgrupo1', item, 'Subgrupo1')}
         />
         <DashEntregasConcentracaoCard
@@ -366,6 +374,8 @@ export default function DashboardPage() {
           data={analytics?.concentracao?.porSubgrupo2 ?? []}
           totalValorBase={totalValorBase}
           loading={loading}
+          accentColor={DASH_PALETTE.subgrupo2}
+          paletaOffset={6}
           onItemClick={(item) => handleConcentracao('subgrupo2', item, 'Subgrupo2')}
         />
       </section>
@@ -377,6 +387,8 @@ export default function DashboardPage() {
           data={analytics?.concentracao?.porUf ?? []}
           totalValorBase={totalValorBase}
           loading={loading}
+          accentColor={DASH_PALETTE.uf}
+          paletaOffset={8}
           onItemClick={(item) => handleConcentracao('uf', item, 'UF')}
         />
         <DashEntregasConcentracaoCard
@@ -385,6 +397,8 @@ export default function DashboardPage() {
           data={analytics?.concentracao?.porVendedor ?? []}
           totalValorBase={totalValorBase}
           loading={loading}
+          accentColor={DASH_PALETTE.vendedor}
+          paletaOffset={10}
           onItemClick={(item) => handleConcentracao('vendedor', item, 'Vendedor')}
         />
       </section>

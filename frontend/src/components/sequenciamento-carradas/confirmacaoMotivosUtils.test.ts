@@ -4,6 +4,7 @@ import {
   grupoPedidoMotivoConcluido,
   itemMotivoConcluido,
   itemPrevisaoConfiavelEscolhida,
+  materializarPrevisaoConfiavelDoSnapshot,
   motivoComumIds,
   observacaoComumIds,
   previsaoConfiavelComumIds,
@@ -14,6 +15,7 @@ import type { PedidoAlterado } from './simulacaoCarradas';
 function pedido(partial: Partial<PedidoAlterado> & Pick<PedidoAlterado, 'idPedido' | 'pd'>): PedidoAlterado {
   return {
     rota: 'ROTA A',
+    chaveSim: 'PA 1\x1eROTA A',
     cliente: 'Cliente',
     cod: 'PA 1',
     descricao: 'Produto',
@@ -76,6 +78,51 @@ describe('previsaoConfiavel', () => {
     expect(itemPrevisaoConfiavelEscolhida('x', { x: null })).toBe(false);
     expect(itemPrevisaoConfiavelEscolhida('x', { x: true })).toBe(true);
     expect(itemPrevisaoConfiavelEscolhida('x', { x: false })).toBe(true);
+  });
+});
+
+describe('materializarPrevisaoConfiavelDoSnapshot', () => {
+  it('copia snapshot quando o mapa não tem escolha', () => {
+    const out = materializarPrevisaoConfiavelDoSnapshot(
+      {},
+      [
+        { id_pedido: 'a', previsao_atual_confiavel: false },
+        { id_pedido: 'b', previsao_atual_confiavel: true },
+        { id_pedido: 'c', previsao_atual_confiavel: null },
+      ]
+    );
+    expect(out).toEqual({ a: false, b: true });
+  });
+
+  it('não sobrescreve override true/false do rascunho', () => {
+    const out = materializarPrevisaoConfiavelDoSnapshot(
+      { a: true, b: false },
+      [
+        { id_pedido: 'a', previsao_atual_confiavel: false },
+        { id_pedido: 'b', previsao_atual_confiavel: true },
+      ]
+    );
+    expect(out).toEqual({ a: true, b: false });
+  });
+
+  it('preenche id com null no mapa a partir do snapshot', () => {
+    const out = materializarPrevisaoConfiavelDoSnapshot(
+      { a: null },
+      [{ id_pedido: 'a', previsao_atual_confiavel: false }]
+    );
+    expect(out).toEqual({ a: false });
+  });
+
+  it('ignora linhas sem id e aceita idChave', () => {
+    const out = materializarPrevisaoConfiavelDoSnapshot(
+      {},
+      [
+        { previsao_atual_confiavel: true },
+        { id_pedido: '  ', previsao_atual_confiavel: true },
+        { idChave: 'x', previsao_atual_confiavel: false },
+      ]
+    );
+    expect(out).toEqual({ x: false });
   });
 });
 

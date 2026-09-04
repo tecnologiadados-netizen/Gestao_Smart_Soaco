@@ -69,6 +69,7 @@ async function enriquecerNotasComConferencia(
 
 /**
  * GET /api/compras/double-checkin/notas?dataInicio=&dataFim=
+ * Período filtra por dataEntrada do documentoestoque.
  */
 export async function getDoubleCheckInNotas(req: Request, res: Response): Promise<void> {
   const dataInicio = parseYmd(req.query.dataInicio) ?? '2024-01-01';
@@ -297,7 +298,7 @@ export async function putDoubleCheckInDestinatarios(req: Request, res: Response)
 
 /**
  * POST /api/compras/double-checkin/sincronizar
- * body/query: dataInicio, dataFim
+ * body/query: dataInicio, dataFim (filtro por dataEntrada)
  * Retorna notas + processa alertas WhatsApp só para NFs com emissão >= go-live.
  * Histórico anterior é marcado sem envio (evita flood / bloqueio do número).
  */

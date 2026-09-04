@@ -938,16 +938,11 @@ Having saldo > 0.0001`;
 }
 
 /**
- * Empenho BOM para consulta de estoque (escopo por pedido): mesma regra bruto − PA
- * da grade Ressup; só reforça empresa = 1 no join de pedidos.
+ * Empenho BOM para consulta de estoque: mesma regra bruto − PA da grade Ressup.
+ * Mantido como ponto de extensão do escopo; não altera empresa nem joins.
  */
 export function buildEmpJoinSqlConsultaEstoque(considerarRequisicoes: boolean): string {
-  let block = buildEmpJoinSql(considerarRequisicoes);
-  block = block.replace(
-    /left join pedido pd on pd\.id = ip\.idPedido/gi,
-    'Inner Join pedido pd On pd.id = ip.idPedido And pd.idEmpresa = 1'
-  );
-  return block;
+  return buildEmpJoinSql(considerarRequisicoes);
 }
 
 /**
@@ -971,29 +966,88 @@ function buildPlaceholdersEmpenho(n: number): string {
 }
 
 /**
+ * Marcadores usados na montagem dos SQLs de empenho em lote. Os binds são materializados
+ * em uma única varredura da esquerda para a direita, garantindo que a ordem dos parâmetros
+ * acompanhe a ordem posicional real dos `?` no SQL final (contar placeholders por regex
+ * desalinha os binds quando os fragmentos são intercalados).
+ */
+const TOKEN_EMPENHO_PEDIDO = '--:PD:--';
+const TOKEN_EMPENHO_IDS = '--:IDS:--';
+const TOKEN_EMPENHO_PAIS = '--:PAIS:--';
+
+export type SqlComParams = { sql: string; params: unknown[] };
+
+function materializarBindsEmpenho(
+  sqlComTokens: string,
+  valores: { idPedido?: number; ids?: number[]; idsPais?: number[] }
+): SqlComParams {
+  const params: unknown[] = [];
+  const sql = sqlComTokens.replace(/--:(PD|IDS|PAIS):--/g, (_m, tipo: string) => {
+    if (tipo === 'PD') {
+      if (valores.idPedido == null) {
+        throw new Error('[sqlRegistroColetaPrecos] Bind de pedido ausente no SQL de empenho.');
+      }
+      params.push(valores.idPedido);
+      return '?';
+    }
+    const lista = tipo === 'IDS' ? valores.ids : valores.idsPais;
+    if (!lista || lista.length === 0) {
+      throw new Error(`[sqlRegistroColetaPrecos] Bind de lista ${tipo} ausente no SQL de empenho.`);
+    }
+    params.push(...lista);
+    return buildPlaceholdersEmpenho(lista.length);
+  });
+  return { sql, params };
+}
+
+/** Replace que falha alto: SQL parcialmente montado desalinha binds silenciosamente. */
+function replaceEmpenhoOuFalhar(
+  texto: string,
+  padrao: RegExp,
+  substituto: string,
+  contexto: string
+): string {
+  const out = texto.replace(padrao, substituto);
+  if (out === texto) {
+    throw new Error(`[sqlRegistroColetaPrecos] Falha ao montar SQL de empenho: ${contexto}.`);
+  }
+  return out;
+}
+
+/**
  * Empenho líquido em lote para a grade da Consulta de Estoque.
  * Reaproveita EXATAMENTE os blocos `emp`/`empd` do Ressup (abatimento PA setores 5/24)
  * com a mesma expressão `Qtde Empenhada` da grade de coleta/ressup.
  *
- * Binds: ids (filtro emp) + ids (filtro empd) + ids (WHERE externo) — mesma lista repetida 3x.
+ * Binds materializados na ordem posicional dos `?` (ids em 3 pontos: emp, empd e WHERE externo).
  */
-export function buildEmpenhoLiquidoBatchSql(considerarRequisicoes: boolean, numIds: number): string {
-  const ph = buildPlaceholdersEmpenho(numIds);
+export function buildEmpenhoLiquidoBatchSql(
+  considerarRequisicoes: boolean,
+  ids: number[]
+): SqlComParams {
   let block = buildEmpJoinSql(considerarRequisicoes);
-  block = block.replace(
+  block = replaceEmpenhoOuFalhar(
+    block,
     /Group By pq\.idProdutoComponente\) emp On emp\.idprod = p\.id/,
-    `    And pq.idProdutoComponente In (${ph})
-  Group By pq.idProdutoComponente) emp On emp.idprod = p.id`
+    `    And pq.idProdutoComponente In (${TOKEN_EMPENHO_IDS})
+  Group By pq.idProdutoComponente) emp On emp.idprod = p.id`,
+    'filtro de componentes no join emp'
   );
-  block = block.replace(
+  block = replaceEmpenhoOuFalhar(
+    block,
     /  From itempedido ip\r?\n    Left Join produto p On p\.id = ip\.idProduto\r?\n    left join pedido pd on pd\.id = ip\.idPedido\r?\n  Where ip\.status In \(2, 3\)([\s\S]*?)\r?\n  Group By p\.id\) empd On empd\.idprod = p\.id/,
     `  From itempedido ip
     Left Join produto p On p.id = ip.idProduto
     left join pedido pd on pd.id = ip.idPedido
   Where ip.status In (2, 3)$1
-    And p.id In (${ph})
-  Group By p.id) empd On empd.idprod = p.id`
+    And p.id In (${TOKEN_EMPENHO_IDS})
+  Group By p.id) empd On empd.idprod = p.id`,
+    'filtro de produtos no join empd'
   );
+  return materializarBindsEmpenho(montarSelectEmpenhoLiquido(block), { ids });
+}
+
+function montarSelectEmpenhoLiquido(block: string): string {
   return `Select
   p.id As idProduto,
   Round(
@@ -1003,23 +1057,91 @@ export function buildEmpenhoLiquidoBatchSql(considerarRequisicoes: boolean, numI
   ) As empenho
 From produto p
 ${block}
-Where p.id In (${ph})`;
+Where p.id In (${TOKEN_EMPENHO_IDS})`;
+}
+
+/**
+ * Bloco emp/empd da Consulta de Estoque com os filtros aplicados via marcadores.
+ *
+ * Nos dois escopos restritos (um PD ou os itens filtrados) o abatimento de estoque em PA
+ * passa a ter piso POR produto acabado — `Sum(Greatest(0, nec×open − nec×estoquePA))` —
+ * em vez do piso global. Sem isso, o estoque de um PA fora do escopo abateria a demanda
+ * de outro PA, e a grade não fecharia com a soma do modal analítico.
+ */
+function buildBlocoEmpenhoConsultaEstoque(
+  considerarRequisicoes: boolean,
+  escopo: { filtroPedido?: string; porProdutoPai?: boolean }
+): string {
+  let block = buildEmpJoinSqlConsultaEstoque(considerarRequisicoes);
+
+  block = replaceEmpenhoOuFalhar(
+    block,
+    /\(Greatest\(0,\r?\n\s*Sum\(Coalesce\(pq\.qtdeNecessaria, 0\) \* Coalesce\(pab\.saldo, 0\)\) -\r?\n\s*Sum\(Coalesce\(pq\.qtdeNecessaria, 0\) \* Coalesce\(ec\.saldoestoque, 0\)\)\r?\n\s*\) \+ Coalesce\(pac\.saldo, 0\)\)/,
+    `(Sum(Greatest(0,
+      (Coalesce(pq.qtdeNecessaria, 0) * Coalesce(pab.saldo, 0)) -
+      (Coalesce(pq.qtdeNecessaria, 0) * Coalesce(ec.saldoestoque, 0))
+    )) + Coalesce(pac.saldo, 0))`,
+    'piso por produto acabado no abatimento de estoque em PA'
+  );
+
+  const filtroPai = escopo.porProdutoPai
+    ? `\n    And pq.idprodutopai In (${TOKEN_EMPENHO_PAIS})`
+    : '';
+  block = replaceEmpenhoOuFalhar(
+    block,
+    /Group By pq\.idProdutoComponente\) emp On emp\.idprod = p\.id/,
+    `    And pq.idProdutoComponente In (${TOKEN_EMPENHO_IDS})${filtroPai}
+  Group By pq.idProdutoComponente) emp On emp.idprod = p.id`,
+    'filtro de componentes no join emp (consulta estoque)'
+  );
+
+  if (escopo.porProdutoPai) {
+    // Venda direta do próprio componente só entra se ele for um dos itens filtrados.
+    block = replaceEmpenhoOuFalhar(
+      block,
+      /(\r?\n    Where ip\.status In \(2, 3\)[^\r\n]*)(\r?\n    Group By p\.id\) pac On pac\.id = pq\.idProdutoComponente)/,
+      `$1\n      And p.id In (${TOKEN_EMPENHO_PAIS})$2`,
+      'escopo de itens filtrados no bloco pac'
+    );
+  }
+
+  block = replaceEmpenhoOuFalhar(
+    block,
+    /  From itempedido ip\r?\n    Left Join produto p On p\.id = ip\.idProduto\r?\n    left join pedido pd on pd\.id = ip\.idPedido\r?\n  Where ip\.status In \(2, 3\)([\s\S]*?)\r?\n  Group By p\.id\) empd On empd\.idprod = p\.id/,
+    `  From itempedido ip
+    Left Join produto p On p.id = ip.idProduto
+    left join pedido pd on pd.id = ip.idPedido
+  Where ip.status In (2, 3)$1
+    And p.id In (${TOKEN_EMPENHO_IDS})${
+      escopo.porProdutoPai ? `\n    And p.id In (${TOKEN_EMPENHO_PAIS})` : ''
+    }
+  Group By p.id) empd On empd.idprod = p.id`,
+    'filtro de produtos no join empd (consulta estoque)'
+  );
+
+  if (!escopo.filtroPedido) return block;
+
+  return replaceEmpenhoOuFalhar(
+    block,
+    /Where ip\.status In \(2, 3\)/gi,
+    `Where ip.status In (2, 3) And ${escopo.filtroPedido}`,
+    'escopo de pedidos nos blocos pab/pac/empd'
+  );
 }
 
 /**
  * Empenho líquido em lote restrito a um único pedido de venda (Consulta de Estoque).
- * Binds (diretos): idPedido + ids produtos.
- * Binds (componentes): idPedido (N× conforme joins) + ids (3×).
  */
 export function buildEmpenhoLiquidoBatchSqlPorPedido(
   considerarRequisicoes: boolean,
-  numIds: number,
-  modo: 'diretos' | 'componentes'
-): string {
-  const ph = buildPlaceholdersEmpenho(numIds);
+  ids: number[],
+  modo: 'diretos' | 'componentes',
+  idPedido: number
+): SqlComParams {
   if (modo === 'diretos') {
     const reqFilter = sqlFiltroRequisicoesEmpenho(considerarRequisicoes);
-    return `Select
+    return materializarBindsEmpenho(
+      `Select
   ip.idProduto,
   Round(Sum(
     If((ip.qtde >= ip.qtdeAtendida), (ip.qtde - ip.qtdeAtendida), 0)
@@ -1032,39 +1154,31 @@ export function buildEmpenhoLiquidoBatchSqlPorPedido(
     ), 0)
   ), 2) As empenho
 From itempedido ip
-Inner Join pedido pd On pd.id = ip.idPedido And pd.id = ?
+Inner Join pedido pd On pd.id = ip.idPedido And pd.id = ${TOKEN_EMPENHO_PEDIDO}
 Where ip.status In (2, 3)${reqFilter}
-  And ip.idProduto In (${ph})
-Group By ip.idProduto`;
+  And ip.idProduto In (${TOKEN_EMPENHO_IDS})
+Group By ip.idProduto`,
+      { idPedido, ids }
+    );
   }
 
-  let block = buildEmpJoinSqlConsultaEstoque(considerarRequisicoes);
-  block = block.replace(
-    /Where ip\.status In \(2, 3\)/gi,
-    'Where ip.status In (2, 3) And pd.id = ?'
-  );
-  block = block.replace(
-    /Group By pq\.idProdutoComponente\) emp On emp\.idprod = p\.id/,
-    `    And pq.idProdutoComponente In (${ph})
-  Group By pq.idProdutoComponente) emp On emp.idprod = p.id`
-  );
-  block = block.replace(
-    /  From itempedido ip\r?\n    Left Join produto p On p\.id = ip\.idProduto\r?\n    Inner Join pedido pd On pd\.id = ip\.idPedido And pd\.idEmpresa = 1\r?\n  Where ip\.status In \(2, 3\) And pd\.id = \?([\s\S]*?)\r?\n  Group By p\.id\) empd On empd\.idprod = p\.id/,
-    `  From itempedido ip
-    Left Join produto p On p.id = ip.idProduto
-    Inner Join pedido pd On pd.id = ip.idPedido And pd.idEmpresa = 1
-  Where ip.status In (2, 3) And pd.id = ?$1
-    And p.id In (${ph})
-  Group By p.id) empd On empd.idprod = p.id`
-  );
-  return `Select
-  p.id As idProduto,
-  Round(
-    Coalesce(emp.qtdempenhada, 0)
-    + Case When emp.idprod Is Null Then Coalesce(empd.saldo, 0) Else 0 End,
-    2
-  ) As empenho
-From produto p
-${block}
-Where p.id In (${ph})`;
+  const block = buildBlocoEmpenhoConsultaEstoque(considerarRequisicoes, {
+    filtroPedido: `pd.id = ${TOKEN_EMPENHO_PEDIDO}`,
+  });
+  return materializarBindsEmpenho(montarSelectEmpenhoLiquido(block), { idPedido, ids });
+}
+
+/**
+ * Empenho líquido em lote restrito à demanda dos produtos filtrados
+ * (escopo "somente do item filtrado" do filtro por produto da Consulta de Estoque).
+ */
+export function buildEmpenhoLiquidoBatchSqlPorProduto(
+  considerarRequisicoes: boolean,
+  ids: number[],
+  idsPais: number[]
+): SqlComParams {
+  const block = buildBlocoEmpenhoConsultaEstoque(considerarRequisicoes, {
+    porProdutoPai: true,
+  });
+  return materializarBindsEmpenho(montarSelectEmpenhoLiquido(block), { ids, idsPais });
 }

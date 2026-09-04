@@ -25,7 +25,9 @@
     "tunnel:externo": "npx --yes localtunnel@2.0.2 --port 5173",
     "build:production": "npm run build --prefix backend && npm run build:frontend --prefix backend",
     "start:production": "npm start --prefix backend",
-    "git:publish-main": "powershell -ExecutionPolicy Bypass -File scripts/publicar-develop3-para-main.ps1"
+    "git:publish-main": "powershell -ExecutionPolicy Bypass -File scripts/publicar-develop3-para-main.ps1",
+    "camasi:sync-fdb": "powershell -ExecutionPolicy Bypass -File scripts/sync-camasi-fdb-from-drive.ps1 -AtualizarEnv",
+    "camasi:setup-firebird": "powershell -ExecutionPolicy Bypass -File scripts/setup-camasi-firebird.ps1"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

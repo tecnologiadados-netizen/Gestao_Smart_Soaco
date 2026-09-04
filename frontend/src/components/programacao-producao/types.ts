@@ -125,6 +125,11 @@ export interface LinhaProgramacaoProducao {
   kg_bobina_necessario: number | null;
   saldo_projetado: number | null;
   cobertura_meses: number | null;
+  /**
+   * Versão da base de estoque usada em saldo projetado / MP faltante / cobertura.
+   * Ausente = programação gravada antes da mudança (base só PA Nomus).
+   */
+  calc_estoque_v?: number;
   descricao_simplificada?: string | null;
   grupo_produto?: string | null;
   /** Lista ordenada por prioridade (índice 0 = Alter 1 na grade). */

@@ -18,6 +18,8 @@ export interface DfcContribuicaoLinha {
   codigoConta: number;
   tipoRef: 'A' | 'L';
   dataBucket: string;
+  /** Realizado = baixa; Projetado = título em aberto por vencimento. */
+  situacao?: 'Realizado' | 'Projetado';
 }
 
 export interface DfcAgendamentosEfetivosResponse {
@@ -347,7 +349,7 @@ export async function fetchDfcKpis(params: {
   };
 }
 
-/** Despesas (agendamento P) em aberto no Nomus ? crit?rios alinhados aos KPIs Vencidos / A vencer a pagar. */
+/** Despesas a pagar em aberto (Nomus agendamento P + Shop9 Financeiro_Contas P). */
 export type DfcDespesaPagamentoSituacaoApi = 'vencido' | 'a_vencer';
 
 export interface DfcDespesaPagamentoEmAbertoLinha {
@@ -359,6 +361,9 @@ export interface DfcDespesaPagamentoEmAbertoLinha {
   nome: string | null;
   dataVencimento: string | null;
   saldoBaixar: number;
+  /** A = Nomus agendamento; S = Shop9 Ordem. Default A se omitido. */
+  tipoRef?: 'A' | 'S';
+  origem?: 'Nomus' | 'Shop9';
 }
 
 export interface DfcEndividamentoBancarioLinha extends DfcDespesaPagamentoEmAbertoLinha {}

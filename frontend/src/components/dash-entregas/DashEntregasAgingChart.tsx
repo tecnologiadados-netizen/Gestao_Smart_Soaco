@@ -1,5 +1,5 @@
 import type { AgingFaixaResumo } from '../../api/pedidos';
-import { formatMoedaDash, formatNumero } from './dashEntregasUtils';
+import { DASH_PALETTE, formatMoedaDash, formatNumero } from './dashEntregasUtils';
 
 type Props = {
   data: AgingFaixaResumo[];
@@ -42,7 +42,10 @@ export default function DashEntregasAgingChart({ data, loading, onFaixaClick }: 
   const totalValor = data.reduce((s, d) => s + d.valor, 0);
 
   return (
-    <div className="card-panel flex min-h-[340px] flex-col p-5">
+    <div
+      className="card-panel flex min-h-[340px] flex-col border-t-4 p-5"
+      style={{ borderTopColor: DASH_PALETTE.aging }}
+    >
       <div className="mb-4 shrink-0">
         <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
           Aging do saldo pendente

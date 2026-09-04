@@ -1,7 +1,10 @@
 import type { LinhaProgramacaoProducao } from '../components/programacao-producao/types';
 import { textoResumoOpsNomus } from './programacaoProducaoOpsNomus';
 import {
+  calcCoberturaMeses,
+  calcKgBobinaNecessario,
   calcQtdeMpKg,
+  calcSaldoProjetado,
   formatNum,
   somaEstoqueProcesso,
   somaEstoqueTotal,
@@ -101,11 +104,11 @@ export function getPpCellText(linha: LinhaProgramacaoProducao, colId: string): s
     case 'descricao_bobina_alternativa':
       return linha.descricao_bobina_alternativa?.trim() || '—';
     case 'kg_bobina_necessario':
-      return formatNum(linha.kg_bobina_necessario);
+      return formatNum(calcKgBobinaNecessario(linha));
     case 'saldo_projetado':
-      return formatNum(linha.saldo_projetado);
+      return formatNum(calcSaldoProjetado(linha));
     case 'cobertura_meses':
-      return formatNum(linha.cobertura_meses);
+      return formatNum(calcCoberturaMeses(linha));
     case 'sequencia': {
       const n = linha.sequencia;
       return n != null && n > 0 ? formatNum(n, 0) : '—';
@@ -136,11 +139,11 @@ export function getPpSortValue(linha: LinhaProgramacaoProducao, colId: string): 
     case 'estoque_mp_alternativa':
       return linha.estoque_mp_alternativa ?? -Infinity;
     case 'kg_bobina_necessario':
-      return linha.kg_bobina_necessario ?? -Infinity;
+      return calcKgBobinaNecessario(linha) ?? -Infinity;
     case 'saldo_projetado':
-      return linha.saldo_projetado ?? -Infinity;
+      return calcSaldoProjetado(linha) ?? -Infinity;
     case 'cobertura_meses':
-      return linha.cobertura_meses ?? -Infinity;
+      return calcCoberturaMeses(linha) ?? -Infinity;
     case 'sequencia':
       return linha.sequencia != null && linha.sequencia > 0 ? linha.sequencia : NaN;
     case 'qtde_produzir':

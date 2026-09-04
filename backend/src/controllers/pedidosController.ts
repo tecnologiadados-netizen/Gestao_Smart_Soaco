@@ -40,6 +40,11 @@ import {
 import { responderSycroCardsPorAjusteGerenciador } from '../services/sycroOrderSyncRespostaPrevisao.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
 import { validarDatasReprogramacao, toIsoDateOnly } from '../utils/validarDatasReprogramacao.js';
+import { mensagemErroPersistenciaSqlite } from '../utils/sqliteErroPersistencia.js';
+import {
+  isPedidoBaixadoStub,
+  resolverRespostaPedidoAposAjuste,
+} from '../utils/respostaPedidoAposAjuste.js';
 import { ajustarPrevisaoSchema, ajustarPrevisaoLoteSchema, ajustarDataProducaoLoteSchema } from '../validators/pedidos.js';
 import { listarPedidosQuerySchema, pedidosEncerradosQuerySchema, pedidosEncerradosTypeaheadQuerySchema } from '../validators/pedidos.js';
 import { prisma } from '../config/prisma.js';
@@ -562,19 +567,25 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
         });
         return;
       }
-      const producaoAtual = toIsoDateOnly(
-        (pedidoAtual as Record<string, unknown>).data_producao as string | Date | null | undefined
-      );
-      // Produção atual só entra na ordem previsão ≥ produção; não exigir ≥ hoje
-      // (produção já no passado não pode bloquear reprogramação da previsão).
-      const datasErro = validarDatasReprogramacao({
-        previsaoIso: novaStr,
-        producaoIso: producaoAtual || null,
-        exigirProducaoNaoAnteriorHoje: false,
-      });
-      if (datasErro) {
-        res.status(400).json({ error: datasErro });
-        return;
+      // Confirmação de confiabilidade sem mudança de data: não valida datas —
+      // registrar "confiável" sobre a previsão que já existe no ERP não pode ser
+      // bloqueado por inconsistência pré-existente (ex.: produção > previsão).
+      const somenteConfirmacao = confirmacao_data === true && previsaoAntigaStr === novaStr;
+      if (!somenteConfirmacao) {
+        const producaoAtual = toIsoDateOnly(
+          (pedidoAtual as Record<string, unknown>).data_producao as string | Date | null | undefined
+        );
+        // Produção atual só entra na ordem previsão ≥ produção; não exigir ≥ hoje
+        // (produção já no passado não pode bloquear reprogramação da previsão).
+        const datasErro = validarDatasReprogramacao({
+          previsaoIso: novaStr,
+          producaoIso: producaoAtual || null,
+          exigirProducaoNaoAnteriorHoje: false,
+        });
+        if (datasErro) {
+          res.status(400).json({ error: datasErro });
+          return;
+        }
       }
     } else {
       const datasErro = validarDatasReprogramacao({ previsaoIso: dataPrevisao });
@@ -637,9 +648,14 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
       return;
     }
     invalidatePedidosCache();
-    const pedido = await buscarPedidoPorId(idPedido);
-    if (!pedido) {
-      res.status(404).json({ error: 'Pedido não encontrado após ajuste.' });
+    const pedido = resolverRespostaPedidoAposAjuste(
+      await buscarPedidoPorId(idPedido),
+      pedidoAtual,
+      idPedido
+    );
+    // Pedido baixado no Nomus após o ajuste: não bloquear (o SQLite já gravou).
+    if (isPedidoBaixadoStub(pedido)) {
+      res.json(pedido);
       return;
     }
     if (confirmacao_data !== true) {
@@ -681,7 +697,7 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
   } catch (err) {
     console.error('ajustarPrevisao', err);
     res.status(503).json({
-      error: err instanceof Error ? err.message : 'Erro ao registrar ajuste.',
+      error: mensagemErroPersistenciaSqlite(err),
     });
   }
 }
@@ -714,6 +730,7 @@ export async function ajustarPrevisaoLote(req: Request, res: Response): Promise<
     .map((a, i) => ({ ...a, indice: i + 1 }))
     .filter(
       (a) =>
+        a.confirmacao_data !== true &&
         dataValida(a.previsao_nova) &&
         dataValida(a.previsao_atual) &&
         mesmaData(a.previsao_nova!, a.previsao_atual!)
@@ -820,6 +837,31 @@ export async function ajustarPrevisaoLote(req: Request, res: Response): Promise<
     return;
   }
 
+  for (const a of itensComPrevisaoValida) {
+    if (a.confirmacao_data === true) continue;
+    const idNorm = String(a.id_pedido ?? '').trim();
+    const pedidoAtual = await buscarPedidoPorId(idNorm);
+    if (!pedidoAtual) continue;
+    const producaoAtual = toIsoDateOnly(
+      (pedidoAtual as Record<string, unknown>).data_producao as string | Date | null | undefined
+    );
+    const rawPrev = String(a.previsao_nova ?? '').trim();
+    const previsaoStr = /^\d{4}-\d{2}-\d{2}$/.test(rawPrev)
+      ? rawPrev.slice(0, 10)
+      : new Date(a.previsao_nova!).toISOString().slice(0, 10);
+    const datasErro = validarDatasReprogramacao({
+      previsaoIso: previsaoStr,
+      producaoIso: producaoAtual || null,
+      exigirProducaoNaoAnteriorHoje: false,
+    });
+    if (datasErro) {
+      const row = pedidoAtual as Record<string, unknown>;
+      const pd = String(row['PD'] ?? row['pd'] ?? '').trim();
+      res.status(400).json({ error: datasErro, id_pedido: idNorm, pd: pd || undefined });
+      return;
+    }
+  }
+
   // Usuário da requisição atual (quem está importando)
   const usuario = req.user?.login ?? 'anon';
   let anexoPersistido;
@@ -862,6 +904,7 @@ export async function ajustarPrevisaoLote(req: Request, res: Response): Promise<
       // Importação: override na rota da linha (planilha ou Gerenciador) para atualizar a Previsão atual exibida.
       rota: usarOverride ? rotaEfetiva : null,
       previsao_confiavel: a.previsao_confiavel !== false,
+      confirmacaoData: a.confirmacao_data === true,
       // PDF enviado no lote grava em todas as linhas (não só nas não abonadas).
       anexoAssinatura: anexoParaLinha,
     };
@@ -869,10 +912,19 @@ export async function ajustarPrevisaoLote(req: Request, res: Response): Promise<
   const resultados = await registrarAjustesPrevisaoLote(ajustes, usuario);
   invalidatePedidosCache();
   setLastUpload();
+  const idsConfirmacao = new Set(
+    itensComPrevisaoValida
+      .filter((a) => a.confirmacao_data === true)
+      .map((a) => String(a.id_pedido ?? '').trim())
+      .filter(Boolean)
+  );
+  const appliedParaNotificar = (resultados.applied ?? []).filter(
+    (item) => !idsConfirmacao.has(item.id_pedido)
+  );
   try {
-    if (resultados.applied && resultados.applied.length > 0) {
+    if (appliedParaNotificar.length > 0) {
       const msg = formatarMensagemAlteracaoPrevisaoLote({
-        ajustes: resultados.applied,
+        ajustes: appliedParaNotificar,
         usuario,
       });
       enviarNotificacaoPorTipo('previsao_alteracao', msg).catch(() => {});
@@ -882,7 +934,7 @@ export async function ajustarPrevisaoLote(req: Request, res: Response): Promise<
   }
   try {
     const syncedPd = new Set<string>();
-    for (const item of resultados.applied ?? []) {
+    for (const item of appliedParaNotificar) {
       const pedido = await buscarPedidoPorId(item.id_pedido);
       if (!pedido) continue;
       const row = pedido as Record<string, unknown>;

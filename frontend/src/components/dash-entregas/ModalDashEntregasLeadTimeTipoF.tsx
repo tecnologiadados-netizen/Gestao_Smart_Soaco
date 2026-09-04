@@ -6,7 +6,7 @@ import {
   type TipoFLeadTimeResumo,
 } from '../../api/pedidos';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
-import { formatLeadTimeDias, formatNumero } from './dashEntregasUtils';
+import { corBarraDash, formatLeadTimeDias, formatNumero } from './dashEntregasUtils';
 
 type Props = {
   open: boolean;
@@ -101,8 +101,9 @@ export default function ModalDashEntregasLeadTimeTipoF({
             <div className="py-12 text-center text-slate-500">Sem dados.</div>
           ) : (
             <div className="space-y-3">
-              {dados.map((d) => {
+              {dados.map((d, idx) => {
                 const barPct = (d.leadTimeMedioDias / maxDias) * 100;
+                const cor = corBarraDash(idx, 11);
                 return (
                   <button
                     key={d.tipoF}
@@ -116,8 +117,12 @@ export default function ModalDashEntregasLeadTimeTipoF({
                     </span>
                     <div className="relative h-7 overflow-hidden rounded-md bg-slate-100 dark:bg-slate-800">
                       <div
-                        className="absolute inset-y-0 left-0 rounded-md bg-sky-500 transition hover:brightness-110"
-                        style={{ width: `${Math.max(barPct, 2)}%` }}
+                        className="absolute inset-y-0 left-0 rounded-md transition hover:brightness-110"
+                        style={{
+                          width: `${Math.max(barPct, 2)}%`,
+                          backgroundColor: cor,
+                          opacity: 0.9,
+                        }}
                       />
                       <span className="relative z-10 flex h-full items-center px-2 text-[11px] font-medium text-slate-700 dark:text-slate-200">
                         {formatLeadTimeDias(d.leadTimeMedioDias)}

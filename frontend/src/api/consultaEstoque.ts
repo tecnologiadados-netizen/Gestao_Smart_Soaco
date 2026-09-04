@@ -29,6 +29,8 @@ export type OpcoesFiltroConsultaEstoque = {
 
 export type ModoPedidoConsultaEstoque = 'diretos' | 'componentes';
 export type EmpenhoEscopoConsultaEstoque = 'pedido' | 'todos';
+export type ModoProdutoConsultaEstoque = 'diretos' | 'componentes';
+export type EmpenhoProdutoEscopoConsultaEstoque = 'produto' | 'todos';
 export type FiltroSimNaoTodos = 'todos' | 'sim' | 'nao';
 
 export type FiltrosConsultaEstoquePayload = {
@@ -44,6 +46,8 @@ export type FiltrosConsultaEstoquePayload = {
   idPedido?: number;
   modoPedido?: ModoPedidoConsultaEstoque;
   empenhoEscopo?: EmpenhoEscopoConsultaEstoque;
+  modoProduto?: ModoProdutoConsultaEstoque;
+  empenhoProdutoEscopo?: EmpenhoProdutoEscopoConsultaEstoque;
   comEmpenho?: FiltroSimNaoTodos;
   comSaldoEstoque?: FiltroSimNaoTodos;
   somenteAlmoxSecundario?: boolean;
@@ -151,6 +155,7 @@ export async function consultarEstoque(params: {
   data: ConsultaEstoqueLinha[];
   total: number;
   error?: string;
+  idsProdutosPaiEscopo?: number[];
 }> {
   const res = await apiFetch('/api/pcp/consulta-estoque/consultar', {
     method: 'POST',
@@ -167,6 +172,7 @@ export async function consultarEstoque(params: {
   return j as {
     data: ConsultaEstoqueLinha[];
     total: number;
+    idsProdutosPaiEscopo?: number[];
   };
 }
 

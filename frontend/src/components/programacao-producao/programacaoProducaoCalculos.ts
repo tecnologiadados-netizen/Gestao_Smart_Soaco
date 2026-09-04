@@ -1,4 +1,4 @@
-import type { EstoqueEmProcesso, QtdeProduzir } from './types';
+import type { EstoqueEmProcesso, LinhaProgramacaoProducao, QtdeProduzir } from './types';
 import { somaQtdeRoteiros } from '../../utils/programacaoProducaoRoteiros';
 
 export const ESTOQUE_PROCESSO_VAZIO: EstoqueEmProcesso = {
@@ -82,6 +82,42 @@ export function somaEstoqueTotal(linha: {
   estoque_em_processo?: EstoqueEmProcesso;
 }): number {
   return linha.estoque_atual_componente + somaEstoqueProcesso(linha.estoque_em_processo);
+}
+
+/** Base de estoque dos derivados: 2 = Estoque Total (PA + produção). */
+export const CALC_ESTOQUE_V = 2;
+
+function usaEstoqueTotal(linha: { calc_estoque_v?: number }): boolean {
+  return (linha.calc_estoque_v ?? 1) >= 2;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/** Saldo projetado = Estoque Total − Empenho (programações novas). */
+export function calcSaldoProjetado(linha: LinhaProgramacaoProducao): number | null {
+  if (!usaEstoqueTotal(linha)) return linha.saldo_projetado;
+  return round2(somaEstoqueTotal(linha) - linha.empenho_componente);
+}
+
+/** Qtde MP Faltante = déficit de componente × peso unitário da bobina. */
+export function calcKgBobinaNecessario(linha: LinhaProgramacaoProducao): number | null {
+  if (!usaEstoqueTotal(linha)) return linha.kg_bobina_necessario;
+  const peso = linha.peso_unitario_bobina;
+  if (peso == null || Number.isNaN(peso)) return null;
+  const deficit = Math.max(linha.empenho_componente - somaEstoqueTotal(linha), 0);
+  return round2(deficit * peso);
+}
+
+/** Cobertura em meses = saldo projetado ÷ venda média. */
+export function calcCoberturaMeses(linha: LinhaProgramacaoProducao): number | null {
+  if (!usaEstoqueTotal(linha)) return linha.cobertura_meses;
+  const vm = linha.venda_media_componente;
+  if (!vm) return null;
+  const saldo = calcSaldoProjetado(linha);
+  if (saldo == null) return null;
+  return round2(saldo / vm);
 }
 
 export function tooltipEstoqueTotal(linha: {

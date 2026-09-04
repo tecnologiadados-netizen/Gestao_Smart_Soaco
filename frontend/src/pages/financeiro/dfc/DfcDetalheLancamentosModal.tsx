@@ -2,17 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchDfcAgendamentosDetalhe, fetchDreSaidasNomusDetalhe, fetchDreSaidasSoAcoDetalhe, type DfcAgendamentoDetalheLinha } from '../../../api/financeiro';
 import { DFC_PRIORIDADE_LABEL_CURTO, type DfcPrioridade } from '../../../api/dfcPrioridade';
+import { useGradeFiltrosExcel } from '../../../hooks/useGradeFiltrosExcel';
 import { linhaMatchesEmpresasDfc, labelEmpresaDfc } from './dfcEmpresas';
-import {
-  SortableTh,
-  PrioridadeSomenteLeitura,
-  compareStr,
-  compareYmd,
-  nextSortDir,
-  type SortDir,
-} from './dfcDetalheTabelaUtils';
-import { PLACEHOLDER_BUSCA_TEXTO_LIVRE, textoPassaBuscaLivre } from '../../../utils/textoLivreBusca';
+import { PrioridadeSomenteLeitura } from './dfcDetalheTabelaUtils';
 import { rotuloPeriodoCabecalho } from './dfcPeriodos';
+import {
+  criarGetCellTextDfcDetalhe,
+  criarValueForSortDfcDetalhe,
+  montarColunasGradeDfcDetalhe,
+  rotuloColunaGradeDfc,
+} from './dfcDetalheGradeExcel';
+import { DfcDetalheCabecalhoTh, DfcDetalheGradeFiltroPortal } from './DfcDetalheCabecalhoGrade';
 import DreDetalheRateioSimplesCelula from '../dre/DreDetalheRateioSimplesCelula';
 import {
   periodoLinhaDetalheSimples,
@@ -31,9 +31,6 @@ const nf = new Intl.NumberFormat('pt-BR', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
-
-const inputFiltroClass =
-  'w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-3 py-1.5 text-sm min-w-0';
 
 /** Referências estáveis — evitar `= []` em props padrão (novo array a cada render → loop no useEffect). */
 const CONTAS_BANCARIAS_VAZIAS: string[] = [];
@@ -83,31 +80,6 @@ function linhaNoPeriodoCompetencia(
   return periodoCompetenciaLinha(row, granularidade) === periodo;
 }
 
-function linhaPassaFiltros(
-  row: DfcAgendamentoDetalheLinha,
-  codigo: string,
-  descricao: string,
-  fornecedor: string,
-  datas: string,
-  filtroPorCompetencia: boolean,
-): boolean {
-  if (codigo.trim() && !textoPassaBuscaLivre(codigo, String(row.id))) return false;
-  if (descricao.trim() && !textoPassaBuscaLivre(descricao, row.descricaoLancamento ?? '')) return false;
-  if (fornecedor.trim() && !textoPassaBuscaLivre(fornecedor, row.nome ?? '')) return false;
-  if (datas.trim()) {
-    const hay = [
-      fmtDataBr(row.dataVencimento),
-      fmtDataBr(filtroPorCompetencia ? dataCompetenciaLinha(row) : row.dataBaixa),
-      fmtDataBr(dataCompetenciaLinha(row)),
-      row.dataVencimento ?? '',
-      dataCompetenciaLinha(row) ?? '',
-      row.dataBaixa ?? '',
-    ].join(' ');
-    if (!textoPassaBuscaLivre(datas, hay)) return false;
-  }
-  return true;
-}
-
 export type DfcDetalheLancamentosModalProps = {
   onClose: () => void;
   /** ids Nomus (contafinanceiro) — endpoint DFC (data de baixa). */
@@ -136,7 +108,7 @@ export type DfcDetalheLancamentosModalProps = {
    */
   onPrioridadeLancAtualizada?: (
     idEmpresa: number,
-    tipoRef: 'A' | 'L',
+    tipoRef: 'A' | 'L' | 'S',
     idRef: number,
     prioridade: DfcPrioridade | null,
   ) => void;
@@ -188,17 +160,9 @@ export default function DfcDetalheLancamentosModal({
   const [erro, setErro] = useState<string | undefined>();
   const [linhas, setLinhas] = useState<DfcAgendamentoDetalheLinha[]>([]);
   const [truncado, setTruncado] = useState(false);
-  const [filtroCodigo, setFiltroCodigo] = useState('');
-  const [filtroDescricao, setFiltroDescricao] = useState('');
-  const [filtroFornecedor, setFiltroFornecedor] = useState('');
-  const [filtroDatas, setFiltroDatas] = useState('');
-  type ColSort = 'id' | 'empresa' | 'descricao' | 'nome' | 'dataVencimento' | 'dataBaixa' | 'dataCompetencia' | 'valor' | 'rateio' | 'prioridade';
-  const [sortKey, setSortKey] = useState<ColSort>('valor');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
   const comRateioSimples = rateioSimplesPorPeriodo != null && rateioSimplesPorPeriodo.size > 0;
   const contaComRateioEmpresas =
     (rateioEmpresasRegras?.length ?? 0) > 0 || rateioPercentuaisPlanoContas != null;
-  const colCount = (comRateioSimples ? 9 : 8) + (filtroPorCompetencia ? 1 : 0);
   const abortRef = useRef<AbortController | null>(null);
   const loadId = useRef(0);
 
@@ -228,13 +192,6 @@ export default function DfcDetalheLancamentosModal({
   const contasBancariasKey = contasBancariasSelecionadas.join(',');
   const prioridadesKey = prioridadesSelecionadas.join(',');
 
-  const limparFiltros = useCallback(() => {
-    setFiltroCodigo('');
-    setFiltroDescricao('');
-    setFiltroFornecedor('');
-    setFiltroDatas('');
-  }, []);
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -257,11 +214,6 @@ export default function DfcDetalheLancamentosModal({
       setTruncado(false);
       return;
     }
-
-    setFiltroCodigo('');
-    setFiltroDescricao('');
-    setFiltroFornecedor('');
-    setFiltroDatas('');
 
     loadId.current += 1;
     const myId = loadId.current;
@@ -389,94 +341,55 @@ export default function DfcDetalheLancamentosModal({
     [prioridadesContasMap, prioridadesLancsMap]
   );
 
-  const prioridadeOrdenacao = useCallback(
-    (row: DfcAgendamentoDetalheLinha): number => {
-      const { efetiva, override } = prioridadeEfetiva(row);
-      const p = override ?? efetiva;
-      return p ?? 99;
-    },
-    [prioridadeEfetiva]
+  const prioridadeEfetivaValor = useCallback(
+    (row: DfcAgendamentoDetalheLinha) => prioridadeEfetiva(row).efetiva,
+    [prioridadeEfetiva],
   );
 
-  const onSortCol = useCallback((key: string) => {
-    const k = key as ColSort;
-    setSortKey((prevKey) => {
-      setSortDir((prevDir) => nextSortDir(prevKey, k, prevDir));
-      return k;
-    });
-  }, []);
-
-  const linhasFiltradas = useMemo(
+  const colunasGrade = useMemo(
     () =>
-      linhasRateioEmpresas.filter((row) =>
-        linhaPassaFiltros(row, filtroCodigo, filtroDescricao, filtroFornecedor, filtroDatas, filtroPorCompetencia)
-      ),
-    [linhasRateioEmpresas, filtroCodigo, filtroDescricao, filtroFornecedor, filtroDatas, filtroPorCompetencia]
+      montarColunasGradeDfcDetalhe({
+        incluirDescricao: true,
+        incluirCompetencia: filtroPorCompetencia,
+        incluirPrioridade: true,
+      }),
+    [filtroPorCompetencia],
   );
 
-  const linhasOrdenadas = useMemo(() => {
-    if (!linhasFiltradas.length) return [];
-    const mul = sortDir === 'asc' ? 1 : -1;
-    return [...linhasFiltradas].sort((a, b) => {
-      let cmp = 0;
-      switch (sortKey) {
-        case 'id':
-          cmp = a.id - b.id;
-          break;
-        case 'empresa':
-          cmp = compareStr(a.empresa, b.empresa);
-          break;
-        case 'descricao':
-          cmp = compareStr(a.descricaoLancamento, b.descricaoLancamento);
-          break;
-        case 'nome':
-          cmp = compareStr(a.nome, b.nome);
-          break;
-        case 'dataVencimento':
-          cmp = compareYmd(a.dataVencimento, b.dataVencimento);
-          break;
-        case 'dataBaixa':
-          cmp = compareYmd(a.dataBaixa, b.dataBaixa);
-          break;
-        case 'dataCompetencia':
-          cmp = compareYmd(dataCompetenciaLinha(a), dataCompetenciaLinha(b));
-          break;
-        case 'valor':
-          cmp = a.valorBaixado - b.valorBaixado;
-          break;
-        case 'rateio': {
-          const pa = periodoLinhaDetalheSimples(
-            filtroPorCompetencia ? dataCompetenciaLinha(a) : a.dataBaixa,
-            granularidade,
-          );
-          const pb = periodoLinhaDetalheSimples(
-            filtroPorCompetencia ? dataCompetenciaLinha(b) : b.dataBaixa,
-            granularidade,
-          );
-          const ra = rateioValoresLinhaSimples(
-            a.valorBaixado,
-            pa ? rateioSimplesPorPeriodo?.get(pa) : undefined,
-          );
-          const rb = rateioValoresLinhaSimples(
-            b.valorBaixado,
-            pb ? rateioSimplesPorPeriodo?.get(pb) : undefined,
-          );
-          cmp = (ra?.refrigeracao ?? 0) + (ra?.rnMarques ?? 0) - ((rb?.refrigeracao ?? 0) + (rb?.rnMarques ?? 0));
-          break;
-        }
-        case 'prioridade':
-          cmp = prioridadeOrdenacao(a) - prioridadeOrdenacao(b);
-          break;
-        default:
-          cmp = 0;
-      }
-      return cmp * mul;
-    });
-  }, [linhasFiltradas, sortKey, sortDir, prioridadeOrdenacao, granularidade, rateioSimplesPorPeriodo, filtroPorCompetencia]);
+  const getCellText = useCallback(
+    (row: DfcAgendamentoDetalheLinha, colId: string) =>
+      criarGetCellTextDfcDetalhe(prioridadeEfetivaValor)(row, colId),
+    [prioridadeEfetivaValor],
+  );
+
+  const valueForSort = useCallback(
+    (row: DfcAgendamentoDetalheLinha, colId: string) =>
+      criarValueForSortDfcDetalhe(prioridadeEfetivaValor)(row, colId),
+    [prioridadeEfetivaValor],
+  );
+
+  const grade = useGradeFiltrosExcel({
+    rows: linhasRateioEmpresas,
+    columnIds: colunasGrade,
+    getCellText,
+    valueForSort,
+    defaultSortLevels: [{ id: 'valor', dir: 'desc' }],
+    dateColumnIds: filtroPorCompetencia
+      ? ['dataVencimento', 'dataCompetencia', 'dataBaixa']
+      : ['dataVencimento', 'dataBaixa'],
+  });
+
+  useEffect(() => {
+    grade.limparFiltrosGrade();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resetar grade ao trocar recorte carregado
+  }, [idListKey, idShop9ListKey, periodo, idEmpresasKey]);
+
+  const linhasExibidas = grade.rowsExibidas;
+  const colCount = colunasGrade.length + (comRateioSimples ? 1 : 0);
 
   const somaFiltrada = useMemo(
-    () => linhasFiltradas.reduce((s, r) => s + r.valorBaixado, 0),
-    [linhasFiltradas]
+    () => linhasExibidas.reduce((s, r) => s + r.valorBaixado, 0),
+    [linhasExibidas],
   );
 
   const somaRateioFiltrada = useMemo(() => {
@@ -485,7 +398,7 @@ export default function DfcDetalheLancamentosModal({
     let refrigeracao = 0;
     let rnMarques = 0;
     let exibido = 0;
-    for (const row of linhasFiltradas) {
+    for (const row of linhasExibidas) {
       const p = periodoLinhaDetalheSimples(
         filtroPorCompetencia ? dataCompetenciaLinha(row) : row.dataBaixa,
         granularidade,
@@ -506,7 +419,7 @@ export default function DfcDetalheLancamentosModal({
     return { refrigeracao, rnMarques, exibido };
   }, [
     comRateioSimples,
-    linhasFiltradas,
+    linhasExibidas,
     granularidade,
     rateioSimplesPorPeriodo,
     idEmpresasRateioSimples,
@@ -514,15 +427,9 @@ export default function DfcDetalheLancamentosModal({
     filtroPorCompetencia,
   ]);
 
-  const temFiltro =
-    filtroCodigo.trim() ||
-    filtroDescricao.trim() ||
-    filtroFornecedor.trim() ||
-    filtroDatas.trim();
+  const temFiltroGrade = grade.temFiltrosOuOrdem;
 
   if (typeof document === 'undefined') return null;
-
-  const mostrarFiltros = !loading && !erro && linhasRateioEmpresas.length > 0;
 
   return createPortal(
     <div
@@ -559,7 +466,23 @@ export default function DfcDetalheLancamentosModal({
               ) : null}
             </h2>
             <p className="mt-0.5 break-words text-sm text-slate-600 dark:text-slate-400">{titulo}</p>
+            {!loading && !erro && linhas.length > 0 ? (
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {linhasExibidas.length.toLocaleString('pt-BR')} de {linhas.length.toLocaleString('pt-BR')} lançamento
+                {linhas.length === 1 ? '' : 's'} · use ▾ no cabeçalho para filtrar e classificar
+              </p>
+            ) : null}
           </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {temFiltroGrade ? (
+              <button
+                type="button"
+                onClick={() => grade.limparFiltrosGrade()}
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+              >
+                Limpar filtros da grade
+              </button>
+            ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -571,79 +494,10 @@ export default function DfcDetalheLancamentosModal({
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
+          </div>
         </div>
 
-        {mostrarFiltros ? (
-          <div className="shrink-0 space-y-2 border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/35 px-4 py-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Filtrar neste recorte</span>
-              <div className="flex items-center gap-2">
-                {temFiltro ? (
-                  <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                    {linhasOrdenadas.length} de {linhas.length}
-                  </span>
-                ) : null}
-                {temFiltro ? (
-                  <button
-                    type="button"
-                    onClick={limparFiltros}
-                    className="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-                  >
-                    Limpar filtros
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex min-w-0 flex-nowrap items-end gap-2 overflow-x-auto pb-0.5 [scrollbar-gutter:stable]">
-              <label className="flex w-[6.5rem] shrink-0 flex-col gap-0.5">
-                <span className="whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400">Código</span>
-                <input
-                  type="search"
-                  value={filtroCodigo}
-                  onChange={(e) => setFiltroCodigo(e.target.value)}
-                  placeholder="Ex.: 301124 ou 301%"
-                  className={inputFiltroClass}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="flex w-[9.5rem] shrink-0 flex-col gap-0.5" title={filtroPorCompetencia ? 'Vencimento ou competência (ex.: 15/01 ou 2026-01)' : 'Vencimento ou data de baixa (ex.: 15/01 ou 2026-01)'}>
-                <span className="whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400">Datas</span>
-                <input
-                  type="search"
-                  value={filtroDatas}
-                  onChange={(e) => setFiltroDatas(e.target.value)}
-                  placeholder="Ex.: 15/01 ou %/2026"
-                  className={inputFiltroClass}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="flex min-w-0 flex-1 basis-0 flex-col gap-0.5">
-                <span className="whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400">Descrição</span>
-                <input
-                  type="search"
-                  value={filtroDescricao}
-                  onChange={(e) => setFiltroDescricao(e.target.value)}
-                  placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
-                  className={inputFiltroClass}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="flex min-w-0 flex-1 basis-0 flex-col gap-0.5">
-                <span className="whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400">Fornecedor</span>
-                <input
-                  type="search"
-                  value={filtroFornecedor}
-                  onChange={(e) => setFiltroFornecedor(e.target.value)}
-                  placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
-                  className={inputFiltroClass}
-                  autoComplete="off"
-                />
-              </label>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <div ref={grade.tableScrollRef} className="relative min-h-0 flex-1 overflow-auto">
           {loading ? (
             <div className="px-4 py-12 text-center text-sm text-slate-500 dark:text-slate-400 animate-pulse">Carregando…</div>
           ) : erro ? (
@@ -666,72 +520,25 @@ export default function DfcDetalheLancamentosModal({
               </colgroup>
               <thead className="sticky top-0 z-[1]">
                 <tr className="bg-primary-600 text-left text-white shadow-sm">
-                  <SortableTh label="Código" sortKey="id" activeKey={sortKey} dir={sortDir} onSort={onSortCol} />
-                  <SortableTh label="Empresa" sortKey="empresa" activeKey={sortKey} dir={sortDir} onSort={onSortCol} />
-                  <SortableTh label="Descrição" sortKey="descricao" activeKey={sortKey} dir={sortDir} onSort={onSortCol} />
-                  <SortableTh label="Fornecedor" sortKey="nome" activeKey={sortKey} dir={sortDir} onSort={onSortCol} />
-                  <SortableTh
-                    label="Data Vencimento"
-                    sortKey="dataVencimento"
-                    activeKey={sortKey}
-                    dir={sortDir}
-                    onSort={onSortCol}
-                    className="leading-tight"
-                  />
-                  {filtroPorCompetencia ? (
-                    <>
-                      <SortableTh
-                        label="Data Competência"
-                        sortKey="dataCompetencia"
-                        activeKey={sortKey}
-                        dir={sortDir}
-                        onSort={onSortCol}
-                        className="leading-tight"
-                      />
-                      <SortableTh
-                        label="Data Baixa"
-                        sortKey="dataBaixa"
-                        activeKey={sortKey}
-                        dir={sortDir}
-                        onSort={onSortCol}
-                        className="leading-tight"
-                      />
-                    </>
-                  ) : (
-                    <SortableTh
-                      label={rotuloColunaDataBaixa}
-                      sortKey="dataBaixa"
-                      activeKey={sortKey}
-                      dir={sortDir}
-                      onSort={onSortCol}
+                  {colunasGrade.map((colId) => (
+                    <DfcDetalheCabecalhoTh
+                      key={colId}
+                      colId={colId}
+                      label={rotuloColunaGradeDfc(colId, rotuloColunaDataBaixa)}
+                      grade={grade}
+                      align={colId === 'valor' ? 'right' : 'left'}
                       className="leading-tight"
                     />
-                  )}
-                  <SortableTh
-                    label="Valor"
-                    sortKey="valor"
-                    activeKey={sortKey}
-                    dir={sortDir}
-                    onSort={onSortCol}
-                    align="right"
-                  />
+                  ))}
                   {comRateioSimples ? (
                     <th className="px-2 py-2 text-left text-xs font-semibold leading-tight">
                       Rateio Simples
                     </th>
                   ) : null}
-                  <SortableTh
-                    label="Prioridade"
-                    sortKey="prioridade"
-                    activeKey={sortKey}
-                    dir={sortDir}
-                    onSort={onSortCol}
-                    className="leading-tight"
-                  />
                 </tr>
               </thead>
               <tbody>
-                {linhasFiltradas.length === 0 ? (
+                {linhasExibidas.length === 0 ? (
                   <tr>
                     <td
                       colSpan={colCount}
@@ -741,7 +548,7 @@ export default function DfcDetalheLancamentosModal({
                     </td>
                   </tr>
                 ) : (
-                  linhasOrdenadas.map((row, idx) => {
+                  linhasExibidas.map((row, idx) => {
                     const { efetiva, origem, override } = prioridadeEfetiva(row);
                     const exibir = override ?? efetiva;
                     const hintPlano =
@@ -821,19 +628,20 @@ export default function DfcDetalheLancamentosModal({
               </tbody>
             </table>
           )}
+          <DfcDetalheGradeFiltroPortal grade={grade} zIndex={10100} />
         </div>
 
         {!loading && !erro && linhas.length > 0 ? (
           <div className="flex shrink-0 flex-col gap-1 border-t border-primary-700/30 bg-primary-600 px-4 py-2.5 text-sm text-white">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span>Total{temFiltro ? ' (filtrado)' : ''}</span>
+              <span>Total{temFiltroGrade ? ' (filtrado)' : ''}</span>
               <span className="font-semibold tabular-nums">{nf.format(somaFiltrada)}</span>
             </div>
             {somaRateioFiltrada ? (
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-primary-500/40 pt-1.5 text-xs text-primary-100">
                 <span>
                   Rateio Simples
-                  {periodo ? ` · ${rotuloPeriodoCabecalho(periodo, granularidade)}` : temFiltro ? ' (filtrado)' : ''}
+                  {periodo ? ` · ${rotuloPeriodoCabecalho(periodo, granularidade)}` : temFiltroGrade ? ' (filtrado)' : ''}
                 </span>
                 <span className="tabular-nums">
                   Exibido {nf.format(somaRateioFiltrada.exibido)}

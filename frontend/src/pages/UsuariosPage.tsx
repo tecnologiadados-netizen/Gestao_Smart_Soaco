@@ -1134,6 +1134,20 @@ export default function UsuariosPage() {
                         </div>
                       ) : null}
                     </div>
+                  ) : secao === 'KPIs' ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Cada checkbox libera exclusivamente o painel correspondente no hub KPIs. Permissões PCP/Produção não substituem estas permissões.
+                      </p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-2">
+                        {itens.map((p) => (
+                          <label key={p.codigo} className="flex items-center gap-2 text-sm cursor-pointer text-slate-800 dark:text-slate-100">
+                            <input type="checkbox" checked={grupoPermissoes.includes(p.codigo)} onChange={() => togglePermissao(p.codigo)} disabled={editandoGrupoMaster} />
+                            {p.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   ) : secao === 'Loja' ? (
                     <div className="space-y-2">
                       <div className="space-y-1">

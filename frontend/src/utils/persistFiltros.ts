@@ -185,3 +185,41 @@ export function clearFiltrosCarteira(): void {
     // ignore
   }
 }
+
+const KEY_CALENDARIO_PRODUCAO = 'filtros-calendario-producao-sequenciamento';
+
+export type FiltrosCalendarioProducaoState = {
+  filtroPd: string;
+  filtroTipoF: string;
+  filtroConfiavel: string;
+  somentePrev: boolean;
+  vistaCalendario: 'producao' | 'materiais';
+};
+
+const DEFAULT_FILTROS_CALENDARIO_PRODUCAO: FiltrosCalendarioProducaoState = {
+  filtroPd: '',
+  filtroTipoF: '',
+  filtroConfiavel: '',
+  somentePrev: false,
+  vistaCalendario: 'producao',
+};
+
+/** Carrega filtros do Calendário de produção (merge com defaults). */
+export function loadFiltrosCalendarioProducao(
+  defaults: FiltrosCalendarioProducaoState = DEFAULT_FILTROS_CALENDARIO_PRODUCAO
+): FiltrosCalendarioProducaoState {
+  const merged = mergeWithDefaults(safeParse(KEY_CALENDARIO_PRODUCAO, null), defaults);
+  return {
+    ...merged,
+    vistaCalendario: merged.vistaCalendario === 'materiais' ? 'materiais' : 'producao',
+  };
+}
+
+/** Salva filtros do Calendário de produção (sobrevive a fechar/reabrir o modal na mesma aba). */
+export function saveFiltrosCalendarioProducao(f: FiltrosCalendarioProducaoState): void {
+  try {
+    sessionStorage.setItem(KEY_CALENDARIO_PRODUCAO, safeStringify(f));
+  } catch {
+    // ignore
+  }
+}

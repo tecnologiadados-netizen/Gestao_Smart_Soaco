@@ -12,10 +12,13 @@ import {
   listarSaldoDetalhePorProduto,
   listarScDetalhePorProduto,
   validarFiltrosPedidoConsultaEstoque,
+  validarFiltrosProdutoConsultaEstoque,
   type EmpenhoEscopoConsultaEstoque,
+  type EmpenhoProdutoEscopoConsultaEstoque,
   type FiltroSimNaoTodos,
   type FiltrosConsultaEstoque,
   type ModoPedidoConsultaEstoque,
+  type ModoProdutoConsultaEstoque,
 } from '../data/consultaEstoqueRepository.js';
 
 function parseStringArray(v: unknown): string[] | undefined {
@@ -30,6 +33,16 @@ function parseModoPedido(v: unknown): ModoPedidoConsultaEstoque | undefined {
 
 function parseEmpenhoEscopo(v: unknown): EmpenhoEscopoConsultaEstoque | undefined {
   if (v === 'pedido' || v === 'todos') return v;
+  return undefined;
+}
+
+function parseModoProduto(v: unknown): ModoProdutoConsultaEstoque | undefined {
+  if (v === 'diretos' || v === 'componentes') return v;
+  return undefined;
+}
+
+function parseEmpenhoProdutoEscopo(v: unknown): EmpenhoProdutoEscopoConsultaEstoque | undefined {
+  if (v === 'produto' || v === 'todos') return v;
   return undefined;
 }
 
@@ -58,6 +71,8 @@ function filtrosFromBody(body: unknown): FiltrosConsultaEstoque {
     idPedido,
     modoPedido: parseModoPedido(f.modoPedido),
     empenhoEscopo: parseEmpenhoEscopo(f.empenhoEscopo),
+    modoProduto: parseModoProduto(f.modoProduto),
+    empenhoProdutoEscopo: parseEmpenhoProdutoEscopo(f.empenhoProdutoEscopo),
     comEmpenho: parseSimNaoTodos(f.comEmpenho),
     comSaldoEstoque: parseSimNaoTodos(f.comSaldoEstoque),
     somenteAlmoxSecundario: f.somenteAlmoxSecundario === true,
@@ -132,7 +147,8 @@ export async function postContarConsultaEstoque(req: Request, res: Response): Pr
     res.status(400).json({ error: 'Informe ao menos um filtro.', total: 0 });
     return;
   }
-  const erroPedido = validarFiltrosPedidoConsultaEstoque(filtros);
+  const erroPedido =
+    validarFiltrosPedidoConsultaEstoque(filtros) ?? validarFiltrosProdutoConsultaEstoque(filtros);
   if (erroPedido) {
     res.status(400).json({ error: erroPedido, total: 0 });
     return;
@@ -157,7 +173,8 @@ export async function postConsultarEstoque(req: Request, res: Response): Promise
     });
     return;
   }
-  const erroPedido = validarFiltrosPedidoConsultaEstoque(filtros);
+  const erroPedido =
+    validarFiltrosPedidoConsultaEstoque(filtros) ?? validarFiltrosProdutoConsultaEstoque(filtros);
   if (erroPedido) {
     res.status(400).json({
       error: erroPedido,
@@ -171,7 +188,7 @@ export async function postConsultarEstoque(req: Request, res: Response): Promise
     typeof body === 'object' &&
     (body as Record<string, unknown>).considerarRequisicoes === true;
 
-  const { data, total, erro } = await consultarEstoque({
+  const { data, total, erro, idsProdutosPaiEscopo } = await consultarEstoque({
     filtros,
     considerarRequisicoes,
   });
@@ -181,7 +198,7 @@ export async function postConsultarEstoque(req: Request, res: Response): Promise
     return;
   }
 
-  res.json({ data, total });
+  res.json({ data, total, idsProdutosPaiEscopo });
 }
 
 export async function getSaldoDetalheConsultaEstoque(req: Request, res: Response): Promise<void> {

@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
+import { Settings } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { PERMISSOES, type CodigoPermissao } from '../../config/permissoes';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import {
+  atualizarTamanhoCategoria,
   atualizarVeiculo,
+  criarTamanhoCategoria,
   criarVeiculo,
+  excluirTamanhoCategoria,
   excluirVeiculo,
+  listarTamanhosCategorias,
   listarVeiculos,
+  type TamanhoCategoria,
   type Veiculo,
 } from '../../api/logistica';
 import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../utils/textoLivreBusca';
@@ -34,6 +40,7 @@ type FormState = {
   ano: string;
   motoristaPadrao: string;
   ativo: boolean;
+  tamanhoCategoriaId: string;
 };
 
 const FORM_VAZIO: FormState = {
@@ -51,6 +58,22 @@ const FORM_VAZIO: FormState = {
   ano: '',
   motoristaPadrao: '',
   ativo: true,
+  tamanhoCategoriaId: '',
+};
+
+type FormTamanho = {
+  id?: number;
+  nome: string;
+  consumoKmL: string;
+  ativo: boolean;
+  ordem: string;
+};
+
+const FORM_TAMANHO_VAZIO: FormTamanho = {
+  nome: '',
+  consumoKmL: '',
+  ativo: true,
+  ordem: '0',
 };
 
 function podeVer(hasPermission: (c: CodigoPermissao) => boolean) {
@@ -84,6 +107,7 @@ function rowToForm(row: Veiculo): FormState {
     ano: row.ano != null ? String(row.ano) : '',
     motoristaPadrao: row.motoristaPadrao ?? '',
     ativo: row.ativo,
+    tamanhoCategoriaId: row.tamanhoCategoriaId != null ? String(row.tamanhoCategoriaId) : '',
   };
 }
 
@@ -104,12 +128,17 @@ function formToBody(form: FormState) {
     ano: num(form.ano),
     motoristaPadrao: form.motoristaPadrao || null,
     ativo: form.ativo,
+    tamanhoCategoriaId: form.tamanhoCategoriaId.trim() ? Number(form.tamanhoCategoriaId) : null,
   };
 }
 
 function fmtDim(a: number | null, l: number | null, p: number | null) {
   if (a == null || l == null || p == null) return '—';
   return `${a} × ${l} × ${p} mm`;
+}
+
+function fmtConsumo(n: number) {
+  return `${n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} km/L`;
 }
 
 export default function VeiculosPage() {
@@ -120,18 +149,25 @@ export default function VeiculosPage() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [rows, setRows] = useState<Veiculo[]>([]);
+  const [tamanhos, setTamanhos] = useState<TamanhoCategoria[]>([]);
   const [filtro, setFiltro] = useState('');
   const [modal, setModal] = useState<'novo' | { editar: Veiculo } | null>(null);
   const [form, setForm] = useState<FormState>(FORM_VAZIO);
   const [salvando, setSalvando] = useState(false);
   const [confirmExcluir, setConfirmExcluir] = useState<Veiculo | null>(null);
   const [excluindo, setExcluindo] = useState(false);
+  const [modalTamanhos, setModalTamanhos] = useState(false);
+  const [formTamanho, setFormTamanho] = useState<FormTamanho>(FORM_TAMANHO_VAZIO);
+  const [salvandoTamanho, setSalvandoTamanho] = useState(false);
+  const [erroTamanho, setErroTamanho] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
     setErro(null);
     try {
-      setRows(await listarVeiculos());
+      const [veiculos, cats] = await Promise.all([listarVeiculos(), listarTamanhosCategorias()]);
+      setRows(veiculos);
+      setTamanhos(cats);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao carregar veículos.');
       setRows([]);
@@ -145,6 +181,8 @@ export default function VeiculosPage() {
     void carregar();
   }, [canView, carregar]);
 
+  const tamanhosAtivos = useMemo(() => tamanhos.filter((t) => t.ativo), [tamanhos]);
+
   const match = useMemo(() => criarMatcherTextoLivre(filtro), [filtro]);
   const filtrados = useMemo(
     () =>
@@ -152,7 +190,8 @@ export default function VeiculosPage() {
         (r) =>
           match(r.placa) ||
           match(r.modelo ?? '') ||
-          match(r.motoristaPadrao ?? '')
+          match(r.motoristaPadrao ?? '') ||
+          match(r.tamanho?.nome ?? '')
       ),
     [rows, match]
   );
@@ -192,7 +231,68 @@ export default function VeiculosPage() {
     }
   };
 
+  const abrirEdicaoTamanho = (t?: TamanhoCategoria) => {
+    setErroTamanho(null);
+    if (t) {
+      setFormTamanho({
+        id: t.id,
+        nome: t.nome,
+        consumoKmL: String(t.consumoKmL).replace('.', ','),
+        ativo: t.ativo,
+        ordem: String(t.ordem),
+      });
+    } else {
+      setFormTamanho({
+        ...FORM_TAMANHO_VAZIO,
+        ordem: String((tamanhos.reduce((m, x) => Math.max(m, x.ordem), 0) || 0) + 1),
+      });
+    }
+  };
+
+  const salvarTamanho = async () => {
+    if (!canEdit) return;
+    setSalvandoTamanho(true);
+    setErroTamanho(null);
+    try {
+      const consumo = Number(String(formTamanho.consumoKmL).replace(',', '.'));
+      const body = {
+        nome: formTamanho.nome.trim(),
+        consumoKmL: consumo,
+        ativo: formTamanho.ativo,
+        ordem: Number(formTamanho.ordem) || 0,
+      };
+      if (formTamanho.id != null) {
+        await atualizarTamanhoCategoria(formTamanho.id, body);
+      } else {
+        await criarTamanhoCategoria(body);
+      }
+      setFormTamanho(FORM_TAMANHO_VAZIO);
+      await carregar();
+    } catch (e) {
+      setErroTamanho(e instanceof Error ? e.message : 'Erro ao salvar categoria.');
+    } finally {
+      setSalvandoTamanho(false);
+    }
+  };
+
+  const excluirTamanho = async (t: TamanhoCategoria) => {
+    if (!canEdit) return;
+    setSalvandoTamanho(true);
+    setErroTamanho(null);
+    try {
+      await excluirTamanhoCategoria(t.id);
+      if (formTamanho.id === t.id) setFormTamanho(FORM_TAMANHO_VAZIO);
+      await carregar();
+    } catch (e) {
+      setErroTamanho(e instanceof Error ? e.message : 'Erro ao excluir categoria.');
+    } finally {
+      setSalvandoTamanho(false);
+    }
+  };
+
   if (!canView) return <Navigate to="/sem-acesso" replace />;
+
+  const colSpan = canEdit ? 8 : 7;
 
   return (
     <div className="relative flex flex-col flex-1 min-h-0 p-3 max-w-[1600px] mx-auto w-full">
@@ -209,21 +309,36 @@ export default function VeiculosPage() {
           </p>
         </div>
         {canEdit && (
-          <button
-            type="button"
-            className={BTN_PRIMARY}
-            onClick={() => {
-              setForm(FORM_VAZIO);
-              setModal('novo');
-              setErro(null);
-            }}
-          >
-            Novo veículo
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
+              title="Categorias de tamanho / consumo"
+              aria-label="Categorias de tamanho / consumo"
+              onClick={() => {
+                setModalTamanhos(true);
+                setFormTamanho(FORM_TAMANHO_VAZIO);
+                setErroTamanho(null);
+              }}
+            >
+              <Settings className="size-4" />
+            </button>
+            <button
+              type="button"
+              className={BTN_PRIMARY}
+              onClick={() => {
+                setForm(FORM_VAZIO);
+                setModal('novo');
+                setErro(null);
+              }}
+            >
+              Novo veículo
+            </button>
+          </div>
         )}
       </div>
 
-      {erro && !modal && !confirmExcluir && (
+      {erro && !modal && !confirmExcluir && !modalTamanhos && (
         <p className="mb-2 text-sm text-red-600 dark:text-red-300 shrink-0" role="alert">{erro}</p>
       )}
 
@@ -237,6 +352,7 @@ export default function VeiculosPage() {
             <tr>
               <th className="text-left px-3 py-2 font-semibold w-24">Placa</th>
               <th className="text-left px-3 py-2 font-semibold">Modelo</th>
+              <th className="text-left px-3 py-2 font-semibold w-28">Tamanho</th>
               <th className="text-center px-3 py-2 font-semibold w-28">Status</th>
               <th className="text-left px-3 py-2 font-semibold">Dimensões (A×L×P)</th>
               <th className="text-right px-3 py-2 font-semibold w-24">Peso útil</th>
@@ -247,7 +363,7 @@ export default function VeiculosPage() {
           <tbody>
             {filtrados.length === 0 ? (
               <tr>
-                <td colSpan={canEdit ? 7 : 6} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={colSpan} className="px-3 py-8 text-center text-slate-500">
                   {loading ? 'Carregando…' : 'Nenhum veículo cadastrado.'}
                 </td>
               </tr>
@@ -256,6 +372,7 @@ export default function VeiculosPage() {
                 <tr key={r.id} className="border-t border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60">
                   <td className="px-3 py-2 font-mono font-medium">{r.placa}</td>
                   <td className="px-3 py-2">{r.modelo ?? '—'}</td>
+                  <td className="px-3 py-2">{r.tamanho?.nome ?? '—'}</td>
                   <td className="px-3 py-2 text-center">
                     <span
                       className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
@@ -305,6 +422,21 @@ export default function VeiculosPage() {
               <label className="block">
                 <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Modelo</span>
                 <input className={`${INPUT} mt-1`} value={form.modelo} onChange={(e) => setForm((f) => ({ ...f, modelo: e.target.value }))} />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Tamanho</span>
+                <select
+                  className={`${INPUT} mt-1`}
+                  value={form.tamanhoCategoriaId}
+                  onChange={(e) => setForm((f) => ({ ...f, tamanhoCategoriaId: e.target.value }))}
+                >
+                  <option value="">— Sem tamanho —</option>
+                  {tamanhosAtivos.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nome} ({fmtConsumo(t.consumoKmL)})
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="block">
                 <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Altura útil (mm)</span>
@@ -359,6 +491,132 @@ export default function VeiculosPage() {
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" className={BTN_SECONDARY} disabled={salvando} onClick={() => setModal(null)}>Cancelar</button>
               <button type="button" className={BTN_PRIMARY} disabled={salvando || !canEdit} onClick={() => void salvar()}>{salvando ? 'Salvando…' : 'Salvar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalTamanhos && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 overflow-y-auto"
+          onClick={() => !salvandoTamanho && setModalTamanhos(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-600 dark:bg-slate-800 my-4"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-label="Categorias de tamanho"
+          >
+            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+              Categorias de tamanho
+            </h2>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Consumo (km/L) usado no cálculo de % frete do roteirizador.
+            </p>
+
+            <ul className="mt-3 space-y-1.5 max-h-48 overflow-y-auto">
+              {tamanhos.map((t) => (
+                <li
+                  key={t.id}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm dark:border-slate-600"
+                >
+                  <div>
+                    <span className="font-medium text-slate-800 dark:text-slate-100">{t.nome}</span>
+                    <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
+                      {fmtConsumo(t.consumoKmL)}
+                      {!t.ativo && ' · inativo'}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      className="text-xs text-primary-600 hover:underline dark:text-primary-400"
+                      onClick={() => abrirEdicaoTamanho(t)}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs text-red-600 hover:underline dark:text-red-400"
+                      onClick={() => void excluirTamanho(t)}
+                      disabled={salvandoTamanho}
+                    >
+                      Excluir
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-600">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {formTamanho.id != null ? 'Editar categoria' : 'Nova categoria'}
+              </h3>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <label className="col-span-2 block">
+                  <span className="text-xs text-slate-600 dark:text-slate-400">Nome</span>
+                  <input
+                    className={`${INPUT} mt-0.5`}
+                    value={formTamanho.nome}
+                    onChange={(e) => setFormTamanho((f) => ({ ...f, nome: e.target.value }))}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-slate-600 dark:text-slate-400">Consumo (km/L)</span>
+                  <input
+                    className={`${INPUT} mt-0.5`}
+                    value={formTamanho.consumoKmL}
+                    onChange={(e) => setFormTamanho((f) => ({ ...f, consumoKmL: e.target.value }))}
+                    placeholder="4,5"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-slate-600 dark:text-slate-400">Ordem</span>
+                  <input
+                    className={`${INPUT} mt-0.5`}
+                    type="number"
+                    value={formTamanho.ordem}
+                    onChange={(e) => setFormTamanho((f) => ({ ...f, ordem: e.target.value }))}
+                  />
+                </label>
+                <label className="col-span-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={formTamanho.ativo}
+                    onChange={(e) => setFormTamanho((f) => ({ ...f, ativo: e.target.checked }))}
+                  />
+                  <span className="text-sm text-slate-700 dark:text-slate-300">Ativo</span>
+                </label>
+              </div>
+              {erroTamanho && <p className="mt-2 text-sm text-red-600 dark:text-red-300">{erroTamanho}</p>}
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                {formTamanho.id != null && (
+                  <button
+                    type="button"
+                    className={BTN_SECONDARY}
+                    disabled={salvandoTamanho}
+                    onClick={() => setFormTamanho(FORM_TAMANHO_VAZIO)}
+                  >
+                    Limpar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={BTN_PRIMARY}
+                  disabled={salvandoTamanho || !formTamanho.nome.trim()}
+                  onClick={() => void salvarTamanho()}
+                >
+                  {salvandoTamanho ? 'Salvando…' : formTamanho.id != null ? 'Atualizar' : 'Criar'}
+                </button>
+                <button
+                  type="button"
+                  className={BTN_SECONDARY}
+                  disabled={salvandoTamanho}
+                  onClick={() => setModalTamanhos(false)}
+                >
+                  Fechar
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -14,7 +14,7 @@ import {
   type SequenciamentoSnapshotListItem,
   type SequenciamentoSnapshotStatus,
 } from '../../api/sequenciamentoCarradas';
-import { ajustarDataProducaoLote, ajustarPrevisao, ajustarPrevisaoLote } from '../../api/pedidos';
+import { ajustarDataProducaoLote, ajustarPrevisaoLote } from '../../api/pedidos';
 import SequenciamentoCarradasDetalheModal from '../../components/sequenciamento-carradas/SequenciamentoCarradasDetalheModal';
 import CalendarioProducaoModal from '../../components/sequenciamento-carradas/CalendarioProducaoModal';
 import ConfirmacaoSimulacaoModal from '../../components/sequenciamento-carradas/ConfirmacaoSimulacaoModal';
@@ -47,6 +47,7 @@ import {
   expandirPedidosEntregaComLinhasVivas,
   dataProducaoCarradaEmFormacaoApartirDe,
   formatDataCurta,
+  hojeISO,
   maxDataProducaoCarradasNormais,
   ordenarChavesPorPrioridade,
   indiceBasePrioridadeParaAutopreencher,
@@ -58,8 +59,6 @@ import {
   mensagemBloqueioCarradasSemDatasUnificadas,
   mesclarCarradasSemDatasUnificadas,
   atualizarEstadoLinhaCorrigirDatas,
-  previsaoAtualDaLinha,
-  valorEfetivoItem,
   type CarradaDataInvalida,
   isSimItemKey,
   idPedidoDeSimItemKey,
@@ -75,11 +74,20 @@ import {
   type EditColKey,
 } from '../../components/sequenciamento-carradas/sequenciamentoGradeUi';
 import SequenciamentoDateField from '../../components/sequenciamento-carradas/SequenciamentoDateField';
+import { entregaAposEditarProducao } from '../../components/sequenciamento-carradas/syncProducaoEntregaSequenciamento';
+import {
+  computarIdsConfiavelSo,
+  criarMatcherIdsVivosErp,
+  filtrarItensAindaVivosNoErp,
+} from '../../components/sequenciamento-carradas/confirmacaoLinhasConclusao';
+import { materializarPrevisaoConfiavelDoSnapshot } from '../../components/sequenciamento-carradas/confirmacaoMotivosUtils';
 import TogglePrevisaoConfiavel, {
   type PrevisaoConfiavelTri,
 } from '../../components/TogglePrevisaoConfiavel';
 import { ComoLerBtn } from '../../components/AjudaTelaModal';
 import SequenciamentoCarradasAjudaModal from './SequenciamentoCarradasAjudaModal';
+import { useAuth } from '../../contexts/AuthContext';
+import { podeCriarSequenciamentoCarradas } from '../../utils/sequenciamentoCarradasPermissoes';
 
 const BTN_PRIMARY =
   'inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed';
@@ -206,6 +214,9 @@ function aplicarPayload(
 }
 
 export default function SequenciamentoCarradasPage() {
+  const { hasPermission } = useAuth();
+  const podeCriar = podeCriarSequenciamentoCarradas(hasPermission);
+
   const [mostrarHistorico, setMostrarHistorico] = useState(true);
   const [historicoLista, setHistoricoLista] = useState<SequenciamentoSnapshotListItem[]>([]);
   const [historicoCarregando, setHistoricoCarregando] = useState(false);
@@ -286,7 +297,7 @@ export default function SequenciamentoCarradasPage() {
   /** Datas editáveis apenas em snapshot rascunho aberto para edição. */
   const editavel = isRascunho && !snapshotVisualizado?.somenteLeitura;
   /** Reordenação visual liberada em consulta ao vivo e em rascunho editável. */
-  const podeArrastar = emConsulta || editavel;
+  const podeArrastar = podeCriar && (emConsulta || editavel);
 
   const visibleColumns = useMemo(
     () => COL_IDS.filter((id) => columnPreferences.visible[id]),
@@ -527,6 +538,10 @@ export default function SequenciamentoCarradasPage() {
       );
       // Uma única etapa: datas vencidas (se houver) + motivos no mesmo modal.
       setCorrigirDatasSnapshot(invalidas);
+      // Replica Confiável efetivo da grade (override → snapshot) para o modal.
+      setPrevisaoConfiavelPorId((prev) =>
+        materializarPrevisaoConfiavelDoSnapshot(prev, linhasSnapshot)
+      );
       setConfirmacaoAberta(true);
     } finally {
       setValidandoEntrega(false);
@@ -1033,6 +1048,7 @@ export default function SequenciamentoCarradasPage() {
 
   const editarData = useCallback(
     (key: string, campo: 'dataProducao' | 'dataEntrega', value: string) => {
+      if (value && value < hojeISO()) return;
       setSim((prev) => {
         const next = new Map(prev);
         const cur = { ...(next.get(key) ?? {}) } as SimEntry;
@@ -1040,8 +1056,9 @@ export default function SequenciamentoCarradasPage() {
           cur.dataProducao = value;
           next.set(key, cur);
           const entregaAtual = entregaEfetivaDe(next, key);
-          if (value && entregaAtual && entregaAtual < value) {
-            cur.dataEntrega = value;
+          const novaEntrega = entregaAposEditarProducao(value, entregaAtual);
+          if (novaEntrega) {
+            cur.dataEntrega = novaEntrega;
             next.set(key, cur);
           }
         } else {
@@ -1344,8 +1361,34 @@ export default function SequenciamentoCarradasPage() {
           );
           return;
         }
-        if (pedidosEntrega.length > 0) {
-          const ajustes = pedidosEntrega.map((p) => ({
+        const aindaVivo = criarMatcherIdsVivosErp(linhasAoVivoConfirmacao);
+        const { vivos: producaoVivos, ignorados: producaoIgnorados } = filtrarItensAindaVivosNoErp(
+          itensProducao,
+          (it) => it.id_pedido,
+          aindaVivo
+        );
+        const { vivos: entregaVivos, ignorados: entregaIgnorados } = filtrarItensAindaVivosNoErp(
+          pedidosEntrega,
+          (p) => p.idPedido,
+          aindaVivo
+        );
+        const idsIgnorados = new Set<string>();
+        for (const it of producaoIgnorados) idsIgnorados.add(it.id_pedido);
+        for (const it of entregaIgnorados) idsIgnorados.add(it.idPedido);
+
+        if (producaoVivos.length > 0) {
+          const rProd = await ajustarDataProducaoLote(producaoVivos);
+          if (rProd.erros?.length) {
+            const e0 = rProd.erros[0];
+            throw new Error(
+              e0?.id_pedido
+                ? `Pedido ${e0.id_pedido}: ${e0.erro ?? 'Erro ao gravar data de produção.'}`
+                : (e0?.erro ?? 'Erro ao gravar data de produção.')
+            );
+          }
+        }
+        if (entregaVivos.length > 0) {
+          const ajustes = entregaVivos.map((p) => ({
             id_pedido: p.idPedido,
             previsao_nova: p.previsaoNova,
             motivo: motivos[p.idPedido] ?? '',
@@ -1357,76 +1400,86 @@ export default function SequenciamentoCarradasPage() {
             rota: p.rota,
             apply_rota: true,
           }));
-          await ajustarPrevisaoLote(
+          const rEnt = await ajustarPrevisaoLote(
             ajustes,
             anexoAssinatura ? { anexo_assinatura: anexoAssinatura } : undefined
           );
-        }
-
-        // Só Confiável (sem mudança de entrega): o lote rejeita data igual.
-        // Usa o endpoint unitário com confirmacao_data para gravar no Gerenciador.
-        const idsEntrega = new Set(pedidosEntrega.map((p) => p.idPedido));
-        const idsConfiavelSo: Array<{
-          idPedido: string;
-          confiavel: boolean;
-          previsao: string;
-          rota: string;
-        }> = [];
-        for (const [idPedido, valor] of Object.entries(previsaoConfiavelPorId)) {
-          if (valor !== true && valor !== false) continue;
-          if (idsEntrega.has(idPedido)) continue;
-          const row = linhasSnapshot.find(
-            (r) => String(r.id_pedido ?? r.idChave ?? '').trim() === idPedido
-          );
-          if (!row) continue;
-          const snap = row.previsao_atual_confiavel;
-          if (snap === valor) continue;
-          const previsao =
-            valorEfetivoItem(sim, row, 'dataEntrega') || previsaoAtualDaLinha(row);
-          if (!previsao) continue;
-          const { carrada } = linhaCodCarrada(row);
-          idsConfiavelSo.push({
-            idPedido,
-            confiavel: valor,
-            previsao,
-            rota: carrada,
-          });
-        }
-        if (idsConfiavelSo.length > 0) {
-          await Promise.all(
-            idsConfiavelSo.map((item) =>
-              ajustarPrevisao(item.idPedido, {
-                previsao_nova: item.previsao,
-                motivo:
-                  motivos[item.idPedido]?.trim() ||
-                  'Confirmação de previsão confiável (sequenciamento)',
-                observacao: observacaoPorId[item.idPedido]?.trim()
-                  ? observacaoPorId[item.idPedido]!.slice(0, 1000)
-                  : null,
-                previsao_confiavel: item.confiavel,
-                confirmacao_data: true,
-                rota: item.rota || null,
-                anexo_assinatura: anexoAssinatura,
-              })
-            )
-          );
-        }
-
-        if (itensProducao.length > 0) {
-          const rProd = await ajustarDataProducaoLote(itensProducao);
-          if (rProd.erros?.length) {
-            throw new Error(rProd.erros[0]?.erro ?? 'Erro ao gravar data de produção.');
+          if (rEnt.erros?.length) {
+            const e0 = rEnt.erros[0];
+            const ped = entregaVivos.find((p) => p.idPedido === e0?.id_pedido);
+            throw new Error(
+              ped
+                ? `${ped.pd} (${ped.rota}): ${e0?.erro ?? 'Erro ao gravar previsão.'}`
+                : (e0?.erro ?? 'Erro ao gravar previsão.')
+            );
           }
         }
+
+        // Só Confiável (sem mudança de entrega): uma requisição de lote com
+        // confirmacao_data — evita 429 e escrita concorrente no SQLite.
+        const idsEntrega = new Set(entregaVivos.map((p) => p.idPedido));
+        const idsConfiavelSoTodos = computarIdsConfiavelSo(
+          previsaoConfiavelPorId,
+          idsEntrega,
+          linhasSnapshot,
+          sim,
+          baseline
+        );
+        const idsConfiavelSo = computarIdsConfiavelSo(
+          previsaoConfiavelPorId,
+          idsEntrega,
+          linhasSnapshot,
+          sim,
+          baseline,
+          aindaVivo
+        );
+        for (const item of idsConfiavelSoTodos) {
+          if (aindaVivo && !aindaVivo(item.idPedido)) idsIgnorados.add(item.idPedido);
+        }
+        if (idsConfiavelSo.length > 0) {
+          const rConf = await ajustarPrevisaoLote(
+            idsConfiavelSo.map((item) => ({
+              id_pedido: item.idPedido,
+              previsao_nova: item.previsao,
+              motivo:
+                motivos[item.idPedido]?.trim() ||
+                'Confirmação de previsão confiável (sequenciamento)',
+              observacao: observacaoPorId[item.idPedido]?.trim()
+                ? observacaoPorId[item.idPedido]!.slice(0, 1000)
+                : null,
+              previsao_atual: item.previsao,
+              previsao_confiavel: item.confiavel,
+              confirmacao_data: true,
+              rota: item.rota || undefined,
+              apply_rota: true,
+            })),
+            anexoAssinatura ? { anexo_assinatura: anexoAssinatura } : undefined
+          );
+          if (rConf.erros?.length) {
+            const e0 = rConf.erros[0];
+            const item = idsConfiavelSo.find((i) => i.idPedido === e0?.id_pedido);
+            throw new Error(
+              item
+                ? `${item.pd} (${item.rota}): ${e0?.erro ?? 'Erro ao gravar previsão confiável.'}`
+                : (e0?.erro ?? 'Erro ao gravar previsão confiável.')
+            );
+          }
+        }
+
         const simulacao = montarSimulacaoPayload();
         const partes: string[] = [];
-        if (pedidosEntrega.length > 0) partes.push('previsões');
+        if (producaoVivos.length > 0) partes.push('datas de produção');
+        if (entregaVivos.length > 0) partes.push('previsões');
         if (idsConfiavelSo.length > 0) partes.push('previsão confiável');
-        if (itensProducao.length > 0) partes.push('datas de produção');
         const resumo =
           partes.length > 0
             ? `${partes.join(' e ')} aplicadas no Gerenciador`
             : 'Alterações aplicadas';
+        const nIgnorados = idsIgnorados.size;
+        const sufixoIgnorados =
+          nIgnorados > 0
+            ? ` ${nIgnorados} pedido(s) baixado(s) no ERP foram ignorados.`
+            : '';
         if (snapshotVisualizado?.id) {
           const r = await concluirSequenciamentoSnapshot(snapshotVisualizado.id, simulacao);
           if (!r.ok) {
@@ -1436,7 +1489,7 @@ export default function SequenciamentoCarradasPage() {
           setConfirmacaoAberta(false);
           setCorrigirDatasSnapshot([]);
           setLinhasAoVivoConfirmacao(null);
-          setFeedbackGravacao(`${resumo} e snapshot concluído.`);
+          setFeedbackGravacao(`${resumo} e snapshot concluído.${sufixoIgnorados}`);
           setHistoricoVersao((v) => v + 1);
           await abrirSnapshot(snapshotVisualizado.id);
           return;
@@ -1444,7 +1497,7 @@ export default function SequenciamentoCarradasPage() {
         setConfirmacaoAberta(false);
         setCorrigirDatasSnapshot([]);
         setLinhasAoVivoConfirmacao(null);
-        setFeedbackGravacao(`${resumo} com sucesso.`);
+        setFeedbackGravacao(`${resumo} com sucesso.${sufixoIgnorados}`);
         resetarSimulacao();
         await handleConsultar();
       } catch (e) {
@@ -1457,10 +1510,12 @@ export default function SequenciamentoCarradasPage() {
       excessosQtdeRomaneada,
       pedidosEntrega,
       itensProducao,
+      linhasAoVivoConfirmacao,
       observacaoPorId,
       previsaoConfiavelPorId,
       linhasSnapshot,
       sim,
+      baseline,
       montarSimulacaoPayload,
       snapshotVisualizado?.id,
       abrirSnapshot,
@@ -1679,7 +1734,7 @@ export default function SequenciamentoCarradasPage() {
               >
                 Calendário de produção
               </button>
-              {emConsulta && (
+              {emConsulta && podeCriar && (
                 <button
                   type="button"
                   onClick={() => void handleGravar()}
@@ -1689,7 +1744,7 @@ export default function SequenciamentoCarradasPage() {
                   {gravando ? 'Gravando...' : 'Gravar'}
                 </button>
               )}
-              {editavel && (
+              {editavel && podeCriar && (
                 <button
                   type="button"
                   onClick={() => void abrirCorrigirDatas()}
@@ -2017,6 +2072,7 @@ export default function SequenciamentoCarradasPage() {
                                   rowKey={key}
                                   colKey="dataProducao"
                                   className="text-xs"
+                                  minDate={hojeISO()}
                                   onChange={(iso) => editarData(key, 'dataProducao', iso)}
                                   onKeyDown={(e) => handleEditInputKey(e, key, 'dataProducao')}
                                 />
@@ -2077,6 +2133,7 @@ export default function SequenciamentoCarradasPage() {
                                   rowKey={key}
                                   colKey="dataEntrega"
                                   className="text-xs"
+                                  minDate={hojeISO()}
                                   onChange={(iso) => editarData(key, 'dataEntrega', iso)}
                                   onKeyDown={(e) => handleEditInputKey(e, key, 'dataEntrega')}
                                 />
@@ -2358,6 +2415,8 @@ export default function SequenciamentoCarradasPage() {
             >
               Visualizar
             </button>
+            {podeCriar && (
+              <>
             <button
               type="button"
               role="menuitem"
@@ -2397,6 +2456,8 @@ export default function SequenciamentoCarradasPage() {
             >
               Excluir
             </button>
+              </>
+            )}
           </div>,
           document.body
         )}

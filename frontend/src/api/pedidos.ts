@@ -670,6 +670,8 @@ export type AjustePrevisaoLoteItem = {
    */
   apply_rota?: boolean;
   previsao_confiavel?: boolean;
+  /** Confirma a data vigente (sem alterá-la) para gravar só Confiável. */
+  confirmacao_data?: boolean;
 };
 
 export type AjustePrevisaoLoteResultado = {

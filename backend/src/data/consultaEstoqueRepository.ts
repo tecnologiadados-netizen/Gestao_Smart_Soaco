@@ -2,13 +2,20 @@
  * Consulta de Estoque (PCP) — leitura Nomus em etapas (filtros → grade agregada → detalhes sob demanda).
  */
 
-import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
+import {
+  formatNomusErroConexao,
+  getNomusPool,
+  isNomusEnabled,
+  nomusQueryWithRetry,
+  queryNomus,
+} from '../config/nomusDb.js';
 import { listarPcPendDetalhesPorProduto } from './comprasRepository.js';
 import { obterDataBasePorIdsPedido } from './pedidosRepository.js';
 import { loadBomListaMateriaisAcabadoSemProdutoSql } from './bomListaMateriaisSql.js';
 import {
   buildEmpenhoLiquidoBatchSql,
   buildEmpenhoLiquidoBatchSqlPorPedido,
+  buildEmpenhoLiquidoBatchSqlPorProduto,
 } from './sqlRegistroColetaPrecos.js';
 import {
   COLETAS_EXCLUIR_SETOR2_ALMOX,
@@ -31,6 +38,10 @@ let opcoesFiltroCache: { expiresAt: number; data: OpcoesFiltroConsultaEstoque } 
 
 export type ModoPedidoConsultaEstoque = 'diretos' | 'componentes';
 export type EmpenhoEscopoConsultaEstoque = 'pedido' | 'todos';
+/** Filtro por produto: mostrar o próprio item filtrado ou os componentes (BOM) dele. */
+export type ModoProdutoConsultaEstoque = 'diretos' | 'componentes';
+/** Empenho do filtro por produto: só os PDs que contêm o item filtrado ou todos. */
+export type EmpenhoProdutoEscopoConsultaEstoque = 'produto' | 'todos';
 export type FiltroSimNaoTodos = 'todos' | 'sim' | 'nao';
 
 export interface FiltrosConsultaEstoque {
@@ -47,6 +58,8 @@ export interface FiltrosConsultaEstoque {
   idPedido?: number;
   modoPedido?: ModoPedidoConsultaEstoque;
   empenhoEscopo?: EmpenhoEscopoConsultaEstoque;
+  modoProduto?: ModoProdutoConsultaEstoque;
+  empenhoProdutoEscopo?: EmpenhoProdutoEscopoConsultaEstoque;
   comEmpenho?: FiltroSimNaoTodos;
   comSaldoEstoque?: FiltroSimNaoTodos;
   /** Só produtos com vínculo em produtoempresa_setorestoque no almoxarifado secundário (setor 2). */
@@ -217,24 +230,38 @@ function buildFiltroConditions(
     conditions.push(`(${ors.join(' Or ')})`);
   };
 
+  // Modo componentes: o termo casa com o produto PAI e a grade traz só os componentes do BOM.
+  const porComponentes = filtros.modoProduto === 'componentes';
+  const aliasProduto = porComponentes ? 'pai_prod' : 'p';
+  const envolverComponentes = (cond: string): string => {
+    if (!porComponentes) return cond;
+    const bomSql = loadBomListaMateriaisAcabadoSemProdutoSql();
+    return `Exists (
+      Select 1
+      From produto pai_prod
+      Inner Join (${bomSql}) bom_prod On bom_prod.idprodutopai = pai_prod.id
+      Where bom_prod.idcomponente = p.id And ${cond}
+    )`;
+  };
+
   const codigos = omitir === 'codigos' ? [] : dedupTermos(filtros.codigos);
   if (codigos.length > 0) {
     const ors: string[] = [];
     for (const c of codigos) {
-      ors.push('(p.nome Like ? Or Cast(p.id As Char) = ?)');
+      ors.push(`(${aliasProduto}.nome Like ? Or Cast(${aliasProduto}.id As Char) = ?)`);
       params.push(termoParaPadraoLikeSql(c), c);
     }
-    conditions.push(`(${ors.join(' Or ')})`);
+    conditions.push(envolverComponentes(`(${ors.join(' Or ')})`));
   }
 
   const descricoes = omitir === 'descricoes' ? [] : dedupTermos(filtros.descricoes);
   if (descricoes.length > 0) {
     const ors: string[] = [];
     for (const d of descricoes) {
-      ors.push('Upper(p.descricao) Like ?');
+      ors.push(`Upper(${aliasProduto}.descricao) Like ?`);
       params.push(termoParaPadraoLikeSql(d.toUpperCase()));
     }
-    conditions.push(`(${ors.join(' Or ')})`);
+    conditions.push(envolverComponentes(`(${ors.join(' Or ')})`));
   }
 
   const tipos = omitir === 'tipos' ? [] : dedupTermos(filtros.tipos);
@@ -442,7 +469,7 @@ async function queryDistinct(
   const joinsAttr = comJoinAtributos ? SQL_JOINS_ATRIBUTOS_FILTRO : '';
   const sql = `Select Distinct ${selectExpr} As v ${SQL_FROM_PRODUTO_JOINS}${joinsAttr}${SQL_WHERE_PRODUTO_CONSULTA}${whereExtra} Order By v Limit 8000`;
   try {
-    const [rows] = (await pool.query(sql, params)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await nomusQueryWithRetry(pool, sql, params)) as [Record<string, unknown>[], unknown];
     return (Array.isArray(rows) ? rows : [])
       .map((r) => String(r.v ?? '').trim())
       .filter((v) => v.length > 0);
@@ -520,7 +547,7 @@ export async function listarOpcoesFiltroConsultaEstoque(): Promise<{
     opcoesFiltroCache = { data, expiresAt: now + OPCOES_FILTRO_CACHE_TTL_MS };
     return { data };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     console.error('[consultaEstoqueRepository] listarOpcoesFiltro:', msg);
     return { data: EMPTY_OPCOES, erro: msg };
   }
@@ -566,7 +593,7 @@ export async function listarOpcoesFiltroCascata(
       },
     };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     return { data: EMPTY_OPCOES, erro: msg };
   }
 }
@@ -605,7 +632,7 @@ export async function buscarOpcoesFiltroCampo(
   const sql = `Select Distinct ${selectExpr} As v ${SQL_FROM_PRODUTO_BASE}${whereExtra}${buscaSql} Order By v Limit ${BUSCA_LIMITE}`;
 
   try {
-    const [rows] = (await pool.query(sql, [...params, ...buscaParams])) as [
+    const [rows] = (await nomusQueryWithRetry(pool, sql, [...params, ...buscaParams])) as [
       Record<string, unknown>[],
       unknown,
     ];
@@ -614,7 +641,7 @@ export async function buscarOpcoesFiltroCampo(
       .filter(Boolean);
     return { data };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     return { data: [], erro: msg };
   }
 }
@@ -629,6 +656,8 @@ async function consultarEmpenhoLiquidoPorIds(
     idPedido?: number;
     modoPedido?: ModoPedidoConsultaEstoque;
     empenhoEscopo?: EmpenhoEscopoConsultaEstoque;
+    idsProdutosPaiFiltrados?: number[];
+    empenhoProdutoEscopo?: EmpenhoProdutoEscopoConsultaEstoque;
   }
 ): Promise<Map<number, number>> {
   const map = new Map<number, number>();
@@ -643,26 +672,30 @@ async function consultarEmpenhoLiquidoPorIds(
     opts.idPedido > 0 &&
     opts.modoPedido != null;
 
+  const paisFiltrados = (opts?.idsProdutosPaiFiltrados ?? []).filter((id) => id > 0);
+  const usarEmpenhoProduto =
+    !usarEmpenhoPedido && opts?.empenhoProdutoEscopo === 'produto' && paisFiltrados.length > 0;
+
   try {
     let sql: string;
     let params: unknown[];
     if (usarEmpenhoPedido) {
-      sql = buildEmpenhoLiquidoBatchSqlPorPedido(
+      ({ sql, params } = buildEmpenhoLiquidoBatchSqlPorPedido(
         considerarRequisicoes,
-        ids.length,
-        opts.modoPedido!
-      );
-      if (opts.modoPedido === 'diretos') {
-        params = [opts.idPedido, ...ids];
-      } else {
-        const pdBinds = (sql.match(/pd\.id = \?/gi) ?? []).length;
-        params = [...Array(pdBinds).fill(opts.idPedido), ...ids, ...ids, ...ids];
-      }
+        ids,
+        opts.modoPedido!,
+        opts.idPedido!
+      ));
+    } else if (usarEmpenhoProduto) {
+      ({ sql, params } = buildEmpenhoLiquidoBatchSqlPorProduto(
+        considerarRequisicoes,
+        ids,
+        paisFiltrados
+      ));
     } else {
-      sql = buildEmpenhoLiquidoBatchSql(considerarRequisicoes, ids.length);
-      params = [...ids, ...ids, ...ids];
+      ({ sql, params } = buildEmpenhoLiquidoBatchSql(considerarRequisicoes, ids));
     }
-    const [rows] = (await pool.query(sql, params)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await nomusQueryWithRetry(pool, sql, params)) as [Record<string, unknown>[], unknown];
     for (const r of Array.isArray(rows) ? rows : []) {
       const id = Number(r.idProduto ?? 0);
       if (id <= 0) continue;
@@ -723,7 +756,7 @@ Group By idProduto
 `.trim();
 
   try {
-    const [rows] = (await pool.query(sql, ids)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await nomusQueryWithRetry(pool, sql, ids)) as [Record<string, unknown>[], unknown];
     for (const r of Array.isArray(rows) ? rows : []) {
       const id = Number(r.idProduto ?? 0);
       if (id <= 0) continue;
@@ -755,12 +788,75 @@ export function filtrosConsultaTemAlgum(filtros: FiltrosConsultaEstoque): boolea
   );
 }
 
+export function filtrosConsultaTemTermoProduto(filtros: FiltrosConsultaEstoque): boolean {
+  return dedupTermos(filtros.codigos).length > 0 || dedupTermos(filtros.descricoes).length > 0;
+}
+
 export function validarFiltrosPedidoConsultaEstoque(filtros: FiltrosConsultaEstoque): string | null {
   const temPedido = filtros.idPedido != null && filtros.idPedido > 0;
   if (!temPedido) return null;
   if (!filtros.modoPedido) return 'Selecione como visualizar os produtos do pedido.';
   if (!filtros.empenhoEscopo) return 'Selecione como calcular o empenho.';
   return null;
+}
+
+/**
+ * Só a Consulta de Estoque exige as escolhas do filtro por produto (Cobertura/Sequenciamento
+ * reutilizam `consultarEstoque` sem esse modal).
+ */
+export function validarFiltrosProdutoConsultaEstoque(filtros: FiltrosConsultaEstoque): string | null {
+  if (!filtrosConsultaTemTermoProduto(filtros)) return null;
+  if (!filtros.modoProduto) return 'Selecione como visualizar o produto filtrado.';
+  if (!filtros.empenhoProdutoEscopo) return 'Selecione como calcular o empenho do produto filtrado.';
+  return null;
+}
+
+/**
+ * Ids dos produtos que casam com os termos de código/descrição (os "pais" do filtro por produto).
+ * Usado para restringir o empenho aos pedidos que contêm esses itens.
+ */
+async function consultarIdsProdutosPaiFiltrados(
+  filtros: FiltrosConsultaEstoque
+): Promise<number[]> {
+  if (!filtrosConsultaTemTermoProduto(filtros)) return [];
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  const codigos = dedupTermos(filtros.codigos);
+  if (codigos.length > 0) {
+    const ors: string[] = [];
+    for (const c of codigos) {
+      ors.push('(p.nome Like ? Or Cast(p.id As Char) = ?)');
+      params.push(termoParaPadraoLikeSql(c), c);
+    }
+    conditions.push(`(${ors.join(' Or ')})`);
+  }
+
+  const descricoes = dedupTermos(filtros.descricoes);
+  if (descricoes.length > 0) {
+    const ors: string[] = [];
+    for (const d of descricoes) {
+      ors.push('Upper(p.descricao) Like ?');
+      params.push(termoParaPadraoLikeSql(d.toUpperCase()));
+    }
+    conditions.push(`(${ors.join(' Or ')})`);
+  }
+
+  const sql = `Select p.id From produto p Where p.ativo = 1 And ${conditions.join(' And ')}`;
+
+  try {
+    const [rows] = (await queryNomus(sql, params)) as [Record<string, unknown>[], unknown];
+    return (Array.isArray(rows) ? rows : [])
+      .map((r) => Number(r.id ?? 0))
+      .filter((id) => id > 0);
+  } catch (err) {
+    console.error(
+      '[consultaEstoqueRepository] consultarIdsProdutosPaiFiltrados:',
+      err instanceof Error ? err.message : err
+    );
+    return [];
+  }
 }
 
 export async function contarConsultaEstoque(
@@ -783,11 +879,11 @@ export async function contarConsultaEstoque(
   const { sql, params: sqlParams } = buildContagemSql(filtros);
 
   try {
-    const [rows] = (await pool.query(sql, sqlParams)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await queryNomus(sql, sqlParams)) as [Record<string, unknown>[], unknown];
     const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
     return { total: Number(row?.total ?? 0) };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     console.error('[consultaEstoqueRepository] contarConsultaEstoque:', msg);
     return { total: 0, erro: msg };
   }
@@ -801,6 +897,8 @@ export async function consultarEstoque(params: {
   data: ConsultaEstoqueRow[];
   total: number;
   erro?: string;
+  /** Pais do filtro por produto quando o empenho está restrito a eles (usado pelo modal). */
+  idsProdutosPaiEscopo?: number[];
 }> {
   if (!params.permitirSemFiltro && !filtrosConsultaTemAlgum(params.filtros)) {
     return { data: [], total: 0, erro: 'Informe ao menos um filtro.' };
@@ -819,15 +917,22 @@ export async function consultarEstoque(params: {
   const { sql, params: sqlParams } = buildConsultaSql(params.filtros);
 
   try {
-    const [rows] = (await pool.query(sql, sqlParams)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await queryNomus(sql, sqlParams)) as [Record<string, unknown>[], unknown];
     const baseRows = Array.isArray(rows) ? rows : [];
 
     const ids = baseRows.map((r) => Number(r.idProduto ?? 0)).filter((id) => id > 0);
+    // Escopo de empenho do PD prevalece; o do produto só entra quando não há PD com escopo próprio.
+    const idsProdutosPaiFiltrados =
+      params.filtros.empenhoProdutoEscopo === 'produto'
+        ? await consultarIdsProdutosPaiFiltrados(params.filtros)
+        : [];
     const [empenhoMap, solicitacaoMap] = await Promise.all([
       consultarEmpenhoLiquidoPorIds(ids, params.considerarRequisicoes, {
         idPedido: params.filtros.idPedido,
         modoPedido: params.filtros.modoPedido,
         empenhoEscopo: params.filtros.empenhoEscopo,
+        empenhoProdutoEscopo: params.filtros.empenhoProdutoEscopo,
+        idsProdutosPaiFiltrados,
       }),
       consultarSolicitacaoSaldoPorIds(ids),
     ]);
@@ -842,9 +947,15 @@ export async function consultarEstoque(params: {
       })
       .filter((row) => passaFiltroSimNao(row.empenho, params.filtros.comEmpenho));
 
-    return { data: all, total: all.length };
+    return {
+      data: all,
+      total: all.length,
+      ...(idsProdutosPaiFiltrados.length > 0
+        ? { idsProdutosPaiEscopo: idsProdutosPaiFiltrados }
+        : {}),
+    };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     console.error('[consultaEstoqueRepository] consultarEstoque:', msg);
     return { data: [], total: 0, erro: msg };
   }
@@ -942,8 +1053,8 @@ export async function listarSaldoDetalhePorProduto(
   if (!pool || !isNomusEnabled()) return { data: [], erro: 'NOMUS_DB_URL não configurado' };
   try {
     const [[saldoRows], [vincRows]] = (await Promise.all([
-      pool.query(SQL_SALDO_DETALHE, [idProduto, idProduto]),
-      pool.query(SQL_SETOR2_VINCULO, [idProduto]),
+      nomusQueryWithRetry(pool, SQL_SALDO_DETALHE, [idProduto, idProduto]),
+      nomusQueryWithRetry(pool, SQL_SETOR2_VINCULO, [idProduto]),
     ])) as [[Record<string, unknown>[], unknown], [Record<string, unknown>[], unknown]];
 
     const data = (Array.isArray(saldoRows) ? saldoRows : []).map((r) => ({
@@ -956,7 +1067,10 @@ export async function listarSaldoDetalhePorProduto(
       Array.isArray(vincRows) && vincRows[0] && Number((vincRows[0] as Record<string, unknown>).tem_setor2 ?? 0) === 1
     );
     if (temSetor2 && !data.some((r) => r.idSetor === 2)) {
-      const [nomeRows] = (await pool.query(SQL_NOME_SETOR, [2])) as [Record<string, unknown>[], unknown];
+      const [nomeRows] = (await nomusQueryWithRetry(pool, SQL_NOME_SETOR, [2])) as [
+        Record<string, unknown>[],
+        unknown,
+      ];
       const setorNome = String((Array.isArray(nomeRows) ? nomeRows[0] : undefined)?.nome ?? 'Setor 2').trim();
       data.unshift({ idSetor: 2, setor: setorNome, saldo: 0 });
     }
@@ -964,7 +1078,7 @@ export async function listarSaldoDetalhePorProduto(
     data.sort((a, b) => a.setor.localeCompare(b.setor, 'pt-BR'));
     return { data };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     return { data: [], erro: msg };
   }
 }
@@ -1033,7 +1147,7 @@ Where pd.id In (${placeholders})
 Group By pd.id, pd.idTipoPedido
 `.trim();
   try {
-    const [rows] = (await pool.query(sql, idsPedido)) as [Record<string, unknown>[], unknown];
+    const [rows] = (await nomusQueryWithRetry(pool, sql, idsPedido)) as [Record<string, unknown>[], unknown];
     for (const r of Array.isArray(rows) ? rows : []) {
       const id = Number(r.idPedido ?? 0);
       if (id <= 0) continue;
@@ -1106,7 +1220,7 @@ export async function listarScDetalhePorProduto(
   if (!pool || !isNomusEnabled()) return { data: [], erro: 'NOMUS_DB_URL não configurado' };
 
   try {
-    const [scRows] = (await pool.query(SQL_SC_DETALHE, [idProduto])) as [
+    const [scRows] = (await nomusQueryWithRetry(pool, SQL_SC_DETALHE, [idProduto])) as [
       Record<string, unknown>[],
       unknown,
     ];
@@ -1125,7 +1239,7 @@ export async function listarScDetalhePorProduto(
 
     return { data };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     return { data: [], erro: msg };
   }
 }
@@ -1159,7 +1273,7 @@ export async function listarCotacaoDetalhePorProduto(
   const pool = getNomusPool();
   if (!pool || !isNomusEnabled()) return { data: [], erro: 'NOMUS_DB_URL não configurado' };
   try {
-    const [rows] = (await pool.query(SQL_COTACAO_DETALHE, [idProduto])) as [
+    const [rows] = (await nomusQueryWithRetry(pool, SQL_COTACAO_DETALHE, [idProduto])) as [
       Record<string, unknown>[],
       unknown,
     ];
@@ -1172,7 +1286,7 @@ export async function listarCotacaoDetalhePorProduto(
     }));
     return { data };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     return { data: [], erro: msg };
   }
 }
@@ -1254,7 +1368,7 @@ export async function buscarPedidosGerenciadorTypeahead(termo: string): Promise<
     Limit ${PEDIDOS_GERENCIADOR_TYPEAHEAD_LIMITE}`;
 
   try {
-    const [rows] = (await pool.query(sql, [like, alvoLike])) as [
+    const [rows] = (await nomusQueryWithRetry(pool, sql, [like, alvoLike])) as [
       Array<{ id: number; nome: string; cliente: string | null; dataEmissao: Date | string }>,
       unknown,
     ];
@@ -1269,7 +1383,7 @@ export async function buscarPedidosGerenciadorTypeahead(termo: string): Promise<
     }));
     return { data };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatNomusErroConexao(err);
     console.error('[buscarPedidosGerenciadorTypeahead] Nomus falhou:', msg);
     return { data: [], erro: msg };
   }

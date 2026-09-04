@@ -71,6 +71,7 @@ import { rhRoutes } from './modules/rh/rhRoutes';
 import PainelComercialPage from './pages/comercial/PainelComercialPage';
 import HistoricoVendasPage from './pages/comercial/HistoricoVendasPage';
 import RfvClientesPage from './pages/comercial/RfvClientesPage';
+import ComissionamentoPage from './pages/comercial/ComissionamentoPage';
 import ProducaoCamasiPage from './pages/producao/ProducaoCamasiPage';
 import KpisHubPage from './pages/kpis/KpisHubPage';
 import KpisPastaPage from './pages/kpis/KpisPastaPage';
@@ -150,6 +151,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'comercial/painel', element: <ErrorBoundary><PainelComercialPage /></ErrorBoundary> },
   { path: 'comercial/historico-vendas', element: <ErrorBoundary><HistoricoVendasPage /></ErrorBoundary> },
   { path: 'comercial/classificacao-rfv', element: <ErrorBoundary><RfvClientesPage /></ErrorBoundary> },
+  { path: 'comercial/comissionamento', element: <ErrorBoundary><ComissionamentoPage /></ErrorBoundary> },
   { path: 'loja/estoque-kits', element: <ErrorBoundary><EstoqueKitsPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/veiculos', element: <ErrorBoundary><VeiculosPage /></ErrorBoundary> },
   { path: 'logistica/cubagem/produtos', element: <ErrorBoundary><ProdutosCubagemPage /></ErrorBoundary> },

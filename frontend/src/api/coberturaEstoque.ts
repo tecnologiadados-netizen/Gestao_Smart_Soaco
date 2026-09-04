@@ -191,7 +191,11 @@ export type CoberturaEstoqueLinha = ConsultaEstoqueLinha & {
   comprador: string;
   familiaProduto: string;
   precoUnitario: number | null;
+  /** Valor bruto: saldo × preço (sem empenho/PC). */
+  valorEstoque: number | null;
   valorFirme: number | null;
+  ultimaMovimentacaoEstoque?: string | null;
+  semMovimentacao60d?: boolean;
   acaoSugerida: AcaoSugeridaCobertura;
 };
 
@@ -221,6 +225,12 @@ export type TotaisCompradorCobertura = {
 
 export type PainelCoberturaEstoqueData = {
   totalItens: number;
+  /** Soma saldo × preço (itens com preço); null se nenhum tiver preço. */
+  valorEstoqueTotal: number | null;
+  /** Soma (saldo − empenho) × preço; null se nenhum tiver preço. */
+  valorFirmeTotal: number | null;
+  /** Soma saldo × preço dos itens sem movimentação há ≥ 60 dias. */
+  valorEstoqueSemMov60dTotal: number | null;
   kpisFirme: TotaisKpiFirme[];
   barrasFirme: TotaisFaixaFirme[];
   porComprador: TotaisCompradorCobertura[];
@@ -229,7 +239,7 @@ export type PainelCoberturaEstoqueData = {
   familiasDisponiveis?: string[];
 };
 
-export type VisaoGradeCobertura = 'atende_venda' | 'cobertura' | 'sem_giro';
+export type VisaoGradeCobertura = 'todos' | 'atende_venda' | 'cobertura' | 'sem_giro';
 
 export async function obterPainelCoberturaEstoque(params: {
   filtros: FiltrosConsultaEstoquePayload;

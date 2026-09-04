@@ -23,6 +23,7 @@ import {
   PAINEL_COMERCIAL_MAX_MESES,
   periodoDisponivelPadraoYmd,
 } from '../../components/painel-comercial/painelComercialUtils';
+import KpiPainelVoltarLink from '../../components/kpis/KpiPainelVoltarLink';
 import RfvClientesAjudaModal, { ComoLerBtn } from './RfvClientesAjudaModal';
 
 const MAX_MESES = PAINEL_COMERCIAL_MAX_MESES;
@@ -135,6 +136,7 @@ export default function RfvClientesPage() {
     <div className="px-4 py-5 md:px-6">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
+          <KpiPainelVoltarLink painelId="classificacao-rfv" className="mb-1" />
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
               Classificação de Clientes — RFV

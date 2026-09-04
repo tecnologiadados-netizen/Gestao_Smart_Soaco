@@ -29,12 +29,14 @@ function prioridadeEfetivaCliente(
   return null;
 }
 
-function passaPrioridadeCliente(
+function passaCenariosCliente(
   c: DfcContribuicaoLinha,
   prioridadesSelecionadas: DfcPrioridade[],
   prioridadesContasMap: Record<string, DfcPrioridade>,
   prioridadesLancsMap: Record<string, DfcPrioridade>,
 ): boolean {
+  // Realizado sempre entra; cenários só restringem títulos a vencer (projetados).
+  if (c.situacao === 'Realizado') return true;
   if (prioridadesSelecionadas.length === 0) return true;
   const efetiva = prioridadeEfetivaCliente(c, prioridadesContasMap, prioridadesLancsMap);
   if (efetiva == null) return false;
@@ -71,7 +73,7 @@ export function filtrarContribuicoes(
       passaEmpresa(c, filtros.idEmpresas) &&
       passaContaBancaria(c, filtros.contasBancarias) &&
       passaPlanoContas(c, filtros.idsPlanoContas) &&
-      passaPrioridadeCliente(c, filtros.prioridades, prioridadesContasMap, prioridadesLancsMap),
+      passaCenariosCliente(c, filtros.prioridades, prioridadesContasMap, prioridadesLancsMap),
   );
 }
 

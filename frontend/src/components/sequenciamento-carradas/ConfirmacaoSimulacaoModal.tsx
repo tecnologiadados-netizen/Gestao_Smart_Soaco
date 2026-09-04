@@ -13,6 +13,7 @@ import { listarMotivosSugestao, type MotivoSugestao } from '../../api/motivosSug
 import {
   formatDataCurta,
   formatQtdeInt,
+  hojeISO,
   toISODate,
   type CarradaBaseline,
   type CarradaDataInvalida,
@@ -46,8 +47,11 @@ import {
 import {
   linhaConclusaoPronta,
   montarLinhasConclusao,
+  compararLinhasConclusao,
   type LinhaConclusao,
 } from './confirmacaoLinhasConclusao';
+import { aplicarProducaoComSyncEntrega } from './syncProducaoEntregaSequenciamento';
+import { validarDatasReprogramacao } from '../../utils/canalReprogramacaoDatas';
 import { lerPdfAssinatura, type AnexoAssinaturaPayload } from '../../utils/lerPdfAssinatura';
 import CampoAnexoAssinaturaPdf from '../CampoAnexoAssinaturaPdf';
 import TogglePrevisaoConfiavel, { type PrevisaoConfiavelTri } from '../TogglePrevisaoConfiavel';
@@ -199,6 +203,7 @@ function PedidoLoteDataPicker({
       iconOnly
       iconTitle={titulo}
       className={iconClassName}
+      minDate={hojeISO()}
       onChange={onSelecionar}
     />
   );
@@ -393,6 +398,11 @@ const ConfiavelToggleCelula = memo(function ConfiavelToggleCelula({
   );
 });
 
+/** Identidade estável de uma linha do modal (chave da carrada/item + pedido). */
+function identidadeLinhaConclusao(l: LinhaConclusao): string {
+  return `${l.key}|${l.idPedido ?? ''}`;
+}
+
 function classeLinha(l: LinhaConclusao, linhaOk: boolean): string {
   if (l.datasOk && (!l.exigeMotivo || linhaOk)) return TR_CONCLUIDA;
   if (!l.datasOk || (l.exigeMotivo && !linhaOk)) return TR_PENDENTE;
@@ -484,19 +494,6 @@ function agruparPorPedido(
   return entries;
 }
 
-/** Replica produção na entrega quando a produção for anterior à entrega. */
-function aplicarProducaoComSyncEntrega(
-  editar: (key: string, campo: 'dataProducao' | 'dataEntrega', value: string) => void,
-  key: string,
-  producao: string,
-  entregaAtual: string
-) {
-  editar(key, 'dataProducao', producao);
-  if (producao && entregaAtual && producao < entregaAtual) {
-    editar(key, 'dataEntrega', producao);
-  }
-}
-
 type DatasHandlers = {
   editar: ((key: string, campo: 'dataProducao' | 'dataEntrega', value: string) => void) | undefined;
   onDateKey: (e: KeyboardEvent<HTMLButtonElement>, rowKey: string, colKey: DateColKey) => void;
@@ -519,6 +516,7 @@ const DatasCelulas = memo(function DatasCelulas({
             rowKey={l.key}
             colKey="dataProducao"
             className={`text-xs ${l.producaoPassada ? 'border-red-400 ring-1 ring-red-300' : ''}`}
+            minDate={hojeISO()}
             onChange={(iso) => aplicarProducaoComSyncEntrega(editar, l.key, iso, l.dataEntrega)}
             onKeyDown={(e) => onDateKey(e, l.key, 'dataProducao')}
           />
@@ -567,6 +565,7 @@ const DatasCelulas = memo(function DatasCelulas({
             rowKey={l.key}
             colKey="dataEntrega"
             className={`text-xs ${l.entregaPassada ? 'border-red-400 ring-1 ring-red-300' : ''}`}
+            minDate={hojeISO()}
             onChange={(iso) => editar(l.key, 'dataEntrega', iso)}
             onKeyDown={(e) => onDateKey(e, l.key, 'dataEntrega')}
           />
@@ -978,7 +977,7 @@ export default function ConfirmacaoSimulacaoModal({
   const [anexoNome, setAnexoNome] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatusConclusao>('todos');
 
-  const linhas = useMemo(
+  const linhasRaw = useMemo(
     () =>
       montarLinhasConclusao(invalidasDatas, pedidosEntrega, linhasSnapshot, {
         sim,
@@ -986,6 +985,33 @@ export default function ConfirmacaoSimulacaoModal({
       }),
     [invalidasDatas, pedidosEntrega, linhasSnapshot, sim, baseline]
   );
+
+  // Ordem congelada: editar datas não reordena a grade — a classificação
+  // (produção → carrada → pedido → descrição) só é reaplicada no botão
+  // "Atualizar classificação" (ou na abertura do modal).
+  const [ordemCongelada, setOrdemCongelada] = useState<Map<string, number> | null>(null);
+
+  const linhas = useMemo(() => {
+    const sorted = [...linhasRaw].sort(compararLinhasConclusao);
+    if (!ordemCongelada) return sorted;
+    const pos = (l: LinhaConclusao) => ordemCongelada.get(identidadeLinhaConclusao(l));
+    // Linhas conhecidas mantêm a posição congelada; novas entram ao final já classificadas.
+    return sorted.sort((a, b) => {
+      const pa = pos(a);
+      const pb = pos(b);
+      if (pa !== undefined && pb !== undefined) return pa - pb;
+      if (pa !== undefined) return -1;
+      if (pb !== undefined) return 1;
+      return 0;
+    });
+  }, [linhasRaw, ordemCongelada]);
+
+  useEffect(() => {
+    if (ordemCongelada) return;
+    setOrdemCongelada(new Map(linhas.map((l, i) => [identidadeLinhaConclusao(l), i])));
+  }, [ordemCongelada, linhas]);
+
+  const atualizarClassificacao = useCallback(() => setOrdemCongelada(null), []);
 
   const aindaDatasInvalidas = useMemo(() => linhas.some((l) => !l.datasOk), [linhas]);
 
@@ -1162,6 +1188,19 @@ export default function ConfirmacaoSimulacaoModal({
       setValidacao('Corrija todas as datas de produção/entrega anteriores a hoje antes de concluir.');
       return;
     }
+    for (const l of linhas) {
+      if (!l.dataProducao && !l.dataEntrega) continue;
+      const ordemErro = validarDatasReprogramacao({
+        previsaoIso: l.dataEntrega,
+        producaoIso: l.dataProducao,
+        exigirNaoAnteriorHoje: false,
+        exigirProducaoNaoAnteriorHoje: false,
+      });
+      if (ordemErro) {
+        setValidacao(`PD ${l.pedido} (${l.carrada}): ${ordemErro}`);
+        return;
+      }
+    }
     if (pendentesMotivoIds.length > 0) {
       setValidacao(
         `Selecione um motivo para todos os itens com data/previsão a ajustar (${pendentesMotivoIds.length} sem motivo).`
@@ -1325,6 +1364,15 @@ export default function ConfirmacaoSimulacaoModal({
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={atualizarClassificacao}
+              disabled={salvando || linhas.length === 0}
+              title="Reordenar as linhas por produção → carrada → pedido → descrição"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              Atualizar classificação
+            </button>
             <FiltroStatusSegmentado
               value={filtroStatus}
               onChange={setFiltroStatus}

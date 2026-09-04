@@ -1,4 +1,5 @@
-import { formatMoeda } from './painelComercialUtils';
+import type { MouseEvent } from 'react';
+import { formatMoeda, PAINEL_PALETTE } from './painelComercialUtils';
 
 export default function PainelComercialMixChart({
   data,
@@ -7,7 +8,7 @@ export default function PainelComercialMixChart({
 }: {
   data: { grupoProduto: string; valor: number; pct: number }[];
   loading?: boolean;
-  onSliceClick: (grupoProduto: string) => void;
+  onSliceClick: (grupoProduto: string, e: MouseEvent) => void;
 }) {
   if (loading) {
     return (
@@ -27,14 +28,14 @@ export default function PainelComercialMixChart({
   }
 
   const total = data.reduce((s, x) => s + x.valor, 0);
-  const colors = ['#60a5fa', '#34d399', '#fbbf24', '#f472b6', '#a78bfa', '#fb7185', '#94a3b8'];
+  const colors = [...PAINEL_PALETTE.mix];
 
   let acc = 0;
   const slices = data.map((d, idx) => {
     const pct = total > 0 ? d.valor / total : 0;
     const start = acc;
     acc += pct;
-    return { ...d, start, end: acc, color: colors[idx % colors.length] };
+    return { ...d, start, end: acc, color: colors[idx % colors.length]! };
   });
 
   const R = 52;
@@ -53,10 +54,15 @@ export default function PainelComercialMixChart({
   }
 
   return (
-    <div className="card-panel flex min-h-[380px] flex-col p-5">
+    <div
+      className="card-panel flex min-h-[380px] flex-col border-t-4 p-5"
+      style={{ borderTopColor: PAINEL_PALETTE.mix[0] }}
+    >
       <div className="mb-4 shrink-0">
         <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">Mix por grupo</h3>
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Participação no valor vendido. Clique para detalhar.</p>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          Participação no valor vendido. Clique para detalhar · Ctrl+clique para filtrar.
+        </p>
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-[160px_1fr]">
         <div className="flex items-center justify-center">
@@ -68,9 +74,9 @@ export default function PainelComercialMixChart({
                 fill={s.color}
                 opacity={0.92}
                 className="cursor-pointer hover:opacity-100"
-                onClick={() => onSliceClick(s.grupoProduto)}
+                onClick={(e) => onSliceClick(s.grupoProduto, e)}
               >
-                <title>{`${s.grupoProduto}\n${s.pct.toFixed(1)}%\n${formatMoeda(s.valor)}`}</title>
+                <title>{`${s.grupoProduto}\n${s.pct.toFixed(1)}%\n${formatMoeda(s.valor)}\nClique para detalhar`}</title>
               </path>
             ))}
             <circle cx={60} cy={60} r={26} fill="var(--tw-prose-body)" opacity={0.06} />
@@ -82,13 +88,18 @@ export default function PainelComercialMixChart({
               <button
                 key={d.grupoProduto}
                 type="button"
-                onClick={() => onSliceClick(d.grupoProduto)}
+                onClick={(e) => onSliceClick(d.grupoProduto, e)}
                 className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                title="Clique para detalhar"
+                title="Clique para detalhar · Ctrl+clique para filtrar"
               >
                 <span className="flex min-w-0 items-center gap-2">
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: colors[idx % colors.length] }} />
-                  <span className="truncate text-xs font-medium text-slate-700 dark:text-slate-200">{d.grupoProduto}</span>
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                    style={{ backgroundColor: colors[idx % colors.length] }}
+                  />
+                  <span className="truncate text-xs font-medium text-slate-700 dark:text-slate-200">
+                    {d.grupoProduto}
+                  </span>
                 </span>
                 <span className="shrink-0 text-right text-xs tabular-nums text-slate-600 dark:text-slate-300">
                   {d.pct.toFixed(1)}% · {formatMoeda(d.valor, true)}
@@ -101,4 +112,3 @@ export default function PainelComercialMixChart({
     </div>
   );
 }
-

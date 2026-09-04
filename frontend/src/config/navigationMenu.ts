@@ -5,11 +5,16 @@ import {
   podeAcessarGestaoMesa,
 } from '../utils/recebimentoPermissoes';
 import {
+  podeAcessarDoubleCheckIn,
+  podeVerMenuCompras,
+} from '../utils/doubleCheckInPermissoes';
+import {
   podeAcessarCadastroMetas,
   podeVerPainelApuracao,
   podeVerPainelGerencial,
   podeVerPainelTv,
 } from '../utils/painelProducaoPermissoes';
+import { podeAcessarSequenciamentoCarradas } from '../utils/sequenciamentoCarradasPermissoes';
 
 export type NavMenuEntry =
   | { kind: 'link'; to: string; label: string }
@@ -127,6 +132,7 @@ export const QUALIDADE_MENU: NavMenuEntry[] = [
       { kind: 'link', to: '/qualidade/documentos', label: 'Documentos' },
       { kind: 'link', to: '/qualidade/calibracoes', label: 'Calibrações' },
       { kind: 'link', to: '/qualidade/registros', label: 'Registros' },
+      { kind: 'link', to: '/qualidade/rnc', label: 'RNC' },
       { kind: 'link', to: '/qualidade/configuracoes', label: 'Configurações' },
     ],
   },
@@ -229,6 +235,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/qualidade/documentos': 'Qualidade — SGQ — Documentos',
   '/qualidade/calibracoes': 'Qualidade — SGQ — Calibrações',
   '/qualidade/registros': 'Qualidade — SGQ — Registros',
+  '/qualidade/rnc': 'Qualidade — SGQ — RNC',
   '/qualidade/configuracoes': 'Qualidade — SGQ — Configurações',
   '/rh': 'RH',
   '/rh/dashboard': 'RH — Dashboard',
@@ -376,6 +383,28 @@ export function buildRecebimentoMenuForUser(hasPermission: HasPermission): NavMe
   return filtered;
 }
 
+/** Menu Compras filtrado — Double Check exige permissão própria. */
+export function buildComprasMenuForUser(hasPermission: HasPermission): NavMenuEntry[] {
+  if (!podeVerMenuCompras(hasPermission)) return [];
+  const podeComprasGeral = hasPermission(PERMISSOES.COMPRAS_VER);
+  const filtered: NavMenuEntry[] = [];
+
+  for (const entry of COMPRAS_MENU) {
+    if (entry.kind === 'link') {
+      if (entry.to === '/compras/double-checkin') {
+        if (podeAcessarDoubleCheckIn(hasPermission)) filtered.push(entry);
+        continue;
+      }
+      if (podeComprasGeral) filtered.push(entry);
+      continue;
+    }
+    if (podeComprasGeral) filtered.push(entry);
+  }
+  return filtered;
+}
+
+export { podeVerMenuCompras };
+
 export function buildLogisticaMenuForUser(hasPermission: HasPermission): NavMenuEntry[] {
   const filtered: NavMenuEntry[] = [];
   for (const entry of LOGISTICA_MENU) {
@@ -392,6 +421,52 @@ export function buildLogisticaMenuForUser(hasPermission: HasPermission): NavMenu
     }
   }
   return filtered;
+}
+
+function podeAcessarGerenciadorPedidos(hasPermission: HasPermission): boolean {
+  return (
+    hasPermission(PERMISSOES.PCP_VER_TELA) ||
+    hasPermission(PERMISSOES.PCP_TOTAL) ||
+    hasPermission(PERMISSOES.PEDIDOS_VER)
+  );
+}
+
+/** Menu lateral PCP filtrado por permissão (inclui sequenciamento granular). */
+export function buildPcpMenuForUser(hasPermission: HasPermission): NavMenuEntry[] {
+  const filtered: NavMenuEntry[] = [];
+  const podeGerenciador = podeAcessarGerenciadorPedidos(hasPermission);
+
+  for (const entry of PCP_MENU) {
+    if (entry.kind === 'link') {
+      if (entry.to === '/pedidos/sequenciamento-carradas') {
+        if (podeAcessarSequenciamentoCarradas(hasPermission)) filtered.push(entry);
+        continue;
+      }
+      if (podeGerenciador) filtered.push(entry);
+      continue;
+    }
+
+    if (entry.label === 'Estoque' || entry.label === 'Painel Metas') {
+      const children = filterPcpMenuChildren(entry, hasPermission);
+      if (children.length > 0) filtered.push({ ...entry, children });
+      continue;
+    }
+
+    if (entry.label === 'Programação') {
+      if (!podeGerenciador) continue;
+      const children = filterPcpMenuChildren(entry, hasPermission);
+      if (children.length > 0) filtered.push({ ...entry, children });
+      continue;
+    }
+
+    if (podeGerenciador) filtered.push(entry);
+  }
+
+  return filtered;
+}
+
+export function podeVerSecaoPcp(hasPermission: HasPermission): boolean {
+  return buildPcpMenuForUser(hasPermission).length > 0;
 }
 
 /** Filtra entradas do menu PCP conforme permissões (mesma lógica do menu horizontal). */

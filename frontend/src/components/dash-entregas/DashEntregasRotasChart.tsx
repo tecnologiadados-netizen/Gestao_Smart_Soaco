@@ -1,5 +1,5 @@
 import type { ObservacaoValorResumo } from '../../api/pedidos';
-import { formatMoedaDash, formatNumero } from './dashEntregasUtils';
+import { DASH_PALETTE, formatMoedaDash, formatNumero } from './dashEntregasUtils';
 
 type Props = {
   data: ObservacaoValorResumo[];
@@ -33,7 +33,10 @@ export default function DashEntregasRotasChart({ data, loading, onRotaClick }: P
   }
 
   return (
-    <div className="card-panel flex min-h-[420px] flex-col p-5">
+    <div
+      className="card-panel flex min-h-[420px] flex-col border-t-4 p-5"
+      style={{ borderTopColor: DASH_PALETTE.rotas }}
+    >
       <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
         <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
           Saldo pendente por rota

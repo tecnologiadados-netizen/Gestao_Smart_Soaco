@@ -1,7 +1,24 @@
-import type { LogProdutoCubagem, LogProdutoVolume, LogVeiculo } from '@prisma/client';
+import type { LogProdutoCubagem, LogProdutoVolume, LogTamanhoCategoria, LogVeiculo } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 
 export type StatusDimensionado = 'dimensionado' | 'pendente';
+
+export type TamanhoCategoriaResumo = {
+  id: number;
+  nome: string;
+  consumoKmL: number;
+};
+
+export type TamanhoCategoriaInput = {
+  nome: string;
+  consumoKmL: number;
+  ativo?: boolean;
+  ordem?: number;
+};
+
+type VeiculoComTamanho = LogVeiculo & {
+  tamanhoCategoria?: LogTamanhoCategoria | null;
+};
 
 export type VolumeCubagemInput = {
   ordem: number;
@@ -45,6 +62,7 @@ export type VeiculoInput = {
   ano?: number | null;
   motoristaPadrao?: string | null;
   ativo?: boolean;
+  tamanhoCategoriaId?: number | null;
 };
 
 function temDimensoesCompletas(
@@ -98,12 +116,23 @@ export function serializarProdutoCubagem(
   };
 }
 
-export function serializarVeiculo(row: LogVeiculo) {
+function serializarTamanhoResumo(
+  cat: LogTamanhoCategoria | null | undefined
+): TamanhoCategoriaResumo | null {
+  if (!cat) return null;
+  return { id: cat.id, nome: cat.nome, consumoKmL: cat.consumoKmL };
+}
+
+export function serializarVeiculo(row: VeiculoComTamanho) {
+  const { tamanhoCategoria, ...rest } = row;
   return {
-    ...row,
+    ...rest,
     status: calcularStatusVeiculoDimensionado(row),
+    tamanho: serializarTamanhoResumo(tamanhoCategoria),
   };
 }
+
+const veiculoInclude = { tamanhoCategoria: true } as const;
 
 function veiculoDataPayload(data: VeiculoInput) {
   return {
@@ -121,7 +150,59 @@ function veiculoDataPayload(data: VeiculoInput) {
     ano: data.ano ?? null,
     motoristaPadrao: data.motoristaPadrao?.trim() || null,
     ativo: data.ativo ?? true,
+    tamanhoCategoriaId:
+      data.tamanhoCategoriaId === undefined ? undefined : data.tamanhoCategoriaId,
   };
+}
+
+// --- Tamanhos (categorias de consumo) ---
+
+export async function listarTamanhosCategorias(apenasAtivos = false) {
+  return prisma.logTamanhoCategoria.findMany({
+    where: apenasAtivos ? { ativo: true } : undefined,
+    orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
+  });
+}
+
+export async function obterTamanhoCategoria(id: number) {
+  return prisma.logTamanhoCategoria.findUnique({ where: { id } });
+}
+
+export async function criarTamanhoCategoria(data: TamanhoCategoriaInput) {
+  const nome = data.nome.trim();
+  if (!nome) throw new Error('Nome da categoria é obrigatório.');
+  if (!(data.consumoKmL > 0)) throw new Error('Consumo (km/L) deve ser maior que zero.');
+  return prisma.logTamanhoCategoria.create({
+    data: {
+      nome,
+      consumoKmL: data.consumoKmL,
+      ativo: data.ativo ?? true,
+      ordem: data.ordem ?? 0,
+    },
+  });
+}
+
+export async function atualizarTamanhoCategoria(id: number, data: TamanhoCategoriaInput) {
+  const nome = data.nome.trim();
+  if (!nome) throw new Error('Nome da categoria é obrigatório.');
+  if (!(data.consumoKmL > 0)) throw new Error('Consumo (km/L) deve ser maior que zero.');
+  return prisma.logTamanhoCategoria.update({
+    where: { id },
+    data: {
+      nome,
+      consumoKmL: data.consumoKmL,
+      ativo: data.ativo ?? true,
+      ordem: data.ordem ?? 0,
+    },
+  });
+}
+
+export async function excluirTamanhoCategoria(id: number) {
+  const vinculados = await prisma.logVeiculo.count({ where: { tamanhoCategoriaId: id } });
+  if (vinculados > 0) {
+    throw new Error('Não é possível excluir: há veículos vinculados a esta categoria.');
+  }
+  return prisma.logTamanhoCategoria.delete({ where: { id } });
 }
 
 // --- Veículos (placa + dimensões da carroceria) ---
@@ -129,42 +210,69 @@ function veiculoDataPayload(data: VeiculoInput) {
 export async function listarVeiculos(apenasAtivos = false) {
   const rows = await prisma.logVeiculo.findMany({
     where: apenasAtivos ? { ativo: true } : undefined,
+    include: veiculoInclude,
     orderBy: [{ ativo: 'desc' }, { placa: 'asc' }],
   });
   return rows.map(serializarVeiculo);
 }
 
 export async function obterVeiculo(id: number) {
-  const row = await prisma.logVeiculo.findUnique({ where: { id } });
+  const row = await prisma.logVeiculo.findUnique({
+    where: { id },
+    include: veiculoInclude,
+  });
   return row ? serializarVeiculo(row) : null;
 }
 
 export async function obterVeiculoPorPlaca(placa: string) {
   const row = await prisma.logVeiculo.findUnique({
     where: { placa: placa.trim().toUpperCase() },
+    include: veiculoInclude,
   });
   return row ? serializarVeiculo(row) : null;
 }
 
 export async function criarVeiculo(data: VeiculoInput) {
-  const row = await prisma.logVeiculo.create({ data: veiculoDataPayload(data) });
+  const payload = veiculoDataPayload(data);
+  const row = await prisma.logVeiculo.create({
+    data: {
+      ...payload,
+      tamanhoCategoriaId: payload.tamanhoCategoriaId ?? null,
+    },
+    include: veiculoInclude,
+  });
   return serializarVeiculo(row);
 }
 
 export async function atualizarVeiculo(id: number, data: VeiculoInput) {
+  const payload = veiculoDataPayload(data);
   const row = await prisma.logVeiculo.update({
     where: { id },
-    data: veiculoDataPayload(data),
+    data: {
+      ...payload,
+      tamanhoCategoriaId:
+        payload.tamanhoCategoriaId === undefined ? undefined : payload.tamanhoCategoriaId,
+    },
+    include: veiculoInclude,
   });
   return serializarVeiculo(row);
 }
 
 export async function upsertVeiculoPorPlaca(data: VeiculoInput) {
   const placa = data.placa.trim().toUpperCase();
+  const payload = veiculoDataPayload(data);
   const row = await prisma.logVeiculo.upsert({
     where: { placa },
-    create: veiculoDataPayload(data),
-    update: veiculoDataPayload(data),
+    create: {
+      ...payload,
+      tamanhoCategoriaId: payload.tamanhoCategoriaId ?? null,
+    },
+    update: {
+      ...payload,
+      tamanhoCategoriaId:
+        payload.tamanhoCategoriaId === undefined ? undefined : payload.tamanhoCategoriaId,
+    },
+    include: veiculoInclude,
   });
   return serializarVeiculo(row);
 }

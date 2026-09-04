@@ -1,7 +1,7 @@
 /**
  * Cobertura de Estoque — indicadores v2.
- * Universo atual: Empenho > 0 (consulta). Cálculos já toleram Empenho = 0 / CM = 0
- * para a visão Sem giro no 2º momento.
+ * Universo: almox secundário; Empenho > 0 é opcional (toggle no painel).
+ * Cálculos toleram Empenho = 0 / CM = 0 (visão Sem giro).
  */
 import type { ConsultaEstoqueRow } from './consultaEstoqueRepository.js';
 
@@ -343,6 +343,17 @@ export function sugerirAcaoCobertura(row: {
   }
 }
 
+/** Valor bruto em estoque: saldo × preço (sem descontar empenho nem PC). */
+export function calcValorEstoqueBruto(
+  saldo: number,
+  precoUnitario: number | null | undefined
+): number | null {
+  if (precoUnitario == null || !Number.isFinite(Number(precoUnitario)) || Number(precoUnitario) <= 0) {
+    return null;
+  }
+  return round2((Number(saldo) || 0) * Number(precoUnitario));
+}
+
 export function calcValorFirmeMonetario(
   saldo: number,
   empenho: number,
@@ -352,6 +363,27 @@ export function calcValorFirmeMonetario(
     return null;
   }
   return round2(((Number(saldo) || 0) - (Number(empenho) || 0)) * Number(precoUnitario));
+}
+
+/** Janela padrão do card “sem movimentação”. */
+export const DIAS_SEM_MOVIMENTACAO_ESTOQUE = 60;
+
+/**
+ * Sem movimentação nos últimos `dias` dias (inclusive o limiar).
+ * Sem data registrada → considera sem movimentação.
+ */
+export function isSemMovimentacaoEstoque(
+  ultimaMovimentacao: Date | string | null | undefined,
+  dias: number = DIAS_SEM_MOVIMENTACAO_ESTOQUE,
+  ref: Date = new Date()
+): boolean {
+  if (ultimaMovimentacao == null || ultimaMovimentacao === '') return true;
+  const raw = ultimaMovimentacao instanceof Date ? ultimaMovimentacao : new Date(ultimaMovimentacao);
+  if (!Number.isFinite(raw.getTime())) return true;
+  const limite = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  limite.setDate(limite.getDate() - dias);
+  const ult = new Date(raw.getFullYear(), raw.getMonth(), raw.getDate());
+  return ult <= limite;
 }
 
 export type CoberturaEstoqueLinha = ConsultaEstoqueRow & {
@@ -374,7 +406,13 @@ export type CoberturaEstoqueLinha = ConsultaEstoqueRow & {
   comprador: string;
   familiaProduto: string;
   precoUnitario: number | null;
+  /** Valor bruto: saldo × preço (sem empenho/PC). */
+  valorEstoque: number | null;
   valorFirme: number | null;
+  /** Última movimentação no almox secundário (setores 2/19); null se nunca. */
+  ultimaMovimentacaoEstoque: string | null;
+  /** True se não houve movimentação nos últimos 60 dias (ou nunca). */
+  semMovimentacao60d: boolean;
   acaoSugerida: AcaoSugeridaCobertura;
 };
 
@@ -407,7 +445,29 @@ export type ConsultaEstoqueRowComCm = ConsultaEstoqueRow & {
   comprador?: string;
   precoUnitario?: number | null;
   familiaProduto?: string;
+  /** ISO date ou null — última mov. almox secundário. */
+  ultimaMovimentacaoEstoque?: string | null;
 };
+
+/** Exclui do painel itens sem movimento, estoque, empenho, SC e Pré Compra (PC pode permanecer). */
+export function itemAptoUniversoPainelCobertura(row: {
+  consumoMedio?: number;
+  saldo: number;
+  empenho: number;
+  solicitacao?: number;
+  cotacao?: number;
+}): boolean {
+  const cm = Number(row.consumoMedio) || 0;
+  const saldo = Number(row.saldo) || 0;
+  const empenho = Number(row.empenho) || 0;
+  const sc = Number(row.solicitacao) || 0;
+  const cotacao = Number(row.cotacao) || 0;
+  return !(cm === 0 && empenho === 0 && saldo === 0 && sc === 0 && cotacao === 0);
+}
+
+export function filtrarUniversoPainelCobertura<T extends ConsultaEstoqueRowComCm>(rows: T[]): T[] {
+  return rows.filter(itemAptoUniversoPainelCobertura);
+}
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -537,7 +597,13 @@ export function montarLinhaCobertura(r: ConsultaEstoqueRowComCm): CoberturaEstoq
     cobertura,
     faltante,
   });
+  const valorEstoque = calcValorEstoqueBruto(r.saldo, precoUnitario);
   const valorFirme = calcValorFirmeMonetario(r.saldo, r.empenho, precoUnitario);
+  const ultimaMovimentacaoEstoque =
+    r.ultimaMovimentacaoEstoque != null && String(r.ultimaMovimentacaoEstoque).trim() !== ''
+      ? String(r.ultimaMovimentacaoEstoque)
+      : null;
+  const semMovimentacao60d = isSemMovimentacaoEstoque(ultimaMovimentacaoEstoque);
 
   return {
     ...r,
@@ -556,7 +622,10 @@ export function montarLinhaCobertura(r: ConsultaEstoqueRowComCm): CoberturaEstoq
     comprador: normalizarCompradorPainel(r.comprador),
     familiaProduto: (r.familiaProduto ?? '').trim() || 'Sem família',
     precoUnitario,
+    valorEstoque,
     valorFirme,
+    ultimaMovimentacaoEstoque,
+    semMovimentacao60d,
     acaoSugerida: sugerirAcaoCobertura({
       statusPainel,
       solicitacao: r.solicitacao,
@@ -571,6 +640,10 @@ export function agregarCoberturaEstoque(
   opts?: { statusFiltro?: StatusCoberturaEstoque | null }
 ): {
   totalItens: number;
+  valorEstoqueTotal: number | null;
+  valorFirmeTotal: number | null;
+  /** Soma saldo × preço dos itens sem movimentação há ≥ 60 dias. */
+  valorEstoqueSemMov60dTotal: number | null;
   kpisFirme: TotaisKpiFirme[];
   barrasFirme: TotaisFaixaFirme[];
   porComprador: TotaisCompradorCobertura[];
@@ -579,6 +652,30 @@ export function agregarCoberturaEstoque(
   const statusFiltro = opts?.statusFiltro ?? null;
 
   const comStatus: CoberturaEstoqueLinha[] = rows.map(montarLinhaCobertura);
+
+  let valorEstoqueAcc = 0;
+  let valorFirmeAcc = 0;
+  let valorSemMovAcc = 0;
+  let temValorEstoque = false;
+  let temValorFirme = false;
+  let temValorSemMov = false;
+  for (const row of comStatus) {
+    if (row.valorEstoque != null) {
+      valorEstoqueAcc = round2(valorEstoqueAcc + row.valorEstoque);
+      temValorEstoque = true;
+      if (row.semMovimentacao60d) {
+        valorSemMovAcc = round2(valorSemMovAcc + row.valorEstoque);
+        temValorSemMov = true;
+      }
+    }
+    if (row.valorFirme != null) {
+      valorFirmeAcc = round2(valorFirmeAcc + row.valorFirme);
+      temValorFirme = true;
+    }
+  }
+  const valorEstoqueTotal = temValorEstoque ? valorEstoqueAcc : null;
+  const valorFirmeTotal = temValorFirme ? valorFirmeAcc : null;
+  const valorEstoqueSemMov60dTotal = temValorSemMov ? valorSemMovAcc : null;
 
   const barraAcc = new Map<BarraFirme, number>();
   const barraCapitalAcc = new Map<BarraFirme, number>();
@@ -646,6 +743,9 @@ export function agregarCoberturaEstoque(
 
   return {
     totalItens: comStatus.length,
+    valorEstoqueTotal,
+    valorFirmeTotal,
+    valorEstoqueSemMov60dTotal,
     kpisFirme,
     barrasFirme,
     porComprador: agregarCargaPorComprador(comStatus),
