@@ -8,7 +8,8 @@ import {
   listProgramacaoProducaoRecursos,
   updateProgramacaoProducaoRecurso,
 } from '../../api/programacaoProducao';
-import type { ProgramacaoProducaoRecurso, RecursoEscala, RecursoEscalaFaixa } from '../../components/programacao-producao/types';
+import type { ProgramacaoProducaoRecurso, RecursoEscala, RecursoEscalaExcecao, RecursoEscalaFaixa } from '../../components/programacao-producao/types';
+import ModalEscalaPontualRecurso from '../../components/programacao-producao/ModalEscalaPontualRecurso';
 import { patchCatalogoRecursosRuntime } from '../../utils/programacaoProducaoCatalogoRuntime';
 import { usuarioRecursoLabel } from '../../utils/programacaoProducaoRoteiros';
 import { DIAS_SEMANA_ESCALA, formatEscalaResumo } from '../../utils/recursoEscalaLabel';
@@ -44,6 +45,7 @@ export default function ProgramacaoProducaoRecursosPage() {
   const [salvando, setSalvando] = useState(false);
   const [confirmExcluir, setConfirmExcluir] = useState<ProgramacaoProducaoRecurso | null>(null);
   const [excluindo, setExcluindo] = useState(false);
+  const [pontual, setPontual] = useState<ProgramacaoProducaoRecurso | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -126,6 +128,25 @@ export default function ProgramacaoProducaoRecursosPage() {
     }
   };
 
+  const salvarPontual = async (excecoes: RecursoEscalaExcecao[]) => {
+    if (!pontual || !canEdit) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      await updateProgramacaoProducaoRecurso(
+        pontual.cod,
+        pontual.nome,
+        pontual.escala ?? null,
+        excecoes
+      );
+      setPontual(null);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao salvar escala pontual.');
+    } finally {
+      setSalvando(false);
+    }
+  };
   const excluir = async () => {
     if (!confirmExcluir || !canEdit) return;
     setExcluindo(true);
@@ -156,7 +177,8 @@ export default function ProgramacaoProducaoRecursosPage() {
           </p>
           <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Recursos</h1>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            Cadastro de recursos usados nos roteiros de produção.
+            Cadastro de recursos usados nos roteiros. Clique no nome da máquina para folga ou horário
+            especial em um dia ou período.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -171,7 +193,7 @@ export default function ProgramacaoProducaoRecursosPage() {
         </div>
       </div>
 
-      {erro && !modal && !confirmExcluir && (
+      {erro && !modal && !confirmExcluir && !pontual && (
         <p className="mb-2 text-sm text-red-600 dark:text-red-300 shrink-0" role="alert">
           {erro}
         </p>
@@ -204,7 +226,7 @@ export default function ProgramacaoProducaoRecursosPage() {
                 Usuário
               </th>
               {canEdit && (
-                <th className="text-right px-3 py-2 font-semibold text-slate-700 dark:text-slate-200 w-36">
+                <th className="text-right px-3 py-2 font-semibold text-slate-700 dark:text-slate-200 w-48">
                   Ações
                 </th>
               )}
@@ -227,12 +249,29 @@ export default function ProgramacaoProducaoRecursosPage() {
                   className="border-t border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60"
                 >
                   <td className="px-3 py-2 font-mono text-xs">{r.cod}</td>
-                  <td className="px-3 py-2">{r.nome}</td>
+                  <td className="px-3 py-2">
+                    <button
+                      type="button"
+                      className="text-left font-medium text-primary-700 hover:underline dark:text-primary-300"
+                      onClick={() => {
+                        setErro(null);
+                        setPontual(r);
+                      }}
+                      title="Definir folga ou horário especial em um dia ou período"
+                    >
+                      {r.nome}
+                    </button>
+                  </td>
                   <td className="px-3 py-2 text-xs text-slate-600 dark:text-slate-400">
                     {formatEscalaResumo(r.escala)}
                     {r.painelCamasi || r.cod === 'R001' ? (
                       <span className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800 dark:bg-sky-900/50 dark:text-sky-200">
                         Camasi
+                      </span>
+                    ) : null}
+                    {(r.escalaExcecoes?.length ?? 0) > 0 ? (
+                      <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
+                        {r.escalaExcecoes!.length} pontual{r.escalaExcecoes!.length === 1 ? '' : 'is'}
                       </span>
                     ) : null}
                   </td>
@@ -241,6 +280,16 @@ export default function ProgramacaoProducaoRecursosPage() {
                   </td>
                   {canEdit && (
                     <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        className="text-primary-600 hover:underline text-xs mr-3 dark:text-primary-400"
+                        onClick={() => {
+                          setErro(null);
+                          setPontual(r);
+                        }}
+                      >
+                        Pontual
+                      </button>
                       <button
                         type="button"
                         className="text-primary-600 hover:underline text-xs mr-3 dark:text-primary-400"
@@ -293,8 +342,8 @@ export default function ProgramacaoProducaoRecursosPage() {
                 Escala de trabalho
               </span>
               <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                Faixas em que a máquina deve produzir. Intervalos entre faixas (ex.: almoço) não
-                contam como parada real no painel Camasi.
+                Faixas em que a máquina deve produzir no padrão da semana. Folga e hora extra em dia
+                específico: clique no nome da máquina na lista.
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {DIAS_SEMANA_ESCALA.map((d) => {
@@ -443,6 +492,17 @@ export default function ProgramacaoProducaoRecursosPage() {
           </div>
         </div>
       )}
+
+      {pontual ? (
+        <ModalEscalaPontualRecurso
+          recurso={pontual}
+          canEdit={canEdit}
+          salvando={salvando}
+          erro={erro}
+          onClose={() => !salvando && setPontual(null)}
+          onSalvar={(excecoes) => void salvarPontual(excecoes)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -1,5 +1,9 @@
 import type { Request, Response } from 'express';
-import { getDashboard, getFilters } from '../services/painelProducao/painelProducaoDashboardService.js';
+import {
+  getDashboard,
+  getFilters,
+  getProducaoAlcancadoMes,
+} from '../services/painelProducao/painelProducaoDashboardService.js';
 import {
   advanceNextMonth,
   listTargets,
@@ -108,6 +112,21 @@ export async function getPainelProducaoTargets(req: Request, res: Response) {
   const mes = req.query.mes ? String(req.query.mes) : undefined;
   try {
     const data = await listTargets(setor, mes);
+    res.json(data);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+}
+
+export async function getPainelProducaoAlcancado(req: Request, res: Response) {
+  const mes = String(req.query.mes ?? '').trim();
+  if (!/^\d{4}-\d{2}$/.test(mes)) {
+    res.status(400).json({ error: 'Parâmetro mes (YYYY-MM) é obrigatório.' });
+    return;
+  }
+  try {
+    const data = await getProducaoAlcancadoMes(mes);
     res.json(data);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

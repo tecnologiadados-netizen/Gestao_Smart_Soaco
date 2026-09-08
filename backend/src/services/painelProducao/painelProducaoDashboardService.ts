@@ -343,6 +343,40 @@ export async function getProducaoResumoApuracao(
   return payload;
 }
 
+export type ProducaoAlcancadoSetor = {
+  setor: string;
+  producao: number;
+  unidade: string;
+};
+
+/** Produção do mês por setor — usado na grade de cadastro de metas. */
+export async function getProducaoAlcancadoMes(
+  mes: string,
+): Promise<ProducaoAlcancadoSetor[]> {
+  const pool = getNomusPool();
+  if (!pool) return [];
+
+  const mesDt = parseMes(mes);
+  const fim = monthEnd(mesDt);
+  const setorMap = await getSetorMap(pool);
+  const [paRows, gondRows, pedidoRows] = await fetchMonthRows(pool, mes, mesDt, fim);
+  const setores = (await listSetoresMeta()).filter((s) => !SETOR_EXCLUIDOS.has(s));
+
+  return setores.map((setor) => {
+    const producaoRaw = sumProducao(paRows, gondRows, pedidoRows, setorMap, setor, mesDt, fim);
+    const unidade = SETOR_PESO.has(setor)
+      ? usesPedidos(setor, mesDt)
+        ? 'pedidos'
+        : 'kg'
+      : 'un';
+    return {
+      setor,
+      producao: Math.round(producaoRaw * 100) / 100,
+      unidade,
+    };
+  });
+}
+
 function rowSetor(setorMap: Map<number, string>, idProduto: number): string {
   return setorMap.get(idProduto) ?? 'A definir';
 }

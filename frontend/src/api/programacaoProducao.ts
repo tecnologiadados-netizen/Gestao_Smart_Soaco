@@ -10,6 +10,7 @@ import type {
   ProgramacaoProducaoRecurso,
   ProgramacaoProducaoSalva,
   RecursoEscala,
+  RecursoEscalaExcecao,
 } from '../components/programacao-producao/types';
 
 export async function listProgramacoesProducao(): Promise<ProgramacaoProducaoListItem[]> {
@@ -61,11 +62,17 @@ export async function createProgramacaoProducaoRecurso(
 export async function updateProgramacaoProducaoRecurso(
   cod: string,
   nome: string,
-  escala?: RecursoEscala | null
+  escala?: RecursoEscala | null,
+  escalaExcecoes?: RecursoEscalaExcecao[]
 ): Promise<ProgramacaoProducaoRecurso> {
+  const body: { nome: string; escala: RecursoEscala | null; escalaExcecoes?: RecursoEscalaExcecao[] } = {
+    nome,
+    escala: escala ?? null,
+  };
+  if (escalaExcecoes !== undefined) body.escalaExcecoes = escalaExcecoes;
   const res = await apiFetch(`/api/programacao-producao/recursos/${encodeURIComponent(cod)}`, {
     method: 'PUT',
-    body: { nome, escala: escala ?? null },
+    body,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

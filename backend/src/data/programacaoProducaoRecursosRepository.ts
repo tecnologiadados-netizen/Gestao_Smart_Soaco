@@ -3,15 +3,18 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import {
   CAMASI_RECURSO_COD,
+  anexarExcecoes,
   normalizarEscala,
+  normalizarEscalaExcecoes,
   type RecursoEscala,
+  type RecursoEscalaExcecao,
 } from '../utils/recursoEscalaTrabalho.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VAR_DIR = join(__dirname, '..', '..', 'var', 'programacao-producao-catalog');
 const RECURSOS_FILE = join(VAR_DIR, 'recursos.json');
 
-export type { RecursoEscala };
+export type { RecursoEscala, RecursoEscalaExcecao };
 
 export type ProgramacaoProducaoRecurso = {
   cod: string;
@@ -23,6 +26,8 @@ export type ProgramacaoProducaoRecurso = {
   createdAt: string;
   updatedAt: string;
   escala?: RecursoEscala | null;
+  /** Folga ou horário especial em dia/período (Camasi segue estas pontualidades). */
+  escalaExcecoes?: RecursoEscalaExcecao[];
   /** Recurso cuja escala alimenta o painel Produção Camasi. */
   painelCamasi?: boolean;
 };
@@ -51,9 +56,16 @@ function readStore(): RecursosStore {
           } catch {
             escala = null;
           }
+          const brutas =
+            (r as ProgramacaoProducaoRecurso).escalaExcecoes ??
+            (r.escala && typeof r.escala === 'object'
+              ? (r.escala as RecursoEscala).excecoes
+              : undefined);
+          const escalaExcecoes = normalizarEscalaExcecoes(brutas);
           return {
             ...r,
             escala,
+            escalaExcecoes,
             painelCamasi: r.painelCamasi === true,
           };
         }),
@@ -110,6 +122,7 @@ export function createProgramacaoProducaoRecurso(
     createdAt: now,
     updatedAt: now,
     escala,
+    escalaExcecoes: [],
   };
   store.recursos.push(recurso);
   writeStore(store);
@@ -120,7 +133,8 @@ export function updateProgramacaoProducaoRecurso(
   cod: string,
   nome: string,
   usuario: { login: string; nome: string | null },
-  escalaRaw?: unknown
+  escalaRaw?: unknown,
+  escalaExcecoesRaw?: unknown
 ): ProgramacaoProducaoRecurso {
   const key = cod.trim();
   if (!key) throw new Error('Código do recurso inválido.');
@@ -133,10 +147,15 @@ export function updateProgramacaoProducaoRecurso(
   if (dup) throw new Error('Já existe um recurso com este nome.');
   const prev = store.recursos[idx]!;
   const escala = escalaRaw === undefined ? prev.escala ?? null : normalizarEscala(escalaRaw);
+  const escalaExcecoes =
+    escalaExcecoesRaw === undefined
+      ? prev.escalaExcecoes ?? []
+      : normalizarEscalaExcecoes(escalaExcecoesRaw, { rigoroso: true });
   const atualizado: ProgramacaoProducaoRecurso = {
     ...prev,
     nome: texto,
     escala,
+    escalaExcecoes,
     atualizadoPorLogin: usuario.login,
     atualizadoPorNome: usuario.nome,
     updatedAt: new Date().toISOString(),
@@ -144,6 +163,13 @@ export function updateProgramacaoProducaoRecurso(
   store.recursos[idx] = atualizado;
   writeStore(store);
   return atualizado;
+}
+
+/** Escala semanal + pontuais, pronta para o recorte Camasi. */
+export function escalaEfetivaDoRecurso(
+  recurso: ProgramacaoProducaoRecurso | null | undefined
+): RecursoEscala | null {
+  return anexarExcecoes(recurso?.escala ?? null, recurso?.escalaExcecoes);
 }
 
 export function getRecursoPainelCamasi(): ProgramacaoProducaoRecurso | null {

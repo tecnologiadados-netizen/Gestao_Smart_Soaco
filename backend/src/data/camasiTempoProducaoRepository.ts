@@ -13,6 +13,10 @@ import {
   type MsInterval,
   type RecursoEscala,
 } from '../utils/recursoEscalaTrabalho.js';
+import {
+  categoriaParadaCamasi,
+  type CamasiCategoriaParada,
+} from '../utils/camasiMotivoJornada.js';
 
 export type TempoProducaoRow = {
   id: number;
@@ -33,9 +37,13 @@ export type TempoProducaoRow = {
 export type CamasiDashboardKpis = {
   horasProducao: number;
   horasParado: number;
+  horasParadoOperacional: number;
+  horasParadoJornada: number;
   horasEscala: number | null;
   disponibilidadePct: number | null;
   qtdeParadas: number;
+  qtdeParadasOperacionais: number;
+  qtdeParadasJornada: number;
 };
 
 export type CamasiMesAgg = {
@@ -75,6 +83,7 @@ export type CamasiParadaValida = {
   peca: string;
   justificativa: string;
   observacao: string | null;
+  categoria: CamasiCategoriaParada;
 };
 
 export type CamasiProducaoValida = {
@@ -92,6 +101,8 @@ export type CamasiResumoDia = {
   data: string;
   escalaHoras: number;
   paradoHoras: number;
+  paradoOperacionalHoras: number;
+  paradoJornadaHoras: number;
   producaoHoras: number;
   /** Soma das durações por evento (pode > paradoHoras se houver sobreposição). */
   paradoSomaEventos: number;
@@ -383,6 +394,8 @@ export function buildDashboardResumo(
 } {
   const escala = opts?.escala ?? null;
   let qtdeParadas = 0;
+  let qtdeParadasOperacionais = 0;
+  let qtdeParadasJornada = 0;
 
   const mesMap = new Map<string, { horasProducao: number; horasParado: number }>();
   const motivoMap = new Map<string, { horas: number; qtde: number }>();
@@ -392,6 +405,8 @@ export function buildDashboardResumo(
 
   type DiaAcc = {
     paradoPieces: MsInterval[];
+    operacionalPieces: MsInterval[];
+    jornadaPieces: MsInterval[];
     paradoSomaEventos: number;
     qtdeParadas: number;
   };
@@ -413,10 +428,16 @@ export function buildDashboardResumo(
     if (row.horasParado > 0) {
       qtdeParadas += 1;
       const motivo = motivoLabel(row);
-      const mot = motivoMap.get(motivo) ?? { horas: 0, qtde: 0 };
-      mot.horas += row.horasParado;
-      mot.qtde += 1;
-      motivoMap.set(motivo, mot);
+      const categoria = categoriaParadaCamasi(motivo);
+      if (categoria === 'jornada') qtdeParadasJornada += 1;
+      else qtdeParadasOperacionais += 1;
+
+      if (categoria === 'operacional') {
+        const mot = motivoMap.get(motivo) ?? { horas: 0, qtde: 0 };
+        mot.horas += row.horasParado;
+        mot.qtde += 1;
+        motivoMap.set(motivo, mot);
+      }
 
       paradasValidas.push({
         id: row.id,
@@ -428,10 +449,13 @@ export function buildDashboardResumo(
         peca: pecaLabel(row),
         justificativa: motivo,
         observacao: row.obsMotivo,
+        categoria,
       });
 
       const acc = diaAcc.get(row.data) ?? {
         paradoPieces: [],
+        operacionalPieces: [],
+        jornadaPieces: [],
         paradoSomaEventos: 0,
         qtdeParadas: 0,
       };
@@ -439,7 +463,10 @@ export function buildDashboardResumo(
       acc.qtdeParadas += 1;
       const iv = intervaloEfetivoMs(row.data, row.inicioParado, row.fimParado, 'parado');
       if (iv) {
-        acc.paradoPieces.push(...intervalosNaEscalaDoDia(row.data, iv.startMs, iv.endMs, escala));
+        const pieces = intervalosNaEscalaDoDia(row.data, iv.startMs, iv.endMs, escala);
+        acc.paradoPieces.push(...pieces);
+        if (categoria === 'jornada') acc.jornadaPieces.push(...pieces);
+        else acc.operacionalPieces.push(...pieces);
       }
       diaAcc.set(row.data, acc);
     }
@@ -458,11 +485,15 @@ export function buildDashboardResumo(
   for (const data of allDays) {
     const acc = diaAcc.get(data) ?? {
       paradoPieces: [],
+      operacionalPieces: [],
+      jornadaPieces: [],
       paradoSomaEventos: 0,
       qtdeParadas: 0,
     };
     const uniao = unirIntervalos(acc.paradoPieces);
     const paradoHoras = horasDosIntervalos(uniao);
+    const paradoOperacionalHoras = horasDosIntervalos(unirIntervalos(acc.operacionalPieces));
+    const paradoJornadaHoras = horasDosIntervalos(unirIntervalos(acc.jornadaPieces));
     const escalaHoras = horasEscalaNoDia(data, escala);
     const producaoHoras =
       escala && !escalaEstaVazia(escala)
@@ -473,6 +504,8 @@ export function buildDashboardResumo(
       data,
       escalaHoras: round1(escalaHoras),
       paradoHoras: round1(paradoHoras),
+      paradoOperacionalHoras: round1(paradoOperacionalHoras),
+      paradoJornadaHoras: round1(paradoJornadaHoras),
       producaoHoras: round1(producaoHoras),
       paradoSomaEventos: round1(acc.paradoSomaEventos),
       temSobreposicao,
@@ -489,18 +522,31 @@ export function buildDashboardResumo(
 
   let horasParado = 0;
   let horasProducao = 0;
+  let horasParadoOperacional = 0;
+  let horasParadoJornada = 0;
   for (const d of resumoDias) {
     horasParado += d.paradoHoras;
     horasProducao += d.producaoHoras;
+    horasParadoOperacional += d.paradoOperacionalHoras;
+    horasParadoJornada += d.paradoJornadaHoras;
   }
 
   // Sem escala: fallback legado (soma por evento) para não zerar o painel.
   if (!escala || escalaEstaVazia(escala)) {
     horasProducao = 0;
     horasParado = 0;
+    horasParadoOperacional = 0;
+    horasParadoJornada = 0;
     for (const row of rows) {
       horasProducao += row.horasProducao;
       horasParado += row.horasParado;
+      if (row.horasParado > 0) {
+        if (categoriaParadaCamasi(motivoLabel(row)) === 'jornada') {
+          horasParadoJornada += row.horasParado;
+        } else {
+          horasParadoOperacional += row.horasParado;
+        }
+      }
     }
     mesMap.clear();
     for (const row of rows) {
@@ -520,6 +566,8 @@ export function buildDashboardResumo(
   const kpis: CamasiDashboardKpis = {
     horasProducao: round1(horasProducao),
     horasParado: round1(horasParado),
+    horasParadoOperacional: round1(horasParadoOperacional),
+    horasParadoJornada: round1(horasParadoJornada),
     horasEscala: horasEscala != null ? round1(horasEscala) : null,
     disponibilidadePct:
       horasEscala != null
@@ -528,6 +576,8 @@ export function buildDashboardResumo(
           ? round1((horasProducao / total) * 100)
           : null,
     qtdeParadas,
+    qtdeParadasOperacionais,
+    qtdeParadasJornada,
   };
 
   const porMes: CamasiMesAgg[] = [...mesMap.entries()]

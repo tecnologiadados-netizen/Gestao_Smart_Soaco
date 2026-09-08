@@ -190,6 +190,21 @@ export async function fetchPainelProducaoTargets(mes: string): Promise<PainelPro
   return parseJson(res);
 }
 
+export interface PainelProducaoAlcancadoSetor {
+  setor: string;
+  producao: number;
+  unidade: string;
+}
+
+export async function fetchPainelProducaoAlcancado(
+  mes: string,
+): Promise<PainelProducaoAlcancadoSetor[]> {
+  const res = await apiFetch(
+    `/api/painel-producao/targets/alcancado?mes=${encodeURIComponent(mes)}`,
+  );
+  return parseJson(res);
+}
+
 export async function fetchPainelProducaoFaixasDesconto(
   mes: string,
 ): Promise<PainelProducaoFaixaDesconto[]> {

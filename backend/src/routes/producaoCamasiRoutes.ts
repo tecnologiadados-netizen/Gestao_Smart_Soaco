@@ -2,17 +2,19 @@ import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/requirePermission.js';
+import { validateCsrf } from '../middleware/csrf.js';
 import { PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI } from '../utils/kpisPermissoes.js';
 import {
   getCamasiDatabasePath,
   isCamasiEnabled,
   testCamasiConnection,
 } from '../config/camasiFirebirdDb.js';
-import { getRecursoPainelCamasi } from '../data/programacaoProducaoRecursosRepository.js';
 import {
-  escalaEstaVazia,
-  horasEscalaNoPeriodo,
-} from '../utils/recursoEscalaTrabalho.js';
+  escalaEfetivaDoRecurso,
+  getRecursoPainelCamasi,
+  updateProgramacaoProducaoRecurso,
+} from '../data/programacaoProducaoRecursosRepository.js';
+import { horasEscalaNoPeriodo } from '../utils/recursoEscalaTrabalho.js';
 import {
   buildDashboardResumo,
   buildDiasDoMes,
@@ -122,7 +124,7 @@ router.get(
 
     const { dataIni, dataFim } = parsed.data;
     const recurso = getRecursoPainelCamasi();
-    const escala = recurso?.escala && !escalaEstaVazia(recurso.escala) ? recurso.escala : null;
+    const escala = escalaEfetivaDoRecurso(recurso);
     const horasEscala = escala ? horasEscalaNoPeriodo(dataIni, dataFim, escala) : null;
     const rows = await listTempoProducao(dataIni, dataFim, escala);
     const resumo = buildDashboardResumo(rows, { horasEscala, escala });
@@ -136,6 +138,7 @@ router.get(
             diasSemana: escala.diasSemana,
             faixas: escala.faixas,
             horasEscala: resumo.kpis.horasEscala,
+            excecoes: escala.excecoes ?? [],
           }
         : null,
       ...resumo,
@@ -167,7 +170,7 @@ router.get(
 
     const { dataIni, dataFim, mes, tipo } = parsed.data;
     const recurso = getRecursoPainelCamasi();
-    const escala = recurso?.escala && !escalaEstaVazia(recurso.escala) ? recurso.escala : null;
+    const escala = escalaEfetivaDoRecurso(recurso);
     const rows = await listTempoProducao(dataIni, dataFim, escala);
     const { dias, totalHoras } = buildDiasDoMes(rows, mes, tipo, escala);
     res.json({
@@ -180,6 +183,60 @@ router.get(
       totalHoras,
     });
   })
+);
+
+/**
+ * GET /api/producao-camasi/recurso-escala
+ * Recurso Camasi (R001) com escala semanal e pontualidades.
+ */
+router.get(
+  '/recurso-escala',
+  requirePermission(...PERMISSOES_ACESSO_PRODUCAO_CAMASI),
+  (_req, res) => {
+    const recurso = getRecursoPainelCamasi();
+    if (!recurso) {
+      res.status(404).json({ error: 'Recurso do painel Camasi não cadastrado.' });
+      return;
+    }
+    res.json({ data: recurso });
+  }
+);
+
+/**
+ * PUT /api/producao-camasi/recurso-escala/excecoes
+ * Folga / horário especial no recurso do painel (sem exigir permissão de PCP).
+ */
+router.put(
+  '/recurso-escala/excecoes',
+  requirePermission(...PERMISSOES_ACESSO_PRODUCAO_CAMASI),
+  validateCsrf,
+  (req, res) => {
+    const recurso = getRecursoPainelCamasi();
+    if (!recurso) {
+      res.status(404).json({ error: 'Recurso do painel Camasi não cadastrado.' });
+      return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(req.body ?? {}, 'escalaExcecoes')) {
+      res.status(400).json({ error: 'Informe as escalas pontuais.' });
+      return;
+    }
+    try {
+      const data = updateProgramacaoProducaoRecurso(
+        recurso.cod,
+        recurso.nome,
+        {
+          login: req.user?.login ?? 'anon',
+          nome: null,
+        },
+        undefined,
+        req.body.escalaExcecoes
+      );
+      res.json({ data });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: msg });
+    }
+  }
 );
 
 export default router;

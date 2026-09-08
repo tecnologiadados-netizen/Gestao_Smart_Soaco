@@ -8,6 +8,7 @@ import {
   getPainelProducaoApuracaoDetalhe,
   getPainelProducaoDashboard,
   getPainelProducaoFaixasDesconto,
+  getPainelProducaoAlcancado,
   getPainelProducaoFilters,
   getPainelProducaoTargets,
   postPainelProducaoMes,
@@ -58,6 +59,7 @@ router.get('/dashboard', podeVerDashboard, getPainelProducaoDashboard);
 router.get('/apuracao', podeVerApuracao, getPainelProducaoApuracao);
 router.get('/apuracao/detalhe', podeVerApuracao, getPainelProducaoApuracaoDetalhe);
 router.get('/targets', podeVerTargets, getPainelProducaoTargets);
+router.get('/targets/alcancado', podeVerTargets, getPainelProducaoAlcancado);
 router.post('/targets', validateCsrf, podeEditarMetas, postPainelProducaoTarget);
 router.get('/faixas-desconto', podeVerTargets, getPainelProducaoFaixasDesconto);
 router.put('/faixas-desconto', validateCsrf, podeEditarFaixas, putPainelProducaoFaixasDesconto);

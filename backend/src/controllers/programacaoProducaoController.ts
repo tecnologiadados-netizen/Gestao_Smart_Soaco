@@ -492,7 +492,14 @@ export async function putProgramacaoProducaoRecurso(req: Request, res: Response)
   const cod = String(req.params.cod ?? '').trim();
   const nome = typeof req.body?.nome === 'string' ? req.body.nome : '';
   try {
-    const data = updateProgramacaoProducaoRecurso(cod, nome, usuarioReq(req), req.body?.escala);
+    const temExcecoes = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'escalaExcecoes');
+    const data = updateProgramacaoProducaoRecurso(
+      cod,
+      nome,
+      usuarioReq(req),
+      req.body?.escala,
+      temExcecoes ? req.body.escalaExcecoes : undefined
+    );
     res.json({ data });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

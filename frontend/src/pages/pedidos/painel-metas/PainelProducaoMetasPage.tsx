@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { MonthFilter } from '../../../components/painel-producao/MonthFilter';
 import { PainelProducaoShell } from '../../../components/painel-producao/PainelProducaoShell';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
+  fetchPainelProducaoAlcancado,
   fetchPainelProducaoFaixasDesconto,
   fetchPainelProducaoFilters,
   fetchPainelProducaoTargets,
   savePainelProducaoFaixasDesconto,
   savePainelProducaoSetorPenalizacao,
   savePainelProducaoTarget,
+  type PainelProducaoAlcancadoSetor,
   type PainelProducaoFaixaDesconto,
 } from '../../../api/painelProducao';
 import { formatMesLabel } from '../../../utils/painelProducaoFormat';
@@ -42,6 +44,16 @@ const CAMPOS_META: CampoMeta[] = [
   'valor_aco',
 ];
 
+const CAMPOS_QUANTIDADE: CampoMeta[] = ['meta_bronze', 'meta_prata', 'meta_aco'];
+
+const NIVEIS_META = [
+  { nome: 'Bronze', meta: 'meta_bronze', valor: 'valor_bronze', slug: 'bronze' },
+  { nome: 'Prata', meta: 'meta_prata', valor: 'valor_prata', slug: 'prata' },
+  { nome: 'Aço', meta: 'meta_aco', valor: 'valor_aco', slug: 'aco' },
+] as const;
+
+type NivelMetaNome = (typeof NIVEIS_META)[number]['nome'];
+
 const LINHA_VAZIA: LinhaMeta = {
   meta_bronze: '',
   meta_prata: '',
@@ -60,6 +72,39 @@ function paraNumero(texto: string): number | null {
   if (bruto === '') return null;
   const numero = Number(bruto.replace(/\./g, '').replace(',', '.'));
   return Number.isFinite(numero) && numero >= 0 ? numero : Number.NaN;
+}
+
+function formatarQuantidade(texto: string): string {
+  const numero = paraNumero(texto);
+  if (numero == null || Number.isNaN(numero)) return '—';
+  return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(numero);
+}
+
+function formatarMoeda(valor: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(valor);
+}
+
+function formatarMoedaTexto(texto: string): string {
+  const numero = paraNumero(texto);
+  if (numero == null || Number.isNaN(numero)) return '—';
+  return formatarMoeda(numero);
+}
+
+function formatarProducao(valor: number): string {
+  return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(valor);
+}
+
+function identificarNivelAtingido(producao: number, linha: LinhaMeta): NivelMetaNome | null {
+  let atingido: NivelMetaNome | null = null;
+  for (const nivel of NIVEIS_META) {
+    const meta = paraNumero(linha[nivel.meta]);
+    if (meta == null || Number.isNaN(meta) || meta <= 0) continue;
+    if (producao >= meta) atingido = nivel.nome;
+  }
+  return atingido;
 }
 
 function paraDecimal(texto: string): number {
@@ -90,6 +135,23 @@ function LoadingOverlay({ message = 'Carregando...', show = true }: { message?: 
   );
 }
 
+function NivelBadge({
+  nivel,
+  semMeta,
+}: {
+  nivel: NivelMetaNome | null;
+  semMeta?: boolean;
+}) {
+  if (semMeta) {
+    return <span className="targets-nivel-badge is-none">Sem meta</span>;
+  }
+  if (!nivel) {
+    return <span className="targets-nivel-badge is-none">Não atingida</span>;
+  }
+  const slug = nivel === 'Aço' ? 'aco' : nivel.toLowerCase();
+  return <span className={`targets-nivel-badge is-${slug}`}>{nivel}</span>;
+}
+
 export default function PainelProducaoMetasPage() {
   const { hasPermission } = useAuth();
   const podeEditar = podeEditarPainelMetas(hasPermission);
@@ -117,6 +179,10 @@ export default function PainelProducaoMetasPage() {
   const [savingFaixas, setSavingFaixas] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [setoresExpandidos, setSetoresExpandidos] = useState<Set<string>>(() => new Set());
+  const [alcancadoPorSetor, setAlcancadoPorSetor] = useState<
+    Record<string, PainelProducaoAlcancadoSetor>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -186,6 +252,7 @@ export default function PainelProducaoMetasPage() {
         setEditandoFaixas(false);
         setEditingSetores(new Set());
         setEditSnapshots({});
+        setSetoresExpandidos(new Set());
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Falha ao carregar metas.');
@@ -195,6 +262,27 @@ export default function PainelProducaoMetasPage() {
       }
     }
     loadTargets();
+    return () => {
+      cancelled = true;
+    };
+  }, [mes]);
+
+  useEffect(() => {
+    if (!mes) return;
+    let cancelled = false;
+    setAlcancadoPorSetor({});
+    async function loadAlcancado() {
+      try {
+        const rows = await fetchPainelProducaoAlcancado(mes);
+        if (cancelled) return;
+        const mapa: Record<string, PainelProducaoAlcancadoSetor> = {};
+        for (const row of rows) mapa[row.setor] = row;
+        setAlcancadoPorSetor(mapa);
+      } catch {
+        if (!cancelled) setAlcancadoPorSetor({});
+      }
+    }
+    void loadAlcancado();
     return () => {
       cancelled = true;
     };
@@ -305,6 +393,15 @@ export default function PainelProducaoMetasPage() {
     return linhas[setor] ?? LINHA_VAZIA;
   }
 
+  function alternarExpansao(setor: string) {
+    setSetoresExpandidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(setor)) next.delete(setor);
+      else next.add(setor);
+      return next;
+    });
+  }
+
   function alterarCampo(setor: string, campo: CampoMeta, valor: string) {
     setLinhas((prev) => ({
       ...prev,
@@ -319,6 +416,7 @@ export default function PainelProducaoMetasPage() {
       [setor]: { linha: linhaDoSetor(setor), semMeta: !!semMeta[setor] },
     }));
     setEditingSetores((prev) => new Set(prev).add(setor));
+    setSetoresExpandidos((prev) => new Set(prev).add(setor));
     setSuccess(null);
   }
 
@@ -349,6 +447,7 @@ export default function PainelProducaoMetasPage() {
     }
     setEditSnapshots(snapshots);
     setEditingSetores(new Set(setores));
+    setSetoresExpandidos(new Set(setores));
     setSuccess(null);
   }
 
@@ -577,21 +676,17 @@ export default function PainelProducaoMetasPage() {
               <table className="targets-table targets-table-niveis">
                 <thead>
                   <tr>
+                    <th rowSpan={2} className="targets-th-expand" aria-label="Expandir" />
                     <th rowSpan={2}>Setor</th>
                     <th rowSpan={2}>Não haverá meta</th>
                     <th colSpan={3} className="targets-group">
                       Meta (quantidade)
                     </th>
-                    <th colSpan={3} className="targets-group">
-                      Valor a pagar (R$)
-                    </th>
                     <th rowSpan={2}>Penalizações</th>
+                    <th rowSpan={2}>Alcançado</th>
                     {podeEditar && <th rowSpan={2} aria-label="Ações" />}
                   </tr>
                   <tr>
-                    <th>Bronze</th>
-                    <th>Prata</th>
-                    <th>Aço</th>
                     <th>Bronze</th>
                     <th>Prata</th>
                     <th>Aço</th>
@@ -602,17 +697,57 @@ export default function PainelProducaoMetasPage() {
                     const noMeta = !!semMeta[setor];
                     const editando = editingSetores.has(setor);
                     const linha = linhaDoSetor(setor);
+                    const expandido = setoresExpandidos.has(setor);
+                    const alcancado = alcancadoPorSetor[setor];
+                    const nivelAtingido =
+                      noMeta || alcancado == null
+                        ? null
+                        : identificarNivelAtingido(alcancado.producao, linha);
+                    const colSpan = 8 + (podeEditar ? 1 : 0);
                     return (
+                      <Fragment key={setor}>
                       <tr
-                        key={setor}
                         className={[
                           noMeta ? 'targets-row-no-meta' : '',
                           editando ? 'targets-row-editing' : '',
+                          expandido ? 'targets-row-expanded' : '',
                         ]
                           .filter(Boolean)
                           .join(' ') || undefined}
                       >
-                        <td>{setor}</td>
+                        <td className="targets-cell-expand">
+                          <button
+                            type="button"
+                            className={`targets-expand-btn${expandido ? ' is-open' : ''}`}
+                            onClick={() => alternarExpansao(setor)}
+                            aria-expanded={expandido}
+                            aria-label={
+                              expandido
+                                ? `Recolher valores de ${setor}`
+                                : `Expandir valores de ${setor}`
+                            }
+                          >
+                            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                              <path
+                                d="M4.2 6.2 8 10l3.8-3.8"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </button>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="targets-setor-btn"
+                            onClick={() => alternarExpansao(setor)}
+                          >
+                            {setor}
+                          </button>
+                        </td>
                         <td>
                           <label className="targets-checkbox-label">
                             <input
@@ -632,19 +767,24 @@ export default function PainelProducaoMetasPage() {
                             <span>Não haverá meta</span>
                           </label>
                         </td>
-                        {CAMPOS_META.map((campo) => (
+                        {CAMPOS_QUANTIDADE.map((campo) => (
                           <td key={campo} className="targets-cell-num">
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              className="targets-input"
-                              value={linha[campo]}
-                              placeholder={noMeta ? '—' : '0'}
-                              disabled={noMeta || !podeEditar || !editando}
-                              readOnly={!editando}
-                              onChange={(e) => alterarCampo(setor, campo, e.target.value)}
-                              aria-label={`${campo.replace('_', ' ')} de ${setor}`}
-                            />
+                            {editando ? (
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                className="targets-input"
+                                value={linha[campo]}
+                                placeholder={noMeta ? '—' : '0'}
+                                disabled={noMeta || !podeEditar}
+                                onChange={(e) => alterarCampo(setor, campo, e.target.value)}
+                                aria-label={`${campo.replace('_', ' ')} de ${setor}`}
+                              />
+                            ) : (
+                              <span className="targets-valor-leitura">
+                                {noMeta ? '—' : formatarQuantidade(linha[campo])}
+                              </span>
+                            )}
                           </td>
                         ))}
                         <td>
@@ -674,6 +814,28 @@ export default function PainelProducaoMetasPage() {
                               </button>
                             );
                           })()}
+                        </td>
+                        <td className="targets-cell-alcancado">
+                          {noMeta ? (
+                            <div className="targets-alcancado">
+                              <span className="targets-alcancado-qtd">—</span>
+                              <NivelBadge nivel={null} semMeta />
+                            </div>
+                          ) : alcancado == null ? (
+                            <div className="targets-alcancado">
+                              <span className="targets-alcancado-qtd">—</span>
+                            </div>
+                          ) : (
+                            <div className="targets-alcancado">
+                              <span className="targets-alcancado-qtd">
+                                {formatarProducao(alcancado.producao)}{' '}
+                                <span className="targets-alcancado-unidade">
+                                  {alcancado.unidade}
+                                </span>
+                              </span>
+                              <NivelBadge nivel={nivelAtingido} />
+                            </div>
+                          )}
                         </td>
                         {podeEditar && (
                           <td>
@@ -711,6 +873,109 @@ export default function PainelProducaoMetasPage() {
                           </td>
                         )}
                       </tr>
+                      {expandido && (
+                        <tr className="targets-expand-row">
+                          <td colSpan={colSpan}>
+                            <div className="targets-expand-panel">
+                              {noMeta ? (
+                                <p className="targets-expand-empty">
+                                  {setor} está marcado como “Não haverá meta”.
+                                </p>
+                              ) : (
+                                <>
+                                  <div className="targets-expand-resumo">
+                                    <span>
+                                      Alcançado:{' '}
+                                      <strong>
+                                        {alcancado
+                                          ? `${formatarProducao(alcancado.producao)} ${alcancado.unidade}`
+                                          : '—'}
+                                      </strong>
+                                    </span>
+                                    {alcancado ? (
+                                      <NivelBadge nivel={nivelAtingido} />
+                                    ) : (
+                                      <span className="targets-nivel-badge is-none">
+                                        Produção indisponível
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="targets-nivel-cards">
+                                    {NIVEIS_META.map((nivel) => {
+                                      const atingido = nivelAtingido === nivel.nome;
+                                      return (
+                                        <article
+                                          key={nivel.nome}
+                                          className={`targets-nivel-card is-${nivel.slug}${
+                                            atingido ? ' is-atingido' : ''
+                                          }`}
+                                        >
+                                          <header>
+                                            <span
+                                              className={`kpi-meta-nivel-symbol kpi-meta-nivel-symbol--${nivel.slug}`}
+                                              aria-hidden="true"
+                                            >
+                                              <svg viewBox="0 0 16 16" width="12" height="12">
+                                                <circle cx="8" cy="8" r="7" />
+                                                <circle
+                                                  cx="8"
+                                                  cy="8"
+                                                  r="3.4"
+                                                  fill="none"
+                                                  stroke="rgba(255,255,255,0.72)"
+                                                  strokeWidth="1.35"
+                                                />
+                                              </svg>
+                                            </span>
+                                            {nivel.nome}
+                                            {atingido && (
+                                              <span className="targets-nivel-card-flag">
+                                                Batida
+                                              </span>
+                                            )}
+                                          </header>
+                                          <dl>
+                                            <div>
+                                              <dt>Meta</dt>
+                                              <dd>{formatarQuantidade(linha[nivel.meta])}</dd>
+                                            </div>
+                                            <div>
+                                              <dt>Valor a pagar</dt>
+                                              <dd>
+                                                {editando ? (
+                                                  <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    className="targets-input targets-expand-input"
+                                                    value={linha[nivel.valor]}
+                                                    placeholder={noMeta ? '—' : '0'}
+                                                    disabled={noMeta || !podeEditar}
+                                                    onChange={(e) =>
+                                                      alterarCampo(
+                                                        setor,
+                                                        nivel.valor,
+                                                        e.target.value,
+                                                      )
+                                                    }
+                                                    aria-label={`Valor a pagar ${nivel.nome} de ${setor}`}
+                                                  />
+                                                ) : (
+                                                  formatarMoedaTexto(linha[nivel.valor])
+                                                )}
+                                              </dd>
+                                            </div>
+                                          </dl>
+                                        </article>
+                                      );
+                                    })}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -819,8 +1084,8 @@ export default function PainelProducaoMetasPage() {
           <p className="targets-hint">
             {guia === 'metas'
               ? podeEditar
-                ? 'A meta do painel é a do nível Aço. Em cada setor, use Penalizações para ligar ou desligar o desconto qualitativo na apuração.'
-                : 'Visualização das metas de produção por setor e nível.'
+                ? 'A meta do painel é a do nível Aço. O valor a pagar de cada nível fica na expansão da linha. A coluna Alcançado mostra a produção do mês e o maior nível batido (Bronze, Prata ou Aço).'
+                : 'Visualização das metas de produção por setor e nível. Expanda a linha para ver o valor a pagar e o nível alcançado.'
               : podeEditarFaixas
                 ? 'A apuração da montagem usa automaticamente as faixas cadastradas para este mês. Use Editar faixas para alterar.'
                 : 'A apuração da montagem usa automaticamente as faixas cadastradas para este mês.'}

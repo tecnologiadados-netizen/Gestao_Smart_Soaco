@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CartesianGrid,
   Legend,
@@ -11,29 +11,38 @@ import {
 } from 'recharts';
 import {
   fetchCamasiDashboard,
+  getCamasiRecursoEscala,
+  putCamasiRecursoEscalaExcecoes,
   type CamasiDashboardResponse,
   type CamasiParadaValida,
 } from '../../api/producaoCamasi';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getChartTheme } from '../../utils/painelProducaoFormat';
 import ModalCamasiKpi, { type CamasiKpiModalTipo } from '../../components/producao/ModalCamasiKpi';
+import ModalEscalaPontualRecurso from '../../components/programacao-producao/ModalEscalaPontualRecurso';
+import type { ProgramacaoProducaoRecurso, RecursoEscalaExcecao } from '../../components/programacao-producao/types';
 import KpiPainelVoltarLink from '../../components/kpis/KpiPainelVoltarLink';
 import {
   formatDuracaoDidatica,
   formatHmsCurto,
+  formatHoraCurtaAgora,
   formatHoras,
   formatYmdBr,
   formatYmdBrComSemana,
   hojeYmd,
+  inicioMesAtualYmd,
+  inicioSemanaAtualYmd,
   mesesAtrasYmd,
 } from '../../components/producao/camasiFormat';
-import { formatEscalaResumo } from '../../utils/recursoEscalaLabel';
-import { horasEscalaNoDia } from '../../utils/recursoEscalaHoras';
+import { formatEscalaExcecaoResumo } from '../../utils/recursoEscalaLabel';
+import { excecoesSobrepostasAoPeriodo, horasEscalaNoDia } from '../../utils/recursoEscalaHoras';
+import { categoriaParadaCamasi } from '../../utils/camasiMotivoJornada';
 import { classesBlocoDia } from '../../components/producao/camasiTabelaDia';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
 import SequenciamentoDateField from '../../components/sequenciamento-carradas/SequenciamentoDateField';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
+import { CalendarClock } from 'lucide-react';
 
 type Filtros = { dataIni: string; dataFim: string };
 
@@ -105,7 +114,27 @@ function getParadaSortValue(row: CamasiParadaValida, colId: string): string | nu
 }
 
 function filtroDefault(): Filtros {
-  return { dataIni: mesesAtrasYmd(12), dataFim: hojeYmd() };
+  const hoje = hojeYmd();
+  return { dataIni: hoje, dataFim: hoje };
+}
+
+type PresetPeriodo = 'hoje' | 'semana' | 'mes' | '12meses' | 'periodo';
+
+function presetDeFiltros(f: Filtros): PresetPeriodo {
+  const hoje = hojeYmd();
+  if (f.dataIni === hoje && f.dataFim === hoje) return 'hoje';
+  if (f.dataIni === inicioSemanaAtualYmd() && f.dataFim === hoje) return 'semana';
+  if (f.dataIni === inicioMesAtualYmd() && f.dataFim === hoje) return 'mes';
+  if (f.dataIni === mesesAtrasYmd(12) && f.dataFim === hoje) return '12meses';
+  return 'periodo';
+}
+
+function filtrosDoPreset(p: Exclude<PresetPeriodo, 'periodo'>): Filtros {
+  const hoje = hojeYmd();
+  if (p === 'hoje') return { dataIni: hoje, dataFim: hoje };
+  if (p === 'semana') return { dataIni: inicioSemanaAtualYmd(), dataFim: hoje };
+  if (p === 'mes') return { dataIni: inicioMesAtualYmd(), dataFim: hoje };
+  return { dataIni: mesesAtrasYmd(12), dataFim: hoje };
 }
 
 const MESES_ABREV = [
@@ -147,6 +176,8 @@ type PontoPrevistoParado = {
   label: string;
   previsto: number;
   parado: number;
+  paradoOperacional: number;
+  paradoJornada: number;
   /** previsto − parado (não negativo). */
   producao: number;
 };
@@ -165,11 +196,22 @@ function buildSeriePrevistoParado(
   dataIni: string,
   dataFim: string,
   escala: CamasiDashboardResponse['escala'] | null | undefined,
-  resumoDias: { data: string; paradoHoras: number }[] | undefined
+  resumoDias:
+    | {
+        data: string;
+        paradoHoras: number;
+        paradoOperacionalHoras?: number;
+        paradoJornadaHoras?: number;
+      }[]
+    | undefined
 ): PontoPrevistoParado[] {
-  const paradoMap = new Map<string, number>();
+  const paradoMap = new Map<string, { all: number; op: number; jor: number }>();
   for (const d of resumoDias ?? []) {
-    paradoMap.set(d.data, d.paradoHoras);
+    paradoMap.set(d.data, {
+      all: d.paradoHoras,
+      op: d.paradoOperacionalHoras ?? 0,
+      jor: d.paradoJornadaHoras ?? 0,
+    });
   }
   const dias = ymdRange(dataIni, dataFim);
   if (dias.length === 0) return [];
@@ -178,7 +220,10 @@ function buildSeriePrevistoParado(
     const pontos: PontoPrevistoParado[] = [];
     for (const ymd of dias) {
       const previsto = round1(horasEscalaNoDia(ymd, escala));
-      const parado = round1(paradoMap.get(ymd) ?? 0);
+      const p = paradoMap.get(ymd);
+      const parado = round1(p?.all ?? 0);
+      const paradoOperacional = round1(p?.op ?? 0);
+      const paradoJornada = round1(p?.jor ?? 0);
       if (previsto <= 0 && parado <= 0) continue;
       const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
       pontos.push(
@@ -187,18 +232,31 @@ function buildSeriePrevistoParado(
           label: m ? `${m[3]}/${m[2]}` : ymd,
           previsto,
           parado,
+          paradoOperacional,
+          paradoJornada,
         })
       );
     }
     return pontos;
   }
 
-  const mesMap = new Map<string, { previsto: number; parado: number }>();
+  const mesMap = new Map<
+    string,
+    { previsto: number; parado: number; paradoOperacional: number; paradoJornada: number }
+  >();
   for (const ymd of dias) {
     const mes = ymd.slice(0, 7);
-    const acc = mesMap.get(mes) ?? { previsto: 0, parado: 0 };
+    const acc = mesMap.get(mes) ?? {
+      previsto: 0,
+      parado: 0,
+      paradoOperacional: 0,
+      paradoJornada: 0,
+    };
+    const p = paradoMap.get(ymd);
     acc.previsto += horasEscalaNoDia(ymd, escala);
-    acc.parado += paradoMap.get(ymd) ?? 0;
+    acc.parado += p?.all ?? 0;
+    acc.paradoOperacional += p?.op ?? 0;
+    acc.paradoJornada += p?.jor ?? 0;
     mesMap.set(mes, acc);
   }
   return [...mesMap.entries()]
@@ -211,6 +269,8 @@ function buildSeriePrevistoParado(
         label: idx >= 0 && idx < 12 ? `${MESES_ABREV[idx]}/${y}` : mes,
         previsto: round1(v.previsto),
         parado: round1(v.parado),
+        paradoOperacional: round1(v.paradoOperacional),
+        paradoJornada: round1(v.paradoJornada),
       });
     });
 }
@@ -268,24 +328,51 @@ export default function ProducaoCamasiPage() {
 
   const [kpiModal, setKpiModal] = useState<CamasiKpiModalTipo | null>(null);
   const [motivoModal, setMotivoModal] = useState<string | null>(null);
+  const [filtroCategoria, setFiltroCategoria] = useState<'operacional' | 'jornada' | 'todas'>(
+    'operacional'
+  );
+  const [pontualRecurso, setPontualRecurso] = useState<ProgramacaoProducaoRecurso | null>(null);
+  const [pontualSalvando, setPontualSalvando] = useState(false);
+  const [pontualErro, setPontualErro] = useState<string | null>(null);
+  const [atualizadoAs, setAtualizadoAs] = useState<string | null>(null);
+  const carregarEmVoo = useRef(false);
 
-  const carregar = useCallback(async (f: Filtros) => {
-    setLoading(true);
+  const carregar = useCallback(async (f: Filtros, opts?: { silencioso?: boolean }) => {
+    if (carregarEmVoo.current) return;
+    carregarEmVoo.current = true;
+    const silencioso = opts?.silencioso === true;
+    if (!silencioso) setLoading(true);
     setErro(null);
     try {
       const res = await fetchCamasiDashboard(f.dataIni, f.dataFim);
       setData(res);
+      setAtualizadoAs(formatHoraCurtaAgora());
     } catch (e) {
-      setData(null);
+      if (!silencioso) setData(null);
       setErro(e instanceof Error ? e.message : 'Erro ao carregar dashboard Camasi.');
     } finally {
-      setLoading(false);
+      carregarEmVoo.current = false;
+      if (!silencioso) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void carregar(filtros);
   }, [carregar, filtros]);
+
+  const isFiltroHoje =
+    filtros.dataIni === filtros.dataFim && filtros.dataIni === hojeYmd();
+  const presetAtivo = presetDeFiltros(draft);
+
+  useEffect(() => {
+    if (!isFiltroHoje) return;
+    const id = window.setInterval(() => {
+      if (document.hidden) return;
+      if (kpiModal || pontualRecurso) return;
+      void carregar(filtros, { silencioso: true });
+    }, 90_000);
+    return () => window.clearInterval(id);
+  }, [isFiltroHoje, filtros, carregar, kpiModal, pontualRecurso]);
 
   const filtrosPendentes = useMemo(
     () => draft.dataIni !== filtros.dataIni || draft.dataFim !== filtros.dataFim,
@@ -297,6 +384,14 @@ export default function ProducaoCamasiPage() {
     return buildSeriePrevistoParado(data.dataIni, data.dataFim, data.escala, data.resumoDias);
   }, [data]);
 
+  const pontuaisNoPeriodo = useMemo(
+    () =>
+      data?.escala
+        ? excecoesSobrepostasAoPeriodo(data.escala.excecoes, data.dataIni, data.dataFim)
+        : [],
+    [data]
+  );
+
   const chartPrevistoParadoGranularidade =
     chartPrevistoParado.length > 0 && chartPrevistoParado[0]?.chave.length === 10
       ? 'dia'
@@ -306,6 +401,13 @@ export default function ProducaoCamasiPage() {
   const maxMotivo = Math.max(...motivosDisplay.map((m) => m.horas), 1);
 
   const paradasValidas = data?.paradasValidas ?? [];
+  const paradasPorCategoria = useMemo(() => {
+    if (filtroCategoria === 'todas') return paradasValidas;
+    return paradasValidas.filter((p) => {
+      const cat = p.categoria ?? categoriaParadaCamasi(p.justificativa);
+      return cat === filtroCategoria;
+    });
+  }, [paradasValidas, filtroCategoria]);
   const getParadaCellTextCb = useCallback(
     (row: CamasiParadaValida, colId: string) => getParadaCellText(row, colId),
     []
@@ -315,7 +417,7 @@ export default function ProducaoCamasiPage() {
     []
   );
   const gradeParadas = useGradeFiltrosExcel<CamasiParadaValida>({
-    rows: paradasValidas,
+    rows: paradasPorCategoria,
     columnIds: [...PARADAS_COL_IDS],
     getCellText: getParadaCellTextCb,
     valueForSort: getParadaSortValueCb,
@@ -346,33 +448,77 @@ export default function ProducaoCamasiPage() {
     setFiltros({ ...draft });
   }, [draft, limparFiltrosParadas]);
 
+  const aplicarPreset = useCallback(
+    (p: Exclude<PresetPeriodo, 'periodo'>) => {
+      const next = filtrosDoPreset(p);
+      setDraft(next);
+      setKpiModal(null);
+      setMotivoModal(null);
+      limparFiltrosParadas();
+      setFiltros(next);
+    },
+    [limparFiltrosParadas]
+  );
+
+  const abrirEscalaPontual = useCallback(async () => {
+    setPontualErro(null);
+    try {
+      const rec = await getCamasiRecursoEscala();
+      setPontualRecurso(rec);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível abrir a escala pontual.');
+    }
+  }, []);
+
+  const salvarPontualCamasi = useCallback(
+    async (excecoes: RecursoEscalaExcecao[]) => {
+      setPontualSalvando(true);
+      setPontualErro(null);
+      try {
+        await putCamasiRecursoEscalaExcecoes(excecoes);
+        setPontualRecurso(null);
+        await carregar(filtros);
+      } catch (e) {
+        setPontualErro(e instanceof Error ? e.message : 'Erro ao salvar escala pontual.');
+      } finally {
+        setPontualSalvando(false);
+      }
+    },
+    [carregar, filtros]
+  );
+
   const kpis = data?.kpis;
 
   return (
     <div className="px-4 py-5 md:px-6">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div className="mb-4">
+        <KpiPainelVoltarLink painelId="producao-camasi" className="mb-1" />
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div className="min-w-0">
-          <KpiPainelVoltarLink painelId="producao-camasi" className="mb-1" />
           <h1 className="truncate text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             Produção Camasi
           </h1>
           <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-            Paradas reais dentro da escala
+            Paradas operacionais dentro da escala
             {data
               ? ` · ${formatYmdBr(data.dataIni)} a ${formatYmdBr(data.dataFim)}`
               : ''}
+            {isFiltroHoje && atualizadoAs ? ` · atualizado às ${atualizadoAs}` : ''}
           </p>
-          {data?.escala ? (
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Escala {data.escala.recursoNome ?? data.escala.recursoCod}:{' '}
-              {formatEscalaResumo({
-                diasSemana: data.escala.diasSemana,
-                faixas: data.escala.faixas,
-              })}
-            </p>
-          ) : data && !data.escala ? (
+          {data && !data.escala ? (
             <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
               Sem escala na Perfiladeira 1000 — cadastre em PCP → Recursos para recortar as paradas.
+            </p>
+          ) : pontuaisNoPeriodo.length > 0 ? (
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
+              Escala pontual no período:{' '}
+              {pontuaisNoPeriodo
+                .slice(0, 4)
+                .map((ex) => formatEscalaExcecaoResumo(ex))
+                .join(' · ')}
+              {pontuaisNoPeriodo.length > 4
+                ? ` · e mais ${pontuaisNoPeriodo.length - 4}`
+                : ''}
             </p>
           ) : null}
           {filtrosPendentes && (
@@ -381,37 +527,67 @@ export default function ProducaoCamasiPage() {
             </p>
           )}
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="grid grid-cols-2 gap-2">
-            <label className="text-xs text-slate-600 dark:text-slate-300">
-              Início
-              <div className="mt-1">
-                <SequenciamentoDateField
-                  value={draft.dataIni}
-                  onChange={(iso) => setDraft((d) => ({ ...d, dataIni: iso }))}
-                  fullWidth
-                  placeholder="dd/mm/aaaa"
-                  className="!border-slate-200 !bg-white !py-1 shadow-sm dark:!border-slate-700 dark:!bg-slate-900"
-                />
-              </div>
-            </label>
-            <label className="text-xs text-slate-600 dark:text-slate-300">
-              Fim
-              <div className="mt-1">
-                <SequenciamentoDateField
-                  value={draft.dataFim}
-                  onChange={(iso) => setDraft((d) => ({ ...d, dataFim: iso }))}
-                  fullWidth
-                  placeholder="dd/mm/aaaa"
-                  className="!border-slate-200 !bg-white !py-1 shadow-sm dark:!border-slate-700 dark:!bg-slate-900"
-                />
-              </div>
-            </label>
+        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+          <div
+            className="inline-flex h-9 overflow-hidden rounded-md border border-slate-200 dark:border-slate-700"
+            role="group"
+            aria-label="Atalhos de período"
+          >
+            {(
+              [
+                ['hoje', 'Hoje'],
+                ['semana', 'Semana'],
+                ['mes', 'Mês'],
+                ['12meses', '12 meses'],
+              ] as const
+            ).map(([id, label], index) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => aplicarPreset(id)}
+                className={`h-9 whitespace-nowrap px-3 text-xs font-semibold transition-colors ${
+                  index > 0 ? 'border-l border-slate-200 dark:border-slate-700' : ''
+                } ${
+                  presetAtivo === id
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="w-[9.5rem]">
+            <SequenciamentoDateField
+              value={draft.dataIni}
+              onChange={(iso) => setDraft((d) => ({ ...d, dataIni: iso }))}
+              fullWidth
+              placeholder="Início"
+              className="!h-9 !border-slate-200 !bg-white !py-1.5 shadow-sm dark:!border-slate-700 dark:!bg-slate-900"
+            />
+          </div>
+          <div className="w-[9.5rem]">
+            <SequenciamentoDateField
+              value={draft.dataFim}
+              onChange={(iso) => setDraft((d) => ({ ...d, dataFim: iso }))}
+              fullWidth
+              placeholder="Fim"
+              className="!h-9 !border-slate-200 !bg-white !py-1.5 shadow-sm dark:!border-slate-700 dark:!bg-slate-900"
+            />
           </div>
           <button
             type="button"
+            onClick={() => void abrirEscalaPontual()}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            title="Folga ou horário especial em um dia ou período"
+          >
+            <CalendarClock className="h-4 w-4 shrink-0" aria-hidden />
+            Horário pontual
+          </button>
+          <button
+            type="button"
             onClick={aplicarFiltros}
-            className="h-9 rounded-md bg-primary-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-primary-700"
+            className="h-9 rounded-md bg-primary-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-primary-700"
           >
             Filtrar
           </button>
@@ -419,10 +595,11 @@ export default function ProducaoCamasiPage() {
             type="button"
             onClick={() => void carregar(filtros)}
             disabled={loading}
-            className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            className="h-9 rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             {loading ? 'Atualizando…' : 'Atualizar'}
           </button>
+        </div>
         </div>
       </div>
 
@@ -436,8 +613,12 @@ export default function ProducaoCamasiPage() {
         <KpiCard
           loading={loading}
           title="Eventos de parada"
-          value={new Intl.NumberFormat('pt-BR').format(kpis?.qtdeParadas ?? 0)}
-          sub="Quantidade de paradas no período"
+          value={new Intl.NumberFormat('pt-BR').format(kpis?.qtdeParadasOperacionais ?? 0)}
+          sub={
+            (kpis?.qtdeParadasJornada ?? 0) > 0
+              ? `Operacionais · início/fim de jornada: ${new Intl.NumberFormat('pt-BR').format(kpis?.qtdeParadasJornada ?? 0)}`
+              : 'Quantidade de paradas operacionais no período'
+          }
           onClick={() => {
             setMotivoModal(null);
             setKpiModal('eventos');
@@ -446,8 +627,12 @@ export default function ProducaoCamasiPage() {
         <KpiCard
           loading={loading}
           title="Tempo parado"
-          value={formatHoras(kpis?.horasParado ?? 0)}
-          sub="Tempo total de parada no período"
+          value={formatHoras(kpis?.horasParadoOperacional ?? kpis?.horasParado ?? 0)}
+          sub={
+            (kpis?.horasParadoJornada ?? 0) > 0
+              ? `Operacional · jornada início/fim: ${formatHoras(kpis?.horasParadoJornada ?? 0)}`
+              : 'Paradas operacionais no período'
+          }
           onClick={() => {
             setMotivoModal(null);
             setKpiModal('parado');
@@ -492,7 +677,7 @@ export default function ProducaoCamasiPage() {
             Previsto × parado ao longo do período
           </h3>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            No detalhe ao passar o mouse: produção = previsto − parado
+            No detalhe ao passar o mouse: produção = previsto − parado operacional
             {chartPrevistoParadoGranularidade === 'dia'
               ? ' — por dia (período curto)'
               : ' — por mês (período longo)'}
@@ -536,7 +721,7 @@ export default function ProducaoCamasiPage() {
                           Tempo previsto: {formatHoras(row.previsto)}
                         </p>
                         <p className="tabular-nums" style={{ color: isDark ? '#fbbf24' : '#d97706' }}>
-                          Tempo parado: {formatHoras(row.parado)}
+                          Parada operacional: {formatHoras(row.paradoOperacional)}
                         </p>
                         <p
                           className="mt-1 border-t border-slate-200 pt-1 font-medium tabular-nums dark:border-slate-600"
@@ -550,7 +735,7 @@ export default function ProducaoCamasiPage() {
                 />
                 <Legend
                   formatter={(value) =>
-                    value === 'previsto' ? 'Tempo previsto de produção' : 'Tempo parado'
+                    value === 'previsto' ? 'Previsto' : 'Parada operacional'
                   }
                 />
                 <Line
@@ -564,8 +749,8 @@ export default function ProducaoCamasiPage() {
                 />
                 <Line
                   type="monotone"
-                  dataKey="parado"
-                  name="parado"
+                  dataKey="paradoOperacional"
+                  name="paradoOperacional"
                   stroke={isDark ? '#fbbf24' : '#d97706'}
                   strokeWidth={2}
                   dot={chartPrevistoParadoGranularidade === 'dia' ? false : { r: 3 }}
@@ -584,7 +769,10 @@ export default function ProducaoCamasiPage() {
               Principais motivos de parada
             </h3>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Só paradas que cruzam a escala — clique na barra para ver os eventos do motivo
+              Sem início/fim de jornada — clique na barra para ver os eventos do motivo
+              {(kpis?.horasParadoJornada ?? 0) > 0
+                ? ` · jornada ociosa ${formatHoras(kpis?.horasParadoJornada ?? 0)}`
+                : ''}
             </p>
           </div>
           {loading ? (
@@ -643,15 +831,37 @@ export default function ProducaoCamasiPage() {
                 Paradas válidas
               </h3>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Cada evento com tempo parado dentro da escala ·{' '}
+                Eventos com tempo parado dentro da escala ·{' '}
                 {temFiltrosParadas
-                  ? `${paradasFiltradas.length} de ${paradasValidas.length}`
-                  : paradasValidas.length}{' '}
+                  ? `${paradasFiltradas.length} de ${paradasPorCategoria.length}`
+                  : paradasPorCategoria.length}{' '}
                 registro
-                {(temFiltrosParadas ? paradasFiltradas.length : paradasValidas.length) === 1
+                {(temFiltrosParadas ? paradasFiltradas.length : paradasPorCategoria.length) === 1
                   ? ''
                   : 's'}
               </p>
+              <div className="mt-2 flex flex-wrap gap-1">
+                {(
+                  [
+                    ['operacional', 'Operacionais'],
+                    ['jornada', 'Início/fim jornada'],
+                    ['todas', 'Todas'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setFiltroCategoria(id)}
+                    className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                      filtroCategoria === id
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
             {temFiltrosParadas ? (
               <button
@@ -667,7 +877,7 @@ export default function ProducaoCamasiPage() {
             <div className="flex flex-1 items-center justify-center text-slate-500">Carregando…</div>
           ) : paradasFiltradas.length === 0 ? (
             <div className="flex flex-1 items-center justify-center text-slate-500">
-              {paradasValidas.length === 0 ? 'Sem paradas válidas no período.' : 'Nenhum registro no filtro.'}
+              {paradasValidas.length === 0 ? 'Sem paradas válidas no período.' : 'Nenhum registro neste recorte.'}
             </div>
           ) : (
             <div
@@ -799,11 +1009,22 @@ export default function ProducaoCamasiPage() {
         tipo={kpiModal}
         data={data}
         motivoFiltro={motivoModal}
+        categoriaFiltro={motivoModal ? null : 'operacional'}
         onClose={() => {
           setKpiModal(null);
           setMotivoModal(null);
         }}
       />
+      {pontualRecurso ? (
+        <ModalEscalaPontualRecurso
+          recurso={pontualRecurso}
+          canEdit
+          salvando={pontualSalvando}
+          erro={pontualErro}
+          onClose={() => !pontualSalvando && setPontualRecurso(null)}
+          onSalvar={(excecoes) => void salvarPontualCamasi(excecoes)}
+        />
+      ) : null}
     </div>
   );
 }

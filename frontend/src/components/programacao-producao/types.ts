@@ -46,9 +46,20 @@ export type RecursoEscalaFaixa = {
   fim: string;
 };
 
+export type RecursoEscalaExcecaoTipo = 'folga' | 'substituir';
+
+export type RecursoEscalaExcecao = {
+  id: string;
+  dataIni: string;
+  dataFim: string;
+  tipo: RecursoEscalaExcecaoTipo;
+  faixas?: RecursoEscalaFaixa[];
+};
+
 export type RecursoEscala = {
   diasSemana: number[];
   faixas: RecursoEscalaFaixa[];
+  excecoes?: RecursoEscalaExcecao[];
 };
 
 export type ProgramacaoProducaoRecurso = {
@@ -61,6 +72,7 @@ export type ProgramacaoProducaoRecurso = {
   createdAt: string;
   updatedAt: string;
   escala?: RecursoEscala | null;
+  escalaExcecoes?: RecursoEscalaExcecao[];
   painelCamasi?: boolean;
 };
 

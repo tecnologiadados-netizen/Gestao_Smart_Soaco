@@ -16,7 +16,9 @@ import {
   formatYmdBrComSemana,
 } from './camasiFormat';
 import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../utils/textoLivreBusca';
-import { DIAS_SEMANA_ESCALA, formatEscalaResumo } from '../../utils/recursoEscalaLabel';
+import { DIAS_SEMANA_ESCALA, formatEscalaExcecaoResumo, formatEscalaResumo } from '../../utils/recursoEscalaLabel';
+import { excecoesSobrepostasAoPeriodo } from '../../utils/recursoEscalaHoras';
+import { categoriaParadaCamasi } from '../../utils/camasiMotivoJornada';
 import { classesBlocoDia } from './camasiTabelaDia';
 
 export type CamasiKpiModalTipo = 'eventos' | 'parado' | 'previsto' | 'producao';
@@ -130,9 +132,21 @@ function labelDiasEscala(diasSemana: number[]): string {
     .join(', ');
 }
 
-function BlocoEscalaEmUso({ escala, destaque }: { escala: CamasiEscala; destaque?: boolean }) {
+function BlocoEscalaEmUso({
+  escala,
+  destaque,
+  dataIni,
+  dataFim,
+}: {
+  escala: CamasiEscala;
+  destaque?: boolean;
+  dataIni?: string;
+  dataFim?: string;
+}) {
   const nome = escala.recursoNome?.trim() || escala.recursoCod || 'Recurso';
   const dias = labelDiasEscala(escala.diasSemana);
+  const pontuais =
+    dataIni && dataFim ? excecoesSobrepostasAoPeriodo(escala.excecoes, dataIni, dataFim) : [];
   return (
     <div
       className={
@@ -183,9 +197,17 @@ function BlocoEscalaEmUso({ escala, destaque }: { escala: CamasiEscala; destaque
       </div>
       {destaque ? (
         <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-          Só entra o tempo nestas faixas (intervalo de almoço e fora da jornada não entram). Cadastro em
-          PCP → Recursos.
+          Só entra o tempo nestas faixas, salvo escala pontual (folga ou horário especial) cadastrada
+          em PCP → Recursos (clique na máquina).
         </p>
+      ) : null}
+      {pontuais.length > 0 ? (
+        <ul className="mt-2 space-y-0.5 text-xs text-amber-800 dark:text-amber-200">
+          {pontuais.slice(0, 6).map((ex) => (
+            <li key={ex.id}>{formatEscalaExcecaoResumo(ex)}</li>
+          ))}
+          {pontuais.length > 6 ? <li>e mais {pontuais.length - 6}</li> : null}
+        </ul>
       ) : null}
     </div>
   );
@@ -196,6 +218,7 @@ export default function ModalCamasiKpi({
   tipo,
   data,
   motivoFiltro = null,
+  categoriaFiltro = null,
   onClose,
 }: {
   open: boolean;
@@ -203,6 +226,8 @@ export default function ModalCamasiKpi({
   data: CamasiDashboardResponse | null;
   /** Quando informado, lista só as paradas deste motivo (clique no gráfico de motivos). */
   motivoFiltro?: string | null;
+  /** Recorte início/fim de jornada vs operacional. */
+  categoriaFiltro?: 'operacional' | 'jornada' | null;
   onClose: () => void;
 }) {
   const [filtro, setFiltro] = useState('');
@@ -221,9 +246,13 @@ export default function ModalCamasiKpi({
 
   const paradas = useMemo(() => {
     const all = data?.paradasValidas ?? [];
-    if (!motivoFiltro) return all;
-    return all.filter((p) => p.justificativa === motivoFiltro);
-  }, [data?.paradasValidas, motivoFiltro]);
+    const porMotivo = motivoFiltro ? all.filter((p) => p.justificativa === motivoFiltro) : all;
+    if (!categoriaFiltro || motivoFiltro) return porMotivo;
+    return porMotivo.filter((p) => {
+      const cat = p.categoria ?? categoriaParadaCamasi(p.justificativa);
+      return cat === categoriaFiltro;
+    });
+  }, [data?.paradasValidas, motivoFiltro, categoriaFiltro]);
   const producoes = data?.producaoValidas ?? [];
   const kpis = data?.kpis;
 
@@ -287,16 +316,16 @@ export default function ModalCamasiKpi({
 
   const titulos: Record<CamasiKpiModalTipo, { titulo: string; sub: string }> = {
     eventos: {
-      titulo: 'Eventos de parada',
+      titulo: 'Eventos de parada operacional',
       sub: temEscala
-        ? `${kpis?.qtdeParadas ?? paradas.length} evento(s) — memorial: previsto − parado unificado (sem sobrepor) = produção.`
-        : `${kpis?.qtdeParadas ?? paradas.length} evento(s) com tempo parado na escala — cadastre a escala do recurso para o memorial do dia.`,
+        ? `${kpis?.qtdeParadasOperacionais ?? paradas.length} evento(s) operacionais — início/fim de jornada à parte. Memorial: previsto − parado unificado = produção.`
+        : `${kpis?.qtdeParadasOperacionais ?? paradas.length} evento(s) operacionais com tempo parado na escala.`,
     },
     parado: {
-      titulo: 'Tempo parado',
+      titulo: 'Tempo parado operacional',
       sub: temEscala
-        ? `Total ${formatHoras(kpis?.horasParado ?? 0)} — parado unificado na escala (intervalos sobrepostos não somam duas vezes).`
-        : `Total ${formatHoras(kpis?.horasParado ?? 0)} — cada linha é uma parada válida (dentro da escala).`,
+        ? `Operacional ${formatHoras(kpis?.horasParadoOperacional ?? 0)} · jornada início/fim ${formatHoras(kpis?.horasParadoJornada ?? 0)} — união na escala (sobrepostos não somam duas vezes).`
+        : `Operacional ${formatHoras(kpis?.horasParadoOperacional ?? kpis?.horasParado ?? 0)}.`,
     },
     producao: {
       titulo: 'Produção',
@@ -430,7 +459,11 @@ export default function ModalCamasiKpi({
 
         {tipo !== 'previsto' && data?.escala ? (
           <div className="border-b border-slate-100 px-5 py-2 dark:border-slate-800">
-            <BlocoEscalaEmUso escala={data.escala} />
+            <BlocoEscalaEmUso
+              escala={data.escala}
+              dataIni={data.dataIni}
+              dataFim={data.dataFim}
+            />
           </div>
         ) : null}
 
@@ -451,7 +484,14 @@ export default function ModalCamasiKpi({
           <div className={tipo === 'previsto' ? 'pt-5' : 'pt-3'}>
           {tipo === 'previsto' ? (
             <div className="space-y-4">
-              {data?.escala ? <BlocoEscalaEmUso escala={data.escala} destaque /> : null}
+              {data?.escala ? (
+                <BlocoEscalaEmUso
+                  escala={data.escala}
+                  destaque
+                  dataIni={data.dataIni}
+                  dataFim={data.dataFim}
+                />
+              ) : null}
               <table className="w-full text-sm">
                 <tbody>
                   <tr className="border-b border-slate-100 dark:border-slate-800">

@@ -70,3 +70,17 @@ export function inicioMesAtualYmd(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 }
+
+/** Segunda-feira da semana corrente (semana começa na segunda). */
+export function inicioSemanaAtualYmd(): string {
+  const d = new Date();
+  const wd = d.getDay();
+  const diff = wd === 0 ? -6 : 1 - wd;
+  d.setDate(d.getDate() + diff);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export function formatHoraCurtaAgora(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}

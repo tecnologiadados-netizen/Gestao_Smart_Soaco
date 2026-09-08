@@ -1,4 +1,5 @@
-import { apiJson } from './client';
+import { apiFetch, apiJson } from './client';
+import type { ProgramacaoProducaoRecurso, RecursoEscalaExcecao } from '../components/programacao-producao/types';
 
 export type CamasiStatusResponse = {
   ok: boolean;
@@ -10,9 +11,13 @@ export type CamasiStatusResponse = {
 export type CamasiDashboardKpis = {
   horasProducao: number;
   horasParado: number;
+  horasParadoOperacional?: number;
+  horasParadoJornada?: number;
   horasEscala?: number | null;
   disponibilidadePct: number | null;
   qtdeParadas: number;
+  qtdeParadasOperacionais?: number;
+  qtdeParadasJornada?: number;
 };
 
 export type CamasiMesAgg = {
@@ -52,6 +57,7 @@ export type CamasiParadaValida = {
   peca: string;
   justificativa: string;
   observacao: string | null;
+  categoria?: 'jornada' | 'operacional';
 };
 
 export type CamasiProducaoValida = {
@@ -68,6 +74,8 @@ export type CamasiResumoDia = {
   data: string;
   escalaHoras: number;
   paradoHoras: number;
+  paradoOperacionalHoras?: number;
+  paradoJornadaHoras?: number;
   producaoHoras: number;
   paradoSomaEventos: number;
   temSobreposicao: boolean;
@@ -91,6 +99,13 @@ export type CamasiDashboardResponse = {
     diasSemana: number[];
     faixas: { inicio: string; fim: string }[];
     horasEscala: number | null;
+    excecoes?: {
+      id: string;
+      dataIni: string;
+      dataFim: string;
+      tipo: 'folga' | 'substituir';
+      faixas?: { inicio: string; fim: string }[];
+    }[];
   } | null;
 };
 
@@ -129,4 +144,25 @@ export async function fetchCamasiDashboardDias(params: {
 }): Promise<CamasiDiasResponse> {
   const qs = new URLSearchParams(params);
   return apiJson<CamasiDiasResponse>(`/api/producao-camasi/dashboard/dias?${qs}`);
+}
+
+export async function getCamasiRecursoEscala(): Promise<ProgramacaoProducaoRecurso> {
+  const r = await apiJson<{ data: ProgramacaoProducaoRecurso }>('/api/producao-camasi/recurso-escala');
+  if (!r.data) throw new Error('Recurso Camasi não encontrado.');
+  return r.data;
+}
+
+export async function putCamasiRecursoEscalaExcecoes(
+  escalaExcecoes: RecursoEscalaExcecao[]
+): Promise<ProgramacaoProducaoRecurso> {
+  const res = await apiFetch('/api/producao-camasi/recurso-escala/excecoes', {
+    method: 'PUT',
+    body: { escalaExcecoes },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? 'Erro ao salvar escala pontual.');
+  }
+  const r = (await res.json()) as { data: ProgramacaoProducaoRecurso };
+  return r.data;
 }
