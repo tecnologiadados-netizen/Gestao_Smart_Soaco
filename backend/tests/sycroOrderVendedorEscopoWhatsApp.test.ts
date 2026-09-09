@@ -15,6 +15,8 @@ describe('sycroOrderVendedorEscopoWhatsApp', () => {
     expect(resolverEscopoWhatsAppPorVendedor('MARIA LEOPOLDINA ARAUJO MARQUES')).toBe('loja');
     expect(resolverEscopoWhatsAppPorVendedor('ROBERTO')).toBe('loja');
     expect(resolverEscopoWhatsAppPorVendedor('Roberto')).toBe('loja');
+    expect(resolverEscopoWhatsAppPorVendedor('SO MOVEIS')).toBe('loja');
+    expect(resolverEscopoWhatsAppPorVendedor('Só Móveis')).toBe('loja');
   });
 
   it('mapeia Indústria', () => {
