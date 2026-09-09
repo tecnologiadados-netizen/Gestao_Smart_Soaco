@@ -70,7 +70,7 @@ export async function downloadPainelInadimplenciaDetalheXlsx(input: {
 
   for (const row of input.linhas) {
     const venc = row.vencimento;
-    const recebido = row.pagamento ?? row.dataBaixa;
+    const recebido = row.pagamento;
     const excelRow = ws.addRow([
       row.clienteNome,
       row.empresaNome?.trim() || '',

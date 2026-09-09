@@ -857,7 +857,8 @@ async function detalheAtrasoLoteNomus(filtro: PainelDetalheFiltro, limit: number
     empresaNome: r.empresa != null ? String(r.empresa) : null,
     tipo: r.formaPagamento != null ? String(r.formaPagamento) : null,
     vencimento: toYmd(r.dataVencimento),
-    pagamento: toYmd(r.dataRecebimento) || toYmd(r.dataBaixa),
+    // Só recebimento do cliente. dataBaixa de FIDC/desconto não é pagamento.
+    pagamento: toYmd(r.dataRecebimento),
     dataBaixa: toYmd(r.dataBaixa),
     valor: Math.abs(toNum(r.valor)),
     contatosCount: 0,
