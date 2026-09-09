@@ -918,7 +918,7 @@ const ArvoreContasDre = forwardRef<DreArvoreExportHandle, ArvoreContasDreProps>(
           rateioEmpresaRecorte={detalheAberto.rateioEmpresaRecorte}
           rateioPercentuaisPlanoContas={detalheAberto.rateioPercentuaisPlanoContas}
           valorEsperadoGrade={detalheAberto.valorEsperadoGrade}
-          rotuloColunaDataBaixa="Data Competência"
+          rotuloColunaDataBaixa="Data Pagamento"
           filtroPorCompetencia
         />
       ) : null}
