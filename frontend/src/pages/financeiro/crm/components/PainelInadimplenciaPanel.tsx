@@ -62,11 +62,11 @@ function parseYmdLocal(ymd: string | null): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** Recebido: atraso após o prazo efetivo (1º dia útil se o vencimento for sáb/dom/feriado). Aberto: hoje − vencimento. */
+/** Recebido: atraso após o prazo efetivo. Aberto (sem pagamento do cliente): hoje − vencimento. Não usa dataBaixa (FIDC). */
 function diasAtrasoTitulo(row: TituloPainelInadimplencia): number | null {
   const venc = parseYmdLocal(row.vencimento);
   if (!venc) return null;
-  const pagIso = row.pagamento ?? row.dataBaixa;
+  const pagIso = row.pagamento;
   if (pagIso) {
     const prazo = getPrimeiroDiaUtilDoVencimento(row.vencimento!);
     const ate = parseYmdLocal(pagIso);
@@ -414,7 +414,7 @@ function detalheCellText(row: TituloPainelInadimplencia, col: DetalheColId): str
     case 'vencimento':
       return textoFiltroDataVencimento(row.vencimento);
     case 'recebimento':
-      return textoFiltroDataVencimento(row.pagamento ?? row.dataBaixa);
+      return textoFiltroDataVencimento(row.pagamento);
     case 'atraso': {
       const dias = diasAtrasoTitulo(row);
       return dias == null ? '—' : `${dias}d`;
@@ -433,7 +433,7 @@ function detalheSortValue(row: TituloPainelInadimplencia, col: DetalheColId): st
     case 'vencimento':
       return row.vencimento ?? '';
     case 'recebimento':
-      return row.pagamento ?? row.dataBaixa ?? '';
+      return row.pagamento ?? '';
     case 'valor':
       return row.valor;
     case 'atraso':
@@ -651,7 +651,7 @@ function ModalDetalhe({
                     <CelulaDataVencimento value={r.vencimento} />
                   </td>
                   <td className="px-2 py-1.5">
-                    <CelulaDataVencimento value={r.pagamento ?? r.dataBaixa} />
+                    <CelulaDataVencimento value={r.pagamento} />
                   </td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-slate-700 dark:text-slate-200">
                     {dias == null ? '—' : `${dias}d`}
