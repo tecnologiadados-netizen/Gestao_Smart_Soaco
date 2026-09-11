@@ -3,8 +3,9 @@
  */
 
 import { delayEntreDestinatariosMs, sendWhatsAppTextTo } from './evolutionApi.js';
-import { obterDadosFaturamentoDiario } from '../data/faturamentoDiarioRepository.js';
+import { obterDadosFaturamentoDiario, obterDadosFaturamentoDiarioLinhas } from '../data/faturamentoDiarioRepository.js';
 import { montarMensagemFaturamentoDiario } from './faturamentoDiarioMensagem.js';
+import { montarMensagemFaturamentoDiarioLinhas } from './faturamentoDiarioLinhasMensagem.js';
 import { obterDadosPedidosEntregaVencida } from '../data/pedidosRepository.js';
 import { montarMensagemPedidosEntregaVencida } from './pedidosEntregaVencidaMensagem.js';
 import { executarSqlSeguro } from '../data/whatsappNotificacaoNomusRepository.js';
@@ -58,6 +59,14 @@ async function gerarMensagemFaturamentoDiarioBuilder(): Promise<string> {
   return montarMensagemFaturamentoDiario(result.dados);
 }
 
+async function gerarMensagemFaturamentoDiarioLinhasBuilder(): Promise<string> {
+  const result = await obterDadosFaturamentoDiarioLinhas();
+  if (result.erro || !result.dados) {
+    throw new Error(result.erro ?? 'Erro ao obter faturamento por linha.');
+  }
+  return montarMensagemFaturamentoDiarioLinhas(result.dados);
+}
+
 async function gerarMensagemPedidosEntregaVencidaBuilder(): Promise<string> {
   const dados = await obterDadosPedidosEntregaVencida();
   return montarMensagemPedidosEntregaVencida(dados);
@@ -65,6 +74,7 @@ async function gerarMensagemPedidosEntregaVencidaBuilder(): Promise<string> {
 
 const BUILDERS: Record<string, () => Promise<string>> = {
   faturamento_diario: gerarMensagemFaturamentoDiarioBuilder,
+  faturamento_diario_linhas: gerarMensagemFaturamentoDiarioLinhasBuilder,
   pedidos_entrega_vencida: gerarMensagemPedidosEntregaVencidaBuilder,
 };
 

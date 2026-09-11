@@ -98,6 +98,7 @@ function mapTipo(
 }
 
 export async function listarTiposComDestinatarios(): Promise<WhatsappNotificacaoTipoRow[]> {
+  await ensureFaturamentoDiarioLinhasWhatsappTipo();
   const rows = await prisma.whatsappNotificacaoTipo.findMany({
     include: {
       destinatarios: { select: { usuarioId: true } },
@@ -106,6 +107,33 @@ export async function listarTiposComDestinatarios(): Promise<WhatsappNotificacao
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
   });
   return rows.map(mapTipo);
+}
+
+/** Tipo SMS: faturamento do dia por linha (Normal / Antecipado). */
+export async function ensureFaturamentoDiarioLinhasWhatsappTipo(): Promise<{ id: number; code: string }> {
+  const code = 'faturamento_diario_linhas';
+  const existing = await prisma.whatsappNotificacaoTipo.findUnique({
+    where: { code },
+    select: { id: true, code: true },
+  });
+  if (existing) return existing;
+
+  const created = await prisma.whatsappNotificacaoTipo.create({
+    data: {
+      code,
+      label: 'Faturamento diário por linha',
+      descricao:
+        'Resumo do faturamento do dia dividido em Faturamento Normal e Faturamento Antecipado (IPI, descontos e devoluções). Use Testar envio na tela SMS.',
+      ativo: true,
+      sortOrder: 31,
+      fonteMensagem: 'codigo',
+      modoDisparo: 'cron',
+      cronExpressao: null,
+      builderCode: 'faturamento_diario_linhas',
+    },
+    select: { id: true, code: true },
+  });
+  return created;
 }
 
 export async function buscarTipoPorCode(code: string) {

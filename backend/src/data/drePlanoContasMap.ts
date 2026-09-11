@@ -50,7 +50,8 @@ const ALIASES_NOMUS_PARA_DRE: Record<string, string> = {
   'epi': 'EPIs',
   'epis': 'EPIs',
   'fretes e carretos': 'Fretes e carretos',
-  'fretes - mercadorias': 'Fretes - Intercompany',
+  /** Nome Nomus = nome DRE 8.2.2; alias antigo "Intercompany" não existe na árvore e excluía o id do modal. */
+  'fretes - mercadorias': 'Fretes - Mercadorias',
   'servicos de manutencao industrial': 'Manutenção Industrial',
   'materiais de manutencao industrial': 'Manutenção Industrial',
   'materiais manutencao mecanica': 'Assessoria Manutenção Mecânica',
