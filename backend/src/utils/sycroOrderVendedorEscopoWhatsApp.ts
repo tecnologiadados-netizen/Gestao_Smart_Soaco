@@ -12,6 +12,7 @@ export const VENDEDORES_WHATSAPP_LOJA = [
   'LARISSA CRISTINE PINHEIRO DOS SANTOS',
   'MARIA LEOPOLDINA ARAUJO MARQUES',
   'ROBERTO',
+  'SO MOVEIS',
 ] as const;
 
 /** Vendedores que disparam alertas da Indústria. */
