@@ -17,6 +17,13 @@ export const FERIADOS_NORDESTE_POPULARES = [
     tipo: "estadual",
   },
   {
+    dia: 13,
+    mes: 3,
+    nome: "Dia da Batalha do Jenipapo",
+    uf: "PI",
+    tipo: "estadual",
+  },
+  {
     dia: 24,
     mes: 6,
     nome: "São João",
@@ -78,6 +85,20 @@ export const FERIADOS_NORDESTE_POPULARES = [
     nome: "Criação do Estado do Piauí",
     uf: "PI",
     tipo: "estadual",
+  },
+  {
+    dia: 16,
+    mes: 8,
+    nome: "Aniversário de Teresina",
+    uf: "PI",
+    tipo: "municipal",
+  },
+  {
+    dia: 8,
+    mes: 12,
+    nome: "Nossa Senhora da Conceição (Teresina)",
+    uf: "PI",
+    tipo: "municipal",
   },
 ] as const;
 
