@@ -1,7 +1,11 @@
 /**
  * Escala de trabalho de recurso (faixas no mesmo dia + dias da semana).
  * 0 = domingo … 6 = sábado (mesmo que Date#getDay).
+ *
+ * Feriados (nacional + Nordeste/PI/Teresina, mesma regra do CRM financeiro)
+ * não entram na jornada padrão — só contam com pontualidade `substituir`.
  */
+import { isFeriadoReconhecido } from '../data/crmFinanceiro/feriadosNacionais.js';
 
 export const CAMASI_RECURSO_COD = 'R001';
 
@@ -220,6 +224,7 @@ function janelasMsDoDia(ymd: string, escala: RecursoEscala): { startMs: number; 
   if (ex?.tipo === 'substituir' && ex.faixas?.length) {
     return janelasDeFaixas(ymd, ex.faixas);
   }
+  if (isFeriadoReconhecido(ymd)) return [];
   if (!escala.diasSemana.includes(wd)) return [];
   return janelasDeFaixas(ymd, escala.faixas);
 }

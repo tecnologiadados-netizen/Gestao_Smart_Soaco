@@ -72,7 +72,24 @@ describe('horasEscalaNoDia com exceções pontuais', () => {
     expect(horasEscalaNoDia('2026-09-09', escala)).toBe(0);
   });
 
-  it('soma o período respeitando folga e extra', () => {
+  it('zera feriado nacional sem pontualidade', () => {
+    expect(horasEscalaNoDia('2026-09-07', semanal)).toBe(0); // Independência
+  });
+
+  it('aceita horário especial em feriado', () => {
+    const escala = com([
+      {
+        id: 'ind',
+        dataIni: '2026-09-07',
+        dataFim: '2026-09-07',
+        tipo: 'substituir',
+        faixas: [{ inicio: '07:00', fim: '11:00' }],
+      },
+    ]);
+    expect(horasEscalaNoDia('2026-09-07', escala)).toBe(4);
+  });
+
+  it('soma o período respeitando folga, feriado e extra', () => {
     const escala = com([
       { id: 'f', dataIni: '2026-09-08', dataFim: '2026-09-08', tipo: 'folga' },
       {
@@ -83,7 +100,7 @@ describe('horasEscalaNoDia com exceções pontuais', () => {
         faixas: [{ inicio: '08:00', fim: '12:00' }],
       },
     ]);
-    // 07/09 seg 8.75 + 08 folga 0 + 09 8.75 + 10 8.75 + 11 8.75 + 12 sáb 4
-    expect(horasEscalaNoPeriodo('2026-09-07', '2026-09-12', escala)).toBe(39);
+    // 07/09 Independência 0 + 08 folga 0 + 09 8.75 + 10 8.75 + 11 8.75 + 12 sáb 4
+    expect(horasEscalaNoPeriodo('2026-09-07', '2026-09-12', escala)).toBe(30.25);
   });
 });
