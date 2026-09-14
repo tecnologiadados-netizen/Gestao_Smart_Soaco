@@ -449,7 +449,9 @@ export default function ProducaoCamasiPage() {
       ? 'dia'
       : 'mês';
 
-  const motivosDisplay = (data?.motivos ?? []).slice(0, 12);
+  const motivosDisplay = (data?.motivos ?? [])
+    .filter((m) => m.motivo !== 'Aguardando justificativa')
+    .slice(0, 12);
   const maxMotivo = Math.max(...motivosDisplay.map((m) => m.horas), 1);
 
   const paradasValidas = data?.paradasValidas ?? [];
