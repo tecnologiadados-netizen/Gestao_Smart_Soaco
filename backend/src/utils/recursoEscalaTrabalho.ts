@@ -231,6 +231,52 @@ function janelasMsDoDia(ymd: string, escala: RecursoEscala): { startMs: number; 
 
 export type MsInterval = { startMs: number; endMs: number };
 
+/** Janelas efetivas do dia (já aplica folga / horário pontual / feriado). */
+export function janelasEscalaNoDia(
+  ymd: string,
+  escala: RecursoEscala | null | undefined
+): MsInterval[] {
+  if (!escala || escalaEstaVazia(escala)) return [];
+  return janelasMsDoDia(ymd, escala);
+}
+
+/** Dia com horário especial pontual (`substituir`). */
+export function diaTemHorarioPontualSubstituir(
+  ymd: string,
+  escala: RecursoEscala | null | undefined
+): boolean {
+  if (!escala) return false;
+  const ex = excecaoVigenteNoDia(ymd, escala.excecoes);
+  return ex?.tipo === 'substituir' && (ex.faixas?.length ?? 0) > 0;
+}
+
+/**
+ * Remove `cobertos` de `universo`.
+ * Usado para achar ociosidade na escala sem registro de produção/parada.
+ */
+export function subtrairIntervalos(universo: MsInterval[], cobertos: MsInterval[]): MsInterval[] {
+  let rest = universo
+    .filter((u) => u.endMs > u.startMs)
+    .map((u) => ({ ...u }))
+    .sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+  const cuts = cobertos
+    .filter((c) => c.endMs > c.startMs)
+    .sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+  for (const cut of cuts) {
+    const next: MsInterval[] = [];
+    for (const b of rest) {
+      if (cut.endMs <= b.startMs || cut.startMs >= b.endMs) {
+        next.push(b);
+        continue;
+      }
+      if (cut.startMs > b.startMs) next.push({ startMs: b.startMs, endMs: cut.startMs });
+      if (cut.endMs < b.endMs) next.push({ startMs: cut.endMs, endMs: b.endMs });
+    }
+    rest = next;
+  }
+  return rest.filter((u) => u.endMs > u.startMs);
+}
+
 export function recortarIntervaloNasJanelas(
   startMs: number,
   endMs: number,

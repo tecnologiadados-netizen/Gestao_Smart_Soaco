@@ -4,11 +4,13 @@
 
 import { queryCamasi } from '../config/camasiFirebirdDb.js';
 import {
+  diaTemHorarioPontualSubstituir,
   escalaEstaVazia,
   horasDosIntervalos,
   horasEscalaNoDia,
   horasIntervaloNaEscala,
   intervalosNaEscalaDoDia,
+  janelasEscalaNoDia,
   unirIntervalos,
   type MsInterval,
   type RecursoEscala,
@@ -17,6 +19,9 @@ import {
   categoriaParadaCamasi,
   type CamasiCategoriaParada,
 } from '../utils/camasiMotivoJornada.js';
+
+/** Ociosidade na escala pontual sem registro Camasi de produção/parada. */
+export const CAMASI_PARADA_SEM_JUSTIFICATIVA = 'Parada sem justificativa';
 
 export type TempoProducaoRow = {
   id: number;
@@ -302,6 +307,34 @@ function roundHoras(n: number): number {
   return Math.round(n * 3600) / 3600;
 }
 
+function msParaHmsLocal(ms: number): string {
+  const d = new Date(ms);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+function pushParadaPeca(
+  acc: {
+    paradoPieces: MsInterval[];
+    operacionalPieces: MsInterval[];
+    jornadaPieces: MsInterval[];
+    producaoPieces: MsInterval[];
+    paradoSomaEventos: number;
+    qtdeParadas: number;
+  },
+  pieces: MsInterval[],
+  categoria: CamasiCategoriaParada,
+  horasEvento: number
+): void {
+  acc.paradoSomaEventos += horasEvento;
+  acc.qtdeParadas += 1;
+  acc.paradoPieces.push(...pieces);
+  if (categoria === 'jornada') acc.jornadaPieces.push(...pieces);
+  else acc.operacionalPieces.push(...pieces);
+}
+
 function strField(row: Record<string, unknown>, ...keys: string[]): string | null {
   for (const k of keys) {
     const v = row[k] ?? row[k.toLowerCase()] ?? row[k.toUpperCase()];
@@ -412,22 +445,59 @@ export function buildDashboardResumo(
     paradoPieces: MsInterval[];
     operacionalPieces: MsInterval[];
     jornadaPieces: MsInterval[];
+    producaoPieces: MsInterval[];
     paradoSomaEventos: number;
     qtdeParadas: number;
   };
   const diaAcc = new Map<string, DiaAcc>();
+  let idSintetico = 0;
+
+  const emptyDiaAcc = (): DiaAcc => ({
+    paradoPieces: [],
+    operacionalPieces: [],
+    jornadaPieces: [],
+    producaoPieces: [],
+    paradoSomaEventos: 0,
+    qtdeParadas: 0,
+  });
 
   for (const row of rows) {
     if (row.horasProducao > 0) {
-      producaoValidas.push({
-        id: row.id,
-        data: row.data,
-        inicioProducao: row.inicioProducao,
-        fimProducao: row.fimProducao,
-        horas: roundHoras(row.horasProducao),
-        minutos: Math.round(row.horasProducao * 60),
-        peca: pecaLabel(row),
-      });
+      const ivProd = intervaloEfetivoMs(row.data, row.inicioProducao, row.fimProducao, 'producao');
+      const piecesProd =
+        escala && !escalaEstaVazia(escala) && ivProd
+          ? intervalosNaEscalaDoDia(row.data, ivProd.startMs, ivProd.endMs, escala)
+          : ivProd
+            ? [ivProd]
+            : [];
+      const accProd = diaAcc.get(row.data) ?? emptyDiaAcc();
+      accProd.producaoPieces.push(...piecesProd);
+      diaAcc.set(row.data, accProd);
+
+      if (piecesProd.length === 0) {
+        producaoValidas.push({
+          id: row.id,
+          data: row.data,
+          inicioProducao: row.inicioProducao,
+          fimProducao: row.fimProducao,
+          horas: roundHoras(row.horasProducao),
+          minutos: Math.round(row.horasProducao * 60),
+          peca: pecaLabel(row),
+        });
+      } else {
+        for (const piece of piecesProd) {
+          const horas = (piece.endMs - piece.startMs) / MS_HORA;
+          producaoValidas.push({
+            id: row.id,
+            data: row.data,
+            inicioProducao: msParaHmsLocal(piece.startMs),
+            fimProducao: msParaHmsLocal(piece.endMs),
+            horas: roundHoras(horas),
+            minutos: Math.round(horas * 60),
+            peca: pecaLabel(row),
+          });
+        }
+      }
     }
 
     if (row.horasParado > 0) {
@@ -444,35 +514,47 @@ export function buildDashboardResumo(
         motivoMap.set(motivo, mot);
       }
 
-      paradasValidas.push({
-        id: row.id,
-        data: row.data,
-        inicioParado: row.inicioParado,
-        fimParado: row.fimParado,
-        horas: roundHoras(row.horasParado),
-        minutos: Math.round(row.horasParado * 60),
-        peca: pecaLabel(row),
-        justificativa: motivo,
-        observacao: row.obsMotivo,
-        categoria,
-      });
-
-      const acc = diaAcc.get(row.data) ?? {
-        paradoPieces: [],
-        operacionalPieces: [],
-        jornadaPieces: [],
-        paradoSomaEventos: 0,
-        qtdeParadas: 0,
-      };
-      acc.paradoSomaEventos += row.horasParado;
-      acc.qtdeParadas += 1;
       const iv = intervaloEfetivoMs(row.data, row.inicioParado, row.fimParado, 'parado');
-      if (iv) {
-        const pieces = intervalosNaEscalaDoDia(row.data, iv.startMs, iv.endMs, escala);
-        acc.paradoPieces.push(...pieces);
-        if (categoria === 'jornada') acc.jornadaPieces.push(...pieces);
-        else acc.operacionalPieces.push(...pieces);
+      const pieces =
+        escala && !escalaEstaVazia(escala) && iv
+          ? intervalosNaEscalaDoDia(row.data, iv.startMs, iv.endMs, escala)
+          : iv
+            ? [iv]
+            : [];
+
+      if (pieces.length === 0) {
+        paradasValidas.push({
+          id: row.id,
+          data: row.data,
+          inicioParado: row.inicioParado,
+          fimParado: row.fimParado,
+          horas: roundHoras(row.horasParado),
+          minutos: Math.round(row.horasParado * 60),
+          peca: pecaLabel(row),
+          justificativa: motivo,
+          observacao: row.obsMotivo,
+          categoria,
+        });
+      } else {
+        for (const piece of pieces) {
+          const horas = (piece.endMs - piece.startMs) / MS_HORA;
+          paradasValidas.push({
+            id: row.id,
+            data: row.data,
+            inicioParado: msParaHmsLocal(piece.startMs),
+            fimParado: msParaHmsLocal(piece.endMs),
+            horas: roundHoras(horas),
+            minutos: Math.round(horas * 60),
+            peca: pecaLabel(row),
+            justificativa: motivo,
+            observacao: row.obsMotivo,
+            categoria,
+          });
+        }
       }
+
+      const acc = diaAcc.get(row.data) ?? emptyDiaAcc();
+      pushParadaPeca(acc, pieces, categoria, row.horasParado);
       diaAcc.set(row.data, acc);
     }
 
@@ -486,15 +568,55 @@ export function buildDashboardResumo(
   const allDays = new Set<string>();
   for (const row of rows) allDays.add(row.data);
 
+  // Em dia com horário pontual: gap do início da faixa até o 1º registro
+  // vira "Parada sem justificativa". Horários exibidos já respeitam o recorte (acima).
+  if (escala && !escalaEstaVazia(escala)) {
+    for (const data of allDays) {
+      if (!diaTemHorarioPontualSubstituir(data, escala)) continue;
+      const janelas = janelasEscalaNoDia(data, escala);
+      if (janelas.length === 0) continue;
+      const acc = diaAcc.get(data) ?? emptyDiaAcc();
+      const cobertos = unirIntervalos([...acc.paradoPieces, ...acc.producaoPieces]);
+      for (const janela of janelas) {
+        let primeiroMs: number | null = null;
+        for (const c of cobertos) {
+          if (c.endMs <= janela.startMs || c.startMs >= janela.endMs) continue;
+          const startInJanela = Math.max(c.startMs, janela.startMs);
+          if (primeiroMs == null || startInJanela < primeiroMs) primeiroMs = startInJanela;
+        }
+        if (primeiroMs == null || primeiroMs <= janela.startMs) continue;
+        const gap: MsInterval = { startMs: janela.startMs, endMs: primeiroMs };
+        const horas = (gap.endMs - gap.startMs) / MS_HORA;
+        if (horas <= 0) continue;
+        idSintetico += 1;
+        const motivo = CAMASI_PARADA_SEM_JUSTIFICATIVA;
+        qtdeParadas += 1;
+        qtdeParadasOperacionais += 1;
+        const mot = motivoMap.get(motivo) ?? { horas: 0, qtde: 0 };
+        mot.horas += horas;
+        mot.qtde += 1;
+        motivoMap.set(motivo, mot);
+        pushParadaPeca(acc, [gap], 'operacional', horas);
+        paradasValidas.push({
+          id: -idSintetico,
+          data,
+          inicioParado: msParaHmsLocal(gap.startMs),
+          fimParado: msParaHmsLocal(gap.endMs),
+          horas: roundHoras(horas),
+          minutos: Math.round(horas * 60),
+          peca: '(sem peça)',
+          justificativa: motivo,
+          observacao: 'Gerado automaticamente: início da escala pontual sem registro Camasi.',
+          categoria: 'operacional',
+        });
+      }
+      diaAcc.set(data, acc);
+    }
+  }
+
   const resumoDias: CamasiResumoDia[] = [];
   for (const data of allDays) {
-    const acc = diaAcc.get(data) ?? {
-      paradoPieces: [],
-      operacionalPieces: [],
-      jornadaPieces: [],
-      paradoSomaEventos: 0,
-      qtdeParadas: 0,
-    };
+    const acc = diaAcc.get(data) ?? emptyDiaAcc();
     const uniao = unirIntervalos(acc.paradoPieces);
     const paradoHoras = horasDosIntervalos(uniao);
     const paradoOperacionalHoras = horasDosIntervalos(unirIntervalos(acc.operacionalPieces));

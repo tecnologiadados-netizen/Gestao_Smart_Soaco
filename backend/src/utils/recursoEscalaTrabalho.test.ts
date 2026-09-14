@@ -4,6 +4,10 @@ import {
   anexarExcecoes,
   horasEscalaNoDia,
   horasEscalaNoPeriodo,
+  horasDosIntervalos,
+  janelasEscalaNoDia,
+  subtrairIntervalos,
+  diaTemHorarioPontualSubstituir,
   type RecursoEscalaExcecao,
 } from './recursoEscalaTrabalho.js';
 
@@ -102,5 +106,37 @@ describe('horasEscalaNoDia com exceções pontuais', () => {
     ]);
     // 07/09 Independência 0 + 08 folga 0 + 09 8.75 + 10 8.75 + 11 8.75 + 12 sáb 4
     expect(horasEscalaNoPeriodo('2026-09-07', '2026-09-12', escala)).toBe(30.25);
+  });
+});
+
+describe('subtrairIntervalos / janelas pontuais', () => {
+  it('isola o gap inicial da escala pontual antes do primeiro registro', () => {
+    const escala = com([
+      {
+        id: 'sab',
+        dataIni: '2026-09-05',
+        dataFim: '2026-09-05',
+        tipo: 'substituir',
+        faixas: [{ inicio: '06:00', fim: '14:00' }],
+      },
+    ]);
+    const janelas = janelasEscalaNoDia('2026-09-05', escala);
+    expect(horasDosIntervalos(janelas)).toBe(8);
+
+    const [y, mo, d] = [2026, 8, 5];
+    const coberto = [
+      {
+        startMs: new Date(y, mo, d, 6, 29, 0).getTime(),
+        endMs: new Date(y, mo, d, 14, 0, 0).getTime(),
+      },
+    ];
+    const gaps = subtrairIntervalos(janelas, coberto);
+    expect(gaps).toHaveLength(1);
+    expect(new Date(gaps[0]!.startMs).getHours()).toBe(6);
+    expect(new Date(gaps[0]!.startMs).getMinutes()).toBe(0);
+    expect(new Date(gaps[0]!.endMs).getHours()).toBe(6);
+    expect(new Date(gaps[0]!.endMs).getMinutes()).toBe(29);
+    expect(diaTemHorarioPontualSubstituir('2026-09-05', escala)).toBe(true);
+    expect(diaTemHorarioPontualSubstituir('2026-09-08', escala)).toBe(false);
   });
 });
