@@ -501,29 +501,13 @@ export default function ModalCamasiKpi({
               </div>
             ) : null}
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setTelaCheia((v) => !v)}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-              title={telaCheia ? 'Sair da tela cheia' : 'Exibir tabela em tela cheia'}
-              aria-label={telaCheia ? 'Sair da tela cheia' : 'Exibir tabela em tela cheia'}
-            >
-              {telaCheia ? (
-                <Minimize2 className="h-4 w-4 shrink-0" aria-hidden />
-              ) : (
-                <Maximize2 className="h-4 w-4 shrink-0" aria-hidden />
-              )}
-              {telaCheia ? 'Sair da tela cheia' : 'Tela cheia'}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              Fechar
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            Fechar
+          </button>
         </div>
 
         {tipo !== 'previsto' && data?.escala && !telaCheia ? (
@@ -537,8 +521,23 @@ export default function ModalCamasiKpi({
         ) : null}
 
         <div className="min-h-0 flex-1 overflow-auto px-5 pb-5 pt-0">
-          {/* Espaço acima da tabela sem sticky — cabeçalho cola no topo do scroll */}
-          <div className={tipo === 'previsto' ? 'pt-5' : 'pt-3'}>
+          <div className={`flex items-center justify-end ${tipo === 'previsto' ? 'pt-4 pb-1' : 'pt-2.5 pb-1'}`}>
+            <button
+              type="button"
+              onClick={() => setTelaCheia((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              title={telaCheia ? 'Sair da tela cheia' : 'Exibir tabela em tela cheia'}
+              aria-label={telaCheia ? 'Sair da tela cheia' : 'Exibir tabela em tela cheia'}
+            >
+              {telaCheia ? (
+                <Minimize2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              ) : (
+                <Maximize2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              )}
+              {telaCheia ? 'Sair da tela cheia' : 'Tela cheia'}
+            </button>
+          </div>
+          <div>
           {tipo === 'previsto' ? (
             <div className="space-y-4">
               {data?.escala ? (
