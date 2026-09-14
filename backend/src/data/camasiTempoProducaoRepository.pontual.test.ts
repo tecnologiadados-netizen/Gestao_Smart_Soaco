@@ -4,7 +4,9 @@ import {
   anexarExcecoes,
 } from '../utils/recursoEscalaTrabalho.js';
 import {
+  CAMASI_FIM_JORNADA_LABEL,
   CAMASI_INICIO_JORNADA_LABEL,
+  CAMASI_OBS_FIM_ESCALA,
   CAMASI_OBS_INICIO_ESCALA,
   CAMASI_PARADA_SEM_JUSTIFICATIVA,
   buildDashboardResumo,
@@ -61,10 +63,11 @@ describe('carência de 5 min no início da jornada', () => {
     expect(inicio?.minutos).toBe(5);
     expect(inicio?.categoria).toBe('jornada');
 
-    const sem = resumo.paradasValidas.find((p) => p.justificativa === CAMASI_PARADA_SEM_JUSTIFICATIVA);
+    const sem = resumo.paradasValidas.find(
+      (p) => p.justificativa === CAMASI_PARADA_SEM_JUSTIFICATIVA && p.observacao === CAMASI_OBS_INICIO_ESCALA
+    );
     expect(sem?.inicioParado).toBe('07:05:00');
     expect(sem?.fimParado).toBe('08:43:00');
-    expect(sem?.observacao).toBe(CAMASI_OBS_INICIO_ESCALA);
     expect(sem?.minutos).toBe(98);
   });
 
@@ -101,6 +104,85 @@ describe('carência de 5 min no início da jornada', () => {
   });
 });
 
+describe('carência de 5 min no fim da jornada', () => {
+  it('parte FIM JORNADA longo em sem justificativa + carência final', () => {
+    const rows: TempoProducaoRow[] = [
+      row({
+        id: 1,
+        data: '2026-09-11',
+        inicioProducao: '08:43:00',
+        fimProducao: '08:57:00',
+        nomeOperador: 'FUNDO DO ROUPEIRO',
+        horasProducao: 14 / 60,
+      }),
+      row({
+        id: 2,
+        data: '2026-09-11',
+        inicioParado: '08:57:00',
+        fimParado: '17:15:00',
+        nomeMotivo: 'FIM JORNADA',
+        nomeOperador: 'FUNDO DO ROUPEIRO',
+        horasParado: (17 * 60 + 15 - (8 * 60 + 57)) / 60,
+      }),
+    ];
+
+    const resumo = buildDashboardResumo(rows, {
+      escala: ESCALA_PERFILADEIRA_PADRAO,
+      horasEscala: 8.75,
+    });
+
+    const sem = resumo.paradasValidas.find(
+      (p) =>
+        p.justificativa === CAMASI_PARADA_SEM_JUSTIFICATIVA &&
+        p.inicioParado === '08:57:00' &&
+        p.observacao === CAMASI_OBS_FIM_ESCALA
+    );
+    expect(sem?.fimParado).toBe('17:10:00');
+    expect(sem?.minutos).toBe(8 * 60 + 13);
+
+    const fim = resumo.paradasValidas.find(
+      (p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL && p.inicioParado === '17:10:00'
+    );
+    expect(fim?.fimParado).toBe('17:15:00');
+    expect(fim?.minutos).toBe(5);
+    expect(fim?.categoria).toBe('jornada');
+  });
+
+  it('não corta se o FIM JORNADA já estiver só na carência final', () => {
+    const rows: TempoProducaoRow[] = [
+      row({
+        id: 1,
+        data: '2026-09-11',
+        inicioProducao: '07:10:00',
+        fimProducao: '17:12:00',
+        horasProducao: (17 * 60 + 12 - (7 * 60 + 10)) / 60,
+      }),
+      row({
+        id: 2,
+        data: '2026-09-11',
+        inicioParado: '17:12:00',
+        fimParado: '17:15:00',
+        nomeMotivo: 'FIM JORNADA',
+        horasParado: 3 / 60,
+      }),
+    ];
+
+    const resumo = buildDashboardResumo(rows, {
+      escala: ESCALA_PERFILADEIRA_PADRAO,
+      horasEscala: 8.75,
+    });
+
+    expect(
+      resumo.paradasValidas.some(
+        (p) => p.justificativa === CAMASI_PARADA_SEM_JUSTIFICATIVA && p.observacao === CAMASI_OBS_FIM_ESCALA
+      )
+    ).toBe(false);
+    const fim = resumo.paradasValidas.find((p) => p.justificativa === 'FIM JORNADA');
+    expect(fim?.inicioParado).toBe('17:12:00');
+    expect(fim?.fimParado).toBe('17:15:00');
+  });
+});
+
 describe('buildDashboardResumo com horário pontual', () => {
   const escala = anexarExcecoes(ESCALA_PERFILADEIRA_PADRAO, [
     {
@@ -112,7 +194,7 @@ describe('buildDashboardResumo com horário pontual', () => {
     },
   ])!;
 
-  it('aplica carência 06:00–06:05 e sem justificativa até o 1º registro', () => {
+  it('aplica carência no início e no fim da escala pontual', () => {
     const rows: TempoProducaoRow[] = [
       row({
         id: 1,
@@ -143,13 +225,28 @@ describe('buildDashboardResumo com horário pontual', () => {
     expect(inicio?.fimParado).toBe('06:05:00');
     expect(inicio?.minutos).toBe(5);
 
-    const sem = resumo.paradasValidas.find((p) => p.justificativa === CAMASI_PARADA_SEM_JUSTIFICATIVA);
-    expect(sem?.inicioParado).toBe('06:05:00');
-    expect(sem?.fimParado).toBe('06:29:00');
-    expect(sem?.minutos).toBe(24);
+    const semInicio = resumo.paradasValidas.find(
+      (p) =>
+        p.justificativa === CAMASI_PARADA_SEM_JUSTIFICATIVA &&
+        p.inicioParado === '06:05:00' &&
+        p.observacao === CAMASI_OBS_INICIO_ESCALA
+    );
+    expect(semInicio?.fimParado).toBe('06:29:00');
+    expect(semInicio?.minutos).toBe(24);
 
-    const fimJornada = resumo.paradasValidas.find((p) => p.justificativa === 'FIM JORNADA');
+    const semFim = resumo.paradasValidas.find(
+      (p) =>
+        p.justificativa === CAMASI_PARADA_SEM_JUSTIFICATIVA &&
+        p.inicioParado === '12:36:00' &&
+        p.observacao === CAMASI_OBS_FIM_ESCALA
+    );
+    expect(semFim?.fimParado).toBe('13:55:00');
+
+    const fimJornada = resumo.paradasValidas.find(
+      (p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL && p.inicioParado === '13:55:00'
+    );
     expect(fimJornada?.fimParado).toBe('14:00:00');
+    expect(fimJornada?.minutos).toBe(5);
 
     const prodEntre = resumo.producaoValidas.find(
       (p) => p.inicioProducao === '06:31:00' && p.fimProducao === '12:36:00'

@@ -19,9 +19,16 @@ export function isMotivoJornadaCamasi(motivo: string | null | undefined): boolea
   return JORNADA.test(normalizarMotivo(motivo));
 }
 
+const FIM_JORNADA = /^FIM(\s+DE)?\s+JORNADA$/;
+
 export function isMotivoInicioJornadaCamasi(motivo: string | null | undefined): boolean {
   if (!motivo) return false;
   return INICIO_JORNADA.test(normalizarMotivo(motivo));
+}
+
+export function isMotivoFimJornadaCamasi(motivo: string | null | undefined): boolean {
+  if (!motivo) return false;
+  return FIM_JORNADA.test(normalizarMotivo(motivo));
 }
 
 export type CamasiCategoriaParada = 'jornada' | 'operacional';

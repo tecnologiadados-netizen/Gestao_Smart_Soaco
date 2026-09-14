@@ -17,19 +17,24 @@ import {
 } from '../utils/recursoEscalaTrabalho.js';
 import {
   categoriaParadaCamasi,
+  isMotivoFimJornadaCamasi,
   isMotivoInicioJornadaCamasi,
   type CamasiCategoriaParada,
 } from '../utils/camasiMotivoJornada.js';
 
-/** Carência padrão no início de cada faixa da escala (produção deve começar até +5 min). */
-export const CAMASI_CARENCIA_INICIO_MS = 5 * 60 * 1000;
+/** Carência padrão (início e fim da jornada). */
+export const CAMASI_CARENCIA_MS = 5 * 60 * 1000;
+/** @deprecated use CAMASI_CARENCIA_MS */
+export const CAMASI_CARENCIA_INICIO_MS = CAMASI_CARENCIA_MS;
 
-/** Ociosidade após a carência sem produção/registro. */
+/** Ociosidade após/antes da carência sem produção/registro. */
 export const CAMASI_PARADA_SEM_JUSTIFICATIVA = 'Sem justificativa';
 
 export const CAMASI_INICIO_JORNADA_LABEL = 'INÍCIO JORNADA';
+export const CAMASI_FIM_JORNADA_LABEL = 'FIM JORNADA';
 
 export const CAMASI_OBS_INICIO_ESCALA = 'Gerado automaticamente: início da escala';
+export const CAMASI_OBS_FIM_ESCALA = 'Gerado automaticamente: fim da escala';
 
 export type TempoProducaoRow = {
   id: number;
@@ -352,6 +357,20 @@ function isParadaInicioAuto(p: { justificativa: string; observacao: string | nul
   return false;
 }
 
+function isParadaFimAuto(p: { justificativa: string; observacao: string | null }): boolean {
+  if (isMotivoFimJornadaCamasi(p.justificativa)) return true;
+  const just = p.justificativa.trim().toLowerCase();
+  if (just === 'sem justificativa' || just === 'parada sem justificativa') {
+    const obs = (p.observacao ?? '').toLowerCase();
+    return obs.includes('fim da escala');
+  }
+  return false;
+}
+
+function isParadaJornadaAuto(p: { justificativa: string; observacao: string | null }): boolean {
+  return isParadaInicioAuto(p) || isParadaFimAuto(p);
+}
+
 function pushParadaPeca(
   acc: {
     paradoPieces: MsInterval[];
@@ -632,7 +651,7 @@ export function buildDashboardResumo(
       if (!janela) continue;
       const acc = diaAcc.get(data) ?? emptyDiaAcc();
 
-      const carenciaFim = Math.min(janela.startMs + CAMASI_CARENCIA_INICIO_MS, janela.endMs);
+      const carenciaFim = Math.min(janela.startMs + CAMASI_CARENCIA_MS, janela.endMs);
       if (carenciaFim <= janela.startMs) {
         diaAcc.set(data, acc);
         continue;
@@ -645,7 +664,7 @@ export function buildDashboardResumo(
         if (primeiroRegistro == null || t < primeiroRegistro) primeiroRegistro = t;
       }
       for (const p of paradasValidas) {
-        if (p.data !== data || isParadaInicioAuto(p)) continue;
+        if (p.data !== data || isParadaJornadaAuto(p)) continue;
         const t0 = hmsParaMsNoDia(p.data, p.inicioParado);
         const t1 = hmsParaMsNoDia(p.data, p.fimParado);
         if (t0 == null || t1 == null) continue;
@@ -769,6 +788,162 @@ export function buildDashboardResumo(
           justificativa: motivo,
           observacao: CAMASI_OBS_INICIO_ESCALA,
           categoria: 'operacional',
+        });
+      }
+
+      diaAcc.set(data, acc);
+    }
+
+    // Carência padrão (5 min) no fim da jornada (última faixa do dia).
+    for (const data of allDays) {
+      const janelas = janelasEscalaNoDia(data, escala).sort(
+        (a, b) => a.startMs - b.startMs || a.endMs - b.endMs
+      );
+      const janela = janelas[janelas.length - 1];
+      if (!janela) continue;
+      const acc = diaAcc.get(data) ?? emptyDiaAcc();
+
+      const carenciaIni = Math.max(janela.endMs - CAMASI_CARENCIA_MS, janela.startMs);
+      if (carenciaIni >= janela.endMs) {
+        diaAcc.set(data, acc);
+        continue;
+      }
+
+      let ultimoReal: number | null = null;
+      for (const p of acc.producaoPieces) {
+        if (ultimoReal == null || p.endMs > ultimoReal) ultimoReal = p.endMs;
+      }
+      for (const p of paradasValidas) {
+        if (p.data !== data || isParadaJornadaAuto(p)) continue;
+        const t1 = hmsParaMsNoDia(p.data, p.fimParado);
+        if (t1 == null) continue;
+        if (ultimoReal == null || t1 > ultimoReal) ultimoReal = t1;
+      }
+
+      let idleIni: number | null = null;
+      for (const p of paradasValidas) {
+        if (p.data !== data || !isParadaFimAuto(p)) continue;
+        const t0 = hmsParaMsNoDia(p.data, p.inicioParado);
+        const t1 = hmsParaMsNoDia(p.data, p.fimParado);
+        if (t0 == null || t1 == null) continue;
+        // Qualquer FIM JORNADA após o último registro real (cobre manhã+tarde quando há intervalo).
+        if (ultimoReal != null && t1 <= ultimoReal + 500) continue;
+        if (idleIni == null || t0 < idleIni) idleIni = t0;
+      }
+      if (idleIni == null) {
+        // Sem FIM JORNADA: só se o último real estiver na última faixa, antes da carência.
+        if (ultimoReal != null && ultimoReal >= janela.startMs && ultimoReal < carenciaIni) {
+          idleIni = ultimoReal;
+        }
+      }
+
+      if (idleIni == null || idleIni >= carenciaIni || idleIni >= janela.endMs) {
+        diaAcc.set(data, acc);
+        continue;
+      }
+
+      const corte: MsInterval = { startMs: idleIni, endMs: janela.endMs };
+
+      const removidas: CamasiParadaValida[] = [];
+      const mantidas: CamasiParadaValida[] = [];
+      for (const p of paradasValidas) {
+        if (p.data !== data || !isParadaFimAuto(p)) {
+          mantidas.push(p);
+          continue;
+        }
+        const t0 = hmsParaMsNoDia(p.data, p.inicioParado);
+        const t1 = hmsParaMsNoDia(p.data, p.fimParado);
+        if (t0 == null || t1 == null || t1 <= corte.startMs || t0 >= corte.endMs) {
+          mantidas.push(p);
+          continue;
+        }
+        removidas.push(p);
+        // Mantém eventual cabeça antes do idle (raro).
+        if (t0 < corte.startMs - 500) {
+          const headEnd = Math.min(t1, corte.startMs);
+          const horasHead = (headEnd - t0) / MS_HORA;
+          if (horasHead > 0) {
+            mantidas.push({
+              ...p,
+              inicioParado: msParaHmsLocal(t0),
+              fimParado: msParaHmsLocal(headEnd),
+              horas: roundHoras(horasHead),
+              minutos: minutosEntreMs(t0, headEnd),
+            });
+          }
+        }
+      }
+      paradasValidas.length = 0;
+      paradasValidas.push(...mantidas);
+
+      for (const p of removidas) {
+        qtdeParadas = Math.max(0, qtdeParadas - 1);
+        if (p.categoria === 'jornada') qtdeParadasJornada = Math.max(0, qtdeParadasJornada - 1);
+        else {
+          qtdeParadasOperacionais = Math.max(0, qtdeParadasOperacionais - 1);
+          const mot = motivoMap.get(p.justificativa);
+          if (mot) {
+            mot.horas = Math.max(0, mot.horas - p.horas);
+            mot.qtde = Math.max(0, mot.qtde - 1);
+            if (mot.qtde === 0 || mot.horas <= 0) motivoMap.delete(p.justificativa);
+            else motivoMap.set(p.justificativa, mot);
+          }
+        }
+        acc.paradoSomaEventos = Math.max(0, acc.paradoSomaEventos - p.horas);
+        acc.qtdeParadas = Math.max(0, acc.qtdeParadas - 1);
+      }
+
+      acc.paradoPieces = subtrairIntervalos(acc.paradoPieces, [corte]);
+      acc.jornadaPieces = subtrairIntervalos(acc.jornadaPieces, [corte]);
+      acc.operacionalPieces = subtrairIntervalos(acc.operacionalPieces, [corte]);
+
+      if (idleIni < carenciaIni) {
+        const pedacoSem: MsInterval = { startMs: idleIni, endMs: carenciaIni };
+        const horas = (pedacoSem.endMs - pedacoSem.startMs) / MS_HORA;
+        idSintetico += 1;
+        qtdeParadas += 1;
+        qtdeParadasOperacionais += 1;
+        const motivo = CAMASI_PARADA_SEM_JUSTIFICATIVA;
+        const mot = motivoMap.get(motivo) ?? { horas: 0, qtde: 0 };
+        mot.horas += horas;
+        mot.qtde += 1;
+        motivoMap.set(motivo, mot);
+        pushParadaPeca(acc, [pedacoSem], 'operacional', horas);
+        paradasValidas.push({
+          id: -idSintetico,
+          data,
+          inicioParado: msParaHmsLocal(pedacoSem.startMs),
+          fimParado: msParaHmsLocal(pedacoSem.endMs),
+          horas: roundHoras(horas),
+          minutos: minutosEntreMs(pedacoSem.startMs, pedacoSem.endMs),
+          peca: '(sem peça)',
+          justificativa: motivo,
+          observacao: CAMASI_OBS_FIM_ESCALA,
+          categoria: 'operacional',
+        });
+      }
+
+      const pedacoCarencia: MsInterval = {
+        startMs: Math.max(carenciaIni, idleIni),
+        endMs: janela.endMs,
+      };
+      if (pedacoCarencia.endMs > pedacoCarencia.startMs) {
+        const horas = (pedacoCarencia.endMs - pedacoCarencia.startMs) / MS_HORA;
+        idSintetico += 1;
+        qtdeParadas += 1;
+        qtdeParadasJornada += 1;
+        pushParadaPeca(acc, [pedacoCarencia], 'jornada', horas);
+        paradasValidas.push({
+          id: -idSintetico,
+          data,
+          inicioParado: msParaHmsLocal(pedacoCarencia.startMs),
+          fimParado: msParaHmsLocal(pedacoCarencia.endMs),
+          horas: roundHoras(horas),
+          minutos: minutosEntreMs(pedacoCarencia.startMs, pedacoCarencia.endMs),
+          peca: '(sem peça)',
+          justificativa: CAMASI_FIM_JORNADA_LABEL,
+          observacao: null,
+          categoria: 'jornada',
         });
       }
 
