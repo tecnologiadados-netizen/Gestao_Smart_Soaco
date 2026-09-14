@@ -15,7 +15,7 @@ import {
   formatYmdBrComSemana,
   hojeYmd,
 } from './camasiFormat';
-import { DIAS_SEMANA_ESCALA, formatEscalaExcecaoResumo, formatEscalaResumo } from '../../utils/recursoEscalaLabel';
+import { DIAS_SEMANA_ESCALA, formatEscalaResumo, formatPeriodoEscalaExcecao } from '../../utils/recursoEscalaLabel';
 import { excecoesSobrepostasAoPeriodo } from '../../utils/recursoEscalaHoras';
 import { categoriaParadaCamasi } from '../../utils/camasiMotivoJornada';
 import { classesBlocoDia } from './camasiTabelaDia';
@@ -146,6 +146,7 @@ function BlocoEscalaEmUso({
   const dias = labelDiasEscala(escala.diasSemana);
   const pontuais =
     dataIni && dataFim ? excecoesSobrepostasAoPeriodo(escala.excecoes, dataIni, dataFim) : [];
+  const temPontual = pontuais.length > 0;
   return (
     <div
       className={
@@ -177,36 +178,82 @@ function BlocoEscalaEmUso({
           </span>
         ) : null}
       </p>
-      <p className={destaque ? 'mt-1 text-sm text-slate-700 dark:text-slate-200' : 'mt-0.5 text-xs text-slate-600 dark:text-slate-300'}>
-        {dias}
-      </p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {escala.faixas.map((f) => (
-          <span
-            key={`${f.inicio}-${f.fim}`}
-            className={
-              destaque
-                ? 'inline-flex items-center rounded-md bg-white px-2.5 py-1 text-sm font-semibold tabular-nums text-indigo-900 shadow-sm ring-1 ring-indigo-200 dark:bg-slate-900 dark:text-indigo-100 dark:ring-indigo-700'
-                : 'inline-flex items-center rounded bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-800 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-600'
-            }
-          >
-            {f.inicio}–{f.fim}
-          </span>
-        ))}
+
+      <div className={temPontual ? 'mt-2 opacity-70' : 'mt-1'}>
+        <p
+          className={
+            destaque
+              ? 'text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400'
+              : 'text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400'
+          }
+        >
+          Escala padrão (semanal)
+        </p>
+        <p className={destaque ? 'mt-0.5 text-sm text-slate-700 dark:text-slate-200' : 'mt-0.5 text-xs text-slate-600 dark:text-slate-300'}>
+          {dias}
+        </p>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {escala.faixas.map((f) => (
+            <span
+              key={`${f.inicio}-${f.fim}`}
+              className={
+                destaque
+                  ? 'inline-flex items-center rounded-md bg-white px-2.5 py-1 text-sm font-semibold tabular-nums text-indigo-900 shadow-sm ring-1 ring-indigo-200 dark:bg-slate-900 dark:text-indigo-100 dark:ring-indigo-700'
+                  : 'inline-flex items-center rounded bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-800 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-600'
+              }
+            >
+              {f.inicio}–{f.fim}
+            </span>
+          ))}
+        </div>
       </div>
-      {destaque ? (
+
+      {temPontual ? (
+        <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 dark:border-amber-700 dark:bg-amber-950/40">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-amber-900 dark:text-amber-200">
+            Horário pontual aplicado no período
+          </p>
+          <p className="mt-1 text-[11px] leading-snug text-amber-900/90 dark:text-amber-100/90">
+            Nestes dias o memorial e as paradas usam o horário abaixo (não a escala semanal).
+          </p>
+          <ul className="mt-2 space-y-2">
+            {pontuais.slice(0, 8).map((ex) => {
+              const periodo = formatPeriodoEscalaExcecao(ex.dataIni, ex.dataFim);
+              const isFolga = ex.tipo === 'folga';
+              return (
+                <li key={ex.id} className="rounded border border-amber-200/80 bg-white/80 px-2.5 py-2 dark:border-amber-800 dark:bg-slate-900/50">
+                  <p className="text-xs font-semibold text-amber-950 dark:text-amber-100">
+                    {isFolga ? 'Folga' : 'Horário especial'} · {periodo}
+                  </p>
+                  {isFolga ? (
+                    <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-200">Sem jornada neste dia</p>
+                  ) : (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {(ex.faixas ?? []).map((f) => (
+                        <span
+                          key={`${ex.id}-${f.inicio}-${f.fim}`}
+                          className="inline-flex items-center rounded-md bg-amber-100 px-2.5 py-1 text-sm font-bold tabular-nums text-amber-950 ring-1 ring-amber-400 dark:bg-amber-900/60 dark:text-amber-50 dark:ring-amber-600"
+                        >
+                          {f.inicio}–{f.fim}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+            {pontuais.length > 8 ? (
+              <li className="text-[11px] text-amber-800 dark:text-amber-200">
+                e mais {pontuais.length - 8} pontualidade(s)
+              </li>
+            ) : null}
+          </ul>
+        </div>
+      ) : destaque ? (
         <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
           Só entra o tempo nestas faixas, salvo escala pontual (folga ou horário especial) cadastrada
           em PCP → Recursos (clique na máquina).
         </p>
-      ) : null}
-      {pontuais.length > 0 ? (
-        <ul className="mt-2 space-y-0.5 text-xs text-amber-800 dark:text-amber-200">
-          {pontuais.slice(0, 6).map((ex) => (
-            <li key={ex.id}>{formatEscalaExcecaoResumo(ex)}</li>
-          ))}
-          {pontuais.length > 6 ? <li>e mais {pontuais.length - 6}</li> : null}
-        </ul>
       ) : null}
     </div>
   );
