@@ -4,7 +4,6 @@
 
 import { queryCamasi } from '../config/camasiFirebirdDb.js';
 import {
-  diaTemHorarioPontualSubstituir,
   escalaEstaVazia,
   horasDosIntervalos,
   horasEscalaNoDia,
@@ -18,11 +17,19 @@ import {
 } from '../utils/recursoEscalaTrabalho.js';
 import {
   categoriaParadaCamasi,
+  isMotivoInicioJornadaCamasi,
   type CamasiCategoriaParada,
 } from '../utils/camasiMotivoJornada.js';
 
-/** Ociosidade na escala pontual sem registro Camasi de produção/parada. */
-export const CAMASI_PARADA_SEM_JUSTIFICATIVA = 'Parada sem justificativa';
+/** Carência padrão no início de cada faixa da escala (produção deve começar até +5 min). */
+export const CAMASI_CARENCIA_INICIO_MS = 5 * 60 * 1000;
+
+/** Ociosidade após a carência sem produção/registro. */
+export const CAMASI_PARADA_SEM_JUSTIFICATIVA = 'Sem justificativa';
+
+export const CAMASI_INICIO_JORNADA_LABEL = 'INÍCIO JORNADA';
+
+export const CAMASI_OBS_INICIO_ESCALA = 'Gerado automaticamente: início da escala';
 
 export type TempoProducaoRow = {
   id: number;
@@ -326,6 +333,25 @@ function minutosDeHoras(horas: number): number {
   return Math.max(0, Math.floor(horas * 60 + 1e-9));
 }
 
+function hmsParaMsNoDia(ymd: string, hms: string | null | undefined): number | null {
+  if (!hms) return null;
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(hms).trim());
+  if (!m) return null;
+  const [y, mo, d] = ymd.split('-').map(Number);
+  if (![y, mo, d].every((n) => Number.isFinite(n))) return null;
+  return new Date(y!, mo! - 1, d!, Number(m[1]), Number(m[2]), Number(m[3] ?? 0), 0).getTime();
+}
+
+function isParadaInicioAuto(p: { justificativa: string; observacao: string | null }): boolean {
+  if (isMotivoInicioJornadaCamasi(p.justificativa)) return true;
+  const just = p.justificativa.trim().toLowerCase();
+  if (just === 'sem justificativa' || just === 'parada sem justificativa') {
+    const obs = (p.observacao ?? '').toLowerCase();
+    return obs.includes('início da escala') || obs.includes('inicio da escala');
+  }
+  return false;
+}
+
 function pushParadaPeca(
   acc: {
     paradoPieces: MsInterval[];
@@ -594,48 +620,158 @@ export function buildDashboardResumo(
   const allDays = new Set<string>();
   for (const row of rows) allDays.add(row.data);
 
-  // Em dia com horário pontual: gap do início da faixa até o 1º registro
-  // vira "Parada sem justificativa". Horários exibidos já respeitam o recorte (acima).
+  // Carência padrão (5 min) no início da jornada: se não houver registro até +5 min,
+  // gera INÍCIO JORNADA (carência) + Sem justificativa até o 1º registro real.
   if (escala && !escalaEstaVazia(escala)) {
     for (const data of allDays) {
-      if (!diaTemHorarioPontualSubstituir(data, escala)) continue;
-      const janelas = janelasEscalaNoDia(data, escala);
-      if (janelas.length === 0) continue;
+      const janelas = janelasEscalaNoDia(data, escala).sort(
+        (a, b) => a.startMs - b.startMs || a.endMs - b.endMs
+      );
+      // Carência só no início da jornada (primeira faixa do dia), não após intervalo.
+      const janela = janelas[0];
+      if (!janela) continue;
       const acc = diaAcc.get(data) ?? emptyDiaAcc();
-      const cobertos = unirIntervalos([...acc.paradoPieces, ...acc.producaoPieces]);
-      for (const janela of janelas) {
-        let primeiroMs: number | null = null;
-        for (const c of cobertos) {
-          if (c.endMs <= janela.startMs || c.startMs >= janela.endMs) continue;
-          const startInJanela = Math.max(c.startMs, janela.startMs);
-          if (primeiroMs == null || startInJanela < primeiroMs) primeiroMs = startInJanela;
+
+      const carenciaFim = Math.min(janela.startMs + CAMASI_CARENCIA_INICIO_MS, janela.endMs);
+      if (carenciaFim <= janela.startMs) {
+        diaAcc.set(data, acc);
+        continue;
+      }
+
+      let primeiroRegistro: number | null = null;
+      for (const p of acc.producaoPieces) {
+        if (p.endMs <= janela.startMs || p.startMs >= janela.endMs) continue;
+        const t = Math.max(p.startMs, janela.startMs);
+        if (primeiroRegistro == null || t < primeiroRegistro) primeiroRegistro = t;
+      }
+      for (const p of paradasValidas) {
+        if (p.data !== data || isParadaInicioAuto(p)) continue;
+        const t0 = hmsParaMsNoDia(p.data, p.inicioParado);
+        const t1 = hmsParaMsNoDia(p.data, p.fimParado);
+        if (t0 == null || t1 == null) continue;
+        if (t1 <= janela.startMs || t0 >= janela.endMs) continue;
+        const t = Math.max(t0, janela.startMs);
+        if (primeiroRegistro == null || t < primeiroRegistro) primeiroRegistro = t;
+      }
+
+      // Produção/registro dentro da carência: não força o corte automático.
+      if (primeiroRegistro != null && primeiroRegistro <= carenciaFim) {
+        diaAcc.set(data, acc);
+        continue;
+      }
+
+      const idleFim = primeiroRegistro ?? janela.endMs;
+      if (idleFim <= janela.startMs) {
+        diaAcc.set(data, acc);
+        continue;
+      }
+
+      const corte: MsInterval = { startMs: janela.startMs, endMs: idleFim };
+
+      // Remove cobertura anterior no trecho (ex.: INÍCIO JORNADA Camasi 07:00–08:43).
+      const removidas: CamasiParadaValida[] = [];
+      const mantidas: CamasiParadaValida[] = [];
+      for (const p of paradasValidas) {
+        if (p.data !== data || !isParadaInicioAuto(p)) {
+          mantidas.push(p);
+          continue;
         }
-        if (primeiroMs == null || primeiroMs <= janela.startMs) continue;
-        const gap: MsInterval = { startMs: janela.startMs, endMs: primeiroMs };
-        const horas = (gap.endMs - gap.startMs) / MS_HORA;
-        if (horas <= 0) continue;
+        const t0 = hmsParaMsNoDia(p.data, p.inicioParado);
+        const t1 = hmsParaMsNoDia(p.data, p.fimParado);
+        if (t0 == null || t1 == null || t1 <= corte.startMs || t0 >= corte.endMs) {
+          mantidas.push(p);
+          continue;
+        }
+        removidas.push(p);
+        // Mantém eventual cauda após o 1º registro (raro).
+        if (t1 > corte.endMs + 500) {
+          const tailStart = Math.max(t0, corte.endMs);
+          const horasTail = (t1 - tailStart) / MS_HORA;
+          if (horasTail > 0) {
+            mantidas.push({
+              ...p,
+              inicioParado: msParaHmsLocal(tailStart),
+              fimParado: msParaHmsLocal(t1),
+              horas: roundHoras(horasTail),
+              minutos: minutosEntreMs(tailStart, t1),
+            });
+          }
+        }
+      }
+      paradasValidas.length = 0;
+      paradasValidas.push(...mantidas);
+
+      for (const p of removidas) {
+        qtdeParadas = Math.max(0, qtdeParadas - 1);
+        if (p.categoria === 'jornada') qtdeParadasJornada = Math.max(0, qtdeParadasJornada - 1);
+        else {
+          qtdeParadasOperacionais = Math.max(0, qtdeParadasOperacionais - 1);
+          const mot = motivoMap.get(p.justificativa);
+          if (mot) {
+            mot.horas = Math.max(0, mot.horas - p.horas);
+            mot.qtde = Math.max(0, mot.qtde - 1);
+            if (mot.qtde === 0 || mot.horas <= 0) motivoMap.delete(p.justificativa);
+            else motivoMap.set(p.justificativa, mot);
+          }
+        }
+        acc.paradoSomaEventos = Math.max(0, acc.paradoSomaEventos - p.horas);
+        acc.qtdeParadas = Math.max(0, acc.qtdeParadas - 1);
+      }
+
+      acc.paradoPieces = subtrairIntervalos(acc.paradoPieces, [corte]);
+      acc.jornadaPieces = subtrairIntervalos(acc.jornadaPieces, [corte]);
+      acc.operacionalPieces = subtrairIntervalos(acc.operacionalPieces, [corte]);
+
+      const pedacoCarencia: MsInterval = {
+        startMs: janela.startMs,
+        endMs: Math.min(carenciaFim, idleFim),
+      };
+      if (pedacoCarencia.endMs > pedacoCarencia.startMs) {
+        const horas = (pedacoCarencia.endMs - pedacoCarencia.startMs) / MS_HORA;
         idSintetico += 1;
-        const motivo = CAMASI_PARADA_SEM_JUSTIFICATIVA;
+        qtdeParadas += 1;
+        qtdeParadasJornada += 1;
+        pushParadaPeca(acc, [pedacoCarencia], 'jornada', horas);
+        paradasValidas.push({
+          id: -idSintetico,
+          data,
+          inicioParado: msParaHmsLocal(pedacoCarencia.startMs),
+          fimParado: msParaHmsLocal(pedacoCarencia.endMs),
+          horas: roundHoras(horas),
+          minutos: minutosEntreMs(pedacoCarencia.startMs, pedacoCarencia.endMs),
+          peca: '(sem peça)',
+          justificativa: CAMASI_INICIO_JORNADA_LABEL,
+          observacao: null,
+          categoria: 'jornada',
+        });
+      }
+
+      if (idleFim > carenciaFim) {
+        const pedacoSem: MsInterval = { startMs: carenciaFim, endMs: idleFim };
+        const horas = (pedacoSem.endMs - pedacoSem.startMs) / MS_HORA;
+        idSintetico += 1;
         qtdeParadas += 1;
         qtdeParadasOperacionais += 1;
+        const motivo = CAMASI_PARADA_SEM_JUSTIFICATIVA;
         const mot = motivoMap.get(motivo) ?? { horas: 0, qtde: 0 };
         mot.horas += horas;
         mot.qtde += 1;
         motivoMap.set(motivo, mot);
-        pushParadaPeca(acc, [gap], 'operacional', horas);
+        pushParadaPeca(acc, [pedacoSem], 'operacional', horas);
         paradasValidas.push({
           id: -idSintetico,
           data,
-          inicioParado: msParaHmsLocal(gap.startMs),
-          fimParado: msParaHmsLocal(gap.endMs),
+          inicioParado: msParaHmsLocal(pedacoSem.startMs),
+          fimParado: msParaHmsLocal(pedacoSem.endMs),
           horas: roundHoras(horas),
-          minutos: minutosEntreMs(gap.startMs, gap.endMs),
+          minutos: minutosEntreMs(pedacoSem.startMs, pedacoSem.endMs),
           peca: '(sem peça)',
           justificativa: motivo,
-          observacao: 'Gerado automaticamente: início da escala pontual sem registro Camasi.',
+          observacao: CAMASI_OBS_INICIO_ESCALA,
           categoria: 'operacional',
         });
       }
+
       diaAcc.set(data, acc);
     }
   }

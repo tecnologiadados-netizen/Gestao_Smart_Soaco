@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { categoriaParadaCamasi, isMotivoJornadaCamasi } from './camasiMotivoJornada.js';
+import { categoriaParadaCamasi, isMotivoInicioJornadaCamasi, isMotivoJornadaCamasi } from './camasiMotivoJornada.js';
 
 describe('isMotivoJornadaCamasi', () => {
   it('reconhece início e fim de jornada', () => {
@@ -7,6 +7,8 @@ describe('isMotivoJornadaCamasi', () => {
     expect(isMotivoJornadaCamasi('INICIO JORNADA')).toBe(true);
     expect(isMotivoJornadaCamasi('FIM JORNADA')).toBe(true);
     expect(isMotivoJornadaCamasi('Fim de jornada')).toBe(true);
+    expect(isMotivoInicioJornadaCamasi('INÍCIO JORNADA')).toBe(true);
+    expect(isMotivoInicioJornadaCamasi('FIM JORNADA')).toBe(false);
   });
 
   it('não classifica setup ou ajuste como jornada', () => {
