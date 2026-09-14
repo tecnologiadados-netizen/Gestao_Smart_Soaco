@@ -1,8 +1,9 @@
 export function formatHmsCurto(hms: string | null | undefined): string {
   if (!hms) return '—';
-  const m = String(hms).match(/^(\d{1,2}):(\d{2})/);
+  const m = String(hms).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
   if (!m) return hms;
-  return `${m[1].padStart(2, '0')}:${m[2]}`;
+  const ss = (m[3] ?? '00').padStart(2, '0');
+  return `${m[1].padStart(2, '0')}:${m[2]}:${ss}`;
 }
 
 /** Padrão do módulo Camasi: horas decimais → HH:MM:SS (pode passar de 24h no período). */

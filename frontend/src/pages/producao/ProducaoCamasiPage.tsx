@@ -838,10 +838,7 @@ export default function ProducaoCamasiPage() {
               Principais motivos de parada
             </h3>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Sem início/fim de jornada — clique na barra para ver os eventos do motivo
-              {(kpis?.horasParadoJornada ?? 0) > 0
-                ? ` · jornada ociosa ${formatHoras(kpis?.horasParadoJornada ?? 0)}`
-                : ''}
+              Inclui início/fim de jornada — clique na barra para ver os eventos do motivo
             </p>
           </div>
           {loading ? (

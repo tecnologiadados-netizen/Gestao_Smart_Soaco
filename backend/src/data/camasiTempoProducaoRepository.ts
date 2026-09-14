@@ -36,8 +36,8 @@ export const CAMASI_EM_PRODUCAO = 'Em produção';
 export const CAMASI_INICIO_JORNADA_LABEL = 'INÍCIO JORNADA';
 export const CAMASI_FIM_JORNADA_LABEL = 'FIM JORNADA';
 
-export const CAMASI_OBS_INICIO_ESCALA = 'Gerado automaticamente: início da escala';
-export const CAMASI_OBS_FIM_ESCALA = 'Gerado automaticamente: fim da escala';
+export const CAMASI_OBS_INICIO_ESCALA = 'Cortado automaticamente: início da escala';
+export const CAMASI_OBS_FIM_ESCALA = 'Cortado automaticamente: fim da escala';
 export const CAMASI_OBS_PARADA_INFERIDA = 'Inferido: último fim de produção sem parada registrada';
 export const CAMASI_OBS_PRODUCAO_ABERTA = 'Em andamento na Camasi (sem fim de produção)';
 export const CAMASI_OBS_PARADA_ABERTA = 'Em andamento na Camasi (sem fim de parada)';
@@ -726,7 +726,7 @@ export function buildDashboardResumo(
       if (categoria === 'jornada') qtdeParadasJornada += 1;
       else qtdeParadasOperacionais += 1;
 
-      if (categoria === 'operacional') {
+      {
         const mot = motivoMap.get(motivo) ?? { horas: 0, qtde: 0 };
         mot.horas += row.horasParado;
         mot.qtde += 1;
@@ -793,15 +793,13 @@ export function buildDashboardResumo(
   const debitarParadaRemovida = (p: CamasiParadaValida, acc: ReturnType<typeof emptyDiaAcc>) => {
     qtdeParadas = Math.max(0, qtdeParadas - 1);
     if (p.categoria === 'jornada') qtdeParadasJornada = Math.max(0, qtdeParadasJornada - 1);
-    else {
-      qtdeParadasOperacionais = Math.max(0, qtdeParadasOperacionais - 1);
-      const mot = motivoMap.get(p.justificativa);
-      if (mot) {
-        mot.horas = Math.max(0, mot.horas - p.horas);
-        mot.qtde = Math.max(0, mot.qtde - 1);
-        if (mot.qtde === 0 || mot.horas <= 0) motivoMap.delete(p.justificativa);
-        else motivoMap.set(p.justificativa, mot);
-      }
+    else qtdeParadasOperacionais = Math.max(0, qtdeParadasOperacionais - 1);
+    const mot = motivoMap.get(p.justificativa);
+    if (mot) {
+      mot.horas = Math.max(0, mot.horas - p.horas);
+      mot.qtde = Math.max(0, mot.qtde - 1);
+      if (mot.qtde === 0 || mot.horas <= 0) motivoMap.delete(p.justificativa);
+      else motivoMap.set(p.justificativa, mot);
     }
     acc.paradoSomaEventos = Math.max(0, acc.paradoSomaEventos - p.horas);
     acc.qtdeParadas = Math.max(0, acc.qtdeParadas - 1);
@@ -891,15 +889,13 @@ export function buildDashboardResumo(
       for (const p of removidas) {
         qtdeParadas = Math.max(0, qtdeParadas - 1);
         if (p.categoria === 'jornada') qtdeParadasJornada = Math.max(0, qtdeParadasJornada - 1);
-        else {
-          qtdeParadasOperacionais = Math.max(0, qtdeParadasOperacionais - 1);
-          const mot = motivoMap.get(p.justificativa);
-          if (mot) {
-            mot.horas = Math.max(0, mot.horas - p.horas);
-            mot.qtde = Math.max(0, mot.qtde - 1);
-            if (mot.qtde === 0 || mot.horas <= 0) motivoMap.delete(p.justificativa);
-            else motivoMap.set(p.justificativa, mot);
-          }
+        else qtdeParadasOperacionais = Math.max(0, qtdeParadasOperacionais - 1);
+        const mot = motivoMap.get(p.justificativa);
+        if (mot) {
+          mot.horas = Math.max(0, mot.horas - p.horas);
+          mot.qtde = Math.max(0, mot.qtde - 1);
+          if (mot.qtde === 0 || mot.horas <= 0) motivoMap.delete(p.justificativa);
+          else motivoMap.set(p.justificativa, mot);
         }
         acc.paradoSomaEventos = Math.max(0, acc.paradoSomaEventos - p.horas);
         acc.qtdeParadas = Math.max(0, acc.qtdeParadas - 1);
@@ -918,6 +914,11 @@ export function buildDashboardResumo(
         idSintetico += 1;
         qtdeParadas += 1;
         qtdeParadasJornada += 1;
+        const motivoInicio = CAMASI_INICIO_JORNADA_LABEL;
+        const motIni = motivoMap.get(motivoInicio) ?? { horas: 0, qtde: 0 };
+        motIni.horas += horas;
+        motIni.qtde += 1;
+        motivoMap.set(motivoInicio, motIni);
         pushParadaPeca(acc, [pedacoCarencia], 'jornada', horas);
         paradasValidas.push({
           id: -idSintetico,
@@ -927,7 +928,7 @@ export function buildDashboardResumo(
           horas: roundHoras(horas),
           minutos: minutosEntreMs(pedacoCarencia.startMs, pedacoCarencia.endMs),
           peca: '(sem peça)',
-          justificativa: CAMASI_INICIO_JORNADA_LABEL,
+          justificativa: motivoInicio,
           observacao: null,
           categoria: 'jornada',
         });
@@ -1196,15 +1197,13 @@ export function buildDashboardResumo(
       for (const p of removidas) {
         qtdeParadas = Math.max(0, qtdeParadas - 1);
         if (p.categoria === 'jornada') qtdeParadasJornada = Math.max(0, qtdeParadasJornada - 1);
-        else {
-          qtdeParadasOperacionais = Math.max(0, qtdeParadasOperacionais - 1);
-          const mot = motivoMap.get(p.justificativa);
-          if (mot) {
-            mot.horas = Math.max(0, mot.horas - p.horas);
-            mot.qtde = Math.max(0, mot.qtde - 1);
-            if (mot.qtde === 0 || mot.horas <= 0) motivoMap.delete(p.justificativa);
-            else motivoMap.set(p.justificativa, mot);
-          }
+        else qtdeParadasOperacionais = Math.max(0, qtdeParadasOperacionais - 1);
+        const mot = motivoMap.get(p.justificativa);
+        if (mot) {
+          mot.horas = Math.max(0, mot.horas - p.horas);
+          mot.qtde = Math.max(0, mot.qtde - 1);
+          if (mot.qtde === 0 || mot.horas <= 0) motivoMap.delete(p.justificativa);
+          else motivoMap.set(p.justificativa, mot);
         }
         acc.paradoSomaEventos = Math.max(0, acc.paradoSomaEventos - p.horas);
         acc.qtdeParadas = Math.max(0, acc.qtdeParadas - 1);
@@ -1249,6 +1248,11 @@ export function buildDashboardResumo(
         idSintetico += 1;
         qtdeParadas += 1;
         qtdeParadasJornada += 1;
+        const motivoFim = CAMASI_FIM_JORNADA_LABEL;
+        const motFim = motivoMap.get(motivoFim) ?? { horas: 0, qtde: 0 };
+        motFim.horas += horas;
+        motFim.qtde += 1;
+        motivoMap.set(motivoFim, motFim);
         pushParadaPeca(acc, [pedacoCarencia], 'jornada', horas);
         paradasValidas.push({
           id: -idSintetico,
@@ -1258,7 +1262,7 @@ export function buildDashboardResumo(
           horas: roundHoras(horas),
           minutos: minutosEntreMs(pedacoCarencia.startMs, pedacoCarencia.endMs),
           peca: '(sem peça)',
-          justificativa: CAMASI_FIM_JORNADA_LABEL,
+          justificativa: motivoFim,
           observacao: null,
           categoria: 'jornada',
         });
