@@ -1077,7 +1077,7 @@ export default function ProducaoCamasiPage() {
                           {p.justificativa}
                         </td>
                         <td
-                          className="max-w-[12rem] truncate px-2 py-2 text-slate-500 dark:text-slate-400"
+                          className="max-w-[16rem] whitespace-normal break-words px-2 py-2 align-top text-slate-500 dark:text-slate-400"
                           title={p.observacao ?? ''}
                         >
                           {p.observacao || '—'}
