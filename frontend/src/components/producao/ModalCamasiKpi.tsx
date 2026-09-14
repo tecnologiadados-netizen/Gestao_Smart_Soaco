@@ -1,5 +1,6 @@
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import type {
   CamasiDashboardResponse,
@@ -179,7 +180,7 @@ function BlocoEscalaEmUso({
         ) : null}
       </p>
 
-      <div className={temPontual ? 'mt-2 opacity-70' : 'mt-1'}>
+      <div className="mt-1">
         <p
           className={
             destaque
@@ -209,41 +210,34 @@ function BlocoEscalaEmUso({
       </div>
 
       {temPontual ? (
-        <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 dark:border-amber-700 dark:bg-amber-950/40">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-amber-900 dark:text-amber-200">
-            Horário pontual aplicado no período
+        <div className="mt-2 border-t border-slate-200/80 pt-2 dark:border-slate-700/80">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Pontual no período
           </p>
-          <p className="mt-1 text-[11px] leading-snug text-amber-900/90 dark:text-amber-100/90">
-            Nestes dias o memorial e as paradas usam o horário abaixo (não a escala semanal).
-          </p>
-          <ul className="mt-2 space-y-2">
+          <ul className="mt-1 space-y-0.5">
             {pontuais.slice(0, 8).map((ex) => {
               const periodo = formatPeriodoEscalaExcecao(ex.dataIni, ex.dataFim);
               const isFolga = ex.tipo === 'folga';
+              const faixasTxt = isFolga
+                ? 'sem jornada'
+                : (ex.faixas ?? []).map((f) => `${f.inicio}–${f.fim}`).join(', ') || '—';
               return (
-                <li key={ex.id} className="rounded border border-amber-200/80 bg-white/80 px-2.5 py-2 dark:border-amber-800 dark:bg-slate-900/50">
-                  <p className="text-xs font-semibold text-amber-950 dark:text-amber-100">
-                    {isFolga ? 'Folga' : 'Horário especial'} · {periodo}
-                  </p>
-                  {isFolga ? (
-                    <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-200">Sem jornada neste dia</p>
-                  ) : (
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {(ex.faixas ?? []).map((f) => (
-                        <span
-                          key={`${ex.id}-${f.inicio}-${f.fim}`}
-                          className="inline-flex items-center rounded-md bg-amber-100 px-2.5 py-1 text-sm font-bold tabular-nums text-amber-950 ring-1 ring-amber-400 dark:bg-amber-900/60 dark:text-amber-50 dark:ring-amber-600"
-                        >
-                          {f.inicio}–{f.fim}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                <li
+                  key={ex.id}
+                  className="text-xs leading-snug text-slate-600 dark:text-slate-300"
+                >
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    {isFolga ? 'Folga' : 'Especial'}
+                  </span>
+                  {' · '}
+                  {periodo}
+                  {' · '}
+                  <span className="tabular-nums">{faixasTxt}</span>
                 </li>
               );
             })}
             {pontuais.length > 8 ? (
-              <li className="text-[11px] text-amber-800 dark:text-amber-200">
+              <li className="text-[11px] text-slate-500 dark:text-slate-400">
                 e mais {pontuais.length - 8} pontualidade(s)
               </li>
             ) : null}
@@ -276,9 +270,18 @@ export default function ModalCamasiKpi({
   categoriaFiltro?: 'operacional' | 'jornada' | null;
   onClose: () => void;
 }) {
+  const [telaCheia, setTelaCheia] = useState(false);
+
+  useEffect(() => {
+    if (!open) setTelaCheia(false);
+  }, [open]);
+
   useRegisterModalEscape({
     id: 'camasi-kpi-modal',
-    onClose,
+    onClose: () => {
+      if (telaCheia) setTelaCheia(false);
+      else onClose();
+    },
     zIndex: 13000,
     enabled: open,
   });
@@ -461,12 +464,18 @@ export default function ModalCamasiKpi({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/70 p-4"
+      className={`fixed inset-0 z-[13000] flex bg-black/70 ${
+        telaCheia ? 'items-stretch justify-stretch p-0' : 'items-center justify-center p-4'
+      }`}
       role="presentation"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[min(88vh,760px)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-900"
+        className={`flex flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-900 ${
+          telaCheia
+            ? 'h-full max-h-none w-full max-w-none rounded-none'
+            : 'max-h-[min(88vh,760px)] w-full max-w-6xl rounded-xl'
+        }`}
         role="dialog"
         aria-modal
         onClick={(e) => e.stopPropagation()}
@@ -492,16 +501,32 @@ export default function ModalCamasiKpi({
               </div>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            Fechar
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setTelaCheia((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+              title={telaCheia ? 'Sair da tela cheia' : 'Exibir tabela em tela cheia'}
+              aria-label={telaCheia ? 'Sair da tela cheia' : 'Exibir tabela em tela cheia'}
+            >
+              {telaCheia ? (
+                <Minimize2 className="h-4 w-4 shrink-0" aria-hidden />
+              ) : (
+                <Maximize2 className="h-4 w-4 shrink-0" aria-hidden />
+              )}
+              {telaCheia ? 'Sair da tela cheia' : 'Tela cheia'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Fechar
+            </button>
+          </div>
         </div>
 
-        {tipo !== 'previsto' && data?.escala ? (
+        {tipo !== 'previsto' && data?.escala && !telaCheia ? (
           <div className="border-b border-slate-100 px-5 py-2 dark:border-slate-800">
             <BlocoEscalaEmUso
               escala={data.escala}
