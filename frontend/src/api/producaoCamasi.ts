@@ -14,6 +14,8 @@ export type CamasiDashboardKpis = {
   horasParadoOperacional?: number;
   horasParadoJornada?: number;
   horasEscala?: number | null;
+  /** Escala já decorrida (até agora) — base do % de disponibilidade. */
+  horasEscalaDecorrida?: number | null;
   disponibilidadePct: number | null;
   qtdeParadas: number;
   qtdeParadasOperacionais?: number;

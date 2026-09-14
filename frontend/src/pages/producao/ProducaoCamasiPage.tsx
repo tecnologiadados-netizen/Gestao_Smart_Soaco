@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   CartesianGrid,
   Legend,
@@ -333,13 +333,13 @@ function KpiCard({
 }: {
   title: string;
   value: string;
-  sub: string;
+  sub: ReactNode;
   loading?: boolean;
   onClick?: () => void;
 }) {
   if (loading) {
     return (
-      <div className="card-panel h-[110px] animate-pulse p-4">
+      <div className="card-panel h-[128px] animate-pulse p-4">
         <div className="h-3 w-2/3 rounded bg-slate-200 dark:bg-slate-700" />
         <div className="mt-4 h-7 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
         <div className="mt-3 h-3 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
@@ -356,7 +356,7 @@ function KpiCard({
       <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-50">
         {value}
       </p>
-      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{sub}</p>
+      <div className="mt-1 text-[11px] leading-snug text-slate-500 dark:text-slate-400">{sub}</div>
       <p className="mt-1.5 text-[10px] font-medium text-primary-600 dark:text-primary-400">
         Clique para ver o detalhe
       </p>
@@ -726,12 +726,32 @@ export default function ProducaoCamasiPage() {
           title="Produção"
           value={formatHoras(kpis?.horasProducao ?? 0)}
           sub={
-            kpis?.disponibilidadePct != null
-              ? `Disponibilidade ${new Intl.NumberFormat('pt-BR', {
-                  minimumFractionDigits: 1,
-                  maximumFractionDigits: 1,
-                }).format(kpis.disponibilidadePct)}% · produção ÷ escala`
-              : 'Horas em produção no período'
+            kpis?.disponibilidadePct != null ? (
+              <>
+                <p>
+                  Disponibilidade{' '}
+                  {new Intl.NumberFormat('pt-BR', {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  }).format(kpis.disponibilidadePct)}
+                  %
+                </p>
+                <p className="mt-0.5">
+                  Tempo decorrido até o dia atual:{' '}
+                  <span className="tabular-nums text-slate-600 dark:text-slate-300">
+                    {formatHoras(kpis.horasEscalaDecorrida ?? 0)}
+                  </span>
+                </p>
+                <p className="mt-0.5">
+                  Tempo parado:{' '}
+                  <span className="tabular-nums text-slate-600 dark:text-slate-300">
+                    {formatHoras(kpis.horasParado ?? 0)}
+                  </span>
+                </p>
+              </>
+            ) : (
+              'Horas em produção no período'
+            )
           }
           onClick={() => {
             setMotivoModal(null);

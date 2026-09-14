@@ -358,7 +358,7 @@ export default function ModalCamasiKpi({
           ? `Total ${formatHoras(kpis?.horasProducao ?? 0)} — disponibilidade ${new Intl.NumberFormat('pt-BR', {
               minimumFractionDigits: 1,
               maximumFractionDigits: 1,
-            }).format(kpis.disponibilidadePct)}% (produção ÷ escala).`
+            }).format(kpis.disponibilidadePct)}% (produção ÷ tempo decorrido até o dia atual ${formatHoras(kpis?.horasEscalaDecorrida ?? 0)}; tempo parado ${formatHoras(kpis?.horasParado ?? 0)}).`
           : `Total ${formatHoras(kpis?.horasProducao ?? 0)} — cada linha é um intervalo de produção na escala.`,
     },
     previsto: {

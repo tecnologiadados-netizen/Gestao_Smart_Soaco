@@ -64,6 +64,8 @@ export type CamasiDashboardKpis = {
   horasParadoOperacional: number;
   horasParadoJornada: number;
   horasEscala: number | null;
+  /** Escala já decorrida (até agora no dia aberto) — denominador da disponibilidade. */
+  horasEscalaDecorrida: number | null;
   disponibilidadePct: number | null;
   qtdeParadas: number;
   qtdeParadasOperacionais: number;
@@ -1413,15 +1415,18 @@ export function buildDashboardResumo(
     escala && !escalaEstaVazia(escala) && horasEscalaAteAgoraSum > 0
       ? horasEscalaAteAgoraSum
       : horasEscala;
+  const horasEscalaDecorrida =
+    baseDisp != null && Number.isFinite(baseDisp) && baseDisp > 0 ? roundHoras(baseDisp) : null;
   const kpis: CamasiDashboardKpis = {
     horasProducao: roundHoras(horasProducao),
     horasParado: roundHoras(horasParado),
     horasParadoOperacional: roundHoras(horasParadoOperacional),
     horasParadoJornada: roundHoras(horasParadoJornada),
     horasEscala: horasEscala != null ? roundHoras(horasEscala) : null,
+    horasEscalaDecorrida,
     disponibilidadePct:
-      baseDisp != null && baseDisp > 0
-        ? round1((horasProducao / baseDisp) * 100)
+      horasEscalaDecorrida != null && horasEscalaDecorrida > 0
+        ? round1((horasProducao / horasEscalaDecorrida) * 100)
         : total > 0
           ? round1((horasProducao / total) * 100)
           : null,
