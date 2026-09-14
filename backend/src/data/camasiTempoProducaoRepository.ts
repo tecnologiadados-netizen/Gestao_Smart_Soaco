@@ -297,6 +297,11 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
+/** Horas decimais com precisão de 1s — evita 10,25h (07:00–17:15) virar 10,3 = 10:18. */
+function roundHoras(n: number): number {
+  return Math.round(n * 3600) / 3600;
+}
+
 function strField(row: Record<string, unknown>, ...keys: string[]): string | null {
   for (const k of keys) {
     const v = row[k] ?? row[k.toLowerCase()] ?? row[k.toUpperCase()];
@@ -419,7 +424,7 @@ export function buildDashboardResumo(
         data: row.data,
         inicioProducao: row.inicioProducao,
         fimProducao: row.fimProducao,
-        horas: round1(row.horasProducao),
+        horas: roundHoras(row.horasProducao),
         minutos: Math.round(row.horasProducao * 60),
         peca: pecaLabel(row),
       });
@@ -444,7 +449,7 @@ export function buildDashboardResumo(
         data: row.data,
         inicioParado: row.inicioParado,
         fimParado: row.fimParado,
-        horas: round1(row.horasParado),
+        horas: roundHoras(row.horasParado),
         minutos: Math.round(row.horasParado * 60),
         peca: pecaLabel(row),
         justificativa: motivo,
@@ -502,12 +507,12 @@ export function buildDashboardResumo(
     const temSobreposicao = acc.paradoSomaEventos - paradoHoras > 0.05;
     resumoDias.push({
       data,
-      escalaHoras: round1(escalaHoras),
-      paradoHoras: round1(paradoHoras),
-      paradoOperacionalHoras: round1(paradoOperacionalHoras),
-      paradoJornadaHoras: round1(paradoJornadaHoras),
-      producaoHoras: round1(producaoHoras),
-      paradoSomaEventos: round1(acc.paradoSomaEventos),
+      escalaHoras: roundHoras(escalaHoras),
+      paradoHoras: roundHoras(paradoHoras),
+      paradoOperacionalHoras: roundHoras(paradoOperacionalHoras),
+      paradoJornadaHoras: roundHoras(paradoJornadaHoras),
+      producaoHoras: roundHoras(producaoHoras),
+      paradoSomaEventos: roundHoras(acc.paradoSomaEventos),
       temSobreposicao,
       qtdeParadas: acc.qtdeParadas,
     });
@@ -564,11 +569,11 @@ export function buildDashboardResumo(
       ? opts.horasEscala
       : null;
   const kpis: CamasiDashboardKpis = {
-    horasProducao: round1(horasProducao),
-    horasParado: round1(horasParado),
-    horasParadoOperacional: round1(horasParadoOperacional),
-    horasParadoJornada: round1(horasParadoJornada),
-    horasEscala: horasEscala != null ? round1(horasEscala) : null,
+    horasProducao: roundHoras(horasProducao),
+    horasParado: roundHoras(horasParado),
+    horasParadoOperacional: roundHoras(horasParadoOperacional),
+    horasParadoJornada: roundHoras(horasParadoJornada),
+    horasEscala: horasEscala != null ? roundHoras(horasEscala) : null,
     disponibilidadePct:
       horasEscala != null
         ? round1((horasProducao / horasEscala) * 100)
@@ -585,15 +590,15 @@ export function buildDashboardResumo(
     .map(([mes, v]) => ({
       mes,
       label: mesLabel(mes),
-      horasProducao: round1(v.horasProducao),
-      horasParado: round1(v.horasParado),
+      horasProducao: roundHoras(v.horasProducao),
+      horasParado: roundHoras(v.horasParado),
     }));
 
   const totalMotivo = [...motivoMap.values()].reduce((s, v) => s + v.horas, 0);
   const motivos: CamasiMotivoAgg[] = [...motivoMap.entries()]
     .map(([motivo, v]) => ({
       motivo,
-      horas: round1(v.horas),
+      horas: roundHoras(v.horas),
       qtde: v.qtde,
       pct: totalMotivo > 0 ? round1((v.horas / totalMotivo) * 100) : 0,
     }))
@@ -602,8 +607,8 @@ export function buildDashboardResumo(
   const pecas: CamasiPecaAgg[] = [...pecaMap.entries()]
     .map(([peca, v]) => ({
       peca,
-      horasProducao: round1(v.horasProducao),
-      horasParado: round1(v.horasParado),
+      horasProducao: roundHoras(v.horasProducao),
+      horasParado: roundHoras(v.horasParado),
     }))
     .sort((a, b) => b.horasProducao + b.horasParado - (a.horasProducao + a.horasParado));
 
@@ -654,10 +659,10 @@ export function buildDiasDoMes(
     for (const [data, pieces] of byDay) {
       diaMap.set(data, horasDosIntervalos(unirIntervalos(pieces)));
     }
-    const totalHoras = round1([...diaMap.values()].reduce((s, h) => s + h, 0));
+    const totalHoras = roundHoras([...diaMap.values()].reduce((s, h) => s + h, 0));
     const dias = [...diaMap.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([data, horas]) => ({ data, horas: round1(horas) }));
+      .map(([data, horas]) => ({ data, horas: roundHoras(horas) }));
     return { dias, totalHoras };
   }
 
@@ -668,9 +673,9 @@ export function buildDiasDoMes(
     if (h <= 0) continue;
     diaMap.set(row.data, (diaMap.get(row.data) ?? 0) + h);
   }
-  const totalHoras = round1([...diaMap.values()].reduce((s, h) => s + h, 0));
+  const totalHoras = roundHoras([...diaMap.values()].reduce((s, h) => s + h, 0));
   const dias = [...diaMap.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([data, horas]) => ({ data, horas: round1(horas) }));
+    .map(([data, horas]) => ({ data, horas: roundHoras(horas) }));
   return { dias, totalHoras };
 }

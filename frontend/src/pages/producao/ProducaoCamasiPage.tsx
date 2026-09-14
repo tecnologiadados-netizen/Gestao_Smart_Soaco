@@ -167,8 +167,8 @@ function ymdRange(dataIni: string, dataFim: string): string[] {
   return out;
 }
 
-function round1(n: number): number {
-  return Math.round(n * 10) / 10;
+function roundHoras(n: number): number {
+  return Math.round(n * 3600) / 3600;
 }
 
 type PontoPrevistoParado = {
@@ -187,7 +187,7 @@ function pontoComProducao(
 ): PontoPrevistoParado {
   return {
     ...base,
-    producao: round1(Math.max(0, base.previsto - base.parado)),
+    producao: roundHoras(Math.max(0, base.previsto - base.parado)),
   };
 }
 
@@ -219,11 +219,11 @@ function buildSeriePrevistoParado(
   if (dias.length <= 62) {
     const pontos: PontoPrevistoParado[] = [];
     for (const ymd of dias) {
-      const previsto = round1(horasEscalaNoDia(ymd, escala));
+      const previsto = roundHoras(horasEscalaNoDia(ymd, escala));
       const p = paradoMap.get(ymd);
-      const parado = round1(p?.all ?? 0);
-      const paradoOperacional = round1(p?.op ?? 0);
-      const paradoJornada = round1(p?.jor ?? 0);
+      const parado = roundHoras(p?.all ?? 0);
+      const paradoOperacional = roundHoras(p?.op ?? 0);
+      const paradoJornada = roundHoras(p?.jor ?? 0);
       if (previsto <= 0 && parado <= 0) continue;
       const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
       pontos.push(
@@ -267,10 +267,10 @@ function buildSeriePrevistoParado(
       return pontoComProducao({
         chave: mes,
         label: idx >= 0 && idx < 12 ? `${MESES_ABREV[idx]}/${y}` : mes,
-        previsto: round1(v.previsto),
-        parado: round1(v.parado),
-        paradoOperacional: round1(v.paradoOperacional),
-        paradoJornada: round1(v.paradoJornada),
+        previsto: roundHoras(v.previsto),
+        parado: roundHoras(v.parado),
+        paradoOperacional: roundHoras(v.paradoOperacional),
+        paradoJornada: roundHoras(v.paradoJornada),
       });
     });
 }
@@ -627,11 +627,11 @@ export default function ProducaoCamasiPage() {
         <KpiCard
           loading={loading}
           title="Tempo parado"
-          value={formatHoras(kpis?.horasParadoOperacional ?? kpis?.horasParado ?? 0)}
+          value={formatHoras(kpis?.horasParado ?? 0)}
           sub={
             (kpis?.horasParadoJornada ?? 0) > 0
-              ? `Operacional · jornada início/fim: ${formatHoras(kpis?.horasParadoJornada ?? 0)}`
-              : 'Paradas operacionais no período'
+              ? `Na escala · operacional ${formatHoras(kpis?.horasParadoOperacional ?? 0)} · jornada início/fim ${formatHoras(kpis?.horasParadoJornada ?? 0)}`
+              : 'Paradas na escala no período'
           }
           onClick={() => {
             setMotivoModal(null);
@@ -1009,7 +1009,9 @@ export default function ProducaoCamasiPage() {
         tipo={kpiModal}
         data={data}
         motivoFiltro={motivoModal}
-        categoriaFiltro={motivoModal ? null : 'operacional'}
+        categoriaFiltro={
+          motivoModal || kpiModal === 'parado' ? null : 'operacional'
+        }
         onClose={() => {
           setKpiModal(null);
           setMotivoModal(null);

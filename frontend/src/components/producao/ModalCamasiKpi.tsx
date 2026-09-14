@@ -275,9 +275,9 @@ export default function ModalCamasiKpi({
       producao += r.producaoHoras;
     }
     return {
-      previsto: Math.round(previsto * 10) / 10,
-      parado: Math.round(parado * 10) / 10,
-      producao: Math.round(producao * 10) / 10,
+      previsto: Math.round(previsto * 3600) / 3600,
+      parado: Math.round(parado * 3600) / 3600,
+      producao: Math.round(producao * 3600) / 3600,
       qtdeDias: dias.size,
     };
   }, [paradas, data?.resumoDias]);
@@ -322,10 +322,10 @@ export default function ModalCamasiKpi({
         : `${kpis?.qtdeParadasOperacionais ?? paradas.length} evento(s) operacionais com tempo parado na escala.`,
     },
     parado: {
-      titulo: 'Tempo parado operacional',
+      titulo: 'Tempo parado',
       sub: temEscala
-        ? `Operacional ${formatHoras(kpis?.horasParadoOperacional ?? 0)} · jornada início/fim ${formatHoras(kpis?.horasParadoJornada ?? 0)} — união na escala (sobrepostos não somam duas vezes).`
-        : `Operacional ${formatHoras(kpis?.horasParadoOperacional ?? kpis?.horasParado ?? 0)}.`,
+        ? `Total ${formatHoras(kpis?.horasParado ?? 0)} na escala · operacional ${formatHoras(kpis?.horasParadoOperacional ?? 0)} · jornada início/fim ${formatHoras(kpis?.horasParadoJornada ?? 0)} — união (sobrepostos não somam duas vezes).`
+        : `Total ${formatHoras(kpis?.horasParado ?? 0)}.`,
     },
     producao: {
       titulo: 'Produção',
