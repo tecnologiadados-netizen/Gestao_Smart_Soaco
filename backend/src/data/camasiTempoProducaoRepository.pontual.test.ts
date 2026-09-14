@@ -69,10 +69,16 @@ describe('buildDashboardResumo com horário pontual', () => {
     expect(gap).toBeTruthy();
     expect(gap!.inicioParado).toBe('06:00:00');
     expect(gap!.fimParado).toBe('06:29:00');
+    expect(gap!.minutos).toBe(29);
 
     const fimJornada = resumo.paradasValidas.find((p) => p.justificativa === 'FIM JORNADA');
     expect(fimJornada).toBeTruthy();
     expect(fimJornada!.inicioParado).toBe('12:36:00');
     expect(fimJornada!.fimParado).toBe('14:00:00');
+
+    const prodEntre = resumo.producaoValidas.find(
+      (p) => p.inicioProducao === '06:31:00' && p.fimProducao === '12:36:00'
+    );
+    expect(prodEntre).toBeTruthy();
   });
 });

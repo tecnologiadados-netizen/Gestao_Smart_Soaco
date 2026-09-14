@@ -15,6 +15,7 @@ import {
   putCamasiRecursoEscalaExcecoes,
   type CamasiDashboardResponse,
   type CamasiParadaValida,
+  type CamasiProducaoValida,
 } from '../../api/producaoCamasi';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getChartTheme } from '../../utils/painelProducaoFormat';
@@ -56,9 +57,9 @@ const PARADAS_COL_IDS = [
   'justificativa',
   'observacao',
 ] as const;
-type ParadaColId = (typeof PARADAS_COL_IDS)[number];
+type LinhaTempoColId = (typeof PARADAS_COL_IDS)[number];
 
-const PARADAS_COL_LABELS: Record<ParadaColId, string> = {
+const PARADAS_COL_LABELS: Record<LinhaTempoColId, string> = {
   data: 'Data',
   inicio: 'Início',
   fim: 'Fim',
@@ -68,20 +69,36 @@ const PARADAS_COL_LABELS: Record<ParadaColId, string> = {
   observacao: 'Observação',
 };
 
-function minutosParada(p: CamasiParadaValida): number {
-  return p.minutos ?? Math.round((p.horas ?? 0) * 60);
+type LinhaTempoTipo = 'parada' | 'producao';
+
+type LinhaTempo = {
+  key: string;
+  tipo: LinhaTempoTipo;
+  data: string;
+  inicio: string | null;
+  fim: string | null;
+  horas: number;
+  minutos: number;
+  peca: string;
+  justificativa: string;
+  observacao: string | null;
+  categoria?: 'jornada' | 'operacional';
+};
+
+function minutosLinha(p: LinhaTempo): number {
+  return p.minutos ?? Math.max(0, Math.floor((p.horas ?? 0) * 60 + 1e-9));
 }
 
-function getParadaCellText(row: CamasiParadaValida, colId: string): string {
-  switch (colId as ParadaColId) {
+function getLinhaCellText(row: LinhaTempo, colId: string): string {
+  switch (colId as LinhaTempoColId) {
     case 'data':
       return formatYmdBr(row.data);
     case 'inicio':
-      return formatHmsCurto(row.inicioParado);
+      return formatHmsCurto(row.inicio);
     case 'fim':
-      return formatHmsCurto(row.fimParado);
+      return formatHmsCurto(row.fim);
     case 'duracao':
-      return formatDuracaoDidatica(minutosParada(row));
+      return formatDuracaoDidatica(minutosLinha(row));
     case 'peca':
       return row.peca || '—';
     case 'justificativa':
@@ -93,16 +110,16 @@ function getParadaCellText(row: CamasiParadaValida, colId: string): string {
   }
 }
 
-function getParadaSortValue(row: CamasiParadaValida, colId: string): string | number {
-  switch (colId as ParadaColId) {
+function getLinhaSortValue(row: LinhaTempo, colId: string): string | number {
+  switch (colId as LinhaTempoColId) {
     case 'data':
       return row.data;
     case 'inicio':
-      return row.inicioParado ?? '';
+      return row.inicio ?? '';
     case 'fim':
-      return row.fimParado ?? '';
+      return row.fim ?? '';
     case 'duracao':
-      return minutosParada(row);
+      return minutosLinha(row);
     case 'peca':
       return row.peca;
     case 'justificativa':
@@ -112,6 +129,37 @@ function getParadaSortValue(row: CamasiParadaValida, colId: string): string | nu
     default:
       return '';
   }
+}
+
+function paradaParaLinha(p: CamasiParadaValida, idx: number): LinhaTempo {
+  return {
+    key: `parada-${p.id}-${p.inicioParado ?? ''}-${idx}`,
+    tipo: 'parada',
+    data: p.data,
+    inicio: p.inicioParado,
+    fim: p.fimParado,
+    horas: p.horas,
+    minutos: p.minutos ?? Math.max(0, Math.floor((p.horas ?? 0) * 60 + 1e-9)),
+    peca: p.peca,
+    justificativa: p.justificativa,
+    observacao: p.observacao,
+    categoria: p.categoria ?? categoriaParadaCamasi(p.justificativa),
+  };
+}
+
+function producaoParaLinha(p: CamasiProducaoValida, idx: number): LinhaTempo {
+  return {
+    key: `producao-${p.id}-${p.inicioProducao ?? ''}-${idx}`,
+    tipo: 'producao',
+    data: p.data,
+    inicio: p.inicioProducao,
+    fim: p.fimProducao,
+    horas: p.horas,
+    minutos: p.minutos ?? Math.max(0, Math.floor((p.horas ?? 0) * 60 + 1e-9)),
+    peca: p.peca,
+    justificativa: 'Produção',
+    observacao: null,
+  };
 }
 
 function filtroDefault(): Filtros {
@@ -332,6 +380,9 @@ export default function ProducaoCamasiPage() {
   const [filtroCategoria, setFiltroCategoria] = useState<'operacional' | 'jornada' | 'todas'>(
     'operacional'
   );
+  const [filtroTipoEvento, setFiltroTipoEvento] = useState<'paradas' | 'producao' | 'ambos'>(
+    'ambos'
+  );
   const [pontualRecurso, setPontualRecurso] = useState<ProgramacaoProducaoRecurso | null>(null);
   const [pontualSalvando, setPontualSalvando] = useState(false);
   const [pontualErro, setPontualErro] = useState<string | null>(null);
@@ -402,41 +453,58 @@ export default function ProducaoCamasiPage() {
   const maxMotivo = Math.max(...motivosDisplay.map((m) => m.horas), 1);
 
   const paradasValidas = data?.paradasValidas ?? [];
-  const paradasPorCategoria = useMemo(() => {
-    if (filtroCategoria === 'todas') return paradasValidas;
-    return paradasValidas.filter((p) => {
-      const cat = p.categoria ?? categoriaParadaCamasi(p.justificativa);
-      return cat === filtroCategoria;
-    });
-  }, [paradasValidas, filtroCategoria]);
-  const getParadaCellTextCb = useCallback(
-    (row: CamasiParadaValida, colId: string) => getParadaCellText(row, colId),
+  const producaoValidas = data?.producaoValidas ?? [];
+  const linhasTempoBase = useMemo(() => {
+    const linhas: LinhaTempo[] = [];
+    if (filtroTipoEvento !== 'producao') {
+      paradasValidas.forEach((p, idx) => {
+        const cat = p.categoria ?? categoriaParadaCamasi(p.justificativa);
+        if (filtroCategoria !== 'todas' && cat !== filtroCategoria) return;
+        linhas.push(paradaParaLinha(p, idx));
+      });
+    }
+    if (filtroTipoEvento !== 'paradas') {
+      producaoValidas.forEach((p, idx) => linhas.push(producaoParaLinha(p, idx)));
+    }
+    linhas.sort(
+      (a, b) =>
+        a.data.localeCompare(b.data) ||
+        (a.inicio ?? '').localeCompare(b.inicio ?? '') ||
+        a.tipo.localeCompare(b.tipo)
+    );
+    return linhas;
+  }, [paradasValidas, producaoValidas, filtroCategoria, filtroTipoEvento]);
+  const getLinhaCellTextCb = useCallback(
+    (row: LinhaTempo, colId: string) => getLinhaCellText(row, colId),
     []
   );
-  const getParadaSortValueCb = useCallback(
-    (row: CamasiParadaValida, colId: string) => getParadaSortValue(row, colId),
+  const getLinhaSortValueCb = useCallback(
+    (row: LinhaTempo, colId: string) => getLinhaSortValue(row, colId),
     []
   );
-  const gradeParadas = useGradeFiltrosExcel<CamasiParadaValida>({
-    rows: paradasPorCategoria,
+  const gradeParadas = useGradeFiltrosExcel<LinhaTempo>({
+    rows: linhasTempoBase,
     columnIds: [...PARADAS_COL_IDS],
-    getCellText: getParadaCellTextCb,
-    valueForSort: getParadaSortValueCb,
-    defaultSortLevels: [{ id: 'data', dir: 'asc' }],
+    getCellText: getLinhaCellTextCb,
+    valueForSort: getLinhaSortValueCb,
+    defaultSortLevels: [
+      { id: 'data', dir: 'asc' },
+      { id: 'inicio', dir: 'asc' },
+    ],
     dateColumnIds: ['data'],
   });
   const {
-    rowsExibidas: paradasFiltradas,
+    rowsExibidas: linhasFiltradas,
     limparFiltrosGrade: limparFiltrosParadas,
     temFiltrosOuOrdem: temFiltrosParadas,
   } = gradeParadas;
   const indiceDiaParada = useMemo(() => {
     const map = new Map<string, number>();
-    for (const p of paradasFiltradas) {
+    for (const p of linhasFiltradas) {
       if (!map.has(p.data)) map.set(p.data, map.size);
     }
     return map;
-  }, [paradasFiltradas]);
+  }, [linhasFiltradas]);
 
   const aplicarFiltros = useCallback(() => {
     if (draft.dataIni > draft.dataFim) {
@@ -829,32 +897,32 @@ export default function ProducaoCamasiPage() {
           <div className="mb-3 flex flex-wrap items-end justify-between gap-2 shrink-0">
             <div>
               <h3 className="text-sm font-semibold text-soaco-navy dark:text-soaco-white">
-                Paradas válidas
+                Linha do tempo na escala
               </h3>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Eventos com tempo parado dentro da escala ·{' '}
+                Paradas e produção intercaladas ·{' '}
                 {temFiltrosParadas
-                  ? `${paradasFiltradas.length} de ${paradasPorCategoria.length}`
-                  : paradasPorCategoria.length}{' '}
+                  ? `${linhasFiltradas.length} de ${linhasTempoBase.length}`
+                  : linhasTempoBase.length}{' '}
                 registro
-                {(temFiltrosParadas ? paradasFiltradas.length : paradasPorCategoria.length) === 1
+                {(temFiltrosParadas ? linhasFiltradas.length : linhasTempoBase.length) === 1
                   ? ''
                   : 's'}
               </p>
               <div className="mt-2 flex flex-wrap gap-1">
                 {(
                   [
-                    ['operacional', 'Operacionais'],
-                    ['jornada', 'Início/fim jornada'],
-                    ['todas', 'Todas'],
+                    ['ambos', 'Ambos'],
+                    ['paradas', 'Só paradas'],
+                    ['producao', 'Só produção'],
                   ] as const
                 ).map(([id, label]) => (
                   <button
                     key={id}
                     type="button"
-                    onClick={() => setFiltroCategoria(id)}
+                    onClick={() => setFiltroTipoEvento(id)}
                     className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${
-                      filtroCategoria === id
+                      filtroTipoEvento === id
                         ? 'bg-primary-600 text-white'
                         : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
                     }`}
@@ -863,6 +931,30 @@ export default function ProducaoCamasiPage() {
                   </button>
                 ))}
               </div>
+              {filtroTipoEvento !== 'producao' ? (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {(
+                    [
+                      ['operacional', 'Operacionais'],
+                      ['jornada', 'Início/fim jornada'],
+                      ['todas', 'Todas as paradas'],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setFiltroCategoria(id)}
+                      className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                        filtroCategoria === id
+                          ? 'bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-900'
+                          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
             {temFiltrosParadas ? (
               <button
@@ -876,9 +968,11 @@ export default function ProducaoCamasiPage() {
           </div>
           {loading ? (
             <div className="flex flex-1 items-center justify-center text-slate-500">Carregando…</div>
-          ) : paradasFiltradas.length === 0 ? (
+          ) : linhasFiltradas.length === 0 ? (
             <div className="flex flex-1 items-center justify-center text-slate-500">
-              {paradasValidas.length === 0 ? 'Sem paradas válidas no período.' : 'Nenhum registro neste recorte.'}
+              {linhasTempoBase.length === 0 && paradasValidas.length === 0 && producaoValidas.length === 0
+                ? 'Sem eventos na escala no período.'
+                : 'Nenhum registro neste recorte.'}
             </div>
           ) : (
             <div
@@ -924,18 +1018,18 @@ export default function ProducaoCamasiPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paradasFiltradas.map((p, idx) => {
-                    const diaAnterior = idx > 0 ? paradasFiltradas[idx - 1]!.data : null;
+                  {linhasFiltradas.map((p, idx) => {
+                    const diaAnterior = idx > 0 ? linhasFiltradas[idx - 1]!.data : null;
                     const mostraData = p.data !== diaAnterior;
                     let rowSpan = 1;
                     if (mostraData) {
-                      for (let i = idx + 1; i < paradasFiltradas.length; i++) {
-                        if (paradasFiltradas[i]!.data !== p.data) break;
+                      for (let i = idx + 1; i < linhasFiltradas.length; i++) {
+                        if (linhasFiltradas[i]!.data !== p.data) break;
                         rowSpan += 1;
                       }
                     }
                     let inicioIdx = idx;
-                    while (inicioIdx > 0 && paradasFiltradas[inicioIdx - 1]!.data === p.data) {
+                    while (inicioIdx > 0 && linhasFiltradas[inicioIdx - 1]!.data === p.data) {
                       inicioIdx -= 1;
                     }
                     const { tr, dataTd } = classesBlocoDia(
@@ -943,8 +1037,9 @@ export default function ProducaoCamasiPage() {
                       idx - inicioIdx,
                       mostraData
                     );
+                    const isProd = p.tipo === 'producao';
                     return (
-                      <tr key={p.id} className={tr}>
+                      <tr key={p.key} className={tr}>
                         {mostraData ? (
                           <td
                             rowSpan={rowSpan}
@@ -954,21 +1049,37 @@ export default function ProducaoCamasiPage() {
                           </td>
                         ) : null}
                         <td className="whitespace-nowrap px-2 py-2 tabular-nums">
-                          {formatHmsCurto(p.inicioParado)}
+                          {formatHmsCurto(p.inicio)}
                         </td>
                         <td className="whitespace-nowrap px-2 py-2 tabular-nums">
-                          {formatHmsCurto(p.fimParado)}
+                          {formatHmsCurto(p.fim)}
                         </td>
-                        <td className="px-2 py-2 text-right font-medium text-amber-800 dark:text-amber-300">
-                          {formatDuracaoDidatica(minutosParada(p))}
+                        <td
+                          className={`px-2 py-2 text-right font-medium ${
+                            isProd
+                              ? 'text-emerald-700 dark:text-emerald-300'
+                              : 'text-amber-800 dark:text-amber-300'
+                          }`}
+                        >
+                          {formatDuracaoDidatica(minutosLinha(p))}
                         </td>
                         <td className="max-w-[10rem] truncate px-2 py-2" title={p.peca}>
                           {p.peca}
                         </td>
-                        <td className="max-w-[14rem] px-2 py-2 font-medium text-slate-800 dark:text-slate-100" title={p.justificativa}>
+                        <td
+                          className={`max-w-[14rem] px-2 py-2 font-medium ${
+                            isProd
+                              ? 'text-emerald-800 dark:text-emerald-200'
+                              : 'text-slate-800 dark:text-slate-100'
+                          }`}
+                          title={p.justificativa}
+                        >
                           {p.justificativa}
                         </td>
-                        <td className="max-w-[12rem] truncate px-2 py-2 text-slate-500 dark:text-slate-400" title={p.observacao ?? ''}>
+                        <td
+                          className="max-w-[12rem] truncate px-2 py-2 text-slate-500 dark:text-slate-400"
+                          title={p.observacao ?? ''}
+                        >
                           {p.observacao || '—'}
                         </td>
                       </tr>

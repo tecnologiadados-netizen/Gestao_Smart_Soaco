@@ -11,6 +11,7 @@ import {
   horasIntervaloNaEscala,
   intervalosNaEscalaDoDia,
   janelasEscalaNoDia,
+  subtrairIntervalos,
   unirIntervalos,
   type MsInterval,
   type RecursoEscala,
@@ -315,6 +316,16 @@ function msParaHmsLocal(ms: number): string {
   return `${hh}:${mm}:${ss}`;
 }
 
+/** Minutos de relógio entre instantes — alinha com HH:MM na tela (06:00→06:24 = 24, não 25). */
+function minutosEntreMs(startMs: number, endMs: number): number {
+  return Math.max(0, Math.floor(endMs / 60_000) - Math.floor(startMs / 60_000));
+}
+
+function minutosDeHoras(horas: number): number {
+  if (!Number.isFinite(horas) || horas <= 0) return 0;
+  return Math.max(0, Math.floor(horas * 60 + 1e-9));
+}
+
 function pushParadaPeca(
   acc: {
     paradoPieces: MsInterval[];
@@ -451,6 +462,8 @@ export function buildDashboardResumo(
   };
   const diaAcc = new Map<string, DiaAcc>();
   let idSintetico = 0;
+  /** Peças Camasi sobrepostas (para rotular gaps de produção na escala). */
+  const pecasProducaoPorDia = new Map<string, { startMs: number; endMs: number; peca: string }[]>();
 
   const emptyDiaAcc = (): DiaAcc => ({
     paradoPieces: [],
@@ -474,28 +487,41 @@ export function buildDashboardResumo(
       accProd.producaoPieces.push(...piecesProd);
       diaAcc.set(row.data, accProd);
 
-      if (piecesProd.length === 0) {
-        producaoValidas.push({
-          id: row.id,
-          data: row.data,
-          inicioProducao: row.inicioProducao,
-          fimProducao: row.fimProducao,
-          horas: roundHoras(row.horasProducao),
-          minutos: Math.round(row.horasProducao * 60),
-          peca: pecaLabel(row),
-        });
-      } else {
+      const peca = pecaLabel(row);
+      if (piecesProd.length > 0) {
+        const hits = pecasProducaoPorDia.get(row.data) ?? [];
         for (const piece of piecesProd) {
-          const horas = (piece.endMs - piece.startMs) / MS_HORA;
+          hits.push({ startMs: piece.startMs, endMs: piece.endMs, peca });
+        }
+        pecasProducaoPorDia.set(row.data, hits);
+      }
+
+      // Sem escala: mantém os intervalos Camasi. Com escala, produção na grade =
+      // gaps da escala − parado (reconstruído após as paradas / gaps sintéticos).
+      if (!escala || escalaEstaVazia(escala)) {
+        if (piecesProd.length === 0) {
           producaoValidas.push({
             id: row.id,
             data: row.data,
-            inicioProducao: msParaHmsLocal(piece.startMs),
-            fimProducao: msParaHmsLocal(piece.endMs),
-            horas: roundHoras(horas),
-            minutos: Math.round(horas * 60),
-            peca: pecaLabel(row),
+            inicioProducao: row.inicioProducao,
+            fimProducao: row.fimProducao,
+            horas: roundHoras(row.horasProducao),
+            minutos: minutosDeHoras(row.horasProducao),
+            peca,
           });
+        } else {
+          for (const piece of piecesProd) {
+            const horas = (piece.endMs - piece.startMs) / MS_HORA;
+            producaoValidas.push({
+              id: row.id,
+              data: row.data,
+              inicioProducao: msParaHmsLocal(piece.startMs),
+              fimProducao: msParaHmsLocal(piece.endMs),
+              horas: roundHoras(horas),
+              minutos: minutosEntreMs(piece.startMs, piece.endMs),
+              peca,
+            });
+          }
         }
       }
     }
@@ -529,7 +555,7 @@ export function buildDashboardResumo(
           inicioParado: row.inicioParado,
           fimParado: row.fimParado,
           horas: roundHoras(row.horasParado),
-          minutos: Math.round(row.horasParado * 60),
+          minutos: minutosDeHoras(row.horasParado),
           peca: pecaLabel(row),
           justificativa: motivo,
           observacao: row.obsMotivo,
@@ -544,7 +570,7 @@ export function buildDashboardResumo(
             inicioParado: msParaHmsLocal(piece.startMs),
             fimParado: msParaHmsLocal(piece.endMs),
             horas: roundHoras(horas),
-            minutos: Math.round(horas * 60),
+            minutos: minutosEntreMs(piece.startMs, piece.endMs),
             peca: pecaLabel(row),
             justificativa: motivo,
             observacao: row.obsMotivo,
@@ -603,7 +629,7 @@ export function buildDashboardResumo(
           inicioParado: msParaHmsLocal(gap.startMs),
           fimParado: msParaHmsLocal(gap.endMs),
           horas: roundHoras(horas),
-          minutos: Math.round(horas * 60),
+          minutos: minutosEntreMs(gap.startMs, gap.endMs),
           peca: '(sem peça)',
           justificativa: motivo,
           observacao: 'Gerado automaticamente: início da escala pontual sem registro Camasi.',
@@ -611,6 +637,43 @@ export function buildDashboardResumo(
         });
       }
       diaAcc.set(data, acc);
+    }
+  }
+
+  // Com escala: produção na grade = intervalos da escala sem parada (entre uma parada e outra).
+  if (escala && !escalaEstaVazia(escala)) {
+    let idProd = 0;
+    for (const data of allDays) {
+      const janelas = janelasEscalaNoDia(data, escala);
+      if (janelas.length === 0) continue;
+      const acc = diaAcc.get(data) ?? emptyDiaAcc();
+      const gaps = subtrairIntervalos(janelas, unirIntervalos(acc.paradoPieces));
+      const hitsPeca = pecasProducaoPorDia.get(data) ?? [];
+      for (const gap of gaps) {
+        const horas = (gap.endMs - gap.startMs) / MS_HORA;
+        if (horas <= 0) continue;
+        idProd += 1;
+        let peca = '—';
+        let melhorOverlap = 0;
+        for (const h of hitsPeca) {
+          const a = Math.max(gap.startMs, h.startMs);
+          const b = Math.min(gap.endMs, h.endMs);
+          const ov = b - a;
+          if (ov > melhorOverlap) {
+            melhorOverlap = ov;
+            peca = h.peca;
+          }
+        }
+        producaoValidas.push({
+          id: -(10_000 + idProd),
+          data,
+          inicioProducao: msParaHmsLocal(gap.startMs),
+          fimProducao: msParaHmsLocal(gap.endMs),
+          horas: roundHoras(horas),
+          minutos: minutosEntreMs(gap.startMs, gap.endMs),
+          peca,
+        });
+      }
     }
   }
 
