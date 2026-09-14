@@ -80,6 +80,15 @@ export function inicioSemanaAtualYmd(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/** Sexta-feira da semana corrente (período útil seg–sex). */
+export function fimSemanaUtilAtualYmd(): string {
+  const d = new Date();
+  const wd = d.getDay();
+  const diffSeg = wd === 0 ? -6 : 1 - wd;
+  d.setDate(d.getDate() + diffSeg + 4);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function formatHoraCurtaAgora(): string {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;

@@ -32,6 +32,7 @@ import {
   hojeYmd,
   inicioMesAtualYmd,
   inicioSemanaAtualYmd,
+  fimSemanaUtilAtualYmd,
   mesesAtrasYmd,
 } from '../../components/producao/camasiFormat';
 import { formatEscalaExcecaoResumo } from '../../utils/recursoEscalaLabel';
@@ -123,7 +124,7 @@ type PresetPeriodo = 'hoje' | 'semana' | 'mes' | '12meses' | 'periodo';
 function presetDeFiltros(f: Filtros): PresetPeriodo {
   const hoje = hojeYmd();
   if (f.dataIni === hoje && f.dataFim === hoje) return 'hoje';
-  if (f.dataIni === inicioSemanaAtualYmd() && f.dataFim === hoje) return 'semana';
+  if (f.dataIni === inicioSemanaAtualYmd() && f.dataFim === fimSemanaUtilAtualYmd()) return 'semana';
   if (f.dataIni === inicioMesAtualYmd() && f.dataFim === hoje) return 'mes';
   if (f.dataIni === mesesAtrasYmd(12) && f.dataFim === hoje) return '12meses';
   return 'periodo';
@@ -132,7 +133,7 @@ function presetDeFiltros(f: Filtros): PresetPeriodo {
 function filtrosDoPreset(p: Exclude<PresetPeriodo, 'periodo'>): Filtros {
   const hoje = hojeYmd();
   if (p === 'hoje') return { dataIni: hoje, dataFim: hoje };
-  if (p === 'semana') return { dataIni: inicioSemanaAtualYmd(), dataFim: hoje };
+  if (p === 'semana') return { dataIni: inicioSemanaAtualYmd(), dataFim: fimSemanaUtilAtualYmd() };
   if (p === 'mes') return { dataIni: inicioMesAtualYmd(), dataFim: hoje };
   return { dataIni: mesesAtrasYmd(12), dataFim: hoje };
 }
