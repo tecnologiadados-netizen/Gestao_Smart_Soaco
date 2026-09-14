@@ -748,7 +748,7 @@ export default function ProducaoCamasiPage() {
             Previsto × parado ao longo do período
           </h3>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            No detalhe ao passar o mouse: produção = previsto − parado operacional
+            No detalhe ao passar o mouse: produção = previsto − parado (inclui início/fim de jornada)
             {chartPrevistoParadoGranularidade === 'dia'
               ? ' — por dia (período curto)'
               : ' — por mês (período longo)'}
@@ -792,7 +792,7 @@ export default function ProducaoCamasiPage() {
                           Tempo previsto: {formatHoras(row.previsto)}
                         </p>
                         <p className="tabular-nums" style={{ color: isDark ? '#fbbf24' : '#d97706' }}>
-                          Parada operacional: {formatHoras(row.paradoOperacional)}
+                          Parada: {formatHoras(row.parado)}
                         </p>
                         <p
                           className="mt-1 border-t border-slate-200 pt-1 font-medium tabular-nums dark:border-slate-600"
@@ -805,9 +805,7 @@ export default function ProducaoCamasiPage() {
                   }}
                 />
                 <Legend
-                  formatter={(value) =>
-                    value === 'previsto' ? 'Previsto' : 'Parada operacional'
-                  }
+                  formatter={(value) => (value === 'previsto' ? 'Previsto' : 'Parada')}
                 />
                 <Line
                   type="monotone"
@@ -820,8 +818,8 @@ export default function ProducaoCamasiPage() {
                 />
                 <Line
                   type="monotone"
-                  dataKey="paradoOperacional"
-                  name="paradoOperacional"
+                  dataKey="parado"
+                  name="parado"
                   stroke={isDark ? '#fbbf24' : '#d97706'}
                   strokeWidth={2}
                   dot={chartPrevistoParadoGranularidade === 'dia' ? false : { r: 3 }}
