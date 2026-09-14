@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import type {
@@ -12,10 +12,8 @@ import {
   formatHmsCurto,
   formatHoras,
   formatHorasDidatico,
-  formatYmdBr,
   formatYmdBrComSemana,
 } from './camasiFormat';
-import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../utils/textoLivreBusca';
 import { DIAS_SEMANA_ESCALA, formatEscalaExcecaoResumo, formatEscalaResumo } from '../../utils/recursoEscalaLabel';
 import { excecoesSobrepostasAoPeriodo } from '../../utils/recursoEscalaHoras';
 import { categoriaParadaCamasi } from '../../utils/camasiMotivoJornada';
@@ -230,13 +228,6 @@ export default function ModalCamasiKpi({
   categoriaFiltro?: 'operacional' | 'jornada' | null;
   onClose: () => void;
 }) {
-  const [filtro, setFiltro] = useState('');
-  const match = useMemo(() => criarMatcherTextoLivre(filtro), [filtro]);
-
-  useEffect(() => {
-    if (open) setFiltro('');
-  }, [open, tipo, motivoFiltro]);
-
   useRegisterModalEscape({
     id: 'camasi-kpi-modal',
     onClose,
@@ -281,24 +272,6 @@ export default function ModalCamasiKpi({
       qtdeDias: dias.size,
     };
   }, [paradas, data?.resumoDias]);
-
-  const paradasFiltradas = useMemo(
-    () =>
-      paradas.filter(
-        (p) =>
-          match(p.justificativa) ||
-          match(p.peca) ||
-          match(p.observacao ?? '') ||
-          match(formatYmdBr(p.data))
-      ),
-    [paradas, match]
-  );
-
-  const producoesFiltradas = useMemo(
-    () =>
-      producoes.filter((p) => match(p.peca) || match(formatYmdBr(p.data))),
-    [producoes, match]
-  );
 
   /** Memorial do dia (API): parado por união de intervalos; produção = escala − parado. */
   const resumoPorDia = useMemo(() => {
@@ -467,18 +440,6 @@ export default function ModalCamasiKpi({
           </div>
         ) : null}
 
-        {tipo !== 'previsto' && !filtrandoMotivo && (
-          <div className="border-b border-slate-100 px-5 py-2 dark:border-slate-800">
-            <input
-              type="search"
-              className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-              placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
-              value={filtro}
-              onChange={(e) => setFiltro(e.target.value)}
-            />
-          </div>
-        )}
-
         <div className="min-h-0 flex-1 overflow-auto px-5 pb-5 pt-0">
           {/* Espaço acima da tabela sem sticky — cabeçalho cola no topo do scroll */}
           <div className={tipo === 'previsto' ? 'pt-5' : 'pt-3'}>
@@ -555,7 +516,7 @@ export default function ModalCamasiKpi({
             </div>
           ) : tipo === 'producao' ? (
             <TabelaAgrupadaPorDia
-              linhas={producoesFiltradas}
+              linhas={producoes}
               ultimaColunaLabel="Peça"
               colunasExtra={(p: CamasiProducaoValida) => (
                 <>
@@ -572,7 +533,7 @@ export default function ModalCamasiKpi({
             />
           ) : (
             <TabelaAgrupadaPorDia
-              linhas={paradasFiltradas}
+              linhas={paradas}
               ultimaColunaLabel={filtrandoMotivo ? 'Observação' : 'Justificativa'}
               colunaDia={
                 temEscala
