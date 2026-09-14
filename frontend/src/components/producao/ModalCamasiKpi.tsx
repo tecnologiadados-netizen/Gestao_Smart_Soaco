@@ -337,10 +337,10 @@ export default function ModalCamasiKpi({
 
   const titulos: Record<CamasiKpiModalTipo, { titulo: string; sub: string }> = {
     eventos: {
-      titulo: 'Eventos de parada operacional',
+      titulo: 'Eventos de parada',
       sub: temEscala
-        ? `${kpis?.qtdeParadasOperacionais ?? paradas.length} evento(s) operacionais — início/fim de jornada à parte. Memorial: no dia atual previsto − parado = restante; nos demais dias = produzido.`
-        : `${kpis?.qtdeParadasOperacionais ?? paradas.length} evento(s) operacionais com tempo parado na escala.`,
+        ? `${kpis?.qtdeParadas ?? paradas.length} evento(s) na escala (operacionais e início/fim de jornada). Memorial: no dia atual previsto − parado = restante; nos demais dias = produzido.`
+        : `${kpis?.qtdeParadas ?? paradas.length} evento(s) com tempo parado na escala.`,
     },
     parado: {
       titulo: 'Tempo parado',

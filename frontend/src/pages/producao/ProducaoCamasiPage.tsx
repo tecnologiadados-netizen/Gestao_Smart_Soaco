@@ -568,7 +568,7 @@ export default function ProducaoCamasiPage() {
             Produção Camasi
           </h1>
           <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-            Paradas operacionais dentro da escala
+            Paradas na escala (operacionais e início/fim de jornada)
             {data
               ? ` · ${formatYmdBr(data.dataIni)} a ${formatYmdBr(data.dataFim)}`
               : ''}
@@ -682,11 +682,11 @@ export default function ProducaoCamasiPage() {
         <KpiCard
           loading={loading}
           title="Eventos de parada"
-          value={new Intl.NumberFormat('pt-BR').format(kpis?.qtdeParadasOperacionais ?? 0)}
+          value={new Intl.NumberFormat('pt-BR').format(kpis?.qtdeParadas ?? 0)}
           sub={
             (kpis?.qtdeParadasJornada ?? 0) > 0
-              ? `Operacionais · início/fim de jornada: ${new Intl.NumberFormat('pt-BR').format(kpis?.qtdeParadasJornada ?? 0)}`
-              : 'Quantidade de paradas operacionais no período'
+              ? `Todas · operacionais ${new Intl.NumberFormat('pt-BR').format(kpis?.qtdeParadasOperacionais ?? 0)} · início/fim jornada ${new Intl.NumberFormat('pt-BR').format(kpis?.qtdeParadasJornada ?? 0)}`
+              : 'Todas as paradas na escala no período'
           }
           onClick={() => {
             setMotivoModal(null);
@@ -1116,9 +1116,7 @@ export default function ProducaoCamasiPage() {
         tipo={kpiModal}
         data={data}
         motivoFiltro={motivoModal}
-        categoriaFiltro={
-          motivoModal || kpiModal === 'parado' ? null : 'operacional'
-        }
+        categoriaFiltro={null}
         onClose={() => {
           setKpiModal(null);
           setMotivoModal(null);
