@@ -99,6 +99,11 @@ export default function ModalEscalaPontualRecurso({
   const [erroLocal, setErroLocal] = useState<string | null>(null);
   const [mesCalendario, setMesCalendario] = useState<Date>(() => dateFromYmd(hojeYmd()) ?? new Date());
 
+  // Recarrega a lista se o recurso vier atualizado da API (evita modal “vazio” após reabrir).
+  useEffect(() => {
+    setLista([...(recurso.escalaExcecoes ?? [])]);
+  }, [recurso.cod, recurso.updatedAt]);
+
   /** Campos De/Até e edição de pontualidade devem navegar o calendário para o mês do período. */
   useEffect(() => {
     const d = dateFromYmd(dataIni);

@@ -24,8 +24,21 @@
       "atualizadoPorLogin": "davilucas1",
       "atualizadoPorNome": null,
       "createdAt": "2026-06-01T16:22:09.173Z",
-      "updatedAt": "2026-09-14T13:32:24.743Z",
-      "escalaExcecoes": []
+      "updatedAt": "2026-09-14T18:33:29.614Z",
+      "escalaExcecoes": [
+        {
+          "id": "ex-mu1kzs34-rzfwni",
+          "dataIni": "2026-09-05",
+          "dataFim": "2026-09-05",
+          "tipo": "substituir",
+          "faixas": [
+            {
+              "inicio": "06:00",
+              "fim": "14:00"
+            }
+          ]
+        }
+      ]
     },
     {
       "cod": "R002",
