@@ -68,6 +68,7 @@ export type CamasiProducaoValida = {
   horas: number;
   minutos?: number;
   peca: string;
+  justificativa?: string | null;
 };
 
 export type CamasiResumoDia = {

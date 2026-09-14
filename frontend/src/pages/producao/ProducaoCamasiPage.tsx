@@ -157,7 +157,7 @@ function producaoParaLinha(p: CamasiProducaoValida, idx: number): LinhaTempo {
     horas: p.horas,
     minutos: p.minutos ?? Math.max(0, Math.floor((p.horas ?? 0) * 60 + 1e-9)),
     peca: p.peca,
-    justificativa: 'Produção',
+    justificativa: p.justificativa?.trim() || 'Produção',
     observacao: null,
   };
 }
