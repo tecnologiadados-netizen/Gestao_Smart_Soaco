@@ -13,6 +13,7 @@ import {
   formatHoras,
   formatHorasDidatico,
   formatYmdBrComSemana,
+  hojeYmd,
 } from './camasiFormat';
 import { DIAS_SEMANA_ESCALA, formatEscalaExcecaoResumo, formatEscalaResumo } from '../../utils/recursoEscalaLabel';
 import { excecoesSobrepostasAoPeriodo } from '../../utils/recursoEscalaHoras';
@@ -291,7 +292,7 @@ export default function ModalCamasiKpi({
     eventos: {
       titulo: 'Eventos de parada operacional',
       sub: temEscala
-        ? `${kpis?.qtdeParadasOperacionais ?? paradas.length} evento(s) operacionais — início/fim de jornada à parte. Memorial: previsto − parado = restante; produção confirmada nos eventos.`
+        ? `${kpis?.qtdeParadasOperacionais ?? paradas.length} evento(s) operacionais — início/fim de jornada à parte. Memorial: no dia atual previsto − parado = restante; nos demais dias = produzido.`
         : `${kpis?.qtdeParadasOperacionais ?? paradas.length} evento(s) operacionais com tempo parado na escala.`,
     },
     parado: {
@@ -343,19 +344,29 @@ export default function ModalCamasiKpi({
         </td>
       );
     }
-    const restanteHoras = Math.max(0, r.escalaHoras - r.paradoHoras);
+    const diaAtual = dataYmd === hojeYmd();
+    const saldoHoras = Math.max(0, r.escalaHoras - r.paradoHoras);
     const prodConfirmadaHoras = producoes
       .filter((p) => p.data === dataYmd)
       .reduce((s, p) => s + (p.horas ?? 0), 0);
-    const titulo = [
-      `Restante = previsto − parado unificado (${formatHorasDidatico(r.escalaHoras)} − ${formatHorasDidatico(r.paradoHoras)} = ${formatHorasDidatico(restanteHoras)})`,
-      `Produção confirmada nos eventos: ${formatHorasDidatico(prodConfirmadaHoras)}`,
-      r.temSobreposicao
-        ? `Sobreposição detectada: soma dos eventos ${formatHorasDidatico(r.paradoSomaEventos)} → união ${formatHorasDidatico(r.paradoHoras)}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join('\n');
+    const titulo = diaAtual
+      ? [
+          `Restante = previsto − parado (${formatHorasDidatico(r.escalaHoras)} − ${formatHorasDidatico(r.paradoHoras)} = ${formatHorasDidatico(saldoHoras)})`,
+          `Produção confirmada nos eventos: ${formatHorasDidatico(prodConfirmadaHoras)}`,
+          r.temSobreposicao
+            ? `Sobreposição: soma dos eventos ${formatHorasDidatico(r.paradoSomaEventos)} → união ${formatHorasDidatico(r.paradoHoras)}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : [
+          `Produzido = previsto − parado (${formatHorasDidatico(r.escalaHoras)} − ${formatHorasDidatico(r.paradoHoras)} = ${formatHorasDidatico(saldoHoras)})`,
+          r.temSobreposicao
+            ? `Sobreposição: soma dos eventos ${formatHorasDidatico(r.paradoSomaEventos)} → união ${formatHorasDidatico(r.paradoHoras)}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join('\n');
     return (
       <td
         rowSpan={rowSpan}
@@ -377,18 +388,20 @@ export default function ModalCamasiKpi({
           </div>
           <div className="flex items-baseline justify-between gap-3 border-t border-slate-300/80 pt-1 dark:border-slate-600">
             <span className="shrink-0 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-              (=) Restante
+              {diaAtual ? '(=) Restante' : '(=) Produzido'}
             </span>
             <span className="font-semibold text-slate-900 dark:text-slate-50">
-              {formatHorasDidatico(restanteHoras)}
+              {formatHorasDidatico(saldoHoras)}
             </span>
           </div>
-          <p className="pt-1 text-[9px] font-medium leading-snug text-slate-500 dark:text-slate-400">
-            Produção confirmada:{' '}
-            <span className="tabular-nums text-emerald-700 dark:text-emerald-300">
-              {formatHorasDidatico(prodConfirmadaHoras)}
-            </span>
-          </p>
+          {diaAtual ? (
+            <p className="pt-1 text-[9px] font-medium leading-snug text-slate-500 dark:text-slate-400">
+              Produção confirmada:{' '}
+              <span className="tabular-nums text-emerald-700 dark:text-emerald-300">
+                {formatHorasDidatico(prodConfirmadaHoras)}
+              </span>
+            </p>
+          ) : null}
           {r.temSobreposicao ? (
             <p className="pt-0.5 text-[9px] font-medium text-amber-700 dark:text-amber-300">
               Sobreposição ajustada
