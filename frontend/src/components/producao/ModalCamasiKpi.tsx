@@ -291,7 +291,7 @@ export default function ModalCamasiKpi({
     eventos: {
       titulo: 'Eventos de parada operacional',
       sub: temEscala
-        ? `${kpis?.qtdeParadasOperacionais ?? paradas.length} evento(s) operacionais — início/fim de jornada à parte. Memorial: previsto − parado unificado = produção.`
+        ? `${kpis?.qtdeParadasOperacionais ?? paradas.length} evento(s) operacionais — início/fim de jornada à parte. Memorial: previsto − parado = restante; produção confirmada nos eventos.`
         : `${kpis?.qtdeParadasOperacionais ?? paradas.length} evento(s) operacionais com tempo parado na escala.`,
     },
     parado: {
@@ -343,8 +343,13 @@ export default function ModalCamasiKpi({
         </td>
       );
     }
+    const restanteHoras = Math.max(0, r.escalaHoras - r.paradoHoras);
+    const prodConfirmadaHoras = producoes
+      .filter((p) => p.data === dataYmd)
+      .reduce((s, p) => s + (p.horas ?? 0), 0);
     const titulo = [
-      'Produção = escala − parado unificado (sem contar sobreposição duas vezes)',
+      `Restante = previsto − parado unificado (${formatHorasDidatico(r.escalaHoras)} − ${formatHorasDidatico(r.paradoHoras)} = ${formatHorasDidatico(restanteHoras)})`,
+      `Produção confirmada nos eventos: ${formatHorasDidatico(prodConfirmadaHoras)}`,
       r.temSobreposicao
         ? `Sobreposição detectada: soma dos eventos ${formatHorasDidatico(r.paradoSomaEventos)} → união ${formatHorasDidatico(r.paradoHoras)}`
         : null,
@@ -354,7 +359,7 @@ export default function ModalCamasiKpi({
     return (
       <td
         rowSpan={rowSpan}
-        className={`min-w-[10.5rem] px-2.5 py-2 align-middle ${dataTd}`}
+        className={`min-w-[11rem] px-2.5 py-2 align-middle ${dataTd}`}
         title={titulo}
       >
         <div className="space-y-1 text-[11px] leading-snug tabular-nums text-slate-700 dark:text-slate-200">
@@ -372,12 +377,18 @@ export default function ModalCamasiKpi({
           </div>
           <div className="flex items-baseline justify-between gap-3 border-t border-slate-300/80 pt-1 dark:border-slate-600">
             <span className="shrink-0 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-              (=) Produção
+              (=) Restante
             </span>
             <span className="font-semibold text-slate-900 dark:text-slate-50">
-              {formatHorasDidatico(r.producaoHoras)}
+              {formatHorasDidatico(restanteHoras)}
             </span>
           </div>
+          <p className="pt-1 text-[9px] font-medium leading-snug text-slate-500 dark:text-slate-400">
+            Produção confirmada:{' '}
+            <span className="tabular-nums text-emerald-700 dark:text-emerald-300">
+              {formatHorasDidatico(prodConfirmadaHoras)}
+            </span>
+          </p>
           {r.temSobreposicao ? (
             <p className="pt-0.5 text-[9px] font-medium text-amber-700 dark:text-amber-300">
               Sobreposição ajustada
