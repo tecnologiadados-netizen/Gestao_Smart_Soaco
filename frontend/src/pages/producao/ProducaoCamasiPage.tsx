@@ -339,10 +339,11 @@ function KpiCard({
 }) {
   if (loading) {
     return (
-      <div className="card-panel h-[128px] animate-pulse p-4">
+      <div className="card-panel h-[168px] animate-pulse p-4">
         <div className="h-3 w-2/3 rounded bg-slate-200 dark:bg-slate-700" />
         <div className="mt-4 h-7 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
-        <div className="mt-3 h-3 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+        <div className="mt-3 h-3 w-full rounded bg-slate-200 dark:bg-slate-700" />
+        <div className="mt-2 h-3 w-5/6 rounded bg-slate-200 dark:bg-slate-700" />
       </div>
     );
   }
@@ -727,28 +728,40 @@ export default function ProducaoCamasiPage() {
           value={formatHoras(kpis?.horasProducao ?? 0)}
           sub={
             kpis?.disponibilidadePct != null ? (
-              <>
-                <p>
-                  Disponibilidade{' '}
-                  {new Intl.NumberFormat('pt-BR', {
-                    minimumFractionDigits: 1,
-                    maximumFractionDigits: 1,
-                  }).format(kpis.disponibilidadePct)}
-                  %
-                </p>
-                <p className="mt-0.5">
-                  Tempo decorrido até o dia atual:{' '}
-                  <span className="tabular-nums text-slate-600 dark:text-slate-300">
+              <div className="space-y-0.5 tabular-nums">
+                <p className="flex items-baseline justify-between gap-2">
+                  <span>Tempo previsto de produção até o dia atual</span>
+                  <span className="shrink-0 font-medium text-slate-600 dark:text-slate-300">
                     {formatHoras(kpis.horasEscalaDecorrida ?? 0)}
                   </span>
                 </p>
-                <p className="mt-0.5">
-                  Tempo parado:{' '}
-                  <span className="tabular-nums text-slate-600 dark:text-slate-300">
+                <p className="flex items-baseline justify-between gap-2">
+                  <span>(−) Tempo parado</span>
+                  <span className="shrink-0 font-medium text-slate-600 dark:text-slate-300">
                     {formatHoras(kpis.horasParado ?? 0)}
                   </span>
                 </p>
-              </>
+                <p className="flex items-baseline justify-between gap-2 border-t border-slate-200/80 pt-0.5 dark:border-slate-600/80">
+                  <span>(=) Produção</span>
+                  <span className="shrink-0 font-semibold text-slate-700 dark:text-slate-200">
+                    {formatHoras(kpis.horasProducao ?? 0)}
+                  </span>
+                </p>
+                <p className="pt-0.5 text-slate-600 dark:text-slate-300">
+                  Disponibilidade{' '}
+                  <span className="font-semibold text-slate-800 dark:text-slate-100">
+                    {new Intl.NumberFormat('pt-BR', {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    }).format(kpis.disponibilidadePct)}
+                    %
+                  </span>
+                  <span className="text-slate-400 dark:text-slate-500">
+                    {' '}
+                    = produção ÷ previsto até o dia atual
+                  </span>
+                </p>
+              </div>
             ) : (
               'Horas em produção no período'
             )
