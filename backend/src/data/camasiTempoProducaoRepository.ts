@@ -1399,14 +1399,16 @@ export function buildDashboardResumo(
 
   const total = horasProducao + horasParado;
   const horasEscalaFromDias = resumoDias.reduce((s, d) => s + d.escalaHoras, 0);
-  // Soma das escalas cheias dos dias — o previsto não corta ao "agora".
+  // Previsto = escala do período filtrado (todos os dias do range), não só dias com evento Camasi.
+  // opts.horasEscala vem de horasEscalaNoPeriodo(dataIni, dataFim) na rota.
   const horasEscala =
-    escala && !escalaEstaVazia(escala) && resumoDias.length > 0
-      ? horasEscalaFromDias
-      : opts?.horasEscala != null && Number.isFinite(opts.horasEscala) && opts.horasEscala > 0
-        ? opts.horasEscala
+    opts?.horasEscala != null && Number.isFinite(opts.horasEscala) && opts.horasEscala >= 0
+      ? opts.horasEscala
+      : escala && !escalaEstaVazia(escala) && resumoDias.length > 0
+        ? horasEscalaFromDias
         : null;
   // Disponibilidade no dia aberto: produção ÷ escala decorrida (até agora).
+  // Não usa o previsto cheio do período (que inclui dias futuros sem evento).
   const baseDisp =
     escala && !escalaEstaVazia(escala) && horasEscalaAteAgoraSum > 0
       ? horasEscalaAteAgoraSum

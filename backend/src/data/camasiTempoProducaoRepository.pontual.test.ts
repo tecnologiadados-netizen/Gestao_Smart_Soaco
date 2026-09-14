@@ -409,4 +409,24 @@ describe('buildDashboardResumo com horário pontual', () => {
     );
     expect(prodEntre).toBeTruthy();
   });
+
+  it('previsto do KPI usa horasEscala do período filtrado (não só dias com evento)', () => {
+    const rows: TempoProducaoRow[] = [
+      row({
+        id: 1,
+        data: '2026-09-05',
+        inicioParado: '06:29:00',
+        fimParado: '06:31:00',
+        nomeMotivo: 'AJUSTE OPERACIONAL',
+        horasParado: 2 / 60,
+      }),
+    ];
+    // Período maior que o único dia com evento Camasi (ex.: mês inteiro).
+    const resumo = buildDashboardResumo(rows, {
+      escala,
+      horasEscala: 223.25,
+    });
+    expect(resumo.kpis.horasEscala).toBe(223.25);
+    expect(resumo.resumoDias.reduce((s, d) => s + d.escalaHoras, 0)).toBe(8);
+  });
 });
