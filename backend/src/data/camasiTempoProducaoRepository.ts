@@ -6,7 +6,6 @@ import { queryCamasi } from '../config/camasiFirebirdDb.js';
 import {
   escalaEstaVazia,
   horasDosIntervalos,
-  horasEscalaNoDia,
   horasIntervaloNaEscala,
   intervalosNaEscalaDoDia,
   janelasEscalaNoDia,
@@ -371,6 +370,25 @@ function isParadaJornadaAuto(p: { justificativa: string; observacao: string | nu
   return isParadaInicioAuto(p) || isParadaFimAuto(p);
 }
 
+function ymdLocalDeMs(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function clipIntervalosAte(intervals: MsInterval[], limiteMs: number): MsInterval[] {
+  return intervals
+    .map((iv) => ({
+      startMs: iv.startMs,
+      endMs: Math.min(iv.endMs, limiteMs),
+    }))
+    .filter((iv) => iv.endMs > iv.startMs && iv.startMs < limiteMs);
+}
+
+function clipJanelasAte(janelas: MsInterval[], limiteMs: number | null): MsInterval[] {
+  if (limiteMs == null) return janelas.map((j) => ({ ...j }));
+  return clipIntervalosAte(janelas, limiteMs);
+}
+
 function pushParadaPeca(
   acc: {
     paradoPieces: MsInterval[];
@@ -475,7 +493,7 @@ export async function listTempoProducao(
 
 export function buildDashboardResumo(
   rows: TempoProducaoRow[],
-  opts?: { horasEscala?: number | null; escala?: RecursoEscala | null }
+  opts?: { horasEscala?: number | null; escala?: RecursoEscala | null; agoraMs?: number }
 ): {
   kpis: CamasiDashboardKpis;
   porMes: CamasiMesAgg[];
@@ -639,6 +657,28 @@ export function buildDashboardResumo(
   const allDays = new Set<string>();
   for (const row of rows) allDays.add(row.data);
 
+  const agoraMs = opts?.agoraMs ?? Date.now();
+  const hojeYmd = ymdLocalDeMs(agoraMs);
+  const limiteMsDoDia = (data: string): number | null =>
+    data === hojeYmd ? agoraMs : null;
+
+  const debitarParadaRemovida = (p: CamasiParadaValida, acc: ReturnType<typeof emptyDiaAcc>) => {
+    qtdeParadas = Math.max(0, qtdeParadas - 1);
+    if (p.categoria === 'jornada') qtdeParadasJornada = Math.max(0, qtdeParadasJornada - 1);
+    else {
+      qtdeParadasOperacionais = Math.max(0, qtdeParadasOperacionais - 1);
+      const mot = motivoMap.get(p.justificativa);
+      if (mot) {
+        mot.horas = Math.max(0, mot.horas - p.horas);
+        mot.qtde = Math.max(0, mot.qtde - 1);
+        if (mot.qtde === 0 || mot.horas <= 0) motivoMap.delete(p.justificativa);
+        else motivoMap.set(p.justificativa, mot);
+      }
+    }
+    acc.paradoSomaEventos = Math.max(0, acc.paradoSomaEventos - p.horas);
+    acc.qtdeParadas = Math.max(0, acc.qtdeParadas - 1);
+  };
+
   // Carência padrão (5 min) no início da jornada: se não houver registro até +5 min,
   // gera INÍCIO JORNADA (carência) + Sem justificativa até o 1º registro real.
   if (escala && !escalaEstaVazia(escala)) {
@@ -794,6 +834,87 @@ export function buildDashboardResumo(
       diaAcc.set(data, acc);
     }
 
+    // Dia corrente incompleto: não projetar FIM JORNADA / ociosidade até o fim da escala.
+    // A linha do tempo segue só até "agora"; o restante vira produção aberta.
+    for (const data of allDays) {
+      const limiteMs = limiteMsDoDia(data);
+      if (limiteMs == null) continue;
+      const janelas = janelasEscalaNoDia(data, escala).sort(
+        (a, b) => a.startMs - b.startMs || a.endMs - b.endMs
+      );
+      const ultima = janelas[janelas.length - 1];
+      if (!ultima || limiteMs >= ultima.endMs) continue; // jornada do dia já fechou
+
+      const acc = diaAcc.get(data) ?? emptyDiaAcc();
+      const mantidas: CamasiParadaValida[] = [];
+      for (const p of paradasValidas) {
+        if (p.data !== data) {
+          mantidas.push(p);
+          continue;
+        }
+        const t0 = hmsParaMsNoDia(p.data, p.inicioParado);
+        const t1 = hmsParaMsNoDia(p.data, p.fimParado);
+        if (t0 == null || t1 == null) {
+          mantidas.push(p);
+          continue;
+        }
+        // Em jornada aberta, FIM JORNADA / "fim da escala" é projeção — remove sempre
+        // (mesmo se já estiver recortado à faixa da manhã, ex.: 09:42–11:30).
+        if (isParadaFimAuto(p)) {
+          debitarParadaRemovida(p, acc);
+          const cut = { startMs: t0, endMs: t1 };
+          acc.paradoPieces = subtrairIntervalos(acc.paradoPieces, [cut]);
+          acc.jornadaPieces = subtrairIntervalos(acc.jornadaPieces, [cut]);
+          acc.operacionalPieces = subtrairIntervalos(acc.operacionalPieces, [cut]);
+          continue;
+        }
+        if (t0 >= limiteMs) {
+          debitarParadaRemovida(p, acc);
+          const cut = { startMs: t0, endMs: t1 };
+          acc.paradoPieces = subtrairIntervalos(acc.paradoPieces, [cut]);
+          acc.jornadaPieces = subtrairIntervalos(acc.jornadaPieces, [cut]);
+          acc.operacionalPieces = subtrairIntervalos(acc.operacionalPieces, [cut]);
+          continue;
+        }
+        if (t1 > limiteMs) {
+          const horas = (limiteMs - t0) / MS_HORA;
+          mantidas.push({
+            ...p,
+            fimParado: msParaHmsLocal(limiteMs),
+            horas: roundHoras(horas),
+            minutos: minutosEntreMs(t0, limiteMs),
+          });
+          const delta = p.horas - horas;
+          if (delta > 0) {
+            acc.paradoSomaEventos = Math.max(0, acc.paradoSomaEventos - delta);
+            if (p.categoria === 'operacional') {
+              const mot = motivoMap.get(p.justificativa);
+              if (mot) {
+                mot.horas = Math.max(0, mot.horas - delta);
+                motivoMap.set(p.justificativa, mot);
+              }
+            }
+          }
+          // Remove a cauda futura das peças do memorial.
+          acc.paradoPieces = subtrairIntervalos(acc.paradoPieces, [{ startMs: limiteMs, endMs: t1 }]);
+          acc.jornadaPieces = subtrairIntervalos(acc.jornadaPieces, [{ startMs: limiteMs, endMs: t1 }]);
+          acc.operacionalPieces = subtrairIntervalos(acc.operacionalPieces, [
+            { startMs: limiteMs, endMs: t1 },
+          ]);
+          continue;
+        }
+        mantidas.push(p);
+      }
+      paradasValidas.length = 0;
+      paradasValidas.push(...mantidas);
+
+      acc.paradoPieces = clipIntervalosAte(acc.paradoPieces, limiteMs);
+      acc.jornadaPieces = clipIntervalosAte(acc.jornadaPieces, limiteMs);
+      acc.operacionalPieces = clipIntervalosAte(acc.operacionalPieces, limiteMs);
+      acc.producaoPieces = clipIntervalosAte(acc.producaoPieces, limiteMs);
+      diaAcc.set(data, acc);
+    }
+
     // Carência padrão (5 min) no fim da jornada (última faixa do dia).
     for (const data of allDays) {
       const janelas = janelasEscalaNoDia(data, escala).sort(
@@ -801,6 +922,9 @@ export function buildDashboardResumo(
       );
       const janela = janelas[janelas.length - 1];
       if (!janela) continue;
+      // Só aplica quando a jornada do dia já terminou (ou é dia passado).
+      const limiteMs = limiteMsDoDia(data);
+      if (limiteMs != null && limiteMs < janela.endMs) continue;
       const acc = diaAcc.get(data) ?? emptyDiaAcc();
 
       const carenciaIni = Math.max(janela.endMs - CAMASI_CARENCIA_MS, janela.startMs);
@@ -955,7 +1079,8 @@ export function buildDashboardResumo(
   if (escala && !escalaEstaVazia(escala)) {
     let idProd = 0;
     for (const data of allDays) {
-      const janelas = janelasEscalaNoDia(data, escala);
+      const limiteMs = limiteMsDoDia(data);
+      const janelas = clipJanelasAte(janelasEscalaNoDia(data, escala), limiteMs);
       if (janelas.length === 0) continue;
       const acc = diaAcc.get(data) ?? emptyDiaAcc();
       const gaps = subtrairIntervalos(janelas, unirIntervalos(acc.paradoPieces));
@@ -995,7 +1120,10 @@ export function buildDashboardResumo(
     const paradoHoras = horasDosIntervalos(uniao);
     const paradoOperacionalHoras = horasDosIntervalos(unirIntervalos(acc.operacionalPieces));
     const paradoJornadaHoras = horasDosIntervalos(unirIntervalos(acc.jornadaPieces));
-    const escalaHoras = horasEscalaNoDia(data, escala);
+    const limiteMs = limiteMsDoDia(data);
+    const escalaHoras = horasDosIntervalos(
+      clipJanelasAte(janelasEscalaNoDia(data, escala), limiteMs)
+    );
     const producaoHoras =
       escala && !escalaEstaVazia(escala)
         ? Math.max(0, escalaHoras - paradoHoras)
@@ -1060,10 +1188,13 @@ export function buildDashboardResumo(
   }
 
   const total = horasProducao + horasParado;
+  const horasEscalaFromDias = resumoDias.reduce((s, d) => s + d.escalaHoras, 0);
   const horasEscala =
-    opts?.horasEscala != null && Number.isFinite(opts.horasEscala) && opts.horasEscala > 0
-      ? opts.horasEscala
-      : null;
+    escala && !escalaEstaVazia(escala) && resumoDias.length > 0
+      ? horasEscalaFromDias
+      : opts?.horasEscala != null && Number.isFinite(opts.horasEscala) && opts.horasEscala > 0
+        ? opts.horasEscala
+        : null;
   const kpis: CamasiDashboardKpis = {
     horasProducao: roundHoras(horasProducao),
     horasParado: roundHoras(horasParado),

@@ -183,6 +183,90 @@ describe('carência de 5 min no fim da jornada', () => {
   });
 });
 
+describe('dia corrente incompleto', () => {
+  it('não projeta FIM JORNADA até o fim da escala; última linha é produção até agora', () => {
+    // Escala contínua (Perfiladeira 1000 em produção): 07:00–17:15
+    const escalaContinua = {
+      ...ESCALA_PERFILADEIRA_PADRAO,
+      faixas: [{ inicio: '07:00', fim: '17:15' }],
+    };
+    // 14/09/2026 12:30
+    const agoraMs = new Date(2026, 8, 14, 12, 30, 0, 0).getTime();
+    const rows: TempoProducaoRow[] = [
+      row({
+        id: 1,
+        data: '2026-09-14',
+        inicioProducao: '09:41:00',
+        fimProducao: '09:42:00',
+        nomeOperador: 'FUNDO DO ROUPEIRO',
+        horasProducao: 1 / 60,
+      }),
+      row({
+        id: 2,
+        data: '2026-09-14',
+        inicioParado: '09:42:00',
+        fimParado: '17:15:00',
+        nomeMotivo: 'FIM JORNADA',
+        horasParado: (17 * 60 + 15 - (9 * 60 + 42)) / 60,
+      }),
+    ];
+
+    const resumo = buildDashboardResumo(rows, {
+      escala: escalaContinua,
+      horasEscala: 10.25,
+      agoraMs,
+    });
+
+    expect(
+      resumo.paradasValidas.some(
+        (p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL || p.observacao === CAMASI_OBS_FIM_ESCALA
+      )
+    ).toBe(false);
+
+    const aberta = resumo.producaoValidas.find(
+      (p) => p.inicioProducao === '09:41:00' || p.inicioProducao === '09:42:00'
+    );
+    expect(aberta?.fimProducao).toBe('12:30:00');
+  });
+
+  it('remove FIM JORNADA já recortado à faixa da manhã enquanto a jornada ainda está aberta', () => {
+    // 14/09/2026 12:30 — horário padrão com intervalo; peça manhã 09:42–11:30
+    const agoraMs = new Date(2026, 8, 14, 12, 30, 0, 0).getTime();
+    const rows: TempoProducaoRow[] = [
+      row({
+        id: 1,
+        data: '2026-09-14',
+        inicioProducao: '09:41:00',
+        fimProducao: '09:42:00',
+        nomeOperador: 'FUNDO DO ROUPEIRO',
+        horasProducao: 1 / 60,
+      }),
+      row({
+        id: 2,
+        data: '2026-09-14',
+        inicioParado: '09:42:00',
+        fimParado: '17:15:00',
+        nomeMotivo: 'FIM JORNADA',
+        horasParado: (17 * 60 + 15 - (9 * 60 + 42)) / 60,
+      }),
+    ];
+
+    const resumo = buildDashboardResumo(rows, {
+      escala: ESCALA_PERFILADEIRA_PADRAO,
+      horasEscala: 8.75,
+      agoraMs,
+    });
+
+    expect(resumo.paradasValidas.some((p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL)).toBe(
+      false
+    );
+    const aberta = resumo.producaoValidas.find(
+      (p) => p.inicioProducao === '09:41:00' || p.inicioProducao === '09:42:00'
+    );
+    expect(aberta?.fimProducao).toBe('11:30:00');
+  });
+});
+
 describe('buildDashboardResumo com horário pontual', () => {
   const escala = anexarExcecoes(ESCALA_PERFILADEIRA_PADRAO, [
     {
