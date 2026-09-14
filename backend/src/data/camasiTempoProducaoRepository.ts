@@ -1114,6 +1114,7 @@ export function buildDashboardResumo(
   }
 
   const resumoDias: CamasiResumoDia[] = [];
+  let horasEscalaAteAgoraSum = 0;
   for (const data of allDays) {
     const acc = diaAcc.get(data) ?? emptyDiaAcc();
     const uniao = unirIntervalos(acc.paradoPieces);
@@ -1121,12 +1122,15 @@ export function buildDashboardResumo(
     const paradoOperacionalHoras = horasDosIntervalos(unirIntervalos(acc.operacionalPieces));
     const paradoJornadaHoras = horasDosIntervalos(unirIntervalos(acc.jornadaPieces));
     const limiteMs = limiteMsDoDia(data);
-    const escalaHoras = horasDosIntervalos(
-      clipJanelasAte(janelasEscalaNoDia(data, escala), limiteMs)
-    );
+    const janelasFull = janelasEscalaNoDia(data, escala);
+    // Card "tempo previsto": escala completa do dia (até o fim da jornada, ex. 17:15).
+    const escalaHoras = horasDosIntervalos(janelasFull);
+    // Produção no dia corrente: só até "agora" (não inventa o futuro).
+    const escalaHorasAteAgora = horasDosIntervalos(clipJanelasAte(janelasFull, limiteMs));
+    horasEscalaAteAgoraSum += escalaHorasAteAgora;
     const producaoHoras =
       escala && !escalaEstaVazia(escala)
-        ? Math.max(0, escalaHoras - paradoHoras)
+        ? Math.max(0, escalaHorasAteAgora - paradoHoras)
         : 0;
     const temSobreposicao = acc.paradoSomaEventos - paradoHoras > 0.05;
     resumoDias.push({
@@ -1189,12 +1193,18 @@ export function buildDashboardResumo(
 
   const total = horasProducao + horasParado;
   const horasEscalaFromDias = resumoDias.reduce((s, d) => s + d.escalaHoras, 0);
+  // Soma das escalas cheias dos dias — o previsto não corta ao "agora".
   const horasEscala =
     escala && !escalaEstaVazia(escala) && resumoDias.length > 0
       ? horasEscalaFromDias
       : opts?.horasEscala != null && Number.isFinite(opts.horasEscala) && opts.horasEscala > 0
         ? opts.horasEscala
         : null;
+  // Disponibilidade no dia aberto: produção ÷ escala decorrida (até agora).
+  const baseDisp =
+    escala && !escalaEstaVazia(escala) && horasEscalaAteAgoraSum > 0
+      ? horasEscalaAteAgoraSum
+      : horasEscala;
   const kpis: CamasiDashboardKpis = {
     horasProducao: roundHoras(horasProducao),
     horasParado: roundHoras(horasParado),
@@ -1202,8 +1212,8 @@ export function buildDashboardResumo(
     horasParadoJornada: roundHoras(horasParadoJornada),
     horasEscala: horasEscala != null ? roundHoras(horasEscala) : null,
     disponibilidadePct:
-      horasEscala != null
-        ? round1((horasProducao / horasEscala) * 100)
+      baseDisp != null && baseDisp > 0
+        ? round1((horasProducao / baseDisp) * 100)
         : total > 0
           ? round1((horasProducao / total) * 100)
           : null,

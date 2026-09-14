@@ -227,6 +227,8 @@ describe('dia corrente incompleto', () => {
       (p) => p.inicioProducao === '09:41:00' || p.inicioProducao === '09:42:00'
     );
     expect(aberta?.fimProducao).toBe('12:30:00');
+    // Previsto = jornada cheia (07:00–17:15 = 10h15), não cortado ao "agora".
+    expect(resumo.kpis.horasEscala).toBe(10.25);
   });
 
   it('remove FIM JORNADA já recortado à faixa da manhã enquanto a jornada ainda está aberta', () => {
