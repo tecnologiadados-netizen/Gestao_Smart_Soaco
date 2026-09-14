@@ -726,7 +726,7 @@ export function buildDashboardResumo(
       if (categoria === 'jornada') qtdeParadasJornada += 1;
       else qtdeParadasOperacionais += 1;
 
-      if (motivo !== CAMASI_AGUARDANDO_JUSTIFICATIVA) {
+      {
         const mot = motivoMap.get(motivo) ?? { horas: 0, qtde: 0 };
         mot.horas += row.horasParado;
         mot.qtde += 1;
@@ -1088,6 +1088,10 @@ export function buildDashboardResumo(
       idSintetico += 1;
       qtdeParadas += 1;
       qtdeParadasOperacionais += 1;
+      const mot = motivoMap.get(motivo) ?? { horas: 0, qtde: 0 };
+      mot.horas += horas;
+      mot.qtde += 1;
+      motivoMap.set(motivo, mot);
       const piece: MsInterval = { startMs, endMs };
       pushParadaPeca(acc, [piece], 'operacional', horas);
       paradasValidas.push({
