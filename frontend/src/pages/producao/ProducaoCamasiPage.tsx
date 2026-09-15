@@ -937,6 +937,10 @@ export default function ProducaoCamasiPage() {
                   ? ''
                   : 's'}
               </p>
+              <p className="mt-1 text-[11px] leading-snug text-amber-800 dark:text-amber-200">
+                Observação: registramos só até a última parada fechada na Camasi — a situação atual da
+                máquina (linha em aberto) ainda não entra.
+              </p>
               <div className="mt-2 flex flex-wrap gap-1">
                 {(
                   [
