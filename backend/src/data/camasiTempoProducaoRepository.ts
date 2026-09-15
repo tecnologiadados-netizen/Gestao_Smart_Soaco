@@ -361,96 +361,74 @@ function temHorarioInformado(hms: string | null | undefined): boolean {
   return hms != null && String(hms).trim() !== '';
 }
 
-function hmsMesmoRelogio(a: string | null | undefined, b: string | null | undefined): boolean {
-  if (!temHorarioInformado(a) || !temHorarioInformado(b)) return false;
-  const na = String(a).trim().slice(0, 8);
-  const nb = String(b).trim().slice(0, 8);
-  return na === nb;
+/**
+ * Linha Camasi utilizável no painel.
+ * No dia corrente, só entra linha com parada fechada (INÍCIO e FIM_PARADO).
+ * Linha atual só com produção (parada NULL) é ignorada por completo — produção
+ * dessa linha só entra quando a Camasi gravar a parada.
+ * Em dias passados, mantém linhas só de produção (padrão histórico / testes).
+ */
+export function linhaCamasiUtilizavel(
+  row: Pick<TempoProducaoRow, 'data' | 'inicioParado' | 'fimParado'>,
+  hojeYmd: string
+): boolean {
+  const paradaFechada =
+    temHorarioInformado(row.inicioParado) && temHorarioInformado(row.fimParado);
+  if (paradaFechada) return true;
+  if (row.data === hojeYmd) return false;
+  return true;
+}
+
+function fimCoberturaLinhaMs(row: TempoProducaoRow): number | null {
+  const candidatos: number[] = [];
+  const tPar = hmsParaMsNoDia(row.data, row.fimParado);
+  if (tPar != null) candidatos.push(tPar);
+  const tProd = hmsParaMsNoDia(row.data, row.fimProducao);
+  if (tProd != null) candidatos.push(tProd);
+  if (candidatos.length === 0) return null;
+  return Math.max(...candidatos);
 }
 
 /**
- * Dia corrente: fecha eventos abertos da Camasi até "agora".
- * - Produção sem fim → produzindo (marca liveEmProducao)
- * - Parada sem fim → parado (motivo ou "Aguardando justificativa")
- * - Parada com início=fim sem produção posterior → parado aberto
+ * Dia corrente incompleto: não projeta FIM JORNADA até o fim da escala.
+ * Cobertura registrada só até o fim da última linha com parada fechada
+ * (não inventa produção/parada até "agora").
+ */
+function buildLimiteMsDoDia(
+  hojeYmd: string,
+  agoraMs: number,
+  workRows: TempoProducaoRow[]
+): (data: string) => number | null {
+  const fimCoberturaHoje = (() => {
+    let max: number | null = null;
+    for (const row of workRows) {
+      if (row.data !== hojeYmd) continue;
+      if (!temHorarioInformado(row.inicioParado) || !temHorarioInformado(row.fimParado)) continue;
+      const t = fimCoberturaLinhaMs(row);
+      if (t == null) continue;
+      if (max == null || t > max) max = t;
+    }
+    return max;
+  })();
+
+  return (data: string): number | null => {
+    if (data !== hojeYmd) return null;
+    if (fimCoberturaHoje == null) return 0; // sem linha fechada hoje: nada projetar
+    return Math.min(agoraMs, fimCoberturaHoje);
+  };
+}
+
+/**
+ * @deprecated Mantido vazio: não inferimos mais status ao vivo da Camasi.
+ * Produção/parada abertas do dia corrente são descartadas em `linhaCamasiUtilizavel`.
  */
 function normalizarEventosAbertosDiaCorrente(
   rows: TempoProducaoRow[],
-  hojeYmd: string,
-  agoraMs: number,
-  escala: RecursoEscala | null
+  _hojeYmd: string,
+  _agoraMs: number,
+  _escala: RecursoEscala | null
 ): { rows: TempoProducaoRow[]; liveEmProducao: Map<string, MsInterval[]> } {
-  const liveEmProducao = new Map<string, MsInterval[]>();
-  const cloned = rows.map((r) => ({ ...r }));
-
-  const temProducaoApos = (data: string, aposMs: number): boolean => {
-    for (const r of cloned) {
-      if (r.data !== data) continue;
-      const t0 = hmsParaMsNoDia(r.data, r.inicioProducao);
-      const t1 = hmsParaMsNoDia(r.data, r.fimProducao);
-      if (t0 != null && t0 > aposMs + 500) return true;
-      if (t1 != null && t1 > aposMs + 500) return true;
-    }
-    return false;
-  };
-
-  for (const row of cloned) {
-    if (row.data !== hojeYmd) continue;
-
-    // Produção aberta: início sem fim.
-    if (temHorarioInformado(row.inicioProducao) && !temHorarioInformado(row.fimProducao)) {
-      const t0 = hmsParaMsNoDia(row.data, row.inicioProducao);
-      if (t0 != null && t0 < agoraMs) {
-        row.fimProducao = msParaHmsLocal(agoraMs);
-        row.horasProducao =
-          escala && !escalaEstaVazia(escala)
-            ? horasNaEscala(row.data, row.inicioProducao, row.fimProducao, 'producao', escala)
-            : horasEntre(row.data, row.inicioProducao, row.fimProducao);
-        const list = liveEmProducao.get(row.data) ?? [];
-        list.push({ startMs: t0, endMs: agoraMs });
-        liveEmProducao.set(row.data, list);
-        if (!row.obsMotivo) row.obsMotivo = CAMASI_OBS_PRODUCAO_ABERTA;
-      }
-    }
-
-    // Parada aberta: início sem fim.
-    if (temHorarioInformado(row.inicioParado) && !temHorarioInformado(row.fimParado)) {
-      const t0 = hmsParaMsNoDia(row.data, row.inicioParado);
-      if (t0 != null && t0 < agoraMs) {
-        row.fimParado = msParaHmsLocal(agoraMs);
-        if (!row.nomeMotivo && !row.motivoParado) {
-          row.nomeMotivo = CAMASI_AGUARDANDO_JUSTIFICATIVA;
-        }
-        row.obsMotivo = row.obsMotivo || CAMASI_OBS_PARADA_ABERTA;
-        row.horasParado =
-          escala && !escalaEstaVazia(escala)
-            ? horasNaEscala(row.data, row.inicioParado, row.fimParado, 'parado', escala)
-            : horasEntreParado(row.data, row.inicioParado, row.fimParado);
-      }
-    }
-
-    // Parada com início=fim (duração zero): se não houver produção depois, trata como aberta.
-    if (
-      temHorarioInformado(row.inicioParado) &&
-      temHorarioInformado(row.fimParado) &&
-      hmsMesmoRelogio(row.inicioParado, row.fimParado)
-    ) {
-      const t0 = hmsParaMsNoDia(row.data, row.inicioParado);
-      if (t0 != null && t0 < agoraMs && !temProducaoApos(row.data, t0)) {
-        row.fimParado = msParaHmsLocal(agoraMs);
-        if (!row.nomeMotivo && !row.motivoParado) {
-          row.nomeMotivo = CAMASI_AGUARDANDO_JUSTIFICATIVA;
-        }
-        row.obsMotivo = row.obsMotivo || CAMASI_OBS_PARADA_ABERTA;
-        row.horasParado =
-          escala && !escalaEstaVazia(escala)
-            ? horasNaEscala(row.data, row.inicioParado, row.fimParado, 'parado', escala)
-            : horasEntreParado(row.data, row.inicioParado, row.fimParado);
-      }
-    }
-  }
-
-  return { rows: cloned, liveEmProducao };
+  return { rows: rows.map((r) => ({ ...r })), liveEmProducao: new Map() };
 }
 
 function isParadaInicioAuto(p: { justificativa: string; observacao: string | null }): boolean {
@@ -614,12 +592,14 @@ export function buildDashboardResumo(
   const escala = opts?.escala ?? null;
   const agoraMs = opts?.agoraMs ?? Date.now();
   const hojeYmd = ymdLocalDeMs(agoraMs);
+  const rowsFechadas = rows.filter((r) => linhaCamasiUtilizavel(r, hojeYmd));
   const { rows: workRows, liveEmProducao } = normalizarEventosAbertosDiaCorrente(
-    rows,
+    rowsFechadas,
     hojeYmd,
     agoraMs,
     escala
   );
+  const limiteMsDoDia = buildLimiteMsDoDia(hojeYmd, agoraMs, workRows);
 
   let qtdeParadas = 0;
   let qtdeParadasOperacionais = 0;
@@ -788,9 +768,6 @@ export function buildDashboardResumo(
 
   const allDays = new Set<string>();
   for (const row of workRows) allDays.add(row.data);
-
-  const limiteMsDoDia = (data: string): number | null =>
-    data === hojeYmd ? agoraMs : null;
 
   const debitarParadaRemovida = (p: CamasiParadaValida, acc: ReturnType<typeof emptyDiaAcc>) => {
     qtdeParadas = Math.max(0, qtdeParadas - 1);
@@ -966,7 +943,7 @@ export function buildDashboardResumo(
     }
 
     // Dia corrente incompleto: não projetar FIM JORNADA / ociosidade até o fim da escala.
-    // A linha do tempo segue só até "agora"; o restante vira produção aberta.
+    // Cobertura só até o fim da última linha com parada fechada (não inventa até "agora").
     for (const data of allDays) {
       const limiteMs = limiteMsDoDia(data);
       if (limiteMs == null) continue;
@@ -1043,71 +1020,6 @@ export function buildDashboardResumo(
       acc.jornadaPieces = clipIntervalosAte(acc.jornadaPieces, limiteMs);
       acc.operacionalPieces = clipIntervalosAte(acc.operacionalPieces, limiteMs);
       acc.producaoPieces = clipIntervalosAte(acc.producaoPieces, limiteMs);
-      diaAcc.set(data, acc);
-    }
-
-    // Parada inferida no dia aberto: última produção fechada sem parada depois → parado até agora.
-    for (const data of allDays) {
-      const limiteMs = limiteMsDoDia(data);
-      if (limiteMs == null) continue;
-      const janelas = janelasEscalaNoDia(data, escala).sort(
-        (a, b) => a.startMs - b.startMs || a.endMs - b.endMs
-      );
-      const ultima = janelas[janelas.length - 1];
-      if (!ultima || limiteMs >= ultima.endMs) continue;
-      // Se há produção aberta até agora, não inferir parada.
-      const lives = liveEmProducao.get(data) ?? [];
-      if (lives.some((iv) => iv.endMs >= limiteMs - 500)) continue;
-
-      let lastProdEnd: number | null = null;
-      let lastPeca = '(sem peça)';
-      for (const row of workRows) {
-        if (row.data !== data || !temHorarioInformado(row.inicioProducao) || !temHorarioInformado(row.fimProducao)) {
-          continue;
-        }
-        const t1 = hmsParaMsNoDia(row.data, row.fimProducao);
-        if (t1 == null) continue;
-        if (lastProdEnd == null || t1 > lastProdEnd) {
-          lastProdEnd = t1;
-          lastPeca = pecaLabel(row);
-        }
-      }
-      if (lastProdEnd == null || lastProdEnd >= limiteMs - 500) continue;
-
-      const acc = diaAcc.get(data) ?? emptyDiaAcc();
-      const paradoUniao = unirIntervalos(acc.paradoPieces);
-      let lastStopEnd: number | null = null;
-      for (const p of paradoUniao) {
-        if (lastStopEnd == null || p.endMs > lastStopEnd) lastStopEnd = p.endMs;
-      }
-      if (lastStopEnd != null && lastStopEnd >= lastProdEnd - 500) continue;
-
-      const startMs = lastProdEnd;
-      const endMs = limiteMs;
-      if (endMs <= startMs) continue;
-      const horas = (endMs - startMs) / MS_HORA;
-      const motivo = CAMASI_AGUARDANDO_JUSTIFICATIVA;
-      idSintetico += 1;
-      qtdeParadas += 1;
-      qtdeParadasOperacionais += 1;
-      const mot = motivoMap.get(motivo) ?? { horas: 0, qtde: 0 };
-      mot.horas += horas;
-      mot.qtde += 1;
-      motivoMap.set(motivo, mot);
-      const piece: MsInterval = { startMs, endMs };
-      pushParadaPeca(acc, [piece], 'operacional', horas);
-      paradasValidas.push({
-        id: -idSintetico,
-        data,
-        inicioParado: msParaHmsLocal(startMs),
-        fimParado: msParaHmsLocal(endMs),
-        horas: roundHoras(horas),
-        minutos: minutosEntreMs(startMs, endMs),
-        peca: lastPeca,
-        justificativa: motivo,
-        observacao: CAMASI_OBS_PARADA_INFERIDA,
-        categoria: 'operacional',
-      });
       diaAcc.set(data, acc);
     }
 

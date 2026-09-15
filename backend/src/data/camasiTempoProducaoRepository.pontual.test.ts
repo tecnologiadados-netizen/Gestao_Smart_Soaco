@@ -5,7 +5,6 @@ import {
 } from '../utils/recursoEscalaTrabalho.js';
 import {
   CAMASI_AGUARDANDO_JUSTIFICATIVA,
-  CAMASI_EM_PRODUCAO,
   CAMASI_FIM_JORNADA_LABEL,
   CAMASI_INICIO_JORNADA_LABEL,
   CAMASI_OBS_FIM_ESCALA,
@@ -186,8 +185,8 @@ describe('carência de 5 min no fim da jornada', () => {
   });
 });
 
-describe('dia corrente incompleto', () => {
-  it('não projeta FIM JORNADA; infere parada desde o último fim de produção até agora', () => {
+describe('dia corrente — só linhas com parada fechada', () => {
+  it('não projeta FIM JORNADA além da última linha fechada; sem parada inferida até agora', () => {
     // Escala contínua (Perfiladeira 1000 em produção): 07:00–17:15
     const escalaContinua = {
       ...ESCALA_PERFILADEIRA_PADRAO,
@@ -201,16 +200,21 @@ describe('dia corrente incompleto', () => {
         data: '2026-09-14',
         inicioProducao: '09:41:00',
         fimProducao: '09:42:00',
+        inicioParado: '09:42:00',
+        fimParado: '10:00:00',
+        nomeMotivo: 'AJUSTE OPERACIONAL',
         nomeOperador: 'FUNDO DO ROUPEIRO',
         horasProducao: 1 / 60,
+        horasParado: 18 / 60,
       }),
+      // Linha atual incompleta (só produção) — deve ser ignorada
       row({
         id: 2,
         data: '2026-09-14',
-        inicioParado: '09:42:00',
-        fimParado: '17:15:00',
-        nomeMotivo: 'FIM JORNADA',
-        horasParado: (17 * 60 + 15 - (9 * 60 + 42)) / 60,
+        inicioProducao: '10:00:00',
+        fimProducao: '10:00:05',
+        nomeOperador: 'FUNDO DO ROUPEIRO',
+        horasProducao: 5 / 3600,
       }),
     ];
 
@@ -225,18 +229,18 @@ describe('dia corrente incompleto', () => {
         (p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL || p.observacao === CAMASI_OBS_FIM_ESCALA
       )
     ).toBe(false);
-
-    const aguardando = resumo.paradasValidas.find(
-      (p) => p.justificativa === CAMASI_AGUARDANDO_JUSTIFICATIVA && p.inicioParado === '09:42:00'
+    expect(resumo.paradasValidas.some((p) => p.justificativa === CAMASI_AGUARDANDO_JUSTIFICATIVA)).toBe(
+      false
     );
-    expect(aguardando?.fimParado).toBe('12:30:00');
-    expect(aguardando?.observacao).toBe(CAMASI_OBS_PARADA_INFERIDA);
+    expect(resumo.paradasValidas.some((p) => p.observacao === CAMASI_OBS_PARADA_INFERIDA)).toBe(false);
+    // Cobertura só até o fim da última parada fechada (10:00), não até 12:30.
+    expect(resumo.paradasValidas.every((p) => (p.fimParado ?? '') <= '10:00:00')).toBe(true);
+    expect(resumo.producaoValidas.every((p) => (p.fimProducao ?? '') <= '10:00:00')).toBe(true);
     // Previsto = jornada cheia (07:00–17:15 = 10h15), não cortado ao "agora".
     expect(resumo.kpis.horasEscala).toBe(10.25);
   });
 
-  it('remove FIM JORNADA já recortado à faixa da manhã e infere parada até agora', () => {
-    // 14/09/2026 12:30 — horário padrão com intervalo
+  it('remove FIM JORNADA projetado e não inventa status após última linha fechada', () => {
     const agoraMs = new Date(2026, 8, 14, 12, 30, 0, 0).getTime();
     const rows: TempoProducaoRow[] = [
       row({
@@ -244,16 +248,12 @@ describe('dia corrente incompleto', () => {
         data: '2026-09-14',
         inicioProducao: '09:41:00',
         fimProducao: '09:42:00',
+        inicioParado: '09:42:00',
+        fimParado: '10:15:00',
+        nomeMotivo: 'FIM JORNADA',
         nomeOperador: 'FUNDO DO ROUPEIRO',
         horasProducao: 1 / 60,
-      }),
-      row({
-        id: 2,
-        data: '2026-09-14',
-        inicioParado: '09:42:00',
-        fimParado: '17:15:00',
-        nomeMotivo: 'FIM JORNADA',
-        horasParado: (17 * 60 + 15 - (9 * 60 + 42)) / 60,
+        horasParado: (10 * 60 + 15 - (9 * 60 + 42)) / 60,
       }),
     ];
 
@@ -266,13 +266,12 @@ describe('dia corrente incompleto', () => {
     expect(resumo.paradasValidas.some((p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL)).toBe(
       false
     );
-    const aguardando = resumo.paradasValidas.find(
-      (p) => p.justificativa === CAMASI_AGUARDANDO_JUSTIFICATIVA && p.inicioParado === '09:42:00'
+    expect(resumo.paradasValidas.some((p) => p.justificativa === CAMASI_AGUARDANDO_JUSTIFICATIVA)).toBe(
+      false
     );
-    expect(aguardando?.fimParado).toBe('12:30:00');
   });
 
-  it('produção aberta (sem fim) vira Em produção até agora', () => {
+  it('ignora produção aberta e linha só com produção no dia corrente', () => {
     const escalaContinua = {
       ...ESCALA_PERFILADEIRA_PADRAO,
       faixas: [{ inicio: '07:00', fim: '17:15' }],
@@ -295,15 +294,14 @@ describe('dia corrente incompleto', () => {
       agoraMs,
     });
 
+    expect(resumo.paradasValidas).toHaveLength(0);
+    expect(resumo.producaoValidas).toHaveLength(0);
     expect(resumo.paradasValidas.some((p) => p.justificativa === CAMASI_AGUARDANDO_JUSTIFICATIVA)).toBe(
       false
     );
-    const emProd = resumo.producaoValidas.find((p) => p.justificativa === CAMASI_EM_PRODUCAO);
-    expect(emProd?.inicioProducao).toBe('10:00:00');
-    expect(emProd?.fimProducao).toBe('12:30:00');
   });
 
-  it('parada aberta (sem fim) usa motivo ou Aguardando justificativa até agora', () => {
+  it('ignora parada aberta (sem fim) no dia corrente até a linha fechar', () => {
     const escalaContinua = {
       ...ESCALA_PERFILADEIRA_PADRAO,
       faixas: [{ inicio: '07:00', fim: '17:15' }],
@@ -315,12 +313,16 @@ describe('dia corrente incompleto', () => {
         data: '2026-09-14',
         inicioProducao: '09:00:00',
         fimProducao: '09:30:00',
+        inicioParado: '09:30:00',
+        fimParado: '09:45:00',
+        nomeMotivo: 'AJUSTE OPERACIONAL',
         horasProducao: 0.5,
+        horasParado: 0.25,
       }),
       row({
         id: 2,
         data: '2026-09-14',
-        inicioParado: '09:30:00',
+        inicioParado: '09:45:00',
         fimParado: null,
         nomeMotivo: null,
         horasParado: 0,
@@ -333,9 +335,12 @@ describe('dia corrente incompleto', () => {
       agoraMs,
     });
 
-    const aberta = resumo.paradasValidas.find((p) => p.inicioParado === '09:30:00');
-    expect(aberta?.fimParado).toBe('12:30:00');
-    expect(aberta?.justificativa).toBe(CAMASI_AGUARDANDO_JUSTIFICATIVA);
+    expect(resumo.paradasValidas.some((p) => p.inicioParado === '09:45:00')).toBe(false);
+    expect(resumo.paradasValidas.some((p) => p.justificativa === CAMASI_AGUARDANDO_JUSTIFICATIVA)).toBe(
+      false
+    );
+    const ajuste = resumo.paradasValidas.find((p) => p.justificativa === 'AJUSTE OPERACIONAL');
+    expect(ajuste?.fimParado).toBe('09:45:00');
   });
 });
 
