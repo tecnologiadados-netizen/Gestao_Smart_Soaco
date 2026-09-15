@@ -390,15 +390,18 @@ function fimCoberturaLinhaMs(row: TempoProducaoRow): number | null {
 }
 
 /**
- * Dia corrente incompleto: não projeta FIM JORNADA até o fim da escala.
- * Cobertura registrada só até o fim da última linha com parada fechada
- * (não inventa produção/parada até "agora").
+ * Limites do dia corrente:
+ * - eventos (tabelas/timeline): só até a última parada fechada — não inventa status ao vivo
+ * - KPI (previsto decorrido / produção): escala até "agora"; produção = previsto − parado confirmado
  */
-function buildLimiteMsDoDia(
+function buildLimitesDiaCorrente(
   hojeYmd: string,
   agoraMs: number,
   workRows: TempoProducaoRow[]
-): (data: string) => number | null {
+): {
+  limiteMsEventos: (data: string) => number | null;
+  limiteMsKpi: (data: string) => number | null;
+} {
   const fimCoberturaHoje = (() => {
     let max: number | null = null;
     for (const row of workRows) {
@@ -411,10 +414,16 @@ function buildLimiteMsDoDia(
     return max;
   })();
 
-  return (data: string): number | null => {
-    if (data !== hojeYmd) return null;
-    if (fimCoberturaHoje == null) return 0; // sem linha fechada hoje: nada projetar
-    return Math.min(agoraMs, fimCoberturaHoje);
+  return {
+    limiteMsEventos: (data: string): number | null => {
+      if (data !== hojeYmd) return null;
+      if (fimCoberturaHoje == null) return 0;
+      return Math.min(agoraMs, fimCoberturaHoje);
+    },
+    limiteMsKpi: (data: string): number | null => {
+      if (data !== hojeYmd) return null;
+      return agoraMs;
+    },
   };
 }
 
@@ -599,7 +608,9 @@ export function buildDashboardResumo(
     agoraMs,
     escala
   );
-  const limiteMsDoDia = buildLimiteMsDoDia(hojeYmd, agoraMs, workRows);
+  const limiteMs = buildLimitesDiaCorrente(hojeYmd, agoraMs, workRows);
+  const limiteMsEventos = limiteMs.limiteMsEventos;
+  const limiteMsKpi = limiteMs.limiteMsKpi;
 
   let qtdeParadas = 0;
   let qtdeParadasOperacionais = 0;
@@ -943,9 +954,9 @@ export function buildDashboardResumo(
     }
 
     // Dia corrente incompleto: não projetar FIM JORNADA / ociosidade até o fim da escala.
-    // Cobertura só até o fim da última linha com parada fechada (não inventa até "agora").
+    // Tabelas: só até a última parada fechada (não inventa status ao vivo).
     for (const data of allDays) {
-      const limiteMs = limiteMsDoDia(data);
+      const limiteMs = limiteMsEventos(data);
       if (limiteMs == null) continue;
       const janelas = janelasEscalaNoDia(data, escala).sort(
         (a, b) => a.startMs - b.startMs || a.endMs - b.endMs
@@ -1031,7 +1042,7 @@ export function buildDashboardResumo(
       const janela = janelas[janelas.length - 1];
       if (!janela) continue;
       // Só aplica quando a jornada do dia já terminou (ou é dia passado).
-      const limiteMs = limiteMsDoDia(data);
+      const limiteMs = limiteMsKpi(data);
       if (limiteMs != null && limiteMs < janela.endMs) continue;
       const acc = diaAcc.get(data) ?? emptyDiaAcc();
 
@@ -1186,11 +1197,11 @@ export function buildDashboardResumo(
     }
   }
 
-  // Com escala: produção na grade = intervalos da escala sem parada (entre uma parada e outra).
+  // Com escala: produção na grade (tabelas) = escala sem parada, só até a última parada fechada.
   if (escala && !escalaEstaVazia(escala)) {
     let idProd = 0;
     for (const data of allDays) {
-      const limiteMs = limiteMsDoDia(data);
+      const limiteMs = limiteMsEventos(data);
       const janelas = clipJanelasAte(janelasEscalaNoDia(data, escala), limiteMs);
       if (janelas.length === 0) continue;
       const acc = diaAcc.get(data) ?? emptyDiaAcc();
@@ -1241,11 +1252,11 @@ export function buildDashboardResumo(
     const paradoHoras = horasDosIntervalos(uniao);
     const paradoOperacionalHoras = horasDosIntervalos(unirIntervalos(acc.operacionalPieces));
     const paradoJornadaHoras = horasDosIntervalos(unirIntervalos(acc.jornadaPieces));
-    const limiteMs = limiteMsDoDia(data);
+    const limiteMs = limiteMsKpi(data);
     const janelasFull = janelasEscalaNoDia(data, escala);
     // Card "tempo previsto": escala completa do dia (até o fim da jornada, ex. 17:15).
     const escalaHoras = horasDosIntervalos(janelasFull);
-    // Produção no dia corrente: só até "agora" (não inventa o futuro).
+    // Indicadores: previsto decorrido até "agora"; produção = previsto − parado confirmado.
     const escalaHorasAteAgora = horasDosIntervalos(clipJanelasAte(janelasFull, limiteMs));
     horasEscalaAteAgoraSum += escalaHorasAteAgora;
     const producaoHoras =

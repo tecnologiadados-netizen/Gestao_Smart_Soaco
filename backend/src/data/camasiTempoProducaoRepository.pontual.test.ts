@@ -233,10 +233,15 @@ describe('dia corrente — só linhas com parada fechada', () => {
       false
     );
     expect(resumo.paradasValidas.some((p) => p.observacao === CAMASI_OBS_PARADA_INFERIDA)).toBe(false);
-    // Cobertura só até o fim da última parada fechada (10:00), não até 12:30.
+    // Tabelas: cobertura de eventos só até a última parada fechada (10:00).
     expect(resumo.paradasValidas.every((p) => (p.fimParado ?? '') <= '10:00:00')).toBe(true);
     expect(resumo.producaoValidas.every((p) => (p.fimProducao ?? '') <= '10:00:00')).toBe(true);
-    // Previsto = jornada cheia (07:00–17:15 = 10h15), não cortado ao "agora".
+    // Indicadores: previsto decorrido até "agora" (07:00→12:30 = 5,5h), não só até a última parada.
+    expect(resumo.kpis.horasEscalaDecorrida).toBe(5.5);
+    // Produção KPI = previsto até agora − parado confirmado.
+    const parado = resumo.kpis.horasParado;
+    expect(resumo.kpis.horasProducao).toBeCloseTo(5.5 - parado, 5);
+    // Previsto do período = jornada cheia (07:00–17:15 = 10h15).
     expect(resumo.kpis.horasEscala).toBe(10.25);
   });
 
