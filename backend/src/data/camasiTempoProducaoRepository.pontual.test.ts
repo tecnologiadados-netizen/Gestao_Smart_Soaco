@@ -5,6 +5,7 @@ import {
 } from '../utils/recursoEscalaTrabalho.js';
 import {
   CAMASI_AGUARDANDO_JUSTIFICATIVA,
+  CAMASI_EM_PRODUCAO,
   CAMASI_FIM_JORNADA_LABEL,
   CAMASI_INICIO_JORNADA_LABEL,
   CAMASI_OBS_FIM_ESCALA,
@@ -185,14 +186,13 @@ describe('carência de 5 min no fim da jornada', () => {
   });
 });
 
-describe('dia corrente — só linhas com parada fechada', () => {
-  it('não projeta FIM JORNADA além da última linha fechada; sem parada inferida até agora', () => {
-    // Escala contínua (Perfiladeira 1000 em produção): 07:00–17:15
-    const escalaContinua = {
-      ...ESCALA_PERFILADEIRA_PADRAO,
-      faixas: [{ inicio: '07:00', fim: '17:15' }],
-    };
-    // 14/09/2026 12:30
+describe('dia corrente — linha aberta Camasi (FIM_PRODUCAO vivo vs congelado)', () => {
+  const escalaContinua = {
+    ...ESCALA_PERFILADEIRA_PADRAO,
+    faixas: [{ inicio: '07:00', fim: '17:15' }],
+  };
+
+  it('FIM_PRODUCAO congelado → Aguardando justificativa até agora; KPI usa previsto até agora', () => {
     const agoraMs = new Date(2026, 8, 14, 12, 30, 0, 0).getTime();
     const rows: TempoProducaoRow[] = [
       row({
@@ -207,7 +207,6 @@ describe('dia corrente — só linhas com parada fechada', () => {
         horasProducao: 1 / 60,
         horasParado: 18 / 60,
       }),
-      // Linha atual incompleta (só produção) — deve ser ignorada
       row({
         id: 2,
         data: '2026-09-14',
@@ -229,23 +228,19 @@ describe('dia corrente — só linhas com parada fechada', () => {
         (p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL || p.observacao === CAMASI_OBS_FIM_ESCALA
       )
     ).toBe(false);
-    expect(resumo.paradasValidas.some((p) => p.justificativa === CAMASI_AGUARDANDO_JUSTIFICATIVA)).toBe(
-      false
+
+    const aguardando = resumo.paradasValidas.find(
+      (p) => p.justificativa === CAMASI_AGUARDANDO_JUSTIFICATIVA && p.inicioParado === '10:00:05'
     );
-    expect(resumo.paradasValidas.some((p) => p.observacao === CAMASI_OBS_PARADA_INFERIDA)).toBe(false);
-    // Tabelas: cobertura de eventos só até a última parada fechada (10:00).
-    expect(resumo.paradasValidas.every((p) => (p.fimParado ?? '') <= '10:00:00')).toBe(true);
-    expect(resumo.producaoValidas.every((p) => (p.fimProducao ?? '') <= '10:00:00')).toBe(true);
-    // Indicadores: previsto decorrido até "agora" (07:00→12:30 = 5,5h), não só até a última parada.
+    expect(aguardando?.fimParado).toBe('12:30:00');
+    expect(aguardando?.observacao).toBe(CAMASI_OBS_PARADA_INFERIDA);
+
     expect(resumo.kpis.horasEscalaDecorrida).toBe(5.5);
-    // Produção KPI = previsto até agora − parado confirmado.
-    const parado = resumo.kpis.horasParado;
-    expect(resumo.kpis.horasProducao).toBeCloseTo(5.5 - parado, 5);
-    // Previsto do período = jornada cheia (07:00–17:15 = 10h15).
+    expect(resumo.kpis.horasProducao).toBeCloseTo(5.5 - resumo.kpis.horasParado, 5);
     expect(resumo.kpis.horasEscala).toBe(10.25);
   });
 
-  it('remove FIM JORNADA projetado e não inventa status após última linha fechada', () => {
+  it('remove FIM JORNADA projetado quando a jornada ainda não terminou', () => {
     const agoraMs = new Date(2026, 8, 14, 12, 30, 0, 0).getTime();
     const rows: TempoProducaoRow[] = [
       row({
@@ -271,25 +266,29 @@ describe('dia corrente — só linhas com parada fechada', () => {
     expect(resumo.paradasValidas.some((p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL)).toBe(
       false
     );
-    expect(resumo.paradasValidas.some((p) => p.justificativa === CAMASI_AGUARDANDO_JUSTIFICATIVA)).toBe(
-      false
-    );
   });
 
-  it('ignora produção aberta e linha só com produção no dia corrente', () => {
-    const escalaContinua = {
-      ...ESCALA_PERFILADEIRA_PADRAO,
-      faixas: [{ inicio: '07:00', fim: '17:15' }],
-    };
+  it('FIM_PRODUCAO vivo (próximo de agora) → Em produção até agora', () => {
     const agoraMs = new Date(2026, 8, 14, 12, 30, 0, 0).getTime();
     const rows: TempoProducaoRow[] = [
       row({
         id: 1,
         data: '2026-09-14',
+        inicioProducao: '09:00:00',
+        fimProducao: '09:30:00',
+        inicioParado: '09:30:00',
+        fimParado: '10:00:00',
+        nomeMotivo: 'AJUSTE OPERACIONAL',
+        horasProducao: 0.5,
+        horasParado: 0.5,
+      }),
+      row({
+        id: 2,
+        data: '2026-09-14',
         inicioProducao: '10:00:00',
-        fimProducao: null,
+        fimProducao: '12:29:50', // vivo (< 30s de 12:30)
         nomeOperador: 'FUNDO DO ROUPEIRO',
-        horasProducao: 0,
+        horasProducao: (2 * 60 + 29.833) / 60,
       }),
     ];
 
@@ -299,18 +298,16 @@ describe('dia corrente — só linhas com parada fechada', () => {
       agoraMs,
     });
 
-    expect(resumo.paradasValidas).toHaveLength(0);
-    expect(resumo.producaoValidas).toHaveLength(0);
     expect(resumo.paradasValidas.some((p) => p.justificativa === CAMASI_AGUARDANDO_JUSTIFICATIVA)).toBe(
       false
     );
+    const emProd = resumo.producaoValidas.find((p) => p.justificativa === CAMASI_EM_PRODUCAO);
+    expect(emProd).toBeTruthy();
+    expect(emProd?.fimProducao).toBe('12:30:00');
+    expect(resumo.kpis.horasEscalaDecorrida).toBe(5.5);
   });
 
-  it('ignora parada aberta (sem fim) no dia corrente até a linha fechar', () => {
-    const escalaContinua = {
-      ...ESCALA_PERFILADEIRA_PADRAO,
-      faixas: [{ inicio: '07:00', fim: '17:15' }],
-    };
+  it('parada aberta sem produção na linha é ignorada; só FIM_PRODUCAO define o ciclo vivo', () => {
     const agoraMs = new Date(2026, 8, 14, 12, 30, 0, 0).getTime();
     const rows: TempoProducaoRow[] = [
       row({
@@ -341,9 +338,6 @@ describe('dia corrente — só linhas com parada fechada', () => {
     });
 
     expect(resumo.paradasValidas.some((p) => p.inicioParado === '09:45:00')).toBe(false);
-    expect(resumo.paradasValidas.some((p) => p.justificativa === CAMASI_AGUARDANDO_JUSTIFICATIVA)).toBe(
-      false
-    );
     const ajuste = resumo.paradasValidas.find((p) => p.justificativa === 'AJUSTE OPERACIONAL');
     expect(ajuste?.fimParado).toBe('09:45:00');
   });

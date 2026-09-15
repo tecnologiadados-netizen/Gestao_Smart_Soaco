@@ -423,7 +423,7 @@ export default function ProducaoCamasiPage() {
       if (document.hidden) return;
       if (kpiModal || pontualRecurso) return;
       void carregar(filtros, { silencioso: true });
-    }, 90_000);
+    }, 20_000);
     return () => window.clearInterval(id);
   }, [isFiltroHoje, filtros, carregar, kpiModal, pontualRecurso]);
 
@@ -938,8 +938,9 @@ export default function ProducaoCamasiPage() {
                   : 's'}
               </p>
               <p className="mt-1 text-[11px] leading-snug text-amber-800 dark:text-amber-200">
-                Observação: registramos só até a última parada fechada na Camasi — a situação atual da
-                máquina (linha em aberto) ainda não entra.
+                Observação: a linha em aberto da Camasi entra como &quot;Em produção&quot; enquanto o
+                FIM_PRODUCAO atualiza; se congelar, vira &quot;Aguardando justificativa&quot; até
+                registrarem a parada. Atualiza a cada 20s no filtro Hoje.
               </p>
               <div className="mt-2 flex flex-wrap gap-1">
                 {(

@@ -30,7 +30,7 @@ export const CAMASI_CARENCIA_INICIO_MS = CAMASI_CARENCIA_MS;
 export const CAMASI_PARADA_SEM_JUSTIFICATIVA = 'Sem justificativa';
 /** Parada em andamento no dia corrente ainda sem motivo na Camasi. */
 export const CAMASI_AGUARDANDO_JUSTIFICATIVA = 'Aguardando justificativa';
-/** Produção em andamento (INICIO_PRODUCAO sem FIM no dia corrente). */
+/** Produção em andamento (FIM_PRODUCAO da Camasi ainda avançando). */
 export const CAMASI_EM_PRODUCAO = 'Em produção';
 
 export const CAMASI_INICIO_JORNADA_LABEL = 'INÍCIO JORNADA';
@@ -38,9 +38,12 @@ export const CAMASI_FIM_JORNADA_LABEL = 'FIM JORNADA';
 
 export const CAMASI_OBS_INICIO_ESCALA = 'Cortado automaticamente: início da escala';
 export const CAMASI_OBS_FIM_ESCALA = 'Cortado automaticamente: fim da escala';
-export const CAMASI_OBS_PARADA_INFERIDA = 'Inferido: último fim de produção sem parada registrada';
-export const CAMASI_OBS_PRODUCAO_ABERTA = 'Em andamento na Camasi (sem fim de produção)';
+export const CAMASI_OBS_PARADA_INFERIDA = 'Inferido: fim de produção congelado sem parada registrada';
+export const CAMASI_OBS_PRODUCAO_ABERTA = 'Em andamento na Camasi (FIM_PRODUCAO atualizando)';
 export const CAMASI_OBS_PARADA_ABERTA = 'Em andamento na Camasi (sem fim de parada)';
+
+/** Se FIM_PRODUCAO está a até estes ms de "agora", considera produção ao vivo. */
+export const CAMASI_FIM_PRODUCAO_VIVO_MS = 30_000;
 
 export type TempoProducaoRow = {
   id: number;
@@ -362,10 +365,8 @@ function temHorarioInformado(hms: string | null | undefined): boolean {
 }
 
 /**
- * Linha Camasi utilizável no painel.
- * No dia corrente, só entra linha com parada fechada (INÍCIO e FIM_PARADO).
- * Linha atual só com produção (parada NULL) é ignorada por completo — produção
- * dessa linha só entra quando a Camasi gravar a parada.
+ * Linha Camasi fechada (entra no histórico normalmente).
+ * No dia corrente, linhas sem parada fechada são tratadas em `interpretarLinhaAbertaCamasi`.
  * Em dias passados, mantém linhas só de produção (padrão histórico / testes).
  */
 export function linhaCamasiUtilizavel(
@@ -389,15 +390,74 @@ function fimCoberturaLinhaMs(row: TempoProducaoRow): number | null {
   return Math.max(...candidatos);
 }
 
+export type CamasiLinhaAberta =
+  | {
+      tipo: 'producao';
+      row: TempoProducaoRow;
+      startMs: number;
+      endMs: number;
+    }
+  | {
+      tipo: 'parada';
+      row: TempoProducaoRow;
+      startMs: number;
+      endMs: number;
+    };
+
+/**
+ * Última linha do dia sem parada fechada:
+ * - FIM_PRODUCAO próximo de "agora" → máquina produzindo (fim ainda atualiza na Camasi)
+ * - FIM_PRODUCAO congelado → parado aguardando justificativa até agora
+ */
+export function interpretarLinhaAbertaCamasi(
+  rows: TempoProducaoRow[],
+  hojeYmd: string,
+  agoraMs: number,
+  vivoMs: number = CAMASI_FIM_PRODUCAO_VIVO_MS
+): CamasiLinhaAberta | null {
+  const abertas = rows.filter((r) => {
+    if (r.data !== hojeYmd) return false;
+    const paradaFechada =
+      temHorarioInformado(r.inicioParado) && temHorarioInformado(r.fimParado);
+    if (paradaFechada) return false;
+    return temHorarioInformado(r.inicioProducao) && temHorarioInformado(r.fimProducao);
+  });
+  if (abertas.length === 0) return null;
+
+  abertas.sort((a, b) => {
+    const fa = hmsParaMsNoDia(a.data, a.fimProducao) ?? 0;
+    const fb = hmsParaMsNoDia(b.data, b.fimProducao) ?? 0;
+    if (fa !== fb) return fb - fa;
+    return b.id - a.id;
+  });
+  const row = abertas[0]!;
+  const startMs = hmsParaMsNoDia(row.data, row.inicioProducao);
+  const fimMs = hmsParaMsNoDia(row.data, row.fimProducao);
+  if (startMs == null || fimMs == null) return null;
+  if (startMs >= agoraMs) return null;
+
+  const ageMs = agoraMs - fimMs;
+  // Fim no futuro (relógio) ou ainda "vivo" → produção até agora.
+  if (ageMs <= vivoMs) {
+    return { tipo: 'producao', row, startMs, endMs: agoraMs };
+  }
+  // Fim congelado: parado de FIM_PRODUCAO até agora.
+  if (fimMs < agoraMs) {
+    return { tipo: 'parada', row, startMs: fimMs, endMs: agoraMs };
+  }
+  return null;
+}
+
 /**
  * Limites do dia corrente:
- * - eventos (tabelas/timeline): só até a última parada fechada — não inventa status ao vivo
- * - KPI (previsto decorrido / produção): escala até "agora"; produção = previsto − parado confirmado
+ * - eventos (tabelas): até "agora" se há linha aberta ao vivo; senão até última parada fechada
+ * - KPI: escala até "agora"; produção = previsto − parado (fechado + aguardando inferido)
  */
 function buildLimitesDiaCorrente(
   hojeYmd: string,
   agoraMs: number,
-  workRows: TempoProducaoRow[]
+  workRows: TempoProducaoRow[],
+  linhaAberta: CamasiLinhaAberta | null
 ): {
   limiteMsEventos: (data: string) => number | null;
   limiteMsKpi: (data: string) => number | null;
@@ -417,6 +477,7 @@ function buildLimitesDiaCorrente(
   return {
     limiteMsEventos: (data: string): number | null => {
       if (data !== hojeYmd) return null;
+      if (linhaAberta) return agoraMs;
       if (fimCoberturaHoje == null) return 0;
       return Math.min(agoraMs, fimCoberturaHoje);
     },
@@ -425,19 +486,6 @@ function buildLimitesDiaCorrente(
       return agoraMs;
     },
   };
-}
-
-/**
- * @deprecated Mantido vazio: não inferimos mais status ao vivo da Camasi.
- * Produção/parada abertas do dia corrente são descartadas em `linhaCamasiUtilizavel`.
- */
-function normalizarEventosAbertosDiaCorrente(
-  rows: TempoProducaoRow[],
-  _hojeYmd: string,
-  _agoraMs: number,
-  _escala: RecursoEscala | null
-): { rows: TempoProducaoRow[]; liveEmProducao: Map<string, MsInterval[]> } {
-  return { rows: rows.map((r) => ({ ...r })), liveEmProducao: new Map() };
 }
 
 function isParadaInicioAuto(p: { justificativa: string; observacao: string | null }): boolean {
@@ -601,14 +649,13 @@ export function buildDashboardResumo(
   const escala = opts?.escala ?? null;
   const agoraMs = opts?.agoraMs ?? Date.now();
   const hojeYmd = ymdLocalDeMs(agoraMs);
-  const rowsFechadas = rows.filter((r) => linhaCamasiUtilizavel(r, hojeYmd));
-  const { rows: workRows, liveEmProducao } = normalizarEventosAbertosDiaCorrente(
-    rowsFechadas,
-    hojeYmd,
-    agoraMs,
-    escala
-  );
-  const limiteMs = buildLimitesDiaCorrente(hojeYmd, agoraMs, workRows);
+  const linhaAberta = interpretarLinhaAbertaCamasi(rows, hojeYmd, agoraMs);
+  const workRows = rows.filter((r) => linhaCamasiUtilizavel(r, hojeYmd));
+  const liveEmProducao = new Map<string, MsInterval[]>();
+  if (linhaAberta?.tipo === 'producao') {
+    liveEmProducao.set(hojeYmd, [{ startMs: linhaAberta.startMs, endMs: linhaAberta.endMs }]);
+  }
+  const limiteMs = buildLimitesDiaCorrente(hojeYmd, agoraMs, workRows, linhaAberta);
   const limiteMsEventos = limiteMs.limiteMsEventos;
   const limiteMsKpi = limiteMs.limiteMsKpi;
 
@@ -779,6 +826,89 @@ export function buildDashboardResumo(
 
   const allDays = new Set<string>();
   for (const row of workRows) allDays.add(row.data);
+  if (linhaAberta) allDays.add(hojeYmd);
+
+  // Status ao vivo da linha aberta (FIM_PRODUCAO vivo vs congelado).
+  if (linhaAberta) {
+    const peca = pecaLabel(linhaAberta.row);
+    const acc = diaAcc.get(hojeYmd) ?? emptyDiaAcc();
+    if (linhaAberta.tipo === 'producao') {
+      const pieces =
+        escala && !escalaEstaVazia(escala)
+          ? intervalosNaEscalaDoDia(hojeYmd, linhaAberta.startMs, linhaAberta.endMs, escala)
+          : [{ startMs: linhaAberta.startMs, endMs: linhaAberta.endMs }];
+      acc.producaoPieces.push(...pieces);
+      const hits = pecasProducaoPorDia.get(hojeYmd) ?? [];
+      for (const piece of pieces) {
+        hits.push({ startMs: piece.startMs, endMs: piece.endMs, peca });
+      }
+      pecasProducaoPorDia.set(hojeYmd, hits);
+      if (!escala || escalaEstaVazia(escala)) {
+        for (const piece of pieces) {
+          const horas = (piece.endMs - piece.startMs) / MS_HORA;
+          if (horas <= 0) continue;
+          producaoValidas.push({
+            id: linhaAberta.row.id,
+            data: hojeYmd,
+            inicioProducao: msParaHmsLocal(piece.startMs),
+            fimProducao: msParaHmsLocal(piece.endMs),
+            horas: roundHoras(horas),
+            minutos: minutosEntreMs(piece.startMs, piece.endMs),
+            peca,
+            justificativa: CAMASI_EM_PRODUCAO,
+          });
+        }
+      }
+    } else {
+      const horas = (linhaAberta.endMs - linhaAberta.startMs) / MS_HORA;
+      if (horas > 0) {
+        const motivo = CAMASI_AGUARDANDO_JUSTIFICATIVA;
+        idSintetico += 1;
+        qtdeParadas += 1;
+        qtdeParadasOperacionais += 1;
+        const mot = motivoMap.get(motivo) ?? { horas: 0, qtde: 0 };
+        mot.horas += horas;
+        mot.qtde += 1;
+        motivoMap.set(motivo, mot);
+        const pieces =
+          escala && !escalaEstaVazia(escala)
+            ? intervalosNaEscalaDoDia(hojeYmd, linhaAberta.startMs, linhaAberta.endMs, escala)
+            : [{ startMs: linhaAberta.startMs, endMs: linhaAberta.endMs }];
+        pushParadaPeca(acc, pieces, 'operacional', horas);
+        for (const piece of pieces) {
+          const h = (piece.endMs - piece.startMs) / MS_HORA;
+          if (h <= 0) continue;
+          paradasValidas.push({
+            id: -idSintetico,
+            data: hojeYmd,
+            inicioParado: msParaHmsLocal(piece.startMs),
+            fimParado: msParaHmsLocal(piece.endMs),
+            horas: roundHoras(h),
+            minutos: minutosEntreMs(piece.startMs, piece.endMs),
+            peca,
+            justificativa: motivo,
+            observacao: CAMASI_OBS_PARADA_INFERIDA,
+            categoria: 'operacional',
+          });
+        }
+        // Produção já ocorrida nesta linha aberta (início → fim congelado), para rotular gaps.
+        const iniProd = hmsParaMsNoDia(hojeYmd, linhaAberta.row.inicioProducao);
+        if (iniProd != null && iniProd < linhaAberta.startMs) {
+          const prodPieces =
+            escala && !escalaEstaVazia(escala)
+              ? intervalosNaEscalaDoDia(hojeYmd, iniProd, linhaAberta.startMs, escala)
+              : [{ startMs: iniProd, endMs: linhaAberta.startMs }];
+          acc.producaoPieces.push(...prodPieces);
+          const hits = pecasProducaoPorDia.get(hojeYmd) ?? [];
+          for (const piece of prodPieces) {
+            hits.push({ startMs: piece.startMs, endMs: piece.endMs, peca });
+          }
+          pecasProducaoPorDia.set(hojeYmd, hits);
+        }
+      }
+    }
+    diaAcc.set(hojeYmd, acc);
+  }
 
   const debitarParadaRemovida = (p: CamasiParadaValida, acc: ReturnType<typeof emptyDiaAcc>) => {
     qtdeParadas = Math.max(0, qtdeParadas - 1);
