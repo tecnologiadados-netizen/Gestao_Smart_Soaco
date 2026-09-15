@@ -123,6 +123,7 @@ function row(
     precoUnitario: partial.precoUnitario ?? null,
     familiaProduto: partial.familiaProduto ?? 'Sem família',
     ultimaMovimentacaoEstoque: partial.ultimaMovimentacaoEstoque,
+    setoresVinculo: partial.setoresVinculo ?? '',
   };
 }
 
@@ -297,7 +298,7 @@ describe('calcAtendimento / calcFaltante', () => {
 });
 
 describe('itemAptoUniversoPainelCobertura', () => {
-  it('exclui quando CM, empenho, estoque, SC e Pré Compra são zero', () => {
+  it('exclui quando CM, empenho, estoque, SC, Pré Compra e PC são zero', () => {
     expect(
       itemAptoUniversoPainelCobertura({
         consumoMedio: 0,
@@ -305,11 +306,12 @@ describe('itemAptoUniversoPainelCobertura', () => {
         empenho: 0,
         solicitacao: 0,
         cotacao: 0,
+        pedidoCompra: 0,
       })
     ).toBe(false);
   });
 
-  it('mantém se qualquer um dos cinco campos for > 0', () => {
+  it('mantém se qualquer um dos seis campos for > 0', () => {
     expect(
       itemAptoUniversoPainelCobertura({
         consumoMedio: 1,
@@ -317,6 +319,7 @@ describe('itemAptoUniversoPainelCobertura', () => {
         empenho: 0,
         solicitacao: 0,
         cotacao: 0,
+        pedidoCompra: 0,
       })
     ).toBe(true);
     expect(
@@ -326,6 +329,7 @@ describe('itemAptoUniversoPainelCobertura', () => {
         empenho: 0,
         solicitacao: 0,
         cotacao: 0,
+        pedidoCompra: 0,
       })
     ).toBe(true);
     expect(
@@ -335,6 +339,7 @@ describe('itemAptoUniversoPainelCobertura', () => {
         empenho: 2,
         solicitacao: 0,
         cotacao: 0,
+        pedidoCompra: 0,
       })
     ).toBe(true);
     expect(
@@ -344,6 +349,7 @@ describe('itemAptoUniversoPainelCobertura', () => {
         empenho: 0,
         solicitacao: 3,
         cotacao: 0,
+        pedidoCompra: 0,
       })
     ).toBe(true);
     expect(
@@ -353,18 +359,30 @@ describe('itemAptoUniversoPainelCobertura', () => {
         empenho: 0,
         solicitacao: 0,
         cotacao: 4,
+        pedidoCompra: 0,
+      })
+    ).toBe(true);
+    expect(
+      itemAptoUniversoPainelCobertura({
+        consumoMedio: 0,
+        saldo: 0,
+        empenho: 0,
+        solicitacao: 0,
+        cotacao: 0,
+        pedidoCompra: 7,
       })
     ).toBe(true);
   });
 
-  it('filtrarUniversoPainelCobertura remove só os totalmente zerados nos cinco campos', () => {
+  it('filtrarUniversoPainelCobertura remove só os totalmente zerados nos seis campos', () => {
     const rows = [
-      row({ codigo: 'Z', saldo: 0, empenho: 0, saldoProjetado: 0, consumoMedio: 0 }),
+      row({ codigo: 'Z', saldo: 0, empenho: 0, saldoProjetado: 0, consumoMedio: 0, pedidoCompra: 0 }),
       row({ codigo: 'A', saldo: 1, empenho: 0, saldoProjetado: 1, consumoMedio: 0 }),
+      row({ codigo: 'P', saldo: 0, empenho: 0, saldoProjetado: 5, consumoMedio: 0, pedidoCompra: 5 }),
     ];
     const filtrado = filtrarUniversoPainelCobertura(rows);
-    expect(filtrado).toHaveLength(1);
-    expect(filtrado[0]?.codigo).toBe('A');
+    expect(filtrado).toHaveLength(2);
+    expect(filtrado.map((r) => r.codigo)).toEqual(['A', 'P']);
   });
 });
 

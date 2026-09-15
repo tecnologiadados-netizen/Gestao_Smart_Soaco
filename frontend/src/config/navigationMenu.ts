@@ -204,6 +204,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/pedidos/sycroorder': 'Comunicação PD',
   '/suporte': 'Chamados',
   '/suporte/configuracao': 'Configurações de suporte',
+  '/suporte/amigaco-alucinacoes': 'Alucinações Amigaço',
   '/pedidos/mrp-dashboard': 'Painel MRP',
   '/pedidos/mrp': 'MRP',
   '/pedidos/mrp-produtos-em-processo': 'MRP - Produtos em Processo',
@@ -266,6 +267,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/integracao/email-notificacoes': 'E-mail',
   '/integracao/credenciais': 'Credenciais',
   '/integracao/credenciais/email': 'E-mail (Gmail)',
+  '/integracao/assistente-ia': 'Assistente IA',
   '/usuarios': 'Usuários',
   '/usuarios/grupos': 'Grupos de usuários',
   '/whatsapp': 'WhatsApp',
@@ -349,6 +351,9 @@ export function buildIntegracaoSubmenusForUser(
     if (!items.some((i) => i.to === '/integracao/credenciais')) {
       items.push({ to: '/integracao/credenciais', label: 'Credenciais' });
     }
+  }
+  if (isMaster || hasPermission(PERMISSOES.SISTEMA_AI) || hasPermission(PERMISSOES.USUARIOS_GERENCIAR)) {
+    items.push({ to: '/integracao/assistente-ia', label: 'Assistente IA' });
   }
   if (isMaster || hasPermission(PERMISSOES.SISTEMA_SITUACAO_API)) {
     items.push({ to: '/situacao-api', label: 'Situação da API' });

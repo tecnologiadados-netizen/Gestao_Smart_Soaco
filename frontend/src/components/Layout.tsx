@@ -22,6 +22,7 @@ import { useSidebarOpen } from '../hooks/useSidebarOpen';
 import LogoSoAco from './LogoSoAco';
 import Sidebar from './layout/Sidebar';
 import BuscaRapidaTelas from './layout/BuscaRapidaTelas';
+import AssistenteFlutuante from './assistente/AssistenteFlutuante';
 import { ModalStackProvider } from '../contexts/ModalStackContext';
 
 function SunIcon() {
@@ -312,6 +313,8 @@ function LayoutInner() {
           </div>
         </main>
       </div>
+
+      {!modoFoco && <AssistenteFlutuante />}
 
       {mustChangePassword && (
         <div className="fixed inset-0 z-[16000] flex items-center justify-center bg-black/75 p-4">

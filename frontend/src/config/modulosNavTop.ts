@@ -113,7 +113,7 @@ export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
       PERMISSOES.USUARIOS_GERENCIAR,
     ],
   },
-  { code: 'suporte', label: 'Suporte', permissoes: [...PERMISSOES_ROTA_SUPORTE_CHAMADOS, PERMISSOES.SUPORTE_CONFIGURAR] },
+  { code: 'suporte', label: 'Suporte', permissoes: [...PERMISSOES_ROTA_SUPORTE_CHAMADOS, PERMISSOES.SUPORTE_CONFIGURAR, PERMISSOES.ASSISTENTE_ALUCINACOES_VER] },
 ];
 
 export type ModuloAreaOption = { code: string; label: string };

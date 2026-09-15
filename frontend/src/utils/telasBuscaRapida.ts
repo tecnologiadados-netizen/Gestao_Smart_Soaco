@@ -27,7 +27,7 @@ import {
 import { podeVerMenuFinanceiro } from './financeiroPermissoes';
 import { podeVerMenuRecebimento } from './recebimentoPermissoes';
 import { podeVerMenuCompras } from './doubleCheckInPermissoes';
-import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from './suportePermissoes';
+import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte, podeVerAlucinacoesAmigaco } from './suportePermissoes';
 import { resolverPermissoesRota } from './routePermission';
 import { criarMatcherTextoLivre, normalizarTextoBusca } from './textoLivreBusca';
 
@@ -187,6 +187,13 @@ export function buildTelasBuscaRapidaForUser(ctx: BuildTelasBuscaRapidaCtx): Tel
     telas.push({
       path: '/suporte/configuracao',
       label: PATH_LABELS['/suporte/configuracao'] ?? 'Configurações de suporte',
+      contexto: 'Suporte',
+    });
+  }
+  if (podeVerAlucinacoesAmigaco(isMaster, hasPermission)) {
+    telas.push({
+      path: '/suporte/amigaco-alucinacoes',
+      label: PATH_LABELS['/suporte/amigaco-alucinacoes'] ?? 'Alucinações Amigaço',
       contexto: 'Suporte',
     });
   }

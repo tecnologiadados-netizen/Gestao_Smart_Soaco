@@ -42,9 +42,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'produto',
     titulo: 'Filtro por produto (item ou componentes)',
     oQueE:
-      'Ao informar código ou descrição, a tela pergunta como visualizar (o item filtrado ou os componentes dele via BOM) e como calcular o empenho (somente a demanda do item filtrado ou todos os pedidos do sistema).',
+      'Código e descrição aceitam vários itens na mesma consulta. Não é permitido misturar produtos com e sem ficha técnica (BOM). Se todos forem sem BOM, o sistema aplica “item filtrado” e empenho de todos os pedidos sem abrir modal. Se todos tiverem BOM, abre o modal (Componentes disponível); o empenho só é perguntado no modo componentes sem PD específico. Com PD selecionado, o escopo do pedido prevalece. A grade só carrega ao clicar em Filtrar (após confirmar o modal, se houver).',
     comoLe:
-      'Em “Componentes do item filtrado” a grade traz SÓ os componentes — o item pai não aparece nas linhas. No empenho “Somente do item filtrado”, a coluna considera apenas a demanda em aberto do próprio item informado (não a dos demais produtos dos mesmos pedidos), e o estoque em PA abatido é o desses mesmos itens, limitado à demanda de cada um; o modal analítico usa esse mesmo escopo e fecha com a grade. Se houver PD e produto filtrados ao mesmo tempo, as duas condições se somam na grade e o escopo de empenho do PD prevalece.',
+      'Em “Componentes do item filtrado” a grade traz SÓ os componentes — o item pai não aparece nas linhas. No empenho “Somente do item filtrado” (só no modo componentes sem PD), a coluna considera apenas a demanda gerada pelo(s) item(ns) pai filtrado(s); o modal analítico usa o mesmo escopo e fecha com a grade. Ao tentar misturar PA com MP, a seleção é revertida com aviso.',
   },
   {
     id: 'catalogo',

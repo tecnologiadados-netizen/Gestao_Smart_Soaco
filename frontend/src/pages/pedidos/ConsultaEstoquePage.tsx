@@ -17,13 +17,21 @@ import TabelaDetalheSolicitacao from '../../components/pcp/TabelaDetalheSolicita
 import TabelaDetalheCotacao from '../../components/pcp/TabelaDetalheCotacao';
 import ModalFiltrosConsultaEstoque, {
   EMPTY_PRODUTO_FILTRO,
+  MSG_MISTURA_BOM_PRODUTO,
+  OPCOES_EMPENHO_PRODUTO_CONSULTA,
+  PRODUTO_FILTRO_AUTOMATICO,
+  avisoEscopoEmpenhoProduto,
+  devePerguntarEmpenhoProduto,
+  escolhasProdutoSaoAutomaticas,
   filtrosConsultaTemAlgumSelecionado,
   filtrosStateToPayload,
+  opcoesModoProdutoConsulta,
   produtoFiltroTemTermo,
   rotuloEmpenhoEscopo,
   rotuloEmpenhoProdutoEscopo,
   rotuloModoPedido,
   rotuloModoProduto,
+  selecaoProdutoTemMisturaBom,
   type FiltrosConsultaEstoqueState,
   type PedidoFiltroConsultaEstoque,
   type ProdutoFiltroConsultaEstoque,
@@ -40,6 +48,7 @@ import {
   obterOpcoesFiltroConsultaEstoque,
   obterSaldoDetalhe,
   obterScDetalhe,
+  verificarProdutoFiltroTemBom,
   type ConsultaEstoqueLinha,
   type CotacaoDetalhe,
   type EmpenhoEscopoConsultaEstoque,
@@ -220,6 +229,8 @@ export default function ConsultaEstoquePage() {
   const [confirmEscolhasProdutoAberto, setConfirmEscolhasProdutoAberto] = useState(false);
   const [escolhaModoProdutoTemp, setEscolhaModoProdutoTemp] =
     useState<ModoProdutoConsultaEstoque | null>(null);
+  const [produtoTemBom, setProdutoTemBom] = useState(true);
+  const [produtoBomCarregando, setProdutoBomCarregando] = useState(false);
   const [consultaProdutoResumo, setConsultaProdutoResumo] =
     useState<ConsultaProdutoResumo | null>(null);
   const [msgFiltro, setMsgFiltro] = useState<string | null>(null);
@@ -592,29 +603,168 @@ export default function ConsultaEstoquePage() {
     setFiltros(EMPTY_FILTROS);
     setPedidoFiltro(EMPTY_PEDIDO_FILTRO);
     setProdutoFiltro(EMPTY_PRODUTO_FILTRO);
+    setProdutoTemBom(true);
+    setProdutoBomCarregando(false);
+    setConfirmEscolhasProdutoAberto(false);
+    setEscolhaModoProdutoTemp(null);
     setMsgFiltro(null);
   };
 
-  /** Selecionar código/descrição abre o modal de escolhas (mesmo gatilho do PD). */
+  /** Selecionar código/descrição: reavalia BOM da seleção; consulta só no Filtrar. */
+  const dispararConsultaComProduto = useCallback(
+    async (f: FiltrosConsultaEstoqueState, prodF: ProdutoFiltroConsultaEstoque) => {
+      const pf = pedidoFiltroRef.current;
+      if (!filtrosConsultaTemAlgumSelecionado(f, pf.pedido)) return;
+      if (pf.pedido && (!pf.modoPedido || !pf.empenhoEscopo)) {
+        setMsgFiltro('Conclua as escolhas do pedido de venda (visualização e empenho).');
+        return;
+      }
+      setMsgFiltro(null);
+      setErroApi(null);
+      setFiltrosPopoverAberto(false);
+      setLoading(true);
+      const countRes = await contarConsultaEstoque({
+        filtros: filtrosStateToPayload(f, pf, prodF),
+      });
+      setLoading(false);
+      if (countRes.error) {
+        setErroApi(countRes.error);
+        setFiltrosPopoverAberto(true);
+        return;
+      }
+      if (countRes.total > CONSULTA_ESTOQUE_CONFIRM_ROWS) {
+        setConfirmVolumeTotal(countRes.total);
+        setConfirmVolumeAberto(true);
+        return;
+      }
+      void executarConsulta(f, pf, considerarRequisicoes, prodF);
+    },
+    [considerarRequisicoes, executarConsulta]
+  );
+
+  const produtoValidacaoSeqRef = useRef(0);
+
+  const validarSelecaoProduto = useCallback(
+    async (
+      proximos: FiltrosConsultaEstoqueState,
+      anteriores: FiltrosConsultaEstoqueState,
+      modoInicial: ModoProdutoConsultaEstoque | null
+    ) => {
+      const seq = ++produtoValidacaoSeqRef.current;
+      setProdutoBomCarregando(true);
+      const payload = filtrosStateToPayload(proximos, EMPTY_PEDIDO_FILTRO);
+      const r = await verificarProdutoFiltroTemBom({
+        codigos: payload.codigos,
+        descricoes: payload.descricoes,
+      });
+      if (seq !== produtoValidacaoSeqRef.current) return;
+      setProdutoBomCarregando(false);
+
+      if (r.error) {
+        setMsgFiltro(r.error);
+        setFiltros(anteriores);
+        return;
+      }
+
+      if (selecaoProdutoTemMisturaBom(r)) {
+        setMsgFiltro(MSG_MISTURA_BOM_PRODUTO);
+        setFiltros(anteriores);
+        return;
+      }
+
+      setMsgFiltro(null);
+      setProdutoTemBom(r.temBom);
+
+      if (escolhasProdutoSaoAutomaticas(r.temBom)) {
+        setProdutoFiltro(PRODUTO_FILTRO_AUTOMATICO);
+        setConfirmEscolhasProdutoAberto(false);
+        setEscolhaModoProdutoTemp(null);
+        return;
+      }
+
+      // Todos com BOM: mantém escolhas já confirmadas ao só acrescentar itens compatíveis.
+      const atual = produtoFiltroRef.current;
+      const jaCompleto = atual.modoProduto != null && atual.empenhoEscopo != null;
+      if (jaCompleto && r.todosTemBom) {
+        setConfirmEscolhasProdutoAberto(false);
+        return;
+      }
+
+      setProdutoFiltro(EMPTY_PRODUTO_FILTRO);
+      setConfirmEscolhasProdutoAberto(true);
+      if (modoInicial === 'componentes' || modoInicial === 'diretos') {
+        setEscolhaModoProdutoTemp(modoInicial);
+      } else {
+        setEscolhaModoProdutoTemp(null);
+      }
+    },
+    []
+  );
+
+  const abrirEscolhasProduto = useCallback(
+    async (f: FiltrosConsultaEstoqueState, modoInicial: ModoProdutoConsultaEstoque | null = null) => {
+      setProdutoBomCarregando(true);
+      const payload = filtrosStateToPayload(f, EMPTY_PEDIDO_FILTRO);
+      const r = await verificarProdutoFiltroTemBom({
+        codigos: payload.codigos,
+        descricoes: payload.descricoes,
+      });
+      setProdutoBomCarregando(false);
+
+      if (r.error) {
+        setMsgFiltro(r.error);
+        return;
+      }
+      if (selecaoProdutoTemMisturaBom(r)) {
+        setMsgFiltro(MSG_MISTURA_BOM_PRODUTO);
+        return;
+      }
+
+      setProdutoTemBom(r.temBom);
+      if (escolhasProdutoSaoAutomaticas(r.temBom)) {
+        setProdutoFiltro(PRODUTO_FILTRO_AUTOMATICO);
+        setConfirmEscolhasProdutoAberto(false);
+        setEscolhaModoProdutoTemp(null);
+        return;
+      }
+
+      setConfirmEscolhasProdutoAberto(true);
+      if (modoInicial === 'componentes' || modoInicial === 'diretos') {
+        setEscolhaModoProdutoTemp(modoInicial);
+      } else {
+        setEscolhaModoProdutoTemp(null);
+      }
+    },
+    []
+  );
+
   const handleFiltrosChange = (patch: Partial<FiltrosConsultaEstoqueState>) => {
+    const anteriores = filtros;
     const proximos = { ...filtros, ...patch };
-    setFiltros(proximos);
     const mexeuEmProduto = 'codigos' in patch || 'descricoes' in patch;
+    setFiltros(proximos);
     if (!mexeuEmProduto) return;
+
     if (!produtoFiltroTemTermo(proximos)) {
       setProdutoFiltro(EMPTY_PRODUTO_FILTRO);
       setConfirmEscolhasProdutoAberto(false);
       setEscolhaModoProdutoTemp(null);
+      setProdutoTemBom(true);
+      setProdutoBomCarregando(false);
+      setMsgFiltro(null);
       return;
     }
-    if (produtoFiltro.modoProduto && produtoFiltro.empenhoEscopo) return;
-    setEscolhaModoProdutoTemp(produtoFiltro.modoProduto);
-    setConfirmEscolhasProdutoAberto(true);
+
+    void validarSelecaoProduto(proximos, anteriores, produtoFiltro.modoProduto);
   };
 
   const confirmarEscolhasProduto = (escopo: EmpenhoProdutoEscopoConsultaEstoque) => {
     if (!escolhaModoProdutoTemp) return;
-    setProdutoFiltro({ modoProduto: escolhaModoProdutoTemp, empenhoEscopo: escopo });
+    const modo =
+      !produtoTemBom && escolhaModoProdutoTemp === 'componentes'
+        ? 'diretos'
+        : escolhaModoProdutoTemp;
+    setProdutoFiltro({ modoProduto: modo, empenhoEscopo: escopo });
     setConfirmEscolhasProdutoAberto(false);
     setEscolhaModoProdutoTemp(null);
   };
@@ -622,6 +772,7 @@ export default function ConsultaEstoquePage() {
   const cancelarEscolhasProduto = () => {
     setConfirmEscolhasProdutoAberto(false);
     setEscolhaModoProdutoTemp(null);
+    setProdutoBomCarregando(false);
     if (!produtoFiltro.modoProduto || !produtoFiltro.empenhoEscopo) {
       setProdutoFiltro(EMPTY_PRODUTO_FILTRO);
     }
@@ -635,8 +786,7 @@ export default function ConsultaEstoquePage() {
   });
 
   const handleAlterarEscolhasProduto = () => {
-    setEscolhaModoProdutoTemp(produtoFiltro.modoProduto);
-    setConfirmEscolhasProdutoAberto(true);
+    void abrirEscolhasProduto(filtros, produtoFiltro.modoProduto);
   };
 
   const handlePedidoChange = (pedido: OptionItem | null) => {
@@ -708,25 +858,7 @@ export default function ConsultaEstoquePage() {
       setMsgFiltro('Conclua as escolhas do produto filtrado (visualização e empenho).');
       return;
     }
-    setMsgFiltro(null);
-    setErroApi(null);
-    setFiltrosPopoverAberto(false);
-    setLoading(true);
-    const countRes = await contarConsultaEstoque({
-      filtros: filtrosStateToPayload(filtros, pedidoFiltro, produtoFiltro),
-    });
-    setLoading(false);
-    if (countRes.error) {
-      setErroApi(countRes.error);
-      setFiltrosPopoverAberto(true);
-      return;
-    }
-    if (countRes.total > CONSULTA_ESTOQUE_CONFIRM_ROWS) {
-      setConfirmVolumeTotal(countRes.total);
-      setConfirmVolumeAberto(true);
-      return;
-    }
-    void executarConsulta(filtros, pedidoFiltro, considerarRequisicoes, produtoFiltro);
+    await dispararConsultaComProduto(filtros, produtoFiltro);
   };
 
   const confirmarVolume = (sim: boolean) => {
@@ -960,7 +1092,9 @@ export default function ConsultaEstoquePage() {
                   <span>
                     Empenho:{' '}
                     <strong className="text-slate-800 dark:text-slate-100">
-                      {rotuloEmpenhoProdutoEscopo(consultaProdutoResumo.empenhoEscopo)}
+                      {consultaPedidoResumo
+                        ? 'Conforme o pedido'
+                        : rotuloEmpenhoProdutoEscopo(consultaProdutoResumo.empenhoEscopo)}
                     </strong>
                   </span>
                   <span className="text-slate-400">·</span>
@@ -1174,6 +1308,7 @@ export default function ConsultaEstoquePage() {
         pedidoFiltro={pedidoFiltro}
         produtoFiltro={produtoFiltro}
         onAlterarEscolhasProduto={handleAlterarEscolhasProduto}
+        produtoEscolhasAlteraveis={!escolhasProdutoSaoAutomaticas(produtoTemBom)}
         opcoes={opcoesFiltro}
         onBuscarPedido={buscarPedidoAsync}
         onClose={() => setFiltrosPopoverAberto(false)}
@@ -1249,29 +1384,29 @@ export default function ConsultaEstoquePage() {
         zIndex={MODAL_Z_ESCOLHAS_PEDIDO}
         contexto="Produto filtrado"
         perguntaModo="Como visualizar os produtos?"
-        opcoesModo={[
-          {
-            valor: 'diretos',
-            titulo: 'Item filtrado',
-            descricao: 'O próprio produto informado no filtro',
-          },
-          {
-            valor: 'componentes',
-            titulo: 'Componentes do item filtrado',
-            descricao: 'Explosão BOM (sem o item pai)',
-          },
-        ]}
+        opcoesModo={opcoesModoProdutoConsulta(produtoTemBom)}
         modoSelecionado={escolhaModoProdutoTemp}
         onSelecionarModo={setEscolhaModoProdutoTemp}
         perguntaEscopo="Como calcular o empenho?"
-        opcoesEscopo={[
-          {
-            valor: 'produto',
-            titulo: 'Somente do item filtrado',
-            descricao: 'Apenas a demanda do item filtrado',
-          },
-          { valor: 'todos', titulo: 'Todos os pedidos do sistema' },
-        ]}
+        opcoesEscopo={
+          devePerguntarEmpenhoProduto({
+            temPedidoSelecionado: pedidoFiltro.pedido != null,
+            modo: escolhaModoProdutoTemp,
+          })
+            ? OPCOES_EMPENHO_PRODUTO_CONSULTA
+            : []
+        }
+        escopoAutomatico="todos"
+        avisoModo={
+          !produtoBomCarregando && !produtoTemBom
+            ? 'Nenhum item filtrado possui ficha técnica (BOM). A consulta será do próprio item.'
+            : null
+        }
+        avisoEscopo={avisoEscopoEmpenhoProduto({
+          temPedidoSelecionado: pedidoFiltro.pedido != null,
+          modo: escolhaModoProdutoTemp,
+        })}
+        carregando={produtoBomCarregando}
         onConfirmar={confirmarEscolhasProduto}
         onCancelar={cancelarEscolhasProduto}
       />

@@ -196,6 +196,8 @@ export type CoberturaEstoqueLinha = ConsultaEstoqueLinha & {
   valorFirme: number | null;
   ultimaMovimentacaoEstoque?: string | null;
   semMovimentacao60d?: boolean;
+  /** IDs de setor de vínculo (`2|19|20`). */
+  setoresVinculo?: string;
   acaoSugerida: AcaoSugeridaCobertura;
 };
 

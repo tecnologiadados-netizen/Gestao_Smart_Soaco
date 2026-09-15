@@ -70,6 +70,8 @@ type Props = {
   pedidoFiltro: PedidoFiltroConsultaEstoque;
   produtoFiltro?: ProdutoFiltroConsultaEstoque;
   onAlterarEscolhasProduto?: () => void;
+  /** Quando false, oculta “Alterar” (caminho automático sem BOM). */
+  produtoEscolhasAlteraveis?: boolean;
   opcoes: OpcoesFiltroConsultaEstoque;
   /** `cobertura` oculta pedido, tipo, grupo, setor, subgrupos e sim/não de empenho/saldo. */
   modo?: 'consulta' | 'cobertura';
@@ -163,6 +165,94 @@ export function rotuloEmpenhoProdutoEscopo(escopo: EmpenhoProdutoEscopoConsultaE
   return escopo === 'produto' ? 'Somente do item filtrado' : 'Todos os pedidos';
 }
 
+/** Opções de visualização do modal de produto — “Componentes” só se houver BOM. */
+export function opcoesModoProdutoConsulta(temBom: boolean): {
+  valor: ModoProdutoConsultaEstoque;
+  titulo: string;
+  descricao: string;
+}[] {
+  const opcoes: {
+    valor: ModoProdutoConsultaEstoque;
+    titulo: string;
+    descricao: string;
+  }[] = [
+    {
+      valor: 'diretos',
+      titulo: 'Item filtrado',
+      descricao: 'O próprio produto informado no filtro',
+    },
+  ];
+  if (temBom) {
+    opcoes.push({
+      valor: 'componentes',
+      titulo: 'Componentes do item filtrado',
+      descricao: 'Explosão BOM (sem o item pai)',
+    });
+  }
+  return opcoes;
+}
+
+export const OPCOES_EMPENHO_PRODUTO_CONSULTA: {
+  valor: EmpenhoProdutoEscopoConsultaEstoque;
+  titulo: string;
+  descricao?: string;
+}[] = [
+  {
+    valor: 'produto',
+    titulo: 'Somente do item filtrado',
+    descricao: 'Apenas a demanda gerada pelo(s) item(ns) filtrado(s)',
+  },
+  { valor: 'todos', titulo: 'Todos os pedidos do sistema' },
+];
+
+/**
+ * Empenho do produto só é perguntado quando agrega informação nova:
+ * - sem PD específico (Pedido = Todos) e
+ * - visualização em componentes (restrição à demanda dos pais faz sentido).
+ * Com PD selecionado, o escopo do pedido prevalece; com item filtrado + Pedido=Todos, usa todos.
+ */
+export function devePerguntarEmpenhoProduto(opts: {
+  temPedidoSelecionado: boolean;
+  modo: ModoProdutoConsultaEstoque | null;
+}): boolean {
+  if (opts.temPedidoSelecionado) return false;
+  return opts.modo === 'componentes';
+}
+
+/** Sem BOM só resta “item filtrado” + empenho automático — não há o que confirmar no modal. */
+export function escolhasProdutoSaoAutomaticas(temBom: boolean): boolean {
+  return !temBom;
+}
+
+/** Mistura de itens com e sem ficha técnica na mesma seleção. */
+export function selecaoProdutoTemMisturaBom(opts: {
+  temBom: boolean;
+  todosTemBom: boolean;
+}): boolean {
+  return opts.temBom && !opts.todosTemBom;
+}
+
+export const MSG_MISTURA_BOM_PRODUTO =
+  'Não é possível misturar itens com e sem ficha técnica na mesma consulta.';
+
+export const PRODUTO_FILTRO_AUTOMATICO: ProdutoFiltroConsultaEstoque = {
+  modoProduto: 'diretos',
+  empenhoEscopo: 'todos',
+};
+
+export function avisoEscopoEmpenhoProduto(opts: {
+  temPedidoSelecionado: boolean;
+  modo: ModoProdutoConsultaEstoque | null;
+}): string | null {
+  if (opts.temPedidoSelecionado) {
+    return 'O cálculo do empenho segue o escopo já escolhido no pedido de venda.';
+  }
+  if (opts.modo === 'diretos') {
+    return 'Com pedido de venda em “Todos” e visualização do item filtrado, o empenho considera todos os pedidos do sistema.';
+  }
+  return null;
+}
+
 export default function ModalFiltrosConsultaEstoque({
   open,
   carregando,
@@ -171,6 +261,7 @@ export default function ModalFiltrosConsultaEstoque({
   pedidoFiltro,
   produtoFiltro = EMPTY_PRODUTO_FILTRO,
   onAlterarEscolhasProduto,
+  produtoEscolhasAlteraveis = true,
   opcoes,
   modo = 'consulta',
   origensEmpenho = '',
@@ -337,20 +428,25 @@ export default function ModalFiltrosConsultaEstoque({
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                             Empenho:{' '}
                             <strong>
-                              {rotuloEmpenhoProdutoEscopo(produtoFiltro.empenhoEscopo!)}
+                              {pedidoCompleto
+                                ? 'Conforme o pedido'
+                                : rotuloEmpenhoProdutoEscopo(produtoFiltro.empenhoEscopo!)}
                             </strong>
                           </span>
-                          <button
-                            type="button"
-                            onClick={onAlterarEscolhasProduto}
-                            className="text-primary-600 hover:underline dark:text-primary-400"
-                          >
-                            Alterar
-                          </button>
+                          {produtoEscolhasAlteraveis && onAlterarEscolhasProduto && (
+                            <button
+                              type="button"
+                              onClick={onAlterarEscolhasProduto}
+                              className="text-primary-600 hover:underline dark:text-primary-400"
+                            >
+                              Alterar
+                            </button>
+                          )}
                         </>
                       ) : (
                         <span className="text-amber-700 dark:text-amber-300">
-                          Selecione como visualizar o produto filtrado e como calcular o empenho.
+                          Selecione como visualizar o produto filtrado
+                          {pedidoCompleto ? '.' : ' e como calcular o empenho.'}
                         </span>
                       )}
                     </div>

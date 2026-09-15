@@ -168,6 +168,14 @@ export default function SingleSelectWithSearch({
     setOpen(false);
   };
 
+  const handleClear = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onChange(null);
+    setOpen(false);
+    setSearch('');
+  };
+
   const handleToggleOpen = () => {
     if (open) {
       setOpen(false);
@@ -181,6 +189,7 @@ export default function SingleSelectWithSearch({
   const labelText = value ? value.nome : placeholder;
   const termoCurto = buscaServidor && search.trim().length < minCharsBusca;
   const listMaxPx = parseInt(String(listMaxHeight).replace(/px$/i, ''), 10) || 180;
+  const mostrarLimpar = clearable && value != null;
 
   return (
     <div
@@ -191,18 +200,35 @@ export default function SingleSelectWithSearch({
       ref={ref}
     >
       <span className={labelClass}>{label}</span>
-      <button
-        type="button"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={handleToggleOpen}
-        className={inputClass + ' w-full max-w-full min-w-0 text-left flex items-center justify-between gap-2'}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-label={label}
-      >
-        <span className="min-w-0 flex-1 truncate">{labelText}</span>
-        <span className="text-slate-400 shrink-0">{open ? '▲' : '▼'}</span>
-      </button>
+      <div className="relative flex w-full min-w-0 items-center gap-1">
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={handleToggleOpen}
+          className={
+            inputClass +
+            ' min-w-0 flex-1 text-left flex items-center justify-between gap-2'
+          }
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-label={label}
+        >
+          <span className="min-w-0 flex-1 truncate">{labelText}</span>
+          <span className="text-slate-400 shrink-0">{open ? '▲' : '▼'}</span>
+        </button>
+        {mostrarLimpar && (
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleClear}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 text-lg leading-none text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:border-slate-500 dark:text-slate-300 dark:hover:bg-slate-600 dark:hover:text-slate-100"
+            aria-label={`Limpar ${label}`}
+            title="Limpar"
+          >
+            ×
+          </button>
+        )}
+      </div>
       {open && (
         <div
           className={

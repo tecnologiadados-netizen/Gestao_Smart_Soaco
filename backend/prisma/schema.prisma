@@ -126,6 +126,8 @@ model Usuario {
   whatsappNotificacaoDestinatarios WhatsappNotificacaoDestinatario[]
   emailNotificacaoDestinatarios EmailNotificacaoDestinatario[]
   telasFavoritas TelaFavorita[]
+  assistenteConversas AssistenteConversa[]
+  assistenteFeedbacks AssistenteFeedback[]
 
   @@map("usuario")
 }
@@ -1427,6 +1429,72 @@ model EmailProviderSettings {
   updatedAt              DateTime  @updatedAt @map("updated_at")
 
   @@map("email_provider_settings")
+}
+
+/// Credencial OpenAI do Assistente Amigaço (chave criptografada).
+model AiProviderSettings {
+  id               String    @id @default(uuid())
+  provider         String    @default("openai")
+  model            String    @default("gpt-4o-mini")
+  apiKeyEncrypted  String    @map("api_key_encrypted")
+  lastTestedAt     DateTime? @map("last_tested_at")
+  lastError        String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@map("ai_provider_settings")
+}
+
+/// Conversas do Assistente Amigaço (persistidas por usuário).
+model AssistenteConversa {
+  id        String               @id @default(cuid())
+  usuarioId Int                  @map("usuario_id")
+  titulo    String               @default("Nova conversa")
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+  usuario   Usuario              @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  mensagens AssistenteMensagem[]
+
+  @@index([usuarioId, updatedAt])
+  @@map("assistente_conversa")
+}
+
+model AssistenteMensagem {
+  id         String               @id @default(cuid())
+  conversaId String               @map("conversa_id")
+  role       String
+  content    String
+  createdAt  DateTime             @default(now()) @map("created_at")
+  conversa   AssistenteConversa   @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  feedback   AssistenteFeedback?
+
+  @@index([conversaId, createdAt])
+  @@map("assistente_mensagem")
+}
+
+/// Feedback 👍 / Alucinou por mensagem do Amigaço (snapshot para revisão do Master).
+model AssistenteFeedback {
+  id                     String             @id @default(cuid())
+  usuarioId              Int                @map("usuario_id")
+  conversaId             String             @map("conversa_id")
+  mensagemId             String             @unique @map("mensagem_id")
+  tipo                   String
+  perguntaUsuario        String?            @map("pergunta_usuario")
+  respostaAssistente     String             @map("resposta_assistente")
+  pathname               String?
+  tituloConversa         String             @map("titulo_conversa")
+  resolvido              Boolean            @default(false)
+  resolvidoEm            DateTime?          @map("resolvido_em")
+  resolvidoPorUsuarioId  Int?               @map("resolvido_por_usuario_id")
+  notaInterna            String?            @map("nota_interna")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+  usuario                Usuario            @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  mensagem               AssistenteMensagem @relation(fields: [mensagemId], references: [id], onDelete: Cascade)
+
+  @@index([tipo, resolvido, createdAt])
+  @@index([usuarioId])
+  @@map("assistente_feedback")
 }
 
 model EmailDisparoLog {

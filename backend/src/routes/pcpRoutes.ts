@@ -15,6 +15,7 @@ import {
   getScDetalheConsultaEstoque,
   postContarConsultaEstoque,
   postConsultarEstoque,
+  postProdutoFiltroTemBom,
 } from '../controllers/consultaEstoqueController.js';
 import { postPainelCoberturaEstoque, getFamiliasCoberturaEstoque } from '../controllers/coberturaEstoqueController.js';
 import {
@@ -76,6 +77,11 @@ router.get(
   '/consulta-estoque/opcoes-filtro/pedidos',
   podeConsultaEstoque,
   async503(getBuscarPedidosGerenciadorTypeahead)
+);
+router.post(
+  '/consulta-estoque/produto-filtro/tem-bom',
+  podeConsultaEstoque,
+  async503(postProdutoFiltroTemBom)
 );
 router.post('/consulta-estoque/contar', podeConsultaEstoque, async503(postContarConsultaEstoque));
 router.post('/consulta-estoque/consultar', podeConsultaEstoque, async503(postConsultarEstoque));

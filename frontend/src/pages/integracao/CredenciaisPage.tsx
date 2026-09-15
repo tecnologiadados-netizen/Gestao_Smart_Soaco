@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { PERMISSOES } from '../../config/permissoes';
 import { fetchEmailSettings, type EmailSettingsResponse } from '../../api/emailSettings';
 import { getEvolutionConnect, type EvolutionConnectResponse } from '../../api/evolution';
+import { fetchAiSettings, type AiSettingsResponse } from '../../api/aiSettings';
 
 function CredencialCard({
   title,
@@ -51,9 +52,11 @@ export default function CredenciaisPage() {
   const { hasPermission, isMaster } = useAuth();
   const podeEmail = isMaster || hasPermission(PERMISSOES.SISTEMA_EMAIL) || hasPermission(PERMISSOES.USUARIOS_GERENCIAR);
   const podeWhatsapp = isMaster || hasPermission(PERMISSOES.SISTEMA_WHATSAPP) || hasPermission(PERMISSOES.USUARIOS_GERENCIAR);
+  const podeAi = isMaster || hasPermission(PERMISSOES.SISTEMA_AI) || hasPermission(PERMISSOES.USUARIOS_GERENCIAR);
 
   const [emailSettings, setEmailSettings] = useState<EmailSettingsResponse | null>(null);
   const [whatsapp, setWhatsapp] = useState<EvolutionConnectResponse | null>(null);
+  const [aiSettings, setAiSettings] = useState<AiSettingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -83,6 +86,17 @@ export default function CredenciaisPage() {
               })
           );
         }
+        if (podeAi) {
+          tasks.push(
+            fetchAiSettings()
+              .then((d) => {
+                if (!cancelled) setAiSettings(d);
+              })
+              .catch(() => {
+                if (!cancelled) setAiSettings(null);
+              })
+          );
+        }
         await Promise.all(tasks);
       } finally {
         if (!cancelled) setLoading(false);
@@ -91,10 +105,11 @@ export default function CredenciaisPage() {
     return () => {
       cancelled = true;
     };
-  }, [podeEmail, podeWhatsapp]);
+  }, [podeEmail, podeWhatsapp, podeAi]);
 
   const emailOk = Boolean(emailSettings?.configured && !emailSettings.lastError);
   const whatsappOk = Boolean(whatsapp?.connected && whatsapp?.instanceConfiguredInEnv !== false);
+  const aiOk = Boolean(aiSettings?.configured && !aiSettings.lastError);
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -104,7 +119,7 @@ export default function CredenciaisPage() {
         </p>
         <h1 className="text-xl font-bold text-slate-900 dark:text-slate-50">Credenciais</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Configure os canais de envio automático (e-mail e WhatsApp).
+          Configure os canais de envio automático e o Assistente IA (Amigaço).
         </p>
       </div>
 
@@ -144,12 +159,28 @@ export default function CredenciaisPage() {
               linkLabel="Configurar WhatsApp"
             />
           )}
+          {podeAi && (
+            <CredencialCard
+              title="Assistente IA (Amigaço)"
+              description="Chave OpenAI (ChatGPT) para o FAQ inteligente no canto da tela."
+              ok={aiOk}
+              detail={
+                !aiSettings?.configured
+                  ? 'Não configurado'
+                  : aiSettings.lastError
+                    ? 'Erro na credencial'
+                    : 'Credencial ativa'
+              }
+              to="/integracao/assistente-ia"
+              linkLabel="Configurar Assistente IA"
+            />
+          )}
         </div>
       )}
 
-      {!podeEmail && !podeWhatsapp && (
+      {!podeEmail && !podeWhatsapp && !podeAi && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-4 text-sm text-amber-800 dark:text-amber-200">
-          Sem permissão para gerenciar credenciais de e-mail ou WhatsApp.
+          Sem permissão para gerenciar credenciais.
         </div>
       )}
     </div>

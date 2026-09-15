@@ -66,17 +66,17 @@ const SECOES: SecaoAjuda[] = [
     id: 'preco',
     titulo: 'Preço unitário e valor firme',
     oQueE:
-      'Preço = última entrada entre “Compra para material almox secundário”, “Compra para industrialização” e “AJUSTE PARA ATUALIZAR PREÇO DA ÚLTIMA COMPRA (TRIB INCLUÍDA)”, com valor unitário > 0 (incluindo preços fracionários baixos como 0,002). Não se descarta mais por arredondamento a 2 casas nem por limiar 0,005 — a entrada recente prevalece sobre preços antigos. Valor em estoque = saldo × preço; valor firme = (saldo − empenho) × preço; valor sem movimentação = saldo × preço dos itens sem mov. há ≥ 60 dias. Pedido de compra não entra nesses totais.',
+      'Preço = última entrada entre “Compra para material almox secundário”, “Compra para material almox galpões”, “Compra para industrialização” e “AJUSTE PARA ATUALIZAR PREÇO DA ÚLTIMA COMPRA (TRIB INCLUÍDA)”, com valor unitário &gt; 0 (incluindo preços fracionários baixos como 0,002). Em bobinas cuja descrição casa com BOBINA…X…MM… (exceto etiquetas), o painel usa a mesma chave dimensional da precificação (espessura × largura / padrão, com BOBINA INTEIRA → BOBINA SLITADA): a média do preço cheio das entradas qualificadas na data mais recente daquela chave é atribuída a todos os SKUs com a mesma chave. Não se descarta mais por arredondamento a 2 casas nem por limiar 0,005 — a entrada recente prevalece sobre preços antigos (salvo o override da média de bobina). Valor em estoque = saldo × preço; valor firme = (saldo − empenho) × preço; valor sem movimentação = saldo × preço dos itens sem mov. há ≥ 60 dias. Pedido de compra não entra nesses totais.',
     comoLe:
-      'Na grade, preços &lt; R$ 0,01 aparecem com até 4 casas. Sem preço só quando não há nenhuma entrada qualificada com valor &gt; 0; o badge Sem preço com estoque restringe a saldo &gt; 0. Esses produtos ficam de fora das somas em R$ (cards, barras, pizza e Top 10).',
+      'Na grade, preços &lt; R$ 0,01 aparecem com até 4 casas. Bobina inteira e slitada (ou outros códigos) com a mesma dimensão compartilham o mesmo preço unitário. Sem preço só quando não há nenhuma entrada qualificada com valor &gt; 0 e também não há média de bobina para a chave; o badge Sem preço com estoque restringe a saldo &gt; 0. Esses produtos ficam de fora das somas em R$ (cards, barras, pizza e Top 10).',
   },
   {
     id: 'fonte',
     titulo: 'Mesma fonte da Consulta de Estoque',
     oQueE:
-      'Saldo, empenho líquido, SC, Pré Compra, PC e projetado usam as mesmas regras/SQL da Consulta de Estoque. O painel fixa almox secundário. Por padrão inclui produtos com e sem empenho; no modal Filtrar, o toggle “Considerar somente produtos com empenho?” restringe a empenho &gt; 0. Itens com CM, empenho, estoque, SC e Pré Compra todos iguais a zero são excluídos do universo (PC sozinho &gt; 0 ainda entra).',
+      'Saldo, empenho líquido, SC, Pré Compra, PC e projetado usam as mesmas regras/SQL da Consulta de Estoque. O painel inclui produtos vinculados a pelo menos um destes setores: almox secundário (2), galpão bobina (19) ou matéria-prima processada (20). A coluna Setor mostra esses IDs separados por | quando há mais de um vínculo. Por padrão inclui produtos com e sem empenho; no modal Filtrar, o toggle “Considerar somente produtos com empenho?” restringe a empenho &gt; 0. Itens com CM, empenho, estoque, SC, Pré Compra e PC todos iguais a zero são excluídos do universo — PC &gt; 0 sozinho já basta para entrar.',
     comoLe:
-      'Células reabrem os mesmos modais analíticos. O toggle “Considerar empenho de requisições?” no topo refaz a consulta na hora. O toggle de empenho fica no modal Filtrar e só vale após clicar em Filtrar.',
+      'Células reabrem os mesmos modais analíticos. O toggle “Considerar empenho de requisições?” no topo refaz a consulta na hora. O toggle de empenho fica no modal Filtrar e só vale após clicar em Filtrar. A legenda abaixo da grade explica o que cada ID de setor representa.',
   },
   {
     id: 'filtros',
@@ -95,7 +95,7 @@ export default function CoberturaEstoqueAjudaModal({ aberto, onClose }: Cobertur
       onClose={onClose}
       titulo="Como ler a Cobertura de Estoque"
       subtitulo="Atendimento da venda, cobertura em meses, Status em cascata e ações."
-      introducao="Painel do almoxarifado secundário. Atendimento (estoque ÷ empenho) e Cobertura ((estoque − empenho) ÷ CM) são separados; CM ≤ 0 não inventa divisor. Status, KPIs, barras, fila de ação, capital e grade usam o mesmo modelo."
+      introducao="Painel dos almoxarifados secundário, galpão bobina e matéria-prima processada (vínculo a pelo menos um). Atendimento (estoque ÷ empenho) e Cobertura ((estoque − empenho) ÷ CM) são separados; CM ≤ 0 não inventa divisor. Status, KPIs, barras, fila de ação, capital e grade usam o mesmo modelo."
       secoes={SECOES}
       tituloId="cobertura-estoque-ajuda-titulo"
     />

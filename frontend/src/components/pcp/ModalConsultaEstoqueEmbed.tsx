@@ -7,6 +7,12 @@ import GradeCelulaModalBtn from './GradeCelulaModalBtn';
 import ModalConsultaEstoqueDetalhe, { fmtQtde } from './ModalConsultaEstoqueDetalhe';
 import ModalEscolhasConsultaEstoque from './ModalEscolhasConsultaEstoque';
 import {
+  OPCOES_EMPENHO_PRODUTO_CONSULTA,
+  PRODUTO_FILTRO_AUTOMATICO,
+  avisoEscopoEmpenhoProduto,
+  devePerguntarEmpenhoProduto,
+  escolhasProdutoSaoAutomaticas,
+  opcoesModoProdutoConsulta,
   rotuloEmpenhoProdutoEscopo,
   rotuloModoProduto,
 } from './ModalFiltrosConsultaEstoque';
@@ -19,6 +25,7 @@ import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import {
   consultarEstoque,
   obterSaldoDetalhe,
+  verificarProdutoFiltroTemBom,
   type ConsultaEstoqueLinha,
   type EmpenhoProdutoEscopoConsultaEstoque,
   type ModoProdutoConsultaEstoque,
@@ -108,6 +115,8 @@ export default function ModalConsultaEstoqueEmbed({
   const [escolhasProduto, setEscolhasProduto] = useState<EscolhasProdutoEmbed | null>(null);
   const [confirmEscolhasAberto, setConfirmEscolhasAberto] = useState(!fontes);
   const [escolhaModoTemp, setEscolhaModoTemp] = useState<ModoProdutoConsultaEstoque | null>(null);
+  const [produtoTemBom, setProdutoTemBom] = useState(true);
+  const [produtoBomCarregando, setProdutoBomCarregando] = useState(false);
   const [idsProdutosPaiEscopo, setIdsProdutosPaiEscopo] = useState<number[]>([]);
   const [detalhe, setDetalhe] = useState<DetalheModal | null>(null);
   const [detalheSaldo, setDetalheSaldo] = useState<SaldoSetorDetalhe[]>([]);
@@ -196,17 +205,38 @@ export default function ModalConsultaEstoqueEmbed({
 
   useEffect(() => {
     if (fontes) {
-      void carregarConsulta(considerarRequisicoes);
+      void carregarConsulta(considerarRef.current);
       return;
     }
     setEscolhasProduto(null);
-    setConfirmEscolhasAberto(true);
+    setConfirmEscolhasAberto(false);
     setEscolhaModoTemp(null);
+    setProdutoTemBom(true);
+    setProdutoBomCarregando(true);
     setIdsProdutosPaiEscopo([]);
     setLinhas([]);
     setErroApi(null);
     setLoading(false);
-  }, [codigo, fontes]);
+    let cancelled = false;
+    void verificarProdutoFiltroTemBom({ codigos: [codigo.trim()] }).then((r) => {
+      if (cancelled) return;
+      setProdutoTemBom(r.temBom);
+      setProdutoBomCarregando(false);
+      if (escolhasProdutoSaoAutomaticas(r.temBom)) {
+        setEscolhasProduto({
+          modoProduto: PRODUTO_FILTRO_AUTOMATICO.modoProduto!,
+          empenhoEscopo: PRODUTO_FILTRO_AUTOMATICO.empenhoEscopo!,
+        });
+        setConfirmEscolhasAberto(false);
+        return;
+      }
+      setConfirmEscolhasAberto(true);
+      setEscolhaModoTemp(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [codigo, fontes, carregarConsulta]);
 
   useEffect(() => {
     if (fontes || !escolhasProduto) return;
@@ -215,7 +245,9 @@ export default function ModalConsultaEstoqueEmbed({
 
   const confirmarEscolhasProduto = (escopo: EmpenhoProdutoEscopoConsultaEstoque) => {
     if (!escolhaModoTemp) return;
-    setEscolhasProduto({ modoProduto: escolhaModoTemp, empenhoEscopo: escopo });
+    const modo =
+      !produtoTemBom && escolhaModoTemp === 'componentes' ? 'diretos' : escolhaModoTemp;
+    setEscolhasProduto({ modoProduto: modo, empenhoEscopo: escopo });
     setConfirmEscolhasAberto(false);
   };
 
@@ -228,8 +260,21 @@ export default function ModalConsultaEstoqueEmbed({
   };
 
   const abrirAlterarEscolhas = () => {
-    setEscolhaModoTemp(escolhasProduto?.modoProduto ?? null);
-    setConfirmEscolhasAberto(true);
+    setProdutoBomCarregando(true);
+    void verificarProdutoFiltroTemBom({ codigos: [codigo.trim()] }).then((r) => {
+      setProdutoTemBom(r.temBom);
+      setProdutoBomCarregando(false);
+      if (escolhasProdutoSaoAutomaticas(r.temBom)) {
+        setEscolhasProduto({
+          modoProduto: PRODUTO_FILTRO_AUTOMATICO.modoProduto!,
+          empenhoEscopo: PRODUTO_FILTRO_AUTOMATICO.empenhoEscopo!,
+        });
+        setConfirmEscolhasAberto(false);
+        return;
+      }
+      setEscolhaModoTemp(escolhasProduto?.modoProduto ?? null);
+      setConfirmEscolhasAberto(true);
+    });
   };
 
   const detailKey =
@@ -330,13 +375,15 @@ export default function ModalConsultaEstoqueEmbed({
             <span className="text-slate-500 dark:text-slate-400">
               {rotuloModoProduto(escolhasProduto.modoProduto)} · Empenho:{' '}
               {rotuloEmpenhoProdutoEscopo(escolhasProduto.empenhoEscopo)}
-              <button
-                type="button"
-                className="ml-2 text-primary-600 hover:underline dark:text-primary-400"
-                onClick={abrirAlterarEscolhas}
-              >
-                Alterar
-              </button>
+              {!escolhasProdutoSaoAutomaticas(produtoTemBom) && (
+                <button
+                  type="button"
+                  className="ml-2 text-primary-600 hover:underline dark:text-primary-400"
+                  onClick={abrirAlterarEscolhas}
+                >
+                  Alterar
+                </button>
+              )}
             </span>
           )}
         </div>
@@ -626,29 +673,33 @@ export default function ModalConsultaEstoqueEmbed({
             </>
           }
           perguntaModo="Como visualizar os produtos?"
-          opcoesModo={[
-            {
-              valor: 'diretos',
-              titulo: 'Item filtrado',
-              descricao: 'O próprio produto informado',
-            },
-            {
-              valor: 'componentes',
-              titulo: 'Componentes do item filtrado',
-              descricao: 'Explosão BOM (sem o item pai)',
-            },
-          ]}
+          opcoesModo={opcoesModoProdutoConsulta(produtoTemBom).map((op) =>
+            op.valor === 'diretos'
+              ? { ...op, descricao: 'O próprio produto informado' }
+              : op
+          )}
           modoSelecionado={escolhaModoTemp}
           onSelecionarModo={setEscolhaModoTemp}
           perguntaEscopo="Como calcular o empenho?"
-          opcoesEscopo={[
-            {
-              valor: 'produto',
-              titulo: 'Somente do item filtrado',
-              descricao: 'Apenas a demanda do item filtrado',
-            },
-            { valor: 'todos', titulo: 'Todos os pedidos do sistema' },
-          ]}
+          opcoesEscopo={
+            devePerguntarEmpenhoProduto({
+              temPedidoSelecionado: false,
+              modo: escolhaModoTemp,
+            })
+              ? OPCOES_EMPENHO_PRODUTO_CONSULTA
+              : []
+          }
+          escopoAutomatico="todos"
+          avisoModo={
+            !produtoBomCarregando && !produtoTemBom
+              ? 'Este item não possui ficha técnica (BOM). A consulta será do próprio item.'
+              : null
+          }
+          avisoEscopo={avisoEscopoEmpenhoProduto({
+            temPedidoSelecionado: false,
+            modo: escolhaModoTemp,
+          })}
+          carregando={produtoBomCarregando}
           onConfirmar={confirmarEscolhasProduto}
           onCancelar={cancelarEscolhasProduto}
         />

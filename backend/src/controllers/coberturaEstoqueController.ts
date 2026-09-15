@@ -56,6 +56,7 @@ function filtrosFromBody(body: unknown): FiltrosConsultaEstoque {
     comEmpenho: parseSimNaoTodos(f.comEmpenho),
     comSaldoEstoque: parseSimNaoTodos(f.comSaldoEstoque),
     somenteAlmoxSecundario: f.somenteAlmoxSecundario === true,
+    somenteAlmoxCobertura: f.somenteAlmoxCobertura === true,
   };
 }
 

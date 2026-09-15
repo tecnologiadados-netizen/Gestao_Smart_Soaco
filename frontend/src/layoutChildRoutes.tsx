@@ -15,6 +15,7 @@ import SmsIntegracaoPage from './pages/integracao/SmsIntegracaoPage';
 import EmailIntegracaoPage from './pages/integracao/EmailIntegracaoPage';
 import CredenciaisPage from './pages/integracao/CredenciaisPage';
 import EmailCredenciaisPage from './pages/integracao/EmailCredenciaisPage';
+import AssistenteIaCredenciaisPage from './pages/integracao/AssistenteIaCredenciaisPage';
 import ComprasPage from './pages/ComprasPage';
 import ColetasPrecosPage from './pages/compras/ColetasPrecosPage';
 import ComprasDashboardPage from './pages/compras/ComprasDashboardPage';
@@ -57,6 +58,7 @@ import PainelProducaoApuracaoPage from './pages/pedidos/painel-metas/PainelProdu
 import PedidosEncerradosPage from './pages/pedidos/PedidosEncerradosPage';
 import SuportePage from './pages/suporte/SuportePage';
 import SuporteConfigPage from './pages/suporte/SuporteConfigPage';
+import AmigacoAlucinacoesPage from './pages/suporte/AmigacoAlucinacoesPage';
 import SemAcessoPage from './pages/SemAcessoPage';
 import InicioPage from './pages/InicioPage';
 import MindMapsPage, { MindMapsLegacyRedirect } from './pages/mind-maps/MindMapsPage';
@@ -123,6 +125,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'pedidos/painel-metas/apuracao', element: <ErrorBoundary><PainelProducaoApuracaoPage /></ErrorBoundary> },
   { path: 'suporte', element: <ErrorBoundary><SuportePage /></ErrorBoundary> },
   { path: 'suporte/configuracao', element: <ErrorBoundary><SuporteConfigPage /></ErrorBoundary> },
+  { path: 'suporte/amigaco-alucinacoes', element: <ErrorBoundary><AmigacoAlucinacoesPage /></ErrorBoundary> },
   { path: 'heatmap', element: <HeatmapPage /> },
   { path: 'mind-maps', element: <ErrorBoundary><MindMapsPage /></ErrorBoundary> },
   { path: 'mind-maps/novo', element: <MindMapsLegacyRedirect /> },
@@ -168,6 +171,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'integracao/email-notificacoes', element: <EmailIntegracaoPage /> },
   { path: 'integracao/credenciais', element: <CredenciaisPage /> },
   { path: 'integracao/credenciais/email', element: <EmailCredenciaisPage /> },
+  { path: 'integracao/assistente-ia', element: <AssistenteIaCredenciaisPage /> },
   { path: 'usuarios', element: <UsuariosPage /> },
   { path: 'usuarios/grupos', element: <UsuariosPage /> },
   { path: 'whatsapp', element: <WhatsAppConnectPage /> },

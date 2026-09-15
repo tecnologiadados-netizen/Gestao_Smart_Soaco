@@ -101,7 +101,7 @@ function payloadCobertura(filtros: FiltrosConsultaEstoqueState, somenteComEmpenh
   return {
     ...filtrosStateToPayload(filtros),
     comEmpenho: (somenteComEmpenho ? 'sim' : 'todos') as const,
-    somenteAlmoxSecundario: true,
+    somenteAlmoxCobertura: true,
   };
 }
 
@@ -170,6 +170,12 @@ const COLS = [
   { key: 'codigo', label: 'Código', align: 'left' as const },
   { key: 'descricao', label: 'Descrição', align: 'left' as const },
   {
+    key: 'setoresVinculo',
+    label: 'Setor',
+    align: 'center' as const,
+    title: 'IDs dos setores de estoque com vínculo do produto (2, 19 e/ou 20)',
+  },
+  {
     key: 'statusPainel',
     label: 'Status',
     align: 'left' as const,
@@ -180,7 +186,7 @@ const COLS = [
     key: 'precoUnitario',
     label: 'Preço',
     align: 'center' as const,
-    title: 'Última entrada qualificada com valor unitário > 0 (almox secundário, industrialização ou ajuste de preço)',
+    title: 'Última entrada qualificada com valor unitário > 0 (almox secundário, almox galpões, industrialização ou ajuste de preço). Bobinas com a mesma chave dimensional compartilham a média desse preço na data mais recente da chave.',
   },
   {
     key: 'atendimentoExibicao',
@@ -213,6 +219,13 @@ const COLS = [
     title: 'Próximo passo sugerido a partir do Status e do pipeline SC / Pré Compra / PC',
   },
 ] as const;
+
+/** Legenda da coluna Setor (IDs Nomus do vínculo produtoempresa_setorestoque). */
+const LEGENDA_SETORES_VINCULO: { id: number; nome: string }[] = [
+  { id: 2, nome: 'Almoxarifado (secundário)' },
+  { id: 19, nome: 'Almoxarifado galpão bobina' },
+  { id: 20, nome: 'Almoxarifado matéria-prima processada' },
+];
 
 type ColKey = (typeof COLS)[number]['key'];
 const COL_KEYS = COLS.map((c) => c.key);
@@ -687,6 +700,8 @@ export default function CoberturaEstoquePage() {
         return row.codigo;
       case 'descricao':
         return row.descricao;
+      case 'setoresVinculo':
+        return (row.setoresVinculo ?? '').trim() || '—';
       case 'statusPainel':
         return LABELS_STATUS_PAINEL[statusDaLinha(row)];
       case 'consumoMedio':
@@ -720,6 +735,11 @@ export default function CoberturaEstoquePage() {
 
   const getCellFilterValues = useCallback((row: CoberturaEstoqueLinha, colId: string): string[] | null => {
     if (colId === 'statusPainel') return [LABELS_STATUS_PAINEL[statusDaLinha(row)]];
+    if (colId === 'setoresVinculo') {
+      const s = (row.setoresVinculo ?? '').trim();
+      if (!s) return ['—'];
+      return s.split('|').map((x) => x.trim()).filter(Boolean);
+    }
     if (colId === 'atendimentoExibicao' && row.classeAtendimento) {
       return [LABELS_CLASSE_ATENDIMENTO[row.classeAtendimento]];
     }
@@ -829,6 +849,7 @@ export default function CoberturaEstoquePage() {
       let width = 12;
       if (key === 'descricao' || key === 'acaoSugerida') width = 36;
       else if (key === 'codigo') width = 14;
+      else if (key === 'setoresVinculo') width = 10;
       else if (key === 'statusPainel') width = 14;
       else if (key === 'atendimentoExibicao') width = 12;
       else if (key === 'precoUnitario') width = 14;
@@ -1657,6 +1678,16 @@ export default function CoberturaEstoquePage() {
                         <td className="max-w-[240px] truncate px-2 py-1.5 text-slate-600 dark:text-slate-300">
                           {row.descricao}
                         </td>
+                        <td
+                          className="px-2 py-1.5 text-center font-mono text-[11px] tabular-nums text-slate-700 dark:text-slate-200"
+                          title={
+                            (row.setoresVinculo ?? '').trim()
+                              ? `Vínculo nos setores: ${row.setoresVinculo}`
+                              : 'Sem vínculo nos setores 2, 19 ou 20'
+                          }
+                        >
+                          {(row.setoresVinculo ?? '').trim() || '—'}
+                        </td>
                         <td className="px-2 py-1.5">
                           <span
                             className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${KPI_NUMERO[st]} border-l-2 ${KPI_ACCENT[st]}`}
@@ -1797,6 +1828,24 @@ export default function CoberturaEstoquePage() {
             </section>
 
             <section className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                Legenda — Setor (vínculo)
+              </h2>
+              <ul className="mb-4 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-3">
+                {LEGENDA_SETORES_VINCULO.map((s) => (
+                  <li key={s.id} className="text-xs text-slate-600 dark:text-slate-300">
+                    <span className="font-mono font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                      {s.id}
+                    </span>
+                    <span className="text-slate-400"> — </span>
+                    {s.nome}
+                  </li>
+                ))}
+              </ul>
+              <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
+                Na coluna Setor, vários vínculos aparecem separados por{' '}
+                <span className="font-mono">|</span> (ex.: <span className="font-mono">19|20</span>).
+              </p>
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
                 Legenda — Status do painel
               </h2>

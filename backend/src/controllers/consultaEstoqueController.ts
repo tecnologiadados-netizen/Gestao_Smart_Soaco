@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import {
   buscarPedidosGerenciadorTypeahead,
   consultarEstoque,
+  consultarProdutoFiltroTemBom,
   contarConsultaEstoque,
   filtrosConsultaTemAlgum,
   listarCotacaoDetalhePorProduto,
@@ -76,6 +77,7 @@ function filtrosFromBody(body: unknown): FiltrosConsultaEstoque {
     comEmpenho: parseSimNaoTodos(f.comEmpenho),
     comSaldoEstoque: parseSimNaoTodos(f.comSaldoEstoque),
     somenteAlmoxSecundario: f.somenteAlmoxSecundario === true,
+    somenteAlmoxCobertura: f.somenteAlmoxCobertura === true,
   };
 }
 
@@ -117,6 +119,7 @@ export async function getBuscarOpcoesFiltro(req: Request, res: Response): Promis
     subgrupo1: parseCommaQuery(req.query.subgrupo1),
     subgrupo2: parseCommaQuery(req.query.subgrupo2),
     somenteAlmoxSecundario: req.query.somenteAlmoxSecundario === '1' || req.query.somenteAlmoxSecundario === 'true',
+    somenteAlmoxCobertura: req.query.somenteAlmoxCobertura === '1' || req.query.somenteAlmoxCobertura === 'true',
   };
   const { data, erro } = await buscarOpcoesFiltroCampo(campo, q, filtros);
   if (erro) {
@@ -139,6 +142,17 @@ export async function getBuscarPedidosGerenciadorTypeahead(req: Request, res: Re
     return;
   }
   res.json({ data });
+}
+
+/** Indica se o(s) produto(s) do filtro possuem ficha técnica (BOM) — opções do modal de produto. */
+export async function postProdutoFiltroTemBom(req: Request, res: Response): Promise<void> {
+  const filtros = filtrosFromBody(req.body);
+  const { temBom, todosTemBom, erro } = await consultarProdutoFiltroTemBom(filtros);
+  if (erro) {
+    res.status(503).json({ error: erro, temBom: false, todosTemBom: false });
+    return;
+  }
+  res.json({ temBom, todosTemBom });
 }
 
 export async function postContarConsultaEstoque(req: Request, res: Response): Promise<void> {
