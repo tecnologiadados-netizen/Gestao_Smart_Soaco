@@ -80,6 +80,10 @@ describe('horasEscalaNoDia com exceções pontuais', () => {
     expect(horasEscalaNoDia('2026-09-07', semanal)).toBe(0); // Independência
   });
 
+  it('não zera feriado de outro estado (Emancipação de Alagoas 16/09)', () => {
+    expect(horasEscalaNoDia('2026-09-16', semanal)).toBe(8.75);
+  });
+
   it('aceita horário especial em feriado', () => {
     const escala = com([
       {

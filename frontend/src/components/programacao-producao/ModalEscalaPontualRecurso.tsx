@@ -9,8 +9,7 @@ import type {
 } from './types';
 import { formatPeriodoEscalaExcecao, formatEscalaResumo } from '../../utils/recursoEscalaLabel';
 import { excecaoVigenteNoDia } from '../../utils/recursoEscalaHoras';
-import { isFeriadoReconhecido } from '../../pages/financeiro/crm/lib/feriados-nacionais';
-import { FERIADOS_NORDESTE_POPULARES } from '../../pages/financeiro/crm/lib/feriados-nordeste';
+import { isFeriadoEscalaTeresina, nomeFeriadoEscalaPiaui } from '../../utils/feriadosEscalaPiaui';
 
 const BTN_PRIMARY =
   'px-3 py-1.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium text-sm transition disabled:opacity-50';
@@ -51,15 +50,15 @@ function faixasPadrao(recurso: ProgramacaoProducaoRecurso): RecursoEscalaFaixa[]
   return origem.map((f) => ({ inicio: f.inicio, fim: f.fim }));
 }
 
-/** Nome amigável do feriado (nacional fixo/móvel ou lista Nordeste/PI/Teresina). */
+/** Nome amigável do feriado (nacional + PI/Teresina). */
 function tituloFeriado(ymd: string): string | null {
-  if (!isFeriadoReconhecido(ymd)) return null;
+  if (!isFeriadoEscalaTeresina(ymd)) return null;
+  const local = nomeFeriadoEscalaPiaui(ymd);
+  if (local) return local;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
   if (!m) return 'Feriado';
   const mes = Number(m[2]);
   const dia = Number(m[3]);
-  const ne = FERIADOS_NORDESTE_POPULARES.find((f) => f.mes === mes && f.dia === dia);
-  if (ne) return ne.nome;
   const nacionaisFixos: Record<string, string> = {
     '01-01': 'Confraternização Universal',
     '04-21': 'Tiradentes',
@@ -192,7 +191,7 @@ export default function ModalEscalaPontualRecurso({
             Escala pontual · {recurso.cod} {recurso.nome}
           </h2>
           <p className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
-            Padrão: {formatEscalaResumo(recurso.escala)}. Feriados sem jornada — use horário especial se operar.
+            Padrão: {formatEscalaResumo(recurso.escala)}. Feriados nacionais e do Piauí/Teresina sem jornada — use horário especial se operar.
           </p>
         </div>
 
@@ -238,7 +237,7 @@ export default function ModalEscalaPontualRecurso({
                 }
                 setDataIni(iso);
                 setDataFim(iso);
-                if (isFeriadoReconhecido(iso)) {
+                if (isFeriadoEscalaTeresina(iso)) {
                   setTipo('substituir');
                   setFaixas(faixasPadrao(recurso));
                 }
@@ -249,12 +248,12 @@ export default function ModalEscalaPontualRecurso({
                 feriado: (d) => {
                   const ymd = ymdFromDate(d);
                   if (excecaoVigenteNoDia(ymd, lista)) return false;
-                  return isFeriadoReconhecido(ymd);
+                  return isFeriadoEscalaTeresina(ymd);
                 },
                 jornada: (d) => {
                   const ymd = ymdFromDate(d);
                   if (excecaoVigenteNoDia(ymd, lista)) return false;
-                  if (isFeriadoReconhecido(ymd)) return false;
+                  if (isFeriadoEscalaTeresina(ymd)) return false;
                   return Boolean(recurso.escala?.diasSemana?.includes(d.getDay()));
                 },
               }}
@@ -320,7 +319,7 @@ export default function ModalEscalaPontualRecurso({
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 {editandoId ? 'Alterar pontualidade' : 'Nova pontualidade'}
               </p>
-              {dataIni && isFeriadoReconhecido(dataIni) && !editandoId ? (
+              {dataIni && isFeriadoEscalaTeresina(dataIni) && !editandoId ? (
                 <p className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-200">
                   {tituloFeriado(dataIni)} — sem jornada padrão. Inclua um horário especial abaixo se for
                   trabalhar neste dia.

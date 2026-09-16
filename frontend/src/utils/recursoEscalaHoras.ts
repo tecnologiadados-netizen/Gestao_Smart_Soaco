@@ -1,5 +1,5 @@
 import type { RecursoEscala, RecursoEscalaExcecao } from '../components/programacao-producao/types';
-import { isFeriadoReconhecido } from '../pages/financeiro/crm/lib/feriados-nacionais';
+import { isFeriadoEscalaTeresina } from './feriadosEscalaPiaui';
 
 function hhMmParaMinutos(hhmm: string): number | null {
   const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(hhmm).trim());
@@ -42,8 +42,8 @@ export function excecoesSobrepostasAoPeriodo(
 
 /**
  * Horas previstas de escala em um único dia (YYYY-MM-DD), já com folga/hora extra.
- * Feriados reconhecidos (nacional + Nordeste/PI/Teresina, mesma regra do CRM)
- * não têm jornada padrão — só contam se houver pontualidade "substituir".
+ * Feriados da escala (nacional + PI/Teresina) não têm jornada padrão —
+ * só contam se houver pontualidade "substituir". Feriados de outros estados não zeram.
  */
 export function horasEscalaNoDia(
   ymd: string,
@@ -58,7 +58,7 @@ export function horasEscalaNoDia(
   const ex = excecaoVigenteNoDia(ymd, escala.excecoes);
   if (ex?.tipo === 'folga') return 0;
   if (ex?.tipo === 'substituir') return minutosDasFaixas(ex.faixas) / 60;
-  if (isFeriadoReconhecido(ymd)) return 0;
+  if (isFeriadoEscalaTeresina(ymd)) return 0;
   if (!escala.diasSemana.includes(dt.getDay())) return 0;
   return minutosDasFaixas(escala.faixas) / 60;
 }

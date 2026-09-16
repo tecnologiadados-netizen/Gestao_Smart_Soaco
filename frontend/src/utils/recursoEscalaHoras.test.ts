@@ -65,4 +65,8 @@ describe('horasEscalaNoDia (frontend)', () => {
   it('zera feriado municipal de Teresina (08/12)', () => {
     expect(horasEscalaNoDia('2026-12-08', semanal)).toBe(0);
   });
+
+  it('não zera feriado de outro estado (Emancipação de Alagoas 16/09)', () => {
+    expect(horasEscalaNoDia('2026-09-16', semanal)).toBe(8.75);
+  });
 });

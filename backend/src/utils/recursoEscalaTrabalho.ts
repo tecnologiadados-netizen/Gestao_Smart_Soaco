@@ -5,7 +5,7 @@
  * Feriados (nacional + Nordeste/PI/Teresina, mesma regra do CRM financeiro)
  * não entram na jornada padrão — só contam com pontualidade `substituir`.
  */
-import { isFeriadoReconhecido } from '../data/crmFinanceiro/feriadosNacionais.js';
+import { isFeriadoEscalaTeresina } from '../data/crmFinanceiro/feriadosEscalaPiaui.js';
 
 export const CAMASI_RECURSO_COD = 'R001';
 
@@ -224,7 +224,7 @@ function janelasMsDoDia(ymd: string, escala: RecursoEscala): { startMs: number; 
   if (ex?.tipo === 'substituir' && ex.faixas?.length) {
     return janelasDeFaixas(ymd, ex.faixas);
   }
-  if (isFeriadoReconhecido(ymd)) return [];
+  if (isFeriadoEscalaTeresina(ymd)) return [];
   if (!escala.diasSemana.includes(wd)) return [];
   return janelasDeFaixas(ymd, escala.faixas);
 }
