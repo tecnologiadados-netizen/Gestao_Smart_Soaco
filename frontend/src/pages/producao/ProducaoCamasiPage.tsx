@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   CartesianGrid,
   Legend,
@@ -13,10 +14,12 @@ import {
   fetchCamasiDashboard,
   getCamasiRecursoEscala,
   putCamasiRecursoEscalaExcecoes,
+  type CamasiDashboardKpis,
   type CamasiDashboardResponse,
   type CamasiParadaValida,
   type CamasiProducaoValida,
 } from '../../api/producaoCamasi';
+import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getChartTheme } from '../../utils/painelProducaoFormat';
 import ModalCamasiKpi, { type CamasiKpiModalTipo } from '../../components/producao/ModalCamasiKpi';
@@ -44,7 +47,7 @@ import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalho
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
 import SequenciamentoDateField from '../../components/sequenciamento-carradas/SequenciamentoDateField';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
-import { CalendarClock } from 'lucide-react';
+import { CalendarClock, CircleHelp } from 'lucide-react';
 
 type Filtros = { dataIni: string; dataFim: string };
 
@@ -324,18 +327,27 @@ function buildSeriePrevistoParado(
     });
 }
 
+function formatPct1(n: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(n);
+}
+
 function KpiCard({
   title,
   value,
   sub,
   loading,
   onClick,
+  help,
 }: {
   title: string;
   value: string;
   sub: ReactNode;
   loading?: boolean;
   onClick?: () => void;
+  help?: { label: string; onClick: () => void };
 }) {
   if (loading) {
     return (
@@ -348,20 +360,128 @@ function KpiCard({
     );
   }
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="card-panel w-full p-4 text-left transition hover:ring-2 hover:ring-primary-400/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onClick}
+        className="card-panel w-full p-4 text-left transition hover:ring-2 hover:ring-primary-400/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+      >
+        <p className={`text-xs font-semibold text-slate-600 dark:text-slate-300 ${help ? 'pr-8' : ''}`}>
+          {title}
+        </p>
+        <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-50">
+          {value}
+        </p>
+        <div className="mt-1 text-[11px] leading-snug text-slate-500 dark:text-slate-400">{sub}</div>
+        <p className="mt-1.5 text-[10px] font-medium text-primary-600 dark:text-primary-400">
+          Clique para ver o detalhe
+        </p>
+      </button>
+      {help ? (
+        <button
+          type="button"
+          onClick={help.onClick}
+          className="absolute right-2.5 top-2.5 inline-flex size-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+          title={help.label}
+          aria-label={help.label}
+        >
+          <CircleHelp className="h-4 w-4" aria-hidden />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function ModalMemorialProducaoCamasi({
+  open,
+  kpis,
+  onClose,
+}: {
+  open: boolean;
+  kpis: CamasiDashboardKpis | null | undefined;
+  onClose: () => void;
+}) {
+  useRegisterModalEscape({
+    id: 'camasi-memorial-producao',
+    onClose,
+    zIndex: 13100,
+    enabled: open,
+  });
+
+  if (!open || !kpis) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[13100] flex items-center justify-center bg-black/70 p-4"
+      role="presentation"
+      onClick={onClose}
     >
-      <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">{title}</p>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-50">
-        {value}
-      </p>
-      <div className="mt-1 text-[11px] leading-snug text-slate-500 dark:text-slate-400">{sub}</div>
-      <p className="mt-1.5 text-[10px] font-medium text-primary-600 dark:text-primary-400">
-        Clique para ver o detalhe
-      </p>
-    </button>
+      <div
+        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-600 dark:bg-slate-900"
+        role="dialog"
+        aria-modal
+        aria-labelledby="camasi-memorial-producao-titulo"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2
+              id="camasi-memorial-producao-titulo"
+              className="text-base font-semibold text-slate-800 dark:text-slate-100"
+            >
+              Memorial de cálculo — Produção
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              No dia em aberto, o previsto usa só a escala já decorrida (até agora).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            Fechar
+          </button>
+        </div>
+        <div className="mt-4 space-y-1 text-sm tabular-nums text-slate-600 dark:text-slate-300">
+          <p className="flex items-baseline justify-between gap-3">
+            <span>Tempo previsto de produção até o dia atual</span>
+            <span className="shrink-0 font-medium text-slate-800 dark:text-slate-100">
+              {formatHoras(kpis.horasEscalaDecorrida ?? 0)}
+            </span>
+          </p>
+          <p className="flex items-baseline justify-between gap-3">
+            <span>(−) Tempo parado</span>
+            <span className="shrink-0 font-medium text-slate-800 dark:text-slate-100">
+              {formatHoras(kpis.horasParado ?? 0)}
+            </span>
+          </p>
+          <p className="flex items-baseline justify-between gap-3 border-t border-slate-200 pt-1.5 dark:border-slate-700">
+            <span>(=) Produção</span>
+            <span className="shrink-0 font-semibold text-slate-900 dark:text-slate-50">
+              {formatHoras(kpis.horasProducao ?? 0)}
+            </span>
+          </p>
+        </div>
+        {kpis.disponibilidadePct != null ? (
+          <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+            Disponibilidade{' '}
+            <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-50">
+              {formatPct1(kpis.disponibilidadePct)}%
+            </span>
+            <span className="text-slate-400 dark:text-slate-500">
+              {' '}
+              = produção ÷ previsto até o dia atual
+            </span>
+          </p>
+        ) : (
+          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+            Sem base de escala para calcular a disponibilidade.
+          </p>
+        )}
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -377,6 +497,7 @@ export default function ProducaoCamasiPage() {
   const [erro, setErro] = useState<string | null>(null);
 
   const [kpiModal, setKpiModal] = useState<CamasiKpiModalTipo | null>(null);
+  const [memorialProducaoAberto, setMemorialProducaoAberto] = useState(false);
   const [motivoModal, setMotivoModal] = useState<string | null>(null);
   const [filtroCategoria, setFiltroCategoria] = useState<'operacional' | 'jornada' | 'todas'>(
     'operacional'
@@ -728,43 +849,23 @@ export default function ProducaoCamasiPage() {
           value={formatHoras(kpis?.horasProducao ?? 0)}
           sub={
             kpis?.disponibilidadePct != null ? (
-              <div className="space-y-0.5 tabular-nums">
-                <p className="flex items-baseline justify-between gap-2">
-                  <span>Tempo previsto de produção até o dia atual</span>
-                  <span className="shrink-0 font-medium text-slate-600 dark:text-slate-300">
-                    {formatHoras(kpis.horasEscalaDecorrida ?? 0)}
-                  </span>
-                </p>
-                <p className="flex items-baseline justify-between gap-2">
-                  <span>(−) Tempo parado</span>
-                  <span className="shrink-0 font-medium text-slate-600 dark:text-slate-300">
-                    {formatHoras(kpis.horasParado ?? 0)}
-                  </span>
-                </p>
-                <p className="flex items-baseline justify-between gap-2 border-t border-slate-200/80 pt-0.5 dark:border-slate-600/80">
-                  <span>(=) Produção</span>
-                  <span className="shrink-0 font-semibold text-slate-700 dark:text-slate-200">
-                    {formatHoras(kpis.horasProducao ?? 0)}
-                  </span>
-                </p>
-                <p className="pt-0.5 text-slate-600 dark:text-slate-300">
-                  Disponibilidade{' '}
-                  <span className="font-semibold text-slate-800 dark:text-slate-100">
-                    {new Intl.NumberFormat('pt-BR', {
-                      minimumFractionDigits: 1,
-                      maximumFractionDigits: 1,
-                    }).format(kpis.disponibilidadePct)}
-                    %
-                  </span>
-                  <span className="text-slate-400 dark:text-slate-500">
-                    {' '}
-                    = produção ÷ previsto até o dia atual
-                  </span>
-                </p>
-              </div>
+              <>
+                Disponibilidade{' '}
+                <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-200">
+                  {formatPct1(kpis.disponibilidadePct)}%
+                </span>
+              </>
             ) : (
               'Horas em produção no período'
             )
+          }
+          help={
+            kpis
+              ? {
+                  label: 'Memorial de cálculo',
+                  onClick: () => setMemorialProducaoAberto(true),
+                }
+              : undefined
           }
           onClick={() => {
             setMotivoModal(null);
@@ -1144,6 +1245,11 @@ export default function ProducaoCamasiPage() {
         </div>
       </div>
 
+      <ModalMemorialProducaoCamasi
+        open={memorialProducaoAberto}
+        kpis={kpis}
+        onClose={() => setMemorialProducaoAberto(false)}
+      />
       <ModalCamasiKpi
         open={!!kpiModal}
         tipo={kpiModal}
