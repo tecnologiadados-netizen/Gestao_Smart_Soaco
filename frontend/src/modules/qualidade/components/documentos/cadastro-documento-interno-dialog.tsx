@@ -249,7 +249,7 @@ export function CadastroDocumentoInternoDialog({
         onOpenChange(false);
         afterUiTransition(() => {
           resetForm();
-          navigate("/qualidade/documentos/consulta");
+          navigate("/qualidade/documentos/consulta?guia=interno");
         });
       }, isEdicao ? "Salvando alterações..." : "Gravando documento...");
     } catch (err) {

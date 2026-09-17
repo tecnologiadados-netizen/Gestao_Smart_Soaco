@@ -22,12 +22,14 @@ interface DocumentoEnderecamentoFieldsetProps {
   onChange: (localizacao: string) => void;
   /** Quando informado, lista só endereços do setor selecionado. */
   setorId?: string;
+  label?: string;
 }
 
 export function DocumentoEnderecamentoFieldset({
   value,
   onChange,
   setorId = "",
+  label = "Localização",
 }: DocumentoEnderecamentoFieldsetProps) {
   const enderecamentos = useConfigStore((s) => s.enderecamentos);
   const departments = useConfigStore((s) => s.departments);
@@ -51,7 +53,7 @@ export function DocumentoEnderecamentoFieldset({
       <legend className="text-base">Endereçamento</legend>
 
       <div className="space-y-2">
-        <Label className="text-base">Localização</Label>
+        <Label className="text-base">{label}</Label>
         <Select value={value} onValueChange={(v) => v && onChange(v)}>
           <SelectTrigger className={selectTriggerClass}>
             <SelectValue placeholder="Selecione onde o documento está armazenado">

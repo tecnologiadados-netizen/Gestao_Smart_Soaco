@@ -423,7 +423,7 @@ function origemDocumentoLabel(origem: string): string {
     case 'externo':
       return 'Documento externo';
     case 'registro':
-      return 'Registro';
+      return 'Registro interno';
     default:
       return 'Documento interno';
   }

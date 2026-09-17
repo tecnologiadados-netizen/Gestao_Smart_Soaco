@@ -49,6 +49,7 @@ import { CadastroDocumentoInternoDialog } from "@qualidade/components/documentos
 import { CadastroDocumentoExternoDialog } from "@qualidade/components/documentos/cadastro-documento-externo-dialog";
 import { ConfirmacaoDialog } from "@qualidade/components/ui/confirmacao-dialog";
 import { RevalidarDocumentoDialog } from "@qualidade/components/documentos/revalidar-documento-dialog";
+import { RegistroInternoDetalheDialog } from "@qualidade/components/documentos/registro-interno-detalhe-dialog";
 import type { Document, DocumentVersion } from "@qualidade/types/document";
 
 interface Props {
@@ -169,7 +170,18 @@ function SecaoPainel({
   );
 }
 
-export function DocumentoConsultaDetalheDialog({
+export function DocumentoConsultaDetalheDialog(props: Props) {
+  const documents = useDocumentsStore((s) => s.documents);
+  const origem = props.documentId
+    ? documents.find((d) => d.id === props.documentId)?.origem
+    : undefined;
+  if (origem === "registro") {
+    return <RegistroInternoDetalheDialog {...props} />;
+  }
+  return <DocumentoConsultaDetalheDialogImpl {...props} />;
+}
+
+function DocumentoConsultaDetalheDialogImpl({
   documentId,
   open,
   onOpenChange,

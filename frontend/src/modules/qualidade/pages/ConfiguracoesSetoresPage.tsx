@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@qualidade/components/ui/button";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -14,12 +14,12 @@ import { ConfirmacaoDialog } from "@qualidade/components/ui/confirmacao-dialog";
 import { FormDialog } from "@qualidade/components/ui/form-dialog";
 import { PageBackLink } from "@qualidade/components/layout/page-back-link";
 import { TableRowActions } from "@qualidade/components/ui/table-row-actions";
-import { SortableTableHead } from "@qualidade/components/ui/sortable-table-head";
-import { useTableSort } from "@qualidade/hooks/use-table-sort";
+import { SgqGradeFiltroCabecalho } from "@qualidade/components/ui/sgq-grade-filtro-cabecalho";
+import { SgqGradeFiltroPortal } from "@qualidade/components/ui/sgq-grade-filtro-portal";
+import { SgqGradeSurface } from "@qualidade/components/ui/sgq-grade-surface";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
-import { sortByRules } from "@qualidade/lib/utils/table-sort";
-
-type SetorSortKey = "nome";
+import type { Department } from "@qualidade/types/user";
+import { useGradeFiltrosExcel } from "@/hooks/useGradeFiltrosExcel";
 
 export function SetoresPage() {
   const departments = useConfigStore((s) => s.departments);
@@ -35,11 +35,17 @@ export function SetoresPage() {
   const [editError, setEditError] = useState("");
 
   const [excluirId, setExcluirId] = useState<string | null>(null);
-  const { sorts, toggleSort, getSortState } = useTableSort<SetorSortKey>();
 
-  const setoresOrdenados = useMemo(() => {
-    return sortByRules(departments, sorts, (dep) => dep.nome);
-  }, [departments, sorts]);
+  const getCellText = useCallback(
+    (dep: Department, columnId: string) => (columnId === "nome" ? dep.nome : ""),
+    []
+  );
+  const grade = useGradeFiltrosExcel<Department>({
+    rows: departments,
+    columnIds: ["nome"],
+    getCellText,
+  });
+  const setoresOrdenados = grade.rowsExibidas;
 
   const setorParaExcluir = departments.find((d) => d.id === excluirId);
   const setorEmEdicao = departments.find((d) => d.id === editingId);
@@ -145,17 +151,20 @@ export function SetoresPage() {
         ) : null}
       </form>
 
-      <Table surface>
+      <SgqGradeSurface
+        scrollRef={grade.tableScrollRef}
+        temFiltros={grade.temFiltrosOuOrdem}
+        onLimparFiltros={grade.limparFiltrosGrade}
+      >
+      <Table bare>
         <TableHeader>
           <TableRow>
-            <SortableTableHead
-              sortKey="nome"
-              sortState={getSortState("nome")}
-              onSort={toggleSort}
-            >
-              Nome
-            </SortableTableHead>
-            <TableHead className="w-[140px] text-right">Ações</TableHead>
+            <SgqGradeFiltroCabecalho
+              label="Nome"
+              ativo={grade.colunaComFiltroAtivo("nome")}
+              onClick={(e) => grade.abrirFiltroExcel("nome", e)}
+            />
+            <TableHead className="sticky top-0 z-10 w-[140px] text-right">Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -172,6 +181,8 @@ export function SetoresPage() {
           ))}
         </TableBody>
       </Table>
+      </SgqGradeSurface>
+      <SgqGradeFiltroPortal grade={grade} />
 
       <FormDialog
         open={editingId !== null}

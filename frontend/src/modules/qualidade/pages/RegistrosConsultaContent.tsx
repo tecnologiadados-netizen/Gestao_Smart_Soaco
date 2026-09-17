@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from 'react-router-dom';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { Badge } from "@qualidade/components/ui/badge";
 import { Button } from "@qualidade/components/ui/button";
 import { AvaliacaoFornecedorConsultaPanel } from "@qualidade/components/registros/avaliacao-fornecedor-consulta-panel";
 import { CodigoDocumentoCell } from "@qualidade/components/registros/codigo-documento-cell";
 import {
-  TABLE_FILTER_ALL,
   TableFilterField,
-  TableFilterSearch,
-  TableFiltersToolbar,
   tableFilterSelectTriggerClass,
 } from "@qualidade/components/ui/table-filters-toolbar";
 import {
@@ -27,11 +23,15 @@ import {
   TableHeader,
   TableRow,
 } from "@qualidade/components/ui/table";
-import { SortableTableHead } from "@qualidade/components/ui/sortable-table-head";
 import { TableRowActions } from "@qualidade/components/ui/table-row-actions";
 import { ConfirmacaoDialog } from "@qualidade/components/ui/confirmacao-dialog";
 import { RegistroDetalheDialog } from "@qualidade/components/registros/registro-detalhe-dialog";
-import { useTableSort } from "@qualidade/hooks/use-table-sort";
+import {
+  SgqGradeFiltroCabecalho,
+  sgqTextoOuTraco,
+} from "@qualidade/components/ui/sgq-grade-filtro-cabecalho";
+import { SgqGradeFiltroPortal } from "@qualidade/components/ui/sgq-grade-filtro-portal";
+import { SgqGradeSurface } from "@qualidade/components/ui/sgq-grade-surface";
 import {
   isModuloRegistroTipo,
   MODULO_REGISTRO_TIPOS,
@@ -43,7 +43,6 @@ import { useRegistrosStore } from "@qualidade/lib/store/registros-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { excluirQualidadeRegistro } from "@qualidade/lib/qualidadePersistence";
 import { formatarData } from "@qualidade/lib/utils/dates";
-import { sortByRules } from "@qualidade/lib/utils/table-sort";
 import { cn } from "@qualidade/lib/utils";
 import {
   getRegistroCodigoDocumento,
@@ -55,49 +54,48 @@ import {
   getRegistroResponsavelNome,
   type Registro,
 } from "@qualidade/types/registro";
-import type { RegistroStatus, RegistroTipo } from "@qualidade/types/registro";
+import type { RegistroTipo } from "@qualidade/types/registro";
+import { useGradeFiltrosExcel } from "@/hooks/useGradeFiltrosExcel";
 
-type RegistroSortKey =
-  | "codigo"
-  | "dataOcorrencia"
-  | "tipo"
-  | "info"
-  | "produto"
-  | "detalhe"
-  | "responsavel"
-  | "status"
-  | "fechamento";
+const COL_IDS = [
+  "codigo",
+  "dataOcorrencia",
+  "tipo",
+  "info",
+  "produto",
+  "detalhe",
+  "responsavel",
+  "status",
+  "fechamento",
+] as const;
 
 function novoRegistroHref(_tipoFiltro: string): string {
   return "/qualidade/registros";
 }
 
-function registroStatusFilterLabel(value: string): string | undefined {
-  if (value === TABLE_FILTER_ALL) return "Todos os status";
-  return registroStatusLabels[value as RegistroStatus];
-}
-
-function textoBuscaRegistro(registro: Registro, responsavelSgq: string): string {
-  const partes = [
-    registro.codigoDocumento,
-    getRegistroCodigoDocumento(registro),
-    registro.numero,
-    registro.tipo,
-    registro.rnc?.codigoProduto,
-    registro.rnc?.produto,
-    registro.rnc?.setorOcorrencia,
-    registro.rnc?.descricaoOcorrencia,
-    registro.rnc?.tipoOcorrencia,
-    registro.rcc?.codigoProduto,
-    registro.rcc?.produto,
-    registro.rcc?.nomeClienteConsumidor,
-    registro.rcc?.cidade,
-    registro.rcc?.reclamacao1,
-    registro.rcc?.descricaoReclamacao,
-    getRegistroResponsavelNome(registro),
-    responsavelSgq,
-  ];
-  return partes.filter(Boolean).join(" ").toLowerCase();
+function nomeColunaRegistro(colId: string): string {
+  switch (colId) {
+    case "codigo":
+      return "Código do documento";
+    case "dataOcorrencia":
+      return "Data";
+    case "tipo":
+      return "Tipo";
+    case "info":
+      return "Cliente / Setor";
+    case "produto":
+      return "Produto";
+    case "detalhe":
+      return "Reclamação / Ocorrência";
+    case "responsavel":
+      return "Responsável";
+    case "status":
+      return "Status";
+    case "fechamento":
+      return "Fechamento";
+    default:
+      return colId;
+  }
 }
 
 export function RegistrosConsultaContent() {
@@ -107,12 +105,10 @@ export function RegistrosConsultaContent() {
   const excluirRegistroStore = useRegistrosStore((s) => s.excluirRegistro);
   const users = useConfigStore((s) => s.users);
 
-  const [busca, setBusca] = useState("");
   const [tipoFiltro, setTipoFiltro] = useState(() => {
     const tipoParam = searchParams.get("tipo");
     return isModuloRegistroTipo(tipoParam) ? tipoParam : "";
   });
-  const [statusFiltro, setStatusFiltro] = useState(TABLE_FILTER_ALL);
   const [registroSelecionadoId, setRegistroSelecionadoId] = useState<
     string | null
   >(null);
@@ -122,7 +118,6 @@ export function RegistrosConsultaContent() {
   const [excluindo, setExcluindo] = useState(false);
   const [erroExclusao, setErroExclusao] = useState("");
   const [contagemAvaliacoes, setContagemAvaliacoes] = useState(0);
-  const { sorts, toggleSort, getSortState } = useTableSort<RegistroSortKey>();
 
   const tipoSelecionado = isModuloRegistroTipo(tipoFiltro) ? tipoFiltro : null;
   const isAvaliacaoView = tipoSelecionado === "avaliacao-fornecedor";
@@ -140,20 +135,70 @@ export function RegistrosConsultaContent() {
     setContagemAvaliacoes(count);
   }, []);
 
+  const registrosDoTipo = useMemo(() => {
+    if (!tipoSelecionado || tipoSelecionado === "avaliacao-fornecedor") {
+      return [];
+    }
+    return registros.filter((registro) => registro.tipo === tipoSelecionado);
+  }, [registros, tipoSelecionado]);
+
+  const getCellText = useCallback(
+    (registro: Registro, columnId: string) => {
+      switch (columnId) {
+        case "codigo":
+          return sgqTextoOuTraco(getRegistroCodigoDocumento(registro));
+        case "dataOcorrencia":
+          return formatarData(getRegistroDataOcorrencia(registro));
+        case "tipo":
+          return registroTipoLabels[registro.tipo as RegistroTipo] ?? registro.tipo;
+        case "info":
+          return sgqTextoOuTraco(getRegistroInfoPrincipal(registro));
+        case "produto":
+          return sgqTextoOuTraco(getRegistroProduto(registro));
+        case "detalhe":
+          return sgqTextoOuTraco(getRegistroDetalheSecundario(registro));
+        case "responsavel":
+          return sgqTextoOuTraco(
+            getRegistroResponsavelNome(registro) ||
+              users.find((user) => user.id === registro.responsavelId)?.nome
+          );
+        case "status":
+          return registroStatusLabels[registro.status];
+        case "fechamento":
+          return formatarData(getRegistroDataFechamento(registro));
+        default:
+          return "";
+      }
+    },
+    [users]
+  );
+
+  const valueForSort = useCallback(
+    (registro: Registro, columnId: string) => {
+      if (columnId === "dataOcorrencia") {
+        return getRegistroDataOcorrencia(registro) ?? "";
+      }
+      if (columnId === "fechamento") {
+        return getRegistroDataFechamento(registro) ?? "";
+      }
+      return getCellText(registro, columnId);
+    },
+    [getCellText]
+  );
+
+  const grade = useGradeFiltrosExcel<Registro>({
+    rows: registrosDoTipo,
+    columnIds: [...COL_IDS],
+    getCellText,
+    valueForSort,
+    dateColumnIds: ["dataOcorrencia", "fechamento"],
+  });
+
   function atualizarTipoFiltro(value: string) {
     if (!isModuloRegistroTipo(value)) return;
+    grade.limparFiltrosGrade();
     setTipoFiltro(value);
-    setBusca("");
-    setStatusFiltro(TABLE_FILTER_ALL);
     navigate(`/qualidade/registros/consulta?tipo=${value}`);
-  }
-
-  const filtrosRegistrosAtivos =
-    busca.trim() !== "" || statusFiltro !== TABLE_FILTER_ALL;
-
-  function limparFiltrosRegistros() {
-    setBusca("");
-    setStatusFiltro(TABLE_FILTER_ALL);
   }
 
   function abrirDetalhe(registro: Registro) {
@@ -186,51 +231,7 @@ export function RegistrosConsultaContent() {
     }
   }
 
-  const filtrados = useMemo(() => {
-    if (!tipoSelecionado || tipoSelecionado === "avaliacao-fornecedor") {
-      return [];
-    }
-
-    const q = busca.trim().toLowerCase();
-    const lista = registros.filter((registro) => {
-      const responsavelSgq =
-        users.find((user) => user.id === registro.responsavelId)?.nome ?? "";
-      const matchBusca =
-        !q || textoBuscaRegistro(registro, responsavelSgq).includes(q);
-      const matchTipo = registro.tipo === tipoSelecionado;
-      const matchStatus =
-        statusFiltro === TABLE_FILTER_ALL || registro.status === statusFiltro;
-      return matchBusca && matchTipo && matchStatus;
-    });
-
-    return sortByRules(lista, sorts, (registro, key) => {
-      switch (key) {
-        case "codigo":
-          return getRegistroCodigoDocumento(registro);
-        case "dataOcorrencia":
-          return getRegistroDataOcorrencia(registro);
-        case "tipo":
-          return registro.tipo;
-        case "info":
-          return getRegistroInfoPrincipal(registro);
-        case "produto":
-          return getRegistroProduto(registro);
-        case "detalhe":
-          return getRegistroDetalheSecundario(registro);
-        case "responsavel":
-          return (
-            getRegistroResponsavelNome(registro) ||
-            users.find((u) => u.id === registro.responsavelId)?.nome ||
-            ""
-          );
-        case "status":
-          return registro.status;
-        case "fechamento":
-          return getRegistroDataFechamento(registro);
-      }
-    });
-  }, [registros, busca, tipoSelecionado, statusFiltro, sorts, users]);
-
+  const filtrados = grade.rowsExibidas;
   const contagemExibida = !tipoSelecionado
     ? null
     : isAvaliacaoView
@@ -306,120 +307,33 @@ export function RegistrosConsultaContent() {
           />
         ) : (
           <>
-            <TableFiltersToolbar
-              gridClassName="sm:grid-cols-2 lg:grid-cols-3"
-              onClear={limparFiltrosRegistros}
-              hasActiveFilters={filtrosRegistrosAtivos}
-            >
-              <TableFilterField
-                label="Busca"
-                htmlFor="reg-busca"
-                className="sm:col-span-2"
-              >
-                <TableFilterSearch
-                  id="reg-busca"
-                  placeholder="Código, produto, cliente, setor, reclamação..."
-                  value={busca}
-                  onChange={setBusca}
-                />
-              </TableFilterField>
-              <TableFilterField label="Status" htmlFor="reg-status">
-                <Select
-                  value={statusFiltro}
-                  onValueChange={(v) => v && setStatusFiltro(v)}
+            {grade.temFiltrosOuOrdem ? (
+              <div className="flex justify-end border-b border-border px-3 py-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={grade.limparFiltrosGrade}
                 >
-                  <SelectTrigger
-                    id="reg-status"
-                    className={tableFilterSelectTriggerClass}
-                  >
-                    <SelectValue placeholder="Todos os status">
-                      {registroStatusFilterLabel(statusFiltro) ?? null}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={TABLE_FILTER_ALL}>
-                      Todos os status
-                    </SelectItem>
-                    {(Object.keys(registroStatusLabels) as RegistroStatus[]).map(
-                      (status) => (
-                        <SelectItem key={status} value={status}>
-                          {registroStatusLabels[status]}
-                        </SelectItem>
-                      )
-                    )}
-                  </SelectContent>
-                </Select>
-              </TableFilterField>
-            </TableFiltersToolbar>
-
-            <div className="overflow-x-auto">
+                  Limpar filtros da grade
+                </Button>
+              </div>
+            ) : null}
+            <div ref={grade.tableScrollRef} className="overflow-x-auto">
               <Table bare>
                 <TableHeader>
                   <TableRow>
-                    <SortableTableHead
-                      sortKey="codigo"
-                      sortState={getSortState("codigo")}
-                      onSort={toggleSort}
-                    >
-                      Código do documento
-                    </SortableTableHead>
-                    <SortableTableHead
-                      sortKey="dataOcorrencia"
-                      sortState={getSortState("dataOcorrencia")}
-                      onSort={toggleSort}
-                    >
-                      Data
-                    </SortableTableHead>
-                    <SortableTableHead
-                      sortKey="tipo"
-                      sortState={getSortState("tipo")}
-                      onSort={toggleSort}
-                    >
-                      Tipo
-                    </SortableTableHead>
-                    <SortableTableHead
-                      sortKey="info"
-                      sortState={getSortState("info")}
-                      onSort={toggleSort}
-                    >
-                      Cliente / Setor
-                    </SortableTableHead>
-                    <SortableTableHead
-                      sortKey="produto"
-                      sortState={getSortState("produto")}
-                      onSort={toggleSort}
-                    >
-                      Produto
-                    </SortableTableHead>
-                    <SortableTableHead
-                      sortKey="detalhe"
-                      sortState={getSortState("detalhe")}
-                      onSort={toggleSort}
-                    >
-                      Reclamação / Ocorrência
-                    </SortableTableHead>
-                    <SortableTableHead
-                      sortKey="responsavel"
-                      sortState={getSortState("responsavel")}
-                      onSort={toggleSort}
-                    >
-                      Responsável
-                    </SortableTableHead>
-                    <SortableTableHead
-                      sortKey="status"
-                      sortState={getSortState("status")}
-                      onSort={toggleSort}
-                    >
-                      Status
-                    </SortableTableHead>
-                    <SortableTableHead
-                      sortKey="fechamento"
-                      sortState={getSortState("fechamento")}
-                      onSort={toggleSort}
-                    >
-                      Fechamento
-                    </SortableTableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    {COL_IDS.map((colId) => (
+                      <SgqGradeFiltroCabecalho
+                        key={colId}
+                        label={nomeColunaRegistro(colId)}
+                        ativo={grade.colunaComFiltroAtivo(colId)}
+                        onClick={(e) => grade.abrirFiltroExcel(colId, e)}
+                      />
+                    ))}
+                    <TableHead className="sticky top-0 z-10 text-right">
+                      Ações
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -482,18 +396,24 @@ export function RegistrosConsultaContent() {
                   {filtrados.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={10}
+                        colSpan={COL_IDS.length + 1}
                         className={cn(
                           "py-10 text-center text-muted-foreground"
                         )}
                       >
-                        Nenhum registro encontrado para os filtros aplicados.
+                        {registrosDoTipo.length === 0
+                          ? "Nenhum registro encontrado."
+                          : "Nenhum registro com os filtros da grade. Ajuste ou limpe os filtros por coluna."}
                       </TableCell>
                     </TableRow>
                   ) : null}
                 </TableBody>
               </Table>
             </div>
+            <SgqGradeFiltroPortal
+              grade={grade}
+              dateColumnIds={["dataOcorrencia", "fechamento"]}
+            />
           </>
         )}
       </div>

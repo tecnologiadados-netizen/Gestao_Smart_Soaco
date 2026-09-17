@@ -1,23 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { Badge } from "@qualidade/components/ui/badge";
-import { Input } from "@qualidade/components/ui/input";
-import {
-  TABLE_FILTER_ALL,
-  TableFilterField,
-  TableFilterSearch,
-  TableFiltersToolbar,
-  tableFilterInputClass,
-  tableFilterSelectTriggerClass,
-} from "@qualidade/components/ui/table-filters-toolbar";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@qualidade/components/ui/select";
 import {
   Table,
   TableBody,
@@ -27,40 +11,55 @@ import {
   TableRow,
 } from "@qualidade/components/ui/table";
 import { AvaliacaoDetalheDialog } from "@qualidade/components/avaliacao-fornecedor/avaliacao-detalhe-dialog";
-import { SortableTableHead } from "@qualidade/components/ui/sortable-table-head";
-import { useTableSort } from "@qualidade/hooks/use-table-sort";
+import {
+  SgqGradeFiltroCabecalho,
+  sgqTextoOuTraco,
+} from "@qualidade/components/ui/sgq-grade-filtro-cabecalho";
+import { SgqGradeFiltroPortal } from "@qualidade/components/ui/sgq-grade-filtro-portal";
+import { ClearFiltersButton } from "@qualidade/components/ui/table-filters-toolbar";
 import { useAvaliacaoFornecedorStore } from "@qualidade/lib/store/avaliacao-fornecedor-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { NOTA_MAX } from "@qualidade/lib/avaliacao-fornecedor/criterios";
 import { resolverNomeAvaliador } from "@qualidade/lib/avaliacao-fornecedor/resolver-nome-avaliador";
 import { formatarData } from "@qualidade/lib/utils/dates";
-import { sortByRules } from "@qualidade/lib/utils/table-sort";
-import { criarMatcherTextoLivre } from "@/utils/textoLivreBusca";
 import {
   getDataAvaliacao,
   type AvaliacaoFornecedor,
 } from "@qualidade/types/avaliacao-fornecedor";
-import { DocumentoAvaliadoFilterSearch } from "@qualidade/components/registros/documento-avaliado-filter-search";
+import { useGradeFiltrosExcel } from "@/hooks/useGradeFiltrosExcel";
 
 const ITENS_POR_PAGINA = 50;
 
-const APROVADO_SIM = "sim";
-const APROVADO_NAO = "nao";
-
-type HistoricoSortKey =
-  | "fornecedor"
-  | "data"
-  | "documento"
-  | "aprovado"
-  | "avaliador"
-  | "media";
+const COL_IDS = [
+  "fornecedor",
+  "data",
+  "documento",
+  "aprovado",
+  "avaliador",
+  "media",
+] as const;
 
 interface AvaliacaoFornecedorConsultaPanelProps {
   onCountChange?: (count: number) => void;
 }
 
-function dataAvaliacaoComparavel(avaliacao: AvaliacaoFornecedor): string {
-  return getDataAvaliacao(avaliacao).slice(0, 10);
+function nomeColunaAvaliacao(colId: string): string {
+  switch (colId) {
+    case "fornecedor":
+      return "Fornecedor";
+    case "data":
+      return "Data";
+    case "documento":
+      return "Documento";
+    case "aprovado":
+      return "Aprovado";
+    case "avaliador":
+      return "Avaliador";
+    case "media":
+      return "Média";
+    default:
+      return colId;
+  }
 }
 
 export function AvaliacaoFornecedorConsultaPanel({
@@ -69,129 +68,61 @@ export function AvaliacaoFornecedorConsultaPanel({
   const avaliacoes = useAvaliacaoFornecedorStore((s) => s.avaliacoes);
   const users = useConfigStore((s) => s.users);
 
-  const [busca, setBusca] = useState("");
-  const [documentoFiltro, setDocumentoFiltro] = useState("");
-  const [avaliadorFiltro, setAvaliadorFiltro] = useState(TABLE_FILTER_ALL);
-  const [aprovadoFiltro, setAprovadoFiltro] = useState(TABLE_FILTER_ALL);
-  const [periodoInicio, setPeriodoInicio] = useState("");
-  const [periodoFim, setPeriodoFim] = useState("");
   const [pagina, setPagina] = useState(1);
   const [avaliacaoSelecionada, setAvaliacaoSelecionada] =
     useState<AvaliacaoFornecedor | null>(null);
-  const { sorts, toggleSort, getSortState } = useTableSort<HistoricoSortKey>([
-    { key: "data", direction: "desc" },
-  ]);
 
-  const documentosAvaliados = useMemo(() => {
-    const vistos = new Set<string>();
-    const lista: { numero: string; data: string }[] = [];
-
-    for (const av of avaliacoes) {
-      const numero = av.numeroDocumento?.trim();
-      if (!numero || vistos.has(numero)) continue;
-      vistos.add(numero);
-      lista.push({ numero, data: getDataAvaliacao(av) });
-    }
-
-    return lista
-      .sort((a, b) => b.data.localeCompare(a.data))
-      .map((item) => item.numero);
-  }, [avaliacoes]);
-
-  const avaliadoresUnicos = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const av of avaliacoes) {
-      if (!map.has(av.avaliadorId)) {
-        map.set(
-          av.avaliadorId,
-          resolverNomeAvaliador(av.avaliadorId, users)
-        );
-      }
-    }
-    return Array.from(map.entries())
-      .map(([id, nome]) => ({ id, nome }))
-      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-  }, [avaliacoes, users]);
-
-  const filtrosAtivos =
-    busca.trim() !== "" ||
-    documentoFiltro.trim() !== "" ||
-    avaliadorFiltro !== TABLE_FILTER_ALL ||
-    aprovadoFiltro !== TABLE_FILTER_ALL ||
-    periodoInicio !== "" ||
-    periodoFim !== "";
-
-  function limparFiltros() {
-    setBusca("");
-    setDocumentoFiltro("");
-    setAvaliadorFiltro(TABLE_FILTER_ALL);
-    setAprovadoFiltro(TABLE_FILTER_ALL);
-    setPeriodoInicio("");
-    setPeriodoFim("");
-  }
-
-  function getAvaliadorNome(avaliadorId: string) {
-    return resolverNomeAvaliador(avaliadorId, users);
-  }
-
-  const filtradas = useMemo(() => {
-    const matchFornecedor = criarMatcherTextoLivre(busca);
-    const matchDocumento = criarMatcherTextoLivre(documentoFiltro);
-    const lista = avaliacoes.filter((av) => {
-      const matchBusca =
-        !busca.trim() ||
-        matchFornecedor(av.fornecedorNome) ||
-        matchFornecedor(av.fornecedorId);
-      const matchDoc =
-        !documentoFiltro.trim() ||
-        matchDocumento(av.numeroDocumento ?? "");
-      const matchAvaliador =
-        avaliadorFiltro === TABLE_FILTER_ALL ||
-        av.avaliadorId === avaliadorFiltro;
-      const matchAprovado =
-        aprovadoFiltro === TABLE_FILTER_ALL ||
-        (aprovadoFiltro === APROVADO_SIM && av.fornecedorAprovado === true) ||
-        (aprovadoFiltro === APROVADO_NAO && av.fornecedorAprovado === false);
-      const dataAv = dataAvaliacaoComparavel(av);
-      const matchPeriodo =
-        (!periodoInicio || (dataAv !== "" && dataAv >= periodoInicio)) &&
-        (!periodoFim || (dataAv !== "" && dataAv <= periodoFim));
-      return matchBusca && matchDoc && matchAvaliador && matchAprovado && matchPeriodo;
-    });
-
-    return sortByRules(lista, sorts, (av, key) => {
-      switch (key) {
+  const getCellText = useCallback(
+    (avaliacao: AvaliacaoFornecedor, columnId: string) => {
+      switch (columnId) {
         case "fornecedor":
-          return av.fornecedorNome;
+          return sgqTextoOuTraco(avaliacao.fornecedorNome);
         case "data":
-          return getDataAvaliacao(av);
+          return formatarData(getDataAvaliacao(avaliacao));
         case "documento":
-          return av.numeroDocumento ?? "";
+          return sgqTextoOuTraco(avaliacao.numeroDocumento);
         case "aprovado":
-          return av.fornecedorAprovado ?? null;
+          return typeof avaliacao.fornecedorAprovado === "boolean"
+            ? avaliacao.fornecedorAprovado
+              ? "Sim"
+              : "Não"
+            : "—";
         case "avaliador":
-          return getAvaliadorNome(av.avaliadorId);
+          return sgqTextoOuTraco(
+            resolverNomeAvaliador(avaliacao.avaliadorId, users)
+          );
         case "media":
-          return av.media;
+          return avaliacao.media.toFixed(1);
+        default:
+          return "";
       }
-    });
-  }, [
-    avaliacoes,
-    busca,
-    documentoFiltro,
-    avaliadorFiltro,
-    aprovadoFiltro,
-    periodoInicio,
-    periodoFim,
-    sorts,
-    users,
-  ]);
+    },
+    [users]
+  );
 
+  const valueForSort = useCallback(
+    (avaliacao: AvaliacaoFornecedor, columnId: string) => {
+      if (columnId === "data") return getDataAvaliacao(avaliacao);
+      if (columnId === "media") return avaliacao.media;
+      return getCellText(avaliacao, columnId);
+    },
+    [getCellText]
+  );
+
+  const grade = useGradeFiltrosExcel<AvaliacaoFornecedor>({
+    rows: avaliacoes,
+    columnIds: [...COL_IDS],
+    getCellText,
+    valueForSort,
+    defaultSortLevels: [{ id: "data", dir: "desc" }],
+    dateColumnIds: ["data"],
+  });
+
+  const filtradas = grade.rowsExibidas;
   const totalPaginas = Math.max(
     1,
     Math.ceil(filtradas.length / ITENS_POR_PAGINA)
   );
-
   const filtradasPagina = useMemo(() => {
     const inicio = (pagina - 1) * ITENS_POR_PAGINA;
     return filtradas.slice(inicio, inicio + ITENS_POR_PAGINA);
@@ -199,7 +130,7 @@ export function AvaliacaoFornecedorConsultaPanel({
 
   useEffect(() => {
     setPagina(1);
-  }, [busca, documentoFiltro, avaliadorFiltro, aprovadoFiltro, periodoInicio, periodoFim, sorts]);
+  }, [grade.columnFilters, grade.sortState, grade.sortLevels]);
 
   useEffect(() => {
     if (pagina > totalPaginas) {
@@ -217,168 +148,56 @@ export function AvaliacaoFornecedorConsultaPanel({
 
   return (
     <>
-      <TableFiltersToolbar
-        gridClassName="items-start sm:grid-cols-2 lg:grid-cols-6"
-        onClear={limparFiltros}
-        hasActiveFilters={filtrosAtivos}
-      >
-        <TableFilterField
-          label="Fornecedor"
-          htmlFor="av-hist-busca"
-          className="sm:col-span-2"
-        >
-          <TableFilterSearch
-            id="av-hist-busca"
-            placeholder="Nome ou código do fornecedor…"
-            value={busca}
-            onChange={setBusca}
+      {grade.temFiltrosOuOrdem ? (
+        <div className="flex justify-end border-b border-border px-3 py-2">
+          <ClearFiltersButton
+            onClick={grade.limparFiltrosGrade}
+            label="Limpar filtros da grade"
           />
-        </TableFilterField>
-        <TableFilterField label="Nº documento" htmlFor="av-hist-documento">
-          <DocumentoAvaliadoFilterSearch
-            id="av-hist-documento"
-            placeholder="Ex.: DE38138 ou DE%"
-            value={documentoFiltro}
-            onChange={setDocumentoFiltro}
-            documentos={documentosAvaliados}
-          />
-        </TableFilterField>
-        <TableFilterField label="Avaliador" htmlFor="av-hist-avaliador">
-          <Select
-            value={avaliadorFiltro}
-            onValueChange={(v) => v && setAvaliadorFiltro(v)}
-          >
-            <SelectTrigger
-              id="av-hist-avaliador"
-              className={tableFilterSelectTriggerClass}
-            >
-              <SelectValue placeholder="Todos">
-                {avaliadorFiltro === TABLE_FILTER_ALL
-                  ? null
-                  : avaliadoresUnicos.find((a) => a.id === avaliadorFiltro)
-                      ?.nome}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={TABLE_FILTER_ALL}>Todos</SelectItem>
-              {avaliadoresUnicos.map((avaliador) => (
-                <SelectItem key={avaliador.id} value={avaliador.id}>
-                  {avaliador.nome}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </TableFilterField>
-        <TableFilterField label="Aprovado" htmlFor="av-hist-aprovado">
-          <Select
-            value={aprovadoFiltro}
-            onValueChange={(v) => v && setAprovadoFiltro(v)}
-          >
-            <SelectTrigger
-              id="av-hist-aprovado"
-              className={tableFilterSelectTriggerClass}
-            >
-              <SelectValue placeholder="Todos">
-                {aprovadoFiltro === TABLE_FILTER_ALL
-                  ? null
-                  : aprovadoFiltro === APROVADO_SIM
-                    ? "Sim"
-                    : "Não"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={TABLE_FILTER_ALL}>Todos</SelectItem>
-              <SelectItem value={APROVADO_SIM}>Sim</SelectItem>
-              <SelectItem value={APROVADO_NAO}>Não</SelectItem>
-            </SelectContent>
-          </Select>
-        </TableFilterField>
-        <TableFilterField label="Período">
-          <div className="flex flex-col gap-2">
-            <Input
-              id="av-hist-periodo-inicio"
-              type="date"
-              aria-label="Data inicial"
-              className={tableFilterInputClass}
-              value={periodoInicio}
-              onChange={(e) => setPeriodoInicio(e.target.value)}
-            />
-            <Input
-              id="av-hist-periodo-fim"
-              type="date"
-              aria-label="Data final"
-              className={tableFilterInputClass}
-              value={periodoFim}
-              onChange={(e) => setPeriodoFim(e.target.value)}
-            />
-          </div>
-        </TableFilterField>
-      </TableFiltersToolbar>
+        </div>
+      ) : null}
 
-      <div className="sgq-table-scroll-viewport border-t border-border">
+      <div ref={grade.tableScrollRef} className="sgq-table-scroll-viewport">
         <Table bare>
           <TableHeader>
             <TableRow>
-              <SortableTableHead
-                sortKey="fornecedor"
-                sortState={getSortState("fornecedor")}
-                onSort={toggleSort}
-                className="min-w-[14rem]"
-              >
-                Fornecedor
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="data"
-                sortState={getSortState("data")}
-                onSort={toggleSort}
-                className="min-w-[6.5rem]"
-              >
-                Data
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="documento"
-                sortState={getSortState("documento")}
-                onSort={toggleSort}
-                className="min-w-[8rem]"
-              >
-                Documento
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="aprovado"
-                sortState={getSortState("aprovado")}
-                onSort={toggleSort}
-                className="min-w-[6.5rem]"
-              >
-                Aprovado
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="avaliador"
-                sortState={getSortState("avaliador")}
-                onSort={toggleSort}
-                className="min-w-[9rem]"
-              >
-                Avaliador
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="media"
-                sortState={getSortState("media")}
-                onSort={toggleSort}
-                align="right"
-                className="min-w-[5.5rem]"
-              >
-                Média
-              </SortableTableHead>
-              <TableHead className="min-w-[5rem] text-right">Ação</TableHead>
+              {COL_IDS.map((colId) => (
+                <SgqGradeFiltroCabecalho
+                  key={colId}
+                  label={nomeColunaAvaliacao(colId)}
+                  ativo={grade.colunaComFiltroAtivo(colId)}
+                  onClick={(e) => grade.abrirFiltroExcel(colId, e)}
+                  align={colId === "media" ? "right" : "left"}
+                  className={
+                    colId === "fornecedor"
+                      ? "min-w-[14rem]"
+                      : colId === "data"
+                        ? "min-w-[6.5rem]"
+                        : colId === "documento"
+                          ? "min-w-[8rem]"
+                          : colId === "aprovado"
+                            ? "min-w-[6.5rem]"
+                            : colId === "avaliador"
+                              ? "min-w-[9rem]"
+                              : "min-w-[5.5rem]"
+                  }
+                />
+              ))}
+              <TableHead className="sticky top-0 z-10 min-w-[5rem] text-right">
+                Ação
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtradas.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={COL_IDS.length + 1}
                   className="py-10 text-center text-muted-foreground"
                 >
-                  Nenhuma avaliação encontrada.
+                  {avaliacoes.length === 0
+                    ? "Nenhuma avaliação encontrada."
+                    : "Nenhuma avaliação com os filtros da grade. Ajuste ou limpe os filtros por coluna."}
                 </TableCell>
               </TableRow>
             ) : (
@@ -411,7 +230,7 @@ export function AvaliacaoFornecedorConsultaPanel({
                     )}
                   </TableCell>
                   <TableCell className="whitespace-normal">
-                    {getAvaliadorNome(avaliacao.avaliadorId)}
+                    {resolverNomeAvaliador(avaliacao.avaliadorId, users)}
                   </TableCell>
                   <TableCell className="text-right font-semibold text-primary tabular-nums">
                     {avaliacao.media.toFixed(1)}/{NOTA_MAX}
@@ -466,6 +285,12 @@ export function AvaliacaoFornecedorConsultaPanel({
           </div>
         </div>
       ) : null}
+
+      <SgqGradeFiltroPortal
+        grade={grade}
+        dateColumnIds={["data"]}
+        numericColumnIds={["media"]}
+      />
 
       <AvaliacaoDetalheDialog
         avaliacao={avaliacaoSelecionada}

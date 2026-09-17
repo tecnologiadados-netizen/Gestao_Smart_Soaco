@@ -11,6 +11,7 @@ import type {
   DocumentValidade,
   DocumentExternoRegistro,
   DocumentOrigem,
+  DocumentoRegistroOcorrencia,
 } from "@qualidade/types/document";
 import type { Task } from "@qualidade/types/task";
 import { getQualidadeCurrentUserId } from "@qualidade/lib/current-user";
@@ -120,6 +121,31 @@ interface DocumentsState {
       externoRegistro?: DocumentExternoRegistro;
       anexos?: { nome: string; dataUrl: string; storagePath?: string }[];
     }
+  ) => boolean;
+  updateRegistroInternoCadastro: (
+    documentId: string,
+    input: {
+      titulo: string;
+      setorId: string;
+      elaboradorId: string;
+      localizacao?: string;
+      permissoes?: DocumentPermissoes;
+      externoRegistro?: DocumentExternoRegistro;
+      modelo?: { nome: string; dataUrl: string; storagePath?: string } | null;
+    }
+  ) => boolean;
+  addRegistroInternoOcorrencia: (
+    documentId: string,
+    input: {
+      nome: string;
+      dataUrl: string;
+      dataOcorrencia: string;
+      observacao?: string;
+    }
+  ) => boolean;
+  removeRegistroInternoOcorrencia: (
+    documentId: string,
+    ocorrenciaId: string
   ) => boolean;
   createNewRevision: (
     documentId: string,
@@ -695,6 +721,197 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
                         arquivoDataUrl: principal?.dataUrl ?? v.arquivoDataUrl,
                       }
                     : {}),
+                }
+              : v
+          ),
+        }));
+        return true;
+      },
+
+      updateRegistroInternoCadastro: (documentId, input) => {
+        const doc = get().getDocumentById(documentId);
+        if (!doc || doc.origem !== "registro") return false;
+
+        const versaoAtual = getCurrentVersion(
+          get().versions,
+          documentId,
+          doc.versaoAtual
+        );
+        if (!versaoAtual) return false;
+
+        const now = new Date().toISOString();
+        set((state) => ({
+          documents: state.documents.map((d) =>
+            d.id === documentId
+              ? {
+                  ...d,
+                  titulo: input.titulo.trim(),
+                  setorId: input.setorId,
+                  localizacao: input.localizacao,
+                  permissoes: input.permissoes ?? d.permissoes,
+                  externoRegistro: {
+                    ...(input.externoRegistro ?? d.externoRegistro),
+                    ocorrencias: d.externoRegistro?.ocorrencias,
+                  },
+                  updatedAt: now,
+                }
+              : d
+          ),
+          versions: state.versions.map((v) =>
+            v.id === versaoAtual.id
+              ? {
+                  ...v,
+                  elaboradorId: input.elaboradorId,
+                  ...(input.modelo
+                    ? {
+                        arquivoNome: input.modelo.nome,
+                        ...(input.modelo.dataUrl.startsWith("data:")
+                          ? {
+                              arquivoDataUrl: input.modelo.dataUrl,
+                              arquivoStoragePath: undefined,
+                            }
+                          : input.modelo.storagePath
+                            ? { arquivoStoragePath: input.modelo.storagePath }
+                            : {}),
+                      }
+                    : input.modelo === null
+                      ? {
+                          arquivoNome: undefined,
+                          arquivoDataUrl: undefined,
+                          arquivoStoragePath: undefined,
+                        }
+                      : {}),
+                }
+              : v
+          ),
+        }));
+        return true;
+      },
+
+      addRegistroInternoOcorrencia: (documentId, input) => {
+        const doc = get().getDocumentById(documentId);
+        if (!doc || doc.origem !== "registro") return false;
+
+        const versaoAtual = getCurrentVersion(
+          get().versions,
+          documentId,
+          doc.versaoAtual
+        );
+        if (!versaoAtual) return false;
+
+        const nome = input.nome.trim();
+        const dataUrl = input.dataUrl.trim();
+        const dataOcorrencia = input.dataOcorrencia.trim();
+        if (!nome || !dataUrl || !dataOcorrencia) return false;
+
+        const now = new Date().toISOString();
+        const ocorrenciaId = generateId("ocr");
+        const ocorrencia: DocumentoRegistroOcorrencia = {
+          id: ocorrenciaId,
+          nome,
+          dataOcorrencia,
+          observacao: input.observacao?.trim() || undefined,
+          criadoEm: now,
+        };
+        const anexo = {
+          nome,
+          dataUrl,
+          ocorrenciaId,
+        };
+        const anexosAtuais = versaoAtual.anexos ?? [];
+
+        set((state) => ({
+          documents: state.documents.map((d) =>
+            d.id === documentId
+              ? {
+                  ...d,
+                  updatedAt: now,
+                  externoRegistro: {
+                    unidadeTodos: true,
+                    distribuicaoEletronica: true,
+                    distribuicaoFisica: false,
+                    avisarAntesAtivo: false,
+                    avisarAntesDias: 30,
+                    associarDocumentos: false,
+                    documentosAssociadosIds: [],
+                    permissaoAcesso: "todos" as const,
+                    ...d.externoRegistro,
+                    ocorrencias: [
+                      ...(d.externoRegistro?.ocorrencias ?? []),
+                      ocorrencia,
+                    ],
+                  },
+                }
+              : d
+          ),
+          versions: state.versions.map((v) =>
+            v.id === versaoAtual.id
+              ? {
+                  ...v,
+                  anexos: [...anexosAtuais, anexo],
+                }
+              : v
+          ),
+        }));
+        return true;
+      },
+
+      removeRegistroInternoOcorrencia: (documentId, ocorrenciaId) => {
+        const doc = get().getDocumentById(documentId);
+        if (!doc || doc.origem !== "registro") return false;
+
+        const versaoAtual = getCurrentVersion(
+          get().versions,
+          documentId,
+          doc.versaoAtual
+        );
+        if (!versaoAtual) return false;
+
+        const ocorrencias = doc.externoRegistro?.ocorrencias ?? [];
+        const alvo = ocorrencias.find((o) => o.id === ocorrenciaId);
+        if (!alvo) return false;
+
+        const now = new Date().toISOString();
+        const anexosAtuais = versaoAtual.anexos ?? [];
+        let removido = false;
+        const anexosRestantes = anexosAtuais.filter((anexo) => {
+          if (removido) return true;
+          if (anexo.ocorrenciaId === ocorrenciaId) {
+            removido = true;
+            return false;
+          }
+          return true;
+        });
+        if (!removido) {
+          const idx = anexosRestantes.findIndex((a) => a.nome === alvo.nome);
+          if (idx >= 0) anexosRestantes.splice(idx, 1);
+        }
+
+        set((state) => ({
+          documents: state.documents.map((d) =>
+            d.id === documentId
+              ? {
+                  ...d,
+                  updatedAt: now,
+                  externoRegistro: d.externoRegistro
+                    ? {
+                        ...d.externoRegistro,
+                        ocorrencias: ocorrencias.filter(
+                          (o) => o.id !== ocorrenciaId
+                        ),
+                      }
+                    : d.externoRegistro,
+                }
+              : d
+          ),
+          versions: state.versions.map((v) =>
+            v.id === versaoAtual.id
+              ? {
+                  ...v,
+                  anexos: anexosRestantes,
+                  arquivoNome: anexosRestantes[0]?.nome ?? v.arquivoNome,
+                  arquivoDataUrl:
+                    anexosRestantes[0]?.dataUrl ?? v.arquivoDataUrl,
                 }
               : v
           ),

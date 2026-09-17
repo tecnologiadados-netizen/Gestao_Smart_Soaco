@@ -65,7 +65,7 @@ export function NovoDocumentoPage() {
 
     try {
       await flushQualidadeDocumentsSync();
-      navigate("/qualidade/documentos/consulta");
+      navigate("/qualidade/documentos/consulta?guia=interno");
     } catch (err) {
       console.error("[qualidade] falha ao salvar novo documento:", err);
     }
