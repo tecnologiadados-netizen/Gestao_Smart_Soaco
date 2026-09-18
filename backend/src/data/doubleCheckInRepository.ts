@@ -646,6 +646,12 @@ export type DoubleCheckInComparativoLinha = {
   umNF: string | null;
   qtdePC: number;
   umPC: string | null;
+  /** Valor unitário bruto (sem desconto). */
+  valorUnitarioBrutoNF: number;
+  valorUnitarioBrutoPC: number;
+  descontoNF: number;
+  descontoPC: number;
+  /** Valor unitário líquido (após desconto) — base da comparação. */
   valorUnitarioNF: number;
   valorUnitarioPC: number;
   valorIpiNF: number;
@@ -671,6 +677,23 @@ export function arredondarComparativo(n: number, casas: number): number {
 /** Dinheiro: 2 casas. Quantidade: 4 casas. */
 export function valoresIguaisComparativo(a: number, b: number, casas: number): boolean {
   return arredondarComparativo(a, casas) === arredondarComparativo(b, casas);
+}
+
+/** Unitário líquido: prioriza totalComDesconto/qtde; senão bruto − desconto/qtde. */
+export function unitarioLiquidoComDesconto(params: {
+  unitarioBruto: number;
+  qtde: number;
+  desconto: number;
+  totalComDesconto: number;
+}): number {
+  const qtde = params.qtde;
+  if (qtde > 0 && Number.isFinite(params.totalComDesconto)) {
+    return params.totalComDesconto / qtde;
+  }
+  if (qtde > 0 && params.desconto > 0) {
+    return (params.unitarioBruto * qtde - params.desconto) / qtde;
+  }
+  return params.unitarioBruto;
 }
 
 function normalizarTextoComparativo(v: unknown): string {
@@ -699,8 +722,12 @@ SELECT
   umide.nome AS umNF,
   ipc.qtde AS qtdePC,
   umipc.nome AS umPC,
-  ide.valorUnitario AS valorUnitarioNF,
-  ipc.precoUnitario AS valorUnitarioPC,
+  ide.valorUnitario AS valorUnitarioBrutoNF,
+  ipc.precoUnitario AS valorUnitarioBrutoPC,
+  IFNULL(ide.valorDesconto, 0) AS descontoNF,
+  IFNULL(ipc.valorDesconto, 0) AS descontoPC,
+  ide.valorTotalComDesconto AS valorTotalComDescontoNF,
+  ipc.valorTotalComDesconto AS valorTotalComDescontoPC,
   IFNULL(tde.valorIPI, 0) AS valorIpiNF,
   IFNULL(tpc.valorIPI, 0) AS valorIpiPC,
   cpde.nome AS condicaoPagamentoNF,
@@ -741,8 +768,30 @@ export async function queryDoubleCheckInComparativoPc(params: {
     const linhas: DoubleCheckInComparativoLinha[] = list.map((r) => {
       const qtdeNF = toNum(r.qtdeNF);
       const qtdePC = toNum(r.qtdePC);
-      const valorUnitarioNF = toNum(r.valorUnitarioNF);
-      const valorUnitarioPC = toNum(r.valorUnitarioPC);
+      const valorUnitarioBrutoNF = toNum(r.valorUnitarioBrutoNF);
+      const valorUnitarioBrutoPC = toNum(r.valorUnitarioBrutoPC);
+      const descontoNF = toNum(r.descontoNF);
+      const descontoPC = toNum(r.descontoPC);
+      const totalDescNF =
+        r.valorTotalComDescontoNF != null
+          ? toNum(r.valorTotalComDescontoNF)
+          : valorUnitarioBrutoNF * qtdeNF - descontoNF;
+      const totalDescPC =
+        r.valorTotalComDescontoPC != null
+          ? toNum(r.valorTotalComDescontoPC)
+          : valorUnitarioBrutoPC * qtdePC - descontoPC;
+      const valorUnitarioNF = unitarioLiquidoComDesconto({
+        unitarioBruto: valorUnitarioBrutoNF,
+        qtde: qtdeNF,
+        desconto: descontoNF,
+        totalComDesconto: totalDescNF,
+      });
+      const valorUnitarioPC = unitarioLiquidoComDesconto({
+        unitarioBruto: valorUnitarioBrutoPC,
+        qtde: qtdePC,
+        desconto: descontoPC,
+        totalComDesconto: totalDescPC,
+      });
       const valorIpiNF = toNum(r.valorIpiNF);
       const valorIpiPC = toNum(r.valorIpiPC);
       const condicaoPagamentoNF = strOrNull(r.condicaoPagamentoNF);
@@ -767,6 +816,10 @@ export async function queryDoubleCheckInComparativoPc(params: {
         umNF: strOrNull(r.umNF),
         qtdePC: arredondarComparativo(qtdePC, 4),
         umPC: strOrNull(r.umPC),
+        valorUnitarioBrutoNF: arredondarComparativo(valorUnitarioBrutoNF, 2),
+        valorUnitarioBrutoPC: arredondarComparativo(valorUnitarioBrutoPC, 2),
+        descontoNF: arredondarComparativo(descontoNF, 2),
+        descontoPC: arredondarComparativo(descontoPC, 2),
         valorUnitarioNF: arredondarComparativo(valorUnitarioNF, 2),
         valorUnitarioPC: arredondarComparativo(valorUnitarioPC, 2),
         valorIpiNF: arredondarComparativo(valorIpiNF, 2),

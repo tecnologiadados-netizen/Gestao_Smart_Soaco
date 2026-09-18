@@ -30,7 +30,7 @@ type CampoCfg = {
 const CAMPOS: CampoCfg[] = [
   {
     id: 'valor_unitario',
-    label: 'Vl. unitário',
+    label: 'Vl. unitário (líq.)',
     divergKey: 'divergValorUnitario',
     kind: 'money',
   },
@@ -68,13 +68,38 @@ function fmtCondicao(nome: string | null, regra: string | null): string {
   return r ? `${n} · ${r}` : n;
 }
 
+function fmtUnitarioLinha(
+  liquido: number,
+  bruto: number,
+  desconto: number
+): { principal: string; detalhe: string | null } {
+  if (desconto > 0) {
+    return {
+      principal: `${nfBrl.format(liquido)} líq.`,
+      detalhe: `bruto ${nfBrl.format(bruto)} · −desc. ${nfBrl.format(desconto)}`,
+    };
+  }
+  return { principal: nfBrl.format(liquido), detalhe: null };
+}
+
 function valoresExibicao(
   linha: DoubleCheckInComparativoLinha,
   c: CampoCfg
-): { nf: string; pc: string } {
+): { nf: string; pc: string; nfDetalhe?: string | null; pcDetalhe?: string | null } {
   switch (c.id) {
-    case 'valor_unitario':
-      return { nf: nfBrl.format(linha.valorUnitarioNF), pc: nfBrl.format(linha.valorUnitarioPC) };
+    case 'valor_unitario': {
+      const nf = fmtUnitarioLinha(
+        linha.valorUnitarioNF,
+        linha.valorUnitarioBrutoNF,
+        linha.descontoNF
+      );
+      const pc = fmtUnitarioLinha(
+        linha.valorUnitarioPC,
+        linha.valorUnitarioBrutoPC,
+        linha.descontoPC
+      );
+      return { nf: nf.principal, pc: pc.principal, nfDetalhe: nf.detalhe, pcDetalhe: pc.detalhe };
+    }
     case 'qtde':
       return {
         nf: `${nfNum.format(linha.qtdeNF)} ${linha.umNF ?? ''}`.trim(),
@@ -320,20 +345,34 @@ export default function DoubleCheckInComparativoPcTab({
                     <div className={`space-y-0.5 text-xs ${c.kind === 'text' ? '' : 'tabular-nums'}`}>
                       <div className="flex justify-between gap-2">
                         <span className="shrink-0 text-slate-400">NF</span>
-                        <span
-                          className="min-w-0 text-right font-medium text-slate-800 dark:text-slate-100 break-words"
-                          title={vals.nf}
-                        >
-                          {vals.nf}
+                        <span className="min-w-0 text-right">
+                          <span
+                            className="block font-medium text-slate-800 dark:text-slate-100 break-words"
+                            title={vals.nf}
+                          >
+                            {vals.nf}
+                          </span>
+                          {vals.nfDetalhe ? (
+                            <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                              {vals.nfDetalhe}
+                            </span>
+                          ) : null}
                         </span>
                       </div>
                       <div className="flex justify-between gap-2">
                         <span className="shrink-0 text-slate-400">PC</span>
-                        <span
-                          className="min-w-0 text-right font-medium text-slate-800 dark:text-slate-100 break-words"
-                          title={vals.pc}
-                        >
-                          {vals.pc}
+                        <span className="min-w-0 text-right">
+                          <span
+                            className="block font-medium text-slate-800 dark:text-slate-100 break-words"
+                            title={vals.pc}
+                          >
+                            {vals.pc}
+                          </span>
+                          {vals.pcDetalhe ? (
+                            <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                              {vals.pcDetalhe}
+                            </span>
+                          ) : null}
                         </span>
                       </div>
                     </div>

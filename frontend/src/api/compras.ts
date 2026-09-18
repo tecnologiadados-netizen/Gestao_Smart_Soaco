@@ -1547,6 +1547,11 @@ export type DoubleCheckInComparativoLinha = {
   umNF: string | null;
   qtdePC: number;
   umPC: string | null;
+  valorUnitarioBrutoNF: number;
+  valorUnitarioBrutoPC: number;
+  descontoNF: number;
+  descontoPC: number;
+  /** Unitário líquido (após desconto) — base da comparação. */
   valorUnitarioNF: number;
   valorUnitarioPC: number;
   valorIpiNF: number;

@@ -44,7 +44,7 @@ import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const CAMPO_LABEL: Record<DoubleCheckInCampoComparativo, string> = {
-  valor_unitario: 'Vl. unitário',
+  valor_unitario: 'Vl. unitário (líq.)',
   qtde: 'Quantidade',
   ipi: 'IPI',
   condicao_pagamento: 'Cond. pagamento',
@@ -93,13 +93,35 @@ function camposDivergentesDaLinha(
   return out;
 }
 
+function fmtUnitarioComDesconto(
+  liquido: number,
+  bruto: number,
+  desconto: number
+): string {
+  if (desconto > 0) {
+    return `${fmtBrl(liquido)} líq. (bruto ${fmtBrl(bruto)} − desc. ${fmtBrl(desconto)})`;
+  }
+  return fmtBrl(liquido);
+}
+
 function formatoCampoLinha(
   linha: DoubleCheckInComparativoLinha,
   campo: DoubleCheckInCampoComparativo
 ): { nf: string; pc: string } {
   switch (campo) {
     case 'valor_unitario':
-      return { nf: fmtBrl(linha.valorUnitarioNF), pc: fmtBrl(linha.valorUnitarioPC) };
+      return {
+        nf: fmtUnitarioComDesconto(
+          linha.valorUnitarioNF,
+          linha.valorUnitarioBrutoNF,
+          linha.descontoNF
+        ),
+        pc: fmtUnitarioComDesconto(
+          linha.valorUnitarioPC,
+          linha.valorUnitarioBrutoPC,
+          linha.descontoPC
+        ),
+      };
     case 'qtde':
       return { nf: fmtNum(linha.qtdeNF), pc: fmtNum(linha.qtdePC) };
     case 'ipi':
