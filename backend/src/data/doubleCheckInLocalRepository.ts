@@ -12,10 +12,24 @@ import {
 } from './whatsappNotificacaoRepository.js';
 
 export const DOUBLE_CHECKIN_WA_CODE = 'compras_double_checkin';
+/** Alerta ao confirmar conferência quando há divergência NF × Pedido de compra. */
+export const DOUBLE_CHECKIN_NF_PC_WA_CODE = 'compras_double_checkin_nf_pc';
 export const DOUBLE_CHECKIN_LIMIAR_KEY = 'double_checkin_limiar_pct';
 export const DOUBLE_CHECKIN_LIMIAR_DEFAULT = 10;
 /** A partir desta data (emissão NF) o sync pode enviar WhatsApp. Histórico anterior só é marcado. */
 export const DOUBLE_CHECKIN_ALERTA_DESDE_KEY = 'double_checkin_alerta_desde';
+
+export const DOUBLE_CHECKIN_CAMPOS = ['valor_unitario', 'qtde', 'valor_total', 'ipi'] as const;
+export type DoubleCheckInCampoComparativo = (typeof DOUBLE_CHECKIN_CAMPOS)[number];
+
+const JUSTIFICATIVA_SEED: { codigo: string; label: string; sortOrder: number }[] = [
+  { codigo: 'diferenca_comercial', label: 'Diferença comercial negociada', sortOrder: 10 },
+  { codigo: 'erro_cadastro_um', label: 'Erro de cadastro / conversão de UM', sortOrder: 20 },
+  { codigo: 'tributacao_ipi', label: 'Frete / IPI / tributação', sortOrder: 30 },
+  { codigo: 'qtde_parcial', label: 'Quantidade parcial / saldo de PC', sortOrder: 40 },
+  { codigo: 'arredondamento', label: 'Ajuste de arredondamento', sortOrder: 50 },
+  { codigo: 'outros', label: 'Outros', sortOrder: 90 },
+];
 
 function ymdHojeSaoPaulo(): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -47,6 +61,188 @@ export async function ensureDoubleCheckInWhatsappTipo(): Promise<{ id: number; c
     select: { id: true, code: true },
   });
   return created;
+}
+
+export async function ensureDoubleCheckInNfPcWhatsappTipo(): Promise<{ id: number; code: string }> {
+  const existing = await prisma.whatsappNotificacaoTipo.findUnique({
+    where: { code: DOUBLE_CHECKIN_NF_PC_WA_CODE },
+    select: { id: true, code: true },
+  });
+  if (existing) return existing;
+
+  const created = await prisma.whatsappNotificacaoTipo.create({
+    data: {
+      code: DOUBLE_CHECKIN_NF_PC_WA_CODE,
+      label: 'Double CheckIn — NF × Pedido de compra',
+      descricao:
+        'Enviada ao confirmar a conferência da NF quando há divergência entre nota fiscal e pedido de compra (valor unitário, quantidade, valor total ou IPI). Configure destinatários nesta aba SMS.',
+      ativo: true,
+      sortOrder: 46,
+      fonteMensagem: 'evento',
+      modoDisparo: 'evento',
+    },
+    select: { id: true, code: true },
+  });
+  return created;
+}
+
+export async function ensureDoubleCheckInJustificativaOpcoes(): Promise<void> {
+  for (const seed of JUSTIFICATIVA_SEED) {
+    await prisma.doubleCheckInJustificativaOpcao.upsert({
+      where: { codigo: seed.codigo },
+      create: {
+        codigo: seed.codigo,
+        label: seed.label,
+        ativo: true,
+        sortOrder: seed.sortOrder,
+      },
+      update: {
+        label: seed.label,
+        sortOrder: seed.sortOrder,
+      },
+    });
+  }
+}
+
+export type DoubleCheckInJustificativaOpcaoRow = {
+  id: number;
+  codigo: string;
+  label: string;
+  ativo: boolean;
+  sortOrder: number;
+};
+
+export async function listarJustificativaOpcoes(somenteAtivas = true): Promise<DoubleCheckInJustificativaOpcaoRow[]> {
+  await ensureDoubleCheckInJustificativaOpcoes();
+  const rows = await prisma.doubleCheckInJustificativaOpcao.findMany({
+    where: somenteAtivas ? { ativo: true } : undefined,
+    orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    codigo: r.codigo,
+    label: r.label,
+    ativo: r.ativo,
+    sortOrder: r.sortOrder,
+  }));
+}
+
+export type DoubleCheckInComparativoDecisaoRow = {
+  id: number;
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  decisao: 'aceita' | 'recusa';
+  justificativaOpcaoId: number;
+  justificativaCodigo: string;
+  justificativaLabel: string;
+  observacao: string | null;
+  usuarioId: number;
+  usuarioLogin: string;
+  atualizadoEm: string;
+};
+
+function mapDecisao(
+  r: {
+    id: number;
+    idDocumentoEstoque: number;
+    idItemDocumentoEstoque: number;
+    idItemPedidoCompra: number;
+    campo: string;
+    decisao: string;
+    justificativaOpcaoId: number;
+    observacao: string | null;
+    usuarioId: number;
+    usuarioLogin: string;
+    atualizadoEm: Date;
+    justificativaOpcao: { codigo: string; label: string };
+  }
+): DoubleCheckInComparativoDecisaoRow {
+  return {
+    id: r.id,
+    idDocumentoEstoque: r.idDocumentoEstoque,
+    idItemDocumentoEstoque: r.idItemDocumentoEstoque,
+    idItemPedidoCompra: r.idItemPedidoCompra,
+    campo: r.campo as DoubleCheckInCampoComparativo,
+    decisao: r.decisao === 'recusa' ? 'recusa' : 'aceita',
+    justificativaOpcaoId: r.justificativaOpcaoId,
+    justificativaCodigo: r.justificativaOpcao.codigo,
+    justificativaLabel: r.justificativaOpcao.label,
+    observacao: r.observacao,
+    usuarioId: r.usuarioId,
+    usuarioLogin: r.usuarioLogin,
+    atualizadoEm: r.atualizadoEm.toISOString(),
+  };
+}
+
+export async function listarDecisoesComparativo(
+  idDocumentoEstoque: number
+): Promise<DoubleCheckInComparativoDecisaoRow[]> {
+  const rows = await prisma.doubleCheckInComparativoDecisao.findMany({
+    where: { idDocumentoEstoque },
+    include: { justificativaOpcao: { select: { codigo: true, label: true } } },
+  });
+  return rows.map(mapDecisao);
+}
+
+export async function upsertDecisaoComparativo(params: {
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  decisao: 'aceita' | 'recusa';
+  justificativaOpcaoId: number;
+  observacao: string | null;
+  usuarioId: number;
+  usuarioLogin: string;
+}): Promise<DoubleCheckInComparativoDecisaoRow> {
+  if (!DOUBLE_CHECKIN_CAMPOS.includes(params.campo)) {
+    throw new Error(`Campo inválido: ${params.campo}`);
+  }
+  if (params.decisao !== 'aceita' && params.decisao !== 'recusa') {
+    throw new Error('Decisão deve ser aceita ou recusa.');
+  }
+  const opcao = await prisma.doubleCheckInJustificativaOpcao.findUnique({
+    where: { id: params.justificativaOpcaoId },
+  });
+  if (!opcao || !opcao.ativo) {
+    throw new Error('Justificativa inválida ou inativa.');
+  }
+  if (opcao.codigo === 'outros' && !String(params.observacao ?? '').trim()) {
+    throw new Error('Informe a observação quando a justificativa for "Outros".');
+  }
+
+  const row = await prisma.doubleCheckInComparativoDecisao.upsert({
+    where: {
+      idDocumentoEstoque_idItemDocumentoEstoque_idItemPedidoCompra_campo: {
+        idDocumentoEstoque: params.idDocumentoEstoque,
+        idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+        idItemPedidoCompra: params.idItemPedidoCompra,
+        campo: params.campo,
+      },
+    },
+    create: {
+      idDocumentoEstoque: params.idDocumentoEstoque,
+      idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+      idItemPedidoCompra: params.idItemPedidoCompra,
+      campo: params.campo,
+      decisao: params.decisao,
+      justificativaOpcaoId: params.justificativaOpcaoId,
+      observacao: params.observacao?.trim() || null,
+      usuarioId: params.usuarioId,
+      usuarioLogin: params.usuarioLogin,
+    },
+    update: {
+      decisao: params.decisao,
+      justificativaOpcaoId: params.justificativaOpcaoId,
+      observacao: params.observacao?.trim() || null,
+      usuarioId: params.usuarioId,
+      usuarioLogin: params.usuarioLogin,
+    },
+    include: { justificativaOpcao: { select: { codigo: true, label: true } } },
+  });
+  return mapDecisao(row);
 }
 
 export async function getDoubleCheckInLimiarPct(): Promise<number> {

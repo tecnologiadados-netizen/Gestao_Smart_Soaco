@@ -631,3 +631,131 @@ export async function queryDoubleCheckInDashboard(params: {
     return { erro: msg };
   }
 }
+
+export type DoubleCheckInComparativoCampo = 'valor_unitario' | 'qtde' | 'valor_total' | 'ipi';
+
+export type DoubleCheckInComparativoLinha = {
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  idPedidoCompra: number | null;
+  nomePedidoCompra: string | null;
+  idProduto: number | null;
+  codigoProduto: string | null;
+  descricaoProduto: string | null;
+  qtdeNF: number;
+  umNF: string | null;
+  qtdePC: number;
+  umPC: string | null;
+  valorUnitarioNF: number;
+  valorUnitarioPC: number;
+  valorTotalNF: number;
+  valorTotalPC: number;
+  valorIpiNF: number;
+  valorIpiPC: number;
+  divergValorUnitario: boolean;
+  divergQtde: boolean;
+  divergValorTotal: boolean;
+  divergIpi: boolean;
+  temDivergencia: boolean;
+};
+
+/** Sem tolerância: igualdade numérica estrita após normalização. */
+export function valoresIguaisSemTolerancia(a: number, b: number): boolean {
+  return a === b;
+}
+
+const SQL_COMPARATIVO_PC = `
+SELECT
+  de.id AS idDocumento,
+  de.numeroDocumentoFiscal AS numeroDocumentoFiscal,
+  pc.id AS idPedidoCompra,
+  pc.nome AS nomePedidoCompra,
+  ide.id AS idItemDocumentoEstoque,
+  ipc.id AS idItemPedidoCompra,
+  ide.idProduto AS idProduto,
+  p.nome AS codigoProduto,
+  p.descricao AS descricaoProduto,
+  ide.qtde AS qtdeNF,
+  umide.nome AS umNF,
+  ipc.qtde AS qtdePC,
+  umipc.nome AS umPC,
+  ide.valorUnitario AS valorUnitarioNF,
+  ipc.precoUnitario AS valorUnitarioPC,
+  ide.valorTotal AS valorTotalNF,
+  (ipc.qtde * ipc.precoUnitario) AS valorTotalPC,
+  IFNULL(tde.valorIPI, 0) AS valorIpiNF,
+  IFNULL(tpc.valorIPI, 0) AS valorIpiPC
+FROM itemdocumentoestoque_itempedidocompra ideipc
+LEFT JOIN itemdocumentoestoque ide ON ide.id = ideipc.idItemDocumentoEstoque
+LEFT JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
+LEFT JOIN itempedidocompra ipc ON ipc.id = ideipc.idItemPedidoCompra
+LEFT JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
+LEFT JOIN produto p ON p.id = ide.idProduto
+LEFT JOIN unidademedida umide ON umide.id = ide.idUnidadeMedida
+LEFT JOIN unidademedida umipc ON umipc.id = ipc.idUnidadeMedida
+LEFT JOIN tributacao tde ON tde.idItemDocumentoEstoque = ide.id
+LEFT JOIN tributacao tpc ON tpc.idItemPedidoCompra = ipc.id
+WHERE de.id = ?
+ORDER BY ide.id ASC, ipc.id ASC
+`.trim();
+
+export async function queryDoubleCheckInComparativoPc(params: {
+  idDocumento: number;
+}): Promise<{ linhas: DoubleCheckInComparativoLinha[]; erro?: string }> {
+  if (!isNomusEnabled() || !getNomusPool()) {
+    return { linhas: [], erro: 'Nomus não configurado.' };
+  }
+  const pool = getNomusPool();
+  if (!pool) return { linhas: [], erro: 'Nomus não configurado.' };
+  try {
+    const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(
+      pool,
+      SQL_COMPARATIVO_PC,
+      [params.idDocumento]
+    );
+    const list = Array.isArray(rows) ? rows : [];
+    const linhas: DoubleCheckInComparativoLinha[] = list.map((r) => {
+      const qtdeNF = toNum(r.qtdeNF);
+      const qtdePC = toNum(r.qtdePC);
+      const valorUnitarioNF = toNum(r.valorUnitarioNF);
+      const valorUnitarioPC = toNum(r.valorUnitarioPC);
+      const valorTotalNF = toNum(r.valorTotalNF);
+      const valorTotalPC = toNum(r.valorTotalPC);
+      const valorIpiNF = toNum(r.valorIpiNF);
+      const valorIpiPC = toNum(r.valorIpiPC);
+      const divergValorUnitario = !valoresIguaisSemTolerancia(valorUnitarioNF, valorUnitarioPC);
+      const divergQtde = !valoresIguaisSemTolerancia(qtdeNF, qtdePC);
+      const divergValorTotal = !valoresIguaisSemTolerancia(valorTotalNF, valorTotalPC);
+      const divergIpi = !valoresIguaisSemTolerancia(valorIpiNF, valorIpiPC);
+      return {
+        idItemDocumentoEstoque: toInt(r.idItemDocumentoEstoque),
+        idItemPedidoCompra: toInt(r.idItemPedidoCompra),
+        idPedidoCompra: r.idPedidoCompra != null ? toInt(r.idPedidoCompra) : null,
+        nomePedidoCompra: strOrNull(r.nomePedidoCompra),
+        idProduto: r.idProduto != null ? toInt(r.idProduto) : null,
+        codigoProduto: strOrNull(r.codigoProduto),
+        descricaoProduto: strOrNull(r.descricaoProduto),
+        qtdeNF,
+        umNF: strOrNull(r.umNF),
+        qtdePC,
+        umPC: strOrNull(r.umPC),
+        valorUnitarioNF,
+        valorUnitarioPC,
+        valorTotalNF,
+        valorTotalPC,
+        valorIpiNF,
+        valorIpiPC,
+        divergValorUnitario,
+        divergQtde,
+        divergValorTotal,
+        divergIpi,
+        temDivergencia: divergValorUnitario || divergQtde || divergValorTotal || divergIpi,
+      };
+    });
+    return { linhas };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[doubleCheckInRepository] queryDoubleCheckInComparativoPc:', msg);
+    return { linhas: [], erro: msg };
+  }
+}
