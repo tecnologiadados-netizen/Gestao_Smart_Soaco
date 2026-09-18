@@ -18,9 +18,10 @@ import { horasEscalaNoPeriodo } from '../utils/recursoEscalaTrabalho.js';
 import {
   buildDashboardResumo,
   buildDiasDoMes,
-  listTempoProducao,
+  listTempoProducaoComFonte,
   mesLabel,
 } from '../data/camasiTempoProducaoRepository.js';
+import { getCamasiSyncEstado } from '../data/camasiTempoProducaoCacheRepository.js';
 
 const PERMISSOES_ACESSO_PRODUCAO_CAMASI = PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI;
 
@@ -75,7 +76,7 @@ function async503(handler: RequestHandler): RequestHandler {
 
 /**
  * GET /api/producao-camasi/status
- * Verifica se a conexão Firebird (RICMAQ) está acessível.
+ * Firebird + estado do espelho SQLite.
  */
 router.get(
   '/status',
@@ -83,21 +84,29 @@ router.get(
   async503(async (_req, res) => {
     const enabled = isCamasiEnabled();
     const database = getCamasiDatabasePath();
+    const sync = await getCamasiSyncEstado();
     if (!enabled) {
       res.json({
         ok: false,
         enabled: false,
         database,
         mensagem: 'Conexão Camasi desabilitada (CAMASI_FDB_DISABLED=true).',
+        sync,
       });
       return;
     }
     const test = await testCamasiConnection();
     res.json({
-      ok: test.ok,
+      ok: test.ok || sync.totalRows > 0,
       enabled: true,
       database,
-      mensagem: test.mensagem,
+      mensagem: test.ok
+        ? test.mensagem
+        : sync.totalRows > 0
+          ? `Firebird offline; usando cópia local (${sync.totalRows} registro(s)).`
+          : test.mensagem,
+      firebirdOk: test.ok,
+      sync,
     });
   })
 );
@@ -118,19 +127,24 @@ router.get(
       return;
     }
     if (!isCamasiEnabled()) {
-      res.status(503).json({ error: 'Conexão Camasi desabilitada.' });
-      return;
+      const sync = await getCamasiSyncEstado();
+      if (sync.totalRows <= 0) {
+        res.status(503).json({ error: 'Conexão Camasi desabilitada e sem cópia local.' });
+        return;
+      }
     }
 
     const { dataIni, dataFim } = parsed.data;
     const recurso = getRecursoPainelCamasi();
     const escala = escalaEfetivaDoRecurso(recurso);
     const horasEscala = escala ? horasEscalaNoPeriodo(dataIni, dataFim, escala) : null;
-    const rows = await listTempoProducao(dataIni, dataFim, escala);
+    const { rows, fonte, cacheSyncedAt } = await listTempoProducaoComFonte(dataIni, dataFim, escala);
     const resumo = buildDashboardResumo(rows, { horasEscala, escala, dataIni, dataFim });
     res.json({
       dataIni,
       dataFim,
+      fonte,
+      cacheSyncedAt,
       escala: escala
         ? {
             recursoCod: recurso?.cod ?? null,
@@ -164,14 +178,17 @@ router.get(
       return;
     }
     if (!isCamasiEnabled()) {
-      res.status(503).json({ error: 'Conexão Camasi desabilitada.' });
-      return;
+      const sync = await getCamasiSyncEstado();
+      if (sync.totalRows <= 0) {
+        res.status(503).json({ error: 'Conexão Camasi desabilitada e sem cópia local.' });
+        return;
+      }
     }
 
     const { dataIni, dataFim, mes, tipo } = parsed.data;
     const recurso = getRecursoPainelCamasi();
     const escala = escalaEfetivaDoRecurso(recurso);
-    const rows = await listTempoProducao(dataIni, dataFim, escala);
+    const { rows, fonte, cacheSyncedAt } = await listTempoProducaoComFonte(dataIni, dataFim, escala);
     const { dias, totalHoras } = buildDiasDoMes(rows, mes, tipo, escala);
     res.json({
       dataIni,
@@ -181,6 +198,8 @@ router.get(
       tipo,
       dias,
       totalHoras,
+      fonte,
+      cacheSyncedAt,
     });
   })
 );

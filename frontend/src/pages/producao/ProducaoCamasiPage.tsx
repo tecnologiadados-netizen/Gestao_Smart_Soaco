@@ -1042,6 +1042,15 @@ export default function ProducaoCamasiPage() {
               : ''}
             {isFiltroHoje && atualizadoAs ? ` · atualizado às ${atualizadoAs}` : ''}
           </p>
+          {data?.fonte === 'cache' ? (
+            <p className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-200">
+              Exibindo cópia local (PC Camasi offline)
+              {data.cacheSyncedAt
+                ? ` — última sincronização ${new Date(data.cacheSyncedAt).toLocaleString('pt-BR')}`
+                : ''}
+              .
+            </p>
+          ) : null}
           <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
             Virada das 24h: {formatYmdBr(CAMASI_VIRADA_24H_YMD)} — depois a jornada é 07:00–17:15
           </p>

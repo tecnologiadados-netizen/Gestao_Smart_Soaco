@@ -6,6 +6,16 @@ export type CamasiStatusResponse = {
   enabled: boolean;
   database: string;
   mensagem?: string | null;
+  firebirdOk?: boolean;
+  sync?: {
+    lastSuccessAt: string | null;
+    lastAttemptAt: string | null;
+    lastError: string | null;
+    lastRowsUpserted: number;
+    totalRows: number;
+    fullSyncDone: boolean;
+    modoUltimoSync: string | null;
+  };
 };
 
 export type CamasiDashboardKpis = {
@@ -88,6 +98,9 @@ export type CamasiResumoDia = {
 export type CamasiDashboardResponse = {
   dataIni: string;
   dataFim: string;
+  /** firebird = ao vivo; cache = cópia local (PC Camasi offline). */
+  fonte?: 'firebird' | 'cache';
+  cacheSyncedAt?: string | null;
   kpis: CamasiDashboardKpis;
   porMes: CamasiMesAgg[];
   motivos: CamasiMotivoAgg[];

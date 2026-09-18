@@ -150,7 +150,8 @@ export type CamasiDiaAgg = {
 const TOP_DIAS_PARADO = 20;
 
 /** NOME_MOTIVO em TEMPO_PRODUCAO é snapshot do momento da parada; o catálogo MOTIVO_PARADA tem o nome vigente. */
-const SQL_TEMPO_PRODUCAO = `
+/** Colunas comuns TEMPO_PRODUCAO + MOTIVO_PARADA (horário 06:00 legado → 07:00). */
+const SQL_TEMPO_PRODUCAO_SELECT = `
 SELECT
     tp.ID,
     tp."DATA",
@@ -181,8 +182,25 @@ SELECT
     tp.NOME_OPERADOR
 FROM TEMPO_PRODUCAO tp
 LEFT JOIN MOTIVO_PARADA mp ON mp.ID = tp.MOTIVO_PARADO
+`;
+
+const SQL_TEMPO_PRODUCAO = `
+${SQL_TEMPO_PRODUCAO_SELECT}
 WHERE tp."DATA" BETWEEN ? AND ?
 ORDER BY tp.ID DESC
+`;
+
+/** Histórico completo (sync inicial). */
+const SQL_TEMPO_PRODUCAO_ALL = `
+${SQL_TEMPO_PRODUCAO_SELECT}
+ORDER BY tp.ID
+`;
+
+/** Janela incremental (sync a cada minuto). */
+const SQL_TEMPO_PRODUCAO_DESDE = `
+${SQL_TEMPO_PRODUCAO_SELECT}
+WHERE tp."DATA" >= ?
+ORDER BY tp.ID
 `;
 
 const MESES_ABREV = [
@@ -624,7 +642,7 @@ function numField(row: Record<string, unknown>, ...keys: string[]): number {
   return 0;
 }
 
-function mapRow(raw: Record<string, unknown>): TempoProducaoRow | null {
+export function mapTempoProducaoRow(raw: Record<string, unknown>): TempoProducaoRow | null {
   const data = toYmd(raw.DATA ?? raw.data ?? raw.Data);
   if (!data) return null;
   const inicioProducao = toHms(raw.INICIO_PRODUCAO ?? raw.inicio_producao ?? raw.inicioproducao);
@@ -648,6 +666,9 @@ function mapRow(raw: Record<string, unknown>): TempoProducaoRow | null {
     horasParado: horasEntreParado(data, inicioParado, fimParado),
   };
 }
+
+/** @deprecated use mapTempoProducaoRow */
+const mapRow = mapTempoProducaoRow;
 
 function aplicarEscalaNaRow(row: TempoProducaoRow, escala: RecursoEscala | null | undefined): TempoProducaoRow {
   if (!escala || escalaEstaVazia(escala)) return row;
@@ -673,18 +694,79 @@ export function mesLabel(mes: string): string {
   return `${MESES_ABREV[idx]}/${y}`;
 }
 
-export async function listTempoProducao(
-  dataIni: string,
-  dataFim: string,
+function mapRawList(
+  raw: Record<string, unknown>[],
   escala?: RecursoEscala | null
-): Promise<TempoProducaoRow[]> {
-  const raw = await queryCamasi<Record<string, unknown>>(SQL_TEMPO_PRODUCAO, [dataIni, dataFim]);
+): TempoProducaoRow[] {
   const out: TempoProducaoRow[] = [];
   for (const r of raw) {
     const mapped = mapRow(r);
     if (mapped) out.push(aplicarEscalaNaRow(mapped, escala));
   }
   return out;
+}
+
+/** Lê TEMPO_PRODUCAO no Firebird (período). */
+export async function listTempoProducaoFirebird(
+  dataIni: string,
+  dataFim: string,
+  escala?: RecursoEscala | null
+): Promise<TempoProducaoRow[]> {
+  const raw = await queryCamasi<Record<string, unknown>>(SQL_TEMPO_PRODUCAO, [dataIni, dataFim]);
+  return mapRawList(raw, escala);
+}
+
+/** Histórico completo no Firebird (sync inicial). */
+export async function listTempoProducaoFirebirdAll(): Promise<TempoProducaoRow[]> {
+  const raw = await queryCamasi<Record<string, unknown>>(SQL_TEMPO_PRODUCAO_ALL, []);
+  return mapRawList(raw, null);
+}
+
+/** Janela a partir de dataIni (sync incremental). */
+export async function listTempoProducaoFirebirdDesde(dataIni: string): Promise<TempoProducaoRow[]> {
+  const raw = await queryCamasi<Record<string, unknown>>(SQL_TEMPO_PRODUCAO_DESDE, [dataIni]);
+  return mapRawList(raw, null);
+}
+
+export type CamasiDataFonte = 'firebird' | 'cache';
+
+export type ListTempoProducaoResult = {
+  rows: TempoProducaoRow[];
+  fonte: CamasiDataFonte;
+  /** ISO da última sync bem-sucedida (quando fonte=cache). */
+  cacheSyncedAt: string | null;
+};
+
+/**
+ * Preferência: Firebird ao vivo. Se falhar e houver espelho SQLite, usa o cache.
+ */
+export async function listTempoProducaoComFonte(
+  dataIni: string,
+  dataFim: string,
+  escala?: RecursoEscala | null
+): Promise<ListTempoProducaoResult> {
+  try {
+    const rows = await listTempoProducaoFirebird(dataIni, dataFim, escala);
+    return { rows, fonte: 'firebird', cacheSyncedAt: null };
+  } catch (err) {
+    const { listCamasiTempoProducaoFromCache, getCamasiSyncEstado, countCamasiCacheRows } =
+      await import('./camasiTempoProducaoCacheRepository.js');
+    const n = await countCamasiCacheRows();
+    if (n <= 0) throw err;
+    const cached = await listCamasiTempoProducaoFromCache(dataIni, dataFim);
+    const estado = await getCamasiSyncEstado();
+    const rows = cached.map((r) => aplicarEscalaNaRow(r, escala));
+    return { rows, fonte: 'cache', cacheSyncedAt: estado.lastSuccessAt };
+  }
+}
+
+export async function listTempoProducao(
+  dataIni: string,
+  dataFim: string,
+  escala?: RecursoEscala | null
+): Promise<TempoProducaoRow[]> {
+  const { rows } = await listTempoProducaoComFonte(dataIni, dataFim, escala);
+  return rows;
 }
 
 export function buildDashboardResumo(

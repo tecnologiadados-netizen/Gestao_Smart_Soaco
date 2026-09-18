@@ -25,6 +25,7 @@ import { iniciarCronsSgqEmailNotificacao } from './scheduler/sgqEmailNotificacao
 import { iniciarCronsEmailNotificacao } from './scheduler/emailNotificacaoCron.js';
 import { iniciarCronInadimplenteTarefas } from './scheduler/inadimplenteTarefasCron.js';
 import { executarRetratoInadimplenciaAgora, iniciarCronInadimplenciaRetrato } from './scheduler/inadimplenciaRetratoCron.js';
+import { iniciarCronCamasiTempoProducao } from './scheduler/camasiTempoProducaoCron.js';
 import { logStatusEnvioNotificacoes } from './config/envioNotificacoes.js';
 import { backfillAguardaRespostaLabelsForPendingOrders } from './services/sycroOrderAguardaRespostaLabel.js';
 import { sincronizarDescricaoEscopoWhatsAppComunicacaoPd } from './services/sycroOrderEscopoWhatsAppSync.js';
@@ -171,6 +172,7 @@ function main(): void {
         iniciarCronsEmailNotificacao();
         iniciarCronInadimplenteTarefas();
         iniciarCronInadimplenciaRetrato();
+        iniciarCronCamasiTempoProducao();
         if (process.env.NODE_ENV === 'production') {
           void executarRetratoInadimplenciaAgora();
         }

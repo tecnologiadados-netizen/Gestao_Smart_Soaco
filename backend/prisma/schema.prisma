@@ -2482,3 +2482,36 @@ model LojaKitInventarioItem {
   @@unique([inventarioId, produtoId])
   @@map("loja_kit_inventario_item")
 }
+
+/// Espelho local de TEMPO_PRODUCAO (Camasi/Firebird) — painel funciona com PC RICMAQ offline.
+model CamasiTempoProducao {
+  id             Int      @id
+  data           String
+  inicioProducao String?  @map("inicio_producao")
+  fimProducao    String?  @map("fim_producao")
+  inicioParado   String?  @map("inicio_parado")
+  fimParado      String?  @map("fim_parado")
+  motivoParado   String?  @map("motivo_parado")
+  nomeMotivo     String?  @map("nome_motivo")
+  obsMotivo      String?  @map("obs_motivo")
+  operador       String?
+  nomeOperador   String?  @map("nome_operador")
+  syncedAt       DateTime @default(now()) @updatedAt @map("synced_at")
+
+  @@index([data])
+  @@map("camasi_tempo_producao")
+}
+
+/// Estado do job de sync Camasi → SQLite (singleton id=1).
+model CamasiSyncEstado {
+  id               Int       @id @default(1)
+  lastSuccessAt    DateTime? @map("last_success_at")
+  lastAttemptAt    DateTime? @map("last_attempt_at")
+  lastError        String?   @map("last_error")
+  lastRowsUpserted Int       @default(0) @map("last_rows_upserted")
+  totalRows        Int       @default(0) @map("total_rows")
+  fullSyncDone     Boolean   @default(false) @map("full_sync_done")
+  modoUltimoSync   String?   @map("modo_ultimo_sync")
+
+  @@map("camasi_sync_estado")
+}
