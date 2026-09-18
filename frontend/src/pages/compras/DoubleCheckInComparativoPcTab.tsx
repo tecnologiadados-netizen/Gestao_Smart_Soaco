@@ -68,15 +68,23 @@ function fmtCondicao(nome: string | null, regra: string | null): string {
   return r ? `${n} · ${r}` : n;
 }
 
+function descontoUnitario(descontoTotal: number, qtde: number): number {
+  if (!(descontoTotal > 0)) return 0;
+  if (!(qtde > 0)) return descontoTotal;
+  return Math.round((descontoTotal / qtde + Number.EPSILON) * 100) / 100;
+}
+
 function fmtUnitarioLinha(
   liquido: number,
   bruto: number,
-  desconto: number
+  descontoTotal: number,
+  qtde: number
 ): { principal: string; detalhe: string | null } {
-  if (desconto > 0) {
+  if (descontoTotal > 0) {
+    const descUn = descontoUnitario(descontoTotal, qtde);
     return {
       principal: `${nfBrl.format(liquido)} líq.`,
-      detalhe: `bruto ${nfBrl.format(bruto)} · −desc. ${nfBrl.format(desconto)}`,
+      detalhe: `bruto ${nfBrl.format(bruto)} · −desc. un. ${nfBrl.format(descUn)}`,
     };
   }
   return { principal: nfBrl.format(liquido), detalhe: null };
@@ -91,12 +99,14 @@ function valoresExibicao(
       const nf = fmtUnitarioLinha(
         linha.valorUnitarioNF,
         linha.valorUnitarioBrutoNF,
-        linha.descontoNF
+        linha.descontoNF,
+        linha.qtdeNF
       );
       const pc = fmtUnitarioLinha(
         linha.valorUnitarioPC,
         linha.valorUnitarioBrutoPC,
-        linha.descontoPC
+        linha.descontoPC,
+        linha.qtdePC
       );
       return { nf: nf.principal, pc: pc.principal, nfDetalhe: nf.detalhe, pcDetalhe: pc.detalhe };
     }

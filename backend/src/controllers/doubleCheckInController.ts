@@ -96,12 +96,20 @@ function camposDivergentesDaLinha(
 function fmtUnitarioComDesconto(
   liquido: number,
   bruto: number,
-  desconto: number
+  descontoTotal: number,
+  qtde: number
 ): string {
-  if (desconto > 0) {
-    return `${fmtBrl(liquido)} líq. (bruto ${fmtBrl(bruto)} − desc. ${fmtBrl(desconto)})`;
+  if (descontoTotal > 0) {
+    const descUnit =
+      qtde > 0 ? arredondarDescUnit(descontoTotal / qtde) : descontoTotal;
+    return `${fmtBrl(liquido)} líq. (bruto ${fmtBrl(bruto)} − desc. un. ${fmtBrl(descUnit)})`;
   }
   return fmtBrl(liquido);
+}
+
+function arredondarDescUnit(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
 function formatoCampoLinha(
@@ -114,12 +122,14 @@ function formatoCampoLinha(
         nf: fmtUnitarioComDesconto(
           linha.valorUnitarioNF,
           linha.valorUnitarioBrutoNF,
-          linha.descontoNF
+          linha.descontoNF,
+          linha.qtdeNF
         ),
         pc: fmtUnitarioComDesconto(
           linha.valorUnitarioPC,
           linha.valorUnitarioBrutoPC,
-          linha.descontoPC
+          linha.descontoPC,
+          linha.qtdePC
         ),
       };
     case 'qtde':
