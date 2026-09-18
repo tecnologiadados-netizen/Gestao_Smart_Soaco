@@ -18,6 +18,8 @@ export interface RegistroInternoFormValues {
   permissaoAcesso: PermissaoAcessoDocumento | "";
   retencaoValor: string;
   retencaoUnidade: RetencaoUnidade;
+  protecao: string;
+  recuperacao: string;
   observacao: string;
   modeloNome: string;
   modeloDataUrl: string;
@@ -39,6 +41,8 @@ export function defaultRegistroInternoValues(
     permissaoAcesso: "todos",
     retencaoValor: "",
     retencaoUnidade: "anos",
+    protecao: "",
+    recuperacao: "",
     observacao: "",
     modeloNome: "",
     modeloDataUrl: "",
@@ -69,6 +73,8 @@ export function registroInternoValuesFromDocument(
     permissaoAcesso: reg?.permissaoAcesso ?? "todos",
     retencaoValor: prazo.valor,
     retencaoUnidade: prazo.unidade,
+    protecao: reg?.protecao ?? "",
+    recuperacao: reg?.recuperacao ?? "",
     observacao: reg?.observacao ?? "",
     modeloNome: modelo?.nome ?? "",
     modeloDataUrl: modelo?.dataUrl ?? "",
@@ -87,6 +93,8 @@ export function buildRegistroInternoMeta(
     avisarAntesAtivo: false,
     avisarAntesDias: 30,
     observacao: values.observacao.trim() || undefined,
+    protecao: values.protecao.trim() || undefined,
+    recuperacao: values.recuperacao.trim() || undefined,
     associarDocumentos: false,
     documentosAssociadosIds: [],
     permissaoAcesso: (values.permissaoAcesso ||

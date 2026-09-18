@@ -257,6 +257,14 @@ export function RegistroInternoDetalheDialog({
                     value={labelPrazoRetencaoDocumento(doc.externoRegistro)}
                   />
                   <MetaItem
+                    label="Proteção"
+                    value={doc.externoRegistro?.protecao?.trim() || "—"}
+                  />
+                  <MetaItem
+                    label="Recuperação"
+                    value={doc.externoRegistro?.recuperacao?.trim() || "—"}
+                  />
+                  <MetaItem
                     label="Atualizado em"
                     value={formatarDataHora(doc.updatedAt)}
                   />

@@ -492,6 +492,33 @@ export function CadastroRegistroDialog({
                   </div>
                 </div>
 
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="text-base" htmlFor="registro-protecao">
+                      Proteção
+                    </Label>
+                    <Input
+                      id="registro-protecao"
+                      className="h-10 text-base"
+                      value={values.protecao}
+                      onChange={(e) => patch({ protecao: e.target.value })}
+                      placeholder="Ex.: Backup no DOCUMENTOS"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-base" htmlFor="registro-recuperacao">
+                      Recuperação
+                    </Label>
+                    <Input
+                      id="registro-recuperacao"
+                      className="h-10 text-base"
+                      value={values.recuperacao}
+                      onChange={(e) => patch({ recuperacao: e.target.value })}
+                      placeholder="Ex.: Solicitar responsável"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <Label className="text-base">Observação</Label>
                   <Textarea

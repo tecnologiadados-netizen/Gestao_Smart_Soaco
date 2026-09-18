@@ -131,6 +131,10 @@ export interface DocumentExternoRegistro {
   retencao?: string;
   retencaoValor?: number;
   retencaoUnidade?: RetencaoUnidade;
+  /** Como o registro é protegido (texto livre). */
+  protecao?: string;
+  /** Como recuperar o registro (texto livre). */
+  recuperacao?: string;
   /** Arquivo-modelo da ficha (preenchido no cadastro). */
   modelo?: DocumentoAnexoArquivo;
   /** Histórico de arquivos inseridos no registro interno. */
