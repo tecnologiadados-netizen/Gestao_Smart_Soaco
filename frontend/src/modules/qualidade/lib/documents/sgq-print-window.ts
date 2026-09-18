@@ -1,5 +1,4 @@
 import { resolveUploadUrl } from "@/api/client";
-import { fetchQualidadeArquivoPreviewUrl } from "@qualidade/lib/api/qualidadeApi";
 
 type ArquivoRef = {
   nome?: string;
@@ -47,6 +46,18 @@ function isOffice(name: string) {
   return ["xlsx", "xls", "csv", "docx", "doc", "pptx", "ppt"].includes(getExt(name));
 }
 
+/** Planilha/Word/PowerPoint: conversão para PDF é frágil — orientar download do original. */
+export const MSG_VISUALIZACAO_BAIXAR_ORIGINAL =
+  "Este tipo de arquivo não permite visualização/impressão no navegador. Use o botão Baixar para obter o arquivo original.";
+
+export function arquivoRequerDownloadParaVisualizar(
+  nome?: string,
+  storagePath?: string
+): boolean {
+  const filename = withExt(nome?.trim() || "arquivo", storagePath);
+  return isOffice(filename) || Boolean(storagePath && isOffice(storagePath));
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -80,13 +91,20 @@ function errorHtml(message: string): string {
 }
 
 /**
- * Abre o arquivo original no visualizador nativo do Chrome (PDF/imagem),
- * no mesmo fluxo do módulo RH. Planilha/Office vai como PDF fiel do Excel.
+ * Abre o arquivo no visualizador nativo do Chrome (PDF/imagem).
+ * Planilha/Word/PowerPoint: não tenta converter — pede para baixar o original.
  */
 export async function openQualidadePrintWindow(
   arquivo: ArquivoRef,
   _mode: "view" | "print" = "print"
 ): Promise<void> {
+  const storagePath = arquivo.storagePath?.trim();
+  const filename = withExt(arquivo.nome?.trim() || "arquivo", storagePath);
+
+  if (arquivoRequerDownloadParaVisualizar(arquivo.nome, storagePath)) {
+    throw new Error(MSG_VISUALIZACAO_BAIXAR_ORIGINAL);
+  }
+
   const popup = window.open("about:blank", "_blank");
   if (!popup) {
     throw new Error(
@@ -94,8 +112,6 @@ export async function openQualidadePrintWindow(
     );
   }
 
-  const storagePath = arquivo.storagePath?.trim();
-  const filename = withExt(arquivo.nome?.trim() || "arquivo", storagePath);
   writePopupHtml(popup, loadingHtml(filename));
 
   try {
@@ -103,12 +119,6 @@ export async function openQualidadePrintWindow(
       const originalUrl = resolveUploadUrl(storagePath);
       if (isPdf(filename) || isImage(filename)) {
         popup.location.replace(originalUrl);
-        return;
-      }
-      if (isOffice(filename) || isOffice(storagePath)) {
-        const previewUrl = await fetchQualidadeArquivoPreviewUrl(storagePath);
-        if (popup.closed) return;
-        popup.location.replace(resolveUploadUrl(previewUrl));
         return;
       }
       popup.location.replace(originalUrl);

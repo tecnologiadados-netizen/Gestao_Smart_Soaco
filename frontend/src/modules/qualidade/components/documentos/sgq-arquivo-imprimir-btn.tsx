@@ -5,6 +5,7 @@ import {
   downloadQualidadeArquivo,
   openQualidadeArquivo,
 } from "@qualidade/lib/documents/file-actions";
+import { arquivoRequerDownloadParaVisualizar } from "@qualidade/lib/documents/sgq-print-window";
 
 type ArquivoRef = {
   nome?: string;
@@ -40,6 +41,10 @@ export function SgqArquivoImprimirBtn({
   label,
 }: Props) {
   const disponivel = arquivoDisponivel(arquivo);
+  const soBaixar = arquivoRequerDownloadParaVisualizar(
+    arquivo.nome,
+    arquivo.storagePath
+  );
 
   return (
     <Button
@@ -47,7 +52,11 @@ export function SgqArquivoImprimirBtn({
       variant={variant}
       size={size}
       className={className}
-      title="Imprimir"
+      title={
+        soBaixar
+          ? "Visualização indisponível — baixe o original"
+          : "Imprimir"
+      }
       disabled={disabled || !disponivel}
       onClick={() => {
         void openQualidadeArquivo(arquivo, "print").catch((err) => {

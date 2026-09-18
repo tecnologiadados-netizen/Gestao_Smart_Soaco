@@ -16,6 +16,7 @@ import {
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
+import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-print-window";
 import {
   calcularProximaDataValidade,
   documentoExigeRevalidacao,
@@ -297,7 +298,16 @@ export function RevalidarDocumentoDialog({
                 />
               </div>
               {erroArquivo ? (
-                <p className="text-sm text-destructive">{erroArquivo}</p>
+                <p
+                  className={`text-sm ${
+                    erroArquivo === MSG_VISUALIZACAO_BAIXAR_ORIGINAL
+                      ? "text-amber-700 dark:text-amber-400"
+                      : "text-destructive"
+                  }`}
+                  role="status"
+                >
+                  {erroArquivo}
+                </p>
               ) : null}
             </fieldset>
 

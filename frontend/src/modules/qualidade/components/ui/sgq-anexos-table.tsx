@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@qualidade/components/ui/table";
 import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
+import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-print-window";
 import {
   criarAnexoVazio,
   SGQ_ANEXO_ACCEPT,
@@ -201,7 +202,14 @@ export function SgqAnexosTable({
       </Table>
 
       {erro ? (
-        <p className="text-xs text-destructive" role="alert">
+        <p
+          className={`text-xs ${
+            erro === MSG_VISUALIZACAO_BAIXAR_ORIGINAL
+              ? "text-amber-700 dark:text-amber-400"
+              : "text-destructive"
+          }`}
+          role="status"
+        >
           {erro}
         </p>
       ) : null}

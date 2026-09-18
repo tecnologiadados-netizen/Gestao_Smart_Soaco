@@ -23,6 +23,7 @@ import {
   permissaoAcessoSelectLabel,
 } from "@qualidade/lib/utils/select-display";
 import { openQualidadeArquivo } from "@qualidade/lib/documents/file-actions";
+import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-print-window";
 import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
 import { buildLocalizacaoOpcoes } from "@qualidade/lib/enderecamentos-sync";
 import {
@@ -390,7 +391,16 @@ export function RegistroInternoDetalheDialog({
                   </ul>
                 )}
                 {erroArquivo ? (
-                  <p className="mt-3 text-sm text-destructive">{erroArquivo}</p>
+                  <p
+                    className={`mt-3 text-sm ${
+                      erroArquivo === MSG_VISUALIZACAO_BAIXAR_ORIGINAL
+                        ? "text-amber-700 dark:text-amber-400"
+                        : "text-destructive"
+                    }`}
+                    role="status"
+                  >
+                    {erroArquivo}
+                  </p>
                 ) : null}
               </section>
             </div>
