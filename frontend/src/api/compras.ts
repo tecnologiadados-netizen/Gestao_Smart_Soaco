@@ -1533,7 +1533,7 @@ export async function conferirDoubleCheckIn(params: {
   };
 }
 
-export type DoubleCheckInCampoComparativo = 'valor_unitario' | 'qtde' | 'valor_total' | 'ipi';
+export type DoubleCheckInCampoComparativo = 'valor_unitario' | 'qtde' | 'ipi' | 'condicao_pagamento';
 
 export type DoubleCheckInComparativoLinha = {
   idItemDocumentoEstoque: number;
@@ -1549,14 +1549,16 @@ export type DoubleCheckInComparativoLinha = {
   umPC: string | null;
   valorUnitarioNF: number;
   valorUnitarioPC: number;
-  valorTotalNF: number;
-  valorTotalPC: number;
   valorIpiNF: number;
   valorIpiPC: number;
+  condicaoPagamentoNF: string | null;
+  regraPagamentoNF: string | null;
+  condicaoPagamentoPC: string | null;
+  regraPagamentoPC: string | null;
   divergValorUnitario: boolean;
   divergQtde: boolean;
-  divergValorTotal: boolean;
   divergIpi: boolean;
+  divergCondicaoPagamento: boolean;
   temDivergencia: boolean;
 };
 

@@ -19,7 +19,7 @@ export const DOUBLE_CHECKIN_LIMIAR_DEFAULT = 10;
 /** A partir desta data (emissão NF) o sync pode enviar WhatsApp. Histórico anterior só é marcado. */
 export const DOUBLE_CHECKIN_ALERTA_DESDE_KEY = 'double_checkin_alerta_desde';
 
-export const DOUBLE_CHECKIN_CAMPOS = ['valor_unitario', 'qtde', 'valor_total', 'ipi'] as const;
+export const DOUBLE_CHECKIN_CAMPOS = ['valor_unitario', 'qtde', 'ipi', 'condicao_pagamento'] as const;
 export type DoubleCheckInCampoComparativo = (typeof DOUBLE_CHECKIN_CAMPOS)[number];
 
 const JUSTIFICATIVA_SEED: { codigo: string; label: string; sortOrder: number }[] = [
@@ -27,6 +27,7 @@ const JUSTIFICATIVA_SEED: { codigo: string; label: string; sortOrder: number }[]
   { codigo: 'erro_cadastro_um', label: 'Erro de cadastro / conversão de UM', sortOrder: 20 },
   { codigo: 'tributacao_ipi', label: 'Frete / IPI / tributação', sortOrder: 30 },
   { codigo: 'qtde_parcial', label: 'Quantidade parcial / saldo de PC', sortOrder: 40 },
+  { codigo: 'condicao_pagamento', label: 'Condição de pagamento divergente', sortOrder: 45 },
   { codigo: 'arredondamento', label: 'Ajuste de arredondamento', sortOrder: 50 },
   { codigo: 'outros', label: 'Outros', sortOrder: 90 },
 ];
@@ -75,7 +76,7 @@ export async function ensureDoubleCheckInNfPcWhatsappTipo(): Promise<{ id: numbe
       code: DOUBLE_CHECKIN_NF_PC_WA_CODE,
       label: 'Double CheckIn — NF × Pedido de compra',
       descricao:
-        'Enviada ao confirmar a conferência da NF quando há divergência entre nota fiscal e pedido de compra (valor unitário, quantidade, valor total ou IPI). Configure destinatários nesta aba SMS.',
+        'Enviada ao confirmar a conferência da NF quando há divergência entre nota fiscal e pedido de compra (valor unitário, quantidade, IPI ou condição de pagamento). Configure destinatários nesta aba SMS.',
       ativo: true,
       sortOrder: 46,
       fonteMensagem: 'evento',

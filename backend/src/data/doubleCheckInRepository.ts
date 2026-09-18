@@ -632,7 +632,7 @@ export async function queryDoubleCheckInDashboard(params: {
   }
 }
 
-export type DoubleCheckInComparativoCampo = 'valor_unitario' | 'qtde' | 'valor_total' | 'ipi';
+export type DoubleCheckInComparativoCampo = 'valor_unitario' | 'qtde' | 'ipi' | 'condicao_pagamento';
 
 export type DoubleCheckInComparativoLinha = {
   idItemDocumentoEstoque: number;
@@ -648,20 +648,40 @@ export type DoubleCheckInComparativoLinha = {
   umPC: string | null;
   valorUnitarioNF: number;
   valorUnitarioPC: number;
-  valorTotalNF: number;
-  valorTotalPC: number;
   valorIpiNF: number;
   valorIpiPC: number;
+  condicaoPagamentoNF: string | null;
+  regraPagamentoNF: string | null;
+  condicaoPagamentoPC: string | null;
+  regraPagamentoPC: string | null;
   divergValorUnitario: boolean;
   divergQtde: boolean;
-  divergValorTotal: boolean;
   divergIpi: boolean;
+  divergCondicaoPagamento: boolean;
   temDivergencia: boolean;
 };
 
-/** Sem tolerância: igualdade numérica estrita após normalização. */
-export function valoresIguaisSemTolerancia(a: number, b: number): boolean {
-  return a === b;
+/** Arredonda para comparar sem microdivergência de casas decimais. */
+export function arredondarComparativo(n: number, casas: number): number {
+  if (!Number.isFinite(n)) return 0;
+  const f = 10 ** casas;
+  return Math.round((n + Number.EPSILON) * f) / f;
+}
+
+/** Dinheiro: 2 casas. Quantidade: 4 casas. */
+export function valoresIguaisComparativo(a: number, b: number, casas: number): boolean {
+  return arredondarComparativo(a, casas) === arredondarComparativo(b, casas);
+}
+
+function normalizarTextoComparativo(v: unknown): string {
+  return String(v ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('pt-BR');
+}
+
+export function textosIguaisComparativo(a: unknown, b: unknown): boolean {
+  return normalizarTextoComparativo(a) === normalizarTextoComparativo(b);
 }
 
 const SQL_COMPARATIVO_PC = `
@@ -681,10 +701,12 @@ SELECT
   umipc.nome AS umPC,
   ide.valorUnitario AS valorUnitarioNF,
   ipc.precoUnitario AS valorUnitarioPC,
-  ide.valorTotal AS valorTotalNF,
-  (ipc.qtde * ipc.precoUnitario) AS valorTotalPC,
   IFNULL(tde.valorIPI, 0) AS valorIpiNF,
-  IFNULL(tpc.valorIPI, 0) AS valorIpiPC
+  IFNULL(tpc.valorIPI, 0) AS valorIpiPC,
+  cpde.nome AS condicaoPagamentoNF,
+  cpde.regra AS regraPagamentoNF,
+  cppc.nome AS condicaoPagamentoPC,
+  cppc.regra AS regraPagamentoPC
 FROM itemdocumentoestoque_itempedidocompra ideipc
 LEFT JOIN itemdocumentoestoque ide ON ide.id = ideipc.idItemDocumentoEstoque
 LEFT JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
@@ -695,6 +717,8 @@ LEFT JOIN unidademedida umide ON umide.id = ide.idUnidadeMedida
 LEFT JOIN unidademedida umipc ON umipc.id = ipc.idUnidadeMedida
 LEFT JOIN tributacao tde ON tde.idItemDocumentoEstoque = ide.id
 LEFT JOIN tributacao tpc ON tpc.idItemPedidoCompra = ipc.id
+LEFT JOIN condicaopagamento cpde ON cpde.id = de.idCondicaoPagamento
+LEFT JOIN condicaopagamento cppc ON cppc.id = pc.idCondicaoPagamento
 WHERE de.id = ?
 ORDER BY ide.id ASC, ipc.id ASC
 `.trim();
@@ -719,14 +743,18 @@ export async function queryDoubleCheckInComparativoPc(params: {
       const qtdePC = toNum(r.qtdePC);
       const valorUnitarioNF = toNum(r.valorUnitarioNF);
       const valorUnitarioPC = toNum(r.valorUnitarioPC);
-      const valorTotalNF = toNum(r.valorTotalNF);
-      const valorTotalPC = toNum(r.valorTotalPC);
       const valorIpiNF = toNum(r.valorIpiNF);
       const valorIpiPC = toNum(r.valorIpiPC);
-      const divergValorUnitario = !valoresIguaisSemTolerancia(valorUnitarioNF, valorUnitarioPC);
-      const divergQtde = !valoresIguaisSemTolerancia(qtdeNF, qtdePC);
-      const divergValorTotal = !valoresIguaisSemTolerancia(valorTotalNF, valorTotalPC);
-      const divergIpi = !valoresIguaisSemTolerancia(valorIpiNF, valorIpiPC);
+      const condicaoPagamentoNF = strOrNull(r.condicaoPagamentoNF);
+      const regraPagamentoNF = strOrNull(r.regraPagamentoNF);
+      const condicaoPagamentoPC = strOrNull(r.condicaoPagamentoPC);
+      const regraPagamentoPC = strOrNull(r.regraPagamentoPC);
+      const divergValorUnitario = !valoresIguaisComparativo(valorUnitarioNF, valorUnitarioPC, 2);
+      const divergQtde = !valoresIguaisComparativo(qtdeNF, qtdePC, 4);
+      const divergIpi = !valoresIguaisComparativo(valorIpiNF, valorIpiPC, 2);
+      const divergCondicaoPagamento =
+        !textosIguaisComparativo(condicaoPagamentoNF, condicaoPagamentoPC) ||
+        !textosIguaisComparativo(regraPagamentoNF, regraPagamentoPC);
       return {
         idItemDocumentoEstoque: toInt(r.idItemDocumentoEstoque),
         idItemPedidoCompra: toInt(r.idItemPedidoCompra),
@@ -735,21 +763,24 @@ export async function queryDoubleCheckInComparativoPc(params: {
         idProduto: r.idProduto != null ? toInt(r.idProduto) : null,
         codigoProduto: strOrNull(r.codigoProduto),
         descricaoProduto: strOrNull(r.descricaoProduto),
-        qtdeNF,
+        qtdeNF: arredondarComparativo(qtdeNF, 4),
         umNF: strOrNull(r.umNF),
-        qtdePC,
+        qtdePC: arredondarComparativo(qtdePC, 4),
         umPC: strOrNull(r.umPC),
-        valorUnitarioNF,
-        valorUnitarioPC,
-        valorTotalNF,
-        valorTotalPC,
-        valorIpiNF,
-        valorIpiPC,
+        valorUnitarioNF: arredondarComparativo(valorUnitarioNF, 2),
+        valorUnitarioPC: arredondarComparativo(valorUnitarioPC, 2),
+        valorIpiNF: arredondarComparativo(valorIpiNF, 2),
+        valorIpiPC: arredondarComparativo(valorIpiPC, 2),
+        condicaoPagamentoNF,
+        regraPagamentoNF,
+        condicaoPagamentoPC,
+        regraPagamentoPC,
         divergValorUnitario,
         divergQtde,
-        divergValorTotal,
         divergIpi,
-        temDivergencia: divergValorUnitario || divergQtde || divergValorTotal || divergIpi,
+        divergCondicaoPagamento,
+        temDivergencia:
+          divergValorUnitario || divergQtde || divergIpi || divergCondicaoPagamento,
       };
     });
     return { linhas };

@@ -46,8 +46,8 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const CAMPO_LABEL: Record<DoubleCheckInCampoComparativo, string> = {
   valor_unitario: 'Vl. unitário',
   qtde: 'Quantidade',
-  valor_total: 'Vl. total',
   ipi: 'IPI',
+  condicao_pagamento: 'Cond. pagamento',
 };
 
 function parseYmd(v: unknown): string | null {
@@ -68,6 +68,12 @@ function fmtNum(n: number): string {
   return n.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
 }
 
+function fmtCondicao(nome: string | null, regra: string | null): string {
+  const n = (nome ?? '').trim() || '—';
+  const r = (regra ?? '').trim();
+  return r ? `${n} (${r})` : n;
+}
+
 function chaveDecisao(
   idItemDocumentoEstoque: number,
   idItemPedidoCompra: number,
@@ -82,24 +88,27 @@ function camposDivergentesDaLinha(
   const out: DoubleCheckInCampoComparativo[] = [];
   if (linha.divergValorUnitario) out.push('valor_unitario');
   if (linha.divergQtde) out.push('qtde');
-  if (linha.divergValorTotal) out.push('valor_total');
   if (linha.divergIpi) out.push('ipi');
+  if (linha.divergCondicaoPagamento) out.push('condicao_pagamento');
   return out;
 }
 
-function valoresCampo(
+function formatoCampoLinha(
   linha: DoubleCheckInComparativoLinha,
   campo: DoubleCheckInCampoComparativo
-): { nf: number; pc: number; fmt: (n: number) => string } {
+): { nf: string; pc: string } {
   switch (campo) {
     case 'valor_unitario':
-      return { nf: linha.valorUnitarioNF, pc: linha.valorUnitarioPC, fmt: fmtBrl };
+      return { nf: fmtBrl(linha.valorUnitarioNF), pc: fmtBrl(linha.valorUnitarioPC) };
     case 'qtde':
-      return { nf: linha.qtdeNF, pc: linha.qtdePC, fmt: fmtNum };
-    case 'valor_total':
-      return { nf: linha.valorTotalNF, pc: linha.valorTotalPC, fmt: fmtBrl };
+      return { nf: fmtNum(linha.qtdeNF), pc: fmtNum(linha.qtdePC) };
     case 'ipi':
-      return { nf: linha.valorIpiNF, pc: linha.valorIpiPC, fmt: fmtBrl };
+      return { nf: fmtBrl(linha.valorIpiNF), pc: fmtBrl(linha.valorIpiPC) };
+    case 'condicao_pagamento':
+      return {
+        nf: fmtCondicao(linha.condicaoPagamentoNF, linha.regraPagamentoNF),
+        pc: fmtCondicao(linha.condicaoPagamentoPC, linha.regraPagamentoPC),
+      };
   }
 }
 
@@ -154,14 +163,14 @@ function montarMensagemNfPc(params: {
         chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
       );
       if (!dec) continue;
-      const v = valoresCampo(linha, campo);
+      const v = formatoCampoLinha(linha, campo);
       const um =
         campo === 'qtde'
           ? ` (${linha.umNF ?? '—'} / ${linha.umPC ?? '—'})`
           : '';
       const pcLabel = linha.nomePedidoCompra ?? (linha.idPedidoCompra != null ? `PC ${linha.idPedidoCompra}` : 'PC');
       bullets.push(
-        `• ${prod} · ${pcLabel} — ${CAMPO_LABEL[campo]}${um}: NF ${v.fmt(v.nf)} × PC ${v.fmt(v.pc)} — ` +
+        `• ${prod} · ${pcLabel} — ${CAMPO_LABEL[campo]}${um}: NF ${v.nf} × PC ${v.pc} — ` +
           `${dec.decisao === 'aceita' ? 'ACEITA' : 'RECUSADA'} — ${dec.justificativaLabel}` +
           (dec.observacao ? ` (${dec.observacao})` : '')
       );

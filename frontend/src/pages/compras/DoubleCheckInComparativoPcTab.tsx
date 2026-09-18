@@ -20,45 +20,37 @@ const btnPrimary =
 const btnSecondary =
   'inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50';
 
-const CAMPOS: {
+type CampoCfg = {
   id: DoubleCheckInCampoComparativo;
   label: string;
   divergKey: keyof DoubleCheckInComparativoLinha;
-  nfKey: keyof DoubleCheckInComparativoLinha;
-  pcKey: keyof DoubleCheckInComparativoLinha;
-  money: boolean;
-}[] = [
+  kind: 'money' | 'qty' | 'text';
+};
+
+const CAMPOS: CampoCfg[] = [
   {
     id: 'valor_unitario',
     label: 'Vl. unitário',
     divergKey: 'divergValorUnitario',
-    nfKey: 'valorUnitarioNF',
-    pcKey: 'valorUnitarioPC',
-    money: true,
+    kind: 'money',
   },
   {
     id: 'qtde',
     label: 'Quantidade',
     divergKey: 'divergQtde',
-    nfKey: 'qtdeNF',
-    pcKey: 'qtdePC',
-    money: false,
-  },
-  {
-    id: 'valor_total',
-    label: 'Vl. total',
-    divergKey: 'divergValorTotal',
-    nfKey: 'valorTotalNF',
-    pcKey: 'valorTotalPC',
-    money: true,
+    kind: 'qty',
   },
   {
     id: 'ipi',
     label: 'IPI',
     divergKey: 'divergIpi',
-    nfKey: 'valorIpiNF',
-    pcKey: 'valorIpiPC',
-    money: true,
+    kind: 'money',
+  },
+  {
+    id: 'condicao_pagamento',
+    label: 'Cond. pagamento',
+    divergKey: 'divergCondicaoPagamento',
+    kind: 'text',
   },
 ];
 
@@ -70,8 +62,32 @@ function chaveDecisao(
   return `${idItemDocumentoEstoque}:${idItemPedidoCompra}:${campo}`;
 }
 
-function fmtValor(n: number, money: boolean): string {
-  return money ? nfBrl.format(n) : nfNum.format(n);
+function fmtCondicao(nome: string | null, regra: string | null): string {
+  const n = (nome ?? '').trim() || '—';
+  const r = (regra ?? '').trim();
+  return r ? `${n} · ${r}` : n;
+}
+
+function valoresExibicao(
+  linha: DoubleCheckInComparativoLinha,
+  c: CampoCfg
+): { nf: string; pc: string } {
+  switch (c.id) {
+    case 'valor_unitario':
+      return { nf: nfBrl.format(linha.valorUnitarioNF), pc: nfBrl.format(linha.valorUnitarioPC) };
+    case 'qtde':
+      return {
+        nf: `${nfNum.format(linha.qtdeNF)} ${linha.umNF ?? ''}`.trim(),
+        pc: `${nfNum.format(linha.qtdePC)} ${linha.umPC ?? ''}`.trim(),
+      };
+    case 'ipi':
+      return { nf: nfBrl.format(linha.valorIpiNF), pc: nfBrl.format(linha.valorIpiPC) };
+    case 'condicao_pagamento':
+      return {
+        nf: fmtCondicao(linha.condicaoPagamentoNF, linha.regraPagamentoNF),
+        pc: fmtCondicao(linha.condicaoPagamentoPC, linha.regraPagamentoPC),
+      };
+  }
 }
 
 type DraftJustif = {
@@ -272,15 +288,10 @@ export default function DoubleCheckInComparativoPcTab({
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {CAMPOS.map((c) => {
                 const diverg = Boolean(linha[c.divergKey]);
-                const nf = Number(linha[c.nfKey]);
-                const pc = Number(linha[c.pcKey]);
+                const vals = valoresExibicao(linha, c);
                 const dec = decisaoMap.get(
                   chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
                 );
-                const umHint =
-                  c.id === 'qtde'
-                    ? ` · ${linha.umNF ?? '—'} / ${linha.umPC ?? '—'}`
-                    : '';
                 return (
                   <div
                     key={c.id}
@@ -306,19 +317,23 @@ export default function DoubleCheckInComparativoPcTab({
                         </span>
                       )}
                     </div>
-                    <div className="space-y-0.5 text-xs tabular-nums">
+                    <div className={`space-y-0.5 text-xs ${c.kind === 'text' ? '' : 'tabular-nums'}`}>
                       <div className="flex justify-between gap-2">
-                        <span className="text-slate-400">NF</span>
-                        <span className="font-medium text-slate-800 dark:text-slate-100">
-                          {fmtValor(nf, c.money)}
-                          {c.id === 'qtde' ? ` ${linha.umNF ?? ''}` : ''}
+                        <span className="shrink-0 text-slate-400">NF</span>
+                        <span
+                          className="min-w-0 text-right font-medium text-slate-800 dark:text-slate-100 break-words"
+                          title={vals.nf}
+                        >
+                          {vals.nf}
                         </span>
                       </div>
                       <div className="flex justify-between gap-2">
-                        <span className="text-slate-400">PC</span>
-                        <span className="font-medium text-slate-800 dark:text-slate-100">
-                          {fmtValor(pc, c.money)}
-                          {c.id === 'qtde' ? ` ${linha.umPC ?? ''}` : ''}
+                        <span className="shrink-0 text-slate-400">PC</span>
+                        <span
+                          className="min-w-0 text-right font-medium text-slate-800 dark:text-slate-100 break-words"
+                          title={vals.pc}
+                        >
+                          {vals.pc}
                         </span>
                       </div>
                     </div>
@@ -327,7 +342,7 @@ export default function DoubleCheckInComparativoPcTab({
                         <span className="truncate text-[10px] text-slate-500" title={dec?.justificativaLabel ?? ''}>
                           {dec
                             ? `${dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
-                            : `Divergente${umHint}`}
+                            : 'Divergente'}
                         </span>
                         {!conferido && (
                           <div className="flex shrink-0 gap-1">
