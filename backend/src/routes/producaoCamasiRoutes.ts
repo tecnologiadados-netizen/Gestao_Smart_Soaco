@@ -127,7 +127,7 @@ router.get(
     const escala = escalaEfetivaDoRecurso(recurso);
     const horasEscala = escala ? horasEscalaNoPeriodo(dataIni, dataFim, escala) : null;
     const rows = await listTempoProducao(dataIni, dataFim, escala);
-    const resumo = buildDashboardResumo(rows, { horasEscala, escala });
+    const resumo = buildDashboardResumo(rows, { horasEscala, escala, dataIni, dataFim });
     res.json({
       dataIni,
       dataFim,

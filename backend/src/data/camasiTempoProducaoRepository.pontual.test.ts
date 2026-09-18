@@ -134,14 +134,18 @@ describe('carência de 5 min no fim da jornada', () => {
       horasEscala: 8.75,
     });
 
-    const sem = resumo.paradasValidas.find(
-      (p) =>
-        p.justificativa === CAMASI_PARADA_SEM_JUSTIFICATIVA &&
-        p.inicioParado === '08:57:00' &&
-        p.observacao === CAMASI_OBS_FIM_ESCALA
-    );
-    expect(sem?.fimParado).toBe('17:10:00');
-    expect(sem?.minutos).toBe(8 * 60 + 13);
+    const sems = resumo.paradasValidas
+      .filter(
+        (p) =>
+          p.justificativa === CAMASI_PARADA_SEM_JUSTIFICATIVA &&
+          p.observacao === CAMASI_OBS_FIM_ESCALA
+      )
+      .sort((a, b) => a.inicioParado.localeCompare(b.inicioParado));
+    expect(sems.map((p) => [p.inicioParado, p.fimParado])).toEqual([
+      ['08:57:00', '11:30:00'],
+      ['13:00:00', '17:10:00'],
+    ]);
+    expect(sems.reduce((s, p) => s + p.minutos, 0)).toBe(2 * 60 + 33 + 4 * 60 + 10);
 
     const fim = resumo.paradasValidas.find(
       (p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL && p.inicioParado === '17:10:00'
@@ -149,6 +153,12 @@ describe('carência de 5 min no fim da jornada', () => {
     expect(fim?.fimParado).toBe('17:15:00');
     expect(fim?.minutos).toBe(5);
     expect(fim?.categoria).toBe('jornada');
+    expect(
+      resumo.paradasValidas.some(
+        (p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL && p.inicioParado < '17:10:00'
+      )
+    ).toBe(false);
+    expect(resumo.resumoDias[0]?.paradoHoras ?? 0).toBeLessThanOrEqual(8.75);
   });
 
   it('não corta se o FIM JORNADA já estiver só na carência final', () => {
@@ -183,6 +193,213 @@ describe('carência de 5 min no fim da jornada', () => {
     const fim = resumo.paradasValidas.find((p) => p.justificativa === 'FIM JORNADA');
     expect(fim?.inicioParado).toBe('17:12:00');
     expect(fim?.fimParado).toBe('17:15:00');
+  });
+
+  it('FIM JORNADA cobrindo a escala vira 07:00–07:05 + SEM até 17:10 + FIM 17:10–17:15', () => {
+    const escalaContinua = {
+      ...ESCALA_PERFILADEIRA_PADRAO,
+      faixas: [{ inicio: '07:00', fim: '17:15' }],
+    };
+    const rows: TempoProducaoRow[] = [
+      row({
+        id: 1,
+        data: '2025-10-10',
+        inicioParado: '07:00:00',
+        fimParado: '09:36:58',
+        nomeMotivo: 'INÍCIO JORNADA',
+        horasParado: (9 * 60 + 36 + 58 / 60 - 7 * 60) / 60,
+      }),
+      row({
+        id: 2,
+        data: '2025-10-10',
+        inicioParado: '00:59:00',
+        fimParado: '17:15:00',
+        nomeMotivo: 'FIM JORNADA',
+        nomeOperador: 'LATERAL DIREITA DE 40 CM',
+        horasParado: (17 * 60 + 15 - 59) / 60,
+      }),
+    ];
+
+    const resumo = buildDashboardResumo(rows, {
+      escala: escalaContinua,
+      horasEscala: 10.25,
+    });
+
+    const inicio = resumo.paradasValidas.find(
+      (p) => p.justificativa === CAMASI_INICIO_JORNADA_LABEL && p.inicioParado === '07:00:00'
+    );
+    expect(inicio?.fimParado).toBe('07:05:00');
+    expect(inicio?.minutos).toBe(5);
+
+    const sem = resumo.paradasValidas.find(
+      (p) =>
+        p.justificativa === CAMASI_PARADA_SEM_JUSTIFICATIVA &&
+        p.inicioParado === '07:05:00' &&
+        p.observacao === CAMASI_OBS_INICIO_ESCALA
+    );
+    expect(sem?.fimParado).toBe('17:10:00');
+
+    const fim = resumo.paradasValidas.find((p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL);
+    expect(fim?.inicioParado).toBe('17:10:00');
+    expect(fim?.fimParado).toBe('17:15:00');
+    expect(fim?.minutos).toBe(5);
+
+    expect(
+      resumo.paradasValidas.some(
+        (p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL && p.inicioParado === '07:00:00'
+      )
+    ).toBe(false);
+
+    const dia = resumo.resumoDias.find((d) => d.data === '2025-10-10');
+    expect(dia?.paradoHoras).toBeCloseTo(10.25, 5);
+    expect(dia?.paradoHoras ?? 0).toBeLessThanOrEqual(10.25);
+    expect((dia?.producaoHoras ?? 0) + (dia?.paradoHoras ?? 0)).toBeCloseTo(10.25, 5);
+  });
+
+  it('FIM JORNADA longo não apaga produção real no meio da jornada', () => {
+    const escalaContinua = {
+      ...ESCALA_PERFILADEIRA_PADRAO,
+      faixas: [{ inicio: '07:00', fim: '17:15' }],
+    };
+    const rows: TempoProducaoRow[] = [
+      row({
+        id: 1,
+        data: '2025-10-10',
+        inicioParado: '07:00:00',
+        fimParado: '09:36:00',
+        nomeMotivo: 'INÍCIO JORNADA',
+        horasParado: (9 * 60 + 36 - 7 * 60) / 60,
+      }),
+      row({
+        id: 2,
+        data: '2025-10-10',
+        inicioProducao: '09:36:00',
+        fimProducao: '16:00:00',
+        nomeOperador: 'LATERAL DIREITA DE 40 CM',
+        horasProducao: (16 * 60 - (9 * 60 + 36)) / 60,
+      }),
+      row({
+        id: 3,
+        data: '2025-10-10',
+        inicioParado: '07:00:00',
+        fimParado: '17:15:00',
+        nomeMotivo: 'FIM JORNADA',
+        nomeOperador: 'LATERAL DIREITA DE 40 CM',
+        horasParado: 10.25,
+      }),
+    ];
+
+    const resumo = buildDashboardResumo(rows, {
+      escala: escalaContinua,
+      horasEscala: 10.25,
+    });
+
+    expect(
+      resumo.paradasValidas.some(
+        (p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL && p.inicioParado < '17:10:00'
+      )
+    ).toBe(false);
+    expect(
+      resumo.producaoValidas.some((p) => p.inicioProducao === '09:36:00' && p.fimProducao === '16:00:00')
+    ).toBe(true);
+    const semFim = resumo.paradasValidas.find(
+      (p) =>
+        p.justificativa === CAMASI_PARADA_SEM_JUSTIFICATIVA &&
+        p.inicioParado === '16:00:00' &&
+        p.observacao === CAMASI_OBS_FIM_ESCALA
+    );
+    expect(semFim?.fimParado).toBe('17:10:00');
+    const dia = resumo.resumoDias.find((d) => d.data === '2025-10-10');
+    expect((dia?.producaoHoras ?? 0) + (dia?.paradoHoras ?? 0)).toBeCloseTo(10.25, 5);
+  });
+
+  it('produção na tabela não atravessa AJUSTE/SET UP no mesmo dia', () => {
+    const escalaContinua = {
+      ...ESCALA_PERFILADEIRA_PADRAO,
+      faixas: [{ inicio: '07:00', fim: '17:15' }],
+    };
+    const rows: TempoProducaoRow[] = [
+      row({
+        id: 1,
+        data: '2025-09-24',
+        inicioParado: '07:00:00',
+        fimParado: '07:13:54',
+        nomeMotivo: 'INÍCIO JORNADA',
+        horasParado: (7 * 60 + 13 + 54 / 60 - 7 * 60) / 60,
+      }),
+      row({
+        id: 2,
+        data: '2025-09-24',
+        inicioProducao: '07:13:54',
+        fimProducao: '07:15:31',
+        inicioParado: '07:15:31',
+        fimParado: '07:18:50',
+        nomeMotivo: 'AJUSTE OPERACIONAL',
+        nomeOperador: 'LATERAL DE 30 CM',
+        horasProducao: (7 * 60 + 15 + 31 / 60 - (7 * 60 + 13 + 54 / 60)) / 60,
+        horasParado: (7 * 60 + 18 + 50 / 60 - (7 * 60 + 15 + 31 / 60)) / 60,
+      }),
+      row({
+        id: 3,
+        data: '2025-09-24',
+        inicioProducao: '07:18:50',
+        fimProducao: '13:12:49',
+        inicioParado: '13:12:49',
+        fimParado: '14:54:39',
+        nomeMotivo: 'SET UP',
+        nomeOperador: 'LATERAL DE 30 CM',
+        horasProducao: (13 * 60 + 12 + 49 / 60 - (7 * 60 + 18 + 50 / 60)) / 60,
+        horasParado: (14 * 60 + 54 + 39 / 60 - (13 * 60 + 12 + 49 / 60)) / 60,
+      }),
+      row({
+        id: 4,
+        data: '2025-09-24',
+        inicioProducao: '14:54:39',
+        fimProducao: '01:54:08',
+        inicioParado: '01:54:08',
+        fimParado: '17:15:00',
+        nomeMotivo: 'FIM JORNADA',
+        nomeOperador: 'PORTA DIREITA DE 40CM',
+        horasProducao: 11,
+        horasParado: 15.35,
+      }),
+    ];
+
+    const resumo = buildDashboardResumo(rows, {
+      escala: escalaContinua,
+      horasEscala: 10.25,
+    });
+
+    const ajuste = resumo.paradasValidas.find((p) => p.justificativa === 'AJUSTE OPERACIONAL');
+    const setup = resumo.paradasValidas.find((p) => p.justificativa === 'SET UP');
+    expect(ajuste?.inicioParado).toBe('07:15:31');
+    expect(setup?.inicioParado).toBe('13:12:49');
+
+    const prodBlocoUnico = resumo.producaoValidas.find(
+      (p) => p.inicioProducao === '07:13:54' && p.fimProducao >= '13:00:00'
+    );
+    expect(prodBlocoUnico).toBeUndefined();
+
+    for (const prod of resumo.producaoValidas.filter((p) => p.data === '2025-09-24')) {
+      expect(prod.fimProducao <= '07:15:31' || prod.inicioProducao >= '07:18:50').toBe(true);
+      expect(prod.fimProducao <= '13:12:49' || prod.inicioProducao >= '14:54:39').toBe(true);
+    }
+
+    const ultimaProd = resumo.producaoValidas
+      .filter((p) => p.data === '2025-09-24')
+      .sort((a, b) => a.inicioProducao.localeCompare(b.inicioProducao))
+      .at(-1);
+    expect(ultimaProd?.inicioProducao).toBe('14:54:39');
+    expect(ultimaProd?.fimProducao).toBe('17:15:00');
+    expect(ultimaProd?.peca).toBe('PORTA DIREITA DE 40CM');
+    expect(
+      resumo.paradasValidas.some(
+        (p) => p.justificativa === CAMASI_FIM_JORNADA_LABEL && p.inicioParado === '17:10:00'
+      )
+    ).toBe(false);
+
+    const dia = resumo.resumoDias.find((d) => d.data === '2025-09-24');
+    expect((dia?.producaoHoras ?? 0) + (dia?.paradoHoras ?? 0)).toBeCloseTo(10.25, 5);
   });
 });
 
@@ -432,5 +649,24 @@ describe('buildDashboardResumo com horário pontual', () => {
     });
     expect(resumo.kpis.horasEscala).toBe(223.25);
     expect(resumo.resumoDias.reduce((s, d) => s + d.escalaHoras, 0)).toBe(8);
+  });
+});
+
+describe('dias do período até hoje sem Camasi', () => {
+  it('contam como produção (escala − parado) para o recorte fechar até o restante de hoje', () => {
+    const resumo = buildDashboardResumo([], {
+      escala: ESCALA_PERFILADEIRA_PADRAO,
+      dataIni: '2026-09-14',
+      dataFim: '2026-09-15',
+      agoraMs: new Date(2026, 8, 16, 12, 0, 0).getTime(),
+    });
+    const porDia = new Map(resumo.resumoDias.map((d) => [d.data, d]));
+    expect(porDia.get('2026-09-14')?.paradoHoras).toBe(0);
+    expect(porDia.get('2026-09-14')?.producaoHoras).toBe(8.75);
+    expect(porDia.get('2026-09-15')?.paradoHoras).toBe(0);
+    expect(porDia.get('2026-09-15')?.producaoHoras).toBe(8.75);
+    expect(resumo.kpis.horasParado).toBe(0);
+    expect(resumo.kpis.horasProducao).toBe(17.5);
+    expect(resumo.producaoValidas.some((p) => p.data === '2026-09-14')).toBe(true);
   });
 });

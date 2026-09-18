@@ -55,6 +55,8 @@ import { CalendarClock, CircleHelp, FileSpreadsheet } from 'lucide-react';
 type Filtros = { dataIni: string; dataFim: string };
 
 const JUSTIFICATIVA_SEP = '|';
+/** Último dia com produção em virada de meia-noite (Camasi). */
+const CAMASI_VIRADA_24H_YMD = '2026-07-15';
 
 function chaveJustificativa(valor: string | null | undefined, fallback = '—'): string {
   const t = valor?.trim();
@@ -357,12 +359,17 @@ function pontoComProducao(
   base: Omit<PontoPrevistoParado, 'producao'>,
   producaoEventos?: number
 ): PontoPrevistoParado {
+  const previsto = Math.max(0, base.previsto);
+  const parado =
+    previsto > 0 ? roundHoras(Math.min(Math.max(0, base.parado), previsto)) : roundHoras(Math.max(0, base.parado));
+  const resto = Math.max(0, previsto - parado);
   return {
     ...base,
+    parado,
     producao:
       producaoEventos != null
-        ? roundHoras(Math.max(0, producaoEventos))
-        : roundHoras(Math.max(0, base.previsto - base.parado)),
+        ? roundHoras(Math.max(0, Math.min(producaoEventos, resto)))
+        : roundHoras(resto),
   };
 }
 
@@ -649,7 +656,9 @@ function ModalMemorialProducaoCamasi({
               Memorial de cálculo — Produção
             </h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              No dia em aberto, o previsto usa só a escala já decorrida (até agora).
+              Até hoje, dia útil sem apontamento Camasi entra como produção. No dia em aberto, o
+              previsto usa só a escala já decorrida (até agora); a diferença para o tempo disponível
+              do período é o restante da jornada de hoje.
             </p>
           </div>
           <button
@@ -688,7 +697,7 @@ function ModalMemorialProducaoCamasi({
             </span>
             <span className="text-slate-400 dark:text-slate-500">
               {' '}
-              = produção ÷ previsto até o dia atual
+              = produção ÷ previsto até hoje
             </span>
           </p>
         ) : (
@@ -1032,6 +1041,9 @@ export default function ProducaoCamasiPage() {
               ? ` · ${formatYmdBr(data.dataIni)} a ${formatYmdBr(data.dataFim)}`
               : ''}
             {isFiltroHoje && atualizadoAs ? ` · atualizado às ${atualizadoAs}` : ''}
+          </p>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Virada das 24h: {formatYmdBr(CAMASI_VIRADA_24H_YMD)} — depois a jornada é 07:00–17:15
           </p>
           {data && !data.escala ? (
             <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
