@@ -451,6 +451,14 @@ describe('dia corrente — linha aberta Camasi (FIM_PRODUCAO vivo vs congelado)'
     );
     expect(aguardando?.fimParado).toBe('12:30:00');
     expect(aguardando?.observacao).toBe(CAMASI_OBS_PARADA_INFERIDA);
+    // Máquina parada: não inventa linha "Em produção" após o FIM congelado.
+    expect(
+      resumo.producaoValidas.some(
+        (p) =>
+          p.justificativa === CAMASI_EM_PRODUCAO ||
+          (p.inicioProducao ?? '') >= '10:00:05'
+      )
+    ).toBe(false);
 
     expect(resumo.kpis.horasEscalaDecorrida).toBe(5.5);
     expect(resumo.kpis.horasProducao).toBeCloseTo(5.5 - resumo.kpis.horasParado, 5);

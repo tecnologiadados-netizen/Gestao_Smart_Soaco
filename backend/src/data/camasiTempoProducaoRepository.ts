@@ -935,8 +935,13 @@ export function buildDashboardResumo(
           escala && !escalaEstaVazia(escala)
             ? intervalosNaEscalaDoDia(hojeYmd, linhaAberta.startMs, linhaAberta.endMs, escala)
             : [{ startMs: linhaAberta.startMs, endMs: linhaAberta.endMs }];
-        pushParadaPeca(acc, pieces, 'operacional', horas);
-        for (const piece of pieces) {
+        // Peça bruta até "agora" (mesmo fora de faixa): evita buraco na grade virar "produção".
+        const coberturaAteAgora: MsInterval[] = [
+          { startMs: linhaAberta.startMs, endMs: linhaAberta.endMs },
+        ];
+        pushParadaPeca(acc, coberturaAteAgora, 'operacional', horas);
+        const paraExibir = pieces.length > 0 ? pieces : coberturaAteAgora;
+        for (const piece of paraExibir) {
           const h = (piece.endMs - piece.startMs) / MS_HORA;
           if (h <= 0) continue;
           paradasValidas.push({
@@ -1426,9 +1431,14 @@ export function buildDashboardResumo(
     diaAcc.set(data, acc);
   }
 
-  // Com escala: produção na grade (tabelas) = escala sem parada, só até a última parada fechada.
+  // Com escala: produção na grade = intervalos da escala sem parada.
+  // Com FIM_PRODUCAO congelado, não inventa "Em produção" depois do congelamento.
   if (escala && !escalaEstaVazia(escala)) {
     let idProd = 0;
+    const freezeMs =
+      linhaAberta?.tipo === 'parada' && linhaAberta.row.data === hojeYmd
+        ? linhaAberta.startMs
+        : null;
     for (const data of kpiDays) {
       const limiteMs = limiteMsEventos(data);
       const janelas = clipJanelasAte(janelasEscalaNoDia(data, escala), limiteMs);
@@ -1439,6 +1449,10 @@ export function buildDashboardResumo(
       for (const gap of gaps) {
         const horas = (gap.endMs - gap.startMs) / MS_HORA;
         if (horas <= 0) continue;
+        // Parado aguardando: qualquer gap no/após o FIM congelado não é produção.
+        if (freezeMs != null && data === hojeYmd && gap.startMs >= freezeMs - 500) continue;
+        // Evita linha fantasma de milissegundos no limite "agora".
+        if (gap.endMs - gap.startMs < 1000) continue;
         idProd += 1;
         let peca = '—';
         let melhorOverlap = 0;
@@ -1451,6 +1465,16 @@ export function buildDashboardResumo(
             peca = h.peca;
           }
         }
+        const lives = liveEmProducao.get(data) ?? [];
+        let justLive: string | null = null;
+        for (const live of lives) {
+          const a = Math.max(gap.startMs, live.startMs);
+          const b = Math.min(gap.endMs, live.endMs);
+          if (b > a) {
+            justLive = CAMASI_EM_PRODUCAO;
+            break;
+          }
+        }
         producaoValidas.push({
           id: -(10_000 + idProd),
           data,
@@ -1459,15 +1483,7 @@ export function buildDashboardResumo(
           horas: roundHoras(horas),
           minutos: minutosEntreMs(gap.startMs, gap.endMs),
           peca,
-          justificativa: (() => {
-            const lives = liveEmProducao.get(data) ?? [];
-            for (const live of lives) {
-              const a = Math.max(gap.startMs, live.startMs);
-              const b = Math.min(gap.endMs, live.endMs);
-              if (b > a) return CAMASI_EM_PRODUCAO;
-            }
-            return null;
-          })(),
+          justificativa: justLive,
         });
       }
     }
