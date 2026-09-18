@@ -23,6 +23,7 @@ import {
   deleteQualidadeEquipamento,
 } from '../data/qualidadeRepository.js';
 import { gerarRccPdfBuffer, gerarRncPdfBuffer } from '../services/qualidadePdfService.js';
+import { ensureQualidadePreviewPdf } from '../services/sgq/sgqOfficeToPdf.js';
 
 const CLIENTES_SEARCH_LIMIT = 80;
 const PRODUTOS_SEARCH_LIMIT = 100;
@@ -404,6 +405,21 @@ export async function postQualidadeRegistrosImportHandler(req: Request, res: Res
     res.json({ ok: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao importar registros.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function getQualidadeArquivoPreviewHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const src = typeof req.query.src === 'string' ? req.query.src.trim() : '';
+    if (!src.startsWith('/uploads/qualidade/')) {
+      res.status(400).json({ error: 'Arquivo inválido.' });
+      return;
+    }
+    const url = await ensureQualidadePreviewPdf(src);
+    res.json({ url });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao preparar visualização.';
     res.status(500).json({ error: message });
   }
 }

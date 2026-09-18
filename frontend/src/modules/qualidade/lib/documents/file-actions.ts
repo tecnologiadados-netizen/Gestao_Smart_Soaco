@@ -1,3 +1,6 @@
+import { openQualidadePrintWindow } from "@qualidade/lib/documents/sgq-print-window";
+import { resolveUploadUrl } from "@/api/client";
+
 export type DocumentFileViewMode = "view" | "print";
 
 const VIEWER_STORAGE_PREFIX = "sgq-file-view:";
@@ -52,6 +55,28 @@ export function getFileExtension(filename: string) {
   return parts.length > 1 ? parts.pop()!.toLowerCase() : "";
 }
 
+export function extensionFromStoragePath(path: string) {
+  const base = path.split("?")[0]?.split("/").pop() ?? "";
+  return getFileExtension(base);
+}
+
+export function nomeArquivoComExtensao(
+  nome: string,
+  storagePath?: string
+): string {
+  const trimmed = nome.trim();
+  if (getFileExtension(trimmed)) return trimmed;
+  const ext = storagePath ? extensionFromStoragePath(storagePath) : "";
+  return ext ? `${trimmed}.${ext}` : trimmed;
+}
+
+export function arquivoTemPreviewNativo(
+  filename: string,
+  mimeType?: string
+): boolean {
+  return isPdfFile(filename, mimeType) || isImageFile(filename, mimeType);
+}
+
 export function isPdfFile(filename: string, mimeType?: string) {
   return (
     mimeType === "application/pdf" || getFileExtension(filename) === "pdf"
@@ -104,121 +129,23 @@ export function downloadDocumentFile(dataUrl: string, filename: string) {
 }
 
 /**
- * Abre visualização/impressão do arquivo.
- * PDF e imagens usam blob URL (viewer nativo do navegador) — evita rota SPA autenticada
- * que quebrava com noopener (nova aba sem sessionStorage → /sem-acesso).
- * Demais formatos usam a página viewer com payload em localStorage.
+ * Abre o visualizador/impressão numa aba limpa (sem o layout do sistema).
+ * Planilha/PDF/imagem são preparados nessa aba; print só dispara com o documento no DOM.
  */
 export function openDocumentFileViewer(
   dataUrl: string,
   filename: string,
   mode: DocumentFileViewMode
 ) {
-  const blob = blobForInlinePreview(dataUrl, filename);
-  const mime = blob.type;
-
-  if (isPdfFile(filename, mime) || isImageFile(filename, mime)) {
-    const objectUrl = URL.createObjectURL(blob);
-    const popup = window.open(objectUrl, "_blank");
-    if (!popup) {
-      URL.revokeObjectURL(objectUrl);
-      throw new Error(
-        "Não foi possível abrir a visualização. Verifique se o navegador bloqueou pop-ups."
-      );
-    }
-    if (mode === "print") {
-      window.setTimeout(() => {
-        try {
-          popup.focus();
-          popup.print();
-        } catch {
-          /* ignore */
-        }
-      }, 700);
-    }
-    // Mantém o blob enquanto a aba de visualização estiver em uso.
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 10 * 60 * 1000);
-    return;
-  }
-
-  const key = `${VIEWER_STORAGE_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  try {
-    localStorage.setItem(
-      key,
-      JSON.stringify({ dataUrl, filename, mode, createdAt: Date.now() })
-    );
-  } catch {
-    throw new Error(
-      "Não foi possível preparar a visualização (armazenamento local indisponível)."
-    );
-  }
-
-  const popup = window.open(
-    `/qualidade/documentos/visualizar?k=${encodeURIComponent(key)}`,
-    "_blank"
-  );
-
-  if (!popup) {
-    localStorage.removeItem(key);
-    throw new Error(
-      "Não foi possível abrir a visualização. Verifique se o navegador bloqueou pop-ups."
-    );
-  }
+  return openQualidadePrintWindow({ nome: filename, dataUrl }, mode);
 }
 
-/** Abre arquivo do SGQ com dataUrl embutido ou storagePath no servidor (/uploads/...). */
+/** Abre o visualizador numa aba limpa. O download fica na própria tela. */
 export async function openQualidadeArquivo(
   arquivo: { nome?: string; dataUrl?: string; storagePath?: string },
-  mode: DocumentFileViewMode = "view"
+  mode: DocumentFileViewMode = "print"
 ): Promise<void> {
-  const nome = arquivo.nome?.trim();
-  if (!nome) throw new Error("Arquivo sem nome.");
-
-  const dataUrl = arquivo.dataUrl?.trim();
-  if (dataUrl?.startsWith("data:")) {
-    openDocumentFileViewer(dataUrl, nome, mode);
-    return;
-  }
-
-  const storagePath = arquivo.storagePath?.trim();
-  if (storagePath?.startsWith("/uploads/")) {
-    if (isPdfFile(nome) || isImageFile(nome)) {
-      const popup = window.open(storagePath, "_blank", "noopener,noreferrer");
-      if (!popup) {
-        throw new Error(
-          "Não foi possível abrir a visualização. Verifique se o navegador bloqueou pop-ups."
-        );
-      }
-      if (mode === "print") {
-        window.setTimeout(() => {
-          try {
-            popup.focus();
-            popup.print();
-          } catch {
-            /* ignore */
-          }
-        }, 700);
-      }
-      return;
-    }
-
-    const res = await fetch(storagePath);
-    if (!res.ok) throw new Error("Não foi possível carregar o arquivo no servidor.");
-    const blob = await res.blob();
-    const reader = new FileReader();
-    const asDataUrl = await new Promise<string>((resolve, reject) => {
-      reader.onload = () => resolve(String(reader.result ?? ""));
-      reader.onerror = () => reject(new Error("Falha ao ler o arquivo."));
-      reader.readAsDataURL(blob);
-    });
-    if (!asDataUrl.startsWith("data:")) {
-      throw new Error("Arquivo inválido no servidor.");
-    }
-    openDocumentFileViewer(asDataUrl, nome, mode);
-    return;
-  }
-
-  throw new Error("Arquivo indisponível para visualização.");
+  await openQualidadePrintWindow(arquivo, mode);
 }
 
 export async function downloadQualidadeArquivo(arquivo: {
@@ -229,21 +156,23 @@ export async function downloadQualidadeArquivo(arquivo: {
   const nome = arquivo.nome?.trim();
   if (!nome) throw new Error("Arquivo sem nome.");
 
+  const storagePath = arquivo.storagePath?.trim();
+  const nomeComExt = nomeArquivoComExtensao(nome, storagePath);
+
   const dataUrl = arquivo.dataUrl?.trim();
   if (dataUrl?.startsWith("data:")) {
-    downloadDocumentFile(dataUrl, nome);
+    downloadDocumentFile(dataUrl, nomeComExt);
     return;
   }
 
-  const storagePath = arquivo.storagePath?.trim();
   if (storagePath?.startsWith("/uploads/")) {
-    const res = await fetch(storagePath);
+    const res = await fetch(resolveUploadUrl(storagePath));
     if (!res.ok) throw new Error("Não foi possível baixar o arquivo.");
     const blob = await res.blob();
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
-    link.download = nome;
+    link.download = nomeComExt;
     link.rel = "noopener";
     link.style.display = "none";
     document.body.appendChild(link);

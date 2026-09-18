@@ -27,11 +27,11 @@ export const CAMASI_CARENCIA_MS = 5 * 60 * 1000;
 export const CAMASI_CARENCIA_INICIO_MS = CAMASI_CARENCIA_MS;
 
 /** Ociosidade após/antes da carência sem produção/registro. */
-export const CAMASI_PARADA_SEM_JUSTIFICATIVA = 'Sem justificativa';
+export const CAMASI_PARADA_SEM_JUSTIFICATIVA = 'SEM JUSTIFICATIVA';
 /** Parada em andamento no dia corrente ainda sem motivo na Camasi. */
-export const CAMASI_AGUARDANDO_JUSTIFICATIVA = 'Aguardando justificativa';
+export const CAMASI_AGUARDANDO_JUSTIFICATIVA = 'AGUARDANDO JUSTIFICATIVA';
 /** Produção em andamento (FIM_PRODUCAO da Camasi ainda avançando). */
-export const CAMASI_EM_PRODUCAO = 'Em produção';
+export const CAMASI_EM_PRODUCAO = 'EM PRODUÇÃO';
 
 export const CAMASI_INICIO_JORNADA_LABEL = 'INÍCIO JORNADA';
 export const CAMASI_FIM_JORNADA_LABEL = 'FIM JORNADA';
@@ -123,7 +123,7 @@ export type CamasiProducaoValida = {
   horas: number;
   minutos: number;
   peca: string;
-  /** Ex.: "Em produção" quando o trecho está em andamento no dia corrente. */
+  /** Ex.: "EM PRODUÇÃO" quando o trecho está em andamento no dia corrente. */
   justificativa?: string | null;
 };
 
@@ -148,6 +148,7 @@ export type CamasiDiaAgg = {
 
 const TOP_DIAS_PARADO = 20;
 
+/** NOME_MOTIVO em TEMPO_PRODUCAO é snapshot do momento da parada; o catálogo MOTIVO_PARADA tem o nome vigente. */
 const SQL_TEMPO_PRODUCAO = `
 SELECT
     tp.ID,
@@ -173,11 +174,12 @@ SELECT
         ELSE tp.FIM_PARADO
     END AS FIM_PARADO,
     tp.MOTIVO_PARADO,
-    tp.NOME_MOTIVO,
+    COALESCE(NULLIF(TRIM(mp.NOME), ''), tp.NOME_MOTIVO) AS NOME_MOTIVO,
     tp.OBS_MOTIVO,
     tp.OPERADOR,
     tp.NOME_OPERADOR
 FROM TEMPO_PRODUCAO tp
+LEFT JOIN MOTIVO_PARADA mp ON mp.ID = tp.MOTIVO_PARADO
 WHERE tp."DATA" BETWEEN ? AND ?
 ORDER BY tp.ID DESC
 `;
@@ -926,7 +928,7 @@ export function buildDashboardResumo(
   };
 
   // Carência padrão (5 min) no início da jornada: se não houver registro até +5 min,
-  // gera INÍCIO JORNADA (carência) + Sem justificativa até o 1º registro real.
+  // gera INÍCIO JORNADA (carência) + SEM JUSTIFICATIVA até o 1º registro real.
   if (escala && !escalaEstaVazia(escala)) {
     for (const data of allDays) {
       const janelas = janelasEscalaNoDia(data, escala).sort(

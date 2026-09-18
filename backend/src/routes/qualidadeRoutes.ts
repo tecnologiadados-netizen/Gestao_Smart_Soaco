@@ -14,6 +14,7 @@ import {
   getQualidadeResponsaveisHandler,
   postQualidadeRccPdf,
   postQualidadeRegistrosImportHandler,
+  getQualidadeArquivoPreviewHandler,
   postQualidadeRncPdf,
   putQualidadeAvaliacoesHandler,
   putQualidadeCalibrationsHandler,
@@ -94,6 +95,9 @@ router.post('/registros/rnc/pdf', (req, res, next) => {
 });
 router.post('/registros/rcc/pdf', (req, res, next) => {
   postQualidadeRccPdf(req, res).catch(next);
+});
+router.get('/arquivos/preview', (req, res, next) => {
+  getQualidadeArquivoPreviewHandler(req, res).catch(next);
 });
 
 export default router;

@@ -1,10 +1,5 @@
-import { Download, ExternalLink } from "lucide-react";
-import { Button } from "@qualidade/components/ui/button";
 import { SgqAnexosTable } from "@qualidade/components/ui/sgq-anexos-table";
-import {
-  downloadQualidadeArquivo,
-  openQualidadeArquivo,
-} from "@qualidade/lib/documents/file-actions";
+import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
 import type { EquipmentAnexo } from "@qualidade/types/calibration";
 
 function ArquivoActions({
@@ -17,32 +12,13 @@ function ArquivoActions({
   nome: string;
 }) {
   return (
-    <div className="flex gap-1">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-8 gap-1.5 text-xs text-brand-blue"
-        onClick={() => {
-          void openQualidadeArquivo({ nome, dataUrl, storagePath }, "view");
-        }}
-      >
-        <ExternalLink className="size-3.5" />
-        Visualizar
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-8 gap-1.5 text-xs"
-        onClick={() => {
-          void downloadQualidadeArquivo({ nome, dataUrl, storagePath });
-        }}
-      >
-        <Download className="size-3.5" />
-        Baixar
-      </Button>
-    </div>
+    <SgqArquivoAcoes
+      arquivo={{ nome, dataUrl, storagePath }}
+      variant="ghost"
+      size="sm"
+      className="h-8 gap-1.5 text-xs text-brand-blue"
+      labeled
+    />
   );
 }
 

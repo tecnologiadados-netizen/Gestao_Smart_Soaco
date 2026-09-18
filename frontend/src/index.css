@@ -617,6 +617,14 @@ body.table-col-resizing {
   animation: soaco-page-enter 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@media print {
+  .soaco-page-transition {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
 /* Loader padrão do sistema — ponto cai, forma o anel e despenca.
    Ciclo de 1.25s: dois loops fecham em 2.5s (ver LOADER_CICLO_MS). */
 .loader-circulo {

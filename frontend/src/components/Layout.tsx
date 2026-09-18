@@ -202,6 +202,19 @@ function LayoutInner() {
     }
   };
 
+  const isSgqFileViewer = location.pathname.startsWith(
+    '/qualidade/documentos/visualizar'
+  );
+  if (isSgqFileViewer) {
+    return (
+      <PermissionGuard>
+        <div className="h-svh min-h-0 overflow-hidden bg-white print:h-auto print:overflow-visible">
+          <PageTransitionOutlet />
+        </div>
+      </PermissionGuard>
+    );
+  }
+
   return (
     <div className="h-svh min-h-0 flex bg-[var(--soaco-surface)]">
       {!modoFoco && (

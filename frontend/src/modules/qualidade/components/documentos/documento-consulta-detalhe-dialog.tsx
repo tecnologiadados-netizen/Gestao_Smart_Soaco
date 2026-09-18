@@ -1,13 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  ChevronDown,
-  Download,
-  ExternalLink,
-  FileText,
-  Pencil,
-  Printer,
-  X,
-} from "lucide-react";
+import { ChevronDown, FileText, Pencil, X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Badge } from "@qualidade/components/ui/badge";
@@ -34,10 +26,8 @@ import {
   mensagemAlertaValidade,
   severidadeAlertaValidade,
 } from "@qualidade/lib/documents/validity";
-import {
-  downloadQualidadeArquivo,
-  openQualidadeArquivo,
-} from "@qualidade/lib/documents/file-actions";
+import { openQualidadeArquivo } from "@qualidade/lib/documents/file-actions";
+import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
 import { buildLocalizacaoOpcoes } from "@qualidade/lib/enderecamentos-sync";
 import { cn } from "@qualidade/lib/utils";
 import {
@@ -255,30 +245,17 @@ function DocumentoConsultaDetalheDialogImpl({
     onOpenChange(false);
   }
 
-  async function abrirArquivo(
-    arquivo: ArquivoVersao,
-    mode: "view" | "print"
-  ) {
+  async function abrirArquivo(arquivo: ArquivoVersao) {
     if (!arquivo.nome?.trim() || !arquivoTemConteudo(arquivo)) return;
     setErroArquivo("");
     try {
-      await openQualidadeArquivo(arquivo, mode);
+      await openQualidadeArquivo(arquivo, "print");
     } catch (error) {
       setErroArquivo(
         error instanceof Error
           ? error.message
           : "Não foi possível abrir o arquivo."
       );
-    }
-  }
-
-  async function handleBaixarArquivo(arquivo: ArquivoVersao) {
-    if (!arquivo.nome?.trim() || !arquivoTemConteudo(arquivo)) return;
-    setErroArquivo("");
-    try {
-      await downloadQualidadeArquivo(arquivo);
-    } catch {
-      setErroArquivo("Não foi possível baixar o arquivo.");
     }
   }
 
@@ -413,38 +390,15 @@ function DocumentoConsultaDetalheDialogImpl({
                                 {arquivo.nome}
                               </p>
                               <div className="mt-2 flex flex-wrap gap-2">
-                                <Button
-                                  type="button"
+                                <SgqArquivoAcoes
+                                  arquivo={arquivo}
+                                  disabled={!disponivel}
+                                  variant="default"
                                   size="sm"
                                   className="gap-1.5"
-                                  disabled={!disponivel}
-                                  onClick={() => void abrirArquivo(arquivo, "view")}
-                                >
-                                  <ExternalLink className="size-3.5" />
-                                  Visualizar
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="gap-1.5"
-                                  disabled={!disponivel}
-                                  onClick={() => void abrirArquivo(arquivo, "print")}
-                                >
-                                  <Printer className="size-3.5" />
-                                  Imprimir
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="gap-1.5"
-                                  disabled={!disponivel}
-                                  onClick={() => void handleBaixarArquivo(arquivo)}
-                                >
-                                  <Download className="size-3.5" />
-                                  Baixar
-                                </Button>
+                                  labeled
+                                  onError={setErroArquivo}
+                                />
                               </div>
                             </div>
                           </div>
@@ -698,20 +652,9 @@ function DocumentoConsultaDetalheDialogImpl({
                                     <button
                                       key={`${ver.id}-${arquivo.nome}-${idx}`}
                                       type="button"
-                                      onClick={() => {
-                                        void downloadQualidadeArquivo(arquivo).catch(
-                                          (error) => {
-                                            setErroArquivo(
-                                              error instanceof Error
-                                                ? error.message
-                                                : "Não foi possível baixar o arquivo."
-                                            );
-                                          }
-                                        );
-                                      }}
+                                      onClick={() => void abrirArquivo(arquivo)}
                                       className="inline-flex items-center gap-1 text-xs font-medium text-brand-blue hover:underline"
                                     >
-                                      <Download className="size-3.5" />
                                       {arquivo.nome}
                                     </button>
                                   ) : (

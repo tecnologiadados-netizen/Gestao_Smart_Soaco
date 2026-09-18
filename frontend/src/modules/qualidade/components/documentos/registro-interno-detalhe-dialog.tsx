@@ -1,14 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  Download,
-  ExternalLink,
-  FileText,
-  Pencil,
-  Plus,
-  Printer,
-  Trash2,
-  X,
-} from "lucide-react";
+import { FileText, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Badge } from "@qualidade/components/ui/badge";
@@ -31,10 +22,8 @@ import {
   labelResponsavel,
   permissaoAcessoSelectLabel,
 } from "@qualidade/lib/utils/select-display";
-import {
-  downloadQualidadeArquivo,
-  openQualidadeArquivo,
-} from "@qualidade/lib/documents/file-actions";
+import { openQualidadeArquivo } from "@qualidade/lib/documents/file-actions";
+import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
 import { buildLocalizacaoOpcoes } from "@qualidade/lib/enderecamentos-sync";
 import {
   labelPrazoRetencaoDocumento,
@@ -128,24 +117,7 @@ export function RegistroInternoDetalheDialog({
     [doc, versaoAtual]
   );
 
-  async function abrirArquivo(
-    arquivo: { nome: string; dataUrl: string; storagePath?: string },
-    mode: "view" | "print"
-  ) {
-    if (!arquivo.nome?.trim()) return;
-    setErroArquivo("");
-    try {
-      await openQualidadeArquivo(arquivo, mode);
-    } catch (error) {
-      setErroArquivo(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível abrir o arquivo."
-      );
-    }
-  }
-
-  async function handleBaixarArquivo(arquivo: {
+  async function abrirArquivo(arquivo: {
     nome: string;
     dataUrl: string;
     storagePath?: string;
@@ -153,9 +125,13 @@ export function RegistroInternoDetalheDialog({
     if (!arquivo.nome?.trim()) return;
     setErroArquivo("");
     try {
-      await downloadQualidadeArquivo(arquivo);
-    } catch {
-      setErroArquivo("Não foi possível baixar o arquivo.");
+      await openQualidadeArquivo(arquivo, "print");
+    } catch (error) {
+      setErroArquivo(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível abrir o arquivo."
+      );
     }
   }
 
@@ -297,30 +273,14 @@ export function RegistroInternoDetalheDialog({
                       <button
                         type="button"
                         className="break-all text-left text-sm font-medium text-brand-blue hover:underline"
-                        onClick={() => void abrirArquivo(modelo, "view")}
+                        onClick={() => void abrirArquivo(modelo)}
                       >
                         {modelo.nome}
                       </button>
-                      <div className="flex gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          title="Visualizar"
-                          onClick={() => void abrirArquivo(modelo, "view")}
-                        >
-                          <ExternalLink className="size-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          title="Baixar"
-                          onClick={() => void handleBaixarArquivo(modelo)}
-                        >
-                          <Download className="size-4" />
-                        </Button>
-                      </div>
+                      <SgqArquivoAcoes
+                        arquivo={modelo}
+                        onError={setErroArquivo}
+                      />
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">
@@ -378,9 +338,7 @@ export function RegistroInternoDetalheDialog({
                                 <button
                                   type="button"
                                   className="break-all text-left text-sm font-medium text-brand-blue hover:underline"
-                                  onClick={() =>
-                                    void abrirArquivo(ocorrencia, "view")
-                                  }
+                                  onClick={() => void abrirArquivo(ocorrencia)}
                                 >
                                   {ocorrencia.nome}
                                 </button>
@@ -407,42 +365,11 @@ export function RegistroInternoDetalheDialog({
                               )}
                             </span>
                             <div className="flex gap-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                title="Visualizar"
+                              <SgqArquivoAcoes
+                                arquivo={ocorrencia}
                                 disabled={!disponivel}
-                                onClick={() =>
-                                  void abrirArquivo(ocorrencia, "view")
-                                }
-                              >
-                                <ExternalLink className="size-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                title="Imprimir"
-                                disabled={!disponivel}
-                                onClick={() =>
-                                  void abrirArquivo(ocorrencia, "print")
-                                }
-                              >
-                                <Printer className="size-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                title="Baixar"
-                                disabled={!disponivel}
-                                onClick={() =>
-                                  void handleBaixarArquivo(ocorrencia)
-                                }
-                              >
-                                <Download className="size-4" />
-                              </Button>
+                                onError={setErroArquivo}
+                              />
                               <Button
                                 type="button"
                                 variant="ghost"

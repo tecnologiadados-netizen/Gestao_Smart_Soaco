@@ -153,6 +153,19 @@ export function saveQualidadeAnexoIfChanged(
   return saveQualidadeAnexo(subdir, file);
 }
 
+export function resolveQualidadeStorageAbsPath(storagePath: string): string | null {
+  const raw = (storagePath || '').trim();
+  if (!raw.startsWith('/uploads/qualidade/')) return null;
+  const rel = raw.replace(/^\/uploads\/qualidade\//, '').replace(/\//g, path.sep);
+  if (!rel || rel.includes('..') || path.isAbsolute(rel)) return null;
+  const abs = path.resolve(qualidadeUploadRoot, rel);
+  const root = path.resolve(qualidadeUploadRoot);
+  const absNorm = abs.toLowerCase();
+  const rootNorm = root.toLowerCase();
+  if (absNorm !== rootNorm && !absNorm.startsWith(rootNorm + path.sep)) return null;
+  return abs;
+}
+
 export function readQualidadeAnexoAsDataUrl(storagePath: string): string | null {
   if (!storagePath) return null;
   const rel = storagePath.replace(/^\/uploads\/qualidade\//, '').replace(/\//g, path.sep);

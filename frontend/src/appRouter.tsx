@@ -6,6 +6,7 @@ import RootEntry from './RootEntry';
 import Layout from './components/Layout';
 import TransicaoRotaProvider from './components/TransicaoRotaProvider';
 import { layoutChildRoutes } from './layoutChildRoutes';
+import { VisualizarDocumentoPage } from './modules/qualidade/pages/DocumentosVisualizarPage';
 
 const future = { v7_startTransition: true, v7_relativeSplatPath: true } as const;
 
@@ -31,6 +32,10 @@ export const router = createBrowserRouter(
        * RootEntry autenticado renderiza <Outlet /> (não <Layout /> direto).
        */
       children: [
+        {
+          path: 'qualidade/documentos/visualizar',
+          element: <VisualizarDocumentoPage />,
+        },
         {
           path: '*',
           element: (

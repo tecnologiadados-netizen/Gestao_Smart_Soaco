@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { Download, Eye, Paperclip, Plus, Trash2, Upload } from "lucide-react";
+import { Paperclip, Plus, Trash2, Upload } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { Label } from "@qualidade/components/ui/label";
 import {
@@ -10,12 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@qualidade/components/ui/table";
-import {
-  downloadQualidadeArquivo,
-  isImageFile,
-  isPdfFile,
-  openQualidadeArquivo,
-} from "@qualidade/lib/documents/file-actions";
+import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
 import {
   criarAnexoVazio,
   SGQ_ANEXO_ACCEPT,
@@ -79,13 +74,6 @@ export function SgqAnexosTable({
     reader.readAsDataURL(file);
   }
 
-  function podeVisualizar(anexo: SgqAnexo) {
-    return (
-      Boolean(anexo.dataUrl?.trim() || anexo.storagePath?.trim()) &&
-      (isPdfFile(anexo.nome) || isImageFile(anexo.nome))
-    );
-  }
-
   const anexosVisiveis = disabled
     ? anexos.filter(
         (row) => row.nome.trim() && (row.dataUrl.trim() || row.storagePath?.trim())
@@ -146,55 +134,11 @@ export function SgqAnexosTable({
                 </TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-1">
-                    {temArquivo && podeVisualizar(anexo) ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        title="Visualizar"
-                        onClick={() => {
-                          void openQualidadeArquivo(
-                            {
-                              nome: anexo.nome,
-                              dataUrl: anexo.dataUrl,
-                              storagePath: anexo.storagePath,
-                            },
-                            "view"
-                          ).catch((err) => {
-                            setErro(
-                              err instanceof Error
-                                ? err.message
-                                : "Não foi possível visualizar o arquivo."
-                            );
-                          });
-                        }}
-                      >
-                        <Eye className="size-4" />
-                      </Button>
-                    ) : null}
-                    {temArquivo &&
-                    (anexo.dataUrl.trim() || Boolean(anexo.storagePath?.trim())) ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        title="Baixar"
-                        onClick={() => {
-                          void downloadQualidadeArquivo({
-                            nome: anexo.nome,
-                            dataUrl: anexo.dataUrl,
-                            storagePath: anexo.storagePath,
-                          }).catch((err) => {
-                            setErro(
-                              err instanceof Error
-                                ? err.message
-                                : "Não foi possível baixar o arquivo."
-                            );
-                          });
-                        }}
-                      >
-                        <Download className="size-4" />
-                      </Button>
+                    {temArquivo ? (
+                      <SgqArquivoAcoes
+                        arquivo={anexo}
+                        onError={setErro}
+                      />
                     ) : null}
                     {!disabled ? (
                       <>

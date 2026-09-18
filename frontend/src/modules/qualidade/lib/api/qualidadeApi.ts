@@ -132,3 +132,20 @@ export async function importQualidadeRegistros(registros: unknown[]) {
   }
   return res.json() as Promise<{ inseridos: number; ignorados: number }>;
 }
+
+export async function fetchQualidadeArquivoPreviewUrl(storagePath: string): Promise<string> {
+  const res = await apiFetch(
+    `/api/qualidade/arquivos/preview?src=${encodeURIComponent(storagePath)}`
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { error?: string }).error ?? 'Falha ao abrir a visualização do documento.'
+    );
+  }
+  const data = (await res.json()) as { url?: string };
+  if (!data.url?.startsWith('/uploads/')) {
+    throw new Error('Visualização indisponível.');
+  }
+  return data.url;
+}
