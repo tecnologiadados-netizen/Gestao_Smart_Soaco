@@ -691,7 +691,7 @@ function ModalMemorialProducaoCamasi({
         </div>
         {kpis.disponibilidadePct != null ? (
           <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
-            Taxa de disponibilidade{' '}
+            Taxa de utilização{' '}
             <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-50">
               {formatPct1(kpis.disponibilidadePct)}%
             </span>
@@ -1197,7 +1197,7 @@ export default function ProducaoCamasiPage() {
         />
         <KpiCard
           loading={loading}
-          title="Taxa de disponibilidade"
+          title="Taxa de utilização"
           value={
             kpis?.disponibilidadePct != null ? `${formatPct1(kpis.disponibilidadePct)}%` : '—'
           }
