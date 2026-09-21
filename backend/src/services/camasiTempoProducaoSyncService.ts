@@ -104,6 +104,15 @@ export async function sincronizarCamasiTempoProducao(): Promise<CamasiSyncResult
       `[camasiSync] ${modo}: ${rowsUpserted} linha(s) upsert` +
         (modo === 'incremental' ? ` (desde ${ymdOffset(incrementalDias())})` : ' (histórico completo)')
     );
+
+    try {
+      const { avaliarEEnviarAlertaParadaCamasi } = await import('./camasiParadaAlertaService.js');
+      await avaliarEEnviarAlertaParadaCamasi();
+    } catch (alertaErr) {
+      const alertaMsg = alertaErr instanceof Error ? alertaErr.message : String(alertaErr);
+      console.warn('[camasiParadaAlerta] Falha ao avaliar alerta:', alertaMsg);
+    }
+
     return { ok: true, modo, rowsUpserted };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
