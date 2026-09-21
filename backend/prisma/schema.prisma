@@ -237,6 +237,43 @@ model DoubleCheckInConferido {
   @@map("double_checkin_conferido")
 }
 
+/// Opções pré-cadastradas de justificativa (divergência NF × PC).
+model DoubleCheckInJustificativaOpcao {
+  id        Int      @id @default(autoincrement())
+  codigo    String   @unique
+  label     String
+  ativo     Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  decisoes DoubleCheckInComparativoDecisao[]
+
+  @@map("double_checkin_justificativa_opcao")
+}
+
+/// Decisão por campo divergente (valor unitário / qtde / total / IPI) no vínculo NF × PC.
+model DoubleCheckInComparativoDecisao {
+  id                     Int      @id @default(autoincrement())
+  idDocumentoEstoque     Int
+  idItemDocumentoEstoque Int
+  idItemPedidoCompra     Int
+  /// valor_unitario | qtde | valor_total | ipi
+  campo                  String
+  /// aceita | recusa
+  decisao                String
+  justificativaOpcaoId   Int
+  observacao             String?
+  usuarioId              Int
+  usuarioLogin           String
+  atualizadoEm           DateTime @default(now()) @updatedAt
+
+  justificativaOpcao DoubleCheckInJustificativaOpcao @relation(fields: [justificativaOpcaoId], references: [id])
+
+  @@unique([idDocumentoEstoque, idItemDocumentoEstoque, idItemPedidoCompra, campo])
+  @@index([idDocumentoEstoque])
+  @@map("double_checkin_comparativo_decisao")
+}
+
 /// Conferência às cegas (Recebimento): andamento local do DE de pré-entrada.
 model RecebimentoConferencia {
   id                    Int      @id @default(autoincrement())

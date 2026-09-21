@@ -115,6 +115,14 @@ async function ensureDbReady(): Promise<void> {
     console.warn('[startup] ensureDoubleCheckInPermissao:', (e as Error)?.message ?? e);
   }
   try {
+    const { ensureDoubleCheckInNfPcWhatsappTipo, ensureDoubleCheckInJustificativaOpcoes } =
+      await import('./data/doubleCheckInLocalRepository.js');
+    await ensureDoubleCheckInNfPcWhatsappTipo();
+    await ensureDoubleCheckInJustificativaOpcoes();
+  } catch (e) {
+    console.warn('[startup] ensureDoubleCheckIn NFxPC:', (e as Error)?.message ?? e);
+  }
+  try {
     await initPainelProducaoMetas();
   } catch (e) {
     console.warn('[startup] initPainelProducaoMetas:', (e as Error)?.message ?? e);

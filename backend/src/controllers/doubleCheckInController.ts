@@ -7,30 +7,48 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../config/prisma.js';
 import {
   analisarOutliersDocumento,
+  queryDoubleCheckInComparativoPc,
   queryDoubleCheckInDashboard,
   queryDoubleCheckInItens,
   queryDoubleCheckInNotas,
   queryDoubleCheckInStatus,
+  type DoubleCheckInComparativoLinha,
   type DoubleCheckInNota,
 } from '../data/doubleCheckInRepository.js';
 import {
+  DOUBLE_CHECKIN_CAMPOS,
+  DOUBLE_CHECKIN_NF_PC_WA_CODE,
   DOUBLE_CHECKIN_WA_CODE,
+  ensureDoubleCheckInJustificativaOpcoes,
+  ensureDoubleCheckInNfPcWhatsappTipo,
   getDocumentoConferido,
   getDoubleCheckInDestinatarios,
   getDoubleCheckInLimiarPct,
   getOrCreateDoubleCheckInAlertaDesdeYmd,
+  listarDecisoesComparativo,
   listarDocumentosConferidos,
   listarDocumentosJaAlertados,
   listarIdsComAtencaoDetectada,
+  listarJustificativaOpcoes,
   listarTodosDocumentosConferidos,
   marcarAlertaEnviado,
   marcarDocumentoConferido,
   setDoubleCheckInDestinatarios,
   setDoubleCheckInLimiarPct,
+  upsertDecisaoComparativo,
+  type DoubleCheckInCampoComparativo,
+  type DoubleCheckInComparativoDecisaoRow,
 } from '../data/doubleCheckInLocalRepository.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const CAMPO_LABEL: Record<DoubleCheckInCampoComparativo, string> = {
+  valor_unitario: 'Vl. unitário (líq.)',
+  qtde: 'Quantidade',
+  ipi: 'IPI',
+  condicao_pagamento: 'Cond. pagamento',
+};
 
 function parseYmd(v: unknown): string | null {
   const s = String(v ?? '').trim().slice(0, 10);
@@ -44,6 +62,165 @@ function fmtBrl(n: number): string {
 function fmtPct(n: number): string {
   const sinal = n > 0 ? '+' : '';
   return `${sinal}${n.toFixed(1).replace('.', ',')}%`;
+}
+
+function fmtNum(n: number): string {
+  return n.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
+}
+
+function fmtCondicao(nome: string | null, regra: string | null): string {
+  const n = (nome ?? '').trim() || '—';
+  const r = (regra ?? '').trim();
+  return r ? `${n} (${r})` : n;
+}
+
+function chaveDecisao(
+  idItemDocumentoEstoque: number,
+  idItemPedidoCompra: number,
+  campo: string
+): string {
+  return `${idItemDocumentoEstoque}:${idItemPedidoCompra}:${campo}`;
+}
+
+function camposDivergentesDaLinha(
+  linha: DoubleCheckInComparativoLinha
+): DoubleCheckInCampoComparativo[] {
+  const out: DoubleCheckInCampoComparativo[] = [];
+  if (linha.divergValorUnitario) out.push('valor_unitario');
+  if (linha.divergQtde) out.push('qtde');
+  if (linha.divergIpi) out.push('ipi');
+  if (linha.divergCondicaoPagamento) out.push('condicao_pagamento');
+  return out;
+}
+
+function fmtUnitarioComDesconto(
+  liquido: number,
+  bruto: number,
+  descontoTotal: number,
+  qtde: number
+): string {
+  if (descontoTotal > 0) {
+    const descUnit =
+      qtde > 0 ? arredondarDescUnit(descontoTotal / qtde) : descontoTotal;
+    return `${fmtBrl(liquido)} líq. (bruto ${fmtBrl(bruto)} − desc. un. ${fmtBrl(descUnit)})`;
+  }
+  return fmtBrl(liquido);
+}
+
+function arredondarDescUnit(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function formatoCampoLinha(
+  linha: DoubleCheckInComparativoLinha,
+  campo: DoubleCheckInCampoComparativo
+): { nf: string; pc: string } {
+  switch (campo) {
+    case 'valor_unitario':
+      return {
+        nf: fmtUnitarioComDesconto(
+          linha.valorUnitarioNF,
+          linha.valorUnitarioBrutoNF,
+          linha.descontoNF,
+          linha.qtdeNF
+        ),
+        pc: fmtUnitarioComDesconto(
+          linha.valorUnitarioPC,
+          linha.valorUnitarioBrutoPC,
+          linha.descontoPC,
+          linha.qtdePC
+        ),
+      };
+    case 'qtde':
+      return { nf: fmtNum(linha.qtdeNF), pc: fmtNum(linha.qtdePC) };
+    case 'ipi':
+      return { nf: fmtBrl(linha.valorIpiNF), pc: fmtBrl(linha.valorIpiPC) };
+    case 'condicao_pagamento':
+      return {
+        nf: fmtCondicao(linha.condicaoPagamentoNF, linha.regraPagamentoNF),
+        pc: fmtCondicao(linha.condicaoPagamentoPC, linha.regraPagamentoPC),
+      };
+  }
+}
+
+function validarDecisoesCompletas(
+  linhas: DoubleCheckInComparativoLinha[],
+  decisoes: DoubleCheckInComparativoDecisaoRow[]
+): { ok: true } | { ok: false; pendentes: number; error: string } {
+  const map = new Map(
+    decisoes.map((d) => [chaveDecisao(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo), d])
+  );
+  let pendentes = 0;
+  for (const linha of linhas) {
+    for (const campo of camposDivergentesDaLinha(linha)) {
+      if (!map.has(chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo))) {
+        pendentes += 1;
+      }
+    }
+  }
+  if (pendentes > 0) {
+    return {
+      ok: false,
+      pendentes,
+      error: `Há ${pendentes} divergência(s) NF × PC sem decisão (aceitar/recusar + justificativa).`,
+    };
+  }
+  return { ok: true };
+}
+
+function montarMensagemNfPc(params: {
+  meta: {
+    numeroNfe: string | null;
+    numeroDocumentoFiscal: string | null;
+    nomeParceiro: string | null;
+  };
+  conferidoPor: string;
+  linhas: DoubleCheckInComparativoLinha[];
+  decisoes: DoubleCheckInComparativoDecisaoRow[];
+}): string | null {
+  const map = new Map(
+    params.decisoes.map((d) => [
+      chaveDecisao(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo),
+      d,
+    ])
+  );
+  const bullets: string[] = [];
+  for (const linha of params.linhas) {
+    const prod =
+      linha.codigoProduto ??
+      (linha.idProduto != null ? String(linha.idProduto) : 'Produto');
+    for (const campo of camposDivergentesDaLinha(linha)) {
+      const dec = map.get(
+        chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
+      );
+      if (!dec) continue;
+      const v = formatoCampoLinha(linha, campo);
+      const um =
+        campo === 'qtde'
+          ? ` (${linha.umNF ?? '—'} / ${linha.umPC ?? '—'})`
+          : '';
+      const pcLabel = linha.nomePedidoCompra ?? (linha.idPedidoCompra != null ? `PC ${linha.idPedidoCompra}` : 'PC');
+      bullets.push(
+        `• ${prod} · ${pcLabel} — ${CAMPO_LABEL[campo]}${um}: NF ${v.nf} × PC ${v.pc} — ` +
+          `${dec.decisao === 'aceita' ? 'ACEITA' : 'RECUSADA'} — ${dec.justificativaLabel}` +
+          (dec.observacao ? ` (${dec.observacao})` : '')
+      );
+    }
+  }
+  if (bullets.length === 0) return null;
+  return [
+    '*Double CheckIn — NF × Pedido de compra*',
+    `NF/Doc: ${params.meta.numeroNfe ?? '—'} / ${params.meta.numeroDocumentoFiscal ?? '—'}`,
+    `Parceiro: ${params.meta.nomeParceiro ?? '—'}`,
+    `Conferido por: ${params.conferidoPor}`,
+    '',
+    'Divergências:',
+    ...bullets.slice(0, 20),
+    bullets.length > 20 ? `… e mais ${bullets.length - 20} divergência(s).` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
@@ -111,6 +288,130 @@ export async function getDoubleCheckInItens(req: Request, res: Response): Promis
 }
 
 /**
+ * GET /api/compras/double-checkin/notas/:idDocumento/comparativo-pc
+ */
+export async function getDoubleCheckInComparativoPc(req: Request, res: Response): Promise<void> {
+  const idDocumento = Math.trunc(Number(req.params.idDocumento));
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  try {
+    await ensureDoubleCheckInJustificativaOpcoes();
+    const [{ linhas, erro }, decisoes, justificativas] = await Promise.all([
+      queryDoubleCheckInComparativoPc({ idDocumento }),
+      listarDecisoesComparativo(idDocumento),
+      listarJustificativaOpcoes(true),
+    ]);
+    if (erro) {
+      res.status(503).json({ linhas: [], decisoes: [], justificativas, erro, error: erro });
+      return;
+    }
+    const validacao = validarDecisoesCompletas(linhas, decisoes);
+    res.json({
+      linhas,
+      decisoes,
+      justificativas,
+      pendentes: validacao.ok ? 0 : validacao.pendentes,
+      idDocumento,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[getDoubleCheckInComparativoPc]', msg);
+    res.status(503).json({ error: msg });
+  }
+}
+
+/**
+ * PUT /api/compras/double-checkin/comparativo-decisao
+ * body: { idDocumento, idItemDocumentoEstoque, idItemPedidoCompra, campo, decisao, justificativaOpcaoId, observacao? }
+ */
+export async function putDoubleCheckInComparativoDecisao(req: Request, res: Response): Promise<void> {
+  const login = req.user?.login;
+  if (!login) {
+    res.status(401).json({ error: 'Não autorizado.' });
+    return;
+  }
+  const idDocumento = Math.trunc(Number(req.body?.idDocumento));
+  const idItemDocumentoEstoque = Math.trunc(Number(req.body?.idItemDocumentoEstoque));
+  const idItemPedidoCompra = Math.trunc(Number(req.body?.idItemPedidoCompra));
+  const campo = String(req.body?.campo ?? '').trim() as DoubleCheckInCampoComparativo;
+  const decisaoRaw = String(req.body?.decisao ?? '').trim();
+  const justificativaOpcaoId = Math.trunc(Number(req.body?.justificativaOpcaoId));
+  const observacao =
+    typeof req.body?.observacao === 'string' ? req.body.observacao : null;
+
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  if (!Number.isFinite(idItemDocumentoEstoque) || idItemDocumentoEstoque <= 0) {
+    res.status(400).json({ error: 'idItemDocumentoEstoque inválido.' });
+    return;
+  }
+  if (!Number.isFinite(idItemPedidoCompra) || idItemPedidoCompra <= 0) {
+    res.status(400).json({ error: 'idItemPedidoCompra inválido.' });
+    return;
+  }
+  if (!(DOUBLE_CHECKIN_CAMPOS as readonly string[]).includes(campo)) {
+    res.status(400).json({ error: 'campo inválido.' });
+    return;
+  }
+  if (decisaoRaw !== 'aceita' && decisaoRaw !== 'recusa') {
+    res.status(400).json({ error: 'decisao deve ser aceita ou recusa.' });
+    return;
+  }
+  if (!Number.isFinite(justificativaOpcaoId) || justificativaOpcaoId <= 0) {
+    res.status(400).json({ error: 'justificativaOpcaoId inválido.' });
+    return;
+  }
+
+  try {
+    const usuario = await prisma.usuario.findUnique({
+      where: { login },
+      select: { id: true, login: true },
+    });
+    if (!usuario) {
+      res.status(401).json({ error: 'Usuário não encontrado.' });
+      return;
+    }
+    const ja = await getDocumentoConferido(idDocumento);
+    if (ja) {
+      res.status(400).json({ error: 'NF já conferida — decisões não podem ser alteradas.' });
+      return;
+    }
+    const decisao = await upsertDecisaoComparativo({
+      idDocumentoEstoque: idDocumento,
+      idItemDocumentoEstoque,
+      idItemPedidoCompra,
+      campo,
+      decisao: decisaoRaw,
+      justificativaOpcaoId,
+      observacao,
+      usuarioId: usuario.id,
+      usuarioLogin: usuario.login,
+    });
+    res.json({ ok: true, decisao });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: msg });
+  }
+}
+
+/**
+ * GET /api/compras/double-checkin/justificativas
+ */
+export async function getDoubleCheckInJustificativas(_req: Request, res: Response): Promise<void> {
+  try {
+    const justificativas = await listarJustificativaOpcoes(true);
+    res.json({ justificativas });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(503).json({ error: msg });
+  }
+}
+
+/**
  * POST /api/compras/double-checkin/status  body: { ids: number[] }
  * Status fora-limiar para IDs da página (mesma regra do modal).
  */
@@ -174,7 +475,8 @@ export async function getDoubleCheckInDashboard(req: Request, res: Response): Pr
 
 /**
  * POST /api/compras/double-checkin/conferir
- * body: { idDocumento: number, senha: string }
+ * body: { idDocumento, senha, numeroNfe?, numeroDocumentoFiscal?, nomeParceiro? }
+ * Bloqueia se houver divergência NF×PC sem decisão. Envia WhatsApp só das divergências.
  */
 export async function postDoubleCheckInConferir(req: Request, res: Response): Promise<void> {
   const idDocumento = Math.trunc(Number(req.body?.idDocumento));
@@ -221,11 +523,49 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       return;
     }
 
+    const { linhas, erro: erroComp } = await queryDoubleCheckInComparativoPc({ idDocumento });
+    if (erroComp) {
+      res.status(503).json({ error: erroComp });
+      return;
+    }
+    const decisoes = await listarDecisoesComparativo(idDocumento);
+    const validacao = validarDecisoesCompletas(linhas, decisoes);
+    if (!validacao.ok) {
+      res.status(400).json({ error: validacao.error, pendentes: validacao.pendentes });
+      return;
+    }
+
     const created = await marcarDocumentoConferido({
       idDocumentoEstoque: idDocumento,
       usuarioId: usuario.id,
       usuarioLogin: usuario.login,
     });
+
+    let alertaNfPcEnviado = false;
+    try {
+      await ensureDoubleCheckInNfPcWhatsappTipo();
+      const textoFinal = montarMensagemNfPc({
+        meta: {
+          numeroNfe: typeof req.body?.numeroNfe === 'string' ? req.body.numeroNfe : null,
+          numeroDocumentoFiscal:
+            typeof req.body?.numeroDocumentoFiscal === 'string'
+              ? req.body.numeroDocumentoFiscal
+              : null,
+          nomeParceiro: typeof req.body?.nomeParceiro === 'string' ? req.body.nomeParceiro : null,
+        },
+        conferidoPor: created.usuarioLogin,
+        linhas,
+        decisoes,
+      });
+      if (textoFinal) {
+        await enviarNotificacaoPorTipo(DOUBLE_CHECKIN_NF_PC_WA_CODE, textoFinal);
+        alertaNfPcEnviado = true;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[postDoubleCheckInConferir] alerta NF×PC', msg);
+    }
+
     res.status(201).json({
       ok: true,
       jaConferido: false,
@@ -233,6 +573,7 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       conferidoEm: created.conferidoEm,
       conferidoPor: created.usuarioLogin,
       idDocumento,
+      alertaNfPcEnviado,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

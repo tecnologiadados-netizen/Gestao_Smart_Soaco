@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import DoubleCheckInDashboardModal from './DoubleCheckInDashboardModal';
+import DoubleCheckInComparativoPcTab, {
+  contarPendentesComparativo,
+} from './DoubleCheckInComparativoPcTab';
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Eye, LayoutDashboard, RefreshCw, Settings2, Users } from 'lucide-react';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   conferirDoubleCheckIn,
+  fetchDoubleCheckInComparativoPc,
   fetchDoubleCheckInDestinatarios,
   fetchDoubleCheckInItens,
   fetchDoubleCheckInParametros,
@@ -14,7 +18,10 @@ import {
   saveDoubleCheckInDestinatarios,
   saveDoubleCheckInParametros,
   syncDoubleCheckIn,
+  type DoubleCheckInComparativoDecisao,
+  type DoubleCheckInComparativoLinha,
   type DoubleCheckInItem,
+  type DoubleCheckInJustificativaOpcao,
   type DoubleCheckInNota,
   type DoubleCheckInUsuarioDest,
 } from '../../api/compras';
@@ -74,6 +81,12 @@ type DetalheCache = {
   dataEmissao: string | null;
 };
 
+type ComparativoCache = {
+  linhas: DoubleCheckInComparativoLinha[];
+  decisoes: DoubleCheckInComparativoDecisao[];
+  justificativas: DoubleCheckInJustificativaOpcao[];
+};
+
 export default function DoubleCheckInPage() {
   const { isMaster, login, grupo } = useAuth();
   const podeDestinatarios = isAdminOuMaster({ isMaster, login, grupo });
@@ -96,10 +109,18 @@ export default function DoubleCheckInPage() {
   const [statusLoading, setStatusLoading] = useState(false);
 
   const [modalNota, setModalNota] = useState<DoubleCheckInNota | null>(null);
+  const [modalAba, setModalAba] = useState<'preco' | 'nf_pc'>('preco');
   const [detalheLoading, setDetalheLoading] = useState(false);
   const [detalheErro, setDetalheErro] = useState<string | null>(null);
   const [detalheItens, setDetalheItens] = useState<DoubleCheckInItem[]>([]);
   const [detalheLimiar, setDetalheLimiar] = useState(10);
+
+  const [compLoading, setCompLoading] = useState(false);
+  const [compErro, setCompErro] = useState<string | null>(null);
+  const [compLinhas, setCompLinhas] = useState<DoubleCheckInComparativoLinha[]>([]);
+  const [compDecisoes, setCompDecisoes] = useState<DoubleCheckInComparativoDecisao[]>([]);
+  const [compJustificativas, setCompJustificativas] = useState<DoubleCheckInJustificativaOpcao[]>([]);
+  const [compBloqueioMsg, setCompBloqueioMsg] = useState<string | null>(null);
 
   const [paramAberto, setParamAberto] = useState(false);
   const [paramDraft, setParamDraft] = useState('10');
@@ -121,6 +142,7 @@ export default function DoubleCheckInPage() {
   const [dashAberto, setDashAberto] = useState(false);
 
   const detalheCacheRef = useRef(new Map<number, DetalheCache>());
+  const comparativoCacheRef = useRef(new Map<number, ComparativoCache>());
   const statusCacheRef = useRef(new Map<string, boolean>());
   const syncSeqRef = useRef(0);
   const statusSeqRef = useRef(0);
@@ -128,6 +150,7 @@ export default function DoubleCheckInPage() {
 
   const limparCachesGrade = useCallback(() => {
     detalheCacheRef.current.clear();
+    comparativoCacheRef.current.clear();
     statusCacheRef.current.clear();
     setStatusMap({});
   }, []);
@@ -162,6 +185,7 @@ export default function DoubleCheckInPage() {
         setAlertasEnviados(r.alertasEnviados);
         setUltimaSync(new Date().toLocaleTimeString('pt-BR'));
         detalheCacheRef.current.clear();
+        comparativoCacheRef.current.clear();
       } catch (e) {
         if (seq !== syncSeqRef.current) return;
         if (!opts?.silencioso) {
@@ -203,11 +227,17 @@ export default function DoubleCheckInPage() {
 
   const abrirDetalhe = useCallback(async (nota: DoubleCheckInNota) => {
     setModalNota(nota);
+    setModalAba('preco');
     setDetalheErro(null);
+    setCompErro(null);
+    setCompBloqueioMsg(null);
     // Sempre busca de novo: histórico depende de regras do backend (tipos, limiar).
     detalheCacheRef.current.delete(nota.idDocumento);
+    comparativoCacheRef.current.delete(nota.idDocumento);
     setDetalheLoading(true);
     setDetalheItens([]);
+    setCompLinhas([]);
+    setCompDecisoes([]);
     try {
       const r = await fetchDoubleCheckInItens(nota.idDocumento);
       if (r.erro) {
@@ -230,6 +260,47 @@ export default function DoubleCheckInPage() {
       setDetalheLoading(false);
     }
   }, []);
+
+  const carregarComparativo = useCallback(async (idDocumento: number) => {
+    const cached = comparativoCacheRef.current.get(idDocumento);
+    if (cached) {
+      setCompLinhas(cached.linhas);
+      setCompDecisoes(cached.decisoes);
+      setCompJustificativas(cached.justificativas);
+      setCompErro(null);
+      return;
+    }
+    setCompLoading(true);
+    setCompErro(null);
+    try {
+      const r = await fetchDoubleCheckInComparativoPc(idDocumento);
+      if (r.erro) {
+        setCompErro(r.erro);
+        setCompLinhas([]);
+        setCompDecisoes([]);
+        setCompJustificativas(r.justificativas);
+        return;
+      }
+      const payload: ComparativoCache = {
+        linhas: r.linhas,
+        decisoes: r.decisoes,
+        justificativas: r.justificativas,
+      };
+      comparativoCacheRef.current.set(idDocumento, payload);
+      setCompLinhas(payload.linhas);
+      setCompDecisoes(payload.decisoes);
+      setCompJustificativas(payload.justificativas);
+    } catch (e) {
+      setCompErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCompLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!modalNota || modalAba !== 'nf_pc') return;
+    void carregarComparativo(modalNota.idDocumento);
+  }, [modalNota, modalAba, carregarComparativo]);
 
   const notasFiltradas = (() => {
     const match = criarMatcherTextoLivre(filtroTexto);
@@ -373,9 +444,53 @@ export default function DoubleCheckInPage() {
     []
   );
 
-  const abrirSenhaConferir = () => {
-    setSenhaDraft('');
+  const abrirSenhaConferir = async () => {
+    if (!modalNota) return;
+    setCompBloqueioMsg(null);
     setSenhaErro(null);
+
+    // Garante comparativo carregado antes de validar decisões.
+    let linhas = compLinhas;
+    let decisoes = compDecisoes;
+    const cached = comparativoCacheRef.current.get(modalNota.idDocumento);
+    if (!cached) {
+      setCompLoading(true);
+      try {
+        const r = await fetchDoubleCheckInComparativoPc(modalNota.idDocumento);
+        if (r.erro) {
+          setModalAba('nf_pc');
+          setCompBloqueioMsg(r.erro);
+          return;
+        }
+        const payload: ComparativoCache = {
+          linhas: r.linhas,
+          decisoes: r.decisoes,
+          justificativas: r.justificativas,
+        };
+        comparativoCacheRef.current.set(modalNota.idDocumento, payload);
+        setCompLinhas(payload.linhas);
+        setCompDecisoes(payload.decisoes);
+        setCompJustificativas(payload.justificativas);
+        linhas = payload.linhas;
+        decisoes = payload.decisoes;
+      } finally {
+        setCompLoading(false);
+      }
+    } else {
+      linhas = cached.linhas;
+      decisoes = cached.decisoes;
+    }
+
+    const pendentes = contarPendentesComparativo(linhas, decisoes);
+    if (pendentes > 0) {
+      setModalAba('nf_pc');
+      setCompBloqueioMsg(
+        `Há ${pendentes} divergência(s) NF × PC sem decisão (aceitar/recusar + justificativa).`
+      );
+      return;
+    }
+
+    setSenhaDraft('');
     setSenhaAberto(true);
   };
 
@@ -392,9 +507,17 @@ export default function DoubleCheckInPage() {
       const r = await conferirDoubleCheckIn({
         idDocumento: modalNota.idDocumento,
         senha,
+        numeroNfe: modalNota.numeroNfe,
+        numeroDocumentoFiscal: modalNota.numeroDocumentoFiscal,
+        nomeParceiro: modalNota.nomeParceiro,
       });
       if (r.erro) {
         setSenhaErro(r.erro);
+        if (/divergência/i.test(r.erro)) {
+          setSenhaAberto(false);
+          setModalAba('nf_pc');
+          setCompBloqueioMsg(r.erro);
+        }
         return;
       }
       marcarNotaConferida(
@@ -675,7 +798,7 @@ export default function DoubleCheckInPage() {
             onClick={() => setModalNota(null)}
           >
             <div
-              className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+              className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-600">
@@ -697,79 +820,138 @@ export default function DoubleCheckInPage() {
                   Fechar
                 </button>
               </div>
+              <div className="flex shrink-0 gap-1 border-b border-slate-200 px-4 dark:border-slate-600">
+                {(
+                  [
+                    { id: 'preco' as const, label: 'Análise de preço' },
+                    { id: 'nf_pc' as const, label: 'NF × Pedido de compra' },
+                  ] as const
+                ).map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={modalAba === t.id}
+                    onClick={() => {
+                      setModalAba(t.id);
+                      setCompBloqueioMsg(null);
+                    }}
+                    className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition ${
+                      modalAba === t.id
+                        ? 'border-primary-600 text-primary-700 dark:text-primary-400'
+                        : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
               <div className="relative min-h-[12rem] flex-1 overflow-auto p-4">
-                <CarregandoInformacoesOverlay show={detalheLoading} mode="contained" />
-                {detalheErro && (
+                <CarregandoInformacoesOverlay
+                  show={detalheLoading || (modalAba === 'nf_pc' && compLoading)}
+                  mode="contained"
+                />
+                {compBloqueioMsg && (
                   <p className="mb-3 text-sm text-rose-600" role="alert">
-                    {detalheErro}
+                    {compBloqueioMsg}
                   </p>
                 )}
-                <table className="min-w-full text-sm">
-                  <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-900">
-                    <tr>
-                      <th className="px-2 py-2">Produto</th>
-                      <th className="px-2 py-2">UM</th>
-                      <th className="px-2 py-2 text-right">Qtde</th>
-                      <th className="px-2 py-2 text-right">Vl. unit.</th>
-                      <th className="px-2 py-2 text-right">Vl. total</th>
-                      <th className="px-2 py-2 text-right">Variação</th>
-                      <th className="px-2 py-2">Histórico (3)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                    {detalheItens.map((it) => (
-                      <tr
-                        key={it.idItem}
-                        className={
-                          it.foraLimiar
-                            ? 'dfc-dci-alerta bg-amber-50/90 dark:bg-amber-950/40 ring-1 ring-inset ring-amber-400/70'
-                            : undefined
-                        }
-                      >
-                        <td className="px-2 py-2">
-                          <div className="font-medium text-slate-800 dark:text-slate-100">
-                            {it.codigoProduto ?? it.idProduto}
-                          </div>
-                          <div className="text-xs text-slate-500 line-clamp-2">
-                            {it.descricaoProduto ?? '—'}
-                          </div>
-                        </td>
-                        <td className="px-2 py-2">{it.unidadeMedida ?? '—'}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{nfNum.format(it.qtde)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{nfBrl.format(it.valorUnitario)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{nfBrl.format(it.valorTotal)}</td>
-                        <td
-                          className={`px-2 py-2 text-right tabular-nums font-semibold ${
-                            it.foraLimiar
-                              ? 'text-amber-700 dark:text-amber-300 animate-pulse'
-                              : 'text-slate-700 dark:text-slate-200'
-                          }`}
-                        >
-                          {fmtPct(it.variacaoPct)}
-                        </td>
-                        <td className="px-2 py-2 text-xs text-slate-600 dark:text-slate-300">
-                          {it.historico.length === 0 ? (
-                            <span className="text-slate-400">Sem entradas anteriores</span>
-                          ) : (
-                            <ul className="space-y-1">
-                              {it.historico.map((h, idx) => (
-                                <li key={`${h.idDocumento}-${idx}`}>
-                                  <span className={idx === 0 ? 'font-semibold' : ''}>
-                                    {fmtDataBr(h.dataEmissao)} · {nfBrl.format(h.valorUnitario)}
-                                    {idx === 0 ? ' (ref.)' : ''}
-                                  </span>
-                                  <span className="block text-[10px] text-slate-400 truncate max-w-[14rem]">
-                                    {h.nomeParceiro ?? '—'} · Doc {h.numeroDocumentoFiscal ?? '—'}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {modalAba === 'preco' ? (
+                  <>
+                    {detalheErro && (
+                      <p className="mb-3 text-sm text-rose-600" role="alert">
+                        {detalheErro}
+                      </p>
+                    )}
+                    <table className="min-w-full text-sm">
+                      <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-900">
+                        <tr>
+                          <th className="px-2 py-2">Produto</th>
+                          <th className="px-2 py-2">UM</th>
+                          <th className="px-2 py-2 text-right">Qtde</th>
+                          <th className="px-2 py-2 text-right">Vl. unit.</th>
+                          <th className="px-2 py-2 text-right">Vl. total</th>
+                          <th className="px-2 py-2 text-right">Variação</th>
+                          <th className="px-2 py-2">Histórico (3)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                        {detalheItens.map((it) => (
+                          <tr
+                            key={it.idItem}
+                            className={
+                              it.foraLimiar
+                                ? 'dfc-dci-alerta bg-amber-50/90 dark:bg-amber-950/40 ring-1 ring-inset ring-amber-400/70'
+                                : undefined
+                            }
+                          >
+                            <td className="px-2 py-2">
+                              <div className="font-medium text-slate-800 dark:text-slate-100">
+                                {it.codigoProduto ?? it.idProduto}
+                              </div>
+                              <div className="text-xs text-slate-500 line-clamp-2">
+                                {it.descricaoProduto ?? '—'}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2">{it.unidadeMedida ?? '—'}</td>
+                            <td className="px-2 py-2 text-right tabular-nums">{nfNum.format(it.qtde)}</td>
+                            <td className="px-2 py-2 text-right tabular-nums">{nfBrl.format(it.valorUnitario)}</td>
+                            <td className="px-2 py-2 text-right tabular-nums">{nfBrl.format(it.valorTotal)}</td>
+                            <td
+                              className={`px-2 py-2 text-right tabular-nums font-semibold ${
+                                it.foraLimiar
+                                  ? 'text-amber-700 dark:text-amber-300 animate-pulse'
+                                  : 'text-slate-700 dark:text-slate-200'
+                              }`}
+                            >
+                              {fmtPct(it.variacaoPct)}
+                            </td>
+                            <td className="px-2 py-2 text-xs text-slate-600 dark:text-slate-300">
+                              {it.historico.length === 0 ? (
+                                <span className="text-slate-400">Sem entradas anteriores</span>
+                              ) : (
+                                <ul className="space-y-1">
+                                  {it.historico.map((h, idx) => (
+                                    <li key={`${h.idDocumento}-${idx}`}>
+                                      <span className={idx === 0 ? 'font-semibold' : ''}>
+                                        {fmtDataBr(h.dataEmissao)} · {nfBrl.format(h.valorUnitario)}
+                                        {idx === 0 ? ' (ref.)' : ''}
+                                      </span>
+                                      <span className="block text-[10px] text-slate-400 truncate max-w-[14rem]">
+                                        {h.nomeParceiro ?? '—'} · Doc {h.numeroDocumentoFiscal ?? '—'}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                ) : (
+                  <DoubleCheckInComparativoPcTab
+                    idDocumento={modalNota.idDocumento}
+                    conferido={Boolean(modalNota.conferido)}
+                    linhas={compLinhas}
+                    decisoes={compDecisoes}
+                    justificativas={compJustificativas}
+                    loading={compLoading}
+                    erro={compErro}
+                    onDecisoesChange={(next) => {
+                      setCompDecisoes(next);
+                      setCompBloqueioMsg(null);
+                      const prev = comparativoCacheRef.current.get(modalNota.idDocumento);
+                      if (prev) {
+                        comparativoCacheRef.current.set(modalNota.idDocumento, {
+                          ...prev,
+                          decisoes: next,
+                        });
+                      }
+                    }}
+                  />
+                )}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3 dark:border-slate-600 dark:bg-slate-900/40">
                 <div className="text-xs text-slate-500 dark:text-slate-400">
@@ -783,14 +965,17 @@ export default function DoubleCheckInPage() {
                       .
                     </span>
                   ) : (
-                    <span>Confirme com sua senha para marcar esta NF como conferida.</span>
+                    <span>
+                      Confirme com sua senha. Divergências NF × PC precisam de decisão antes de
+                      conferir.
+                    </span>
                   )}
                 </div>
                 <button
                   type="button"
                   className={btnPrimary}
-                  disabled={Boolean(modalNota.conferido) || detalheLoading}
-                  onClick={abrirSenhaConferir}
+                  disabled={Boolean(modalNota.conferido) || detalheLoading || compLoading}
+                  onClick={() => void abrirSenhaConferir()}
                 >
                   <ClipboardCheck className="h-4 w-4" />
                   {modalNota.conferido ? 'Já conferida' : 'Confirmar conferência'}
