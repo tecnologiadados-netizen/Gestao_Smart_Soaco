@@ -7,6 +7,13 @@
 export const MARCOS_ALERTA_VALIDADE = [30, 20, 10, 5, 3, 1, 0] as const;
 export type ValidadeMarcoDias = (typeof MARCOS_ALERTA_VALIDADE)[number];
 
+/** A partir deste marco (inclusive) o alerta também vai por WhatsApp. */
+export const MARCO_WHATSAPP_VALIDADE = 10;
+
+export function marcoDisparaWhatsapp(marco: number): boolean {
+  return marco <= MARCO_WHATSAPP_VALIDADE;
+}
+
 export const MARCOS_ALERTA_TAREFA = [7, 3, 1, 0] as const;
 export type TarefaMarcoDias = (typeof MARCOS_ALERTA_TAREFA)[number];
 

@@ -99,6 +99,8 @@ function mapTipo(
 
 export async function listarTiposComDestinatarios(): Promise<WhatsappNotificacaoTipoRow[]> {
   await ensureFaturamentoDiarioLinhasWhatsappTipo();
+  const { ensureSgqAlertasWhatsappTipos } = await import('../config/sgqAlertasNotificacao.js');
+  await ensureSgqAlertasWhatsappTipos();
   const rows = await prisma.whatsappNotificacaoTipo.findMany({
     include: {
       destinatarios: { select: { usuarioId: true } },
@@ -165,6 +167,9 @@ export async function buscarTipoPorId(id: number) {
 }
 
 export async function listarTiposCronAtivos() {
+  await ensureFaturamentoDiarioLinhasWhatsappTipo();
+  const { ensureSgqAlertasWhatsappTipos } = await import('../config/sgqAlertasNotificacao.js');
+  await ensureSgqAlertasWhatsappTipos();
   return prisma.whatsappNotificacaoTipo.findMany({
     where: { ativo: true, modoDisparo: 'cron' },
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],

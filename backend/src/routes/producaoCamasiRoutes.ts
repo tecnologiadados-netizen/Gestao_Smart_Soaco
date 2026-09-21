@@ -22,6 +22,16 @@ import {
   mesLabel,
 } from '../data/camasiTempoProducaoRepository.js';
 import { getCamasiSyncEstado } from '../data/camasiTempoProducaoCacheRepository.js';
+import {
+  listarOpcoesJustificativaCamasi,
+  listarParadasJustificadasNoPeriodo,
+  salvarParadaJustificada,
+} from '../data/camasiJustificativaRepository.js';
+import {
+  aplicarJustificativasManuais,
+  isParadaJustificativaEditavel,
+  motivosAPartirDeParadas,
+} from '../utils/camasiJustificativa.js';
 
 const PERMISSOES_ACESSO_PRODUCAO_CAMASI = PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI;
 
@@ -140,6 +150,9 @@ router.get(
     const horasEscala = escala ? horasEscalaNoPeriodo(dataIni, dataFim, escala) : null;
     const { rows, fonte, cacheSyncedAt } = await listTempoProducaoComFonte(dataIni, dataFim, escala);
     const resumo = buildDashboardResumo(rows, { horasEscala, escala, dataIni, dataFim });
+    const manuais = await listarParadasJustificadasNoPeriodo(dataIni, dataFim);
+    aplicarJustificativasManuais(resumo.paradasValidas, manuais);
+    resumo.motivos = motivosAPartirDeParadas(resumo.paradasValidas);
     res.json({
       dataIni,
       dataFim,
@@ -256,6 +269,58 @@ router.put(
       res.status(400).json({ error: msg });
     }
   }
+);
+
+/**
+ * GET /api/producao-camasi/justificativas
+ * Catálogo da máquina (MOTIVO_PARADA) + motivos já cadastrados no GS (sem duplicar).
+ */
+router.get(
+  '/justificativas',
+  requirePermission(...PERMISSOES_ACESSO_PRODUCAO_CAMASI),
+  async503(async (_req, res) => {
+    const opcoes = await listarOpcoesJustificativaCamasi();
+    res.json({ opcoes });
+  })
+);
+
+const justificarSchema = z.object({
+  data: ymdSchema,
+  inicioParado: z.string().regex(/^\d{2}:\d{2}:\d{2}$/, 'Início inválido.'),
+  fimParado: z.string().regex(/^\d{2}:\d{2}:\d{2}$/, 'Fim inválido.'),
+  observacao: z.string().max(240).optional().nullable(),
+  nome: z.string().trim().min(1, 'Informe a justificativa.').max(120),
+});
+
+/**
+ * POST /api/producao-camasi/paradas/justificar
+ * Aponta motivo em parada SEM JUSTIFICATIVA (corte automático de escala).
+ */
+router.post(
+  '/paradas/justificar',
+  requirePermission(...PERMISSOES_ACESSO_PRODUCAO_CAMASI),
+  validateCsrf,
+  async503(async (req, res) => {
+    const parsed = justificarSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' });
+      return;
+    }
+    const obs = (parsed.data.observacao ?? '').trim();
+    if (!isParadaJustificativaEditavel({ observacao: obs })) {
+      res.status(400).json({ error: 'Só é possível apontar motivo em parada sem justificativa gerada pelo GS.' });
+      return;
+    }
+    const saved = await salvarParadaJustificada({
+      data: parsed.data.data,
+      inicioParado: parsed.data.inicioParado,
+      fimParado: parsed.data.fimParado,
+      observacaoOrigem: obs,
+      nome: parsed.data.nome,
+      usuarioLogin: req.user?.login ?? null,
+    });
+    res.json({ ok: true, nome: saved.nome });
+  })
 );
 
 export default router;

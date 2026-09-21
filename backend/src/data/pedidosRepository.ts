@@ -30,6 +30,7 @@ import {
 import { DEFAULT_REGRA_DATA_ENTREGA, type RegraDataEntregaConfig } from '../config/regrasDataEntrega.js';
 import { buildDataBasePorPedidoIdMap, type PedidoParaDataBase } from '../utils/dataBasePedidoFormacao.js';
 import { mensagemErroPersistenciaSqlite } from '../utils/sqliteErroPersistencia.js';
+import { classificarProdutoPadrao } from '../utils/produtoPadrao.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_FILE = 'sqlBasePedidosNomus.sql';
@@ -590,6 +591,7 @@ function rowNomusToPedido(
     romaneio_como_formacao: romaneioComoFormacao,
     Status: status,
     dataParametro: previsaoOriginal,
+    'Produto padrão': classificarProdutoPadrao(row['Familia do produto']),
   } as PedidoRow;
 }
 
@@ -615,6 +617,7 @@ const SORT_COLUMN_KEYS: Record<string, string[]> = {
   data_original: ['Data de entrega', 'dataParametro'],
   data_producao: ['data_producao'],
   data_base_entrega_futura: ['Data base entrega futura'],
+  produto_padrao: ['Produto padrão'],
 };
 
 function getSortValueBackend(row: PedidoRow, colId: string): string | number {

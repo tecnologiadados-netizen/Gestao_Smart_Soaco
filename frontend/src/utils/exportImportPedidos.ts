@@ -146,6 +146,7 @@ const EXPORT_COLUMNS_CONFIG: { key: string; hidden: boolean }[] = [
   { key: 'tipoF', hidden: true },
   { key: 'Status Pedido', hidden: true },
   { key: 'Card', hidden: false },
+  { key: 'Produto padrão', hidden: false },
 ];
 
 /** Colunas de data: formato dd/MM/yyyy (aplicado às colunas de data no export). */
@@ -201,6 +202,7 @@ export const GRADE_EXPORT_COLUMNS = [
   'Previsão atual',
   'Data base entrega futura',
   'Card',
+  'Produto padrão',
 ] as const;
 
 /** Cabeçalhos: config exceto Emissao/Data de entrega/Previsao; depois Igual?; Emissao, Data original, Previsão atual, Data de produção, Nova previsão (em branco); Motivo; Observação. */

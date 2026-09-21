@@ -2515,3 +2515,31 @@ model CamasiSyncEstado {
 
   @@map("camasi_sync_estado")
 }
+
+/// Motivos cadastrados no GS para apontar paradas Camasi "SEM JUSTIFICATIVA".
+model CamasiJustificativa {
+  id        Int      @id @default(autoincrement())
+  nome      String   @unique
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("camasi_justificativa")
+}
+
+/// Apontamento de motivo em ociosidade cortada automaticamente (início/fim de escala).
+model CamasiParadaJustificada {
+  id               Int      @id @default(autoincrement())
+  data             String
+  inicioParado     String   @map("inicio_parado")
+  fimParado        String   @map("fim_parado")
+  observacaoOrigem String   @default("") @map("observacao_origem")
+  nome             String
+  usuarioLogin     String?  @map("usuario_login")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([data, inicioParado, fimParado, observacaoOrigem])
+  @@index([data])
+  @@map("camasi_parada_justificada")
+}

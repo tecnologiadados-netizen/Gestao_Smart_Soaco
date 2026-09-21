@@ -32,7 +32,7 @@ async function runJob(): Promise<void> {
     }
     const result = await executarNotificacoesSgqEmail(prisma);
     console.log(
-      `[sgqEmailNotificacaoCron] Enviados — validade: ${result.validade}, tarefas: ${result.tarefas}, calibração: ${result.calibracao}, verificação: ${result.verificacao}`
+      `[sgqEmailNotificacaoCron] Enviados — tarefas: ${result.tarefas}`
     );
   } catch (e) {
     console.error('[sgqEmailNotificacaoCron] Falha:', e instanceof Error ? e.message : e);

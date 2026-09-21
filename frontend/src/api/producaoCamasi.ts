@@ -70,6 +70,7 @@ export type CamasiParadaValida = {
   justificativa: string;
   observacao: string | null;
   categoria?: 'jornada' | 'operacional';
+  justificativaEditavel?: boolean;
 };
 
 export type CamasiProducaoValida = {
@@ -181,4 +182,27 @@ export async function putCamasiRecursoEscalaExcecoes(
   }
   const r = (await res.json()) as { data: ProgramacaoProducaoRecurso };
   return r.data;
+}
+
+export type CamasiJustificativaOpcao = { nome: string; origem: 'camasi' | 'gs' };
+
+export async function fetchCamasiJustificativas(): Promise<CamasiJustificativaOpcao[]> {
+  const r = await apiJson<{ opcoes: CamasiJustificativaOpcao[] }>('/api/producao-camasi/justificativas');
+  return r.opcoes ?? [];
+}
+
+export async function justificarParadaCamasi(body: {
+  data: string;
+  inicioParado: string;
+  fimParado: string;
+  observacao: string | null;
+  nome: string;
+}): Promise<{ ok: boolean; nome: string }> {
+  const res = await apiFetch('/api/producao-camasi/paradas/justificar', {
+    method: 'POST',
+    body,
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean; nome?: string };
+  if (!res.ok) throw new Error(json.error ?? 'Erro ao salvar justificativa.');
+  return { ok: true, nome: json.nome ?? body.nome };
 }
