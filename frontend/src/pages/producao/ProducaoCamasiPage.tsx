@@ -13,10 +13,12 @@ import {
 } from 'recharts';
 import {
   fetchCamasiDashboard,
+  fetchCamasiJustificativas,
   getCamasiRecursoEscala,
   putCamasiRecursoEscalaExcecoes,
   type CamasiDashboardKpis,
   type CamasiDashboardResponse,
+  type CamasiJustificativaOpcao,
   type CamasiParadaValida,
   type CamasiProducaoValida,
 } from '../../api/producaoCamasi';
@@ -24,6 +26,7 @@ import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getChartTheme } from '../../utils/painelProducaoFormat';
 import ModalCamasiKpi, { type CamasiKpiModalTipo } from '../../components/producao/ModalCamasiKpi';
+import CamasiJustificativaCelula from '../../components/producao/CamasiJustificativaCelula';
 import ModalEscalaPontualRecurso from '../../components/programacao-producao/ModalEscalaPontualRecurso';
 import type { ProgramacaoProducaoRecurso, RecursoEscalaExcecao } from '../../components/programacao-producao/types';
 import KpiPainelVoltarLink from '../../components/kpis/KpiPainelVoltarLink';
@@ -119,6 +122,7 @@ type LinhaTempo = {
   justificativa: string;
   observacao: string | null;
   categoria?: 'jornada' | 'operacional';
+  justificativaEditavel?: boolean;
 };
 
 function minutosLinha(p: LinhaTempo): number {
@@ -180,6 +184,7 @@ function paradaParaLinha(p: CamasiParadaValida, idx: number): LinhaTempo {
     justificativa: p.justificativa,
     observacao: p.observacao,
     categoria: p.categoria ?? categoriaParadaCamasi(p.justificativa),
+    justificativaEditavel: p.justificativaEditavel === true,
   };
 }
 
@@ -742,6 +747,8 @@ export default function ProducaoCamasiPage() {
     producao: true,
   });
   const [filtroJustificativasCsv, setFiltroJustificativasCsv] = useState('');
+  const [justificativasCatalogo, setJustificativasCatalogo] = useState<CamasiJustificativaOpcao[]>([]);
+  const [editandoJustificativa, setEditandoJustificativa] = useState(false);
   const carregarEmVoo = useRef(false);
 
   const carregar = useCallback(async (f: Filtros, opts?: { silencioso?: boolean }) => {
@@ -764,6 +771,12 @@ export default function ProducaoCamasiPage() {
   }, []);
 
   useEffect(() => {
+    void fetchCamasiJustificativas()
+      .then(setJustificativasCatalogo)
+      .catch(() => setJustificativasCatalogo([]));
+  }, []);
+
+  useEffect(() => {
     void carregar(filtros);
   }, [carregar, filtros]);
 
@@ -775,11 +788,11 @@ export default function ProducaoCamasiPage() {
     if (!isFiltroHoje) return;
     const id = window.setInterval(() => {
       if (document.hidden) return;
-      if (kpiModal || pontualRecurso) return;
+      if (kpiModal || pontualRecurso || editandoJustificativa) return;
       void carregar(filtros, { silencioso: true });
     }, 20_000);
     return () => window.clearInterval(id);
-  }, [isFiltroHoje, filtros, carregar, kpiModal, pontualRecurso]);
+  }, [isFiltroHoje, filtros, carregar, kpiModal, pontualRecurso, editandoJustificativa]);
 
   const filtrosPendentes = useMemo(
     () => draft.dataIni !== filtros.dataIni || draft.dataFim !== filtros.dataFim,
@@ -1721,7 +1734,25 @@ export default function ProducaoCamasiPage() {
                           }`}
                           title={p.justificativa}
                         >
-                          {p.justificativa}
+                          {p.justificativaEditavel ? (
+                            <CamasiJustificativaCelula
+                              data={p.data}
+                              inicio={p.inicio}
+                              fim={p.fim}
+                              observacao={p.observacao}
+                              justificativa={p.justificativa}
+                              opcoes={justificativasCatalogo}
+                              onEditingChange={setEditandoJustificativa}
+                              onSaved={() => {
+                                void fetchCamasiJustificativas()
+                                  .then(setJustificativasCatalogo)
+                                  .catch(() => undefined);
+                                void carregar(filtros, { silencioso: true });
+                              }}
+                            />
+                          ) : (
+                            p.justificativa
+                          )}
                         </td>
                         <td
                           className="max-w-[16rem] whitespace-normal break-words px-2 py-2 align-top text-slate-500 dark:text-slate-400"

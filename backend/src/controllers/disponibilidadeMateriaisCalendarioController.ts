@@ -18,6 +18,7 @@ import {
   type BaseMateriaisCongelada,
   type DemandaCalendarioLinha,
 } from '../services/disponibilidadeMateriaisCalendarioService.js';
+import { parseFiltroMetodosRessuprimento } from '../utils/metodoRessuprimentoProduto.js';
 import { normalizarDataIsoCalendario } from '../utils/disponibilidadeMateriaisCalendarioDerivados.js';
 
 function parseDemanda(body: unknown): DemandaCalendarioLinha[] {
@@ -79,7 +80,10 @@ export async function postDisponibilidadeMateriaisSintetica(req: Request, res: R
   }
   try {
     const demanda = parseDemanda(req.body);
-    const r = await obterDisponibilidadeSintetica(fonte.pool, demanda, fonte.base);
+    const metodos = parseFiltroMetodosRessuprimento(
+      (req.body as Record<string, unknown>)?.metodosRessup
+    );
+    const r = await obterDisponibilidadeSintetica(fonte.pool, demanda, fonte.base, metodos);
     if (!r.ok) {
       res.status(400).json({ error: r.error });
       return;
@@ -104,7 +108,8 @@ export async function postDisponibilidadeMateriaisDia(req: Request, res: Respons
     // Aceita dataIso ou data; normaliza dd/MM/yyyy → YYYY-MM-DD.
     const dataIso = normalizarDataIsoCalendario(body?.dataIso ?? body?.data);
     const setor = body?.setor != null ? String(body.setor) : undefined;
-    const r = await obterMateriaisDoDia(fonte.pool, demanda, dataIso, fonte.base, setor);
+    const metodos = parseFiltroMetodosRessuprimento(body?.metodosRessup);
+    const r = await obterMateriaisDoDia(fonte.pool, demanda, dataIso, fonte.base, setor, metodos);
     if (!r.ok) {
       res.status(400).json({ error: r.error });
       return;
@@ -125,10 +130,10 @@ export async function postDisponibilidadeMateriaisItem(req: Request, res: Respon
   }
   try {
     const demanda = parseDemanda(req.body);
-    const codigoComponente = String(
-      (req.body as Record<string, unknown>)?.codigoComponente ?? ''
-    ).trim();
-    const r = await obterHorizonteItem(fonte.pool, demanda, codigoComponente, fonte.base);
+    const body = req.body as Record<string, unknown>;
+    const codigoComponente = String(body?.codigoComponente ?? '').trim();
+    const metodos = parseFiltroMetodosRessuprimento(body?.metodosRessup);
+    const r = await obterHorizonteItem(fonte.pool, demanda, codigoComponente, fonte.base, metodos);
     if (!r.ok) {
       res.status(400).json({ error: r.error });
       return;

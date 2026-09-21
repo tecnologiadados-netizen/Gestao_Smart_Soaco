@@ -50,6 +50,9 @@ function BadgeSemCarrada() {
 import CalendarioSetorProdutosModal from './CalendarioSetorProdutosModal';
 import CalendarioMateriaisDiaModal from './CalendarioMateriaisDiaModal';
 import CalendarioMaterialHorizonteModal from './CalendarioMaterialHorizonteModal';
+import CalendarioRecurso1000DiaModal, {
+  type Recurso1000DiaCacheEntry,
+} from './CalendarioRecurso1000DiaModal';
 import SequenciamentoCarradasDetalheModal from './SequenciamentoCarradasDetalheModal';
 import {
   comparePedidoAsc,
@@ -91,10 +94,12 @@ import { PERMISSOES } from '../../config/permissoes';
 import type { Pedido, TooltipDetalheRow } from '../../api/pedidos';
 import {
   consultarDisponibilidadeMateriaisSintetica,
+  consultarRecurso1000Sintetico,
   type DisponibilidadeMateriaisSintetica,
   type MaterialCriticoCalendario,
   type MaterialDiaCalendario,
   type SequenciamentoCarradaAgregada,
+  type SinteticoRecurso1000Calendario,
   type StatusMaterialDia,
   type StatusPorCelulaMateriais,
   type StatusPorDataMateriais,
@@ -127,8 +132,9 @@ type Props = {
   /** ISO de quando linhas+estoque foram capturados (legenda). */
   geradoEm?: string;
   /**
-   * Snapshot da sequência em visualização. Com ele, materiais, PCs e estoque/empenho
-   * saem da base congelada no Gravar em vez do Nomus ao vivo.
+   * Snapshot da sequência em visualização.
+   * Com ele (só leitura / concluído), materiais e PCs saem da base congelada no Gravar.
+   * No rascunho editável e no ao vivo o calendário manda `null` e consulta o Nomus em tempo real.
    */
   snapshotId?: number | null;
   /**
@@ -316,6 +322,14 @@ function tipoFDaLinha(row: Record<string, unknown>): string {
   return '';
 }
 
+const OPCOES_METODO_RESSUP = [
+  'Comprado',
+  'Fabricado',
+  'Como padrão fabricado',
+  'Como padrão comprado',
+  'Não informado',
+];
+
 function tipoFPassaFiltro(valorLinha: string, selecionados: string[]): boolean {
   if (selecionados.length === 0) return true;
   return selecionados.some((sel) => sel.trim().toUpperCase() === valorLinha.trim().toUpperCase());
@@ -345,6 +359,35 @@ function tituloStatusMateriais(st: StatusPorDataMateriais | StatusPorCelulaMater
   return 'Materiais OK neste contexto — clique para ver';
 }
 
+function BolinhaEscopo({
+  sigla,
+  title,
+  onClick,
+  corClass,
+  className = '',
+}: {
+  sigla: 'AS' | 'PP';
+  title: string;
+  onClick: () => void;
+  corClass: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      title={title}
+      className={`inline-flex h-4 min-w-[1.15rem] shrink-0 items-center justify-center rounded-full px-0.5 text-[8px] font-extrabold leading-none ring-1 ${corClass} hover:scale-110 ${className}`}
+      aria-label={title}
+    >
+      {sigla}
+    </button>
+  );
+}
+
 function SemaforoMateriais({
   status,
   title,
@@ -358,24 +401,33 @@ function SemaforoMateriais({
 }) {
   const cor =
     status === 'falta'
-      ? 'bg-red-400 ring-red-200'
+      ? 'bg-red-400 ring-red-200 text-white'
       : status === 'atencao'
-        ? 'bg-amber-300 ring-amber-100'
+        ? 'bg-amber-300 ring-amber-100 text-amber-950'
         : status === 'ok'
-          ? 'bg-emerald-400 ring-emerald-100'
-          : 'bg-slate-400/70 ring-slate-200';
+          ? 'bg-emerald-400 ring-emerald-100 text-white'
+          : 'bg-slate-400/70 ring-slate-200 text-white';
   return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      title={title}
-      className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ${cor} hover:scale-125 ${className}`}
-      aria-label={title}
-    />
+    <BolinhaEscopo sigla="AS" title={title} onClick={onClick} corClass={cor} className={className} />
   );
+}
+
+function BolinhaRecurso1000({
+  title,
+  onClick,
+  className = '',
+  status = 'ok',
+}: {
+  title: string;
+  onClick: () => void;
+  className?: string;
+  status?: 'ok' | 'falta';
+}) {
+  const cor =
+    status === 'falta'
+      ? 'bg-red-500 ring-red-200 text-white dark:bg-red-400 dark:ring-red-300 dark:text-slate-900'
+      : 'bg-emerald-500 ring-emerald-200 text-white dark:bg-emerald-400 dark:ring-emerald-300 dark:text-slate-900';
+  return <BolinhaEscopo sigla="PP" title={title} onClick={onClick} corClass={cor} className={className} />;
 }
 
 export default function CalendarioProducaoModal({
@@ -407,6 +459,7 @@ export default function CalendarioProducaoModal({
   const [filtroPd, setFiltroPd] = useState(filtrosIniciais.filtroPd);
   const [filtroTipoF, setFiltroTipoF] = useState(filtrosIniciais.filtroTipoF);
   const [filtroConfiavel, setFiltroConfiavel] = useState(filtrosIniciais.filtroConfiavel);
+  const [filtroMetodoRessup, setFiltroMetodoRessup] = useState(filtrosIniciais.filtroMetodoRessup ?? '');
   const [somentePrev, setSomentePrev] = useState(filtrosIniciais.somentePrev);
   const [vistaCalendario, setVistaCalendario] = useState<'producao' | 'materiais'>(
     filtrosIniciais.vistaCalendario
@@ -423,10 +476,11 @@ export default function CalendarioProducaoModal({
       filtroPd,
       filtroTipoF,
       filtroConfiavel,
+      filtroMetodoRessup,
       somentePrev,
       vistaCalendario,
     });
-  }, [filtroPd, filtroTipoF, filtroConfiavel, somentePrev, vistaCalendario]);
+  }, [filtroPd, filtroTipoF, filtroConfiavel, filtroMetodoRessup, somentePrev, vistaCalendario]);
 
   const qtdePorRow = useMemo(() => {
     const porIndex = montarQtdeLiquidaDoSnapshot(linhas, estoquePorCod);
@@ -487,6 +541,15 @@ export default function CalendarioProducaoModal({
     [filtroConfiavel]
   );
 
+  const metodosRessupSelecionados = useMemo(
+    () =>
+      filtroMetodoRessup
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    [filtroMetodoRessup]
+  );
+
   const temFiltroAtivo = useMemo(() => {
     const pdParcial =
       pdsSelecionados.length > 0 &&
@@ -496,15 +559,30 @@ export default function CalendarioProducaoModal({
       (opcoesTipoF.length === 0 || tiposFSelecionados.length < opcoesTipoF.length);
     const confiavelParcial =
       confiavelSelecionados.length > 0 && confiavelSelecionados.length < 3;
-    return pdParcial || tipoFParcial || confiavelParcial || somentePrev;
+    const metodoParcial =
+      metodosRessupSelecionados.length > 0 &&
+      metodosRessupSelecionados.length < OPCOES_METODO_RESSUP.length;
+    return pdParcial || tipoFParcial || confiavelParcial || metodoParcial || somentePrev;
   }, [
     pdsSelecionados,
     opcoesPd.length,
     tiposFSelecionados,
     opcoesTipoF.length,
     confiavelSelecionados,
+    metodosRessupSelecionados,
     somentePrev,
   ]);
+
+  const metodosRessupApi = useMemo(
+    () =>
+      metodosRessupSelecionados.length > 0 &&
+      metodosRessupSelecionados.length < OPCOES_METODO_RESSUP.length
+        ? metodosRessupSelecionados
+        : undefined,
+    [metodosRessupSelecionados]
+  );
+  /** Com recorte de ressuprimento, AS só aparece onde há componente no filtro. Sem recorte = igual produção. */
+  const temRecorteMetodoRessup = Boolean(metodosRessupApi?.length);
 
   const statusPorIdPedido = useMemo(
     () => mapaStatusConfiavelPorId(linhas, previsaoConfiavelPorId),
@@ -599,7 +677,7 @@ export default function CalendarioProducaoModal({
 
   useEffect(() => {
     setDrill({ nivel: 'pivot' });
-  }, [filtroPd, filtroTipoF, filtroConfiavel, somentePrev]);
+  }, [filtroPd, filtroTipoF, filtroConfiavel, filtroMetodoRessup, somentePrev]);
   const [pedidoModal, setPedidoModal] = useState<{
     linha: TooltipDetalheRow;
     itens: TooltipDetalheRow[];
@@ -658,6 +736,10 @@ export default function CalendarioProducaoModal({
   const [dispMateriais, setDispMateriais] = useState<DisponibilidadeMateriaisSintetica | null>(null);
   const [dispCarregando, setDispCarregando] = useState(false);
   const [dispErro, setDispErro] = useState<string | null>(null);
+  const [ppSintetico, setPpSintetico] = useState<SinteticoRecurso1000Calendario | null>(null);
+  const [ppErro, setPpErro] = useState<string | null>(null);
+  const [ppDiaIso, setPpDiaIso] = useState<string | null>(null);
+  const [ppDiaSetor, setPpDiaSetor] = useState<string | null>(null);
   const [materiaisDiaIso, setMateriaisDiaIso] = useState<string | null>(null);
   const [materiaisDiaSetor, setMateriaisDiaSetor] = useState<string | null>(null);
   const [horizonteItem, setHorizonteItem] = useState<{
@@ -666,6 +748,7 @@ export default function CalendarioProducaoModal({
     descricao: string;
   } | null>(null);
   const materiaisDiaCacheRef = useRef(new Map<string, MaterialDiaCalendario[]>());
+  const ppDiaCacheRef = useRef(new Map<string, Recurso1000DiaCacheEntry>());
   const horizonteCacheRef = useRef(
     new Map<
       string,
@@ -711,18 +794,25 @@ export default function CalendarioProducaoModal({
   useEffect(() => {
     materiaisDiaCacheRef.current.clear();
     horizonteCacheRef.current.clear();
+    ppDiaCacheRef.current.clear();
     setDispErro(null);
     const demanda = demandaRef.current;
     if (demanda.length === 0) {
       setDispMateriais(null);
       setDispCarregando(false);
+      setPpSintetico(null);
+      setPpErro(null);
       return;
     }
     const ac = new AbortController();
     let cancelled = false;
     setDispMateriais(null);
     setDispCarregando(true);
-    void consultarDisponibilidadeMateriaisSintetica(demanda, { signal: ac.signal, snapshotId })
+    void consultarDisponibilidadeMateriaisSintetica(demanda, {
+      signal: ac.signal,
+      snapshotId,
+      metodosRessup: metodosRessupApi,
+    })
       .then((r) => {
         if (cancelled || ac.signal.aborted) return;
         setDispCarregando(false);
@@ -745,7 +835,43 @@ export default function CalendarioProducaoModal({
       cancelled = true;
       ac.abort();
     };
-  }, [demandaKeyConsulta, snapshotId]);
+  }, [demandaKeyConsulta, snapshotId, metodosRessupApi]);
+
+  useEffect(() => {
+    const demanda = demandaRef.current;
+    if (demanda.length === 0) {
+      setPpSintetico(null);
+      setPpErro(null);
+      return;
+    }
+    const ac = new AbortController();
+    let cancelled = false;
+    setPpErro(null);
+    void consultarRecurso1000Sintetico(demanda, {
+      signal: ac.signal,
+      metodosRessup: metodosRessupApi,
+    })
+      .then((r) => {
+        if (cancelled || ac.signal.aborted) return;
+        if (r.error) {
+          setPpErro(r.error);
+          setPpSintetico(null);
+          return;
+        }
+        setPpSintetico(r.data ?? null);
+      })
+      .catch((err: unknown) => {
+        if (cancelled || ac.signal.aborted) return;
+        const msg = err instanceof Error ? err.message : String(err ?? '');
+        if (/abort|AbortError/i.test(msg)) return;
+        setPpErro(msg || 'Falha ao consultar Recurso 1000.');
+        setPpSintetico(null);
+      });
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [demandaKeyConsulta, metodosRessupApi]);
 
   const statusPorDataMap = useMemo(() => {
     const m = new Map<string, StatusPorDataMateriais>();
@@ -761,6 +887,27 @@ export default function CalendarioProducaoModal({
     return m;
   }, [dispMateriais]);
 
+  const ppCelulasMap = useMemo(() => {
+    const m = new Map<string, 'ok' | 'falta'>();
+    for (const c of ppSintetico?.celulas ?? []) {
+      m.set(`${c.setor}\0${c.data}`, c.status === 'falta' ? 'falta' : 'ok');
+    }
+    return m;
+  }, [ppSintetico]);
+
+  const ppDatasStatus = useMemo(() => {
+    const m = new Map<string, 'ok' | 'falta'>();
+    for (const c of ppSintetico?.celulas ?? []) {
+      const prev = m.get(c.data);
+      if (c.status === 'falta' || prev === 'falta') m.set(c.data, 'falta');
+      else if (!prev) m.set(c.data, 'ok');
+    }
+    for (const d of ppSintetico?.datas ?? []) {
+      if (!m.has(d)) m.set(d, 'ok');
+    }
+    return m;
+  }, [ppSintetico]);
+
   const abrirMateriaisDia = useCallback((dataIso: string, setor?: string | null) => {
     setMateriaisDiaIso(toISODate(dataIso) || dataIso);
     setMateriaisDiaSetor(setor?.trim() || null);
@@ -769,6 +916,16 @@ export default function CalendarioProducaoModal({
   const fecharMateriaisDia = useCallback(() => {
     setMateriaisDiaIso(null);
     setMateriaisDiaSetor(null);
+  }, []);
+
+  const abrirRecurso1000Dia = useCallback((dataIso: string, setor?: string | null) => {
+    setPpDiaIso(toISODate(dataIso) || dataIso);
+    setPpDiaSetor(setor?.trim() || null);
+  }, []);
+
+  const fecharRecurso1000Dia = useCallback(() => {
+    setPpDiaIso(null);
+    setPpDiaSetor(null);
   }, []);
 
   const colunas = useMemo(() => montarEixoDatasCalendario(dados.totalPorData), [dados.totalPorData]);
@@ -1208,6 +1365,10 @@ export default function CalendarioProducaoModal({
       setHorizonteItem(null);
       return;
     }
+    if (ppDiaIso) {
+      fecharRecurso1000Dia();
+      return;
+    }
     if (materiaisDiaIso) {
       fecharMateriaisDia();
       return;
@@ -1243,6 +1404,8 @@ export default function CalendarioProducaoModal({
     confirmReplicacaoRm,
     carradaDetalhe,
     horizonteItem,
+    ppDiaIso,
+    fecharRecurso1000Dia,
     materiaisDiaIso,
     fecharMateriaisDia,
     pedidoAjustePrevisao,
@@ -1627,11 +1790,40 @@ export default function CalendarioProducaoModal({
             {label}
           </span>
           {col?.tipo === 'data' && (
-            <SemaforoMateriais
-              status={st?.status}
-              title={tituloStatusMateriais(st)}
-              onClick={() => runSeInterativo(() => abrirMateriaisDia(col.iso))}
-            />
+            <span className="inline-flex items-center gap-0.5">
+              {(!temRecorteMetodoRessup || st) && (dispMateriais || dispCarregando || st) ? (
+                <SemaforoMateriais
+                  status={
+                    dispCarregando
+                      ? undefined
+                      : st?.status ?? (!temRecorteMetodoRessup && dispMateriais ? 'ok' : undefined)
+                  }
+                  title={tituloStatusMateriais(
+                    st ??
+                      (!temRecorteMetodoRessup && dispMateriais
+                        ? {
+                            data: col.iso,
+                            status: 'ok',
+                            qtdeMateriaisFalta: 0,
+                            qtdeMateriaisAtencao: 0,
+                          }
+                        : undefined)
+                  )}
+                  onClick={() => runSeInterativo(() => abrirMateriaisDia(col.iso))}
+                />
+              ) : null}
+              {ppDatasStatus.has(col.iso) ? (
+                <BolinhaRecurso1000
+                  status={ppDatasStatus.get(col.iso)}
+                  title={
+                    ppDatasStatus.get(col.iso) === 'falta'
+                      ? 'Recurso 1000 neste dia: há componente em falta após o consumo acumulado — clique para detalhar'
+                      : 'Componentes Recurso 1000 (Perfiladeira) neste dia — clique para detalhar'
+                  }
+                  onClick={() => runSeInterativo(() => abrirRecurso1000Dia(col.iso))}
+                />
+              ) : null}
+            </span>
           )}
           {!ocioso && (
             <GradeFiltroCabecalhoBtn
@@ -1660,9 +1852,12 @@ export default function CalendarioProducaoModal({
     const statusConfiavel = celulasStatusConfiavel.get(`${setor}\0${col.iso}`) ?? [];
     const statusConfiavelVisivel = filtrarStatusConfiavelVisivel(statusConfiavel, iconesVisiveis);
     const stCelula = statusPorCelulaMap.get(`${setor}\0${col.iso}`);
+    // Igual produção: sem recorte de ressuprimento, AS verde em toda célula com motor carregado.
+    // Com recorte, só mostra onde o backend achou componente do método filtrado.
     const statusMateriaisCelula: StatusMaterialDia | undefined = dispCarregando
       ? undefined
-      : stCelula?.status ?? (dispMateriais ? 'ok' : undefined);
+      : stCelula?.status ??
+        (!temRecorteMetodoRessup && dispMateriais ? 'ok' : undefined);
     const tituloHover =
       tipoFPorCelula.get(`${setor}\0${col.iso}`) ??
       HOVER_TIPOF_LINHAS.map((linha) => `${linha.label}: 0`).join('\n');
@@ -1670,23 +1865,38 @@ export default function CalendarioProducaoModal({
       <td key={colId} className={`${TD} text-right ${weekend ? 'px-1' : ''} ${weekend ? WEEKEND_TD : ''}`}>
         {v > 0 ? (
           <span className="inline-flex items-center justify-end gap-1">
-            <SemaforoMateriais
-              status={statusMateriaisCelula}
-              title={tituloStatusMateriais(
-                stCelula ??
-                  (statusMateriaisCelula === 'ok'
-                    ? {
-                        setor,
-                        data: col.iso,
-                        status: 'ok',
-                        qtdeMateriaisFalta: 0,
-                        qtdeMateriaisAtencao: 0,
-                      }
-                    : undefined)
-              )}
-              className="mr-0"
-              onClick={() => runSeInterativo(() => abrirMateriaisDia(col.iso, setor))}
-            />
+            <span className="inline-flex items-center gap-0.5">
+              {statusMateriaisCelula !== undefined || (dispCarregando && !temRecorteMetodoRessup) ? (
+                <SemaforoMateriais
+                  status={statusMateriaisCelula}
+                  title={tituloStatusMateriais(
+                    stCelula ??
+                      (statusMateriaisCelula === 'ok'
+                        ? {
+                            setor,
+                            data: col.iso,
+                            status: 'ok',
+                            qtdeMateriaisFalta: 0,
+                            qtdeMateriaisAtencao: 0,
+                          }
+                        : undefined)
+                  )}
+                  className="mr-0"
+                  onClick={() => runSeInterativo(() => abrirMateriaisDia(col.iso, setor))}
+                />
+              ) : null}
+              {ppCelulasMap.has(`${setor}\0${col.iso}`) ? (
+                <BolinhaRecurso1000
+                  status={ppCelulasMap.get(`${setor}\0${col.iso}`)}
+                  title={
+                    ppCelulasMap.get(`${setor}\0${col.iso}`) === 'falta'
+                      ? 'Recurso 1000 nesta célula: há componente em falta após o consumo acumulado — clique para detalhar'
+                      : 'Componentes Recurso 1000 (Perfiladeira) nesta célula — clique para detalhar'
+                  }
+                  onClick={() => runSeInterativo(() => abrirRecurso1000Dia(col.iso, setor))}
+                />
+              ) : null}
+            </span>
             <GradeCelulaModalBtn
               onClick={() =>
                 runSeInterativo(() => setDrill(drillAposCliqueQtde(dados.detalhes, setor, col.iso)))
@@ -1827,6 +2037,20 @@ export default function CalendarioProducaoModal({
                 <IndicadorPrevisaoConfiavel status="branco" />
                 <span>= Em branco</span>
               </button>
+              {ppErro ? (
+                <span className="text-[10px] text-amber-700 dark:text-amber-300" title={ppErro}>
+                  PP indisponível
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                  AS = almox secundário · PP = Recurso 1000 (verde ok / vermelho falta)
+                </span>
+              )}
+              {dispErro ? (
+                <span className="text-[10px] text-amber-700 dark:text-amber-300" title={dispErro}>
+                  AS indisponível
+                </span>
+              ) : null}
             </div>
           </div>
           <div className="flex flex-wrap items-end gap-2">
@@ -1907,15 +2131,31 @@ export default function CalendarioProducaoModal({
                 fillContainer
               />
             </div>
+            <div className="min-w-[12rem] max-w-[16rem]" title="Método de ressuprimento (aba Geral do produto no Nomus)">
+              <MultiSelectWithSearch
+                label="Ressuprimento"
+                placeholder="Todos"
+                options={OPCOES_METODO_RESSUP}
+                value={filtroMetodoRessup}
+                onChange={setFiltroMetodoRessup}
+                labelClass={FILTRO_PD_LABEL_CLASS}
+                inputClass={FILTRO_PD_INPUT_CLASS}
+                minWidth="12rem"
+                optionLabel="métodos"
+                dropdownZIndex={FILTRO_PD_DROPDOWN_Z}
+                fillContainer
+              />
+            </div>
             <button
               type="button"
               onClick={() => setSomentePrev((ativo) => !ativo)}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
                 somentePrev
-                  ? 'bg-primary-600 text-white'
+                  ? 'bg-amber-500 text-white ring-2 ring-amber-300 dark:bg-amber-500 dark:ring-amber-200'
                   : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
               }`}
               title="Exibir somente quantidades posicionadas pela previsão (células com ⚠️)"
+              aria-pressed={somentePrev}
             >
               Somente ⚠️
             </button>
@@ -1926,10 +2166,11 @@ export default function CalendarioProducaoModal({
                   setFiltroPd('');
                   setFiltroTipoF('');
                   setFiltroConfiavel('');
+                  setFiltroMetodoRessup('');
                   setSomentePrev(false);
                 }}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                title="Limpar filtros de pedido, TipoF, confiável e somente ⚠️"
+                title="Limpar filtros de pedido, TipoF, confiável, ressuprimento e somente ⚠️"
               >
                 Limpar filtros
               </button>
@@ -2790,6 +3031,19 @@ export default function CalendarioProducaoModal({
           cacheRef={materiaisDiaCacheRef}
           snapshotId={snapshotId}
           setor={materiaisDiaSetor}
+          metodosRessup={metodosRessupApi}
+        />
+      )}
+
+      {ppDiaIso && (
+        <CalendarioRecurso1000DiaModal
+          open
+          dataIso={ppDiaIso}
+          demanda={demandaMateriais}
+          onClose={fecharRecurso1000Dia}
+          cacheRef={ppDiaCacheRef}
+          setor={ppDiaSetor}
+          metodosRessup={metodosRessupApi}
         />
       )}
 
@@ -2803,6 +3057,7 @@ export default function CalendarioProducaoModal({
           onClose={() => setHorizonteItem(null)}
           cacheRef={horizonteCacheRef}
           snapshotId={snapshotId}
+          metodosRessup={metodosRessupApi}
         />
       )}
 

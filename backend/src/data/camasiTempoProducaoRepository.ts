@@ -114,6 +114,8 @@ export type CamasiParadaValida = {
   justificativa: string;
   observacao: string | null;
   categoria: CamasiCategoriaParada;
+  /** Parada sintética SEM JUSTIFICATIVA (início/fim de escala) — pode receber motivo no GS. */
+  justificativaEditavel?: boolean;
 };
 
 export type CamasiProducaoValida = {

@@ -24,6 +24,7 @@ import {
   statusPrincipalPedido,
 } from '../utils/statusPedidoBadges';
 import { formatDataCurta } from './sequenciamento-carradas/simulacaoCarradas';
+import { classificarProdutoPadrao, classeBadgeProdutoPadrao } from '../utils/produtoPadrao';
 
 type SortDir = 'asc' | 'desc';
 
@@ -61,6 +62,16 @@ const COLUMNS: Array<{
   { id: 'data_base_entrega_futura', label: 'Data base entrega futura', keys: ['Data base entrega futura'] },
   { id: 'status', label: 'Status', keys: [] },
   { id: 'historico', label: 'Histórico', keys: [] },
+  {
+    id: 'produto_padrao',
+    label: 'Produto padrão',
+    keys: ['Produto padrão'],
+    getValue: (p) => {
+      const gravado = String((p as Record<string, unknown>)['Produto padrão'] ?? '').trim();
+      if (gravado) return gravado;
+      return classificarProdutoPadrao((p as Record<string, unknown>)['Familia do produto']);
+    },
+  },
 ];
 
 /** Colunas que entram no subtotal do rodapé (soma dos valores filtrados). */
@@ -898,6 +909,27 @@ export default function TabelaPedidos({
                       >
                         <ClockIcon />
                       </button>
+                    </td>
+                  );
+                }
+                if (col.id === 'produto_padrao') {
+                  const raw = col.getValue ? col.getValue(p) : getField(p, col.keys ?? []);
+                  const texto = String(raw ?? '').trim() || '—';
+                  const title =
+                    texto === 'Padrão'
+                      ? 'Família Nomus: Padrão'
+                      : texto === 'Não padrão'
+                        ? 'Família Nomus: Projeto'
+                        : 'Família Nomus diferente de Padrão/Projeto ou não preenchida';
+                  return (
+                    <td key={col.id} className="p-3">
+                      {texto === '—' ? (
+                        <span className="text-slate-500">—</span>
+                      ) : (
+                        <span className={`${BADGE_GRADE_CLASS} ${classeBadgeProdutoPadrao(texto)}`} title={title}>
+                          {texto}
+                        </span>
+                      )}
                     </td>
                   );
                 }

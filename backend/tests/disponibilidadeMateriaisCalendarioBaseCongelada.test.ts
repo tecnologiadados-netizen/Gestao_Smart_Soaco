@@ -113,6 +113,19 @@ describe('motor de disponibilidade com base congelada', () => {
     expect(cel24.some((c) => c.setor === 'Pintura')).toBe(false);
   });
 
+  it('resolve PA na base congelada mesmo com diferença de maiúsculas no código', async () => {
+    const demandaLower: DemandaCalendarioLinha[] = [
+      { codigoPa: 'pa-1', qtde: 3, dataIso: '2026-07-24', pd: '100', setor: 'Solda', carrada: 'ROTA A' },
+    ];
+    const r = await obterDisponibilidadeSintetica(null, demandaLower, BASE);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.qtdeMateriaisEscopo).toBeGreaterThan(0);
+    expect(r.data.statusPorCelula.some((c) => c.setor === 'Solda' && c.data === '2026-07-24')).toBe(
+      true
+    );
+  });
+
   it('materiais do dia filtrados por setor — grade == modal da célula', async () => {
     const r = await obterMateriaisDoDia(null, DEMANDA, '2026-07-24', BASE, 'Solda');
     expect(r.ok).toBe(true);

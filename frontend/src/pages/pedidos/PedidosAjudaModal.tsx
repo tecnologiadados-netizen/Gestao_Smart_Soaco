@@ -142,6 +142,14 @@ const SECOES: SecaoAjuda[] = [
     comoLe:
       'Se a data de produção estiver vazia, a interface pode exibir a previsão de entrega como referência visual — isso não grava produção automaticamente; é só apoio à leitura.',
   },
+  {
+    id: 'produto-padrao',
+    titulo: 'Produto padrão',
+    oQueE:
+      'Última coluna da grade: classifica o item só pela família do produto no Nomus. Não usa o atributo recurso (corte/dobra).',
+    comoLe:
+      'Família Padrão → Padrão. Família Projeto → Não padrão. Qualquer outra família (ou vazia) → Indefinido. A mesma classificação vai na exportação Excel (Exportar Grade e planilha completa), na última coluna visível da grade exportada.',
+  },
 ];
 
 export default function PedidosAjudaModal({ aberto, onClose }: PedidosAjudaModalProps) {
