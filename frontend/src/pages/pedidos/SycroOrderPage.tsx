@@ -1057,11 +1057,13 @@ export default function SycroOrderPage() {
                     Aguarde o histórico completo antes de decidir ou fechar.
                   </p>
                 </div>
-              ) : history.length === 0 ? (
+              ) : history.filter((h) => h.action_type !== 'DATA_PRODUCAO').length === 0 ? (
                 <p className="text-slate-500 dark:text-slate-400 text-sm">Nenhum registro.</p>
               ) : (
                 <ul className="space-y-4">
-                  {history.map((h) => {
+                  {history
+                    .filter((h) => h.action_type !== 'DATA_PRODUCAO')
+                    .map((h) => {
                     const prazoOriginal =
                       historicoPrazoOriginal ?? modalHistorico?.data_original ?? null;
                     const isCreate = h.action_type === 'CREATE';
