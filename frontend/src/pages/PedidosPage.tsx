@@ -22,7 +22,7 @@ import {
   type Pedido,
 } from '../api/pedidos';
 import { listarMotivosSugestao } from '../api/motivosSugestao';
-import { downloadPedidosXlsx, downloadPedidosGradeXlsx, parsePedidosXlsxForImport, type LinhaImportacao } from '../utils/exportImportPedidos';
+import { downloadPedidosXlsx, downloadPedidosGradeXlsx, downloadPedidosDirFinanceiraXlsx, parsePedidosXlsxForImport, type LinhaImportacao } from '../utils/exportImportPedidos';
 import ModalImportacao, { type ResultadoImportacao } from '../components/ModalImportacao';
 import {
   bloqueioImportacaoCarrada,
@@ -156,6 +156,9 @@ export default function PedidosPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
   const [exportGradeLoading, setExportGradeLoading] = useState(false);
+  const [exportDirFinLoading, setExportDirFinLoading] = useState(false);
+  const [menuExportAberto, setMenuExportAberto] = useState(false);
+  const menuExportRef = useRef<HTMLDivElement>(null);
   /** Linhas visíveis na grade (ref evita re-render em loop ao sincronizar a tabela). */
   const pedidosGradeExportRef = useRef<Pedido[]>([]);
   const syncPedidosGradeExport = useCallback((rows: Pedido[]) => {
@@ -292,6 +295,22 @@ export default function PedidosPage() {
     carregarPedidos(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!menuExportAberto) return;
+    const fechar = (e: MouseEvent) => {
+      if (!menuExportRef.current?.contains(e.target as Node)) setMenuExportAberto(false);
+    };
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuExportAberto(false);
+    };
+    document.addEventListener('mousedown', fechar);
+    document.addEventListener('keydown', tecla);
+    return () => {
+      document.removeEventListener('mousedown', fechar);
+      document.removeEventListener('keydown', tecla);
+    };
+  }, [menuExportAberto]);
 
   useEffect(() => {
     const handler = () => carregarPedidos(1);
@@ -497,6 +516,31 @@ export default function PedidosPage() {
       setExportLoading(false);
     }
   }, [filtros]);
+
+  const exportarDirFinanceira = useCallback(async () => {
+    setMenuExportAberto(false);
+    setExportDirFinLoading(true);
+    try {
+      const result = await listarPedidosExport(buildFiltrosPedidosApi(filtros, sortLevelsPersonalizado));
+      const data = Array.isArray(result?.data) ? result.data : [];
+      if (data.length === 0) {
+        setToast('Nenhum pedido para exportar com os filtros atuais.');
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+      const qtd = await downloadPedidosDirFinanceiraXlsx(
+        data,
+        `pedidos_dir_financeira_${new Date().toISOString().slice(0, 10)}.xlsx`
+      );
+      setToast(`Diretoria Financeira: ${qtd} pedido(s) exportado(s).`);
+      setTimeout(() => setToast(null), 3000);
+    } catch {
+      setToast('Erro ao exportar Diretoria Financeira.');
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setExportDirFinLoading(false);
+    }
+  }, [filtros, sortLevelsPersonalizado]);
 
   const exportarGrade = useCallback(async () => {
     setExportGradeLoading(true);
@@ -813,25 +857,63 @@ export default function PedidosPage() {
         )}
         {(podeExportarXlsx || podeExportarGrade || podeImportarXlsx || podeAjustarPrevisao) && (
           <>
-            {podeExportarXlsx && (
-              <button
-                type="button"
-                onClick={exportarXlsx}
-                disabled={exportLoading}
-                className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 disabled:opacity-50"
-              >
-                {exportLoading ? 'Exportando...' : 'Exportar XLSX'}
-              </button>
-            )}
-            {podeExportarGrade && (
-              <button
-                type="button"
-                onClick={exportarGrade}
-                disabled={exportGradeLoading}
-                className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 disabled:opacity-50"
-              >
-                {exportGradeLoading ? 'Exportando...' : 'Exportar Grade'}
-              </button>
+            {(podeExportarXlsx || podeExportarGrade) && (
+              <div className="relative z-50" ref={menuExportRef}>
+                <button
+                  type="button"
+                  onClick={() => setMenuExportAberto((aberto) => !aberto)}
+                  disabled={exportLoading || exportGradeLoading || exportDirFinLoading}
+                  aria-expanded={menuExportAberto}
+                  aria-haspopup="menu"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 disabled:opacity-50"
+                >
+                  {exportLoading || exportGradeLoading || exportDirFinLoading ? 'Exportando...' : 'Exportar'}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+                {menuExportAberto && (
+                  <div
+                    role="menu"
+                    className="absolute left-0 top-full z-40 mt-1 min-w-[15rem] overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                  >
+                    {podeExportarXlsx && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMenuExportAberto(false);
+                          void exportarXlsx();
+                        }}
+                        className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        Exportar XLSX
+                      </button>
+                    )}
+                    {podeExportarGrade && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMenuExportAberto(false);
+                          void exportarGrade();
+                        }}
+                        className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        Exportar Grade
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => void exportarDirFinanceira()}
+                      className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                    >
+                      Exportar Dir. Financeira
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
             {podeImportarXlsx && (
               <>

@@ -150,6 +150,14 @@ const SECOES: SecaoAjuda[] = [
     comoLe:
       'Família Padrão → Padrão. Família Projeto → Não padrão. Qualquer outra família (ou vazia) → Indefinido. A mesma classificação vai na exportação Excel (Exportar Grade e planilha completa), na última coluna visível da grade exportada.',
   },
+  {
+    id: 'exportar',
+    titulo: 'Exportar',
+    oQueE:
+      'O botão Exportar reúne as planilhas do gerenciador: a grade visível, a planilha completa e o recorte da Diretoria Financeira.',
+    comoLe:
+      'Exportar Grade baixa só o que está visível na grade. Exportar XLSX baixa a planilha completa, no formato usado para reimportar previsão. Exportar Dir. Financeira baixa uma linha por PD da consulta atual: soma os valores de item (total, pendente, romaneado, faturado de entrega futura, rateio do adiantamento, à vista e saldo a faturar) e repete uma vez o valor do pedido e o adiantamento. Valor unitário só entra quando o PD tem um único item. Se a previsão divergir entre itens, fica a data mais próxima; se alguma não for confiável, a linha fica NÃO.',
+  },
 ];
 
 export default function PedidosAjudaModal({ aberto, onClose }: PedidosAjudaModalProps) {

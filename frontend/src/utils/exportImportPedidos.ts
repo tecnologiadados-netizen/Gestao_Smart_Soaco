@@ -16,7 +16,7 @@ import {
   maxDataProducaoPedidosNormais,
   resolverDataProducaoExibicaoGerenciador,
 } from './dataProducaoGerenciador';
-import { LABEL_CARRADA_EM_FORMACAO } from './rotaCarrada';
+import { LABEL_CARRADA_EM_FORMACAO, normalizePdLabelForCompare } from './rotaCarrada';
 
 /** Valor de célula na exportação: `null` = célula vazia real no Excel (não string ""). */
 export type ExportCellValue = string | number | Date | null;
@@ -379,6 +379,235 @@ export async function downloadPedidosGradeXlsx(
 
   sanitizeEmptyCells(ws, lastRow, GRADE_EXPORT_COLUMNS.length);
 
+  await baixarWorkbookXlsx(wb, filename);
+}
+
+/** Colunas do arquivo "Exportar Dir. Financeira", nesta ordem. */
+export const DIR_FINANCEIRA_EXPORT_COLUMNS = [
+  'Observacoes',
+  'Tipo Pedido',
+  'PD',
+  'Cliente',
+  'UF',
+  'Municipio de entrega',
+  'Forma de Pagamento',
+  'Condicao de pagamento do pedido de venda',
+  'Valor Unitario com desconto + IPI do item PD',
+  'Valor Total com desconto + IPI do item PD',
+  'Valor Pendente',
+  'Valor Romaneado',
+  'Valor Faturado Entrega Futura + IPI do item do Pedido',
+  'Data base entrega futura',
+  'Venda por qual empresa?',
+  'Vendedor/Representante',
+  'Valor Adiantamento',
+  'Valor Pedido Total',
+  'valorAdiantamentoRateio',
+  'Entrada/A vista Ate 10d',
+  'Valor a Vista Ate 10d',
+  'Saldo a Faturar Real',
+  'Emissao',
+  'Previsão atual',
+  'Previsão Confiável',
+] as const;
+
+const DIR_FIN_DATE_KEYS = new Set<string>(['Data base entrega futura', 'Emissao', 'Previsão atual']);
+
+/** Valores do item: somam na linha única do PD. */
+const DIR_FIN_COLUNAS_SOMA = new Set<string>([
+  'Valor Total com desconto + IPI do item PD',
+  'Valor Pendente',
+  'Valor Romaneado',
+  'Valor Faturado Entrega Futura + IPI do item do Pedido',
+  'valorAdiantamentoRateio',
+  'Valor a Vista Ate 10d',
+  'Saldo a Faturar Real',
+]);
+
+/** Já vêm repetidos em todo item do mesmo PD (total do pedido / adiantamento). */
+const DIR_FIN_COLUNAS_UMA_VEZ = new Set<string>([
+  'Valor Adiantamento',
+  'Valor Pedido Total',
+]);
+
+function textoPrevisaoConfiavelExport(p: Pedido): string | null {
+  if (p.previsao_atual_confiavel === true) return 'SIM';
+  if (p.previsao_atual_confiavel === false) return 'NÃO';
+  return null;
+}
+
+function linhaDirFinanceiraItem(p: Pedido, dataFormacao: string): Record<string, ExportCellValue> {
+  const exib = resolverDataProducaoExibicaoGerenciador(p, dataFormacao);
+  const previsaoAtual = exib.carradaEmFormacao ? '' : exib.previsaoAtual;
+  const row: Record<string, ExportCellValue> = {};
+  for (const key of DIR_FINANCEIRA_EXPORT_COLUMNS) {
+    if (key === 'Previsão atual') {
+      row[key] = exib.carradaEmFormacao
+        ? LABEL_CARRADA_EM_FORMACAO
+        : toExcelDateSerial(previsaoAtual);
+    } else if (key === 'Previsão Confiável') {
+      row[key] = textoPrevisaoConfiavelExport(p);
+    } else if (DIR_FIN_DATE_KEYS.has(key)) {
+      const val = p[key as keyof Pedido] ?? getField(p, [key]);
+      row[key] = toExcelDateSerial(val);
+    } else {
+      const val = p[key as keyof Pedido] ?? getField(p, [key]);
+      row[key] = normalizeNumValue(key, val);
+    }
+  }
+  return row;
+}
+
+function chavePdDirFinanceira(p: Pedido): string {
+  const pd = String(p.PD ?? getField(p, ['PD', 'pd']) ?? '').trim();
+  const norm = normalizePdLabelForCompare(pd);
+  return norm || `id:${String(p.id_pedido ?? '')}`;
+}
+
+function somarCelulas(vals: ExportCellValue[]): number | null {
+  let soma = 0;
+  let algum = false;
+  for (const v of vals) {
+    if (typeof v === 'number' && !Number.isNaN(v)) {
+      soma += v;
+      algum = true;
+    }
+  }
+  return algum ? Math.round(soma * 100) / 100 : null;
+}
+
+function primeiroNumero(vals: ExportCellValue[]): number | null {
+  for (const v of vals) {
+    if (typeof v === 'number' && !Number.isNaN(v)) return Math.round(v * 100) / 100;
+  }
+  return null;
+}
+
+function menorData(vals: ExportCellValue[]): number | null {
+  const nums = vals.filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
+  return nums.length ? Math.min(...nums) : null;
+}
+
+function juntarTextos(vals: ExportCellValue[]): string | null {
+  const uniq: string[] = [];
+  for (const v of vals) {
+    if (v == null || typeof v !== 'string') continue;
+    const s = v.trim();
+    if (!s || uniq.includes(s)) continue;
+    uniq.push(s);
+  }
+  return uniq.length ? uniq.join(' | ') : null;
+}
+
+function agregarPrevisaoAtual(vals: ExportCellValue[]): ExportCellValue {
+  const presentes = vals.filter((v) => v != null && v !== '');
+  if (presentes.length === 0) return null;
+  const primeiro = presentes[0]!;
+  if (presentes.every((v) => v === primeiro)) return primeiro;
+  const numeros = presentes.filter((v): v is number => typeof v === 'number');
+  if (numeros.length > 0) return Math.min(...numeros);
+  return primeiro;
+}
+
+function agregarPrevisaoConfiavel(vals: ExportCellValue[]): string | null {
+  if (vals.some((v) => v === 'NÃO')) return 'NÃO';
+  if (vals.some((v) => v === 'SIM')) return 'SIM';
+  return null;
+}
+
+function agregarGrupoDirFinanceira(linhas: Record<string, ExportCellValue>[]): Record<string, ExportCellValue> {
+  const out: Record<string, ExportCellValue> = {};
+  for (const key of DIR_FINANCEIRA_EXPORT_COLUMNS) {
+    const vals = linhas.map((l) => l[key] ?? null);
+    if (key === 'Valor Unitario com desconto + IPI do item PD') {
+      out[key] = linhas.length === 1 ? (vals[0] ?? null) : null;
+    } else if (key === 'Previsão atual') {
+      out[key] = agregarPrevisaoAtual(vals);
+    } else if (key === 'Previsão Confiável') {
+      out[key] = agregarPrevisaoConfiavel(vals);
+    } else if (key === 'Data base entrega futura') {
+      out[key] = menorData(vals);
+    } else if (key === 'Emissao') {
+      out[key] = menorData(vals);
+    } else if (DIR_FIN_COLUNAS_SOMA.has(key)) {
+      out[key] = somarCelulas(vals);
+    } else if (DIR_FIN_COLUNAS_UMA_VEZ.has(key)) {
+      out[key] = primeiroNumero(vals);
+    } else {
+      out[key] = juntarTextos(vals);
+    }
+  }
+  return out;
+}
+
+/** Uma linha por PD. Valores de item são somados; totais do pedido entram uma vez. */
+export function pedidosToDirFinanceiraRows(pedidos: Pedido[]): Record<string, ExportCellValue>[] {
+  const dataFormacao = dataProducaoCarradaEmFormacaoApartirDe(maxDataProducaoPedidosNormais(pedidos));
+  const grupos = new Map<string, Record<string, ExportCellValue>[]>();
+  const ordem: string[] = [];
+  for (const p of pedidos) {
+    const chave = chavePdDirFinanceira(p);
+    let grupo = grupos.get(chave);
+    if (!grupo) {
+      grupo = [];
+      grupos.set(chave, grupo);
+      ordem.push(chave);
+    }
+    grupo.push(linhaDirFinanceiraItem(p, dataFormacao));
+  }
+  return ordem.map((chave) => agregarGrupoDirFinanceira(grupos.get(chave)!));
+}
+
+/** Exporta a planilha enxuta da Diretoria Financeira. */
+export async function downloadPedidosDirFinanceiraXlsx(
+  pedidos: Pedido[],
+  filename = 'pedidos_dir_financeira.xlsx'
+): Promise<number> {
+  const rows = pedidosToDirFinanceiraRows(pedidos);
+  const cols = DIR_FINANCEIRA_EXPORT_COLUMNS;
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Dir. Financeira', { views: [{ state: 'frozen', ySplit: 1 }] });
+
+  const tableRows: (string | number | Date | null)[][] = rows.map((r) =>
+    cols.map((h) => rowValueForTable(r, h))
+  );
+  const lastRow = tableRows.length + 1;
+  const ref = `A1:${colLetter(cols.length - 1)}${lastRow}`;
+
+  ws.addTable({
+    name: 'TabelaDirFinanceira',
+    ref,
+    headerRow: true,
+    style: { theme: 'TableStyleMedium2', showRowStripes: true },
+    columns: [...cols].map((name) => ({ name, filterButton: true })),
+    rows: tableRows,
+  });
+
+  const isValorColumn = (k: string) => VALOR_COLUMN_KEYS.has(k) || /valor/i.test(k);
+  for (let colIdx = 0; colIdx < cols.length; colIdx++) {
+    const key = cols[colIdx]!;
+    const colNum = colIdx + 1;
+    if (DIR_FIN_DATE_KEYS.has(key)) {
+      ws.getColumn(colNum).width = key === 'Previsão atual' ? 22 : DATE_COLUMN_WIDTH;
+      for (let r = 2; r <= lastRow; r++) {
+        ws.getCell(r, colNum).numFmt = DATE_FORMAT_EXCEL;
+      }
+    } else if (isValorColumn(key)) {
+      ws.getColumn(colNum).width = Math.max(18, key.length + 2);
+      for (let r = 2; r <= lastRow; r++) {
+        ws.getCell(r, colNum).numFmt = NUM_FMT_VALOR_CONTABIL;
+      }
+    } else {
+      ws.getColumn(colNum).width = Math.min(42, Math.max(14, key.length + 2));
+    }
+  }
+
+  sanitizeEmptyCells(ws, lastRow, cols.length);
+  await baixarWorkbookXlsx(wb, filename);
+  return rows.length;
+}
+
+async function baixarWorkbookXlsx(wb: Workbook, filename: string): Promise<void> {
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
