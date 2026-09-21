@@ -7,7 +7,9 @@
  */
 
 import type { Pool } from 'mysql2/promise';
-import { nomusQueryWithRetry } from '../config/nomusDb.js';
+import { getNomusPool, nomusQueryWithRetry } from '../config/nomusDb.js';
+import { obterMetodosRessuprimentoPorIds } from './calendarioMetodoRessuprimentoService.js';
+import { METODO_RESSUPRIMENTO_VAZIO } from '../utils/metodoRessuprimentoProduto.js';
 import { loadBomListaMateriaisAcabadoSql, loadComponentesEscopoCalendarioMateriaisSql } from '../data/bomListaMateriaisSql.js';
 import { calcularSaldoSc } from '../data/consultaEstoqueRepository.js';
 import { RESSUP_NAO_ALMOX_ATTR_TIPO_MATERIAL } from '../data/ressupNaoAlmoxRepository.js';
@@ -141,6 +143,7 @@ export type MaterialDiaRow = {
   idProduto: number;
   codigo: string;
   descricao: string;
+  metodoRessuprimento: string;
   consumoDia: number;
   saldoInicio: number;
   /** Entrada numérica do dia (motor) — base do cálculo de falta; não misturar com avisos. */
@@ -186,6 +189,7 @@ type ItemInterno = {
   idProduto: number;
   codigo: string;
   descricao: string;
+  metodoRessuprimento: string;
   saldoInicial: number;
   consumoPorDia: Map<string, number>;
   entradaPorDia: Map<string, number>;
@@ -216,6 +220,35 @@ function hojeIsoLocal(): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+/** Chave estável de código PA (case/espaços) — alinhada ao motor PP. */
+function normCodKey(s: string): string {
+  return String(s ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+}
+
+/** Resolve id PA a partir da base congelada com chave normalizada. */
+function mapaIdPorCodigoPaDaBase(
+  base: BaseMateriaisCongelada,
+  codigosPa: string[]
+): Map<string, number> {
+  const porKey = new Map<string, number>();
+  for (const [cod, idRaw] of Object.entries(base.idPorCodigoPa ?? {})) {
+    const id = Number(idRaw);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    const key = normCodKey(cod);
+    if (key && !porKey.has(key)) porKey.set(key, id);
+  }
+  const out = new Map<string, number>();
+  for (const cod of codigosPa) {
+    const key = normCodKey(cod);
+    const id = porKey.get(key);
+    if (id != null) out.set(key, id);
+  }
+  return out;
 }
 
 function addOneDayIso(iso: string): string {
@@ -294,7 +327,8 @@ async function resolverIdsPorCodigoPa(
     for (const r of Array.isArray(rows) ? rows : []) {
       const nome = String(r.nome ?? '').trim();
       const id = Number(r.id);
-      if (nome && Number.isFinite(id) && id > 0 && !map.has(nome)) map.set(nome, id);
+      const key = normCodKey(nome);
+      if (key && Number.isFinite(id) && id > 0 && !map.has(key)) map.set(key, id);
     }
   }
   return map;
@@ -865,7 +899,8 @@ function montarDatasCalendario(demanda: DemandaCalendarioLinha[], hoje: string):
 export async function computarEngineDisponibilidade(
   pool: Pool | null,
   demandaRaw: DemandaCalendarioLinha[],
-  base?: BaseMateriaisCongelada | null
+  base?: BaseMateriaisCongelada | null,
+  metodosRessup: string[] = []
 ): Promise<{ ok: true; data: EngineResult } | { ok: false; error: string }> {
   const demanda = normalizarDemanda(demandaRaw);
   const consultadoEm = base ? base.capturadoEm : new Date().toISOString();
@@ -902,12 +937,7 @@ export async function computarEngineDisponibilidade(
   let idPorCodigoPa: Map<string, number>;
   let bomSec: BomRow[];
   if (base) {
-    idPorCodigoPa = new Map(
-      codigosPa
-        .map((cod) => [cod, base.idPorCodigoPa[cod]] as const)
-        .filter((e): e is readonly [string, number] => Number.isFinite(e[1]) && (e[1] as number) > 0)
-        .map(([cod, id]) => [cod, id])
-    );
+    idPorCodigoPa = mapaIdPorCodigoPaDaBase(base, codigosPa);
     bomSec = base.bom.map((b) => ({
       idPa: b.idPa,
       codigoPa: '',
@@ -921,6 +951,18 @@ export async function computarEngineDisponibilidade(
     const idPas = [...new Set([...idPorCodigoPa.values()])];
     const bomRows = await carregarBomFolhaPorPas(pool!, idPas);
     bomSec = await filtrarBomEscopoCalendario(pool!, bomRows);
+  }
+
+  const idsComponentes = [...new Set(bomSec.map((b) => b.idComponente))];
+  const poolMetodo = pool ?? getNomusPool();
+  const metodoPorId = poolMetodo
+    ? await obterMetodosRessuprimentoPorIds(poolMetodo, idsComponentes)
+    : new Map(idsComponentes.map((id) => [id, METODO_RESSUPRIMENTO_VAZIO]));
+  if (metodosRessup.length > 0) {
+    const selecionados = new Set(metodosRessup);
+    bomSec = bomSec.filter((b) =>
+      selecionados.has(metodoPorId.get(b.idComponente) ?? METODO_RESSUPRIMENTO_VAZIO)
+    );
   }
 
   // BOM por PA id
@@ -938,6 +980,8 @@ export async function computarEngineDisponibilidade(
         idProduto: b.idComponente,
         codigo: b.codigoComponente,
         descricao: b.descricaoComponente,
+        metodoRessuprimento:
+          metodoPorId.get(b.idComponente) ?? METODO_RESSUPRIMENTO_VAZIO,
         saldoInicial: 0,
         consumoPorDia: new Map(),
         entradaPorDia: new Map(),
@@ -951,7 +995,7 @@ export async function computarEngineDisponibilidade(
   };
 
   for (const d of demanda) {
-    const idPa = idPorCodigoPa.get(d.codigoPa);
+    const idPa = idPorCodigoPa.get(normCodKey(d.codigoPa));
     if (idPa == null) continue;
     const comps = bomPorPa.get(idPa);
     if (!comps?.length) continue;
@@ -1056,8 +1100,20 @@ export async function computarEngineDisponibilidade(
     }
   }
 
-  // Semáforo por célula: material em falta no dia ∩ consumo do setor naquele dia.
+  // Semáforo por célula: só existe quando há componente do recorte consumido na célula.
   const faltaPorCelula = new Map<string, number>();
+  const componentesPorCelula = new Map<string, Set<number>>();
+  for (const c of calcs) {
+    for (const o of c.item.origens) {
+      if (!setDias.has(o.dataIso)) continue;
+      const setor = String(o.setor ?? '').trim();
+      if (!setor) continue;
+      const key = `${setor}\0${o.dataIso}`;
+      const ids = componentesPorCelula.get(key) ?? new Set<number>();
+      ids.add(c.item.idProduto);
+      componentesPorCelula.set(key, ids);
+    }
+  }
 
   for (let i = 0; i < datas.length; i++) {
     // Semáforo alinhado ao modal: só materiais com falta (nAcum > 0) no dia.
@@ -1080,6 +1136,7 @@ export async function computarEngineDisponibilidade(
         faltaPorCelula.set(key, (faltaPorCelula.get(key) ?? 0) + 1);
       }
     }
+    // Cabeçalho AS: um status por data do eixo (igual produção).
     statusPorData.push({
       data: dataIso,
       status: relevantes.length ? statusDiaAgregado(relevantes) : 'ok',
@@ -1089,14 +1146,17 @@ export async function computarEngineDisponibilidade(
   }
 
   const statusPorCelula: StatusPorCelulaRow[] = [];
-  for (const [key, qtde] of faltaPorCelula) {
+  // Células com falta (vermelho) + células com consumo no escopo (verde/ok) para o recorte de ressuprimento.
+  const chavesCelula = new Set<string>([...faltaPorCelula.keys(), ...componentesPorCelula.keys()]);
+  for (const key of chavesCelula) {
     const sep = key.indexOf('\0');
     const setor = key.slice(0, sep);
     const data = key.slice(sep + 1);
+    const qtde = faltaPorCelula.get(key) ?? 0;
     statusPorCelula.push({
       setor,
       data,
-      status: 'falta',
+      status: qtde > 0 ? 'falta' : 'ok',
       qtdeMateriaisFalta: qtde,
       qtdeMateriaisAtencao: 0,
     });
@@ -1164,9 +1224,10 @@ function agregarOrigens(
 export async function obterDisponibilidadeSintetica(
   pool: Pool | null,
   demanda: DemandaCalendarioLinha[],
-  base?: BaseMateriaisCongelada | null
+  base?: BaseMateriaisCongelada | null,
+  metodosRessup: string[] = []
 ): Promise<{ ok: true; data: DisponibilidadeSintetico } | { ok: false; error: string }> {
-  const r = await computarEngineDisponibilidade(pool, demanda, base);
+  const r = await computarEngineDisponibilidade(pool, demanda, base, metodosRessup);
   if (!r.ok) return r;
   return {
     ok: true,
@@ -1187,7 +1248,8 @@ export async function obterMateriaisDoDia(
   dataRaw: string,
   base?: BaseMateriaisCongelada | null,
   /** Quando informado, só materiais com consumo do setor na data (bolinha da célula). */
-  setorFiltroRaw?: string | null
+  setorFiltroRaw?: string | null,
+  metodosRessup: string[] = []
 ): Promise<
   | {
       ok: true;
@@ -1203,7 +1265,7 @@ export async function obterMateriaisDoDia(
     };
   }
   const setorFiltro = String(setorFiltroRaw ?? '').trim();
-  const r = await computarEngineDisponibilidade(pool, demanda, base);
+  const r = await computarEngineDisponibilidade(pool, demanda, base, metodosRessup);
   if (!r.ok) return r;
   const idx = r.data.datas.indexOf(dataIso);
   if (idx < 0) {
@@ -1259,6 +1321,7 @@ export async function obterMateriaisDoDia(
       idProduto: item.idProduto,
       codigo: item.codigo,
       descricao: item.descricao,
+      metodoRessuprimento: item.metodoRessuprimento,
       consumoDia: consumoExibicao,
       saldoInicio: arred2(saldoInicio),
       entradaDia: arred2(entrada),
@@ -1285,7 +1348,8 @@ export async function obterHorizonteItem(
   pool: Pool | null,
   demanda: DemandaCalendarioLinha[],
   codigoComponente: string,
-  base?: BaseMateriaisCongelada | null
+  base?: BaseMateriaisCongelada | null,
+  metodosRessup: string[] = []
 ): Promise<
   | {
       ok: true;
@@ -1304,7 +1368,7 @@ export async function obterHorizonteItem(
   const codigo = String(codigoComponente ?? '').trim();
   if (!codigo) return { ok: false, error: 'codigoComponente obrigatório.' };
 
-  const r = await computarEngineDisponibilidade(pool, demanda, base);
+  const r = await computarEngineDisponibilidade(pool, demanda, base, metodosRessup);
   if (!r.ok) return r;
 
   const item = r.data.itens.find((i) => i.codigo === codigo);

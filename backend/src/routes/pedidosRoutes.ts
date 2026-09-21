@@ -57,6 +57,11 @@ import {
   postDisponibilidadeMateriaisItem,
   postDisponibilidadeMateriaisSintetica,
 } from '../controllers/disponibilidadeMateriaisCalendarioController.js';
+import {
+  postCalendarioRecurso1000Dia,
+  postCalendarioRecurso1000Sintetico,
+} from '../controllers/calendarioRecurso1000CalendarioController.js';
+import { postCalendarioMetodoRessuprimento } from '../controllers/calendarioMetodoRessuprimentoController.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -161,6 +166,24 @@ router.post(
   verSequenciamentoCarradas,
   writeLimiter,
   postDisponibilidadeMateriaisItem
+);
+router.post(
+  '/sequenciamento-carradas/calendario-producao/recurso-1000',
+  verSequenciamentoCarradas,
+  writeLimiter,
+  postCalendarioRecurso1000Sintetico
+);
+router.post(
+  '/sequenciamento-carradas/calendario-producao/recurso-1000/dia',
+  verSequenciamentoCarradas,
+  writeLimiter,
+  postCalendarioRecurso1000Dia
+);
+router.post(
+  '/sequenciamento-carradas/calendario-producao/metodos-ressuprimento',
+  verSequenciamentoCarradas,
+  writeLimiter,
+  postCalendarioMetodoRessuprimento
 );
 router.get('/inconsistencia-qtde-pendente', verPedidos, getInconsistenciaQtdePendente);
 router.get('/encerrados/typeahead', verPedidos, getPedidosEncerradosTypeahead);

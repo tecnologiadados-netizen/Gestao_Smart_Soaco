@@ -192,6 +192,7 @@ export type FiltrosCalendarioProducaoState = {
   filtroPd: string;
   filtroTipoF: string;
   filtroConfiavel: string;
+  filtroMetodoRessup: string;
   somentePrev: boolean;
   vistaCalendario: 'producao' | 'materiais';
 };
@@ -200,6 +201,7 @@ const DEFAULT_FILTROS_CALENDARIO_PRODUCAO: FiltrosCalendarioProducaoState = {
   filtroPd: '',
   filtroTipoF: '',
   filtroConfiavel: '',
+  filtroMetodoRessup: '',
   somentePrev: false,
   vistaCalendario: 'producao',
 };

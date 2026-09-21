@@ -228,7 +228,10 @@ export type DemandaCalendarioMateriais = {
  * Quando informado, o backend calcula com a base congelada no Gravar daquela sequência
  * (sem consultar o Nomus). Ausente = consulta ao vivo.
  */
-export type OpcoesFonteCalendario = { snapshotId?: number | null };
+export type OpcoesFonteCalendario = {
+  snapshotId?: number | null;
+  metodosRessup?: string[];
+};
 
 export type StatusMaterialDia = 'ok' | 'atencao' | 'falta';
 
@@ -268,6 +271,7 @@ export type MaterialDiaCalendario = {
   idProduto: number;
   codigo: string;
   descricao: string;
+  metodoRessuprimento: string;
   consumoDia: number;
   saldoInicio: number;
   /** Entrada numérica do dia (motor) — base do cálculo de falta. */
@@ -340,7 +344,11 @@ export async function consultarDisponibilidadeMateriaisSintetica(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // apiFetch já faz JSON.stringify — passar objeto cru.
-        body: { demanda, snapshotId: opts?.snapshotId ?? null },
+        body: {
+          demanda,
+          snapshotId: opts?.snapshotId ?? null,
+          metodosRessup: opts?.metodosRessup,
+        },
         signal: opts?.signal,
       }
     );
@@ -376,6 +384,7 @@ export async function consultarDisponibilidadeMateriaisDia(
         dataIso,
         snapshotId: opts?.snapshotId ?? null,
         setor: opts?.setor?.trim() || undefined,
+        metodosRessup: opts?.metodosRessup,
       },
     }
   );
@@ -419,7 +428,12 @@ export async function consultarDisponibilidadeMateriaisItem(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: { demanda, codigoComponente, snapshotId: opts?.snapshotId ?? null },
+      body: {
+        demanda,
+        codigoComponente,
+        snapshotId: opts?.snapshotId ?? null,
+        metodosRessup: opts?.metodosRessup,
+      },
     }
   );
   const parsed = await parseJsonBodyDisponibilidade<{
@@ -446,6 +460,153 @@ export async function consultarDisponibilidadeMateriaisItem(
       origens: b.origens ?? [],
     },
   };
+}
+
+export type EstoqueEmProcessoCalendarioPp = {
+  perfiladeira: number;
+  corteDobra: number;
+  solda: number;
+  pintura: number;
+  montagem: number;
+};
+
+export type EstoqueRecurso1000Calendario = {
+  estoquePaNomus: number;
+  estoqueEmProcesso: EstoqueEmProcessoCalendarioPp;
+  estoqueProducao: number;
+  estoqueTotal: number;
+  estoqueInicioDia: number;
+  consumidoAntes: number;
+};
+
+export type ComponenteRecurso1000Calendario = {
+  idComponente: number;
+  codigo: string;
+  descricao: string;
+  descSimp: string | null;
+  metodoRessuprimento: string;
+  consumoDia: number;
+  falta: number;
+  origens: OrigemConsumoCalendario[];
+  estoque: EstoqueRecurso1000Calendario;
+};
+
+export type ProgramacaoFonteRecurso1000 = {
+  id: string;
+  name: string;
+  updatedAt: string;
+};
+
+export type SinteticoRecurso1000Calendario = {
+  consultadoEm: string;
+  celulas: { setor: string; data: string; status?: 'ok' | 'falta' }[];
+  datas: string[];
+  programacao: ProgramacaoFonteRecurso1000 | null;
+};
+
+export async function consultarRecurso1000Sintetico(
+  demanda: DemandaCalendarioMateriais[],
+  opts?: { signal?: AbortSignal; metodosRessup?: string[] }
+): Promise<{ data?: SinteticoRecurso1000Calendario; error?: string }> {
+  try {
+    const res = await apiFetch(
+      '/api/pedidos/sequenciamento-carradas/calendario-producao/recurso-1000',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: { demanda, metodosRessup: opts?.metodosRessup },
+        signal: opts?.signal,
+      }
+    );
+    const parsed = await parseJsonBodyDisponibilidade<
+      SinteticoRecurso1000Calendario & { ok?: boolean; error?: string }
+    >(res);
+    if (!parsed.ok) return { error: parsed.error };
+    const { ok: _ok, error: _e, ...data } = parsed.body;
+    return { data };
+  } catch (err) {
+    if (opts?.signal?.aborted) throw err;
+    const msg = err instanceof Error ? err.message : String(err ?? '');
+    if (/abort|AbortError/i.test(msg)) throw err;
+    return { error: msg || 'Falha ao consultar Recurso 1000.' };
+  }
+}
+
+export async function consultarRecurso1000Dia(
+  demanda: DemandaCalendarioMateriais[],
+  dataIso: string,
+  opts?: { setor?: string | null; metodosRessup?: string[] }
+): Promise<{
+  data?: {
+    consultadoEm: string;
+    dataIso: string;
+    setor: string | null;
+    programacao: ProgramacaoFonteRecurso1000 | null;
+    componentes: ComponenteRecurso1000Calendario[];
+  };
+  error?: string;
+}> {
+  const res = await apiFetch(
+    '/api/pedidos/sequenciamento-carradas/calendario-producao/recurso-1000/dia',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: {
+        demanda,
+        dataIso,
+        setor: opts?.setor?.trim() || undefined,
+        metodosRessup: opts?.metodosRessup,
+      },
+    }
+  );
+  const parsed = await parseJsonBodyDisponibilidade<{
+    ok?: boolean;
+    error?: string;
+    consultadoEm: string;
+    dataIso: string;
+    setor: string | null;
+    programacao: ProgramacaoFonteRecurso1000 | null;
+    componentes: ComponenteRecurso1000Calendario[];
+  }>(res);
+  if (!parsed.ok) return { error: parsed.error };
+  return {
+    data: {
+      consultadoEm: parsed.body.consultadoEm,
+      dataIso: parsed.body.dataIso ?? dataIso,
+      setor: parsed.body.setor ?? null,
+      programacao: parsed.body.programacao ?? null,
+      componentes: parsed.body.componentes ?? [],
+    },
+  };
+}
+
+export async function consultarMetodosRessuprimentoCalendario(
+  codigos: string[],
+  opts?: { signal?: AbortSignal }
+): Promise<{ data?: Record<string, string>; error?: string }> {
+  try {
+    const res = await apiFetch(
+      '/api/pedidos/sequenciamento-carradas/calendario-producao/metodos-ressuprimento',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: { codigos },
+        signal: opts?.signal,
+      }
+    );
+    const parsed = await parseJsonBodyDisponibilidade<{
+      ok?: boolean;
+      error?: string;
+      porCodigo?: Record<string, string>;
+    }>(res);
+    if (!parsed.ok) return { error: parsed.error };
+    return { data: parsed.body.porCodigo ?? {} };
+  } catch (err) {
+    if (opts?.signal?.aborted) throw err;
+    const msg = err instanceof Error ? err.message : String(err ?? '');
+    if (/abort|AbortError/i.test(msg)) throw err;
+    return { error: msg || 'Falha ao consultar método de ressuprimento.' };
+  }
 }
 
 // ---------------------------------------------------------------------------

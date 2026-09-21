@@ -43,6 +43,7 @@ function entradaPcDaLinha(row: MaterialDiaCalendario): EntradaPcExibicaoCalendar
 const COLS = [
   'codigo',
   'descricao',
+  'metodoRessuprimento',
   'saldoInicio',
   'consumoDia',
   'entradaDia',
@@ -54,7 +55,8 @@ type ColId = (typeof COLS)[number];
 const COL_LABELS: Record<ColId, string> = {
   codigo: 'Código',
   descricao: 'Descrição',
-  saldoInicio: 'Saldo início',
+  metodoRessuprimento: 'Ressuprimento',
+  saldoInicio: 'Saldo',
   consumoDia: 'Consumo',
   entradaDia: 'Entrada PC',
   falta: 'Falta',
@@ -62,8 +64,9 @@ const COL_LABELS: Record<ColId, string> = {
 
 const DEFAULT_COL_WIDTHS: Record<ColId, number> = {
   codigo: 140,
-  descricao: 260,
-  saldoInicio: 100,
+  descricao: 240,
+  metodoRessuprimento: 130,
+  saldoInicio: 90,
   consumoDia: 100,
   entradaDia: 160,
   falta: 90,
@@ -90,6 +93,7 @@ function classStatus(status: MaterialDiaCalendario['status']): string {
 function textoCelula(row: MaterialDiaCalendario, colId: string): string {
   if (colId === 'codigo') return row.codigo;
   if (colId === 'descricao') return row.descricao || '';
+  if (colId === 'metodoRessuprimento') return row.metodoRessuprimento || 'Não informado';
   if (colId === 'saldoInicio') return fmtNum(row.saldoInicio);
   if (colId === 'consumoDia') return fmtNum(row.consumoDia);
   if (colId === 'entradaDia') return entradaPcDaLinha(row).texto;
@@ -128,6 +132,7 @@ export type CalendarioMateriaisDiaModalProps = {
   snapshotId?: number | null;
   /** Filtra materiais/origens ao setor da célula (bolinha da grade). */
   setor?: string | null;
+  metodosRessup?: string[];
 };
 
 export default function CalendarioMateriaisDiaModal({
@@ -139,6 +144,7 @@ export default function CalendarioMateriaisDiaModal({
   cacheRef,
   snapshotId,
   setor = null,
+  metodosRessup,
 }: CalendarioMateriaisDiaModalProps) {
   const [linhas, setLinhas] = useState<MaterialDiaCalendario[]>([]);
   const [carregando, setCarregando] = useState(false);
@@ -238,7 +244,8 @@ export default function CalendarioMateriaisDiaModal({
     scCacheRef.current.clear();
     const dataNorm = toISODate(dataIso) || dataIso;
     const setorNorm = String(setor ?? '').trim();
-    const cacheKey = setorNorm ? `${dataNorm}\0${setorNorm}` : dataNorm;
+    const metodoKey = (metodosRessup ?? []).join(',');
+    const cacheKey = `${setorNorm ? `${dataNorm}\0${setorNorm}` : dataNorm}\0m:${metodoKey}`;
     const cached = cacheRef.current.get(cacheKey);
     if (cached) {
       setLinhas(cached);
@@ -252,6 +259,7 @@ export default function CalendarioMateriaisDiaModal({
     void consultarDisponibilidadeMateriaisDia(demanda, dataNorm, {
       snapshotId,
       setor: setorNorm || null,
+      metodosRessup,
     }).then((r) => {
       if (cancelled) return;
       setCarregando(false);
@@ -267,7 +275,7 @@ export default function CalendarioMateriaisDiaModal({
     return () => {
       cancelled = true;
     };
-  }, [open, dataIso, demanda, cacheRef, snapshotId, setor]);
+  }, [open, dataIso, demanda, cacheRef, snapshotId, setor, metodosRessup]);
 
   const fetchPcPend = useCallback(
     (id: number): Promise<{ data: RessupAlmoxPcPendLinha[]; error?: string }> =>
@@ -347,7 +355,8 @@ export default function CalendarioMateriaisDiaModal({
                 ? 'Materiais em falta com consumo deste setor no dia (exclui Matéria Prima). '
                 : 'Somente consumo e falta > 0 no dia (exclui Matéria Prima). '}
               Clique em <strong>Consumo</strong> para ver a origem; em <strong>Entrada PC</strong> para
-              PC / Pré Compra / Solicitação. Arraste a borda das colunas para ajustar a largura.
+              PC / Pré Compra / Solicitação. Método de ressuprimento vem da aba Geral do componente
+              no Nomus. Arraste a borda das colunas para ajustar a largura.
             </p>
           </div>
           <button
@@ -401,13 +410,13 @@ export default function CalendarioMateriaisDiaModal({
                     return (
                       <th
                         key={colId}
-                        className={`${TH} ${numeric ? 'text-right' : 'text-left'}`}
+                        className={`${TH} overflow-hidden ${numeric ? 'text-right' : 'text-left'}`}
                         style={{ width: colWidths[colId] ?? DEFAULT_COL_WIDTHS[colId] }}
                       >
                         <div
-                          className={`flex items-center gap-1 pr-2 ${numeric ? 'justify-end' : 'justify-between'}`}
+                          className={`flex min-w-0 items-center gap-1 pr-2 ${numeric ? 'justify-end' : 'justify-between'}`}
                         >
-                          <span className="whitespace-nowrap">{COL_LABELS[colId]}</span>
+                          <span className="min-w-0 leading-tight">{COL_LABELS[colId]}</span>
                           <GradeFiltroCabecalhoBtn
                             ativo={grade.colunaComFiltroAtivo(colId)}
                             onClick={(e) => grade.abrirFiltroExcel(colId, e)}
@@ -450,6 +459,9 @@ export default function CalendarioMateriaisDiaModal({
                       </td>
                       <td className={`${TD} whitespace-normal break-words`}>
                         {r.descricao || '—'}
+                      </td>
+                      <td className={`${TD} whitespace-normal break-words`}>
+                        {r.metodoRessuprimento || 'Não informado'}
                       </td>
                       <td className={`${TD} text-right tabular-nums`}>{fmtNum(r.saldoInicio)}</td>
                       <td className={`${TD} text-right tabular-nums`}>
