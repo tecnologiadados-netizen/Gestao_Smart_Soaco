@@ -99,6 +99,8 @@ function mapTipo(
 
 export async function listarTiposComDestinatarios(): Promise<WhatsappNotificacaoTipoRow[]> {
   await ensureFaturamentoDiarioLinhasWhatsappTipo();
+  const { ensureCamasiParadaAlertaWhatsappTipo } = await import('../config/camasiParadaAlertaNotificacao.js');
+  await ensureCamasiParadaAlertaWhatsappTipo();
   const rows = await prisma.whatsappNotificacaoTipo.findMany({
     include: {
       destinatarios: { select: { usuarioId: true } },
@@ -187,27 +189,33 @@ export async function salvarCatalogoTipos(items: WhatsappNotificacaoTipoSaveItem
   }
 
   await prisma.$transaction(async (tx) => {
+    const { CAMASI_PARADA_ALERTA_WA_CODE } = await import('../config/camasiParadaAlertaNotificacao.js');
     const existing = await tx.whatsappNotificacaoTipo.findMany({ select: { id: true, code: true } });
     const incomingIds = new Set(items.filter((i) => i.id && i.id > 0).map((i) => i.id!));
-    const toDelete = existing.filter((e) => !incomingIds.has(e.id));
+    const toDelete = existing.filter(
+      (e) => !incomingIds.has(e.id) && e.code !== CAMASI_PARADA_ALERTA_WA_CODE
+    );
     for (const del of toDelete) {
       await tx.whatsappNotificacaoTipo.delete({ where: { id: del.id } });
     }
 
     for (const item of items) {
       const code = item.code.trim().toLowerCase();
+      const sistemaCamasi = code === CAMASI_PARADA_ALERTA_WA_CODE;
+      const fonteMensagem = sistemaCamasi ? 'evento' : item.fonteMensagem;
+      const modoDisparo = sistemaCamasi ? 'evento' : item.modoDisparo;
       const data = {
         code,
         label: item.label.trim(),
         descricao: item.descricao?.trim() || null,
         ativo: item.ativo,
         sortOrder: item.sortOrder,
-        fonteMensagem: item.fonteMensagem,
-        modoDisparo: item.modoDisparo,
-        cronExpressao: item.modoDisparo === 'cron' ? item.cronExpressao?.trim() || null : null,
-        sqlNomus: item.fonteMensagem === 'sql_template' ? item.sqlNomus?.trim() || null : null,
-        templateMensagem: item.fonteMensagem === 'sql_template' ? item.templateMensagem?.trim() || null : null,
-        builderCode: item.fonteMensagem === 'codigo' ? item.builderCode?.trim() || null : null,
+        fonteMensagem,
+        modoDisparo,
+        cronExpressao: modoDisparo === 'cron' ? item.cronExpressao?.trim() || null : null,
+        sqlNomus: fonteMensagem === 'sql_template' ? item.sqlNomus?.trim() || null : null,
+        templateMensagem: fonteMensagem === 'sql_template' ? item.templateMensagem?.trim() || null : null,
+        builderCode: fonteMensagem === 'codigo' ? item.builderCode?.trim() || null : null,
       };
 
       if (item.id && item.id > 0) {

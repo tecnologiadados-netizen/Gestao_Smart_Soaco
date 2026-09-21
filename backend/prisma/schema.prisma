@@ -2552,3 +2552,16 @@ model CamasiSyncEstado {
 
   @@map("camasi_sync_estado")
 }
+
+/// Singleton (id=1): último envio do alerta WhatsApp de parada Camasi (anti-spam).
+model CamasiParadaAlertaEstado {
+  id                  Int       @id @default(1)
+  data                String
+  inicioEnviado       Boolean   @default(false) @map("inicio_enviado")
+  ultimaProducaoFim   String?   @map("ultima_producao_fim")
+  posProducaoEnviado  Boolean   @default(false) @map("pos_producao_enviado")
+  lastSentAt          DateTime? @map("last_sent_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("camasi_parada_alerta_estado")
+}

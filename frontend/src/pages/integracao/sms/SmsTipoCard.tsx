@@ -168,7 +168,7 @@ export default function SmsTipoCard({
             <select
               className={inputClass}
               value={t.fonteMensagem}
-              disabled={!podeEditar || t.fonteMensagem === 'codigo'}
+              disabled={!podeEditar || t.fonteMensagem === 'codigo' || t.code === 'camasi_parada_20min'}
               onChange={(e) => onUpdate({ fonteMensagem: e.target.value as FonteMensagem })}
             >
               {(Object.keys(FONTE_LABEL) as FonteMensagem[]).map((k) => (
@@ -183,7 +183,7 @@ export default function SmsTipoCard({
             <select
               className={inputClass}
               value={t.modoDisparo}
-              disabled={!podeEditar}
+              disabled={!podeEditar || t.code === 'camasi_parada_20min'}
               onChange={(e) => {
                 const modo = e.target.value as ModoDisparo;
                 onUpdate({
