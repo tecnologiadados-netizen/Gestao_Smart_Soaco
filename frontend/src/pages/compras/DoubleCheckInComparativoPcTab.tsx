@@ -509,27 +509,32 @@ export default function DoubleCheckInComparativoPcTab({
                             </div>
                           )}
                         </div>
-                        {hist.length > 0 && (
+                        {(hist.length > 0 || (conferido && dec)) && (
                           <div className="space-y-1 rounded-md bg-slate-100/80 px-1.5 py-1 dark:bg-slate-800/80">
                             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                               Histórico de observações
+                              {hist.length > 0 ? ` (${hist.length})` : ''}
                             </div>
-                            <ul className="max-h-28 space-y-1 overflow-y-auto">
-                              {hist.map((h) => (
-                                <li
-                                  key={h.id || `${h.criadoEm}-${h.texto.slice(0, 12)}`}
-                                  className="border-t border-slate-200/70 pt-1 first:border-0 first:pt-0 dark:border-slate-700/70"
-                                >
-                                  <div className="text-[9px] text-slate-500 dark:text-slate-400">
-                                    {h.usuarioLogin}
-                                    {h.criadoEm ? ` · ${fmtDataHora(h.criadoEm)}` : ''}
-                                  </div>
-                                  <p className="text-[10px] leading-snug text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
-                                    {h.texto}
-                                  </p>
-                                </li>
-                              ))}
-                            </ul>
+                            {hist.length === 0 ? (
+                              <p className="text-[10px] text-slate-400">Nenhuma observação registrada ainda.</p>
+                            ) : (
+                              <ul className="max-h-40 space-y-1.5 overflow-y-auto pr-0.5">
+                                {hist.map((h, idx) => (
+                                  <li
+                                    key={h.id > 0 ? h.id : `${h.criadoEm}-${idx}-${h.texto.slice(0, 12)}`}
+                                    className="border-t border-slate-200/70 pt-1 first:border-0 first:pt-0 dark:border-slate-700/70"
+                                  >
+                                    <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[9px] text-slate-500 dark:text-slate-400">
+                                      <span className="font-medium">{h.usuarioLogin || '—'}</span>
+                                      <span>{h.criadoEm ? fmtDataHora(h.criadoEm) : ''}</span>
+                                    </div>
+                                    <p className="mt-0.5 text-[10px] leading-snug text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                                      {h.texto}
+                                    </p>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
                           </div>
                         )}
                         {conferido && dec && (

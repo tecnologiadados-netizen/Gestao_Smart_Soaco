@@ -246,7 +246,7 @@ async function listarObsHistPorDocumento(
  * Acrescenta observação ao histórico se o texto for novo (≠ última entrada).
  * Também atualiza o campo `observacao` da decisão (última observação).
  */
-async function appendObsHistorSeNovo(params: {
+async function appendObsHistSeNovo(params: {
   idDocumentoEstoque: number;
   idItemDocumentoEstoque: number;
   idItemPedidoCompra: number;
@@ -306,6 +306,57 @@ export async function listarDecisoesComparativo(
     }),
     listarObsHistPorDocumento(idDocumentoEstoque),
   ]);
+
+  // Garante que observação gravada na decisão (ato da conferência) apareça no histórico
+  // mesmo se o append falhou ou a migration não pegou o registro.
+  for (const r of rows) {
+    const key = chaveObsHist(r.idItemDocumentoEstoque, r.idItemPedidoCompra, r.campo);
+    const texto = (r.observacao ?? '').trim();
+    if (!texto) continue;
+    const atual = histMap.get(key) ?? [];
+    const jaTem = atual.some((h) => h.texto.trim() === texto);
+    if (jaTem) {
+      histMap.set(key, atual);
+      continue;
+    }
+    try {
+      const created = await prisma.doubleCheckInComparativoObsHist.create({
+        data: {
+          idDocumentoEstoque: r.idDocumentoEstoque,
+          idItemDocumentoEstoque: r.idItemDocumentoEstoque,
+          idItemPedidoCompra: r.idItemPedidoCompra,
+          campo: r.campo,
+          texto,
+          usuarioId: r.usuarioId,
+          usuarioLogin: r.usuarioLogin,
+          criadoEm: r.atualizadoEm,
+        },
+      });
+      histMap.set(key, [mapObsHist(created), ...atual].sort((a, b) => {
+        const ta = new Date(a.criadoEm).getTime();
+        const tb = new Date(b.criadoEm).getTime();
+        return ta - tb || a.id - b.id;
+      }));
+    } catch {
+      // Se falhar o backfill, ainda devolve a observação legada na UI via fallback do frontend.
+      if (atual.length === 0) {
+        histMap.set(key, [
+          {
+            id: 0,
+            idDocumentoEstoque: r.idDocumentoEstoque,
+            idItemDocumentoEstoque: r.idItemDocumentoEstoque,
+            idItemPedidoCompra: r.idItemPedidoCompra,
+            campo: r.campo as DoubleCheckInCampoComparativo,
+            texto,
+            usuarioId: r.usuarioId,
+            usuarioLogin: r.usuarioLogin,
+            criadoEm: r.atualizadoEm.toISOString(),
+          },
+        ]);
+      }
+    }
+  }
+
   return rows.map((r) =>
     mapDecisao(
       r,
