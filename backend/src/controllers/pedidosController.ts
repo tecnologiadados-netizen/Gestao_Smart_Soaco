@@ -32,6 +32,7 @@ import {
 } from '../data/pedidosRepository.js';
 import type { AjusteLoteItem } from '../data/pedidosRepository.js';
 import { obterInconsistenciaQtdePendenteReal } from '../services/qtdePendenteInconsistenciaService.js';
+import { listarSaldoAReceberCarteira } from '../data/carteiraFinanceiraRepository.js';
 import { setLastUpload } from '../config/statusApp.js';
 import {
   formatarMensagemAlteracaoPrevisao,
@@ -200,6 +201,21 @@ export async function getInconsistenciaQtdePendente(_req: Request, res: Response
   } catch (err) {
     console.error('getInconsistenciaQtdePendente', err);
     res.status(503).json({ error: 'Erro ao verificar inconsistência de quantidades pendentes.' });
+  }
+}
+
+/** GET /api/pedidos/saldo-a-receber — mesmo Saldo a Receber da Carteira Financeira, por PD e rota. */
+export async function getSaldoAReceberCarteira(_req: Request, res: Response): Promise<void> {
+  try {
+    const result = await listarSaldoAReceberCarteira();
+    if (result.erro && result.linhas.length === 0) {
+      res.status(503).json({ error: result.erro, linhas: [] });
+      return;
+    }
+    res.json({ linhas: result.linhas });
+  } catch (err) {
+    console.error('getSaldoAReceberCarteira', err);
+    res.status(503).json({ error: 'Erro ao consultar saldo a receber.', linhas: [] });
   }
 }
 

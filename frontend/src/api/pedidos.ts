@@ -265,6 +265,17 @@ export async function listarPedidosPorDataEntrega(data: string): Promise<Pedido[
   return res.data ?? [];
 }
 
+export type SaldoAReceberRota = {
+  pd: string;
+  observacoes: string;
+  saldoAReceber: number;
+};
+
+/** Saldo a receber da Carteira Financeira, por PD e rota (mesma regra do CRM). */
+export async function listarSaldoAReceberCarteira(): Promise<{ linhas: SaldoAReceberRota[] }> {
+  return apiJson<{ linhas: SaldoAReceberRota[] }>('/api/pedidos/saldo-a-receber');
+}
+
 /** Lista todos os pedidos (sem paginação) para exportação XLSX. */
 export async function listarPedidosExport(filtros: Omit<FiltrosPedidos, 'page' | 'limit'> = {}): Promise<ListaPedidosResponse> {
   const params = filtrosPedidosToSearchParams(filtros);

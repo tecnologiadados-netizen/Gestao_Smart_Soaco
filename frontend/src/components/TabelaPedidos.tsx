@@ -530,8 +530,8 @@ export default function TabelaPedidos({
   }, [listaExibida.length, onExibidosCountChange]);
 
   useEffect(() => {
-    onGradeRowsForExport?.(listaExibida);
-  }, [listaExibida, onGradeRowsForExport]);
+    onGradeRowsForExport?.(grade.rowsExibidas);
+  }, [grade.rowsExibidas, onGradeRowsForExport]);
 
   useEffect(() => {
     onPageChange?.(1);

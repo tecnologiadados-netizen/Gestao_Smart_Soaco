@@ -156,7 +156,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'O botão Exportar reúne as planilhas do gerenciador: a grade visível, a planilha completa e o recorte da Diretoria Financeira.',
     comoLe:
-      'Exportar Grade baixa só o que está visível na grade. Exportar XLSX baixa a planilha completa, no formato usado para reimportar previsão. Exportar Dir. Financeira baixa uma linha por PD da consulta atual: soma os valores de item (total, pendente, romaneado, faturado de entrega futura, rateio do adiantamento, à vista e saldo a faturar) e repete uma vez o valor do pedido e o adiantamento. Valor unitário só entra quando o PD tem um único item. Se a previsão divergir entre itens, fica a data mais próxima; se alguma não for confiável, a linha fica NÃO.',
+      'Exportar Grade e Exportar Dir. Financeira usam só as linhas que passaram nos filtros da grade (cabeçalho e filtros da tela), não a página atual. A Diretoria Financeira ainda junta essas linhas em uma por PD: soma os valores de item (total, pendente, romaneado, faturado de entrega futura, rateio do adiantamento, à vista e saldo a faturar) e repete uma vez o valor do pedido e o adiantamento. Entre Saldo a faturar real e Emissão entra o Saldo a receber da Carteira Financeira, somado pelas rotas que ficaram no filtro. Valor unitário só entra quando o PD filtrado tem um único item. Se a previsão divergir entre os itens filtrados, fica a data mais próxima; se alguma não for confiável, a linha fica NÃO. Exportar XLSX baixa a planilha completa da consulta, no formato usado para reimportar previsão.',
   },
 ];
 

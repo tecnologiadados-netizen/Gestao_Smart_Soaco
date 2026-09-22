@@ -406,6 +406,7 @@ export const DIR_FINANCEIRA_EXPORT_COLUMNS = [
   'Entrada/A vista Ate 10d',
   'Valor a Vista Ate 10d',
   'Saldo a Faturar Real',
+  'Saldo a Receber',
   'Emissao',
   'Previsão atual',
   'Previsão Confiável',
@@ -515,9 +516,41 @@ function agregarPrevisaoConfiavel(vals: ExportCellValue[]): string | null {
   return null;
 }
 
+function chaveSaldoRota(pd: string, observacoes: string): string {
+  return `${normalizePdLabelForCompare(pd)}\x1e${observacoes.trim().toUpperCase()}`;
+}
+
+/** Soma o saldo da carteira por PD+rota (várias linhas de romaneio da mesma rota entram juntas). */
+export function indiceSaldoAReceberPorRota(
+  linhas: { pd: string; observacoes: string; saldoAReceber: number }[]
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const l of linhas) {
+    const chave = chaveSaldoRota(l.pd, l.observacoes);
+    map.set(chave, Math.round(((map.get(chave) ?? 0) + (Number(l.saldoAReceber) || 0)) * 100) / 100);
+  }
+  return map;
+}
+
+function saldoAReceberDoGrupo(rotas: Set<string>, indice: Map<string, number> | undefined): number | null {
+  if (!indice || indice.size === 0 || rotas.size === 0) return null;
+  let soma = 0;
+  let algum = false;
+  for (const rota of rotas) {
+    if (!indice.has(rota)) continue;
+    soma += indice.get(rota) ?? 0;
+    algum = true;
+  }
+  return algum ? Math.round(soma * 100) / 100 : null;
+}
+
 function agregarGrupoDirFinanceira(linhas: Record<string, ExportCellValue>[]): Record<string, ExportCellValue> {
   const out: Record<string, ExportCellValue> = {};
   for (const key of DIR_FINANCEIRA_EXPORT_COLUMNS) {
+    if (key === 'Saldo a Receber') {
+      out[key] = null;
+      continue;
+    }
     const vals = linhas.map((l) => l[key] ?? null);
     if (key === 'Valor Unitario com desconto + IPI do item PD') {
       out[key] = linhas.length === 1 ? (vals[0] ?? null) : null;
@@ -541,29 +574,41 @@ function agregarGrupoDirFinanceira(linhas: Record<string, ExportCellValue>[]): R
 }
 
 /** Uma linha por PD. Valores de item são somados; totais do pedido entram uma vez. */
-export function pedidosToDirFinanceiraRows(pedidos: Pedido[]): Record<string, ExportCellValue>[] {
+export function pedidosToDirFinanceiraRows(
+  pedidos: Pedido[],
+  saldoAReceberPorRota?: Map<string, number>
+): Record<string, ExportCellValue>[] {
   const dataFormacao = dataProducaoCarradaEmFormacaoApartirDe(maxDataProducaoPedidosNormais(pedidos));
-  const grupos = new Map<string, Record<string, ExportCellValue>[]>();
+  const grupos = new Map<string, { linhas: Record<string, ExportCellValue>[]; rotas: Set<string> }>();
   const ordem: string[] = [];
   for (const p of pedidos) {
     const chave = chavePdDirFinanceira(p);
     let grupo = grupos.get(chave);
     if (!grupo) {
-      grupo = [];
+      grupo = { linhas: [], rotas: new Set() };
       grupos.set(chave, grupo);
       ordem.push(chave);
     }
-    grupo.push(linhaDirFinanceiraItem(p, dataFormacao));
+    grupo.linhas.push(linhaDirFinanceiraItem(p, dataFormacao));
+    const pd = String(p.PD ?? getField(p, ['PD', 'pd']) ?? '');
+    const obs = String(p.Observacoes ?? getField(p, ['Observacoes', 'Observações']) ?? '');
+    grupo.rotas.add(chaveSaldoRota(pd, obs));
   }
-  return ordem.map((chave) => agregarGrupoDirFinanceira(grupos.get(chave)!));
+  return ordem.map((chave) => {
+    const grupo = grupos.get(chave)!;
+    const row = agregarGrupoDirFinanceira(grupo.linhas);
+    row['Saldo a Receber'] = saldoAReceberDoGrupo(grupo.rotas, saldoAReceberPorRota);
+    return row;
+  });
 }
 
 /** Exporta a planilha enxuta da Diretoria Financeira. */
 export async function downloadPedidosDirFinanceiraXlsx(
   pedidos: Pedido[],
-  filename = 'pedidos_dir_financeira.xlsx'
+  filename = 'pedidos_dir_financeira.xlsx',
+  saldoAReceberPorRota?: Map<string, number>
 ): Promise<number> {
-  const rows = pedidosToDirFinanceiraRows(pedidos);
+  const rows = pedidosToDirFinanceiraRows(pedidos, saldoAReceberPorRota);
   const cols = DIR_FINANCEIRA_EXPORT_COLUMNS;
   const wb = new Workbook();
   const ws = wb.addWorksheet('Dir. Financeira', { views: [{ state: 'frozen', ySplit: 1 }] });
@@ -583,7 +628,8 @@ export async function downloadPedidosDirFinanceiraXlsx(
     rows: tableRows,
   });
 
-  const isValorColumn = (k: string) => VALOR_COLUMN_KEYS.has(k) || /valor/i.test(k);
+  const isValorColumn = (k: string) =>
+    VALOR_COLUMN_KEYS.has(k) || k === 'Saldo a Receber' || /valor/i.test(k);
   for (let colIdx = 0; colIdx < cols.length; colIdx++) {
     const key = cols[colIdx]!;
     const colNum = colIdx + 1;

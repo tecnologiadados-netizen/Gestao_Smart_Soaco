@@ -14,6 +14,7 @@ import {
   getPedidosEncerrados,
   getPedidosEncerradosTypeahead,
   getPedidosExport,
+  getSaldoAReceberCarteira,
   getResumo,
   getResumoFinanceiro,
   getResumoFinanceiroGrade,
@@ -107,6 +108,7 @@ const editarSequenciamentoCarradas = requirePermission(...PERMISSOES_EDITAR_SEQU
 
 router.get('/', verPedidos, getPedidos);
 router.get('/export', exportarXlsxPcp, getPedidosExport);
+router.get('/saldo-a-receber', exportarXlsxPcp, getSaldoAReceberCarteira);
 router.get('/resumo', verPedidos, getResumo);
 router.get('/resumo-financeiro', verPedidos, getResumoFinanceiro);
 router.get('/resumo-financeiro-grade', verFinanceiro, getResumoFinanceiroGrade);

@@ -14,6 +14,7 @@ import { PERMISSOES } from '../config/permissoes';
 import {
   listarPedidos,
   listarPedidosExport,
+  listarSaldoAReceberCarteira,
   ajustarPrevisao,
   ajustarPrevisaoLote,
   ajustarDataProducaoLote,
@@ -22,7 +23,7 @@ import {
   type Pedido,
 } from '../api/pedidos';
 import { listarMotivosSugestao } from '../api/motivosSugestao';
-import { downloadPedidosXlsx, downloadPedidosGradeXlsx, downloadPedidosDirFinanceiraXlsx, parsePedidosXlsxForImport, type LinhaImportacao } from '../utils/exportImportPedidos';
+import { downloadPedidosXlsx, downloadPedidosGradeXlsx, downloadPedidosDirFinanceiraXlsx, indiceSaldoAReceberPorRota, parsePedidosXlsxForImport, type LinhaImportacao } from '../utils/exportImportPedidos';
 import ModalImportacao, { type ResultadoImportacao } from '../components/ModalImportacao';
 import {
   bloqueioImportacaoCarrada,
@@ -521,18 +522,26 @@ export default function PedidosPage() {
     setMenuExportAberto(false);
     setExportDirFinLoading(true);
     try {
-      const result = await listarPedidosExport(buildFiltrosPedidosApi(filtros, sortLevelsPersonalizado));
-      const data = Array.isArray(result?.data) ? result.data : [];
+      const data = pedidosGradeExportRef.current;
       if (data.length === 0) {
-        setToast('Nenhum pedido para exportar com os filtros atuais.');
+        setToast('Nenhuma linha na grade para exportar. Ajuste os filtros ou carregue os pedidos.');
         setTimeout(() => setToast(null), 4000);
         return;
       }
+      let saldoPorRota: Map<string, number> | undefined;
+      let avisoSaldo = '';
+      try {
+        const saldo = await listarSaldoAReceberCarteira();
+        saldoPorRota = indiceSaldoAReceberPorRota(saldo.linhas ?? []);
+      } catch {
+        avisoSaldo = ' Saldo a receber da carteira não foi incluído.';
+      }
       const qtd = await downloadPedidosDirFinanceiraXlsx(
         data,
-        `pedidos_dir_financeira_${new Date().toISOString().slice(0, 10)}.xlsx`
+        `pedidos_dir_financeira_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        saldoPorRota
       );
-      setToast(`Diretoria Financeira: ${qtd} pedido(s) exportado(s).`);
+      setToast(`Diretoria Financeira: ${qtd} pedido(s), conforme o filtro da grade.${avisoSaldo}`);
       setTimeout(() => setToast(null), 3000);
     } catch {
       setToast('Erro ao exportar Diretoria Financeira.');
@@ -540,7 +549,7 @@ export default function PedidosPage() {
     } finally {
       setExportDirFinLoading(false);
     }
-  }, [filtros, sortLevelsPersonalizado]);
+  }, []);
 
   const exportarGrade = useCallback(async () => {
     setExportGradeLoading(true);
