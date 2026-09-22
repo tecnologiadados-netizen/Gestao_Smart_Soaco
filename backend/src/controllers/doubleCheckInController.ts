@@ -33,6 +33,7 @@ import {
   listarTodosDocumentosConferidos,
   marcarAlertaEnviado,
   marcarDocumentoConferido,
+  salvarConferenciaPagina,
   setDoubleCheckInDestinatarios,
   setDoubleCheckInLimiarPct,
   upsertDecisaoComparativo,
@@ -40,16 +41,14 @@ import {
   type DoubleCheckInCampoComparativo,
   type DoubleCheckInComparativoDecisaoRow,
 } from '../data/doubleCheckInLocalRepository.js';
+import { resolveAppBaseUrl } from '../config/appBaseUrl.js';
+import {
+  montarMensagemConferenciaWhatsApp,
+  montarRelatoConferencia,
+} from '../services/doubleCheckInConferenciaRelato.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-const CAMPO_LABEL: Record<DoubleCheckInCampoComparativo, string> = {
-  valor_unitario: 'Vl. unitário (líq.)',
-  qtde: 'Quantidade',
-  ipi: 'IPI',
-  condicao_pagamento: 'Cond. pagamento',
-};
 
 function parseYmd(v: unknown): string | null {
   const s = String(v ?? '').trim().slice(0, 10);
@@ -63,16 +62,6 @@ function fmtBrl(n: number): string {
 function fmtPct(n: number): string {
   const sinal = n > 0 ? '+' : '';
   return `${sinal}${n.toFixed(1).replace('.', ',')}%`;
-}
-
-function fmtNum(n: number): string {
-  return n.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
-}
-
-function fmtCondicao(nome: string | null, regra: string | null): string {
-  const n = (nome ?? '').trim() || '—';
-  const r = (regra ?? '').trim();
-  return r ? `${n} (${r})` : n;
 }
 
 function chaveDecisao(
@@ -92,57 +81,6 @@ function camposDivergentesDaLinha(
   if (linha.divergIpi) out.push('ipi');
   if (linha.divergCondicaoPagamento) out.push('condicao_pagamento');
   return out;
-}
-
-function fmtUnitarioComDesconto(
-  liquido: number,
-  bruto: number,
-  descontoTotal: number,
-  qtde: number
-): string {
-  if (descontoTotal > 0) {
-    const descUnit =
-      qtde > 0 ? arredondarDescUnit(descontoTotal / qtde) : descontoTotal;
-    return `${fmtBrl(liquido)} líq. (bruto ${fmtBrl(bruto)} − desc. un. ${fmtBrl(descUnit)})`;
-  }
-  return fmtBrl(liquido);
-}
-
-function arredondarDescUnit(n: number): number {
-  if (!Number.isFinite(n)) return 0;
-  return Math.round((n + Number.EPSILON) * 100) / 100;
-}
-
-function formatoCampoLinha(
-  linha: DoubleCheckInComparativoLinha,
-  campo: DoubleCheckInCampoComparativo
-): { nf: string; pc: string } {
-  switch (campo) {
-    case 'valor_unitario':
-      return {
-        nf: fmtUnitarioComDesconto(
-          linha.valorUnitarioNF,
-          linha.valorUnitarioBrutoNF,
-          linha.descontoNF,
-          linha.qtdeNF
-        ),
-        pc: fmtUnitarioComDesconto(
-          linha.valorUnitarioPC,
-          linha.valorUnitarioBrutoPC,
-          linha.descontoPC,
-          linha.qtdePC
-        ),
-      };
-    case 'qtde':
-      return { nf: fmtNum(linha.qtdeNF), pc: fmtNum(linha.qtdePC) };
-    case 'ipi':
-      return { nf: fmtBrl(linha.valorIpiNF), pc: fmtBrl(linha.valorIpiPC) };
-    case 'condicao_pagamento':
-      return {
-        nf: fmtCondicao(linha.condicaoPagamentoNF, linha.regraPagamentoNF),
-        pc: fmtCondicao(linha.condicaoPagamentoPC, linha.regraPagamentoPC),
-      };
-  }
 }
 
 function validarDecisoesCompletas(
@@ -168,60 +106,6 @@ function validarDecisoesCompletas(
     };
   }
   return { ok: true };
-}
-
-function montarMensagemNfPc(params: {
-  meta: {
-    numeroNfe: string | null;
-    numeroDocumentoFiscal: string | null;
-    nomeParceiro: string | null;
-  };
-  conferidoPor: string;
-  linhas: DoubleCheckInComparativoLinha[];
-  decisoes: DoubleCheckInComparativoDecisaoRow[];
-}): string | null {
-  const map = new Map(
-    params.decisoes.map((d) => [
-      chaveDecisao(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo),
-      d,
-    ])
-  );
-  const bullets: string[] = [];
-  for (const linha of params.linhas) {
-    const prod =
-      linha.codigoProduto ??
-      (linha.idProduto != null ? String(linha.idProduto) : 'Produto');
-    for (const campo of camposDivergentesDaLinha(linha)) {
-      const dec = map.get(
-        chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
-      );
-      if (!dec) continue;
-      const v = formatoCampoLinha(linha, campo);
-      const um =
-        campo === 'qtde'
-          ? ` (${linha.umNF ?? '—'} / ${linha.umPC ?? '—'})`
-          : '';
-      const pcLabel = linha.nomePedidoCompra ?? (linha.idPedidoCompra != null ? `PC ${linha.idPedidoCompra}` : 'PC');
-      bullets.push(
-        `• ${prod} · ${pcLabel} — ${CAMPO_LABEL[campo]}${um}: NF ${v.nf} × PC ${v.pc} — ` +
-          `${dec.decisao === 'aceita' ? 'ACEITA' : 'RECUSADA'} — ${dec.justificativaLabel}` +
-          (dec.observacao ? ` (${dec.observacao})` : '')
-      );
-    }
-  }
-  if (bullets.length === 0) return null;
-  return [
-    '*Double CheckIn — NF × Pedido de compra*',
-    `NF/Doc: ${params.meta.numeroNfe ?? '—'} / ${params.meta.numeroDocumentoFiscal ?? '—'}`,
-    `Parceiro: ${params.meta.nomeParceiro ?? '—'}`,
-    `Conferido por: ${params.conferidoPor}`,
-    '',
-    'Divergências:',
-    ...bullets.slice(0, 20),
-    bullets.length > 20 ? `… e mais ${bullets.length - 20} divergência(s).` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
 }
 
 export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
@@ -611,7 +495,7 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
     let alertaNfPcEnviado = false;
     try {
       await ensureDoubleCheckInNfPcWhatsappTipo();
-      const textoFinal = montarMensagemNfPc({
+      const relato = montarRelatoConferencia({
         meta: {
           numeroNfe: typeof req.body?.numeroNfe === 'string' ? req.body.numeroNfe : null,
           numeroDocumentoFiscal:
@@ -621,11 +505,23 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
           nomeParceiro: typeof req.body?.nomeParceiro === 'string' ? req.body.nomeParceiro : null,
         },
         conferidoPor: created.usuarioLogin,
+        conferidoEm: created.conferidoEm,
         linhas,
         decisoes,
       });
-      if (textoFinal) {
-        await enviarNotificacaoPorTipo(DOUBLE_CHECKIN_NF_PC_WA_CODE, textoFinal);
+      if (relato) {
+        let url: string | null = null;
+        try {
+          const token = await salvarConferenciaPagina(idDocumento, JSON.stringify(relato));
+          url = `${resolveAppBaseUrl()}/c/${token}`;
+        } catch (errPagina) {
+          const msgPagina = errPagina instanceof Error ? errPagina.message : String(errPagina);
+          console.error('[postDoubleCheckInConferir] página da conferência', msgPagina);
+        }
+        await enviarNotificacaoPorTipo(
+          DOUBLE_CHECKIN_NF_PC_WA_CODE,
+          montarMensagemConferenciaWhatsApp(relato, url)
+        );
         alertaNfPcEnviado = true;
       }
     } catch (err) {

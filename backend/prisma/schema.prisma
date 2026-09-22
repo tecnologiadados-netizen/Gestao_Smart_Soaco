@@ -237,6 +237,17 @@ model DoubleCheckInConferido {
   @@map("double_checkin_conferido")
 }
 
+/// Retrato público da conferência NF × PC (link do WhatsApp). O token é o acesso.
+model DoubleCheckInConferenciaPagina {
+  id                 Int      @id @default(autoincrement())
+  token              String   @unique
+  idDocumentoEstoque Int      @unique
+  payloadJson        String
+  criadoEm           DateTime @default(now())
+
+  @@map("double_checkin_conferencia_pagina")
+}
+
 /// Opções pré-cadastradas de justificativa (divergência NF × PC).
 model DoubleCheckInJustificativaOpcao {
   id        Int      @id @default(autoincrement())

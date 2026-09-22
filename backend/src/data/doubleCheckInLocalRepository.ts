@@ -2,6 +2,7 @@
  * Double CheckIn — parâmetros locais (limiar) + ensure tipo WhatsApp + dedup alerta.
  */
 
+import { randomBytes } from 'node:crypto';
 import { prisma } from '../config/prisma.js';
 import {
   buscarTipoPorCode,
@@ -676,4 +677,46 @@ export async function marcarDocumentoConferido(params: {
     usuarioId: created.usuarioId,
     usuarioLogin: created.usuarioLogin,
   };
+}
+
+function novoTokenPagina(): string {
+  return randomBytes(12).toString('base64url');
+}
+
+/** Grava o retrato da conferência. Se a NF já tem página, devolve o mesmo token. */
+export async function salvarConferenciaPagina(
+  idDocumentoEstoque: number,
+  payloadJson: string
+): Promise<string> {
+  const existente = await prisma.doubleCheckInConferenciaPagina.findUnique({
+    where: { idDocumentoEstoque },
+    select: { token: true },
+  });
+  if (existente) return existente.token;
+
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    try {
+      const created = await prisma.doubleCheckInConferenciaPagina.create({
+        data: { token: novoTokenPagina(), idDocumentoEstoque, payloadJson },
+        select: { token: true },
+      });
+      return created.token;
+    } catch {
+      const deNovo = await prisma.doubleCheckInConferenciaPagina.findUnique({
+        where: { idDocumentoEstoque },
+        select: { token: true },
+      });
+      if (deNovo) return deNovo.token;
+    }
+  }
+  throw new Error('Não foi possível gravar a página da conferência.');
+}
+
+export async function buscarConferenciaPaginaPorToken(
+  token: string
+): Promise<{ payloadJson: string } | null> {
+  return prisma.doubleCheckInConferenciaPagina.findUnique({
+    where: { token },
+    select: { payloadJson: true },
+  });
 }
