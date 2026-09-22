@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, CheckCircle2, X, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, MessageSquarePlus, X, XCircle } from 'lucide-react';
 import {
+  addDoubleCheckInComparativoObservacao,
   saveDoubleCheckInComparativoDecisao,
   type DoubleCheckInCampoComparativo,
   type DoubleCheckInComparativoDecisao,
   type DoubleCheckInComparativoLinha,
+  type DoubleCheckInComparativoObsHist,
   type DoubleCheckInJustificativaOpcao,
 } from '../../api/compras';
 
@@ -125,10 +127,45 @@ function valoresExibicao(
   }
 }
 
+function historicoDaDecisao(dec: DoubleCheckInComparativoDecisao | undefined): DoubleCheckInComparativoObsHist[] {
+  if (!dec) return [];
+  if (Array.isArray(dec.historicoObservacoes) && dec.historicoObservacoes.length > 0) {
+    return dec.historicoObservacoes;
+  }
+  const legada = (dec.observacao ?? '').trim();
+  if (!legada) return [];
+  return [
+    {
+      id: 0,
+      idDocumentoEstoque: dec.idDocumentoEstoque,
+      idItemDocumentoEstoque: dec.idItemDocumentoEstoque,
+      idItemPedidoCompra: dec.idItemPedidoCompra,
+      campo: dec.campo,
+      texto: legada,
+      usuarioId: dec.usuarioId,
+      usuarioLogin: dec.usuarioLogin,
+      criadoEm: dec.atualizadoEm,
+    },
+  ];
+}
+
+function fmtDataHora(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString('pt-BR');
+  } catch {
+    return iso;
+  }
+}
+
 type DraftJustif = {
   linha: DoubleCheckInComparativoLinha;
   campo: DoubleCheckInCampoComparativo;
   decisao: 'aceita' | 'recusa';
+};
+
+type DraftObs = {
+  linha: DoubleCheckInComparativoLinha;
+  campo: DoubleCheckInCampoComparativo;
 };
 
 type Props = {
@@ -176,6 +213,11 @@ export default function DoubleCheckInComparativoPcTab({
   const [salvando, setSalvando] = useState(false);
   const [justErro, setJustErro] = useState<string | null>(null);
 
+  const [draftObs, setDraftObs] = useState<DraftObs | null>(null);
+  const [novaObs, setNovaObs] = useState('');
+  const [salvandoObs, setSalvandoObs] = useState(false);
+  const [obsErro, setObsErro] = useState<string | null>(null);
+
   const decisaoMap = useMemo(() => {
     const m = new Map<string, DoubleCheckInComparativoDecisao>();
     for (const d of decisoes) {
@@ -206,6 +248,16 @@ export default function DoubleCheckInComparativoPcTab({
     setOpcaoId(existente?.justificativaOpcaoId ?? '');
     setObs(existente?.observacao ?? '');
     setJustErro(null);
+  };
+
+  const abrirNovaObservacao = (
+    linha: DoubleCheckInComparativoLinha,
+    campo: DoubleCheckInCampoComparativo
+  ) => {
+    if (!conferido) return;
+    setDraftObs({ linha, campo });
+    setNovaObs('');
+    setObsErro(null);
   };
 
   const salvarJustificativa = async () => {
@@ -250,6 +302,44 @@ export default function DoubleCheckInComparativoPcTab({
       setDraft(null);
     } finally {
       setSalvando(false);
+    }
+  };
+
+  const salvarNovaObservacao = async () => {
+    if (!draftObs) return;
+    if (!novaObs.trim()) {
+      setObsErro('Informe a observação.');
+      return;
+    }
+    setSalvandoObs(true);
+    setObsErro(null);
+    try {
+      const r = await addDoubleCheckInComparativoObservacao({
+        idDocumento,
+        idItemDocumentoEstoque: draftObs.linha.idItemDocumentoEstoque,
+        idItemPedidoCompra: draftObs.linha.idItemPedidoCompra,
+        campo: draftObs.campo,
+        texto: novaObs.trim(),
+      });
+      if (r.erro || !r.decisao) {
+        setObsErro(r.erro ?? 'Falha ao salvar.');
+        return;
+      }
+      const key = chaveDecisao(
+        r.decisao.idItemDocumentoEstoque,
+        r.decisao.idItemPedidoCompra,
+        r.decisao.campo
+      );
+      const next = [
+        ...decisoes.filter(
+          (d) => chaveDecisao(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo) !== key
+        ),
+        r.decisao,
+      ];
+      onDecisoesChange(next);
+      setDraftObs(null);
+    } finally {
+      setSalvandoObs(false);
     }
   };
 
@@ -327,6 +417,7 @@ export default function DoubleCheckInComparativoPcTab({
                 const dec = decisaoMap.get(
                   chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
                 );
+                const hist = historicoDaDecisao(dec);
                 return (
                   <div
                     key={c.id}
@@ -387,7 +478,7 @@ export default function DoubleCheckInComparativoPcTab({
                       </div>
                     </div>
                     {diverg && (
-                      <div className="mt-2 space-y-1">
+                      <div className="mt-2 space-y-1.5">
                         <div className="flex items-center justify-between gap-1">
                           <span
                             className="truncate text-[10px] text-slate-500"
@@ -418,15 +509,39 @@ export default function DoubleCheckInComparativoPcTab({
                             </div>
                           )}
                         </div>
-                        {dec?.observacao?.trim() ? (
-                          <p
-                            className="rounded-md bg-slate-100/80 px-1.5 py-1 text-[10px] leading-snug text-slate-700 dark:bg-slate-800/80 dark:text-slate-300 whitespace-pre-wrap break-words"
-                            title={dec.observacao.trim()}
+                        {hist.length > 0 && (
+                          <div className="space-y-1 rounded-md bg-slate-100/80 px-1.5 py-1 dark:bg-slate-800/80">
+                            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                              Histórico de observações
+                            </div>
+                            <ul className="max-h-28 space-y-1 overflow-y-auto">
+                              {hist.map((h) => (
+                                <li
+                                  key={h.id || `${h.criadoEm}-${h.texto.slice(0, 12)}`}
+                                  className="border-t border-slate-200/70 pt-1 first:border-0 first:pt-0 dark:border-slate-700/70"
+                                >
+                                  <div className="text-[9px] text-slate-500 dark:text-slate-400">
+                                    {h.usuarioLogin}
+                                    {h.criadoEm ? ` · ${fmtDataHora(h.criadoEm)}` : ''}
+                                  </div>
+                                  <p className="text-[10px] leading-snug text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                                    {h.texto}
+                                  </p>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {conferido && dec && (
+                          <button
+                            type="button"
+                            className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                            onClick={() => abrirNovaObservacao(linha, c.id)}
                           >
-                            <span className="font-medium text-slate-500 dark:text-slate-400">Obs.: </span>
-                            {dec.observacao.trim()}
-                          </p>
-                        ) : null}
+                            <MessageSquarePlus className="h-3 w-3" aria-hidden />
+                            Nova observação
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -501,6 +616,65 @@ export default function DoubleCheckInComparativoPcTab({
                   onClick={() => void salvarJustificativa()}
                 >
                   {salvando ? 'Salvando…' : 'Confirmar'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {draftObs &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10070] flex items-center justify-center p-4 bg-slate-900/55"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => !salvandoObs && setDraftObs(null)}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-600 dark:bg-slate-800"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                Nova observação
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                {CAMPOS.find((c) => c.id === draftObs.campo)?.label} ·{' '}
+                {draftObs.linha.codigoProduto ?? draftObs.linha.idProduto}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                A observação será acrescentada ao histórico desta divergência (a decisão não muda).
+              </p>
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className={labelClass}>Observação</label>
+                  <textarea
+                    className={`${inputClass} min-h-[6rem]`}
+                    value={novaObs}
+                    onChange={(e) => setNovaObs(e.target.value)}
+                    placeholder="Descreva o acompanhamento…"
+                    autoFocus
+                  />
+                </div>
+                {obsErro && <p className="text-sm text-rose-600">{obsErro}</p>}
+              </div>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className={btnSecondary}
+                  disabled={salvandoObs}
+                  onClick={() => setDraftObs(null)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className={btnPrimary}
+                  disabled={salvandoObs || !novaObs.trim()}
+                  onClick={() => void salvarNovaObservacao()}
+                >
+                  {salvandoObs ? 'Salvando…' : 'Registrar'}
                 </button>
               </div>
             </div>

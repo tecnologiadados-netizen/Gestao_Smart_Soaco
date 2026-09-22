@@ -36,6 +36,7 @@ import {
   setDoubleCheckInDestinatarios,
   setDoubleCheckInLimiarPct,
   upsertDecisaoComparativo,
+  adicionarObservacaoComparativoPosConferido,
   type DoubleCheckInCampoComparativo,
   type DoubleCheckInComparativoDecisaoRow,
 } from '../data/doubleCheckInLocalRepository.js';
@@ -392,6 +393,72 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
       usuarioLogin: usuario.login,
     });
     res.json({ ok: true, decisao });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: msg });
+  }
+}
+
+/**
+ * POST /api/compras/double-checkin/comparativo-observacao
+ * Acrescenta observação ao histórico após a NF já conferida.
+ * body: { idDocumento, idItemDocumentoEstoque, idItemPedidoCompra, campo, texto }
+ */
+export async function postDoubleCheckInComparativoObservacao(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const login = req.user?.login;
+  if (!login) {
+    res.status(401).json({ error: 'Não autorizado.' });
+    return;
+  }
+  const idDocumento = Math.trunc(Number(req.body?.idDocumento));
+  const idItemDocumentoEstoque = Math.trunc(Number(req.body?.idItemDocumentoEstoque));
+  const idItemPedidoCompra = Math.trunc(Number(req.body?.idItemPedidoCompra));
+  const campo = String(req.body?.campo ?? '').trim() as DoubleCheckInCampoComparativo;
+  const texto = typeof req.body?.texto === 'string' ? req.body.texto : '';
+
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  if (!Number.isFinite(idItemDocumentoEstoque) || idItemDocumentoEstoque <= 0) {
+    res.status(400).json({ error: 'idItemDocumentoEstoque inválido.' });
+    return;
+  }
+  if (!Number.isFinite(idItemPedidoCompra) || idItemPedidoCompra <= 0) {
+    res.status(400).json({ error: 'idItemPedidoCompra inválido.' });
+    return;
+  }
+  if (!(DOUBLE_CHECKIN_CAMPOS as readonly string[]).includes(campo)) {
+    res.status(400).json({ error: 'campo inválido.' });
+    return;
+  }
+  if (!texto.trim()) {
+    res.status(400).json({ error: 'Informe a observação.' });
+    return;
+  }
+
+  try {
+    const usuario = await prisma.usuario.findUnique({
+      where: { login },
+      select: { id: true, login: true },
+    });
+    if (!usuario) {
+      res.status(401).json({ error: 'Usuário não encontrado.' });
+      return;
+    }
+    const result = await adicionarObservacaoComparativoPosConferido({
+      idDocumentoEstoque: idDocumento,
+      idItemDocumentoEstoque,
+      idItemPedidoCompra,
+      campo,
+      texto,
+      usuarioId: usuario.id,
+      usuarioLogin: usuario.login,
+    });
+    res.json({ ok: true, entrada: result.entrada, decisao: result.decisao });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: msg });

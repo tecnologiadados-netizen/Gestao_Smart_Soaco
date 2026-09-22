@@ -1589,6 +1589,19 @@ export type DoubleCheckInComparativoDecisao = {
   usuarioId: number;
   usuarioLogin: string;
   atualizadoEm: string;
+  historicoObservacoes?: DoubleCheckInComparativoObsHist[];
+};
+
+export type DoubleCheckInComparativoObsHist = {
+  id: number;
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  texto: string;
+  usuarioId: number;
+  usuarioLogin: string;
+  criadoEm: string;
 };
 
 export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Promise<{
@@ -1646,6 +1659,34 @@ export async function saveDoubleCheckInComparativoDecisao(params: {
     return { ok: false, erro: body.error ?? res.statusText };
   }
   return { ok: true, decisao: body.decisao };
+}
+
+export async function addDoubleCheckInComparativoObservacao(params: {
+  idDocumento: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  texto: string;
+}): Promise<{
+  ok: boolean;
+  entrada?: DoubleCheckInComparativoObsHist;
+  decisao?: DoubleCheckInComparativoDecisao;
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/compras/double-checkin/comparativo-observacao', {
+    method: 'POST',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    entrada?: DoubleCheckInComparativoObsHist;
+    decisao?: DoubleCheckInComparativoDecisao;
+    error?: string;
+  };
+  if (!res.ok) {
+    return { ok: false, erro: body.error ?? res.statusText };
+  }
+  return { ok: true, entrada: body.entrada, decisao: body.decisao };
 }
 
 export async function fetchDoubleCheckInParametros(): Promise<{

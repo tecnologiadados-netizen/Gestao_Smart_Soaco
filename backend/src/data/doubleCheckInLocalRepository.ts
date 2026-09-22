@@ -142,7 +142,52 @@ export type DoubleCheckInComparativoDecisaoRow = {
   usuarioId: number;
   usuarioLogin: string;
   atualizadoEm: string;
+  historicoObservacoes: DoubleCheckInComparativoObsHistRow[];
 };
+
+export type DoubleCheckInComparativoObsHistRow = {
+  id: number;
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  texto: string;
+  usuarioId: number;
+  usuarioLogin: string;
+  criadoEm: string;
+};
+
+function chaveObsHist(
+  idItemDocumentoEstoque: number,
+  idItemPedidoCompra: number,
+  campo: string
+): string {
+  return `${idItemDocumentoEstoque}:${idItemPedidoCompra}:${campo}`;
+}
+
+function mapObsHist(r: {
+  id: number;
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: string;
+  texto: string;
+  usuarioId: number;
+  usuarioLogin: string;
+  criadoEm: Date;
+}): DoubleCheckInComparativoObsHistRow {
+  return {
+    id: r.id,
+    idDocumentoEstoque: r.idDocumentoEstoque,
+    idItemDocumentoEstoque: r.idItemDocumentoEstoque,
+    idItemPedidoCompra: r.idItemPedidoCompra,
+    campo: r.campo as DoubleCheckInCampoComparativo,
+    texto: r.texto,
+    usuarioId: r.usuarioId,
+    usuarioLogin: r.usuarioLogin,
+    criadoEm: r.criadoEm.toISOString(),
+  };
+}
 
 function mapDecisao(
   r: {
@@ -158,7 +203,8 @@ function mapDecisao(
     usuarioLogin: string;
     atualizadoEm: Date;
     justificativaOpcao: { codigo: string; label: string };
-  }
+  },
+  historicoObservacoes: DoubleCheckInComparativoObsHistRow[] = []
 ): DoubleCheckInComparativoDecisaoRow {
   return {
     id: r.id,
@@ -174,17 +220,97 @@ function mapDecisao(
     usuarioId: r.usuarioId,
     usuarioLogin: r.usuarioLogin,
     atualizadoEm: r.atualizadoEm.toISOString(),
+    historicoObservacoes,
   };
+}
+
+async function listarObsHistPorDocumento(
+  idDocumentoEstoque: number
+): Promise<Map<string, DoubleCheckInComparativoObsHistRow[]>> {
+  const rows = await prisma.doubleCheckInComparativoObsHist.findMany({
+    where: { idDocumentoEstoque },
+    orderBy: [{ criadoEm: 'asc' }, { id: 'asc' }],
+  });
+  const map = new Map<string, DoubleCheckInComparativoObsHistRow[]>();
+  for (const r of rows) {
+    const key = chaveObsHist(r.idItemDocumentoEstoque, r.idItemPedidoCompra, r.campo);
+    const list = map.get(key) ?? [];
+    list.push(mapObsHist(r));
+    map.set(key, list);
+  }
+  return map;
+}
+
+/**
+ * Acrescenta observação ao histórico se o texto for novo (≠ última entrada).
+ * Também atualiza o campo `observacao` da decisão (última observação).
+ */
+async function appendObsHistorSeNovo(params: {
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  texto: string | null | undefined;
+  usuarioId: number;
+  usuarioLogin: string;
+}): Promise<DoubleCheckInComparativoObsHistRow | null> {
+  const texto = String(params.texto ?? '').trim();
+  if (!texto) return null;
+
+  const last = await prisma.doubleCheckInComparativoObsHist.findFirst({
+    where: {
+      idDocumentoEstoque: params.idDocumentoEstoque,
+      idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+      idItemPedidoCompra: params.idItemPedidoCompra,
+      campo: params.campo,
+    },
+    orderBy: [{ criadoEm: 'desc' }, { id: 'desc' }],
+  });
+  if (last && last.texto.trim() === texto) {
+    return mapObsHist(last);
+  }
+
+  const created = await prisma.doubleCheckInComparativoObsHist.create({
+    data: {
+      idDocumentoEstoque: params.idDocumentoEstoque,
+      idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+      idItemPedidoCompra: params.idItemPedidoCompra,
+      campo: params.campo,
+      texto,
+      usuarioId: params.usuarioId,
+      usuarioLogin: params.usuarioLogin,
+    },
+  });
+
+  await prisma.doubleCheckInComparativoDecisao.updateMany({
+    where: {
+      idDocumentoEstoque: params.idDocumentoEstoque,
+      idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+      idItemPedidoCompra: params.idItemPedidoCompra,
+      campo: params.campo,
+    },
+    data: { observacao: texto },
+  });
+
+  return mapObsHist(created);
 }
 
 export async function listarDecisoesComparativo(
   idDocumentoEstoque: number
 ): Promise<DoubleCheckInComparativoDecisaoRow[]> {
-  const rows = await prisma.doubleCheckInComparativoDecisao.findMany({
-    where: { idDocumentoEstoque },
-    include: { justificativaOpcao: { select: { codigo: true, label: true } } },
-  });
-  return rows.map(mapDecisao);
+  const [rows, histMap] = await Promise.all([
+    prisma.doubleCheckInComparativoDecisao.findMany({
+      where: { idDocumentoEstoque },
+      include: { justificativaOpcao: { select: { codigo: true, label: true } } },
+    }),
+    listarObsHistPorDocumento(idDocumentoEstoque),
+  ]);
+  return rows.map((r) =>
+    mapDecisao(
+      r,
+      histMap.get(chaveObsHist(r.idItemDocumentoEstoque, r.idItemPedidoCompra, r.campo)) ?? []
+    )
+  );
 }
 
 export async function upsertDecisaoComparativo(params: {
@@ -214,6 +340,7 @@ export async function upsertDecisaoComparativo(params: {
     throw new Error('Informe a observação quando a justificativa for "Outros".');
   }
 
+  const obsTrim = params.observacao?.trim() || null;
   const row = await prisma.doubleCheckInComparativoDecisao.upsert({
     where: {
       idDocumentoEstoque_idItemDocumentoEstoque_idItemPedidoCompra_campo: {
@@ -230,20 +357,126 @@ export async function upsertDecisaoComparativo(params: {
       campo: params.campo,
       decisao: params.decisao,
       justificativaOpcaoId: params.justificativaOpcaoId,
-      observacao: params.observacao?.trim() || null,
+      observacao: obsTrim,
       usuarioId: params.usuarioId,
       usuarioLogin: params.usuarioLogin,
     },
     update: {
       decisao: params.decisao,
       justificativaOpcaoId: params.justificativaOpcaoId,
-      observacao: params.observacao?.trim() || null,
+      observacao: obsTrim,
       usuarioId: params.usuarioId,
       usuarioLogin: params.usuarioLogin,
     },
     include: { justificativaOpcao: { select: { codigo: true, label: true } } },
   });
-  return mapDecisao(row);
+
+  if (obsTrim) {
+    await appendObsHistSeNovo({
+      idDocumentoEstoque: params.idDocumentoEstoque,
+      idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+      idItemPedidoCompra: params.idItemPedidoCompra,
+      campo: params.campo,
+      texto: obsTrim,
+      usuarioId: params.usuarioId,
+      usuarioLogin: params.usuarioLogin,
+    });
+  }
+
+  const histMap = await listarObsHistPorDocumento(params.idDocumentoEstoque);
+  return mapDecisao(
+    row,
+    histMap.get(
+      chaveObsHist(row.idItemDocumentoEstoque, row.idItemPedidoCompra, row.campo)
+    ) ?? []
+  );
+}
+
+/**
+ * Acrescenta observação ao histórico após a NF já conferida (decisão não muda).
+ */
+export async function adicionarObservacaoComparativoPosConferido(params: {
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  texto: string;
+  usuarioId: number;
+  usuarioLogin: string;
+}): Promise<{
+  entrada: DoubleCheckInComparativoObsHistRow;
+  decisao: DoubleCheckInComparativoDecisaoRow;
+}> {
+  if (!DOUBLE_CHECKIN_CAMPOS.includes(params.campo)) {
+    throw new Error(`Campo inválido: ${params.campo}`);
+  }
+  const texto = String(params.texto ?? '').trim();
+  if (!texto) {
+    throw new Error('Informe a observação.');
+  }
+
+  const conferido = await prisma.doubleCheckInConferido.findUnique({
+    where: { idDocumentoEstoque: params.idDocumentoEstoque },
+  });
+  if (!conferido) {
+    throw new Error('Só é possível acrescentar observações após a NF ser conferida.');
+  }
+
+  const decisaoExistente = await prisma.doubleCheckInComparativoDecisao.findUnique({
+    where: {
+      idDocumentoEstoque_idItemDocumentoEstoque_idItemPedidoCompra_campo: {
+        idDocumentoEstoque: params.idDocumentoEstoque,
+        idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+        idItemPedidoCompra: params.idItemPedidoCompra,
+        campo: params.campo,
+      },
+    },
+    include: { justificativaOpcao: { select: { codigo: true, label: true } } },
+  });
+  if (!decisaoExistente) {
+    throw new Error('Não há decisão registrada para esta divergência.');
+  }
+
+  const ultima = await prisma.doubleCheckInComparativoObsHist.findFirst({
+    where: {
+      idDocumentoEstoque: params.idDocumentoEstoque,
+      idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+      idItemPedidoCompra: params.idItemPedidoCompra,
+      campo: params.campo,
+    },
+    orderBy: [{ criadoEm: 'desc' }, { id: 'desc' }],
+  });
+  if (ultima && ultima.texto.trim() === texto) {
+    throw new Error('Observação idêntica à última já registrada.');
+  }
+
+  const entrada = await appendObsHistSeNovo({
+    ...params,
+    texto,
+  });
+  if (!entrada) {
+    throw new Error('Informe a observação.');
+  }
+
+  const histMap = await listarObsHistPorDocumento(params.idDocumentoEstoque);
+  const decisaoAtualizada = await prisma.doubleCheckInComparativoDecisao.findUniqueOrThrow({
+    where: { id: decisaoExistente.id },
+    include: { justificativaOpcao: { select: { codigo: true, label: true } } },
+  });
+
+  return {
+    entrada,
+    decisao: mapDecisao(
+      decisaoAtualizada,
+      histMap.get(
+        chaveObsHist(
+          decisaoAtualizada.idItemDocumentoEstoque,
+          decisaoAtualizada.idItemPedidoCompra,
+          decisaoAtualizada.campo
+        )
+      ) ?? []
+    ),
+  };
 }
 
 export async function getDoubleCheckInLimiarPct(): Promise<number> {

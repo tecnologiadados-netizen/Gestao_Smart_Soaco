@@ -274,6 +274,24 @@ model DoubleCheckInComparativoDecisao {
   @@map("double_checkin_comparativo_decisao")
 }
 
+/// Histórico acumulativo de observações por divergência (campo) do comparativo NF × PC.
+model DoubleCheckInComparativoObsHist {
+  id                     Int      @id @default(autoincrement())
+  idDocumentoEstoque     Int
+  idItemDocumentoEstoque Int
+  idItemPedidoCompra     Int
+  /// valor_unitario | qtde | ipi | condicao_pagamento
+  campo                  String
+  texto                  String
+  usuarioId              Int
+  usuarioLogin           String
+  criadoEm               DateTime @default(now())
+
+  @@index([idDocumentoEstoque, idItemDocumentoEstoque, idItemPedidoCompra, campo])
+  @@index([idDocumentoEstoque])
+  @@map("double_checkin_comparativo_obs_hist")
+}
+
 /// Conferência às cegas (Recebimento): andamento local do DE de pré-entrada.
 model RecebimentoConferencia {
   id                    Int      @id @default(autoincrement())

@@ -17,6 +17,7 @@ import {
   postDoubleCheckInSincronizar,
   postDoubleCheckInStatus,
   putDoubleCheckInComparativoDecisao,
+  postDoubleCheckInComparativoObservacao,
   putDoubleCheckInDestinatarios,
   putDoubleCheckInParametros,
 } from '../controllers/doubleCheckInController.js';
@@ -458,6 +459,11 @@ router.put(
   '/double-checkin/comparativo-decisao',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(putDoubleCheckInComparativoDecisao)
+);
+router.post(
+  '/double-checkin/comparativo-observacao',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
+  async503(postDoubleCheckInComparativoObservacao)
 );
 router.get(
   '/double-checkin/justificativas',

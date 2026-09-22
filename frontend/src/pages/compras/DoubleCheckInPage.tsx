@@ -4,7 +4,7 @@ import DoubleCheckInDashboardModal from './DoubleCheckInDashboardModal';
 import DoubleCheckInComparativoPcTab, {
   contarPendentesComparativo,
 } from './DoubleCheckInComparativoPcTab';
-import { AlertTriangle, CheckCircle2, ClipboardCheck, Eye, LayoutDashboard, RefreshCw, Settings2, Users } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ClipboardCheck, Eye, LayoutDashboard, Maximize2, Minimize2, RefreshCw, Settings2, Users } from 'lucide-react';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import { useAuth } from '../../contexts/AuthContext';
@@ -110,6 +110,7 @@ export default function DoubleCheckInPage() {
 
   const [modalNota, setModalNota] = useState<DoubleCheckInNota | null>(null);
   const [modalAba, setModalAba] = useState<'preco' | 'nf_pc'>('preco');
+  const [modalTelaCheia, setModalTelaCheia] = useState(false);
   const [detalheLoading, setDetalheLoading] = useState(false);
   const [detalheErro, setDetalheErro] = useState<string | null>(null);
   const [detalheItens, setDetalheItens] = useState<DoubleCheckInItem[]>([]);
@@ -228,6 +229,7 @@ export default function DoubleCheckInPage() {
   const abrirDetalhe = useCallback(async (nota: DoubleCheckInNota) => {
     setModalNota(nota);
     setModalAba('preco');
+    setModalTelaCheia(false);
     setDetalheErro(null);
     setCompErro(null);
     setCompBloqueioMsg(null);
@@ -792,17 +794,26 @@ export default function DoubleCheckInPage() {
         typeof document !== 'undefined' &&
         createPortal(
           <div
-            className="fixed inset-0 z-[10050] flex items-center justify-center p-4 bg-slate-900/55 backdrop-blur-[1px]"
+            className={`fixed inset-0 z-[10050] flex bg-slate-900/55 backdrop-blur-[1px] ${
+              modalTelaCheia ? 'items-stretch justify-stretch p-0' : 'items-center justify-center p-4'
+            }`}
             role="dialog"
             aria-modal="true"
-            onClick={() => setModalNota(null)}
+            onClick={() => {
+              setModalTelaCheia(false);
+              setModalNota(null);
+            }}
           >
             <div
-              className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+              className={`flex flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800 ${
+                modalTelaCheia
+                  ? 'h-full max-h-none w-full max-w-none rounded-none'
+                  : 'max-h-[90vh] w-full max-w-6xl rounded-2xl'
+              }`}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-600">
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                     Itens da entrada
                   </h3>
@@ -812,13 +823,32 @@ export default function DoubleCheckInPage() {
                     {modalNota.nomeParceiro ?? '—'} · limiar ±{detalheLimiar}%
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className={btnSecondary}
-                  onClick={() => setModalNota(null)}
-                >
-                  Fechar
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    className={btnSecondary}
+                    title={modalTelaCheia ? 'Sair da tela cheia' : 'Exibir em tela cheia'}
+                    aria-label={modalTelaCheia ? 'Sair da tela cheia' : 'Exibir em tela cheia'}
+                    onClick={() => setModalTelaCheia((v) => !v)}
+                  >
+                    {modalTelaCheia ? (
+                      <Minimize2 className="h-4 w-4" aria-hidden />
+                    ) : (
+                      <Maximize2 className="h-4 w-4" aria-hidden />
+                    )}
+                    {modalTelaCheia ? 'Sair' : 'Tela cheia'}
+                  </button>
+                  <button
+                    type="button"
+                    className={btnSecondary}
+                    onClick={() => {
+                      setModalTelaCheia(false);
+                      setModalNota(null);
+                    }}
+                  >
+                    Fechar
+                  </button>
+                </div>
               </div>
               <div className="flex shrink-0 gap-1 border-b border-slate-200 px-4 dark:border-slate-600">
                 {(
