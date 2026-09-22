@@ -1,15 +1,15 @@
 /**
  * DRE — Receita Bruta e CMV Shop9 (Movimento), por data de emissão NF.
  *
- * Filial 1 (indireto, split vendedor):
- *   1.5 / 2.1.3.3 / 6.4 PAULO/JAQUELINE (Só Refrigeração)
- *   1.6.2 / 2.1.3.4 (soma filial 1+6) / 6.3.2 demais vendedores (R N Marques)
- *
- * Filial 6 (direto):
- *   1.6.1 Faturamento Direto (Preco_Total_Sem_Desconto_Somado)
- *   2.1.3.4 Desconto R N Marques (Desconto_Valor_Somado)
- *   2.1.1.4 Devolução R N Marques filial 6 DEV (Preco_Final_Somado)
- *   6.3.1 CMV Direto (Preco_Custo_Somado; se custo > preço → preço × 0,41 — no SQL)
+ * Split por vendedor (PAULO / JAQUELINE / NAIANE → Só Refrigeração):
+ *   Filial 1 (indireto):
+ *     1.5 / 2.1.3.3 / 6.4 Refrigeração
+ *     1.6.2 / 2.1.3.4 / 6.3.2 demais → R N Marques indireto
+ *   Filial 6 (direto; Situacao_Danfe = 2 no SQL):
+ *     1.5 / 2.1.3.3 / 6.4 Refrigeração (mesmos vendedores)
+ *     1.6.1 / 2.1.3.4 / 6.3.1 demais → R N Marques direto
+ *   Devoluções F6 DEV → 2.1.1.4 (sem split por vendedor)
+ *   CMV direto F6: se custo > preço → preço × 0,41 (no SQL)
  */
 import { readFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
@@ -90,12 +90,12 @@ function resolverPathKeyPorCodigo(codigo: string): string | null {
   return null;
 }
 
-/** Vendedores alocados em Só Refrigeração (1.5 / 6.4). */
+/** Vendedores alocados em Só Refrigeração (1.5 / 2.1.3.3 / 6.4) — filiais 1 e 6. */
 export function vendedorEhRefrigeracaoDre(nome: unknown): boolean {
   const n = String(nome ?? '')
     .trim()
     .toUpperCase();
-  return n === 'PAULO' || n === 'JAQUELINE';
+  return n === 'PAULO' || n === 'JAQUELINE' || n === 'NAIANE';
 }
 
 /** CMV direto filial 6 — espelha a regra do SQL (Preco_Custo_Somado já vem ajustado). */
@@ -262,11 +262,12 @@ function processarFilial1Devolucoes(
 function processarFilial6(
   list: Record<string, unknown>[],
   keys: PathKeysShop9,
+  incluirRefrigeracao: boolean,
   incluirRnMarques: boolean,
   granularidade: 'dia' | 'mes',
   agregado: Map<string, number>,
 ): void {
-  if (!incluirRnMarques) return;
+  if (!incluirRefrigeracao && !incluirRnMarques) return;
 
   const vistoOrdem = new Set<number>();
 
@@ -286,9 +287,17 @@ function processarFilial6(
     const valorCusto = toNum(row.Preco_Custo_Somado ?? row.precoCustoSomado);
     if (valorReceitaBruta <= 0 && valorDesconto <= 0 && valorCusto <= 0) continue;
 
-    agregarShop9(agregado, keys.rnMarquesDireto, periodo, valorReceitaBruta);
-    agregarShop9(agregado, keys.descontoRnMarques, periodo, valorDesconto);
-    agregarShop9(agregado, keys.cmvRnMarquesDireto, periodo, valorCusto);
+    const ehRefrigeracao = vendedorEhRefrigeracaoDre(row.Nome_Vendedor ?? row.nomeVendedor);
+
+    if (ehRefrigeracao && incluirRefrigeracao) {
+      agregarShop9(agregado, keys.refrigeracao, periodo, valorReceitaBruta);
+      agregarShop9(agregado, keys.descontoRefrigeracao, periodo, valorDesconto);
+      agregarShop9(agregado, keys.cmvRefrigeracao, periodo, valorCusto);
+    } else if (!ehRefrigeracao && incluirRnMarques) {
+      agregarShop9(agregado, keys.rnMarquesDireto, periodo, valorReceitaBruta);
+      agregarShop9(agregado, keys.descontoRnMarques, periodo, valorDesconto);
+      agregarShop9(agregado, keys.cmvRnMarquesDireto, periodo, valorCusto);
+    }
   }
 }
 
@@ -372,7 +381,14 @@ export async function carregarReceitaRefrigeracaoShop9Dre(params: {
     const listFilial6 = Array.isArray(resultFilial6.recordset)
       ? (resultFilial6.recordset as Record<string, unknown>[])
       : [];
-    processarFilial6(listFilial6, keys, incluirRnMarques, granularidade, agregado);
+    processarFilial6(
+      listFilial6,
+      keys,
+      incluirRefrigeracao,
+      incluirRnMarques,
+      granularidade,
+      agregado,
+    );
 
     const sqlFilial6Devolucoes = aplicarSql(SQL_FILIAL6_DEVOLUCOES, params.dataInicio, params.dataFim);
     const resultFilial6Devolucoes = await pool.query(sqlFilial6Devolucoes);

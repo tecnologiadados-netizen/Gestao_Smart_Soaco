@@ -2,9 +2,9 @@
 
    Split no backend (mesmo critério de vendedor):
 
-     1.5 / 2.1.3.3 / 6.4 PAULO/JAQUELINE (Só Refrigeração)
+     1.5 / 2.1.3.3 / 6.4 PAULO/JAQUELINE/NAIANE (Só Refrigeração)
 
-     1.6.2 / 2.1.3.4 (soma filial 1+6) / 6.3.2 demais vendedores (R N Marques)
+     1.6.2 / 2.1.3.4 / 6.3.2 demais vendedores (R N Marques indireto)
 
    Placeholders: {{DATA_EMISSAO_MIN}}, {{DATA_EMISSAO_MAX}} */
 
