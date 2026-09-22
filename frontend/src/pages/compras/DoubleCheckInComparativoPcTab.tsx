@@ -387,32 +387,46 @@ export default function DoubleCheckInComparativoPcTab({
                       </div>
                     </div>
                     {diverg && (
-                      <div className="mt-2 flex items-center justify-between gap-1">
-                        <span className="truncate text-[10px] text-slate-500" title={dec?.justificativaLabel ?? ''}>
-                          {dec
-                            ? `${dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
-                            : 'Divergente'}
-                        </span>
-                        {!conferido && (
-                          <div className="flex shrink-0 gap-1">
-                            <button
-                              type="button"
-                              title="Aceitar divergência"
-                              className="rounded p-1 text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
-                              onClick={() => abrirJustificativa(linha, c.id, 'aceita')}
-                            >
-                              <Check className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              title="Recusar divergência"
-                              className="rounded p-1 text-rose-700 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/40"
-                              onClick={() => abrirJustificativa(linha, c.id, 'recusa')}
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        )}
+                      <div className="mt-2 space-y-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span
+                            className="truncate text-[10px] text-slate-500"
+                            title={dec?.justificativaLabel ?? ''}
+                          >
+                            {dec
+                              ? `${dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
+                              : 'Divergente'}
+                          </span>
+                          {!conferido && (
+                            <div className="flex shrink-0 gap-1">
+                              <button
+                                type="button"
+                                title="Aceitar divergência"
+                                className="rounded p-1 text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
+                                onClick={() => abrirJustificativa(linha, c.id, 'aceita')}
+                              >
+                                <Check className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Recusar divergência"
+                                className="rounded p-1 text-rose-700 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/40"
+                                onClick={() => abrirJustificativa(linha, c.id, 'recusa')}
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {dec?.observacao?.trim() ? (
+                          <p
+                            className="rounded-md bg-slate-100/80 px-1.5 py-1 text-[10px] leading-snug text-slate-700 dark:bg-slate-800/80 dark:text-slate-300 whitespace-pre-wrap break-words"
+                            title={dec.observacao.trim()}
+                          >
+                            <span className="font-medium text-slate-500 dark:text-slate-400">Obs.: </span>
+                            {dec.observacao.trim()}
+                          </p>
+                        ) : null}
                       </div>
                     )}
                   </div>
