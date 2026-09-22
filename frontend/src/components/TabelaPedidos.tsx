@@ -200,6 +200,10 @@ interface TabelaPedidosProps {
   /** Quando definido, os botões "Limpar filtros da grade" e "Colunas ocultas" são renderizados
    * neste elemento (ex.: barra de botões da página) em vez de ocupar uma linha acima da grade. */
   toolbarExtrasContainer?: HTMLElement | null;
+  /** Filtro de datas da tela (emissão, original, previsões) está preenchido. */
+  filtrosDatasAtivos?: boolean;
+  /** Limpa as datas da tela junto com os filtros do cabeçalho. */
+  onLimparFiltrosDatas?: () => void;
   /** Quando true, a grade ocupa toda a altura disponível do contêiner pai (até a paginação),
    * em vez do teto fixo de 70vh. Requer pai flex com altura limitada (ex.: Gestão de Pedidos). */
   fillHeight?: boolean;
@@ -365,6 +369,8 @@ export default function TabelaPedidos({
   onGradeRowsForExport,
   paginateLocally = true,
   toolbarExtrasContainer,
+  filtrosDatasAtivos = false,
+  onLimparFiltrosDatas,
   fillHeight = false,
 }: TabelaPedidosProps) {
   const lista = Array.isArray(pedidos) ? pedidos : [];
@@ -708,7 +714,7 @@ export default function TabelaPedidos({
   const mostraOverlayAtualizando = loading && lista.length > 0;
   const colSpanGrade = colunasVisiveisLista.length + (showSelection ? 1 : 0);
 
-  const temExtrasGrade = colunasOcultasLista.length > 0 || grade.temFiltrosOuOrdem;
+  const temExtrasGrade = colunasOcultasLista.length > 0 || grade.temFiltrosOuOrdem || filtrosDatasAtivos;
   const extrasGrade = temExtrasGrade && (
         <div
           className={
@@ -717,16 +723,17 @@ export default function TabelaPedidos({
               : 'mb-2 flex flex-wrap items-center justify-end gap-2'
           }
         >
-          {grade.temFiltrosOuOrdem && (
+          {(grade.temFiltrosOuOrdem || filtrosDatasAtivos) && (
             <button
               type="button"
               onClick={() => {
                 grade.limparFiltrosGrade();
-                onSortLevelsChange?.([...SORT_LEVELS_DEFAULT]);
+                if (onLimparFiltrosDatas) onLimparFiltrosDatas();
+                else onSortLevelsChange?.([...SORT_LEVELS_DEFAULT]);
               }}
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
-              Limpar filtros da grade
+              Limpar filtros
             </button>
           )}
           {colunasOcultasLista.length > 0 && (

@@ -344,6 +344,33 @@ export default function PedidosPage() {
     carregarPedidos(1, filtrosIniciais, sortPadrao);
   };
 
+  const temFiltroDatas = Boolean(
+    filtros.data_emissao_ini ||
+      filtros.data_emissao_fim ||
+      filtros.data_entrega_ini ||
+      filtros.data_entrega_fim ||
+      filtros.data_previsao_anterior_ini ||
+      filtros.data_previsao_anterior_fim ||
+      filtros.data_previsao_ini ||
+      filtros.data_previsao_fim
+  );
+
+  const limparFiltrosDatas = useCallback(() => {
+    const next = {
+      ...filtros,
+      data_emissao_ini: '',
+      data_emissao_fim: '',
+      data_entrega_ini: '',
+      data_entrega_fim: '',
+      data_previsao_anterior_ini: '',
+      data_previsao_anterior_fim: '',
+      data_previsao_ini: '',
+      data_previsao_fim: '',
+    };
+    setFiltros(next);
+    carregarPedidos(1, next);
+  }, [filtros, carregarPedidos]);
+
   const mergePedidosAposAjuste = (prev: Pedido[], atualizado: Pedido, meta?: AjustePrevisaoSuccessMeta): Pedido[] => {
     const listaCarrada = meta?.atualizadosMesmaCarrada;
     const listaPd = meta?.todosItensPdAtualizados;
@@ -947,7 +974,11 @@ export default function PedidosPage() {
         )}
         <FiltroDatasPopover
           filtros={filtros}
-          onChange={(updates) => setFiltros((prev) => ({ ...prev, ...updates }))}
+          onChange={(updates) => {
+            const next = { ...filtros, ...updates };
+            setFiltros(next);
+            carregarPedidos(1, next);
+          }}
         />
         <button
           type="button"
@@ -1082,6 +1113,8 @@ export default function PedidosPage() {
           onPageChange={setPage}
           onExibidosCountChange={setTotalExibidosGrade}
           onGradeRowsForExport={syncPedidosGradeExport}
+          filtrosDatasAtivos={temFiltroDatas}
+          onLimparFiltrosDatas={limparFiltrosDatas}
           paginateLocally={!incoherenceViewRows}
           toolbarExtrasContainer={gradeToolbarExtrasEl}
           fillHeight

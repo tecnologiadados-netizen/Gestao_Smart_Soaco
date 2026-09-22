@@ -151,6 +151,14 @@ const SECOES: SecaoAjuda[] = [
       'Família Padrão → Padrão. Família Projeto → Não padrão. Qualquer outra família (ou vazia) → Indefinido. A mesma classificação vai na exportação Excel (Exportar Grade e planilha completa), na última coluna visível da grade exportada.',
   },
   {
+    id: 'datas',
+    titulo: 'Filtrar por datas',
+    oQueE:
+      'Recorta a grade por emissão, data original, previsão anterior e previsão atual.',
+    comoLe:
+      'Com alguma data preenchida, o botão Limpar filtros na barra zera essas datas e recarrega a lista. Ele também tira os filtros do cabeçalho da grade.',
+  },
+  {
     id: 'exportar',
     titulo: 'Exportar',
     oQueE:
