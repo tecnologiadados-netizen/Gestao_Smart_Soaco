@@ -22,6 +22,44 @@ export const SQL_SETORES_ESTOQUE_VERIFICAR_PCP_IN = [
   NOMUS_SETOR_ESTOQUE_PADRAO.MATERIA_PRIMA_PROCESSADA,
 ].join(', ');
 
+/**
+ * Painel Cobertura de Estoque — produto entra se estiver vinculado a pelo menos um:
+ * almox secundário (2), galpão bobina (19) ou matéria-prima processada (20).
+ */
+export const SETORES_VINCULO_PAINEL_COBERTURA = [
+  NOMUS_SETOR_ESTOQUE_PADRAO.MATERIAL_SECUNDARIO,
+  NOMUS_SETOR_ESTOQUE_PADRAO.GALPAO_BOBINA,
+  NOMUS_SETOR_ESTOQUE_PADRAO.MATERIA_PRIMA_PROCESSADA,
+] as const;
+
+export const SETORES_VINCULO_PAINEL_COBERTURA_SQL = SETORES_VINCULO_PAINEL_COBERTURA.join(', ');
+
+/** Legenda dos IDs exibidos na coluna Setor do painel Cobertura. */
+export const LABELS_SETOR_VINCULO_COBERTURA: Record<
+  (typeof SETORES_VINCULO_PAINEL_COBERTURA)[number],
+  string
+> = {
+  [NOMUS_SETOR_ESTOQUE_PADRAO.MATERIAL_SECUNDARIO]: 'Almoxarifado (secundário)',
+  [NOMUS_SETOR_ESTOQUE_PADRAO.GALPAO_BOBINA]: 'Almoxarifado galpão bobina',
+  [NOMUS_SETOR_ESTOQUE_PADRAO.MATERIA_PRIMA_PROCESSADA]: 'Almoxarifado matéria-prima processada',
+};
+
+/** Formata IDs de setor do painel como `2|19|20` (ordenados). */
+export function formatarSetoresVinculoCobertura(ids: Iterable<number>): string {
+  const set = new Set<number>();
+  for (const id of ids) {
+    const n = Number(id);
+    if (
+      n === NOMUS_SETOR_ESTOQUE_PADRAO.MATERIAL_SECUNDARIO ||
+      n === NOMUS_SETOR_ESTOQUE_PADRAO.GALPAO_BOBINA ||
+      n === NOMUS_SETOR_ESTOQUE_PADRAO.MATERIA_PRIMA_PROCESSADA
+    ) {
+      set.add(n);
+    }
+  }
+  return [...set].sort((a, b) => a - b).join('|');
+}
+
 /** Atributos de produto no Nomus (atributoprodutovalor / atributolistaopcao). */
 export const NOMUS_ATRIBUTO_COLETA = 650;
 

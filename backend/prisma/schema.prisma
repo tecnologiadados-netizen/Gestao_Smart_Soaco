@@ -126,6 +126,8 @@ model Usuario {
   whatsappNotificacaoDestinatarios WhatsappNotificacaoDestinatario[]
   emailNotificacaoDestinatarios EmailNotificacaoDestinatario[]
   telasFavoritas TelaFavorita[]
+  assistenteConversas AssistenteConversa[]
+  assistenteFeedbacks AssistenteFeedback[]
 
   @@map("usuario")
 }
@@ -233,6 +235,72 @@ model DoubleCheckInConferido {
 
   @@index([usuarioId])
   @@map("double_checkin_conferido")
+}
+
+/// Retrato público da conferência NF × PC (link do WhatsApp). O token é o acesso.
+model DoubleCheckInConferenciaPagina {
+  id                 Int      @id @default(autoincrement())
+  token              String   @unique
+  idDocumentoEstoque Int      @unique
+  payloadJson        String
+  criadoEm           DateTime @default(now())
+
+  @@map("double_checkin_conferencia_pagina")
+}
+
+/// Opções pré-cadastradas de justificativa (divergência NF × PC).
+model DoubleCheckInJustificativaOpcao {
+  id        Int      @id @default(autoincrement())
+  codigo    String   @unique
+  label     String
+  ativo     Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  decisoes DoubleCheckInComparativoDecisao[]
+
+  @@map("double_checkin_justificativa_opcao")
+}
+
+/// Decisão por campo divergente (valor unitário / qtde / total / IPI) no vínculo NF × PC.
+model DoubleCheckInComparativoDecisao {
+  id                     Int      @id @default(autoincrement())
+  idDocumentoEstoque     Int
+  idItemDocumentoEstoque Int
+  idItemPedidoCompra     Int
+  /// valor_unitario | qtde | valor_total | ipi
+  campo                  String
+  /// aceita | recusa
+  decisao                String
+  justificativaOpcaoId   Int
+  observacao             String?
+  usuarioId              Int
+  usuarioLogin           String
+  atualizadoEm           DateTime @default(now()) @updatedAt
+
+  justificativaOpcao DoubleCheckInJustificativaOpcao @relation(fields: [justificativaOpcaoId], references: [id])
+
+  @@unique([idDocumentoEstoque, idItemDocumentoEstoque, idItemPedidoCompra, campo])
+  @@index([idDocumentoEstoque])
+  @@map("double_checkin_comparativo_decisao")
+}
+
+/// Histórico acumulativo de observações por divergência (campo) do comparativo NF × PC.
+model DoubleCheckInComparativoObsHist {
+  id                     Int      @id @default(autoincrement())
+  idDocumentoEstoque     Int
+  idItemDocumentoEstoque Int
+  idItemPedidoCompra     Int
+  /// valor_unitario | qtde | ipi | condicao_pagamento
+  campo                  String
+  texto                  String
+  usuarioId              Int
+  usuarioLogin           String
+  criadoEm               DateTime @default(now())
+
+  @@index([idDocumentoEstoque, idItemDocumentoEstoque, idItemPedidoCompra, campo])
+  @@index([idDocumentoEstoque])
+  @@map("double_checkin_comparativo_obs_hist")
 }
 
 /// Conferência às cegas (Recebimento): andamento local do DE de pré-entrada.
@@ -1429,6 +1497,72 @@ model EmailProviderSettings {
   @@map("email_provider_settings")
 }
 
+/// Credencial OpenAI do Assistente Amigaço (chave criptografada).
+model AiProviderSettings {
+  id               String    @id @default(uuid())
+  provider         String    @default("openai")
+  model            String    @default("gpt-4o-mini")
+  apiKeyEncrypted  String    @map("api_key_encrypted")
+  lastTestedAt     DateTime? @map("last_tested_at")
+  lastError        String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@map("ai_provider_settings")
+}
+
+/// Conversas do Assistente Amigaço (persistidas por usuário).
+model AssistenteConversa {
+  id        String               @id @default(cuid())
+  usuarioId Int                  @map("usuario_id")
+  titulo    String               @default("Nova conversa")
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+  usuario   Usuario              @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  mensagens AssistenteMensagem[]
+
+  @@index([usuarioId, updatedAt])
+  @@map("assistente_conversa")
+}
+
+model AssistenteMensagem {
+  id         String               @id @default(cuid())
+  conversaId String               @map("conversa_id")
+  role       String
+  content    String
+  createdAt  DateTime             @default(now()) @map("created_at")
+  conversa   AssistenteConversa   @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  feedback   AssistenteFeedback?
+
+  @@index([conversaId, createdAt])
+  @@map("assistente_mensagem")
+}
+
+/// Feedback 👍 / Alucinou por mensagem do Amigaço (snapshot para revisão do Master).
+model AssistenteFeedback {
+  id                     String             @id @default(cuid())
+  usuarioId              Int                @map("usuario_id")
+  conversaId             String             @map("conversa_id")
+  mensagemId             String             @unique @map("mensagem_id")
+  tipo                   String
+  perguntaUsuario        String?            @map("pergunta_usuario")
+  respostaAssistente     String             @map("resposta_assistente")
+  pathname               String?
+  tituloConversa         String             @map("titulo_conversa")
+  resolvido              Boolean            @default(false)
+  resolvidoEm            DateTime?          @map("resolvido_em")
+  resolvidoPorUsuarioId  Int?               @map("resolvido_por_usuario_id")
+  notaInterna            String?            @map("nota_interna")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+  usuario                Usuario            @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  mensagem               AssistenteMensagem @relation(fields: [mensagemId], references: [id], onDelete: Cascade)
+
+  @@index([tipo, resolvido, createdAt])
+  @@index([usuarioId])
+  @@map("assistente_feedback")
+}
+
 model EmailDisparoLog {
   id            String   @id @default(cuid())
   categoria     String
@@ -2413,4 +2547,78 @@ model LojaKitInventarioItem {
 
   @@unique([inventarioId, produtoId])
   @@map("loja_kit_inventario_item")
+}
+
+/// Espelho local de TEMPO_PRODUCAO (Camasi/Firebird) — painel funciona com PC RICMAQ offline.
+model CamasiTempoProducao {
+  id             Int      @id
+  data           String
+  inicioProducao String?  @map("inicio_producao")
+  fimProducao    String?  @map("fim_producao")
+  inicioParado   String?  @map("inicio_parado")
+  fimParado      String?  @map("fim_parado")
+  motivoParado   String?  @map("motivo_parado")
+  nomeMotivo     String?  @map("nome_motivo")
+  obsMotivo      String?  @map("obs_motivo")
+  operador       String?
+  nomeOperador   String?  @map("nome_operador")
+  syncedAt       DateTime @default(now()) @updatedAt @map("synced_at")
+
+  @@index([data])
+  @@map("camasi_tempo_producao")
+}
+
+/// Estado do job de sync Camasi → SQLite (singleton id=1).
+model CamasiSyncEstado {
+  id               Int       @id @default(1)
+  lastSuccessAt    DateTime? @map("last_success_at")
+  lastAttemptAt    DateTime? @map("last_attempt_at")
+  lastError        String?   @map("last_error")
+  lastRowsUpserted Int       @default(0) @map("last_rows_upserted")
+  totalRows        Int       @default(0) @map("total_rows")
+  fullSyncDone     Boolean   @default(false) @map("full_sync_done")
+  modoUltimoSync   String?   @map("modo_ultimo_sync")
+
+  @@map("camasi_sync_estado")
+}
+
+/// Motivos cadastrados no GS para apontar paradas Camasi "SEM JUSTIFICATIVA".
+model CamasiJustificativa {
+  id        Int      @id @default(autoincrement())
+  nome      String   @unique
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("camasi_justificativa")
+}
+
+/// Apontamento de motivo em ociosidade cortada automaticamente (início/fim de escala).
+model CamasiParadaJustificada {
+  id               Int      @id @default(autoincrement())
+  data             String
+  inicioParado     String   @map("inicio_parado")
+  fimParado        String   @map("fim_parado")
+  observacaoOrigem String   @default("") @map("observacao_origem")
+  nome             String
+  usuarioLogin     String?  @map("usuario_login")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([data, inicioParado, fimParado, observacaoOrigem])
+  @@index([data])
+  @@map("camasi_parada_justificada")
+}
+
+/// Singleton (id=1): último envio do alerta WhatsApp de parada Camasi (anti-spam).
+model CamasiParadaAlertaEstado {
+  id                  Int       @id @default(1)
+  data                String
+  inicioEnviado       Boolean   @default(false) @map("inicio_enviado")
+  ultimaProducaoFim   String?   @map("ultima_producao_fim")
+  posProducaoEnviado  Boolean   @default(false) @map("pos_producao_enviado")
+  lastSentAt          DateTime? @map("last_sent_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("camasi_parada_alerta_estado")
 }

@@ -5,18 +5,40 @@
       "nome": "Perfiladeira 1000",
       "painelCamasi": true,
       "escala": {
-        "diasSemana": [1, 2, 3, 4, 5],
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
         "faixas": [
-          { "inicio": "07:00", "fim": "11:30" },
-          { "inicio": "13:00", "fim": "17:15" }
+          {
+            "inicio": "07:00",
+            "fim": "17:15"
+          }
         ]
       },
       "criadoPorLogin": "marquesfilho",
       "criadoPorNome": null,
-      "atualizadoPorLogin": "marquesfilho",
+      "atualizadoPorLogin": "davilucas1",
       "atualizadoPorNome": null,
       "createdAt": "2026-06-01T16:22:09.173Z",
-      "updatedAt": "2026-06-01T16:22:09.173Z"
+      "updatedAt": "2026-09-14T18:33:29.614Z",
+      "escalaExcecoes": [
+        {
+          "id": "ex-mu1kzs34-rzfwni",
+          "dataIni": "2026-09-05",
+          "dataFim": "2026-09-05",
+          "tipo": "substituir",
+          "faixas": [
+            {
+              "inicio": "06:00",
+              "fim": "14:00"
+            }
+          ]
+        }
+      ]
     },
     {
       "cod": "R002",
@@ -26,7 +48,10 @@
       "atualizadoPorLogin": "marquesfilho",
       "atualizadoPorNome": null,
       "createdAt": "2026-06-01T16:22:22.257Z",
-      "updatedAt": "2026-06-01T16:22:22.257Z"
+      "updatedAt": "2026-06-01T16:22:22.257Z",
+      "escala": null,
+      "escalaExcecoes": [],
+      "painelCamasi": false
     },
     {
       "cod": "R003",
@@ -36,7 +61,10 @@
       "atualizadoPorLogin": "marquesfilho",
       "atualizadoPorNome": null,
       "createdAt": "2026-06-01T16:22:28.518Z",
-      "updatedAt": "2026-06-01T16:22:28.518Z"
+      "updatedAt": "2026-06-01T16:22:28.518Z",
+      "escala": null,
+      "escalaExcecoes": [],
+      "painelCamasi": false
     },
     {
       "cod": "R004",
@@ -46,7 +74,10 @@
       "atualizadoPorLogin": "marquesfilho",
       "atualizadoPorNome": null,
       "createdAt": "2026-06-01T16:22:39.154Z",
-      "updatedAt": "2026-06-01T16:22:39.154Z"
+      "updatedAt": "2026-06-01T16:22:39.154Z",
+      "escala": null,
+      "escalaExcecoes": [],
+      "painelCamasi": false
     },
     {
       "cod": "R005",
@@ -56,7 +87,10 @@
       "atualizadoPorLogin": "marquesfilho",
       "atualizadoPorNome": null,
       "createdAt": "2026-06-01T16:22:49.139Z",
-      "updatedAt": "2026-06-01T16:22:49.139Z"
+      "updatedAt": "2026-06-01T16:22:49.139Z",
+      "escala": null,
+      "escalaExcecoes": [],
+      "painelCamasi": false
     },
     {
       "cod": "R006",
@@ -66,7 +100,10 @@
       "atualizadoPorLogin": "marquesfilho",
       "atualizadoPorNome": null,
       "createdAt": "2026-06-01T16:23:01.089Z",
-      "updatedAt": "2026-06-01T16:23:01.089Z"
+      "updatedAt": "2026-06-01T16:23:01.089Z",
+      "escala": null,
+      "escalaExcecoes": [],
+      "painelCamasi": false
     }
   ]
 }

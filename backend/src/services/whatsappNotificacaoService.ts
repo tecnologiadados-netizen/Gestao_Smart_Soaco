@@ -10,6 +10,18 @@ import { obterDadosPedidosEntregaVencida } from '../data/pedidosRepository.js';
 import { montarMensagemPedidosEntregaVencida } from './pedidosEntregaVencidaMensagem.js';
 import { executarSqlSeguro } from '../data/whatsappNotificacaoNomusRepository.js';
 import { buscarTipoPorCode } from '../data/whatsappNotificacaoRepository.js';
+import { prisma } from '../config/prisma.js';
+import {
+  isSgqAlertaBuilder,
+  SGQ_ALERTA_CALIBRACAO_CODE,
+  SGQ_ALERTA_VALIDADE_CODE,
+} from '../config/sgqAlertasNotificacao.js';
+import {
+  executarAlertaSgqCalibracao,
+  executarAlertaSgqValidade,
+  montarDigestWhatsAppSgqCalibracao,
+  montarDigestWhatsAppSgqValidade,
+} from './sgq/sgqEmailNotificacaoService.js';
 import {
   comExecucaoRegistrada,
   type OrigemNotificacao,
@@ -76,6 +88,8 @@ const BUILDERS: Record<string, () => Promise<string>> = {
   faturamento_diario: gerarMensagemFaturamentoDiarioBuilder,
   faturamento_diario_linhas: gerarMensagemFaturamentoDiarioLinhasBuilder,
   pedidos_entrega_vencida: gerarMensagemPedidosEntregaVencidaBuilder,
+  [SGQ_ALERTA_VALIDADE_CODE]: () => montarDigestWhatsAppSgqValidade(prisma),
+  [SGQ_ALERTA_CALIBRACAO_CODE]: () => montarDigestWhatsAppSgqCalibracao(prisma),
 };
 
 export async function gerarMensagemDoTipo(tipo: TipoComDestinatarios): Promise<string> {
@@ -249,6 +263,17 @@ export async function enviarNotificacaoPorTipo(code: string, texto: string): Pro
   );
 }
 
+export function listarLoginsDestinatariosWhatsApp(tipo: TipoComDestinatarios): string[] {
+  return [
+    ...new Set(
+      tipo.destinatarios
+        .filter((d) => d.usuario.ativo)
+        .map((d) => d.usuario.login.trim())
+        .filter(Boolean)
+    ),
+  ];
+}
+
 export async function executarNotificacaoAgendada(
   code: string,
   origem: OrigemNotificacao = 'cron'
@@ -260,6 +285,68 @@ export async function executarNotificacaoAgendada(
     { canal: 'whatsapp', tipoCode: tipo.code, tipoId: tipo.id, origem },
     async () => {
       try {
+        const builderCode = tipo.builderCode?.trim() || tipo.code;
+        if (isSgqAlertaBuilder(builderCode)) {
+          const extraLogins = listarLoginsDestinatariosWhatsApp(tipo);
+          const extraTelefones = listarDestinosWhatsApp(tipo).map((d) => d.numero);
+          const opts = {
+            canal: 'whatsapp' as const,
+            extraLogins,
+            extraTelefones,
+          };
+          const result =
+            builderCode === SGQ_ALERTA_VALIDADE_CODE
+              ? await executarAlertaSgqValidade(prisma, opts)
+              : await executarAlertaSgqCalibracao(prisma, opts);
+
+          console.log(
+            `[whatsappNotificacaoCron] "${code}": ${result.enviados} envio(s), ${result.ignorados} ignorado(s).`
+          );
+          if (result.erros.length > 0) {
+            console.error(`[whatsappNotificacaoCron] "${code}" erros:`, result.erros.join('; '));
+          }
+
+          if (result.enviados === 0 && result.erros.length === 0) {
+            return {
+              result: undefined as void,
+              forcarSkipped: true,
+              resumo:
+                result.ignorados > 0
+                  ? `Sem disparo (${result.ignorados} ignorado(s) por dedup)`
+                  : 'Sem disparo (nenhum alerta pendente)',
+              tentativas: [],
+              metadados: { enviados: 0, ignorados: result.ignorados, erros: 0 },
+            };
+          }
+
+          const tentativas: TentativaInput[] = [];
+          if (result.enviados > 0) {
+            tentativas.push({
+              canal: 'whatsapp',
+              destinatario: 'sgq-cadeia',
+              ok: true,
+            });
+          }
+          for (const erro of result.erros) {
+            tentativas.push({
+              canal: 'whatsapp',
+              destinatario: erro.split(':')[0]?.trim() || '—',
+              ok: false,
+              erro,
+            });
+          }
+
+          return {
+            result: undefined as void,
+            tentativas,
+            metadados: {
+              enviados: result.enviados,
+              ignorados: result.ignorados,
+              erros: result.erros.length,
+            },
+          };
+        }
+
         const mensagem = await gerarMensagemDoTipo(tipo);
         const { enviados, erros, tentativas, dryRuns } = await enviarParaDestinatarios(tipo, mensagem);
         console.log(`[whatsappNotificacaoCron] "${code}": ${enviados} envio(s).`);
@@ -282,7 +369,6 @@ export async function executarNotificacaoAgendada(
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[whatsappNotificacaoCron] "${code}":`, msg);
-        // SQL sem linhas / builder vazio → skipped; demais → failed
         const skipped =
           /não retornou linhas|sem conteúdo|nenhum/i.test(msg) ||
           /SQL não retornou/i.test(msg);

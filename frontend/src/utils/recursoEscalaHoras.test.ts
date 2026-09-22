@@ -40,4 +40,33 @@ describe('horasEscalaNoDia (frontend)', () => {
       })
     ).toBe(5);
   });
+
+  it('zera feriado nacional sem pontualidade (Independência 07/09)', () => {
+    expect(horasEscalaNoDia('2026-09-07', semanal)).toBe(0);
+  });
+
+  it('aceita horário especial em feriado', () => {
+    expect(
+      horasEscalaNoDia('2026-09-07', {
+        ...semanal,
+        excecoes: [
+          {
+            id: '3',
+            dataIni: '2026-09-07',
+            dataFim: '2026-09-07',
+            tipo: 'substituir',
+            faixas: [{ inicio: '07:00', fim: '11:00' }],
+          },
+        ],
+      })
+    ).toBe(4);
+  });
+
+  it('zera feriado municipal de Teresina (08/12)', () => {
+    expect(horasEscalaNoDia('2026-12-08', semanal)).toBe(0);
+  });
+
+  it('não zera feriado de outro estado (Emancipação de Alagoas 16/09)', () => {
+    expect(horasEscalaNoDia('2026-09-16', semanal)).toBe(8.75);
+  });
 });

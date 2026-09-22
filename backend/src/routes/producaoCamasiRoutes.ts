@@ -18,9 +18,20 @@ import { horasEscalaNoPeriodo } from '../utils/recursoEscalaTrabalho.js';
 import {
   buildDashboardResumo,
   buildDiasDoMes,
-  listTempoProducao,
+  listTempoProducaoComFonte,
   mesLabel,
 } from '../data/camasiTempoProducaoRepository.js';
+import { getCamasiSyncEstado } from '../data/camasiTempoProducaoCacheRepository.js';
+import {
+  listarOpcoesJustificativaCamasi,
+  listarParadasJustificadasNoPeriodo,
+  salvarParadaJustificada,
+} from '../data/camasiJustificativaRepository.js';
+import {
+  aplicarJustificativasManuais,
+  isParadaJustificativaEditavel,
+  motivosAPartirDeParadas,
+} from '../utils/camasiJustificativa.js';
 
 const PERMISSOES_ACESSO_PRODUCAO_CAMASI = PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI;
 
@@ -75,7 +86,7 @@ function async503(handler: RequestHandler): RequestHandler {
 
 /**
  * GET /api/producao-camasi/status
- * Verifica se a conexão Firebird (RICMAQ) está acessível.
+ * Firebird + estado do espelho SQLite.
  */
 router.get(
   '/status',
@@ -83,21 +94,29 @@ router.get(
   async503(async (_req, res) => {
     const enabled = isCamasiEnabled();
     const database = getCamasiDatabasePath();
+    const sync = await getCamasiSyncEstado();
     if (!enabled) {
       res.json({
         ok: false,
         enabled: false,
         database,
         mensagem: 'Conexão Camasi desabilitada (CAMASI_FDB_DISABLED=true).',
+        sync,
       });
       return;
     }
     const test = await testCamasiConnection();
     res.json({
-      ok: test.ok,
+      ok: test.ok || sync.totalRows > 0,
       enabled: true,
       database,
-      mensagem: test.mensagem,
+      mensagem: test.ok
+        ? test.mensagem
+        : sync.totalRows > 0
+          ? `Firebird offline; usando cópia local (${sync.totalRows} registro(s)).`
+          : test.mensagem,
+      firebirdOk: test.ok,
+      sync,
     });
   })
 );
@@ -118,19 +137,27 @@ router.get(
       return;
     }
     if (!isCamasiEnabled()) {
-      res.status(503).json({ error: 'Conexão Camasi desabilitada.' });
-      return;
+      const sync = await getCamasiSyncEstado();
+      if (sync.totalRows <= 0) {
+        res.status(503).json({ error: 'Conexão Camasi desabilitada e sem cópia local.' });
+        return;
+      }
     }
 
     const { dataIni, dataFim } = parsed.data;
     const recurso = getRecursoPainelCamasi();
     const escala = escalaEfetivaDoRecurso(recurso);
     const horasEscala = escala ? horasEscalaNoPeriodo(dataIni, dataFim, escala) : null;
-    const rows = await listTempoProducao(dataIni, dataFim, escala);
-    const resumo = buildDashboardResumo(rows, { horasEscala, escala });
+    const { rows, fonte, cacheSyncedAt } = await listTempoProducaoComFonte(dataIni, dataFim, escala);
+    const resumo = buildDashboardResumo(rows, { horasEscala, escala, dataIni, dataFim });
+    const manuais = await listarParadasJustificadasNoPeriodo(dataIni, dataFim);
+    aplicarJustificativasManuais(resumo.paradasValidas, manuais);
+    resumo.motivos = motivosAPartirDeParadas(resumo.paradasValidas);
     res.json({
       dataIni,
       dataFim,
+      fonte,
+      cacheSyncedAt,
       escala: escala
         ? {
             recursoCod: recurso?.cod ?? null,
@@ -164,14 +191,17 @@ router.get(
       return;
     }
     if (!isCamasiEnabled()) {
-      res.status(503).json({ error: 'Conexão Camasi desabilitada.' });
-      return;
+      const sync = await getCamasiSyncEstado();
+      if (sync.totalRows <= 0) {
+        res.status(503).json({ error: 'Conexão Camasi desabilitada e sem cópia local.' });
+        return;
+      }
     }
 
     const { dataIni, dataFim, mes, tipo } = parsed.data;
     const recurso = getRecursoPainelCamasi();
     const escala = escalaEfetivaDoRecurso(recurso);
-    const rows = await listTempoProducao(dataIni, dataFim, escala);
+    const { rows, fonte, cacheSyncedAt } = await listTempoProducaoComFonte(dataIni, dataFim, escala);
     const { dias, totalHoras } = buildDiasDoMes(rows, mes, tipo, escala);
     res.json({
       dataIni,
@@ -181,6 +211,8 @@ router.get(
       tipo,
       dias,
       totalHoras,
+      fonte,
+      cacheSyncedAt,
     });
   })
 );
@@ -237,6 +269,58 @@ router.put(
       res.status(400).json({ error: msg });
     }
   }
+);
+
+/**
+ * GET /api/producao-camasi/justificativas
+ * Catálogo da máquina (MOTIVO_PARADA) + motivos já cadastrados no GS (sem duplicar).
+ */
+router.get(
+  '/justificativas',
+  requirePermission(...PERMISSOES_ACESSO_PRODUCAO_CAMASI),
+  async503(async (_req, res) => {
+    const opcoes = await listarOpcoesJustificativaCamasi();
+    res.json({ opcoes });
+  })
+);
+
+const justificarSchema = z.object({
+  data: ymdSchema,
+  inicioParado: z.string().regex(/^\d{2}:\d{2}:\d{2}$/, 'Início inválido.'),
+  fimParado: z.string().regex(/^\d{2}:\d{2}:\d{2}$/, 'Fim inválido.'),
+  observacao: z.string().max(240).optional().nullable(),
+  nome: z.string().trim().min(1, 'Informe a justificativa.').max(120),
+});
+
+/**
+ * POST /api/producao-camasi/paradas/justificar
+ * Aponta motivo em parada SEM JUSTIFICATIVA (corte automático de escala).
+ */
+router.post(
+  '/paradas/justificar',
+  requirePermission(...PERMISSOES_ACESSO_PRODUCAO_CAMASI),
+  validateCsrf,
+  async503(async (req, res) => {
+    const parsed = justificarSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' });
+      return;
+    }
+    const obs = (parsed.data.observacao ?? '').trim();
+    if (!isParadaJustificativaEditavel({ observacao: obs })) {
+      res.status(400).json({ error: 'Só é possível apontar motivo em parada sem justificativa gerada pelo GS.' });
+      return;
+    }
+    const saved = await salvarParadaJustificada({
+      data: parsed.data.data,
+      inicioParado: parsed.data.inicioParado,
+      fimParado: parsed.data.fimParado,
+      observacaoOrigem: obs,
+      nome: parsed.data.nome,
+      usuarioLogin: req.user?.login ?? null,
+    });
+    res.json({ ok: true, nome: saved.nome });
+  })
 );
 
 export default router;

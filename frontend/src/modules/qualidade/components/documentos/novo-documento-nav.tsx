@@ -3,11 +3,16 @@ import { ChevronDown, Plus } from "lucide-react";
 import { cn } from "@qualidade/lib/utils";
 import { CadastroDocumentoInternoDialog } from "@qualidade/components/documentos/cadastro-documento-interno-dialog";
 import { CadastroDocumentoExternoDialog } from "@qualidade/components/documentos/cadastro-documento-externo-dialog";
+import { CadastroRegistroDialog } from "@qualidade/components/documentos/cadastro-registro-dialog";
+import { DocumentoConsultaDetalheDialog } from "@qualidade/components/documentos/documento-consulta-detalhe-dialog";
 
 export function NovoDocumentoNav() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [internoOpen, setInternoOpen] = useState(false);
   const [externoOpen, setExternoOpen] = useState(false);
+  const [registroOpen, setRegistroOpen] = useState(false);
+  const [fichaId, setFichaId] = useState<string | null>(null);
+  const [fichaOpen, setFichaOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function openMenu() {
@@ -29,6 +34,11 @@ export function NovoDocumentoNav() {
     setExternoOpen(true);
   }
 
+  function openRegistro() {
+    setMenuOpen(false);
+    setRegistroOpen(true);
+  }
+
   return (
     <>
       <div
@@ -39,6 +49,7 @@ export function NovoDocumentoNav() {
         <button
           type="button"
           data-open={menuOpen ? "true" : "false"}
+          onClick={() => setMenuOpen((v) => !v)}
           className={cn(
             "app-header-menu-trigger flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors"
           )}
@@ -68,12 +79,35 @@ export function NovoDocumentoNav() {
             >
               Documento externo
             </button>
+            <button
+              type="button"
+              className="flex w-full px-4 py-2.5 text-left text-sm text-foreground hover:bg-muted"
+              onClick={openRegistro}
+            >
+              Registros internos
+            </button>
           </div>
         )}
       </div>
 
       <CadastroDocumentoInternoDialog open={internoOpen} onOpenChange={setInternoOpen} />
       <CadastroDocumentoExternoDialog open={externoOpen} onOpenChange={setExternoOpen} />
+      <CadastroRegistroDialog
+        open={registroOpen}
+        onOpenChange={setRegistroOpen}
+        onSalvo={(id) => {
+          setFichaId(id);
+          setFichaOpen(true);
+        }}
+      />
+      <DocumentoConsultaDetalheDialog
+        documentId={fichaId}
+        open={fichaOpen}
+        onOpenChange={(aberto) => {
+          setFichaOpen(aberto);
+          if (!aberto) setFichaId(null);
+        }}
+      />
     </>
   );
 }

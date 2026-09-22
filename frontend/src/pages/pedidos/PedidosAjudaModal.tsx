@@ -142,6 +142,30 @@ const SECOES: SecaoAjuda[] = [
     comoLe:
       'Se a data de produção estiver vazia, a interface pode exibir a previsão de entrega como referência visual — isso não grava produção automaticamente; é só apoio à leitura.',
   },
+  {
+    id: 'produto-padrao',
+    titulo: 'Produto padrão',
+    oQueE:
+      'Última coluna da grade: classifica o item só pela família do produto no Nomus. Não usa o atributo recurso (corte/dobra).',
+    comoLe:
+      'Família Padrão → Padrão. Família Projeto → Não padrão. Qualquer outra família (ou vazia) → Indefinido. A mesma classificação vai na exportação Excel (Exportar Grade e planilha completa), na última coluna visível da grade exportada.',
+  },
+  {
+    id: 'datas',
+    titulo: 'Filtrar por datas',
+    oQueE:
+      'Recorta a grade por emissão, data original, previsão anterior e previsão atual.',
+    comoLe:
+      'Com alguma data preenchida, o botão Limpar filtros na barra zera essas datas e recarrega a lista. Ele também tira os filtros do cabeçalho da grade.',
+  },
+  {
+    id: 'exportar',
+    titulo: 'Exportar',
+    oQueE:
+      'O botão Exportar reúne as planilhas do gerenciador: a grade visível, a planilha completa e o recorte da Diretoria Financeira.',
+    comoLe:
+      'Exportar Grade e Exportar Dir. Financeira usam só as linhas que passaram nos filtros da grade (cabeçalho e filtros da tela), não a página atual. A Diretoria Financeira ainda junta essas linhas em uma por PD: soma os valores de item (total, pendente, romaneado, faturado de entrega futura, rateio do adiantamento, à vista e saldo a faturar) e repete uma vez o valor do pedido e o adiantamento. Entre Saldo a faturar real e Emissão entra o Saldo a receber da Carteira Financeira, somado pelas rotas que ficaram no filtro. Valor unitário só entra quando o PD filtrado tem um único item. Se a previsão divergir entre os itens filtrados, fica a data mais próxima; se alguma não for confiável, a linha fica NÃO. Exportar XLSX baixa a planilha completa da consulta, no formato usado para reimportar previsão.',
+  },
 ];
 
 export default function PedidosAjudaModal({ aberto, onClose }: PedidosAjudaModalProps) {

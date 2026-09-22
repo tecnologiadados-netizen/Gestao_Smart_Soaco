@@ -6,14 +6,18 @@ import { PERMISSOES } from '../config/permissoes.js';
 import { getProdutosColeta, getRessupAlmoxRegistroPreview, getRessupAlmoxPcPendDetalhes, getRessupEmpenhoDetalhes, getRessupEmpenhoPorPedido, getOpcoesFiltroRessupAlmox, getBuscarOpcoesFiltroRessupAlmox, postOpcoesFiltroCascataRessupAlmox, postRessupAlmoxAnalise, putRessupAlmoxAnalise, patchRessupAlmoxAnaliseProcessar, patchRessupAlmoxAnaliseConcluir, getRessupAlmoxAnalises, getRessupAlmoxAnaliseById, getRessupNaoAlmoxRegistroPreview, getRessupNaoAlmoxPcPendDetalhes, getOpcoesFiltroRessupNaoAlmox, getBuscarOpcoesFiltroRessupNaoAlmox, postOpcoesFiltroCascataRessupNaoAlmox, getRessupNaoAlmoxEstoque, getRessupNaoAlmoxCatalogo, putRessupNaoAlmoxCatalogoDescricao, putRessupNaoAlmoxCatalogoFundivel, postRessupNaoAlmoxAnalise, putRessupNaoAlmoxAnalise, patchRessupNaoAlmoxAnaliseProcessar, patchRessupNaoAlmoxAnaliseConcluir, getRessupNaoAlmoxAnalises, getRessupNaoAlmoxAnaliseById, getColetasPrecos, getColetasPrecosDebug, getOpcoesFiltroColetas, getOpcoesVinculoFinalizacao, getOpcoesVinculoErroOperacional, getVinculosDerivadosColeta, getVinculosDerivadosPreview, getDashboardErrosVinculoOperacional, getColetasBloqueantes, postCienciaColeta, postConfirmarColeta, getFornecedores, getCondicoesPagamento, getFormasPagamento, putColetaFornecedores, getPrecosColeta, getPrecosCotacao, postPrecosCotacao, patchObservacoesColeta, patchEnviarAprovacao, patchCancelarCotacao, patchReabrirColeta, patchFinalizarCotacao, patchRegistroQtdeAprovada, patchEnviarFinanceiro, deleteColetaPrecos, deleteColetaItem, deleteColetaTodosItens, postColetaItens, getPendenciasComprasOpcoesComprador, getPendenciasComprasConsultar, getPendenciasComprasSaldoSetores, putPendenciasComprasPrioridadeFixa, deletePendenciasComprasPrioridadeFixa, getPendenciasComprasPrioridadeFixaHistorico } from '../controllers/comprasController.js';
 import { getPreCompraCotacoes, getPreCompraSugestoes, getPreCompraFornecedores, getPreCompraContatos, getPreCompraPdf } from '../controllers/preCompraController.js';
 import {
+  getDoubleCheckInComparativoPc,
   getDoubleCheckInDashboard,
   getDoubleCheckInDestinatariosCtrl,
   getDoubleCheckInItens,
+  getDoubleCheckInJustificativas,
   getDoubleCheckInNotas,
   getDoubleCheckInParametros,
   postDoubleCheckInConferir,
   postDoubleCheckInSincronizar,
   postDoubleCheckInStatus,
+  putDoubleCheckInComparativoDecisao,
+  postDoubleCheckInComparativoObservacao,
   putDoubleCheckInDestinatarios,
   putDoubleCheckInParametros,
 } from '../controllers/doubleCheckInController.js';
@@ -445,6 +449,26 @@ router.get(
   '/double-checkin/notas/:idDocumento/itens',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getDoubleCheckInItens)
+);
+router.get(
+  '/double-checkin/notas/:idDocumento/comparativo-pc',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
+  async503(getDoubleCheckInComparativoPc)
+);
+router.put(
+  '/double-checkin/comparativo-decisao',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
+  async503(putDoubleCheckInComparativoDecisao)
+);
+router.post(
+  '/double-checkin/comparativo-observacao',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
+  async503(postDoubleCheckInComparativoObservacao)
+);
+router.get(
+  '/double-checkin/justificativas',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
+  async503(getDoubleCheckInJustificativas)
 );
 router.post(
   '/double-checkin/status',

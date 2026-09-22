@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@qualidade/components/ui/button";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -21,14 +21,14 @@ import { ConfirmacaoDialog } from "@qualidade/components/ui/confirmacao-dialog";
 import { FormDialog } from "@qualidade/components/ui/form-dialog";
 import { PageBackLink } from "@qualidade/components/layout/page-back-link";
 import { TableRowActions } from "@qualidade/components/ui/table-row-actions";
-import { SortableTableHead } from "@qualidade/components/ui/sortable-table-head";
-import { useTableSort } from "@qualidade/hooks/use-table-sort";
+import { SgqGradeFiltroCabecalho } from "@qualidade/components/ui/sgq-grade-filtro-cabecalho";
+import { SgqGradeFiltroPortal } from "@qualidade/components/ui/sgq-grade-filtro-portal";
+import { SgqGradeSurface } from "@qualidade/components/ui/sgq-grade-surface";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { formatEnderecamentoLabel } from "@qualidade/lib/enderecamentos-sync";
 import { departmentSelectLabel } from "@qualidade/lib/utils/select-display";
-import { sortByRules } from "@qualidade/lib/utils/table-sort";
-
-type EnderecamentoSortKey = "setor" | "endereco";
+import type { Enderecamento } from "@qualidade/types/enderecamento";
+import { useGradeFiltrosExcel } from "@/hooks/useGradeFiltrosExcel";
 
 export function EnderecamentoPage() {
   const departments = useConfigStore((s) => s.departments);
@@ -47,14 +47,20 @@ export function EnderecamentoPage() {
   const [editError, setEditError] = useState("");
 
   const [excluirId, setExcluirId] = useState<string | null>(null);
-  const { sorts, toggleSort, getSortState } = useTableSort<EnderecamentoSortKey>();
 
-  const enderecamentosOrdenados = useMemo(() => {
-    return sortByRules(enderecamentos, sorts, (item, key) => {
-      if (key === "endereco") return item.endereco;
-      return formatEnderecamentoLabel(item, departments);
-    });
-  }, [departments, enderecamentos, sorts]);
+  const getCellText = useCallback(
+    (item: Enderecamento, columnId: string) => {
+      if (columnId === "endereco") return item.endereco;
+      return departments.find((d) => d.id === item.setorId)?.nome ?? "—";
+    },
+    [departments]
+  );
+  const grade = useGradeFiltrosExcel<Enderecamento>({
+    rows: enderecamentos,
+    columnIds: ["setor", "endereco"],
+    getCellText,
+  });
+  const enderecamentosOrdenados = grade.rowsExibidas;
 
   const itemParaExcluir = enderecamentos.find((e) => e.id === excluirId);
   const itemEmEdicao = enderecamentos.find((e) => e.id === editingId);
@@ -189,24 +195,25 @@ export function EnderecamentoPage() {
         ) : null}
       </form>
 
-      <Table surface>
+      <SgqGradeSurface
+        scrollRef={grade.tableScrollRef}
+        temFiltros={grade.temFiltrosOuOrdem}
+        onLimparFiltros={grade.limparFiltrosGrade}
+      >
+      <Table bare>
         <TableHeader>
           <TableRow>
-            <SortableTableHead
-              sortKey="setor"
-              sortState={getSortState("setor")}
-              onSort={toggleSort}
-            >
-              Setor
-            </SortableTableHead>
-            <SortableTableHead
-              sortKey="endereco"
-              sortState={getSortState("endereco")}
-              onSort={toggleSort}
-            >
-              Endereço
-            </SortableTableHead>
-            <TableHead className="w-[140px] text-right">Ações</TableHead>
+            <SgqGradeFiltroCabecalho
+              label="Setor"
+              ativo={grade.colunaComFiltroAtivo("setor")}
+              onClick={(e) => grade.abrirFiltroExcel("setor", e)}
+            />
+            <SgqGradeFiltroCabecalho
+              label="Endereço"
+              ativo={grade.colunaComFiltroAtivo("endereco")}
+              onClick={(e) => grade.abrirFiltroExcel("endereco", e)}
+            />
+            <TableHead className="sticky top-0 z-10 w-[140px] text-right">Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -237,6 +244,8 @@ export function EnderecamentoPage() {
           )}
         </TableBody>
       </Table>
+      </SgqGradeSurface>
+      <SgqGradeFiltroPortal grade={grade} />
 
       <FormDialog
         open={editingId !== null}

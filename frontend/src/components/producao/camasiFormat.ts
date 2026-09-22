@@ -1,8 +1,9 @@
 export function formatHmsCurto(hms: string | null | undefined): string {
   if (!hms) return '—';
-  const m = String(hms).match(/^(\d{1,2}):(\d{2})/);
+  const m = String(hms).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
   if (!m) return hms;
-  return `${m[1].padStart(2, '0')}:${m[2]}`;
+  const ss = (m[3] ?? '00').padStart(2, '0');
+  return `${m[1].padStart(2, '0')}:${m[2]}:${ss}`;
 }
 
 /** Padrão do módulo Camasi: horas decimais → HH:MM:SS (pode passar de 24h no período). */
@@ -77,6 +78,15 @@ export function inicioSemanaAtualYmd(): string {
   const wd = d.getDay();
   const diff = wd === 0 ? -6 : 1 - wd;
   d.setDate(d.getDate() + diff);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Sexta-feira da semana corrente (período útil seg–sex). */
+export function fimSemanaUtilAtualYmd(): string {
+  const d = new Date();
+  const wd = d.getDay();
+  const diffSeg = wd === 0 ? -6 : 1 - wd;
+  d.setDate(d.getDate() + diffSeg + 4);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 

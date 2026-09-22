@@ -277,16 +277,42 @@
   opacity: 0.85;
 }
 
-.qualidade-module .sgq-sheet-preview table {
+.qualidade-module .sgq-sheet-preview table,
+.sgq-file-viewer .sgq-sheet-preview table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+  color: #111827;
 }
 
 .qualidade-module .sgq-sheet-preview td,
-.qualidade-module .sgq-sheet-preview th {
-  border: 1px solid #c8ced9;
+.qualidade-module .sgq-sheet-preview th,
+.sgq-file-viewer .sgq-sheet-preview td,
+.sgq-file-viewer .sgq-sheet-preview th {
+  border: 1px solid #94a3b8;
   padding: 6px 8px;
+  vertical-align: top;
+}
+
+@media print {
+  .sgq-file-viewer {
+    background: #fff !important;
+  }
+
+  .sgq-file-viewer .sgq-sheet-preview {
+    break-after: page;
+    max-width: none !important;
+    overflow: visible !important;
+  }
+
+  .sgq-file-viewer .sgq-sheet-preview:last-child {
+    break-after: auto;
+  }
+
+  .sgq-file-viewer .sgq-sheet-preview table {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
 }
 
 .qualidade-module .sgq-page {

@@ -147,6 +147,7 @@ export type CalendarioMaterialHorizonteModalProps = {
   cacheRef: MutableRefObject<Map<string, HorizonteCache>>;
   /** Snapshot da sequência: calcula e detalha PCs a partir da base congelada. */
   snapshotId?: number | null;
+  metodosRessup?: string[];
 };
 
 export default function CalendarioMaterialHorizonteModal({
@@ -158,6 +159,7 @@ export default function CalendarioMaterialHorizonteModal({
   onClose,
   cacheRef,
   snapshotId,
+  metodosRessup,
 }: CalendarioMaterialHorizonteModalProps) {
   const [dados, setDados] = useState<HorizonteCache | null>(null);
   const [carregando, setCarregando] = useState(false);
@@ -201,7 +203,10 @@ export default function CalendarioMaterialHorizonteModal({
     let cancelled = false;
     setCarregando(true);
     setErro(null);
-    void consultarDisponibilidadeMateriaisItem(demanda, codigo, { snapshotId }).then((r) => {
+    void consultarDisponibilidadeMateriaisItem(demanda, codigo, {
+      snapshotId,
+      metodosRessup,
+    }).then((r) => {
       if (cancelled) return;
       setCarregando(false);
       if (r.error || !r.data) {
@@ -223,7 +228,7 @@ export default function CalendarioMaterialHorizonteModal({
     return () => {
       cancelled = true;
     };
-  }, [open, codigo, demanda, cacheRef, snapshotId]);
+  }, [open, codigo, demanda, cacheRef, snapshotId, metodosRessup]);
 
   const origensFiltradas = useMemo(() => {
     if (!dados || !origemData) return [];

@@ -51,6 +51,8 @@ export type FiltrosConsultaEstoquePayload = {
   comEmpenho?: FiltroSimNaoTodos;
   comSaldoEstoque?: FiltroSimNaoTodos;
   somenteAlmoxSecundario?: boolean;
+  /** Painel Cobertura: vínculo a setor 2, 19 ou 20 (pelo menos um). */
+  somenteAlmoxCobertura?: boolean;
 };
 
 export type PedidoGerenciadorTypeaheadItem = {
@@ -86,6 +88,7 @@ function filtrosToQueryParams(filtros: FiltrosConsultaEstoquePayload): URLSearch
   append('subgrupo1', filtros.subgrupo1);
   append('subgrupo2', filtros.subgrupo2);
   if (filtros.somenteAlmoxSecundario) qs.set('somenteAlmoxSecundario', '1');
+  if (filtros.somenteAlmoxCobertura) qs.set('somenteAlmoxCobertura', '1');
   return qs;
 }
 
@@ -129,6 +132,30 @@ export async function buscarPedidosGerenciadorTypeahead(
     return { data: [], error: (j as { error?: string }).error ?? res.statusText };
   }
   return { data: (j as { data: PedidoGerenciadorTypeaheadItem[] }).data ?? [] };
+}
+
+/** Verifica se o(s) produto(s) do filtro possuem ficha técnica (BOM). */
+export async function verificarProdutoFiltroTemBom(params: {
+  codigos?: string[];
+  descricoes?: string[];
+}): Promise<{ temBom: boolean; todosTemBom: boolean; error?: string }> {
+  const res = await apiFetch('/api/pcp/consulta-estoque/produto-filtro/tem-bom', {
+    method: 'POST',
+    body: { filtros: params },
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return {
+      temBom: false,
+      todosTemBom: false,
+      error: (j as { error?: string }).error ?? res.statusText,
+    };
+  }
+  const body = j as { temBom?: boolean; todosTemBom?: boolean };
+  return {
+    temBom: Boolean(body.temBom),
+    todosTemBom: Boolean(body.todosTemBom),
+  };
 }
 
 export async function contarConsultaEstoque(params: {

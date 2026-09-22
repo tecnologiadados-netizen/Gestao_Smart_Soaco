@@ -1,13 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  ChevronDown,
-  Download,
-  ExternalLink,
-  FileText,
-  Pencil,
-  Printer,
-  X,
-} from "lucide-react";
+import { ChevronDown, FileText, Pencil, X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Badge } from "@qualidade/components/ui/badge";
@@ -34,10 +26,9 @@ import {
   mensagemAlertaValidade,
   severidadeAlertaValidade,
 } from "@qualidade/lib/documents/validity";
-import {
-  downloadQualidadeArquivo,
-  openQualidadeArquivo,
-} from "@qualidade/lib/documents/file-actions";
+import { openQualidadeArquivo } from "@qualidade/lib/documents/file-actions";
+import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-print-window";
+import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
 import { buildLocalizacaoOpcoes } from "@qualidade/lib/enderecamentos-sync";
 import { cn } from "@qualidade/lib/utils";
 import {
@@ -49,6 +40,7 @@ import { CadastroDocumentoInternoDialog } from "@qualidade/components/documentos
 import { CadastroDocumentoExternoDialog } from "@qualidade/components/documentos/cadastro-documento-externo-dialog";
 import { ConfirmacaoDialog } from "@qualidade/components/ui/confirmacao-dialog";
 import { RevalidarDocumentoDialog } from "@qualidade/components/documentos/revalidar-documento-dialog";
+import { RegistroInternoDetalheDialog } from "@qualidade/components/documentos/registro-interno-detalhe-dialog";
 import type { Document, DocumentVersion } from "@qualidade/types/document";
 
 interface Props {
@@ -169,7 +161,18 @@ function SecaoPainel({
   );
 }
 
-export function DocumentoConsultaDetalheDialog({
+export function DocumentoConsultaDetalheDialog(props: Props) {
+  const documents = useDocumentsStore((s) => s.documents);
+  const origem = props.documentId
+    ? documents.find((d) => d.id === props.documentId)?.origem
+    : undefined;
+  if (origem === "registro") {
+    return <RegistroInternoDetalheDialog {...props} />;
+  }
+  return <DocumentoConsultaDetalheDialogImpl {...props} />;
+}
+
+function DocumentoConsultaDetalheDialogImpl({
   documentId,
   open,
   onOpenChange,
@@ -243,30 +246,17 @@ export function DocumentoConsultaDetalheDialog({
     onOpenChange(false);
   }
 
-  async function abrirArquivo(
-    arquivo: ArquivoVersao,
-    mode: "view" | "print"
-  ) {
+  async function abrirArquivo(arquivo: ArquivoVersao) {
     if (!arquivo.nome?.trim() || !arquivoTemConteudo(arquivo)) return;
     setErroArquivo("");
     try {
-      await openQualidadeArquivo(arquivo, mode);
+      await openQualidadeArquivo(arquivo, "print");
     } catch (error) {
       setErroArquivo(
         error instanceof Error
           ? error.message
           : "Não foi possível abrir o arquivo."
       );
-    }
-  }
-
-  async function handleBaixarArquivo(arquivo: ArquivoVersao) {
-    if (!arquivo.nome?.trim() || !arquivoTemConteudo(arquivo)) return;
-    setErroArquivo("");
-    try {
-      await downloadQualidadeArquivo(arquivo);
-    } catch {
-      setErroArquivo("Não foi possível baixar o arquivo.");
     }
   }
 
@@ -401,38 +391,15 @@ export function DocumentoConsultaDetalheDialog({
                                 {arquivo.nome}
                               </p>
                               <div className="mt-2 flex flex-wrap gap-2">
-                                <Button
-                                  type="button"
+                                <SgqArquivoAcoes
+                                  arquivo={arquivo}
+                                  disabled={!disponivel}
+                                  variant="default"
                                   size="sm"
                                   className="gap-1.5"
-                                  disabled={!disponivel}
-                                  onClick={() => void abrirArquivo(arquivo, "view")}
-                                >
-                                  <ExternalLink className="size-3.5" />
-                                  Visualizar
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="gap-1.5"
-                                  disabled={!disponivel}
-                                  onClick={() => void abrirArquivo(arquivo, "print")}
-                                >
-                                  <Printer className="size-3.5" />
-                                  Imprimir
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="gap-1.5"
-                                  disabled={!disponivel}
-                                  onClick={() => void handleBaixarArquivo(arquivo)}
-                                >
-                                  <Download className="size-3.5" />
-                                  Baixar
-                                </Button>
+                                  labeled
+                                  onError={setErroArquivo}
+                                />
                               </div>
                             </div>
                           </div>
@@ -442,7 +409,16 @@ export function DocumentoConsultaDetalheDialog({
                   </ul>
                 )}
                 {erroArquivo ? (
-                  <p className="text-sm text-destructive">{erroArquivo}</p>
+                  <p
+                    className={`text-sm ${
+                      erroArquivo === MSG_VISUALIZACAO_BAIXAR_ORIGINAL
+                        ? "text-amber-700 dark:text-amber-400"
+                        : "text-destructive"
+                    }`}
+                    role="status"
+                  >
+                    {erroArquivo}
+                  </p>
                 ) : null}
               </section>
 
@@ -686,20 +662,9 @@ export function DocumentoConsultaDetalheDialog({
                                     <button
                                       key={`${ver.id}-${arquivo.nome}-${idx}`}
                                       type="button"
-                                      onClick={() => {
-                                        void downloadQualidadeArquivo(arquivo).catch(
-                                          (error) => {
-                                            setErroArquivo(
-                                              error instanceof Error
-                                                ? error.message
-                                                : "Não foi possível baixar o arquivo."
-                                            );
-                                          }
-                                        );
-                                      }}
+                                      onClick={() => void abrirArquivo(arquivo)}
                                       className="inline-flex items-center gap-1 text-xs font-medium text-brand-blue hover:underline"
                                     >
-                                      <Download className="size-3.5" />
                                       {arquivo.nome}
                                     </button>
                                   ) : (

@@ -23,6 +23,7 @@ END
 	tp.nome as 'Tipo de produto do item de pedido de venda',
 	ip.dataEntrega as 'Data de entrega',
 	gp.nome as 'Grupo de produto',
+	famp.nome as 'Familia do produto',
 	s1.opcao as 'Subgrupo1',
 	s2.opcao as 'Subgrupo2',
 	sp.opcao as 'Setor de Producao',
@@ -247,6 +248,7 @@ END AS StatusPedido
 	left join tipopedido tpd on tpd.id = pd.idTipoPedido
 	left join pessoa pe on pe.id = pd.idCliente
 	left join grupoproduto gp on gp.id = p.idGrupoProduto
+	left join familiaproduto famp on famp.id = p.idFamiliaProduto
 	left join tipoproduto tp on tp.id = p.idTipoProduto
 	left join tributacao t on t.idItemPedido = ip.id
 	left join 
@@ -473,6 +475,7 @@ group by ip.id
 	tp.nome,
 	ip.dataEntrega,
 	gp.nome,
+	famp.nome,
 	ip.status,
 	aloreq.opcao,
 	aloret.opcao,

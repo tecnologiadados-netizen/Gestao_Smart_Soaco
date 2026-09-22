@@ -2353,7 +2353,9 @@ export default function SequenciamentoCarradasPage() {
           estoquePorCod={estoquePorCodSnapshot}
           estoqueCongelado={estoqueCongeladoSnapshot}
           geradoEm={geradoEmSnapshot}
-          snapshotId={aoVivo ? null : (snapshotVisualizado?.id ?? null)}
+          // AS/PC ao vivo no rascunho editável e na consulta ao vivo (igual produção).
+          // Snapshot concluído/somente leitura mantém a base congelada do Gravar.
+          snapshotId={aoVivo || editavel ? null : (snapshotVisualizado?.id ?? null)}
           previsaoConfiavelPorId={previsaoConfiavelPorId}
           aoVivo={aoVivo}
           onSalvarConfiabilidade={salvarConfiabilidadeDetalhe}

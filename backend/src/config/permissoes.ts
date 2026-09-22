@@ -133,6 +133,11 @@ export const PERMISSOES = {
   SISTEMA_WHATSAPP: 'sistema.whatsapp',
   SISTEMA_EMAIL: 'sistema.email',
   SISTEMA_SITUACAO_API: 'sistema.situacao_api',
+  SISTEMA_AI: 'sistema.ai',
+
+  // Assistente IA (Amigaço)
+  ASSISTENTE_USAR: 'assistente.usar',
+  ASSISTENTE_ALUCINACOES_VER: 'assistente.alucinacoes.ver',
 
   // Grupo Master (acesso total configurável pela UI)
   USUARIOS_GRUPO_MASTER_ATRIBUIR: 'usuarios.grupo_master.atribuir',
@@ -266,6 +271,9 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.SISTEMA_WHATSAPP,
   PERMISSOES.SISTEMA_EMAIL,
   PERMISSOES.SISTEMA_SITUACAO_API,
+  PERMISSOES.SISTEMA_AI,
+  PERMISSOES.ASSISTENTE_USAR,
+  PERMISSOES.ASSISTENTE_ALUCINACOES_VER,
   PERMISSOES.USUARIOS_GRUPO_MASTER_ATRIBUIR,
   PERMISSOES.USUARIOS_GRUPO_MASTER_REMOVER,
   PERMISSOES.GRUPOS_MASTER_EDITAR,
@@ -404,6 +412,9 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.SISTEMA_WHATSAPP]: 'Acessar integração WhatsApp',
   [PERMISSOES.SISTEMA_EMAIL]: 'Configurar credencial de e-mail (Gmail)',
   [PERMISSOES.SISTEMA_SITUACAO_API]: 'Acessar situação da API',
+  [PERMISSOES.SISTEMA_AI]: 'Configurar Assistente IA',
+  [PERMISSOES.ASSISTENTE_USAR]: 'Acessar assistente IA',
+  [PERMISSOES.ASSISTENTE_ALUCINACOES_VER]: 'Suporte: ver alucinações do Amigaço',
   [PERMISSOES.USUARIOS_GRUPO_MASTER_ATRIBUIR]: 'Atribuir usuários ao grupo Master',
   [PERMISSOES.USUARIOS_GRUPO_MASTER_REMOVER]: 'Remover usuários do grupo Master',
   [PERMISSOES.GRUPOS_MASTER_EDITAR]: 'Editar configurações do grupo Master',

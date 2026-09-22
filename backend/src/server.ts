@@ -25,6 +25,7 @@ import { iniciarCronsSgqEmailNotificacao } from './scheduler/sgqEmailNotificacao
 import { iniciarCronsEmailNotificacao } from './scheduler/emailNotificacaoCron.js';
 import { iniciarCronInadimplenteTarefas } from './scheduler/inadimplenteTarefasCron.js';
 import { executarRetratoInadimplenciaAgora, iniciarCronInadimplenciaRetrato } from './scheduler/inadimplenciaRetratoCron.js';
+import { iniciarCronCamasiTempoProducao } from './scheduler/camasiTempoProducaoCron.js';
 import { logStatusEnvioNotificacoes } from './config/envioNotificacoes.js';
 import { backfillAguardaRespostaLabelsForPendingOrders } from './services/sycroOrderAguardaRespostaLabel.js';
 import { sincronizarDescricaoEscopoWhatsAppComunicacaoPd } from './services/sycroOrderEscopoWhatsAppSync.js';
@@ -114,6 +115,14 @@ async function ensureDbReady(): Promise<void> {
     console.warn('[startup] ensureDoubleCheckInPermissao:', (e as Error)?.message ?? e);
   }
   try {
+    const { ensureDoubleCheckInNfPcWhatsappTipo, ensureDoubleCheckInJustificativaOpcoes } =
+      await import('./data/doubleCheckInLocalRepository.js');
+    await ensureDoubleCheckInNfPcWhatsappTipo();
+    await ensureDoubleCheckInJustificativaOpcoes();
+  } catch (e) {
+    console.warn('[startup] ensureDoubleCheckIn NFxPC:', (e as Error)?.message ?? e);
+  }
+  try {
     await initPainelProducaoMetas();
   } catch (e) {
     console.warn('[startup] initPainelProducaoMetas:', (e as Error)?.message ?? e);
@@ -171,6 +180,7 @@ function main(): void {
         iniciarCronsEmailNotificacao();
         iniciarCronInadimplenteTarefas();
         iniciarCronInadimplenciaRetrato();
+        iniciarCronCamasiTempoProducao();
         if (process.env.NODE_ENV === 'production') {
           void executarRetratoInadimplenciaAgora();
         }

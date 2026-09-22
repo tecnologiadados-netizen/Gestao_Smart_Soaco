@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@qualidade/components/ui/button";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -14,12 +14,12 @@ import { ConfirmacaoDialog } from "@qualidade/components/ui/confirmacao-dialog";
 import { FormDialog } from "@qualidade/components/ui/form-dialog";
 import { PageBackLink } from "@qualidade/components/layout/page-back-link";
 import { TableRowActions } from "@qualidade/components/ui/table-row-actions";
-import { SortableTableHead } from "@qualidade/components/ui/sortable-table-head";
-import { useTableSort } from "@qualidade/hooks/use-table-sort";
+import { SgqGradeFiltroCabecalho } from "@qualidade/components/ui/sgq-grade-filtro-cabecalho";
+import { SgqGradeFiltroPortal } from "@qualidade/components/ui/sgq-grade-filtro-portal";
+import { SgqGradeSurface } from "@qualidade/components/ui/sgq-grade-surface";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
-import { sortByRules } from "@qualidade/lib/utils/table-sort";
-
-type CategoriaSortKey = "sigla" | "nome";
+import type { DocumentType } from "@qualidade/types/user";
+import { useGradeFiltrosExcel } from "@/hooks/useGradeFiltrosExcel";
 
 export function TiposDocumentoPage() {
   const documentTypes = useConfigStore((s) => s.documentTypes);
@@ -37,13 +37,18 @@ export function TiposDocumentoPage() {
   const [editError, setEditError] = useState("");
 
   const [excluirId, setExcluirId] = useState<string | null>(null);
-  const { sorts, toggleSort, getSortState } = useTableSort<CategoriaSortKey>();
 
-  const categoriasOrdenadas = useMemo(() => {
-    return sortByRules(documentTypes, sorts, (tipo, key) =>
-      key === "sigla" ? tipo.sigla : tipo.nome
-    );
-  }, [documentTypes, sorts]);
+  const getCellText = useCallback((tipo: DocumentType, columnId: string) => {
+    if (columnId === "sigla") return tipo.sigla;
+    if (columnId === "nome") return tipo.nome;
+    return "";
+  }, []);
+  const grade = useGradeFiltrosExcel<DocumentType>({
+    rows: documentTypes,
+    columnIds: ["sigla", "nome"],
+    getCellText,
+  });
+  const categoriasOrdenadas = grade.rowsExibidas;
 
   const categoriaParaExcluir = documentTypes.find((t) => t.id === excluirId);
   const categoriaEmEdicao = documentTypes.find((t) => t.id === editingId);
@@ -165,24 +170,25 @@ export function TiposDocumentoPage() {
         ) : null}
       </form>
 
-      <Table surface>
+      <SgqGradeSurface
+        scrollRef={grade.tableScrollRef}
+        temFiltros={grade.temFiltrosOuOrdem}
+        onLimparFiltros={grade.limparFiltrosGrade}
+      >
+      <Table bare>
         <TableHeader>
           <TableRow>
-            <SortableTableHead
-              sortKey="sigla"
-              sortState={getSortState("sigla")}
-              onSort={toggleSort}
-            >
-              Sigla
-            </SortableTableHead>
-            <SortableTableHead
-              sortKey="nome"
-              sortState={getSortState("nome")}
-              onSort={toggleSort}
-            >
-              Nome
-            </SortableTableHead>
-            <TableHead className="w-[140px] text-right">Ações</TableHead>
+            <SgqGradeFiltroCabecalho
+              label="Sigla"
+              ativo={grade.colunaComFiltroAtivo("sigla")}
+              onClick={(e) => grade.abrirFiltroExcel("sigla", e)}
+            />
+            <SgqGradeFiltroCabecalho
+              label="Nome"
+              ativo={grade.colunaComFiltroAtivo("nome")}
+              onClick={(e) => grade.abrirFiltroExcel("nome", e)}
+            />
+            <TableHead className="sticky top-0 z-10 w-[140px] text-right">Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -200,6 +206,8 @@ export function TiposDocumentoPage() {
           ))}
         </TableBody>
       </Table>
+      </SgqGradeSurface>
+      <SgqGradeFiltroPortal grade={grade} />
 
       <FormDialog
         open={editingId !== null}

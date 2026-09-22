@@ -14,7 +14,7 @@ export const documentTypes: DocumentType[] = [
   { id: "tipo-it", nome: "Instrução de Trabalho", sigla: "IT" },
   { id: "tipo-fo", nome: "Formulário", sigla: "FO" },
   { id: "tipo-man", nome: "Manual", sigla: "MAN" },
-  { id: "tipo-re", nome: "Registro", sigla: "RE" },
+  { id: "tipo-re", nome: "Registro interno", sigla: "RE" },
 ];
 
 export const users: User[] = [

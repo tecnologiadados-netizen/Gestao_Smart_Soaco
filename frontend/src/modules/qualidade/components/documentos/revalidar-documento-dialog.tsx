@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, ExternalLink, FileText, Printer, X } from "lucide-react";
+import { FileText, X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Input } from "@qualidade/components/ui/input";
@@ -15,10 +15,8 @@ import {
 } from "@qualidade/components/ui/select";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
-import {
-  downloadQualidadeArquivo,
-  openQualidadeArquivo,
-} from "@qualidade/lib/documents/file-actions";
+import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
+import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-print-window";
 import {
   calcularProximaDataValidade,
   documentoExigeRevalidacao,
@@ -157,35 +155,6 @@ export function RevalidarDocumentoDialog({
     onOpenChange(false);
   }
 
-  async function abrirArquivo(mode: "view" | "print") {
-    if (!arquivoVigente) return;
-
-    setErroArquivo("");
-    try {
-      await openQualidadeArquivo(arquivoVigente, mode);
-    } catch (err) {
-      setErroArquivo(
-        err instanceof Error
-          ? err.message
-          : "Não foi possível abrir o arquivo."
-      );
-    }
-  }
-
-  async function handleBaixar() {
-    if (!arquivoVigente) return;
-    setErroArquivo("");
-    try {
-      await downloadQualidadeArquivo(arquivoVigente);
-    } catch (err) {
-      setErroArquivo(
-        err instanceof Error
-          ? err.message
-          : "Não foi possível baixar o arquivo."
-      );
-    }
-  }
-
   function handleDialogOpenChange(aberto: boolean) {
     if (!aberto && !hidden) {
       onOpenChange(false);
@@ -318,38 +287,27 @@ export function RevalidarDocumentoDialog({
                 </div>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Button
-                  type="button"
-                  className="gap-2"
+                <SgqArquivoAcoes
+                  arquivo={arquivoVigente ?? { nome: "" }}
                   disabled={!temArquivo}
-                  onClick={() => void abrirArquivo("view")}
-                >
-                  <ExternalLink className="size-4" />
-                  Visualizar
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
+                  variant="default"
+                  size="sm"
                   className="gap-2"
-                  disabled={!temArquivo}
-                  onClick={() => void abrirArquivo("print")}
-                >
-                  <Printer className="size-4" />
-                  Imprimir
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="gap-2"
-                  disabled={!temArquivo}
-                  onClick={() => void handleBaixar()}
-                >
-                  <Download className="size-4" />
-                  Baixar
-                </Button>
+                  labeled
+                  onError={setErroArquivo}
+                />
               </div>
               {erroArquivo ? (
-                <p className="text-sm text-destructive">{erroArquivo}</p>
+                <p
+                  className={`text-sm ${
+                    erroArquivo === MSG_VISUALIZACAO_BAIXAR_ORIGINAL
+                      ? "text-amber-700 dark:text-amber-400"
+                      : "text-destructive"
+                  }`}
+                  role="status"
+                >
+                  {erroArquivo}
+                </p>
               ) : null}
             </fieldset>
 
@@ -387,16 +345,14 @@ export function RevalidarDocumentoDialog({
                           ) : null}
                         </div>
                         {isAtual && temArquivo ? (
-                          <Button
-                            type="button"
+                          <SgqArquivoAcoes
+                            arquivo={arquivoVigente ?? { nome: "" }}
                             variant="ghost"
                             size="sm"
                             className="h-8 gap-1.5 text-xs text-brand-blue"
-                            onClick={() => void abrirArquivo("view")}
-                          >
-                            <ExternalLink className="size-3.5" />
-                            Visualizar
-                          </Button>
+                            labeled
+                            onError={setErroArquivo}
+                          />
                         ) : null}
                       </div>
                       <p className="mt-1 text-muted-foreground">

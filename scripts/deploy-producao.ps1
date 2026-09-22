@@ -217,34 +217,106 @@ function Sync-GitComOriginMain {
     $env:GIT_TERMINAL_PROMPT = '0'
     $env:GIT_OPTIONAL_LOCKS = '0'
 
-    for ($attempt = 1; $attempt -le 8; $attempt++) {
-        Stop-GitOrfaosNoProjeto
-
-        $fetchCode = Invoke-GitNative -GitExe $GitExe -GitArgs @('-c', 'gc.auto=0', 'fetch', 'origin', 'main', '--progress')
-        if ($fetchCode -ne 0) {
-            Write-Host "git fetch falhou (tentativa $attempt)..." -ForegroundColor Yellow
-            Start-Sleep -Seconds 4
-            continue
+    # Dados de runtime editados na VPS (pontualidades Camasi etc.) — nao podem sumir no reset --hard.
+    $preserveRels = @(
+        'backend\var\programacao-producao-catalog\recursos.json',
+        'backend\var\programacao-producao-catalog\overrides.json'
+    )
+    $backupRoot = Join-Path $env:TEMP ("gestor-deploy-preserve-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+    $backed = @()
+    foreach ($rel in $preserveRels) {
+        $src = Join-Path $PastaProjeto $rel
+        if (-not (Test-Path -LiteralPath $src)) { continue }
+        $dest = Join-Path $backupRoot $rel
+        $destDir = Split-Path -Parent $dest
+        if (-not (Test-Path -LiteralPath $destDir)) {
+            New-Item -ItemType Directory -Path $destDir -Force | Out-Null
         }
-
-        $resetOk = $false
-        for ($r = 1; $r -le 5; $r++) {
-            $stdin = ('y' + [Environment]::NewLine) * 15
-            # --quiet evita "Updating files: N%" no stderr (falso positivo no PowerShell)
-            $resetCode = Invoke-GitNative -GitExe $GitExe -StdInText $stdin -GitArgs @(
-                '-c', 'gc.auto=0', 'reset', '--hard', 'origin/main', '--quiet'
-            )
-            if ($resetCode -eq 0) {
-                $resetOk = $true
-                break
-            }
-            Write-Host "git reset bloqueado (tentativa $attempt/$r)..." -ForegroundColor Yellow
-            Stop-GitOrfaosNoProjeto
-            Start-Sleep -Seconds 4
-        }
-        if ($resetOk) { return }
+        Copy-Item -LiteralPath $src -Destination $dest -Force
+        $backed += $rel
     }
-    throw "git sync com origin/main falhou (pack .idx bloqueado no Windows - feche IDEs/git e tente de novo)."
+    if ($backed.Count -gt 0) {
+        Write-Host ("Preservando dados locais antes do git reset: " + ($backed -join ', ')) -ForegroundColor DarkCyan
+    }
+
+    try {
+        for ($attempt = 1; $attempt -le 8; $attempt++) {
+            Stop-GitOrfaosNoProjeto
+
+            $fetchCode = Invoke-GitNative -GitExe $GitExe -GitArgs @('-c', 'gc.auto=0', 'fetch', 'origin', 'main', '--progress')
+            if ($fetchCode -ne 0) {
+                Write-Host "git fetch falhou (tentativa $attempt)..." -ForegroundColor Yellow
+                Start-Sleep -Seconds 4
+                continue
+            }
+
+            $resetOk = $false
+            for ($r = 1; $r -le 5; $r++) {
+                $stdin = ('y' + [Environment]::NewLine) * 15
+                # --quiet evita "Updating files: N%" no stderr (falso positivo no PowerShell)
+                $resetCode = Invoke-GitNative -GitExe $GitExe -StdInText $stdin -GitArgs @(
+                    '-c', 'gc.auto=0', 'reset', '--hard', 'origin/main', '--quiet'
+                )
+                if ($resetCode -eq 0) {
+                    $resetOk = $true
+                    break
+                }
+                Write-Host "git reset bloqueado (tentativa $attempt/$r)..." -ForegroundColor Yellow
+                Stop-GitOrfaosNoProjeto
+                Start-Sleep -Seconds 4
+            }
+            if ($resetOk) {
+                foreach ($rel in $backed) {
+                    $src = Join-Path $backupRoot $rel
+                    $dest = Join-Path $PastaProjeto $rel
+                    $destDir = Split-Path -Parent $dest
+                    if (-not (Test-Path -LiteralPath $destDir)) {
+                        New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+                    }
+
+                    if ($rel -eq 'backend\var\programacao-producao-catalog\recursos.json' -and (Test-Path -LiteralPath $dest)) {
+                        # Mescla pontualidades: runtime local prevalece; nao apaga o que veio do git se o backup estiver vazio.
+                        try {
+                            $bak = Get-Content -LiteralPath $src -Raw -Encoding UTF8 | ConvertFrom-Json
+                            $git = Get-Content -LiteralPath $dest -Raw -Encoding UTF8 | ConvertFrom-Json
+                            $bakByCod = @{}
+                            foreach ($r in @($bak.recursos)) {
+                                if ($null -ne $r.cod) { $bakByCod["$($r.cod)"] = $r }
+                            }
+                            foreach ($r in @($git.recursos)) {
+                                $cod = "$($r.cod)"
+                                if (-not $bakByCod.ContainsKey($cod)) { continue }
+                                $br = $bakByCod[$cod]
+                                $bakEx = @($br.escalaExcecoes)
+                                if ($bakEx.Count -gt 0) {
+                                    $r.escalaExcecoes = $bakEx
+                                    if ($null -ne $br.updatedAt) { $r.updatedAt = $br.updatedAt }
+                                    if ($null -ne $br.atualizadoPorLogin) { $r.atualizadoPorLogin = $br.atualizadoPorLogin }
+                                }
+                            }
+                            $json = ($git | ConvertTo-Json -Depth 30)
+                            # ConvertTo-Json pode gerar ASCII; gravar UTF8
+                            [System.IO.File]::WriteAllText($dest, $json + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+                            Write-Host "Mesclado apos sync (pontualidades preservadas): $rel" -ForegroundColor DarkCyan
+                            continue
+                        } catch {
+                            Write-Host "Falha ao mesclar $rel - restaurando arquivo completo. $($_.Exception.Message)" -ForegroundColor Yellow
+                        }
+                    }
+
+                    Copy-Item -LiteralPath $src -Destination $dest -Force
+                    Write-Host "Restaurado apos sync: $rel" -ForegroundColor DarkCyan
+                }
+                return
+            }
+        }
+        throw "git sync com origin/main falhou (pack .idx bloqueado no Windows - feche IDEs/git e tente de novo)."
+    } finally {
+        if (Test-Path -LiteralPath $backupRoot) {
+            Remove-Item -LiteralPath $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 function Get-NpmLockFingerprint {

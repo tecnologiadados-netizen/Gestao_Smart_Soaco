@@ -23,7 +23,18 @@ type AnexoStored = {
   nome: string;
   storagePath?: string;
   dataUrl?: string;
+  ocorrenciaId?: string;
 };
+
+function anexoOcorrenciaMeta(
+  ...items: Array<AnexoStored | undefined>
+): { ocorrenciaId?: string } {
+  for (const item of items) {
+    const ocorrenciaId = item?.ocorrenciaId?.trim();
+    if (ocorrenciaId) return { ocorrenciaId };
+  }
+  return {};
+}
 
 /**
  * Persiste anexos complementares em disco e grava só { nome, storagePath } no JSON.
@@ -54,7 +65,7 @@ function persistAnexosToDisk(
     return { json: null, touched: true };
   }
 
-  const result: Array<{ nome: string; storagePath: string }> = [];
+  const result: Array<{ nome: string; storagePath: string; ocorrenciaId?: string }> = [];
   for (const raw of incoming) {
     if (!raw || typeof raw !== 'object') continue;
     const item = raw as AnexoStored;
@@ -64,7 +75,11 @@ function persistAnexosToDisk(
     const dataUrl = typeof item.dataUrl === 'string' ? item.dataUrl : '';
     const pathHint = typeof item.storagePath === 'string' ? item.storagePath : '';
     const prevByPath = existing.find((e) => e.storagePath && e.storagePath === pathHint);
+    const prevById = item.ocorrenciaId
+      ? existing.find((e) => e.ocorrenciaId === item.ocorrenciaId && e.storagePath)
+      : undefined;
     const prevByNome = existing.find((e) => e.nome === nome && e.storagePath);
+    const meta = anexoOcorrenciaMeta(item, prevById, prevByPath, prevByNome);
 
     if (dataUrl.startsWith('data:')) {
       const file = extractBase64(dataUrl);
@@ -74,9 +89,9 @@ function persistAnexosToDisk(
           const saved = saveQualidadeAnexoIfChanged(
             subdir,
             file,
-            prevByPath?.storagePath ?? prevByNome?.storagePath ?? (pathHint || null)
+            prevById?.storagePath ?? prevByPath?.storagePath ?? prevByNome?.storagePath ?? (pathHint || null)
           );
-          result.push({ nome, storagePath: saved.storagePath });
+          result.push({ nome, storagePath: saved.storagePath, ...meta });
           continue;
         } catch (err) {
           console.warn('[qualidade] anexo ignorado no sync:', subdir, nome, err);
@@ -84,16 +99,20 @@ function persistAnexosToDisk(
       }
     }
 
+    if (prevById?.storagePath) {
+      result.push({ nome, storagePath: prevById.storagePath, ...meta });
+      continue;
+    }
     if (prevByPath?.storagePath) {
-      result.push({ nome, storagePath: prevByPath.storagePath });
+      result.push({ nome, storagePath: prevByPath.storagePath, ...meta });
       continue;
     }
     if (prevByNome?.storagePath) {
-      result.push({ nome, storagePath: prevByNome.storagePath });
+      result.push({ nome, storagePath: prevByNome.storagePath, ...meta });
       continue;
     }
     if (pathHint.startsWith('/uploads/qualidade/')) {
-      result.push({ nome, storagePath: pathHint });
+      result.push({ nome, storagePath: pathHint, ...meta });
     }
   }
 
@@ -111,6 +130,7 @@ function mapAnexosFromJson(
   nome: string;
   dataUrl: string;
   storagePath?: string;
+  ocorrenciaId?: string;
 }> {
   const anexos = parseJson<AnexoStored[]>(anexosJson, []);
   const mapped = anexos
@@ -120,6 +140,7 @@ function mapAnexosFromJson(
       const storagePath = a.storagePath?.startsWith('/uploads/qualidade/')
         ? a.storagePath
         : undefined;
+      const ocorrenciaId = a.ocorrenciaId?.trim() || undefined;
       // Bootstrap leve: só metadata + storagePath (uploads ~1GB — embutir base64 trava a UI).
       const dataUrl = includeDataUrl
         ? storagePath
@@ -130,9 +151,19 @@ function mapAnexosFromJson(
         nome,
         dataUrl,
         ...(storagePath ? { storagePath } : {}),
+        ...(ocorrenciaId ? { ocorrenciaId } : {}),
       };
     })
-    .filter((a): a is { nome: string; dataUrl: string; storagePath?: string } => a != null);
+    .filter(
+      (
+        a
+      ): a is {
+        nome: string;
+        dataUrl: string;
+        storagePath?: string;
+        ocorrenciaId?: string;
+      } => a != null
+    );
   return mapped;
 }
 
@@ -204,7 +235,7 @@ const SEED_TIPOS = [
   { sigla: 'IT', nome: 'Instrução de Trabalho' },
   { sigla: 'FO', nome: 'Formulário' },
   { sigla: 'MAN', nome: 'Manual' },
-  { sigla: 'RE', nome: 'Registro' },
+  { sigla: 'RE', nome: 'Registro interno' },
 ];
 
 export async function ensureSgqCatalogosSeed() {
@@ -1010,9 +1041,55 @@ export async function syncQualidadeDocuments(payload: {
               typeof a.storagePath === 'string' && a.storagePath.startsWith('/uploads/qualidade/')
                 ? a.storagePath
                 : undefined;
-            return storagePath ? { nome, storagePath } : { nome };
+            const ocorrenciaId =
+              typeof a.ocorrenciaId === 'string' ? a.ocorrenciaId.trim() : '';
+            return {
+              nome,
+              ...(storagePath ? { storagePath } : {}),
+              ...(ocorrenciaId ? { ocorrenciaId } : {}),
+            };
           })
           .filter(Boolean);
+      }
+      if (Array.isArray(er.ocorrencias)) {
+        er.ocorrencias = (er.ocorrencias as Array<Record<string, unknown>>)
+          .map((o) => {
+            const id = String(o.id ?? '').trim();
+            const nome = String(o.nome ?? '').trim();
+            const dataOcorrencia = String(o.dataOcorrencia ?? '').trim();
+            if (!id || !nome || !dataOcorrencia) return null;
+            const observacao =
+              typeof o.observacao === 'string' ? o.observacao.trim() : '';
+            const criadoEm = String(o.criadoEm ?? '').trim();
+            const storagePath =
+              typeof o.storagePath === 'string' &&
+              o.storagePath.startsWith('/uploads/qualidade/')
+                ? o.storagePath
+                : undefined;
+            return {
+              id,
+              nome,
+              dataOcorrencia,
+              ...(observacao ? { observacao } : {}),
+              ...(criadoEm ? { criadoEm } : {}),
+              ...(storagePath ? { storagePath } : {}),
+            };
+          })
+          .filter(Boolean);
+      }
+      if (er.modelo && typeof er.modelo === 'object') {
+        const m = er.modelo as Record<string, unknown>;
+        const nome = String(m.nome ?? '').trim();
+        if (!nome) {
+          delete er.modelo;
+        } else {
+          const storagePath =
+            typeof m.storagePath === 'string' &&
+            m.storagePath.startsWith('/uploads/qualidade/')
+              ? m.storagePath
+              : undefined;
+          er.modelo = storagePath ? { nome, storagePath } : { nome };
+        }
       }
       return JSON.stringify(er);
     })();

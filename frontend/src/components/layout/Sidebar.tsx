@@ -16,7 +16,7 @@ import {
   navMenuEntryAtivo,
   navPathAtivo,
 } from '../../config/navigationMenu';
-import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte } from '../../utils/suportePermissoes';
+import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte, podeVerAlucinacoesAmigaco } from '../../utils/suportePermissoes';
 import { podeVerMenuFinanceiro } from '../../utils/financeiroPermissoes';
 import { podeVerMenuRecebimento } from '../../utils/recebimentoPermissoes';
 import { podeVerMenuCompras } from '../../utils/doubleCheckInPermissoes';
@@ -442,6 +442,9 @@ export default function Sidebar({
   }
   if (podeConfigurarSuporte(isMaster, hasPermission)) {
     suporteItems.push({ to: '/suporte/configuracao', label: 'Configurações de suporte' });
+  }
+  if (podeVerAlucinacoesAmigaco(isMaster, hasPermission)) {
+    suporteItems.push({ to: '/suporte/amigaco-alucinacoes', label: 'Alucinações Amigaço' });
   }
 
   return (

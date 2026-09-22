@@ -1,37 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@qualidade/components/ui/select";
-import {
-  TABLE_FILTER_ALL,
-  TableFilterField,
-  TableFilterSearch,
-  TableFiltersToolbar,
-  tableFilterSelectTriggerClass,
-} from "@qualidade/components/ui/table-filters-toolbar";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@qualidade/components/ui/table";
 import { Badge } from "@qualidade/components/ui/badge";
 import { DocumentoConsultaDetalheDialog } from "@qualidade/components/documentos/documento-consulta-detalhe-dialog";
-import { SortableTableHead } from "@qualidade/components/ui/sortable-table-head";
-import { useTableSort } from "@qualidade/hooks/use-table-sort";
+import { SgqGradeFiltroCabecalho, sgqTextoOuTraco } from "@qualidade/components/ui/sgq-grade-filtro-cabecalho";
+import { SgqGradeFiltroPortal } from "@qualidade/components/ui/sgq-grade-filtro-portal";
+import { SgqGradeSurface } from "@qualidade/components/ui/sgq-grade-surface";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
   documentStatusLabels,
-  documentOrigemLabels,
   getDocumentStatusVariant,
-  getDocumentOrigemVariant,
   getDueStatusVariant,
   dueStatusLabels,
 } from "@qualidade/lib/utils/status-labels";
@@ -42,108 +27,167 @@ import {
 } from "@qualidade/lib/documents/validity";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { cn } from "@qualidade/lib/utils";
-import { sortByRules } from "@qualidade/lib/utils/table-sort";
-import {
-  departmentFilterLabel,
-  documentOrigemFilterLabel,
-  documentStatusFilterLabel,
-} from "@qualidade/lib/utils/select-display";
-import type { DocumentOrigem, DocumentStatus } from "@qualidade/types/document";
+import type { Document, DocumentOrigem } from "@qualidade/types/document";
+import { useGradeFiltrosExcel } from "@/hooks/useGradeFiltrosExcel";
 
-type DocumentoSortKey =
-  | "codigo"
-  | "titulo"
-  | "tipo"
-  | "categoria"
-  | "setor"
-  | "status"
-  | "validade"
-  | "atualizado";
+const CONSULTA_GUIAS: {
+  origem: DocumentOrigem;
+  label: string;
+  empty: string;
+  countLabel: (n: number) => string;
+}[] = [
+  {
+    origem: "interno",
+    label: "Internos",
+    empty: "Nenhum documento interno encontrado.",
+    countLabel: (n) => `${n} documento(s) interno(s)`,
+  },
+  {
+    origem: "externo",
+    label: "Externos",
+    empty: "Nenhum documento externo encontrado.",
+    countLabel: (n) => `${n} documento(s) externo(s)`,
+  },
+  {
+    origem: "registro",
+    label: "Registros",
+    empty: "Nenhum registro interno encontrado.",
+    countLabel: (n) => `${n} registro(s)`,
+  },
+];
+
+function parseConsultaGuia(value: string | null): DocumentOrigem {
+  if (value === "externo" || value === "registro" || value === "interno") {
+    return value;
+  }
+  return "interno";
+}
+
+function textoValidade(doc: Document): string {
+  if (!doc.validade?.ativa || !doc.validade.dataValidade) return "—";
+  const dias = calcularDiasRestantesValidade(doc.validade.dataValidade);
+  const status = calcularValidadeStatus(dias);
+  const data = formatarData(doc.validade.dataValidade);
+  return status ? `${dueStatusLabels[status]} · ${data}` : data;
+}
 
 export function DocumentosConsultaPage() {
+  return (
+    <Suspense
+      fallback={
+        <p className="text-sm text-muted-foreground">Carregando consulta...</p>
+      }
+    >
+      <DocumentosConsultaContent />
+    </Suspense>
+  );
+}
+
+function DocumentosConsultaContent() {
   const documents = useDocumentsStore((s) => s.documents);
   const syncValidadeAlertas = useDocumentsStore((s) => s.syncValidadeAlertas);
   const departments = useConfigStore((s) => s.departments);
   const documentTypes = useConfigStore((s) => s.documentTypes);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [busca, setBusca] = useState("");
-  const [tipoFiltro, setTipoFiltro] = useState(TABLE_FILTER_ALL);
-  const [statusFiltro, setStatusFiltro] = useState(TABLE_FILTER_ALL);
-  const [setorFiltro, setSetorFiltro] = useState(TABLE_FILTER_ALL);
+  const guia = parseConsultaGuia(searchParams.get("guia"));
+  const guiaMeta =
+    CONSULTA_GUIAS.find((g) => g.origem === guia) ?? CONSULTA_GUIAS[0];
+
   const [documentoSelecionadoId, setDocumentoSelecionadoId] = useState<
     string | null
   >(null);
-  const { sorts, toggleSort, getSortState } = useTableSort<DocumentoSortKey>();
 
-  const filtrosAtivos =
-    busca.trim() !== "" ||
-    tipoFiltro !== TABLE_FILTER_ALL ||
-    statusFiltro !== TABLE_FILTER_ALL ||
-    setorFiltro !== TABLE_FILTER_ALL;
+  const mostrarValidade = guia !== "registro";
+  const mostrarCategoria = guia === "interno";
 
-  function limparFiltros() {
-    setBusca("");
-    setTipoFiltro(TABLE_FILTER_ALL);
-    setStatusFiltro(TABLE_FILTER_ALL);
-    setSetorFiltro(TABLE_FILTER_ALL);
+  const columnIds = useMemo(() => {
+    const cols = ["codigo", "titulo"];
+    if (mostrarCategoria) cols.push("categoria");
+    cols.push("setor", "status");
+    if (mostrarValidade) cols.push("validade");
+    cols.push("atualizado");
+    return cols;
+  }, [mostrarCategoria, mostrarValidade]);
+
+  const docsDaGuia = useMemo(
+    () => documents.filter((doc) => doc.origem === guia),
+    [documents, guia]
+  );
+
+  const getCellText = useCallback(
+    (doc: Document, columnId: string) => {
+      switch (columnId) {
+        case "codigo":
+          return formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual);
+        case "titulo":
+          return sgqTextoOuTraco(doc.titulo);
+        case "categoria":
+          return (
+            documentTypes.find((t) => t.id === doc.tipoId)?.sigla ?? "—"
+          );
+        case "setor":
+          return departments.find((d) => d.id === doc.setorId)?.nome ?? "—";
+        case "status":
+          return documentStatusLabels[doc.status];
+        case "validade":
+          return textoValidade(doc);
+        case "atualizado":
+          return formatarData(doc.updatedAt);
+        default:
+          return "";
+      }
+    },
+    [departments, documentTypes]
+  );
+
+  const valueForSort = useCallback(
+    (doc: Document, columnId: string) => {
+      if (columnId === "validade") return doc.validade?.dataValidade ?? "";
+      if (columnId === "atualizado") return doc.updatedAt;
+      return getCellText(doc, columnId);
+    },
+    [getCellText]
+  );
+
+  const grade = useGradeFiltrosExcel<Document>({
+    rows: docsDaGuia,
+    columnIds,
+    getCellText,
+    valueForSort,
+    dateColumnIds: mostrarValidade ? ["validade", "atualizado"] : ["atualizado"],
+  });
+
+  function setGuia(origem: DocumentOrigem) {
+    grade.limparFiltrosGrade();
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("guia", origem);
+        return next;
+      },
+      { replace: true }
+    );
   }
 
   useEffect(() => {
     syncValidadeAlertas();
   }, [syncValidadeAlertas]);
 
-  const filtrados = useMemo(() => {
-    const lista = documents.filter((doc) => {
-      const codigoExibicao = formatDocumentCodigoExibicao(
-        doc.codigo,
-        doc.versaoAtual
-      );
-      const matchBusca =
-        !busca ||
-        codigoExibicao.toLowerCase().includes(busca.toLowerCase()) ||
-        doc.titulo.toLowerCase().includes(busca.toLowerCase());
-      const matchStatus =
-        statusFiltro === TABLE_FILTER_ALL || doc.status === statusFiltro;
-      const matchTipo =
-        tipoFiltro === TABLE_FILTER_ALL || doc.origem === tipoFiltro;
-      const matchSetor =
-        setorFiltro === TABLE_FILTER_ALL || doc.setorId === setorFiltro;
-      return matchBusca && matchStatus && matchTipo && matchSetor;
-    });
+  const contagensPorOrigem = useMemo(() => {
+    const counts: Record<DocumentOrigem, number> = {
+      interno: 0,
+      externo: 0,
+      registro: 0,
+    };
+    for (const doc of documents) {
+      counts[doc.origem] += 1;
+    }
+    return counts;
+  }, [documents]);
 
-    return sortByRules(lista, sorts, (doc, key) => {
-      const tipo = documentTypes.find((t) => t.id === doc.tipoId);
-      const setor = departments.find((d) => d.id === doc.setorId);
-
-      switch (key) {
-        case "codigo":
-          return formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual);
-        case "titulo":
-          return doc.titulo;
-        case "tipo":
-          return documentOrigemLabels[doc.origem];
-        case "categoria":
-          return tipo?.sigla ?? "";
-        case "setor":
-          return setor?.nome ?? "";
-        case "status":
-          return documentStatusLabels[doc.status];
-        case "validade":
-          return doc.validade?.ativa ? doc.validade.dataValidade : "";
-        case "atualizado":
-          return doc.updatedAt;
-      }
-    });
-  }, [
-    documents,
-    busca,
-    statusFiltro,
-    tipoFiltro,
-    setorFiltro,
-    sorts,
-    documentTypes,
-    departments,
-  ]);
+  const filtrados = grade.rowsExibidas;
+  const colSpan = columnIds.length;
 
   return (
     <div className="space-y-6">
@@ -152,145 +196,90 @@ export function DocumentosConsultaPage() {
           Consulta de documentos
         </h1>
         <p className="text-sm text-muted-foreground">
-          {filtrados.length} documento(s) encontrado(s)
+          {guiaMeta.countLabel(filtrados.length)} encontrado(s)
         </p>
       </div>
 
-      <div className="sgq-table-surface overflow-hidden rounded-xl border border-border bg-card shadow-sm ring-1 ring-foreground/6">
-        <TableFiltersToolbar
-          gridClassName="sm:grid-cols-2 lg:grid-cols-5"
-          onClear={limparFiltros}
-          hasActiveFilters={filtrosAtivos}
-        >
-          <TableFilterField
-            label="Busca"
-            htmlFor="consulta-busca"
-            className="sm:col-span-2"
-          >
-            <TableFilterSearch
-              id="consulta-busca"
-              placeholder="Código ou título..."
-              value={busca}
-              onChange={setBusca}
-            />
-          </TableFilterField>
-          <TableFilterField label="Tipo" htmlFor="consulta-tipo">
-            <Select value={tipoFiltro} onValueChange={(v) => v && setTipoFiltro(v)}>
-              <SelectTrigger id="consulta-tipo" className={tableFilterSelectTriggerClass}>
-                <SelectValue placeholder="Todos os tipos">
-                  {documentOrigemFilterLabel(tipoFiltro) ?? null}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={TABLE_FILTER_ALL}>Todos os tipos</SelectItem>
-                {(Object.keys(documentOrigemLabels) as DocumentOrigem[]).map(
-                  (origem) => (
-                    <SelectItem key={origem} value={origem}>
-                      {documentOrigemLabels[origem]}
-                    </SelectItem>
-                  )
-                )}
-              </SelectContent>
-            </Select>
-          </TableFilterField>
-          <TableFilterField label="Status" htmlFor="consulta-status">
-            <Select value={statusFiltro} onValueChange={(v) => v && setStatusFiltro(v)}>
-              <SelectTrigger id="consulta-status" className={tableFilterSelectTriggerClass}>
-                <SelectValue placeholder="Todos os status">
-                  {documentStatusFilterLabel(statusFiltro) ?? null}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={TABLE_FILTER_ALL}>Todos os status</SelectItem>
-                {(Object.keys(documentStatusLabels) as DocumentStatus[]).map(
-                  (s) => (
-                    <SelectItem key={s} value={s}>
-                      {documentStatusLabels[s]}
-                    </SelectItem>
-                  )
-                )}
-              </SelectContent>
-            </Select>
-          </TableFilterField>
-          <TableFilterField label="Setor" htmlFor="consulta-setor">
-            <Select value={setorFiltro} onValueChange={(v) => v && setSetorFiltro(v)}>
-              <SelectTrigger id="consulta-setor" className={tableFilterSelectTriggerClass}>
-                <SelectValue placeholder="Todos os setores">
-                  {departmentFilterLabel(departments, setorFiltro) ?? null}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={TABLE_FILTER_ALL}>Todos os setores</SelectItem>
-                {departments.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </TableFilterField>
-        </TableFiltersToolbar>
+      <div
+        role="tablist"
+        aria-label="Tipo de documento"
+        className="grid h-11 w-full max-w-xl grid-cols-3 rounded-lg bg-muted p-1"
+      >
+        {CONSULTA_GUIAS.map((item) => {
+          const ativa = guia === item.origem;
+          return (
+            <button
+              key={item.origem}
+              type="button"
+              role="tab"
+              aria-selected={ativa}
+              onClick={() => setGuia(item.origem)}
+              className={cn(
+                "inline-flex h-full items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors",
+                ativa
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {item.label}
+              <Badge
+                variant={ativa ? "default" : "secondary"}
+                className="h-5 min-w-5 px-1.5 text-[11px] tabular-nums"
+              >
+                {contagensPorOrigem[item.origem]}
+              </Badge>
+            </button>
+          );
+        })}
+      </div>
 
-        <div className="overflow-x-auto">
-          <Table bare>
+      <SgqGradeSurface
+        scrollRef={grade.tableScrollRef}
+        temFiltros={grade.temFiltrosOuOrdem}
+        onLimparFiltros={grade.limparFiltrosGrade}
+      >
+        <Table bare>
           <TableHeader>
             <TableRow>
-              <SortableTableHead
-                sortKey="codigo"
-                sortState={getSortState("codigo")}
-                onSort={toggleSort}
-              >
-                Código
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="titulo"
-                sortState={getSortState("titulo")}
-                onSort={toggleSort}
-              >
-                Título
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="tipo"
-                sortState={getSortState("tipo")}
-                onSort={toggleSort}
-              >
-                Tipo
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="categoria"
-                sortState={getSortState("categoria")}
-                onSort={toggleSort}
-              >
-                Categoria
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="setor"
-                sortState={getSortState("setor")}
-                onSort={toggleSort}
-              >
-                Setor
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="status"
-                sortState={getSortState("status")}
-                onSort={toggleSort}
-              >
-                Status
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="validade"
-                sortState={getSortState("validade")}
-                onSort={toggleSort}
-              >
-                Validade
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="atualizado"
-                sortState={getSortState("atualizado")}
-                onSort={toggleSort}
-              >
-                Atualizado
-              </SortableTableHead>
+              <SgqGradeFiltroCabecalho
+                label="Código"
+                ativo={grade.colunaComFiltroAtivo("codigo")}
+                onClick={(e) => grade.abrirFiltroExcel("codigo", e)}
+              />
+              <SgqGradeFiltroCabecalho
+                label="Título"
+                ativo={grade.colunaComFiltroAtivo("titulo")}
+                onClick={(e) => grade.abrirFiltroExcel("titulo", e)}
+              />
+              {mostrarCategoria ? (
+                <SgqGradeFiltroCabecalho
+                  label="Categoria"
+                  ativo={grade.colunaComFiltroAtivo("categoria")}
+                  onClick={(e) => grade.abrirFiltroExcel("categoria", e)}
+                />
+              ) : null}
+              <SgqGradeFiltroCabecalho
+                label="Setor"
+                ativo={grade.colunaComFiltroAtivo("setor")}
+                onClick={(e) => grade.abrirFiltroExcel("setor", e)}
+              />
+              <SgqGradeFiltroCabecalho
+                label="Status"
+                ativo={grade.colunaComFiltroAtivo("status")}
+                onClick={(e) => grade.abrirFiltroExcel("status", e)}
+              />
+              {mostrarValidade ? (
+                <SgqGradeFiltroCabecalho
+                  label="Validade"
+                  ativo={grade.colunaComFiltroAtivo("validade")}
+                  onClick={(e) => grade.abrirFiltroExcel("validade", e)}
+                />
+              ) : null}
+              <SgqGradeFiltroCabecalho
+                label="Atualizado"
+                ativo={grade.colunaComFiltroAtivo("atualizado")}
+                onClick={(e) => grade.abrirFiltroExcel("atualizado", e)}
+              />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -309,44 +298,46 @@ export function DocumentosConsultaPage() {
                 >
                   <TableCell>
                     <span className="font-medium text-primary">
-                      {formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}
+                      {formatDocumentCodigoExibicao(
+                        doc.codigo,
+                        doc.versaoAtual
+                      )}
                     </span>
                   </TableCell>
                   <TableCell className="max-w-xs truncate">{doc.titulo}</TableCell>
-                  <TableCell>
-                    <Badge variant={getDocumentOrigemVariant(doc.origem)}>
-                      {documentOrigemLabels[doc.origem]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{tipo?.sigla ?? "—"}</TableCell>
+                  {mostrarCategoria ? (
+                    <TableCell>{tipo?.sigla ?? "—"}</TableCell>
+                  ) : null}
                   <TableCell>{setor?.nome ?? "—"}</TableCell>
                   <TableCell>
                     <Badge variant={getDocumentStatusVariant(doc.status)}>
                       {documentStatusLabels[doc.status]}
                     </Badge>
                   </TableCell>
-                  <TableCell>
-                    {doc.validade?.ativa && doc.validade.dataValidade ? (
-                      <div className="space-y-1">
-                        <Badge
-                          variant={
-                            statusValidade
-                              ? getDueStatusVariant(statusValidade)
-                              : "secondary"
-                          }
-                        >
-                          {statusValidade
-                            ? dueStatusLabels[statusValidade]
-                            : "—"}
-                        </Badge>
-                        <p className="text-xs text-muted-foreground">
-                          {formatarData(doc.validade.dataValidade)}
-                        </p>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
+                  {mostrarValidade ? (
+                    <TableCell>
+                      {doc.validade?.ativa && doc.validade.dataValidade ? (
+                        <div className="space-y-1">
+                          <Badge
+                            variant={
+                              statusValidade
+                                ? getDueStatusVariant(statusValidade)
+                                : "secondary"
+                            }
+                          >
+                            {statusValidade
+                              ? dueStatusLabels[statusValidade]
+                              : "—"}
+                          </Badge>
+                          <p className="text-xs text-muted-foreground">
+                            {formatarData(doc.validade.dataValidade)}
+                          </p>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  ) : null}
                   <TableCell>{formatarData(doc.updatedAt)}</TableCell>
                 </TableRow>
               );
@@ -354,17 +345,25 @@ export function DocumentosConsultaPage() {
             {filtrados.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={9}
+                  colSpan={colSpan}
                   className={cn("py-10 text-center text-muted-foreground")}
                 >
-                  Nenhum documento encontrado.
+                  {docsDaGuia.length === 0
+                    ? guiaMeta.empty
+                    : "Nenhum documento com os filtros da grade. Ajuste ou limpe os filtros por coluna."}
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
-          </Table>
-        </div>
-      </div>
+        </Table>
+      </SgqGradeSurface>
+
+      <SgqGradeFiltroPortal
+        grade={grade}
+        dateColumnIds={
+          mostrarValidade ? ["validade", "atualizado"] : ["atualizado"]
+        }
+      />
 
       <DocumentoConsultaDetalheDialog
         documentId={documentoSelecionadoId}

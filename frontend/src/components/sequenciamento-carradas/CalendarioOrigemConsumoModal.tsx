@@ -30,6 +30,7 @@ export default function CalendarioOrigemConsumoModal({
   zIndex = 160,
 }: CalendarioOrigemConsumoModalProps) {
   const total = origens.reduce((s, o) => s + (Number.isFinite(o.qtdeComponente) ? o.qtdeComponente : 0), 0);
+  const temVariasDatas = new Set(origens.map((o) => o.dataIso).filter(Boolean)).size > 1;
 
   return (
     <div
@@ -56,6 +57,11 @@ export default function CalendarioOrigemConsumoModal({
             {codigo ? (
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{codigo}</p>
             ) : null}
+            {temVariasDatas ? (
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                Inclui demanda acumulada dos dias anteriores neste recorte.
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
@@ -72,6 +78,7 @@ export default function CalendarioOrigemConsumoModal({
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-600">
+                  {temVariasDatas ? <th className={`${TH} text-left`}>Data</th> : null}
                   <th className={`${TH} text-left`}>Carrada</th>
                   <th className={`${TH} text-left`}>PD</th>
                   <th className={`${TH} text-right`}>Qtde componente</th>
@@ -79,14 +86,17 @@ export default function CalendarioOrigemConsumoModal({
               </thead>
               <tbody>
                 {origens.map((o, i) => (
-                  <tr key={`${o.carrada}-${o.pd}-${i}`}>
+                  <tr key={`${o.dataIso}-${o.carrada}-${o.pd}-${i}`}>
+                    {temVariasDatas ? (
+                      <td className={TD}>{o.dataIso ? formatDataCurta(o.dataIso) : '—'}</td>
+                    ) : null}
                     <td className={TD}>{o.carrada || '—'}</td>
                     <td className={TD}>{o.pd || '—'}</td>
                     <td className={`${TD} text-right tabular-nums`}>{fmtNum(o.qtdeComponente)}</td>
                   </tr>
                 ))}
                 <tr className="border-t-2 border-primary-200 bg-primary-50/80 font-semibold dark:border-primary-800 dark:bg-primary-900/30">
-                  <td className="px-2 py-2" colSpan={2}>
+                  <td className="px-2 py-2" colSpan={temVariasDatas ? 3 : 2}>
                     Total
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums">{fmtNum(total)}</td>

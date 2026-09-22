@@ -18,7 +18,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'escala',
     titulo: 'Escala de trabalho dos recursos',
     oQueE:
-      'Cada recurso tem um padrão semanal (faixas no mesmo dia e dias da semana). O intervalo entre faixas (almoço) não é parada real. Em PCP → Recursos, clique no nome da máquina para cadastrar escala pontual: folga ou horário especial (hora extra, sábado) em um dia ou período. A Perfiladeira 1000 (R001) alimenta o painel Produção Camasi, que segue o padrão e as pontualidades.',
+      'Cada recurso tem um padrão semanal (faixas no mesmo dia e dias da semana). O intervalo entre faixas (almoço) não é parada real. Feriados nacionais e do Piauí/Teresina não têm jornada padrão — só entram se houver horário especial. Em PCP → Recursos, clique no nome da máquina para cadastrar escala pontual: folga ou horário especial (hora extra, sábado, feriado com operação) em um dia ou período. A Perfiladeira 1000 (R001) alimenta o painel Produção Camasi, que segue o padrão e as pontualidades.',
     comoLe:
       'O padrão semanal vale até haver uma pontualidade cobrindo aquele dia. Folga zera o previsto; horário especial substitui as faixas daquele dia (inclusive fora da semana padrão). A pontualidade cadastrada por último prevalece se houver sobreposição.',
   },

@@ -14,6 +14,7 @@ import {
   getPedidosEncerrados,
   getPedidosEncerradosTypeahead,
   getPedidosExport,
+  getSaldoAReceberCarteira,
   getResumo,
   getResumoFinanceiro,
   getResumoFinanceiroGrade,
@@ -57,6 +58,11 @@ import {
   postDisponibilidadeMateriaisItem,
   postDisponibilidadeMateriaisSintetica,
 } from '../controllers/disponibilidadeMateriaisCalendarioController.js';
+import {
+  postCalendarioRecurso1000Dia,
+  postCalendarioRecurso1000Sintetico,
+} from '../controllers/calendarioRecurso1000CalendarioController.js';
+import { postCalendarioMetodoRessuprimento } from '../controllers/calendarioMetodoRessuprimentoController.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -102,6 +108,7 @@ const editarSequenciamentoCarradas = requirePermission(...PERMISSOES_EDITAR_SEQU
 
 router.get('/', verPedidos, getPedidos);
 router.get('/export', exportarXlsxPcp, getPedidosExport);
+router.get('/saldo-a-receber', exportarXlsxPcp, getSaldoAReceberCarteira);
 router.get('/resumo', verPedidos, getResumo);
 router.get('/resumo-financeiro', verPedidos, getResumoFinanceiro);
 router.get('/resumo-financeiro-grade', verFinanceiro, getResumoFinanceiroGrade);
@@ -161,6 +168,24 @@ router.post(
   verSequenciamentoCarradas,
   writeLimiter,
   postDisponibilidadeMateriaisItem
+);
+router.post(
+  '/sequenciamento-carradas/calendario-producao/recurso-1000',
+  verSequenciamentoCarradas,
+  writeLimiter,
+  postCalendarioRecurso1000Sintetico
+);
+router.post(
+  '/sequenciamento-carradas/calendario-producao/recurso-1000/dia',
+  verSequenciamentoCarradas,
+  writeLimiter,
+  postCalendarioRecurso1000Dia
+);
+router.post(
+  '/sequenciamento-carradas/calendario-producao/metodos-ressuprimento',
+  verSequenciamentoCarradas,
+  writeLimiter,
+  postCalendarioMetodoRessuprimento
 );
 router.get('/inconsistencia-qtde-pendente', verPedidos, getInconsistenciaQtdePendente);
 router.get('/encerrados/typeahead', verPedidos, getPedidosEncerradosTypeahead);

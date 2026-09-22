@@ -284,6 +284,44 @@ const RESUMO_VAZIO: CarteiraFinanceiraResumo = {
   ticketMedio: 0,
 };
 
+/** Saldo a receber da Carteira, no mesmo SQL, agregado depois por PD + rota na exportação. */
+export async function listarSaldoAReceberCarteira(): Promise<{
+  linhas: { pd: string; observacoes: string; saldoAReceber: number }[];
+  erro?: string;
+}> {
+  if (!isNomusEnabled()) {
+    return { linhas: [], erro: 'Nomus não configurado (NOMUS_DB_URL).' };
+  }
+  const pool = getNomusPool();
+  if (!pool) {
+    return { linhas: [], erro: 'Pool Nomus indisponível.' };
+  }
+  const baseSql = loadSql().trim().replace(/;\s*$/, '');
+  const sql = `
+SELECT
+  c.\`PD\` AS pd,
+  c.\`Observacoes\` AS observacoes,
+  c.\`Saldo a Receber\` AS saldoAReceber
+FROM (
+${baseSql}
+) AS c
+`.trim();
+  try {
+    const [rows] = await pool.query(sql);
+    const rawList = Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [];
+    const linhas = rawList.map((raw) => ({
+      pd: toStr(raw.pd ?? raw.PD) ?? '',
+      observacoes: toStr(raw.observacoes ?? raw.Observacoes) ?? '',
+      saldoAReceber: toNum(raw.saldoAReceber ?? raw['Saldo a Receber']),
+    }));
+    return { linhas };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[listarSaldoAReceberCarteira]', msg);
+    return { linhas: [], erro: msg };
+  }
+}
+
 export async function queryCarteiraFinanceira(
   filtros: CarteiraFinanceiraFiltros = {}
 ): Promise<CarteiraFinanceiraPayload> {

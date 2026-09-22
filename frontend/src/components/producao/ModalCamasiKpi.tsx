@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import type {
   CamasiDashboardResponse,
@@ -12,11 +13,10 @@ import {
   formatHmsCurto,
   formatHoras,
   formatHorasDidatico,
-  formatYmdBr,
   formatYmdBrComSemana,
+  hojeYmd,
 } from './camasiFormat';
-import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../utils/textoLivreBusca';
-import { DIAS_SEMANA_ESCALA, formatEscalaExcecaoResumo, formatEscalaResumo } from '../../utils/recursoEscalaLabel';
+import { DIAS_SEMANA_ESCALA, formatEscalaResumo, formatPeriodoEscalaExcecao } from '../../utils/recursoEscalaLabel';
 import { excecoesSobrepostasAoPeriodo } from '../../utils/recursoEscalaHoras';
 import { categoriaParadaCamasi } from '../../utils/camasiMotivoJornada';
 import { classesBlocoDia } from './camasiTabelaDia';
@@ -147,6 +147,7 @@ function BlocoEscalaEmUso({
   const dias = labelDiasEscala(escala.diasSemana);
   const pontuais =
     dataIni && dataFim ? excecoesSobrepostasAoPeriodo(escala.excecoes, dataIni, dataFim) : [];
+  const temPontual = pontuais.length > 0;
   return (
     <div
       className={
@@ -178,36 +179,75 @@ function BlocoEscalaEmUso({
           </span>
         ) : null}
       </p>
-      <p className={destaque ? 'mt-1 text-sm text-slate-700 dark:text-slate-200' : 'mt-0.5 text-xs text-slate-600 dark:text-slate-300'}>
-        {dias}
-      </p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {escala.faixas.map((f) => (
-          <span
-            key={`${f.inicio}-${f.fim}`}
-            className={
-              destaque
-                ? 'inline-flex items-center rounded-md bg-white px-2.5 py-1 text-sm font-semibold tabular-nums text-indigo-900 shadow-sm ring-1 ring-indigo-200 dark:bg-slate-900 dark:text-indigo-100 dark:ring-indigo-700'
-                : 'inline-flex items-center rounded bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-800 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-600'
-            }
-          >
-            {f.inicio}–{f.fim}
-          </span>
-        ))}
+
+      <div className="mt-1">
+        <p
+          className={
+            destaque
+              ? 'text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400'
+              : 'text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400'
+          }
+        >
+          Escala padrão (semanal)
+        </p>
+        <p className={destaque ? 'mt-0.5 text-sm text-slate-700 dark:text-slate-200' : 'mt-0.5 text-xs text-slate-600 dark:text-slate-300'}>
+          {dias}
+        </p>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {escala.faixas.map((f) => (
+            <span
+              key={`${f.inicio}-${f.fim}`}
+              className={
+                destaque
+                  ? 'inline-flex items-center rounded-md bg-white px-2.5 py-1 text-sm font-semibold tabular-nums text-indigo-900 shadow-sm ring-1 ring-indigo-200 dark:bg-slate-900 dark:text-indigo-100 dark:ring-indigo-700'
+                  : 'inline-flex items-center rounded bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-800 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-600'
+              }
+            >
+              {f.inicio}–{f.fim}
+            </span>
+          ))}
+        </div>
       </div>
-      {destaque ? (
+
+      {temPontual ? (
+        <div className="mt-2 border-t border-slate-200/80 pt-2 dark:border-slate-700/80">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Pontual no período
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {pontuais.slice(0, 8).map((ex) => {
+              const periodo = formatPeriodoEscalaExcecao(ex.dataIni, ex.dataFim);
+              const isFolga = ex.tipo === 'folga';
+              const faixasTxt = isFolga
+                ? 'sem jornada'
+                : (ex.faixas ?? []).map((f) => `${f.inicio}–${f.fim}`).join(', ') || '—';
+              return (
+                <li
+                  key={ex.id}
+                  className="text-xs leading-snug text-slate-600 dark:text-slate-300"
+                >
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    {isFolga ? 'Folga' : 'Especial'}
+                  </span>
+                  {' · '}
+                  {periodo}
+                  {' · '}
+                  <span className="tabular-nums">{faixasTxt}</span>
+                </li>
+              );
+            })}
+            {pontuais.length > 8 ? (
+              <li className="text-[11px] text-slate-500 dark:text-slate-400">
+                e mais {pontuais.length - 8} pontualidade(s)
+              </li>
+            ) : null}
+          </ul>
+        </div>
+      ) : destaque ? (
         <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
           Só entra o tempo nestas faixas, salvo escala pontual (folga ou horário especial) cadastrada
           em PCP → Recursos (clique na máquina).
         </p>
-      ) : null}
-      {pontuais.length > 0 ? (
-        <ul className="mt-2 space-y-0.5 text-xs text-amber-800 dark:text-amber-200">
-          {pontuais.slice(0, 6).map((ex) => (
-            <li key={ex.id}>{formatEscalaExcecaoResumo(ex)}</li>
-          ))}
-          {pontuais.length > 6 ? <li>e mais {pontuais.length - 6}</li> : null}
-        </ul>
       ) : null}
     </div>
   );
@@ -230,16 +270,18 @@ export default function ModalCamasiKpi({
   categoriaFiltro?: 'operacional' | 'jornada' | null;
   onClose: () => void;
 }) {
-  const [filtro, setFiltro] = useState('');
-  const match = useMemo(() => criarMatcherTextoLivre(filtro), [filtro]);
+  const [telaCheia, setTelaCheia] = useState(false);
 
   useEffect(() => {
-    if (open) setFiltro('');
-  }, [open, tipo, motivoFiltro]);
+    if (!open) setTelaCheia(false);
+  }, [open]);
 
   useRegisterModalEscape({
     id: 'camasi-kpi-modal',
-    onClose,
+    onClose: () => {
+      if (telaCheia) setTelaCheia(false);
+      else onClose();
+    },
     zIndex: 13000,
     enabled: open,
   });
@@ -275,30 +317,12 @@ export default function ModalCamasiKpi({
       producao += r.producaoHoras;
     }
     return {
-      previsto: Math.round(previsto * 10) / 10,
-      parado: Math.round(parado * 10) / 10,
-      producao: Math.round(producao * 10) / 10,
+      previsto: Math.round(previsto * 3600) / 3600,
+      parado: Math.round(parado * 3600) / 3600,
+      producao: Math.round(producao * 3600) / 3600,
       qtdeDias: dias.size,
     };
   }, [paradas, data?.resumoDias]);
-
-  const paradasFiltradas = useMemo(
-    () =>
-      paradas.filter(
-        (p) =>
-          match(p.justificativa) ||
-          match(p.peca) ||
-          match(p.observacao ?? '') ||
-          match(formatYmdBr(p.data))
-      ),
-    [paradas, match]
-  );
-
-  const producoesFiltradas = useMemo(
-    () =>
-      producoes.filter((p) => match(p.peca) || match(formatYmdBr(p.data))),
-    [producoes, match]
-  );
 
   /** Memorial do dia (API): parado por união de intervalos; produção = escala − parado. */
   const resumoPorDia = useMemo(() => {
@@ -316,25 +340,25 @@ export default function ModalCamasiKpi({
 
   const titulos: Record<CamasiKpiModalTipo, { titulo: string; sub: string }> = {
     eventos: {
-      titulo: 'Eventos de parada operacional',
+      titulo: 'Eventos de parada',
       sub: temEscala
-        ? `${kpis?.qtdeParadasOperacionais ?? paradas.length} evento(s) operacionais — início/fim de jornada à parte. Memorial: previsto − parado unificado = produção.`
-        : `${kpis?.qtdeParadasOperacionais ?? paradas.length} evento(s) operacionais com tempo parado na escala.`,
+        ? `${kpis?.qtdeParadas ?? paradas.length} evento(s) na escala (operacionais e início/fim de jornada). Memorial: no dia atual previsto − parado = restante; nos demais dias = produzido.`
+        : `${kpis?.qtdeParadas ?? paradas.length} evento(s) com tempo parado na escala.`,
     },
     parado: {
-      titulo: 'Tempo parado operacional',
+      titulo: 'Tempo parado',
       sub: temEscala
-        ? `Operacional ${formatHoras(kpis?.horasParadoOperacional ?? 0)} · jornada início/fim ${formatHoras(kpis?.horasParadoJornada ?? 0)} — união na escala (sobrepostos não somam duas vezes).`
-        : `Operacional ${formatHoras(kpis?.horasParadoOperacional ?? kpis?.horasParado ?? 0)}.`,
+        ? `Total ${formatHoras(kpis?.horasParado ?? 0)} na escala · operacional ${formatHoras(kpis?.horasParadoOperacional ?? 0)} · jornada início/fim ${formatHoras(kpis?.horasParadoJornada ?? 0)} — união (sobrepostos não somam duas vezes).`
+        : `Total ${formatHoras(kpis?.horasParado ?? 0)}.`,
     },
     producao: {
       titulo: 'Produção',
       sub:
         kpis?.disponibilidadePct != null
-          ? `Total ${formatHoras(kpis?.horasProducao ?? 0)} — disponibilidade ${new Intl.NumberFormat('pt-BR', {
+          ? `Total ${formatHoras(kpis?.horasProducao ?? 0)}. Cálculo: previsto até hoje ${formatHoras(kpis?.horasEscalaDecorrida ?? 0)} (−) parado ${formatHoras(kpis?.horasParado ?? 0)} (=) produção (dias úteis sem Camasi entram aqui). Disponibilidade ${new Intl.NumberFormat('pt-BR', {
               minimumFractionDigits: 1,
               maximumFractionDigits: 1,
-            }).format(kpis.disponibilidadePct)}% (produção ÷ escala).`
+            }).format(kpis.disponibilidadePct)}% (produção ÷ previsto até hoje).`
           : `Total ${formatHoras(kpis?.horasProducao ?? 0)} — cada linha é um intervalo de produção na escala.`,
     },
     previsto: {
@@ -370,18 +394,33 @@ export default function ModalCamasiKpi({
         </td>
       );
     }
-    const titulo = [
-      'Produção = escala − parado unificado (sem contar sobreposição duas vezes)',
-      r.temSobreposicao
-        ? `Sobreposição detectada: soma dos eventos ${formatHorasDidatico(r.paradoSomaEventos)} → união ${formatHorasDidatico(r.paradoHoras)}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join('\n');
+    const diaAtual = dataYmd === hojeYmd();
+    const saldoHoras = Math.max(0, r.escalaHoras - r.paradoHoras);
+    const prodConfirmadaHoras = producoes
+      .filter((p) => p.data === dataYmd)
+      .reduce((s, p) => s + (p.horas ?? 0), 0);
+    const titulo = diaAtual
+      ? [
+          `Restante = previsto − parado (${formatHorasDidatico(r.escalaHoras)} − ${formatHorasDidatico(r.paradoHoras)} = ${formatHorasDidatico(saldoHoras)})`,
+          `Produção confirmada nos eventos: ${formatHorasDidatico(prodConfirmadaHoras)}`,
+          r.temSobreposicao
+            ? `Sobreposição: soma dos eventos ${formatHorasDidatico(r.paradoSomaEventos)} → união ${formatHorasDidatico(r.paradoHoras)}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : [
+          `Produzido = previsto − parado (${formatHorasDidatico(r.escalaHoras)} − ${formatHorasDidatico(r.paradoHoras)} = ${formatHorasDidatico(saldoHoras)})`,
+          r.temSobreposicao
+            ? `Sobreposição: soma dos eventos ${formatHorasDidatico(r.paradoSomaEventos)} → união ${formatHorasDidatico(r.paradoHoras)}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join('\n');
     return (
       <td
         rowSpan={rowSpan}
-        className={`min-w-[10.5rem] px-2.5 py-2 align-middle ${dataTd}`}
+        className={`min-w-[11rem] px-2.5 py-2 align-middle ${dataTd}`}
         title={titulo}
       >
         <div className="space-y-1 text-[11px] leading-snug tabular-nums text-slate-700 dark:text-slate-200">
@@ -399,12 +438,20 @@ export default function ModalCamasiKpi({
           </div>
           <div className="flex items-baseline justify-between gap-3 border-t border-slate-300/80 pt-1 dark:border-slate-600">
             <span className="shrink-0 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-              (=) Produção
+              {diaAtual ? '(=) Restante' : '(=) Produzido'}
             </span>
             <span className="font-semibold text-slate-900 dark:text-slate-50">
-              {formatHorasDidatico(r.producaoHoras)}
+              {formatHorasDidatico(saldoHoras)}
             </span>
           </div>
+          {diaAtual ? (
+            <p className="pt-1 text-[9px] font-medium leading-snug text-slate-500 dark:text-slate-400">
+              Produção confirmada:{' '}
+              <span className="tabular-nums text-emerald-700 dark:text-emerald-300">
+                {formatHorasDidatico(prodConfirmadaHoras)}
+              </span>
+            </p>
+          ) : null}
           {r.temSobreposicao ? (
             <p className="pt-0.5 text-[9px] font-medium text-amber-700 dark:text-amber-300">
               Sobreposição ajustada
@@ -417,12 +464,18 @@ export default function ModalCamasiKpi({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/70 p-4"
+      className={`fixed inset-0 z-[13000] flex bg-black/70 ${
+        telaCheia ? 'items-stretch justify-stretch p-0' : 'items-center justify-center p-4'
+      }`}
       role="presentation"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[min(88vh,760px)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-900"
+        className={`flex flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-900 ${
+          telaCheia
+            ? 'h-full max-h-none w-full max-w-none rounded-none'
+            : 'max-h-[min(88vh,760px)] w-full max-w-6xl rounded-xl'
+        }`}
         role="dialog"
         aria-modal
         onClick={(e) => e.stopPropagation()}
@@ -457,7 +510,7 @@ export default function ModalCamasiKpi({
           </button>
         </div>
 
-        {tipo !== 'previsto' && data?.escala ? (
+        {tipo !== 'previsto' && data?.escala && !telaCheia ? (
           <div className="border-b border-slate-100 px-5 py-2 dark:border-slate-800">
             <BlocoEscalaEmUso
               escala={data.escala}
@@ -467,21 +520,24 @@ export default function ModalCamasiKpi({
           </div>
         ) : null}
 
-        {tipo !== 'previsto' && !filtrandoMotivo && (
-          <div className="border-b border-slate-100 px-5 py-2 dark:border-slate-800">
-            <input
-              type="search"
-              className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-              placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
-              value={filtro}
-              onChange={(e) => setFiltro(e.target.value)}
-            />
-          </div>
-        )}
-
         <div className="min-h-0 flex-1 overflow-auto px-5 pb-5 pt-0">
-          {/* Espaço acima da tabela sem sticky — cabeçalho cola no topo do scroll */}
-          <div className={tipo === 'previsto' ? 'pt-5' : 'pt-3'}>
+          <div className={`flex items-center justify-end ${tipo === 'previsto' ? 'pt-4 pb-1' : 'pt-2.5 pb-1'}`}>
+            <button
+              type="button"
+              onClick={() => setTelaCheia((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              title={telaCheia ? 'Sair da tela cheia' : 'Exibir tabela em tela cheia'}
+              aria-label={telaCheia ? 'Sair da tela cheia' : 'Exibir tabela em tela cheia'}
+            >
+              {telaCheia ? (
+                <Minimize2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              ) : (
+                <Maximize2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              )}
+              {telaCheia ? 'Sair da tela cheia' : 'Tela cheia'}
+            </button>
+          </div>
+          <div>
           {tipo === 'previsto' ? (
             <div className="space-y-4">
               {data?.escala ? (
@@ -555,7 +611,7 @@ export default function ModalCamasiKpi({
             </div>
           ) : tipo === 'producao' ? (
             <TabelaAgrupadaPorDia
-              linhas={producoesFiltradas}
+              linhas={producoes}
               ultimaColunaLabel="Peça"
               colunasExtra={(p: CamasiProducaoValida) => (
                 <>
@@ -572,7 +628,7 @@ export default function ModalCamasiKpi({
             />
           ) : (
             <TabelaAgrupadaPorDia
-              linhas={paradasFiltradas}
+              linhas={paradas}
               ultimaColunaLabel={filtrandoMotivo ? 'Observação' : 'Justificativa'}
               colunaDia={
                 temEscala

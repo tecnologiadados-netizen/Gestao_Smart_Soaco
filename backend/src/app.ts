@@ -35,11 +35,14 @@ import logisticaRoutes from './routes/logisticaRoutes.js';
 import qualidadeRoutes from './routes/qualidadeRoutes.js';
 import rhRoutes from './routes/rhRoutes.js';
 import emailSettingsRoutes from './routes/emailSettingsRoutes.js';
+import aiSettingsRoutes from './routes/aiSettingsRoutes.js';
+import assistenteRoutes from './routes/assistenteRoutes.js';
 import painelProducaoRoutes from './routes/painelProducaoRoutes.js';
 import producaoCamasiRoutes from './routes/producaoCamasiRoutes.js';
 import lojaEstoqueKitsRoutes from './routes/lojaEstoqueKitsRoutes.js';
 import recebimentoRoutes from './routes/recebimentoRoutes.js';
 import { csrfProtect } from './middleware/csrf.js';
+import { getDoubleCheckInConferenciaPagina } from './controllers/doubleCheckInConferenciaPaginaController.js';
 
 const app = express();
 
@@ -182,6 +185,8 @@ app.use('/api/logistica', logisticaRoutes);
 app.use('/api/qualidade', qualidadeRoutes);
 app.use('/api/rh', rhRoutes);
 app.use('/api/email-settings', emailSettingsRoutes);
+app.use('/api/ai-settings', aiSettingsRoutes);
+app.use('/api/assistente', assistenteRoutes);
 app.use('/api/painel-producao', painelProducaoRoutes);
 app.use('/api/producao-camasi', producaoCamasiRoutes);
 app.use('/api/loja/estoque-kits', lojaEstoqueKitsRoutes);
@@ -205,6 +210,11 @@ app.get('/health', async (_req, res) => {
     console.error('[health] Banco falhou:', (e as Error)?.message);
   }
   res.json({ ok: true, build: BUILD_ID, db });
+});
+
+// Link permanente do WhatsApp (conferência NF × PC). Antes do SPA para não cair no login.
+app.get('/c/:token', (req, res, next) => {
+  getDoubleCheckInConferenciaPagina(req, res).catch(next);
 });
 
 // Frontend estático (build em backend/public). Também com "npm run dev" na raiz: NODE_ENV pode vir

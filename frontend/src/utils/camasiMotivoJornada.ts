@@ -12,10 +12,22 @@ function normalizarMotivo(motivo: string): string {
 }
 
 const JORNADA = /^(INICIO|FIM)(\s+DE)?\s+JORNADA$/;
+const INICIO_JORNADA = /^INICIO(\s+DE)?\s+JORNADA$/;
+const FIM_JORNADA = /^FIM(\s+DE)?\s+JORNADA$/;
 
 export function isMotivoJornadaCamasi(motivo: string | null | undefined): boolean {
   if (!motivo) return false;
   return JORNADA.test(normalizarMotivo(motivo));
+}
+
+export function isMotivoInicioJornadaCamasi(motivo: string | null | undefined): boolean {
+  if (!motivo) return false;
+  return INICIO_JORNADA.test(normalizarMotivo(motivo));
+}
+
+export function isMotivoFimJornadaCamasi(motivo: string | null | undefined): boolean {
+  if (!motivo) return false;
+  return FIM_JORNADA.test(normalizarMotivo(motivo));
 }
 
 export type CamasiCategoriaParada = 'jornada' | 'operacional';

@@ -28,6 +28,10 @@ const wrap = (element: React.ReactNode) => <ErrorBoundary>{element}</ErrorBounda
 
 export const qualidadeRoutes: RouteObject[] = [
   {
+    path: 'qualidade/documentos/visualizar',
+    element: wrap(<VisualizarDocumentoPage />),
+  },
+  {
     path: 'qualidade',
     element: wrap(<QualidadeModuleLayout />),
     children: [

@@ -27,6 +27,17 @@ import {
   previewAlertaSlaSemAcao,
 } from './crmCreditoSlaSemAcaoService.js';
 import {
+  executarAlertaSgqCalibracao,
+  executarAlertaSgqValidade,
+  previewAlertaSgqCalibracao,
+  previewAlertaSgqValidade,
+} from './sgq/sgqEmailNotificacaoService.js';
+import {
+  isSgqAlertaBuilder,
+  SGQ_ALERTA_CALIBRACAO_CODE,
+  SGQ_ALERTA_VALIDADE_CODE,
+} from '../config/sgqAlertasNotificacao.js';
+import {
   executarAlertaComentarioOrganicoAmostra,
   previewAlertaComentarioOrganico,
 } from './organicoComentarioAlertaEmailService.js';
@@ -42,6 +53,8 @@ type TipoComDestinatarios = NonNullable<Awaited<ReturnType<typeof buscarTipoEmai
 type BuilderContext = {
   prisma: PrismaClient;
   destinatarios: string[];
+  extraLogins?: string[];
+  overrideDestinatarios?: boolean;
   ignorarDedup?: boolean;
 };
 
@@ -70,7 +83,32 @@ const BUILDERS: Record<string, (ctx: BuilderContext) => Promise<BuilderResult>> 
     }
     return executarAlertaComentarioOrganicoAmostra(ctx.prisma, ctx.destinatarios);
   },
+  [SGQ_ALERTA_VALIDADE_CODE]: (ctx) =>
+    executarAlertaSgqValidade(ctx.prisma, {
+      canal: 'email',
+      extraLogins: ctx.extraLogins,
+      overrideEmails: ctx.overrideDestinatarios ? ctx.destinatarios : undefined,
+      ignorarDedup: ctx.ignorarDedup,
+    }),
+  [SGQ_ALERTA_CALIBRACAO_CODE]: (ctx) =>
+    executarAlertaSgqCalibracao(ctx.prisma, {
+      canal: 'email',
+      extraLogins: ctx.extraLogins,
+      overrideEmails: ctx.overrideDestinatarios ? ctx.destinatarios : undefined,
+      ignorarDedup: ctx.ignorarDedup,
+    }),
 };
+
+export function listarLoginsDestinatariosEmail(tipo: TipoComDestinatarios): string[] {
+  return [
+    ...new Set(
+      tipo.destinatarios
+        .filter((d) => d.usuario.ativo)
+        .map((d) => d.usuario.login.trim())
+        .filter(Boolean)
+    ),
+  ];
+}
 
 export function listarEmailsDestinatarios(tipo: TipoComDestinatarios): string[] {
   const emails = new Set<string>();
@@ -170,7 +208,9 @@ export async function executarNotificacaoEmailAgendada(
       }
 
       const destinatarios = listarEmailsDestinatarios(tipo);
-      if (destinatarios.length === 0) {
+      const extraLogins = listarLoginsDestinatariosEmail(tipo);
+      const sgqBuilder = isSgqAlertaBuilder(tipo.builderCode);
+      if (destinatarios.length === 0 && !sgqBuilder) {
         console.warn(`[emailNotificacaoCron] "${code}": nenhum destinatário com e-mail válido.`);
         return {
           result: undefined as void,
@@ -196,7 +236,7 @@ export async function executarNotificacaoEmailAgendada(
 
       try {
         const dryRun = !envioNotificacoesHabilitado();
-        const result = await builder({ prisma, destinatarios });
+        const result = await builder({ prisma, destinatarios, extraLogins });
         console.log(
           `[emailNotificacaoCron] "${code}": ${result.enviados} e-mail(s), ${result.ignorados} ignorado(s) (dedup).`
         );
@@ -316,6 +356,26 @@ export async function previewEmailDoTipo(tipoId: number): Promise<{
     };
   }
 
+  if (builderCode === SGQ_ALERTA_VALIDADE_CODE) {
+    const preview = await previewAlertaSgqValidade(prisma);
+    return {
+      subject: preview.subject,
+      html: preview.html,
+      resumo: preview.resumo,
+      quantidadeAlertas: preview.quantidade,
+    };
+  }
+
+  if (builderCode === SGQ_ALERTA_CALIBRACAO_CODE) {
+    const preview = await previewAlertaSgqCalibracao(prisma);
+    return {
+      subject: preview.subject,
+      html: preview.html,
+      resumo: preview.resumo,
+      quantidadeAlertas: preview.quantidade,
+    };
+  }
+
   throw new Error(`Preview não disponível para builder "${builderCode ?? ''}".`);
 }
 
@@ -343,6 +403,8 @@ export async function testarEnvioEmailTipo(tipoId: number, usuarioId: number): P
       const result = await builder({
         prisma,
         destinatarios: [email],
+        extraLogins: [dest.usuario.login],
+        overrideDestinatarios: true,
         ignorarDedup: true,
       });
 

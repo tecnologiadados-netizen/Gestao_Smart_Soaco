@@ -22,6 +22,7 @@ import { useSidebarOpen } from '../hooks/useSidebarOpen';
 import LogoSoAco from './LogoSoAco';
 import Sidebar from './layout/Sidebar';
 import BuscaRapidaTelas from './layout/BuscaRapidaTelas';
+import AssistenteFlutuante from './assistente/AssistenteFlutuante';
 import { ModalStackProvider } from '../contexts/ModalStackContext';
 
 function SunIcon() {
@@ -201,6 +202,19 @@ function LayoutInner() {
     }
   };
 
+  const isSgqFileViewer = location.pathname.startsWith(
+    '/qualidade/documentos/visualizar'
+  );
+  if (isSgqFileViewer) {
+    return (
+      <PermissionGuard>
+        <div className="h-svh min-h-0 overflow-hidden bg-white print:h-auto print:overflow-visible">
+          <PageTransitionOutlet />
+        </div>
+      </PermissionGuard>
+    );
+  }
+
   return (
     <div className="h-svh min-h-0 flex bg-[var(--soaco-surface)]">
       {!modoFoco && (
@@ -312,6 +326,8 @@ function LayoutInner() {
           </div>
         </main>
       </div>
+
+      {!modoFoco && <AssistenteFlutuante />}
 
       {mustChangePassword && (
         <div className="fixed inset-0 z-[16000] flex items-center justify-center bg-black/75 p-4">

@@ -55,3 +55,10 @@ export function podeVerTodosChamadosSuporte(isMaster: boolean, hasPermission: (c
 export function podeAlterarStatusChamadoSuporte(isMaster: boolean, hasPermission: (c: CodigoPermissao) => boolean): boolean {
   return isMaster || hasPermission(PERMISSOES.SUPORTE_CHAMADOS_ALTERAR_STATUS);
 }
+
+export function podeVerAlucinacoesAmigaco(
+  isMaster: boolean,
+  hasPermission: (c: CodigoPermissao) => boolean
+): boolean {
+  return isMaster || hasPermission(PERMISSOES.ASSISTENTE_ALUCINACOES_VER);
+}

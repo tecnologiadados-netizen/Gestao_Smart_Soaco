@@ -454,12 +454,12 @@ export type SendWhatsAppResult = { ok: boolean; error?: string; dryRun?: boolean
 
 /** Introdução fixa do robô em todas as mensagens WhatsApp do sistema. */
 export const WHATSAPP_ROBO_INTRO =
-  'Olá! Aqui é o *Açonildo*, passando para avisar:';
+  'Olá! Aqui é o *Amigaço* 👋, passando para avisar:';
 
 const WHATSAPP_ROBO_INTRO_RE =
-  /^Olá!\s*Aqui é o \*?Açonildo\*?,?\s*passando para avisar:?/i;
+  /^Olá!\s*Aqui é o \*?Amigaço\*?(?:\s*👋)?\s*,?\s*passando para avisar:?/i;
 
-/** Prefixa a mensagem com a intro do Açonildo (idempotente). */
+/** Prefixa a mensagem com a intro do Amigaço (idempotente). */
 export function comIntroducaoRoboWhatsApp(texto: string): string {
   const body = String(texto ?? '').trim();
   if (!body) return body;

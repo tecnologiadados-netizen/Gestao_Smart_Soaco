@@ -73,6 +73,13 @@ const SECOES: SecaoAjuda[] = [
       'Crie card a partir de PD/rota; acompanhe notificações e o histórico do pedido.',
     comoLe:
       'Antes de abrir card novo, confira se já existe comunicação ativa para o mesmo PD. Use o histórico para não repetir perguntas ao comercial.',
+    detalhes: [
+      {
+        titulo: 'O que o histórico mostra',
+        texto:
+          'Criação do card, alteração de previsão, marcação de disponível/não disponível e as demais mensagens. Alteração de data de produção não aparece neste modal.',
+      },
+    ],
   },
   {
     id: 'whatsapp',

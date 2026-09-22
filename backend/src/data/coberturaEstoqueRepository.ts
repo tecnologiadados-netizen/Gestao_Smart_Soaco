@@ -1,13 +1,23 @@
 /**
  * Painel de Cobertura de Estoque — agrega sobre a mesma consulta da Consulta de Estoque.
- * Recorte fixo: itens com empenho líquido > 0 e vínculo ao almoxarifado secundário (setor 2).
+ * Recorte fixo: vínculo a pelo menos um dos setores almox secundário (2), galpão bobina (19)
+ * ou matéria-prima processada (20).
  */
 import { formatNomusErroConexao, isNomusEnabled, queryNomus } from '../config/nomusDb.js';
 import {
   consultarEstoque,
   type FiltrosConsultaEstoque,
 } from './consultaEstoqueRepository.js';
-import { NOMUS_ATRIBUTO_COMPRADOR } from './sql/sqlComprasEstoqueFragments.js';
+import {
+  NOMUS_ATRIBUTO_COMPRADOR,
+  SETORES_VINCULO_PAINEL_COBERTURA_SQL,
+  formatarSetoresVinculoCobertura,
+} from './sql/sqlComprasEstoqueFragments.js';
+import {
+  aplicarMediaPrecoBobinaPorChave,
+  chaveDimensionalBobina,
+  SQL_CHAVE_DIMENSIONAL_BOBINA,
+} from './coberturaBobinaPreco.js';
 import {
   agregarCoberturaEstoque,
   itemAptoUniversoPainelCobertura,
@@ -16,6 +26,7 @@ import {
 
 export const TIPOS_MOVIMENTACAO_PRECO_COBERTURA = [
   'Compra para material almox secundário',
+  'Compra para material almox galpões',
   'AJUSTE PARA ATUALIZAR PREÇO DA ÚLTIMA COMPRA (TRIB INCLUÍDA)',
   'Compra para industrialização',
 ] as const;
@@ -173,15 +184,17 @@ async function consultarUltimoPrecoEntradaPorIds(ids: number[]): Promise<Map<num
 
   const tipos = [...TIPOS_MOVIMENTACAO_PRECO_COBERTURA];
   const tiposPh = placeholders(tipos.length);
+  const descricaoPorId = new Map<number, string>();
 
   for (let i = 0; i < unicos.length; i += CM_CHUNK) {
     const chunk = unicos.slice(i, i + CM_CHUNK);
     const ph = placeholders(chunk.length);
     const sql = `
-Select ranked.idProduto, ranked.precoUnitario
+Select ranked.idProduto, ranked.precoUnitario, ranked.descricao
 From (
   Select ide.idProduto,
     ide.valorUnitario As precoUnitario,
+    p.descricao As descricao,
     ROW_NUMBER() Over (
       Partition By ide.idProduto
       Order By de.dataEntrada Desc, ide.id Desc
@@ -189,6 +202,7 @@ From (
   From itemdocumentoestoque ide
   Inner Join documentoestoque de On de.id = ide.idDocumentoEstoque
   Inner Join tipomovimentacao tm On tm.id = de.idTipoMovimentacao
+  Inner Join produto p On p.id = ide.idProduto
   Where tm.nome In (${tiposPh})
     And ide.valorUnitario > 0
     And ide.idProduto In (${ph})
@@ -207,6 +221,8 @@ Where ranked.rn = 1
         // Aceita preços fracionários baixos (ex. 0,002); só rejeita zero/negativo/NaN.
         if (id <= 0 || !Number.isFinite(preco) || preco <= 0) continue;
         map.set(id, preco);
+        const desc = String(r.descricao ?? '').trim();
+        if (desc) descricaoPorId.set(id, desc);
       }
     } catch (err) {
       console.error(
@@ -216,6 +232,100 @@ Where ranked.rn = 1
     }
   }
 
+  // Descrições dos ids sem entrada (ainda podem herdar média da chave dimensional).
+  const semDesc = unicos.filter((id) => !descricaoPorId.has(id));
+  if (semDesc.length > 0) {
+    for (let i = 0; i < semDesc.length; i += CM_CHUNK) {
+      const chunk = semDesc.slice(i, i + CM_CHUNK);
+      const ph = placeholders(chunk.length);
+      try {
+        const [rows] = (await queryNomus(
+          `Select id As idProduto, descricao From produto Where id In (${ph})`,
+          chunk
+        )) as [Record<string, unknown>[], unknown];
+        for (const r of Array.isArray(rows) ? rows : []) {
+          const id = Number(r.idProduto ?? 0);
+          const desc = String(r.descricao ?? '').trim();
+          if (id > 0 && desc) descricaoPorId.set(id, desc);
+        }
+      } catch (err) {
+        console.error(
+          '[coberturaEstoqueRepository] descricao produto (bobina):',
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+  }
+
+  const chaves = new Set<string>();
+  for (const desc of descricaoPorId.values()) {
+    const chave = chaveDimensionalBobina(desc);
+    if (chave) chaves.add(chave);
+  }
+
+  if (chaves.size > 0) {
+    const mediaPorChave = await consultarMediaPrecoBobinaPorChave(tipos);
+    aplicarMediaPrecoBobinaPorChave(map, descricaoPorId, mediaPorChave);
+  }
+
+  return map;
+}
+
+/**
+ * Média do preço cheio das entradas (tipos do painel) na data mais recente por chave dimensional.
+ * Mesma lógica de agrupamento da precificação; fonte de valor = regra do painel.
+ */
+async function consultarMediaPrecoBobinaPorChave(
+  tipos: readonly string[]
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (!isNomusEnabled() || tipos.length === 0) return map;
+
+  const tiposPh = placeholders(tipos.length);
+  const sql = `
+With base As (
+  Select
+    ide.valorUnitario As precoUnitario,
+    de.dataEntrada As dataEntrada,
+    (${SQL_CHAVE_DIMENSIONAL_BOBINA}) As bobina
+  From itemdocumentoestoque ide
+  Inner Join documentoestoque de On de.id = ide.idDocumentoEstoque
+  Inner Join tipomovimentacao tm On tm.id = de.idTipoMovimentacao
+  Inner Join produto p On p.id = ide.idProduto
+  Where tm.nome In (${tiposPh})
+    And ide.valorUnitario > 0
+    And Replace(Upper(p.descricao), 'INOX', 'INO') Like 'BOBINA%X%MM%'
+    And Replace(Upper(p.descricao), 'INOX', 'INO') Not Like '%ETIQUETA%'
+),
+ud As (
+  Select bobina, Max(dataEntrada) As dataEntrada
+  From base
+  Where bobina <> ''
+  Group By bobina
+)
+Select
+  b.bobina As bobina,
+  Round(Avg(b.precoUnitario), 2) As precoMedio
+From base b
+Inner Join ud On ud.bobina = b.bobina And ud.dataEntrada = b.dataEntrada
+Where b.bobina <> ''
+Group By b.bobina
+`.trim();
+
+  try {
+    const [rows] = (await queryNomus(sql, [...tipos])) as [Record<string, unknown>[], unknown];
+    for (const r of Array.isArray(rows) ? rows : []) {
+      const chave = String(r.bobina ?? '').trim();
+      const preco = Number(r.precoMedio ?? NaN);
+      if (!chave || !Number.isFinite(preco) || preco <= 0) continue;
+      map.set(chave, preco);
+    }
+  } catch (err) {
+    console.error(
+      '[coberturaEstoqueRepository] consultarMediaPrecoBobinaPorChave:',
+      err instanceof Error ? err.message : err
+    );
+  }
   return map;
 }
 
@@ -265,6 +375,50 @@ Group By mp.idProduto
   return map;
 }
 
+async function consultarSetoresVinculoCoberturaPorIds(
+  ids: number[]
+): Promise<Map<number, string>> {
+  const map = new Map<number, string>();
+  const unicos = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))];
+  if (unicos.length === 0) return map;
+  if (!isNomusEnabled()) return map;
+
+  const porProduto = new Map<number, number[]>();
+  for (let i = 0; i < unicos.length; i += CM_CHUNK) {
+    const chunk = unicos.slice(i, i + CM_CHUNK);
+    const ph = placeholders(chunk.length);
+    const sql = `
+Select Distinct pe.idProduto As idProduto, pese.idSetorEstoque As idSetor
+From produtoempresa pe
+Inner Join produtoempresa_setorestoque pese On pese.idProdutoEmpresa = pe.id
+Where pe.idEmpresa = 1
+  And pese.idSetorEstoque In (${SETORES_VINCULO_PAINEL_COBERTURA_SQL})
+  And pe.idProduto In (${ph})
+`.trim();
+    try {
+      const [rows] = (await queryNomus(sql, chunk)) as [Record<string, unknown>[], unknown];
+      for (const r of Array.isArray(rows) ? rows : []) {
+        const id = Number(r.idProduto ?? 0);
+        const setor = Number(r.idSetor ?? 0);
+        if (id <= 0 || setor <= 0) continue;
+        const list = porProduto.get(id) ?? [];
+        list.push(setor);
+        porProduto.set(id, list);
+      }
+    } catch (err) {
+      console.error(
+        '[coberturaEstoqueRepository] consultarSetoresVinculoCoberturaPorIds:',
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
+  for (const id of unicos) {
+    map.set(id, formatarSetoresVinculoCobertura(porProduto.get(id) ?? []));
+  }
+  return map;
+}
+
 /** Nomes distintos de família de produto (cadastro Nomus) para o filtro do painel. */
 export async function consultarNomesFamiliaProduto(): Promise<{
   data: string[];
@@ -304,12 +458,14 @@ export async function consultarPainelCoberturaEstoque(params: {
   erro?: string;
 }> {
   // comEmpenho vem do filtro do painel (toggle "somente produtos com empenho").
-  // Almox secundário continua fixo. Regras de status já toleram Empenho = 0.
+  // Vínculo de setor: almox secundário OU galpão bobina OU MP processada.
+  // Regras de status já toleram Empenho = 0.
   const { data, erro } = await consultarEstoque({
     filtros: {
       ...params.filtros,
       comEmpenho: params.filtros.comEmpenho ?? 'todos',
-      somenteAlmoxSecundario: true,
+      somenteAlmoxCobertura: true,
+      somenteAlmoxSecundario: false,
     },
     considerarRequisicoes: params.considerarRequisicoes,
     permitirSemFiltro: true,
@@ -320,12 +476,13 @@ export async function consultarPainelCoberturaEstoque(params: {
   }
 
   const ids = data.map((r) => r.idProduto);
-  const [cmMap, compradorMap, precoMap, familiaMap, ultimaMovMap] = await Promise.all([
+  const [cmMap, compradorMap, precoMap, familiaMap, ultimaMovMap, setoresMap] = await Promise.all([
     consultarConsumoMedioPorIds(ids),
     consultarCompradorPorIds(ids),
     consultarUltimoPrecoEntradaPorIds(ids),
     consultarFamiliaProdutoPorIds(ids),
     consultarUltimaMovimentacaoEstoquePorIds(ids),
+    consultarSetoresVinculoCoberturaPorIds(ids),
   ]);
   let comCm = data
     .map((r) => ({
@@ -335,6 +492,7 @@ export async function consultarPainelCoberturaEstoque(params: {
       precoUnitario: precoMap.get(r.idProduto) ?? null,
       familiaProduto: familiaMap.get(r.idProduto) ?? 'Sem família',
       ultimaMovimentacaoEstoque: ultimaMovMap.get(r.idProduto) ?? null,
+      setoresVinculo: setoresMap.get(r.idProduto) ?? '',
     }))
     .filter(itemAptoUniversoPainelCobertura);
 

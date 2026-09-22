@@ -1,6 +1,7 @@
 /**
  * Cobertura de Estoque — indicadores v2.
- * Universo: almox secundário; Empenho > 0 é opcional (toggle no painel).
+ * Universo: vínculo a almox secundário (2), galpão bobina (19) ou MP processada (20);
+ * Empenho > 0 é opcional (toggle no painel).
  * Cálculos toleram Empenho = 0 / CM = 0 (visão Sem giro).
  */
 import type { ConsultaEstoqueRow } from './consultaEstoqueRepository.js';
@@ -413,6 +414,8 @@ export type CoberturaEstoqueLinha = ConsultaEstoqueRow & {
   ultimaMovimentacaoEstoque: string | null;
   /** True se não houve movimentação nos últimos 60 dias (ou nunca). */
   semMovimentacao60d: boolean;
+  /** IDs de setor de vínculo do painel (`2|19|20`). */
+  setoresVinculo: string;
   acaoSugerida: AcaoSugeridaCobertura;
 };
 
@@ -447,22 +450,26 @@ export type ConsultaEstoqueRowComCm = ConsultaEstoqueRow & {
   familiaProduto?: string;
   /** ISO date ou null — última mov. almox secundário. */
   ultimaMovimentacaoEstoque?: string | null;
+  /** IDs de setor (`2|19|20`) com vínculo produtoempresa_setorestoque. */
+  setoresVinculo?: string;
 };
 
-/** Exclui do painel itens sem movimento, estoque, empenho, SC e Pré Compra (PC pode permanecer). */
+/** Exclui do painel itens sem CM, estoque, empenho, SC, Pré Compra e PC. */
 export function itemAptoUniversoPainelCobertura(row: {
   consumoMedio?: number;
   saldo: number;
   empenho: number;
   solicitacao?: number;
   cotacao?: number;
+  pedidoCompra?: number;
 }): boolean {
   const cm = Number(row.consumoMedio) || 0;
   const saldo = Number(row.saldo) || 0;
   const empenho = Number(row.empenho) || 0;
   const sc = Number(row.solicitacao) || 0;
   const cotacao = Number(row.cotacao) || 0;
-  return !(cm === 0 && empenho === 0 && saldo === 0 && sc === 0 && cotacao === 0);
+  const pc = Number(row.pedidoCompra) || 0;
+  return !(cm === 0 && empenho === 0 && saldo === 0 && sc === 0 && cotacao === 0 && pc === 0);
 }
 
 export function filtrarUniversoPainelCobertura<T extends ConsultaEstoqueRowComCm>(rows: T[]): T[] {
@@ -626,6 +633,7 @@ export function montarLinhaCobertura(r: ConsultaEstoqueRowComCm): CoberturaEstoq
     valorFirme,
     ultimaMovimentacaoEstoque,
     semMovimentacao60d,
+    setoresVinculo: String(r.setoresVinculo ?? '').trim(),
     acaoSugerida: sugerirAcaoCobertura({
       statusPainel,
       solicitacao: r.solicitacao,

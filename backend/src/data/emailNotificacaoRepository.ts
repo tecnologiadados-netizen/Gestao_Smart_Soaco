@@ -80,6 +80,8 @@ function mapTipo(
 }
 
 export async function listarTiposEmailComDestinatarios(): Promise<EmailNotificacaoTipoRow[]> {
+  const { ensureSgqAlertasEmailTipos } = await import('../config/sgqAlertasNotificacao.js');
+  await ensureSgqAlertasEmailTipos();
   const rows = await prisma.emailNotificacaoTipo.findMany({
     include: { destinatarios: { select: { usuarioId: true } } },
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
@@ -118,6 +120,8 @@ export async function buscarTipoEmailPorId(id: number) {
 }
 
 export async function listarTiposEmailCronAtivos() {
+  const { ensureSgqAlertasEmailTipos } = await import('../config/sgqAlertasNotificacao.js');
+  await ensureSgqAlertasEmailTipos();
   return prisma.emailNotificacaoTipo.findMany({
     where: { ativo: true, modoDisparo: 'cron' },
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],

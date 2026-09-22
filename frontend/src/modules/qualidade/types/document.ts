@@ -94,10 +94,24 @@ export interface DocumentPublicacao {
 
 export type PermissaoAcessoDocumento = "todos" | "restrito" | "responsavel";
 
+export type RetencaoUnidade = "meses" | "anos";
+
 /** Metadado de anexo em documento externo / registro. */
 export interface DocumentoAnexoArquivo {
   nome: string;
   dataUrl: string;
+  storagePath?: string;
+  /** Liga o arquivo à ocorrência do registro interno. */
+  ocorrenciaId?: string;
+}
+
+/** Uma ocorrência (arquivo + data) de um registro interno. */
+export interface DocumentoRegistroOcorrencia {
+  id: string;
+  nome: string;
+  dataOcorrencia: string;
+  observacao?: string;
+  criadoEm: string;
   storagePath?: string;
 }
 
@@ -113,6 +127,18 @@ export interface DocumentExternoRegistro {
   documentosAssociadosIds: string[];
   permissaoAcesso: PermissaoAcessoDocumento;
   anexos?: DocumentoAnexoArquivo[];
+  /** Prazo de retenção (texto de exibição, ex.: "2 anos"). */
+  retencao?: string;
+  retencaoValor?: number;
+  retencaoUnidade?: RetencaoUnidade;
+  /** Como o registro é protegido (texto livre). */
+  protecao?: string;
+  /** Como recuperar o registro (texto livre). */
+  recuperacao?: string;
+  /** Arquivo-modelo da ficha (preenchido no cadastro). */
+  modelo?: DocumentoAnexoArquivo;
+  /** Histórico de arquivos inseridos no registro interno. */
+  ocorrencias?: DocumentoRegistroOcorrencia[];
 }
 
 export interface Document {

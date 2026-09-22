@@ -28,6 +28,7 @@ import {
   STATUS_COTACAO_AGPAG_SQL,
   TIPOS_PRODUTO_CONSULTA_SQL,
   NOMUS_SETOR_ESTOQUE_PADRAO,
+  SETORES_VINCULO_PAINEL_COBERTURA_SQL,
 } from './sql/sqlComprasEstoqueFragments.js';
 import { termoParaPadraoLikeSql } from '../utils/textoLivreBusca.js';
 
@@ -64,6 +65,11 @@ export interface FiltrosConsultaEstoque {
   comSaldoEstoque?: FiltroSimNaoTodos;
   /** Só produtos com vínculo em produtoempresa_setorestoque no almoxarifado secundário (setor 2). */
   somenteAlmoxSecundario?: boolean;
+  /**
+   * Painel Cobertura: vínculo a pelo menos um dos setores
+   * almox secundário (2), galpão bobina (19) ou MP processada (20).
+   */
+  somenteAlmoxCobertura?: boolean;
 }
 
 export interface PedidoGerenciadorTypeaheadItem {
@@ -317,7 +323,14 @@ function buildFiltroConditions(
     }
   }
 
-  if (filtros.somenteAlmoxSecundario) {
+  if (filtros.somenteAlmoxCobertura) {
+    conditions.push(`Exists (
+      Select 1
+      From produtoempresa_setorestoque pese_cob
+      Where pese_cob.idProdutoEmpresa = pe.id
+        And pese_cob.idSetorEstoque In (${SETORES_VINCULO_PAINEL_COBERTURA_SQL})
+    )`);
+  } else if (filtros.somenteAlmoxSecundario) {
     conditions.push(`Exists (
       Select 1
       From produtoempresa_setorestoque pese_s2
@@ -856,6 +869,49 @@ async function consultarIdsProdutosPaiFiltrados(
       err instanceof Error ? err.message : err
     );
     return [];
+  }
+}
+
+/**
+ * Indica se os produtos casados com código/descrição possuem ficha técnica (BOM).
+ * - temBom: pelo menos um pai tem BOM
+ * - todosTemBom: todos os pais resolvidos têm BOM (e há pelo menos 1)
+ * Mistura = temBom && !todosTemBom → bloqueada no frontend.
+ */
+export async function consultarProdutoFiltroTemBom(
+  filtros: Pick<FiltrosConsultaEstoque, 'codigos' | 'descricoes'>
+): Promise<{ temBom: boolean; todosTemBom: boolean; erro?: string }> {
+  if (!filtrosConsultaTemTermoProduto(filtros)) {
+    return { temBom: false, todosTemBom: false };
+  }
+
+  const pool = getNomusPool();
+  if (!pool || !isNomusEnabled()) {
+    return { temBom: false, todosTemBom: false, erro: 'NOMUS_DB_URL não configurado' };
+  }
+
+  const ids = await consultarIdsProdutosPaiFiltrados(filtros);
+  if (ids.length === 0) return { temBom: false, todosTemBom: false };
+
+  const bomSql = loadBomListaMateriaisAcabadoSemProdutoSql();
+  const placeholders = ids.map(() => '?').join(', ');
+  const sql = `
+Select Count(Distinct bom.idprodutopai) As qtdeComBom
+From (${bomSql}) bom
+Where bom.idprodutopai In (${placeholders})
+`.trim();
+
+  try {
+    const [rows] = (await queryNomus(sql, ids)) as [Record<string, unknown>[], unknown];
+    const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+    const qtdeComBom = Number(row?.qtdeComBom ?? row?.qtdecombom ?? 0);
+    const temBom = qtdeComBom > 0;
+    const todosTemBom = ids.length > 0 && qtdeComBom >= ids.length;
+    return { temBom, todosTemBom };
+  } catch (err) {
+    const msg = formatNomusErroConexao(err);
+    console.error('[consultaEstoqueRepository] consultarProdutoFiltroTemBom:', msg);
+    return { temBom: false, todosTemBom: false, erro: msg };
   }
 }
 

@@ -13,13 +13,13 @@ export const documentStatusLabels: Record<DocumentStatus, string> = {
 export const documentOrigemLabels: Record<DocumentOrigem, string> = {
   interno: "Interno",
   externo: "Externo",
-  registro: "Registro",
+  registro: "Registro interno",
 };
 
 export const documentOrigemLabelsLong: Record<DocumentOrigem, string> = {
   interno: "Documento interno",
   externo: "Documento externo",
-  registro: "Registro",
+  registro: "Registro interno",
 };
 
 export const dueStatusLabels: Record<DueStatus, string> = {

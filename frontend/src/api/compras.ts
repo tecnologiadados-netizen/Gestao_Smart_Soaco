@@ -1495,12 +1495,16 @@ export async function fetchDoubleCheckInStatus(
 export async function conferirDoubleCheckIn(params: {
   idDocumento: number;
   senha: string;
+  numeroNfe?: string | null;
+  numeroDocumentoFiscal?: string | null;
+  nomeParceiro?: string | null;
 }): Promise<{
   ok: boolean;
   conferido?: boolean;
   conferidoEm?: string | null;
   conferidoPor?: string | null;
   jaConferido?: boolean;
+  alertaNfPcEnviado?: boolean;
   erro?: string;
 }> {
   const res = await apiFetch('/api/compras/double-checkin/conferir', {
@@ -1513,6 +1517,7 @@ export async function conferirDoubleCheckIn(params: {
     conferidoEm?: string | null;
     conferidoPor?: string | null;
     jaConferido?: boolean;
+    alertaNfPcEnviado?: boolean;
     error?: string;
   };
   if (!res.ok) {
@@ -1524,7 +1529,164 @@ export async function conferirDoubleCheckIn(params: {
     conferidoEm: body.conferidoEm ?? null,
     conferidoPor: body.conferidoPor ?? null,
     jaConferido: body.jaConferido,
+    alertaNfPcEnviado: body.alertaNfPcEnviado,
   };
+}
+
+export type DoubleCheckInCampoComparativo = 'valor_unitario' | 'qtde' | 'ipi' | 'condicao_pagamento';
+
+export type DoubleCheckInComparativoLinha = {
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  idPedidoCompra: number | null;
+  nomePedidoCompra: string | null;
+  idProduto: number | null;
+  codigoProduto: string | null;
+  descricaoProduto: string | null;
+  qtdeNF: number;
+  umNF: string | null;
+  qtdePC: number;
+  umPC: string | null;
+  valorUnitarioBrutoNF: number;
+  valorUnitarioBrutoPC: number;
+  descontoNF: number;
+  descontoPC: number;
+  /** Unitário líquido (após desconto) — base da comparação. */
+  valorUnitarioNF: number;
+  valorUnitarioPC: number;
+  valorIpiNF: number;
+  valorIpiPC: number;
+  condicaoPagamentoNF: string | null;
+  regraPagamentoNF: string | null;
+  condicaoPagamentoPC: string | null;
+  regraPagamentoPC: string | null;
+  divergValorUnitario: boolean;
+  divergQtde: boolean;
+  divergIpi: boolean;
+  divergCondicaoPagamento: boolean;
+  temDivergencia: boolean;
+};
+
+export type DoubleCheckInJustificativaOpcao = {
+  id: number;
+  codigo: string;
+  label: string;
+  ativo: boolean;
+  sortOrder: number;
+};
+
+export type DoubleCheckInComparativoDecisao = {
+  id: number;
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  decisao: 'aceita' | 'recusa';
+  justificativaOpcaoId: number;
+  justificativaCodigo: string;
+  justificativaLabel: string;
+  observacao: string | null;
+  usuarioId: number;
+  usuarioLogin: string;
+  atualizadoEm: string;
+  historicoObservacoes?: DoubleCheckInComparativoObsHist[];
+};
+
+export type DoubleCheckInComparativoObsHist = {
+  id: number;
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  texto: string;
+  usuarioId: number;
+  usuarioLogin: string;
+  criadoEm: string;
+};
+
+export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Promise<{
+  linhas: DoubleCheckInComparativoLinha[];
+  decisoes: DoubleCheckInComparativoDecisao[];
+  justificativas: DoubleCheckInJustificativaOpcao[];
+  pendentes: number;
+  erro?: string;
+}> {
+  const res = await apiFetch(`/api/compras/double-checkin/notas/${idDocumento}/comparativo-pc`);
+  const body = (await res.json().catch(() => ({}))) as {
+    linhas?: DoubleCheckInComparativoLinha[];
+    decisoes?: DoubleCheckInComparativoDecisao[];
+    justificativas?: DoubleCheckInJustificativaOpcao[];
+    pendentes?: number;
+    erro?: string;
+    error?: string;
+  };
+  if (!res.ok) {
+    return {
+      linhas: [],
+      decisoes: [],
+      justificativas: [],
+      pendentes: 0,
+      erro: body.erro ?? body.error ?? res.statusText,
+    };
+  }
+  return {
+    linhas: Array.isArray(body.linhas) ? body.linhas : [],
+    decisoes: Array.isArray(body.decisoes) ? body.decisoes : [],
+    justificativas: Array.isArray(body.justificativas) ? body.justificativas : [],
+    pendentes: typeof body.pendentes === 'number' ? body.pendentes : 0,
+  };
+}
+
+export async function saveDoubleCheckInComparativoDecisao(params: {
+  idDocumento: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  decisao: 'aceita' | 'recusa';
+  justificativaOpcaoId: number;
+  observacao?: string | null;
+}): Promise<{ ok: boolean; decisao?: DoubleCheckInComparativoDecisao; erro?: string }> {
+  const res = await apiFetch('/api/compras/double-checkin/comparativo-decisao', {
+    method: 'PUT',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    decisao?: DoubleCheckInComparativoDecisao;
+    error?: string;
+  };
+  if (!res.ok) {
+    return { ok: false, erro: body.error ?? res.statusText };
+  }
+  return { ok: true, decisao: body.decisao };
+}
+
+export async function addDoubleCheckInComparativoObservacao(params: {
+  idDocumento: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  texto: string;
+}): Promise<{
+  ok: boolean;
+  entrada?: DoubleCheckInComparativoObsHist;
+  decisao?: DoubleCheckInComparativoDecisao;
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/compras/double-checkin/comparativo-observacao', {
+    method: 'POST',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    entrada?: DoubleCheckInComparativoObsHist;
+    decisao?: DoubleCheckInComparativoDecisao;
+    error?: string;
+  };
+  if (!res.ok) {
+    return { ok: false, erro: body.error ?? res.statusText };
+  }
+  return { ok: true, entrada: body.entrada, decisao: body.decisao };
 }
 
 export async function fetchDoubleCheckInParametros(): Promise<{

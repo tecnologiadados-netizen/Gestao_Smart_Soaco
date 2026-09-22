@@ -210,6 +210,7 @@ type DocAnexoSync = {
   nome: string;
   dataUrl?: string;
   storagePath?: string;
+  ocorrenciaId?: string;
 };
 
 function docAnexoForSync(
@@ -217,13 +218,44 @@ function docAnexoForSync(
   includeBinary: boolean
 ): DocAnexoSync {
   const nome = a.nome;
+  const extra = a.ocorrenciaId ? { ocorrenciaId: a.ocorrenciaId } : {};
   if (a.storagePath) {
-    return { nome, dataUrl: '', storagePath: a.storagePath };
+    return { nome, dataUrl: '', storagePath: a.storagePath, ...extra };
   }
   if (includeBinary && a.dataUrl?.startsWith('data:')) {
-    return { nome, dataUrl: a.dataUrl };
+    return { nome, dataUrl: a.dataUrl, ...extra };
   }
-  return { nome, dataUrl: '' };
+  return { nome, dataUrl: '', ...extra };
+}
+
+function sanitizeOcorrenciasForSync(raw: unknown) {
+  if (!Array.isArray(raw)) return undefined;
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const o = item as Record<string, unknown>;
+      const id = String(o.id ?? '').trim();
+      const nome = String(o.nome ?? '').trim();
+      const dataOcorrencia = String(o.dataOcorrencia ?? '').trim();
+      if (!id || !nome || !dataOcorrencia) return null;
+      const observacao =
+        typeof o.observacao === 'string' ? o.observacao.trim() : '';
+      const criadoEm = String(o.criadoEm ?? '').trim();
+      const storagePath =
+        typeof o.storagePath === 'string' &&
+        o.storagePath.startsWith('/uploads/qualidade/')
+          ? o.storagePath
+          : undefined;
+      return {
+        id,
+        nome,
+        dataOcorrencia,
+        ...(observacao ? { observacao } : {}),
+        ...(criadoEm ? { criadoEm } : {}),
+        ...(storagePath ? { storagePath } : {}),
+      };
+    })
+    .filter(Boolean);
 }
 
 function sanitizeExternoRegistroForSync(
@@ -232,15 +264,23 @@ function sanitizeExternoRegistroForSync(
 ): Record<string, unknown> | undefined {
   if (!externoRegistro) return undefined;
   const anexosRaw = externoRegistro.anexos;
-  if (!Array.isArray(anexosRaw)) {
-    return externoRegistro;
-  }
+  const anexos = Array.isArray(anexosRaw)
+    ? (anexosRaw as DocAnexoSync[]).map((a) => docAnexoForSync(a, false))
+    : undefined;
   // Nunca embutir base64 no JSON do documento — binário só na versão.
-  const anexos = (anexosRaw as DocAnexoSync[]).map((a) =>
-    docAnexoForSync(a, false)
-  );
   void includeBinary;
-  return { ...externoRegistro, anexos };
+  const ocorrencias = sanitizeOcorrenciasForSync(externoRegistro.ocorrencias);
+  const modeloRaw = externoRegistro.modelo;
+  const modelo =
+    modeloRaw && typeof modeloRaw === 'object'
+      ? docAnexoForSync(modeloRaw as DocAnexoSync, false)
+      : undefined;
+  return {
+    ...externoRegistro,
+    ...(anexos ? { anexos } : {}),
+    ...(ocorrencias ? { ocorrencias } : {}),
+    ...(modelo?.nome ? { modelo } : { modelo: undefined }),
+  };
 }
 
 function versionForSync(

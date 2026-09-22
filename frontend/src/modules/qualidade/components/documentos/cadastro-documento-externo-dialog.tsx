@@ -166,7 +166,7 @@ export function CadastroDocumentoExternoDialog({
       onOpenChange(false);
       afterUiTransition(() => {
         resetForm();
-        navigate("/qualidade/documentos/consulta");
+        navigate("/qualidade/documentos/consulta?guia=externo");
       });
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar documento externo:", err);
