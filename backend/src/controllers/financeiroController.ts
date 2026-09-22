@@ -1380,7 +1380,7 @@ export async function getDreReceitaMoveisDiretoDetalhe(req: Request, res: Respon
 
 /**
  * GET /api/financeiro/dre/receita-refrigeracao-shop9
- * Receita Bruta (1.5/1.6) e CMV (6.4/6.3) — Shop9 filial 1, split por vendedor.
+ * Receita Bruta (1.5/1.6) e CMV (6.4/6.3) — Shop9 filiais 1 e 6, split por vendedor.
  */
 export async function getDreReceitaRefrigeracaoShop9(req: Request, res: Response): Promise<void> {
   const dataInicio = String(req.query.dataInicio ?? '').trim();

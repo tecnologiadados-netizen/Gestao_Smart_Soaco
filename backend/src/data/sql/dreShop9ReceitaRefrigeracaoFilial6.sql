@@ -1,7 +1,8 @@
-/* DRE — Faturamento/CMV direto RN Marques, Shop9 filial 6 (Movimento).
-     1.6.1 Faturamento Direto (Preco_Total_Sem_Desconto_Somado)
-     2.1.3.4 Desconto R N Marques (Desconto_Valor_Somado)
-     6.3.1 CMV Direto (Preco_Custo_Somado; se custo > preço → preço × 0,41)
+/* DRE — Faturamento/CMV Shop9 filial 6 (Movimento). Situacao_Danfe = 2.
+   Split no backend (mesmo critério da filial 1):
+     1.5 / 2.1.3.3 / 6.4 PAULO/JAQUELINE/NAIANE (Só Refrigeração)
+     1.6.1 / 2.1.3.4 / 6.3.1 demais vendedores (R N Marques direto)
+   CMV: Preco_Custo_Somado; se custo > preço → preço × 0,41.
    Placeholders: {{DATA_EMISSAO_MIN}}, {{DATA_EMISSAO_MAX}} */
 SELECT
   m.Ordem,
