@@ -1,13 +1,19 @@
-# Publica develop3 na main e sincroniza develop3 de volta.
-# Uso: npm run git:publish-main
-#      powershell -ExecutionPolicy Bypass -File scripts/publicar-develop3-para-main.ps1
+# Publica developN na main e sincroniza APENAS essa developN de volta.
+# Nao altera as outras branches develop (1/2/3).
+#
+# Uso:
+#   powershell -ExecutionPolicy Bypass -File scripts/publicar-develop3-para-main.ps1 -DevBranch develop1 -Force
+#   npm run git:publish-main -- develop1
+#   npm run git:publish-main -- develop1 -Force
 
 param(
+    [Parameter(Position = 0)]
+    [ValidateSet("develop1", "develop2", "develop3")]
+    [string]$DevBranch = "",
     [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
-$DevBranch = "develop3"
 $ProdBranch = "main"
 $PastaProjeto = Split-Path $PSScriptRoot -Parent
 Set-Location $PastaProjeto
@@ -46,8 +52,18 @@ if (-not (Test-Path ".git")) {
     throw "Repositorio nao inicializado. Execute na pasta do projeto Gestao_Smart."
 }
 
+if (-not $DevBranch) {
+    Write-Host ""
+    Write-Host "Informe a branch do desenvolvedor." -ForegroundColor Yellow
+    Write-Host "  powershell -File scripts/publicar-develop3-para-main.ps1 -DevBranch develop1" -ForegroundColor Cyan
+    Write-Host "  npm run git:publish-main -- develop1" -ForegroundColor Cyan
+    Write-Host ""
+    throw "Parametro -DevBranch obrigatorio (develop1|develop2|develop3)."
+}
+
 Write-Host ""
 Write-Host "=== Publicar $DevBranch -> $ProdBranch ===" -ForegroundColor Cyan
+Write-Host "Outras develops (1/2/3) NAO serao alteradas." -ForegroundColor DarkCyan
 Write-Host ""
 
 Test-WorkingTreeClean
@@ -70,7 +86,7 @@ Invoke-Git checkout $ProdBranch
 Invoke-Git pull origin $ProdBranch
 
 Write-Host "[3/5] Merge $DevBranch -> $ProdBranch..." -ForegroundColor Green
-& $Git merge $DevBranch --no-edit
+& $Git merge $DevBranch --no-edit -m "merge: integra $DevBranch na $ProdBranch"
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "Conflito no merge. Resolva os arquivos, depois execute:" -ForegroundColor Red
@@ -86,12 +102,13 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "[4/5] Enviando $ProdBranch..." -ForegroundColor Green
 Invoke-Git push origin $ProdBranch
 
-Write-Host "[5/5] Sincronizando $DevBranch com $ProdBranch..." -ForegroundColor Green
+Write-Host "[5/5] Sincronizando $DevBranch com $ProdBranch (somente esta branch)..." -ForegroundColor Green
 Invoke-Git checkout $DevBranch
 Invoke-Git pull origin $ProdBranch
 Invoke-Git push origin $DevBranch
 
 Write-Host ""
 Write-Host "Concluido: $DevBranch publicada em $ProdBranch e sincronizada." -ForegroundColor Cyan
+Write-Host "develop1/2/3 das outras pessoas: intactas." -ForegroundColor Cyan
 Write-Host "Branch atual: $DevBranch" -ForegroundColor Cyan
 Write-Host ""
