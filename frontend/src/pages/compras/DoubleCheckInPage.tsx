@@ -429,17 +429,22 @@ export default function DoubleCheckInPage() {
   };
 
   const marcarNotaConferida = useCallback(
-    (idDocumento: number, conferidoEm: string | null, conferidoPor: string | null) => {
+    (
+      idDocumento: number,
+      conferidoEm: string | null,
+      conferidoPor: string | null,
+      conferidoComDivergencia = false
+    ) => {
       setNotas((prev) =>
         prev.map((n) =>
           n.idDocumento === idDocumento
-            ? { ...n, conferido: true, conferidoEm, conferidoPor }
+            ? { ...n, conferido: true, conferidoEm, conferidoPor, conferidoComDivergencia }
             : n
         )
       );
       setModalNota((prev) =>
         prev && prev.idDocumento === idDocumento
-          ? { ...prev, conferido: true, conferidoEm, conferidoPor }
+          ? { ...prev, conferido: true, conferidoEm, conferidoPor, conferidoComDivergencia }
           : prev
       );
     },
@@ -525,7 +530,8 @@ export default function DoubleCheckInPage() {
       marcarNotaConferida(
         modalNota.idDocumento,
         r.conferidoEm ?? null,
-        r.conferidoPor ?? null
+        r.conferidoPor ?? null,
+        Boolean(r.conferidoComDivergencia)
       );
       setSenhaAberto(false);
       setSenhaDraft('');
@@ -653,13 +659,16 @@ export default function DoubleCheckInPage() {
                 const temFora = statusMap[n.idDocumento];
                 const statusPronto = Object.prototype.hasOwnProperty.call(statusMap, n.idDocumento);
                 const conferido = Boolean(n.conferido);
+                const conferidoComDivergencia = conferido && Boolean(n.conferidoComDivergencia);
                 return (
                   <tr
                     key={n.idDocumento}
                     className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${
-                      conferido
-                        ? 'border-l-4 border-l-emerald-500'
-                        : 'border-l-4 border-l-amber-400'
+                      conferidoComDivergencia
+                        ? 'border-l-4 border-l-yellow-400'
+                        : conferido
+                          ? 'border-l-4 border-l-emerald-500'
+                          : 'border-l-4 border-l-amber-400'
                     }`}
                   >
                     <td className="px-3 py-2 tabular-nums">{n.numeroDocumentoFiscal ?? '—'}</td>
@@ -694,7 +703,19 @@ export default function DoubleCheckInPage() {
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      {conferido ? (
+                      {conferidoComDivergencia ? (
+                        <span
+                          className="inline-flex max-w-[11rem] items-center gap-1.5 rounded-md border-2 border-yellow-400 bg-yellow-50 px-2 py-1 text-xs font-semibold text-yellow-900 dark:border-yellow-500 dark:bg-yellow-950/40 dark:text-yellow-100"
+                          title={
+                            n.conferidoPor
+                              ? `Conferido com divergência NF × PC por ${n.conferidoPor}${n.conferidoEm ? ` em ${new Date(n.conferidoEm).toLocaleString('pt-BR')}` : ''}`
+                              : 'Conferido com divergência NF × PC'
+                          }
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                          <span className="leading-tight">Conferido c/ divergência</span>
+                        </span>
+                      ) : conferido ? (
                         <span
                           className="inline-flex items-center gap-1.5 rounded-md border-2 border-emerald-500 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-200"
                           title={

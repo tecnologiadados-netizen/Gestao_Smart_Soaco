@@ -1382,6 +1382,8 @@ export type DoubleCheckInNota = {
   conferido?: boolean;
   conferidoEm?: string | null;
   conferidoPor?: string | null;
+  /** Conferido e havia divergência NF × PC. */
+  conferidoComDivergencia?: boolean;
 };
 
 export type DoubleCheckInHistoricoEntrada = {
@@ -1503,6 +1505,7 @@ export async function conferirDoubleCheckIn(params: {
   conferido?: boolean;
   conferidoEm?: string | null;
   conferidoPor?: string | null;
+  conferidoComDivergencia?: boolean;
   jaConferido?: boolean;
   alertaNfPcEnviado?: boolean;
   erro?: string;
@@ -1516,6 +1519,7 @@ export async function conferirDoubleCheckIn(params: {
     conferido?: boolean;
     conferidoEm?: string | null;
     conferidoPor?: string | null;
+    conferidoComDivergencia?: boolean;
     jaConferido?: boolean;
     alertaNfPcEnviado?: boolean;
     error?: string;
@@ -1528,6 +1532,7 @@ export async function conferirDoubleCheckIn(params: {
     conferido: body.conferido ?? true,
     conferidoEm: body.conferidoEm ?? null,
     conferidoPor: body.conferidoPor ?? null,
+    conferidoComDivergencia: Boolean(body.conferidoComDivergencia),
     jaConferido: body.jaConferido,
     alertaNfPcEnviado: body.alertaNfPcEnviado,
   };

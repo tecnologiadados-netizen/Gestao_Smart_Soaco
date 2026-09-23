@@ -651,6 +651,19 @@ export async function listarDocumentosConferidos(
   return map;
 }
 
+/** IDs de documento que têm ao menos uma decisão NF × PC (houve divergência). */
+export async function listarIdsComDecisaoComparativo(ids: number[]): Promise<Set<number>> {
+  const out = new Set<number>();
+  if (ids.length === 0) return out;
+  const rows = await prisma.doubleCheckInComparativoDecisao.findMany({
+    where: { idDocumentoEstoque: { in: ids } },
+    select: { idDocumentoEstoque: true },
+    distinct: ['idDocumentoEstoque'],
+  });
+  for (const r of rows) out.add(r.idDocumentoEstoque);
+  return out;
+}
+
 /** Todos os documentos já conferidos (para cruzar com período Nomus no dashboard). */
 export async function listarTodosDocumentosConferidos(): Promise<
   Map<number, DoubleCheckInConferidoInfo>
