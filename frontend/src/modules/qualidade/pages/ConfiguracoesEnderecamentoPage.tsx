@@ -25,10 +25,25 @@ import { SgqGradeFiltroCabecalho } from "@qualidade/components/ui/sgq-grade-filt
 import { SgqGradeFiltroPortal } from "@qualidade/components/ui/sgq-grade-filtro-portal";
 import { SgqGradeSurface } from "@qualidade/components/ui/sgq-grade-surface";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
-import { formatEnderecamentoLabel } from "@qualidade/lib/enderecamentos-sync";
-import { departmentSelectLabel } from "@qualidade/lib/utils/select-display";
-import type { Enderecamento } from "@qualidade/types/enderecamento";
+import {
+  enderecamentoSetorLabel,
+  formatEnderecamentoLabel,
+} from "@qualidade/lib/enderecamentos-sync";
+import {
+  ENDERECAMENTO_SETOR_GERAL_ID,
+  ENDERECAMENTO_SETOR_GERAL_LABEL,
+  type Enderecamento,
+} from "@qualidade/types/enderecamento";
 import { useGradeFiltrosExcel } from "@/hooks/useGradeFiltrosExcel";
+
+function setorSelectLabel(
+  departments: ReturnType<typeof useConfigStore.getState>["departments"],
+  setorId: string
+): string | null {
+  if (!setorId) return null;
+  const label = enderecamentoSetorLabel(departments, setorId);
+  return label === "—" ? null : label;
+}
 
 export function EnderecamentoPage() {
   const departments = useConfigStore((s) => s.departments);
@@ -51,7 +66,7 @@ export function EnderecamentoPage() {
   const getCellText = useCallback(
     (item: Enderecamento, columnId: string) => {
       if (columnId === "endereco") return item.endereco;
-      return departments.find((d) => d.id === item.setorId)?.nome ?? "—";
+      return enderecamentoSetorLabel(departments, item.setorId);
     },
     [departments]
   );
@@ -150,7 +165,11 @@ export function EnderecamentoPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Endereçamento</h1>
         <p className="text-sm text-muted-foreground">
-          Cadastro de localizações físicas por setor
+          Cadastro de localizações físicas por setor. Use{" "}
+          <span className="font-medium text-foreground">
+            {ENDERECAMENTO_SETOR_GERAL_LABEL}
+          </span>{" "}
+          para endereços válidos em todos os setores.
         </p>
       </div>
 
@@ -164,10 +183,13 @@ export function EnderecamentoPage() {
             <Select value={setorId} onValueChange={(v) => v && setSetorId(v)}>
               <SelectTrigger id="setor" className="h-10 w-full">
                 <SelectValue placeholder="Selecione o setor">
-                  {departmentSelectLabel(departments, setorId, "nome") ?? null}
+                  {setorSelectLabel(departments, setorId)}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={ENDERECAMENTO_SETOR_GERAL_ID}>
+                  {ENDERECAMENTO_SETOR_GERAL_LABEL} — se aplica a todos
+                </SelectItem>
                 {departments.map((dep) => (
                   <SelectItem key={dep.id} value={dep.id}>
                     {dep.nome}
@@ -224,23 +246,20 @@ export function EnderecamentoPage() {
               </TableCell>
             </TableRow>
           ) : (
-            enderecamentosOrdenados.map((item) => {
-              const setor = departments.find((d) => d.id === item.setorId);
-              return (
-                <TableRow key={item.id} className="group">
-                  <TableCell className="font-medium">
-                    {setor ? setor.nome : "—"}
-                  </TableCell>
-                  <TableCell>{item.endereco}</TableCell>
-                  <TableCell>
-                    <TableRowActions
-                      onEdit={() => iniciarEdicao(item.id)}
-                      onDelete={() => setExcluirId(item.id)}
-                    />
-                  </TableCell>
-                </TableRow>
-              );
-            })
+            enderecamentosOrdenados.map((item) => (
+              <TableRow key={item.id} className="group">
+                <TableCell className="font-medium">
+                  {enderecamentoSetorLabel(departments, item.setorId)}
+                </TableCell>
+                <TableCell>{item.endereco}</TableCell>
+                <TableCell>
+                  <TableRowActions
+                    onEdit={() => iniciarEdicao(item.id)}
+                    onDelete={() => setExcluirId(item.id)}
+                  />
+                </TableCell>
+              </TableRow>
+            ))
           )}
         </TableBody>
       </Table>
@@ -269,11 +288,13 @@ export function EnderecamentoPage() {
             >
               <SelectTrigger id="edit-setor" className="h-10 w-full">
                 <SelectValue placeholder="Selecione o setor">
-                  {departmentSelectLabel(departments, editSetorId, "nome") ??
-                    null}
+                  {setorSelectLabel(departments, editSetorId)}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={ENDERECAMENTO_SETOR_GERAL_ID}>
+                  {ENDERECAMENTO_SETOR_GERAL_LABEL} — se aplica a todos
+                </SelectItem>
                 {departments.map((dep) => (
                   <SelectItem key={dep.id} value={dep.id}>
                     {dep.nome}

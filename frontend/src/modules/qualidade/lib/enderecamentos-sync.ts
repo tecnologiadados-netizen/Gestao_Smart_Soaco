@@ -1,15 +1,39 @@
 import type { Department } from '@qualidade/types/user';
-import type { Enderecamento } from '@qualidade/types/enderecamento';
+import {
+  ENDERECAMENTO_SETOR_GERAL_LABEL,
+  isEnderecamentoSetorGeral,
+  type Enderecamento,
+} from '@qualidade/types/enderecamento';
 
 export const ENDERECAMENTOS_OPCOES_CHAVE = 'sgq-enderecamentos';
+
+export function enderecamentoSetorLabel(
+  departments: Department[],
+  setorId: string
+): string {
+  if (isEnderecamentoSetorGeral(setorId)) return ENDERECAMENTO_SETOR_GERAL_LABEL;
+  return departments.find((d) => d.id === setorId)?.nome ?? '—';
+}
 
 export function formatEnderecamentoLabel(
   enderecamento: Enderecamento,
   departments: Department[]
 ): string {
-  const setor = departments.find((d) => d.id === enderecamento.setorId);
-  if (!setor) return enderecamento.endereco;
-  return `${setor.nome} — ${enderecamento.endereco}`;
+  const setorNome = enderecamentoSetorLabel(departments, enderecamento.setorId);
+  if (setorNome === '—') return enderecamento.endereco;
+  return `${setorNome} — ${enderecamento.endereco}`;
+}
+
+/** Endereços do setor + endereços com setor Geral (aplicam a todos). */
+export function filterEnderecamentosPorSetor(
+  enderecamentos: Enderecamento[],
+  setorId: string
+): Enderecamento[] {
+  if (!setorId) return enderecamentos;
+  return enderecamentos.filter(
+    (item) =>
+      item.setorId === setorId || isEnderecamentoSetorGeral(item.setorId)
+  );
 }
 
 export function parseEnderecamentosFromOpcoes(

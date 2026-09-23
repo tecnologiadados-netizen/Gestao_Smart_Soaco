@@ -8,7 +8,10 @@ import {
   SelectValue,
 } from "@qualidade/components/ui/select";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
-import { buildLocalizacaoOpcoes } from "@qualidade/lib/enderecamentos-sync";
+import {
+  buildLocalizacaoOpcoes,
+  filterEnderecamentosPorSetor,
+} from "@qualidade/lib/enderecamentos-sync";
 
 const selectTriggerClass =
   "h-10 w-full min-w-0 *:data-[slot=select-value]:line-clamp-none *:data-[slot=select-value]:whitespace-normal";
@@ -20,7 +23,7 @@ const selectItemClass = "py-2.5 whitespace-normal text-base leading-snug";
 interface DocumentoEnderecamentoFieldsetProps {
   value: string;
   onChange: (localizacao: string) => void;
-  /** Quando informado, lista só endereços do setor selecionado. */
+  /** Quando informado, lista endereços do setor + endereços Gerais. */
   setorId?: string;
   label?: string;
 }
@@ -34,10 +37,10 @@ export function DocumentoEnderecamentoFieldset({
   const enderecamentos = useConfigStore((s) => s.enderecamentos);
   const departments = useConfigStore((s) => s.departments);
 
-  const enderecamentosVisiveis = useMemo(() => {
-    if (!setorId) return enderecamentos;
-    return enderecamentos.filter((item) => item.setorId === setorId);
-  }, [enderecamentos, setorId]);
+  const enderecamentosVisiveis = useMemo(
+    () => filterEnderecamentosPorSetor(enderecamentos, setorId),
+    [enderecamentos, setorId]
+  );
 
   const localizacaoOpcoes = useMemo(
     () => buildLocalizacaoOpcoes(enderecamentosVisiveis, departments, value),
@@ -82,7 +85,7 @@ export function DocumentoEnderecamentoFieldset({
         </Select>
         <p className="text-xs text-muted-foreground">
           {setorId
-            ? "Endereços cadastrados para o setor selecionado."
+            ? "Endereços do setor selecionado e endereços Gerais (válidos para todos)."
             : "Selecione o setor para filtrar os endereços disponíveis."}
         </p>
       </div>

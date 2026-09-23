@@ -1,7 +1,17 @@
 import { create } from 'zustand';
 import { persistConfigToServer } from '@qualidade/lib/qualidadeConfigSync';
-import type { Enderecamento } from '@qualidade/types/enderecamento';
+import {
+  isEnderecamentoSetorGeral,
+  type Enderecamento,
+} from '@qualidade/types/enderecamento';
 import type { Department, DocumentType, User } from '@qualidade/types/user';
+
+function setorIdValidoParaEnderecamento(
+  departments: Department[],
+  setorId: string
+): boolean {
+  return isEnderecamentoSetorGeral(setorId) || departments.some((d) => d.id === setorId);
+}
 
 interface ConfigState {
   currentUserId: string;
@@ -159,7 +169,7 @@ export const useConfigStore = create<ConfigState>()((set, get) => ({
   addEnderecamento: (setorId, endereco) => {
     const enderecoNorm = endereco.trim();
     if (!setorId || !enderecoNorm) return false;
-    if (!get().departments.some((d) => d.id === setorId)) return false;
+    if (!setorIdValidoParaEnderecamento(get().departments, setorId)) return false;
     if (enderecamentoDuplicado(get().enderecamentos, setorId, enderecoNorm)) return false;
 
     set((state) => ({
@@ -175,7 +185,7 @@ export const useConfigStore = create<ConfigState>()((set, get) => ({
   updateEnderecamento: (id, setorId, endereco) => {
     const enderecoNorm = endereco.trim();
     if (!setorId || !enderecoNorm) return false;
-    if (!get().departments.some((d) => d.id === setorId)) return false;
+    if (!setorIdValidoParaEnderecamento(get().departments, setorId)) return false;
     if (enderecamentoDuplicado(get().enderecamentos, setorId, enderecoNorm, id)) return false;
 
     set((state) => ({
