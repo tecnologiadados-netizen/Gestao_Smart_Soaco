@@ -14,11 +14,14 @@ export function calcularDiasRestantesValidade(
   dataValidade: string | undefined,
   referencia: Date = new Date()
 ): number | null {
-  if (!dataValidade) return null;
-  return differenceInDays(
-    startOfDay(parseISO(dataValidade)),
-    startOfDay(referencia)
-  );
+  if (!dataValidade?.trim()) return null;
+  try {
+    const parsed = parseISO(dataValidade.trim());
+    if (Number.isNaN(parsed.getTime())) return null;
+    return differenceInDays(startOfDay(parsed), startOfDay(referencia));
+  } catch {
+    return null;
+  }
 }
 
 export function calcularValidadeStatus(
