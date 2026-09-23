@@ -11,15 +11,35 @@ function wheelDeltaToPixels(delta: number, deltaMode: number, pageSize: number):
   return delta;
 }
 
+/** Há scroll vertical útil no próprio elemento, em ancestrais ou na página. */
+function podeRolarVerticalFora(el: HTMLElement): boolean {
+  let node: HTMLElement | null = el.parentElement;
+  while (node) {
+    const { overflowY } = getComputedStyle(node);
+    if (
+      (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') &&
+      node.scrollHeight > node.clientHeight + 1
+    ) {
+      return true;
+    }
+    node = node.parentElement;
+  }
+  const root = document.scrollingElement ?? document.documentElement;
+  return root.scrollHeight > root.clientHeight + 1;
+}
+
 /**
  * Converte rolagem do mouse (deltaX, Shift+deltaY ou roda vertical sem scroll Y)
  * em scroll horizontal quando o elemento tem overflow-x.
  * Usa capture para interceptar a roda lateral antes de filhos consumirem o evento.
+ *
+ * Não rouba gestos verticais quando a página/ancestral ainda pode rolar para baixo
+ * (caso típico de grades com só overflow-x que cresceram com o conteúdo).
  */
 export function useHorizontalWheelScroll(
   ref: RefObject<HTMLElement | null>,
   enabled = true,
-  /** Quando não há scroll vertical, converte roda vertical em horizontal. */
+  /** Quando não há scroll vertical no elemento nem fora dele, converte roda vertical em horizontal. */
   wheelVerticalAsHorizontal = false
 ): void {
   useEffect(() => {
@@ -40,12 +60,18 @@ export function useHorizontalWheelScroll(
 
       let dx = 0;
 
-      // Roda lateral / trackpad horizontal: prioridade explícita ao deltaX
-      if (rawDx !== 0 && (Math.abs(rawDx) >= Math.abs(rawDy) || rawDy === 0)) {
+      // Trackpad: só trata como horizontal se o eixo X for claramente dominante
+      // (evita “pulo” lateral com ruído enquanto o usuário rola para baixo).
+      if (rawDx !== 0 && Math.abs(rawDx) > Math.abs(rawDy) * 1.15) {
         dx = rawDx;
       } else if (e.shiftKey && rawDy !== 0) {
         dx = rawDy;
-      } else if (rawDy !== 0 && wheelVerticalAsHorizontal && !canScrollY) {
+      } else if (
+        rawDy !== 0 &&
+        wheelVerticalAsHorizontal &&
+        !canScrollY &&
+        !podeRolarVerticalFora(el)
+      ) {
         dx = rawDy;
       }
 

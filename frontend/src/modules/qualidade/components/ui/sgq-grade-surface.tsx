@@ -32,7 +32,10 @@ export function SgqGradeSurface({
           />
         </div>
       ) : null}
-      <div ref={scrollRef} className="overflow-x-auto">
+      <div
+        ref={scrollRef}
+        className="overflow-x-auto overscroll-x-contain"
+      >
         {children}
       </div>
     </div>
