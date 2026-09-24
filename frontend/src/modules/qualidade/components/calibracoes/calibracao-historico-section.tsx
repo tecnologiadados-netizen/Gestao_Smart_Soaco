@@ -1,10 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Badge } from "@qualidade/components/ui/badge";
-import {
-  CalibracaoArquivoActions,
-  CalibracaoVersaoAnexosList,
-} from "@qualidade/components/calibracoes/calibracao-versao-arquivos";
+import { CalibracaoVersaoAnexosList } from "@qualidade/components/calibracoes/calibracao-versao-arquivos";
 import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
@@ -17,7 +14,28 @@ import {
   getDueStatusVariant,
 } from "@qualidade/lib/utils/status-labels";
 import { cn } from "@qualidade/lib/utils";
-import type { Equipment } from "@qualidade/types/calibration";
+import type { Equipment, EquipmentAnexo } from "@qualidade/types/calibration";
+
+function arquivosDaVersao(
+  laudoNome?: string,
+  laudoDataUrl?: string,
+  laudoStoragePath?: string,
+  anexos?: EquipmentAnexo[]
+): EquipmentAnexo[] {
+  const principal = laudoNome?.trim()
+    ? [
+        {
+          nome: laudoNome.trim(),
+          dataUrl: laudoDataUrl ?? "",
+          ...(laudoStoragePath ? { storagePath: laudoStoragePath } : {}),
+        },
+      ]
+    : [];
+  const extras = (anexos ?? []).filter(
+    (anexo) => anexo.nome.trim() && anexo.nome.trim() !== laudoNome?.trim()
+  );
+  return [...principal, ...extras];
+}
 
 interface CalibracaoHistoricoSectionProps {
   equipment: Equipment;
@@ -95,21 +113,14 @@ export function CalibracaoHistoricoSection({
           </button>
           {(abertos.atual ?? true) ? (
             <div className="border-t border-brand-blue/20 px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="min-w-0 break-all text-sm font-medium">
-                  {equipment.laudoNome}
-                </p>
-                {equipment.laudoDataUrl || equipment.laudoStoragePath ? (
-                  <CalibracaoArquivoActions
-                    dataUrl={equipment.laudoDataUrl}
-                    storagePath={equipment.laudoStoragePath}
-                    nome={equipment.laudoNome}
-                  />
-                ) : null}
-              </div>
-              {equipment.laudoAnexos?.length ? (
-                <CalibracaoVersaoAnexosList anexos={equipment.laudoAnexos} />
-              ) : null}
+              <CalibracaoVersaoAnexosList
+                anexos={arquivosDaVersao(
+                  equipment.laudoNome,
+                  equipment.laudoDataUrl,
+                  equipment.laudoStoragePath,
+                  equipment.laudoAnexos
+                )}
+              />
             </div>
           ) : null}
         </article>
@@ -152,27 +163,18 @@ export function CalibracaoHistoricoSection({
                 </button>
                 {abertos[reg.id] ? (
                   <div className="border-t border-border/70 px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      {reg.laudoNome ? (
-                        <p className="min-w-0 break-all font-medium">{reg.laudoNome}</p>
-                      ) : (
-                        <p className="text-muted-foreground">Sem laudo arquivado.</p>
-                      )}
-                      {(reg.laudoDataUrl || reg.laudoStoragePath) && reg.laudoNome ? (
-                        <CalibracaoArquivoActions
-                          dataUrl={reg.laudoDataUrl}
-                          storagePath={reg.laudoStoragePath}
-                          nome={reg.laudoNome}
-                        />
-                      ) : null}
-                    </div>
-                    <p className="mt-1 text-xs capitalize text-muted-foreground">
+                    <p className="mb-2 text-xs capitalize text-muted-foreground">
                       {reg.tipo} · {reg.resultado}
                       {reg.laboratorio ? ` · ${reg.laboratorio}` : ""}
                     </p>
-                    {reg.anexos?.length ? (
-                      <CalibracaoVersaoAnexosList anexos={reg.anexos} />
-                    ) : null}
+                    <CalibracaoVersaoAnexosList
+                      anexos={arquivosDaVersao(
+                        reg.laudoNome,
+                        reg.laudoDataUrl,
+                        reg.laudoStoragePath,
+                        reg.anexos
+                      )}
+                    />
                   </div>
                 ) : null}
               </li>

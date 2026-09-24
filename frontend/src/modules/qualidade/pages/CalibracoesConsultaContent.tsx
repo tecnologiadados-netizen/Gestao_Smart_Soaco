@@ -33,7 +33,6 @@ import { useGradeFiltrosExcel } from "@/hooks/useGradeFiltrosExcel";
 const COL_IDS = [
   "codigo",
   "descricao",
-  "local",
   "setor",
   "responsavel",
   "tipo",
@@ -91,8 +90,6 @@ export function CalibracoesConsultaContent() {
           return sgqTextoOuTraco(eq.codigo);
         case "descricao":
           return sgqTextoOuTraco(eq.descricao);
-        case "local":
-          return sgqTextoOuTraco(eq.local);
         case "setor":
           return departments.find((d) => d.id === eq.setorId)?.nome ?? "—";
         case "responsavel":
@@ -153,11 +150,9 @@ export function CalibracoesConsultaContent() {
                   label={
                     colId === "codigo"
                       ? "Código"
-                      : colId === "descricao"
+                        : colId === "descricao"
                         ? "Descrição"
-                        : colId === "local"
-                          ? "Local"
-                          : colId === "setor"
+                        : colId === "setor"
                             ? "Setor"
                             : colId === "responsavel"
                               ? "Calibração"
@@ -202,9 +197,6 @@ export function CalibracoesConsultaContent() {
                   )}
                 >
                   {eq.descricao}
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {eq.local}
                 </TableCell>
                 <TableCell>
                   {departments.find((d) => d.id === eq.setorId)?.nome ?? "—"}
