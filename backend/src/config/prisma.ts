@@ -22,6 +22,8 @@ export async function ensureSqlitePragmas(client: PrismaClient = prisma): Promis
     await client.$queryRawUnsafe('PRAGMA journal_mode = WAL');
     await client.$queryRawUnsafe('PRAGMA busy_timeout = 5000');
     await client.$queryRawUnsafe('PRAGMA synchronous = NORMAL');
+    // Sem isso o SQLite ignora onDelete: Cascade e sobram filhos órfãos.
+    await client.$queryRawUnsafe('PRAGMA foreign_keys = ON');
     globalForPrisma.prismaPragmasOk = true;
   } catch (e) {
     console.warn('[prisma] Falha ao aplicar PRAGMAs SQLite:', e instanceof Error ? e.message : e);

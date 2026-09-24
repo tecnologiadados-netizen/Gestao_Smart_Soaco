@@ -1,6 +1,13 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, FileText, Pencil, X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@qualidade/components/ui/dropdown-menu";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Badge } from "@qualidade/components/ui/badge";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
@@ -16,7 +23,10 @@ import {
 } from "@qualidade/lib/utils/status-labels";
 import { formatarData, formatarDataHora } from "@qualidade/lib/utils/dates";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
-import { labelResponsavel } from "@qualidade/lib/utils/select-display";
+import {
+  labelResponsavel,
+  labelResponsavelPosse,
+} from "@qualidade/lib/utils/select-display";
 import {
   calcularDiasRestantesValidade,
   calcularProximaDataValidade,
@@ -29,7 +39,7 @@ import {
 import { openQualidadeArquivo } from "@qualidade/lib/documents/file-actions";
 import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-print-window";
 import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
-import { buildLocalizacaoOpcoes } from "@qualidade/lib/enderecamentos-sync";
+import { formatLocalizacoesDocumento } from "@qualidade/lib/enderecamentos-sync";
 import { cn } from "@qualidade/lib/utils";
 import {
   formatPermissaoProcessos,
@@ -221,12 +231,10 @@ function DocumentoConsultaDetalheDialogImpl({
   const versaoAtual = versoes.find((v) => v.versao === doc?.versaoAtual);
   const tipo = documentTypes.find((t) => t.id === doc?.tipoId);
   const setor = departments.find((d) => d.id === doc?.setorId);
-  const localizacaoLabel = useMemo(() => {
-    const valor = doc?.localizacao?.trim() ?? "";
-    if (!valor) return "—";
-    const opcoes = buildLocalizacaoOpcoes(enderecamentos, departments, valor);
-    return opcoes.find((opcao) => opcao.value === valor)?.label ?? valor;
-  }, [departments, doc?.localizacao, enderecamentos]);
+  const localizacaoLabel = useMemo(
+    () => formatLocalizacoesDocumento(doc?.localizacao, enderecamentos, departments),
+    [departments, doc?.localizacao, enderecamentos]
+  );
   const arquivosVigentes = useMemo(
     () => arquivosDaVersao(versaoAtual, doc),
     [versaoAtual, doc]
@@ -427,7 +435,7 @@ function DocumentoConsultaDetalheDialogImpl({
                   Identificação
                 </p>
                 <div className="grid gap-x-10 gap-y-5 sm:grid-cols-2">
-                  <MetaItem label="Setor" value={setor?.nome ?? "—"} />
+                  <MetaItem label="Documento referente ao setor" value={setor?.nome ?? "—"} />
                   <MetaItem label="Categoria" value={tipo?.nome ?? "—"} />
                   <MetaItem
                     label="Origem"
@@ -441,7 +449,7 @@ function DocumentoConsultaDetalheDialogImpl({
                     label="Revisão atual"
                     value={doc.versaoAtual}
                   />
-                  <MetaItem label="Localização" value={localizacaoLabel} />
+                  <MetaItem label="Localização do documento" value={localizacaoLabel} />
                 </div>
               </section>
             </div>
@@ -478,15 +486,16 @@ function DocumentoConsultaDetalheDialogImpl({
                       </div>
                     )}
                   </div>
-                ) : (
+                ) : doc.externoRegistro?.distribuicaoFisica ? (
                   <MetaItem
-                    label="Responsável"
-                    value={labelResponsavel(
+                    label="Responsável pela posse do documento"
+                    value={labelResponsavelPosse(
                       users,
-                      versaoAtual?.elaboradorId
+                      versaoAtual?.elaboradorId,
+                      doc.externoRegistro?.responsavelNome
                     )}
                   />
-                )}
+                ) : null}
               </SecaoPainel>
 
               <SecaoPainel titulo="Permissões / Cópias distribuídas">
@@ -503,13 +512,6 @@ function DocumentoConsultaDetalheDialogImpl({
                       label="Quem pode baixar o arquivo"
                       value={formatPermissaoUsuarios(
                         doc.permissoes.baixarArquivoIds,
-                        users
-                      )}
-                    />
-                    <PermissaoItem
-                      label="Quem pode imprimir arquivo"
-                      value={formatPermissaoUsuarios(
-                        doc.permissoes.imprimirArquivoIds,
                         users
                       )}
                     />
@@ -619,10 +621,14 @@ function DocumentoConsultaDetalheDialogImpl({
               <SecaoPainel titulo="Revisões" defaultOpen>
                 <ul className="space-y-3">
                   {versoes.map((ver) => {
-                    const elaboradorNome = labelResponsavel(
-                      users,
-                      ver.elaboradorId
-                    );
+                    const elaboradorNome =
+                      doc.origem === "interno"
+                        ? labelResponsavel(users, ver.elaboradorId)
+                        : labelResponsavelPosse(
+                            users,
+                            ver.elaboradorId,
+                            doc.externoRegistro?.responsavelNome
+                          );
                     const aprovadorNome = labelResponsavel(
                       users,
                       ver.aprovadorId
@@ -688,7 +694,7 @@ function DocumentoConsultaDetalheDialogImpl({
                             </>
                           ) : (
                             <>
-                              Responsável: {elaboradorNome} ·{" "}
+                              Responsável pela posse do documento: {elaboradorNome} ·{" "}
                               {formatarData(ver.dataElaboracao)}
                             </>
                           )}
@@ -737,33 +743,33 @@ function DocumentoConsultaDetalheDialogImpl({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-brand-blue-muted bg-card px-8 py-5">
-          <Button type="button" variant="outline" onClick={handleFechar}>
-            Fechar
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={doc.status !== "vigente"}
-            onClick={handleInativar}
-          >
-            Inativar
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={handleExcluir}
-          >
-            Excluir
-          </Button>
-          {podeRevalidar ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setRevalidarAberta(true)}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button type="button" variant="outline" className="gap-1.5" />
+              }
             >
-              Revalidar
-            </Button>
-          ) : null}
+              Mais ações
+              <ChevronDown className="size-4" aria-hidden />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="top" className="min-w-44">
+              {podeRevalidar ? (
+                <DropdownMenuItem onClick={() => setRevalidarAberta(true)}>
+                  Revalidar
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuItem
+                disabled={doc.status !== "vigente"}
+                onClick={handleInativar}
+              >
+                Inativar
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={handleExcluir}>
+                Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             type="button"
             disabled={doc.status !== "vigente"}

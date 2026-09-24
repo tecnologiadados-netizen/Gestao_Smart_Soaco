@@ -222,15 +222,6 @@ export function AdicionarRegistroOcorrenciaDialog({
             <Button type="submit" size="lg" disabled={saving}>
               {saving ? "Gravando..." : "Gravar"}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              onClick={handleClose}
-              disabled={saving}
-            >
-              Cancelar
-            </Button>
           </div>
         </form>
       </DialogContent>

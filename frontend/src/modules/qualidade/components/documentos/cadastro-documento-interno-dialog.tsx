@@ -48,7 +48,28 @@ import {
   formatDocumentCodigo,
   formatDocumentCodigoExibicao,
 } from "@qualidade/lib/documents/document-codigo";
+import type { DocumentExternoRegistro } from "@qualidade/types/document";
 import type { DocumentType } from "@qualidade/types/user";
+
+function externoRegistroComPosse(
+  base: DocumentExternoRegistro | undefined,
+  posseId: string,
+  posseNome: string
+): DocumentExternoRegistro {
+  return {
+    unidadeTodos: true,
+    distribuicaoEletronica: true,
+    distribuicaoFisica: Boolean(posseId),
+    avisarAntesAtivo: false,
+    avisarAntesDias: 30,
+    associarDocumentos: false,
+    documentosAssociadosIds: [],
+    permissaoAcesso: "todos",
+    ...base,
+    responsavelPosseId: posseId || undefined,
+    responsavelNome: posseNome.trim() || undefined,
+  };
+}
 
 interface Props {
   open: boolean;
@@ -102,6 +123,9 @@ export function CadastroDocumentoInternoDialog({
     defaultPublicacaoValues()
   );
   const [localizacao, setLocalizacao] = useState("");
+  const [posseId, setPosseId] = useState("");
+  const [posseNome, setPosseNome] = useState("");
+  const [guardaFisica, setGuardaFisica] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -116,6 +140,9 @@ export function CadastroDocumentoInternoDialog({
     setPermissoes(defaultPermissoesValues());
     setPublicacao(defaultPublicacaoValues());
     setLocalizacao("");
+    setPosseId("");
+    setPosseNome("");
+    setGuardaFisica(false);
     setFormError(null);
   }
 
@@ -126,6 +153,9 @@ export function CadastroDocumentoInternoDialog({
     if (!responsaveis.elaboradorId) return "Selecione o elaborador.";
     if (!responsaveis.consensoId) return "Selecione o responsável pelo consenso.";
     if (!responsaveis.aprovadorId) return "Selecione o aprovador.";
+    if (guardaFisica && !posseId) {
+      return "Selecione o responsável pela posse do documento.";
+    }
     if (departments.length === 0) {
       return "Nenhum setor cadastrado. Cadastre setores em Qualidade → Configurações.";
     }
@@ -159,6 +189,8 @@ export function CadastroDocumentoInternoDialog({
     setPermissoes(doc.permissoes ?? defaultPermissoesValues());
     setPublicacao(publicacaoFromDocument(doc.publicacao, doc.validade));
     setLocalizacao(doc.localizacao ?? "");
+    setPosseId(doc.externoRegistro?.responsavelPosseId ?? "");
+    setPosseNome(doc.externoRegistro?.responsavelNome ?? "");
   }, [open, documentId, getDocumentById, getVersionsByDocumentId, currentUserId]);
 
   const categorias = useMemo(() => {
@@ -212,6 +244,11 @@ export function CadastroDocumentoInternoDialog({
             tipoId: categoriaId,
             setorId: processoId,
             localizacao: localizacao.trim(),
+            externoRegistro: externoRegistroComPosse(
+              documentoEdicao?.externoRegistro,
+              guardaFisica ? posseId : "",
+              guardaFisica ? posseNome : ""
+            ),
             elaboradorId: responsaveis.elaboradorId || currentUserId,
             consensoId: responsaveis.consensoId || undefined,
             aprovadorId: responsaveis.aprovadorId || undefined,
@@ -233,6 +270,11 @@ export function CadastroDocumentoInternoDialog({
           tipoId: categoriaId,
           setorId: processoId,
           localizacao: localizacao.trim(),
+          externoRegistro: externoRegistroComPosse(
+            undefined,
+            guardaFisica ? posseId : "",
+            guardaFisica ? posseNome : ""
+          ),
           elaboradorId: responsaveis.elaboradorId || currentUserId,
           consensoId: responsaveis.consensoId || undefined,
           aprovadorId: responsaveis.aprovadorId || undefined,
@@ -349,7 +391,7 @@ export function CadastroDocumentoInternoDialog({
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-base">Setor *</Label>
+                    <Label className="text-base">Documento referente ao setor *</Label>
                     <Select
                       value={processoId || null}
                       onValueChange={(v) => {
@@ -429,6 +471,13 @@ export function CadastroDocumentoInternoDialog({
                 value={localizacao}
                 onChange={setLocalizacao}
                 setorId={processoId}
+                responsavelId={posseId}
+                responsavelNome={posseNome}
+                onResponsavelChange={(id, nome) => {
+                  setPosseId(id);
+                  setPosseNome(nome);
+                }}
+                onGuardaFisicaChange={setGuardaFisica}
               />
 
               <DocumentoPublicacaoFieldset
@@ -445,14 +494,6 @@ export function CadastroDocumentoInternoDialog({
           <div className="sgq-form-footer">
             <Button type="submit" size="lg" className="min-w-28" loading={saving}>
               Gravar
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              onClick={handleClose}
-            >
-              Cancelar
             </Button>
           </div>
         </form>

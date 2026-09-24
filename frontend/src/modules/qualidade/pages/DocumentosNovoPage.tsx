@@ -132,7 +132,7 @@ export function NovoDocumentoPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="setor">Setor *</Label>
+              <Label htmlFor="setor">Documento referente ao setor *</Label>
               <Select value={setorId} onValueChange={(v) => v && setSetorId(v)} required>
                 <SelectTrigger id="setor">
                   <SelectValue placeholder="Selecione o setor">

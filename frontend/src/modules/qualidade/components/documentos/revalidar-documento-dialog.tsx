@@ -462,7 +462,7 @@ export function RevalidarDocumentoDialog({
             ) : null}
           </div>
 
-          <div className="sgq-form-footer justify-end px-8 py-5">
+          <div className="sgq-form-footer px-8 py-5">
             <Button
               type="submit"
               size="lg"
@@ -472,14 +472,6 @@ export function RevalidarDocumentoDialog({
               {gerarNovaRevisao
                 ? "Continuar para revisão"
                 : "Confirmar revalidação"}
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              onClick={handleFechar}
-            >
-              Cancelar
             </Button>
           </div>
         </form>

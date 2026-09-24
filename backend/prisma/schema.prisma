@@ -1352,7 +1352,10 @@ model SgqEquipamento {
   descricao                  String
   local                      String
   setorUid                   String
+  possuiLocalFixo            Boolean?
   responsavelLogin           String
+  responsavelPosseId         String?
+  responsavelPosseNome       String?
   fornecedor                 String?
   tipoCalibracao             String
   frequenciaCalibracaoDias   Int

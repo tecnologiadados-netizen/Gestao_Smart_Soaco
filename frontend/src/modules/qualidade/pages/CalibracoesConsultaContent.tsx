@@ -160,7 +160,7 @@ export function CalibracoesConsultaContent() {
                           : colId === "setor"
                             ? "Setor"
                             : colId === "responsavel"
-                              ? "Responsável"
+                              ? "Calibração"
                               : colId === "tipo"
                                 ? "Tipo"
                                 : colId === "proximaCalibracao"

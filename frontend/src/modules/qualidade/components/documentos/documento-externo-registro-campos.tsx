@@ -25,12 +25,16 @@ import type {
 import type { Department, User } from "@qualidade/types/user";
 import {
   departmentSelectLabel,
-  permissaoAcessoSelectLabel,
   userSelectLabel,
 } from "@qualidade/lib/utils/select-display";
 import type { SgqAnexo } from "@qualidade/types/registro-anexo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
-import { buildLocalizacaoOpcoes } from "@qualidade/lib/enderecamentos-sync";
+import {
+  buildLocalizacaoOpcoes,
+  filterEnderecamentosPorSetor,
+} from "@qualidade/lib/enderecamentos-sync";
+import type { EnderecamentoCategoria } from "@qualidade/types/enderecamento";
+import { PessoaSearchField } from "@qualidade/components/registros/pessoa-search-field";
 
 export interface ExternoRegistroFormValues {
   titulo: string;
@@ -40,6 +44,7 @@ export interface ExternoRegistroFormValues {
   distFisica: boolean;
   localizacao: string;
   responsavelId: string;
+  responsavelNome: string;
   definirValidade: boolean;
   validadeData: string;
   avisarAntes: boolean;
@@ -74,6 +79,7 @@ export function defaultExternoRegistroValues(
     distFisica: false,
     localizacao: "",
     responsavelId,
+    responsavelNome: "",
     definirValidade: false,
     validadeData: defaultValidadeData(),
     avisarAntes: false,
@@ -135,6 +141,7 @@ export function externoRegistroValuesFromDocument(
     distFisica: reg?.distribuicaoFisica ?? false,
     localizacao: doc.localizacao ?? "",
     responsavelId: fallbackResponsavelId,
+    responsavelNome: reg?.responsavelNome ?? "",
     definirValidade: Boolean(doc.validade?.ativa && doc.validade.dataValidade),
     validadeData: doc.validade?.dataValidade
       ? format(new Date(doc.validade.dataValidade), "yyyy-MM-dd")
@@ -189,6 +196,7 @@ export function buildExternoRegistroMeta(
     documentosAssociadosIds: values.documentosAssociadosIds,
     permissaoAcesso: (values.permissaoAcesso ||
       "todos") as PermissaoAcessoDocumento,
+    responsavelNome: values.responsavelNome.trim() || undefined,
     anexos: anexosMeta.length > 0 ? anexosMeta : undefined,
   };
 }
@@ -234,10 +242,33 @@ export function DocumentoExternoRegistroCampos({
     onChange({ ...values, ...partial });
   }
 
-  const localizacaoOpcoes = useMemo(
-    () => buildLocalizacaoOpcoes(enderecamentos, departments, values.localizacao),
-    [departments, enderecamentos, values.localizacao]
-  );
+  const categoriasLocalizacao = useMemo(() => {
+    const categorias: EnderecamentoCategoria[] = [];
+    if (values.distFisica) categorias.push("fisico");
+    if (values.distEletronica) categorias.push("eletronico");
+    return categorias;
+  }, [values.distEletronica, values.distFisica]);
+
+  const localizacaoOpcoes = useMemo(() => {
+    const filtrados = filterEnderecamentosPorSetor(
+      enderecamentos,
+      values.processoId,
+      categoriasLocalizacao
+    );
+    const atual = values.localizacao.trim();
+    const atualValida = filtrados.some((item) => item.endereco.trim() === atual);
+    return buildLocalizacaoOpcoes(
+      filtrados,
+      departments,
+      atualValida ? atual : ""
+    );
+  }, [
+    categoriasLocalizacao,
+    departments,
+    enderecamentos,
+    values.localizacao,
+    values.processoId,
+  ]);
 
   const localizacaoLabel =
     localizacaoOpcoes.find((opcao) => opcao.value === values.localizacao)?.label ??
@@ -256,8 +287,10 @@ export function DocumentoExternoRegistroCampos({
     .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
 
   const processoNome = departmentSelectLabel(departments, values.processoId, "sigla-nome");
-  const responsavelNome = userSelectLabel(users, values.responsavelId);
-  const permissaoAcessoNome = permissaoAcessoSelectLabel(values.permissaoAcesso);
+  const responsavelExibicao =
+    values.responsavelNome.trim() ||
+    userSelectLabel(users, values.responsavelId) ||
+    "";
 
   return (
     <div className="space-y-6">
@@ -278,10 +311,21 @@ export function DocumentoExternoRegistroCampos({
 
         {showProcesso ? (
           <div className="space-y-2">
-            <Label className="text-base">Setor *</Label>
+            <Label className="text-base">Documento referente ao setor *</Label>
             <Select
               value={values.processoId}
-              onValueChange={(v) => v && patch({ processoId: v })}
+              onValueChange={(v) => {
+                if (!v) return;
+                const aindaValida = filterEnderecamentosPorSetor(
+                  enderecamentos,
+                  v,
+                  categoriasLocalizacao
+                ).some((item) => item.endereco.trim() === values.localizacao.trim());
+                patch({
+                  processoId: v,
+                  ...(aindaValida ? {} : { localizacao: "" }),
+                });
+              }}
             >
               <SelectTrigger className={selectTriggerClass}>
                 <SelectValue placeholder="Selecione">
@@ -304,31 +348,60 @@ export function DocumentoExternoRegistroCampos({
         ) : null}
 
         <div className="space-y-2">
-          <Label className="text-base">Distribuição *</Label>
+          <Label className="text-base">A guarda é *</Label>
           <div className="flex flex-wrap gap-6">
             <label className="flex cursor-pointer items-center gap-3 text-base">
               <input
                 type="checkbox"
                 className="size-4 rounded border-input accent-brand-blue"
-                checked={values.distEletronica}
-                onChange={(e) => patch({ distEletronica: e.target.checked })}
+                checked={values.distFisica}
+                onChange={(e) => {
+                  const distFisica = e.target.checked;
+                  const categorias: EnderecamentoCategoria[] = [];
+                  if (distFisica) categorias.push("fisico");
+                  if (values.distEletronica) categorias.push("eletronico");
+                  const aindaValida = filterEnderecamentosPorSetor(
+                    enderecamentos,
+                    values.processoId,
+                    categorias
+                  ).some((item) => item.endereco.trim() === values.localizacao.trim());
+                  patch({
+                    distFisica,
+                    ...(aindaValida ? {} : { localizacao: "" }),
+                    ...(distFisica ? {} : { responsavelId: "", responsavelNome: "" }),
+                  });
+                }}
               />
-              Eletrônica
+              Física
             </label>
             <label className="flex cursor-pointer items-center gap-3 text-base">
               <input
                 type="checkbox"
                 className="size-4 rounded border-input accent-brand-blue"
-                checked={values.distFisica}
-                onChange={(e) => patch({ distFisica: e.target.checked })}
+                checked={values.distEletronica}
+                onChange={(e) => {
+                  const distEletronica = e.target.checked;
+                  const categorias: EnderecamentoCategoria[] = [];
+                  if (values.distFisica) categorias.push("fisico");
+                  if (distEletronica) categorias.push("eletronico");
+                  const aindaValida = filterEnderecamentosPorSetor(
+                    enderecamentos,
+                    values.processoId,
+                    categorias
+                  ).some((item) => item.endereco.trim() === values.localizacao.trim());
+                  patch({
+                    distEletronica,
+                    ...(aindaValida ? {} : { localizacao: "" }),
+                  });
+                }}
               />
-              Física
+              Eletrônica
             </label>
           </div>
         </div>
 
         <div className="space-y-2">
-          <Label className="text-base">Localização</Label>
+          <Label className="text-base">Localização do documento</Label>
           <Select
             value={values.localizacao}
             onValueChange={(v) => v && patch({ localizacao: v })}
@@ -341,7 +414,11 @@ export function DocumentoExternoRegistroCampos({
             <SelectContent className={selectContentClass}>
               {localizacaoOpcoes.length === 0 ? (
                 <SelectItem value="__vazio__" disabled className={selectItemClass}>
-                  Cadastre endereços em Configurações → Endereçamento
+                  {!values.processoId
+                    ? "Selecione o setor"
+                    : categoriasLocalizacao.length === 0
+                      ? "Marque se a guarda é física, eletrônica ou as duas"
+                      : "Nenhum endereço desta categoria para o setor"}
                 </SelectItem>
               ) : (
                 localizacaoOpcoes.map((opcao) => (
@@ -358,32 +435,21 @@ export function DocumentoExternoRegistroCampos({
           </Select>
         </div>
 
-        <div className="space-y-2">
-          <Label className="text-base">Responsável *</Label>
-          <Select
-            value={values.responsavelId}
-            onValueChange={(v) => v && patch({ responsavelId: v })}
-          >
-            <SelectTrigger className={selectTriggerClass}>
-              <SelectValue placeholder="Selecione">
-                {responsavelNome ?? null}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent className={selectContentClass}>
-              {users
-                .filter((u) => u.ativo)
-                .map((u) => (
-                  <SelectItem
-                    key={u.id}
-                    value={u.id}
-                    className={selectItemClass}
-                  >
-                    {u.nome}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {values.distFisica ? (
+          <PessoaSearchField
+            id="doc-externo-responsavel"
+            label="Responsável pela posse do documento *"
+            value={responsavelExibicao}
+            apenasFuncionarios
+            placeholder="Digite o nome do funcionário..."
+            onValueChange={(nome) => {
+              if (!nome.trim()) patch({ responsavelId: "", responsavelNome: "" });
+            }}
+            onPessoaSelect={(pessoa) =>
+              patch({ responsavelId: pessoa.id, responsavelNome: pessoa.nome })
+            }
+          />
+        ) : null}
       </fieldset>
 
       {showValidade ? (
@@ -408,37 +474,6 @@ export function DocumentoExternoRegistroCampos({
                 onChange={(e) => patch({ validadeData: e.target.value })}
                 required
               />
-            ) : null}
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex cursor-pointer items-center gap-3 text-base">
-              <input
-                type="checkbox"
-                className="size-4 rounded border-input accent-brand-blue"
-                checked={values.avisarAntes}
-                onChange={(e) => patch({ avisarAntes: e.target.checked })}
-              />
-              Avisar antes
-            </label>
-            {values.avisarAntes ? (
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min={1}
-                  max={365}
-                  className="h-10 w-20 text-base"
-                  value={values.avisarAntesDias}
-                  onChange={(e) =>
-                    patch({
-                      avisarAntesDias: Math.max(
-                        1,
-                        Number.parseInt(e.target.value, 10) || 1
-                      ),
-                    })
-                  }
-                />
-                <span className="text-sm text-muted-foreground">dia(s)</span>
-              </div>
             ) : null}
           </div>
         </fieldset>
@@ -495,7 +530,7 @@ export function DocumentoExternoRegistroCampos({
       <fieldset className="brand-fieldset space-y-4">
         <legend className="text-base">Notificações e permissões</legend>
         <div className="space-y-2">
-          <Label className="text-base">Avisar por e-mail</Label>
+          <Label className="text-base">Aviso de publicação por e-mail</Label>
           <MultiSelectSearch
             options={userOptions}
             value={values.avisoEmailIds}
@@ -503,32 +538,6 @@ export function DocumentoExternoRegistroCampos({
             placeholder="Selecione usuários"
             searchPlaceholder="Pesquisar usuário…"
           />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-base">Permissão de acesso</Label>
-          <Select
-            value={values.permissaoAcesso || undefined}
-            onValueChange={(v) =>
-              v && patch({ permissaoAcesso: v as PermissaoAcessoDocumento })
-            }
-          >
-            <SelectTrigger className={selectTriggerClass}>
-              <SelectValue placeholder="Selecione">
-                {permissaoAcessoNome ?? null}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent className={selectContentClass}>
-              <SelectItem value="todos" className={selectItemClass}>
-                Todos
-              </SelectItem>
-              <SelectItem value="restrito" className={selectItemClass}>
-                Restrito
-              </SelectItem>
-              <SelectItem value="responsavel" className={selectItemClass}>
-                Apenas responsável
-              </SelectItem>
-            </SelectContent>
-          </Select>
         </div>
       </fieldset>
     </div>

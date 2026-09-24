@@ -27,7 +27,10 @@ interface CreateEquipmentInput {
   descricao: string;
   local: string;
   setorId?: string;
+  possuiLocalFixo?: boolean;
   responsavelId?: string;
+  responsavelPosseId?: string;
+  responsavelPosseNome?: string;
   fornecedor?: string;
   tipoCalibracao: Equipment["tipoCalibracao"];
   frequenciaCalibracaoDias: number;
@@ -43,7 +46,10 @@ interface UpdateEquipmentInput {
   descricao: string;
   local: string;
   setorId: string;
+  possuiLocalFixo?: boolean;
   responsavelId: string;
+  responsavelPosseId?: string;
+  responsavelPosseNome?: string;
   fornecedor?: string;
   tipoCalibracao: Equipment["tipoCalibracao"];
   frequenciaCalibracaoDias: number;
@@ -153,8 +159,15 @@ export const useCalibrationsStore = create<CalibrationsState>()((set, get) => ({
         const eq: Equipment = {
           id,
           ...input,
-          setorId: input.setorId ?? "",
+          setorId: input.possuiLocalFixo ? (input.setorId ?? "") : "",
+          possuiLocalFixo: input.possuiLocalFixo,
           responsavelId: input.responsavelId ?? getQualidadeCurrentUserId(),
+          responsavelPosseId: input.possuiLocalFixo
+            ? undefined
+            : input.responsavelPosseId?.trim() || undefined,
+          responsavelPosseNome: input.possuiLocalFixo
+            ? undefined
+            : input.responsavelPosseNome?.trim() || undefined,
           fornecedor: input.fornecedor?.trim() || undefined,
           laudoNome: input.laudoNome?.trim() || undefined,
           laudoDataUrl: input.laudoDataUrl?.trim() || undefined,
@@ -177,8 +190,15 @@ export const useCalibrationsStore = create<CalibrationsState>()((set, get) => ({
               ...e,
               descricao: input.descricao,
               local: input.local,
-              setorId: input.setorId,
+              setorId: input.possuiLocalFixo ? input.setorId : "",
+              possuiLocalFixo: input.possuiLocalFixo,
               responsavelId: input.responsavelId,
+              responsavelPosseId: input.possuiLocalFixo
+                ? undefined
+                : input.responsavelPosseId?.trim() || undefined,
+              responsavelPosseNome: input.possuiLocalFixo
+                ? undefined
+                : input.responsavelPosseNome?.trim() || undefined,
               fornecedor: input.fornecedor?.trim() || undefined,
               tipoCalibracao: input.tipoCalibracao,
               frequenciaCalibracaoDias: input.frequenciaCalibracaoDias,
@@ -237,7 +257,12 @@ export const useCalibrationsStore = create<CalibrationsState>()((set, get) => ({
         const novosRegistros: CalibrationRecord[] = [];
         let versaoAtual = equipment.versaoLaudoAtual ?? INITIAL_REVISION;
 
-        if (equipment.laudoNome && equipment.laudoDataUrl) {
+        const laudoVigente =
+          Boolean(equipment.laudoNome?.trim()) &&
+          Boolean(
+            equipment.laudoDataUrl?.trim() || equipment.laudoStoragePath?.trim()
+          );
+        if (laudoVigente && equipment.laudoNome) {
           novosRegistros.push({
             id: generateId("cal"),
             equipmentId,
@@ -249,6 +274,7 @@ export const useCalibrationsStore = create<CalibrationsState>()((set, get) => ({
             laboratorio: equipment.fornecedor,
             laudoNome: equipment.laudoNome,
             laudoDataUrl: equipment.laudoDataUrl,
+            laudoStoragePath: equipment.laudoStoragePath,
             anexos: equipment.laudoAnexos?.length
               ? equipment.laudoAnexos
               : undefined,
@@ -272,6 +298,7 @@ export const useCalibrationsStore = create<CalibrationsState>()((set, get) => ({
                   proximaCalibracao: record.proximaCalibracao,
                   laudoNome: record.laudoNome,
                   laudoDataUrl: record.laudoDataUrl,
+                  laudoStoragePath: undefined,
                   laudoAnexos: record.anexos?.length ? record.anexos : undefined,
                   versaoLaudoAtual: versaoAtual,
                 }

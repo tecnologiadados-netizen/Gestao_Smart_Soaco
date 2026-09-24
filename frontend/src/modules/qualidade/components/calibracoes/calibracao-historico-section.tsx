@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { Badge } from "@qualidade/components/ui/badge";
 import {
   CalibracaoArquivoActions,
@@ -36,6 +37,15 @@ export function CalibracaoHistoricoSection({
     [calibrationRecords, equipment.id]
   );
 
+  const [abertos, setAbertos] = useState<Record<string, boolean>>({});
+
+  function alternar(id: string, abertoPadrao: boolean) {
+    setAbertos((atual) => ({
+      ...atual,
+      [id]: !(atual[id] ?? abertoPadrao),
+    }));
+  }
+
   const proximaCalibracao =
     equipment.proximaCalibracao ??
     calcularProximaData(
@@ -50,9 +60,14 @@ export function CalibracaoHistoricoSection({
       <legend>Histórico de calibrações</legend>
 
       {equipment.laudoNome ? (
-        <div className="rounded-lg border border-brand-blue/30 bg-brand-blue-light/20 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+        <article className="overflow-hidden rounded-lg border border-brand-blue/30 bg-brand-blue-light/20">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+            aria-expanded={abertos.atual ?? true}
+            onClick={() => alternar("atual", true)}
+          >
+            <span className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="font-semibold text-brand-navy">
                 Versão {versaoAtual}
               </span>
@@ -65,27 +80,39 @@ export function CalibracaoHistoricoSection({
               <Badge variant={getDueStatusVariant(statusCalibracao)}>
                 {dueStatusLabels[statusCalibracao]}
               </Badge>
+              {equipment.ultimaCalibracao ? (
+                <span className="text-xs text-muted-foreground">
+                  {formatarData(equipment.ultimaCalibracao)}
+                </span>
+              ) : null}
+            </span>
+            <ChevronDown
+              className={cn(
+                "size-4 shrink-0 text-muted-foreground transition-transform",
+                (abertos.atual ?? true) && "rotate-180"
+              )}
+            />
+          </button>
+          {(abertos.atual ?? true) ? (
+            <div className="border-t border-brand-blue/20 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="min-w-0 break-all text-sm font-medium">
+                  {equipment.laudoNome}
+                </p>
+                {equipment.laudoDataUrl || equipment.laudoStoragePath ? (
+                  <CalibracaoArquivoActions
+                    dataUrl={equipment.laudoDataUrl}
+                    storagePath={equipment.laudoStoragePath}
+                    nome={equipment.laudoNome}
+                  />
+                ) : null}
+              </div>
+              {equipment.laudoAnexos?.length ? (
+                <CalibracaoVersaoAnexosList anexos={equipment.laudoAnexos} />
+              ) : null}
             </div>
-            {equipment.laudoDataUrl || equipment.laudoStoragePath ? (
-              <CalibracaoArquivoActions
-                dataUrl={equipment.laudoDataUrl}
-                storagePath={equipment.laudoStoragePath}
-                nome={equipment.laudoNome}
-              />
-            ) : null}
-          </div>
-          <p className="mt-2 break-all text-sm font-medium">
-            {equipment.laudoNome}
-          </p>
-          {equipment.ultimaCalibracao ? (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Calibrado em {formatarData(equipment.ultimaCalibracao)}
-            </p>
           ) : null}
-          {equipment.laudoAnexos?.length ? (
-            <CalibracaoVersaoAnexosList anexos={equipment.laudoAnexos} />
-          ) : null}
-        </div>
+        </article>
       ) : (
         <p className="text-sm text-muted-foreground">
           Nenhum laudo vigente registrado.
@@ -99,35 +126,54 @@ export function CalibracaoHistoricoSection({
             return (
               <li
                 key={reg.id}
-                className={cn(
-                  "rounded-lg border border-border/80 bg-muted/20 p-4 text-sm"
-                )}
+                className="overflow-hidden rounded-lg border border-border/80 bg-muted/20 text-sm"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-semibold text-brand-navy">
-                    Versão {reg.versao}
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                  aria-expanded={abertos[reg.id] ?? false}
+                  onClick={() => alternar(reg.id, false)}
+                >
+                  <span className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="font-semibold text-brand-navy">
+                      Versão {reg.versao}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatarData(reg.data)}
+                      {responsavel ? ` · ${responsavel.nome}` : ""}
+                    </span>
                   </span>
-                  {(reg.laudoDataUrl || reg.laudoStoragePath) && reg.laudoNome ? (
-                    <CalibracaoArquivoActions
-                      dataUrl={reg.laudoDataUrl}
-                      storagePath={reg.laudoStoragePath}
-                      nome={reg.laudoNome}
-                    />
-                  ) : null}
-                </div>
-                {reg.laudoNome ? (
-                  <p className="mt-2 break-all font-medium">{reg.laudoNome}</p>
-                ) : null}
-                <p className="mt-1 text-muted-foreground">
-                  Calibrado em {formatarData(reg.data)}
-                  {responsavel ? ` · ${responsavel.nome}` : ""}
-                </p>
-                <p className="text-xs capitalize text-muted-foreground">
-                  {reg.tipo} · {reg.resultado}
-                  {reg.laboratorio ? ` · ${reg.laboratorio}` : ""}
-                </p>
-                {reg.anexos?.length ? (
-                  <CalibracaoVersaoAnexosList anexos={reg.anexos} />
+                  <ChevronDown
+                    className={cn(
+                      "size-4 shrink-0 text-muted-foreground transition-transform",
+                      abertos[reg.id] && "rotate-180"
+                    )}
+                  />
+                </button>
+                {abertos[reg.id] ? (
+                  <div className="border-t border-border/70 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      {reg.laudoNome ? (
+                        <p className="min-w-0 break-all font-medium">{reg.laudoNome}</p>
+                      ) : (
+                        <p className="text-muted-foreground">Sem laudo arquivado.</p>
+                      )}
+                      {(reg.laudoDataUrl || reg.laudoStoragePath) && reg.laudoNome ? (
+                        <CalibracaoArquivoActions
+                          dataUrl={reg.laudoDataUrl}
+                          storagePath={reg.laudoStoragePath}
+                          nome={reg.laudoNome}
+                        />
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-xs capitalize text-muted-foreground">
+                      {reg.tipo} · {reg.resultado}
+                      {reg.laboratorio ? ` · ${reg.laboratorio}` : ""}
+                    </p>
+                    {reg.anexos?.length ? (
+                      <CalibracaoVersaoAnexosList anexos={reg.anexos} />
+                    ) : null}
+                  </div>
                 ) : null}
               </li>
             );

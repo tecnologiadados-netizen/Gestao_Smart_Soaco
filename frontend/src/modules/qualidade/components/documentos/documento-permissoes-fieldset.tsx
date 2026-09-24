@@ -103,16 +103,6 @@ export function DocumentoPermissoesFieldset({
         />
       </PermissaoCampo>
 
-      <PermissaoCampo label="Quem pode imprimir arquivo">
-        <MultiSelectSearch
-          options={userOptions}
-          value={values.imprimirArquivoIds}
-          onChange={(imprimirArquivoIds) => patch({ imprimirArquivoIds })}
-          placeholder="Selecione quem pode imprimir"
-          searchPlaceholder="Pesquisar usuário…"
-        />
-      </PermissaoCampo>
-
       <PermissaoCampo label="Cópias distribuídas">
         <MultiSelectSearch
           options={processoOptions}

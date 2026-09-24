@@ -397,18 +397,20 @@ export function SolicitarRevisaoDocumentoDialog({
             </div>
           </div>
 
-          <div className="sgq-form-footer justify-end px-8 py-5">
+          <div className="sgq-form-footer px-8 py-5">
             <Button type="submit" size="lg" className="min-w-48">
               {fluxoInterno ? "Enviar para elaboração" : "Confirmar nova revisão"}
             </Button>
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              onClick={handleFechar}
-            >
-              {onVoltar ? "Voltar para revalidação" : "Cancelar"}
-            </Button>
+            {onVoltar ? (
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                onClick={handleFechar}
+              >
+                Voltar para revalidação
+              </Button>
+            ) : null}
           </div>
         </form>
       </DialogContent>

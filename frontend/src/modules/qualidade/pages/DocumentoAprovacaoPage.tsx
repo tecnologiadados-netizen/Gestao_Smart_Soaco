@@ -172,15 +172,6 @@ export function AprovacaoDocumentoPage() {
           >
             {modoReprovacao ? "Confirmar reprovação" : "Reprovar"}
           </Button>
-          <Button
-            type="button"
-            size="lg"
-            variant="outline"
-            disabled={sincronizando}
-            onClick={() => navigate("/qualidade/documentos")}
-          >
-            Cancelar
-          </Button>
         </>
       }
     >

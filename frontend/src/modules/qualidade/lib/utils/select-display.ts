@@ -32,6 +32,18 @@ export function labelResponsavel(
   return users.find((u) => u.id === raw)?.nome ?? raw;
 }
 
+/** Posse do documento: nome gravado da pessoa Nomus, ou usuário legado do SGQ. */
+export function labelResponsavelPosse(
+  users: User[],
+  id: string | null | undefined,
+  nomeSalvo?: string | null,
+  fallback = "—"
+): string {
+  const nome = (nomeSalvo ?? "").trim();
+  if (nome) return nome;
+  return labelResponsavel(users, id, fallback);
+}
+
 export function departmentSelectLabel(
   departments: Department[],
   id: string,

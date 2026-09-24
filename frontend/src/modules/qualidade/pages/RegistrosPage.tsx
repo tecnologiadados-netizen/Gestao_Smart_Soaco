@@ -306,15 +306,6 @@ function RegistrosPageContent() {
                     ? "Salvar RNC"
                     : "Salvar RCC"}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                onClick={() => handleDialogOpenChange(false)}
-                disabled={salvando}
-              >
-                Fechar
-              </Button>
             </div>
           ) : null}
         </DialogContent>

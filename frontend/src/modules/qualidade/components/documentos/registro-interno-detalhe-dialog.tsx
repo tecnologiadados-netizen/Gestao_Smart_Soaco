@@ -1,6 +1,13 @@
 import { useMemo, useState } from "react";
-import { FileText, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ChevronDown, FileText, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@qualidade/components/ui/dropdown-menu";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Badge } from "@qualidade/components/ui/badge";
 import { ConfirmacaoDialog } from "@qualidade/components/ui/confirmacao-dialog";
@@ -19,13 +26,15 @@ import {
 import { formatarData, formatarDataHora } from "@qualidade/lib/utils/dates";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import {
-  labelResponsavel,
-  permissaoAcessoSelectLabel,
+  labelResponsavelPosse,
 } from "@qualidade/lib/utils/select-display";
 import { openQualidadeArquivo } from "@qualidade/lib/documents/file-actions";
 import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-print-window";
 import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
-import { buildLocalizacaoOpcoes } from "@qualidade/lib/enderecamentos-sync";
+import {
+  formatLocalizacoesDocumento,
+  parseLocalizacoesDocumento,
+} from "@qualidade/lib/enderecamentos-sync";
 import {
   labelPrazoRetencaoDocumento,
   mergeRegistroOcorrencias,
@@ -38,6 +47,13 @@ interface Props {
   documentId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+function rotuloDocumento(
+  doc: { codigo: string; versaoAtual: string; titulo: string } | undefined
+) {
+  if (!doc) return "Documento não encontrado";
+  return `${formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)} — ${doc.titulo}`;
 }
 
 function MetaItem({ label, value }: { label: string; value: string }) {
@@ -96,12 +112,10 @@ export function RegistroInternoDetalheDialog({
   );
   const versaoAtual = versoes.find((v) => v.versao === doc?.versaoAtual);
   const setor = departments.find((d) => d.id === doc?.setorId);
-  const localizacaoLabel = useMemo(() => {
-    const valor = doc?.localizacao?.trim() ?? "";
-    if (!valor) return "—";
-    const opcoes = buildLocalizacaoOpcoes(enderecamentos, departments, valor);
-    return opcoes.find((opcao) => opcao.value === valor)?.label ?? valor;
-  }, [departments, doc?.localizacao, enderecamentos]);
+  const localizacaoLabel = useMemo(
+    () => formatLocalizacoesDocumento(doc?.localizacao, enderecamentos, departments),
+    [departments, doc?.localizacao, enderecamentos]
+  );
 
   const ocorrencias = useMemo(
     () =>
@@ -117,6 +131,24 @@ export function RegistroInternoDetalheDialog({
     () => (doc ? modeloDoRegistro(doc, versaoAtual) : null),
     [doc, versaoAtual]
   );
+  const modeloVinculado = useMemo(() => {
+    const id = doc?.externoRegistro?.modeloDocumentoId;
+    if (!id) return undefined;
+    return documents.find((item) => item.id === id);
+  }, [doc?.externoRegistro?.modeloDocumentoId, documents]);
+  const documentosAssociados = useMemo(() => {
+    const ids = doc?.externoRegistro?.documentosAssociadosIds ?? [];
+    return ids
+      .filter((id) => id && id !== doc?.externoRegistro?.modeloDocumentoId)
+      .map((id) => ({
+        id,
+        doc: documents.find((item) => item.id === id),
+      }));
+  }, [
+    doc?.externoRegistro?.documentosAssociadosIds,
+    doc?.externoRegistro?.modeloDocumentoId,
+    documents,
+  ]);
 
   async function abrirArquivo(arquivo: {
     nome: string;
@@ -181,10 +213,6 @@ export function RegistroInternoDetalheDialog({
 
   if (!doc) return null;
 
-  const permissaoLabel =
-    permissaoAcessoSelectLabel(doc.externoRegistro?.permissaoAcesso ?? "") ??
-    (doc.permissoes?.consultarTodos ? "Todos" : "Restrito");
-
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -243,15 +271,22 @@ export function RegistroInternoDetalheDialog({
                     label="Documento referente ao setor"
                     value={setor?.nome ?? "—"}
                   />
-                  <MetaItem
-                    label="Responsável pelo cadastro"
-                    value={labelResponsavel(users, versaoAtual?.elaboradorId)}
-                  />
+                  {parseLocalizacoesDocumento(doc.localizacao).some(
+                    (item) => item.categoria === "fisico"
+                  ) ? (
+                    <MetaItem
+                      label="Responsável pela posse do documento"
+                      value={labelResponsavelPosse(
+                        users,
+                        versaoAtual?.elaboradorId,
+                        doc.externoRegistro?.responsavelNome
+                      )}
+                    />
+                  ) : null}
                   <MetaItem
                     label="Localização do documento"
                     value={localizacaoLabel}
                   />
-                  <MetaItem label="Permissão de acesso" value={permissaoLabel} />
                   <MetaItem
                     label="Prazo de retenção"
                     value={labelPrazoRetencaoDocumento(doc.externoRegistro)}
@@ -273,29 +308,56 @@ export function RegistroInternoDetalheDialog({
                     value={documentOrigemLabelsLong[doc.origem]}
                   />
                 </div>
-                <div className="mt-6 border-t border-border/60 pt-5">
-                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Modelo do documento
-                  </p>
-                  {modelo?.nome ? (
-                    <div className="flex flex-wrap items-center gap-3">
-                      <button
-                        type="button"
-                        className="break-all text-left text-sm font-medium text-brand-blue hover:underline"
-                        onClick={() => void abrirArquivo(modelo)}
-                      >
-                        {modelo.nome}
-                      </button>
-                      <SgqArquivoAcoes
-                        arquivo={modelo}
-                        onError={setErroArquivo}
-                      />
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Nenhum modelo anexado.
+                <div className="mt-6 space-y-5 border-t border-border/60 pt-5">
+                  <div>
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Modelo do documento
                     </p>
-                  )}
+                    {modeloVinculado ? (
+                      <p className="text-sm font-medium text-brand-navy">
+                        {rotuloDocumento(modeloVinculado)}
+                      </p>
+                    ) : modelo?.nome ? (
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          className="break-all text-left text-sm font-medium text-brand-blue hover:underline"
+                          onClick={() => void abrirArquivo(modelo)}
+                        >
+                          {modelo.nome}
+                        </button>
+                        <SgqArquivoAcoes
+                          arquivo={modelo}
+                          onError={setErroArquivo}
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhum documento vinculado.
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Associar a outros documentos
+                    </p>
+                    {documentosAssociados.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhum documento associado.
+                      </p>
+                    ) : (
+                      <ul className="space-y-1.5">
+                        {documentosAssociados.map((item) => (
+                          <li
+                            key={item.id}
+                            className="text-sm font-medium text-brand-navy"
+                          >
+                            {rotuloDocumento(item.doc)}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
                 {doc.externoRegistro?.observacao?.trim() ? (
                   <div className="mt-6 border-t border-border/60 pt-5">
@@ -418,24 +480,31 @@ export function RegistroInternoDetalheDialog({
             {erroExclusao ? (
               <p className="mr-auto text-sm text-destructive">{erroExclusao}</p>
             ) : null}
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Fechar
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={doc.status !== "vigente"}
-              onClick={() => setConfirmacao("inativar")}
-            >
-              Inativar
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => setConfirmacao("excluir")}
-            >
-              Excluir
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button type="button" variant="outline" className="gap-1.5" />
+                }
+              >
+                Mais ações
+                <ChevronDown className="size-4" aria-hidden />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top" className="min-w-44">
+                <DropdownMenuItem
+                  disabled={doc.status !== "vigente"}
+                  onClick={() => setConfirmacao("inativar")}
+                >
+                  Inativar
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => setConfirmacao("excluir")}
+                >
+                  Excluir
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </DialogContent>
       </Dialog>

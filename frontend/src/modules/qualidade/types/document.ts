@@ -126,6 +126,10 @@ export interface DocumentExternoRegistro {
   associarDocumentos: boolean;
   documentosAssociadosIds: string[];
   permissaoAcesso: PermissaoAcessoDocumento;
+  /** Nome da pessoa Nomus (categoria Funcionário) responsável pela posse. */
+  responsavelNome?: string;
+  /** Id da pessoa Nomus quando o elaborador do fluxo é outra pessoa. */
+  responsavelPosseId?: string;
   anexos?: DocumentoAnexoArquivo[];
   /** Prazo de retenção (texto de exibição, ex.: "2 anos"). */
   retencao?: string;
@@ -135,7 +139,9 @@ export interface DocumentExternoRegistro {
   protecao?: string;
   /** Como recuperar o registro (texto livre). */
   recuperacao?: string;
-  /** Arquivo-modelo da ficha (preenchido no cadastro). */
+  /** Documento interno, externo ou registro usado como modelo da ficha. */
+  modeloDocumentoId?: string;
+  /** Arquivo-modelo legado, de cadastros anteriores ao vínculo. */
   modelo?: DocumentoAnexoArquivo;
   /** Histórico de arquivos inseridos no registro interno. */
   ocorrencias?: DocumentoRegistroOcorrencia[];

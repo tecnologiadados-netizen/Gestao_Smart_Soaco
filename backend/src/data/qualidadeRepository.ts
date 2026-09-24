@@ -414,7 +414,10 @@ function mapEquipamento(
     descricao: string;
     local: string;
     setorUid: string;
+    possuiLocalFixo: boolean | null;
     responsavelLogin: string;
+    responsavelPosseId: string | null;
+    responsavelPosseNome: string | null;
     fornecedor: string | null;
     tipoCalibracao: string;
     frequenciaCalibracaoDias: number;
@@ -451,7 +454,10 @@ function mapEquipamento(
     descricao: row.descricao,
     local: row.local,
     setorId: row.setorUid,
+    possuiLocalFixo: row.possuiLocalFixo ?? undefined,
     responsavelId: row.responsavelLogin,
+    responsavelPosseId: row.responsavelPosseId ?? undefined,
+    responsavelPosseNome: row.responsavelPosseNome ?? undefined,
     fornecedor: row.fornecedor ?? undefined,
     tipoCalibracao: row.tipoCalibracao,
     frequenciaCalibracaoDias: row.frequenciaCalibracaoDias,
@@ -610,11 +616,35 @@ function mapTarefa(row: {
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
+/**
+ * SQLite só aplica FK com PRAGMA foreign_keys=ON. Sem isso, apagar um documento
+ * deixa revalidação/alerta/versão apontando para id inexistente e o include
+ * obrigatório do Prisma aborta o bootstrap ("documento is required... got null").
+ */
+async function limparOrfaosRelacaoSgq() {
+  const stmts = [
+    `DELETE FROM sgq_documento_revalidacao WHERE documentoId NOT IN (SELECT id FROM sgq_documento)`,
+    `DELETE FROM sgq_documento_alerta WHERE documentoId NOT IN (SELECT id FROM sgq_documento)`,
+    `DELETE FROM sgq_documento_versao WHERE documentoId NOT IN (SELECT id FROM sgq_documento)`,
+    `DELETE FROM sgq_calibracao WHERE equipamentoId NOT IN (SELECT id FROM sgq_equipamento)`,
+    `DELETE FROM sgq_verificacao WHERE equipamentoId NOT IN (SELECT id FROM sgq_equipamento)`,
+  ];
+  for (const sql of stmts) {
+    try {
+      const n = await prisma.$executeRawUnsafe(sql);
+      if (n > 0) console.warn(`[sgq] removidos ${n} órfãos: ${sql.slice(12, 48)}`);
+    } catch (e) {
+      console.warn('[sgq] falha ao limpar órfãos:', e instanceof Error ? e.message : e);
+    }
+  }
+}
+
 export async function getQualidadeBootstrap() {
   await ensureSgqCatalogosSeed();
   await ensureSgqHistoricoSeed();
   // Anexos antigos em base64 no JSON → disco (não apaga; só reorganiza).
   await migrateEmbeddedAnexosToDisk();
+  await limparOrfaosRelacaoSgq();
 
   const [
     setores,
@@ -1516,7 +1546,19 @@ export async function syncQualidadeCalibrations(payload: {
         descricao: String(eq.descricao ?? ''),
         local: String(eq.local ?? ''),
         setorUid,
+        possuiLocalFixo:
+          eq.possuiLocalFixo === true
+            ? true
+            : eq.possuiLocalFixo === false
+              ? false
+              : null,
         responsavelLogin: String(eq.responsavelId ?? ''),
+        responsavelPosseId: eq.responsavelPosseId
+          ? String(eq.responsavelPosseId)
+          : null,
+        responsavelPosseNome: eq.responsavelPosseNome
+          ? String(eq.responsavelPosseNome)
+          : null,
         fornecedor: eq.fornecedor ? String(eq.fornecedor) : null,
         tipoCalibracao: String(eq.tipoCalibracao ?? 'interna'),
         frequenciaCalibracaoDias: Number(eq.frequenciaCalibracaoDias ?? 365),
@@ -1535,7 +1577,19 @@ export async function syncQualidadeCalibrations(payload: {
         descricao: String(eq.descricao ?? ''),
         local: String(eq.local ?? ''),
         setorUid,
+        possuiLocalFixo:
+          eq.possuiLocalFixo === true
+            ? true
+            : eq.possuiLocalFixo === false
+              ? false
+              : null,
         responsavelLogin: String(eq.responsavelId ?? ''),
+        responsavelPosseId: eq.responsavelPosseId
+          ? String(eq.responsavelPosseId)
+          : null,
+        responsavelPosseNome: eq.responsavelPosseNome
+          ? String(eq.responsavelPosseNome)
+          : null,
         fornecedor: eq.fornecedor ? String(eq.fornecedor) : null,
         tipoCalibracao: String(eq.tipoCalibracao ?? 'interna'),
         frequenciaCalibracaoDias: Number(eq.frequenciaCalibracaoDias ?? 365),
@@ -1567,7 +1621,12 @@ export async function syncQualidadeCalibrations(payload: {
       select: { laudoStoragePath: true, anexosJson: true },
     });
 
-    let laudoStoragePath: string | null = null;
+    const caminhoExistente =
+      typeof cal.laudoStoragePath === 'string' &&
+      cal.laudoStoragePath.startsWith('/uploads/qualidade/')
+        ? cal.laudoStoragePath
+        : null;
+    let laudoStoragePath: string | null = caminhoExistente;
     const laudoNome = cal.laudoNome ? String(cal.laudoNome) : null;
     const incoming = extractBase64(cal.laudoDataUrl as string | undefined);
     if (incoming && laudoNome) {

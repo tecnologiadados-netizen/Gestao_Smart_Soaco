@@ -19,6 +19,9 @@ interface PessoaSearchFieldProps {
   onPessoaSelect?: (pessoa: PessoaErp) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** Restringe à categoria Funcionário no Nomus. */
+  apenasFuncionarios?: boolean;
+  descricao?: string;
 }
 
 export function PessoaSearchField({
@@ -29,6 +32,8 @@ export function PessoaSearchField({
   onPessoaSelect,
   disabled = false,
   placeholder = "Digite o nome...",
+  apenasFuncionarios = false,
+  descricao,
 }: PessoaSearchFieldProps) {
   const listId = useId();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -60,6 +65,7 @@ export function PessoaSearchField({
       const lista = await fetchPessoasClient({
         q: busca.trim() || undefined,
         limit,
+        apenasFuncionarios,
       });
       setResultados(lista);
     } catch {
@@ -79,7 +85,7 @@ export function PessoaSearchField({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [termo, disabled, selecionado]);
+  }, [termo, disabled, selecionado, apenasFuncionarios]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -199,7 +205,10 @@ export function PessoaSearchField({
       ) : null}
 
       <p className="text-xs text-muted-foreground">
-        Busca pessoas ativas cadastradas no Nomus.
+        {descricao ??
+          (apenasFuncionarios
+            ? "Funcionários ativos no Nomus (categoria Funcionário)."
+            : "Busca pessoas ativas cadastradas no Nomus.")}
       </p>
     </div>
   );

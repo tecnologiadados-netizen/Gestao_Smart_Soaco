@@ -3,7 +3,9 @@ import { persistConfigToServer } from '@qualidade/lib/qualidadeConfigSync';
 import {
   isEnderecamentoSetorGeral,
   type Enderecamento,
+  type EnderecamentoCategoria,
 } from '@qualidade/types/enderecamento';
+import { normalizarCategoriaEnderecamento } from '@qualidade/lib/enderecamentos-sync';
 import type { Department, DocumentType, User } from '@qualidade/types/user';
 
 function setorIdValidoParaEnderecamento(
@@ -26,8 +28,17 @@ interface ConfigState {
   addDocumentType: (nome: string, sigla: string) => boolean;
   updateDocumentType: (id: string, nome: string, sigla: string) => boolean;
   removeDocumentType: (id: string) => void;
-  addEnderecamento: (setorId: string, endereco: string) => boolean;
-  updateEnderecamento: (id: string, setorId: string, endereco: string) => boolean;
+  addEnderecamento: (
+    setorId: string,
+    endereco: string,
+    categoria: EnderecamentoCategoria
+  ) => boolean;
+  updateEnderecamento: (
+    id: string,
+    setorId: string,
+    endereco: string,
+    categoria: EnderecamentoCategoria
+  ) => boolean;
   removeEnderecamento: (id: string) => void;
 }
 
@@ -39,6 +50,7 @@ function enderecamentoDuplicado(
   enderecamentos: Enderecamento[],
   setorId: string,
   endereco: string,
+  categoria: EnderecamentoCategoria,
   ignoreId?: string
 ): boolean {
   const alvo = normalizarEndereco(endereco);
@@ -46,6 +58,7 @@ function enderecamentoDuplicado(
     (e) =>
       e.id !== ignoreId &&
       e.setorId === setorId &&
+      normalizarCategoriaEnderecamento(e.categoria) === categoria &&
       normalizarEndereco(e.endereco) === alvo
   );
 }
@@ -166,31 +179,52 @@ export const useConfigStore = create<ConfigState>()((set, get) => ({
     syncConfigAfterMutation();
   },
 
-  addEnderecamento: (setorId, endereco) => {
+  addEnderecamento: (setorId, endereco, categoria) => {
     const enderecoNorm = endereco.trim();
+    const categoriaNorm = normalizarCategoriaEnderecamento(categoria);
     if (!setorId || !enderecoNorm) return false;
     if (!setorIdValidoParaEnderecamento(get().departments, setorId)) return false;
-    if (enderecamentoDuplicado(get().enderecamentos, setorId, enderecoNorm)) return false;
+    if (enderecamentoDuplicado(get().enderecamentos, setorId, enderecoNorm, categoriaNorm)) {
+      return false;
+    }
 
     set((state) => ({
       enderecamentos: [
         ...state.enderecamentos,
-        { id: generateId('end'), setorId, endereco: enderecoNorm },
+        {
+          id: generateId('end'),
+          setorId,
+          endereco: enderecoNorm,
+          categoria: categoriaNorm,
+        },
       ],
     }));
     syncEnderecamentosAfterMutation();
     return true;
   },
 
-  updateEnderecamento: (id, setorId, endereco) => {
+  updateEnderecamento: (id, setorId, endereco, categoria) => {
     const enderecoNorm = endereco.trim();
+    const categoriaNorm = normalizarCategoriaEnderecamento(categoria);
     if (!setorId || !enderecoNorm) return false;
     if (!setorIdValidoParaEnderecamento(get().departments, setorId)) return false;
-    if (enderecamentoDuplicado(get().enderecamentos, setorId, enderecoNorm, id)) return false;
+    if (
+      enderecamentoDuplicado(
+        get().enderecamentos,
+        setorId,
+        enderecoNorm,
+        categoriaNorm,
+        id
+      )
+    ) {
+      return false;
+    }
 
     set((state) => ({
       enderecamentos: state.enderecamentos.map((e) =>
-        e.id === id ? { ...e, setorId, endereco: enderecoNorm } : e
+        e.id === id
+          ? { ...e, setorId, endereco: enderecoNorm, categoria: categoriaNorm }
+          : e
       ),
     }));
     syncEnderecamentosAfterMutation();

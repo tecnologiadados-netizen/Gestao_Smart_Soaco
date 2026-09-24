@@ -10,6 +10,8 @@ import {
 export interface FetchPessoasOptions {
   q?: string;
   limit?: number;
+  /** Só pessoas com a categoria Funcionário marcada no Nomus. */
+  apenasFuncionarios?: boolean;
 }
 
 export async function fetchPessoasClient(
@@ -17,6 +19,7 @@ export async function fetchPessoasClient(
 ): Promise<PessoaErp[]> {
   const params = new URLSearchParams();
   if (options.q?.trim()) params.set("q", options.q.trim());
+  if (options.apenasFuncionarios) params.set("funcionarios", "1");
   params.set("limit", String(options.limit ?? PESSOAS_INITIAL_LIMIT));
 
   const response = await apiFetch(

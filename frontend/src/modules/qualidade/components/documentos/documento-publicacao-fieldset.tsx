@@ -121,26 +121,6 @@ export function DocumentoPublicacaoFieldset({ values, onChange }: Props) {
         <input
           type="checkbox"
           className="size-4 rounded border-input accent-brand-blue"
-          checked={values.solicitarRevisaoAposPublicacao}
-          onChange={(e) =>
-            patch({ solicitarRevisaoAposPublicacao: e.target.checked })
-          }
-        />
-        Solicitar revisão após publicação
-      </label>
-      <label className="flex cursor-pointer items-center gap-3 text-base">
-        <input
-          type="checkbox"
-          className="size-4 rounded border-input accent-brand-blue"
-          checked={values.avisarPorEmail}
-          onChange={(e) => patch({ avisarPorEmail: e.target.checked })}
-        />
-        Avisar por e-mail
-      </label>
-      <label className="flex cursor-pointer items-center gap-3 text-base">
-        <input
-          type="checkbox"
-          className="size-4 rounded border-input accent-brand-blue"
           checked={values.validadeAtiva}
           onChange={(e) => patch({ validadeAtiva: e.target.checked })}
         />

@@ -10,7 +10,6 @@ interface FormDialogProps {
   descricao?: string;
   onSubmit: (e: React.FormEvent) => void;
   submitLabel?: string;
-  cancelLabel?: string;
   children: React.ReactNode;
   error?: string;
   className?: string;
@@ -23,7 +22,6 @@ export function FormDialog({
   descricao,
   onSubmit,
   submitLabel = "Salvar",
-  cancelLabel = "Cancelar",
   children,
   error,
   className,
@@ -66,10 +64,7 @@ export function FormDialog({
             ) : null}
           </div>
 
-          <div className="sgq-form-footer justify-end">
-            <Button type="button" variant="outline" onClick={handleClose}>
-              {cancelLabel}
-            </Button>
+          <div className="sgq-form-footer">
             <Button type="submit">{submitLabel}</Button>
           </div>
         </form>

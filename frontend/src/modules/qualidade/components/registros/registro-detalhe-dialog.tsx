@@ -305,13 +305,6 @@ export function RegistroDetalheDialog({
                     Editar
                   </Button>
                 ) : null}
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => onOpenChange(false)}
-                >
-                  Fechar
-                </Button>
               </div>
             </>
           )}

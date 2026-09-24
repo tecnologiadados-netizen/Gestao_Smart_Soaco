@@ -19,6 +19,8 @@ interface MultiSelectSearchProps {
   emptyMessage?: string;
   disabled?: boolean;
   id?: string;
+  /** Quando falso, a seleção fica em um único item. */
+  multiple?: boolean;
 }
 
 export function MultiSelectSearch({
@@ -30,6 +32,7 @@ export function MultiSelectSearch({
   emptyMessage = "Nenhum resultado encontrado.",
   disabled = false,
   id,
+  multiple = true,
 }: MultiSelectSearchProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -65,6 +68,12 @@ export function MultiSelectSearch({
   }, [open]);
 
   function toggleOption(optionValue: string) {
+    if (!multiple) {
+      onChange(value.includes(optionValue) ? [] : [optionValue]);
+      setOpen(false);
+      setSearch("");
+      return;
+    }
     if (value.includes(optionValue)) {
       onChange(value.filter((item) => item !== optionValue));
       return;
@@ -147,7 +156,7 @@ export function MultiSelectSearch({
           </div>
           <ul
             role="listbox"
-            aria-multiselectable="true"
+            aria-multiselectable={multiple}
             className="max-h-52 overflow-y-auto p-1"
           >
             {filteredOptions.length === 0 ? (

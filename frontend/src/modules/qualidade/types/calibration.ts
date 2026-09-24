@@ -8,7 +8,13 @@ export interface Equipment {
   descricao: string;
   local: string;
   setorId: string;
+  /** Quando verdadeiro, o equipamento fica em um setor. Quando falso, a posse é de uma pessoa. */
+  possuiLocalFixo?: boolean;
+  /** Usuário do Gestão Smart responsável pela calibração. */
   responsavelId: string;
+  /** Pessoa Nomus (funcionário) responsável pela posse. */
+  responsavelPosseId?: string;
+  responsavelPosseNome?: string;
   fornecedor?: string;
   tipoCalibracao: CalibrationType;
   frequenciaCalibracaoDias: number;

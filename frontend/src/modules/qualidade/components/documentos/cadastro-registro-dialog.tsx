@@ -1,7 +1,8 @@
 import { useNavigate } from "react-router-dom";
-import { useEffect, useId, useMemo, useState } from "react";
-import { Paperclip, Upload, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
+import { MultiSelectSearch } from "@qualidade/components/ui/multi-select-search";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -23,23 +24,17 @@ import {
   type RegistroInternoFormValues,
 } from "@qualidade/lib/documents/registro-interno";
 import { afterUiTransition } from "@qualidade/lib/motion";
-import {
-  flushQualidadeDocumentsSync,
-  markQualidadeDocumentFilesPending,
-} from "@qualidade/lib/qualidadePersistence";
+import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { cn } from "@qualidade/lib/utils";
 import {
   departmentSelectLabel,
-  permissaoAcessoSelectLabel,
   userSelectLabel,
 } from "@qualidade/lib/utils/select-display";
-import type { PermissaoAcessoDocumento, RetencaoUnidade } from "@qualidade/types/document";
-import {
-  SGQ_ANEXO_ACCEPT,
-  SGQ_ANEXO_MAX_BYTES,
-} from "@qualidade/types/registro-anexo";
+import type { RetencaoUnidade } from "@qualidade/types/document";
+import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
+import { documentOrigemLabelsLong } from "@qualidade/lib/utils/status-labels";
 
 interface Props {
   open: boolean;
@@ -71,19 +66,41 @@ export function CadastroRegistroDialog({
     (s) => s.getVersionsByDocumentId
   );
   const getNextDocumentCode = useDocumentsStore((s) => s.getNextDocumentCode);
+  const documents = useDocumentsStore((s) => s.documents);
   const documentTypes = useConfigStore((s) => s.documentTypes);
   const departments = useConfigStore((s) => s.departments);
   const users = useConfigStore((s) => s.users);
-  const currentUserId = useConfigStore((s) => s.currentUserId);
 
   const [values, setValues] = useState<RegistroInternoFormValues>(() =>
-    defaultRegistroInternoValues(currentUserId)
+    defaultRegistroInternoValues()
   );
   const [erro, setErro] = useState("");
   const [saving, setSaving] = useState(false);
-  const modeloInputId = useId();
+  const [guardaFisica, setGuardaFisica] = useState(false);
 
   const editando = Boolean(documentId);
+
+  const opcoesModelo = useMemo(() => {
+    return documents
+      .filter(
+        (d) =>
+          d.id !== documentId &&
+          (d.origem === "interno" ||
+            d.origem === "externo" ||
+            d.origem === "registro")
+      )
+      .map((d) => ({
+        value: d.id,
+        label: `${formatDocumentCodigoExibicao(d.codigo, d.versaoAtual)} — ${d.titulo}`,
+        description: documentOrigemLabelsLong[d.origem],
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+  }, [documentId, documents]);
+
+  const opcoesAssociados = useMemo(
+    () => opcoesModelo.filter((opcao) => opcao.value !== values.modeloDocumentoId),
+    [opcoesModelo, values.modeloDocumentoId]
+  );
 
   const registroTipo = useMemo(() => {
     const found = documentTypes.find((t) => t.sigla === REGISTRO_INTERNO_SIGLA);
@@ -97,14 +114,14 @@ export function CadastroRegistroDialog({
   }, [documentTypes]);
 
   function resetForm() {
-    setValues(defaultRegistroInternoValues(currentUserId));
+    setValues(defaultRegistroInternoValues());
     setErro("");
   }
 
   useEffect(() => {
     if (!open) return;
     if (!documentId) {
-      setValues(defaultRegistroInternoValues(currentUserId));
+      setValues(defaultRegistroInternoValues());
       setErro("");
       return;
     }
@@ -117,14 +134,13 @@ export function CadastroRegistroDialog({
       registroInternoValuesFromDocument(
         doc,
         versaoAtual,
-        versaoAtual?.elaboradorId || currentUserId
+        versaoAtual?.elaboradorId || ""
       )
     );
     setErro("");
   }, [
     open,
     documentId,
-    currentUserId,
     getDocumentById,
     getVersionsByDocumentId,
   ]);
@@ -132,23 +148,6 @@ export function CadastroRegistroDialog({
   function patch(partial: Partial<RegistroInternoFormValues>) {
     setValues((prev) => ({ ...prev, ...partial }));
     if (erro) setErro("");
-  }
-
-  function selecionarModelo(file: File) {
-    if (file.size > SGQ_ANEXO_MAX_BYTES) {
-      setErro(`"${file.name}" excede o limite de 5 MB.`);
-      return;
-    }
-    setErro("");
-    const reader = new FileReader();
-    reader.onload = () => {
-      patch({
-        modeloNome: file.name,
-        modeloDataUrl: reader.result as string,
-        modeloStoragePath: undefined,
-      });
-    };
-    reader.readAsDataURL(file);
   }
 
   function handleClose() {
@@ -161,13 +160,10 @@ export function CadastroRegistroDialog({
     const pendentes: string[] = [];
     if (!values.titulo.trim()) pendentes.push("Título");
     if (!values.processoId) pendentes.push("Documento referente ao setor");
-    if (!values.responsavelId) pendentes.push("Responsável pelo cadastro");
-    if (
-      !values.modeloNome.trim() ||
-      !(values.modeloDataUrl.trim() || values.modeloStoragePath?.trim())
-    ) {
-      pendentes.push("Modelo do documento");
+    if (guardaFisica && !values.responsavelId) {
+      pendentes.push("Responsável pela posse do documento");
     }
+    if (!values.modeloDocumentoId) pendentes.push("Modelo do documento");
     if (pendentes.length > 0) {
       setErro(`Preencha os campos obrigatórios: ${pendentes.join(", ")}.`);
       return;
@@ -183,32 +179,15 @@ export function CadastroRegistroDialog({
       permissoes: buildPermissoesFromRegistroInterno(values),
       externoRegistro: buildRegistroInternoMeta(values),
     };
-    const modeloArquivo = values.modeloNome.trim()
-      ? {
-          nome: values.modeloNome.trim(),
-          dataUrl: values.modeloDataUrl,
-          ...(values.modeloStoragePath
-            ? { storagePath: values.modeloStoragePath }
-            : {}),
-        }
-      : null;
-    const modeloNovo = Boolean(values.modeloDataUrl.startsWith("data:"));
-
     try {
       if (editando && documentId) {
         const ok = updateRegistroInternoCadastro(documentId, {
           ...payload,
-          modelo: modeloArquivo,
+          modelo: null,
         });
         if (!ok) {
           setErro("Não foi possível atualizar o registro.");
           return;
-        }
-        if (modeloNovo) {
-          const versaoAtual = getVersionsByDocumentId(documentId).find(
-            (v) => v.versao === getDocumentById(documentId)?.versaoAtual
-          );
-          markQualidadeDocumentFilesPending(documentId, versaoAtual?.id ?? "");
         }
         await flushQualidadeDocumentsSync();
         onOpenChange(false);
@@ -224,14 +203,8 @@ export function CadastroRegistroDialog({
         codigo: getNextDocumentCode(registroTipo.sigla),
         tipoId: registroTipo.id,
         origem: "registro",
-        arquivoNome: modeloArquivo?.nome,
-        arquivoDataUrl: modeloArquivo?.dataUrl,
         ...payload,
       });
-
-      if (modeloNovo) {
-        markQualidadeDocumentFilesPending(novoId);
-      }
 
       await flushQualidadeDocumentsSync();
       onOpenChange(false);
@@ -260,9 +233,10 @@ export function CadastroRegistroDialog({
     values.processoId,
     "sigla-nome"
   );
-  const responsavelNome = userSelectLabel(users, values.responsavelId);
-  const permissaoNome = permissaoAcessoSelectLabel(values.permissaoAcesso);
-
+  const responsavelExibicao =
+    values.responsavelNome.trim() ||
+    userSelectLabel(users, values.responsavelId) ||
+    "";
   return (
     <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(v) : handleClose())}>
       <DialogContent
@@ -329,76 +303,48 @@ export function CadastroRegistroDialog({
                     </Select>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label className="text-base">Responsável pelo cadastro *</Label>
-                    <Select
-                      value={values.responsavelId}
-                      onValueChange={(v) => v && patch({ responsavelId: v })}
-                    >
-                      <SelectTrigger className={selectTriggerClass}>
-                        <SelectValue placeholder="Selecione">
-                          {responsavelNome ?? null}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent className={selectContentClass}>
-                        {users
-                          .filter((u) => u.ativo)
-                          .map((u) => (
-                            <SelectItem
-                              key={u.id}
-                              value={u.id}
-                              className={selectItemClass}
-                            >
-                              {u.nome}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label className="text-base">Modelo do documento *</Label>
-                  <input
-                    id={modeloInputId}
-                    type="file"
-                    className="hidden"
-                    accept={SGQ_ANEXO_ACCEPT}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) selecionarModelo(file);
-                      e.target.value = "";
+                  <MultiSelectSearch
+                    multiple={false}
+                    options={opcoesModelo}
+                    value={values.modeloDocumentoId ? [values.modeloDocumentoId] : []}
+                    onChange={(ids) => {
+                      const modeloDocumentoId = ids[0] ?? "";
+                      patch({
+                        modeloDocumentoId,
+                        documentosAssociadosIds: values.documentosAssociadosIds.filter(
+                          (id) => id !== modeloDocumentoId
+                        ),
+                      });
                     }}
+                    placeholder="Selecione um documento"
+                    searchPlaceholder="Pesquisar documento…"
+                    emptyMessage="Nenhum documento encontrado."
                   />
-                  <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2.5">
-                    <Paperclip className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate text-sm">
-                      {values.modeloNome ? (
-                        <span className="font-medium text-foreground">
-                          {values.modeloNome}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">
-                          Nenhum modelo anexado
-                        </span>
-                      )}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs"
-                      onClick={() =>
-                        document.getElementById(modeloInputId)?.click()
-                      }
-                    >
-                      <Upload className="size-3.5" />
-                      {values.modeloNome ? "Substituir" : "Anexar"}
-                    </Button>
-                  </div>
                   <p className="text-xs text-muted-foreground">
-                    Arquivo-base deste registro (formulário em branco, ata padrão,
-                    planilha modelo, etc.).
+                    Documento interno, externo ou registro interno já cadastrado,
+                    usado como modelo desta ficha.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-base">Associar a outros documentos</Label>
+                  <MultiSelectSearch
+                    options={opcoesAssociados}
+                    value={values.documentosAssociadosIds}
+                    onChange={(documentosAssociadosIds) =>
+                      patch({ documentosAssociadosIds })
+                    }
+                    placeholder="Selecione documentos"
+                    searchPlaceholder="Pesquisar documento…"
+                    emptyMessage="Nenhum documento encontrado."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Pode vincular mais de um documento interno, externo ou registro
+                    interno.
                   </p>
                 </div>
               </fieldset>
@@ -407,46 +353,18 @@ export function CadastroRegistroDialog({
                 value={values.localizacao}
                 onChange={(localizacao) => patch({ localizacao })}
                 setorId={values.processoId}
-                label="Localização do documento"
+                responsavelId={values.responsavelId}
+                responsavelNome={responsavelExibicao}
+                onResponsavelChange={(id, nome) =>
+                  patch({ responsavelId: id, responsavelNome: nome })
+                }
+                onGuardaFisicaChange={setGuardaFisica}
               />
 
               <fieldset className="brand-fieldset space-y-4">
                 <legend className="text-base">Controle</legend>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label className="text-base">Permissão de acesso</Label>
-                    <Select
-                      value={values.permissaoAcesso || undefined}
-                      onValueChange={(v) =>
-                        v &&
-                        patch({
-                          permissaoAcesso: v as PermissaoAcessoDocumento,
-                        })
-                      }
-                    >
-                      <SelectTrigger className={selectTriggerClass}>
-                        <SelectValue placeholder="Selecione">
-                          {permissaoNome ?? null}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent className={selectContentClass}>
-                        <SelectItem value="todos" className={selectItemClass}>
-                          Todos
-                        </SelectItem>
-                        <SelectItem value="restrito" className={selectItemClass}>
-                          Restrito
-                        </SelectItem>
-                        <SelectItem
-                          value="responsavel"
-                          className={selectItemClass}
-                        >
-                          Apenas responsável
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
                   <div className="space-y-2">
                     <Label className="text-base">Prazo de retenção</Label>
                     <div className="grid grid-cols-[minmax(0,1fr)_5.75rem] gap-2">
@@ -545,15 +463,6 @@ export function CadastroRegistroDialog({
           <div className="sgq-form-footer">
             <Button type="submit" size="lg" className="min-w-28" disabled={saving}>
               {saving ? "Gravando..." : "Gravar"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              onClick={handleClose}
-              disabled={saving}
-            >
-              Fechar
             </Button>
           </div>
         </form>

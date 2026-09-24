@@ -14,6 +14,7 @@ export interface RegistroInternoFormValues {
   titulo: string;
   processoId: string;
   responsavelId: string;
+  responsavelNome: string;
   localizacao: string;
   permissaoAcesso: PermissaoAcessoDocumento | "";
   retencaoValor: string;
@@ -21,9 +22,8 @@ export interface RegistroInternoFormValues {
   protecao: string;
   recuperacao: string;
   observacao: string;
-  modeloNome: string;
-  modeloDataUrl: string;
-  modeloStoragePath?: string;
+  modeloDocumentoId: string;
+  documentosAssociadosIds: string[];
 }
 
 export interface RegistroOcorrenciaArquivo extends DocumentoRegistroOcorrencia {
@@ -37,6 +37,7 @@ export function defaultRegistroInternoValues(
     titulo: "",
     processoId: "",
     responsavelId,
+    responsavelNome: "",
     localizacao: "",
     permissaoAcesso: "todos",
     retencaoValor: "",
@@ -44,8 +45,8 @@ export function defaultRegistroInternoValues(
     protecao: "",
     recuperacao: "",
     observacao: "",
-    modeloNome: "",
-    modeloDataUrl: "",
+    modeloDocumentoId: "",
+    documentosAssociadosIds: [],
   };
 }
 
@@ -59,7 +60,6 @@ export function registroInternoValuesFromDocument(
   fallbackResponsavelId = ""
 ): RegistroInternoFormValues {
   const reg = doc.externoRegistro;
-  const modelo = modeloDoRegistro(doc, versaoAtual);
   const prazo = parsePrazoRetencao(
     reg?.retencao,
     reg?.retencaoValor,
@@ -69,6 +69,7 @@ export function registroInternoValuesFromDocument(
     titulo: doc.titulo ?? "",
     processoId: doc.setorId ?? "",
     responsavelId: fallbackResponsavelId,
+    responsavelNome: reg?.responsavelNome ?? "",
     localizacao: doc.localizacao ?? "",
     permissaoAcesso: reg?.permissaoAcesso ?? "todos",
     retencaoValor: prazo.valor,
@@ -76,9 +77,10 @@ export function registroInternoValuesFromDocument(
     protecao: reg?.protecao ?? "",
     recuperacao: reg?.recuperacao ?? "",
     observacao: reg?.observacao ?? "",
-    modeloNome: modelo?.nome ?? "",
-    modeloDataUrl: modelo?.dataUrl ?? "",
-    modeloStoragePath: modelo?.storagePath,
+    modeloDocumentoId: reg?.modeloDocumentoId ?? "",
+    documentosAssociadosIds: (reg?.documentosAssociadosIds ?? []).filter(
+      (id) => id && id !== reg?.modeloDocumentoId
+    ),
   };
 }
 
@@ -95,20 +97,15 @@ export function buildRegistroInternoMeta(
     observacao: values.observacao.trim() || undefined,
     protecao: values.protecao.trim() || undefined,
     recuperacao: values.recuperacao.trim() || undefined,
-    associarDocumentos: false,
-    documentosAssociadosIds: [],
+    associarDocumentos: values.documentosAssociadosIds.length > 0,
+    documentosAssociadosIds: values.documentosAssociadosIds.filter(
+      (id) => id && id !== values.modeloDocumentoId
+    ),
+    modeloDocumentoId: values.modeloDocumentoId.trim() || undefined,
     permissaoAcesso: (values.permissaoAcesso ||
       "todos") as PermissaoAcessoDocumento,
+    responsavelNome: values.responsavelNome.trim() || undefined,
     ...buildRetencaoMeta(values.retencaoValor, values.retencaoUnidade),
-    modelo: values.modeloNome.trim()
-      ? {
-          nome: values.modeloNome.trim(),
-          dataUrl: "",
-          ...(values.modeloStoragePath
-            ? { storagePath: values.modeloStoragePath }
-            : {}),
-        }
-      : undefined,
     ocorrencias: ocorrencias?.length ? ocorrencias : undefined,
   };
 }

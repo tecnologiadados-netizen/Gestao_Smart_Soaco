@@ -361,13 +361,33 @@ export function EquipamentoCalibracaoFluxoDialog({
                     className="sm:col-span-2"
                   />
                   <ReadOnlyField
-                    label="Setor"
-                    value={departmentSelectLabel(
-                      departments,
-                      equipment.setorId,
-                      "nome"
-                    )}
+                    label="Possui local fixo de uso?"
+                    value={
+                      equipment.possuiLocalFixo === true ||
+                      (equipment.possuiLocalFixo == null && equipment.setorId)
+                        ? "Sim"
+                        : equipment.possuiLocalFixo === false ||
+                            equipment.responsavelPosseNome
+                          ? "Não"
+                          : "—"
+                    }
                   />
+                  {equipment.possuiLocalFixo === true ||
+                  (equipment.possuiLocalFixo == null && equipment.setorId) ? (
+                    <ReadOnlyField
+                      label="Setor do equipamento"
+                      value={departmentSelectLabel(
+                        departments,
+                        equipment.setorId,
+                        "nome"
+                      )}
+                    />
+                  ) : (
+                    <ReadOnlyField
+                      label="Responsável pela posse do equipamento"
+                      value={equipment.responsavelPosseNome?.trim() || "—"}
+                    />
+                  )}
                 </div>
               </fieldset>
 
@@ -375,7 +395,7 @@ export function EquipamentoCalibracaoFluxoDialog({
                 <legend>Responsabilidade e calibração</legend>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <ReadOnlyField
-                    label="Responsável"
+                    label="Responsável pela calibração"
                     value={userSelectLabel(users, equipment.responsavelId)}
                   />
                   <ReadOnlyField
@@ -421,11 +441,8 @@ export function EquipamentoCalibracaoFluxoDialog({
               <CalibracaoHistoricoSection equipment={equipment} />
             </div>
 
-            <div className="sgq-form-footer justify-end gap-2">
-              <Button type="button" variant="outline" onClick={handleClose}>
-                Fechar
-              </Button>
-              {!calibracaoRegistrada && statusCalibracao !== "em_dia" ? (
+            {!calibracaoRegistrada && statusCalibracao !== "em_dia" ? (
+              <div className="sgq-form-footer justify-end gap-2">
                 <Button
                   type="button"
                   onClick={() => {
@@ -443,8 +460,8 @@ export function EquipamentoCalibracaoFluxoDialog({
                 >
                   Nova calibração
                 </Button>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </>
         )}
       </DialogContent>

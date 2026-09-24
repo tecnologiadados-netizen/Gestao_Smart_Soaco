@@ -77,13 +77,6 @@ export function AvaliacaoDetalheDialog({
                 )}
                 Emitir PDF
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
-                Fechar
-              </Button>
             </div>
           </div>
         </DialogContent>

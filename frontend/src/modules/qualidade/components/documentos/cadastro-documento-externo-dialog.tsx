@@ -44,23 +44,22 @@ export function CadastroDocumentoExternoDialog({
   const documents = useDocumentsStore((s) => s.documents);
   const departments = useConfigStore((s) => s.departments);
   const users = useConfigStore((s) => s.users);
-  const currentUserId = useConfigStore((s) => s.currentUserId);
 
   const editando = Boolean(documentId);
   const [values, setValues] = useState<ExternoRegistroFormValues>(() =>
-    defaultExternoRegistroValues(currentUserId)
+    defaultExternoRegistroValues()
   );
   const [erro, setErro] = useState("");
 
   function resetForm() {
-    setValues(defaultExternoRegistroValues(currentUserId));
+    setValues(defaultExternoRegistroValues());
     setErro("");
   }
 
   useEffect(() => {
     if (!open) return;
     if (!documentId) {
-      setValues(defaultExternoRegistroValues(currentUserId));
+      setValues(defaultExternoRegistroValues());
       setErro("");
       return;
     }
@@ -73,14 +72,13 @@ export function CadastroDocumentoExternoDialog({
       externoRegistroValuesFromDocument(
         doc,
         versaoAtual,
-        versaoAtual?.elaboradorId || currentUserId
+        versaoAtual?.elaboradorId || ""
       )
     );
     setErro("");
   }, [
     open,
     documentId,
-    currentUserId,
     getDocumentById,
     getVersionsByDocumentId,
   ]);
@@ -100,8 +98,10 @@ export function CadastroDocumentoExternoDialog({
     const pendentes: string[] = [];
     if (!values.titulo.trim()) pendentes.push("Título");
     if (!values.processoId) pendentes.push("Setor");
-    if (!values.responsavelId) pendentes.push("Responsável");
-    if (!values.distEletronica && !values.distFisica) pendentes.push("Distribuição");
+    if (!values.distEletronica && !values.distFisica) pendentes.push("A guarda é");
+    if (values.distFisica && !values.responsavelId) {
+      pendentes.push("Responsável pela posse do documento");
+    }
     if (pendentes.length > 0) {
       setErro(`Preencha os campos obrigatórios: ${pendentes.join(", ")}.`);
       return;
@@ -218,20 +218,7 @@ export function CadastroDocumentoExternoDialog({
 
           <div className="sgq-form-footer">
             <Button type="submit" size="lg" className="min-w-28">
-              {editando ? "Salvar" : "Gravar"}
-            </Button>
-            {!editando ? (
-              <Button type="button" variant="secondary" size="lg" disabled>
-                Inativar
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              onClick={handleClose}
-            >
-              Fechar
+              Gravar
             </Button>
           </div>
         </form>

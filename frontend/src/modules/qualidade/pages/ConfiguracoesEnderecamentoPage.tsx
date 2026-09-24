@@ -28,11 +28,14 @@ import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
   enderecamentoSetorLabel,
   formatEnderecamentoLabel,
+  normalizarCategoriaEnderecamento,
 } from "@qualidade/lib/enderecamentos-sync";
 import {
+  ENDERECAMENTO_CATEGORIA_LABEL,
   ENDERECAMENTO_SETOR_GERAL_ID,
   ENDERECAMENTO_SETOR_GERAL_LABEL,
   type Enderecamento,
+  type EnderecamentoCategoria,
 } from "@qualidade/types/enderecamento";
 import { useGradeFiltrosExcel } from "@/hooks/useGradeFiltrosExcel";
 
@@ -53,11 +56,13 @@ export function EnderecamentoPage() {
   const removeEnderecamento = useConfigStore((s) => s.removeEnderecamento);
 
   const [setorId, setSetorId] = useState("");
+  const [categoria, setCategoria] = useState<EnderecamentoCategoria | "">("");
   const [endereco, setEndereco] = useState("");
   const [addError, setAddError] = useState("");
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editSetorId, setEditSetorId] = useState("");
+  const [editCategoria, setEditCategoria] = useState<EnderecamentoCategoria>("fisico");
   const [editEndereco, setEditEndereco] = useState("");
   const [editError, setEditError] = useState("");
 
@@ -66,13 +71,18 @@ export function EnderecamentoPage() {
   const getCellText = useCallback(
     (item: Enderecamento, columnId: string) => {
       if (columnId === "endereco") return item.endereco;
+      if (columnId === "categoria") {
+        return ENDERECAMENTO_CATEGORIA_LABEL[
+          normalizarCategoriaEnderecamento(item.categoria)
+        ];
+      }
       return enderecamentoSetorLabel(departments, item.setorId);
     },
     [departments]
   );
   const grade = useGradeFiltrosExcel<Enderecamento>({
     rows: enderecamentos,
-    columnIds: ["setor", "endereco"],
+    columnIds: ["setor", "categoria", "endereco"],
     getCellText,
   });
   const enderecamentosOrdenados = grade.rowsExibidas;
@@ -82,6 +92,7 @@ export function EnderecamentoPage() {
 
   function resetAddForm() {
     setSetorId("");
+    setCategoria("");
     setEndereco("");
     setAddError("");
   }
@@ -89,6 +100,7 @@ export function EnderecamentoPage() {
   function fecharEdicao() {
     setEditingId(null);
     setEditSetorId("");
+    setEditCategoria("fisico");
     setEditEndereco("");
     setEditError("");
   }
@@ -100,6 +112,10 @@ export function EnderecamentoPage() {
       setAddError("Selecione um setor.");
       return;
     }
+    if (categoria !== "fisico" && categoria !== "eletronico") {
+      setAddError("Selecione a categoria.");
+      return;
+    }
 
     const enderecoTrim = endereco.trim();
     if (!enderecoTrim) {
@@ -107,7 +123,7 @@ export function EnderecamentoPage() {
       return;
     }
 
-    const ok = addEnderecamento(setorId, enderecoTrim);
+    const ok = addEnderecamento(setorId, enderecoTrim, categoria);
     if (!ok) {
       setAddError("Já existe este endereço para o setor selecionado.");
       return;
@@ -131,7 +147,7 @@ export function EnderecamentoPage() {
       return;
     }
 
-    const ok = updateEnderecamento(editingId, editSetorId, enderecoTrim);
+    const ok = updateEnderecamento(editingId, editSetorId, enderecoTrim, editCategoria);
     if (!ok) {
       setEditError("Já existe este endereço para o setor selecionado.");
       return;
@@ -145,6 +161,7 @@ export function EnderecamentoPage() {
     if (!item) return;
     setEditingId(id);
     setEditSetorId(item.setorId);
+    setEditCategoria(normalizarCategoriaEnderecamento(item.categoria));
     setEditEndereco(item.endereco);
     setEditError("");
   }
@@ -165,7 +182,7 @@ export function EnderecamentoPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Endereçamento</h1>
         <p className="text-sm text-muted-foreground">
-          Cadastro de localizações físicas por setor. Use{" "}
+          Cadastro de localizações por setor e categoria (física ou eletrônica). Use{" "}
           <span className="font-medium text-foreground">
             {ENDERECAMENTO_SETOR_GERAL_LABEL}
           </span>{" "}
@@ -195,6 +212,25 @@ export function EnderecamentoPage() {
                     {dep.nome}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-[180px] space-y-2">
+            <Label htmlFor="categoria">Categoria</Label>
+            <Select
+              value={categoria}
+              onValueChange={(v) =>
+                v && setCategoria(v as EnderecamentoCategoria)
+              }
+            >
+              <SelectTrigger id="categoria" className="h-10 w-full">
+                <SelectValue placeholder="Selecione">
+                  {categoria ? ENDERECAMENTO_CATEGORIA_LABEL[categoria] : null}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="fisico">Físico</SelectItem>
+                <SelectItem value="eletronico">Eletrônico</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -231,6 +267,11 @@ export function EnderecamentoPage() {
               onClick={(e) => grade.abrirFiltroExcel("setor", e)}
             />
             <SgqGradeFiltroCabecalho
+              label="Categoria"
+              ativo={grade.colunaComFiltroAtivo("categoria")}
+              onClick={(e) => grade.abrirFiltroExcel("categoria", e)}
+            />
+            <SgqGradeFiltroCabecalho
               label="Endereço"
               ativo={grade.colunaComFiltroAtivo("endereco")}
               onClick={(e) => grade.abrirFiltroExcel("endereco", e)}
@@ -241,7 +282,7 @@ export function EnderecamentoPage() {
         <TableBody>
           {enderecamentosOrdenados.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={3} className="text-muted-foreground">
+              <TableCell colSpan={4} className="text-muted-foreground">
                 Nenhum endereçamento cadastrado.
               </TableCell>
             </TableRow>
@@ -250,6 +291,13 @@ export function EnderecamentoPage() {
               <TableRow key={item.id} className="group">
                 <TableCell className="font-medium">
                   {enderecamentoSetorLabel(departments, item.setorId)}
+                </TableCell>
+                <TableCell>
+                  {
+                    ENDERECAMENTO_CATEGORIA_LABEL[
+                      normalizarCategoriaEnderecamento(item.categoria)
+                    ]
+                  }
                 </TableCell>
                 <TableCell>{item.endereco}</TableCell>
                 <TableCell>
@@ -300,6 +348,25 @@ export function EnderecamentoPage() {
                     {dep.nome}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-categoria">Categoria</Label>
+            <Select
+              value={editCategoria}
+              onValueChange={(v) =>
+                v && setEditCategoria(v as EnderecamentoCategoria)
+              }
+            >
+              <SelectTrigger id="edit-categoria" className="h-10 w-full">
+                <SelectValue>
+                  {ENDERECAMENTO_CATEGORIA_LABEL[editCategoria]}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="fisico">Físico</SelectItem>
+                <SelectItem value="eletronico">Eletrônico</SelectItem>
               </SelectContent>
             </Select>
           </div>

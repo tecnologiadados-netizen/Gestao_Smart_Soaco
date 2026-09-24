@@ -82,6 +82,7 @@ interface UpdateDocumentCadastroInput {
   permissoes?: DocumentPermissoes;
   publicacao?: DocumentPublicacao;
   validade?: DocumentValidade;
+  externoRegistro?: DocumentExternoRegistro;
 }
 
 interface SolicitarRevisaoInput {
@@ -642,6 +643,9 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
                   permissoes: input.permissoes,
                   publicacao: input.publicacao,
                   validade: mergeValidadeOnUpdate(d.validade, input.validade),
+                  ...(input.externoRegistro
+                    ? { externoRegistro: input.externoRegistro }
+                    : {}),
                   updatedAt: now,
                 }
               : d

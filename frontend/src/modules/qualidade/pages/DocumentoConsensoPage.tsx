@@ -257,15 +257,6 @@ export function ConsensoDocumentoPage() {
             >
               {sincronizando ? "Enviando..." : "Enviar para aprovação"}
             </Button>
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              disabled={sincronizando}
-              onClick={() => navigate("/qualidade/documentos")}
-            >
-              Cancelar
-            </Button>
           </>
         ) : (
           <>
@@ -286,15 +277,6 @@ export function ConsensoDocumentoPage() {
               onClick={() => void handleReprovar()}
             >
               {modoReprovacao ? "Confirmar reprovação" : "Reprovar"}
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              disabled={sincronizando}
-              onClick={() => navigate("/qualidade/documentos")}
-            >
-              Cancelar
             </Button>
           </>
         )

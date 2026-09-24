@@ -210,15 +210,6 @@ export function ElaborarDocumentoPage() {
           >
             {enviando ? "Enviando..." : "Enviar para consenso"}
           </Button>
-          <Button
-            type="button"
-            size="lg"
-            variant="outline"
-            disabled={enviando}
-            onClick={() => navigate("/qualidade/documentos")}
-          >
-            Cancelar
-          </Button>
           {savedHint && (
             <span className="self-center text-sm text-brand-blue">
               Salvo no servidor

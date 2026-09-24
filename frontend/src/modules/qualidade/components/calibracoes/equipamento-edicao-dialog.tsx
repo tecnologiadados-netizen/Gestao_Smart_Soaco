@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
-import { Pencil, X } from "lucide-react";
+import { ChevronDown, Pencil, X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { ConfirmacaoDialog } from "@qualidade/components/ui/confirmacao-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@qualidade/components/ui/dropdown-menu";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -21,6 +28,7 @@ import {
 } from "@qualidade/components/calibracoes/equipamento-anexos-field";
 import { DocumentoArquivoField } from "@qualidade/components/documentos/documento-arquivo-field";
 import { FornecedorSearchField } from "@qualidade/components/avaliacao-fornecedor/fornecedor-search-field";
+import { PessoaSearchField } from "@qualidade/components/registros/pessoa-search-field";
 import { SgqAnexosTable } from "@qualidade/components/ui/sgq-anexos-table";
 import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
@@ -72,7 +80,10 @@ function carregarFormularioDeEquipamento(
     setCodigo: (v: string) => void;
     setDescricao: (v: string) => void;
     setSetorId: (v: string) => void;
+    setPossuiLocalFixo: (v: boolean | null) => void;
     setResponsavelId: (v: string) => void;
+    setResponsavelPosseId: (v: string) => void;
+    setResponsavelPosseNome: (v: string) => void;
     setFornecedorSelecionado: (v: Fornecedor | null) => void;
     setTipoCalibracao: (v: CalibrationType) => void;
     setFreqCal: (v: string) => void;
@@ -88,7 +99,17 @@ function carregarFormularioDeEquipamento(
   setters.setCodigo(equipment.codigo);
   setters.setDescricao(equipment.descricao);
   setters.setSetorId(equipment.setorId);
+  setters.setPossuiLocalFixo(
+    equipment.possuiLocalFixo ??
+      (equipment.setorId
+        ? true
+        : equipment.responsavelPosseId
+          ? false
+          : null)
+  );
   setters.setResponsavelId(equipment.responsavelId);
+  setters.setResponsavelPosseId(equipment.responsavelPosseId ?? "");
+  setters.setResponsavelPosseNome(equipment.responsavelPosseNome ?? "");
   setters.setFornecedorSelecionado(
     equipment.fornecedor
       ? { id: equipment.fornecedor, nome: equipment.fornecedor }
@@ -124,7 +145,10 @@ export function EquipamentoEdicaoDialog({
   const [codigo, setCodigo] = useState("");
   const [descricao, setDescricao] = useState("");
   const [setorId, setSetorId] = useState("");
+  const [possuiLocalFixo, setPossuiLocalFixo] = useState<boolean | null>(null);
   const [responsavelId, setResponsavelId] = useState("");
+  const [responsavelPosseId, setResponsavelPosseId] = useState("");
+  const [responsavelPosseNome, setResponsavelPosseNome] = useState("");
   const [fornecedorSelecionado, setFornecedorSelecionado] =
     useState<Fornecedor | null>(null);
   const [tipoCalibracao, setTipoCalibracao] = useState<CalibrationType>("interna");
@@ -145,7 +169,10 @@ export function EquipamentoEdicaoDialog({
     setCodigo,
     setDescricao,
     setSetorId,
+    setPossuiLocalFixo,
     setResponsavelId,
+    setResponsavelPosseId,
+    setResponsavelPosseNome,
     setFornecedorSelecionado,
     setTipoCalibracao,
     setFreqCal,
@@ -191,10 +218,34 @@ export function EquipamentoEdicaoDialog({
     if (!equipmentId || !equipment || !equipment.ativo || !editando) return;
 
     const descricaoTrim = descricao.trim();
-    if (!descricaoTrim || !responsavelId) {
-      setError("Preencha os campos obrigatórios.");
+    const pendentes: string[] = [];
+    if (!descricaoTrim) pendentes.push("Descrição");
+    if (possuiLocalFixo === null) pendentes.push("Possui local fixo de uso");
+    if (possuiLocalFixo && !setorId) pendentes.push("Setor do equipamento");
+    if (possuiLocalFixo === false && !responsavelPosseId) {
+      pendentes.push("Responsável pela posse do equipamento");
+    }
+    if (!responsavelId) pendentes.push("Responsável pela calibração");
+    if (!fornecedorSelecionado?.nome?.trim()) pendentes.push("Fornecedor");
+    if (!tipoCalibracao) pendentes.push("Tipo calibração");
+    if (!Number.isFinite(Number(freqCal)) || Number(freqCal) < 1) {
+      pendentes.push("Freq. calibração (dias)");
+    }
+    if (!Number.isFinite(Number(freqVer)) || Number(freqVer) < 1) {
+      pendentes.push("Freq. verificação (dias)");
+    }
+    if (!ultimaCalibracao) pendentes.push("Última calibração");
+    if (!ultimaVerificacao) pendentes.push("Última verificação");
+    const temLaudo =
+      Boolean(laudoNome.trim() && laudoDataUrl.trim()) ||
+      Boolean(equipment.laudoNome?.trim());
+    if (!temLaudo) pendentes.push("Laudo");
+    if (pendentes.length > 0) {
+      setError(`Preencha os campos obrigatórios: ${pendentes.join(", ")}.`);
       return;
     }
+    setError("");
+    const localFixo = possuiLocalFixo === true;
 
     const temLaudoNovo = Boolean(laudoNome.trim() && laudoDataUrl.trim());
     const anexosSalvar = anexosPreenchidos(anexos);
@@ -202,8 +253,11 @@ export function EquipamentoEdicaoDialog({
     updateEquipment(equipmentId, {
       descricao: descricaoTrim,
       local: equipment.local,
-      setorId,
+      setorId: localFixo ? setorId : "",
+      possuiLocalFixo: localFixo,
       responsavelId,
+      responsavelPosseId: localFixo ? "" : responsavelPosseId,
+      responsavelPosseNome: localFixo ? "" : responsavelPosseNome,
       fornecedor: fornecedorSelecionado?.nome?.trim() || undefined,
       tipoCalibracao,
       frequenciaCalibracaoDias: Number(freqCal) || 365,
@@ -385,31 +439,87 @@ export function EquipamentoEdicaoDialog({
                       className={somenteLeitura ? "bg-muted/50" : undefined}
                     />
                   </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="edit-eq-setor">Setor</Label>
-                    <Select
-                      value={setorId || undefined}
-                      onValueChange={(v) => v && setSetorId(v)}
-                    >
-                      <SelectTrigger
-                        id="edit-eq-setor"
-                        className={selectTriggerClass}
-                        disabled={somenteLeitura}
-                      >
-                        <SelectValue placeholder="Selecione o setor">
-                          {departmentSelectLabel(departments, setorId, "nome") ??
-                            null}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {departments.map((dep) => (
-                          <SelectItem key={dep.id} value={dep.id}>
-                            {dep.nome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="space-y-3 sm:col-span-2">
+                    <Label>Possui local fixo de uso? *</Label>
+                    <div className="flex flex-wrap gap-6">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="edit-possui-local-fixo"
+                          className="size-4 accent-brand-blue"
+                          checked={possuiLocalFixo === true}
+                          disabled={somenteLeitura}
+                          onChange={() => {
+                            setPossuiLocalFixo(true);
+                            setResponsavelPosseId("");
+                            setResponsavelPosseNome("");
+                          }}
+                        />
+                        Sim
+                      </label>
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="edit-possui-local-fixo"
+                          className="size-4 accent-brand-blue"
+                          checked={possuiLocalFixo === false}
+                          disabled={somenteLeitura}
+                          onChange={() => {
+                            setPossuiLocalFixo(false);
+                            setSetorId("");
+                          }}
+                        />
+                        Não
+                      </label>
+                    </div>
                   </div>
+                  {possuiLocalFixo === true ? (
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="edit-eq-setor">Setor do equipamento *</Label>
+                      <Select
+                        value={setorId || undefined}
+                        onValueChange={(v) => v && setSetorId(v)}
+                      >
+                        <SelectTrigger
+                          id="edit-eq-setor"
+                          className={selectTriggerClass}
+                          disabled={somenteLeitura}
+                        >
+                          <SelectValue placeholder="Selecione o setor">
+                            {departmentSelectLabel(departments, setorId, "nome") ??
+                              null}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {departments.map((dep) => (
+                            <SelectItem key={dep.id} value={dep.id}>
+                              {dep.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : null}
+                  {possuiLocalFixo === false ? (
+                    <div className="sm:col-span-2">
+                      <PessoaSearchField
+                        id="edit-eq-posse"
+                        label="Responsável pela posse do equipamento *"
+                        value={responsavelPosseNome}
+                        apenasFuncionarios
+                        disabled={somenteLeitura}
+                        placeholder="Digite o nome do funcionário..."
+                        onValueChange={(nome) => {
+                          setResponsavelPosseNome(nome);
+                          if (!nome.trim()) setResponsavelPosseId("");
+                        }}
+                        onPessoaSelect={(pessoa) => {
+                          setResponsavelPosseId(String(pessoa.id));
+                          setResponsavelPosseNome(pessoa.nome);
+                        }}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </fieldset>
 
@@ -420,7 +530,9 @@ export function EquipamentoEdicaoDialog({
                 <legend>Responsabilidade</legend>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="edit-eq-responsavel">Responsável *</Label>
+                    <Label htmlFor="edit-eq-responsavel">
+                      Responsável pela calibração *
+                    </Label>
                     <Select
                       value={responsavelId || undefined}
                       onValueChange={(v) => v && setResponsavelId(v)}
@@ -430,7 +542,7 @@ export function EquipamentoEdicaoDialog({
                         className={selectTriggerClass}
                         disabled={somenteLeitura}
                       >
-                        <SelectValue placeholder="Selecione o responsável">
+                        <SelectValue placeholder="Selecione o usuário">
                           {userSelectLabel(activeUsers, responsavelId) ?? null}
                         </SelectValue>
                       </SelectTrigger>
@@ -446,6 +558,7 @@ export function EquipamentoEdicaoDialog({
                   <div className="space-y-2">
                     <FornecedorSearchField
                       id="edit-eq-fornecedor"
+                      label="Fornecedor *"
                       value={fornecedorSelecionado}
                       onSelect={setFornecedorSelecionado}
                       onClear={() => setFornecedorSelecionado(null)}
@@ -462,7 +575,7 @@ export function EquipamentoEdicaoDialog({
                 <legend>Calibração</legend>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Tipo calibração</Label>
+                    <Label>Tipo calibração *</Label>
                     <Select
                       value={tipoCalibracao}
                       onValueChange={(v) =>
@@ -485,7 +598,7 @@ export function EquipamentoEdicaoDialog({
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="edit-eq-freq-cal">Freq. calibração (dias)</Label>
+                    <Label htmlFor="edit-eq-freq-cal">Freq. calibração (dias) *</Label>
                     <Input
                       id="edit-eq-freq-cal"
                       type="number"
@@ -497,7 +610,7 @@ export function EquipamentoEdicaoDialog({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="edit-eq-freq-ver">Freq. verificação (dias)</Label>
+                    <Label htmlFor="edit-eq-freq-ver">Freq. verificação (dias) *</Label>
                     <Input
                       id="edit-eq-freq-ver"
                       type="number"
@@ -509,7 +622,7 @@ export function EquipamentoEdicaoDialog({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="edit-eq-ult-cal">Última calibração</Label>
+                    <Label htmlFor="edit-eq-ult-cal">Última calibração *</Label>
                     <Input
                       id="edit-eq-ult-cal"
                       type="date"
@@ -520,7 +633,7 @@ export function EquipamentoEdicaoDialog({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="edit-eq-ult-ver">Última verificação</Label>
+                    <Label htmlFor="edit-eq-ult-ver">Última verificação *</Label>
                     <Input
                       id="edit-eq-ult-ver"
                       type="date"
@@ -533,8 +646,6 @@ export function EquipamentoEdicaoDialog({
                 </div>
               </fieldset>
 
-              <CalibracaoHistoricoSection equipment={equipment} />
-
               {editando && !inativo ? (
                 <fieldset className="brand-fieldset space-y-3">
                   <legend>Documentação</legend>
@@ -546,9 +657,7 @@ export function EquipamentoEdicaoDialog({
                     </p>
                     <DocumentoArquivoField
                       label={
-                        equipment.laudoNome
-                          ? "Substituir laudo"
-                          : "Anexar laudo *"
+                        equipment.laudoNome ? "Substituir laudo" : "Laudo *"
                       }
                       arquivoNome={laudoNome || equipment.laudoNome}
                       arquivoDataUrl={laudoDataUrl || equipment.laudoDataUrl}
@@ -612,6 +721,8 @@ export function EquipamentoEdicaoDialog({
                 </fieldset>
               )}
 
+              <CalibracaoHistoricoSection equipment={equipment} />
+
               {error ? (
                 <p className="text-sm text-destructive" role="alert">
                   {error}
@@ -619,56 +730,57 @@ export function EquipamentoEdicaoDialog({
               ) : null}
             </div>
 
-            <div className="sgq-form-footer justify-between gap-3">
+            <div className="sgq-form-footer justify-end gap-3">
               {editando && !inativo ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={() => setConfirmarExclusao(true)}
-                  >
-                    Excluir
+                <>
+                  <Button type="button" variant="outline" onClick={cancelarEdicao}>
+                    Cancelar
                   </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setConfirmarInativacao(true)}
-                  >
-                    Inativar
-                  </Button>
-                </div>
+                  <Button type="submit">Salvar alterações</Button>
+                </>
               ) : (
-                <div />
-              )}
-              <div className="flex flex-wrap gap-2">
-                {editando && !inativo ? (
-                  <>
-                    <Button type="button" variant="outline" onClick={cancelarEdicao}>
-                      Cancelar
-                    </Button>
-                    <Button type="submit">Salvar alterações</Button>
-                  </>
-                ) : (
-                  <>
-                    {inativo ? (
-                      <Button
-                        type="button"
-                        onClick={() => setConfirmarReativacao(true)}
+                <>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button type="button" variant="outline" className="gap-1.5" />
+                      }
+                    >
+                      Mais ações
+                      <ChevronDown className="size-4" aria-hidden />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" side="top" className="min-w-44">
+                      {!inativo ? (
+                        <DropdownMenuItem
+                          onClick={() => setConfirmarInativacao(true)}
+                        >
+                          Inativar
+                        </DropdownMenuItem>
+                      ) : null}
+                      {!inativo ? <DropdownMenuSeparator /> : null}
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setConfirmarExclusao(true)}
                       >
-                        Ativar novamente
-                      </Button>
-                    ) : (
-                      <Button type="button" onClick={iniciarEdicao}>
-                        <Pencil className="mr-2 size-4" />
-                        Editar
-                      </Button>
-                    )}
-                    <Button type="button" variant="outline" onClick={handleClose}>
-                      Fechar
+                        Excluir
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  {inativo ? (
+                    <Button
+                      type="button"
+                      onClick={() => setConfirmarReativacao(true)}
+                    >
+                      Ativar novamente
                     </Button>
-                  </>
-                )}
-              </div>
+                  ) : (
+                    <Button type="button" onClick={iniciarEdicao}>
+                      <Pencil className="mr-2 size-4" />
+                      Editar
+                    </Button>
+                  )}
+                </>
+              )}
             </div>
           </form>
         </DialogContent>
