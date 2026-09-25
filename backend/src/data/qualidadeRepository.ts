@@ -749,6 +749,21 @@ function rankStatusSgq(status: string): number {
 }
 
 /** Data da movimentação mais recente da versão (marca o avanço real do fluxo). */
+function mergeMovimentacoesJson(
+  incoming: unknown,
+  existingJson: string | null | undefined
+): string | null {
+  const existing = parseJson<unknown[]>(existingJson, []);
+  if (Array.isArray(incoming) && incoming.length > 0) {
+    // Nunca encolher o histórico com snapshot desatualizado.
+    if (incoming.length >= existing.length) return JSON.stringify(incoming);
+    return existingJson ?? JSON.stringify(existing);
+  }
+  if (existing.length > 0) return existingJson ?? JSON.stringify(existing);
+  if (Array.isArray(incoming)) return JSON.stringify(incoming);
+  return existingJson ?? null;
+}
+
 function ultimaMovimentacaoData(movimentacoes: unknown): string {
   if (!Array.isArray(movimentacoes)) return '';
   return movimentacoes.reduce<string>((maior, mov) => {
@@ -1295,6 +1310,11 @@ export async function syncQualidadeDocuments(payload: {
       if (firstPath) arquivoStoragePath = firstPath;
     }
 
+    const movimentacoesJson = mergeMovimentacoesJson(
+      ver.movimentacoes,
+      existing?.movimentacoesJson
+    );
+
     await prisma.sgqDocumentoVersao.upsert({
       where: { uid },
       create: {
@@ -1315,7 +1335,7 @@ export async function syncQualidadeDocuments(payload: {
         observacoesElaboracao: ver.observacoesElaboracao ? String(ver.observacoesElaboracao) : null,
         observacoesConsenso: ver.observacoesConsenso ? String(ver.observacoesConsenso) : null,
         observacoesAprovacao: ver.observacoesAprovacao ? String(ver.observacoesAprovacao) : null,
-        movimentacoesJson: ver.movimentacoes ? JSON.stringify(ver.movimentacoes) : null,
+        movimentacoesJson,
         requerSubstituicaoConsenso: Boolean(ver.requerSubstituicaoConsenso),
         arquivoNome: nomePrincipal,
         arquivoStoragePath: arquivoStoragePath ?? existing?.arquivoStoragePath ?? null,
@@ -1339,7 +1359,7 @@ export async function syncQualidadeDocuments(payload: {
         observacoesElaboracao: ver.observacoesElaboracao ? String(ver.observacoesElaboracao) : null,
         observacoesConsenso: ver.observacoesConsenso ? String(ver.observacoesConsenso) : null,
         observacoesAprovacao: ver.observacoesAprovacao ? String(ver.observacoesAprovacao) : null,
-        movimentacoesJson: ver.movimentacoes ? JSON.stringify(ver.movimentacoes) : null,
+        movimentacoesJson,
         requerSubstituicaoConsenso: Boolean(ver.requerSubstituicaoConsenso),
         ...(nomePrincipal ? { arquivoNome: nomePrincipal } : {}),
         ...(arquivoStoragePath

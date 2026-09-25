@@ -347,21 +347,30 @@ function reconcileWorkflowTasks(
       );
 
     if (doc.status === "rascunho" && !hasPending("elaborar_documento")) {
-      next = [
-        ...next,
-        {
-          id: generateId("task"),
-          tipo: "elaborar_documento",
-          titulo: `Elaborar ${doc.codigo} — ${doc.titulo}`,
-          descricao: `Revisão ${doc.versaoAtual} · Etapa: Elaboração`,
-          referenciaId: doc.id,
-          referenciaTipo: "documento",
-          responsavelId: resolveTaskAssignee(version.elaboradorId),
-          prazo: computeTaskDeadline(now, version.prazos?.elaboracao ?? 7),
-          status: "pendente",
-          createdAt: now,
-        },
-      ];
+      next = [...next, tarefaElaboracaoAposReprovacao(doc, version, now)];
+    } else if (doc.status === "rascunho") {
+      // Garante título/descrição de correção se já houver Elaborar genérica após reprovação.
+      const reprovConsenso = ultimaReprovacaoNaVersao(version, "consenso");
+      if (reprovConsenso) {
+        next = next.map((t) => {
+          if (
+            t.referenciaId !== doc.id ||
+            t.tipo !== "elaborar_documento" ||
+            t.status !== "pendente" ||
+            t.titulo.startsWith("Corrigir")
+          ) {
+            return t;
+          }
+          return {
+            ...t,
+            titulo: `Corrigir ${doc.codigo} — reprovado no consenso`,
+            descricao:
+              reprovConsenso.motivo?.trim() ||
+              t.descricao ||
+              "Ajuste o documento conforme a reprovação.",
+          };
+        });
+      }
     }
 
     if (doc.status === "em_revisao" && !hasPending("consenso_documento")) {
@@ -402,6 +411,54 @@ function reconcileWorkflowTasks(
   }
 
   return next;
+}
+
+function ultimaReprovacaoNaVersao(
+  version: DocumentVersion | undefined,
+  etapa: "consenso" | "aprovacao"
+) {
+  const movimentacoes = version?.movimentacoes ?? [];
+  for (let i = movimentacoes.length - 1; i >= 0; i--) {
+    const mov = movimentacoes[i];
+    if (mov.acao === "reprovacao" && mov.etapa === etapa) return mov;
+  }
+  return undefined;
+}
+
+function tarefaElaboracaoAposReprovacao(
+  doc: Document,
+  version: DocumentVersion,
+  now: string
+): Task {
+  const reprovConsenso = ultimaReprovacaoNaVersao(version, "consenso");
+  if (reprovConsenso) {
+    return {
+      id: generateId("task"),
+      tipo: "elaborar_documento",
+      titulo: `Corrigir ${doc.codigo} — reprovado no consenso`,
+      descricao:
+        reprovConsenso.motivo?.trim() ||
+        "Ajuste o documento conforme a reprovação.",
+      referenciaId: doc.id,
+      referenciaTipo: "documento",
+      responsavelId: resolveTaskAssignee(version.elaboradorId),
+      prazo: computeTaskDeadline(now, version.prazos?.elaboracao ?? 7),
+      status: "pendente",
+      createdAt: now,
+    };
+  }
+  return {
+    id: generateId("task"),
+    tipo: "elaborar_documento",
+    titulo: `Elaborar ${doc.codigo} — ${doc.titulo}`,
+    descricao: `Revisão ${doc.versaoAtual} · Etapa: Elaboração`,
+    referenciaId: doc.id,
+    referenciaTipo: "documento",
+    responsavelId: resolveTaskAssignee(version.elaboradorId),
+    prazo: computeTaskDeadline(now, version.prazos?.elaboracao ?? 7),
+    status: "pendente",
+    createdAt: now,
+  };
 }
 
 function exigeSubstituicaoConsenso(version: DocumentVersion): boolean {

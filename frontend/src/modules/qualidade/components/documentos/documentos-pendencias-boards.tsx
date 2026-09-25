@@ -18,6 +18,7 @@ import { taskTypeLabels } from "@qualidade/lib/utils/status-labels";
 import {
   getTaskActionHref,
   getTaskActionLabel,
+  isTarefaCorrecaoElaboracao,
 } from "@qualidade/lib/documents/task-routes";
 import type { Document } from "@qualidade/types/document";
 import type { Task } from "@qualidade/types/task";
@@ -85,10 +86,17 @@ function KanbanColumn({
             <p className="text-sm text-muted-foreground">{emptyMessage}</p>
           </div>
         ) : (
-          tasks.map((task) => (
+          tasks.map((task) => {
+            const correcao = isTarefaCorrecaoElaboracao(task);
+            return (
             <article
               key={task.id}
-              className="rounded-lg border border-border bg-muted/30 p-4 shadow-sm transition-shadow hover:border-primary/30 hover:shadow-md"
+              className={cn(
+                "rounded-lg border bg-muted/30 p-4 shadow-sm transition-shadow hover:shadow-md",
+                correcao
+                  ? "border-destructive/50 bg-destructive/5 hover:border-destructive/70"
+                  : "border-border hover:border-primary/30"
+              )}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -104,14 +112,29 @@ function KanbanColumn({
                       </>
                     ) : null}
                   </p>
+                  {correcao ? (
+                    <p className="mt-2 text-xs font-semibold text-destructive">
+                      Reprovado — ajuste necessário
+                    </p>
+                  ) : null}
                   {task.descricao ? (
-                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                    <p
+                      className={cn(
+                        "mt-2 text-xs leading-relaxed",
+                        correcao
+                          ? "rounded-md border border-destructive/30 bg-background/80 p-2 font-medium text-foreground"
+                          : "text-muted-foreground"
+                      )}
+                    >
                       {task.descricao}
                     </p>
                   ) : null}
                 </div>
-                <Badge variant="outline" className="shrink-0 text-[10px]">
-                  Pendente
+                <Badge
+                  variant={correcao ? "destructive" : "outline"}
+                  className="shrink-0 text-[10px]"
+                >
+                  {correcao ? "Ajuste" : "Pendente"}
                 </Badge>
               </div>
               <div className="mt-4">
@@ -119,7 +142,8 @@ function KanbanColumn({
                   to={getTaskActionHref(task)}
                   className={cn(
                     buttonVariants({ size: "sm" }),
-                    "h-8 gap-1.5 text-xs"
+                    "h-8 gap-1.5 text-xs",
+                    correcao && "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   )}
                 >
                   {getTaskActionLabel(task)}
@@ -127,7 +151,8 @@ function KanbanColumn({
                 </Link>
               </div>
             </article>
-          ))
+            );
+          })
         )}
       </div>
     </section>

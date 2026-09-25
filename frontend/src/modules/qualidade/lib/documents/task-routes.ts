@@ -22,9 +22,13 @@ export function getTaskActionHref(task: Task): string {
 export function getTaskActionLabel(task: Task): string {
   switch (task.tipo) {
     case 'elaborar_documento':
-      return 'Iniciar elaboração';
+      return task.titulo.startsWith('Corrigir')
+        ? 'Corrigir documento'
+        : 'Iniciar elaboração';
     case 'consenso_documento':
-      return 'Registrar consenso';
+      return task.titulo.includes('substituir')
+        ? 'Substituir e reenviar'
+        : 'Registrar consenso';
     case 'aprovar_documento':
       return 'Iniciar aprovação';
     case 'revalidar_documento':
@@ -34,4 +38,11 @@ export function getTaskActionLabel(task: Task): string {
     default:
       return 'Abrir documento';
   }
+}
+
+/** Tarefa de elaboração gerada após reprovação (ajuste necessário). */
+export function isTarefaCorrecaoElaboracao(task: Task): boolean {
+  return (
+    task.tipo === 'elaborar_documento' && task.titulo.startsWith('Corrigir')
+  );
 }

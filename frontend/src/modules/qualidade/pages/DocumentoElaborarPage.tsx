@@ -43,6 +43,7 @@ export function ElaborarDocumentoPage() {
   );
   const updateElaboracao = useDocumentsStore((s) => s.updateElaboracao);
   const enviarParaRevisao = useDocumentsStore((s) => s.enviarParaRevisao);
+  const getPendingTasks = useDocumentsStore((s) => s.getPendingTasks);
 
   const documentTypes = useConfigStore((s) => s.documentTypes);
   const departments = useConfigStore((s) => s.departments);
@@ -53,6 +54,12 @@ export function ElaborarDocumentoPage() {
   const versions = getVersionsByDocumentId(id);
   const versaoAtual =
     versions.find((v) => v.versao === doc?.versaoAtual) ?? versions[0];
+  const tarefaCorrecao = getPendingTasks(currentUserId).find(
+    (t) =>
+      t.referenciaId === id &&
+      t.tipo === "elaborar_documento" &&
+      t.titulo.startsWith("Corrigir")
+  );
 
   const [arquivoNome, setArquivoNome] = useState("");
   const [arquivoDataUrl, setArquivoDataUrl] = useState("");
@@ -100,6 +107,13 @@ export function ElaborarDocumentoPage() {
   const categoria = documentTypes.find((t) => t.id === doc.tipoId);
   const processo = departments.find((d) => d.id === doc.setorId);
   const reprovacaoConsenso = getUltimaReprovacao(versaoAtual, "consenso");
+  const motivoReprovacao =
+    reprovacaoConsenso?.motivo?.trim() ||
+    (tarefaCorrecao?.descricao &&
+    !tarefaCorrecao.descricao.startsWith("Revisão ")
+      ? tarefaCorrecao.descricao.trim()
+      : "");
+  const precisaAjuste = Boolean(motivoReprovacao || tarefaCorrecao);
 
   function persistArquivoNoServidor(nome: string, dataUrl: string) {
     // UI libera na hora; sync do PDF vai em segundo plano (sem overlay).
@@ -207,7 +221,7 @@ export function ElaborarDocumentoPage() {
 
   return (
     <DocumentoWorkflowPage
-      title={`Elaboração — ${formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}`}
+      title={`${precisaAjuste ? "Correção" : "Elaboração"} — ${formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}`}
       activeStep={1}
       onBack={() => navigate("/qualidade/documentos")}
       exiting={exiting}
@@ -222,7 +236,11 @@ export function ElaborarDocumentoPage() {
             disabled={enviando}
             onClick={() => void handleEnviarConsenso()}
           >
-            {enviando ? "Enviando..." : "Enviar para consenso"}
+            {enviando
+              ? "Enviando..."
+              : precisaAjuste
+                ? "Reenviar para consenso"
+                : "Enviar para consenso"}
           </Button>
           {savedHint && (
             <span className="self-center text-sm text-brand-blue">
@@ -232,6 +250,17 @@ export function ElaborarDocumentoPage() {
         </>
       }
     >
+        {precisaAjuste ? (
+          <DocumentoReprovacaoAlerta
+            titulo="Documento reprovado no consenso"
+            motivo={
+              motivoReprovacao ||
+              "Consulte o parecer do consenso e ajuste o arquivo antes de reenviar."
+            }
+            etapaOrigem="consenso"
+          />
+        ) : null}
+
         <DocumentoIdentificacaoResumo
           doc={doc}
           version={versaoAtual}
@@ -239,14 +268,6 @@ export function ElaborarDocumentoPage() {
           processo={processo}
           users={users}
         />
-
-        {reprovacaoConsenso?.motivo && (
-          <DocumentoReprovacaoAlerta
-            titulo="Documento reprovado no consenso"
-            motivo={reprovacaoConsenso.motivo}
-            etapaOrigem="consenso"
-          />
-        )}
 
         {versaoAtual.justificativaRevisao && (
           <fieldset className="brand-fieldset space-y-3">

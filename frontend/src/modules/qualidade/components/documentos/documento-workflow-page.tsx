@@ -29,11 +29,11 @@ export function DocumentoWorkflowPage({
   return (
     <div
       className={cn(
-        "mx-auto flex max-h-[calc(100vh-8rem)] max-w-5xl flex-col overflow-hidden rounded-xl border bg-card shadow-sm",
+        "mx-auto flex w-full max-w-6xl flex-col rounded-xl border bg-card shadow-sm",
         exiting && "sgq-view-exit"
       )}
     >
-      <div className="modal-header-bar flex items-center gap-3 px-5 py-3.5">
+      <div className="modal-header-bar flex shrink-0 items-center gap-3 px-5 py-3.5">
         <button
           type="button"
           onClick={onBack}
@@ -42,12 +42,14 @@ export function DocumentoWorkflowPage({
         >
           <ArrowLeft className="size-5 text-white" />
         </button>
-        <h1 className="text-base font-semibold text-white">{title}</h1>
+        <h1 className="min-w-0 truncate text-base font-semibold text-white">
+          {title}
+        </h1>
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto p-6 lg:grid-cols-[1fr_260px]">
-        <div className="min-h-0 space-y-6">{children}</div>
-        <aside className="hidden shrink-0 space-y-4 lg:block">
+      <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]">
+        <div className="min-w-0 space-y-6">{children}</div>
+        <aside className="hidden min-w-0 space-y-4 lg:block">
           <DocumentoStepper activeStep={activeStep} />
           {version && users ? (
             <DocumentoLogsProcesso version={version} users={users} />
@@ -55,9 +57,7 @@ export function DocumentoWorkflowPage({
         </aside>
       </div>
 
-      <div className="sgq-form-footer">
-        {footer}
-      </div>
+      <div className="sgq-form-footer">{footer}</div>
     </div>
   );
 }
