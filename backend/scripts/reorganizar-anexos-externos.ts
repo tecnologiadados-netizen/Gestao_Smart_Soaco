@@ -39,6 +39,7 @@ const VIGENTE_POR_CODIGO: Record<string, string> = {
   'EXT-216882:00':
     'RTAC002936 - PORTARIA Nº 102, DE 22 DE MARÇO DE 2022.pdf',
   'EXT-352104:00': 'Atestado - 51806_19.2.M3.pdf',
+  'EXT-553179:00': 'NCC 22.09186_Rev3 (2).pdf',
 };
 
 type Anexo = { nome?: string; storagePath?: string; dataUrl?: string };

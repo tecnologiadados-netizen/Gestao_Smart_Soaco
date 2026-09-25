@@ -32,7 +32,8 @@ function detalharErroServidor(err: unknown): string {
 
 export function ElaborarDocumentoPage() {
   const params = useParams();
-  const { push: navigate, exiting } = useTransitionRouter();
+  const { push: navigate, exiting, navigate: navigateImmediate } =
+    useTransitionRouter();
   const { withLoading } = useLoading();
   const id = params.id as string;
 
@@ -50,7 +51,8 @@ export function ElaborarDocumentoPage() {
 
   const doc = getDocumentById(id);
   const versions = getVersionsByDocumentId(id);
-  const versaoAtual = versions[0];
+  const versaoAtual =
+    versions.find((v) => v.versao === doc?.versaoAtual) ?? versions[0];
 
   const [arquivoNome, setArquivoNome] = useState("");
   const [arquivoDataUrl, setArquivoDataUrl] = useState("");
@@ -162,22 +164,41 @@ export function ElaborarDocumentoPage() {
       setError("Anexe o arquivo inicial antes de enviar para consenso.");
       return;
     }
+    if (!versaoAtual) return;
     setError("");
     setEnviando(true);
+
+    // Arquivo já no servidor: não reenvia base64 (evita travar o sync/SQLite).
+    const precisaReenviarArquivo =
+      arquivoDataUrl.startsWith("data:") && !arquivoStoragePath.trim();
+
     try {
       await withLoading(async () => {
         updateElaboracao(id, {
-          arquivoNome: arquivoNome || undefined,
-          arquivoDataUrl: arquivoDataUrl || undefined,
           observacoesElaboracao: observacoes || undefined,
+          ...(precisaReenviarArquivo
+            ? {
+                arquivoNome: arquivoNome || undefined,
+                arquivoDataUrl: arquivoDataUrl || undefined,
+              }
+            : {}),
         });
-        if (arquivoDataUrl.startsWith("data:")) {
+        if (precisaReenviarArquivo) {
           markQualidadeDocumentFilesPending(id, versaoAtual.id);
         }
-        await flushQualidadeDocumentsSync();
+
+        // Avança a etapa localmente e sai da tela; sync em seguida.
         enviarParaRevisao(id, versaoAtual.consensoId ?? currentUserId);
-        await flushQualidadeDocumentsSync();
-        navigate("/qualidade/documentos");
+        navigateImmediate("/qualidade/documentos");
+
+        try {
+          await flushQualidadeDocumentsSync();
+        } catch (syncErr) {
+          console.error(
+            "[qualidade] etapa avançada, mas falhou ao sincronizar envio ao consenso:",
+            syncErr
+          );
+        }
       }, "Enviando para consenso...");
     } catch (err) {
       console.error("[qualidade] falha ao enviar para consenso:", err);

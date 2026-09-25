@@ -1409,6 +1409,31 @@ export async function syncQualidadeDocuments(payload: {
       },
       data: { concluida: true },
     });
+
+    // No máximo 1 pendência do tipo esperado (ex.: Elaborar + Corrigir após reprovação).
+    if (!tipoEsperado) continue;
+    const duplicadas = await prisma.sgqTarefa.findMany({
+      where: {
+        referenciaTipo: 'documento',
+        referenciaId: docUid,
+        concluida: false,
+        tipo: tipoEsperado,
+      },
+      select: { id: true, uid: true, titulo: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (duplicadas.length <= 1) continue;
+    const ordenadas = [...duplicadas].sort((a, b) => {
+      const aCorr = a.titulo.startsWith('Corrigir') ? 1 : 0;
+      const bCorr = b.titulo.startsWith('Corrigir') ? 1 : 0;
+      if (aCorr !== bCorr) return bCorr - aCorr;
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    });
+    const idsFechar = ordenadas.slice(1).map((t) => t.id);
+    await prisma.sgqTarefa.updateMany({
+      where: { id: { in: idsFechar } },
+      data: { concluida: true },
+    });
   }
 
   const tarefasParaNotificar = novasTarefas.filter((tarefa) => {

@@ -256,29 +256,83 @@ function concluirPendenciasDocumento(tasks: Task[], documentId: string) {
   );
 }
 
-/** Garante pendência coerente com o status do documento (recupera tarefas perdidas no sync). */
+function tipoTarefaEsperadaPorStatus(
+  status: Document["status"]
+): Task["tipo"] | null {
+  if (status === "rascunho") return "elaborar_documento";
+  if (status === "em_revisao") return "consenso_documento";
+  if (status === "em_aprovacao") return "aprovar_documento";
+  return null;
+}
+
+/**
+ * Garante pendência coerente com o status do documento.
+ * Tarefas da etapa errada são concluídas (não descartadas) para o sync
+ * gravar o fechamento — senão voltavam como pendentes no bootstrap.
+ * Em cada etapa, no máximo uma pendência do tipo esperado (prefere Corrigir).
+ */
 function reconcileWorkflowTasks(
   documents: Document[],
   versions: DocumentVersion[],
   tasks: Task[]
 ): Task[] {
   const now = new Date().toISOString();
-  const docIds = new Set(documents.map((d) => d.id));
+  const docsById = new Map(documents.map((d) => [d.id, d]));
 
-  let next = tasks.filter((t) => {
-    if (t.referenciaTipo !== "documento") return true;
-    if (t.status !== "pendente") return true;
-    if (!docIds.has(t.referenciaId)) return false;
-    const doc = documents.find((d) => d.id === t.referenciaId);
-    if (!doc) return false;
+  let next = tasks.map((t) => {
+    if (t.referenciaTipo !== "documento" || t.status !== "pendente") return t;
+    const doc = docsById.get(t.referenciaId);
+    if (!doc) return { ...t, status: "concluida" as const };
+
     if (t.tipo === "revalidar_documento") {
-      return doc.status === "vigente";
+      return doc.status === "vigente" ? t : { ...t, status: "concluida" as const };
     }
-    if (doc.status === "rascunho") return t.tipo === "elaborar_documento";
-    if (doc.status === "em_revisao") return t.tipo === "consenso_documento";
-    if (doc.status === "em_aprovacao") return t.tipo === "aprovar_documento";
-    return false;
+
+    const esperado = tipoTarefaEsperadaPorStatus(doc.status);
+    if (
+      t.tipo === "elaborar_documento" ||
+      t.tipo === "consenso_documento" ||
+      t.tipo === "aprovar_documento"
+    ) {
+      if (esperado === null || t.tipo !== esperado) {
+        return { ...t, status: "concluida" as const };
+      }
+    }
+    return t;
   });
+
+  // No máximo 1 pendência por (documento, tipo de etapa) — mantém Corrigir / mais recente.
+  const duplicatas = new Set<string>();
+  const porChave = new Map<string, Task[]>();
+  for (const t of next) {
+    if (t.referenciaTipo !== "documento" || t.status !== "pendente") continue;
+    if (
+      t.tipo !== "elaborar_documento" &&
+      t.tipo !== "consenso_documento" &&
+      t.tipo !== "aprovar_documento"
+    ) {
+      continue;
+    }
+    const key = `${t.referenciaId}|${t.tipo}`;
+    const lista = porChave.get(key) ?? [];
+    lista.push(t);
+    porChave.set(key, lista);
+  }
+  for (const lista of porChave.values()) {
+    if (lista.length <= 1) continue;
+    const ordenada = [...lista].sort((a, b) => {
+      const aCorr = a.titulo.startsWith("Corrigir") ? 1 : 0;
+      const bCorr = b.titulo.startsWith("Corrigir") ? 1 : 0;
+      if (aCorr !== bCorr) return bCorr - aCorr;
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+    for (const drop of ordenada.slice(1)) duplicatas.add(drop.id);
+  }
+  if (duplicatas.size > 0) {
+    next = next.map((t) =>
+      duplicatas.has(t.id) ? { ...t, status: "concluida" as const } : t
+    );
+  }
 
   for (const doc of documents) {
     const version = getCurrentVersion(versions, doc.id, doc.versaoAtual);

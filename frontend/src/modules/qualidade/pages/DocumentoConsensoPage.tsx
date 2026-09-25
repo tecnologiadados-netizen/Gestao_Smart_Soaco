@@ -29,7 +29,8 @@ const ACCEPTED_TYPES = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
 
 export function ConsensoDocumentoPage() {
   const params = useParams();
-  const { push: navigate, exiting } = useTransitionRouter();
+  const { push: navigate, exiting, navigate: navigateImmediate } =
+    useTransitionRouter();
   const { withLoading } = useLoading();
   const id = params.id as string;
 
@@ -161,8 +162,15 @@ export function ConsensoDocumentoPage() {
         if (!ok) {
           throw new Error("Não foi possível aprovar. Verifique o documento anexado.");
         }
-        await flushQualidadeDocumentsSync();
-        navigate("/qualidade/documentos");
+        navigateImmediate("/qualidade/documentos");
+        try {
+          await flushQualidadeDocumentsSync();
+        } catch (syncErr) {
+          console.error(
+            "[qualidade] consenso aprovado localmente, falha ao sincronizar:",
+            syncErr
+          );
+        }
       }, "Salvando consenso...");
     } catch (err) {
       console.error("[qualidade] falha ao aprovar consenso:", err);
@@ -190,20 +198,30 @@ export function ConsensoDocumentoPage() {
       return;
     }
 
+    const precisaReenviarArquivo =
+      Boolean(versaoAtual.arquivoDataUrl?.startsWith("data:")) &&
+      !versaoAtual.arquivoStoragePath?.trim();
+
     setSincronizando(true);
     try {
       await withLoading(async () => {
         updateConsenso(id, { observacoesConsenso: observacoes || undefined });
-        if (versaoAtual.arquivoDataUrl?.startsWith("data:")) {
+        if (precisaReenviarArquivo) {
           markQualidadeDocumentFilesPending(id, versaoAtual.id);
         }
-        await flushQualidadeDocumentsSync();
         const ok = reenviarParaAprovacao(id, observacoes);
         if (!ok) {
           throw new Error("Não foi possível enviar para aprovação. Verifique o anexo.");
         }
-        await flushQualidadeDocumentsSync();
-        navigate("/qualidade/documentos");
+        navigateImmediate("/qualidade/documentos");
+        try {
+          await flushQualidadeDocumentsSync();
+        } catch (syncErr) {
+          console.error(
+            "[qualidade] enviado à aprovação localmente, falha ao sincronizar:",
+            syncErr
+          );
+        }
       }, "Enviando para aprovação...");
     } catch (err) {
       console.error("[qualidade] falha ao reenviar para aprovação:", err);
@@ -238,8 +256,15 @@ export function ConsensoDocumentoPage() {
     setSincronizando(true);
     try {
       await withLoading(async () => {
-        await flushQualidadeDocumentsSync();
-        navigate("/qualidade/documentos");
+        navigateImmediate("/qualidade/documentos");
+        try {
+          await flushQualidadeDocumentsSync();
+        } catch (syncErr) {
+          console.error(
+            "[qualidade] reprovação local feita, falha ao sincronizar:",
+            syncErr
+          );
+        }
       }, "Salvando reprovação...");
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar reprovação:", err);
