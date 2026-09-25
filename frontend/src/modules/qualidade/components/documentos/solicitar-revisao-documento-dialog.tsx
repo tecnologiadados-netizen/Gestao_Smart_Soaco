@@ -260,10 +260,15 @@ export function SolicitarRevisaoDocumentoDialog({
 
     onOpenChange(false);
     onConcluido?.();
+    if (fluxoInterno) {
+      navigate(`/qualidade/documentos/${documentId}/elaborar`);
+      return;
+    }
+    // Externos/registros: atualização já publicada — volta à consulta (sem tela de detalhe).
     navigate(
-      fluxoInterno
-        ? `/qualidade/documentos/${documentId}/elaborar`
-        : `/qualidade/documentos/${documentId}`
+      fluxoExterno
+        ? "/qualidade/documentos/consulta?guia=externo"
+        : "/qualidade/documentos/consulta?guia=registro"
     );
   }
 

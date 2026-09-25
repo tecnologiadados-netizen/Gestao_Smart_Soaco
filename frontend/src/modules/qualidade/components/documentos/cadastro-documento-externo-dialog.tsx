@@ -115,7 +115,9 @@ export function CadastroDocumentoExternoDialog({
     if (!values.titulo.trim()) pendentes.push("Título");
     if (!values.processoId) pendentes.push("Setor");
     if (!values.distEletronica && !values.distFisica) pendentes.push("A guarda é");
-    if (!values.responsavelDocumentoId) pendentes.push("Responsável pelo documento");
+    if (values.distEletronica && !values.responsavelDocumentoId) {
+      pendentes.push("Responsável pelo documento");
+    }
     if (values.distFisica && !values.responsavelId) {
       pendentes.push("Responsável pela posse do documento");
     }
@@ -130,7 +132,9 @@ export function CadastroDocumentoExternoDialog({
     const payloadBase = {
       titulo: values.titulo,
       setorId: values.processoId,
-      elaboradorId: values.responsavelDocumentoId,
+      elaboradorId: values.distEletronica
+        ? values.responsavelDocumentoId
+        : "",
       localizacao: values.localizacao,
       permissoes: buildPermissoesFromExternoRegistro(values),
       validade: buildValidadeFromExternoRegistro(values),

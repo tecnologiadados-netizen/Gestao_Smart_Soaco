@@ -523,22 +523,28 @@ function DocumentoConsultaDetalheDialogImpl({
                   </div>
                 ) : (
                   <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
-                    <MetaItem
-                      label="Responsável pelo documento"
-                      value={labelResponsavel(
-                        users,
-                        users.some((user) => user.id === versaoAtual?.elaboradorId)
-                          ? versaoAtual?.elaboradorId
-                          : ""
-                      )}
-                    />
+                    {doc.externoRegistro?.distribuicaoEletronica ? (
+                      <MetaItem
+                        label="Responsável pelo documento"
+                        value={labelResponsavel(
+                          users,
+                          users.some(
+                            (user) => user.id === versaoAtual?.elaboradorId
+                          )
+                            ? versaoAtual?.elaboradorId
+                            : ""
+                        )}
+                      />
+                    ) : null}
                     {doc.externoRegistro?.distribuicaoFisica ? (
                       <MetaItem
                         label="Responsável pela posse do documento"
                         value={labelResponsavelPosse(
                           users,
                           doc.externoRegistro?.responsavelPosseId ??
-                            (users.some((user) => user.id === versaoAtual?.elaboradorId)
+                            (users.some(
+                              (user) => user.id === versaoAtual?.elaboradorId
+                            )
                               ? ""
                               : versaoAtual?.elaboradorId),
                           doc.externoRegistro?.responsavelNome

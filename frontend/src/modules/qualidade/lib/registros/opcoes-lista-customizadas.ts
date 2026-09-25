@@ -1,5 +1,31 @@
 export const RCC_RECLAMACOES_OPCOES_STORAGE_KEY = "sgq-rcc-reclamacoes-opcoes";
 export const RCC_SERVICOS_OPCOES_STORAGE_KEY = "sgq-rcc-servicos-opcoes";
+export const REGISTRO_PROTECAO_OPCOES_STORAGE_KEY =
+  "sgq-registro-protecao-opcoes";
+export const REGISTRO_RECUPERACAO_OPCOES_STORAGE_KEY =
+  "sgq-registro-recuperacao-opcoes";
+
+/** Chaves persistidas em sgq_opcao_lista (sync servidor ↔ localStorage). */
+export const SGQ_OPCOES_LISTA_CHAVES = {
+  "rcc-reclamacoes": RCC_RECLAMACOES_OPCOES_STORAGE_KEY,
+  "rcc-servicos": RCC_SERVICOS_OPCOES_STORAGE_KEY,
+  "registro-protecao": REGISTRO_PROTECAO_OPCOES_STORAGE_KEY,
+  "registro-recuperacao": REGISTRO_RECUPERACAO_OPCOES_STORAGE_KEY,
+} as const;
+
+export const REGISTRO_PROTECAO_OPCOES_BASE = [
+  "Backup de documentos",
+  "Backup no DOCUMENTOS",
+  "Cópias controladas",
+  "Arquivo físico no setor",
+] as const;
+
+export const REGISTRO_RECUPERACAO_OPCOES_BASE = [
+  "Solicitar responsável",
+  "Restaurar do backup",
+  "Contatar TI",
+  "Solicitar cópia ao setor",
+] as const;
 
 function normalizarOpcao(opcao: string): string {
   return opcao.trim().toUpperCase();

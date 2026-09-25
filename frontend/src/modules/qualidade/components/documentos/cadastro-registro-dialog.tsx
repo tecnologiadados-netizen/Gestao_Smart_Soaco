@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@qualidade/components/ui/select";
 import { DocumentoEnderecamentoFieldset } from "@qualidade/components/documentos/documento-enderecamento-fieldset";
+import { OpcaoListaPesquisavelField } from "@qualidade/components/registros/opcao-lista-pesquisavel-field";
 import {
   buildPermissoesFromRegistroInterno,
   buildRegistroInternoMeta,
@@ -23,6 +24,12 @@ import {
   REGISTRO_INTERNO_SIGLA,
   type RegistroInternoFormValues,
 } from "@qualidade/lib/documents/registro-interno";
+import {
+  REGISTRO_PROTECAO_OPCOES_BASE,
+  REGISTRO_PROTECAO_OPCOES_STORAGE_KEY,
+  REGISTRO_RECUPERACAO_OPCOES_BASE,
+  REGISTRO_RECUPERACAO_OPCOES_STORAGE_KEY,
+} from "@qualidade/lib/registros/opcoes-lista-customizadas";
 import { afterUiTransition } from "@qualidade/lib/motion";
 import { scheduleQualidadeDocumentsFlush } from "@qualidade/lib/qualidadePersistence";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
@@ -415,30 +422,24 @@ export function CadastroRegistroDialog({
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label className="text-base" htmlFor="registro-protecao">
-                      Proteção
-                    </Label>
-                    <Input
-                      id="registro-protecao"
-                      className="h-10 text-base"
-                      value={values.protecao}
-                      onChange={(e) => patch({ protecao: e.target.value })}
-                      placeholder="Ex.: Backup no DOCUMENTOS"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-base" htmlFor="registro-recuperacao">
-                      Recuperação
-                    </Label>
-                    <Input
-                      id="registro-recuperacao"
-                      className="h-10 text-base"
-                      value={values.recuperacao}
-                      onChange={(e) => patch({ recuperacao: e.target.value })}
-                      placeholder="Ex.: Solicitar responsável"
-                    />
-                  </div>
+                  <OpcaoListaPesquisavelField
+                    id="registro-protecao"
+                    label="Proteção"
+                    value={values.protecao}
+                    onChange={(v) => patch({ protecao: v })}
+                    opcoesBase={REGISTRO_PROTECAO_OPCOES_BASE}
+                    storageKey={REGISTRO_PROTECAO_OPCOES_STORAGE_KEY}
+                    placeholder="Selecione ou adicione..."
+                  />
+                  <OpcaoListaPesquisavelField
+                    id="registro-recuperacao"
+                    label="Recuperação"
+                    value={values.recuperacao}
+                    onChange={(v) => patch({ recuperacao: v })}
+                    opcoesBase={REGISTRO_RECUPERACAO_OPCOES_BASE}
+                    storageKey={REGISTRO_RECUPERACAO_OPCOES_STORAGE_KEY}
+                    placeholder="Selecione ou adicione..."
+                  />
                 </div>
 
                 <div className="space-y-2">

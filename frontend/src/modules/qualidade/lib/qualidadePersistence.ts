@@ -29,8 +29,7 @@ import {
   setQualidadeConfigHydrating,
 } from '@qualidade/lib/qualidadeConfigSync';
 import {
-  RCC_RECLAMACOES_OPCOES_STORAGE_KEY,
-  RCC_SERVICOS_OPCOES_STORAGE_KEY,
+  SGQ_OPCOES_LISTA_CHAVES,
 } from '@qualidade/lib/registros/opcoes-lista-customizadas';
 import {
   ENDERECAMENTOS_OPCOES_CHAVE,
@@ -770,18 +769,19 @@ async function migrateFromLocalStorageIfNeeded() {
 
   const opcoes: Record<string, string[]> = {};
   try {
-    const rec = localStorage.getItem(RCC_RECLAMACOES_OPCOES_STORAGE_KEY);
-    if (rec) opcoes['rcc-reclamacoes'] = JSON.parse(rec) as string[];
-    const serv = localStorage.getItem(RCC_SERVICOS_OPCOES_STORAGE_KEY);
-    if (serv) opcoes['rcc-servicos'] = JSON.parse(serv) as string[];
+    for (const [chaveApi, storageKey] of Object.entries(SGQ_OPCOES_LISTA_CHAVES)) {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) opcoes[chaveApi] = JSON.parse(raw) as string[];
+    }
     if (Object.keys(opcoes).length) await syncQualidadeOpcoesLista(opcoes);
   } catch {
     /* ignore */
   }
 
   for (const k of LS_KEYS) localStorage.removeItem(k);
-  localStorage.removeItem(RCC_RECLAMACOES_OPCOES_STORAGE_KEY);
-  localStorage.removeItem(RCC_SERVICOS_OPCOES_STORAGE_KEY);
+  for (const storageKey of Object.values(SGQ_OPCOES_LISTA_CHAVES)) {
+    localStorage.removeItem(storageKey);
+  }
 
   return fetchQualidadeBootstrap();
 }
@@ -836,17 +836,11 @@ export async function hydrateQualidadeFromServer(currentUserLogin: string) {
 
   useAvaliacaoFornecedorStore.setState({ avaliacoes: data.avaliacoes as never[] });
 
-  if (data.opcoesLista['rcc-reclamacoes']) {
-    localStorage.setItem(
-      RCC_RECLAMACOES_OPCOES_STORAGE_KEY,
-      JSON.stringify(data.opcoesLista['rcc-reclamacoes'])
-    );
-  }
-  if (data.opcoesLista['rcc-servicos']) {
-    localStorage.setItem(
-      RCC_SERVICOS_OPCOES_STORAGE_KEY,
-      JSON.stringify(data.opcoesLista['rcc-servicos'])
-    );
+  for (const [chaveApi, storageKey] of Object.entries(SGQ_OPCOES_LISTA_CHAVES)) {
+    const lista = data.opcoesLista[chaveApi];
+    if (lista) {
+      localStorage.setItem(storageKey, JSON.stringify(lista));
+    }
   }
 
   const tasksAntes = useDocumentsStore
@@ -937,10 +931,10 @@ export function scheduleOpcoesListaSync() {
   debounceSync('opcoes-lista', async () => {
     const opcoes: Record<string, string[]> = {};
     try {
-      const rec = localStorage.getItem(RCC_RECLAMACOES_OPCOES_STORAGE_KEY);
-      if (rec) opcoes['rcc-reclamacoes'] = JSON.parse(rec) as string[];
-      const serv = localStorage.getItem(RCC_SERVICOS_OPCOES_STORAGE_KEY);
-      if (serv) opcoes['rcc-servicos'] = JSON.parse(serv) as string[];
+      for (const [chaveApi, storageKey] of Object.entries(SGQ_OPCOES_LISTA_CHAVES)) {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) opcoes[chaveApi] = JSON.parse(raw) as string[];
+      }
       await syncQualidadeOpcoesLista(opcoes);
     } catch (err) {
       console.error('[qualidade-sync] opcoes-lista:', err);

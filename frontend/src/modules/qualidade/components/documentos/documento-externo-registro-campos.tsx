@@ -400,6 +400,9 @@ export function DocumentoExternoRegistroCampos({
                   patch({
                     distEletronica,
                     ...(aindaValida ? {} : { localizacao: "" }),
+                    ...(distEletronica
+                      ? {}
+                      : { responsavelDocumentoId: "" }),
                   });
                 }}
               />
@@ -443,37 +446,43 @@ export function DocumentoExternoRegistroCampos({
           </Select>
         </div>
 
-        <div className="space-y-2">
-          <Label className="text-base" htmlFor="doc-externo-responsavel-documento">
-            Responsável pelo documento *
-          </Label>
-          <Select
-            value={values.responsavelDocumentoId || null}
-            onValueChange={(v) => v && patch({ responsavelDocumentoId: v })}
-          >
-            <SelectTrigger
-              id="doc-externo-responsavel-documento"
-              className={selectTriggerClass}
+        {values.distEletronica ? (
+          <div className="space-y-2">
+            <Label
+              className="text-base"
+              htmlFor="doc-externo-responsavel-documento"
             >
-              <SelectValue placeholder="Selecione o usuário">
-                {userSelectLabel(users, values.responsavelDocumentoId) ?? null}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent className={selectContentClass}>
-              {users
-                .filter((user) => user.ativo)
-                .map((user) => (
-                  <SelectItem
-                    key={user.id}
-                    value={user.id}
-                    className={selectItemClass}
-                  >
-                    {user.nome}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        </div>
+              Responsável pelo documento *
+            </Label>
+            <Select
+              value={values.responsavelDocumentoId || null}
+              onValueChange={(v) => v && patch({ responsavelDocumentoId: v })}
+            >
+              <SelectTrigger
+                id="doc-externo-responsavel-documento"
+                className={selectTriggerClass}
+              >
+                <SelectValue placeholder="Selecione o usuário">
+                  {userSelectLabel(users, values.responsavelDocumentoId) ??
+                    null}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent className={selectContentClass}>
+                {users
+                  .filter((user) => user.ativo)
+                  .map((user) => (
+                    <SelectItem
+                      key={user.id}
+                      value={user.id}
+                      className={selectItemClass}
+                    >
+                      {user.nome}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
 
         {values.distFisica ? (
           <PessoaSearchField
