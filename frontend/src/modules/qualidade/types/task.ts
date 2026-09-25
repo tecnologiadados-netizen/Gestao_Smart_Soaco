@@ -20,4 +20,9 @@ export interface Task {
   prazo?: string;
   status: TaskStatus;
   createdAt: string;
+  /**
+   * Se true, a tarefa deixa de aparecer no sino (após “Limpar”),
+   * mas permanece em Minhas pendências até ser concluída.
+   */
+  sinoOculto?: boolean;
 }

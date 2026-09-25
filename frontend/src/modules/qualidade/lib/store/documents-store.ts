@@ -198,6 +198,8 @@ interface DocumentsState {
   getValidadeAlertasNaoLidos: () => DocumentValidadeAlerta[];
   getRevalidacoesByDocumentId: (documentId: string) => DocumentRevalidacao[];
   marcarAlertaValidadeLido: (alertaId: string) => void;
+  /** Marca alertas de validade como lidos e oculta tarefas do sino. */
+  limparNotificacoesSino: (userId: string) => void;
   revalidarDocumento: (
     documentId: string,
     input: RevalidarDocumentoInput
@@ -1647,6 +1649,21 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         set((state) => ({
           validadeAlertas: state.validadeAlertas.map((alerta) =>
             alerta.id === alertaId ? { ...alerta, lida: true } : alerta
+          ),
+        }));
+      },
+
+      limparNotificacoesSino: (userId) => {
+        set((state) => ({
+          validadeAlertas: state.validadeAlertas.map((alerta) =>
+            alerta.lida ? alerta : { ...alerta, lida: true }
+          ),
+          tasks: state.tasks.map((task) =>
+            task.status === "pendente" &&
+            task.responsavelId === userId &&
+            !task.sinoOculto
+              ? { ...task, sinoOculto: true }
+              : task
           ),
         }));
       },

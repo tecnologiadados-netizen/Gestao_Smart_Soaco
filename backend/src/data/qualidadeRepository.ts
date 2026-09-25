@@ -611,6 +611,7 @@ function mapTarefa(row: {
       : statusFromMeta === 'cancelada'
         ? 'cancelada'
         : 'pendente',
+    ...(meta.sinoOculto === true ? { sinoOculto: true } : {}),
   };
 }
 
