@@ -350,6 +350,43 @@ export function montarRelatoConferencia(params: {
   };
 }
 
+function ymdBrCurtoRelato(ymd: string | null | undefined): string {
+  if (!ymd) return '—';
+  const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}` : ymdBrRelato(ymd);
+}
+
+function textoDiferencaDiasPrazo(diasNF: number | null, diasPC: number | null): string | null {
+  if (diasNF == null || diasPC == null || diasNF === diasPC) return null;
+  const delta = Math.abs(diasNF - diasPC);
+  const quem = diasNF < diasPC ? 'NF menor' : 'PC menor';
+  return `${delta} dia${delta === 1 ? '' : 's'} (${quem})`;
+}
+
+/** Bloco WhatsApp das parcelas — NF e PC em linhas separadas. */
+function linhasPrazosWhatsApp(tab: TabelaPrazosRelato): string[] {
+  const out: string[] = ['', '*Prazos (vencimento − data base)*'];
+  const max = Math.min(tab.linhas.length, 6);
+  for (let i = 0; i < max; i++) {
+    const l = tab.linhas[i]!;
+    const baseNf = l.dataBaseNF ?? tab.dataBaseNF;
+    const basePc = l.dataBasePC ?? tab.dataBasePC;
+    const diasNfTxt = l.diasNF != null ? `${l.diasNF}d` : '—';
+    const diasPcTxt = l.diasPC != null ? `${l.diasPC}d` : '—';
+    out.push(`Parc. #${l.numero}`);
+    out.push(
+      `= NF: base ${wa(ymdBrCurtoRelato(baseNf))} → venc. ${wa(ymdBrCurtoRelato(l.vencimentoNF))} = *${diasNfTxt}*`
+    );
+    out.push(
+      `= PC: base ${wa(ymdBrCurtoRelato(basePc))} → venc. ${wa(ymdBrCurtoRelato(l.vencimentoPC))} = *${diasPcTxt}*`
+    );
+    const dif = textoDiferencaDiasPrazo(l.diasNF, l.diasPC);
+    if (dif) out.push(`= Diferença: *${dif}*`);
+  }
+  if (tab.linhas.length > 6) out.push(`… +${tab.linhas.length - 6} parcela(s)`);
+  return out;
+}
+
 function wa(s: string): string {
   return s.replace(/[*_~`]/g, '');
 }
@@ -367,6 +404,9 @@ function blocoCampoWhatsApp(campo: CampoRelato, mostrarTitulo: boolean): string[
   linhas.push(linhaDecisao(campo));
   if (campo.descontoWhatsApp) linhas.push(campo.descontoWhatsApp);
   if (campo.observacao) linhas.push(wa(campo.observacao));
+  if (campo.campo === 'condicao_pagamento' && campo.tabelaPrazos?.linhas.length) {
+    linhas.push(...linhasPrazosWhatsApp(campo.tabelaPrazos));
+  }
   return linhas;
 }
 
@@ -398,14 +438,7 @@ export function montarMensagemConferenciaWhatsApp(relato: RelatoConferencia, url
     if (relato.pagamentoComum.observacao) meio.push(wa(relato.pagamentoComum.observacao));
     const tab = relato.pagamentoComum.tabelaPrazos;
     if (tab && tab.linhas.length > 0) {
-      for (const l of tab.linhas.slice(0, 6)) {
-        const baseNf = l.dataBaseNF ?? tab.dataBaseNF;
-        const basePc = l.dataBasePC ?? tab.dataBasePC;
-        meio.push(
-          `#${l.numero}: NF base ${wa(ymdBrRelato(baseNf))} → ${wa(ymdBrRelato(l.vencimentoNF))} (${l.diasNF != null ? `${l.diasNF}d` : '—'}) · PC base ${wa(ymdBrRelato(basePc))} → ${wa(ymdBrRelato(l.vencimentoPC))} (${l.diasPC != null ? `${l.diasPC}d` : '—'})`
-        );
-      }
-      if (tab.linhas.length > 6) meio.push(`… +${tab.linhas.length - 6} parcela(s)`);
+      meio.push(...linhasPrazosWhatsApp(tab));
       if (url) meio.push('Tabela completa no link abaixo.');
     }
   }

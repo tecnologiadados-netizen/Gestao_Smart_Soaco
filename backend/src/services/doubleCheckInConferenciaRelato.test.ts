@@ -135,6 +135,47 @@ describe('relato da conferência NF × PC', () => {
     expect(texto).not.toContain('(0)');
   });
 
+  it('formata prazos no WhatsApp com NF/PC em linhas e diferença', () => {
+    const comPrazo = montarRelatoConferencia({
+      meta: { numeroNfe: '9899', numeroDocumentoFiscal: 'DE39727', nomeParceiro: 'CHICO' },
+      conferidoPor: 'Luisa',
+      linhas: [
+        linha({
+          idItemDocumentoEstoque: 10,
+          codigoProduto: 'X',
+          condicaoPagamentoNF: '(1x) 30',
+          regraPagamentoNF: '30',
+          condicaoPagamentoPC: '(1x) 30',
+          regraPagamentoPC: '30',
+          dataBaseParcelasNF: '2026-09-25',
+          dataBaseParcelasPC: '2026-09-22',
+          prazosLabelNF: '27',
+          prazosLabelPC: '30',
+          prazosDiasNF: [27],
+          prazosDiasPC: [30],
+          parcelasNF: [
+            { numero: 1, dataBase: '2026-09-25', dataVencimento: '2026-10-22', dias: 27 },
+          ],
+          parcelasPC: [
+            { numero: 1, dataBase: '2026-09-22', dataVencimento: '2026-10-22', dias: 30 },
+          ],
+          divergValorUnitario: false,
+          divergCondicaoPagamento: true,
+        }),
+      ],
+      decisoes: [decisao(linha({ idItemDocumentoEstoque: 10, codigoProduto: 'X' }), 'condicao_pagamento', 'Outros')],
+    });
+    // ajusta decisão com obs
+    const dec = comPrazo!.pagamentoComum!;
+    dec.observacao = 'entrada avulsa';
+    const texto = montarMensagemConferenciaWhatsApp(comPrazo!, 'https://gsmartsoaco.com.br/c/x');
+    expect(texto).toContain('*Prazos (vencimento − data base)*');
+    expect(texto).toContain('Parc. #1');
+    expect(texto).toContain('= NF: base 25/09 → venc. 22/10 = *27d*');
+    expect(texto).toContain('= PC: base 22/09 → venc. 22/10 = *30d*');
+    expect(texto).toContain('= Diferença: *3 dias (NF menor)*');
+  });
+
   it('não agrupa pagamento quando uma linha difere', () => {
     const outra = linha({
       idItemDocumentoEstoque: 3,
