@@ -258,10 +258,11 @@ export default function DoubleCheckInComparativoPcTab({
     campo: DoubleCheckInCampoComparativo,
     decisao: 'aceita' | 'recusa'
   ) => {
-    if (conferido) return;
     const existente = decisaoMap.get(
       chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
     );
+    // Após conferida, só permite decidir campos ainda pendentes (ex.: divergência nova).
+    if (conferido && existente) return;
     setDraft({ linha, campo, decisao });
     setOpcaoId(existente?.justificativaOpcaoId ?? '');
     setObs(existente?.observacao ?? '');
@@ -273,6 +274,10 @@ export default function DoubleCheckInComparativoPcTab({
     campo: DoubleCheckInCampoComparativo
   ) => {
     if (!conferido) return;
+    const existente = decisaoMap.get(
+      chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
+    );
+    if (!existente) return;
     setDraftObs({ linha, campo });
     setNovaObs('');
     setObsErro(null);
@@ -529,11 +534,11 @@ export default function DoubleCheckInComparativoPcTab({
                               ? `${dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
                               : 'Divergente'}
                           </span>
-                          {!conferido && (
+                          {(!conferido || !dec) && (
                             <div className="flex shrink-0 gap-1">
                               <button
                                 type="button"
-                                title="Aceitar divergência"
+                                title="Aceitar divergência (com justificativa/observação)"
                                 className="rounded p-1 text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
                                 onClick={() => abrirJustificativa(linha, c.id, 'aceita')}
                               >
@@ -541,7 +546,7 @@ export default function DoubleCheckInComparativoPcTab({
                               </button>
                               <button
                                 type="button"
-                                title="Recusar divergência"
+                                title="Recusar divergência (com justificativa/observação)"
                                 className="rounded p-1 text-rose-700 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/40"
                                 onClick={() => abrirJustificativa(linha, c.id, 'recusa')}
                               >
@@ -550,34 +555,36 @@ export default function DoubleCheckInComparativoPcTab({
                             </div>
                           )}
                         </div>
-                        {(hist.length > 0 || (conferido && dec)) && (
-                          <div className="space-y-1 rounded-md bg-slate-100/80 px-1.5 py-1 dark:bg-slate-800/80">
-                            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                              Histórico de observações
-                              {hist.length > 0 ? ` (${hist.length})` : ''}
-                            </div>
-                            {hist.length === 0 ? (
-                              <p className="text-[10px] text-slate-400">Nenhuma observação registrada ainda.</p>
-                            ) : (
-                              <ul className="max-h-40 space-y-1.5 overflow-y-auto pr-0.5">
-                                {hist.map((h, idx) => (
-                                  <li
-                                    key={h.id > 0 ? h.id : `${h.criadoEm}-${idx}-${h.texto.slice(0, 12)}`}
-                                    className="border-t border-slate-200/70 pt-1 first:border-0 first:pt-0 dark:border-slate-700/70"
-                                  >
-                                    <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[9px] text-slate-500 dark:text-slate-400">
-                                      <span className="font-medium">{h.usuarioLogin || '—'}</span>
-                                      <span>{h.criadoEm ? fmtDataHora(h.criadoEm) : ''}</span>
-                                    </div>
-                                    <p className="mt-0.5 text-[10px] leading-snug text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
-                                      {h.texto}
-                                    </p>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
+                        <div className="space-y-1 rounded-md bg-slate-100/80 px-1.5 py-1 dark:bg-slate-800/80">
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Observações
+                            {hist.length > 0 ? ` (${hist.length})` : ''}
                           </div>
-                        )}
+                          {hist.length === 0 ? (
+                            <p className="text-[10px] text-slate-400">
+                              {dec
+                                ? 'Nenhuma observação registrada ainda.'
+                                : 'Aceite ou recuse (✓/✗) para justificar e registrar observação.'}
+                            </p>
+                          ) : (
+                            <ul className="max-h-40 space-y-1.5 overflow-y-auto pr-0.5">
+                              {hist.map((h, idx) => (
+                                <li
+                                  key={h.id > 0 ? h.id : `${h.criadoEm}-${idx}-${h.texto.slice(0, 12)}`}
+                                  className="border-t border-slate-200/70 pt-1 first:border-0 first:pt-0 dark:border-slate-700/70"
+                                >
+                                  <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[9px] text-slate-500 dark:text-slate-400">
+                                    <span className="font-medium">{h.usuarioLogin || '—'}</span>
+                                    <span>{h.criadoEm ? fmtDataHora(h.criadoEm) : ''}</span>
+                                  </div>
+                                  <p className="mt-0.5 text-[10px] leading-snug text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                                    {h.texto}
+                                  </p>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
                         {conferido && dec && (
                           <button
                             type="button"
