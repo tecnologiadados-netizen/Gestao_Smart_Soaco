@@ -44,11 +44,10 @@ import {
   mensagemAlertaValidade,
   severidadeAlertaValidade,
 } from "@qualidade/lib/documents/validity";
-import { openQualidadeArquivo } from "@qualidade/lib/documents/file-actions";
-import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-print-window";
-import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
 import { formatLocalizacoesDocumento } from "@qualidade/lib/enderecamentos-sync";
 import { cn } from "@qualidade/lib/utils";
+import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-print-window";
+import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
 import {
   formatPermissaoProcessos,
   formatPermissaoUsuarios,
@@ -308,20 +307,6 @@ function DocumentoConsultaDetalheDialogImpl({
 
   function handleFechar() {
     onOpenChange(false);
-  }
-
-  async function abrirArquivo(arquivo: ArquivoVersao) {
-    if (!arquivo.nome?.trim() || !arquivoTemConteudo(arquivo)) return;
-    setErroArquivo("");
-    try {
-      await openQualidadeArquivo(arquivo, "print");
-    } catch (error) {
-      setErroArquivo(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível abrir o arquivo."
-      );
-    }
   }
 
   function handleRevisar() {
@@ -790,7 +775,7 @@ function DocumentoConsultaDetalheDialogImpl({
                         <TableHead className="min-w-[11rem] border-r border-border/70">
                           Prazos
                         </TableHead>
-                        <TableHead className="min-w-0">Arquivo</TableHead>
+                        <TableHead className="w-44 text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -805,6 +790,9 @@ function DocumentoConsultaDetalheDialogImpl({
                         );
                         const isAtual = ver.versao === doc.versaoAtual;
                         const arquivosRev = arquivosDaVersao(ver, doc);
+                        const arquivosDisponiveis = arquivosRev.filter((a) =>
+                          arquivoTemConteudo(a)
+                        );
                         return (
                           <TableRow
                             key={ver.id}
@@ -861,32 +849,35 @@ function DocumentoConsultaDetalheDialogImpl({
                             <TableCell className="border-r border-border/60 !whitespace-normal text-xs text-muted-foreground">
                               {formatPrazosVersao(ver.prazos)}
                             </TableCell>
-                            <TableCell className="max-w-0 !whitespace-normal">
-                              {arquivosRev.length === 0 ? (
-                                <span className="text-muted-foreground">—</span>
+                            <TableCell>
+                              {arquivosDisponiveis.length === 0 ? (
+                                <span className="block text-right text-muted-foreground">
+                                  —
+                                </span>
                               ) : (
-                                <div className="space-y-1">
-                                  {arquivosRev.map((arquivo, idx) =>
-                                    arquivoTemConteudo(arquivo) ? (
-                                      <button
-                                        key={`${ver.id}-${arquivo.nome}-${idx}`}
-                                        type="button"
-                                        onClick={() => void abrirArquivo(arquivo)}
-                                        className="block max-w-full truncate text-left text-xs font-medium text-brand-blue hover:underline"
-                                        title={arquivo.nome}
-                                      >
-                                        {arquivo.nome}
-                                      </button>
-                                    ) : (
-                                      <span
-                                        key={`${ver.id}-${arquivo.nome}-${idx}`}
-                                        className="block truncate text-xs text-muted-foreground"
-                                        title={arquivo.nome}
-                                      >
-                                        {arquivo.nome}
-                                      </span>
-                                    )
-                                  )}
+                                <div className="flex flex-col items-end gap-1.5">
+                                  {arquivosDisponiveis.map((arquivo, idx) => (
+                                    <div
+                                      key={`${ver.id}-${arquivo.nome}-${idx}`}
+                                      className="flex flex-wrap items-center justify-end gap-1"
+                                      title={arquivo.nome}
+                                    >
+                                      <SgqArquivoAcoes
+                                        arquivo={{
+                                          nome: arquivo.nome,
+                                          dataUrl: arquivo.dataUrl ?? "",
+                                          ...(arquivo.storagePath
+                                            ? { storagePath: arquivo.storagePath }
+                                            : {}),
+                                        }}
+                                        variant="default"
+                                        size="sm"
+                                        className="gap-1.5"
+                                        labeled
+                                        onError={setErroArquivo}
+                                      />
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                             </TableCell>
