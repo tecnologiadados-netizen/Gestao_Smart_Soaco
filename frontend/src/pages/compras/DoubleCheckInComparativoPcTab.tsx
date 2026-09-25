@@ -289,6 +289,10 @@ export default function DoubleCheckInComparativoPcTab({
       setJustErro('Selecione a justificativa.');
       return;
     }
+    if (draft.decisao === 'aceita' && !obs.trim()) {
+      setJustErro('Informe a observação para aceitar a divergência.');
+      return;
+    }
     const opcao = justificativas.find((j) => j.id === opcaoId);
     if (opcao?.codigo === 'outros' && !obs.trim()) {
       setJustErro('Informe a observação quando a justificativa for "Outros".');
@@ -555,18 +559,11 @@ export default function DoubleCheckInComparativoPcTab({
                             </div>
                           )}
                         </div>
-                        <div className="space-y-1 rounded-md bg-slate-100/80 px-1.5 py-1 dark:bg-slate-800/80">
-                          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            Observações
-                            {hist.length > 0 ? ` (${hist.length})` : ''}
-                          </div>
-                          {hist.length === 0 ? (
-                            <p className="text-[10px] text-slate-400">
-                              {dec
-                                ? 'Nenhuma observação registrada ainda.'
-                                : 'Aceite ou recuse (✓/✗) para justificar e registrar observação.'}
-                            </p>
-                          ) : (
+                        {hist.length > 0 && (
+                          <div className="space-y-1 rounded-md bg-slate-100/80 px-1.5 py-1 dark:bg-slate-800/80">
+                            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                              Observações ({hist.length})
+                            </div>
                             <ul className="max-h-40 space-y-1.5 overflow-y-auto pr-0.5">
                               {hist.map((h, idx) => (
                                 <li
@@ -583,8 +580,8 @@ export default function DoubleCheckInComparativoPcTab({
                                 </li>
                               ))}
                             </ul>
-                          )}
-                        </div>
+                          </div>
+                        )}
                         {conferido && dec && (
                           <button
                             type="button"
@@ -643,12 +640,19 @@ export default function DoubleCheckInComparativoPcTab({
                   </select>
                 </div>
                 <div>
-                  <label className={labelClass}>Observações</label>
+                  <label className={labelClass}>
+                    Observações
+                    {draft.decisao === 'aceita' ? ' *' : ''}
+                  </label>
                   <textarea
                     className={`${inputClass} min-h-[5rem]`}
                     value={obs}
                     onChange={(e) => setObs(e.target.value)}
-                    placeholder="Obrigatório se a justificativa for Outros"
+                    placeholder={
+                      draft.decisao === 'aceita'
+                        ? 'Obrigatório para aceitar a divergência'
+                        : 'Obrigatório se a justificativa for Outros'
+                    }
                   />
                 </div>
                 {justErro && <p className="text-sm text-rose-600">{justErro}</p>}
@@ -665,7 +669,11 @@ export default function DoubleCheckInComparativoPcTab({
                 <button
                   type="button"
                   className={btnPrimary}
-                  disabled={salvando || !opcaoId}
+                  disabled={
+                    salvando ||
+                    !opcaoId ||
+                    (draft.decisao === 'aceita' && !obs.trim())
+                  }
                   onClick={() => void salvarJustificativa()}
                 >
                   {salvando ? 'Salvando…' : 'Confirmar'}
