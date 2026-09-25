@@ -34,7 +34,7 @@ import {
 } from "@qualidade/components/documentos/documento-publicacao-fieldset";
 import { DocumentoEnderecamentoFieldset } from "@qualidade/components/documentos/documento-enderecamento-fieldset";
 import { afterUiTransition } from "@qualidade/lib/motion";
-import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
+import { scheduleQualidadeDocumentsFlush } from "@qualidade/lib/qualidadePersistence";
 import { cn } from "@qualidade/lib/utils";
 import {
   departmentSelectLabel,
@@ -257,7 +257,6 @@ export function CadastroDocumentoInternoDialog({
             publicacao: toDocumentPublicacao(publicacao),
             validade: toDocumentValidade(publicacao),
           });
-          await flushQualidadeDocumentsSync();
           onOpenChange(false);
           afterUiTransition(resetForm);
           onSalvo?.();
@@ -286,14 +285,13 @@ export function CadastroDocumentoInternoDialog({
           observacoes: formatWorkflowObservacoes(responsaveis.prazos),
         });
 
-        await flushQualidadeDocumentsSync();
-
         onOpenChange(false);
         afterUiTransition(() => {
           resetForm();
           navigate("/qualidade/documentos/consulta?guia=interno");
         });
       }, isEdicao ? "Salvando alterações..." : "Gravando documento...");
+      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao salvar documento interno:", err);
       setFormError(

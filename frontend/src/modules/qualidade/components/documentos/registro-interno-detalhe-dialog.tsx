@@ -16,7 +16,7 @@ import { AdicionarRegistroOcorrenciaDialog } from "@qualidade/components/documen
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { cancelQualidadeDocumentsDebounce } from "@qualidade/lib/qualidadePersistence";
 import { deleteQualidadeDocument } from "@qualidade/lib/api/qualidadeApi";
-import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
+import { scheduleQualidadeDocumentsFlush } from "@qualidade/lib/qualidadePersistence";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
@@ -207,14 +207,7 @@ export function RegistroInternoDetalheDialog({
       setErroArquivo("Não foi possível remover o registro.");
       return;
     }
-    try {
-      await withLoading(async () => {
-        await flushQualidadeDocumentsSync();
-      }, "Removendo registro...");
-    } catch (err) {
-      console.error("[qualidade] falha ao sincronizar exclusão de ocorrência:", err);
-      setErroArquivo("Removido localmente, mas falhou ao gravar no servidor.");
-    }
+    scheduleQualidadeDocumentsFlush();
   }
 
   if (!doc) return null;

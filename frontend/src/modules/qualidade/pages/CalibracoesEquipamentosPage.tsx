@@ -29,8 +29,8 @@ import {
 } from "@qualidade/lib/utils/select-display";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
 import {
-  flushQualidadeCalibrationsSync,
   markQualidadeCalibrationFilesPending,
+  scheduleQualidadeCalibrationsFlush,
 } from "@qualidade/lib/qualidadePersistence";
 import type { Fornecedor } from "@qualidade/types/avaliacao-fornecedor";
 
@@ -130,9 +130,9 @@ export function CadastroEquipamentosPage() {
         markQualidadeCalibrationFilesPending(id);
       }
 
-      await flushQualidadeCalibrationsSync();
       navigate("/qualidade/calibracoes");
     }, "Salvando equipamento...");
+    scheduleQualidadeCalibrationsFlush();
     setSaving(false);
   }
 

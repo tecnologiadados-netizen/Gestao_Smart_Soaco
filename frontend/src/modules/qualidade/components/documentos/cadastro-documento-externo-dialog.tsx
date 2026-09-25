@@ -14,7 +14,10 @@ import {
 } from "@qualidade/components/documentos/documento-externo-registro-campos";
 import { anexosPreenchidos } from "@qualidade/types/registro-anexo";
 import { afterUiTransition } from "@qualidade/lib/motion";
-import { flushQualidadeDocumentsSync, markQualidadeDocumentFilesPending } from "@qualidade/lib/qualidadePersistence";
+import {
+  markQualidadeDocumentFilesPending,
+  scheduleQualidadeDocumentsFlush,
+} from "@qualidade/lib/qualidadePersistence";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
@@ -148,7 +151,6 @@ export function CadastroDocumentoExternoDialog({
           if (anexos.some((a) => a.dataUrl.startsWith("data:"))) {
             markQualidadeDocumentFilesPending(documentId, versaoAtual?.id ?? "");
           }
-          await flushQualidadeDocumentsSync();
           onOpenChange(false);
           afterUiTransition(() => {
             resetForm();
@@ -171,13 +173,13 @@ export function CadastroDocumentoExternoDialog({
           markQualidadeDocumentFilesPending(novoId);
         }
 
-        await flushQualidadeDocumentsSync();
         onOpenChange(false);
         afterUiTransition(() => {
           resetForm();
           navigate("/qualidade/documentos/consulta?guia=externo");
         });
       }, editando ? "Salvando alterações..." : "Gravando documento...");
+      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar documento externo:", err);
       setErro(

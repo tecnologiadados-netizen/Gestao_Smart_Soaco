@@ -19,7 +19,7 @@ import {
 import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { getQualidadeCurrentUserId } from "@qualidade/lib/current-user";
-import { flushQualidadeCalibrationsSync, markQualidadeCalibrationFilesPending } from "@qualidade/lib/qualidadePersistence";
+import { scheduleQualidadeCalibrationsFlush, markQualidadeCalibrationFilesPending } from "@qualidade/lib/qualidadePersistence";
 import {
   calcularDueStatus,
   calcularProximaData,
@@ -31,7 +31,6 @@ import {
   userSelectLabel,
 } from "@qualidade/lib/utils/select-display";
 import { dueStatusLabels } from "@qualidade/lib/utils/status-labels";
-import { useLoading } from "@qualidade/components/providers/loading-provider";
 
 interface EquipamentoCalibracaoFluxoDialogProps {
   equipmentId: string | null;
@@ -73,7 +72,6 @@ export function EquipamentoCalibracaoFluxoDialog({
   onOpenChange,
   iniciarNovaCalibracao = false,
 }: EquipamentoCalibracaoFluxoDialogProps) {
-  const { withLoading } = useLoading();
   const equipmentState = useCalibrationsStore((s) => s.equipment);
   const registerCalibration = useCalibrationsStore((s) => s.registerCalibration);
   const departments = useConfigStore((s) => s.departments);
@@ -187,26 +185,15 @@ export function EquipamentoCalibracaoFluxoDialog({
 
     markQualidadeCalibrationFilesPending(equipmentId);
 
-    try {
-      await withLoading(async () => {
-        await flushQualidadeCalibrationsSync();
-      }, "Gravando calibração...");
-      setCalibracaoRegistrada(true);
-      setMostrarNovaCalibracao(false);
-      setData(new Date().toISOString().slice(0, 10));
-      setProximaCalibracaoData("");
-      setLaudoNome("");
-      setLaudoDataUrl("");
-      setAnexos(defaultAnexoRows());
-      setError("");
-    } catch (err) {
-      console.error("[qualidade] falha ao persistir calibração:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Calibração salva localmente, mas falhou ao gravar no servidor."
-      );
-    }
+    scheduleQualidadeCalibrationsFlush();
+    setCalibracaoRegistrada(true);
+    setMostrarNovaCalibracao(false);
+    setData(new Date().toISOString().slice(0, 10));
+    setProximaCalibracaoData("");
+    setLaudoNome("");
+    setLaudoDataUrl("");
+    setAnexos(defaultAnexoRows());
+    setError("");
   }
 
   if (!open || !equipmentId || !equipment) {

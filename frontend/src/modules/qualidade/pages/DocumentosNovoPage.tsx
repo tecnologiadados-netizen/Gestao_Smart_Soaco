@@ -18,7 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@qualidade/components/ui/card";
-import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
+import { scheduleQualidadeDocumentsFlush } from "@qualidade/lib/qualidadePersistence";
 import { formatDocumentCodigo } from "@qualidade/lib/documents/document-codigo";
 import { INITIAL_REVISION } from "@qualidade/lib/documents/revision";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
@@ -66,9 +66,9 @@ export function NovoDocumentoPage() {
           origem: "interno",
           observacoes: observacoes || undefined,
         });
-        await flushQualidadeDocumentsSync();
         navigate("/qualidade/documentos/consulta?guia=interno");
       }, "Gravando documento...");
+      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao salvar novo documento:", err);
     }

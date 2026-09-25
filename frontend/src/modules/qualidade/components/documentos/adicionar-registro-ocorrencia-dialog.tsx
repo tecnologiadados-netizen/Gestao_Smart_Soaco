@@ -8,8 +8,8 @@ import { Label } from "@qualidade/components/ui/label";
 import { Textarea } from "@qualidade/components/ui/textarea";
 import { afterUiTransition } from "@qualidade/lib/motion";
 import {
-  flushQualidadeDocumentsSync,
   markQualidadeDocumentFilesPending,
+  scheduleQualidadeDocumentsFlush,
 } from "@qualidade/lib/qualidadePersistence";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import {
@@ -106,10 +106,10 @@ export function AdicionarRegistroOcorrenciaDialog({
           (v) => v.versao === doc?.versaoAtual
         );
         markQualidadeDocumentFilesPending(documentId, versaoAtual?.id ?? "");
-        await flushQualidadeDocumentsSync();
         onOpenChange(false);
         afterUiTransition(resetForm);
       }, "Gravando registro...");
+      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar ocorrência:", err);
       setErro(

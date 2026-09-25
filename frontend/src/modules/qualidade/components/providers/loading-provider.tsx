@@ -17,7 +17,7 @@ interface LoadingContextValue {
 
 const LoadingContext = createContext<LoadingContextValue | null>(null);
 
-const MIN_LOADING_MS = 320;
+const MIN_LOADING_MS = 120;
 
 export function LoadingProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);

@@ -17,8 +17,8 @@ import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
-  flushQualidadeDocumentsSync,
   markQualidadeDocumentFilesPending,
+  scheduleQualidadeDocumentsFlush,
 } from "@qualidade/lib/qualidadePersistence";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
 
@@ -101,16 +101,15 @@ export function ElaborarDocumentoPage() {
   const processo = departments.find((d) => d.id === doc.setorId);
   const reprovacaoConsenso = getUltimaReprovacao(versaoAtual, "consenso");
 
-  async function persistArquivoNoServidor(nome: string, dataUrl: string) {
-    await withLoading(async () => {
-      updateElaboracao(id, {
-        arquivoNome: nome || undefined,
-        arquivoDataUrl: dataUrl || undefined,
-        observacoesElaboracao: observacoes || undefined,
-      });
-      markQualidadeDocumentFilesPending(id, versaoAtual.id);
-      await flushQualidadeDocumentsSync();
-    }, "Gravando anexo...");
+  function persistArquivoNoServidor(nome: string, dataUrl: string) {
+    // UI libera na hora; sync do PDF vai em segundo plano (sem overlay).
+    updateElaboracao(id, {
+      arquivoNome: nome || undefined,
+      arquivoDataUrl: dataUrl || undefined,
+      observacoesElaboracao: observacoes || undefined,
+    });
+    markQualidadeDocumentFilesPending(id, versaoAtual.id);
+    scheduleQualidadeDocumentsFlush();
   }
 
   function processarArquivo(file: File) {
@@ -128,18 +127,17 @@ export function ElaborarDocumentoPage() {
       setArquivoNome(file.name);
       setArquivoDataUrl(result);
       setArquivoStoragePath("");
-      void persistArquivoNoServidor(file.name, result)
-        .then(() => {
-          setSavedHint(true);
-          setTimeout(() => setSavedHint(false), 2500);
-        })
-        .catch((err) => {
-          console.error("[qualidade] falha ao gravar anexo da elaboração:", err);
-          setError(
-            "Arquivo anexado localmente, mas falhou ao gravar no servidor. Tente novamente." +
-              detalharErroServidor(err)
-          );
-        });
+      try {
+        persistArquivoNoServidor(file.name, result);
+        setSavedHint(true);
+        setTimeout(() => setSavedHint(false), 2500);
+      } catch (err) {
+        console.error("[qualidade] falha ao gravar anexo da elaboração:", err);
+        setError(
+          "Arquivo anexado localmente, mas falhou ao gravar no servidor. Tente novamente." +
+            detalharErroServidor(err)
+        );
+      }
     };
     reader.readAsDataURL(file);
   }
@@ -154,9 +152,7 @@ export function ElaborarDocumentoPage() {
       arquivoDataUrl: "",
       observacoesElaboracao: observacoes || undefined,
     });
-    void flushQualidadeDocumentsSync().catch((err) =>
-      console.error("[qualidade] falha ao sincronizar exclusão de anexo:", err)
-    );
+    scheduleQualidadeDocumentsFlush();
   }
 
   async function handleEnviarConsenso() {
@@ -187,19 +183,10 @@ export function ElaborarDocumentoPage() {
           markQualidadeDocumentFilesPending(id, versaoAtual.id);
         }
 
-        // Avança a etapa localmente e sai da tela; sync em seguida.
         enviarParaRevisao(id, versaoAtual.consensoId ?? currentUserId);
         navigateImmediate("/qualidade/documentos");
-
-        try {
-          await flushQualidadeDocumentsSync();
-        } catch (syncErr) {
-          console.error(
-            "[qualidade] etapa avançada, mas falhou ao sincronizar envio ao consenso:",
-            syncErr
-          );
-        }
       }, "Enviando para consenso...");
+      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao enviar para consenso:", err);
       setError(

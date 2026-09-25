@@ -1256,10 +1256,29 @@ export async function syncQualidadeDocuments(payload: {
       anexosIncoming = [
         {
           nome: nomePrincipal,
-          dataUrl: principalDataUrl,
           storagePath: arquivoStoragePath ?? existing?.arquivoStoragePath ?? undefined,
         },
       ];
+    }
+
+    // Evita gravar o mesmo PDF de novo em anexos quando o principal já foi salvo.
+    if (Array.isArray(anexosIncoming) && arquivoStoragePath) {
+      anexosIncoming = (anexosIncoming as AnexoStored[]).map((a) => {
+        const dataUrl = typeof a?.dataUrl === 'string' ? a.dataUrl : '';
+        if (!dataUrl.startsWith('data:')) return a;
+        const mesmoNome =
+          !nomePrincipal ||
+          String(a.nome ?? '').trim() === nomePrincipal ||
+          !String(a.nome ?? '').trim();
+        if (!mesmoNome) return a;
+        return {
+          ...a,
+          dataUrl: undefined,
+          storagePath: a.storagePath?.startsWith('/uploads/qualidade/')
+            ? a.storagePath
+            : arquivoStoragePath,
+        };
+      });
     }
 
     const anexosPersist = persistAnexosToDisk(

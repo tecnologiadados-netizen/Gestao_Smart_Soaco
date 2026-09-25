@@ -27,7 +27,7 @@ import { acaoRevalidacaoSelectLabel, labelResponsavel } from "@qualidade/lib/uti
 import { cn } from "@qualidade/lib/utils";
 import { format, parseISO } from "date-fns";
 import type { DocumentVersion } from "@qualidade/types/document";
-import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
+import { scheduleQualidadeDocumentsFlush } from "@qualidade/lib/qualidadePersistence";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
 
 interface Props {
@@ -207,9 +207,9 @@ export function RevalidarDocumentoDialog({
               : "A revalidação só pode ser feita após o vencimento da validade."
           );
         }
-        await flushQualidadeDocumentsSync();
         onOpenChange(false);
       }, "Gravando revalidação...");
+      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       setError(
         err instanceof Error

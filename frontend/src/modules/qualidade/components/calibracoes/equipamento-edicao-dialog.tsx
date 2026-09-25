@@ -32,7 +32,7 @@ import { PessoaSearchField } from "@qualidade/components/registros/pessoa-search
 import { SgqAnexosTable } from "@qualidade/components/ui/sgq-anexos-table";
 import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
-import { flushQualidadeCalibrationsSync, cancelQualidadeCalibrationsDebounce, markQualidadeCalibrationFilesPending } from "@qualidade/lib/qualidadePersistence";
+import { flushQualidadeCalibrationsSync, cancelQualidadeCalibrationsDebounce, markQualidadeCalibrationFilesPending, scheduleQualidadeCalibrationsFlush } from "@qualidade/lib/qualidadePersistence";
 import { deleteQualidadeEquipamento } from "@qualidade/lib/api/qualidadeApi";
 import {
   departmentSelectLabel,
@@ -289,9 +289,9 @@ export function EquipamentoEdicaoDialog({
 
     try {
       await withLoading(async () => {
-        await flushQualidadeCalibrationsSync();
+        handleClose();
       }, "Salvando equipamento...");
-      handleClose();
+      scheduleQualidadeCalibrationsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao persistir equipamento:", err);
       setError(

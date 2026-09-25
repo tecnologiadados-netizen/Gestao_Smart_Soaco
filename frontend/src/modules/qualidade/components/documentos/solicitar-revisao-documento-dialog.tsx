@@ -239,12 +239,12 @@ export function SolicitarRevisaoDocumentoDialog({
 
     try {
       await withLoading(async () => {
-        const { markQualidadeDocumentFilesPending, flushQualidadeDocumentsSync } =
+        const { markQualidadeDocumentFilesPending, scheduleQualidadeDocumentsFlush } =
           await import("@qualidade/lib/qualidadePersistence");
         if (fluxoSimplificado && arquivoDataUrl.startsWith("data:")) {
           markQualidadeDocumentFilesPending(documentId, versaoId);
         }
-        await flushQualidadeDocumentsSync();
+        scheduleQualidadeDocumentsFlush();
       }, fluxoExterno ? "Gravando atualização..." : "Gravando revisão...");
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar revisão:", err);

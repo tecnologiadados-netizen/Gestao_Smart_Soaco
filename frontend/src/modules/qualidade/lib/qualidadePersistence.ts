@@ -409,6 +409,13 @@ export function flushQualidadeDocumentsSync(): Promise<void> {
   });
 }
 
+/** Flush em segundo plano — não segura overlay/UI. */
+export function scheduleQualidadeDocumentsFlush(): void {
+  void flushQualidadeDocumentsSync().catch((err) => {
+    console.error('[qualidade-sync] documents schedule:', err);
+  });
+}
+
 function syncCalibrationsStateNow(includePendingFiles = false): Promise<void> {
   const payload = buildCalibrationsSyncPayload(includePendingFiles);
   return syncQualidadeCalibrations(payload).then(() => {
@@ -424,6 +431,13 @@ export function flushQualidadeCalibrationsSync(): Promise<void> {
   return syncCalibrationsStateNow(true).catch((err) => {
     console.error('[qualidade-sync] calibrations flush:', err);
     throw err;
+  });
+}
+
+/** Flush de calibrações em segundo plano — não segura overlay/UI. */
+export function scheduleQualidadeCalibrationsFlush(): void {
+  void flushQualidadeCalibrationsSync().catch((err) => {
+    console.error('[qualidade-sync] calibrations schedule:', err);
   });
 }
 

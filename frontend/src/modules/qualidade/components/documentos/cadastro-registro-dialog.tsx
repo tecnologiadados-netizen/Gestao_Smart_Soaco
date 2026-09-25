@@ -24,7 +24,7 @@ import {
   type RegistroInternoFormValues,
 } from "@qualidade/lib/documents/registro-interno";
 import { afterUiTransition } from "@qualidade/lib/motion";
-import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
+import { scheduleQualidadeDocumentsFlush } from "@qualidade/lib/qualidadePersistence";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
@@ -191,7 +191,6 @@ export function CadastroRegistroDialog({
           if (!ok) {
             throw new Error("Não foi possível atualizar o registro.");
           }
-          await flushQualidadeDocumentsSync();
           onOpenChange(false);
           afterUiTransition(() => {
             resetForm();
@@ -208,7 +207,6 @@ export function CadastroRegistroDialog({
           ...payload,
         });
 
-        await flushQualidadeDocumentsSync();
         onOpenChange(false);
         afterUiTransition(() => {
           resetForm();
@@ -219,6 +217,7 @@ export function CadastroRegistroDialog({
           }
         });
       }, editando ? "Salvando alterações..." : "Gravando registro...");
+      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar registro interno:", err);
       setErro(

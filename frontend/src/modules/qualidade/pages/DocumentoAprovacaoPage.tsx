@@ -16,7 +16,7 @@ import {
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
-import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
+import { scheduleQualidadeDocumentsFlush } from "@qualidade/lib/qualidadePersistence";
 import { labelResponsavel } from "@qualidade/lib/utils/select-display";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
 
@@ -106,15 +106,8 @@ export function AprovacaoDocumentoPage() {
           throw new Error("Não foi possível finalizar a aprovação.");
         }
         navigateImmediate("/qualidade/documentos");
-        try {
-          await flushQualidadeDocumentsSync();
-        } catch (syncErr) {
-          console.error(
-            "[qualidade] aprovação local feita, falha ao sincronizar:",
-            syncErr
-          );
-        }
       }, "Finalizando aprovação...");
+      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao aprovar documento:", err);
       setError(
@@ -149,15 +142,8 @@ export function AprovacaoDocumentoPage() {
     try {
       await withLoading(async () => {
         navigateImmediate("/qualidade/documentos");
-        try {
-          await flushQualidadeDocumentsSync();
-        } catch (syncErr) {
-          console.error(
-            "[qualidade] reprovação local feita, falha ao sincronizar:",
-            syncErr
-          );
-        }
       }, "Salvando reprovação...");
+      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar reprovação:", err);
       setError(
