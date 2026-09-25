@@ -1565,6 +1565,12 @@ export type DoubleCheckInComparativoLinha = {
   regraPagamentoNF: string | null;
   condicaoPagamentoPC: string | null;
   regraPagamentoPC: string | null;
+  dataBaseParcelasNF?: string | null;
+  dataBaseParcelasPC?: string | null;
+  prazosDiasNF?: number[];
+  prazosDiasPC?: number[];
+  prazosLabelNF?: string | null;
+  prazosLabelPC?: string | null;
   divergValorUnitario: boolean;
   divergQtde: boolean;
   divergIpi: boolean;
@@ -1650,7 +1656,12 @@ export async function saveDoubleCheckInComparativoDecisao(params: {
   decisao: 'aceita' | 'recusa';
   justificativaOpcaoId: number;
   observacao?: string | null;
-}): Promise<{ ok: boolean; decisao?: DoubleCheckInComparativoDecisao; erro?: string }> {
+}): Promise<{
+  ok: boolean;
+  decisao?: DoubleCheckInComparativoDecisao;
+  decisoesReplicadas?: DoubleCheckInComparativoDecisao[];
+  erro?: string;
+}> {
   const res = await apiFetch('/api/compras/double-checkin/comparativo-decisao', {
     method: 'PUT',
     body: params,
@@ -1658,12 +1669,17 @@ export async function saveDoubleCheckInComparativoDecisao(params: {
   const body = (await res.json().catch(() => ({}))) as {
     ok?: boolean;
     decisao?: DoubleCheckInComparativoDecisao;
+    decisoesReplicadas?: DoubleCheckInComparativoDecisao[];
     error?: string;
   };
   if (!res.ok) {
     return { ok: false, erro: body.error ?? res.statusText };
   }
-  return { ok: true, decisao: body.decisao };
+  return {
+    ok: true,
+    decisao: body.decisao,
+    decisoesReplicadas: Array.isArray(body.decisoesReplicadas) ? body.decisoesReplicadas : [],
+  };
 }
 
 export async function addDoubleCheckInComparativoObservacao(params: {

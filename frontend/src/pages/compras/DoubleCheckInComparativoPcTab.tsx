@@ -10,6 +10,7 @@ import {
   type DoubleCheckInComparativoObsHist,
   type DoubleCheckInJustificativaOpcao,
 } from '../../api/compras';
+import { contarPendentesComparativoLogica } from '../../utils/doubleCheckInPendencias';
 
 const nfBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const nfNum = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 });
@@ -64,10 +65,19 @@ function chaveDecisao(
   return `${idItemDocumentoEstoque}:${idItemPedidoCompra}:${campo}`;
 }
 
-function fmtCondicao(nome: string | null, regra: string | null): string {
+function fmtCondicao(
+  nome: string | null,
+  regra: string | null,
+  prazosLabel: string | null | undefined
+): { principal: string; detalhe: string | null } {
   const n = (nome ?? '').trim() || '—';
   const r = (regra ?? '').trim();
-  return r ? `${n} · ${r}` : n;
+  const principal = r ? `${n} · ${r}` : n;
+  const prazos = (prazosLabel ?? '').trim();
+  if (prazos) {
+    return { principal, detalhe: `prazos ${prazos}d` };
+  }
+  return { principal, detalhe: null };
 }
 
 function descontoUnitario(descontoTotal: number, qtde: number): number {
@@ -119,11 +129,11 @@ function valoresExibicao(
       };
     case 'ipi':
       return { nf: nfBrl.format(linha.valorIpiNF), pc: nfBrl.format(linha.valorIpiPC) };
-    case 'condicao_pagamento':
-      return {
-        nf: fmtCondicao(linha.condicaoPagamentoNF, linha.regraPagamentoNF),
-        pc: fmtCondicao(linha.condicaoPagamentoPC, linha.regraPagamentoPC),
-      };
+    case 'condicao_pagamento': {
+      const nf = fmtCondicao(linha.condicaoPagamentoNF, linha.regraPagamentoNF, linha.prazosLabelNF);
+      const pc = fmtCondicao(linha.condicaoPagamentoPC, linha.regraPagamentoPC, linha.prazosLabelPC);
+      return { nf: nf.principal, pc: pc.principal, nfDetalhe: nf.detalhe, pcDetalhe: pc.detalhe };
+    }
   }
 }
 
@@ -183,18 +193,7 @@ export function contarPendentesComparativo(
   linhas: DoubleCheckInComparativoLinha[],
   decisoes: DoubleCheckInComparativoDecisao[]
 ): number {
-  const map = new Set(
-    decisoes.map((d) => chaveDecisao(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo))
-  );
-  let n = 0;
-  for (const linha of linhas) {
-    for (const c of CAMPOS) {
-      if (linha[c.divergKey] && !map.has(chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id))) {
-        n += 1;
-      }
-    }
-  }
-  return n;
+  return contarPendentesComparativoLogica(linhas, decisoes);
 }
 
 export default function DoubleCheckInComparativoPcTab({
@@ -287,16 +286,17 @@ export default function DoubleCheckInComparativoPcTab({
         setJustErro(r.erro ?? 'Falha ao salvar.');
         return;
       }
-      const key = chaveDecisao(
-        r.decisao.idItemDocumentoEstoque,
-        r.decisao.idItemPedidoCompra,
-        r.decisao.campo
+      const aplicadas = [r.decisao, ...(r.decisoesReplicadas ?? [])];
+      const keys = new Set(
+        aplicadas.map((d) =>
+          chaveDecisao(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo)
+        )
       );
       const next = [
         ...decisoes.filter(
-          (d) => chaveDecisao(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo) !== key
+          (d) => !keys.has(chaveDecisao(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo))
         ),
-        r.decisao,
+        ...aplicadas,
       ];
       onDecisoesChange(next);
       setDraft(null);

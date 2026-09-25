@@ -167,11 +167,26 @@ function montarCampo(
   }
   return {
     ...base,
-    nf: nomeCondicao(linha.condicaoPagamentoNF),
-    pc: nomeCondicao(linha.condicaoPagamentoPC),
-    diferenca: null,
+    nf: formatPagamentoRelato(linha, 'nf'),
+    pc: formatPagamentoRelato(linha, 'pc'),
+    diferenca: diferencaPrazosRelato(linha),
     sinal: null,
   };
+}
+
+function formatPagamentoRelato(linha: DoubleCheckInComparativoLinha, lado: 'nf' | 'pc'): string {
+  const nome = nomeCondicao(lado === 'nf' ? linha.condicaoPagamentoNF : linha.condicaoPagamentoPC);
+  const prazos = lado === 'nf' ? linha.prazosLabelNF : linha.prazosLabelPC;
+  if (prazos) return `${nome} (${prazos}d)`;
+  return nome;
+}
+
+function diferencaPrazosRelato(linha: DoubleCheckInComparativoLinha): string | null {
+  const a = linha.prazosLabelNF;
+  const b = linha.prazosLabelPC;
+  if (!a && !b) return null;
+  if (a === b) return null;
+  return `prazos NF ${a ?? '—'}d × PC ${b ?? '—'}d`;
 }
 
 function mesmaAssinatura(a: CampoRelato, b: CampoRelato): boolean {
@@ -238,7 +253,6 @@ export function montarRelatoConferencia(params: {
 
   if (produtos.length === 0) return null;
 
-  const totalDivergencias = aceitas + recusadas;
   let pagamentoComum: CampoRelato | null = null;
   const pagamentos = produtos
     .map((p) => p.campos.find((c) => c.campo === 'condicao_pagamento'))
@@ -248,7 +262,31 @@ export function montarRelatoConferencia(params: {
     for (const produto of produtos) {
       produto.campos = produto.campos.filter((c) => c.campo !== 'condicao_pagamento');
     }
+    // Conta pagamento 1× (documento×PC), não por produto.
+    const n = pagamentos.length;
+    if (pagamentoComum.decisao === 'aceita') aceitas = aceitas - n + 1;
+    else recusadas = recusadas - n + 1;
+  } else if (pagamentos.length > 1) {
+    // Agrupa por assinatura NF/PC/decisão quando há mais de um PC ou textos distintos.
+    const grupos = new Map<string, { campo: CampoRelato; qtde: number }>();
+    for (const p of pagamentos) {
+      const key = `${p.nf}|${p.pc}|${p.decisao}|${p.justificativa}|${p.observacao ?? ''}`;
+      const g = grupos.get(key);
+      if (g) g.qtde += 1;
+      else grupos.set(key, { campo: p, qtde: 1 });
+    }
+    let extraAceitas = 0;
+    let extraRecusas = 0;
+    for (const g of grupos.values()) {
+      if (g.qtde <= 1) continue;
+      if (g.campo.decisao === 'aceita') extraAceitas += g.qtde - 1;
+      else extraRecusas += g.qtde - 1;
+    }
+    aceitas -= extraAceitas;
+    recusadas -= extraRecusas;
   }
+
+  const totalDivergencias = aceitas + recusadas;
 
   return {
     numeroNfe: (params.meta.numeroNfe ?? '').trim() || '—',

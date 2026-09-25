@@ -660,6 +660,15 @@ export type DoubleCheckInComparativoLinha = {
   regraPagamentoNF: string | null;
   condicaoPagamentoPC: string | null;
   regraPagamentoPC: string | null;
+  /** Data base das parcelas (YYYY-MM-DD). */
+  dataBaseParcelasNF: string | null;
+  dataBaseParcelasPC: string | null;
+  /** Offsets em dias: vencimento − dataBase, na ordem das parcelas. */
+  prazosDiasNF: number[];
+  prazosDiasPC: number[];
+  /** Ex.: "21" ou "30/60/90". */
+  prazosLabelNF: string | null;
+  prazosLabelPC: string | null;
   divergValorUnitario: boolean;
   divergQtde: boolean;
   divergIpi: boolean;
@@ -707,12 +716,78 @@ export function textosIguaisComparativo(a: unknown, b: unknown): boolean {
   return normalizarTextoComparativo(a) === normalizarTextoComparativo(b);
 }
 
+/** Extrai YYYY-MM-DD de Date/string Nomus (meia-noite BRT costuma vir como 03:00Z). */
+export function ymdNomusDate(v: unknown): string | null {
+  if (v == null) return null;
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    if (v.getUTCHours() === 3 && v.getUTCMinutes() === 0) {
+      const y = v.getUTCFullYear();
+      const m = String(v.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(v.getUTCDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    const via = formatSqlDateYmd(v);
+    return via || null;
+  }
+  const s = String(v);
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
+export function diasEntreYmd(base: string | null, venc: string | null): number | null {
+  if (!base || !venc) return null;
+  const da = Date.parse(`${base}T12:00:00Z`);
+  const db = Date.parse(`${venc}T12:00:00Z`);
+  if (!Number.isFinite(da) || !Number.isFinite(db)) return null;
+  return Math.round((db - da) / 86400000);
+}
+
+export function labelPrazosDias(dias: number[]): string | null {
+  if (dias.length === 0) return null;
+  return dias.map((d) => `${d}`).join('/');
+}
+
+export function prazosDiasIguais(a: number[], b: number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Critério final de Cond. pagamento: sequência de dias (vencimento − data base).
+ * Sem parcelas nos dois lados → fallback ao texto da condição/regra.
+ * Só um lado com parcelas → divergente.
+ */
+export function divergenciaCondicaoPorPrazos(params: {
+  prazosNF: number[];
+  prazosPC: number[];
+  condicaoNF: string | null;
+  regraNF: string | null;
+  condicaoPC: string | null;
+  regraPC: string | null;
+}): boolean {
+  const temNf = params.prazosNF.length > 0;
+  const temPc = params.prazosPC.length > 0;
+  if (temNf || temPc) {
+    if (!temNf || !temPc) return true;
+    return !prazosDiasIguais(params.prazosNF, params.prazosPC);
+  }
+  return (
+    !textosIguaisComparativo(params.condicaoNF, params.condicaoPC) ||
+    !textosIguaisComparativo(params.regraNF, params.regraPC)
+  );
+}
+
 const SQL_COMPARATIVO_PC = `
 SELECT
   de.id AS idDocumento,
   de.numeroDocumentoFiscal AS numeroDocumentoFiscal,
+  de.dataBaseParcelas AS dataBaseParcelasNF,
   pc.id AS idPedidoCompra,
   pc.nome AS nomePedidoCompra,
+  pc.dataBaseParcelas AS dataBaseParcelasPC,
   ide.id AS idItemDocumentoEstoque,
   ipc.id AS idItemPedidoCompra,
   ide.idProduto AS idProduto,
@@ -750,6 +825,58 @@ WHERE de.id = ?
 ORDER BY ide.id ASC, ipc.id ASC
 `.trim();
 
+async function carregarPrazosParcelas(params: {
+  pool: NonNullable<ReturnType<typeof getNomusPool>>;
+  idDocumento: number;
+  idsPedidoCompra: number[];
+  dataBaseNF: string | null;
+  dataBasePorPc: Map<number, string | null>;
+}): Promise<{ prazosNF: number[]; prazosPorPc: Map<number, number[]> }> {
+  const prazosNF: number[] = [];
+  const prazosPorPc = new Map<number, number[]>();
+  for (const id of params.idsPedidoCompra) prazosPorPc.set(id, []);
+
+  let sql: string;
+  let args: unknown[];
+  if (params.idsPedidoCompra.length === 0) {
+    sql = `
+SELECT idEntidadeOrigem, discriminador, numero, dataVencimento
+FROM parcelapagamento
+WHERE discriminador = 'DocumentoEntrada' AND idEntidadeOrigem = ?
+ORDER BY numero ASC, dataVencimento ASC, id ASC
+`.trim();
+    args = [params.idDocumento];
+  } else {
+    const ph = params.idsPedidoCompra.map(() => '?').join(', ');
+    sql = `
+SELECT idEntidadeOrigem, discriminador, numero, dataVencimento
+FROM parcelapagamento
+WHERE (discriminador = 'DocumentoEntrada' AND idEntidadeOrigem = ?)
+   OR (discriminador = 'PedidoCompra' AND idEntidadeOrigem IN (${ph}))
+ORDER BY idEntidadeOrigem ASC, numero ASC, dataVencimento ASC, id ASC
+`.trim();
+    args = [params.idDocumento, ...params.idsPedidoCompra];
+  }
+
+  const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(params.pool, sql, args);
+  const list = Array.isArray(rows) ? rows : [];
+  for (const r of list) {
+    const disc = String(r.discriminador ?? '');
+    const idOrigem = toInt(r.idEntidadeOrigem);
+    const venc = ymdNomusDate(r.dataVencimento);
+    if (disc === 'DocumentoEntrada' && idOrigem === params.idDocumento) {
+      const d = diasEntreYmd(params.dataBaseNF, venc);
+      if (d != null) prazosNF.push(d);
+      continue;
+    }
+    if (disc === 'PedidoCompra' && prazosPorPc.has(idOrigem)) {
+      const d = diasEntreYmd(params.dataBasePorPc.get(idOrigem) ?? null, venc);
+      if (d != null) prazosPorPc.get(idOrigem)!.push(d);
+    }
+  }
+  return { prazosNF, prazosPorPc };
+}
+
 export async function queryDoubleCheckInComparativoPc(params: {
   idDocumento: number;
 }): Promise<{ linhas: DoubleCheckInComparativoLinha[]; erro?: string }> {
@@ -765,6 +892,29 @@ export async function queryDoubleCheckInComparativoPc(params: {
       [params.idDocumento]
     );
     const list = Array.isArray(rows) ? rows : [];
+
+    const dataBaseNF =
+      list.length > 0 ? ymdNomusDate(list[0]!.dataBaseParcelasNF) : null;
+    const dataBasePorPc = new Map<number, string | null>();
+    const idsPc: number[] = [];
+    for (const r of list) {
+      if (r.idPedidoCompra == null) continue;
+      const idPc = toInt(r.idPedidoCompra);
+      if (!dataBasePorPc.has(idPc)) {
+        dataBasePorPc.set(idPc, ymdNomusDate(r.dataBaseParcelasPC));
+        idsPc.push(idPc);
+      }
+    }
+
+    const { prazosNF, prazosPorPc } = await carregarPrazosParcelas({
+      pool,
+      idDocumento: params.idDocumento,
+      idsPedidoCompra: idsPc,
+      dataBaseNF,
+      dataBasePorPc,
+    });
+    const prazosLabelNF = labelPrazosDias(prazosNF);
+
     const linhas: DoubleCheckInComparativoLinha[] = list.map((r) => {
       const qtdeNF = toNum(r.qtdeNF);
       const qtdePC = toNum(r.qtdePC);
@@ -798,16 +948,27 @@ export async function queryDoubleCheckInComparativoPc(params: {
       const regraPagamentoNF = strOrNull(r.regraPagamentoNF);
       const condicaoPagamentoPC = strOrNull(r.condicaoPagamentoPC);
       const regraPagamentoPC = strOrNull(r.regraPagamentoPC);
+      const idPedidoCompra = r.idPedidoCompra != null ? toInt(r.idPedidoCompra) : null;
+      const dataBaseParcelasPC =
+        idPedidoCompra != null ? (dataBasePorPc.get(idPedidoCompra) ?? null) : null;
+      const prazosDiasPC =
+        idPedidoCompra != null ? (prazosPorPc.get(idPedidoCompra) ?? []) : [];
+      const prazosLabelPC = labelPrazosDias(prazosDiasPC);
       const divergValorUnitario = !valoresIguaisComparativo(valorUnitarioNF, valorUnitarioPC, 2);
       const divergQtde = !valoresIguaisComparativo(qtdeNF, qtdePC, 4);
       const divergIpi = !valoresIguaisComparativo(valorIpiNF, valorIpiPC, 2);
-      const divergCondicaoPagamento =
-        !textosIguaisComparativo(condicaoPagamentoNF, condicaoPagamentoPC) ||
-        !textosIguaisComparativo(regraPagamentoNF, regraPagamentoPC);
+      const divergCondicaoPagamento = divergenciaCondicaoPorPrazos({
+        prazosNF,
+        prazosPC: prazosDiasPC,
+        condicaoNF: condicaoPagamentoNF,
+        regraNF: regraPagamentoNF,
+        condicaoPC: condicaoPagamentoPC,
+        regraPC: regraPagamentoPC,
+      });
       return {
         idItemDocumentoEstoque: toInt(r.idItemDocumentoEstoque),
         idItemPedidoCompra: toInt(r.idItemPedidoCompra),
-        idPedidoCompra: r.idPedidoCompra != null ? toInt(r.idPedidoCompra) : null,
+        idPedidoCompra,
         nomePedidoCompra: strOrNull(r.nomePedidoCompra),
         idProduto: r.idProduto != null ? toInt(r.idProduto) : null,
         codigoProduto: strOrNull(r.codigoProduto),
@@ -828,6 +989,12 @@ export async function queryDoubleCheckInComparativoPc(params: {
         regraPagamentoNF,
         condicaoPagamentoPC,
         regraPagamentoPC,
+        dataBaseParcelasNF: dataBaseNF,
+        dataBaseParcelasPC,
+        prazosDiasNF: prazosNF,
+        prazosDiasPC,
+        prazosLabelNF,
+        prazosLabelPC,
         divergValorUnitario,
         divergQtde,
         divergIpi,
