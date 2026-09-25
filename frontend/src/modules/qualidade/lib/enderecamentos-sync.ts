@@ -21,6 +21,10 @@ export function formatEnderecamentoLabel(
   enderecamento: Enderecamento,
   departments: Department[]
 ): string {
+  // No formulário, endereços "Geral" aparecem só pelo nome do local (sem prefixo "Geral —").
+  if (isEnderecamentoSetorGeral(enderecamento.setorId)) {
+    return enderecamento.endereco;
+  }
   const setorNome = enderecamentoSetorLabel(departments, enderecamento.setorId);
   if (setorNome === '—') return enderecamento.endereco;
   return `${setorNome} — ${enderecamento.endereco}`;
