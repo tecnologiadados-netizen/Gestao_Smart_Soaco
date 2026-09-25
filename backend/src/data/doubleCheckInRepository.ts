@@ -766,9 +766,30 @@ export function prazosDiasIguais(a: number[], b: number[]): boolean {
 }
 
 /**
+ * À vista (regra 0 / nome): data base não é obrigatória para gerar parcela.
+ * Aceita também sequência só com 0d.
+ */
+export function ehCondicaoAVista(params: {
+  condicao: string | null | undefined;
+  regra: string | null | undefined;
+  prazos?: number[];
+}): boolean {
+  const regra = String(params.regra ?? '').trim();
+  if (regra === '0') return true;
+  const nome = normalizarTextoComparativo(params.condicao)
+    .replace(/[.]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (/(^| )(a|à) ?vista( |$)/.test(` ${nome} `) || nome.includes('avista')) return true;
+  const prazos = params.prazos ?? [];
+  return prazos.length > 0 && prazos.every((d) => d === 0);
+}
+
+/**
  * Critério final de Cond. pagamento: sequência de dias (vencimento − data base).
+ * Ambos à vista → sem divergência (data base opcional).
  * Sem parcelas nos dois lados → fallback ao texto da condição/regra.
- * Só um lado com parcelas → divergente.
+ * Só um lado com parcelas (e não à vista) → divergente.
  */
 export function divergenciaCondicaoPorPrazos(params: {
   prazosNF: number[];
@@ -778,6 +799,18 @@ export function divergenciaCondicaoPorPrazos(params: {
   condicaoPC: string | null;
   regraPC: string | null;
 }): boolean {
+  const aVistaNf = ehCondicaoAVista({
+    condicao: params.condicaoNF,
+    regra: params.regraNF,
+    prazos: params.prazosNF,
+  });
+  const aVistaPc = ehCondicaoAVista({
+    condicao: params.condicaoPC,
+    regra: params.regraPC,
+    prazos: params.prazosPC,
+  });
+  if (aVistaNf && aVistaPc) return false;
+
   const temNf = params.prazosNF.length > 0;
   const temPc = params.prazosPC.length > 0;
   if (temNf || temPc) {
@@ -936,8 +969,6 @@ export async function queryDoubleCheckInComparativoPc(params: {
       dataBaseNF,
       dataBasePorPc,
     });
-    const prazosNF = parcelasNF.map((p) => p.dias).filter((d): d is number => d != null);
-    const prazosLabelNF = labelPrazosDias(prazosNF);
 
     const linhas: DoubleCheckInComparativoLinha[] = list.map((r) => {
       const qtdeNF = toNum(r.qtdeNF);
@@ -975,15 +1006,42 @@ export async function queryDoubleCheckInComparativoPc(params: {
       const idPedidoCompra = r.idPedidoCompra != null ? toInt(r.idPedidoCompra) : null;
       const dataBaseParcelasPC =
         idPedidoCompra != null ? (dataBasePorPc.get(idPedidoCompra) ?? null) : null;
-      const parcelasPC =
+      const parcelasPCRaw =
         idPedidoCompra != null ? (parcelasPorPc.get(idPedidoCompra) ?? []) : [];
+      // À vista: sem data base, ainda assim o prazo comercial é 0d (vencimento existe).
+      const normalizarParcelasAVista = (
+        parcelas: DoubleCheckInParcelaPrazo[],
+        condicao: string | null,
+        regra: string | null
+      ): DoubleCheckInParcelaPrazo[] => {
+        if (!ehCondicaoAVista({ condicao, regra })) return parcelas;
+        return parcelas.map((p) =>
+          p.dias == null && p.dataVencimento
+            ? { ...p, dias: 0 }
+            : p
+        );
+      };
+      const parcelasNFNorm = normalizarParcelasAVista(
+        parcelasNF,
+        condicaoPagamentoNF,
+        regraPagamentoNF
+      );
+      const parcelasPC = normalizarParcelasAVista(
+        parcelasPCRaw,
+        condicaoPagamentoPC,
+        regraPagamentoPC
+      );
+      const prazosDiasNF = parcelasNFNorm
+        .map((p) => p.dias)
+        .filter((d): d is number => d != null);
       const prazosDiasPC = parcelasPC.map((p) => p.dias).filter((d): d is number => d != null);
+      const prazosLabelNF = labelPrazosDias(prazosDiasNF);
       const prazosLabelPC = labelPrazosDias(prazosDiasPC);
       const divergValorUnitario = !valoresIguaisComparativo(valorUnitarioNF, valorUnitarioPC, 2);
       const divergQtde = !valoresIguaisComparativo(qtdeNF, qtdePC, 4);
       const divergIpi = !valoresIguaisComparativo(valorIpiNF, valorIpiPC, 2);
       const divergCondicaoPagamento = divergenciaCondicaoPorPrazos({
-        prazosNF,
+        prazosNF: prazosDiasNF,
         prazosPC: prazosDiasPC,
         condicaoNF: condicaoPagamentoNF,
         regraNF: regraPagamentoNF,
@@ -1016,9 +1074,9 @@ export async function queryDoubleCheckInComparativoPc(params: {
         regraPagamentoPC,
         dataBaseParcelasNF: dataBaseNF,
         dataBaseParcelasPC,
-        parcelasNF,
+        parcelasNF: parcelasNFNorm,
         parcelasPC,
-        prazosDiasNF: prazosNF,
+        prazosDiasNF,
         prazosDiasPC,
         prazosLabelNF,
         prazosLabelPC,

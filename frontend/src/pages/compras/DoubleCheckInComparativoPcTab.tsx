@@ -858,6 +858,7 @@ export default function DoubleCheckInComparativoPcTab({
                     : ''}
                 </strong>
                 . O critério de divergência usa os dias (vencimento − data base).
+                Se ambos forem à vista, data base ausente no PC ou no DE não conta como divergência.
               </p>
             </div>
           </div>,
