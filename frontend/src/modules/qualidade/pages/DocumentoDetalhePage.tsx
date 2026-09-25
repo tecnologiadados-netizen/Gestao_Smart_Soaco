@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, FileText } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Button, buttonVariants } from "@qualidade/components/ui/button";
 import { cn } from "@qualidade/lib/utils";
 import {
@@ -12,7 +12,14 @@ import {
   CardTitle,
 } from "@qualidade/components/ui/card";
 import { Badge } from "@qualidade/components/ui/badge";
-import { Separator } from "@qualidade/components/ui/separator";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@qualidade/components/ui/table";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
@@ -23,6 +30,17 @@ import {
 import { formatarData, formatarDataHora } from "@qualidade/lib/utils/dates";
 import { labelResponsavel } from "@qualidade/lib/utils/select-display";
 import { SolicitarRevisaoDocumentoDialog } from "@qualidade/components/documentos/solicitar-revisao-documento-dialog";
+
+function labelDias(n: number): string {
+  return `${n} ${n === 1 ? "dia" : "dias"}`;
+}
+
+function formatPrazosVersao(
+  prazos?: { elaboracao: number; consenso: number; aprovacao: number } | null
+): string {
+  if (!prazos) return "—";
+  return `Elab. ${labelDias(prazos.elaboracao)} · Cons. ${labelDias(prazos.consenso)} · Aprov. ${labelDias(prazos.aprovacao)}`;
+}
 
 export function DocumentoDetalhePage() {
   const params = useParams();
@@ -113,86 +131,127 @@ export function DocumentoDetalhePage() {
           <Card>
             <CardHeader>
               <CardTitle>Histórico de revisões</CardTitle>
-              <CardDescription>Timeline do documento</CardDescription>
+              <CardDescription>Uma linha por revisão do documento</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {versions.map((ver, idx) => {
-                const elaboradorNome = labelResponsavel(users, ver.elaboradorId);
-                const consensoNome = labelResponsavel(users, ver.consensoId);
-                const revisorNome = labelResponsavel(users, ver.revisorId);
-                const aprovadorNome = labelResponsavel(users, ver.aprovadorId);
-                return (
-                  <div key={ver.id}>
-                    {idx > 0 && <Separator className="mb-4" />}
-                    <div className="flex items-start gap-3">
-                      <div className="rounded-lg bg-muted p-2">
-                        <FileText className="size-4" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium">Revisão {ver.versao}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Elaborado por {elaboradorNome} em{" "}
-                          {formatarData(ver.dataElaboracao)}
-                          {ver.prazos ? ` · Prazo: ${ver.prazos.elaboracao} dias` : ""}
-                        </p>
-                        {ver.consensoId && (
-                          <p className="text-sm text-muted-foreground">
-                            Consenso: {consensoNome}
-                            {ver.prazos
-                              ? ` · Prazo: ${ver.prazos.consenso} dias`
-                              : ""}
-                          </p>
-                        )}
-                        {ver.aprovadorId && !ver.dataAprovacao && ver.prazos && (
-                          <p className="text-sm text-muted-foreground">
-                            Aprovador: {aprovadorNome} · Prazo:{" "}
-                            {ver.prazos.aprovacao} dias
-                          </p>
-                        )}
-                        {ver.dataRevisao && (
-                          <p className="text-sm text-muted-foreground">
-                            Revisado por {revisorNome} em{" "}
-                            {formatarData(ver.dataRevisao)}
-                          </p>
-                        )}
-                        {ver.dataAprovacao && (
-                          <p className="text-sm text-muted-foreground">
-                            Aprovado por {aprovadorNome} em{" "}
-                            {formatarData(ver.dataAprovacao)}
-                          </p>
-                        )}
-                        {ver.arquivoNome && (
-                          <p className="mt-1 text-sm text-primary">
-                            📎 {ver.arquivoNome}
-                          </p>
-                        )}
-                        {ver.observacoesConsenso && (
-                          <p className="mt-1 text-sm italic text-muted-foreground">
-                            Consenso: {ver.observacoesConsenso}
-                          </p>
-                        )}
-                        {ver.observacoes && (
-                          <p className="mt-1 text-sm italic text-muted-foreground">
-                            {ver.observacoes}
-                          </p>
-                        )}
-                        {ver.justificativaRevisao && (
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            <span className="font-medium">Motivo da revisão:</span>{" "}
-                            {ver.justificativaRevisao}
-                          </p>
-                        )}
-                        {ver.alteracoesRevisao && (
-                          <p className="text-sm text-muted-foreground">
-                            <span className="font-medium">Alterações:</span>{" "}
-                            {ver.alteracoesRevisao}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+            <CardContent>
+              {versions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma revisão registrada.
+                </p>
+              ) : (
+                <Table surface>
+                  <TableHeader>
+                    <TableRow className="border-b-2 border-border">
+                      <TableHead className="w-28 border-r border-border/70">
+                        Revisão
+                      </TableHead>
+                      <TableHead className="min-w-[9rem] border-r border-border/70">
+                        Elaboração
+                      </TableHead>
+                      <TableHead className="min-w-[9rem] border-r border-border/70">
+                        Aprovação
+                      </TableHead>
+                      <TableHead className="min-w-[11rem] border-r border-border/70">
+                        Prazos
+                      </TableHead>
+                      <TableHead className="min-w-0">Arquivo</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {versions.map((ver) => {
+                      const elaboradorNome = labelResponsavel(
+                        users,
+                        ver.elaboradorId
+                      );
+                      const aprovadorNome = labelResponsavel(
+                        users,
+                        ver.aprovadorId
+                      );
+                      const isAtual = ver.versao === doc.versaoAtual;
+                      return (
+                        <TableRow
+                          key={ver.id}
+                          className={cn(
+                            "border-b border-border/80 last:border-b-0",
+                            isAtual && "bg-brand-blue-light/20"
+                          )}
+                        >
+                          <TableCell className="border-r border-border/60 !whitespace-normal">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-semibold text-brand-navy">
+                                {ver.versao}
+                              </span>
+                              {isAtual ? (
+                                <Badge
+                                  variant="outline"
+                                  className="border-brand-blue/40 text-brand-blue"
+                                >
+                                  Atual
+                                </Badge>
+                              ) : null}
+                            </div>
+                            {ver.justificativaRevisao ? (
+                              <p
+                                className="mt-1 max-w-[14rem] text-xs text-muted-foreground"
+                                title={ver.justificativaRevisao}
+                              >
+                                Motivo: {ver.justificativaRevisao}
+                              </p>
+                            ) : null}
+                          </TableCell>
+                          <TableCell className="border-r border-border/60 !whitespace-normal text-muted-foreground">
+                            <span className="font-medium text-brand-navy">
+                              {elaboradorNome}
+                            </span>
+                            <span className="mt-0.5 block text-xs">
+                              {formatarData(ver.dataElaboracao)}
+                              {ver.prazos
+                                ? ` · ${labelDias(ver.prazos.elaboracao)}`
+                                : ""}
+                            </span>
+                          </TableCell>
+                          <TableCell className="border-r border-border/60 !whitespace-normal text-muted-foreground">
+                            {ver.dataAprovacao ? (
+                              <>
+                                <span className="font-medium text-brand-navy">
+                                  {aprovadorNome}
+                                </span>
+                                <span className="mt-0.5 block text-xs">
+                                  {formatarData(ver.dataAprovacao)}
+                                </span>
+                              </>
+                            ) : ver.aprovadorId ? (
+                              <span className="text-xs">
+                                {aprovadorNome}
+                                {ver.prazos
+                                  ? ` · prazo ${labelDias(ver.prazos.aprovacao)}`
+                                  : ""}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </TableCell>
+                          <TableCell className="border-r border-border/60 !whitespace-normal text-xs text-muted-foreground">
+                            {formatPrazosVersao(ver.prazos)}
+                          </TableCell>
+                          <TableCell className="max-w-0 !whitespace-normal">
+                            {ver.arquivoNome ? (
+                              <span
+                                className="block truncate text-xs font-medium text-brand-blue"
+                                title={ver.arquivoNome}
+                              >
+                                {ver.arquivoNome}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </div>

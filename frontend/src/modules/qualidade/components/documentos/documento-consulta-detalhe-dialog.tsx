@@ -10,6 +10,14 @@ import {
 } from "@qualidade/components/ui/dropdown-menu";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Badge } from "@qualidade/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@qualidade/components/ui/table";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { cancelQualidadeDocumentsDebounce } from "@qualidade/lib/qualidadePersistence";
 import { deleteQualidadeDocument } from "@qualidade/lib/api/qualidadeApi";
@@ -70,6 +78,17 @@ function arquivoTemConteudo(arquivo: {
   storagePath?: string;
 }) {
   return Boolean(arquivo.dataUrl?.trim() || arquivo.storagePath?.trim());
+}
+
+function labelDias(n: number): string {
+  return `${n} ${n === 1 ? "dia" : "dias"}`;
+}
+
+function formatPrazosVersao(
+  prazos?: { elaboracao: number; consenso: number; aprovacao: number } | null
+): string {
+  if (!prazos) return "—";
+  return `Elab. ${labelDias(prazos.elaboracao)} · Cons. ${labelDias(prazos.consenso)} · Aprov. ${labelDias(prazos.aprovacao)}`;
 }
 
 function arquivosDaVersao(
@@ -516,9 +535,10 @@ function DocumentoConsultaDetalheDialogImpl({
                     {versaoAtual?.prazos && (
                       <div className="sm:col-span-3">
                         <p className="text-xs text-muted-foreground">
-                          Prazos — Elaboração: {versaoAtual.prazos.elaboracao}{" "}
-                          dias · Consenso: {versaoAtual.prazos.consenso} dias ·
-                          Aprovação: {versaoAtual.prazos.aprovacao} dias
+                          Prazos — Elaboração:{" "}
+                          {labelDias(versaoAtual.prazos.elaboracao)} · Consenso:{" "}
+                          {labelDias(versaoAtual.prazos.consenso)} · Aprovação:{" "}
+                          {labelDias(versaoAtual.prazos.aprovacao)}
                         </p>
                       </div>
                     )}
@@ -678,168 +698,204 @@ function DocumentoConsultaDetalheDialogImpl({
                       Nenhuma atualização anterior registrada.
                     </p>
                   ) : (
-                    <ul className="space-y-3">
-                      {atualizacoesExternas.map((item) => {
-                        const disponivel = arquivoTemConteudo(item);
-                        return (
-                          <li
-                            key={item.key}
-                            className="rounded-lg border border-border/80 bg-muted/20 px-4 py-4 text-sm"
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1 space-y-1">
-                                <p className="break-all font-semibold text-brand-navy">
+                    <Table surface>
+                      <TableHeader>
+                        <TableRow className="border-b-2 border-border">
+                          <TableHead className="w-14 border-r border-border/70">
+                            #
+                          </TableHead>
+                          <TableHead className="min-w-0 border-r border-border/70">
+                            Arquivo
+                          </TableHead>
+                          <TableHead className="w-36 border-r border-border/70">
+                            Publicação
+                          </TableHead>
+                          <TableHead className="w-44 text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {atualizacoesExternas.map((item, idx) => {
+                          const disponivel = arquivoTemConteudo(item);
+                          return (
+                            <TableRow
+                              key={item.key}
+                              className="border-b border-border/80 last:border-b-0"
+                            >
+                              <TableCell className="border-r border-border/60 text-center text-muted-foreground">
+                                {idx + 1}
+                              </TableCell>
+                              <TableCell className="max-w-0 border-r border-border/60 !whitespace-normal">
+                                <span
+                                  className="block break-all font-medium text-brand-navy"
+                                  title={item.nome}
+                                >
                                   {item.nome}
-                                </p>
-                                <p className="text-muted-foreground">
-                                  Data de publicação:{" "}
-                                  {item.dataPublicacao
-                                    ? formatarData(item.dataPublicacao)
-                                    : "—"}
-                                </p>
-                              </div>
-                              {disponivel ? (
-                                <SgqArquivoAcoes
-                                  arquivo={{
-                                    nome: item.nome,
-                                    dataUrl: item.dataUrl ?? "",
-                                    ...(item.storagePath
-                                      ? { storagePath: item.storagePath }
-                                      : {}),
-                                  }}
-                                  variant="default"
-                                  size="sm"
-                                  className="gap-1.5"
-                                  labeled
-                                  onError={setErroArquivo}
-                                />
-                              ) : null}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                                </span>
+                              </TableCell>
+                              <TableCell className="border-r border-border/60 text-muted-foreground">
+                                {item.dataPublicacao
+                                  ? formatarData(item.dataPublicacao)
+                                  : "—"}
+                              </TableCell>
+                              <TableCell>
+                                {disponivel ? (
+                                  <div className="flex flex-wrap items-center justify-end gap-1">
+                                    <SgqArquivoAcoes
+                                      arquivo={{
+                                        nome: item.nome,
+                                        dataUrl: item.dataUrl ?? "",
+                                        ...(item.storagePath
+                                          ? { storagePath: item.storagePath }
+                                          : {}),
+                                      }}
+                                      variant="default"
+                                      size="sm"
+                                      className="gap-1.5"
+                                      labeled
+                                      onError={setErroArquivo}
+                                    />
+                                  </div>
+                                ) : (
+                                  <span className="block text-right text-muted-foreground">
+                                    —
+                                  </span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
                   )}
                 </SecaoPainel>
               ) : (
               <SecaoPainel titulo="Revisões" defaultOpen>
-                <ul className="space-y-3">
-                  {versoes.map((ver) => {
-                    const elaboradorEhUsuario = users.some(
-                      (user) => user.id === ver.elaboradorId
-                    );
-                    const elaboradorNome =
-                      doc.origem === "interno" || elaboradorEhUsuario
-                        ? labelResponsavel(users, ver.elaboradorId)
-                        : labelResponsavelPosse(
-                            users,
-                            ver.elaboradorId,
-                            doc.externoRegistro?.responsavelNome
-                          );
-                    const aprovadorNome = labelResponsavel(
-                      users,
-                      ver.aprovadorId
-                    );
-                    const isAtual = ver.versao === doc.versaoAtual;
-                    return (
-                      <li
-                        key={ver.id}
-                        className={cn(
-                          "rounded-lg border px-4 py-4 text-sm",
-                          isAtual
-                            ? "border-brand-blue/30 bg-brand-blue-light/25"
-                            : "border-border/80 bg-muted/20"
-                        )}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-brand-navy">
-                              Revisão {ver.versao}
-                            </span>
-                            {isAtual && (
-                              <Badge
-                                variant="outline"
-                                className="border-brand-blue/40 text-brand-blue"
-                              >
-                                Atual
-                              </Badge>
+                {versoes.length === 0 ? (
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    Nenhuma revisão registrada.
+                  </p>
+                ) : (
+                  <Table surface>
+                    <TableHeader>
+                      <TableRow className="border-b-2 border-border">
+                        <TableHead className="w-28 border-r border-border/70">
+                          Revisão
+                        </TableHead>
+                        <TableHead className="min-w-[9rem] border-r border-border/70">
+                          Elaboração
+                        </TableHead>
+                        <TableHead className="min-w-[9rem] border-r border-border/70">
+                          Aprovação
+                        </TableHead>
+                        <TableHead className="min-w-[11rem] border-r border-border/70">
+                          Prazos
+                        </TableHead>
+                        <TableHead className="min-w-0">Arquivo</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {versoes.map((ver) => {
+                        const elaboradorNome = labelResponsavel(
+                          users,
+                          ver.elaboradorId
+                        );
+                        const aprovadorNome = labelResponsavel(
+                          users,
+                          ver.aprovadorId
+                        );
+                        const isAtual = ver.versao === doc.versaoAtual;
+                        const arquivosRev = arquivosDaVersao(ver, doc);
+                        return (
+                          <TableRow
+                            key={ver.id}
+                            className={cn(
+                              "border-b border-border/80 last:border-b-0",
+                              isAtual && "bg-brand-blue-light/20"
                             )}
-                          </div>
-                          {(() => {
-                            const arquivosRev = arquivosDaVersao(ver, doc);
-                            if (!arquivosRev.length) return null;
-                            return (
-                              <div className="mt-2 space-y-1.5">
-                                {arquivosRev.map((arquivo, idx) =>
-                                  arquivoTemConteudo(arquivo) ? (
-                                    <button
-                                      key={`${ver.id}-${arquivo.nome}-${idx}`}
-                                      type="button"
-                                      onClick={() => void abrirArquivo(arquivo)}
-                                      className="inline-flex items-center gap-1 text-xs font-medium text-brand-blue hover:underline"
-                                    >
-                                      {arquivo.nome}
-                                    </button>
-                                  ) : (
-                                    <span
-                                      key={`${ver.id}-${arquivo.nome}-${idx}`}
-                                      className="block text-xs text-muted-foreground"
-                                    >
-                                      {arquivo.nome}
-                                    </span>
-                                  )
-                                )}
+                          >
+                            <TableCell className="border-r border-border/60 !whitespace-normal">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-semibold text-brand-navy">
+                                  {ver.versao}
+                                </span>
+                                {isAtual ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="border-brand-blue/40 text-brand-blue"
+                                  >
+                                    Atual
+                                  </Badge>
+                                ) : null}
                               </div>
-                            );
-                          })()}
-                        </div>
-                        <p className="mt-1.5 text-muted-foreground">
-                          {doc.origem === "interno" ? (
-                            <>
-                              Elaborado por {elaboradorNome} em{" "}
-                              {formatarData(ver.dataElaboracao)}
-                            </>
-                          ) : (
-                            <>
-                              {elaboradorEhUsuario
-                                ? "Responsável pelo documento"
-                                : "Responsável pela posse do documento"}
-                              : {elaboradorNome} ·{" "}
-                              {formatarData(ver.dataElaboracao)}
-                            </>
-                          )}
-                        </p>
-                        {doc.origem === "interno" && ver.dataAprovacao && (
-                          <p className="text-muted-foreground">
-                            Aprovado por {aprovadorNome} em{" "}
-                            {formatarData(ver.dataAprovacao)}
-                          </p>
-                        )}
-                        {ver.observacoes && (
-                          <p className="mt-1 text-muted-foreground italic">
-                            {ver.observacoes}
-                          </p>
-                        )}
-                        {ver.justificativaRevisao && (
-                          <p className="mt-1 text-muted-foreground">
-                            <span className="font-medium not-italic">
-                              Motivo da revisão:
-                            </span>{" "}
-                            {ver.justificativaRevisao}
-                          </p>
-                        )}
-                        {ver.alteracoesRevisao && (
-                          <p className="text-muted-foreground">
-                            <span className="font-medium not-italic">
-                              Alterações:
-                            </span>{" "}
-                            {ver.alteracoesRevisao}
-                          </p>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
+                              {ver.justificativaRevisao ? (
+                                <p
+                                  className="mt-1 max-w-[14rem] text-xs text-muted-foreground"
+                                  title={ver.justificativaRevisao}
+                                >
+                                  Motivo: {ver.justificativaRevisao}
+                                </p>
+                              ) : null}
+                            </TableCell>
+                            <TableCell className="border-r border-border/60 !whitespace-normal text-muted-foreground">
+                              <span className="font-medium text-brand-navy">
+                                {elaboradorNome}
+                              </span>
+                              <span className="mt-0.5 block text-xs">
+                                {formatarData(ver.dataElaboracao)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="border-r border-border/60 !whitespace-normal text-muted-foreground">
+                              {ver.dataAprovacao ? (
+                                <>
+                                  <span className="font-medium text-brand-navy">
+                                    {aprovadorNome}
+                                  </span>
+                                  <span className="mt-0.5 block text-xs">
+                                    {formatarData(ver.dataAprovacao)}
+                                  </span>
+                                </>
+                              ) : (
+                                "—"
+                              )}
+                            </TableCell>
+                            <TableCell className="border-r border-border/60 !whitespace-normal text-xs text-muted-foreground">
+                              {formatPrazosVersao(ver.prazos)}
+                            </TableCell>
+                            <TableCell className="max-w-0 !whitespace-normal">
+                              {arquivosRev.length === 0 ? (
+                                <span className="text-muted-foreground">—</span>
+                              ) : (
+                                <div className="space-y-1">
+                                  {arquivosRev.map((arquivo, idx) =>
+                                    arquivoTemConteudo(arquivo) ? (
+                                      <button
+                                        key={`${ver.id}-${arquivo.nome}-${idx}`}
+                                        type="button"
+                                        onClick={() => void abrirArquivo(arquivo)}
+                                        className="block max-w-full truncate text-left text-xs font-medium text-brand-blue hover:underline"
+                                        title={arquivo.nome}
+                                      >
+                                        {arquivo.nome}
+                                      </button>
+                                    ) : (
+                                      <span
+                                        key={`${ver.id}-${arquivo.nome}-${idx}`}
+                                        className="block truncate text-xs text-muted-foreground"
+                                        title={arquivo.nome}
+                                      >
+                                        {arquivo.nome}
+                                      </span>
+                                    )
+                                  )}
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
               </SecaoPainel>
               )}
 
