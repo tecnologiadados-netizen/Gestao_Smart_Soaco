@@ -1081,6 +1081,25 @@ export async function syncQualidadeDocuments(payload: {
           })
           .filter(Boolean);
       }
+      if (Array.isArray(er.historicoAtualizacoes)) {
+        er.historicoAtualizacoes = (er.historicoAtualizacoes as Array<Record<string, unknown>>)
+          .map((a) => {
+            const nome = String(a.nome ?? '').trim();
+            if (!nome) return null;
+            const storagePath =
+              typeof a.storagePath === 'string' &&
+              a.storagePath.startsWith('/uploads/qualidade/')
+                ? a.storagePath
+                : undefined;
+            const dataPublicacao = String(a.dataPublicacao ?? '').trim();
+            return {
+              nome,
+              ...(storagePath ? { storagePath } : {}),
+              ...(dataPublicacao ? { dataPublicacao } : {}),
+            };
+          })
+          .filter(Boolean);
+      }
       if (Array.isArray(er.ocorrencias)) {
         er.ocorrencias = (er.ocorrencias as Array<Record<string, unknown>>)
           .map((o) => {

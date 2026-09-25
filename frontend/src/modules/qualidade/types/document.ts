@@ -105,6 +105,18 @@ export interface DocumentoAnexoArquivo {
   ocorrenciaId?: string;
 }
 
+/**
+ * Arquivos que saíram do “arquivo vigente” e passam a constar só no
+ * histórico de atualizações (documentos externos). Sem criar nova versão.
+ */
+export interface DocumentoHistoricoAtualizacao {
+  nome: string;
+  dataUrl?: string;
+  storagePath?: string;
+  /** ISO; opcional — na reorganização inicial pode ficar vazio. */
+  dataPublicacao?: string;
+}
+
 /** Uma ocorrência (arquivo + data) de um registro interno. */
 export interface DocumentoRegistroOcorrencia {
   id: string;
@@ -131,6 +143,11 @@ export interface DocumentExternoRegistro {
   /** Id da pessoa Nomus quando o elaborador do fluxo é outra pessoa. */
   responsavelPosseId?: string;
   anexos?: DocumentoAnexoArquivo[];
+  /**
+   * Histórico de atualizações (documentos externos): arquivos que não são o
+   * vigente atual. Persistido em `externoRegistroJson`, sem nova linha de versão.
+   */
+  historicoAtualizacoes?: DocumentoHistoricoAtualizacao[];
   /** Prazo de retenção (texto de exibição, ex.: "2 anos"). */
   retencao?: string;
   retencaoValor?: number;

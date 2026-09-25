@@ -258,6 +258,29 @@ function sanitizeOcorrenciasForSync(raw: unknown) {
     .filter(Boolean);
 }
 
+function sanitizeHistoricoAtualizacoesForSync(raw: unknown) {
+  if (!Array.isArray(raw)) return undefined;
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const a = item as Record<string, unknown>;
+      const nome = String(a.nome ?? '').trim();
+      if (!nome) return null;
+      const storagePath =
+        typeof a.storagePath === 'string' &&
+        a.storagePath.startsWith('/uploads/qualidade/')
+          ? a.storagePath
+          : undefined;
+      const dataPublicacao = String(a.dataPublicacao ?? '').trim();
+      return {
+        nome,
+        ...(storagePath ? { storagePath } : {}),
+        ...(dataPublicacao ? { dataPublicacao } : {}),
+      };
+    })
+    .filter(Boolean);
+}
+
 function sanitizeExternoRegistroForSync(
   externoRegistro: Record<string, unknown> | undefined,
   includeBinary: boolean
@@ -270,6 +293,9 @@ function sanitizeExternoRegistroForSync(
   // Nunca embutir base64 no JSON do documento — binário só na versão.
   void includeBinary;
   const ocorrencias = sanitizeOcorrenciasForSync(externoRegistro.ocorrencias);
+  const historicoAtualizacoes = sanitizeHistoricoAtualizacoesForSync(
+    externoRegistro.historicoAtualizacoes
+  );
   const modeloRaw = externoRegistro.modelo;
   const modelo =
     modeloRaw && typeof modeloRaw === 'object'
@@ -279,6 +305,9 @@ function sanitizeExternoRegistroForSync(
     ...externoRegistro,
     ...(anexos ? { anexos } : {}),
     ...(ocorrencias ? { ocorrencias } : {}),
+    ...(historicoAtualizacoes
+      ? { historicoAtualizacoes }
+      : {}),
     ...(modelo?.nome ? { modelo } : { modelo: undefined }),
   };
 }

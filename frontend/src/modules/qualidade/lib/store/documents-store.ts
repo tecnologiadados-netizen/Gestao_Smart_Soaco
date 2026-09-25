@@ -97,6 +97,8 @@ interface SolicitarRevisaoInput {
   anexos?: { nome: string; dataUrl: string; storagePath?: string }[];
   /** Atualiza validade e conclui pendência de revalidação (fluxo revalidação → revisão). */
   novaDataValidade?: string;
+  /** Documentos externos: data de publicação da atualização (ISO). */
+  dataPublicacao?: string;
 }
 
 interface DocumentsState {
@@ -963,6 +965,10 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         }
 
         const now = new Date().toISOString();
+        const dataPublicacao =
+          !isInterno && input.dataPublicacao?.trim()
+            ? input.dataPublicacao.trim()
+            : now;
         const versao = getNextRevision(
           get()
             .versions.filter((v) => v.documentId === documentId)
@@ -989,13 +995,17 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
           consensoId: isInterno ? input.consensoId : undefined,
           aprovadorId: isInterno ? input.aprovadorId : undefined,
           prazos: input.prazos,
-          dataElaboracao: now,
+          dataElaboracao: isInterno ? now : dataPublicacao,
           justificativaRevisao: justificativa,
           ...(alteracoes ? { alteracoesRevisao: alteracoes } : {}),
-          observacoes: `Revisão ${versao} solicitada`,
+          observacoes: isInterno
+            ? `Revisão ${versao} solicitada`
+            : doc.origem === "externo"
+              ? `Atualização ${versao}`
+              : `Revisão ${versao} solicitada`,
           ...(!isInterno
             ? {
-                dataAprovacao: now,
+                dataAprovacao: dataPublicacao,
                 arquivoNome: principal?.nome ?? input.arquivoNome,
                 arquivoDataUrl: principal?.dataUrl ?? input.arquivoDataUrl,
                 ...(anexosRevisao?.length ? { anexos: anexosRevisao } : {}),

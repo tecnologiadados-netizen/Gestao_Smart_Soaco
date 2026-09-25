@@ -99,6 +99,8 @@ function arquivosDaVersao(
         : {}),
     });
   }
+  // Externos: vigente só da versão; histórico em historicoAtualizacoes.
+  if (doc?.origem === "externo") return list;
   for (const a of doc?.externoRegistro?.anexos ?? []) {
     if (!a.nome?.trim() || !arquivoTemConteudo(a)) continue;
     if (list.some((x) => x.nome === a.nome)) continue;
@@ -239,6 +241,41 @@ function DocumentoConsultaDetalheDialogImpl({
     () => arquivosDaVersao(versaoAtual, doc),
     [versaoAtual, doc]
   );
+  const atualizacoesExternas = useMemo(() => {
+    if (!doc || doc.origem !== "externo") return [];
+    type Item = {
+      key: string;
+      nome: string;
+      dataPublicacao?: string;
+      dataUrl?: string;
+      storagePath?: string;
+    };
+    const items: Item[] = [];
+    for (const [idx, h] of (doc.externoRegistro?.historicoAtualizacoes ?? []).entries()) {
+      if (!h.nome?.trim()) continue;
+      items.push({
+        key: `hist-${idx}-${h.nome}`,
+        nome: h.nome,
+        dataPublicacao: h.dataPublicacao,
+        dataUrl: h.dataUrl,
+        storagePath: h.storagePath,
+      });
+    }
+    for (const ver of versoes) {
+      if (ver.versao === doc.versaoAtual) continue;
+      const arquivos = arquivosDaVersao(ver, doc);
+      for (const [idx, arquivo] of arquivos.entries()) {
+        items.push({
+          key: `ver-${ver.id}-${idx}`,
+          nome: arquivo.nome,
+          dataPublicacao: ver.dataAprovacao || ver.dataElaboracao,
+          dataUrl: arquivo.dataUrl,
+          storagePath: arquivo.storagePath,
+        });
+      }
+    }
+    return items;
+  }, [doc, versoes]);
   const temArquivo = arquivosVigentes.some((a) => arquivoTemConteudo(a));
   const revalidacoes = documentId
     ? getRevalidacoesByDocumentId(documentId)
@@ -446,7 +483,7 @@ function DocumentoConsultaDetalheDialogImpl({
                     value={formatarDataHora(doc.updatedAt)}
                   />
                   <MetaItem
-                    label="Revisão atual"
+                    label={doc.origem === "externo" ? "Atualização atual" : "Revisão atual"}
                     value={doc.versaoAtual}
                   />
                   <MetaItem label="Localização do documento" value={localizacaoLabel} />
@@ -634,6 +671,57 @@ function DocumentoConsultaDetalheDialogImpl({
                 </SecaoPainel>
               ) : null}
 
+              {doc.origem === "externo" ? (
+                <SecaoPainel titulo="Atualizações" defaultOpen>
+                  {atualizacoesExternas.length === 0 ? (
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      Nenhuma atualização anterior registrada.
+                    </p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {atualizacoesExternas.map((item) => {
+                        const disponivel = arquivoTemConteudo(item);
+                        return (
+                          <li
+                            key={item.key}
+                            className="rounded-lg border border-border/80 bg-muted/20 px-4 py-4 text-sm"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <p className="break-all font-semibold text-brand-navy">
+                                  {item.nome}
+                                </p>
+                                <p className="text-muted-foreground">
+                                  Data de publicação:{" "}
+                                  {item.dataPublicacao
+                                    ? formatarData(item.dataPublicacao)
+                                    : "—"}
+                                </p>
+                              </div>
+                              {disponivel ? (
+                                <SgqArquivoAcoes
+                                  arquivo={{
+                                    nome: item.nome,
+                                    dataUrl: item.dataUrl ?? "",
+                                    ...(item.storagePath
+                                      ? { storagePath: item.storagePath }
+                                      : {}),
+                                  }}
+                                  variant="default"
+                                  size="sm"
+                                  className="gap-1.5"
+                                  labeled
+                                  onError={setErroArquivo}
+                                />
+                              ) : null}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </SecaoPainel>
+              ) : (
               <SecaoPainel titulo="Revisões" defaultOpen>
                 <ul className="space-y-3">
                   {versoes.map((ver) => {
@@ -753,6 +841,7 @@ function DocumentoConsultaDetalheDialogImpl({
                   })}
                 </ul>
               </SecaoPainel>
+              )}
 
               <SecaoPainel titulo="Visualizações">
                 <p className="text-sm leading-relaxed text-muted-foreground">
@@ -797,7 +886,7 @@ function DocumentoConsultaDetalheDialogImpl({
             disabled={doc.status !== "vigente"}
             onClick={handleRevisar}
           >
-            Revisar
+            {doc.origem === "externo" ? "Atualizar" : "Revisar"}
             {doc.status === "vigente"
               ? ` (${getNextRevisionForDocument(doc.id)})`
               : ""}

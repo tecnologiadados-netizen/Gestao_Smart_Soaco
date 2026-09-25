@@ -83,6 +83,9 @@ export function SolicitarRevisaoDocumentoDialog({
   const [arquivoNome, setArquivoNome] = useState("");
   const [arquivoDataUrl, setArquivoDataUrl] = useState("");
   const [novaDataValidade, setNovaDataValidade] = useState("");
+  const [dataPublicacao, setDataPublicacao] = useState(() =>
+    toDateInputValue(new Date().toISOString())
+  );
   const [error, setError] = useState("");
   const exigeValidadeRevalidacao =
     fromRevalidacao && Boolean(doc?.validade?.ativa && doc.validade.dataValidade);
@@ -98,6 +101,7 @@ export function SolicitarRevisaoDocumentoDialog({
     setMotivoRevisao("");
     setArquivoNome(versaoAnterior.arquivoNome ?? "");
     setArquivoDataUrl(versaoAnterior.arquivoDataUrl ?? "");
+    setDataPublicacao(toDateInputValue(new Date().toISOString()));
     if (fromRevalidacao && doc?.validade?.ativa) {
       const defaultDate = doc.validade.dataValidade
         ? calcularProximaDataValidade(
@@ -122,6 +126,7 @@ export function SolicitarRevisaoDocumentoDialog({
   const processo = departments.find((d) => d.id === doc?.setorId);
   const fluxoInterno = doc?.origem === "interno";
   const fluxoSimplificado = doc?.origem === "externo" || doc?.origem === "registro";
+  const fluxoExterno = doc?.origem === "externo";
 
   function handleFileSelect(file: File) {
     if (file.size > 5 * 1024 * 1024) {
@@ -160,7 +165,11 @@ export function SolicitarRevisaoDocumentoDialog({
 
     if (!documentId || !doc) return;
     if (doc.status !== "vigente") {
-      setError("Somente documentos vigentes podem ser revisados.");
+      setError(
+        fluxoExterno
+          ? "Somente documentos vigentes podem ser atualizados."
+          : "Somente documentos vigentes podem ser revisados."
+      );
       return;
     }
     if (
@@ -176,11 +185,23 @@ export function SolicitarRevisaoDocumentoDialog({
       return;
     }
     if (!motivoRevisao.trim()) {
-      setError("Informe o motivo da revisão.");
+      setError(
+        fluxoExterno
+          ? "Informe o motivo da atualização."
+          : "Informe o motivo da revisão."
+      );
       return;
     }
     if (fluxoSimplificado && (!arquivoNome.trim() || !arquivoDataUrl.trim())) {
-      setError("Anexe o novo arquivo da revisão.");
+      setError(
+        fluxoExterno
+          ? "Anexe o novo arquivo da atualização."
+          : "Anexe o novo arquivo da revisão."
+      );
+      return;
+    }
+    if (fluxoExterno && !dataPublicacao) {
+      setError("Informe a data de publicação.");
       return;
     }
     if (exigeValidadeRevalidacao && !novaDataValidade) {
@@ -197,13 +218,20 @@ export function SolicitarRevisaoDocumentoDialog({
       ...(fluxoSimplificado
         ? { arquivoNome: arquivoNome.trim(), arquivoDataUrl: arquivoDataUrl.trim() }
         : {}),
+      ...(fluxoExterno
+        ? { dataPublicacao: fromDateInputValue(dataPublicacao) }
+        : {}),
       ...(exigeValidadeRevalidacao
         ? { novaDataValidade: fromDateInputValue(novaDataValidade) }
         : {}),
     });
 
     if (!versaoId) {
-      setError("Não foi possível solicitar a revisão.");
+      setError(
+        fluxoExterno
+          ? "Não foi possível registrar a atualização."
+          : "Não foi possível solicitar a revisão."
+      );
       return;
     }
 
@@ -218,7 +246,9 @@ export function SolicitarRevisaoDocumentoDialog({
       console.error("[qualidade] falha ao sincronizar revisão:", err);
       setError(
         fluxoSimplificado
-          ? "Revisão criada localmente, mas falhou ao gravar o anexo no servidor."
+          ? fluxoExterno
+            ? "Atualização criada localmente, mas falhou ao gravar o anexo no servidor."
+            : "Revisão criada localmente, mas falhou ao gravar o anexo no servidor."
           : "Revisão criada localmente, mas falhou ao gravar no servidor. Tente novamente."
       );
       return;
@@ -243,7 +273,9 @@ export function SolicitarRevisaoDocumentoDialog({
       >
         <div className="modal-header-bar flex items-center justify-between px-8 py-4">
           <h2 className="text-base font-semibold text-white">
-            Solicitar revisão do documento
+            {fluxoExterno
+              ? "Atualizar documento externo"
+              : "Solicitar revisão do documento"}
           </h2>
           <button
             type="button"
@@ -281,7 +313,7 @@ export function SolicitarRevisaoDocumentoDialog({
                   </div>
                   <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Nova revisão
+                      {fluxoExterno ? "Nova atualização" : "Nova revisão"}
                     </p>
                     <p className="font-semibold text-brand-blue">
                       {formatDocumentCodigo(
@@ -318,16 +350,50 @@ export function SolicitarRevisaoDocumentoDialog({
                 modo={fluxoInterno ? "completo" : "responsavel"}
               />
 
+              {fluxoExterno ? (
+                <fieldset className="brand-fieldset space-y-4">
+                  <legend className="text-base">Publicação</legend>
+                  <div className="space-y-2">
+                    <Label className="text-base" htmlFor="data-publicacao-atualizacao">
+                      Data de publicação *
+                    </Label>
+                    <Input
+                      id="data-publicacao-atualizacao"
+                      type="date"
+                      className="h-10 max-w-xs text-base"
+                      value={dataPublicacao}
+                      onChange={(e) => setDataPublicacao(e.target.value)}
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Preenchida com a data de hoje; você pode alterar.
+                    </p>
+                  </div>
+                </fieldset>
+              ) : null}
+
               {fluxoSimplificado ? (
                 <fieldset className="brand-fieldset space-y-4">
-                  <legend className="text-base">Documento da revisão</legend>
+                  <legend className="text-base">
+                    {fluxoExterno
+                      ? "Documento da atualização"
+                      : "Documento da revisão"}
+                  </legend>
                   <DocumentoArquivoField
-                    label="Substituir documento *"
+                    label={
+                      fluxoExterno
+                        ? "Substituir documento *"
+                        : "Substituir documento *"
+                    }
                     arquivoNome={arquivoNome}
                     arquivoDataUrl={arquivoDataUrl}
                     onFileSelect={handleFileSelect}
                     onRemove={handleRemoveArquivo}
-                    hint="Selecione o arquivo atualizado desta revisão · máx. 5 MB"
+                    hint={
+                      fluxoExterno
+                        ? "Selecione o arquivo vigente desta atualização · máx. 5 MB"
+                        : "Selecione o arquivo atualizado desta revisão · máx. 5 MB"
+                    }
                   />
                 </fieldset>
               ) : null}
@@ -376,13 +442,19 @@ export function SolicitarRevisaoDocumentoDialog({
                 <legend className="text-base">Justificativa</legend>
                 <div className="space-y-2">
                   <Label className="text-base" htmlFor="motivo-revisao">
-                    Motivo da revisão *
+                    {fluxoExterno
+                      ? "Motivo da atualização *"
+                      : "Motivo da revisão *"}
                   </Label>
                   <Textarea
                     id="motivo-revisao"
                     value={motivoRevisao}
                     onChange={(e) => setMotivoRevisao(e.target.value)}
-                    placeholder="Explique por que esta revisão está sendo solicitada..."
+                    placeholder={
+                      fluxoExterno
+                        ? "Explique por que esta atualização está sendo registrada..."
+                        : "Explique por que esta revisão está sendo solicitada..."
+                    }
                     rows={4}
                     className="text-base"
                     required
@@ -399,7 +471,11 @@ export function SolicitarRevisaoDocumentoDialog({
 
           <div className="sgq-form-footer px-8 py-5">
             <Button type="submit" size="lg" className="min-w-48">
-              {fluxoInterno ? "Enviar para elaboração" : "Confirmar nova revisão"}
+              {fluxoInterno
+                ? "Enviar para elaboração"
+                : fluxoExterno
+                  ? "Confirmar atualização"
+                  : "Confirmar nova revisão"}
             </Button>
             {onVoltar ? (
               <Button
