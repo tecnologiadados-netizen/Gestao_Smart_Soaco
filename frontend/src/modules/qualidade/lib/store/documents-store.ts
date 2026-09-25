@@ -161,6 +161,8 @@ interface DocumentsState {
   getPendingTasks: (userId: string, allUsers?: boolean) => Task[];
   getDocumentTasks: () => Task[];
   enviarParaRevisao: (documentId: string, consensoId: string) => void;
+  /** Desfaz avanço local em_revisao→rascunho quando o flush do envio falha. */
+  reabrirElaboracaoAposFalhaSync: (documentId: string) => void;
   aprovarConsenso: (
     documentId: string,
     observacoesConsenso?: string
@@ -1289,9 +1291,19 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
       getPendingTasks: (userId, allUsers = false) => {
         const { tasks, documents } = get();
         const docsById = new Map(documents.map((d) => [d.id, d]));
+        const userNorm = String(userId ?? "")
+          .trim()
+          .toLowerCase();
         return tasks.filter((t) => {
           if (t.status !== "pendente") return false;
-          if (!allUsers && t.responsavelId !== userId) return false;
+          if (
+            !allUsers &&
+            String(t.responsavelId ?? "")
+              .trim()
+              .toLowerCase() !== userNorm
+          ) {
+            return false;
+          }
           if (t.referenciaTipo !== "documento") return true;
 
           const doc = docsById.get(t.referenciaId);
@@ -1323,6 +1335,9 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         const version = doc
           ? getCurrentVersion(get().versions, documentId, doc.versaoAtual)
           : undefined;
+        const responsavelConsenso = resolveTaskAssignee(
+          (consensoId || version?.consensoId || "").trim() || undefined
+        );
 
         set((state) => ({
           documents: state.documents.map((d) =>
@@ -1339,9 +1354,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
               descricao: `Revisão ${doc?.versaoAtual} · Etapa: Consenso`,
               referenciaId: documentId,
               referenciaTipo: "documento",
-              responsavelId: resolveTaskAssignee(
-                consensoId ?? version?.consensoId
-              ),
+              responsavelId: responsavelConsenso,
               prazo: computeTaskDeadline(
                 now,
                 version?.prazos?.consenso ?? 7
@@ -1351,6 +1364,30 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
             },
           ],
         }));
+      },
+
+      reabrirElaboracaoAposFalhaSync: (documentId) => {
+        const now = new Date().toISOString();
+        const doc = get().getDocumentById(documentId);
+        if (!doc || doc.status !== "em_revisao") return;
+
+        set((state) => {
+          const documents = state.documents.map((d) =>
+            d.id === documentId ? comStatus(d, "rascunho", now) : d
+          );
+          const tasksBase = concluirPendenciasDocumento(
+            state.tasks,
+            documentId
+          );
+          return {
+            documents,
+            tasks: reconcileWorkflowTasks(
+              documents,
+              state.versions,
+              tasksBase
+            ),
+          };
+        });
       },
 
       aprovarConsenso: (documentId, observacoesConsenso) => {

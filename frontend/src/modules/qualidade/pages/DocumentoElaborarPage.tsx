@@ -17,8 +17,10 @@ import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
+  flushQualidadeDocumentsSync,
   markQualidadeDocumentFilesPending,
   scheduleQualidadeDocumentsFlush,
+  softRefreshQualidadeDocuments,
 } from "@qualidade/lib/qualidadePersistence";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
 
@@ -43,6 +45,9 @@ export function ElaborarDocumentoPage() {
   );
   const updateElaboracao = useDocumentsStore((s) => s.updateElaboracao);
   const enviarParaRevisao = useDocumentsStore((s) => s.enviarParaRevisao);
+  const reabrirElaboracaoAposFalhaSync = useDocumentsStore(
+    (s) => s.reabrirElaboracaoAposFalhaSync
+  );
   const getPendingTasks = useDocumentsStore((s) => s.getPendingTasks);
 
   const documentTypes = useConfigStore((s) => s.documentTypes);
@@ -116,14 +121,33 @@ export function ElaborarDocumentoPage() {
   const precisaAjuste = Boolean(motivoReprovacao || tarefaCorrecao);
 
   function persistArquivoNoServidor(nome: string, dataUrl: string) {
-    // UI libera na hora; sync do PDF vai em segundo plano (sem overlay).
+    // UI libera na hora; sync do PDF em segundo plano e depois busca storagePath.
     updateElaboracao(id, {
       arquivoNome: nome || undefined,
       arquivoDataUrl: dataUrl || undefined,
       observacoesElaboracao: observacoes || undefined,
     });
     markQualidadeDocumentFilesPending(id, versaoAtual.id);
-    scheduleQualidadeDocumentsFlush();
+    void (async () => {
+      try {
+        await flushQualidadeDocumentsSync();
+        await softRefreshQualidadeDocuments();
+        const ver = useDocumentsStore
+          .getState()
+          .versions.find((v) => v.id === versaoAtual.id);
+        if (ver?.arquivoStoragePath) {
+          setArquivoStoragePath(ver.arquivoStoragePath);
+        }
+        setSavedHint(true);
+        setTimeout(() => setSavedHint(false), 2500);
+      } catch (err) {
+        console.error("[qualidade] falha ao gravar anexo da elaboração:", err);
+        setError(
+          "Arquivo anexado localmente, mas falhou ao gravar no servidor. Tente novamente." +
+            detalharErroServidor(err)
+        );
+      }
+    })();
   }
 
   function processarArquivo(file: File) {
@@ -141,17 +165,7 @@ export function ElaborarDocumentoPage() {
       setArquivoNome(file.name);
       setArquivoDataUrl(result);
       setArquivoStoragePath("");
-      try {
-        persistArquivoNoServidor(file.name, result);
-        setSavedHint(true);
-        setTimeout(() => setSavedHint(false), 2500);
-      } catch (err) {
-        console.error("[qualidade] falha ao gravar anexo da elaboração:", err);
-        setError(
-          "Arquivo anexado localmente, mas falhou ao gravar no servidor. Tente novamente." +
-            detalharErroServidor(err)
-        );
-      }
+      persistArquivoNoServidor(file.name, result);
     };
     reader.readAsDataURL(file);
   }
@@ -178,34 +192,73 @@ export function ElaborarDocumentoPage() {
     setError("");
     setEnviando(true);
 
-    // Arquivo já no servidor: não reenvia base64 (evita travar o sync/SQLite).
-    const precisaReenviarArquivo =
-      arquivoDataUrl.startsWith("data:") && !arquivoStoragePath.trim();
-
     try {
       await withLoading(async () => {
+        // 1) Garante anexo/observações no servidor ainda em rascunho (sem mudar etapa).
         updateElaboracao(id, {
           observacoesElaboracao: observacoes || undefined,
-          ...(precisaReenviarArquivo
-            ? {
-                arquivoNome: arquivoNome || undefined,
-                arquivoDataUrl: arquivoDataUrl || undefined,
-              }
-            : {}),
         });
+
+        const verAntes = useDocumentsStore
+          .getState()
+          .versions.find(
+            (v) => v.documentId === id && v.versao === doc.versaoAtual
+          );
+        const pathServidor =
+          verAntes?.arquivoStoragePath?.trim() ||
+          arquivoStoragePath.trim() ||
+          "";
+        const precisaReenviarArquivo =
+          arquivoDataUrl.startsWith("data:") && !pathServidor;
+
         if (precisaReenviarArquivo) {
+          updateElaboracao(id, {
+            arquivoNome: arquivoNome || undefined,
+            arquivoDataUrl: arquivoDataUrl || undefined,
+            observacoesElaboracao: observacoes || undefined,
+          });
           markQualidadeDocumentFilesPending(id, versaoAtual.id);
         }
 
-        enviarParaRevisao(id, versaoAtual.consensoId ?? currentUserId);
-        scheduleQualidadeDocumentsFlush();
+        await flushQualidadeDocumentsSync();
+        if (precisaReenviarArquivo) {
+          await softRefreshQualidadeDocuments();
+          const verPos = useDocumentsStore
+            .getState()
+            .versions.find((v) => v.id === versaoAtual.id);
+          if (verPos?.arquivoStoragePath) {
+            setArquivoStoragePath(verPos.arquivoStoragePath);
+          }
+        }
+
+        const consensoLogin = (
+          verAntes?.consensoId ||
+          versaoAtual.consensoId ||
+          ""
+        ).trim();
+        if (!consensoLogin) {
+          throw new Error(
+            "Documento sem responsável de consenso configurado. Verifique o cadastro."
+          );
+        }
+
+        // 2) Avança etapa local e só navega se o servidor confirmar.
+        enviarParaRevisao(id, consensoLogin);
+        try {
+          await flushQualidadeDocumentsSync();
+        } catch (flushErr) {
+          reabrirElaboracaoAposFalhaSync(id);
+          throw flushErr;
+        }
         navigateImmediate("/qualidade/documentos");
       }, "Enviando para consenso...");
     } catch (err) {
       console.error("[qualidade] falha ao enviar para consenso:", err);
       setError(
-        "Não foi possível gravar o documento no servidor. Verifique a conexão e tente novamente." +
-          detalharErroServidor(err)
+        err instanceof Error && err.message.includes("responsável de consenso")
+          ? err.message
+          : "Não foi possível gravar o documento no servidor. Verifique a conexão e tente novamente." +
+              detalharErroServidor(err)
       );
     } finally {
       setEnviando(false);
