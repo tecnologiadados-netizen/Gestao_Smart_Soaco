@@ -95,6 +95,7 @@ then 'Teresina' else
 	adt.valorAdiantamento as 'Valor Adiantamento',
 	COUNT(pd.nome) OVER (PARTITION BY pd.nome) AS 'Quantidade Pedidos',
 	sum(((round((ip.valorTotalComDesconto * ifnull(t.aliquotaIPI/100,0)),2))+ifnull(ip.valorTotalComDesconto,0))) OVER (PARTITION BY pd.nome) AS 'Valor Pedido Total',
+	MAX(totped.valorTotalPedido) AS 'Valor Original Pedido',
 	(coalesce(((adt.valorAdiantamento/
 	(sum(((round((ip.valorTotalComDesconto * ifnull(t.aliquotaIPI/100,0)),2))+ifnull(ip.valorTotalComDesconto,0))) OVER (PARTITION BY pd.nome))
 	) * (((round((ip.valorTotalComDesconto * ifnull(t.aliquotaIPI/100,0)),2))+ifnull(ip.valorTotalComDesconto,0)))),0))
@@ -377,6 +378,14 @@ END AS StatusPedido
 	group BY 
 	p.id,
 	p.nome) adt on adt.id = pd.id
+	left join
+	(select
+	ip2.idPedido,
+	sum(round(ip2.valorTotalComDesconto * ifnull(t2.aliquotaIPI/100,0),2)+ifnull(ip2.valorTotalComDesconto,0)) as valorTotalPedido
+	from itempedido ip2
+	left join tributacao t2 on t2.idItemPedido = ip2.id
+	where ip2.status <> 6
+	group by ip2.idPedido) totped on totped.idPedido = pd.id
 	left join
 	(select
 	count(distinct pd.nome) as qtdsemrotas,

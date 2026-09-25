@@ -437,6 +437,14 @@ function textoPrevisaoConfiavelExport(p: Pedido): string | null {
   return null;
 }
 
+/** Total real do PD (todos os itens, exceto cancelados) — alinhado à Carteira Financeira. */
+function valorPedidoTotalDirFinanceira(p: Pedido): unknown {
+  const original =
+    p['Valor Original Pedido'] ?? getField(p, ['Valor Original Pedido', 'valor original pedido']);
+  if (original != null && original !== '' && !Number.isNaN(Number(original))) return original;
+  return p['Valor Pedido Total'] ?? getField(p, ['Valor Pedido Total', 'Valor pedido total']);
+}
+
 function linhaDirFinanceiraItem(p: Pedido, dataFormacao: string): Record<string, ExportCellValue> {
   const exib = resolverDataProducaoExibicaoGerenciador(p, dataFormacao);
   const previsaoAtual = exib.carradaEmFormacao ? '' : exib.previsaoAtual;
@@ -448,6 +456,8 @@ function linhaDirFinanceiraItem(p: Pedido, dataFormacao: string): Record<string,
         : toExcelDateSerial(previsaoAtual);
     } else if (key === 'Previsão Confiável') {
       row[key] = textoPrevisaoConfiavelExport(p);
+    } else if (key === 'Valor Pedido Total') {
+      row[key] = normalizeNumValue(key, valorPedidoTotalDirFinanceira(p));
     } else if (DIR_FIN_DATE_KEYS.has(key)) {
       const val = p[key as keyof Pedido] ?? getField(p, [key]);
       row[key] = toExcelDateSerial(val);

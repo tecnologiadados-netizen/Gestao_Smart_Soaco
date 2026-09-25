@@ -34,6 +34,7 @@ import { classificarProdutoPadrao } from '../utils/produtoPadrao.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_FILE = 'sqlBasePedidosNomus.sql';
+/** Inclui `Valor Original Pedido` (totped) para a exportação Dir. Financeira. */
 const SQL_FILE_ENCERRADOS = 'sqlPedidosEncerradosNomus.sql';
 
 function resolveSqlPath(fileName: string): string {
