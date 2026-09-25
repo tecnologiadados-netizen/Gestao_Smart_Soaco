@@ -323,18 +323,20 @@ export default function AssistenteFlutuante() {
         <button
           type="button"
           onClick={() => setAberto(true)}
-          className="amigaco-fab group fixed bottom-6 right-4 z-[80] flex items-center gap-2 rounded-full bg-primary-600 pl-1.5 pr-4 py-1.5 text-white shadow-lg shadow-primary-900/30 ring-2 ring-soaco-gold/40 transition hover:bg-primary-700 sm:right-6"
+          className="amigaco-fab group fixed bottom-5 right-4 z-[80] flex h-10 w-10 items-center overflow-hidden rounded-full bg-primary-600 p-1 text-white shadow-lg shadow-primary-900/30 ring-2 ring-soaco-gold/40 transition-all duration-200 hover:w-auto hover:gap-1.5 hover:bg-primary-700 hover:pr-3 sm:right-5"
           title="Amigaço — Assistente IA"
           aria-label="Abrir Amigaço"
         >
-          <span className="amigaco-fab-img relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-black/20">
+          <span className="amigaco-fab-img relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/20">
             <img
               src="/assistente-amigaco.png"
               alt=""
-              className="h-11 w-11 object-cover transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6"
+              className="h-8 w-8 object-cover transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6"
             />
           </span>
-          <span className="hidden text-sm font-semibold sm:inline">Amigaço</span>
+          <span className="max-w-0 overflow-hidden whitespace-nowrap text-sm font-semibold opacity-0 transition-all duration-200 group-hover:max-w-24 group-hover:opacity-100">
+            Amigaço
+          </span>
         </button>
       )}
 
