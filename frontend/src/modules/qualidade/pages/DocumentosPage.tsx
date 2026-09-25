@@ -7,6 +7,7 @@ import { RevalidarDocumentoDialog } from "@qualidade/components/documentos/reval
 import { SolicitarRevisaoDocumentoDialog } from "@qualidade/components/documentos/solicitar-revisao-documento-dialog";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
+import { softRefreshQualidadeDocuments } from "@qualidade/lib/qualidadePersistence";
 
 export function DocumentosPage() {
   const [searchParams] = useSearchParams();
@@ -21,7 +22,25 @@ export function DocumentosPage() {
 
   useEffect(() => {
     syncValidadeAlertas();
+    void softRefreshQualidadeDocuments().catch((err) =>
+      console.error("[qualidade] soft refresh pendências:", err)
+    );
   }, [syncValidadeAlertas]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void softRefreshQualidadeDocuments().catch((err) =>
+        console.error("[qualidade] soft refresh (focus):", err)
+      );
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, []);
 
   useEffect(() => {
     const param = searchParams.get("revalidar");

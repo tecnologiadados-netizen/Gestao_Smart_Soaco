@@ -49,6 +49,8 @@ const LS_KEYS = [
 let syncTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 let autoSyncStarted = false;
 let documentsHydrating = false;
+/** Enfileira PUT /sync/documentos para não haver corrida entre anexo e avanço de etapa. */
+let documentsFlushChain: Promise<void> = Promise.resolve();
 /** Login cuja sessão já hidratou o Qualiteam (evita tela preta em remount). */
 let qualidadeHydratedLogin: string | null = null;
 
@@ -58,6 +60,32 @@ export function isQualidadeStoreHydratedForLogin(login: string): boolean {
 
 export function markQualidadeStoreHydrated(login: string | null): void {
   qualidadeHydratedLogin = login;
+}
+
+/** Reconsulta bootstrap sem tela preta (outras abas avançaram etapas). */
+export async function softRefreshQualidadeDocuments(): Promise<void> {
+  if (documentsHydrating) return;
+  // Espera flush local terminar para não sobrescrever avanço ainda não gravado.
+  await documentsFlushChain.catch(() => undefined);
+  if (documentsHydrating) return;
+
+  setQualidadeDocumentsHydrating(true);
+  try {
+    const data = await fetchQualidadeBootstrap();
+    const docTasks = data.tasks.filter(
+      (t) => (t as { referenciaTipo?: string }).referenciaTipo === 'documento'
+    );
+    useDocumentsStore.setState({
+      documents: data.documents as never[],
+      versions: data.versions as never[],
+      tasks: docTasks as never[],
+      validadeAlertas: data.validadeAlertas as never[],
+      revalidacoes: data.revalidacoes as never[],
+    });
+    useDocumentsStore.getState().syncValidadeAlertas();
+  } finally {
+    setQualidadeDocumentsHydrating(false);
+  }
 }
 let registrosHydrating = false;
 let calibrationsHydrating = false;
@@ -402,12 +430,23 @@ function buildDocumentsSyncPayload(includePendingFiles: boolean) {
 }
 
 function syncDocumentsStateNow(includePendingFiles = false): Promise<void> {
-  const payload = buildDocumentsSyncPayload(includePendingFiles);
-  return syncQualidadeDocuments(payload).then(() => {
-    if (includePendingFiles) {
+  // Serializa flushes e monta o payload SÓ na vez de enviar — evita que um
+  // sync de anexo iniciado antes do "Enviar" grave rascunho depois e feche a
+  // tarefa de consenso que o e-mail já notificou.
+  const run = async () => {
+    const withFiles = includePendingFiles || pendingDocumentFileUids.size > 0;
+    const payload = buildDocumentsSyncPayload(withFiles);
+    await syncQualidadeDocuments(payload);
+    if (withFiles) {
       pendingDocumentFileUids.clear();
     }
-  });
+  };
+  const next = documentsFlushChain.then(run, run);
+  documentsFlushChain = next.then(
+    () => undefined,
+    () => undefined
+  );
+  return next;
 }
 
 /** Persiste documentos no servidor imediatamente (ex.: após exclusão / upload). */

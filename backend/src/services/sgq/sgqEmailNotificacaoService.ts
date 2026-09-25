@@ -357,13 +357,10 @@ function buildTaskActionHref(tipo: string, referenciaId: string): string {
 
 function loginsDestinatariosTarefa(
   tarefa: NovaTarefaWorkflowInput,
-  doc?: DocumentoMetaParaEmail
+  _doc?: DocumentoMetaParaEmail
 ): string[] {
-  const logins = [tarefa.responsavelLogin];
-  if (doc?.publicacao?.avisarPorEmail !== false) {
-    logins.push(...(doc?.permissoes?.avisoPublicacaoEmailIds ?? []));
-  }
-  return [...new Set(logins.map((l) => l.trim()).filter(Boolean))];
+  // Só o responsável da etapa — lista de aviso de publicação é para vigência, não para consenso/aprovação.
+  return [...new Set([tarefa.responsavelLogin].map((l) => l.trim()).filter(Boolean))];
 }
 
 function buildTarefaEmailHtml(input: {
