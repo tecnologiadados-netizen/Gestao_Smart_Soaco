@@ -14,6 +14,7 @@ import { SgqGradeFiltroPortal } from "@qualidade/components/ui/sgq-grade-filtro-
 import { SgqGradeSurface } from "@qualidade/components/ui/sgq-grade-surface";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
+import { softRefreshQualidadeDocuments } from "@qualidade/lib/qualidadePersistence";
 import {
   documentStatusLabels,
   getDocumentStatusVariant,
@@ -89,6 +90,28 @@ function DocumentosConsultaContent() {
   const departments = useConfigStore((s) => s.departments);
   const documentTypes = useConfigStore((s) => s.documentTypes);
   const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    syncValidadeAlertas();
+    void softRefreshQualidadeDocuments().catch((err) =>
+      console.error("[qualidade] soft refresh consulta:", err)
+    );
+  }, [syncValidadeAlertas]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void softRefreshQualidadeDocuments().catch((err) =>
+        console.error("[qualidade] soft refresh consulta (focus):", err)
+      );
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, []);
 
   const guia = parseConsultaGuia(searchParams.get("guia"));
   const guiaMeta =

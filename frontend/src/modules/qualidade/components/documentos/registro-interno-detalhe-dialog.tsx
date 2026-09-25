@@ -29,8 +29,11 @@ import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-
 import {
   labelResponsavelPosse,
 } from "@qualidade/lib/utils/select-display";
-import { openQualidadeArquivo } from "@qualidade/lib/documents/file-actions";
-import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-print-window";
+import { downloadQualidadeArquivo, openQualidadeArquivo } from "@qualidade/lib/documents/file-actions";
+import {
+  arquivoRequerDownloadParaVisualizar,
+  MSG_VISUALIZACAO_BAIXAR_ORIGINAL,
+} from "@qualidade/lib/documents/sgq-print-window";
 import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
 import {
   formatLocalizacoesDocumento,
@@ -160,6 +163,13 @@ export function RegistroInternoDetalheDialog({
     if (!arquivo.nome?.trim()) return;
     setErroArquivo("");
     try {
+      if (
+        arquivoRequerDownloadParaVisualizar(arquivo.nome, arquivo.storagePath)
+      ) {
+        await downloadQualidadeArquivo(arquivo);
+        setErroArquivo(MSG_VISUALIZACAO_BAIXAR_ORIGINAL);
+        return;
+      }
       await openQualidadeArquivo(arquivo, "print");
     } catch (error) {
       setErroArquivo(

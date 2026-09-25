@@ -15,7 +15,6 @@ export const SGQ_OPCOES_LISTA_CHAVES = {
 
 export const REGISTRO_PROTECAO_OPCOES_BASE = [
   "Backup de documentos",
-  "Backup no DOCUMENTOS",
   "Cópias controladas",
   "Arquivo físico no setor",
 ] as const;

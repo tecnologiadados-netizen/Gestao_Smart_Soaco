@@ -5,7 +5,10 @@ import {
   downloadQualidadeArquivo,
   openQualidadeArquivo,
 } from "@qualidade/lib/documents/file-actions";
-import { arquivoRequerDownloadParaVisualizar } from "@qualidade/lib/documents/sgq-print-window";
+import {
+  arquivoRequerDownloadParaVisualizar,
+  MSG_VISUALIZACAO_BAIXAR_ORIGINAL,
+} from "@qualidade/lib/documents/sgq-print-window";
 
 type ArquivoRef = {
   nome?: string;
@@ -40,6 +43,7 @@ export function SgqArquivoImprimirBtn({
   className,
   label,
 }: Props) {
+  const [ocupado, setOcupado] = useState(false);
   const disponivel = arquivoDisponivel(arquivo);
   const soBaixar = arquivoRequerDownloadParaVisualizar(
     arquivo.nome,
@@ -54,21 +58,33 @@ export function SgqArquivoImprimirBtn({
       className={className}
       title={
         soBaixar
-          ? "Visualização indisponível — baixe o original"
+          ? "Visualização indisponível — baixa o original"
           : "Imprimir"
       }
-      disabled={disabled || !disponivel}
+      disabled={disabled || !disponivel || ocupado}
       onClick={() => {
-        void openQualidadeArquivo(arquivo, "print").catch((err) => {
-          onError?.(
-            err instanceof Error
-              ? err.message
-              : "Não foi possível abrir o arquivo."
-          );
-        });
+        setOcupado(true);
+        const acao = soBaixar
+          ? downloadQualidadeArquivo(arquivo).then(() => {
+              onError?.(MSG_VISUALIZACAO_BAIXAR_ORIGINAL);
+            })
+          : openQualidadeArquivo(arquivo, "print");
+        void acao
+          .catch((err) => {
+            onError?.(
+              err instanceof Error
+                ? err.message
+                : "Não foi possível abrir o arquivo."
+            );
+          })
+          .finally(() => setOcupado(false));
       }}
     >
-      <Printer className={label ? "size-3.5" : "size-4"} />
+      {ocupado ? (
+        <Loader2 className={label ? "size-3.5 animate-spin" : "size-4 animate-spin"} />
+      ) : (
+        <Printer className={label ? "size-3.5" : "size-4"} />
+      )}
       {label}
     </Button>
   );

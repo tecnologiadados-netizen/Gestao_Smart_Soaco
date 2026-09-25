@@ -334,7 +334,30 @@ function mapVersao(
     includeDataUrl && row.arquivoStoragePath
       ? readQualidadeAnexoAsDataUrl(row.arquivoStoragePath)
       : undefined;
-  const anexos = mapAnexosFromJson(row.anexosJson, includeDataUrl);
+  const anexos = mapAnexosFromJson(row.anexosJson, includeDataUrl).map((a) => {
+    if (a.storagePath || !row.arquivoStoragePath) return a;
+    // Recuperação: anexo sem path após sync antigo — reusa o arquivo principal
+    // quando o nome coincide (ocorrência única salva como principal).
+    if (
+      row.arquivoNome &&
+      a.nome.trim() === String(row.arquivoNome).trim()
+    ) {
+      return { ...a, storagePath: row.arquivoStoragePath };
+    }
+    return a;
+  });
+  const anexosSemPath = anexos.filter((a) => !a.storagePath);
+  if (
+    anexosSemPath.length === 1 &&
+    row.arquivoStoragePath &&
+    !anexosSemPath[0].storagePath
+  ) {
+    const alvo = anexosSemPath[0];
+    const idx = anexos.findIndex((a) => a === alvo);
+    if (idx >= 0) {
+      anexos[idx] = { ...alvo, storagePath: row.arquivoStoragePath };
+    }
+  }
   // Compat: se não há lista, o arquivo principal vira o único item.
   const anexosResolvidos =
     anexos.length > 0
@@ -1230,22 +1253,29 @@ export async function syncQualidadeDocuments(payload: {
     const arquivoNome = ver.arquivoNome ? String(ver.arquivoNome) : null;
     const existing = await prisma.sgqDocumentoVersao.findUnique({ where: { uid } });
 
-    // Prefer arquivoDataUrl; se vazio, usa o primeiro anexo com base64 (evita depender de cópia duplicada).
+    // Prefer arquivoDataUrl; se vazio, usa anexo sem ocorrência (modelo/laudo).
+    // Anexos de ocorrência de REGISTRO não viram arquivo principal — senão
+    // sobrescrevem o modelo e/ou somem da lista de ocorrências.
     let principalDataUrl =
       typeof ver.arquivoDataUrl === 'string' ? ver.arquivoDataUrl : '';
     if (!principalDataUrl.startsWith('data:') && Array.isArray(ver.anexos)) {
-      const firstWithData = (ver.anexos as AnexoStored[]).find((a) =>
-        String(a?.dataUrl ?? '').startsWith('data:')
+      const firstWithData = (ver.anexos as AnexoStored[]).find(
+        (a) =>
+          !String(a?.ocorrenciaId ?? '').trim() &&
+          String(a?.dataUrl ?? '').startsWith('data:')
       );
       if (firstWithData?.dataUrl) principalDataUrl = String(firstWithData.dataUrl);
     }
 
     const incoming = extractBase64(principalDataUrl);
+    const anexoPrincipalNome = Array.isArray(ver.anexos)
+      ? (ver.anexos as AnexoStored[]).find(
+          (a) => !String(a?.ocorrenciaId ?? '').trim() && String(a?.nome ?? '').trim()
+        )?.nome
+      : undefined;
     const nomePrincipal =
       arquivoNome ||
-      (Array.isArray(ver.anexos) && (ver.anexos as AnexoStored[])[0]?.nome
-        ? String((ver.anexos as AnexoStored[])[0].nome)
-        : null);
+      (anexoPrincipalNome ? String(anexoPrincipalNome) : null);
 
     if (incoming && nomePrincipal) {
       incoming.fileName = nomePrincipal;
@@ -1292,8 +1322,10 @@ export async function syncQualidadeDocuments(payload: {
     }
 
     // Evita gravar o mesmo PDF de novo em anexos quando o principal já foi salvo.
+    // Nunca aplica isso a anexos de ocorrência (cada registro tem o próprio arquivo).
     if (Array.isArray(anexosIncoming) && arquivoStoragePath) {
       anexosIncoming = (anexosIncoming as AnexoStored[]).map((a) => {
+        if (String(a?.ocorrenciaId ?? '').trim()) return a;
         const dataUrl = typeof a?.dataUrl === 'string' ? a.dataUrl : '';
         if (!dataUrl.startsWith('data:')) return a;
         const mesmoNome =
