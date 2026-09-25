@@ -198,9 +198,9 @@ export function ElaborarDocumentoPage() {
         }
 
         enviarParaRevisao(id, versaoAtual.consensoId ?? currentUserId);
+        scheduleQualidadeDocumentsFlush();
         navigateImmediate("/qualidade/documentos");
       }, "Enviando para consenso...");
-      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao enviar para consenso:", err);
       setError(

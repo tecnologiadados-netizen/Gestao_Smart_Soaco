@@ -40,9 +40,21 @@ export function getTaskActionLabel(task: Task): string {
   }
 }
 
-/** Tarefa de elaboração gerada após reprovação (ajuste necessário). */
+/** Tarefa que exige ajuste após reprovação (elaboração ou consenso). */
+export function isTarefaAjusteNecessario(task: Task): boolean {
+  if (task.tipo === 'elaborar_documento' && task.titulo.startsWith('Corrigir')) {
+    return true;
+  }
+  if (
+    task.tipo === 'consenso_documento' &&
+    (task.titulo.includes('substituir') || task.titulo.startsWith('Corrigir'))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** @deprecated use isTarefaAjusteNecessario */
 export function isTarefaCorrecaoElaboracao(task: Task): boolean {
-  return (
-    task.tipo === 'elaborar_documento' && task.titulo.startsWith('Corrigir')
-  );
+  return isTarefaAjusteNecessario(task) && task.tipo === 'elaborar_documento';
 }

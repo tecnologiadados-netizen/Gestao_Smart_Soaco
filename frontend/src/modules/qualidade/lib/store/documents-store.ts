@@ -374,21 +374,31 @@ function reconcileWorkflowTasks(
     }
 
     if (doc.status === "em_revisao" && !hasPending("consenso_documento")) {
-      next = [
-        ...next,
-        {
-          id: generateId("task"),
-          tipo: "consenso_documento",
-          titulo: `Consenso ${doc.codigo} — ${doc.titulo}`,
-          descricao: `Revisão ${doc.versaoAtual} · Etapa: Consenso`,
-          referenciaId: doc.id,
-          referenciaTipo: "documento",
-          responsavelId: resolveTaskAssignee(version.consensoId),
-          prazo: computeTaskDeadline(now, version.prazos?.consenso ?? 7),
-          status: "pendente",
-          createdAt: now,
-        },
-      ];
+      next = [...next, tarefaConsensoAposReprovacao(doc, version, now)];
+    } else if (doc.status === "em_revisao") {
+      const reprovAprov = ultimaReprovacaoNaVersao(version, "aprovacao");
+      const exigeSubstituicao =
+        Boolean(version.requerSubstituicaoConsenso) || Boolean(reprovAprov);
+      if (exigeSubstituicao) {
+        next = next.map((t) => {
+          if (
+            t.referenciaId !== doc.id ||
+            t.tipo !== "consenso_documento" ||
+            t.status !== "pendente" ||
+            t.titulo.includes("substituir")
+          ) {
+            return t;
+          }
+          return {
+            ...t,
+            titulo: `Consenso ${doc.codigo} — substituir documento`,
+            descricao:
+              reprovAprov?.motivo?.trim() ||
+              t.descricao ||
+              "Substitua o documento conforme a reprovação da aprovação.",
+          };
+        });
+      }
     }
 
     if (doc.status === "em_aprovacao" && !hasPending("aprovar_documento")) {
@@ -456,6 +466,44 @@ function tarefaElaboracaoAposReprovacao(
     referenciaTipo: "documento",
     responsavelId: resolveTaskAssignee(version.elaboradorId),
     prazo: computeTaskDeadline(now, version.prazos?.elaboracao ?? 7),
+    status: "pendente",
+    createdAt: now,
+  };
+}
+
+function tarefaConsensoAposReprovacao(
+  doc: Document,
+  version: DocumentVersion,
+  now: string
+): Task {
+  const reprovAprov = ultimaReprovacaoNaVersao(version, "aprovacao");
+  const exigeSubstituicao =
+    Boolean(version.requerSubstituicaoConsenso) || Boolean(reprovAprov);
+  if (exigeSubstituicao) {
+    return {
+      id: generateId("task"),
+      tipo: "consenso_documento",
+      titulo: `Consenso ${doc.codigo} — substituir documento`,
+      descricao:
+        reprovAprov?.motivo?.trim() ||
+        "Substitua o documento conforme a reprovação da aprovação.",
+      referenciaId: doc.id,
+      referenciaTipo: "documento",
+      responsavelId: resolveTaskAssignee(version.consensoId),
+      prazo: computeTaskDeadline(now, version.prazos?.consenso ?? 7),
+      status: "pendente",
+      createdAt: now,
+    };
+  }
+  return {
+    id: generateId("task"),
+    tipo: "consenso_documento",
+    titulo: `Consenso ${doc.codigo} — ${doc.titulo}`,
+    descricao: `Revisão ${doc.versaoAtual} · Etapa: Consenso`,
+    referenciaId: doc.id,
+    referenciaTipo: "documento",
+    responsavelId: resolveTaskAssignee(version.consensoId),
+    prazo: computeTaskDeadline(now, version.prazos?.consenso ?? 7),
     status: "pendente",
     createdAt: now,
   };

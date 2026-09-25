@@ -105,9 +105,9 @@ export function AprovacaoDocumentoPage() {
         if (!ok) {
           throw new Error("Não foi possível finalizar a aprovação.");
         }
+        scheduleQualidadeDocumentsFlush();
         navigateImmediate("/qualidade/documentos");
       }, "Finalizando aprovação...");
-      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao aprovar documento:", err);
       setError(
@@ -141,9 +141,10 @@ export function AprovacaoDocumentoPage() {
     setSincronizando(true);
     try {
       await withLoading(async () => {
+        // Flush antes de navegar — evita soft refresh trazer de volta o card de aprovar.
+        scheduleQualidadeDocumentsFlush();
         navigateImmediate("/qualidade/documentos");
       }, "Salvando reprovação...");
-      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar reprovação:", err);
       setError(

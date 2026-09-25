@@ -18,7 +18,7 @@ import { taskTypeLabels } from "@qualidade/lib/utils/status-labels";
 import {
   getTaskActionHref,
   getTaskActionLabel,
-  isTarefaCorrecaoElaboracao,
+  isTarefaAjusteNecessario,
 } from "@qualidade/lib/documents/task-routes";
 import type { Document } from "@qualidade/types/document";
 import type { Task } from "@qualidade/types/task";
@@ -87,7 +87,7 @@ function KanbanColumn({
           </div>
         ) : (
           tasks.map((task) => {
-            const correcao = isTarefaCorrecaoElaboracao(task);
+            const correcao = isTarefaAjusteNecessario(task);
             return (
             <article
               key={task.id}

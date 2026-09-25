@@ -65,9 +65,13 @@ export function markQualidadeStoreHydrated(login: string | null): void {
 /** Reconsulta bootstrap sem tela preta (outras abas avançaram etapas). */
 export async function softRefreshQualidadeDocuments(): Promise<void> {
   if (documentsHydrating) return;
-  // Espera flush local terminar para não sobrescrever avanço ainda não gravado.
+  // Espera flush local (e o que ainda for enfileirado neste tick) terminar.
+  await documentsFlushChain.catch(() => undefined);
+  await new Promise<void>((resolve) => setTimeout(resolve, 80));
   await documentsFlushChain.catch(() => undefined);
   if (documentsHydrating) return;
+
+  const localBefore = useDocumentsStore.getState();
 
   setQualidadeDocumentsHydrating(true);
   try {
@@ -75,10 +79,68 @@ export async function softRefreshQualidadeDocuments(): Promise<void> {
     const docTasks = data.tasks.filter(
       (t) => (t as { referenciaTipo?: string }).referenciaTipo === 'documento'
     );
+
+    // Não sobrescrever documento cuja etapa local é mais nova que a do servidor
+    // (ex.: acabou de reprovar e o soft refresh rodou antes do flush gravar).
+    const serverDocs = data.documents as Array<{
+      id: string;
+      statusAtualizadoEm?: string;
+      updatedAt?: string;
+      [key: string]: unknown;
+    }>;
+    const docsById = new Map(serverDocs.map((d) => [d.id, d]));
+    for (const local of localBefore.documents) {
+      const server = docsById.get(local.id);
+      const localTs = local.statusAtualizadoEm ?? local.updatedAt ?? '';
+      const serverTs = server
+        ? String(server.statusAtualizadoEm ?? server.updatedAt ?? '')
+        : '';
+      if (!server || localTs > serverTs) {
+        docsById.set(local.id, local as never);
+      }
+    }
+
+    const mergedDocs = [...docsById.values()];
+    const localNewerIds = new Set(
+      localBefore.documents
+        .filter((local) => {
+          const server = (data.documents as Array<{ id: string; statusAtualizadoEm?: string; updatedAt?: string }>).find(
+            (d) => d.id === local.id
+          );
+          const localTs = local.statusAtualizadoEm ?? local.updatedAt ?? '';
+          const serverTs = server
+            ? String(server.statusAtualizadoEm ?? server.updatedAt ?? '')
+            : '';
+          return !server || localTs > serverTs;
+        })
+        .map((d) => d.id)
+    );
+
+    const serverTasks = docTasks as never[];
+    const localTasksKept = localBefore.tasks.filter(
+      (t) =>
+        t.referenciaTipo === 'documento' && localNewerIds.has(t.referenciaId)
+    );
+    const serverTasksFiltered = (serverTasks as Array<{ referenciaId?: string; referenciaTipo?: string }>).filter(
+      (t) =>
+        t.referenciaTipo !== 'documento' ||
+        !localNewerIds.has(String(t.referenciaId ?? ''))
+    );
+
+    const versionsByDoc = new Map<string, unknown>();
+    for (const v of data.versions as Array<{ documentId: string }>) {
+      if (!localNewerIds.has(v.documentId)) versionsByDoc.set(`${v.documentId}:${(v as { versao?: string }).versao}`, v);
+    }
+    for (const v of localBefore.versions) {
+      if (localNewerIds.has(v.documentId)) {
+        versionsByDoc.set(`${v.documentId}:${v.versao}`, v);
+      }
+    }
+
     useDocumentsStore.setState({
-      documents: data.documents as never[],
-      versions: data.versions as never[],
-      tasks: docTasks as never[],
+      documents: mergedDocs as never[],
+      versions: [...versionsByDoc.values()] as never[],
+      tasks: [...serverTasksFiltered, ...localTasksKept] as never[],
       validadeAlertas: data.validadeAlertas as never[],
       revalidacoes: data.revalidacoes as never[],
     });
