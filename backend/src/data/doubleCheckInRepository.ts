@@ -663,6 +663,9 @@ export type DoubleCheckInComparativoLinha = {
   /** Data base das parcelas (YYYY-MM-DD). */
   dataBaseParcelasNF: string | null;
   dataBaseParcelasPC: string | null;
+  /** Parcelas com data base, vencimento e dias (vencimento − base). */
+  parcelasNF: DoubleCheckInParcelaPrazo[];
+  parcelasPC: DoubleCheckInParcelaPrazo[];
   /** Offsets em dias: vencimento − dataBase, na ordem das parcelas. */
   prazosDiasNF: number[];
   prazosDiasPC: number[];
@@ -674,6 +677,13 @@ export type DoubleCheckInComparativoLinha = {
   divergIpi: boolean;
   divergCondicaoPagamento: boolean;
   temDivergencia: boolean;
+};
+
+export type DoubleCheckInParcelaPrazo = {
+  numero: number;
+  dataBase: string | null;
+  dataVencimento: string | null;
+  dias: number | null;
 };
 
 /** Arredonda para comparar sem microdivergência de casas decimais. */
@@ -831,10 +841,13 @@ async function carregarPrazosParcelas(params: {
   idsPedidoCompra: number[];
   dataBaseNF: string | null;
   dataBasePorPc: Map<number, string | null>;
-}): Promise<{ prazosNF: number[]; prazosPorPc: Map<number, number[]> }> {
-  const prazosNF: number[] = [];
-  const prazosPorPc = new Map<number, number[]>();
-  for (const id of params.idsPedidoCompra) prazosPorPc.set(id, []);
+}): Promise<{
+  parcelasNF: DoubleCheckInParcelaPrazo[];
+  parcelasPorPc: Map<number, DoubleCheckInParcelaPrazo[]>;
+}> {
+  const parcelasNF: DoubleCheckInParcelaPrazo[] = [];
+  const parcelasPorPc = new Map<number, DoubleCheckInParcelaPrazo[]>();
+  for (const id of params.idsPedidoCompra) parcelasPorPc.set(id, []);
 
   let sql: string;
   let args: unknown[];
@@ -865,16 +878,26 @@ ORDER BY idEntidadeOrigem ASC, numero ASC, dataVencimento ASC, id ASC
     const idOrigem = toInt(r.idEntidadeOrigem);
     const venc = ymdNomusDate(r.dataVencimento);
     if (disc === 'DocumentoEntrada' && idOrigem === params.idDocumento) {
-      const d = diasEntreYmd(params.dataBaseNF, venc);
-      if (d != null) prazosNF.push(d);
+      parcelasNF.push({
+        numero: parcelasNF.length + 1,
+        dataBase: params.dataBaseNF,
+        dataVencimento: venc,
+        dias: diasEntreYmd(params.dataBaseNF, venc),
+      });
       continue;
     }
-    if (disc === 'PedidoCompra' && prazosPorPc.has(idOrigem)) {
-      const d = diasEntreYmd(params.dataBasePorPc.get(idOrigem) ?? null, venc);
-      if (d != null) prazosPorPc.get(idOrigem)!.push(d);
+    if (disc === 'PedidoCompra' && parcelasPorPc.has(idOrigem)) {
+      const dataBase = params.dataBasePorPc.get(idOrigem) ?? null;
+      const arr = parcelasPorPc.get(idOrigem)!;
+      arr.push({
+        numero: arr.length + 1,
+        dataBase,
+        dataVencimento: venc,
+        dias: diasEntreYmd(dataBase, venc),
+      });
     }
   }
-  return { prazosNF, prazosPorPc };
+  return { parcelasNF, parcelasPorPc };
 }
 
 export async function queryDoubleCheckInComparativoPc(params: {
@@ -906,13 +929,14 @@ export async function queryDoubleCheckInComparativoPc(params: {
       }
     }
 
-    const { prazosNF, prazosPorPc } = await carregarPrazosParcelas({
+    const { parcelasNF, parcelasPorPc } = await carregarPrazosParcelas({
       pool,
       idDocumento: params.idDocumento,
       idsPedidoCompra: idsPc,
       dataBaseNF,
       dataBasePorPc,
     });
+    const prazosNF = parcelasNF.map((p) => p.dias).filter((d): d is number => d != null);
     const prazosLabelNF = labelPrazosDias(prazosNF);
 
     const linhas: DoubleCheckInComparativoLinha[] = list.map((r) => {
@@ -951,8 +975,9 @@ export async function queryDoubleCheckInComparativoPc(params: {
       const idPedidoCompra = r.idPedidoCompra != null ? toInt(r.idPedidoCompra) : null;
       const dataBaseParcelasPC =
         idPedidoCompra != null ? (dataBasePorPc.get(idPedidoCompra) ?? null) : null;
-      const prazosDiasPC =
-        idPedidoCompra != null ? (prazosPorPc.get(idPedidoCompra) ?? []) : [];
+      const parcelasPC =
+        idPedidoCompra != null ? (parcelasPorPc.get(idPedidoCompra) ?? []) : [];
+      const prazosDiasPC = parcelasPC.map((p) => p.dias).filter((d): d is number => d != null);
       const prazosLabelPC = labelPrazosDias(prazosDiasPC);
       const divergValorUnitario = !valoresIguaisComparativo(valorUnitarioNF, valorUnitarioPC, 2);
       const divergQtde = !valoresIguaisComparativo(qtdeNF, qtdePC, 4);
@@ -991,6 +1016,8 @@ export async function queryDoubleCheckInComparativoPc(params: {
         regraPagamentoPC,
         dataBaseParcelasNF: dataBaseNF,
         dataBaseParcelasPC,
+        parcelasNF,
+        parcelasPC,
         prazosDiasNF: prazosNF,
         prazosDiasPC,
         prazosLabelNF,

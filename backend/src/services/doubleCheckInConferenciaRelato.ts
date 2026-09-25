@@ -25,6 +25,20 @@ export type CampoRelato = {
   detalhe: string | null;
   /** Linha curta de desconto unitário no WhatsApp. */
   descontoWhatsApp: string | null;
+  /** Detalhe das parcelas (base / vencimento / dias) — HTML da conferência. */
+  tabelaPrazos?: TabelaPrazosRelato | null;
+};
+
+export type TabelaPrazosRelato = {
+  dataBaseNF: string | null;
+  dataBasePC: string | null;
+  linhas: Array<{
+    numero: number;
+    vencimentoNF: string | null;
+    diasNF: number | null;
+    vencimentoPC: string | null;
+    diasPC: number | null;
+  }>;
 };
 
 export type ProdutoRelato = {
@@ -171,6 +185,37 @@ function montarCampo(
     pc: formatPagamentoRelato(linha, 'pc'),
     diferenca: diferencaPrazosRelato(linha),
     sinal: null,
+    tabelaPrazos: montarTabelaPrazosRelato(linha),
+  };
+}
+
+function ymdBrRelato(ymd: string | null | undefined): string {
+  if (!ymd) return '—';
+  const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(ymd);
+}
+
+function montarTabelaPrazosRelato(linha: DoubleCheckInComparativoLinha): TabelaPrazosRelato | null {
+  const nf = Array.isArray(linha.parcelasNF) ? linha.parcelasNF : [];
+  const pc = Array.isArray(linha.parcelasPC) ? linha.parcelasPC : [];
+  if (nf.length === 0 && pc.length === 0) return null;
+  const n = Math.max(nf.length, pc.length);
+  const linhas: TabelaPrazosRelato['linhas'] = [];
+  for (let i = 0; i < n; i++) {
+    const a = nf[i];
+    const b = pc[i];
+    linhas.push({
+      numero: i + 1,
+      vencimentoNF: a?.dataVencimento ?? null,
+      diasNF: a?.dias ?? null,
+      vencimentoPC: b?.dataVencimento ?? null,
+      diasPC: b?.dias ?? null,
+    });
+  }
+  return {
+    dataBaseNF: linha.dataBaseParcelasNF ?? nf[0]?.dataBase ?? null,
+    dataBasePC: linha.dataBaseParcelasPC ?? pc[0]?.dataBase ?? null,
+    linhas,
   };
 }
 
@@ -349,6 +394,19 @@ export function montarMensagemConferenciaWhatsApp(relato: RelatoConferencia, url
       linhaDecisao(relato.pagamentoComum)
     );
     if (relato.pagamentoComum.observacao) meio.push(wa(relato.pagamentoComum.observacao));
+    const tab = relato.pagamentoComum.tabelaPrazos;
+    if (tab && tab.linhas.length > 0) {
+      meio.push(
+        `Base NF ${wa(ymdBrRelato(tab.dataBaseNF))} · PC ${wa(ymdBrRelato(tab.dataBasePC))}`
+      );
+      for (const l of tab.linhas.slice(0, 6)) {
+        meio.push(
+          `#${l.numero}: NF ${wa(ymdBrRelato(l.vencimentoNF))} (${l.diasNF != null ? `${l.diasNF}d` : '—'}) · PC ${wa(ymdBrRelato(l.vencimentoPC))} (${l.diasPC != null ? `${l.diasPC}d` : '—'})`
+        );
+      }
+      if (tab.linhas.length > 6) meio.push(`… +${tab.linhas.length - 6} parcela(s)`);
+      if (url) meio.push('Tabela completa no link abaixo.');
+    }
   }
 
   const restantes = relato.produtos.flatMap((p) => p.campos);
@@ -408,10 +466,32 @@ function htmlTabela(campos: CampoRelato[]): string {
       const detalhe = c.detalhe
         ? `<tr class="detalhe"><td colspan="4"><details><summary>Bruto e desconto</summary><p>${esc(c.detalhe)}</p></details></td></tr>`
         : '';
-      return `<tr><td>${esc(c.titulo)}</td><td>${esc(c.nf)}</td><td>${esc(c.pc)}</td>${dif}</tr>${detalhe}<tr class="decisao"><td colspan="4">${htmlDecisao(c)}</td></tr>`;
+      const prazos =
+        c.campo === 'condicao_pagamento' && c.tabelaPrazos
+          ? `<tr class="detalhe"><td colspan="4">${htmlTabelaPrazos(c.tabelaPrazos)}</td></tr>`
+          : '';
+      return `<tr><td>${esc(c.titulo)}</td><td>${esc(c.nf)}</td><td>${esc(c.pc)}</td>${dif}</tr>${detalhe}${prazos}<tr class="decisao"><td colspan="4">${htmlDecisao(c)}</td></tr>`;
     })
     .join('');
   return `<table><thead><tr><th></th><th>NF</th><th>PC</th><th>Dif.</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function htmlTabelaPrazos(t: TabelaPrazosRelato | null | undefined): string {
+  if (!t || t.linhas.length === 0) return '';
+  const body = t.linhas
+    .map(
+      (l) =>
+        `<tr><td>#${l.numero}</td>` +
+        `<td>${esc(ymdBrRelato(l.vencimentoNF))}</td><td>${l.diasNF != null ? `${l.diasNF}d` : '—'}</td>` +
+        `<td>${esc(ymdBrRelato(l.vencimentoPC))}</td><td>${l.diasPC != null ? `${l.diasPC}d` : '—'}</td></tr>`
+    )
+    .join('');
+  return `<div class="prazos"><table>
+<thead><tr><th>Parc.</th><th>Venc. NF/DE</th><th>Dias NF</th><th>Venc. PC</th><th>Dias PC</th></tr></thead>
+<tbody>
+<tr class="base"><td>Base</td><td colspan="2">${esc(ymdBrRelato(t.dataBaseNF))}</td><td colspan="2">${esc(ymdBrRelato(t.dataBasePC))}</td></tr>
+${body}
+</tbody></table></div>`;
 }
 
 function chipResumo(relato: RelatoConferencia): string {
@@ -423,7 +503,7 @@ function chipResumo(relato: RelatoConferencia): string {
 export function renderConferenciaHtml(relato: RelatoConferencia): string {
   const quando = relato.conferidoEm ? `<p class="quando">Conferido em ${esc(relato.conferidoEm)}</p>` : '';
   const pagamento = relato.pagamentoComum
-    ? `<section class="bloco"><h2>Pagamento — vale para todos</h2><div class="par"><b>NF</b><span>${esc(relato.pagamentoComum.nf)}</span><b>PC</b><span>${esc(relato.pagamentoComum.pc)}</span></div>${htmlDecisao(relato.pagamentoComum)}</section>`
+    ? `<section class="bloco"><h2>Pagamento — vale para todos</h2><div class="par"><b>NF</b><span>${esc(relato.pagamentoComum.nf)}</span><b>PC</b><span>${esc(relato.pagamentoComum.pc)}</span></div>${htmlTabelaPrazos(relato.pagamentoComum.tabelaPrazos)}${htmlDecisao(relato.pagamentoComum)}</section>`
     : '';
   const produtos = relato.produtos
     .filter((p) => p.campos.length > 0)
@@ -490,6 +570,11 @@ export function renderConferenciaHtml(relato: RelatoConferencia): string {
     .pos { color: var(--blue); font-weight: 700; }
     details summary { cursor: pointer; color: var(--blue); font-weight: 650; font-size: 13px; }
     details p { margin: 6px 0 0; color: var(--graphite); font-size: 13px; font-weight: 500; }
+    .prazos { margin-top: 10px; overflow-x: auto; }
+    .prazos table { font-size: 12px; min-width: 480px; }
+    .prazos th { font-size: 10px; padding: 5px 6px; }
+    .prazos td { padding: 6px; }
+    .prazos .base { background: rgb(4 30 66 / 0.04); font-weight: 650; }
     .rodape { color: var(--gray); font-size: 12px; margin-top: 16px; }
   </style>
 </head>

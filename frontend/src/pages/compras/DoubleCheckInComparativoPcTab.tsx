@@ -65,19 +65,25 @@ function chaveDecisao(
   return `${idItemDocumentoEstoque}:${idItemPedidoCompra}:${campo}`;
 }
 
+function fmtYmdBr(ymd: string | null | undefined): string {
+  if (!ymd) return '—';
+  const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(ymd);
+}
+
 function fmtCondicao(
   nome: string | null,
   regra: string | null,
   prazosLabel: string | null | undefined
-): { principal: string; detalhe: string | null } {
+): { principal: string; detalhe: string | null; prazosClicavel: boolean } {
   const n = (nome ?? '').trim() || '—';
   const r = (regra ?? '').trim();
   const principal = r ? `${n} · ${r}` : n;
   const prazos = (prazosLabel ?? '').trim();
   if (prazos) {
-    return { principal, detalhe: `prazos ${prazos}d` };
+    return { principal, detalhe: `prazos ${prazos}d`, prazosClicavel: true };
   }
-  return { principal, detalhe: null };
+  return { principal, detalhe: null, prazosClicavel: false };
 }
 
 function descontoUnitario(descontoTotal: number, qtde: number): number {
@@ -105,7 +111,13 @@ function fmtUnitarioLinha(
 function valoresExibicao(
   linha: DoubleCheckInComparativoLinha,
   c: CampoCfg
-): { nf: string; pc: string; nfDetalhe?: string | null; pcDetalhe?: string | null } {
+): {
+  nf: string;
+  pc: string;
+  nfDetalhe?: string | null;
+  pcDetalhe?: string | null;
+  prazosClicavel?: boolean;
+} {
   switch (c.id) {
     case 'valor_unitario': {
       const nf = fmtUnitarioLinha(
@@ -132,7 +144,13 @@ function valoresExibicao(
     case 'condicao_pagamento': {
       const nf = fmtCondicao(linha.condicaoPagamentoNF, linha.regraPagamentoNF, linha.prazosLabelNF);
       const pc = fmtCondicao(linha.condicaoPagamentoPC, linha.regraPagamentoPC, linha.prazosLabelPC);
-      return { nf: nf.principal, pc: pc.principal, nfDetalhe: nf.detalhe, pcDetalhe: pc.detalhe };
+      return {
+        nf: nf.principal,
+        pc: pc.principal,
+        nfDetalhe: nf.detalhe,
+        pcDetalhe: pc.detalhe,
+        prazosClicavel: nf.prazosClicavel || pc.prazosClicavel,
+      };
     }
   }
 }
@@ -216,6 +234,7 @@ export default function DoubleCheckInComparativoPcTab({
   const [novaObs, setNovaObs] = useState('');
   const [salvandoObs, setSalvandoObs] = useState(false);
   const [obsErro, setObsErro] = useState<string | null>(null);
+  const [prazosModalLinha, setPrazosModalLinha] = useState<DoubleCheckInComparativoLinha | null>(null);
 
   const decisaoMap = useMemo(() => {
     const m = new Map<string, DoubleCheckInComparativoDecisao>();
@@ -454,9 +473,20 @@ export default function DoubleCheckInComparativoPcTab({
                             {vals.nf}
                           </span>
                           {vals.nfDetalhe ? (
-                            <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
-                              {vals.nfDetalhe}
-                            </span>
+                            vals.prazosClicavel ? (
+                              <button
+                                type="button"
+                                className="mt-0.5 block w-full text-right text-[10px] font-semibold text-primary-600 underline decoration-dotted underline-offset-2 hover:text-primary-700 dark:text-primary-400"
+                                title="Ver tabela de data base e vencimentos"
+                                onClick={() => setPrazosModalLinha(linha)}
+                              >
+                                {vals.nfDetalhe}
+                              </button>
+                            ) : (
+                              <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                                {vals.nfDetalhe}
+                              </span>
+                            )
                           ) : null}
                         </span>
                       </div>
@@ -470,9 +500,20 @@ export default function DoubleCheckInComparativoPcTab({
                             {vals.pc}
                           </span>
                           {vals.pcDetalhe ? (
-                            <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
-                              {vals.pcDetalhe}
-                            </span>
+                            vals.prazosClicavel ? (
+                              <button
+                                type="button"
+                                className="mt-0.5 block w-full text-right text-[10px] font-semibold text-primary-600 underline decoration-dotted underline-offset-2 hover:text-primary-700 dark:text-primary-400"
+                                title="Ver tabela de data base e vencimentos"
+                                onClick={() => setPrazosModalLinha(linha)}
+                              >
+                                {vals.pcDetalhe}
+                              </button>
+                            ) : (
+                              <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                                {vals.pcDetalhe}
+                              </span>
+                            )
                           ) : null}
                         </span>
                       </div>
@@ -682,6 +723,142 @@ export default function DoubleCheckInComparativoPcTab({
                   {salvandoObs ? 'Salvando…' : 'Registrar'}
                 </button>
               </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {prazosModalLinha &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10070] flex items-center justify-center p-4 bg-slate-900/55"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Detalhe dos prazos de pagamento"
+            onClick={() => setPrazosModalLinha(null)}
+          >
+            <div
+              className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-600 dark:bg-slate-800"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                    Prazos de pagamento — NF/DE × PC
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {prazosModalLinha.nomePedidoCompra ??
+                      (prazosModalLinha.idPedidoCompra != null
+                        ? `PC ${prazosModalLinha.idPedidoCompra}`
+                        : 'PC')}{' '}
+                    · critério = vencimento − data base
+                  </p>
+                </div>
+                <button type="button" className={btnSecondary} onClick={() => setPrazosModalLinha(null)}>
+                  Fechar
+                </button>
+              </div>
+
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500 dark:bg-slate-900">
+                    <tr>
+                      <th className="px-2 py-2">Parc.</th>
+                      <th className="px-2 py-2">Data base NF/DE</th>
+                      <th className="px-2 py-2">Venc. NF/DE</th>
+                      <th className="px-2 py-2 text-right">Dias NF</th>
+                      <th className="px-2 py-2">Data base PC</th>
+                      <th className="px-2 py-2">Venc. PC</th>
+                      <th className="px-2 py-2 text-right">Dias PC</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                    {(() => {
+                      const nf = Array.isArray(prazosModalLinha.parcelasNF)
+                        ? prazosModalLinha.parcelasNF
+                        : [];
+                      const pc = Array.isArray(prazosModalLinha.parcelasPC)
+                        ? prazosModalLinha.parcelasPC
+                        : [];
+                      const n = Math.max(nf.length, pc.length, 1);
+                      const rows = [];
+                      for (let i = 0; i < n; i++) {
+                        const a = nf[i];
+                        const b = pc[i];
+                        const diasNf = a?.dias ?? null;
+                        const diasPc = b?.dias ?? null;
+                        const diverg =
+                          diasNf != null && diasPc != null && diasNf !== diasPc;
+                        rows.push(
+                          <tr
+                            key={i}
+                            className={
+                              diverg
+                                ? 'bg-amber-50/70 dark:bg-amber-950/30'
+                                : undefined
+                            }
+                          >
+                            <td className="px-2 py-2 font-medium text-slate-800 dark:text-slate-100">
+                              #{i + 1}
+                            </td>
+                            <td className="px-2 py-2 tabular-nums">
+                              {fmtYmdBr(
+                                a?.dataBase ?? prazosModalLinha.dataBaseParcelasNF
+                              )}
+                            </td>
+                            <td className="px-2 py-2 tabular-nums">
+                              {fmtYmdBr(a?.dataVencimento)}
+                            </td>
+                            <td className="px-2 py-2 text-right tabular-nums font-semibold">
+                              {diasNf != null ? `${diasNf}d` : '—'}
+                            </td>
+                            <td className="px-2 py-2 tabular-nums">
+                              {fmtYmdBr(
+                                b?.dataBase ?? prazosModalLinha.dataBaseParcelasPC
+                              )}
+                            </td>
+                            <td className="px-2 py-2 tabular-nums">
+                              {fmtYmdBr(b?.dataVencimento)}
+                            </td>
+                            <td className="px-2 py-2 text-right tabular-nums font-semibold">
+                              {diasPc != null ? `${diasPc}d` : '—'}
+                            </td>
+                          </tr>
+                        );
+                      }
+                      if (nf.length === 0 && pc.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={7} className="px-2 py-6 text-center text-slate-500">
+                              Nenhuma parcela encontrada no Nomus para este documento/PC.
+                            </td>
+                          </tr>
+                        );
+                      }
+                      return rows;
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+
+              <p className="mt-3 text-xs text-slate-500">
+                Condição cadastral: NF{' '}
+                <strong>
+                  {prazosModalLinha.condicaoPagamentoNF ?? '—'}
+                  {prazosModalLinha.regraPagamentoNF
+                    ? ` · ${prazosModalLinha.regraPagamentoNF}`
+                    : ''}
+                </strong>{' '}
+                × PC{' '}
+                <strong>
+                  {prazosModalLinha.condicaoPagamentoPC ?? '—'}
+                  {prazosModalLinha.regraPagamentoPC
+                    ? ` · ${prazosModalLinha.regraPagamentoPC}`
+                    : ''}
+                </strong>
+                . O critério de divergência usa os dias (vencimento − data base).
+              </p>
             </div>
           </div>,
           document.body

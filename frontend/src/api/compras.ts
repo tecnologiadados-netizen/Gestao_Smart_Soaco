@@ -1567,6 +1567,8 @@ export type DoubleCheckInComparativoLinha = {
   regraPagamentoPC: string | null;
   dataBaseParcelasNF?: string | null;
   dataBaseParcelasPC?: string | null;
+  parcelasNF?: DoubleCheckInParcelaPrazo[];
+  parcelasPC?: DoubleCheckInParcelaPrazo[];
   prazosDiasNF?: number[];
   prazosDiasPC?: number[];
   prazosLabelNF?: string | null;
@@ -1576,6 +1578,13 @@ export type DoubleCheckInComparativoLinha = {
   divergIpi: boolean;
   divergCondicaoPagamento: boolean;
   temDivergencia: boolean;
+};
+
+export type DoubleCheckInParcelaPrazo = {
+  numero: number;
+  dataBase: string | null;
+  dataVencimento: string | null;
+  dias: number | null;
 };
 
 export type DoubleCheckInJustificativaOpcao = {

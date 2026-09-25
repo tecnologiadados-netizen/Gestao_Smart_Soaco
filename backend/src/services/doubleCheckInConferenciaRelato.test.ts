@@ -32,6 +32,8 @@ function linha(p: Partial<DoubleCheckInComparativoLinha> & Pick<DoubleCheckInCom
     regraPagamentoPC: '1',
     dataBaseParcelasNF: null,
     dataBaseParcelasPC: null,
+    parcelasNF: [],
+    parcelasPC: [],
     prazosDiasNF: [],
     prazosDiasPC: [],
     prazosLabelNF: null,
