@@ -49,6 +49,16 @@ const LS_KEYS = [
 let syncTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 let autoSyncStarted = false;
 let documentsHydrating = false;
+/** Login cuja sessão já hidratou o Qualiteam (evita tela preta em remount). */
+let qualidadeHydratedLogin: string | null = null;
+
+export function isQualidadeStoreHydratedForLogin(login: string): boolean {
+  return Boolean(login) && qualidadeHydratedLogin === login;
+}
+
+export function markQualidadeStoreHydrated(login: string | null): void {
+  qualidadeHydratedLogin = login;
+}
 let registrosHydrating = false;
 let calibrationsHydrating = false;
 
@@ -626,17 +636,25 @@ export async function hydrateQualidadeFromServer(currentUserLogin: string) {
     );
   }
 
+  const tasksAntes = useDocumentsStore
+    .getState()
+    .tasks.map((t) => `${t.id}:${t.status}:${t.tipo}`)
+    .sort()
+    .join('|');
   useDocumentsStore.getState().syncValidadeAlertas();
+  const tasksDepois = useDocumentsStore
+    .getState()
+    .tasks.map((t) => `${t.id}:${t.status}:${t.tipo}`)
+    .sort()
+    .join('|');
+
+  if (tasksAntes !== tasksDepois) {
+    scheduleQualidadeDocumentsFlush();
+  }
   } finally {
     setQualidadeConfigHydrating(false);
     setQualidadeDocumentsHydrating(false);
   }
-
-  // Reconciliação de validade pode ajustar tarefas — persiste sem risco de wipe
-  // (sync de documentos é aditivo; exclusão só via DELETE explícito).
-  void flushQualidadeDocumentsSync().catch((err) =>
-    console.error('[qualidade] falha ao persistir tarefas reconciliadas:', err)
-  );
 }
 
 export function startQualidadeAutoSync() {

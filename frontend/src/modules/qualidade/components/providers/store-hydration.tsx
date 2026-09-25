@@ -2,14 +2,25 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   hydrateQualidadeFromServer,
+  isQualidadeStoreHydratedForLogin,
+  markQualidadeStoreHydrated,
   startQualidadeAutoSync,
 } from '@qualidade/lib/qualidadePersistence';
+import { LoadingOverlay } from '@qualidade/components/ui/loading-overlay';
 
 const HYDRATE_TIMEOUT_MS = 45_000;
 
+/**
+ * Hidrata o Qualiteam uma vez por sessão/login.
+ * Remounts (troca de guia, voltar do viewer, navigate após enviar) NÃO
+ * mostram de novo a tela preta nem sobrescrevem o estado local com
+ * snapshot antigo do servidor (corrida com flush em andamento).
+ */
 export function StoreHydration({ children }: { children: React.ReactNode }) {
   const { login, profileLoaded } = useAuth();
-  const [hydrated, setHydrated] = useState(false);
+  const [hydrated, setHydrated] = useState(
+    () => Boolean(login && isQualidadeStoreHydratedForLogin(login))
+  );
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
@@ -17,12 +28,16 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
 
     startQualidadeAutoSync();
 
+    if (isQualidadeStoreHydratedForLogin(login)) {
+      setHydrated(true);
+      setErro(null);
+      return;
+    }
+
     let cancelled = false;
     setHydrated(false);
     setErro(null);
 
-    // Não liberar a UI por timeout com estado incompleto (isso + auto-sync apagava dados).
-    // Em hang real do bootstrap, mostra erro com retry — sem marcar hydrated.
     const hangTimer = window.setTimeout(() => {
       if (!cancelled) {
         setErro(
@@ -35,6 +50,7 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
     void hydrateQualidadeFromServer(login)
       .then(() => {
         if (!cancelled) {
+          markQualidadeStoreHydrated(login);
           setErro(null);
           setHydrated(true);
         }
@@ -71,8 +87,12 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
             setErro(null);
             setHydrated(false);
             if (login) {
+              markQualidadeStoreHydrated(null);
               void hydrateQualidadeFromServer(login)
-                .then(() => setHydrated(true))
+                .then(() => {
+                  markQualidadeStoreHydrated(login);
+                  setHydrated(true);
+                })
                 .catch((err) =>
                   setErro(
                     err instanceof Error
@@ -91,9 +111,7 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
 
   if (!hydrated) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-muted/30">
-        <p className="text-sm text-muted-foreground">Carregando módulo Qualidade...</p>
-      </div>
+      <LoadingOverlay open message="Carregando módulo Qualidade..." />
     );
   }
 

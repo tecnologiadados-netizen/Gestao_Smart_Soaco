@@ -1181,12 +1181,33 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
           .versions.filter((v) => v.documentId === id)
           .sort((a, b) => b.versao.localeCompare(a.versao)),
 
-      getPendingTasks: (userId, allUsers = false) =>
-        get().tasks.filter(
-          (t) =>
-            t.status === "pendente" &&
-            (allUsers || t.responsavelId === userId)
-        ),
+      getPendingTasks: (userId, allUsers = false) => {
+        const { tasks, documents } = get();
+        const docsById = new Map(documents.map((d) => [d.id, d]));
+        return tasks.filter((t) => {
+          if (t.status !== "pendente") return false;
+          if (!allUsers && t.responsavelId !== userId) return false;
+          if (t.referenciaTipo !== "documento") return true;
+
+          const doc = docsById.get(t.referenciaId);
+          if (!doc) return false;
+
+          if (t.tipo === "revalidar_documento") {
+            return doc.status === "vigente";
+          }
+
+          const esperado = tipoTarefaEsperadaPorStatus(doc.status);
+          if (
+            t.tipo === "elaborar_documento" ||
+            t.tipo === "consenso_documento" ||
+            t.tipo === "aprovar_documento"
+          ) {
+            return esperado === t.tipo;
+          }
+
+          return true;
+        });
+      },
 
       getDocumentTasks: () =>
         get().tasks.filter((t) => t.referenciaTipo === "documento"),
