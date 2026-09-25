@@ -39,6 +39,7 @@ import {
   tipoCalibracaoSelectLabel,
   userSelectLabel,
 } from "@qualidade/lib/utils/select-display";
+import { useLoading } from "@qualidade/components/providers/loading-provider";
 import { randomUUID } from "@/utils/randomUUID";
 import type { Fornecedor } from "@qualidade/types/avaliacao-fornecedor";
 import type { CalibrationType, Equipment } from "@qualidade/types/calibration";
@@ -131,6 +132,7 @@ export function EquipamentoEdicaoDialog({
   open,
   onOpenChange,
 }: EquipamentoEdicaoDialogProps) {
+  const { withLoading } = useLoading();
   const getEquipmentById = useCalibrationsStore((s) => s.getEquipmentById);
   const updateEquipment = useCalibrationsStore((s) => s.updateEquipment);
   const setEquipmentAtivo = useCalibrationsStore((s) => s.setEquipmentAtivo);
@@ -286,7 +288,9 @@ export function EquipamentoEdicaoDialog({
     // Arquivos só entram no payload se marcados como pending.
 
     try {
-      await flushQualidadeCalibrationsSync();
+      await withLoading(async () => {
+        await flushQualidadeCalibrationsSync();
+      }, "Salvando equipamento...");
       handleClose();
     } catch (err) {
       console.error("[qualidade] falha ao persistir equipamento:", err);
@@ -337,9 +341,11 @@ export function EquipamentoEdicaoDialog({
     setExcluindo(true);
     setError("");
     try {
-      await deleteQualidadeEquipamento(equipmentId);
-      cancelQualidadeCalibrationsDebounce();
-      removeEquipment(equipmentId);
+      await withLoading(async () => {
+        await deleteQualidadeEquipamento(equipmentId);
+        cancelQualidadeCalibrationsDebounce();
+        removeEquipment(equipmentId);
+      }, "Excluindo equipamento...");
       setConfirmarExclusao(false);
       handleClose();
     } catch (err) {

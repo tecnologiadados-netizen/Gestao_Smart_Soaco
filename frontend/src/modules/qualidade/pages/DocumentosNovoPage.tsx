@@ -27,9 +27,11 @@ import {
   departmentSelectLabel,
   documentTypeSelectLabel,
 } from "@qualidade/lib/utils/select-display";
+import { useLoading } from "@qualidade/components/providers/loading-provider";
 
 export function NovoDocumentoPage() {
   const navigate = useNavigate();
+  const { withLoading } = useLoading();
   const createDocument = useDocumentsStore((s) => s.createDocument);
   const getNextDocumentCode = useDocumentsStore((s) => s.getNextDocumentCode);
   const departments = useConfigStore((s) => s.departments);
@@ -53,19 +55,20 @@ export function NovoDocumentoPage() {
     e.preventDefault();
     if (!titulo || !tipoId || !setorId || !tipo) return;
 
-    createDocument({
-      tipoSigla: tipo.sigla,
-      titulo,
-      tipoId,
-      setorId,
-      elaboradorId: currentUserId,
-      origem: "interno",
-      observacoes: observacoes || undefined,
-    });
-
     try {
-      await flushQualidadeDocumentsSync();
-      navigate("/qualidade/documentos/consulta?guia=interno");
+      await withLoading(async () => {
+        createDocument({
+          tipoSigla: tipo.sigla,
+          titulo,
+          tipoId,
+          setorId,
+          elaboradorId: currentUserId,
+          origem: "interno",
+          observacoes: observacoes || undefined,
+        });
+        await flushQualidadeDocumentsSync();
+        navigate("/qualidade/documentos/consulta?guia=interno");
+      }, "Gravando documento...");
     } catch (err) {
       console.error("[qualidade] falha ao salvar novo documento:", err);
     }

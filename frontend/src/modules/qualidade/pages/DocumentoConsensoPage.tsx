@@ -22,6 +22,7 @@ import {
   flushQualidadeDocumentsSync,
   markQualidadeDocumentFilesPending,
 } from "@qualidade/lib/qualidadePersistence";
+import { useLoading } from "@qualidade/components/providers/loading-provider";
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_TYPES = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
@@ -29,6 +30,7 @@ const ACCEPTED_TYPES = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
 export function ConsensoDocumentoPage() {
   const params = useParams();
   const { push: navigate, exiting } = useTransitionRouter();
+  const { withLoading } = useLoading();
   const id = params.id as string;
 
   const doc = useDocumentsStore((s) => s.documents.find((d) => d.id === id));
@@ -153,17 +155,22 @@ export function ConsensoDocumentoPage() {
 
     setSincronizando(true);
     try {
-      updateConsenso(id, { observacoesConsenso: observacoes || undefined });
-      const ok = aprovarConsenso(id, observacoes);
-      if (!ok) {
-        setError("Não foi possível aprovar. Verifique o documento anexado.");
-        return;
-      }
-      await flushQualidadeDocumentsSync();
-      navigate("/qualidade/documentos");
+      await withLoading(async () => {
+        updateConsenso(id, { observacoesConsenso: observacoes || undefined });
+        const ok = aprovarConsenso(id, observacoes);
+        if (!ok) {
+          throw new Error("Não foi possível aprovar. Verifique o documento anexado.");
+        }
+        await flushQualidadeDocumentsSync();
+        navigate("/qualidade/documentos");
+      }, "Salvando consenso...");
     } catch (err) {
       console.error("[qualidade] falha ao aprovar consenso:", err);
-      setError("Aprovação local feita, mas falhou ao gravar no servidor.");
+      setError(
+        err instanceof Error && err.message.startsWith("Não foi possível")
+          ? err.message
+          : "Aprovação local feita, mas falhou ao gravar no servidor."
+      );
     } finally {
       setSincronizando(false);
     }
@@ -185,21 +192,26 @@ export function ConsensoDocumentoPage() {
 
     setSincronizando(true);
     try {
-      updateConsenso(id, { observacoesConsenso: observacoes || undefined });
-      if (versaoAtual.arquivoDataUrl?.startsWith("data:")) {
-        markQualidadeDocumentFilesPending(id, versaoAtual.id);
-      }
-      await flushQualidadeDocumentsSync();
-      const ok = reenviarParaAprovacao(id, observacoes);
-      if (!ok) {
-        setError("Não foi possível enviar para aprovação. Verifique o anexo.");
-        return;
-      }
-      await flushQualidadeDocumentsSync();
-      navigate("/qualidade/documentos");
+      await withLoading(async () => {
+        updateConsenso(id, { observacoesConsenso: observacoes || undefined });
+        if (versaoAtual.arquivoDataUrl?.startsWith("data:")) {
+          markQualidadeDocumentFilesPending(id, versaoAtual.id);
+        }
+        await flushQualidadeDocumentsSync();
+        const ok = reenviarParaAprovacao(id, observacoes);
+        if (!ok) {
+          throw new Error("Não foi possível enviar para aprovação. Verifique o anexo.");
+        }
+        await flushQualidadeDocumentsSync();
+        navigate("/qualidade/documentos");
+      }, "Enviando para aprovação...");
     } catch (err) {
       console.error("[qualidade] falha ao reenviar para aprovação:", err);
-      setError("Não foi possível gravar o anexo no servidor. Tente novamente.");
+      setError(
+        err instanceof Error && err.message.startsWith("Não foi possível")
+          ? err.message
+          : "Não foi possível gravar o anexo no servidor. Tente novamente."
+      );
     } finally {
       setSincronizando(false);
     }
@@ -225,8 +237,10 @@ export function ConsensoDocumentoPage() {
 
     setSincronizando(true);
     try {
-      await flushQualidadeDocumentsSync();
-      navigate("/qualidade/documentos");
+      await withLoading(async () => {
+        await flushQualidadeDocumentsSync();
+        navigate("/qualidade/documentos");
+      }, "Salvando reprovação...");
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar reprovação:", err);
       setError(

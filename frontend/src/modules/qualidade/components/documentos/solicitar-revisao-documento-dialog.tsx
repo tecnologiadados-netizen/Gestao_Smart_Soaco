@@ -23,6 +23,7 @@ import {
   formatDocumentCodigo,
   formatDocumentCodigoExibicao,
 } from "@qualidade/lib/documents/document-codigo";
+import { useLoading } from "@qualidade/components/providers/loading-provider";
 
 interface Props {
   documentId: string | null;
@@ -52,6 +53,7 @@ export function SolicitarRevisaoDocumentoDialog({
   fromRevalidacao = false,
 }: Props) {
   const navigate = useNavigate();
+  const { withLoading } = useLoading();
   const documents = useDocumentsStore((s) => s.documents);
   const allVersions = useDocumentsStore((s) => s.versions);
   const createNewRevision = useDocumentsStore((s) => s.createNewRevision);
@@ -235,13 +237,15 @@ export function SolicitarRevisaoDocumentoDialog({
       return;
     }
 
-    const { markQualidadeDocumentFilesPending, flushQualidadeDocumentsSync } =
-      await import("@qualidade/lib/qualidadePersistence");
-    if (fluxoSimplificado && arquivoDataUrl.startsWith("data:")) {
-      markQualidadeDocumentFilesPending(documentId, versaoId);
-    }
     try {
-      await flushQualidadeDocumentsSync();
+      await withLoading(async () => {
+        const { markQualidadeDocumentFilesPending, flushQualidadeDocumentsSync } =
+          await import("@qualidade/lib/qualidadePersistence");
+        if (fluxoSimplificado && arquivoDataUrl.startsWith("data:")) {
+          markQualidadeDocumentFilesPending(documentId, versaoId);
+        }
+        await flushQualidadeDocumentsSync();
+      }, fluxoExterno ? "Gravando atualização..." : "Gravando revisão...");
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar revisão:", err);
       setError(

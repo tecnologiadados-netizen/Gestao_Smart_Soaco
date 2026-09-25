@@ -31,6 +31,7 @@ import {
   userSelectLabel,
 } from "@qualidade/lib/utils/select-display";
 import { dueStatusLabels } from "@qualidade/lib/utils/status-labels";
+import { useLoading } from "@qualidade/components/providers/loading-provider";
 
 interface EquipamentoCalibracaoFluxoDialogProps {
   equipmentId: string | null;
@@ -72,6 +73,7 @@ export function EquipamentoCalibracaoFluxoDialog({
   onOpenChange,
   iniciarNovaCalibracao = false,
 }: EquipamentoCalibracaoFluxoDialogProps) {
+  const { withLoading } = useLoading();
   const equipmentState = useCalibrationsStore((s) => s.equipment);
   const registerCalibration = useCalibrationsStore((s) => s.registerCalibration);
   const departments = useConfigStore((s) => s.departments);
@@ -186,7 +188,9 @@ export function EquipamentoCalibracaoFluxoDialog({
     markQualidadeCalibrationFilesPending(equipmentId);
 
     try {
-      await flushQualidadeCalibrationsSync();
+      await withLoading(async () => {
+        await flushQualidadeCalibrationsSync();
+      }, "Gravando calibração...");
       setCalibracaoRegistrada(true);
       setMostrarNovaCalibracao(false);
       setData(new Date().toISOString().slice(0, 10));

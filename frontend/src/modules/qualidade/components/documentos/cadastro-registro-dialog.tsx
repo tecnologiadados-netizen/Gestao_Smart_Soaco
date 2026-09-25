@@ -27,6 +27,7 @@ import { afterUiTransition } from "@qualidade/lib/motion";
 import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
+import { useLoading } from "@qualidade/components/providers/loading-provider";
 import { cn } from "@qualidade/lib/utils";
 import {
   departmentSelectLabel,
@@ -57,6 +58,7 @@ export function CadastroRegistroDialog({
   onSalvo,
 }: Props) {
   const navigate = useNavigate();
+  const { withLoading } = useLoading();
   const createDocument = useDocumentsStore((s) => s.createDocument);
   const updateRegistroInternoCadastro = useDocumentsStore(
     (s) => s.updateRegistroInternoCadastro
@@ -180,48 +182,51 @@ export function CadastroRegistroDialog({
       externoRegistro: buildRegistroInternoMeta(values),
     };
     try {
-      if (editando && documentId) {
-        const ok = updateRegistroInternoCadastro(documentId, {
-          ...payload,
-          modelo: null,
-        });
-        if (!ok) {
-          setErro("Não foi possível atualizar o registro.");
+      await withLoading(async () => {
+        if (editando && documentId) {
+          const ok = updateRegistroInternoCadastro(documentId, {
+            ...payload,
+            modelo: null,
+          });
+          if (!ok) {
+            throw new Error("Não foi possível atualizar o registro.");
+          }
+          await flushQualidadeDocumentsSync();
+          onOpenChange(false);
+          afterUiTransition(() => {
+            resetForm();
+            onSalvo?.(documentId);
+          });
           return;
         }
+
+        const novoId = createDocument({
+          tipoSigla: registroTipo.sigla,
+          codigo: getNextDocumentCode(registroTipo.sigla),
+          tipoId: registroTipo.id,
+          origem: "registro",
+          ...payload,
+        });
+
         await flushQualidadeDocumentsSync();
         onOpenChange(false);
         afterUiTransition(() => {
           resetForm();
-          onSalvo?.(documentId);
+          if (onSalvo) {
+            onSalvo(novoId);
+          } else {
+            navigate("/qualidade/documentos/consulta?guia=registro");
+          }
         });
-        return;
-      }
-
-      const novoId = createDocument({
-        tipoSigla: registroTipo.sigla,
-        codigo: getNextDocumentCode(registroTipo.sigla),
-        tipoId: registroTipo.id,
-        origem: "registro",
-        ...payload,
-      });
-
-      await flushQualidadeDocumentsSync();
-      onOpenChange(false);
-      afterUiTransition(() => {
-        resetForm();
-        if (onSalvo) {
-          onSalvo(novoId);
-        } else {
-          navigate("/qualidade/documentos/consulta?guia=registro");
-        }
-      });
+      }, editando ? "Salvando alterações..." : "Gravando registro...");
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar registro interno:", err);
       setErro(
-        editando
-          ? "Alterações salvas localmente, mas falhou ao gravar no servidor."
-          : "Registro criado localmente, mas falhou ao salvar no servidor. Tente novamente."
+        err instanceof Error && err.message.startsWith("Não foi possível")
+          ? err.message
+          : editando
+            ? "Alterações salvas localmente, mas falhou ao gravar no servidor."
+            : "Registro criado localmente, mas falhou ao salvar no servidor. Tente novamente."
       );
     } finally {
       setSaving(false);

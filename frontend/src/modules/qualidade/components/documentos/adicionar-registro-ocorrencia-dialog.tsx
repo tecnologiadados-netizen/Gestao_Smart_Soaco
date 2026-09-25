@@ -16,6 +16,7 @@ import {
   SGQ_ANEXO_ACCEPT,
   SGQ_ANEXO_MAX_BYTES,
 } from "@qualidade/types/registro-anexo";
+import { useLoading } from "@qualidade/components/providers/loading-provider";
 
 interface Props {
   documentId: string | null;
@@ -28,6 +29,7 @@ export function AdicionarRegistroOcorrenciaDialog({
   open,
   onOpenChange,
 }: Props) {
+  const { withLoading } = useLoading();
   const addRegistroInternoOcorrencia = useDocumentsStore(
     (s) => s.addRegistroInternoOcorrencia
   );
@@ -87,32 +89,33 @@ export function AdicionarRegistroOcorrenciaDialog({
     setErro("");
     setSaving(true);
 
-    const ok = addRegistroInternoOcorrencia(documentId, {
-      nome: arquivoNome,
-      dataUrl: arquivoDataUrl,
-      dataOcorrencia,
-      observacao,
-    });
-    if (!ok) {
-      setErro("Não foi possível adicionar o registro.");
-      setSaving(false);
-      return;
-    }
-
-    const doc = getDocumentById(documentId);
-    const versaoAtual = getVersionsByDocumentId(documentId).find(
-      (v) => v.versao === doc?.versaoAtual
-    );
-    markQualidadeDocumentFilesPending(documentId, versaoAtual?.id ?? "");
-
     try {
-      await flushQualidadeDocumentsSync();
-      onOpenChange(false);
-      afterUiTransition(resetForm);
+      await withLoading(async () => {
+        const ok = addRegistroInternoOcorrencia(documentId, {
+          nome: arquivoNome,
+          dataUrl: arquivoDataUrl,
+          dataOcorrencia,
+          observacao,
+        });
+        if (!ok) {
+          throw new Error("Não foi possível adicionar o registro.");
+        }
+
+        const doc = getDocumentById(documentId);
+        const versaoAtual = getVersionsByDocumentId(documentId).find(
+          (v) => v.versao === doc?.versaoAtual
+        );
+        markQualidadeDocumentFilesPending(documentId, versaoAtual?.id ?? "");
+        await flushQualidadeDocumentsSync();
+        onOpenChange(false);
+        afterUiTransition(resetForm);
+      }, "Gravando registro...");
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar ocorrência:", err);
       setErro(
-        "Registro adicionado localmente, mas falhou ao gravar no servidor."
+        err instanceof Error && err.message.startsWith("Não foi possível")
+          ? err.message
+          : "Registro adicionado localmente, mas falhou ao gravar no servidor."
       );
     } finally {
       setSaving(false);

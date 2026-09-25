@@ -27,6 +27,8 @@ import { acaoRevalidacaoSelectLabel, labelResponsavel } from "@qualidade/lib/uti
 import { cn } from "@qualidade/lib/utils";
 import { format, parseISO } from "date-fns";
 import type { DocumentVersion } from "@qualidade/types/document";
+import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
+import { useLoading } from "@qualidade/components/providers/loading-provider";
 
 interface Props {
   documentId: string | null;
@@ -87,6 +89,7 @@ export function RevalidarDocumentoDialog({
   onSolicitarRevisao,
   hidden = false,
 }: Props) {
+  const { withLoading } = useLoading();
   const documents = useDocumentsStore((s) => s.documents);
   const allVersions = useDocumentsStore((s) => s.versions);
   const getVersionsByDocumentId = useDocumentsStore(
@@ -167,7 +170,7 @@ export function RevalidarDocumentoDialog({
     onSolicitarRevisao?.(documentId);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!documentId || !doc) return;
 
@@ -190,21 +193,30 @@ export function RevalidarDocumentoDialog({
       return;
     }
 
-    const ok = revalidarDocumento(documentId, {
-      observacoes: observacoes.trim(),
-      novaDataValidade: fromDateInputValue(novaDataValidade),
-    });
+    try {
+      await withLoading(async () => {
+        const ok = revalidarDocumento(documentId, {
+          observacoes: observacoes.trim(),
+          novaDataValidade: fromDateInputValue(novaDataValidade),
+        });
 
-    if (!ok) {
+        if (!ok) {
+          throw new Error(
+            documentoExigeRevalidacao(doc)
+              ? "Não foi possível registrar a revalidação."
+              : "A revalidação só pode ser feita após o vencimento da validade."
+          );
+        }
+        await flushQualidadeDocumentsSync();
+        onOpenChange(false);
+      }, "Gravando revalidação...");
+    } catch (err) {
       setError(
-        documentoExigeRevalidacao(doc)
-          ? "Não foi possível registrar a revalidação."
-          : "A revalidação só pode ser feita após o vencimento da validade."
+        err instanceof Error
+          ? err.message
+          : "Não foi possível registrar a revalidação."
       );
-      return;
     }
-
-    onOpenChange(false);
   }
 
   if (!doc) return null;

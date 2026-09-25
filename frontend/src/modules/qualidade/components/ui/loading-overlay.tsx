@@ -1,6 +1,4 @@
-import LoaderCirculo from "../../../../components/LoaderCirculo";
-import { useDuracaoMinima } from "../../../../hooks/useDuracaoMinima";
-import { cn } from "@qualidade/lib/utils";
+import CarregandoInformacoesOverlay from "../../../../components/CarregandoInformacoesOverlay";
 
 interface Props {
   open: boolean;
@@ -8,22 +6,23 @@ interface Props {
   className?: string;
 }
 
-export function LoadingOverlay({ open, message = "Carregando...", className }: Props) {
-  const visivel = useDuracaoMinima(open);
-
-  if (!visivel) return null;
-
+/**
+ * Overlay centrado do Qualidade — mesma animação padrão do sistema
+ * (`LoaderCirculo` via CarregandoInformacoesOverlay), em portal no body
+ * para ficar acima de modais (z-index do dialog = 100).
+ */
+export function LoadingOverlay({
+  open,
+  message = "Carregando...",
+  className,
+}: Props) {
   return (
-    <div
-      className={cn("sgq-glass-loader", className)}
-      role="status"
-      aria-live="polite"
-      aria-busy="true"
-    >
-      <div className="sgq-loader-card">
-        <LoaderCirculo tamanho={48} className="text-primary" />
-        <p className="text-sm font-medium text-foreground">{message}</p>
-      </div>
-    </div>
+    <CarregandoInformacoesOverlay
+      show={open}
+      mensagem={message}
+      mode="viewport"
+      zIndex={10050}
+      className={className}
+    />
   );
 }

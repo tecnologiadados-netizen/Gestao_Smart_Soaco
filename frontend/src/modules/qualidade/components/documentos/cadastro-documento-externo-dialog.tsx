@@ -17,6 +17,7 @@ import { afterUiTransition } from "@qualidade/lib/motion";
 import { flushQualidadeDocumentsSync, markQualidadeDocumentFilesPending } from "@qualidade/lib/qualidadePersistence";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
+import { useLoading } from "@qualidade/components/providers/loading-provider";
 
 interface Props {
   open: boolean;
@@ -33,6 +34,7 @@ export function CadastroDocumentoExternoDialog({
   onSalvo,
 }: Props) {
   const navigate = useNavigate();
+  const { withLoading } = useLoading();
   const createDocument = useDocumentsStore((s) => s.createDocument);
   const updateDocumentoExternoCadastro = useDocumentsStore(
     (s) => s.updateDocumentoExternoCadastro
@@ -133,56 +135,58 @@ export function CadastroDocumentoExternoDialog({
       anexos: anexos.length ? anexos : undefined,
     };
 
-    if (editando && documentId) {
-      const ok = updateDocumentoExternoCadastro(documentId, payloadBase);
-      if (!ok) {
-        setErro("Não foi possível atualizar o documento.");
-        return;
-      }
-      const versaoAtual = getVersionsByDocumentId(documentId).find(
-        (v) => v.versao === getDocumentById(documentId)?.versaoAtual
-      );
-      if (anexos.some((a) => a.dataUrl.startsWith("data:"))) {
-        markQualidadeDocumentFilesPending(documentId, versaoAtual?.id ?? "");
-      }
-      try {
+    try {
+      await withLoading(async () => {
+        if (editando && documentId) {
+          const ok = updateDocumentoExternoCadastro(documentId, payloadBase);
+          if (!ok) {
+            throw new Error("Não foi possível atualizar o documento.");
+          }
+          const versaoAtual = getVersionsByDocumentId(documentId).find(
+            (v) => v.versao === getDocumentById(documentId)?.versaoAtual
+          );
+          if (anexos.some((a) => a.dataUrl.startsWith("data:"))) {
+            markQualidadeDocumentFilesPending(documentId, versaoAtual?.id ?? "");
+          }
+          await flushQualidadeDocumentsSync();
+          onOpenChange(false);
+          afterUiTransition(() => {
+            resetForm();
+            onSalvo?.();
+          });
+          return;
+        }
+
+        const codigo = `EXT-${Date.now().toString().slice(-6)}`;
+        const novoId = createDocument({
+          codigo,
+          tipoId: "tipo-man",
+          origem: "externo",
+          arquivoNome: principal?.nome,
+          arquivoDataUrl: principal?.dataUrl,
+          ...payloadBase,
+        });
+
+        if (anexos.some((a) => a.dataUrl.startsWith("data:"))) {
+          markQualidadeDocumentFilesPending(novoId);
+        }
+
         await flushQualidadeDocumentsSync();
         onOpenChange(false);
         afterUiTransition(() => {
           resetForm();
-          onSalvo?.();
+          navigate("/qualidade/documentos/consulta?guia=externo");
         });
-      } catch (err) {
-        console.error("[qualidade] falha ao sincronizar edição externa:", err);
-        setErro("Alterações salvas localmente, mas falhou ao gravar no servidor.");
-      }
-      return;
-    }
-
-    const codigo = `EXT-${Date.now().toString().slice(-6)}`;
-    const novoId = createDocument({
-      codigo,
-      tipoId: "tipo-man",
-      origem: "externo",
-      arquivoNome: principal?.nome,
-      arquivoDataUrl: principal?.dataUrl,
-      ...payloadBase,
-    });
-
-    if (anexos.some((a) => a.dataUrl.startsWith("data:"))) {
-      markQualidadeDocumentFilesPending(novoId);
-    }
-
-    try {
-      await flushQualidadeDocumentsSync();
-      onOpenChange(false);
-      afterUiTransition(() => {
-        resetForm();
-        navigate("/qualidade/documentos/consulta?guia=externo");
-      });
+      }, editando ? "Salvando alterações..." : "Gravando documento...");
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar documento externo:", err);
-      setErro("Documento criado localmente, mas falhou ao salvar no servidor. Tente novamente.");
+      setErro(
+        err instanceof Error && err.message.startsWith("Não foi possível")
+          ? err.message
+          : editando
+            ? "Alterações salvas localmente, mas falhou ao gravar no servidor."
+            : "Documento criado localmente, mas falhou ao salvar no servidor. Tente novamente."
+      );
     }
   }
 

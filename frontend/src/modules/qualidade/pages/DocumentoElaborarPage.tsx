@@ -20,6 +20,7 @@ import {
   flushQualidadeDocumentsSync,
   markQualidadeDocumentFilesPending,
 } from "@qualidade/lib/qualidadePersistence";
+import { useLoading } from "@qualidade/components/providers/loading-provider";
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_TYPES = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
@@ -32,6 +33,7 @@ function detalharErroServidor(err: unknown): string {
 export function ElaborarDocumentoPage() {
   const params = useParams();
   const { push: navigate, exiting } = useTransitionRouter();
+  const { withLoading } = useLoading();
   const id = params.id as string;
 
   const getDocumentById = useDocumentsStore((s) => s.getDocumentById);
@@ -98,13 +100,15 @@ export function ElaborarDocumentoPage() {
   const reprovacaoConsenso = getUltimaReprovacao(versaoAtual, "consenso");
 
   async function persistArquivoNoServidor(nome: string, dataUrl: string) {
-    updateElaboracao(id, {
-      arquivoNome: nome || undefined,
-      arquivoDataUrl: dataUrl || undefined,
-      observacoesElaboracao: observacoes || undefined,
-    });
-    markQualidadeDocumentFilesPending(id, versaoAtual.id);
-    await flushQualidadeDocumentsSync();
+    await withLoading(async () => {
+      updateElaboracao(id, {
+        arquivoNome: nome || undefined,
+        arquivoDataUrl: dataUrl || undefined,
+        observacoesElaboracao: observacoes || undefined,
+      });
+      markQualidadeDocumentFilesPending(id, versaoAtual.id);
+      await flushQualidadeDocumentsSync();
+    }, "Gravando anexo...");
   }
 
   function processarArquivo(file: File) {
@@ -161,18 +165,20 @@ export function ElaborarDocumentoPage() {
     setError("");
     setEnviando(true);
     try {
-      updateElaboracao(id, {
-        arquivoNome: arquivoNome || undefined,
-        arquivoDataUrl: arquivoDataUrl || undefined,
-        observacoesElaboracao: observacoes || undefined,
-      });
-      if (arquivoDataUrl.startsWith("data:")) {
-        markQualidadeDocumentFilesPending(id, versaoAtual.id);
-      }
-      await flushQualidadeDocumentsSync();
-      enviarParaRevisao(id, versaoAtual.consensoId ?? currentUserId);
-      await flushQualidadeDocumentsSync();
-      navigate("/qualidade/documentos");
+      await withLoading(async () => {
+        updateElaboracao(id, {
+          arquivoNome: arquivoNome || undefined,
+          arquivoDataUrl: arquivoDataUrl || undefined,
+          observacoesElaboracao: observacoes || undefined,
+        });
+        if (arquivoDataUrl.startsWith("data:")) {
+          markQualidadeDocumentFilesPending(id, versaoAtual.id);
+        }
+        await flushQualidadeDocumentsSync();
+        enviarParaRevisao(id, versaoAtual.consensoId ?? currentUserId);
+        await flushQualidadeDocumentsSync();
+        navigate("/qualidade/documentos");
+      }, "Enviando para consenso...");
     } catch (err) {
       console.error("[qualidade] falha ao enviar para consenso:", err);
       setError(

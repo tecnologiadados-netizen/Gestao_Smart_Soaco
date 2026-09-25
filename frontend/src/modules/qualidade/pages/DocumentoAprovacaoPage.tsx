@@ -18,10 +18,12 @@ import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
 import { labelResponsavel } from "@qualidade/lib/utils/select-display";
+import { useLoading } from "@qualidade/components/providers/loading-provider";
 
 export function AprovacaoDocumentoPage() {
   const params = useParams();
   const { push: navigate, exiting } = useTransitionRouter();
+  const { withLoading } = useLoading();
   const id = params.id as string;
 
   const doc = useDocumentsStore((s) => s.documents.find((d) => d.id === id));
@@ -97,16 +99,21 @@ export function AprovacaoDocumentoPage() {
     setError("");
     setSincronizando(true);
     try {
-      const ok = aprovarDocumentoFinal(id, observacoes);
-      if (!ok) {
-        setError("Não foi possível finalizar a aprovação.");
-        return;
-      }
-      await flushQualidadeDocumentsSync();
-      navigate("/qualidade/documentos");
+      await withLoading(async () => {
+        const ok = aprovarDocumentoFinal(id, observacoes);
+        if (!ok) {
+          throw new Error("Não foi possível finalizar a aprovação.");
+        }
+        await flushQualidadeDocumentsSync();
+        navigate("/qualidade/documentos");
+      }, "Finalizando aprovação...");
     } catch (err) {
       console.error("[qualidade] falha ao aprovar documento:", err);
-      setError("Aprovação local feita, mas falhou ao gravar no servidor.");
+      setError(
+        err instanceof Error && err.message.startsWith("Não foi possível")
+          ? err.message
+          : "Aprovação local feita, mas falhou ao gravar no servidor."
+      );
     } finally {
       setSincronizando(false);
     }
@@ -132,8 +139,10 @@ export function AprovacaoDocumentoPage() {
 
     setSincronizando(true);
     try {
-      await flushQualidadeDocumentsSync();
-      navigate("/qualidade/documentos");
+      await withLoading(async () => {
+        await flushQualidadeDocumentsSync();
+        navigate("/qualidade/documentos");
+      }, "Salvando reprovação...");
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar reprovação:", err);
       setError(

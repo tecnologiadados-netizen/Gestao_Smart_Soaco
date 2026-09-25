@@ -17,6 +17,7 @@ import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { cancelQualidadeDocumentsDebounce } from "@qualidade/lib/qualidadePersistence";
 import { deleteQualidadeDocument } from "@qualidade/lib/api/qualidadeApi";
 import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
+import { useLoading } from "@qualidade/components/providers/loading-provider";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
   documentOrigemLabelsLong,
@@ -74,6 +75,7 @@ export function RegistroInternoDetalheDialog({
   open,
   onOpenChange,
 }: Props) {
+  const { withLoading } = useLoading();
   const documents = useDocumentsStore((s) => s.documents);
   const allVersions = useDocumentsStore((s) => s.versions);
   const getVersionsByDocumentId = useDocumentsStore(
@@ -179,9 +181,11 @@ export function RegistroInternoDetalheDialog({
     setExcluindo(true);
     setErroExclusao(null);
     try {
-      await deleteQualidadeDocument(documentId);
-      cancelQualidadeDocumentsDebounce();
-      excluirDocumento(documentId);
+      await withLoading(async () => {
+        await deleteQualidadeDocument(documentId);
+        cancelQualidadeDocumentsDebounce();
+        excluirDocumento(documentId);
+      }, "Excluindo registro...");
       onOpenChange(false);
     } catch (err) {
       setErroExclusao(
@@ -204,7 +208,9 @@ export function RegistroInternoDetalheDialog({
       return;
     }
     try {
-      await flushQualidadeDocumentsSync();
+      await withLoading(async () => {
+        await flushQualidadeDocumentsSync();
+      }, "Removendo registro...");
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar exclusão de ocorrência:", err);
       setErroArquivo("Removido localmente, mas falhou ao gravar no servidor.");
