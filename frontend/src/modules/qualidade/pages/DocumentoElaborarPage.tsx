@@ -17,7 +17,7 @@ import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
-  flushQualidadeDocumentsSync,
+  flushQualidadeDocumentSync,
   markQualidadeDocumentFilesPending,
   scheduleQualidadeDocumentsFlush,
   softRefreshQualidadeDocuments,
@@ -130,7 +130,7 @@ export function ElaborarDocumentoPage() {
     markQualidadeDocumentFilesPending(id, versaoAtual.id);
     void (async () => {
       try {
-        await flushQualidadeDocumentsSync();
+        await flushQualidadeDocumentSync(id);
         await softRefreshQualidadeDocuments();
         const ver = useDocumentsStore
           .getState()
@@ -194,11 +194,6 @@ export function ElaborarDocumentoPage() {
 
     try {
       await withLoading(async () => {
-        // 1) Garante anexo/observações no servidor ainda em rascunho (sem mudar etapa).
-        updateElaboracao(id, {
-          observacoesElaboracao: observacoes || undefined,
-        });
-
         const verAntes = useDocumentsStore
           .getState()
           .versions.find(
@@ -211,24 +206,17 @@ export function ElaborarDocumentoPage() {
         const precisaReenviarArquivo =
           arquivoDataUrl.startsWith("data:") && !pathServidor;
 
+        updateElaboracao(id, {
+          observacoesElaboracao: observacoes || undefined,
+          ...(precisaReenviarArquivo
+            ? {
+                arquivoNome: arquivoNome || undefined,
+                arquivoDataUrl: arquivoDataUrl || undefined,
+              }
+            : {}),
+        });
         if (precisaReenviarArquivo) {
-          updateElaboracao(id, {
-            arquivoNome: arquivoNome || undefined,
-            arquivoDataUrl: arquivoDataUrl || undefined,
-            observacoesElaboracao: observacoes || undefined,
-          });
           markQualidadeDocumentFilesPending(id, versaoAtual.id);
-        }
-
-        await flushQualidadeDocumentsSync();
-        if (precisaReenviarArquivo) {
-          await softRefreshQualidadeDocuments();
-          const verPos = useDocumentsStore
-            .getState()
-            .versions.find((v) => v.id === versaoAtual.id);
-          if (verPos?.arquivoStoragePath) {
-            setArquivoStoragePath(verPos.arquivoStoragePath);
-          }
         }
 
         const consensoLogin = (
@@ -242,10 +230,10 @@ export function ElaborarDocumentoPage() {
           );
         }
 
-        // 2) Avança etapa local e só navega se o servidor confirmar.
+        // Um único PUT: etapa + (arquivo só se ainda pendente). Evita double-flush e softRefresh.
         enviarParaRevisao(id, consensoLogin);
         try {
-          await flushQualidadeDocumentsSync();
+          await flushQualidadeDocumentSync(id);
         } catch (flushErr) {
           reabrirElaboracaoAposFalhaSync(id);
           throw flushErr;

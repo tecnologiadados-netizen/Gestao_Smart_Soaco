@@ -19,7 +19,7 @@ import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
-  flushQualidadeDocumentsSync,
+  flushQualidadeDocumentSync,
   markQualidadeDocumentFilesPending,
   scheduleQualidadeDocumentsFlush,
 } from "@qualidade/lib/qualidadePersistence";
@@ -171,7 +171,7 @@ export function ConsensoDocumentoPage() {
         if (!ok) {
           throw new Error("Não foi possível aprovar. Verifique o documento anexado.");
         }
-        await flushQualidadeDocumentsSync();
+        await flushQualidadeDocumentSync(id);
         navigateImmediate("/qualidade/documentos");
       }, "Salvando consenso...");
     } catch (err) {
@@ -215,7 +215,7 @@ export function ConsensoDocumentoPage() {
         if (!ok) {
           throw new Error("Não foi possível enviar para aprovação. Verifique o anexo.");
         }
-        await flushQualidadeDocumentsSync();
+        await flushQualidadeDocumentSync(id);
         navigateImmediate("/qualidade/documentos");
       }, "Enviando para aprovação...");
     } catch (err) {
@@ -251,7 +251,7 @@ export function ConsensoDocumentoPage() {
     setSincronizando(true);
     try {
       await withLoading(async () => {
-        await flushQualidadeDocumentsSync();
+        await flushQualidadeDocumentSync(id);
         navigateImmediate("/qualidade/documentos");
       }, "Salvando reprovação...");
     } catch (err) {

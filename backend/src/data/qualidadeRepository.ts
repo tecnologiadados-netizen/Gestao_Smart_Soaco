@@ -1497,30 +1497,33 @@ export async function syncQualidadeDocuments(payload: {
     return SGQ_TAREFAS_POR_STATUS[statusDoc] === tarefa.tipo;
   });
 
+  // E-mail fora do caminho crítico — o PUT responde assim que o SQLite gravou a etapa.
   if (tarefasParaNotificar.length > 0) {
-    try {
-      const enviados = await notificarNovasTarefasWorkflow(
-        prisma,
-        tarefasParaNotificar,
-        docMetaByUid
-      );
-      if (enviados > 0) {
-        console.info(`[sgq-email] ${enviados} notificação(ões) de tarefa nova enviada(s).`);
-      }
-    } catch (err) {
-      console.error('[sgq-email] Erro ao notificar tarefas novas (sync continuou):', err);
-    }
+    void notificarNovasTarefasWorkflow(prisma, tarefasParaNotificar, docMetaByUid)
+      .then((enviados) => {
+        if (enviados > 0) {
+          console.info(
+            `[sgq-email] ${enviados} notificação(ões) de tarefa nova enviada(s).`
+          );
+        }
+      })
+      .catch((err) => {
+        console.error('[sgq-email] Erro ao notificar tarefas novas (sync já gravou):', err);
+      });
   }
 
   if (publicacoesParaNotificar.length > 0) {
-    try {
-      const enviados = await notificarPublicacaoDocumentos(prisma, publicacoesParaNotificar);
-      if (enviados > 0) {
-        console.info(`[sgq-email] ${enviados} notificação(ões) de publicação enviada(s).`);
-      }
-    } catch (err) {
-      console.error('[sgq-email] Erro ao notificar publicação (sync continuou):', err);
-    }
+    void notificarPublicacaoDocumentos(prisma, publicacoesParaNotificar)
+      .then((enviados) => {
+        if (enviados > 0) {
+          console.info(
+            `[sgq-email] ${enviados} notificação(ões) de publicação enviada(s).`
+          );
+        }
+      })
+      .catch((err) => {
+        console.error('[sgq-email] Erro ao notificar publicação (sync já gravou):', err);
+      });
   }
 
   for (const alerta of validadeAlertas) {

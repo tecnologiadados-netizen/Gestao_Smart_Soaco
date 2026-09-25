@@ -478,43 +478,97 @@ function documentForSync(
   };
 }
 
-function buildDocumentsSyncPayload(includePendingFiles: boolean) {
+function buildDocumentsSyncPayload(
+  includePendingFiles: boolean,
+  documentId?: string
+) {
   const { documents, versions, tasks, validadeAlertas, revalidacoes } =
     useDocumentsStore.getState();
-  const pending = includePendingFiles
-    ? new Set(pendingDocumentFileUids)
-    : new Set<string>();
+
+  const versionIdsOfDoc = documentId
+    ? new Set(
+        versions.filter((v) => v.documentId === documentId).map((v) => v.id)
+      )
+    : null;
+
+  const pending = new Set<string>();
+  if (includePendingFiles) {
+    for (const uid of pendingDocumentFileUids) {
+      if (
+        !documentId ||
+        uid === documentId ||
+        versionIdsOfDoc?.has(uid)
+      ) {
+        pending.add(uid);
+      }
+    }
+  }
+
+  const docs = documentId
+    ? documents.filter((d) => d.id === documentId)
+    : documents;
+  const vers = documentId
+    ? versions.filter((v) => v.documentId === documentId)
+    : versions;
+  const tsks = documentId
+    ? tasks.filter(
+        (t) =>
+          t.referenciaTipo !== 'documento' || t.referenciaId === documentId
+      )
+    : tasks;
+  const alertas = documentId
+    ? validadeAlertas.filter((a) => a.documentId === documentId)
+    : validadeAlertas;
+  const revals = documentId
+    ? revalidacoes.filter((r) => r.documentId === documentId)
+    : revalidacoes;
 
   return {
-    documents: documents.map((d) =>
+    documents: docs.map((d) =>
       documentForSync(d as never, pending.has(d.id))
     ),
-    versions: versions.map((v) =>
+    versions: vers.map((v) =>
       versionForSync(
         v as never,
         pending.has(v.id) || pending.has(v.documentId)
       )
     ),
-    tasks,
-    validadeAlertas,
-    revalidacoes,
+    tasks: tsks,
+    validadeAlertas: alertas,
+    revalidacoes: revals,
   };
 }
 
-function syncDocumentsStateNow(includePendingFiles = false): Promise<void> {
+function pendingUidsForDocument(documentId?: string): string[] {
+  if (!documentId) return [...pendingDocumentFileUids];
+  const { versions } = useDocumentsStore.getState();
+  const versionIds = new Set(
+    versions.filter((v) => v.documentId === documentId).map((v) => v.id)
+  );
+  return [...pendingDocumentFileUids].filter(
+    (uid) => uid === documentId || versionIds.has(uid)
+  );
+}
+
+function syncDocumentsStateNow(
+  includePendingFiles = false,
+  documentId?: string
+): Promise<void> {
   // Serializa flushes e monta o payload SÓ na vez de enviar — evita que um
   // sync de anexo iniciado antes do "Enviar" grave rascunho depois e feche a
   // tarefa de consenso que o e-mail já notificou.
   const run = async () => {
-    const pendingSnapshot = [...pendingDocumentFileUids];
+    const pendingSnapshot = pendingUidsForDocument(documentId);
     const withFiles =
-      includePendingFiles && pendingDocumentFileUids.size > 0;
+      includePendingFiles && pendingSnapshot.length > 0;
     try {
-      const payload = buildDocumentsSyncPayload(withFiles);
+      const payload = buildDocumentsSyncPayload(withFiles, documentId);
       await syncQualidadeDocuments(payload);
       documentsFlushLastRejected = false;
       if (withFiles) {
-        pendingDocumentFileUids.clear();
+        for (const uid of pendingSnapshot) {
+          pendingDocumentFileUids.delete(uid);
+        }
         // Binário já no disco: tira data: do store para o próximo avanço de etapa
         // não reenviar o PDF inteiro (timeout → etapa local sem gravar no servidor).
         clearSyncedDocumentBinaries(pendingSnapshot);
@@ -561,6 +615,19 @@ export function flushQualidadeDocumentsSync(): Promise<void> {
   // Só reenvia binário se ainda houver UID pendente — avanço de etapa fica leve.
   return syncDocumentsStateNow(pendingDocumentFileUids.size > 0).catch((err) => {
     console.error('[qualidade-sync] documents flush:', err);
+    throw err;
+  });
+}
+
+/**
+ * Flush só do documento da etapa (payload leve). Usar em enviar/aprovar/reprovar
+ * para não reenviar a base inteira do SGQ a cada transição.
+ */
+export function flushQualidadeDocumentSync(documentId: string): Promise<void> {
+  cancelQualidadeDocumentsDebounce();
+  const pending = pendingUidsForDocument(documentId);
+  return syncDocumentsStateNow(pending.length > 0, documentId).catch((err) => {
+    console.error('[qualidade-sync] document flush:', err);
     throw err;
   });
 }
