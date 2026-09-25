@@ -91,15 +91,17 @@ export function SgqAnexosTable({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="min-w-0 space-y-3">
       {label ? <Label className="text-base">{label}</Label> : null}
 
-      <Table surface>
+      <Table surface className="table-fixed">
         <TableHeader>
           <TableRow className="border-b-2 border-border">
-            <TableHead className="w-14 border-r border-border/70">#</TableHead>
-            <TableHead className="border-r border-border/70">Arquivo</TableHead>
-            <TableHead className="w-36 text-right">Ações</TableHead>
+            <TableHead className="w-10 border-r border-border/70">#</TableHead>
+            <TableHead className="min-w-0 border-r border-border/70">
+              Arquivo
+            </TableHead>
+            <TableHead className="w-52 text-right sm:w-56">Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -117,10 +119,13 @@ export function SgqAnexosTable({
                 <TableCell className="border-r border-border/60 text-center text-muted-foreground">
                   {index + 1}
                 </TableCell>
-                <TableCell className="border-r border-border/60">
-                  <div className="flex min-w-0 items-center gap-2">
+                <TableCell className="max-w-0 border-r border-border/60 !whitespace-normal">
+                  <div className="flex min-w-0 items-center gap-2 overflow-hidden">
                     <Paperclip className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 truncate text-sm">
+                    <span
+                      className="min-w-0 truncate text-sm"
+                      title={temArquivo ? anexo.nome : undefined}
+                    >
                       {temArquivo ? (
                         <span className="font-medium text-foreground">
                           {anexo.nome}
@@ -133,8 +138,8 @@ export function SgqAnexosTable({
                     </span>
                   </div>
                 </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-1">
+                <TableCell className="align-middle">
+                  <div className="flex flex-wrap items-center justify-end gap-1">
                     {temArquivo ? (
                       <SgqArquivoAcoes
                         arquivo={anexo}
@@ -158,7 +163,7 @@ export function SgqAnexosTable({
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-8 gap-1.5 text-xs"
+                          className="h-8 shrink-0 gap-1.5 text-xs"
                           title={
                             temArquivo
                               ? "Substituir arquivo"
@@ -176,7 +181,7 @@ export function SgqAnexosTable({
                           variant="ghost"
                           size="icon-sm"
                           title="Remover linha"
-                          className="text-destructive hover:text-destructive"
+                          className="shrink-0 text-destructive hover:text-destructive"
                           onClick={() => removerLinha(anexo.id)}
                         >
                           <Trash2 className="size-4" />

@@ -48,7 +48,9 @@ export function DocumentoWorkflowPage({
       </div>
 
       <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]">
-        <div className="min-w-0 space-y-6">{children}</div>
+        <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden">
+          {children}
+        </div>
         <aside className="hidden min-w-0 space-y-4 lg:block">
           <DocumentoStepper activeStep={activeStep} />
           {version && users ? (

@@ -37,7 +37,7 @@ function Table({
     <div
       data-slot="table-container"
       data-surface="true"
-      className="sgq-table-surface relative w-full overflow-hidden rounded-xl border border-border bg-card shadow-sm ring-1 ring-foreground/6"
+      className="sgq-table-surface relative w-full min-w-0 overflow-hidden rounded-xl border border-border bg-card shadow-sm ring-1 ring-foreground/6"
     >
       <div className="overflow-x-auto">{table}</div>
     </div>
