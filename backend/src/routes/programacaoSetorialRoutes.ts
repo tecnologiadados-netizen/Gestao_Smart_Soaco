@@ -14,7 +14,7 @@ import {
 const router = Router();
 
 router.use(requireAuth);
-router.use(requirePermission(PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER));
+router.use(requirePermission(PERMISSOES.PCP_PROGRAMACAO_SETORIAL_VER, PERMISSOES.PCP_TOTAL));
 
 router.get('/planning', getProgramacaoSetorialPlanning);
 router.get('/estoque', getProgramacaoSetorialEstoque);

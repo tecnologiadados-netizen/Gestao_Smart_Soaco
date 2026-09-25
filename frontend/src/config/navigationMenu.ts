@@ -15,6 +15,7 @@ import {
   podeVerPainelTv,
 } from '../utils/painelProducaoPermissoes';
 import { podeAcessarSequenciamentoCarradas } from '../utils/sequenciamentoCarradasPermissoes';
+import { podeAcessarProgramacaoSetorial } from '../utils/programacaoSetorialPermissoes';
 
 export type NavMenuEntry =
   | { kind: 'link'; to: string; label: string }
@@ -451,14 +452,7 @@ export function buildPcpMenuForUser(hasPermission: HasPermission): NavMenuEntry[
       continue;
     }
 
-    if (entry.label === 'Estoque' || entry.label === 'Painel Metas') {
-      const children = filterPcpMenuChildren(entry, hasPermission);
-      if (children.length > 0) filtered.push({ ...entry, children });
-      continue;
-    }
-
-    if (entry.label === 'Programação') {
-      if (!podeGerenciador) continue;
+    if (entry.label === 'Estoque' || entry.label === 'Painel Metas' || entry.label === 'Programação') {
       const children = filterPcpMenuChildren(entry, hasPermission);
       if (children.length > 0) filtered.push({ ...entry, children });
       continue;
@@ -482,13 +476,19 @@ export function filterPcpMenuChildren(
   if (entry.kind !== 'submenu') return [];
 
   if (entry.label === 'Estoque') {
-    return entry.children.filter(
-      (c) =>
-        c.kind !== 'link' ||
-        c.to !== '/pedidos/consulta-estoque' ||
-        hasPermission(PERMISSOES.PCP_CONSULTA_ESTOQUE_VER) ||
-        hasPermission(PERMISSOES.PCP_TOTAL),
-    );
+    const podeGerenciador =
+      hasPermission(PERMISSOES.PCP_VER_TELA) ||
+      hasPermission(PERMISSOES.PCP_TOTAL) ||
+      hasPermission(PERMISSOES.PEDIDOS_VER);
+    return entry.children.filter((c) => {
+      if (c.kind !== 'link') return true;
+      if (c.to === '/pedidos/consulta-estoque') {
+        return (
+          hasPermission(PERMISSOES.PCP_CONSULTA_ESTOQUE_VER) || hasPermission(PERMISSOES.PCP_TOTAL)
+        );
+      }
+      return podeGerenciador;
+    });
   }
 
   if (entry.label === 'Painel Metas') {
@@ -504,24 +504,36 @@ export function filterPcpMenuChildren(
     });
   }
 
-  return entry.children
-    .map((child) => {
-      if (child.kind === 'submenu' && child.label === 'Configuração') {
-        const leaves = child.children.filter((leaf) => {
-          if (leaf.kind !== 'link') return true;
-          if (leaf.to === '/pedidos/regras-data-entrega') {
-            return (
-              hasPermission(PERMISSOES.PCP_REGRAS_ENTREGA_VER) ||
-              hasPermission(PERMISSOES.PCP_REGRAS_ENTREGA_EDITAR) ||
-              hasPermission(PERMISSOES.PCP_TOTAL)
-            );
-          }
-          return true;
-        });
-        if (leaves.length === 0) return null;
-        return { ...child, children: leaves };
-      }
-      return child;
-    })
-    .filter((c): c is NavMenuEntry => c != null);
+  if (entry.label === 'Programação') {
+    const podeGerenciador =
+      hasPermission(PERMISSOES.PCP_VER_TELA) ||
+      hasPermission(PERMISSOES.PCP_TOTAL) ||
+      hasPermission(PERMISSOES.PEDIDOS_VER);
+    return entry.children
+      .map((child) => {
+        if (child.kind === 'link' && child.to === '/pedidos/programacao-setorial') {
+          return podeAcessarProgramacaoSetorial(hasPermission) ? child : null;
+        }
+        if (child.kind === 'submenu' && child.label === 'Configuração') {
+          if (!podeGerenciador) return null;
+          const leaves = child.children.filter((leaf) => {
+            if (leaf.kind !== 'link') return true;
+            if (leaf.to === '/pedidos/regras-data-entrega') {
+              return (
+                hasPermission(PERMISSOES.PCP_REGRAS_ENTREGA_VER) ||
+                hasPermission(PERMISSOES.PCP_REGRAS_ENTREGA_EDITAR) ||
+                hasPermission(PERMISSOES.PCP_TOTAL)
+              );
+            }
+            return true;
+          });
+          if (leaves.length === 0) return null;
+          return { ...child, children: leaves };
+        }
+        return podeGerenciador ? child : null;
+      })
+      .filter((c): c is NavMenuEntry => c != null);
+  }
+
+  return entry.children;
 }

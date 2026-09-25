@@ -32,7 +32,7 @@ export const OPCOES_TELA_PRINCIPAL: { key: string; label: string; requiredAny: C
   {
     key: 'programacao_setorial',
     label: 'Programação setorial',
-    requiredAny: [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
+    requiredAny: [PERMISSOES.PCP_PROGRAMACAO_SETORIAL_VER, PERMISSOES.PCP_TOTAL],
   },
   {
     key: 'comunicacao_pd',

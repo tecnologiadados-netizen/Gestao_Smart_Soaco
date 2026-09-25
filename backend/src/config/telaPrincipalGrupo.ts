@@ -56,7 +56,7 @@ export const TELA_PRINCIPAL_MAP: Record<
   programacao_setorial: {
     path: '/pedidos/programacao-setorial',
     label: 'Programação setorial',
-    requiredAny: [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
+    requiredAny: [PERMISSOES.PCP_PROGRAMACAO_SETORIAL_VER, PERMISSOES.PCP_TOTAL],
   },
   comunicacao_pd: {
     path: '/pedidos/sycroorder',
