@@ -15,7 +15,6 @@ import { CadastroEquipamentosPage } from '@qualidade/pages/CalibracoesEquipament
 import { CalibracoesVisaoGeralPage } from '@qualidade/pages/CalibracoesVisaoGeralPage';
 import { RegistrosPage } from '@qualidade/pages/RegistrosPage';
 import { RegistrosConsultaPage } from '@qualidade/pages/RegistrosConsultaPage';
-import { RncPage } from '@qualidade/pages/RncPage';
 import { AvaliacaoFornecedorRedirectPage } from '@qualidade/pages/AvaliacaoFornecedorPage';
 import { AvaliacaoFornecedorHistoricoRedirectPage } from '@qualidade/pages/AvaliacaoFornecedorHistoricoPage';
 import { ConfiguracoesPage } from '@qualidade/pages/ConfiguracoesPage';
@@ -50,7 +49,7 @@ export const qualidadeRoutes: RouteObject[] = [
       { path: 'calibracoes/visao-geral', element: wrap(<CalibracoesVisaoGeralPage />) },
       { path: 'registros', element: wrap(<RegistrosPage />) },
       { path: 'registros/consulta', element: wrap(<RegistrosConsultaPage />) },
-      { path: 'rnc', element: wrap(<RncPage />) },
+      { path: 'rnc', element: <Navigate to="/qualidade/registros" replace /> },
       { path: 'avaliacao-fornecedor', element: wrap(<AvaliacaoFornecedorRedirectPage />) },
       { path: 'avaliacao-fornecedor/historico', element: wrap(<AvaliacaoFornecedorHistoricoRedirectPage />) },
       { path: 'configuracoes', element: wrap(<ConfiguracoesPage />) },

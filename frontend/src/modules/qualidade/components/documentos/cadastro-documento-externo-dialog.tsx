@@ -68,19 +68,30 @@ export function CadastroDocumentoExternoDialog({
     const versaoAtual = getVersionsByDocumentId(documentId).find(
       (v) => v.versao === doc.versaoAtual
     );
-    setValues(
-      externoRegistroValuesFromDocument(
-        doc,
-        versaoAtual,
-        versaoAtual?.elaboradorId || ""
-      )
+    const carregado = externoRegistroValuesFromDocument(
+      doc,
+      versaoAtual,
+      versaoAtual?.elaboradorId || ""
     );
+    const elaboradorEhUsuario = users.some(
+      (user) => user.id === carregado.responsavelDocumentoId
+    );
+    setValues({
+      ...carregado,
+      responsavelDocumentoId: elaboradorEhUsuario
+        ? carregado.responsavelDocumentoId
+        : "",
+      responsavelId:
+        carregado.responsavelId ||
+        (!elaboradorEhUsuario ? carregado.responsavelDocumentoId : ""),
+    });
     setErro("");
   }, [
     open,
     documentId,
     getDocumentById,
     getVersionsByDocumentId,
+    users,
   ]);
 
   function handleChange(next: ExternoRegistroFormValues) {
@@ -99,6 +110,7 @@ export function CadastroDocumentoExternoDialog({
     if (!values.titulo.trim()) pendentes.push("Título");
     if (!values.processoId) pendentes.push("Setor");
     if (!values.distEletronica && !values.distFisica) pendentes.push("A guarda é");
+    if (!values.responsavelDocumentoId) pendentes.push("Responsável pelo documento");
     if (values.distFisica && !values.responsavelId) {
       pendentes.push("Responsável pela posse do documento");
     }
@@ -113,7 +125,7 @@ export function CadastroDocumentoExternoDialog({
     const payloadBase = {
       titulo: values.titulo,
       setorId: values.processoId,
-      elaboradorId: values.responsavelId,
+      elaboradorId: values.responsavelDocumentoId,
       localizacao: values.localizacao,
       permissoes: buildPermissoesFromExternoRegistro(values),
       validade: buildValidadeFromExternoRegistro(values),

@@ -4,7 +4,20 @@ import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 
 import { cn } from "@qualidade/lib/utils"
-import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
+import { textoPassaBuscaLivre } from "@/utils/textoLivreBusca"
+import { ChevronDownIcon, CheckIcon, ChevronUpIcon, SearchIcon } from "lucide-react"
+
+const SelectBuscaContext = React.createContext("")
+
+function textoDoConteudo(node: React.ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node)
+  if (Array.isArray(node)) return node.map(textoDoConteudo).join(" ")
+  if (React.isValidElement(node)) {
+    const props = node.props as { children?: React.ReactNode }
+    return textoDoConteudo(props.children)
+  }
+  return ""
+}
 
 const Select = SelectPrimitive.Root
 
@@ -73,31 +86,61 @@ function SelectContent({
     SelectPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger"
   >) {
+  const [busca, setBusca] = React.useState("")
+
   return (
-    <SelectPrimitive.Portal className="qualidade-portal">
-      <SelectPrimitive.Positioner
-        side={side}
-        sideOffset={sideOffset}
-        align={align}
-        alignOffset={alignOffset}
-        alignItemWithTrigger={alignItemWithTrigger}
-        className="isolate z-[200]"
-      >
-        <SelectPrimitive.Popup
-          data-slot="select-content"
-          data-align-trigger={alignItemWithTrigger}
-          className={cn(
-            "relative z-[200] max-h-[min(var(--available-height,16rem),16rem)] min-w-[var(--anchor-width)] overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg",
-            className
-          )}
-          {...props}
+    <SelectBuscaContext.Provider value={busca}>
+      <SelectPrimitive.Portal className="qualidade-portal">
+        <SelectPrimitive.Positioner
+          side={side}
+          sideOffset={sideOffset}
+          align={align}
+          alignOffset={alignOffset}
+          alignItemWithTrigger={alignItemWithTrigger}
+          className="isolate z-[200]"
         >
-          <SelectScrollUpButton />
-          <SelectPrimitive.List>{children}</SelectPrimitive.List>
-          <SelectScrollDownButton />
-        </SelectPrimitive.Popup>
-      </SelectPrimitive.Positioner>
-    </SelectPrimitive.Portal>
+          <SelectPrimitive.Popup
+            data-slot="select-content"
+            data-align-trigger={alignItemWithTrigger}
+            className={cn(
+              "relative z-[200] flex max-h-[min(var(--available-height,20rem),20rem)] min-w-[var(--anchor-width)] flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg",
+              "[&:not(:has([data-slot=select-item]))_[data-select-empty]]:block",
+              className
+            )}
+            {...props}
+          >
+            <div
+              className="shrink-0 border-b border-border p-2"
+              onPointerDown={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              <div className="relative">
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={busca}
+                  onChange={(event) => setBusca(event.target.value)}
+                  placeholder="Digite para pesquisar… (% refina)"
+                  autoComplete="off"
+                  autoFocus
+                  className="h-9 w-full rounded-md border border-input bg-background pr-3 pl-8 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                />
+              </div>
+            </div>
+            <SelectScrollUpButton />
+            <SelectPrimitive.List className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-1">
+              {children}
+            </SelectPrimitive.List>
+            <p
+              data-select-empty
+              className="hidden px-3 py-4 text-center text-sm text-muted-foreground"
+            >
+              Nenhum resultado encontrado.
+            </p>
+            <SelectScrollDownButton />
+          </SelectPrimitive.Popup>
+        </SelectPrimitive.Positioner>
+      </SelectPrimitive.Portal>
+    </SelectBuscaContext.Provider>
   )
 }
 
@@ -119,6 +162,12 @@ function SelectItem({
   children,
   ...props
 }: SelectPrimitive.Item.Props) {
+  const busca = React.useContext(SelectBuscaContext)
+  const texto = textoDoConteudo(children)
+  if (busca.trim() && texto.trim() && !textoPassaBuscaLivre(busca, texto)) {
+    return null
+  }
+
   return (
     <SelectPrimitive.Item
       data-slot="select-item"

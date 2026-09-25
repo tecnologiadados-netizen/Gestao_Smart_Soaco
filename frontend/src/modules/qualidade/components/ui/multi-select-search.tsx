@@ -3,6 +3,7 @@ import { Check, ChevronsUpDown, Search, X } from "lucide-react";
 import { Badge } from "@qualidade/components/ui/badge";
 import { Input } from "@qualidade/components/ui/input";
 import { cn } from "@qualidade/lib/utils";
+import { criarMatcherTextoLivre } from "@/utils/textoLivreBusca";
 
 export interface MultiSelectOption {
   value: string;
@@ -28,7 +29,7 @@ export function MultiSelectSearch({
   value,
   onChange,
   placeholder = "Selecione…",
-  searchPlaceholder = "Pesquisar…",
+  searchPlaceholder = "Digite para pesquisar… (% refina)",
   emptyMessage = "Nenhum resultado encontrado.",
   disabled = false,
   id,
@@ -44,12 +45,9 @@ export function MultiSelectSearch({
   );
 
   const filteredOptions = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return options;
+    const match = criarMatcherTextoLivre(search);
     return options.filter(
-      (option) =>
-        option.label.toLowerCase().includes(query) ||
-        option.description?.toLowerCase().includes(query)
+      (option) => match(option.label) || match(option.description ?? "")
     );
   }, [options, search]);
 

@@ -486,16 +486,32 @@ function DocumentoConsultaDetalheDialogImpl({
                       </div>
                     )}
                   </div>
-                ) : doc.externoRegistro?.distribuicaoFisica ? (
-                  <MetaItem
-                    label="Responsável pela posse do documento"
-                    value={labelResponsavelPosse(
-                      users,
-                      versaoAtual?.elaboradorId,
-                      doc.externoRegistro?.responsavelNome
-                    )}
-                  />
-                ) : null}
+                ) : (
+                  <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                    <MetaItem
+                      label="Responsável pelo documento"
+                      value={labelResponsavel(
+                        users,
+                        users.some((user) => user.id === versaoAtual?.elaboradorId)
+                          ? versaoAtual?.elaboradorId
+                          : ""
+                      )}
+                    />
+                    {doc.externoRegistro?.distribuicaoFisica ? (
+                      <MetaItem
+                        label="Responsável pela posse do documento"
+                        value={labelResponsavelPosse(
+                          users,
+                          doc.externoRegistro?.responsavelPosseId ??
+                            (users.some((user) => user.id === versaoAtual?.elaboradorId)
+                              ? ""
+                              : versaoAtual?.elaboradorId),
+                          doc.externoRegistro?.responsavelNome
+                        )}
+                      />
+                    ) : null}
+                  </div>
+                )}
               </SecaoPainel>
 
               <SecaoPainel titulo="Permissões / Cópias distribuídas">
@@ -621,8 +637,11 @@ function DocumentoConsultaDetalheDialogImpl({
               <SecaoPainel titulo="Revisões" defaultOpen>
                 <ul className="space-y-3">
                   {versoes.map((ver) => {
+                    const elaboradorEhUsuario = users.some(
+                      (user) => user.id === ver.elaboradorId
+                    );
                     const elaboradorNome =
-                      doc.origem === "interno"
+                      doc.origem === "interno" || elaboradorEhUsuario
                         ? labelResponsavel(users, ver.elaboradorId)
                         : labelResponsavelPosse(
                             users,
@@ -694,7 +713,10 @@ function DocumentoConsultaDetalheDialogImpl({
                             </>
                           ) : (
                             <>
-                              Responsável pela posse do documento: {elaboradorNome} ·{" "}
+                              {elaboradorEhUsuario
+                                ? "Responsável pelo documento"
+                                : "Responsável pela posse do documento"}
+                              : {elaboradorNome} ·{" "}
                               {formatarData(ver.dataElaboracao)}
                             </>
                           )}

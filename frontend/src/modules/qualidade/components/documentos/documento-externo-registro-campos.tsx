@@ -43,6 +43,9 @@ export interface ExternoRegistroFormValues {
   distEletronica: boolean;
   distFisica: boolean;
   localizacao: string;
+  /** Usuário do Gestão Smart responsável pelo documento. */
+  responsavelDocumentoId: string;
+  /** Pessoa Nomus (funcionário) responsável pela posse, quando a guarda é física. */
   responsavelId: string;
   responsavelNome: string;
   definirValidade: boolean;
@@ -78,6 +81,7 @@ export function defaultExternoRegistroValues(
     distEletronica: true,
     distFisica: false,
     localizacao: "",
+    responsavelDocumentoId: "",
     responsavelId,
     responsavelNome: "",
     definirValidade: false,
@@ -140,7 +144,8 @@ export function externoRegistroValuesFromDocument(
     distEletronica: reg?.distribuicaoEletronica ?? true,
     distFisica: reg?.distribuicaoFisica ?? false,
     localizacao: doc.localizacao ?? "",
-    responsavelId: fallbackResponsavelId,
+    responsavelDocumentoId: fallbackResponsavelId,
+    responsavelId: reg?.responsavelPosseId ?? "",
     responsavelNome: reg?.responsavelNome ?? "",
     definirValidade: Boolean(doc.validade?.ativa && doc.validade.dataValidade),
     validadeData: doc.validade?.dataValidade
@@ -197,6 +202,9 @@ export function buildExternoRegistroMeta(
     permissaoAcesso: (values.permissaoAcesso ||
       "todos") as PermissaoAcessoDocumento,
     responsavelNome: values.responsavelNome.trim() || undefined,
+    responsavelPosseId: values.distFisica
+      ? values.responsavelId.trim() || undefined
+      : undefined,
     anexos: anexosMeta.length > 0 ? anexosMeta : undefined,
   };
 }
@@ -431,6 +439,38 @@ export function DocumentoExternoRegistroCampos({
                   </SelectItem>
                 ))
               )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-base" htmlFor="doc-externo-responsavel-documento">
+            Responsável pelo documento *
+          </Label>
+          <Select
+            value={values.responsavelDocumentoId || null}
+            onValueChange={(v) => v && patch({ responsavelDocumentoId: v })}
+          >
+            <SelectTrigger
+              id="doc-externo-responsavel-documento"
+              className={selectTriggerClass}
+            >
+              <SelectValue placeholder="Selecione o usuário">
+                {userSelectLabel(users, values.responsavelDocumentoId) ?? null}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className={selectContentClass}>
+              {users
+                .filter((user) => user.ativo)
+                .map((user) => (
+                  <SelectItem
+                    key={user.id}
+                    value={user.id}
+                    className={selectItemClass}
+                  >
+                    {user.nome}
+                  </SelectItem>
+                ))}
             </SelectContent>
           </Select>
         </div>
