@@ -363,7 +363,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.PCP_MOTIVO_CRIAR]: 'Criar nova justificativa',
   [PERMISSOES.PCP_TOTAL]: 'Permissão total',
   [PERMISSOES.PCP_CONSULTA_ESTOQUE_VER]: 'Consulta de Estoque — visualizar',
-  [PERMISSOES.PCP_PROGRAMACAO_SETORIAL_VER]: 'Programação Setorial — visualizar',
+  [PERMISSOES.PCP_PROGRAMACAO_SETORIAL_VER]: 'Programação Setorial — visualizar e gerar',
   [PERMISSOES.PCP_SEQUENCIAMENTO_CARRADAS_VER]:
     'Sequenciamento carradas — visualizar e consultar',
   [PERMISSOES.PCP_SEQUENCIAMENTO_CARRADAS_CRIAR]:

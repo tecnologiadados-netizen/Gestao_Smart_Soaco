@@ -332,7 +332,7 @@ export default function ProgramacaoSetorialPainelPage() {
                           onClick={() => setVisualizacaoRegistro(r)}
                           className="px-3 py-1.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium transition"
                         >
-                          Abrir Gerador
+                          Abrir visualização
                         </button>
                       </div>
                     </td>

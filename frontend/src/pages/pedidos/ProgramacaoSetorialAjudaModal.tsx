@@ -50,9 +50,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'painel',
     titulo: 'Painel de programações',
     oQueE:
-      'Lista de snapshots gravados. Abrir um registro reproduz o momento do save — mudanças posteriores no ERP não alteram aquele snapshot.',
+      'Lista de snapshots gravados. “Abrir visualização” reproduz o momento do save — mudanças posteriores no ERP não alteram aquele snapshot. “Gerar Programação” abre o fluxo interativo para carregar dados e gravar um novo registro.',
     comoLe:
-      'Trate cada item do painel como foto congelada. Para cenário novo, gere outra programação; não espere o snapshot antigo “atualizar sozinho”.',
+      'Trate cada item do painel como foto congelada. Para cenário novo, use Gerar Programação; não espere o snapshot antigo “atualizar sozinho”. A permissão PCP de Programação Setorial libera visualizar e gerar/gravar.',
   },
   {
     id: 'pdf',
