@@ -48,6 +48,7 @@ import {
   montarRelatoConferencia,
 } from '../services/doubleCheckInConferenciaRelato.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
+import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -65,40 +66,11 @@ function fmtPct(n: number): string {
   return `${sinal}${n.toFixed(1).replace('.', ',')}%`;
 }
 
-function chaveDecisao(
-  idItemDocumentoEstoque: number,
-  idItemPedidoCompra: number,
-  campo: string
-): string {
-  return `${idItemDocumentoEstoque}:${idItemPedidoCompra}:${campo}`;
-}
-
-function camposDivergentesDaLinha(
-  linha: DoubleCheckInComparativoLinha
-): DoubleCheckInCampoComparativo[] {
-  const out: DoubleCheckInCampoComparativo[] = [];
-  if (linha.divergValorUnitario) out.push('valor_unitario');
-  if (linha.divergQtde) out.push('qtde');
-  if (linha.divergIpi) out.push('ipi');
-  if (linha.divergCondicaoPagamento) out.push('condicao_pagamento');
-  return out;
-}
-
 function validarDecisoesCompletas(
   linhas: DoubleCheckInComparativoLinha[],
   decisoes: DoubleCheckInComparativoDecisaoRow[]
 ): { ok: true } | { ok: false; pendentes: number; error: string } {
-  const map = new Map(
-    decisoes.map((d) => [chaveDecisao(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo), d])
-  );
-  let pendentes = 0;
-  for (const linha of linhas) {
-    for (const campo of camposDivergentesDaLinha(linha)) {
-      if (!map.has(chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo))) {
-        pendentes += 1;
-      }
-    }
-  }
+  const pendentes = contarPendentesComparativoLogica(linhas, decisoes);
   if (pendentes > 0) {
     return {
       ok: false,
@@ -274,18 +246,60 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
       res.status(400).json({ error: 'NF já conferida — decisões não podem ser alteradas.' });
       return;
     }
-    const decisao = await upsertDecisaoComparativo({
+
+    const baseParams = {
       idDocumentoEstoque: idDocumento,
-      idItemDocumentoEstoque,
-      idItemPedidoCompra,
       campo,
-      decisao: decisaoRaw,
+      decisao: decisaoRaw as 'aceita' | 'recusa',
       justificativaOpcaoId,
       observacao,
       usuarioId: usuario.id,
       usuarioLogin: usuario.login,
+    };
+
+    let decisao = await upsertDecisaoComparativo({
+      ...baseParams,
+      idItemDocumentoEstoque,
+      idItemPedidoCompra,
     });
-    res.json({ ok: true, decisao });
+
+    // Cond. pagamento é do documento×PC: replica a decisão em todos os vínculos do mesmo PC.
+    let decisoesReplicadas: DoubleCheckInComparativoDecisaoRow[] | undefined;
+    if (campo === 'condicao_pagamento') {
+      const { linhas } = await queryDoubleCheckInComparativoPc({ idDocumento });
+      const origem = linhas.find(
+        (l) =>
+          l.idItemDocumentoEstoque === idItemDocumentoEstoque &&
+          l.idItemPedidoCompra === idItemPedidoCompra
+      );
+      const idPc = origem?.idPedidoCompra ?? null;
+      const irmaos = linhas.filter(
+        (l) =>
+          l.divergCondicaoPagamento &&
+          l.idPedidoCompra === idPc &&
+          !(
+            l.idItemDocumentoEstoque === idItemDocumentoEstoque &&
+            l.idItemPedidoCompra === idItemPedidoCompra
+          )
+      );
+      if (irmaos.length > 0) {
+        decisoesReplicadas = [];
+        for (const irmao of irmaos) {
+          const d = await upsertDecisaoComparativo({
+            ...baseParams,
+            idItemDocumentoEstoque: irmao.idItemDocumentoEstoque,
+            idItemPedidoCompra: irmao.idItemPedidoCompra,
+          });
+          decisoesReplicadas.push(d);
+        }
+      }
+    }
+
+    res.json({
+      ok: true,
+      decisao,
+      decisoesReplicadas: decisoesReplicadas ?? [],
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: msg });

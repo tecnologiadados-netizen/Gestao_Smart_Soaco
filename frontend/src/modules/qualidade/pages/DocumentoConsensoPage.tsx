@@ -19,6 +19,7 @@ import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
+  flushQualidadeDocumentsSync,
   markQualidadeDocumentFilesPending,
   scheduleQualidadeDocumentsFlush,
 } from "@qualidade/lib/qualidadePersistence";
@@ -52,6 +53,8 @@ export function ConsensoDocumentoPage() {
   const documentTypes = useConfigStore((s) => s.documentTypes);
   const departments = useConfigStore((s) => s.departments);
   const users = useConfigStore((s) => s.users);
+  const currentUserId = useConfigStore((s) => s.currentUserId);
+  const getPendingTasks = useDocumentsStore((s) => s.getPendingTasks);
 
   const [observacoes, setObservacoes] = useState("");
   const [justificativaReprovacao, setJustificativaReprovacao] = useState("");
@@ -104,6 +107,19 @@ export function ConsensoDocumentoPage() {
   const processo = departments.find((d) => d.id === doc.setorId);
   const reprovacaoAprovacao = getUltimaReprovacao(versaoAtual, "aprovacao");
   const retornoDaAprovacao = exigeSubstituicaoNoConsenso(versaoAtual);
+  const tarefaAjuste = getPendingTasks(currentUserId).find(
+    (t) =>
+      t.referenciaId === id &&
+      t.tipo === "consenso_documento" &&
+      (t.titulo.includes("substituir") || t.titulo.startsWith("Corrigir"))
+  );
+  const motivoReprovacao =
+    reprovacaoAprovacao?.motivo?.trim() ||
+    (tarefaAjuste?.descricao &&
+    !tarefaAjuste.descricao.startsWith("Revisão ")
+      ? tarefaAjuste.descricao.trim()
+      : "");
+  const precisaAjuste = Boolean(retornoDaAprovacao || motivoReprovacao || tarefaAjuste);
 
   function processarArquivo(file: File) {
     setError("");
@@ -155,9 +171,9 @@ export function ConsensoDocumentoPage() {
         if (!ok) {
           throw new Error("Não foi possível aprovar. Verifique o documento anexado.");
         }
+        await flushQualidadeDocumentsSync();
         navigateImmediate("/qualidade/documentos");
       }, "Salvando consenso...");
-      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao aprovar consenso:", err);
       setError(
@@ -199,9 +215,9 @@ export function ConsensoDocumentoPage() {
         if (!ok) {
           throw new Error("Não foi possível enviar para aprovação. Verifique o anexo.");
         }
+        await flushQualidadeDocumentsSync();
         navigateImmediate("/qualidade/documentos");
       }, "Enviando para aprovação...");
-      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao reenviar para aprovação:", err);
       setError(
@@ -235,9 +251,9 @@ export function ConsensoDocumentoPage() {
     setSincronizando(true);
     try {
       await withLoading(async () => {
+        await flushQualidadeDocumentsSync();
         navigateImmediate("/qualidade/documentos");
       }, "Salvando reprovação...");
-      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar reprovação:", err);
       setError(
@@ -250,7 +266,7 @@ export function ConsensoDocumentoPage() {
 
   return (
     <DocumentoWorkflowPage
-      title={`Consenso — ${formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}`}
+      title={`${precisaAjuste ? "Correção" : "Consenso"} — ${formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}`}
       activeStep={2}
       onBack={() => navigate("/qualidade/documentos")}
       exiting={exiting}
@@ -266,7 +282,32 @@ export function ConsensoDocumentoPage() {
               disabled={sincronizando}
               onClick={() => void handleEnviarParaAprovacao()}
             >
-              {sincronizando ? "Enviando..." : "Enviar para aprovação"}
+              {sincronizando ? "Enviando..." : "Reenviar para aprovação"}
+            </Button>
+          </>
+        ) : modoReprovacao ? (
+          <>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              disabled={sincronizando}
+              onClick={() => {
+                setModoReprovacao(false);
+                setJustificativaReprovacao("");
+                setError("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="destructive"
+              disabled={sincronizando}
+              onClick={() => void handleReprovar()}
+            >
+              Confirmar reprovação
             </Button>
           </>
         ) : (
@@ -287,12 +328,23 @@ export function ConsensoDocumentoPage() {
               disabled={sincronizando}
               onClick={() => void handleReprovar()}
             >
-              {modoReprovacao ? "Confirmar reprovação" : "Reprovar"}
+              Reprovar
             </Button>
           </>
         )
       }
     >
+      {precisaAjuste ? (
+        <DocumentoReprovacaoAlerta
+          titulo="Documento reprovado na aprovação"
+          motivo={
+            motivoReprovacao ||
+            "Consulte o parecer da aprovação e substitua o arquivo antes de reenviar."
+          }
+          etapaOrigem="aprovação"
+        />
+      ) : null}
+
       <DocumentoIdentificacaoResumo
         doc={doc}
         version={versaoAtual}
@@ -306,14 +358,6 @@ export function ConsensoDocumentoPage() {
         users={users}
         ocultarArquivo={retornoDaAprovacao}
       />
-
-      {reprovacaoAprovacao?.motivo && (
-        <DocumentoReprovacaoAlerta
-          titulo="Documento reprovado na aprovação"
-          motivo={reprovacaoAprovacao.motivo}
-          etapaOrigem="aprovação"
-        />
-      )}
 
       {retornoDaAprovacao ? (
         <fieldset className="brand-fieldset space-y-4">
@@ -374,19 +418,6 @@ export function ConsensoDocumentoPage() {
                   className="text-base"
                   required
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground"
-                  onClick={() => {
-                    setModoReprovacao(false);
-                    setJustificativaReprovacao("");
-                    setError("");
-                  }}
-                >
-                  Cancelar reprovação
-                </Button>
               </div>
             )}
 

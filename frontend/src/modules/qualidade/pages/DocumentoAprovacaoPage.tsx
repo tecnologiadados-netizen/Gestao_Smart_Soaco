@@ -16,7 +16,7 @@ import {
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
-import { scheduleQualidadeDocumentsFlush } from "@qualidade/lib/qualidadePersistence";
+import { flushQualidadeDocumentsSync } from "@qualidade/lib/qualidadePersistence";
 import { labelResponsavel } from "@qualidade/lib/utils/select-display";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
 
@@ -105,9 +105,9 @@ export function AprovacaoDocumentoPage() {
         if (!ok) {
           throw new Error("Não foi possível finalizar a aprovação.");
         }
+        await flushQualidadeDocumentsSync();
         navigateImmediate("/qualidade/documentos");
       }, "Finalizando aprovação...");
-      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao aprovar documento:", err);
       setError(
@@ -141,9 +141,10 @@ export function AprovacaoDocumentoPage() {
     setSincronizando(true);
     try {
       await withLoading(async () => {
+        // Flush antes de navegar — evita soft refresh trazer de volta o card de aprovar.
+        await flushQualidadeDocumentsSync();
         navigateImmediate("/qualidade/documentos");
       }, "Salvando reprovação...");
-      scheduleQualidadeDocumentsFlush();
     } catch (err) {
       console.error("[qualidade] falha ao sincronizar reprovação:", err);
       setError(
@@ -163,26 +164,53 @@ export function AprovacaoDocumentoPage() {
       version={versaoAtual}
       users={users}
       footer={
-        <>
-          <Button
-            type="button"
-            size="lg"
-            className="min-w-32"
-            disabled={sincronizando}
-            onClick={() => void handleAprovar()}
-          >
-            {sincronizando ? "Salvando..." : "Aprovar"}
-          </Button>
-          <Button
-            type="button"
-            size="lg"
-            variant="destructive"
-            disabled={sincronizando}
-            onClick={() => void handleReprovar()}
-          >
-            {modoReprovacao ? "Confirmar reprovação" : "Reprovar"}
-          </Button>
-        </>
+        modoReprovacao ? (
+          <>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              disabled={sincronizando}
+              onClick={() => {
+                setModoReprovacao(false);
+                setJustificativaReprovacao("");
+                setError("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="destructive"
+              disabled={sincronizando}
+              onClick={() => void handleReprovar()}
+            >
+              Confirmar reprovação
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              type="button"
+              size="lg"
+              className="min-w-32"
+              disabled={sincronizando}
+              onClick={() => void handleAprovar()}
+            >
+              {sincronizando ? "Salvando..." : "Aprovar"}
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="destructive"
+              disabled={sincronizando}
+              onClick={() => void handleReprovar()}
+            >
+              Reprovar
+            </Button>
+          </>
+        )
       }
     >
       <DocumentoIdentificacaoResumo
@@ -254,19 +282,6 @@ export function AprovacaoDocumentoPage() {
               className="text-base"
               required
             />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground"
-              onClick={() => {
-                setModoReprovacao(false);
-                setJustificativaReprovacao("");
-                setError("");
-              }}
-            >
-              Cancelar reprovação
-            </Button>
           </div>
         )}
 

@@ -30,6 +30,14 @@ function linha(p: Partial<DoubleCheckInComparativoLinha> & Pick<DoubleCheckInCom
     regraPagamentoNF: '0',
     condicaoPagamentoPC: 'Não Existente',
     regraPagamentoPC: '1',
+    dataBaseParcelasNF: null,
+    dataBaseParcelasPC: null,
+    parcelasNF: [],
+    parcelasPC: [],
+    prazosDiasNF: [],
+    prazosDiasPC: [],
+    prazosLabelNF: null,
+    prazosLabelPC: null,
     divergValorUnitario: false,
     divergQtde: false,
     divergIpi: false,
@@ -108,7 +116,8 @@ describe('relato da conferência NF × PC', () => {
     expect(relato!.pagamentoComum?.nf).toBe('À Vista');
     expect(relato!.pagamentoComum?.pc).toBe('Não Existente');
     expect(relato!.totalProdutos).toBe(2);
-    expect(relato!.totalDivergencias).toBe(4);
+    expect(relato!.totalDivergencias).toBe(3);
+    expect(relato!.aceitas).toBe(3);
     expect(relato!.produtos[0]?.campos.map((c) => c.campo)).toEqual(['valor_unitario']);
     expect(relato!.produtos[0]?.campos[0]?.diferenca).toContain('1,05');
     expect(relato!.produtos[0]?.campos[0]?.sinal).toBe('neg');

@@ -1022,19 +1022,34 @@ export async function syncQualidadeDocuments(payload: {
 
     if (etapaMudou) {
       const carimboServidor = prev!.statusAtualizadoEm ?? '';
-      // Sem carimbo dos dois lados (dados anteriores a esta coluna) cai no critério
-      // antigo: retrocesso só passa com movimentação de reprovação mais recente.
-      const desatualizado =
+      const rankIncoming = rankStatusSgq(status);
+      const rankPrev = rankStatusSgq(prev!.status);
+      const regressaoDeEtapa = rankIncoming < rankPrev;
+      const versaoPayloadObj = (versionsByDocUid.get(uid) ?? []).find(
+        (v) => String(v.versao ?? '') === versaoAtual
+      );
+      const movsIncoming = Array.isArray(versaoPayloadObj?.movimentacoes)
+        ? (versaoPayloadObj!.movimentacoes as Array<{ acao?: string; data?: string }>)
+        : [];
+      const movIncoming = ultimaMovimentacaoData(movsIncoming);
+      const movServidor = await ultimaMovimentacaoDataServidor(uid, versaoAtual);
+      const temReprovacaoMaisNova =
+        regressaoDeEtapa &&
+        movsIncoming.some((m) => m?.acao === 'reprovacao') &&
+        Boolean(movIncoming) &&
+        movIncoming > movServidor;
+
+      // Carimbo: snapshot atrasado não desfaz etapa já gravada.
+      const desatualizadoPorCarimbo =
         statusAtualizadoEm || carimboServidor
           ? statusAtualizadoEm <= carimboServidor
-          : rankStatusSgq(status) < rankStatusSgq(prev!.status) &&
-            ultimaMovimentacaoData(
-              (versionsByDocUid.get(uid) ?? []).find(
-                (v) => String(v.versao ?? '') === versaoAtual
-              )?.movimentacoes
-            ) <= (await ultimaMovimentacaoDataServidor(uid, versaoAtual));
+          : regressaoDeEtapa && !temReprovacaoMaisNova;
 
-      if (desatualizado) {
+      // Regressão (ex.: em_revisao → rascunho) só com reprovação real no payload.
+      // Impede flush de anexo atrasado fechar a tarefa de consenso após o e-mail.
+      const regressaoSemReprovacao = regressaoDeEtapa && !temReprovacaoMaisNova;
+
+      if (desatualizadoPorCarimbo || regressaoSemReprovacao) {
         console.warn(
           `[qualidade-sync] ${codigo}: ignorando mudança ${prev!.status} -> ${status} (snapshot desatualizado de ${criadoPorLogin}).`
         );

@@ -7,6 +7,14 @@ import { Label } from "@qualidade/components/ui/label";
 import { Textarea } from "@qualidade/components/ui/textarea";
 import { Badge } from "@qualidade/components/ui/badge";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@qualidade/components/ui/table";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -325,56 +333,81 @@ export function RevalidarDocumentoDialog({
 
             <fieldset className="brand-fieldset space-y-3">
               <legend className="text-base">Histórico de revisões</legend>
-              <ul className="space-y-2">
-                {versoes.map((ver) => {
-                  const elaboradorNome = labelResponsavel(
-                    users,
-                    ver.elaboradorId
-                  );
-                  const isAtual = ver.versao === doc.versaoAtual;
-                  return (
-                    <li
-                      key={ver.id}
-                      className={cn(
-                        "rounded-lg border px-4 py-3 text-sm",
-                        isAtual
-                          ? "border-brand-blue/30 bg-brand-blue-light/25"
-                          : "border-border/80 bg-muted/20"
-                      )}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-brand-navy">
-                            Revisão {ver.versao}
-                          </span>
-                          {isAtual ? (
-                            <Badge
-                              variant="outline"
-                              className="border-brand-blue/40 text-brand-blue"
-                            >
-                              Atual
-                            </Badge>
-                          ) : null}
-                        </div>
-                        {isAtual && temArquivo ? (
-                          <SgqArquivoAcoes
-                            arquivo={arquivoVigente ?? { nome: "" }}
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 gap-1.5 text-xs text-brand-blue"
-                            labeled
-                            onError={setErroArquivo}
-                          />
-                        ) : null}
-                      </div>
-                      <p className="mt-1 text-muted-foreground">
-                        Elaborado por {elaboradorNome} em{" "}
-                        {formatarData(ver.dataElaboracao)}
-                      </p>
-                    </li>
-                  );
-                })}
-              </ul>
+              {versoes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma revisão registrada.
+                </p>
+              ) : (
+                <Table surface>
+                  <TableHeader>
+                    <TableRow className="border-b-2 border-border">
+                      <TableHead className="w-28 border-r border-border/70">
+                        Revisão
+                      </TableHead>
+                      <TableHead className="min-w-[9rem] border-r border-border/70">
+                        Elaboração
+                      </TableHead>
+                      <TableHead className="min-w-0">Arquivo</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {versoes.map((ver) => {
+                      const elaboradorNome = labelResponsavel(
+                        users,
+                        ver.elaboradorId
+                      );
+                      const isAtual = ver.versao === doc.versaoAtual;
+                      return (
+                        <TableRow
+                          key={ver.id}
+                          className={cn(
+                            "border-b border-border/80 last:border-b-0",
+                            isAtual && "bg-brand-blue-light/20"
+                          )}
+                        >
+                          <TableCell className="border-r border-border/60 !whitespace-normal">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-semibold text-brand-navy">
+                                {ver.versao}
+                              </span>
+                              {isAtual ? (
+                                <Badge
+                                  variant="outline"
+                                  className="border-brand-blue/40 text-brand-blue"
+                                >
+                                  Atual
+                                </Badge>
+                              ) : null}
+                            </div>
+                          </TableCell>
+                          <TableCell className="border-r border-border/60 !whitespace-normal text-muted-foreground">
+                            <span className="font-medium text-brand-navy">
+                              {elaboradorNome}
+                            </span>
+                            <span className="mt-0.5 block text-xs">
+                              {formatarData(ver.dataElaboracao)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {isAtual && temArquivo ? (
+                              <SgqArquivoAcoes
+                                arquivo={arquivoVigente ?? { nome: "" }}
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 gap-1.5 text-xs text-brand-blue"
+                                labeled
+                                onError={setErroArquivo}
+                              />
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
             </fieldset>
 
             <fieldset className="brand-fieldset space-y-4">

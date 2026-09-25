@@ -10,6 +10,7 @@ import {
   type DoubleCheckInComparativoObsHist,
   type DoubleCheckInJustificativaOpcao,
 } from '../../api/compras';
+import { contarPendentesComparativoLogica } from '../../utils/doubleCheckInPendencias';
 
 const nfBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const nfNum = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 });
@@ -64,10 +65,25 @@ function chaveDecisao(
   return `${idItemDocumentoEstoque}:${idItemPedidoCompra}:${campo}`;
 }
 
-function fmtCondicao(nome: string | null, regra: string | null): string {
+function fmtYmdBr(ymd: string | null | undefined): string {
+  if (!ymd) return '—';
+  const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(ymd);
+}
+
+function fmtCondicao(
+  nome: string | null,
+  regra: string | null,
+  prazosLabel: string | null | undefined
+): { principal: string; detalhe: string | null; prazosClicavel: boolean } {
   const n = (nome ?? '').trim() || '—';
   const r = (regra ?? '').trim();
-  return r ? `${n} · ${r}` : n;
+  const principal = r ? `${n} · ${r}` : n;
+  const prazos = (prazosLabel ?? '').trim();
+  if (prazos) {
+    return { principal, detalhe: `prazos ${prazos}d`, prazosClicavel: true };
+  }
+  return { principal, detalhe: null, prazosClicavel: false };
 }
 
 function descontoUnitario(descontoTotal: number, qtde: number): number {
@@ -95,7 +111,13 @@ function fmtUnitarioLinha(
 function valoresExibicao(
   linha: DoubleCheckInComparativoLinha,
   c: CampoCfg
-): { nf: string; pc: string; nfDetalhe?: string | null; pcDetalhe?: string | null } {
+): {
+  nf: string;
+  pc: string;
+  nfDetalhe?: string | null;
+  pcDetalhe?: string | null;
+  prazosClicavel?: boolean;
+} {
   switch (c.id) {
     case 'valor_unitario': {
       const nf = fmtUnitarioLinha(
@@ -119,11 +141,17 @@ function valoresExibicao(
       };
     case 'ipi':
       return { nf: nfBrl.format(linha.valorIpiNF), pc: nfBrl.format(linha.valorIpiPC) };
-    case 'condicao_pagamento':
+    case 'condicao_pagamento': {
+      const nf = fmtCondicao(linha.condicaoPagamentoNF, linha.regraPagamentoNF, linha.prazosLabelNF);
+      const pc = fmtCondicao(linha.condicaoPagamentoPC, linha.regraPagamentoPC, linha.prazosLabelPC);
       return {
-        nf: fmtCondicao(linha.condicaoPagamentoNF, linha.regraPagamentoNF),
-        pc: fmtCondicao(linha.condicaoPagamentoPC, linha.regraPagamentoPC),
+        nf: nf.principal,
+        pc: pc.principal,
+        nfDetalhe: nf.detalhe,
+        pcDetalhe: pc.detalhe,
+        prazosClicavel: nf.prazosClicavel || pc.prazosClicavel,
       };
+    }
   }
 }
 
@@ -183,18 +211,7 @@ export function contarPendentesComparativo(
   linhas: DoubleCheckInComparativoLinha[],
   decisoes: DoubleCheckInComparativoDecisao[]
 ): number {
-  const map = new Set(
-    decisoes.map((d) => chaveDecisao(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo))
-  );
-  let n = 0;
-  for (const linha of linhas) {
-    for (const c of CAMPOS) {
-      if (linha[c.divergKey] && !map.has(chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id))) {
-        n += 1;
-      }
-    }
-  }
-  return n;
+  return contarPendentesComparativoLogica(linhas, decisoes);
 }
 
 export default function DoubleCheckInComparativoPcTab({
@@ -217,6 +234,7 @@ export default function DoubleCheckInComparativoPcTab({
   const [novaObs, setNovaObs] = useState('');
   const [salvandoObs, setSalvandoObs] = useState(false);
   const [obsErro, setObsErro] = useState<string | null>(null);
+  const [prazosModalLinha, setPrazosModalLinha] = useState<DoubleCheckInComparativoLinha | null>(null);
 
   const decisaoMap = useMemo(() => {
     const m = new Map<string, DoubleCheckInComparativoDecisao>();
@@ -240,10 +258,11 @@ export default function DoubleCheckInComparativoPcTab({
     campo: DoubleCheckInCampoComparativo,
     decisao: 'aceita' | 'recusa'
   ) => {
-    if (conferido) return;
     const existente = decisaoMap.get(
       chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
     );
+    // Após conferida, só permite decidir campos ainda pendentes (ex.: divergência nova).
+    if (conferido && existente) return;
     setDraft({ linha, campo, decisao });
     setOpcaoId(existente?.justificativaOpcaoId ?? '');
     setObs(existente?.observacao ?? '');
@@ -255,6 +274,10 @@ export default function DoubleCheckInComparativoPcTab({
     campo: DoubleCheckInCampoComparativo
   ) => {
     if (!conferido) return;
+    const existente = decisaoMap.get(
+      chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
+    );
+    if (!existente) return;
     setDraftObs({ linha, campo });
     setNovaObs('');
     setObsErro(null);
@@ -264,6 +287,10 @@ export default function DoubleCheckInComparativoPcTab({
     if (!draft) return;
     if (!opcaoId) {
       setJustErro('Selecione a justificativa.');
+      return;
+    }
+    if (draft.decisao === 'aceita' && !obs.trim()) {
+      setJustErro('Informe a observação para aceitar a divergência.');
       return;
     }
     const opcao = justificativas.find((j) => j.id === opcaoId);
@@ -287,16 +314,17 @@ export default function DoubleCheckInComparativoPcTab({
         setJustErro(r.erro ?? 'Falha ao salvar.');
         return;
       }
-      const key = chaveDecisao(
-        r.decisao.idItemDocumentoEstoque,
-        r.decisao.idItemPedidoCompra,
-        r.decisao.campo
+      const aplicadas = [r.decisao, ...(r.decisoesReplicadas ?? [])];
+      const keys = new Set(
+        aplicadas.map((d) =>
+          chaveDecisao(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo)
+        )
       );
       const next = [
         ...decisoes.filter(
-          (d) => chaveDecisao(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo) !== key
+          (d) => !keys.has(chaveDecisao(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo))
         ),
-        r.decisao,
+        ...aplicadas,
       ];
       onDecisoesChange(next);
       setDraft(null);
@@ -454,9 +482,20 @@ export default function DoubleCheckInComparativoPcTab({
                             {vals.nf}
                           </span>
                           {vals.nfDetalhe ? (
-                            <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
-                              {vals.nfDetalhe}
-                            </span>
+                            vals.prazosClicavel ? (
+                              <button
+                                type="button"
+                                className="mt-0.5 block w-full text-right text-[10px] font-semibold text-primary-600 underline decoration-dotted underline-offset-2 hover:text-primary-700 dark:text-primary-400"
+                                title="Ver tabela de data base e vencimentos"
+                                onClick={() => setPrazosModalLinha(linha)}
+                              >
+                                {vals.nfDetalhe}
+                              </button>
+                            ) : (
+                              <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                                {vals.nfDetalhe}
+                              </span>
+                            )
                           ) : null}
                         </span>
                       </div>
@@ -470,9 +509,20 @@ export default function DoubleCheckInComparativoPcTab({
                             {vals.pc}
                           </span>
                           {vals.pcDetalhe ? (
-                            <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
-                              {vals.pcDetalhe}
-                            </span>
+                            vals.prazosClicavel ? (
+                              <button
+                                type="button"
+                                className="mt-0.5 block w-full text-right text-[10px] font-semibold text-primary-600 underline decoration-dotted underline-offset-2 hover:text-primary-700 dark:text-primary-400"
+                                title="Ver tabela de data base e vencimentos"
+                                onClick={() => setPrazosModalLinha(linha)}
+                              >
+                                {vals.pcDetalhe}
+                              </button>
+                            ) : (
+                              <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                                {vals.pcDetalhe}
+                              </span>
+                            )
                           ) : null}
                         </span>
                       </div>
@@ -488,11 +538,11 @@ export default function DoubleCheckInComparativoPcTab({
                               ? `${dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
                               : 'Divergente'}
                           </span>
-                          {!conferido && (
+                          {(!conferido || !dec) && (
                             <div className="flex shrink-0 gap-1">
                               <button
                                 type="button"
-                                title="Aceitar divergência"
+                                title="Aceitar divergência (com justificativa/observação)"
                                 className="rounded p-1 text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
                                 onClick={() => abrirJustificativa(linha, c.id, 'aceita')}
                               >
@@ -500,7 +550,7 @@ export default function DoubleCheckInComparativoPcTab({
                               </button>
                               <button
                                 type="button"
-                                title="Recusar divergência"
+                                title="Recusar divergência (com justificativa/observação)"
                                 className="rounded p-1 text-rose-700 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/40"
                                 onClick={() => abrirJustificativa(linha, c.id, 'recusa')}
                               >
@@ -509,32 +559,27 @@ export default function DoubleCheckInComparativoPcTab({
                             </div>
                           )}
                         </div>
-                        {(hist.length > 0 || (conferido && dec)) && (
+                        {hist.length > 0 && (
                           <div className="space-y-1 rounded-md bg-slate-100/80 px-1.5 py-1 dark:bg-slate-800/80">
                             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                              Histórico de observações
-                              {hist.length > 0 ? ` (${hist.length})` : ''}
+                              Observações ({hist.length})
                             </div>
-                            {hist.length === 0 ? (
-                              <p className="text-[10px] text-slate-400">Nenhuma observação registrada ainda.</p>
-                            ) : (
-                              <ul className="max-h-40 space-y-1.5 overflow-y-auto pr-0.5">
-                                {hist.map((h, idx) => (
-                                  <li
-                                    key={h.id > 0 ? h.id : `${h.criadoEm}-${idx}-${h.texto.slice(0, 12)}`}
-                                    className="border-t border-slate-200/70 pt-1 first:border-0 first:pt-0 dark:border-slate-700/70"
-                                  >
-                                    <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[9px] text-slate-500 dark:text-slate-400">
-                                      <span className="font-medium">{h.usuarioLogin || '—'}</span>
-                                      <span>{h.criadoEm ? fmtDataHora(h.criadoEm) : ''}</span>
-                                    </div>
-                                    <p className="mt-0.5 text-[10px] leading-snug text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
-                                      {h.texto}
-                                    </p>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
+                            <ul className="max-h-40 space-y-1.5 overflow-y-auto pr-0.5">
+                              {hist.map((h, idx) => (
+                                <li
+                                  key={h.id > 0 ? h.id : `${h.criadoEm}-${idx}-${h.texto.slice(0, 12)}`}
+                                  className="border-t border-slate-200/70 pt-1 first:border-0 first:pt-0 dark:border-slate-700/70"
+                                >
+                                  <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[9px] text-slate-500 dark:text-slate-400">
+                                    <span className="font-medium">{h.usuarioLogin || '—'}</span>
+                                    <span>{h.criadoEm ? fmtDataHora(h.criadoEm) : ''}</span>
+                                  </div>
+                                  <p className="mt-0.5 text-[10px] leading-snug text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                                    {h.texto}
+                                  </p>
+                                </li>
+                              ))}
+                            </ul>
                           </div>
                         )}
                         {conferido && dec && (
@@ -595,12 +640,19 @@ export default function DoubleCheckInComparativoPcTab({
                   </select>
                 </div>
                 <div>
-                  <label className={labelClass}>Observações</label>
+                  <label className={labelClass}>
+                    Observações
+                    {draft.decisao === 'aceita' ? ' *' : ''}
+                  </label>
                   <textarea
                     className={`${inputClass} min-h-[5rem]`}
                     value={obs}
                     onChange={(e) => setObs(e.target.value)}
-                    placeholder="Obrigatório se a justificativa for Outros"
+                    placeholder={
+                      draft.decisao === 'aceita'
+                        ? 'Obrigatório para aceitar a divergência'
+                        : 'Obrigatório se a justificativa for Outros'
+                    }
                   />
                 </div>
                 {justErro && <p className="text-sm text-rose-600">{justErro}</p>}
@@ -617,7 +669,11 @@ export default function DoubleCheckInComparativoPcTab({
                 <button
                   type="button"
                   className={btnPrimary}
-                  disabled={salvando || !opcaoId}
+                  disabled={
+                    salvando ||
+                    !opcaoId ||
+                    (draft.decisao === 'aceita' && !obs.trim())
+                  }
                   onClick={() => void salvarJustificativa()}
                 >
                   {salvando ? 'Salvando…' : 'Confirmar'}
@@ -682,6 +738,143 @@ export default function DoubleCheckInComparativoPcTab({
                   {salvandoObs ? 'Salvando…' : 'Registrar'}
                 </button>
               </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {prazosModalLinha &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10070] flex items-center justify-center p-4 bg-slate-900/55"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Detalhe dos prazos de pagamento"
+            onClick={() => setPrazosModalLinha(null)}
+          >
+            <div
+              className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-600 dark:bg-slate-800"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                    Prazos de pagamento — NF/DE × PC
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {prazosModalLinha.nomePedidoCompra ??
+                      (prazosModalLinha.idPedidoCompra != null
+                        ? `PC ${prazosModalLinha.idPedidoCompra}`
+                        : 'PC')}{' '}
+                    · critério = vencimento − data base
+                  </p>
+                </div>
+                <button type="button" className={btnSecondary} onClick={() => setPrazosModalLinha(null)}>
+                  Fechar
+                </button>
+              </div>
+
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500 dark:bg-slate-900">
+                    <tr>
+                      <th className="px-2 py-2">Parc.</th>
+                      <th className="px-2 py-2">Data base NF/DE</th>
+                      <th className="px-2 py-2">Venc. NF/DE</th>
+                      <th className="px-2 py-2 text-right">Dias NF</th>
+                      <th className="px-2 py-2">Data base PC</th>
+                      <th className="px-2 py-2">Venc. PC</th>
+                      <th className="px-2 py-2 text-right">Dias PC</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                    {(() => {
+                      const nf = Array.isArray(prazosModalLinha.parcelasNF)
+                        ? prazosModalLinha.parcelasNF
+                        : [];
+                      const pc = Array.isArray(prazosModalLinha.parcelasPC)
+                        ? prazosModalLinha.parcelasPC
+                        : [];
+                      const n = Math.max(nf.length, pc.length, 1);
+                      const rows = [];
+                      for (let i = 0; i < n; i++) {
+                        const a = nf[i];
+                        const b = pc[i];
+                        const diasNf = a?.dias ?? null;
+                        const diasPc = b?.dias ?? null;
+                        const diverg =
+                          diasNf != null && diasPc != null && diasNf !== diasPc;
+                        rows.push(
+                          <tr
+                            key={i}
+                            className={
+                              diverg
+                                ? 'bg-amber-50/70 dark:bg-amber-950/30'
+                                : undefined
+                            }
+                          >
+                            <td className="px-2 py-2 font-medium text-slate-800 dark:text-slate-100">
+                              #{i + 1}
+                            </td>
+                            <td className="px-2 py-2 tabular-nums">
+                              {fmtYmdBr(
+                                a?.dataBase ?? prazosModalLinha.dataBaseParcelasNF
+                              )}
+                            </td>
+                            <td className="px-2 py-2 tabular-nums">
+                              {fmtYmdBr(a?.dataVencimento)}
+                            </td>
+                            <td className="px-2 py-2 text-right tabular-nums font-semibold">
+                              {diasNf != null ? `${diasNf}d` : '—'}
+                            </td>
+                            <td className="px-2 py-2 tabular-nums">
+                              {fmtYmdBr(
+                                b?.dataBase ?? prazosModalLinha.dataBaseParcelasPC
+                              )}
+                            </td>
+                            <td className="px-2 py-2 tabular-nums">
+                              {fmtYmdBr(b?.dataVencimento)}
+                            </td>
+                            <td className="px-2 py-2 text-right tabular-nums font-semibold">
+                              {diasPc != null ? `${diasPc}d` : '—'}
+                            </td>
+                          </tr>
+                        );
+                      }
+                      if (nf.length === 0 && pc.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={7} className="px-2 py-6 text-center text-slate-500">
+                              Nenhuma parcela encontrada no Nomus para este documento/PC.
+                            </td>
+                          </tr>
+                        );
+                      }
+                      return rows;
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+
+              <p className="mt-3 text-xs text-slate-500">
+                Condição cadastral: NF{' '}
+                <strong>
+                  {prazosModalLinha.condicaoPagamentoNF ?? '—'}
+                  {prazosModalLinha.regraPagamentoNF
+                    ? ` · ${prazosModalLinha.regraPagamentoNF}`
+                    : ''}
+                </strong>{' '}
+                × PC{' '}
+                <strong>
+                  {prazosModalLinha.condicaoPagamentoPC ?? '—'}
+                  {prazosModalLinha.regraPagamentoPC
+                    ? ` · ${prazosModalLinha.regraPagamentoPC}`
+                    : ''}
+                </strong>
+                . O critério de divergência usa os dias (vencimento − data base).
+                Se ambos forem à vista, data base ausente no PC ou no DE não conta como divergência.
+              </p>
             </div>
           </div>,
           document.body

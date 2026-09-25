@@ -49,6 +49,10 @@ const LS_KEYS = [
 let syncTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 let autoSyncStarted = false;
 let documentsHydrating = false;
+/** Enfileira PUT /sync/documentos para não haver corrida entre anexo e avanço de etapa. */
+let documentsFlushChain: Promise<void> = Promise.resolve();
+/** Último flush da cadeia falhou — soft refresh não deve preferir o otimista local. */
+let documentsFlushLastRejected = false;
 /** Login cuja sessão já hidratou o Qualiteam (evita tela preta em remount). */
 let qualidadeHydratedLogin: string | null = null;
 
@@ -58,6 +62,102 @@ export function isQualidadeStoreHydratedForLogin(login: string): boolean {
 
 export function markQualidadeStoreHydrated(login: string | null): void {
   qualidadeHydratedLogin = login;
+}
+
+/** Reconsulta bootstrap sem tela preta (outras abas avançaram etapas). */
+export async function softRefreshQualidadeDocuments(): Promise<void> {
+  if (documentsHydrating) return;
+  // Espera flush local (e o que ainda for enfileirado neste tick) terminar.
+  await documentsFlushChain.catch(() => undefined);
+  await new Promise<void>((resolve) => setTimeout(resolve, 80));
+  await documentsFlushChain.catch(() => undefined);
+  if (documentsHydrating) return;
+
+  const localBefore = useDocumentsStore.getState();
+  // Flush falhou: confiar no servidor (evita “enviei” fantasma até o F5).
+  const preferLocalEtapa = !documentsFlushLastRejected;
+
+  setQualidadeDocumentsHydrating(true);
+  try {
+    const data = await fetchQualidadeBootstrap();
+    const docTasks = data.tasks.filter(
+      (t) => (t as { referenciaTipo?: string }).referenciaTipo === 'documento'
+    );
+
+    // Não sobrescrever documento cuja etapa local é mais nova que a do servidor
+    // (ex.: acabou de reprovar e o soft refresh rodou antes do flush gravar).
+    const serverDocs = data.documents as Array<{
+      id: string;
+      statusAtualizadoEm?: string;
+      updatedAt?: string;
+      [key: string]: unknown;
+    }>;
+    const docsById = new Map(serverDocs.map((d) => [d.id, d]));
+    for (const local of localBefore.documents) {
+      const server = docsById.get(local.id);
+      const localTs = local.statusAtualizadoEm ?? local.updatedAt ?? '';
+      const serverTs = server
+        ? String(server.statusAtualizadoEm ?? server.updatedAt ?? '')
+        : '';
+      if (preferLocalEtapa && (!server || localTs > serverTs)) {
+        docsById.set(local.id, local as never);
+      }
+    }
+
+    const mergedDocs = [...docsById.values()];
+    const localNewerIds = new Set(
+      preferLocalEtapa
+        ? localBefore.documents
+            .filter((local) => {
+              const server = (
+                data.documents as Array<{
+                  id: string;
+                  statusAtualizadoEm?: string;
+                  updatedAt?: string;
+                }>
+              ).find((d) => d.id === local.id);
+              const localTs = local.statusAtualizadoEm ?? local.updatedAt ?? '';
+              const serverTs = server
+                ? String(server.statusAtualizadoEm ?? server.updatedAt ?? '')
+                : '';
+              return !server || localTs > serverTs;
+            })
+            .map((d) => d.id)
+        : []
+    );
+
+    const serverTasks = docTasks as never[];
+    const localTasksKept = localBefore.tasks.filter(
+      (t) =>
+        t.referenciaTipo === 'documento' && localNewerIds.has(t.referenciaId)
+    );
+    const serverTasksFiltered = (serverTasks as Array<{ referenciaId?: string; referenciaTipo?: string }>).filter(
+      (t) =>
+        t.referenciaTipo !== 'documento' ||
+        !localNewerIds.has(String(t.referenciaId ?? ''))
+    );
+
+    const versionsByDoc = new Map<string, unknown>();
+    for (const v of data.versions as Array<{ documentId: string }>) {
+      if (!localNewerIds.has(v.documentId)) versionsByDoc.set(`${v.documentId}:${(v as { versao?: string }).versao}`, v);
+    }
+    for (const v of localBefore.versions) {
+      if (localNewerIds.has(v.documentId)) {
+        versionsByDoc.set(`${v.documentId}:${v.versao}`, v);
+      }
+    }
+
+    useDocumentsStore.setState({
+      documents: mergedDocs as never[],
+      versions: [...versionsByDoc.values()] as never[],
+      tasks: [...serverTasksFiltered, ...localTasksKept] as never[],
+      validadeAlertas: data.validadeAlertas as never[],
+      revalidacoes: data.revalidacoes as never[],
+    });
+    useDocumentsStore.getState().syncValidadeAlertas();
+  } finally {
+    setQualidadeDocumentsHydrating(false);
+  }
 }
 let registrosHydrating = false;
 let calibrationsHydrating = false;
@@ -402,18 +502,64 @@ function buildDocumentsSyncPayload(includePendingFiles: boolean) {
 }
 
 function syncDocumentsStateNow(includePendingFiles = false): Promise<void> {
-  const payload = buildDocumentsSyncPayload(includePendingFiles);
-  return syncQualidadeDocuments(payload).then(() => {
-    if (includePendingFiles) {
-      pendingDocumentFileUids.clear();
+  // Serializa flushes e monta o payload SÓ na vez de enviar — evita que um
+  // sync de anexo iniciado antes do "Enviar" grave rascunho depois e feche a
+  // tarefa de consenso que o e-mail já notificou.
+  const run = async () => {
+    const pendingSnapshot = [...pendingDocumentFileUids];
+    const withFiles =
+      includePendingFiles && pendingDocumentFileUids.size > 0;
+    try {
+      const payload = buildDocumentsSyncPayload(withFiles);
+      await syncQualidadeDocuments(payload);
+      documentsFlushLastRejected = false;
+      if (withFiles) {
+        pendingDocumentFileUids.clear();
+        // Binário já no disco: tira data: do store para o próximo avanço de etapa
+        // não reenviar o PDF inteiro (timeout → etapa local sem gravar no servidor).
+        clearSyncedDocumentBinaries(pendingSnapshot);
+      }
+    } catch (err) {
+      documentsFlushLastRejected = true;
+      throw err;
     }
-  });
+  };
+  const next = documentsFlushChain.then(run, run);
+  documentsFlushChain = next.then(
+    () => undefined,
+    () => undefined
+  );
+  return next;
+}
+
+/** Remove base64 já persistido; soft refresh posterior preenche storagePath. */
+function clearSyncedDocumentBinaries(uids: string[]) {
+  const idSet = new Set(uids.filter(Boolean));
+  if (idSet.size === 0) return;
+  useDocumentsStore.setState((state) => ({
+    versions: state.versions.map((v) => {
+      if (!idSet.has(v.id) && !idSet.has(v.documentId)) return v;
+      const limparArquivo = Boolean(v.arquivoDataUrl?.startsWith('data:'));
+      const anexos = v.anexos?.map((a) =>
+        a.dataUrl?.startsWith('data:')
+          ? { nome: a.nome, dataUrl: '', storagePath: a.storagePath }
+          : a
+      );
+      if (!limparArquivo && anexos === v.anexos) return v;
+      return {
+        ...v,
+        ...(limparArquivo ? { arquivoDataUrl: undefined } : {}),
+        ...(anexos ? { anexos } : {}),
+      };
+    }),
+  }));
 }
 
 /** Persiste documentos no servidor imediatamente (ex.: após exclusão / upload). */
 export function flushQualidadeDocumentsSync(): Promise<void> {
   cancelQualidadeDocumentsDebounce();
-  return syncDocumentsStateNow(true).catch((err) => {
+  // Só reenvia binário se ainda houver UID pendente — avanço de etapa fica leve.
+  return syncDocumentsStateNow(pendingDocumentFileUids.size > 0).catch((err) => {
     console.error('[qualidade-sync] documents flush:', err);
     throw err;
   });

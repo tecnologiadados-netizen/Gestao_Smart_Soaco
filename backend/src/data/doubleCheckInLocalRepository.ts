@@ -388,6 +388,9 @@ export async function upsertDecisaoComparativo(params: {
   if (!opcao || !opcao.ativo) {
     throw new Error('Justificativa inválida ou inativa.');
   }
+  if (params.decisao === 'aceita' && !String(params.observacao ?? '').trim()) {
+    throw new Error('Informe a observação para aceitar a divergência.');
+  }
   if (opcao.codigo === 'outros' && !String(params.observacao ?? '').trim()) {
     throw new Error('Informe a observação quando a justificativa for "Outros".');
   }
