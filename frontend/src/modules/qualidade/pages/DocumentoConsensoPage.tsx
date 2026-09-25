@@ -284,6 +284,31 @@ export function ConsensoDocumentoPage() {
               {sincronizando ? "Enviando..." : "Reenviar para aprovação"}
             </Button>
           </>
+        ) : modoReprovacao ? (
+          <>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              disabled={sincronizando}
+              onClick={() => {
+                setModoReprovacao(false);
+                setJustificativaReprovacao("");
+                setError("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="destructive"
+              disabled={sincronizando}
+              onClick={() => void handleReprovar()}
+            >
+              Confirmar reprovação
+            </Button>
+          </>
         ) : (
           <>
             <Button
@@ -302,7 +327,7 @@ export function ConsensoDocumentoPage() {
               disabled={sincronizando}
               onClick={() => void handleReprovar()}
             >
-              {modoReprovacao ? "Confirmar reprovação" : "Reprovar"}
+              Reprovar
             </Button>
           </>
         )
@@ -392,19 +417,6 @@ export function ConsensoDocumentoPage() {
                   className="text-base"
                   required
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground"
-                  onClick={() => {
-                    setModoReprovacao(false);
-                    setJustificativaReprovacao("");
-                    setError("");
-                  }}
-                >
-                  Cancelar reprovação
-                </Button>
               </div>
             )}
 

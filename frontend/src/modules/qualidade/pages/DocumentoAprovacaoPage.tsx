@@ -164,26 +164,53 @@ export function AprovacaoDocumentoPage() {
       version={versaoAtual}
       users={users}
       footer={
-        <>
-          <Button
-            type="button"
-            size="lg"
-            className="min-w-32"
-            disabled={sincronizando}
-            onClick={() => void handleAprovar()}
-          >
-            {sincronizando ? "Salvando..." : "Aprovar"}
-          </Button>
-          <Button
-            type="button"
-            size="lg"
-            variant="destructive"
-            disabled={sincronizando}
-            onClick={() => void handleReprovar()}
-          >
-            {modoReprovacao ? "Confirmar reprovação" : "Reprovar"}
-          </Button>
-        </>
+        modoReprovacao ? (
+          <>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              disabled={sincronizando}
+              onClick={() => {
+                setModoReprovacao(false);
+                setJustificativaReprovacao("");
+                setError("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="destructive"
+              disabled={sincronizando}
+              onClick={() => void handleReprovar()}
+            >
+              Confirmar reprovação
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              type="button"
+              size="lg"
+              className="min-w-32"
+              disabled={sincronizando}
+              onClick={() => void handleAprovar()}
+            >
+              {sincronizando ? "Salvando..." : "Aprovar"}
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="destructive"
+              disabled={sincronizando}
+              onClick={() => void handleReprovar()}
+            >
+              Reprovar
+            </Button>
+          </>
+        )
       }
     >
       <DocumentoIdentificacaoResumo
@@ -255,19 +282,6 @@ export function AprovacaoDocumentoPage() {
               className="text-base"
               required
             />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground"
-              onClick={() => {
-                setModoReprovacao(false);
-                setJustificativaReprovacao("");
-                setError("");
-              }}
-            >
-              Cancelar reprovação
-            </Button>
           </div>
         )}
 
