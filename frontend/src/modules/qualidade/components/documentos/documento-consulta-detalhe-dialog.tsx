@@ -49,7 +49,6 @@ import { cn } from "@qualidade/lib/utils";
 import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-print-window";
 import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
 import {
-  formatPrazosResumo,
   formatWorkflowObservacoes,
   resolvePrazosComPadrao,
 } from "@qualidade/components/documentos/documento-responsaveis-fieldset";
@@ -766,8 +765,8 @@ function DocumentoConsultaDetalheDialogImpl({
                         <TableHead className="min-w-[9rem] border-r border-border/70">
                           Aprovação
                         </TableHead>
-                        <TableHead className="min-w-[11rem] border-r border-border/70">
-                          Prazos
+                        <TableHead className="min-w-[12rem] border-r border-border/70">
+                          Motivo da revisão
                         </TableHead>
                         <TableHead className="w-44 text-right">Ações</TableHead>
                       </TableRow>
@@ -809,14 +808,6 @@ function DocumentoConsultaDetalheDialogImpl({
                                   </Badge>
                                 ) : null}
                               </div>
-                              {ver.justificativaRevisao ? (
-                                <p
-                                  className="mt-1 max-w-[14rem] text-xs text-muted-foreground"
-                                  title={ver.justificativaRevisao}
-                                >
-                                  Motivo: {ver.justificativaRevisao}
-                                </p>
-                              ) : null}
                             </TableCell>
                             <TableCell className="border-r border-border/60 !whitespace-normal text-muted-foreground">
                               <span className="font-medium text-brand-navy">
@@ -840,8 +831,17 @@ function DocumentoConsultaDetalheDialogImpl({
                                 "—"
                               )}
                             </TableCell>
-                            <TableCell className="border-r border-border/60 !whitespace-normal text-xs text-muted-foreground">
-                              {formatPrazosResumo(ver.prazos)}
+                            <TableCell className="max-w-[16rem] border-r border-border/60 !whitespace-normal text-sm text-muted-foreground">
+                              {ver.justificativaRevisao?.trim() ? (
+                                <span
+                                  className="line-clamp-3"
+                                  title={ver.justificativaRevisao.trim()}
+                                >
+                                  {ver.justificativaRevisao.trim()}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
                             </TableCell>
                             <TableCell>
                               {arquivosDisponiveis.length === 0 ? (

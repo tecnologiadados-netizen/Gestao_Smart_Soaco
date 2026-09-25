@@ -29,9 +29,6 @@ import {
 } from "@qualidade/lib/utils/status-labels";
 import { formatarData, formatarDataHora } from "@qualidade/lib/utils/dates";
 import { labelResponsavel } from "@qualidade/lib/utils/select-display";
-import {
-  formatPrazosResumo,
-} from "@qualidade/components/documentos/documento-responsaveis-fieldset";
 import { SolicitarRevisaoDocumentoDialog } from "@qualidade/components/documentos/solicitar-revisao-documento-dialog";
 
 export function DocumentoDetalhePage() {
@@ -143,8 +140,8 @@ export function DocumentoDetalhePage() {
                       <TableHead className="min-w-[9rem] border-r border-border/70">
                         Aprovação
                       </TableHead>
-                      <TableHead className="min-w-[11rem] border-r border-border/70">
-                        Prazos
+                      <TableHead className="min-w-[12rem] border-r border-border/70">
+                        Motivo da revisão
                       </TableHead>
                       <TableHead className="min-w-0">Arquivo</TableHead>
                     </TableRow>
@@ -182,14 +179,6 @@ export function DocumentoDetalhePage() {
                                 </Badge>
                               ) : null}
                             </div>
-                            {ver.justificativaRevisao ? (
-                              <p
-                                className="mt-1 max-w-[14rem] text-xs text-muted-foreground"
-                                title={ver.justificativaRevisao}
-                              >
-                                Motivo: {ver.justificativaRevisao}
-                              </p>
-                            ) : null}
                           </TableCell>
                           <TableCell className="border-r border-border/60 !whitespace-normal text-muted-foreground">
                             <span className="font-medium text-brand-navy">
@@ -215,8 +204,17 @@ export function DocumentoDetalhePage() {
                               "—"
                             )}
                           </TableCell>
-                          <TableCell className="border-r border-border/60 !whitespace-normal text-xs text-muted-foreground">
-                            {formatPrazosResumo(ver.prazos)}
+                          <TableCell className="max-w-[16rem] border-r border-border/60 !whitespace-normal text-sm text-muted-foreground">
+                            {ver.justificativaRevisao?.trim() ? (
+                              <span
+                                className="line-clamp-3"
+                                title={ver.justificativaRevisao.trim()}
+                              >
+                                {ver.justificativaRevisao.trim()}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
                           </TableCell>
                           <TableCell className="max-w-0 !whitespace-normal">
                             {ver.arquivoNome ? (
