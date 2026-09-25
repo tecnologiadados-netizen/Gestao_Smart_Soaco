@@ -34,8 +34,10 @@ export type TabelaPrazosRelato = {
   dataBasePC: string | null;
   linhas: Array<{
     numero: number;
+    dataBaseNF?: string | null;
     vencimentoNF: string | null;
     diasNF: number | null;
+    dataBasePC?: string | null;
     vencimentoPC: string | null;
     diasPC: number | null;
   }>;
@@ -199,6 +201,8 @@ function montarTabelaPrazosRelato(linha: DoubleCheckInComparativoLinha): TabelaP
   const nf = Array.isArray(linha.parcelasNF) ? linha.parcelasNF : [];
   const pc = Array.isArray(linha.parcelasPC) ? linha.parcelasPC : [];
   if (nf.length === 0 && pc.length === 0) return null;
+  const dataBaseNF = linha.dataBaseParcelasNF ?? nf[0]?.dataBase ?? null;
+  const dataBasePC = linha.dataBaseParcelasPC ?? pc[0]?.dataBase ?? null;
   const n = Math.max(nf.length, pc.length);
   const linhas: TabelaPrazosRelato['linhas'] = [];
   for (let i = 0; i < n; i++) {
@@ -206,17 +210,15 @@ function montarTabelaPrazosRelato(linha: DoubleCheckInComparativoLinha): TabelaP
     const b = pc[i];
     linhas.push({
       numero: i + 1,
+      dataBaseNF: a?.dataBase ?? dataBaseNF,
       vencimentoNF: a?.dataVencimento ?? null,
       diasNF: a?.dias ?? null,
+      dataBasePC: b?.dataBase ?? dataBasePC,
       vencimentoPC: b?.dataVencimento ?? null,
       diasPC: b?.dias ?? null,
     });
   }
-  return {
-    dataBaseNF: linha.dataBaseParcelasNF ?? nf[0]?.dataBase ?? null,
-    dataBasePC: linha.dataBaseParcelasPC ?? pc[0]?.dataBase ?? null,
-    linhas,
-  };
+  return { dataBaseNF, dataBasePC, linhas };
 }
 
 function formatPagamentoRelato(linha: DoubleCheckInComparativoLinha, lado: 'nf' | 'pc'): string {
@@ -396,12 +398,11 @@ export function montarMensagemConferenciaWhatsApp(relato: RelatoConferencia, url
     if (relato.pagamentoComum.observacao) meio.push(wa(relato.pagamentoComum.observacao));
     const tab = relato.pagamentoComum.tabelaPrazos;
     if (tab && tab.linhas.length > 0) {
-      meio.push(
-        `Base NF ${wa(ymdBrRelato(tab.dataBaseNF))} · PC ${wa(ymdBrRelato(tab.dataBasePC))}`
-      );
       for (const l of tab.linhas.slice(0, 6)) {
+        const baseNf = l.dataBaseNF ?? tab.dataBaseNF;
+        const basePc = l.dataBasePC ?? tab.dataBasePC;
         meio.push(
-          `#${l.numero}: NF ${wa(ymdBrRelato(l.vencimentoNF))} (${l.diasNF != null ? `${l.diasNF}d` : '—'}) · PC ${wa(ymdBrRelato(l.vencimentoPC))} (${l.diasPC != null ? `${l.diasPC}d` : '—'})`
+          `#${l.numero}: NF base ${wa(ymdBrRelato(baseNf))} → ${wa(ymdBrRelato(l.vencimentoNF))} (${l.diasNF != null ? `${l.diasNF}d` : '—'}) · PC base ${wa(ymdBrRelato(basePc))} → ${wa(ymdBrRelato(l.vencimentoPC))} (${l.diasPC != null ? `${l.diasPC}d` : '—'})`
         );
       }
       if (tab.linhas.length > 6) meio.push(`… +${tab.linhas.length - 6} parcela(s)`);
@@ -479,17 +480,34 @@ function htmlTabela(campos: CampoRelato[]): string {
 function htmlTabelaPrazos(t: TabelaPrazosRelato | null | undefined): string {
   if (!t || t.linhas.length === 0) return '';
   const body = t.linhas
-    .map(
-      (l) =>
-        `<tr><td>#${l.numero}</td>` +
-        `<td>${esc(ymdBrRelato(l.vencimentoNF))}</td><td>${l.diasNF != null ? `${l.diasNF}d` : '—'}</td>` +
-        `<td>${esc(ymdBrRelato(l.vencimentoPC))}</td><td>${l.diasPC != null ? `${l.diasPC}d` : '—'}</td></tr>`
-    )
+    .map((l) => {
+      const baseNf = l.dataBaseNF ?? t.dataBaseNF;
+      const basePc = l.dataBasePC ?? t.dataBasePC;
+      const diverg =
+        l.diasNF != null && l.diasPC != null && l.diasNF !== l.diasPC;
+      const cls = diverg ? ' class="diverg"' : '';
+      return (
+        `<tr${cls}><td>#${l.numero}</td>` +
+        `<td>${esc(ymdBrRelato(baseNf))}</td>` +
+        `<td>${esc(ymdBrRelato(l.vencimentoNF))}</td>` +
+        `<td>${l.diasNF != null ? `${l.diasNF}d` : '—'}</td>` +
+        `<td>${esc(ymdBrRelato(basePc))}</td>` +
+        `<td>${esc(ymdBrRelato(l.vencimentoPC))}</td>` +
+        `<td>${l.diasPC != null ? `${l.diasPC}d` : '—'}</td></tr>`
+      );
+    })
     .join('');
   return `<div class="prazos"><table>
-<thead><tr><th>Parc.</th><th>Venc. NF/DE</th><th>Dias NF</th><th>Venc. PC</th><th>Dias PC</th></tr></thead>
+<thead><tr>
+<th>Parc.</th>
+<th>Data base NF/DE</th>
+<th>Venc. NF/DE</th>
+<th>Dias NF</th>
+<th>Data base PC</th>
+<th>Venc. PC</th>
+<th>Dias PC</th>
+</tr></thead>
 <tbody>
-<tr class="base"><td>Base</td><td colspan="2">${esc(ymdBrRelato(t.dataBaseNF))}</td><td colspan="2">${esc(ymdBrRelato(t.dataBasePC))}</td></tr>
 ${body}
 </tbody></table></div>`;
 }
@@ -571,10 +589,12 @@ export function renderConferenciaHtml(relato: RelatoConferencia): string {
     details summary { cursor: pointer; color: var(--blue); font-weight: 650; font-size: 13px; }
     details p { margin: 6px 0 0; color: var(--graphite); font-size: 13px; font-weight: 500; }
     .prazos { margin-top: 10px; overflow-x: auto; }
-    .prazos table { font-size: 12px; min-width: 480px; }
-    .prazos th { font-size: 10px; padding: 5px 6px; }
-    .prazos td { padding: 6px; }
-    .prazos .base { background: rgb(4 30 66 / 0.04); font-weight: 650; }
+    .prazos table { font-size: 12px; min-width: 640px; }
+    .prazos th { font-size: 10px; padding: 5px 6px; white-space: nowrap; }
+    .prazos td { padding: 6px; white-space: nowrap; }
+    .prazos tr.diverg td { background: rgb(245 158 11 / 0.12); }
+    .prazos th:nth-child(4), .prazos th:nth-child(7),
+    .prazos td:nth-child(4), .prazos td:nth-child(7) { font-weight: 700; }
     .rodape { color: var(--gray); font-size: 12px; margin-top: 16px; }
   </style>
 </head>
