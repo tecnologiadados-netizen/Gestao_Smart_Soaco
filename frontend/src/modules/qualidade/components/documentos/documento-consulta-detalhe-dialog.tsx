@@ -49,6 +49,11 @@ import { cn } from "@qualidade/lib/utils";
 import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-print-window";
 import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
 import {
+  formatPrazosResumo,
+  formatWorkflowObservacoes,
+  resolvePrazosComPadrao,
+} from "@qualidade/components/documentos/documento-responsaveis-fieldset";
+import {
   formatPermissaoProcessos,
   formatPermissaoUsuarios,
 } from "@qualidade/components/documentos/documento-permissoes-fieldset";
@@ -77,17 +82,6 @@ function arquivoTemConteudo(arquivo: {
   storagePath?: string;
 }) {
   return Boolean(arquivo.dataUrl?.trim() || arquivo.storagePath?.trim());
-}
-
-function labelDias(n: number): string {
-  return `${n} ${n === 1 ? "dia" : "dias"}`;
-}
-
-function formatPrazosVersao(
-  prazos?: { elaboracao: number; consenso: number; aprovacao: number } | null
-): string {
-  if (!prazos) return "—";
-  return `Elab. ${labelDias(prazos.elaboracao)} · Cons. ${labelDias(prazos.consenso)} · Aprov. ${labelDias(prazos.aprovacao)}`;
 }
 
 function arquivosDaVersao(
@@ -517,16 +511,16 @@ function DocumentoConsultaDetalheDialogImpl({
                         versaoAtual?.aprovadorId
                       )}
                     />
-                    {versaoAtual?.prazos && (
-                      <div className="sm:col-span-3">
-                        <p className="text-xs text-muted-foreground">
-                          Prazos — Elaboração:{" "}
-                          {labelDias(versaoAtual.prazos.elaboracao)} · Consenso:{" "}
-                          {labelDias(versaoAtual.prazos.consenso)} · Aprovação:{" "}
-                          {labelDias(versaoAtual.prazos.aprovacao)}
-                        </p>
-                      </div>
-                    )}
+                    {(() => {
+                      const prazos = resolvePrazosComPadrao(versaoAtual?.prazos);
+                      return (
+                        <div className="sm:col-span-3">
+                          <p className="text-xs text-muted-foreground">
+                            {formatWorkflowObservacoes(prazos)}
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </div>
                 ) : (
                   <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
@@ -847,7 +841,7 @@ function DocumentoConsultaDetalheDialogImpl({
                               )}
                             </TableCell>
                             <TableCell className="border-r border-border/60 !whitespace-normal text-xs text-muted-foreground">
-                              {formatPrazosVersao(ver.prazos)}
+                              {formatPrazosResumo(ver.prazos)}
                             </TableCell>
                             <TableCell>
                               {arquivosDisponiveis.length === 0 ? (

@@ -34,6 +34,29 @@ export const defaultResponsaveisValues = (
   },
 });
 
+/** Versões migradas sem prazos usam 7/7/7 na exibição e em novos fluxos. */
+export function resolvePrazosComPadrao(
+  prazos?: Partial<DocumentWorkflowPrazos> | null
+): DocumentWorkflowPrazos {
+  return {
+    elaboracao: prazos?.elaboracao ?? DEFAULT_STAGE_DAYS,
+    consenso: prazos?.consenso ?? DEFAULT_STAGE_DAYS,
+    aprovacao: prazos?.aprovacao ?? DEFAULT_STAGE_DAYS,
+  };
+}
+
+function labelDias(n: number): string {
+  return `${n} ${n === 1 ? "dia" : "dias"}`;
+}
+
+/** Resumo compacto para grades (sempre com padrão 7 se faltar). */
+export function formatPrazosResumo(
+  prazos?: Partial<DocumentWorkflowPrazos> | null
+): string {
+  const p = resolvePrazosComPadrao(prazos);
+  return `Elab. ${labelDias(p.elaboracao)} · Cons. ${labelDias(p.consenso)} · Aprov. ${labelDias(p.aprovacao)}`;
+}
+
 const selectTriggerClass =
   "h-10 w-full min-w-0 *:data-[slot=select-value]:line-clamp-none *:data-[slot=select-value]:whitespace-normal";
 
@@ -166,5 +189,6 @@ export function DocumentoResponsaveisFieldset({
 export function formatWorkflowObservacoes(
   prazos: DocumentWorkflowPrazos
 ): string {
-  return `Prazos — Elaboração: ${prazos.elaboracao} dias · Consenso: ${prazos.consenso} dias · Aprovação: ${prazos.aprovacao} dias`;
+  const p = resolvePrazosComPadrao(prazos);
+  return `Prazos — Elaboração: ${labelDias(p.elaboracao)} · Consenso: ${labelDias(p.consenso)} · Aprovação: ${labelDias(p.aprovacao)}`;
 }

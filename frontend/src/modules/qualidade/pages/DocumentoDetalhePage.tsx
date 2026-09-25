@@ -29,18 +29,10 @@ import {
 } from "@qualidade/lib/utils/status-labels";
 import { formatarData, formatarDataHora } from "@qualidade/lib/utils/dates";
 import { labelResponsavel } from "@qualidade/lib/utils/select-display";
+import {
+  formatPrazosResumo,
+} from "@qualidade/components/documentos/documento-responsaveis-fieldset";
 import { SolicitarRevisaoDocumentoDialog } from "@qualidade/components/documentos/solicitar-revisao-documento-dialog";
-
-function labelDias(n: number): string {
-  return `${n} ${n === 1 ? "dia" : "dias"}`;
-}
-
-function formatPrazosVersao(
-  prazos?: { elaboracao: number; consenso: number; aprovacao: number } | null
-): string {
-  if (!prazos) return "—";
-  return `Elab. ${labelDias(prazos.elaboracao)} · Cons. ${labelDias(prazos.consenso)} · Aprov. ${labelDias(prazos.aprovacao)}`;
-}
 
 export function DocumentoDetalhePage() {
   const params = useParams();
@@ -205,9 +197,6 @@ export function DocumentoDetalhePage() {
                             </span>
                             <span className="mt-0.5 block text-xs">
                               {formatarData(ver.dataElaboracao)}
-                              {ver.prazos
-                                ? ` · ${labelDias(ver.prazos.elaboracao)}`
-                                : ""}
                             </span>
                           </TableCell>
                           <TableCell className="border-r border-border/60 !whitespace-normal text-muted-foreground">
@@ -221,18 +210,13 @@ export function DocumentoDetalhePage() {
                                 </span>
                               </>
                             ) : ver.aprovadorId ? (
-                              <span className="text-xs">
-                                {aprovadorNome}
-                                {ver.prazos
-                                  ? ` · prazo ${labelDias(ver.prazos.aprovacao)}`
-                                  : ""}
-                              </span>
+                              <span className="text-xs">{aprovadorNome}</span>
                             ) : (
                               "—"
                             )}
                           </TableCell>
                           <TableCell className="border-r border-border/60 !whitespace-normal text-xs text-muted-foreground">
-                            {formatPrazosVersao(ver.prazos)}
+                            {formatPrazosResumo(ver.prazos)}
                           </TableCell>
                           <TableCell className="max-w-0 !whitespace-normal">
                             {ver.arquivoNome ? (
