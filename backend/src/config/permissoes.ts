@@ -83,6 +83,7 @@ export const PERMISSOES = {
   PCP_MOTIVO_EXCLUIR: 'pcp.motivo.excluir',
   PCP_TOTAL: 'pcp.total',
   PCP_CONSULTA_ESTOQUE_VER: 'pcp.consulta_estoque.ver',
+  PCP_PROGRAMACAO_SETORIAL_VER: 'pcp.programacao_setorial.ver',
   PCP_SEQUENCIAMENTO_CARRADAS_VER: 'pcp.sequenciamento_carradas.ver',
   PCP_SEQUENCIAMENTO_CARRADAS_CRIAR: 'pcp.sequenciamento_carradas.criar',
   PCP_REGRAS_ENTREGA_VER: 'pcp.regras_entrega.ver',
@@ -224,6 +225,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.PCP_MOTIVO_EXCLUIR,
   PERMISSOES.PCP_TOTAL,
   PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
+  PERMISSOES.PCP_PROGRAMACAO_SETORIAL_VER,
   PERMISSOES.PCP_SEQUENCIAMENTO_CARRADAS_VER,
   PERMISSOES.PCP_SEQUENCIAMENTO_CARRADAS_CRIAR,
   PERMISSOES.PCP_REGRAS_ENTREGA_VER,
@@ -360,7 +362,8 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.PCP_MOTIVO_EXCLUIR]: 'Excluir justificativa',
   [PERMISSOES.PCP_MOTIVO_CRIAR]: 'Criar nova justificativa',
   [PERMISSOES.PCP_TOTAL]: 'Permissão total',
-  [PERMISSOES.PCP_CONSULTA_ESTOQUE_VER]: 'Consulta de Estoque (PCP)',
+  [PERMISSOES.PCP_CONSULTA_ESTOQUE_VER]: 'Consulta de Estoque — visualizar',
+  [PERMISSOES.PCP_PROGRAMACAO_SETORIAL_VER]: 'Programação Setorial — visualizar e gerar',
   [PERMISSOES.PCP_SEQUENCIAMENTO_CARRADAS_VER]:
     'Sequenciamento carradas — visualizar e consultar',
   [PERMISSOES.PCP_SEQUENCIAMENTO_CARRADAS_CRIAR]:

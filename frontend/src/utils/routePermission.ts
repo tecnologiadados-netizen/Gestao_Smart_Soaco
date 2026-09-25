@@ -49,7 +49,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   ],
   '/pedidos': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos/encerrados': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
-  '/pedidos/programacao-setorial': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
+  '/pedidos/programacao-setorial': [PERMISSOES.PCP_PROGRAMACAO_SETORIAL_VER, PERMISSOES.PCP_TOTAL],
   '/pedidos/programacao-producao': PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO,
   '/pedidos/programacao-producao/recursos': PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO,
   '/pedidos/regras-data-entrega': [

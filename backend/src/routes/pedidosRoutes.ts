@@ -81,6 +81,19 @@ const verPedidos = requirePermission(
   PERMISSOES.COMUNICACAO_VER
 );
 
+/** Filtros de rota e checagem de inconsistência usados ao gerar Programação Setorial. */
+const verPedidosOuProgramacaoSetorial = requirePermission(
+  PERMISSOES.PCP_VER_TELA,
+  PERMISSOES.PCP_TOTAL,
+  PERMISSOES.DASHBOARD_VER,
+  PERMISSOES.HEATMAP_VER,
+  PERMISSOES.COMUNICACAO_TELA_VER,
+  PERMISSOES.COMUNICACAO_NOVO_PEDIDO,
+  PERMISSOES.PEDIDOS_VER,
+  PERMISSOES.COMUNICACAO_VER,
+  PERMISSOES.PCP_PROGRAMACAO_SETORIAL_VER
+);
+
 const verFinanceiro = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_RESUMO, PERMISSOES.PCP_TOTAL);
 const verDashEntregas = requirePermission(...PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO);
 // Rate limit para rotas de escrita (ajustar previsão)
@@ -120,7 +133,7 @@ router.get('/dash-entregas-aging-tipof', verDashEntregas, getDashEntregasAgingTi
 router.get('/dash-entregas-leadtime-tipof', verDashEntregas, getDashEntregasLeadTimeTipoF);
 router.get('/dash-entregas-filtros-opcoes', verDashEntregas, getDashEntregasFiltrosOpcoes);
 router.get('/resumo-motivos', verPedidos, getResumoMotivos);
-router.get('/filtros-opcoes', verPedidos, getFiltrosOpcoes);
+router.get('/filtros-opcoes', verPedidosOuProgramacaoSetorial, getFiltrosOpcoes);
 router.get('/mapa-municipios', verPedidos, getMapaMunicipios);
 router.get('/mapa-municipios/detalhes', verPedidos, getMapaMunicipioDetalhes);
 router.get('/cargas-separadas-cliente-cidade', verPedidos, getCargasSeparadasMesmoClienteCidade);
@@ -187,7 +200,7 @@ router.post(
   writeLimiter,
   postCalendarioMetodoRessuprimento
 );
-router.get('/inconsistencia-qtde-pendente', verPedidos, getInconsistenciaQtdePendente);
+router.get('/inconsistencia-qtde-pendente', verPedidosOuProgramacaoSetorial, getInconsistenciaQtdePendente);
 router.get('/encerrados/typeahead', verPedidos, getPedidosEncerradosTypeahead);
 router.get('/encerrados', verPedidos, getPedidosEncerrados);
 router.get('/:id/historico', verPedidos, getHistorico);
