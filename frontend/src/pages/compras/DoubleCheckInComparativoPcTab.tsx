@@ -409,6 +409,11 @@ export default function DoubleCheckInComparativoPcTab({
             {pendentes} decisão(ões) pendente(s)
           </span>
         )}
+        {linhas.some((l) => l.naoGeraContasPagar) && (
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+            Não gera contas a pagar
+          </span>
+        )}
       </div>
 
       <div className="space-y-3">
@@ -439,7 +444,9 @@ export default function DoubleCheckInComparativoPcTab({
             </div>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {CAMPOS.map((c) => {
+              {CAMPOS.filter(
+                (c) => !(c.id === 'condicao_pagamento' && linha.naoGeraContasPagar)
+              ).map((c) => {
                 const diverg = Boolean(linha[c.divergKey]);
                 const vals = valoresExibicao(linha, c);
                 const dec = decisaoMap.get(

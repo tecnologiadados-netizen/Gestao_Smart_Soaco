@@ -61,6 +61,8 @@ export type RelatoConferencia = {
   recusadas: number;
   pagamentoComum: CampoRelato | null;
   produtos: ProdutoRelato[];
+  /** Documento sem contas a pagar: cond. pagamento fica fora da conferência. */
+  naoGeraContasPagar?: boolean;
 };
 
 const TITULO: Record<DoubleCheckInCampoComparativo, string> = {
@@ -347,6 +349,7 @@ export function montarRelatoConferencia(params: {
     recusadas,
     pagamentoComum,
     produtos: produtos.filter((p) => p.campos.length > 0 || pagamentoComum),
+    naoGeraContasPagar: params.linhas.some((l) => l.naoGeraContasPagar),
   };
 }
 
@@ -425,6 +428,9 @@ export function montarMensagemConferenciaWhatsApp(relato: RelatoConferencia, url
     `${wa(relato.conferidoPor)} · ${relato.totalProdutos} produto${relato.totalProdutos === 1 ? '' : 's'} · ${relato.totalDivergencias} divergência${relato.totalDivergencias === 1 ? '' : 's'}`,
     resumoDecisoes(relato),
   ];
+  if (relato.naoGeraContasPagar) {
+    cabecalho.push('Não gera contas a pagar.');
+  }
 
   const meio: string[] = [];
   if (relato.pagamentoComum) {
@@ -553,6 +559,9 @@ function chipResumo(relato: RelatoConferencia): string {
 
 export function renderConferenciaHtml(relato: RelatoConferencia): string {
   const quando = relato.conferidoEm ? `<p class="quando">Conferido em ${esc(relato.conferidoEm)}</p>` : '';
+  const semContas = relato.naoGeraContasPagar
+    ? `<p class="obs">Não gera contas a pagar. Condição de pagamento fora da conferência.</p>`
+    : '';
   const pagamento = relato.pagamentoComum
     ? `<section class="bloco"><h2>Pagamento — vale para todos</h2><div class="par"><b>NF</b><span>${esc(relato.pagamentoComum.nf)}</span><b>PC</b><span>${esc(relato.pagamentoComum.pc)}</span></div>${htmlTabelaPrazos(relato.pagamentoComum.tabelaPrazos)}${htmlDecisao(relato.pagamentoComum)}</section>`
     : '';
@@ -654,6 +663,7 @@ export function renderConferenciaHtml(relato: RelatoConferencia): string {
       <span class="chip">${relato.totalDivergencias} divergência${relato.totalDivergencias === 1 ? '' : 's'}</span>
       <span class="chip">${esc(chipResumo(relato))}</span>
     </div>
+    ${semContas}
     ${pagamento}
     ${produtos}
     <p class="rodape">Diferença = preço líquido da NF menos o do pedido.</p>

@@ -1577,6 +1577,8 @@ export type DoubleCheckInComparativoLinha = {
   divergQtde: boolean;
   divergIpi: boolean;
   divergCondicaoPagamento: boolean;
+  /** Documento sem contas a pagar (Nomus não gera agendamento financeiro). */
+  naoGeraContasPagar?: boolean;
   temDivergencia: boolean;
 };
 

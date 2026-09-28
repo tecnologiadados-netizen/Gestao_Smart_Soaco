@@ -676,6 +676,8 @@ export type DoubleCheckInComparativoLinha = {
   divergQtde: boolean;
   divergIpi: boolean;
   divergCondicaoPagamento: boolean;
+  /** Nomus `documentoestoque.geraAgendamentoFinanceiro = 0`: não gera contas a pagar. */
+  naoGeraContasPagar: boolean;
   temDivergencia: boolean;
 };
 
@@ -851,7 +853,8 @@ SELECT
   cpde.nome AS condicaoPagamentoNF,
   cpde.regra AS regraPagamentoNF,
   cppc.nome AS condicaoPagamentoPC,
-  cppc.regra AS regraPagamentoPC
+  cppc.regra AS regraPagamentoPC,
+  IFNULL(de.geraAgendamentoFinanceiro, 1) AS geraAgendamentoFinanceiro
 FROM itemdocumentoestoque_itempedidocompra ideipc
 LEFT JOIN itemdocumentoestoque ide ON ide.id = ideipc.idItemDocumentoEstoque
 LEFT JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
@@ -1040,14 +1043,18 @@ export async function queryDoubleCheckInComparativoPc(params: {
       const divergValorUnitario = !valoresIguaisComparativo(valorUnitarioNF, valorUnitarioPC, 2);
       const divergQtde = !valoresIguaisComparativo(qtdeNF, qtdePC, 4);
       const divergIpi = !valoresIguaisComparativo(valorIpiNF, valorIpiPC, 2);
-      const divergCondicaoPagamento = divergenciaCondicaoPorPrazos({
-        prazosNF: prazosDiasNF,
-        prazosPC: prazosDiasPC,
-        condicaoNF: condicaoPagamentoNF,
-        regraNF: regraPagamentoNF,
-        condicaoPC: condicaoPagamentoPC,
-        regraPC: regraPagamentoPC,
-      });
+      // 0 = não gera agendamento financeiro (contas a pagar). Set/2026: 261 docs flag 0 sem título; 134 flag 1 com título.
+      const naoGeraContasPagar = toInt(r.geraAgendamentoFinanceiro) === 0;
+      const divergCondicaoPagamento = naoGeraContasPagar
+        ? false
+        : divergenciaCondicaoPorPrazos({
+            prazosNF: prazosDiasNF,
+            prazosPC: prazosDiasPC,
+            condicaoNF: condicaoPagamentoNF,
+            regraNF: regraPagamentoNF,
+            condicaoPC: condicaoPagamentoPC,
+            regraPC: regraPagamentoPC,
+          });
       return {
         idItemDocumentoEstoque: toInt(r.idItemDocumentoEstoque),
         idItemPedidoCompra: toInt(r.idItemPedidoCompra),
@@ -1084,6 +1091,7 @@ export async function queryDoubleCheckInComparativoPc(params: {
         divergQtde,
         divergIpi,
         divergCondicaoPagamento,
+        naoGeraContasPagar,
         temDivergencia:
           divergValorUnitario || divergQtde || divergIpi || divergCondicaoPagamento,
       };
