@@ -64,6 +64,32 @@ describe('divergenciaCondicaoPorPrazos — à vista', () => {
     ).toBe(true);
   });
 
+  it('mesma regra 40/65/85 sem data base no PC: sem divergência', () => {
+    expect(
+      divergenciaCondicaoPorPrazos({
+        prazosNF: [40, 65, 85],
+        prazosPC: [],
+        condicaoNF: '(3x) 40/65/85',
+        regraNF: '40,65,85',
+        condicaoPC: '(3x) 40/65/85',
+        regraPC: '40,65,85',
+      })
+    ).toBe(false);
+  });
+
+  it('dias calculados diferentes da regra do outro lado: divergente', () => {
+    expect(
+      divergenciaCondicaoPorPrazos({
+        prazosNF: [40, 65, 85],
+        prazosPC: [30, 60, 90],
+        condicaoNF: '(3x) 40/65/85',
+        regraNF: '40,65,85',
+        condicaoPC: '(3x) 40/65/85',
+        regraPC: '40,65,85',
+      })
+    ).toBe(true);
+  });
+
   it('mesmos prazos parcelados: sem divergência', () => {
     expect(
       divergenciaCondicaoPorPrazos({

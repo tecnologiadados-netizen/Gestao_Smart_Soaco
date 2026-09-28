@@ -759,6 +759,27 @@ export function labelPrazosDias(dias: number[]): string | null {
   return dias.map((d) => `${d}`).join('/');
 }
 
+/** Regra cadastral "40,65,85" ou "40/65/85" → [40, 65, 85]. */
+export function prazosDaRegra(regra: string | null | undefined): number[] {
+  const partes = String(regra ?? '')
+    .trim()
+    .split(/[^0-9]+/)
+    .filter(Boolean);
+  if (partes.length === 0) return [];
+  const nums = partes.map((p) => Number(p));
+  if (nums.some((n) => !Number.isInteger(n) || n < 0)) return [];
+  return nums;
+}
+
+/**
+ * Dias calculados (vencimento − data base) têm prioridade.
+ * Sem data base, usa a sequência da regra cadastral.
+ */
+export function prazosEfetivosCondicao(calculados: number[], regra: string | null | undefined): number[] {
+  if (calculados.length > 0) return calculados;
+  return prazosDaRegra(regra);
+}
+
 export function prazosDiasIguais(a: number[], b: number[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -789,9 +810,10 @@ export function ehCondicaoAVista(params: {
 
 /**
  * Critério final de Cond. pagamento: sequência de dias (vencimento − data base).
+ * Sem data base num dos lados, a regra cadastral (ex.: 40,65,85) entra no lugar dos dias.
  * Ambos à vista → sem divergência (data base opcional).
- * Sem parcelas nos dois lados → fallback ao texto da condição/regra.
- * Só um lado com parcelas (e não à vista) → divergente.
+ * Sem parcelas e sem regra nos dois lados → fallback ao texto da condição/regra.
+ * Só um lado com prazos (e não à vista) → divergente.
  */
 export function divergenciaCondicaoPorPrazos(params: {
   prazosNF: number[];
@@ -813,11 +835,13 @@ export function divergenciaCondicaoPorPrazos(params: {
   });
   if (aVistaNf && aVistaPc) return false;
 
-  const temNf = params.prazosNF.length > 0;
-  const temPc = params.prazosPC.length > 0;
+  const prazosNF = prazosEfetivosCondicao(params.prazosNF, params.regraNF);
+  const prazosPC = prazosEfetivosCondicao(params.prazosPC, params.regraPC);
+  const temNf = prazosNF.length > 0;
+  const temPc = prazosPC.length > 0;
   if (temNf || temPc) {
     if (!temNf || !temPc) return true;
-    return !prazosDiasIguais(params.prazosNF, params.prazosPC);
+    return !prazosDiasIguais(prazosNF, prazosPC);
   }
   return (
     !textosIguaisComparativo(params.condicaoNF, params.condicaoPC) ||
