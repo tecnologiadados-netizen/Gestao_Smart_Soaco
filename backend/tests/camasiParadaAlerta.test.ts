@@ -61,7 +61,8 @@ const PROD_BLIP: TempoProducaoRow = row({
 function evalAt(
   agoraMs: number,
   rows: TempoProducaoRow[],
-  estado: CamasiParadaAlertaEstadoMem | null = null
+  estado: CamasiParadaAlertaEstadoMem | null = null,
+  vivoMs?: number
 ) {
   return avaliarAlertaParadaCamasi({
     agoraMs,
@@ -69,6 +70,7 @@ function evalAt(
     rows,
     estado,
     maquina: 'Perfiladeira',
+    ...(vivoMs != null ? { vivoMs } : {}),
   });
 }
 
@@ -125,6 +127,7 @@ describe('avaliarAlertaParadaCamasi — recorte de 21/09/2026', () => {
     expect(d.motivo).toBe('produzindo');
     expect(d.next.posProducaoEnviado).toBe(false);
     expect(d.next.ultimaProducaoFim).toBe('13:10:20');
+    expect(d.next.producaoVistaId).toBe(vivo.id);
   });
 
   it('13:20 — parada há ~9 min após o freeze: espera', () => {
@@ -133,6 +136,7 @@ describe('avaliarAlertaParadaCamasi — recorte de 21/09/2026', () => {
       inicioEnviado: true,
       ultimaProducaoFim: '13:10:54',
       posProducaoEnviado: false,
+      producaoVistaId: PROD_BLIP.id,
     };
     const d = evalAt(ms(13, 20), [DUMMY_INICIO, PROD_BLIP], estado);
     expect(d.acao).toBe('skip');
@@ -145,6 +149,7 @@ describe('avaliarAlertaParadaCamasi — recorte de 21/09/2026', () => {
       inicioEnviado: true,
       ultimaProducaoFim: '13:10:54',
       posProducaoEnviado: false,
+      producaoVistaId: PROD_BLIP.id,
     };
     const d = evalAt(ms(13, 31), [DUMMY_INICIO, PROD_BLIP], estado);
     expect(d.acao).toBe('send');
@@ -161,6 +166,7 @@ describe('avaliarAlertaParadaCamasi — recorte de 21/09/2026', () => {
       inicioEnviado: true,
       ultimaProducaoFim: '13:10:54',
       posProducaoEnviado: true,
+      producaoVistaId: PROD_BLIP.id,
     };
     const d = evalAt(ms(14, 0), [DUMMY_INICIO, PROD_BLIP], estado);
     expect(d.acao).toBe('skip');
@@ -193,6 +199,39 @@ describe('avaliarAlertaParadaCamasi — produção cedo', () => {
     expect(as730.tipoEnvio).toBe('pos_producao');
     expect(as730.mensagem).toContain('Desde: 07:10');
     expect(as730.mensagem).toContain('LATERAL');
+  });
+});
+
+describe('avaliarAlertaParadaCamasi — carimbo de abertura', () => {
+  const VIVO_SYNC = 120_000;
+  const estadoInicio = { ...estadoAlertaVazio(HOJE), inicioEnviado: true };
+  const carimbo = row({
+    id: 6020,
+    data: HOJE,
+    inicioProducao: '10:43:13',
+    fimProducao: '10:43:40',
+    nomeOperador: 'LATERAL ESQUERDA  AR  40  NOVA',
+  });
+
+  it('11:04 — fim ainda colado no início: não envia o pós-produção', () => {
+    const d = evalAt(ms(11, 4), [DUMMY_INICIO, carimbo], estadoInicio, VIVO_SYNC);
+    expect(d.acao).toBe('skip');
+    expect(d.motivo).toBe('producao_ainda_sem_curso');
+    expect(d.mensagem).toBeUndefined();
+  });
+
+  it('fim visto ao vivo e depois congelado: um aviso, desde o congelamento', () => {
+    const aoVivo = row({ ...carimbo, fimProducao: '11:20:00' });
+    const viu = evalAt(ms(11, 20, 30), [DUMMY_INICIO, aoVivo], estadoInicio, VIVO_SYNC);
+    expect(viu.motivo).toBe('produzindo');
+    expect(viu.next.producaoVistaId).toBe(6020);
+
+    const congelada = row({ ...carimbo, fimProducao: '13:05:12' });
+    const d = evalAt(ms(13, 26), [DUMMY_INICIO, congelada], viu.next, VIVO_SYNC);
+    expect(d.acao).toBe('send');
+    expect(d.tipoEnvio).toBe('pos_producao');
+    expect(d.mensagem).toContain('Desde: 13:05');
+    expect(d.mensagem).toContain('LATERAL ESQUERDA  AR  40  NOVA');
   });
 });
 

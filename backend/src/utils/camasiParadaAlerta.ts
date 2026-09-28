@@ -4,7 +4,9 @@
  * Regras:
  * - Arma no corte de carência (início da escala + 5 min, ex. 07:05).
  * - 1º envio após 20 min contínuos parado depois desse corte (sem produção no dia).
- * - Só reenvia se houver movimentação de produção e, em seguida, mais 20 min direto parado.
+ * - Só reenvia se a produção tiver corrido de verdade e, em seguida, ficar mais 20 min parada.
+ * - Produção "de verdade": o FIM foi visto ao vivo, ou o trecho gravado é maior que a janela viva.
+ *   O carimbo de abertura (início ≈ fim, relógio ainda parado) não dispara o segundo aviso.
  * - Não reenvia a cada 20 min na mesma ociosidade.
  */
 
@@ -27,6 +29,8 @@ export type CamasiParadaAlertaEstadoMem = {
   inicioEnviado: boolean;
   ultimaProducaoFim: string | null;
   posProducaoEnviado: boolean;
+  /** Id da linha Camasi cujo FIM já foi visto dentro da janela viva. */
+  producaoVistaId: number | null;
 };
 
 export type CamasiParadaAlertaTipoEnvio = 'inicio' | 'pos_producao';
@@ -82,7 +86,31 @@ export function estadoAlertaVazio(data: string): CamasiParadaAlertaEstadoMem {
     inicioEnviado: false,
     ultimaProducaoFim: null,
     posProducaoEnviado: false,
+    producaoVistaId: null,
   };
+}
+
+function estadoDoDia(
+  estado: CamasiParadaAlertaEstadoMem | null,
+  ymd: string
+): CamasiParadaAlertaEstadoMem {
+  if (!estado || estado.data !== ymd) return estadoAlertaVazio(ymd);
+  return {
+    ...estadoAlertaVazio(ymd),
+    ...estado,
+    data: ymd,
+    producaoVistaId: estado.producaoVistaId ?? null,
+  };
+}
+
+/** O relógio da linha andou: foi visto ao vivo, ou o trecho passa da janela viva. */
+function producaoTeveCurso(
+  lastProd: { id: number; startMs: number; fimMs: number },
+  prev: CamasiParadaAlertaEstadoMem,
+  vivoMs: number
+): boolean {
+  if (prev.producaoVistaId != null && prev.producaoVistaId === lastProd.id) return true;
+  return lastProd.fimMs - lastProd.startMs > vivoMs;
 }
 
 export function montarMensagemAlertaParadaCamasi(input: {
@@ -142,8 +170,7 @@ export function avaliarAlertaParadaCamasi(input: {
   const limiarMs = input.limiarMs ?? CAMASI_PARADA_ALERTA_LIMIAR_MS;
   const maquina = (input.maquina ?? 'Perfiladeira').trim() || 'Perfiladeira';
 
-  const prev =
-    input.estado && input.estado.data === ymd ? input.estado : estadoAlertaVazio(ymd);
+  const prev = estadoDoDia(input.estado, ymd);
   const next: CamasiParadaAlertaEstadoMem = { ...prev, data: ymd };
 
   const skip = (motivo: string, patch?: Partial<CamasiParadaAlertaEstadoMem>): CamasiParadaAlertaDecisao => ({
@@ -172,6 +199,7 @@ export function avaliarAlertaParadaCamasi(input: {
     return skip('produzindo', {
       ultimaProducaoFim: fimHms,
       posProducaoEnviado: false,
+      producaoVistaId: lastProd.id,
     });
   }
 
@@ -197,6 +225,13 @@ export function avaliarAlertaParadaCamasi(input: {
 
   const stopStartMs = lastProd.fimMs;
   const fimKey = lastProd.fimProducao;
+  if (!producaoTeveCurso(lastProd, prev, vivoMs)) {
+    return skip('producao_ainda_sem_curso', {
+      ultimaProducaoFim: fimKey,
+      posProducaoEnviado: false,
+    });
+  }
+
   const mesmoEpisodio = prev.ultimaProducaoFim === fimKey;
   if (mesmoEpisodio && prev.posProducaoEnviado) {
     return skip('pos_producao_ja_enviado', { ultimaProducaoFim: fimKey });

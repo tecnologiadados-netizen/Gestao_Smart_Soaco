@@ -2620,6 +2620,8 @@ model CamasiParadaAlertaEstado {
   inicioEnviado       Boolean   @default(false) @map("inicio_enviado")
   ultimaProducaoFim   String?   @map("ultima_producao_fim")
   posProducaoEnviado  Boolean   @default(false) @map("pos_producao_enviado")
+  /// Linha Camasi cujo FIM_PRODUCAO já foi visto ao vivo (não é carimbo de abertura).
+  producaoVistaId     Int?      @map("producao_vista_id")
   lastSentAt          DateTime? @map("last_sent_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 

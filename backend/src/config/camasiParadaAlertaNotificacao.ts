@@ -9,7 +9,8 @@ export const CAMASI_PARADA_ALERTA_WA_CODE = 'camasi_parada_20min';
 const LABEL = 'Camasi — máquina parada 20 min';
 const DESCRICAO =
   'WhatsApp quando a perfiladeira fica 20 min parada após o corte de início de jornada (07:05). ' +
-  'Não repete na mesma ociosidade; só dispara de novo se houver produção e a máquina parar outros 20 min. ' +
+  'Não repete na mesma ociosidade; só dispara de novo se a produção tiver corrido (FIM ao vivo ou trecho maior que a janela viva) e a máquina parar outros 20 min. ' +
+  'O carimbo de abertura, com o fim ainda colado no início, não conta como parada. ' +
   'Configure destinatários (usuários ou grupo) nesta tela. O job roda junto com o sync Camasi (1 min).';
 
 export async function ensureCamasiParadaAlertaWhatsappTipo(): Promise<{ id: number; code: string }> {

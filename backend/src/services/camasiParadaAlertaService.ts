@@ -31,6 +31,7 @@ async function lerEstado(): Promise<CamasiParadaAlertaEstadoMem | null> {
     inicioEnviado: row.inicioEnviado,
     ultimaProducaoFim: row.ultimaProducaoFim,
     posProducaoEnviado: row.posProducaoEnviado,
+    producaoVistaId: row.producaoVistaId,
   };
 }
 
@@ -46,6 +47,7 @@ async function gravarEstado(
       inicioEnviado: next.inicioEnviado,
       ultimaProducaoFim: next.ultimaProducaoFim,
       posProducaoEnviado: next.posProducaoEnviado,
+      producaoVistaId: next.producaoVistaId,
       lastSentAt: sent ? new Date() : null,
     },
     update: {
@@ -53,6 +55,7 @@ async function gravarEstado(
       inicioEnviado: next.inicioEnviado,
       ultimaProducaoFim: next.ultimaProducaoFim,
       posProducaoEnviado: next.posProducaoEnviado,
+      producaoVistaId: next.producaoVistaId,
       ...(sent ? { lastSentAt: new Date() } : {}),
     },
   });
@@ -90,7 +93,8 @@ export async function avaliarEEnviarAlertaParadaCamasi(agoraMs: number = Date.no
       estado.data !== decisao.next.data ||
       estado.inicioEnviado !== decisao.next.inicioEnviado ||
       estado.ultimaProducaoFim !== decisao.next.ultimaProducaoFim ||
-      estado.posProducaoEnviado !== decisao.next.posProducaoEnviado;
+      estado.posProducaoEnviado !== decisao.next.posProducaoEnviado ||
+      (estado.producaoVistaId ?? null) !== decisao.next.producaoVistaId;
     if (mudou) await gravarEstado(decisao.next, false);
     return { acao: 'skip', motivo: decisao.motivo };
   }
