@@ -28,6 +28,10 @@ import {
   type AnexoItem,
 } from "@qualidade/components/calibracoes/equipamento-anexos-field";
 import { DocumentoArquivoField } from "@qualidade/components/documentos/documento-arquivo-field";
+import {
+  mensagemLimiteAnexo,
+  SGQ_ANEXO_MAX_BYTES,
+} from "@qualidade/types/registro-anexo";
 import { FornecedorSearchField } from "@qualidade/components/avaliacao-fornecedor/fornecedor-search-field";
 import { PessoaSearchField } from "@qualidade/components/registros/pessoa-search-field";
 import { SgqAnexosTable } from "@qualidade/components/ui/sgq-anexos-table";
@@ -315,8 +319,8 @@ export function EquipamentoEdicaoDialog({
   }
 
   function handleLaudoSelect(file: File) {
-    if (file.size > 5 * 1024 * 1024) {
-      setError("O arquivo excede o limite de 5 MB.");
+    if (file.size > SGQ_ANEXO_MAX_BYTES) {
+      setError(mensagemLimiteAnexo());
       return;
     }
     const reader = new FileReader();

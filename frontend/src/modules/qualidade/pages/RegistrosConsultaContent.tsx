@@ -36,7 +36,7 @@ import {
   isModuloRegistroTipo,
   MODULO_REGISTRO_TIPOS,
   moduloRegistroTipoLabelsCurto,
-  registroStatusLabels,
+  rotuloStatusRegistro,
   registroTipoLabels,
 } from "@qualidade/lib/registros/constants";
 import { useRegistrosStore } from "@qualidade/lib/store/registros-store";
@@ -163,7 +163,7 @@ export function RegistrosConsultaContent() {
               users.find((user) => user.id === registro.responsavelId)?.nome
           );
         case "status":
-          return registroStatusLabels[registro.status];
+          return rotuloStatusRegistro(registro);
         case "fechamento":
           return formatarData(getRegistroDataFechamento(registro));
         default:
@@ -372,7 +372,7 @@ export function RegistrosConsultaContent() {
                         </TableCell>
                         <TableCell>{responsavelNome}</TableCell>
                         <TableCell>
-                          <Badge>{registroStatusLabels[registro.status]}</Badge>
+                          <Badge>{rotuloStatusRegistro(registro)}</Badge>
                         </TableCell>
                         <TableCell>
                           {formatarData(getRegistroDataFechamento(registro))}

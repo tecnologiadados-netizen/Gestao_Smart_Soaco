@@ -7,6 +7,11 @@ import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
 import { DocumentoArquivoField } from "@qualidade/components/documentos/documento-arquivo-field";
 import {
+  mensagemLimiteAnexo,
+  SGQ_ANEXO_MAX_BYTES,
+  SGQ_ANEXO_MAX_MB,
+} from "@qualidade/types/registro-anexo";
+import {
   anexosPreenchidos,
   defaultAnexoRows,
   EquipamentoAnexosField,
@@ -155,8 +160,8 @@ export function EquipamentoCalibracaoFluxoDialog({
   }
 
   function handleLaudoSelect(file: File) {
-    if (file.size > 5 * 1024 * 1024) {
-      setError("O arquivo excede o limite de 5 MB.");
+    if (file.size > SGQ_ANEXO_MAX_BYTES) {
+      setError(mensagemLimiteAnexo());
       return;
     }
     const reader = new FileReader();
@@ -303,7 +308,7 @@ export function EquipamentoCalibracaoFluxoDialog({
                     setLaudoNome("");
                     setLaudoDataUrl("");
                   }}
-                  hint="PDF ou imagem do laudo · máx. 5 MB"
+                  hint={`PDF ou imagem do laudo · máx. ${SGQ_ANEXO_MAX_MB} MB`}
                 />
                 <EquipamentoAnexosField value={anexos} onChange={setAnexos} />
               </fieldset>

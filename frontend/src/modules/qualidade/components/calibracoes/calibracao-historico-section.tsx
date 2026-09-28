@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { Badge } from "@qualidade/components/ui/badge";
 import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
 import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
@@ -185,6 +186,22 @@ export function CalibracaoHistoricoSection({
     versaoAtual,
   ]);
 
+  const [equipamentoAberto, setEquipamentoAberto] = useState(equipment.id);
+  const [abertas, setAbertas] = useState<Set<string>>(() => new Set(["atual"]));
+  if (equipamentoAberto !== equipment.id) {
+    setEquipamentoAberto(equipment.id);
+    setAbertas(new Set(["atual"]));
+  }
+
+  function alternar(key: string) {
+    setAbertas((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(key)) proximo.delete(key);
+      else proximo.add(key);
+      return proximo;
+    });
+  }
+
   return (
     <fieldset className="brand-fieldset space-y-3">
       <legend>Histórico de calibrações</legend>
@@ -207,7 +224,12 @@ export function CalibracaoHistoricoSection({
                   linha.atual && "ring-1 ring-brand-blue/30"
                 )}
               >
-                <div className="flex flex-wrap items-center gap-2 border-b border-border/70 bg-muted/30 px-3 py-2.5">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 bg-muted/30 px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
+                  aria-expanded={abertas.has(linha.key)}
+                  onClick={() => alternar(linha.key)}
+                >
                   <span className="text-sm font-semibold text-foreground">
                     Versão {linha.versao}
                   </span>
@@ -224,9 +246,18 @@ export function CalibracaoHistoricoSection({
                       {dueStatusLabels[linha.statusVencimento]}
                     </Badge>
                   ) : null}
-                </div>
+                  <ChevronDown
+                    className={cn(
+                      "ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200",
+                      abertas.has(linha.key) && "rotate-180"
+                    )}
+                    aria-hidden
+                  />
+                </button>
 
-                <div className="grid gap-3 border-b border-border/70 px-3 py-3 sm:grid-cols-3">
+                {abertas.has(linha.key) ? (
+                  <>
+                <div className="grid gap-3 border-t border-border/70 px-3 py-3 sm:grid-cols-3">
                   <CampoResumo
                     label="Data"
                     value={linha.data ? formatarData(linha.data) : "—"}
@@ -242,7 +273,7 @@ export function CalibracaoHistoricoSection({
                   />
                 </div>
 
-                <div className="space-y-3 p-3">
+                <div className="space-y-3 border-t border-border/70 p-3">
                   <div className="min-w-0 space-y-1.5">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Laudo
@@ -270,6 +301,8 @@ export function CalibracaoHistoricoSection({
                     )}
                   </div>
                 </div>
+                  </>
+                ) : null}
               </li>
             );
           })}

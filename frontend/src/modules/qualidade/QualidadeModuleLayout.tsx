@@ -12,14 +12,14 @@ export default function QualidadeModuleLayout() {
     <LoadingProvider>
       <StoreHydration>
         {viewer ? (
-          <div className="qualidade-module min-h-0 flex-1">
+          <div className="qualidade-module flex min-h-0 min-w-0 flex-1 flex-col">
             <Outlet />
           </div>
         ) : (
-          <div className="qualidade-module min-h-0 flex-1">
+          <div className="qualidade-module flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="sgq-shell flex min-h-0 w-full flex-1 flex-col">
               <QualidadeSubnav />
-              <div className="sgq-page w-full flex-1">
+              <div className="sgq-page flex min-h-0 w-full min-w-0 flex-1 flex-col">
                 <Outlet />
               </div>
             </div>

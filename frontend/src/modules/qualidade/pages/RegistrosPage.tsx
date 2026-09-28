@@ -91,10 +91,7 @@ function RegistrosPageContent() {
     setErrosRnc({});
     setErrosRcc({});
     if (tipo === "rnc") {
-      setRncDados({
-        ...criarRncDadosVazio(),
-        responsavel: usuarioAtual?.nome ?? "",
-      });
+      setRncDados(criarRncDadosVazio());
     }
     if (tipo === "rcc") {
       setRccDados(criarRccDadosVazio());

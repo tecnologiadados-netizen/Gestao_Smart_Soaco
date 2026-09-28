@@ -85,7 +85,6 @@ export function CadastroRegistroDialog({
   );
   const [erro, setErro] = useState("");
   const [saving, setSaving] = useState(false);
-  const [guardaFisica, setGuardaFisica] = useState(false);
 
   const editando = Boolean(documentId);
 
@@ -169,9 +168,6 @@ export function CadastroRegistroDialog({
     const pendentes: string[] = [];
     if (!values.titulo.trim()) pendentes.push("Título");
     if (!values.processoId) pendentes.push("Documento referente ao setor");
-    if (guardaFisica && !values.responsavelId) {
-      pendentes.push("Responsável pela posse do documento");
-    }
     if (!values.modeloDocumentoId) pendentes.push("Modelo do documento");
     if (pendentes.length > 0) {
       setErro(`Preencha os campos obrigatórios: ${pendentes.join(", ")}.`);
@@ -362,7 +358,6 @@ export function CadastroRegistroDialog({
                 onResponsavelChange={(id, nome) =>
                   patch({ responsavelId: id, responsavelNome: nome })
                 }
-                onGuardaFisicaChange={setGuardaFisica}
               />
 
               <fieldset className="brand-fieldset space-y-4">

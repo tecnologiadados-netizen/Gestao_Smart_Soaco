@@ -11,6 +11,7 @@ import {
 } from "@qualidade/lib/registros/fetch-pedidos-venda-client";
 import { formatarCidadeRcc } from "@qualidade/types/cliente-erp";
 import type { PedidoVendaErp } from "@qualidade/types/pedido-venda-erp";
+import { ListaSugestaoFlutuante } from "@qualidade/components/registros/lista-sugestao-flutuante";
 
 interface PedidoVendaSearchFieldProps {
   id?: string;
@@ -20,6 +21,8 @@ interface PedidoVendaSearchFieldProps {
   onPedidoSelect: (pedido: PedidoVendaErp) => void;
   onVinculoClear?: () => void;
   disabled?: boolean;
+  somenteAtendidos?: boolean;
+  ocultarRotulo?: boolean;
 }
 
 function formatarData(data: string): string {
@@ -37,10 +40,13 @@ export function PedidoVendaSearchField({
   onPedidoSelect,
   onVinculoClear,
   disabled = false,
+  somenteAtendidos = false,
+  ocultarRotulo = false,
 }: PedidoVendaSearchFieldProps) {
   const listId = useId();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const ancoraRef = useRef<HTMLDivElement>(null);
 
   const [termo, setTermo] = useState(value);
   const [resultados, setResultados] = useState<PedidoVendaErp[]>([]);
@@ -65,6 +71,7 @@ export function PedidoVendaSearchField({
       const lista = await fetchPedidosVendaClient({
         q: busca.trim() || undefined,
         limit,
+        somenteAtendidos,
       });
       setResultados(lista);
     } catch {
@@ -91,12 +98,11 @@ export function PedidoVendaSearchField({
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
-        setAberto(false);
-      }
+      const alvo = event.target;
+      if (!(alvo instanceof Node)) return;
+      if (containerRef.current?.contains(alvo)) return;
+      if (alvo instanceof Element && alvo.closest("[data-lista-sugestao]")) return;
+      setAberto(false);
     }
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -112,8 +118,8 @@ export function PedidoVendaSearchField({
 
   return (
     <div ref={containerRef} className="relative space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="relative">
+      {ocultarRotulo ? null : <Label htmlFor={id}>{label}</Label>}
+      <div ref={ancoraRef} className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           id={id}
@@ -127,7 +133,11 @@ export function PedidoVendaSearchField({
           }}
           onFocus={() => setAberto(true)}
           disabled={disabled}
-          placeholder="Digite o número do pedido de venda..."
+          placeholder={
+            somenteAtendidos
+              ? "Pedido atendido parcial, total ou com corte..."
+              : "Digite o número do pedido de venda..."
+          }
           className="pl-9"
           autoComplete="off"
           role="combobox"
@@ -146,56 +156,56 @@ export function PedidoVendaSearchField({
         </p>
       ) : null}
 
-      {aberto && !disabled && resultados.length > 0 ? (
-        <ul
-          id={listId}
-          role="listbox"
-          className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-popover py-1 shadow-md"
-        >
-          {resultados.map((pedido) => (
-            <li key={pedido.pedidoId} role="option">
-              <button
-                type="button"
-                className={cn(
-                  "flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted"
-                )}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => selecionar(pedido)}
-              >
-                <span className="font-medium text-primary">
-                  Pedido {pedido.numero}
-                  {pedido.dataEmissao ? ` · ${formatarData(pedido.dataEmissao)}` : ""}
-                </span>
-                {pedido.cliente ? (
-                  <>
-                    <span className="line-clamp-1 text-xs text-foreground">
-                      {pedido.cliente.nome}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground">
-                      {formatarCidadeRcc(
-                        pedido.cliente.municipio,
-                        pedido.cliente.uf
-                      )}
-                      {pedido.cliente.documento
-                        ? ` · ${pedido.cliente.documento}`
-                        : ""}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-[11px] text-muted-foreground">
-                    Sem cliente vinculado
+      <ListaSugestaoFlutuante
+        aberto={aberto && !disabled && resultados.length > 0}
+        ancoraRef={ancoraRef}
+        id={listId}
+      >
+        {resultados.map((pedido) => (
+          <li key={pedido.pedidoId} role="option">
+            <button
+              type="button"
+              className={cn(
+                "flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted"
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => selecionar(pedido)}
+            >
+              <span className="font-medium text-primary">
+                Pedido {pedido.numero}
+                {pedido.dataEmissao ? ` · ${formatarData(pedido.dataEmissao)}` : ""}
+              </span>
+              {pedido.cliente ? (
+                <>
+                  <span className="line-clamp-1 text-xs text-foreground">
+                    {pedido.cliente.nome}
                   </span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+                  <span className="text-[11px] text-muted-foreground">
+                    {formatarCidadeRcc(
+                      pedido.cliente.municipio,
+                      pedido.cliente.uf
+                    )}
+                    {pedido.cliente.documento
+                      ? ` · ${pedido.cliente.documento}`
+                      : ""}
+                  </span>
+                </>
+              ) : (
+                <span className="text-[11px] text-muted-foreground">
+                  Sem cliente vinculado
+                </span>
+              )}
+            </button>
+          </li>
+        ))}
+      </ListaSugestaoFlutuante>
 
-      <p className="text-xs text-muted-foreground">
-        Pesquise pelo número do pedido de venda para preencher automaticamente os
-        dados do cliente.
-      </p>
+      {ocultarRotulo ? null : (
+        <p className="text-xs text-muted-foreground">
+          Pesquise pelo número do pedido de venda para preencher automaticamente os
+          dados do cliente.
+        </p>
+      )}
     </div>
   );
 }

@@ -118,9 +118,6 @@ export function CadastroDocumentoExternoDialog({
     if (values.distEletronica && !values.responsavelDocumentoId) {
       pendentes.push("Responsável pelo documento");
     }
-    if (values.distFisica && !values.responsavelId) {
-      pendentes.push("Responsável pela posse do documento");
-    }
     if (pendentes.length > 0) {
       setErro(`Preencha os campos obrigatórios: ${pendentes.join(", ")}.`);
       return;

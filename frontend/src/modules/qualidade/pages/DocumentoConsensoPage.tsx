@@ -24,8 +24,11 @@ import {
   scheduleQualidadeDocumentsFlush,
 } from "@qualidade/lib/qualidadePersistence";
 import { useLoading } from "@qualidade/components/providers/loading-provider";
+import {
+  mensagemLimiteAnexo,
+  SGQ_ANEXO_MAX_BYTES,
+} from "@qualidade/types/registro-anexo";
 
-const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_TYPES = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
 
 export function ConsensoDocumentoPage() {
@@ -124,8 +127,8 @@ export function ConsensoDocumentoPage() {
   function processarArquivo(file: File) {
     setError("");
 
-    if (file.size > MAX_FILE_BYTES) {
-      setError("Arquivo muito grande. Limite de 5 MB.");
+    if (file.size > SGQ_ANEXO_MAX_BYTES) {
+      setError(mensagemLimiteAnexo());
       return;
     }
 

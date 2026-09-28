@@ -2040,6 +2040,35 @@ export async function listQualidadeResponsaveis() {
   return result;
 }
 
+/** Colaboradores do orgânico (exceto desligados) para escolha de responsável na RNC. */
+export async function listOrganicoColaboradoresParaRnc() {
+  const rows = await prisma.rhOrganico.findMany({
+    where: {
+      status: { not: 'Desligado' },
+    },
+    select: {
+      id: true,
+      nome: true,
+      matricula: true,
+      cargo: true,
+      setor: true,
+      status: true,
+    },
+    orderBy: { nome: 'asc' },
+  });
+
+  return rows
+    .map((row) => ({
+      id: row.id,
+      nome: row.nome.trim(),
+      matricula: row.matricula.trim() === '—' ? '' : row.matricula.trim(),
+      cargo: row.cargo.trim() === '—' ? '' : row.cargo.trim(),
+      setor: row.setor.trim() === '—' ? '' : row.setor.trim(),
+      status: row.status,
+    }))
+    .filter((row) => row.nome && row.nome !== '—');
+}
+
 const sgqHistoricoMockDataDir = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',

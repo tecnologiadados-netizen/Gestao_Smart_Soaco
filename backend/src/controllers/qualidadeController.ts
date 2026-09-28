@@ -3,6 +3,8 @@ import {
   buscarClientesNomus,
   buscarDocumentosEntradaNomus,
   buscarFornecedoresNomus,
+  buscarItensPedidoVendaAtendidosNomus,
+  buscarNotasFiscaisPedidoVendaNomus,
   buscarPedidosVendaNomus,
   buscarPessoasNomus,
   buscarProdutosNomus,
@@ -11,6 +13,7 @@ import {
 import {
   getQualidadeBootstrap,
   importRegistrosFromJson,
+  listOrganicoColaboradoresParaRnc,
   listQualidadeResponsaveis,
   syncQualidadeAvaliacoes,
   syncQualidadeCalibrations,
@@ -72,15 +75,38 @@ export async function getQualidadeProdutos(req: Request, res: Response): Promise
 export async function getQualidadePedidosVenda(req: Request, res: Response): Promise<void> {
   try {
     const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+    const somenteAtendidos = req.query.somenteAtendidos === '1';
     const limit = parseLimit(
       typeof req.query.limit === 'string' ? req.query.limit : undefined,
       20,
       PEDIDOS_VENDA_SEARCH_LIMIT
     );
-    const result = await buscarPedidosVendaNomus({ q, limit });
+    const result = await buscarPedidosVendaNomus({ q, limit, somenteAtendidos });
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao buscar pedidos de venda.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function getQualidadeItensPedidoVenda(req: Request, res: Response): Promise<void> {
+  try {
+    const pedidoId = typeof req.params.pedidoId === 'string' ? req.params.pedidoId : '';
+    const result = await buscarItensPedidoVendaAtendidosNomus(pedidoId);
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao buscar itens do pedido.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function getQualidadeNotasFiscaisPedidoVenda(req: Request, res: Response): Promise<void> {
+  try {
+    const pedidoId = typeof req.params.pedidoId === 'string' ? req.params.pedidoId : '';
+    const result = await buscarNotasFiscaisPedidoVendaNomus(pedidoId);
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao buscar a nota fiscal do pedido.';
     res.status(500).json({ error: message });
   }
 }
@@ -229,6 +255,19 @@ export async function getQualidadeBootstrapHandler(_req: Request, res: Response)
   }
 }
 
+export async function getQualidadeOrganicoColaboradoresHandler(
+  _req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const colaboradores = await listOrganicoColaboradoresParaRnc();
+    res.json({ colaboradores });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao listar o orgânico.';
+    res.status(500).json({ error: message });
+  }
+}
+
 export async function getQualidadeResponsaveisHandler(_req: Request, res: Response): Promise<void> {
   try {
     const users = await listQualidadeResponsaveis();
@@ -294,7 +333,7 @@ export async function deleteQualidadeRegistroHandler(req: Request, res: Response
 
 export async function putQualidadeDocumentsHandler(req: Request, res: Response): Promise<void> {
   try {
-    // Body inválido/vazio (ex.: JSON > limite 15MB) chega como {} — não tratar como sucesso.
+    // Body inválido/vazio (ex.: JSON > limite 80MB) chega como {} — não tratar como sucesso.
     if (!req.body || typeof req.body !== 'object' || !Array.isArray(req.body.documents)) {
       res.status(400).json({
         error:

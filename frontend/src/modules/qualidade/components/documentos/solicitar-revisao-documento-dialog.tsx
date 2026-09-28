@@ -10,6 +10,11 @@ import { Textarea } from "@qualidade/components/ui/textarea";
 import { DocumentoStepper } from "@qualidade/components/documentos/documento-stepper";
 import { DocumentoArquivoField } from "@qualidade/components/documentos/documento-arquivo-field";
 import {
+  mensagemLimiteAnexo,
+  SGQ_ANEXO_MAX_BYTES,
+  SGQ_ANEXO_MAX_MB,
+} from "@qualidade/types/registro-anexo";
+import {
   defaultResponsaveisValues,
   DocumentoResponsaveisFieldset,
   type ResponsaveisFormValues,
@@ -131,8 +136,8 @@ export function SolicitarRevisaoDocumentoDialog({
   const fluxoExterno = doc?.origem === "externo";
 
   function handleFileSelect(file: File) {
-    if (file.size > 5 * 1024 * 1024) {
-      setError("O arquivo excede o limite de 5 MB.");
+    if (file.size > SGQ_ANEXO_MAX_BYTES) {
+      setError(mensagemLimiteAnexo());
       return;
     }
     const reader = new FileReader();
@@ -395,8 +400,8 @@ export function SolicitarRevisaoDocumentoDialog({
                     onRemove={handleRemoveArquivo}
                     hint={
                       fluxoExterno
-                        ? "Selecione o arquivo vigente desta atualização · máx. 5 MB"
-                        : "Selecione o arquivo atualizado desta revisão · máx. 5 MB"
+                        ? `Selecione o arquivo vigente desta atualização · máx. ${SGQ_ANEXO_MAX_MB} MB`
+                        : `Selecione o arquivo atualizado desta revisão · máx. ${SGQ_ANEXO_MAX_MB} MB`
                     }
                   />
                 </fieldset>

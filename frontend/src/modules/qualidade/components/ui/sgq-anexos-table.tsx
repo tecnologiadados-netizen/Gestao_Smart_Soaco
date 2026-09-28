@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { Paperclip, Plus, Trash2, Upload } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
+import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
 import {
   Table,
@@ -15,6 +16,7 @@ import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-p
 import {
   criarAnexoVazio,
   SGQ_ANEXO_ACCEPT,
+  mensagemLimiteAnexo,
   SGQ_ANEXO_MAX_BYTES,
   type SgqAnexo,
 } from "@qualidade/types/registro-anexo";
@@ -29,6 +31,8 @@ export interface SgqAnexosTableProps {
   emptyMessage?: string;
   addButtonLabel?: string;
   readOnlyEmptyMessage?: string;
+  /** Campo de título em cada linha. Usado nas evidências da RNC. */
+  comTitulo?: boolean;
 }
 
 export function SgqAnexosTable({
@@ -41,6 +45,7 @@ export function SgqAnexosTable({
   emptyMessage = 'Nenhum anexo adicionado. Clique em "Adicionar anexo" para incluir um arquivo.',
   addButtonLabel = "Adicionar anexo",
   readOnlyEmptyMessage = "Nenhum anexo.",
+  comTitulo = false,
 }: SgqAnexosTableProps) {
   const baseId = useId();
   const [erro, setErro] = useState("");
@@ -60,7 +65,7 @@ export function SgqAnexosTable({
 
   function selecionarArquivo(id: string, file: File) {
     if (file.size > SGQ_ANEXO_MAX_BYTES) {
-      setErro(`"${file.name}" excede o limite de 5 MB.`);
+      setErro(mensagemLimiteAnexo(file.name));
       return;
     }
     setErro("");
@@ -98,6 +103,11 @@ export function SgqAnexosTable({
         <TableHeader>
           <TableRow className="border-b-2 border-border">
             <TableHead className="w-10 border-r border-border/70">#</TableHead>
+            {comTitulo ? (
+              <TableHead className="w-[34%] border-r border-border/70">
+                Título
+              </TableHead>
+            ) : null}
             <TableHead className="min-w-0 border-r border-border/70">
               Arquivo
             </TableHead>
@@ -119,6 +129,20 @@ export function SgqAnexosTable({
                 <TableCell className="border-r border-border/60 text-center text-muted-foreground">
                   {index + 1}
                 </TableCell>
+                {comTitulo ? (
+                  <TableCell className="border-r border-border/60">
+                    <Input
+                      value={anexo.titulo ?? ""}
+                      placeholder="Título da evidência"
+                      disabled={disabled}
+                      readOnly={disabled}
+                      aria-label={`Título da evidência ${index + 1}`}
+                      onChange={(e) =>
+                        atualizarLinha(anexo.id, { titulo: e.target.value })
+                      }
+                    />
+                  </TableCell>
+                ) : null}
                 <TableCell className="max-w-0 border-r border-border/60 !whitespace-normal">
                   <div className="flex min-w-0 items-center gap-2 overflow-hidden">
                     <Paperclip className="size-4 shrink-0 text-muted-foreground" />
@@ -196,7 +220,7 @@ export function SgqAnexosTable({
           {anexosVisiveis.length === 0 ? (
             <TableRow>
               <TableCell
-                colSpan={3}
+                colSpan={comTitulo ? 4 : 3}
                 className="py-8 text-center text-sm text-muted-foreground"
               >
                 {emptyMessage}

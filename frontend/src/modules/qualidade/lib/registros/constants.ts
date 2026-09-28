@@ -7,7 +7,7 @@ export const registroTipoLabels = {
 
 export const registroTipoDescricoes = {
   rnc: "Registro de Não Conformidade",
-  rcc: "Registro de Controle de Conformidade",
+  rcc: "Registro de Reclamação do Cliente",
 } as const;
 
 /** Tipos disponíveis no módulo Registros (cadastro e consulta). */
@@ -21,7 +21,7 @@ export const MODULO_REGISTRO_TIPOS = [
 
 export const moduloRegistroTipoLabels: Record<ModuloRegistroTipo, string> = {
   rnc: "RNC — Registro de Não Conformidade",
-  rcc: "RCC — Registro de Controle de Conformidade",
+  rcc: "RCC — Registro de Reclamação do Cliente",
   "avaliacao-fornecedor": "Avaliação de fornecedor",
 };
 
@@ -48,6 +48,17 @@ export const registroStatusLabels: Record<RegistroStatus, string> = {
   encerrado: "Fechado",
 };
 
+/** Rótulo exibido na consulta e no detalhe. Na RNC, encerrado aparece como Finalizada. */
+export function rotuloStatusRegistro(registro: {
+  tipo: string;
+  status: RegistroStatus;
+}): string {
+  if (registro.tipo === "rnc" && registro.status === "encerrado") {
+    return "Finalizada";
+  }
+  return registroStatusLabels[registro.status];
+}
+
 export const ORIGEM_NOMUS_LABEL = "Sistema Nomus";
 
 /** Histórico RNC/RCC importado do Nomus — excluído da consulta e da sincronização. */
@@ -73,6 +84,9 @@ export const RNC_TIPOS_OCORRENCIA = [
   "Matéria-prima",
   "Relatórios de Ensaios",
 ] as const;
+
+/** Valor interno da opção que libera o texto livre do tipo de ocorrência. */
+export const RNC_TIPO_OCORRENCIA_OUTRO = "Outro";
 
 export const RNC_TIPOS_PRODUTO = [
   "Acabado",
@@ -124,7 +138,7 @@ export const rncFieldLabels = {
   tipoProduto: "Tipo de produto",
   descricaoOcorrencia: "Descrição da ocorrência (RNC)",
   setorDeteccao: "Setor de detecção",
-  responsavel: "Responsável",
+  responsavel: "Responsável pela detecção",
   acaoImediata: "Ação imediata",
   descricaoAcaoImediata: "Descrição da ação imediata",
   responsavelAcaoImediata: "Responsável pela ação imediata",
@@ -133,7 +147,8 @@ export const rncFieldLabels = {
   quantidade: "Quantidade",
   resolucaoNaoConformidade: "Resolução da não conformidade",
   registrarPlanoAcao: "Deseja registrar um plano de ação?",
-  causa: "Causa",
+  causa: "Causa raiz",
+  statusRnc: "Status da RNC",
   dataFechamento: "Data de fechamento do RNC",
   usuarioCriacao: "Usuário responsável pela criação",
   prazoExecucao: "Prazo de execução",

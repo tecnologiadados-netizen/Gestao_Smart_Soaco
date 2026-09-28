@@ -5,6 +5,11 @@ import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
 import { DocumentoArquivoField } from "@qualidade/components/documentos/documento-arquivo-field";
 import {
+  mensagemLimiteAnexo,
+  SGQ_ANEXO_MAX_BYTES,
+  SGQ_ANEXO_MAX_MB,
+} from "@qualidade/types/registro-anexo";
+import {
   anexosPreenchidos,
   defaultAnexoRows,
   EquipamentoAnexosField,
@@ -68,7 +73,10 @@ export function CadastroEquipamentosPage() {
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState("");
   function handleLaudoSelect(file: File) {
-    if (file.size > 5 * 1024 * 1024) return;
+    if (file.size > SGQ_ANEXO_MAX_BYTES) {
+      setErro(mensagemLimiteAnexo(file.name));
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       setLaudoNome(file.name);
@@ -348,7 +356,7 @@ export function CadastroEquipamentosPage() {
               arquivoDataUrl={laudoDataUrl}
               onFileSelect={handleLaudoSelect}
               onRemove={handleRemoveLaudo}
-              hint="PDF ou imagem do laudo de calibração · máx. 5 MB"
+              hint={`PDF ou imagem do laudo de calibração · máx. ${SGQ_ANEXO_MAX_MB} MB`}
             />
             <EquipamentoAnexosField value={anexos} onChange={setAnexos} />
           </fieldset>

@@ -487,7 +487,7 @@ export function DocumentoExternoRegistroCampos({
         {values.distFisica ? (
           <PessoaSearchField
             id="doc-externo-responsavel"
-            label="Responsável pela posse do documento *"
+            label="Responsável pela posse do documento"
             value={responsavelExibicao}
             apenasFuncionarios
             placeholder="Digite o nome do funcionário..."

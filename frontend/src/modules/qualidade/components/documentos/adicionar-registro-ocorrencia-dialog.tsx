@@ -14,6 +14,7 @@ import {
 } from "@qualidade/lib/qualidadePersistence";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import {
+  mensagemLimiteAnexo,
   SGQ_ANEXO_ACCEPT,
   SGQ_ANEXO_MAX_BYTES,
 } from "@qualidade/types/registro-anexo";
@@ -64,7 +65,7 @@ export function AdicionarRegistroOcorrenciaDialog({
 
   function selecionarArquivo(file: File) {
     if (file.size > SGQ_ANEXO_MAX_BYTES) {
-      setErro(`"${file.name}" excede o limite de 5 MB.`);
+      setErro(mensagemLimiteAnexo(file.name));
       return;
     }
     setErro("");
