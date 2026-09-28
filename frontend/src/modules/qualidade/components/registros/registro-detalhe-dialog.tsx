@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Pencil, X } from "lucide-react";
+import { Pencil } from "lucide-react";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Badge } from "@qualidade/components/ui/badge";
 import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
@@ -173,25 +174,11 @@ export function RegistroDetalheDialog({
         showCloseButton={false}
         className="max-h-[min(90vh,100dvh)] w-full max-w-4xl flex-col gap-0 overflow-hidden p-0"
       >
-        <div className="modal-header-bar flex shrink-0 items-center justify-between px-5 py-3.5">
-          <div>
-            <h2 className="text-base font-semibold text-white">
-              {editando ? `Editar ${codigoDocumento}` : codigoDocumento}
-            </h2>
-            <p className="mt-0.5 text-xs text-white/80">
-              {registroTipoLabels[registro.tipo]} ·{" "}
-              {registroTipoDescricoes[registro.tipo]}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="rounded p-1.5 hover:bg-white/20"
-            aria-label="Fechar"
-          >
-            <X className="size-5 text-white" />
-          </button>
-        </div>
+        <FormModalHeader
+          titulo={editando ? `Editar ${codigoDocumento}` : codigoDocumento}
+          descricao={`${registroTipoLabels[registro.tipo]} · ${registroTipoDescricoes[registro.tipo]}`}
+          onClose={() => onOpenChange(false)}
+        />
 
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
           <div className="mb-4 flex flex-wrap items-center gap-2">

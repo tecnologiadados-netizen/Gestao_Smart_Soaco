@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import {
   buildExternoRegistroMeta,
@@ -202,21 +202,14 @@ export function CadastroDocumentoExternoDialog({
         showCloseButton={false}
         className="max-h-[min(92vh,100dvh)] w-full max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
       >
-        <div className="modal-header-bar flex shrink-0 items-center justify-between px-5 py-3.5">
-          <h2 className="text-base font-semibold text-white">
-            {editando
+        <FormModalHeader
+          titulo={
+            editando
               ? "Editar documento externo"
-              : "Cadastro de documento externo"}
-          </h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded p-1.5 hover:bg-white/20"
-            aria-label="Fechar"
-          >
-            <X className="size-5" />
-          </button>
-        </div>
+              : "Cadastro de documento externo"
+          }
+          onClose={handleClose}
+        />
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6">

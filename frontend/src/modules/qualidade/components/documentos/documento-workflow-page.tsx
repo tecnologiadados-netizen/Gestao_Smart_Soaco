@@ -1,4 +1,5 @@
-import { ArrowLeft } from "lucide-react";
+import { createPortal } from "react-dom";
+import { FormModalHeader, useMarcarFormularioAberto } from "@qualidade/components/ui/form-modal";
 import { DocumentoStepper } from "@qualidade/components/documentos/documento-stepper";
 import { DocumentoLogsProcesso } from "@qualidade/components/documentos/documento-historico-workflow";
 import { cn } from "@qualidade/lib/utils";
@@ -26,40 +27,46 @@ export function DocumentoWorkflowPage({
   users,
   exiting = false,
 }: Props) {
-  return (
-    <div
-      className={cn(
-        "mx-auto flex w-full max-w-6xl flex-col rounded-xl border bg-card shadow-sm",
-        exiting && "sgq-view-exit"
-      )}
-    >
-      <div className="modal-header-bar flex shrink-0 items-center gap-3 px-5 py-3.5">
-        <button
-          type="button"
-          onClick={onBack}
-          className="rounded p-1.5 hover:bg-white/20"
-          aria-label="Voltar"
-        >
-          <ArrowLeft className="size-5 text-white" />
-        </button>
-        <h1 className="min-w-0 truncate text-base font-semibold text-white">
-          {title}
-        </h1>
-      </div>
+  useMarcarFormularioAberto(!exiting);
 
-      <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]">
-        <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden">
-          {children}
+  return createPortal(
+    <>
+      <div className="sgq-form-page-backdrop" onClick={onBack} aria-hidden="true" />
+      <div
+        className={cn(
+          "sgq-form-page sgq-form-page-frame is-wide",
+          exiting && "sgq-view-exit"
+        )}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
+        <div className="sgq-dialog-surface flex max-h-[min(92vh,100dvh)] w-full flex-col overflow-hidden bg-card text-card-foreground">
+          <FormModalHeader titulo={title} onClose={onBack} />
+          <div className="sgq-doc-timeline-bar">
+            <DocumentoStepper activeStep={activeStep} />
+          </div>
+
+          <div
+            className={cn(
+              "grid min-h-0 flex-1 gap-6 overflow-y-auto px-7 py-5",
+              version && users && "lg:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]"
+            )}
+          >
+            <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden">
+              {children}
+            </div>
+            {version && users ? (
+              <aside className="hidden min-w-0 lg:block">
+                <DocumentoLogsProcesso version={version} users={users} />
+              </aside>
+            ) : null}
+          </div>
+
+          <div className="sgq-form-footer">{footer}</div>
         </div>
-        <aside className="hidden min-w-0 space-y-4 lg:block">
-          <DocumentoStepper activeStep={activeStep} />
-          {version && users ? (
-            <DocumentoLogsProcesso version={version} users={users} />
-          ) : null}
-        </aside>
       </div>
-
-      <div className="sgq-form-footer">{footer}</div>
-    </div>
+    </>,
+    document.body
   );
 }

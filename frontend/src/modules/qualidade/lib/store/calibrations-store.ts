@@ -80,7 +80,10 @@ interface CalibrationsState {
   getAllEquipmentWithDue: () => EquipmentWithDue[];
   getEquipmentById: (id: string) => Equipment | undefined;
   getPendingVerifications: () => EquipmentWithDue[];
-  getPendingCalibrations: (tipo: "interna" | "externa") => EquipmentWithDue[];
+  getPendingCalibrations: (
+    tipo: "interna" | "externa",
+    responsavelId?: string
+  ) => EquipmentWithDue[];
   createEquipment: (input: CreateEquipmentInput) => string;
   updateEquipment: (id: string, input: UpdateEquipmentInput) => void;
   setEquipmentAtivo: (id: string, ativo: boolean) => void;
@@ -143,10 +146,11 @@ export const useCalibrationsStore = create<CalibrationsState>()((set, get) => ({
           .getEquipmentWithDue()
           .filter((e) => isDue(e.statusVerificacao)),
 
-      getPendingCalibrations: (tipo) =>
+      getPendingCalibrations: (tipo, responsavelId) =>
         get()
           .getEquipmentWithDue()
           .filter((e) => {
+            if (responsavelId && e.responsavelId !== responsavelId) return false;
             if (!isDue(e.statusCalibracao)) return false;
             if (tipo === "interna") {
               return e.tipoCalibracao === "interna" || e.tipoCalibracao === "ambos";

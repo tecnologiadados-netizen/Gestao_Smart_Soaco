@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { Plus } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -30,6 +31,7 @@ export function TiposDocumentoPage() {
   const [nome, setNome] = useState("");
   const [sigla, setSigla] = useState("");
   const [addError, setAddError] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNome, setEditNome] = useState("");
@@ -84,6 +86,7 @@ export function TiposDocumentoPage() {
     }
 
     resetAddForm();
+    setAddOpen(false);
   }
 
   function handleEdit(e: React.FormEvent) {
@@ -129,46 +132,24 @@ export function TiposDocumentoPage() {
     <div className="space-y-6">
       <PageBackLink to="/qualidade/configuracoes" />
 
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Categorias</h1>
-        <p className="text-sm text-muted-foreground">
-          Categorias documentais do SGQ
-        </p>
-      </div>
-
-      <form
-        onSubmit={handleAdd}
-        className="space-y-3 rounded-lg border bg-card p-4"
-      >
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-2">
-            <Label htmlFor="nome">Nome</Label>
-            <Input
-              id="nome"
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="sigla">Sigla</Label>
-            <Input
-              id="sigla"
-              value={sigla}
-              onChange={(e) => setSigla(e.target.value.toUpperCase())}
-              className="w-24 uppercase"
-              maxLength={6}
-              required
-            />
-          </div>
-          <Button type="submit">Adicionar</Button>
-        </div>
-        {addError ? (
-          <p className="text-sm text-destructive" role="alert">
-            {addError}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Categorias</h1>
+          <p className="text-sm text-muted-foreground">
+            Categorias documentais do SGQ
           </p>
-        ) : null}
-      </form>
+        </div>
+        <Button
+          type="button"
+          onClick={() => {
+            resetAddForm();
+            setAddOpen(true);
+          }}
+        >
+          <Plus className="size-4" />
+          Nova categoria
+        </Button>
+      </div>
 
       <SgqGradeSurface
         scrollRef={grade.tableScrollRef}
@@ -208,6 +189,45 @@ export function TiposDocumentoPage() {
       </Table>
       </SgqGradeSurface>
       <SgqGradeFiltroPortal grade={grade} />
+
+      <FormDialog
+        open={addOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAddOpen(false);
+            resetAddForm();
+          }
+        }}
+        titulo="Nova categoria"
+        descricao="Informe o nome e a sigla da categoria."
+        onSubmit={handleAdd}
+        submitLabel="Adicionar"
+        error={addError}
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="nome">Nome</Label>
+            <Input
+              id="nome"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              autoFocus
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="sigla">Sigla</Label>
+            <Input
+              id="sigla"
+              value={sigla}
+              onChange={(e) => setSigla(e.target.value.toUpperCase())}
+              className="uppercase"
+              maxLength={6}
+              required
+            />
+          </div>
+        </div>
+      </FormDialog>
 
       <FormDialog
         open={editingId !== null}

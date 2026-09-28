@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FileText, X } from "lucide-react";
+import { FileText } from "lucide-react";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Input } from "@qualidade/components/ui/input";
@@ -235,19 +236,7 @@ export function RevalidarDocumentoDialog({
         showCloseButton={false}
         className="z-[70] max-h-[94vh] w-[calc(100%-2rem)] max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
       >
-        <div className="modal-header-bar flex items-center justify-between px-8 py-4">
-          <h2 className="text-base font-semibold text-white">
-            Revalidar documento
-          </h2>
-          <button
-            type="button"
-            onClick={handleFechar}
-            className="rounded p-1.5 hover:bg-white/20"
-            aria-label="Fechar"
-          >
-            <X className="size-5 text-white" />
-          </button>
-        </div>
+        <FormModalHeader titulo="Revalidar documento" onClose={handleFechar} />
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-muted/20 p-8">

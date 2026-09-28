@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useState } from "react";
-import { X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -313,20 +313,16 @@ export function CadastroDocumentoInternoDialog({
           isEdicao && "z-[60]"
         )}
       >
-        <div className="modal-header-bar flex shrink-0 items-center justify-between px-5 py-3.5">
-          <h2 className="text-base font-semibold text-white">
-            {isEdicao
+        <FormModalHeader
+          titulo={
+            isEdicao
               ? "Editar cadastro do documento"
-              : "Cadastro de documento interno"}
-          </h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded p-1.5 hover:bg-white/20"
-            aria-label="Fechar"
-          >
-            <X className="size-5" />
-          </button>
+              : "Cadastro de documento interno"
+          }
+          onClose={handleClose}
+        />
+        <div className="sgq-doc-timeline-bar">
+          <DocumentoStepper activeStep={0} />
         </div>
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
@@ -338,7 +334,7 @@ export function CadastroDocumentoInternoDialog({
               {formError}
             </div>
           ) : null}
-          <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto overscroll-y-contain p-6 lg:grid-cols-[1fr_240px]">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6">
             <div className="space-y-6">
               <fieldset className="brand-fieldset space-y-4">
                 <legend className="text-base">Identificação</legend>
@@ -483,10 +479,6 @@ export function CadastroDocumentoInternoDialog({
                 onChange={setPublicacao}
               />
             </div>
-
-            <aside className="hidden shrink-0 lg:block">
-              <DocumentoStepper activeStep={0} />
-            </aside>
           </div>
 
           <div className="sgq-form-footer">

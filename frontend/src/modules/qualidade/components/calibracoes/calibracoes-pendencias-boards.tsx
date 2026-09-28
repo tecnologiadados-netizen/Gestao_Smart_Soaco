@@ -129,7 +129,7 @@ export function CalibracoesPendenciasBoards({ internas, externas }: Props) {
       <div className="grid gap-6 lg:grid-cols-2">
         <CalibracoesKanbanColumn
           titulo="Calibrações pendentes (Interna)"
-          descricao="Equipamentos com calibração interna vencida ou próxima"
+          descricao="Sob sua responsabilidade, vencidas ou próximas"
           icon={Wrench}
           items={internas}
           emptyMessage="Você não possui calibrações internas pendentes."
@@ -138,7 +138,7 @@ export function CalibracoesPendenciasBoards({ internas, externas }: Props) {
         />
         <CalibracoesKanbanColumn
           titulo="Calibrações pendentes (Externa)"
-          descricao="Equipamentos com calibração externa vencida ou próxima"
+          descricao="Sob sua responsabilidade, vencidas ou próximas"
           icon={Building2}
           items={externas}
           emptyMessage="Você não possui calibrações externas pendentes."

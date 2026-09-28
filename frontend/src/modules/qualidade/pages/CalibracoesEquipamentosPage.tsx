@@ -10,7 +10,7 @@ import {
   EquipamentoAnexosField,
   type AnexoItem,
 } from "@qualidade/components/calibracoes/equipamento-anexos-field";
-import { PageBackLink } from "@qualidade/components/layout/page-back-link";
+import { FormPageModal } from "@qualidade/components/ui/form-modal";
 import {
   Select,
   SelectContent,
@@ -32,6 +32,9 @@ import {
   markQualidadeCalibrationFilesPending,
   scheduleQualidadeCalibrationsFlush,
 } from "@qualidade/lib/qualidadePersistence";
+import { PeriodicidadeCalibracaoField } from "@qualidade/components/calibracoes/periodicidade-calibracao-field";
+import { periodicidadeParaDias } from "@qualidade/lib/utils/periodicidade-calibracao";
+import type { UnidadePeriodicidade } from "@qualidade/lib/utils/periodicidade-calibracao";
 import type { Fornecedor } from "@qualidade/types/avaliacao-fornecedor";
 
 const selectTriggerClass =
@@ -56,7 +59,8 @@ export function CadastroEquipamentosPage() {
   const [fornecedorSelecionado, setFornecedorSelecionado] =
     useState<Fornecedor | null>(null);
   const [tipoCalibracao, setTipoCalibracao] = useState<"interna" | "externa" | "ambos">("interna");
-  const [freqCal, setFreqCal] = useState("365");
+  const [unidadeCal, setUnidadeCal] = useState<UnidadePeriodicidade>("anos");
+  const [qtdCal, setQtdCal] = useState("1");
   const [ultimaCalibracao, setUltimaCalibracao] = useState("");
   const [laudoNome, setLaudoNome] = useState("");
   const [laudoDataUrl, setLaudoDataUrl] = useState("");
@@ -81,7 +85,8 @@ export function CadastroEquipamentosPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const pendentes: string[] = [];
-    if (!codigo.trim()) pendentes.push("Código");
+    const codigoNorm = codigo.trim();
+    if (!codigoNorm) pendentes.push("Código");
     if (!descricao.trim()) pendentes.push("Descrição");
     if (possuiLocalFixo === null) pendentes.push("Possui local fixo de uso");
     if (possuiLocalFixo && !setorId) pendentes.push("Setor do equipamento");
@@ -91,13 +96,26 @@ export function CadastroEquipamentosPage() {
     if (!responsavelId) pendentes.push("Responsável pela calibração");
     if (!fornecedorSelecionado?.nome?.trim()) pendentes.push("Fornecedor");
     if (!tipoCalibracao) pendentes.push("Tipo calibração");
-    if (!Number.isFinite(Number(freqCal)) || Number(freqCal) < 1) {
-      pendentes.push("Freq. calibração (dias)");
+    if (!Number.isInteger(Number(qtdCal)) || Number(qtdCal) < 1) {
+      pendentes.push("Periodicidade de calibração");
     }
     if (!ultimaCalibracao) pendentes.push("Última calibração");
     if (!laudoNome.trim() || !laudoDataUrl.trim()) pendentes.push("Laudo");
     if (pendentes.length > 0) {
       setErro(`Preencha os campos obrigatórios: ${pendentes.join(", ")}.`);
+      return;
+    }
+    const codigoOcupado = useCalibrationsStore
+      .getState()
+      .equipment.some(
+        (eq) =>
+          eq.codigo.trim().toLocaleLowerCase("pt-BR") ===
+          codigoNorm.toLocaleLowerCase("pt-BR")
+      );
+    if (codigoOcupado) {
+      setErro(
+        `Já existe um equipamento com o código ${codigoNorm}. O cadastro vale para todos os usuários; escolha outro código.`
+      );
       return;
     }
     if (saving) return;
@@ -107,7 +125,7 @@ export function CadastroEquipamentosPage() {
     setSaving(true);
     await withLoading(async () => {
       const id = createEquipment({
-        codigo,
+        codigo: codigoNorm,
         descricao,
         local: "",
         setorId: localFixo ? setorId : "",
@@ -117,7 +135,7 @@ export function CadastroEquipamentosPage() {
         responsavelPosseId: localFixo ? undefined : responsavelPosseId,
         responsavelPosseNome: localFixo ? undefined : responsavelPosseNome,
         tipoCalibracao,
-        frequenciaCalibracaoDias: Number(freqCal),
+        frequenciaCalibracaoDias: periodicidadeParaDias(Number(qtdCal), unidadeCal),
         ultimaCalibracao: ultimaCalibracao
           ? new Date(ultimaCalibracao).toISOString()
           : undefined,
@@ -137,28 +155,17 @@ export function CadastroEquipamentosPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <PageBackLink to="/qualidade/calibracoes" label="Voltar para calibrações" />
-
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Cadastro de equipamentos</h1>
-        <p className="text-sm text-muted-foreground">
-          Registre equipamentos de medição e controle
-        </p>
-      </div>
-
+    <FormPageModal
+      size="lg"
+      titulo="Novo equipamento"
+      descricao="Preencha a última calibração para migrar histórico manualmente"
+      onClose={() => navigate("/qualidade/calibracoes")}
+    >
       <form
         onSubmit={handleSubmit}
-        className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-sm"
+        className="flex min-h-0 flex-1 flex-col"
       >
-        <div className="modal-header-bar px-5 py-3.5">
-          <h2 className="text-base font-semibold text-white">Novo equipamento</h2>
-          <p className="mt-0.5 text-xs text-white/80">
-            Preencha a última calibração para migrar histórico manualmente
-          </p>
-        </div>
-
-        <div className="space-y-6 p-6">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-y-contain px-7 py-5">
           <fieldset className="brand-fieldset space-y-4">
             <legend>Identificação</legend>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -313,17 +320,13 @@ export function CadastroEquipamentosPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="freqCal">Freq. calibração (dias) *</Label>
-                <Input
-                  id="freqCal"
-                  type="number"
-                  min={1}
-                  value={freqCal}
-                  onChange={(e) => setFreqCal(e.target.value)}
-                  required
-                />
-              </div>
+              <PeriodicidadeCalibracaoField
+                idPrefix="freqCal"
+                quantidade={qtdCal}
+                unidade={unidadeCal}
+                onQuantidadeChange={setQtdCal}
+                onUnidadeChange={setUnidadeCal}
+              />
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="ultCal">Última calibração *</Label>
                 <Input
@@ -362,6 +365,6 @@ export function CadastroEquipamentosPage() {
           </Button>
         </div>
       </form>
-    </div>
+    </FormPageModal>
   );
 }

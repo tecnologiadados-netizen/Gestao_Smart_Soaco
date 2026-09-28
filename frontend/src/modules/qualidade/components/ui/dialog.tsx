@@ -5,10 +5,12 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@qualidade/lib/utils"
 import { Button } from "@qualidade/components/ui/button"
+import { useMarcarFormularioAberto } from "@qualidade/components/ui/form-modal"
 import { XIcon } from "lucide-react"
 
-function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+function Dialog({ open, ...props }: DialogPrimitive.Root.Props) {
+  useMarcarFormularioAberto(open === true)
+  return <DialogPrimitive.Root data-slot="dialog" open={open} {...props} />
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
@@ -31,7 +33,7 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-[100] bg-black/40 dark:bg-black/55 supports-backdrop-filter:backdrop-blur-sm",
+        "fixed inset-0 isolate z-[100] bg-[#121418]/70 supports-backdrop-filter:backdrop-blur-[2px]",
         className
       )}
       {...props}
@@ -53,7 +55,7 @@ function DialogContent({
   return (
     <DialogPortal>
       <DialogOverlay />
-      <div className="qualidade-portal sgq-dialog-viewport">
+      <div className="qualidade-portal sgq-dialog-viewport sgq-form-modal">
         <DialogPrimitive.Popup
           data-slot="dialog-content"
           className={cn(
@@ -64,7 +66,7 @@ function DialogContent({
         >
           <div
             className={cn(
-              "sgq-dialog-surface flex max-h-[inherit] w-full flex-col overflow-hidden rounded-xl bg-popover text-sm text-popover-foreground ring-1 ring-foreground/10",
+              "sgq-dialog-surface flex max-h-[inherit] w-full flex-col overflow-hidden rounded-[1.25rem] text-sm",
               !isCompactLayout && "gap-4 p-4"
             )}
           >

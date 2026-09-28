@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle } from "lucide-react";
 import { CalibracoesPendenciasBoards } from "@qualidade/components/calibracoes/calibracoes-pendencias-boards";
 import { Button } from "@qualidade/components/ui/button";
 import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
+import { useConfigStore } from "@qualidade/lib/store/config-store";
 import type { DueStatus, EquipmentWithDue } from "@qualidade/types/calibration";
 
 type FiltroVencimento = "ambas" | "vencidas" | "proximas";
@@ -37,6 +37,7 @@ function ordenarPorVencimento(items: EquipmentWithDue[]): EquipmentWithDue[] {
 
 export function CalibracoesPage() {
   const equipment = useCalibrationsStore((s) => s.equipment);
+  const currentUserId = useConfigStore((s) => s.currentUserId);
   const getPendingCalibrations = useCalibrationsStore(
     (s) => s.getPendingCalibrations
   );
@@ -46,28 +47,28 @@ export function CalibracoesPage() {
   const internas = useMemo(
     () =>
       ordenarPorVencimento(
-        getPendingCalibrations("interna").filter((e) =>
+        getPendingCalibrations("interna", currentUserId).filter((e) =>
           statusPassaFiltro(e.statusCalibracao, filtroVencimento)
         )
       ),
-    [equipment, getPendingCalibrations, filtroVencimento]
+    [currentUserId, equipment, getPendingCalibrations, filtroVencimento]
   );
   const externas = useMemo(
     () =>
       ordenarPorVencimento(
-        getPendingCalibrations("externa").filter((e) =>
+        getPendingCalibrations("externa", currentUserId).filter((e) =>
           statusPassaFiltro(e.statusCalibracao, filtroVencimento)
         )
       ),
-    [equipment, getPendingCalibrations, filtroVencimento]
+    [currentUserId, equipment, getPendingCalibrations, filtroVencimento]
   );
 
   const totalPendencias = internas.length + externas.length;
   const totalGeral = useMemo(() => {
-    const i = getPendingCalibrations("interna").length;
-    const e = getPendingCalibrations("externa").length;
+    const i = getPendingCalibrations("interna", currentUserId).length;
+    const e = getPendingCalibrations("externa", currentUserId).length;
     return i + e;
-  }, [equipment, getPendingCalibrations]);
+  }, [currentUserId, equipment, getPendingCalibrations]);
 
   return (
     <div className="space-y-6">
@@ -102,13 +103,6 @@ export function CalibracoesPage() {
           ))}
         </div>
       </div>
-
-      {totalGeral > 0 ? (
-        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-          <AlertTriangle className="size-4 shrink-0" />
-          Existem equipamentos com calibrações pendentes.
-        </div>
-      ) : null}
 
       <CalibracoesPendenciasBoards internas={internas} externas={externas} />
     </div>

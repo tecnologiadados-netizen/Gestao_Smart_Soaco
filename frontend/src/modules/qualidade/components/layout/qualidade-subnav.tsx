@@ -75,8 +75,9 @@ export function QualidadeSubnav() {
 
   const calPending = useMemo(
     () =>
-      getPendingCalibrations('interna').length + getPendingCalibrations('externa').length,
-    [calibrationEquipment, getPendingCalibrations],
+      getPendingCalibrations('interna', currentUserId).length +
+      getPendingCalibrations('externa', currentUserId).length,
+    [calibrationEquipment, currentUserId, getPendingCalibrations],
   );
 
   const pendingCount =

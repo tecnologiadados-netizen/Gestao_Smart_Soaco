@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
-import { X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { MultiSelectSearch } from "@qualidade/components/ui/multi-select-search";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Input } from "@qualidade/components/ui/input";
@@ -257,19 +257,12 @@ export function CadastroRegistroDialog({
           editando && "z-[60]"
         )}
       >
-        <div className="modal-header-bar flex shrink-0 items-center justify-between px-5 py-3.5">
-          <h2 className="text-base font-semibold text-white">
-            {editando ? "Editar registro interno" : "Cadastro de registro interno"}
-          </h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded p-1.5 hover:bg-white/20"
-            aria-label="Fechar"
-          >
-            <X className="size-5" />
-          </button>
-        </div>
+        <FormModalHeader
+          titulo={
+            editando ? "Editar registro interno" : "Cadastro de registro interno"
+          }
+          onClose={handleClose}
+        />
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6">

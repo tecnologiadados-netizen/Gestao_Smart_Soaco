@@ -1636,10 +1636,29 @@ export async function syncQualidadeCalibrations(payload: {
   // Sync aditivo: NÃO apagar calibrações/verificações/tarefas ausentes do payload
   // (estado stale multi-aba apagava histórico). Exclusão: deleteQualidadeEquipamento.
 
+  const codigosGravados = await prisma.sgqEquipamento.findMany({
+    select: { uid: true, codigo: true },
+  });
+  const donoPorCodigo = new Map(
+    codigosGravados.map((row) => [
+      row.codigo.trim().toLocaleLowerCase('pt-BR'),
+      row.uid,
+    ])
+  );
+
   for (const eq of payload.equipment) {
     const uid = String(eq.id ?? '');
-    const codigo = String(eq.codigo ?? '');
+    const codigo = String(eq.codigo ?? '').trim();
     if (!uid || !codigo) continue;
+
+    const chaveCodigo = codigo.toLocaleLowerCase('pt-BR');
+    const dono = donoPorCodigo.get(chaveCodigo);
+    if (dono && dono !== uid) {
+      throw new Error(
+        `Já existe um equipamento com o código ${codigo}. Use outro código.`
+      );
+    }
+    donoPorCodigo.set(chaveCodigo, uid);
 
     const existing = await prisma.sgqEquipamento.findUnique({
       where: { uid },

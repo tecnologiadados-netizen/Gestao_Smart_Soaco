@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO } from "date-fns";
-import { X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -280,33 +280,28 @@ export function SolicitarRevisaoDocumentoDialog({
         showCloseButton={false}
         className="z-[80] flex max-h-[94vh] w-[calc(100%-2rem)] max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
       >
-        <div className="modal-header-bar flex items-center justify-between px-8 py-4">
-          <h2 className="text-base font-semibold text-white">
-            {fluxoExterno
+        <FormModalHeader
+          titulo={
+            fluxoExterno
               ? "Atualizar documento externo"
-              : "Solicitar revisão do documento"}
-          </h2>
-          <button
-            type="button"
-            onClick={handleFechar}
-            className="rounded p-1.5 hover:bg-white/20"
-            aria-label="Fechar"
-          >
-            <X className="size-5 text-white" />
-          </button>
-        </div>
+              : "Solicitar revisão do documento"
+          }
+          onClose={handleFechar}
+        />
+        {fluxoInterno ? (
+          <div className="sgq-doc-timeline-bar">
+            <DocumentoStepper activeStep={0} variant="revisao" />
+          </div>
+        ) : null}
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto bg-muted/20 p-8">
             <div className="mx-auto w-full max-w-3xl space-y-6">
               {fluxoInterno ? (
-                <div className="space-y-3 text-center">
-                  <DocumentoStepper activeStep={0} variant="revisao" />
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    Após confirmar, o documento seguirá o fluxo: elaboração →
-                    consenso → aprovação → publicação.
-                  </p>
-                </div>
+                <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                  Após confirmar, o documento seguirá o fluxo: elaboração →
+                  consenso → aprovação → publicação.
+                </p>
               ) : null}
 
               <fieldset className="brand-fieldset space-y-4">
