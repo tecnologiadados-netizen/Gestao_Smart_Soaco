@@ -513,7 +513,7 @@ function htmlTabela(campos: CampoRelato[]): string {
       return `<tr><td>${esc(c.titulo)}</td><td>${esc(c.nf)}</td><td>${esc(c.pc)}</td>${dif}</tr>${detalhe}${prazos}<tr class="decisao"><td colspan="4">${htmlDecisao(c)}</td></tr>`;
     })
     .join('');
-  return `<table><thead><tr><th></th><th>NF</th><th>PC</th><th>Dif.</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table class="cmp"><thead><tr><th></th><th>NF</th><th>PC</th><th>Dif.</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function htmlTabelaPrazos(t: TabelaPrazosRelato | null | undefined): string {
@@ -536,7 +536,7 @@ function htmlTabelaPrazos(t: TabelaPrazosRelato | null | undefined): string {
       );
     })
     .join('');
-  return `<div class="prazos"><table>
+  return `<div class="prazos"><table class="prazos-grid">
 <thead><tr>
 <th>Parc.</th>
 <th>Data base NF/DE</th>
@@ -595,12 +595,12 @@ export function renderConferenciaHtml(relato: RelatoConferencia): string {
     * { box-sizing: border-box; }
     body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: var(--surface); color: var(--navy); line-height: 1.35; }
     .topo { background: var(--navy); color: var(--white); border-bottom: 4px solid var(--gold); }
-    .topo-inner { max-width: 560px; margin: 0 auto; padding: 18px 16px 16px; display: flex; align-items: center; gap: 16px; }
+    .topo-inner { max-width: 880px; margin: 0 auto; padding: 18px 16px 16px; display: flex; align-items: center; gap: 16px; }
     .topo img { height: 64px; width: auto; display: block; }
     .topo h1 { margin: 0; font-size: 20px; font-weight: 700; }
     .topo p { margin: 4px 0 0; color: var(--gold); font-size: 13px; font-weight: 600; }
     .quando { margin: 6px 0 0; color: rgb(255 255 255 / 0.75); font-size: 12px; font-weight: 500; }
-    .wrap { max-width: 560px; margin: 0 auto; padding: 16px 14px 40px; }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 16px 14px 40px; }
     .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     .meta div, .bloco, .produto { background: var(--white); border: 1px solid var(--line); border-radius: 12px; }
     .meta div { padding: 10px 12px; }
@@ -619,24 +619,45 @@ export function renderConferenciaHtml(relato: RelatoConferencia): string {
     .obs { color: var(--graphite); font-size: 13px; margin-top: 4px; }
     .produto h3 { margin: 0 0 8px; font-size: 16px; }
     .produto h3 span { color: var(--gray); font-weight: 600; font-size: 13px; }
-    table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    th { text-align: right; color: var(--white); background: var(--navy); font-weight: 650; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; padding: 6px 8px; }
-    th:first-child { text-align: left; border-radius: 6px 0 0 0; }
-    th:last-child { border-radius: 0 6px 0 0; }
-    td { padding: 8px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; color: var(--graphite); }
-    td:first-child { text-align: left; font-weight: 700; color: var(--navy); }
-    tr.decisao td, tr.detalhe td { text-align: left; font-weight: 500; border-bottom: none; padding-top: 0; }
+    table.cmp { width: 100%; border-collapse: collapse; font-size: 14px; }
+    table.cmp > thead > tr > th { text-align: right; color: var(--white); background: var(--navy); font-weight: 650; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; padding: 6px 8px; }
+    table.cmp > thead > tr > th:first-child { text-align: left; border-radius: 6px 0 0 0; }
+    table.cmp > thead > tr > th:last-child { border-radius: 0 6px 0 0; }
+    table.cmp > tbody > tr > td { padding: 8px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; color: var(--graphite); }
+    table.cmp > tbody > tr > td:first-child { text-align: left; font-weight: 700; color: var(--navy); }
+    table.cmp > tbody > tr.decisao > td,
+    table.cmp > tbody > tr.detalhe > td { text-align: left; font-weight: 500; border-bottom: none; padding-top: 4px; padding-bottom: 8px; }
     .neg { color: var(--no); font-weight: 700; }
     .pos { color: var(--blue); font-weight: 700; }
     details summary { cursor: pointer; color: var(--blue); font-weight: 650; font-size: 13px; }
     details p { margin: 6px 0 0; color: var(--graphite); font-size: 13px; font-weight: 500; }
-    .prazos { margin-top: 10px; overflow-x: auto; }
-    .prazos table { font-size: 12px; min-width: 640px; }
-    .prazos th { font-size: 10px; padding: 5px 6px; white-space: nowrap; }
-    .prazos td { padding: 6px; white-space: nowrap; }
-    .prazos tr.diverg td { background: rgb(245 158 11 / 0.12); }
-    .prazos th:nth-child(4), .prazos th:nth-child(7),
-    .prazos td:nth-child(4), .prazos td:nth-child(7) { font-weight: 700; }
+    .prazos { margin-top: 8px; overflow-x: auto; }
+    table.prazos-grid { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 12px; }
+    table.prazos-grid th,
+    table.prazos-grid td {
+      text-align: left;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      color: var(--graphite);
+      background: var(--white);
+    }
+    table.prazos-grid th {
+      color: var(--white);
+      background: var(--navy);
+      font-size: 10px;
+      font-weight: 650;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+      border-bottom: none;
+    }
+    table.prazos-grid th:nth-child(4),
+    table.prazos-grid th:nth-child(7),
+    table.prazos-grid td:nth-child(4),
+    table.prazos-grid td:nth-child(7) { text-align: right; }
+    table.prazos-grid tr.diverg td { background: rgb(245 158 11 / 0.16); }
     .rodape { color: var(--gray); font-size: 12px; margin-top: 16px; }
   </style>
 </head>
