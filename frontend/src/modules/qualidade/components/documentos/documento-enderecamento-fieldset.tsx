@@ -233,7 +233,7 @@ export function DocumentoEnderecamentoFieldset({
           {guardaFisica && onResponsavelChange ? (
             <PessoaSearchField
               id="responsavel-posse-documento"
-              label="Responsável pela posse do documento *"
+              label="Responsável pela posse do documento"
               value={responsavelNome || responsavelId}
               apenasFuncionarios
               placeholder="Digite o nome do funcionário..."
