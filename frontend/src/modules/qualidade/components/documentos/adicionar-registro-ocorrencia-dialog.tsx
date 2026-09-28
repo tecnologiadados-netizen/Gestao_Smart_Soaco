@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { format } from "date-fns";
-import { Paperclip, Upload, X } from "lucide-react";
+import { Paperclip, Upload } from "lucide-react";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Input } from "@qualidade/components/ui/input";
@@ -13,6 +14,7 @@ import {
 } from "@qualidade/lib/qualidadePersistence";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import {
+  mensagemLimiteAnexo,
   SGQ_ANEXO_ACCEPT,
   SGQ_ANEXO_MAX_BYTES,
 } from "@qualidade/types/registro-anexo";
@@ -63,7 +65,7 @@ export function AdicionarRegistroOcorrenciaDialog({
 
   function selecionarArquivo(file: File) {
     if (file.size > SGQ_ANEXO_MAX_BYTES) {
-      setErro(`"${file.name}" excede o limite de 5 MB.`);
+      setErro(mensagemLimiteAnexo(file.name));
       return;
     }
     setErro("");
@@ -128,19 +130,7 @@ export function AdicionarRegistroOcorrenciaDialog({
         showCloseButton={false}
         className="z-[60] max-h-[min(92vh,100dvh)] w-full max-w-lg flex-col gap-0 overflow-hidden p-0"
       >
-        <div className="modal-header-bar flex shrink-0 items-center justify-between px-5 py-3.5">
-          <h2 className="text-base font-semibold text-white">
-            Adicionar registro
-          </h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded p-1.5 hover:bg-white/20"
-            aria-label="Fechar"
-          >
-            <X className="size-5" />
-          </button>
-        </div>
+        <FormModalHeader titulo="Adicionar registro" onClose={handleClose} />
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="space-y-5 p-6">

@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { parseISO } from "date-fns";
-import { X } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
 import { DocumentoArquivoField } from "@qualidade/components/documentos/documento-arquivo-field";
+import {
+  mensagemLimiteAnexo,
+  SGQ_ANEXO_MAX_BYTES,
+  SGQ_ANEXO_MAX_MB,
+} from "@qualidade/types/registro-anexo";
 import {
   anexosPreenchidos,
   defaultAnexoRows,
@@ -30,6 +35,7 @@ import {
   tipoCalibracaoSelectLabel,
   userSelectLabel,
 } from "@qualidade/lib/utils/select-display";
+import { rotuloPeriodicidade } from "@qualidade/lib/utils/periodicidade-calibracao";
 import { dueStatusLabels } from "@qualidade/lib/utils/status-labels";
 
 interface EquipamentoCalibracaoFluxoDialogProps {
@@ -58,12 +64,20 @@ function ReadOnlyField({
 
 function LaudoActions({
   dataUrl,
+  storagePath,
   nome,
 }: {
-  dataUrl: string;
+  dataUrl?: string;
+  storagePath?: string;
   nome: string;
 }) {
-  return <CalibracaoArquivoActions dataUrl={dataUrl} nome={nome} />;
+  return (
+    <CalibracaoArquivoActions
+      dataUrl={dataUrl}
+      storagePath={storagePath}
+      nome={nome}
+    />
+  );
 }
 
 export function EquipamentoCalibracaoFluxoDialog({
@@ -76,6 +90,7 @@ export function EquipamentoCalibracaoFluxoDialog({
   const registerCalibration = useCalibrationsStore((s) => s.registerCalibration);
   const departments = useConfigStore((s) => s.departments);
   const users = useConfigStore((s) => s.users);
+  const currentUserId = useConfigStore((s) => s.currentUserId);
 
   const equipment = equipmentId
     ? equipmentState.find((e) => e.id === equipmentId)
@@ -93,6 +108,9 @@ export function EquipamentoCalibracaoFluxoDialog({
     [equipment]
   );
   const statusCalibracao = calcularDueStatus(proximaCalibracao);
+  const podeCalibrar = Boolean(
+    equipment && equipment.responsavelId === currentUserId
+  );
 
   const [mostrarNovaCalibracao, setMostrarNovaCalibracao] = useState(false);
   const [calibracaoRegistrada, setCalibracaoRegistrada] = useState(false);
@@ -142,8 +160,8 @@ export function EquipamentoCalibracaoFluxoDialog({
   }
 
   function handleLaudoSelect(file: File) {
-    if (file.size > 5 * 1024 * 1024) {
-      setError("O arquivo excede o limite de 5 MB.");
+    if (file.size > SGQ_ANEXO_MAX_BYTES) {
+      setError(mensagemLimiteAnexo());
       return;
     }
     const reader = new FileReader();
@@ -158,6 +176,11 @@ export function EquipamentoCalibracaoFluxoDialog({
   async function handleRegistrarCalibracao(e: React.FormEvent) {
     e.preventDefault();
     if (!equipmentId) return;
+
+    if (!podeCalibrar) {
+      setError("Somente o responsável pela calibração pode registrar o laudo.");
+      return;
+    }
 
     if (!laudoNome.trim() || !laudoDataUrl.trim()) {
       setError("Anexe o laudo da nova calibração.");
@@ -211,26 +234,15 @@ export function EquipamentoCalibracaoFluxoDialog({
         showCloseButton={false}
         className="max-h-[min(92vh,100dvh)] w-full max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
       >
-        <div className="modal-header-bar flex shrink-0 items-center justify-between px-5 py-3.5">
-          <div>
-            <h2 className="text-base font-semibold text-white">
-              {mostrarNovaCalibracao
-                ? "Nova calibração"
-                : "Equipamento — visualização"}
-            </h2>
-            <p className="mt-0.5 text-xs text-white/80">
-              {equipment.codigo} · {equipment.descricao}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded p-1.5 hover:bg-white/20"
-            aria-label="Fechar"
-          >
-            <X className="size-5 text-white" />
-          </button>
-        </div>
+        <FormModalHeader
+          titulo={
+            mostrarNovaCalibracao
+              ? "Nova calibração"
+              : "Equipamento — visualização"
+          }
+          descricao={`${equipment.codigo} · ${equipment.descricao}`}
+          onClose={handleClose}
+        />
 
         {mostrarNovaCalibracao ? (
           <form
@@ -278,9 +290,9 @@ export function EquipamentoCalibracaoFluxoDialog({
                     required
                   />
                   <p className="text-xs text-muted-foreground">
-                    Sugestão automática com base na frequência de{" "}
-                    {equipment.frequenciaCalibracaoDias} dias — ajuste se
-                    necessário.
+                    Sugestão automática com base na periodicidade de{" "}
+                    {rotuloPeriodicidade(equipment.frequenciaCalibracaoDias)} —
+                    ajuste se necessário.
                   </p>
                 </div>
               </div>
@@ -296,7 +308,7 @@ export function EquipamentoCalibracaoFluxoDialog({
                     setLaudoNome("");
                     setLaudoDataUrl("");
                   }}
-                  hint="PDF ou imagem do laudo · máx. 5 MB"
+                  hint={`PDF ou imagem do laudo · máx. ${SGQ_ANEXO_MAX_MB} MB`}
                 />
                 <EquipamentoAnexosField value={anexos} onChange={setAnexos} />
               </fieldset>
@@ -398,8 +410,8 @@ export function EquipamentoCalibracaoFluxoDialog({
                     value={tipoCalibracaoSelectLabel(equipment.tipoCalibracao)}
                   />
                   <ReadOnlyField
-                    label="Freq. calibração (dias)"
-                    value={String(equipment.frequenciaCalibracaoDias)}
+                    label="Periodicidade de calibração"
+                    value={rotuloPeriodicidade(equipment.frequenciaCalibracaoDias)}
                   />
                   <ReadOnlyField
                     label="Última calibração"
@@ -412,27 +424,63 @@ export function EquipamentoCalibracaoFluxoDialog({
                 </div>
               </fieldset>
 
-              {equipment.anexos?.length ? (
-                <fieldset className="brand-fieldset space-y-3">
-                  <legend>Anexos do cadastro</legend>
-                  <ul className="space-y-2">
-                    {equipment.anexos.map((anexo) => (
-                      <li
-                        key={`${anexo.nome}-${anexo.dataUrl.slice(0, 24)}`}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/80 bg-muted/20 p-3"
-                      >
-                        <span className="text-sm font-medium">{anexo.nome}</span>
-                        <LaudoActions dataUrl={anexo.dataUrl} nome={anexo.nome} />
-                      </li>
-                    ))}
-                  </ul>
+              {equipment.laudoNome || equipment.anexos?.length ? (
+                <fieldset className="brand-fieldset space-y-4">
+                  <legend>Documentação</legend>
+                  {equipment.laudoNome ? (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Laudo
+                      </p>
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/80 bg-muted/20 p-3">
+                        <span className="text-sm font-medium">
+                          {equipment.laudoNome}
+                        </span>
+                        <LaudoActions
+                          dataUrl={equipment.laudoDataUrl}
+                          storagePath={equipment.laudoStoragePath}
+                          nome={equipment.laudoNome}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                  {equipment.anexos?.length ? (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Arquivos complementares
+                      </p>
+                      <ul className="space-y-2">
+                        {equipment.anexos
+                          .filter(
+                            (anexo) =>
+                              anexo.nome.trim() !== equipment.laudoNome?.trim() &&
+                              anexo.storagePath !== equipment.laudoStoragePath
+                          )
+                          .map((anexo) => (
+                            <li
+                              key={`${anexo.storagePath ?? anexo.nome}`}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/80 bg-muted/20 p-3"
+                            >
+                              <span className="text-sm font-medium">
+                                {anexo.nome}
+                              </span>
+                              <LaudoActions
+                                dataUrl={anexo.dataUrl}
+                                storagePath={anexo.storagePath}
+                                nome={anexo.nome}
+                              />
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </fieldset>
               ) : null}
 
               <CalibracaoHistoricoSection equipment={equipment} />
             </div>
 
-            {!calibracaoRegistrada && statusCalibracao !== "em_dia" ? (
+            {!calibracaoRegistrada && statusCalibracao !== "em_dia" && podeCalibrar ? (
               <div className="sgq-form-footer justify-end gap-2">
                 <Button
                   type="button"

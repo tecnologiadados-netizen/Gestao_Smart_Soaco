@@ -10,6 +10,17 @@ export interface PedidoVendaErp {
   cliente: ClienteErp | null;
 }
 
+/** Linha de itempedido atendida parcial (3) ou totalmente (4). */
+export interface ItemPedidoVendaAtendidoErp {
+  itemId: string;
+  codigo: string;
+  descricao: string;
+  grupoProduto: string;
+  tipoProduto: string;
+  statusItem: number;
+  quantidadeVendida: number;
+}
+
 /**
  * Converte o pedido de venda selecionado nos campos do RCC:
  * preenche o número do pedido e, quando houver cliente vinculado,

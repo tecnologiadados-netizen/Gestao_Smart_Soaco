@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, FileText, Pencil, X } from "lucide-react";
+import { ChevronDown, FileText, Pencil } from "lucide-react";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Button } from "@qualidade/components/ui/button";
 import {
   DropdownMenu,
@@ -24,8 +25,8 @@ import { deleteQualidadeDocument } from "@qualidade/lib/api/qualidadeApi";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
   documentOrigemLabelsLong,
-  documentStatusLabels,
   getDocumentStatusVariant,
+  rotuloStatusDocumento,
   getDueStatusVariant,
   dueStatusLabels,
 } from "@qualidade/lib/utils/status-labels";
@@ -351,19 +352,7 @@ function DocumentoConsultaDetalheDialogImpl({
         showCloseButton={false}
         className="max-h-[min(94vh,100dvh)] w-[calc(100%-2rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
       >
-        <div className="modal-header-bar flex items-center justify-between px-8 py-4">
-          <h2 className="text-base font-semibold text-white">
-            Detalhes do documento
-          </h2>
-          <button
-            type="button"
-            onClick={handleFechar}
-            className="rounded p-1.5 hover:bg-white/20"
-            aria-label="Fechar"
-          >
-            <X className="size-5 text-white" />
-          </button>
-        </div>
+        <FormModalHeader titulo="Detalhes do documento" onClose={handleFechar} />
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-muted/20">
           <div className="space-y-8 p-8">
@@ -374,7 +363,7 @@ function DocumentoConsultaDetalheDialogImpl({
                     {formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}
                   </span>
                   <Badge variant={getDocumentStatusVariant(doc.status)}>
-                    {documentStatusLabels[doc.status]}
+                    {rotuloStatusDocumento(doc.status, doc.versaoAtual)}
                   </Badge>
                 </div>
                 <h3 className="max-w-3xl text-xl font-semibold leading-snug text-brand-navy">

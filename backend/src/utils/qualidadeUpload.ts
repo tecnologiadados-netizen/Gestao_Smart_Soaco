@@ -7,7 +7,7 @@ const __dirnameUpload = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.join(__dirnameUpload, '..', '..');
 export const qualidadeUploadRoot = path.join(backendRoot, 'var', 'uploads', 'qualidade');
 
-const MAX_BYTES = 15 * 1024 * 1024;
+const MAX_BYTES = 25 * 1024 * 1024;
 
 const ALLOWED_MIME = new Set([
   'application/pdf',

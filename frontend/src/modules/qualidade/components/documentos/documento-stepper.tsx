@@ -19,59 +19,32 @@ const revisaoSteps = [
 interface DocumentoStepperProps {
   activeStep?: number;
   variant?: "cadastro" | "revisao";
+  className?: string;
 }
 
 export function DocumentoStepper({
   activeStep = 0,
   variant = "cadastro",
+  className,
 }: DocumentoStepperProps) {
   const steps = variant === "revisao" ? revisaoSteps : cadastroSteps;
+
   return (
-    <div className="brand-fieldset rounded-lg p-4">
-      <h2 className="mb-4 text-base font-semibold text-brand-navy">
-        Etapas do processo
-      </h2>
-      <ol className="space-y-0">
-        {steps.map((step, index) => {
-          const isActive = index === activeStep;
-          const isDone = index < activeStep;
-          return (
-            <li key={step} className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <div
-                  className={cn(
-                    "flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold",
-                    isActive &&
-                      "bg-brand-blue text-white ring-2 ring-brand-yellow ring-offset-2",
-                    isDone && "bg-brand-blue text-white",
-                    !isActive && !isDone && "bg-white text-brand-gray ring-1 ring-border"
-                  )}
-                >
-                  {index + 1}
-                </div>
-                {index < steps.length - 1 && (
-                  <div
-                    className={cn(
-                      "my-1 h-6 w-0.5",
-                      isDone ? "bg-brand-blue" : "bg-brand-blue-muted"
-                    )}
-                  />
-                )}
-              </div>
-              <p
-                className={cn(
-                  "pt-2 text-base leading-snug",
-                  isActive && "font-bold text-brand-blue",
-                  isDone && "font-medium text-brand-navy",
-                  !isActive && !isDone && "text-brand-gray"
-                )}
-              >
-                {step}
-              </p>
-            </li>
-          );
-        })}
-      </ol>
-    </div>
+    <ol className={cn("sgq-doc-timeline", className)} aria-label="Etapas do processo">
+      {steps.map((step, index) => {
+        const isActive = index === activeStep;
+        const isDone = index < activeStep;
+        const state = isActive ? "active" : isDone ? "done" : "pending";
+
+        return (
+          <li key={step} className="sgq-doc-timeline-item" data-state={state}>
+            <div className="sgq-doc-timeline-track" aria-hidden="true">
+              <span className="sgq-doc-timeline-dot">{index + 1}</span>
+            </div>
+            <span className="sgq-doc-timeline-label">{step}</span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

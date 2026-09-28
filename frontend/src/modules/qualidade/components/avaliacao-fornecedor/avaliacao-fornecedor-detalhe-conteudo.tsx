@@ -1,4 +1,5 @@
 import { Badge } from "@qualidade/components/ui/badge";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { StarRatingDisplay } from "@qualidade/components/avaliacao-fornecedor/star-rating";
 import { CRITERIOS_AVALIACAO, NOTA_MAX } from "@qualidade/lib/avaliacao-fornecedor/criterios";
 import type { AvaliacaoDetalheViewModel } from "@qualidade/lib/avaliacao-fornecedor/montar-detalhe-avaliacao";
@@ -38,23 +39,22 @@ function NotaResumo({
 
 interface AvaliacaoFornecedorDetalheConteudoProps {
   viewModel: AvaliacaoDetalheViewModel;
+  onClose?: () => void;
 }
 
 export function AvaliacaoFornecedorDetalheConteudo({
   viewModel,
+  onClose,
 }: AvaliacaoFornecedorDetalheConteudoProps) {
   const { avaliacao } = viewModel;
 
   return (
-    <div className="overflow-hidden bg-background text-foreground">
-      <div className="modal-header-bar px-5 py-3.5">
-        <h2 className="text-base font-semibold text-white">
-          Detalhe da avaliação
-        </h2>
-        <p className="mt-0.5 text-xs text-white/80">
-          {avaliacao.fornecedorNome}
-        </p>
-      </div>
+    <div className="bg-card text-foreground">
+      <FormModalHeader
+        titulo="Detalhe da avaliação"
+        descricao={avaliacao.fornecedorNome}
+        onClose={onClose}
+      />
 
       <div className="space-y-4 p-6">
         <fieldset className="brand-fieldset space-y-3">

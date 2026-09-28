@@ -1636,10 +1636,29 @@ export async function syncQualidadeCalibrations(payload: {
   // Sync aditivo: NÃO apagar calibrações/verificações/tarefas ausentes do payload
   // (estado stale multi-aba apagava histórico). Exclusão: deleteQualidadeEquipamento.
 
+  const codigosGravados = await prisma.sgqEquipamento.findMany({
+    select: { uid: true, codigo: true },
+  });
+  const donoPorCodigo = new Map(
+    codigosGravados.map((row) => [
+      row.codigo.trim().toLocaleLowerCase('pt-BR'),
+      row.uid,
+    ])
+  );
+
   for (const eq of payload.equipment) {
     const uid = String(eq.id ?? '');
-    const codigo = String(eq.codigo ?? '');
+    const codigo = String(eq.codigo ?? '').trim();
     if (!uid || !codigo) continue;
+
+    const chaveCodigo = codigo.toLocaleLowerCase('pt-BR');
+    const dono = donoPorCodigo.get(chaveCodigo);
+    if (dono && dono !== uid) {
+      throw new Error(
+        `Já existe um equipamento com o código ${codigo}. Use outro código.`
+      );
+    }
+    donoPorCodigo.set(chaveCodigo, uid);
 
     const existing = await prisma.sgqEquipamento.findUnique({
       where: { uid },
@@ -2019,6 +2038,35 @@ export async function listQualidadeResponsaveis() {
     });
   }
   return result;
+}
+
+/** Colaboradores do orgânico (exceto desligados) para escolha de responsável na RNC. */
+export async function listOrganicoColaboradoresParaRnc() {
+  const rows = await prisma.rhOrganico.findMany({
+    where: {
+      status: { not: 'Desligado' },
+    },
+    select: {
+      id: true,
+      nome: true,
+      matricula: true,
+      cargo: true,
+      setor: true,
+      status: true,
+    },
+    orderBy: { nome: 'asc' },
+  });
+
+  return rows
+    .map((row) => ({
+      id: row.id,
+      nome: row.nome.trim(),
+      matricula: row.matricula.trim() === '—' ? '' : row.matricula.trim(),
+      cargo: row.cargo.trim() === '—' ? '' : row.cargo.trim(),
+      setor: row.setor.trim() === '—' ? '' : row.setor.trim(),
+      status: row.status,
+    }))
+    .filter((row) => row.nome && row.nome !== '—');
 }
 
 const sgqHistoricoMockDataDir = path.join(

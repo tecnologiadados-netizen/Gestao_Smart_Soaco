@@ -1,8 +1,8 @@
 import { Suspense, useMemo, useState } from "react";
 import { Link } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
-import { X } from "lucide-react";
 import { AvaliacaoFornecedorForm } from "@qualidade/components/avaliacao-fornecedor/avaliacao-fornecedor-form";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { RccForm } from "@qualidade/components/registros/rcc-form";
@@ -91,10 +91,7 @@ function RegistrosPageContent() {
     setErrosRnc({});
     setErrosRcc({});
     if (tipo === "rnc") {
-      setRncDados({
-        ...criarRncDadosVazio(),
-        responsavel: usuarioAtual?.nome ?? "",
-      });
+      setRncDados(criarRncDadosVazio());
     }
     if (tipo === "rcc") {
       setRccDados(criarRccDadosVazio());
@@ -237,22 +234,15 @@ function RegistrosPageContent() {
           showCloseButton={false}
           className="max-h-[min(92vh,100dvh)] w-full max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
         >
-          <div className="modal-header-bar flex shrink-0 items-center justify-between px-5 py-3.5">
-            <h2 className="text-base font-semibold text-white">
-              {tipoSelecionado
+          <FormModalHeader
+            titulo={
+              tipoSelecionado
                 ? `Novo registro — ${moduloRegistroTipoLabels[tipoSelecionado]}`
-                : "Novo registro"}
-            </h2>
-            <button
-              type="button"
-              onClick={() => handleDialogOpenChange(false)}
-              className="rounded p-1.5 hover:bg-white/20"
-              aria-label="Fechar"
-              disabled={salvando}
-            >
-              <X className="size-5" />
-            </button>
-          </div>
+                : "Novo registro"
+            }
+            onClose={() => handleDialogOpenChange(false)}
+            closeDisabled={salvando}
+          />
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6">
             {tipoSelecionado === "rnc" ? (

@@ -10,6 +10,7 @@ import {
   PRODUTOS_SEARCH_LIMIT,
 } from "@qualidade/lib/registros/fetch-produtos-client";
 import type { ProdutoErp } from "@qualidade/types/produto-erp";
+import { ListaSugestaoFlutuante } from "@qualidade/components/registros/lista-sugestao-flutuante";
 
 interface ProdutoCodigoFieldProps {
   id?: string;
@@ -21,6 +22,7 @@ interface ProdutoCodigoFieldProps {
   disabled?: boolean;
   /** Quando informado, a lista mostra só produtos deste pedido Nomus. */
   pedidoId?: string | null;
+  ocultarRotulo?: boolean;
 }
 
 export function ProdutoCodigoField({
@@ -32,10 +34,12 @@ export function ProdutoCodigoField({
   onVinculoClear,
   disabled = false,
   pedidoId = null,
+  ocultarRotulo = false,
 }: ProdutoCodigoFieldProps) {
   const listId = useId();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const ancoraRef = useRef<HTMLDivElement>(null);
 
   const [termo, setTermo] = useState(value);
   const [resultados, setResultados] = useState<ProdutoErp[]>([]);
@@ -109,12 +113,11 @@ export function ProdutoCodigoField({
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
-        setAberto(false);
-      }
+      const alvo = event.target;
+      if (!(alvo instanceof Node)) return;
+      if (containerRef.current?.contains(alvo)) return;
+      if (alvo instanceof Element && alvo.closest("[data-lista-sugestao]")) return;
+      setAberto(false);
     }
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -139,8 +142,8 @@ export function ProdutoCodigoField({
 
   return (
     <div ref={containerRef} className="relative space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="relative">
+      {ocultarRotulo ? null : <Label htmlFor={id}>{label}</Label>}
+      <div ref={ancoraRef} className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           id={id}
@@ -189,47 +192,47 @@ export function ProdutoCodigoField({
         </p>
       ) : null}
 
-      {aberto && !disabled && resultados.length > 0 ? (
-        <ul
-          id={listId}
-          role="listbox"
-          className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-popover py-1 shadow-md"
-        >
-          {resultados.map((produto) => (
-            <li key={produto.codigo} role="option">
-              <button
-                type="button"
-                className={cn(
-                  "flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted"
-                )}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => selecionar(produto)}
-              >
-                <span className="font-medium text-primary">{produto.codigo}</span>
-                <span className="line-clamp-1 text-xs text-muted-foreground">
-                  {produto.descricao}
+      <ListaSugestaoFlutuante
+        aberto={aberto && !disabled && resultados.length > 0}
+        ancoraRef={ancoraRef}
+        id={listId}
+      >
+        {resultados.map((produto) => (
+          <li key={produto.codigo} role="option">
+            <button
+              type="button"
+              className={cn(
+                "flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted"
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => selecionar(produto)}
+            >
+              <span className="font-medium text-primary">{produto.codigo}</span>
+              <span className="line-clamp-1 text-xs text-muted-foreground">
+                {produto.descricao}
+              </span>
+              {produto.quantidadePedido != null && produto.quantidadePedido > 0 ? (
+                <span className="text-[11px] text-muted-foreground">
+                  Qtde no pedido: {produto.quantidadePedido}
                 </span>
-                {produto.quantidadePedido != null && produto.quantidadePedido > 0 ? (
-                  <span className="text-[11px] text-muted-foreground">
-                    Qtde no pedido: {produto.quantidadePedido}
-                  </span>
-                ) : produto.grupoProduto ? (
-                  <span className="text-[11px] text-muted-foreground">
-                    {produto.grupoProduto}
-                    {produto.tipoProduto ? ` · ${produto.tipoProduto}` : ""}
-                  </span>
-                ) : null}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+              ) : produto.grupoProduto ? (
+                <span className="text-[11px] text-muted-foreground">
+                  {produto.grupoProduto}
+                  {produto.tipoProduto ? ` · ${produto.tipoProduto}` : ""}
+                </span>
+              ) : null}
+            </button>
+          </li>
+        ))}
+      </ListaSugestaoFlutuante>
 
-      <p className="text-xs text-muted-foreground">
-        {pedidoIdFiltro
-          ? "Exibindo apenas os códigos de produto deste pedido de venda."
-          : "Digite o código ou parte do nome para preencher grupo e descrição automaticamente."}
-      </p>
+      {ocultarRotulo ? null : (
+        <p className="text-xs text-muted-foreground">
+          {pedidoIdFiltro
+            ? "Exibindo apenas os códigos de produto deste pedido de venda."
+            : "Digite o código ou parte do nome para preencher grupo e descrição automaticamente."}
+        </p>
+      )}
     </div>
   );
 }

@@ -43,8 +43,8 @@ function getNavItems(module: Module): NavItem[] {
     case 'calibracoes':
       return [
         { label: 'Início', href: '/qualidade/calibracoes', icon: Home },
-        { label: 'Cadastros', href: '/qualidade/calibracoes/cadastros/equipamentos', icon: ClipboardList },
         { label: 'Consulta', href: '/qualidade/calibracoes/consulta', icon: Search },
+        { label: 'Cadastros', href: '/qualidade/calibracoes/cadastros/equipamentos', icon: ClipboardList },
         { label: 'Visão geral', href: '/qualidade/calibracoes/visao-geral', icon: BarChart3 },
       ];
     case 'registros':
@@ -75,8 +75,9 @@ export function QualidadeSubnav() {
 
   const calPending = useMemo(
     () =>
-      getPendingCalibrations('interna').length + getPendingCalibrations('externa').length,
-    [calibrationEquipment, getPendingCalibrations],
+      getPendingCalibrations('interna', currentUserId).length +
+      getPendingCalibrations('externa', currentUserId).length,
+    [calibrationEquipment, currentUserId, getPendingCalibrations],
   );
 
   const pendingCount =

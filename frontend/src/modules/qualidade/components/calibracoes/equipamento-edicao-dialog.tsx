@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, Pencil, X } from "lucide-react";
+import { ChevronDown, Pencil } from "lucide-react";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Button } from "@qualidade/components/ui/button";
 import { ConfirmacaoDialog } from "@qualidade/components/ui/confirmacao-dialog";
 import {
@@ -27,6 +28,10 @@ import {
   type AnexoItem,
 } from "@qualidade/components/calibracoes/equipamento-anexos-field";
 import { DocumentoArquivoField } from "@qualidade/components/documentos/documento-arquivo-field";
+import {
+  mensagemLimiteAnexo,
+  SGQ_ANEXO_MAX_BYTES,
+} from "@qualidade/types/registro-anexo";
 import { FornecedorSearchField } from "@qualidade/components/avaliacao-fornecedor/fornecedor-search-field";
 import { PessoaSearchField } from "@qualidade/components/registros/pessoa-search-field";
 import { SgqAnexosTable } from "@qualidade/components/ui/sgq-anexos-table";
@@ -34,6 +39,12 @@ import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { flushQualidadeCalibrationsSync, cancelQualidadeCalibrationsDebounce, markQualidadeCalibrationFilesPending, scheduleQualidadeCalibrationsFlush } from "@qualidade/lib/qualidadePersistence";
 import { deleteQualidadeEquipamento } from "@qualidade/lib/api/qualidadeApi";
+import { PeriodicidadeCalibracaoField } from "@qualidade/components/calibracoes/periodicidade-calibracao-field";
+import {
+  diasParaPeriodicidade,
+  periodicidadeParaDias,
+} from "@qualidade/lib/utils/periodicidade-calibracao";
+import type { UnidadePeriodicidade } from "@qualidade/lib/utils/periodicidade-calibracao";
 import {
   departmentSelectLabel,
   tipoCalibracaoSelectLabel,
@@ -87,7 +98,8 @@ function carregarFormularioDeEquipamento(
     setResponsavelPosseNome: (v: string) => void;
     setFornecedorSelecionado: (v: Fornecedor | null) => void;
     setTipoCalibracao: (v: CalibrationType) => void;
-    setFreqCal: (v: string) => void;
+    setQtdCal: (v: string) => void;
+    setUnidadeCal: (v: UnidadePeriodicidade) => void;
     setFreqVer: (v: string) => void;
     setUltimaCalibracao: (v: string) => void;
     setUltimaVerificacao: (v: string) => void;
@@ -117,7 +129,9 @@ function carregarFormularioDeEquipamento(
       : null
   );
   setters.setTipoCalibracao(equipment.tipoCalibracao);
-  setters.setFreqCal(String(equipment.frequenciaCalibracaoDias));
+  const periodicidade = diasParaPeriodicidade(equipment.frequenciaCalibracaoDias);
+  setters.setQtdCal(String(periodicidade.quantidade));
+  setters.setUnidadeCal(periodicidade.unidade);
   setters.setFreqVer(String(equipment.frequenciaVerificacaoDias));
   setters.setUltimaCalibracao(isoToDateInput(equipment.ultimaCalibracao));
   setters.setUltimaVerificacao(isoToDateInput(equipment.ultimaVerificacao));
@@ -154,7 +168,8 @@ export function EquipamentoEdicaoDialog({
   const [fornecedorSelecionado, setFornecedorSelecionado] =
     useState<Fornecedor | null>(null);
   const [tipoCalibracao, setTipoCalibracao] = useState<CalibrationType>("interna");
-  const [freqCal, setFreqCal] = useState("365");
+  const [qtdCal, setQtdCal] = useState("1");
+  const [unidadeCal, setUnidadeCal] = useState<UnidadePeriodicidade>("anos");
   const [freqVer, setFreqVer] = useState("90");
   const [ultimaCalibracao, setUltimaCalibracao] = useState("");
   const [ultimaVerificacao, setUltimaVerificacao] = useState("");
@@ -177,7 +192,8 @@ export function EquipamentoEdicaoDialog({
     setResponsavelPosseNome,
     setFornecedorSelecionado,
     setTipoCalibracao,
-    setFreqCal,
+    setQtdCal,
+    setUnidadeCal,
     setFreqVer,
     setUltimaCalibracao,
     setUltimaVerificacao,
@@ -230,8 +246,8 @@ export function EquipamentoEdicaoDialog({
     if (!responsavelId) pendentes.push("Responsável pela calibração");
     if (!fornecedorSelecionado?.nome?.trim()) pendentes.push("Fornecedor");
     if (!tipoCalibracao) pendentes.push("Tipo calibração");
-    if (!Number.isFinite(Number(freqCal)) || Number(freqCal) < 1) {
-      pendentes.push("Freq. calibração (dias)");
+    if (!Number.isInteger(Number(qtdCal)) || Number(qtdCal) < 1) {
+      pendentes.push("Periodicidade de calibração");
     }
     if (!Number.isFinite(Number(freqVer)) || Number(freqVer) < 1) {
       pendentes.push("Freq. verificação (dias)");
@@ -262,7 +278,7 @@ export function EquipamentoEdicaoDialog({
       responsavelPosseNome: localFixo ? "" : responsavelPosseNome,
       fornecedor: fornecedorSelecionado?.nome?.trim() || undefined,
       tipoCalibracao,
-      frequenciaCalibracaoDias: Number(freqCal) || 365,
+      frequenciaCalibracaoDias: periodicidadeParaDias(Number(qtdCal), unidadeCal),
       frequenciaVerificacaoDias: Number(freqVer) || 90,
       ultimaCalibracao: ultimaCalibracao
         ? new Date(ultimaCalibracao).toISOString()
@@ -303,8 +319,8 @@ export function EquipamentoEdicaoDialog({
   }
 
   function handleLaudoSelect(file: File) {
-    if (file.size > 5 * 1024 * 1024) {
-      setError("O arquivo excede o limite de 5 MB.");
+    if (file.size > SGQ_ANEXO_MAX_BYTES) {
+      setError(mensagemLimiteAnexo());
       return;
     }
     const reader = new FileReader();
@@ -390,20 +406,11 @@ export function EquipamentoEdicaoDialog({
           showCloseButton={false}
           className="max-h-[min(92vh,100dvh)] w-full max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
         >
-          <div className="modal-header-bar flex shrink-0 items-center justify-between px-5 py-3.5">
-            <div>
-              <h2 className="text-base font-semibold text-white">{tituloModal}</h2>
-              <p className="mt-0.5 text-xs text-white/80">{subtituloModal}</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded p-1.5 hover:bg-white/20"
-              aria-label="Fechar"
-            >
-              <X className="size-5 text-white" />
-            </button>
-          </div>
+          <FormModalHeader
+            titulo={tituloModal}
+            descricao={subtituloModal}
+            onClose={handleClose}
+          />
 
           <form
             onSubmit={somenteLeitura ? (e) => e.preventDefault() : handleSubmit}
@@ -603,18 +610,14 @@ export function EquipamentoEdicaoDialog({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-eq-freq-cal">Freq. calibração (dias) *</Label>
-                    <Input
-                      id="edit-eq-freq-cal"
-                      type="number"
-                      min={1}
-                      value={freqCal}
-                      onChange={(e) => setFreqCal(e.target.value)}
-                      readOnly={somenteLeitura}
-                      className={somenteLeitura ? "bg-muted/50" : undefined}
-                    />
-                  </div>
+                  <PeriodicidadeCalibracaoField
+                    idPrefix="edit-eq-freq-cal"
+                    quantidade={qtdCal}
+                    unidade={unidadeCal}
+                    onQuantidadeChange={setQtdCal}
+                    onUnidadeChange={setUnidadeCal}
+                    disabled={somenteLeitura}
+                  />
                   <div className="space-y-2">
                     <Label htmlFor="edit-eq-freq-ver">Freq. verificação (dias) *</Label>
                     <Input

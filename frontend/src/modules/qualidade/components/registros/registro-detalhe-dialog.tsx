@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Pencil, X } from "lucide-react";
+import { Pencil } from "lucide-react";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Badge } from "@qualidade/components/ui/badge";
 import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
@@ -9,7 +10,7 @@ import { RncRelatorioPdfButton } from "@qualidade/components/registros/rnc-relat
 import { RccForm } from "@qualidade/components/registros/rcc-form";
 import { RncForm } from "@qualidade/components/registros/rnc-form";
 import {
-  registroStatusLabels,
+  rotuloStatusRegistro,
   registroTipoDescricoes,
   registroTipoLabels,
 } from "@qualidade/lib/registros/constants";
@@ -111,7 +112,9 @@ export function RegistroDetalheDialog({
     if (!registro) return;
 
     if (registro.tipo === "rnc" && rncDraft) {
-      const validacao = validarRnc(rncDraft);
+      const validacao = validarRnc(rncDraft, {
+        origemNomus: registro.origemNomus,
+      });
       if (!validacao.valido) {
         setErrosRnc(validacao.erros);
         setErro("Corrija os campos obrigatórios antes de salvar.");
@@ -173,55 +176,64 @@ export function RegistroDetalheDialog({
         showCloseButton={false}
         className="max-h-[min(90vh,100dvh)] w-full max-w-4xl flex-col gap-0 overflow-hidden p-0"
       >
-        <div className="modal-header-bar flex shrink-0 items-center justify-between px-5 py-3.5">
-          <div>
-            <h2 className="text-base font-semibold text-white">
-              {editando ? `Editar ${codigoDocumento}` : codigoDocumento}
-            </h2>
-            <p className="mt-0.5 text-xs text-white/80">
-              {registroTipoLabels[registro.tipo]} ·{" "}
-              {registroTipoDescricoes[registro.tipo]}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="rounded p-1.5 hover:bg-white/20"
-            aria-label="Fechar"
-          >
-            <X className="size-5 text-white" />
-          </button>
-        </div>
+        <FormModalHeader
+          titulo={editando ? `Editar ${codigoDocumento}` : codigoDocumento}
+          descricao={`${registroTipoLabels[registro.tipo]} · ${registroTipoDescricoes[registro.tipo]}`}
+          onClose={() => onOpenChange(false)}
+        />
 
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{registroTipoLabels[registro.tipo]}</Badge>
-            <Badge>{registroStatusLabels[registro.status]}</Badge>
-            <CodigoDocumentoBadge registro={registro} />
+          <div className="mb-6 overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-muted/50 text-left text-xs text-muted-foreground">
+                  <th className="border border-border px-3 py-2 font-medium">
+                    Tipo
+                  </th>
+                  <th className="border border-border px-3 py-2 font-medium">
+                    Status
+                  </th>
+                  <th className="border border-border px-3 py-2 font-medium">
+                    {dataLabel}
+                  </th>
+                  {responsavelSgq && !registro.origemNomus ? (
+                    <th className="border border-border px-3 py-2 font-medium">
+                      Registrado por (SGQ)
+                    </th>
+                  ) : null}
+                  <th className="border border-border px-3 py-2 font-medium">
+                    Criado em
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="border border-border px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">
+                        {registroTipoLabels[registro.tipo]}
+                      </Badge>
+                      <CodigoDocumentoBadge registro={registro} />
+                    </div>
+                  </td>
+                  <td className="border border-border px-3 py-2">
+                    <Badge>{rotuloStatusRegistro(registro)}</Badge>
+                  </td>
+                  <td className="border border-border px-3 py-2 font-medium">
+                    {formatarData(getRegistroDataOcorrencia(registro))}
+                  </td>
+                  {responsavelSgq && !registro.origemNomus ? (
+                    <td className="border border-border px-3 py-2 font-medium">
+                      {responsavelSgq.nome}
+                    </td>
+                  ) : null}
+                  <td className="border border-border px-3 py-2 font-medium">
+                    {formatarDataHora(registro.createdAt)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-
-          <dl className="mb-6 grid gap-3 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-xs text-muted-foreground">{dataLabel}</dt>
-              <dd className="font-medium">
-                {formatarData(getRegistroDataOcorrencia(registro))}
-              </dd>
-            </div>
-            {responsavelSgq && !registro.origemNomus ? (
-              <div>
-                <dt className="text-xs text-muted-foreground">
-                  Registrado por (SGQ)
-                </dt>
-                <dd className="font-medium">{responsavelSgq.nome}</dd>
-              </div>
-            ) : null}
-            <div>
-              <dt className="text-xs text-muted-foreground">Criado em</dt>
-              <dd className="font-medium">
-                {formatarDataHora(registro.createdAt)}
-              </dd>
-            </div>
-          </dl>
 
           {registro.tipo === "rnc" && (editando ? rncDraft : registro.rnc) ? (
             <RncForm

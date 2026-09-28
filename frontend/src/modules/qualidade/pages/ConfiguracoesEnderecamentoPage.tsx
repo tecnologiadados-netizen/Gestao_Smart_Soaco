@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { Plus } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -59,6 +60,7 @@ export function EnderecamentoPage() {
   const [categoria, setCategoria] = useState<EnderecamentoCategoria | "">("");
   const [endereco, setEndereco] = useState("");
   const [addError, setAddError] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editSetorId, setEditSetorId] = useState("");
@@ -130,6 +132,7 @@ export function EnderecamentoPage() {
     }
 
     resetAddForm();
+    setAddOpen(false);
   }
 
   function handleEdit(e: React.FormEvent) {
@@ -179,79 +182,28 @@ export function EnderecamentoPage() {
     <div className="space-y-6">
       <PageBackLink to="/qualidade/configuracoes" />
 
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Endereçamento</h1>
-        <p className="text-sm text-muted-foreground">
-          Cadastro de localizações por setor e categoria (física ou eletrônica). Use{" "}
-          <span className="font-medium text-foreground">
-            {ENDERECAMENTO_SETOR_GERAL_LABEL}
-          </span>{" "}
-          para endereços válidos em todos os setores.
-        </p>
-      </div>
-
-      <form
-        onSubmit={handleAdd}
-        className="space-y-3 rounded-lg border bg-card p-4"
-      >
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[220px] space-y-2">
-            <Label htmlFor="setor">Setor</Label>
-            <Select value={setorId} onValueChange={(v) => v && setSetorId(v)}>
-              <SelectTrigger id="setor" className="h-10 w-full">
-                <SelectValue placeholder="Selecione o setor">
-                  {setorSelectLabel(departments, setorId)}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ENDERECAMENTO_SETOR_GERAL_ID}>
-                  {ENDERECAMENTO_SETOR_GERAL_LABEL} — se aplica a todos
-                </SelectItem>
-                {departments.map((dep) => (
-                  <SelectItem key={dep.id} value={dep.id}>
-                    {dep.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="min-w-[180px] space-y-2">
-            <Label htmlFor="categoria">Categoria</Label>
-            <Select
-              value={categoria}
-              onValueChange={(v) =>
-                v && setCategoria(v as EnderecamentoCategoria)
-              }
-            >
-              <SelectTrigger id="categoria" className="h-10 w-full">
-                <SelectValue placeholder="Selecione">
-                  {categoria ? ENDERECAMENTO_CATEGORIA_LABEL[categoria] : null}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="fisico">Físico</SelectItem>
-                <SelectItem value="eletronico">Eletrônico</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="min-w-[280px] flex-1 space-y-2">
-            <Label htmlFor="endereco">Endereço</Label>
-            <Input
-              id="endereco"
-              value={endereco}
-              onChange={(e) => setEndereco(e.target.value)}
-              placeholder="Ex.: Armário A, prateleira 3"
-              required
-            />
-          </div>
-          <Button type="submit">Adicionar</Button>
-        </div>
-        {addError ? (
-          <p className="text-sm text-destructive" role="alert">
-            {addError}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Endereçamento</h1>
+          <p className="text-sm text-muted-foreground">
+            Cadastro de localizações por setor e categoria (física ou eletrônica). Use{" "}
+            <span className="font-medium text-foreground">
+              {ENDERECAMENTO_SETOR_GERAL_LABEL}
+            </span>{" "}
+            para endereços válidos em todos os setores.
           </p>
-        ) : null}
-      </form>
+        </div>
+        <Button
+          type="button"
+          onClick={() => {
+            resetAddForm();
+            setAddOpen(true);
+          }}
+        >
+          <Plus className="size-4" />
+          Novo endereço
+        </Button>
+      </div>
 
       <SgqGradeSurface
         scrollRef={grade.tableScrollRef}
@@ -313,6 +265,75 @@ export function EnderecamentoPage() {
       </Table>
       </SgqGradeSurface>
       <SgqGradeFiltroPortal grade={grade} />
+
+      <FormDialog
+        open={addOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAddOpen(false);
+            resetAddForm();
+          }
+        }}
+        titulo="Novo endereço"
+        descricao="Informe o setor, a categoria e o endereço."
+        onSubmit={handleAdd}
+        submitLabel="Adicionar"
+        error={addError}
+        className="max-w-md"
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="setor">Setor</Label>
+            <Select value={setorId} onValueChange={(v) => v && setSetorId(v)}>
+              <SelectTrigger id="setor" className="h-10 w-full">
+                <SelectValue placeholder="Selecione o setor">
+                  {setorSelectLabel(departments, setorId)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ENDERECAMENTO_SETOR_GERAL_ID}>
+                  {ENDERECAMENTO_SETOR_GERAL_LABEL} — se aplica a todos
+                </SelectItem>
+                {departments.map((dep) => (
+                  <SelectItem key={dep.id} value={dep.id}>
+                    {dep.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="categoria">Categoria</Label>
+            <Select
+              value={categoria}
+              onValueChange={(v) =>
+                v && setCategoria(v as EnderecamentoCategoria)
+              }
+            >
+              <SelectTrigger id="categoria" className="h-10 w-full">
+                <SelectValue placeholder="Selecione">
+                  {categoria ? ENDERECAMENTO_CATEGORIA_LABEL[categoria] : null}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="fisico">Físico</SelectItem>
+                <SelectItem value="eletronico">Eletrônico</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="endereco">Endereço</Label>
+            <Input
+              id="endereco"
+              value={endereco}
+              onChange={(e) => setEndereco(e.target.value)}
+              placeholder="Ex.: Armário A, prateleira 3"
+              autoFocus
+              required
+            />
+          </div>
+        </div>
+      </FormDialog>
 
       <FormDialog
         open={editingId !== null}

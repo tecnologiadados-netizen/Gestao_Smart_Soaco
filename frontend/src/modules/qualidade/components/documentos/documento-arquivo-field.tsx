@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { SgqAnexosTable } from "@qualidade/components/ui/sgq-anexos-table";
-import { anexoTemArquivo, type SgqAnexo } from "@qualidade/types/registro-anexo";
+import {
+  anexoTemArquivo,
+  SGQ_ANEXO_MAX_MB,
+  type SgqAnexo,
+} from "@qualidade/types/registro-anexo";
 
 const DEFAULT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
 
@@ -25,7 +29,7 @@ export function DocumentoArquivoField({
   onFileSelect,
   onRemove,
   accept = DEFAULT_ACCEPT,
-  hint = "PDF, Word, Excel ou PowerPoint · máx. 5 MB",
+  hint = `PDF, Word, Excel ou PowerPoint · máx. ${SGQ_ANEXO_MAX_MB} MB`,
   maxRows = 1,
 }: DocumentoArquivoFieldProps) {
   const [rascunho, setRascunho] = useState<SgqAnexo[]>([]);

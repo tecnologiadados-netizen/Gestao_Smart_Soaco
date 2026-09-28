@@ -79,7 +79,7 @@ function KanbanColumn({
         </div>
       </header>
 
-      <div className="flex flex-1 flex-col gap-3 p-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
         {tasks.length === 0 ? (
           <div className="sgq-kanban-empty">
             <CheckCircle2 className="mb-3 size-8 text-primary/60" />
@@ -187,7 +187,7 @@ function RevalidacaoKanbanColumn({
         </div>
       </header>
 
-      <div className="flex flex-1 flex-col gap-3 p-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
         {items.length === 0 ? (
           <div className="sgq-kanban-empty">
             <CheckCircle2 className="mb-3 size-8 text-primary/60" />
@@ -304,8 +304,8 @@ export function DocumentosPendenciasBoards({ showAll = false }: Props) {
   const semPendencias = revalidacaoItems.length === 0 && etapaTasks.length === 0;
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-6 lg:grid-cols-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="grid min-h-0 flex-1 items-stretch gap-6 lg:grid-cols-2">
         <RevalidacaoKanbanColumn items={revalidacaoItems} />
         <KanbanColumn
           titulo="Etapas do fluxo"

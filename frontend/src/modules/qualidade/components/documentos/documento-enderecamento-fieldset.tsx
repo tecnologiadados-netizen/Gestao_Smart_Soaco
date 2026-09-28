@@ -227,22 +227,24 @@ export function DocumentoEnderecamentoFieldset({
                     })}
                   </ul>
                 ) : null}
+                {categoria === "fisico" && onResponsavelChange ? (
+                  <PessoaSearchField
+                    id="responsavel-posse-documento"
+                    label="Responsável pela posse do documento"
+                    value={responsavelNome || responsavelId}
+                    apenasFuncionarios
+                    placeholder="Digite o nome do funcionário..."
+                    onValueChange={(nome) => {
+                      if (!nome.trim()) onResponsavelChange("", "");
+                    }}
+                    onPessoaSelect={(pessoa) =>
+                      onResponsavelChange(pessoa.id, pessoa.nome)
+                    }
+                  />
+                ) : null}
               </div>
             );
           })}
-          {guardaFisica && onResponsavelChange ? (
-            <PessoaSearchField
-              id="responsavel-posse-documento"
-              label="Responsável pela posse do documento"
-              value={responsavelNome || responsavelId}
-              apenasFuncionarios
-              placeholder="Digite o nome do funcionário..."
-              onValueChange={(nome) => {
-                if (!nome.trim()) onResponsavelChange("", "");
-              }}
-              onPessoaSelect={(pessoa) => onResponsavelChange(pessoa.id, pessoa.nome)}
-            />
-          ) : null}
           <p className="text-xs text-muted-foreground">
             {setorId
               ? "Cada categoria tem um campo. O endereço escolhido entra na lista abaixo dele."

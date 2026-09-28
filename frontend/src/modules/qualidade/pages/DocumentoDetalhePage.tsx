@@ -24,8 +24,8 @@ import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import {
-  documentStatusLabels,
   getDocumentStatusVariant,
+  rotuloStatusDocumento,
 } from "@qualidade/lib/utils/status-labels";
 import { formatarData, formatarDataHora } from "@qualidade/lib/utils/dates";
 import { labelResponsavel } from "@qualidade/lib/utils/select-display";
@@ -82,7 +82,7 @@ export function DocumentoDetalhePage() {
               {formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)}
             </h1>
             <Badge variant={getDocumentStatusVariant(doc.status)}>
-              {documentStatusLabels[doc.status]}
+              {rotuloStatusDocumento(doc.status, doc.versaoAtual)}
             </Badge>
           </div>
           <p className="text-muted-foreground">{doc.titulo}</p>

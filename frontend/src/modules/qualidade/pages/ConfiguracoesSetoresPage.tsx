@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { Plus } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -29,6 +30,7 @@ export function SetoresPage() {
 
   const [nome, setNome] = useState("");
   const [addError, setAddError] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNome, setEditNome] = useState("");
@@ -78,6 +80,7 @@ export function SetoresPage() {
     }
 
     resetAddForm();
+    setAddOpen(false);
   }
 
   function handleEdit(e: React.FormEvent) {
@@ -121,35 +124,24 @@ export function SetoresPage() {
     <div className="space-y-6">
       <PageBackLink to="/qualidade/configuracoes" />
 
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Setores</h1>
-        <p className="text-sm text-muted-foreground">
-          Cadastro de setores do SGQ
-        </p>
-      </div>
-
-      <form
-        onSubmit={handleAdd}
-        className="space-y-3 rounded-lg border bg-card p-4"
-      >
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-2">
-            <Label htmlFor="nome">Nome</Label>
-            <Input
-              id="nome"
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              required
-            />
-          </div>
-          <Button type="submit">Adicionar</Button>
-        </div>
-        {addError ? (
-          <p className="text-sm text-destructive" role="alert">
-            {addError}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Setores</h1>
+          <p className="text-sm text-muted-foreground">
+            Cadastro de setores do SGQ
           </p>
-        ) : null}
-      </form>
+        </div>
+        <Button
+          type="button"
+          onClick={() => {
+            resetAddForm();
+            setAddOpen(true);
+          }}
+        >
+          <Plus className="size-4" />
+          Novo setor
+        </Button>
+      </div>
 
       <SgqGradeSurface
         scrollRef={grade.tableScrollRef}
@@ -183,6 +175,32 @@ export function SetoresPage() {
       </Table>
       </SgqGradeSurface>
       <SgqGradeFiltroPortal grade={grade} />
+
+      <FormDialog
+        open={addOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAddOpen(false);
+            resetAddForm();
+          }
+        }}
+        titulo="Novo setor"
+        descricao="Informe o nome do setor."
+        onSubmit={handleAdd}
+        submitLabel="Adicionar"
+        error={addError}
+      >
+        <div className="space-y-2">
+          <Label htmlFor="nome">Nome</Label>
+          <Input
+            id="nome"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            autoFocus
+            required
+          />
+        </div>
+      </FormDialog>
 
       <FormDialog
         open={editingId !== null}

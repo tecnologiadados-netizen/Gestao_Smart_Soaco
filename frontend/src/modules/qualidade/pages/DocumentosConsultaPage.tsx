@@ -16,8 +16,8 @@ import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { softRefreshQualidadeDocuments } from "@qualidade/lib/qualidadePersistence";
 import {
-  documentStatusLabels,
   getDocumentStatusVariant,
+  rotuloStatusDocumento,
   getDueStatusVariant,
   dueStatusLabels,
 } from "@qualidade/lib/utils/status-labels";
@@ -152,7 +152,7 @@ function DocumentosConsultaContent() {
         case "setor":
           return departments.find((d) => d.id === doc.setorId)?.nome ?? "—";
         case "status":
-          return documentStatusLabels[doc.status];
+          return rotuloStatusDocumento(doc.status, doc.versaoAtual);
         case "validade":
           return textoValidade(doc);
         case "atualizado":
@@ -334,7 +334,7 @@ function DocumentosConsultaContent() {
                   <TableCell>{setor?.nome ?? "—"}</TableCell>
                   <TableCell>
                     <Badge variant={getDocumentStatusVariant(doc.status)}>
-                      {documentStatusLabels[doc.status]}
+                      {rotuloStatusDocumento(doc.status, doc.versaoAtual)}
                     </Badge>
                   </TableCell>
                   {mostrarValidade ? (

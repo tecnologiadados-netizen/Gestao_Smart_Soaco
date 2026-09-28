@@ -49,6 +49,7 @@ export function CalibracoesConsultaContent() {
   const getEquipmentById = useCalibrationsStore((s) => s.getEquipmentById);
   const departments = useConfigStore((s) => s.departments);
   const users = useConfigStore((s) => s.users);
+  const currentUserId = useConfigStore((s) => s.currentUserId);
 
   const equipment = useCalibrationsStore((s) => s.equipment);
   const getEquipmentWithDue = useCalibrationsStore(
@@ -224,13 +225,19 @@ export function CalibracoesConsultaContent() {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={!eq.ativo || eq.statusCalibracao === "em_dia"}
+                    disabled={
+                      !eq.ativo ||
+                      eq.statusCalibracao === "em_dia" ||
+                      eq.responsavelId !== currentUserId
+                    }
                     title={
                       !eq.ativo
                         ? "Equipamento inativo"
-                        : eq.statusCalibracao === "em_dia"
-                          ? "Calibração em dia — disponível quando próximo do vencimento"
-                          : undefined
+                        : eq.responsavelId !== currentUserId
+                          ? "Somente o responsável pela calibração pode registrar"
+                          : eq.statusCalibracao === "em_dia"
+                            ? "Calibração em dia — disponível quando próximo do vencimento"
+                            : undefined
                     }
                     onClick={() => setCalibracaoFluxoId(eq.id)}
                   >

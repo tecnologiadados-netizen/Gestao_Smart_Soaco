@@ -7,10 +7,13 @@ import {
   getQualidadeClientes,
   getQualidadeDocumentosEntrada,
   getQualidadeFornecedores,
+  getQualidadeItensPedidoVenda,
+  getQualidadeNotasFiscaisPedidoVenda,
   getQualidadePedidosVenda,
   getQualidadePessoas,
   getQualidadeProdutos,
   getQualidadeRncPainel,
+  getQualidadeOrganicoColaboradoresHandler,
   getQualidadeResponsaveisHandler,
   postQualidadeRccPdf,
   postQualidadeRegistrosImportHandler,
@@ -36,6 +39,9 @@ router.get('/bootstrap', (req, res, next) => {
 });
 router.get('/responsaveis', (req, res, next) => {
   getQualidadeResponsaveisHandler(req, res).catch(next);
+});
+router.get('/organico-colaboradores', (req, res, next) => {
+  getQualidadeOrganicoColaboradoresHandler(req, res).catch(next);
 });
 
 router.put('/sync/config', (req, res, next) => {
@@ -86,6 +92,12 @@ router.get('/documentos-entrada', (req, res, next) => {
 });
 router.get('/pedidos-venda', (req, res, next) => {
   getQualidadePedidosVenda(req, res).catch(next);
+});
+router.get('/pedidos-venda/:pedidoId/itens', (req, res, next) => {
+  getQualidadeItensPedidoVenda(req, res).catch(next);
+});
+router.get('/pedidos-venda/:pedidoId/notas-fiscais', (req, res, next) => {
+  getQualidadeNotasFiscaisPedidoVenda(req, res).catch(next);
 });
 router.get('/rnc-painel', (req, res, next) => {
   getQualidadeRncPainel(req, res).catch(next);

@@ -1,6 +1,7 @@
 import type { DocumentOrigem, DocumentStatus } from "@qualidade/types/document";
 import type { DueStatus } from "@qualidade/types/calibration";
 import type { TaskType } from "@qualidade/types/task";
+import { isInitialRevision } from "@qualidade/lib/documents/revision";
 
 export const documentStatusLabels: Record<DocumentStatus, string> = {
   rascunho: "Rascunho",
@@ -9,6 +10,27 @@ export const documentStatusLabels: Record<DocumentStatus, string> = {
   vigente: "Vigente",
   obsoleto: "Obsoleto",
 };
+
+const STATUS_CADASTRO: DocumentStatus[] = [
+  "rascunho",
+  "em_revisao",
+  "em_aprovacao",
+];
+
+/** Rótulo da consulta: "Em revisão" só na revisão de um documento já publicado. */
+export function rotuloStatusDocumento(
+  status: DocumentStatus,
+  versaoAtual?: string
+): string {
+  const cadastroInicial = !versaoAtual || isInitialRevision(versaoAtual);
+  if (!cadastroInicial && STATUS_CADASTRO.includes(status)) {
+    return "Em revisão";
+  }
+  if (cadastroInicial && status === "em_revisao") {
+    return "Em consenso";
+  }
+  return documentStatusLabels[status];
+}
 
 export const documentOrigemLabels: Record<DocumentOrigem, string> = {
   interno: "Interno",

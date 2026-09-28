@@ -1011,7 +1011,7 @@ export function startQualidadeAutoSync() {
       state.verificationRecords !== prev.verificationRecords ||
       state.tasks !== prev.tasks
     ) {
-      // Auto-sync sem binários — arquivos só no flush explícito (evita estourar 15MB / F5).
+      // Auto-sync sem binários — arquivos só no flush explícito (o JSON da API cabe até 80MB).
       debounceSync('calibrations', () => syncCalibrationsStateNow(false));
     }
   });

@@ -3,6 +3,28 @@ import { normalizarRegistroAnexos } from "@qualidade/types/registro-anexo";
 
 export type RncAcaoStatus = "cancelada" | "concluida" | "reprogramada";
 
+/** Status escolhido no formulário da RNC. */
+export type RncStatusFormulario = "em_andamento" | "finalizada";
+
+/** Resposta da pergunta "Tem pedido de venda emitido?". */
+export type RncPedidoVendaResposta = "sim" | "nao" | "";
+
+export interface RncItemProduto {
+  id: string;
+  pedidoId: string;
+  pedidoNumero: string;
+  itemPedidoId: string;
+  codigoProduto: string;
+  produto: string;
+  grupoProduto: string;
+  tipoProduto: string;
+  quantidade: string;
+  /** Teto quando o item vem de um pedido: quantidade vendida. */
+  quantidadeMaxima: string;
+  /** NF-e do pedido desta linha (número/série). */
+  notaFiscal: string;
+}
+
 export interface RncAcaoApartada {
   id: string;
   acao: string;
@@ -15,6 +37,9 @@ export interface RncDados {
   codigoDocumento: string;
   /** Código do item no ERP (ex.: PA 10005, MP 6861). */
   codigoProduto: string;
+  /** sim = itens vindos de pedido atendido; nao = código livre; vazio = ainda não respondido. */
+  temPedidoVenda: RncPedidoVendaResposta;
+  itensProduto: RncItemProduto[];
   loteSerie: string;
   numeroOrdemProducao: string;
   dataOcorrencia: string;
@@ -38,6 +63,8 @@ export interface RncDados {
   /** Cinco porquês do plano de ação (1° a 5°). */
   porques: string[];
   causa: string;
+  /** Em andamento ou finalizada. A data de fechamento só vale quando finalizada. */
+  statusRnc: RncStatusFormulario;
   dataFechamento: string;
   usuarioCriacao: string;
   prazoExecucao: string;
@@ -55,6 +82,37 @@ export interface RncDados {
 }
 
 export type RncDadosInput = RncDados;
+
+export function criarRncItemProdutoVazio(): RncItemProduto {
+  return {
+    id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    pedidoId: "",
+    pedidoNumero: "",
+    itemPedidoId: "",
+    codigoProduto: "",
+    produto: "",
+    grupoProduto: "",
+    tipoProduto: "",
+    quantidade: "",
+    quantidadeMaxima: "",
+    notaFiscal: "",
+  };
+}
+
+/** Notas distintas, na ordem das linhas. Várias NF-e do mesmo pedido ficam separadas por vírgula. */
+export function notasFiscaisDistintas(itens: RncItemProduto[]): string {
+  const vistas = new Set<string>();
+  const lista: string[] = [];
+  for (const item of itens) {
+    for (const parte of item.notaFiscal.split(",")) {
+      const nota = parte.trim();
+      if (!nota || vistas.has(nota)) continue;
+      vistas.add(nota);
+      lista.push(nota);
+    }
+  }
+  return lista.join(", ");
+}
 
 export function criarRncAcaoApartadaVazia(): RncAcaoApartada {
   return {
@@ -164,15 +222,144 @@ function normalizarPlanoAcao(
   };
 }
 
+function normalizarStatusRnc(
+  dados: Partial<RncDados> & Record<string, unknown>,
+  merged: RncDados
+): Pick<RncDados, "statusRnc" | "dataFechamento"> {
+  const informado = dados.statusRnc;
+  if (informado === "em_andamento") {
+    return { statusRnc: "em_andamento", dataFechamento: "" };
+  }
+  if (informado === "finalizada") {
+    return {
+      statusRnc: "finalizada",
+      dataFechamento: merged.dataFechamento ?? "",
+    };
+  }
+  if (merged.dataFechamento.trim()) {
+    return {
+      statusRnc: "finalizada",
+      dataFechamento: merged.dataFechamento,
+    };
+  }
+  return { statusRnc: "em_andamento", dataFechamento: "" };
+}
+
+function normalizarItemProduto(item: Partial<RncItemProduto>, index: number): RncItemProduto {
+  return {
+    id: item.id || `item-legado-${index}`,
+    pedidoId: item.pedidoId ?? "",
+    pedidoNumero: item.pedidoNumero ?? "",
+    itemPedidoId: item.itemPedidoId ?? "",
+    codigoProduto: item.codigoProduto ?? "",
+    produto: item.produto ?? "",
+    grupoProduto: item.grupoProduto ?? "",
+    tipoProduto: item.tipoProduto ?? "",
+    quantidade: item.quantidade ?? "",
+    quantidadeMaxima: item.quantidadeMaxima ?? "",
+    notaFiscal: item.notaFiscal ?? "",
+  };
+}
+
+function textoItens(itens: RncItemProduto[], campo: "codigoProduto" | "produto" | "quantidade"): string {
+  return itens
+    .map((item) => item[campo].trim())
+    .filter(Boolean)
+    .join("; ");
+}
+
+function normalizarItensProduto(
+  dados: Partial<RncDados> & Record<string, unknown>,
+  merged: RncDados
+): Pick<
+  RncDados,
+  "temPedidoVenda" | "itensProduto" | "codigoProduto" | "produto" | "quantidade" | "notaFiscal"
+> {
+  const informado = dados.temPedidoVenda;
+  const explicito = informado === "sim" || informado === "nao";
+  let temPedidoVenda: RncPedidoVendaResposta = explicito ? informado : "";
+
+  const itensInformados = Array.isArray(dados.itensProduto)
+    ? dados.itensProduto.map((item, index) => normalizarItemProduto(item, index))
+    : [];
+
+  let itens = itensInformados;
+  if (
+    !explicito &&
+    itens.length === 0 &&
+    (merged.codigoProduto.trim() || merged.produto.trim() || merged.quantidade.trim())
+  ) {
+    temPedidoVenda = "nao";
+    itens = [
+      {
+        ...criarRncItemProdutoVazio(),
+        id: "item-legado",
+        codigoProduto: merged.codigoProduto,
+        produto: merged.produto,
+        grupoProduto: merged.grupoProduto,
+        tipoProduto: merged.tipoProduto,
+        quantidade: merged.quantidade,
+      },
+    ];
+  }
+
+  if (explicito && itens.length === 0) {
+    itens = [criarRncItemProdutoVazio()];
+  }
+
+  if (temPedidoVenda === "sim" && merged.notaFiscal.trim()) {
+    const pedidos = new Set(itens.map((item) => item.pedidoId.trim()).filter(Boolean));
+    if (pedidos.size <= 1 && itens.every((item) => !item.notaFiscal.trim())) {
+      const nota = merged.notaFiscal.trim();
+      itens = itens.map((item) => (item.pedidoId.trim() ? { ...item, notaFiscal: nota } : item));
+    }
+  }
+
+  const sincronizarLegado = explicito || itens.length > 0;
+  const notaFiscal =
+    temPedidoVenda === "sim"
+      ? notasFiscaisDistintas(itens) || merged.notaFiscal
+      : temPedidoVenda === "nao"
+        ? ""
+        : merged.notaFiscal;
+  return {
+    temPedidoVenda,
+    itensProduto: itens,
+    codigoProduto: sincronizarLegado ? textoItens(itens, "codigoProduto") : merged.codigoProduto,
+    produto: sincronizarLegado ? textoItens(itens, "produto") : merged.produto,
+    quantidade: sincronizarLegado ? textoItens(itens, "quantidade") : merged.quantidade,
+    notaFiscal,
+  };
+}
+
 /** Converte registros antigos (ação 2/3 fixas) para a tabela dinâmica. */
-export function normalizarRncDados(dados: Partial<RncDados> & Record<string, unknown>): RncDados {
+export function normalizarRncDados(
+  dados: Partial<RncDados> & Record<string, unknown>,
+  opcoes?: { manterAnexosVazios?: boolean }
+): RncDados {
   const merged = { ...criarRncDadosVazio(), ...dados } as RncDados;
   return {
     ...merged,
     ...normalizarAcoesApartadas(merged),
     ...normalizarPlanoAcao(merged),
-    anexos: normalizarRegistroAnexos(merged.anexos),
+    ...normalizarStatusRnc(dados, merged),
+    ...normalizarItensProduto(dados, merged),
+    analiseEficaz: normalizarSimNao(merged.analiseEficaz),
+    anexos: normalizarRegistroAnexos(merged.anexos, {
+      manterVazios: opcoes?.manterAnexosVazios,
+    }),
   };
+}
+
+function normalizarSimNao(valor: string): string {
+  const texto = valor
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (texto === "sim") return "Sim";
+  if (texto === "nao") return "Não";
+  return valor.trim();
 }
 
 export function sincronizarAcoesApartadasLegado(dados: RncDados): RncDados {
@@ -192,6 +379,8 @@ export function criarRncDadosVazio(codigoDocumento = ""): RncDados {
   return {
     codigoDocumento,
     codigoProduto: "",
+    temPedidoVenda: "",
+    itensProduto: [],
     loteSerie: "",
     numeroOrdemProducao: "",
     dataOcorrencia: "",
@@ -214,6 +403,7 @@ export function criarRncDadosVazio(codigoDocumento = ""): RncDados {
     registrarPlanoAcao: false,
     porques: criarPorquesVazios(),
     causa: "",
+    statusRnc: "em_andamento",
     dataFechamento: "",
     usuarioCriacao: "",
     prazoExecucao: "",
@@ -238,4 +428,12 @@ export function isoParaInputDate(iso: string): string {
 export function inputDateParaIso(date: string): string {
   if (!date) return "";
   return `${date}T12:00:00.000Z`;
+}
+
+/** Data local de hoje, no mesmo formato ISO usado pelos campos de data da RNC. */
+export function dataLocalHojeIso(): string {
+  const agora = new Date();
+  const mes = String(agora.getMonth() + 1).padStart(2, "0");
+  const dia = String(agora.getDate()).padStart(2, "0");
+  return inputDateParaIso(`${agora.getFullYear()}-${mes}-${dia}`);
 }

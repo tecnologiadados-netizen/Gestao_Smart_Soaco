@@ -587,6 +587,18 @@ export async function buscarPessoasNomus(
 export interface GetPedidosVendaOptions {
   q?: string;
   limit?: number;
+  /** Só pedidos com ao menos um item atendido parcialmente (3) ou totalmente (4). */
+  somenteAtendidos?: boolean;
+}
+
+export interface ItemPedidoVendaAtendidoErp {
+  itemId: string;
+  codigo: string;
+  descricao: string;
+  grupoProduto: string;
+  tipoProduto: string;
+  statusItem: number;
+  quantidadeVendida: number;
 }
 
 function pedidosVendaIdEmpresa(): number {
@@ -707,6 +719,13 @@ export async function buscarPedidosVendaNomus(
   );
   const idEmpresa = pedidosVendaIdEmpresa();
   const q = options.q?.trim() ?? '';
+  const filtroAtendidos = options.somenteAtendidos
+    ? `AND EXISTS (
+         SELECT 1 FROM itempedido ip_at
+         WHERE ip_at.idPedido = p.id
+           AND ip_at.status IN (3, 4, 5)
+       )`
+    : '';
 
   if (q.length >= PEDIDOS_VENDA_MIN_SEARCH_CHARS) {
     const like = `%${q}%`;
@@ -714,6 +733,7 @@ export async function buscarPedidosVendaNomus(
       `${PEDIDOS_VENDA_SELECT} ${PEDIDOS_VENDA_FROM}
        WHERE p.idEmpresa = ?
          AND (p.nome LIKE ? OR p.nome = ?)
+         ${filtroAtendidos}
        ORDER BY p.dataEmissao DESC, p.id DESC
        LIMIT ?`,
       [idEmpresa, like, q, limit]
@@ -724,11 +744,119 @@ export async function buscarPedidosVendaNomus(
   const [rows] = await pool.query<RowDataPacket[]>(
     `${PEDIDOS_VENDA_SELECT} ${PEDIDOS_VENDA_FROM}
      WHERE p.idEmpresa = ?
+       ${filtroAtendidos}
      ORDER BY p.dataEmissao DESC, p.id DESC
      LIMIT ?`,
     [idEmpresa, limit]
   );
   return { pedidos: mapSqlRowsToPedidosVenda(rows as Record<string, unknown>[]), source: 'erp' };
+}
+
+/** Itens do pedido atendidos parcialmente (3), totalmente (4) ou com corte (5). */
+export async function buscarItensPedidoVendaAtendidosNomus(
+  pedidoId: string
+): Promise<{ itens: ItemPedidoVendaAtendidoErp[]; source: 'erp' | 'indisponivel' }> {
+  const pool = getNomusPool();
+  if (!pool) return { itens: [], source: 'indisponivel' };
+
+  const id = Number(pedidoId.trim());
+  if (!Number.isFinite(id) || id <= 0) return { itens: [], source: 'erp' };
+
+  const idEmpresa = pedidosVendaIdEmpresa();
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT
+       ip.id AS itemId,
+       pr.nome AS codigoProduto,
+       pr.descricao AS descricaoProduto,
+       COALESCE(gp.nome, '') AS grupoProduto,
+       COALESCE(tp.descricao, '') AS tipoProduto,
+       ip.status AS statusItem,
+       CASE
+         WHEN COALESCE(ip.qtdeAtendida, 0) > 0 THEN ip.qtdeAtendida
+         ELSE COALESCE(ip.qtde, 0)
+       END AS quantidadeVendida
+     FROM itempedido ip
+     INNER JOIN pedido ped ON ped.id = ip.idPedido
+     INNER JOIN produto pr ON pr.id = ip.idProduto
+     LEFT JOIN grupoproduto gp ON gp.id = pr.idGrupoProduto
+     LEFT JOIN tipoproduto tp ON tp.id = pr.idTipoProduto
+     WHERE ped.id = ?
+       AND ped.idEmpresa = ?
+       AND ip.status IN (3, 4, 5)
+     ORDER BY pr.nome ASC, ip.id ASC`,
+    [id, idEmpresa]
+  );
+
+  const itens: ItemPedidoVendaAtendidoErp[] = [];
+  for (const row of rows as Record<string, unknown>[]) {
+    const itemId = String(row.itemId ?? '').trim();
+    const codigo = String(row.codigoProduto ?? '').trim();
+    if (!itemId || !codigo) continue;
+    const qtde = Number(row.quantidadeVendida);
+    itens.push({
+      itemId,
+      codigo,
+      descricao: String(row.descricaoProduto ?? '').trim(),
+      grupoProduto: String(row.grupoProduto ?? '').trim(),
+      tipoProduto: String(row.tipoProduto ?? '').trim(),
+      statusItem: Number(row.statusItem) || 0,
+      quantidadeVendida: Number.isFinite(qtde) ? Math.max(0, qtde) : 0,
+    });
+  }
+
+  return { itens, source: 'erp' };
+}
+
+/**
+ * NF-e de saída do pedido, no formato exibido no Nomus (`numero/série`, ex.: 90091/1).
+ * O número interno do documento de estoque não entra aqui.
+ * Devoluções (tipos 52 e 55) e notas canceladas ficam de fora.
+ */
+export async function buscarNotasFiscaisPedidoVendaNomus(
+  pedidoId: string
+): Promise<{ notasFiscais: string[]; source: 'erp' | 'indisponivel' }> {
+  const pool = getNomusPool();
+  if (!pool) return { notasFiscais: [], source: 'indisponivel' };
+
+  const id = Number(pedidoId.trim());
+  if (!Number.isFinite(id) || id <= 0) return { notasFiscais: [], source: 'erp' };
+
+  const idEmpresa = pedidosVendaIdEmpresa();
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT DISTINCT
+       CONCAT(
+         TRIM(nfe.numero),
+         IF(nfe.serie IS NULL OR TRIM(nfe.serie) = '', '', CONCAT('/', TRIM(nfe.serie)))
+       ) AS numero
+     FROM itempedido ip
+     INNER JOIN pedido ped ON ped.id = ip.idPedido
+     INNER JOIN itemdocumentoestoque_itempedidovenda ideipv
+       ON ideipv.idItemPedidoVenda = ip.id
+     INNER JOIN itemdocumentoestoque ide
+       ON ide.id = ideipv.idItemDocumentoEstoque
+     INNER JOIN documentoestoque de
+       ON de.id = COALESCE(ide.idDocumentoSaida, ide.idDocumentoEstoque)
+     INNER JOIN nfe nfe ON nfe.idDocumentoEstoque = de.id
+     WHERE ped.id = ?
+       AND ped.idEmpresa = ?
+       AND nfe.numero IS NOT NULL
+       AND TRIM(nfe.numero) <> ''
+       AND nfe.dataHoraCancelamento IS NULL
+       AND nfe.status IN (2, 4)
+       AND COALESCE(de.idTipoMovimentacao, 0) NOT IN (52, 55)
+       AND COALESCE(ide.idTipoMovimentacao, 0) NOT IN (52, 55)`,
+    [id, idEmpresa]
+  );
+
+  const notasFiscais = [
+    ...new Set(
+      (rows as Record<string, unknown>[])
+        .map((row) => String(row.numero ?? '').trim())
+        .filter((numero) => numero && numero !== '0')
+    ),
+  ].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+
+  return { notasFiscais, source: 'erp' };
 }
 
 export interface GetDocumentosEntradaOptions {

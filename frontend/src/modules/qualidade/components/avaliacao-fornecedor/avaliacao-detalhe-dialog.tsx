@@ -50,34 +50,36 @@ export function AvaliacaoDetalheDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[min(92vh,100dvh)] max-w-lg gap-0 overflow-hidden p-0">
+        <DialogContent
+          showCloseButton={false}
+          className="max-h-[min(92vh,100dvh)] max-w-xl gap-0 overflow-hidden p-0"
+        >
           <div className="max-h-[min(92vh,100dvh)] overflow-y-auto">
-            <AvaliacaoFornecedorDetalheConteudo viewModel={viewModel} />
+            <AvaliacaoFornecedorDetalheConteudo
+              viewModel={viewModel}
+              onClose={() => onOpenChange(false)}
+            />
           </div>
 
-          <div className="sgq-form-footer justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              {erroPdf ? (
-                <p className="text-xs text-destructive" role="alert">
-                  {erroPdf}
-                </p>
-              ) : null}
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="default"
-                disabled={gerandoPdf}
-                onClick={() => void handleEmitirPdf()}
-              >
-                {gerandoPdf ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <FileDown className="size-4" />
-                )}
-                Emitir PDF
-              </Button>
-            </div>
+          <div className="sgq-form-footer">
+            {erroPdf ? (
+              <p className="text-center text-xs text-destructive" role="alert">
+                {erroPdf}
+              </p>
+            ) : null}
+            <Button
+              type="button"
+              variant="default"
+              disabled={gerandoPdf}
+              onClick={() => void handleEmitirPdf()}
+            >
+              {gerandoPdf ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <FileDown className="size-4" />
+              )}
+              Emitir PDF
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

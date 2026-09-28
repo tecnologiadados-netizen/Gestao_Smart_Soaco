@@ -1,5 +1,6 @@
 import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 
 interface ConfirmacaoDialogProps {
   open: boolean;
@@ -31,28 +32,31 @@ export function ConfirmacaoDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="z-[60] max-w-md gap-0 overflow-hidden p-0"
+        className="z-[60] max-w-[26.5rem] gap-0 overflow-hidden p-0"
       >
-        <div className="modal-header-bar px-6 py-3.5">
-          <h2 className="text-base font-semibold text-white">{titulo}</h2>
+        <FormModalHeader
+          titulo={titulo}
+          onClose={() => onOpenChange(false)}
+        />
+        <div className="px-7 py-5">
+          <p className="text-center text-sm leading-relaxed text-muted-foreground">
+            {mensagem}
+          </p>
         </div>
-        <div className="px-6 py-5">
-          <p className="text-sm leading-relaxed text-foreground">{mensagem}</p>
-        </div>
-        <div className="sgq-form-footer justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-          >
-            {cancelarLabel}
-          </Button>
+        <div className="sgq-form-footer">
           <Button
             type="button"
             variant={variant === "destructive" ? "destructive" : "default"}
             onClick={handleConfirmar}
           >
             {confirmarLabel}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            {cancelarLabel}
           </Button>
         </div>
       </DialogContent>

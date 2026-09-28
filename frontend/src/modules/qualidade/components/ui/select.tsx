@@ -9,6 +9,23 @@ import { ChevronDownIcon, CheckIcon, ChevronUpIcon, SearchIcon } from "lucide-re
 
 const SelectBuscaContext = React.createContext("")
 
+/** Listas curtas cabem na tela; a busca só entra a partir daí. */
+const SELECT_BUSCA_A_PARTIR_DE = 11
+
+function contarItensSelect(node: React.ReactNode): number {
+  let total = 0
+  React.Children.forEach(node, (child) => {
+    if (!React.isValidElement(child)) return
+    if (child.type === SelectItem) {
+      total += 1
+      return
+    }
+    const props = child.props as { children?: React.ReactNode }
+    total += contarItensSelect(props.children)
+  })
+  return total
+}
+
 function textoDoConteudo(node: React.ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node)
   if (Array.isArray(node)) return node.map(textoDoConteudo).join(" ")
@@ -75,6 +92,7 @@ function SelectTrigger({
 function SelectContent({
   className,
   children,
+  pesquisavel,
   side = "bottom",
   sideOffset = 4,
   align = "center",
@@ -85,11 +103,17 @@ function SelectContent({
   Pick<
     SelectPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger"
-  >) {
+  > & {
+    /** Força a busca. Sem o prop, ela só aparece em listas longas. */
+    pesquisavel?: boolean
+  }) {
   const [busca, setBusca] = React.useState("")
+  const mostrarBusca =
+    pesquisavel ?? contarItensSelect(children) >= SELECT_BUSCA_A_PARTIR_DE
+  const termo = mostrarBusca ? busca : ""
 
   return (
-    <SelectBuscaContext.Provider value={busca}>
+    <SelectBuscaContext.Provider value={termo}>
       <SelectPrimitive.Portal className="qualidade-portal">
         <SelectPrimitive.Positioner
           side={side}
@@ -109,23 +133,25 @@ function SelectContent({
             )}
             {...props}
           >
-            <div
-              className="shrink-0 border-b border-border p-2"
-              onPointerDown={(event) => event.stopPropagation()}
-              onKeyDown={(event) => event.stopPropagation()}
-            >
-              <div className="relative">
-                <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  value={busca}
-                  onChange={(event) => setBusca(event.target.value)}
-                  placeholder="Digite para pesquisar… (% refina)"
-                  autoComplete="off"
-                  autoFocus
-                  className="h-9 w-full rounded-md border border-input bg-background pr-3 pl-8 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                />
+            {mostrarBusca ? (
+              <div
+                className="shrink-0 border-b border-border p-2"
+                onPointerDown={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <div className="relative">
+                  <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={busca}
+                    onChange={(event) => setBusca(event.target.value)}
+                    placeholder="Digite para pesquisar… (% refina)"
+                    autoComplete="off"
+                    autoFocus
+                    className="h-9 w-full rounded-md border border-input bg-background pr-3 pl-8 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                  />
+                </div>
               </div>
-            </div>
+            ) : null}
             <SelectScrollUpButton />
             <SelectPrimitive.List className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-1">
               {children}
