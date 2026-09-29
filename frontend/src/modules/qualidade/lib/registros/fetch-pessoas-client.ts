@@ -12,6 +12,8 @@ export interface FetchPessoasOptions {
   limit?: number;
   /** Só pessoas com a categoria Funcionário marcada no Nomus. */
   apenasFuncionarios?: boolean;
+  /** Só pessoas com a categoria Parceiro marcada no Nomus. */
+  apenasParceiros?: boolean;
 }
 
 export async function fetchPessoasClient(
@@ -20,6 +22,7 @@ export async function fetchPessoasClient(
   const params = new URLSearchParams();
   if (options.q?.trim()) params.set("q", options.q.trim());
   if (options.apenasFuncionarios) params.set("funcionarios", "1");
+  if (options.apenasParceiros) params.set("parceiros", "1");
   params.set("limit", String(options.limit ?? PESSOAS_INITIAL_LIMIT));
 
   const response = await apiFetch(

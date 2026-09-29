@@ -5,17 +5,6 @@ import { Button } from "@qualidade/components/ui/button";
 import { AvaliacaoFornecedorConsultaPanel } from "@qualidade/components/registros/avaliacao-fornecedor-consulta-panel";
 import { CodigoDocumentoCell } from "@qualidade/components/registros/codigo-documento-cell";
 import {
-  TableFilterField,
-  tableFilterSelectTriggerClass,
-} from "@qualidade/components/ui/table-filters-toolbar";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@qualidade/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -37,9 +26,10 @@ import {
   MODULO_REGISTRO_TIPOS,
   moduloRegistroTipoLabelsCurto,
   rotuloStatusRegistro,
-  registroTipoLabels,
+  type ModuloRegistroTipo,
 } from "@qualidade/lib/registros/constants";
 import { useRegistrosStore } from "@qualidade/lib/store/registros-store";
+import { useAvaliacaoFornecedorStore } from "@qualidade/lib/store/avaliacao-fornecedor-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { excluirQualidadeRegistro } from "@qualidade/lib/qualidadePersistence";
 import { formatarData } from "@qualidade/lib/utils/dates";
@@ -54,13 +44,11 @@ import {
   getRegistroResponsavelNome,
   type Registro,
 } from "@qualidade/types/registro";
-import type { RegistroTipo } from "@qualidade/types/registro";
 import { useGradeFiltrosExcel } from "@/hooks/useGradeFiltrosExcel";
 
 const COL_IDS = [
   "codigo",
   "dataOcorrencia",
-  "tipo",
   "info",
   "produto",
   "detalhe",
@@ -79,8 +67,6 @@ function nomeColunaRegistro(colId: string): string {
       return "Código do documento";
     case "dataOcorrencia":
       return "Data";
-    case "tipo":
-      return "Tipo";
     case "info":
       return "Cliente / Setor";
     case "produto":
@@ -102,12 +88,13 @@ export function RegistrosConsultaContent() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const registros = useRegistrosStore((s) => s.registros);
+  const avaliacoes = useAvaliacaoFornecedorStore((s) => s.avaliacoes);
   const excluirRegistroStore = useRegistrosStore((s) => s.excluirRegistro);
   const users = useConfigStore((s) => s.users);
 
-  const [tipoFiltro, setTipoFiltro] = useState(() => {
+  const [tipoFiltro, setTipoFiltro] = useState<ModuloRegistroTipo>(() => {
     const tipoParam = searchParams.get("tipo");
-    return isModuloRegistroTipo(tipoParam) ? tipoParam : "";
+    return isModuloRegistroTipo(tipoParam) ? tipoParam : "rnc";
   });
   const [registroSelecionadoId, setRegistroSelecionadoId] = useState<
     string | null
@@ -117,18 +104,16 @@ export function RegistrosConsultaContent() {
     useState<Registro | null>(null);
   const [excluindo, setExcluindo] = useState(false);
   const [erroExclusao, setErroExclusao] = useState("");
-  const [contagemAvaliacoes, setContagemAvaliacoes] = useState(0);
+  const [contagemAvaliacoes, setContagemAvaliacoes] = useState<number | null>(
+    null
+  );
 
-  const tipoSelecionado = isModuloRegistroTipo(tipoFiltro) ? tipoFiltro : null;
+  const tipoSelecionado = tipoFiltro;
   const isAvaliacaoView = tipoSelecionado === "avaliacao-fornecedor";
 
   useEffect(() => {
     const tipoParam = searchParams.get("tipo");
-    if (isModuloRegistroTipo(tipoParam)) {
-      setTipoFiltro(tipoParam);
-      return;
-    }
-    setTipoFiltro("");
+    setTipoFiltro(isModuloRegistroTipo(tipoParam) ? tipoParam : "rnc");
   }, [searchParams]);
 
   const handleContagemAvaliacoes = useCallback((count: number) => {
@@ -136,9 +121,7 @@ export function RegistrosConsultaContent() {
   }, []);
 
   const registrosDoTipo = useMemo(() => {
-    if (!tipoSelecionado || tipoSelecionado === "avaliacao-fornecedor") {
-      return [];
-    }
+    if (tipoSelecionado === "avaliacao-fornecedor") return [];
     return registros.filter((registro) => registro.tipo === tipoSelecionado);
   }, [registros, tipoSelecionado]);
 
@@ -149,8 +132,6 @@ export function RegistrosConsultaContent() {
           return sgqTextoOuTraco(getRegistroCodigoDocumento(registro));
         case "dataOcorrencia":
           return formatarData(getRegistroDataOcorrencia(registro));
-        case "tipo":
-          return registroTipoLabels[registro.tipo as RegistroTipo] ?? registro.tipo;
         case "info":
           return sgqTextoOuTraco(getRegistroInfoPrincipal(registro));
         case "produto":
@@ -194,12 +175,25 @@ export function RegistrosConsultaContent() {
     dateColumnIds: ["dataOcorrencia", "fechamento"],
   });
 
-  function atualizarTipoFiltro(value: string) {
-    if (!isModuloRegistroTipo(value)) return;
+  function atualizarTipoFiltro(value: ModuloRegistroTipo) {
     grade.limparFiltrosGrade();
     setTipoFiltro(value);
-    navigate(`/qualidade/registros/consulta?tipo=${value}`);
+    navigate(`/qualidade/registros/consulta?tipo=${value}`, { replace: true });
   }
+
+  const contagensPorTipo = useMemo(() => {
+    const contagens: Record<ModuloRegistroTipo, number> = {
+      rnc: 0,
+      rcc: 0,
+      "avaliacao-fornecedor": avaliacoes.length,
+    };
+    for (const registro of registros) {
+      if (registro.tipo === "rnc" || registro.tipo === "rcc") {
+        contagens[registro.tipo] += 1;
+      }
+    }
+    return contagens;
+  }, [avaliacoes.length, registros]);
 
   function abrirDetalhe(registro: Registro) {
     setAbrirEmEdicao(false);
@@ -232,11 +226,9 @@ export function RegistrosConsultaContent() {
   }
 
   const filtrados = grade.rowsExibidas;
-  const contagemExibida = !tipoSelecionado
-    ? null
-    : isAvaliacaoView
-      ? contagemAvaliacoes
-      : filtrados.length;
+  const contagemExibida = isAvaliacaoView
+    ? (contagemAvaliacoes ?? avaliacoes.length)
+    : filtrados.length;
   const rotuloContagem = isAvaliacaoView
     ? "avaliação(ões) encontrada(s)"
     : "registro(s) encontrado(s)";
@@ -249,9 +241,7 @@ export function RegistrosConsultaContent() {
             Consulta de registros
           </h1>
           <p className="text-sm text-muted-foreground">
-            {contagemExibida === null
-              ? "Selecione um tipo de registro para consultar."
-              : `${contagemExibida} ${rotuloContagem}`}
+            {contagemExibida} {rotuloContagem}
           </p>
         </div>
         <Link to={novoRegistroHref(tipoFiltro)}>
@@ -268,40 +258,43 @@ export function RegistrosConsultaContent() {
         </p>
       ) : null}
 
-      <div className="sgq-table-surface overflow-hidden rounded-xl border border-border bg-card shadow-sm ring-1 ring-foreground/6">
-        <div className="border-b border-border p-4">
-          <TableFilterField label="Tipo" htmlFor="reg-tipo">
-            <Select
-              value={tipoSelecionado ?? ""}
-              onValueChange={(v) => v && atualizarTipoFiltro(v)}
+      <div
+        role="tablist"
+        aria-label="Tipo de registro"
+        className="grid w-full max-w-3xl grid-cols-3 items-stretch rounded-lg bg-muted p-1"
+      >
+        {MODULO_REGISTRO_TIPOS.map((tipo) => {
+          const ativa = tipoSelecionado === tipo;
+          return (
+            <button
+              key={tipo}
+              type="button"
+              role="tab"
+              aria-selected={ativa}
+              onClick={() => atualizarTipoFiltro(tipo)}
+              className={cn(
+                "inline-flex h-auto min-h-9 min-w-0 items-center justify-center gap-2 rounded-md px-2 py-1.5 text-center text-sm font-medium leading-tight transition-colors",
+                ativa
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
             >
-              <SelectTrigger
-                id="reg-tipo"
-                className={cn(tableFilterSelectTriggerClass, "max-w-md")}
+              <span className="whitespace-normal">
+                {moduloRegistroTipoLabelsCurto[tipo]}
+              </span>
+              <Badge
+                variant={ativa ? "default" : "secondary"}
+                className="h-5 min-w-5 px-1.5 text-[11px] tabular-nums"
               >
-                <SelectValue placeholder="Selecione o tipo">
-                  {tipoSelecionado
-                    ? moduloRegistroTipoLabelsCurto[tipoSelecionado]
-                    : null}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {MODULO_REGISTRO_TIPOS.map((tipo) => (
-                  <SelectItem key={tipo} value={tipo}>
-                    {moduloRegistroTipoLabelsCurto[tipo]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </TableFilterField>
-        </div>
+                {contagensPorTipo[tipo]}
+              </Badge>
+            </button>
+          );
+        })}
+      </div>
 
-        {!tipoSelecionado ? (
-          <div className="px-4 py-12 text-center text-sm text-muted-foreground">
-            Escolha RNC, RCC ou Avaliação de fornecedor para exibir os
-            registros.
-          </div>
-        ) : isAvaliacaoView ? (
+      <div className="sgq-table-surface overflow-hidden rounded-xl border border-border bg-card shadow-sm ring-1 ring-foreground/6">
+        {isAvaliacaoView ? (
           <AvaliacaoFornecedorConsultaPanel
             onCountChange={handleContagemAvaliacoes}
           />
@@ -356,11 +349,6 @@ export function RegistrosConsultaContent() {
                         <TableCell>
                           {formatarData(getRegistroDataOcorrencia(registro))}
                         </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {registroTipoLabels[registro.tipo as RegistroTipo]}
-                          </Badge>
-                        </TableCell>
                         <TableCell className="max-w-[160px] truncate">
                           {getRegistroInfoPrincipal(registro) || "—"}
                         </TableCell>
@@ -402,7 +390,7 @@ export function RegistrosConsultaContent() {
                         )}
                       >
                         {registrosDoTipo.length === 0
-                          ? "Nenhum registro encontrado."
+                          ? `Nenhum ${moduloRegistroTipoLabelsCurto[tipoSelecionado]} encontrado.`
                           : "Nenhum registro com os filtros da grade. Ajuste ou limpe os filtros por coluna."}
                       </TableCell>
                     </TableRow>
@@ -418,7 +406,7 @@ export function RegistrosConsultaContent() {
         )}
       </div>
 
-      {tipoSelecionado && !isAvaliacaoView ? (
+      {!isAvaliacaoView ? (
         <RegistroDetalheDialog
           registroId={registroSelecionadoId}
           open={registroSelecionadoId !== null}

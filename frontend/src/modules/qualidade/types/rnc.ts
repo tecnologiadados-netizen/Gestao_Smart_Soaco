@@ -23,6 +23,16 @@ export interface RncItemProduto {
   quantidadeMaxima: string;
   /** NF-e do pedido desta linha (número/série). */
   notaFiscal: string;
+  /** Emissão da NF desta linha (`YYYY-MM-DD`; várias datas separadas por vírgula). */
+  dataEmissaoNf: string;
+  /** Cliente do pedido desta linha. O restante do endereço fica no registro para o PDF. */
+  clienteNome: string;
+  clienteContato: string;
+  clienteEstado: string;
+  clienteCidade: string;
+  clienteTelefone: string;
+  clienteBairro: string;
+  clienteEndereco: string;
 }
 
 export interface RncAcaoApartada {
@@ -96,6 +106,14 @@ export function criarRncItemProdutoVazio(): RncItemProduto {
     quantidade: "",
     quantidadeMaxima: "",
     notaFiscal: "",
+    dataEmissaoNf: "",
+    clienteNome: "",
+    clienteContato: "",
+    clienteEstado: "",
+    clienteCidade: "",
+    clienteTelefone: "",
+    clienteBairro: "",
+    clienteEndereco: "",
   };
 }
 
@@ -258,6 +276,14 @@ function normalizarItemProduto(item: Partial<RncItemProduto>, index: number): Rn
     quantidade: item.quantidade ?? "",
     quantidadeMaxima: item.quantidadeMaxima ?? "",
     notaFiscal: item.notaFiscal ?? "",
+    dataEmissaoNf: item.dataEmissaoNf ?? "",
+    clienteNome: item.clienteNome ?? "",
+    clienteContato: item.clienteContato ?? "",
+    clienteEstado: item.clienteEstado ?? "",
+    clienteCidade: item.clienteCidade ?? "",
+    clienteTelefone: item.clienteTelefone ?? "",
+    clienteBairro: item.clienteBairro ?? "",
+    clienteEndereco: item.clienteEndereco ?? "",
   };
 }
 

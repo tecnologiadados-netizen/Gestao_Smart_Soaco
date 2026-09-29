@@ -472,6 +472,52 @@ export async function buscarProdutosNomus(
   return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
 }
 
+export interface ProdutoSetorProducao {
+  codigo: string;
+  descricao: string;
+  setorProducao: string;
+}
+
+/** Atributo Nomus "Setor de Produção" (mesmo id usado nos pedidos). */
+const ATRIBUTO_SETOR_PRODUCAO = 679;
+
+export async function buscarSetorProducaoPorProduto(
+  q: string,
+  limit = 20
+): Promise<{ produtos: ProdutoSetorProducao[]; source: 'erp' | 'indisponivel' }> {
+  const pool = getNomusPool();
+  if (!pool) return { produtos: [], source: 'indisponivel' };
+
+  const termo = q.trim();
+  if (termo.length < PRODUTOS_MIN_SEARCH_CHARS) return { produtos: [], source: 'erp' };
+
+  const like = termoParaPadraoLikeSql(termo);
+  const capped = Math.min(Math.max(limit, 1), 30);
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT
+       pr.nome AS codigo,
+       pr.descricao AS descricao,
+       COALESCE(alo.opcao, '') AS setorProducao
+     FROM produto pr
+     LEFT JOIN atributoprodutovalor apv
+       ON apv.idProduto = pr.id
+      AND apv.idAtributo = ?
+     LEFT JOIN atributolistaopcao alo ON alo.id = apv.idListaOpcao
+     WHERE pr.nome LIKE ?
+        OR pr.descricao LIKE ?
+     ORDER BY pr.nome ASC
+     LIMIT ?`,
+    [ATRIBUTO_SETOR_PRODUCAO, like, like, capped]
+  );
+
+  const produtos = (rows as Record<string, unknown>[]).map((row) => ({
+    codigo: String(row.codigo ?? '').trim(),
+    descricao: String(row.descricao ?? '').trim(),
+    setorProducao: String(row.setorProducao ?? '').trim(),
+  }));
+  return { produtos, source: 'erp' };
+}
+
 export async function buscarFornecedoresNomus(
   options: GetFornecedoresOptions = {}
 ): Promise<{ fornecedores: FornecedorErp[]; source: 'erp' | 'indisponivel' }> {
@@ -512,6 +558,8 @@ export interface GetPessoasOptions {
   limit?: number;
   /** Por padrão lista funcionários (pessoa.funcionario = 1). */
   apenasFuncionarios?: boolean;
+  /** Pessoas com a categoria Parceiro (pessoa.parceiro = 1). */
+  apenasParceiros?: boolean;
 }
 
 function mapSqlRowsToPessoas(rows: Record<string, unknown>[]): PessoaErp[] {
@@ -545,7 +593,8 @@ export async function buscarPessoasNomus(
     Math.max(options.limit ?? PESSOAS_INITIAL_LIMIT, 1),
     PESSOAS_SEARCH_LIMIT
   );
-  const apenasFuncionarios = options.apenasFuncionarios !== false;
+  const apenasParceiros = options.apenasParceiros === true;
+  const apenasFuncionarios = options.apenasFuncionarios !== false && !apenasParceiros;
 
   const select = `
     SELECT
@@ -555,6 +604,7 @@ export async function buscarPessoasNomus(
     FROM pessoa p
     WHERE p.ativo = 1
       ${apenasFuncionarios ? 'AND p.funcionario = 1' : ''}
+      ${apenasParceiros ? 'AND p.parceiro = 1' : ''}
   `;
 
   const q = options.q?.trim() ?? '';
@@ -814,20 +864,25 @@ export async function buscarItensPedidoVendaAtendidosNomus(
  */
 export async function buscarNotasFiscaisPedidoVendaNomus(
   pedidoId: string
-): Promise<{ notasFiscais: string[]; source: 'erp' | 'indisponivel' }> {
+): Promise<{
+  notasFiscais: string[];
+  notas: { numero: string; dataEmissao: string }[];
+  source: 'erp' | 'indisponivel';
+}> {
   const pool = getNomusPool();
-  if (!pool) return { notasFiscais: [], source: 'indisponivel' };
+  if (!pool) return { notasFiscais: [], notas: [], source: 'indisponivel' };
 
   const id = Number(pedidoId.trim());
-  if (!Number.isFinite(id) || id <= 0) return { notasFiscais: [], source: 'erp' };
+  if (!Number.isFinite(id) || id <= 0) return { notasFiscais: [], notas: [], source: 'erp' };
 
   const idEmpresa = pedidosVendaIdEmpresa();
   const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT DISTINCT
+    `SELECT
        CONCAT(
          TRIM(nfe.numero),
          IF(nfe.serie IS NULL OR TRIM(nfe.serie) = '', '', CONCAT('/', TRIM(nfe.serie)))
-       ) AS numero
+       ) AS numero,
+       DATE(de.dataEmissao) AS dataEmissao
      FROM itempedido ip
      INNER JOIN pedido ped ON ped.id = ip.idPedido
      INNER JOIN itemdocumentoestoque_itempedidovenda ideipv
@@ -848,15 +903,28 @@ export async function buscarNotasFiscaisPedidoVendaNomus(
     [id, idEmpresa]
   );
 
-  const notasFiscais = [
-    ...new Set(
-      (rows as Record<string, unknown>[])
-        .map((row) => String(row.numero ?? '').trim())
-        .filter((numero) => numero && numero !== '0')
-    ),
-  ].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+  const porNumero = new Map<string, Set<string>>();
+  for (const row of rows as Record<string, unknown>[]) {
+    const numero = String(row.numero ?? '').trim();
+    if (!numero || numero === '0') continue;
+    const datas = porNumero.get(numero) ?? new Set<string>();
+    const data = formatDateSql(row.dataEmissao);
+    if (data) datas.add(data);
+    porNumero.set(numero, datas);
+  }
 
-  return { notasFiscais, source: 'erp' };
+  const notas = [...porNumero.entries()]
+    .map(([numero, datas]) => ({
+      numero,
+      dataEmissao: [...datas].sort().join(', '),
+    }))
+    .sort((a, b) => a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true }));
+
+  return {
+    notasFiscais: notas.map((nota) => nota.numero),
+    notas,
+    source: 'erp',
+  };
 }
 
 export interface GetDocumentosEntradaOptions {

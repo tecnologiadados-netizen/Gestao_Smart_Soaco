@@ -9,6 +9,7 @@ import {
   buscarPessoasNomus,
   buscarProdutosNomus,
   buscarRncPainelNomus,
+  buscarSetorProducaoPorProduto,
 } from '../data/qualidadeNomusRepository.js';
 import {
   getQualidadeBootstrap,
@@ -24,6 +25,18 @@ import {
   deleteQualidadeRegistro,
   deleteQualidadeDocumento,
   deleteQualidadeEquipamento,
+  listReclamacoesProduto,
+  criarReclamacaoProduto,
+  atualizarReclamacaoProduto,
+  excluirReclamacaoProduto,
+  listCausasProblema,
+  criarCausaProblema,
+  atualizarCausaProblema,
+  excluirCausaProblema,
+  listServicosRealizados,
+  criarServicoRealizado,
+  atualizarServicoRealizado,
+  excluirServicoRealizado,
 } from '../data/qualidadeRepository.js';
 import { gerarRccPdfBuffer, gerarRncPdfBuffer } from '../services/qualidadePdfService.js';
 import { ensureQualidadePreviewPdf } from '../services/sgq/sgqOfficeToPdf.js';
@@ -137,10 +150,12 @@ export async function getQualidadePessoas(req: Request, res: Response): Promise<
     );
     const funcionarios =
       req.query.funcionarios === '1' || req.query.funcionarios === 'true';
+    const parceiros = req.query.parceiros === '1' || req.query.parceiros === 'true';
     const result = await buscarPessoasNomus({
       q,
       limit,
       apenasFuncionarios: funcionarios,
+      apenasParceiros: parceiros,
     });
     res.json(result);
   } catch (error) {
@@ -304,11 +319,13 @@ export async function putQualidadeConfigHandler(req: Request, res: Response): Pr
 export async function putQualidadeRegistrosHandler(req: Request, res: Response): Promise<void> {
   try {
     const registros = Array.isArray(req.body?.registros) ? req.body.registros : [];
-    await syncQualidadeRegistros(registros, userLogin(req));
-    res.json({ ok: true });
+    const numeros = await syncQualidadeRegistros(registros, userLogin(req));
+    res.json({ ok: true, numeros });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Erro ao salvar registros.';
-    res.status(500).json({ error: message });
+    console.error('[qualidade] falha ao salvar registros:', error);
+    res.status(500).json({
+      error: 'Não foi possível salvar o registro. Tente novamente.',
+    });
   }
 }
 
@@ -452,6 +469,199 @@ export async function postQualidadeRegistrosImportHandler(req: Request, res: Res
     const message = error instanceof Error ? error.message : 'Erro ao importar registros.';
     res.status(500).json({ error: message });
   }
+}
+
+export async function getQualidadeSetorProducaoProduto(req: Request, res: Response): Promise<void> {
+  try {
+    const q = typeof req.query.q === 'string' ? req.query.q : '';
+    const result = await buscarSetorProducaoPorProduto(q);
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao buscar o setor de produção.';
+    res.status(500).json({ error: message });
+  }
+}
+
+export async function getQualidadeReclamacoesProduto(_req: Request, res: Response): Promise<void> {
+  const reclamacoes = await listReclamacoesProduto();
+  res.json({ reclamacoes });
+}
+
+export async function postQualidadeReclamacaoProduto(req: Request, res: Response): Promise<void> {
+  try {
+    const exemplo = req.body?.exemplo;
+    const reclamacao = await criarReclamacaoProduto({
+      descricao: String(req.body?.descricao ?? ''),
+      setorProducao: String(req.body?.setorProducao ?? ''),
+      exemplo:
+        exemplo && typeof exemplo === 'object'
+          ? {
+              codigo: String((exemplo as { codigo?: unknown }).codigo ?? ''),
+              descricao: String((exemplo as { descricao?: unknown }).descricao ?? ''),
+            }
+          : null,
+    });
+    res.status(201).json({ reclamacao });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao cadastrar reclamação.';
+    res.status(400).json({ error: message });
+  }
+}
+
+export async function putQualidadeReclamacaoProduto(req: Request, res: Response): Promise<void> {
+  try {
+    const uid = String(req.params.uid ?? '');
+    const exemplo = req.body?.exemplo;
+    const reclamacao = await atualizarReclamacaoProduto(uid, {
+      descricao: String(req.body?.descricao ?? ''),
+      setorProducao: String(req.body?.setorProducao ?? ''),
+      exemplo:
+        exemplo && typeof exemplo === 'object'
+          ? {
+              codigo: String((exemplo as { codigo?: unknown }).codigo ?? ''),
+              descricao: String((exemplo as { descricao?: unknown }).descricao ?? ''),
+            }
+          : null,
+    });
+    if (!reclamacao) {
+      res.status(404).json({ error: 'Reclamação não encontrada.' });
+      return;
+    }
+    res.json({ reclamacao });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao atualizar reclamação.';
+    res.status(400).json({ error: message });
+  }
+}
+
+export async function deleteQualidadeReclamacaoProduto(req: Request, res: Response): Promise<void> {
+  const uid = String(req.params.uid ?? '');
+  const ok = await excluirReclamacaoProduto(uid);
+  if (!ok) {
+    res.status(404).json({ error: 'Reclamação não encontrada.' });
+    return;
+  }
+  res.json({ ok: true });
+}
+
+function solucoesDoBody(body: { solucoes?: unknown }): { descricao: string; servico: string }[] {
+  if (!Array.isArray(body.solucoes)) return [];
+  return body.solucoes.map((item) => {
+    if (typeof item === 'string') return { descricao: item, servico: '' };
+    if (!item || typeof item !== 'object') return { descricao: '', servico: '' };
+    const linha = item as { descricao?: unknown; servico?: unknown };
+    return {
+      descricao: String(linha.descricao ?? ''),
+      servico: String(linha.servico ?? ''),
+    };
+  });
+}
+
+function exemploDoBody(body: { exemplo?: unknown }): { codigo: string; descricao: string } | null {
+  const exemplo = body.exemplo;
+  if (!exemplo || typeof exemplo !== 'object') return null;
+  return {
+    codigo: String((exemplo as { codigo?: unknown }).codigo ?? ''),
+    descricao: String((exemplo as { descricao?: unknown }).descricao ?? ''),
+  };
+}
+
+export async function getQualidadeCausasProblema(_req: Request, res: Response): Promise<void> {
+  const causas = await listCausasProblema();
+  res.json({ causas });
+}
+
+export async function postQualidadeCausaProblema(req: Request, res: Response): Promise<void> {
+  try {
+    const causa = await criarCausaProblema({
+      descricao: String(req.body?.descricao ?? ''),
+      setorProducao: String(req.body?.setorProducao ?? ''),
+      exemplo: exemploDoBody(req.body ?? {}),
+      solucoes: solucoesDoBody(req.body ?? {}),
+    });
+    res.status(201).json({ causa });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao cadastrar a causa do problema.';
+    res.status(400).json({ error: message });
+  }
+}
+
+export async function putQualidadeCausaProblema(req: Request, res: Response): Promise<void> {
+  try {
+    const uid = String(req.params.uid ?? '');
+    const causa = await atualizarCausaProblema(uid, {
+      descricao: String(req.body?.descricao ?? ''),
+      setorProducao: String(req.body?.setorProducao ?? ''),
+      exemplo: exemploDoBody(req.body ?? {}),
+      solucoes: solucoesDoBody(req.body ?? {}),
+    });
+    if (!causa) {
+      res.status(404).json({ error: 'Causa do problema não encontrada.' });
+      return;
+    }
+    res.json({ causa });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao atualizar a causa do problema.';
+    res.status(400).json({ error: message });
+  }
+}
+
+export async function deleteQualidadeCausaProblema(req: Request, res: Response): Promise<void> {
+  const uid = String(req.params.uid ?? '');
+  const ok = await excluirCausaProblema(uid);
+  if (!ok) {
+    res.status(404).json({ error: 'Causa do problema não encontrada.' });
+    return;
+  }
+  res.json({ ok: true });
+}
+
+export async function getQualidadeServicosRealizados(_req: Request, res: Response): Promise<void> {
+  const servicos = await listServicosRealizados();
+  res.json({ servicos });
+}
+
+export async function postQualidadeServicoRealizado(req: Request, res: Response): Promise<void> {
+  try {
+    const servico = await criarServicoRealizado({
+      descricao: String(req.body?.descricao ?? ''),
+      setorProducao: String(req.body?.setorProducao ?? ''),
+      exemplo: exemploDoBody(req.body ?? {}),
+    });
+    res.status(201).json({ servico });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao cadastrar o serviço realizado.';
+    res.status(400).json({ error: message });
+  }
+}
+
+export async function putQualidadeServicoRealizado(req: Request, res: Response): Promise<void> {
+  try {
+    const uid = String(req.params.uid ?? '');
+    const servico = await atualizarServicoRealizado(uid, {
+      descricao: String(req.body?.descricao ?? ''),
+      setorProducao: String(req.body?.setorProducao ?? ''),
+      exemplo: exemploDoBody(req.body ?? {}),
+    });
+    if (!servico) {
+      res.status(404).json({ error: 'Serviço realizado não encontrado.' });
+      return;
+    }
+    res.json({ servico });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao atualizar o serviço realizado.';
+    res.status(400).json({ error: message });
+  }
+}
+
+export async function deleteQualidadeServicoRealizado(req: Request, res: Response): Promise<void> {
+  const uid = String(req.params.uid ?? '');
+  const ok = await excluirServicoRealizado(uid);
+  if (!ok) {
+    res.status(404).json({ error: 'Serviço realizado não encontrado.' });
+    return;
+  }
+  res.json({ ok: true });
 }
 
 export async function getQualidadeArquivoPreviewHandler(req: Request, res: Response): Promise<void> {

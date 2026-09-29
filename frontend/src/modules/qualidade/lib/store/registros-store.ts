@@ -30,7 +30,7 @@ function gerarNumeroSgq(tipo: RegistroTipo, registros: Registro[]): string {
   let maiorSequencia = 0;
 
   for (const registro of registros) {
-    if (registro.tipo !== tipo || registro.origemNomus) continue;
+    if (registro.tipo !== tipo) continue;
     if (!registro.numero.startsWith(prefixo)) continue;
     const sequencia = Number.parseInt(registro.numero.slice(prefixo.length), 10);
     if (!Number.isNaN(sequencia)) {

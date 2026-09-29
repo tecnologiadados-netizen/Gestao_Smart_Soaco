@@ -12,7 +12,20 @@ import {
   getQualidadePedidosVenda,
   getQualidadePessoas,
   getQualidadeProdutos,
+  getQualidadeReclamacoesProduto,
   getQualidadeRncPainel,
+  getQualidadeSetorProducaoProduto,
+  postQualidadeReclamacaoProduto,
+  putQualidadeReclamacaoProduto,
+  deleteQualidadeReclamacaoProduto,
+  getQualidadeCausasProblema,
+  postQualidadeCausaProblema,
+  putQualidadeCausaProblema,
+  deleteQualidadeCausaProblema,
+  getQualidadeServicosRealizados,
+  postQualidadeServicoRealizado,
+  putQualidadeServicoRealizado,
+  deleteQualidadeServicoRealizado,
   getQualidadeOrganicoColaboradoresHandler,
   getQualidadeResponsaveisHandler,
   postQualidadeRccPdf,
@@ -80,6 +93,45 @@ router.get('/clientes', (req, res, next) => {
 });
 router.get('/produtos', (req, res, next) => {
   getQualidadeProdutos(req, res).catch(next);
+});
+router.get('/produtos/setor-producao', (req, res, next) => {
+  getQualidadeSetorProducaoProduto(req, res).catch(next);
+});
+router.get('/reclamacoes-produto', (req, res, next) => {
+  getQualidadeReclamacoesProduto(req, res).catch(next);
+});
+router.post('/reclamacoes-produto', (req, res, next) => {
+  postQualidadeReclamacaoProduto(req, res).catch(next);
+});
+router.put('/reclamacoes-produto/:uid', (req, res, next) => {
+  putQualidadeReclamacaoProduto(req, res).catch(next);
+});
+router.delete('/reclamacoes-produto/:uid', (req, res, next) => {
+  deleteQualidadeReclamacaoProduto(req, res).catch(next);
+});
+router.get('/causas-problema', (req, res, next) => {
+  getQualidadeCausasProblema(req, res).catch(next);
+});
+router.post('/causas-problema', (req, res, next) => {
+  postQualidadeCausaProblema(req, res).catch(next);
+});
+router.put('/causas-problema/:uid', (req, res, next) => {
+  putQualidadeCausaProblema(req, res).catch(next);
+});
+router.delete('/causas-problema/:uid', (req, res, next) => {
+  deleteQualidadeCausaProblema(req, res).catch(next);
+});
+router.get('/servicos-realizados', (req, res, next) => {
+  getQualidadeServicosRealizados(req, res).catch(next);
+});
+router.post('/servicos-realizados', (req, res, next) => {
+  postQualidadeServicoRealizado(req, res).catch(next);
+});
+router.put('/servicos-realizados/:uid', (req, res, next) => {
+  putQualidadeServicoRealizado(req, res).catch(next);
+});
+router.delete('/servicos-realizados/:uid', (req, res, next) => {
+  deleteQualidadeServicoRealizado(req, res).catch(next);
 });
 router.get('/fornecedores', (req, res, next) => {
   getQualidadeFornecedores(req, res).catch(next);

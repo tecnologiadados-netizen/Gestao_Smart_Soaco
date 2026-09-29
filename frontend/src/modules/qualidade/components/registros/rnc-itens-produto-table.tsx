@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { ChevronDown, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { Input } from "@qualidade/components/ui/input";
@@ -23,15 +23,20 @@ import { PedidoVendaSearchField } from "@qualidade/components/registros/pedido-v
 import { criarMatcherTextoLivre } from "@/utils/textoLivreBusca";
 import { cn } from "@qualidade/lib/utils";
 import { ProdutoCodigoField } from "@qualidade/components/registros/produto-codigo-field";
-import { rncFieldLabels } from "@qualidade/lib/registros/constants";
+import { RCC_SIM_NAO, rncFieldLabels } from "@qualidade/lib/registros/constants";
 import {
   fetchItensPedidoVendaAtendidos,
   fetchNotasFiscaisPedidoVenda,
 } from "@qualidade/lib/registros/fetch-pedidos-venda-client";
+import { formatarCidadeRcc } from "@qualidade/types/cliente-erp";
 import { produtoErpParaCamposRnc } from "@qualidade/types/produto-erp";
-import type { ItemPedidoVendaAtendidoErp } from "@qualidade/types/pedido-venda-erp";
+import type {
+  ItemPedidoVendaAtendidoErp,
+  PedidoVendaErp,
+} from "@qualidade/types/pedido-venda-erp";
 import {
   criarRncItemProdutoVazio,
+  isoParaInputDate,
   notasFiscaisDistintas,
   type RncDados,
   type RncItemProduto,
@@ -43,6 +48,22 @@ interface RncItensProdutoTableProps {
   onChange: (dados: RncDados) => void;
   disabled?: boolean;
   erro?: string;
+  /** Evita o mesmo `name` quando a tabela aparece em outro formulário. */
+  nomePergunta?: string;
+  /** Coluna de emissão da NF. Usada na RCC. */
+  colunaDataEmissaoNf?: boolean;
+  /** Nome, contato e estado do cliente do pedido. Usada na RCC. */
+  colunasClientePedido?: boolean;
+  /** Disparado depois que a linha já recebeu o pedido selecionado. */
+  onPedidoSelect?: (pedido: PedidoVendaErp) => void;
+  /** Quantidade obrigatória na RCC. */
+  quantidadeObrigatoria?: boolean;
+  /** Pergunta e número de série do documento, exibidos como colunas da grade (RCC). */
+  numeroSerie?: {
+    possui: string;
+    numero: string;
+    onChange: (proximo: { possui: string; numero: string }) => void;
+  };
 }
 
 function descricaoDoItem(item: RncItemProduto): string {
@@ -130,6 +151,102 @@ function textoQuantidadeMaxima(maxima: string): string {
   return max.toLocaleString("pt-BR", { maximumFractionDigits: 4 });
 }
 
+function rotuloDatasEmissao(valor: string): string {
+  return valor
+    .split(",")
+    .map((parte) => {
+      const texto = parte.trim();
+      const data = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      return data ? `${data[3]}/${data[2]}/${data[1]}` : texto;
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
+const CLIENTE_PEDIDO_VAZIO = {
+  clienteNome: "",
+  clienteContato: "",
+  clienteEstado: "",
+  clienteCidade: "",
+  clienteTelefone: "",
+  clienteBairro: "",
+  clienteEndereco: "",
+} as const;
+
+function clienteDoPedido(pedido: PedidoVendaErp): typeof CLIENTE_PEDIDO_VAZIO {
+  const cliente = pedido.cliente;
+  if (!cliente) {
+    return { ...CLIENTE_PEDIDO_VAZIO, clienteNome: pedido.clienteNome.trim() };
+  }
+  return {
+    clienteNome: cliente.nome.trim(),
+    clienteContato: (cliente.contato ?? "").trim(),
+    clienteEstado: cliente.uf.trim().toUpperCase(),
+    clienteCidade: formatarCidadeRcc(cliente.municipio, cliente.uf),
+    clienteTelefone: (cliente.telefone ?? "").trim(),
+    clienteBairro: (cliente.bairro ?? "").trim(),
+    clienteEndereco: (cliente.endereco ?? "").trim(),
+  };
+}
+
+const LARGURA_MINIMA_COLUNA = 72;
+
+const LARGURAS_INICIAIS: Record<string, number> = {
+  pedido: 220,
+  item: 240,
+  descricao: 240,
+  quantidade: 120,
+  nota: 150,
+  emissao: 168,
+  cliente: 200,
+  contato: 150,
+  estado: 88,
+  possuiSerie: 200,
+  numeroSerie: 200,
+};
+
+const OPCAO_SELECIONE = "Selecione...";
+
+function CampoSomenteLeitura({
+  value,
+  label,
+  placeholder,
+}: {
+  value: string;
+  label: string;
+  placeholder?: string;
+}) {
+  return (
+    <Input
+      value={value}
+      readOnly
+      aria-label={label}
+      title={value.trim() ? value : undefined}
+      placeholder={placeholder}
+      className="campo-copiavel bg-muted/40"
+    />
+  );
+}
+
+function AlcaLarguraColuna({
+  onPointerDown,
+}: {
+  onPointerDown: (event: ReactPointerEvent<HTMLSpanElement>) => void;
+}) {
+  return (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Ajustar largura da coluna"
+      title="Arraste para ajustar a largura"
+      className="absolute top-0 right-0 z-10 flex h-full w-2 cursor-col-resize touch-none items-center justify-center"
+      onPointerDown={onPointerDown}
+    >
+      <span className="h-1/2 w-px rounded-full bg-border group-hover:bg-primary/70" />
+    </span>
+  );
+}
+
 function idsPedidos(itens: RncItemProduto[]): string[] {
   return [...new Set(itens.map((item) => item.pedidoId.trim()).filter(Boolean))].sort();
 }
@@ -139,6 +256,12 @@ export function RncItensProdutoTable({
   onChange,
   disabled = false,
   erro,
+  nomePergunta = "rnc-tem-pedido-venda",
+  colunaDataEmissaoNf = false,
+  colunasClientePedido = false,
+  onPedidoSelect,
+  quantidadeObrigatoria = false,
+  numeroSerie,
 }: RncItensProdutoTableProps) {
   const itens = dados.itensProduto ?? [];
   const dadosRef = useRef(dados);
@@ -146,8 +269,70 @@ export function RncItensProdutoTable({
   dadosRef.current = dados;
   itensRef.current = itens;
   const geracaoNfRef = useRef(0);
+  const numeroSerieRef = useRef(numeroSerie);
+  numeroSerieRef.current = numeroSerie;
+
+  useEffect(() => {
+    const atual = numeroSerieRef.current;
+    if (!atual) return;
+    const limpo = atual.numero.replace(/\D/g, "");
+    if (limpo === atual.numero) return;
+    atual.onChange({ possui: atual.possui, numero: limpo });
+  }, [numeroSerie?.numero]);
   const [pedidosBuscando, setPedidosBuscando] = useState<string[]>([]);
   const [erroNf, setErroNf] = useState("");
+  const [largurasColuna, setLargurasColuna] = useState(LARGURAS_INICIAIS);
+  const largurasColunaRef = useRef(largurasColuna);
+  largurasColunaRef.current = largurasColuna;
+
+  function iniciarAjusteColuna(id: string, event: ReactPointerEvent<HTMLSpanElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    const inicioX = event.clientX;
+    const inicioLargura = largurasColunaRef.current[id] ?? 140;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    function mover(ev: PointerEvent) {
+      const proxima = Math.max(LARGURA_MINIMA_COLUNA, Math.round(inicioLargura + ev.clientX - inicioX));
+      setLargurasColuna((atual) =>
+        atual[id] === proxima ? atual : { ...atual, [id]: proxima }
+      );
+    }
+
+    function soltar() {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", mover);
+      window.removeEventListener("pointerup", soltar);
+    }
+
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", soltar);
+  }
+
+  function largura(id: string): number {
+    return largurasColuna[id] ?? LARGURAS_INICIAIS[id] ?? 140;
+  }
+
+  const idsColunas = [
+    dados.temPedidoVenda === "sim" ? "pedido" : "",
+    "item",
+    dados.temPedidoVenda === "nao" ? "descricao" : "",
+    "quantidade",
+    dados.temPedidoVenda === "sim" ? "nota" : "",
+    colunaDataEmissaoNf ? "emissao" : "",
+    colunasClientePedido && dados.temPedidoVenda === "sim" ? "cliente" : "",
+    colunasClientePedido && dados.temPedidoVenda === "sim" ? "contato" : "",
+    colunasClientePedido && dados.temPedidoVenda === "sim" ? "estado" : "",
+    numeroSerie ? "possuiSerie" : "",
+    numeroSerie?.possui === "Sim" ? "numeroSerie" : "",
+    disabled ? "" : "acoes",
+  ].filter(Boolean);
+  const larguraTabela = idsColunas.reduce(
+    (soma, id) => soma + (id === "acoes" ? 48 : largura(id)),
+    0
+  );
 
   function publicar(proximos: RncItemProduto[], extra?: Partial<RncDados>) {
     const base = dadosRef.current;
@@ -166,14 +351,19 @@ export function RncItensProdutoTable({
     onChange(proximo);
   }
 
-  function aplicarNotasPorPedido(porPedido: Map<string, string>) {
+  function aplicarNotasPorPedido(porPedido: Map<string, { nota: string; dataEmissao: string }>) {
     const atualizados = itensRef.current.map((item) => {
       const id = item.pedidoId.trim();
-      const nota = id ? (porPedido.get(id) ?? "") : "";
-      return item.notaFiscal === nota ? item : { ...item, notaFiscal: nota };
+      const info = id ? porPedido.get(id) : undefined;
+      const nota = info?.nota ?? "";
+      const dataEmissao = info?.dataEmissao ?? "";
+      if (item.notaFiscal === nota && item.dataEmissaoNf === dataEmissao) return item;
+      return { ...item, notaFiscal: nota, dataEmissaoNf: dataEmissao };
     });
     const mudou = atualizados.some(
-      (item, index) => item.notaFiscal !== itensRef.current[index]?.notaFiscal
+      (item, index) =>
+        item.notaFiscal !== itensRef.current[index]?.notaFiscal ||
+        item.dataEmissaoNf !== itensRef.current[index]?.dataEmissaoNf
     );
     if (!mudou) return;
     publicar(atualizados);
@@ -196,18 +386,30 @@ export function RncItensProdutoTable({
       void Promise.all(ids.map((id) => fetchNotasFiscaisPedidoVenda(id)))
         .then((listas) => {
           if (geracao !== geracaoNfRef.current) return;
-          const porPedido = new Map<string, string>();
+          const porPedido = new Map<string, { nota: string; dataEmissao: string }>();
           ids.forEach((id, index) => {
-            const notas = [
-              ...new Set((listas[index] ?? []).map((nota) => nota.trim()).filter(Boolean)),
-            ].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
-            porPedido.set(id, notas.join(", "));
+            const notas = [...(listas[index] ?? [])]
+              .filter((nota) => nota.numero.trim())
+              .sort((a, b) => a.numero.localeCompare(b.numero, "pt-BR", { numeric: true }));
+            const datas = new Set<string>();
+            for (const nota of notas) {
+              for (const parte of nota.dataEmissao.split(",")) {
+                const data = parte.trim();
+                if (data) datas.add(data);
+              }
+            }
+            porPedido.set(id, {
+              nota: notas.map((nota) => nota.numero).join(", "),
+              dataEmissao: [...datas].sort().join(", "),
+            });
           });
           aplicarNotasPorPedido(porPedido);
         })
         .catch(() => {
           if (geracao !== geracaoNfRef.current) return;
-          aplicarNotasPorPedido(new Map(ids.map((id) => [id, ""])));
+          aplicarNotasPorPedido(
+            new Map(ids.map((id) => [id, { nota: "", dataEmissao: "" }]))
+          );
           setErroNf("Não foi possível buscar a nota fiscal do pedido.");
         })
         .finally(() => {
@@ -260,7 +462,7 @@ export function RncItensProdutoTable({
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <input
               type="radio"
-              name="rnc-tem-pedido-venda"
+              name={nomePergunta}
               className="size-4 accent-brand-blue"
               checked={dados.temPedidoVenda === "sim"}
               disabled={disabled}
@@ -271,7 +473,7 @@ export function RncItensProdutoTable({
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <input
               type="radio"
-              name="rnc-tem-pedido-venda"
+              name={nomePergunta}
               className="size-4 accent-brand-blue"
               checked={dados.temPedidoVenda === "nao"}
               disabled={disabled}
@@ -286,37 +488,98 @@ export function RncItensProdutoTable({
             corte. A quantidade fica limitada ao que foi vendido.
           </p>
         ) : null}
-        {erro ? (
-          <p className="text-xs text-destructive" role="alert">
-            {erro}
-          </p>
-        ) : null}
+        {erro
+          ? erro
+              .split("\n")
+              .filter(Boolean)
+              .map((mensagem) => (
+                <p key={mensagem} className="text-xs text-destructive" role="alert">
+                  {mensagem}
+                </p>
+              ))
+          : null}
       </div>
 
       {dados.temPedidoVenda ? (
         <div className="space-y-3">
           <div className="overflow-x-auto rounded-lg border border-border">
-          <Table bare className="rnc-itens-grade min-w-[820px]">
+          <Table
+            bare
+            className="rnc-itens-grade w-max max-w-none"
+            style={{ width: larguraTabela, minWidth: larguraTabela }}
+          >
+            <colgroup>
+              {idsColunas.map((id) => (
+                <col key={id} style={{ width: id === "acoes" ? 48 : largura(id) }} />
+              ))}
+            </colgroup>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 {dados.temPedidoVenda === "sim" ? (
-                  <TableHead className="min-w-52">Pedido de venda *</TableHead>
+                  <TableHead className="group relative" style={{ width: largura("pedido") }}>
+                    Pedido de venda *
+                    <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("pedido", event)} />
+                  </TableHead>
                 ) : null}
-                <TableHead className="min-w-56">
+                <TableHead className="group relative" style={{ width: largura("item") }}>
                   {dados.temPedidoVenda === "sim" ? "Item *" : "Código do produto *"}
+                  <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("item", event)} />
                 </TableHead>
                 {dados.temPedidoVenda === "nao" ? (
-                  <TableHead className="min-w-56">Descrição *</TableHead>
+                  <TableHead className="group relative" style={{ width: largura("descricao") }}>
+                    Descrição *
+                    <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("descricao", event)} />
+                  </TableHead>
                 ) : null}
-                <TableHead className="w-36">Quantidade</TableHead>
+                <TableHead className="group relative" style={{ width: largura("quantidade") }}>
+                  {quantidadeObrigatoria ? "Quantidade *" : "Quantidade"}
+                  <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("quantidade", event)} />
+                </TableHead>
                 {dados.temPedidoVenda === "sim" ? (
-                  <TableHead className="min-w-36">{rncFieldLabels.notaFiscal}</TableHead>
+                  <TableHead className="group relative" style={{ width: largura("nota") }}>
+                    {rncFieldLabels.notaFiscal}
+                    <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("nota", event)} />
+                  </TableHead>
+                ) : null}
+                {colunaDataEmissaoNf ? (
+                  <TableHead className="group relative" style={{ width: largura("emissao") }}>
+                    Data de emissão da NF
+                    <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("emissao", event)} />
+                  </TableHead>
+                ) : null}
+                {colunasClientePedido && dados.temPedidoVenda === "sim" ? (
+                  <>
+                    <TableHead className="group relative" style={{ width: largura("cliente") }}>
+                      Cliente
+                      <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("cliente", event)} />
+                    </TableHead>
+                    <TableHead className="group relative" style={{ width: largura("contato") }}>
+                      Contato
+                      <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("contato", event)} />
+                    </TableHead>
+                    <TableHead className="group relative" style={{ width: largura("estado") }}>
+                      Estado
+                      <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("estado", event)} />
+                    </TableHead>
+                  </>
+                ) : null}
+                {numeroSerie ? (
+                  <TableHead className="group relative" style={{ width: largura("possuiSerie") }}>
+                    Possui n° de série? *
+                    <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("possuiSerie", event)} />
+                  </TableHead>
+                ) : null}
+                {numeroSerie?.possui === "Sim" ? (
+                  <TableHead className="group relative" style={{ width: largura("numeroSerie") }}>
+                    Nº Série/Lote *
+                    <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("numeroSerie", event)} />
+                  </TableHead>
                 ) : null}
                 {disabled ? null : <TableHead className="w-12" />}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {itens.map((item) => (
+              {itens.map((item, index) => (
                 <TableRow key={item.id} className="hover:bg-transparent">
                   {dados.temPedidoVenda === "sim" ? (
                     <TableCell className="align-top">
@@ -342,11 +605,13 @@ export function RncItensProdutoTable({
                                 quantidade: "",
                                 quantidadeMaxima: "",
                                 notaFiscal: "",
+                                dataEmissaoNf: "",
+                                ...CLIENTE_PEDIDO_VAZIO,
                               },
                               { notas: true }
                             )
                           }
-                          onPedidoSelect={(pedido) =>
+                          onPedidoSelect={(pedido) => {
                             atualizar(
                               item.id,
                               {
@@ -360,10 +625,13 @@ export function RncItensProdutoTable({
                                 quantidade: "",
                                 quantidadeMaxima: "",
                                 notaFiscal: "",
+                                dataEmissaoNf: "",
+                                ...clienteDoPedido(pedido),
                               },
                               { notas: true }
-                            )
-                          }
+                            );
+                            onPedidoSelect?.(pedido);
+                          }}
                           disabled={disabled}
                         />
                       )}
@@ -389,7 +657,10 @@ export function RncItensProdutoTable({
                         }
                       />
                     ) : disabled ? (
-                      <span>{item.codigoProduto || item.produto || "—"}</span>
+                      <CampoSomenteLeitura
+                        value={item.produto || item.codigoProduto}
+                        label="Código do produto"
+                      />
                     ) : (
                       <ProdutoCodigoField
                         id={`rnc-codigo-${item.id}`}
@@ -413,12 +684,10 @@ export function RncItensProdutoTable({
                   </TableCell>
                   {dados.temPedidoVenda === "nao" ? (
                     <TableCell className="align-top">
-                      <Input
+                      <CampoSomenteLeitura
                         value={descricaoDoItem(item)}
-                        readOnly
-                        disabled
+                        label="Descrição do item"
                         placeholder="Descrição do item"
-                        className="bg-muted/40"
                       />
                     </TableCell>
                   ) : null}
@@ -445,11 +714,9 @@ export function RncItensProdutoTable({
                   </TableCell>
                   {dados.temPedidoVenda === "sim" ? (
                     <TableCell className="align-top">
-                      <Input
+                      <CampoSomenteLeitura
                         value={item.notaFiscal}
-                        readOnly
-                        disabled
-                        aria-label={rncFieldLabels.notaFiscal}
+                        label={rncFieldLabels.notaFiscal}
                         placeholder={
                           !item.pedidoId
                             ? "Selecione o pedido"
@@ -457,7 +724,99 @@ export function RncItensProdutoTable({
                               ? "Buscando..."
                               : "Sem nota fiscal"
                         }
-                        className="bg-muted/40"
+                      />
+                    </TableCell>
+                  ) : null}
+                  {colunaDataEmissaoNf ? (
+                    <TableCell className="align-top">
+                      {dados.temPedidoVenda === "sim" ? (
+                        <CampoSomenteLeitura
+                          value={rotuloDatasEmissao(item.dataEmissaoNf ?? "")}
+                          label="Data de emissão da NF"
+                          placeholder={
+                            !item.pedidoId
+                              ? "Selecione o pedido"
+                              : pedidosBuscando.includes(item.pedidoId)
+                                ? "Buscando..."
+                                : "Sem data"
+                          }
+                        />
+                      ) : (
+                        <Input
+                          type="date"
+                          value={isoParaInputDate(item.dataEmissaoNf ?? "")}
+                          disabled={disabled}
+                          aria-label="Data de emissão da NF"
+                          onChange={(e) =>
+                            atualizar(item.id, { dataEmissaoNf: e.target.value })
+                          }
+                        />
+                      )}
+                    </TableCell>
+                  ) : null}
+                  {colunasClientePedido && dados.temPedidoVenda === "sim" ? (
+                    <>
+                      <TableCell className="align-top">
+                        <CampoSomenteLeitura
+                          value={item.clienteNome ?? ""}
+                          label="Cliente"
+                          placeholder={item.pedidoId ? "Sem cliente no pedido" : "Selecione o pedido"}
+                        />
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <CampoSomenteLeitura
+                          value={item.clienteContato ?? ""}
+                          label="Contato"
+                        />
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <CampoSomenteLeitura
+                          value={item.clienteEstado ?? ""}
+                          label="Estado"
+                        />
+                      </TableCell>
+                    </>
+                  ) : null}
+                  {numeroSerie && index === 0 ? (
+                    <TableCell className="align-top" rowSpan={itens.length}>
+                      <Select
+                        value={numeroSerie.possui || undefined}
+                        onValueChange={(valor) => {
+                          const possui = !valor || valor === OPCAO_SELECIONE ? "" : valor;
+                          numeroSerie.onChange({
+                            possui,
+                            numero: possui === "Sim" ? numeroSerie.numero : "",
+                          });
+                        }}
+                        disabled={disabled}
+                      >
+                        <SelectTrigger className="w-full" aria-label="Possui n° de série?">
+                          <SelectValue placeholder={OPCAO_SELECIONE} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={OPCAO_SELECIONE}>{OPCAO_SELECIONE}</SelectItem>
+                          {RCC_SIM_NAO.map((opcao) => (
+                            <SelectItem key={opcao} value={opcao}>
+                              {opcao}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                  ) : null}
+                  {numeroSerie?.possui === "Sim" && index === 0 ? (
+                    <TableCell className="align-top" rowSpan={itens.length}>
+                      <Input
+                        value={numeroSerie.numero.replace(/\D/g, "")}
+                        aria-label="Nº Série/Lote do produto"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        disabled={disabled}
+                        onChange={(event) => {
+                          const numero = event.target.value.replace(/\D/g, "");
+                          event.target.value = numero;
+                          numeroSerie.onChange({ possui: "Sim", numero });
+                        }}
                       />
                     </TableCell>
                   ) : null}
@@ -706,30 +1065,36 @@ function ItemPedidoSelect({
     opcoes.some((opcao) => opcao.itemId === item.itemPedidoId)
       ? item.itemPedidoId
       : undefined;
+  const rotuloItem = item.codigoProduto ? item.produto || item.codigoProduto : "";
+  const selectDesabilitado = disabled || carregando || opcoes.length === 0;
 
   return (
     <div className="space-y-1">
+      {rotuloItem ? (
+        <CampoSomenteLeitura value={rotuloItem} label="Item do pedido" />
+      ) : null}
+      {disabled && rotuloItem ? null : (
       <Select
         value={valorAtual}
         onValueChange={(id) => {
           const escolhido = opcoes.find((opcao) => opcao.itemId === id);
           if (escolhido) onSelect(escolhido);
         }}
-        disabled={disabled || carregando || opcoes.length === 0}
+        disabled={selectDesabilitado}
       >
-        <SelectTrigger className="w-full">
+        <SelectTrigger className="w-full" title={rotuloItem || undefined}>
           <SelectValue
             placeholder={
-              !item.pedidoId
-                ? "Selecione o pedido..."
-                : carregando
-                  ? "Carregando itens..."
-                  : "Selecione o item..."
+              rotuloItem
+                ? "Trocar item..."
+                : !item.pedidoId
+                  ? "Selecione o pedido..."
+                  : carregando
+                    ? "Carregando itens..."
+                    : "Selecione o item..."
             }
           >
-            {item.codigoProduto
-              ? item.produto || item.codigoProduto
-              : undefined}
+            {rotuloItem ? "Trocar item..." : undefined}
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
@@ -747,6 +1112,7 @@ function ItemPedidoSelect({
           })}
         </SelectContent>
       </Select>
+      )}
       {erro ? (
         <p className="text-xs text-destructive" role="alert">
           {erro}

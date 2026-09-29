@@ -352,10 +352,37 @@ export function flushQualidadeRegistrosSync(): Promise<void> {
   });
 }
 
+function aplicarNumeroPersistido(item: Registro, numero: string): Registro {
+  if (item.tipo === 'rcc' && item.rcc) {
+    return {
+      ...item,
+      numero,
+      codigoDocumento: numero,
+      rcc: { ...item.rcc, codigoDocumento: numero },
+    };
+  }
+  if (item.tipo === 'rnc' && item.rnc) {
+    return {
+      ...item,
+      numero,
+      codigoDocumento: numero,
+      rnc: { ...item.rnc, codigoDocumento: numero },
+    };
+  }
+  return { ...item, numero, codigoDocumento: numero };
+}
+
 /** Persiste um registro recém-criado/alterado sem reenviar todo o histórico Nomus. */
 export async function persistQualidadeRegistro(registro: Registro): Promise<void> {
   cancelQualidadeRegistrosDebounce();
-  await syncQualidadeRegistro(registro);
+  const { numeros } = await syncQualidadeRegistro(registro);
+  const numero = numeros?.[registro.id];
+  if (!numero || numero === registro.numero) return;
+  useRegistrosStore.setState((state) => ({
+    registros: state.registros.map((item) =>
+      item.id === registro.id ? aplicarNumeroPersistido(item, numero) : item,
+    ),
+  }));
 }
 
 /** Exclui um registro no servidor (evita reenviar todo o histórico Nomus). */

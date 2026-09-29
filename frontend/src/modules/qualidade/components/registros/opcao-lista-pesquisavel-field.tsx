@@ -9,6 +9,7 @@ import {
   filtrarOpcoesLista,
   mesclarOpcoesLista,
 } from "@qualidade/lib/registros/opcoes-lista-customizadas";
+import { ListaSugestaoFlutuante } from "@qualidade/components/registros/lista-sugestao-flutuante";
 import { cn } from "@qualidade/lib/utils";
 
 interface OpcaoListaPesquisavelFieldProps {
@@ -34,6 +35,7 @@ export function OpcaoListaPesquisavelField({
 }: OpcaoListaPesquisavelFieldProps) {
   const listId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
+  const ancoraRef = useRef<HTMLButtonElement>(null);
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState("");
   const [novaOpcao, setNovaOpcao] = useState("");
@@ -45,12 +47,11 @@ export function OpcaoListaPesquisavelField({
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
-        setAberto(false);
-      }
+      const alvo = event.target;
+      if (!(alvo instanceof Node)) return;
+      if (containerRef.current?.contains(alvo)) return;
+      if (alvo instanceof Element && alvo.closest("[data-lista-sugestao]")) return;
+      setAberto(false);
     }
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -110,6 +111,7 @@ export function OpcaoListaPesquisavelField({
     <div ref={containerRef} className="relative space-y-2">
       {label ? <Label htmlFor={id}>{label}</Label> : null}
       <button
+        ref={ancoraRef}
         id={id}
         type="button"
         aria-haspopup="listbox"
@@ -128,8 +130,13 @@ export function OpcaoListaPesquisavelField({
         <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
       </button>
 
-      {aberto ? (
-        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-md">
+      <ListaSugestaoFlutuante
+        aberto={aberto}
+        ancoraRef={ancoraRef}
+        id={listId}
+        alturaMaxima={320}
+        larguraMinima={280}
+        cabecalho={
           <div className="border-b border-border p-2">
             <div className="relative">
               <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -142,35 +149,8 @@ export function OpcaoListaPesquisavelField({
               />
             </div>
           </div>
-
-          <ul
-            id={listId}
-            role="listbox"
-            className="max-h-52 overflow-auto py-1"
-          >
-            {opcoesFiltradas.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-muted-foreground">
-                Nenhuma opção encontrada.
-              </li>
-            ) : (
-              opcoesFiltradas.map((opcao) => (
-                <li key={opcao} role="option" aria-selected={value === opcao}>
-                  <button
-                    type="button"
-                    className={cn(
-                      "flex w-full px-3 py-2 text-left text-sm hover:bg-muted",
-                      value === opcao && "bg-muted/60 font-medium"
-                    )}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => selecionar(opcao)}
-                  >
-                    {opcao}
-                  </button>
-                </li>
-              ))
-            )}
-          </ul>
-
+        }
+        rodape={
           <div className="flex gap-2 border-t border-border p-2">
             <Input
               value={novaOpcao}
@@ -196,8 +176,28 @@ export function OpcaoListaPesquisavelField({
               Adicionar
             </Button>
           </div>
-        </div>
-      ) : null}
+        }
+      >
+        {opcoesFiltradas.length === 0 ? (
+          <li className="px-3 py-2 text-sm text-muted-foreground">Nenhuma opção encontrada.</li>
+        ) : (
+          opcoesFiltradas.map((opcao) => (
+            <li key={opcao} role="option" aria-selected={value === opcao}>
+              <button
+                type="button"
+                className={cn(
+                  "flex w-full px-3 py-2 text-left text-sm hover:bg-muted",
+                  value === opcao && "bg-muted/60 font-medium"
+                )}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => selecionar(opcao)}
+              >
+                {opcao}
+              </button>
+            </li>
+          ))
+        )}
+      </ListaSugestaoFlutuante>
     </div>
   );
 }

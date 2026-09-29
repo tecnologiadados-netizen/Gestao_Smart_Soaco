@@ -929,10 +929,56 @@ function isRegistroNomusRncRcc(tipo: string, origemImport: boolean): boolean {
   return origemImport && (tipo === 'rnc' || tipo === 'rcc');
 }
 
+function prefixoNumeroRegistro(tipo: string): string {
+  return `${tipo.trim().toUpperCase()}-`;
+}
+
+/** Próximo RCC-000N / RNC-000N livre. Se o número pedido já pertence a outro registro, avança a sequência. */
+async function numeroDisponivelRegistro(tipo: string, preferido: string): Promise<string> {
+  const prefixo = prefixoNumeroRegistro(tipo);
+  const pedido = preferido.trim();
+  if (pedido.startsWith(prefixo)) {
+    const ocupado = await prisma.sgqRegistro.findUnique({
+      where: { numero: pedido },
+      select: { uid: true },
+    });
+    if (!ocupado) return pedido;
+  }
+
+  const rows = await prisma.sgqRegistro.findMany({
+    where: { numero: { startsWith: prefixo } },
+    select: { numero: true },
+  });
+  const usados = new Set(rows.map((row) => row.numero));
+  let maior = 0;
+  for (const numero of usados) {
+    const sequencia = Number.parseInt(numero.slice(prefixo.length), 10);
+    if (!Number.isNaN(sequencia)) maior = Math.max(maior, sequencia);
+  }
+  let sequencia = maior + 1;
+  let candidato = `${prefixo}${String(sequencia).padStart(4, '0')}`;
+  while (usados.has(candidato)) {
+    sequencia += 1;
+    candidato = `${prefixo}${String(sequencia).padStart(4, '0')}`;
+  }
+  return candidato;
+}
+
+function isUniqueConstraint(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === 'P2002'
+  );
+}
+
 export async function syncQualidadeRegistros(
   registros: Array<Record<string, unknown>>,
   criadoPorLogin: string
-) {
+): Promise<Record<string, string>> {
+  const numeros: Record<string, string> = {};
+
   for (const reg of registros) {
     const uid = String(reg.id ?? '');
     const tipo = String(reg.tipo ?? '');
@@ -942,32 +988,66 @@ export async function syncQualidadeRegistros(
     const origemImport = Boolean(reg.origemNomus ?? reg.origemImport);
     if (isRegistroNomusRncRcc(tipo, origemImport)) continue;
 
-    const dados =
+    const dadosBase =
       tipo === 'rnc'
-        ? (reg.rnc as Record<string, unknown>)
-        : (reg.rcc as Record<string, unknown>);
+        ? (reg.rnc as Record<string, unknown> | undefined)
+        : (reg.rcc as Record<string, unknown> | undefined);
 
-    await prisma.sgqRegistro.upsert({
+    const existente = await prisma.sgqRegistro.findUnique({
       where: { uid },
-      create: {
-        uid,
-        tipo,
-        numero,
-        status: String(reg.status ?? 'aberto'),
-        codigoDocumento: String(reg.codigoDocumento ?? ''),
-        responsavelLogin: String(reg.responsavelId ?? reg.responsavelLogin ?? ''),
-        origemImport,
-        dadosJson: JSON.stringify(dados ?? {}),
-        criadoPorLogin,
-      },
-      update: {
-        status: String(reg.status ?? 'aberto'),
-        codigoDocumento: String(reg.codigoDocumento ?? ''),
-        responsavelLogin: String(reg.responsavelId ?? reg.responsavelLogin ?? ''),
-        dadosJson: JSON.stringify(dados ?? {}),
-      },
+      select: { numero: true },
     });
+    let numeroFinal = existente?.numero ?? (await numeroDisponivelRegistro(tipo, numero));
+    let dadosSalvar: Record<string, unknown> = { ...(dadosBase ?? {}) };
+    if (!existente && numeroFinal !== numero) {
+      dadosSalvar = { ...dadosSalvar, codigoDocumento: numeroFinal };
+    }
+
+    const gravar = () =>
+      prisma.sgqRegistro.upsert({
+        where: { uid },
+        create: {
+          uid,
+          tipo,
+          numero: numeroFinal,
+          status: String(reg.status ?? 'aberto'),
+          codigoDocumento: numeroFinal,
+          responsavelLogin: String(reg.responsavelId ?? reg.responsavelLogin ?? ''),
+          origemImport,
+          dadosJson: JSON.stringify(dadosSalvar),
+          criadoPorLogin,
+        },
+        update: {
+          status: String(reg.status ?? 'aberto'),
+          codigoDocumento: String(reg.codigoDocumento ?? numeroFinal),
+          responsavelLogin: String(reg.responsavelId ?? reg.responsavelLogin ?? ''),
+          dadosJson: JSON.stringify(dadosSalvar),
+        },
+      });
+
+    try {
+      await gravar();
+    } catch (error) {
+      if (!isUniqueConstraint(error)) throw error;
+      const jaExiste = await prisma.sgqRegistro.findUnique({
+        where: { uid },
+        select: { numero: true },
+      });
+      if (jaExiste) {
+        numeroFinal = jaExiste.numero;
+        dadosSalvar = { ...(dadosBase ?? {}), codigoDocumento: numeroFinal };
+        await gravar();
+      } else {
+        numeroFinal = await numeroDisponivelRegistro(tipo, '');
+        dadosSalvar = { ...(dadosBase ?? {}), codigoDocumento: numeroFinal };
+        await gravar();
+      }
+    }
+
+    numeros[uid] = numeroFinal;
   }
+
+  return numeros;
 }
 
 export async function deleteQualidadeRegistro(uid: string): Promise<boolean> {
@@ -2130,4 +2210,405 @@ export async function ensureSgqHistoricoSeed(criadoPorLogin = 'sistema'): Promis
       console.info(`[sgq-historico] Avaliações de fornecedor: ${avaliacoes.length} importadas`);
     }
   }
+}
+
+export interface ReclamacaoProdutoExemplo {
+  codigo: string;
+  descricao: string;
+}
+
+export interface SolucaoCausa {
+  descricao: string;
+  servico: string;
+}
+
+export interface ReclamacaoProdutoCadastro {
+  id: string;
+  descricao: string;
+  setorProducao: string;
+  exemplos: ReclamacaoProdutoExemplo[];
+  solucoes?: SolucaoCausa[];
+}
+
+function normalizarRotuloReclamacao(valor: string): string {
+  return valor
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parseExemplosReclamacao(raw: string | null | undefined): ReclamacaoProdutoExemplo[] {
+  try {
+    const data = JSON.parse(raw || '[]') as unknown;
+    if (!Array.isArray(data)) return [];
+    const vistos = new Set<string>();
+    const exemplos: ReclamacaoProdutoExemplo[] = [];
+    for (const item of data) {
+      if (!item || typeof item !== 'object') continue;
+      const codigo = String((item as { codigo?: unknown }).codigo ?? '').trim();
+      const descricao = String((item as { descricao?: unknown }).descricao ?? '').trim();
+      const chave = codigo.replace(/\s+/g, '').toUpperCase();
+      if (!chave || vistos.has(chave)) continue;
+      vistos.add(chave);
+      exemplos.push({ codigo, descricao });
+    }
+    return exemplos;
+  } catch {
+    return [];
+  }
+}
+
+function mesclarExemploReclamacao(
+  atuais: ReclamacaoProdutoExemplo[],
+  exemplo?: { codigo?: string; descricao?: string } | null
+): ReclamacaoProdutoExemplo[] {
+  const codigo = exemplo?.codigo?.trim() ?? '';
+  if (!codigo) return atuais;
+  const chave = codigo.replace(/\s+/g, '').toUpperCase();
+  const descricao = exemplo?.descricao?.trim() ?? '';
+  const semIgual = atuais.filter(
+    (item) => item.codigo.replace(/\s+/g, '').toUpperCase() !== chave
+  );
+  return [...semIgual, { codigo, descricao }];
+}
+
+function parseSolucoesCausa(raw: string | null | undefined): SolucaoCausa[] {
+  try {
+    const data = JSON.parse(raw || '[]') as unknown;
+    if (!Array.isArray(data)) return [];
+    const vistos = new Set<string>();
+    const solucoes: SolucaoCausa[] = [];
+    for (const item of data) {
+      let descricao = '';
+      let servico = '';
+      if (typeof item === 'string') {
+        descricao = item.trim();
+      } else if (item && typeof item === 'object') {
+        const linha = item as { descricao?: unknown; servico?: unknown };
+        descricao = String(linha.descricao ?? '').trim();
+        servico = String(linha.servico ?? '').trim();
+      }
+      const chave = normalizarRotuloReclamacao(descricao);
+      if (!chave || vistos.has(chave)) continue;
+      vistos.add(chave);
+      solucoes.push({ descricao, servico });
+    }
+    return solucoes;
+  } catch {
+    return [];
+  }
+}
+
+function mapReclamacaoProduto(row: {
+  uid: string;
+  descricao: string;
+  setorProducao: string;
+  exemplosJson?: string | null;
+}): ReclamacaoProdutoCadastro {
+  return {
+    id: row.uid,
+    descricao: row.descricao,
+    setorProducao: row.setorProducao,
+    exemplos: parseExemplosReclamacao(row.exemplosJson),
+  };
+}
+
+function mapCausaProblema(row: {
+  uid: string;
+  descricao: string;
+  setorProducao: string;
+  exemplosJson?: string | null;
+  solucoesJson?: string | null;
+}): ReclamacaoProdutoCadastro {
+  return {
+    ...mapReclamacaoProduto(row),
+    solucoes: parseSolucoesCausa(row.solucoesJson),
+  };
+}
+
+export async function listReclamacoesProduto(): Promise<ReclamacaoProdutoCadastro[]> {
+  const rows = await prisma.sgqReclamacaoProduto.findMany({
+    where: { ativo: true },
+    orderBy: [{ setorProducao: 'asc' }, { descricao: 'asc' }],
+  });
+  return rows.map(mapReclamacaoProduto);
+}
+
+export async function criarReclamacaoProduto(input: {
+  descricao: string;
+  setorProducao: string;
+  exemplo?: { codigo?: string; descricao?: string } | null;
+}): Promise<ReclamacaoProdutoCadastro> {
+  const descricao = input.descricao.trim();
+  const setorProducao = input.setorProducao.trim();
+  if (!descricao) throw new Error('Informe a reclamação.');
+  if (!setorProducao) throw new Error('Informe o setor de produção.');
+  const exemplos = mesclarExemploReclamacao([], input.exemplo);
+
+  const doSetor = await prisma.sgqReclamacaoProduto.findMany({ where: { setorProducao } });
+  const igual = doSetor.find(
+    (row) => normalizarRotuloReclamacao(row.descricao) === normalizarRotuloReclamacao(descricao)
+  );
+  if (igual) {
+    const salva = await prisma.sgqReclamacaoProduto.update({
+      where: { id: igual.id },
+      data: {
+        ativo: true,
+        descricao,
+        exemplosJson: JSON.stringify(mesclarExemploReclamacao(parseExemplosReclamacao(igual.exemplosJson), input.exemplo)),
+      },
+    });
+    return mapReclamacaoProduto(salva);
+  }
+
+  const criada = await prisma.sgqReclamacaoProduto.create({
+    data: { descricao, setorProducao, exemplosJson: JSON.stringify(exemplos) },
+  });
+  return mapReclamacaoProduto(criada);
+}
+
+export async function atualizarReclamacaoProduto(
+  uid: string,
+  input: {
+    descricao: string;
+    setorProducao: string;
+    exemplo?: { codigo?: string; descricao?: string } | null;
+  }
+): Promise<ReclamacaoProdutoCadastro | null> {
+  const atual = await prisma.sgqReclamacaoProduto.findUnique({ where: { uid } });
+  if (!atual || !atual.ativo) return null;
+
+  const descricao = input.descricao.trim();
+  const setorProducao = input.setorProducao.trim();
+  if (!descricao) throw new Error('Informe a reclamação.');
+  if (!setorProducao) throw new Error('Informe o setor de produção.');
+
+  const doSetor = await prisma.sgqReclamacaoProduto.findMany({
+    where: { setorProducao, NOT: { uid } },
+  });
+  const igual = doSetor.find(
+    (row) =>
+      row.ativo &&
+      normalizarRotuloReclamacao(row.descricao) === normalizarRotuloReclamacao(descricao)
+  );
+  if (igual) throw new Error('Essa reclamação já está cadastrada neste setor.');
+
+  const salva = await prisma.sgqReclamacaoProduto.update({
+    where: { uid },
+    data: {
+      descricao,
+      setorProducao,
+      exemplosJson: JSON.stringify(
+        mesclarExemploReclamacao(parseExemplosReclamacao(atual.exemplosJson), input.exemplo)
+      ),
+    },
+  });
+  return mapReclamacaoProduto(salva);
+}
+
+export async function excluirReclamacaoProduto(uid: string): Promise<boolean> {
+  const atual = await prisma.sgqReclamacaoProduto.findUnique({ where: { uid } });
+  if (!atual || !atual.ativo) return false;
+  await prisma.sgqReclamacaoProduto.update({
+    where: { uid },
+    data: { ativo: false },
+  });
+  return true;
+}
+
+export async function listCausasProblema(): Promise<ReclamacaoProdutoCadastro[]> {
+  const rows = await prisma.sgqCausaProblema.findMany({
+    where: { ativo: true },
+    orderBy: [{ setorProducao: 'asc' }, { descricao: 'asc' }],
+  });
+  return rows.map(mapCausaProblema);
+}
+
+export async function criarCausaProblema(input: {
+  descricao: string;
+  setorProducao: string;
+  exemplo?: { codigo?: string; descricao?: string } | null;
+  solucoes?: SolucaoCausa[];
+}): Promise<ReclamacaoProdutoCadastro> {
+  const descricao = input.descricao.trim();
+  const setorProducao = input.setorProducao.trim();
+  if (!descricao) throw new Error('Informe a causa do problema.');
+  if (!setorProducao) throw new Error('Informe o setor de produção.');
+  const exemplos = mesclarExemploReclamacao([], input.exemplo);
+  const solucoes = parseSolucoesCausa(JSON.stringify(input.solucoes ?? []));
+
+  const doSetor = await prisma.sgqCausaProblema.findMany({ where: { setorProducao } });
+  const igual = doSetor.find(
+    (row) => normalizarRotuloReclamacao(row.descricao) === normalizarRotuloReclamacao(descricao)
+  );
+  if (igual) {
+    const salva = await prisma.sgqCausaProblema.update({
+      where: { id: igual.id },
+      data: {
+        ativo: true,
+        descricao,
+        exemplosJson: JSON.stringify(
+          mesclarExemploReclamacao(parseExemplosReclamacao(igual.exemplosJson), input.exemplo)
+        ),
+        solucoesJson: JSON.stringify(solucoes),
+      },
+    });
+    return mapCausaProblema(salva);
+  }
+
+  const criada = await prisma.sgqCausaProblema.create({
+    data: {
+      descricao,
+      setorProducao,
+      exemplosJson: JSON.stringify(exemplos),
+      solucoesJson: JSON.stringify(solucoes),
+    },
+  });
+  return mapCausaProblema(criada);
+}
+
+export async function atualizarCausaProblema(
+  uid: string,
+  input: {
+    descricao: string;
+    setorProducao: string;
+    exemplo?: { codigo?: string; descricao?: string } | null;
+    solucoes?: SolucaoCausa[];
+  }
+): Promise<ReclamacaoProdutoCadastro | null> {
+  const atual = await prisma.sgqCausaProblema.findUnique({ where: { uid } });
+  if (!atual || !atual.ativo) return null;
+
+  const descricao = input.descricao.trim();
+  const setorProducao = input.setorProducao.trim();
+  if (!descricao) throw new Error('Informe a causa do problema.');
+  if (!setorProducao) throw new Error('Informe o setor de produção.');
+  const solucoes = parseSolucoesCausa(JSON.stringify(input.solucoes ?? []));
+
+  const doSetor = await prisma.sgqCausaProblema.findMany({
+    where: { setorProducao, NOT: { uid } },
+  });
+  const igual = doSetor.find(
+    (row) =>
+      row.ativo &&
+      normalizarRotuloReclamacao(row.descricao) === normalizarRotuloReclamacao(descricao)
+  );
+  if (igual) throw new Error('Essa causa já está cadastrada neste setor.');
+
+  const salva = await prisma.sgqCausaProblema.update({
+    where: { uid },
+    data: {
+      descricao,
+      setorProducao,
+      exemplosJson: JSON.stringify(
+        mesclarExemploReclamacao(parseExemplosReclamacao(atual.exemplosJson), input.exemplo)
+      ),
+      solucoesJson: JSON.stringify(solucoes),
+    },
+  });
+  return mapCausaProblema(salva);
+}
+
+export async function excluirCausaProblema(uid: string): Promise<boolean> {
+  const atual = await prisma.sgqCausaProblema.findUnique({ where: { uid } });
+  if (!atual || !atual.ativo) return false;
+  await prisma.sgqCausaProblema.update({
+    where: { uid },
+    data: { ativo: false },
+  });
+  return true;
+}
+
+export async function listServicosRealizados(): Promise<ReclamacaoProdutoCadastro[]> {
+  const rows = await prisma.sgqServicoRealizado.findMany({
+    where: { ativo: true },
+    orderBy: [{ setorProducao: 'asc' }, { descricao: 'asc' }],
+  });
+  return rows.map(mapReclamacaoProduto);
+}
+
+export async function criarServicoRealizado(input: {
+  descricao: string;
+  setorProducao: string;
+  exemplo?: { codigo?: string; descricao?: string } | null;
+}): Promise<ReclamacaoProdutoCadastro> {
+  const descricao = input.descricao.trim();
+  const setorProducao = input.setorProducao.trim();
+  if (!descricao) throw new Error('Informe o serviço realizado.');
+  if (!setorProducao) throw new Error('Informe o setor de produção.');
+  const exemplos = mesclarExemploReclamacao([], input.exemplo);
+
+  const doSetor = await prisma.sgqServicoRealizado.findMany({ where: { setorProducao } });
+  const igual = doSetor.find(
+    (row) => normalizarRotuloReclamacao(row.descricao) === normalizarRotuloReclamacao(descricao)
+  );
+  if (igual) {
+    const salva = await prisma.sgqServicoRealizado.update({
+      where: { id: igual.id },
+      data: {
+        ativo: true,
+        descricao,
+        exemplosJson: JSON.stringify(
+          mesclarExemploReclamacao(parseExemplosReclamacao(igual.exemplosJson), input.exemplo)
+        ),
+      },
+    });
+    return mapReclamacaoProduto(salva);
+  }
+
+  const criada = await prisma.sgqServicoRealizado.create({
+    data: { descricao, setorProducao, exemplosJson: JSON.stringify(exemplos) },
+  });
+  return mapReclamacaoProduto(criada);
+}
+
+export async function atualizarServicoRealizado(
+  uid: string,
+  input: {
+    descricao: string;
+    setorProducao: string;
+    exemplo?: { codigo?: string; descricao?: string } | null;
+  }
+): Promise<ReclamacaoProdutoCadastro | null> {
+  const atual = await prisma.sgqServicoRealizado.findUnique({ where: { uid } });
+  if (!atual || !atual.ativo) return null;
+
+  const descricao = input.descricao.trim();
+  const setorProducao = input.setorProducao.trim();
+  if (!descricao) throw new Error('Informe o serviço realizado.');
+  if (!setorProducao) throw new Error('Informe o setor de produção.');
+
+  const doSetor = await prisma.sgqServicoRealizado.findMany({
+    where: { setorProducao, NOT: { uid } },
+  });
+  const igual = doSetor.find(
+    (row) =>
+      row.ativo &&
+      normalizarRotuloReclamacao(row.descricao) === normalizarRotuloReclamacao(descricao)
+  );
+  if (igual) throw new Error('Esse serviço já está cadastrado neste setor.');
+
+  const salva = await prisma.sgqServicoRealizado.update({
+    where: { uid },
+    data: {
+      descricao,
+      setorProducao,
+      exemplosJson: JSON.stringify(
+        mesclarExemploReclamacao(parseExemplosReclamacao(atual.exemplosJson), input.exemplo)
+      ),
+    },
+  });
+  return mapReclamacaoProduto(salva);
+}
+
+export async function excluirServicoRealizado(uid: string): Promise<boolean> {
+  const atual = await prisma.sgqServicoRealizado.findUnique({ where: { uid } });
+  if (!atual || !atual.ativo) return false;
+  await prisma.sgqServicoRealizado.update({
+    where: { uid },
+    data: { ativo: false },
+  });
+  return true;
 }

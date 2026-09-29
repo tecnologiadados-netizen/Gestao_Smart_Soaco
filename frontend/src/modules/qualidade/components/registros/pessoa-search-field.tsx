@@ -21,7 +21,11 @@ interface PessoaSearchFieldProps {
   placeholder?: string;
   /** Restringe à categoria Funcionário no Nomus. */
   apenasFuncionarios?: boolean;
+  /** Restringe à categoria Parceiro no Nomus. */
+  apenasParceiros?: boolean;
   descricao?: string;
+  ocultarRotulo?: boolean;
+  ocultarDescricao?: boolean;
 }
 
 export function PessoaSearchField({
@@ -33,7 +37,10 @@ export function PessoaSearchField({
   disabled = false,
   placeholder = "Digite o nome...",
   apenasFuncionarios = false,
+  apenasParceiros = false,
   descricao,
+  ocultarRotulo = false,
+  ocultarDescricao = false,
 }: PessoaSearchFieldProps) {
   const listId = useId();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -66,6 +73,7 @@ export function PessoaSearchField({
         q: busca.trim() || undefined,
         limit,
         apenasFuncionarios,
+        apenasParceiros,
       });
       setResultados(lista);
     } catch {
@@ -85,7 +93,7 @@ export function PessoaSearchField({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [termo, disabled, selecionado, apenasFuncionarios]);
+  }, [termo, disabled, selecionado, apenasFuncionarios, apenasParceiros]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -119,7 +127,7 @@ export function PessoaSearchField({
 
   return (
     <div ref={containerRef} className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+      {ocultarRotulo ? null : <Label htmlFor={id}>{label}</Label>}
 
       {selecionado && value.trim() ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border/80 bg-muted/20 px-3 py-2.5">
@@ -204,12 +212,16 @@ export function PessoaSearchField({
         </div>
       ) : null}
 
+      {ocultarDescricao ? null : (
       <p className="text-xs text-muted-foreground">
         {descricao ??
-          (apenasFuncionarios
-            ? "Funcionários ativos no Nomus (categoria Funcionário)."
-            : "Busca pessoas ativas cadastradas no Nomus.")}
+          (apenasParceiros
+            ? "Pessoas ativas categorizadas como Parceiro no Nomus."
+            : apenasFuncionarios
+              ? "Funcionários ativos no Nomus (categoria Funcionário)."
+              : "Busca pessoas ativas cadastradas no Nomus.")}
       </p>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { FileText, Gauge, MapPin, Wrench } from "lucide-react";
+import { CircleAlert, ClipboardCheck, FileText, Gauge, MapPin, MessageSquareWarning, Wrench } from "lucide-react";
 import {
   Card,
   CardDescription,
@@ -25,6 +25,24 @@ const links = [
     title: "Endereçamento",
     description: "Localizações físicas por setor",
     icon: MapPin,
+  },
+  {
+    href: "/qualidade/configuracoes/reclamacoes",
+    title: "Reclamações de produto",
+    description: "Reclamações vinculadas ao setor de produção, para seleção no RCC",
+    icon: MessageSquareWarning,
+  },
+  {
+    href: "/qualidade/configuracoes/causas-problema",
+    title: "Causas do problema",
+    description: "Causas vinculadas ao setor de produção, para seleção no RCC",
+    icon: CircleAlert,
+  },
+  {
+    href: "/qualidade/configuracoes/servicos-realizados",
+    title: "Serviços realizados",
+    description: "Serviços vinculados ao setor de produção, para seleção no RCC",
+    icon: ClipboardCheck,
   },
   {
     href: "/qualidade/documentos",

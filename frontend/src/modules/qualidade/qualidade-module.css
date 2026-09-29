@@ -304,9 +304,39 @@
   opacity: 0.85;
 }
 
+.qualidade-module .rcc-identificacao-grade,
+.qualidade-portal .rcc-identificacao-grade {
+  border-collapse: collapse;
+}
+
+.qualidade-module .rcc-identificacao-grade th,
+.qualidade-module .rcc-identificacao-grade td,
+.qualidade-portal .rcc-identificacao-grade th,
+.qualidade-portal .rcc-identificacao-grade td,
+.qualidade-module .rcc-reclamacoes-grade th,
+.qualidade-module .rcc-reclamacoes-grade td,
+.qualidade-portal .rcc-reclamacoes-grade th,
+.qualidade-portal .rcc-reclamacoes-grade td,
+.qualidade-module .rcc-servicos-grade th,
+.qualidade-module .rcc-servicos-grade td,
+.qualidade-portal .rcc-servicos-grade th,
+.qualidade-portal .rcc-servicos-grade td {
+  border: 1px solid var(--border);
+  vertical-align: top;
+  white-space: normal;
+}
+
+.qualidade-module .rcc-reclamacoes-grade,
+.qualidade-portal .rcc-reclamacoes-grade,
+.qualidade-module .rcc-servicos-grade,
+.qualidade-portal .rcc-servicos-grade {
+  border-collapse: collapse;
+}
+
 .qualidade-module .rnc-itens-grade,
 .qualidade-portal .rnc-itens-grade {
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .qualidade-module .rnc-itens-grade th,
@@ -314,6 +344,19 @@
 .qualidade-portal .rnc-itens-grade th,
 .qualidade-portal .rnc-itens-grade td {
   border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.qualidade-module .rnc-itens-grade td > *,
+.qualidade-portal .rnc-itens-grade td > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.qualidade-module .campo-copiavel,
+.qualidade-portal .campo-copiavel {
+  user-select: text;
+  cursor: text;
 }
 
 .qualidade-module .sgq-sheet-preview table,

@@ -2,7 +2,10 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMemo } from 'react';
 import {
   BarChart3,
+  ClipboardCheck,
+  CircleAlert,
   ClipboardList,
+  MessageSquareWarning,
   FileText,
   Home,
   MapPin,
@@ -58,6 +61,9 @@ function getNavItems(module: Module): NavItem[] {
         { label: 'Setores', href: '/qualidade/configuracoes/setores', icon: Wrench },
         { label: 'Categorias', href: '/qualidade/configuracoes/tipos-documento', icon: FileText },
         { label: 'Endereçamento', href: '/qualidade/configuracoes/enderecamento', icon: MapPin },
+        { label: 'Reclamações', href: '/qualidade/configuracoes/reclamacoes', icon: MessageSquareWarning },
+        { label: 'Causas', href: '/qualidade/configuracoes/causas-problema', icon: CircleAlert },
+        { label: 'Serviços', href: '/qualidade/configuracoes/servicos-realizados', icon: ClipboardCheck },
       ];
   }
 }

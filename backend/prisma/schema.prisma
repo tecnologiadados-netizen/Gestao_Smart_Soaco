@@ -1221,6 +1221,52 @@ model SgqOpcaoLista {
   @@map("sgq_opcao_lista")
 }
 
+model SgqReclamacaoProduto {
+  id            Int      @id @default(autoincrement())
+  uid           String   @unique @default(cuid())
+  descricao     String
+  setorProducao String
+  exemplosJson  String   @default("[]")
+  ativo         Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([setorProducao, descricao])
+  @@index([setorProducao])
+  @@map("sgq_reclamacao_produto")
+}
+
+model SgqCausaProblema {
+  id            Int      @id @default(autoincrement())
+  uid           String   @unique @default(cuid())
+  descricao     String
+  setorProducao String
+  exemplosJson  String   @default("[]")
+  solucoesJson  String   @default("[]")
+  ativo         Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([setorProducao, descricao])
+  @@index([setorProducao])
+  @@map("sgq_causa_problema")
+}
+
+model SgqServicoRealizado {
+  id            Int      @id @default(autoincrement())
+  uid           String   @unique @default(cuid())
+  descricao     String
+  setorProducao String
+  exemplosJson  String   @default("[]")
+  ativo         Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([setorProducao, descricao])
+  @@index([setorProducao])
+  @@map("sgq_servico_realizado")
+}
+
 model SgqDocumento {
   id                  Int      @id @default(autoincrement())
   uid                 String   @unique @default(cuid())

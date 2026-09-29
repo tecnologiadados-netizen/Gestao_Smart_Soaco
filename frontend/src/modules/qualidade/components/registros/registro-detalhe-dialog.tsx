@@ -73,7 +73,11 @@ export function RegistroDetalheDialog({
     if (!open || !registro) return;
     setEditando(editarAoAbrir && podeEditar);
     setRncDraft(registro.rnc ? { ...registro.rnc } : null);
-    setRccDraft(registro.rcc ? normalizarRccDados(registro.rcc) : null);
+    setRccDraft(
+      registro.rcc
+        ? normalizarRccDados(registro.rcc, { origemNomus: registro.origemNomus })
+        : null
+    );
     setErrosRnc({});
     setErrosRcc({});
     setErro("");
@@ -91,7 +95,11 @@ export function RegistroDetalheDialog({
   function iniciarEdicao() {
     if (!registro) return;
     setRncDraft(registro.rnc ? { ...registro.rnc } : null);
-    setRccDraft(registro.rcc ? normalizarRccDados(registro.rcc) : null);
+    setRccDraft(
+      registro.rcc
+        ? normalizarRccDados(registro.rcc, { origemNomus: registro.origemNomus })
+        : null
+    );
     setErrosRnc({});
     setErrosRcc({});
     setErro("");
@@ -102,7 +110,11 @@ export function RegistroDetalheDialog({
     if (!registro) return;
     setEditando(false);
     setRncDraft(registro.rnc ? { ...registro.rnc } : null);
-    setRccDraft(registro.rcc ? normalizarRccDados(registro.rcc) : null);
+    setRccDraft(
+      registro.rcc
+        ? normalizarRccDados(registro.rcc, { origemNomus: registro.origemNomus })
+        : null
+    );
     setErrosRnc({});
     setErrosRcc({});
     setErro("");
@@ -130,14 +142,19 @@ export function RegistroDetalheDialog({
         return;
       }
     } else if (registro.tipo === "rcc" && rccDraft) {
-      const validacao = validarRcc(rccDraft);
+      const rccFinal = normalizarRccDados(rccDraft, {
+        origemNomus: registro.origemNomus,
+      });
+      const validacao = validarRcc(rccFinal, {
+        origemNomus: registro.origemNomus,
+      });
       if (!validacao.valido) {
         setErrosRcc(validacao.erros);
-        setErro("Corrija os campos obrigatórios antes de salvar.");
+        setError("Corrija os campos obrigatórios antes de salvar.");
         return;
       }
 
-      const ok = atualizarRegistroRcc({ id: registro.id, rcc: rccDraft });
+      const ok = atualizarRegistroRcc({ id: registro.id, rcc: rccFinal });
       if (!ok) {
         setErro("Não foi possível atualizar este registro.");
         return;
@@ -253,7 +270,9 @@ export function RegistroDetalheDialog({
               dados={
                 editando
                   ? (rccDraft as RccDados)
-                  : normalizarRccDados(registro.rcc as RccDados)
+                  : normalizarRccDados(registro.rcc as RccDados, {
+                      origemNomus: registro.origemNomus,
+                    })
               }
               onChange={setRccDraft}
               erros={editando ? errosRcc : {}}

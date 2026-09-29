@@ -17,7 +17,7 @@ import { validarRnc } from "@qualidade/lib/registros/validacao-rnc";
 import { useRegistrosStore } from "@qualidade/lib/store/registros-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { persistQualidadeRegistro } from "@qualidade/lib/qualidadePersistence";
-import { criarRccDadosVazio } from "@qualidade/types/rcc";
+import { criarRccDadosVazio, normalizarRccDados } from "@qualidade/types/rcc";
 import {
   criarRncDadosVazio,
   normalizarRncDados,
@@ -56,7 +56,7 @@ function RegistrosPageContent() {
     const prefixo = "RNC-";
     let maiorSequencia = 0;
     for (const registro of registros) {
-      if (registro.tipo !== "rnc" || registro.origemNomus) continue;
+      if (registro.tipo !== "rnc") continue;
       if (!registro.numero.startsWith(prefixo)) continue;
       const sequencia = Number.parseInt(registro.numero.slice(prefixo.length), 10);
       if (!Number.isNaN(sequencia)) maiorSequencia = Math.max(maiorSequencia, sequencia);
@@ -68,7 +68,7 @@ function RegistrosPageContent() {
     const prefixo = "RCC-";
     let maiorSequencia = 0;
     for (const registro of registros) {
-      if (registro.tipo !== "rcc" || registro.origemNomus) continue;
+      if (registro.tipo !== "rcc") continue;
       if (!registro.numero.startsWith(prefixo)) continue;
       const sequencia = Number.parseInt(registro.numero.slice(prefixo.length), 10);
       if (!Number.isNaN(sequencia)) maiorSequencia = Math.max(maiorSequencia, sequencia);
@@ -148,7 +148,11 @@ function RegistrosPageContent() {
       return;
     }
 
-    const validacao = validarRcc(rccDados);
+    const rccFinal = normalizarRccDados({
+      ...rccDados,
+      usuarioCriacao: usuarioAtual?.nome ?? "",
+    });
+    const validacao = validarRcc(rccFinal);
     if (!validacao.valido) {
       setErrosRcc(validacao.erros);
       setError("Corrija os campos obrigatórios antes de salvar.");
@@ -158,10 +162,7 @@ function RegistrosPageContent() {
     const id = criarRegistro({
       tipo: "rcc",
       responsavelId: currentUserId,
-      rcc: {
-        ...rccDados,
-        usuarioCriacao: usuarioAtual?.nome ?? "",
-      },
+      rcc: rccFinal,
     });
     const registro = getRegistroById(id);
     if (!registro) {

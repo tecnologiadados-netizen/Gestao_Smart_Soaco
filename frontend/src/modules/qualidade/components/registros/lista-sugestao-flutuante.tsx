@@ -29,12 +29,18 @@ export function ListaSugestaoFlutuante({
   id,
   children,
   cabecalho,
+  rodape,
+  alturaMaxima = 224,
+  larguraMinima = 0,
 }: {
   aberto: boolean;
   ancoraRef: RefObject<HTMLElement | null>;
   id?: string;
   children: ReactNode;
   cabecalho?: ReactNode;
+  rodape?: ReactNode;
+  alturaMaxima?: number;
+  larguraMinima?: number;
 }) {
   const [caixa, setCaixa] = useState<{
     top: number;
@@ -57,16 +63,18 @@ export function ListaSugestaoFlutuante({
       const abrirAcima = espacoAbaixo < 160 && espacoAcima > espacoAbaixo;
       const maxHeight = Math.max(
         120,
-        Math.min(224, abrirAcima ? espacoAcima : espacoAbaixo)
+        Math.min(alturaMaxima, abrirAcima ? espacoAcima : espacoAbaixo)
       );
+      const width = Math.max(retangulo.width, larguraMinima);
+      const left = Math.max(margem, Math.min(retangulo.left, window.innerWidth - width - margem));
       const top = abrirAcima
         ? Math.max(margem, retangulo.top - margem - maxHeight)
         : retangulo.bottom + 4;
 
       setCaixa({
         top,
-        left: retangulo.left,
-        width: retangulo.width,
+        left,
+        width,
         maxHeight,
         tokens: tokensDoCampo(ancora),
       });
@@ -79,7 +87,7 @@ export function ListaSugestaoFlutuante({
       window.removeEventListener("resize", posicionar);
       window.removeEventListener("scroll", posicionar, true);
     };
-  }, [aberto, ancoraRef]);
+  }, [aberto, ancoraRef, alturaMaxima, larguraMinima]);
 
   if (!aberto || !caixa || typeof document === "undefined") return null;
 
@@ -105,6 +113,7 @@ export function ListaSugestaoFlutuante({
         <ul id={id} role="listbox" className="min-h-0 flex-1 overflow-auto py-1">
           {children}
         </ul>
+        {rodape}
       </div>,
       document.body
     );

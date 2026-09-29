@@ -1,4 +1,4 @@
-import { QUALIDADE_API_BASE } from "@qualidade/lib/api-base";
+import { apiFetch } from "@/api/client";
 import type {
   ItemPedidoVendaAtendidoErp,
   PedidoVendaErp,
@@ -28,8 +28,8 @@ export async function fetchPedidosVendaClient(
   }
   params.set("limit", String(options.limit ?? PEDIDOS_VENDA_INITIAL_LIMIT));
 
-  const response = await fetch(
-    `${QUALIDADE_API_BASE}/pedidos-venda?${params.toString()}`,
+  const response = await apiFetch(
+    `/api/qualidade/pedidos-venda?${params.toString()}`,
     { cache: "no-store" }
   );
 
@@ -47,8 +47,8 @@ export async function fetchItensPedidoVendaAtendidos(
   const id = pedidoId.trim();
   if (!id) return [];
 
-  const response = await fetch(
-    `${QUALIDADE_API_BASE}/pedidos-venda/${encodeURIComponent(id)}/itens`,
+  const response = await apiFetch(
+    `/api/qualidade/pedidos-venda/${encodeURIComponent(id)}/itens`,
     { cache: "no-store" }
   );
 
@@ -60,13 +60,21 @@ export async function fetchItensPedidoVendaAtendidos(
   return data.itens ?? [];
 }
 
-/** Números de nota fiscal de saída vinculados ao pedido. */
-export async function fetchNotasFiscaisPedidoVenda(pedidoId: string): Promise<string[]> {
+export interface NotaFiscalPedidoVenda {
+  numero: string;
+  /** Data de emissão do documento, em `YYYY-MM-DD`. Várias datas ficam separadas por vírgula. */
+  dataEmissao: string;
+}
+
+/** Notas fiscais de saída do pedido, com a data de emissão. */
+export async function fetchNotasFiscaisPedidoVenda(
+  pedidoId: string
+): Promise<NotaFiscalPedidoVenda[]> {
   const id = pedidoId.trim();
   if (!id) return [];
 
-  const response = await fetch(
-    `${QUALIDADE_API_BASE}/pedidos-venda/${encodeURIComponent(id)}/notas-fiscais`,
+  const response = await apiFetch(
+    `/api/qualidade/pedidos-venda/${encodeURIComponent(id)}/notas-fiscais`,
     { cache: "no-store" }
   );
 
@@ -74,6 +82,22 @@ export async function fetchNotasFiscaisPedidoVenda(pedidoId: string): Promise<st
     throw new Error("Não foi possível carregar a nota fiscal do pedido.");
   }
 
-  const data = (await response.json()) as { notasFiscais?: string[] };
-  return (data.notasFiscais ?? []).map((nota) => nota.trim()).filter(Boolean);
+  const data = (await response.json()) as {
+    notasFiscais?: string[];
+    notas?: { numero?: string; dataEmissao?: string }[];
+  };
+
+  if (Array.isArray(data.notas) && data.notas.length > 0) {
+    return data.notas
+      .map((nota) => ({
+        numero: String(nota.numero ?? "").trim(),
+        dataEmissao: String(nota.dataEmissao ?? "").trim(),
+      }))
+      .filter((nota) => nota.numero);
+  }
+
+  return (data.notasFiscais ?? [])
+    .map((nota) => nota.trim())
+    .filter(Boolean)
+    .map((numero) => ({ numero, dataEmissao: "" }));
 }

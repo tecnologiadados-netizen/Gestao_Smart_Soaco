@@ -45,6 +45,7 @@ export function PedidoVendaSearchField({
 }: PedidoVendaSearchFieldProps) {
   const listId = useId();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const buscaSeqRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const ancoraRef = useRef<HTMLDivElement>(null);
 
@@ -59,26 +60,38 @@ export function PedidoVendaSearchField({
   }, [value]);
 
   async function buscarPedidos(busca: string) {
+    const seq = ++buscaSeqRef.current;
     setCarregando(true);
     setErro("");
 
-    try {
-      const limit =
-        busca.trim().length >= PEDIDOS_VENDA_MIN_SEARCH_CHARS
-          ? PEDIDOS_VENDA_SEARCH_LIMIT
-          : PEDIDOS_VENDA_INITIAL_LIMIT;
-
-      const lista = await fetchPedidosVendaClient({
+    const limit =
+      busca.trim().length >= PEDIDOS_VENDA_MIN_SEARCH_CHARS
+        ? PEDIDOS_VENDA_SEARCH_LIMIT
+        : PEDIDOS_VENDA_INITIAL_LIMIT;
+    const consultar = () =>
+      fetchPedidosVendaClient({
         q: busca.trim() || undefined,
         limit,
         somenteAtendidos,
       });
+
+    try {
+      let lista: PedidoVendaErp[];
+      try {
+        lista = await consultar();
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        if (seq !== buscaSeqRef.current) return;
+        lista = await consultar();
+      }
+      if (seq !== buscaSeqRef.current) return;
       setResultados(lista);
     } catch {
+      if (seq !== buscaSeqRef.current) return;
       setErro("Não foi possível buscar pedidos de venda.");
       setResultados([]);
     } finally {
-      setCarregando(false);
+      if (seq === buscaSeqRef.current) setCarregando(false);
     }
   }
 
@@ -138,7 +151,8 @@ export function PedidoVendaSearchField({
               ? "Pedido atendido parcial, total ou com corte..."
               : "Digite o número do pedido de venda..."
           }
-          className="pl-9"
+          title={termo.trim() ? termo : undefined}
+          className="campo-copiavel pl-9"
           autoComplete="off"
           role="combobox"
           aria-expanded={aberto}
@@ -160,6 +174,7 @@ export function PedidoVendaSearchField({
         aberto={aberto && !disabled && resultados.length > 0}
         ancoraRef={ancoraRef}
         id={listId}
+        larguraMinima={360}
       >
         {resultados.map((pedido) => (
           <li key={pedido.pedidoId} role="option">
