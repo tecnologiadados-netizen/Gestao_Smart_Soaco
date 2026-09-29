@@ -1,0 +1,18 @@
+---
+description: Não varrer uploads de produção com git stash ou git clean
+alwaysApply: true
+---
+
+# Uploads e dados de produção ficam fora do Git
+
+Atestados e demais arquivos de `backend/var/uploads` e de `C:\gestorpedidosSoAco-dados\uploads` são dados de produção. Em 25/09/2026 um `git stash push -u` removeu esses PDFs do disco e não devolveu a pasta.
+
+## Proibido neste repositório
+
+- `git stash push -u`, `git stash --include-untracked`, `git stash --all` / `-a`
+- `git clean` (qualquer variação)
+- `git reset --hard` em arquivos de upload
+
+Se precisar guardar código local antes de um pull ou deploy, faça stash **somente com caminhos explícitos de código** (nunca a pasta `uploads`, `var` ou `prisma`).
+
+Não apague `C:\gestorpedidosSoAco-dados`.

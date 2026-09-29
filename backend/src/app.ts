@@ -43,6 +43,7 @@ import lojaEstoqueKitsRoutes from './routes/lojaEstoqueKitsRoutes.js';
 import recebimentoRoutes from './routes/recebimentoRoutes.js';
 import { csrfProtect } from './middleware/csrf.js';
 import { getDoubleCheckInConferenciaPagina } from './controllers/doubleCheckInConferenciaPaginaController.js';
+import { rhUploadRoot } from './rh/utils/rhUpload.js';
 
 const app = express();
 
@@ -63,6 +64,9 @@ app.use(
   express.static(acmeWellKnownRoot, { dotfiles: 'allow', index: false, maxAge: 0 })
 );
 fs.mkdirSync(uploadsRoot, { recursive: true });
+fs.mkdirSync(rhUploadRoot, { recursive: true });
+// RH fora do repositório. O mount genérico abaixo ainda serve a cópia legada em backend/var/uploads.
+app.use('/uploads/rh', express.static(rhUploadRoot, { maxAge: 0 }));
 app.use('/uploads', express.static(uploadsRoot, { maxAge: 0 }));
 
 // Só ative no .env se o Node receber HTTP direto na borda (sem Caddy/nginx TLS).

@@ -218,6 +218,8 @@ function Sync-GitComOriginMain {
     $env:GIT_OPTIONAL_LOCKS = '0'
 
     # Dados de runtime editados na VPS (pontualidades Camasi etc.) — nao podem sumir no reset --hard.
+    # Uploads de RH ficam em C:\gestorpedidosSoAco-dados\uploads\rh (fora do git).
+    # Nunca usar git stash -u nem git clean aqui: em 25/09/2026 isso removeu os atestados.
     $preserveRels = @(
         'backend\var\programacao-producao-catalog\recursos.json',
         'backend\var\programacao-producao-catalog\overrides.json'

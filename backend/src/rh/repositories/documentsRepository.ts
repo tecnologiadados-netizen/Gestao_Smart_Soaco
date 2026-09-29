@@ -5,6 +5,7 @@ import {
   MAX_DOCUMENT_SIZE_BYTES,
   newDocumentId,
   readRhFileAsBuffer,
+  rhFileExists,
   rhCoverStoragePath,
   rhStoragePath,
   saveRhFile,
@@ -535,6 +536,6 @@ export async function getOrganicoDocumentDownloadPath(input: {
   if (!row) return null;
   const path =
     input.kind === 'cover' ? row.coverStoragePath : row.storagePath;
-  if (!path) return null;
+  if (!path || !rhFileExists(path)) return null;
   return { row, path };
 }

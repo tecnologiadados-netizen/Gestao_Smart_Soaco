@@ -46,6 +46,10 @@ backend/prisma/*.db-shm
 backend/prisma/*.db*.bak
 backend/prisma/prisma/
 
+# Uploads de runtime. Arquivos já versionados permanecem no índice;
+# arquivos novos ficam ignorados e não entram em `git stash -u`.
+backend/var/uploads/**
+
 # ACME / SSL (não commitar chaves)
 backend/var/.well-known/
 # Rateio DRE da VPS — nunca sobrescrever com git pull

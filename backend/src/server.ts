@@ -32,6 +32,7 @@ import { sincronizarDescricaoEscopoWhatsAppComunicacaoPd } from './services/sycr
 import { ensureGrupoMaster } from './config/ensureGrupoMaster.js';
 import { ensureDoubleCheckInPermissao } from './config/ensureDoubleCheckInPermissao.js';
 import { initPainelProducaoMetas } from './services/painelProducao/painelProducaoTargetsService.js';
+import { migrateLegacyRhUploads, rhUploadRoot } from './rh/utils/rhUpload.js';
 
 const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -148,6 +149,12 @@ function main(): void {
   const port = env.APP_PORT;
   if (process.env.NODE_ENV !== 'production' && port !== 4000) {
     console.warn(`[startup] Backend na porta ${port}. Proxy e wait-on esperam 4000 — use APP_PORT=4000 ou rode "npm run dev" na raiz.`);
+  }
+  try {
+    const copied = migrateLegacyRhUploads();
+    console.log(`[startup] Uploads RH em ${rhUploadRoot}${copied > 0 ? ` (${copied} arquivo(s) copiados da pasta antiga)` : ''}`);
+  } catch (e) {
+    console.error('[startup] Falha ao preparar uploads RH:', (e as Error)?.message ?? e);
   }
   const server = app.listen(port, '0.0.0.0', () => {
     console.log(`Servidor rodando em http://0.0.0.0:${port} (acessível na rede)`);
