@@ -158,6 +158,27 @@ export const rncFieldLabels = {
 
 export const RCC_SIM_NAO = ["Sim", "Não"] as const;
 
+export const RCC_ORIGEM_CLIENTE_INDUSTRIA = "Cliente para a indústria";
+export const RCC_ORIGEM_CLIENTE_REVENDEDOR = "Cliente para o revendedor";
+export const RCC_ORIGEM_INDUSTRIA_ANTECIPADA = "Feita pela indústria de forma antecipada";
+
+export const RCC_ORIGEM_RECLAMACAO = [
+  RCC_ORIGEM_CLIENTE_INDUSTRIA,
+  RCC_ORIGEM_CLIENTE_REVENDEDOR,
+  RCC_ORIGEM_INDUSTRIA_ANTECIPADA,
+] as const;
+
+/** Converte o Sim/Não antigo para a origem da reclamação. */
+export function origemReclamacaoRcc(valor: string, clienteDoRevendedor = false): string {
+  const texto = valor.trim();
+  if ((RCC_ORIGEM_RECLAMACAO as readonly string[]).includes(texto)) return texto;
+  if (texto === "Sim") {
+    return clienteDoRevendedor ? RCC_ORIGEM_CLIENTE_REVENDEDOR : RCC_ORIGEM_CLIENTE_INDUSTRIA;
+  }
+  if (texto === "Não") return RCC_ORIGEM_INDUSTRIA_ANTECIPADA;
+  return "";
+}
+
 export const RCC_CAUSAS_PROBLEMA = [
   "Análise crítica",
   "Produto com defeito",
@@ -226,7 +247,7 @@ export const rccFieldLabels = {
   codigoDocumento: "Código do documento",
   codigoProduto: "Código do produto",
   dataRegistroReclamacao: "Data de registro da reclamação",
-  feedbackClienteEnviado: "Reclamação feita pelo cliente?",
+  feedbackClienteEnviado: "Origem da reclamação",
   cidade: "Cidade",
   nomeClienteConsumidor: "Nome do cliente consumidor",
   contato: "Contato",
@@ -272,6 +293,7 @@ export const rccFieldLabels = {
   horaSaidaCliente: "Hora da saída do cliente",
   problemaSolucionado: "Problema solucionado?",
   dataFechamento: "Data de fechamento da reclamação",
+  rccFinalizada: "RCC finalizada?",
   causaProblema: "Causa do problema",
   estado: "Estado (UF)",
   usuarioCriacao: "Usuário responsável pela criação",

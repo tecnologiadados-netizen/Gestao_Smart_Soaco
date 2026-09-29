@@ -86,6 +86,36 @@ def tipo_reclamacao(rcc: dict[str, Any]) -> str:
     return valor_campo(rcc.get("reclamacao1") or rcc.get("reclamacao2"))
 
 
+def juntar_codigo_descricao(codigo: str, descricao: str) -> str:
+    if codigo and descricao:
+        if descricao.upper().startswith(codigo.upper()):
+            return descricao
+        return f"{codigo} - {descricao}"
+    return descricao or codigo
+
+
+def produto_com_codigo(rcc: dict[str, Any]) -> str:
+    """Código e descrição no mesmo texto, sem repetir o código quando ele já está na descrição."""
+    itens = rcc.get("itensProduto")
+    partes: list[str] = []
+    if isinstance(itens, list):
+        for item in itens:
+            if not isinstance(item, dict):
+                continue
+            texto = juntar_codigo_descricao(
+                valor_campo(item.get("codigoProduto")),
+                valor_campo(item.get("produto")),
+            )
+            if texto:
+                partes.append(texto)
+    if partes:
+        return "; ".join(partes)
+    return juntar_codigo_descricao(
+        valor_campo(rcc.get("codigoProduto")),
+        valor_campo(rcc.get("produto")),
+    )
+
+
 def servicos_realizados(rcc: dict[str, Any]) -> str:
     partes = [
         valor_campo(rcc.get("servicoRealizado")),
@@ -242,12 +272,24 @@ def gerar_pdf(payload: dict[str, Any], output_path: Path) -> None:
         raise ValueError("Versão inválida. Use 'cliente' ou 'empresa'.")
 
     campos = montar_campos(payload)
+    if versao == "cliente":
+        registro = payload.get("registro") or {}
+        rcc = registro.get("rcc") if isinstance(registro, dict) else {}
+        campos["produto"] = produto_com_codigo(rcc if isinstance(rcc, dict) else {})
     doc = preencher_documento(versao, campos)
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         docx_path = Path(tmp_dir) / "rcc_preenchido.docx"
         doc.save(docx_path)
         converter_para_pdf(docx_path, output_path)
+
+    if versao == "cliente":
+        rnc_pdf_dir = SCRIPT_DIR.parent / "rnc-pdf"
+        if str(rnc_pdf_dir) not in sys.path:
+            sys.path.insert(0, str(rnc_pdf_dir))
+        from generate_rnc_pdf import anexar_evidencias
+
+        anexar_evidencias(output_path, payload)
 
 
 def main() -> int:

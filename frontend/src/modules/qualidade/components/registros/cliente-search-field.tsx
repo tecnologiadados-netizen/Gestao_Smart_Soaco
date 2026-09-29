@@ -9,6 +9,7 @@ import {
   CLIENTES_MIN_SEARCH_CHARS,
   CLIENTES_SEARCH_LIMIT,
 } from "@qualidade/lib/registros/fetch-clientes-client";
+import { ListaSugestaoFlutuante } from "@qualidade/components/registros/lista-sugestao-flutuante";
 import { formatarCidadeRcc } from "@qualidade/types/cliente-erp";
 import type { ClienteErp } from "@qualidade/types/cliente-erp";
 
@@ -20,6 +21,8 @@ interface ClienteSearchFieldProps {
   onClienteSelect: (cliente: ClienteErp) => void;
   onVinculoClear?: () => void;
   disabled?: boolean;
+  /** Só o campo, para caber numa célula da grade. */
+  compacto?: boolean;
 }
 
 export function ClienteSearchField({
@@ -30,6 +33,7 @@ export function ClienteSearchField({
   onClienteSelect,
   onVinculoClear,
   disabled = false,
+  compacto = false,
 }: ClienteSearchFieldProps) {
   const listId = useId();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,7 +109,7 @@ export function ClienteSearchField({
 
   return (
     <div ref={containerRef} className="relative space-y-2">
-      <Label htmlFor={id}>{label} *</Label>
+      {compacto ? null : <Label htmlFor={id}>{label} *</Label>}
       <div className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -120,13 +124,14 @@ export function ClienteSearchField({
           }}
           onFocus={() => setAberto(true)}
           disabled={disabled}
-          placeholder="Digite o nome do cliente..."
+          placeholder={compacto ? "Nome do revendedor" : "Digite o nome do cliente..."}
           className="pl-9"
           autoComplete="off"
           role="combobox"
+          aria-label={compacto ? label : undefined}
           aria-expanded={aberto}
           aria-controls={listId}
-          required
+          required={!compacto}
         />
         {carregando ? (
           <Loader2 className="absolute top-1/2 right-2.5 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
@@ -139,42 +144,38 @@ export function ClienteSearchField({
         </p>
       ) : null}
 
-      {aberto && !disabled && resultados.length > 0 ? (
-        <ul
-          id={listId}
-          role="listbox"
-          className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-popover py-1 shadow-md"
-        >
-          {resultados.map((cliente) => (
-            <li key={cliente.id} role="option">
-              <button
-                type="button"
-                className={cn(
-                  "flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted"
-                )}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => selecionar(cliente)}
-              >
-                <span className="font-medium text-primary">{cliente.nome}</span>
-                {cliente.razaoSocial !== cliente.nome ? (
-                  <span className="line-clamp-1 text-xs text-muted-foreground">
-                    {cliente.razaoSocial}
-                  </span>
-                ) : null}
-                <span className="text-[11px] text-muted-foreground">
-                  {formatarCidadeRcc(cliente.municipio, cliente.uf)}
-                  {cliente.documento ? ` · ${cliente.documento}` : ""}
+      <ListaSugestaoFlutuante aberto={aberto && !disabled && resultados.length > 0} ancoraRef={containerRef} id={listId}>
+        {resultados.map((cliente) => (
+          <li key={cliente.id} role="option">
+            <button
+              type="button"
+              className={cn(
+                "flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted"
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => selecionar(cliente)}
+            >
+              <span className="font-medium text-primary">{cliente.nome}</span>
+              {cliente.razaoSocial !== cliente.nome ? (
+                <span className="line-clamp-1 text-xs text-muted-foreground">
+                  {cliente.razaoSocial}
                 </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+              ) : null}
+              <span className="text-[11px] text-muted-foreground">
+                {formatarCidadeRcc(cliente.municipio, cliente.uf)}
+                {cliente.documento ? ` · ${cliente.documento}` : ""}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ListaSugestaoFlutuante>
 
-      <p className="text-xs text-muted-foreground">
-        Busque no cadastro de clientes do ERP para preencher endereço, contato,
-        telefone, cidade e estado automaticamente.
-      </p>
+      {compacto ? null : (
+        <p className="text-xs text-muted-foreground">
+          Busque no cadastro de clientes do ERP para preencher endereço, contato,
+          telefone, cidade e estado automaticamente.
+        </p>
+      )}
     </div>
   );
 }

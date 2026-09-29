@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@qualidade/components/ui/table";
+import { ClienteSearchField } from "@qualidade/components/registros/cliente-search-field";
 import { ListaSugestaoFlutuante } from "@qualidade/components/registros/lista-sugestao-flutuante";
 import { PedidoVendaSearchField } from "@qualidade/components/registros/pedido-venda-search-field";
 import { criarMatcherTextoLivre } from "@/utils/textoLivreBusca";
@@ -28,7 +29,7 @@ import {
   fetchItensPedidoVendaAtendidos,
   fetchNotasFiscaisPedidoVenda,
 } from "@qualidade/lib/registros/fetch-pedidos-venda-client";
-import { formatarCidadeRcc } from "@qualidade/types/cliente-erp";
+import { formatarCidadeRcc, type ClienteErp } from "@qualidade/types/cliente-erp";
 import { produtoErpParaCamposRnc } from "@qualidade/types/produto-erp";
 import type {
   ItemPedidoVendaAtendidoErp,
@@ -63,6 +64,13 @@ interface RncItensProdutoTableProps {
     possui: string;
     numero: string;
     onChange: (proximo: { possui: string; numero: string }) => void;
+  };
+  /** Nome do revendedor, uma vez na grade, quando a RCC não tem pedido de venda. */
+  nomeRevendedor?: {
+    nome: string;
+    onChange: (nome: string) => void;
+    onSelect: (cliente: ClienteErp) => void;
+    onVinculoClear?: () => void;
   };
 }
 
@@ -203,6 +211,7 @@ const LARGURAS_INICIAIS: Record<string, number> = {
   estado: 88,
   possuiSerie: 200,
   numeroSerie: 200,
+  revendedor: 240,
 };
 
 const OPCAO_SELECIONE = "Selecione...";
@@ -262,6 +271,7 @@ export function RncItensProdutoTable({
   onPedidoSelect,
   quantidadeObrigatoria = false,
   numeroSerie,
+  nomeRevendedor,
 }: RncItensProdutoTableProps) {
   const itens = dados.itensProduto ?? [];
   const dadosRef = useRef(dados);
@@ -325,6 +335,7 @@ export function RncItensProdutoTable({
     colunasClientePedido && dados.temPedidoVenda === "sim" ? "cliente" : "",
     colunasClientePedido && dados.temPedidoVenda === "sim" ? "contato" : "",
     colunasClientePedido && dados.temPedidoVenda === "sim" ? "estado" : "",
+    nomeRevendedor && dados.temPedidoVenda === "nao" ? "revendedor" : "",
     numeroSerie ? "possuiSerie" : "",
     numeroSerie?.possui === "Sim" ? "numeroSerie" : "",
     disabled ? "" : "acoes",
@@ -563,6 +574,12 @@ export function RncItensProdutoTable({
                     </TableHead>
                   </>
                 ) : null}
+                {nomeRevendedor && dados.temPedidoVenda === "nao" ? (
+                  <TableHead className="group relative" style={{ width: largura("revendedor") }}>
+                    Nome do revendedor *
+                    <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("revendedor", event)} />
+                  </TableHead>
+                ) : null}
                 {numeroSerie ? (
                   <TableHead className="group relative" style={{ width: largura("possuiSerie") }}>
                     Possui n° de série? *
@@ -776,6 +793,26 @@ export function RncItensProdutoTable({
                         />
                       </TableCell>
                     </>
+                  ) : null}
+                  {nomeRevendedor && dados.temPedidoVenda === "nao" && index === 0 ? (
+                    <TableCell className="align-top" rowSpan={itens.length}>
+                      {disabled ? (
+                        <CampoSomenteLeitura
+                          value={nomeRevendedor.nome}
+                          label="Nome do revendedor"
+                        />
+                      ) : (
+                        <ClienteSearchField
+                          id="rcc-revendedor-grade"
+                          label="Nome do revendedor"
+                          compacto
+                          value={nomeRevendedor.nome}
+                          onValueChange={nomeRevendedor.onChange}
+                          onClienteSelect={nomeRevendedor.onSelect}
+                          onVinculoClear={nomeRevendedor.onVinculoClear}
+                        />
+                      )}
+                    </TableCell>
                   ) : null}
                   {numeroSerie && index === 0 ? (
                     <TableCell className="align-top" rowSpan={itens.length}>

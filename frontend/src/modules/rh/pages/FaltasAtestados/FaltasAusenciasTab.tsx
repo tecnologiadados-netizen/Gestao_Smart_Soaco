@@ -61,6 +61,7 @@ import {
 } from "@rh/pages/FaltasAtestados/faltas-ausencias-columns";
 import { syncSuspensaoAusenciasParaSancoesPadrao } from "@rh/pages/FaltasAtestados/sync-suspensao-ausencia-to-sancoes";
 import { reconcileVisibleRowIntoMap } from "@rh/pages/FaltasAtestados/faltas-save-merge";
+import { normalizarMesFalta } from "@rh/pages/FaltasAtestados/mes-falta";
 import { cn } from "@rh/lib/utils";
 
 const DASHBOARD_AUSENCIAS_UPDATED_EVENT = "rh-dashboard-ausencias-updated";
@@ -94,12 +95,13 @@ function sortYmAsc(a: string, b: string) {
 
 function rowToReplacePayload(row: FaltaRow): FaltaReplaceRow {
   const { id, ...rest } = row;
+  const payload: FaltaReplaceRow = { ...rest, mesFalta: normalizarMesFalta(rest.mesFalta) };
   const idStr = String(id);
-  if (idStr.startsWith("import-")) return rest;
+  if (idStr.startsWith("import-")) return payload;
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idStr)) {
-    return { ...rest, id: idStr };
+    return { ...payload, id: idStr };
   }
-  return rest;
+  return payload;
 }
 
 function stripEmptyRows(rows: FaltaRow[]): FaltaRow[] {
@@ -389,6 +391,7 @@ export default function FaltasAusenciasTab({
           .map((r, i) => ({
             ...r,
             id: typeof r.id === "string" && r.id.length > 0 ? r.id : i + 1,
+            mesFalta: normalizarMesFalta(r.mesFalta),
           }))
           .filter((r) => !del.has(String(r.id))),
       ),

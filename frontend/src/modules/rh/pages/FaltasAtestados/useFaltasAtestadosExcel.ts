@@ -14,6 +14,7 @@ import {
   mapFaltasHeaderToField,
   normalizeFaltasHeader,
 } from "./faltas-atestados-excel";
+import { normalizarMesFalta } from "./mes-falta";
 
 function cellToString(value: unknown): string {
   if (value == null) return "";
@@ -113,7 +114,7 @@ function rowToExportArray(row: FaltaRow): (string | number)[] {
   const r = { ...b, ...row };
   return [
     formatDateToBR(r.data),
-    r.mesFalta,
+    normalizarMesFalta(r.mesFalta),
     r.matricula,
     r.nomeFuncionario,
     r.endereco,
@@ -139,6 +140,8 @@ function recordToFalta(obj: Record<string, unknown>): Omit<FaltaRow, "id"> | nul
     if (!field) continue;
     if (field === "data") {
       base.data = cellToIsoDate(v);
+    } else if (field === "mesFalta") {
+      base.mesFalta = normalizarMesFalta(cellToString(v));
     } else {
       base[field] = cellToString(v);
     }

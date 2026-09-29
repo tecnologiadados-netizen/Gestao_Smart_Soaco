@@ -39,6 +39,12 @@ export interface PessoaErp {
   id: string;
   nome: string;
   documento?: string;
+  municipio?: string;
+  uf?: string;
+  endereco?: string;
+  bairro?: string;
+  telefone?: string;
+  contato?: string;
 }
 
 export interface DocumentoEntradaErp {
@@ -572,10 +578,20 @@ function mapSqlRowsToPessoas(rows: Record<string, unknown>[]): PessoaErp[] {
     if (!id || !nome || vistos.has(id)) continue;
     vistos.add(id);
     const documento = String(row.documento ?? '').trim();
+    const textoOpcional = (valor: unknown) => {
+      const texto = String(valor ?? '').trim();
+      return texto || undefined;
+    };
     pessoas.push({
       id,
       nome,
       documento: documento || undefined,
+      municipio: textoOpcional(row.municipio),
+      uf: textoOpcional(row.uf)?.toUpperCase(),
+      endereco: textoOpcional(row.endereco),
+      bairro: textoOpcional(row.bairro),
+      telefone: textoOpcional(row.telefone),
+      contato: textoOpcional(row.contato),
     });
   }
 
@@ -600,8 +616,15 @@ export async function buscarPessoasNomus(
     SELECT
       p.id,
       p.nome,
+      p.uf,
+      p.endereco,
+      p.bairroDistrito AS bairro,
+      m.nome AS municipio,
+      ${CLIENTES_TELEFONE_SUBQUERY},
+      ${CLIENTES_CONTATO_SUBQUERY},
       IF(p.tipoPessoa = 1, p.cnpjCpf, p.cpf) AS documento
     FROM pessoa p
+    LEFT JOIN municipio m ON m.id = p.idMunicipio
     WHERE p.ativo = 1
       ${apenasFuncionarios ? 'AND p.funcionario = 1' : ''}
       ${apenasParceiros ? 'AND p.parceiro = 1' : ''}

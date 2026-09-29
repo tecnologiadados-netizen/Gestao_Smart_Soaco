@@ -1,3 +1,7 @@
+import {
+  RCC_ORIGEM_CLIENTE_REVENDEDOR,
+  origemReclamacaoRcc,
+} from "@qualidade/lib/registros/constants";
 import type { RccDados } from "@qualidade/types/rcc";
 import type { RncItemProduto } from "@qualidade/types/rnc";
 
@@ -39,8 +43,8 @@ export function validarRcc(
   if (!rcc.dataRegistroReclamacao.trim()) {
     erros.dataRegistroReclamacao = "Informe a data de registro da reclamação.";
   }
-  if (!respostaSimNao(rcc.feedbackClienteEnviado)) {
-    erros.feedbackClienteEnviado = "Informe se a reclamação foi feita pelo cliente.";
+  if (!origemReclamacaoRcc(rcc.feedbackClienteEnviado, rcc.clienteDoRevendedor)) {
+    erros.feedbackClienteEnviado = "Informe a origem da reclamação.";
   }
   if (!respostaSimNao(rcc.possuiNumeroSerie)) {
     erros.possuiNumeroSerie = "Informe se o produto possui número de série.";
@@ -53,9 +57,10 @@ export function validarRcc(
   if (!respostaSimNao(rcc.produtoDentroGarantia)) {
     erros.produtoDentroGarantia = "Informe se o produto está dentro da garantia.";
   }
-  const reclamacaoPeloCliente = rcc.feedbackClienteEnviado === "Sim";
+  const origem = origemReclamacaoRcc(rcc.feedbackClienteEnviado, rcc.clienteDoRevendedor);
   const clienteNaSecao =
-    reclamacaoPeloCliente && (opcoes?.origemNomus || rcc.temPedidoVenda !== "sim");
+    origem === RCC_ORIGEM_CLIENTE_REVENDEDOR &&
+    (opcoes?.origemNomus || rcc.temPedidoVenda !== "sim");
   if (clienteNaSecao && !rcc.nomeClienteConsumidor.trim()) {
     erros.nomeClienteConsumidor = "Informe o nome do cliente.";
   }
@@ -65,7 +70,11 @@ export function validarRcc(
   if (clienteNaSecao && !rcc.cidade.trim()) {
     erros.cidade = "Informe a cidade do cliente.";
   }
-  if (clienteNaSecao && rcc.clienteDoRevendedor && !rcc.nomeRevendedor.trim()) {
+  if (
+    clienteNaSecao &&
+    origem === RCC_ORIGEM_CLIENTE_REVENDEDOR &&
+    !rcc.nomeRevendedor.trim()
+  ) {
     erros.nomeRevendedor = "Informe o nome do revendedor.";
   }
   if (opcoes?.origemNomus) {
@@ -89,12 +98,12 @@ export function validarRcc(
     erros.reclamacao1 = "Categorize a reclamação.";
   }
 
-  const encerrando = Boolean(rcc.dataFechamento.trim());
+  const encerrando = rcc.rccFinalizada === "Sim";
+  if (encerrando && !rcc.dataFechamento.trim()) {
+    erros.dataFechamento = "Informe a data de fechamento da reclamação.";
+  }
   if (encerrando && !respostaSimNao(rcc.problemaSolucionado)) {
     erros.problemaSolucionado = "Informe se o problema foi solucionado.";
-  }
-  if (rcc.problemaSolucionado === "Sim" && !encerrando) {
-    erros.dataFechamento = "Informe a data de fechamento da reclamação.";
   }
   if (encerrando && linhasComTexto.some((linha) => !respostaSimNao(linha.aceita))) {
     erros.reclamacaoAceita = "Para encerrar, informe se a reclamação foi aceita.";
