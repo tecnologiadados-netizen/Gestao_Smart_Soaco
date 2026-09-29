@@ -134,6 +134,12 @@ async function ensureDbReady(): Promise<void> {
   } catch (e) {
     console.warn('[startup] seedRhDefaults:', (e as Error)?.message ?? e);
   }
+  try {
+    const { normalizarMesFaltaPersistido } = await import('./rh/utils/normalizarMesFaltaPersistido.js');
+    await normalizarMesFaltaPersistido();
+  } catch (e) {
+    console.warn('[startup] normalizarMesFaltaPersistido:', (e as Error)?.message ?? e);
+  }
 }
 
 function main(): void {

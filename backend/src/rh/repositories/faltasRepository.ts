@@ -2,6 +2,7 @@ import { prisma } from '../../config/prisma.js';
 import { hasSectorAccess } from '../lib/rh-permissions.js';
 import type { RhGroupPermissions } from '../lib/rh-permissions.js';
 import { formatIsoDate, monthBounds, s } from '../utils/rhHelpers.js';
+import { normalizarMesFalta } from '../utils/normalizarMesFalta.js';
 import {
   mapDbFaltaToReplaceRow,
   replaceFaltasAtestadosSafe,
@@ -34,7 +35,7 @@ function mapFaltaRow(r: {
   return {
     id: r.id,
     data: formatIsoDate(r.data),
-    mesFalta: r.mesFalta ?? '',
+    mesFalta: normalizarMesFalta(r.mesFalta),
     matricula: r.matricula,
     nomeFuncionario: r.nomeFuncionario,
     endereco: r.endereco ?? '',

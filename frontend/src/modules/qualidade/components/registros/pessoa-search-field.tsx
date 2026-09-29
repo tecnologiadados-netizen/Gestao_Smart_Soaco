@@ -9,6 +9,7 @@ import {
   PESSOAS_MIN_SEARCH_CHARS,
   PESSOAS_SEARCH_LIMIT,
 } from "@qualidade/lib/registros/fetch-pessoas-client";
+import { formatarCidadeRcc } from "@qualidade/types/cliente-erp";
 import type { PessoaErp } from "@qualidade/types/pessoa-erp";
 
 interface PessoaSearchFieldProps {
@@ -204,6 +205,12 @@ export function PessoaSearchField({
                     <span className="block truncate font-medium">
                       {pessoa.nome}
                     </span>
+                    {pessoa.municipio || pessoa.uf || pessoa.documento ? (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {formatarCidadeRcc(pessoa.municipio ?? "", pessoa.uf ?? "")}
+                        {pessoa.documento ? ` · ${pessoa.documento}` : ""}
+                      </span>
+                    ) : null}
                   </button>
                 </li>
               ))}

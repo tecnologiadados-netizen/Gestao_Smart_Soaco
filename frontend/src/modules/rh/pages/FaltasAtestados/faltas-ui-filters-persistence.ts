@@ -3,6 +3,7 @@ import type { FaltaRow } from "@rh/types/api";
 import type { SancaoDisciplinarRow } from "@rh/types/api";
 import type { FaltaColumnFilter } from "@rh/pages/FaltasAtestados/faltas-column-filter";
 import type { SancaoColumnFilter } from "@rh/pages/FaltasAtestados/sancoes-column-filter";
+import { normalizarMesFalta } from "@rh/pages/FaltasAtestados/mes-falta";
 
 export const FALTAS_ATESTADOS_TAB_SESSION_KEY = "rh-faltas-atestados-tab-v1";
 export const FALTAS_AUSENCIAS_FILTERS_SESSION_KEY = "rh-faltas-ausencias-filters-v1";
@@ -52,7 +53,17 @@ export function writeFaltasAtestadosTab(tab: FaltasAtestadosTabId): void {
 }
 
 export function readFaltasAusenciasFilters(): Partial<FaltasAusenciasFiltersSession> {
-  return readPersistedJson<FaltasAusenciasFiltersSession>(FALTAS_AUSENCIAS_FILTERS_SESSION_KEY) ?? {};
+  const saved = readPersistedJson<FaltasAusenciasFiltersSession>(FALTAS_AUSENCIAS_FILTERS_SESSION_KEY) ?? {};
+  const mes = saved.columnFilters?.mesFalta;
+  if (!mes || mes.kind !== "values") return saved;
+  const allowed = [...new Set(mes.allowed.map((v) => normalizarMesFalta(v)))];
+  return {
+    ...saved,
+    columnFilters: {
+      ...saved.columnFilters,
+      mesFalta: { kind: "values", allowed },
+    },
+  };
 }
 
 export function writeFaltasAusenciasFilters(snapshot: FaltasAusenciasFiltersSession): void {

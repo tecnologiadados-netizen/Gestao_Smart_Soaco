@@ -1,4 +1,8 @@
-import { RCC_VENDEDOR_PADRAO } from "@qualidade/lib/registros/constants";
+import {
+  RCC_ORIGEM_CLIENTE_REVENDEDOR,
+  RCC_VENDEDOR_PADRAO,
+  origemReclamacaoRcc,
+} from "@qualidade/lib/registros/constants";
 import type { RegistroAnexo } from "@qualidade/types/registro-anexo";
 import { normalizarRegistroAnexos } from "@qualidade/types/registro-anexo";
 import {
@@ -147,6 +151,7 @@ export interface RccDados {
   temPedidoVenda: RncPedidoVendaResposta;
   itensProduto: RncItemProduto[];
   dataRegistroReclamacao: string;
+  /** Origem da reclamação: cliente para a indústria, cliente para o revendedor ou feita pela indústria. */
   feedbackClienteEnviado: string;
   cidade: string;
   nomeClienteConsumidor: string;
@@ -195,6 +200,8 @@ export interface RccDados {
   horaSaidaCliente: string;
   problemaSolucionado: string;
   dataFechamento: string;
+  /** Sim mostra data de fechamento e problema solucionado. Não mantém a RCC em aberto. */
+  rccFinalizada: string;
   causaProblema: string;
   estado: string;
   usuarioCriacao: string;
@@ -256,6 +263,7 @@ export function criarRccDadosVazio(codigoDocumento = ""): RccDados {
     horaSaidaCliente: "",
     problemaSolucionado: "",
     dataFechamento: "",
+    rccFinalizada: "",
     causaProblema: "",
     estado: "",
     usuarioCriacao: "",
@@ -613,12 +621,37 @@ export function normalizarRccDados(
   };
   const linhasReclamacao = normalizarLinhasReclamacao(rcc, merged);
   const linhasServico = normalizarLinhasServico(rcc, merged);
-  const comLinhas: RccDados = {
+  const comLinhasBase: RccDados = {
     ...merged,
     linhasReclamacao,
     ...legadoDasLinhasReclamacao(linhasReclamacao),
     linhasServico,
     ...legadoDasLinhasServico(linhasServico),
+  };
+  const rccFinalizada =
+    rcc.rccFinalizada === "Sim" || rcc.rccFinalizada === "Não"
+      ? rcc.rccFinalizada
+      : comLinhasBase.dataFechamento.trim() ||
+          comLinhasBase.problemaSolucionado === "Sim" ||
+          comLinhasBase.problemaSolucionado === "Não"
+        ? "Sim"
+        : "";
+  const origemReclamacao = origemReclamacaoRcc(
+    comLinhasBase.feedbackClienteEnviado,
+    comLinhasBase.clienteDoRevendedor
+  );
+  const comLinhas: RccDados = {
+    ...comLinhasBase,
+    ...(origemReclamacao
+      ? {
+          feedbackClienteEnviado: origemReclamacao,
+          clienteDoRevendedor: origemReclamacao === RCC_ORIGEM_CLIENTE_REVENDEDOR,
+        }
+      : {}),
+    rccFinalizada,
+    ...(rccFinalizada === "Não"
+      ? { dataFechamento: "", problemaSolucionado: "" }
+      : {}),
   };
 
   if (opcoes?.origemNomus) {

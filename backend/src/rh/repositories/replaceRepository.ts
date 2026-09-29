@@ -7,6 +7,7 @@ import {
   parseValuesJson,
   s,
 } from '../utils/rhHelpers.js';
+import { normalizarMesFalta } from '../utils/normalizarMesFalta.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -123,7 +124,7 @@ function mapFaltaRow(r: FaltaAtestadoReplaceRow) {
   return {
     ...(isValidUuid(idStr) ? { id: idStr } : {}),
     data,
-    mesFalta: s(r.mesFalta) || null,
+    mesFalta: normalizarMesFalta(s(r.mesFalta)) || null,
     matricula: s(r.matricula) || '—',
     nomeFuncionario: s(r.nomeFuncionario) || '—',
     endereco: s(r.endereco) || null,
@@ -424,7 +425,7 @@ export function mapDbFaltaToReplaceRow(row: {
   return {
     id: row.id,
     data: row.data.toISOString().slice(0, 10),
-    mesFalta: row.mesFalta ?? '',
+    mesFalta: normalizarMesFalta(row.mesFalta),
     matricula: row.matricula,
     nomeFuncionario: row.nomeFuncionario,
     endereco: row.endereco ?? '',

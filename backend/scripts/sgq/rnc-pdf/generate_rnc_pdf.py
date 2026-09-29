@@ -544,11 +544,19 @@ def adicionar_pagina_texto(doc, indice: int, titulo: str, nome: str, mensagem: s
     )
 
 
-def anexar_evidencias(pdf_path: Path, payload: dict[str, Any]) -> None:
+def anexos_do_registro(payload: dict[str, Any]) -> list[Any]:
     registro = payload.get("registro") or {}
-    rnc = registro.get("rnc") or {}
-    anexos = rnc.get("anexos")
-    if not isinstance(anexos, list) or not anexos:
+    tipo = valor_campo(registro.get("tipo")).lower()
+    bloco = registro.get(tipo) if tipo in {"rnc", "rcc"} else None
+    if not isinstance(bloco, dict):
+        bloco = registro.get("rnc") or registro.get("rcc") or {}
+    anexos = bloco.get("anexos") if isinstance(bloco, dict) else None
+    return anexos if isinstance(anexos, list) else []
+
+
+def anexar_evidencias(pdf_path: Path, payload: dict[str, Any]) -> None:
+    anexos = anexos_do_registro(payload)
+    if not anexos:
         return
 
     try:

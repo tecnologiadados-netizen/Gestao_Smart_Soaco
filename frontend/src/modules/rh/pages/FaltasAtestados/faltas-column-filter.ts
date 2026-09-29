@@ -1,4 +1,5 @@
 ﻿import type { FaltaRow } from "@rh/types/api";
+import { normalizarMesFalta } from "@rh/pages/FaltasAtestados/mes-falta";
 
 /** Filtro estilo planilha: todos os valores ou subconjunto explícito (por texto exato da célula, trim). */
 export type FaltaColumnFilter =
@@ -21,10 +22,11 @@ export function rowMatchesColumnFilter(
   f: FaltaColumnFilter | undefined,
 ): boolean {
   if (!f || f.kind === "all") return true;
-  const cell = String(row[key] ?? "").trim();
+  const cell = cellValueForColumnFilter(row, key);
   if (f.kind === "values") {
     if (f.allowed.length === 0) return false;
-    return f.allowed.includes(cell);
+    const allowed = key === "mesFalta" ? f.allowed.map((v) => normalizarMesFalta(v)) : f.allowed;
+    return allowed.includes(cell);
   }
   const cellDate = toIsoDateOnly(cell);
   if (!cellDate) return false;
@@ -33,10 +35,15 @@ export function rowMatchesColumnFilter(
   return true;
 }
 
+function cellValueForColumnFilter(row: FaltaRow, key: keyof FaltaRow): string {
+  const raw = String(row[key] ?? "").trim();
+  return key === "mesFalta" ? normalizarMesFalta(raw) : raw;
+}
+
 export function columnUniqueValues(rows: FaltaRow[], key: keyof FaltaRow): string[] {
   const s = new Set<string>();
   for (const r of rows) {
-    s.add(String(r[key] ?? "").trim());
+    s.add(cellValueForColumnFilter(r, key));
   }
   return [...s].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true, sensitivity: "base" }));
 }

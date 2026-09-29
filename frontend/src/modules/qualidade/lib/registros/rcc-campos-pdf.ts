@@ -101,6 +101,8 @@ export const RCC_CAMPOS_PDF_MAPA: RccCampoPdfMapa[] = [
     chaveSistema: "produto",
     versoes: ["cliente", "empresa"],
     situacao: "mapeado",
+    observacao:
+      "Na versão do cliente, o código do produto entra junto com a descrição.",
   },
   {
     rotuloPdf: "Nº Série/Lote do produto",
@@ -174,6 +176,14 @@ export const RCC_CAMPOS_PDF_MAPA: RccCampoPdfMapa[] = [
     chaveSistema: "usuarioCriacao",
     versoes: ["cliente"],
     situacao: "mapeado",
+  },
+  {
+    rotuloPdf: "Evidências",
+    chaveSistema: "anexos",
+    versoes: ["cliente"],
+    situacao: "mapeado",
+    observacao:
+      "Cada arquivo vira página no final do PDF, com o título informado e o nome do arquivo.",
   },
   {
     rotuloPdf: "Número de ordem de produção",

@@ -25,14 +25,16 @@ import { RncItensProdutoTable } from "@qualidade/components/registros/rnc-itens-
 import { RegistroAnexosTable } from "@qualidade/components/registros/registro-anexos-table";
 import {
   ORIGEM_NOMUS_LABEL,
+  RCC_ORIGEM_CLIENTE_REVENDEDOR,
+  RCC_ORIGEM_RECLAMACAO,
   RCC_SIM_NAO,
   RCC_VENDEDOR_PADRAO,
   rccFieldLabels,
 } from "@qualidade/lib/registros/constants";
 import {
-  clienteErpParaCamposRcc,
   clienteErpParaCamposRevendedorRcc,
 } from "@qualidade/types/cliente-erp";
+import { pessoaErpParaCamposClienteRcc } from "@qualidade/types/pessoa-erp";
 import { extrairCodigoProduto } from "@qualidade/types/produto-erp";
 import type { RccDados } from "@qualidade/types/rcc";
 import {
@@ -155,11 +157,19 @@ export function RccForm({
   const [camposVinculadosRevendedor, setCamposVinculadosRevendedor] =
     useState(false);
 
-  const pedidoVinculado = (dados.itensProduto ?? []).some((item) => item.pedidoId.trim());
   const ocultarDadosCliente = dados.temPedidoVenda === "sim" && !origemNomus;
-  const mostrarDadosCliente =
-    dados.feedbackClienteEnviado === "Sim" && !ocultarDadosCliente;
-  const encerrando = Boolean(dados.dataFechamento.trim());
+  const paraRevendedor = dados.feedbackClienteEnviado === RCC_ORIGEM_CLIENTE_REVENDEDOR;
+  const mostrarDadosCliente = paraRevendedor && !ocultarDadosCliente;
+  const nomeRevendedorNaGrade = paraRevendedor && dados.temPedidoVenda === "nao" && !origemNomus;
+  const rccFinalizada =
+    dados.rccFinalizada === "Sim" || dados.rccFinalizada === "Não"
+      ? dados.rccFinalizada
+      : dados.dataFechamento.trim() ||
+          dados.problemaSolucionado === "Sim" ||
+          dados.problemaSolucionado === "Não"
+        ? "Sim"
+        : "";
+  const encerrando = rccFinalizada === "Sim";
   const servicoInformado = (dados.linhasServico ?? []).some(
     (linha) => linha.texto.trim() || linha.lista1.trim() || linha.lista2.trim()
   );
@@ -167,14 +177,8 @@ export function RccForm({
     encerrando &&
     Boolean(dados.responsavelAssistencia || dados.funcionarioSolicitado.trim() || servicoInformado);
 
-  const usarBuscaCliente =
-    !somenteLeitura && !dados.clienteDoRevendedor && !pedidoVinculado;
-
   const camposClienteAuto =
-    (camposVinculadosCliente || pedidoVinculado) &&
-    !dados.clienteDoRevendedor &&
-    !somenteLeitura &&
-    !origemNomus;
+    camposVinculadosCliente && !somenteLeitura && !origemNomus;
 
   const camposRevendedorAuto =
     camposVinculadosRevendedor && !somenteLeitura && !origemNomus;
@@ -253,7 +257,7 @@ export function RccForm({
                 <TableHead className="min-w-44">
                   {rccFieldLabels.dataRegistroReclamacao} *
                 </TableHead>
-                <TableHead className="min-w-44">{rccFieldLabels.feedbackClienteEnviado} *</TableHead>
+                <TableHead className="min-w-80">{rccFieldLabels.feedbackClienteEnviado} *</TableHead>
                 <TableHead className="min-w-44">{rccFieldLabels.usuarioCriacao}</TableHead>
                 {origemNomus ? (
                   <>
@@ -305,9 +309,34 @@ export function RccForm({
                 <TableCell className="align-top">
                   <Select
                     value={dados.feedbackClienteEnviado || undefined}
-                    onValueChange={(v) =>
-                      patch({ feedbackClienteEnviado: valorDaLista(v) })
-                    }
+                    onValueChange={(v) => {
+                      const origem = valorDaLista(v);
+                      const revendedor = origem === RCC_ORIGEM_CLIENTE_REVENDEDOR;
+                      patch({
+                        feedbackClienteEnviado: origem,
+                        clienteDoRevendedor: revendedor,
+                        ...(revendedor
+                          ? { vendedor: "" }
+                          : {
+                              nomeRevendedor: "",
+                              cidadeRevendedor: "",
+                              estadoRevendedor: "",
+                              vendedor: RCC_VENDEDOR_PADRAO,
+                              nomeClienteConsumidor: "",
+                              cidade: "",
+                              estado: "",
+                              contato: "",
+                              telefone: "",
+                              bairro: "",
+                              endereco: "",
+                              pontoReferencia: "",
+                            }),
+                      });
+                      if (!revendedor) {
+                        setCamposVinculadosRevendedor(false);
+                        setCamposVinculadosCliente(false);
+                      }
+                    }}
                     disabled={somenteLeitura}
                   >
                     <SelectTrigger
@@ -317,7 +346,7 @@ export function RccForm({
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <ListaComSelecione opcoes={RCC_SIM_NAO} />
+                      <ListaComSelecione opcoes={RCC_ORIGEM_RECLAMACAO} />
                     </SelectContent>
                   </Select>
                   <CampoErro mensagem={erros.feedbackClienteEnviado} />
@@ -481,6 +510,7 @@ export function RccForm({
                     erros.possuiNumeroSerie,
                     erros.numeroSerieLoteProduto,
                     dados.temPedidoVenda === "sim" ? erros.nomeClienteConsumidor : undefined,
+                    nomeRevendedorNaGrade ? erros.nomeRevendedor : undefined,
                   ]
                     .filter(Boolean)
                     .join("\n") || undefined
@@ -498,12 +528,143 @@ export function RccForm({
                       numeroSerieLoteProduto: numero.replace(/\D/g, ""),
                     }),
                 }}
+                nomeRevendedor={
+                  nomeRevendedorNaGrade
+                    ? {
+                        nome: dados.nomeRevendedor ?? "",
+                        onChange: (nome) => patch({ nomeRevendedor: nome }),
+                        onSelect: (cliente) => {
+                          patch(clienteErpParaCamposRevendedorRcc(cliente));
+                          setCamposVinculadosRevendedor(true);
+                        },
+                        onVinculoClear: () => setCamposVinculadosRevendedor(false),
+                      }
+                    : undefined
+                }
                 onChange={aplicarGrade}
               />
             </>
           )}
         </div>
       </fieldset>
+
+      {mostrarDadosCliente ? (
+        <fieldset className="brand-fieldset space-y-4">
+          <legend>Cliente consumidor</legend>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
+              {somenteLeitura ? (
+                <>
+                  <Label htmlFor="rcc-cliente">
+                    {rccFieldLabels.nomeClienteConsumidor} *
+                  </Label>
+                  <Input
+                    id="rcc-cliente"
+                    value={dados.nomeClienteConsumidor}
+                    readOnly
+                    className="campo-copiavel bg-muted/40"
+                  />
+                </>
+              ) : (
+                <PessoaSearchField
+                  id="rcc-cliente"
+                  label={`${rccFieldLabels.nomeClienteConsumidor} *`}
+                  value={dados.nomeClienteConsumidor}
+                  placeholder="Digite o nome da pessoa..."
+                  descricao="Busca pessoas ativas cadastradas no Nomus. Cidade, contato e telefone entram com o cadastro."
+                  onValueChange={(nome) => {
+                    if (nome.trim()) {
+                      patch({ nomeClienteConsumidor: nome });
+                      return;
+                    }
+                    patch({
+                      nomeClienteConsumidor: "",
+                      cidade: "",
+                      estado: "",
+                      contato: "",
+                      telefone: "",
+                      bairro: "",
+                      endereco: "",
+                      pontoReferencia: "",
+                    });
+                    setCamposVinculadosCliente(false);
+                  }}
+                  onPessoaSelect={(pessoa) => {
+                    patch(pessoaErpParaCamposClienteRcc(pessoa));
+                    setCamposVinculadosCliente(true);
+                  }}
+                  disabled={somenteLeitura}
+                />
+              )}
+              <CampoErro mensagem={erros.nomeClienteConsumidor} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="rcc-cidade">{rccFieldLabels.cidade} *</Label>
+              <Input
+                id="rcc-cidade"
+                value={dados.cidade}
+                onChange={(e) => patch({ cidade: e.target.value })}
+                readOnly={somenteLeitura || camposClienteAuto}
+                className={
+                  somenteLeitura || camposClienteAuto
+                    ? "campo-copiavel bg-muted/40"
+                    : undefined
+                }
+              />
+              <CampoErro mensagem={erros.cidade} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="rcc-estado">{rccFieldLabels.estado}</Label>
+              <Input
+                id="rcc-estado"
+                value={dados.estado}
+                onChange={(e) => patch({ estado: e.target.value.toUpperCase() })}
+                readOnly={somenteLeitura || camposClienteAuto}
+                className={
+                  somenteLeitura || camposClienteAuto
+                    ? "campo-copiavel bg-muted/40"
+                    : undefined
+                }
+                maxLength={2}
+                placeholder="UF"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="rcc-contato">{rccFieldLabels.contato}</Label>
+              <Input
+                id="rcc-contato"
+                value={dados.contato}
+                onChange={(e) => patch({ contato: e.target.value })}
+                readOnly={somenteLeitura || camposClienteAuto}
+                className={
+                  somenteLeitura || camposClienteAuto
+                    ? "campo-copiavel bg-muted/40"
+                    : undefined
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="rcc-telefone">{rccFieldLabels.telefone} *</Label>
+              <Input
+                id="rcc-telefone"
+                value={dados.telefone}
+                onChange={(e) => patch({ telefone: e.target.value })}
+                readOnly={somenteLeitura || camposClienteAuto}
+                className={
+                  somenteLeitura || camposClienteAuto
+                    ? "campo-copiavel bg-muted/40"
+                    : undefined
+                }
+              />
+              <CampoErro mensagem={erros.telefone} />
+            </div>
+          </div>
+        </fieldset>
+      ) : null}
 
       <fieldset className="brand-fieldset space-y-4">
         <legend>Reclamação e análise de causa</legend>
@@ -529,199 +690,8 @@ export function RccForm({
       </fieldset>
 
       <fieldset className="brand-fieldset space-y-4">
-        <legend>{mostrarDadosCliente ? "Cliente" : "Fabricação e garantia"}</legend>
+        <legend>Fabricação e garantia</legend>
         <div className="grid gap-4 sm:grid-cols-2">
-          {mostrarDadosCliente && !somenteLeitura ? (
-            <div className="sm:col-span-2">
-              <label className="flex cursor-pointer items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  className="size-4 rounded border-input accent-brand-blue"
-                  checked={dados.clienteDoRevendedor}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    patch({
-                      clienteDoRevendedor: checked,
-                      ...(checked
-                        ? {
-                            vendedor: "",
-                          }
-                        : {
-                            nomeRevendedor: "",
-                            cidadeRevendedor: "",
-                            estadoRevendedor: "",
-                            vendedor: RCC_VENDEDOR_PADRAO,
-                          }),
-                    });
-                    setCamposVinculadosCliente(false);
-                    if (!checked) setCamposVinculadosRevendedor(false);
-                  }}
-                />
-                {rccFieldLabels.clienteDoRevendedor}
-              </label>
-            </div>
-          ) : null}
-          {mostrarDadosCliente && somenteLeitura && dados.clienteDoRevendedor ? (
-            <div className="sm:col-span-2">
-              <p className="text-sm text-muted-foreground">
-                {rccFieldLabels.clienteDoRevendedor}: Sim
-              </p>
-            </div>
-          ) : null}
-
-          {mostrarDadosCliente ? (
-          <>
-          <div className="space-y-2 sm:col-span-2">
-            {usarBuscaCliente ? (
-              <ClienteSearchField
-                id="rcc-cliente"
-                label={`${rccFieldLabels.nomeClienteConsumidor} *`}
-                value={dados.nomeClienteConsumidor}
-                onValueChange={(nome) =>
-                  patch({ nomeClienteConsumidor: nome })
-                }
-                onClienteSelect={(cliente) => {
-                  patch(clienteErpParaCamposRcc(cliente));
-                  setCamposVinculadosCliente(true);
-                }}
-                onVinculoClear={() => setCamposVinculadosCliente(false)}
-                disabled={somenteLeitura}
-              />
-            ) : (
-              <>
-                <Label htmlFor="rcc-cliente">
-                  {rccFieldLabels.nomeClienteConsumidor} *
-                </Label>
-                <Input
-                  id="rcc-cliente"
-                  value={dados.nomeClienteConsumidor}
-                  onChange={(e) =>
-                    patch({ nomeClienteConsumidor: e.target.value })
-                  }
-                  readOnly={somenteLeitura}
-                  disabled={somenteLeitura}
-                  className={somenteLeitura ? "bg-muted/40" : undefined}
-                  required
-                />
-              </>
-            )}
-            <CampoErro mensagem={erros.nomeClienteConsumidor} />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rcc-cidade">{rccFieldLabels.cidade} *</Label>
-            <Input
-              id="rcc-cidade"
-              value={dados.cidade}
-              onChange={(e) => patch({ cidade: e.target.value })}
-              readOnly={somenteLeitura || camposClienteAuto}
-              className={
-                somenteLeitura || camposClienteAuto
-                  ? "campo-copiavel bg-muted/40"
-                  : undefined
-              }
-            />
-            <CampoErro mensagem={erros.cidade} />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rcc-estado">{rccFieldLabels.estado}</Label>
-            <Input
-              id="rcc-estado"
-              value={dados.estado}
-              onChange={(e) =>
-                patch({ estado: e.target.value.toUpperCase() })
-              }
-              readOnly={somenteLeitura || camposClienteAuto}
-              className={
-                somenteLeitura || camposClienteAuto
-                  ? "campo-copiavel bg-muted/40"
-                  : undefined
-              }
-              maxLength={2}
-              placeholder="UF"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rcc-contato">{rccFieldLabels.contato}</Label>
-            <Input
-              id="rcc-contato"
-              value={dados.contato}
-              onChange={(e) => patch({ contato: e.target.value })}
-              readOnly={somenteLeitura || camposClienteAuto}
-              className={
-                somenteLeitura || camposClienteAuto
-                  ? "campo-copiavel bg-muted/40"
-                  : undefined
-              }
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rcc-telefone">{rccFieldLabels.telefone} *</Label>
-            <Input
-              id="rcc-telefone"
-              value={dados.telefone}
-              onChange={(e) => patch({ telefone: e.target.value })}
-              readOnly={somenteLeitura || camposClienteAuto}
-              className={
-                somenteLeitura || camposClienteAuto
-                  ? "campo-copiavel bg-muted/40"
-                  : undefined
-              }
-            />
-            <CampoErro mensagem={erros.telefone} />
-          </div>
-
-          <div className="grid gap-4 sm:col-span-2 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="rcc-bairro">{rccFieldLabels.bairro}</Label>
-              <Input
-                id="rcc-bairro"
-                value={dados.bairro}
-                onChange={(e) => patch({ bairro: e.target.value })}
-                readOnly={somenteLeitura || camposClienteAuto}
-                className={
-                  somenteLeitura || camposClienteAuto
-                    ? "campo-copiavel bg-muted/40"
-                    : undefined
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="rcc-endereco">{rccFieldLabels.endereco}</Label>
-              <Input
-                id="rcc-endereco"
-                value={dados.endereco}
-                onChange={(e) => patch({ endereco: e.target.value })}
-                readOnly={somenteLeitura || camposClienteAuto}
-                className={
-                  somenteLeitura || camposClienteAuto
-                    ? "campo-copiavel bg-muted/40"
-                    : undefined
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="rcc-ponto-ref">
-                {rccFieldLabels.pontoReferencia}
-              </Label>
-              <Input
-                id="rcc-ponto-ref"
-                value={dados.pontoReferencia}
-                onChange={(e) => patch({ pontoReferencia: e.target.value })}
-                readOnly={somenteLeitura}
-                disabled={somenteLeitura}
-                className={somenteLeitura ? "bg-muted/40" : undefined}
-              />
-            </div>
-          </div>
-          </>
-          ) : null}
-
           <div className="space-y-2">
             <Label>{rccFieldLabels.produtoNossaFabricacao} *</Label>
             <Select
@@ -762,6 +732,7 @@ export function RccForm({
         <fieldset className="brand-fieldset space-y-4">
           <legend>Revendedor</legend>
           <div className="grid gap-4 sm:grid-cols-2">
+            {nomeRevendedorNaGrade ? null : (
             <div className="space-y-2 sm:col-span-2">
               {!somenteLeitura && !origemNomus ? (
                 <ClienteSearchField
@@ -802,6 +773,7 @@ export function RccForm({
               )}
               <CampoErro mensagem={erros.nomeRevendedor} />
             </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="rcc-cidade-revendedor">
@@ -971,43 +943,74 @@ export function RccForm({
       <fieldset className="brand-fieldset space-y-4">
         <legend>Status da RCC</legend>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="rcc-data-fechamento">
-              {rccFieldLabels.dataFechamento}
-              {dados.problemaSolucionado === "Sim" ? " *" : ""}
-            </Label>
-            <Input
-              id="rcc-data-fechamento"
-              type="date"
-              value={isoParaInputDate(dados.dataFechamento)}
-              onChange={(event) =>
-                patch({
-                  dataFechamento: event.target.value ? `${event.target.value}T12:00:00.000Z` : "",
-                })
-              }
-              disabled={somenteLeitura}
-            />
-            <CampoErro mensagem={erros.dataFechamento} />
-          </div>
-          <div className="space-y-2">
-            <Label>
-              {rccFieldLabels.problemaSolucionado}
-              {encerrando ? " *" : ""}
-            </Label>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>{rccFieldLabels.rccFinalizada}</Label>
             <Select
-              value={dados.problemaSolucionado || undefined}
-              onValueChange={(valor) => patch({ problemaSolucionado: valorDaLista(valor) })}
+              value={rccFinalizada || undefined}
+              onValueChange={(valor) => {
+                const resposta = valorDaLista(valor);
+                if (resposta === "Sim") {
+                  patch({
+                    rccFinalizada: "Sim",
+                    dataFechamento: dados.dataFechamento.trim()
+                      ? dados.dataFechamento
+                      : dataLocalHojeIso(),
+                  });
+                  return;
+                }
+                patch({
+                  rccFinalizada: resposta === "Não" ? "Não" : "",
+                  dataFechamento: "",
+                  problemaSolucionado: "",
+                });
+              }}
               disabled={somenteLeitura}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full max-w-md" id="rcc-finalizada">
                 <SelectValue placeholder="Selecione..." />
               </SelectTrigger>
               <SelectContent>
                 <ListaComSelecione opcoes={RCC_SIM_NAO} />
               </SelectContent>
             </Select>
-            <CampoErro mensagem={erros.problemaSolucionado} />
           </div>
+          {encerrando ? (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="rcc-data-fechamento">{rccFieldLabels.dataFechamento} *</Label>
+                <Input
+                  id="rcc-data-fechamento"
+                  type="date"
+                  value={isoParaInputDate(dados.dataFechamento)}
+                  onChange={(event) =>
+                    patch({
+                      dataFechamento: event.target.value
+                        ? `${event.target.value}T12:00:00.000Z`
+                        : "",
+                    })
+                  }
+                  disabled={somenteLeitura}
+                />
+                <CampoErro mensagem={erros.dataFechamento} />
+              </div>
+              <div className="space-y-2">
+                <Label>{rccFieldLabels.problemaSolucionado} *</Label>
+                <Select
+                  value={dados.problemaSolucionado || undefined}
+                  onValueChange={(valor) => patch({ problemaSolucionado: valorDaLista(valor) })}
+                  disabled={somenteLeitura}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <ListaComSelecione opcoes={RCC_SIM_NAO} />
+                  </SelectContent>
+                </Select>
+                <CampoErro mensagem={erros.problemaSolucionado} />
+              </div>
+            </>
+          ) : null}
         </div>
       </fieldset>
 
@@ -1017,6 +1020,7 @@ export function RccForm({
           anexos={dados.anexos ?? []}
           onChange={(anexos) => patch({ anexos })}
           disabled={somenteLeitura}
+          comTitulo
         />
       </fieldset>
     </div>

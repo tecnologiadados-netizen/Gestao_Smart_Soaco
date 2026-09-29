@@ -18,6 +18,7 @@ import {
   columnUniqueValues,
   displayCellFilterLabel,
 } from "@rh/pages/FaltasAtestados/faltas-column-filter";
+import { normalizarMesFalta } from "@rh/pages/FaltasAtestados/mes-falta";
 import {
   decodeAusenciaSuspensaoObservacoes,
   displayAusenciaObservacoesLista,
@@ -107,6 +108,7 @@ function displayCellText(row: FaltaRow, key: keyof FaltaRow): string {
     if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
   }
   if (key === "observacoes") return displayAusenciaObservacoesLista(String(v ?? ""));
+  if (key === "mesFalta") return normalizarMesFalta(v);
   return String(v ?? "");
 }
 
@@ -149,8 +151,11 @@ function ColumnHeaderExcelFilter({
     if (!committed || committed.kind === "all") {
       setDraft(new Set(uniques));
     } else {
-      const allowed =
-        committed.kind === "values" ? committed.allowed.filter((x) => uniques.includes(x)) : uniques;
+      const allowedSource =
+        committed.kind === "values"
+          ? committed.allowed.map((x) => (col.key === "mesFalta" ? normalizarMesFalta(x) : x))
+          : uniques;
+      const allowed = allowedSource.filter((x) => uniques.includes(x));
       setDraft(new Set(allowed.length > 0 ? allowed : uniques));
     }
   }, [open, uniques, committed, isDateColumn]);
