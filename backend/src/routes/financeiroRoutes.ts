@@ -11,8 +11,10 @@ import {
   PERMISSOES_ACESSO_FINANCEIRO_CRM_PENDENCIAS,
   PERMISSOES_EDITAR_CRM_PENDENCIAS_DESTINATARIOS,
   PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA,
+  PERMISSOES_ACESSO_FINANCEIRO_DIARIO,
 } from '../utils/financeiroPermissoes.js';
 import { getCarteiraFinanceira } from '../controllers/carteiraFinanceiraController.js';
+import { getDiarioContasPagar, postReprogramarContasPagar } from '../controllers/diarioFinanceiroController.js';
 import {
   getDfcAgendamentosEfetivos,
   getDfcAgendamentosDetalhe,
@@ -133,8 +135,11 @@ const editarCrmPendenciasDestinatarios = requirePermission(
   ...PERMISSOES_EDITAR_CRM_PENDENCIAS_DESTINATARIOS
 );
 const verFinanceiroCarteira = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA);
+const verFinanceiroDiario = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_DIARIO);
 
 router.get('/carteira-financeira', verFinanceiroCarteira, getCarteiraFinanceira);
+router.get('/diario/contas-pagar', verFinanceiroDiario, getDiarioContasPagar);
+router.post('/diario/contas-pagar/reprogramar', verFinanceiroDiario, postReprogramarContasPagar);
 
 router.get('/dfc/agendamentos-efetivos', verFinanceiroDfc, getDfcAgendamentosEfetivos);
 router.get('/dfc/projecao-receitas', verFinanceiroDfc, getDfcProjecaoReceitas);
