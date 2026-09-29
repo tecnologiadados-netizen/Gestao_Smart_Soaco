@@ -18,6 +18,7 @@ import {
   PERMISSOES_ACESSO_FINANCEIRO_RESUMO,
   PERMISSOES_ACESSO_FINANCEIRO_CRM,
   PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA,
+  PERMISSOES_ACESSO_FINANCEIRO_DIARIO,
 } from './financeiroPermissoes';
 import {
   PERMISSOES_ACESSO_DIGITACAO_CONFERENCIA,
@@ -109,6 +110,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/financeiro/renegociacao-contratos': PERMISSOES_ACESSO_FINANCEIRO_RENEGOCIACAO,
   '/financeiro/crm': PERMISSOES_ACESSO_FINANCEIRO_CRM,
   '/financeiro/carteira-financeira': PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA,
+  '/financeiro/diario': PERMISSOES_ACESSO_FINANCEIRO_DIARIO,
   '/comercial/painel': PERMISSOES_ACESSO_PAINEL_COMERCIAL_KPI,
   '/comercial/historico-vendas': PERMISSOES_ACESSO_PAINEL_HISTORICO_VENDAS,
   '/comercial/classificacao-rfv': PERMISSOES_ACESSO_PAINEL_RFV,
@@ -195,6 +197,7 @@ export const ROTAS_ORDEM = [
   '/financeiro/renegociacao-contratos',
   '/financeiro/crm',
   '/financeiro/carteira-financeira',
+  '/financeiro/diario',
   '/comercial/painel',
   '/comercial/historico-vendas',
   '/comercial/classificacao-rfv',
