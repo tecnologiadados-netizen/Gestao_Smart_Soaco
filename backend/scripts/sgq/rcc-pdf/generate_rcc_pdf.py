@@ -83,7 +83,31 @@ def nome_revendedor(rcc: dict[str, Any]) -> str:
 
 
 def tipo_reclamacao(rcc: dict[str, Any]) -> str:
-    return valor_campo(rcc.get("reclamacao1") or rcc.get("reclamacao2"))
+    """Só a categoria (Categorize a reclamação), sem a descrição da linha."""
+    linhas = rcc.get("linhasReclamacao")
+    categorias: list[str] = []
+    if isinstance(linhas, list):
+        for linha in linhas:
+            if not isinstance(linha, dict):
+                continue
+            categoria = valor_campo(linha.get("lista"))
+            if categoria and categoria not in categorias:
+                categorias.append(categoria)
+    if categorias:
+        return "; ".join(categorias)
+
+    def so_categoria(valor: str) -> str:
+        if " — " in valor:
+            return valor.rsplit(" — ", 1)[-1].strip()
+        return valor
+
+    legado = valor_campo(rcc.get("reclamacao1") or rcc.get("reclamacao2"))
+    partes = [so_categoria(trecho.strip()) for trecho in legado.split(";") if trecho.strip()]
+    unicas = []
+    for parte in partes:
+        if parte and parte not in unicas:
+            unicas.append(parte)
+    return "; ".join(unicas)
 
 
 def juntar_codigo_descricao(codigo: str, descricao: str) -> str:
@@ -206,40 +230,40 @@ def preencher_cliente(table, campos: dict[str, str]) -> None:
     definir_celula(table, 16, 2, campos["reclamacao_aceita"])
     definir_celula(table, 16, 7, campos["dentro_garantia"])
     definir_celula(table, 16, 14, campos["abrir_os"])
-    definir_celula(table, 17, 2, campos["comentario"])
-    definir_celula(table, 18, 2, campos["responsavel_analise"])
+    definir_celula(table, 17, 2, campos["responsavel_analise"])
 
 
 def preencher_empresa(table, campos: dict[str, str]) -> None:
     definir_celula(table, 1, 1, campos["numero_reclamacao"])
     definir_celula(table, 1, 5, campos["data_registro"])
-    definir_celula(table, 1, 10, campos["data_fechamento"])
-    definir_celula(table, 1, 15, campos["status"])
+    definir_celula(table, 1, 12, campos["data_fechamento"])
+    definir_celula(table, 1, 18, campos["status"])
     definir_celula(table, 3, 1, campos["nome_consumidor"])
-    definir_celula(table, 3, 11, campos["nome_revendedor"])
+    definir_celula(table, 3, 14, campos["nome_revendedor"])
     definir_celula(table, 4, 1, campos["contato"])
-    definir_celula(table, 4, 10, campos["cidade"])
+    definir_celula(table, 4, 12, campos["cidade"])
     definir_celula(table, 5, 1, campos["telefone"])
-    definir_celula(table, 5, 10, campos["bairro"])
+    definir_celula(table, 5, 12, campos["bairro"])
     definir_celula(table, 6, 1, campos["endereco"])
-    definir_celula(table, 6, 10, campos["ponto_referencia"])
+    definir_celula(table, 6, 12, campos["ponto_referencia"])
     definir_celula(table, 8, 3, campos["produto"])
-    definir_celula(table, 8, 12, campos["serie_lote"])
+    definir_celula(table, 8, 15, campos["serie_lote"])
     definir_celula(table, 9, 3, campos["data_nf"])
-    definir_celula(table, 9, 12, campos["nota_fiscal"])
+    definir_celula(table, 9, 15, campos["nota_fiscal"])
     definir_celula(table, 10, 3, campos["quantidade"])
-    definir_celula(table, 10, 12, campos["pedido"])
+    definir_celula(table, 10, 15, campos["pedido"])
     definir_celula(table, 12, 3, campos["tipo_reclamacao"])
     definir_celula(table, 14, 0, campos["descricao_reclamacao"])
-    definir_celula(table, 17, 4, campos["funcionario"])
-    definir_celula(table, 17, 13, campos["hora_saida_empresa"])
-    definir_celula(table, 18, 4, campos["serie_compressor"])
-    definir_celula(table, 18, 13, campos["hora_chegada_empresa"])
-    definir_celula(table, 20, 4, campos["servico_realizado"])
-    definir_celula(table, 21, 4, campos["problema_solucionado"])
-    definir_celula(table, 21, 14, campos["data_conclusao"])
-    definir_celula(table, 22, 4, campos["hora_chegada_cliente"])
-    definir_celula(table, 22, 14, campos["hora_saida_cliente"])
+    definir_celula(table, 16, 0, campos["comentario"])
+    definir_celula(table, 19, 4, campos["funcionario"])
+    definir_celula(table, 19, 16, campos["hora_saida_empresa"])
+    definir_celula(table, 20, 4, campos["serie_compressor"])
+    definir_celula(table, 20, 16, campos["hora_chegada_empresa"])
+    definir_celula(table, 22, 4, campos["servico_realizado"])
+    definir_celula(table, 23, 4, campos["problema_solucionado"])
+    definir_celula(table, 23, 17, campos["data_conclusao"])
+    definir_celula(table, 24, 4, campos["hora_chegada_cliente"])
+    definir_celula(table, 24, 17, campos["hora_saida_cliente"])
 
 
 def preencher_documento(versao: str, campos: dict[str, str]) -> Document:
@@ -283,13 +307,12 @@ def gerar_pdf(payload: dict[str, Any], output_path: Path) -> None:
         doc.save(docx_path)
         converter_para_pdf(docx_path, output_path)
 
-    if versao == "cliente":
-        rnc_pdf_dir = SCRIPT_DIR.parent / "rnc-pdf"
-        if str(rnc_pdf_dir) not in sys.path:
-            sys.path.insert(0, str(rnc_pdf_dir))
-        from generate_rnc_pdf import anexar_evidencias
+    rnc_pdf_dir = SCRIPT_DIR.parent / "rnc-pdf"
+    if str(rnc_pdf_dir) not in sys.path:
+        sys.path.insert(0, str(rnc_pdf_dir))
+    from generate_rnc_pdf import anexar_evidencias
 
-        anexar_evidencias(output_path, payload)
+    anexar_evidencias(output_path, payload)
 
 
 def main() -> int:

@@ -16,16 +16,6 @@ interface OrganicoResponsavelFieldProps {
   value: string;
   onValueChange: (nome: string) => void;
   disabled?: boolean;
-  /** No RCC interno, só entra quem tem cargo de assistente técnico. */
-  apenasAssistenteTecnico?: boolean;
-}
-
-function cargoEhAssistenteTecnico(cargo: string): boolean {
-  const normalizado = cargo
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-  return normalizado.includes("assistente tecnico");
 }
 
 function detalheColaborador(pessoa: OrganicoColaboradorRnc): string {
@@ -40,7 +30,6 @@ export function OrganicoResponsavelField({
   value,
   onValueChange,
   disabled = false,
-  apenasAssistenteTecnico = false,
 }: OrganicoResponsavelFieldProps) {
   const listId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -95,19 +84,14 @@ export function OrganicoResponsavelField({
 
   const filtrados = useMemo(() => {
     const match = criarMatcherTextoLivre(termo);
-    const base = apenasAssistenteTecnico
-      ? opcoes.filter((pessoa) => cargoEhAssistenteTecnico(pessoa.cargo))
-      : opcoes;
-    return base
-      .filter(
-        (pessoa) =>
-          match(pessoa.nome) ||
-          match(pessoa.matricula) ||
-          match(pessoa.cargo) ||
-          match(pessoa.setor)
-      )
-      .slice(0, 40);
-  }, [apenasAssistenteTecnico, opcoes, termo]);
+    return opcoes.filter(
+      (pessoa) =>
+        match(pessoa.nome) ||
+        match(pessoa.matricula) ||
+        match(pessoa.cargo) ||
+        match(pessoa.setor)
+    );
+  }, [opcoes, termo]);
 
   function selecionar(pessoa: OrganicoColaboradorRnc) {
     digitandoRef.current = false;
@@ -185,9 +169,7 @@ export function OrganicoResponsavelField({
           </li>
         ) : filtrados.length === 0 ? (
           <li className="px-3 py-4 text-sm text-muted-foreground">
-            {apenasAssistenteTecnico
-              ? "Nenhum assistente técnico encontrado no orgânico."
-              : "Nenhum colaborador encontrado no orgânico."}
+            Nenhum colaborador ativo encontrado no orgânico.
           </li>
         ) : (
           filtrados.map((pessoa) => (
@@ -213,9 +195,7 @@ export function OrganicoResponsavelField({
       </ListaSugestaoFlutuante>
 
       <p className="text-xs text-muted-foreground">
-        {apenasAssistenteTecnico
-          ? "Somente assistentes técnicos do orgânico, exceto desligados."
-          : "Colaboradores do orgânico, exceto desligados."}
+        Colaboradores ativos do orgânico.
       </p>
     </div>
   );

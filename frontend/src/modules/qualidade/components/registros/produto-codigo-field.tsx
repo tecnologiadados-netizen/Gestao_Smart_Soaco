@@ -22,6 +22,8 @@ interface ProdutoCodigoFieldProps {
   disabled?: boolean;
   /** Quando informado, a lista mostra só produtos deste pedido Nomus. */
   pedidoId?: string | null;
+  /** Lista só produto acabado e produto intermediário. */
+  somenteAcabadosIntermediarios?: boolean;
   ocultarRotulo?: boolean;
 }
 
@@ -34,6 +36,7 @@ export function ProdutoCodigoField({
   onVinculoClear,
   disabled = false,
   pedidoId = null,
+  somenteAcabadosIntermediarios = false,
   ocultarRotulo = false,
 }: ProdutoCodigoFieldProps) {
   const listId = useId();
@@ -66,6 +69,7 @@ export function ProdutoCodigoField({
       const lista = await fetchProdutosClient({
         q: busca.trim() || undefined,
         pedidoId: pedidoIdFiltro,
+        somenteAcabadosIntermediarios,
         limit: pedidoIdFiltro ? Math.max(limit, 200) : limit,
       });
       setResultados(lista);
@@ -89,6 +93,7 @@ export function ProdutoCodigoField({
       const lista = await fetchProdutosClient({
         codigo: normalizado,
         pedidoId: pedidoIdFiltro,
+        somenteAcabadosIntermediarios,
         limit: 1,
       });
       return lista[0] ?? null;
@@ -109,7 +114,7 @@ export function ProdutoCodigoField({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [termo, disabled, pedidoIdFiltro]);
+  }, [termo, disabled, pedidoIdFiltro, somenteAcabadosIntermediarios]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -165,7 +170,9 @@ export function ProdutoCodigoField({
           placeholder={
             pedidoIdFiltro
               ? "Selecione um produto do pedido..."
-              : "Ex.: PA 10005, MP 6861..."
+              : somenteAcabadosIntermediarios
+                ? "Ex.: PA 10005..."
+                : "Ex.: PA 10005, MP 6861..."
           }
           className="pl-9"
           autoComplete="off"

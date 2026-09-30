@@ -1,3 +1,4 @@
+import { codigoAlfanumericoMaiusculo } from "@qualidade/lib/registros/codigo-alfanumerico";
 import {
   RCC_ORIGEM_CLIENTE_REVENDEDOR,
   RCC_VENDEDOR_PADRAO,
@@ -24,7 +25,7 @@ export interface RccLinhaReclamacao {
   solucao: string;
 }
 
-export type RccResponsavelAssistencia = "" | "Funcionário interno" | "Funcionário externo";
+export type RccResponsavelAssistencia = "" | "Funcionário interno" | "Terceirizado";
 
 export interface RccLinhaServico {
   id: string;
@@ -416,9 +417,31 @@ function normalizarItensProduto(
     }
   }
 
+  if (temPedidoVenda === "nao" && itens.length > 0) {
+    const semNota = itens.every((item) => !item.notaFiscal.trim());
+    const semData = itens.every((item) => !(item.dataEmissaoNf ?? "").trim());
+    if ((semNota && merged.numeroNf.trim()) || (semData && merged.dataEmissaoNf.trim())) {
+      itens = itens.map((item, index) =>
+        index === 0
+          ? {
+              ...item,
+              notaFiscal:
+                semNota && merged.numeroNf.trim() ? merged.numeroNf.trim() : item.notaFiscal,
+              dataEmissaoNf:
+                semData && merged.dataEmissaoNf.trim()
+                  ? merged.dataEmissaoNf.trim()
+                  : item.dataEmissaoNf,
+            }
+          : item
+      );
+    }
+  }
+
   const sincronizarLegado = explicito || itens.length > 0;
   const numeroNf =
-    temPedidoVenda === "sim" ? notasFiscaisDistintas(itens) : merged.numeroNf;
+    temPedidoVenda === "sim" || temPedidoVenda === "nao"
+      ? notasFiscaisDistintas(itens)
+      : merged.numeroNf;
   const numeroPedidoInternoExterno =
     temPedidoVenda === "sim"
       ? pedidosDistintos(itens)
@@ -547,7 +570,7 @@ function normalizarLinhaServico(linha: Partial<RccLinhaServico>, index: number):
     horaChegadaEmpresa: linha.horaChegadaEmpresa ?? "",
     horaChegadaCliente: linha.horaChegadaCliente ?? "",
     horaSaidaCliente: linha.horaSaidaCliente ?? "",
-    numeroSerieCompressor: (linha.numeroSerieCompressor ?? "").replace(/\D/g, ""),
+    numeroSerieCompressor: codigoAlfanumericoMaiusculo(linha.numeroSerieCompressor ?? ""),
     dataConclusaoServico: linha.dataConclusaoServico ?? "",
     dataFechamento: linha.dataFechamento ?? "",
     problemaSolucionado: linha.problemaSolucionado ?? "",
@@ -583,7 +606,7 @@ function normalizarLinhasServico(dados: Partial<RccDados>, merged: RccDados): Rc
       horaChegadaEmpresa: merged.horaChegadaEmpresa,
       horaChegadaCliente: merged.horaChegadaCliente,
       horaSaidaCliente: merged.horaSaidaCliente,
-      numeroSerieCompressor: merged.numeroSerieCompressor.replace(/\D/g, ""),
+      numeroSerieCompressor: codigoAlfanumericoMaiusculo(merged.numeroSerieCompressor),
       dataConclusaoServico: merged.dataConclusaoServico,
       dataFechamento: merged.dataFechamento,
       problemaSolucionado: merged.problemaSolucionado,
@@ -607,15 +630,17 @@ export function normalizarRccDados(
     linhasReclamacao: Array.isArray(rcc.linhasReclamacao) ? rcc.linhasReclamacao : [],
     linhasServico: Array.isArray(rcc.linhasServico) ? rcc.linhasServico : [],
     responsavelAssistencia:
-      rcc.responsavelAssistencia === "Funcionário interno" ||
-      rcc.responsavelAssistencia === "Funcionário externo"
-        ? rcc.responsavelAssistencia
-        : "",
-    numeroSerieLoteProduto: (rcc.numeroSerieLoteProduto ?? "").replace(/\D/g, ""),
+      rcc.responsavelAssistencia === "Funcionário interno"
+        ? "Funcionário interno"
+        : rcc.responsavelAssistencia === "Terceirizado" ||
+            rcc.responsavelAssistencia === "Funcionário externo"
+          ? "Terceirizado"
+          : "",
+    numeroSerieLoteProduto: codigoAlfanumericoMaiusculo(rcc.numeroSerieLoteProduto ?? ""),
     possuiNumeroSerie:
       rcc.possuiNumeroSerie === "Sim" || rcc.possuiNumeroSerie === "Não"
         ? rcc.possuiNumeroSerie
-        : (rcc.numeroSerieLoteProduto ?? "").replace(/\D/g, "")
+        : codigoAlfanumericoMaiusculo(rcc.numeroSerieLoteProduto ?? "")
           ? "Sim"
           : "",
   };
@@ -642,12 +667,8 @@ export function normalizarRccDados(
   );
   const comLinhas: RccDados = {
     ...comLinhasBase,
-    ...(origemReclamacao
-      ? {
-          feedbackClienteEnviado: origemReclamacao,
-          clienteDoRevendedor: origemReclamacao === RCC_ORIGEM_CLIENTE_REVENDEDOR,
-        }
-      : {}),
+    feedbackClienteEnviado: origemReclamacao,
+    clienteDoRevendedor: origemReclamacao === RCC_ORIGEM_CLIENTE_REVENDEDOR,
     rccFinalizada,
     ...(rccFinalizada === "Não"
       ? { dataFechamento: "", problemaSolucionado: "" }

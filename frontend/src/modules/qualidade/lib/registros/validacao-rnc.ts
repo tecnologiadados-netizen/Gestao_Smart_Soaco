@@ -62,6 +62,10 @@ export function validarRnc(
     erros.prazoExecucao = "Informe o prazo de execução.";
   }
 
+  const tipoProdutoBloqueado =
+    !opcoes?.origemNomus &&
+    (rnc.itensProduto ?? []).some((item) => item.codigoProduto.trim());
+
   if (opcoes?.origemNomus) {
     if (!rnc.codigoProduto.trim()) {
       erros.codigoProduto = "Informe o código do produto.";
@@ -69,25 +73,22 @@ export function validarRnc(
     if (!rnc.produto.trim()) {
       erros.produto = "Informe a descrição do produto.";
     }
-    if (!rnc.tipoProduto.trim()) {
-      erros.tipoProduto = "Informe o tipo de produto.";
-    }
   } else if (rnc.temPedidoVenda !== "sim" && rnc.temPedidoVenda !== "nao") {
     erros.temPedidoVenda = "Informe se há pedido de venda emitido.";
   } else if (rnc.temPedidoVenda === "sim") {
     if (!(rnc.itensProduto ?? []).some(itemComPedido)) {
       erros.itensProduto = "Informe o pedido de venda e o item.";
     }
-    if (!rnc.tipoProduto.trim()) {
-      erros.tipoProduto = "Informe o tipo de produto.";
-    }
-  } else {
-    if (!(rnc.itensProduto ?? []).some(itemLivre)) {
-      erros.itensProduto = "Informe o código e a descrição do produto.";
-    }
-    if (!rnc.tipoProduto.trim()) {
-      erros.tipoProduto = "Informe o tipo de produto.";
-    }
+  } else if (!(rnc.itensProduto ?? []).some(itemLivre)) {
+    erros.itensProduto = "Informe o código e a descrição do produto.";
+  }
+
+  if (
+    !tipoProdutoBloqueado &&
+    (opcoes?.origemNomus || rnc.temPedidoVenda === "sim" || rnc.temPedidoVenda === "nao") &&
+    !rnc.tipoProduto.trim()
+  ) {
+    erros.tipoProduto = "Informe o tipo de produto.";
   }
 
   if (finalizada && !rnc.dataFechamento.trim()) {

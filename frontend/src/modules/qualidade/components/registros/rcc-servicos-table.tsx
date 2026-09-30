@@ -11,6 +11,7 @@ import {
 } from "@qualidade/components/ui/table";
 import { RccReclamacaoCatalogoSelect, TEXTOS_SERVICO_REALIZADO } from "@qualidade/components/registros/rcc-reclamacao-catalogo-select";
 import { listarServicosRealizados } from "@qualidade/lib/api/qualidadeApi";
+import { codigoAlfanumericoMaiusculo } from "@qualidade/lib/registros/codigo-alfanumerico";
 import { rccFieldLabels } from "@qualidade/lib/registros/constants";
 import { isoParaInputDate, criarRccLinhaServicoVazia, type RccLinhaServico } from "@qualidade/types/rcc";
 
@@ -18,7 +19,7 @@ interface RccServicosTableProps {
   linhas: RccLinhaServico[];
   codigosProduto?: string[];
   disabled?: boolean;
-  /** Funcionário externo não registra horários de empresa nem de cliente. */
+  /** Terceirizado não registra horários de empresa nem de cliente. */
   ocultarHorarios?: boolean;
   erro?: string;
   obrigatorio?: boolean;
@@ -58,7 +59,10 @@ export function RccServicosTable({
   }
 
   return (
-    <div className="space-y-3 sm:col-span-2">
+    <div
+      className="space-y-3 sm:col-span-2"
+      data-campo-pendente={erro ? "" : undefined}
+    >
       <div className="overflow-x-auto rounded-lg border border-border">
         <Table
           bare
@@ -150,14 +154,15 @@ export function RccServicosTable({
                 <TableCell className="align-top">
                   <Input
                     aria-label={rccFieldLabels.numeroSerieCompressor}
-                    value={linha.numeroSerieCompressor.replace(/\D/g, "")}
-                    inputMode="numeric"
+                    value={codigoAlfanumericoMaiusculo(linha.numeroSerieCompressor)}
                     autoComplete="off"
+                    spellCheck={false}
+                    className="uppercase"
                     disabled={disabled}
                     onChange={(event) => {
-                      const numero = event.target.value.replace(/\D/g, "");
-                      event.target.value = numero;
-                      atualizar(linha.id, { numeroSerieCompressor: numero });
+                      atualizar(linha.id, {
+                        numeroSerieCompressor: codigoAlfanumericoMaiusculo(event.target.value),
+                      });
                     }}
                   />
                 </TableCell>

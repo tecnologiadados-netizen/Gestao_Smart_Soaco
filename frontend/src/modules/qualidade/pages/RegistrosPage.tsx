@@ -5,6 +5,10 @@ import { AvaliacaoFornecedorForm } from "@qualidade/components/avaliacao-fornece
 import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
+import {
+  destacarCamposPendentes,
+  mensagemCamposObrigatorios,
+} from "@qualidade/components/registros/campo-erro";
 import { RccForm } from "@qualidade/components/registros/rcc-form";
 import { RncForm } from "@qualidade/components/registros/rnc-form";
 import { RegistroTipoSeletor } from "@qualidade/components/registros/registro-tipo-seletor";
@@ -108,7 +112,8 @@ function RegistrosPageContent() {
       const validacao = validarRnc(rncDados);
       if (!validacao.valido) {
         setErrosRnc(validacao.erros);
-        setError("Corrija os campos obrigatórios antes de salvar.");
+        setError(mensagemCamposObrigatorios(validacao.erros));
+        destacarCamposPendentes();
         return;
       }
 
@@ -155,7 +160,8 @@ function RegistrosPageContent() {
     const validacao = validarRcc(rccFinal);
     if (!validacao.valido) {
       setErrosRcc(validacao.erros);
-      setError("Corrija os campos obrigatórios antes de salvar.");
+      setError(mensagemCamposObrigatorios(validacao.erros));
+      destacarCamposPendentes();
       return;
     }
 

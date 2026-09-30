@@ -280,11 +280,16 @@ export interface GetClientesOptions {
   limit?: number;
 }
 
+/** Nomes em `tipoproduto` / `dw_saldoestoque.tipoProduto`. */
+const TIPOS_PRODUTO_ACABADO_INTERMEDIARIO = ['Produto acabado', 'Produto intermediário'] as const;
+
 export interface GetProdutosOptions {
   q?: string;
   codigo?: string;
   /** Quando informado, lista apenas produtos presentes no `itempedido` deste pedido Nomus. */
   pedidoId?: string;
+  /** Restringe a produto acabado e produto intermediário. */
+  somenteAcabadoIntermediario?: boolean;
   limit?: number;
 }
 
@@ -346,6 +351,13 @@ export async function buscarProdutosNomus(
   const limit = Math.min(Math.max(options.limit ?? PRODUTOS_INITIAL_LIMIT, 1), PRODUTOS_SEARCH_LIMIT);
   const idEmpresa = produtosIdEmpresa();
   const pedidoId = options.pedidoId?.trim() ?? '';
+  const filtroTipo = options.somenteAcabadoIntermediario
+    ? {
+        sqlPedido: ' AND tp.nome IN (?, ?)',
+        sqlEstoque: ' AND se.tipoProduto IN (?, ?)',
+        params: [...TIPOS_PRODUTO_ACABADO_INTERMEDIARIO],
+      }
+    : null;
 
   if (pedidoId) {
     const produtosPedidoSelect = `
@@ -380,10 +392,11 @@ export async function buscarProdutosNomus(
            pr.nome = ?
            OR REPLACE(pr.nome, ' ', '') = ?
          )
+         ${filtroTipo?.sqlPedido ?? ''}
          ${produtosPedidoGroup}
          ORDER BY pr.nome ASC
          LIMIT 1`,
-        [pedidoId, idEmpresa, codigo, codigoSemEspacos]
+        [pedidoId, idEmpresa, codigo, codigoSemEspacos, ...(filtroTipo?.params ?? [])]
       );
       return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
     }
@@ -398,20 +411,22 @@ export async function buscarProdutosNomus(
            OR pr.descricao LIKE ?
            OR gp.nome LIKE ?
          )
+         ${filtroTipo?.sqlPedido ?? ''}
          ${produtosPedidoGroup}
          ORDER BY pr.nome ASC
          LIMIT ?`,
-        [pedidoId, idEmpresa, like, like, like, limit]
+        [pedidoId, idEmpresa, like, like, like, ...(filtroTipo?.params ?? []), limit]
       );
       return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
     }
 
     const [rows] = await pool.query<RowDataPacket[]>(
       `${produtosPedidoSelect} ${produtosPedidoFrom} ${produtosPedidoWhere}
+       ${filtroTipo?.sqlPedido ?? ''}
        ${produtosPedidoGroup}
        ORDER BY pr.nome ASC
        LIMIT ?`,
-      [pedidoId, idEmpresa, limit]
+      [pedidoId, idEmpresa, ...(filtroTipo?.params ?? []), limit]
     );
     return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
   }
@@ -445,9 +460,10 @@ export async function buscarProdutosNomus(
          se.codigoProduto = ?
          OR REPLACE(se.codigoProduto, ' ', '') = ?
        )
+       ${filtroTipo?.sqlEstoque ?? ''}
        ORDER BY se.codigoProduto ASC
        LIMIT 1`,
-      [idEmpresa, codigo, codigoSemEspacos]
+      [idEmpresa, codigo, codigoSemEspacos, ...(filtroTipo?.params ?? [])]
     );
     return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
   }
@@ -462,18 +478,20 @@ export async function buscarProdutosNomus(
          OR se.descricaoProduto LIKE ?
          OR se.grupoProduto LIKE ?
        )
+       ${filtroTipo?.sqlEstoque ?? ''}
        ORDER BY se.codigoProduto ASC
        LIMIT ?`,
-      [idEmpresa, like, like, like, limit]
+      [idEmpresa, like, like, like, ...(filtroTipo?.params ?? []), limit]
     );
     return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
   }
 
   const [rows] = await pool.query<RowDataPacket[]>(
     `${produtosSelect} ${produtosFrom} ${produtosWhere}
+     ${filtroTipo?.sqlEstoque ?? ''}
      ORDER BY se.codigoProduto ASC
      LIMIT ?`,
-    [idEmpresa, limit]
+    [idEmpresa, ...(filtroTipo?.params ?? []), limit]
   );
   return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
 }

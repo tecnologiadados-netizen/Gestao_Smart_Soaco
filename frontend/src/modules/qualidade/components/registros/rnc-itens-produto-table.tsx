@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { codigoAlfanumericoMaiusculo } from "@qualidade/lib/registros/codigo-alfanumerico";
 import { ChevronDown, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@qualidade/components/ui/button";
 import { Input } from "@qualidade/components/ui/input";
@@ -37,6 +38,7 @@ import type {
 } from "@qualidade/types/pedido-venda-erp";
 import {
   criarRncItemProdutoVazio,
+  inputDateParaIso,
   isoParaInputDate,
   notasFiscaisDistintas,
   type RncDados,
@@ -65,6 +67,8 @@ interface RncItensProdutoTableProps {
     numero: string;
     onChange: (proximo: { possui: string; numero: string }) => void;
   };
+  /** Código do produto: só acabados e intermediários. Usado na RCC. */
+  somenteAcabadosIntermediarios?: boolean;
   /** Nome do revendedor, uma vez na grade, quando a RCC não tem pedido de venda. */
   nomeRevendedor?: {
     nome: string;
@@ -271,6 +275,7 @@ export function RncItensProdutoTable({
   onPedidoSelect,
   quantidadeObrigatoria = false,
   numeroSerie,
+  somenteAcabadosIntermediarios = false,
   nomeRevendedor,
 }: RncItensProdutoTableProps) {
   const itens = dados.itensProduto ?? [];
@@ -285,7 +290,7 @@ export function RncItensProdutoTable({
   useEffect(() => {
     const atual = numeroSerieRef.current;
     if (!atual) return;
-    const limpo = atual.numero.replace(/\D/g, "");
+    const limpo = codigoAlfanumericoMaiusculo(atual.numero);
     if (limpo === atual.numero) return;
     atual.onChange({ possui: atual.possui, numero: limpo });
   }, [numeroSerie?.numero]);
@@ -325,13 +330,17 @@ export function RncItensProdutoTable({
     return largurasColuna[id] ?? LARGURAS_INICIAIS[id] ?? 140;
   }
 
+  const notaEditavel = colunaDataEmissaoNf && dados.temPedidoVenda === "nao";
+  const mostrarNota = dados.temPedidoVenda === "sim" || notaEditavel;
+  const mostrarEmissao = colunaDataEmissaoNf && Boolean(dados.temPedidoVenda);
+
   const idsColunas = [
     dados.temPedidoVenda === "sim" ? "pedido" : "",
     "item",
     dados.temPedidoVenda === "nao" ? "descricao" : "",
     "quantidade",
-    dados.temPedidoVenda === "sim" ? "nota" : "",
-    colunaDataEmissaoNf ? "emissao" : "",
+    mostrarNota ? "nota" : "",
+    mostrarEmissao ? "emissao" : "",
     colunasClientePedido && dados.temPedidoVenda === "sim" ? "cliente" : "",
     colunasClientePedido && dados.temPedidoVenda === "sim" ? "contato" : "",
     colunasClientePedido && dados.temPedidoVenda === "sim" ? "estado" : "",
@@ -466,7 +475,10 @@ export function RncItensProdutoTable({
   }
 
   return (
-    <div className="space-y-4 sm:col-span-2">
+    <div
+      className="space-y-4 sm:col-span-2"
+      data-campo-pendente={erro ? "" : undefined}
+    >
       <div className="space-y-3">
         <Label>Tem pedido de venda emitido? *</Label>
         <div className="flex flex-wrap gap-6">
@@ -546,13 +558,13 @@ export function RncItensProdutoTable({
                   {quantidadeObrigatoria ? "Quantidade *" : "Quantidade"}
                   <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("quantidade", event)} />
                 </TableHead>
-                {dados.temPedidoVenda === "sim" ? (
+                {mostrarNota ? (
                   <TableHead className="group relative" style={{ width: largura("nota") }}>
                     {rncFieldLabels.notaFiscal}
                     <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("nota", event)} />
                   </TableHead>
                 ) : null}
-                {colunaDataEmissaoNf ? (
+                {mostrarEmissao ? (
                   <TableHead className="group relative" style={{ width: largura("emissao") }}>
                     Data de emissão da NF
                     <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("emissao", event)} />
@@ -683,6 +695,7 @@ export function RncItensProdutoTable({
                         id={`rnc-codigo-${item.id}`}
                         value={item.codigoProduto}
                         ocultarRotulo
+                        somenteAcabadosIntermediarios={somenteAcabadosIntermediarios}
                         onCodigoChange={(codigo) =>
                           atualizar(item.id, {
                             codigoProduto: codigo,
@@ -729,43 +742,63 @@ export function RncItensProdutoTable({
                       />
                     )}
                   </TableCell>
-                  {dados.temPedidoVenda === "sim" ? (
+                  {mostrarNota ? (
                     <TableCell className="align-top">
-                      <CampoSomenteLeitura
-                        value={item.notaFiscal}
-                        label={rncFieldLabels.notaFiscal}
-                        placeholder={
-                          !item.pedidoId
-                            ? "Selecione o pedido"
-                            : pedidosBuscando.includes(item.pedidoId)
-                              ? "Buscando..."
-                              : "Sem nota fiscal"
-                        }
-                      />
+                      {notaEditavel && !disabled ? (
+                        <Input
+                          value={item.notaFiscal}
+                          aria-label={rncFieldLabels.notaFiscal}
+                          inputMode="numeric"
+                          disabled={disabled}
+                          onChange={(e) =>
+                            atualizar(item.id, {
+                              notaFiscal: e.target.value.replace(/\D/g, ""),
+                            })
+                          }
+                        />
+                      ) : (
+                        <CampoSomenteLeitura
+                          value={item.notaFiscal}
+                          label={rncFieldLabels.notaFiscal}
+                          placeholder={
+                            notaEditavel
+                              ? ""
+                              : !item.pedidoId
+                                ? "Selecione o pedido"
+                                : pedidosBuscando.includes(item.pedidoId)
+                                  ? "Buscando..."
+                                  : "Sem nota fiscal"
+                          }
+                        />
+                      )}
                     </TableCell>
                   ) : null}
-                  {colunaDataEmissaoNf ? (
+                  {mostrarEmissao ? (
                     <TableCell className="align-top">
-                      {dados.temPedidoVenda === "sim" ? (
+                      {notaEditavel && !disabled ? (
+                        <Input
+                          type="date"
+                          value={isoParaInputDate(item.dataEmissaoNf ?? "")}
+                          aria-label="Data de emissão da NF"
+                          disabled={disabled}
+                          onChange={(e) =>
+                            atualizar(item.id, {
+                              dataEmissaoNf: inputDateParaIso(e.target.value),
+                            })
+                          }
+                        />
+                      ) : (
                         <CampoSomenteLeitura
                           value={rotuloDatasEmissao(item.dataEmissaoNf ?? "")}
                           label="Data de emissão da NF"
                           placeholder={
-                            !item.pedidoId
-                              ? "Selecione o pedido"
-                              : pedidosBuscando.includes(item.pedidoId)
-                                ? "Buscando..."
-                                : "Sem data"
-                          }
-                        />
-                      ) : (
-                        <Input
-                          type="date"
-                          value={isoParaInputDate(item.dataEmissaoNf ?? "")}
-                          disabled={disabled}
-                          aria-label="Data de emissão da NF"
-                          onChange={(e) =>
-                            atualizar(item.id, { dataEmissaoNf: e.target.value })
+                            notaEditavel
+                              ? ""
+                              : !item.pedidoId
+                                ? "Selecione o pedido"
+                                : pedidosBuscando.includes(item.pedidoId)
+                                  ? "Buscando..."
+                                  : "Sem data"
                           }
                         />
                       )}
@@ -844,15 +877,17 @@ export function RncItensProdutoTable({
                   {numeroSerie?.possui === "Sim" && index === 0 ? (
                     <TableCell className="align-top" rowSpan={itens.length}>
                       <Input
-                        value={numeroSerie.numero.replace(/\D/g, "")}
+                        value={codigoAlfanumericoMaiusculo(numeroSerie.numero)}
                         aria-label="Nº Série/Lote do produto"
-                        inputMode="numeric"
                         autoComplete="off"
+                        spellCheck={false}
+                        className="uppercase"
                         disabled={disabled}
                         onChange={(event) => {
-                          const numero = event.target.value.replace(/\D/g, "");
-                          event.target.value = numero;
-                          numeroSerie.onChange({ possui: "Sim", numero });
+                          numeroSerie.onChange({
+                            possui: "Sim",
+                            numero: codigoAlfanumericoMaiusculo(event.target.value),
+                          });
                         }}
                       />
                     </TableCell>

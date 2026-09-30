@@ -12,6 +12,8 @@ export interface FetchProdutosOptions {
   codigo?: string;
   /** Filtra apenas produtos do pedido de venda Nomus (itempedido). */
   pedidoId?: string;
+  /** Só produto acabado e produto intermediário. */
+  somenteAcabadosIntermediarios?: boolean;
   limit?: number;
 }
 
@@ -28,6 +30,9 @@ export async function fetchProdutosClient(
   }
   if (options.pedidoId?.trim()) {
     params.set("pedidoId", options.pedidoId.trim());
+  }
+  if (options.somenteAcabadosIntermediarios) {
+    params.set("escopo", "acabado-intermediario");
   }
 
   params.set(

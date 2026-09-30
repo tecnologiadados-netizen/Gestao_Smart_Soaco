@@ -10,6 +10,7 @@ export interface OrganicoColaboradorRnc {
   status: string;
 }
 
+/** Cache da lista de colaboradores ativos. Recarrega ao abrir a tela de novo. */
 let listaEmCache: Promise<OrganicoColaboradorRnc[]> | null = null;
 
 export function fetchOrganicoColaboradores(): Promise<OrganicoColaboradorRnc[]> {

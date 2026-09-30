@@ -21,6 +21,8 @@ import {
   ORIGEM_NOMUS_LABEL,
   rncFieldLabels,
 } from "@qualidade/lib/registros/constants";
+import { CampoErro } from "@qualidade/components/registros/campo-erro";
+import { codigoAlfanumericoMaiusculo } from "@qualidade/lib/registros/codigo-alfanumerico";
 import { OrganicoResponsavelField } from "@qualidade/components/registros/organico-responsavel-field";
 import { RncItensProdutoTable } from "@qualidade/components/registros/rnc-itens-produto-table";
 import { RegistroAnexosTable } from "@qualidade/components/registros/registro-anexos-table";
@@ -55,15 +57,6 @@ function valorSelectTipoOcorrencia(valor: string): string | undefined {
   if (!valor.trim()) return undefined;
   if (tipoOcorrenciaNaLista(valor)) return valor;
   return RNC_TIPO_OCORRENCIA_OUTRO;
-}
-
-function CampoErro({ mensagem }: { mensagem?: string }) {
-  if (!mensagem) return null;
-  return (
-    <p className="text-xs text-destructive" role="alert">
-      {mensagem}
-    </p>
-  );
 }
 
 export function RncForm({
@@ -407,8 +400,11 @@ export function RncForm({
             <Label htmlFor="rnc-lote-serie">{rncFieldLabels.loteSerie}</Label>
             <Input
               id="rnc-lote-serie"
-              value={dadosAtuais.loteSerie}
-              onChange={(e) => patch({ loteSerie: e.target.value })}
+              value={codigoAlfanumericoMaiusculo(dadosAtuais.loteSerie)}
+              autoComplete="off"
+              spellCheck={false}
+              className="uppercase"
+              onChange={(e) => patch({ loteSerie: codigoAlfanumericoMaiusculo(e.target.value) })}
               disabled={somenteLeitura}
             />
           </div>
@@ -428,7 +424,10 @@ export function RncForm({
           ) : null}
 
           <div className="space-y-2">
-            <Label htmlFor="rnc-tipo-produto">{rncFieldLabels.tipoProduto} *</Label>
+            <Label htmlFor="rnc-tipo-produto">
+              {rncFieldLabels.tipoProduto}
+              {camposProdutoAuto ? "" : " *"}
+            </Label>
             {camposProdutoAuto ? (
               <Input
                 id="rnc-tipo-produto"

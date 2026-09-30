@@ -76,8 +76,13 @@ export function RccReclamacoesTable({
     onChange(proximas.length > 0 ? proximas : [criarRccLinhaReclamacaoVazia()]);
   }
 
+  const pendente = Boolean(erroDescricao || erroCategoria || erroAceita || erroCausa);
+
   return (
-    <div className="space-y-3 sm:col-span-2">
+    <div
+      className="space-y-3 sm:col-span-2"
+      data-campo-pendente={pendente ? "" : undefined}
+    >
       <div className="overflow-x-auto rounded-lg border border-border">
         <Table bare className="rcc-reclamacoes-grade w-full min-w-[1040px]">
           <TableHeader>
