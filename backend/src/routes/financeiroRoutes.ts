@@ -14,7 +14,12 @@ import {
   PERMISSOES_ACESSO_FINANCEIRO_DIARIO,
 } from '../utils/financeiroPermissoes.js';
 import { getCarteiraFinanceira } from '../controllers/carteiraFinanceiraController.js';
-import { getDiarioContasPagar, postReprogramarContasPagar } from '../controllers/diarioFinanceiroController.js';
+import {
+  getDiarioContasBancarias,
+  getDiarioContasPagar,
+  postDefinirContaBancaria,
+  postReprogramarContasPagar,
+} from '../controllers/diarioFinanceiroController.js';
 import {
   getDfcAgendamentosEfetivos,
   getDfcAgendamentosDetalhe,
@@ -139,7 +144,9 @@ const verFinanceiroDiario = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_DI
 
 router.get('/carteira-financeira', verFinanceiroCarteira, getCarteiraFinanceira);
 router.get('/diario/contas-pagar', verFinanceiroDiario, getDiarioContasPagar);
+router.get('/diario/contas-bancarias', verFinanceiroDiario, getDiarioContasBancarias);
 router.post('/diario/contas-pagar/reprogramar', verFinanceiroDiario, postReprogramarContasPagar);
+router.post('/diario/contas-pagar/conta-bancaria', verFinanceiroDiario, postDefinirContaBancaria);
 
 router.get('/dfc/agendamentos-efetivos', verFinanceiroDfc, getDfcAgendamentosEfetivos);
 router.get('/dfc/projecao-receitas', verFinanceiroDfc, getDfcProjecaoReceitas);

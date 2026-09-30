@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MultiSelectWithSearch from '../../components/MultiSelectWithSearch';
 import {
+  definirContaBancariaDiario,
+  fetchDiarioContasBancarias,
   fetchDiarioContasPagar,
   reprogramarDiarioContasPagar,
+  type ContaBancariaOpcao,
   type DiarioContaPagarLinha,
   type DiarioContaPagarStatus,
 } from '../../api/diarioFinanceiro';
@@ -223,6 +226,10 @@ export default function DiarioFinanceiroPage() {
   const [novaData, setNovaData] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erroModal, setErroModal] = useState<string | null>(null);
+  const [contaAberta, setContaAberta] = useState(false);
+  const [contasOpcoes, setContasOpcoes] = useState<ContaBancariaOpcao[]>([]);
+  const [contaId, setContaId] = useState('');
+  const [carregandoContas, setCarregandoContas] = useState(false);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -373,6 +380,74 @@ export default function DiarioFinanceiroPage() {
     setNovaData('');
     setErroModal(null);
     setModalAberto(true);
+  };
+
+  const abrirContaBancaria = () => {
+    const escolhidas = dedupeReprogramar(
+      linhas.filter((l) => podeReprogramar(l) && selecionadas.has(chaveLinha(l))),
+    );
+    if (escolhidas.length === 0) return;
+    const origens = new Set(escolhidas.map((l) => l.origem));
+    if (origens.size > 1) {
+      setErro(
+        'Selecione títulos de uma só origem. No Nomus a conta é gravada no ERP; no Shop9 ela fica registrada neste projeto.',
+      );
+      return;
+    }
+    const origem = escolhidas[0]?.origem;
+    if (!origem) return;
+    setModalLinhas(escolhidas);
+    setContaId('');
+    setContasOpcoes([]);
+    setErroModal(null);
+    setErro(null);
+    setContaAberta(true);
+    setCarregandoContas(true);
+    void fetchDiarioContasBancarias(origem)
+      .then((contas) => setContasOpcoes(contas))
+      .catch((e) => setErroModal(e instanceof Error ? e.message : String(e)))
+      .finally(() => setCarregandoContas(false));
+  };
+
+  const confirmarContaBancaria = async () => {
+    const idConta = Number(contaId);
+    if (!Number.isInteger(idConta) || idConta <= 0 || salvando) return;
+    const itens = modalLinhas.flatMap((l) => {
+      const id = idReprogramacao(l);
+      return id == null ? [] : [{ origem: l.origem, id }];
+    });
+    if (itens.length === 0) return;
+    setSalvando(true);
+    setErroModal(null);
+    try {
+      const res = await definirContaBancariaDiario({ idContaBancaria: idConta, itens });
+      const partes: string[] = [];
+      if (res.atualizados > 0) {
+        const onde = res.origem === 'Nomus' ? 'no Nomus' : 'neste projeto';
+        partes.push(
+          `${res.atualizados.toLocaleString('pt-BR')} título(s) com a conta ${res.nomeConta || ''} gravada ${onde}.`.trim(),
+        );
+      }
+      if (res.ignorados.length > 0) {
+        partes.push(
+          `${res.ignorados.length.toLocaleString('pt-BR')} título(s) não alterado(s) porque já estavam baixados ou o id não confere.`,
+        );
+      }
+      if (res.erro) partes.push(res.erro);
+      const texto = partes.join(' ');
+      if (res.atualizados > 0) {
+        setSelecionadas(new Set());
+        setAviso(texto || null);
+        setContaAberta(false);
+        await carregar(dataInicio, dataFim);
+      } else {
+        setErroModal(texto || 'Nenhuma conta bancária foi alterada.');
+      }
+    } catch (e) {
+      setErroModal(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSalvando(false);
+    }
   };
 
   const confirmarReprogramar = async () => {
@@ -612,7 +687,7 @@ export default function DiarioFinanceiroPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {selecionadas.size.toLocaleString('pt-BR')} selecionado(s). Título baixado não pode ser reprogramado.
+          {selecionadas.size.toLocaleString('pt-BR')} selecionado(s). Título baixado não pode ser reprogramado nem ter a conta alterada.
           {linhasFiltradas.length !== linhasExibidas.length
             ? ` ${linhasExibidas.length.toLocaleString('pt-BR')} de ${linhasFiltradas.length.toLocaleString('pt-BR')} na grade.`
             : ''}
@@ -650,6 +725,14 @@ export default function DiarioFinanceiroPage() {
             className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
           >
             Reprogramar
+          </button>
+          <button
+            type="button"
+            onClick={abrirContaBancaria}
+            disabled={selecionadas.size === 0 || salvando}
+            className="inline-flex h-8 items-center rounded-lg border border-primary-600 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50 dark:bg-slate-800 dark:text-primary-200 dark:hover:bg-slate-700"
+          >
+            Conta bancária
           </button>
         </div>
       </div>
@@ -768,6 +851,108 @@ export default function DiarioFinanceiroPage() {
           erro={erroModal}
         />
       ) : null}
+
+      {contaAberta ? (
+        <ModalContaBancaria
+          linhas={modalLinhas}
+          contas={contasOpcoes}
+          contaId={contaId}
+          carregandoContas={carregandoContas}
+          onChangeConta={setContaId}
+          onClose={() => {
+            if (!salvando) setContaAberta(false);
+          }}
+          onConfirm={() => void confirmarContaBancaria()}
+          salvando={salvando}
+          erro={erroModal}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ModalContaBancaria({
+  linhas,
+  contas,
+  contaId,
+  carregandoContas,
+  onChangeConta,
+  onClose,
+  onConfirm,
+  salvando,
+  erro,
+}: {
+  linhas: DiarioContaPagarLinha[];
+  contas: ContaBancariaOpcao[];
+  contaId: string;
+  carregandoContas: boolean;
+  onChangeConta: (id: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+  salvando: boolean;
+  erro: string | null;
+}) {
+  const origem = linhas[0]?.origem ?? 'Nomus';
+  const shop9 = origem === 'Shop9';
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <button type="button" className="absolute inset-0 bg-slate-900/50" aria-label="Fechar" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="conta-bancaria-titulo"
+        className="relative z-[81] flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
+      >
+        <div className="px-5 pt-5 pb-3">
+          <h2 id="conta-bancaria-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+            Conta bancária
+          </h2>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {linhas.length.toLocaleString('pt-BR')} título(s) {origem} em aberto.{' '}
+            {shop9
+              ? 'A escolha fica registrada neste projeto, pela Ordem do título. O Shop9 não é alterado.'
+              : 'A conta do agendamento em aberto é atualizada no Nomus. Lançamento já baixado não é reescrito.'}
+          </p>
+        </div>
+        <div className="px-5 pb-4">
+          <label className={FILTRO_LABEL_CLASS} htmlFor="diario-conta-bancaria">
+            Conta
+          </label>
+          <select
+            id="diario-conta-bancaria"
+            value={contaId}
+            onChange={(e) => onChangeConta(e.target.value)}
+            disabled={salvando || carregandoContas}
+            className={FILTRO_INPUT_CLASS}
+          >
+            <option value="">{carregandoContas ? 'Carregando…' : 'Selecione'}</option>
+            {contas.map((c) => (
+              <option key={c.id} value={String(c.id)}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+          {erro ? <p className="mt-2 text-xs text-red-700 dark:text-red-300">{erro}</p> : null}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={salvando}
+            className="inline-flex h-8 items-center rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={salvando || carregandoContas || !contaId}
+            className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+          >
+            {salvando ? 'Salvando…' : 'Gravar'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -2673,3 +2673,17 @@ model CamasiParadaAlertaEstado {
 
   @@map("camasi_parada_alerta_estado")
 }
+
+/// Conta bancária escolhida no Diário para um título Shop9. Não grava no Shop9.
+/// ordemFinanceira = Financeiro_Contas.Ordem.
+model DiarioShop9ContaBancaria {
+  id                  Int      @id @default(autoincrement())
+  ordemFinanceira     Int      @unique @map("ordem_financeira")
+  ordemContaBancaria  Int      @map("ordem_conta_bancaria")
+  nomeConta           String   @map("nome_conta")
+  usuario             String
+  atualizadoEm        DateTime @updatedAt @map("atualizado_em")
+  criadoEm            DateTime @default(now()) @map("criado_em")
+
+  @@map("diario_shop9_conta_bancaria")
+}

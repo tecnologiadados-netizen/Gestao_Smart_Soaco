@@ -1,6 +1,8 @@
 import type { Request, Response } from 'express';
 import {
   MAX_REPROGRAMAR,
+  definirContaBancariaDiario,
+  listarContasBancariasDiario,
   queryDiarioContasPagar,
   reprogramarVencimentoContasPagar,
   type ReprogramarVencimentoItem,
@@ -83,6 +85,93 @@ export async function postReprogramarContasPagar(req: Request, res: Response): P
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[postReprogramarContasPagar]', msg);
+    res.status(500).json({ error: msg });
+  }
+}
+
+function lerItensContas(bruto: unknown, res: Response): ReprogramarVencimentoItem[] | null {
+  if (!Array.isArray(bruto) || bruto.length === 0) {
+    res.status(400).json({ error: 'Selecione ao menos um título.' });
+    return null;
+  }
+  if (bruto.length > MAX_REPROGRAMAR) {
+    res.status(400).json({ error: `É possível alterar no máximo ${MAX_REPROGRAMAR} títulos por vez.` });
+    return null;
+  }
+  const itens: ReprogramarVencimentoItem[] = [];
+  for (const item of bruto) {
+    const origem = item?.origem;
+    const id = Number(item?.id);
+    if ((origem !== 'Nomus' && origem !== 'Shop9') || !Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: 'Cada título precisa de origem Nomus ou Shop9 e um id válido.' });
+      return null;
+    }
+    itens.push({ origem, id });
+  }
+  const origens = new Set(itens.map((i) => i.origem));
+  if (origens.size > 1) {
+    res.status(400).json({
+      error:
+        'Selecione títulos de uma só origem. No Nomus a conta é gravada no ERP; no Shop9 ela fica registrada neste projeto.',
+    });
+    return null;
+  }
+  return itens;
+}
+
+/** GET /api/financeiro/diario/contas-bancarias?origem=Nomus|Shop9 */
+export async function getDiarioContasBancarias(req: Request, res: Response): Promise<void> {
+  const origem = String(req.query.origem ?? '').trim();
+  if (origem !== 'Nomus' && origem !== 'Shop9') {
+    res.status(400).json({ error: 'Informe origem Nomus ou Shop9.' });
+    return;
+  }
+  try {
+    const resultado = await listarContasBancariasDiario(origem);
+    if (resultado.erro && resultado.contas.length === 0) {
+      res.status(502).json({ error: resultado.erro, contas: [] });
+      return;
+    }
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[getDiarioContasBancarias]', msg);
+    res.status(500).json({ error: msg });
+  }
+}
+
+/** POST /api/financeiro/diario/contas-pagar/conta-bancaria */
+export async function postDefinirContaBancaria(req: Request, res: Response): Promise<void> {
+  const idContaBancaria = Number(req.body?.idContaBancaria);
+  if (!Number.isInteger(idContaBancaria) || idContaBancaria <= 0) {
+    res.status(400).json({ error: 'Selecione uma conta bancária.' });
+    return;
+  }
+  const itens = lerItensContas(req.body?.itens, res);
+  if (!itens) return;
+
+  try {
+    const resultado = await definirContaBancariaDiario({
+      idContaBancaria,
+      itens,
+      usuario: req.user?.login ?? '?',
+    });
+    console.log(
+      '[diario conta bancaria] user=%s origem=%s conta=%s atualizados=%s ignorados=%s',
+      req.user?.login ?? '?',
+      resultado.origem,
+      resultado.idContaBancaria,
+      resultado.atualizados,
+      resultado.ignorados.length,
+    );
+    if (resultado.erro && resultado.atualizados === 0) {
+      res.status(400).json({ error: resultado.erro, ...resultado });
+      return;
+    }
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[postDefinirContaBancaria]', msg);
     res.status(500).json({ error: msg });
   }
 }
