@@ -11,6 +11,11 @@ import {
   type GrupoDestinoInput,
   type UsuarioDestinatarioRow,
 } from './whatsappNotificacaoRepository.js';
+import {
+  camposDaJustificativa,
+  JUSTIFICATIVA_SEED,
+  justificativaAplicavelAoCampo,
+} from './doubleCheckInJustificativas.js';
 
 export const DOUBLE_CHECKIN_WA_CODE = 'compras_double_checkin';
 /** Alerta ao confirmar conferência quando há divergência NF × Pedido de compra. */
@@ -22,16 +27,6 @@ export const DOUBLE_CHECKIN_ALERTA_DESDE_KEY = 'double_checkin_alerta_desde';
 
 export const DOUBLE_CHECKIN_CAMPOS = ['valor_unitario', 'qtde', 'ipi', 'condicao_pagamento'] as const;
 export type DoubleCheckInCampoComparativo = (typeof DOUBLE_CHECKIN_CAMPOS)[number];
-
-const JUSTIFICATIVA_SEED: { codigo: string; label: string; sortOrder: number }[] = [
-  { codigo: 'diferenca_comercial', label: 'Diferença comercial negociada', sortOrder: 10 },
-  { codigo: 'erro_cadastro_um', label: 'Erro de cadastro / conversão de UM', sortOrder: 20 },
-  { codigo: 'tributacao_ipi', label: 'Frete / IPI / tributação', sortOrder: 30 },
-  { codigo: 'qtde_parcial', label: 'Quantidade parcial / saldo de PC', sortOrder: 40 },
-  { codigo: 'condicao_pagamento', label: 'Condição de pagamento divergente', sortOrder: 45 },
-  { codigo: 'arredondamento', label: 'Ajuste de arredondamento', sortOrder: 50 },
-  { codigo: 'outros', label: 'Outros', sortOrder: 90 },
-];
 
 function ymdHojeSaoPaulo(): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -112,6 +107,7 @@ export type DoubleCheckInJustificativaOpcaoRow = {
   label: string;
   ativo: boolean;
   sortOrder: number;
+  campos: DoubleCheckInCampoComparativo[];
 };
 
 export async function listarJustificativaOpcoes(somenteAtivas = true): Promise<DoubleCheckInJustificativaOpcaoRow[]> {
@@ -126,6 +122,7 @@ export async function listarJustificativaOpcoes(somenteAtivas = true): Promise<D
     label: r.label,
     ativo: r.ativo,
     sortOrder: r.sortOrder,
+    campos: camposDaJustificativa(r.codigo) as DoubleCheckInCampoComparativo[],
   }));
 }
 
@@ -387,6 +384,9 @@ export async function upsertDecisaoComparativo(params: {
   });
   if (!opcao || !opcao.ativo) {
     throw new Error('Justificativa inválida ou inativa.');
+  }
+  if (!justificativaAplicavelAoCampo(opcao.codigo, params.campo)) {
+    throw new Error('Essa justificativa não se aplica a este campo da divergência.');
   }
   if (params.decisao === 'aceita' && !String(params.observacao ?? '').trim()) {
     throw new Error('Informe a observação para aceitar a divergência.');

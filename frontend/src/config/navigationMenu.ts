@@ -218,6 +218,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/pedidos/ressup-nao-almox': 'Ressup Não Almox',
   '/pedidos/consulta-estoque': 'Consulta de Estoque',
   '/pedidos/cobertura-estoque': 'Cobertura de Estoque',
+  '/kpis/gestao-entradas/painel': 'Gestão entradas',
   '/pedidos/painel-metas/gerencial': 'Painel Gerencial',
   '/pedidos/painel-metas/tv': 'Painel TV',
   '/pedidos/painel-metas/metas': 'Metas',

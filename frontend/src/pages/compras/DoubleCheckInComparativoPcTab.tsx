@@ -253,6 +253,18 @@ export default function DoubleCheckInComparativoPcTab({
     [linhas, decisoes]
   );
 
+  const opcoesDoCampo = useMemo(() => {
+    if (!draft) return [];
+    const lista = justificativas.filter(
+      (j) => !j.campos?.length || j.campos.includes(draft.campo)
+    );
+    return [...lista].sort((a, b) => {
+      if (a.codigo === 'outros') return 1;
+      if (b.codigo === 'outros') return -1;
+      return a.sortOrder - b.sortOrder || a.label.localeCompare(b.label, 'pt-BR');
+    });
+  }, [draft, justificativas]);
+
   const abrirJustificativa = (
     linha: DoubleCheckInComparativoLinha,
     campo: DoubleCheckInCampoComparativo,
@@ -639,12 +651,15 @@ export default function DoubleCheckInComparativoPcTab({
                     onChange={(e) => setOpcaoId(e.target.value ? Number(e.target.value) : '')}
                   >
                     <option value="">Selecione…</option>
-                    {justificativas.map((j) => (
+                    {opcoesDoCampo.map((j) => (
                       <option key={j.id} value={j.id}>
                         {j.label}
                       </option>
                     ))}
                   </select>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Use Outros só quando nenhum motivo acima couber.
+                  </p>
                 </div>
                 <div>
                   <label className={labelClass}>

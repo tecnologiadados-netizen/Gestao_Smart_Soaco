@@ -1595,6 +1595,8 @@ export type DoubleCheckInJustificativaOpcao = {
   label: string;
   ativo: boolean;
   sortOrder: number;
+  /** Campos da divergência em que esta justificativa aparece. Vazio = todos. */
+  campos?: DoubleCheckInCampoComparativo[];
 };
 
 export type DoubleCheckInComparativoDecisao = {

@@ -35,10 +35,12 @@ import {
   PERMISSOES_ACESSO_PAINEL_HISTORICO_VENDAS,
   PERMISSOES_ACESSO_PAINEL_RFV,
   PERMISSOES_ACESSO_PAINEL_COMISSIONAMENTO,
+  PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS,
 } from '../config/kpisCatalog';
 
 export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/kpis': PERMISSOES_ACESSO_HUB_KPIS,
+  '/kpis/gestao-entradas/painel': PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS,
   '/producao/camasi': PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI,
   '/pedidos/dash-entregas': PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO,
   '/pedidos/sequenciamento-carradas': [
@@ -151,6 +153,7 @@ export const ROTAS_APENAS_MASTER = ['/situacao-api', '/whatsapp'];
 
 export const ROTAS_ORDEM = [
   '/kpis',
+  '/kpis/gestao-entradas/painel',
   '/producao/camasi',
   '/pedidos/dash-entregas',
   '/pedidos',

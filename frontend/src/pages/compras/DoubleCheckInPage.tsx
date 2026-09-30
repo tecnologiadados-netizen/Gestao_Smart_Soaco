@@ -708,8 +708,8 @@ export default function DoubleCheckInPage() {
                           className="inline-flex max-w-[11rem] items-center gap-1.5 rounded-md border-2 border-yellow-400 bg-yellow-50 px-2 py-1 text-xs font-semibold text-yellow-900 dark:border-yellow-500 dark:bg-yellow-950/40 dark:text-yellow-100"
                           title={
                             n.conferidoPor
-                              ? `Conferido com divergência NF × PC por ${n.conferidoPor}${n.conferidoEm ? ` em ${new Date(n.conferidoEm).toLocaleString('pt-BR')}` : ''}`
-                              : 'Conferido com divergência NF × PC'
+                              ? `NF ainda diverge do pedido. Conferido por ${n.conferidoPor}${n.conferidoEm ? ` em ${new Date(n.conferidoEm).toLocaleString('pt-BR')}` : ''}`
+                              : 'NF ainda diverge do pedido de compra'
                           }
                         >
                           <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />

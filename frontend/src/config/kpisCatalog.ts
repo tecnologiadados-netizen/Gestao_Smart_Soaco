@@ -34,6 +34,11 @@ export const KPI_PASTAS: KpiPastaDef[] = [
     label: 'Estoque',
     descricao: 'Cobertura, ruptura e posição de estoque',
   },
+  {
+    id: 'gestao-entradas',
+    label: 'Gestão entradas',
+    descricao: 'Acuracidade das notas de entrada e divergências aceitas',
+  },
 ];
 
 /** Painéis do hub KPIs. Novos painéis entram aqui e saem do menu lateral. */
@@ -93,6 +98,14 @@ export const KPI_PAINEIS: KpiPainelDef[] = [
     capaTitulo: 'COBERTURA ESTOQUE',
     to: '/pedidos/cobertura-estoque',
     permissoes: [PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER],
+  },
+  {
+    id: 'gestao-entradas',
+    pastaId: 'gestao-entradas',
+    label: 'Gestão entradas',
+    capaTitulo: 'GESTÃO ENTRADAS',
+    to: '/kpis/gestao-entradas/painel',
+    permissoes: [PERMISSOES.KPIS_PAINEL_GESTAO_ENTRADAS_VER],
   },
 ];
 
@@ -173,6 +186,10 @@ export const PERMISSOES_ACESSO_PAINEL_RFV: CodigoPermissao[] =
     PERMISSOES.COMERCIAL_VER,
     PERMISSOES.COMERCIAL_RFV_VER,
   ];
+
+/** Permissões da rota do painel Gestão entradas. */
+export const PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS: CodigoPermissao[] =
+  getKpiPainel('gestao-entradas')?.permissoes ?? [PERMISSOES.KPIS_PAINEL_GESTAO_ENTRADAS_VER];
 
 /** Permissões da rota Análise de Comissionamento. */
 export const PERMISSOES_ACESSO_PAINEL_COMISSIONAMENTO: CodigoPermissao[] =

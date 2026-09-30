@@ -12,6 +12,7 @@ import {
   queryDoubleCheckInItens,
   queryDoubleCheckInNotas,
   queryDoubleCheckInStatus,
+  listarIdsComDivergenciaAtual,
   type DoubleCheckInComparativoLinha,
   type DoubleCheckInNota,
 } from '../data/doubleCheckInRepository.js';
@@ -27,7 +28,6 @@ import {
   getOrCreateDoubleCheckInAlertaDesdeYmd,
   listarDecisoesComparativo,
   listarDocumentosConferidos,
-  listarIdsComDecisaoComparativo,
   listarDocumentosJaAlertados,
   listarIdsComAtencaoDetectada,
   listarJustificativaOpcoes,
@@ -85,7 +85,7 @@ export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
   conferido: boolean;
   conferidoEm: string | null;
   conferidoPor: string | null;
-  /** Conferido e havia divergência NF × PC (decisão registrada). */
+  /** Conferido e a NF ainda diverge do pedido de compra. */
   conferidoComDivergencia: boolean;
 };
 
@@ -93,9 +93,9 @@ async function enriquecerNotasComConferencia(
   notas: DoubleCheckInNota[]
 ): Promise<DoubleCheckInNotaComConferencia[]> {
   const ids = notas.map((n) => n.idDocumento);
-  const [map, comDecisao] = await Promise.all([
+  const [map, comDivergenciaAtual] = await Promise.all([
     listarDocumentosConferidos(ids),
-    listarIdsComDecisaoComparativo(ids),
+    listarIdsComDivergenciaAtual(ids),
   ]);
   return notas.map((n) => {
     const c = map.get(n.idDocumento);
@@ -105,7 +105,7 @@ async function enriquecerNotasComConferencia(
       conferido,
       conferidoEm: c?.conferidoEm ?? null,
       conferidoPor: c?.usuarioLogin ?? null,
-      conferidoComDivergencia: conferido && comDecisao.has(n.idDocumento),
+      conferidoComDivergencia: conferido && comDivergenciaAtual.has(n.idDocumento),
     };
   });
 }
@@ -486,14 +486,14 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
 
     const ja = await getDocumentoConferido(idDocumento);
     if (ja) {
-      const decisoesJa = await listarDecisoesComparativo(idDocumento);
+      const idsDivergentes = await listarIdsComDivergenciaAtual([idDocumento]);
       res.json({
         ok: true,
         jaConferido: true,
         conferido: true,
         conferidoEm: ja.conferidoEm,
         conferidoPor: ja.usuarioLogin,
-        conferidoComDivergencia: decisoesJa.length > 0,
+        conferidoComDivergencia: idsDivergentes.has(idDocumento),
         idDocumento,
       });
       return;
@@ -517,7 +517,7 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       usuarioLogin: usuario.login,
     });
 
-    const conferidoComDivergencia = decisoes.length > 0;
+    const conferidoComDivergencia = linhas.some((l) => l.temDivergencia);
     let alertaNfPcEnviado = false;
     try {
       await ensureDoubleCheckInNfPcWhatsappTipo();

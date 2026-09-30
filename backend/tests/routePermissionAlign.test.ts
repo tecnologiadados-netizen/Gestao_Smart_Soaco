@@ -3,6 +3,7 @@ import { PERMISSOES } from '../../frontend/src/config/permissoes';
 import {
   KPI_PAINEIS,
   PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE,
+  PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS,
   PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO,
   PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI,
 } from '../../frontend/src/config/kpisCatalog';
@@ -20,7 +21,7 @@ const LEGACY_FALLBACKS = [
 
 describe('kpisCatalog frontend (política estrita)', () => {
   it('painéis migrados usam somente permissão KPI específica', () => {
-    const strictIds = ['cobertura-estoque', 'pedidos-em-aberto', 'producao-camasi'];
+    const strictIds = ['cobertura-estoque', 'pedidos-em-aberto', 'producao-camasi', 'gestao-entradas'];
     for (const id of strictIds) {
       const painel = KPI_PAINEIS.find((p) => p.id === id);
       expect(painel?.permissoes).toHaveLength(1);
@@ -51,6 +52,9 @@ describe('resolverPermissoesRota', () => {
     expect(resolverPermissoesRota('/pedidos/mrp/42')).toEqual(ROTA_PERMISSAO['/pedidos/mrp']);
     expect(resolverPermissoesRota('/mind-maps/abc/editar')).toEqual(ROTA_PERMISSAO['/mind-maps']);
     expect(resolverPermissoesRota('/kpis/estoque')).toEqual(ROTA_PERMISSAO['/kpis']);
+    expect(resolverPermissoesRota('/kpis/gestao-entradas/painel')).toEqual(
+      PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS
+    );
   });
 
   it('cobre rotas que estavam sem guard explícito', () => {
@@ -62,6 +66,7 @@ describe('resolverPermissoesRota', () => {
 describe('ROTA_PERMISSAO cobertura', () => {
   const rotasProtegidas = [
     '/pedidos/cobertura-estoque',
+    '/kpis/gestao-entradas/painel',
     '/pedidos/dash-entregas',
     '/producao/camasi',
     '/comercial/comissionamento',
