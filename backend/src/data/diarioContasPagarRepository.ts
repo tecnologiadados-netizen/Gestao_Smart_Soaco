@@ -11,6 +11,10 @@ import type { ResultSetHeader } from 'mysql2';
 import { getShop9Pool, isShop9Enabled } from '../config/shop9Db.js';
 import { getNomusPool, isNomusEnabled, queryNomus as executarQueryNomus } from '../config/nomusDb.js';
 import { formatSqlDateYmd } from './dfcDateUtils.js';
+import {
+  SHOP9_DESCRICAO_MAX,
+  descricaoPrimeiraReprogramacao,
+} from './diarioContasPagarDescricao.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_SHOP9 = readFileSync(join(__dirname, 'sql', 'diarioContasPagarShop9.sql'), 'utf-8');
@@ -302,8 +306,9 @@ export interface ReprogramarVencimentoResultado {
 /**
  * Nomus: `agendamentofinanceiro.dataVencimento` e, na primeira vez,
  * `descricaoLancamento`. Sempre WHERE id do agendamento.
- * Shop9: `Financeiro_Contas.Data_Vencimento` e, na primeira vez, `Descricao`.
- * Sempre WHERE Ordem. Baixado não entra.
+ * Shop9: `Financeiro_Contas.Data_Vencimento` e, na primeira vez, `Descricao`
+ * (varchar 80; a descrição antiga é abreviada para caber). Sempre WHERE Ordem.
+ * Baixado não entra.
  */
 const SQL_NOMUS_ELEGIVEL = `
 SELECT af.descricaoLancamento AS descricao, af.dataVencimento AS dataVencimento
@@ -377,22 +382,6 @@ WHERE Ordem = @ordem
   AND Situacao = 'A'
   AND (Descricao IS NULL OR Descricao NOT LIKE '%conta pai%')
 `;
-
-function ymdParaBr(ymd: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
-  if (!m) return ymd;
-  return `${m[3]}/${m[2]}/${m[1]}`;
-}
-
-/** Null quando a descrição já foi marcada; senão o texto completo da primeira reprogramação. */
-function descricaoPrimeiraReprogramacao(descricaoAtual: unknown, vencimentoAtual: unknown): string | null {
-  const atual = descricaoAtual == null ? '' : String(descricaoAtual).trim();
-  if (/reprogramado/i.test(atual)) return null;
-  const ymd = formatSqlDateYmd(vencimentoAtual);
-  if (!ymd) return null;
-  const prefixo = `REPROGRAMADO - VENC ORIGINAL ${ymdParaBr(ymd)} - `;
-  return atual ? `${prefixo}${atual}` : `REPROGRAMADO - VENC ORIGINAL ${ymdParaBr(ymd)}`;
-}
 
 const MOTIVO_IGNORADO = 'Título baixado, inexistente ou fora do contas a pagar em aberto.';
 
@@ -478,11 +467,15 @@ async function reprogramarShop9(
         ignorados.push({ origem: 'Shop9', id: ordem, motivo: MOTIVO_IGNORADO });
         continue;
       }
-      const novaDescricao = descricaoPrimeiraReprogramacao(row.descricao, row.dataVencimento);
+      const novaDescricao = descricaoPrimeiraReprogramacao(
+        row.descricao,
+        row.dataVencimento,
+        SHOP9_DESCRICAO_MAX,
+      );
       const req = new sql.Request(transaction);
       req.input('dataVencimento', sql.Date, data);
       req.input('ordem', sql.Int, ordem);
-      if (novaDescricao) req.input('descricao', sql.NVarChar(sql.MAX), novaDescricao);
+      if (novaDescricao) req.input('descricao', sql.VarChar(SHOP9_DESCRICAO_MAX), novaDescricao);
       const result = await req.query(novaDescricao ? SQL_UPDATE_SHOP9_DATA_E_DESCRICAO : SQL_UPDATE_SHOP9_DATA);
       let affected = result.rowsAffected?.[0] ?? 0;
       if (affected === 0) {
