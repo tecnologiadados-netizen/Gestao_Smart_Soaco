@@ -167,15 +167,39 @@ export const LOJA_MENU: NavMenuEntry[] = [
 ];
 
 export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
-  { kind: 'link', to: '/financeiro/carteira-financeira', label: 'Carteira Financeira' },
-  { kind: 'link', to: '/financeiro/crm', label: 'CRM Financeiro' },
-  { kind: 'link', to: '/financeiro/dashboard', label: 'Dashboard Financeiro' },
-  { kind: 'link', to: '/financeiro/dfc', label: 'DFC' },
-  { kind: 'link', to: '/financeiro/diario', label: 'Diário Financeiro' },
-  { kind: 'link', to: '/financeiro/dre', label: 'DRE' },
-  { kind: 'link', to: '/financeiro/painel-financeiro-comercial', label: 'Painel Financeiro-Comercial' },
-  { kind: 'link', to: '/financeiro/resumo', label: 'Resumo Financeiro' },
-  { kind: 'link', to: '/financeiro/renegociacao-contratos', label: 'Simulação de Renegociação' },
+  {
+    kind: 'submenu',
+    label: 'Demonstrações',
+    children: [
+      { to: '/financeiro/dre', label: 'DRE' },
+      { to: '/financeiro/dfc', label: 'DFC' },
+    ],
+  },
+  {
+    kind: 'submenu',
+    label: 'Rotinas',
+    children: [
+      { to: '/financeiro/crm', label: 'CRM Financeiro' },
+      { to: '/financeiro/diario', label: 'Diário Financeiro' },
+    ],
+  },
+  {
+    kind: 'submenu',
+    label: 'Dashboards',
+    children: [
+      { to: '/financeiro/dashboard', label: 'Dashboard Financeiro' },
+      { to: '/financeiro/painel-financeiro-comercial', label: 'Painel Financeiro-Comercial' },
+      { to: '/financeiro/carteira-financeira', label: 'Carteira Financeira' },
+      { to: '/financeiro/resumo', label: 'Resumo Financeiro' },
+    ],
+  },
+  {
+    kind: 'submenu',
+    label: 'Ferramentas',
+    children: [
+      { to: '/financeiro/renegociacao-contratos', label: 'Simulação de Renegociação' },
+    ],
+  },
 ];
 
 export const INTEGRACAO_SUBMENUS: { to: string; label: string }[] = [

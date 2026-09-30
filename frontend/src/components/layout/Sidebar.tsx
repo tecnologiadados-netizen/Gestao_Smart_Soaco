@@ -712,7 +712,13 @@ export default function Sidebar({
                   <button
                     type="button"
                     onClick={() => toggleAccordion(`financeiro:${entry.label}`)}
-                    className={`${SIDEBAR_SECTION_BTN} w-full text-left text-sm font-normal pl-3 ${SIDEBAR_LINK_IDLE}`}
+                    className={`${SIDEBAR_SECTION_BTN} w-full text-left text-sm font-normal pl-3 ${
+                      entry.children.some(
+                        (item) => pathname === item.to || pathname.startsWith(`${item.to}/`),
+                      )
+                        ? 'text-accent-400'
+                        : SIDEBAR_LINK_IDLE
+                    }`}
                     aria-expanded={accordionOpen.has(`financeiro:${entry.label}`)}
                   >
                     <SidebarLabel open={open}>
