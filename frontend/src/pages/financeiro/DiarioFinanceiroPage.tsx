@@ -7,6 +7,17 @@ import {
   type DiarioContaPagarStatus,
 } from '../../api/diarioFinanceiro';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
+import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
+import {
+  DIARIO_COLUNAS_GRADE,
+  DiarioCabecalhoTh,
+  DiarioGradeFiltroPortal,
+} from './diario/DiarioGradeCabecalho';
+import {
+  exportDiarioFinanceiroPdf,
+  exportDiarioFinanceiroXlsx,
+  linhaParaExport,
+} from './diario/exportDiarioFinanceiro';
 
 type Atalho = 'hoje' | 'ontem' | 'amanha' | 'mes';
 
@@ -134,6 +145,56 @@ function empresaExibida(l: DiarioContaPagarLinha): string | null {
   return null;
 }
 
+const VAZIO_CELULA = '—';
+
+function textoCelula(l: DiarioContaPagarLinha, col: string): string {
+  const texto = (v: string | null | undefined) => {
+    const t = v?.trim();
+    return t ? t : VAZIO_CELULA;
+  };
+  switch (col) {
+    case 'origem':
+      return l.origem;
+    case 'situacao':
+      return l.status;
+    case 'vencimento':
+      return formatData(l.dataVencimento);
+    case 'baixa':
+      return formatData(l.dataBaixa);
+    case 'fornecedor':
+      return texto(l.fornecedor);
+    case 'empresa':
+      return texto(empresaExibida(l));
+    case 'plano':
+      return texto(l.planoContas);
+    case 'descricao':
+      return texto(l.descricao);
+    case 'observacao':
+      return texto(l.observacao);
+    case 'forma':
+      return texto(l.formaPagamento);
+    case 'conta':
+      return texto(l.contaBancaria);
+    case 'valor':
+      return formatMoeda(l.valor);
+    case 'baixado':
+      return formatMoeda(l.valorBaixado);
+    case 'saldo':
+      return formatMoeda(l.saldo);
+    default:
+      return '';
+  }
+}
+
+function valorOrdenacao(l: DiarioContaPagarLinha, col: string): string | number {
+  if (col === 'valor') return l.valor;
+  if (col === 'baixado') return l.valorBaixado;
+  if (col === 'saldo') return l.saldo;
+  if (col === 'vencimento') return l.dataVencimento ?? '';
+  if (col === 'baixa') return l.dataBaixa ?? '';
+  return textoCelula(l, col);
+}
+
 function opcoesCampo(linhas: DiarioContaPagarLinha[], campo: 'fornecedor' | 'planoContas'): string[] {
   const set = new Set<string>();
   for (const l of linhas) {
@@ -165,6 +226,8 @@ export default function DiarioFinanceiroPage() {
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [exportando, setExportando] = useState<'xlsx' | 'pdf' | null>(null);
+  const [cargaTick, setCargaTick] = useState(0);
 
   const carregar = useCallback(async (inicio: string, fim: string) => {
     setLoading(true);
@@ -174,6 +237,7 @@ export default function DiarioFinanceiroPage() {
       const res = await fetchDiarioContasPagar({ dataInicio: inicio, dataFim: fim });
       setLinhas(res.linhas);
       setSelecionadas(new Set());
+      setCargaTick((n) => n + 1);
       const partes = [res.erroShop9, res.erroNomus].filter(Boolean);
       setAviso(partes.length > 0 ? partes.join(' · ') : null);
     } catch (e) {
@@ -236,9 +300,32 @@ export default function DiarioFinanceiroPage() {
     });
   }, [linhas, fornecedores, empresas, planos, origens, situacoes, observacao]);
 
+  const getCellText = useCallback(
+    (row: DiarioContaPagarLinha, colId: string) => textoCelula(row, colId),
+    [],
+  );
+  const valueForSort = useCallback(
+    (row: DiarioContaPagarLinha, colId: string) => valorOrdenacao(row, colId),
+    [],
+  );
+  const grade = useGradeFiltrosExcel({
+    rows: linhasFiltradas,
+    columnIds: DIARIO_COLUNAS_GRADE.map((c) => c.id),
+    getCellText,
+    valueForSort,
+    dateColumnIds: ['vencimento', 'baixa'],
+  });
+  const limparGradeRef = useRef(grade.limparFiltrosGrade);
+  limparGradeRef.current = grade.limparFiltrosGrade;
+  useEffect(() => {
+    limparGradeRef.current();
+  }, [cargaTick]);
+
+  const linhasExibidas = grade.rowsExibidas;
+
   const elegiveisVisiveis = useMemo(
-    () => linhasFiltradas.filter(podeReprogramar),
-    [linhasFiltradas],
+    () => linhasExibidas.filter(podeReprogramar),
+    [linhasExibidas],
   );
   const qtdSelecionadaVisivel = useMemo(
     () => elegiveisVisiveis.filter((l) => selecionadas.has(chaveLinha(l))).length,
@@ -326,13 +413,28 @@ export default function DiarioFinanceiroPage() {
 
   const totais = useMemo(
     () => ({
-      qtd: linhasFiltradas.length,
-      valor: soma(linhasFiltradas, 'valor'),
-      baixado: soma(linhasFiltradas, 'valorBaixado'),
-      saldo: soma(linhasFiltradas, 'saldo'),
+      qtd: linhasExibidas.length,
+      valor: soma(linhasExibidas, 'valor'),
+      baixado: soma(linhasExibidas, 'valorBaixado'),
+      saldo: soma(linhasExibidas, 'saldo'),
     }),
-    [linhasFiltradas],
+    [linhasExibidas],
   );
+
+  const exportar = async (formato: 'xlsx' | 'pdf') => {
+    if (exportando || linhasExibidas.length === 0) return;
+    const payload = linhasExibidas.map((l) => linhaParaExport(l, empresaExibida(l)));
+    const periodo = { inicio: dataInicio, fim: dataFim };
+    setExportando(formato);
+    try {
+      if (formato === 'xlsx') await exportDiarioFinanceiroXlsx(payload, periodo);
+      else exportDiarioFinanceiroPdf(payload, periodo);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExportando(null);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-3 min-h-0">
@@ -511,26 +613,57 @@ export default function DiarioFinanceiroPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-slate-500 dark:text-slate-400">
           {selecionadas.size.toLocaleString('pt-BR')} selecionado(s). Título baixado não pode ser reprogramado.
+          {linhasFiltradas.length !== linhasExibidas.length
+            ? ` ${linhasExibidas.length.toLocaleString('pt-BR')} de ${linhasFiltradas.length.toLocaleString('pt-BR')} na grade.`
+            : ''}
         </p>
-        <button
-          type="button"
-          onClick={abrirReprogramar}
-          disabled={selecionadas.size === 0}
-          className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-        >
-          Reprogramar
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {grade.temFiltrosOuOrdem ? (
+            <button
+              type="button"
+              onClick={() => grade.limparFiltrosGrade()}
+              className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+            >
+              Limpar filtros da grade
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void exportar('xlsx')}
+            disabled={loading || exportando != null || linhasExibidas.length === 0}
+            className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+          >
+            {exportando === 'xlsx' ? 'Exportando…' : 'Exportar Excel'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void exportar('pdf')}
+            disabled={loading || exportando != null || linhasExibidas.length === 0}
+            className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+          >
+            {exportando === 'pdf' ? 'Gerando PDF…' : 'Exportar PDF'}
+          </button>
+          <button
+            type="button"
+            onClick={abrirReprogramar}
+            disabled={selecionadas.size === 0}
+            className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+          >
+            Reprogramar
+          </button>
+        </div>
       </div>
 
       <div
+        ref={grade.tableScrollRef}
         className={`card-panel min-h-0 overflow-auto !p-0 ${
           faixaFiltrosVisivel ? 'max-h-[calc(100svh-18.5rem)]' : 'max-h-[calc(100svh-14rem)]'
         }`}
       >
         <table className="min-w-[1100px] w-full text-xs">
-          <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+          <thead className="sticky top-0 z-10 bg-primary-600 text-white">
             <tr>
-              <th className="sticky left-0 z-20 w-8 bg-slate-100 px-2 py-2 dark:bg-slate-800">
+              <th className="sticky left-0 z-20 w-8 bg-primary-600 px-2 py-2">
                 <input
                   ref={headerCheckRef}
                   type="checkbox"
@@ -538,45 +671,31 @@ export default function DiarioFinanceiroPage() {
                   onChange={alternarTodos}
                   disabled={elegiveisVisiveis.length === 0}
                   aria-label="Selecionar todos os títulos em aberto"
-                  className="rounded border-slate-400 text-primary-600 focus:ring-primary-500 disabled:opacity-40"
+                  className="rounded border-white/70 text-primary-600 focus:ring-primary-500 disabled:opacity-40"
                 />
               </th>
-              {[
-                'Origem',
-                'Situação',
-                'Vencimento',
-                'Baixa',
-                'Fornecedor',
-                'Empresa',
-                'Plano de contas',
-                'Descrição',
-                'Observações',
-                'Forma pgto',
-                'Conta bancária',
-                'Valor',
-                'Baixado',
-                'Saldo',
-              ].map((col) => (
-                <th
-                  key={col}
-                  className={`px-2 py-2 font-medium whitespace-nowrap ${
-                    col === 'Valor' || col === 'Baixado' || col === 'Saldo' ? 'text-right' : 'text-left'
-                  }`}
-                >
-                  {col}
-                </th>
+              {DIARIO_COLUNAS_GRADE.map((col) => (
+                <DiarioCabecalhoTh
+                  key={col.id}
+                  colId={col.id}
+                  label={col.label}
+                  grade={grade}
+                  align={'align' in col ? col.align : 'left'}
+                />
               ))}
             </tr>
           </thead>
           <tbody>
-            {linhasFiltradas.length === 0 && !loading && (
+            {linhasExibidas.length === 0 && !loading && (
               <tr>
                 <td colSpan={15} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
-                  Nenhum contas a pagar neste vencimento.
+                  {linhasFiltradas.length === 0
+                    ? 'Nenhum contas a pagar neste vencimento.'
+                    : 'Nenhum lançamento com os filtros da grade.'}
                 </td>
               </tr>
             )}
-            {linhasFiltradas.map((l, i) => {
+            {linhasExibidas.map((l, i) => {
               const chave = chaveLinha(l);
               const bloqueio = motivoBloqueio(l);
               const marcado = selecionadas.has(chave);
@@ -634,6 +753,7 @@ export default function DiarioFinanceiroPage() {
           </tbody>
         </table>
       </div>
+      <DiarioGradeFiltroPortal grade={grade} />
 
       {modalAberto ? (
         <ModalReprogramar
