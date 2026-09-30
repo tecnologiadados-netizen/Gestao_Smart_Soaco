@@ -64,6 +64,10 @@ import { ConfirmacaoDialog } from "@qualidade/components/ui/confirmacao-dialog";
 import { RevalidarDocumentoDialog } from "@qualidade/components/documentos/revalidar-documento-dialog";
 import { RegistroInternoDetalheDialog } from "@qualidade/components/documentos/registro-interno-detalhe-dialog";
 import type { Document, DocumentVersion } from "@qualidade/types/document";
+import {
+  AlcaLarguraColuna,
+  useLarguraColunaAlteracoes,
+} from "@qualidade/components/documentos/coluna-alteracoes-redimensionavel";
 
 interface Props {
   documentId: string | null;
@@ -225,6 +229,8 @@ function DocumentoConsultaDetalheDialogImpl({
   );
   const [excluindo, setExcluindo] = useState(false);
   const [erroExclusao, setErroExclusao] = useState<string | null>(null);
+  const { largura: larguraAlteracoes, iniciarAjuste: iniciarAjusteAlteracoes } =
+    useLarguraColunaAlteracoes();
   const [erroArquivo, setErroArquivo] = useState("");
 
   const users = useConfigStore((s) => s.users);
@@ -748,22 +754,34 @@ function DocumentoConsultaDetalheDialogImpl({
                     Nenhuma revisão registrada.
                   </p>
                 ) : (
-                  <Table surface>
+                  <Table
+                    surface
+                    className="table-fixed"
+                    style={{ width: 112 + 160 + 160 + larguraAlteracoes + 176, minWidth: "100%" }}
+                  >
+                    <colgroup>
+                      <col style={{ width: 112 }} />
+                      <col style={{ width: 160 }} />
+                      <col style={{ width: 160 }} />
+                      <col style={{ width: larguraAlteracoes }} />
+                      <col style={{ width: 176 }} />
+                    </colgroup>
                     <TableHeader>
                       <TableRow className="border-b-2 border-border">
-                        <TableHead className="w-28 border-r border-border/70">
+                        <TableHead className="border-r border-border/70">
                           Revisão
                         </TableHead>
-                        <TableHead className="min-w-[9rem] border-r border-border/70">
+                        <TableHead className="border-r border-border/70">
                           Elaboração
                         </TableHead>
-                        <TableHead className="min-w-[9rem] border-r border-border/70">
+                        <TableHead className="border-r border-border/70">
                           Aprovação
                         </TableHead>
-                        <TableHead className="min-w-[12rem] border-r border-border/70">
-                          Motivo da revisão
+                        <TableHead className="relative border-r border-border/70 pr-4">
+                          Alterações
+                          <AlcaLarguraColuna onPointerDown={iniciarAjusteAlteracoes} />
                         </TableHead>
-                        <TableHead className="w-44 text-right">Ações</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -826,10 +844,10 @@ function DocumentoConsultaDetalheDialogImpl({
                                 "—"
                               )}
                             </TableCell>
-                            <TableCell className="max-w-[16rem] border-r border-border/60 !whitespace-normal text-sm text-muted-foreground">
+                            <TableCell className="border-r border-border/60 align-top !whitespace-normal text-sm text-muted-foreground">
                               {ver.justificativaRevisao?.trim() ? (
                                 <span
-                                  className="line-clamp-3"
+                                  className="block break-words"
                                   title={ver.justificativaRevisao.trim()}
                                 >
                                   {ver.justificativaRevisao.trim()}

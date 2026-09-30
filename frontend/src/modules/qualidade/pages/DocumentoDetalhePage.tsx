@@ -30,8 +30,14 @@ import {
 import { formatarData, formatarDataHora } from "@qualidade/lib/utils/dates";
 import { labelResponsavel } from "@qualidade/lib/utils/select-display";
 import { SolicitarRevisaoDocumentoDialog } from "@qualidade/components/documentos/solicitar-revisao-documento-dialog";
+import {
+  AlcaLarguraColuna,
+  useLarguraColunaAlteracoes,
+} from "@qualidade/components/documentos/coluna-alteracoes-redimensionavel";
 
 export function DocumentoDetalhePage() {
+  const { largura: larguraAlteracoes, iniciarAjuste: iniciarAjusteAlteracoes } =
+    useLarguraColunaAlteracoes();
   const params = useParams();
   const navigate = useNavigate();
   const id = params.id as string;
@@ -128,22 +134,34 @@ export function DocumentoDetalhePage() {
                   Nenhuma revisão registrada.
                 </p>
               ) : (
-                <Table surface>
+                <Table
+                  surface
+                  className="table-fixed"
+                  style={{ width: 112 + 160 + 160 + larguraAlteracoes + 220, minWidth: "100%" }}
+                >
+                  <colgroup>
+                    <col style={{ width: 112 }} />
+                    <col style={{ width: 160 }} />
+                    <col style={{ width: 160 }} />
+                    <col style={{ width: larguraAlteracoes }} />
+                    <col style={{ width: 220 }} />
+                  </colgroup>
                   <TableHeader>
                     <TableRow className="border-b-2 border-border">
-                      <TableHead className="w-28 border-r border-border/70">
+                      <TableHead className="border-r border-border/70">
                         Revisão
                       </TableHead>
-                      <TableHead className="min-w-[9rem] border-r border-border/70">
+                      <TableHead className="border-r border-border/70">
                         Elaboração
                       </TableHead>
-                      <TableHead className="min-w-[9rem] border-r border-border/70">
+                      <TableHead className="border-r border-border/70">
                         Aprovação
                       </TableHead>
-                      <TableHead className="min-w-[12rem] border-r border-border/70">
-                        Motivo da revisão
+                      <TableHead className="relative border-r border-border/70 pr-4">
+                        Alterações
+                        <AlcaLarguraColuna onPointerDown={iniciarAjusteAlteracoes} />
                       </TableHead>
-                      <TableHead className="min-w-0">Arquivo</TableHead>
+                      <TableHead>Arquivo</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -204,10 +222,10 @@ export function DocumentoDetalhePage() {
                               "—"
                             )}
                           </TableCell>
-                          <TableCell className="max-w-[16rem] border-r border-border/60 !whitespace-normal text-sm text-muted-foreground">
+                          <TableCell className="border-r border-border/60 align-top !whitespace-normal text-sm text-muted-foreground">
                             {ver.justificativaRevisao?.trim() ? (
                               <span
-                                className="line-clamp-3"
+                                className="block break-words"
                                 title={ver.justificativaRevisao.trim()}
                               >
                                 {ver.justificativaRevisao.trim()}

@@ -195,7 +195,7 @@ export function SolicitarRevisaoDocumentoDialog({
       setError(
         fluxoExterno
           ? "Informe o motivo da atualização."
-          : "Informe o motivo da revisão."
+          : "Informe as alterações."
       );
       return;
     }
@@ -453,7 +453,7 @@ export function SolicitarRevisaoDocumentoDialog({
                   <Label className="text-base" htmlFor="motivo-revisao">
                     {fluxoExterno
                       ? "Motivo da atualização *"
-                      : "Motivo da revisão *"}
+                      : "Alterações *"}
                   </Label>
                   <Textarea
                     id="motivo-revisao"
@@ -462,7 +462,7 @@ export function SolicitarRevisaoDocumentoDialog({
                     placeholder={
                       fluxoExterno
                         ? "Explique por que esta atualização está sendo registrada..."
-                        : "Explique por que esta revisão está sendo solicitada..."
+                        : "Descreva as alterações desta revisão..."
                     }
                     rows={4}
                     className="text-base"

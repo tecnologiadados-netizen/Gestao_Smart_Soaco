@@ -318,7 +318,7 @@ export function ElaborarDocumentoPage() {
             <legend className="text-base">Justificativa</legend>
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Motivo da revisão
+                Alterações
               </p>
               <p className="text-sm">{versaoAtual.justificativaRevisao}</p>
             </div>
