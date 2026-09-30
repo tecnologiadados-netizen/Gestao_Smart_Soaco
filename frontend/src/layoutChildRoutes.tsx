@@ -78,11 +78,13 @@ import ComissionamentoPage from './pages/comercial/ComissionamentoPage';
 import ProducaoCamasiPage from './pages/producao/ProducaoCamasiPage';
 import KpisHubPage from './pages/kpis/KpisHubPage';
 import KpisPastaPage from './pages/kpis/KpisPastaPage';
+import GestaoEntradasPage from './pages/kpis/GestaoEntradasPage';
 
 /** Rotas filhas do layout autenticado (espelham appRouter). */
 export const layoutChildRoutes: RouteObject[] = [
   { index: true, element: <InicioPage /> },
   { path: 'kpis', element: <ErrorBoundary><KpisHubPage /></ErrorBoundary> },
+  { path: 'kpis/gestao-entradas/painel', element: <ErrorBoundary><GestaoEntradasPage /></ErrorBoundary> },
   { path: 'kpis/:pastaId', element: <ErrorBoundary><KpisPastaPage /></ErrorBoundary> },
   { path: 'producao/camasi', element: <ErrorBoundary><ProducaoCamasiPage /></ErrorBoundary> },
   { path: 'pedidos/dash-entregas', element: <ErrorBoundary><DashboardPage /></ErrorBoundary> },

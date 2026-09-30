@@ -5,6 +5,8 @@ import { requireMasterOrAdmin } from '../middleware/requireMasterOrAdmin.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import { getProdutosColeta, getRessupAlmoxRegistroPreview, getRessupAlmoxPcPendDetalhes, getRessupEmpenhoDetalhes, getRessupEmpenhoPorPedido, getOpcoesFiltroRessupAlmox, getBuscarOpcoesFiltroRessupAlmox, postOpcoesFiltroCascataRessupAlmox, postRessupAlmoxAnalise, putRessupAlmoxAnalise, patchRessupAlmoxAnaliseProcessar, patchRessupAlmoxAnaliseConcluir, getRessupAlmoxAnalises, getRessupAlmoxAnaliseById, getRessupNaoAlmoxRegistroPreview, getRessupNaoAlmoxPcPendDetalhes, getOpcoesFiltroRessupNaoAlmox, getBuscarOpcoesFiltroRessupNaoAlmox, postOpcoesFiltroCascataRessupNaoAlmox, getRessupNaoAlmoxEstoque, getRessupNaoAlmoxCatalogo, putRessupNaoAlmoxCatalogoDescricao, putRessupNaoAlmoxCatalogoFundivel, postRessupNaoAlmoxAnalise, putRessupNaoAlmoxAnalise, patchRessupNaoAlmoxAnaliseProcessar, patchRessupNaoAlmoxAnaliseConcluir, getRessupNaoAlmoxAnalises, getRessupNaoAlmoxAnaliseById, getColetasPrecos, getColetasPrecosDebug, getOpcoesFiltroColetas, getOpcoesVinculoFinalizacao, getOpcoesVinculoErroOperacional, getVinculosDerivadosColeta, getVinculosDerivadosPreview, getDashboardErrosVinculoOperacional, getColetasBloqueantes, postCienciaColeta, postConfirmarColeta, getFornecedores, getCondicoesPagamento, getFormasPagamento, putColetaFornecedores, getPrecosColeta, getPrecosCotacao, postPrecosCotacao, patchObservacoesColeta, patchEnviarAprovacao, patchCancelarCotacao, patchReabrirColeta, patchFinalizarCotacao, patchRegistroQtdeAprovada, patchEnviarFinanceiro, deleteColetaPrecos, deleteColetaItem, deleteColetaTodosItens, postColetaItens, getPendenciasComprasOpcoesComprador, getPendenciasComprasConsultar, getPendenciasComprasSaldoSetores, putPendenciasComprasPrioridadeFixa, deletePendenciasComprasPrioridadeFixa, getPendenciasComprasPrioridadeFixaHistorico } from '../controllers/comprasController.js';
 import { getPreCompraCotacoes, getPreCompraSugestoes, getPreCompraFornecedores, getPreCompraContatos, getPreCompraPdf } from '../controllers/preCompraController.js';
+import { getGestaoEntradasDia, getGestaoEntradasPainel } from '../controllers/gestaoEntradasController.js';
+import { PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS } from '../utils/kpisPermissoes.js';
 import {
   getDoubleCheckInComparativoPc,
   getDoubleCheckInDashboard,
@@ -479,6 +481,16 @@ router.get(
   '/double-checkin/dashboard',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getDoubleCheckInDashboard)
+);
+router.get(
+  '/gestao-entradas/detalhe',
+  requirePermission(...PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS),
+  async503(getGestaoEntradasDia)
+);
+router.get(
+  '/gestao-entradas',
+  requirePermission(...PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS),
+  async503(getGestaoEntradasPainel)
 );
 router.post(
   '/double-checkin/conferir',

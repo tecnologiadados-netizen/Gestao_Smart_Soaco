@@ -76,6 +76,7 @@ export const PERMISSOES = {
   KPIS_PAINEL_PRODUCAO_CAMASI_VER: 'kpis.painel.producao_camasi.ver',
   KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER: 'kpis.painel.pedidos_em_aberto.ver',
   KPIS_PAINEL_COBERTURA_ESTOQUE_VER: 'kpis.painel.cobertura_estoque.ver',
+  KPIS_PAINEL_GESTAO_ENTRADAS_VER: 'kpis.painel.gestao_entradas.ver',
 
   // Produção (Camasi / máquinas) — legado; acesso também via hub KPIs
   PRODUCAO_VER: 'producao.ver',
