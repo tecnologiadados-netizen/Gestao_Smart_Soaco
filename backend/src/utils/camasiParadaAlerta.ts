@@ -128,7 +128,7 @@ export function montarMensagemAlertaParadaCamasi(input: {
     `Receita configurada: ${input.peca || '(sem receita)'}`,
     `Motivo: ${input.motivo}`,
     '',
-    'Desloquem até a máquina para averiguar.',
+    'Responsáveis, desloquem-se até o local para averiguar.',
   ].join('\n');
 }
 

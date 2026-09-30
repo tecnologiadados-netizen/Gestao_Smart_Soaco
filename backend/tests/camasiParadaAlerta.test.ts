@@ -106,7 +106,7 @@ describe('avaliarAlertaParadaCamasi — recorte de 21/09/2026', () => {
     expect(d.mensagem).toContain('Desde: 07:05');
     expect(d.mensagem).toContain('Receita configurada: (sem receita)');
     expect(d.mensagem).toContain(CAMASI_PARADA_SEM_JUSTIFICATIVA);
-    expect(d.mensagem).toContain('Desloquem até a máquina para averiguar.');
+    expect(d.mensagem).toContain('Responsáveis, desloquem-se até o local para averiguar.');
   });
 
   it('08:00 a 13:09 — mesma ociosidade, não reenvia', () => {
@@ -252,7 +252,7 @@ describe('montarMensagemAlertaParadaCamasi', () => {
         'Receita configurada: (sem receita)',
         `Motivo: ${CAMASI_PARADA_SEM_JUSTIFICATIVA}`,
         '',
-        'Desloquem até a máquina para averiguar.',
+        'Responsáveis, desloquem-se até o local para averiguar.',
       ].join('\n')
     );
   });
