@@ -1,5 +1,12 @@
 import { Link } from 'react-router-dom';
 import { CircleAlert, ClipboardCheck, FileText, Gauge, MapPin, MessageSquareWarning, Wrench } from "lucide-react";
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  temCalibracoesQualidade,
+  temConfigQualidade,
+  temDocumentosQualidade,
+  type OpcaoConfigQualidade,
+} from '@/utils/qualidadePermissoes';
 import {
   Card,
   CardDescription,
@@ -7,58 +14,80 @@ import {
   CardTitle,
 } from "@qualidade/components/ui/card";
 
-const links = [
+const links: Array<{
+  href: string;
+  title: string;
+  description: string;
+  icon: typeof Wrench;
+  config?: OpcaoConfigQualidade;
+  modulo?: 'documentos' | 'calibracoes';
+}> = [
   {
     href: "/qualidade/configuracoes/setores",
     title: "Setores",
     description: "Setores e áreas da empresa",
     icon: Wrench,
+    config: "setores",
   },
   {
     href: "/qualidade/configuracoes/tipos-documento",
     title: "Categorias",
     description: "PO, IT, FO, Manual, Registro e outros",
     icon: FileText,
+    config: "categorias",
   },
   {
     href: "/qualidade/configuracoes/enderecamento",
     title: "Endereçamento",
     description: "Localizações físicas por setor",
     icon: MapPin,
+    config: "enderecamento",
   },
   {
     href: "/qualidade/configuracoes/reclamacoes",
     title: "Reclamações de produto",
     description: "Reclamações vinculadas ao setor de produção, para seleção no RCC",
     icon: MessageSquareWarning,
+    config: "reclamacoes",
   },
   {
     href: "/qualidade/configuracoes/causas-problema",
     title: "Causas do problema",
     description: "Causas vinculadas ao setor de produção, para seleção no RCC",
     icon: CircleAlert,
+    config: "causas",
   },
   {
     href: "/qualidade/configuracoes/servicos-realizados",
     title: "Serviços realizados",
     description: "Serviços vinculados ao setor de produção, para seleção no RCC",
     icon: ClipboardCheck,
+    config: "servicos",
   },
   {
     href: "/qualidade/documentos",
     title: "Módulo Documentos",
     description: "Ir para gestão documental",
     icon: FileText,
+    modulo: "documentos",
   },
   {
     href: "/qualidade/calibracoes",
     title: "Módulo Calibrações",
     description: "Ir para gestão de calibrações",
     icon: Gauge,
+    modulo: "calibracoes",
   },
 ];
 
 export function ConfiguracoesPage() {
+  const { hasPermission } = useAuth();
+  const visiveis = links.filter((link) => {
+    if (link.config) return temConfigQualidade(hasPermission, link.config);
+    if (link.modulo === 'documentos') return temDocumentosQualidade(hasPermission);
+    if (link.modulo === 'calibracoes') return temCalibracoesQualidade(hasPermission);
+    return true;
+  });
   return (
     <div className="space-y-8">
       <header className="space-y-1">
@@ -71,7 +100,7 @@ export function ConfiguracoesPage() {
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {links.map((link) => (
+        {visiveis.map((link) => (
           <Link
             key={link.href}
             to={link.href}

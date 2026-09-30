@@ -6,7 +6,6 @@ import {
   COMUNICACAO_INTERNA_SUBMENUS,
   ENGENHARIA_SUBMENUS,
   GESTAO_USUARIOS_SUBMENUS,
-  QUALIDADE_MENU,
   RH_MENU,
   LOJA_MENU,
   type FinanceiroMenuEntry,
@@ -22,6 +21,7 @@ import { podeVerMenuRecebimento } from '../../utils/recebimentoPermissoes';
 import { podeVerMenuCompras } from '../../utils/doubleCheckInPermissoes';
 import { useSidebarAccordionOpen } from '../../hooks/useSidebarAccordionOpen';
 import { podeAcessarHubKpis } from '../../config/kpisCatalog';
+import { buildQualidadeMenuForUser, temAcessoQualidade } from '../../utils/qualidadePermissoes';
 
 const SIDEBAR_LINK =
   'block rounded-md px-3 py-2 text-sm transition min-h-[36px] truncate';
@@ -663,7 +663,7 @@ export default function Sidebar({
           </SidebarSection>
         )}
 
-        {hasPermission(PERMISSOES.QUALIDADE_VER) && (
+        {temAcessoQualidade(hasPermission) && (
           <SidebarSection
             id="qualidade"
             label="Qualidade"
@@ -675,7 +675,7 @@ export default function Sidebar({
             toggleAccordion={toggleAccordion}
           >
             <NavMenuTree
-              entries={QUALIDADE_MENU}
+              entries={buildQualidadeMenuForUser(hasPermission)}
               pathname={pathname}
               sidebarOpen={open}
               accordionOpen={accordionOpen}

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { tiposRegistroPermitidos } from "@/utils/qualidadePermissoes";
 import { Badge } from "@qualidade/components/ui/badge";
 import { Button } from "@qualidade/components/ui/button";
 import { AvaliacaoFornecedorConsultaPanel } from "@qualidade/components/registros/avaliacao-fornecedor-consulta-panel";
@@ -23,7 +25,6 @@ import { SgqGradeFiltroPortal } from "@qualidade/components/ui/sgq-grade-filtro-
 import { SgqGradeSurface } from "@qualidade/components/ui/sgq-grade-surface";
 import {
   isModuloRegistroTipo,
-  MODULO_REGISTRO_TIPOS,
   moduloRegistroTipoLabelsCurto,
   rotuloStatusRegistro,
   type ModuloRegistroTipo,
@@ -86,6 +87,11 @@ function nomeColunaRegistro(colId: string): string {
 
 export function RegistrosConsultaContent() {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
+  const tiposPermitidos = useMemo(
+    () => tiposRegistroPermitidos(hasPermission),
+    [hasPermission]
+  );
   const [searchParams] = useSearchParams();
   const registros = useRegistrosStore((s) => s.registros);
   const avaliacoes = useAvaliacaoFornecedorStore((s) => s.avaliacoes);
@@ -94,7 +100,8 @@ export function RegistrosConsultaContent() {
 
   const [tipoFiltro, setTipoFiltro] = useState<ModuloRegistroTipo>(() => {
     const tipoParam = searchParams.get("tipo");
-    return isModuloRegistroTipo(tipoParam) ? tipoParam : "rnc";
+    if (isModuloRegistroTipo(tipoParam) && tiposPermitidos.includes(tipoParam)) return tipoParam;
+    return tiposPermitidos[0] ?? "rnc";
   });
   const [registroSelecionadoId, setRegistroSelecionadoId] = useState<
     string | null
@@ -113,8 +120,12 @@ export function RegistrosConsultaContent() {
 
   useEffect(() => {
     const tipoParam = searchParams.get("tipo");
-    setTipoFiltro(isModuloRegistroTipo(tipoParam) ? tipoParam : "rnc");
-  }, [searchParams]);
+    const pedido =
+      isModuloRegistroTipo(tipoParam) && tiposPermitidos.includes(tipoParam)
+        ? tipoParam
+        : tiposPermitidos[0];
+    if (pedido) setTipoFiltro(pedido);
+  }, [searchParams, tiposPermitidos]);
 
   const handleContagemAvaliacoes = useCallback((count: number) => {
     setContagemAvaliacoes(count);
@@ -261,9 +272,16 @@ export function RegistrosConsultaContent() {
       <div
         role="tablist"
         aria-label="Tipo de registro"
-        className="grid w-full max-w-3xl grid-cols-3 items-stretch rounded-lg bg-muted p-1"
+        className={cn(
+          "grid w-full max-w-3xl items-stretch rounded-lg bg-muted p-1",
+          tiposPermitidos.length <= 1
+            ? "grid-cols-1"
+            : tiposPermitidos.length === 2
+              ? "grid-cols-2"
+              : "grid-cols-3"
+        )}
       >
-        {MODULO_REGISTRO_TIPOS.map((tipo) => {
+        {tiposPermitidos.map((tipo) => {
           const ativa = tipoSelecionado === tipo;
           return (
             <button

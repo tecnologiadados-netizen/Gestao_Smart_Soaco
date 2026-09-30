@@ -5,9 +5,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@qualidade/components/ui/select";
+import { useAuth } from "@/contexts/AuthContext";
+import { tiposRegistroPermitidos } from "@/utils/qualidadePermissoes";
 import {
   isModuloRegistroTipo,
-  MODULO_REGISTRO_TIPOS,
   moduloRegistroTipoLabels,
   type ModuloRegistroTipo,
 } from "@qualidade/lib/registros/constants";
@@ -25,6 +26,8 @@ export function RegistroTipoSeletor({
   value,
   onChange,
 }: RegistroTipoSeletorProps) {
+  const { hasPermission } = useAuth();
+  const tipos = tiposRegistroPermitidos(hasPermission);
   return (
     <Select
       value={value ?? undefined}
@@ -45,7 +48,7 @@ export function RegistroTipoSeletor({
         </SelectValue>
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false} className="max-h-60">
-        {MODULO_REGISTRO_TIPOS.map((tipo) => (
+        {tipos.map((tipo) => (
           <SelectItem key={tipo} value={tipo} label={rotuloTipoRegistro(tipo)}>
             {rotuloTipoRegistro(tipo)}
           </SelectItem>

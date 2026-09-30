@@ -12,7 +12,6 @@ import {
   podeVerSecaoPcp,
   COMUNICACAO_INTERNA_SUBMENUS,
   ENGENHARIA_SUBMENUS,
-  QUALIDADE_MENU,
   GESTAO_USUARIOS_SUBMENUS,
   PATH_LABELS,
   type FinanceiroMenuEntry,
@@ -25,6 +24,7 @@ import {
   buildComprasMenuForUser,
 } from '../config/navigationMenu';
 import { podeVerMenuFinanceiro } from './financeiroPermissoes';
+import { buildQualidadeMenuForUser, temAcessoQualidade } from './qualidadePermissoes';
 import { podeVerMenuRecebimento } from './recebimentoPermissoes';
 import { podeVerMenuCompras } from './doubleCheckInPermissoes';
 import { podeAcessarRotaChamadosSuporte, podeConfigurarSuporte, podeVerAlucinacoesAmigaco } from './suportePermissoes';
@@ -161,8 +161,8 @@ export function buildTelasBuscaRapidaForUser(ctx: BuildTelasBuscaRapidaCtx): Tel
     }
   }
 
-  if (hasPermission(PERMISSOES.QUALIDADE_VER)) {
-    telas.push(...flattenNavMenu(QUALIDADE_MENU, hasPermission, 'Qualidade'));
+  if (temAcessoQualidade(hasPermission)) {
+    telas.push(...flattenNavMenu(buildQualidadeMenuForUser(hasPermission), hasPermission, 'Qualidade'));
   }
 
   if (podeVerMenuFinanceiro(hasPermission)) {

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { listarUsuarios, criarUsuario, atualizarUsuario, excluirUsuario, type Usuario } from '../api/usuarios';
 import { listarGrupos, listarPermissoes, criarGrupo, atualizarGrupo, excluirGrupo, duplicarGrupo, obterRhPermissoesGrupo, type Grupo, type PermissaoItem } from '../api/grupos';
 import GrupoRhPermissoesPanel, { createDefaultRhGroupPermissions } from '../components/rh/GrupoRhPermissoesPanel';
+import { QualidadeGrupoPermissoes } from '../components/usuarios/QualidadeGrupoPermissoes';
 import type { RhGroupPermissions } from '@rh/lib/rh-permissions';
 import { cloneGroupPermissions } from '@rh/lib/rh-permissions';
 import { OPCOES_TELA_PRINCIPAL, mensagemSeTelaPrincipalInvalidaParaGrupo } from '../config/telaPrincipalGrupo';
@@ -110,6 +111,10 @@ function agruparPermissoes(permissoes: PermissaoItem[]): { secao: string; itens:
       || p.codigo === PERMISSOES.RECEBIMENTO_TOTAL
     ) {
       if (!map.has('Recebimento')) map.set('Recebimento', []);
+      continue;
+    }
+    if (p.codigo.startsWith('qualidade.')) {
+      if (!map.has('Qualidade')) map.set('Qualidade', []);
       continue;
     }
     const prefix = p.codigo.split('.')[0] ?? '';
@@ -1134,6 +1139,12 @@ export default function UsuariosPage() {
                         </div>
                       ) : null}
                     </div>
+                  ) : secao === 'Qualidade' ? (
+                    <QualidadeGrupoPermissoes
+                      permissoes={grupoPermissoes}
+                      disabled={editandoGrupoMaster}
+                      onChange={setGrupoPermissoes}
+                    />
                   ) : secao === 'KPIs' ? (
                     <div className="space-y-2">
                       <p className="text-xs text-slate-500 dark:text-slate-400">

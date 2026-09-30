@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { PERMISSOES } from '../config/permissoes.js';
+import { temAcessoQualidade } from '../utils/qualidadePermissoes.js';
 import type { JwtPayload } from './auth.js';
 import { getPermissoesUsuario } from './requirePermission.js';
 
@@ -57,7 +57,7 @@ export async function sgqAccessGuard(
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
     const perms = await getPermissoesUsuario(decoded.login);
-    if (!perms.includes(PERMISSOES.QUALIDADE_VER)) {
+    if (!temAcessoQualidade(perms)) {
       res.redirect(302, '/sem-acesso');
       return;
     }

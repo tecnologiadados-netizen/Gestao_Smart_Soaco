@@ -18,6 +18,8 @@ import { useDocumentsStore } from '@qualidade/lib/store/documents-store';
 import { useCalibrationsStore } from '@qualidade/lib/store/calibrations-store';
 import { NovoDocumentoNav } from '@qualidade/components/documentos/novo-documento-nav';
 import { ValidadeNotificacoesBell } from '@qualidade/components/documentos/validade-notificacoes-bell';
+import { useAuth } from '@/contexts/AuthContext';
+import { temConfigQualidade, type OpcaoConfigQualidade } from '@/utils/qualidadePermissoes';
 
 type Module = 'documentos' | 'calibracoes' | 'registros' | 'configuracoes';
 
@@ -34,6 +36,7 @@ interface NavItem {
   label: string;
   href: string;
   icon: typeof Home;
+  config?: OpcaoConfigQualidade;
 }
 
 function getNavItems(module: Module): NavItem[] {
@@ -58,12 +61,12 @@ function getNavItems(module: Module): NavItem[] {
     case 'configuracoes':
       return [
         { label: 'Início', href: '/qualidade/configuracoes', icon: Home },
-        { label: 'Setores', href: '/qualidade/configuracoes/setores', icon: Wrench },
-        { label: 'Categorias', href: '/qualidade/configuracoes/tipos-documento', icon: FileText },
-        { label: 'Endereçamento', href: '/qualidade/configuracoes/enderecamento', icon: MapPin },
-        { label: 'Reclamações', href: '/qualidade/configuracoes/reclamacoes', icon: MessageSquareWarning },
-        { label: 'Causas', href: '/qualidade/configuracoes/causas-problema', icon: CircleAlert },
-        { label: 'Serviços', href: '/qualidade/configuracoes/servicos-realizados', icon: ClipboardCheck },
+        { label: 'Setores', href: '/qualidade/configuracoes/setores', icon: Wrench, config: 'setores' },
+        { label: 'Categorias', href: '/qualidade/configuracoes/tipos-documento', icon: FileText, config: 'categorias' },
+        { label: 'Endereçamento', href: '/qualidade/configuracoes/enderecamento', icon: MapPin, config: 'enderecamento' },
+        { label: 'Reclamações', href: '/qualidade/configuracoes/reclamacoes', icon: MessageSquareWarning, config: 'reclamacoes' },
+        { label: 'Causas', href: '/qualidade/configuracoes/causas-problema', icon: CircleAlert, config: 'causas' },
+        { label: 'Serviços', href: '/qualidade/configuracoes/servicos-realizados', icon: ClipboardCheck, config: 'servicos' },
       ];
   }
 }
@@ -71,8 +74,11 @@ function getNavItems(module: Module): NavItem[] {
 export function QualidadeSubnav() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const activeModule = getActiveModule(pathname);
-  const navItems = getNavItems(activeModule);
+  const navItems = getNavItems(activeModule).filter(
+    (item) => !item.config || temConfigQualidade(hasPermission, item.config)
+  );
 
   const currentUserId = useConfigStore((s) => s.currentUserId);
   const getPendingTasks = useDocumentsStore((s) => s.getPendingTasks);

@@ -1,5 +1,7 @@
 import type { RouteObject } from 'react-router-dom';
 import { Navigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { rotaInicialQualidade } from '@/utils/qualidadePermissoes';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import QualidadeModuleLayout from '@qualidade/QualidadeModuleLayout';
 import { DocumentosPage } from '@qualidade/pages/DocumentosPage';
@@ -26,6 +28,13 @@ import { VisualizarDocumentoPage } from '@qualidade/pages/DocumentosVisualizarPa
 
 const wrap = (element: React.ReactNode) => <ErrorBoundary>{element}</ErrorBoundary>;
 
+function QualidadeInicio() {
+  const { hasPermission } = useAuth();
+  const destino = rotaInicialQualidade(hasPermission);
+  if (!destino) return <Navigate to="/sem-acesso" replace />;
+  return <Navigate to={destino} replace />;
+}
+
 export const qualidadeRoutes: RouteObject[] = [
   {
     path: 'qualidade/documentos/visualizar',
@@ -35,7 +44,7 @@ export const qualidadeRoutes: RouteObject[] = [
     path: 'qualidade',
     element: wrap(<QualidadeModuleLayout />),
     children: [
-      { index: true, element: <Navigate to="documentos" replace /> },
+      { index: true, element: <QualidadeInicio /> },
       { path: 'documentos', element: wrap(<DocumentosPage />) },
       { path: 'documentos/consulta', element: wrap(<DocumentosConsultaPage />) },
       { path: 'documentos/novo', element: wrap(<NovoDocumentoPage />) },

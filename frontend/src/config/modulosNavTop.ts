@@ -1,5 +1,6 @@
 import { PERMISSOES, type CodigoPermissao } from './permissoes';
 import { PERMISSOES_ACESSO_FINANCEIRO_MENU } from '../utils/financeiroPermissoes';
+import { PERMISSOES_ACESSO_QUALIDADE } from '../utils/qualidadePermissoes';
 import { PERMISSOES_ACESSO_FLUXOS } from '../utils/fluxosPermissoes';
 import { PERMISSOES_ROTA_SUPORTE_CHAMADOS } from '../utils/suportePermissoes';
 
@@ -79,7 +80,7 @@ export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
     ],
   },
   { code: 'engenharia', label: 'Engenharia', permissoes: [PERMISSOES.PRECIFICACAO_VER] },
-  { code: 'qualidade', label: 'Qualidade', permissoes: [PERMISSOES.QUALIDADE_VER] },
+  { code: 'qualidade', label: 'Qualidade', permissoes: PERMISSOES_ACESSO_QUALIDADE },
   { code: 'financeiro', label: 'Financeiro', permissoes: [...PERMISSOES_ACESSO_FINANCEIRO_MENU] },
   {
     code: 'logistica',

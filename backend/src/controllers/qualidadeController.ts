@@ -23,6 +23,7 @@ import {
   syncQualidadeOpcoesLista,
   syncQualidadeRegistros,
   deleteQualidadeRegistro,
+  tipoQualidadeRegistro,
   deleteQualidadeDocumento,
   deleteQualidadeEquipamento,
   listReclamacoesProduto,
@@ -38,6 +39,8 @@ import {
   atualizarServicoRealizado,
   excluirServicoRealizado,
 } from '../data/qualidadeRepository.js';
+import { getPermissoesUsuario } from '../middleware/requirePermission.js';
+import { temConfigQualidade, temRegistroQualidade } from '../utils/qualidadePermissoes.js';
 import { gerarRccPdfBuffer, gerarRncPdfBuffer } from '../services/qualidadePdfService.js';
 import { ensureQualidadePreviewPdf } from '../services/sgq/sgqOfficeToPdf.js';
 
@@ -312,9 +315,23 @@ export async function putQualidadeConfigHandler(req: Request, res: Response): Pr
       }
     }
     const payload = body as { departments?: unknown; documentTypes?: unknown };
+    const perms = await getPermissoesUsuario(userLogin(req));
+    const podeSetores = temConfigQualidade(perms, 'setores');
+    const podeCategorias = temConfigQualidade(perms, 'categorias');
+    if (!podeSetores && !podeCategorias) {
+      res.status(403).json({ error: 'Sem permissão para esta configuração.' });
+      return;
+    }
     await syncQualidadeConfig({
-      departments: Array.isArray(payload.departments) ? payload.departments : [],
-      documentTypes: Array.isArray(payload.documentTypes) ? payload.documentTypes : [],
+      departments: (podeSetores && Array.isArray(payload.departments) ? payload.departments : []) as Array<{
+        id?: string;
+        nome: string;
+      }>,
+      documentTypes: (podeCategorias && Array.isArray(payload.documentTypes) ? payload.documentTypes : []) as Array<{
+        id?: string;
+        nome: string;
+        sigla: string;
+      }>,
     });
     res.json({ ok: true });
   } catch (error) {
@@ -325,8 +342,19 @@ export async function putQualidadeConfigHandler(req: Request, res: Response): Pr
 
 export async function putQualidadeRegistrosHandler(req: Request, res: Response): Promise<void> {
   try {
-    const registros = Array.isArray(req.body?.registros) ? req.body.registros : [];
-    const numeros = await syncQualidadeRegistros(registros, userLogin(req));
+    const registros = (Array.isArray(req.body?.registros) ? req.body.registros : []) as Array<
+      Record<string, unknown>
+    >;
+    const perms = await getPermissoesUsuario(userLogin(req));
+    const permitidos = registros.filter((reg) => {
+      const tipo = String(reg.tipo ?? '');
+      return tipo && temRegistroQualidade(perms, tipo);
+    });
+    if (registros.length > 0 && permitidos.length === 0) {
+      res.status(403).json({ error: 'Sem permissão para este tipo de registro.' });
+      return;
+    }
+    const numeros = await syncQualidadeRegistros(permitidos, userLogin(req));
     res.json({ ok: true, numeros });
   } catch (error) {
     console.error('[qualidade] falha ao salvar registros:', error);
@@ -341,6 +369,16 @@ export async function deleteQualidadeRegistroHandler(req: Request, res: Response
     const uid = typeof req.params.uid === 'string' ? req.params.uid.trim() : '';
     if (!uid) {
       res.status(400).json({ error: 'Registro inválido.' });
+      return;
+    }
+    const tipo = await tipoQualidadeRegistro(uid);
+    if (!tipo) {
+      res.status(404).json({ error: 'Registro não encontrado.' });
+      return;
+    }
+    const perms = await getPermissoesUsuario(userLogin(req));
+    if (!temRegistroQualidade(perms, tipo)) {
+      res.status(403).json({ error: 'Sem permissão para este tipo de registro.' });
       return;
     }
     const removed = await deleteQualidadeRegistro(uid);
@@ -469,8 +507,19 @@ export async function putQualidadeOpcoesListaHandler(req: Request, res: Response
 
 export async function postQualidadeRegistrosImportHandler(req: Request, res: Response): Promise<void> {
   try {
-    const registros = Array.isArray(req.body?.registros) ? req.body.registros : [];
-    const result = await importRegistrosFromJson(registros, userLogin(req));
+    const registros = (Array.isArray(req.body?.registros) ? req.body.registros : []) as Array<
+      Record<string, unknown>
+    >;
+    const perms = await getPermissoesUsuario(userLogin(req));
+    const permitidos = registros.filter((reg) => {
+      const tipo = String(reg.tipo ?? '');
+      return tipo && temRegistroQualidade(perms, tipo);
+    });
+    if (registros.length > 0 && permitidos.length === 0) {
+      res.status(403).json({ error: 'Sem permissão para este tipo de registro.' });
+      return;
+    }
+    const result = await importRegistrosFromJson(permitidos, userLogin(req));
     res.json({ ok: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao importar registros.';

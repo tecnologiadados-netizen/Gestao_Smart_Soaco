@@ -1,6 +1,6 @@
 import { prisma } from '../config/prisma.js';
-import { PERMISSOES } from '../config/permissoes.js';
 import { getPermissoesUsuario } from '../middleware/requirePermission.js';
+import { temAcessoQualidade } from '../utils/qualidadePermissoes.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -1048,6 +1048,14 @@ export async function syncQualidadeRegistros(
   }
 
   return numeros;
+}
+
+export async function tipoQualidadeRegistro(uid: string): Promise<string | null> {
+  const registro = await prisma.sgqRegistro.findUnique({
+    where: { uid },
+    select: { tipo: true },
+  });
+  return registro?.tipo ?? null;
 }
 
 export async function deleteQualidadeRegistro(uid: string): Promise<boolean> {
@@ -2109,7 +2117,7 @@ export async function listQualidadeResponsaveis() {
   const result: Array<{ id: string; nome: string; email: string; ativo: boolean }> = [];
   for (const u of users) {
     const perms = await getPermissoesUsuario(u.login);
-    if (!perms.includes(PERMISSOES.QUALIDADE_VER)) continue;
+    if (!temAcessoQualidade(perms)) continue;
     result.push({
       id: u.login,
       nome: u.nome ?? u.login,

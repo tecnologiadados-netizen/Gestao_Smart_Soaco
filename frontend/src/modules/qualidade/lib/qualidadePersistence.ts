@@ -23,6 +23,15 @@ import { useConfigStore } from '@qualidade/lib/store/config-store';
 import { useDocumentsStore } from '@qualidade/lib/store/documents-store';
 import { useRegistrosStore } from '@qualidade/lib/store/registros-store';
 import { isRegistroHistoricoNomusExcluido } from '@qualidade/lib/registros/constants';
+import type { ModuloRegistroTipo } from '@qualidade/lib/registros/constants';
+import type { CodigoPermissao } from '@/config/permissoes';
+import {
+  temAlgumRegistroQualidade,
+  temCalibracoesQualidade,
+  temConfigQualidade,
+  temDocumentosQualidade,
+  temRegistroQualidade,
+} from '@/utils/qualidadePermissoes';
 import {
   persistConfigToServer as flushConfigToServer,
   isQualidadeConfigHydrating,
@@ -989,6 +998,17 @@ export async function hydrateQualidadeFromServer(currentUserLogin: string) {
   }
 }
 
+let syncPode: (codigo: CodigoPermissao) => boolean = () => false;
+
+export function setQualidadeSyncPermissoes(pode: (codigo: CodigoPermissao) => boolean) {
+  syncPode = pode;
+}
+
+function podeSyncRegistro(tipo: string): boolean {
+  if (tipo !== 'rnc' && tipo !== 'rcc' && tipo !== 'avaliacao-fornecedor') return false;
+  return temRegistroQualidade(syncPode, tipo as ModuloRegistroTipo);
+}
+
 export function startQualidadeAutoSync() {
   if (autoSyncStarted) return;
   autoSyncStarted = true;
@@ -1000,12 +1020,14 @@ export function startQualidadeAutoSync() {
   useConfigStore.subscribe((state, prev) => {
     if (isQualidadeConfigHydrating()) return;
     if (state.departments !== prev.departments || state.documentTypes !== prev.documentTypes) {
-      debounceSync('config', () => flushConfigToServer({
-        departments: state.departments,
-        documentTypes: state.documentTypes,
-      }), 300);
+      if (temConfigQualidade(syncPode, 'setores') || temConfigQualidade(syncPode, 'categorias')) {
+        debounceSync('config', () => flushConfigToServer({
+          departments: temConfigQualidade(syncPode, 'setores') ? state.departments : [],
+          documentTypes: temConfigQualidade(syncPode, 'categorias') ? state.documentTypes : [],
+        }), 300);
+      }
     }
-    if (state.enderecamentos !== prev.enderecamentos) {
+    if (state.enderecamentos !== prev.enderecamentos && temConfigQualidade(syncPode, 'enderecamento')) {
       debounceSync('enderecamentos', () => flushEnderecamentosToServer(state.enderecamentos), 300);
     }
   });
@@ -1019,14 +1041,19 @@ export function startQualidadeAutoSync() {
       state.validadeAlertas !== prev.validadeAlertas ||
       state.revalidacoes !== prev.revalidacoes
     ) {
-      debounceSync('documents', () => syncDocumentsStateNow(false));
+      if (temDocumentosQualidade(syncPode)) {
+        debounceSync('documents', () => syncDocumentsStateNow(false));
+      }
     }
   });
 
   useRegistrosStore.subscribe((state, prev) => {
     if (registrosHydrating) return;
     if (state.registros !== prev.registros) {
-      debounceSync('registros', () => syncQualidadeRegistros(state.registros));
+      if (temAlgumRegistroQualidade(syncPode)) {
+        const permitidos = state.registros.filter((registro) => podeSyncRegistro(registro.tipo));
+        debounceSync('registros', () => syncQualidadeRegistros(permitidos));
+      }
     }
   });
 
@@ -1039,13 +1066,17 @@ export function startQualidadeAutoSync() {
       state.tasks !== prev.tasks
     ) {
       // Auto-sync sem binários — arquivos só no flush explícito (o JSON da API cabe até 80MB).
-      debounceSync('calibrations', () => syncCalibrationsStateNow(false));
+      if (temCalibracoesQualidade(syncPode)) {
+        debounceSync('calibrations', () => syncCalibrationsStateNow(false));
+      }
     }
   });
 
   useAvaliacaoFornecedorStore.subscribe((state, prev) => {
     if (state.avaliacoes !== prev.avaliacoes) {
-      debounceSync('avaliacoes', () => syncQualidadeAvaliacoes(state.avaliacoes));
+      if (temRegistroQualidade(syncPode, 'avaliacao-fornecedor')) {
+        debounceSync('avaliacoes', () => syncQualidadeAvaliacoes(state.avaliacoes));
+      }
     }
   });
 }

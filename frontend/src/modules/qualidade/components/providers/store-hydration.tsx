@@ -4,6 +4,7 @@ import {
   hydrateQualidadeFromServer,
   isQualidadeStoreHydratedForLogin,
   markQualidadeStoreHydrated,
+  setQualidadeSyncPermissoes,
   startQualidadeAutoSync,
 } from '@qualidade/lib/qualidadePersistence';
 import { LoadingOverlay } from '@qualidade/components/ui/loading-overlay';
@@ -17,7 +18,11 @@ const HYDRATE_TIMEOUT_MS = 45_000;
  * snapshot antigo do servidor (corrida com flush em andamento).
  */
 export function StoreHydration({ children }: { children: React.ReactNode }) {
-  const { login, profileLoaded } = useAuth();
+  const { login, profileLoaded, hasPermission } = useAuth();
+
+  useEffect(() => {
+    setQualidadeSyncPermissoes(hasPermission);
+  }, [hasPermission]);
   const [hydrated, setHydrated] = useState(
     () => Boolean(login && isQualidadeStoreHydratedForLogin(login))
   );
