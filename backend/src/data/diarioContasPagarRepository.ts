@@ -10,7 +10,9 @@ import sql from 'mssql';
 import type { ResultSetHeader } from 'mysql2';
 import { getShop9Pool, isShop9Enabled } from '../config/shop9Db.js';
 import { getNomusPool, isNomusEnabled, queryNomus as executarQueryNomus } from '../config/nomusDb.js';
+import { prisma } from '../config/prisma.js';
 import { formatSqlDateYmd } from './dfcDateUtils.js';
+import { nomeShop9Condicao } from './crmFinanceiro/shop9TipoConta.js';
 import {
   SHOP9_DESCRICAO_MAX,
   descricaoPrimeiraReprogramacao,
@@ -24,7 +26,7 @@ const NOMUS_EMPRESAS = [1, 2];
 
 const SQL_NOMUS = `
 SELECT
-  lf.idContaBancaria AS idContaBancaria,
+  COALESCE(lf.idContaBancaria, af.idContaBancaria) AS idContaBancaria,
   cb.nome AS contaBancaria,
   af.id AS codigoConta,
   af.discriminador AS tipoConta,
@@ -59,7 +61,7 @@ LEFT JOIN contafinanceiro cf
       THEN 2
     ELSE COALESCE(af.idContaFinanceiro, lf.idContaFinanceiro)
   END
-LEFT JOIN contabancaria cb ON cb.id = lf.idContaBancaria
+LEFT JOIN contabancaria cb ON cb.id = COALESCE(lf.idContaBancaria, af.idContaBancaria)
 LEFT JOIN empresa emp ON emp.id = af.idEmpresa
 LEFT JOIN formapagamento fp ON fp.id = af.idFormaPagamento
 LEFT JOIN parcelapagamento pg ON pg.id = af.idParcelaDocumentoSaida
@@ -83,7 +85,7 @@ WHERE af.idEmpresa IN (?, ?)
 UNION ALL
 
 SELECT
-  lf.idContaBancaria AS idContaBancaria,
+  COALESCE(lf.idContaBancaria, af.idContaBancaria) AS idContaBancaria,
   cb.nome AS contaBancaria,
   COALESCE(af.id, lf.id) AS codigoConta,
   lf.discriminador AS tipoConta,
@@ -121,7 +123,7 @@ LEFT JOIN contafinanceiro cf
 LEFT JOIN empresa emp ON emp.id = COALESCE(af.idEmpresa, lf.idEmpresa)
 LEFT JOIN formapagamento fp ON fp.id = COALESCE(af.idFormaPagamento, lf.idFormaPagamento)
 LEFT JOIN parcelapagamento pg ON pg.id = af.idParcelaDocumentoSaida
-LEFT JOIN contabancaria cb ON cb.id = lf.idContaBancaria
+LEFT JOIN contabancaria cb ON cb.id = COALESCE(lf.idContaBancaria, af.idContaBancaria)
 WHERE lf.idEmpresa IN (?, ?)
   AND af.id IS NULL
   AND lf.discriminador = 'LP'
@@ -175,6 +177,17 @@ function statusNomus(dataBaixa: string | null): DiarioContaPagarStatus {
   return dataBaixa ? 'Baixado' : 'Em aberto';
 }
 
+function formaPagamentoShop9(row: Record<string, unknown>): string | null {
+  const tipo = texto(row.tipoContaCodigo);
+  const administradora = texto(row.administradoraNome);
+  if (!tipo && !administradora) return null;
+  return nomeShop9Condicao({
+    tipoConta: tipo,
+    administradora,
+    parcela: texto(row.parcelaDescricao),
+  });
+}
+
 function mapShop9(row: Record<string, unknown>): DiarioContaPagarLinha {
   const statusRaw = texto(row.statusBaixa);
   const status: DiarioContaPagarStatus = statusRaw === 'Baixado' ? 'Baixado' : 'Em aberto';
@@ -190,8 +203,8 @@ function mapShop9(row: Record<string, unknown>): DiarioContaPagarLinha {
     planoContas: texto(row.planoContas),
     descricao: texto(row.descricaoLancamento),
     observacao: null,
-    formaPagamento: null,
-    contaBancaria: null,
+    formaPagamento: formaPagamentoShop9(row),
+    contaBancaria: texto(row.contaBancaria),
     valor: toNum(row.valorTotalCalculado),
     valorBaixado: toNum(row.valorBaixado),
     saldo: toNum(row.saldoBaixar),
@@ -234,8 +247,8 @@ async function queryShop9(dataInicio: string, dataFim: string): Promise<{ linhas
     req.input('dataInicio', sql.Date, new Date(`${dataInicio}T12:00:00`));
     req.input('dataFim', sql.Date, new Date(`${dataFim}T12:00:00`));
     const result = await req.query(SQL_SHOP9);
-    const list = Array.isArray(result.recordset) ? result.recordset : [];
-    return { linhas: list.map((r) => mapShop9(r as Record<string, unknown>)) };
+    const list = (Array.isArray(result.recordset) ? result.recordset : []) as Record<string, unknown>[];
+    return { linhas: list.map((r) => mapShop9(r)) };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[diarioContasPagar] Shop9:', msg);
@@ -275,11 +288,35 @@ export async function queryDiarioContasPagar(params: {
     if (fo !== 0) return fo;
     return a.origem.localeCompare(b.origem);
   });
+  await aplicarContaLocalShop9(linhas);
   return {
     linhas,
     erroShop9: shop9.erro,
     erroNomus: nomus.erro,
   };
+}
+
+/** O nome gravado neste projeto prevalece sobre Contas_Bancarias do Shop9. */
+async function aplicarContaLocalShop9(linhas: DiarioContaPagarLinha[]): Promise<void> {
+  const ordens = [
+    ...new Set(linhas.filter((l) => l.origem === 'Shop9' && l.codigo > 0).map((l) => l.codigo)),
+  ];
+  if (ordens.length === 0) return;
+  try {
+    const rows = await prisma.diarioShop9ContaBancaria.findMany({
+      where: { ordemFinanceira: { in: ordens } },
+      select: { ordemFinanceira: true, nomeConta: true },
+    });
+    const porOrdem = new Map(rows.map((r) => [r.ordemFinanceira, r.nomeConta]));
+    for (const linha of linhas) {
+      if (linha.origem !== 'Shop9') continue;
+      const nome = porOrdem.get(linha.codigo);
+      if (nome) linha.contaBancaria = nome;
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[diarioContasPagar] conta local Shop9:', msg);
+  }
 }
 
 const MAX_REPROGRAMAR = 400;
@@ -521,3 +558,266 @@ export async function reprogramarVencimentoContasPagar(params: {
 }
 
 export { MAX_REPROGRAMAR };
+
+export interface ContaBancariaOpcao {
+  id: number;
+  nome: string;
+}
+
+export interface DefinirContaBancariaResultado {
+  origem: 'Nomus' | 'Shop9';
+  idContaBancaria: number;
+  nomeConta: string;
+  atualizados: number;
+  ignorados: ReprogramarVencimentoIgnorado[];
+  erro?: string;
+}
+
+const SQL_NOMUS_CONTA_ATIVA = `
+SELECT cb.id AS id, cb.nome AS nome
+FROM contabancaria cb
+WHERE cb.id = ?
+  AND IFNULL(cb.ativo, 1) = 1
+  AND TRIM(IFNULL(cb.nome, '')) <> ''
+LIMIT 1
+`;
+
+const SQL_NOMUS_CONTAS = `
+SELECT cb.id AS id, cb.nome AS nome
+FROM contabancaria cb
+WHERE IFNULL(cb.ativo, 1) = 1
+  AND TRIM(IFNULL(cb.nome, '')) <> ''
+ORDER BY cb.nome
+LIMIT 300
+`;
+
+const SQL_NOMUS_CONTA_ATUAL = `
+SELECT af.idContaBancaria AS idContaBancaria
+FROM agendamentofinanceiro af
+WHERE af.id = ?
+  AND af.discriminador = 'P'
+  AND af.idEmpresa IN (1, 2)
+  AND af.idPedidoCompra IS NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM lancamentofinanceiro lf
+    WHERE COALESCE(lf.idAgendamentoPagamento, lf.idAgendamentoRecebimento) = af.id
+      AND lf.dataLancamento IS NOT NULL
+  )
+LIMIT 1
+`;
+
+/** Só o agendamento em aberto. Lançamento já baixado não é reescrito. */
+const SQL_UPDATE_NOMUS_CONTA = `
+UPDATE agendamentofinanceiro af
+SET af.idContaBancaria = ?
+WHERE af.id = ?
+  AND af.discriminador = 'P'
+  AND af.idEmpresa IN (1, 2)
+  AND af.idPedidoCompra IS NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM lancamentofinanceiro lf
+    WHERE COALESCE(lf.idAgendamentoPagamento, lf.idAgendamentoRecebimento) = af.id
+      AND lf.dataLancamento IS NOT NULL
+  )
+`;
+
+const SQL_SHOP9_CONTA = `
+SELECT TOP 1 cb.Ordem AS id, cb.Nome AS nome
+FROM Contas_Bancarias cb
+WHERE cb.Ordem = @ordem
+  AND LTRIM(RTRIM(ISNULL(cb.Nome, ''))) <> ''
+`;
+
+const SQL_SHOP9_CONTAS = `
+SELECT cb.Ordem AS id, cb.Nome AS nome
+FROM Contas_Bancarias cb
+WHERE LTRIM(RTRIM(ISNULL(cb.Nome, ''))) <> ''
+ORDER BY cb.Nome
+`;
+
+export async function listarContasBancariasDiario(
+  origem: 'Nomus' | 'Shop9',
+): Promise<{ contas: ContaBancariaOpcao[]; erro?: string }> {
+  if (origem === 'Nomus') {
+    if (!isNomusEnabled()) return { contas: [], erro: 'Nomus não configurado' };
+    try {
+      const [rows] = await executarQueryNomus<Record<string, unknown>[]>(SQL_NOMUS_CONTAS, []);
+      const list: Record<string, unknown>[] = Array.isArray(rows) ? rows : [];
+      return {
+        contas: list
+          .map((r) => ({ id: toNum(r.id), nome: texto(r.nome) ?? '' }))
+          .filter((c) => c.id > 0 && c.nome),
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { contas: [], erro: msg };
+    }
+  }
+  if (!isShop9Enabled()) return { contas: [], erro: 'Shop9 não configurado' };
+  const pool = await getShop9Pool();
+  if (!pool) return { contas: [], erro: 'Shop9: falha ao conectar' };
+  try {
+    const result = await pool.request().query(SQL_SHOP9_CONTAS);
+    const list = (Array.isArray(result.recordset) ? result.recordset : []) as Record<string, unknown>[];
+    return {
+      contas: list
+        .map((r) => ({ id: toNum(r.id), nome: texto(r.nome) ?? '' }))
+        .filter((c) => c.id > 0 && c.nome),
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { contas: [], erro: msg };
+  }
+}
+
+async function definirContaNomus(
+  ids: number[],
+  idContaBancaria: number,
+): Promise<DefinirContaBancariaResultado> {
+  const vazio = (erro?: string): DefinirContaBancariaResultado => ({
+    origem: 'Nomus',
+    idContaBancaria,
+    nomeConta: '',
+    atualizados: 0,
+    ignorados: [],
+    erro,
+  });
+  const pool = getNomusPool();
+  if (!pool || !isNomusEnabled()) return vazio('Nomus não configurado');
+  const connection = await pool.getConnection();
+  const ignorados: ReprogramarVencimentoIgnorado[] = [];
+  let atualizados = 0;
+  try {
+    const [contaRows] = await connection.query(SQL_NOMUS_CONTA_ATIVA, [idContaBancaria]);
+    const conta = Array.isArray(contaRows)
+      ? (contaRows[0] as Record<string, unknown> | undefined)
+      : undefined;
+    const nomeConta = texto(conta?.nome);
+    if (!conta || !nomeConta) {
+      return vazio('Conta bancária inexistente ou inativa no Nomus.');
+    }
+    await connection.beginTransaction();
+    for (const id of ids) {
+      const [result] = await connection.execute(SQL_UPDATE_NOMUS_CONTA, [idContaBancaria, id]);
+      let affected = (result as ResultSetHeader).affectedRows ?? 0;
+      if (affected === 0) {
+        const [again] = await connection.query(SQL_NOMUS_CONTA_ATUAL, [id]);
+        const row = Array.isArray(again) ? (again[0] as Record<string, unknown> | undefined) : undefined;
+        if (row && toNum(row.idContaBancaria) === idContaBancaria) affected = 1;
+      }
+      if (affected > 0) atualizados += 1;
+      else ignorados.push({ origem: 'Nomus', id, motivo: MOTIVO_IGNORADO });
+    }
+    await connection.commit();
+    return { origem: 'Nomus', idContaBancaria, nomeConta, atualizados, ignorados };
+  } catch (err) {
+    try {
+      await connection.rollback();
+    } catch {
+      /* rollback best-effort */
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[diarioContasPagar] conta Nomus:', msg);
+    return vazio(msg);
+  } finally {
+    connection.release();
+  }
+}
+
+async function definirContaShop9(
+  ids: number[],
+  idContaBancaria: number,
+  usuario: string,
+): Promise<DefinirContaBancariaResultado> {
+  const vazio = (erro?: string): DefinirContaBancariaResultado => ({
+    origem: 'Shop9',
+    idContaBancaria,
+    nomeConta: '',
+    atualizados: 0,
+    ignorados: [],
+    erro,
+  });
+  if (!isShop9Enabled()) return vazio('Shop9 não configurado');
+  const pool = await getShop9Pool();
+  if (!pool) return vazio('Shop9: falha ao conectar');
+  const reqConta = pool.request();
+  reqConta.input('ordem', sql.Int, idContaBancaria);
+  const contaRes = await reqConta.query(SQL_SHOP9_CONTA);
+  const conta = contaRes.recordset?.[0] as Record<string, unknown> | undefined;
+  const nomeConta = texto(conta?.nome);
+  const ordemConta = toNum(conta?.id);
+  if (!nomeConta || ordemConta <= 0) return vazio('Conta bancária inexistente no Shop9.');
+
+  const elegiveis: number[] = [];
+  const ignorados: ReprogramarVencimentoIgnorado[] = [];
+  for (const ordem of ids) {
+    const leitura = pool.request();
+    leitura.input('ordem', sql.Int, ordem);
+    const found = await leitura.query(SQL_SHOP9_ELEGIVEL);
+    if ((found.recordset?.length ?? 0) > 0) elegiveis.push(ordem);
+    else ignorados.push({ origem: 'Shop9', id: ordem, motivo: MOTIVO_IGNORADO });
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const ordem of elegiveis) {
+        await tx.diarioShop9ContaBancaria.upsert({
+          where: { ordemFinanceira: ordem },
+          create: {
+            ordemFinanceira: ordem,
+            ordemContaBancaria: ordemConta,
+            nomeConta,
+            usuario,
+          },
+          update: {
+            ordemContaBancaria: ordemConta,
+            nomeConta,
+            usuario,
+          },
+        });
+      }
+    });
+    return {
+      origem: 'Shop9',
+      idContaBancaria: ordemConta,
+      nomeConta,
+      atualizados: elegiveis.length,
+      ignorados,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[diarioContasPagar] conta Shop9 local:', msg);
+    return vazio(msg);
+  }
+}
+
+/**
+ * Nomus: UPDATE só em agendamentofinanceiro.idContaBancaria, no título em aberto
+ * (discriminador P, empresas 1 e 2, sem pedido de compra, sem baixa).
+ * Shop9: não escreve em Financeiro_Contas; grava a Ordem neste projeto.
+ * A seleção precisa ser de uma única origem.
+ */
+export async function definirContaBancariaDiario(params: {
+  idContaBancaria: number;
+  itens: ReprogramarVencimentoItem[];
+  usuario: string;
+}): Promise<DefinirContaBancariaResultado> {
+  const origens = new Set(params.itens.map((i) => i.origem));
+  if (origens.size !== 1) {
+    return {
+      origem: 'Nomus',
+      idContaBancaria: params.idContaBancaria,
+      nomeConta: '',
+      atualizados: 0,
+      ignorados: [],
+      erro: 'Selecione títulos de uma só origem.',
+    };
+  }
+  const origem = params.itens[0]?.origem;
+  if (origem === 'Nomus') {
+    return definirContaNomus(idsUnicos(params.itens, 'Nomus'), params.idContaBancaria);
+  }
+  return definirContaShop9(idsUnicos(params.itens, 'Shop9'), params.idContaBancaria, params.usuario);
+}

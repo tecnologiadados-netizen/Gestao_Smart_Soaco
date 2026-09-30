@@ -33,12 +33,18 @@ SELECT
   fl.Nome AS nomeFilial,
   cc.Nome AS centrocusto,
   cf.Nome AS nomeRazaoSocial,
-  cf.Fantasia AS clienteFornecedor
+  cf.Fantasia AS clienteFornecedor,
+  cbanco.Nome AS contaBancaria,
+  fc.Tipo_Conta AS tipoContaCodigo,
+  ac.Nome AS administradoraNome,
+  fc.Parcela_Descricao AS parcelaDescricao
 FROM Financeiro_Contas fc
 LEFT JOIN Plano_Contas3 pc ON pc.Ordem = fc.Ordem_Plano_Contas3
 LEFT JOIN Filiais fl ON fl.Ordem = fc.Ordem_Filial
 LEFT JOIN Cli_For cf ON cf.Ordem = fc.Ordem_Cli_For
 LEFT JOIN Centro_Custo cc ON cc.Ordem = fc.Ordem_Centro_Custo
+LEFT JOIN Contas_Bancarias cbanco ON cbanco.Ordem = fc.Ordem_Conta_Bancaria
+LEFT JOIN Administradoras_Cartao ac ON ac.Ordem = fc.Cartao_Ordem_Administradora
 WHERE fc.Pagar_Receber = 'P'
   AND fc.Situacao = 'A'
   AND fc.Data_Vencimento IS NOT NULL
@@ -84,12 +90,18 @@ SELECT
   fl.Nome AS nomeFilial,
   cc.Nome AS centrocusto,
   cf.Nome AS nomeRazaoSocial,
-  cf.Fantasia AS clienteFornecedor
+  cf.Fantasia AS clienteFornecedor,
+  cbanco.Nome AS contaBancaria,
+  fc.Tipo_Conta AS tipoContaCodigo,
+  ac.Nome AS administradoraNome,
+  fc.Parcela_Descricao AS parcelaDescricao
 FROM Financeiro_Contas fc
 LEFT JOIN Plano_Contas3 pc ON pc.Ordem = fc.Ordem_Plano_Contas3
 LEFT JOIN Filiais fl ON fl.Ordem = fc.Ordem_Filial
 LEFT JOIN Cli_For cf ON cf.Ordem = fc.Ordem_Cli_For
 LEFT JOIN Centro_Custo cc ON cc.Ordem = fc.Ordem_Centro_Custo
+LEFT JOIN Contas_Bancarias cbanco ON cbanco.Ordem = fc.Ordem_Conta_Bancaria
+LEFT JOIN Administradoras_Cartao ac ON ac.Ordem = fc.Cartao_Ordem_Administradora
 WHERE fc.Pagar_Receber = 'P'
   AND fc.Situacao <> 'C'
   AND fc.Data_Quitacao IS NOT NULL

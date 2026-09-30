@@ -88,3 +88,42 @@ export async function reprogramarDiarioContasPagar(params: {
     ignorados: Array.isArray(body.ignorados) ? body.ignorados : [],
   };
 }
+
+export interface ContaBancariaOpcao {
+  id: number;
+  nome: string;
+}
+
+export async function fetchDiarioContasBancarias(origem: 'Nomus' | 'Shop9'): Promise<ContaBancariaOpcao[]> {
+  const res = await apiFetch(`/api/financeiro/diario/contas-bancarias?origem=${origem}`);
+  const body = (await res.json().catch(() => ({}))) as { contas?: ContaBancariaOpcao[]; error?: string };
+  if (!res.ok) throw new Error(body.error || `Erro ao listar contas bancárias (${res.status})`);
+  return Array.isArray(body.contas) ? body.contas : [];
+}
+
+export interface DefinirContaBancariaResponse {
+  origem: 'Nomus' | 'Shop9';
+  idContaBancaria: number;
+  nomeConta: string;
+  atualizados: number;
+  ignorados: ReprogramarContasPagarIgnorado[];
+  erro?: string;
+  error?: string;
+}
+
+export async function definirContaBancariaDiario(params: {
+  idContaBancaria: number;
+  itens: ReprogramarContasPagarItem[];
+}): Promise<DefinirContaBancariaResponse> {
+  const res = await apiFetch('/api/financeiro/diario/contas-pagar/conta-bancaria', {
+    method: 'POST',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as DefinirContaBancariaResponse;
+  if (!res.ok) throw new Error(body.error || body.erro || `Erro ao definir conta bancária (${res.status})`);
+  return {
+    ...body,
+    atualizados: Number(body.atualizados) || 0,
+    ignorados: Array.isArray(body.ignorados) ? body.ignorados : [],
+  };
+}
