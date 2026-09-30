@@ -139,7 +139,7 @@ export const RCC_CAMPOS_PDF_MAPA: RccCampoPdfMapa[] = [
     chaveSistema: "reclamacao1",
     versoes: ["cliente", "empresa"],
     situacao: "parcial",
-    observacao: "Usa reclamação 1; se vazia, reclamação 2.",
+    observacao: "Usa só a categoria de cada linha (Categorize a reclamação).",
   },
   {
     rotuloPdf: "Descrição da reclamação",
@@ -166,9 +166,9 @@ export const RCC_CAMPOS_PDF_MAPA: RccCampoPdfMapa[] = [
     situacao: "mapeado",
   },
   {
-    rotuloPdf: "Comentário",
+    rotuloPdf: "Comentário interno",
     chaveSistema: "comentario",
-    versoes: ["cliente"],
+    versoes: ["empresa"],
     situacao: "mapeado",
   },
   {
@@ -180,10 +180,10 @@ export const RCC_CAMPOS_PDF_MAPA: RccCampoPdfMapa[] = [
   {
     rotuloPdf: "Evidências",
     chaveSistema: "anexos",
-    versoes: ["cliente"],
+    versoes: ["cliente", "empresa"],
     situacao: "mapeado",
     observacao:
-      "Cada arquivo vira página no final do PDF, com o título informado e o nome do arquivo.",
+      "Cada arquivo vira página no final do PDF, nas versões do cliente e da empresa, com o título informado e o nome do arquivo.",
   },
   {
     rotuloPdf: "Número de ordem de produção",

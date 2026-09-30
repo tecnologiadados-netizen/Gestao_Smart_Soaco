@@ -7,6 +7,10 @@ import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { CodigoDocumentoBadge } from "@qualidade/components/registros/codigo-documento-cell";
 import { RccRelatorioPdfButton } from "@qualidade/components/registros/rcc-relatorio-pdf-button";
 import { RncRelatorioPdfButton } from "@qualidade/components/registros/rnc-relatorio-pdf-button";
+import {
+  destacarCamposPendentes,
+  mensagemCamposObrigatorios,
+} from "@qualidade/components/registros/campo-erro";
 import { RccForm } from "@qualidade/components/registros/rcc-form";
 import { RncForm } from "@qualidade/components/registros/rnc-form";
 import {
@@ -129,7 +133,8 @@ export function RegistroDetalheDialog({
       });
       if (!validacao.valido) {
         setErrosRnc(validacao.erros);
-        setErro("Corrija os campos obrigatórios antes de salvar.");
+        setErro(mensagemCamposObrigatorios(validacao.erros));
+        destacarCamposPendentes();
         return;
       }
 
@@ -150,7 +155,8 @@ export function RegistroDetalheDialog({
       });
       if (!validacao.valido) {
         setErrosRcc(validacao.erros);
-        setError("Corrija os campos obrigatórios antes de salvar.");
+        setErro(mensagemCamposObrigatorios(validacao.erros));
+        destacarCamposPendentes();
         return;
       }
 
@@ -284,12 +290,6 @@ export function RegistroDetalheDialog({
             />
           ) : null}
 
-          {erro ? (
-            <p className="mt-4 text-sm text-destructive" role="alert">
-              {erro}
-            </p>
-          ) : null}
-
           {registro.origemNomus && !editando ? (
             <p className="mt-4 text-xs text-muted-foreground">
               Registro importado do histórico do ERP. O código do documento
@@ -297,6 +297,15 @@ export function RegistroDetalheDialog({
             </p>
           ) : null}
         </div>
+
+        {erro ? (
+          <p
+            role="alert"
+            className="border-t border-destructive/30 bg-destructive/10 px-6 py-3 text-sm font-medium text-destructive"
+          >
+            {erro}
+          </p>
+        ) : null}
 
         <div className="sgq-form-footer justify-between gap-3">
           {editando ? (

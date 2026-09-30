@@ -1,3 +1,4 @@
+import { codigoAlfanumericoMaiusculo } from "@qualidade/lib/registros/codigo-alfanumerico";
 import type { RegistroAnexo } from "@qualidade/types/registro-anexo";
 import { normalizarRegistroAnexos } from "@qualidade/types/registro-anexo";
 
@@ -370,6 +371,7 @@ export function normalizarRncDados(
     ...normalizarPlanoAcao(merged),
     ...normalizarStatusRnc(dados, merged),
     ...normalizarItensProduto(dados, merged),
+    loteSerie: codigoAlfanumericoMaiusculo(merged.loteSerie),
     analiseEficaz: normalizarSimNao(merged.analiseEficaz),
     anexos: normalizarRegistroAnexos(merged.anexos, {
       manterVazios: opcoes?.manterAnexosVazios,

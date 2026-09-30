@@ -2120,11 +2120,11 @@ export async function listQualidadeResponsaveis() {
   return result;
 }
 
-/** Colaboradores do orgânico (exceto desligados) para escolha de responsável na RNC. */
+/** Colaboradores ativos do orgânico para escolha de responsável. */
 export async function listOrganicoColaboradoresParaRnc() {
   const rows = await prisma.rhOrganico.findMany({
     where: {
-      status: { not: 'Desligado' },
+      status: 'Ativo',
     },
     select: {
       id: true,

@@ -1,4 +1,5 @@
 import {
+  RCC_ORIGEM_CLIENTE_INDUSTRIA,
   RCC_ORIGEM_CLIENTE_REVENDEDOR,
   origemReclamacaoRcc,
 } from "@qualidade/lib/registros/constants";
@@ -48,7 +49,7 @@ export function validarRcc(
   }
   if (!respostaSimNao(rcc.possuiNumeroSerie)) {
     erros.possuiNumeroSerie = "Informe se o produto possui número de série.";
-  } else if (rcc.possuiNumeroSerie === "Sim" && !rcc.numeroSerieLoteProduto.replace(/\D/g, "").trim()) {
+  } else if (rcc.possuiNumeroSerie === "Sim" && !rcc.numeroSerieLoteProduto.trim()) {
     erros.numeroSerieLoteProduto = "Informe o número de série ou lote.";
   }
   if (!respostaSimNao(rcc.produtoNossaFabricacao)) {
@@ -59,16 +60,13 @@ export function validarRcc(
   }
   const origem = origemReclamacaoRcc(rcc.feedbackClienteEnviado, rcc.clienteDoRevendedor);
   const clienteNaSecao =
-    origem === RCC_ORIGEM_CLIENTE_REVENDEDOR &&
-    (opcoes?.origemNomus || rcc.temPedidoVenda !== "sim");
+    origem === RCC_ORIGEM_CLIENTE_REVENDEDOR
+      ? Boolean(opcoes?.origemNomus || rcc.temPedidoVenda !== "sim")
+      : origem === RCC_ORIGEM_CLIENTE_INDUSTRIA &&
+        rcc.temPedidoVenda === "nao" &&
+        !opcoes?.origemNomus;
   if (clienteNaSecao && !rcc.nomeClienteConsumidor.trim()) {
     erros.nomeClienteConsumidor = "Informe o nome do cliente.";
-  }
-  if (clienteNaSecao && !rcc.telefone.trim()) {
-    erros.telefone = "Informe o telefone do cliente.";
-  }
-  if (clienteNaSecao && !rcc.cidade.trim()) {
-    erros.cidade = "Informe a cidade do cliente.";
   }
   if (
     clienteNaSecao &&

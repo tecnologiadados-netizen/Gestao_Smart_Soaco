@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@qualidade/components/ui/select";
+import { CampoErro } from "@qualidade/components/registros/campo-erro";
 import { ClienteSearchField } from "@qualidade/components/registros/cliente-search-field";
 import { OrganicoResponsavelField } from "@qualidade/components/registros/organico-responsavel-field";
 import { PessoaSearchField } from "@qualidade/components/registros/pessoa-search-field";
@@ -23,8 +24,10 @@ import { RccReclamacoesTable } from "@qualidade/components/registros/rcc-reclama
 import { RccServicosTable } from "@qualidade/components/registros/rcc-servicos-table";
 import { RncItensProdutoTable } from "@qualidade/components/registros/rnc-itens-produto-table";
 import { RegistroAnexosTable } from "@qualidade/components/registros/registro-anexos-table";
+import { codigoAlfanumericoMaiusculo } from "@qualidade/lib/registros/codigo-alfanumerico";
 import {
   ORIGEM_NOMUS_LABEL,
+  RCC_ORIGEM_CLIENTE_INDUSTRIA,
   RCC_ORIGEM_CLIENTE_REVENDEDOR,
   RCC_ORIGEM_RECLAMACAO,
   RCC_SIM_NAO,
@@ -45,7 +48,7 @@ import {
   type RccLinhaReclamacao,
   type RccResponsavelAssistencia,
 } from "@qualidade/types/rcc";
-import { dataLocalHojeIso, inputDateParaIso } from "@qualidade/types/rnc";
+import { dataLocalHojeIso, inputDateParaIso, notasFiscaisDistintas } from "@qualidade/types/rnc";
 import { criarRncDadosVazio, type RncDados } from "@qualidade/types/rnc";
 
 interface RccFormProps {
@@ -57,15 +60,6 @@ interface RccFormProps {
   origemNomus?: boolean;
   codigoDocumentoPreview?: string;
   usuarioCriacaoNome?: string;
-}
-
-function CampoErro({ mensagem }: { mensagem?: string }) {
-  if (!mensagem) return null;
-  return (
-    <p className="text-xs text-destructive" role="alert">
-      {mensagem}
-    </p>
-  );
 }
 
 const OPCAO_SELECIONE = "Selecione...";
@@ -144,7 +138,10 @@ export function RccForm({
       temPedidoVenda: next.temPedidoVenda,
       itensProduto: next.itensProduto,
       grupoProduto: next.grupoProduto,
-      numeroNf: next.temPedidoVenda === "nao" ? "" : next.notaFiscal,
+      numeroNf:
+        next.temPedidoVenda === "nao"
+          ? notasFiscaisDistintas(next.itensProduto)
+          : next.notaFiscal,
       numeroPedidoInternoExterno:
         next.temPedidoVenda === "nao" ? "" : atual.numeroPedidoInternoExterno,
     });
@@ -154,12 +151,14 @@ export function RccForm({
 
   const somenteLeitura = disabled || modo === "visualizar";
   const [camposVinculadosCliente, setCamposVinculadosCliente] = useState(false);
-  const [camposVinculadosRevendedor, setCamposVinculadosRevendedor] =
-    useState(false);
 
   const ocultarDadosCliente = dados.temPedidoVenda === "sim" && !origemNomus;
   const paraRevendedor = dados.feedbackClienteEnviado === RCC_ORIGEM_CLIENTE_REVENDEDOR;
-  const mostrarDadosCliente = paraRevendedor && !ocultarDadosCliente;
+  const paraIndustriaSemPedido =
+    dados.feedbackClienteEnviado === RCC_ORIGEM_CLIENTE_INDUSTRIA &&
+    dados.temPedidoVenda === "nao" &&
+    !origemNomus;
+  const mostrarDadosCliente = (paraRevendedor && !ocultarDadosCliente) || paraIndustriaSemPedido;
   const nomeRevendedorNaGrade = paraRevendedor && dados.temPedidoVenda === "nao" && !origemNomus;
   const rccFinalizada =
     dados.rccFinalizada === "Sim" || dados.rccFinalizada === "Não"
@@ -179,9 +178,6 @@ export function RccForm({
 
   const camposClienteAuto =
     camposVinculadosCliente && !somenteLeitura && !origemNomus;
-
-  const camposRevendedorAuto =
-    camposVinculadosRevendedor && !somenteLeitura && !origemNomus;
 
   const codigoExibicao =
     dados.codigoProduto?.trim() || extrairCodigoProduto(dados.produto);
@@ -332,10 +328,7 @@ export function RccForm({
                               pontoReferencia: "",
                             }),
                       });
-                      if (!revendedor) {
-                        setCamposVinculadosRevendedor(false);
-                        setCamposVinculadosCliente(false);
-                      }
+                      if (!revendedor) setCamposVinculadosCliente(false);
                     }}
                     disabled={somenteLeitura}
                   >
@@ -483,13 +476,12 @@ export function RccForm({
                   <Label htmlFor="rcc-serie-lote">{rccFieldLabels.numeroSerieLoteProduto} *</Label>
                   <Input
                     id="rcc-serie-lote"
-                    value={(dados.numeroSerieLoteProduto ?? "").replace(/\D/g, "")}
-                    inputMode="numeric"
+                    value={codigoAlfanumericoMaiusculo(dados.numeroSerieLoteProduto ?? "")}
                     autoComplete="off"
+                    spellCheck={false}
+                    className="uppercase"
                     onChange={(e) => {
-                      const numero = e.target.value.replace(/\D/g, "");
-                      e.target.value = numero;
-                      patch({ numeroSerieLoteProduto: numero });
+                      patch({ numeroSerieLoteProduto: codigoAlfanumericoMaiusculo(e.target.value) });
                     }}
                     disabled={somenteLeitura}
                   />
@@ -516,6 +508,7 @@ export function RccForm({
                     .join("\n") || undefined
                 }
                 quantidadeObrigatoria
+                somenteAcabadosIntermediarios
                 nomePergunta="rcc-tem-pedido-venda"
                 colunaDataEmissaoNf
                 colunasClientePedido
@@ -525,7 +518,7 @@ export function RccForm({
                   onChange: ({ possui, numero }) =>
                     patch({
                       possuiNumeroSerie: possui,
-                      numeroSerieLoteProduto: numero.replace(/\D/g, ""),
+                      numeroSerieLoteProduto: codigoAlfanumericoMaiusculo(numero),
                     }),
                 }}
                 nomeRevendedor={
@@ -535,9 +528,7 @@ export function RccForm({
                         onChange: (nome) => patch({ nomeRevendedor: nome }),
                         onSelect: (cliente) => {
                           patch(clienteErpParaCamposRevendedorRcc(cliente));
-                          setCamposVinculadosRevendedor(true);
                         },
-                        onVinculoClear: () => setCamposVinculadosRevendedor(false),
                       }
                     : undefined
                 }
@@ -600,7 +591,7 @@ export function RccForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="rcc-cidade">{rccFieldLabels.cidade} *</Label>
+              <Label htmlFor="rcc-cidade">{rccFieldLabels.cidade}</Label>
               <Input
                 id="rcc-cidade"
                 value={dados.cidade}
@@ -612,7 +603,6 @@ export function RccForm({
                     : undefined
                 }
               />
-              <CampoErro mensagem={erros.cidade} />
             </div>
 
             <div className="space-y-2">
@@ -648,7 +638,7 @@ export function RccForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="rcc-telefone">{rccFieldLabels.telefone} *</Label>
+              <Label htmlFor="rcc-telefone">{rccFieldLabels.telefone}</Label>
               <Input
                 id="rcc-telefone"
                 value={dados.telefone}
@@ -660,7 +650,6 @@ export function RccForm({
                     : undefined
                 }
               />
-              <CampoErro mensagem={erros.telefone} />
             </div>
           </div>
         </fieldset>
@@ -728,11 +717,10 @@ export function RccForm({
         </div>
       </fieldset>
 
-      {dados.clienteDoRevendedor && mostrarDadosCliente ? (
+      {paraRevendedor && mostrarDadosCliente && !nomeRevendedorNaGrade ? (
         <fieldset className="brand-fieldset space-y-4">
           <legend>Revendedor</legend>
           <div className="grid gap-4 sm:grid-cols-2">
-            {nomeRevendedorNaGrade ? null : (
             <div className="space-y-2 sm:col-span-2">
               {!somenteLeitura && !origemNomus ? (
                 <ClienteSearchField
@@ -742,9 +730,7 @@ export function RccForm({
                   onValueChange={(nome) => patch({ nomeRevendedor: nome })}
                   onClienteSelect={(cliente) => {
                     patch(clienteErpParaCamposRevendedorRcc(cliente));
-                    setCamposVinculadosRevendedor(true);
                   }}
-                  onVinculoClear={() => setCamposVinculadosRevendedor(false)}
                   disabled={somenteLeitura}
                 />
               ) : !somenteLeitura ? (
@@ -772,45 +758,6 @@ export function RccForm({
                 </>
               )}
               <CampoErro mensagem={erros.nomeRevendedor} />
-            </div>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="rcc-cidade-revendedor">
-                {rccFieldLabels.cidadeRevendedor}
-              </Label>
-              <Input
-                id="rcc-cidade-revendedor"
-                value={dados.cidadeRevendedor ?? ""}
-                onChange={(e) => patch({ cidadeRevendedor: e.target.value })}
-                readOnly={somenteLeitura || camposRevendedorAuto}
-                className={
-                  somenteLeitura || camposRevendedorAuto
-                    ? "campo-copiavel bg-muted/40"
-                    : undefined
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="rcc-estado-revendedor">
-                {rccFieldLabels.estadoRevendedor}
-              </Label>
-              <Input
-                id="rcc-estado-revendedor"
-                value={dados.estadoRevendedor ?? ""}
-                onChange={(e) =>
-                  patch({ estadoRevendedor: e.target.value.toUpperCase() })
-                }
-                readOnly={somenteLeitura || camposRevendedorAuto}
-                className={
-                  somenteLeitura || camposRevendedorAuto
-                    ? "campo-copiavel bg-muted/40"
-                    : undefined
-                }
-                maxLength={2}
-                placeholder="UF"
-              />
             </div>
           </div>
         </fieldset>
@@ -842,11 +789,11 @@ export function RccForm({
                   onValueChange={(valor) => {
                     const tipo = valorDaLista(valor);
                     const responsavelAssistencia: RccResponsavelAssistencia =
-                      tipo === "Funcionário interno" || tipo === "Funcionário externo" ? tipo : "";
+                      tipo === "Funcionário interno" || tipo === "Terceirizado" ? tipo : "";
                     const trocouTipo =
                       responsavelAssistencia !== dados.responsavelAssistencia &&
                       dados.responsavelAssistencia !== "";
-                    const externo = responsavelAssistencia === "Funcionário externo";
+                    const externo = responsavelAssistencia === "Terceirizado";
                     const linhasSemHorario = (dados.linhasServico ?? []).map((linha) => ({
                       ...linha,
                       horaSaidaEmpresa: "",
@@ -873,7 +820,7 @@ export function RccForm({
                   <SelectContent>
                     <SelectItem value={OPCAO_SELECIONE}>{OPCAO_SELECIONE}</SelectItem>
                     <SelectItem value="Funcionário interno">Funcionário interno</SelectItem>
-                    <SelectItem value="Funcionário externo">Funcionário externo</SelectItem>
+                    <SelectItem value="Terceirizado">Terceirizado</SelectItem>
                   </SelectContent>
                 </Select>
                 <CampoErro mensagem={erros.responsavelAssistencia} />
@@ -885,17 +832,16 @@ export function RccForm({
                     label={assistenciaObrigatoria ? "Funcionário interno *" : "Funcionário interno"}
                     value={dados.funcionarioSolicitado}
                     onValueChange={(nome) => patch({ funcionarioSolicitado: nome })}
-                    apenasAssistenteTecnico
                     disabled={somenteLeitura}
                   />
                   <CampoErro mensagem={erros.funcionarioSolicitado} />
                 </div>
               ) : null}
-              {dados.responsavelAssistencia === "Funcionário externo" ? (
+              {dados.responsavelAssistencia === "Terceirizado" ? (
                 <div className="sm:col-span-2">
                   <PessoaSearchField
                     id="rcc-funcionario-externo"
-                    label={assistenciaObrigatoria ? "Funcionário externo *" : "Funcionário externo"}
+                    label={assistenciaObrigatoria ? "Terceirizado *" : "Terceirizado"}
                     value={dados.funcionarioSolicitado}
                     onValueChange={(nome) => patch({ funcionarioSolicitado: nome })}
                     placeholder="Digite o nome do parceiro..."
@@ -926,7 +872,7 @@ export function RccForm({
               linhas={dados.linhasServico ?? []}
               codigosProduto={codigosReclamacao}
               disabled={somenteLeitura}
-              ocultarHorarios={dados.responsavelAssistencia === "Funcionário externo"}
+              ocultarHorarios={dados.responsavelAssistencia === "Terceirizado"}
               erro={erros.servicoRealizado}
               obrigatorio={assistenciaObrigatoria}
               onChange={(linhasServico) =>
