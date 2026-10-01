@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { temAlertaCadastroRcc } from "@/utils/qualidadePermissoes";
 import { Check } from "lucide-react";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
 import { FormModalHeader } from "@qualidade/components/ui/form-modal";
@@ -119,6 +121,8 @@ export function RccForm({
   codigoDocumentoPreview,
   usuarioCriacaoNome = "",
 }: RccFormProps) {
+  const { hasPermission } = useAuth();
+  const podeAlertarCadastro = temAlertaCadastroRcc(hasPermission);
   const dadosRef = useRef(dados);
   dadosRef.current = dados;
   const dataRegistroInicialRef = useRef(false);
@@ -331,7 +335,8 @@ export function RccForm({
     notaFiscal: dados.numeroNf ?? "",
   };
 
-  const mostrarAlertaCadastro = correcaoCadastroPendente || alertaCadastroJaEnviado;
+  const mostrarAlertaCadastro =
+    podeAlertarCadastro && (correcaoCadastroPendente || alertaCadastroJaEnviado);
   const blocoAlertaCadastro = mostrarAlertaCadastro || mensagemAlertaCadastro ? (
     <div className="space-y-2 sm:col-span-2">
       {mostrarAlertaCadastro ? (

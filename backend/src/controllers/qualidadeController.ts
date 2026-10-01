@@ -33,6 +33,9 @@ import {
   tipoQualidadeRegistro,
   deleteQualidadeDocumento,
   deleteQualidadeEquipamento,
+  documentosQuePassamAObsoleto,
+  equipamentosComAtivoAlterado,
+  opcoesListaRemoveValor,
   listReclamacoesProduto,
   criarReclamacaoProduto,
   atualizarReclamacaoProduto,
@@ -47,7 +50,7 @@ import {
   excluirServicoRealizado,
 } from '../data/qualidadeRepository.js';
 import { getPermissoesUsuario } from '../middleware/requirePermission.js';
-import { temConfigQualidade, temRegistroQualidade } from '../utils/qualidadePermissoes.js';
+import { temConfigQualidade, temExcluirConfigQualidade, temExcluirRegistroQualidade, temImportarRegistrosQualidade, temInativarCalibracoesQualidade, temInativarDocumentosQualidade, temRegistroQualidade } from '../utils/qualidadePermissoes.js';
 import { gerarRccPdfBuffer, gerarRncPdfBuffer } from '../services/qualidadePdfService.js';
 import { ensureQualidadePreviewPdf } from '../services/sgq/sgqOfficeToPdf.js';
 
@@ -384,8 +387,8 @@ export async function deleteQualidadeRegistroHandler(req: Request, res: Response
       return;
     }
     const perms = await getPermissoesUsuario(userLogin(req));
-    if (!temRegistroQualidade(perms, tipo)) {
-      res.status(403).json({ error: 'Sem permissão para este tipo de registro.' });
+    if (!temExcluirRegistroQualidade(perms, tipo)) {
+      res.status(403).json({ error: 'Sem permissão para excluir este registro.' });
       return;
     }
     const removed = await deleteQualidadeRegistro(uid);
@@ -408,6 +411,14 @@ export async function putQualidadeDocumentsHandler(req: Request, res: Response):
         error:
           'Payload de documentos inválido ou incompleto (possível estouro do limite de upload). Nenhum documento foi alterado.',
       });
+      return;
+    }
+    const perms = await getPermissoesUsuario(userLogin(req));
+    if (
+      await documentosQuePassamAObsoleto(req.body.documents) &&
+      !temInativarDocumentosQualidade(perms)
+    ) {
+      res.status(403).json({ error: 'Sem permissão para inativar documentos.' });
       return;
     }
     await syncQualidadeDocuments({
@@ -453,6 +464,14 @@ export async function putQualidadeCalibrationsHandler(req: Request, res: Respons
       res.status(400).json({
         error: 'Payload de calibrações inválido ou incompleto. Nenhum equipamento foi alterado.',
       });
+      return;
+    }
+    const perms = await getPermissoesUsuario(userLogin(req));
+    if (
+      await equipamentosComAtivoAlterado(req.body.equipment) &&
+      !temInativarCalibracoesQualidade(perms)
+    ) {
+      res.status(403).json({ error: 'Sem permissão para inativar equipamentos.' });
       return;
     }
     await syncQualidadeCalibrations({
@@ -504,7 +523,21 @@ export async function putQualidadeAvaliacoesHandler(req: Request, res: Response)
 
 export async function putQualidadeOpcoesListaHandler(req: Request, res: Response): Promise<void> {
   try {
-    await syncQualidadeOpcoesLista(req.body?.opcoes ?? {});
+    const opcoes =
+      req.body?.opcoes && typeof req.body.opcoes === 'object' ? req.body.opcoes : {};
+    const perms = await getPermissoesUsuario(userLogin(req));
+    if (!temConfigQualidade(perms, 'enderecamento')) {
+      res.status(403).json({ error: 'Sem permissão para endereçamento.' });
+      return;
+    }
+    if (
+      (await opcoesListaRemoveValor(opcoes as Record<string, unknown>)) &&
+      !temExcluirConfigQualidade(perms, 'enderecamento')
+    ) {
+      res.status(403).json({ error: 'Sem permissão para excluir endereçamento.' });
+      return;
+    }
+    await syncQualidadeOpcoesLista(opcoes);
     res.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao salvar opções de lista.';
@@ -518,6 +551,10 @@ export async function postQualidadeRegistrosImportHandler(req: Request, res: Res
       Record<string, unknown>
     >;
     const perms = await getPermissoesUsuario(userLogin(req));
+    if (!temImportarRegistrosQualidade(perms)) {
+      res.status(403).json({ error: 'Sem permissão para importar registros.' });
+      return;
+    }
     const permitidos = registros.filter((reg) => {
       const tipo = String(reg.tipo ?? '');
       return tipo && temRegistroQualidade(perms, tipo);

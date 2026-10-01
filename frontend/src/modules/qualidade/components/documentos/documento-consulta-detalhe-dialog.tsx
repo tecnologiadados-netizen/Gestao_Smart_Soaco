@@ -1,4 +1,9 @@
 import { useMemo, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  temExcluirDocumentosQualidade,
+  temInativarDocumentosQualidade,
+} from "@/utils/qualidadePermissoes";
 import { ChevronDown, FileText, Pencil } from "lucide-react";
 import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Button } from "@qualidade/components/ui/button";
@@ -304,6 +309,10 @@ function DocumentoConsultaDetalheDialogImpl({
       : null;
   const statusValidade = calcularValidadeStatus(diasValidade);
   const podeRevalidar = doc ? documentoExigeRevalidacao(doc) : false;
+  const { hasPermission } = useAuth();
+  const podeInativar = temInativarDocumentosQualidade(hasPermission);
+  const podeExcluir = temExcluirDocumentosQualidade(hasPermission);
+  const temMaisAcoes = podeRevalidar || podeInativar || podeExcluir;
 
   function handleFechar() {
     onOpenChange(false);
@@ -908,6 +917,7 @@ function DocumentoConsultaDetalheDialogImpl({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-brand-blue-muted bg-card px-8 py-5">
+          {temMaisAcoes ? (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -923,18 +933,23 @@ function DocumentoConsultaDetalheDialogImpl({
                   Revalidar
                 </DropdownMenuItem>
               ) : null}
-              <DropdownMenuItem
-                disabled={doc.status !== "vigente"}
-                onClick={handleInativar}
-              >
-                Inativar
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={handleExcluir}>
-                Excluir
-              </DropdownMenuItem>
+              {podeInativar ? (
+                <DropdownMenuItem
+                  disabled={doc.status !== "vigente"}
+                  onClick={handleInativar}
+                >
+                  Inativar
+                </DropdownMenuItem>
+              ) : null}
+              {podeInativar && podeExcluir ? <DropdownMenuSeparator /> : null}
+              {podeExcluir ? (
+                <DropdownMenuItem variant="destructive" onClick={handleExcluir}>
+                  Excluir
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
+          ) : null}
           <Button
             type="button"
             disabled={doc.status !== "vigente"}

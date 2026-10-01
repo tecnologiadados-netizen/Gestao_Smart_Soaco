@@ -21,8 +21,12 @@ import { SgqGradeSurface } from "@qualidade/components/ui/sgq-grade-surface";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import type { DocumentType } from "@qualidade/types/user";
 import { useGradeFiltrosExcel } from "@/hooks/useGradeFiltrosExcel";
+import { useAuth } from "@/contexts/AuthContext";
+import { temExcluirConfigQualidade } from "@/utils/qualidadePermissoes";
 
 export function TiposDocumentoPage() {
+  const { hasPermission } = useAuth();
+  const podeExcluir = temExcluirConfigQualidade(hasPermission, "categorias");
   const documentTypes = useConfigStore((s) => s.documentTypes);
   const addDocumentType = useConfigStore((s) => s.addDocumentType);
   const updateDocumentType = useConfigStore((s) => s.updateDocumentType);
@@ -180,7 +184,7 @@ export function TiposDocumentoPage() {
               <TableCell>
                 <TableRowActions
                   onEdit={() => iniciarEdicao(tipo.id)}
-                  onDelete={() => setExcluirId(tipo.id)}
+                  onDelete={podeExcluir ? () => setExcluirId(tipo.id) : undefined}
                 />
               </TableCell>
             </TableRow>

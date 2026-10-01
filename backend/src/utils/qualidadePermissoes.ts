@@ -86,3 +86,56 @@ export function temAlgumaConfigQualidade(perms: readonly string[]): boolean {
     FOLHAS_CONFIG_QUALIDADE.some((codigo) => perms.includes(codigo))
   );
 }
+
+function temTotalOu(perms: readonly string[], codigo: CodigoPermissao): boolean {
+  return perms.includes(PERMISSOES.QUALIDADE_VER) || perms.includes(codigo);
+}
+
+export function temInativarDocumentosQualidade(perms: readonly string[]): boolean {
+  return temTotalOu(perms, PERMISSOES.QUALIDADE_DOCUMENTOS_INATIVAR);
+}
+
+export function temExcluirDocumentosQualidade(perms: readonly string[]): boolean {
+  return temTotalOu(perms, PERMISSOES.QUALIDADE_DOCUMENTOS_EXCLUIR);
+}
+
+export function temInativarCalibracoesQualidade(perms: readonly string[]): boolean {
+  return temTotalOu(perms, PERMISSOES.QUALIDADE_CALIBRACOES_INATIVAR);
+}
+
+export function temExcluirCalibracoesQualidade(perms: readonly string[]): boolean {
+  return temTotalOu(perms, PERMISSOES.QUALIDADE_CALIBRACOES_EXCLUIR);
+}
+
+export function temExcluirRegistroQualidade(perms: readonly string[], tipo: string): boolean {
+  const mapa: Record<string, CodigoPermissao> = {
+    rnc: PERMISSOES.QUALIDADE_REGISTROS_RNC_EXCLUIR,
+    rcc: PERMISSOES.QUALIDADE_REGISTROS_RCC_EXCLUIR,
+    'avaliacao-fornecedor': PERMISSOES.QUALIDADE_REGISTROS_AVALIACAO_EXCLUIR,
+  };
+  const codigo = mapa[tipo];
+  return codigo != null && temTotalOu(perms, codigo);
+}
+
+export function temAlertaCadastroRcc(perms: readonly string[]): boolean {
+  return temTotalOu(perms, PERMISSOES.QUALIDADE_REGISTROS_RCC_ALERTA);
+}
+
+export function temImportarRegistrosQualidade(perms: readonly string[]): boolean {
+  return temTotalOu(perms, PERMISSOES.QUALIDADE_REGISTROS_IMPORTAR);
+}
+
+export function temExcluirConfigQualidade(
+  perms: readonly string[],
+  opcao: 'setores' | 'categorias' | 'enderecamento' | 'reclamacoes' | 'causas' | 'servicos'
+): boolean {
+  const mapa = {
+    setores: PERMISSOES.QUALIDADE_CONFIG_SETORES_EXCLUIR,
+    categorias: PERMISSOES.QUALIDADE_CONFIG_CATEGORIAS_EXCLUIR,
+    enderecamento: PERMISSOES.QUALIDADE_CONFIG_ENDERECAMENTO_EXCLUIR,
+    reclamacoes: PERMISSOES.QUALIDADE_CONFIG_RECLAMACOES_EXCLUIR,
+    causas: PERMISSOES.QUALIDADE_CONFIG_CAUSAS_EXCLUIR,
+    servicos: PERMISSOES.QUALIDADE_CONFIG_SERVICOS_EXCLUIR,
+  } as const;
+  return temTotalOu(perms, mapa[opcao]);
+}

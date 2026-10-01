@@ -815,6 +815,55 @@ const SGQ_TAREFAS_POR_STATUS: Record<string, string> = {
 
 const SGQ_TAREFAS_ETAPA = Object.values(SGQ_TAREFAS_POR_STATUS);
 
+export async function documentosQuePassamAObsoleto(
+  documents: Array<Record<string, unknown>>
+): Promise<boolean> {
+  const uids = documents.map((doc) => String(doc.id ?? '')).filter(Boolean);
+  if (uids.length === 0) return false;
+  const rows = await prisma.sgqDocumento.findMany({
+    where: { uid: { in: uids } },
+    select: { uid: true, status: true },
+  });
+  const anterior = new Map(rows.map((row) => [row.uid, row.status]));
+  return documents.some((doc) => {
+    const uid = String(doc.id ?? '');
+    const status = String(doc.status ?? '');
+    const antes = anterior.get(uid);
+    return Boolean(antes && antes !== 'obsoleto' && status === 'obsoleto');
+  });
+}
+
+export async function equipamentosComAtivoAlterado(
+  equipment: Array<Record<string, unknown>>
+): Promise<boolean> {
+  const uids = equipment.map((eq) => String(eq.id ?? '')).filter(Boolean);
+  if (uids.length === 0) return false;
+  const rows = await prisma.sgqEquipamento.findMany({
+    where: { uid: { in: uids } },
+    select: { uid: true, ativo: true },
+  });
+  const anterior = new Map(rows.map((row) => [row.uid, row.ativo]));
+  return equipment.some((eq) => {
+    const uid = String(eq.id ?? '');
+    if (!anterior.has(uid)) return false;
+    const ativo = eq.ativo !== false;
+    return anterior.get(uid) !== ativo;
+  });
+}
+
+export async function opcoesListaRemoveValor(opcoes: Record<string, unknown>): Promise<boolean> {
+  for (const [chave, bruto] of Object.entries(opcoes)) {
+    if (!Array.isArray(bruto)) continue;
+    const manter = new Set(bruto.map((valor) => String(valor ?? '').trim()).filter(Boolean));
+    const existentes = await prisma.sgqOpcaoLista.findMany({
+      where: { chave, ativo: true },
+      select: { valor: true },
+    });
+    if (existentes.some((row) => !manter.has(row.valor))) return true;
+  }
+  return false;
+}
+
 export async function deleteQualidadeDocumento(uid: string): Promise<boolean> {
   const doc = await prisma.sgqDocumento.findUnique({
     where: { uid },

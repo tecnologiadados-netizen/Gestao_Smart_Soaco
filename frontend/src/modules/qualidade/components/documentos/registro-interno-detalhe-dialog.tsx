@@ -1,4 +1,9 @@
 import { useMemo, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  temExcluirDocumentosQualidade,
+  temInativarDocumentosQualidade,
+} from "@/utils/qualidadePermissoes";
 import { ChevronDown, FileText, Pencil, Plus, Trash2 } from "lucide-react";
 import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Button } from "@qualidade/components/ui/button";
@@ -80,6 +85,9 @@ export function RegistroInternoDetalheDialog({
   onOpenChange,
 }: Props) {
   const { withLoading } = useLoading();
+  const { hasPermission } = useAuth();
+  const podeInativar = temInativarDocumentosQualidade(hasPermission);
+  const podeExcluir = temExcluirDocumentosQualidade(hasPermission);
   const documents = useDocumentsStore((s) => s.documents);
   const allVersions = useDocumentsStore((s) => s.versions);
   const getVersionsByDocumentId = useDocumentsStore(
@@ -481,6 +489,7 @@ export function RegistroInternoDetalheDialog({
             {erroExclusao ? (
               <p className="mr-auto text-sm text-destructive">{erroExclusao}</p>
             ) : null}
+            {(podeInativar || podeExcluir) ? (
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -491,21 +500,26 @@ export function RegistroInternoDetalheDialog({
                 <ChevronDown className="size-4" aria-hidden />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" side="top" className="min-w-44">
-                <DropdownMenuItem
-                  disabled={doc.status !== "vigente"}
-                  onClick={() => setConfirmacao("inativar")}
-                >
-                  Inativar
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => setConfirmacao("excluir")}
-                >
-                  Excluir
-                </DropdownMenuItem>
+                {podeInativar ? (
+                  <DropdownMenuItem
+                    disabled={doc.status !== "vigente"}
+                    onClick={() => setConfirmacao("inativar")}
+                  >
+                    Inativar
+                  </DropdownMenuItem>
+                ) : null}
+                {podeInativar && podeExcluir ? <DropdownMenuSeparator /> : null}
+                {podeExcluir ? (
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => setConfirmacao("excluir")}
+                  >
+                    Excluir
+                  </DropdownMenuItem>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>

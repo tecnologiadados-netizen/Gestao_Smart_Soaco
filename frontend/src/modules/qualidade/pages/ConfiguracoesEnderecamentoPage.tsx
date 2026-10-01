@@ -39,6 +39,8 @@ import {
   type EnderecamentoCategoria,
 } from "@qualidade/types/enderecamento";
 import { useGradeFiltrosExcel } from "@/hooks/useGradeFiltrosExcel";
+import { useAuth } from "@/contexts/AuthContext";
+import { temExcluirConfigQualidade } from "@/utils/qualidadePermissoes";
 
 function setorSelectLabel(
   departments: ReturnType<typeof useConfigStore.getState>["departments"],
@@ -50,6 +52,8 @@ function setorSelectLabel(
 }
 
 export function EnderecamentoPage() {
+  const { hasPermission } = useAuth();
+  const podeExcluir = temExcluirConfigQualidade(hasPermission, "enderecamento");
   const departments = useConfigStore((s) => s.departments);
   const enderecamentos = useConfigStore((s) => s.enderecamentos);
   const addEnderecamento = useConfigStore((s) => s.addEnderecamento);
@@ -255,7 +259,7 @@ export function EnderecamentoPage() {
                 <TableCell>
                   <TableRowActions
                     onEdit={() => iniciarEdicao(item.id)}
-                    onDelete={() => setExcluirId(item.id)}
+                    onDelete={podeExcluir ? () => setExcluirId(item.id) : undefined}
                   />
                 </TableCell>
               </TableRow>

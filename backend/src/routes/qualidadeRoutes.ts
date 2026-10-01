@@ -98,6 +98,34 @@ const podeServicos = requirePermission(
   PERMISSOES.QUALIDADE_CONFIGURACOES,
   PERMISSOES.QUALIDADE_CONFIG_SERVICOS
 );
+const podeExcluirDocumentos = requirePermission(
+  PERMISSOES.QUALIDADE_VER,
+  PERMISSOES.QUALIDADE_DOCUMENTOS_EXCLUIR
+);
+const podeExcluirCalibracoes = requirePermission(
+  PERMISSOES.QUALIDADE_VER,
+  PERMISSOES.QUALIDADE_CALIBRACOES_EXCLUIR
+);
+const podeAlertaRcc = requirePermission(
+  PERMISSOES.QUALIDADE_VER,
+  PERMISSOES.QUALIDADE_REGISTROS_RCC_ALERTA
+);
+const podeImportarRegistros = requirePermission(
+  PERMISSOES.QUALIDADE_VER,
+  PERMISSOES.QUALIDADE_REGISTROS_IMPORTAR
+);
+const podeExcluirReclamacoes = requirePermission(
+  PERMISSOES.QUALIDADE_VER,
+  PERMISSOES.QUALIDADE_CONFIG_RECLAMACOES_EXCLUIR
+);
+const podeExcluirCausas = requirePermission(
+  PERMISSOES.QUALIDADE_VER,
+  PERMISSOES.QUALIDADE_CONFIG_CAUSAS_EXCLUIR
+);
+const podeExcluirServicos = requirePermission(
+  PERMISSOES.QUALIDADE_VER,
+  PERMISSOES.QUALIDADE_CONFIG_SERVICOS_EXCLUIR
+);
 
 router.get('/bootstrap', (req, res, next) => {
   getQualidadeBootstrapHandler(req, res).catch(next);
@@ -115,7 +143,7 @@ router.put('/sync/config', podeConfig, (req, res, next) => {
 router.put('/sync/registros', podeRegistros, (req, res, next) => {
   putQualidadeRegistrosHandler(req, res).catch(next);
 });
-router.post('/rcc/alerta-cadastro-cliente', podeRcc, (req, res, next) => {
+router.post('/rcc/alerta-cadastro-cliente', podeAlertaRcc, (req, res, next) => {
   postQualidadeAlertaCadastroCliente(req, res).catch(next);
 });
 router.delete('/registros/:uid', podeRegistros, (req, res, next) => {
@@ -124,13 +152,13 @@ router.delete('/registros/:uid', podeRegistros, (req, res, next) => {
 router.put('/sync/documentos', podeDocumentos, (req, res, next) => {
   putQualidadeDocumentsHandler(req, res).catch(next);
 });
-router.delete('/documentos/:uid', podeDocumentos, (req, res, next) => {
+router.delete('/documentos/:uid', podeExcluirDocumentos, (req, res, next) => {
   deleteQualidadeDocumentHandler(req, res).catch(next);
 });
 router.put('/sync/calibracoes', podeCalibracoes, (req, res, next) => {
   putQualidadeCalibrationsHandler(req, res).catch(next);
 });
-router.delete('/equipamentos/:uid', podeCalibracoes, (req, res, next) => {
+router.delete('/equipamentos/:uid', podeExcluirCalibracoes, (req, res, next) => {
   deleteQualidadeEquipamentoHandler(req, res).catch(next);
 });
 router.put('/sync/avaliacoes', podeAvaliacao, (req, res, next) => {
@@ -139,7 +167,7 @@ router.put('/sync/avaliacoes', podeAvaliacao, (req, res, next) => {
 router.put('/sync/opcoes-lista', (req, res, next) => {
   putQualidadeOpcoesListaHandler(req, res).catch(next);
 });
-router.post('/registros/import', podeRegistros, (req, res, next) => {
+router.post('/registros/import', podeImportarRegistros, (req, res, next) => {
   postQualidadeRegistrosImportHandler(req, res).catch(next);
 });
 
@@ -161,7 +189,7 @@ router.post('/reclamacoes-produto', podeReclamacoes, (req, res, next) => {
 router.put('/reclamacoes-produto/:uid', podeReclamacoes, (req, res, next) => {
   putQualidadeReclamacaoProduto(req, res).catch(next);
 });
-router.delete('/reclamacoes-produto/:uid', podeReclamacoes, (req, res, next) => {
+router.delete('/reclamacoes-produto/:uid', podeExcluirReclamacoes, (req, res, next) => {
   deleteQualidadeReclamacaoProduto(req, res).catch(next);
 });
 router.get('/causas-problema', (req, res, next) => {
@@ -173,7 +201,7 @@ router.post('/causas-problema', podeCausas, (req, res, next) => {
 router.put('/causas-problema/:uid', podeCausas, (req, res, next) => {
   putQualidadeCausaProblema(req, res).catch(next);
 });
-router.delete('/causas-problema/:uid', podeCausas, (req, res, next) => {
+router.delete('/causas-problema/:uid', podeExcluirCausas, (req, res, next) => {
   deleteQualidadeCausaProblema(req, res).catch(next);
 });
 router.get('/servicos-realizados', (req, res, next) => {
@@ -185,7 +213,7 @@ router.post('/servicos-realizados', podeServicos, (req, res, next) => {
 router.put('/servicos-realizados/:uid', podeServicos, (req, res, next) => {
   putQualidadeServicoRealizado(req, res).catch(next);
 });
-router.delete('/servicos-realizados/:uid', podeServicos, (req, res, next) => {
+router.delete('/servicos-realizados/:uid', podeExcluirServicos, (req, res, next) => {
   deleteQualidadeServicoRealizado(req, res).catch(next);
 });
 router.get('/fornecedores', (req, res, next) => {

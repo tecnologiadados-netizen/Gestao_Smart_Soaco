@@ -21,8 +21,12 @@ import { SgqGradeSurface } from "@qualidade/components/ui/sgq-grade-surface";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import type { Department } from "@qualidade/types/user";
 import { useGradeFiltrosExcel } from "@/hooks/useGradeFiltrosExcel";
+import { useAuth } from "@/contexts/AuthContext";
+import { temExcluirConfigQualidade } from "@/utils/qualidadePermissoes";
 
 export function SetoresPage() {
+  const { hasPermission } = useAuth();
+  const podeExcluir = temExcluirConfigQualidade(hasPermission, "setores");
   const departments = useConfigStore((s) => s.departments);
   const addDepartment = useConfigStore((s) => s.addDepartment);
   const updateDepartment = useConfigStore((s) => s.updateDepartment);
@@ -166,7 +170,7 @@ export function SetoresPage() {
               <TableCell>
                 <TableRowActions
                   onEdit={() => iniciarEdicao(dep.id)}
-                  onDelete={() => setExcluirId(dep.id)}
+                  onDelete={podeExcluir ? () => setExcluirId(dep.id) : undefined}
                 />
               </TableCell>
             </TableRow>

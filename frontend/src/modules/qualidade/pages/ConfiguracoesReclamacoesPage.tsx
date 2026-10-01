@@ -41,6 +41,8 @@ import {
   type SolucaoCausa,
 } from "@qualidade/lib/api/qualidadeApi";
 import { criarMatcherTextoLivre } from "@/utils/textoLivreBusca";
+import { useAuth } from "@/contexts/AuthContext";
+import { temExcluirConfigQualidade } from "@/utils/qualidadePermissoes";
 
 function normalizarCodigo(codigo: string): string {
   return codigo.replace(/\s+/g, "").toUpperCase();
@@ -265,9 +267,11 @@ function CatalogoFormulario({
 function CatalogoSetorPage({
   api,
   textos,
+  podeExcluir,
 }: {
   api: CatalogoSetorApi;
   textos: CatalogoSetorTextos;
+  podeExcluir: boolean;
 }) {
   const [reclamacoes, setReclamacoes] = useState<ReclamacaoProdutoCadastro[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -471,7 +475,7 @@ function CatalogoSetorPage({
                   <TableCell onClick={(event) => event.stopPropagation()}>
                     <TableRowActions
                       onEdit={() => setEditando(item)}
-                      onDelete={() => setExcluirId(item.id)}
+                      onDelete={podeExcluir ? () => setExcluirId(item.id) : undefined}
                     />
                   </TableCell>
                 </TableRow>
@@ -591,11 +595,25 @@ const TEXTOS_CAUSA: CatalogoSetorTextos = {
 };
 
 export function ReclamacoesProdutoPage() {
-  return <CatalogoSetorPage api={API_RECLAMACAO} textos={TEXTOS_RECLAMACAO} />;
+  const { hasPermission } = useAuth();
+  return (
+    <CatalogoSetorPage
+      api={API_RECLAMACAO}
+      textos={TEXTOS_RECLAMACAO}
+      podeExcluir={temExcluirConfigQualidade(hasPermission, "reclamacoes")}
+    />
+  );
 }
 
 export function CausasProblemaPage() {
-  return <CatalogoSetorPage api={API_CAUSA} textos={TEXTOS_CAUSA} />;
+  const { hasPermission } = useAuth();
+  return (
+    <CatalogoSetorPage
+      api={API_CAUSA}
+      textos={TEXTOS_CAUSA}
+      podeExcluir={temExcluirConfigQualidade(hasPermission, "causas")}
+    />
+  );
 }
 
 const API_SERVICO: CatalogoSetorApi = {
@@ -622,5 +640,12 @@ const TEXTOS_SERVICO: CatalogoSetorTextos = {
 };
 
 export function ServicosRealizadosPage() {
-  return <CatalogoSetorPage api={API_SERVICO} textos={TEXTOS_SERVICO} />;
+  const { hasPermission } = useAuth();
+  return (
+    <CatalogoSetorPage
+      api={API_SERVICO}
+      textos={TEXTOS_SERVICO}
+      podeExcluir={temExcluirConfigQualidade(hasPermission, "servicos")}
+    />
+  );
 }

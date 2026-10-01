@@ -1,4 +1,9 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  temExcluirCalibracoesQualidade,
+  temInativarCalibracoesQualidade,
+} from "@/utils/qualidadePermissoes";
 import { ChevronDown, Pencil } from "lucide-react";
 import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Button } from "@qualidade/components/ui/button";
@@ -147,6 +152,9 @@ export function EquipamentoEdicaoDialog({
   onOpenChange,
 }: EquipamentoEdicaoDialogProps) {
   const { withLoading } = useLoading();
+  const { hasPermission } = useAuth();
+  const podeInativar = temInativarCalibracoesQualidade(hasPermission);
+  const podeExcluir = temExcluirCalibracoesQualidade(hasPermission);
   const getEquipmentById = useCalibrationsStore((s) => s.getEquipmentById);
   const updateEquipment = useCalibrationsStore((s) => s.updateEquipment);
   const setEquipmentAtivo = useCalibrationsStore((s) => s.setEquipmentAtivo);
@@ -749,6 +757,7 @@ export function EquipamentoEdicaoDialog({
                 </>
               ) : (
                 <>
+                  {((!inativo && podeInativar) || podeExcluir) ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
@@ -759,23 +768,26 @@ export function EquipamentoEdicaoDialog({
                       <ChevronDown className="size-4" aria-hidden />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" side="top" className="min-w-44">
-                      {!inativo ? (
+                      {!inativo && podeInativar ? (
                         <DropdownMenuItem
                           onClick={() => setConfirmarInativacao(true)}
                         >
                           Inativar
                         </DropdownMenuItem>
                       ) : null}
-                      {!inativo ? <DropdownMenuSeparator /> : null}
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => setConfirmarExclusao(true)}
-                      >
-                        Excluir
-                      </DropdownMenuItem>
+                      {!inativo && podeInativar && podeExcluir ? <DropdownMenuSeparator /> : null}
+                      {podeExcluir ? (
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => setConfirmarExclusao(true)}
+                        >
+                          Excluir
+                        </DropdownMenuItem>
+                      ) : null}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  {inativo ? (
+                  ) : null}
+                  {inativo && podeInativar ? (
                     <Button
                       type="button"
                       onClick={() => setConfirmarReativacao(true)}

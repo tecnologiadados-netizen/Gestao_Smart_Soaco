@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { tiposRegistroPermitidos } from "@/utils/qualidadePermissoes";
+import { tiposRegistroPermitidos, temExcluirRegistroQualidade } from "@/utils/qualidadePermissoes";
 import { Badge } from "@qualidade/components/ui/badge";
 import { Button } from "@qualidade/components/ui/button";
 import { AvaliacaoFornecedorConsultaPanel } from "@qualidade/components/registros/avaliacao-fornecedor-consulta-panel";
@@ -389,10 +389,15 @@ export function RegistrosConsultaContent() {
                         >
                           <TableRowActions
                             onEdit={() => abrirEdicao(registro)}
-                            onDelete={() => {
-                              setErroExclusao("");
-                              setRegistroParaExcluir(registro);
-                            }}
+                            onDelete={
+                              isModuloRegistroTipo(registro.tipo) &&
+                              temExcluirRegistroQualidade(hasPermission, registro.tipo)
+                                ? () => {
+                                    setErroExclusao("");
+                                    setRegistroParaExcluir(registro);
+                                  }
+                                : undefined
+                            }
                             editLabel="Editar"
                           />
                         </TableCell>

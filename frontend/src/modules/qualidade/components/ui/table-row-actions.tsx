@@ -3,7 +3,7 @@ import { Button } from "@qualidade/components/ui/button";
 
 interface TableRowActionsProps {
   onEdit: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
   editLabel?: string;
   deleteLabel?: string;
 }
@@ -25,16 +25,18 @@ export function TableRowActions({
       >
         <Pencil className="size-4" />
       </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        title={deleteLabel}
-        className="text-destructive hover:text-destructive"
-        onClick={onDelete}
-      >
-        <Trash2 className="size-4" />
-      </Button>
+      {onDelete ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          title={deleteLabel}
+          className="text-destructive hover:text-destructive"
+          onClick={onDelete}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      ) : null}
     </div>
   );
 }
