@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { Check } from "lucide-react";
+import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
+import { FormModalHeader } from "@qualidade/components/ui/form-modal";
+import { Textarea } from "@qualidade/components/ui/textarea";
+import { Button } from "@qualidade/components/ui/button";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
 import {
@@ -16,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@qualidade/components/ui/select";
+import { CampoClienteLapis } from "@qualidade/components/registros/campo-cliente-lapis";
 import { CampoErro } from "@qualidade/components/registros/campo-erro";
 import { ClienteSearchField } from "@qualidade/components/registros/cliente-search-field";
 import { OrganicoResponsavelField } from "@qualidade/components/registros/organico-responsavel-field";
@@ -40,6 +46,8 @@ import {
 import { pessoaErpParaCamposClienteRcc } from "@qualidade/types/pessoa-erp";
 import { extrairCodigoProduto } from "@qualidade/types/produto-erp";
 import type { RccDados } from "@qualidade/types/rcc";
+import { diferencasClienteCadastro, snapshotClienteCadastro } from "@qualidade/types/rcc";
+import { rccComAlertaCadastro, dadosAlertaCadastroCliente, montarPreviaAlertaCadastroCliente, resolverCodigoPessoaCliente } from "@qualidade/lib/registros/rcc-alerta-cadastro-cliente";
 import {
   isoParaInputDate,
   legadoDasLinhasReclamacao,
@@ -131,8 +139,60 @@ export function RccForm({
     onChange(next);
   }
 
-  function aplicarGrade(next: RncDados) {
+  async function abrirPreviaAlerta(reenviar: boolean) {
+    setReenviarAlerta(reenviar);
+    setObservacaoAlerta("");
+    setMensagemAlertaCadastro("");
+    setAbrindoPreviaAlerta(true);
+    try {
+      const codigo = await resolverCodigoPessoaCliente(dadosRef.current);
+      if (codigo && codigo !== dadosRef.current.codigoPessoaCliente) {
+        const next = { ...dadosRef.current, codigoPessoaCliente: codigo };
+        dadosRef.current = next;
+        onChange(next);
+      }
+      setPreviaAlertaAberta(true);
+    } catch {
+      setPreviaAlertaAberta(true);
+    } finally {
+      setAbrindoPreviaAlerta(false);
+    }
+  }
+
+  async function dispararAlertaCadastro(reenviar = false) {
+    setEnviandoAlertaCadastro(true);
+    setMensagemAlertaCadastro("");
+    try {
+      const resultado = await rccComAlertaCadastro(dadosRef.current, {
+        reenviar,
+        observacao: observacaoAlerta,
+      });
+      const next = {
+        ...dadosRef.current,
+        codigoPessoaCliente: resultado.rcc.codigoPessoaCliente,
+        clienteCorrecaoAlertada: resultado.enviado
+          ? resultado.rcc.clienteCorrecaoAlertada
+          : dadosRef.current.clienteCorrecaoAlertada,
+      };
+      dadosRef.current = next;
+      onChange(next);
+      setMensagemAlertaCadastro(resultado.mensagem);
+      if (resultado.enviado) {
+        setPreviaAlertaAberta(false);
+        setObservacaoAlerta("");
+      }
+    } catch {
+      setMensagemAlertaCadastro(
+        "Não foi possível enviar o alerta agora. Tente novamente em instantes."
+      );
+    } finally {
+      setEnviandoAlertaCadastro(false);
+    }
+  }
+
+  function aplicarGrade(next: RncDados, meta?: { clienteAutomatico?: boolean; codigoPessoa?: string }) {
     const atual = dadosRef.current;
+    const trocouPedido = next.temPedidoVenda !== atual.temPedidoVenda;
     const normalizado = normalizarRccDados({
       ...atual,
       temPedidoVenda: next.temPedidoVenda,
@@ -145,12 +205,36 @@ export function RccForm({
       numeroPedidoInternoExterno:
         next.temPedidoVenda === "nao" ? "" : atual.numeroPedidoInternoExterno,
     });
-    dadosRef.current = normalizado;
-    onChange(normalizado);
+    const clienteAutomatico = Boolean(meta?.clienteAutomatico && next.temPedidoVenda === "sim");
+    const pronto = {
+      ...normalizado,
+      codigoPessoaCliente: clienteAutomatico
+        ? (meta?.codigoPessoa ?? "").trim()
+        : trocouPedido
+          ? ""
+          : atual.codigoPessoaCliente,
+      clienteCadastroOrigem: clienteAutomatico
+        ? snapshotClienteCadastro(normalizado)
+        : trocouPedido
+          ? null
+          : atual.clienteCadastroOrigem,
+      clienteCorrecaoAlertada:
+        clienteAutomatico || trocouPedido ? null : atual.clienteCorrecaoAlertada,
+    };
+    dadosRef.current = pronto;
+    onChange(pronto);
   }
 
   const somenteLeitura = disabled || modo === "visualizar";
-  const [camposVinculadosCliente, setCamposVinculadosCliente] = useState(false);
+  const [camposVinculadosCliente, setCamposVinculadosCliente] = useState(
+    () => dados.clienteCadastroOrigem != null
+  );
+  const [enviandoAlertaCadastro, setEnviandoAlertaCadastro] = useState(false);
+  const [mensagemAlertaCadastro, setMensagemAlertaCadastro] = useState("");
+  const [previaAlertaAberta, setPreviaAlertaAberta] = useState(false);
+  const [observacaoAlerta, setObservacaoAlerta] = useState("");
+  const [reenviarAlerta, setReenviarAlerta] = useState(false);
+  const [abrindoPreviaAlerta, setAbrindoPreviaAlerta] = useState(false);
 
   const ocultarDadosCliente = dados.temPedidoVenda === "sim" && !origemNomus;
   const paraRevendedor = dados.feedbackClienteEnviado === RCC_ORIGEM_CLIENTE_REVENDEDOR;
@@ -178,6 +262,12 @@ export function RccForm({
 
   const camposClienteAuto =
     camposVinculadosCliente && !somenteLeitura && !origemNomus;
+  const correcaoCadastroPendente =
+    !somenteLeitura && diferencasClienteCadastro(dados).length > 0;
+  const alertaCadastroJaEnviado =
+    !somenteLeitura &&
+    !correcaoCadastroPendente &&
+    diferencasClienteCadastro(dados, { incluirJaAlertadas: true }).length > 0;
 
   const codigoExibicao =
     dados.codigoProduto?.trim() || extrairCodigoProduto(dados.produto);
@@ -240,6 +330,39 @@ export function RccForm({
       (dados.itensProduto ?? []).find((item) => item.tipoProduto.trim())?.tipoProduto ?? "",
     notaFiscal: dados.numeroNf ?? "",
   };
+
+  const mostrarAlertaCadastro = correcaoCadastroPendente || alertaCadastroJaEnviado;
+  const blocoAlertaCadastro = mostrarAlertaCadastro || mensagemAlertaCadastro ? (
+    <div className="space-y-2 sm:col-span-2">
+      {mostrarAlertaCadastro ? (
+        <Button
+          type="button"
+          variant={correcaoCadastroPendente ? "default" : "outline"}
+          className={
+            correcaoCadastroPendente ? "rcc-alerta-disponivel" : "rcc-alerta-enviado"
+          }
+          disabled={enviandoAlertaCadastro || abrindoPreviaAlerta}
+          onClick={() => void abrirPreviaAlerta(alertaCadastroJaEnviado)}
+        >
+          {enviandoAlertaCadastro ? (
+            "Enviando alerta..."
+          ) : abrindoPreviaAlerta ? (
+            "Abrindo..."
+          ) : alertaCadastroJaEnviado ? (
+            <>
+              <Check />
+              Alerta enviado
+            </>
+          ) : (
+            "Avisar correção do cadastro"
+          )}
+        </Button>
+      ) : null}
+      {mensagemAlertaCadastro && !previaAlertaAberta ? (
+        <p className="text-xs text-muted-foreground">{mensagemAlertaCadastro}</p>
+      ) : null}
+    </div>
+  ) : null;
 
   return (
     <div className="space-y-6">
@@ -326,6 +449,9 @@ export function RccForm({
                               bairro: "",
                               endereco: "",
                               pontoReferencia: "",
+                              clienteCadastroOrigem: null,
+                              clienteCorrecaoAlertada: null,
+                              codigoPessoaCliente: "",
                             }),
                       });
                       if (!revendedor) setCamposVinculadosCliente(false);
@@ -539,6 +665,20 @@ export function RccForm({
         </div>
       </fieldset>
 
+      {dados.temPedidoVenda === "sim" && !origemNomus ? (
+        <div className="space-y-2">
+          <Label htmlFor="rcc-ponto-pedido">{rccFieldLabels.pontoReferencia}</Label>
+          <Input
+            id="rcc-ponto-pedido"
+            value={dados.pontoReferencia}
+            onChange={(e) => patch({ pontoReferencia: e.target.value })}
+            readOnly={somenteLeitura}
+            disabled={somenteLeitura}
+          />
+          {blocoAlertaCadastro}
+        </div>
+      ) : null}
+
       {mostrarDadosCliente ? (
         <fieldset className="brand-fieldset space-y-4">
           <legend>Cliente consumidor</legend>
@@ -556,13 +696,21 @@ export function RccForm({
                     className="campo-copiavel bg-muted/40"
                   />
                 </>
+              ) : camposClienteAuto ? (
+                <CampoClienteLapis
+                  id="rcc-cliente"
+                  label={`${rccFieldLabels.nomeClienteConsumidor} *`}
+                  value={dados.nomeClienteConsumidor}
+                  bloqueado
+                  onChange={(nome) => patch({ nomeClienteConsumidor: nome })}
+                />
               ) : (
                 <PessoaSearchField
                   id="rcc-cliente"
                   label={`${rccFieldLabels.nomeClienteConsumidor} *`}
                   value={dados.nomeClienteConsumidor}
                   placeholder="Digite o nome da pessoa..."
-                  descricao="Busca pessoas ativas cadastradas no Nomus. Cidade, contato e telefone entram com o cadastro."
+                  descricao="Busca pessoas ativas cadastradas no Nomus. Cidade, contato, telefone, bairro e endereço entram com o cadastro. O lápis corrige só esta RCC."
                   onValueChange={(nome) => {
                     if (nome.trim()) {
                       patch({ nomeClienteConsumidor: nome });
@@ -577,12 +725,22 @@ export function RccForm({
                       bairro: "",
                       endereco: "",
                       pontoReferencia: "",
+                      clienteCadastroOrigem: null,
+                      clienteCorrecaoAlertada: null,
+                      codigoPessoaCliente: "",
                     });
                     setCamposVinculadosCliente(false);
                   }}
                   onPessoaSelect={(pessoa) => {
-                    patch(pessoaErpParaCamposClienteRcc(pessoa));
+                    const campos = pessoaErpParaCamposClienteRcc(pessoa);
+                    patch({
+                      ...campos,
+                      codigoPessoaCliente: pessoa.id,
+                      clienteCadastroOrigem: snapshotClienteCadastro(campos),
+                      clienteCorrecaoAlertada: null,
+                    });
                     setCamposVinculadosCliente(true);
+                    setMensagemAlertaCadastro("");
                   }}
                   disabled={somenteLeitura}
                 />
@@ -590,67 +748,67 @@ export function RccForm({
               <CampoErro mensagem={erros.nomeClienteConsumidor} />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="rcc-cidade">{rccFieldLabels.cidade}</Label>
+            <CampoClienteLapis
+              id="rcc-cidade"
+              label={rccFieldLabels.cidade}
+              value={dados.cidade}
+              bloqueado={camposClienteAuto}
+              disabled={somenteLeitura}
+              onChange={(cidade) => patch({ cidade })}
+            />
+            <CampoClienteLapis
+              id="rcc-estado"
+              label={rccFieldLabels.estado}
+              value={dados.estado}
+              bloqueado={camposClienteAuto}
+              disabled={somenteLeitura}
+              maxLength={2}
+              placeholder="UF"
+              onChange={(estado) => patch({ estado: estado.toUpperCase() })}
+            />
+            <CampoClienteLapis
+              id="rcc-contato"
+              label={rccFieldLabels.contato}
+              value={dados.contato}
+              bloqueado={camposClienteAuto}
+              disabled={somenteLeitura}
+              onChange={(contato) => patch({ contato })}
+            />
+            <CampoClienteLapis
+              id="rcc-telefone"
+              label={rccFieldLabels.telefone}
+              value={dados.telefone}
+              bloqueado={camposClienteAuto}
+              disabled={somenteLeitura}
+              onChange={(telefone) => patch({ telefone })}
+            />
+            <CampoClienteLapis
+              id="rcc-bairro"
+              label={rccFieldLabels.bairro}
+              value={dados.bairro}
+              bloqueado={camposClienteAuto}
+              disabled={somenteLeitura}
+              onChange={(bairro) => patch({ bairro })}
+            />
+            <CampoClienteLapis
+              id="rcc-endereco"
+              label={rccFieldLabels.endereco}
+              value={dados.endereco}
+              bloqueado={camposClienteAuto}
+              disabled={somenteLeitura}
+              onChange={(endereco) => patch({ endereco })}
+            />
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="rcc-ponto">{rccFieldLabels.pontoReferencia}</Label>
               <Input
-                id="rcc-cidade"
-                value={dados.cidade}
-                onChange={(e) => patch({ cidade: e.target.value })}
-                readOnly={somenteLeitura || camposClienteAuto}
-                className={
-                  somenteLeitura || camposClienteAuto
-                    ? "campo-copiavel bg-muted/40"
-                    : undefined
-                }
+                id="rcc-ponto"
+                value={dados.pontoReferencia}
+                onChange={(e) => patch({ pontoReferencia: e.target.value })}
+                readOnly={somenteLeitura}
+                disabled={somenteLeitura}
               />
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="rcc-estado">{rccFieldLabels.estado}</Label>
-              <Input
-                id="rcc-estado"
-                value={dados.estado}
-                onChange={(e) => patch({ estado: e.target.value.toUpperCase() })}
-                readOnly={somenteLeitura || camposClienteAuto}
-                className={
-                  somenteLeitura || camposClienteAuto
-                    ? "campo-copiavel bg-muted/40"
-                    : undefined
-                }
-                maxLength={2}
-                placeholder="UF"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="rcc-contato">{rccFieldLabels.contato}</Label>
-              <Input
-                id="rcc-contato"
-                value={dados.contato}
-                onChange={(e) => patch({ contato: e.target.value })}
-                readOnly={somenteLeitura || camposClienteAuto}
-                className={
-                  somenteLeitura || camposClienteAuto
-                    ? "campo-copiavel bg-muted/40"
-                    : undefined
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="rcc-telefone">{rccFieldLabels.telefone}</Label>
-              <Input
-                id="rcc-telefone"
-                value={dados.telefone}
-                onChange={(e) => patch({ telefone: e.target.value })}
-                readOnly={somenteLeitura || camposClienteAuto}
-                className={
-                  somenteLeitura || camposClienteAuto
-                    ? "campo-copiavel bg-muted/40"
-                    : undefined
-                }
-              />
-            </div>
+            {blocoAlertaCadastro}
           </div>
         </fieldset>
       ) : null}
@@ -969,6 +1127,74 @@ export function RccForm({
           comTitulo
         />
       </fieldset>
+
+      <Dialog
+        open={previaAlertaAberta}
+        onOpenChange={(aberto) => {
+          if (enviandoAlertaCadastro) return;
+          setPreviaAlertaAberta(aberto);
+        }}
+      >
+        <DialogContent showCloseButton={false} className="max-w-lg gap-0 p-0">
+          <FormModalHeader
+            titulo="Pré-visualizar alerta"
+            descricao="Confira a mensagem antes de enviar. A observação é opcional e aparece no final."
+            closeDisabled={enviandoAlertaCadastro}
+            onClose={() => {
+              if (!enviandoAlertaCadastro) setPreviaAlertaAberta(false);
+            }}
+          />
+          <div className="space-y-4 px-7 py-5">
+            {reenviarAlerta ? (
+              <p className="text-sm">
+                Este alerta já foi enviado. Deseja enviar novamente?
+              </p>
+            ) : null}
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-3 font-sans text-sm leading-relaxed">
+              {montarPreviaAlertaCadastroCliente(
+                dadosAlertaCadastroCliente(dados, reenviarAlerta),
+                observacaoAlerta
+              )}
+            </pre>
+            <div className="space-y-2">
+              <Label htmlFor="rcc-alerta-observacao">Observação</Label>
+              <Textarea
+                id="rcc-alerta-observacao"
+                value={observacaoAlerta}
+                maxLength={500}
+                rows={3}
+                placeholder="Opcional"
+                disabled={enviandoAlertaCadastro}
+                onChange={(event) => setObservacaoAlerta(event.target.value)}
+              />
+            </div>
+            {mensagemAlertaCadastro ? (
+              <p className="text-sm text-muted-foreground">{mensagemAlertaCadastro}</p>
+            ) : null}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={enviandoAlertaCadastro}
+                onClick={() => setPreviaAlertaAberta(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={enviandoAlertaCadastro}
+                onClick={() => void dispararAlertaCadastro(reenviarAlerta)}
+              >
+                {enviandoAlertaCadastro
+                  ? "Enviando..."
+                  : reenviarAlerta
+                    ? "Enviar novamente"
+                    : "Enviar alerta"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -206,8 +206,28 @@ export interface RccDados {
   causaProblema: string;
   estado: string;
   usuarioCriacao: string;
+  /** Valores do cliente consumidor no momento em que vieram do Nomus. */
+  clienteCadastroOrigem: RccClienteCadastroOrigem | null;
+  /** Última correção já avisada no SMS, para não repetir o mesmo alerta. */
+  clienteCorrecaoAlertada: RccClienteCadastroOrigem | null;
+  /** Id da pessoa no Nomus, usado no alerta de inclusão de cadastro. */
+  codigoPessoaCliente: string;
   anexos: RegistroAnexo[];
 }
+
+export const RCC_CAMPOS_CLIENTE_CADASTRO = [
+  "nomeClienteConsumidor",
+  "cidade",
+  "estado",
+  "contato",
+  "telefone",
+  "bairro",
+  "endereco",
+] as const;
+
+export type RccCampoClienteCadastro = (typeof RCC_CAMPOS_CLIENTE_CADASTRO)[number];
+
+export type RccClienteCadastroOrigem = Record<RccCampoClienteCadastro, string>;
 
 export function criarRccDadosVazio(codigoDocumento = ""): RccDados {
   return {
@@ -268,8 +288,61 @@ export function criarRccDadosVazio(codigoDocumento = ""): RccDados {
     causaProblema: "",
     estado: "",
     usuarioCriacao: "",
+    clienteCadastroOrigem: null,
+    clienteCorrecaoAlertada: null,
+    codigoPessoaCliente: "",
     anexos: [],
   };
+}
+
+export function snapshotClienteCadastro(
+  rcc: Pick<RccDados, RccCampoClienteCadastro>
+): RccClienteCadastroOrigem {
+  return {
+    nomeClienteConsumidor: rcc.nomeClienteConsumidor ?? "",
+    cidade: rcc.cidade ?? "",
+    estado: rcc.estado ?? "",
+    contato: rcc.contato ?? "",
+    telefone: rcc.telefone ?? "",
+    bairro: rcc.bairro ?? "",
+    endereco: rcc.endereco ?? "",
+  };
+}
+
+function normalizarSnapshotCliente(valor: unknown): RccClienteCadastroOrigem | null {
+  if (!valor || typeof valor !== "object") return null;
+  const origem = valor as Partial<RccClienteCadastroOrigem>;
+  const texto = (campo: RccCampoClienteCadastro) =>
+    typeof origem[campo] === "string" ? origem[campo] : "";
+  return {
+    nomeClienteConsumidor: texto("nomeClienteConsumidor"),
+    cidade: texto("cidade"),
+    estado: texto("estado"),
+    contato: texto("contato"),
+    telefone: texto("telefone"),
+    bairro: texto("bairro"),
+    endereco: texto("endereco"),
+  };
+}
+
+export function diferencasClienteCadastro(
+  rcc: RccDados,
+  opcoes?: { incluirJaAlertadas?: boolean }
+): RccCampoClienteCadastro[] {
+  const origem = rcc.clienteCadastroOrigem;
+  if (!origem) return [];
+  const alertado = rcc.clienteCorrecaoAlertada;
+  return RCC_CAMPOS_CLIENTE_CADASTRO.filter((campo) => {
+    const de = origem[campo].trim();
+    const para = (rcc[campo] ?? "").trim();
+    if (de === para) return false;
+    if (!opcoes?.incluirJaAlertadas && alertado && alertado[campo].trim() === para) return false;
+    return true;
+  });
+}
+
+export function marcarClienteCadastroAlertado(rcc: RccDados): RccDados {
+  return { ...rcc, clienteCorrecaoAlertada: snapshotClienteCadastro(rcc) };
 }
 
 function normalizarItemProduto(item: Partial<RncItemProduto>, index: number): RncItemProduto {
@@ -636,6 +709,10 @@ export function normalizarRccDados(
             rcc.responsavelAssistencia === "Funcionário externo"
           ? "Terceirizado"
           : "",
+    clienteCadastroOrigem: normalizarSnapshotCliente(rcc.clienteCadastroOrigem),
+    clienteCorrecaoAlertada: normalizarSnapshotCliente(rcc.clienteCorrecaoAlertada),
+    codigoPessoaCliente:
+      typeof rcc.codigoPessoaCliente === "string" ? rcc.codigoPessoaCliente.trim() : "",
     numeroSerieLoteProduto: codigoAlfanumericoMaiusculo(rcc.numeroSerieLoteProduto ?? ""),
     possuiNumeroSerie:
       rcc.possuiNumeroSerie === "Sim" || rcc.possuiNumeroSerie === "Não"

@@ -1,4 +1,10 @@
 import type { Request, Response } from 'express';
+import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
+import {
+  ensureRccCadastroClienteWhatsappTipo,
+  montarMensagemCorrecaoCadastroCliente,
+  RCC_CADASTRO_CLIENTE_WA_CODE,
+} from '../config/rccCadastroClienteAlerta.js';
 import {
   buscarClientesNomus,
   buscarDocumentosEntradaNomus,
@@ -7,6 +13,7 @@ import {
   buscarNotasFiscaisPedidoVendaNomus,
   buscarPedidosVendaNomus,
   buscarPessoasNomus,
+  buscarIdPessoaNomusPorNome,
   buscarProdutosNomus,
   buscarRncPainelNomus,
   buscarSetorProducaoPorProduto,
@@ -718,6 +725,56 @@ export async function deleteQualidadeServicoRealizado(req: Request, res: Respons
     return;
   }
   res.json({ ok: true });
+}
+
+export async function postQualidadeAlertaCadastroCliente(req: Request, res: Response): Promise<void> {
+  try {
+    const nomePessoa = typeof req.body?.nomePessoa === 'string' ? req.body.nomePessoa.trim() : '';
+    let codigoPessoa = typeof req.body?.codigoPessoa === 'string' ? req.body.codigoPessoa.trim() : '';
+    const observacao = typeof req.body?.observacao === 'string' ? req.body.observacao.trim().slice(0, 500) : '';
+    const brutos = Array.isArray(req.body?.campos) ? req.body.campos : [];
+    const campos = brutos
+      .map((item: { rotulo?: unknown; valor?: unknown }) => ({
+        rotulo: typeof item?.rotulo === 'string' ? item.rotulo.trim().slice(0, 80) : '',
+        valor: typeof item?.valor === 'string' ? item.valor.trim().slice(0, 300) : '',
+      }))
+      .filter((item: { rotulo: string }) => item.rotulo)
+      .slice(0, 8);
+    if (campos.length === 0) {
+      res.json({ enviado: false, mensagem: 'Nenhum dado para incluir no alerta.' });
+      return;
+    }
+    if (!codigoPessoa && nomePessoa) {
+      codigoPessoa = await buscarIdPessoaNomusPorNome(nomePessoa);
+    }
+    await ensureRccCadastroClienteWhatsappTipo();
+    const texto = montarMensagemCorrecaoCadastroCliente({
+      nomePessoa,
+      codigoPessoa,
+      campos,
+      observacao,
+    });
+    const { enviados, erros } = await enviarNotificacaoPorTipo(RCC_CADASTRO_CLIENTE_WA_CODE, texto, {
+      forcarEnvio: true,
+    });
+    if (enviados > 0) {
+      res.json({
+        enviado: true,
+        mensagem: 'Alerta enviado ao destinatário configurado em Integração → SMS.',
+        codigoPessoa,
+      });
+      return;
+    }
+    console.error('[qualidade] alerta cadastro cliente não enviado', erros.join(' | '));
+    res.json({
+      enviado: false,
+      mensagem: 'Não foi possível enviar o alerta agora. Tente novamente em instantes.',
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao enviar o alerta de cadastro.';
+    console.error('[qualidade] alerta cadastro cliente', message);
+    res.status(500).json({ error: 'Não foi possível enviar o alerta agora. Tente novamente em instantes.' });
+  }
 }
 
 export async function getQualidadeArquivoPreviewHandler(req: Request, res: Response): Promise<void> {

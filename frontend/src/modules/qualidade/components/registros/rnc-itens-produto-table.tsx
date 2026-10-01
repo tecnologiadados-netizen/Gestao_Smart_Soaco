@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { codigoAlfanumericoMaiusculo } from "@qualidade/lib/registros/codigo-alfanumerico";
 import { ChevronDown, Plus, Search, Trash2 } from "lucide-react";
+import { CampoClienteLapis } from "@qualidade/components/registros/campo-cliente-lapis";
 import { Button } from "@qualidade/components/ui/button";
 import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
@@ -48,7 +49,7 @@ import {
 
 interface RncItensProdutoTableProps {
   dados: RncDados;
-  onChange: (dados: RncDados) => void;
+  onChange: (dados: RncDados, meta?: { clienteAutomatico?: boolean; codigoPessoa?: string }) => void;
   disabled?: boolean;
   erro?: string;
   /** Evita o mesmo `name` quando a tabela aparece em outro formulário. */
@@ -213,6 +214,10 @@ const LARGURAS_INICIAIS: Record<string, number> = {
   cliente: 200,
   contato: 150,
   estado: 88,
+  cidadeCliente: 160,
+  telefoneCliente: 150,
+  bairro: 160,
+  endereco: 220,
   possuiSerie: 200,
   numeroSerie: 200,
   revendedor: 240,
@@ -343,7 +348,11 @@ export function RncItensProdutoTable({
     mostrarEmissao ? "emissao" : "",
     colunasClientePedido && dados.temPedidoVenda === "sim" ? "cliente" : "",
     colunasClientePedido && dados.temPedidoVenda === "sim" ? "contato" : "",
+    colunasClientePedido && dados.temPedidoVenda === "sim" ? "cidadeCliente" : "",
     colunasClientePedido && dados.temPedidoVenda === "sim" ? "estado" : "",
+    colunasClientePedido && dados.temPedidoVenda === "sim" ? "telefoneCliente" : "",
+    colunasClientePedido && dados.temPedidoVenda === "sim" ? "bairro" : "",
+    colunasClientePedido && dados.temPedidoVenda === "sim" ? "endereco" : "",
     nomeRevendedor && dados.temPedidoVenda === "nao" ? "revendedor" : "",
     numeroSerie ? "possuiSerie" : "",
     numeroSerie?.possui === "Sim" ? "numeroSerie" : "",
@@ -354,7 +363,11 @@ export function RncItensProdutoTable({
     0
   );
 
-  function publicar(proximos: RncItemProduto[], extra?: Partial<RncDados>) {
+  function publicar(
+    proximos: RncItemProduto[],
+    extra?: Partial<RncDados>,
+    meta?: { clienteAutomatico?: boolean; codigoPessoa?: string }
+  ) {
     const base = dadosRef.current;
     const primeiro = proximos.find((item) => item.codigoProduto.trim());
     const resposta = extra?.temPedidoVenda ?? base.temPedidoVenda;
@@ -368,7 +381,7 @@ export function RncItensProdutoTable({
       tipoProduto: primeiro?.tipoProduto || base.tipoProduto,
     };
     dadosRef.current = proximo;
-    onChange(proximo);
+    onChange(proximo, meta);
   }
 
   function aplicarNotasPorPedido(porPedido: Map<string, { nota: string; dataEmissao: string }>) {
@@ -454,12 +467,18 @@ export function RncItensProdutoTable({
   function atualizar(
     id: string,
     partial: Partial<RncItemProduto>,
-    opcoes?: { notas?: boolean }
+    opcoes?: { notas?: boolean; clienteAutomatico?: boolean; codigoPessoa?: string }
   ) {
     const proximos = itensRef.current.map((item) =>
       item.id === id ? { ...item, ...partial } : item
     );
-    publicar(proximos);
+    publicar(
+      proximos,
+      undefined,
+      opcoes?.clienteAutomatico
+        ? { clienteAutomatico: true, codigoPessoa: opcoes.codigoPessoa ?? "" }
+        : undefined
+    );
     if (opcoes?.notas) agendarNotasFiscais(proximos);
   }
 
@@ -580,9 +599,25 @@ export function RncItensProdutoTable({
                       Contato
                       <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("contato", event)} />
                     </TableHead>
+                    <TableHead className="group relative" style={{ width: largura("cidadeCliente") }}>
+                      Cidade
+                      <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("cidadeCliente", event)} />
+                    </TableHead>
                     <TableHead className="group relative" style={{ width: largura("estado") }}>
                       Estado
                       <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("estado", event)} />
+                    </TableHead>
+                    <TableHead className="group relative" style={{ width: largura("telefoneCliente") }}>
+                      Telefone
+                      <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("telefoneCliente", event)} />
+                    </TableHead>
+                    <TableHead className="group relative" style={{ width: largura("bairro") }}>
+                      Bairro
+                      <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("bairro", event)} />
+                    </TableHead>
+                    <TableHead className="group relative" style={{ width: largura("endereco") }}>
+                      Endereço
+                      <AlcaLarguraColuna onPointerDown={(event) => iniciarAjusteColuna("endereco", event)} />
                     </TableHead>
                   </>
                 ) : null}
@@ -620,7 +655,7 @@ export function RncItensProdutoTable({
                           value={item.pedidoNumero}
                           ocultarRotulo
                           somenteAtendidos
-                          onValueChange={(numero) =>
+                          onValueChange={(numero) => {
                             atualizar(
                               item.id,
                               {
@@ -637,9 +672,9 @@ export function RncItensProdutoTable({
                                 dataEmissaoNf: "",
                                 ...CLIENTE_PEDIDO_VAZIO,
                               },
-                              { notas: true }
-                            )
-                          }
+                              { notas: true, clienteAutomatico: colunasClientePedido, codigoPessoa: "" }
+                            );
+                          }}
                           onPedidoSelect={(pedido) => {
                             atualizar(
                               item.id,
@@ -657,7 +692,11 @@ export function RncItensProdutoTable({
                                 dataEmissaoNf: "",
                                 ...clienteDoPedido(pedido),
                               },
-                              { notas: true }
+                              {
+                                notas: true,
+                                clienteAutomatico: colunasClientePedido,
+                                codigoPessoa: pedido.cliente?.id ?? "",
+                              }
                             );
                             onPedidoSelect?.(pedido);
                           }}
@@ -807,22 +846,89 @@ export function RncItensProdutoTable({
                   {colunasClientePedido && dados.temPedidoVenda === "sim" ? (
                     <>
                       <TableCell className="align-top">
-                        <CampoSomenteLeitura
-                          value={item.clienteNome ?? ""}
+                        <CampoClienteLapis
+                          id={`rcc-cli-nome-${item.id}`}
                           label="Cliente"
-                          placeholder={item.pedidoId ? "Sem cliente no pedido" : "Selecione o pedido"}
+                          ocultarRotulo
+                          compacto
+                          bloqueado
+                          disabled={disabled}
+                          value={item.clienteNome ?? ""}
+                          onChange={(valor) => atualizar(item.id, { clienteNome: valor })}
                         />
                       </TableCell>
                       <TableCell className="align-top">
-                        <CampoSomenteLeitura
-                          value={item.clienteContato ?? ""}
+                        <CampoClienteLapis
+                          id={`rcc-cli-contato-${item.id}`}
                           label="Contato"
+                          ocultarRotulo
+                          compacto
+                          bloqueado
+                          disabled={disabled}
+                          value={item.clienteContato ?? ""}
+                          onChange={(valor) => atualizar(item.id, { clienteContato: valor })}
                         />
                       </TableCell>
                       <TableCell className="align-top">
-                        <CampoSomenteLeitura
-                          value={item.clienteEstado ?? ""}
+                        <CampoClienteLapis
+                          id={`rcc-cli-cidade-${item.id}`}
+                          label="Cidade"
+                          ocultarRotulo
+                          compacto
+                          bloqueado
+                          disabled={disabled}
+                          value={item.clienteCidade ?? ""}
+                          onChange={(valor) => atualizar(item.id, { clienteCidade: valor })}
+                        />
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <CampoClienteLapis
+                          id={`rcc-cli-estado-${item.id}`}
                           label="Estado"
+                          ocultarRotulo
+                          compacto
+                          bloqueado
+                          disabled={disabled}
+                          value={item.clienteEstado ?? ""}
+                          onChange={(valor) =>
+                            atualizar(item.id, { clienteEstado: valor.toUpperCase() })
+                          }
+                        />
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <CampoClienteLapis
+                          id={`rcc-cli-telefone-${item.id}`}
+                          label="Telefone"
+                          ocultarRotulo
+                          compacto
+                          bloqueado
+                          disabled={disabled}
+                          value={item.clienteTelefone ?? ""}
+                          onChange={(valor) => atualizar(item.id, { clienteTelefone: valor })}
+                        />
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <CampoClienteLapis
+                          id={`rcc-cli-bairro-${item.id}`}
+                          label="Bairro"
+                          ocultarRotulo
+                          compacto
+                          bloqueado
+                          disabled={disabled}
+                          value={item.clienteBairro ?? ""}
+                          onChange={(valor) => atualizar(item.id, { clienteBairro: valor })}
+                        />
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <CampoClienteLapis
+                          id={`rcc-cli-endereco-${item.id}`}
+                          label="Endereço"
+                          ocultarRotulo
+                          compacto
+                          bloqueado
+                          disabled={disabled}
+                          value={item.clienteEndereco ?? ""}
+                          onChange={(valor) => atualizar(item.id, { clienteEndereco: valor })}
                         />
                       </TableCell>
                     </>
