@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { CalendarRange, ClipboardCheck, Clock3, Package } from 'lucide-react';
 import {
   CartesianGrid,
   Cell,
-  Legend,
   Line,
   LineChart,
   Pie,
@@ -22,11 +22,34 @@ import {
 import GestaoEntradasAjudaModal from './GestaoEntradasAjudaModal';
 import GestaoEntradasDiaModal from './GestaoEntradasDiaModal';
 
-const cardSurface =
-  'border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[linear-gradient(180deg,#2a2d3d_0%,#1b1e2b_100%)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]';
+const panelSurface =
+  'rounded-2xl border border-slate-200/80 bg-white/90 shadow-[0_10px_30px_rgba(15,23,42,0.05)] backdrop-blur-sm dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(22,26,40,0.96),rgba(12,14,22,0.96))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_16px_40px_rgba(0,0,0,0.28)]';
 
-const MOVIMENTO_COLORS = ['#1E22AA', '#0891B2', '#0D9488'];
-const DIVERGENCIA_COLORS = ['#DC2626', '#F97316', '#F59E0B'];
+const COR_ENTRADAS = '#5C92D6';
+const COR_ACEITAS = '#FF6B35';
+const MOVIMENTO_COLORS = ['#22D3EE', '#A3E635', '#F472B6'];
+const DIVERGENCIA_COLORS = ['#FB7185', '#FB923C', '#FBBF24'];
+
+type Tone = 'emerald' | 'violet' | 'amber' | 'cyan';
+
+const TONE: Record<Tone, { card: string; icon: string }> = {
+  emerald: {
+    card: 'border-[#00A859]/30 bg-[radial-gradient(120%_90%_at_0%_0%,rgba(0,168,89,0.16),transparent_55%),linear-gradient(180deg,#ffffff,#f3fbf7)] shadow-[0_12px_32px_rgba(0,168,89,0.08)] dark:border-[#00A859]/35 dark:bg-[radial-gradient(120%_85%_at_0%_0%,rgba(0,168,89,0.34),transparent_58%),linear-gradient(180deg,#0c2418,#0c1214)] dark:shadow-[0_0_36px_rgba(0,168,89,0.16)]',
+    icon: 'bg-[#00A859]/15 text-[#00A859] ring-[#00A859]/35 shadow-[0_0_16px_rgba(0,168,89,0.35)] dark:text-[#7ddea8]',
+  },
+  violet: {
+    card: 'border-[#1E22AA]/25 bg-[radial-gradient(120%_90%_at_0%_0%,rgba(30,34,170,0.16),transparent_55%),linear-gradient(180deg,#ffffff,#f4f5fb)] shadow-[0_12px_32px_rgba(30,34,170,0.08)] dark:border-[#2B36C1]/40 dark:bg-[radial-gradient(120%_85%_at_0%_0%,rgba(30,34,170,0.48),transparent_58%),linear-gradient(180deg,#101433,#0c1018)] dark:shadow-[0_0_36px_rgba(30,34,170,0.22)]',
+    icon: 'bg-[#1E22AA]/12 text-[#1E22AA] ring-[#1E22AA]/30 shadow-[0_0_16px_rgba(30,34,170,0.28)] dark:text-[#C5C9EF]',
+  },
+  amber: {
+    card: 'border-[#FFAD00]/40 bg-[radial-gradient(120%_90%_at_0%_0%,rgba(255,173,0,0.22),transparent_55%),linear-gradient(180deg,#ffffff,#fffaf0)] shadow-[0_12px_32px_rgba(255,173,0,0.1)] dark:border-[#FFAD00]/35 dark:bg-[radial-gradient(120%_85%_at_0%_0%,rgba(255,173,0,0.32),transparent_58%),linear-gradient(180deg,#2a220c,#120e0c)] dark:shadow-[0_0_36px_rgba(255,173,0,0.14)]',
+    icon: 'bg-[#FFAD00]/15 text-[#C48400] ring-[#FFAD00]/40 shadow-[0_0_16px_rgba(255,173,0,0.35)] dark:text-[#FBB03B]',
+  },
+  cyan: {
+    card: 'border-[#041E42]/20 bg-[radial-gradient(120%_90%_at_0%_0%,rgba(4,30,66,0.12),transparent_55%),linear-gradient(180deg,#ffffff,#f3f6fa)] shadow-[0_12px_32px_rgba(4,30,66,0.08)] dark:border-[#041E42]/80 dark:bg-[radial-gradient(120%_85%_at_0%_0%,rgba(4,30,66,0.95),transparent_62%),linear-gradient(180deg,#0a2244,#0c1218)] dark:shadow-[0_0_36px_rgba(4,30,66,0.45)]',
+    icon: 'bg-[#041E42]/10 text-[#041E42] ring-[#041E42]/25 shadow-[0_0_16px_rgba(4,30,66,0.2)] dark:text-[#C5C9EF]',
+  },
+};
 
 const inputClass =
   'rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-100';
@@ -68,25 +91,94 @@ function fmtNum(n: number | null | undefined, digitos = 0): string {
   });
 }
 
-function KpiCard({ titulo, valor, sub }: { titulo: string; valor: string; sub?: string }) {
+function KpiCard({
+  tone,
+  titulo,
+  valor,
+  detalhe,
+  variacao,
+  invert,
+  sufixo = '%',
+  icone,
+  extra,
+}: {
+  tone: Tone;
+  titulo: string;
+  valor: string;
+  detalhe?: string;
+  variacao?: number | null;
+  invert?: boolean;
+  sufixo?: string;
+  icone: ReactNode;
+  extra?: ReactNode;
+}) {
+  const tom = TONE[tone];
   return (
-    <div className={`rounded-xl p-4 ${cardSurface}`}>
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{titulo}</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-50">{valor}</p>
-      {sub ? <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{sub}</p> : null}
-    </div>
+    <article className={`relative overflow-hidden rounded-2xl border p-4 ${tom.card}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+            {titulo}
+          </p>
+          <p className="mt-2 text-[1.7rem] font-semibold leading-none tracking-tight tabular-nums text-slate-900 dark:text-white">
+            {valor}
+          </p>
+        </div>
+        <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 ${tom.icon}`}>
+          {icone}
+        </span>
+      </div>
+      <div className="mt-3 flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          {variacao != null ? <VariacaoLinha valor={variacao} invert={invert} sufixo={sufixo} /> : null}
+          {detalhe ? <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{detalhe}</p> : null}
+        </div>
+        {extra}
+      </div>
+    </article>
   );
 }
 
-/** 0 = pior (vermelho), 100 = melhor (azul padrão do sistema). */
+function VariacaoLinha({
+  valor,
+  invert,
+  sufixo,
+}: {
+  valor?: number | null;
+  invert?: boolean;
+  sufixo: string;
+}) {
+  if (valor == null || !Number.isFinite(valor)) {
+    return <p className="text-xs text-slate-400">Sem comparação de metades</p>;
+  }
+  const melhor = invert ? valor < 0 : valor > 0;
+  const pior = invert ? valor > 0 : valor < 0;
+  const cor = melhor
+    ? 'text-emerald-600 dark:text-emerald-400'
+    : pior
+      ? 'text-rose-600 dark:text-rose-400'
+      : 'text-slate-500';
+  const seta = valor > 0 ? '▲' : valor < 0 ? '▼' : '●';
+  const sinal = valor > 0 ? '+' : '';
+  return (
+    <p className={`text-xs font-medium ${cor}`}>
+      {seta} {sinal}
+      {fmtNum(valor, 1)}
+      {sufixo}
+      <span className="ml-1.5 font-normal text-slate-400">2ª metade vs 1ª</span>
+    </p>
+  );
+}
+
+/** 0 = pior (vermelho), 100 = melhor (azul-marinho claro, legível no fundo escuro). */
 function corAnelPorPercentual(percent: number): string {
   const p = Math.min(100, Math.max(0, percent)) / 100;
   const stops: Array<{ t: number; c: [number, number, number] }> = [
     { t: 0, c: [239, 68, 68] },
     { t: 0.35, c: [249, 115, 22] },
     { t: 0.55, c: [234, 179, 8] },
-    { t: 0.75, c: [59, 66, 212] },
-    { t: 1, c: [30, 34, 170] },
+    { t: 0.75, c: [92, 146, 214] },
+    { t: 1, c: [92, 146, 214] },
   ];
   let i = 0;
   while (i < stops.length - 2 && p > stops[i + 1]!.t) i += 1;
@@ -98,60 +190,82 @@ function corAnelPorPercentual(percent: number): string {
   return `rgb(${mix(0)} ${mix(1)} ${mix(2)})`;
 }
 
-function GaugeDivergencia({ percent, detalhe }: { percent: number | null; detalhe: string }) {
+function GraficoSemDivergencia({
+  percent,
+  detalhe,
+  variacao,
+}: {
+  percent: number | null;
+  detalhe: string;
+  variacao?: number | null;
+}) {
   const p = percent != null ? Math.min(100, Math.max(0, percent)) : 0;
   const cor = percent != null ? corAnelPorPercentual(p) : '#64748b';
-  const cx = 100;
-  const cy = 100;
-  const r = 68;
-  const circ = 2 * Math.PI * r;
-  const dash = percent != null ? (p / 100) * circ : 0;
-
+  const trilha = 'rgba(148,163,184,0.22)';
+  const dados =
+    percent == null
+      ? [{ name: 'vazio', value: 1, fill: trilha }]
+      : p <= 0
+        ? [{ name: 'com', value: 100, fill: trilha }]
+        : p >= 100
+          ? [{ name: 'sem', value: 100, fill: cor }]
+          : [
+              { name: 'sem', value: p, fill: cor },
+              { name: 'com', value: 100 - p, fill: trilha },
+            ];
   return (
-    <div
-      className={`flex h-full flex-col rounded-2xl p-4 ${cardSurface}`}
-      style={{ boxShadow: percent != null ? `0 0 36px ${cor}33` : undefined }}
-    >
-      <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">% sem divergência</h2>
-      <p className="mb-1 text-xs text-slate-500 dark:text-slate-400">Entre as entradas conferidas. Quanto mais baixo, pior.</p>
-      <svg viewBox="0 0 200 200" className="mx-auto w-full max-w-[240px]" role="img" aria-label="Percentual de entradas conferidas sem divergência">
-        <defs>
-          <filter id="ge-anel-glow" x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation="3.5" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#3a3e52" strokeWidth="12" />
-        {percent != null && p > 0 && (
-          <circle
-            cx={cx}
-            cy={cy}
-            r={r}
-            fill="none"
-            stroke={cor}
-            strokeWidth="12"
-            strokeLinecap="round"
-            strokeDasharray={`${dash} ${circ}`}
-            transform={`rotate(135 ${cx} ${cy})`}
-            filter="url(#ge-anel-glow)"
-          />
-        )}
-        <text
-          x={cx}
-          y={cy}
-          textAnchor="middle"
-          dominantBaseline="central"
-          fill={cor}
-          fontSize="34"
-          fontWeight="700"
-        >
-          {percent != null ? `${fmtNum(p, 0)}%` : '—'}
-        </text>
-      </svg>
-      <p className="mt-1 text-center text-xs text-slate-400">{detalhe}</p>
+    <div className={`flex h-full flex-col p-4 ${panelSurface}`}>
+      <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Sem divergência</h2>
+      <p className="mt-0.5 text-xs text-slate-500">
+        Entre as entradas conferidas. Quanto mais alto, melhor.
+      </p>
+      <div className="relative mx-auto mt-2 h-72 w-full max-w-md">
+        <ResponsiveContainer>
+          <PieChart>
+            <Pie
+              data={dados}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={86}
+              outerRadius={122}
+              startAngle={90}
+              endAngle={-270}
+              cornerRadius={14}
+              paddingAngle={dados.length > 1 ? 3 : 0}
+              stroke="transparent"
+              isAnimationActive={false}
+            >
+              {dados.map((fatia) => (
+                <Cell
+                  key={fatia.name}
+                  fill={fatia.fill}
+                  style={
+                    fatia.name === 'sem' ? { filter: `drop-shadow(0 0 10px ${cor})` } : undefined
+                  }
+                />
+              ))}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-5xl font-bold tabular-nums leading-none" style={{ color: cor }}>
+            {percent != null ? `${fmtNum(p, 0)}%` : '—'}
+          </span>
+          <span className="mt-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+            conferidas
+          </span>
+        </div>
+      </div>
+      <div className="mt-2 text-center">
+        {variacao != null ? (
+          <div className="flex justify-center">
+            <VariacaoLinha valor={variacao} sufixo=" p.p." />
+          </div>
+        ) : null}
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{detalhe}</p>
+      </div>
     </div>
   );
 }
@@ -159,32 +273,35 @@ function GaugeDivergencia({ percent, detalhe }: { percent: number | null; detalh
 function BarrasRanking({
   itens,
   vazio,
+  gradiente,
 }: {
   itens: Array<{ key: string; label: string; detalhe: string; valor: number }>;
   vazio: string;
+  gradiente: string;
 }) {
   if (itens.length === 0) {
     return <p className="py-8 text-center text-sm text-slate-400">{vazio}</p>;
   }
   const max = itens[0]?.valor || 1;
   return (
-    <ul className="space-y-3">
-      {itens.map((item) => {
-        const pct = Math.max(0, Math.min(100, (item.valor / max) * 100));
+    <ul className="space-y-3.5">
+      {itens.map((item, index) => {
+        const pct = Math.max(4, Math.min(100, (item.valor / max) * 100));
         return (
           <li key={item.key}>
-            <div className="mb-1 flex items-center justify-between gap-3 text-xs">
-              <span className="truncate font-medium text-slate-700 dark:text-slate-200">
-                {item.label}
+            <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="w-4 shrink-0 tabular-nums text-[11px] font-semibold text-slate-400">
+                  {index + 1}
+                </span>
+                <span className="truncate font-medium text-slate-700 dark:text-slate-100">{item.label}</span>
               </span>
               <span className="shrink-0 tabular-nums text-slate-500">{item.detalhe}</span>
             </div>
-            <div className="h-3.5 overflow-hidden rounded-[4px] bg-slate-200 dark:bg-[#10131c]">
+            <div className="h-2 overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/[0.06]">
               <div
-                className="h-full min-w-1 rounded-[4px] bg-primary-600"
-                style={{
-                  width: `${pct}%`,
-                }}
+                className={`h-full rounded-full ${gradiente}`}
+                style={{ width: `${pct}%` }}
               />
             </div>
           </li>
@@ -211,6 +328,79 @@ function agregarSeriePorMes(serie: GestaoEntradasPainel['serieDiaria']): SeriePo
     });
 }
 
+function parseYmd(ymd: string): Date {
+  const [y, m, d] = ymd.slice(0, 10).split('-').map(Number);
+  return new Date(y || 1970, (m || 1) - 1, d || 1);
+}
+
+function fmtYmd(data: Date): string {
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
+}
+
+function addDias(ymd: string, dias: number): string {
+  const data = parseYmd(ymd);
+  data.setDate(data.getDate() + dias);
+  return fmtYmd(data);
+}
+
+type ComparacaoMetades = {
+  entradas: number | null;
+  conferidas: number | null;
+  pendentes: number | null;
+  media: number | null;
+  acuracidadePp: number | null;
+};
+
+function variacaoRelativa(atual: number, base: number): number | null {
+  if (base === 0) return null;
+  return ((atual - base) / Math.abs(base)) * 100;
+}
+
+function compararMetades(
+  inicio: string,
+  fim: string,
+  serie: GestaoEntradasPainel['serieDiaria'],
+): ComparacaoMetades | null {
+  const dias = Math.round((parseYmd(fim).getTime() - parseYmd(inicio).getTime()) / 86400000) + 1;
+  if (dias < 2) return null;
+  const metade = Math.floor(dias / 2);
+  const primeiraFim = addDias(inicio, metade - 1);
+  const segundaInicio = addDias(fim, -(metade - 1));
+
+  const fatia = (de: string, ate: string) => {
+    let notas = 0;
+    let conferidas = 0;
+    let pendentes = 0;
+    let limpas = 0;
+    let diasComMovimento = 0;
+    for (const dia of serie) {
+      if (dia.data < de || dia.data > ate) continue;
+      notas += dia.notas;
+      conferidas += dia.limpas + dia.aceitas + dia.recusas;
+      pendentes += dia.pendentes;
+      limpas += dia.limpas;
+      diasComMovimento += 1;
+    }
+    return {
+      notas,
+      conferidas,
+      pendentes,
+      media: diasComMovimento > 0 ? notas / diasComMovimento : 0,
+      pct: conferidas > 0 ? (limpas / conferidas) * 100 : null,
+    };
+  };
+
+  const a = fatia(inicio, primeiraFim);
+  const b = fatia(segundaInicio, fim);
+  return {
+    entradas: variacaoRelativa(b.notas, a.notas),
+    conferidas: variacaoRelativa(b.conferidas, a.conferidas),
+    pendentes: variacaoRelativa(b.pendentes, a.pendentes),
+    media: variacaoRelativa(b.media, a.media),
+    acuracidadePp: a.pct != null && b.pct != null ? b.pct - a.pct : null,
+  };
+}
+
 function fraseTooltipEntradas(notas: number, aceitas: number): string {
   const artigo = notas === 1 ? 'Da' : 'Das';
   const entradas = notas === 1 ? 'entrada' : 'entradas';
@@ -228,9 +418,9 @@ function TooltipEntradasDia({
   const ponto = payload?.[0]?.payload;
   if (!active || !ponto) return null;
   return (
-    <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs shadow-md">
-      <p className="mb-1 font-medium text-slate-500">{ponto.label}</p>
-      <p className="text-[#1E22AA]">{fraseTooltipEntradas(ponto.notas, ponto.aceitas)}</p>
+    <div className="rounded-xl border border-slate-200/80 bg-white/95 px-3 py-2 text-xs shadow-xl backdrop-blur dark:border-white/10 dark:bg-[#12141c]/95">
+      <p className="mb-1 font-medium text-slate-400">{ponto.label}</p>
+      <p className="text-slate-800 dark:text-slate-100">{fraseTooltipEntradas(ponto.notas, ponto.aceitas)}</p>
     </div>
   );
 }
@@ -268,9 +458,9 @@ function BolinhaDia({
       cy={cy}
       r={r}
       fill={fill}
-      stroke="#fff"
-      strokeWidth={1}
-      style={{ cursor: 'pointer' }}
+      stroke="rgba(255,255,255,0.9)"
+      strokeWidth={1.5}
+      style={{ cursor: 'pointer', filter: `drop-shadow(0 0 5px ${fill})` }}
       onClick={(e) => {
         e.stopPropagation();
         onAbrir(payload);
@@ -358,15 +548,34 @@ export default function GestaoEntradasPage() {
   );
   const coresMovimentacao =
     contextoMovimentacao === 'volume' ? MOVIMENTO_COLORS : DIVERGENCIA_COLORS;
+  const comparacao = useMemo(
+    () => (painel ? compararMetades(painel.dataInicio, painel.dataFim, painel.serieDiaria) : null),
+    [painel],
+  );
+  const picoEntradas = useMemo(() => {
+    if (serieChart.length === 0) return null;
+    return serieChart.reduce((melhor, ponto) => (ponto.notas > melhor.notas ? ponto : melhor));
+  }, [serieChart]);
+  const pctSemDivergencia =
+    k && k.qtdeConferidas > 0 ? (k.qtdeLimpas / k.qtdeConferidas) * 100 : null;
+  const liderMovimento = tiposMaisUsados[0];
+  const liderPercentual =
+    liderMovimento && totalTiposMaisUsados > 0
+      ? (valorTipo(liderMovimento) / totalTiposMaisUsados) * 100
+      : 0;
 
   return (
     <div className="relative flex min-h-0 w-full flex-1 flex-col px-3 py-4 md:px-4">
+      <div className="pointer-events-none absolute inset-x-0 top-0 hidden h-72 dark:block">
+        <div className="absolute left-[8%] top-0 h-48 w-48 rounded-full bg-violet-600/20 blur-3xl" />
+        <div className="absolute right-[12%] top-8 h-40 w-40 rounded-full bg-emerald-500/15 blur-3xl" />
+      </div>
       <CarregandoInformacoesOverlay show={loading} mensagem="Carregando Gestão entradas…" mode="viewport" />
-      <div className="mx-auto w-full max-w-[1920px] space-y-4">
+      <div className="relative mx-auto w-full max-w-[1920px] space-y-4">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1">
             <KpiPainelVoltarLink painelId="gestao-entradas" />
-            <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Gestão entradas</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Gestão entradas</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
               Acuracidade das notas de entrada por data de entrada
             </p>
@@ -374,7 +583,7 @@ export default function GestaoEntradasPage() {
           <ComoLerBtn onClick={() => setAjudaAberta(true)} title="Como ler Gestão entradas" />
         </header>
 
-        <div className={`flex flex-wrap items-end gap-3 rounded-xl px-4 py-3 ${cardSurface}`}>
+        <div className={`flex flex-wrap items-end gap-3 px-4 py-3 ${panelSurface}`}>
           <div>
             <label className={labelClass} htmlFor="ge-inicio">
               Entrada início
@@ -420,33 +629,6 @@ export default function GestaoEntradasPage() {
           >
             Filtrar
           </button>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-slate-500">Gráfico:</span>
-            <div className="inline-flex overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600">
-              <button
-                type="button"
-                className={`px-3 py-1.5 text-xs font-medium ${
-                  granularidade === 'dia'
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-200'
-                }`}
-                onClick={() => setGranularidade('dia')}
-              >
-                Dia
-              </button>
-              <button
-                type="button"
-                className={`px-3 py-1.5 text-xs font-medium ${
-                  granularidade === 'mes'
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-200'
-                }`}
-                onClick={() => setGranularidade('mes')}
-              >
-                Mês
-              </button>
-            </div>
-          </div>
         </div>
 
         {erro && (
@@ -457,64 +639,144 @@ export default function GestaoEntradasPage() {
 
         {painel && k && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <KpiCard titulo="Total de entradas" valor={fmtNum(k.qtdeNotas)} />
-              <KpiCard titulo="Total de entradas conferidas" valor={fmtNum(k.qtdeConferidas)} />
-              <KpiCard titulo="Total de entradas pendentes" valor={fmtNum(k.qtdePendentes)} />
-              <KpiCard titulo="Média de entradas ao dia" valor={fmtNum(k.mediaNotasPorDia, 1)} />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <KpiCard
+                tone="emerald"
+                titulo="Entradas"
+                valor={fmtNum(k.qtdeNotas)}
+                detalhe={`${fmtNum(k.qtdeItens)} itens`}
+                variacao={comparacao?.entradas}
+                icone={<Package className="h-4 w-4" strokeWidth={2.2} />}
+              />
+              <KpiCard
+                tone="violet"
+                titulo="Conferidas"
+                valor={fmtNum(k.qtdeConferidas)}
+                detalhe={
+                  k.qtdeNotas > 0
+                    ? `${fmtNum((k.qtdeConferidas / k.qtdeNotas) * 100, 0)}% do total`
+                    : 'Nenhuma nota no período'
+                }
+                variacao={comparacao?.conferidas}
+                icone={<ClipboardCheck className="h-4 w-4" strokeWidth={2.2} />}
+              />
+              <KpiCard
+                tone="amber"
+                titulo="Pendentes"
+                valor={fmtNum(k.qtdePendentes)}
+                detalhe={
+                  k.qtdeNotas > 0
+                    ? `${fmtNum((k.qtdePendentes / k.qtdeNotas) * 100, 0)}% do total`
+                    : 'Nenhuma nota no período'
+                }
+                variacao={comparacao?.pendentes}
+                invert
+                icone={<Clock3 className="h-4 w-4" strokeWidth={2.2} />}
+              />
+              <KpiCard
+                tone="cyan"
+                titulo="Média ao dia"
+                valor={fmtNum(k.mediaNotasPorDia, 1)}
+                detalhe={`${fmtNum(painel.serieDiaria.length)} ${painel.serieDiaria.length === 1 ? 'dia' : 'dias'} com movimento`}
+                variacao={comparacao?.media}
+                icone={<CalendarRange className="h-4 w-4" strokeWidth={2.2} />}
+              />
             </div>
 
-            <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-3">
-              <GaugeDivergencia
-                percent={k.qtdeConferidas > 0 ? (k.qtdeLimpas / k.qtdeConferidas) * 100 : null}
-                detalhe={
-                  k.qtdeConferidas > 0
-                    ? `${fmtNum(k.qtdeLimpas)} de ${fmtNum(k.qtdeConferidas)} conferidas sem divergência`
-                    : 'Nenhuma entrada conferida no período'
-                }
-              />
-              <div className={`rounded-xl p-4 xl:col-span-2 ${cardSurface}`}>
-                <h2 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  Entradas {granularidade === 'dia' ? 'ao dia' : 'ao mês'}
-                </h2>
-                <p className="mb-3 text-xs text-slate-500">
-                  Azul: total de notas. Âmbar: divergência aceita que ainda existe na NF × PC. Clique na bolinha para ver as entradas.
-                </p>
-                <div className="h-72 w-full">
+            <div className={`flex flex-col p-4 ${panelSurface}`}>
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+                      Evolução — entradas vs divergência aceita
+                    </h2>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {picoEntradas
+                        ? `Pico de entradas em ${picoEntradas.label}: ${fmtNum(picoEntradas.notas)} notas, ${fmtNum(picoEntradas.aceitas)} com divergência aceita.`
+                        : 'Sem entradas no período.'}{' '}
+                      Clique na bolinha para abrir o detalhe.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-3 text-xs text-slate-500">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-[#5C92D6] shadow-[0_0_8px_#5C92D6]" />
+                        Entradas
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-[#FF6B35] shadow-[0_0_8px_#FF6B35]" />
+                        Divergência aceita
+                      </span>
+                    </div>
+                    <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-black/25">
+                      <button
+                        type="button"
+                        className={`rounded-lg px-3 py-1 text-xs font-semibold ${
+                          granularidade === 'dia'
+                            ? 'bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white'
+                            : 'text-slate-500'
+                        }`}
+                        onClick={() => setGranularidade('dia')}
+                      >
+                        Dia
+                      </button>
+                      <button
+                        type="button"
+                        className={`rounded-lg px-3 py-1 text-xs font-semibold ${
+                          granularidade === 'mes'
+                            ? 'bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white'
+                            : 'text-slate-500'
+                        }`}
+                        onClick={() => setGranularidade('mes')}
+                      >
+                        Mês
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="h-80 w-full">
                   {serieChart.length === 0 ? (
                     <p className="py-16 text-center text-sm text-slate-400">Sem entradas no período.</p>
                   ) : (
                     <ResponsiveContainer>
                       <LineChart
                         data={serieChart}
-                        margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                        margin={{ top: 18, right: 12, left: 0, bottom: 0 }}
                         onClick={(state) => {
-                          const ponto = state?.activePayload?.[0]?.payload as SeriePonto | undefined;
+                          const ponto = (
+                            state as { activePayload?: Array<{ payload?: SeriePonto }> } | undefined
+                          )?.activePayload?.[0]?.payload;
                           if (ponto) setPontoAberto(ponto);
                         }}
                       >
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-700" />
-                        <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                        <YAxis tick={{ fontSize: 11 }} width={36} allowDecimals={false} />
-                        <Tooltip content={<TooltipEntradasDia />} />
-                        <Legend
-                          wrapperStyle={{ fontSize: 12 }}
-                          formatter={(value) => (
-                            <span className="text-slate-600 dark:text-slate-300">{value}</span>
-                          )}
+                        <CartesianGrid vertical={false} stroke="rgba(148,163,184,0.16)" />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 11, fill: '#94a3b8' }}
+                          interval="preserveStartEnd"
+                          axisLine={false}
+                          tickLine={false}
                         />
+                        <YAxis
+                          tick={{ fontSize: 11, fill: '#94a3b8' }}
+                          width={36}
+                          allowDecimals={false}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip content={<TooltipEntradasDia />} />
                         <Line
                           type="monotone"
                           dataKey="notas"
                           name="Entradas"
-                          stroke="#1E22AA"
-                          strokeWidth={2}
+                          stroke={COR_ENTRADAS}
+                          strokeWidth={2.5}
+                          style={{ filter: 'drop-shadow(0 0 4px rgba(92,146,214,0.65))' }}
                           dot={(props) => (
                             <BolinhaDia
                               cx={props.cx}
                               cy={props.cy}
                               payload={props.payload as SeriePonto}
-                              fill="#1E22AA"
+                              fill={COR_ENTRADAS}
                               onAbrir={setPontoAberto}
                             />
                           )}
@@ -523,7 +785,7 @@ export default function GestaoEntradasPage() {
                               cx={props.cx}
                               cy={props.cy}
                               payload={props.payload as SeriePonto}
-                              fill="#1E22AA"
+                              fill={COR_ENTRADAS}
                               r={6}
                               onAbrir={setPontoAberto}
                             />
@@ -533,14 +795,15 @@ export default function GestaoEntradasPage() {
                           type="monotone"
                           dataKey="aceitas"
                           name="Divergência aceita"
-                          stroke="#F59E0B"
-                          strokeWidth={2}
+                          stroke={COR_ACEITAS}
+                          strokeWidth={2.5}
+                          style={{ filter: 'drop-shadow(0 1px 2px rgba(255,107,53,0.55))' }}
                           dot={(props) => (
                             <BolinhaDia
                               cx={props.cx}
                               cy={props.cy}
                               payload={props.payload as SeriePonto}
-                              fill="#F59E0B"
+                              fill={COR_ACEITAS}
                               onAbrir={setPontoAberto}
                             />
                           )}
@@ -549,7 +812,7 @@ export default function GestaoEntradasPage() {
                               cx={props.cx}
                               cy={props.cy}
                               payload={props.payload as SeriePonto}
-                              fill="#F59E0B"
+                              fill={COR_ACEITAS}
                               r={6}
                               onAbrir={setPontoAberto}
                             />
@@ -559,62 +822,56 @@ export default function GestaoEntradasPage() {
                     </ResponsiveContainer>
                   )}
                 </div>
-              </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <div className={`rounded-xl p-4 ${cardSurface}`}>
-                <h2 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  Tipos de divergência
-                </h2>
-                <p className="mb-3 text-xs text-slate-500">Decisões das notas já conferidas, por campo.</p>
-                <BarrasRanking itens={campos} vazio="Nenhuma divergência decidida no período." />
-              </div>
-              <div className={`rounded-xl p-4 ${cardSurface}`}>
-                <h2 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  Motivos das divergências aceitas
-                </h2>
-                <p className="mb-3 text-xs text-slate-500">Justificativa escolhida ao aceitar o campo.</p>
-                <BarrasRanking itens={justificativas} vazio="Nenhuma divergência aceita no período." />
-              </div>
-            </div>
-
-            <div className={`rounded-xl p-4 ${cardSurface}`}>
+            <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
+              <GraficoSemDivergencia
+                percent={pctSemDivergencia}
+                variacao={comparacao?.acuracidadePp}
+                detalhe={
+                  k.qtdeConferidas > 0
+                    ? `${fmtNum(k.qtdeLimpas)} de ${fmtNum(k.qtdeConferidas)} conferidas`
+                    : 'Nenhuma conferida no período'
+                }
+              />
+              <div className={`flex h-full flex-col p-4 ${panelSurface}`}>
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
                     {contextoMovimentacao === 'volume'
-                      ? '3 tipos de movimentação mais usados'
-                      : '3 tipos com mais divergências'}
+                      ? 'Movimentação'
+                      : 'Divergências por tipo'}
                   </h2>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    {contextoMovimentacao === 'volume'
-                      ? 'Participação das NFs entre os três tipos com maior volume.'
-                      : 'NFs conferidas que ainda divergem do pedido, por tipo de movimentação.'}
+                    {liderMovimento
+                      ? `${liderMovimento.nomeTipo} lidera com ${fmtNum(liderPercentual, 1)}%.`
+                      : contextoMovimentacao === 'volume'
+                        ? 'Os três tipos com mais notas no período.'
+                        : 'Os três tipos com mais NFs que ainda divergem do pedido.'}
                   </p>
                 </div>
-                <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-1 dark:border-white/10 dark:bg-black/20">
+                <div className="inline-flex shrink-0 rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-black/25">
                   <button
                     type="button"
-                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
                       contextoMovimentacao === 'volume'
-                        ? 'bg-[#1E22AA] text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-white/5'
+                        ? 'bg-white text-slate-900 shadow-sm dark:bg-cyan-400/20 dark:text-cyan-200'
+                        : 'text-slate-500'
                     }`}
                     onClick={() => setContextoMovimentacao('volume')}
                   >
-                    Mais usadas
+                    Volume
                   </button>
                   <button
                     type="button"
-                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
                       contextoMovimentacao === 'divergencias'
-                        ? 'bg-red-600 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-white/5'
+                        ? 'bg-white text-rose-700 shadow-sm dark:bg-rose-500/20 dark:text-rose-200'
+                        : 'text-slate-500'
                     }`}
                     onClick={() => setContextoMovimentacao('divergencias')}
                   >
-                    Mais divergências
+                    Divergências
                   </button>
                 </div>
               </div>
@@ -626,8 +883,8 @@ export default function GestaoEntradasPage() {
                       : 'Nenhuma NF conferida ainda apresenta divergência no período.'}
                   </p>
                 ) : (
-                  <div className="grid min-h-72 items-center gap-6 md:grid-cols-[minmax(280px,0.9fr)_minmax(320px,1.1fr)]">
-                    <div className="relative mx-auto h-64 w-full max-w-sm">
+                  <div className="flex flex-col gap-1">
+                    <div className="relative mx-auto h-72 w-full max-w-md">
                       <ResponsiveContainer>
                         <PieChart>
                           <Pie
@@ -638,12 +895,11 @@ export default function GestaoEntradasPage() {
                             nameKey="nomeTipo"
                             cx="50%"
                             cy="50%"
-                            innerRadius={68}
-                            outerRadius={104}
-                            paddingAngle={4}
-                            cornerRadius={7}
-                            stroke="rgba(255,255,255,0.16)"
-                            strokeWidth={2}
+                            innerRadius={86}
+                            outerRadius={122}
+                            paddingAngle={3}
+                            cornerRadius={10}
+                            stroke="transparent"
                           >
                             {tiposMaisUsados.map((t, i) => (
                               <Cell
@@ -690,7 +946,7 @@ export default function GestaoEntradasPage() {
                       </div>
                     </div>
 
-                    <ol className="space-y-3">
+                    <ol className="space-y-2">
                       {tiposMaisUsados.map((tipo, i) => {
                         const valor = valorTipo(tipo);
                         const percentual =
@@ -698,11 +954,14 @@ export default function GestaoEntradasPage() {
                         return (
                           <li
                             key={tipo.idTipoMovimentacao}
-                            className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3 dark:border-white/[0.08] dark:bg-black/15"
+                            className="flex items-center gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2.5 dark:border-white/10 dark:bg-white/[0.03]"
                           >
                             <span
-                              className="h-10 w-1.5 shrink-0 rounded-sm"
-                              style={{ backgroundColor: coresMovimentacao[i] }}
+                              className="h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{
+                                backgroundColor: coresMovimentacao[i],
+                                boxShadow: `0 0 10px ${coresMovimentacao[i]}`,
+                              }}
                             />
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -728,6 +987,32 @@ export default function GestaoEntradasPage() {
                     </ol>
                   </div>
                 )}
+              </div>
+            </div>
+            </div>
+
+            <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
+              <div className={`p-4 ${panelSurface}`}>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Tipos de divergência
+                </h2>
+                <p className="mb-4 mt-0.5 text-xs text-slate-500">Decisões das notas já conferidas, por campo.</p>
+                <BarrasRanking
+                  itens={campos}
+                  vazio="Nenhuma divergência decidida no período."
+                  gradiente="bg-gradient-to-r from-violet-500 to-cyan-400 shadow-[0_0_12px_rgba(139,92,246,0.45)]"
+                />
+              </div>
+              <div className={`p-4 ${panelSurface}`}>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Motivos das divergências aceitas
+                </h2>
+                <p className="mb-4 mt-0.5 text-xs text-slate-500">Justificativa escolhida ao aceitar o campo.</p>
+                <BarrasRanking
+                  itens={justificativas}
+                  vazio="Nenhuma divergência aceita no período."
+                  gradiente="bg-gradient-to-r from-amber-400 to-rose-500 shadow-[0_0_12px_rgba(251,113,133,0.4)]"
+                />
               </div>
             </div>
           </div>

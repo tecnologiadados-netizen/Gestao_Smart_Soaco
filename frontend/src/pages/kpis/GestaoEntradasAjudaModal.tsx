@@ -16,19 +16,19 @@ const SECOES: SecaoAjuda[] = [
   },
   {
     id: 'status',
-    titulo: 'Cards e ponteiro',
+    titulo: 'Cards e anel',
     oQueE:
-      'Total de entradas é a quantidade de notas no período. Conferidas já passaram pelo Double Check. Pendentes ainda não. A média divide o total pelos dias que tiveram ao menos uma entrada.',
+      'Entradas é a quantidade de notas no período. Conferidas já passaram pelo Double Check. Pendentes ainda não. A média divide o total pelos dias que tiveram ao menos uma entrada. Sem divergência é conferidas sem divergência ÷ conferidas.',
     comoLe:
-      'O anel mostra as conferidas sem divergência ÷ conferidas. Entra nessa conta a nota conferida cuja NF já está igual ao pedido, mesmo que a divergência tenha existido no dia da conferência. Quanto mais baixo o percentual, pior a cor (vermelho). Quanto mais alto, melhor (violeta). Nota pendente não entra nessa conta. Sem conferência no período, o anel fica sem percentual.',
+      'A faixa sob o número compara duas metades com a mesma quantidade de dias (a do meio fica de fora quando o período é ímpar). Seta verde é melhora: mais entradas, mais conferidas, média maior ou mais pontos percentuais sem divergência. Em pendentes, verde é queda. Vermelho é o caminho inverso. Com menos de dois dias, a comparação não aparece. O círculo grande, logo abaixo da evolução, usa a mesma escala: vermelho é pior, azul-marinho é melhor. Entra na conta a nota conferida cuja NF já está igual ao pedido, mesmo que a divergência tenha existido no dia da conferência. Nota pendente não entra. Sem conferência no período, o círculo fica sem percentual.',
   },
   {
     id: 'linha',
     titulo: 'Entradas ao dia',
     oQueE:
-      'A linha azul é o total de notas naquele dia. A linha âmbar é quantas dessas notas ainda têm divergência aceita: a NF continua diferente do pedido de compra.',
+      'A linha azul-marinho é o total de notas naquele dia ou mês. A linha laranja é quantas dessas notas ainda têm divergência aceita: a NF continua diferente do pedido de compra.',
     comoLe:
-      'No ponto, a leitura é “Das 18 entradas, 9 tiveram divergência aceita.” Clique na bolinha para abrir as entradas daquele dia: quais ainda divergem e, nessas, o valor na NF ao lado do valor no pedido, o campo, a decisão e a observação. Se a diferença foi corrigida no ERP depois da conferência, a nota sai da linha âmbar. Recusa que ainda existe não entra na linha âmbar. No modo Mês, a bolinha abre o mês.',
+      'No ponto, a leitura é “Das 18 entradas, 9 tiveram divergência aceita.” Clique na bolinha para abrir as entradas daquele dia: quais ainda divergem e, nessas, o valor na NF ao lado do valor no pedido, o campo, a decisão e a observação. Se a diferença foi corrigida no ERP depois da conferência, a nota sai da linha laranja. Recusa que ainda existe não entra na linha laranja. No modo Mês, a bolinha abre o mês.',
   },
   {
     id: 'tipos',
@@ -42,9 +42,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'movimento',
     titulo: 'Tipos de movimentação',
     oQueE:
-      'O botão Mais usadas mostra os três tipos de movimentação com mais NFs no período. Mais divergências muda a rosca para os três tipos com mais NFs conferidas que ainda divergem do pedido, usando uma escala vermelha. O nome do tipo vem do cadastro do Nomus.',
+      'O botão Volume mostra os três tipos de movimentação com mais NFs no período. Divergências muda a rosca para os três tipos com mais NFs conferidas que ainda divergem do pedido, usando uma escala quente. O nome do tipo vem do cadastro do Nomus.',
     comoLe:
-      'Em Mais usadas, cada tipo informa notas, itens e participação no top 3. Em Mais divergências, informa quantas NFs ainda divergem, o total de NFs daquele tipo e sua participação entre as três líderes.',
+      'Em Volume, cada tipo informa notas, itens e participação no top 3. Em Divergências, informa quantas NFs ainda divergem, o total de NFs daquele tipo e sua participação entre as três líderes.',
   },
 ];
 
