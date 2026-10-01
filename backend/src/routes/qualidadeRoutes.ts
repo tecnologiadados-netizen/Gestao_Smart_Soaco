@@ -29,6 +29,7 @@ import {
   getQualidadeOrganicoColaboradoresHandler,
   getQualidadeResponsaveisHandler,
   postQualidadeRccPdf,
+  postQualidadeAlertaCadastroCliente,
   postQualidadeRegistrosImportHandler,
   getQualidadeArquivoPreviewHandler,
   postQualidadeRncPdf,
@@ -62,6 +63,9 @@ router.put('/sync/config', (req, res, next) => {
 });
 router.put('/sync/registros', (req, res, next) => {
   putQualidadeRegistrosHandler(req, res).catch(next);
+});
+router.post('/rcc/alerta-cadastro-cliente', (req, res, next) => {
+  postQualidadeAlertaCadastroCliente(req, res).catch(next);
 });
 router.delete('/registros/:uid', (req, res, next) => {
   deleteQualidadeRegistroHandler(req, res).catch(next);

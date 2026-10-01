@@ -174,14 +174,16 @@ export function listarNumerosDestinatarios(tipo: TipoComDestinatarios): string[]
 function enviarTextoWhatsApp(
   numero: string,
   texto: string,
-  _tipo: TipoComDestinatarios
+  _tipo: TipoComDestinatarios,
+  opcoes?: { forcarEnvio?: boolean }
 ): Promise<{ ok: boolean; error?: string; dryRun?: boolean }> {
-  return sendWhatsAppTextTo(numero, texto);
+  return sendWhatsAppTextTo(numero, texto, { forcarEnvio: opcoes?.forcarEnvio });
 }
 
 export async function enviarParaDestinatarios(
   tipo: TipoComDestinatarios,
-  texto: string
+  texto: string,
+  opcoes?: { forcarEnvio?: boolean }
 ): Promise<{ enviados: number; erros: string[]; tentativas: TentativaInput[]; dryRuns: number }> {
   const destinos = listarDestinosWhatsApp(tipo);
   if (destinos.length === 0) {
@@ -199,7 +201,7 @@ export async function enviarParaDestinatarios(
 
   for (let i = 0; i < destinos.length; i++) {
     const dest = destinos[i]!;
-    const result = await enviarTextoWhatsApp(dest.numero, texto, tipo);
+    const result = await enviarTextoWhatsApp(dest.numero, texto, tipo, opcoes);
     if (result.ok) {
       if (result.dryRun) dryRuns++;
       else enviados++;
@@ -233,18 +235,25 @@ export async function enviarParaDestinatarios(
   return { enviados, erros, tentativas, dryRuns };
 }
 
-export async function enviarNotificacaoPorTipo(code: string, texto: string): Promise<void> {
+export async function enviarNotificacaoPorTipo(
+  code: string,
+  texto: string,
+  opcoes?: { forcarEnvio?: boolean }
+): Promise<{ enviados: number; dryRuns: number; erros: string[] }> {
+  const vazio = { enviados: 0, dryRuns: 0, erros: [] as string[] };
   const tipo = await buscarTipoPorCode(code);
-  if (!tipo || !tipo.ativo) return;
+  if (!tipo || !tipo.ativo) return vazio;
   if (tipo.fonteMensagem !== 'evento') {
     console.warn(`[whatsappNotificacao] enviarNotificacaoPorTipo("${code}") ignorado: fonteMensagem=${tipo.fonteMensagem}`);
-    return;
+    return vazio;
   }
 
+  let resultado = vazio;
   await comExecucaoRegistrada(
     { canal: 'whatsapp', tipoCode: tipo.code, tipoId: tipo.id, origem: 'evento' },
     async () => {
-      const { enviados, erros, tentativas, dryRuns } = await enviarParaDestinatarios(tipo, texto);
+      const { enviados, erros, tentativas, dryRuns } = await enviarParaDestinatarios(tipo, texto, opcoes);
+      resultado = { enviados, dryRuns, erros };
       if (tentativas.length === 0) {
         return {
           result: undefined as void,
@@ -261,6 +270,7 @@ export async function enviarNotificacaoPorTipo(code: string, texto: string): Pro
       };
     }
   );
+  return resultado;
 }
 
 export function listarLoginsDestinatariosWhatsApp(tipo: TipoComDestinatarios): string[] {

@@ -616,6 +616,23 @@ function mapSqlRowsToPessoas(rows: Record<string, unknown>[]): PessoaErp[] {
   return pessoas;
 }
 
+/** Id da pessoa no Nomus quando o nome ativo aparece uma única vez. */
+export async function buscarIdPessoaNomusPorNome(nome: string): Promise<string> {
+  const nomeLimpo = nome.trim();
+  if (nomeLimpo.length < 2) return '';
+  const pool = getNomusPool();
+  if (!pool) return '';
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT p.id
+     FROM pessoa p
+     WHERE p.ativo = 1 AND TRIM(p.nome) = ?
+     LIMIT 2`,
+    [nomeLimpo]
+  );
+  if (rows.length !== 1) return '';
+  return String((rows[0] as { id?: unknown }).id ?? '').trim();
+}
+
 /** Busca pessoas no Nomus (por padrão funcionários ativos). */
 export async function buscarPessoasNomus(
   options: GetPessoasOptions = {}

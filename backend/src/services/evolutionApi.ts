@@ -470,6 +470,8 @@ export function comIntroducaoRoboWhatsApp(texto: string): string {
 type SendWhatsAppTextOptions = {
   /** Quando true, não aplica a intro (ex.: partes 2+ de mensagem longa). */
   skipRoboIntro?: boolean;
+  /** Envia mesmo com NOTIFICACOES_ENVIO_HABILITADO desligado. Uso: teste explícito do alerta da RCC. */
+  forcarEnvio?: boolean;
 };
 
 /** POST /message/sendText/{instance} – telefone ou JID de grupo (@g.us); com gate de sessão e retry. */
@@ -478,7 +480,7 @@ export async function sendWhatsAppTextTo(
   text: string,
   opts?: SendWhatsAppTextOptions
 ): Promise<SendWhatsAppResult> {
-  if (!envioNotificacoesHabilitado()) {
+  if (!envioNotificacoesHabilitado() && !opts?.forcarEnvio) {
     logEnvioSuprimido('whatsapp', number);
     return { ok: true, dryRun: true };
   }

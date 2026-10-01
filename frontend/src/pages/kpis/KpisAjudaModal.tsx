@@ -10,7 +10,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'hub',
     titulo: 'Hub de pastas',
     oQueE:
-      'A tela KPIs concentra os painéis do sistema em pastas. Cada card de pasta agrupa painéis relacionados (ex.: Produção).',
+      'A tela KPIs concentra os painéis do sistema em pastas. Cada card de pasta agrupa painéis relacionados (Produção, Comercial, Estoque e Gestão entradas).',
     comoLe:
       'Clique na pasta para ver os painéis liberados para o seu grupo. Pastas sem nenhum painel acessível não aparecem.',
   },
