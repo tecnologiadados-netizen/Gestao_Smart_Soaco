@@ -2904,7 +2904,14 @@ export default function RessupAlmoxAnalisePage() {
             if (detalheConsultaModal.tipo === 'solicitacao') {
               return <TabelaDetalheSolicitacao linhas={detalheSc} />;
             }
-            return <TabelaDetalheCotacao linhas={detalheCotacao} />;
+            return (
+              <TabelaDetalheCotacao
+                linhas={detalheCotacao}
+                idProduto={detalheConsultaModal.idProduto}
+                codigo={detalheConsultaModal.codigo}
+                descricao={detalheConsultaModal.descricao}
+              />
+            );
           }}
         </ModalConsultaEstoqueDetalhe>
       )}

@@ -52,7 +52,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Padrão de consultas em cascata: grade enxuta + detalhe lazy da mesma fonte SQL/regra.',
     comoLe:
-      'Nunca trate o modal como “amostra”: se o número da grade e a soma do detalhe divergirem, há bug — a regra exige igualdade.',
+      'Nunca trate o modal como “amostra”: se o número da grade e a soma do detalhe divergirem, há bug — a regra exige igualdade. No modal de Pré Compra, clique no código da coluna SC para abrir essa solicitação (usuário, emissão, necessidade e saldo).',
   },
 ];
 

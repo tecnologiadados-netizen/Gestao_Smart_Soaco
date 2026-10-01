@@ -76,7 +76,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Saldo, empenho líquido, SC, Pré Compra, PC e projetado usam as mesmas regras/SQL da Consulta de Estoque. O painel inclui produtos vinculados a pelo menos um destes setores: almox secundário (2), galpão bobina (19) ou matéria-prima processada (20). A coluna Setor mostra esses IDs separados por | quando há mais de um vínculo. Por padrão inclui produtos com e sem empenho; no modal Filtrar, o toggle “Considerar somente produtos com empenho?” restringe a empenho &gt; 0. Itens com CM, empenho, estoque, SC, Pré Compra e PC todos iguais a zero são excluídos do universo — PC &gt; 0 sozinho já basta para entrar.',
     comoLe:
-      'Células reabrem os mesmos modais analíticos. O toggle “Considerar empenho de requisições?” no topo refaz a consulta na hora. O toggle de empenho fica no modal Filtrar e só vale após clicar em Filtrar. A legenda abaixo da grade explica o que cada ID de setor representa.',
+      'Células reabrem os mesmos modais analíticos. No modal de Pré Compra, clique no código da coluna SC para abrir essa solicitação (usuário, emissão, necessidade e saldo). O toggle “Considerar empenho de requisições?” no topo refaz a consulta na hora. O toggle de empenho fica no modal Filtrar e só vale após clicar em Filtrar. A legenda abaixo da grade explica o que cada ID de setor representa.',
   },
   {
     id: 'filtros',

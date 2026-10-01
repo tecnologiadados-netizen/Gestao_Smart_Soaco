@@ -1558,7 +1558,14 @@ export default function ConsultaEstoquePage() {
             if (detalhe.tipo === 'solicitacao') {
               return <TabelaDetalheSolicitacao linhas={detalheSc} />;
             }
-            return <TabelaDetalheCotacao linhas={detalheCotacao} />;
+            return (
+              <TabelaDetalheCotacao
+                linhas={detalheCotacao}
+                idProduto={detalhe.linha.idProduto}
+                codigo={detalhe.linha.codigo}
+                descricao={detalhe.linha.descricao}
+              />
+            );
           }}
         </ModalConsultaEstoqueDetalhe>
       )}

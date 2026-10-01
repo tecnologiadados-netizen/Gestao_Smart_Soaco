@@ -304,6 +304,12 @@ export default function CalendarioMateriaisDiaModal({
     return {};
   }, [detalheEntrada, snapshotId]);
 
+  const carregarSolicitacoesCotacao = useCallback(
+    (id: number) =>
+      snapshotId != null ? obterScCongelado(snapshotId, id) : obterScDetalhe(id),
+    [snapshotId]
+  );
+
   const carregarSc = useCallback(async () => {
     if (!detalheEntrada || detalheEntrada.tipo !== 'solicitacao') return {};
     const idProduto = detalheEntrada.linha.idProduto;
@@ -583,7 +589,16 @@ export default function CalendarioMateriaisDiaModal({
           {({ carregando: c, erro: e }) => {
             if (c) return <p className="py-6 text-center text-slate-500">Carregando…</p>;
             if (e) return <p className="text-red-600">{e}</p>;
-            return <TabelaDetalheCotacao linhas={detalheAgPag} />;
+            return (
+              <TabelaDetalheCotacao
+                linhas={detalheAgPag}
+                idProduto={detalheEntrada.linha.idProduto}
+                codigo={detalheEntrada.linha.codigo}
+                descricao={detalheEntrada.linha.descricao}
+                carregarSolicitacoes={carregarSolicitacoesCotacao}
+                zIndexSc={14300}
+              />
+            );
           }}
         </ModalConsultaEstoqueDetalhe>
       )}

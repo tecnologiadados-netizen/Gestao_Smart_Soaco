@@ -44,7 +44,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Mesma ideia do Almox: −Empenho + Solicitação + Estoque efetivo + PC Pend + Pré Compra.',
     comoLe:
-      'Vermelho/ruptura sinaliza prioridade. Clique em Empenho/PC Pend para validar a conta no modal (soma = célula).',
+      'Vermelho/ruptura sinaliza prioridade. Clique em Empenho/PC Pend para validar a conta no modal (soma = célula). No modal de Pré Compra, clique no código da coluna SC para abrir essa solicitação (usuário, emissão, necessidade e saldo).',
   },
   {
     id: 'empenho',

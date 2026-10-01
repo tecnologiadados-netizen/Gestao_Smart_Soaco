@@ -3,12 +3,19 @@ import { fmtQtde } from './ModalConsultaEstoqueDetalhe';
 
 type Props = {
   linhas: ScDetalhe[];
+  /** Quando informado, mostra só esses códigos — inclusive com saldo zero. */
+  codigos?: number[];
 };
 
-export default function TabelaDetalheSolicitacao({ linhas }: Props) {
-  const visiveis = linhas.filter((s) => s.saldo > 0);
+export default function TabelaDetalheSolicitacao({ linhas, codigos }: Props) {
+  const filtro = codigos != null && codigos.length > 0 ? new Set(codigos) : null;
+  const visiveis = linhas.filter((s) => (filtro ? filtro.has(s.codigo) : s.saldo > 0));
   if (visiveis.length === 0) {
-    return <p className="text-slate-500">Sem solicitações abertas.</p>;
+    return (
+      <p className="text-slate-500">
+        {filtro ? 'Solicitação não encontrada.' : 'Sem solicitações abertas.'}
+      </p>
+    );
   }
   return (
     <table className="w-full text-xs">

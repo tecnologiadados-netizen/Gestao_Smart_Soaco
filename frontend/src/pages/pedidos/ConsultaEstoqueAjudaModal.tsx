@@ -12,7 +12,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'A grade traz só valores consolidados (estoque, empenho, SC, Pré Compra, PC, saldo projetado). O detalhe analítico abre sob demanda ao clicar na célula.',
     comoLe:
-      'Clique na célula para ver o modal com a mesma regra/fonte do número da grade. O detalhe fica em cache até um novo “Filtrar/Consultar”; a soma do modal deve bater com a coluna.',
+      'Clique na célula para ver o modal com a mesma regra/fonte do número da grade. O detalhe fica em cache até um novo “Filtrar/Consultar”; a soma do modal deve bater com a coluna. No modal de Pré Compra, clique no código da coluna SC para abrir essa solicitação (usuário, emissão, necessidade e saldo).',
   },
   {
     id: 'saldo',
