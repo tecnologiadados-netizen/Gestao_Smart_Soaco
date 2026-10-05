@@ -3,8 +3,11 @@ import {
   classificarNotaGestaoEntrada,
   montarDivergenciasAtuais,
   montarPainelGestaoEntradas,
+  prepararDocumentoNoEscopo,
+  type DecisaoDiaGestaoEntrada,
   type DecisaoGestaoEntrada,
   type DocGestaoEntrada,
+  type LinhaComparativoDia,
 } from './gestaoEntradasClassificacao.js';
 
 function doc(partial: Partial<DocGestaoEntrada> & Pick<DocGestaoEntrada, 'idDocumento'>): DocGestaoEntrada {
@@ -180,7 +183,7 @@ describe('montarPainelGestaoEntradas', () => {
 
   it('ignora decisão de nota ainda não conferida no ranking', () => {
     const aceitasQtde = painel.porCampo.find((c) => c.campo === 'qtde');
-    expect(aceitasQtde).toMatchObject({ aceitas: 2, recusas: 0, qtde: 2 });
+    expect(aceitasQtde).toMatchObject({ aceitas: 2, recusas: 0, qtde: 2, documentos: 2 });
     expect(painel.porJustificativa.find((j) => j.codigo === 'arredondamento')).toBeUndefined();
     expect(painel.porJustificativa[0]).toMatchObject({
       codigo: 'qtde_parcial',
@@ -212,5 +215,116 @@ describe('montarPainelGestaoEntradas', () => {
     expect(painel.porTipo.map((t) => t.idTipoMovimentacao)).toEqual([11, 35]);
     expect(painel.porTipo[0]).toMatchObject({ notas: 3, itens: 7, divergencias: 1 });
     expect(painel.porTipo[1]).toMatchObject({ notas: 1, itens: 1, divergencias: 1 });
+  });
+});
+
+function linhaEscopo(
+  partial: Partial<LinhaComparativoDia> & Pick<LinhaComparativoDia, 'idItemDocumentoEstoque'>
+): LinhaComparativoDia & { idPedidoCompra: number | null } {
+  return {
+    idItemPedidoCompra: 20,
+    idPedidoCompra: 9,
+    codigoProduto: 'MP 1',
+    descricaoProduto: 'Perfil',
+    divergValorUnitario: false,
+    divergQtde: false,
+    divergIpi: false,
+    divergCondicaoPagamento: false,
+    valorUnitarioNF: 8,
+    valorUnitarioPC: 10,
+    qtdeNF: 1,
+    qtdePC: 1,
+    valorIpiNF: 1,
+    valorIpiPC: 1,
+    ...partial,
+  };
+}
+
+function decisaoEscopo(
+  partial: Partial<DecisaoDiaGestaoEntrada> & Pick<DecisaoDiaGestaoEntrada, 'campo'>
+): DecisaoDiaGestaoEntrada {
+  return {
+    idItemDocumentoEstoque: 10,
+    idItemPedidoCompra: 20,
+    decisao: 'aceita',
+    justificativaLabel: 'Motivo',
+    justificativaCodigo: 'diferenca_comercial',
+    observacao: null,
+    usuarioLogin: 'luisa',
+    atualizadoEm: '2026-10-01T12:00:00.000Z',
+    historico: [],
+    ...partial,
+  };
+}
+
+describe('prepararDocumentoNoEscopo', () => {
+  it('visão real trata preço menor como sem divergência', () => {
+    const linhas = [
+      linhaEscopo({
+        idItemDocumentoEstoque: 10,
+        divergValorUnitario: true,
+        valorUnitarioNF: 8,
+        valorUnitarioPC: 10,
+      }),
+    ];
+    const decisoes = [decisaoEscopo({ campo: 'valor_unitario' })];
+    const real = prepararDocumentoNoEscopo({ linhas, decisoes, escopo: 'reais' });
+    const geral = prepararDocumentoNoEscopo({ linhas, decisoes, escopo: 'geral' });
+
+    expect(real.temDivergencia).toBe(false);
+    expect(real.pendentes).toBe(0);
+    expect(real.divergencias).toEqual([]);
+    expect(geral.temDivergencia).toBe(true);
+    expect(geral.divergencias.map((d) => d.natureza)).toEqual(['benigna']);
+  });
+
+  it('visão real mantém quantidade e ignora benigna no mesmo documento', () => {
+    const linhas = [
+      linhaEscopo({
+        idItemDocumentoEstoque: 10,
+        divergValorUnitario: true,
+        divergQtde: true,
+        qtdeNF: 1,
+        qtdePC: 2,
+      }),
+    ];
+    const decisoes = [
+      decisaoEscopo({ campo: 'valor_unitario' }),
+      decisaoEscopo({ campo: 'qtde', justificativaCodigo: 'qtde_parcial' }),
+    ];
+    const real = prepararDocumentoNoEscopo({ linhas, decisoes, escopo: 'reais' });
+    expect(real.temDivergencia).toBe(true);
+    expect(real.pendentes).toBe(0);
+    expect([...real.chaves]).toEqual(['10:20:qtde']);
+    expect(real.divergencias.map((d) => d.campo)).toEqual(['qtde']);
+  });
+
+  it('pendência só benigna não segura a nota na visão real', () => {
+    const linhas = [
+      linhaEscopo({ idItemDocumentoEstoque: 10, divergValorUnitario: true }),
+    ];
+    const real = prepararDocumentoNoEscopo({ linhas, decisoes: [], escopo: 'reais' });
+    const geral = prepararDocumentoNoEscopo({ linhas, decisoes: [], escopo: 'geral' });
+    expect(real.pendentes).toBe(0);
+    expect(real.temDivergencia).toBe(false);
+    expect(geral.pendentes).toBe(1);
+    expect(geral.temDivergencia).toBe(true);
+  });
+
+  it('justificativa técnica benigna sai da visão real mesmo com preço maior', () => {
+    const linhas = [
+      linhaEscopo({
+        idItemDocumentoEstoque: 10,
+        divergValorUnitario: true,
+        valorUnitarioNF: 15,
+        valorUnitarioPC: 10,
+      }),
+    ];
+    const decisoes = [
+      decisaoEscopo({ campo: 'valor_unitario', justificativaCodigo: 'arredondamento' }),
+    ];
+    const real = prepararDocumentoNoEscopo({ linhas, decisoes, escopo: 'reais' });
+    expect(real.temDivergencia).toBe(false);
+    expect(real.chaves.size).toBe(0);
   });
 });

@@ -1673,6 +1673,49 @@ export type DoubleCheckInComparativoObsHist = {
   criadoEm: string;
 };
 
+export async function fetchDoubleCheckInJustificativasGestao(): Promise<{
+  justificativas: DoubleCheckInJustificativaOpcao[];
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/compras/double-checkin/justificativas/gestao');
+  const body = (await res.json().catch(() => ({}))) as {
+    justificativas?: DoubleCheckInJustificativaOpcao[];
+    error?: string;
+  };
+  if (!res.ok) return { justificativas: [], erro: body.error ?? res.statusText };
+  return { justificativas: body.justificativas ?? [] };
+}
+
+export async function salvarDoubleCheckInJustificativa(params: {
+  id?: number;
+  label: string;
+  campos: DoubleCheckInCampoComparativo[];
+  ativo: boolean;
+}): Promise<{ justificativa?: DoubleCheckInJustificativaOpcao; erro?: string }> {
+  const res = await apiFetch(
+    params.id
+      ? `/api/compras/double-checkin/justificativas/${params.id}`
+      : '/api/compras/double-checkin/justificativas',
+    {
+      method: params.id ? 'PUT' : 'POST',
+      body: { label: params.label, campos: params.campos, ativo: params.ativo },
+    }
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    justificativa?: DoubleCheckInJustificativaOpcao;
+    error?: string;
+  };
+  if (!res.ok) return { erro: body.error ?? res.statusText };
+  return { justificativa: body.justificativa };
+}
+
+export async function excluirDoubleCheckInJustificativa(id: number): Promise<{ ok?: boolean; erro?: string }> {
+  const res = await apiFetch(`/api/compras/double-checkin/justificativas/${id}`, { method: 'DELETE' });
+  const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  if (!res.ok) return { erro: body.error ?? res.statusText };
+  return { ok: true };
+}
+
 export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Promise<{
   linhas: DoubleCheckInComparativoLinha[];
   decisoes: DoubleCheckInComparativoDecisao[];

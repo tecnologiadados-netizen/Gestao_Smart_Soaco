@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import DoubleCheckInComparativoPcTab, {
   contarPendentesComparativo,
 } from './DoubleCheckInComparativoPcTab';
-import { AlertTriangle, CalendarRange, CheckCircle2, ChevronDown, ClipboardCheck, Eye, Maximize2, Minimize2, RefreshCw, RotateCcw, Settings2, Users } from 'lucide-react';
+import { AlertTriangle, CalendarRange, CheckCircle2, ChevronDown, ClipboardCheck, Eye, Library, Maximize2, Minimize2, RefreshCw, RotateCcw, Settings2, Users } from 'lucide-react';
+import DoubleCheckInJustificativasModal from './DoubleCheckInJustificativasModal';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import { useAuth } from '../../contexts/AuthContext';
@@ -105,9 +106,30 @@ function regimeDaNota(nota: DoubleCheckInNota): RegimeConferencia {
   return 'completa';
 }
 
+function resumoFiltroNotas(lista: DoubleCheckInNota[]) {
+  let conferido = 0;
+  let comDivergencia = 0;
+  let pendente = 0;
+  let naoAplicada = 0;
+  for (const n of lista) {
+    if (regimeDaNota(n) === 'nao_aplicada') {
+      naoAplicada += 1;
+      continue;
+    }
+    if (!n.conferido) {
+      pendente += 1;
+      continue;
+    }
+    if (n.conferidoComDivergencia) comDivergencia += 1;
+    else conferido += 1;
+  }
+  return { total: lista.length, conferido, comDivergencia, pendente, naoAplicada };
+}
+
 export default function DoubleCheckInPage() {
   const { isMaster, login, grupo, hasPermission } = useAuth();
   const podeDestinatarios = isAdminOuMaster({ isMaster, login, grupo });
+  const podeCadastros = hasPermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS);
   const podeReabrirConferencia = hasPermission(PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA);
 
   const [dataInicio, setDataInicio] = useState('2024-01-01');
@@ -146,6 +168,7 @@ export default function DoubleCheckInPage() {
   const [reabrindoConferencia, setReabrindoConferencia] = useState(false);
 
   const [paramAberto, setParamAberto] = useState(false);
+  const [cadastrosAberto, setCadastrosAberto] = useState(false);
   const [paramDraft, setParamDraft] = useState('10');
   const [paramSalvando, setParamSalvando] = useState(false);
   const [paramErro, setParamErro] = useState<string | null>(null);
@@ -379,7 +402,11 @@ export default function DoubleCheckInPage() {
 
   const notasFiltradas = (() => {
     const match = criarMatcherTextoLivre(filtroTexto);
+    const inicio = dataInicio.slice(0, 10);
+    const fim = dataFim.slice(0, 10);
     return notas.filter((n) => {
+      const entrada = String(n.dataEntrada ?? '').slice(0, 10);
+      if (!entrada || (inicio && entrada < inicio) || (fim && entrada > fim)) return false;
       const passaTexto =
         !filtroTexto.trim() ||
         match(n.numeroDocumentoFiscal ?? '') ||
@@ -401,7 +428,8 @@ export default function DoubleCheckInPage() {
     });
   })();
 
-  const totalParaPaginacao = notasFiltradas.length;
+  const resumoFiltro = resumoFiltroNotas(notasFiltradas);
+  const totalParaPaginacao = resumoFiltro.total;
   const totalPages = Math.max(1, Math.ceil(totalParaPaginacao / pageSize));
   const pageSafe = Math.min(page, totalPages);
   const notasPagina =
@@ -413,7 +441,7 @@ export default function DoubleCheckInPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [filtroTexto, filtroSituacao, pageSize]);
+  }, [filtroTexto, filtroSituacao, pageSize, dataInicio, dataFim]);
 
   useEffect(() => {
     setPage((p) => Math.min(p, totalPages));
@@ -742,7 +770,10 @@ export default function DoubleCheckInPage() {
                 <button
                   type="button"
                   className={`${btnPrimary} mt-3 w-full justify-center`}
-                  onClick={() => setPeriodoAberto(false)}
+                  onClick={() => {
+                    setPeriodoAberto(false);
+                    void filtrar();
+                  }}
                 >
                   Aplicar período
                 </button>
@@ -797,6 +828,12 @@ export default function DoubleCheckInPage() {
             <Settings2 className="h-4 w-4" />
             Parâmetros
           </button>
+          {podeCadastros && (
+            <button type="button" className={btnSecondary} onClick={() => setCadastrosAberto(true)}>
+              <Library className="h-4 w-4" />
+              Cadastros
+            </button>
+          )}
           {podeDestinatarios && (
             <button type="button" className={btnSecondary} onClick={() => void abrirDestinatarios()}>
               <Users className="h-4 w-4" />
@@ -810,6 +847,27 @@ export default function DoubleCheckInPage() {
           </p>
         )}
       </div>
+
+      {notas.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-100">
+            {resumoFiltro.total.toLocaleString('pt-BR')}{' '}
+            {resumoFiltro.total === 1 ? 'linha no filtro' : 'linhas no filtro'}
+          </span>
+          <span className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">
+            Conferido {resumoFiltro.conferido.toLocaleString('pt-BR')}
+          </span>
+          <span className="rounded-lg border border-yellow-400 bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-yellow-900 dark:border-yellow-500 dark:bg-yellow-950/40 dark:text-yellow-100">
+            Conferido c/ divergência {resumoFiltro.comDivergencia.toLocaleString('pt-BR')}
+          </span>
+          <span className="rounded-lg border border-amber-400 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200">
+            Pendente {resumoFiltro.pendente.toLocaleString('pt-BR')}
+          </span>
+          <span className="rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            Não aplicada {resumoFiltro.naoAplicada.toLocaleString('pt-BR')}
+          </span>
+        </div>
+      )}
 
       <div className="overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40">
         <table className="min-w-full text-sm">
@@ -963,10 +1021,7 @@ export default function DoubleCheckInPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-800/50 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
           <span>
             Exibindo {(pageSafe - 1) * pageSize + 1}–{Math.min(pageSafe * pageSize, totalParaPaginacao)} de{' '}
-            {totalParaPaginacao} registros
-            {filtroTexto.trim() ? (
-              <span className="text-slate-500 dark:text-slate-400"> (busca ativa)</span>
-            ) : null}
+            {totalParaPaginacao.toLocaleString('pt-BR')} no filtro
           </span>
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
@@ -1345,6 +1400,8 @@ export default function DoubleCheckInPage() {
           </div>,
           document.body
         )}
+
+      {cadastrosAberto && <DoubleCheckInJustificativasModal onClose={() => setCadastrosAberto(false)} />}
 
       {/* Modal parâmetros */}
       {paramAberto &&

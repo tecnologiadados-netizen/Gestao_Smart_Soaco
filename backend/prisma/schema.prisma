@@ -263,6 +263,8 @@ model DoubleCheckInJustificativaOpcao {
   label     String
   ativo     Boolean  @default(true)
   sortOrder Int      @default(0)
+  /// JSON com os campos da divergência em que o motivo aparece: valor_unitario, qtde, ipi, condicao_pagamento.
+  campos    String   @default("")
   createdAt DateTime @default(now())
 
   decisoes DoubleCheckInComparativoDecisao[]

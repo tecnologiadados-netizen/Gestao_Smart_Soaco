@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   fetchGestaoEntradasDia,
@@ -53,7 +53,7 @@ function faixaLinha(indice: number): string {
     : 'bg-slate-100 dark:bg-[#232838]';
 }
 
-function TabelaDivergencias({ notas }: { notas: GestaoEntradasNotaDia[] }) {
+export function TabelaDivergencias({ notas }: { notas: GestaoEntradasNotaDia[] }) {
   const linhas = notas.flatMap((nota) =>
     nota.divergencias.map((d, i) => ({ nota, d, i, primeira: i === 0 }))
   );
@@ -150,15 +150,191 @@ function TabelaDivergencias({ notas }: { notas: GestaoEntradasNotaDia[] }) {
   );
 }
 
+export function GestaoEntradasNotaDivergenciaModal({
+  nota,
+  escopo,
+  onClose,
+}: {
+  nota: GestaoEntradasNotaDia;
+  escopo: 'reais' | 'geral';
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const qtde = nota.divergencias.length;
+  const leitura = escopo === 'reais' ? 'visão real' : 'visão geral';
+
+  return createPortal(
+    <div className="fixed inset-0 z-[19000] flex items-center justify-center p-4 sm:p-6" role="presentation">
+      <button type="button" className="absolute inset-0 bg-black/50" aria-label="Fechar" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ge-nota-div-titulo"
+        className="relative flex h-[min(90vh,860px)] w-[min(96vw,1480px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-xl dark:border-white/10 dark:bg-[#161822]"
+      >
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+          <div>
+            <h2 id="ge-nota-div-titulo" className="text-base font-semibold text-slate-800 dark:text-slate-100">
+              {nota.numeroDocumentoFiscal ?? `Documento ${nota.idDocumento}`}
+            </h2>
+            <p className="text-xs text-slate-500">
+              {nota.numeroNfe ? `NF ${nota.numeroNfe} · ` : ''}
+              {nota.nomeParceiro ?? 'Parceiro não informado'}
+              {` · ${qtde} ${qtde === 1 ? 'divergência' : 'divergências'} · ${leitura}`}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+            onClick={onClose}
+          >
+            Fechar
+          </button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+          <TabelaDivergencias notas={[nota]} />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+export type FiltroRankingGestao =
+  | { tipo: 'campo'; campo: string; label: string }
+  | { tipo: 'motivo'; codigo: string; label: string };
+
+function notasDoRanking(notas: GestaoEntradasNotaDia[], filtro: FiltroRankingGestao): GestaoEntradasNotaDia[] {
+  return notas
+    .filter((nota) => nota.status === 'aceita' || nota.status === 'recusa')
+    .map((nota) => ({
+      ...nota,
+      divergencias: nota.divergencias.filter((d) => {
+        if (d.decisao !== 'aceita' && d.decisao !== 'recusa') return false;
+        if (filtro.tipo === 'campo') return d.campo === filtro.campo;
+        return d.decisao === 'aceita' && (d.justificativaCodigo || 'sem_codigo') === filtro.codigo;
+      }),
+    }))
+    .filter((nota) => nota.divergencias.length > 0);
+}
+
+export function GestaoEntradasRankingModal({
+  filtro,
+  dataInicio,
+  dataFim,
+  escopo,
+  onClose,
+}: {
+  filtro: FiltroRankingGestao;
+  dataInicio: string;
+  dataFim: string;
+  escopo: 'reais' | 'geral';
+  onClose: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
+  const [notas, setNotas] = useState<GestaoEntradasNotaDia[]>([]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    let ativo = true;
+    setLoading(true);
+    setErro(null);
+    void fetchGestaoEntradasDia({ dataInicio, dataFim, escopo }).then((r) => {
+      if (!ativo) return;
+      if (r.erro || !r.data) {
+        setErro(r.erro ?? 'Falha ao carregar as divergências.');
+        setNotas([]);
+      } else {
+        setNotas(r.data.notas);
+      }
+      setLoading(false);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [dataInicio, dataFim, escopo]);
+
+  const linhas = useMemo(() => notasDoRanking(notas, filtro), [notas, filtro]);
+  const qtde = linhas.reduce((total, nota) => total + nota.divergencias.length, 0);
+  const leitura = escopo === 'reais' ? 'visão real' : 'visão geral';
+  const recorte = filtro.tipo === 'campo' ? 'decisões deste campo' : 'aceites deste motivo';
+
+  return createPortal(
+    <div className="fixed inset-0 z-[17000] flex items-center justify-center p-4 sm:p-6" role="presentation">
+      <button type="button" className="absolute inset-0 bg-black/50" aria-label="Fechar" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ge-ranking-titulo"
+        className="relative flex h-[min(90vh,860px)] w-[min(96vw,1480px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-xl dark:border-white/10 dark:bg-[#161822]"
+      >
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+          <div>
+            <h2 id="ge-ranking-titulo" className="text-base font-semibold text-slate-800 dark:text-slate-100">
+              {filtro.label}
+            </h2>
+            <p className="text-xs text-slate-500">
+              {loading
+                ? 'Carregando divergências…'
+                : `${qtde} ${qtde === 1 ? 'divergência' : 'divergências'} · ${recorte} · ${leitura}`}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+            onClick={onClose}
+          >
+            Fechar
+          </button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+          {erro && (
+            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+              {erro}
+            </p>
+          )}
+          {loading && <p className="py-10 text-center text-sm text-slate-500">Carregando…</p>}
+          {!loading && !erro && linhas.length === 0 && (
+            <p className="py-10 text-center text-sm text-slate-500">Nenhuma divergência neste item.</p>
+          )}
+          {linhas.length > 0 && <TabelaDivergencias notas={linhas} />}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function GestaoEntradasDiaModal({
   titulo,
   dataInicio,
   dataFim,
+  escopo,
   onClose,
 }: {
   titulo: string;
   dataInicio: string;
   dataFim: string;
+  escopo: 'reais' | 'geral';
   onClose: () => void;
 }) {
   const [loading, setLoading] = useState(true);
@@ -177,7 +353,7 @@ export default function GestaoEntradasDiaModal({
     let ativo = true;
     setLoading(true);
     setErro(null);
-    void fetchGestaoEntradasDia({ dataInicio, dataFim }).then((r) => {
+    void fetchGestaoEntradasDia({ dataInicio, dataFim, escopo }).then((r) => {
       if (!ativo) return;
       if (r.erro || !r.data) {
         setErro(r.erro ?? 'Falha ao carregar as entradas.');
@@ -190,7 +366,7 @@ export default function GestaoEntradasDiaModal({
     return () => {
       ativo = false;
     };
-  }, [dataInicio, dataFim]);
+  }, [dataInicio, dataFim, escopo]);
 
   const notas = dia?.notas ?? [];
   const comDivergencia = notas.filter((n) => n.divergencias.length > 0);
@@ -218,7 +394,9 @@ export default function GestaoEntradasDiaModal({
             <p className="text-xs text-slate-500">
               {loading
                 ? 'Carregando entradas…'
-                : `${notas.length} entradas · ${comDivergencia.length} com divergência ainda na NF × PC`}
+                : `${notas.length} entradas · ${comDivergencia.length} com ${
+                    escopo === 'reais' ? 'divergência real' : 'divergência'
+                  } ainda na NF × PC${escopo === 'reais' ? ' · visão real' : ' · visão geral'}`}
             </p>
           </div>
           <button
@@ -241,7 +419,9 @@ export default function GestaoEntradasDiaModal({
           )}
           {comDivergencia.length > 0 && (
             <section className="space-y-2">
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Com divergência</h3>
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {escopo === 'reais' ? 'Com divergência real' : 'Com divergência'}
+              </h3>
               <TabelaDivergencias notas={comDivergencia} />
             </section>
           )}

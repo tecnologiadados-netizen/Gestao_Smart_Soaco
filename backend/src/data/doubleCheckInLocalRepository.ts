@@ -14,7 +14,8 @@ import {
 import {
   camposDaJustificativa,
   JUSTIFICATIVA_SEED,
-  justificativaAplicavelAoCampo,
+  normalizarCamposJustificativa,
+  parseCamposJustificativaSalvos,
 } from './doubleCheckInJustificativas.js';
 import {
   DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE,
@@ -89,20 +90,47 @@ export async function ensureDoubleCheckInNfPcWhatsappTipo(): Promise<{ id: numbe
 
 export async function ensureDoubleCheckInJustificativaOpcoes(): Promise<void> {
   for (const seed of JUSTIFICATIVA_SEED) {
-    await prisma.doubleCheckInJustificativaOpcao.upsert({
+    const campos = JSON.stringify(seed.campos);
+    const existing = await prisma.doubleCheckInJustificativaOpcao.findUnique({
       where: { codigo: seed.codigo },
-      create: {
-        codigo: seed.codigo,
-        label: seed.label,
-        ativo: true,
-        sortOrder: seed.sortOrder,
-      },
-      update: {
-        label: seed.label,
-        sortOrder: seed.sortOrder,
-      },
+      select: { id: true, campos: true },
     });
+    if (!existing) {
+      await prisma.doubleCheckInJustificativaOpcao.create({
+        data: {
+          codigo: seed.codigo,
+          label: seed.label,
+          ativo: true,
+          sortOrder: seed.sortOrder,
+          campos,
+        },
+      });
+      continue;
+    }
+    if (!existing.campos.trim()) {
+      await prisma.doubleCheckInJustificativaOpcao.update({
+        where: { id: existing.id },
+        data: { campos },
+      });
+    }
   }
+}
+
+function camposDaOpcao(codigo: string, camposSalvos: string): DoubleCheckInCampoComparativo[] {
+  const salvos = parseCamposJustificativaSalvos(camposSalvos);
+  if (salvos.length > 0) return salvos;
+  return camposDaJustificativa(codigo) as DoubleCheckInCampoComparativo[];
+}
+
+function slugMotivo(label: string): string {
+  const base = label
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48);
+  return base || 'motivo';
 }
 
 export type DoubleCheckInJustificativaOpcaoRow = {
@@ -126,8 +154,88 @@ export async function listarJustificativaOpcoes(somenteAtivas = true): Promise<D
     label: r.label,
     ativo: r.ativo,
     sortOrder: r.sortOrder,
-    campos: camposDaJustificativa(r.codigo) as DoubleCheckInCampoComparativo[],
+    campos: camposDaOpcao(r.codigo, r.campos),
   }));
+}
+
+export async function criarJustificativaOpcao(params: {
+  label: string;
+  campos: unknown;
+  ativo?: boolean;
+}): Promise<DoubleCheckInJustificativaOpcaoRow> {
+  const label = params.label.trim();
+  if (!label) throw new Error('Informe o nome do motivo.');
+  if (label.length > 120) throw new Error('O nome do motivo pode ter no máximo 120 caracteres.');
+  const campos = normalizarCamposJustificativa(params.campos);
+  if (campos.length === 0) throw new Error('Escolha ao menos uma divergência.');
+  const base = slugMotivo(label);
+  let codigo = base;
+  for (let i = 2; i < 50; i += 1) {
+    const existe = await prisma.doubleCheckInJustificativaOpcao.findUnique({
+      where: { codigo },
+      select: { id: true },
+    });
+    if (!existe) break;
+    codigo = `${base}_${i}`.slice(0, 60);
+  }
+  const ultimo = await prisma.doubleCheckInJustificativaOpcao.aggregate({ _max: { sortOrder: true } });
+  const sortOrder = Math.min((ultimo._max.sortOrder ?? 0) + 10, 80);
+  const criado = await prisma.doubleCheckInJustificativaOpcao.create({
+    data: {
+      codigo,
+      label,
+      ativo: params.ativo !== false,
+      sortOrder,
+      campos: JSON.stringify(campos),
+    },
+  });
+  return {
+    id: criado.id,
+    codigo: criado.codigo,
+    label: criado.label,
+    ativo: criado.ativo,
+    sortOrder: criado.sortOrder,
+    campos,
+  };
+}
+
+export async function atualizarJustificativaOpcao(params: {
+  id: number;
+  label: string;
+  campos: unknown;
+  ativo: boolean;
+}): Promise<DoubleCheckInJustificativaOpcaoRow> {
+  const label = params.label.trim();
+  if (!label) throw new Error('Informe o nome do motivo.');
+  if (label.length > 120) throw new Error('O nome do motivo pode ter no máximo 120 caracteres.');
+  const campos = normalizarCamposJustificativa(params.campos);
+  if (campos.length === 0) throw new Error('Escolha ao menos uma divergência.');
+  const atual = await prisma.doubleCheckInJustificativaOpcao.findUnique({ where: { id: params.id } });
+  if (!atual) throw new Error('Motivo não encontrado.');
+  const salvo = await prisma.doubleCheckInJustificativaOpcao.update({
+    where: { id: params.id },
+    data: { label, ativo: params.ativo, campos: JSON.stringify(campos) },
+  });
+  return {
+    id: salvo.id,
+    codigo: salvo.codigo,
+    label: salvo.label,
+    ativo: salvo.ativo,
+    sortOrder: salvo.sortOrder,
+    campos,
+  };
+}
+
+export async function excluirJustificativaOpcao(id: number): Promise<void> {
+  const atual = await prisma.doubleCheckInJustificativaOpcao.findUnique({ where: { id } });
+  if (!atual) throw new Error('Motivo não encontrado.');
+  const usos = await prisma.doubleCheckInComparativoDecisao.count({ where: { justificativaOpcaoId: id } });
+  if (usos > 0) {
+    throw new Error(
+      `Este motivo já foi usado em ${usos} ${usos === 1 ? 'divergência conferida' : 'divergências conferidas'}. Desmarque "Ativo" para ele deixar de aparecer nas próximas conferências.`
+    );
+  }
+  await prisma.doubleCheckInJustificativaOpcao.delete({ where: { id } });
 }
 
 export type DoubleCheckInComparativoDecisaoRow = {
@@ -400,7 +508,7 @@ export async function upsertDecisaoComparativo(params: {
   if (!opcao || !opcao.ativo) {
     throw new Error('Justificativa inválida ou inativa.');
   }
-  if (!justificativaAplicavelAoCampo(opcao.codigo, params.campo)) {
+  if (!camposDaOpcao(opcao.codigo, opcao.campos).includes(params.campo)) {
     throw new Error('Essa justificativa não se aplica a este campo da divergência.');
   }
   if (params.decisao === 'aceita' && !String(params.observacao ?? '').trim()) {

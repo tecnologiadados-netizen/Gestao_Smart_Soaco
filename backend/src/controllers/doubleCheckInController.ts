@@ -33,6 +33,9 @@ import {
   listarDocumentosJaAlertados,
   listarIdsComAtencaoDetectada,
   listarJustificativaOpcoes,
+  criarJustificativaOpcao,
+  atualizarJustificativaOpcao,
+  excluirJustificativaOpcao,
   listarTodosDocumentosConferidos,
   marcarAlertaEnviado,
   marcarDocumentoConferido,
@@ -539,6 +542,71 @@ export async function getDoubleCheckInJustificativas(_req: Request, res: Respons
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(503).json({ error: msg });
+  }
+}
+
+/** GET /api/compras/double-checkin/justificativas/gestao — inclui inativos. */
+export async function getDoubleCheckInJustificativasGestao(_req: Request, res: Response): Promise<void> {
+  try {
+    const justificativas = await listarJustificativaOpcoes(false);
+    res.json({ justificativas });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(503).json({ error: msg });
+  }
+}
+
+/** POST /api/compras/double-checkin/justificativas */
+export async function postDoubleCheckInJustificativa(req: Request, res: Response): Promise<void> {
+  try {
+    const justificativa = await criarJustificativaOpcao({
+      label: String(req.body?.label ?? ''),
+      campos: req.body?.campos,
+      ativo: req.body?.ativo !== false,
+    });
+    res.status(201).json({ justificativa });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const status = msg === 'Motivo não encontrado.' ? 404 : 400;
+    res.status(status).json({ error: msg });
+  }
+}
+
+/** PUT /api/compras/double-checkin/justificativas/:id */
+export async function putDoubleCheckInJustificativa(req: Request, res: Response): Promise<void> {
+  const id = Math.trunc(Number(req.params.id));
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: 'Motivo inválido.' });
+    return;
+  }
+  try {
+    const justificativa = await atualizarJustificativaOpcao({
+      id,
+      label: String(req.body?.label ?? ''),
+      campos: req.body?.campos,
+      ativo: req.body?.ativo !== false,
+    });
+    res.json({ justificativa });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(msg === 'Motivo não encontrado.' ? 404 : 400).json({ error: msg });
+  }
+}
+
+/** DELETE /api/compras/double-checkin/justificativas/:id */
+export async function deleteDoubleCheckInJustificativa(req: Request, res: Response): Promise<void> {
+  const id = Math.trunc(Number(req.params.id));
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: 'Motivo inválido.' });
+    return;
+  }
+  try {
+    await excluirJustificativaOpcao(id);
+    res.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const status = msg === 'Motivo não encontrado.' ? 404 : msg.includes('já foi usado') ? 409 : 400;
+    res.status(status).json({ error: msg });
   }
 }
 
