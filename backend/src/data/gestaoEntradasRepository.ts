@@ -246,7 +246,7 @@ async function carregarDecisoesDia(ids: number[]): Promise<Map<number, DecisaoDi
     const [rows, hist] = await Promise.all([
       prisma.doubleCheckInComparativoDecisao.findMany({
         where: { idDocumentoEstoque: { in: parte } },
-        include: { justificativaOpcao: { select: { label: true } } },
+        include: { justificativaOpcao: { select: { codigo: true, label: true } } },
       }),
       prisma.doubleCheckInComparativoObsHist.findMany({
         where: { idDocumentoEstoque: { in: parte } },
@@ -271,6 +271,7 @@ async function carregarDecisoesDia(ids: number[]): Promise<Map<number, DecisaoDi
         idItemPedidoCompra: r.idItemPedidoCompra,
         campo: r.campo,
         decisao: r.decisao,
+        justificativaCodigo: r.justificativaOpcao.codigo,
         justificativaLabel: r.justificativaOpcao.label,
         observacao: r.observacao,
         usuarioLogin: r.usuarioLogin,

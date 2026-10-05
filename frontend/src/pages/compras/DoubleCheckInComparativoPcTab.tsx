@@ -464,6 +464,13 @@ export default function DoubleCheckInComparativoPcTab({
                 const dec = decisaoMap.get(
                   chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
                 );
+                const natureza =
+                  dec &&
+                  ['arredondamento', 'divergencia_so_na_tela', 'ipi_reflexo'].includes(
+                    dec.justificativaCodigo
+                  )
+                    ? 'benigna'
+                    : linha.naturezaDivergencias?.[c.id];
                 const hist = historicoDaDecisao(dec);
                 return (
                   <div
@@ -475,9 +482,22 @@ export default function DoubleCheckInComparativoPcTab({
                     }`}
                   >
                     <div className="mb-1 flex items-center justify-between gap-1">
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        {c.label}
-                      </span>
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          {c.label}
+                        </span>
+                        {diverg && natureza ? (
+                          <span
+                            className={
+                              natureza === 'real'
+                                ? 'rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                                : 'rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                            }
+                          >
+                            {natureza === 'real' ? 'Real' : 'Benigna'}
+                          </span>
+                        ) : null}
+                      </div>
                       {!diverg ? (
                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-label="Igual" />
                       ) : dec?.decisao === 'aceita' ? (

@@ -60,11 +60,12 @@ function TabelaDivergencias({ notas }: { notas: GestaoEntradasNotaDia[] }) {
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-white/10">
-      <table className="w-full min-w-[1180px] border-separate border-spacing-0 text-left text-sm">
+      <table className="w-full min-w-[1280px] border-separate border-spacing-0 text-left text-sm">
         <thead className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
           <tr>
             <th className={TH_ENTRADA}>Entrada</th>
             <th className={TH}>Campo</th>
+            <th className={TH}>Natureza</th>
             <th className={TH}>Item</th>
             <th className={TH}>Na NF</th>
             <th className={TH}>No pedido</th>
@@ -99,6 +100,17 @@ function TabelaDivergencias({ notas }: { notas: GestaoEntradasNotaDia[] }) {
                 <td className={`px-3 py-2 font-medium text-slate-800 dark:text-slate-100 ${faixa}`}>
                   {d.campoLabel}
                   <span className="mt-0.5 block text-xs font-normal text-slate-500">{decisaoLabel(d.decisao)}</span>
+                </td>
+                <td className={`px-3 py-2 ${faixa}`}>
+                  <span
+                    className={
+                      d.natureza === 'real'
+                        ? 'inline-flex rounded-full bg-rose-100 px-2 py-1 text-[11px] font-bold text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                        : 'inline-flex rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                    }
+                  >
+                    {d.natureza === 'real' ? 'Divergência real' : 'Divergência benigna'}
+                  </span>
                 </td>
                 <td className={`px-3 py-2 text-xs text-slate-600 dark:text-slate-300 ${faixa}`}>
                   <span className="font-medium text-slate-800 dark:text-slate-100">{d.codigoProduto ?? 'Item'}</span>

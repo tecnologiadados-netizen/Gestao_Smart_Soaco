@@ -66,6 +66,7 @@ export type GestaoEntradasDivergencia = {
   nomePedidoCompra: string | null;
   campo: string;
   campoLabel: string;
+  natureza: 'benigna' | 'real';
   valorNf: string;
   valorPc: string;
   detalheNf: string | null;

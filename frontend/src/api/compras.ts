@@ -1539,6 +1539,7 @@ export async function conferirDoubleCheckIn(params: {
 }
 
 export type DoubleCheckInCampoComparativo = 'valor_unitario' | 'qtde' | 'ipi' | 'condicao_pagamento';
+export type DoubleCheckInNaturezaDivergencia = 'benigna' | 'real';
 
 export type DoubleCheckInComparativoLinha = {
   idItemDocumentoEstoque: number;
@@ -1577,6 +1578,9 @@ export type DoubleCheckInComparativoLinha = {
   divergQtde: boolean;
   divergIpi: boolean;
   divergCondicaoPagamento: boolean;
+  naturezaDivergencias?: Partial<
+    Record<DoubleCheckInCampoComparativo, DoubleCheckInNaturezaDivergencia>
+  >;
   /** Documento sem contas a pagar (Nomus não gera agendamento financeiro). */
   naoGeraContasPagar?: boolean;
   temDivergencia: boolean;

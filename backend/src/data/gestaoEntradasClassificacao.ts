@@ -2,6 +2,10 @@
  * Gestão entradas — classificação da nota conferida e agregação do painel.
  * Decisão em nota ainda não conferida não entra no ranking (conferência incompleta).
  */
+import {
+  classificarNaturezaDivergencia,
+  type NaturezaDivergencia,
+} from '../services/doubleCheckInNatureza.js';
 
 export const CAMPOS_DIVERGENCIA_ENTRADA = [
   { campo: 'valor_unitario', label: 'Valor unitário' },
@@ -263,6 +267,7 @@ export type DivergenciaAtualEntrada = {
   nomePedidoCompra: string | null;
   campo: string;
   campoLabel: string;
+  natureza: NaturezaDivergencia;
   /** Valor exibido na NF, no mesmo formato do Double Check. */
   valorNf: string;
   /** Valor exibido no pedido de compra. */
@@ -298,6 +303,10 @@ export type LinhaComparativoDia = {
   regraPagamentoPC?: string | null;
   prazosLabelNF?: string | null;
   prazosLabelPC?: string | null;
+  parcelasNF?: Array<{ dias: number | null }>;
+  parcelasPC?: Array<{ dias: number | null }>;
+  prazosDiasNF?: number[];
+  prazosDiasPC?: number[];
   divergValorUnitario: boolean;
   divergQtde: boolean;
   divergIpi: boolean;
@@ -310,6 +319,7 @@ export type DecisaoDiaGestaoEntrada = {
   campo: string;
   decisao: string;
   justificativaLabel: string;
+  justificativaCodigo?: string;
   observacao: string | null;
   usuarioLogin: string;
   atualizadoEm: string;
@@ -436,6 +446,11 @@ export function montarDivergenciasAtuais(params: {
         nomePedidoCompra: linha.nomePedidoCompra ?? null,
         campo: spec.campo,
         campoLabel: labelCampo(spec.campo),
+        natureza: classificarNaturezaDivergencia({
+          linha,
+          campo: spec.campo,
+          justificativaCodigo: dec?.justificativaCodigo,
+        }),
         valorNf: comparacao.nf,
         valorPc: comparacao.pc,
         detalheNf: comparacao.detalheNf,

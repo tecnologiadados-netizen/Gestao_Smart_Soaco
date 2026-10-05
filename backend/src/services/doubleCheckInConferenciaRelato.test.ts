@@ -117,6 +117,8 @@ describe('relato da conferência NF × PC', () => {
     expect(relato!.pagamentoComum?.pc).toBe('Não Existente');
     expect(relato!.totalProdutos).toBe(2);
     expect(relato!.totalDivergencias).toBe(3);
+    expect(relato!.totalDivergenciasReais).toBe(2);
+    expect(relato!.totalDivergenciasBenignas).toBe(1);
     expect(relato!.aceitas).toBe(3);
     expect(relato!.produtos[0]?.campos.map((c) => c.campo)).toEqual(['valor_unitario']);
     expect(relato!.produtos[0]?.campos[0]?.diferenca).toContain('1,05');
@@ -129,10 +131,31 @@ describe('relato da conferência NF × PC', () => {
     expect(texto).toContain('*Conferência NF × Pedido*');
     expect(texto).toContain('*Pagamento — vale para todos*');
     expect(texto).toContain('*Preços*');
-    expect(texto).toContain('*MUC 3767* · PC27798');
+    expect(texto).toContain('*MUA 0215* · PC27798');
+    expect(texto).not.toContain('*MUC 3767* · PC27798');
+    expect(texto).toContain('2 divergências reais');
     expect(texto).toContain('https://gsmartsoaco.com.br/c/abc');
     expect(texto).not.toContain('líq. (bruto');
     expect(texto).not.toContain('(0)');
+  });
+
+  it('não monta WhatsApp quando todas as divergências são benignas', () => {
+    const menor = linha({
+      idItemDocumentoEstoque: 20,
+      codigoProduto: 'PRECO MENOR',
+      valorUnitarioNF: 6.06,
+      valorUnitarioPC: 6.16,
+      divergValorUnitario: true,
+      divergCondicaoPagamento: false,
+    });
+    const somenteBenigna = montarRelatoConferencia({
+      meta: { numeroNfe: '1', numeroDocumentoFiscal: 'D', nomeParceiro: 'A' },
+      conferidoPor: 'Luisa',
+      linhas: [menor],
+      decisoes: [decisao(menor, 'valor_unitario', 'Fornecedor faturou a menor')],
+    });
+    expect(somenteBenigna?.totalDivergenciasBenignas).toBe(1);
+    expect(montarMensagemConferenciaWhatsApp(somenteBenigna!, null)).toBeNull();
   });
 
   it('formata prazos no WhatsApp com NF/PC em linhas e diferença', () => {

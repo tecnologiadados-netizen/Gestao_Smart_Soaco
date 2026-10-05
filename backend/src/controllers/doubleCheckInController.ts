@@ -46,7 +46,12 @@ import { resolveAppBaseUrl } from '../config/appBaseUrl.js';
 import {
   montarMensagemConferenciaWhatsApp,
   montarRelatoConferencia,
+  temDivergenciaReal,
 } from '../services/doubleCheckInConferenciaRelato.js';
+import {
+  classificarNaturezaDivergencia,
+  type NaturezaDivergencia,
+} from '../services/doubleCheckInNatureza.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
 import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
 
@@ -79,6 +84,45 @@ function validarDecisoesCompletas(
     };
   }
   return { ok: true };
+}
+
+function linhasComNatureza(
+  linhas: DoubleCheckInComparativoLinha[],
+  decisoes: DoubleCheckInComparativoDecisaoRow[]
+): Array<DoubleCheckInComparativoLinha & {
+  naturezaDivergencias: Partial<Record<DoubleCheckInCampoComparativo, NaturezaDivergencia>>;
+}> {
+  const decisoesMap = new Map(
+    decisoes.map((d) => [
+      `${d.idItemDocumentoEstoque}:${d.idItemPedidoCompra}:${d.campo}`,
+      d,
+    ])
+  );
+  return linhas.map((linha) => {
+    const naturezaDivergencias: Partial<
+      Record<DoubleCheckInCampoComparativo, NaturezaDivergencia>
+    > = {};
+    for (const campo of DOUBLE_CHECKIN_CAMPOS) {
+      const flag =
+        campo === 'valor_unitario'
+          ? linha.divergValorUnitario
+          : campo === 'qtde'
+            ? linha.divergQtde
+            : campo === 'ipi'
+              ? linha.divergIpi
+              : linha.divergCondicaoPagamento;
+      if (!flag) continue;
+      const decisao = decisoesMap.get(
+        `${linha.idItemDocumentoEstoque}:${linha.idItemPedidoCompra}:${campo}`
+      );
+      naturezaDivergencias[campo] = classificarNaturezaDivergencia({
+        linha,
+        campo,
+        justificativaCodigo: decisao?.justificativaCodigo,
+      });
+    }
+    return { ...linha, naturezaDivergencias };
+  });
 }
 
 export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
@@ -175,7 +219,7 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
     }
     const validacao = validarDecisoesCompletas(linhas, decisoes);
     res.json({
-      linhas,
+      linhas: linhasComNatureza(linhas, decisoes),
       decisoes,
       justificativas,
       pendentes: validacao.ok ? 0 : validacao.pendentes,
@@ -535,7 +579,7 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
         linhas,
         decisoes,
       });
-      if (relato) {
+      if (relato && temDivergenciaReal(relato)) {
         let url: string | null = null;
         try {
           const token = await salvarConferenciaPagina(idDocumento, JSON.stringify(relato));
@@ -544,11 +588,11 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
           const msgPagina = errPagina instanceof Error ? errPagina.message : String(errPagina);
           console.error('[postDoubleCheckInConferir] página da conferência', msgPagina);
         }
-        await enviarNotificacaoPorTipo(
-          DOUBLE_CHECKIN_NF_PC_WA_CODE,
-          montarMensagemConferenciaWhatsApp(relato, url)
-        );
-        alertaNfPcEnviado = true;
+        const mensagem = montarMensagemConferenciaWhatsApp(relato, url);
+        if (mensagem) {
+          await enviarNotificacaoPorTipo(DOUBLE_CHECKIN_NF_PC_WA_CODE, mensagem);
+          alertaNfPcEnviado = true;
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

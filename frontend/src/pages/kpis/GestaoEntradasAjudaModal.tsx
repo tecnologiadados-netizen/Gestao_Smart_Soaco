@@ -32,11 +32,11 @@ const SECOES: SecaoAjuda[] = [
   },
   {
     id: 'tipos',
-    titulo: 'Tipos de divergência e motivos',
+    titulo: 'Natureza, tipos e motivos',
     oQueE:
-      'O ranking por campo conta cada decisão (valor unitário, quantidade, IPI ou condição de pagamento) das notas conferidas que ainda divergem do pedido. O ranking de motivos conta só as decisões aceitas, pela justificativa escolhida na conferência. Diferença já corrigida no ERP sai desses rankings.',
+      'Cada diferença é separada em Divergência benigna ou Divergência real. Preço e IPI menores ou iguais ao pedido são benignos; quantidade diferente é real; pagamento com todos os prazos iguais ou maiores é benigno. Arredondamento, IPI reflexo e “divergência só na tela” também são benignos. Na dúvida, o sistema classifica como real. Aceitar ou recusar é uma decisão separada da natureza.',
     comoLe:
-      'Uma nota pode aparecer em mais de um campo. A lista de motivos muda conforme o campo (valor, quantidade, IPI ou pagamento); Outros fica por último e só entra quando nenhum motivo daquele campo couber. Decisão gravada em nota que ainda não foi conferida não entra nos rankings.',
+      'A tabela do documento mostra o selo Real ou Benigna em cada campo. O WhatsApp contém somente divergências reais; as benignas continuam disponíveis na tabela e no histórico. O ranking por campo conta cada decisão das notas conferidas que ainda divergem do pedido. O ranking de motivos conta só decisões aceitas. Diferença corrigida no ERP sai desses rankings.',
   },
   {
     id: 'movimento',
