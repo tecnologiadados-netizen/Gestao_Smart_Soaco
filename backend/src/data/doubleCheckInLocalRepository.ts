@@ -633,7 +633,33 @@ export type DoubleCheckInConferidoInfo = {
   conferidoEm: string;
   usuarioId: number;
   usuarioLogin: string;
+  temDivergenciaRealHistorica: boolean;
+  totalDivergenciasReaisHistorica: number;
+  totalDivergenciasBenignasHist: number;
+  naturezaClassificacaoFonte: string | null;
 };
+
+function mapConferido(r: {
+  idDocumentoEstoque: number;
+  conferidoEm: Date;
+  usuarioId: number;
+  usuarioLogin: string;
+  temDivergenciaRealHistorica: boolean;
+  totalDivergenciasReaisHistorica: number;
+  totalDivergenciasBenignasHist: number;
+  naturezaClassificacaoFonte: string | null;
+}): DoubleCheckInConferidoInfo {
+  return {
+    idDocumentoEstoque: r.idDocumentoEstoque,
+    conferidoEm: r.conferidoEm.toISOString(),
+    usuarioId: r.usuarioId,
+    usuarioLogin: r.usuarioLogin,
+    temDivergenciaRealHistorica: r.temDivergenciaRealHistorica,
+    totalDivergenciasReaisHistorica: r.totalDivergenciasReaisHistorica,
+    totalDivergenciasBenignasHist: r.totalDivergenciasBenignasHist,
+    naturezaClassificacaoFonte: r.naturezaClassificacaoFonte,
+  };
+}
 
 export async function listarDocumentosConferidos(
   ids: number[]
@@ -644,12 +670,7 @@ export async function listarDocumentosConferidos(
     where: { idDocumentoEstoque: { in: ids } },
   });
   for (const r of rows) {
-    map.set(r.idDocumentoEstoque, {
-      idDocumentoEstoque: r.idDocumentoEstoque,
-      conferidoEm: r.conferidoEm.toISOString(),
-      usuarioId: r.usuarioId,
-      usuarioLogin: r.usuarioLogin,
-    });
+    map.set(r.idDocumentoEstoque, mapConferido(r));
   }
   return map;
 }
@@ -674,12 +695,7 @@ export async function listarTodosDocumentosConferidos(): Promise<
   const map = new Map<number, DoubleCheckInConferidoInfo>();
   const rows = await prisma.doubleCheckInConferido.findMany();
   for (const r of rows) {
-    map.set(r.idDocumentoEstoque, {
-      idDocumentoEstoque: r.idDocumentoEstoque,
-      conferidoEm: r.conferidoEm.toISOString(),
-      usuarioId: r.usuarioId,
-      usuarioLogin: r.usuarioLogin,
-    });
+    map.set(r.idDocumentoEstoque, mapConferido(r));
   }
   return map;
 }
@@ -707,12 +723,7 @@ export async function getDocumentoConferido(
     where: { idDocumentoEstoque },
   });
   if (!r) return null;
-  return {
-    idDocumentoEstoque: r.idDocumentoEstoque,
-    conferidoEm: r.conferidoEm.toISOString(),
-    usuarioId: r.usuarioId,
-    usuarioLogin: r.usuarioLogin,
-  };
+  return mapConferido(r);
 }
 
 export async function marcarDocumentoConferido(params: {
@@ -724,12 +735,7 @@ export async function marcarDocumentoConferido(params: {
     where: { idDocumentoEstoque: params.idDocumentoEstoque },
   });
   if (existing) {
-    return {
-      idDocumentoEstoque: existing.idDocumentoEstoque,
-      conferidoEm: existing.conferidoEm.toISOString(),
-      usuarioId: existing.usuarioId,
-      usuarioLogin: existing.usuarioLogin,
-    };
+    return mapConferido(existing);
   }
   const created = await prisma.doubleCheckInConferido.create({
     data: {
@@ -738,12 +744,25 @@ export async function marcarDocumentoConferido(params: {
       usuarioLogin: params.usuarioLogin,
     },
   });
-  return {
-    idDocumentoEstoque: created.idDocumentoEstoque,
-    conferidoEm: created.conferidoEm.toISOString(),
-    usuarioId: created.usuarioId,
-    usuarioLogin: created.usuarioLogin,
-  };
+  return mapConferido(created);
+}
+
+export async function atualizarClassificacaoHistoricaConferencia(params: {
+  idDocumentoEstoque: number;
+  totalReais: number;
+  totalBenignas: number;
+  fonte: string;
+}): Promise<void> {
+  await prisma.doubleCheckInConferido.update({
+    where: { idDocumentoEstoque: params.idDocumentoEstoque },
+    data: {
+      temDivergenciaRealHistorica: params.totalReais > 0,
+      totalDivergenciasReaisHistorica: Math.max(0, Math.trunc(params.totalReais)),
+      totalDivergenciasBenignasHist: Math.max(0, Math.trunc(params.totalBenignas)),
+      naturezaClassificacaoFonte: params.fonte.slice(0, 60),
+      naturezaClassificadaEm: new Date(),
+    },
+  });
 }
 
 function novoTokenPagina(): string {

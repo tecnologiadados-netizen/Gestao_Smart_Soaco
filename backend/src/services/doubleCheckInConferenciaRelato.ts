@@ -19,6 +19,7 @@ export type SinalDif = 'pos' | 'neg' | 'zero';
 export type CampoRelato = {
   campo: DoubleCheckInCampoComparativo;
   natureza: NaturezaDivergencia;
+  justificativaCodigo?: string;
   titulo: string;
   nf: string;
   pc: string;
@@ -56,6 +57,7 @@ export type ProdutoRelato = {
 };
 
 export type RelatoConferencia = {
+  schemaVersion?: number;
   numeroNfe: string;
   numeroDocumentoFiscal: string;
   nomeParceiro: string;
@@ -156,6 +158,7 @@ function montarCampo(
       justificativaCodigo: dec.justificativaCodigo,
     }),
     titulo: TITULO[campo],
+    justificativaCodigo: dec.justificativaCodigo,
     decisao: dec.decisao,
     justificativa: dec.justificativaLabel,
     observacao: dec.observacao?.trim() ? dec.observacao.trim() : null,
@@ -358,6 +361,7 @@ export function montarRelatoConferencia(params: {
   const totalDivergenciasBenignas = todosCampos.filter((c) => c.natureza === 'benigna').length;
 
   return {
+    schemaVersion: 2,
     numeroNfe: (params.meta.numeroNfe ?? '').trim() || '—',
     numeroDocumentoFiscal: (params.meta.numeroDocumentoFiscal ?? '').trim() || '—',
     nomeParceiro: (params.meta.nomeParceiro ?? '').trim() || '—',

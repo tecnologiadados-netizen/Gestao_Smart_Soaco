@@ -23,6 +23,12 @@ const JUSTIFICATIVAS_BENIGNAS = new Set([
   'ipi_reflexo',
 ]);
 
+export function justificativaIndicaDivergenciaBenigna(
+  justificativaCodigo: string | null | undefined
+): boolean {
+  return JUSTIFICATIVAS_BENIGNAS.has((justificativaCodigo ?? '').trim());
+}
+
 function numero(v: number | null | undefined): number {
   return Number.isFinite(v) ? Number(v) : 0;
 }
@@ -51,8 +57,7 @@ export function classificarNaturezaDivergencia(params: {
   campo: DoubleCheckInCampoComparativo;
   justificativaCodigo?: string | null;
 }): NaturezaDivergencia {
-  const justificativa = (params.justificativaCodigo ?? '').trim();
-  if (JUSTIFICATIVAS_BENIGNAS.has(justificativa)) return 'benigna';
+  if (justificativaIndicaDivergenciaBenigna(params.justificativaCodigo)) return 'benigna';
 
   const { linha, campo } = params;
   if (campo === 'valor_unitario') {

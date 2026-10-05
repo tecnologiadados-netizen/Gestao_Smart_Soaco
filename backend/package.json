@@ -30,7 +30,8 @@
     "import:sgq-documentos": "tsx scripts/import-sgq-documentos-migracao.ts",
     "import:sgq-registros": "tsx scripts/import-sgq-registros-internos.ts",
     "reimport:rh-fotos": "tsx scripts/reimport-rh-fotos.ts",
-    "seed:rh-grupos": "tsx scripts/seed-rh-grupos-permissoes.ts"
+    "seed:rh-grupos": "tsx scripts/seed-rh-grupos-permissoes.ts",
+    "backfill:double-checkin-natureza": "tsx scripts/double-checkin-backfill-natureza-historica.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

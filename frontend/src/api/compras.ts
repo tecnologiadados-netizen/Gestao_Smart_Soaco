@@ -1382,8 +1382,11 @@ export type DoubleCheckInNota = {
   conferido?: boolean;
   conferidoEm?: string | null;
   conferidoPor?: string | null;
-  /** Conferido e havia divergência NF × PC. */
+  /** Conferido e ainda diverge da NF × PC no estado atual do ERP. */
   conferidoComDivergencia?: boolean;
+  /** Havia ao menos uma divergência real no instante da conferência. */
+  temDivergenciaRealHistorica?: boolean;
+  totalDivergenciasReaisHistorica?: number;
 };
 
 export type DoubleCheckInHistoricoEntrada = {
@@ -1506,6 +1509,8 @@ export async function conferirDoubleCheckIn(params: {
   conferidoEm?: string | null;
   conferidoPor?: string | null;
   conferidoComDivergencia?: boolean;
+  temDivergenciaRealHistorica?: boolean;
+  totalDivergenciasReaisHistorica?: number;
   jaConferido?: boolean;
   alertaNfPcEnviado?: boolean;
   erro?: string;
@@ -1520,6 +1525,8 @@ export async function conferirDoubleCheckIn(params: {
     conferidoEm?: string | null;
     conferidoPor?: string | null;
     conferidoComDivergencia?: boolean;
+    temDivergenciaRealHistorica?: boolean;
+    totalDivergenciasReaisHistorica?: number;
     jaConferido?: boolean;
     alertaNfPcEnviado?: boolean;
     error?: string;
@@ -1533,6 +1540,8 @@ export async function conferirDoubleCheckIn(params: {
     conferidoEm: body.conferidoEm ?? null,
     conferidoPor: body.conferidoPor ?? null,
     conferidoComDivergencia: Boolean(body.conferidoComDivergencia),
+    temDivergenciaRealHistorica: Boolean(body.temDivergenciaRealHistorica),
+    totalDivergenciasReaisHistorica: Number(body.totalDivergenciasReaisHistorica ?? 0),
     jaConferido: body.jaConferido,
     alertaNfPcEnviado: body.alertaNfPcEnviado,
   };

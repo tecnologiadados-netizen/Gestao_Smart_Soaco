@@ -433,18 +433,36 @@ export default function DoubleCheckInPage() {
       idDocumento: number,
       conferidoEm: string | null,
       conferidoPor: string | null,
-      conferidoComDivergencia = false
+      conferidoComDivergencia = false,
+      temDivergenciaRealHistorica = false,
+      totalDivergenciasReaisHistorica = 0
     ) => {
       setNotas((prev) =>
         prev.map((n) =>
           n.idDocumento === idDocumento
-            ? { ...n, conferido: true, conferidoEm, conferidoPor, conferidoComDivergencia }
+            ? {
+                ...n,
+                conferido: true,
+                conferidoEm,
+                conferidoPor,
+                conferidoComDivergencia,
+                temDivergenciaRealHistorica,
+                totalDivergenciasReaisHistorica,
+              }
             : n
         )
       );
       setModalNota((prev) =>
         prev && prev.idDocumento === idDocumento
-          ? { ...prev, conferido: true, conferidoEm, conferidoPor, conferidoComDivergencia }
+          ? {
+              ...prev,
+              conferido: true,
+              conferidoEm,
+              conferidoPor,
+              conferidoComDivergencia,
+              temDivergenciaRealHistorica,
+              totalDivergenciasReaisHistorica,
+            }
           : prev
       );
     },
@@ -531,7 +549,9 @@ export default function DoubleCheckInPage() {
         modalNota.idDocumento,
         r.conferidoEm ?? null,
         r.conferidoPor ?? null,
-        Boolean(r.conferidoComDivergencia)
+        Boolean(r.conferidoComDivergencia),
+        Boolean(r.temDivergenciaRealHistorica),
+        Number(r.totalDivergenciasReaisHistorica ?? 0)
       );
       setSenhaAberto(false);
       setSenhaDraft('');
@@ -660,6 +680,8 @@ export default function DoubleCheckInPage() {
                 const statusPronto = Object.prototype.hasOwnProperty.call(statusMap, n.idDocumento);
                 const conferido = Boolean(n.conferido);
                 const conferidoComDivergencia = conferido && Boolean(n.conferidoComDivergencia);
+                const temRealHistorica =
+                  conferido && Boolean(n.temDivergenciaRealHistorica);
                 return (
                   <tr
                     key={n.idDocumento}
@@ -671,7 +693,18 @@ export default function DoubleCheckInPage() {
                           : 'border-l-4 border-l-amber-400'
                     }`}
                   >
-                    <td className="px-3 py-2 tabular-nums">{n.numeroDocumentoFiscal ?? '—'}</td>
+                    <td className="px-3 py-2 tabular-nums">
+                      <span className="inline-flex items-center gap-2">
+                        {n.numeroDocumentoFiscal ?? '—'}
+                        {temRealHistorica ? (
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-600 shadow-[0_0_0_3px_rgba(225,29,72,0.16)]"
+                            title={`${n.totalDivergenciasReaisHistorica ?? 1} divergência(s) real(is) registrada(s) no momento da conferência`}
+                            aria-label="Possui divergência real histórica"
+                          />
+                        ) : null}
+                      </span>
+                    </td>
                     <td className="px-3 py-2 tabular-nums">{n.numeroNfe ?? '—'}</td>
                     <td className="px-3 py-2">{fmtDataBr(n.dataEntrada)}</td>
                     <td className="px-3 py-2">{fmtDataBr(n.dataEmissao)}</td>

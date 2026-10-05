@@ -20,6 +20,7 @@ import {
   DOUBLE_CHECKIN_CAMPOS,
   DOUBLE_CHECKIN_NF_PC_WA_CODE,
   DOUBLE_CHECKIN_WA_CODE,
+  atualizarClassificacaoHistoricaConferencia,
   ensureDoubleCheckInJustificativaOpcoes,
   ensureDoubleCheckInNfPcWhatsappTipo,
   getDocumentoConferido,
@@ -131,6 +132,8 @@ export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
   conferidoPor: string | null;
   /** Conferido e a NF ainda diverge do pedido de compra. */
   conferidoComDivergencia: boolean;
+  temDivergenciaRealHistorica: boolean;
+  totalDivergenciasReaisHistorica: number;
 };
 
 async function enriquecerNotasComConferencia(
@@ -150,6 +153,8 @@ async function enriquecerNotasComConferencia(
       conferidoEm: c?.conferidoEm ?? null,
       conferidoPor: c?.usuarioLogin ?? null,
       conferidoComDivergencia: conferido && comDivergenciaAtual.has(n.idDocumento),
+      temDivergenciaRealHistorica: Boolean(c?.temDivergenciaRealHistorica),
+      totalDivergenciasReaisHistorica: c?.totalDivergenciasReaisHistorica ?? 0,
     };
   });
 }
@@ -538,6 +543,8 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
         conferidoEm: ja.conferidoEm,
         conferidoPor: ja.usuarioLogin,
         conferidoComDivergencia: idsDivergentes.has(idDocumento),
+        temDivergenciaRealHistorica: ja.temDivergenciaRealHistorica,
+        totalDivergenciasReaisHistorica: ja.totalDivergenciasReaisHistorica,
         idDocumento,
       });
       return;
@@ -562,25 +569,32 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
     });
 
     const conferidoComDivergencia = linhas.some((l) => l.temDivergencia);
+    const relato = montarRelatoConferencia({
+      meta: {
+        numeroNfe: typeof req.body?.numeroNfe === 'string' ? req.body.numeroNfe : null,
+        numeroDocumentoFiscal:
+          typeof req.body?.numeroDocumentoFiscal === 'string'
+            ? req.body.numeroDocumentoFiscal
+            : null,
+        nomeParceiro: typeof req.body?.nomeParceiro === 'string' ? req.body.nomeParceiro : null,
+      },
+      conferidoPor: created.usuarioLogin,
+      conferidoEm: created.conferidoEm,
+      linhas,
+      decisoes,
+    });
+    const totalReaisHistorica = relato?.totalDivergenciasReais ?? 0;
+    const totalBenignasHistorica = relato?.totalDivergenciasBenignas ?? 0;
     let alertaNfPcEnviado = false;
     try {
-      await ensureDoubleCheckInNfPcWhatsappTipo();
-      const relato = montarRelatoConferencia({
-        meta: {
-          numeroNfe: typeof req.body?.numeroNfe === 'string' ? req.body.numeroNfe : null,
-          numeroDocumentoFiscal:
-            typeof req.body?.numeroDocumentoFiscal === 'string'
-              ? req.body.numeroDocumentoFiscal
-              : null,
-          nomeParceiro: typeof req.body?.nomeParceiro === 'string' ? req.body.nomeParceiro : null,
-        },
-        conferidoPor: created.usuarioLogin,
-        conferidoEm: created.conferidoEm,
-        linhas,
-        decisoes,
+      await atualizarClassificacaoHistoricaConferencia({
+        idDocumentoEstoque: idDocumento,
+        totalReais: totalReaisHistorica,
+        totalBenignas: totalBenignasHistorica,
+        fonte: relato ? 'snapshot' : 'sem_decisoes',
       });
-      if (relato && temDivergenciaReal(relato)) {
-        let url: string | null = null;
+      let url: string | null = null;
+      if (relato) {
         try {
           const token = await salvarConferenciaPagina(idDocumento, JSON.stringify(relato));
           url = `${resolveAppBaseUrl()}/c/${token}`;
@@ -588,6 +602,9 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
           const msgPagina = errPagina instanceof Error ? errPagina.message : String(errPagina);
           console.error('[postDoubleCheckInConferir] página da conferência', msgPagina);
         }
+      }
+      if (relato && temDivergenciaReal(relato)) {
+        await ensureDoubleCheckInNfPcWhatsappTipo();
         const mensagem = montarMensagemConferenciaWhatsApp(relato, url);
         if (mensagem) {
           await enviarNotificacaoPorTipo(DOUBLE_CHECKIN_NF_PC_WA_CODE, mensagem);
@@ -606,6 +623,8 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       conferidoEm: created.conferidoEm,
       conferidoPor: created.usuarioLogin,
       conferidoComDivergencia,
+      temDivergenciaRealHistorica: totalReaisHistorica > 0,
+      totalDivergenciasReaisHistorica: totalReaisHistorica,
       idDocumento,
       alertaNfPcEnviado,
     });

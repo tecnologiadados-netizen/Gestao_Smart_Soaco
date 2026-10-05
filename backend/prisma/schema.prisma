@@ -227,11 +227,16 @@ model DoubleCheckInAlertaEnviado {
 
 /// Conferência manual da NF de entrada (Double CheckIn), com senha do usuário.
 model DoubleCheckInConferido {
-  id                 Int      @id @default(autoincrement())
-  idDocumentoEstoque Int      @unique
-  conferidoEm        DateTime @default(now())
-  usuarioId          Int
-  usuarioLogin       String
+  id                              Int      @id @default(autoincrement())
+  idDocumentoEstoque              Int      @unique
+  conferidoEm                     DateTime @default(now())
+  usuarioId                       Int
+  usuarioLogin                    String
+  temDivergenciaRealHistorica     Boolean  @default(false)
+  totalDivergenciasReaisHistorica Int      @default(0)
+  totalDivergenciasBenignasHist   Int      @default(0)
+  naturezaClassificacaoFonte      String?
+  naturezaClassificadaEm          DateTime?
 
   @@index([usuarioId])
   @@map("double_checkin_conferido")
