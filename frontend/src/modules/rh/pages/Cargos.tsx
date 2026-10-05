@@ -2,6 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "@rh/components/AppLayout";
+import { rhOrganicoFocusPath } from "@rh/lib/rh-paths";
 import {
   BarChart,
   Bar,
@@ -1075,7 +1076,7 @@ const Cargos = () => {
               {inconsistenciasFiltradas.map((item) => (
                 <div
                   key={`${item.matricula}-${item.cargo}-${item.salario}`}
-                  onClick={() => navigate(`/organico?focusMatricula=${encodeURIComponent(item.matricula)}`)}
+                  onClick={() => navigate(rhOrganicoFocusPath(item.matricula))}
                   className={`border border-border p-3 cursor-pointer transition-colors hover:bg-muted/30 ${
                     item.severity === "red" ? "border-l-4 border-l-destructive" : "border-l-4 border-l-accent"
                   }`}
@@ -1422,7 +1423,7 @@ const Cargos = () => {
                   {inconsistenciasFiltradasSim.map((item) => (
                     <div
                       key={`sim-inc-${item.matricula}-${item.cargo}-${item.salario}`}
-                      onClick={() => navigate(`/organico?focusMatricula=${encodeURIComponent(item.matricula)}`)}
+                      onClick={() => navigate(rhOrganicoFocusPath(item.matricula))}
                       className={`border border-border p-3 cursor-pointer transition-colors hover:bg-muted/30 ${
                         item.severity === "red" ? "border-l-4 border-l-destructive" : "border-l-4 border-l-accent"
                       }`}

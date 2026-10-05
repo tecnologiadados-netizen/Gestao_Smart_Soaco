@@ -79,6 +79,22 @@ export function resumoFiltrosFavorito(rota: string, filtros: FiltrosFavorito): s
       'diagnostico-ausencias-justificadas': 'Diagnóstico',
     };
     if (filtros.tab) parts.push(tabLabels[filtros.tab] ?? filtros.tab);
+    if (filtros.tab === "executivo") {
+      if (filtros.empresa && filtros.empresa !== "__todas__") parts.push(filtros.empresa);
+      else if (filtros.empresa === "__todas__") parts.push("Todas");
+      if (filtros.genero === "masculino") parts.push("Homens");
+      if (filtros.genero === "feminino") parts.push("Mulheres");
+      const faixa = (inicio?: string, fim?: string) => (inicio && fim ? `${inicio}–${fim}` : "");
+      const folha = faixa(filtros.folhaInicio, filtros.folhaFim);
+      const turnover = faixa(filtros.turnoverInicio, filtros.turnoverFim);
+      const legado = faixa(filtros.periodoInicio, filtros.periodoFim);
+      if (folha && turnover && folha !== turnover) {
+        parts.push(`Folha ${folha}`);
+        parts.push(`Turnover ${turnover}`);
+      } else if (folha || turnover || legado) {
+        parts.push(folha || turnover || legado);
+      }
+    }
     if (filtros.selectedColaboradores) {
       try {
         const arr = JSON.parse(filtros.selectedColaboradores) as unknown;

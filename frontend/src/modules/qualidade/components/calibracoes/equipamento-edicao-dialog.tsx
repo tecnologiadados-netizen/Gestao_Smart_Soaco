@@ -44,6 +44,9 @@ import { useCalibrationsStore } from "@qualidade/lib/store/calibrations-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { flushQualidadeCalibrationsSync, cancelQualidadeCalibrationsDebounce, markQualidadeCalibrationFilesPending, scheduleQualidadeCalibrationsFlush } from "@qualidade/lib/qualidadePersistence";
 import { deleteQualidadeEquipamento } from "@qualidade/lib/api/qualidadeApi";
+import {
+  calcularProximaData,
+} from "@qualidade/lib/utils/dates";
 import { PeriodicidadeCalibracaoField } from "@qualidade/components/calibracoes/periodicidade-calibracao-field";
 import {
   diasParaPeriodicidade,
@@ -73,6 +76,22 @@ interface EquipamentoEdicaoDialogProps {
 function isoToDateInput(iso?: string): string {
   if (!iso) return "";
   return iso.slice(0, 10);
+}
+
+function dataHojeInput(): string {
+  const agora = new Date();
+  const mes = String(agora.getMonth() + 1).padStart(2, "0");
+  const dia = String(agora.getDate()).padStart(2, "0");
+  return `${agora.getFullYear()}-${mes}-${dia}`;
+}
+
+function dataInputParaIso(date: string): string {
+  return `${date}T12:00:00.000Z`;
+}
+
+function sugerirProximaCalibracao(dataPublicacao: string, frequenciaDias: number): string {
+  const sugerida = calcularProximaData(dataInputParaIso(dataPublicacao), frequenciaDias);
+  return sugerida ? isoToDateInput(sugerida) : "";
 }
 
 function anexosDoEquipamento(equipment: Equipment): AnexoItem[] {
@@ -159,6 +178,7 @@ export function EquipamentoEdicaoDialog({
   const updateEquipment = useCalibrationsStore((s) => s.updateEquipment);
   const setEquipmentAtivo = useCalibrationsStore((s) => s.setEquipmentAtivo);
   const removeEquipment = useCalibrationsStore((s) => s.removeEquipment);
+  const inserirCalibracao = useCalibrationsStore((s) => s.inserirCalibracao);
   const departments = useConfigStore((s) => s.departments);
   const users = useConfigStore((s) => s.users);
   const activeUsers = users.filter((u) => u.ativo);
@@ -189,6 +209,14 @@ export function EquipamentoEdicaoDialog({
   const [excluindo, setExcluindo] = useState(false);
   const [confirmarInativacao, setConfirmarInativacao] = useState(false);
   const [confirmarReativacao, setConfirmarReativacao] = useState(false);
+  const [novaCalibracaoAberta, setNovaCalibracaoAberta] = useState(false);
+  const [dataPublicacao, setDataPublicacao] = useState(dataHojeInput);
+  const [proximaCalibracaoNova, setProximaCalibracaoNova] = useState("");
+  const [prestador, setPrestador] = useState<Fornecedor | null>(null);
+  const [laudoNomeNova, setLaudoNomeNova] = useState("");
+  const [laudoDataUrlNova, setLaudoDataUrlNova] = useState("");
+  const [anexosNova, setAnexosNova] = useState<AnexoItem[]>(() => defaultAnexoRows());
+  const [erroNovaCalibracao, setErroNovaCalibracao] = useState("");
 
   const formSetters = {
     setCodigo,
@@ -219,11 +247,94 @@ export function EquipamentoEdicaoDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, equipmentId]);
 
+  function abrirNovaCalibracao() {
+    const hoje = dataHojeInput();
+    setDataPublicacao(hoje);
+    setProximaCalibracaoNova(
+      equipment
+        ? sugerirProximaCalibracao(hoje, equipment.frequenciaCalibracaoDias)
+        : ""
+    );
+    setPrestador(null);
+    setLaudoNomeNova("");
+    setLaudoDataUrlNova("");
+    setAnexosNova(defaultAnexoRows());
+    setErroNovaCalibracao("");
+    setNovaCalibracaoAberta(true);
+  }
+
+  function handleLaudoNovaSelect(file: File) {
+    if (file.size > SGQ_ANEXO_MAX_BYTES) {
+      setErroNovaCalibracao(mensagemLimiteAnexo());
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setLaudoNomeNova(file.name);
+      setLaudoDataUrlNova(reader.result as string);
+      setErroNovaCalibracao("");
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function salvarNovaCalibracao(event: React.FormEvent) {
+    event.preventDefault();
+    if (!equipmentId) return;
+    if (!dataPublicacao) {
+      setErroNovaCalibracao("Informe a data de publicação.");
+      return;
+    }
+    if (!proximaCalibracaoNova) {
+      setErroNovaCalibracao("Informe a data da próxima calibração.");
+      return;
+    }
+    if (proximaCalibracaoNova <= dataPublicacao) {
+      setErroNovaCalibracao("A próxima calibração deve ser posterior à data de publicação.");
+      return;
+    }
+    if (!prestador?.id || !prestador.nome.trim()) {
+      setErroNovaCalibracao("Selecione o prestador de serviço.");
+      return;
+    }
+    if (!laudoNomeNova.trim() || !laudoDataUrlNova.trim()) {
+      setErroNovaCalibracao("Anexe o laudo da calibração.");
+      return;
+    }
+    const complementares = anexosPreenchidos(anexosNova);
+    inserirCalibracao(equipmentId, {
+      dataPublicacao: dataInputParaIso(dataPublicacao),
+      proximaCalibracao: dataInputParaIso(proximaCalibracaoNova),
+      prestadorId: prestador.id,
+      prestadorNome: prestador.nome.trim(),
+      laudoNome: laudoNomeNova.trim(),
+      laudoDataUrl: laudoDataUrlNova.trim(),
+      anexos: complementares,
+    });
+    setUltimaCalibracao(dataPublicacao);
+    setLaudoNome("");
+    setLaudoDataUrl("");
+    setAnexos(
+      complementares.length
+        ? complementares.map((item) => ({
+            id: randomUUID(),
+            nome: item.nome,
+            dataUrl: item.dataUrl,
+            storagePath: item.storagePath,
+          }))
+        : defaultAnexoRows()
+    );
+    markQualidadeCalibrationFilesPending(equipmentId);
+    scheduleQualidadeCalibrationsFlush();
+    setNovaCalibracaoAberta(false);
+    setErroNovaCalibracao("");
+  }
+
   function handleClose() {
     setEditando(false);
     setConfirmarExclusao(false);
     setConfirmarInativacao(false);
     setConfirmarReativacao(false);
+    setNovaCalibracaoAberta(false);
     onOpenChange(false);
   }
 
@@ -709,14 +820,22 @@ export function EquipamentoEdicaoDialog({
                               ? { storagePath: equipment.laudoStoragePath }
                               : {}),
                           },
-                          ...(equipment.laudoAnexos ?? []).map((anexo, index) => ({
-                            id: `laudo-anexo-${index}`,
-                            nome: anexo.nome,
-                            dataUrl: anexo.dataUrl ?? "",
-                            ...(anexo.storagePath
-                              ? { storagePath: anexo.storagePath }
-                              : {}),
-                          })),
+                          ...(equipment.laudoAnexos ?? [])
+                            .filter((anexo) => {
+                              const nome = anexo.nome.trim();
+                              if (!nome || nome === equipment.laudoNome?.trim()) return false;
+                              return !(equipment.anexos ?? []).some(
+                                (item) => item.nome.trim() === nome
+                              );
+                            })
+                            .map((anexo, index) => ({
+                              id: `laudo-anexo-${index}`,
+                              nome: anexo.nome,
+                              dataUrl: anexo.dataUrl ?? "",
+                              ...(anexo.storagePath
+                                ? { storagePath: anexo.storagePath }
+                                : {}),
+                            })),
                         ] satisfies SgqAnexo[]
                       }
                       onChange={() => {}}
@@ -757,7 +876,7 @@ export function EquipamentoEdicaoDialog({
                 </>
               ) : (
                 <>
-                  {((!inativo && podeInativar) || podeExcluir) ? (
+                  {(!inativo || podeExcluir) ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
@@ -767,7 +886,12 @@ export function EquipamentoEdicaoDialog({
                       Mais ações
                       <ChevronDown className="size-4" aria-hidden />
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" side="top" className="min-w-44">
+                    <DropdownMenuContent align="end" side="top" className="min-w-52">
+                      {!inativo ? (
+                        <DropdownMenuItem onClick={abrirNovaCalibracao}>
+                          Inserir nova calibração
+                        </DropdownMenuItem>
+                      ) : null}
                       {!inativo && podeInativar ? (
                         <DropdownMenuItem
                           onClick={() => setConfirmarInativacao(true)}
@@ -775,7 +899,7 @@ export function EquipamentoEdicaoDialog({
                           Inativar
                         </DropdownMenuItem>
                       ) : null}
-                      {!inativo && podeInativar && podeExcluir ? <DropdownMenuSeparator /> : null}
+                      {!inativo && podeExcluir ? <DropdownMenuSeparator /> : null}
                       {podeExcluir ? (
                         <DropdownMenuItem
                           variant="destructive"
@@ -802,6 +926,115 @@ export function EquipamentoEdicaoDialog({
                   )}
                 </>
               )}
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={novaCalibracaoAberta}
+        onOpenChange={(next) => {
+          if (!next) setNovaCalibracaoAberta(false);
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="flex max-h-[min(92vh,100dvh)] w-full max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+        >
+          <FormModalHeader
+            titulo="Inserir nova calibração"
+            descricao={
+              equipment
+                ? `${equipment.codigo} · ${equipment.descricao}`
+                : undefined
+            }
+            onClose={() => setNovaCalibracaoAberta(false)}
+          />
+          <form onSubmit={salvarNovaCalibracao} className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="nova-cal-publicacao">Data de publicação *</Label>
+                  <Input
+                    id="nova-cal-publicacao"
+                    type="date"
+                    value={dataPublicacao}
+                    onChange={(event) => {
+                      const novaData = event.target.value;
+                      setDataPublicacao(novaData);
+                      if (equipment && novaData) {
+                        setProximaCalibracaoNova(
+                          sugerirProximaCalibracao(
+                            novaData,
+                            equipment.frequenciaCalibracaoDias
+                          )
+                        );
+                      }
+                    }}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Começa no dia de hoje. Altere para um dia anterior ou posterior, se precisar.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="nova-cal-proxima">Data da próxima calibração *</Label>
+                  <Input
+                    id="nova-cal-proxima"
+                    type="date"
+                    value={proximaCalibracaoNova}
+                    min={dataPublicacao || undefined}
+                    onChange={(event) => setProximaCalibracaoNova(event.target.value)}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Sugestão pela periodicidade do equipamento. Ajuste se a próxima data for outra.
+                  </p>
+                </div>
+              </div>
+              <FornecedorSearchField
+                id="nova-cal-prestador"
+                label="Prestador de serviço *"
+                value={prestador}
+                onSelect={setPrestador}
+                onClear={() => setPrestador(null)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Pessoas ativas do Nomus com a categoria Fornecedor.
+              </p>
+              <fieldset className="brand-fieldset space-y-4">
+                <legend>Documentação</legend>
+                <DocumentoArquivoField
+                  label="Laudo *"
+                  arquivoNome={laudoNomeNova}
+                  arquivoDataUrl={laudoDataUrlNova}
+                  onFileSelect={handleLaudoNovaSelect}
+                  onRemove={() => {
+                    setLaudoNomeNova("");
+                    setLaudoDataUrlNova("");
+                  }}
+                />
+                <EquipamentoAnexosField
+                  label="Anexos complementares"
+                  value={anexosNova}
+                  onChange={setAnexosNova}
+                />
+              </fieldset>
+              {erroNovaCalibracao ? (
+                <p className="text-sm text-destructive" role="alert">
+                  {erroNovaCalibracao}
+                </p>
+              ) : null}
+            </div>
+            <div className="sgq-form-footer justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setNovaCalibracaoAberta(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit">Salvar calibração</Button>
             </div>
           </form>
         </DialogContent>

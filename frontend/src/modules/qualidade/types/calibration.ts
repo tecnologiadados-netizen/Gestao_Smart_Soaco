@@ -16,6 +16,9 @@ export interface Equipment {
   responsavelPosseId?: string;
   responsavelPosseNome?: string;
   fornecedor?: string;
+  /** Pessoa Nomus (categoria Fornecedor) que prestou a calibração vigente. */
+  prestadorCalibracaoId?: string;
+  prestadorCalibracaoNome?: string;
   tipoCalibracao: CalibrationType;
   frequenciaCalibracaoDias: number;
   frequenciaVerificacaoDias: number;

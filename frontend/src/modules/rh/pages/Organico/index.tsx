@@ -1,6 +1,6 @@
 ﻿import { useState, useCallback, useMemo, useEffect, useRef, type ComponentType, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "@rh/components/AppLayout";
 import { cn } from "@rh/lib/utils";
 import { textMatchesSearchQuery } from "@rh/lib/normalize-search-text";
@@ -8,7 +8,12 @@ import {
   ORGANICO_EMPRESA_SO_ACO,
   normalizeEmpresaTabName,
   resolveEmpresaFromOrganicoCells,
+  resolveEmpresaTabFromSecullumFuncionario,
 } from "@rh/lib/organico-empresa";
+import {
+  type RhDashboardNavigationState,
+  type RhOrganicoNavigationState,
+} from "@rh/lib/rh-paths";
 import {
   buildOrganicoScopeKey,
   ORGANICO_SCOPE_DEFAULTS,
@@ -231,30 +236,7 @@ function resolveEmpresaTabFromRow(row: OrganicoSheetRow): OrganicoEmpresaTab {
 function resolveEmpresaTabFromApiFuncionario(
   f: Awaited<ReturnType<typeof getSecullumFuncionarios>>[number],
 ): OrganicoEmpresaTab {
-  const empresaNomeDireta = String(f.empresaNome ?? "").trim();
-  if (empresaNomeDireta) return normalizeEmpresaTabName(empresaNomeDireta);
-
-  const raw = f as unknown as Record<string, unknown>;
-  const estrutura = String(raw?.Estrutura && typeof raw.Estrutura === "object"
-    ? (raw.Estrutura as Record<string, unknown>).Descricao ?? ""
-    : "").trim();
-  const departamento = String(raw?.Departamento && typeof raw.Departamento === "object"
-    ? (raw.Departamento as Record<string, unknown>).Descricao ?? ""
-    : "").trim();
-  const empresa = String(
-    raw?.EmpresaDescricao ??
-      raw?.empresaDescricao ??
-      raw?.Empresa ??
-      raw?.empresa ??
-      raw?.FilialDescricao ??
-      raw?.filialDescricao ??
-      "",
-  ).trim();
-  return resolveEmpresaFromOrganicoCells({
-    setor: String(f.setor ?? ""),
-    area: String(f.area ?? ""),
-    diretoria: `${empresa} ${estrutura} ${departamento}`,
-  });
+  return resolveEmpresaTabFromSecullumFuncionario(f);
 }
 
 /** Para montar opções de um multiselect: aplica os demais filtros em cascata (exceto a dimensão `exclude`). */
@@ -481,6 +463,11 @@ function getOrganicoFiltersStore() {
 
 const Organico = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [dashboardShortcut, setDashboardShortcut] = useState(
+    () => (location.state as RhOrganicoNavigationState | null)?.dashboardShortcut ?? null,
+  );
+  const focusAbertoRef = useRef("");
   organicoFiltersStoreRef.current = readOrganicoFiltersStore();
   const initialOrganicoStore = organicoFiltersStoreRef.current;
   const initialOrganicoScope = initialOrganicoStore.byScope[
@@ -1540,7 +1527,9 @@ const Organico = () => {
     let tries = 0;
     const maxTries = 20;
     const interval = window.setInterval(() => {
-      const el = document.querySelector<HTMLElement>(`[data-matricula="${focusMatricula}"]`);
+      const el = Array.from(document.querySelectorAll<HTMLElement>("[data-matricula]")).find(
+        (item) => item.dataset.matricula === focusMatricula,
+      );
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
         window.clearInterval(interval);
@@ -1557,6 +1546,38 @@ const Organico = () => {
       window.clearTimeout(clearHighlight);
     };
   }, [location.search]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const focusMatricula = (params.get("focusMatricula") ?? "").trim();
+    if (!focusMatricula || data.length === 0 || focusAbertoRef.current === focusMatricula) return;
+    const focoNormalizado = normalizeMatriculaFolha(focusMatricula);
+    const rowIndex = data.findIndex(
+      (row) => normalizeMatriculaFolha(String(row[ORGANICO_IDX.MATRICULA] ?? "")) === focoNormalizado,
+    );
+    if (rowIndex < 0) return;
+    focusAbertoRef.current = focusMatricula;
+    setModalMode("view");
+    setEditingRowIndex(rowIndex);
+    setFormModalOpen(true);
+  }, [data, location.search]);
+
+  const encerrarAtalhoFuncionario = useCallback(() => {
+    setDashboardShortcut(null);
+    focusAbertoRef.current = "";
+    const params = new URLSearchParams(location.search);
+    params.delete("focusMatricula");
+    const search = params.toString();
+    navigate(`${location.pathname}${search ? `?${search}` : ""}`, { replace: true, state: null });
+  }, [location.pathname, location.search, navigate]);
+
+  const voltarParaDashboard = useCallback(() => {
+    if (!dashboardShortcut) return;
+    const state: RhDashboardNavigationState = {
+      dashboardRestore: dashboardShortcut.filters,
+    };
+    navigate(dashboardShortcut.returnTo || "/rh/dashboard", { state });
+  }, [dashboardShortcut, navigate]);
 
   const handleEditRow = useCallback((rowIndex: number) => {
     setModalMode(canEditOrganico ? "edit" : "view");
@@ -2480,6 +2501,9 @@ const Organico = () => {
             if (!open) {
               setEditingRowIndex(null);
               setModalMode("edit");
+              if (new URLSearchParams(location.search).has("focusMatricula")) {
+                encerrarAtalhoFuncionario();
+              }
             }
           }}
           initialRow={editingRowIndex != null ? data[editingRowIndex] ?? null : null}
@@ -2512,6 +2536,7 @@ const Organico = () => {
               ? lookupValueByMatriculaFolha(motivoDemissaoByMatricula, String(data[editingRowIndex]?.[ORGANICO_IDX.MATRICULA] ?? ""))
               : undefined
           }
+          onVoltarDashboard={dashboardShortcut ? voltarParaDashboard : undefined}
           secullumFieldsLocked={secullumFieldsLocked}
         />
 

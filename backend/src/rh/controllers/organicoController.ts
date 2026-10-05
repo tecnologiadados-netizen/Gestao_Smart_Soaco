@@ -16,6 +16,7 @@ import {
   getOrganicoList,
   getOrganicoRepresentantes,
   getOrganicoTrajetoria,
+  listOrganicoSalariosTrajetoria,
   hideOrganicoArchiveFolder,
   importOrganicoTrajetoria,
   renameOrganicoArchiveFolder,
@@ -254,6 +255,14 @@ export async function getOrganicoTrajetoriaHandler(req: Request, res: Response) 
     const matricula = s(req.query.matricula);
     if (!matricula) return sendError(res, 'matricula obrigatória.', 400);
     res.json(await getOrganicoTrajetoria(matricula));
+  } catch (e) {
+    sendError(res, (e as Error).message);
+  }
+}
+
+export async function getOrganicoSalariosTrajetoriaHandler(_req: Request, res: Response) {
+  try {
+    res.json(await listOrganicoSalariosTrajetoria());
   } catch (e) {
     sendError(res, (e as Error).message);
   }

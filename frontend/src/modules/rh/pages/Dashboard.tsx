@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "@rh/components/AppLayout";
 import KpiCard from "@rh/components/KpiCard";
 import {
@@ -15,18 +15,23 @@ import {
   X,
 } from "lucide-react";
 import {
+  Area,
   BarChart,
   Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   ResponsiveContainer,
   LineChart,
   Line,
+  ComposedChart,
   Cell,
+  LabelList,
 } from "recharts";
 import { Button } from "@rh/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@rh/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@rh/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@rh/components/ui/tabs";
 import {
@@ -34,22 +39,62 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@rh/components/ui/tooltip";
-import { getOrganico, getSecullumFuncionarios, isApiConfigured } from "@rh/lib/api-client";
-import { canEditDashboardModule, canViewDashboardModule } from "@rh/lib/route-permissions";
+import {
+  getOrganico,
+  getOrganicoFotosResumo,
+  getOrganicoSalariosTrajetoria,
+  getSecullumFuncionarios,
+  isApiConfigured,
+  normalizeMatriculaFolha,
+} from "@rh/lib/api-client";
+import {
+  canEditDashboardModule,
+  canViewDashboardModule,
+  canViewOrganicoPhotos,
+} from "@rh/lib/route-permissions";
 import {
   buildDashboardFromOrganico,
   deriveTurnoverFromPeople,
   listNovasAdmissoesMesAtual,
   listTurnoverPeopleFromOrganico,
+  type FolhaMensalPoint,
   type TurnoverSeriesPoint,
 } from "@rh/lib/dashboard-from-organico";
+import {
+  chaveMatricula,
+  colaboradorAtivoNaData,
+  DASHBOARD_EMPRESA_TODAS,
+  dataDentroDoPeriodo,
+  fimDoDia,
+  formatDiaMmmAno,
+  indexarSalariosTrajetoria,
+  inicioDoDia,
+  parseIsoLocal,
+  periodoPadraoExecutivo,
+  salarioVigenteDaMatricula,
+  toIsoLocal,
+  type DashboardPeriodo,
+} from "@rh/lib/dashboard-periodo";
+import {
+  ORGANICO_EMPRESA_SO_ACO,
+  resolveEmpresaFromOrganicoCells,
+  resolveEmpresaTabFromSecullumFuncionario,
+} from "@rh/lib/organico-empresa";
+import {
+  rhOrganicoFocusPath,
+  type RhDashboardNavigationState,
+  type RhDashboardReturnFilters,
+  type RhOrganicoNavigationState,
+} from "@rh/lib/rh-paths";
+import { DashboardExecutivoFiltros, DashboardPeriodoDatas } from "@rh/pages/DashboardExecutivoFiltros";
+import { DistribuicaoGeneroCard, type GeneroFiltro } from "@rh/pages/DistribuicaoGeneroCard";
 import AbsenteismoDashboard, {
   type AbsenteismoFavoritoSnapshot,
 } from "@rh/pages/AbsenteismoDashboard";
 import DiagnosticoGeralAusenciasJustificadas from "@rh/pages/DiagnosticoGeralAusenciasJustificadas";
 import AbsenteismoPorHorasTab from "@rh/pages/FaltasAtestados/absenteismo-por-horas/AbsenteismoPorHorasTab";
 import { OrganicoCard } from "@rh/pages/Organico/OrganicoCard";
-import { ORGANICO_IDX, parseDateBR } from "@rh/pages/Organico/organico-derive";
+import { isOrganicoHistoricoLocal, ORGANICO_IDX, parseDateBR } from "@rh/pages/Organico/organico-derive";
 import {
   rhChartAxisTick,
   rhChartCategoryTick,
@@ -60,6 +105,13 @@ import { useFavoritoPagina } from "../../../hooks/useFavoritoPagina";
 import { resumoFiltrosFavorito } from "../../../config/telasFavoritaveis";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"] as const;
+
+function correspondeAoGenero(sexo: unknown, filtro: GeneroFiltro) {
+  if (!filtro) return true;
+  const valor = String(sexo ?? "").normalize("NFD").replace(/\p{M}/gu, "").trim().toUpperCase();
+  if (filtro === "masculino") return valor === "M" || valor.startsWith("MASC");
+  return valor === "F" || valor.startsWith("FEM");
+}
 
 type TurnoverPointPayload = Pick<TurnoverSeriesPoint, "year" | "month">;
 
@@ -115,6 +167,45 @@ function TurnoverEvolutionTooltip(props: {
   );
 }
 
+function FolhaMensalTooltip(props: {
+  active?: boolean;
+  payload?: Array<{ payload?: FolhaMensalPoint }>;
+}) {
+  const { active, payload } = props;
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  if (!row) return null;
+  return (
+    <div className="rounded-sm border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+      <p className="font-semibold text-foreground border-b border-border pb-1.5 mb-2">
+        {row.month}/{String(row.year).slice(-2)}
+      </p>
+      <p className="text-foreground">
+        <span className="text-muted-foreground">Folha: </span>
+        <span className="font-bold tabular-nums">{formatCurrencyBRLExact(row.value)}</span>
+      </p>
+      <p className="mt-1 text-foreground">
+        <span className="text-muted-foreground">Pessoas ativas: </span>
+        <span className="font-medium tabular-nums">
+          {row.ativosAproximado ? `aprox. ${formatIntPt(row.ativos)} pessoas` : `${formatIntPt(row.ativos)} pessoas`}
+        </span>
+      </p>
+    </div>
+  );
+}
+
+function empresaDaLinhaOrganico(values: unknown[], secullumEmpresa: Record<string, string>): string {
+  const mat = String(values[ORGANICO_IDX.MATRICULA] ?? "").trim();
+  const fromApi = secullumEmpresa[mat] ?? secullumEmpresa[chaveMatricula(mat)] ?? secullumEmpresa[normalizeMatriculaFolha(mat)];
+  if (fromApi) return fromApi;
+  return resolveEmpresaFromOrganicoCells({
+    setor: String(values[ORGANICO_IDX.SETOR] ?? ""),
+    area: String(values[ORGANICO_IDX.AREA] ?? ""),
+    diretoria: String(values[ORGANICO_IDX.DIRETORIA] ?? ""),
+    historicoLocal: isOrganicoHistoricoLocal(values),
+  });
+}
+
 function normalizeMatricula(value: unknown): string {
   const raw = String(value ?? "").trim();
   const digits = raw.replace(/\D/g, "");
@@ -166,6 +257,7 @@ function formatTenure(meses: number): string {
 const Dashboard = () => {
   const chart = useRhChartTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [selectedTurnoverPoint, setSelectedTurnoverPoint] = useState<{
     year: number;
     month: string;
@@ -176,6 +268,13 @@ const Dashboard = () => {
   /** Filtro da série "Evolução do Turnover" ao clicar numa barra de setor (null = todos). */
   const [turnoverSetorFiltro, setTurnoverSetorFiltro] = useState<string | null>(null);
   const turnoverPopoverRef = useRef<HTMLDivElement | null>(null);
+  const [empresaPainel, setEmpresaPainel] = useState(ORGANICO_EMPRESA_SO_ACO);
+  const [generoFiltro, setGeneroFiltro] = useState<GeneroFiltro>(null);
+  const [periodoFolha, setPeriodoFolha] = useState<DashboardPeriodo>(() => periodoPadraoExecutivo());
+  const [folhaModalAberto, setFolhaModalAberto] = useState(false);
+  const [turnoverModalAberto, setTurnoverModalAberto] = useState(false);
+  const [setorHeadcountSelecionado, setSetorHeadcountSelecionado] = useState<string | null>(null);
+  const [periodoTurnover, setPeriodoTurnover] = useState<DashboardPeriodo>(() => periodoPadraoExecutivo());
   const { data: organicoRows, isLoading, isError, refetch } = useQuery({
     queryKey: ["organico"],
     queryFn: getOrganico,
@@ -185,6 +284,13 @@ const Dashboard = () => {
     queryFn: getSecullumFuncionarios,
     enabled: isApiConfigured(),
     staleTime: 5 * 60 * 1000,
+  });
+  const podeVerFotosOrganico = canViewOrganicoPhotos();
+  const { data: fotosResumo } = useQuery({
+    queryKey: ["organico-fotos-resumo"],
+    queryFn: getOrganicoFotosResumo,
+    enabled: setorHeadcountSelecionado != null && isApiConfigured() && podeVerFotosOrganico,
+    staleTime: 60 * 1000,
   });
 
   const demissaoByMatricula = useMemo(() => {
@@ -197,40 +303,202 @@ const Dashboard = () => {
     return map;
   }, [secullumRows]);
 
+  const { data: salariosTrajetoria, isError: salariosTrajetoriaErro } = useQuery({
+    queryKey: ["organico-salarios-trajetoria"],
+    queryFn: getOrganicoSalariosTrajetoria,
+    enabled: isApiConfigured(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const salariosPorMatricula = useMemo(
+    () => indexarSalariosTrajetoria(salariosTrajetoria),
+    [salariosTrajetoria],
+  );
+
+  const secullumEmpresaByMatricula = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const f of secullumRows ?? []) {
+      const rawMat = String(f.numeroFolha ?? "").trim();
+      if (!rawMat) continue;
+      const empresa = resolveEmpresaTabFromSecullumFuncionario(f);
+      map[rawMat] = empresa;
+      map[chaveMatricula(rawMat)] = empresa;
+      map[normalizeMatriculaFolha(rawMat)] = empresa;
+    }
+    return map;
+  }, [secullumRows]);
+
+  const empresaDaPessoaSecullum = useCallback(
+    (f: NonNullable<typeof secullumRows>[number]) => resolveEmpresaTabFromSecullumFuncionario(f),
+    [],
+  );
+
+  const organicoDaEmpresaBase = useMemo(() => {
+    const list = Array.isArray(organicoRows) ? organicoRows : [];
+    if (empresaPainel === DASHBOARD_EMPRESA_TODAS) return list;
+    return list.filter((r) => {
+      const values = Array.isArray(r?.values) ? r.values : [];
+      return empresaDaLinhaOrganico(values, secullumEmpresaByMatricula) === empresaPainel;
+    });
+  }, [organicoRows, empresaPainel, secullumEmpresaByMatricula]);
+
+  const secullumDaEmpresaBase = useMemo(() => {
+    const list = secullumRows ?? [];
+    if (empresaPainel === DASHBOARD_EMPRESA_TODAS) return list;
+    return list.filter((f) => empresaDaPessoaSecullum(f) === empresaPainel);
+  }, [secullumRows, empresaPainel, empresaDaPessoaSecullum]);
+
+  const organicoDaEmpresa = useMemo(
+    () =>
+      generoFiltro
+        ? organicoDaEmpresaBase.filter((r) => {
+            const values = Array.isArray(r?.values) ? r.values : [];
+            return correspondeAoGenero(values[ORGANICO_IDX.SEXO], generoFiltro);
+          })
+        : organicoDaEmpresaBase,
+    [organicoDaEmpresaBase, generoFiltro],
+  );
+
+  const secullumDaEmpresa = useMemo(
+    () => (generoFiltro ? secullumDaEmpresaBase.filter((f) => correspondeAoGenero(f.sexo, generoFiltro)) : secullumDaEmpresaBase),
+    [secullumDaEmpresaBase, generoFiltro],
+  );
+
+  const empresasPainel = useMemo(() => {
+    const tabs = new Set<string>([ORGANICO_EMPRESA_SO_ACO]);
+    for (const r of organicoRows ?? []) {
+      const values = Array.isArray(r?.values) ? r.values : [];
+      const nome = String(values[ORGANICO_IDX.NOME] ?? "").trim();
+      if (!nome) continue;
+      tabs.add(empresaDaLinhaOrganico(values, secullumEmpresaByMatricula));
+    }
+    for (const f of secullumRows ?? []) tabs.add(resolveEmpresaTabFromSecullumFuncionario(f));
+    return Array.from(tabs).sort((a, b) => {
+      if (a === ORGANICO_EMPRESA_SO_ACO) return -1;
+      if (b === ORGANICO_EMPRESA_SO_ACO) return 1;
+      return a.localeCompare(b, "pt-BR");
+    });
+  }, [organicoRows, secullumRows, secullumEmpresaByMatricula]);
+
+  const hojePainel = useMemo(() => inicioDoDia(new Date()), []);
+
+  const salarioNaData = useCallback(
+    (matricula: string, asOf: Date, ctpsAtual: number) =>
+      salarioVigenteDaMatricula(salariosPorMatricula, matricula, asOf, ctpsAtual, hojePainel),
+    [salariosPorMatricula, hojePainel],
+  );
+
   const derived = useMemo(
-    () => buildDashboardFromOrganico(organicoRows, demissaoByMatricula),
-    [organicoRows, demissaoByMatricula]
-  );
-  const turnoverFromSecullum = useMemo(
     () =>
-      deriveTurnoverFromPeople(
-        (secullumRows ?? []).map((p) => ({
-          admissao: p.admissao,
-          demissao: p.demissao,
-          setor: p.setor,
-        }))
-      ),
-    [secullumRows]
-  );
-  const useSecullumTurnover = (secullumRows?.length ?? 0) > 0;
-  const derivedFinal = useMemo(
-    () =>
-      useSecullumTurnover
-        ? { ...derived, turnoverPct: turnoverFromSecullum.turnoverPct, turnoverData: turnoverFromSecullum.turnoverData }
-        : derived,
-    [derived, useSecullumTurnover, turnoverFromSecullum]
+      buildDashboardFromOrganico(organicoDaEmpresa, demissaoByMatricula, {
+        inicio: hojePainel,
+        fim: hojePainel,
+        hoje: hojePainel,
+        salarioNaData,
+      }),
+    [organicoDaEmpresa, demissaoByMatricula, hojePainel, salarioNaData],
   );
 
-  const novasAdmissoesLista = useMemo(() => listNovasAdmissoesMesAtual(organicoRows), [organicoRows]);
-
-  const refMes = useMemo(
+  const folhaMensal = useMemo(
     () =>
-      new Intl.DateTimeFormat("pt-BR", {
-        month: "long",
-        year: "numeric",
-      }).format(new Date()),
-    []
+      buildDashboardFromOrganico(organicoDaEmpresa, demissaoByMatricula, {
+        inicio: periodoFolha.inicio,
+        fim: periodoFolha.fim,
+        hoje: hojePainel,
+        salarioNaData,
+      }).folhaMensal,
+    [organicoDaEmpresa, demissaoByMatricula, periodoFolha, hojePainel, salarioNaData],
   );
+  const folhaChartData = useMemo(
+    () => folhaMensal.map((p) => ({ ...p, eixo: `${p.month}/${String(p.year).slice(-2)}` })),
+    [folhaMensal],
+  );
+
+  const generoAtivos = useMemo(() => {
+    const acc = { masculino: 0, feminino: 0, naoInformado: 0 };
+    const somar = (sexo: string) => {
+      const s = sexo.normalize("NFD").replace(/\p{M}/gu, "").toUpperCase().trim();
+      if (s.startsWith("MASC") || s === "M") acc.masculino += 1;
+      else if (s.startsWith("FEM") || s === "F") acc.feminino += 1;
+      else acc.naoInformado += 1;
+    };
+    if (secullumDaEmpresaBase.length > 0) {
+      for (const p of secullumDaEmpresaBase) {
+        const demissao = parseDateBR(String(p.demissao ?? ""));
+        const ativo = colaboradorAtivoNaData(
+          {
+            admissao: parseDateBR(String(p.admissao ?? "")),
+            demissao,
+            statusDesligado: Boolean(p.desligado) && !demissao,
+          },
+          hojePainel,
+        );
+        if (!ativo) continue;
+        somar(String(p.sexo ?? ""));
+      }
+      return acc;
+    }
+    for (const r of organicoDaEmpresaBase) {
+      const values = Array.isArray(r?.values) ? r.values : [];
+      if (!String(values[ORGANICO_IDX.NOME] ?? "").trim()) continue;
+      const demissao = parseDateBR(String(demissaoByMatricula[String(values[ORGANICO_IDX.MATRICULA] ?? "").trim()] ?? ""));
+      const status = String(values[ORGANICO_IDX.STATUS] ?? "").toUpperCase();
+      const ativo = colaboradorAtivoNaData(
+        {
+          admissao: parseDateBR(String(values[ORGANICO_IDX.ADMISSAO] ?? "")),
+          demissao,
+          statusDesligado: status.includes("DESLIG") && !demissao,
+        },
+        hojePainel,
+      );
+      if (!ativo) continue;
+      somar(String(values[ORGANICO_IDX.SEXO] ?? ""));
+    }
+    return acc;
+  }, [secullumDaEmpresaBase, organicoDaEmpresaBase, demissaoByMatricula, hojePainel]);
+
+  const turnoverPeople = useMemo(() => {
+    if (secullumDaEmpresa.length > 0) {
+      return secullumDaEmpresa.map((p) => ({
+        admissao: p.admissao,
+        demissao: p.demissao,
+        setor: p.setor,
+      }));
+    }
+    return listTurnoverPeopleFromOrganico(organicoDaEmpresa, demissaoByMatricula);
+  }, [secullumDaEmpresa, organicoDaEmpresa, demissaoByMatricula]);
+
+  const turnoverKpi = useMemo(
+    () => deriveTurnoverFromPeople(turnoverPeople, hojePainel),
+    [turnoverPeople, hojePainel],
+  );
+
+  const headcountNoFimTurnover = useMemo(
+    () =>
+      buildDashboardFromOrganico(organicoDaEmpresa, demissaoByMatricula, {
+        inicio: periodoTurnover.fim,
+        fim: periodoTurnover.fim,
+        hoje: hojePainel,
+        salarioNaData,
+      }).headcountData,
+    [organicoDaEmpresa, demissaoByMatricula, periodoTurnover.fim, hojePainel, salarioNaData],
+  );
+
+  const novasAdmissoesLista = useMemo(
+    () => listNovasAdmissoesMesAtual(organicoDaEmpresa),
+    [organicoDaEmpresa],
+  );
+
+  const folhaNoFechamento = `em ${formatDiaMmmAno(hojePainel)}`;
+  const periodoNoPadrao = (periodo: DashboardPeriodo) => {
+    const padrao = periodoPadraoExecutivo();
+    return toIsoLocal(periodo.inicio) === toIsoLocal(padrao.inicio) && toIsoLocal(periodo.fim) === toIsoLocal(padrao.fim);
+  };
+  const limparFiltrosDesabilitado =
+    empresaPainel === ORGANICO_EMPRESA_SO_ACO &&
+    generoFiltro === null &&
+    periodoNoPadrao(periodoFolha) &&
+    periodoNoPadrao(periodoTurnover);
 
   type DashboardTab = "executivo" | "absenteismo" | "absenteismo-horas" | "diagnostico-ausencias-justificadas";
   const canViewExecutivo = canViewDashboardModule("executivo");
@@ -247,6 +515,60 @@ const Dashboard = () => {
     return tabs;
   }, [canViewExecutivo, canViewAbsenteismo, canViewPontualidade, canViewDiagnosticoAusenciasJustificadas]);
   const [activeTab, setActiveTab] = useState<DashboardTab>("executivo");
+  const dashboardRestoreAplicadoRef = useRef(false);
+
+  useEffect(() => {
+    if (dashboardRestoreAplicadoRef.current) return;
+    const restore = (location.state as RhDashboardNavigationState | null)?.dashboardRestore;
+    if (!restore) return;
+    dashboardRestoreAplicadoRef.current = true;
+
+    setActiveTab("executivo");
+    setEmpresaPainel(restore.empresa || ORGANICO_EMPRESA_SO_ACO);
+    setGeneroFiltro(restore.genero);
+    const folhaInicio = parseIsoLocal(restore.folhaInicio);
+    const folhaFim = parseIsoLocal(restore.folhaFim);
+    if (folhaInicio && folhaFim) setPeriodoFolha({ inicio: folhaInicio, fim: folhaFim });
+    const turnoverInicio = parseIsoLocal(restore.turnoverInicio);
+    const turnoverFim = parseIsoLocal(restore.turnoverFim);
+    if (turnoverInicio && turnoverFim) setPeriodoTurnover({ inicio: turnoverInicio, fim: turnoverFim });
+    setTurnoverSetorFiltro(restore.turnoverSetor);
+    setSelectedTurnoverPoint(null);
+    setSetorHeadcountSelecionado(null);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, location.state, navigate]);
+
+  const abrirColaboradorNoOrganico = useCallback(
+    (matricula: unknown) => {
+      const filters: RhDashboardReturnFilters = {
+        empresa: empresaPainel,
+        genero: generoFiltro,
+        folhaInicio: toIsoLocal(periodoFolha.inicio),
+        folhaFim: toIsoLocal(periodoFolha.fim),
+        turnoverInicio: toIsoLocal(periodoTurnover.inicio),
+        turnoverFim: toIsoLocal(periodoTurnover.fim),
+        turnoverSetor: turnoverSetorFiltro,
+      };
+      const state: RhOrganicoNavigationState = {
+        dashboardShortcut: {
+          returnTo: `${location.pathname}${location.search}`,
+          filters,
+        },
+      };
+      navigate(rhOrganicoFocusPath(matricula), { state });
+    },
+    [
+      empresaPainel,
+      generoFiltro,
+      location.pathname,
+      location.search,
+      navigate,
+      periodoFolha,
+      periodoTurnover,
+      turnoverSetorFiltro,
+    ],
+  );
+
   const [absenteismoSnap, setAbsenteismoSnap] = useState<AbsenteismoFavoritoSnapshot>({
     selectedColaboradores: [],
     startDate: "",
@@ -263,6 +585,14 @@ const Dashboard = () => {
 
   const filtrosFavorito = useMemo(() => {
     const f: Record<string, string> = { tab: activeTab };
+    if (activeTab === "executivo") {
+      f.empresa = empresaPainel;
+      f.folhaInicio = toIsoLocal(periodoFolha.inicio);
+      f.folhaFim = toIsoLocal(periodoFolha.fim);
+      f.turnoverInicio = toIsoLocal(periodoTurnover.inicio);
+      f.turnoverFim = toIsoLocal(periodoTurnover.fim);
+      if (generoFiltro) f.genero = generoFiltro;
+    }
     if (activeTab === "absenteismo") {
       if (absenteismoSnap.selectedColaboradores.length > 0) {
         f.selectedColaboradores = JSON.stringify(absenteismoSnap.selectedColaboradores);
@@ -278,7 +608,7 @@ const Dashboard = () => {
       }
     }
     return f;
-  }, [activeTab, absenteismoSnap]);
+  }, [activeTab, absenteismoSnap, empresaPainel, generoFiltro, periodoFolha, periodoTurnover]);
 
   const aplicarFiltrosFavorito = useCallback((raw: Record<string, string>) => {
     const tab = (raw.tab as DashboardTab) || "absenteismo";
@@ -290,6 +620,22 @@ const Dashboard = () => {
         ? tab
         : "absenteismo";
     setActiveTab(nextTab);
+
+    if (raw.empresa) setEmpresaPainel(raw.empresa);
+    setGeneroFiltro(raw.genero === "masculino" || raw.genero === "feminino" ? raw.genero : null);
+    const lerPeriodo = (inicioKey: string, fimKey: string) => {
+      const inicioFav = raw[inicioKey] ? parseIsoLocal(raw[inicioKey]) : null;
+      const fimFav = raw[fimKey] ? parseIsoLocal(raw[fimKey]) : null;
+      if (inicioFav && fimFav && inicioFav <= fimFav) return { inicio: inicioFav, fim: fimFav };
+      const legadoInicio = raw.periodoInicio ? parseIsoLocal(raw.periodoInicio) : null;
+      const legadoFim = raw.periodoFim ? parseIsoLocal(raw.periodoFim) : null;
+      if (legadoInicio && legadoFim && legadoInicio <= legadoFim) return { inicio: legadoInicio, fim: legadoFim };
+      return null;
+    };
+    const folhaFav = lerPeriodo("folhaInicio", "folhaFim");
+    const turnoverFav = lerPeriodo("turnoverInicio", "turnoverFim");
+    if (folhaFav) setPeriodoFolha(folhaFav);
+    if (turnoverFav) setPeriodoTurnover(turnoverFav);
 
     if (nextTab === "absenteismo" || raw.selectedColaboradores) {
       let selectedColaboradores: string[] = [];
@@ -337,25 +683,17 @@ const Dashboard = () => {
   }, [availableTabs, activeTab]);
 
   const topSetoresTurnover = useMemo(() => {
-    const rows = Array.isArray(organicoRows) ? organicoRows : [];
     const ativosBySetor = new Map<string, number>();
-    for (const r of rows) {
-      const vals = Array.isArray(r?.values) ? r.values : [];
-      const nome = String(vals[ORGANICO_IDX.NOME] ?? "").trim();
-      if (!nome) continue;
-      const status = String(vals[ORGANICO_IDX.STATUS] ?? "").toUpperCase();
-      if (status.includes("DESLIG")) continue;
-      const setor = String(vals[ORGANICO_IDX.SETOR] ?? "").trim() || "Sem setor";
-      ativosBySetor.set(setor, (ativosBySetor.get(setor) ?? 0) + 1);
+    for (const item of headcountNoFimTurnover) {
+      if (!item.sector || item.sector === "—" || item.count <= 0) continue;
+      ativosBySetor.set(item.sector, item.count);
     }
     const demissoesBySetor = new Map<string, number>();
-    const ref = new Date();
-    const start = new Date(ref.getFullYear(), ref.getMonth() - 11, 1);
-    const end = new Date(ref.getFullYear(), ref.getMonth() + 1, 0, 23, 59, 59, 999);
-    for (const f of secullumRows ?? []) {
+    const start = inicioDoDia(periodoTurnover.inicio);
+    const end = fimDoDia(periodoTurnover.fim);
+    for (const f of secullumDaEmpresa) {
       const dem = parseDateBR(String(f.demissao ?? "").trim());
-      if (!dem) continue;
-      if (dem < start || dem > end) continue;
+      if (!dataDentroDoPeriodo(dem, start, end)) continue;
       const setor = String(f.setor ?? "").trim() || "Sem setor";
       demissoesBySetor.set(setor, (demissoesBySetor.get(setor) ?? 0) + 1);
     }
@@ -367,36 +705,24 @@ const Dashboard = () => {
     return data
       .filter((d) => d.turnover > 0)
       .sort((a, b) => b.turnover - a.turnover);
-  }, [organicoRows, secullumRows]);
-  const turnoverSeriesForChart = useMemo(() => {
-    if (!turnoverSetorFiltro) {
-      return derivedFinal.turnoverData;
-    }
-    if (useSecullumTurnover) {
-      return deriveTurnoverFromPeople(
-        (secullumRows ?? []).map((p) => ({
-          admissao: p.admissao,
-          demissao: p.demissao,
-          setor: p.setor,
-        })),
-        new Date(),
-        turnoverSetorFiltro
-      ).turnoverData;
-    }
-    const people = listTurnoverPeopleFromOrganico(organicoRows, demissaoByMatricula);
-    return deriveTurnoverFromPeople(people, new Date(), turnoverSetorFiltro).turnoverData;
-  }, [
-    turnoverSetorFiltro,
-    derivedFinal.turnoverData,
-    useSecullumTurnover,
-    secullumRows,
-    organicoRows,
-    demissaoByMatricula,
-  ]);
+  }, [headcountNoFimTurnover, secullumDaEmpresa, periodoTurnover]);
+  const turnoverSeriesForChart = useMemo(
+    () =>
+      deriveTurnoverFromPeople(
+        turnoverPeople,
+        periodoTurnover.fim,
+        turnoverSetorFiltro,
+        periodoTurnover,
+      ).turnoverData,
+    [turnoverPeople, turnoverSetorFiltro, periodoTurnover],
+  );
 
   const turnoverChartData = useMemo(
-    () => [...turnoverSeriesForChart].reverse(),
-    [turnoverSeriesForChart]
+    () =>
+      [...turnoverSeriesForChart]
+        .reverse()
+        .map((p) => ({ ...p, eixo: `${p.year}-${p.month}` })),
+    [turnoverSeriesForChart],
   );
   const turnoverYearBands = useMemo(() => {
     const data = turnoverChartData;
@@ -418,13 +744,64 @@ const Dashboard = () => {
 
   /** Altura mínima por linha no headcount vertical — evita barras espremidas; rolagem no card. */
   const headcountChartHeight = useMemo(() => {
-    const list = derivedFinal.headcountData;
+    const list = derived.headcountData;
     const n = Array.isArray(list) ? list.length : 0;
     if (n === 0) return 280;
     const pxPerRow = 46;
     const verticalPadding = 56;
     return Math.max(280, n * pxPerRow + verticalPadding);
-  }, [derivedFinal.headcountData]);
+  }, [derived.headcountData]);
+
+  const matriculasComFoto = useMemo(() => {
+    const matriculas = new Set<string>();
+    for (const foto of fotosResumo ?? []) {
+      const matricula = String(foto.colaboradorMatricula ?? "").trim();
+      if (matricula) matriculas.add(matricula);
+    }
+    return matriculas;
+  }, [fotosResumo]);
+
+  const colaboradoresDoSetorSelecionado = useMemo(() => {
+    if (!setorHeadcountSelecionado) return [];
+    const setorEsperado = setorHeadcountSelecionado;
+    const colaboradores: Array<{
+      row: (string | number)[];
+      rowIndex: number;
+      matricula: string;
+      nome: string;
+      demissao: string;
+    }> = [];
+
+    for (let index = 0; index < organicoDaEmpresa.length; index += 1) {
+      const registro = organicoDaEmpresa[index];
+      const row = Array.isArray(registro?.values) ? registro.values : [];
+      const nome = String(row[ORGANICO_IDX.NOME] ?? "").trim();
+      if (!nome) continue;
+      const setor = String(row[ORGANICO_IDX.SETOR] ?? "").trim() || "Sem setor";
+      if (setor !== setorEsperado) continue;
+      const matricula = String(row[ORGANICO_IDX.MATRICULA] ?? "").trim();
+      const demissao = String(demissaoByMatricula[matricula] ?? "").trim();
+      const status = String(row[ORGANICO_IDX.STATUS] ?? "").toUpperCase();
+      const ativo = colaboradorAtivoNaData(
+        {
+          admissao: parseDateBR(String(row[ORGANICO_IDX.ADMISSAO] ?? "")),
+          demissao: parseDateBR(demissao),
+          statusDesligado: status.includes("DESLIG"),
+        },
+        hojePainel,
+      );
+      if (!ativo) continue;
+      colaboradores.push({
+        row: row as (string | number)[],
+        rowIndex: index,
+        matricula,
+        nome,
+        demissao,
+      });
+    }
+
+    return colaboradores.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [setorHeadcountSelecionado, organicoDaEmpresa, demissaoByMatricula, hojePainel]);
 
   const handleTurnoverPointClick = (
     payload: TurnoverPointPayload | undefined,
@@ -460,6 +837,11 @@ const Dashboard = () => {
       if (!d) continue;
       if (d.getFullYear() !== selectedTurnoverPoint.year || d.getMonth() !== monthIdx) continue;
 
+      if (empresaPainel !== DASHBOARD_EMPRESA_TODAS && resolveEmpresaTabFromSecullumFuncionario(f) !== empresaPainel) {
+        continue;
+      }
+      if (!dataDentroDoPeriodo(d, periodoTurnover.inicio, periodoTurnover.fim)) continue;
+
       const secSetor = String(f.setor ?? "").trim() || "Sem setor";
       if (turnoverSetorFiltro != null && secSetor !== turnoverSetorFiltro) continue;
 
@@ -485,7 +867,7 @@ const Dashboard = () => {
       String(a.row[ORGANICO_IDX.NOME] ?? "").localeCompare(String(b.row[ORGANICO_IDX.NOME] ?? ""), "pt-BR")
     );
     return out;
-  }, [selectedTurnoverPoint, organicoRows, secullumRows, turnoverSetorFiltro]);
+  }, [selectedTurnoverPoint, organicoRows, secullumRows, turnoverSetorFiltro, empresaPainel, periodoTurnover]);
 
   useEffect(() => {
     if (!selectedTurnoverPoint) return;
@@ -517,7 +899,7 @@ const Dashboard = () => {
     };
   }, [selectedTurnoverPoint, dragState]);
 
-  const { headcountData, alerts } = derivedFinal;
+  const { headcountData } = derived;
 
   return (
     <AppLayout>
@@ -551,7 +933,6 @@ const Dashboard = () => {
                 ) : null}
                 </TabsList>
               </div>
-              <p className="text-sm font-medium whitespace-nowrap text-muted-foreground sm:ml-1">{refMes}</p>
             </div>
             <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider font-bold text-muted-foreground shrink-0">
               <div className="w-2 h-2 bg-success rounded-full animate-pulse-glow" />
@@ -573,31 +954,70 @@ const Dashboard = () => {
               </div>
             ) : (
               <>
+        <DashboardExecutivoFiltros
+          empresas={empresasPainel}
+          empresa={empresaPainel}
+          onEmpresaChange={(next) => {
+            setEmpresaPainel(next);
+            setTurnoverSetorFiltro(null);
+            setSelectedTurnoverPoint(null);
+            setSetorHeadcountSelecionado(null);
+          }}
+          limparDesabilitado={limparFiltrosDesabilitado}
+          onLimpar={() => {
+            setEmpresaPainel(ORGANICO_EMPRESA_SO_ACO);
+            setGeneroFiltro(null);
+            setPeriodoFolha(periodoPadraoExecutivo());
+            setPeriodoTurnover(periodoPadraoExecutivo());
+            setTurnoverSetorFiltro(null);
+            setSelectedTurnoverPoint(null);
+            setSetorHeadcountSelecionado(null);
+          }}
+        />
+
         {/* KPI Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <KpiCard
             title="Total Colaboradores"
             value={formatIntPt(derived.totalColaboradores)}
+            change={folhaNoFechamento}
+            changeType="neutral"
             icon={Users}
             alertColor="green"
           />
-          <KpiCard
-            title="Custo Folha Mensal"
-            value={formatCustoFolha(derived.custoFolhaMensal)}
-            icon={DollarSign}
-            alertColor="yellow"
-          />
-          <KpiCard
-            title="Turnover"
-            value={`${derivedFinal.turnoverPct.toLocaleString("pt-BR", {
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 1,
-            })}%`}
-            change="12 meses"
-            changeType="neutral"
-            icon={TrendingDown}
-            alertColor="red"
-          />
+          <button
+            type="button"
+            className="w-full text-left rounded-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            aria-label="Ver custo da folha mês a mês"
+            onClick={() => setFolhaModalAberto(true)}
+          >
+            <KpiCard
+              title="Custo Folha Mensal"
+              value={formatCustoFolha(derived.custoFolhaMensal)}
+              change={folhaNoFechamento}
+              changeType="neutral"
+              icon={DollarSign}
+              alertColor="yellow"
+            />
+          </button>
+          <button
+            type="button"
+            className="w-full text-left rounded-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            aria-label="Ver evolução do turnover"
+            onClick={() => setTurnoverModalAberto(true)}
+          >
+            <KpiCard
+              title="Turnover"
+              value={`${turnoverKpi.turnoverPct.toLocaleString("pt-BR", {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 1,
+              })}%`}
+              change="últimos 12 meses"
+              changeType="neutral"
+              icon={TrendingDown}
+              alertColor="red"
+            />
+          </button>
           <KpiCard
             title="Absenteísmo"
             value={`${formatIntPt(derived.absenteismoPct)}%`}
@@ -606,15 +1026,92 @@ const Dashboard = () => {
           />
         </div>
 
+        <Dialog open={folhaModalAberto} onOpenChange={setFolhaModalAberto}>
+          <DialogContent aria-describedby={undefined} className="flex max-h-[min(92vh,760px)] w-[min(96vw,960px)] max-w-none flex-col gap-4 overflow-y-auto sm:max-w-none">
+            <DialogHeader className="pr-8">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <DialogTitle className="shrink-0 text-left">Custo da folha mês a mês</DialogTitle>
+                <DashboardPeriodoDatas
+                  idPrefix="folha"
+                  periodo={periodoFolha}
+                  onPeriodoChange={setPeriodoFolha}
+                />
+              </div>
+            </DialogHeader>
+            {salariosTrajetoriaErro ? (
+              <p className="text-xs text-destructive">
+                Não foi possível ler a trajetória. Os meses passados podem estar com a CTPS de hoje.
+              </p>
+            ) : null}
+            <div className="h-[320px] w-full min-w-0">
+              {folhaModalAberto ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={folhaChartData}>
+                    <defs>
+                      <linearGradient id="folhaFillExecutivo" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={chart.lineSecondary} stopOpacity={0.35} />
+                        <stop offset="100%" stopColor={chart.lineSecondary} stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+                    <XAxis dataKey="eixo" tick={rhChartAxisTick(chart)} interval="preserveStartEnd" minTickGap={28} />
+                    <YAxis
+                      yAxisId="folha"
+                      tick={rhChartAxisTick(chart)}
+                      width={72}
+                      tickFormatter={(value) => formatCustoFolha(Number(value))}
+                    />
+                    <YAxis
+                      yAxisId="ativos"
+                      orientation="right"
+                      tick={rhChartAxisTick(chart)}
+                      width={36}
+                      allowDecimals={false}
+                      tickFormatter={(value) => formatIntPt(Number(value))}
+                    />
+                    <Tooltip content={FolhaMensalTooltip} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Area
+                      yAxisId="folha"
+                      type="monotone"
+                      dataKey="value"
+                      name="Folha"
+                      stroke={chart.lineSecondary}
+                      strokeWidth={2.5}
+                      fill="url(#folhaFillExecutivo)"
+                      dot={{ r: 3, fill: chart.lineSecondary }}
+                      activeDot={{ r: 5 }}
+                    />
+                    <Line
+                      yAxisId="ativos"
+                      type="monotone"
+                      dataKey="ativos"
+                      name="Pessoas ativas"
+                      stroke={chart.linePrimary}
+                      strokeWidth={2.5}
+                      dot={{ r: 3, fill: chart.linePrimary }}
+                      activeDot={{ r: 5 }}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : null}
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <KpiCard
             title="Média salarial (CTPS)"
             value={derived.mediaSalarialCtps > 0 ? formatCurrencyBRLExact(derived.mediaSalarialCtps) : formatCurrencyBRLExact(0)}
+            change={folhaNoFechamento}
+            changeType="neutral"
             icon={Wallet}
           />
           <KpiCard
             title="Setores Ativos"
             value={formatIntPt(derived.setoresAtivos)}
+            change={folhaNoFechamento}
+            changeType="neutral"
             icon={Building2}
           />
           <Popover>
@@ -622,12 +1119,12 @@ const Dashboard = () => {
               <button
                 type="button"
                 className="w-full text-left rounded-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                aria-label="Ver colaboradores com admissão no mês atual"
+                aria-label="Ver colaboradores admitidos neste mês"
               >
                 <KpiCard
                   title="Novas Admissões"
-                  value={formatIntPt(derived.novasAdmissoesMes)}
-                  change="mês atual"
+                  value={formatIntPt(novasAdmissoesLista.length)}
+                  change="neste mês"
                   changeType="neutral"
                   icon={ArrowUpRight}
                   alertColor="green"
@@ -638,7 +1135,7 @@ const Dashboard = () => {
               align="start"
               className="w-[min(92vw,720px)] max-h-[min(75vh,520px)] overflow-y-auto p-4"
             >
-              <p className="label-industrial mb-3">Admissões em {refMes}</p>
+              <p className="label-industrial mb-3">Admissões neste mês</p>
               {novasAdmissoesLista.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center border border-dashed border-border rounded-sm">
                   Nenhuma admissão neste mês.
@@ -651,8 +1148,7 @@ const Dashboard = () => {
                       type="button"
                       onClick={() => {
                         const matricula = String(row[ORGANICO_IDX.MATRICULA] ?? "").trim();
-                        const qs = matricula ? `?focusMatricula=${encodeURIComponent(matricula)}` : "";
-                        navigate(`/organico${qs}`);
+                        abrirColaboradorNoOrganico(matricula);
                       }}
                       className="text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                       aria-label="Abrir colaborador no orgânico"
@@ -670,36 +1166,65 @@ const Dashboard = () => {
           </Popover>
           <KpiCard
             title="Tempo médio de casa"
-            value={formatTenure(derivedFinal.mediaTempoCasaMeses)}
+            value={formatTenure(derived.mediaTempoCasaMeses)}
+            change={folhaNoFechamento}
+            changeType="neutral"
             icon={AlertTriangle}
             alertColor="yellow"
           />
         </div>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <div className="lg:col-span-2 border border-border bg-card p-6 shadow-level-1">
-            <div className="flex flex-wrap items-center gap-2 gap-y-1">
-              <span className="label-industrial">Evolução do Turnover — 12 meses</span>
-              {turnoverSetorFiltro ? (
-                <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-muted/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground">
-                  Setor: {turnoverSetorFiltro}
-                  <button
-                    type="button"
-                    className="rounded-sm p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
-                    aria-label="Limpar filtro de setor"
-                    onClick={() => setTurnoverSetorFiltro(null)}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-4 h-[260px] relative overflow-visible">
+        <Dialog
+          open={turnoverModalAberto}
+          onOpenChange={(aberto) => {
+            setTurnoverModalAberto(aberto);
+            if (!aberto) setSelectedTurnoverPoint(null);
+          }}
+        >
+          <DialogContent aria-describedby={undefined} className="flex max-h-[min(92vh,820px)] w-[min(96vw,1100px)] max-w-none flex-col gap-4 overflow-y-auto sm:max-w-none">
+            <DialogHeader className="pr-8">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <DialogTitle className="shrink-0 text-left">Evolução do Turnover</DialogTitle>
+                  {turnoverSetorFiltro ? (
+                    <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-muted/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground">
+                      Setor: {turnoverSetorFiltro}
+                      <button
+                        type="button"
+                        className="rounded-sm p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                        aria-label="Limpar filtro de setor"
+                        onClick={() => setTurnoverSetorFiltro(null)}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ) : null}
+                </div>
+                <DashboardPeriodoDatas
+                  idPrefix="turnover"
+                  periodo={periodoTurnover}
+                  onPeriodoChange={(next) => {
+                    setPeriodoTurnover(next);
+                    setTurnoverSetorFiltro(null);
+                    setSelectedTurnoverPoint(null);
+                  }}
+                />
+              </div>
+            </DialogHeader>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 min-w-0">
+            <div className="relative h-[320px] w-full min-w-0">
+              {turnoverModalAberto ? (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={turnoverChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
-                  <XAxis dataKey="month" tick={rhChartAxisTick(chart)} />
+                  <XAxis
+                    dataKey="eixo"
+                    tick={rhChartAxisTick(chart)}
+                    interval="preserveStartEnd"
+                    minTickGap={16}
+                    tickFormatter={(value) => String(value).split("-").slice(1).join("-")}
+                  />
                   <YAxis tick={rhChartAxisTick(chart)} domain={[0, "auto"]} />
                   <Tooltip content={TurnoverEvolutionTooltip} />
                   <Line
@@ -730,6 +1255,7 @@ const Dashboard = () => {
                   />
                 </LineChart>
               </ResponsiveContainer>
+              ) : null}
               {selectedTurnoverPoint && (
                 <div
                   ref={turnoverPopoverRef}
@@ -777,8 +1303,7 @@ const Dashboard = () => {
                           type="button"
                           onClick={() => {
                             const matricula = String(item.row[ORGANICO_IDX.MATRICULA] ?? "").trim();
-                            const qs = matricula ? `?focusMatricula=${encodeURIComponent(matricula)}` : "";
-                            navigate(`/organico${qs}`);
+                            abrirColaboradorNoOrganico(matricula);
                           }}
                           className="text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                           aria-label="Abrir colaborador desligado no orgânico"
@@ -796,7 +1321,10 @@ const Dashboard = () => {
                 </div>
               )}
             </div>
-            <div className="mt-1 grid grid-cols-12 gap-0 border-t border-border/70">
+            <div
+              className="mt-1 grid gap-0 border-t border-border/70"
+              style={{ gridTemplateColumns: `repeat(${Math.max(turnoverChartData.length, 1)}, minmax(0, 1fr))` }}
+            >
               {turnoverYearBands.map((b, i) => (
                 <div
                   key={`${b.year}-${b.start}`}
@@ -812,8 +1340,8 @@ const Dashboard = () => {
           </div>
 
           <div className="border border-border bg-card p-6 shadow-level-1">
-            <span className="label-industrial">Top Setores por Turnover (12 meses)</span>
-            <div className="mt-4 max-h-[260px] overflow-y-auto pr-1 space-y-3">
+            <span className="label-industrial">Top Setores por Turnover</span>
+            <div className="mt-4 max-h-[320px] overflow-y-auto pr-1 space-y-3">
               {topSetoresTurnover.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center border border-dashed border-border rounded-sm">
                   Sem desligamentos por setor no período.
@@ -828,7 +1356,7 @@ const Dashboard = () => {
                         <span className="text-foreground truncate pr-2">{item.setor}</span>
                         <div
                           className="shrink-0 flex items-center gap-2 tabular-nums text-right"
-                          title={`Turnover ${item.turnover.toFixed(1)}% • ${formatIntPt(item.dem)} desligamento(s) em 12 meses`}
+                          title={`Turnover ${item.turnover.toFixed(1)}% • ${formatIntPt(item.dem)} desligamento(s) no período`}
                         >
                           <span className="font-semibold text-sm text-foreground">{item.turnover.toFixed(1)}%</span>
                           <span className="text-[10px] sm:text-xs text-muted-foreground border-l border-border/80 pl-2 whitespace-nowrap">
@@ -844,7 +1372,7 @@ const Dashboard = () => {
                             className={`h-3 bg-muted rounded-sm overflow-hidden cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                               turnoverSetorFiltro === item.setor ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
                             }`}
-                            aria-label={`Turnover ${item.turnover.toFixed(1)} por cento, ${item.dem} desligamentos em 12 meses. Clique para filtrar a evolução por este setor.`}
+                            aria-label={`Turnover ${item.turnover.toFixed(1)} por cento, ${item.dem} desligamentos no período. Clique para filtrar a evolução por este setor.`}
                             aria-pressed={turnoverSetorFiltro === item.setor}
                             onClick={(e) => {
                               e.preventDefault();
@@ -868,8 +1396,8 @@ const Dashboard = () => {
                         </TooltipTrigger>
                         <TooltipContent side="top" className="max-w-none whitespace-nowrap text-xs">
                           {item.dem === 1
-                            ? "1 desligamento (12 meses)"
-                            : `${item.dem} desligamentos (12 meses)`}{" "}
+                            ? "1 desligamento no período"
+                            : `${item.dem} desligamentos no período`}{" "}
                           · {item.turnover.toFixed(1)}%
                         </TooltipContent>
                       </UiTooltip>
@@ -880,10 +1408,26 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Bottom row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 border border-border bg-card p-6 shadow-level-1">
+          <div className="h-full lg:col-start-3 lg:row-start-1">
+            <DistribuicaoGeneroCard
+              contagem={generoAtivos}
+              referencia={folhaNoFechamento}
+              filtro={generoFiltro}
+              onFiltroChange={(filtro) => {
+                setGeneroFiltro(filtro);
+                setTurnoverSetorFiltro(null);
+                setSelectedTurnoverPoint(null);
+                setSetorHeadcountSelecionado(null);
+              }}
+            />
+          </div>
+
+          <div className="lg:col-span-2 lg:col-start-1 lg:row-start-1 border border-border bg-card p-6 shadow-level-1">
             <span className="label-industrial">Headcount por Setor</span>
             <div className="mt-4 max-h-[min(420px,55vh)] overflow-y-auto overflow-x-hidden pr-1 rounded-sm border border-border/40 bg-muted/20">
               <div style={{ height: headcountChartHeight, minHeight: 280 }}>
@@ -891,7 +1435,7 @@ const Dashboard = () => {
                   <BarChart
                     data={headcountData}
                     layout="vertical"
-                    margin={{ top: 8, right: 12, left: 4, bottom: 8 }}
+                    margin={{ top: 8, right: 48, left: 4, bottom: 8 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} horizontal={false} />
                     <XAxis type="number" tick={rhChartAxisTick(chart)} allowDecimals={false} />
@@ -903,13 +1447,30 @@ const Dashboard = () => {
                       interval={0}
                     />
                     <Tooltip contentStyle={rhChartTooltipStyle(chart)} labelStyle={{ color: chart.tooltipText }} itemStyle={{ color: chart.tooltipText }} />
-                    <Bar dataKey="count" fill={chart.barPrimary} barSize={22} maxBarSize={28}>
+                    <Bar
+                      dataKey="count"
+                      fill={chart.barPrimary}
+                      barSize={22}
+                      maxBarSize={28}
+                      cursor="pointer"
+                      onClick={(item) => {
+                        const row = (item as { payload?: { sector?: string; count?: number } })?.payload;
+                        if (!row?.sector || !row.count || row.count <= 0 || row.sector === "—") return;
+                        setSetorHeadcountSelecionado(row.sector);
+                      }}
+                    >
                       {headcountData.map((entry, index) => (
                         <Cell
                           key={index}
                           fill={entry.count > 1000 ? chart.barLarge : chart.barPrimary}
                         />
                       ))}
+                      <LabelList
+                        dataKey="count"
+                        position="right"
+                        formatter={(value: number) => formatIntPt(Number(value))}
+                        style={{ fill: chart.axisCategory, fontSize: 11 }}
+                      />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -917,40 +1478,68 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="border border-border bg-card p-6 shadow-level-1">
-            <span className="label-industrial">Alertas Operacionais</span>
-            <div className="mt-4 space-y-3">
-              {alerts.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center border border-dashed border-border rounded-sm">
-                  Nenhum alerta.
+        </div>
+
+        <Dialog
+          open={setorHeadcountSelecionado != null}
+          onOpenChange={(open) => {
+            if (!open) setSetorHeadcountSelecionado(null);
+          }}
+        >
+          <DialogContent
+            aria-describedby={undefined}
+            className="flex max-h-[min(92vh,820px)] w-[min(96vw,1100px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+          >
+            <DialogHeader className="shrink-0 border-b border-border px-6 py-5 text-left">
+              <DialogTitle className="text-lg">
+                Colaboradores do setor — {setorHeadcountSelecionado ?? ""}
+              </DialogTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {colaboradoresDoSetorSelecionado.length.toLocaleString("pt-BR")}{" "}
+                {colaboradoresDoSetorSelecionado.length === 1 ? "colaborador ativo" : "colaboradores ativos"}
+                {generoFiltro === "masculino"
+                  ? " · filtro: homens"
+                  : generoFiltro === "feminino"
+                    ? " · filtro: mulheres"
+                    : ""}
+                {" · "}
+                {folhaNoFechamento}
+              </p>
+            </DialogHeader>
+
+            <div className="min-h-0 flex-1 overflow-y-auto bg-muted/15 px-6 py-5">
+              {colaboradoresDoSetorSelecionado.length === 0 ? (
+                <p className="rounded-sm border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
+                  Nenhum colaborador ativo encontrado neste setor.
                 </p>
               ) : (
-                alerts.map((alert, i) => (
-                  <div
-                    key={i}
-                    className={`p-4 border border-border relative ${
-                      alert.severity === "red" ? "border-l-4 border-l-destructive" : "border-l-4 border-l-accent"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <AlertTriangle
-                        className={`w-4 h-4 shrink-0 mt-0.5 ${
-                          alert.severity === "red" ? "text-destructive" : "text-accent"
-                        }`}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {colaboradoresDoSetorSelecionado.map((colaborador) => (
+                    <button
+                      key={`${colaborador.matricula || colaborador.nome}-${colaborador.rowIndex}`}
+                      type="button"
+                      onClick={() => {
+                        abrirColaboradorNoOrganico(colaborador.matricula);
+                      }}
+                      className="text-left rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      aria-label={`Abrir ${colaborador.nome} no Orgânico`}
+                    >
+                      <OrganicoCard
+                        row={colaborador.row}
+                        rowIndex={colaborador.rowIndex}
+                        demissao={colaborador.demissao}
+                        fotoCadastrada={matriculasComFoto.has(colaborador.matricula)}
+                        fotoApiHabilitada={podeVerFotosOrganico && isApiConfigured()}
+                        readOnly
+                        viewMode="medium"
                       />
-                      <div>
-                        <p className="text-sm text-foreground font-medium">{alert.message}</p>
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider mt-1 block">
-                          {alert.sector}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
               </>
             )}
           </TabsContent> : null}

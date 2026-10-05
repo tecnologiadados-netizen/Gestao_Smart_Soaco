@@ -442,6 +442,8 @@ function mapEquipamento(
     responsavelPosseId: string | null;
     responsavelPosseNome: string | null;
     fornecedor: string | null;
+    prestadorCalibracaoId: string | null;
+    prestadorCalibracaoNome: string | null;
     tipoCalibracao: string;
     frequenciaCalibracaoDias: number;
     frequenciaVerificacaoDias: number;
@@ -482,6 +484,8 @@ function mapEquipamento(
     responsavelPosseId: row.responsavelPosseId ?? undefined,
     responsavelPosseNome: row.responsavelPosseNome ?? undefined,
     fornecedor: row.fornecedor ?? undefined,
+    prestadorCalibracaoId: row.prestadorCalibracaoId ?? undefined,
+    prestadorCalibracaoNome: row.prestadorCalibracaoNome ?? undefined,
     tipoCalibracao: row.tipoCalibracao,
     frequenciaCalibracaoDias: row.frequenciaCalibracaoDias,
     frequenciaVerificacaoDias: row.frequenciaVerificacaoDias,
@@ -1850,6 +1854,12 @@ export async function syncQualidadeCalibrations(payload: {
           ? String(eq.responsavelPosseNome)
           : null,
         fornecedor: eq.fornecedor ? String(eq.fornecedor) : null,
+        prestadorCalibracaoId: eq.prestadorCalibracaoId
+          ? String(eq.prestadorCalibracaoId)
+          : null,
+        prestadorCalibracaoNome: eq.prestadorCalibracaoNome
+          ? String(eq.prestadorCalibracaoNome)
+          : null,
         tipoCalibracao: String(eq.tipoCalibracao ?? 'interna'),
         frequenciaCalibracaoDias: Number(eq.frequenciaCalibracaoDias ?? 365),
         frequenciaVerificacaoDias: Number(eq.frequenciaVerificacaoDias ?? 30),
@@ -1881,6 +1891,12 @@ export async function syncQualidadeCalibrations(payload: {
           ? String(eq.responsavelPosseNome)
           : null,
         fornecedor: eq.fornecedor ? String(eq.fornecedor) : null,
+        prestadorCalibracaoId: eq.prestadorCalibracaoId
+          ? String(eq.prestadorCalibracaoId)
+          : null,
+        prestadorCalibracaoNome: eq.prestadorCalibracaoNome
+          ? String(eq.prestadorCalibracaoNome)
+          : null,
         tipoCalibracao: String(eq.tipoCalibracao ?? 'interna'),
         frequenciaCalibracaoDias: Number(eq.frequenciaCalibracaoDias ?? 365),
         frequenciaVerificacaoDias: Number(eq.frequenciaVerificacaoDias ?? 30),

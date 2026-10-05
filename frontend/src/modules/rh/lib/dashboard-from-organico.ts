@@ -14,6 +14,14 @@ import { ORGANICO_NUM_COLUNAS } from "@rh/pages/Organico/organico-headers";
 import { migrateOrganicoRowSchema } from "@rh/pages/Organico/organico-import-column-map";
 import { calcularFormulasRow } from "@rh/pages/Organico/organico-formulas";
 import type { OrganicoSheetRow } from "@rh/pages/Organico/useOrganicoImport";
+import {
+  colaboradorAtivoNaData,
+  dataDentroDoPeriodo,
+  inicioDoDia,
+  janelaDoMes,
+  mesesNoPeriodo,
+  type DashboardPeriodo,
+} from "@rh/lib/dashboard-periodo";
 
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"] as const;
 
@@ -53,6 +61,27 @@ export interface TurnoverSeriesPoint {
   picoAtivosMes: number;
 }
 
+/** Ponto da série de custo da folha (valor vigente no fim da janela daquele mês). */
+export interface FolhaMensalPoint {
+  month: string;
+  year: number;
+  value: number;
+  ativos: number;
+  /**
+   * O cadastro não guarda quem saiu antes do histórico recente de demissões,
+   * ou a pessoa entrou na conta sem data de admissão.
+   */
+  ativosAproximado: boolean;
+}
+
+export interface DashboardExecutivoContexto {
+  inicio: Date;
+  fim: Date;
+  hoje?: Date;
+  /** Salário vigente na data. Sem isso, usa a CTPS atual da linha. */
+  salarioNaData?: (matricula: string, asOf: Date, ctpsAtual: number) => number;
+}
+
 export interface DashboardFromOrganico {
   totalColaboradores: number;
   custoFolhaMensal: number;
@@ -67,6 +96,8 @@ export interface DashboardFromOrganico {
   headcountData: { sector: string; count: number }[];
   sectorCostData: { name: string; value: number }[];
   alerts: DashboardDerivedAlert[];
+  /** Vazio quando o dashboard é montado sem período (comportamento anterior). */
+  folhaMensal: FolhaMensalPoint[];
 }
 
 export interface TurnoverPersonLike {
@@ -102,6 +133,33 @@ function demissaoDateFor(
   return parseDateBR(String(dem).trim());
 }
 
+function mesesEntre(a: Date, b: Date): number {
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+}
+
+/**
+ * Primeira demissão do bloco recente. Um registro isolado, anos antes do restante,
+ * não conta: quem saiu nesse intervalo já não está no cadastro.
+ */
+function inicioRetencaoDemissoes(
+  rows: unknown[][],
+  demissaoByMatricula?: Record<string, string>,
+): Date | null {
+  const datas: Date[] = [];
+  for (const row of rows) {
+    const dem = demissaoDateFor(row, demissaoByMatricula);
+    if (dem) datas.push(dem);
+  }
+  datas.sort((a, b) => a.getTime() - b.getTime());
+  if (datas.length === 0) return null;
+  let inicio = datas.length - 1;
+  for (let i = datas.length - 1; i > 0; i--) {
+    if (mesesEntre(datas[i - 1], datas[i]) > 18) break;
+    inicio = i - 1;
+  }
+  return datas[inicio];
+}
+
 function rollingLast12MonthsFromNow(ref: Date): { year: number; month: number; label: string }[] {
   const out: { year: number; month: number; label: string }[] = [];
   for (let offset = 0; offset < 12; offset++) {
@@ -124,20 +182,24 @@ type TurnoverAdmDemCard = { adm: Date | null; dem: Date | null };
  * Mesma regra do gráfico “Evolução do Turnover” (dashboard executivo): média entre headcount no 1º dia
  * e no último dia do mês civil, usando datas de admissão e demissão já parseadas.
  */
-function computeMediaAtivosFromCards(cards: TurnoverAdmDemCard[], year: number, month: number): number {
-  const monthStart = new Date(year, month, 1);
-  const monthEnd = toMonthEnd(monthStart);
+function computeMediaAtivosEntre(cards: TurnoverAdmDemCard[], windowStart: Date, windowEnd: Date): number {
   let ativosInicio = 0;
   let ativosFim = 0;
   for (const { adm, dem } of cards) {
-    const admittedAtStart = adm ? adm <= monthStart : true;
-    const admittedAtEnd = adm ? adm <= monthEnd : true;
-    const activeAtStart = admittedAtStart && (!dem || dem >= monthStart);
-    const activeAtEnd = admittedAtEnd && (!dem || dem > monthEnd);
+    const admittedAtStart = adm ? adm <= windowStart : true;
+    const admittedAtEnd = adm ? adm <= windowEnd : true;
+    const activeAtStart = admittedAtStart && (!dem || dem >= windowStart);
+    const activeAtEnd = admittedAtEnd && (!dem || dem > windowEnd);
     if (activeAtStart) ativosInicio += 1;
     if (activeAtEnd) ativosFim += 1;
   }
   return (ativosInicio + ativosFim) / 2;
+}
+
+function computeMediaAtivosFromCards(cards: TurnoverAdmDemCard[], year: number, month: number): number {
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = toMonthEnd(monthStart);
+  return computeMediaAtivosEntre(cards, monthStart, monthEnd);
 }
 
 /**
@@ -170,16 +232,20 @@ export function computeMediaAtivosMesFromPeople(
 function buildTurnoverSeriesFromPeople(
   people: TurnoverPersonLike[],
   ref: Date,
-  sectorFilter?: string | null
+  sectorFilter?: string | null,
+  range?: DashboardPeriodo | null,
 ): TurnoverSeriesPoint[] {
   const filtered =
     sectorFilter != null && sectorFilter !== ""
       ? people.filter((p) => normalizeSetorTurnoverLabel(p.setor) === sectorFilter)
       : people;
-  const rollingMonths = rollingLast12MonthsFromNow(ref);
+  const rollingMonths = range
+    ? [...mesesNoPeriodo(range.inicio, range.fim)].reverse()
+    : rollingLast12MonthsFromNow(ref);
   return rollingMonths.map(({ year, month, label }) => {
     const monthStart = new Date(year, month, 1);
     const monthEnd = toMonthEnd(monthStart);
+    const janela = range ? janelaDoMes(year, month, range.inicio, range.fim) : { start: monthStart, end: monthEnd };
     const cards = filtered.map((p) => ({
       adm: parseDateBR(String(p.admissao ?? "").trim()),
       dem: parseDateBR(String(p.demissao ?? "").trim()),
@@ -189,27 +255,34 @@ function buildTurnoverSeriesFromPeople(
     let demissoesMes = 0;
 
     for (const { adm, dem } of cards) {
-      if (adm && adm.getFullYear() === year && adm.getMonth() === month) {
+      if (adm && adm >= janela.start && adm <= janela.end) {
         admissoesMes += 1;
       }
-      if (dem && dem.getFullYear() === year && dem.getMonth() === month) {
+      if (dem && dem >= janela.start && dem <= janela.end) {
         demissoesMes += 1;
       }
     }
 
-    const mediaAtivos = computeMediaAtivosFromCards(cards, year, month);
+    const mediaAtivos = range
+      ? computeMediaAtivosEntre(cards, janela.start, janela.end)
+      : computeMediaAtivosFromCards(cards, year, month);
 
-    const lastDay = monthEnd.getDate();
+    const picoInicio = janela.start.getDate();
+    const picoFim = janela.end.getDate();
+    const picoMes = janela.start.getMonth();
+    const picoAno = janela.start.getFullYear();
     let picoAtivosMes = 0;
-    for (let day = 1; day <= lastDay; day++) {
-      const dayEnd = new Date(year, month, day, 23, 59, 59, 999);
-      let nFimDia = 0;
-      for (const { adm, dem } of cards) {
-        const admittedAtEnd = adm ? adm <= dayEnd : true;
-        const activeAtEnd = admittedAtEnd && (!dem || dem > dayEnd);
-        if (activeAtEnd) nFimDia += 1;
+    if (picoMes === janela.end.getMonth() && picoAno === janela.end.getFullYear()) {
+      for (let day = picoInicio; day <= picoFim; day++) {
+        const dayEnd = new Date(picoAno, picoMes, day, 23, 59, 59, 999);
+        let nFimDia = 0;
+        for (const { adm, dem } of cards) {
+          const admittedAtEnd = adm ? adm <= dayEnd : true;
+          const activeAtEnd = admittedAtEnd && (!dem || dem > dayEnd);
+          if (activeAtEnd) nFimDia += 1;
+        }
+        if (nFimDia > picoAtivosMes) picoAtivosMes = nFimDia;
       }
-      if (nFimDia > picoAtivosMes) picoAtivosMes = nFimDia;
     }
 
     const mediaMovimentacao = (admissoesMes + demissoesMes) / 2;
@@ -229,10 +302,11 @@ function buildTurnoverSeriesFromPeople(
 export function deriveTurnoverFromPeople(
   people: TurnoverPersonLike[] | null | undefined,
   ref: Date = new Date(),
-  sectorFilter?: string | null
+  sectorFilter?: string | null,
+  range?: DashboardPeriodo | null,
 ): { turnoverPct: number; turnoverData: TurnoverSeriesPoint[] } {
   const list = Array.isArray(people) ? people : [];
-  const turnoverData = buildTurnoverSeriesFromPeople(list, ref, sectorFilter);
+  const turnoverData = buildTurnoverSeriesFromPeople(list, ref, sectorFilter, range);
   return { turnoverPct: averageTwelveMonthTurnover(turnoverData), turnoverData };
 }
 
@@ -276,7 +350,8 @@ export function listTurnoverPeopleFromSecullum(rows: SecullumFuncionario[] | und
  */
 export function buildDashboardFromOrganico(
   rows: OrganicoRow[] | undefined | null,
-  demissaoByMatricula?: Record<string, string>
+  demissaoByMatricula?: Record<string, string>,
+  ctx?: DashboardExecutivoContexto | null,
 ): DashboardFromOrganico {
   const list = Array.isArray(rows) ? rows : [];
 
@@ -288,7 +363,29 @@ export function buildDashboardFromOrganico(
     rowsComNome.push(row);
   }
 
-  const rowsAtivos = rowsComNome.filter((row) => !isDesligadoOrganico(row));
+  const asOf = ctx ? ctx.fim : new Date();
+  const salarioNaData = ctx?.salarioNaData;
+
+  const rowAtivo = (row: unknown[]): boolean => {
+    if (!ctx) return !isDesligadoOrganico(row);
+    const dem = demissaoDateFor(row, demissaoByMatricula);
+    return colaboradorAtivoNaData(
+      {
+        admissao: parseDateBR(strCell(row, ORGANICO_IDX.ADMISSAO)),
+        demissao: dem,
+        statusDesligado: isDesligadoOrganico(row),
+      },
+      asOf,
+    );
+  };
+
+  const salarioDaLinha = (row: unknown[], ref: Date): number => {
+    const ctps = parseCtpsToNumber(row[ORGANICO_IDX.CTPS]);
+    if (!salarioNaData) return ctps;
+    return salarioNaData(strCell(row, ORGANICO_IDX.MATRICULA), ref, ctps);
+  };
+
+  const rowsAtivos = rowsComNome.filter((row) => rowAtivo(row));
 
   const totalColaboradores = rowsAtivos.length;
   let mediaTempoCasaMeses = 0;
@@ -296,9 +393,9 @@ export function buildDashboardFromOrganico(
   let custoFolhaMensal = 0;
   const costBySetor = new Map<string, number>();
 
-  // Custo folha = soma CTPS só de quem está ativo (exclui desligados — alinha à folha em exercício)
+  // Custo folha = soma do salário vigente na data final, só de quem estava ativo.
   for (const row of rowsAtivos) {
-    const ctps = parseCtpsToNumber(row[ORGANICO_IDX.CTPS]);
+    const ctps = salarioDaLinha(row, asOf);
     custoFolhaMensal += ctps;
     const setorRaw = strCell(row, ORGANICO_IDX.SETOR);
     const setor = setorRaw || "Sem setor";
@@ -309,17 +406,52 @@ export function buildDashboardFromOrganico(
   const tenureMeses: number[] = [];
   const countBySetor = new Map<string, number>();
   for (const row of rowsAtivos) {
-    const ctps = parseCtpsToNumber(row[ORGANICO_IDX.CTPS]);
+    const ctps = salarioDaLinha(row, asOf);
     if (ctps > 0) ctpsValues.push(ctps);
     const setorRaw = strCell(row, ORGANICO_IDX.SETOR);
     const setor = setorRaw || "Sem setor";
     countBySetor.set(setor, (countBySetor.get(setor) ?? 0) + 1);
     const adm = parseDateBR(strCell(row, ORGANICO_IDX.ADMISSAO));
     if (adm) {
-      const now = new Date();
-      let meses = (now.getFullYear() - adm.getFullYear()) * 12 + (now.getMonth() - adm.getMonth());
-      if (now.getDate() < adm.getDate()) meses -= 1;
+      let meses = (asOf.getFullYear() - adm.getFullYear()) * 12 + (asOf.getMonth() - adm.getMonth());
+      if (asOf.getDate() < adm.getDate()) meses -= 1;
       if (meses >= 0) tenureMeses.push(meses);
+    }
+  }
+
+  const folhaMensal: FolhaMensalPoint[] = [];
+  if (ctx) {
+    const inicioRetencao = inicioRetencaoDemissoes(rowsComNome, demissaoByMatricula);
+    const hojeRef = inicioDoDia(ctx.hoje ?? new Date());
+    for (const mes of mesesNoPeriodo(ctx.inicio, ctx.fim)) {
+      const janela = janelaDoMes(mes.year, mes.month, ctx.inicio, ctx.fim);
+      let value = 0;
+      let ativos = 0;
+      let semAdmissao = 0;
+      for (const row of rowsComNome) {
+        const dem = demissaoDateFor(row, demissaoByMatricula);
+        const admissao = parseDateBR(strCell(row, ORGANICO_IDX.ADMISSAO));
+        const ativo = colaboradorAtivoNaData(
+          {
+            admissao,
+            demissao: dem,
+            statusDesligado: isDesligadoOrganico(row),
+          },
+          janela.end,
+        );
+        if (!ativo) continue;
+        ativos += 1;
+        if (!admissao) semAdmissao += 1;
+        value += salarioDaLinha(row, janela.end);
+      }
+      const fechamentoEhHoje = janela.end >= hojeRef;
+      folhaMensal.push({
+        month: mes.label,
+        year: mes.year,
+        value,
+        ativos,
+        ativosAproximado: semAdmissao > 0 || (!fechamentoEhHoje && (inicioRetencao == null || janela.end < inicioRetencao)),
+      });
     }
   }
 
@@ -361,15 +493,20 @@ export function buildDashboardFromOrganico(
     .map(([sector, count]) => ({ sector, count }))
     .sort((a, b) => b.count - a.count);
 
-  const now = new Date();
+  const now = ctx?.fim ?? new Date();
   const turnoverPeople: TurnoverPersonLike[] = rowsComNome.map((row) => ({
     admissao: strCell(row, ORGANICO_IDX.ADMISSAO),
     demissao: demissaoDateFor(row, demissaoByMatricula)?.toISOString().slice(0, 10) ?? "",
     setor: strCell(row, ORGANICO_IDX.SETOR) || "Sem setor",
   }));
-  const turnoverData = buildTurnoverSeriesFromPeople(turnoverPeople, now);
+  const turnoverData = buildTurnoverSeriesFromPeople(
+    turnoverPeople,
+    now,
+    null,
+    ctx ? { inicio: ctx.inicio, fim: ctx.fim } : null,
+  );
 
-  const novasLista = listNovasAdmissoesMesAtual(rows);
+  const novasLista = ctx ? listAdmissoesNoPeriodo(rows, ctx.inicio, ctx.fim) : listNovasAdmissoesMesAtual(rows);
   const novasAdmissoesMes = novasLista.length;
   const turnoverPct = averageTwelveMonthTurnover(turnoverData);
 
@@ -387,7 +524,38 @@ export function buildDashboardFromOrganico(
     headcountData: headcountData.length > 0 ? headcountData : [{ sector: "—", count: 0 }],
     sectorCostData,
     alerts: [],
+    folhaMensal,
   };
+}
+
+/**
+ * Admissões cuja data cai no intervalo, inclusive quem foi desligado depois.
+ * A lista do card "Novas admissões" do período usa esta regra.
+ */
+export function listAdmissoesNoPeriodo(
+  rows: OrganicoRow[] | undefined | null,
+  inicio: Date,
+  fim: Date,
+): OrganicoSheetRow[] {
+  const list = Array.isArray(rows) ? rows : [];
+  const out: OrganicoSheetRow[] = [];
+
+  for (const r of list) {
+    const row = rowValues(r);
+    const nome = strCell(row, ORGANICO_IDX.NOME);
+    if (!nome) continue;
+    const adm = parseDateBR(strCell(row, ORGANICO_IDX.ADMISSAO));
+    if (!dataDentroDoPeriodo(adm, inicio, fim)) continue;
+
+    const arr: OrganicoSheetRow = migrateOrganicoRowSchema(
+      Array.isArray(r.values) ? [...r.values] : [],
+    ) as OrganicoSheetRow;
+    while (arr.length < ORGANICO_NUM_COLUNAS) arr.push("");
+    calcularFormulasRow(arr);
+    out.push(arr);
+  }
+
+  return out;
 }
 
 /**
