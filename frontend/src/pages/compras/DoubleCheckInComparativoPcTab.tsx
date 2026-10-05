@@ -199,6 +199,7 @@ type DraftObs = {
 type Props = {
   idDocumento: number;
   conferido: boolean;
+  somenteLeitura?: boolean;
   linhas: DoubleCheckInComparativoLinha[];
   decisoes: DoubleCheckInComparativoDecisao[];
   justificativas: DoubleCheckInJustificativaOpcao[];
@@ -220,6 +221,7 @@ export function contarPendentesComparativo(
 export default function DoubleCheckInComparativoPcTab({
   idDocumento,
   conferido,
+  somenteLeitura = false,
   linhas,
   decisoes,
   justificativas,
@@ -252,8 +254,8 @@ export default function DoubleCheckInComparativoPcTab({
     [linhas]
   );
   const pendentes = useMemo(
-    () => contarPendentesComparativo(linhas, decisoes),
-    [linhas, decisoes]
+    () => (somenteLeitura ? 0 : contarPendentesComparativo(linhas, decisoes)),
+    [linhas, decisoes, somenteLeitura]
   );
 
   const opcoesDoCampo = useMemo(() => {
@@ -510,7 +512,7 @@ export default function DoubleCheckInComparativoPcTab({
                         <XCircle className="h-3.5 w-3.5 text-rose-600" aria-label="Recusada" />
                       ) : (
                         <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">
-                          Pendente
+                          {somenteLeitura ? 'Sem decisão' : 'Pendente'}
                         </span>
                       )}
                     </div>
@@ -581,7 +583,7 @@ export default function DoubleCheckInComparativoPcTab({
                               ? `${dec.vigente === false ? 'Anterior' : dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
                               : 'Divergente'}
                           </span>
-                          {(!conferido || !decVigente) && (
+                          {!somenteLeitura && (!conferido || !decVigente) && (
                             <div className="flex shrink-0 gap-1">
                               <button
                                 type="button"

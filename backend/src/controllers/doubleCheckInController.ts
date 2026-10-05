@@ -8,6 +8,7 @@ import { prisma } from '../config/prisma.js';
 import {
   analisarOutliersDocumento,
   queryDoubleCheckInComparativoPc,
+  queryDoubleCheckInDataEntrada,
   queryDoubleCheckInDashboard,
   queryDoubleCheckInItens,
   queryDoubleCheckInNotas,
@@ -56,6 +57,10 @@ import {
 } from '../services/doubleCheckInNatureza.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
 import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
+import {
+  regimeConferenciaPorDataEntrada,
+  type RegimeConferenciaDoubleCheck,
+} from '../services/doubleCheckInConferenciaPeriodo.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -194,6 +199,7 @@ async function carregarResumosDivergenciasAtuais(
 }
 
 export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
+  regimeConferencia: RegimeConferenciaDoubleCheck;
   conferido: boolean;
   conferidoEm: string | null;
   conferidoPor: string | null;
@@ -211,24 +217,37 @@ async function enriquecerNotasComConferencia(
   notas: DoubleCheckInNota[]
 ): Promise<DoubleCheckInNotaComConferencia[]> {
   const ids = notas.map((n) => n.idDocumento);
+  const idsConferenciaCompleta = notas
+    .filter((n) => regimeConferenciaPorDataEntrada(n.dataEntrada) === 'completa')
+    .map((n) => n.idDocumento);
   const [map, resumosAtuais] = await Promise.all([
     listarDocumentosConferidos(ids),
-    carregarResumosDivergenciasAtuais(ids),
+    carregarResumosDivergenciasAtuais(idsConferenciaCompleta),
   ]);
   return notas.map((n) => {
+    const regimeConferencia = regimeConferenciaPorDataEntrada(n.dataEntrada);
     const c = map.get(n.idDocumento);
     const atual = resumosAtuais.get(n.idDocumento);
-    const conferenciaReaberta = Boolean(c) && Number(atual?.pendencias ?? 0) > 0;
-    const conferido = Boolean(c) && !conferenciaReaberta;
+    const conferenciaReaberta =
+      regimeConferencia !== 'nao_aplicada' &&
+      Boolean(c) &&
+      regimeConferencia === 'completa' &&
+      Number(atual?.pendencias ?? 0) > 0;
+    const conferido =
+      regimeConferencia !== 'nao_aplicada' && Boolean(c) && !conferenciaReaberta;
     return {
       ...n,
+      regimeConferencia,
       conferido,
       conferidoEm: c?.conferidoEm ?? null,
       conferidoPor: c?.usuarioLogin ?? null,
       conferenciaReaberta,
-      conferidoComDivergencia: conferido && Boolean(atual?.temQualquer),
-      temDivergenciaRealAtual: Boolean(atual?.temReal),
-      temDivergenciaBenignaAtual: Boolean(atual?.temBenigna),
+      conferidoComDivergencia:
+        regimeConferencia === 'completa' && conferido && Boolean(atual?.temQualquer),
+      temDivergenciaRealAtual:
+        regimeConferencia === 'completa' && Boolean(atual?.temReal),
+      temDivergenciaBenignaAtual:
+        regimeConferencia === 'completa' && Boolean(atual?.temBenigna),
       temDivergenciaRealHistorica: Boolean(c?.temDivergenciaRealHistorica),
       totalDivergenciasReaisHistorica: c?.totalDivergenciasReaisHistorica ?? 0,
     };
@@ -358,6 +377,19 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
   }
 
   try {
+    const dataDocumento = await queryDoubleCheckInDataEntrada(idDocumento);
+    if (dataDocumento.erro) {
+      res.status(503).json({ error: dataDocumento.erro });
+      return;
+    }
+    if (regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada) !== 'completa') {
+      res.status(400).json({
+        error:
+          'Para entradas anteriores a 21/09/2026, o comparativo NF × PC é somente leitura.',
+      });
+      return;
+    }
+
     const usuario = await prisma.usuario.findUnique({
       where: { login },
       select: { id: true, login: true },
@@ -609,8 +641,55 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       return;
     }
 
+    const dataDocumento = await queryDoubleCheckInDataEntrada(idDocumento);
+    if (dataDocumento.erro) {
+      res.status(503).json({ error: dataDocumento.erro });
+      return;
+    }
+    const regimeConferencia = regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada);
+    if (regimeConferencia === 'nao_aplicada') {
+      res.status(400).json({
+        error: 'A conferência não se aplica a entradas anteriores a 01/09/2026.',
+      });
+      return;
+    }
+
     const ja = await getDocumentoConferido(idDocumento);
     const reconferenciaSolicitada = Boolean(req.body?.reconferencia);
+    if (regimeConferencia === 'simples') {
+      const simples =
+        ja && !reconferenciaSolicitada
+          ? ja
+          : await marcarDocumentoConferido({
+              idDocumentoEstoque: idDocumento,
+              usuarioId: usuario.id,
+              usuarioLogin: usuario.login,
+              renovar: Boolean(ja && reconferenciaSolicitada),
+            });
+      await atualizarClassificacaoHistoricaConferencia({
+        idDocumentoEstoque: idDocumento,
+        totalReais: 0,
+        totalBenignas: 0,
+        fonte: 'conferencia_simples',
+      });
+      res.status(ja && !reconferenciaSolicitada ? 200 : 201).json({
+        ok: true,
+        jaConferido: Boolean(ja && !reconferenciaSolicitada),
+        reconferido: Boolean(ja && reconferenciaSolicitada),
+        conferido: true,
+        conferidoEm: simples.conferidoEm,
+        conferidoPor: simples.usuarioLogin,
+        conferidoComDivergencia: false,
+        temDivergenciaRealAtual: false,
+        temDivergenciaBenignaAtual: false,
+        temDivergenciaRealHistorica: false,
+        totalDivergenciasReaisHistorica: 0,
+        idDocumento,
+        alertaNfPcEnviado: false,
+      });
+      return;
+    }
+
     const { linhas, erro: erroComp } = await queryDoubleCheckInComparativoPc({ idDocumento });
     if (erroComp) {
       res.status(503).json({ error: erroComp });

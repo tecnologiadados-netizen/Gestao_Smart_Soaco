@@ -94,6 +94,14 @@ ORDER BY DATE(de.dataEntrada) DESC, de.id DESC
 LIMIT 2000
 `.trim();
 
+const SQL_DATA_ENTRADA_DOCUMENTO = `
+SELECT DATE(de.dataEntrada) AS dataEntrada
+FROM documentoestoque de
+WHERE de.id = ?
+  AND de.idTipoMovimentacao IN (${TIPOS_IN})
+LIMIT 1
+`.trim();
+
 const SQL_ITENS = `
 SELECT
   ide.id AS idItem,
@@ -190,6 +198,30 @@ export async function queryDoubleCheckInNotas(params: {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[doubleCheckInRepository] queryDoubleCheckInNotas:', msg);
     return { notas: [], erro: msg };
+  }
+}
+
+export async function queryDoubleCheckInDataEntrada(
+  idDocumento: number
+): Promise<{ dataEntrada: string | null; erro?: string }> {
+  if (!isNomusEnabled()) {
+    return { dataEntrada: null, erro: 'NOMUS_DB_URL não configurado' };
+  }
+  const pool = getNomusPool();
+  if (!pool) return { dataEntrada: null, erro: 'NOMUS_DB_URL não configurado' };
+
+  try {
+    const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(
+      pool,
+      SQL_DATA_ENTRADA_DOCUMENTO,
+      [idDocumento]
+    );
+    const row = Array.isArray(rows) ? rows[0] : undefined;
+    return { dataEntrada: formatSqlDateYmd(row?.dataEntrada) };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[doubleCheckInRepository] queryDoubleCheckInDataEntrada:', msg);
+    return { dataEntrada: null, erro: msg };
   }
 }
 

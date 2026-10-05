@@ -96,6 +96,16 @@ type FiltroSituacao =
   | 'divergencia_real'
   | 'divergencia_benigna';
 
+type RegimeConferencia = NonNullable<DoubleCheckInNota['regimeConferencia']>;
+
+function regimeDaNota(nota: DoubleCheckInNota): RegimeConferencia {
+  if (nota.regimeConferencia) return nota.regimeConferencia;
+  const dataEntrada = String(nota.dataEntrada ?? '').slice(0, 10);
+  if (dataEntrada < '2026-09-01') return 'nao_aplicada';
+  if (dataEntrada < '2026-09-21') return 'simples';
+  return 'completa';
+}
+
 export default function DoubleCheckInPage() {
   const { isMaster, login, grupo, hasPermission } = useAuth();
   const podeDestinatarios = isAdminOuMaster({ isMaster, login, grupo });
@@ -379,7 +389,9 @@ export default function DoubleCheckInPage() {
         match(n.nomeParceiro ?? '') ||
         match(String(n.idParceiro ?? ''));
       if (!passaTexto) return false;
-      if (filtroSituacao === 'pendentes') return !n.conferido;
+      if (filtroSituacao === 'pendentes') {
+        return regimeDaNota(n) !== 'nao_aplicada' && !n.conferido;
+      }
       if (filtroSituacao === 'conferidos') return Boolean(n.conferido);
       if (filtroSituacao === 'divergencia_real') {
         return Boolean(n.conferido && n.temDivergenciaRealAtual);
@@ -556,12 +568,17 @@ export default function DoubleCheckInPage() {
     if (!modalNota) return;
     setCompBloqueioMsg(null);
     setSenhaErro(null);
+    const regimeConferencia = regimeDaNota(modalNota);
+    if (regimeConferencia === 'nao_aplicada') {
+      setCompBloqueioMsg('A conferência não se aplica a entradas anteriores a 01/09/2026.');
+      return;
+    }
 
-    // Garante comparativo carregado antes de validar decisões.
+    // Na conferência completa, garante o comparativo carregado antes de validar decisões.
     let linhas = compLinhas;
     let decisoes = compDecisoes;
     const cached = comparativoCacheRef.current.get(modalNota.idDocumento);
-    if (!cached) {
+    if (regimeConferencia === 'completa' && !cached) {
       setCompLoading(true);
       try {
         const r = await fetchDoubleCheckInComparativoPc(modalNota.idDocumento);
@@ -584,13 +601,16 @@ export default function DoubleCheckInPage() {
       } finally {
         setCompLoading(false);
       }
-    } else {
+    } else if (regimeConferencia === 'completa' && cached) {
       linhas = cached.linhas;
       decisoes = cached.decisoes;
     }
 
-    const pendentes = contarPendentesComparativo(linhas, decisoes);
-    if (pendentes > 0) {
+    const pendentes =
+      regimeConferencia === 'completa'
+        ? contarPendentesComparativo(linhas, decisoes)
+        : 0;
+    if (regimeConferencia === 'completa' && pendentes > 0) {
       setModalAba('nf_pc');
       setCompBloqueioMsg(
         `Há ${pendentes} divergência(s) NF × PC sem decisão (aceitar/recusar + justificativa).`
@@ -822,6 +842,7 @@ export default function DoubleCheckInPage() {
               </tr>
             ) : (
               notasPagina.map((n) => {
+                const regimeConferencia = regimeDaNota(n);
                 const temFora = statusMap[n.idDocumento];
                 const statusPronto = Object.prototype.hasOwnProperty.call(statusMap, n.idDocumento);
                 const conferido = Boolean(n.conferido);
@@ -831,7 +852,9 @@ export default function DoubleCheckInPage() {
                   <tr
                     key={n.idDocumento}
                     className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${
-                      conferidoComDivergencia
+                      regimeConferencia === 'nao_aplicada'
+                        ? 'border-l-4 border-l-slate-400'
+                        : conferidoComDivergencia
                         ? 'border-l-4 border-l-yellow-400'
                         : conferido
                           ? 'border-l-4 border-l-emerald-500'
@@ -881,7 +904,11 @@ export default function DoubleCheckInPage() {
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      {conferidoComDivergencia ? (
+                      {regimeConferencia === 'nao_aplicada' ? (
+                        <span className="inline-flex items-center rounded-md border-2 border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          Não aplicada
+                        </span>
+                      ) : conferidoComDivergencia ? (
                         <span
                           className="inline-flex max-w-[11rem] items-center gap-1.5 rounded-md border-2 border-yellow-400 bg-yellow-50 px-2 py-1 text-xs font-semibold text-yellow-900 dark:border-yellow-500 dark:bg-yellow-950/40 dark:text-yellow-100"
                           title={
@@ -1160,31 +1187,44 @@ export default function DoubleCheckInPage() {
                     </table>
                   </>
                 ) : (
-                  <DoubleCheckInComparativoPcTab
-                    idDocumento={modalNota.idDocumento}
-                    conferido={Boolean(modalNota.conferido)}
-                    linhas={compLinhas}
-                    decisoes={compDecisoes}
-                    justificativas={compJustificativas}
-                    loading={compLoading}
-                    erro={compErro}
-                    onDecisoesChange={(next) => {
-                      setCompDecisoes(next);
-                      setCompBloqueioMsg(null);
-                      const prev = comparativoCacheRef.current.get(modalNota.idDocumento);
-                      if (prev) {
-                        comparativoCacheRef.current.set(modalNota.idDocumento, {
-                          ...prev,
-                          decisoes: next,
-                        });
-                      }
-                    }}
-                  />
+                  <div className="space-y-3">
+                    {regimeDaNota(modalNota) === 'simples' ? (
+                      <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+                        Entrada de 01/09 a 20/09/2026: comparativo somente para consulta.
+                        Não é necessário aceitar ou recusar divergências.
+                      </p>
+                    ) : null}
+                    <DoubleCheckInComparativoPcTab
+                      idDocumento={modalNota.idDocumento}
+                      conferido={Boolean(modalNota.conferido)}
+                      somenteLeitura={regimeDaNota(modalNota) !== 'completa'}
+                      linhas={compLinhas}
+                      decisoes={compDecisoes}
+                      justificativas={compJustificativas}
+                      loading={compLoading}
+                      erro={compErro}
+                      onDecisoesChange={(next) => {
+                        setCompDecisoes(next);
+                        setCompBloqueioMsg(null);
+                        const prev = comparativoCacheRef.current.get(modalNota.idDocumento);
+                        if (prev) {
+                          comparativoCacheRef.current.set(modalNota.idDocumento, {
+                            ...prev,
+                            decisoes: next,
+                          });
+                        }
+                      }}
+                    />
+                  </div>
                 )}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3 dark:border-slate-600 dark:bg-slate-900/40">
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {modalNota.conferido ? (
+                  {regimeDaNota(modalNota) === 'nao_aplicada' ? (
+                    <span>
+                      Conferência não aplicada para entradas anteriores a 01/09/2026.
+                    </span>
+                  ) : modalNota.conferido ? (
                     <span>
                       Conferida
                       {modalNota.conferidoPor ? ` por ${modalNota.conferidoPor}` : ''}
@@ -1200,13 +1240,16 @@ export default function DoubleCheckInPage() {
                     </span>
                   ) : (
                     <span>
-                      Confirme com sua senha. Divergências NF × PC precisam de decisão antes de
-                      conferir.
+                      {regimeDaNota(modalNota) === 'simples'
+                        ? 'Confira o comparativo e confirme com sua senha. Não há aceite ou recusa neste período.'
+                        : 'Confirme com sua senha. Divergências NF × PC precisam de decisão antes de conferir.'}
                     </span>
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {modalNota.conferido && podeReabrirConferencia ? (
+                  {modalNota.conferido &&
+                  regimeDaNota(modalNota) === 'completa' &&
+                  podeReabrirConferencia ? (
                     <button
                       type="button"
                       className={btnSecondary}
@@ -1222,11 +1265,20 @@ export default function DoubleCheckInPage() {
                   <button
                     type="button"
                     className={btnPrimary}
-                    disabled={Boolean(modalNota.conferido) || detalheLoading || compLoading}
+                    disabled={
+                      Boolean(modalNota.conferido) ||
+                      regimeDaNota(modalNota) === 'nao_aplicada' ||
+                      detalheLoading ||
+                      compLoading
+                    }
                     onClick={() => void abrirSenhaConferir()}
                   >
                     <ClipboardCheck className="h-4 w-4" />
-                    {modalNota.conferido ? 'Já conferida' : 'Confirmar conferência'}
+                    {regimeDaNota(modalNota) === 'nao_aplicada'
+                      ? 'Não aplicada'
+                      : modalNota.conferido
+                        ? 'Já conferida'
+                        : 'Confirmar conferência'}
                   </button>
                 </div>
               </div>

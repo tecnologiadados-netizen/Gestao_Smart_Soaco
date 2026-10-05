@@ -1379,6 +1379,7 @@ export type DoubleCheckInNota = {
   idParceiro: number | null;
   nomeParceiro: string | null;
   qtdeItens: number;
+  regimeConferencia?: 'nao_aplicada' | 'simples' | 'completa';
   conferido?: boolean;
   conferidoEm?: string | null;
   conferidoPor?: string | null;

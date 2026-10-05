@@ -6,7 +6,10 @@ import { prisma } from '../config/prisma.js';
 import { getNomusPool, isNomusEnabled, nomusQueryWithRetry } from '../config/nomusDb.js';
 import { formatSqlDateYmd } from './dfcDateUtils.js';
 import { DOUBLE_CHECKIN_TIPOS_MOV, queryLinhasComparativoPorDocumentos } from './doubleCheckInRepository.js';
-import { DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE } from '../services/doubleCheckInConferenciaPeriodo.js';
+import {
+  DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE,
+  regimeConferenciaPorDataEntrada,
+} from '../services/doubleCheckInConferenciaPeriodo.js';
 import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
 import {
   classificarNotaGestaoEntrada,
@@ -134,8 +137,16 @@ export async function queryGestaoEntradasPainel(params: {
       docs.map((d) => d.idDocumento)
     );
     if (erroLinhas) return { erro: erroLinhas };
+    const dataEntradaPorDocumento = new Map(
+      docs.map((doc) => [doc.idDocumento, doc.dataEntrada] as const)
+    );
     const idsComDivergenciaAtual = new Set<number>();
     for (const [id, linhas] of linhasPorDocumento ?? []) {
+      if (
+        regimeConferenciaPorDataEntrada(dataEntradaPorDocumento.get(id)) !== 'completa'
+      ) {
+        continue;
+      }
       if (linhas.some((l) => l.temDivergencia)) idsComDivergenciaAtual.add(id);
       if (!idsConferidos.has(id)) continue;
       const decisoesDoc = decisoes

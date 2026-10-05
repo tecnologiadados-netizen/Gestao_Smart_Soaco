@@ -10,7 +10,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'universo',
     titulo: 'O que entra na conta',
     oQueE:
-      'O painel lê as notas de entrada do Nomus pela data de entrada, nos mesmos tipos de movimentação da conferência Double Check NFe (11, 35 e 111 a 116). A conferência NF × PC passou a valer em 21/09/2026; marcações do fluxo básico anterior a essa data não contam como conferência.',
+      'O painel lê as notas de entrada do Nomus pela data de entrada, nos mesmos tipos de movimentação da conferência Double Check NFe (11, 35 e 111 a 116). Para entradas anteriores a 01/09/2026, a conferência é “Não aplicada”. De 01/09 a 20/09/2026, vale a conferência simples: o comparativo NF × PC fica visível somente para consulta e o usuário apenas confirma o documento. A partir de 21/09/2026, vale o fluxo completo, com aceite ou recusa obrigatórios para cada divergência.',
     comoLe:
       'O período padrão é o mês corrente. Ajuste início e fim e clique em Filtrar. Cada nota conta uma vez, mesmo com vários itens.',
   },
