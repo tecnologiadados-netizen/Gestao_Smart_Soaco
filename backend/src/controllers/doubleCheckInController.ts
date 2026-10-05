@@ -35,6 +35,7 @@ import {
   listarTodosDocumentosConferidos,
   marcarAlertaEnviado,
   marcarDocumentoConferido,
+  reabrirDocumentoConferencia,
   salvarConferenciaPagina,
   setDoubleCheckInDestinatarios,
   setDoubleCheckInLimiarPct,
@@ -76,7 +77,10 @@ function validarDecisoesCompletas(
   linhas: DoubleCheckInComparativoLinha[],
   decisoes: DoubleCheckInComparativoDecisaoRow[]
 ): { ok: true } | { ok: false; pendentes: number; error: string } {
-  const pendentes = contarPendentesComparativoLogica(linhas, decisoes);
+  const pendentes = contarPendentesComparativoLogica(
+    linhas,
+    decisoes.filter((decisao) => decisao.vigente !== false)
+  );
   if (pendentes > 0) {
     return {
       ok: false,
@@ -90,6 +94,7 @@ function validarDecisoesCompletas(
 type DecisaoParaNatureza = Pick<
   DoubleCheckInComparativoDecisaoRow,
   'idItemDocumentoEstoque' | 'idItemPedidoCompra' | 'campo' | 'justificativaCodigo'
+> & Pick<Partial<DoubleCheckInComparativoDecisaoRow>, 'vigente'
 >;
 
 function linhasComNatureza(
@@ -124,7 +129,7 @@ function linhasComNatureza(
       naturezaDivergencias[campo] = classificarNaturezaDivergencia({
         linha,
         campo,
-        justificativaCodigo: decisao?.justificativaCodigo,
+        justificativaCodigo: decisao?.vigente === false ? null : decisao?.justificativaCodigo,
       });
     }
     return { ...linha, naturezaDivergencias };
@@ -712,6 +717,39 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[postDoubleCheckInConferir]', msg);
     res.status(503).json({ error: msg });
+  }
+}
+
+/** POST /api/compras/double-checkin/reabrir */
+export async function postDoubleCheckInReabrir(req: Request, res: Response): Promise<void> {
+  const idDocumento = Math.trunc(Number(req.body?.idDocumento));
+  const login = req.user?.login;
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  if (!login) {
+    res.status(401).json({ error: 'Não autorizado.' });
+    return;
+  }
+  const usuario = await prisma.usuario.findUnique({
+    where: { login },
+    select: { id: true, login: true },
+  });
+  if (!usuario) {
+    res.status(401).json({ error: 'Usuário não encontrado.' });
+    return;
+  }
+  try {
+    const reabertura = await reabrirDocumentoConferencia({
+      idDocumentoEstoque: idDocumento,
+      usuarioId: usuario.id,
+      usuarioLogin: usuario.login,
+    });
+    res.json({ ok: true, idDocumento, ...reabertura });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : String(err);
+    res.status(409).json({ error: mensagem });
   }
 }
 

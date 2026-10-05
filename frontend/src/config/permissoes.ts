@@ -12,6 +12,7 @@ export const PERMISSOES = {
   COMPRAS_EDITAR: 'compras.editar',
   /** Double Check NFe — conferência de entradas (acesso isolado). */
   COMPRAS_DOUBLE_CHECKIN: 'compras.double_checkin',
+  DIVERGENCIAS_REABRIR_CONFERENCIA: 'divergencias.reabrir_conferencia',
   COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1: 'compras.pendencias.prioridade.comprador_1',
   COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2: 'compras.pendencias.prioridade.comprador_2',
   COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3: 'compras.pendencias.prioridade.comprador_3',

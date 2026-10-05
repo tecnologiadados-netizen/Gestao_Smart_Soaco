@@ -4,7 +4,7 @@ import DoubleCheckInDashboardModal from './DoubleCheckInDashboardModal';
 import DoubleCheckInComparativoPcTab, {
   contarPendentesComparativo,
 } from './DoubleCheckInComparativoPcTab';
-import { AlertTriangle, CalendarRange, CheckCircle2, ChevronDown, ClipboardCheck, Eye, LayoutDashboard, Maximize2, Minimize2, RefreshCw, Settings2, Users } from 'lucide-react';
+import { AlertTriangle, CalendarRange, CheckCircle2, ChevronDown, ClipboardCheck, Eye, LayoutDashboard, Maximize2, Minimize2, RefreshCw, RotateCcw, Settings2, Users } from 'lucide-react';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,6 +15,7 @@ import {
   fetchDoubleCheckInItens,
   fetchDoubleCheckInParametros,
   fetchDoubleCheckInStatus,
+  reabrirDoubleCheckIn,
   saveDoubleCheckInDestinatarios,
   saveDoubleCheckInParametros,
   syncDoubleCheckIn,
@@ -25,6 +26,7 @@ import {
   type DoubleCheckInNota,
   type DoubleCheckInUsuarioDest,
 } from '../../api/compras';
+import { PERMISSOES } from '../../config/permissoes';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 
 const POLL_MS = 120_000;
@@ -95,8 +97,9 @@ type FiltroSituacao =
   | 'divergencia_benigna';
 
 export default function DoubleCheckInPage() {
-  const { isMaster, login, grupo } = useAuth();
+  const { isMaster, login, grupo, hasPermission } = useAuth();
   const podeDestinatarios = isAdminOuMaster({ isMaster, login, grupo });
+  const podeReabrirConferencia = hasPermission(PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA);
 
   const [dataInicio, setDataInicio] = useState('2024-01-01');
   const [dataFim, setDataFim] = useState(hojeYmd());
@@ -131,6 +134,7 @@ export default function DoubleCheckInPage() {
   const [compDecisoes, setCompDecisoes] = useState<DoubleCheckInComparativoDecisao[]>([]);
   const [compJustificativas, setCompJustificativas] = useState<DoubleCheckInJustificativaOpcao[]>([]);
   const [compBloqueioMsg, setCompBloqueioMsg] = useState<string | null>(null);
+  const [reabrindoConferencia, setReabrindoConferencia] = useState(false);
 
   const [paramAberto, setParamAberto] = useState(false);
   const [paramDraft, setParamDraft] = useState('10');
@@ -329,6 +333,41 @@ export default function DoubleCheckInPage() {
     if (!modalNota || modalAba !== 'nf_pc') return;
     void carregarComparativo(modalNota.idDocumento);
   }, [modalNota, modalAba, carregarComparativo]);
+
+  const reabrirConferencia = async () => {
+    if (!modalNota || !podeReabrirConferencia || reabrindoConferencia) return;
+    const confirmou = window.confirm(
+      'Reabrir esta conferência? As decisões anteriores serão preservadas como histórico, mas todas as divergências atuais deverão ser aceitas ou recusadas novamente.'
+    );
+    if (!confirmou) return;
+    setReabrindoConferencia(true);
+    setCompBloqueioMsg(null);
+    try {
+      const r = await reabrirDoubleCheckIn(modalNota.idDocumento);
+      if (r.erro || !r.ok) {
+        setCompBloqueioMsg(r.erro ?? 'Não foi possível reabrir a conferência.');
+        return;
+      }
+      const atualizar = (nota: DoubleCheckInNota): DoubleCheckInNota =>
+        nota.idDocumento === modalNota.idDocumento
+          ? {
+              ...nota,
+              conferido: false,
+              conferenciaReaberta: true,
+              conferidoComDivergencia: false,
+            }
+          : nota;
+      setNotas((prev) => prev.map(atualizar));
+      setModalNota((prev) => (prev ? atualizar(prev) : prev));
+      comparativoCacheRef.current.delete(modalNota.idDocumento);
+      setCompLinhas([]);
+      setCompDecisoes([]);
+      setModalAba('nf_pc');
+      await carregarComparativo(modalNota.idDocumento);
+    } finally {
+      setReabrindoConferencia(false);
+    }
+  };
 
   const notasFiltradas = (() => {
     const match = criarMatcherTextoLivre(filtroTexto);
@@ -1154,6 +1193,11 @@ export default function DoubleCheckInPage() {
                         : ''}
                       .
                     </span>
+                  ) : modalNota.conferenciaReaberta ? (
+                    <span>
+                      Conferência reaberta. Revise e decida novamente todas as divergências antes
+                      de confirmar.
+                    </span>
                   ) : (
                     <span>
                       Confirme com sua senha. Divergências NF × PC precisam de decisão antes de
@@ -1161,15 +1205,30 @@ export default function DoubleCheckInPage() {
                     </span>
                   )}
                 </div>
-                <button
-                  type="button"
-                  className={btnPrimary}
-                  disabled={Boolean(modalNota.conferido) || detalheLoading || compLoading}
-                  onClick={() => void abrirSenhaConferir()}
-                >
-                  <ClipboardCheck className="h-4 w-4" />
-                  {modalNota.conferido ? 'Já conferida' : 'Confirmar conferência'}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {modalNota.conferido && podeReabrirConferencia ? (
+                    <button
+                      type="button"
+                      className={btnSecondary}
+                      disabled={reabrindoConferencia || detalheLoading || compLoading}
+                      onClick={() => void reabrirConferencia()}
+                    >
+                      <RotateCcw
+                        className={`h-4 w-4 ${reabrindoConferencia ? 'animate-spin' : ''}`}
+                      />
+                      Reabrir conferência
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={btnPrimary}
+                    disabled={Boolean(modalNota.conferido) || detalheLoading || compLoading}
+                    onClick={() => void abrirSenhaConferir()}
+                  >
+                    <ClipboardCheck className="h-4 w-4" />
+                    {modalNota.conferido ? 'Já conferida' : 'Confirmar conferência'}
+                  </button>
+                </div>
               </div>
             </div>
             <style>{`

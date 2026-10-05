@@ -181,7 +181,10 @@ export async function executarBackfillNaturezaHistorica(params?: {
 }): Promise<ResultadoBackfillNaturezaHistorica> {
   const dryRun = Boolean(params?.dryRun);
   const conferidas = await prisma.doubleCheckInConferido.findMany({
-    where: { conferidoEm: { gte: DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE } },
+    where: {
+      conferidoEm: { gte: DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE },
+      reabertoEm: null,
+    },
     orderBy: { idDocumentoEstoque: 'asc' },
   });
   const ids = conferidas.map((item) => item.idDocumentoEstoque);

@@ -16,6 +16,7 @@ import {
   getDoubleCheckInNotas,
   getDoubleCheckInParametros,
   postDoubleCheckInConferir,
+  postDoubleCheckInReabrir,
   postDoubleCheckInSincronizar,
   postDoubleCheckInStatus,
   putDoubleCheckInComparativoDecisao,
@@ -496,6 +497,11 @@ router.post(
   '/double-checkin/conferir',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(postDoubleCheckInConferir)
+);
+router.post(
+  '/double-checkin/reabrir',
+  requirePermission(PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA),
+  async503(postDoubleCheckInReabrir)
 );
 router.get(
   '/double-checkin/parametros',

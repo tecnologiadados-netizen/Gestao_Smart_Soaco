@@ -211,7 +211,10 @@ export function contarPendentesComparativo(
   linhas: DoubleCheckInComparativoLinha[],
   decisoes: DoubleCheckInComparativoDecisao[]
 ): number {
-  return contarPendentesComparativoLogica(linhas, decisoes);
+  return contarPendentesComparativoLogica(
+    linhas,
+    decisoes.filter((decisao) => decisao.vigente !== false)
+  );
 }
 
 export default function DoubleCheckInComparativoPcTab({
@@ -274,7 +277,7 @@ export default function DoubleCheckInComparativoPcTab({
       chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
     );
     // Após conferida, só permite decidir campos ainda pendentes (ex.: divergência nova).
-    if (conferido && existente) return;
+    if (conferido && existente?.vigente !== false) return;
     setDraft({ linha, campo, decisao });
     setOpcaoId(existente?.justificativaOpcaoId ?? '');
     setObs(existente?.observacao ?? '');
@@ -464,10 +467,11 @@ export default function DoubleCheckInComparativoPcTab({
                 const dec = decisaoMap.get(
                   chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
                 );
+                const decVigente = dec?.vigente === false ? undefined : dec;
                 const natureza =
-                  dec &&
+                  decVigente &&
                   ['arredondamento', 'divergencia_so_na_tela', 'ipi_reflexo'].includes(
-                    dec.justificativaCodigo
+                    decVigente.justificativaCodigo
                   )
                     ? 'benigna'
                     : linha.naturezaDivergencias?.[c.id];
@@ -500,9 +504,9 @@ export default function DoubleCheckInComparativoPcTab({
                       </div>
                       {!diverg ? (
                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-label="Igual" />
-                      ) : dec?.decisao === 'aceita' ? (
+                      ) : decVigente?.decisao === 'aceita' ? (
                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-label="Aceita" />
-                      ) : dec?.decisao === 'recusa' ? (
+                      ) : decVigente?.decisao === 'recusa' ? (
                         <XCircle className="h-3.5 w-3.5 text-rose-600" aria-label="Recusada" />
                       ) : (
                         <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">
@@ -574,10 +578,10 @@ export default function DoubleCheckInComparativoPcTab({
                             title={dec?.justificativaLabel ?? ''}
                           >
                             {dec
-                              ? `${dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
+                              ? `${dec.vigente === false ? 'Anterior' : dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
                               : 'Divergente'}
                           </span>
-                          {(!conferido || !dec) && (
+                          {(!conferido || !decVigente) && (
                             <div className="flex shrink-0 gap-1">
                               <button
                                 type="button"
@@ -621,7 +625,12 @@ export default function DoubleCheckInComparativoPcTab({
                             </ul>
                           </div>
                         )}
-                        {conferido && dec && (
+                        {dec?.vigente === false ? (
+                          <p className="rounded-md bg-amber-100 px-2 py-1 text-[10px] font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+                            Decisão anterior preservada. Aceite ou recuse novamente.
+                          </p>
+                        ) : null}
+                        {conferido && decVigente && (
                           <button
                             type="button"
                             className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"

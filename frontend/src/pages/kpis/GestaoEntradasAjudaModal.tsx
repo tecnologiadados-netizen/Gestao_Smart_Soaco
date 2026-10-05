@@ -36,7 +36,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Cada diferença é separada em Divergência benigna ou Divergência real. Preço e IPI menores ou iguais ao pedido são benignos; quantidade diferente é real. No pagamento, o sistema primeiro compara os dias calculados: prazo da NF igual ou posterior ao pedido é benigno, inclusive quando todas as parcelas da NF vencem depois do último prazo do PC. Se faltar data base em um dos lados, compara a condição e a regra cadastradas, e condições iguais não geram divergência. Arredondamento, IPI reflexo e “divergência só na tela” também são benignos. Na dúvida, o sistema classifica como real. Aceitar ou recusar é uma decisão separada da natureza.',
     comoLe:
-      'A tabela do documento mostra o selo Real ou Benigna em cada campo. O WhatsApp contém somente divergências reais; as benignas continuam disponíveis na tabela e no histórico. O ranking por campo conta cada decisão das notas conferidas que ainda divergem do pedido. O ranking de motivos conta só decisões aceitas. Diferença corrigida no ERP sai desses rankings.',
+      'A tabela do documento mostra o selo Real ou Benigna em cada campo. O WhatsApp contém somente divergências reais; as benignas continuam disponíveis na tabela e no histórico. Usuários autorizados podem reabrir uma conferência: as decisões e observações anteriores permanecem visíveis, mas deixam de valer e cada divergência atual precisa ser aceita ou recusada novamente. O ranking por campo conta cada decisão vigente das notas conferidas que ainda divergem do pedido. O ranking de motivos conta só decisões aceitas. Diferença corrigida no ERP sai desses rankings.',
   },
   {
     id: 'movimento',

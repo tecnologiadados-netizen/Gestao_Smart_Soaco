@@ -144,6 +144,8 @@ export type DoubleCheckInComparativoDecisaoRow = {
   usuarioId: number;
   usuarioLogin: string;
   atualizadoEm: string;
+  /** False quando pertence ao ciclo anterior de uma conferência reaberta. */
+  vigente: boolean;
   historicoObservacoes: DoubleCheckInComparativoObsHistRow[];
 };
 
@@ -206,7 +208,8 @@ function mapDecisao(
     atualizadoEm: Date;
     justificativaOpcao: { codigo: string; label: string };
   },
-  historicoObservacoes: DoubleCheckInComparativoObsHistRow[] = []
+  historicoObservacoes: DoubleCheckInComparativoObsHistRow[] = [],
+  vigente = true
 ): DoubleCheckInComparativoDecisaoRow {
   return {
     id: r.id,
@@ -222,6 +225,7 @@ function mapDecisao(
     usuarioId: r.usuarioId,
     usuarioLogin: r.usuarioLogin,
     atualizadoEm: r.atualizadoEm.toISOString(),
+    vigente,
     historicoObservacoes,
   };
 }
@@ -300,12 +304,16 @@ async function appendObsHistSeNovo(params: {
 export async function listarDecisoesComparativo(
   idDocumentoEstoque: number
 ): Promise<DoubleCheckInComparativoDecisaoRow[]> {
-  const [rows, histMap] = await Promise.all([
+  const [rows, histMap, conferencia] = await Promise.all([
     prisma.doubleCheckInComparativoDecisao.findMany({
       where: { idDocumentoEstoque },
       include: { justificativaOpcao: { select: { codigo: true, label: true } } },
     }),
     listarObsHistPorDocumento(idDocumentoEstoque),
+    prisma.doubleCheckInConferido.findUnique({
+      where: { idDocumentoEstoque },
+      select: { reabertoEm: true },
+    }),
   ]);
 
   // Garante que observação gravada na decisão (ato da conferência) apareça no histórico
@@ -358,12 +366,15 @@ export async function listarDecisoesComparativo(
     }
   }
 
-  return rows.map((r) =>
-    mapDecisao(
+  return rows.map((r) => {
+    const vigente =
+      !conferencia?.reabertoEm || r.atualizadoEm.getTime() > conferencia.reabertoEm.getTime();
+    return mapDecisao(
       r,
-      histMap.get(chaveObsHist(r.idItemDocumentoEstoque, r.idItemPedidoCompra, r.campo)) ?? []
-    )
-  );
+      histMap.get(chaveObsHist(r.idItemDocumentoEstoque, r.idItemPedidoCompra, r.campo)) ?? [],
+      vigente
+    );
+  });
 }
 
 export async function upsertDecisaoComparativo(params: {
@@ -477,7 +488,11 @@ export async function adicionarObservacaoComparativoPosConferido(params: {
   const conferido = await prisma.doubleCheckInConferido.findUnique({
     where: { idDocumentoEstoque: params.idDocumentoEstoque },
   });
-  if (!conferido || !ehConferenciaNfPcValida(conferido.conferidoEm)) {
+  if (
+    !conferido ||
+    conferido.reabertoEm ||
+    !ehConferenciaNfPcValida(conferido.conferidoEm)
+  ) {
     throw new Error('Só é possível acrescentar observações após a NF ser conferida.');
   }
 
@@ -674,6 +689,7 @@ export async function listarDocumentosConferidos(
     where: {
       idDocumentoEstoque: { in: ids },
       conferidoEm: { gte: DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE },
+      reabertoEm: null,
     },
   });
   for (const r of rows) {
@@ -701,7 +717,10 @@ export async function listarTodosDocumentosConferidos(): Promise<
 > {
   const map = new Map<number, DoubleCheckInConferidoInfo>();
   const rows = await prisma.doubleCheckInConferido.findMany({
-    where: { conferidoEm: { gte: DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE } },
+    where: {
+      conferidoEm: { gte: DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE },
+      reabertoEm: null,
+    },
   });
   for (const r of rows) {
     map.set(r.idDocumentoEstoque, mapConferido(r));
@@ -731,8 +750,34 @@ export async function getDocumentoConferido(
   const r = await prisma.doubleCheckInConferido.findUnique({
     where: { idDocumentoEstoque },
   });
-  if (!r || !ehConferenciaNfPcValida(r.conferidoEm)) return null;
+  if (!r || r.reabertoEm || !ehConferenciaNfPcValida(r.conferidoEm)) return null;
   return mapConferido(r);
+}
+
+export async function reabrirDocumentoConferencia(params: {
+  idDocumentoEstoque: number;
+  usuarioId: number;
+  usuarioLogin: string;
+}): Promise<{ reabertoEm: string }> {
+  const existente = await prisma.doubleCheckInConferido.findUnique({
+    where: { idDocumentoEstoque: params.idDocumentoEstoque },
+  });
+  if (!existente || !ehConferenciaNfPcValida(existente.conferidoEm)) {
+    throw new Error('Documento ainda não possui uma conferência válida para reabrir.');
+  }
+  if (existente.reabertoEm) {
+    return { reabertoEm: existente.reabertoEm.toISOString() };
+  }
+  const reabertoEm = new Date();
+  await prisma.doubleCheckInConferido.update({
+    where: { idDocumentoEstoque: params.idDocumentoEstoque },
+    data: {
+      reabertoEm,
+      reabertoPorUsuarioId: params.usuarioId,
+      reabertoPorLogin: params.usuarioLogin,
+    },
+  });
+  return { reabertoEm: reabertoEm.toISOString() };
 }
 
 export async function marcarDocumentoConferido(params: {
@@ -744,7 +789,12 @@ export async function marcarDocumentoConferido(params: {
   const existing = await prisma.doubleCheckInConferido.findUnique({
     where: { idDocumentoEstoque: params.idDocumentoEstoque },
   });
-  if (existing && ehConferenciaNfPcValida(existing.conferidoEm) && !params.renovar) {
+  if (
+    existing &&
+    !existing.reabertoEm &&
+    ehConferenciaNfPcValida(existing.conferidoEm) &&
+    !params.renovar
+  ) {
     return mapConferido(existing);
   }
   if (existing) {
@@ -759,6 +809,9 @@ export async function marcarDocumentoConferido(params: {
         totalDivergenciasBenignasHist: 0,
         naturezaClassificacaoFonte: null,
         naturezaClassificadaEm: null,
+        reabertoEm: null,
+        reabertoPorUsuarioId: null,
+        reabertoPorLogin: null,
       },
     });
     return mapConferido(atualizado);

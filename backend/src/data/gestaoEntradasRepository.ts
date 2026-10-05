@@ -68,6 +68,7 @@ async function carregarLocais(ids: number[]): Promise<{
         where: {
           idDocumentoEstoque: { in: parte },
           conferidoEm: { gte: DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE },
+          reabertoEm: null,
         },
         select: { idDocumentoEstoque: true },
       }),

@@ -12,6 +12,8 @@ export const PERMISSOES = {
   COMPRAS_EDITAR: 'compras.editar',
   /** Double Check NFe — conferência de entradas (acesso isolado). */
   COMPRAS_DOUBLE_CHECKIN: 'compras.double_checkin',
+  /** Divergências — reabrir uma conferência já concluída para exigir novas decisões. */
+  DIVERGENCIAS_REABRIR_CONFERENCIA: 'divergencias.reabrir_conferencia',
   /** Pendências compras — editar prioridade fixa do Comprador 1. */
   COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1: 'compras.pendencias.prioridade.comprador_1',
   /** Pendências compras — editar prioridade fixa do Comprador 2. */
@@ -195,6 +197,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.COMPRAS_VER,
   PERMISSOES.COMPRAS_EDITAR,
   PERMISSOES.COMPRAS_DOUBLE_CHECKIN,
+  PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA,
   PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1,
   PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2,
   PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3,
@@ -358,6 +361,8 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.COMPRAS_VER]: 'Ver Compras (Coletas de preços)',
   [PERMISSOES.COMPRAS_EDITAR]: 'Todas as funcionalidades (Compras)',
   [PERMISSOES.COMPRAS_DOUBLE_CHECKIN]: 'Double Check NFe',
+  [PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA]:
+    'Reabrir conferência e exigir novas decisões',
   [PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1]:
     'Pendências compras — editar prioridade fixa (Comprador 1) — por usuário',
   [PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2]:

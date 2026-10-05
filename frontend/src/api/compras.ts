@@ -1561,6 +1561,22 @@ export async function conferirDoubleCheckIn(params: {
   };
 }
 
+export async function reabrirDoubleCheckIn(
+  idDocumento: number
+): Promise<{ ok: boolean; reabertoEm?: string; erro?: string }> {
+  const res = await apiFetch('/api/compras/double-checkin/reabrir', {
+    method: 'POST',
+    body: { idDocumento },
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    reabertoEm?: string;
+    error?: string;
+  };
+  if (!res.ok) return { ok: false, erro: body.error ?? res.statusText };
+  return { ok: true, reabertoEm: body.reabertoEm };
+}
+
 export type DoubleCheckInCampoComparativo = 'valor_unitario' | 'qtde' | 'ipi' | 'condicao_pagamento';
 export type DoubleCheckInNaturezaDivergencia = 'benigna' | 'real';
 
@@ -1640,6 +1656,7 @@ export type DoubleCheckInComparativoDecisao = {
   usuarioId: number;
   usuarioLogin: string;
   atualizadoEm: string;
+  vigente?: boolean;
   historicoObservacoes?: DoubleCheckInComparativoObsHist[];
 };
 

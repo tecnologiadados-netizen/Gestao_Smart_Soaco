@@ -237,6 +237,9 @@ model DoubleCheckInConferido {
   totalDivergenciasBenignasHist   Int      @default(0)
   naturezaClassificacaoFonte      String?
   naturezaClassificadaEm          DateTime?
+  reabertoEm                      DateTime?
+  reabertoPorUsuarioId            Int?
+  reabertoPorLogin                String?
 
   @@index([usuarioId])
   @@map("double_checkin_conferido")
