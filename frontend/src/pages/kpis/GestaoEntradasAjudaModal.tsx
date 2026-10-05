@@ -10,7 +10,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'universo',
     titulo: 'O que entra na conta',
     oQueE:
-      'O painel lê as notas de entrada do Nomus pela data de entrada, nos mesmos tipos de movimentação da conferência Double Check NFe (11, 35 e 111 a 116).',
+      'O painel lê as notas de entrada do Nomus pela data de entrada, nos mesmos tipos de movimentação da conferência Double Check NFe (11, 35 e 111 a 116). A conferência NF × PC passou a valer em 21/09/2026; marcações do fluxo básico anterior a essa data não contam como conferência.',
     comoLe:
       'O período padrão é o mês corrente. Ajuste início e fim e clique em Filtrar. Cada nota conta uma vez, mesmo com vários itens.',
   },

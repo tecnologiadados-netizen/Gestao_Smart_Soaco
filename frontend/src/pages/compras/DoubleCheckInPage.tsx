@@ -342,9 +342,11 @@ export default function DoubleCheckInPage() {
       if (!passaTexto) return false;
       if (filtroSituacao === 'pendentes') return !n.conferido;
       if (filtroSituacao === 'conferidos') return Boolean(n.conferido);
-      if (filtroSituacao === 'divergencia_real') return Boolean(n.temDivergenciaRealAtual);
+      if (filtroSituacao === 'divergencia_real') {
+        return Boolean(n.conferido && n.temDivergenciaRealAtual);
+      }
       if (filtroSituacao === 'divergencia_benigna') {
-        return Boolean(n.temDivergenciaBenignaAtual);
+        return Boolean(n.conferido && n.temDivergenciaBenignaAtual);
       }
       return true;
     });

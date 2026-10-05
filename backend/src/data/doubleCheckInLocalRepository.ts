@@ -16,6 +16,10 @@ import {
   JUSTIFICATIVA_SEED,
   justificativaAplicavelAoCampo,
 } from './doubleCheckInJustificativas.js';
+import {
+  DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE,
+  ehConferenciaNfPcValida,
+} from '../services/doubleCheckInConferenciaPeriodo.js';
 
 export const DOUBLE_CHECKIN_WA_CODE = 'compras_double_checkin';
 /** Alerta ao confirmar conferência quando há divergência NF × Pedido de compra. */
@@ -473,7 +477,7 @@ export async function adicionarObservacaoComparativoPosConferido(params: {
   const conferido = await prisma.doubleCheckInConferido.findUnique({
     where: { idDocumentoEstoque: params.idDocumentoEstoque },
   });
-  if (!conferido) {
+  if (!conferido || !ehConferenciaNfPcValida(conferido.conferidoEm)) {
     throw new Error('Só é possível acrescentar observações após a NF ser conferida.');
   }
 
@@ -667,7 +671,10 @@ export async function listarDocumentosConferidos(
   const map = new Map<number, DoubleCheckInConferidoInfo>();
   if (ids.length === 0) return map;
   const rows = await prisma.doubleCheckInConferido.findMany({
-    where: { idDocumentoEstoque: { in: ids } },
+    where: {
+      idDocumentoEstoque: { in: ids },
+      conferidoEm: { gte: DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE },
+    },
   });
   for (const r of rows) {
     map.set(r.idDocumentoEstoque, mapConferido(r));
@@ -693,7 +700,9 @@ export async function listarTodosDocumentosConferidos(): Promise<
   Map<number, DoubleCheckInConferidoInfo>
 > {
   const map = new Map<number, DoubleCheckInConferidoInfo>();
-  const rows = await prisma.doubleCheckInConferido.findMany();
+  const rows = await prisma.doubleCheckInConferido.findMany({
+    where: { conferidoEm: { gte: DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE } },
+  });
   for (const r of rows) {
     map.set(r.idDocumentoEstoque, mapConferido(r));
   }
@@ -722,7 +731,7 @@ export async function getDocumentoConferido(
   const r = await prisma.doubleCheckInConferido.findUnique({
     where: { idDocumentoEstoque },
   });
-  if (!r) return null;
+  if (!r || !ehConferenciaNfPcValida(r.conferidoEm)) return null;
   return mapConferido(r);
 }
 
@@ -734,8 +743,24 @@ export async function marcarDocumentoConferido(params: {
   const existing = await prisma.doubleCheckInConferido.findUnique({
     where: { idDocumentoEstoque: params.idDocumentoEstoque },
   });
-  if (existing) {
+  if (existing && ehConferenciaNfPcValida(existing.conferidoEm)) {
     return mapConferido(existing);
+  }
+  if (existing) {
+    const atualizado = await prisma.doubleCheckInConferido.update({
+      where: { idDocumentoEstoque: params.idDocumentoEstoque },
+      data: {
+        conferidoEm: new Date(),
+        usuarioId: params.usuarioId,
+        usuarioLogin: params.usuarioLogin,
+        temDivergenciaRealHistorica: false,
+        totalDivergenciasReaisHistorica: 0,
+        totalDivergenciasBenignasHist: 0,
+        naturezaClassificacaoFonte: null,
+        naturezaClassificadaEm: null,
+      },
+    });
+    return mapConferido(atualizado);
   }
   const created = await prisma.doubleCheckInConferido.create({
     data: {

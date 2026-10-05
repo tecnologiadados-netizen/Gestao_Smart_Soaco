@@ -6,6 +6,7 @@ import { prisma } from '../config/prisma.js';
 import { getNomusPool, isNomusEnabled, nomusQueryWithRetry } from '../config/nomusDb.js';
 import { formatSqlDateYmd } from './dfcDateUtils.js';
 import { DOUBLE_CHECKIN_TIPOS_MOV, queryLinhasComparativoPorDocumentos } from './doubleCheckInRepository.js';
+import { DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE } from '../services/doubleCheckInConferenciaPeriodo.js';
 import {
   classificarNotaGestaoEntrada,
   montarDivergenciasAtuais,
@@ -63,7 +64,10 @@ async function carregarLocais(ids: number[]): Promise<{
   for (const parte of chunk(ids, 800)) {
     const [conferidos, rows] = await Promise.all([
       prisma.doubleCheckInConferido.findMany({
-        where: { idDocumentoEstoque: { in: parte } },
+        where: {
+          idDocumentoEstoque: { in: parte },
+          conferidoEm: { gte: DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE },
+        },
         select: { idDocumentoEstoque: true },
       }),
       prisma.doubleCheckInComparativoDecisao.findMany({

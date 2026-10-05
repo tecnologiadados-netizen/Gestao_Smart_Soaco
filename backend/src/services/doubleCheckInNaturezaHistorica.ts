@@ -12,6 +12,7 @@ import {
   justificativaIndicaDivergenciaBenigna,
   type NaturezaDivergencia,
 } from './doubleCheckInNatureza.js';
+import { DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE } from './doubleCheckInConferenciaPeriodo.js';
 
 function normalizarLabel(valor: string | null | undefined): string {
   return (valor ?? '')
@@ -180,6 +181,7 @@ export async function executarBackfillNaturezaHistorica(params?: {
 }): Promise<ResultadoBackfillNaturezaHistorica> {
   const dryRun = Boolean(params?.dryRun);
   const conferidas = await prisma.doubleCheckInConferido.findMany({
+    where: { conferidoEm: { gte: DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE } },
     orderBy: { idDocumentoEstoque: 'asc' },
   });
   const ids = conferidas.map((item) => item.idDocumentoEstoque);
