@@ -12,7 +12,7 @@ import {
   queryDoubleCheckInItens,
   queryDoubleCheckInNotas,
   queryDoubleCheckInStatus,
-  listarIdsComDivergenciaAtual,
+  queryLinhasComparativoPorDocumentos,
   type DoubleCheckInComparativoLinha,
   type DoubleCheckInNota,
 } from '../data/doubleCheckInRepository.js';
@@ -87,9 +87,14 @@ function validarDecisoesCompletas(
   return { ok: true };
 }
 
+type DecisaoParaNatureza = Pick<
+  DoubleCheckInComparativoDecisaoRow,
+  'idItemDocumentoEstoque' | 'idItemPedidoCompra' | 'campo' | 'justificativaCodigo'
+>;
+
 function linhasComNatureza(
   linhas: DoubleCheckInComparativoLinha[],
-  decisoes: DoubleCheckInComparativoDecisaoRow[]
+  decisoes: DecisaoParaNatureza[]
 ): Array<DoubleCheckInComparativoLinha & {
   naturezaDivergencias: Partial<Record<DoubleCheckInCampoComparativo, NaturezaDivergencia>>;
 }> {
@@ -126,12 +131,66 @@ function linhasComNatureza(
   });
 }
 
+type ResumoDivergenciasAtuais = {
+  temQualquer: boolean;
+  temReal: boolean;
+  temBenigna: boolean;
+};
+
+async function carregarResumosDivergenciasAtuais(
+  ids: number[]
+): Promise<Map<number, ResumoDivergenciasAtuais>> {
+  const resumos = new Map<number, ResumoDivergenciasAtuais>();
+  if (ids.length === 0) return resumos;
+
+  const [linhasResp, decisoesRaw] = await Promise.all([
+    queryLinhasComparativoPorDocumentos(ids),
+    prisma.doubleCheckInComparativoDecisao.findMany({
+      where: { idDocumentoEstoque: { in: ids } },
+      select: {
+        idDocumentoEstoque: true,
+        idItemDocumentoEstoque: true,
+        idItemPedidoCompra: true,
+        campo: true,
+        justificativaOpcao: { select: { codigo: true } },
+      },
+    }),
+  ]);
+  if (linhasResp.erro) throw new Error(linhasResp.erro);
+
+  const decisoesPorDocumento = new Map<number, DecisaoParaNatureza[]>();
+  for (const decisao of decisoesRaw) {
+    const lista = decisoesPorDocumento.get(decisao.idDocumentoEstoque) ?? [];
+    lista.push({
+      idItemDocumentoEstoque: decisao.idItemDocumentoEstoque,
+      idItemPedidoCompra: decisao.idItemPedidoCompra,
+      campo: decisao.campo as DoubleCheckInCampoComparativo,
+      justificativaCodigo: decisao.justificativaOpcao.codigo,
+    });
+    decisoesPorDocumento.set(decisao.idDocumentoEstoque, lista);
+  }
+
+  for (const id of ids) {
+    const linhas = linhasResp.linhasPorDocumento.get(id) ?? [];
+    const naturezas = linhasComNatureza(linhas, decisoesPorDocumento.get(id) ?? [])
+      .flatMap((linha) => Object.values(linha.naturezaDivergencias));
+    resumos.set(id, {
+      temQualquer: linhas.some((linha) => linha.temDivergencia),
+      temReal: naturezas.includes('real'),
+      temBenigna: naturezas.includes('benigna'),
+    });
+  }
+  return resumos;
+}
+
 export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
   conferido: boolean;
   conferidoEm: string | null;
   conferidoPor: string | null;
   /** Conferido e a NF ainda diverge do pedido de compra. */
   conferidoComDivergencia: boolean;
+  temDivergenciaRealAtual: boolean;
+  temDivergenciaBenignaAtual: boolean;
   temDivergenciaRealHistorica: boolean;
   totalDivergenciasReaisHistorica: number;
 };
@@ -140,19 +199,22 @@ async function enriquecerNotasComConferencia(
   notas: DoubleCheckInNota[]
 ): Promise<DoubleCheckInNotaComConferencia[]> {
   const ids = notas.map((n) => n.idDocumento);
-  const [map, comDivergenciaAtual] = await Promise.all([
+  const [map, resumosAtuais] = await Promise.all([
     listarDocumentosConferidos(ids),
-    listarIdsComDivergenciaAtual(ids),
+    carregarResumosDivergenciasAtuais(ids),
   ]);
   return notas.map((n) => {
     const c = map.get(n.idDocumento);
     const conferido = Boolean(c);
+    const atual = resumosAtuais.get(n.idDocumento);
     return {
       ...n,
       conferido,
       conferidoEm: c?.conferidoEm ?? null,
       conferidoPor: c?.usuarioLogin ?? null,
-      conferidoComDivergencia: conferido && comDivergenciaAtual.has(n.idDocumento),
+      conferidoComDivergencia: conferido && Boolean(atual?.temQualquer),
+      temDivergenciaRealAtual: Boolean(atual?.temReal),
+      temDivergenciaBenignaAtual: Boolean(atual?.temBenigna),
       temDivergenciaRealHistorica: Boolean(c?.temDivergenciaRealHistorica),
       totalDivergenciasReaisHistorica: c?.totalDivergenciasReaisHistorica ?? 0,
     };
@@ -535,14 +597,18 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
 
     const ja = await getDocumentoConferido(idDocumento);
     if (ja) {
-      const idsDivergentes = await listarIdsComDivergenciaAtual([idDocumento]);
+      const resumoAtual = (await carregarResumosDivergenciasAtuais([idDocumento])).get(
+        idDocumento
+      );
       res.json({
         ok: true,
         jaConferido: true,
         conferido: true,
         conferidoEm: ja.conferidoEm,
         conferidoPor: ja.usuarioLogin,
-        conferidoComDivergencia: idsDivergentes.has(idDocumento),
+        conferidoComDivergencia: Boolean(resumoAtual?.temQualquer),
+        temDivergenciaRealAtual: Boolean(resumoAtual?.temReal),
+        temDivergenciaBenignaAtual: Boolean(resumoAtual?.temBenigna),
         temDivergenciaRealHistorica: ja.temDivergenciaRealHistorica,
         totalDivergenciasReaisHistorica: ja.totalDivergenciasReaisHistorica,
         idDocumento,
@@ -623,6 +689,8 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       conferidoEm: created.conferidoEm,
       conferidoPor: created.usuarioLogin,
       conferidoComDivergencia,
+      temDivergenciaRealAtual: totalReaisHistorica > 0,
+      temDivergenciaBenignaAtual: totalBenignasHistorica > 0,
       temDivergenciaRealHistorica: totalReaisHistorica > 0,
       totalDivergenciasReaisHistorica: totalReaisHistorica,
       idDocumento,

@@ -1384,6 +1384,9 @@ export type DoubleCheckInNota = {
   conferidoPor?: string | null;
   /** Conferido e ainda diverge da NF × PC no estado atual do ERP. */
   conferidoComDivergencia?: boolean;
+  /** Naturezas das divergências que ainda existem no estado atual do ERP. */
+  temDivergenciaRealAtual?: boolean;
+  temDivergenciaBenignaAtual?: boolean;
   /** Havia ao menos uma divergência real no instante da conferência. */
   temDivergenciaRealHistorica?: boolean;
   totalDivergenciasReaisHistorica?: number;
@@ -1509,6 +1512,8 @@ export async function conferirDoubleCheckIn(params: {
   conferidoEm?: string | null;
   conferidoPor?: string | null;
   conferidoComDivergencia?: boolean;
+  temDivergenciaRealAtual?: boolean;
+  temDivergenciaBenignaAtual?: boolean;
   temDivergenciaRealHistorica?: boolean;
   totalDivergenciasReaisHistorica?: number;
   jaConferido?: boolean;
@@ -1525,6 +1530,8 @@ export async function conferirDoubleCheckIn(params: {
     conferidoEm?: string | null;
     conferidoPor?: string | null;
     conferidoComDivergencia?: boolean;
+    temDivergenciaRealAtual?: boolean;
+    temDivergenciaBenignaAtual?: boolean;
     temDivergenciaRealHistorica?: boolean;
     totalDivergenciasReaisHistorica?: number;
     jaConferido?: boolean;
@@ -1540,6 +1547,8 @@ export async function conferirDoubleCheckIn(params: {
     conferidoEm: body.conferidoEm ?? null,
     conferidoPor: body.conferidoPor ?? null,
     conferidoComDivergencia: Boolean(body.conferidoComDivergencia),
+    temDivergenciaRealAtual: Boolean(body.temDivergenciaRealAtual),
+    temDivergenciaBenignaAtual: Boolean(body.temDivergenciaBenignaAtual),
     temDivergenciaRealHistorica: Boolean(body.temDivergenciaRealHistorica),
     totalDivergenciasReaisHistorica: Number(body.totalDivergenciasReaisHistorica ?? 0),
     jaConferido: body.jaConferido,

@@ -4,7 +4,7 @@ import DoubleCheckInDashboardModal from './DoubleCheckInDashboardModal';
 import DoubleCheckInComparativoPcTab, {
   contarPendentesComparativo,
 } from './DoubleCheckInComparativoPcTab';
-import { AlertTriangle, CheckCircle2, ClipboardCheck, Eye, LayoutDashboard, Maximize2, Minimize2, RefreshCw, Settings2, Users } from 'lucide-react';
+import { AlertTriangle, CalendarRange, CheckCircle2, ChevronDown, ClipboardCheck, Eye, LayoutDashboard, Maximize2, Minimize2, RefreshCw, Settings2, Users } from 'lucide-react';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import { useAuth } from '../../contexts/AuthContext';
@@ -25,7 +25,7 @@ import {
   type DoubleCheckInNota,
   type DoubleCheckInUsuarioDest,
 } from '../../api/compras';
-import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../utils/textoLivreBusca';
+import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 
 const POLL_MS = 120_000;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
@@ -87,13 +87,22 @@ type ComparativoCache = {
   justificativas: DoubleCheckInJustificativaOpcao[];
 };
 
+type FiltroSituacao =
+  | 'todos'
+  | 'pendentes'
+  | 'conferidos'
+  | 'divergencia_real'
+  | 'divergencia_benigna';
+
 export default function DoubleCheckInPage() {
   const { isMaster, login, grupo } = useAuth();
   const podeDestinatarios = isAdminOuMaster({ isMaster, login, grupo });
 
   const [dataInicio, setDataInicio] = useState('2024-01-01');
   const [dataFim, setDataFim] = useState(hojeYmd());
+  const [periodoAberto, setPeriodoAberto] = useState(false);
   const [filtroTexto, setFiltroTexto] = useState('');
+  const [filtroSituacao, setFiltroSituacao] = useState<FiltroSituacao>('todos');
   const [notas, setNotas] = useState<DoubleCheckInNota[]>([]);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -147,6 +156,7 @@ export default function DoubleCheckInPage() {
   const statusCacheRef = useRef(new Map<string, boolean>());
   const syncSeqRef = useRef(0);
   const statusSeqRef = useRef(0);
+  const periodoRef = useRef<HTMLDivElement>(null);
   const appliedRef = useRef({ dataInicio: '2024-01-01', dataFim: hojeYmd() });
 
   const limparCachesGrade = useCallback(() => {
@@ -217,6 +227,22 @@ export default function DoubleCheckInPage() {
     void filtrar();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- carga inicial
   }, []);
+
+  useEffect(() => {
+    if (!periodoAberto) return;
+    const fecharFora = (event: MouseEvent) => {
+      if (!periodoRef.current?.contains(event.target as Node)) setPeriodoAberto(false);
+    };
+    const fecharEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPeriodoAberto(false);
+    };
+    document.addEventListener('mousedown', fecharFora);
+    document.addEventListener('keydown', fecharEscape);
+    return () => {
+      document.removeEventListener('mousedown', fecharFora);
+      document.removeEventListener('keydown', fecharEscape);
+    };
+  }, [periodoAberto]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -306,14 +332,22 @@ export default function DoubleCheckInPage() {
 
   const notasFiltradas = (() => {
     const match = criarMatcherTextoLivre(filtroTexto);
-    if (!filtroTexto.trim()) return notas;
-    return notas.filter(
-      (n) =>
+    return notas.filter((n) => {
+      const passaTexto =
+        !filtroTexto.trim() ||
         match(n.numeroDocumentoFiscal ?? '') ||
         match(n.numeroNfe ?? '') ||
         match(n.nomeParceiro ?? '') ||
-        match(String(n.idParceiro ?? ''))
-    );
+        match(String(n.idParceiro ?? ''));
+      if (!passaTexto) return false;
+      if (filtroSituacao === 'pendentes') return !n.conferido;
+      if (filtroSituacao === 'conferidos') return Boolean(n.conferido);
+      if (filtroSituacao === 'divergencia_real') return Boolean(n.temDivergenciaRealAtual);
+      if (filtroSituacao === 'divergencia_benigna') {
+        return Boolean(n.temDivergenciaBenignaAtual);
+      }
+      return true;
+    });
   })();
 
   const totalParaPaginacao = notasFiltradas.length;
@@ -328,7 +362,7 @@ export default function DoubleCheckInPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [filtroTexto, pageSize]);
+  }, [filtroTexto, filtroSituacao, pageSize]);
 
   useEffect(() => {
     setPage((p) => Math.min(p, totalPages));
@@ -434,6 +468,8 @@ export default function DoubleCheckInPage() {
       conferidoEm: string | null,
       conferidoPor: string | null,
       conferidoComDivergencia = false,
+      temDivergenciaRealAtual = false,
+      temDivergenciaBenignaAtual = false,
       temDivergenciaRealHistorica = false,
       totalDivergenciasReaisHistorica = 0
     ) => {
@@ -446,6 +482,8 @@ export default function DoubleCheckInPage() {
                 conferidoEm,
                 conferidoPor,
                 conferidoComDivergencia,
+                temDivergenciaRealAtual,
+                temDivergenciaBenignaAtual,
                 temDivergenciaRealHistorica,
                 totalDivergenciasReaisHistorica,
               }
@@ -460,6 +498,8 @@ export default function DoubleCheckInPage() {
               conferidoEm,
               conferidoPor,
               conferidoComDivergencia,
+              temDivergenciaRealAtual,
+              temDivergenciaBenignaAtual,
               temDivergenciaRealHistorica,
               totalDivergenciasReaisHistorica,
             }
@@ -550,6 +590,8 @@ export default function DoubleCheckInPage() {
         r.conferidoEm ?? null,
         r.conferidoPor ?? null,
         Boolean(r.conferidoComDivergencia),
+        Boolean(r.temDivergenciaRealAtual),
+        Boolean(r.temDivergenciaBenignaAtual),
         Boolean(r.temDivergenciaRealHistorica),
         Number(r.totalDivergenciasReaisHistorica ?? 0)
       );
@@ -593,34 +635,94 @@ export default function DoubleCheckInPage() {
 
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label className={labelClass}>Entrada início</label>
-            <input
-              type="date"
-              className={inputClass}
-              value={dataInicio}
-              onChange={(e) => setDataInicio(e.target.value)}
-            />
+          <div ref={periodoRef} className="relative">
+            <label className={labelClass}>Período de entrada</label>
+            <button
+              type="button"
+              className={`${inputClass} flex min-w-[16rem] items-center justify-between gap-3 text-left`}
+              onClick={() => setPeriodoAberto((aberto) => !aberto)}
+              aria-expanded={periodoAberto}
+              aria-haspopup="dialog"
+            >
+              <span className="inline-flex items-center gap-2">
+                <CalendarRange className="h-4 w-4 text-slate-500" aria-hidden />
+                {fmtDataBr(dataInicio)} — {fmtDataBr(dataFim)}
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 text-slate-400 transition-transform ${periodoAberto ? 'rotate-180' : ''}`}
+                aria-hidden
+              />
+            </button>
+            {periodoAberto ? (
+              <div
+                className="absolute left-0 top-full z-30 mt-2 w-[min(23rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                role="dialog"
+                aria-label="Selecionar período de entrada"
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className={labelClass}>Data início</label>
+                    <input
+                      type="date"
+                      className={`${inputClass} w-full`}
+                      value={dataInicio}
+                      max={dataFim || undefined}
+                      onChange={(e) => setDataInicio(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Data fim</label>
+                    <input
+                      type="date"
+                      className={`${inputClass} w-full`}
+                      value={dataFim}
+                      min={dataInicio || undefined}
+                      onChange={(e) => setDataFim(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={`${btnPrimary} mt-3 w-full justify-center`}
+                  onClick={() => setPeriodoAberto(false)}
+                >
+                  Aplicar período
+                </button>
+              </div>
+            ) : null}
           </div>
-          <div>
-            <label className={labelClass}>Entrada fim</label>
-            <input
-              type="date"
-              className={inputClass}
-              value={dataFim}
-              onChange={(e) => setDataFim(e.target.value)}
-            />
-          </div>
-          <div className="min-w-[12rem] flex-1">
-            <label className={labelClass}>Busca na grade</label>
+          <div className="w-full sm:w-64">
+            <label className={labelClass}>Documento ou fornecedor</label>
             <input
               className={`${inputClass} w-full`}
               value={filtroTexto}
               onChange={(e) => setFiltroTexto(e.target.value)}
-              placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
+              placeholder="Número ou fornecedor; use %"
             />
           </div>
-          <button type="button" className={btnPrimary} onClick={() => void filtrar()} disabled={loading || syncing}>
+          <div className="w-full sm:w-60">
+            <label className={labelClass}>Situação</label>
+            <select
+              className={`${inputClass} w-full`}
+              value={filtroSituacao}
+              onChange={(e) => setFiltroSituacao(e.target.value as FiltroSituacao)}
+            >
+              <option value="todos">Todos</option>
+              <option value="pendentes">Pendentes</option>
+              <option value="conferidos">Conferidos</option>
+              <option value="divergencia_real">Possuem divergência real</option>
+              <option value="divergencia_benigna">Possuem divergência benigna</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            className={btnPrimary}
+            onClick={() => {
+              setPeriodoAberto(false);
+              void filtrar();
+            }}
+            disabled={loading || syncing}
+          >
             Filtrar
           </button>
           <button
@@ -680,8 +782,7 @@ export default function DoubleCheckInPage() {
                 const statusPronto = Object.prototype.hasOwnProperty.call(statusMap, n.idDocumento);
                 const conferido = Boolean(n.conferido);
                 const conferidoComDivergencia = conferido && Boolean(n.conferidoComDivergencia);
-                const temRealHistorica =
-                  conferido && Boolean(n.temDivergenciaRealHistorica);
+                const temRealAtual = conferido && Boolean(n.temDivergenciaRealAtual);
                 return (
                   <tr
                     key={n.idDocumento}
@@ -696,11 +797,11 @@ export default function DoubleCheckInPage() {
                     <td className="px-3 py-2 tabular-nums">
                       <span className="inline-flex items-center gap-2">
                         {n.numeroDocumentoFiscal ?? '—'}
-                        {temRealHistorica ? (
+                        {temRealAtual ? (
                           <span
                             className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-600 shadow-[0_0_0_3px_rgba(225,29,72,0.16)]"
-                            title={`${n.totalDivergenciasReaisHistorica ?? 1} divergência(s) real(is) registrada(s) no momento da conferência`}
-                            aria-label="Possui divergência real histórica"
+                            title="Possui divergência real no estado atual do Nomus"
+                            aria-label="Possui divergência real atual"
                           />
                         ) : null}
                       </span>
