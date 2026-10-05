@@ -77,9 +77,18 @@ export function classificarNaturezaDivergencia(params: {
 
   const diasNF = diasPagamento(linha.parcelasNF, linha.prazosDiasNF);
   const diasPC = diasPagamento(linha.parcelasPC, linha.prazosDiasPC);
-  const mesmaEstrutura = diasNF.length > 0 && diasNF.length === diasPC.length;
-  const prazoIgualOuMelhor =
+  const temPrazosNosDois = diasNF.length > 0 && diasPC.length > 0;
+  const mesmaEstrutura = temPrazosNosDois && diasNF.length === diasPC.length;
+  const parcelasCorrespondentesIguaisOuMelhores =
     mesmaEstrutura && diasNF.every((dias, i) => dias >= (diasPC[i] ?? Number.POSITIVE_INFINITY));
+  // Com estruturas diferentes, só considera benigno quando o cronograma inteiro da NF
+  // é posterior ao do PC. Isso evita esconder casos mistos sem equivalência entre parcelas.
+  const cronogramaNfInteiroPosterior =
+    temPrazosNosDois &&
+    diasNF.length !== diasPC.length &&
+    Math.min(...diasNF) >= Math.max(...diasPC);
+  const prazoIgualOuMelhor =
+    parcelasCorrespondentesIguaisOuMelhores || cronogramaNfInteiroPosterior;
   return prazoIgualOuMelhor ? 'benigna' : 'real';
 }
 

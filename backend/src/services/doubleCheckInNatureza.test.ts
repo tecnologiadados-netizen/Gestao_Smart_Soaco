@@ -62,6 +62,21 @@ describe('classificarNaturezaDivergencia', () => {
     ).toBe('real');
   });
 
+  it('considera benigno quando todas as parcelas da NF vencem após o prazo do PC', () => {
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { prazosDiasNF: [18, 26], prazosDiasPC: [15] },
+        campo: 'condicao_pagamento',
+      })
+    ).toBe('benigna');
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { prazosDiasNF: [10, 26], prazosDiasPC: [15] },
+        campo: 'condicao_pagamento',
+      })
+    ).toBe('real');
+  });
+
   it('respeita justificativas técnicas benignas', () => {
     expect(
       classificarNaturezaDivergencia({

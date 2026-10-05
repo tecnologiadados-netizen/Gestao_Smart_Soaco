@@ -116,4 +116,40 @@ describe('natureza histórica do Double CheckIn', () => {
     expect(reclassificado.totalDivergenciasReais).toBe(0);
     expect(reclassificado.produtos[0]?.campos).toEqual([]);
   });
+
+  it('reclassifica como benigno o pagamento da NF integralmente posterior ao PC', () => {
+    const reclassificado = reclassificarRelatoHistorico(
+      relato([
+        campo({
+          campo: 'condicao_pagamento',
+          nf: 'Não Existente (18/26d)',
+          pc: 'Não Existente (15d)',
+          tabelaPrazos: {
+            dataBaseNF: '2026-08-19',
+            dataBasePC: '2026-08-19',
+            linhas: [
+              {
+                numero: 1,
+                vencimentoNF: '2026-09-06',
+                diasNF: 18,
+                vencimentoPC: '2026-09-03',
+                diasPC: 15,
+              },
+              {
+                numero: 2,
+                vencimentoNF: '2026-09-14',
+                diasNF: 26,
+                vencimentoPC: null,
+                diasPC: null,
+              },
+            ],
+          },
+        }),
+      ])
+    );
+    expect(reclassificado.totalDivergencias).toBe(1);
+    expect(reclassificado.totalDivergenciasReais).toBe(0);
+    expect(reclassificado.totalDivergenciasBenignas).toBe(1);
+    expect(reclassificado.produtos[0]?.campos[0]?.natureza).toBe('benigna');
+  });
 });
