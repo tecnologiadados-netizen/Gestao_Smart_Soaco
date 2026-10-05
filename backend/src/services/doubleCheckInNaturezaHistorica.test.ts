@@ -81,4 +81,39 @@ describe('natureza histórica do Double CheckIn', () => {
     expect(reclassificado.produtos[0]?.campos[0]?.natureza).toBe('benigna');
     expect(reclassificado.produtos[0]?.campos[0]?.justificativaCodigo).toBe('ipi_reflexo');
   });
+
+  it('remove falsa divergência de pagamento quando falta data base mas a condição é igual', () => {
+    const reclassificado = reclassificarRelatoHistorico(
+      relato([
+        campo({
+          campo: 'condicao_pagamento',
+          nf: '(1x) 30 (28/39d)',
+          pc: '(1x) 30',
+          tabelaPrazos: {
+            dataBaseNF: '2026-09-02',
+            dataBasePC: null,
+            linhas: [
+              {
+                numero: 1,
+                vencimentoNF: '2026-09-30',
+                diasNF: 28,
+                vencimentoPC: '2026-10-25',
+                diasPC: null,
+              },
+              {
+                numero: 2,
+                vencimentoNF: '2026-10-11',
+                diasNF: 39,
+                vencimentoPC: null,
+                diasPC: null,
+              },
+            ],
+          },
+        }),
+      ])
+    );
+    expect(reclassificado.totalDivergencias).toBe(0);
+    expect(reclassificado.totalDivergenciasReais).toBe(0);
+    expect(reclassificado.produtos[0]?.campos).toEqual([]);
+  });
 });

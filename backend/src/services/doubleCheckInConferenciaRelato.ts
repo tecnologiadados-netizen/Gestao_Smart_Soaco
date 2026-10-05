@@ -34,6 +34,11 @@ export type CampoRelato = {
   descontoWhatsApp: string | null;
   /** Detalhe das parcelas (base / vencimento / dias) — HTML da conferência. */
   tabelaPrazos?: TabelaPrazosRelato | null;
+  /** Valores cadastrais preservados para reclassificação histórica de pagamento. */
+  condicaoPagamentoNF?: string | null;
+  regraPagamentoNF?: string | null;
+  condicaoPagamentoPC?: string | null;
+  regraPagamentoPC?: string | null;
 };
 
 export type TabelaPrazosRelato = {
@@ -206,6 +211,10 @@ function montarCampo(
     diferenca: diferencaPrazosRelato(linha),
     sinal: null,
     tabelaPrazos: montarTabelaPrazosRelato(linha),
+    condicaoPagamentoNF: linha.condicaoPagamentoNF,
+    regraPagamentoNF: linha.regraPagamentoNF,
+    condicaoPagamentoPC: linha.condicaoPagamentoPC,
+    regraPagamentoPC: linha.regraPagamentoPC,
   };
 }
 

@@ -810,10 +810,9 @@ export function ehCondicaoAVista(params: {
 
 /**
  * Critério final de Cond. pagamento: sequência de dias (vencimento − data base).
- * Sem data base num dos lados, a regra cadastral (ex.: 40,65,85) entra no lugar dos dias.
+ * Os dias só são comparados quando puderam ser calculados nos dois lados.
+ * Sem data base em um dos lados, compara condição + regra cadastral como segundo nível.
  * Ambos à vista → sem divergência (data base opcional).
- * Sem parcelas e sem regra nos dois lados → fallback ao texto da condição/regra.
- * Só um lado com prazos (e não à vista) → divergente.
  */
 export function divergenciaCondicaoPorPrazos(params: {
   prazosNF: number[];
@@ -835,14 +834,13 @@ export function divergenciaCondicaoPorPrazos(params: {
   });
   if (aVistaNf && aVistaPc) return false;
 
-  const prazosNF = prazosEfetivosCondicao(params.prazosNF, params.regraNF);
-  const prazosPC = prazosEfetivosCondicao(params.prazosPC, params.regraPC);
-  const temNf = prazosNF.length > 0;
-  const temPc = prazosPC.length > 0;
-  if (temNf || temPc) {
-    if (!temNf || !temPc) return true;
-    return !prazosDiasIguais(prazosNF, prazosPC);
+  const temDiasCalculadosNosDois =
+    params.prazosNF.length > 0 && params.prazosPC.length > 0;
+  if (temDiasCalculadosNosDois) {
+    return !prazosDiasIguais(params.prazosNF, params.prazosPC);
   }
+
+  // Segundo nível: se faltou data base/cálculo, a mesma condição cadastral não diverge.
   return (
     !textosIguaisComparativo(params.condicaoNF, params.condicaoPC) ||
     !textosIguaisComparativo(params.regraNF, params.regraPC)

@@ -1,5 +1,6 @@
 import { prisma } from '../config/prisma.js';
 import {
+  divergenciaCondicaoPorPrazos,
   queryLinhasComparativoPorDocumentos,
   type DoubleCheckInComparativoLinha,
 } from '../data/doubleCheckInRepository.js';
@@ -78,18 +79,48 @@ function classificarCampoRelato(campo: CampoRelato): NaturezaDivergencia {
   });
 }
 
+function condicaoSemPrazosCalculados(valor: string): string {
+  return valor.replace(/\s+\([^()]*d\)\s*$/i, '').trim();
+}
+
+function pagamentoAindaDivergeNoRelato(campo: CampoRelato): boolean {
+  const prazos = campo.tabelaPrazos?.linhas ?? [];
+  const prazosNF = prazos
+    .map((item) => item.diasNF)
+    .filter((dias): dias is number => Number.isFinite(dias));
+  const prazosPC = prazos
+    .map((item) => item.diasPC)
+    .filter((dias): dias is number => Number.isFinite(dias));
+  return divergenciaCondicaoPorPrazos({
+    prazosNF,
+    prazosPC,
+    condicaoNF:
+      campo.condicaoPagamentoNF ?? condicaoSemPrazosCalculados(campo.nf),
+    regraNF: campo.regraPagamentoNF ?? null,
+    condicaoPC:
+      campo.condicaoPagamentoPC ?? condicaoSemPrazosCalculados(campo.pc),
+    regraPC: campo.regraPagamentoPC ?? null,
+  });
+}
+
 export function reclassificarRelatoHistorico(relato: RelatoConferencia): RelatoConferencia {
   const reclassificarCampo = (campo: CampoRelato): CampoRelato => ({
     ...campo,
     natureza: classificarCampoRelato(campo),
     justificativaCodigo: codigoJustificativa(campo) ?? undefined,
   });
-  const pagamentoComum = relato.pagamentoComum
-    ? reclassificarCampo(relato.pagamentoComum)
-    : null;
+  const pagamentoComum =
+    relato.pagamentoComum && pagamentoAindaDivergeNoRelato(relato.pagamentoComum)
+      ? reclassificarCampo(relato.pagamentoComum)
+      : null;
   const produtos = relato.produtos.map((produto) => ({
     ...produto,
-    campos: produto.campos.map(reclassificarCampo),
+    campos: produto.campos
+      .filter(
+        (campo) =>
+          campo.campo !== 'condicao_pagamento' || pagamentoAindaDivergeNoRelato(campo)
+      )
+      .map(reclassificarCampo),
   }));
   const campos = [
     ...(pagamentoComum ? [pagamentoComum] : []),
@@ -97,6 +128,11 @@ export function reclassificarRelatoHistorico(relato: RelatoConferencia): RelatoC
   ];
   const totalDivergenciasReais = campos.filter((campo) => campo.natureza === 'real').length;
   const totalDivergenciasBenignas = campos.length - totalDivergenciasReais;
+  const aceitas = campos.filter((campo) => campo.decisao === 'aceita').length;
+  const recusadas = campos.length - aceitas;
+  const totalProdutos = pagamentoComum
+    ? relato.totalProdutos
+    : produtos.filter((produto) => produto.campos.length > 0).length;
   return {
     ...relato,
     schemaVersion: 2,
@@ -105,6 +141,9 @@ export function reclassificarRelatoHistorico(relato: RelatoConferencia): RelatoC
     totalDivergencias: campos.length,
     totalDivergenciasReais,
     totalDivergenciasBenignas,
+    totalProdutos,
+    aceitas,
+    recusadas,
   };
 }
 
@@ -216,6 +255,21 @@ export async function executarBackfillNaturezaHistorica(params?: {
             const linha = linhasMap.get(
               `${decisao.idItemDocumentoEstoque}:${decisao.idItemPedidoCompra}`
             );
+            if (
+              campo === 'condicao_pagamento' &&
+              linha &&
+              (linha.prazosDiasNF.length === 0 || linha.prazosDiasPC.length === 0) &&
+              !divergenciaCondicaoPorPrazos({
+                prazosNF: linha.prazosDiasNF,
+                prazosPC: linha.prazosDiasPC,
+                condicaoNF: linha.condicaoPagamentoNF,
+                regraNF: linha.regraPagamentoNF,
+                condicaoPC: linha.condicaoPagamentoPC,
+                regraPC: linha.regraPagamentoPC,
+              })
+            ) {
+              continue;
+            }
             let natureza: NaturezaDivergencia;
             if (linha && campoAindaDiverge(linha, campo)) {
               natureza = classificarNaturezaDivergencia({
