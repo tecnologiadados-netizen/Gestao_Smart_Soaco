@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import DoubleCheckInDashboardModal from './DoubleCheckInDashboardModal';
 import DoubleCheckInComparativoPcTab, {
   contarPendentesComparativo,
 } from './DoubleCheckInComparativoPcTab';
-import { AlertTriangle, CalendarRange, CheckCircle2, ChevronDown, ClipboardCheck, Eye, LayoutDashboard, Maximize2, Minimize2, RefreshCw, RotateCcw, Settings2, Users } from 'lucide-react';
+import { AlertTriangle, CalendarRange, CheckCircle2, ChevronDown, ClipboardCheck, Eye, Maximize2, Minimize2, RefreshCw, RotateCcw, Settings2, Users } from 'lucide-react';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import { useAuth } from '../../contexts/AuthContext';
@@ -163,7 +162,6 @@ export default function DoubleCheckInPage() {
   const [senhaDraft, setSenhaDraft] = useState('');
   const [senhaErro, setSenhaErro] = useState<string | null>(null);
   const [senhaSalvando, setSenhaSalvando] = useState(false);
-  const [dashAberto, setDashAberto] = useState(false);
 
   const detalheCacheRef = useRef(new Map<number, DetalheCache>());
   const comparativoCacheRef = useRef(new Map<number, ComparativoCache>());
@@ -691,10 +689,6 @@ export default function DoubleCheckInPage() {
               : ''}
           </p>
         </div>
-        <button type="button" className={btnSecondary} onClick={() => setDashAberto(true)}>
-          <LayoutDashboard className="h-4 w-4" />
-          Dashboard
-        </button>
       </div>
 
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-4">
@@ -1012,8 +1006,6 @@ export default function DoubleCheckInPage() {
           </div>
         </div>
       )}
-
-      <DoubleCheckInDashboardModal aberto={dashAberto} onClose={() => setDashAberto(false)} />
 
       {/* Modal itens */}
       {modalNota &&
