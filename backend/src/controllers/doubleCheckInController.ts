@@ -649,7 +649,7 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
     const regimeConferencia = regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada);
     if (regimeConferencia === 'nao_aplicada') {
       res.status(400).json({
-        error: 'A conferência não se aplica a entradas anteriores a 01/09/2026.',
+        error: 'A conferência não se aplica a entradas até 18/09/2026.',
       });
       return;
     }

@@ -16,9 +16,10 @@ describe('período válido da conferência NF × PC', () => {
   });
 
   it('separa entradas não aplicáveis, conferência simples e completa', () => {
-    expect(DOUBLE_CHECKIN_CONFERENCIA_DESDE_YMD).toBe('2026-09-01');
-    expect(regimeConferenciaPorDataEntrada('2026-08-31')).toBe('nao_aplicada');
-    expect(regimeConferenciaPorDataEntrada('2026-09-01')).toBe('simples');
+    expect(DOUBLE_CHECKIN_CONFERENCIA_DESDE_YMD).toBe('2026-09-19');
+    expect(regimeConferenciaPorDataEntrada('2026-09-01')).toBe('nao_aplicada');
+    expect(regimeConferenciaPorDataEntrada('2026-09-18')).toBe('nao_aplicada');
+    expect(regimeConferenciaPorDataEntrada('2026-09-19')).toBe('simples');
     expect(regimeConferenciaPorDataEntrada('2026-09-20')).toBe('simples');
     expect(regimeConferenciaPorDataEntrada('2026-09-21')).toBe('completa');
   });

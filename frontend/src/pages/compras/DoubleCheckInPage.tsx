@@ -101,7 +101,7 @@ type RegimeConferencia = NonNullable<DoubleCheckInNota['regimeConferencia']>;
 function regimeDaNota(nota: DoubleCheckInNota): RegimeConferencia {
   if (nota.regimeConferencia) return nota.regimeConferencia;
   const dataEntrada = String(nota.dataEntrada ?? '').slice(0, 10);
-  if (dataEntrada < '2026-09-01') return 'nao_aplicada';
+  if (dataEntrada < '2026-09-19') return 'nao_aplicada';
   if (dataEntrada < '2026-09-21') return 'simples';
   return 'completa';
 }
@@ -570,7 +570,7 @@ export default function DoubleCheckInPage() {
     setSenhaErro(null);
     const regimeConferencia = regimeDaNota(modalNota);
     if (regimeConferencia === 'nao_aplicada') {
-      setCompBloqueioMsg('A conferência não se aplica a entradas anteriores a 01/09/2026.');
+      setCompBloqueioMsg('A conferência não se aplica a entradas até 18/09/2026.');
       return;
     }
 
@@ -1190,7 +1190,7 @@ export default function DoubleCheckInPage() {
                   <div className="space-y-3">
                     {regimeDaNota(modalNota) === 'simples' ? (
                       <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
-                        Entrada de 01/09 a 20/09/2026: comparativo somente para consulta.
+                        Entrada de 19/09 a 20/09/2026: comparativo somente para consulta.
                         Não é necessário aceitar ou recusar divergências.
                       </p>
                     ) : null}
@@ -1222,7 +1222,7 @@ export default function DoubleCheckInPage() {
                 <div className="text-xs text-slate-500 dark:text-slate-400">
                   {regimeDaNota(modalNota) === 'nao_aplicada' ? (
                     <span>
-                      Conferência não aplicada para entradas anteriores a 01/09/2026.
+                      Conferência não aplicada para entradas até 18/09/2026.
                     </span>
                   ) : modalNota.conferido ? (
                     <span>
