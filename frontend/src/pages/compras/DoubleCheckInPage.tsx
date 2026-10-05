@@ -483,6 +483,7 @@ export default function DoubleCheckInPage() {
                 conferido: true,
                 conferidoEm,
                 conferidoPor,
+                conferenciaReaberta: false,
                 conferidoComDivergencia,
                 temDivergenciaRealAtual,
                 temDivergenciaBenignaAtual,
@@ -499,6 +500,7 @@ export default function DoubleCheckInPage() {
               conferido: true,
               conferidoEm,
               conferidoPor,
+              conferenciaReaberta: false,
               conferidoComDivergencia,
               temDivergenciaRealAtual,
               temDivergenciaBenignaAtual,
@@ -577,6 +579,7 @@ export default function DoubleCheckInPage() {
         numeroNfe: modalNota.numeroNfe,
         numeroDocumentoFiscal: modalNota.numeroDocumentoFiscal,
         nomeParceiro: modalNota.nomeParceiro,
+        reconferencia: Boolean(modalNota.conferenciaReaberta),
       });
       if (r.erro) {
         setSenhaErro(r.erro);

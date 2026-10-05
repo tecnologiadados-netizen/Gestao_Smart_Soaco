@@ -7,6 +7,7 @@ import { getNomusPool, isNomusEnabled, nomusQueryWithRetry } from '../config/nom
 import { formatSqlDateYmd } from './dfcDateUtils.js';
 import { DOUBLE_CHECKIN_TIPOS_MOV, queryLinhasComparativoPorDocumentos } from './doubleCheckInRepository.js';
 import { DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE } from '../services/doubleCheckInConferenciaPeriodo.js';
+import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
 import {
   classificarNotaGestaoEntrada,
   montarDivergenciasAtuais,
@@ -74,6 +75,8 @@ async function carregarLocais(ids: number[]): Promise<{
         where: { idDocumentoEstoque: { in: parte } },
         select: {
           idDocumentoEstoque: true,
+          idItemDocumentoEstoque: true,
+          idItemPedidoCompra: true,
           campo: true,
           decisao: true,
           justificativaOpcao: { select: { codigo: true, label: true } },
@@ -84,6 +87,8 @@ async function carregarLocais(ids: number[]): Promise<{
     for (const r of rows) {
       decisoes.push({
         idDocumentoEstoque: r.idDocumentoEstoque,
+        idItemDocumentoEstoque: r.idItemDocumentoEstoque,
+        idItemPedidoCompra: r.idItemPedidoCompra,
         campo: r.campo,
         decisao: r.decisao,
         justificativaCodigo: r.justificativaOpcao.codigo,
@@ -131,6 +136,22 @@ export async function queryGestaoEntradasPainel(params: {
     const idsComDivergenciaAtual = new Set<number>();
     for (const [id, linhas] of linhasPorDocumento ?? []) {
       if (linhas.some((l) => l.temDivergencia)) idsComDivergenciaAtual.add(id);
+      if (!idsConferidos.has(id)) continue;
+      const decisoesDoc = decisoes
+        .filter((item) => item.idDocumentoEstoque === id)
+        .filter(
+          (
+            item
+          ): item is DecisaoGestaoEntrada & {
+            idItemDocumentoEstoque: number;
+            idItemPedidoCompra: number;
+          } =>
+            Number.isFinite(item.idItemDocumentoEstoque) &&
+            Number.isFinite(item.idItemPedidoCompra)
+        );
+      if (contarPendentesComparativoLogica(linhas, decisoesDoc) > 0) {
+        idsConferidos.delete(id);
+      }
     }
     return {
       data: montarPainelGestaoEntradas({
@@ -220,7 +241,9 @@ export async function queryGestaoEntradasDia(params: {
       const decisoesDoc = decisoes.get(doc.idDocumento) ?? [];
       const divergencias = montarDivergenciasAtuais({ linhas, decisoes: decisoesDoc });
       const divergenciaAtual = divergencias.length > 0;
-      const conferida = idsConferidos.has(doc.idDocumento);
+      const conferenciaCompleta =
+        contarPendentesComparativoLogica(linhas, decisoesDoc) === 0;
+      const conferida = idsConferidos.has(doc.idDocumento) && conferenciaCompleta;
       const status = classificarNotaGestaoEntrada(
         conferida,
         divergencias

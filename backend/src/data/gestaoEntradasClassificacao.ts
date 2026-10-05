@@ -28,6 +28,8 @@ export type DocGestaoEntrada = {
 
 export type DecisaoGestaoEntrada = {
   idDocumentoEstoque: number;
+  idItemDocumentoEstoque?: number;
+  idItemPedidoCompra?: number;
   campo: string;
   decisao: string;
   justificativaCodigo: string;

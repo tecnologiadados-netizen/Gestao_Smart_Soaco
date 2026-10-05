@@ -739,11 +739,12 @@ export async function marcarDocumentoConferido(params: {
   idDocumentoEstoque: number;
   usuarioId: number;
   usuarioLogin: string;
+  renovar?: boolean;
 }): Promise<DoubleCheckInConferidoInfo> {
   const existing = await prisma.doubleCheckInConferido.findUnique({
     where: { idDocumentoEstoque: params.idDocumentoEstoque },
   });
-  if (existing && ehConferenciaNfPcValida(existing.conferidoEm)) {
+  if (existing && ehConferenciaNfPcValida(existing.conferidoEm) && !params.renovar) {
     return mapConferido(existing);
   }
   if (existing) {
@@ -803,7 +804,13 @@ export async function salvarConferenciaPagina(
     where: { idDocumentoEstoque },
     select: { token: true },
   });
-  if (existente) return existente.token;
+  if (existente) {
+    await prisma.doubleCheckInConferenciaPagina.update({
+      where: { idDocumentoEstoque },
+      data: { payloadJson, criadoEm: new Date() },
+    });
+    return existente.token;
+  }
 
   for (let tentativa = 0; tentativa < 5; tentativa++) {
     try {

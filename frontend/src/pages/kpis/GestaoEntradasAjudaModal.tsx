@@ -18,7 +18,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'status',
     titulo: 'Cards e anel',
     oQueE:
-      'Entradas é a quantidade de notas no período. Conferidas já passaram pelo Double Check. Pendentes ainda não. A média divide o total pelos dias que tiveram ao menos uma entrada. Sem divergência é conferidas sem divergência ÷ conferidas.',
+      'Entradas é a quantidade de notas no período. Conferidas já passaram pelo Double Check e não têm divergência atual sem decisão. Se surgir ou permanecer uma diferença sem aceite/recusa, a nota volta para Pendente até a reconferência. A média divide o total pelos dias que tiveram ao menos uma entrada. Sem divergência é conferidas sem divergência ÷ conferidas.',
     comoLe:
       'A faixa sob o número compara duas metades com a mesma quantidade de dias (a do meio fica de fora quando o período é ímpar). Seta verde é melhora: mais entradas, mais conferidas, média maior ou mais pontos percentuais sem divergência. Em pendentes, verde é queda. Vermelho é o caminho inverso. Com menos de dois dias, a comparação não aparece. O círculo grande, logo abaixo da evolução, usa a mesma escala: vermelho é pior, azul-marinho é melhor. Entra na conta a nota conferida cuja NF já está igual ao pedido, mesmo que a divergência tenha existido no dia da conferência. Nota pendente não entra. Sem conferência no período, o círculo fica sem percentual.',
   },

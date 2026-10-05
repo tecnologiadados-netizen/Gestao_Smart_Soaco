@@ -135,6 +135,7 @@ type ResumoDivergenciasAtuais = {
   temQualquer: boolean;
   temReal: boolean;
   temBenigna: boolean;
+  pendencias: number;
 };
 
 async function carregarResumosDivergenciasAtuais(
@@ -178,6 +179,10 @@ async function carregarResumosDivergenciasAtuais(
       temQualquer: linhas.some((linha) => linha.temDivergencia),
       temReal: naturezas.includes('real'),
       temBenigna: naturezas.includes('benigna'),
+      pendencias: contarPendentesComparativoLogica(
+        linhas,
+        decisoesPorDocumento.get(id) ?? []
+      ),
     });
   }
   return resumos;
@@ -187,6 +192,8 @@ export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
   conferido: boolean;
   conferidoEm: string | null;
   conferidoPor: string | null;
+  /** Tinha conferência, mas uma divergência atual ainda não possui decisão. */
+  conferenciaReaberta: boolean;
   /** Conferido e a NF ainda diverge do pedido de compra. */
   conferidoComDivergencia: boolean;
   temDivergenciaRealAtual: boolean;
@@ -205,13 +212,15 @@ async function enriquecerNotasComConferencia(
   ]);
   return notas.map((n) => {
     const c = map.get(n.idDocumento);
-    const conferido = Boolean(c);
     const atual = resumosAtuais.get(n.idDocumento);
+    const conferenciaReaberta = Boolean(c) && Number(atual?.pendencias ?? 0) > 0;
+    const conferido = Boolean(c) && !conferenciaReaberta;
     return {
       ...n,
       conferido,
       conferidoEm: c?.conferidoEm ?? null,
       conferidoPor: c?.usuarioLogin ?? null,
+      conferenciaReaberta,
       conferidoComDivergencia: conferido && Boolean(atual?.temQualquer),
       temDivergenciaRealAtual: Boolean(atual?.temReal),
       temDivergenciaBenignaAtual: Boolean(atual?.temBenigna),
@@ -560,7 +569,7 @@ export async function getDoubleCheckInDashboard(req: Request, res: Response): Pr
 
 /**
  * POST /api/compras/double-checkin/conferir
- * body: { idDocumento, senha, numeroNfe?, numeroDocumentoFiscal?, nomeParceiro? }
+ * body: { idDocumento, senha, numeroNfe?, numeroDocumentoFiscal?, nomeParceiro?, reconferencia? }
  * Bloqueia se houver divergência NF×PC sem decisão. Envia WhatsApp só das divergências.
  */
 export async function postDoubleCheckInConferir(req: Request, res: Response): Promise<void> {
@@ -596,7 +605,20 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
     }
 
     const ja = await getDocumentoConferido(idDocumento);
-    if (ja) {
+    const reconferenciaSolicitada = Boolean(req.body?.reconferencia);
+    const { linhas, erro: erroComp } = await queryDoubleCheckInComparativoPc({ idDocumento });
+    if (erroComp) {
+      res.status(503).json({ error: erroComp });
+      return;
+    }
+    const decisoes = await listarDecisoesComparativo(idDocumento);
+    const validacao = validarDecisoesCompletas(linhas, decisoes);
+    if (!validacao.ok) {
+      res.status(400).json({ error: validacao.error, pendentes: validacao.pendentes });
+      return;
+    }
+
+    if (ja && !reconferenciaSolicitada) {
       const resumoAtual = (await carregarResumosDivergenciasAtuais([idDocumento])).get(
         idDocumento
       );
@@ -616,22 +638,11 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       return;
     }
 
-    const { linhas, erro: erroComp } = await queryDoubleCheckInComparativoPc({ idDocumento });
-    if (erroComp) {
-      res.status(503).json({ error: erroComp });
-      return;
-    }
-    const decisoes = await listarDecisoesComparativo(idDocumento);
-    const validacao = validarDecisoesCompletas(linhas, decisoes);
-    if (!validacao.ok) {
-      res.status(400).json({ error: validacao.error, pendentes: validacao.pendentes });
-      return;
-    }
-
     const created = await marcarDocumentoConferido({
       idDocumentoEstoque: idDocumento,
       usuarioId: usuario.id,
       usuarioLogin: usuario.login,
+      renovar: Boolean(ja && reconferenciaSolicitada),
     });
 
     const conferidoComDivergencia = linhas.some((l) => l.temDivergencia);
@@ -685,6 +696,7 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
     res.status(201).json({
       ok: true,
       jaConferido: false,
+      reconferido: Boolean(ja && reconferenciaSolicitada),
       conferido: true,
       conferidoEm: created.conferidoEm,
       conferidoPor: created.usuarioLogin,
