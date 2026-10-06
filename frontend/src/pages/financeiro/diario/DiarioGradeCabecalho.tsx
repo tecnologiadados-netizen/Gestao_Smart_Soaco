@@ -11,6 +11,7 @@ export const DIARIO_COLUNAS_GRADE = [
   { id: 'fornecedor', label: 'Fornecedor' },
   { id: 'empresa', label: 'Empresa' },
   { id: 'plano', label: 'Plano de contas' },
+  { id: 'prioridade', label: 'Prioridade' },
   { id: 'descricao', label: 'Descrição' },
   { id: 'observacao', label: 'Observações' },
   { id: 'forma', label: 'Forma pgto' },
@@ -18,6 +19,9 @@ export const DIARIO_COLUNAS_GRADE = [
   { id: 'valor', label: 'Valor', align: 'right' as const },
   { id: 'baixado', label: 'Baixado', align: 'right' as const },
   { id: 'saldo', label: 'Saldo', align: 'right' as const },
+  { id: 'pc', label: 'PC' },
+  { id: 'nfe', label: 'NFe' },
+  { id: 'itens', label: 'Itens', align: 'center' as const },
 ];
 
 const NUMERICAS = new Set(['valor', 'baixado', 'saldo']);
@@ -34,16 +38,16 @@ export function DiarioCabecalhoTh({
   colId: string;
   label: string;
   grade: GradeApi;
-  align?: 'left' | 'right';
+  align?: 'left' | 'right' | 'center';
 }) {
   return (
     <th className="px-0 py-0 font-medium whitespace-nowrap">
       <div
         className={`flex min-h-[2rem] items-center gap-1 px-1.5 py-1 ${
-          align === 'right' ? 'flex-row-reverse justify-end' : 'justify-between'
+          align === 'right' ? 'flex-row-reverse justify-end' : align === 'center' ? 'justify-center' : 'justify-between'
         }`}
       >
-        <span className={`min-w-0 ${align === 'right' ? 'text-right' : ''}`}>{label}</span>
+        <span className={`min-w-0 ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : ''}`}>{label}</span>
         <GradeFiltroCabecalhoBtn
           ativo={grade.colunaComFiltroAtivo(colId)}
           onClick={(e) => grade.abrirFiltroExcel(colId, e)}

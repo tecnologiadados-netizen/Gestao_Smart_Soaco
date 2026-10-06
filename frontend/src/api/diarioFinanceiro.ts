@@ -2,6 +2,17 @@ import { apiFetch } from './client';
 
 export type DiarioContaPagarStatus = 'Em aberto' | 'Baixado';
 
+export interface DiarioContaPagarItem {
+  codigo: string | null;
+  produto: string | null;
+  descricao: string | null;
+  qtde: number | null;
+  valorUnitario: number | null;
+  valorTotal: number | null;
+  valorDesconto: number | null;
+  valorTotalComDesconto: number | null;
+}
+
 export interface DiarioContaPagarLinha {
   origem: 'Shop9' | 'Nomus';
   codigo: number;
@@ -21,6 +32,13 @@ export interface DiarioContaPagarLinha {
   saldo: number;
   /** Nomus: id de agendamentofinanceiro. Nulo quando o lançamento não tem agendamento. */
   idAgendamento: number | null;
+  idEmpresa: number | null;
+  idContaFinanceiro: number | null;
+  tipoRef: 'A' | 'L' | 'S' | null;
+  idRef: number | null;
+  pedidoCompra: string | null;
+  notaFiscal: string | null;
+  itens: DiarioContaPagarItem[];
 }
 
 export interface DiarioContasPagarResponse {

@@ -13,6 +13,8 @@ import { getNomusPool, isNomusEnabled, queryNomus as executarQueryNomus } from '
 import { prisma } from '../config/prisma.js';
 import { formatSqlDateYmd } from './dfcDateUtils.js';
 import { nomeShop9Condicao } from './crmFinanceiro/shop9TipoConta.js';
+import { resolverNomusIdEmpresaShop9 } from './dfcShop9Empresa.js';
+import { resolverIdContaFinanceiroShop9 } from './dfcShop9PlanoContasMap.js';
 import {
   SHOP9_DESCRICAO_MAX,
   descricaoPrimeiraReprogramacao,
@@ -130,7 +132,117 @@ WHERE lf.idEmpresa IN (?, ?)
   AND DATE(COALESCE(af.dataVencimento, lf.dataLancamento)) BETWEEN ? AND ?
 `.trim();
 
+const SQL_NOMUS_DOCUMENTO = `
+SELECT
+  af.id AS idAgendamento,
+  pc.nome AS pedidoCompra,
+  nfe.numero AS notaFiscal,
+  ide.id AS idItem,
+  p.nome AS produto,
+  p.descricao AS produtoDescricao,
+  ide.qtde AS qtde,
+  ide.valorUnitario AS valorUnitario,
+  ide.valorTotal AS valorTotal,
+  ide.valorDesconto AS valorDesconto,
+  ide.valorTotalComDesconto AS valorTotalComDesconto
+FROM agendamentofinanceiro af
+LEFT JOIN (
+  SELECT DISTINCT
+    idAgendamentoRecebimento,
+    CASE
+      WHEN comentarios LIKE '%DESCONTADO%' THEN 'DESCONTADO ANTECI'
+      ELSE NULL
+    END AS comentarios
+  FROM lancamentofinanceiro
+  WHERE idAgendamentoRecebimento IS NOT NULL
+    AND comentarios LIKE '%DESCONTADO%'
+) td ON td.idAgendamentoRecebimento = af.id
+LEFT JOIN documentoestoque de ON de.id = af.idDocumentoEntrada
+LEFT JOIN nfe ON nfe.idDocumentoEstoque = de.id
+LEFT JOIN itemdocumentoestoque ide ON ide.idDocumentoEstoque = de.id
+LEFT JOIN itemdocumentoestoque_itempedidocompra ideipc ON ideipc.idItemDocumentoEstoque = ide.id
+LEFT JOIN itempedidocompra ipc ON ipc.id = ideipc.idItemPedidoCompra
+LEFT JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
+LEFT JOIN produto p ON p.id = ipc.idProduto
+WHERE af.idEmpresa IN (?, ?)
+  AND af.discriminador = 'P'
+  AND DATE(af.dataVencimento) BETWEEN ? AND ?
+  AND af.idPedidoCompra IS NULL
+  AND COALESCE(td.comentarios, af.comentarios, '') NOT LIKE '%DESCONTADO ANTECI%'
+  AND af.idDocumentoEntrada IS NOT NULL
+`.trim();
+
+const SQL_SHOP9_ITENS = `
+SELECT
+  fc.Ordem AS ordemFinanceira,
+  CAST(ps.Codigo AS VARCHAR(40)) AS codigoProduto,
+  ps.Nome AS produto,
+  mps.Quantidade AS qtde,
+  mps.Preco_Unitario AS valorUnitario,
+  mps.Preco_Total_Sem_Desconto AS valorTotal,
+  mps.Desconto_Valor AS valorDesconto,
+  mps.Preco_Total_Com_Desconto AS valorTotalComDesconto
+FROM Financeiro_Contas fc
+INNER JOIN Movimento m
+  ON m.Sequencia = fc.Codigo_Sequencia
+ AND ISNULL(fc.Codigo_Sequencia, 0) <> 0
+ AND fc.Ordem_Filial = m.Ordem_Filial
+ AND m.Efetivado_Financeiro = 1
+ AND fc.Ordem_Plano_Contas3 <> 10008
+INNER JOIN Movimento_Prod_Serv mps ON mps.Ordem_Movimento = m.Ordem
+LEFT JOIN Prod_Serv ps ON ps.Ordem = mps.Ordem_Prod_Serv
+WHERE fc.Pagar_Receber = 'P'
+  AND fc.Situacao = 'A'
+  AND fc.Data_Vencimento IS NOT NULL
+  AND CAST(fc.Data_Vencimento AS DATE) >= @dataInicio
+  AND CAST(fc.Data_Vencimento AS DATE) <= @dataFim
+  AND ISNULL(fc.Valor_Total_Calculado, 0) > 0
+  AND (fc.Descricao IS NULL OR fc.Descricao NOT LIKE '%conta pai%')
+UNION ALL
+SELECT
+  fc.Ordem AS ordemFinanceira,
+  CAST(ps.Codigo AS VARCHAR(40)) AS codigoProduto,
+  ps.Nome AS produto,
+  mps.Quantidade AS qtde,
+  mps.Preco_Unitario AS valorUnitario,
+  mps.Preco_Total_Sem_Desconto AS valorTotal,
+  mps.Desconto_Valor AS valorDesconto,
+  mps.Preco_Total_Com_Desconto AS valorTotalComDesconto
+FROM Financeiro_Contas fc
+INNER JOIN Movimento m
+  ON m.Sequencia = fc.Codigo_Sequencia
+ AND ISNULL(fc.Codigo_Sequencia, 0) <> 0
+ AND fc.Ordem_Filial = m.Ordem_Filial
+ AND m.Efetivado_Financeiro = 1
+ AND fc.Ordem_Plano_Contas3 <> 10008
+INNER JOIN Movimento_Prod_Serv mps ON mps.Ordem_Movimento = m.Ordem
+LEFT JOIN Prod_Serv ps ON ps.Ordem = mps.Ordem_Prod_Serv
+WHERE fc.Pagar_Receber = 'P'
+  AND fc.Situacao <> 'C'
+  AND fc.Data_Quitacao IS NOT NULL
+  AND CAST(fc.Data_Quitacao AS DATE) <= CAST(GETDATE() AS DATE)
+  AND fc.Tipo_Recebido_Pago <> ''
+  AND fc.Tipo_Conta <> 'A'
+  AND fc.Tipo_Conta <> 'J'
+  AND fc.Data_Vencimento IS NOT NULL
+  AND CAST(fc.Data_Vencimento AS DATE) >= @dataInicio
+  AND CAST(fc.Data_Vencimento AS DATE) <= @dataFim
+  AND ISNULL(fc.Valor_Quitado, 0) > 0
+  AND (fc.Descricao IS NULL OR fc.Descricao NOT LIKE '%conta pai%')
+`.trim();
+
 export type DiarioContaPagarStatus = 'Em aberto' | 'Baixado';
+
+export interface DiarioContaPagarItem {
+  codigo: string | null;
+  produto: string | null;
+  descricao: string | null;
+  qtde: number | null;
+  valorUnitario: number | null;
+  valorTotal: number | null;
+  valorDesconto: number | null;
+  valorTotalComDesconto: number | null;
+}
 
 export interface DiarioContaPagarLinha {
   origem: 'Shop9' | 'Nomus';
@@ -151,6 +263,13 @@ export interface DiarioContaPagarLinha {
   saldo: number;
   /** Nomus: agendamentofinanceiro.id. Nulo no lançamento LP sem agendamento. Shop9 não usa. */
   idAgendamento: number | null;
+  idEmpresa: number | null;
+  idContaFinanceiro: number | null;
+  tipoRef: 'A' | 'L' | 'S' | null;
+  idRef: number | null;
+  pedidoCompra: string | null;
+  notaFiscal: string | null;
+  itens: DiarioContaPagarItem[];
 }
 
 function toNum(v: unknown): number {
@@ -177,6 +296,65 @@ function statusNomus(dataBaixa: string | null): DiarioContaPagarStatus {
   return dataBaixa ? 'Baixado' : 'Em aberto';
 }
 
+function idPositivo(v: unknown): number | null {
+  const n = Math.trunc(toNum(v));
+  return n > 0 ? n : null;
+}
+
+function numeroOuNulo(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function juntarDistintos(vals: Array<string | null | undefined>): string | null {
+  const set = new Set<string>();
+  for (const v of vals) {
+    const s = v?.trim();
+    if (s) set.add(s);
+  }
+  if (set.size === 0) return null;
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })).join(', ');
+}
+
+interface DocAcum {
+  pedidos: string[];
+  notas: string[];
+  itens: DiarioContaPagarItem[];
+  vistos: Set<string>;
+}
+
+function acumularDocumento(
+  map: Map<number, DocAcum>,
+  chave: number,
+  pedido: string | null,
+  nota: string | null,
+  item: DiarioContaPagarItem | null,
+  chaveItem: string | null,
+) {
+  if (!(chave > 0)) return;
+  let acc = map.get(chave);
+  if (!acc) {
+    acc = { pedidos: [], notas: [], itens: [], vistos: new Set() };
+    map.set(chave, acc);
+  }
+  if (pedido && !acc.pedidos.includes(pedido)) acc.pedidos.push(pedido);
+  if (nota && !acc.notas.includes(nota)) acc.notas.push(nota);
+  if (!item || !chaveItem || acc.vistos.has(chaveItem)) return;
+  acc.vistos.add(chaveItem);
+  acc.itens.push(item);
+}
+
+function aplicarDocumento(linha: DiarioContaPagarLinha, acc: DocAcum | undefined, notaTitulo: string | null) {
+  linha.pedidoCompra = acc ? juntarDistintos(acc.pedidos) : null;
+  linha.notaFiscal = juntarDistintos([notaTitulo, ...(acc?.notas ?? [])]);
+  linha.itens = acc?.itens ?? [];
+}
+
+function itemPreenchido(item: DiarioContaPagarItem): boolean {
+  return Boolean(item.codigo || item.produto || item.descricao || item.qtde != null || item.valorUnitario != null || item.valorTotal != null);
+}
+
 function formaPagamentoShop9(row: Record<string, unknown>): string | null {
   const tipo = texto(row.tipoContaCodigo);
   const administradora = texto(row.administradoraNome);
@@ -191,9 +369,19 @@ function formaPagamentoShop9(row: Record<string, unknown>): string | null {
 function mapShop9(row: Record<string, unknown>): DiarioContaPagarLinha {
   const statusRaw = texto(row.statusBaixa);
   const status: DiarioContaPagarStatus = statusRaw === 'Baixado' ? 'Baixado' : 'Em aberto';
+  const ordemFilial = toNum(row.idEmpresa);
+  const codigo = toNum(row.ordemFinanceira ?? row.codigoConta);
+  const idEmpresa =
+    resolverNomusIdEmpresaShop9({
+      empresa: texto(row.empresa),
+      centrocusto: texto(row.centrocusto),
+      nomeFilial: texto(row.nomeFilial),
+      ordemFilial,
+      idEmpresa: ordemFilial,
+    }) ?? (ordemFilial === 6 ? 2 : 1);
   return {
     origem: 'Shop9',
-    codigo: toNum(row.ordemFinanceira ?? row.codigoConta),
+    codigo,
     status,
     dataVencimento: formatSqlDateYmd(row.dataVencimento),
     dataBaixa: formatSqlDateYmd(row.dataBaixa),
@@ -209,6 +397,13 @@ function mapShop9(row: Record<string, unknown>): DiarioContaPagarLinha {
     valorBaixado: toNum(row.valorBaixado),
     saldo: toNum(row.saldoBaixar),
     idAgendamento: null,
+    idEmpresa,
+    idContaFinanceiro: resolverIdContaFinanceiroShop9(String(row.tipoContaCodigo ?? ''), row.idPlanoContas, row.planoContas),
+    tipoRef: codigo > 0 ? 'S' : null,
+    idRef: codigo > 0 ? codigo : null,
+    pedidoCompra: null,
+    notaFiscal: texto(row.notaFiscal),
+    itens: [],
   };
 }
 
@@ -217,9 +412,11 @@ function mapNomus(row: Record<string, unknown>): DiarioContaPagarLinha {
   const valorBaixar = toNum(row.valorBaixar);
   const valorBaixado = toNum(row.valorBaixado);
   const saldo = toNum(row.saldoBaixar);
+  const codigo = toNum(row.codigoConta);
+  const idAgendamento = toNum(row.idAgendamento) > 0 ? toNum(row.idAgendamento) : null;
   return {
     origem: 'Nomus',
-    codigo: toNum(row.codigoConta),
+    codigo,
     status: statusNomus(dataBaixa),
     dataVencimento: formatSqlDateYmd(row.dataVencimento),
     dataBaixa,
@@ -234,21 +431,66 @@ function mapNomus(row: Record<string, unknown>): DiarioContaPagarLinha {
     valor: valorBaixar > 0 ? valorBaixar : valorBaixado + saldo,
     valorBaixado,
     saldo,
-    idAgendamento: toNum(row.idAgendamento) > 0 ? toNum(row.idAgendamento) : null,
+    idAgendamento,
+    idEmpresa: idPositivo(row.idEmpresa),
+    idContaFinanceiro: idPositivo(row.idPlanoContas),
+    tipoRef: idAgendamento != null ? 'A' : codigo > 0 ? 'L' : null,
+    idRef: idAgendamento ?? (codigo > 0 ? codigo : null),
+    pedidoCompra: null,
+    notaFiscal: null,
+    itens: [],
   };
+}
+
+function mapItemShop9(row: Record<string, unknown>): DiarioContaPagarItem | null {
+  const item: DiarioContaPagarItem = {
+    codigo: texto(row.codigoProduto),
+    produto: texto(row.produto),
+    descricao: null,
+    qtde: numeroOuNulo(row.qtde),
+    valorUnitario: numeroOuNulo(row.valorUnitario),
+    valorTotal: numeroOuNulo(row.valorTotal),
+    valorDesconto: numeroOuNulo(row.valorDesconto),
+    valorTotalComDesconto: numeroOuNulo(row.valorTotalComDesconto),
+  };
+  return itemPreenchido(item) ? item : null;
+}
+
+function chaveItemShop9(item: DiarioContaPagarItem): string {
+  return [item.codigo, item.produto, item.qtde, item.valorUnitario, item.valorTotal, item.valorDesconto, item.valorTotalComDesconto].join('|');
 }
 
 async function queryShop9(dataInicio: string, dataFim: string): Promise<{ linhas: DiarioContaPagarLinha[]; erro?: string }> {
   if (!isShop9Enabled()) return { linhas: [], erro: 'Shop9 não configurado' };
   const pool = await getShop9Pool();
   if (!pool) return { linhas: [], erro: 'Shop9: falha ao conectar' };
+  const inicio = new Date(`${dataInicio}T12:00:00`);
+  const fim = new Date(`${dataFim}T12:00:00`);
   try {
     const req = pool.request();
-    req.input('dataInicio', sql.Date, new Date(`${dataInicio}T12:00:00`));
-    req.input('dataFim', sql.Date, new Date(`${dataFim}T12:00:00`));
+    req.input('dataInicio', sql.Date, inicio);
+    req.input('dataFim', sql.Date, fim);
     const result = await req.query(SQL_SHOP9);
     const list = (Array.isArray(result.recordset) ? result.recordset : []) as Record<string, unknown>[];
-    return { linhas: list.map((r) => mapShop9(r)) };
+    const linhas = list.map((r) => mapShop9(r));
+    const docs = new Map<number, DocAcum>();
+    let erroItens: string | undefined;
+    try {
+      const reqItens = pool.request();
+      reqItens.input('dataInicio', sql.Date, inicio);
+      reqItens.input('dataFim', sql.Date, fim);
+      const itens = await reqItens.query(SQL_SHOP9_ITENS);
+      const rows = (Array.isArray(itens.recordset) ? itens.recordset : []) as Record<string, unknown>[];
+      for (const row of rows) {
+        const item = mapItemShop9(row);
+        acumularDocumento(docs, toNum(row.ordemFinanceira), null, null, item, item ? chaveItemShop9(item) : null);
+      }
+    } catch (err) {
+      erroItens = err instanceof Error ? err.message : String(err);
+      console.error('[diarioContasPagar] Shop9 itens:', erroItens);
+    }
+    for (const linha of linhas) aplicarDocumento(linha, docs.get(linha.codigo), linha.notaFiscal);
+    return { linhas, erro: erroItens ? `Itens da nota: ${erroItens}` : undefined };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[diarioContasPagar] Shop9:', msg);
@@ -256,12 +498,55 @@ async function queryShop9(dataInicio: string, dataFim: string): Promise<{ linhas
   }
 }
 
+function mapItemNomus(row: Record<string, unknown>): DiarioContaPagarItem | null {
+  const item: DiarioContaPagarItem = {
+    codigo: null,
+    produto: texto(row.produto),
+    descricao: texto(row.produtoDescricao),
+    qtde: numeroOuNulo(row.qtde),
+    valorUnitario: numeroOuNulo(row.valorUnitario),
+    valorTotal: numeroOuNulo(row.valorTotal),
+    valorDesconto: numeroOuNulo(row.valorDesconto),
+    valorTotalComDesconto: numeroOuNulo(row.valorTotalComDesconto),
+  };
+  return itemPreenchido(item) ? item : null;
+}
+
 async function queryNomus(dataInicio: string, dataFim: string): Promise<{ linhas: DiarioContaPagarLinha[]; erro?: string }> {
   const params = [...NOMUS_EMPRESAS, dataInicio, dataFim, ...NOMUS_EMPRESAS, dataInicio, dataFim];
   try {
     const [rows] = await executarQueryNomus<Record<string, unknown>[]>(SQL_NOMUS, params);
     const list = Array.isArray(rows) ? rows : [];
-    return { linhas: list.map((r) => mapNomus(r)) };
+    const linhas = list.map((r) => mapNomus(r));
+    const docs = new Map<number, DocAcum>();
+    let erroItens: string | undefined;
+    try {
+      const [docRows] = await executarQueryNomus<Record<string, unknown>[]>(SQL_NOMUS_DOCUMENTO, [
+        ...NOMUS_EMPRESAS,
+        dataInicio,
+        dataFim,
+      ]);
+      for (const row of Array.isArray(docRows) ? docRows : []) {
+        const item = mapItemNomus(row);
+        const idItem = idPositivo(row.idItem);
+        acumularDocumento(
+          docs,
+          toNum(row.idAgendamento),
+          texto(row.pedidoCompra),
+          texto(row.notaFiscal),
+          item,
+          idItem != null ? `ide:${idItem}` : item ? [item.produto, item.descricao, item.qtde, item.valorTotal].join('|') : null,
+        );
+      }
+    } catch (err) {
+      erroItens = err instanceof Error ? err.message : String(err);
+      console.error('[diarioContasPagar] Nomus documento:', erroItens);
+    }
+    for (const linha of linhas) {
+      if (linha.idAgendamento == null) continue;
+      aplicarDocumento(linha, docs.get(linha.idAgendamento), null);
+    }
+    return { linhas, erro: erroItens ? `Itens da nota: ${erroItens}` : undefined };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[diarioContasPagar] Nomus:', msg);

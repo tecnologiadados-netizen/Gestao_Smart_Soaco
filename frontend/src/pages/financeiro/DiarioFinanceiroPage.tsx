@@ -9,6 +9,18 @@ import {
   type DiarioContaPagarLinha,
   type DiarioContaPagarStatus,
 } from '../../api/diarioFinanceiro';
+import {
+  DFC_PRIORIDADE_CHIP,
+  DFC_PRIORIDADE_LABEL,
+  DFC_PRIORIDADE_LABEL_CURTO,
+  DFC_PRIORIDADES,
+  listarPrioridadesConta,
+  listarPrioridadesLancamento,
+  removerPrioridadeLancamento,
+  salvarPrioridadeLancamento,
+  type DfcPrioridade,
+  type DfcTipoRefLancamento,
+} from '../../api/dfcPrioridade';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import {
@@ -170,6 +182,12 @@ function textoCelula(l: DiarioContaPagarLinha, col: string): string {
       return texto(empresaExibida(l));
     case 'plano':
       return texto(l.planoContas);
+    case 'pc':
+      return texto(l.pedidoCompra);
+    case 'nfe':
+      return texto(l.notaFiscal);
+    case 'itens':
+      return (l.itens?.length ?? 0) > 0 ? 'Com itens' : VAZIO_CELULA;
     case 'descricao':
       return texto(l.descricao);
     case 'observacao':
@@ -196,6 +214,18 @@ function valorOrdenacao(l: DiarioContaPagarLinha, col: string): string | number 
   if (col === 'vencimento') return l.dataVencimento ?? '';
   if (col === 'baixa') return l.dataBaixa ?? '';
   return textoCelula(l, col);
+}
+
+function chavePrioridadeConta(idEmpresa: number, idConta: number): string {
+  return `${idEmpresa}#${idConta}`;
+}
+
+function chavePrioridadeLanc(idEmpresa: number, tipoRef: string, idRef: number): string {
+  return `${idEmpresa}#${tipoRef}#${idRef}`;
+}
+
+function ehPrioridade(n: number): n is DfcPrioridade {
+  return (DFC_PRIORIDADES as readonly number[]).includes(n);
 }
 
 function opcoesCampo(linhas: DiarioContaPagarLinha[], campo: 'fornecedor' | 'planoContas'): string[] {
@@ -233,8 +263,90 @@ export default function DiarioFinanceiroPage() {
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [itensModal, setItensModal] = useState<DiarioContaPagarLinha | null>(null);
+  const [prioridadeConta, setPrioridadeConta] = useState<Map<string, DfcPrioridade>>(() => new Map());
+  const [prioridadeLanc, setPrioridadeLanc] = useState<Map<string, DfcPrioridade>>(() => new Map());
+  const [salvandoPrioridade, setSalvandoPrioridade] = useState<string | null>(null);
   const [exportando, setExportando] = useState<'xlsx' | 'pdf' | null>(null);
   const [cargaTick, setCargaTick] = useState(0);
+
+  const carregarPrioridades = useCallback(async () => {
+    const [contas, lancs] = await Promise.all([listarPrioridadesConta(), listarPrioridadesLancamento()]);
+    if (contas.erro || lancs.erro) setAviso((prev) => prev ?? contas.erro ?? lancs.erro ?? null);
+    const mapaConta = new Map<string, DfcPrioridade>();
+    for (const c of contas.linhas) {
+      if (ehPrioridade(c.prioridade)) mapaConta.set(chavePrioridadeConta(c.idEmpresa, c.idContaFinanceiro), c.prioridade);
+    }
+    const mapaLanc = new Map<string, DfcPrioridade>();
+    for (const l of lancs.linhas) {
+      if (ehPrioridade(l.prioridade)) mapaLanc.set(chavePrioridadeLanc(l.idEmpresa, l.tipoRef, l.idRef), l.prioridade);
+    }
+    setPrioridadeConta(mapaConta);
+    setPrioridadeLanc(mapaLanc);
+  }, []);
+
+  const prioridadeDaLinha = useCallback(
+    (l: DiarioContaPagarLinha) => {
+      if (l.idEmpresa == null || l.idEmpresa <= 0 || l.tipoRef == null || l.idRef == null || l.idRef <= 0) {
+        return { override: null as DfcPrioridade | null, plano: null as DfcPrioridade | null, efetiva: null as DfcPrioridade | null, chave: null as string | null };
+      }
+      const chave = chavePrioridadeLanc(l.idEmpresa, l.tipoRef, l.idRef);
+      const override = prioridadeLanc.get(chave) ?? null;
+      const plano =
+        l.idContaFinanceiro != null && l.idContaFinanceiro > 0
+          ? prioridadeConta.get(chavePrioridadeConta(l.idEmpresa, l.idContaFinanceiro)) ?? null
+          : null;
+      return { override, plano, efetiva: override ?? plano, chave };
+    },
+    [prioridadeConta, prioridadeLanc],
+  );
+
+  const rotuloPrioridade = useCallback((l: DiarioContaPagarLinha) => {
+    const { efetiva } = prioridadeDaLinha(l);
+    return efetiva == null ? '' : `${efetiva} — ${DFC_PRIORIDADE_LABEL[efetiva]}`;
+  }, [prioridadeDaLinha]);
+
+  const alterarPrioridade = useCallback(
+    async (l: DiarioContaPagarLinha, novo: DfcPrioridade | null) => {
+      if (l.idEmpresa == null || l.idEmpresa <= 0 || l.tipoRef == null || l.idRef == null || l.idRef <= 0) return;
+      const tipoRef = l.tipoRef as DfcTipoRefLancamento;
+      const chave = chavePrioridadeLanc(l.idEmpresa, tipoRef, l.idRef);
+      setSalvandoPrioridade(chave);
+      const anterior = prioridadeLanc.get(chave) ?? null;
+      setPrioridadeLanc((prev) => {
+        const next = new Map(prev);
+        if (novo == null) next.delete(chave);
+        else next.set(chave, novo);
+        return next;
+      });
+      try {
+        if (novo == null) {
+          const r = await removerPrioridadeLancamento(l.idEmpresa, tipoRef, l.idRef);
+          if (!r.ok) throw new Error(r.erro || 'Falha ao remover a prioridade.');
+        } else {
+          const r = await salvarPrioridadeLancamento({
+            idEmpresa: l.idEmpresa,
+            tipoRef,
+            idRef: l.idRef,
+            idContaFinanceiro: l.idContaFinanceiro,
+            prioridade: novo,
+          });
+          if (!r.ok) throw new Error(r.erro || 'Falha ao salvar a prioridade.');
+        }
+      } catch (e) {
+        setPrioridadeLanc((prev) => {
+          const next = new Map(prev);
+          if (anterior == null) next.delete(chave);
+          else next.set(chave, anterior);
+          return next;
+        });
+        setErro(e instanceof Error ? e.message : String(e));
+      } finally {
+        setSalvandoPrioridade(null);
+      }
+    },
+    [prioridadeLanc],
+  );
 
   const carregar = useCallback(async (inicio: string, fim: string) => {
     setLoading(true);
@@ -247,6 +359,7 @@ export default function DiarioFinanceiroPage() {
       setCargaTick((n) => n + 1);
       const partes = [res.erroShop9, res.erroNomus].filter(Boolean);
       setAviso(partes.length > 0 ? partes.join(' · ') : null);
+      void carregarPrioridades();
     } catch (e) {
       setLinhas([]);
       setSelecionadas(new Set());
@@ -254,13 +367,19 @@ export default function DiarioFinanceiroPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [carregarPrioridades]);
 
   useEffect(() => {
     void carregar(inicial.inicio, inicial.fim);
     // carga do dia corrente
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carregar]);
+
+  useEffect(() => {
+    const onFocus = () => void carregarPrioridades();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [carregarPrioridades]);
 
   const aplicarAtalho = (id: Atalho) => {
     const p = periodoAtalho(id);
@@ -308,12 +427,14 @@ export default function DiarioFinanceiroPage() {
   }, [linhas, fornecedores, empresas, planos, origens, situacoes, observacao]);
 
   const getCellText = useCallback(
-    (row: DiarioContaPagarLinha, colId: string) => textoCelula(row, colId),
-    [],
+    (row: DiarioContaPagarLinha, colId: string) =>
+      colId === 'prioridade' ? rotuloPrioridade(row) || VAZIO_CELULA : textoCelula(row, colId),
+    [rotuloPrioridade],
   );
   const valueForSort = useCallback(
-    (row: DiarioContaPagarLinha, colId: string) => valorOrdenacao(row, colId),
-    [],
+    (row: DiarioContaPagarLinha, colId: string) =>
+      colId === 'prioridade' ? prioridadeDaLinha(row).efetiva ?? -1 : valorOrdenacao(row, colId),
+    [prioridadeDaLinha],
   );
   const grade = useGradeFiltrosExcel({
     rows: linhasFiltradas,
@@ -498,7 +619,7 @@ export default function DiarioFinanceiroPage() {
 
   const exportar = async (formato: 'xlsx' | 'pdf') => {
     if (exportando || linhasExibidas.length === 0) return;
-    const payload = linhasExibidas.map((l) => linhaParaExport(l, empresaExibida(l)));
+    const payload = linhasExibidas.map((l) => linhaParaExport(l, empresaExibida(l), rotuloPrioridade(l)));
     const periodo = { inicio: dataInicio, fim: dataFim };
     setExportando(formato);
     try {
@@ -524,25 +645,68 @@ export default function DiarioFinanceiroPage() {
           >
             Contas a pagar
           </button>
-          <button
-            type="button"
-            onClick={() => setFaixaFiltrosVisivel((v) => !v)}
-            aria-expanded={faixaFiltrosVisivel}
-            aria-label={faixaFiltrosVisivel ? 'Ocultar filtros' : 'Mostrar filtros'}
-            title={faixaFiltrosVisivel ? 'Ocultar filtros' : 'Mostrar filtros'}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 px-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-          >
-            <svg
-              className={`h-4 w-4 transition-transform ${faixaFiltrosVisivel ? '' : 'rotate-180'}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
+          <div className="flex flex-wrap items-center justify-end gap-2 py-1.5">
+            {grade.temFiltrosOuOrdem ? (
+              <button
+                type="button"
+                onClick={() => grade.limparFiltrosGrade()}
+                className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+              >
+                Limpar filtros da grade
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void exportar('xlsx')}
+              disabled={loading || exportando != null || linhasExibidas.length === 0}
+              className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-            </svg>
-            {faixaFiltrosVisivel ? 'Ocultar' : 'Filtros'}
-          </button>
+              {exportando === 'xlsx' ? 'Exportando…' : 'Exportar Excel'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void exportar('pdf')}
+              disabled={loading || exportando != null || linhasExibidas.length === 0}
+              className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+            >
+              {exportando === 'pdf' ? 'Gerando PDF…' : 'Exportar PDF'}
+            </button>
+            <button
+              type="button"
+              onClick={abrirReprogramar}
+              disabled={selecionadas.size === 0}
+              className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+            >
+              Reprogramar
+            </button>
+            <button
+              type="button"
+              onClick={abrirContaBancaria}
+              disabled={selecionadas.size === 0 || salvando}
+              className="inline-flex h-8 items-center rounded-lg border border-primary-600 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50 dark:bg-slate-800 dark:text-primary-200 dark:hover:bg-slate-700"
+            >
+              Conta bancária
+            </button>
+            <button
+              type="button"
+              onClick={() => setFaixaFiltrosVisivel((v) => !v)}
+              aria-expanded={faixaFiltrosVisivel}
+              aria-label={faixaFiltrosVisivel ? 'Ocultar filtros' : 'Mostrar filtros'}
+              title={faixaFiltrosVisivel ? 'Ocultar filtros' : 'Mostrar filtros'}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 px-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+            >
+              <svg
+                className={`h-4 w-4 transition-transform ${faixaFiltrosVisivel ? '' : 'rotate-180'}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              </svg>
+              {faixaFiltrosVisivel ? 'Ocultar' : 'Filtros'}
+            </button>
+          </div>
         </div>
 
         {faixaFiltrosVisivel ? (
@@ -692,49 +856,6 @@ export default function DiarioFinanceiroPage() {
             ? ` ${linhasExibidas.length.toLocaleString('pt-BR')} de ${linhasFiltradas.length.toLocaleString('pt-BR')} na grade.`
             : ''}
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          {grade.temFiltrosOuOrdem ? (
-            <button
-              type="button"
-              onClick={() => grade.limparFiltrosGrade()}
-              className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-            >
-              Limpar filtros da grade
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => void exportar('xlsx')}
-            disabled={loading || exportando != null || linhasExibidas.length === 0}
-            className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-          >
-            {exportando === 'xlsx' ? 'Exportando…' : 'Exportar Excel'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void exportar('pdf')}
-            disabled={loading || exportando != null || linhasExibidas.length === 0}
-            className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-          >
-            {exportando === 'pdf' ? 'Gerando PDF…' : 'Exportar PDF'}
-          </button>
-          <button
-            type="button"
-            onClick={abrirReprogramar}
-            disabled={selecionadas.size === 0}
-            className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-          >
-            Reprogramar
-          </button>
-          <button
-            type="button"
-            onClick={abrirContaBancaria}
-            disabled={selecionadas.size === 0 || salvando}
-            className="inline-flex h-8 items-center rounded-lg border border-primary-600 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50 dark:bg-slate-800 dark:text-primary-200 dark:hover:bg-slate-700"
-          >
-            Conta bancária
-          </button>
-        </div>
       </div>
 
       <div
@@ -771,7 +892,7 @@ export default function DiarioFinanceiroPage() {
           <tbody>
             {linhasExibidas.length === 0 && !loading && (
               <tr>
-                <td colSpan={15} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
+                <td colSpan={19} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
                   {linhasFiltradas.length === 0
                     ? 'Nenhum contas a pagar neste vencimento.'
                     : 'Nenhum lançamento com os filtros da grade.'}
@@ -782,6 +903,8 @@ export default function DiarioFinanceiroPage() {
               const chave = chaveLinha(l);
               const bloqueio = motivoBloqueio(l);
               const marcado = selecionadas.has(chave);
+              const prio = prioridadeDaLinha(l);
+              const salvandoPrio = prio.chave != null && salvandoPrioridade === prio.chave;
               return (
               <tr
                 key={`${chave}-${i}`}
@@ -817,6 +940,36 @@ export default function DiarioFinanceiroPage() {
                 <td className="px-2 py-1.5 max-w-[14rem] truncate" title={l.planoContas ?? ''}>
                   {l.planoContas ?? '—'}
                 </td>
+                <td className="px-2 py-1.5 min-w-[11rem]">
+                  {prio.chave == null ? (
+                    <span className="text-slate-400">—</span>
+                  ) : (
+                    <select
+                      value={prio.override ?? ''}
+                      disabled={salvandoPrio}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        void alterarPrioridade(l, v === '' ? null : (Number(v) as DfcPrioridade));
+                      }}
+                      className={`w-full rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[11px] dark:border-slate-600 dark:bg-slate-700 ${
+                        prio.efetiva != null ? `${DFC_PRIORIDADE_CHIP[prio.efetiva]} font-semibold` : ''
+                      }`}
+                    >
+                      <option value="">
+                        {prio.override == null && prio.plano != null
+                          ? `${prio.plano} — ${DFC_PRIORIDADE_LABEL_CURTO[prio.plano]} (plano)`
+                          : prio.override == null
+                            ? '— Sem prioridade —'
+                            : '— Remover —'}
+                      </option>
+                      {DFC_PRIORIDADES.filter((p) => prio.override != null || prio.plano == null || p !== prio.plano).map((p) => (
+                        <option key={p} value={p}>
+                          {p} — {DFC_PRIORIDADE_LABEL_CURTO[p]}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </td>
                 <td className="px-2 py-1.5 max-w-[16rem] truncate" title={l.descricao ?? ''}>
                   {l.descricao ?? '—'}
                 </td>
@@ -830,6 +983,25 @@ export default function DiarioFinanceiroPage() {
                 <td className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.valor)}</td>
                 <td className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.valorBaixado)}</td>
                 <td className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.saldo)}</td>
+                <td className="px-2 py-1.5 max-w-[12rem] truncate" title={l.pedidoCompra ?? ''}>{l.pedidoCompra ?? '—'}</td>
+                <td className="px-2 py-1.5 max-w-[10rem] truncate whitespace-nowrap" title={l.notaFiscal ?? ''}>{l.notaFiscal ?? '—'}</td>
+                <td className="px-2 py-1.5 text-center">
+                  {(l.itens?.length ?? 0) > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setItensModal(l)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-slate-700"
+                      title="Ver itens da nota"
+                      aria-label={`Ver itens da nota ${l.notaFiscal ?? l.codigo}`}
+                    >
+                      <svg className="h-4 w-4 text-primary-700 dark:text-primary-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+                      </svg>
+                    </button>
+                  ) : (
+                    <span className="text-slate-300">—</span>
+                  )}
+                </td>
               </tr>
               );
             })}
@@ -837,6 +1009,8 @@ export default function DiarioFinanceiroPage() {
         </table>
       </div>
       <DiarioGradeFiltroPortal grade={grade} />
+
+      {itensModal ? <ModalItensNota linha={itensModal} onClose={() => setItensModal(null)} /> : null}
 
       {modalAberto ? (
         <ModalReprogramar
@@ -1124,6 +1298,59 @@ function ModalReprogramar({
               {salvando ? 'Reprogramando…' : 'Reprogramar'}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function textoItem(item: DiarioContaPagarLinha['itens'][number]): string {
+  const nome = [item.codigo, item.produto].filter(Boolean).join(' — ');
+  return nome || item.descricao || '—';
+}
+
+function ModalItensNota({ linha, onClose }: { linha: DiarioContaPagarLinha; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const itens = linha.itens ?? [];
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <button type="button" className="absolute inset-0 bg-slate-900/50" aria-label="Fechar" onClick={onClose} />
+      <div role="dialog" aria-modal="true" className="relative z-[81] flex max-h-[85vh] w-full max-w-4xl flex-col rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800">
+        <div className="px-5 pt-5 pb-3">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Itens da nota fiscal</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            {[linha.notaFiscal ? `Nota ${linha.notaFiscal}` : null, linha.pedidoCompra ? `Pedido ${linha.pedidoCompra}` : null, linha.fornecedor].filter(Boolean).join(' · ') || 'Sem nota informada'}
+          </p>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto px-5 pb-5">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+              <tr>
+                {['Produto', 'Descrição', 'Qtde', 'Valor unitário', 'Valor', 'Desconto', 'Total com desconto'].map((col) => (
+                  <th key={col} className={`px-2 py-2 font-medium ${col === 'Produto' || col === 'Descrição' ? 'text-left' : 'text-right'}`}>{col}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {itens.map((item, i) => (
+                <tr key={`${item.codigo ?? ''}-${i}`} className="border-t border-slate-100 dark:border-slate-700">
+                  <td className="px-2 py-1.5">{textoItem(item)}</td>
+                  <td className="px-2 py-1.5">{item.descricao ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{item.qtde == null ? '—' : item.qtde.toLocaleString('pt-BR')}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{item.valorUnitario == null ? '—' : formatMoeda(item.valorUnitario)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{item.valorTotal == null ? '—' : formatMoeda(item.valorTotal)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{item.valorDesconto == null ? '—' : formatMoeda(item.valorDesconto)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{item.valorTotalComDesconto == null ? '—' : formatMoeda(item.valorTotalComDesconto)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
