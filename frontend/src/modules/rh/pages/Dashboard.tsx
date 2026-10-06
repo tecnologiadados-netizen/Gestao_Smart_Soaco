@@ -337,7 +337,7 @@ const Dashboard = () => {
   } | null>(null);
   const [comparacaoTempoDesligamento, setComparacaoTempoDesligamento] =
     useState<ComparacaoTempoDesligamento>("acima");
-  const [limiteDiasDesligamento, setLimiteDiasDesligamento] = useState(90);
+  const [limiteDiasDesligamento, setLimiteDiasDesligamento] = useState(0);
   const [periodoMovimentacoes, setPeriodoMovimentacoes] = useState<DashboardPeriodo>(() => periodoPadraoExecutivo());
   const [setorHeadcountSelecionado, setSetorHeadcountSelecionado] = useState<string | null>(null);
   const [periodoTurnover, setPeriodoTurnover] = useState<DashboardPeriodo>(() => periodoPadraoExecutivo());
@@ -842,7 +842,7 @@ const Dashboard = () => {
     periodoNoPadrao(periodoTurnover) &&
     periodoNoPadrao(periodoMovimentacoes) &&
     comparacaoTempoDesligamento === "acima" &&
-    limiteDiasDesligamento === 90;
+    limiteDiasDesligamento === 0;
 
   type DashboardTab = "executivo" | "absenteismo" | "absenteismo-horas" | "diagnostico-ausencias-justificadas";
   const canViewExecutivo = canViewDashboardModule("executivo");
@@ -1300,7 +1300,7 @@ const Dashboard = () => {
             setPeriodoTurnover(periodoPadraoExecutivo());
             setPeriodoMovimentacoes(periodoPadraoExecutivo());
             setComparacaoTempoDesligamento("acima");
-            setLimiteDiasDesligamento(90);
+            setLimiteDiasDesligamento(0);
             setTurnoverSetorFiltro(null);
             setSelectedTurnoverPoint(null);
             setMovimentacaoPontoSelecionado(null);
