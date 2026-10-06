@@ -35,6 +35,7 @@ SELECT
   cf.Nome AS nomeRazaoSocial,
   cf.Fantasia AS clienteFornecedor,
   cbanco.Nome AS contaBancaria,
+  CAST(fc.Nota AS VARCHAR(40)) AS notaFiscal,
   fc.Tipo_Conta AS tipoContaCodigo,
   ac.Nome AS administradoraNome,
   fc.Parcela_Descricao AS parcelaDescricao
@@ -92,6 +93,7 @@ SELECT
   cf.Nome AS nomeRazaoSocial,
   cf.Fantasia AS clienteFornecedor,
   cbanco.Nome AS contaBancaria,
+  CAST(fc.Nota AS VARCHAR(40)) AS notaFiscal,
   fc.Tipo_Conta AS tipoContaCodigo,
   ac.Nome AS administradoraNome,
   fc.Parcela_Descricao AS parcelaDescricao

@@ -1282,8 +1282,9 @@ export default function DoubleCheckInPage() {
                     </span>
                   ) : modalNota.conferenciaReaberta ? (
                     <span>
-                      Conferência reaberta. Revise e decida novamente todas as divergências antes
-                      de confirmar.
+                      {compDecisoes.some((decisao) => decisao.vigente === false)
+                        ? 'Conferência reaberta. Revise e decida novamente todas as divergências antes de confirmar.'
+                        : 'Nova divergência detectada após a conferência. Decida a pendência e confirme novamente.'}
                     </span>
                   ) : (
                     <span>

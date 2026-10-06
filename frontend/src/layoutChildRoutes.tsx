@@ -71,6 +71,7 @@ import GestaoMesaPage from './pages/recebimento/GestaoMesaPage';
 import DigitacaoConferenciaPage from './pages/recebimento/DigitacaoConferenciaPage';
 import { qualidadeRoutes } from './modules/qualidade/qualidadeRoutes';
 import { rhRoutes } from './modules/rh/rhRoutes';
+import { pdvRoutes } from './modules/pdv/pdvRoutes';
 import PainelComercialPage from './pages/comercial/PainelComercialPage';
 import HistoricoVendasPage from './pages/comercial/HistoricoVendasPage';
 import RfvClientesPage from './pages/comercial/RfvClientesPage';
@@ -151,6 +152,7 @@ export const layoutChildRoutes: RouteObject[] = [
   ...qualidadeRoutes,
   { path: 'organico', element: <OrganicoLegacyRedirect /> },
   ...rhRoutes,
+  ...pdvRoutes,
   { path: 'financeiro', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/resumo', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/dfc', element: <DfcPage /> },

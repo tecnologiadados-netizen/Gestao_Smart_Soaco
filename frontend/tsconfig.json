@@ -19,7 +19,8 @@
     "paths": {
       "@/*": ["src/*"],
       "@qualidade/*": ["src/modules/qualidade/*"],
-      "@rh/*": ["src/modules/rh/*"]
+      "@rh/*": ["src/modules/rh/*"],
+      "@pdv/*": ["src/modules/pdv/*"]
     }
   },
   "include": ["src"],

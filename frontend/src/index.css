@@ -26,6 +26,32 @@
   --soaco-border: rgb(128 128 128 / 0.35);
 }
 
+.pdv-shell {
+  --pdv-bg: #000000;
+  --pdv-text: #ffffff;
+  --pdv-muted: rgb(255 255 255 / 0.55);
+  --pdv-faint: rgb(255 255 255 / 0.4);
+  --pdv-card: #1a1a1a;
+  --pdv-panel: #101010;
+  --pdv-field: #141414;
+  --pdv-line: rgb(255 255 255 / 0.12);
+  --pdv-hover: rgb(255 255 255 / 0.08);
+  background: var(--pdv-bg);
+  color: var(--pdv-text);
+}
+
+.pdv-shell.pdv-claro {
+  --pdv-bg: #f4f5f8;
+  --pdv-text: #161616;
+  --pdv-muted: #5c5c5c;
+  --pdv-faint: #6b6b6b;
+  --pdv-card: #ffffff;
+  --pdv-panel: #ffffff;
+  --pdv-field: #ffffff;
+  --pdv-line: #e2e2e6;
+  --pdv-hover: #eef0f4;
+}
+
 html {
   font-size: 15px;
   width: 100%;

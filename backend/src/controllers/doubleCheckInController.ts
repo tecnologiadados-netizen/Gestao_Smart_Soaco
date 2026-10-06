@@ -402,9 +402,23 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
       return;
     }
     const ja = await getDocumentoConferido(idDocumento);
+    let decisoesAntes: DoubleCheckInComparativoDecisaoRow[] = [];
     if (ja) {
-      res.status(400).json({ error: 'NF já conferida — decisões não podem ser alteradas.' });
-      return;
+      decisoesAntes = await listarDecisoesComparativo(idDocumento);
+      const decisaoExistente = decisoesAntes.find(
+        (item) =>
+          item.vigente !== false &&
+          item.idItemDocumentoEstoque === idItemDocumentoEstoque &&
+          item.idItemPedidoCompra === idItemPedidoCompra &&
+          item.campo === campo
+      );
+      if (decisaoExistente) {
+        res.status(400).json({
+          error:
+            'Esta divergência já possui decisão. Reabra a conferência para alterá-la.',
+        });
+        return;
+      }
     }
 
     const baseParams = {
@@ -445,6 +459,16 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
       if (irmaos.length > 0) {
         decisoesReplicadas = [];
         for (const irmao of irmaos) {
+          const irmaoJaDecidido =
+            Boolean(ja) &&
+            decisoesAntes.some(
+              (item) =>
+                item.vigente !== false &&
+                item.idItemDocumentoEstoque === irmao.idItemDocumentoEstoque &&
+                item.idItemPedidoCompra === irmao.idItemPedidoCompra &&
+                item.campo === campo
+            );
+          if (irmaoJaDecidido) continue;
           const d = await upsertDecisaoComparativo({
             ...baseParams,
             idItemDocumentoEstoque: irmao.idItemDocumentoEstoque,

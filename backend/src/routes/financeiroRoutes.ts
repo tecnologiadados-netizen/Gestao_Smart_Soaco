@@ -141,6 +141,11 @@ const editarCrmPendenciasDestinatarios = requirePermission(
 );
 const verFinanceiroCarteira = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA);
 const verFinanceiroDiario = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_DIARIO);
+/** Classificação compartilhada: a mesma prioridade vale na DFC e no Diário. */
+const verPrioridadeDfcDiario = requirePermission(
+  ...PERMISSOES_ACESSO_FINANCEIRO_DFC,
+  ...PERMISSOES_ACESSO_FINANCEIRO_DIARIO,
+);
 
 router.get('/carteira-financeira', verFinanceiroCarteira, getCarteiraFinanceira);
 router.get('/diario/contas-pagar', verFinanceiroDiario, getDiarioContasPagar);
@@ -187,15 +192,15 @@ router.get('/dre/dashboard', verFinanceiroDre, getDreDashboard);
 router.get('/dre/export/detalhe', verFinanceiroDre, getDreExportDetalhe);
 
 // Prioridade DFC (plano de contas + lançamento)
-router.get('/dfc/prioridades/opcoes', verFinanceiroDfc, getOpcoesPrioridade);
-router.get('/dfc/prioridades/contas', verFinanceiroDfc, listPrioridadesConta);
+router.get('/dfc/prioridades/opcoes', verPrioridadeDfcDiario, getOpcoesPrioridade);
+router.get('/dfc/prioridades/contas', verPrioridadeDfcDiario, listPrioridadesConta);
 router.put('/dfc/prioridades/contas', verFinanceiroDfc, putPrioridadeConta);
 router.post('/dfc/prioridades/contas/lote', verFinanceiroDfc, postPrioridadeContaLote);
 router.delete('/dfc/prioridades/contas/:idEmpresa/:idContaFinanceiro', verFinanceiroDfc, deletePrioridadeContaCtrl);
-router.get('/dfc/prioridades/lancamentos', verFinanceiroDfc, listPrioridadesLancamento);
-router.put('/dfc/prioridades/lancamentos', verFinanceiroDfc, putPrioridadeLancamento);
-router.post('/dfc/prioridades/lancamentos/lote', verFinanceiroDfc, postPrioridadeLancamentoLote);
-router.delete('/dfc/prioridades/lancamentos/:idEmpresa/:tipoRef/:idRef', verFinanceiroDfc, deletePrioridadeLancamentoCtrl);
+router.get('/dfc/prioridades/lancamentos', verPrioridadeDfcDiario, listPrioridadesLancamento);
+router.put('/dfc/prioridades/lancamentos', verPrioridadeDfcDiario, putPrioridadeLancamento);
+router.post('/dfc/prioridades/lancamentos/lote', verPrioridadeDfcDiario, postPrioridadeLancamentoLote);
+router.delete('/dfc/prioridades/lancamentos/:idEmpresa/:tipoRef/:idRef', verPrioridadeDfcDiario, deletePrioridadeLancamentoCtrl);
 
 router.get('/painel-comercial/itens-pedido', verFinanceiroPainelComercial, getPainelComercialItensPedido);
 router.get('/painel-comercial/politica/clientes', verFinanceiroPainelComercial, getPoliticaComercialClientes);

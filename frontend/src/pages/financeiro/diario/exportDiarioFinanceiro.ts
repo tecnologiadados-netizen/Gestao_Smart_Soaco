@@ -4,11 +4,9 @@ import autoTable from 'jspdf-autotable';
 import type { DiarioContaPagarLinha } from '../../../api/diarioFinanceiro';
 import {
   MONEY_FMT,
-  DATE_FMT,
   autosize,
   baixarWorkbook,
   styleHeader,
-  toExcelDate,
 } from '../exportFinanceiroXlsxShared';
 
 export type DiarioExportLinha = {
@@ -23,6 +21,9 @@ export type DiarioExportLinha = {
   observacao: string;
   forma: string;
   conta: string;
+  prioridade: string;
+  pedido: string;
+  nota: string;
   valor: number;
   baixado: number;
   saldo: number;
@@ -36,6 +37,7 @@ const COLUNAS = [
   'Fornecedor',
   'Empresa',
   'Plano de contas',
+  'Prioridade',
   'Descrição',
   'Observações',
   'Forma pgto',
@@ -43,13 +45,16 @@ const COLUNAS = [
   'Valor',
   'Baixado',
   'Saldo',
+  'PC',
+  'NFe',
 ] as const;
 
 function dataBr(iso: string | null): string {
   if (!iso) return '';
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  if (!m) return iso;
-  return `${m[3]}/${m[2]}/${m[1]}`;
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const br = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(iso);
+  return br ? `${br[1]}/${br[2]}/${br[3]}` : iso;
 }
 
 function nomeArquivo(inicio: string, fim: string, ext: 'xlsx' | 'pdf'): string {
@@ -81,11 +86,12 @@ export async function exportDiarioFinanceiroXlsx(
     const row = ws.addRow([
       l.origem,
       l.situacao,
-      toExcelDate(l.vencimento),
-      toExcelDate(l.baixa),
+      dataBr(l.vencimento),
+      dataBr(l.baixa),
       l.fornecedor,
       l.empresa,
       l.plano,
+      l.prioridade,
       l.descricao,
       l.observacao,
       l.forma,
@@ -93,19 +99,19 @@ export async function exportDiarioFinanceiroXlsx(
       l.valor,
       l.baixado,
       l.saldo,
+      l.pedido,
+      l.nota,
     ]);
-    row.getCell(3).numFmt = DATE_FMT;
-    row.getCell(4).numFmt = DATE_FMT;
-    row.getCell(12).numFmt = MONEY_FMT;
     row.getCell(13).numFmt = MONEY_FMT;
     row.getCell(14).numFmt = MONEY_FMT;
+    row.getCell(15).numFmt = MONEY_FMT;
   }
   const t = totais(linhas);
-  const total = ws.addRow(['', '', '', '', '', '', '', '', '', '', `${linhas.length} lançamento(s)`, t.valor, t.baixado, t.saldo]);
+  const total = ws.addRow(['', '', '', '', '', '', '', '', '', '', '', `${linhas.length} lançamento(s)`, t.valor, t.baixado, t.saldo, '', '']);
   total.font = { bold: true };
-  total.getCell(12).numFmt = MONEY_FMT;
   total.getCell(13).numFmt = MONEY_FMT;
   total.getCell(14).numFmt = MONEY_FMT;
+  total.getCell(15).numFmt = MONEY_FMT;
   autosize(ws, COLUNAS.length);
   await baixarWorkbook(wb, nomeArquivo(periodo.inicio, periodo.fim, 'xlsx'));
 }
@@ -136,6 +142,7 @@ export function exportDiarioFinanceiroPdf(
       l.fornecedor,
       l.empresa,
       l.plano,
+      l.prioridade,
       l.descricao,
       l.observacao,
       l.forma,
@@ -143,6 +150,8 @@ export function exportDiarioFinanceiroPdf(
       moeda(l.valor),
       moeda(l.baixado),
       moeda(l.saldo),
+      l.pedido,
+      l.nota,
     ]),
     styles: { fontSize: 6, cellPadding: 0.8, overflow: 'linebreak' },
     headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: 'bold' },
@@ -154,6 +163,7 @@ export function exportDiarioFinanceiroPdf(
 export function linhaParaExport(
   l: DiarioContaPagarLinha,
   empresa: string | null,
+  prioridade = '',
 ): DiarioExportLinha {
   return {
     origem: l.origem,
@@ -167,6 +177,9 @@ export function linhaParaExport(
     observacao: l.observacao?.trim() ?? '',
     forma: l.formaPagamento?.trim() ?? '',
     conta: l.contaBancaria?.trim() ?? '',
+    prioridade,
+    pedido: l.pedidoCompra?.trim() ?? '',
+    nota: l.notaFiscal?.trim() ?? '',
     valor: l.valor,
     baixado: l.valorBaixado,
     saldo: l.saldo,

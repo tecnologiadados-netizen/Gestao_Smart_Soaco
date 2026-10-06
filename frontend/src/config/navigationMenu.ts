@@ -138,6 +138,11 @@ export const QUALIDADE_MENU: NavMenuEntry[] = [
   },
 ];
 
+export const PDV_MENU: NavMenuEntry[] = [
+  { kind: 'link', to: '/pdv', label: 'Balcão' },
+  { kind: 'link', to: '/pdv/configuracao', label: 'Configuração' },
+];
+
 export const RH_MENU: NavMenuEntry[] = [
   {
     kind: 'submenu',
@@ -169,10 +174,27 @@ export const LOJA_MENU: NavMenuEntry[] = [
 export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
   {
     kind: 'submenu',
+    label: 'Dashboards',
+    children: [
+      { to: '/financeiro/carteira-financeira', label: 'Carteira Financeira' },
+      { to: '/financeiro/dashboard', label: 'Dashboard Financeiro' },
+      { to: '/financeiro/painel-financeiro-comercial', label: 'Painel Financeiro-Comercial' },
+      { to: '/financeiro/resumo', label: 'Resumo Financeiro' },
+    ],
+  },
+  {
+    kind: 'submenu',
     label: 'Demonstrações',
     children: [
-      { to: '/financeiro/dre', label: 'DRE' },
       { to: '/financeiro/dfc', label: 'DFC' },
+      { to: '/financeiro/dre', label: 'DRE' },
+    ],
+  },
+  {
+    kind: 'submenu',
+    label: 'Ferramentas',
+    children: [
+      { to: '/financeiro/renegociacao-contratos', label: 'Simulação de Renegociação' },
     ],
   },
   {
@@ -181,23 +203,6 @@ export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
     children: [
       { to: '/financeiro/crm', label: 'CRM Financeiro' },
       { to: '/financeiro/diario', label: 'Diário Financeiro' },
-    ],
-  },
-  {
-    kind: 'submenu',
-    label: 'Dashboards',
-    children: [
-      { to: '/financeiro/dashboard', label: 'Dashboard Financeiro' },
-      { to: '/financeiro/painel-financeiro-comercial', label: 'Painel Financeiro-Comercial' },
-      { to: '/financeiro/carteira-financeira', label: 'Carteira Financeira' },
-      { to: '/financeiro/resumo', label: 'Resumo Financeiro' },
-    ],
-  },
-  {
-    kind: 'submenu',
-    label: 'Ferramentas',
-    children: [
-      { to: '/financeiro/renegociacao-contratos', label: 'Simulação de Renegociação' },
     ],
   },
 ];
@@ -263,6 +268,8 @@ export const PATH_LABELS: Record<string, string> = {
   '/qualidade/calibracoes': 'Qualidade — SGQ — Calibrações',
   '/qualidade/registros': 'Qualidade — SGQ — Registros',
   '/qualidade/configuracoes': 'Qualidade — SGQ — Configurações',
+  '/pdv': 'PDV',
+  '/pdv/configuracao': 'PDV — Configuração',
   '/rh': 'RH',
   '/rh/dashboard': 'RH — Dashboard',
   '/rh/organico': 'RH — Orgânico',

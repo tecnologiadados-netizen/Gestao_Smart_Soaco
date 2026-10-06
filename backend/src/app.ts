@@ -34,6 +34,7 @@ import programacaoProducaoRoutes from './routes/programacaoProducaoRoutes.js';
 import logisticaRoutes from './routes/logisticaRoutes.js';
 import qualidadeRoutes from './routes/qualidadeRoutes.js';
 import rhRoutes from './routes/rhRoutes.js';
+import pdvRoutes from './routes/pdvRoutes.js';
 import emailSettingsRoutes from './routes/emailSettingsRoutes.js';
 import aiSettingsRoutes from './routes/aiSettingsRoutes.js';
 import assistenteRoutes from './routes/assistenteRoutes.js';
@@ -44,6 +45,7 @@ import recebimentoRoutes from './routes/recebimentoRoutes.js';
 import { csrfProtect } from './middleware/csrf.js';
 import { getDoubleCheckInConferenciaPagina } from './controllers/doubleCheckInConferenciaPaginaController.js';
 import { rhUploadRoot } from './rh/utils/rhUpload.js';
+import { qualidadeUploadRoot } from './utils/qualidadeUpload.js';
 
 const app = express();
 
@@ -65,8 +67,10 @@ app.use(
 );
 fs.mkdirSync(uploadsRoot, { recursive: true });
 fs.mkdirSync(rhUploadRoot, { recursive: true });
-// RH fora do repositório. O mount genérico abaixo ainda serve a cópia legada em backend/var/uploads.
+fs.mkdirSync(qualidadeUploadRoot, { recursive: true });
+// RH e Qualidade ficam fora do repositório. O mount genérico ainda serve cópias legadas.
 app.use('/uploads/rh', express.static(rhUploadRoot, { maxAge: 0 }));
+app.use('/uploads/qualidade', express.static(qualidadeUploadRoot, { maxAge: 0 }));
 app.use('/uploads', express.static(uploadsRoot, { maxAge: 0 }));
 
 // Só ative no .env se o Node receber HTTP direto na borda (sem Caddy/nginx TLS).
@@ -188,6 +192,7 @@ app.use('/api/pcp', pcpRoutes);
 app.use('/api/logistica', logisticaRoutes);
 app.use('/api/qualidade', qualidadeRoutes);
 app.use('/api/rh', rhRoutes);
+app.use('/api/pdv', pdvRoutes);
 app.use('/api/email-settings', emailSettingsRoutes);
 app.use('/api/ai-settings', aiSettingsRoutes);
 app.use('/api/assistente', assistenteRoutes);
