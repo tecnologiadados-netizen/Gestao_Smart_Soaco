@@ -63,6 +63,7 @@ export default function RootEntry() {
     );
   }
   if (!auth) {
+    if (location.pathname === '/pdv') return <Outlet />;
     if (location.pathname !== '/') {
       salvarRotaRetornoAposLogin(location.pathname, location.search);
       return <Navigate to="/" replace />;

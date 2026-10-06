@@ -12,6 +12,7 @@ import {
   podeVerSecaoPcp,
   COMUNICACAO_INTERNA_SUBMENUS,
   ENGENHARIA_SUBMENUS,
+  PDV_MENU,
   GESTAO_USUARIOS_SUBMENUS,
   PATH_LABELS,
   type FinanceiroMenuEntry,
@@ -163,6 +164,15 @@ export function buildTelasBuscaRapidaForUser(ctx: BuildTelasBuscaRapidaCtx): Tel
 
   if (temAcessoQualidade(hasPermission)) {
     telas.push(...flattenNavMenu(buildQualidadeMenuForUser(hasPermission), hasPermission, 'Qualidade'));
+  }
+
+  if (hasPermission(PERMISSOES.PDV_VER) || hasPermission(PERMISSOES.PDV_CONFIGURAR)) {
+    const menu = PDV_MENU.filter((entry) => {
+      if (entry.kind !== 'link') return true;
+      if (entry.to === '/pdv/configuracao') return hasPermission(PERMISSOES.PDV_CONFIGURAR);
+      return hasPermission(PERMISSOES.PDV_VER);
+    });
+    telas.push(...flattenNavMenu(menu, hasPermission, 'PDV'));
   }
 
   if (podeVerMenuFinanceiro(hasPermission)) {

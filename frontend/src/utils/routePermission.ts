@@ -123,6 +123,8 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/qualidade/configuracoes/reclamacoes': [PERMISSOES.QUALIDADE_VER, PERMISSOES.QUALIDADE_CONFIGURACOES, PERMISSOES.QUALIDADE_CONFIG_RECLAMACOES],
   '/qualidade/configuracoes/causas-problema': [PERMISSOES.QUALIDADE_VER, PERMISSOES.QUALIDADE_CONFIGURACOES, PERMISSOES.QUALIDADE_CONFIG_CAUSAS],
   '/qualidade/configuracoes/servicos-realizados': [PERMISSOES.QUALIDADE_VER, PERMISSOES.QUALIDADE_CONFIGURACOES, PERMISSOES.QUALIDADE_CONFIG_SERVICOS],
+  '/pdv': [PERMISSOES.PDV_VER],
+  '/pdv/configuracao': [PERMISSOES.PDV_CONFIGURAR],
   '/rh': [PERMISSOES.RH_VER],
   '/rh/dashboard': [PERMISSOES.RH_VER],
   '/rh/organico': [PERMISSOES.RH_VER],
@@ -217,6 +219,8 @@ export const ROTAS_ORDEM = [
   '/engenharia/precificacao',
   '/qualidade',
   '/qualidade/documentos',
+  '/pdv',
+  '/pdv/configuracao',
   '/rh',
   '/rh/dashboard',
   '/rh/organico',
@@ -261,6 +265,7 @@ export function resolverPermissoesRota(pathname: string): CodigoPermissao[] | un
 
   if (ROTA_PERMISSAO[normalized]) return ROTA_PERMISSAO[normalized];
   if (normalized.startsWith('/kpis/')) return ROTA_PERMISSAO['/kpis'];
+  if (normalized.startsWith('/pdv/')) return ROTA_PERMISSAO['/pdv'];
 
   let best: string | undefined;
   for (const route of Object.keys(ROTA_PERMISSAO)) {

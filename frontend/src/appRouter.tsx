@@ -7,6 +7,7 @@ import Layout from './components/Layout';
 import TransicaoRotaProvider from './components/TransicaoRotaProvider';
 import { layoutChildRoutes } from './layoutChildRoutes';
 import { VisualizarDocumentoPage } from './modules/qualidade/pages/DocumentosVisualizarPage';
+import PdvEntry from './modules/pdv/PdvEntry';
 
 const future = { v7_startTransition: true, v7_relativeSplatPath: true } as const;
 
@@ -35,6 +36,10 @@ export const router = createBrowserRouter(
         {
           path: 'qualidade/documentos/visualizar',
           element: <VisualizarDocumentoPage />,
+        },
+        {
+          path: 'pdv',
+          element: <PdvEntry />,
         },
         {
           path: '*',

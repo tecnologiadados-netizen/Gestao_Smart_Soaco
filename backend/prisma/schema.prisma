@@ -128,6 +128,7 @@ model Usuario {
   telasFavoritas TelaFavorita[]
   assistenteConversas AssistenteConversa[]
   assistenteFeedbacks AssistenteFeedback[]
+  pdvEmpresa PdvUsuarioEmpresa?
 
   @@map("usuario")
 }
@@ -2698,4 +2699,151 @@ model DiarioShop9ContaBancaria {
   criadoEm            DateTime @default(now()) @map("criado_em")
 
   @@map("diario_shop9_conta_bancaria")
+}
+
+/// Operador do PDV enxerga uma única empresa do Nomus.
+model PdvUsuarioEmpresa {
+  usuarioId Int @id @map("usuario_id")
+  idEmpresa Int @map("id_empresa")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@map("pdv_usuario_empresa")
+}
+
+/// Parâmetros de venda do PDV por empresa do Nomus.
+model PdvEmpresaConfig {
+  idEmpresa            Int     @id @map("id_empresa")
+  nomeEmpresa          String  @default("") @map("nome_empresa")
+  uf                   String  @default("")
+  crt                  String  @default("")
+  idTabelaPreco        Int?    @map("id_tabela_preco")
+  idTipoMovimentacao   Int?    @map("id_tipo_movimentacao")
+  idTipoPedido         Int?    @map("id_tipo_pedido")
+  idSetorSaida         Int?    @map("id_setor_saida")
+  idCondicaoPagamento  Int?    @map("id_condicao_pagamento")
+  idFormaPagamento     Int?    @map("id_forma_pagamento")
+  idPessoaConsumidor   Int?    @map("id_pessoa_consumidor")
+  idContaBancaria      Int?    @map("id_conta_bancaria")
+  idPessoaVendedor     Int?    @map("id_pessoa_vendedor")
+  ignorarEstoque       Boolean @default(false) @map("ignorar_estoque")
+
+  @@map("pdv_empresa_config")
+}
+
+/// Certificado A1 e dados da SEFAZ. Segredos ficam cifrados.
+model PdvCertificado {
+  idEmpresa    Int       @id @map("id_empresa")
+  pfxCipher    String    @default("") @map("pfx_cipher")
+  senhaCipher  String    @default("") @map("senha_cipher")
+  cscCipher    String    @default("") @map("csc_cipher")
+  cscId        String    @default("") @map("csc_id")
+  serieNfce    Int       @default(1) @map("serie_nfce")
+  serieNfe     Int       @default(1) @map("serie_nfe")
+  proximoNfce  Int       @default(1) @map("proximo_nfce")
+  proximoNfe   Int       @default(1) @map("proximo_nfe")
+  ambiente     String    @default("homologacao")
+  cnpj         String    @default("")
+  validoAte    DateTime? @map("valido_ate")
+  titular      String    @default("")
+
+  @@map("pdv_certificado")
+}
+
+model PdvCaixa {
+  id         Int       @id @default(autoincrement())
+  usuarioId  Int       @map("usuario_id")
+  idEmpresa  Int       @map("id_empresa")
+  status     String    @default("aberto")
+  fundoTroco Float     @default(0) @map("fundo_troco")
+  abertoEm   DateTime  @default(now()) @map("aberto_em")
+  fechadoEm  DateTime? @map("fechado_em")
+
+  movimentos PdvCaixaMovimento[]
+  vendas     PdvVenda[]
+
+  @@index([usuarioId, idEmpresa, status])
+  @@map("pdv_caixa")
+}
+
+model PdvCaixaMovimento {
+  id          Int      @id @default(autoincrement())
+  caixaId     Int      @map("caixa_id")
+  tipo        String
+  valor       Float
+  observacao  String   @default("")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  caixa PdvCaixa @relation(fields: [caixaId], references: [id], onDelete: Cascade)
+
+  @@index([caixaId])
+  @@map("pdv_caixa_movimento")
+}
+
+model PdvVenda {
+  id               Int       @id @default(autoincrement())
+  caixaId          Int?      @map("caixa_id")
+  usuarioId        Int       @map("usuario_id")
+  idEmpresa        Int       @map("id_empresa")
+  status           String    @default("aberta")
+  idPessoaCliente  Int?      @map("id_pessoa_cliente")
+  clienteNome      String    @default("") @map("cliente_nome")
+  observacao       String    @default("")
+  fiscalTipo       String    @default("nenhuma") @map("fiscal_tipo")
+  idPedidoNomus    Int?      @map("id_pedido_nomus")
+  idDocumentoNomus Int?      @map("id_documento_nomus")
+  chave            String    @default("")
+  protocolo        String    @default("")
+  statusFiscal     String    @default("") @map("status_fiscal")
+  motivoFiscal     String    @default("") @map("motivo_fiscal")
+  xmlNota          String    @default("") @map("xml_nota")
+  qrCode           String    @default("") @map("qr_code")
+  total            Float     @default(0)
+  troco            Float     @default(0)
+  aliquotaIpiMedia Float     @default(0) @map("aliquota_ipi_media")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  concluidaEm      DateTime? @map("concluida_em")
+
+  caixa      PdvCaixa?           @relation(fields: [caixaId], references: [id], onDelete: SetNull)
+  itens      PdvVendaItem[]
+  pagamentos PdvVendaPagamento[]
+
+  @@index([idEmpresa, status])
+  @@index([usuarioId, status])
+  @@map("pdv_venda")
+}
+
+model PdvVendaItem {
+  id                  Int    @id @default(autoincrement())
+  vendaId             Int    @map("venda_id")
+  idProduto           Int    @map("id_produto")
+  codigo              String @default("")
+  descricao           String @default("")
+  quantidade          Float
+  valorUnitario       Float  @map("valor_unitario")
+  descontoPercentual  Float  @default(0) @map("desconto_percentual")
+  idTabelaPreco       Int?   @map("id_tabela_preco")
+  ncm                 String @default("")
+  origem              String @default("")
+  idUnidadeMedida     Int?   @map("id_unidade_medida")
+  aliquotaIpi         Float  @default(0) @map("aliquota_ipi")
+  saldo               Float  @default(0)
+
+  venda PdvVenda @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+
+  @@index([vendaId])
+  @@map("pdv_venda_item")
+}
+
+model PdvVendaPagamento {
+  id                Int    @id @default(autoincrement())
+  vendaId           Int    @map("venda_id")
+  idFormaPagamento  Int    @map("id_forma_pagamento")
+  nomeForma         String @default("") @map("nome_forma")
+  valor             Float
+
+  venda PdvVenda @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+
+  @@index([vendaId])
+  @@map("pdv_venda_pagamento")
 }

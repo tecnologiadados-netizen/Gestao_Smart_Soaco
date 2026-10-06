@@ -199,6 +199,7 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
         '@qualidade': path.resolve(__dirname, './src/modules/qualidade'),
         '@rh': path.resolve(__dirname, './src/modules/rh'),
+        '@pdv': path.resolve(__dirname, './src/modules/pdv'),
       },
     },
     server,

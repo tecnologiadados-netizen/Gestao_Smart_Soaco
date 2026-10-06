@@ -82,6 +82,7 @@ export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
   },
   { code: 'engenharia', label: 'Engenharia', permissoes: [PERMISSOES.PRECIFICACAO_VER] },
   { code: 'qualidade', label: 'Qualidade', permissoes: PERMISSOES_ACESSO_QUALIDADE },
+  { code: 'pdv', label: 'PDV', permissoes: [PERMISSOES.PDV_VER, PERMISSOES.PDV_CONFIGURAR] },
   { code: 'financeiro', label: 'Financeiro', permissoes: [...PERMISSOES_ACESSO_FINANCEIRO_MENU] },
   {
     code: 'logistica',

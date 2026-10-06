@@ -56,6 +56,8 @@ export const PERMISSOES = {
   QUALIDADE_CONFIG_SERVICOS: 'qualidade.config.servicos',
   QUALIDADE_CONFIG_SERVICOS_EXCLUIR: 'qualidade.config.servicos.excluir',
   RH_VER: 'rh.ver',
+  PDV_VER: 'pdv.ver',
+  PDV_CONFIGURAR: 'pdv.configurar',
   RH_CONFIGURAR: 'rh.configurar',
   RELATORIOS_VER: 'relatorios.ver',
   INTEGRACAO_VER: 'integracao.ver',
