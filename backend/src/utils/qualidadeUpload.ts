@@ -5,7 +5,33 @@ import { fileURLToPath } from 'url';
 
 const __dirnameUpload = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.join(__dirnameUpload, '..', '..');
-export const qualidadeUploadRoot = path.join(backendRoot, 'var', 'uploads', 'qualidade');
+
+/** Pasta antiga dentro do repositório, vulnerável a reset/stash/deploy. */
+export const legacyQualidadeUploadRoot = path.join(
+  backendRoot,
+  'var',
+  'uploads',
+  'qualidade'
+);
+
+/**
+ * Pasta canônica fora do repositório. Deploys e operações do Git não alcançam
+ * os documentos da Qualidade. `QUALIDADE_UPLOAD_DIR` sobrescreve o padrão.
+ */
+function resolveQualidadeUploadRoot(): string {
+  const fromEnv = process.env.QUALIDADE_UPLOAD_DIR?.trim();
+  if (fromEnv) return path.resolve(fromEnv);
+  const repoRoot = path.resolve(backendRoot, '..');
+  return path.resolve(
+    repoRoot,
+    '..',
+    'gestorpedidosSoAco-dados',
+    'uploads',
+    'qualidade'
+  );
+}
+
+export const qualidadeUploadRoot = resolveQualidadeUploadRoot();
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
@@ -43,6 +69,36 @@ export interface SavedQualidadeAnexo {
 
 function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+function copyMissingFiles(srcDir: string, destDir: string): number {
+  if (!fs.existsSync(srcDir)) return 0;
+  let copied = 0;
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const from = path.join(srcDir, entry.name);
+    const to = path.join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      copied += copyMissingFiles(from, to);
+      continue;
+    }
+    if (!entry.isFile() || fs.existsSync(to)) continue;
+    ensureDir(path.dirname(to));
+    fs.copyFileSync(from, to);
+    copied += 1;
+  }
+  return copied;
+}
+
+/** Copia arquivos legados para a pasta externa sem apagar nem sobrescrever a origem. */
+export function migrateLegacyQualidadeUploads(): number {
+  if (
+    path.resolve(legacyQualidadeUploadRoot) ===
+    path.resolve(qualidadeUploadRoot)
+  ) {
+    return 0;
+  }
+  ensureDir(qualidadeUploadRoot);
+  return copyMissingFiles(legacyQualidadeUploadRoot, qualidadeUploadRoot);
 }
 
 const EXT_MIME: Record<string, string> = {
@@ -158,19 +214,25 @@ export function resolveQualidadeStorageAbsPath(storagePath: string): string | nu
   if (!raw.startsWith('/uploads/qualidade/')) return null;
   const rel = raw.replace(/^\/uploads\/qualidade\//, '').replace(/\//g, path.sep);
   if (!rel || rel.includes('..') || path.isAbsolute(rel)) return null;
-  const abs = path.resolve(qualidadeUploadRoot, rel);
-  const root = path.resolve(qualidadeUploadRoot);
-  const absNorm = abs.toLowerCase();
-  const rootNorm = root.toLowerCase();
-  if (absNorm !== rootNorm && !absNorm.startsWith(rootNorm + path.sep)) return null;
-  return abs;
+  const roots = [qualidadeUploadRoot, legacyQualidadeUploadRoot].filter(
+    (root, index, all) =>
+      all.findIndex((candidate) => path.resolve(candidate) === path.resolve(root)) === index
+  );
+  const candidates: string[] = [];
+  for (const candidateRoot of roots) {
+    const abs = path.resolve(candidateRoot, rel);
+    const root = path.resolve(candidateRoot);
+    const absNorm = abs.toLowerCase();
+    const rootNorm = root.toLowerCase();
+    if (absNorm !== rootNorm && !absNorm.startsWith(rootNorm + path.sep)) return null;
+    candidates.push(abs);
+  }
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0] ?? null;
 }
 
 export function readQualidadeAnexoAsDataUrl(storagePath: string): string | null {
-  if (!storagePath) return null;
-  const rel = storagePath.replace(/^\/uploads\/qualidade\//, '').replace(/\//g, path.sep);
-  const abs = path.join(qualidadeUploadRoot, rel);
-  if (!fs.existsSync(abs)) return null;
+  const abs = resolveQualidadeStorageAbsPath(storagePath);
+  if (!abs || !fs.existsSync(abs)) return null;
   const buf = fs.readFileSync(abs);
   const ext = path.extname(abs).toLowerCase();
   const mime =
@@ -187,6 +249,16 @@ export function readQualidadeAnexoAsDataUrl(storagePath: string): string | null 
 export function deleteQualidadeAnexoIfExists(storagePath: string | null | undefined) {
   if (!storagePath?.startsWith('/uploads/qualidade/')) return;
   const rel = storagePath.replace(/^\/uploads\/qualidade\//, '').replace(/\//g, path.sep);
-  const abs = path.join(qualidadeUploadRoot, rel);
-  if (fs.existsSync(abs)) fs.unlinkSync(abs);
+  if (!rel || rel.includes('..') || path.isAbsolute(rel)) return;
+  for (const root of [qualidadeUploadRoot, legacyQualidadeUploadRoot]) {
+    const abs = path.resolve(root, rel);
+    const rootAbs = path.resolve(root);
+    if (
+      abs.toLowerCase() !== rootAbs.toLowerCase() &&
+      !abs.toLowerCase().startsWith(rootAbs.toLowerCase() + path.sep)
+    ) {
+      continue;
+    }
+    if (fs.existsSync(abs)) fs.unlinkSync(abs);
+  }
 }
