@@ -138,7 +138,7 @@ SELECT
   pc.nome AS pedidoCompra,
   nfe.numero AS notaFiscal,
   ide.id AS idItem,
-  p.nome AS produto,
+  p.nome AS codigoProduto,
   p.descricao AS produtoDescricao,
   ide.qtde AS qtde,
   ide.valorUnitario AS valorUnitario,
@@ -163,7 +163,7 @@ LEFT JOIN itemdocumentoestoque ide ON ide.idDocumentoEstoque = de.id
 LEFT JOIN itemdocumentoestoque_itempedidocompra ideipc ON ideipc.idItemDocumentoEstoque = ide.id
 LEFT JOIN itempedidocompra ipc ON ipc.id = ideipc.idItemPedidoCompra
 LEFT JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
-LEFT JOIN produto p ON p.id = ipc.idProduto
+LEFT JOIN produto p ON p.id = COALESCE(ide.idProduto, ipc.idProduto)
 WHERE af.idEmpresa IN (?, ?)
   AND af.discriminador = 'P'
   AND DATE(af.dataVencimento) BETWEEN ? AND ?
@@ -500,8 +500,8 @@ async function queryShop9(dataInicio: string, dataFim: string): Promise<{ linhas
 
 function mapItemNomus(row: Record<string, unknown>): DiarioContaPagarItem | null {
   const item: DiarioContaPagarItem = {
-    codigo: null,
-    produto: texto(row.produto),
+    codigo: texto(row.codigoProduto),
+    produto: null,
     descricao: texto(row.produtoDescricao),
     qtde: numeroOuNulo(row.qtde),
     valorUnitario: numeroOuNulo(row.valorUnitario),
