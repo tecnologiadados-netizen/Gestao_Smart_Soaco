@@ -464,6 +464,19 @@ export async function deleteOrganicoTrajetoria(input: { id: string }): Promise<{
   return secureProtectedPost<{ ok: boolean }, typeof body>("delete-organico-trajetoria", body);
 }
 
+export type OrganicoSalarioTrajetoria = {
+  colaboradorMatricula: string;
+  dataEvento: string;
+  descricao: string;
+};
+
+/** Eventos de salário da trajetória, para a folha histórica do Dashboard Executivo. */
+export async function getOrganicoSalariosTrajetoria(): Promise<OrganicoSalarioTrajetoria[]> {
+  if (!isApiConfigured()) return [];
+  const raw = await secureProtectedJson<OrganicoSalarioTrajetoria[]>("get-organico-salarios-trajetoria");
+  return Array.isArray(raw) ? raw : [];
+}
+
 export async function getOrganicoTrajetoria(input: {
   matricula?: string | null;
   nome?: string | null;

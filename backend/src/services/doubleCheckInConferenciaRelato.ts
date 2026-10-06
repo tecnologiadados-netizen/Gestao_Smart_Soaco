@@ -8,11 +8,18 @@ import type {
   DoubleCheckInCampoComparativo,
   DoubleCheckInComparativoDecisaoRow,
 } from '../data/doubleCheckInLocalRepository.js';
+import {
+  classificarNaturezaDivergencia,
+  rotuloNaturezaDivergencia,
+  type NaturezaDivergencia,
+} from './doubleCheckInNatureza.js';
 
 export type SinalDif = 'pos' | 'neg' | 'zero';
 
 export type CampoRelato = {
   campo: DoubleCheckInCampoComparativo;
+  natureza: NaturezaDivergencia;
+  justificativaCodigo?: string;
   titulo: string;
   nf: string;
   pc: string;
@@ -27,6 +34,11 @@ export type CampoRelato = {
   descontoWhatsApp: string | null;
   /** Detalhe das parcelas (base / vencimento / dias) — HTML da conferência. */
   tabelaPrazos?: TabelaPrazosRelato | null;
+  /** Valores cadastrais preservados para reclassificação histórica de pagamento. */
+  condicaoPagamentoNF?: string | null;
+  regraPagamentoNF?: string | null;
+  condicaoPagamentoPC?: string | null;
+  regraPagamentoPC?: string | null;
 };
 
 export type TabelaPrazosRelato = {
@@ -50,6 +62,7 @@ export type ProdutoRelato = {
 };
 
 export type RelatoConferencia = {
+  schemaVersion?: number;
   numeroNfe: string;
   numeroDocumentoFiscal: string;
   nomeParceiro: string;
@@ -57,6 +70,8 @@ export type RelatoConferencia = {
   conferidoEm: string | null;
   totalProdutos: number;
   totalDivergencias: number;
+  totalDivergenciasReais: number;
+  totalDivergenciasBenignas: number;
   aceitas: number;
   recusadas: number;
   pagamentoComum: CampoRelato | null;
@@ -142,7 +157,13 @@ function montarCampo(
 ): CampoRelato {
   const base = {
     campo,
+    natureza: classificarNaturezaDivergencia({
+      linha,
+      campo,
+      justificativaCodigo: dec.justificativaCodigo,
+    }),
     titulo: TITULO[campo],
+    justificativaCodigo: dec.justificativaCodigo,
     decisao: dec.decisao,
     justificativa: dec.justificativaLabel,
     observacao: dec.observacao?.trim() ? dec.observacao.trim() : null,
@@ -190,6 +211,10 @@ function montarCampo(
     diferenca: diferencaPrazosRelato(linha),
     sinal: null,
     tabelaPrazos: montarTabelaPrazosRelato(linha),
+    condicaoPagamentoNF: linha.condicaoPagamentoNF,
+    regraPagamentoNF: linha.regraPagamentoNF,
+    condicaoPagamentoPC: linha.condicaoPagamentoPC,
+    regraPagamentoPC: linha.regraPagamentoPC,
   };
 }
 
@@ -242,6 +267,7 @@ function mesmaAssinatura(a: CampoRelato, b: CampoRelato): boolean {
   return (
     a.nf === b.nf &&
     a.pc === b.pc &&
+    a.natureza === b.natureza &&
     a.decisao === b.decisao &&
     a.justificativa === b.justificativa &&
     a.observacao === b.observacao
@@ -336,8 +362,15 @@ export function montarRelatoConferencia(params: {
   }
 
   const totalDivergencias = aceitas + recusadas;
+  const todosCampos = [
+    ...(pagamentoComum ? [pagamentoComum] : []),
+    ...produtos.flatMap((p) => p.campos),
+  ];
+  const totalDivergenciasReais = todosCampos.filter((c) => c.natureza === 'real').length;
+  const totalDivergenciasBenignas = todosCampos.filter((c) => c.natureza === 'benigna').length;
 
   return {
+    schemaVersion: 2,
     numeroNfe: (params.meta.numeroNfe ?? '').trim() || '—',
     numeroDocumentoFiscal: (params.meta.numeroDocumentoFiscal ?? '').trim() || '—',
     nomeParceiro: (params.meta.nomeParceiro ?? '').trim() || '—',
@@ -345,6 +378,8 @@ export function montarRelatoConferencia(params: {
     conferidoEm: fmtQuando(params.conferidoEm ?? null),
     totalProdutos: produtos.length,
     totalDivergencias,
+    totalDivergenciasReais,
+    totalDivergenciasBenignas,
     aceitas,
     recusadas,
     pagamentoComum,
@@ -399,6 +434,40 @@ function linhaDecisao(campo: CampoRelato): string {
   return `${marca} · ${wa(campo.justificativa)}`;
 }
 
+function somenteDivergenciasReais(relato: RelatoConferencia): RelatoConferencia | null {
+  const pagamentoComum =
+    relato.pagamentoComum?.natureza === 'real' ? relato.pagamentoComum : null;
+  const produtos = relato.produtos
+    .map((produto) => ({
+      ...produto,
+      campos: produto.campos.filter((campo) => campo.natureza === 'real'),
+    }))
+    .filter((produto) => produto.campos.length > 0);
+  const campos = [
+    ...(pagamentoComum ? [pagamentoComum] : []),
+    ...produtos.flatMap((produto) => produto.campos),
+  ];
+  if (campos.length === 0) return null;
+
+  const aceitas = campos.filter((campo) => campo.decisao === 'aceita').length;
+  const recusadas = campos.length - aceitas;
+  return {
+    ...relato,
+    totalProdutos: produtos.length || relato.totalProdutos,
+    totalDivergencias: campos.length,
+    totalDivergenciasReais: campos.length,
+    totalDivergenciasBenignas: 0,
+    aceitas,
+    recusadas,
+    pagamentoComum,
+    produtos,
+  };
+}
+
+export function temDivergenciaReal(relato: RelatoConferencia): boolean {
+  return relato.totalDivergenciasReais > 0;
+}
+
 function blocoCampoWhatsApp(campo: CampoRelato, mostrarTitulo: boolean): string[] {
   const linhas: string[] = [];
   if (mostrarTitulo) linhas.push(wa(campo.titulo));
@@ -419,13 +488,18 @@ function resumoDecisoes(relato: RelatoConferencia): string {
   return `*${relato.aceitas} aceitas* · *${relato.recusadas} recusadas*`;
 }
 
-/** Texto do WhatsApp, sem a introdução do robô (ela é prefixada no envio). */
-export function montarMensagemConferenciaWhatsApp(relato: RelatoConferencia, url: string | null): string {
+/** Texto do WhatsApp somente com divergências reais; null quando todas são benignas. */
+export function montarMensagemConferenciaWhatsApp(
+  relatoCompleto: RelatoConferencia,
+  url: string | null
+): string | null {
+  const relato = somenteDivergenciasReais(relatoCompleto);
+  if (!relato) return null;
   const cabecalho = [
     '*Conferência NF × Pedido*',
     `NF *${wa(relato.numeroNfe)}* · Doc ${wa(relato.numeroDocumentoFiscal)}`,
     wa(relato.nomeParceiro),
-    `${wa(relato.conferidoPor)} · ${relato.totalProdutos} produto${relato.totalProdutos === 1 ? '' : 's'} · ${relato.totalDivergencias} divergência${relato.totalDivergencias === 1 ? '' : 's'}`,
+    `${wa(relato.conferidoPor)} · ${relato.totalProdutos} produto${relato.totalProdutos === 1 ? '' : 's'} · ${relato.totalDivergencias} ${relato.totalDivergencias === 1 ? 'divergência real' : 'divergências reais'}`,
     resumoDecisoes(relato),
   ];
   if (relato.naoGeraContasPagar) {
@@ -489,11 +563,17 @@ function esc(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function naturezaCampoRelato(campo: CampoRelato): NaturezaDivergencia {
+  // Links gravados antes desta classificação não têm o campo; "real" evita ocultar risco histórico.
+  return campo.natureza === 'benigna' ? 'benigna' : 'real';
+}
+
 function htmlDecisao(campo: CampoRelato): string {
   const cls = campo.decisao === 'aceita' ? 'ok' : 'no';
   const verbo = campo.decisao === 'aceita' ? 'Aceita' : 'Recusada';
   const obs = campo.observacao ? `<div class="obs">${esc(campo.observacao)}</div>` : '';
-  return `<div class="${cls}">${verbo} · ${esc(campo.justificativa)}</div>${obs}`;
+  const natureza = naturezaCampoRelato(campo);
+  return `<div class="natureza ${natureza}">${esc(rotuloNaturezaDivergencia(natureza))}</div><div class="${cls}">${verbo} · ${esc(campo.justificativa)}</div>${obs}`;
 }
 
 function htmlTabela(campos: CampoRelato[]): string {
@@ -558,6 +638,16 @@ function chipResumo(relato: RelatoConferencia): string {
 }
 
 export function renderConferenciaHtml(relato: RelatoConferencia): string {
+  const campos = [
+    ...(relato.pagamentoComum ? [relato.pagamentoComum] : []),
+    ...relato.produtos.flatMap((p) => p.campos),
+  ];
+  const totalReais =
+    (relato as Partial<RelatoConferencia>).totalDivergenciasReais ??
+    campos.filter((campo) => naturezaCampoRelato(campo) === 'real').length;
+  const totalBenignas =
+    (relato as Partial<RelatoConferencia>).totalDivergenciasBenignas ??
+    campos.filter((campo) => naturezaCampoRelato(campo) === 'benigna').length;
   const quando = relato.conferidoEm ? `<p class="quando">Conferido em ${esc(relato.conferidoEm)}</p>` : '';
   const semContas = relato.naoGeraContasPagar
     ? `<p class="obs">Não gera contas a pagar. Condição de pagamento fora da conferência.</p>`
@@ -616,6 +706,9 @@ export function renderConferenciaHtml(relato: RelatoConferencia): string {
     .par b { color: var(--gray); font-weight: 650; }
     .ok { color: var(--ok); font-weight: 700; font-size: 14px; margin-top: 8px; }
     .no { color: var(--no); font-weight: 700; font-size: 14px; margin-top: 8px; }
+    .natureza { display: inline-flex; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 750; margin-top: 8px; }
+    .natureza.real { background: #fee2e2; color: #991b1b; }
+    .natureza.benigna { background: #dcfce7; color: #166534; }
     .obs { color: var(--graphite); font-size: 13px; margin-top: 4px; }
     .produto h3 { margin: 0 0 8px; font-size: 16px; }
     .produto h3 span { color: var(--gray); font-weight: 600; font-size: 13px; }
@@ -682,6 +775,8 @@ export function renderConferenciaHtml(relato: RelatoConferencia): string {
     <div class="chips">
       <span class="chip">${relato.totalProdutos} produto${relato.totalProdutos === 1 ? '' : 's'}</span>
       <span class="chip">${relato.totalDivergencias} divergência${relato.totalDivergencias === 1 ? '' : 's'}</span>
+      <span class="chip">${totalReais} ${totalReais === 1 ? 'real' : 'reais'}</span>
+      <span class="chip">${totalBenignas} benigna${totalBenignas === 1 ? '' : 's'}</span>
       <span class="chip">${esc(chipResumo(relato))}</span>
     </div>
     ${semContas}

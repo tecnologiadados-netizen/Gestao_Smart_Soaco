@@ -143,3 +143,25 @@ export function camposDaJustificativa(codigo: string): CampoJustificativa[] {
 export function justificativaAplicavelAoCampo(codigo: string, campo: string): boolean {
   return (camposDaJustificativa(codigo) as readonly string[]).includes(campo);
 }
+
+export function normalizarCamposJustificativa(valor: unknown): CampoJustificativa[] {
+  const lista = Array.isArray(valor) ? valor : [];
+  const vistos = new Set<string>();
+  const out: CampoJustificativa[] = [];
+  for (const item of lista) {
+    const campo = String(item ?? '').trim();
+    if (!(CAMPOS_JUSTIFICATIVA as readonly string[]).includes(campo) || vistos.has(campo)) continue;
+    vistos.add(campo);
+    out.push(campo as CampoJustificativa);
+  }
+  return out;
+}
+
+export function parseCamposJustificativaSalvos(raw: string | null | undefined): CampoJustificativa[] {
+  if (!raw?.trim()) return [];
+  try {
+    return normalizarCamposJustificativa(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}

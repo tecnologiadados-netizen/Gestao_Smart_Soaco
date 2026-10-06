@@ -68,6 +68,7 @@ import {
   getOrganicoRepresentantesHandler,
   getOrganicoRepresentantesDadosHandler,
   getOrganicoTrajetoriaHandler,
+  getOrganicoSalariosTrajetoriaHandler,
   hideOrganicoArchiveFolderHandler,
   importOrganicoTrajetoriaHandler,
   parseOrganicoTrajetoriaPdfHandler,
@@ -118,6 +119,11 @@ router.post('/replace-faltas-cadastros', requireRhFeaturePermission('cadastros',
 
 // Dashboard / cargos / colaboradores / relatórios
 router.get('/get-dashboard', requireRhAccess('/dashboard#executivo', 'view'), wrap(getDashboardHandler));
+router.get(
+  '/get-organico-salarios-trajetoria',
+  requireRhAccess('/dashboard#executivo', 'view'),
+  wrap(getOrganicoSalariosTrajetoriaHandler),
+);
 router.get('/get-cargos', requireRhAccess('/cargos', 'view'), wrap(getCargosHandler));
 router.get('/get-colaboradores', requireRhAccess('/organico', 'view'), wrap(getColaboradoresHandler));
 router.get('/get-relatorios', requireRhAccess('/dashboard#executivo', 'view'), wrap(getRelatoriosHandler));

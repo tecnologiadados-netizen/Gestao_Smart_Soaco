@@ -94,6 +94,14 @@ ORDER BY DATE(de.dataEntrada) DESC, de.id DESC
 LIMIT 2000
 `.trim();
 
+const SQL_DATA_ENTRADA_DOCUMENTO = `
+SELECT DATE(de.dataEntrada) AS dataEntrada
+FROM documentoestoque de
+WHERE de.id = ?
+  AND de.idTipoMovimentacao IN (${TIPOS_IN})
+LIMIT 1
+`.trim();
+
 const SQL_ITENS = `
 SELECT
   ide.id AS idItem,
@@ -190,6 +198,30 @@ export async function queryDoubleCheckInNotas(params: {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[doubleCheckInRepository] queryDoubleCheckInNotas:', msg);
     return { notas: [], erro: msg };
+  }
+}
+
+export async function queryDoubleCheckInDataEntrada(
+  idDocumento: number
+): Promise<{ dataEntrada: string | null; erro?: string }> {
+  if (!isNomusEnabled()) {
+    return { dataEntrada: null, erro: 'NOMUS_DB_URL não configurado' };
+  }
+  const pool = getNomusPool();
+  if (!pool) return { dataEntrada: null, erro: 'NOMUS_DB_URL não configurado' };
+
+  try {
+    const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(
+      pool,
+      SQL_DATA_ENTRADA_DOCUMENTO,
+      [idDocumento]
+    );
+    const row = Array.isArray(rows) ? rows[0] : undefined;
+    return { dataEntrada: formatSqlDateYmd(row?.dataEntrada) };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[doubleCheckInRepository] queryDoubleCheckInDataEntrada:', msg);
+    return { dataEntrada: null, erro: msg };
   }
 }
 
@@ -810,10 +842,9 @@ export function ehCondicaoAVista(params: {
 
 /**
  * Critério final de Cond. pagamento: sequência de dias (vencimento − data base).
- * Sem data base num dos lados, a regra cadastral (ex.: 40,65,85) entra no lugar dos dias.
+ * Os dias só são comparados quando puderam ser calculados nos dois lados.
+ * Sem data base em um dos lados, compara condição + regra cadastral como segundo nível.
  * Ambos à vista → sem divergência (data base opcional).
- * Sem parcelas e sem regra nos dois lados → fallback ao texto da condição/regra.
- * Só um lado com prazos (e não à vista) → divergente.
  */
 export function divergenciaCondicaoPorPrazos(params: {
   prazosNF: number[];
@@ -835,14 +866,13 @@ export function divergenciaCondicaoPorPrazos(params: {
   });
   if (aVistaNf && aVistaPc) return false;
 
-  const prazosNF = prazosEfetivosCondicao(params.prazosNF, params.regraNF);
-  const prazosPC = prazosEfetivosCondicao(params.prazosPC, params.regraPC);
-  const temNf = prazosNF.length > 0;
-  const temPc = prazosPC.length > 0;
-  if (temNf || temPc) {
-    if (!temNf || !temPc) return true;
-    return !prazosDiasIguais(prazosNF, prazosPC);
+  const temDiasCalculadosNosDois =
+    params.prazosNF.length > 0 && params.prazosPC.length > 0;
+  if (temDiasCalculadosNosDois) {
+    return !prazosDiasIguais(params.prazosNF, params.prazosPC);
   }
+
+  // Segundo nível: se faltou data base/cálculo, a mesma condição cadastral não diverge.
   return (
     !textosIguaisComparativo(params.condicaoNF, params.condicaoPC) ||
     !textosIguaisComparativo(params.regraNF, params.regraPC)

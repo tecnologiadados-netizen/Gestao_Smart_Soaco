@@ -10,6 +10,34 @@ export function rhPath(route: string): string {
   return `${RH_ROUTE_PREFIX}${withSlash}`;
 }
 
+/** Rota canônica do Orgânico, opcionalmente posicionada em uma matrícula. */
+export function rhOrganicoFocusPath(matricula?: unknown): string {
+  const base = rhPath('/organico');
+  const valor = String(matricula ?? '').trim();
+  return valor ? `${base}?focusMatricula=${encodeURIComponent(valor)}` : base;
+}
+
+export type RhDashboardReturnFilters = {
+  empresa: string;
+  genero: 'masculino' | 'feminino' | null;
+  folhaInicio: string;
+  folhaFim: string;
+  turnoverInicio: string;
+  turnoverFim: string;
+  turnoverSetor: string | null;
+};
+
+export type RhOrganicoNavigationState = {
+  dashboardShortcut?: {
+    returnTo: string;
+    filters: RhDashboardReturnFilters;
+  };
+};
+
+export type RhDashboardNavigationState = {
+  dashboardRestore?: RhDashboardReturnFilters;
+};
+
 /** Remove o prefixo `/rh` para checagens de permissão internas do módulo. */
 export function stripRhPath(path: string): string {
   const raw = String(path ?? '').trim();

@@ -3,6 +3,7 @@ import { apiFetch } from './client';
 export type GestaoEntradasPainel = {
   dataInicio: string;
   dataFim: string;
+  escopo: 'reais' | 'geral';
   kpis: {
     qtdeNotas: number;
     qtdeItens: number;
@@ -25,7 +26,14 @@ export type GestaoEntradasPainel = {
     recusas: number;
     pendentes: number;
   }>;
-  porCampo: Array<{ campo: string; label: string; qtde: number; aceitas: number; recusas: number }>;
+  porCampo: Array<{
+    campo: string;
+    label: string;
+    qtde: number;
+    aceitas: number;
+    recusas: number;
+    documentos: number;
+  }>;
   porJustificativa: Array<{ codigo: string; label: string; qtde: number }>;
   porTipo: Array<{
     idTipoMovimentacao: number;
@@ -39,10 +47,12 @@ export type GestaoEntradasPainel = {
 export async function fetchGestaoEntradasPainel(params: {
   dataInicio: string;
   dataFim: string;
+  escopo?: 'reais' | 'geral';
 }): Promise<{ data?: GestaoEntradasPainel; erro?: string }> {
   const sp = new URLSearchParams();
   sp.set('dataInicio', params.dataInicio);
   sp.set('dataFim', params.dataFim);
+  sp.set('escopo', params.escopo ?? 'reais');
   const res = await apiFetch(`/api/compras/gestao-entradas?${sp}`);
   const body = (await res.json().catch(() => ({}))) as GestaoEntradasPainel & {
     error?: string;
@@ -66,38 +76,46 @@ export type GestaoEntradasDivergencia = {
   nomePedidoCompra: string | null;
   campo: string;
   campoLabel: string;
+  natureza: 'benigna' | 'real';
   valorNf: string;
   valorPc: string;
   detalheNf: string | null;
   detalhePc: string | null;
   decisao: 'aceita' | 'recusa' | null;
+  justificativaCodigo: string | null;
   justificativaLabel: string | null;
   observacoes: GestaoEntradasObs[];
 };
 
 export type GestaoEntradasNotaDia = {
   idDocumento: number;
+  dataEntrada: string;
+  idTipoMovimentacao: number;
   numeroDocumentoFiscal: string | null;
   numeroNfe: string | null;
   nomeParceiro: string | null;
   itens: number;
   status: 'pendente' | 'limpa' | 'aceita' | 'recusa';
+  divergeAtual: boolean;
   divergencias: GestaoEntradasDivergencia[];
 };
 
 export type GestaoEntradasDia = {
   dataInicio: string;
   dataFim: string;
+  escopo: 'reais' | 'geral';
   notas: GestaoEntradasNotaDia[];
 };
 
 export async function fetchGestaoEntradasDia(params: {
   dataInicio: string;
   dataFim: string;
+  escopo?: 'reais' | 'geral';
 }): Promise<{ data?: GestaoEntradasDia; erro?: string }> {
   const sp = new URLSearchParams();
   sp.set('dataInicio', params.dataInicio);
   sp.set('dataFim', params.dataFim);
+  sp.set('escopo', params.escopo ?? 'reais');
   const res = await apiFetch(`/api/compras/gestao-entradas/detalhe?${sp}`);
   const body = (await res.json().catch(() => ({}))) as GestaoEntradasDia & {
     error?: string;

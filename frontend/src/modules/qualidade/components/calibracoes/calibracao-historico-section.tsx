@@ -52,6 +52,7 @@ type LinhaHistorico = {
   versao: string;
   atual: boolean;
   data?: string;
+  proxima?: string;
   responsavel?: string;
   tipo?: string;
   resultado?: string;
@@ -136,14 +137,16 @@ export function CalibracaoHistoricoSection({
 
   const linhas = useMemo((): LinhaHistorico[] => {
     const rows: LinhaHistorico[] = [];
-    if (equipment.laudoNome) {
+    if (equipment.laudoNome || equipment.ultimaCalibracao) {
       rows.push({
         key: "atual",
         versao: versaoAtual,
         atual: true,
         data: equipment.ultimaCalibracao,
+        proxima: proximaCalibracao,
         responsavel: users.find((u) => u.id === equipment.responsavelId)?.nome,
         tipo: equipment.tipoCalibracao,
+        laboratorio: equipment.prestadorCalibracaoNome,
         statusVencimento: statusCalibracao,
         ...separarLaudoEComplementares(
           equipment.laudoNome,
@@ -177,10 +180,12 @@ export function CalibracaoHistoricoSection({
     equipment.laudoDataUrl,
     equipment.laudoNome,
     equipment.laudoStoragePath,
+    equipment.prestadorCalibracaoNome,
     equipment.responsavelId,
     equipment.tipoCalibracao,
     equipment.ultimaCalibracao,
     historico,
+    proximaCalibracao,
     statusCalibracao,
     users,
     versaoAtual,
@@ -208,12 +213,12 @@ export function CalibracaoHistoricoSection({
 
       {linhas.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nenhum laudo vigente nem versão anterior registrada.
+          Nenhum laudo vigente nem calibração anterior registrada.
         </p>
       ) : (
         <ul className="min-w-0 space-y-3">
           {linhas.map((linha) => {
-            const tipoResultado = [linha.tipo, linha.resultado, linha.laboratorio]
+            const tipoResultado = [linha.tipo, linha.resultado]
               .filter(Boolean)
               .join(" · ");
             return (
@@ -231,14 +236,14 @@ export function CalibracaoHistoricoSection({
                   onClick={() => alternar(linha.key)}
                 >
                   <span className="text-sm font-semibold text-foreground">
-                    Versão {linha.versao}
+                    Calibrações {linha.versao}
                   </span>
                   {linha.atual ? (
                     <Badge
                       variant="outline"
                       className="border-brand-blue/40 text-brand-blue"
                     >
-                      Atual
+                      Vigente
                     </Badge>
                   ) : null}
                   {linha.statusVencimento ? (
@@ -257,10 +262,20 @@ export function CalibracaoHistoricoSection({
 
                 {abertas.has(linha.key) ? (
                   <>
-                <div className="grid gap-3 border-t border-border/70 px-3 py-3 sm:grid-cols-3">
+                <div className="grid gap-3 border-t border-border/70 px-3 py-3 sm:grid-cols-2">
                   <CampoResumo
-                    label="Data"
+                    label="Data de publicação"
                     value={linha.data ? formatarData(linha.data) : "—"}
+                  />
+                  {linha.atual ? (
+                    <CampoResumo
+                      label="Próxima calibração"
+                      value={linha.proxima ? formatarData(linha.proxima) : "—"}
+                    />
+                  ) : null}
+                  <CampoResumo
+                    label="Prestador de serviço"
+                    value={linha.laboratorio || "—"}
                   />
                   <CampoResumo
                     label="Responsável"

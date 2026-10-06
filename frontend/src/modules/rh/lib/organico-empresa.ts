@@ -57,3 +57,43 @@ export function resolveEmpresaFromOrganicoCells(input: {
 export function isEmpresaSoAcoIndustrial(empresaTab: string): boolean {
   return normalizeEmpresaTabName(empresaTab) === ORGANICO_EMPRESA_SO_ACO;
 }
+
+/**
+ * Empresa da Secullum no mesmo critério das abas do Orgânico.
+ * Nome da empresa vem primeiro; se não houver, infere por setor, área e diretoria.
+ */
+export function resolveEmpresaTabFromSecullumFuncionario(f: {
+  empresaNome?: string | null;
+  setor?: string | null;
+  area?: string | null;
+  [key: string]: unknown;
+}): string {
+  const empresaNomeDireta = String(f.empresaNome ?? "").trim();
+  if (empresaNomeDireta) return normalizeEmpresaTabName(empresaNomeDireta);
+
+  const raw = f as Record<string, unknown>;
+  const estrutura = String(
+    raw.Estrutura && typeof raw.Estrutura === "object"
+      ? (raw.Estrutura as Record<string, unknown>).Descricao ?? ""
+      : "",
+  ).trim();
+  const departamento = String(
+    raw.Departamento && typeof raw.Departamento === "object"
+      ? (raw.Departamento as Record<string, unknown>).Descricao ?? ""
+      : "",
+  ).trim();
+  const empresa = String(
+    raw.EmpresaDescricao ??
+      raw.empresaDescricao ??
+      raw.Empresa ??
+      raw.empresa ??
+      raw.FilialDescricao ??
+      raw.filialDescricao ??
+      "",
+  ).trim();
+  return resolveEmpresaFromOrganicoCells({
+    setor: String(f.setor ?? ""),
+    area: String(f.area ?? ""),
+    diretoria: `${empresa} ${estrutura} ${departamento}`,
+  });
+}

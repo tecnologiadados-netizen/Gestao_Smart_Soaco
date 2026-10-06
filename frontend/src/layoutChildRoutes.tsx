@@ -1,5 +1,5 @@
 import type { RouteObject } from 'react-router-dom';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import PedidosPage from './pages/PedidosPage';
 import RelatoriosPage from './pages/RelatoriosPage';
@@ -80,6 +80,11 @@ import KpisHubPage from './pages/kpis/KpisHubPage';
 import KpisPastaPage from './pages/kpis/KpisPastaPage';
 import GestaoEntradasPage from './pages/kpis/GestaoEntradasPage';
 
+function OrganicoLegacyRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/rh/organico${search}`} replace />;
+}
+
 /** Rotas filhas do layout autenticado (espelham appRouter). */
 export const layoutChildRoutes: RouteObject[] = [
   { index: true, element: <InicioPage /> },
@@ -144,6 +149,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'precificacao', element: <Navigate to="/engenharia/precificacao" replace /> },
   { path: 'engenharia/precificacao', element: <PrecificacaoPage /> },
   ...qualidadeRoutes,
+  { path: 'organico', element: <OrganicoLegacyRedirect /> },
   ...rhRoutes,
   { path: 'financeiro', element: <ResumoFinanceiroPage /> },
   { path: 'financeiro/resumo', element: <ResumoFinanceiroPage /> },

@@ -227,11 +227,19 @@ model DoubleCheckInAlertaEnviado {
 
 /// Conferência manual da NF de entrada (Double CheckIn), com senha do usuário.
 model DoubleCheckInConferido {
-  id                 Int      @id @default(autoincrement())
-  idDocumentoEstoque Int      @unique
-  conferidoEm        DateTime @default(now())
-  usuarioId          Int
-  usuarioLogin       String
+  id                              Int      @id @default(autoincrement())
+  idDocumentoEstoque              Int      @unique
+  conferidoEm                     DateTime @default(now())
+  usuarioId                       Int
+  usuarioLogin                    String
+  temDivergenciaRealHistorica     Boolean  @default(false)
+  totalDivergenciasReaisHistorica Int      @default(0)
+  totalDivergenciasBenignasHist   Int      @default(0)
+  naturezaClassificacaoFonte      String?
+  naturezaClassificadaEm          DateTime?
+  reabertoEm                      DateTime?
+  reabertoPorUsuarioId            Int?
+  reabertoPorLogin                String?
 
   @@index([usuarioId])
   @@map("double_checkin_conferido")
@@ -255,6 +263,8 @@ model DoubleCheckInJustificativaOpcao {
   label     String
   ativo     Boolean  @default(true)
   sortOrder Int      @default(0)
+  /// JSON com os campos da divergência em que o motivo aparece: valor_unitario, qtde, ipi, condicao_pagamento.
+  campos    String   @default("")
   createdAt DateTime @default(now())
 
   decisoes DoubleCheckInComparativoDecisao[]
@@ -1403,6 +1413,8 @@ model SgqEquipamento {
   responsavelPosseId         String?
   responsavelPosseNome       String?
   fornecedor                 String?
+  prestadorCalibracaoId      String?
+  prestadorCalibracaoNome    String?
   tipoCalibracao             String
   frequenciaCalibracaoDias   Int
   frequenciaVerificacaoDias  Int

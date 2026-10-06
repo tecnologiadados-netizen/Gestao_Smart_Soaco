@@ -147,6 +147,8 @@ interface FormFuncionarioModalProps {
   secullumFieldsLocked?: boolean;
   /** Motivo de desligamento (API Pessoas Secullum), quando aplicável. */
   motivoDemissao?: string;
+  /** Exibido somente quando o funcionário foi aberto por um atalho do Dashboard Executivo. */
+  onVoltarDashboard?: () => void;
 }
 
 export function FormFuncionarioModal({
@@ -163,6 +165,7 @@ export function FormFuncionarioModal({
   documentPermissions,
   secullumFieldsLocked = false,
   motivoDemissao,
+  onVoltarDashboard,
 }: FormFuncionarioModalProps) {
   const [cells, setCells] = useState<string[]>(() =>
     initialRow ? rowToDisplayCells(initialRow) : rowToDisplayCells(getEmptyRow()),
@@ -769,6 +772,12 @@ export function FormFuncionarioModal({
           )}
 
           <DialogFooter className="shrink-0 px-6 sm:px-8 py-4 border-t border-border bg-background">
+            {onVoltarDashboard ? (
+              <Button type="button" variant="outline" className="mr-auto" onClick={onVoltarDashboard}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Voltar para o dashboard
+              </Button>
+            ) : null}
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {readOnly ? "Fechar" : "Cancelar"}
             </Button>

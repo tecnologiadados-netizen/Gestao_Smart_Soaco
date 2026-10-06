@@ -13,9 +13,14 @@ import {
   getDoubleCheckInDestinatariosCtrl,
   getDoubleCheckInItens,
   getDoubleCheckInJustificativas,
+  getDoubleCheckInJustificativasGestao,
+  postDoubleCheckInJustificativa,
+  putDoubleCheckInJustificativa,
+  deleteDoubleCheckInJustificativa,
   getDoubleCheckInNotas,
   getDoubleCheckInParametros,
   postDoubleCheckInConferir,
+  postDoubleCheckInReabrir,
   postDoubleCheckInSincronizar,
   postDoubleCheckInStatus,
   putDoubleCheckInComparativoDecisao,
@@ -472,6 +477,26 @@ router.get(
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getDoubleCheckInJustificativas)
 );
+router.get(
+  '/double-checkin/justificativas/gestao',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS),
+  async503(getDoubleCheckInJustificativasGestao)
+);
+router.post(
+  '/double-checkin/justificativas',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS),
+  async503(postDoubleCheckInJustificativa)
+);
+router.put(
+  '/double-checkin/justificativas/:id',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS),
+  async503(putDoubleCheckInJustificativa)
+);
+router.delete(
+  '/double-checkin/justificativas/:id',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS),
+  async503(deleteDoubleCheckInJustificativa)
+);
 router.post(
   '/double-checkin/status',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
@@ -496,6 +521,11 @@ router.post(
   '/double-checkin/conferir',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(postDoubleCheckInConferir)
+);
+router.post(
+  '/double-checkin/reabrir',
+  requirePermission(PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA),
+  async503(postDoubleCheckInReabrir)
 );
 router.get(
   '/double-checkin/parametros',

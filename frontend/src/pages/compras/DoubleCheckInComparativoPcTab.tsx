@@ -199,6 +199,7 @@ type DraftObs = {
 type Props = {
   idDocumento: number;
   conferido: boolean;
+  somenteLeitura?: boolean;
   linhas: DoubleCheckInComparativoLinha[];
   decisoes: DoubleCheckInComparativoDecisao[];
   justificativas: DoubleCheckInJustificativaOpcao[];
@@ -211,12 +212,16 @@ export function contarPendentesComparativo(
   linhas: DoubleCheckInComparativoLinha[],
   decisoes: DoubleCheckInComparativoDecisao[]
 ): number {
-  return contarPendentesComparativoLogica(linhas, decisoes);
+  return contarPendentesComparativoLogica(
+    linhas,
+    decisoes.filter((decisao) => decisao.vigente !== false)
+  );
 }
 
 export default function DoubleCheckInComparativoPcTab({
   idDocumento,
   conferido,
+  somenteLeitura = false,
   linhas,
   decisoes,
   justificativas,
@@ -249,8 +254,8 @@ export default function DoubleCheckInComparativoPcTab({
     [linhas]
   );
   const pendentes = useMemo(
-    () => contarPendentesComparativo(linhas, decisoes),
-    [linhas, decisoes]
+    () => (somenteLeitura ? 0 : contarPendentesComparativo(linhas, decisoes)),
+    [linhas, decisoes, somenteLeitura]
   );
 
   const opcoesDoCampo = useMemo(() => {
@@ -274,7 +279,7 @@ export default function DoubleCheckInComparativoPcTab({
       chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
     );
     // Após conferida, só permite decidir campos ainda pendentes (ex.: divergência nova).
-    if (conferido && existente) return;
+    if (conferido && existente?.vigente !== false) return;
     setDraft({ linha, campo, decisao });
     setOpcaoId(existente?.justificativaOpcaoId ?? '');
     setObs(existente?.observacao ?? '');
@@ -464,6 +469,14 @@ export default function DoubleCheckInComparativoPcTab({
                 const dec = decisaoMap.get(
                   chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
                 );
+                const decVigente = dec?.vigente === false ? undefined : dec;
+                const natureza =
+                  decVigente &&
+                  ['arredondamento', 'divergencia_so_na_tela', 'ipi_reflexo'].includes(
+                    decVigente.justificativaCodigo
+                  )
+                    ? 'benigna'
+                    : linha.naturezaDivergencias?.[c.id];
                 const hist = historicoDaDecisao(dec);
                 return (
                   <div
@@ -475,18 +488,31 @@ export default function DoubleCheckInComparativoPcTab({
                     }`}
                   >
                     <div className="mb-1 flex items-center justify-between gap-1">
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        {c.label}
-                      </span>
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          {c.label}
+                        </span>
+                        {diverg && natureza ? (
+                          <span
+                            className={
+                              natureza === 'real'
+                                ? 'rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                                : 'rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                            }
+                          >
+                            {natureza === 'real' ? 'Real' : 'Benigna'}
+                          </span>
+                        ) : null}
+                      </div>
                       {!diverg ? (
                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-label="Igual" />
-                      ) : dec?.decisao === 'aceita' ? (
+                      ) : decVigente?.decisao === 'aceita' ? (
                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-label="Aceita" />
-                      ) : dec?.decisao === 'recusa' ? (
+                      ) : decVigente?.decisao === 'recusa' ? (
                         <XCircle className="h-3.5 w-3.5 text-rose-600" aria-label="Recusada" />
                       ) : (
                         <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">
-                          Pendente
+                          {somenteLeitura ? 'Sem decisão' : 'Pendente'}
                         </span>
                       )}
                     </div>
@@ -554,10 +580,10 @@ export default function DoubleCheckInComparativoPcTab({
                             title={dec?.justificativaLabel ?? ''}
                           >
                             {dec
-                              ? `${dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
+                              ? `${dec.vigente === false ? 'Anterior' : dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
                               : 'Divergente'}
                           </span>
-                          {(!conferido || !dec) && (
+                          {!somenteLeitura && (!conferido || !decVigente) && (
                             <div className="flex shrink-0 gap-1">
                               <button
                                 type="button"
@@ -601,7 +627,12 @@ export default function DoubleCheckInComparativoPcTab({
                             </ul>
                           </div>
                         )}
-                        {conferido && dec && (
+                        {dec?.vigente === false ? (
+                          <p className="rounded-md bg-amber-100 px-2 py-1 text-[10px] font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+                            Decisão anterior preservada. Aceite ou recuse novamente.
+                          </p>
+                        ) : null}
+                        {conferido && decVigente && (
                           <button
                             type="button"
                             className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"

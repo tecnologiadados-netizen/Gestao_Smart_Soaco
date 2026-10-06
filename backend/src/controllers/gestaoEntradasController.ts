@@ -5,6 +5,7 @@
 
 import type { Request, Response } from 'express';
 import { queryGestaoEntradasDia, queryGestaoEntradasPainel } from '../data/gestaoEntradasRepository.js';
+import { normalizarEscopoDivergencia } from '../data/gestaoEntradasClassificacao.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -25,7 +26,11 @@ export async function getGestaoEntradasPainel(req: Request, res: Response): Prom
     return;
   }
 
-  const { data, erro } = await queryGestaoEntradasPainel({ dataInicio, dataFim });
+  const { data, erro } = await queryGestaoEntradasPainel({
+    dataInicio,
+    dataFim,
+    escopo: normalizarEscopoDivergencia(req.query.escopo),
+  });
   if (erro || !data) {
     res.status(503).json({ error: erro ?? 'Falha ao montar o painel Gestão entradas.', erro });
     return;
@@ -44,7 +49,11 @@ export async function getGestaoEntradasDia(req: Request, res: Response): Promise
     res.status(400).json({ error: 'dataFim deve ser >= dataInicio.' });
     return;
   }
-  const { data, erro } = await queryGestaoEntradasDia({ dataInicio, dataFim });
+  const { data, erro } = await queryGestaoEntradasDia({
+    dataInicio,
+    dataFim,
+    escopo: normalizarEscopoDivergencia(req.query.escopo),
+  });
   if (erro || !data) {
     res.status(503).json({ error: erro ?? 'Falha ao carregar as entradas do período.', erro });
     return;

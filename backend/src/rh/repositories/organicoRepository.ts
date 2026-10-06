@@ -282,6 +282,24 @@ export async function getOrganicoTrajetoria(matricula: string) {
   }));
 }
 
+/** Só os eventos de salário, para a folha histórica do dashboard. */
+export async function listOrganicoSalariosTrajetoria() {
+  const rows = await prisma.rhOrganicoTrajetoria.findMany({
+    where: { tipoEvento: { in: ['salario', 'Salario', 'SALARIO'] } },
+    select: {
+      colaboradorMatricula: true,
+      dataEvento: true,
+      descricao: true,
+    },
+    orderBy: [{ colaboradorMatricula: 'asc' }, { dataEvento: 'asc' }],
+  });
+  return rows.map((r) => ({
+    colaboradorMatricula: r.colaboradorMatricula,
+    dataEvento: formatIsoDate(r.dataEvento),
+    descricao: r.descricao,
+  }));
+}
+
 export async function importOrganicoTrajetoria(
   rows: Array<{
     colaboradorMatricula: string;

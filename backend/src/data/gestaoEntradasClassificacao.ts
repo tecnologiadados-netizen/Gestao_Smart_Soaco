@@ -2,6 +2,18 @@
  * Gestão entradas — classificação da nota conferida e agregação do painel.
  * Decisão em nota ainda não conferida não entra no ranking (conferência incompleta).
  */
+import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
+import {
+  classificarNaturezaDivergencia,
+  type NaturezaDivergencia,
+} from '../services/doubleCheckInNatureza.js';
+
+/** Reais é o padrão do painel: divergência benigna não entra na conta. */
+export type EscopoDivergenciaGestaoEntrada = 'reais' | 'geral';
+
+export function normalizarEscopoDivergencia(v: unknown): EscopoDivergenciaGestaoEntrada {
+  return v === 'geral' ? 'geral' : 'reais';
+}
 
 export const CAMPOS_DIVERGENCIA_ENTRADA = [
   { campo: 'valor_unitario', label: 'Valor unitário' },
@@ -24,6 +36,8 @@ export type DocGestaoEntrada = {
 
 export type DecisaoGestaoEntrada = {
   idDocumentoEstoque: number;
+  idItemDocumentoEstoque?: number;
+  idItemPedidoCompra?: number;
   campo: string;
   decisao: string;
   justificativaCodigo: string;
@@ -43,6 +57,7 @@ export type GestaoEntradasSerieDia = {
 export type GestaoEntradasPainel = {
   dataInicio: string;
   dataFim: string;
+  escopo: EscopoDivergenciaGestaoEntrada;
   kpis: {
     qtdeNotas: number;
     qtdeItens: number;
@@ -58,7 +73,14 @@ export type GestaoEntradasPainel = {
     mediaNotasPorDia: number | null;
   };
   serieDiaria: GestaoEntradasSerieDia[];
-  porCampo: Array<{ campo: string; label: string; qtde: number; aceitas: number; recusas: number }>;
+  porCampo: Array<{
+    campo: string;
+    label: string;
+    qtde: number;
+    aceitas: number;
+    recusas: number;
+    documentos: number;
+  }>;
   porJustificativa: Array<{ codigo: string; label: string; qtde: number }>;
   porTipo: Array<{
     idTipoMovimentacao: number;
@@ -94,6 +116,7 @@ function labelCampo(campo: string): string {
 export function montarPainelGestaoEntradas(params: {
   dataInicio: string;
   dataFim: string;
+  escopo?: EscopoDivergenciaGestaoEntrada;
   docs: DocGestaoEntrada[];
   idsConferidos: ReadonlySet<number>;
   /** Documentos em que a NF ainda diverge do pedido de compra. */
@@ -112,9 +135,9 @@ export function montarPainelGestaoEntradas(params: {
     number,
     { nomeTipo: string; notas: number; itens: number; divergencias: number }
   >();
-  const campoMap = new Map<string, { aceitas: number; recusas: number }>();
+  const campoMap = new Map<string, { aceitas: number; recusas: number; documentos: Set<number> }>();
   for (const c of CAMPOS_DIVERGENCIA_ENTRADA) {
-    campoMap.set(c.campo, { aceitas: 0, recusas: 0 });
+    campoMap.set(c.campo, { aceitas: 0, recusas: 0, documentos: new Set() });
   }
   const justMap = new Map<string, { label: string; qtde: number }>();
 
@@ -171,7 +194,8 @@ export function montarPainelGestaoEntradas(params: {
     if (!conferida) continue;
     for (const dec of decisoesDoc) {
       if (dec.decisao !== 'aceita' && dec.decisao !== 'recusa') continue;
-      const campo = campoMap.get(dec.campo) ?? { aceitas: 0, recusas: 0 };
+      const campo = campoMap.get(dec.campo) ?? { aceitas: 0, recusas: 0, documentos: new Set<number>() };
+      campo.documentos.add(doc.idDocumento);
       if (dec.decisao === 'aceita') {
         campo.aceitas += 1;
         qtdeDecisoesAceitas += 1;
@@ -202,6 +226,7 @@ export function montarPainelGestaoEntradas(params: {
       qtde: v.aceitas + v.recusas,
       aceitas: v.aceitas,
       recusas: v.recusas,
+      documentos: v.documentos.size,
     }))
     .sort((a, b) => b.qtde - a.qtde || a.label.localeCompare(b.label, 'pt-BR'));
 
@@ -224,6 +249,7 @@ export function montarPainelGestaoEntradas(params: {
   return {
     dataInicio: params.dataInicio,
     dataFim: params.dataFim,
+    escopo: params.escopo ?? 'reais',
     kpis: {
       qtdeNotas,
       qtdeItens,
@@ -263,6 +289,7 @@ export type DivergenciaAtualEntrada = {
   nomePedidoCompra: string | null;
   campo: string;
   campoLabel: string;
+  natureza: NaturezaDivergencia;
   /** Valor exibido na NF, no mesmo formato do Double Check. */
   valorNf: string;
   /** Valor exibido no pedido de compra. */
@@ -270,6 +297,7 @@ export type DivergenciaAtualEntrada = {
   detalheNf: string | null;
   detalhePc: string | null;
   decisao: 'aceita' | 'recusa' | null;
+  justificativaCodigo: string | null;
   justificativaLabel: string | null;
   observacoes: ObsDivergenciaEntrada[];
 };
@@ -298,6 +326,10 @@ export type LinhaComparativoDia = {
   regraPagamentoPC?: string | null;
   prazosLabelNF?: string | null;
   prazosLabelPC?: string | null;
+  parcelasNF?: Array<{ dias: number | null }>;
+  parcelasPC?: Array<{ dias: number | null }>;
+  prazosDiasNF?: number[];
+  prazosDiasPC?: number[];
   divergValorUnitario: boolean;
   divergQtde: boolean;
   divergIpi: boolean;
@@ -310,6 +342,7 @@ export type DecisaoDiaGestaoEntrada = {
   campo: string;
   decisao: string;
   justificativaLabel: string;
+  justificativaCodigo?: string;
   observacao: string | null;
   usuarioLogin: string;
   atualizadoEm: string;
@@ -436,15 +469,97 @@ export function montarDivergenciasAtuais(params: {
         nomePedidoCompra: linha.nomePedidoCompra ?? null,
         campo: spec.campo,
         campoLabel: labelCampo(spec.campo),
+        natureza: classificarNaturezaDivergencia({
+          linha,
+          campo: spec.campo,
+          justificativaCodigo: dec?.justificativaCodigo,
+        }),
         valorNf: comparacao.nf,
         valorPc: comparacao.pc,
         detalheNf: comparacao.detalheNf,
         detalhePc: comparacao.detalhePc,
         decisao,
+        justificativaCodigo: dec?.justificativaCodigo ?? null,
         justificativaLabel: dec?.justificativaLabel ?? null,
         observacoes: dec ? observacoesDaDecisao(dec) : [],
       });
     }
   }
   return out;
+}
+
+export type DocumentoNoEscopo = {
+  divergencias: DivergenciaAtualEntrada[];
+  temDivergencia: boolean;
+  pendentes: number;
+  /** Item × pedido × campo que ainda diverge dentro do escopo. */
+  chaves: Set<string>;
+};
+
+type LinhaComPedido = LinhaComparativoDia & { idPedidoCompra?: number | null };
+
+function linhaDentroDoEscopo(
+  linha: LinhaComPedido,
+  decisoesPorCampo: Map<string, DecisaoDiaGestaoEntrada>,
+  escopo: EscopoDivergenciaGestaoEntrada
+): LinhaComPedido {
+  if (escopo === 'geral') return linha;
+  const proxima: LinhaComPedido = { ...linha };
+  for (const spec of FLAGS_CAMPO_ATUAL) {
+    if (!linha[spec.flag]) continue;
+    const dec = decisoesPorCampo.get(
+      chaveCampo(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, spec.campo)
+    );
+    const natureza = classificarNaturezaDivergencia({
+      linha,
+      campo: spec.campo,
+      justificativaCodigo: dec?.justificativaCodigo,
+    });
+    if (natureza !== 'real') proxima[spec.flag] = false;
+  }
+  return proxima;
+}
+
+/**
+ * Visão real descarta divergência benigna antes de status, ranking e pendência.
+ * Visão geral mantém valor, quantidade, IPI e pagamento.
+ */
+export function prepararDocumentoNoEscopo(params: {
+  linhas: LinhaComPedido[];
+  decisoes: DecisaoDiaGestaoEntrada[];
+  escopo: EscopoDivergenciaGestaoEntrada;
+}): DocumentoNoEscopo {
+  const decisoesPorCampo = new Map<string, DecisaoDiaGestaoEntrada>();
+  for (const d of params.decisoes) {
+    decisoesPorCampo.set(chaveCampo(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo), d);
+  }
+  const linhas = params.linhas.map((linha) =>
+    linhaDentroDoEscopo(linha, decisoesPorCampo, params.escopo)
+  );
+  const divergencias = montarDivergenciasAtuais({ linhas, decisoes: params.decisoes });
+  const chaves = new Set<string>();
+  for (const linha of linhas) {
+    for (const spec of FLAGS_CAMPO_ATUAL) {
+      if (!linha[spec.flag]) continue;
+      chaves.add(chaveCampo(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, spec.campo));
+    }
+  }
+  const pendentes = contarPendentesComparativoLogica(
+    linhas.map((linha) => ({
+      idItemDocumentoEstoque: linha.idItemDocumentoEstoque,
+      idItemPedidoCompra: linha.idItemPedidoCompra,
+      idPedidoCompra: linha.idPedidoCompra ?? null,
+      divergValorUnitario: linha.divergValorUnitario,
+      divergQtde: linha.divergQtde,
+      divergIpi: linha.divergIpi,
+      divergCondicaoPagamento: linha.divergCondicaoPagamento,
+    })),
+    params.decisoes
+  );
+  return {
+    divergencias,
+    temDivergencia: divergencias.length > 0,
+    pendentes,
+    chaves,
+  };
 }

@@ -8,11 +8,12 @@ import { prisma } from '../config/prisma.js';
 import {
   analisarOutliersDocumento,
   queryDoubleCheckInComparativoPc,
+  queryDoubleCheckInDataEntrada,
   queryDoubleCheckInDashboard,
   queryDoubleCheckInItens,
   queryDoubleCheckInNotas,
   queryDoubleCheckInStatus,
-  listarIdsComDivergenciaAtual,
+  queryLinhasComparativoPorDocumentos,
   type DoubleCheckInComparativoLinha,
   type DoubleCheckInNota,
 } from '../data/doubleCheckInRepository.js';
@@ -20,6 +21,7 @@ import {
   DOUBLE_CHECKIN_CAMPOS,
   DOUBLE_CHECKIN_NF_PC_WA_CODE,
   DOUBLE_CHECKIN_WA_CODE,
+  atualizarClassificacaoHistoricaConferencia,
   ensureDoubleCheckInJustificativaOpcoes,
   ensureDoubleCheckInNfPcWhatsappTipo,
   getDocumentoConferido,
@@ -31,9 +33,13 @@ import {
   listarDocumentosJaAlertados,
   listarIdsComAtencaoDetectada,
   listarJustificativaOpcoes,
+  criarJustificativaOpcao,
+  atualizarJustificativaOpcao,
+  excluirJustificativaOpcao,
   listarTodosDocumentosConferidos,
   marcarAlertaEnviado,
   marcarDocumentoConferido,
+  reabrirDocumentoConferencia,
   salvarConferenciaPagina,
   setDoubleCheckInDestinatarios,
   setDoubleCheckInLimiarPct,
@@ -46,9 +52,18 @@ import { resolveAppBaseUrl } from '../config/appBaseUrl.js';
 import {
   montarMensagemConferenciaWhatsApp,
   montarRelatoConferencia,
+  temDivergenciaReal,
 } from '../services/doubleCheckInConferenciaRelato.js';
+import {
+  classificarNaturezaDivergencia,
+  type NaturezaDivergencia,
+} from '../services/doubleCheckInNatureza.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
 import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
+import {
+  regimeConferenciaPorDataEntrada,
+  type RegimeConferenciaDoubleCheck,
+} from '../services/doubleCheckInConferenciaPeriodo.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -70,7 +85,10 @@ function validarDecisoesCompletas(
   linhas: DoubleCheckInComparativoLinha[],
   decisoes: DoubleCheckInComparativoDecisaoRow[]
 ): { ok: true } | { ok: false; pendentes: number; error: string } {
-  const pendentes = contarPendentesComparativoLogica(linhas, decisoes);
+  const pendentes = contarPendentesComparativoLogica(
+    linhas,
+    decisoes.filter((decisao) => decisao.vigente !== false)
+  );
   if (pendentes > 0) {
     return {
       ok: false,
@@ -81,31 +99,160 @@ function validarDecisoesCompletas(
   return { ok: true };
 }
 
+type DecisaoParaNatureza = Pick<
+  DoubleCheckInComparativoDecisaoRow,
+  'idItemDocumentoEstoque' | 'idItemPedidoCompra' | 'campo' | 'justificativaCodigo'
+> & Pick<Partial<DoubleCheckInComparativoDecisaoRow>, 'vigente'
+>;
+
+function linhasComNatureza(
+  linhas: DoubleCheckInComparativoLinha[],
+  decisoes: DecisaoParaNatureza[]
+): Array<DoubleCheckInComparativoLinha & {
+  naturezaDivergencias: Partial<Record<DoubleCheckInCampoComparativo, NaturezaDivergencia>>;
+}> {
+  const decisoesMap = new Map(
+    decisoes.map((d) => [
+      `${d.idItemDocumentoEstoque}:${d.idItemPedidoCompra}:${d.campo}`,
+      d,
+    ])
+  );
+  return linhas.map((linha) => {
+    const naturezaDivergencias: Partial<
+      Record<DoubleCheckInCampoComparativo, NaturezaDivergencia>
+    > = {};
+    for (const campo of DOUBLE_CHECKIN_CAMPOS) {
+      const flag =
+        campo === 'valor_unitario'
+          ? linha.divergValorUnitario
+          : campo === 'qtde'
+            ? linha.divergQtde
+            : campo === 'ipi'
+              ? linha.divergIpi
+              : linha.divergCondicaoPagamento;
+      if (!flag) continue;
+      const decisao = decisoesMap.get(
+        `${linha.idItemDocumentoEstoque}:${linha.idItemPedidoCompra}:${campo}`
+      );
+      naturezaDivergencias[campo] = classificarNaturezaDivergencia({
+        linha,
+        campo,
+        justificativaCodigo: decisao?.vigente === false ? null : decisao?.justificativaCodigo,
+      });
+    }
+    return { ...linha, naturezaDivergencias };
+  });
+}
+
+type ResumoDivergenciasAtuais = {
+  temQualquer: boolean;
+  temReal: boolean;
+  temBenigna: boolean;
+  pendencias: number;
+};
+
+async function carregarResumosDivergenciasAtuais(
+  ids: number[]
+): Promise<Map<number, ResumoDivergenciasAtuais>> {
+  const resumos = new Map<number, ResumoDivergenciasAtuais>();
+  if (ids.length === 0) return resumos;
+
+  const [linhasResp, decisoesRaw] = await Promise.all([
+    queryLinhasComparativoPorDocumentos(ids),
+    prisma.doubleCheckInComparativoDecisao.findMany({
+      where: { idDocumentoEstoque: { in: ids } },
+      select: {
+        idDocumentoEstoque: true,
+        idItemDocumentoEstoque: true,
+        idItemPedidoCompra: true,
+        campo: true,
+        justificativaOpcao: { select: { codigo: true } },
+      },
+    }),
+  ]);
+  if (linhasResp.erro) throw new Error(linhasResp.erro);
+
+  const decisoesPorDocumento = new Map<number, DecisaoParaNatureza[]>();
+  for (const decisao of decisoesRaw) {
+    const lista = decisoesPorDocumento.get(decisao.idDocumentoEstoque) ?? [];
+    lista.push({
+      idItemDocumentoEstoque: decisao.idItemDocumentoEstoque,
+      idItemPedidoCompra: decisao.idItemPedidoCompra,
+      campo: decisao.campo as DoubleCheckInCampoComparativo,
+      justificativaCodigo: decisao.justificativaOpcao.codigo,
+    });
+    decisoesPorDocumento.set(decisao.idDocumentoEstoque, lista);
+  }
+
+  for (const id of ids) {
+    const linhas = linhasResp.linhasPorDocumento.get(id) ?? [];
+    const naturezas = linhasComNatureza(linhas, decisoesPorDocumento.get(id) ?? [])
+      .flatMap((linha) => Object.values(linha.naturezaDivergencias));
+    resumos.set(id, {
+      temQualquer: linhas.some((linha) => linha.temDivergencia),
+      temReal: naturezas.includes('real'),
+      temBenigna: naturezas.includes('benigna'),
+      pendencias: contarPendentesComparativoLogica(
+        linhas,
+        decisoesPorDocumento.get(id) ?? []
+      ),
+    });
+  }
+  return resumos;
+}
+
 export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
+  regimeConferencia: RegimeConferenciaDoubleCheck;
   conferido: boolean;
   conferidoEm: string | null;
   conferidoPor: string | null;
+  /** Tinha conferência, mas uma divergência atual ainda não possui decisão. */
+  conferenciaReaberta: boolean;
   /** Conferido e a NF ainda diverge do pedido de compra. */
   conferidoComDivergencia: boolean;
+  temDivergenciaRealAtual: boolean;
+  temDivergenciaBenignaAtual: boolean;
+  temDivergenciaRealHistorica: boolean;
+  totalDivergenciasReaisHistorica: number;
 };
 
 async function enriquecerNotasComConferencia(
   notas: DoubleCheckInNota[]
 ): Promise<DoubleCheckInNotaComConferencia[]> {
   const ids = notas.map((n) => n.idDocumento);
-  const [map, comDivergenciaAtual] = await Promise.all([
+  const idsConferenciaCompleta = notas
+    .filter((n) => regimeConferenciaPorDataEntrada(n.dataEntrada) === 'completa')
+    .map((n) => n.idDocumento);
+  const [map, resumosAtuais] = await Promise.all([
     listarDocumentosConferidos(ids),
-    listarIdsComDivergenciaAtual(ids),
+    carregarResumosDivergenciasAtuais(idsConferenciaCompleta),
   ]);
   return notas.map((n) => {
+    const regimeConferencia = regimeConferenciaPorDataEntrada(n.dataEntrada);
     const c = map.get(n.idDocumento);
-    const conferido = Boolean(c);
+    const atual = resumosAtuais.get(n.idDocumento);
+    const conferenciaReaberta =
+      regimeConferencia !== 'nao_aplicada' &&
+      Boolean(c) &&
+      regimeConferencia === 'completa' &&
+      Number(atual?.pendencias ?? 0) > 0;
+    const conferido =
+      regimeConferencia !== 'nao_aplicada' && Boolean(c) && !conferenciaReaberta;
     return {
       ...n,
+      regimeConferencia,
       conferido,
       conferidoEm: c?.conferidoEm ?? null,
       conferidoPor: c?.usuarioLogin ?? null,
-      conferidoComDivergencia: conferido && comDivergenciaAtual.has(n.idDocumento),
+      conferenciaReaberta,
+      conferidoComDivergencia:
+        regimeConferencia === 'completa' && conferido && Boolean(atual?.temQualquer),
+      temDivergenciaRealAtual:
+        regimeConferencia === 'completa' && Boolean(atual?.temReal),
+      temDivergenciaBenignaAtual:
+        regimeConferencia === 'completa' && Boolean(atual?.temBenigna),
+      temDivergenciaRealHistorica: Boolean(c?.temDivergenciaRealHistorica),
+      totalDivergenciasReaisHistorica: c?.totalDivergenciasReaisHistorica ?? 0,
     };
   });
 }
@@ -175,7 +322,7 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
     }
     const validacao = validarDecisoesCompletas(linhas, decisoes);
     res.json({
-      linhas,
+      linhas: linhasComNatureza(linhas, decisoes),
       decisoes,
       justificativas,
       pendentes: validacao.ok ? 0 : validacao.pendentes,
@@ -233,6 +380,19 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
   }
 
   try {
+    const dataDocumento = await queryDoubleCheckInDataEntrada(idDocumento);
+    if (dataDocumento.erro) {
+      res.status(503).json({ error: dataDocumento.erro });
+      return;
+    }
+    if (regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada) !== 'completa') {
+      res.status(400).json({
+        error:
+          'Para entradas anteriores a 21/09/2026, o comparativo NF × PC é somente leitura.',
+      });
+      return;
+    }
+
     const usuario = await prisma.usuario.findUnique({
       where: { login },
       select: { id: true, login: true },
@@ -242,9 +402,23 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
       return;
     }
     const ja = await getDocumentoConferido(idDocumento);
+    let decisoesAntes: DoubleCheckInComparativoDecisaoRow[] = [];
     if (ja) {
-      res.status(400).json({ error: 'NF já conferida — decisões não podem ser alteradas.' });
-      return;
+      decisoesAntes = await listarDecisoesComparativo(idDocumento);
+      const decisaoExistente = decisoesAntes.find(
+        (item) =>
+          item.vigente !== false &&
+          item.idItemDocumentoEstoque === idItemDocumentoEstoque &&
+          item.idItemPedidoCompra === idItemPedidoCompra &&
+          item.campo === campo
+      );
+      if (decisaoExistente) {
+        res.status(400).json({
+          error:
+            'Esta divergência já possui decisão. Reabra a conferência para alterá-la.',
+        });
+        return;
+      }
     }
 
     const baseParams = {
@@ -285,6 +459,16 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
       if (irmaos.length > 0) {
         decisoesReplicadas = [];
         for (const irmao of irmaos) {
+          const irmaoJaDecidido =
+            Boolean(ja) &&
+            decisoesAntes.some(
+              (item) =>
+                item.vigente !== false &&
+                item.idItemDocumentoEstoque === irmao.idItemDocumentoEstoque &&
+                item.idItemPedidoCompra === irmao.idItemPedidoCompra &&
+                item.campo === campo
+            );
+          if (irmaoJaDecidido) continue;
           const d = await upsertDecisaoComparativo({
             ...baseParams,
             idItemDocumentoEstoque: irmao.idItemDocumentoEstoque,
@@ -385,6 +569,71 @@ export async function getDoubleCheckInJustificativas(_req: Request, res: Respons
   }
 }
 
+/** GET /api/compras/double-checkin/justificativas/gestao — inclui inativos. */
+export async function getDoubleCheckInJustificativasGestao(_req: Request, res: Response): Promise<void> {
+  try {
+    const justificativas = await listarJustificativaOpcoes(false);
+    res.json({ justificativas });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(503).json({ error: msg });
+  }
+}
+
+/** POST /api/compras/double-checkin/justificativas */
+export async function postDoubleCheckInJustificativa(req: Request, res: Response): Promise<void> {
+  try {
+    const justificativa = await criarJustificativaOpcao({
+      label: String(req.body?.label ?? ''),
+      campos: req.body?.campos,
+      ativo: req.body?.ativo !== false,
+    });
+    res.status(201).json({ justificativa });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const status = msg === 'Motivo não encontrado.' ? 404 : 400;
+    res.status(status).json({ error: msg });
+  }
+}
+
+/** PUT /api/compras/double-checkin/justificativas/:id */
+export async function putDoubleCheckInJustificativa(req: Request, res: Response): Promise<void> {
+  const id = Math.trunc(Number(req.params.id));
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: 'Motivo inválido.' });
+    return;
+  }
+  try {
+    const justificativa = await atualizarJustificativaOpcao({
+      id,
+      label: String(req.body?.label ?? ''),
+      campos: req.body?.campos,
+      ativo: req.body?.ativo !== false,
+    });
+    res.json({ justificativa });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(msg === 'Motivo não encontrado.' ? 404 : 400).json({ error: msg });
+  }
+}
+
+/** DELETE /api/compras/double-checkin/justificativas/:id */
+export async function deleteDoubleCheckInJustificativa(req: Request, res: Response): Promise<void> {
+  const id = Math.trunc(Number(req.params.id));
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: 'Motivo inválido.' });
+    return;
+  }
+  try {
+    await excluirJustificativaOpcao(id);
+    res.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const status = msg === 'Motivo não encontrado.' ? 404 : msg.includes('já foi usado') ? 409 : 400;
+    res.status(status).json({ error: msg });
+  }
+}
+
 /**
  * POST /api/compras/double-checkin/status  body: { ids: number[] }
  * Status fora-limiar para IDs da página (mesma regra do modal).
@@ -449,7 +698,7 @@ export async function getDoubleCheckInDashboard(req: Request, res: Response): Pr
 
 /**
  * POST /api/compras/double-checkin/conferir
- * body: { idDocumento, senha, numeroNfe?, numeroDocumentoFiscal?, nomeParceiro? }
+ * body: { idDocumento, senha, numeroNfe?, numeroDocumentoFiscal?, nomeParceiro?, reconferencia? }
  * Bloqueia se houver divergência NF×PC sem decisão. Envia WhatsApp só das divergências.
  */
 export async function postDoubleCheckInConferir(req: Request, res: Response): Promise<void> {
@@ -484,17 +733,51 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       return;
     }
 
+    const dataDocumento = await queryDoubleCheckInDataEntrada(idDocumento);
+    if (dataDocumento.erro) {
+      res.status(503).json({ error: dataDocumento.erro });
+      return;
+    }
+    const regimeConferencia = regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada);
+    if (regimeConferencia === 'nao_aplicada') {
+      res.status(400).json({
+        error: 'A conferência não se aplica a entradas até 18/09/2026.',
+      });
+      return;
+    }
+
     const ja = await getDocumentoConferido(idDocumento);
-    if (ja) {
-      const idsDivergentes = await listarIdsComDivergenciaAtual([idDocumento]);
-      res.json({
+    const reconferenciaSolicitada = Boolean(req.body?.reconferencia);
+    if (regimeConferencia === 'simples') {
+      const simples =
+        ja && !reconferenciaSolicitada
+          ? ja
+          : await marcarDocumentoConferido({
+              idDocumentoEstoque: idDocumento,
+              usuarioId: usuario.id,
+              usuarioLogin: usuario.login,
+              renovar: Boolean(ja && reconferenciaSolicitada),
+            });
+      await atualizarClassificacaoHistoricaConferencia({
+        idDocumentoEstoque: idDocumento,
+        totalReais: 0,
+        totalBenignas: 0,
+        fonte: 'conferencia_simples',
+      });
+      res.status(ja && !reconferenciaSolicitada ? 200 : 201).json({
         ok: true,
-        jaConferido: true,
+        jaConferido: Boolean(ja && !reconferenciaSolicitada),
+        reconferido: Boolean(ja && reconferenciaSolicitada),
         conferido: true,
-        conferidoEm: ja.conferidoEm,
-        conferidoPor: ja.usuarioLogin,
-        conferidoComDivergencia: idsDivergentes.has(idDocumento),
+        conferidoEm: simples.conferidoEm,
+        conferidoPor: simples.usuarioLogin,
+        conferidoComDivergencia: false,
+        temDivergenciaRealAtual: false,
+        temDivergenciaBenignaAtual: false,
+        temDivergenciaRealHistorica: false,
+        totalDivergenciasReaisHistorica: 0,
         idDocumento,
+        alertaNfPcEnviado: false,
       });
       return;
     }
@@ -511,32 +794,60 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       return;
     }
 
+    if (ja && !reconferenciaSolicitada) {
+      const resumoAtual = (await carregarResumosDivergenciasAtuais([idDocumento])).get(
+        idDocumento
+      );
+      res.json({
+        ok: true,
+        jaConferido: true,
+        conferido: true,
+        conferidoEm: ja.conferidoEm,
+        conferidoPor: ja.usuarioLogin,
+        conferidoComDivergencia: Boolean(resumoAtual?.temQualquer),
+        temDivergenciaRealAtual: Boolean(resumoAtual?.temReal),
+        temDivergenciaBenignaAtual: Boolean(resumoAtual?.temBenigna),
+        temDivergenciaRealHistorica: ja.temDivergenciaRealHistorica,
+        totalDivergenciasReaisHistorica: ja.totalDivergenciasReaisHistorica,
+        idDocumento,
+      });
+      return;
+    }
+
     const created = await marcarDocumentoConferido({
       idDocumentoEstoque: idDocumento,
       usuarioId: usuario.id,
       usuarioLogin: usuario.login,
+      renovar: Boolean(ja && reconferenciaSolicitada),
     });
 
     const conferidoComDivergencia = linhas.some((l) => l.temDivergencia);
+    const relato = montarRelatoConferencia({
+      meta: {
+        numeroNfe: typeof req.body?.numeroNfe === 'string' ? req.body.numeroNfe : null,
+        numeroDocumentoFiscal:
+          typeof req.body?.numeroDocumentoFiscal === 'string'
+            ? req.body.numeroDocumentoFiscal
+            : null,
+        nomeParceiro: typeof req.body?.nomeParceiro === 'string' ? req.body.nomeParceiro : null,
+      },
+      conferidoPor: created.usuarioLogin,
+      conferidoEm: created.conferidoEm,
+      linhas,
+      decisoes,
+    });
+    const totalReaisHistorica = relato?.totalDivergenciasReais ?? 0;
+    const totalBenignasHistorica = relato?.totalDivergenciasBenignas ?? 0;
     let alertaNfPcEnviado = false;
     try {
-      await ensureDoubleCheckInNfPcWhatsappTipo();
-      const relato = montarRelatoConferencia({
-        meta: {
-          numeroNfe: typeof req.body?.numeroNfe === 'string' ? req.body.numeroNfe : null,
-          numeroDocumentoFiscal:
-            typeof req.body?.numeroDocumentoFiscal === 'string'
-              ? req.body.numeroDocumentoFiscal
-              : null,
-          nomeParceiro: typeof req.body?.nomeParceiro === 'string' ? req.body.nomeParceiro : null,
-        },
-        conferidoPor: created.usuarioLogin,
-        conferidoEm: created.conferidoEm,
-        linhas,
-        decisoes,
+      await atualizarClassificacaoHistoricaConferencia({
+        idDocumentoEstoque: idDocumento,
+        totalReais: totalReaisHistorica,
+        totalBenignas: totalBenignasHistorica,
+        fonte: relato ? 'snapshot' : 'sem_decisoes',
       });
+      let url: string | null = null;
       if (relato) {
-        let url: string | null = null;
         try {
           const token = await salvarConferenciaPagina(idDocumento, JSON.stringify(relato));
           url = `${resolveAppBaseUrl()}/c/${token}`;
@@ -544,11 +855,14 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
           const msgPagina = errPagina instanceof Error ? errPagina.message : String(errPagina);
           console.error('[postDoubleCheckInConferir] página da conferência', msgPagina);
         }
-        await enviarNotificacaoPorTipo(
-          DOUBLE_CHECKIN_NF_PC_WA_CODE,
-          montarMensagemConferenciaWhatsApp(relato, url)
-        );
-        alertaNfPcEnviado = true;
+      }
+      if (relato && temDivergenciaReal(relato)) {
+        await ensureDoubleCheckInNfPcWhatsappTipo();
+        const mensagem = montarMensagemConferenciaWhatsApp(relato, url);
+        if (mensagem) {
+          await enviarNotificacaoPorTipo(DOUBLE_CHECKIN_NF_PC_WA_CODE, mensagem);
+          alertaNfPcEnviado = true;
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -558,10 +872,15 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
     res.status(201).json({
       ok: true,
       jaConferido: false,
+      reconferido: Boolean(ja && reconferenciaSolicitada),
       conferido: true,
       conferidoEm: created.conferidoEm,
       conferidoPor: created.usuarioLogin,
       conferidoComDivergencia,
+      temDivergenciaRealAtual: totalReaisHistorica > 0,
+      temDivergenciaBenignaAtual: totalBenignasHistorica > 0,
+      temDivergenciaRealHistorica: totalReaisHistorica > 0,
+      totalDivergenciasReaisHistorica: totalReaisHistorica,
       idDocumento,
       alertaNfPcEnviado,
     });
@@ -569,6 +888,39 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[postDoubleCheckInConferir]', msg);
     res.status(503).json({ error: msg });
+  }
+}
+
+/** POST /api/compras/double-checkin/reabrir */
+export async function postDoubleCheckInReabrir(req: Request, res: Response): Promise<void> {
+  const idDocumento = Math.trunc(Number(req.body?.idDocumento));
+  const login = req.user?.login;
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  if (!login) {
+    res.status(401).json({ error: 'Não autorizado.' });
+    return;
+  }
+  const usuario = await prisma.usuario.findUnique({
+    where: { login },
+    select: { id: true, login: true },
+  });
+  if (!usuario) {
+    res.status(401).json({ error: 'Usuário não encontrado.' });
+    return;
+  }
+  try {
+    const reabertura = await reabrirDocumentoConferencia({
+      idDocumentoEstoque: idDocumento,
+      usuarioId: usuario.id,
+      usuarioLogin: usuario.login,
+    });
+    res.json({ ok: true, idDocumento, ...reabertura });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : String(err);
+    res.status(409).json({ error: mensagem });
   }
 }
 

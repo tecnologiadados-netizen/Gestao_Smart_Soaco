@@ -20,7 +20,11 @@ import {
   type GestaoEntradasPainel,
 } from '../../api/gestaoEntradas';
 import GestaoEntradasAjudaModal from './GestaoEntradasAjudaModal';
-import GestaoEntradasDiaModal from './GestaoEntradasDiaModal';
+import GestaoEntradasCardModal, { type RecorteGestaoEntrada } from './GestaoEntradasCardModal';
+import GestaoEntradasDiaModal, {
+  GestaoEntradasRankingModal,
+  type FiltroRankingGestao,
+} from './GestaoEntradasDiaModal';
 
 const panelSurface =
   'rounded-2xl border border-slate-200/80 bg-white/90 shadow-[0_10px_30px_rgba(15,23,42,0.05)] backdrop-blur-sm dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(22,26,40,0.96),rgba(12,14,22,0.96))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_16px_40px_rgba(0,0,0,0.28)]';
@@ -60,6 +64,7 @@ const btnSecondary =
   'inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50';
 
 type Granularidade = 'dia' | 'mes';
+type EscopoDivergencia = 'reais' | 'geral';
 type ContextoMovimentacao = 'volume' | 'divergencias';
 type SeriePonto = {
   key: string;
@@ -96,25 +101,38 @@ function KpiCard({
   titulo,
   valor,
   detalhe,
-  variacao,
-  invert,
-  sufixo = '%',
   icone,
   extra,
+  onClick,
 }: {
   tone: Tone;
   titulo: string;
   valor: string;
   detalhe?: string;
-  variacao?: number | null;
-  invert?: boolean;
-  sufixo?: string;
   icone: ReactNode;
   extra?: ReactNode;
+  onClick?: () => void;
 }) {
   const tom = TONE[tone];
   return (
-    <article className={`relative overflow-hidden rounded-2xl border p-4 ${tom.card}`}>
+    <article
+      className={`relative overflow-hidden rounded-2xl border p-4 text-left ${tom.card} ${
+        onClick ? 'cursor-pointer transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400' : ''
+      }`}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
@@ -130,43 +148,12 @@ function KpiCard({
       </div>
       <div className="mt-3 flex items-end justify-between gap-3">
         <div className="min-w-0">
-          {variacao != null ? <VariacaoLinha valor={variacao} invert={invert} sufixo={sufixo} /> : null}
           {detalhe ? <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{detalhe}</p> : null}
+          {onClick ? <p className="mt-1 text-[11px] text-slate-400">Clique para ver os documentos</p> : null}
         </div>
         {extra}
       </div>
     </article>
-  );
-}
-
-function VariacaoLinha({
-  valor,
-  invert,
-  sufixo,
-}: {
-  valor?: number | null;
-  invert?: boolean;
-  sufixo: string;
-}) {
-  if (valor == null || !Number.isFinite(valor)) {
-    return <p className="text-xs text-slate-400">Sem comparação de metades</p>;
-  }
-  const melhor = invert ? valor < 0 : valor > 0;
-  const pior = invert ? valor > 0 : valor < 0;
-  const cor = melhor
-    ? 'text-emerald-600 dark:text-emerald-400'
-    : pior
-      ? 'text-rose-600 dark:text-rose-400'
-      : 'text-slate-500';
-  const seta = valor > 0 ? '▲' : valor < 0 ? '▼' : '●';
-  const sinal = valor > 0 ? '+' : '';
-  return (
-    <p className={`text-xs font-medium ${cor}`}>
-      {seta} {sinal}
-      {fmtNum(valor, 1)}
-      {sufixo}
-      <span className="ml-1.5 font-normal text-slate-400">2ª metade vs 1ª</span>
-    </p>
   );
 }
 
@@ -193,11 +180,13 @@ function corAnelPorPercentual(percent: number): string {
 function GraficoSemDivergencia({
   percent,
   detalhe,
-  variacao,
+  legenda,
+  onFatia,
 }: {
   percent: number | null;
   detalhe: string;
-  variacao?: number | null;
+  legenda: string;
+  onFatia?: (fatia: 'sem' | 'com') => void;
 }) {
   const p = percent != null ? Math.min(100, Math.max(0, percent)) : 0;
   const cor = percent != null ? corAnelPorPercentual(p) : '#64748b';
@@ -216,9 +205,7 @@ function GraficoSemDivergencia({
   return (
     <div className={`flex h-full flex-col p-4 ${panelSurface}`}>
       <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Sem divergência</h2>
-      <p className="mt-0.5 text-xs text-slate-500">
-        Entre as entradas conferidas. Quanto mais alto, melhor.
-      </p>
+      <p className="mt-0.5 text-xs text-slate-500">{legenda}</p>
       <div className="relative mx-auto mt-2 h-72 w-full max-w-md">
         <ResponsiveContainer>
           <PieChart>
@@ -236,6 +223,12 @@ function GraficoSemDivergencia({
               paddingAngle={dados.length > 1 ? 3 : 0}
               stroke="transparent"
               isAnimationActive={false}
+              cursor={onFatia ? 'pointer' : undefined}
+              onClick={(_, index) => {
+                const fatia = dados[index];
+                if (!onFatia || !fatia || (fatia.name !== 'sem' && fatia.name !== 'com')) return;
+                onFatia(fatia.name);
+              }}
             >
               {dados.map((fatia) => (
                 <Cell
@@ -259,11 +252,6 @@ function GraficoSemDivergencia({
         </div>
       </div>
       <div className="mt-2 text-center">
-        {variacao != null ? (
-          <div className="flex justify-center">
-            <VariacaoLinha valor={variacao} sufixo=" p.p." />
-          </div>
-        ) : null}
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{detalhe}</p>
       </div>
     </div>
@@ -274,10 +262,12 @@ function BarrasRanking({
   itens,
   vazio,
   gradiente,
+  onItem,
 }: {
   itens: Array<{ key: string; label: string; detalhe: string; valor: number }>;
   vazio: string;
   gradiente: string;
+  onItem?: (item: { key: string; label: string }) => void;
 }) {
   if (itens.length === 0) {
     return <p className="py-8 text-center text-sm text-slate-400">{vazio}</p>;
@@ -289,21 +279,24 @@ function BarrasRanking({
         const pct = Math.max(4, Math.min(100, (item.valor / max) * 100));
         return (
           <li key={item.key}>
-            <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="w-4 shrink-0 tabular-nums text-[11px] font-semibold text-slate-400">
-                  {index + 1}
+            <button
+              type="button"
+              className="w-full rounded-lg text-left transition hover:bg-slate-100/80 dark:hover:bg-white/[0.04]"
+              onClick={() => onItem?.({ key: item.key, label: item.label })}
+            >
+              <span className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="w-4 shrink-0 tabular-nums text-[11px] font-semibold text-slate-400">
+                    {index + 1}
+                  </span>
+                  <span className="truncate font-medium text-slate-700 dark:text-slate-100">{item.label}</span>
                 </span>
-                <span className="truncate font-medium text-slate-700 dark:text-slate-100">{item.label}</span>
+                <span className="shrink-0 tabular-nums text-slate-500">{item.detalhe}</span>
               </span>
-              <span className="shrink-0 tabular-nums text-slate-500">{item.detalhe}</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/[0.06]">
-              <div
-                className={`h-full rounded-full ${gradiente}`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
+              <span className="block h-2 overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/[0.06]">
+                <span className={`block h-full rounded-full ${gradiente}`} style={{ width: `${pct}%` }} />
+              </span>
+            </button>
           </li>
         );
       })}
@@ -326,79 +319,6 @@ function agregarSeriePorMes(serie: GestaoEntradasPainel['serieDiaria']): SeriePo
       const [y, m] = key.split('-');
       return { key, label: `${m}/${y}`, notas: v.notas, aceitas: v.aceitas };
     });
-}
-
-function parseYmd(ymd: string): Date {
-  const [y, m, d] = ymd.slice(0, 10).split('-').map(Number);
-  return new Date(y || 1970, (m || 1) - 1, d || 1);
-}
-
-function fmtYmd(data: Date): string {
-  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
-}
-
-function addDias(ymd: string, dias: number): string {
-  const data = parseYmd(ymd);
-  data.setDate(data.getDate() + dias);
-  return fmtYmd(data);
-}
-
-type ComparacaoMetades = {
-  entradas: number | null;
-  conferidas: number | null;
-  pendentes: number | null;
-  media: number | null;
-  acuracidadePp: number | null;
-};
-
-function variacaoRelativa(atual: number, base: number): number | null {
-  if (base === 0) return null;
-  return ((atual - base) / Math.abs(base)) * 100;
-}
-
-function compararMetades(
-  inicio: string,
-  fim: string,
-  serie: GestaoEntradasPainel['serieDiaria'],
-): ComparacaoMetades | null {
-  const dias = Math.round((parseYmd(fim).getTime() - parseYmd(inicio).getTime()) / 86400000) + 1;
-  if (dias < 2) return null;
-  const metade = Math.floor(dias / 2);
-  const primeiraFim = addDias(inicio, metade - 1);
-  const segundaInicio = addDias(fim, -(metade - 1));
-
-  const fatia = (de: string, ate: string) => {
-    let notas = 0;
-    let conferidas = 0;
-    let pendentes = 0;
-    let limpas = 0;
-    let diasComMovimento = 0;
-    for (const dia of serie) {
-      if (dia.data < de || dia.data > ate) continue;
-      notas += dia.notas;
-      conferidas += dia.limpas + dia.aceitas + dia.recusas;
-      pendentes += dia.pendentes;
-      limpas += dia.limpas;
-      diasComMovimento += 1;
-    }
-    return {
-      notas,
-      conferidas,
-      pendentes,
-      media: diasComMovimento > 0 ? notas / diasComMovimento : 0,
-      pct: conferidas > 0 ? (limpas / conferidas) * 100 : null,
-    };
-  };
-
-  const a = fatia(inicio, primeiraFim);
-  const b = fatia(segundaInicio, fim);
-  return {
-    entradas: variacaoRelativa(b.notas, a.notas),
-    conferidas: variacaoRelativa(b.conferidas, a.conferidas),
-    pendentes: variacaoRelativa(b.pendentes, a.pendentes),
-    media: variacaoRelativa(b.media, a.media),
-    acuracidadePp: a.pct != null && b.pct != null ? b.pct - a.pct : null,
-  };
 }
 
 function fraseTooltipEntradas(notas: number, aceitas: number): string {
@@ -478,14 +398,17 @@ export default function GestaoEntradasPage() {
   const [painel, setPainel] = useState<GestaoEntradasPainel | null>(null);
   const [ajudaAberta, setAjudaAberta] = useState(false);
   const [pontoAberto, setPontoAberto] = useState<SeriePonto | null>(null);
+  const [recorteAberto, setRecorteAberto] = useState<RecorteGestaoEntrada | null>(null);
+  const [rankingAberto, setRankingAberto] = useState<FiltroRankingGestao | null>(null);
   const [contextoMovimentacao, setContextoMovimentacao] =
     useState<ContextoMovimentacao>('volume');
+  const [escopo, setEscopo] = useState<EscopoDivergencia>('reais');
 
-  const carregar = useCallback(async (di: string, df: string) => {
+  const carregar = useCallback(async (di: string, df: string, escopoArg: EscopoDivergencia) => {
     setLoading(true);
     setErro(null);
     try {
-      const r = await fetchGestaoEntradasPainel({ dataInicio: di, dataFim: df });
+      const r = await fetchGestaoEntradasPainel({ dataInicio: di, dataFim: df, escopo: escopoArg });
       if (r.erro || !r.data) {
         setErro(r.erro ?? 'Falha ao carregar o painel.');
         setPainel(null);
@@ -505,7 +428,7 @@ export default function GestaoEntradasPage() {
     const df = hojeYmd();
     setDataInicio(di);
     setDataFim(df);
-    void carregar(di, df);
+    void carregar(di, df, 'reais');
   }, [carregar]);
 
   const serieChart = useMemo(() => {
@@ -528,7 +451,7 @@ export default function GestaoEntradasPage() {
       key: c.campo,
       label: c.label,
       valor: c.qtde,
-      detalhe: `${c.qtde} · ${c.aceitas} aceitas · ${c.recusas} recusas`,
+      detalhe: `${c.qtde} em ${c.documentos ?? 0} ${(c.documentos ?? 0) === 1 ? 'documento' : 'documentos'} · ${c.aceitas} aceitas · ${c.recusas} recusas`,
     }));
   const justificativas = (painel?.porJustificativa ?? []).map((j) => ({
     key: j.codigo,
@@ -542,16 +465,20 @@ export default function GestaoEntradasPage() {
     .filter((tipo) => valorTipo(tipo) > 0)
     .sort((a, b) => valorTipo(b) - valorTipo(a) || b.notas - a.notas)
     .slice(0, 3);
+  const abrirTipo = (tipo: GestaoEntradasPainel['porTipo'][number]) => {
+    setRecorteAberto({
+      origem: 'tipo',
+      idTipoMovimentacao: tipo.idTipoMovimentacao,
+      nomeTipo: tipo.nomeTipo,
+      modo: contextoMovimentacao,
+    });
+  };
   const totalTiposMaisUsados = tiposMaisUsados.reduce(
     (total, tipo) => total + valorTipo(tipo),
     0
   );
   const coresMovimentacao =
     contextoMovimentacao === 'volume' ? MOVIMENTO_COLORS : DIVERGENCIA_COLORS;
-  const comparacao = useMemo(
-    () => (painel ? compararMetades(painel.dataInicio, painel.dataFim, painel.serieDiaria) : null),
-    [painel],
-  );
   const picoEntradas = useMemo(() => {
     if (serieChart.length === 0) return null;
     return serieChart.reduce((melhor, ponto) => (ponto.notas > melhor.notas ? ponto : melhor));
@@ -616,7 +543,7 @@ export default function GestaoEntradasPage() {
               const df = hojeYmd();
               setDataInicio(di);
               setDataFim(df);
-              void carregar(di, df);
+              void carregar(di, df, escopo);
             }}
           >
             Mês atual
@@ -625,10 +552,43 @@ export default function GestaoEntradasPage() {
             type="button"
             className={btnPrimary}
             disabled={loading || !dataInicio || !dataFim || dataFim < dataInicio}
-            onClick={() => void carregar(dataInicio, dataFim)}
+            onClick={() => void carregar(dataInicio, dataFim, escopo)}
           >
             Filtrar
           </button>
+          <div>
+            <span className={labelClass}>Divergências</span>
+            <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-black/25">
+              <button
+                type="button"
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                  escopo === 'reais'
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white'
+                    : 'text-slate-500'
+                }`}
+                onClick={() => {
+                  setEscopo('reais');
+                  void carregar(dataInicio, dataFim, 'reais');
+                }}
+              >
+                Visão real
+              </button>
+              <button
+                type="button"
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                  escopo === 'geral'
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white'
+                    : 'text-slate-500'
+                }`}
+                onClick={() => {
+                  setEscopo('geral');
+                  void carregar(dataInicio, dataFim, 'geral');
+                }}
+              >
+                Visão geral
+              </button>
+            </div>
+          </div>
         </div>
 
         {erro && (
@@ -645,8 +605,8 @@ export default function GestaoEntradasPage() {
                 titulo="Entradas"
                 valor={fmtNum(k.qtdeNotas)}
                 detalhe={`${fmtNum(k.qtdeItens)} itens`}
-                variacao={comparacao?.entradas}
                 icone={<Package className="h-4 w-4" strokeWidth={2.2} />}
+                onClick={() => setRecorteAberto({ origem: 'card', card: 'entradas' })}
               />
               <KpiCard
                 tone="violet"
@@ -657,8 +617,8 @@ export default function GestaoEntradasPage() {
                     ? `${fmtNum((k.qtdeConferidas / k.qtdeNotas) * 100, 0)}% do total`
                     : 'Nenhuma nota no período'
                 }
-                variacao={comparacao?.conferidas}
                 icone={<ClipboardCheck className="h-4 w-4" strokeWidth={2.2} />}
+                onClick={() => setRecorteAberto({ origem: 'card', card: 'conferidas' })}
               />
               <KpiCard
                 tone="amber"
@@ -669,17 +629,16 @@ export default function GestaoEntradasPage() {
                     ? `${fmtNum((k.qtdePendentes / k.qtdeNotas) * 100, 0)}% do total`
                     : 'Nenhuma nota no período'
                 }
-                variacao={comparacao?.pendentes}
-                invert
                 icone={<Clock3 className="h-4 w-4" strokeWidth={2.2} />}
+                onClick={() => setRecorteAberto({ origem: 'card', card: 'pendentes' })}
               />
               <KpiCard
                 tone="cyan"
                 titulo="Média ao dia"
                 valor={fmtNum(k.mediaNotasPorDia, 1)}
                 detalhe={`${fmtNum(painel.serieDiaria.length)} ${painel.serieDiaria.length === 1 ? 'dia' : 'dias'} com movimento`}
-                variacao={comparacao?.media}
                 icone={<CalendarRange className="h-4 w-4" strokeWidth={2.2} />}
+                onClick={() => setRecorteAberto({ origem: 'card', card: 'media' })}
               />
             </div>
 
@@ -693,6 +652,9 @@ export default function GestaoEntradasPage() {
                       {picoEntradas
                         ? `Pico de entradas em ${picoEntradas.label}: ${fmtNum(picoEntradas.notas)} notas, ${fmtNum(picoEntradas.aceitas)} com divergência aceita.`
                         : 'Sem entradas no período.'}{' '}
+                      {escopo === 'reais'
+                        ? 'A linha laranja conta só divergência real.'
+                        : 'A linha laranja inclui divergência benigna e real.'}{' '}
                       Clique na bolinha para abrir o detalhe.
                     </p>
                   </div>
@@ -827,12 +789,17 @@ export default function GestaoEntradasPage() {
             <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
               <GraficoSemDivergencia
                 percent={pctSemDivergencia}
-                variacao={comparacao?.acuracidadePp}
+                legenda={
+                  escopo === 'reais'
+                    ? 'Visão real: só divergência real entre as conferidas. Quanto mais alto, melhor.'
+                    : 'Visão geral: inclui divergência benigna e real. Quanto mais alto, melhor.'
+                }
                 detalhe={
                   k.qtdeConferidas > 0
                     ? `${fmtNum(k.qtdeLimpas)} de ${fmtNum(k.qtdeConferidas)} conferidas`
                     : 'Nenhuma conferida no período'
                 }
+                onFatia={(fatia) => setRecorteAberto({ origem: 'anel', fatia })}
               />
               <div className={`flex h-full flex-col p-4 ${panelSurface}`}>
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -900,6 +867,12 @@ export default function GestaoEntradasPage() {
                             paddingAngle={3}
                             cornerRadius={10}
                             stroke="transparent"
+                            isAnimationActive={false}
+                            cursor="pointer"
+                            onClick={(_, index) => {
+                              const tipo = tiposMaisUsados[index];
+                              if (tipo) abrirTipo(tipo);
+                            }}
                           >
                             {tiposMaisUsados.map((t, i) => (
                               <Cell
@@ -952,10 +925,12 @@ export default function GestaoEntradasPage() {
                         const percentual =
                           totalTiposMaisUsados > 0 ? (valor / totalTiposMaisUsados) * 100 : 0;
                         return (
-                          <li
-                            key={tipo.idTipoMovimentacao}
-                            className="flex items-center gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2.5 dark:border-white/10 dark:bg-white/[0.03]"
-                          >
+                          <li key={tipo.idTipoMovimentacao}>
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2.5 text-left transition hover:border-slate-300 hover:bg-white dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
+                              onClick={() => abrirTipo(tipo)}
+                            >
                             <span
                               className="h-2.5 w-2.5 shrink-0 rounded-full"
                               style={{
@@ -981,6 +956,7 @@ export default function GestaoEntradasPage() {
                                 {fmtNum(percentual, 0)}%
                               </span>
                             </span>
+                          </button>
                           </li>
                         );
                       })}
@@ -996,22 +972,32 @@ export default function GestaoEntradasPage() {
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
                   Tipos de divergência
                 </h2>
-                <p className="mb-4 mt-0.5 text-xs text-slate-500">Decisões das notas já conferidas, por campo.</p>
+                <p className="mb-4 mt-0.5 text-xs text-slate-500">
+                  {escopo === 'reais'
+                    ? 'Decisões de divergência real nas notas já conferidas, por campo.'
+                    : 'Decisões de divergência benigna e real nas notas já conferidas, por campo.'}
+                </p>
                 <BarrasRanking
                   itens={campos}
                   vazio="Nenhuma divergência decidida no período."
                   gradiente="bg-gradient-to-r from-violet-500 to-cyan-400 shadow-[0_0_12px_rgba(139,92,246,0.45)]"
+                  onItem={(item) => setRankingAberto({ tipo: 'campo', campo: item.key, label: item.label })}
                 />
               </div>
               <div className={`p-4 ${panelSurface}`}>
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
                   Motivos das divergências aceitas
                 </h2>
-                <p className="mb-4 mt-0.5 text-xs text-slate-500">Justificativa escolhida ao aceitar o campo.</p>
+                <p className="mb-4 mt-0.5 text-xs text-slate-500">
+                  {escopo === 'reais'
+                    ? 'Justificativa das divergências reais aceitas.'
+                    : 'Justificativa ao aceitar, incluindo divergência benigna.'}
+                </p>
                 <BarrasRanking
                   itens={justificativas}
                   vazio="Nenhuma divergência aceita no período."
                   gradiente="bg-gradient-to-r from-amber-400 to-rose-500 shadow-[0_0_12px_rgba(251,113,133,0.4)]"
+                  onItem={(item) => setRankingAberto({ tipo: 'motivo', codigo: item.key, label: item.label })}
                 />
               </div>
             </div>
@@ -1024,7 +1010,28 @@ export default function GestaoEntradasPage() {
           titulo={pontoAberto.label}
           dataInicio={intervaloAberto.dataInicio}
           dataFim={intervaloAberto.dataFim}
+          escopo={escopo}
           onClose={() => setPontoAberto(null)}
+        />
+      )}
+      {rankingAberto && painel && (
+        <GestaoEntradasRankingModal
+          filtro={rankingAberto}
+          dataInicio={painel.dataInicio}
+          dataFim={painel.dataFim}
+          escopo={painel.escopo}
+          onClose={() => setRankingAberto(null)}
+        />
+      )}
+      {recorteAberto && painel && (
+        <GestaoEntradasCardModal
+          recorte={recorteAberto}
+          dataInicio={painel.dataInicio}
+          dataFim={painel.dataFim}
+          escopo={painel.escopo}
+          media={painel.kpis.mediaNotasPorDia}
+          diasComMovimento={painel.serieDiaria.length}
+          onClose={() => setRecorteAberto(null)}
         />
       )}
     </div>

@@ -14,8 +14,13 @@ import {
 import {
   camposDaJustificativa,
   JUSTIFICATIVA_SEED,
-  justificativaAplicavelAoCampo,
+  normalizarCamposJustificativa,
+  parseCamposJustificativaSalvos,
 } from './doubleCheckInJustificativas.js';
+import {
+  DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE,
+  ehConferenciaNfPcValida,
+} from '../services/doubleCheckInConferenciaPeriodo.js';
 
 export const DOUBLE_CHECKIN_WA_CODE = 'compras_double_checkin';
 /** Alerta ao confirmar conferência quando há divergência NF × Pedido de compra. */
@@ -85,20 +90,47 @@ export async function ensureDoubleCheckInNfPcWhatsappTipo(): Promise<{ id: numbe
 
 export async function ensureDoubleCheckInJustificativaOpcoes(): Promise<void> {
   for (const seed of JUSTIFICATIVA_SEED) {
-    await prisma.doubleCheckInJustificativaOpcao.upsert({
+    const campos = JSON.stringify(seed.campos);
+    const existing = await prisma.doubleCheckInJustificativaOpcao.findUnique({
       where: { codigo: seed.codigo },
-      create: {
-        codigo: seed.codigo,
-        label: seed.label,
-        ativo: true,
-        sortOrder: seed.sortOrder,
-      },
-      update: {
-        label: seed.label,
-        sortOrder: seed.sortOrder,
-      },
+      select: { id: true, campos: true },
     });
+    if (!existing) {
+      await prisma.doubleCheckInJustificativaOpcao.create({
+        data: {
+          codigo: seed.codigo,
+          label: seed.label,
+          ativo: true,
+          sortOrder: seed.sortOrder,
+          campos,
+        },
+      });
+      continue;
+    }
+    if (!existing.campos.trim()) {
+      await prisma.doubleCheckInJustificativaOpcao.update({
+        where: { id: existing.id },
+        data: { campos },
+      });
+    }
   }
+}
+
+function camposDaOpcao(codigo: string, camposSalvos: string): DoubleCheckInCampoComparativo[] {
+  const salvos = parseCamposJustificativaSalvos(camposSalvos);
+  if (salvos.length > 0) return salvos;
+  return camposDaJustificativa(codigo) as DoubleCheckInCampoComparativo[];
+}
+
+function slugMotivo(label: string): string {
+  const base = label
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48);
+  return base || 'motivo';
 }
 
 export type DoubleCheckInJustificativaOpcaoRow = {
@@ -122,8 +154,88 @@ export async function listarJustificativaOpcoes(somenteAtivas = true): Promise<D
     label: r.label,
     ativo: r.ativo,
     sortOrder: r.sortOrder,
-    campos: camposDaJustificativa(r.codigo) as DoubleCheckInCampoComparativo[],
+    campos: camposDaOpcao(r.codigo, r.campos),
   }));
+}
+
+export async function criarJustificativaOpcao(params: {
+  label: string;
+  campos: unknown;
+  ativo?: boolean;
+}): Promise<DoubleCheckInJustificativaOpcaoRow> {
+  const label = params.label.trim();
+  if (!label) throw new Error('Informe o nome do motivo.');
+  if (label.length > 120) throw new Error('O nome do motivo pode ter no máximo 120 caracteres.');
+  const campos = normalizarCamposJustificativa(params.campos);
+  if (campos.length === 0) throw new Error('Escolha ao menos uma divergência.');
+  const base = slugMotivo(label);
+  let codigo = base;
+  for (let i = 2; i < 50; i += 1) {
+    const existe = await prisma.doubleCheckInJustificativaOpcao.findUnique({
+      where: { codigo },
+      select: { id: true },
+    });
+    if (!existe) break;
+    codigo = `${base}_${i}`.slice(0, 60);
+  }
+  const ultimo = await prisma.doubleCheckInJustificativaOpcao.aggregate({ _max: { sortOrder: true } });
+  const sortOrder = Math.min((ultimo._max.sortOrder ?? 0) + 10, 80);
+  const criado = await prisma.doubleCheckInJustificativaOpcao.create({
+    data: {
+      codigo,
+      label,
+      ativo: params.ativo !== false,
+      sortOrder,
+      campos: JSON.stringify(campos),
+    },
+  });
+  return {
+    id: criado.id,
+    codigo: criado.codigo,
+    label: criado.label,
+    ativo: criado.ativo,
+    sortOrder: criado.sortOrder,
+    campos,
+  };
+}
+
+export async function atualizarJustificativaOpcao(params: {
+  id: number;
+  label: string;
+  campos: unknown;
+  ativo: boolean;
+}): Promise<DoubleCheckInJustificativaOpcaoRow> {
+  const label = params.label.trim();
+  if (!label) throw new Error('Informe o nome do motivo.');
+  if (label.length > 120) throw new Error('O nome do motivo pode ter no máximo 120 caracteres.');
+  const campos = normalizarCamposJustificativa(params.campos);
+  if (campos.length === 0) throw new Error('Escolha ao menos uma divergência.');
+  const atual = await prisma.doubleCheckInJustificativaOpcao.findUnique({ where: { id: params.id } });
+  if (!atual) throw new Error('Motivo não encontrado.');
+  const salvo = await prisma.doubleCheckInJustificativaOpcao.update({
+    where: { id: params.id },
+    data: { label, ativo: params.ativo, campos: JSON.stringify(campos) },
+  });
+  return {
+    id: salvo.id,
+    codigo: salvo.codigo,
+    label: salvo.label,
+    ativo: salvo.ativo,
+    sortOrder: salvo.sortOrder,
+    campos,
+  };
+}
+
+export async function excluirJustificativaOpcao(id: number): Promise<void> {
+  const atual = await prisma.doubleCheckInJustificativaOpcao.findUnique({ where: { id } });
+  if (!atual) throw new Error('Motivo não encontrado.');
+  const usos = await prisma.doubleCheckInComparativoDecisao.count({ where: { justificativaOpcaoId: id } });
+  if (usos > 0) {
+    throw new Error(
+      `Este motivo já foi usado em ${usos} ${usos === 1 ? 'divergência conferida' : 'divergências conferidas'}. Desmarque "Ativo" para ele deixar de aparecer nas próximas conferências.`
+    );
+  }
+  await prisma.doubleCheckInJustificativaOpcao.delete({ where: { id } });
 }
 
 export type DoubleCheckInComparativoDecisaoRow = {
@@ -140,6 +252,8 @@ export type DoubleCheckInComparativoDecisaoRow = {
   usuarioId: number;
   usuarioLogin: string;
   atualizadoEm: string;
+  /** False quando pertence ao ciclo anterior de uma conferência reaberta. */
+  vigente: boolean;
   historicoObservacoes: DoubleCheckInComparativoObsHistRow[];
 };
 
@@ -202,7 +316,8 @@ function mapDecisao(
     atualizadoEm: Date;
     justificativaOpcao: { codigo: string; label: string };
   },
-  historicoObservacoes: DoubleCheckInComparativoObsHistRow[] = []
+  historicoObservacoes: DoubleCheckInComparativoObsHistRow[] = [],
+  vigente = true
 ): DoubleCheckInComparativoDecisaoRow {
   return {
     id: r.id,
@@ -218,6 +333,7 @@ function mapDecisao(
     usuarioId: r.usuarioId,
     usuarioLogin: r.usuarioLogin,
     atualizadoEm: r.atualizadoEm.toISOString(),
+    vigente,
     historicoObservacoes,
   };
 }
@@ -296,12 +412,16 @@ async function appendObsHistSeNovo(params: {
 export async function listarDecisoesComparativo(
   idDocumentoEstoque: number
 ): Promise<DoubleCheckInComparativoDecisaoRow[]> {
-  const [rows, histMap] = await Promise.all([
+  const [rows, histMap, conferencia] = await Promise.all([
     prisma.doubleCheckInComparativoDecisao.findMany({
       where: { idDocumentoEstoque },
       include: { justificativaOpcao: { select: { codigo: true, label: true } } },
     }),
     listarObsHistPorDocumento(idDocumentoEstoque),
+    prisma.doubleCheckInConferido.findUnique({
+      where: { idDocumentoEstoque },
+      select: { reabertoEm: true },
+    }),
   ]);
 
   // Garante que observação gravada na decisão (ato da conferência) apareça no histórico
@@ -354,12 +474,15 @@ export async function listarDecisoesComparativo(
     }
   }
 
-  return rows.map((r) =>
-    mapDecisao(
+  return rows.map((r) => {
+    const vigente =
+      !conferencia?.reabertoEm || r.atualizadoEm.getTime() > conferencia.reabertoEm.getTime();
+    return mapDecisao(
       r,
-      histMap.get(chaveObsHist(r.idItemDocumentoEstoque, r.idItemPedidoCompra, r.campo)) ?? []
-    )
-  );
+      histMap.get(chaveObsHist(r.idItemDocumentoEstoque, r.idItemPedidoCompra, r.campo)) ?? [],
+      vigente
+    );
+  });
 }
 
 export async function upsertDecisaoComparativo(params: {
@@ -385,7 +508,7 @@ export async function upsertDecisaoComparativo(params: {
   if (!opcao || !opcao.ativo) {
     throw new Error('Justificativa inválida ou inativa.');
   }
-  if (!justificativaAplicavelAoCampo(opcao.codigo, params.campo)) {
+  if (!camposDaOpcao(opcao.codigo, opcao.campos).includes(params.campo)) {
     throw new Error('Essa justificativa não se aplica a este campo da divergência.');
   }
   if (params.decisao === 'aceita' && !String(params.observacao ?? '').trim()) {
@@ -473,7 +596,11 @@ export async function adicionarObservacaoComparativoPosConferido(params: {
   const conferido = await prisma.doubleCheckInConferido.findUnique({
     where: { idDocumentoEstoque: params.idDocumentoEstoque },
   });
-  if (!conferido) {
+  if (
+    !conferido ||
+    conferido.reabertoEm ||
+    !ehConferenciaNfPcValida(conferido.conferidoEm)
+  ) {
     throw new Error('Só é possível acrescentar observações após a NF ser conferida.');
   }
 
@@ -633,7 +760,33 @@ export type DoubleCheckInConferidoInfo = {
   conferidoEm: string;
   usuarioId: number;
   usuarioLogin: string;
+  temDivergenciaRealHistorica: boolean;
+  totalDivergenciasReaisHistorica: number;
+  totalDivergenciasBenignasHist: number;
+  naturezaClassificacaoFonte: string | null;
 };
+
+function mapConferido(r: {
+  idDocumentoEstoque: number;
+  conferidoEm: Date;
+  usuarioId: number;
+  usuarioLogin: string;
+  temDivergenciaRealHistorica: boolean;
+  totalDivergenciasReaisHistorica: number;
+  totalDivergenciasBenignasHist: number;
+  naturezaClassificacaoFonte: string | null;
+}): DoubleCheckInConferidoInfo {
+  return {
+    idDocumentoEstoque: r.idDocumentoEstoque,
+    conferidoEm: r.conferidoEm.toISOString(),
+    usuarioId: r.usuarioId,
+    usuarioLogin: r.usuarioLogin,
+    temDivergenciaRealHistorica: r.temDivergenciaRealHistorica,
+    totalDivergenciasReaisHistorica: r.totalDivergenciasReaisHistorica,
+    totalDivergenciasBenignasHist: r.totalDivergenciasBenignasHist,
+    naturezaClassificacaoFonte: r.naturezaClassificacaoFonte,
+  };
+}
 
 export async function listarDocumentosConferidos(
   ids: number[]
@@ -641,15 +794,14 @@ export async function listarDocumentosConferidos(
   const map = new Map<number, DoubleCheckInConferidoInfo>();
   if (ids.length === 0) return map;
   const rows = await prisma.doubleCheckInConferido.findMany({
-    where: { idDocumentoEstoque: { in: ids } },
+    where: {
+      idDocumentoEstoque: { in: ids },
+      conferidoEm: { gte: DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE },
+      reabertoEm: null,
+    },
   });
   for (const r of rows) {
-    map.set(r.idDocumentoEstoque, {
-      idDocumentoEstoque: r.idDocumentoEstoque,
-      conferidoEm: r.conferidoEm.toISOString(),
-      usuarioId: r.usuarioId,
-      usuarioLogin: r.usuarioLogin,
-    });
+    map.set(r.idDocumentoEstoque, mapConferido(r));
   }
   return map;
 }
@@ -672,14 +824,14 @@ export async function listarTodosDocumentosConferidos(): Promise<
   Map<number, DoubleCheckInConferidoInfo>
 > {
   const map = new Map<number, DoubleCheckInConferidoInfo>();
-  const rows = await prisma.doubleCheckInConferido.findMany();
+  const rows = await prisma.doubleCheckInConferido.findMany({
+    where: {
+      conferidoEm: { gte: DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE },
+      reabertoEm: null,
+    },
+  });
   for (const r of rows) {
-    map.set(r.idDocumentoEstoque, {
-      idDocumentoEstoque: r.idDocumentoEstoque,
-      conferidoEm: r.conferidoEm.toISOString(),
-      usuarioId: r.usuarioId,
-      usuarioLogin: r.usuarioLogin,
-    });
+    map.set(r.idDocumentoEstoque, mapConferido(r));
   }
   return map;
 }
@@ -706,30 +858,71 @@ export async function getDocumentoConferido(
   const r = await prisma.doubleCheckInConferido.findUnique({
     where: { idDocumentoEstoque },
   });
-  if (!r) return null;
-  return {
-    idDocumentoEstoque: r.idDocumentoEstoque,
-    conferidoEm: r.conferidoEm.toISOString(),
-    usuarioId: r.usuarioId,
-    usuarioLogin: r.usuarioLogin,
-  };
+  if (!r || r.reabertoEm || !ehConferenciaNfPcValida(r.conferidoEm)) return null;
+  return mapConferido(r);
+}
+
+export async function reabrirDocumentoConferencia(params: {
+  idDocumentoEstoque: number;
+  usuarioId: number;
+  usuarioLogin: string;
+}): Promise<{ reabertoEm: string }> {
+  const existente = await prisma.doubleCheckInConferido.findUnique({
+    where: { idDocumentoEstoque: params.idDocumentoEstoque },
+  });
+  if (!existente || !ehConferenciaNfPcValida(existente.conferidoEm)) {
+    throw new Error('Documento ainda não possui uma conferência válida para reabrir.');
+  }
+  if (existente.reabertoEm) {
+    return { reabertoEm: existente.reabertoEm.toISOString() };
+  }
+  const reabertoEm = new Date();
+  await prisma.doubleCheckInConferido.update({
+    where: { idDocumentoEstoque: params.idDocumentoEstoque },
+    data: {
+      reabertoEm,
+      reabertoPorUsuarioId: params.usuarioId,
+      reabertoPorLogin: params.usuarioLogin,
+    },
+  });
+  return { reabertoEm: reabertoEm.toISOString() };
 }
 
 export async function marcarDocumentoConferido(params: {
   idDocumentoEstoque: number;
   usuarioId: number;
   usuarioLogin: string;
+  renovar?: boolean;
 }): Promise<DoubleCheckInConferidoInfo> {
   const existing = await prisma.doubleCheckInConferido.findUnique({
     where: { idDocumentoEstoque: params.idDocumentoEstoque },
   });
+  if (
+    existing &&
+    !existing.reabertoEm &&
+    ehConferenciaNfPcValida(existing.conferidoEm) &&
+    !params.renovar
+  ) {
+    return mapConferido(existing);
+  }
   if (existing) {
-    return {
-      idDocumentoEstoque: existing.idDocumentoEstoque,
-      conferidoEm: existing.conferidoEm.toISOString(),
-      usuarioId: existing.usuarioId,
-      usuarioLogin: existing.usuarioLogin,
-    };
+    const atualizado = await prisma.doubleCheckInConferido.update({
+      where: { idDocumentoEstoque: params.idDocumentoEstoque },
+      data: {
+        conferidoEm: new Date(),
+        usuarioId: params.usuarioId,
+        usuarioLogin: params.usuarioLogin,
+        temDivergenciaRealHistorica: false,
+        totalDivergenciasReaisHistorica: 0,
+        totalDivergenciasBenignasHist: 0,
+        naturezaClassificacaoFonte: null,
+        naturezaClassificadaEm: null,
+        reabertoEm: null,
+        reabertoPorUsuarioId: null,
+        reabertoPorLogin: null,
+      },
+    });
+    return mapConferido(atualizado);
   }
   const created = await prisma.doubleCheckInConferido.create({
     data: {
@@ -738,12 +931,25 @@ export async function marcarDocumentoConferido(params: {
       usuarioLogin: params.usuarioLogin,
     },
   });
-  return {
-    idDocumentoEstoque: created.idDocumentoEstoque,
-    conferidoEm: created.conferidoEm.toISOString(),
-    usuarioId: created.usuarioId,
-    usuarioLogin: created.usuarioLogin,
-  };
+  return mapConferido(created);
+}
+
+export async function atualizarClassificacaoHistoricaConferencia(params: {
+  idDocumentoEstoque: number;
+  totalReais: number;
+  totalBenignas: number;
+  fonte: string;
+}): Promise<void> {
+  await prisma.doubleCheckInConferido.update({
+    where: { idDocumentoEstoque: params.idDocumentoEstoque },
+    data: {
+      temDivergenciaRealHistorica: params.totalReais > 0,
+      totalDivergenciasReaisHistorica: Math.max(0, Math.trunc(params.totalReais)),
+      totalDivergenciasBenignasHist: Math.max(0, Math.trunc(params.totalBenignas)),
+      naturezaClassificacaoFonte: params.fonte.slice(0, 60),
+      naturezaClassificadaEm: new Date(),
+    },
+  });
 }
 
 function novoTokenPagina(): string {
@@ -759,7 +965,13 @@ export async function salvarConferenciaPagina(
     where: { idDocumentoEstoque },
     select: { token: true },
   });
-  if (existente) return existente.token;
+  if (existente) {
+    await prisma.doubleCheckInConferenciaPagina.update({
+      where: { idDocumentoEstoque },
+      data: { payloadJson, criadoEm: new Date() },
+    });
+    return existente.token;
+  }
 
   for (let tentativa = 0; tentativa < 5; tentativa++) {
     try {

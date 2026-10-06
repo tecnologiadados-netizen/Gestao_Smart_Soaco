@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import DoubleCheckInDashboardModal from './DoubleCheckInDashboardModal';
 import DoubleCheckInComparativoPcTab, {
   contarPendentesComparativo,
 } from './DoubleCheckInComparativoPcTab';
-import { AlertTriangle, CheckCircle2, ClipboardCheck, Eye, LayoutDashboard, Maximize2, Minimize2, RefreshCw, Settings2, Users } from 'lucide-react';
+import { AlertTriangle, CalendarRange, CheckCircle2, ChevronDown, ClipboardCheck, Eye, Library, Maximize2, Minimize2, RefreshCw, RotateCcw, Settings2, Users } from 'lucide-react';
+import DoubleCheckInJustificativasModal from './DoubleCheckInJustificativasModal';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,6 +15,7 @@ import {
   fetchDoubleCheckInItens,
   fetchDoubleCheckInParametros,
   fetchDoubleCheckInStatus,
+  reabrirDoubleCheckIn,
   saveDoubleCheckInDestinatarios,
   saveDoubleCheckInParametros,
   syncDoubleCheckIn,
@@ -25,7 +26,8 @@ import {
   type DoubleCheckInNota,
   type DoubleCheckInUsuarioDest,
 } from '../../api/compras';
-import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../utils/textoLivreBusca';
+import { PERMISSOES } from '../../config/permissoes';
+import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 
 const POLL_MS = 120_000;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
@@ -87,13 +89,54 @@ type ComparativoCache = {
   justificativas: DoubleCheckInJustificativaOpcao[];
 };
 
+type FiltroSituacao =
+  | 'todos'
+  | 'pendentes'
+  | 'conferidos'
+  | 'divergencia_real'
+  | 'divergencia_benigna';
+
+type RegimeConferencia = NonNullable<DoubleCheckInNota['regimeConferencia']>;
+
+function regimeDaNota(nota: DoubleCheckInNota): RegimeConferencia {
+  if (nota.regimeConferencia) return nota.regimeConferencia;
+  const dataEntrada = String(nota.dataEntrada ?? '').slice(0, 10);
+  if (dataEntrada < '2026-09-19') return 'nao_aplicada';
+  if (dataEntrada < '2026-09-21') return 'simples';
+  return 'completa';
+}
+
+function resumoFiltroNotas(lista: DoubleCheckInNota[]) {
+  let conferido = 0;
+  let comDivergencia = 0;
+  let pendente = 0;
+  let naoAplicada = 0;
+  for (const n of lista) {
+    if (regimeDaNota(n) === 'nao_aplicada') {
+      naoAplicada += 1;
+      continue;
+    }
+    if (!n.conferido) {
+      pendente += 1;
+      continue;
+    }
+    if (n.conferidoComDivergencia) comDivergencia += 1;
+    else conferido += 1;
+  }
+  return { total: lista.length, conferido, comDivergencia, pendente, naoAplicada };
+}
+
 export default function DoubleCheckInPage() {
-  const { isMaster, login, grupo } = useAuth();
+  const { isMaster, login, grupo, hasPermission } = useAuth();
   const podeDestinatarios = isAdminOuMaster({ isMaster, login, grupo });
+  const podeCadastros = hasPermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS);
+  const podeReabrirConferencia = hasPermission(PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA);
 
   const [dataInicio, setDataInicio] = useState('2024-01-01');
   const [dataFim, setDataFim] = useState(hojeYmd());
+  const [periodoAberto, setPeriodoAberto] = useState(false);
   const [filtroTexto, setFiltroTexto] = useState('');
+  const [filtroSituacao, setFiltroSituacao] = useState<FiltroSituacao>('todos');
   const [notas, setNotas] = useState<DoubleCheckInNota[]>([]);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -122,8 +165,10 @@ export default function DoubleCheckInPage() {
   const [compDecisoes, setCompDecisoes] = useState<DoubleCheckInComparativoDecisao[]>([]);
   const [compJustificativas, setCompJustificativas] = useState<DoubleCheckInJustificativaOpcao[]>([]);
   const [compBloqueioMsg, setCompBloqueioMsg] = useState<string | null>(null);
+  const [reabrindoConferencia, setReabrindoConferencia] = useState(false);
 
   const [paramAberto, setParamAberto] = useState(false);
+  const [cadastrosAberto, setCadastrosAberto] = useState(false);
   const [paramDraft, setParamDraft] = useState('10');
   const [paramSalvando, setParamSalvando] = useState(false);
   const [paramErro, setParamErro] = useState<string | null>(null);
@@ -140,13 +185,13 @@ export default function DoubleCheckInPage() {
   const [senhaDraft, setSenhaDraft] = useState('');
   const [senhaErro, setSenhaErro] = useState<string | null>(null);
   const [senhaSalvando, setSenhaSalvando] = useState(false);
-  const [dashAberto, setDashAberto] = useState(false);
 
   const detalheCacheRef = useRef(new Map<number, DetalheCache>());
   const comparativoCacheRef = useRef(new Map<number, ComparativoCache>());
   const statusCacheRef = useRef(new Map<string, boolean>());
   const syncSeqRef = useRef(0);
   const statusSeqRef = useRef(0);
+  const periodoRef = useRef<HTMLDivElement>(null);
   const appliedRef = useRef({ dataInicio: '2024-01-01', dataFim: hojeYmd() });
 
   const limparCachesGrade = useCallback(() => {
@@ -217,6 +262,22 @@ export default function DoubleCheckInPage() {
     void filtrar();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- carga inicial
   }, []);
+
+  useEffect(() => {
+    if (!periodoAberto) return;
+    const fecharFora = (event: MouseEvent) => {
+      if (!periodoRef.current?.contains(event.target as Node)) setPeriodoAberto(false);
+    };
+    const fecharEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPeriodoAberto(false);
+    };
+    document.addEventListener('mousedown', fecharFora);
+    document.addEventListener('keydown', fecharEscape);
+    return () => {
+      document.removeEventListener('mousedown', fecharFora);
+      document.removeEventListener('keydown', fecharEscape);
+    };
+  }, [periodoAberto]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -304,19 +365,71 @@ export default function DoubleCheckInPage() {
     void carregarComparativo(modalNota.idDocumento);
   }, [modalNota, modalAba, carregarComparativo]);
 
+  const reabrirConferencia = async () => {
+    if (!modalNota || !podeReabrirConferencia || reabrindoConferencia) return;
+    const confirmou = window.confirm(
+      'Reabrir esta conferência? As decisões anteriores serão preservadas como histórico, mas todas as divergências atuais deverão ser aceitas ou recusadas novamente.'
+    );
+    if (!confirmou) return;
+    setReabrindoConferencia(true);
+    setCompBloqueioMsg(null);
+    try {
+      const r = await reabrirDoubleCheckIn(modalNota.idDocumento);
+      if (r.erro || !r.ok) {
+        setCompBloqueioMsg(r.erro ?? 'Não foi possível reabrir a conferência.');
+        return;
+      }
+      const atualizar = (nota: DoubleCheckInNota): DoubleCheckInNota =>
+        nota.idDocumento === modalNota.idDocumento
+          ? {
+              ...nota,
+              conferido: false,
+              conferenciaReaberta: true,
+              conferidoComDivergencia: false,
+            }
+          : nota;
+      setNotas((prev) => prev.map(atualizar));
+      setModalNota((prev) => (prev ? atualizar(prev) : prev));
+      comparativoCacheRef.current.delete(modalNota.idDocumento);
+      setCompLinhas([]);
+      setCompDecisoes([]);
+      setModalAba('nf_pc');
+      await carregarComparativo(modalNota.idDocumento);
+    } finally {
+      setReabrindoConferencia(false);
+    }
+  };
+
   const notasFiltradas = (() => {
     const match = criarMatcherTextoLivre(filtroTexto);
-    if (!filtroTexto.trim()) return notas;
-    return notas.filter(
-      (n) =>
+    const inicio = dataInicio.slice(0, 10);
+    const fim = dataFim.slice(0, 10);
+    return notas.filter((n) => {
+      const entrada = String(n.dataEntrada ?? '').slice(0, 10);
+      if (!entrada || (inicio && entrada < inicio) || (fim && entrada > fim)) return false;
+      const passaTexto =
+        !filtroTexto.trim() ||
         match(n.numeroDocumentoFiscal ?? '') ||
         match(n.numeroNfe ?? '') ||
         match(n.nomeParceiro ?? '') ||
-        match(String(n.idParceiro ?? ''))
-    );
+        match(String(n.idParceiro ?? ''));
+      if (!passaTexto) return false;
+      if (filtroSituacao === 'pendentes') {
+        return regimeDaNota(n) !== 'nao_aplicada' && !n.conferido;
+      }
+      if (filtroSituacao === 'conferidos') return Boolean(n.conferido);
+      if (filtroSituacao === 'divergencia_real') {
+        return Boolean(n.conferido && n.temDivergenciaRealAtual);
+      }
+      if (filtroSituacao === 'divergencia_benigna') {
+        return Boolean(n.conferido && n.temDivergenciaBenignaAtual);
+      }
+      return true;
+    });
   })();
 
-  const totalParaPaginacao = notasFiltradas.length;
+  const resumoFiltro = resumoFiltroNotas(notasFiltradas);
+  const totalParaPaginacao = resumoFiltro.total;
   const totalPages = Math.max(1, Math.ceil(totalParaPaginacao / pageSize));
   const pageSafe = Math.min(page, totalPages);
   const notasPagina =
@@ -328,7 +441,7 @@ export default function DoubleCheckInPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [filtroTexto, pageSize]);
+  }, [filtroTexto, filtroSituacao, pageSize, dataInicio, dataFim]);
 
   useEffect(() => {
     setPage((p) => Math.min(p, totalPages));
@@ -433,18 +546,44 @@ export default function DoubleCheckInPage() {
       idDocumento: number,
       conferidoEm: string | null,
       conferidoPor: string | null,
-      conferidoComDivergencia = false
+      conferidoComDivergencia = false,
+      temDivergenciaRealAtual = false,
+      temDivergenciaBenignaAtual = false,
+      temDivergenciaRealHistorica = false,
+      totalDivergenciasReaisHistorica = 0
     ) => {
       setNotas((prev) =>
         prev.map((n) =>
           n.idDocumento === idDocumento
-            ? { ...n, conferido: true, conferidoEm, conferidoPor, conferidoComDivergencia }
+            ? {
+                ...n,
+                conferido: true,
+                conferidoEm,
+                conferidoPor,
+                conferenciaReaberta: false,
+                conferidoComDivergencia,
+                temDivergenciaRealAtual,
+                temDivergenciaBenignaAtual,
+                temDivergenciaRealHistorica,
+                totalDivergenciasReaisHistorica,
+              }
             : n
         )
       );
       setModalNota((prev) =>
         prev && prev.idDocumento === idDocumento
-          ? { ...prev, conferido: true, conferidoEm, conferidoPor, conferidoComDivergencia }
+          ? {
+              ...prev,
+              conferido: true,
+              conferidoEm,
+              conferidoPor,
+              conferenciaReaberta: false,
+              conferidoComDivergencia,
+              temDivergenciaRealAtual,
+              temDivergenciaBenignaAtual,
+              temDivergenciaRealHistorica,
+              totalDivergenciasReaisHistorica,
+            }
           : prev
       );
     },
@@ -455,12 +594,17 @@ export default function DoubleCheckInPage() {
     if (!modalNota) return;
     setCompBloqueioMsg(null);
     setSenhaErro(null);
+    const regimeConferencia = regimeDaNota(modalNota);
+    if (regimeConferencia === 'nao_aplicada') {
+      setCompBloqueioMsg('A conferência não se aplica a entradas até 18/09/2026.');
+      return;
+    }
 
-    // Garante comparativo carregado antes de validar decisões.
+    // Na conferência completa, garante o comparativo carregado antes de validar decisões.
     let linhas = compLinhas;
     let decisoes = compDecisoes;
     const cached = comparativoCacheRef.current.get(modalNota.idDocumento);
-    if (!cached) {
+    if (regimeConferencia === 'completa' && !cached) {
       setCompLoading(true);
       try {
         const r = await fetchDoubleCheckInComparativoPc(modalNota.idDocumento);
@@ -483,13 +627,16 @@ export default function DoubleCheckInPage() {
       } finally {
         setCompLoading(false);
       }
-    } else {
+    } else if (regimeConferencia === 'completa' && cached) {
       linhas = cached.linhas;
       decisoes = cached.decisoes;
     }
 
-    const pendentes = contarPendentesComparativo(linhas, decisoes);
-    if (pendentes > 0) {
+    const pendentes =
+      regimeConferencia === 'completa'
+        ? contarPendentesComparativo(linhas, decisoes)
+        : 0;
+    if (regimeConferencia === 'completa' && pendentes > 0) {
       setModalAba('nf_pc');
       setCompBloqueioMsg(
         `Há ${pendentes} divergência(s) NF × PC sem decisão (aceitar/recusar + justificativa).`
@@ -517,6 +664,7 @@ export default function DoubleCheckInPage() {
         numeroNfe: modalNota.numeroNfe,
         numeroDocumentoFiscal: modalNota.numeroDocumentoFiscal,
         nomeParceiro: modalNota.nomeParceiro,
+        reconferencia: Boolean(modalNota.conferenciaReaberta),
       });
       if (r.erro) {
         setSenhaErro(r.erro);
@@ -531,7 +679,11 @@ export default function DoubleCheckInPage() {
         modalNota.idDocumento,
         r.conferidoEm ?? null,
         r.conferidoPor ?? null,
-        Boolean(r.conferidoComDivergencia)
+        Boolean(r.conferidoComDivergencia),
+        Boolean(r.temDivergenciaRealAtual),
+        Boolean(r.temDivergenciaBenignaAtual),
+        Boolean(r.temDivergenciaRealHistorica),
+        Number(r.totalDivergenciasReaisHistorica ?? 0)
       );
       setSenhaAberto(false);
       setSenhaDraft('');
@@ -565,42 +717,101 @@ export default function DoubleCheckInPage() {
               : ''}
           </p>
         </div>
-        <button type="button" className={btnSecondary} onClick={() => setDashAberto(true)}>
-          <LayoutDashboard className="h-4 w-4" />
-          Dashboard
-        </button>
       </div>
 
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label className={labelClass}>Entrada início</label>
-            <input
-              type="date"
-              className={inputClass}
-              value={dataInicio}
-              onChange={(e) => setDataInicio(e.target.value)}
-            />
+          <div ref={periodoRef} className="relative">
+            <label className={labelClass}>Período de entrada</label>
+            <button
+              type="button"
+              className={`${inputClass} flex min-w-[16rem] items-center justify-between gap-3 text-left`}
+              onClick={() => setPeriodoAberto((aberto) => !aberto)}
+              aria-expanded={periodoAberto}
+              aria-haspopup="dialog"
+            >
+              <span className="inline-flex items-center gap-2">
+                <CalendarRange className="h-4 w-4 text-slate-500" aria-hidden />
+                {fmtDataBr(dataInicio)} — {fmtDataBr(dataFim)}
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 text-slate-400 transition-transform ${periodoAberto ? 'rotate-180' : ''}`}
+                aria-hidden
+              />
+            </button>
+            {periodoAberto ? (
+              <div
+                className="absolute left-0 top-full z-30 mt-2 w-[min(23rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                role="dialog"
+                aria-label="Selecionar período de entrada"
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className={labelClass}>Data início</label>
+                    <input
+                      type="date"
+                      className={`${inputClass} w-full`}
+                      value={dataInicio}
+                      max={dataFim || undefined}
+                      onChange={(e) => setDataInicio(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Data fim</label>
+                    <input
+                      type="date"
+                      className={`${inputClass} w-full`}
+                      value={dataFim}
+                      min={dataInicio || undefined}
+                      onChange={(e) => setDataFim(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={`${btnPrimary} mt-3 w-full justify-center`}
+                  onClick={() => {
+                    setPeriodoAberto(false);
+                    void filtrar();
+                  }}
+                >
+                  Aplicar período
+                </button>
+              </div>
+            ) : null}
           </div>
-          <div>
-            <label className={labelClass}>Entrada fim</label>
-            <input
-              type="date"
-              className={inputClass}
-              value={dataFim}
-              onChange={(e) => setDataFim(e.target.value)}
-            />
-          </div>
-          <div className="min-w-[12rem] flex-1">
-            <label className={labelClass}>Busca na grade</label>
+          <div className="w-full sm:w-64">
+            <label className={labelClass}>Documento ou fornecedor</label>
             <input
               className={`${inputClass} w-full`}
               value={filtroTexto}
               onChange={(e) => setFiltroTexto(e.target.value)}
-              placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
+              placeholder="Número ou fornecedor; use %"
             />
           </div>
-          <button type="button" className={btnPrimary} onClick={() => void filtrar()} disabled={loading || syncing}>
+          <div className="w-full sm:w-60">
+            <label className={labelClass}>Situação</label>
+            <select
+              className={`${inputClass} w-full`}
+              value={filtroSituacao}
+              onChange={(e) => setFiltroSituacao(e.target.value as FiltroSituacao)}
+            >
+              <option value="todos">Todos</option>
+              <option value="pendentes">Pendentes</option>
+              <option value="conferidos">Conferidos</option>
+              <option value="divergencia_real">Possuem divergência real</option>
+              <option value="divergencia_benigna">Possuem divergência benigna</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            className={btnPrimary}
+            onClick={() => {
+              setPeriodoAberto(false);
+              void filtrar();
+            }}
+            disabled={loading || syncing}
+          >
             Filtrar
           </button>
           <button
@@ -617,6 +828,12 @@ export default function DoubleCheckInPage() {
             <Settings2 className="h-4 w-4" />
             Parâmetros
           </button>
+          {podeCadastros && (
+            <button type="button" className={btnSecondary} onClick={() => setCadastrosAberto(true)}>
+              <Library className="h-4 w-4" />
+              Cadastros
+            </button>
+          )}
           {podeDestinatarios && (
             <button type="button" className={btnSecondary} onClick={() => void abrirDestinatarios()}>
               <Users className="h-4 w-4" />
@@ -630,6 +847,27 @@ export default function DoubleCheckInPage() {
           </p>
         )}
       </div>
+
+      {notas.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-100">
+            {resumoFiltro.total.toLocaleString('pt-BR')}{' '}
+            {resumoFiltro.total === 1 ? 'linha no filtro' : 'linhas no filtro'}
+          </span>
+          <span className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">
+            Conferido {resumoFiltro.conferido.toLocaleString('pt-BR')}
+          </span>
+          <span className="rounded-lg border border-yellow-400 bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-yellow-900 dark:border-yellow-500 dark:bg-yellow-950/40 dark:text-yellow-100">
+            Conferido c/ divergência {resumoFiltro.comDivergencia.toLocaleString('pt-BR')}
+          </span>
+          <span className="rounded-lg border border-amber-400 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200">
+            Pendente {resumoFiltro.pendente.toLocaleString('pt-BR')}
+          </span>
+          <span className="rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            Não aplicada {resumoFiltro.naoAplicada.toLocaleString('pt-BR')}
+          </span>
+        </div>
+      )}
 
       <div className="overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40">
         <table className="min-w-full text-sm">
@@ -656,22 +894,37 @@ export default function DoubleCheckInPage() {
               </tr>
             ) : (
               notasPagina.map((n) => {
+                const regimeConferencia = regimeDaNota(n);
                 const temFora = statusMap[n.idDocumento];
                 const statusPronto = Object.prototype.hasOwnProperty.call(statusMap, n.idDocumento);
                 const conferido = Boolean(n.conferido);
                 const conferidoComDivergencia = conferido && Boolean(n.conferidoComDivergencia);
+                const temRealAtual = conferido && Boolean(n.temDivergenciaRealAtual);
                 return (
                   <tr
                     key={n.idDocumento}
                     className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${
-                      conferidoComDivergencia
+                      regimeConferencia === 'nao_aplicada'
+                        ? 'border-l-4 border-l-slate-400'
+                        : conferidoComDivergencia
                         ? 'border-l-4 border-l-yellow-400'
                         : conferido
                           ? 'border-l-4 border-l-emerald-500'
                           : 'border-l-4 border-l-amber-400'
                     }`}
                   >
-                    <td className="px-3 py-2 tabular-nums">{n.numeroDocumentoFiscal ?? '—'}</td>
+                    <td className="px-3 py-2 tabular-nums">
+                      <span className="inline-flex items-center gap-2">
+                        {n.numeroDocumentoFiscal ?? '—'}
+                        {temRealAtual ? (
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-600 shadow-[0_0_0_3px_rgba(225,29,72,0.16)]"
+                            title="Possui divergência real no estado atual do Nomus"
+                            aria-label="Possui divergência real atual"
+                          />
+                        ) : null}
+                      </span>
+                    </td>
                     <td className="px-3 py-2 tabular-nums">{n.numeroNfe ?? '—'}</td>
                     <td className="px-3 py-2">{fmtDataBr(n.dataEntrada)}</td>
                     <td className="px-3 py-2">{fmtDataBr(n.dataEmissao)}</td>
@@ -703,7 +956,11 @@ export default function DoubleCheckInPage() {
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      {conferidoComDivergencia ? (
+                      {regimeConferencia === 'nao_aplicada' ? (
+                        <span className="inline-flex items-center rounded-md border-2 border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          Não aplicada
+                        </span>
+                      ) : conferidoComDivergencia ? (
                         <span
                           className="inline-flex max-w-[11rem] items-center gap-1.5 rounded-md border-2 border-yellow-400 bg-yellow-50 px-2 py-1 text-xs font-semibold text-yellow-900 dark:border-yellow-500 dark:bg-yellow-950/40 dark:text-yellow-100"
                           title={
@@ -764,10 +1021,7 @@ export default function DoubleCheckInPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-800/50 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
           <span>
             Exibindo {(pageSafe - 1) * pageSize + 1}–{Math.min(pageSafe * pageSize, totalParaPaginacao)} de{' '}
-            {totalParaPaginacao} registros
-            {filtroTexto.trim() ? (
-              <span className="text-slate-500 dark:text-slate-400"> (busca ativa)</span>
-            ) : null}
+            {totalParaPaginacao.toLocaleString('pt-BR')} no filtro
           </span>
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
@@ -807,8 +1061,6 @@ export default function DoubleCheckInPage() {
           </div>
         </div>
       )}
-
-      <DoubleCheckInDashboardModal aberto={dashAberto} onClose={() => setDashAberto(false)} />
 
       {/* Modal itens */}
       {modalNota &&
@@ -982,31 +1234,44 @@ export default function DoubleCheckInPage() {
                     </table>
                   </>
                 ) : (
-                  <DoubleCheckInComparativoPcTab
-                    idDocumento={modalNota.idDocumento}
-                    conferido={Boolean(modalNota.conferido)}
-                    linhas={compLinhas}
-                    decisoes={compDecisoes}
-                    justificativas={compJustificativas}
-                    loading={compLoading}
-                    erro={compErro}
-                    onDecisoesChange={(next) => {
-                      setCompDecisoes(next);
-                      setCompBloqueioMsg(null);
-                      const prev = comparativoCacheRef.current.get(modalNota.idDocumento);
-                      if (prev) {
-                        comparativoCacheRef.current.set(modalNota.idDocumento, {
-                          ...prev,
-                          decisoes: next,
-                        });
-                      }
-                    }}
-                  />
+                  <div className="space-y-3">
+                    {regimeDaNota(modalNota) === 'simples' ? (
+                      <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+                        Entrada de 19/09 a 20/09/2026: comparativo somente para consulta.
+                        Não é necessário aceitar ou recusar divergências.
+                      </p>
+                    ) : null}
+                    <DoubleCheckInComparativoPcTab
+                      idDocumento={modalNota.idDocumento}
+                      conferido={Boolean(modalNota.conferido)}
+                      somenteLeitura={regimeDaNota(modalNota) !== 'completa'}
+                      linhas={compLinhas}
+                      decisoes={compDecisoes}
+                      justificativas={compJustificativas}
+                      loading={compLoading}
+                      erro={compErro}
+                      onDecisoesChange={(next) => {
+                        setCompDecisoes(next);
+                        setCompBloqueioMsg(null);
+                        const prev = comparativoCacheRef.current.get(modalNota.idDocumento);
+                        if (prev) {
+                          comparativoCacheRef.current.set(modalNota.idDocumento, {
+                            ...prev,
+                            decisoes: next,
+                          });
+                        }
+                      }}
+                    />
+                  </div>
                 )}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3 dark:border-slate-600 dark:bg-slate-900/40">
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {modalNota.conferido ? (
+                  {regimeDaNota(modalNota) === 'nao_aplicada' ? (
+                    <span>
+                      Conferência não aplicada para entradas até 18/09/2026.
+                    </span>
+                  ) : modalNota.conferido ? (
                     <span>
                       Conferida
                       {modalNota.conferidoPor ? ` por ${modalNota.conferidoPor}` : ''}
@@ -1015,22 +1280,55 @@ export default function DoubleCheckInPage() {
                         : ''}
                       .
                     </span>
+                  ) : modalNota.conferenciaReaberta ? (
+                    <span>
+                      {compDecisoes.some((decisao) => decisao.vigente === false)
+                        ? 'Conferência reaberta. Revise e decida novamente todas as divergências antes de confirmar.'
+                        : 'Nova divergência detectada após a conferência. Decida a pendência e confirme novamente.'}
+                    </span>
                   ) : (
                     <span>
-                      Confirme com sua senha. Divergências NF × PC precisam de decisão antes de
-                      conferir.
+                      {regimeDaNota(modalNota) === 'simples'
+                        ? 'Confira o comparativo e confirme com sua senha. Não há aceite ou recusa neste período.'
+                        : 'Confirme com sua senha. Divergências NF × PC precisam de decisão antes de conferir.'}
                     </span>
                   )}
                 </div>
-                <button
-                  type="button"
-                  className={btnPrimary}
-                  disabled={Boolean(modalNota.conferido) || detalheLoading || compLoading}
-                  onClick={() => void abrirSenhaConferir()}
-                >
-                  <ClipboardCheck className="h-4 w-4" />
-                  {modalNota.conferido ? 'Já conferida' : 'Confirmar conferência'}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {modalNota.conferido &&
+                  regimeDaNota(modalNota) === 'completa' &&
+                  podeReabrirConferencia ? (
+                    <button
+                      type="button"
+                      className={btnSecondary}
+                      disabled={reabrindoConferencia || detalheLoading || compLoading}
+                      onClick={() => void reabrirConferencia()}
+                    >
+                      <RotateCcw
+                        className={`h-4 w-4 ${reabrindoConferencia ? 'animate-spin' : ''}`}
+                      />
+                      Reabrir conferência
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={btnPrimary}
+                    disabled={
+                      Boolean(modalNota.conferido) ||
+                      regimeDaNota(modalNota) === 'nao_aplicada' ||
+                      detalheLoading ||
+                      compLoading
+                    }
+                    onClick={() => void abrirSenhaConferir()}
+                  >
+                    <ClipboardCheck className="h-4 w-4" />
+                    {regimeDaNota(modalNota) === 'nao_aplicada'
+                      ? 'Não aplicada'
+                      : modalNota.conferido
+                        ? 'Já conferida'
+                        : 'Confirmar conferência'}
+                  </button>
+                </div>
               </div>
             </div>
             <style>{`
@@ -1103,6 +1401,8 @@ export default function DoubleCheckInPage() {
           </div>,
           document.body
         )}
+
+      {cadastrosAberto && <DoubleCheckInJustificativasModal onClose={() => setCadastrosAberto(false)} />}
 
       {/* Modal parâmetros */}
       {paramAberto &&

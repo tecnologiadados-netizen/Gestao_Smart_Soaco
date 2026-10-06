@@ -77,6 +77,32 @@ describe('divergenciaCondicaoPorPrazos — à vista', () => {
     ).toBe(false);
   });
 
+  it('usa a mesma condição como segundo nível quando não há data base no PC', () => {
+    expect(
+      divergenciaCondicaoPorPrazos({
+        prazosNF: [28, 39],
+        prazosPC: [],
+        condicaoNF: '(1x) 30',
+        regraNF: '30',
+        condicaoPC: '(1x) 30',
+        regraPC: '30',
+      })
+    ).toBe(false);
+  });
+
+  it('mantém divergência sem data base quando condição ou regra cadastral muda', () => {
+    expect(
+      divergenciaCondicaoPorPrazos({
+        prazosNF: [28, 39],
+        prazosPC: [],
+        condicaoNF: '(1x) 30',
+        regraNF: '30',
+        condicaoPC: '(1x) 45',
+        regraPC: '45',
+      })
+    ).toBe(true);
+  });
+
   it('dias calculados diferentes da regra do outro lado: divergente', () => {
     expect(
       divergenciaCondicaoPorPrazos({

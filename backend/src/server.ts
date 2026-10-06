@@ -33,6 +33,10 @@ import { ensureGrupoMaster } from './config/ensureGrupoMaster.js';
 import { ensureDoubleCheckInPermissao } from './config/ensureDoubleCheckInPermissao.js';
 import { initPainelProducaoMetas } from './services/painelProducao/painelProducaoTargetsService.js';
 import { migrateLegacyRhUploads, rhUploadRoot } from './rh/utils/rhUpload.js';
+import {
+  migrateLegacyQualidadeUploads,
+  qualidadeUploadRoot,
+} from './utils/qualidadeUpload.js';
 
 const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -161,6 +165,17 @@ function main(): void {
     console.log(`[startup] Uploads RH em ${rhUploadRoot}${copied > 0 ? ` (${copied} arquivo(s) copiados da pasta antiga)` : ''}`);
   } catch (e) {
     console.error('[startup] Falha ao preparar uploads RH:', (e as Error)?.message ?? e);
+  }
+  try {
+    const copied = migrateLegacyQualidadeUploads();
+    console.log(
+      `[startup] Uploads Qualidade em ${qualidadeUploadRoot}${copied > 0 ? ` (${copied} arquivo(s) copiados da pasta antiga)` : ''}`
+    );
+  } catch (e) {
+    console.error(
+      '[startup] Falha ao preparar uploads da Qualidade:',
+      (e as Error)?.message ?? e
+    );
   }
   const server = app.listen(port, '0.0.0.0', () => {
     console.log(`Servidor rodando em http://0.0.0.0:${port} (acessível na rede)`);

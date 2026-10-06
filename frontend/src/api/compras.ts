@@ -1379,11 +1379,19 @@ export type DoubleCheckInNota = {
   idParceiro: number | null;
   nomeParceiro: string | null;
   qtdeItens: number;
+  regimeConferencia?: 'nao_aplicada' | 'simples' | 'completa';
   conferido?: boolean;
   conferidoEm?: string | null;
   conferidoPor?: string | null;
-  /** Conferido e havia divergência NF × PC. */
+  conferenciaReaberta?: boolean;
+  /** Conferido e ainda diverge da NF × PC no estado atual do ERP. */
   conferidoComDivergencia?: boolean;
+  /** Naturezas das divergências que ainda existem no estado atual do ERP. */
+  temDivergenciaRealAtual?: boolean;
+  temDivergenciaBenignaAtual?: boolean;
+  /** Havia ao menos uma divergência real no instante da conferência. */
+  temDivergenciaRealHistorica?: boolean;
+  totalDivergenciasReaisHistorica?: number;
 };
 
 export type DoubleCheckInHistoricoEntrada = {
@@ -1500,13 +1508,19 @@ export async function conferirDoubleCheckIn(params: {
   numeroNfe?: string | null;
   numeroDocumentoFiscal?: string | null;
   nomeParceiro?: string | null;
+  reconferencia?: boolean;
 }): Promise<{
   ok: boolean;
   conferido?: boolean;
   conferidoEm?: string | null;
   conferidoPor?: string | null;
   conferidoComDivergencia?: boolean;
+  temDivergenciaRealAtual?: boolean;
+  temDivergenciaBenignaAtual?: boolean;
+  temDivergenciaRealHistorica?: boolean;
+  totalDivergenciasReaisHistorica?: number;
   jaConferido?: boolean;
+  reconferido?: boolean;
   alertaNfPcEnviado?: boolean;
   erro?: string;
 }> {
@@ -1520,7 +1534,12 @@ export async function conferirDoubleCheckIn(params: {
     conferidoEm?: string | null;
     conferidoPor?: string | null;
     conferidoComDivergencia?: boolean;
+    temDivergenciaRealAtual?: boolean;
+    temDivergenciaBenignaAtual?: boolean;
+    temDivergenciaRealHistorica?: boolean;
+    totalDivergenciasReaisHistorica?: number;
     jaConferido?: boolean;
+    reconferido?: boolean;
     alertaNfPcEnviado?: boolean;
     error?: string;
   };
@@ -1533,12 +1552,34 @@ export async function conferirDoubleCheckIn(params: {
     conferidoEm: body.conferidoEm ?? null,
     conferidoPor: body.conferidoPor ?? null,
     conferidoComDivergencia: Boolean(body.conferidoComDivergencia),
+    temDivergenciaRealAtual: Boolean(body.temDivergenciaRealAtual),
+    temDivergenciaBenignaAtual: Boolean(body.temDivergenciaBenignaAtual),
+    temDivergenciaRealHistorica: Boolean(body.temDivergenciaRealHistorica),
+    totalDivergenciasReaisHistorica: Number(body.totalDivergenciasReaisHistorica ?? 0),
     jaConferido: body.jaConferido,
+    reconferido: body.reconferido,
     alertaNfPcEnviado: body.alertaNfPcEnviado,
   };
 }
 
+export async function reabrirDoubleCheckIn(
+  idDocumento: number
+): Promise<{ ok: boolean; reabertoEm?: string; erro?: string }> {
+  const res = await apiFetch('/api/compras/double-checkin/reabrir', {
+    method: 'POST',
+    body: { idDocumento },
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    reabertoEm?: string;
+    error?: string;
+  };
+  if (!res.ok) return { ok: false, erro: body.error ?? res.statusText };
+  return { ok: true, reabertoEm: body.reabertoEm };
+}
+
 export type DoubleCheckInCampoComparativo = 'valor_unitario' | 'qtde' | 'ipi' | 'condicao_pagamento';
+export type DoubleCheckInNaturezaDivergencia = 'benigna' | 'real';
 
 export type DoubleCheckInComparativoLinha = {
   idItemDocumentoEstoque: number;
@@ -1577,6 +1618,9 @@ export type DoubleCheckInComparativoLinha = {
   divergQtde: boolean;
   divergIpi: boolean;
   divergCondicaoPagamento: boolean;
+  naturezaDivergencias?: Partial<
+    Record<DoubleCheckInCampoComparativo, DoubleCheckInNaturezaDivergencia>
+  >;
   /** Documento sem contas a pagar (Nomus não gera agendamento financeiro). */
   naoGeraContasPagar?: boolean;
   temDivergencia: boolean;
@@ -1613,6 +1657,7 @@ export type DoubleCheckInComparativoDecisao = {
   usuarioId: number;
   usuarioLogin: string;
   atualizadoEm: string;
+  vigente?: boolean;
   historicoObservacoes?: DoubleCheckInComparativoObsHist[];
 };
 
@@ -1627,6 +1672,49 @@ export type DoubleCheckInComparativoObsHist = {
   usuarioLogin: string;
   criadoEm: string;
 };
+
+export async function fetchDoubleCheckInJustificativasGestao(): Promise<{
+  justificativas: DoubleCheckInJustificativaOpcao[];
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/compras/double-checkin/justificativas/gestao');
+  const body = (await res.json().catch(() => ({}))) as {
+    justificativas?: DoubleCheckInJustificativaOpcao[];
+    error?: string;
+  };
+  if (!res.ok) return { justificativas: [], erro: body.error ?? res.statusText };
+  return { justificativas: body.justificativas ?? [] };
+}
+
+export async function salvarDoubleCheckInJustificativa(params: {
+  id?: number;
+  label: string;
+  campos: DoubleCheckInCampoComparativo[];
+  ativo: boolean;
+}): Promise<{ justificativa?: DoubleCheckInJustificativaOpcao; erro?: string }> {
+  const res = await apiFetch(
+    params.id
+      ? `/api/compras/double-checkin/justificativas/${params.id}`
+      : '/api/compras/double-checkin/justificativas',
+    {
+      method: params.id ? 'PUT' : 'POST',
+      body: { label: params.label, campos: params.campos, ativo: params.ativo },
+    }
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    justificativa?: DoubleCheckInJustificativaOpcao;
+    error?: string;
+  };
+  if (!res.ok) return { erro: body.error ?? res.statusText };
+  return { justificativa: body.justificativa };
+}
+
+export async function excluirDoubleCheckInJustificativa(id: number): Promise<{ ok?: boolean; erro?: string }> {
+  const res = await apiFetch(`/api/compras/double-checkin/justificativas/${id}`, { method: 'DELETE' });
+  const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  if (!res.ok) return { erro: body.error ?? res.statusText };
+  return { ok: true };
+}
 
 export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Promise<{
   linhas: DoubleCheckInComparativoLinha[];

@@ -92,6 +92,18 @@ interface CalibrationsState {
     equipmentId: string,
     record: RegisterCalibrationInput
   ) => void;
+  inserirCalibracao: (
+    equipmentId: string,
+    input: {
+      dataPublicacao: string;
+      proximaCalibracao: string;
+      prestadorId: string;
+      prestadorNome: string;
+      laudoNome: string;
+      laudoDataUrl: string;
+      anexos?: { nome: string; dataUrl: string; storagePath?: string }[];
+    }
+  ) => void;
   registerVerification: (
     equipmentId: string,
     record: Omit<VerificationRecord, "id" | "equipmentId">
@@ -304,6 +316,77 @@ export const useCalibrationsStore = create<CalibrationsState>()((set, get) => ({
                   laudoDataUrl: record.laudoDataUrl,
                   laudoStoragePath: undefined,
                   laudoAnexos: record.anexos?.length ? record.anexos : undefined,
+                  versaoLaudoAtual: versaoAtual,
+                }
+              : e
+          ),
+          tasks: state.tasks.filter(
+            (t) =>
+              !(
+                t.referenciaId === equipmentId &&
+                t.tipo === "calibrar_equipamento" &&
+                t.status === "pendente"
+              )
+          ),
+        }));
+      },
+
+      inserirCalibracao: (equipmentId, input) => {
+        const equipment = get().equipment.find((e) => e.id === equipmentId);
+        if (!equipment) return;
+
+        const historico = get().calibrationRecords.filter(
+          (r) => r.equipmentId === equipmentId
+        );
+        const novosRegistros: CalibrationRecord[] = [];
+        let versaoAtual = equipment.versaoLaudoAtual ?? INITIAL_REVISION;
+
+        const temCalibracaoAnterior = Boolean(
+          equipment.laudoNome?.trim() || equipment.ultimaCalibracao?.trim()
+        );
+        if (temCalibracaoAnterior) {
+          novosRegistros.push({
+            id: generateId("cal"),
+            equipmentId,
+            versao: versaoAtual,
+            data: equipment.ultimaCalibracao ?? input.dataPublicacao,
+            tipo: calibrationTipoFromEquipment(equipment.tipoCalibracao),
+            resultado: "aprovado",
+            responsavelId: equipment.responsavelId,
+            laboratorio: equipment.prestadorCalibracaoNome?.trim() || undefined,
+            observacoes: equipment.prestadorCalibracaoId
+              ? `prestador:${equipment.prestadorCalibracaoId}`
+              : undefined,
+            laudoNome: equipment.laudoNome,
+            laudoDataUrl: equipment.laudoDataUrl,
+            laudoStoragePath: equipment.laudoStoragePath,
+            anexos: equipment.laudoAnexos?.length
+              ? equipment.laudoAnexos
+              : equipment.anexos?.length
+                ? equipment.anexos
+                : undefined,
+          });
+          versaoAtual = getNextRevision([
+            ...historico.map((r) => r.versao),
+            versaoAtual,
+          ]);
+        }
+
+        set((state) => ({
+          calibrationRecords: [...state.calibrationRecords, ...novosRegistros],
+          equipment: state.equipment.map((e) =>
+            e.id === equipmentId
+              ? {
+                  ...e,
+                  ultimaCalibracao: input.dataPublicacao,
+                  proximaCalibracao: input.proximaCalibracao,
+                  prestadorCalibracaoId: input.prestadorId,
+                  prestadorCalibracaoNome: input.prestadorNome.trim(),
+                  laudoNome: input.laudoNome.trim(),
+                  laudoDataUrl: input.laudoDataUrl.trim(),
+                  laudoStoragePath: undefined,
+                  laudoAnexos: input.anexos?.length ? input.anexos : undefined,
+                  anexos: input.anexos?.length ? input.anexos : undefined,
                   versaoLaudoAtual: versaoAtual,
                 }
               : e
