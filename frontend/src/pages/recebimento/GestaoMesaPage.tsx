@@ -142,6 +142,7 @@ export default function GestaoMesaPage() {
   const [detalhe, setDetalhe] = useState<RecebimentoDetalhe | null>(null);
   const [detalheLoading, setDetalheLoading] = useState(false);
   const [detalheErro, setDetalheErro] = useState<string | null>(null);
+  const [modalAba, setModalAba] = useState<'informacoes' | 'historico'>('informacoes');
   const detalheCacheRef = useRef(new Map<number, RecebimentoDetalhe>());
 
   const [conferentes, setConferentes] = useState<RecebimentoConferenteOpcao[]>([]);
@@ -202,6 +203,7 @@ export default function GestaoMesaPage() {
 
   const abrirDetalhe = async (doc: RecebimentoDocumentoGrade) => {
     setModalDoc(doc);
+    setModalAba('informacoes');
     setDetalheErro(null);
     setDeliberarErro(null);
     setConferenteBusca('');
@@ -504,6 +506,34 @@ export default function GestaoMesaPage() {
                 </button>
               </div>
 
+              <div
+                className="flex shrink-0 gap-1 border-b border-slate-200 bg-slate-50 px-5 pt-2 dark:border-slate-600 dark:bg-slate-900/40"
+                role="tablist"
+                aria-label="Seções do documento"
+              >
+                {(
+                  [
+                    ['informacoes', 'Informações'],
+                    ['historico', 'Histórico'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={modalAba === id}
+                    className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                      modalAba === id
+                        ? 'border-primary-600 text-primary-700 dark:text-primary-300'
+                        : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                    }`}
+                    onClick={() => setModalAba(id)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               <div className="relative min-h-[12rem] flex-1 overflow-auto p-4">
                 <CarregandoInformacoesOverlay show={detalheLoading} mode="contained" />
                 {detalheErro && (
@@ -511,44 +541,51 @@ export default function GestaoMesaPage() {
                     {detalheErro}
                   </p>
                 )}
-                <table className="min-w-full text-sm">
-                  <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-900">
-                    <tr>
-                      <th className="px-2 py-2">Material</th>
-                      <th className="px-2 py-2">UM</th>
-                      <th className="px-2 py-2 text-right">Qtde</th>
-                      <th className="px-2 py-2 text-right">Vl. unit.</th>
-                      <th className="px-2 py-2 text-right">Vl. total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                    {(detalhe?.itens ?? []).map((it) => (
-                      <tr key={it.idItem}>
-                        <td className="px-2 py-2">
-                          <div className="font-medium text-slate-800 dark:text-slate-100">
-                            {it.codigoProduto ?? it.idProduto}
-                          </div>
-                          <div className="line-clamp-2 text-xs text-slate-500">{it.descricaoProduto ?? '—'}</div>
-                        </td>
-                        <td className="px-2 py-2">{it.unidadeMedida ?? '—'}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{nfNum.format(it.qtde)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{nfBrl.format(it.valorUnitario)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{nfBrl.format(it.valorTotal)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {detalhe && (
-                  <p className="mt-3 text-xs text-slate-500">
-                    {detalhe.itens.length} item(ns) · qtde total {nfNum.format(somaQtdeModal)}
-                    {Math.abs(somaQtdeModal - modalDoc.qtdeTotal) > 0.0001
-                      ? ` (grade: ${nfNum.format(modalDoc.qtdeTotal)})`
-                      : ''}
-                  </p>
+                {modalAba === 'informacoes' && (
+                  <>
+                    <table className="min-w-full text-sm">
+                      <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-900">
+                        <tr>
+                          <th className="px-2 py-2">Material</th>
+                          <th className="px-2 py-2">UM</th>
+                          <th className="px-2 py-2 text-right">Qtde</th>
+                          <th className="px-2 py-2 text-right">Vl. unit.</th>
+                          <th className="px-2 py-2 text-right">Vl. total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                        {(detalhe?.itens ?? []).map((it) => (
+                          <tr key={it.idItem}>
+                            <td className="px-2 py-2">
+                              <div className="font-medium text-slate-800 dark:text-slate-100">
+                                {it.codigoProduto ?? it.idProduto}
+                              </div>
+                              <div className="line-clamp-2 text-xs text-slate-500">
+                                {it.descricaoProduto ?? '—'}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2">{it.unidadeMedida ?? '—'}</td>
+                            <td className="px-2 py-2 text-right tabular-nums">{nfNum.format(it.qtde)}</td>
+                            <td className="px-2 py-2 text-right tabular-nums">{nfBrl.format(it.valorUnitario)}</td>
+                            <td className="px-2 py-2 text-right tabular-nums">{nfBrl.format(it.valorTotal)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {detalhe && (
+                      <p className="mt-3 text-xs text-slate-500">
+                        {detalhe.itens.length} item(ns) · qtde total {nfNum.format(somaQtdeModal)}
+                        {Math.abs(somaQtdeModal - modalDoc.qtdeTotal) > 0.0001
+                          ? ` (grade: ${nfNum.format(modalDoc.qtdeTotal)})`
+                          : ''}
+                      </p>
+                    )}
+                  </>
                 )}
 
-                {detalhe?.historicoConferencia && (
-                  <section className="mt-5 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-600">
+                {modalAba === 'historico' &&
+                  (detalhe?.historicoConferencia ? (
+                    <section className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-600">
                     <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2 dark:bg-slate-900/60">
                       <div>
                         <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -617,16 +654,23 @@ export default function GestaoMesaPage() {
                         </tbody>
                       </table>
                     </div>
-                  </section>
-                )}
+                    </section>
+                  ) : (
+                    !detalheLoading && (
+                      <div className="flex min-h-[12rem] items-center justify-center text-center text-sm text-slate-500 dark:text-slate-400">
+                        Este documento ainda não possui retorno de conferência.
+                      </div>
+                    )
+                  ))}
               </div>
 
-              <div
-                className={`space-y-3 border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-600 dark:bg-slate-900/40 ${
-                  detalheLoading || !detalhe ? 'pointer-events-none opacity-50' : ''
-                }`}
-                aria-busy={detalheLoading}
-              >
+              {modalAba === 'informacoes' && (
+                <div
+                  className={`space-y-3 border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-600 dark:bg-slate-900/40 ${
+                    detalheLoading || !detalhe ? 'pointer-events-none opacity-50' : ''
+                  }`}
+                  aria-busy={detalheLoading}
+                >
                 <p className="text-sm font-medium text-slate-800 dark:text-slate-100">Deliberar conferente</p>
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="min-w-[12rem]">
@@ -674,7 +718,8 @@ export default function GestaoMesaPage() {
                     {deliberarErro}
                   </p>
                 )}
-              </div>
+                </div>
+              )}
             </div>
           </div>,
           document.body
