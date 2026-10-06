@@ -82,6 +82,32 @@ export async function getRecebimentoMesaItens(req: Request, res: Response): Prom
   }
 
   const local = await obterConferenciaPorDocumento(idDocumento);
+  const retornouParaMesa =
+    local?.status === RECEBIMENTO_STATUS.CONFERIDO ||
+    local?.status === RECEBIMENTO_STATUS.DIVERGENCIA;
+  const linhas = retornouParaMesa && local ? await listarItensContagem(local.id) : [];
+  const itensPorId = new Map(itens.map((item) => [item.idItem, item]));
+  const historicoConferencia =
+    retornouParaMesa && local
+      ? {
+          status: local.status,
+          statusLabel: RECEBIMENTO_STATUS_LABEL[local.status] ?? local.status,
+          retornadoEm: local.finalizadoEm,
+          itens: linhas.map((linha) => {
+            const item = linha.idItemDocumento == null ? null : itensPorId.get(linha.idItemDocumento);
+            return {
+              idItem: linha.idItemDocumento,
+              codigoProduto: item?.codigoProduto ?? linha.codigoInformado,
+              descricaoProduto: item?.descricaoProduto ?? linha.descricaoProduto,
+              unidadeMedida: item?.unidadeMedida ?? linha.unidadeMedida,
+              qtdeDocumento: item?.qtde ?? null,
+              qtdeInformada: linha.qtdeInformada,
+              tentativas: linha.tentativas,
+              conferido: linha.conferido,
+            };
+          }),
+        }
+      : null;
   const codigo = local?.status ?? statusPadrao().codigo;
   res.json({
     itens,
@@ -91,6 +117,7 @@ export async function getRecebimentoMesaItens(req: Request, res: Response): Prom
     conferenteLogin: local?.conferenteLogin ?? null,
     conferenteNome: local?.conferenteNome ?? null,
     atribuidoEm: local?.atribuidoEm ?? null,
+    historicoConferencia,
   });
 }
 

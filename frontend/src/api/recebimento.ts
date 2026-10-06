@@ -45,6 +45,24 @@ export type RecebimentoConferenteOpcao = {
   nome: string | null;
 };
 
+export type RecebimentoHistoricoConferenciaItem = {
+  idItem: number | null;
+  codigoProduto: string | null;
+  descricaoProduto: string | null;
+  unidadeMedida: string | null;
+  qtdeDocumento: number | null;
+  qtdeInformada: number;
+  tentativas: number;
+  conferido: boolean;
+};
+
+export type RecebimentoHistoricoConferencia = {
+  status: RecebimentoStatusCodigo;
+  statusLabel: string;
+  retornadoEm: string | null;
+  itens: RecebimentoHistoricoConferenciaItem[];
+};
+
 export type RecebimentoDetalhe = {
   itens: RecebimentoDocumentoItem[];
   status: RecebimentoStatusCodigo;
@@ -53,6 +71,7 @@ export type RecebimentoDetalhe = {
   conferenteLogin: string | null;
   conferenteNome: string | null;
   atribuidoEm: string | null;
+  historicoConferencia: RecebimentoHistoricoConferencia | null;
 };
 
 export async function fetchRecebimentoMesaDocumentos(): Promise<{

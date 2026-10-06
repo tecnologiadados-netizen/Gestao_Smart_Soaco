@@ -32,6 +32,7 @@ export type RecebimentoConferenciaLocal = {
   atribuidoEm: Date | null;
   atribuidoPorUsuarioId: number | null;
   atribuidoPorLogin: string | null;
+  finalizadoEm: Date | null;
 };
 
 export type RecebimentoConferenteOpcao = {
@@ -57,6 +58,7 @@ function mapRow(row: {
   atribuidoEm: Date | null;
   atribuidoPorUsuarioId: number | null;
   atribuidoPorLogin: string | null;
+  finalizadoEm: Date | null;
 }): RecebimentoConferenciaLocal {
   return {
     id: row.id,
@@ -69,6 +71,7 @@ function mapRow(row: {
     atribuidoEm: row.atribuidoEm,
     atribuidoPorUsuarioId: row.atribuidoPorUsuarioId,
     atribuidoPorLogin: row.atribuidoPorLogin,
+    finalizadoEm: row.finalizadoEm,
   };
 }
 

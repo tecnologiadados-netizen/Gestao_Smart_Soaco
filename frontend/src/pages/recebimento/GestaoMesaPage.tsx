@@ -56,6 +56,13 @@ function fmtDataBr(ymd: string | null): string {
   return `${d}/${m}/${y}`;
 }
 
+function fmtDateTimeBr(iso: string | null): string {
+  if (!iso) return '—';
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return '—';
+  return dt.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
 function conferenteLabel(nome: string | null, login: string | null): string {
   if (nome && login) return `${nome} (${login})`;
   return nome || login || '—';
@@ -243,7 +250,7 @@ export default function GestaoMesaPage() {
     setModalDoc((atual) => (atual && atual.idDocumento === idDocumento ? { ...atual, ...patch } : atual));
     const cached = detalheCacheRef.current.get(idDocumento);
     if (cached) {
-      const next = { ...cached, ...patch };
+      const next = { ...cached, ...patch, historicoConferencia: null };
       detalheCacheRef.current.set(idDocumento, next);
       setDetalhe(next);
     }
@@ -538,6 +545,79 @@ export default function GestaoMesaPage() {
                       ? ` (grade: ${nfNum.format(modalDoc.qtdeTotal)})`
                       : ''}
                   </p>
+                )}
+
+                {detalhe?.historicoConferencia && (
+                  <section className="mt-5 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-600">
+                    <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2 dark:bg-slate-900/60">
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                          Histórico da conferência
+                        </h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Retorno à Mesa em {fmtDateTimeBr(detalhe.historicoConferencia.retornadoEm)}
+                        </p>
+                      </div>
+                      {badgeStatus(
+                        detalhe.historicoConferencia.status,
+                        detalhe.historicoConferencia.statusLabel
+                      )}
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-slate-100/70 text-left text-xs uppercase text-slate-500 dark:bg-slate-900">
+                          <tr>
+                            <th className="px-3 py-2">Material</th>
+                            <th className="px-3 py-2 text-right">Qtde NF</th>
+                            <th className="px-3 py-2 text-right">Última qtde física</th>
+                            <th className="px-3 py-2 text-center">Tentativas</th>
+                            <th className="px-3 py-2 text-center">Resultado</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                          {detalhe.historicoConferencia.itens.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="px-3 py-5 text-center text-slate-500">
+                                Nenhuma contagem registrada.
+                              </td>
+                            </tr>
+                          ) : (
+                            detalhe.historicoConferencia.itens.map((item, index) => (
+                              <tr key={item.idItem ?? `${item.codigoProduto ?? 'item'}-${index}`}>
+                                <td className="px-3 py-2">
+                                  <div className="font-medium text-slate-800 dark:text-slate-100">
+                                    {item.codigoProduto ?? '—'}
+                                  </div>
+                                  <div className="text-xs text-slate-500">
+                                    {item.descricaoProduto ?? '—'}
+                                    {item.unidadeMedida ? ` · ${item.unidadeMedida}` : ''}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {item.qtdeDocumento == null ? '—' : nfNum.format(item.qtdeDocumento)}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {nfNum.format(item.qtdeInformada)}
+                                </td>
+                                <td className="px-3 py-2 text-center tabular-nums">{item.tentativas}</td>
+                                <td className="px-3 py-2 text-center">
+                                  <span
+                                    className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${
+                                      item.conferido
+                                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                        : 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-600 dark:bg-rose-950/40 dark:text-rose-300'
+                                    }`}
+                                  >
+                                    {item.conferido ? 'Conferido' : 'Divergência'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
                 )}
               </div>
 
