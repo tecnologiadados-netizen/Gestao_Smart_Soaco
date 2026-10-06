@@ -33,6 +33,14 @@ export type RecebimentoConferenciaLocal = {
   atribuidoPorUsuarioId: number | null;
   atribuidoPorLogin: string | null;
   finalizadoEm: Date | null;
+  mesaUltimaAcao: string | null;
+  mesaAcaoEm: Date | null;
+  mesaAcaoPorUsuarioId: number | null;
+  mesaAcaoPorLogin: string | null;
+  idDocumentoDevolucaoNomus: number | null;
+  numeroDocumentoDevolucao: string | null;
+  numeroNfeDevolucao: string | null;
+  devolucaoVinculadaEm: Date | null;
 };
 
 export type RecebimentoConferenteOpcao = {
@@ -59,6 +67,14 @@ function mapRow(row: {
   atribuidoPorUsuarioId: number | null;
   atribuidoPorLogin: string | null;
   finalizadoEm: Date | null;
+  mesaUltimaAcao: string | null;
+  mesaAcaoEm: Date | null;
+  mesaAcaoPorUsuarioId: number | null;
+  mesaAcaoPorLogin: string | null;
+  idDocumentoDevolucaoNomus: number | null;
+  numeroDocumentoDevolucao: string | null;
+  numeroNfeDevolucao: string | null;
+  devolucaoVinculadaEm: Date | null;
 }): RecebimentoConferenciaLocal {
   return {
     id: row.id,
@@ -72,6 +88,14 @@ function mapRow(row: {
     atribuidoPorUsuarioId: row.atribuidoPorUsuarioId,
     atribuidoPorLogin: row.atribuidoPorLogin,
     finalizadoEm: row.finalizadoEm,
+    mesaUltimaAcao: row.mesaUltimaAcao,
+    mesaAcaoEm: row.mesaAcaoEm,
+    mesaAcaoPorUsuarioId: row.mesaAcaoPorUsuarioId,
+    mesaAcaoPorLogin: row.mesaAcaoPorLogin,
+    idDocumentoDevolucaoNomus: row.idDocumentoDevolucaoNomus,
+    numeroDocumentoDevolucao: row.numeroDocumentoDevolucao,
+    numeroNfeDevolucao: row.numeroNfeDevolucao,
+    devolucaoVinculadaEm: row.devolucaoVinculadaEm,
   };
 }
 
@@ -147,6 +171,7 @@ export async function deliberarConferente(params: {
   numeroDocumento: string | null;
   conferente: RecebimentoConferenteOpcao;
   atribuidoPor: { id: number; login: string };
+  mesaAcao?: string;
 }): Promise<RecebimentoConferenciaLocal> {
   const existente = await prisma.recebimentoConferencia.findUnique({
     where: { idDocumentoEstoque: params.idDocumentoEstoque },
@@ -156,34 +181,71 @@ export async function deliberarConferente(params: {
   }
 
   const agora = new Date();
-  const row = await prisma.recebimentoConferencia.upsert({
-    where: { idDocumentoEstoque: params.idDocumentoEstoque },
-    create: {
-      idDocumentoEstoque: params.idDocumentoEstoque,
-      numeroDocumento: params.numeroDocumento,
-      status: RECEBIMENTO_STATUS.EM_CONFERENCIA,
-      conferenteUsuarioId: params.conferente.id,
-      conferenteLogin: params.conferente.login,
-      conferenteNome: params.conferente.nome,
-      atribuidoEm: agora,
-      atribuidoPorUsuarioId: params.atribuidoPor.id,
-      atribuidoPorLogin: params.atribuidoPor.login,
-    },
-    update: {
-      numeroDocumento: params.numeroDocumento,
-      status: RECEBIMENTO_STATUS.EM_CONFERENCIA,
-      conferenteUsuarioId: params.conferente.id,
-      conferenteLogin: params.conferente.login,
-      conferenteNome: params.conferente.nome,
-      atribuidoEm: agora,
-      atribuidoPorUsuarioId: params.atribuidoPor.id,
-      atribuidoPorLogin: params.atribuidoPor.login,
-      finalizadoEm: null,
-    },
+  const row = await prisma.$transaction(async (tx) => {
+    if (existente?.finalizadoEm) {
+      const itens = await tx.recebimentoConferenciaItem.findMany({
+        where: { conferenciaId: existente.id },
+        orderBy: { id: 'asc' },
+      });
+      if (itens.length > 0) {
+        await tx.recebimentoConferenciaCiclo.create({
+          data: {
+            conferenciaId: existente.id,
+            statusRetorno: existente.status,
+            conferenteUsuarioId: existente.conferenteUsuarioId,
+            conferenteLogin: existente.conferenteLogin,
+            conferenteNome: existente.conferenteNome,
+            atribuidoEm: existente.atribuidoEm,
+            finalizadoEm: existente.finalizadoEm,
+            itensJson: JSON.stringify(itens.map(mapItem)),
+          },
+        });
+      }
+    }
+
+    const atualizado = await tx.recebimentoConferencia.upsert({
+      where: { idDocumentoEstoque: params.idDocumentoEstoque },
+      create: {
+        idDocumentoEstoque: params.idDocumentoEstoque,
+        numeroDocumento: params.numeroDocumento,
+        status: RECEBIMENTO_STATUS.EM_CONFERENCIA,
+        conferenteUsuarioId: params.conferente.id,
+        conferenteLogin: params.conferente.login,
+        conferenteNome: params.conferente.nome,
+        atribuidoEm: agora,
+        atribuidoPorUsuarioId: params.atribuidoPor.id,
+        atribuidoPorLogin: params.atribuidoPor.login,
+        mesaUltimaAcao: params.mesaAcao ?? null,
+        mesaAcaoEm: params.mesaAcao ? agora : null,
+        mesaAcaoPorUsuarioId: params.mesaAcao ? params.atribuidoPor.id : null,
+        mesaAcaoPorLogin: params.mesaAcao ? params.atribuidoPor.login : null,
+      },
+      update: {
+        numeroDocumento: params.numeroDocumento,
+        status: RECEBIMENTO_STATUS.EM_CONFERENCIA,
+        conferenteUsuarioId: params.conferente.id,
+        conferenteLogin: params.conferente.login,
+        conferenteNome: params.conferente.nome,
+        atribuidoEm: agora,
+        atribuidoPorUsuarioId: params.atribuidoPor.id,
+        atribuidoPorLogin: params.atribuidoPor.login,
+        iniciadoEm: null,
+        finalizadoEm: null,
+        mesaUltimaAcao: params.mesaAcao ?? null,
+        mesaAcaoEm: params.mesaAcao ? agora : null,
+        mesaAcaoPorUsuarioId: params.mesaAcao ? params.atribuidoPor.id : null,
+        mesaAcaoPorLogin: params.mesaAcao ? params.atribuidoPor.login : null,
+        idDocumentoDevolucaoNomus: null,
+        numeroDocumentoDevolucao: null,
+        numeroNfeDevolucao: null,
+        devolucaoVinculadaEm: null,
+      },
+    });
+    if (existente) {
+      await tx.recebimentoConferenciaItem.deleteMany({ where: { conferenciaId: atualizado.id } });
+    }
+    return atualizado;
   });
-  if (existente) {
-    await prisma.recebimentoConferenciaItem.deleteMany({ where: { conferenciaId: row.id } });
-  }
   return mapRow(row);
 }
 
@@ -249,6 +311,91 @@ export async function listarItensContagem(conferenciaId: number): Promise<Recebi
     orderBy: { id: 'asc' },
   });
   return rows.map(mapItem);
+}
+
+export type RecebimentoCicloArquivado = {
+  status: RecebimentoStatus;
+  conferenteUsuarioId: number | null;
+  conferenteLogin: string | null;
+  conferenteNome: string | null;
+  atribuidoEm: Date | null;
+  finalizadoEm: Date | null;
+  itens: RecebimentoContagemLinha[];
+};
+
+export async function obterUltimoCicloConferencia(
+  conferenciaId: number
+): Promise<RecebimentoCicloArquivado | null> {
+  const ciclo = await prisma.recebimentoConferenciaCiclo.findFirst({
+    where: { conferenciaId },
+    orderBy: [{ arquivadoEm: 'desc' }, { id: 'desc' }],
+  });
+  if (!ciclo) return null;
+  let itens: RecebimentoContagemLinha[] = [];
+  try {
+    const parsed = JSON.parse(ciclo.itensJson) as unknown;
+    if (Array.isArray(parsed)) itens = parsed as RecebimentoContagemLinha[];
+  } catch {
+    itens = [];
+  }
+  return {
+    status: asStatus(ciclo.statusRetorno),
+    conferenteUsuarioId: ciclo.conferenteUsuarioId,
+    conferenteLogin: ciclo.conferenteLogin,
+    conferenteNome: ciclo.conferenteNome,
+    atribuidoEm: ciclo.atribuidoEm,
+    finalizadoEm: ciclo.finalizadoEm,
+    itens,
+  };
+}
+
+export async function registrarAcaoMesa(params: {
+  conferenciaId: number;
+  acao: string;
+  status: RecebimentoStatus;
+  usuario: { id: number; login: string };
+  devolucao?: {
+    idDocumento: number;
+    numeroDocumentoFiscal: string | null;
+    numeroNfe: string | null;
+  } | null;
+}): Promise<RecebimentoConferenciaLocal> {
+  const agora = new Date();
+  const row = await prisma.recebimentoConferencia.update({
+    where: { id: params.conferenciaId },
+    data: {
+      status: params.status,
+      mesaUltimaAcao: params.acao,
+      mesaAcaoEm: agora,
+      mesaAcaoPorUsuarioId: params.usuario.id,
+      mesaAcaoPorLogin: params.usuario.login,
+      idDocumentoDevolucaoNomus: params.devolucao?.idDocumento ?? null,
+      numeroDocumentoDevolucao: params.devolucao?.numeroDocumentoFiscal ?? null,
+      numeroNfeDevolucao: params.devolucao?.numeroNfe ?? null,
+      devolucaoVinculadaEm: params.devolucao ? agora : null,
+    },
+  });
+  return mapRow(row);
+}
+
+export async function vincularDocumentoDevolucao(params: {
+  conferenciaId: number;
+  idDocumento: number;
+  numeroDocumentoFiscal: string | null;
+  numeroNfe: string | null;
+}): Promise<RecebimentoConferenciaLocal> {
+  const agora = new Date();
+  const row = await prisma.recebimentoConferencia.update({
+    where: { id: params.conferenciaId },
+    data: {
+      status: RECEBIMENTO_STATUS.DEVOLUCAO_VINCULADA,
+      idDocumentoDevolucaoNomus: params.idDocumento,
+      numeroDocumentoDevolucao: params.numeroDocumentoFiscal,
+      numeroNfeDevolucao: params.numeroNfe,
+      devolucaoVinculadaEm: agora,
+    },
+  });
+  return mapRow(row);
 }
 
 export async function registrarTentativaContagem(params: {

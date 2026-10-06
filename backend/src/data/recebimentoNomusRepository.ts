@@ -14,6 +14,9 @@ export const RECEBIMENTO_STATUS = {
   EM_CONFERENCIA: 'EM_CONFERENCIA',
   CONFERIDO: 'CONFERIDO',
   DIVERGENCIA: 'DIVERGENCIA',
+  TRATAMENTO_COMPRAS: 'TRATAMENTO_COMPRAS',
+  AGUARDANDO_DEVOLUCAO: 'AGUARDANDO_DEVOLUCAO',
+  DEVOLUCAO_VINCULADA: 'DEVOLUCAO_VINCULADA',
   FINALIZADO: 'FINALIZADO',
 } as const;
 
@@ -24,6 +27,9 @@ export const RECEBIMENTO_STATUS_LABEL: Record<RecebimentoStatus, string> = {
   EM_CONFERENCIA: 'Em conferência',
   CONFERIDO: 'Conferido — aguardando Mesa',
   DIVERGENCIA: 'Com divergência',
+  TRATAMENTO_COMPRAS: 'Tratamento compras',
+  AGUARDANDO_DEVOLUCAO: 'Aguardando documento de devolução',
+  DEVOLUCAO_VINCULADA: 'Devolução vinculada',
   FINALIZADO: 'Finalizado',
 };
 
@@ -181,6 +187,32 @@ ORDER BY ide.id ASC
 LIMIT 1
 `.trim();
 
+const SQL_DEVOLUCAO_COMPRA_POR_NFE = `
+SELECT
+  dev.id AS idDocumento,
+  dev.numeroDocumentoFiscal AS numeroDocumentoFiscal,
+  nfeDev.numero AS numeroNfe,
+  DATE(dev.dataEmissao) AS dataEmissao,
+  tm.nome AS tipoMovimentacao
+FROM documentoestoque dev
+INNER JOIN tipomovimentacao tm ON tm.id = dev.idTipoMovimentacao
+INNER JOIN documentoestoque origem ON origem.id = dev.idDocumentoOrigemDevolucao
+INNER JOIN nfe nfeOrigem ON nfeOrigem.idDocumentoEstoque = origem.id
+LEFT JOIN nfe nfeDev ON nfeDev.idDocumentoEstoque = dev.id
+WHERE tm.natureza = 5
+  AND dev.idParceiro = ?
+  AND CAST(TRIM(nfeOrigem.numero) AS UNSIGNED) = CAST(TRIM(?) AS UNSIGNED)
+  AND (
+    tm.nome LIKE '%DEVOLUÇÃO DE COMPRA%'
+    OR tm.nome LIKE '%Devolução de compra%'
+    OR tm.nome LIKE '%DEVOLUCAO DE COMPRA%'
+    OR tm.nome LIKE '%Mercadoria para Revenda%'
+    OR tm.id = 181
+  )
+ORDER BY dev.id DESC
+LIMIT 1
+`.trim();
+
 export type RecebimentoCabecalhoCego = {
   idDocumento: number;
   numeroDocumentoFiscal: string | null;
@@ -199,6 +231,14 @@ export type RecebimentoProdutoLookup = {
   codigoProduto: string | null;
   descricaoProduto: string | null;
   unidadeMedida: string | null;
+};
+
+export type RecebimentoDocumentoDevolucao = {
+  idDocumento: number;
+  numeroDocumentoFiscal: string | null;
+  numeroNfe: string | null;
+  dataEmissao: string | null;
+  tipoMovimentacao: string | null;
 };
 
 function mapCabecalho(r: Record<string, unknown>): RecebimentoCabecalhoCego {
@@ -364,5 +404,37 @@ export async function lookupProdutoCodigoDocumentoNomus(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { produto: null, erro: msg };
+  }
+}
+
+export async function queryDevolucaoCompraPorNfeNomus(params: {
+  numeroNfe: string;
+  idParceiro: number;
+}): Promise<{ documento: RecebimentoDocumentoDevolucao | null; erro?: string }> {
+  if (!isNomusEnabled()) return { documento: null, erro: 'NOMUS_DB_URL não configurado' };
+  const pool = getNomusPool();
+  if (!pool) return { documento: null, erro: 'NOMUS_DB_URL não configurado' };
+  if (!params.numeroNfe.trim() || params.idParceiro <= 0) return { documento: null };
+
+  try {
+    const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(
+      pool,
+      SQL_DEVOLUCAO_COMPRA_POR_NFE,
+      [params.idParceiro, params.numeroNfe.trim()]
+    );
+    const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
+    if (!row) return { documento: null };
+    return {
+      documento: {
+        idDocumento: toInt(row.idDocumento),
+        numeroDocumentoFiscal: strOrNull(row.numeroDocumentoFiscal),
+        numeroNfe: strOrNull(row.numeroNfe),
+        dataEmissao: formatSqlDateYmd(row.dataEmissao),
+        tipoMovimentacao: strOrNull(row.tipoMovimentacao),
+      },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { documento: null, erro: msg };
   }
 }

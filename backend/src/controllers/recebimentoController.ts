@@ -6,6 +6,7 @@ import type { Request, Response } from 'express';
 import { prisma } from '../config/prisma.js';
 import {
   queryCabecalhosDocumentosNomus,
+  queryDevolucaoCompraPorNfeNomus,
   queryDocumentosPreEntradaNomus,
   queryItensDocumentoPreEntradaNomus,
   RECEBIMENTO_STATUS,
@@ -19,9 +20,12 @@ import {
   listarItensContagem,
   listarPendenciasConferente,
   obterConferenciaPorDocumento,
+  obterUltimoCicloConferencia,
   qtdeFisicaConfere,
+  registrarAcaoMesa,
   registrarTentativaContagem,
   RECEBIMENTO_TENTATIVAS_MAX,
+  vincularDocumentoDevolucao,
   type RecebimentoConferenciaLocal,
   type RecebimentoContagemLinha,
 } from '../data/recebimentoConferenciaRepository.js';
@@ -31,6 +35,29 @@ function statusPadrao() {
     codigo: RECEBIMENTO_STATUS.AGUARDANDO_CONFERENTE,
     label: RECEBIMENTO_STATUS_LABEL[RECEBIMENTO_STATUS.AGUARDANDO_CONFERENTE],
   };
+}
+
+async function sincronizarDevolucaoSeDisponivel(
+  local: RecebimentoConferenciaLocal | null,
+  numeroNfe: string | null,
+  idParceiro: number | null
+): Promise<RecebimentoConferenciaLocal | null> {
+  if (
+    !local ||
+    local.status !== RECEBIMENTO_STATUS.AGUARDANDO_DEVOLUCAO ||
+    !numeroNfe ||
+    !idParceiro
+  ) {
+    return local;
+  }
+  const { documento } = await queryDevolucaoCompraPorNfeNomus({ numeroNfe, idParceiro });
+  if (!documento) return local;
+  return vincularDocumentoDevolucao({
+    conferenciaId: local.id,
+    idDocumento: documento.idDocumento,
+    numeroDocumentoFiscal: documento.numeroDocumentoFiscal,
+    numeroNfe: documento.numeroNfe,
+  });
 }
 
 /**
@@ -44,6 +71,13 @@ export async function getRecebimentoMesaDocumentos(_req: Request, res: Response)
   }
 
   const locais = await listarConferenciasPorDocumentos(documentos.map((d) => d.idDocumento));
+  await Promise.all(
+    documentos.map(async (d) => {
+      const local = locais.get(d.idDocumento) ?? null;
+      const sincronizado = await sincronizarDevolucaoSeDisponivel(local, d.numeroNfe, d.idParceiro);
+      if (sincronizado) locais.set(d.idDocumento, sincronizado);
+    })
+  );
   const lista = documentos.map((d) => {
     const local = locais.get(d.idDocumento);
     const codigo = local?.status ?? RECEBIMENTO_STATUS.AGUARDANDO_CONFERENTE;
@@ -81,18 +115,38 @@ export async function getRecebimentoMesaItens(req: Request, res: Response): Prom
     return;
   }
 
-  const local = await obterConferenciaPorDocumento(idDocumento);
-  const retornouParaMesa =
-    local?.status === RECEBIMENTO_STATUS.CONFERIDO ||
-    local?.status === RECEBIMENTO_STATUS.DIVERGENCIA;
-  const linhas = retornouParaMesa && local ? await listarItensContagem(local.id) : [];
+  let local = await obterConferenciaPorDocumento(idDocumento);
+  if (local?.status === RECEBIMENTO_STATUS.AGUARDANDO_DEVOLUCAO) {
+    const { documentos } = await queryCabecalhosDocumentosNomus([idDocumento]);
+    const cabecalho = documentos[0];
+    local = await sincronizarDevolucaoSeDisponivel(
+      local,
+      cabecalho?.numeroNfe ?? null,
+      cabecalho?.idParceiro ?? null
+    );
+  }
+  const cicloAtualFinalizado = local?.finalizadoEm != null;
+  const cicloArquivado =
+    !cicloAtualFinalizado && local ? await obterUltimoCicloConferencia(local.id) : null;
+  const linhas =
+    cicloAtualFinalizado && local
+      ? await listarItensContagem(local.id)
+      : (cicloArquivado?.itens ?? []);
+  const statusHistorico = cicloAtualFinalizado
+    ? linhas.some((linha) => !linha.conferido)
+      ? RECEBIMENTO_STATUS.DIVERGENCIA
+      : RECEBIMENTO_STATUS.CONFERIDO
+    : cicloArquivado?.status;
+  const finalizadoEmHistorico = cicloAtualFinalizado
+    ? local?.finalizadoEm
+    : cicloArquivado?.finalizadoEm;
   const itensPorId = new Map(itens.map((item) => [item.idItem, item]));
   const historicoConferencia =
-    retornouParaMesa && local
+    statusHistorico && local
       ? {
-          status: local.status,
-          statusLabel: RECEBIMENTO_STATUS_LABEL[local.status] ?? local.status,
-          retornadoEm: local.finalizadoEm,
+          status: statusHistorico,
+          statusLabel: RECEBIMENTO_STATUS_LABEL[statusHistorico] ?? statusHistorico,
+          retornadoEm: finalizadoEmHistorico,
           itens: linhas.map((linha) => {
             const item = linha.idItemDocumento == null ? null : itensPorId.get(linha.idItemDocumento);
             return {
@@ -117,6 +171,17 @@ export async function getRecebimentoMesaItens(req: Request, res: Response): Prom
     conferenteLogin: local?.conferenteLogin ?? null,
     conferenteNome: local?.conferenteNome ?? null,
     atribuidoEm: local?.atribuidoEm ?? null,
+    mesaUltimaAcao: local?.mesaUltimaAcao ?? null,
+    mesaAcaoEm: local?.mesaAcaoEm ?? null,
+    mesaAcaoPorLogin: local?.mesaAcaoPorLogin ?? null,
+    devolucao: local?.idDocumentoDevolucaoNomus
+      ? {
+          idDocumento: local.idDocumentoDevolucaoNomus,
+          numeroDocumentoFiscal: local.numeroDocumentoDevolucao,
+          numeroNfe: local.numeroNfeDevolucao,
+          vinculadaEm: local.devolucaoVinculadaEm,
+        }
+      : null,
     historicoConferencia,
   });
 }
@@ -204,6 +269,120 @@ async function usuarioLogado(req: Request): Promise<{ id: number; login: string 
   if (!login) return null;
   const u = await prisma.usuario.findUnique({ where: { login }, select: { id: true, login: true } });
   return u;
+}
+
+/**
+ * POST /api/recebimento/mesa/documentos/:id/acao
+ * body: { acao: TRATAMENTO_COMPRAS | REENVIAR_CONFERENCIA | DEVOLVER_MATERIAL,
+ *         conferenteUsuarioId?: number }
+ */
+export async function postRecebimentoMesaAcao(req: Request, res: Response): Promise<void> {
+  const usuario = await usuarioLogado(req);
+  if (!usuario) {
+    res.status(401).json({ error: 'Não autorizado.' });
+    return;
+  }
+  const idDocumento = Math.trunc(Number(req.params.id));
+  const acao = typeof req.body?.acao === 'string' ? req.body.acao.trim().toUpperCase() : '';
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  if (!['TRATAMENTO_COMPRAS', 'REENVIAR_CONFERENCIA', 'DEVOLVER_MATERIAL'].includes(acao)) {
+    res.status(400).json({ error: 'Selecione uma ação válida.' });
+    return;
+  }
+
+  const local = await obterConferenciaPorDocumento(idDocumento);
+  if (!local || local.status !== RECEBIMENTO_STATUS.DIVERGENCIA) {
+    res.status(409).json({ error: 'Esta ação só está disponível para conferências com divergência.' });
+    return;
+  }
+
+  let atualizado: RecebimentoConferenciaLocal;
+  if (acao === 'TRATAMENTO_COMPRAS') {
+    atualizado = await registrarAcaoMesa({
+      conferenciaId: local.id,
+      acao,
+      status: RECEBIMENTO_STATUS.TRATAMENTO_COMPRAS,
+      usuario,
+    });
+  } else if (acao === 'REENVIAR_CONFERENCIA') {
+    const conferenteUsuarioId = Math.trunc(
+      Number(req.body?.conferenteUsuarioId ?? local.conferenteUsuarioId)
+    );
+    const conferente = await prisma.usuario.findUnique({
+      where: { id: conferenteUsuarioId },
+      select: { id: true, login: true, nome: true, ativo: true },
+    });
+    const permitidos = await listarConferentesRecebimento();
+    if (
+      !conferente ||
+      conferente.ativo === false ||
+      !permitidos.some((item) => item.id === conferente.id)
+    ) {
+      res.status(400).json({ error: 'Selecione um conferente válido.' });
+      return;
+    }
+    atualizado = await deliberarConferente({
+      idDocumentoEstoque: idDocumento,
+      numeroDocumento: local.numeroDocumento,
+      conferente: { id: conferente.id, login: conferente.login, nome: conferente.nome },
+      atribuidoPor: usuario,
+      mesaAcao: acao,
+    });
+  } else {
+    const { documentos, erro } = await queryCabecalhosDocumentosNomus([idDocumento]);
+    if (erro) {
+      res.status(503).json({ error: erro });
+      return;
+    }
+    const cabecalho = documentos[0];
+    if (!cabecalho?.numeroNfe || !cabecalho.idParceiro) {
+      res.status(400).json({
+        error: 'O documento não possui NF-e e fornecedor válidos para localizar a devolução.',
+      });
+      return;
+    }
+    const busca = await queryDevolucaoCompraPorNfeNomus({
+      numeroNfe: cabecalho.numeroNfe,
+      idParceiro: cabecalho.idParceiro,
+    });
+    if (busca.erro) {
+      res.status(503).json({ error: busca.erro });
+      return;
+    }
+    atualizado = await registrarAcaoMesa({
+      conferenciaId: local.id,
+      acao,
+      status: busca.documento
+        ? RECEBIMENTO_STATUS.DEVOLUCAO_VINCULADA
+        : RECEBIMENTO_STATUS.AGUARDANDO_DEVOLUCAO,
+      usuario,
+      devolucao: busca.documento,
+    });
+  }
+
+  res.json({
+    ok: true,
+    status: atualizado.status,
+    statusLabel: RECEBIMENTO_STATUS_LABEL[atualizado.status] ?? atualizado.status,
+    mesaUltimaAcao: atualizado.mesaUltimaAcao,
+    mesaAcaoEm: atualizado.mesaAcaoEm,
+    mesaAcaoPorLogin: atualizado.mesaAcaoPorLogin,
+    conferenteUsuarioId: atualizado.conferenteUsuarioId,
+    conferenteLogin: atualizado.conferenteLogin,
+    conferenteNome: atualizado.conferenteNome,
+    atribuidoEm: atualizado.atribuidoEm,
+    devolucao: atualizado.idDocumentoDevolucaoNomus
+      ? {
+          idDocumento: atualizado.idDocumentoDevolucaoNomus,
+          numeroDocumentoFiscal: atualizado.numeroDocumentoDevolucao,
+          numeroNfe: atualizado.numeroNfeDevolucao,
+          vinculadaEm: atualizado.devolucaoVinculadaEm,
+        }
+      : null,
+  });
 }
 
 function conferenciaDoConferente(

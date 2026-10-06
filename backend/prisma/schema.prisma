@@ -328,9 +328,18 @@ model RecebimentoConferencia {
   atribuidoPorLogin     String?
   iniciadoEm            DateTime?
   finalizadoEm          DateTime?
+  mesaUltimaAcao        String?
+  mesaAcaoEm            DateTime?
+  mesaAcaoPorUsuarioId  Int?
+  mesaAcaoPorLogin      String?
+  idDocumentoDevolucaoNomus Int?
+  numeroDocumentoDevolucao  String?
+  numeroNfeDevolucao        String?
+  devolucaoVinculadaEm      DateTime?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   itens                 RecebimentoConferenciaItem[]
+  ciclos                RecebimentoConferenciaCiclo[]
 
   @@index([status])
   @@index([conferenteUsuarioId])
@@ -357,6 +366,24 @@ model RecebimentoConferenciaItem {
   @@unique([conferenciaId, idItemDocumento])
   @@index([conferenciaId])
   @@map("recebimento_conferencia_item")
+}
+
+/// Snapshot de cada ciclo devolvido à Mesa, preservado antes de uma nova conferência.
+model RecebimentoConferenciaCiclo {
+  id                    Int      @id @default(autoincrement())
+  conferenciaId         Int
+  statusRetorno         String
+  conferenteUsuarioId   Int?
+  conferenteLogin       String?
+  conferenteNome        String?
+  atribuidoEm           DateTime?
+  finalizadoEm          DateTime?
+  itensJson             String
+  arquivadoEm           DateTime @default(now())
+  conferencia           RecebimentoConferencia @relation(fields: [conferenciaId], references: [id], onDelete: Cascade)
+
+  @@index([conferenciaId, arquivadoEm])
+  @@map("recebimento_conferencia_ciclo")
 }
 
 /// Tipos de mensagem automática WhatsApp (Integração → SMS)

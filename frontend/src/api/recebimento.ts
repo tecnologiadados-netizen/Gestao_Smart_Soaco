@@ -5,6 +5,9 @@ export type RecebimentoStatusCodigo =
   | 'EM_CONFERENCIA'
   | 'CONFERIDO'
   | 'DIVERGENCIA'
+  | 'TRATAMENTO_COMPRAS'
+  | 'AGUARDANDO_DEVOLUCAO'
+  | 'DEVOLUCAO_VINCULADA'
   | 'FINALIZADO';
 
 export type RecebimentoDocumentoGrade = {
@@ -71,7 +74,37 @@ export type RecebimentoDetalhe = {
   conferenteLogin: string | null;
   conferenteNome: string | null;
   atribuidoEm: string | null;
+  mesaUltimaAcao: string | null;
+  mesaAcaoEm: string | null;
+  mesaAcaoPorLogin: string | null;
+  devolucao: RecebimentoDocumentoDevolucao | null;
   historicoConferencia: RecebimentoHistoricoConferencia | null;
+};
+
+export type RecebimentoDocumentoDevolucao = {
+  idDocumento: number;
+  numeroDocumentoFiscal: string | null;
+  numeroNfe: string | null;
+  vinculadaEm: string | null;
+};
+
+export type RecebimentoMesaAcao =
+  | 'TRATAMENTO_COMPRAS'
+  | 'REENVIAR_CONFERENCIA'
+  | 'DEVOLVER_MATERIAL';
+
+export type RecebimentoMesaAcaoResultado = {
+  ok: boolean;
+  status: RecebimentoStatusCodigo;
+  statusLabel: string;
+  mesaUltimaAcao: string | null;
+  mesaAcaoEm: string | null;
+  mesaAcaoPorLogin: string | null;
+  conferenteUsuarioId: number | null;
+  conferenteLogin: string | null;
+  conferenteNome: string | null;
+  atribuidoEm: string | null;
+  devolucao: RecebimentoDocumentoDevolucao | null;
 };
 
 export async function fetchRecebimentoMesaDocumentos(): Promise<{
@@ -149,6 +182,39 @@ export async function postRecebimentoMesaDeliberar(params: {
     conferenteLogin: body.conferenteLogin ?? null,
     conferenteNome: body.conferenteNome ?? null,
     atribuidoEm: body.atribuidoEm ?? null,
+  };
+}
+
+export async function postRecebimentoMesaAcao(params: {
+  idDocumento: number;
+  acao: RecebimentoMesaAcao;
+  conferenteUsuarioId?: number | null;
+}): Promise<RecebimentoMesaAcaoResultado> {
+  const res = await apiFetch(`/api/recebimento/mesa/documentos/${params.idDocumento}/acao`, {
+    method: 'POST',
+    body: {
+      acao: params.acao,
+      conferenteUsuarioId: params.conferenteUsuarioId ?? null,
+    },
+  });
+  const body = (await res.json().catch(() => ({}))) as Partial<RecebimentoMesaAcaoResultado> & {
+    error?: string;
+  };
+  if (!res.ok || !body.status || !body.statusLabel) {
+    throw new Error(body.error ?? res.statusText);
+  }
+  return {
+    ok: true,
+    status: body.status,
+    statusLabel: body.statusLabel,
+    mesaUltimaAcao: body.mesaUltimaAcao ?? null,
+    mesaAcaoEm: body.mesaAcaoEm ?? null,
+    mesaAcaoPorLogin: body.mesaAcaoPorLogin ?? null,
+    conferenteUsuarioId: body.conferenteUsuarioId ?? null,
+    conferenteLogin: body.conferenteLogin ?? null,
+    conferenteNome: body.conferenteNome ?? null,
+    atribuidoEm: body.atribuidoEm ?? null,
+    devolucao: body.devolucao ?? null,
   };
 }
 

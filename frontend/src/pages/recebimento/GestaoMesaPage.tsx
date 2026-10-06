@@ -15,10 +15,12 @@ import {
   fetchRecebimentoMesaConferentes,
   fetchRecebimentoMesaDocumentos,
   fetchRecebimentoMesaItens,
+  postRecebimentoMesaAcao,
   postRecebimentoMesaDeliberar,
   type RecebimentoConferenteOpcao,
   type RecebimentoDetalhe,
   type RecebimentoDocumentoGrade,
+  type RecebimentoMesaAcao,
   type RecebimentoStatusCodigo,
 } from '../../api/recebimento';
 
@@ -120,6 +122,8 @@ function badgeStatus(status: RecebimentoStatusCodigo, label: string) {
         ? 'border-sky-400 bg-sky-50 text-sky-800 dark:border-sky-500 dark:bg-sky-950/40 dark:text-sky-200'
         : status === 'DIVERGENCIA'
           ? 'border-rose-400 bg-rose-50 text-rose-800 dark:border-rose-500 dark:bg-rose-950/40 dark:text-rose-200'
+          : status === 'TRATAMENTO_COMPRAS' || status === 'AGUARDANDO_DEVOLUCAO'
+            ? 'border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200'
           : status === 'FINALIZADO'
             ? 'border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'
             : 'border-emerald-400 bg-emerald-50 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-200';
@@ -150,6 +154,10 @@ export default function GestaoMesaPage() {
   const [conferenteId, setConferenteId] = useState<number | ''>('');
   const [deliberando, setDeliberando] = useState(false);
   const [deliberarErro, setDeliberarErro] = useState<string | null>(null);
+  const [mesaAcao, setMesaAcao] = useState<RecebimentoMesaAcao | ''>('');
+  const [executandoMesaAcao, setExecutandoMesaAcao] = useState(false);
+  const [mesaAcaoErro, setMesaAcaoErro] = useState<string | null>(null);
+  const [mesaAcaoOk, setMesaAcaoOk] = useState<string | null>(null);
   const [feedbackDeliberacao, setFeedbackDeliberacao] = useState<'off' | 'loading' | 'ok'>('off');
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -206,6 +214,9 @@ export default function GestaoMesaPage() {
     setModalAba('informacoes');
     setDetalheErro(null);
     setDeliberarErro(null);
+    setMesaAcao('');
+    setMesaAcaoErro(null);
+    setMesaAcaoOk(null);
     setConferenteBusca('');
     setConferenteId(doc.conferenteUsuarioId ?? '');
     const cached = detalheCacheRef.current.get(doc.idDocumento);
@@ -295,6 +306,54 @@ export default function GestaoMesaPage() {
       setDeliberarErro(e instanceof Error ? e.message : 'Não foi possível deliberar o conferente.');
     } finally {
       setDeliberando(false);
+    }
+  };
+
+  const executarAcaoMesa = async () => {
+    if (!modalDoc || !detalhe || mesaAcao === '') return;
+    if (mesaAcao === 'REENVIAR_CONFERENCIA' && conferenteId === '') {
+      setMesaAcaoErro('Selecione o conferente que receberá a nova conferência.');
+      return;
+    }
+    setExecutandoMesaAcao(true);
+    setMesaAcaoErro(null);
+    setMesaAcaoOk(null);
+    try {
+      const resultado = await postRecebimentoMesaAcao({
+        idDocumento: modalDoc.idDocumento,
+        acao: mesaAcao,
+        conferenteUsuarioId: conferenteId === '' ? null : conferenteId,
+      });
+      const patch = {
+        status: resultado.status,
+        statusLabel: resultado.statusLabel,
+        conferenteUsuarioId: resultado.conferenteUsuarioId,
+        conferenteLogin: resultado.conferenteLogin,
+        conferenteNome: resultado.conferenteNome,
+        atribuidoEm: resultado.atribuidoEm,
+      };
+      setDocumentos((prev) =>
+        prev.map((doc) => (doc.idDocumento === modalDoc.idDocumento ? { ...doc, ...patch } : doc))
+      );
+      setModalDoc((atual) => (atual ? { ...atual, ...patch } : atual));
+      detalheCacheRef.current.delete(modalDoc.idDocumento);
+      const detalheAtualizado = await fetchRecebimentoMesaItens(modalDoc.idDocumento);
+      detalheCacheRef.current.set(modalDoc.idDocumento, detalheAtualizado);
+      setDetalhe(detalheAtualizado);
+      setMesaAcao('');
+      setMesaAcaoOk(
+        mesaAcao === 'TRATAMENTO_COMPRAS'
+          ? 'Documento encaminhado para tratamento de Compras.'
+          : mesaAcao === 'REENVIAR_CONFERENCIA'
+            ? 'Documento enviado novamente para conferência.'
+            : resultado.devolucao
+              ? `Documento de devolução ${resultado.devolucao.numeroDocumentoFiscal ?? resultado.devolucao.idDocumento} vinculado automaticamente.`
+              : 'Devolução solicitada. O vínculo será feito automaticamente quando o documento aparecer no Nomus.'
+      );
+    } catch (e) {
+      setMesaAcaoErro(e instanceof Error ? e.message : 'Não foi possível executar a ação.');
+    } finally {
+      setExecutandoMesaAcao(false);
     }
   };
 
@@ -580,6 +639,27 @@ export default function GestaoMesaPage() {
                           : ''}
                       </p>
                     )}
+                    {detalhe?.devolucao && (
+                      <div className="mt-4 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200">
+                        <p className="font-semibold">Documento de devolução vinculado automaticamente</p>
+                        <p className="mt-1">
+                          Documento{' '}
+                          {detalhe.devolucao.numeroDocumentoFiscal ?? detalhe.devolucao.idDocumento}
+                          {detalhe.devolucao.numeroNfe
+                            ? ` · NF-e ${detalhe.devolucao.numeroNfe}`
+                            : ''}
+                          {detalhe.devolucao.vinculadaEm
+                            ? ` · ${fmtDateTimeBr(detalhe.devolucao.vinculadaEm)}`
+                            : ''}
+                        </p>
+                      </div>
+                    )}
+                    {modalDoc.status === 'AGUARDANDO_DEVOLUCAO' && (
+                      <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                        Aguardando o documento de devolução no Nomus. A Mesa tentará vinculá-lo
+                        automaticamente pela NF-e e pelo fornecedor a cada atualização.
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -671,53 +751,151 @@ export default function GestaoMesaPage() {
                   }`}
                   aria-busy={detalheLoading}
                 >
-                <p className="text-sm font-medium text-slate-800 dark:text-slate-100">Deliberar conferente</p>
-                <div className="flex flex-wrap items-end gap-3">
-                  <div className="min-w-[12rem]">
-                    <label className={labelClass}>Buscar conferente</label>
-                    <input
-                      className={`${inputClass} w-full`}
-                      value={conferenteBusca}
-                      onChange={(e) => setConferenteBusca(e.target.value)}
-                      placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
-                      disabled={detalheLoading || !detalhe || deliberando}
-                    />
-                  </div>
-                  <div className="min-w-[16rem] flex-1">
-                    <label className={labelClass}>Conferente</label>
-                    <select
-                      className={`${inputClass} w-full`}
-                      value={conferenteId === '' ? '' : String(conferenteId)}
-                      onChange={(e) => setConferenteId(e.target.value ? Number(e.target.value) : '')}
-                      disabled={detalheLoading || !detalhe || deliberando}
-                    >
-                      <option value="">Selecione…</option>
-                      {conferentesFiltrados.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {conferenteLabel(c.nome, c.login)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <button
-                    type="button"
-                    className={btnPrimary}
-                    disabled={detalheLoading || !detalhe || conferenteId === '' || deliberando}
-                    onClick={() => void deliberar()}
-                  >
-                    {modalDoc.conferenteUsuarioId ? 'Alterar conferente' : 'Deliberar conferente'}
-                  </button>
-                </div>
-                {conferentes.length === 0 && (
-                  <p className="text-xs text-amber-700 dark:text-amber-300">
-                    Nenhum usuário com permissão de conferente. Marque o módulo “Recebimento” no grupo.
-                  </p>
-                )}
-                {deliberarErro && (
-                  <p className="text-sm text-rose-600" role="alert">
-                    {deliberarErro}
-                  </p>
-                )}
+                  {modalDoc.status === 'DIVERGENCIA' ? (
+                    <>
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                        Definir ação após divergência
+                      </p>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="min-w-[20rem] flex-1">
+                          <label className={labelClass}>Ação</label>
+                          <select
+                            className={`${inputClass} w-full`}
+                            value={mesaAcao}
+                            onChange={(e) => setMesaAcao(e.target.value as RecebimentoMesaAcao | '')}
+                            disabled={executandoMesaAcao}
+                          >
+                            <option value="">Selecione…</option>
+                            <option value="TRATAMENTO_COMPRAS">Retornar para Compras tratar</option>
+                            <option value="REENVIAR_CONFERENCIA">Enviar para conferência novamente</option>
+                            <option value="DEVOLVER_MATERIAL">Devolver material</option>
+                          </select>
+                        </div>
+                        <button
+                          type="button"
+                          className={btnPrimary}
+                          disabled={
+                            mesaAcao === '' ||
+                            executandoMesaAcao ||
+                            (mesaAcao === 'REENVIAR_CONFERENCIA' && conferenteId === '')
+                          }
+                          onClick={() => void executarAcaoMesa()}
+                        >
+                          {executandoMesaAcao ? 'Executando…' : 'Executar ação'}
+                        </button>
+                      </div>
+                      {mesaAcao === 'REENVIAR_CONFERENCIA' && (
+                        <div className="flex flex-wrap items-end gap-3">
+                          <div className="min-w-[12rem]">
+                            <label className={labelClass}>Buscar conferente</label>
+                            <input
+                              className={`${inputClass} w-full`}
+                              value={conferenteBusca}
+                              onChange={(e) => setConferenteBusca(e.target.value)}
+                              placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
+                              disabled={executandoMesaAcao}
+                            />
+                          </div>
+                          <div className="min-w-[16rem] flex-1">
+                            <label className={labelClass}>Conferente da nova conferência</label>
+                            <select
+                              className={`${inputClass} w-full`}
+                              value={conferenteId === '' ? '' : String(conferenteId)}
+                              onChange={(e) =>
+                                setConferenteId(e.target.value ? Number(e.target.value) : '')
+                              }
+                              disabled={executandoMesaAcao}
+                            >
+                              <option value="">Selecione…</option>
+                              {conferentesFiltrados.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {conferenteLabel(c.nome, c.login)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                      {mesaAcao === 'DEVOLVER_MATERIAL' && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          O sistema localizará e vinculará automaticamente o documento de devolução do Nomus
+                          pela NF-e e pelo fornecedor. Se ele ainda não existir, o vínculo será feito nas
+                          próximas atualizações da Mesa.
+                        </p>
+                      )}
+                    </>
+                  ) : modalDoc.status === 'TRATAMENTO_COMPRAS' ||
+                    modalDoc.status === 'AGUARDANDO_DEVOLUCAO' ||
+                    modalDoc.status === 'DEVOLUCAO_VINCULADA' ? (
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                      Ação da Mesa registrada em {fmtDateTimeBr(detalhe?.mesaAcaoEm ?? null)}
+                      {detalhe?.mesaAcaoPorLogin ? ` por ${detalhe.mesaAcaoPorLogin}` : ''}.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                        Deliberar conferente
+                      </p>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="min-w-[12rem]">
+                          <label className={labelClass}>Buscar conferente</label>
+                          <input
+                            className={`${inputClass} w-full`}
+                            value={conferenteBusca}
+                            onChange={(e) => setConferenteBusca(e.target.value)}
+                            placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
+                            disabled={detalheLoading || !detalhe || deliberando}
+                          />
+                        </div>
+                        <div className="min-w-[16rem] flex-1">
+                          <label className={labelClass}>Conferente</label>
+                          <select
+                            className={`${inputClass} w-full`}
+                            value={conferenteId === '' ? '' : String(conferenteId)}
+                            onChange={(e) =>
+                              setConferenteId(e.target.value ? Number(e.target.value) : '')
+                            }
+                            disabled={detalheLoading || !detalhe || deliberando}
+                          >
+                            <option value="">Selecione…</option>
+                            {conferentesFiltrados.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {conferenteLabel(c.nome, c.login)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <button
+                          type="button"
+                          className={btnPrimary}
+                          disabled={detalheLoading || !detalhe || conferenteId === '' || deliberando}
+                          onClick={() => void deliberar()}
+                        >
+                          {modalDoc.conferenteUsuarioId ? 'Alterar conferente' : 'Deliberar conferente'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {conferentes.length === 0 && (
+                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                      Nenhum usuário com permissão de conferente. Marque o módulo “Recebimento” no grupo.
+                    </p>
+                  )}
+                  {deliberarErro && (
+                    <p className="text-sm text-rose-600" role="alert">
+                      {deliberarErro}
+                    </p>
+                  )}
+                  {mesaAcaoErro && (
+                    <p className="text-sm text-rose-600" role="alert">
+                      {mesaAcaoErro}
+                    </p>
+                  )}
+                  {mesaAcaoOk && (
+                    <p className="text-sm text-emerald-700 dark:text-emerald-300" role="status">
+                      {mesaAcaoOk}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
