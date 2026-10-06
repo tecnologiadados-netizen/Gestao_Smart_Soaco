@@ -11,6 +11,7 @@ import {
   queryItensDocumentoPreEntradaNomus,
   RECEBIMENTO_STATUS,
   RECEBIMENTO_STATUS_LABEL,
+  type RecebimentoStatus,
 } from '../data/recebimentoNomusRepository.js';
 import {
   deliberarConferente,
@@ -294,8 +295,16 @@ export async function postRecebimentoMesaAcao(req: Request, res: Response): Prom
   }
 
   const local = await obterConferenciaPorDocumento(idDocumento);
-  if (!local || local.status !== RECEBIMENTO_STATUS.DIVERGENCIA) {
-    res.status(409).json({ error: 'Esta ação só está disponível para conferências com divergência.' });
+  const statusesAlteraveis: RecebimentoStatus[] = [
+    RECEBIMENTO_STATUS.DIVERGENCIA,
+    RECEBIMENTO_STATUS.TRATAMENTO_COMPRAS,
+    RECEBIMENTO_STATUS.AGUARDANDO_DEVOLUCAO,
+    RECEBIMENTO_STATUS.DEVOLUCAO_VINCULADA,
+  ];
+  if (!local || !statusesAlteraveis.includes(local.status)) {
+    res.status(409).json({
+      error: 'A ação pode ser alterada enquanto o documento está na Mesa após a divergência.',
+    });
     return;
   }
 

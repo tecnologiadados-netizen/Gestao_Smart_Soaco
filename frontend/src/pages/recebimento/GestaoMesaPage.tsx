@@ -70,6 +70,21 @@ function conferenteLabel(nome: string | null, login: string | null): string {
   return nome || login || '—';
 }
 
+function acaoMesaDoStatus(status: RecebimentoStatusCodigo): RecebimentoMesaAcao | '' {
+  if (status === 'TRATAMENTO_COMPRAS') return 'TRATAMENTO_COMPRAS';
+  if (status === 'AGUARDANDO_DEVOLUCAO' || status === 'DEVOLUCAO_VINCULADA') return 'DEVOLVER_MATERIAL';
+  return '';
+}
+
+function podeAlterarAcaoMesa(status: RecebimentoStatusCodigo): boolean {
+  return (
+    status === 'DIVERGENCIA' ||
+    status === 'TRATAMENTO_COMPRAS' ||
+    status === 'AGUARDANDO_DEVOLUCAO' ||
+    status === 'DEVOLUCAO_VINCULADA'
+  );
+}
+
 function dataDocYmd(d: RecebimentoDocumentoGrade): string | null {
   return d.dataEntrada ?? d.dataEmissao ?? null;
 }
@@ -214,7 +229,7 @@ export default function GestaoMesaPage() {
     setModalAba('informacoes');
     setDetalheErro(null);
     setDeliberarErro(null);
-    setMesaAcao('');
+    setMesaAcao(acaoMesaDoStatus(doc.status));
     setMesaAcaoErro(null);
     setMesaAcaoOk(null);
     setConferenteBusca('');
@@ -340,7 +355,7 @@ export default function GestaoMesaPage() {
       const detalheAtualizado = await fetchRecebimentoMesaItens(modalDoc.idDocumento);
       detalheCacheRef.current.set(modalDoc.idDocumento, detalheAtualizado);
       setDetalhe(detalheAtualizado);
-      setMesaAcao('');
+      setMesaAcao(acaoMesaDoStatus(resultado.status));
       setMesaAcaoOk(
         mesaAcao === 'TRATAMENTO_COMPRAS'
           ? 'Documento encaminhado para tratamento de Compras.'
@@ -751,11 +766,19 @@ export default function GestaoMesaPage() {
                   }`}
                   aria-busy={detalheLoading}
                 >
-                  {modalDoc.status === 'DIVERGENCIA' ? (
+                  {podeAlterarAcaoMesa(modalDoc.status) ? (
                     <>
                       <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                        Definir ação após divergência
+                        {modalDoc.status === 'DIVERGENCIA'
+                          ? 'Definir ação após divergência'
+                          : 'Alterar ação após divergência'}
                       </p>
+                      {modalDoc.status !== 'DIVERGENCIA' && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Ação atual registrada em {fmtDateTimeBr(detalhe?.mesaAcaoEm ?? null)}
+                          {detalhe?.mesaAcaoPorLogin ? ` por ${detalhe.mesaAcaoPorLogin}` : ''}.
+                        </p>
+                      )}
                       <div className="flex flex-wrap items-end gap-3">
                         <div className="min-w-[20rem] flex-1">
                           <label className={labelClass}>Ação</label>
@@ -781,7 +804,11 @@ export default function GestaoMesaPage() {
                           }
                           onClick={() => void executarAcaoMesa()}
                         >
-                          {executandoMesaAcao ? 'Executando…' : 'Executar ação'}
+                          {executandoMesaAcao
+                            ? 'Executando…'
+                            : modalDoc.status === 'DIVERGENCIA'
+                              ? 'Executar ação'
+                              : 'Alterar ação'}
                         </button>
                       </div>
                       {mesaAcao === 'REENVIAR_CONFERENCIA' && (
@@ -824,13 +851,6 @@ export default function GestaoMesaPage() {
                         </p>
                       )}
                     </>
-                  ) : modalDoc.status === 'TRATAMENTO_COMPRAS' ||
-                    modalDoc.status === 'AGUARDANDO_DEVOLUCAO' ||
-                    modalDoc.status === 'DEVOLUCAO_VINCULADA' ? (
-                    <p className="text-sm text-slate-600 dark:text-slate-300">
-                      Ação da Mesa registrada em {fmtDateTimeBr(detalhe?.mesaAcaoEm ?? null)}
-                      {detalhe?.mesaAcaoPorLogin ? ` por ${detalhe.mesaAcaoPorLogin}` : ''}.
-                    </p>
                   ) : (
                     <>
                       <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
