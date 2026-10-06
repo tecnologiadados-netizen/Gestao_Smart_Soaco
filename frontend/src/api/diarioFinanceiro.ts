@@ -145,3 +145,42 @@ export async function definirContaBancariaDiario(params: {
     ignorados: Array.isArray(body.ignorados) ? body.ignorados : [],
   };
 }
+
+export interface FormaPagamentoOpcao {
+  id: string;
+  nome: string;
+}
+
+export async function fetchDiarioFormasPagamento(origem: 'Nomus' | 'Shop9'): Promise<FormaPagamentoOpcao[]> {
+  const res = await apiFetch(`/api/financeiro/diario/formas-pagamento?origem=${origem}`);
+  const body = (await res.json().catch(() => ({}))) as { formas?: FormaPagamentoOpcao[]; error?: string };
+  if (!res.ok) throw new Error(body.error || `Erro ao listar formas de pagamento (${res.status})`);
+  return Array.isArray(body.formas) ? body.formas : [];
+}
+
+export interface DefinirFormaPagamentoResponse {
+  origem: 'Nomus' | 'Shop9';
+  idFormaPagamento: string;
+  nomeForma: string;
+  atualizados: number;
+  ignorados: ReprogramarContasPagarIgnorado[];
+  erro?: string;
+  error?: string;
+}
+
+export async function definirFormaPagamentoDiario(params: {
+  idFormaPagamento: string;
+  itens: ReprogramarContasPagarItem[];
+}): Promise<DefinirFormaPagamentoResponse> {
+  const res = await apiFetch('/api/financeiro/diario/contas-pagar/forma-pagamento', {
+    method: 'POST',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as DefinirFormaPagamentoResponse;
+  if (!res.ok) throw new Error(body.error || body.erro || `Erro ao definir forma de pagamento (${res.status})`);
+  return {
+    ...body,
+    atualizados: Number(body.atualizados) || 0,
+    ignorados: Array.isArray(body.ignorados) ? body.ignorados : [],
+  };
+}

@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MultiSelectWithSearch from '../../components/MultiSelectWithSearch';
 import {
   definirContaBancariaDiario,
+  definirFormaPagamentoDiario,
   fetchDiarioContasBancarias,
+  fetchDiarioFormasPagamento,
   fetchDiarioContasPagar,
   reprogramarDiarioContasPagar,
   type ContaBancariaOpcao,
+  type FormaPagamentoOpcao,
   type DiarioContaPagarLinha,
   type DiarioContaPagarStatus,
 } from '../../api/diarioFinanceiro';
@@ -29,10 +32,10 @@ import {
   DiarioGradeFiltroPortal,
 } from './diario/DiarioGradeCabecalho';
 import {
-  exportDiarioFinanceiroPdf,
-  exportDiarioFinanceiroXlsx,
-  linhaParaExport,
-} from './diario/exportDiarioFinanceiro';
+  exportarDiarioContasPagarExcel,
+  exportarDiarioContasPagarPdf,
+} from './diario/exportDiarioContasPagar';
+import { DescricaoReprogramadaGrade } from './diario/descricaoReprogramada';
 
 type Atalho = 'hoje' | 'ontem' | 'amanha' | 'mes';
 
@@ -260,6 +263,10 @@ export default function DiarioFinanceiroPage() {
   const [contasOpcoes, setContasOpcoes] = useState<ContaBancariaOpcao[]>([]);
   const [contaId, setContaId] = useState('');
   const [carregandoContas, setCarregandoContas] = useState(false);
+  const [formaAberta, setFormaAberta] = useState(false);
+  const [formasOpcoes, setFormasOpcoes] = useState<FormaPagamentoOpcao[]>([]);
+  const [formaId, setFormaId] = useState('');
+  const [carregandoFormas, setCarregandoFormas] = useState(false);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -571,6 +578,74 @@ export default function DiarioFinanceiroPage() {
     }
   };
 
+  const abrirFormaPagamento = () => {
+    const escolhidas = dedupeReprogramar(
+      linhas.filter((l) => podeReprogramar(l) && selecionadas.has(chaveLinha(l))),
+    );
+    if (escolhidas.length === 0) return;
+    const origens = new Set(escolhidas.map((l) => l.origem));
+    if (origens.size > 1) {
+      setErro(
+        'Selecione títulos de uma só origem. No Nomus a forma de pagamento é gravada no ERP; no Shop9 ela fica registrada neste projeto.',
+      );
+      return;
+    }
+    const origem = escolhidas[0]?.origem;
+    if (!origem) return;
+    setModalLinhas(escolhidas);
+    setFormaId('');
+    setFormasOpcoes([]);
+    setErroModal(null);
+    setErro(null);
+    setFormaAberta(true);
+    setCarregandoFormas(true);
+    void fetchDiarioFormasPagamento(origem)
+      .then((formas) => setFormasOpcoes(formas))
+      .catch((e) => setErroModal(e instanceof Error ? e.message : String(e)))
+      .finally(() => setCarregandoFormas(false));
+  };
+
+  const confirmarFormaPagamento = async () => {
+    const idForma = formaId.trim();
+    if (!idForma || salvando) return;
+    const itens = modalLinhas.flatMap((l) => {
+      const id = idReprogramacao(l);
+      return id == null ? [] : [{ origem: l.origem, id }];
+    });
+    if (itens.length === 0) return;
+    setSalvando(true);
+    setErroModal(null);
+    try {
+      const res = await definirFormaPagamentoDiario({ idFormaPagamento: idForma, itens });
+      const partes: string[] = [];
+      if (res.atualizados > 0) {
+        const onde = res.origem === 'Nomus' ? 'no Nomus' : 'neste projeto';
+        partes.push(
+          `${res.atualizados.toLocaleString('pt-BR')} título(s) com a forma ${res.nomeForma || ''} gravada ${onde}.`.trim(),
+        );
+      }
+      if (res.ignorados.length > 0) {
+        partes.push(
+          `${res.ignorados.length.toLocaleString('pt-BR')} título(s) não alterado(s) porque já estavam baixados ou o id não confere.`,
+        );
+      }
+      if (res.erro) partes.push(res.erro);
+      const texto = partes.join(' ');
+      if (res.atualizados > 0) {
+        setSelecionadas(new Set());
+        setAviso(texto || null);
+        setFormaAberta(false);
+        await carregar(dataInicio, dataFim);
+      } else {
+        setErroModal(texto || 'Nenhuma forma de pagamento foi alterada.');
+      }
+    } catch (e) {
+      setErroModal(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
   const confirmarReprogramar = async () => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(novaData) || salvando) return;
     const itens = modalLinhas.flatMap((l) => {
@@ -619,12 +694,25 @@ export default function DiarioFinanceiroPage() {
 
   const exportar = async (formato: 'xlsx' | 'pdf') => {
     if (exportando || linhasExibidas.length === 0) return;
-    const payload = linhasExibidas.map((l) => linhaParaExport(l, empresaExibida(l), rotuloPrioridade(l)));
-    const periodo = { inicio: dataInicio, fim: dataFim };
     setExportando(formato);
     try {
-      if (formato === 'xlsx') await exportDiarioFinanceiroXlsx(payload, periodo);
-      else exportDiarioFinanceiroPdf(payload, periodo);
+      if (formato === 'xlsx') {
+        await exportarDiarioContasPagarExcel({
+          linhas: linhasExibidas,
+          totais,
+          dataInicio,
+          dataFim,
+          rotuloPrioridade: (l) => rotuloPrioridade(l),
+        });
+      } else {
+        exportarDiarioContasPagarPdf({
+          linhas: linhasExibidas,
+          totais,
+          dataInicio,
+          dataFim,
+          rotuloPrioridade: (l) => rotuloPrioridade(l),
+        });
+      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
     } finally {
@@ -686,6 +774,14 @@ export default function DiarioFinanceiroPage() {
               className="inline-flex h-8 items-center rounded-lg border border-primary-600 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50 dark:bg-slate-800 dark:text-primary-200 dark:hover:bg-slate-700"
             >
               Conta bancária
+            </button>
+            <button
+              type="button"
+              onClick={abrirFormaPagamento}
+              disabled={selecionadas.size === 0 || salvando}
+              className="inline-flex h-8 items-center rounded-lg border border-primary-600 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50 dark:bg-slate-800 dark:text-primary-200 dark:hover:bg-slate-700"
+            >
+              Forma de pagamento
             </button>
             <button
               type="button"
@@ -970,8 +1066,8 @@ export default function DiarioFinanceiroPage() {
                     </select>
                   )}
                 </td>
-                <td className="px-2 py-1.5 max-w-[16rem] truncate" title={l.descricao ?? ''}>
-                  {l.descricao ?? '—'}
+                <td className="px-2 py-1.5 min-w-[14rem] max-w-[24rem] truncate" title={l.descricao ?? ''}>
+                  <DescricaoReprogramadaGrade texto={l.descricao} />
                 </td>
                 <td className="px-2 py-1.5 max-w-[14rem] truncate" title={l.observacao ?? ''}>
                   {l.observacao ?? '—'}
@@ -983,7 +1079,7 @@ export default function DiarioFinanceiroPage() {
                 <td className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.valor)}</td>
                 <td className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.valorBaixado)}</td>
                 <td className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.saldo)}</td>
-                <td className="px-2 py-1.5 max-w-[12rem] truncate" title={l.pedidoCompra ?? ''}>{l.pedidoCompra ?? '—'}</td>
+                <td className="px-2 py-1.5 min-w-[12rem] max-w-[22rem] truncate" title={l.pedidoCompra ?? ''}>{l.pedidoCompra ?? '—'}</td>
                 <td className="px-2 py-1.5 max-w-[10rem] truncate whitespace-nowrap" title={l.notaFiscal ?? ''}>{l.notaFiscal ?? '—'}</td>
                 <td className="px-2 py-1.5 text-center">
                   {(l.itens?.length ?? 0) > 0 ? (
@@ -1027,12 +1123,18 @@ export default function DiarioFinanceiroPage() {
       ) : null}
 
       {contaAberta ? (
-        <ModalContaBancaria
+        <ModalAjusteDiario
+          tituloId="conta-bancaria-titulo"
+          titulo="Conta bancária"
+          campoId="diario-conta-bancaria"
+          campoLabel="Conta"
           linhas={modalLinhas}
-          contas={contasOpcoes}
-          contaId={contaId}
-          carregandoContas={carregandoContas}
-          onChangeConta={setContaId}
+          opcoes={contasOpcoes}
+          valor={contaId}
+          carregando={carregandoContas}
+          textoNomus="A conta do agendamento em aberto é atualizada no Nomus. Lançamento já baixado não é reescrito."
+          textoShop9="A escolha fica registrada neste projeto, pela Ordem do título. O Shop9 não é alterado."
+          onChange={setContaId}
           onClose={() => {
             if (!salvando) setContaAberta(false);
           }}
@@ -1041,26 +1143,60 @@ export default function DiarioFinanceiroPage() {
           erro={erroModal}
         />
       ) : null}
+
+      {formaAberta ? (
+        <ModalAjusteDiario
+          tituloId="forma-pagamento-titulo"
+          titulo="Forma de pagamento"
+          campoId="diario-forma-pagamento"
+          campoLabel="Forma"
+          linhas={modalLinhas}
+          opcoes={formasOpcoes}
+          valor={formaId}
+          carregando={carregandoFormas}
+          textoNomus="A forma de pagamento do agendamento em aberto é atualizada no Nomus. Lançamento já baixado não é reescrito."
+          textoShop9="A escolha fica registrada neste projeto, pela Ordem do título. O Shop9 não é alterado."
+          onChange={setFormaId}
+          onClose={() => {
+            if (!salvando) setFormaAberta(false);
+          }}
+          onConfirm={() => void confirmarFormaPagamento()}
+          salvando={salvando}
+          erro={erroModal}
+        />
+      ) : null}
     </div>
   );
 }
 
-function ModalContaBancaria({
+function ModalAjusteDiario({
+  tituloId,
+  titulo,
+  campoId,
+  campoLabel,
   linhas,
-  contas,
-  contaId,
-  carregandoContas,
-  onChangeConta,
+  opcoes,
+  valor,
+  carregando,
+  textoNomus,
+  textoShop9,
+  onChange,
   onClose,
   onConfirm,
   salvando,
   erro,
 }: {
+  tituloId: string;
+  titulo: string;
+  campoId: string;
+  campoLabel: string;
   linhas: DiarioContaPagarLinha[];
-  contas: ContaBancariaOpcao[];
-  contaId: string;
-  carregandoContas: boolean;
-  onChangeConta: (id: string) => void;
+  opcoes: { id: string | number; nome: string }[];
+  valor: string;
+  carregando: boolean;
+  textoNomus: string;
+  textoShop9: string;
+  onChange: (id: string) => void;
   onClose: () => void;
   onConfirm: () => void;
   salvando: boolean;
@@ -1074,33 +1210,30 @@ function ModalContaBancaria({
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="conta-bancaria-titulo"
+        aria-labelledby={tituloId}
         className="relative z-[81] flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
       >
         <div className="px-5 pt-5 pb-3">
-          <h2 id="conta-bancaria-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">
-            Conta bancária
+          <h2 id={tituloId} className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+            {titulo}
           </h2>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {linhas.length.toLocaleString('pt-BR')} título(s) {origem} em aberto.{' '}
-            {shop9
-              ? 'A escolha fica registrada neste projeto, pela Ordem do título. O Shop9 não é alterado.'
-              : 'A conta do agendamento em aberto é atualizada no Nomus. Lançamento já baixado não é reescrito.'}
+            {linhas.length.toLocaleString('pt-BR')} título(s) {origem} em aberto. {shop9 ? textoShop9 : textoNomus}
           </p>
         </div>
         <div className="px-5 pb-4">
-          <label className={FILTRO_LABEL_CLASS} htmlFor="diario-conta-bancaria">
-            Conta
+          <label className={FILTRO_LABEL_CLASS} htmlFor={campoId}>
+            {campoLabel}
           </label>
           <select
-            id="diario-conta-bancaria"
-            value={contaId}
-            onChange={(e) => onChangeConta(e.target.value)}
-            disabled={salvando || carregandoContas}
+            id={campoId}
+            value={valor}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={salvando || carregando}
             className={FILTRO_INPUT_CLASS}
           >
-            <option value="">{carregandoContas ? 'Carregando…' : 'Selecione'}</option>
-            {contas.map((c) => (
+            <option value="">{carregando ? 'Carregando…' : 'Selecione'}</option>
+            {opcoes.map((c) => (
               <option key={c.id} value={String(c.id)}>
                 {c.nome}
               </option>
@@ -1120,7 +1253,7 @@ function ModalContaBancaria({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={salvando || carregandoContas || !contaId}
+            disabled={salvando || carregando || !valor}
             className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
           >
             {salvando ? 'Salvando…' : 'Gravar'}
@@ -1304,9 +1437,14 @@ function ModalReprogramar({
   );
 }
 
-function textoItem(item: DiarioContaPagarLinha['itens'][number]): string {
-  const nome = [item.codigo, item.produto].filter(Boolean).join(' — ');
-  return nome || item.descricao || '—';
+function textoProdutoItem(item: DiarioContaPagarLinha['itens'][number]): string {
+  return item.codigo || item.produto || '—';
+}
+
+function textoDescricaoItem(item: DiarioContaPagarLinha['itens'][number]): string {
+  if (item.descricao) return item.descricao;
+  if (item.codigo && item.produto) return item.produto;
+  return '—';
 }
 
 function ModalItensNota({ linha, onClose }: { linha: DiarioContaPagarLinha; onClose: () => void }) {
@@ -1340,8 +1478,8 @@ function ModalItensNota({ linha, onClose }: { linha: DiarioContaPagarLinha; onCl
             <tbody>
               {itens.map((item, i) => (
                 <tr key={`${item.codigo ?? ''}-${i}`} className="border-t border-slate-100 dark:border-slate-700">
-                  <td className="px-2 py-1.5">{textoItem(item)}</td>
-                  <td className="px-2 py-1.5">{item.descricao ?? '—'}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{textoProdutoItem(item)}</td>
+                  <td className="px-2 py-1.5">{textoDescricaoItem(item)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{item.qtde == null ? '—' : item.qtde.toLocaleString('pt-BR')}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{item.valorUnitario == null ? '—' : formatMoeda(item.valorUnitario)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{item.valorTotal == null ? '—' : formatMoeda(item.valorTotal)}</td>

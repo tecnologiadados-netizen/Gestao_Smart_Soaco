@@ -1,8 +1,8 @@
 /**
  * Texto gravado na primeira reprogramação de vencimento.
- * Shop9: Financeiro_Contas.Descricao é varchar(80). O prefixo fica inteiro;
- * a descrição antiga é abreviada para caber com o sentido preservado.
- * Nomus não recebe limite.
+ * Shop9: Financeiro_Contas.Descricao é varchar(80). O marcador curto
+ * "REP dd/mm" fica inteiro; a descrição antiga é abreviada para caber.
+ * Nomus não recebe limite e usa "REPROGRAMADO - VENC ORIGINAL dd/mm/aaaa".
  */
 import { formatSqlDateYmd } from './dfcDateUtils.js';
 
@@ -160,6 +160,17 @@ function ymdParaBr(ymd: string): string {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
+function ymdParaDiaMes(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!m) return ymd;
+  return `${m[3]}/${m[2]}`;
+}
+
+/** "REPROGRAMADO…" ou o marcador curto do Shop9 ("REP 05/10"). */
+function jaReprogramada(atual: string): boolean {
+  return /reprogramado/i.test(atual) || /\brep\s+\d{2}[\/.\-]\d{2}/i.test(atual);
+}
+
 function cortarNoUltimoEspaco(resto: string, orcamento: number): string {
   let corte = resto.slice(0, orcamento).trimEnd();
   const espaco = corte.lastIndexOf(' ');
@@ -179,8 +190,8 @@ function caber(prefixo: string, resto: string, max: number): string {
 
 /**
  * Null quando a descrição já foi marcada.
- * Sem `max`, devolve o texto inteiro (Nomus).
- * Com `max`, abrevia só a descrição antiga até caber (Shop9 = 80).
+ * Sem `max`, devolve o texto inteiro com o marcador longo (Nomus).
+ * Com `max`, grava "REP dd/mm" e abrevia só a descrição antiga até caber (Shop9 = 80).
  */
 export function descricaoPrimeiraReprogramacao(
   descricaoAtual: unknown,
@@ -188,11 +199,14 @@ export function descricaoPrimeiraReprogramacao(
   max?: number,
 ): string | null {
   const atual = descricaoAtual == null ? '' : String(descricaoAtual).trim();
-  if (/reprogramado/i.test(atual)) return null;
+  if (jaReprogramada(atual)) return null;
   const ymd = formatSqlDateYmd(vencimentoAtual);
   if (!ymd) return null;
-  const prefixo = `REPROGRAMADO - VENC ORIGINAL ${ymdParaBr(ymd)} - `;
-  const semResto = prefixo.slice(0, -3);
+  const prefixo =
+    max == null
+      ? `REPROGRAMADO - VENC ORIGINAL ${ymdParaBr(ymd)} - `
+      : `REP ${ymdParaDiaMes(ymd)} `;
+  const semResto = max == null ? prefixo.slice(0, -3) : prefixo.trimEnd();
   if (!atual) return semResto.length <= (max ?? semResto.length) ? semResto : semResto.slice(0, max);
   if (max == null) return `${prefixo}${atual}`;
 

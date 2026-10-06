@@ -174,18 +174,9 @@ export const LOJA_MENU: NavMenuEntry[] = [
 export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
   {
     kind: 'submenu',
-    label: 'Dashboards',
-    children: [
-      { to: '/financeiro/carteira-financeira', label: 'Carteira Financeira' },
-      { to: '/financeiro/dashboard', label: 'Dashboard Financeiro' },
-      { to: '/financeiro/painel-financeiro-comercial', label: 'Painel Financeiro-Comercial' },
-      { to: '/financeiro/resumo', label: 'Resumo Financeiro' },
-    ],
-  },
-  {
-    kind: 'submenu',
     label: 'Demonstrações',
     children: [
+      { to: '/financeiro/dashboard', label: 'Dashboard Financeiro' },
       { to: '/financeiro/dfc', label: 'DFC' },
       { to: '/financeiro/dre', label: 'DRE' },
     ],
@@ -195,6 +186,15 @@ export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
     label: 'Ferramentas',
     children: [
       { to: '/financeiro/renegociacao-contratos', label: 'Simulação de Renegociação' },
+    ],
+  },
+  {
+    kind: 'submenu',
+    label: 'Painéis',
+    children: [
+      { to: '/financeiro/carteira-financeira', label: 'Carteira Financeira' },
+      { to: '/financeiro/painel-financeiro-comercial', label: 'Financeiro-Comercial' },
+      { to: '/financeiro/resumo', label: 'Resumo Financeiro' },
     ],
   },
   {
@@ -284,7 +284,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/financeiro/dre': 'DRE',
   '/financeiro/dashboard': 'Dashboard Financeiro',
   '/financeiro/carteira-financeira': 'Carteira Financeira',
-  '/financeiro/painel-financeiro-comercial': 'Painel Financeiro-Comercial',
+  '/financeiro/painel-financeiro-comercial': 'Financeiro-Comercial',
   '/comercial/painel': 'Painel Comercial',
   '/comercial/historico-vendas': 'Histórico de Vendas',
   '/comercial/classificacao-rfv': 'Classificação RFV',
