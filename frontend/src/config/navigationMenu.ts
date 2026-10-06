@@ -138,6 +138,11 @@ export const QUALIDADE_MENU: NavMenuEntry[] = [
   },
 ];
 
+export const PDV_MENU: NavMenuEntry[] = [
+  { kind: 'link', to: '/pdv', label: 'Balcão' },
+  { kind: 'link', to: '/pdv/configuracao', label: 'Configuração' },
+];
+
 export const RH_MENU: NavMenuEntry[] = [
   {
     kind: 'submenu',
@@ -263,6 +268,8 @@ export const PATH_LABELS: Record<string, string> = {
   '/qualidade/calibracoes': 'Qualidade — SGQ — Calibrações',
   '/qualidade/registros': 'Qualidade — SGQ — Registros',
   '/qualidade/configuracoes': 'Qualidade — SGQ — Configurações',
+  '/pdv': 'PDV',
+  '/pdv/configuracao': 'PDV — Configuração',
   '/rh': 'RH',
   '/rh/dashboard': 'RH — Dashboard',
   '/rh/organico': 'RH — Orgânico',
