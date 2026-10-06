@@ -2,7 +2,9 @@ import type { Request, Response } from 'express';
 import {
   MAX_REPROGRAMAR,
   definirContaBancariaDiario,
+  definirFormaPagamentoDiario,
   listarContasBancariasDiario,
+  listarFormasPagamentoDiario,
   queryDiarioContasPagar,
   reprogramarVencimentoContasPagar,
   type ReprogramarVencimentoItem,
@@ -89,7 +91,11 @@ export async function postReprogramarContasPagar(req: Request, res: Response): P
   }
 }
 
-function lerItensContas(bruto: unknown, res: Response): ReprogramarVencimentoItem[] | null {
+function lerItensContas(
+  bruto: unknown,
+  res: Response,
+  erroOrigemMista = 'Selecione títulos de uma só origem. No Nomus a conta é gravada no ERP; no Shop9 ela fica registrada neste projeto.',
+): ReprogramarVencimentoItem[] | null {
   if (!Array.isArray(bruto) || bruto.length === 0) {
     res.status(400).json({ error: 'Selecione ao menos um título.' });
     return null;
@@ -110,10 +116,7 @@ function lerItensContas(bruto: unknown, res: Response): ReprogramarVencimentoIte
   }
   const origens = new Set(itens.map((i) => i.origem));
   if (origens.size > 1) {
-    res.status(400).json({
-      error:
-        'Selecione títulos de uma só origem. No Nomus a conta é gravada no ERP; no Shop9 ela fica registrada neste projeto.',
-    });
+    res.status(400).json({ error: erroOrigemMista });
     return null;
   }
   return itens;
@@ -172,6 +175,67 @@ export async function postDefinirContaBancaria(req: Request, res: Response): Pro
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[postDefinirContaBancaria]', msg);
+    res.status(500).json({ error: msg });
+  }
+}
+
+/** GET /api/financeiro/diario/formas-pagamento?origem=Nomus|Shop9 */
+export async function getDiarioFormasPagamento(req: Request, res: Response): Promise<void> {
+  const origem = String(req.query.origem ?? '').trim();
+  if (origem !== 'Nomus' && origem !== 'Shop9') {
+    res.status(400).json({ error: 'Informe origem Nomus ou Shop9.' });
+    return;
+  }
+  try {
+    const resultado = await listarFormasPagamentoDiario(origem);
+    if (resultado.erro && resultado.formas.length === 0) {
+      res.status(502).json({ error: resultado.erro, formas: [] });
+      return;
+    }
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[getDiarioFormasPagamento]', msg);
+    res.status(500).json({ error: msg });
+  }
+}
+
+/** POST /api/financeiro/diario/contas-pagar/forma-pagamento */
+export async function postDefinirFormaPagamento(req: Request, res: Response): Promise<void> {
+  const idFormaPagamento = String(req.body?.idFormaPagamento ?? '').trim();
+  if (!idFormaPagamento) {
+    res.status(400).json({ error: 'Selecione uma forma de pagamento.' });
+    return;
+  }
+  const itens = lerItensContas(
+    req.body?.itens,
+    res,
+    'Selecione títulos de uma só origem. No Nomus a forma de pagamento é gravada no ERP; no Shop9 ela fica registrada neste projeto.',
+  );
+  if (!itens) return;
+
+  try {
+    const resultado = await definirFormaPagamentoDiario({
+      idFormaPagamento,
+      itens,
+      usuario: req.user?.login ?? '?',
+    });
+    console.log(
+      '[diario forma pagamento] user=%s origem=%s forma=%s atualizados=%s ignorados=%s',
+      req.user?.login ?? '?',
+      resultado.origem,
+      resultado.idFormaPagamento,
+      resultado.atualizados,
+      resultado.ignorados.length,
+    );
+    if (resultado.erro && resultado.atualizados === 0) {
+      res.status(400).json({ error: resultado.erro, ...resultado });
+      return;
+    }
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[postDefinirFormaPagamento]', msg);
     res.status(500).json({ error: msg });
   }
 }

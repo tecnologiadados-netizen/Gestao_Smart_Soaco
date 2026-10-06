@@ -12,7 +12,11 @@ import { getShop9Pool, isShop9Enabled } from '../config/shop9Db.js';
 import { getNomusPool, isNomusEnabled, queryNomus as executarQueryNomus } from '../config/nomusDb.js';
 import { prisma } from '../config/prisma.js';
 import { formatSqlDateYmd } from './dfcDateUtils.js';
-import { nomeShop9Condicao } from './crmFinanceiro/shop9TipoConta.js';
+import {
+  formaPagamentoShop9Diario,
+  formasPagamentoShop9Diario,
+  nomeShop9Condicao,
+} from './crmFinanceiro/shop9TipoConta.js';
 import { resolverNomusIdEmpresaShop9 } from './dfcShop9Empresa.js';
 import { resolverIdContaFinanceiroShop9 } from './dfcShop9PlanoContasMap.js';
 import {
@@ -136,10 +140,11 @@ const SQL_NOMUS_DOCUMENTO = `
 SELECT
   af.id AS idAgendamento,
   pc.nome AS pedidoCompra,
-  nfe.numero AS notaFiscal,
+  u.nome AS usuarioLiberacao,
+  COALESCE(nfe.numero, de.numeroNFe, de.numeroDocumentoFiscal) AS notaFiscal,
   ide.id AS idItem,
-  p.nome AS codigoProduto,
-  p.descricao AS produtoDescricao,
+  COALESCE(p.nome, ide.cProdXml, ide.nomeItem) AS codigoProduto,
+  COALESCE(p.descricao, ide.xProdXml, ide.nomeItem, p.nome) AS produtoDescricao,
   ide.qtde AS qtde,
   ide.valorUnitario AS valorUnitario,
   ide.valorTotal AS valorTotal,
@@ -163,6 +168,7 @@ LEFT JOIN itemdocumentoestoque ide ON ide.idDocumentoEstoque = de.id
 LEFT JOIN itemdocumentoestoque_itempedidocompra ideipc ON ideipc.idItemDocumentoEstoque = ide.id
 LEFT JOIN itempedidocompra ipc ON ipc.id = ideipc.idItemPedidoCompra
 LEFT JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
+LEFT JOIN usuario u ON u.id = ipc.idUsuarioLiberacao
 LEFT JOIN produto p ON p.id = COALESCE(ide.idProduto, ipc.idProduto)
 WHERE af.idEmpresa IN (?, ?)
   AND af.discriminador = 'P'
@@ -292,8 +298,12 @@ function primeiroTexto(...vals: unknown[]): string | null {
   return null;
 }
 
-function statusNomus(dataBaixa: string | null): DiarioContaPagarStatus {
-  return dataBaixa ? 'Baixado' : 'Em aberto';
+function saldoZerado(saldo: number): boolean {
+  return Math.abs(saldo) < 0.005;
+}
+
+function statusNomus(dataBaixa: string | null, saldo: number): DiarioContaPagarStatus {
+  return dataBaixa || saldoZerado(saldo) ? 'Baixado' : 'Em aberto';
 }
 
 function idPositivo(v: unknown): number | null {
@@ -318,10 +328,20 @@ function juntarDistintos(vals: Array<string | null | undefined>): string | null 
 }
 
 interface DocAcum {
-  pedidos: string[];
+  /** Nome do pedido de compra e os usuários que liberaram os itens. */
+  pedidos: Map<string, Set<string>>;
   notas: string[];
   itens: DiarioContaPagarItem[];
   vistos: Set<string>;
+}
+
+function textoPedidoCompra(nome: string, usuarios: Set<string>): string {
+  const pessoas = juntarDistintos([...usuarios]);
+  return pessoas ? `${nome} liberado por ${pessoas}` : nome;
+}
+
+function juntarPedidosCompra(pedidos: Map<string, Set<string>>): string | null {
+  return juntarDistintos([...pedidos.entries()].map(([nome, usuarios]) => textoPedidoCompra(nome, usuarios)));
 }
 
 function acumularDocumento(
@@ -331,14 +351,22 @@ function acumularDocumento(
   nota: string | null,
   item: DiarioContaPagarItem | null,
   chaveItem: string | null,
+  usuarioLiberacao: string | null = null,
 ) {
   if (!(chave > 0)) return;
   let acc = map.get(chave);
   if (!acc) {
-    acc = { pedidos: [], notas: [], itens: [], vistos: new Set() };
+    acc = { pedidos: new Map(), notas: [], itens: [], vistos: new Set() };
     map.set(chave, acc);
   }
-  if (pedido && !acc.pedidos.includes(pedido)) acc.pedidos.push(pedido);
+  if (pedido) {
+    let usuarios = acc.pedidos.get(pedido);
+    if (!usuarios) {
+      usuarios = new Set();
+      acc.pedidos.set(pedido, usuarios);
+    }
+    if (usuarioLiberacao) usuarios.add(usuarioLiberacao);
+  }
   if (nota && !acc.notas.includes(nota)) acc.notas.push(nota);
   if (!item || !chaveItem || acc.vistos.has(chaveItem)) return;
   acc.vistos.add(chaveItem);
@@ -346,7 +374,7 @@ function acumularDocumento(
 }
 
 function aplicarDocumento(linha: DiarioContaPagarLinha, acc: DocAcum | undefined, notaTitulo: string | null) {
-  linha.pedidoCompra = acc ? juntarDistintos(acc.pedidos) : null;
+  linha.pedidoCompra = acc ? juntarPedidosCompra(acc.pedidos) : null;
   linha.notaFiscal = juntarDistintos([notaTitulo, ...(acc?.notas ?? [])]);
   linha.itens = acc?.itens ?? [];
 }
@@ -367,8 +395,9 @@ function formaPagamentoShop9(row: Record<string, unknown>): string | null {
 }
 
 function mapShop9(row: Record<string, unknown>): DiarioContaPagarLinha {
+  const saldo = toNum(row.saldoBaixar);
   const statusRaw = texto(row.statusBaixa);
-  const status: DiarioContaPagarStatus = statusRaw === 'Baixado' ? 'Baixado' : 'Em aberto';
+  const status: DiarioContaPagarStatus = statusRaw === 'Baixado' || saldoZerado(saldo) ? 'Baixado' : 'Em aberto';
   const ordemFilial = toNum(row.idEmpresa);
   const codigo = toNum(row.ordemFinanceira ?? row.codigoConta);
   const idEmpresa =
@@ -395,7 +424,7 @@ function mapShop9(row: Record<string, unknown>): DiarioContaPagarLinha {
     contaBancaria: texto(row.contaBancaria),
     valor: toNum(row.valorTotalCalculado),
     valorBaixado: toNum(row.valorBaixado),
-    saldo: toNum(row.saldoBaixar),
+    saldo,
     idAgendamento: null,
     idEmpresa,
     idContaFinanceiro: resolverIdContaFinanceiroShop9(String(row.tipoContaCodigo ?? ''), row.idPlanoContas, row.planoContas),
@@ -417,7 +446,7 @@ function mapNomus(row: Record<string, unknown>): DiarioContaPagarLinha {
   return {
     origem: 'Nomus',
     codigo,
-    status: statusNomus(dataBaixa),
+    status: statusNomus(dataBaixa, saldo),
     dataVencimento: formatSqlDateYmd(row.dataVencimento),
     dataBaixa,
     fornecedor: primeiroTexto(row.clienteFornecedor, row.nomeRazaoSocial),
@@ -536,6 +565,7 @@ async function queryNomus(dataInicio: string, dataFim: string): Promise<{ linhas
           texto(row.notaFiscal),
           item,
           idItem != null ? `ide:${idItem}` : item ? [item.produto, item.descricao, item.qtde, item.valorTotal].join('|') : null,
+          texto(row.usuarioLiberacao),
         );
       }
     } catch (err) {
@@ -573,7 +603,7 @@ export async function queryDiarioContasPagar(params: {
     if (fo !== 0) return fo;
     return a.origem.localeCompare(b.origem);
   });
-  await aplicarContaLocalShop9(linhas);
+  await Promise.all([aplicarContaLocalShop9(linhas), aplicarFormaLocalShop9(linhas)]);
   return {
     linhas,
     erroShop9: shop9.erro,
@@ -601,6 +631,52 @@ async function aplicarContaLocalShop9(linhas: DiarioContaPagarLinha[]): Promise<
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[diarioContasPagar] conta local Shop9:', msg);
+  }
+}
+
+const SQL_CRIAR_FORMA_SHOP9 = `
+CREATE TABLE IF NOT EXISTS diario_shop9_forma_pagamento (
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  ordem_financeira INTEGER NOT NULL,
+  codigo_forma TEXT NOT NULL,
+  nome_forma TEXT NOT NULL,
+  usuario TEXT NOT NULL,
+  atualizado_em DATETIME NOT NULL,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS diario_shop9_forma_pagamento_ordem_financeira_key
+  ON diario_shop9_forma_pagamento(ordem_financeira);
+`;
+
+async function garantirTabelaFormaShop9(): Promise<void> {
+  const comandos = SQL_CRIAR_FORMA_SHOP9.split(';').map((s) => s.trim()).filter(Boolean);
+  for (const comando of comandos) {
+    await prisma.$executeRawUnsafe(comando);
+  }
+}
+
+/** O nome gravado neste projeto prevalece sobre a forma calculada do Shop9. */
+async function aplicarFormaLocalShop9(linhas: DiarioContaPagarLinha[]): Promise<void> {
+  const ordens = [
+    ...new Set(linhas.filter((l) => l.origem === 'Shop9' && l.codigo > 0).map((l) => l.codigo)),
+  ];
+  if (ordens.length === 0) return;
+  try {
+    await garantirTabelaFormaShop9();
+    const marcas = ordens.map(() => '?').join(', ');
+    const rows = await prisma.$queryRawUnsafe<{ ordem_financeira: number; nome_forma: string }[]>(
+      `SELECT ordem_financeira, nome_forma FROM diario_shop9_forma_pagamento WHERE ordem_financeira IN (${marcas})`,
+      ...ordens,
+    );
+    const porOrdem = new Map(rows.map((r) => [Number(r.ordem_financeira), r.nome_forma]));
+    for (const linha of linhas) {
+      if (linha.origem !== 'Shop9') continue;
+      const nome = porOrdem.get(linha.codigo);
+      if (nome) linha.formaPagamento = nome;
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[diarioContasPagar] forma local Shop9:', msg);
   }
 }
 
@@ -1105,4 +1181,233 @@ export async function definirContaBancariaDiario(params: {
     return definirContaNomus(idsUnicos(params.itens, 'Nomus'), params.idContaBancaria);
   }
   return definirContaShop9(idsUnicos(params.itens, 'Shop9'), params.idContaBancaria, params.usuario);
+}
+
+export interface FormaPagamentoOpcao {
+  id: string;
+  nome: string;
+}
+
+export interface DefinirFormaPagamentoResultado {
+  origem: 'Nomus' | 'Shop9';
+  idFormaPagamento: string;
+  nomeForma: string;
+  atualizados: number;
+  ignorados: ReprogramarVencimentoIgnorado[];
+  erro?: string;
+}
+
+const SQL_NOMUS_FORMA_ATIVA = `
+SELECT fp.id AS id, fp.nome AS nome
+FROM formapagamento fp
+WHERE fp.id = ?
+  AND IFNULL(fp.ativo, 1) = 1
+  AND TRIM(IFNULL(fp.nome, '')) <> ''
+LIMIT 1
+`;
+
+const SQL_NOMUS_FORMAS = `
+SELECT fp.id AS id, fp.nome AS nome
+FROM formapagamento fp
+WHERE IFNULL(fp.ativo, 1) = 1
+  AND TRIM(IFNULL(fp.nome, '')) <> ''
+ORDER BY fp.nome
+LIMIT 300
+`;
+
+const SQL_NOMUS_FORMA_ATUAL = `
+SELECT af.idFormaPagamento AS idFormaPagamento
+FROM agendamentofinanceiro af
+WHERE af.id = ?
+  AND af.discriminador = 'P'
+  AND af.idEmpresa IN (1, 2)
+  AND af.idPedidoCompra IS NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM lancamentofinanceiro lf
+    WHERE COALESCE(lf.idAgendamentoPagamento, lf.idAgendamentoRecebimento) = af.id
+      AND lf.dataLancamento IS NOT NULL
+  )
+LIMIT 1
+`;
+
+const SQL_UPDATE_NOMUS_FORMA = `
+UPDATE agendamentofinanceiro af
+SET af.idFormaPagamento = ?
+WHERE af.id = ?
+  AND af.discriminador = 'P'
+  AND af.idEmpresa IN (1, 2)
+  AND af.idPedidoCompra IS NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM lancamentofinanceiro lf
+    WHERE COALESCE(lf.idAgendamentoPagamento, lf.idAgendamentoRecebimento) = af.id
+      AND lf.dataLancamento IS NOT NULL
+  )
+`;
+
+export async function listarFormasPagamentoDiario(
+  origem: 'Nomus' | 'Shop9',
+): Promise<{ formas: FormaPagamentoOpcao[]; erro?: string }> {
+  if (origem === 'Shop9') {
+    return { formas: formasPagamentoShop9Diario() };
+  }
+  if (!isNomusEnabled()) return { formas: [], erro: 'Nomus não configurado' };
+  try {
+    const [rows] = await executarQueryNomus<Record<string, unknown>[]>(SQL_NOMUS_FORMAS, []);
+    const list: Record<string, unknown>[] = Array.isArray(rows) ? rows : [];
+    return {
+      formas: list
+        .map((r) => ({ id: String(toNum(r.id)), nome: texto(r.nome) ?? '' }))
+        .filter((c) => Number(c.id) > 0 && c.nome),
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { formas: [], erro: msg };
+  }
+}
+
+async function definirFormaNomus(
+  ids: number[],
+  idFormaPagamento: number,
+): Promise<DefinirFormaPagamentoResultado> {
+  const idTexto = String(idFormaPagamento);
+  const vazio = (erro?: string): DefinirFormaPagamentoResultado => ({
+    origem: 'Nomus',
+    idFormaPagamento: idTexto,
+    nomeForma: '',
+    atualizados: 0,
+    ignorados: [],
+    erro,
+  });
+  const pool = getNomusPool();
+  if (!pool || !isNomusEnabled()) return vazio('Nomus não configurado');
+  const connection = await pool.getConnection();
+  const ignorados: ReprogramarVencimentoIgnorado[] = [];
+  let atualizados = 0;
+  try {
+    const [formaRows] = await connection.query(SQL_NOMUS_FORMA_ATIVA, [idFormaPagamento]);
+    const forma = Array.isArray(formaRows)
+      ? (formaRows[0] as Record<string, unknown> | undefined)
+      : undefined;
+    const nomeForma = texto(forma?.nome);
+    if (!forma || !nomeForma) {
+      return vazio('Forma de pagamento inexistente ou inativa no Nomus.');
+    }
+    await connection.beginTransaction();
+    for (const id of ids) {
+      const [result] = await connection.execute(SQL_UPDATE_NOMUS_FORMA, [idFormaPagamento, id]);
+      let affected = (result as ResultSetHeader).affectedRows ?? 0;
+      if (affected === 0) {
+        const [again] = await connection.query(SQL_NOMUS_FORMA_ATUAL, [id]);
+        const row = Array.isArray(again) ? (again[0] as Record<string, unknown> | undefined) : undefined;
+        if (row && toNum(row.idFormaPagamento) === idFormaPagamento) affected = 1;
+      }
+      if (affected > 0) atualizados += 1;
+      else ignorados.push({ origem: 'Nomus', id, motivo: MOTIVO_IGNORADO });
+    }
+    await connection.commit();
+    return { origem: 'Nomus', idFormaPagamento: idTexto, nomeForma, atualizados, ignorados };
+  } catch (err) {
+    try {
+      await connection.rollback();
+    } catch {
+      /* rollback best-effort */
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[diarioContasPagar] forma Nomus:', msg);
+    return vazio(msg);
+  } finally {
+    connection.release();
+  }
+}
+
+async function definirFormaShop9(
+  ids: number[],
+  codigoForma: string,
+  usuario: string,
+): Promise<DefinirFormaPagamentoResultado> {
+  const forma = formaPagamentoShop9Diario(codigoForma);
+  const vazio = (erro?: string): DefinirFormaPagamentoResultado => ({
+    origem: 'Shop9',
+    idFormaPagamento: forma?.id ?? codigoForma,
+    nomeForma: forma?.nome ?? '',
+    atualizados: 0,
+    ignorados: [],
+    erro,
+  });
+  if (!forma) return vazio('Forma de pagamento inexistente no Shop9.');
+  if (!isShop9Enabled()) return vazio('Shop9 não configurado');
+  const pool = await getShop9Pool();
+  if (!pool) return vazio('Shop9: falha ao conectar');
+
+  const elegiveis: number[] = [];
+  const ignorados: ReprogramarVencimentoIgnorado[] = [];
+  for (const ordem of ids) {
+    const leitura = pool.request();
+    leitura.input('ordem', sql.Int, ordem);
+    const found = await leitura.query(SQL_SHOP9_ELEGIVEL);
+    if ((found.recordset?.length ?? 0) > 0) elegiveis.push(ordem);
+    else ignorados.push({ origem: 'Shop9', id: ordem, motivo: MOTIVO_IGNORADO });
+  }
+
+  try {
+    await garantirTabelaFormaShop9();
+    for (const ordem of elegiveis) {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO diario_shop9_forma_pagamento
+           (ordem_financeira, codigo_forma, nome_forma, usuario, atualizado_em, criado_em)
+         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(ordem_financeira) DO UPDATE SET
+           codigo_forma = excluded.codigo_forma,
+           nome_forma = excluded.nome_forma,
+           usuario = excluded.usuario,
+           atualizado_em = datetime('now')`,
+        ordem,
+        forma.id,
+        forma.nome,
+        usuario,
+      );
+    }
+    return {
+      origem: 'Shop9',
+      idFormaPagamento: forma.id,
+      nomeForma: forma.nome,
+      atualizados: elegiveis.length,
+      ignorados,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[diarioContasPagar] forma Shop9 local:', msg);
+    return vazio(msg);
+  }
+}
+
+/**
+ * Nomus: UPDATE só em agendamentofinanceiro.idFormaPagamento, no título em aberto.
+ * Shop9: não escreve em Financeiro_Contas; grava a forma neste projeto.
+ * A seleção precisa ser de uma única origem.
+ */
+export async function definirFormaPagamentoDiario(params: {
+  idFormaPagamento: string;
+  itens: ReprogramarVencimentoItem[];
+  usuario: string;
+}): Promise<DefinirFormaPagamentoResultado> {
+  const origens = new Set(params.itens.map((i) => i.origem));
+  const vazio = (erro: string): DefinirFormaPagamentoResultado => ({
+    origem: params.itens[0]?.origem === 'Shop9' ? 'Shop9' : 'Nomus',
+    idFormaPagamento: params.idFormaPagamento,
+    nomeForma: '',
+    atualizados: 0,
+    ignorados: [],
+    erro,
+  });
+  if (origens.size !== 1) return vazio('Selecione títulos de uma só origem.');
+  const origem = params.itens[0]?.origem;
+  if (origem === 'Nomus') {
+    const id = Number(params.idFormaPagamento);
+    if (!Number.isInteger(id) || id <= 0) return vazio('Selecione uma forma de pagamento.');
+    return definirFormaNomus(idsUnicos(params.itens, 'Nomus'), id);
+  }
+  return definirFormaShop9(idsUnicos(params.itens, 'Shop9'), params.idFormaPagamento, params.usuario);
 }

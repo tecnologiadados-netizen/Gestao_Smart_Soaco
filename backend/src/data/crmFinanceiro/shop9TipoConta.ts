@@ -19,6 +19,19 @@ export function sqlShop9ExcluirTipoOperacional(alias = 'fc'): string {
   return `AND UPPER(LTRIM(RTRIM(ISNULL(${alias}.Tipo_Conta, '')))) NOT IN (${lista})`;
 }
 
+/** Opções do ajuste em massa do Diário. O código é o Tipo_Conta do Shop9. */
+export function formasPagamentoShop9Diario(): { id: string; nome: string }[] {
+  return Object.entries(SHOP9_TIPO_CONTA_LEGENDA)
+    .map(([id, nome]) => ({ id, nome }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+export function formaPagamentoShop9Diario(codigo: string | null | undefined): { id: string; nome: string } | null {
+  const id = (codigo ?? '').trim().toUpperCase();
+  const nome = SHOP9_TIPO_CONTA_LEGENDA[id];
+  return nome ? { id, nome } : null;
+}
+
 export function nomeShop9TipoConta(codigo: string | null | undefined): string {
   const c = (codigo ?? '').trim().toUpperCase();
   if (!c) return 'Receber';
