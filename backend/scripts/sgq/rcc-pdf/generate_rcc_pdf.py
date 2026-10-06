@@ -118,25 +118,91 @@ def juntar_codigo_descricao(codigo: str, descricao: str) -> str:
     return descricao or codigo
 
 
+def itens_produto(rcc: dict[str, Any]) -> list[dict[str, Any]]:
+    itens = rcc.get("itensProduto")
+    if not isinstance(itens, list):
+        return []
+    return [item for item in itens if isinstance(item, dict)]
+
+
+def enumerar_por_produto(valores: list[str], rotulo: str) -> str:
+    """Um produto fica como está. Vários viram linhas numeradas, com espaço entre elas."""
+    textos = [valor_campo(valor) for valor in valores]
+    if len(textos) <= 1:
+        return textos[0] if textos else ""
+    if not any(textos):
+        return ""
+    blocos = [f"{indice}° {rotulo}: {texto}" for indice, texto in enumerate(textos, start=1)]
+    return "\n\n".join(blocos)
+
+
+def formatar_datas_item(valor: Any) -> str:
+    texto = valor_campo(valor)
+    if not texto:
+        return ""
+    partes = [parte.strip() for parte in texto.split(",") if parte.strip()]
+    return ", ".join(formatar_data(parte) for parte in partes)
+
+
+def texto_produto_item(item: dict[str, Any], incluir_codigo: bool) -> str:
+    descricao = valor_campo(item.get("produto"))
+    if not incluir_codigo:
+        return descricao
+    return juntar_codigo_descricao(valor_campo(item.get("codigoProduto")), descricao)
+
+
 def produto_com_codigo(rcc: dict[str, Any]) -> str:
     """Código e descrição no mesmo texto, sem repetir o código quando ele já está na descrição."""
-    itens = rcc.get("itensProduto")
-    partes: list[str] = []
-    if isinstance(itens, list):
-        for item in itens:
-            if not isinstance(item, dict):
-                continue
-            texto = juntar_codigo_descricao(
-                valor_campo(item.get("codigoProduto")),
-                valor_campo(item.get("produto")),
-            )
-            if texto:
-                partes.append(texto)
+    partes = [texto_produto_item(item, True) for item in itens_produto(rcc)]
+    partes = [parte for parte in partes if parte]
     if partes:
         return "; ".join(partes)
     return juntar_codigo_descricao(
         valor_campo(rcc.get("codigoProduto")),
         valor_campo(rcc.get("produto")),
+    )
+
+
+def campo_por_produto(valores: list[str], legado: str, rotulo: str) -> str:
+    if any(valor_campo(valor) for valor in valores):
+        return enumerar_por_produto(valores, rotulo)
+    return legado
+
+
+def aplicar_identificacao_produtos(
+    campos: dict[str, str], rcc: dict[str, Any], versao: str
+) -> None:
+    """Numera produto, quantidade, NF, emissão e pedido quando há mais de um item."""
+    itens = itens_produto(rcc)
+    if len(itens) <= 1:
+        if versao == "cliente":
+            campos["produto"] = produto_com_codigo(rcc)
+        return
+
+    incluir_codigo = versao == "cliente"
+    campos["produto"] = enumerar_por_produto(
+        [texto_produto_item(item, incluir_codigo) for item in itens],
+        "Produto",
+    )
+    campos["quantidade"] = campo_por_produto(
+        [valor_campo(item.get("quantidade")) for item in itens],
+        campos["quantidade"],
+        "produto",
+    )
+    campos["nota_fiscal"] = campo_por_produto(
+        [valor_campo(item.get("notaFiscal")) for item in itens],
+        campos["nota_fiscal"],
+        "produto",
+    )
+    campos["data_nf"] = campo_por_produto(
+        [formatar_datas_item(item.get("dataEmissaoNf")) for item in itens],
+        campos["data_nf"],
+        "produto",
+    )
+    campos["pedido"] = campo_por_produto(
+        [valor_campo(item.get("pedidoNumero")) for item in itens],
+        campos["pedido"],
+        "produto",
     )
 
 
@@ -208,29 +274,31 @@ def montar_campos(payload: dict[str, Any]) -> dict[str, str]:
 
 def preencher_cliente(table, campos: dict[str, str]) -> None:
     definir_celula(table, 1, 1, campos["numero_reclamacao"])
-    definir_celula(table, 1, 6, campos["data_registro"])
-    definir_celula(table, 1, 11, campos["data_fechamento"])
-    definir_celula(table, 1, 15, campos["status"])
+    definir_celula(table, 1, 7, campos["data_registro"])
+    definir_celula(table, 1, 13, campos["data_fechamento"])
+    definir_celula(table, 1, 18, campos["status"])
     definir_celula(table, 3, 1, campos["nome_consumidor"])
-    definir_celula(table, 3, 13, campos["nome_revendedor"])
+    definir_celula(table, 3, 16, campos["nome_revendedor"])
     definir_celula(table, 4, 1, campos["contato"])
-    definir_celula(table, 4, 11, campos["cidade"])
+    definir_celula(table, 4, 13, campos["cidade"])
     definir_celula(table, 5, 1, campos["telefone"])
-    definir_celula(table, 5, 11, campos["bairro"])
+    definir_celula(table, 5, 13, campos["bairro"])
     definir_celula(table, 6, 1, campos["endereco"])
-    definir_celula(table, 6, 11, campos["ponto_referencia"])
+    definir_celula(table, 6, 13, campos["ponto_referencia"])
     definir_celula(table, 8, 3, campos["produto"])
-    definir_celula(table, 8, 12, campos["serie_lote"])
+    definir_celula(table, 8, 15, campos["serie_lote"])
     definir_celula(table, 9, 3, campos["data_nf"])
-    definir_celula(table, 9, 12, campos["nota_fiscal"])
+    definir_celula(table, 9, 15, campos["nota_fiscal"])
     definir_celula(table, 10, 3, campos["quantidade"])
-    definir_celula(table, 10, 12, campos["pedido"])
-    definir_celula(table, 12, 7, campos["tipo_reclamacao"])
+    definir_celula(table, 10, 15, campos["pedido"])
+    definir_celula(table, 12, 8, campos["tipo_reclamacao"])
     definir_celula(table, 14, 0, campos["descricao_reclamacao"])
     definir_celula(table, 16, 2, campos["reclamacao_aceita"])
-    definir_celula(table, 16, 7, campos["dentro_garantia"])
-    definir_celula(table, 16, 14, campos["abrir_os"])
+    definir_celula(table, 16, 8, campos["dentro_garantia"])
+    definir_celula(table, 16, 17, campos["abrir_os"])
     definir_celula(table, 17, 2, campos["responsavel_analise"])
+    definir_celula(table, 19, 4, campos["hora_chegada_cliente"])
+    definir_celula(table, 19, 14, campos["hora_saida_cliente"])
 
 
 def preencher_empresa(table, campos: dict[str, str]) -> None:
@@ -296,10 +364,9 @@ def gerar_pdf(payload: dict[str, Any], output_path: Path) -> None:
         raise ValueError("Versão inválida. Use 'cliente' ou 'empresa'.")
 
     campos = montar_campos(payload)
-    if versao == "cliente":
-        registro = payload.get("registro") or {}
-        rcc = registro.get("rcc") if isinstance(registro, dict) else {}
-        campos["produto"] = produto_com_codigo(rcc if isinstance(rcc, dict) else {})
+    registro = payload.get("registro") or {}
+    rcc = registro.get("rcc") if isinstance(registro, dict) else {}
+    aplicar_identificacao_produtos(campos, rcc if isinstance(rcc, dict) else {}, versao)
     doc = preencher_documento(versao, campos)
 
     with tempfile.TemporaryDirectory() as tmp_dir:

@@ -240,7 +240,7 @@ export function DistribuicaoGeneroCard({
   const pct = percentuais(contagem);
 
   return (
-    <div className="h-full w-full border border-border bg-card p-6 shadow-level-1">
+    <div className="w-full border border-border bg-card p-6 shadow-level-1">
       <div className="flex items-start justify-between gap-3">
         <span className="label-industrial">Distribuição por gênero</span>
         <span className="shrink-0 text-[11px] text-muted-foreground">{referencia}</span>

@@ -25,6 +25,10 @@ export type RhDashboardReturnFilters = {
   turnoverInicio: string;
   turnoverFim: string;
   turnoverSetor: string | null;
+  movimentacoesInicio?: string;
+  movimentacoesFim?: string;
+  comparacaoTempoDesligamento?: 'acima' | 'abaixo';
+  limiteDiasDesligamento?: number;
 };
 
 export type RhOrganicoNavigationState = {

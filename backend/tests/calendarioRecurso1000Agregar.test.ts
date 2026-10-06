@@ -91,7 +91,7 @@ describe('agregarComponentesDiaRecurso1000', () => {
     expect(fundo?.qtde).toBe(3);
   });
 
-  it('acumula consumo e origens dos dias anteriores até a data', () => {
+  it('retorna consumo e origens somente da data solicitada', () => {
     const rows = agregarComponentesDiaRecurso1000(
       BOM,
       [
@@ -116,15 +116,8 @@ describe('agregarComponentesDiaRecurso1000', () => {
       'Móveis de aço'
     );
     const fundo = rows.find((r) => r.codigo === 'PP 0107');
-    expect(fundo?.qtde).toBe(10);
+    expect(fundo?.qtde).toBe(7);
     expect(fundo?.origens).toEqual([
-      {
-        dataIso: '2026-08-18',
-        carrada: '1',
-        pd: 'PD 1',
-        qtdeComponente: 3,
-        setor: 'Móveis de aço',
-      },
       {
         dataIso: '2026-08-22',
         carrada: '5-Requisicao',
@@ -149,7 +142,7 @@ describe('projetarSaldoRecurso1000', () => {
       consumidoAntes: 0,
       consumoDiaTotal: 100,
       consumoAcumTotal: 100,
-      faltaAcum: 0,
+      faltaDia: 0,
     });
     const d2 = projetarSaldoRecurso1000(consumo, datas, 256, '2026-08-19');
     expect(d2).toEqual({
@@ -157,7 +150,7 @@ describe('projetarSaldoRecurso1000', () => {
       consumidoAntes: 100,
       consumoDiaTotal: 200,
       consumoAcumTotal: 300,
-      faltaAcum: 44,
+      faltaDia: 44,
     });
   });
 
@@ -168,12 +161,12 @@ describe('projetarSaldoRecurso1000', () => {
     ]);
     const d2 = projetarSaldoRecurso1000(consumo, ['2026-08-18', '2026-08-19'], 8, '2026-08-19');
     expect(d2.saldoInicio).toBe(0);
-    expect(d2.faltaAcum).toBe(7);
+    expect(d2.faltaDia).toBe(5);
     expect(d2.consumidoAntes).toBe(10);
     expect(d2.consumoAcumTotal).toBe(15);
   });
 
-  it('acumula a falta dos dias anteriores sem estoque', () => {
+  it('não acumula na falta do dia o déficit dos dias anteriores', () => {
     const consumo = new Map([
       ['2026-08-18', 3],
       ['2026-08-22', 7],
@@ -182,7 +175,7 @@ describe('projetarSaldoRecurso1000', () => {
     expect(d22.saldoInicio).toBe(0);
     expect(d22.consumoDiaTotal).toBe(7);
     expect(d22.consumoAcumTotal).toBe(10);
-    expect(d22.faltaAcum).toBe(10);
+    expect(d22.faltaDia).toBe(7);
   });
 });
 

@@ -961,8 +961,6 @@ export function RccForm({
                       ...linha,
                       horaSaidaEmpresa: "",
                       horaChegadaEmpresa: "",
-                      horaChegadaCliente: "",
-                      horaSaidaCliente: "",
                     }));
                     patch({
                       responsavelAssistencia,
@@ -1035,7 +1033,7 @@ export function RccForm({
               linhas={dados.linhasServico ?? []}
               codigosProduto={codigosReclamacao}
               disabled={somenteLeitura}
-              ocultarHorarios={dados.responsavelAssistencia === "Terceirizado"}
+              ocultarHorariosEmpresa={dados.responsavelAssistencia === "Terceirizado"}
               erro={erros.servicoRealizado}
               obrigatorio={assistenciaObrigatoria}
               onChange={(linhasServico) =>

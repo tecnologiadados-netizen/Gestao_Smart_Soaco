@@ -111,8 +111,8 @@ export function agregarComponentesDiaRecurso1000(
   const setorFiltro = String(setor ?? '').trim();
   const acc = new Map<number, ComponenteDiaRecurso1000>();
   for (const d of demanda) {
-    // Acumula demanda do componente até a data (inclusive) — faltas/origens carregam dias anteriores.
-    if (!d.dataIso || d.dataIso > dataIso || !(d.qtde > 0)) continue;
+    // O detalhe analítico é estritamente diário; o histórico só participa da projeção do saldo.
+    if (d.dataIso !== dataIso || !(d.qtde > 0)) continue;
     const setorLinha = String(d.setor ?? '').trim();
     if (setorFiltro && setorLinha !== setorFiltro) continue;
     const rows = byPa.get(normCod(d.codigoPa));
@@ -204,16 +204,13 @@ export type ProjetacaoSaldoRecurso1000 = {
   consumoDiaTotal: number;
   /** Consumo global do componente de todas as datas ≤ dataAlvo. */
   consumoAcumTotal: number;
-  /**
-   * Necessidade acumulada (igual ao nAcum do AS, sem entradas):
-   * máx(0, consumoDia − saldoInício + faltaAcum do dia anterior).
-   */
-  faltaAcum: number;
+  /** Falta exclusiva do dia: máx(0, consumo do dia − saldo no início do dia). */
+  faltaDia: number;
 };
 
 /**
  * Saldo no início do dia = estoque inicial − consumo dos dias anteriores (sem entradas).
- * Falta acumulada carrega o déficit não coberto dos dias anteriores.
+ * A falta exibida não carrega déficit anterior: evidencia somente o consumo descoberto do dia.
  */
 export function projetarSaldoRecurso1000(
   consumoPorDia: Map<string, number>,
@@ -229,31 +226,29 @@ export function projetarSaldoRecurso1000(
   }
   let restante = inicial;
   let consumidoAntes = 0;
-  let faltaAnterior = 0;
   for (const d of datas) {
     const c = arred2(consumoPorDia.get(d) ?? 0);
     const saldoInicio = restante;
-    const bruto = arred2(c - saldoInicio + faltaAnterior);
-    const faltaAcum = bruto <= 0 ? 0 : bruto;
+    const bruto = arred2(c - saldoInicio);
+    const faltaDia = bruto <= 0 ? 0 : bruto;
     if (d === dataAlvo) {
       return {
         saldoInicio,
         consumidoAntes,
         consumoDiaTotal: c,
         consumoAcumTotal: arred2(consumidoAntes + c),
-        faltaAcum,
+        faltaDia,
       };
     }
     restante = Math.max(0, arred2(saldoInicio - c));
     consumidoAntes = arred2(consumidoAntes + c);
-    faltaAnterior = faltaAcum;
   }
   return {
     saldoInicio: restante,
     consumidoAntes,
     consumoDiaTotal: 0,
     consumoAcumTotal: consumidoAntes,
-    faltaAcum: 0,
+    faltaDia: 0,
   };
 }
 
@@ -285,7 +280,7 @@ export function statusCelulasRecurso1000(
         saldoInicialPorId.get(id) ?? 0,
         cel.data
       );
-      if (alocarFaltaRecurso1000(proj.faltaAcum, consumoCel, proj.consumoDiaTotal) > 0) {
+      if (alocarFaltaRecurso1000(proj.faltaDia, consumoCel, proj.consumoDiaTotal) > 0) {
         falta = true;
         break;
       }

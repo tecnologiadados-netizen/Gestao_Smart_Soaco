@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Button } from "@rh/components/ui/button";
 import {
   Select,
@@ -66,16 +67,46 @@ export function DashboardPeriodoDatas({
   const hoje = toIsoLocal(inicioDoDia(new Date()));
   const inicio = toIsoLocal(periodo.inicio);
   const fim = toIsoLocal(periodo.fim);
+  const [inicioDigitado, setInicioDigitado] = useState(inicio);
+  const [fimDigitado, setFimDigitado] = useState(fim);
+
+  useEffect(() => {
+    setInicioDigitado(inicio);
+    setFimDigitado(fim);
+  }, [inicio, fim]);
+
+  const lerDataCompleta = (valor: string) => {
+    const data = parseIsoLocal(valor);
+    return data && data.getFullYear() >= 1900 ? data : null;
+  };
 
   const aplicar = (proximoInicio: string, proximoFim: string) => {
-    const a = parseIsoLocal(proximoInicio);
-    const b = parseIsoLocal(proximoFim);
+    const a = lerDataCompleta(proximoInicio);
+    const b = lerDataCompleta(proximoFim);
     if (!a || !b) return;
     const limite = inicioDoDia(new Date());
     let de = a > limite ? limite : a;
     let ate = b > limite ? limite : b;
     if (ate < de) [de, ate] = [ate, de];
     onPeriodoChange({ inicio: de, fim: ate });
+  };
+
+  const alterarInicio = (valor: string) => {
+    setInicioDigitado(valor);
+  };
+
+  const alterarFim = (valor: string) => {
+    setFimDigitado(valor);
+  };
+
+  const finalizarInicio = () => {
+    if (lerDataCompleta(inicioDigitado) && lerDataCompleta(fimDigitado)) aplicar(inicioDigitado, fimDigitado);
+    else setInicioDigitado(inicio);
+  };
+
+  const finalizarFim = () => {
+    if (lerDataCompleta(inicioDigitado) && lerDataCompleta(fimDigitado)) aplicar(inicioDigitado, fimDigitado);
+    else setFimDigitado(fim);
   };
 
   return (
@@ -88,9 +119,14 @@ export function DashboardPeriodoDatas({
           id={`${idPrefix}-inicio`}
           type="date"
           className={rhFieldInput}
-          value={inicio}
+          value={inicioDigitado}
+          min="1900-01-01"
           max={hoje}
-          onChange={(e) => aplicar(e.target.value, fim)}
+          onChange={(e) => alterarInicio(e.target.value)}
+          onBlur={finalizarInicio}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
         />
       </div>
       <div className="min-w-0 w-[160px]">
@@ -101,10 +137,14 @@ export function DashboardPeriodoDatas({
           id={`${idPrefix}-fim`}
           type="date"
           className={rhFieldInput}
-          value={fim}
+          value={fimDigitado}
           min={inicio}
           max={hoje}
-          onChange={(e) => aplicar(inicio, e.target.value)}
+          onChange={(e) => alterarFim(e.target.value)}
+          onBlur={finalizarFim}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
         />
       </div>
     </div>

@@ -395,39 +395,42 @@ export async function obterDiaRecurso1000(
     r.origens.some((o) => o.dataIso === dataIso)
   );
   const consumoAgg = agregarConsumoRecurso1000(bom, demanda);
-  const componentes = rows.map((r) => {
-    const key = normCodKey(r.codigo);
-    const linha = prog.porCodigo.get(key);
-    const descCat = descSimpCatalogo(r.codigo, catalogo);
-    const descSimp = linha?.descSimp?.trim() || descCat;
-    const snapshot = montarEstoque(linha);
-    const cons = consumoAgg.porId.get(r.idComponente);
-    const proj = projetarSaldoRecurso1000(
-      cons?.consumoPorDia ?? new Map(),
-      consumoAgg.datas,
-      snapshot.estoqueTotal,
-      dataIso
-    );
-    const estoque = montarEstoque(linha, proj);
-    const consumoDia = r.qtde;
-    const falta = alocarFaltaRecurso1000(
-      proj.faltaAcum,
-      consumoDia,
-      proj.consumoAcumTotal
-    );
-    return {
-      idComponente: r.idComponente,
-      codigo: r.codigo,
-      descricao: r.descricao,
-      descSimp,
-      metodoRessuprimento:
-        metodoPorId.get(r.idComponente) ?? METODO_RESSUPRIMENTO_VAZIO,
-      consumoDia,
-      falta,
-      origens: r.origens,
-      estoque,
-    };
-  });
+  const componentes = rows
+    .map((r) => {
+      const key = normCodKey(r.codigo);
+      const linha = prog.porCodigo.get(key);
+      const descCat = descSimpCatalogo(r.codigo, catalogo);
+      const descSimp = linha?.descSimp?.trim() || descCat;
+      const snapshot = montarEstoque(linha);
+      const cons = consumoAgg.porId.get(r.idComponente);
+      const proj = projetarSaldoRecurso1000(
+        cons?.consumoPorDia ?? new Map(),
+        consumoAgg.datas,
+        snapshot.estoqueTotal,
+        dataIso
+      );
+      const estoque = montarEstoque(linha, proj);
+      const consumoDia = r.qtde;
+      const falta = alocarFaltaRecurso1000(
+        proj.faltaDia,
+        consumoDia,
+        proj.consumoDiaTotal
+      );
+      return {
+        idComponente: r.idComponente,
+        codigo: r.codigo,
+        descricao: r.descricao,
+        descSimp,
+        metodoRessuprimento:
+          metodoPorId.get(r.idComponente) ?? METODO_RESSUPRIMENTO_VAZIO,
+        consumoDia,
+        falta,
+        origens: r.origens,
+        estoque,
+      };
+    })
+    // Mesma regra do sintético/bolinha: o detalhe analítico contém somente a falta do recorte.
+    .filter((r) => r.falta > 0);
   return {
     ok: true,
     data: {

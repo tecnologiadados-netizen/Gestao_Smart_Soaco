@@ -102,7 +102,7 @@ export const RCC_CAMPOS_PDF_MAPA: RccCampoPdfMapa[] = [
     versoes: ["cliente", "empresa"],
     situacao: "mapeado",
     observacao:
-      "Na versão do cliente, o código do produto entra junto com a descrição.",
+      "Na versão do cliente, o código entra junto com a descrição. Com mais de um produto, cada um é numerado (1° Produto) com uma linha em branco entre eles.",
   },
   {
     rotuloPdf: "Nº Série/Lote do produto",
@@ -115,24 +115,32 @@ export const RCC_CAMPOS_PDF_MAPA: RccCampoPdfMapa[] = [
     chaveSistema: "dataEmissaoNf",
     versoes: ["cliente", "empresa"],
     situacao: "mapeado",
+    observacao:
+      "Com mais de um produto, a data de cada item é numerada (1° produto) com uma linha em branco entre elas.",
   },
   {
     rotuloPdf: "Nota fiscal Nº",
     chaveSistema: "numeroNf",
     versoes: ["cliente", "empresa"],
     situacao: "mapeado",
+    observacao:
+      "Com mais de um produto, a nota de cada item é numerada (1° produto) com uma linha em branco entre elas.",
   },
   {
     rotuloPdf: "Quantidade",
     chaveSistema: "quantidade",
     versoes: ["cliente", "empresa"],
     situacao: "mapeado",
+    observacao:
+      "Com mais de um produto, a quantidade de cada item é numerada (1° produto) com uma linha em branco entre elas.",
   },
   {
     rotuloPdf: "Pedido Nº",
     chaveSistema: "numeroPedidoInternoExterno",
     versoes: ["cliente", "empresa"],
     situacao: "mapeado",
+    observacao:
+      "Com mais de um produto, o pedido de cada item é numerado (1° produto) com uma linha em branco entre eles.",
   },
   {
     rotuloPdf: "Tipo de reclamação",
@@ -243,14 +251,16 @@ export const RCC_CAMPOS_PDF_MAPA: RccCampoPdfMapa[] = [
   {
     rotuloPdf: "Hora da chegada ao cliente",
     chaveSistema: "horaChegadaCliente",
-    versoes: ["empresa"],
+    versoes: ["cliente", "empresa"],
     situacao: "mapeado",
+    observacao: "Campo opcional informado na linha do serviço realizado.",
   },
   {
     rotuloPdf: "Hora da saída do cliente",
     chaveSistema: "horaSaidaCliente",
-    versoes: ["empresa"],
+    versoes: ["cliente", "empresa"],
     situacao: "mapeado",
+    observacao: "Campo opcional informado na linha do serviço realizado.",
   },
 ];
 

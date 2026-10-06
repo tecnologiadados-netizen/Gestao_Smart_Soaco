@@ -229,13 +229,15 @@ type SetorRow = { setor: string };
 
 const COL_SETOR = 'setor';
 const COL_TOTAL = '__total';
-type IconeCalendario = 'previsao' | StatusConfiavelCalendario;
+type IconeCalendario = 'previsao' | StatusConfiavelCalendario | 'as' | 'pp';
 
 const ICONES_CALENDARIO_INICIAIS: Record<IconeCalendario, boolean> = {
   previsao: true,
   sim: true,
   nao: true,
   branco: true,
+  as: true,
+  pp: true,
 };
 
 function filtrarStatusConfiavelVisivel(
@@ -1791,7 +1793,9 @@ export default function CalendarioProducaoModal({
           </span>
           {col?.tipo === 'data' && (
             <span className="inline-flex items-center gap-0.5">
-              {(!temRecorteMetodoRessup || st) && (dispMateriais || dispCarregando || st) ? (
+              {iconesVisiveis.as &&
+              (!temRecorteMetodoRessup || st) &&
+              (dispMateriais || dispCarregando || st) ? (
                 <SemaforoMateriais
                   status={
                     dispCarregando
@@ -1812,7 +1816,7 @@ export default function CalendarioProducaoModal({
                   onClick={() => runSeInterativo(() => abrirMateriaisDia(col.iso))}
                 />
               ) : null}
-              {ppDatasStatus.has(col.iso) ? (
+              {iconesVisiveis.pp && ppDatasStatus.has(col.iso) ? (
                 <BolinhaRecurso1000
                   status={ppDatasStatus.get(col.iso)}
                   title={
@@ -1866,7 +1870,9 @@ export default function CalendarioProducaoModal({
         {v > 0 ? (
           <span className="inline-flex items-center justify-end gap-1">
             <span className="inline-flex items-center gap-0.5">
-              {statusMateriaisCelula !== undefined || (dispCarregando && !temRecorteMetodoRessup) ? (
+              {iconesVisiveis.as &&
+              (statusMateriaisCelula !== undefined ||
+                (dispCarregando && !temRecorteMetodoRessup)) ? (
                 <SemaforoMateriais
                   status={statusMateriaisCelula}
                   title={tituloStatusMateriais(
@@ -1885,7 +1891,7 @@ export default function CalendarioProducaoModal({
                   onClick={() => runSeInterativo(() => abrirMateriaisDia(col.iso, setor))}
                 />
               ) : null}
-              {ppCelulasMap.has(`${setor}\0${col.iso}`) ? (
+              {iconesVisiveis.pp && ppCelulasMap.has(`${setor}\0${col.iso}`) ? (
                 <BolinhaRecurso1000
                   status={ppCelulasMap.get(`${setor}\0${col.iso}`)}
                   title={
@@ -2008,7 +2014,7 @@ export default function CalendarioProducaoModal({
                 <span>= Confiável</span>
               </button>
             </div>
-            <div className="flex flex-col justify-end gap-0.5">
+            <div className="flex flex-col justify-end gap-0.5 pt-4">
               <button
                 type="button"
                 onClick={() => alternarIcone('nao')}
@@ -2037,15 +2043,43 @@ export default function CalendarioProducaoModal({
                 <IndicadorPrevisaoConfiavel status="branco" />
                 <span>= Em branco</span>
               </button>
+              <button
+                type="button"
+                onClick={() => alternarIcone('as')}
+                aria-pressed={iconesVisiveis.as}
+                title={`${iconesVisiveis.as ? 'Ocultar' : 'Exibir'} indicadores AS`}
+                className={`inline-flex w-fit items-center gap-1 rounded px-1 text-left ${
+                  iconesVisiveis.as
+                    ? 'hover:bg-slate-100 dark:hover:bg-slate-700'
+                    : 'opacity-45 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <span className="inline-flex h-4 min-w-[1.15rem] shrink-0 items-center justify-center rounded-full bg-emerald-400 px-0.5 text-[8px] font-extrabold leading-none text-white ring-1 ring-emerald-100">
+                  AS
+                </span>
+                <span>= almox secundário</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => alternarIcone('pp')}
+                aria-pressed={iconesVisiveis.pp}
+                title={`${iconesVisiveis.pp ? 'Ocultar' : 'Exibir'} indicadores PP`}
+                className={`inline-flex w-fit items-center gap-1 rounded px-1 text-left ${
+                  iconesVisiveis.pp
+                    ? 'hover:bg-slate-100 dark:hover:bg-slate-700'
+                    : 'opacity-45 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <span className="inline-flex h-4 min-w-[1.15rem] shrink-0 items-center justify-center rounded-full bg-emerald-500 px-0.5 text-[8px] font-extrabold leading-none text-white ring-1 ring-emerald-200 dark:bg-emerald-400 dark:text-slate-900 dark:ring-emerald-300">
+                  PP
+                </span>
+                <span>= Recurso 1000</span>
+              </button>
               {ppErro ? (
                 <span className="text-[10px] text-amber-700 dark:text-amber-300" title={ppErro}>
                   PP indisponível
                 </span>
-              ) : (
-                <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                  AS = almox secundário · PP = Recurso 1000 (verde ok / vermelho falta)
-                </span>
-              )}
+              ) : null}
               {dispErro ? (
                 <span className="text-[10px] text-amber-700 dark:text-amber-300" title={dispErro}>
                   AS indisponível
@@ -2380,7 +2414,7 @@ export default function CalendarioProducaoModal({
           </div>
         )}
 
-        <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-auto p-4">
+        <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
           {drill.nivel === 'pivot' && vistaCalendario === 'materiais' && (
             <div className="space-y-3">
               {dispCarregando && (

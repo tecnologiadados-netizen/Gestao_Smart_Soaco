@@ -309,7 +309,7 @@ export default function CalendarioRecurso1000DiaModal({
     const dataNorm = toISODate(dataIso) || dataIso;
     const setorNorm = String(setor ?? '').trim();
     const metodoKey = (metodosRessup ?? []).join(',');
-    const cacheKey = `${setorNorm ? `${dataNorm}\0${setorNorm}` : dataNorm}\0m:${metodoKey}\0v2acum`;
+    const cacheKey = `${setorNorm ? `${dataNorm}\0${setorNorm}` : dataNorm}\0m:${metodoKey}\0v4diario`;
     const cached = cacheRef.current.get(cacheKey);
     const cacheOk =
       Array.isArray(cached?.componentes) &&
@@ -386,9 +386,9 @@ export default function CalendarioRecurso1000DiaModal({
                 {setorLabel ? ` · ${setorLabel}` : ''}
               </h2>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Componentes da Perfiladeira 1000 na BOM dos produtos desta célula. Consumo e Falta
-                acumulam a demanda não coberta dos dias anteriores (mesmo poço de estoque). Clique em{' '}
-                <strong>Consumo</strong> para as origens (carrada × PD, inclusive dias anteriores) e em{' '}
+                Somente componentes em falta da Perfiladeira 1000 neste recorte. Consumo, Falta e
+                origens são exclusivos deste dia; os dias anteriores apenas reduzem o Estoque disponível. Clique em{' '}
+                <strong>Consumo</strong> para as origens (carrada × PD) e em{' '}
                 <strong>Estoque</strong> para PA Nomus e inventário importado.
               </p>
             </div>
@@ -420,7 +420,7 @@ export default function CalendarioRecurso1000DiaModal({
             {erro && <p className="text-sm text-red-600 dark:text-red-400">{erro}</p>}
             {!carregando && !erro && (linhas?.length ?? 0) === 0 && (
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Nenhum componente da Perfiladeira 1000 na BOM deste recorte.
+                Nenhum componente da Perfiladeira 1000 em falta neste recorte.
               </p>
             )}
             {!carregando && !erro && (linhas?.length ?? 0) > 0 && (

@@ -7,38 +7,29 @@ import {
   Users,
   DollarSign,
   TrendingDown,
-  Clock,
   Wallet,
-  Building2,
-  AlertTriangle,
-  ArrowUpRight,
+  CalendarDays,
+  ArrowUpDown,
   X,
 } from "lucide-react";
 import {
-  Area,
   BarChart,
   Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   LineChart,
   Line,
-  ComposedChart,
   Cell,
   LabelList,
 } from "recharts";
 import { Button } from "@rh/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@rh/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@rh/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@rh/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@rh/components/ui/tabs";
-import {
-  Tooltip as UiTooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@rh/components/ui/tooltip";
 import {
   getOrganico,
   getOrganicoFotosResumo,
@@ -58,6 +49,7 @@ import {
   listNovasAdmissoesMesAtual,
   listTurnoverPeopleFromOrganico,
   type FolhaMensalPoint,
+  type TurnoverPersonLike,
   type TurnoverSeriesPoint,
 } from "@rh/lib/dashboard-from-organico";
 import {
@@ -69,6 +61,7 @@ import {
   formatDiaMmmAno,
   indexarSalariosTrajetoria,
   inicioDoDia,
+  mesesNoPeriodo,
   parseIsoLocal,
   periodoPadraoExecutivo,
   salarioVigenteDaMatricula,
@@ -88,6 +81,7 @@ import {
 } from "@rh/lib/rh-paths";
 import { DashboardExecutivoFiltros, DashboardPeriodoDatas } from "@rh/pages/DashboardExecutivoFiltros";
 import { DistribuicaoGeneroCard, type GeneroFiltro } from "@rh/pages/DistribuicaoGeneroCard";
+import { DistribuicaoExperienciaCard } from "@rh/pages/DistribuicaoExperienciaCard";
 import AbsenteismoDashboard, {
   type AbsenteismoFavoritoSnapshot,
 } from "@rh/pages/AbsenteismoDashboard";
@@ -190,6 +184,12 @@ function FolhaMensalTooltip(props: {
           {row.ativosAproximado ? `aprox. ${formatIntPt(row.ativos)} pessoas` : `${formatIntPt(row.ativos)} pessoas`}
         </span>
       </p>
+      <p className="mt-1 text-foreground">
+        <span className="text-muted-foreground">Custo médio por pessoa: </span>
+        <span className="font-medium tabular-nums">
+          {row.ativos > 0 ? formatCurrencyBRLExact(row.value / row.ativos) : "—"}
+        </span>
+      </p>
     </div>
   );
 }
@@ -245,13 +245,72 @@ function formatCustoFolha(n: number): string {
   return formatCurrencyBRLExact(n);
 }
 
-function formatTenure(meses: number): string {
-  const m = Math.max(0, Math.round(meses));
-  const anos = Math.floor(m / 12);
-  const resto = m % 12;
-  if (anos <= 0) return `${resto} ${resto === 1 ? "mês" : "meses"}`;
-  if (resto <= 0) return `${anos} ${anos === 1 ? "ano" : "anos"}`;
-  return `${anos}a ${resto}m`;
+function formatCustoFolhaCurto(n: number): string {
+  if (n >= 1_000_000) {
+    return `${(n / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mi`;
+  }
+  if (n >= 1_000) return `${Math.round(n / 1_000).toLocaleString("pt-BR")} mil`;
+  return Math.round(n).toLocaleString("pt-BR");
+}
+
+type ComparacaoTempoDesligamento = "acima" | "abaixo";
+const OPCOES_DIAS_DESLIGAMENTO = [0, 15, 30, 45, 60, 90] as const;
+
+function desligamentoAtendeTempo(
+  admissaoValor: unknown,
+  demissao: Date,
+  comparacao: ComparacaoTempoDesligamento,
+  limiteDias: number,
+): boolean {
+  if (limiteDias === 0) return true;
+  const admissao = parseDateBR(String(admissaoValor ?? "").trim());
+  if (!admissao) return false;
+  const dias = Math.floor(
+    (inicioDoDia(demissao).getTime() - inicioDoDia(admissao).getTime()) / 86_400_000,
+  );
+  if (dias < 0) return false;
+  return comparacao === "acima" ? dias > limiteDias : dias <= limiteDias;
+}
+
+function FiltroTempoDesligamento({
+  comparacao,
+  limiteDias,
+  onComparacaoChange,
+  onLimiteDiasChange,
+}: {
+  comparacao: ComparacaoTempoDesligamento;
+  limiteDias: number;
+  onComparacaoChange: (comparacao: ComparacaoTempoDesligamento) => void;
+  onLimiteDiasChange: (dias: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <span>Considerar desligamentos</span>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-8 min-w-[76px] capitalize"
+        onClick={() => onComparacaoChange(comparacao === "acima" ? "abaixo" : "acima")}
+        aria-label={`Trocar filtro para ${comparacao === "acima" ? "abaixo" : "acima"} do período`}
+      >
+        {comparacao}
+      </Button>
+      <span>de</span>
+      <Select value={String(limiteDias)} onValueChange={(value) => onLimiteDiasChange(Number(value))}>
+        <SelectTrigger className="h-8 w-[112px]" aria-label="Limite de dias para desligamentos">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {OPCOES_DIAS_DESLIGAMENTO.map((dias) => (
+            <SelectItem key={dias} value={String(dias)}>
+              {dias === 0 ? "0 dias (todos)" : `${dias} dias`}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
 }
 
 const Dashboard = () => {
@@ -261,18 +320,25 @@ const Dashboard = () => {
   const [selectedTurnoverPoint, setSelectedTurnoverPoint] = useState<{
     year: number;
     month: string;
-    x: number;
-    y: number;
   } | null>(null);
-  const [dragState, setDragState] = useState<{ dx: number; dy: number } | null>(null);
   /** Filtro da série "Evolução do Turnover" ao clicar numa barra de setor (null = todos). */
   const [turnoverSetorFiltro, setTurnoverSetorFiltro] = useState<string | null>(null);
-  const turnoverPopoverRef = useRef<HTMLDivElement | null>(null);
   const [empresaPainel, setEmpresaPainel] = useState(ORGANICO_EMPRESA_SO_ACO);
   const [generoFiltro, setGeneroFiltro] = useState<GeneroFiltro>(null);
   const [periodoFolha, setPeriodoFolha] = useState<DashboardPeriodo>(() => periodoPadraoExecutivo());
   const [folhaModalAberto, setFolhaModalAberto] = useState(false);
   const [turnoverModalAberto, setTurnoverModalAberto] = useState(false);
+  const [movimentacoesPopoverAberto, setMovimentacoesPopoverAberto] = useState(false);
+  const [movimentacoesLinhaModalAberto, setMovimentacoesLinhaModalAberto] = useState(false);
+  const [movimentacaoPontoSelecionado, setMovimentacaoPontoSelecionado] = useState<{
+    year: number;
+    month: number;
+    tipo: "admissoes" | "desligamentos";
+  } | null>(null);
+  const [comparacaoTempoDesligamento, setComparacaoTempoDesligamento] =
+    useState<ComparacaoTempoDesligamento>("acima");
+  const [limiteDiasDesligamento, setLimiteDiasDesligamento] = useState(90);
+  const [periodoMovimentacoes, setPeriodoMovimentacoes] = useState<DashboardPeriodo>(() => periodoPadraoExecutivo());
   const [setorHeadcountSelecionado, setSetorHeadcountSelecionado] = useState<string | null>(null);
   const [periodoTurnover, setPeriodoTurnover] = useState<DashboardPeriodo>(() => periodoPadraoExecutivo());
   const { data: organicoRows, isLoading, isError, refetch } = useQuery({
@@ -410,8 +476,28 @@ const Dashboard = () => {
     [organicoDaEmpresa, demissaoByMatricula, periodoFolha, hojePainel, salarioNaData],
   );
   const folhaChartData = useMemo(
-    () => folhaMensal.map((p) => ({ ...p, eixo: `${p.month}/${String(p.year).slice(-2)}` })),
+    () => {
+      const fatorPessoas = folhaMensal.reduce((menorFator, ponto) => {
+        if (ponto.ativos <= 0 || ponto.value <= 0) return menorFator;
+        return Math.min(menorFator, (ponto.value / ponto.ativos) * 0.88);
+      }, Number.POSITIVE_INFINITY);
+      const fatorSeguro = Number.isFinite(fatorPessoas) ? fatorPessoas : 0;
+      return folhaMensal.map((p) => ({
+        ...p,
+        eixo: `${p.month}/${String(p.year).slice(-2)}`,
+        ativosExibicao: `${p.ativosAproximado ? "≈ " : ""}${formatIntPt(p.ativos)}`,
+        ativosEscalados: p.ativos * fatorSeguro,
+      }));
+    },
     [folhaMensal],
+  );
+  const maiorCustoFolha = useMemo(
+    () =>
+      folhaChartData.reduce<(typeof folhaChartData)[number] | null>(
+        (maior, ponto) => (!maior || ponto.value > maior.value ? ponto : maior),
+        null,
+      ),
+    [folhaChartData],
   );
 
   const generoAtivos = useMemo(() => {
@@ -457,37 +543,292 @@ const Dashboard = () => {
     return acc;
   }, [secullumDaEmpresaBase, organicoDaEmpresaBase, demissaoByMatricula, hojePainel]);
 
+  const experienciaAtivos = useMemo(() => {
+    const contagem = { experiencia: 0, fixos: 0 };
+    const hojeMs = inicioDoDia(hojePainel).getTime();
+    for (const registro of organicoDaEmpresa) {
+      const values = Array.isArray(registro?.values) ? registro.values : [];
+      if (!String(values[ORGANICO_IDX.NOME] ?? "").trim()) continue;
+      const matricula = String(values[ORGANICO_IDX.MATRICULA] ?? "").trim();
+      const demissao = parseDateBR(String(demissaoByMatricula[matricula] ?? ""));
+      const status = String(values[ORGANICO_IDX.STATUS] ?? "").toUpperCase();
+      const admissaoRaw = String(values[ORGANICO_IDX.ADMISSAO] ?? "").trim();
+      const admissao = /^\d{4}-\d{2}-\d{2}/.test(admissaoRaw)
+        ? parseIsoLocal(admissaoRaw.slice(0, 10))
+        : parseDateBR(admissaoRaw);
+      const ativo = colaboradorAtivoNaData(
+        {
+          admissao,
+          demissao,
+          statusDesligado: status.includes("DESLIG") && !demissao,
+        },
+        hojePainel,
+      );
+      if (!ativo) continue;
+
+      const marcadorAprendiz = [
+        values[ORGANICO_IDX.VINCULO],
+        values[ORGANICO_IDX.CARGO],
+        values[ORGANICO_IDX.SITUACAO_TRABALHISTA],
+      ]
+        .map((valor) => String(valor ?? "").normalize("NFD").replace(/\p{M}/gu, "").toUpperCase())
+        .some((valor) => valor.includes("APRENDIZ"));
+      const diasDesdeAdmissao = admissao
+        ? Math.floor((hojeMs - inicioDoDia(admissao).getTime()) / 86_400_000)
+        : Number.POSITIVE_INFINITY;
+      if (marcadorAprendiz || (diasDesdeAdmissao >= 0 && diasDesdeAdmissao <= 90)) {
+        contagem.experiencia += 1;
+      } else {
+        contagem.fixos += 1;
+      }
+    }
+    return contagem;
+  }, [organicoDaEmpresa, demissaoByMatricula, hojePainel]);
+
   const turnoverPeople = useMemo(() => {
     if (secullumDaEmpresa.length > 0) {
       return secullumDaEmpresa.map((p) => ({
-        admissao: p.admissao,
-        demissao: p.demissao,
-        setor: p.setor,
+          admissao: p.admissao,
+          demissao: p.demissao,
+          setor: p.setor,
       }));
     }
     return listTurnoverPeopleFromOrganico(organicoDaEmpresa, demissaoByMatricula);
   }, [secullumDaEmpresa, organicoDaEmpresa, demissaoByMatricula]);
-
-  const turnoverKpi = useMemo(
-    () => deriveTurnoverFromPeople(turnoverPeople, hojePainel),
-    [turnoverPeople, hojePainel],
+  const incluirDemissaoNoFiltro = useCallback(
+    (pessoa: TurnoverPersonLike, demissao: Date) =>
+      desligamentoAtendeTempo(
+        pessoa.admissao,
+        demissao,
+        comparacaoTempoDesligamento,
+        limiteDiasDesligamento,
+      ),
+    [comparacaoTempoDesligamento, limiteDiasDesligamento],
   );
 
-  const headcountNoFimTurnover = useMemo(
-    () =>
-      buildDashboardFromOrganico(organicoDaEmpresa, demissaoByMatricula, {
-        inicio: periodoTurnover.fim,
-        fim: periodoTurnover.fim,
-        hoje: hojePainel,
-        salarioNaData,
-      }).headcountData,
-    [organicoDaEmpresa, demissaoByMatricula, periodoTurnover.fim, hojePainel, salarioNaData],
+  const turnoverKpi = useMemo(
+    () => deriveTurnoverFromPeople(turnoverPeople, hojePainel, null, null, incluirDemissaoNoFiltro),
+    [incluirDemissaoNoFiltro, turnoverPeople, hojePainel],
   );
 
   const novasAdmissoesLista = useMemo(
     () => listNovasAdmissoesMesAtual(organicoDaEmpresa),
     [organicoDaEmpresa],
   );
+  const movimentacoesMesAtual = useMemo(() => {
+    type MovimentacaoCard = {
+      row: (string | number)[];
+      demissao: string;
+      key: string;
+    };
+    const admissoes: MovimentacaoCard[] = [];
+    const desligamentos: MovimentacaoCard[] = [];
+    const ano = hojePainel.getFullYear();
+    const mes = hojePainel.getMonth();
+    const noMesAtual = (valor: unknown) => {
+      const data = parseDateBR(String(valor ?? "").trim());
+      return data != null && data.getFullYear() === ano && data.getMonth() === mes;
+    };
+
+    const organicoPorMatricula = new Map<string, (string | number)[]>();
+    for (const registro of organicoDaEmpresa) {
+      const row = Array.isArray(registro?.values) ? registro.values : [];
+      const chave = normalizeMatricula(row[ORGANICO_IDX.MATRICULA]);
+      if (chave) organicoPorMatricula.set(chave, row);
+    }
+
+    if (secullumDaEmpresa.length > 0) {
+      for (let index = 0; index < secullumDaEmpresa.length; index += 1) {
+        const funcionario = secullumDaEmpresa[index];
+        const matricula = String(funcionario.numeroFolha ?? "").trim();
+        const chave = normalizeMatricula(matricula);
+        const rowExistente = organicoPorMatricula.get(chave);
+        const row: (string | number)[] = rowExistente ? [...rowExistente] : new Array(86).fill("");
+        if (!rowExistente) {
+          row[ORGANICO_IDX.MATRICULA] = matricula;
+          row[ORGANICO_IDX.NOME] = String(funcionario.nome ?? "").trim();
+          row[ORGANICO_IDX.CARGO] = String(funcionario.cargo ?? "").trim();
+          row[ORGANICO_IDX.SETOR] = String(funcionario.setor ?? "").trim();
+          row[ORGANICO_IDX.AREA] = String(funcionario.area ?? "").trim();
+          row[ORGANICO_IDX.ADMISSAO] = String(funcionario.admissao ?? "").trim();
+        }
+        const demissao = String(funcionario.demissao ?? "").trim();
+        const item = { row, demissao, key: `${chave || "semmat"}-${index}` };
+        if (noMesAtual(funcionario.admissao)) admissoes.push(item);
+        if (noMesAtual(demissao)) {
+          row[ORGANICO_IDX.STATUS] = "Desligado";
+          desligamentos.push(item);
+        }
+      }
+    } else {
+      for (let index = 0; index < novasAdmissoesLista.length; index += 1) {
+        const row = novasAdmissoesLista[index];
+        admissoes.push({
+          row,
+          demissao: "",
+          key: `${normalizeMatricula(row[ORGANICO_IDX.MATRICULA]) || "semmat"}-${index}`,
+        });
+      }
+      for (let index = 0; index < organicoDaEmpresa.length; index += 1) {
+        const row = Array.isArray(organicoDaEmpresa[index]?.values) ? organicoDaEmpresa[index].values : [];
+        const matricula = String(row[ORGANICO_IDX.MATRICULA] ?? "").trim();
+        const demissao = String(demissaoByMatricula[matricula] ?? "").trim();
+        if (!noMesAtual(demissao)) continue;
+        desligamentos.push({
+          row,
+          demissao,
+          key: `${normalizeMatricula(matricula) || "semmat"}-${index}`,
+        });
+      }
+    }
+
+    return { admissoes, desligamentos };
+  }, [
+    demissaoByMatricula,
+    hojePainel,
+    novasAdmissoesLista,
+    organicoDaEmpresa,
+    secullumDaEmpresa,
+  ]);
+  const movimentacoesLinhaData = useMemo(() => {
+    const pontos = mesesNoPeriodo(periodoMovimentacoes.inicio, periodoMovimentacoes.fim).map((mes) => ({
+      ...mes,
+      eixo: `${mes.label}/${String(mes.year).slice(-2)}`,
+      admissoes: 0,
+      desligamentos: 0,
+    }));
+    const porMes = new Map(pontos.map((ponto) => [`${ponto.year}-${ponto.month}`, ponto]));
+    const inicio = inicioDoDia(periodoMovimentacoes.inicio);
+    const fim = fimDoDia(periodoMovimentacoes.fim);
+
+    for (const pessoa of turnoverPeople) {
+      const admissao = parseDateBR(String(pessoa.admissao ?? "").trim());
+      if (admissao && dataDentroDoPeriodo(admissao, inicio, fim)) {
+        const ponto = porMes.get(`${admissao.getFullYear()}-${admissao.getMonth()}`);
+        if (ponto) ponto.admissoes += 1;
+      }
+      const demissao = parseDateBR(String(pessoa.demissao ?? "").trim());
+      if (
+        demissao &&
+        dataDentroDoPeriodo(demissao, inicio, fim) &&
+        incluirDemissaoNoFiltro(pessoa, demissao)
+      ) {
+        const ponto = porMes.get(`${demissao.getFullYear()}-${demissao.getMonth()}`);
+        if (ponto) ponto.desligamentos += 1;
+      }
+    }
+
+    return pontos;
+  }, [incluirDemissaoNoFiltro, periodoMovimentacoes, turnoverPeople]);
+  const totaisMovimentacoesLinha = useMemo(
+    () =>
+      movimentacoesLinhaData.reduce(
+        (totais, ponto) => ({
+          admissoes: totais.admissoes + ponto.admissoes,
+          desligamentos: totais.desligamentos + ponto.desligamentos,
+        }),
+        { admissoes: 0, desligamentos: 0 },
+      ),
+    [movimentacoesLinhaData],
+  );
+  const colaboradoresMovimentacaoSelecionada = useMemo(() => {
+    if (!movimentacaoPontoSelecionado) return [];
+    const { year, month, tipo } = movimentacaoPontoSelecionado;
+    const organicoPorMatricula = new Map<string, (string | number)[]>();
+    for (const registro of organicoDaEmpresa) {
+      const row = Array.isArray(registro?.values) ? registro.values : [];
+      const chave = normalizeMatricula(row[ORGANICO_IDX.MATRICULA]);
+      if (chave) organicoPorMatricula.set(chave, row);
+    }
+
+    const itens: Array<{
+      row: (string | number)[];
+      demissao: string;
+      key: string;
+    }> = [];
+    const pertenceAoPonto = (valor: unknown) => {
+      const data = parseDateBR(String(valor ?? "").trim());
+      return data != null && data.getFullYear() === year && data.getMonth() === month;
+    };
+
+    if (secullumDaEmpresa.length > 0) {
+      for (let index = 0; index < secullumDaEmpresa.length; index += 1) {
+        const funcionario = secullumDaEmpresa[index];
+        const valorData = tipo === "admissoes" ? funcionario.admissao : funcionario.demissao;
+        if (!pertenceAoPonto(valorData)) continue;
+        if (tipo === "desligamentos") {
+          const dataDemissao = parseDateBR(String(funcionario.demissao ?? "").trim());
+          if (
+            !dataDemissao ||
+            !desligamentoAtendeTempo(
+              funcionario.admissao,
+              dataDemissao,
+              comparacaoTempoDesligamento,
+              limiteDiasDesligamento,
+            )
+          ) {
+            continue;
+          }
+        }
+        const matricula = String(funcionario.numeroFolha ?? "").trim();
+        const chave = normalizeMatricula(matricula);
+        const rowExistente = organicoPorMatricula.get(chave);
+        const row: (string | number)[] = rowExistente ? [...rowExistente] : new Array(86).fill("");
+        if (!rowExistente) {
+          row[ORGANICO_IDX.MATRICULA] = matricula;
+          row[ORGANICO_IDX.NOME] = String(funcionario.nome ?? "").trim();
+          row[ORGANICO_IDX.CARGO] = String(funcionario.cargo ?? "").trim();
+          row[ORGANICO_IDX.SETOR] = String(funcionario.setor ?? "").trim();
+          row[ORGANICO_IDX.AREA] = String(funcionario.area ?? "").trim();
+          row[ORGANICO_IDX.ADMISSAO] = String(funcionario.admissao ?? "").trim();
+        }
+        const demissao = String(funcionario.demissao ?? "").trim();
+        if (tipo === "desligamentos") row[ORGANICO_IDX.STATUS] = "Desligado";
+        itens.push({ row, demissao, key: `${chave || "semmat"}-${index}` });
+      }
+    } else {
+      for (let index = 0; index < organicoDaEmpresa.length; index += 1) {
+        const row = Array.isArray(organicoDaEmpresa[index]?.values) ? organicoDaEmpresa[index].values : [];
+        const matricula = String(row[ORGANICO_IDX.MATRICULA] ?? "").trim();
+        const demissao = String(demissaoByMatricula[matricula] ?? "").trim();
+        const valorData = tipo === "admissoes" ? row[ORGANICO_IDX.ADMISSAO] : demissao;
+        if (!pertenceAoPonto(valorData)) continue;
+        if (tipo === "desligamentos") {
+          const dataDemissao = parseDateBR(demissao);
+          if (
+            !dataDemissao ||
+            !desligamentoAtendeTempo(
+              row[ORGANICO_IDX.ADMISSAO],
+              dataDemissao,
+              comparacaoTempoDesligamento,
+              limiteDiasDesligamento,
+            )
+          ) {
+            continue;
+          }
+        }
+        itens.push({
+          row,
+          demissao,
+          key: `${normalizeMatricula(matricula) || "semmat"}-${index}`,
+        });
+      }
+    }
+
+    return itens.sort((a, b) =>
+      String(a.row[ORGANICO_IDX.NOME] ?? "").localeCompare(
+        String(b.row[ORGANICO_IDX.NOME] ?? ""),
+        "pt-BR",
+      ),
+    );
+  }, [
+    comparacaoTempoDesligamento,
+    demissaoByMatricula,
+    limiteDiasDesligamento,
+    movimentacaoPontoSelecionado,
+    organicoDaEmpresa,
+    secullumDaEmpresa,
+  ]);
 
   const folhaNoFechamento = `em ${formatDiaMmmAno(hojePainel)}`;
   const periodoNoPadrao = (periodo: DashboardPeriodo) => {
@@ -498,7 +839,10 @@ const Dashboard = () => {
     empresaPainel === ORGANICO_EMPRESA_SO_ACO &&
     generoFiltro === null &&
     periodoNoPadrao(periodoFolha) &&
-    periodoNoPadrao(periodoTurnover);
+    periodoNoPadrao(periodoTurnover) &&
+    periodoNoPadrao(periodoMovimentacoes) &&
+    comparacaoTempoDesligamento === "acima" &&
+    limiteDiasDesligamento === 90;
 
   type DashboardTab = "executivo" | "absenteismo" | "absenteismo-horas" | "diagnostico-ausencias-justificadas";
   const canViewExecutivo = canViewDashboardModule("executivo");
@@ -532,6 +876,17 @@ const Dashboard = () => {
     const turnoverInicio = parseIsoLocal(restore.turnoverInicio);
     const turnoverFim = parseIsoLocal(restore.turnoverFim);
     if (turnoverInicio && turnoverFim) setPeriodoTurnover({ inicio: turnoverInicio, fim: turnoverFim });
+    const movimentacoesInicio = parseIsoLocal(restore.movimentacoesInicio ?? "");
+    const movimentacoesFim = parseIsoLocal(restore.movimentacoesFim ?? "");
+    if (movimentacoesInicio && movimentacoesFim) {
+      setPeriodoMovimentacoes({ inicio: movimentacoesInicio, fim: movimentacoesFim });
+    }
+    setComparacaoTempoDesligamento(
+      restore.comparacaoTempoDesligamento === "abaixo" ? "abaixo" : "acima",
+    );
+    if (OPCOES_DIAS_DESLIGAMENTO.includes(restore.limiteDiasDesligamento as 0 | 15 | 30 | 45 | 60 | 90)) {
+      setLimiteDiasDesligamento(restore.limiteDiasDesligamento as number);
+    }
     setTurnoverSetorFiltro(restore.turnoverSetor);
     setSelectedTurnoverPoint(null);
     setSetorHeadcountSelecionado(null);
@@ -548,6 +903,10 @@ const Dashboard = () => {
         turnoverInicio: toIsoLocal(periodoTurnover.inicio),
         turnoverFim: toIsoLocal(periodoTurnover.fim),
         turnoverSetor: turnoverSetorFiltro,
+        movimentacoesInicio: toIsoLocal(periodoMovimentacoes.inicio),
+        movimentacoesFim: toIsoLocal(periodoMovimentacoes.fim),
+        comparacaoTempoDesligamento,
+        limiteDiasDesligamento,
       };
       const state: RhOrganicoNavigationState = {
         dashboardShortcut: {
@@ -560,10 +919,13 @@ const Dashboard = () => {
     [
       empresaPainel,
       generoFiltro,
+      comparacaoTempoDesligamento,
+      limiteDiasDesligamento,
       location.pathname,
       location.search,
       navigate,
       periodoFolha,
+      periodoMovimentacoes,
       periodoTurnover,
       turnoverSetorFiltro,
     ],
@@ -682,30 +1044,6 @@ const Dashboard = () => {
     }
   }, [availableTabs, activeTab]);
 
-  const topSetoresTurnover = useMemo(() => {
-    const ativosBySetor = new Map<string, number>();
-    for (const item of headcountNoFimTurnover) {
-      if (!item.sector || item.sector === "—" || item.count <= 0) continue;
-      ativosBySetor.set(item.sector, item.count);
-    }
-    const demissoesBySetor = new Map<string, number>();
-    const start = inicioDoDia(periodoTurnover.inicio);
-    const end = fimDoDia(periodoTurnover.fim);
-    for (const f of secullumDaEmpresa) {
-      const dem = parseDateBR(String(f.demissao ?? "").trim());
-      if (!dataDentroDoPeriodo(dem, start, end)) continue;
-      const setor = String(f.setor ?? "").trim() || "Sem setor";
-      demissoesBySetor.set(setor, (demissoesBySetor.get(setor) ?? 0) + 1);
-    }
-    const data = Array.from(ativosBySetor.entries()).map(([setor, ativos]) => {
-      const dem = demissoesBySetor.get(setor) ?? 0;
-      const turnover = ativos > 0 ? (dem / ativos) * 100 : 0;
-      return { setor, turnover: Math.round(turnover * 10) / 10, dem };
-    });
-    return data
-      .filter((d) => d.turnover > 0)
-      .sort((a, b) => b.turnover - a.turnover);
-  }, [headcountNoFimTurnover, secullumDaEmpresa, periodoTurnover]);
   const turnoverSeriesForChart = useMemo(
     () =>
       deriveTurnoverFromPeople(
@@ -713,8 +1051,9 @@ const Dashboard = () => {
         periodoTurnover.fim,
         turnoverSetorFiltro,
         periodoTurnover,
+        incluirDemissaoNoFiltro,
       ).turnoverData,
-    [turnoverPeople, turnoverSetorFiltro, periodoTurnover],
+    [incluirDemissaoNoFiltro, turnoverPeople, turnoverSetorFiltro, periodoTurnover],
   );
 
   const turnoverChartData = useMemo(
@@ -803,16 +1142,11 @@ const Dashboard = () => {
     return colaboradores.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   }, [setorHeadcountSelecionado, organicoDaEmpresa, demissaoByMatricula, hojePainel]);
 
-  const handleTurnoverPointClick = (
-    payload: TurnoverPointPayload | undefined,
-    ev: { clientX?: number; clientY?: number } | undefined
-  ) => {
+  const handleTurnoverPointClick = (payload: TurnoverPointPayload | undefined) => {
     const y = payload?.year;
     const m = payload?.month;
     if (typeof y !== "number" || typeof m !== "string") return;
-    const x = typeof ev?.clientX === "number" ? ev.clientX : window.innerWidth / 2;
-    const top = typeof ev?.clientY === "number" ? ev.clientY : window.innerHeight / 2;
-    setSelectedTurnoverPoint({ year: y, month: m, x, y: top });
+    setSelectedTurnoverPoint({ year: y, month: m });
   };
   const desligadosByTurnoverPoint = useMemo(() => {
     if (!selectedTurnoverPoint) return [];
@@ -827,7 +1161,12 @@ const Dashboard = () => {
       orgByMat.set(key, row);
     }
 
-    const out: Array<{ row: (string | number)[]; demissao: string; key: string }> = [];
+    const out: Array<{
+      row: (string | number)[];
+      demissao: string;
+      motivoDemissao: string;
+      key: string;
+    }> = [];
     for (let i = 0; i < (secullumRows?.length ?? 0); i++) {
       const f = secullumRows?.[i];
       if (!f) continue;
@@ -836,6 +1175,16 @@ const Dashboard = () => {
       const d = parseDateBR(demissao);
       if (!d) continue;
       if (d.getFullYear() !== selectedTurnoverPoint.year || d.getMonth() !== monthIdx) continue;
+      if (
+        !desligamentoAtendeTempo(
+          f.admissao,
+          d,
+          comparacaoTempoDesligamento,
+          limiteDiasDesligamento,
+        )
+      ) {
+        continue;
+      }
 
       if (empresaPainel !== DASHBOARD_EMPRESA_TODAS && resolveEmpresaTabFromSecullumFuncionario(f) !== empresaPainel) {
         continue;
@@ -847,8 +1196,9 @@ const Dashboard = () => {
 
       const matKey = normalizeMatricula(f.numeroFolha);
       const existing = orgByMat.get(matKey);
+      const motivoDemissao = String(f.motivoDemissao ?? "").trim();
       if (existing) {
-        out.push({ row: existing, demissao, key: `${matKey}-${i}` });
+        out.push({ row: existing, demissao, motivoDemissao, key: `${matKey}-${i}` });
         continue;
       }
 
@@ -860,44 +1210,23 @@ const Dashboard = () => {
       row[ORGANICO_IDX.AREA] = String(f.area ?? "").trim();
       row[ORGANICO_IDX.ADMISSAO] = String(f.admissao ?? "").trim();
       row[ORGANICO_IDX.STATUS] = "Desligado";
-      out.push({ row, demissao, key: `${matKey || "semmat"}-${i}` });
+      out.push({ row, demissao, motivoDemissao, key: `${matKey || "semmat"}-${i}` });
     }
 
     out.sort((a, b) =>
       String(a.row[ORGANICO_IDX.NOME] ?? "").localeCompare(String(b.row[ORGANICO_IDX.NOME] ?? ""), "pt-BR")
     );
     return out;
-  }, [selectedTurnoverPoint, organicoRows, secullumRows, turnoverSetorFiltro, empresaPainel, periodoTurnover]);
-
-  useEffect(() => {
-    if (!selectedTurnoverPoint) return;
-    const onDown = (ev: MouseEvent) => {
-      if (!turnoverPopoverRef.current) return;
-      const target = ev.target as Node | null;
-      if (target && !turnoverPopoverRef.current.contains(target)) {
-        setSelectedTurnoverPoint(null);
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [selectedTurnoverPoint]);
-
-  useEffect(() => {
-    if (!selectedTurnoverPoint || !dragState) return;
-    const onMove = (ev: MouseEvent) => {
-      setSelectedTurnoverPoint((prev) => {
-        if (!prev) return prev;
-        return { ...prev, x: ev.clientX - dragState.dx, y: ev.clientY - dragState.dy };
-      });
-    };
-    const onUp = () => setDragState(null);
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-    return () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-  }, [selectedTurnoverPoint, dragState]);
+  }, [
+    comparacaoTempoDesligamento,
+    empresaPainel,
+    limiteDiasDesligamento,
+    organicoRows,
+    periodoTurnover,
+    secullumRows,
+    selectedTurnoverPoint,
+    turnoverSetorFiltro,
+  ]);
 
   const { headcountData } = derived;
 
@@ -969,14 +1298,18 @@ const Dashboard = () => {
             setGeneroFiltro(null);
             setPeriodoFolha(periodoPadraoExecutivo());
             setPeriodoTurnover(periodoPadraoExecutivo());
+            setPeriodoMovimentacoes(periodoPadraoExecutivo());
+            setComparacaoTempoDesligamento("acima");
+            setLimiteDiasDesligamento(90);
             setTurnoverSetorFiltro(null);
             setSelectedTurnoverPoint(null);
+            setMovimentacaoPontoSelecionado(null);
             setSetorHeadcountSelecionado(null);
           }}
         />
 
         {/* KPI Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <KpiCard
             title="Total Colaboradores"
             value={formatIntPt(derived.totalColaboradores)}
@@ -991,14 +1324,14 @@ const Dashboard = () => {
             aria-label="Ver custo da folha mês a mês"
             onClick={() => setFolhaModalAberto(true)}
           >
-            <KpiCard
-              title="Custo Folha Mensal"
-              value={formatCustoFolha(derived.custoFolhaMensal)}
+          <KpiCard
+            title="Custo Folha Mensal"
+            value={formatCustoFolha(derived.custoFolhaMensal)}
               change={folhaNoFechamento}
               changeType="neutral"
-              icon={DollarSign}
-              alertColor="yellow"
-            />
+            icon={DollarSign}
+            alertColor="yellow"
+          />
           </button>
           <button
             type="button"
@@ -1006,31 +1339,53 @@ const Dashboard = () => {
             aria-label="Ver evolução do turnover"
             onClick={() => setTurnoverModalAberto(true)}
           >
-            <KpiCard
-              title="Turnover"
-              value={`${turnoverKpi.turnoverPct.toLocaleString("pt-BR", {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 1,
-              })}%`}
-              change="últimos 12 meses"
-              changeType="neutral"
-              icon={TrendingDown}
-              alertColor="red"
-            />
-          </button>
           <KpiCard
-            title="Absenteísmo"
-            value={`${formatIntPt(derived.absenteismoPct)}%`}
-            icon={Clock}
-            alertColor="green"
+            title="Turnover"
+              value={`${turnoverKpi.turnoverPct.toLocaleString("pt-BR", {
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 1,
+            })}%`}
+              change={
+                limiteDiasDesligamento === 0
+                  ? "todos os desligamentos · 12 meses"
+                  : `${comparacaoTempoDesligamento === "acima" ? "acima de" : "até"} ${limiteDiasDesligamento} dias · 12 meses`
+              }
+            changeType="neutral"
+            icon={TrendingDown}
+            alertColor="red"
           />
+          </button>
         </div>
 
         <Dialog open={folhaModalAberto} onOpenChange={setFolhaModalAberto}>
-          <DialogContent aria-describedby={undefined} className="flex max-h-[min(92vh,760px)] w-[min(96vw,960px)] max-w-none flex-col gap-4 overflow-y-auto sm:max-w-none">
-            <DialogHeader className="pr-8">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <DialogTitle className="shrink-0 text-left">Custo da folha mês a mês</DialogTitle>
+          <DialogContent
+            aria-describedby={undefined}
+            className="flex h-[min(90vh,660px)] max-h-[90vh] w-[min(98vw,1200px)] max-w-none flex-col gap-4 overflow-hidden sm:max-w-none"
+          >
+            <DialogHeader className="shrink-0 pr-8">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 text-left">
+                  <DialogTitle>Custo da folha mês a mês</DialogTitle>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    {maiorCustoFolha && maiorCustoFolha.value > 0 ? (
+                      <p className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className="inline-block h-2.5 w-2.5 rounded-sm"
+                          style={{ background: `linear-gradient(180deg, ${chart.lineSecondary}, ${chart.danger})` }}
+                          aria-hidden
+                        />
+                        Maior custo no período:
+                        <strong className="font-semibold text-foreground">
+                          {maiorCustoFolha.eixo} · {formatCurrencyBRLExact(maiorCustoFolha.value)}
+                        </strong>
+                      </p>
+                    ) : null}
+                    <p className="flex items-center gap-1.5">
+                      <span className="inline-block h-2.5 w-2.5 rounded-sm bg-slate-300" aria-hidden />
+                      Barra cinza: pessoas ativas (escala proporcional)
+                    </p>
+        </div>
+                </div>
                 <DashboardPeriodoDatas
                   idPrefix="folha"
                   periodo={periodoFolha}
@@ -1043,63 +1398,73 @@ const Dashboard = () => {
                 Não foi possível ler a trajetória. Os meses passados podem estar com a CTPS de hoje.
               </p>
             ) : null}
-            <div className="h-[320px] w-full min-w-0">
-              {folhaModalAberto ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={folhaChartData}>
-                    <defs>
-                      <linearGradient id="folhaFillExecutivo" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={chart.lineSecondary} stopOpacity={0.35} />
-                        <stop offset="100%" stopColor={chart.lineSecondary} stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
-                    <XAxis dataKey="eixo" tick={rhChartAxisTick(chart)} interval="preserveStartEnd" minTickGap={28} />
-                    <YAxis
-                      yAxisId="folha"
-                      tick={rhChartAxisTick(chart)}
-                      width={72}
-                      tickFormatter={(value) => formatCustoFolha(Number(value))}
-                    />
-                    <YAxis
-                      yAxisId="ativos"
-                      orientation="right"
-                      tick={rhChartAxisTick(chart)}
-                      width={36}
-                      allowDecimals={false}
-                      tickFormatter={(value) => formatIntPt(Number(value))}
-                    />
-                    <Tooltip content={FolhaMensalTooltip} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Area
-                      yAxisId="folha"
-                      type="monotone"
-                      dataKey="value"
-                      name="Folha"
-                      stroke={chart.lineSecondary}
-                      strokeWidth={2.5}
-                      fill="url(#folhaFillExecutivo)"
-                      dot={{ r: 3, fill: chart.lineSecondary }}
-                      activeDot={{ r: 5 }}
-                    />
-                    <Line
-                      yAxisId="ativos"
-                      type="monotone"
-                      dataKey="ativos"
-                      name="Pessoas ativas"
-                      stroke={chart.linePrimary}
-                      strokeWidth={2.5}
-                      dot={{ r: 3, fill: chart.linePrimary }}
-                      activeDot={{ r: 5 }}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              ) : null}
+            <div className="min-h-0 w-full min-w-0 flex-1 overflow-x-auto overflow-y-hidden pb-3">
+              <div
+                className="h-full min-h-[460px] w-full pr-2"
+                style={{ minWidth: `${Math.max(960, folhaChartData.length * 140)}px` }}
+              >
+                {folhaModalAberto ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={folhaChartData}
+                      barCategoryGap="18%"
+                      barGap={7}
+                      margin={{ top: 30, right: 12, left: 4, bottom: 8 }}
+                    >
+                      <defs>
+                        <linearGradient id="folhaBarExecutivo" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={chart.lineSecondary} />
+                          <stop offset="100%" stopColor={chart.danger} />
+                        </linearGradient>
+                        <linearGradient id="ativosBarExecutivo" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={chart.neutralActive} />
+                          <stop offset="100%" stopColor={chart.neutral} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                      <XAxis dataKey="eixo" tick={rhChartAxisTick(chart)} interval={0} />
+                      <YAxis
+                        tick={rhChartAxisTick(chart)}
+                        width={72}
+                        tickFormatter={(value) => formatCustoFolha(Number(value))}
+                      />
+                      <Tooltip content={FolhaMensalTooltip} />
+                      <Bar
+                        dataKey="value"
+                        name="Folha"
+                        fill="url(#folhaBarExecutivo)"
+                        radius={[7, 7, 0, 0]}
+                        maxBarSize={44}
+                      >
+                        <LabelList
+                          dataKey="value"
+                          position="top"
+                          formatter={(value: number) => formatCustoFolhaCurto(Number(value))}
+                          style={{ fill: chart.lineSecondary, fontSize: 10, fontWeight: 700 }}
+                        />
+                      </Bar>
+                      <Bar
+                        dataKey="ativosEscalados"
+                        name="Pessoas ativas"
+                        fill="url(#ativosBarExecutivo)"
+                        radius={[7, 7, 0, 0]}
+                        maxBarSize={44}
+                      >
+                        <LabelList
+                          dataKey="ativosExibicao"
+                          position="top"
+                          style={{ fill: chart.neutralActive, fontSize: 9, fontWeight: 700 }}
+                        />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : null}
+              </div>
             </div>
           </DialogContent>
         </Dialog>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <KpiCard
             title="Média salarial (CTPS)"
             value={derived.mediaSalarialCtps > 0 ? formatCurrencyBRLExact(derived.mediaSalarialCtps) : formatCurrencyBRLExact(0)}
@@ -1107,72 +1472,288 @@ const Dashboard = () => {
             changeType="neutral"
             icon={Wallet}
           />
-          <KpiCard
-            title="Setores Ativos"
-            value={formatIntPt(derived.setoresAtivos)}
-            change={folhaNoFechamento}
-            changeType="neutral"
-            icon={Building2}
-          />
-          <Popover>
+          <Popover open={movimentacoesPopoverAberto} onOpenChange={setMovimentacoesPopoverAberto}>
             <PopoverTrigger asChild>
               <button
                 type="button"
                 className="w-full text-left rounded-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                aria-label="Ver colaboradores admitidos neste mês"
+                aria-label="Ver admissões e desligamentos deste mês"
               >
                 <KpiCard
-                  title="Novas Admissões"
-                  value={formatIntPt(novasAdmissoesLista.length)}
-                  change="neste mês"
+                  title="Admissões vs Desligamentos"
+                  value={`${formatIntPt(movimentacoesMesAtual.admissoes.length)} / ${formatIntPt(
+                    movimentacoesMesAtual.desligamentos.length,
+                  )}`}
+                  change="neste mês · adm. / desl."
                   changeType="neutral"
-                  icon={ArrowUpRight}
-                  alertColor="green"
+                  icon={ArrowUpDown}
+                  alertColor="yellow"
                 />
               </button>
             </PopoverTrigger>
             <PopoverContent
               align="start"
-              className="w-[min(92vw,720px)] max-h-[min(75vh,520px)] overflow-y-auto p-4"
+              className="w-[min(94vw,980px)] max-h-[min(78vh,620px)] overflow-y-auto p-4"
             >
-              <p className="label-industrial mb-3">Admissões neste mês</p>
-              {novasAdmissoesLista.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center border border-dashed border-border rounded-sm">
-                  Nenhuma admissão neste mês.
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <p className="label-industrial">Movimentações deste mês</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setMovimentacoesPopoverAberto(false);
+                    setMovimentacoesLinhaModalAberto(true);
+                  }}
+                >
+                  Ver linha temporal
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {[
+                  {
+                    titulo: "Admissões",
+                    vazio: "Nenhuma admissão neste mês.",
+                    itens: movimentacoesMesAtual.admissoes,
+                    cor: "text-emerald-400",
+                  },
+                  {
+                    titulo: "Desligamentos",
+                    vazio: "Nenhum desligamento neste mês.",
+                    itens: movimentacoesMesAtual.desligamentos,
+                    cor: "text-orange-400",
+                  },
+                ].map((grupo) => (
+                  <section key={grupo.titulo} className="min-w-0">
+                    <div className="mb-3 flex items-center justify-between gap-3 border-b border-border pb-2">
+                      <span className={`text-sm font-semibold ${grupo.cor}`}>{grupo.titulo}</span>
+                      <span className="tabular-nums text-xs text-muted-foreground">
+                        {formatIntPt(grupo.itens.length)}
+                      </span>
+                    </div>
+                    {grupo.itens.length === 0 ? (
+                      <p className="rounded-sm border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+                        {grupo.vazio}
                 </p>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {novasAdmissoesLista.map((row, i) => (
+                      <div className="space-y-3">
+                        {grupo.itens.map((item, index) => (
                     <button
-                      key={`${String(row[ORGANICO_IDX.MATRICULA] ?? "").trim() || "—"}-${i}`}
+                            key={`${grupo.titulo}-${item.key}`}
                       type="button"
                       onClick={() => {
-                        const matricula = String(row[ORGANICO_IDX.MATRICULA] ?? "").trim();
-                        abrirColaboradorNoOrganico(matricula);
+                              const matricula = String(item.row[ORGANICO_IDX.MATRICULA] ?? "").trim();
+                              abrirColaboradorNoOrganico(matricula);
                       }}
-                      className="text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                      aria-label="Abrir colaborador no orgânico"
+                            className="w-full rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                            aria-label={`Abrir colaborador de ${grupo.titulo.toLowerCase()} no orgânico`}
                     >
                       <OrganicoCard
-                        row={row}
-                        rowIndex={i}
+                              row={item.row}
+                              rowIndex={index}
+                              demissao={item.demissao}
                         readOnly
                       />
                     </button>
                   ))}
                 </div>
               )}
+                  </section>
+                ))}
+              </div>
             </PopoverContent>
           </Popover>
           <KpiCard
-            title="Tempo médio de casa"
-            value={formatTenure(derived.mediaTempoCasaMeses)}
+            title="Idade média"
+            value={`${derived.mediaIdadeAnos.toLocaleString("pt-BR", {
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 1,
+            })} anos`}
             change={folhaNoFechamento}
             changeType="neutral"
-            icon={AlertTriangle}
+            icon={CalendarDays}
             alertColor="yellow"
           />
         </div>
+
+        <Dialog
+          open={movimentacoesLinhaModalAberto}
+          onOpenChange={(aberto) => {
+            setMovimentacoesLinhaModalAberto(aberto);
+            if (!aberto) setMovimentacaoPontoSelecionado(null);
+          }}
+        >
+          <DialogContent
+            aria-describedby={undefined}
+            className="flex max-h-[min(92vh,760px)] w-[min(96vw,1100px)] max-w-none flex-col gap-5 overflow-hidden sm:max-w-none"
+          >
+            <DialogHeader className="shrink-0 border-b border-border pb-4 pr-8">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 text-left">
+                  <DialogTitle>Linha temporal de admissões e desligamentos</DialogTitle>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: chart.success }} />
+                      Admissões:
+                      <strong className="text-foreground">{formatIntPt(totaisMovimentacoesLinha.admissoes)}</strong>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: chart.danger }} />
+                      Desligamentos:
+                      <strong className="text-foreground">{formatIntPt(totaisMovimentacoesLinha.desligamentos)}</strong>
+                    </span>
+                  </div>
+                </div>
+                <DashboardPeriodoDatas
+                  idPrefix="movimentacoes"
+                  periodo={periodoMovimentacoes}
+                  onPeriodoChange={(periodo) => {
+                    setPeriodoMovimentacoes(periodo);
+                    setMovimentacaoPontoSelecionado(null);
+                  }}
+                />
+              </div>
+              <FiltroTempoDesligamento
+                comparacao={comparacaoTempoDesligamento}
+                limiteDias={limiteDiasDesligamento}
+                onComparacaoChange={(comparacao) => {
+                  setComparacaoTempoDesligamento(comparacao);
+                  setMovimentacaoPontoSelecionado(null);
+                }}
+                onLimiteDiasChange={(dias) => {
+                  setLimiteDiasDesligamento(dias);
+                  setMovimentacaoPontoSelecionado(null);
+                }}
+              />
+            </DialogHeader>
+
+            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden rounded-sm border border-border/50 bg-muted/10 p-3">
+              <div
+                className="h-[440px]"
+                style={{ minWidth: `${Math.max(760, movimentacoesLinhaData.length * 76)}px` }}
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={movimentacoesLinhaData} margin={{ top: 24, right: 24, left: 0, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                    <XAxis dataKey="eixo" tick={rhChartAxisTick(chart)} interval={0} />
+                    <YAxis tick={rhChartAxisTick(chart)} allowDecimals={false} width={42} />
+                    <Tooltip
+                      contentStyle={rhChartTooltipStyle(chart)}
+                      labelStyle={{ color: chart.tooltipText }}
+                      itemStyle={{ color: chart.tooltipText }}
+                      formatter={(value: number, name: string) => [
+                        formatIntPt(Number(value)),
+                        name === "admissoes" ? "Admissões" : "Desligamentos",
+                      ]}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="admissoes"
+                      stroke={chart.success}
+                      strokeWidth={3}
+                      dot={(props: { cx?: number; cy?: number; payload?: { year: number; month: number }; index?: number }) => (
+                        <g
+                          key={`adm-${props.payload?.year}-${props.payload?.month}-${props.index ?? 0}`}
+                          onClick={() => {
+                            if (!props.payload) return;
+                            setMovimentacaoPontoSelecionado({ ...props.payload, tipo: "admissoes" });
+                          }}
+                          style={{ cursor: "pointer" }}
+                        >
+                          <circle cx={props.cx} cy={props.cy} r={12} fill="transparent" />
+                          <circle cx={props.cx} cy={props.cy} r={4} fill={chart.success} />
+                        </g>
+                      )}
+                      activeDot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="desligamentos"
+                      stroke={chart.danger}
+                      strokeWidth={3}
+                      dot={(props: { cx?: number; cy?: number; payload?: { year: number; month: number }; index?: number }) => (
+                        <g
+                          key={`desl-${props.payload?.year}-${props.payload?.month}-${props.index ?? 0}`}
+                          onClick={() => {
+                            if (!props.payload) return;
+                            setMovimentacaoPontoSelecionado({ ...props.payload, tipo: "desligamentos" });
+                          }}
+                          style={{ cursor: "pointer" }}
+                        >
+                          <circle cx={props.cx} cy={props.cy} r={12} fill="transparent" />
+                          <circle cx={props.cx} cy={props.cy} r={4} fill={chart.danger} />
+                        </g>
+                      )}
+                      activeDot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={movimentacaoPontoSelecionado != null}
+          onOpenChange={(aberto) => {
+            if (!aberto) setMovimentacaoPontoSelecionado(null);
+          }}
+        >
+          <DialogContent
+            aria-describedby={undefined}
+            className="flex max-h-[min(90vh,780px)] w-[min(94vw,980px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+          >
+            <DialogHeader className="shrink-0 border-b border-border px-6 py-5 text-left">
+              <DialogTitle>
+                {movimentacaoPontoSelecionado?.tipo === "admissoes" ? "Admissões" : "Desligamentos"} —{" "}
+                {movimentacaoPontoSelecionado
+                  ? `${MESES_LABEL[movimentacaoPontoSelecionado.month]}/${movimentacaoPontoSelecionado.year}`
+                  : ""}
+              </DialogTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {formatIntPt(colaboradoresMovimentacaoSelecionada.length)}{" "}
+                {colaboradoresMovimentacaoSelecionada.length === 1 ? "colaborador" : "colaboradores"}
+              </p>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+              {colaboradoresMovimentacaoSelecionada.length === 0 ? (
+                <p className="rounded-sm border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
+                  Nenhum colaborador encontrado para este ponto.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {colaboradoresMovimentacaoSelecionada.map((item, index) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => {
+                        const matricula = String(item.row[ORGANICO_IDX.MATRICULA] ?? "").trim();
+                        abrirColaboradorNoOrganico(matricula);
+                      }}
+                      className="rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      aria-label="Abrir colaborador no orgânico"
+                    >
+                      <OrganicoCard
+                        row={item.row}
+                        rowIndex={index}
+                        demissao={item.demissao}
+                        readOnly
+                      />
+                      <div className="mt-2 rounded-sm border border-border bg-muted/25 px-3 py-2">
+                        <span className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Motivo do desligamento (Secullum)
+                        </span>
+                        <span className="mt-0.5 block text-xs font-medium text-foreground">
+                          {item.motivoDemissao || "Não informado no Secullum"}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Dialog
           open={turnoverModalAberto}
@@ -1182,24 +1763,24 @@ const Dashboard = () => {
           }}
         >
           <DialogContent aria-describedby={undefined} className="flex max-h-[min(92vh,820px)] w-[min(96vw,1100px)] max-w-none flex-col gap-4 overflow-y-auto sm:max-w-none">
-            <DialogHeader className="pr-8">
-              <div className="flex flex-wrap items-end justify-between gap-3">
+            <DialogHeader className="border-b border-border pb-4 pr-8">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <DialogTitle className="shrink-0 text-left">Evolução do Turnover</DialogTitle>
-                  {turnoverSetorFiltro ? (
-                    <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-muted/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground">
-                      Setor: {turnoverSetorFiltro}
-                      <button
-                        type="button"
-                        className="rounded-sm p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
-                        aria-label="Limpar filtro de setor"
-                        onClick={() => setTurnoverSetorFiltro(null)}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  ) : null}
-                </div>
+              {turnoverSetorFiltro ? (
+                <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-muted/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground">
+                  Setor: {turnoverSetorFiltro}
+                  <button
+                    type="button"
+                    className="rounded-sm p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                    aria-label="Limpar filtro de setor"
+                    onClick={() => setTurnoverSetorFiltro(null)}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ) : null}
+            </div>
                 <DashboardPeriodoDatas
                   idPrefix="turnover"
                   periodo={periodoTurnover}
@@ -1210,13 +1791,24 @@ const Dashboard = () => {
                   }}
                 />
               </div>
+              <FiltroTempoDesligamento
+                comparacao={comparacaoTempoDesligamento}
+                limiteDias={limiteDiasDesligamento}
+                onComparacaoChange={(comparacao) => {
+                  setComparacaoTempoDesligamento(comparacao);
+                  setSelectedTurnoverPoint(null);
+                }}
+                onLimiteDiasChange={(dias) => {
+                  setLimiteDiasDesligamento(dias);
+                  setSelectedTurnoverPoint(null);
+                }}
+              />
             </DialogHeader>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 min-w-0">
+            <div className="min-w-0">
             <div className="relative h-[320px] w-full min-w-0">
               {turnoverModalAberto ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={turnoverChartData}>
+                <LineChart data={turnoverChartData} margin={{ top: 28, right: 24, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
                   <XAxis
                     dataKey="eixo"
@@ -1235,7 +1827,7 @@ const Dashboard = () => {
                     dot={(props: { cx?: number; cy?: number; payload?: TurnoverPointPayload; index?: number }) => (
                       <g
                         key={`dot-${props.payload?.year}-${props.payload?.month}-${props.index ?? 0}`}
-                        onClick={(ev) => handleTurnoverPointClick(props.payload, ev)}
+                        onClick={() => handleTurnoverPointClick(props.payload)}
                         style={{ cursor: "pointer" }}
                       >
                         <circle cx={props.cx} cy={props.cy} r={10} fill="transparent" />
@@ -1245,81 +1837,28 @@ const Dashboard = () => {
                     activeDot={(props: { cx?: number; cy?: number; payload?: TurnoverPointPayload; index?: number }) => (
                       <g
                         key={`active-dot-${props.payload?.year}-${props.payload?.month}-${props.index ?? 0}`}
-                        onClick={(ev) => handleTurnoverPointClick(props.payload, ev)}
+                        onClick={() => handleTurnoverPointClick(props.payload)}
                         style={{ cursor: "pointer" }}
                       >
                         <circle cx={props.cx} cy={props.cy} r={12} fill="transparent" />
                         <circle cx={props.cx} cy={props.cy} r={5} fill={chart.lineDotActive} stroke={chart.dotStrokeActive} strokeWidth={2} />
                       </g>
                     )}
-                  />
+                  >
+                    <LabelList
+                      dataKey="value"
+                      position="top"
+                      offset={10}
+                      formatter={(value: number) => `${Number(value).toLocaleString("pt-BR", {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 1,
+                      })}%`}
+                      style={{ fill: chart.axisCategory, fontSize: 10, fontWeight: 700 }}
+                    />
+                  </Line>
                 </LineChart>
               </ResponsiveContainer>
               ) : null}
-              {selectedTurnoverPoint && (
-                <div
-                  ref={turnoverPopoverRef}
-                  className="fixed z-[70] w-[min(92vw,720px)] max-h-[min(75vh,520px)] overflow-y-auto border border-border bg-popover p-4 shadow-md"
-                  style={{
-                    left: Math.min(
-                      Math.max(selectedTurnoverPoint.x, 16 + (Math.min(window.innerWidth * 0.92, 720) / 2)),
-                      window.innerWidth - 16 - (Math.min(window.innerWidth * 0.92, 720) / 2)
-                    ),
-                    top: Math.min(selectedTurnoverPoint.y + 14, window.innerHeight - 24),
-                    transform: "translate(-50%, 0)",
-                  }}
-                >
-                  <div
-                    className="flex items-center justify-between mb-3 cursor-move select-none"
-                    onMouseDown={(ev) => {
-                      if (!selectedTurnoverPoint) return;
-                      setDragState({
-                        dx: ev.clientX - selectedTurnoverPoint.x,
-                        dy: ev.clientY - selectedTurnoverPoint.y,
-                      });
-                    }}
-                  >
-                    <p className="label-industrial">
-                      Desligamentos em {selectedTurnoverPoint.month}/{String(selectedTurnoverPoint.year).slice(-2)}
-                      {turnoverSetorFiltro ? ` • ${turnoverSetorFiltro}` : ""}
-                    </p>
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => setSelectedTurnoverPoint(null)}
-                    >
-                      Fechar
-                    </button>
-                  </div>
-                  {desligadosByTurnoverPoint.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-6 text-center border border-dashed border-border rounded-sm">
-                      Nenhum colaborador desligado neste período.
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {desligadosByTurnoverPoint.map((item, i) => (
-                        <button
-                          key={item.key}
-                          type="button"
-                          onClick={() => {
-                            const matricula = String(item.row[ORGANICO_IDX.MATRICULA] ?? "").trim();
-                            abrirColaboradorNoOrganico(matricula);
-                          }}
-                          className="text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                          aria-label="Abrir colaborador desligado no orgânico"
-                        >
-                          <OrganicoCard
-                            row={item.row as (string | number)[]}
-                            rowIndex={i}
-                            demissao={item.demissao}
-                            readOnly
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
             <div
               className="mt-1 grid gap-0 border-t border-border/70"
@@ -1337,83 +1876,66 @@ const Dashboard = () => {
                 </div>
               ))}
             </div>
-          </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
-          <div className="border border-border bg-card p-6 shadow-level-1">
-            <span className="label-industrial">Top Setores por Turnover</span>
-            <div className="mt-4 max-h-[320px] overflow-y-auto pr-1 space-y-3">
-              {topSetoresTurnover.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center border border-dashed border-border rounded-sm">
-                  Sem desligamentos por setor no período.
+        <Dialog
+          open={selectedTurnoverPoint != null}
+          onOpenChange={(aberto) => {
+            if (!aberto) setSelectedTurnoverPoint(null);
+          }}
+        >
+          <DialogContent
+            aria-describedby={undefined}
+            className="flex max-h-[min(90vh,780px)] w-[min(94vw,980px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+          >
+            <DialogHeader className="shrink-0 border-b border-border px-6 py-5 text-left">
+              <DialogTitle>
+                Desligamentos em {selectedTurnoverPoint?.month}/
+                {selectedTurnoverPoint ? String(selectedTurnoverPoint.year).slice(-2) : ""}
+                {turnoverSetorFiltro ? ` · ${turnoverSetorFiltro}` : ""}
+              </DialogTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {formatIntPt(desligadosByTurnoverPoint.length)}{" "}
+                {desligadosByTurnoverPoint.length === 1 ? "colaborador desligado" : "colaboradores desligados"}
+              </p>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+              {desligadosByTurnoverPoint.length === 0 ? (
+                <p className="rounded-sm border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
+                  Nenhum colaborador desligado neste período.
                 </p>
               ) : (
-                topSetoresTurnover.map((item, idx) => {
-                  const maxTurnover = topSetoresTurnover[0]?.turnover || 1;
-                  const widthPct = Math.max(8, (item.turnover / maxTurnover) * 100);
-                  return (
-                    <div key={`${item.setor}-${idx}`} className="space-y-1">
-                      <div className="flex items-center justify-between text-xs gap-2 min-w-0">
-                        <span className="text-foreground truncate pr-2">{item.setor}</span>
-                        <div
-                          className="shrink-0 flex items-center gap-2 tabular-nums text-right"
-                          title={`Turnover ${item.turnover.toFixed(1)}% • ${formatIntPt(item.dem)} desligamento(s) no período`}
-                        >
-                          <span className="font-semibold text-sm text-foreground">{item.turnover.toFixed(1)}%</span>
-                          <span className="text-[10px] sm:text-xs text-muted-foreground border-l border-border/80 pl-2 whitespace-nowrap">
-                            {formatIntPt(item.dem)} desl.
-                          </span>
-                        </div>
-                      </div>
-                      <UiTooltip delayDuration={150}>
-                        <TooltipTrigger asChild>
-                          <div
-                            role="button"
-                            tabIndex={0}
-                            className={`h-3 bg-muted rounded-sm overflow-hidden cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                              turnoverSetorFiltro === item.setor ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
-                            }`}
-                            aria-label={`Turnover ${item.turnover.toFixed(1)} por cento, ${item.dem} desligamentos no período. Clique para filtrar a evolução por este setor.`}
-                            aria-pressed={turnoverSetorFiltro === item.setor}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              setTurnoverSetorFiltro((prev) => (prev === item.setor ? null : item.setor));
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                setTurnoverSetorFiltro((prev) => (prev === item.setor ? null : item.setor));
-                              }
-                            }}
-                          >
-                            <div
-                              className="h-full rounded-sm pointer-events-none"
-                              style={{
-                                width: `${widthPct}%`,
-                                backgroundColor: chart.sectorGradient[idx % chart.sectorGradient.length],
-                              }}
-                            />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-none whitespace-nowrap text-xs">
-                          {item.dem === 1
-                            ? "1 desligamento no período"
-                            : `${item.dem} desligamentos no período`}{" "}
-                          · {item.turnover.toFixed(1)}%
-                        </TooltipContent>
-                      </UiTooltip>
-                    </div>
-                  );
-                })
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {desligadosByTurnoverPoint.map((item, index) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => {
+                        const matricula = String(item.row[ORGANICO_IDX.MATRICULA] ?? "").trim();
+                        abrirColaboradorNoOrganico(matricula);
+                      }}
+                      className="rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      aria-label="Abrir colaborador desligado no orgânico"
+                    >
+                      <OrganicoCard
+                        row={item.row}
+                        rowIndex={index}
+                        demissao={item.demissao}
+                        readOnly
+                      />
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
-          </div>
-        </div>
           </DialogContent>
         </Dialog>
 
         {/* Bottom row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="h-full lg:col-start-3 lg:row-start-1">
+          <div className="flex flex-col gap-6 lg:col-start-3 lg:row-start-1">
             <DistribuicaoGeneroCard
               contagem={generoAtivos}
               referencia={folhaNoFechamento}
@@ -1425,10 +1947,17 @@ const Dashboard = () => {
                 setSetorHeadcountSelecionado(null);
               }}
             />
-          </div>
+            <DistribuicaoExperienciaCard contagem={experienciaAtivos} referencia={folhaNoFechamento} />
+        </div>
 
           <div className="lg:col-span-2 lg:col-start-1 lg:row-start-1 border border-border bg-card p-6 shadow-level-1">
-            <span className="label-industrial">Headcount por Setor</span>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <span className="label-industrial">Pessoas por Setor</span>
+              <span className="text-xs text-muted-foreground">
+                {formatIntPt(derived.setoresAtivos)}{" "}
+                {derived.setoresAtivos === 1 ? "setor no filtro atual" : "setores no filtro atual"}
+              </span>
+            </div>
             <div className="mt-4 max-h-[min(420px,55vh)] overflow-y-auto overflow-x-hidden pr-1 rounded-sm border border-border/40 bg-muted/20">
               <div style={{ height: headcountChartHeight, minHeight: 280 }}>
                 <ResponsiveContainer width="100%" height={headcountChartHeight}>
@@ -1535,7 +2064,7 @@ const Dashboard = () => {
                       />
                     </button>
                   ))}
-                </div>
+                      </div>
               )}
             </div>
           </DialogContent>

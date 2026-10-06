@@ -19,8 +19,8 @@ interface RccServicosTableProps {
   linhas: RccLinhaServico[];
   codigosProduto?: string[];
   disabled?: boolean;
-  /** Terceirizado não registra horários de empresa nem de cliente. */
-  ocultarHorarios?: boolean;
+  /** Terceirizado não registra os horários de saída e chegada à empresa. */
+  ocultarHorariosEmpresa?: boolean;
   erro?: string;
   obrigatorio?: boolean;
   onChange: (linhas: RccLinhaServico[]) => void;
@@ -38,7 +38,7 @@ export function RccServicosTable({
   linhas,
   codigosProduto = [],
   disabled = false,
-  ocultarHorarios = false,
+  ocultarHorariosEmpresa = false,
   erro,
   obrigatorio = false,
   onChange,
@@ -66,7 +66,7 @@ export function RccServicosTable({
       <div className="overflow-x-auto rounded-lg border border-border">
         <Table
           bare
-          className={`rcc-servicos-grade w-full ${ocultarHorarios ? "min-w-[640px]" : "min-w-[960px]"}`}
+          className={`rcc-servicos-grade w-full ${ocultarHorariosEmpresa ? "min-w-[960px]" : "min-w-[1280px]"}`}
         >
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -74,14 +74,14 @@ export function RccServicosTable({
                 {rccFieldLabels.servicoRealizado}
                 {obrigatorio ? " *" : ""}
               </TableHead>
-              {ocultarHorarios ? null : (
+              {ocultarHorariosEmpresa ? null : (
                 <>
                   <TableHead className="min-w-40">{rccFieldLabels.horaSaidaEmpresa}</TableHead>
                   <TableHead className="min-w-40">{rccFieldLabels.horaChegadaEmpresa}</TableHead>
-                  <TableHead className="min-w-40">{rccFieldLabels.horaChegadaCliente}</TableHead>
-                  <TableHead className="min-w-40">{rccFieldLabels.horaSaidaCliente}</TableHead>
                 </>
               )}
+              <TableHead className="min-w-40">{rccFieldLabels.horaChegadaCliente}</TableHead>
+              <TableHead className="min-w-40">{rccFieldLabels.horaSaidaCliente}</TableHead>
               <TableHead className="min-w-48">{rccFieldLabels.numeroSerieCompressor}</TableHead>
               <TableHead className="min-w-44">{rccFieldLabels.dataConclusaoServico}</TableHead>
               {disabled ? null : <TableHead className="w-12" />}
@@ -103,7 +103,7 @@ export function RccServicosTable({
                     textos={TEXTOS_SERVICO_REALIZADO}
                   />
                 </TableCell>
-                {ocultarHorarios ? null : (
+                {ocultarHorariosEmpresa ? null : (
                   <>
                     <TableCell className="align-top">
                       <Input
@@ -127,30 +127,30 @@ export function RccServicosTable({
                         }
                       />
                     </TableCell>
-                    <TableCell className="align-top">
-                      <Input
-                        type="time"
-                        aria-label={rccFieldLabels.horaChegadaCliente}
-                        value={linha.horaChegadaCliente}
-                        disabled={disabled}
-                        onChange={(event) =>
-                          atualizar(linha.id, { horaChegadaCliente: event.target.value })
-                        }
-                      />
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <Input
-                        type="time"
-                        aria-label={rccFieldLabels.horaSaidaCliente}
-                        value={linha.horaSaidaCliente}
-                        disabled={disabled}
-                        onChange={(event) =>
-                          atualizar(linha.id, { horaSaidaCliente: event.target.value })
-                        }
-                      />
-                    </TableCell>
                   </>
                 )}
+                <TableCell className="align-top">
+                  <Input
+                    type="time"
+                    aria-label={rccFieldLabels.horaChegadaCliente}
+                    value={linha.horaChegadaCliente}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      atualizar(linha.id, { horaChegadaCliente: event.target.value })
+                    }
+                  />
+                </TableCell>
+                <TableCell className="align-top">
+                  <Input
+                    type="time"
+                    aria-label={rccFieldLabels.horaSaidaCliente}
+                    value={linha.horaSaidaCliente}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      atualizar(linha.id, { horaSaidaCliente: event.target.value })
+                    }
+                  />
+                </TableCell>
                 <TableCell className="align-top">
                   <Input
                     aria-label={rccFieldLabels.numeroSerieCompressor}

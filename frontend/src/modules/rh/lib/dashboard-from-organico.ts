@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Deriva indicadores do Dashboard a partir das linhas do Orgânico (planilha/API).
  *
  * - Critério “ativo”: nome preenchido e status ≠ desligado (inclui Ativo, Férias, Afastado).
@@ -88,6 +88,7 @@ export interface DashboardFromOrganico {
   turnoverPct: number;
   absenteismoPct: number;
   mediaTempoCasaMeses: number;
+  mediaIdadeAnos: number;
   mediaSalarialCtps: number;
   setoresAtivos: number;
   novasAdmissoesMes: number;
@@ -234,6 +235,7 @@ function buildTurnoverSeriesFromPeople(
   ref: Date,
   sectorFilter?: string | null,
   range?: DashboardPeriodo | null,
+  incluirDemissao?: (pessoa: TurnoverPersonLike, demissao: Date) => boolean,
 ): TurnoverSeriesPoint[] {
   const filtered =
     sectorFilter != null && sectorFilter !== ""
@@ -249,16 +251,23 @@ function buildTurnoverSeriesFromPeople(
     const cards = filtered.map((p) => ({
       adm: parseDateBR(String(p.admissao ?? "").trim()),
       dem: parseDateBR(String(p.demissao ?? "").trim()),
+      incluirDemissao: true,
     }));
+    for (let index = 0; index < cards.length; index += 1) {
+      const demissao = cards[index].dem;
+      if (demissao && incluirDemissao) {
+        cards[index].incluirDemissao = incluirDemissao(filtered[index], demissao);
+      }
+    }
 
     let admissoesMes = 0;
     let demissoesMes = 0;
 
-    for (const { adm, dem } of cards) {
+    for (const { adm, dem, incluirDemissao: considerarDemissao } of cards) {
       if (adm && adm >= janela.start && adm <= janela.end) {
         admissoesMes += 1;
       }
-      if (dem && dem >= janela.start && dem <= janela.end) {
+      if (considerarDemissao && dem && dem >= janela.start && dem <= janela.end) {
         demissoesMes += 1;
       }
     }
@@ -304,9 +313,10 @@ export function deriveTurnoverFromPeople(
   ref: Date = new Date(),
   sectorFilter?: string | null,
   range?: DashboardPeriodo | null,
+  incluirDemissao?: (pessoa: TurnoverPersonLike, demissao: Date) => boolean,
 ): { turnoverPct: number; turnoverData: TurnoverSeriesPoint[] } {
   const list = Array.isArray(people) ? people : [];
-  const turnoverData = buildTurnoverSeriesFromPeople(list, ref, sectorFilter, range);
+  const turnoverData = buildTurnoverSeriesFromPeople(list, ref, sectorFilter, range, incluirDemissao);
   return { turnoverPct: averageTwelveMonthTurnover(turnoverData), turnoverData };
 }
 
@@ -404,6 +414,7 @@ export function buildDashboardFromOrganico(
 
   const ctpsValues: number[] = [];
   const tenureMeses: number[] = [];
+  const idadesAnos: number[] = [];
   const countBySetor = new Map<string, number>();
   for (const row of rowsAtivos) {
     const ctps = salarioDaLinha(row, asOf);
@@ -416,6 +427,15 @@ export function buildDashboardFromOrganico(
       let meses = (asOf.getFullYear() - adm.getFullYear()) * 12 + (asOf.getMonth() - adm.getMonth());
       if (asOf.getDate() < adm.getDate()) meses -= 1;
       if (meses >= 0) tenureMeses.push(meses);
+    }
+    const nascimento = parseDateBR(strCell(row, ORGANICO_IDX.NASCIMENTO));
+    if (nascimento) {
+      let idade = asOf.getFullYear() - nascimento.getFullYear();
+      const aniversarioAindaNaoOcorreu =
+        asOf.getMonth() < nascimento.getMonth() ||
+        (asOf.getMonth() === nascimento.getMonth() && asOf.getDate() < nascimento.getDate());
+      if (aniversarioAindaNaoOcorreu) idade -= 1;
+      if (idade >= 14 && idade <= 100) idadesAnos.push(idade);
     }
   }
 
@@ -461,6 +481,10 @@ export function buildDashboardFromOrganico(
   mediaTempoCasaMeses =
     tenureMeses.length > 0
       ? tenureMeses.reduce((acc, v) => acc + v, 0) / tenureMeses.length
+      : 0;
+  const mediaIdadeAnos =
+    idadesAnos.length > 0
+      ? idadesAnos.reduce((acc, v) => acc + v, 0) / idadesAnos.length
       : 0;
 
   const setoresAtivos = countBySetor.size;
@@ -516,6 +540,7 @@ export function buildDashboardFromOrganico(
     turnoverPct,
     absenteismoPct: 0,
     mediaTempoCasaMeses,
+    mediaIdadeAnos,
     mediaSalarialCtps,
     setoresAtivos,
     novasAdmissoesMes,
