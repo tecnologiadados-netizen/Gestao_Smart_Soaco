@@ -388,38 +388,27 @@ export function montarRelatoConferencia(params: {
   };
 }
 
-function ymdBrCurtoRelato(ymd: string | null | undefined): string {
-  if (!ymd) return '—';
-  const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return m ? `${m[3]}/${m[2]}` : ymdBrRelato(ymd);
+function diasPrazoTxt(dias: number | null): string {
+  return dias != null ? `${dias}d` : '—';
 }
 
-function textoDiferencaDiasPrazo(diasNF: number | null, diasPC: number | null): string | null {
-  if (diasNF == null || diasPC == null || diasNF === diasPC) return null;
-  const delta = Math.abs(diasNF - diasPC);
-  const quem = diasNF < diasPC ? 'NF menor' : 'PC menor';
-  return `${delta} dia${delta === 1 ? '' : 's'} (${quem})`;
+function parcelaPrazoConforme(diasNF: number | null, diasPC: number | null): boolean {
+  return diasNF != null && diasPC != null && diasNF === diasPC;
 }
 
-/** Bloco WhatsApp das parcelas — NF e PC em linhas separadas. */
-function linhasPrazosWhatsApp(tab: TabelaPrazosRelato): string[] {
-  const out: string[] = ['', '*Prazos (vencimento − data base)*'];
+/** Bloco WhatsApp das parcelas: status e, só na divergente, os dias NF × PC. */
+function linhasPrazosWhatsApp(tab: TabelaPrazosRelato, decisao: 'aceita' | 'recusa'): string[] {
+  const marca = decisao === 'aceita' ? '✅' : '❌';
+  const out: string[] = ['', `*Prazos (vencimento − data base)* ${marca}`];
   const max = Math.min(tab.linhas.length, 6);
   for (let i = 0; i < max; i++) {
     const l = tab.linhas[i]!;
-    const baseNf = l.dataBaseNF ?? tab.dataBaseNF;
-    const basePc = l.dataBasePC ?? tab.dataBasePC;
-    const diasNfTxt = l.diasNF != null ? `${l.diasNF}d` : '—';
-    const diasPcTxt = l.diasPC != null ? `${l.diasPC}d` : '—';
-    out.push(`Parc. #${l.numero}`);
-    out.push(
-      `= NF: base ${wa(ymdBrCurtoRelato(baseNf))} → venc. ${wa(ymdBrCurtoRelato(l.vencimentoNF))} = *${diasNfTxt}*`
-    );
-    out.push(
-      `= PC: base ${wa(ymdBrCurtoRelato(basePc))} → venc. ${wa(ymdBrCurtoRelato(l.vencimentoPC))} = *${diasPcTxt}*`
-    );
-    const dif = textoDiferencaDiasPrazo(l.diasNF, l.diasPC);
-    if (dif) out.push(`= Diferença: *${dif}*`);
+    if (parcelaPrazoConforme(l.diasNF, l.diasPC)) {
+      out.push(`Parc. #${l.numero} · Conforme ✅`);
+      continue;
+    }
+    out.push(`Parc. #${l.numero} · Não conforme ❌`);
+    out.push(`· NF: ${diasPrazoTxt(l.diasNF)} | PC: ${diasPrazoTxt(l.diasPC)}`);
   }
   if (tab.linhas.length > 6) out.push(`… +${tab.linhas.length - 6} parcela(s)`);
   return out;
@@ -477,15 +466,25 @@ function blocoCampoWhatsApp(campo: CampoRelato, mostrarTitulo: boolean): string[
   if (campo.descontoWhatsApp) linhas.push(campo.descontoWhatsApp);
   if (campo.observacao) linhas.push(wa(campo.observacao));
   if (campo.campo === 'condicao_pagamento' && campo.tabelaPrazos?.linhas.length) {
-    linhas.push(...linhasPrazosWhatsApp(campo.tabelaPrazos));
+    linhas.push(...linhasPrazosWhatsApp(campo.tabelaPrazos, campo.decisao));
   }
   return linhas;
 }
 
-function resumoDecisoes(relato: RelatoConferencia): string {
-  if (relato.recusadas === 0) return 'Todas *aceitas*';
-  if (relato.aceitas === 0) return 'Todas *recusadas*';
-  return `*${relato.aceitas} aceitas* · *${relato.recusadas} recusadas*`;
+function pedidosCabecalhoWhatsApp(completo: RelatoConferencia, real: RelatoConferencia): string {
+  const comDivergenciaDeItem = new Set(real.produtos.map((p) => `${p.codigo}|${p.pedido}`));
+  const fonte = real.pagamentoComum
+    ? completo.produtos
+    : completo.produtos.filter((p) => comDivergenciaDeItem.has(`${p.codigo}|${p.pedido}`));
+  const vistos = new Set<string>();
+  const lista: string[] = [];
+  for (const produto of fonte) {
+    const nome = wa(produto.pedido).trim();
+    if (!nome || nome === 'PC' || vistos.has(nome)) continue;
+    vistos.add(nome);
+    lista.push(nome);
+  }
+  return lista.join(' · ');
 }
 
 /** Texto do WhatsApp somente com divergências reais; null quando todas são benignas. */
@@ -495,12 +494,12 @@ export function montarMensagemConferenciaWhatsApp(
 ): string | null {
   const relato = somenteDivergenciasReais(relatoCompleto);
   if (!relato) return null;
+  const pedidos = pedidosCabecalhoWhatsApp(relatoCompleto, relato);
   const cabecalho = [
     '*Conferência NF × Pedido*',
-    `NF *${wa(relato.numeroNfe)}* · Doc ${wa(relato.numeroDocumentoFiscal)}`,
-    wa(relato.nomeParceiro),
-    `${wa(relato.conferidoPor)} · ${relato.totalProdutos} produto${relato.totalProdutos === 1 ? '' : 's'} · ${relato.totalDivergencias} ${relato.totalDivergencias === 1 ? 'divergência real' : 'divergências reais'}`,
-    resumoDecisoes(relato),
+    pedidos
+      ? `NF *${wa(relato.numeroNfe)}* · Doc ${wa(relato.numeroDocumentoFiscal)} · ${pedidos}`
+      : `NF *${wa(relato.numeroNfe)}* · Doc ${wa(relato.numeroDocumentoFiscal)}`,
   ];
   if (relato.naoGeraContasPagar) {
     cabecalho.push('Não gera contas a pagar.');
@@ -508,17 +507,11 @@ export function montarMensagemConferenciaWhatsApp(
 
   const meio: string[] = [];
   if (relato.pagamentoComum) {
-    meio.push(
-      '',
-      '*Pagamento — vale para todos*',
-      `NF: ${wa(relato.pagamentoComum.nf)}`,
-      `PC: ${wa(relato.pagamentoComum.pc)}`,
-      linhaDecisao(relato.pagamentoComum)
-    );
+    meio.push('', '*Pagamento — vale para todos*', linhaDecisao(relato.pagamentoComum));
     if (relato.pagamentoComum.observacao) meio.push(wa(relato.pagamentoComum.observacao));
     const tab = relato.pagamentoComum.tabelaPrazos;
     if (tab && tab.linhas.length > 0) {
-      meio.push(...linhasPrazosWhatsApp(tab));
+      meio.push(...linhasPrazosWhatsApp(tab, relato.pagamentoComum.decisao));
       if (url) meio.push('Tabela completa no link abaixo.');
     }
   }

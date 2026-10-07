@@ -129,11 +129,15 @@ describe('relato da conferência NF × PC', () => {
   it('monta o WhatsApp curto com o link', () => {
     const texto = montarMensagemConferenciaWhatsApp(relato!, 'https://gsmartsoaco.com.br/c/abc');
     expect(texto).toContain('*Conferência NF × Pedido*');
+    expect(texto).toContain('NF *44544* · Doc DE39631 · PC27798');
     expect(texto).toContain('*Pagamento — vale para todos*');
+    expect(texto).not.toContain('FERREIRA');
+    expect(texto).not.toContain('divergência real');
+    expect(texto).not.toContain('Todas');
+    expect(texto).not.toContain('NF: À Vista');
     expect(texto).toContain('*Preços*');
     expect(texto).toContain('*MUA 0215* · PC27798');
     expect(texto).not.toContain('*MUC 3767* · PC27798');
-    expect(texto).toContain('2 divergências reais');
     expect(texto).toContain('https://gsmartsoaco.com.br/c/abc');
     expect(texto).not.toContain('líq. (bruto');
     expect(texto).not.toContain('(0)');
@@ -177,7 +181,7 @@ describe('relato da conferência NF × PC', () => {
           prazosDiasNF: [27],
           prazosDiasPC: [30],
           parcelasNF: [
-            { numero: 1, dataBase: '2026-09-25', dataVencimento: '2026-10-22', dias: 27 },
+            { numero: 1, dataBase: '2026-09-25', dataVencimento: '2026-10-20', dias: 27 },
           ],
           parcelasPC: [
             { numero: 1, dataBase: '2026-09-22', dataVencimento: '2026-10-22', dias: 30 },
@@ -192,11 +196,61 @@ describe('relato da conferência NF × PC', () => {
     const dec = comPrazo!.pagamentoComum!;
     dec.observacao = 'entrada avulsa';
     const texto = montarMensagemConferenciaWhatsApp(comPrazo!, 'https://gsmartsoaco.com.br/c/x');
-    expect(texto).toContain('*Prazos (vencimento − data base)*');
-    expect(texto).toContain('Parc. #1');
-    expect(texto).toContain('= NF: base 25/09 → venc. 22/10 = *27d*');
-    expect(texto).toContain('= PC: base 22/09 → venc. 22/10 = *30d*');
-    expect(texto).toContain('= Diferença: *3 dias (NF menor)*');
+    expect(texto).toContain('*Prazos (vencimento − data base)* ✅');
+    expect(texto).toContain('Parc. #1 · Não conforme ❌');
+    expect(texto).toContain('· NF: 27d | PC: 30d');
+    expect(texto).not.toContain('base 25/09');
+    expect(texto).not.toContain('Diferença:');
+    expect(texto).not.toContain('NF: (1x) 30');
+  });
+
+  it('resume prazos conformes e mostra os dias só na parcela divergente', () => {
+    const base = linha({
+      idItemDocumentoEstoque: 11,
+      codigoProduto: 'Y',
+      nomePedidoCompra: 'PC27910',
+      condicaoPagamentoNF: '(2x) 30/45',
+      regraPagamentoNF: '30/45',
+      condicaoPagamentoPC: '(2x) 30/47',
+      regraPagamentoPC: '30/47',
+      dataBaseParcelasNF: '2026-10-02',
+      dataBaseParcelasPC: '2026-09-30',
+      prazosLabelNF: '30/45',
+      prazosLabelPC: '30/47',
+      prazosDiasNF: [30, 45],
+      prazosDiasPC: [30, 47],
+      parcelasNF: [
+        { numero: 1, dataBase: '2026-10-02', dataVencimento: '2026-11-01', dias: 30 },
+        { numero: 2, dataBase: '2026-10-02', dataVencimento: '2026-11-16', dias: 45 },
+      ],
+      parcelasPC: [
+        { numero: 1, dataBase: '2026-09-30', dataVencimento: '2026-10-30', dias: 30 },
+        { numero: 2, dataBase: '2026-09-30', dataVencimento: '2026-11-18', dias: 47 },
+      ],
+      divergValorUnitario: false,
+      divergCondicaoPagamento: true,
+    });
+    const comDuas = montarRelatoConferencia({
+      meta: { numeroNfe: '356325', numeroDocumentoFiscal: 'DE39858', nomeParceiro: 'FERRO NORTE' },
+      conferidoPor: 'Luisa',
+      linhas: [base],
+      decisoes: [decisao(base, 'condicao_pagamento', 'Entrada avulsa (ajuste na entrada fiscal')],
+    });
+    comDuas!.pagamentoComum!.observacao = 'conflitos prazo interno';
+    const texto = montarMensagemConferenciaWhatsApp(comDuas!, 'https://gsmartsoaco.com.br/c/z')!;
+    expect(texto).toContain('NF *356325* · Doc DE39858 · PC27910');
+    expect(texto).not.toContain('FERRO NORTE');
+    expect(texto).not.toContain('1 produto');
+    expect(texto).toContain('✅ Aceita · Entrada avulsa (ajuste na entrada fiscal');
+    expect(texto).toContain('conflitos prazo interno');
+    expect(texto).not.toContain('NF: (2x) 30/45');
+    expect(texto).not.toContain('PC: (2x) 30/47');
+    expect(texto).toContain('Parc. #1 · Conforme ✅');
+    expect(texto).toContain('Parc. #2 · Não conforme ❌');
+    expect(texto).toContain('· NF: 45d | PC: 47d');
+    expect(texto).not.toContain('· NF: 30d | PC: 30d');
+    expect(texto).not.toContain('venc.');
+    expect(texto).toContain('Tabela completa no link abaixo.');
   });
 
   it('não agrupa pagamento quando uma linha difere', () => {
