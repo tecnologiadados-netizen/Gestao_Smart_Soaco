@@ -639,7 +639,6 @@ export function RccForm({
                     .join("\n") || undefined
                 }
                 quantidadeObrigatoria
-                somenteAcabadosIntermediarios
                 nomePergunta="rcc-tem-pedido-venda"
                 colunaDataEmissaoNf
                 colunasClientePedido

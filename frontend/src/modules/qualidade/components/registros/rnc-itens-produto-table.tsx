@@ -68,7 +68,7 @@ interface RncItensProdutoTableProps {
     numero: string;
     onChange: (proximo: { possui: string; numero: string }) => void;
   };
-  /** Código do produto: só acabados e intermediários. Usado na RCC. */
+  /** Mantido por compatibilidade. A busca de código traz todos os produtos ativos. */
   somenteAcabadosIntermediarios?: boolean;
   /** Nome do revendedor, uma vez na grade, quando a RCC não tem pedido de venda. */
   nomeRevendedor?: {

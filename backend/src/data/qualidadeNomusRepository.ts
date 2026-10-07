@@ -5,7 +5,7 @@
 
 import type { RowDataPacket } from 'mysql2';
 import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
-import { termoParaPadraoLikeSql } from '../utils/textoLivreBusca.js';
+import { criarMatcherTextoLivre, termoParaPadraoLikeSql } from '../utils/textoLivreBusca.js';
 
 export interface ClienteErp {
   id: string;
@@ -70,7 +70,7 @@ const CLIENTES_SEARCH_LIMIT = 80;
 const CLIENTES_MIN_SEARCH_CHARS = 2;
 
 const PRODUTOS_INITIAL_LIMIT = 40;
-const PRODUTOS_SEARCH_LIMIT = 100;
+const PRODUTOS_SEARCH_LIMIT = 200;
 const PRODUTOS_MIN_SEARCH_CHARS = 2;
 
 const FORNECEDORES_INITIAL_LIMIT = 40;
@@ -280,16 +280,11 @@ export interface GetClientesOptions {
   limit?: number;
 }
 
-/** Nomes em `tipoproduto` / `dw_saldoestoque.tipoProduto`. */
-const TIPOS_PRODUTO_ACABADO_INTERMEDIARIO = ['Produto acabado', 'Produto intermediário'] as const;
-
 export interface GetProdutosOptions {
   q?: string;
   codigo?: string;
   /** Quando informado, lista apenas produtos presentes no `itempedido` deste pedido Nomus. */
   pedidoId?: string;
-  /** Restringe a produto acabado e produto intermediário. */
-  somenteAcabadoIntermediario?: boolean;
   limit?: number;
 }
 
@@ -351,13 +346,6 @@ export async function buscarProdutosNomus(
   const limit = Math.min(Math.max(options.limit ?? PRODUTOS_INITIAL_LIMIT, 1), PRODUTOS_SEARCH_LIMIT);
   const idEmpresa = produtosIdEmpresa();
   const pedidoId = options.pedidoId?.trim() ?? '';
-  const filtroTipo = options.somenteAcabadoIntermediario
-    ? {
-        sqlPedido: ' AND tp.nome IN (?, ?)',
-        sqlEstoque: ' AND se.tipoProduto IN (?, ?)',
-        params: [...TIPOS_PRODUTO_ACABADO_INTERMEDIARIO],
-      }
-    : null;
 
   if (pedidoId) {
     const produtosPedidoSelect = `
@@ -392,11 +380,10 @@ export async function buscarProdutosNomus(
            pr.nome = ?
            OR REPLACE(pr.nome, ' ', '') = ?
          )
-         ${filtroTipo?.sqlPedido ?? ''}
          ${produtosPedidoGroup}
          ORDER BY pr.nome ASC
          LIMIT 1`,
-        [pedidoId, idEmpresa, codigo, codigoSemEspacos, ...(filtroTipo?.params ?? [])]
+        [pedidoId, idEmpresa, codigo, codigoSemEspacos]
       );
       return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
     }
@@ -411,89 +398,115 @@ export async function buscarProdutosNomus(
            OR pr.descricao LIKE ?
            OR gp.nome LIKE ?
          )
-         ${filtroTipo?.sqlPedido ?? ''}
          ${produtosPedidoGroup}
          ORDER BY pr.nome ASC
          LIMIT ?`,
-        [pedidoId, idEmpresa, like, like, like, ...(filtroTipo?.params ?? []), limit]
+        [pedidoId, idEmpresa, like, like, like, limit]
       );
       return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
     }
 
     const [rows] = await pool.query<RowDataPacket[]>(
       `${produtosPedidoSelect} ${produtosPedidoFrom} ${produtosPedidoWhere}
-       ${filtroTipo?.sqlPedido ?? ''}
        ${produtosPedidoGroup}
        ORDER BY pr.nome ASC
        LIMIT ?`,
-      [pedidoId, idEmpresa, ...(filtroTipo?.params ?? []), limit]
+      [pedidoId, idEmpresa, limit]
     );
     return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
   }
 
-  const produtosSelect = `
-    SELECT DISTINCT
-      se.codigoProduto,
-      se.descricaoProduto,
-      se.grupoProduto,
-      se.tipoProduto
-  `;
-  const produtosFrom = `
-    FROM dw_saldoestoque se
-    INNER JOIN setorestoque st
-      ON se.codigoSetorEstoque = st.id
-     AND se.codigoEmpresa = st.idEmpresa
-  `;
-  const produtosWhere = `
-    WHERE se.ativoProduto = 'Sim'
-      AND st.ativo = 1
-      AND st.idEmpresa = ?
-      AND st.consideraComoSaldoDisponivel = 1
-  `;
+  const produtos = await listarProdutosAtivos(pool, idEmpresa);
+  return { produtos: filtrarProdutosAtivos(produtos, options, limit), source: 'erp' };
+}
 
-  if (options.codigo?.trim()) {
-    const codigo = options.codigo.trim();
-    const codigoSemEspacos = codigo.replace(/\s+/g, '');
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `${produtosSelect} ${produtosFrom} ${produtosWhere}
-       AND (
-         se.codigoProduto = ?
-         OR REPLACE(se.codigoProduto, ' ', '') = ?
-       )
-       ${filtroTipo?.sqlEstoque ?? ''}
-       ORDER BY se.codigoProduto ASC
-       LIMIT 1`,
-      [idEmpresa, codigo, codigoSemEspacos, ...(filtroTipo?.params ?? [])]
-    );
-    return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
-  }
+const CATALOGO_PRODUTOS_ATIVOS_TTL_MS = 5 * 60 * 1000;
 
-  const q = options.q?.trim() ?? '';
-  if (q.length >= PRODUTOS_MIN_SEARCH_CHARS) {
-    const like = `%${q}%`;
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `${produtosSelect} ${produtosFrom} ${produtosWhere}
-       AND (
-         se.codigoProduto LIKE ?
-         OR se.descricaoProduto LIKE ?
-         OR se.grupoProduto LIKE ?
-       )
-       ${filtroTipo?.sqlEstoque ?? ''}
-       ORDER BY se.codigoProduto ASC
-       LIMIT ?`,
-      [idEmpresa, like, like, like, ...(filtroTipo?.params ?? []), limit]
-    );
-    return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
+let catalogoProdutosAtivos: {
+  empresaId: number;
+  carregadoEm: number;
+  produtos: ProdutoErp[];
+} | null = null;
+
+/** Cadastro Nomus: todo produto ativo da empresa, de qualquer tipo. */
+async function listarProdutosAtivos(
+  pool: NonNullable<ReturnType<typeof getNomusPool>>,
+  idEmpresa: number
+): Promise<ProdutoErp[]> {
+  const agora = Date.now();
+  if (
+    catalogoProdutosAtivos &&
+    catalogoProdutosAtivos.empresaId === idEmpresa &&
+    agora - catalogoProdutosAtivos.carregadoEm < CATALOGO_PRODUTOS_ATIVOS_TTL_MS
+  ) {
+    return catalogoProdutosAtivos.produtos;
   }
 
   const [rows] = await pool.query<RowDataPacket[]>(
-    `${produtosSelect} ${produtosFrom} ${produtosWhere}
-     ${filtroTipo?.sqlEstoque ?? ''}
-     ORDER BY se.codigoProduto ASC
-     LIMIT ?`,
-    [idEmpresa, ...(filtroTipo?.params ?? []), limit]
+    `SELECT
+       pr.nome AS codigoProduto,
+       pr.descricao AS descricaoProduto,
+       COALESCE(gp.nome, '') AS grupoProduto,
+       COALESCE(tp.nome, '') AS tipoProduto
+     FROM produto pr
+     INNER JOIN produtoempresa pe
+       ON pe.idProduto = pr.id
+      AND pe.idEmpresa = ?
+     LEFT JOIN grupoproduto gp ON gp.id = pr.idGrupoProduto
+     LEFT JOIN tipoproduto tp ON tp.id = pr.idTipoProduto
+     WHERE pr.ativo = 1
+     ORDER BY pr.nome ASC`,
+    [idEmpresa]
   );
-  return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
+  const produtos = mapSqlRowsToProdutos(rows as Record<string, unknown>[]);
+  catalogoProdutosAtivos = { empresaId: idEmpresa, carregadoEm: agora, produtos };
+  return produtos;
+}
+
+function codigoProdutoNormalizado(codigo: string): string {
+  return codigo.trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function filtrarProdutosAtivos(
+  produtos: ProdutoErp[],
+  options: GetProdutosOptions,
+  limit: number
+): ProdutoErp[] {
+  if (options.codigo?.trim()) {
+    const codigo = options.codigo.trim();
+    const semEspacos = codigoProdutoNormalizado(codigo);
+    const exato = produtos.find(
+      (produto) =>
+        produto.codigo === codigo || codigoProdutoNormalizado(produto.codigo) === semEspacos
+    );
+    return exato ? [exato] : [];
+  }
+
+  const q = options.q?.trim() ?? '';
+  if (q.length < PRODUTOS_MIN_SEARCH_CHARS) return produtos.slice(0, limit);
+
+  const combina = criarMatcherTextoLivre(q);
+  const termo = q.toUpperCase().replace(/\s+/g, '');
+  const encontrados = produtos.filter(
+    (produto) =>
+      combina(produto.codigo) || combina(produto.descricao) || combina(produto.grupoProduto)
+  );
+  encontrados.sort((a, b) => {
+    const porCodigo = relevanciaCodigo(a.codigo, termo) - relevanciaCodigo(b.codigo, termo);
+    if (porCodigo !== 0) return porCodigo;
+    return a.codigo.localeCompare(b.codigo, 'pt-BR');
+  });
+  return encontrados.slice(0, limit);
+}
+
+/** Código que começa com o termo vem antes de código que só contém, e antes da descrição. */
+function relevanciaCodigo(codigo: string, termoSemEspacos: string): number {
+  const normalizado = codigoProdutoNormalizado(codigo);
+  if (!termoSemEspacos) return 3;
+  if (normalizado === termoSemEspacos) return 0;
+  if (normalizado.startsWith(termoSemEspacos)) return 1;
+  if (normalizado.includes(termoSemEspacos)) return 2;
+  return 3;
 }
 
 export interface ProdutoSetorProducao {

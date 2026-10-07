@@ -22,7 +22,7 @@ interface ProdutoCodigoFieldProps {
   disabled?: boolean;
   /** Quando informado, a lista mostra só produtos deste pedido Nomus. */
   pedidoId?: string | null;
-  /** Lista só produto acabado e produto intermediário. */
+  /** Mantido por compatibilidade. A lista traz todos os produtos ativos. */
   somenteAcabadosIntermediarios?: boolean;
   ocultarRotulo?: boolean;
 }
@@ -170,9 +170,7 @@ export function ProdutoCodigoField({
           placeholder={
             pedidoIdFiltro
               ? "Selecione um produto do pedido..."
-              : somenteAcabadosIntermediarios
-                ? "Ex.: PA 10005..."
-                : "Ex.: PA 10005, MP 6861..."
+              : "Ex.: PA 10005, MP 6861..."
           }
           className="pl-9"
           autoComplete="off"
@@ -237,7 +235,7 @@ export function ProdutoCodigoField({
         <p className="text-xs text-muted-foreground">
           {pedidoIdFiltro
             ? "Exibindo apenas os códigos de produto deste pedido de venda."
-            : "Digite o código ou parte do nome para preencher grupo e descrição automaticamente."}
+            : "A busca inclui todos os produtos ativos. Digite o código ou parte do nome."}
         </p>
       )}
     </div>

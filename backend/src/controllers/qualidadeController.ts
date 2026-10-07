@@ -55,7 +55,7 @@ import { gerarRccPdfBuffer, gerarRncPdfBuffer } from '../services/qualidadePdfSe
 import { ensureQualidadePreviewPdf } from '../services/sgq/sgqOfficeToPdf.js';
 
 const CLIENTES_SEARCH_LIMIT = 80;
-const PRODUTOS_SEARCH_LIMIT = 100;
+const PRODUTOS_SEARCH_LIMIT = 200;
 const FORNECEDORES_SEARCH_LIMIT = 100;
 const PEDIDOS_VENDA_SEARCH_LIMIT = 50;
 const PESSOAS_SEARCH_LIMIT = 100;
@@ -89,13 +89,11 @@ export async function getQualidadeProdutos(req: Request, res: Response): Promise
     const codigo = typeof req.query.codigo === 'string' ? req.query.codigo : undefined;
     const pedidoId =
       typeof req.query.pedidoId === 'string' ? req.query.pedidoId : undefined;
-    const somenteAcabadoIntermediario = req.query.escopo === 'acabado-intermediario';
     const limit = parseLimit(typeof req.query.limit === 'string' ? req.query.limit : undefined, 40, PRODUTOS_SEARCH_LIMIT);
     const result = await buscarProdutosNomus({
       q,
       codigo,
       pedidoId,
-      somenteAcabadoIntermediario,
       limit,
     });
     res.json(result);
