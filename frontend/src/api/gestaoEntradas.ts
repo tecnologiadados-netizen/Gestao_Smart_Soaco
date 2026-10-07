@@ -84,6 +84,7 @@ export type GestaoEntradasDivergencia = {
   decisao: 'aceita' | 'recusa' | null;
   justificativaCodigo: string | null;
   justificativaLabel: string | null;
+  observacaoNatureza?: string | null;
   observacoes: GestaoEntradasObs[];
 };
 

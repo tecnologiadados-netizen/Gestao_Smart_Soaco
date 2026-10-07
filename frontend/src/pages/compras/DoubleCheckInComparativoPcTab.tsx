@@ -572,6 +572,11 @@ export default function DoubleCheckInComparativoPcTab({
                         </span>
                       </div>
                     </div>
+                    {diverg && natureza === 'benigna' && linha.observacaoNaturezaDivergencias?.[c.id] ? (
+                      <p className="mt-1.5 rounded-md bg-emerald-50 px-1.5 py-1 text-[10px] leading-snug text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+                        {linha.observacaoNaturezaDivergencias[c.id]}
+                      </p>
+                    ) : null}
                     {diverg && (
                       <div className="mt-2 space-y-1.5">
                         <div className="flex items-center justify-between gap-1">

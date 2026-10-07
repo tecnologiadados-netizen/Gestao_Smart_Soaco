@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { classificarNaturezaDivergencia } from './doubleCheckInNatureza.js';
+import {
+  classificarNaturezaDivergencia,
+  observacaoNaturezaDivergencia,
+} from './doubleCheckInNatureza.js';
 
 describe('classificarNaturezaDivergencia', () => {
   it('considera preço menor na NF como benigno e preço maior como real', () => {
@@ -72,6 +75,63 @@ describe('classificarNaturezaDivergencia', () => {
     expect(
       classificarNaturezaDivergencia({
         linha: { prazosDiasNF: [10, 26], prazosDiasPC: [15] },
+        campo: 'condicao_pagamento',
+      })
+    ).toBe('real');
+  });
+
+  it('considera ajuste de vencimento para o próximo dia útil como benigno', () => {
+    expect(
+      classificarNaturezaDivergencia({
+        linha: {
+          prazosDiasNF: [30, 45],
+          prazosDiasPC: [30, 47],
+          dataBaseParcelasNF: '2026-10-07',
+          dataBaseParcelasPC: '2026-10-07',
+          parcelasNF: [
+            { dias: 30, dataBase: '2026-10-07', dataVencimento: '2026-11-06' },
+            { dias: 45, dataBase: '2026-10-07', dataVencimento: '2026-11-21' },
+          ],
+          parcelasPC: [
+            { dias: 30, dataBase: '2026-10-07', dataVencimento: '2026-11-06' },
+            { dias: 47, dataBase: '2026-10-07', dataVencimento: '2026-11-23' },
+          ],
+        },
+        campo: 'condicao_pagamento',
+      })
+    ).toBe('benigna');
+  });
+
+  it('explica no card quando o Nomus só ajustou o dia útil', () => {
+    const linha = {
+      prazosDiasNF: [30, 45],
+      prazosDiasPC: [30, 47],
+      dataBaseParcelasNF: '2026-10-07',
+      dataBaseParcelasPC: '2026-10-07',
+    };
+    expect(
+      observacaoNaturezaDivergencia({ linha, campo: 'condicao_pagamento' })
+    ).toMatch(/próximo dia útil/i);
+    expect(observacaoNaturezaDivergencia({ linha, campo: 'qtde' })).toBeNull();
+  });
+
+  it('mantém real quando a diferença de dias não é só o próximo dia útil', () => {
+    expect(
+      classificarNaturezaDivergencia({
+        linha: {
+          prazosDiasNF: [30, 45],
+          prazosDiasPC: [30, 50],
+          dataBaseParcelasNF: '2026-10-07',
+          dataBaseParcelasPC: '2026-10-07',
+          parcelasNF: [
+            { dias: 30, dataBase: '2026-10-07', dataVencimento: '2026-11-06' },
+            { dias: 45, dataBase: '2026-10-07', dataVencimento: '2026-11-21' },
+          ],
+          parcelasPC: [
+            { dias: 30, dataBase: '2026-10-07', dataVencimento: '2026-11-06' },
+            { dias: 50, dataBase: '2026-10-07', dataVencimento: '2026-11-26' },
+          ],
+        },
         campo: 'condicao_pagamento',
       })
     ).toBe('real');

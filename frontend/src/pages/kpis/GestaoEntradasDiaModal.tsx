@@ -111,6 +111,11 @@ export function TabelaDivergencias({ notas }: { notas: GestaoEntradasNotaDia[] }
                   >
                     {d.natureza === 'real' ? 'Divergência real' : 'Divergência benigna'}
                   </span>
+                  {d.natureza === 'benigna' && d.observacaoNatureza ? (
+                    <span className="mt-1 block text-[11px] leading-snug text-emerald-800 dark:text-emerald-200">
+                      {d.observacaoNatureza}
+                    </span>
+                  ) : null}
                 </td>
                 <td className={`px-3 py-2 text-xs text-slate-600 dark:text-slate-300 ${faixa}`}>
                   <span className="font-medium text-slate-800 dark:text-slate-100">{d.codigoProduto ?? 'Item'}</span>

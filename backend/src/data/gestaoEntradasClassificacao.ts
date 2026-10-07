@@ -5,6 +5,7 @@
 import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
 import {
   classificarNaturezaDivergencia,
+  observacaoNaturezaDivergencia,
   type NaturezaDivergencia,
 } from '../services/doubleCheckInNatureza.js';
 
@@ -299,6 +300,7 @@ export type DivergenciaAtualEntrada = {
   decisao: 'aceita' | 'recusa' | null;
   justificativaCodigo: string | null;
   justificativaLabel: string | null;
+  observacaoNatureza: string | null;
   observacoes: ObsDivergenciaEntrada[];
 };
 
@@ -326,8 +328,18 @@ export type LinhaComparativoDia = {
   regraPagamentoPC?: string | null;
   prazosLabelNF?: string | null;
   prazosLabelPC?: string | null;
-  parcelasNF?: Array<{ dias: number | null }>;
-  parcelasPC?: Array<{ dias: number | null }>;
+  dataBaseParcelasNF?: string | null;
+  dataBaseParcelasPC?: string | null;
+  parcelasNF?: Array<{
+    dias: number | null;
+    dataBase?: string | null;
+    dataVencimento?: string | null;
+  }>;
+  parcelasPC?: Array<{
+    dias: number | null;
+    dataBase?: string | null;
+    dataVencimento?: string | null;
+  }>;
   prazosDiasNF?: number[];
   prazosDiasPC?: number[];
   divergValorUnitario: boolean;
@@ -481,6 +493,10 @@ export function montarDivergenciasAtuais(params: {
         decisao,
         justificativaCodigo: dec?.justificativaCodigo ?? null,
         justificativaLabel: dec?.justificativaLabel ?? null,
+        observacaoNatureza: observacaoNaturezaDivergencia({
+          linha,
+          campo: spec.campo,
+        }),
         observacoes: dec ? observacoesDaDecisao(dec) : [],
       });
     }

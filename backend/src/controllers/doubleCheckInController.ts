@@ -56,6 +56,7 @@ import {
 } from '../services/doubleCheckInConferenciaRelato.js';
 import {
   classificarNaturezaDivergencia,
+  observacaoNaturezaDivergencia,
   type NaturezaDivergencia,
 } from '../services/doubleCheckInNatureza.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
@@ -110,6 +111,7 @@ function linhasComNatureza(
   decisoes: DecisaoParaNatureza[]
 ): Array<DoubleCheckInComparativoLinha & {
   naturezaDivergencias: Partial<Record<DoubleCheckInCampoComparativo, NaturezaDivergencia>>;
+  observacaoNaturezaDivergencias: Partial<Record<DoubleCheckInCampoComparativo, string>>;
 }> {
   const decisoesMap = new Map(
     decisoes.map((d) => [
@@ -120,6 +122,9 @@ function linhasComNatureza(
   return linhas.map((linha) => {
     const naturezaDivergencias: Partial<
       Record<DoubleCheckInCampoComparativo, NaturezaDivergencia>
+    > = {};
+    const observacaoNaturezaDivergencias: Partial<
+      Record<DoubleCheckInCampoComparativo, string>
     > = {};
     for (const campo of DOUBLE_CHECKIN_CAMPOS) {
       const flag =
@@ -139,8 +144,10 @@ function linhasComNatureza(
         campo,
         justificativaCodigo: decisao?.vigente === false ? null : decisao?.justificativaCodigo,
       });
+      const obs = observacaoNaturezaDivergencia({ linha, campo });
+      if (obs) observacaoNaturezaDivergencias[campo] = obs;
     }
-    return { ...linha, naturezaDivergencias };
+    return { ...linha, naturezaDivergencias, observacaoNaturezaDivergencias };
   });
 }
 

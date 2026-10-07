@@ -1621,6 +1621,9 @@ export type DoubleCheckInComparativoLinha = {
   naturezaDivergencias?: Partial<
     Record<DoubleCheckInCampoComparativo, DoubleCheckInNaturezaDivergencia>
   >;
+  observacaoNaturezaDivergencias?: Partial<
+    Record<DoubleCheckInCampoComparativo, string>
+  >;
   /** Documento sem contas a pagar (Nomus não gera agendamento financeiro). */
   naoGeraContasPagar?: boolean;
   temDivergencia: boolean;
