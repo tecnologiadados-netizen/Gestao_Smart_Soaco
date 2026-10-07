@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Navigate } from 'react-router-dom';
-import { CheckCircle2, Eye, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Eye, RefreshCw, XCircle } from 'lucide-react';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import LoaderCirculo from '../../components/LoaderCirculo';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
@@ -130,9 +130,8 @@ export default function DigitacaoConferenciaPage() {
   const [qtde, setQtde] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [devolviendo, setDevolviendo] = useState(false);
-  const [acaoErro, setAcaoErro] = useState<string | null>(null);
   const [acaoOk, setAcaoOk] = useState<string | null>(null);
-  const [feedbackRetorno, setFeedbackRetorno] = useState<'off' | 'loading' | 'ok'>('off');
+  const [feedbackRetorno, setFeedbackRetorno] = useState<'off' | 'loading' | 'ok' | 'erro'>('off');
   const [feedbackMsg, setFeedbackMsg] = useState('Conferência devolvida à Mesa');
   const qtdeRef = useRef<HTMLInputElement>(null);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -193,7 +192,6 @@ export default function DigitacaoConferenciaPage() {
   const abrirDetalhe = async (doc: RecebimentoPendenciaConferente) => {
     setModalDoc(doc);
     setDetalheErro(null);
-    setAcaoErro(null);
     setAcaoOk(null);
     setQtde('');
     const cached = detalheCacheRef.current.get(doc.idDocumento);
@@ -246,16 +244,26 @@ export default function DigitacaoConferenciaPage() {
     }, 1400);
   };
 
+  const mostrarErroCentro = (mensagem: string) => {
+    setAcaoOk(null);
+    setFeedbackMsg(mensagem);
+    setFeedbackRetorno('erro');
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    feedbackTimerRef.current = setTimeout(() => {
+      setFeedbackRetorno('off');
+      feedbackTimerRef.current = null;
+      qtdeRef.current?.focus();
+    }, 2200);
+  };
+
   const adicionar = async () => {
     if (!modalDoc || !itensCarregados || idItem === '') return;
     const qtdeNum = Number(String(qtde).replace(',', '.'));
     if (!Number.isFinite(qtdeNum) || qtdeNum <= 0) {
-      setAcaoErro('Informe uma quantidade maior que zero.');
-      setAcaoOk(null);
+      mostrarErroCentro('Informe uma quantidade maior que zero.');
       return;
     }
     setSalvando(true);
-    setAcaoErro(null);
     setAcaoOk(null);
     try {
       const r = await postRecebimentoDigitacaoItem({
@@ -278,27 +286,24 @@ export default function DigitacaoConferenciaPage() {
         p.idItem === r.produto.idItem ? r.produto : p
       );
       if (r.esgotado) {
-        setAcaoErro(
-          '3 tentativas esgotadas neste item. Ele fica marcado. Continue nos demais; o documento volta para a Mesa ao final.'
+        mostrarErroCentro(
+          '3 tentativas esgotadas neste item. Ele fica marcado. Continue nos demais.'
         );
         selecionarProximoPendente(restantes);
-        qtdeRef.current?.focus();
       } else if (r.acertou) {
         setAcaoOk('Quantidade conferida.');
         selecionarProximoPendente(restantes);
         qtdeRef.current?.focus();
       } else {
         const restam = r.tentativasRestantes;
-        setAcaoErro(
+        mostrarErroCentro(
           restam === 1
-            ? 'Quantidade divergente. Última tentativa.'
-            : `Quantidade divergente. Você tem ${restam} tentativa(s).`
+            ? 'Quantidade divergente. Esta é a última tentativa.'
+            : `Quantidade divergente. Restam ${restam} tentativas.`
         );
-        qtdeRef.current?.focus();
       }
     } catch (e) {
-      setFeedbackRetorno('off');
-      setAcaoErro(e instanceof Error ? e.message : 'Não foi possível gravar a contagem.');
+      mostrarErroCentro(e instanceof Error ? e.message : 'Não foi possível gravar a contagem.');
     } finally {
       setSalvando(false);
     }
@@ -307,7 +312,6 @@ export default function DigitacaoConferenciaPage() {
   const devolver = async () => {
     if (!modalDoc || !itensCarregados || !todosEncerrados) return;
     setDevolviendo(true);
-    setAcaoErro(null);
     setFeedbackRetorno('loading');
     try {
       await postRecebimentoDigitacaoDevolver(modalDoc.idDocumento);
@@ -317,8 +321,7 @@ export default function DigitacaoConferenciaPage() {
           : 'Conferência devolvida à Mesa'
       );
     } catch (e) {
-      setFeedbackRetorno('off');
-      setAcaoErro(e instanceof Error ? e.message : 'Não foi possível devolver à Mesa.');
+      mostrarErroCentro(e instanceof Error ? e.message : 'Não foi possível devolver à Mesa.');
     } finally {
       setDevolviendo(false);
     }
@@ -636,11 +639,6 @@ export default function DigitacaoConferenciaPage() {
                     {acaoOk}
                   </p>
                 )}
-                {acaoErro && (
-                  <p className="text-sm text-rose-600" role="alert">
-                    {acaoErro}
-                  </p>
-                )}
               </div>
             </div>
           </div>,
@@ -652,13 +650,22 @@ export default function DigitacaoConferenciaPage() {
         createPortal(
           <div
             className="fixed inset-0 z-[10100] flex items-center justify-center bg-slate-950/45 backdrop-blur-md"
-            role="status"
+            role={feedbackRetorno === 'erro' ? 'alert' : 'status'}
             aria-live="polite"
             aria-busy={feedbackRetorno === 'loading'}
+            onClick={() => {
+              if (feedbackRetorno !== 'erro') return;
+              if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+              feedbackTimerRef.current = null;
+              setFeedbackRetorno('off');
+              qtdeRef.current?.focus();
+            }}
           >
             <div className="flex flex-col items-center gap-4 px-8 py-10">
               {feedbackRetorno === 'loading' ? (
                 <LoaderCirculo tamanho={48} cores={['#FFAD00', '#9BA3E8']} className="shrink-0" />
+              ) : feedbackRetorno === 'erro' ? (
+                <XCircle className="h-12 w-12 text-rose-400" aria-hidden />
               ) : (
                 <CheckCircle2 className="h-12 w-12 text-emerald-400" aria-hidden />
               )}
