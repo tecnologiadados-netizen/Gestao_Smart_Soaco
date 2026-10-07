@@ -26,6 +26,11 @@ export type LinkDivulgacao = {
   descricao: string;
 };
 
+export type AnexoVaga = {
+  nome: string;
+  storagePath: string;
+};
+
 export type Vaga = {
   id: string;
   titulo: string;
@@ -34,6 +39,7 @@ export type Vaga = {
   observacao: string;
   links: LinkDivulgacao[];
   cor: string;
+  anexo: AnexoVaga | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -122,6 +128,16 @@ export function atualizarVaga(
   },
 ): Promise<{ vaga: Vaga }> {
   return rhFetchJson(`vagas/${id}`, { method: 'PATCH', body: patch });
+}
+
+export function anexarPdfVaga(id: string, arquivo: File): Promise<{ vaga: Vaga }> {
+  const form = new FormData();
+  form.append('file', arquivo);
+  return rhFetchJson(`vagas/${id}/anexo`, { method: 'POST', body: form });
+}
+
+export function removerPdfVaga(id: string): Promise<{ vaga: Vaga }> {
+  return rhFetchJson(`vagas/${id}/anexo`, { method: 'DELETE' });
 }
 
 export function excluirVaga(id: string): Promise<{ vagas: Vaga[] }> {

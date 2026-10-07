@@ -2996,6 +2996,8 @@ model RhVaga {
   /// JSON: [{ id, url, descricao }] dos anúncios, quando a vaga está em divulgação.
   linksDivulgacao String       @default("[]") @map("links_divulgacao")
   cor        String            @default("branco")
+  anexoNome  String?           @map("anexo_nome")
+  anexoPath  String?           @map("anexo_path")
   createdBy  String?           @map("created_by")
   createdAt  DateTime          @default(now()) @map("created_at")
   updatedAt  DateTime          @updatedAt @map("updated_at")

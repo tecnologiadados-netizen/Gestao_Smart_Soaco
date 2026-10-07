@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { VagaErro } from '../lib/vagas.js';
-import { atualizarVaga, criarVaga, excluirVaga, listarVagas } from '../repositories/vagasRepository.js';
+import { anexarPdf, atualizarVaga, criarVaga, excluirVaga, listarVagas, removerPdf } from '../repositories/vagasRepository.js';
 
 function ator(req: Request): string {
   return req.rhAuth?.actor?.trim() || 'sistema';
@@ -56,6 +56,29 @@ export async function atualizarVagaHandler(req: Request, res: Response): Promise
       ator(req),
     );
     res.json({ vaga });
+  } catch (err) {
+    responder(res, err);
+  }
+}
+
+export async function anexarPdfHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const arquivo = req.file;
+    if (!arquivo) throw new VagaErro('Selecione o PDF do post da vaga.');
+    const vaga = await anexarPdf(String(req.params.id ?? ''), {
+      buffer: arquivo.buffer,
+      mimetype: arquivo.mimetype,
+      originalname: arquivo.originalname,
+    });
+    res.json({ vaga });
+  } catch (err) {
+    responder(res, err);
+  }
+}
+
+export async function removerPdfHandler(req: Request, res: Response): Promise<void> {
+  try {
+    res.json({ vaga: await removerPdf(String(req.params.id ?? '')) });
   } catch (err) {
     responder(res, err);
   }

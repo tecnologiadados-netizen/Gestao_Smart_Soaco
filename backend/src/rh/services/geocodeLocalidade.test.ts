@@ -17,7 +17,9 @@ import {
   logradouroFraco,
   pontoDoCep,
   pontoDoResultadoGoogle,
+  bairroEhACidade,
   pontoBairroOsmConhecido,
+  pontoCidadeOsmConhecido,
   pontoForaDaCidade,
   pontoDoResultadoPlaces,
   singularizarLocalidade,
@@ -346,6 +348,19 @@ describe('geocode de bairro', () => {
       lat: -5.1127802,
       lng: -42.8222858,
     });
+  });
+
+  it('coloca Demerval Lobão na sede do município, não em Teresina', () => {
+    expect(bairroEhACidade('DEMERVAL LOBAO', 'Demerval Lobão')).toBe(true);
+    expect(pontoCidadeOsmConhecido('PI', 'Demerval Lobão')).toEqual({
+      lat: -5.3640643,
+      lng: -42.673993,
+    });
+    expect(pontoBairroOsmConhecido('PI', 'Demerval Lobão', 'DEMERVAL LOBAO')).toEqual({
+      lat: -5.3640643,
+      lng: -42.673993,
+    });
+    expect(pontoBairroOsmConhecido('PI', 'Teresina', 'Areias')?.lat).not.toBe(-5.3640643);
   });
 
   it('recusa o resultado do Google quando ele é só a cidade', () => {

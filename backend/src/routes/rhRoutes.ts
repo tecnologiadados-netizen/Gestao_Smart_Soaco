@@ -112,7 +112,9 @@ import {
   atualizarVagaHandler,
   criarVagaHandler,
   excluirVagaHandler,
+  anexarPdfHandler,
   getVagasHandler,
+  removerPdfHandler,
 } from '../rh/controllers/vagasController.js';
 
 const router = Router();
@@ -125,6 +127,21 @@ const uploadPrint = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 },
 });
+
+function receberPdf(
+  req: import('express').Request,
+  res: import('express').Response,
+  next: import('express').NextFunction,
+) {
+  uploadPrint.single('file')(req, res, (err: unknown) => {
+    if (err) {
+      const grande = !!err && typeof err === 'object' && (err as { code?: string }).code === 'LIMIT_FILE_SIZE';
+      res.status(400).json({ error: grande ? 'O PDF passa de 15 MB.' : 'Não foi possível receber o arquivo.' });
+      return;
+    }
+    anexarPdfHandler(req, res).catch(next);
+  });
+}
 
 function receberPrint(
   req: import('express').Request,
@@ -254,6 +271,8 @@ router.delete('/demandas-internas/anexos/:id', requireRhAccess('/demandas-intern
 router.get('/vagas', requireRhAccess('/vagas', 'view'), wrap(getVagasHandler));
 router.post('/vagas', requireRhAccess('/vagas', 'edit'), wrap(criarVagaHandler));
 router.patch('/vagas/:id', requireRhAccess('/vagas', 'edit'), wrap(atualizarVagaHandler));
+router.post('/vagas/:id/anexo', requireRhAccess('/vagas', 'edit'), receberPdf);
+router.delete('/vagas/:id/anexo', requireRhAccess('/vagas', 'edit'), wrap(removerPdfHandler));
 router.delete('/vagas/:id', requireRhAccess('/vagas', 'edit'), wrap(excluirVagaHandler));
 
 // Backup / grupos RH (Gestor grupos + rhGrupoPermissao)

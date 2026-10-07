@@ -44,10 +44,12 @@ function ItemLegenda({
 export function DistribuicaoExperienciaCard({
   resumo,
   referencia,
+  prazoDias = 90,
   onOpen,
 }: {
   resumo: RetencaoExperienciaResumo;
   referencia: string;
+  prazoDias?: number;
   onOpen: () => void;
 }) {
   const uid = useId().replace(/:/g, "");
@@ -69,7 +71,11 @@ export function DistribuicaoExperienciaCard({
         <span className="shrink-0 text-[11px] text-muted-foreground">{referencia}</span>
       </div>
 
-      {totalConclusivo <= 0 ? (
+      {resumo.retidos + resumo.desligadosNaExperiencia + resumo.emAvaliacao <= 0 ? (
+        <p className="mt-4 border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
+          Nenhuma admissão neste período. Recue a data inicial para incluir admissões mais antigas.
+        </p>
+      ) : totalConclusivo <= 0 ? (
         <p className="mt-4 border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
           Ainda não há coortes com resultado conclusivo.
         </p>
@@ -142,21 +148,23 @@ export function DistribuicaoExperienciaCard({
               titulo="Retidos"
               percentual={retidosPct}
               quantidade={resumo.retidos}
-              detalhe="Permaneceram após o 90º dia."
+              detalhe={`Permaneceram após o ${prazoDias}º dia.`}
               cor={COR_RETIDOS}
             />
             <ItemLegenda
               titulo="Desligados"
               percentual={desligadosPct}
               quantidade={resumo.desligadosNaExperiencia}
-              detalhe="Desligados até o 90º dia."
+              detalhe={`Desligados até o ${prazoDias}º dia.`}
               cor={COR_DESLIGADOS}
             />
           </div>
         </div>
       )}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-[10px] text-muted-foreground">
-        <span>{resumo.emAvaliacao.toLocaleString("pt-BR")} ainda em avaliação</span>
+        <span>
+          {resumo.emAvaliacao.toLocaleString("pt-BR")} ainda em avaliação até o {prazoDias}º dia
+        </span>
         <span className="font-medium text-primary">Ver evolução</span>
       </div>
     </button>

@@ -103,6 +103,33 @@ const POR_CIDADE: Record<string, Record<string, PontoBairroOsm>> = {
   "MA|TIMON": TIMON,
 };
 
+/** Sede OSM do município — quando o cadastro repete o nome da cidade no bairro. */
+const CIDADES_OSM: Record<string, PontoBairroOsm> = {
+  "PI|DEMERVAL LOBAO": { lat: -5.3640643, lng: -42.673993 },
+  "PI|NAZARIA": { lat: -5.3512851, lng: -42.8152823 },
+  "PI|LAGOA DO PIAUI": { lat: -5.4116544, lng: -42.6450588 },
+  "PI|BENEDITINOS": { lat: -5.4565671, lng: -42.3605061 },
+  "PI|MONSENHOR GIL": { lat: -5.5609098, lng: -42.6127716 },
+  "PI|COIVARAS": { lat: -5.0927005, lng: -42.2052489 },
+  "PI|ALTO LONGA": { lat: -5.2549051, lng: -42.2072388 },
+  "PI|PAU D ARCO DO PIAUI": { lat: -5.2522265, lng: -42.3884018 },
+  "PI|CURRALINHOS": { lat: -5.6190404, lng: -42.8280018 },
+  "MA|TIMON": { lat: -5.1004341, lng: -42.8312018 },
+};
+
+export function bairroEhACidade(bairro: string, cidade: string): boolean {
+  const bairroNorm = normalizar(bairro);
+  const cidadeNorm = normalizar(cidade);
+  return bairroNorm.length > 0 && bairroNorm === cidadeNorm;
+}
+
+export function pontoCidadeOsmConhecido(uf: string, cidade: string): PontoBairroOsm | null {
+  const ufNorm = uf.trim().toUpperCase();
+  const cidadeNorm = normalizar(cidade);
+  if (!ufNorm || !cidadeNorm) return null;
+  return CIDADES_OSM[`${ufNorm}|${cidadeNorm}`] ?? null;
+}
+
 function resolverBairroNaTabela(tabela: Record<string, PontoBairroOsm>, bairroNorm: string): PontoBairroOsm | null {
   const exato = tabela[bairroNorm];
   if (exato) return exato;
@@ -117,6 +144,7 @@ export function pontoBairroOsmConhecido(uf: string, cidade: string, bairro: stri
   const cidadeNorm = normalizar(cidade);
   const bairroNorm = normalizar(bairro);
   if (!ufNorm || !cidadeNorm || !bairroNorm) return null;
+  if (bairroEhACidade(bairro, cidade)) return pontoCidadeOsmConhecido(uf, cidade);
   const tabela = POR_CIDADE[`${ufNorm}|${cidadeNorm}`];
   if (!tabela) return null;
   return resolverBairroNaTabela(tabela, bairroNorm);

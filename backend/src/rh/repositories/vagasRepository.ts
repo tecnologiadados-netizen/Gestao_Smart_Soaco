@@ -1,4 +1,6 @@
+import { randomUUID } from 'crypto';
 import { prisma } from '../../config/prisma.js';
+import { deleteRhFileIfExists, rhStoragePath, saveRhFile } from '../utils/rhUpload.js';
 import {
   VagaErro,
   lerLinksSalvos,
@@ -30,6 +32,7 @@ export type Vaga = {
   observacao: string;
   links: LinkDivulgacao[];
   cor: string;
+  anexo: { nome: string; storagePath: string } | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -44,6 +47,8 @@ function mapear(vaga: {
   observacao: string;
   linksDivulgacao: string;
   cor: string;
+  anexoNome: string | null;
+  anexoPath: string | null;
   createdBy: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -65,6 +70,7 @@ function mapear(vaga: {
     observacao: vaga.observacao,
     links: lerLinksSalvos(vaga.linksDivulgacao),
     cor: vaga.cor || 'branco',
+    anexo: vaga.anexoPath ? { nome: vaga.anexoNome || 'post.pdf', storagePath: vaga.anexoPath } : null,
     createdBy: vaga.createdBy,
     createdAt: vaga.createdAt.toISOString(),
     updatedAt: vaga.updatedAt.toISOString(),
@@ -196,5 +202,49 @@ export async function atualizarVaga(
 export async function excluirVaga(id: string): Promise<void> {
   const atual = await prisma.rhVaga.findUnique({ where: { id } });
   if (!atual) throw new VagaErro('Vaga não encontrada.', 404);
+  if (atual.anexoPath) deleteRhFileIfExists(atual.anexoPath);
   await prisma.rhVaga.delete({ where: { id } });
+}
+
+function mimeDePdf(mime: string, nome: string): void {
+  const arquivo = nome.toLowerCase();
+  const tipo = mime.toLowerCase();
+  if (tipo === 'application/pdf' || arquivo.endsWith('.pdf')) return;
+  throw new VagaErro('Envie o post da vaga em PDF.');
+}
+
+export async function anexarPdf(
+  id: string,
+  arquivo: { buffer: Buffer; mimetype: string; originalname: string },
+): Promise<Vaga> {
+  const atual = await prisma.rhVaga.findUnique({ where: { id } });
+  if (!atual) throw new VagaErro('Vaga não encontrada.', 404);
+  if (!arquivo.buffer?.length) throw new VagaErro('O PDF está vazio.');
+  mimeDePdf(arquivo.mimetype, arquivo.originalname);
+  const nome = nomeObrigatorio(arquivo.originalname || 'post.pdf', 'o nome do arquivo');
+  const storagePath = saveRhFile(rhStoragePath('vagas', randomUUID(), nome), arquivo.buffer);
+  try {
+    const vaga = await prisma.rhVaga.update({
+      where: { id },
+      data: { anexoNome: nome, anexoPath: storagePath },
+      include: incluir,
+    });
+    if (atual.anexoPath && atual.anexoPath !== storagePath) deleteRhFileIfExists(atual.anexoPath);
+    return mapear(vaga);
+  } catch (err) {
+    deleteRhFileIfExists(storagePath);
+    throw err;
+  }
+}
+
+export async function removerPdf(id: string): Promise<Vaga> {
+  const atual = await prisma.rhVaga.findUnique({ where: { id } });
+  if (!atual) throw new VagaErro('Vaga não encontrada.', 404);
+  if (atual.anexoPath) deleteRhFileIfExists(atual.anexoPath);
+  const vaga = await prisma.rhVaga.update({
+    where: { id },
+    data: { anexoNome: null, anexoPath: null },
+    include: incluir,
+  });
+  return mapear(vaga);
 }

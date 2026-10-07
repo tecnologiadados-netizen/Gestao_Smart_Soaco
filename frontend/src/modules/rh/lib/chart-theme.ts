@@ -37,7 +37,7 @@ export type RhChartTheme = {
 };
 
 const LIGHT: RhChartTheme = {
-  grid: "rgb(4 30 66 / 0.12)",
+  grid: "rgb(4 30 66 / 0.18)",
   axisTick: "#64748b",
   axisCategory: "#041E42",
   linePrimary: "#1E22AA",
@@ -49,12 +49,12 @@ const LIGHT: RhChartTheme = {
   barSelected: "#FFAD00",
   barAccent: "#5A8FD4",
   barLarge: "#3B72BF",
-  success: "#059669",
-  successActive: "#34d399",
+  success: "#047857",
+  successActive: "#059669",
   danger: "#dc2626",
-  dangerActive: "#f87171",
-  neutral: "#94a3b8",
-  neutralActive: "#cbd5e1",
+  dangerActive: "#b91c1c",
+  neutral: "#64748b",
+  neutralActive: "#475569",
   referenceLine: "rgb(4 30 66 / 0.16)",
   sectorGradient: ["#0B1F3A", "#12305A", "#1A4380", "#2459A6", "#3B72BF", "#5A8FD4", "#7BA9E3", "#9BC1ED"],
   legendBlue: "#1E22AA",

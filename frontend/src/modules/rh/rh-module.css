@@ -152,6 +152,33 @@
   background: var(--muted);
 }
 
+/* Datas do dashboard ficam sobre o fundo do modal: card branco, borda sólida e sombra. */
+.rh-module input.rh-data-destaque,
+.rh-portal input.rh-data-destaque {
+  background-color: var(--card) !important;
+  color: var(--foreground);
+  color-scheme: light;
+  border: 1px solid var(--input);
+  box-shadow: var(--shadow-1);
+}
+
+.dark .rh-module input.rh-data-destaque,
+.dark .rh-portal input.rh-data-destaque {
+  color-scheme: dark;
+}
+
+.rh-module input.rh-data-destaque:hover,
+.rh-portal input.rh-data-destaque:hover {
+  border-color: color-mix(in oklch, var(--primary) 55%, var(--input));
+}
+
+.rh-module input.rh-data-destaque:focus,
+.rh-portal input.rh-data-destaque:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 38%, transparent), var(--shadow-1);
+}
+
 /*
  * PADRÃO DE CAMPOS DO RH (temas claro e escuro).
  * Hierarquia de fundos:

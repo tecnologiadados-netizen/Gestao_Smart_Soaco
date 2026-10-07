@@ -15,6 +15,7 @@ import {
   type DashboardPeriodo,
 } from "@rh/lib/dashboard-periodo";
 import { rhFieldInput, rhFieldLabel } from "@rh/lib/form-field-styles";
+import { cn } from "@rh/lib/utils";
 
 export function DashboardExecutivoFiltros({
   empresas,
@@ -118,7 +119,7 @@ export function DashboardPeriodoDatas({
         <input
           id={`${idPrefix}-inicio`}
           type="date"
-          className={rhFieldInput}
+          className={cn(rhFieldInput, "rh-data-destaque border-solid")}
           value={inicioDigitado}
           min="1900-01-01"
           max={hoje}
@@ -136,7 +137,7 @@ export function DashboardPeriodoDatas({
         <input
           id={`${idPrefix}-fim`}
           type="date"
-          className={rhFieldInput}
+          className={cn(rhFieldInput, "rh-data-destaque border-solid")}
           value={fimDigitado}
           min={inicio}
           max={hoje}

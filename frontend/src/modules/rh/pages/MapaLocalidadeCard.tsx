@@ -75,12 +75,13 @@ const IBGE_POR_UF = new Map(ESTADOS.features.map((feature) => [feature.propertie
 const cacheMalha = new Map<string, FeatureCollection<Polygon | MultiPolygon, PropsCidade>>();
 type PontoMapa = Ponto & { cep?: string; rua?: string; bairro?: string };
 const cacheGeo = new Map<string, PontoMapa | null>();
-const CACHE_GEO = "rh-mapa-bairros-v22";
+const CACHE_GEO = "rh-mapa-bairros-v23";
 cacheGeo.clear();
 try {
   localStorage.removeItem("rh-mapa-bairros-v19");
   localStorage.removeItem("rh-mapa-bairros-v20");
   localStorage.removeItem("rh-mapa-bairros-v21");
+  localStorage.removeItem("rh-mapa-bairros-v22");
 } catch {
   /* cache antigo do CEP */
 }

@@ -22,6 +22,7 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
+  ComposedChart,
   Cell,
   LabelList,
 } from "recharts";
@@ -41,6 +42,8 @@ import {
 } from "@rh/lib/api-client";
 import {
   escolherComplementoDesligamento,
+  normalizarMotivoPai,
+  type DesligamentoComplementoResumo,
 } from "@rh/lib/motivo-desligamento";
 import {
   canEditDashboardModule,
@@ -178,6 +181,82 @@ function TurnoverEvolutionTooltip(props: {
   );
 }
 
+type CardCoorteRetencao = {
+  row: (string | number)[];
+  demissao: string;
+  motivoDemissao: string;
+  key: string;
+};
+
+function motivoDoDesligamentoExperiencia(
+  pessoa: CardCoorteRetencao,
+  complementos: DesligamentoComplementoResumo[],
+): string {
+  const pai = pessoa.motivoDemissao.trim();
+  if (pai) return pai;
+  const filho =
+    escolherComplementoDesligamento(
+      complementos,
+      String(pessoa.row[ORGANICO_IDX.MATRICULA] ?? ""),
+      pessoa.demissao,
+    )?.motivoFilho?.trim() ?? "";
+  return filho || "Sem motivo informado";
+}
+
+type CoorteRetencaoPonto = {
+  eixo: string;
+  total: number;
+  retidos: number;
+  desligadosNaExperiencia: number;
+  emAvaliacao: number;
+  retidosPct: number;
+  desligadosPct: number;
+  avaliacaoPct: number;
+};
+
+function formatPct1(n: number): string {
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+function RetencaoCoorteTooltip(props: {
+  active?: boolean;
+  payload?: Array<{ payload?: CoorteRetencaoPonto }>;
+  cores: { success: string; danger: string; neutral: string };
+  dias: number;
+}) {
+  const { active, payload, cores, dias } = props;
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  if (!row) return null;
+  const linhas = [
+    { cor: cores.neutral, rotulo: "Ainda em avaliação", qtd: row.emAvaliacao, pct: row.avaliacaoPct },
+    { cor: cores.danger, rotulo: rotuloDesligadosExperiencia(dias), qtd: row.desligadosNaExperiencia, pct: row.desligadosPct },
+    { cor: cores.success, rotulo: rotuloRetidosExperiencia(dias), qtd: row.retidos, pct: row.retidosPct },
+  ];
+  return (
+    <div className="rounded-sm border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md min-w-[220px]">
+      <p className="font-semibold text-foreground border-b border-border pb-1.5 mb-2">{row.eixo}</p>
+      <p className="text-foreground">
+        <span className="text-muted-foreground">Admitidos no mês: </span>
+        <span className="font-bold tabular-nums">{formatIntPt(row.total)}</span>
+      </p>
+      <ul className="mt-2 space-y-1">
+        {linhas.map((linha) => (
+          <li key={linha.rotulo} className="flex items-baseline justify-between gap-3">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="inline-block h-2 w-2 shrink-0 rounded-sm" style={{ background: linha.cor }} />
+              {linha.rotulo}
+            </span>
+            <span className="font-medium tabular-nums text-foreground">
+              {formatIntPt(linha.qtd)} ({formatPct1(linha.pct)}%)
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function FolhaMensalTooltip(props: {
   active?: boolean;
   payload?: Array<{ payload?: FolhaMensalPoint }>;
@@ -272,6 +351,16 @@ function formatCustoFolhaCurto(n: number): string {
 
 type ComparacaoTempoDesligamento = "acima" | "abaixo";
 const OPCOES_DIAS_DESLIGAMENTO = [0, 15, 30, 45, 60, 90] as const;
+const PRAZOS_EXPERIENCIA_DIAS = [15, 20, 30, 45, 60, 90] as const;
+const PRAZO_EXPERIENCIA_PADRAO = 90;
+
+function rotuloRetidosExperiencia(dias: number): string {
+  return `Retidos após ${dias} dias`;
+}
+
+function rotuloDesligadosExperiencia(dias: number): string {
+  return `Desligados até ${dias} dias`;
+}
 
 function desligamentoAtendeTempo(
   admissaoValor: unknown,
@@ -333,6 +422,41 @@ function FiltroTempoDesligamento({
   );
 }
 
+function FiltroPrazoExperiencia({
+  dias,
+  onChange,
+}: {
+  dias: number;
+  onChange: (dias: number) => void;
+}) {
+  return (
+    <div className="min-w-0">
+      <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Desligados até</span>
+      <div className="flex h-9 items-center gap-1" role="group" aria-label="Prazo da experiência em dias">
+        {PRAZOS_EXPERIENCIA_DIAS.map((opcao) => {
+          const ativo = opcao === dias;
+          return (
+            <button
+              key={opcao}
+              type="button"
+              aria-pressed={ativo}
+              onClick={() => onChange(opcao)}
+              className={`h-9 min-w-9 rounded-lg border px-2 text-sm font-semibold tabular-nums transition-colors ${
+                ativo
+                  ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                  : "border-border bg-card text-foreground shadow-sm hover:bg-muted"
+              }`}
+            >
+              {opcao}
+            </button>
+          );
+        })}
+        <span className="pl-1 text-xs text-muted-foreground">dias</span>
+      </div>
+    </div>
+  );
+}
+
 const Dashboard = () => {
   const chart = useRhChartTheme();
   const navigate = useNavigate();
@@ -352,8 +476,13 @@ const Dashboard = () => {
   const [movimentacoesLinhaModalAberto, setMovimentacoesLinhaModalAberto] = useState(false);
   const [retencaoExperienciaModalAberto, setRetencaoExperienciaModalAberto] = useState(false);
   const [avaliacaoExperienciaModalAberto, setAvaliacaoExperienciaModalAberto] = useState(false);
-  const [periodoRetencaoExperiencia, setPeriodoRetencaoExperiencia] =
-    useState<DashboardPeriodo>(() => periodoPadraoExecutivo());
+  const [motivosDesligamentoExperienciaAberto, setMotivosDesligamentoExperienciaAberto] = useState(false);
+  const [motivoDesligamentoSelecionado, setMotivoDesligamentoSelecionado] = useState<string | null>(null);
+  const [periodoRetencaoManual, setPeriodoRetencaoManual] = useState<{
+    empresa: string;
+    periodo: DashboardPeriodo;
+  } | null>(null);
+  const [limiteDiasExperiencia, setLimiteDiasExperiencia] = useState(PRAZO_EXPERIENCIA_PADRAO);
   const [movimentacaoPontoSelecionado, setMovimentacaoPontoSelecionado] = useState<{
     year: number;
     month: number;
@@ -367,17 +496,14 @@ const Dashboard = () => {
     nivelId: NivelEscolaridadeId;
     genero: GeneroEscolaridade;
   } | null>(null);
-  const [coorteRetencaoSelecionada, setCoorteRetencaoSelecionada] = useState<{
-    eixo: string;
-    fatia: "retidos" | "desligados" | "avaliacao";
-  } | null>(null);
+  const [coorteRetencaoSelecionada, setCoorteRetencaoSelecionada] = useState<string | null>(null);
   const [localidadeSelecionada, setLocalidadeSelecionada] = useState<SelecaoLocalidade | null>(null);
   const [periodoTurnover, setPeriodoTurnover] = useState<DashboardPeriodo>(() => periodoPadraoExecutivo());
   const { data: organicoRows, isLoading, isError, refetch } = useQuery({
     queryKey: ["organico"],
     queryFn: getOrganico,
   });
-  const { data: secullumRows } = useQuery({
+  const { data: secullumRows, isFetched: secullumConsultado } = useQuery({
     queryKey: ["secullum-funcionarios-dashboard"],
     queryFn: getSecullumFuncionarios,
     enabled: isApiConfigured(),
@@ -622,6 +748,7 @@ const Dashboard = () => {
         return {
           admissao: String(pessoa.admissao ?? "").trim(),
           demissao: String(pessoa.demissao ?? "").trim(),
+          motivoDemissao: String(pessoa.motivoDemissao ?? "").trim(),
           aprendiz,
           row,
           key: normalizeMatricula(pessoa.numeroFolha) || String(pessoa.nome ?? "").trim(),
@@ -635,12 +762,36 @@ const Dashboard = () => {
       return {
         admissao: String(values[ORGANICO_IDX.ADMISSAO] ?? "").trim(),
         demissao: String(demissaoByMatricula[matricula] ?? "").trim(),
+        motivoDemissao: "",
         aprendiz: ehAprendiz(values),
         row: values,
         key: `${normalizeMatricula(matricula) || "semmat"}-${index}`,
       };
     });
   }, [demissaoByMatricula, organicoDaEmpresa, secullumDaEmpresa]);
+
+  const primeiraAdmissaoRetencao = useMemo(() => {
+    let menor: Date | null = null;
+    for (const pessoa of pessoasRetencaoExperiencia) {
+      const admissao = parseDateBR(pessoa.admissao);
+      if (!admissao) continue;
+      const dia = inicioDoDia(admissao);
+      if (!menor || dia < menor) menor = dia;
+    }
+    return menor;
+  }, [pessoasRetencaoExperiencia]);
+  const fontesRetencaoProntas = !isLoading && (!isApiConfigured() || secullumConsultado);
+  const periodoRetencaoAutomatico = useMemo(() => {
+    const fim = hojePainel;
+    const inicioPadrao = periodoPadraoExecutivo(hojePainel).inicio;
+    const inicio =
+      fontesRetencaoProntas && primeiraAdmissaoRetencao && primeiraAdmissaoRetencao <= fim
+        ? primeiraAdmissaoRetencao
+        : inicioPadrao;
+    return { inicio, fim };
+  }, [fontesRetencaoProntas, hojePainel, primeiraAdmissaoRetencao]);
+  const periodoRetencaoExperiencia =
+    periodoRetencaoManual?.empresa === empresaPainel ? periodoRetencaoManual.periodo : periodoRetencaoAutomatico;
 
   const retencaoExperiencia = useMemo(() => {
     const resumo: RetencaoExperienciaResumo = {
@@ -655,12 +806,12 @@ const Dashboard = () => {
       retidos: 0,
       desligadosNaExperiencia: 0,
       emAvaliacao: 0,
-      pessoasRetidos: [] as Array<{ row: (string | number)[]; demissao: string; key: string }>,
-      pessoasDesligados: [] as Array<{ row: (string | number)[]; demissao: string; key: string }>,
-      pessoasAvaliacao: [] as Array<{ row: (string | number)[]; demissao: string; key: string }>,
+      pessoasRetidos: [] as CardCoorteRetencao[],
+      pessoasDesligados: [] as CardCoorteRetencao[],
+      pessoasAvaliacao: [] as CardCoorteRetencao[],
     }));
     const porMes = new Map(meses.map((mes) => [`${mes.year}-${mes.month}`, mes]));
-    const emAvaliacao: Array<{ row: (string | number)[]; demissao: string; key: string }> = [];
+    const emAvaliacao: CardCoorteRetencao[] = [];
     const hojeMs = inicioDoDia(hojePainel).getTime();
 
     for (const pessoa of pessoasRetencaoExperiencia) {
@@ -680,12 +831,17 @@ const Dashboard = () => {
         : null;
       const diasDesdeAdmissao = Math.floor((hojeMs - inicioDoDia(admissao).getTime()) / 86_400_000);
 
-      const card = { row: pessoa.row, demissao: pessoa.demissao, key: pessoa.key };
-      if (diasAteDemissao != null && diasAteDemissao >= 0 && diasAteDemissao <= 90) {
+      const card: CardCoorteRetencao = {
+        row: pessoa.row,
+        demissao: pessoa.demissao,
+        motivoDemissao: pessoa.motivoDemissao,
+        key: pessoa.key,
+      };
+      if (diasAteDemissao != null && diasAteDemissao >= 0 && diasAteDemissao <= limiteDiasExperiencia) {
         resumo.desligadosNaExperiencia += 1;
         ponto.desligadosNaExperiencia += 1;
         ponto.pessoasDesligados.push(card);
-      } else if ((diasAteDemissao != null && diasAteDemissao > 90) || diasDesdeAdmissao > 90) {
+      } else if ((diasAteDemissao != null && diasAteDemissao > limiteDiasExperiencia) || diasDesdeAdmissao > limiteDiasExperiencia) {
         resumo.retidos += 1;
         ponto.retidos += 1;
         ponto.pessoasRetidos.push(card);
@@ -705,15 +861,41 @@ const Dashboard = () => {
 
     const serie = meses.map((mes) => {
       const total = mes.retidos + mes.desligadosNaExperiencia + mes.emAvaliacao;
+      const pct = (quantidade: number) => (total > 0 ? (quantidade / total) * 100 : 0);
       return {
         ...mes,
-        retidosPct: total > 0 ? (mes.retidos / total) * 100 : 0,
-        desligadosPct: total > 0 ? (mes.desligadosNaExperiencia / total) * 100 : 0,
-        avaliacaoPct: total > 0 ? (mes.emAvaliacao / total) * 100 : 0,
+        total,
+        retidosPct: pct(mes.retidos),
+        desligadosPct: pct(mes.desligadosNaExperiencia),
+        avaliacaoPct: pct(mes.emAvaliacao),
       };
     });
     return { resumo, serie, emAvaliacao };
-  }, [hojePainel, periodoRetencaoExperiencia, pessoasRetencaoExperiencia]);
+  }, [hojePainel, limiteDiasExperiencia, periodoRetencaoExperiencia, pessoasRetencaoExperiencia]);
+  const distribuicaoMotivosDesligamento = useMemo(() => {
+    const pessoas = retencaoExperiencia.serie.flatMap((mes) => mes.pessoasDesligados);
+    const grupos = new Map<string, { motivo: string; itens: CardCoorteRetencao[] }>();
+    for (const pessoa of pessoas) {
+      const motivo = motivoDoDesligamentoExperiencia(pessoa, complementosDesligamento);
+      const chave = normalizarMotivoPai(motivo) || "sem motivo informado";
+      const atual = grupos.get(chave);
+      if (atual) atual.itens.push(pessoa);
+      else grupos.set(chave, { motivo, itens: [pessoa] });
+    }
+    const total = pessoas.length;
+    return [...grupos.values()]
+      .map((grupo) => ({
+        motivo: grupo.motivo,
+        count: grupo.itens.length,
+        pct: total > 0 ? (grupo.itens.length / total) * 100 : 0,
+        itens: [...grupo.itens].sort((a, b) =>
+          String(a.row[ORGANICO_IDX.NOME] ?? "").localeCompare(String(b.row[ORGANICO_IDX.NOME] ?? ""), "pt-BR"),
+        ),
+      }))
+      .sort((a, b) => b.count - a.count || a.motivo.localeCompare(b.motivo, "pt-BR"));
+  }, [complementosDesligamento, retencaoExperiencia.serie]);
+  const pessoasDoMotivoSelecionado =
+    distribuicaoMotivosDesligamento.find((item) => item.motivo === motivoDesligamentoSelecionado)?.itens ?? [];
   const totalConclusivoRetencao =
     retencaoExperiencia.resumo.retidos + retencaoExperiencia.resumo.desligadosNaExperiencia;
   const taxaRetencaoExperiencia =
@@ -723,25 +905,29 @@ const Dashboard = () => {
   const taxaDesligamentoExperiencia =
     totalConclusivoRetencao > 0 ? 100 - taxaRetencaoExperiencia : 0;
   const colaboradoresDaCoorte = useMemo(() => {
-    if (!coorteRetencaoSelecionada) return [];
-    const mes = retencaoExperiencia.serie.find((item) => item.eixo === coorteRetencaoSelecionada.eixo);
-    if (!mes) return [];
-    const lista =
-      coorteRetencaoSelecionada.fatia === "retidos"
-        ? mes.pessoasRetidos
-        : coorteRetencaoSelecionada.fatia === "desligados"
-          ? mes.pessoasDesligados
-          : mes.pessoasAvaliacao;
-    return [...lista].sort((a, b) =>
-      String(a.row[ORGANICO_IDX.NOME] ?? "").localeCompare(String(b.row[ORGANICO_IDX.NOME] ?? ""), "pt-BR"),
-    );
+    const ordenar = (lista: CardCoorteRetencao[]) =>
+      [...lista].sort((a, b) =>
+        String(a.row[ORGANICO_IDX.NOME] ?? "").localeCompare(String(b.row[ORGANICO_IDX.NOME] ?? ""), "pt-BR"),
+      );
+    if (!coorteRetencaoSelecionada) {
+      return { retidos: [] as CardCoorteRetencao[], avaliacao: [] as CardCoorteRetencao[], desligados: [] as CardCoorteRetencao[] };
+    }
+    const mes = retencaoExperiencia.serie.find((item) => item.eixo === coorteRetencaoSelecionada);
+    if (!mes) {
+      return { retidos: [] as CardCoorteRetencao[], avaliacao: [] as CardCoorteRetencao[], desligados: [] as CardCoorteRetencao[] };
+    }
+    return {
+      retidos: ordenar(mes.pessoasRetidos),
+      avaliacao: ordenar(mes.pessoasAvaliacao),
+      desligados: ordenar(mes.pessoasDesligados),
+    };
   }, [coorteRetencaoSelecionada, retencaoExperiencia.serie]);
-  const rotuloFatiaCoorte =
-    coorteRetencaoSelecionada?.fatia === "retidos"
-      ? "Retidos após 90 dias"
-      : coorteRetencaoSelecionada?.fatia === "desligados"
-        ? "Desligados até 90 dias"
-        : "Ainda em avaliação";
+  const abrirCoorteDoMes = (item: unknown) => {
+    const row = (item as { payload?: { eixo?: string; total?: number } })?.payload;
+    if (!row?.eixo || !row.total) return;
+    setCoorteRetencaoSelecionada(row.eixo);
+  };
+  const permanecemNaCoorte = colaboradoresDaCoorte.retidos.length + colaboradoresDaCoorte.avaliacao.length;
 
   const turnoverPeople = useMemo(() => {
     if (secullumDaEmpresa.length > 0) {
@@ -1048,7 +1234,10 @@ const Dashboard = () => {
     periodoNoPadrao(periodoFolha) &&
     periodoNoPadrao(periodoTurnover) &&
     periodoNoPadrao(periodoMovimentacoes) &&
-    periodoNoPadrao(periodoRetencaoExperiencia) &&
+    (periodoRetencaoManual == null ||
+      (periodoRetencaoManual.empresa === empresaPainel &&
+        toIsoLocal(periodoRetencaoManual.periodo.inicio) === toIsoLocal(periodoRetencaoAutomatico.inicio) &&
+        toIsoLocal(periodoRetencaoManual.periodo.fim) === toIsoLocal(periodoRetencaoAutomatico.fim))) &&
     comparacaoTempoDesligamento === "acima" &&
     limiteDiasDesligamento === 0;
 
@@ -1672,7 +1861,7 @@ const Dashboard = () => {
             setPeriodoFolha(periodoPadraoExecutivo());
             setPeriodoTurnover(periodoPadraoExecutivo());
             setPeriodoMovimentacoes(periodoPadraoExecutivo());
-            setPeriodoRetencaoExperiencia(periodoPadraoExecutivo());
+            setPeriodoRetencaoManual(null);
             setComparacaoTempoDesligamento("acima");
             setLimiteDiasDesligamento(0);
             setTurnoverSetorFiltro(null);
@@ -1740,7 +1929,7 @@ const Dashboard = () => {
             aria-describedby={undefined}
             className="flex h-[min(90vh,660px)] max-h-[90vh] w-[min(98vw,1200px)] max-w-none flex-col gap-4 overflow-hidden sm:max-w-none"
           >
-            <DialogHeader className="shrink-0 pr-8">
+            <DialogHeader className="shrink-0 border-b border-border pb-4 pr-8">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 text-left">
                   <DialogTitle>Custo da folha mês a mês</DialogTitle>
@@ -1759,7 +1948,7 @@ const Dashboard = () => {
                       </p>
                     ) : null}
                     <p className="flex items-center gap-1.5">
-                      <span className="inline-block h-2.5 w-2.5 rounded-sm bg-slate-300" aria-hidden />
+                      <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: chart.neutral }} aria-hidden />
                       Barra cinza: pessoas ativas (escala proporcional)
                     </p>
         </div>
@@ -1776,7 +1965,7 @@ const Dashboard = () => {
                 Não foi possível ler a trajetória. Os meses passados podem estar com a CTPS de hoje.
               </p>
             ) : null}
-            <div className="min-h-0 w-full min-w-0 flex-1 overflow-x-auto overflow-y-hidden pb-3">
+            <div className="min-h-0 w-full min-w-0 flex-1 overflow-x-auto overflow-y-hidden rounded-md border border-border bg-card p-3 shadow-level-1">
               <div
                 className="h-full min-h-[460px] w-full pr-2"
                 style={{ minWidth: `${Math.max(960, folhaChartData.length * 140)}px` }}
@@ -1806,7 +1995,7 @@ const Dashboard = () => {
                         width={72}
                         tickFormatter={(value) => formatCustoFolha(Number(value))}
                       />
-                      <Tooltip content={FolhaMensalTooltip} />
+                      <Tooltip cursor={{ fill: chart.referenceLine }} content={FolhaMensalTooltip} />
                       <Bar
                         dataKey="value"
                         name="Folha"
@@ -1831,7 +2020,7 @@ const Dashboard = () => {
                         <LabelList
                           dataKey="ativosExibicao"
                           position="top"
-                          style={{ fill: chart.neutralActive, fontSize: 9, fontWeight: 700 }}
+                          style={{ fill: chart.axisCategory, fontSize: 10, fontWeight: 700 }}
                         />
                       </Bar>
                     </BarChart>
@@ -2001,6 +2190,7 @@ const Dashboard = () => {
                   }}
                 />
               </div>
+              <div className="rounded-md border border-border bg-card px-3 py-2 shadow-level-1">
               <FiltroTempoDesligamento
                 comparacao={comparacaoTempoDesligamento}
                 limiteDias={limiteDiasDesligamento}
@@ -2013,9 +2203,10 @@ const Dashboard = () => {
                   setMovimentacaoPontoSelecionado(null);
                 }}
               />
+              </div>
             </DialogHeader>
 
-            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden rounded-sm border border-border/50 bg-muted/10 p-3">
+            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden rounded-md border border-border bg-card p-3 shadow-level-1">
               <div
                 className="h-[440px]"
                 style={{ minWidth: `${Math.max(760, movimentacoesLinhaData.length * 76)}px` }}
@@ -2392,37 +2583,50 @@ const Dashboard = () => {
             if (!aberto) {
               setAvaliacaoExperienciaModalAberto(false);
               setCoorteRetencaoSelecionada(null);
+              setMotivosDesligamentoExperienciaAberto(false);
+              setMotivoDesligamentoSelecionado(null);
             }
           }}
         >
           <DialogContent
             aria-describedby={undefined}
-            className="flex max-h-[min(92vh,780px)] w-[min(96vw,1100px)] max-w-none flex-col gap-5 overflow-hidden sm:max-w-none"
+            className="flex max-h-[min(92vh,780px)] w-[min(96vw,1240px)] max-w-none flex-col gap-5 overflow-hidden sm:max-w-none"
           >
             <DialogHeader className="shrink-0 border-b border-border pb-4 pr-8">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0 text-left">
                   <DialogTitle>Retenção pós-experiência</DialogTitle>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Coortes agrupadas pelo mês de admissão. Aprendizes não entram na taxa.
+                    Cada barra é a quantidade de colaboradores admitidos no mês. Aprendizes não entram na taxa.
                   </p>
                 </div>
-                <DashboardPeriodoDatas
-                  idPrefix="retencao-experiencia"
-                  periodo={periodoRetencaoExperiencia}
-                  onPeriodoChange={(periodo) => {
-                    setPeriodoRetencaoExperiencia(periodo);
-                    setAvaliacaoExperienciaModalAberto(false);
-                    setCoorteRetencaoSelecionada(null);
-                  }}
-                />
+                <div className="flex flex-wrap items-end justify-end gap-3">
+                  <FiltroPrazoExperiencia
+                    dias={limiteDiasExperiencia}
+                    onChange={(dias) => {
+                      setLimiteDiasExperiencia(dias);
+                      setCoorteRetencaoSelecionada(null);
+                      setMotivoDesligamentoSelecionado(null);
+                    }}
+                  />
+                  <DashboardPeriodoDatas
+                    idPrefix="retencao-experiencia"
+                    periodo={periodoRetencaoExperiencia}
+                    onPeriodoChange={(periodo) => {
+                      setPeriodoRetencaoManual({ empresa: empresaPainel, periodo });
+                      setAvaliacaoExperienciaModalAberto(false);
+                      setCoorteRetencaoSelecionada(null);
+                      setMotivoDesligamentoSelecionado(null);
+                    }}
+                  />
+                </div>
               </div>
             </DialogHeader>
 
             <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-sm border border-emerald-600/25 bg-emerald-600/10 px-4 py-3">
+              <div className="rounded-md border border-emerald-700/30 bg-[var(--success-soft)] px-4 py-3 shadow-level-1">
                 <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: chart.success }}>
-                  Retidos após 90 dias
+                  {rotuloRetidosExperiencia(limiteDiasExperiencia)}
                 </span>
                 <p className="mt-1 text-2xl font-semibold tabular-nums" style={{ color: chart.success }}>
                   {taxaRetencaoExperiencia.toLocaleString("pt-BR", {
@@ -2434,9 +2638,14 @@ const Dashboard = () => {
                   {formatIntPt(retencaoExperiencia.resumo.retidos)} colaboradores
                 </p>
               </div>
-              <div className="rounded-sm border border-red-600/25 bg-red-600/10 px-4 py-3">
+              <button
+                type="button"
+                className="rounded-md border border-red-700/30 bg-[var(--destructive-soft)] px-4 py-3 text-left shadow-level-1 transition-colors hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Ver distribuição dos desligamentos por motivo"
+                onClick={() => setMotivosDesligamentoExperienciaAberto(true)}
+              >
                 <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: chart.danger }}>
-                  Desligados até 90 dias
+                  {rotuloDesligadosExperiencia(limiteDiasExperiencia)}
                 </span>
                 <p className="mt-1 text-2xl font-semibold tabular-nums" style={{ color: chart.danger }}>
                   {taxaDesligamentoExperiencia.toLocaleString("pt-BR", {
@@ -2445,12 +2654,12 @@ const Dashboard = () => {
                   })}%
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {formatIntPt(retencaoExperiencia.resumo.desligadosNaExperiencia)} colaboradores
+                  {formatIntPt(retencaoExperiencia.resumo.desligadosNaExperiencia)} colaboradores · clique para ver os motivos
                 </p>
-              </div>
+              </button>
               <button
                 type="button"
-                className="rounded-sm border border-border bg-muted/40 px-4 py-3 text-left transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded-md border border-border bg-card px-4 py-3 text-left shadow-level-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="Ver colaboradores ainda em avaliação"
                 onClick={() => setAvaliacaoExperienciaModalAberto(true)}
               >
@@ -2466,87 +2675,85 @@ const Dashboard = () => {
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden rounded-sm border border-border/50 bg-muted/10 p-3">
+            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden rounded-md border border-border bg-card p-3 shadow-level-1">
               <div
                 className="h-[360px]"
                 style={{ minWidth: `${Math.max(760, retencaoExperiencia.serie.length * 86)}px` }}
               >
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
+                  <ComposedChart
                     data={retencaoExperiencia.serie}
-                    margin={{ top: 20, right: 20, left: 0, bottom: 8 }}
+                    margin={{ top: 28, right: 20, left: 0, bottom: 8 }}
                     barCategoryGap="28%"
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
                     <XAxis dataKey="eixo" tick={rhChartAxisTick(chart)} interval={0} />
                     <YAxis
-                      domain={[0, 100]}
-                      ticks={[0, 25, 50, 75, 100]}
+                      allowDecimals={false}
                       tick={rhChartAxisTick(chart)}
-                      tickFormatter={(value) => `${value}%`}
-                      width={42}
+                      width={36}
                     />
                     <Tooltip
-                      contentStyle={rhChartTooltipStyle(chart)}
-                      labelStyle={{ color: chart.tooltipText }}
-                      itemStyle={{ color: chart.tooltipText }}
-                      formatter={(value: number, name: string) => {
-                        const labels: Record<string, string> = {
-                          retidosPct: "Retidos após 90 dias",
-                          desligadosPct: "Desligados até 90 dias",
-                          avaliacaoPct: "Ainda em avaliação",
-                        };
-                        return [
-                          `${Number(value).toLocaleString("pt-BR", {
-                            minimumFractionDigits: 1,
-                            maximumFractionDigits: 1,
-                          })}%`,
-                          labels[name] ?? name,
-                        ];
-                      }}
+                      content={(tip) => (
+                        <RetencaoCoorteTooltip
+                          active={tip.active}
+                          payload={tip.payload as Array<{ payload?: CoorteRetencaoPonto }> | undefined}
+                          cores={{ success: chart.success, danger: chart.danger, neutral: chart.neutral }}
+                          dias={limiteDiasExperiencia}
+                        />
+                      )}
                     />
                     <Bar
-                      dataKey="retidosPct"
+                      dataKey="retidos"
+                      name={rotuloRetidosExperiencia(limiteDiasExperiencia)}
                       stackId="coorte"
                       fill={chart.success}
                       cursor="pointer"
-                      onClick={(item) => {
-                        const row = (item as { payload?: { eixo?: string; retidos?: number } })?.payload;
-                        if (!row?.eixo || !row.retidos) return;
-                        setCoorteRetencaoSelecionada({ eixo: row.eixo, fatia: "retidos" });
-                      }}
+                      onClick={(item) => abrirCoorteDoMes(item)}
                     />
                     <Bar
-                      dataKey="desligadosPct"
+                      dataKey="desligadosNaExperiencia"
+                      name={rotuloDesligadosExperiencia(limiteDiasExperiencia)}
                       stackId="coorte"
                       fill={chart.danger}
                       cursor="pointer"
-                      onClick={(item) => {
-                        const row = (item as { payload?: { eixo?: string; desligadosNaExperiencia?: number } })?.payload;
-                        if (!row?.eixo || !row.desligadosNaExperiencia) return;
-                        setCoorteRetencaoSelecionada({ eixo: row.eixo, fatia: "desligados" });
-                      }}
+                      onClick={(item) => abrirCoorteDoMes(item)}
                     />
                     <Bar
-                      dataKey="avaliacaoPct"
+                      dataKey="emAvaliacao"
+                      name="Ainda em avaliação"
                       stackId="coorte"
                       fill={chart.neutral}
                       radius={[5, 5, 0, 0]}
                       cursor="pointer"
-                      onClick={(item) => {
-                        const row = (item as { payload?: { eixo?: string; emAvaliacao?: number } })?.payload;
-                        if (!row?.eixo || !row.emAvaliacao) return;
-                        setCoorteRetencaoSelecionada({ eixo: row.eixo, fatia: "avaliacao" });
-                      }}
+                      onClick={(item) => abrirCoorteDoMes(item)}
                     />
-                  </BarChart>
+                    <Line
+                      dataKey="total"
+                      stroke="transparent"
+                      strokeWidth={0}
+                      dot={false}
+                      activeDot={false}
+                      legendType="none"
+                      tooltipType="none"
+                      isAnimationActive={false}
+                    >
+                      <LabelList
+                        dataKey="total"
+                        position="top"
+                        offset={8}
+                        formatter={(value: number) => (Number(value) > 0 ? formatIntPt(Number(value)) : "")}
+                        style={{ fill: chart.axisCategory, fontSize: 11, fontWeight: 700 }}
+                      />
+                    </Line>
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
               <span>
-                Taxa conclusiva: {formatIntPt(totalConclusivoRetencao)} colaboradores com resultado conhecido. Clique na faixa da barra para ver os cards.
+                O número acima de cada barra é o total admitido no mês. Taxa conclusiva: {formatIntPt(totalConclusivoRetencao)} colaboradores com resultado conhecido. Clique na barra para ver retidos, em avaliação e desligados.
               </span>
               {retencaoExperiencia.resumo.aprendizesExcluidos > 0 ? (
                 <span>
@@ -2568,22 +2775,240 @@ const Dashboard = () => {
             className="flex max-h-[min(90vh,780px)] w-[min(94vw,980px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
           >
             <DialogHeader className="shrink-0 border-b border-border px-6 py-5 text-left">
-              <DialogTitle>
-                {coorteRetencaoSelecionada?.eixo} — {rotuloFatiaCoorte}
-              </DialogTitle>
+              <DialogTitle>Admitidos em {coorteRetencaoSelecionada}</DialogTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                {formatIntPt(colaboradoresDaCoorte.length)}{" "}
-                {colaboradoresDaCoorte.length === 1 ? "colaborador admitido neste mês" : "colaboradores admitidos neste mês"}
+                {formatIntPt(permanecemNaCoorte)} retidos e em avaliação ·{" "}
+                {formatIntPt(colaboradoresDaCoorte.desligados.length)}{" "}
+                {rotuloDesligadosExperiencia(limiteDiasExperiencia).toLowerCase()}
+              </p>
+            </DialogHeader>
+            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
+              {[
+                {
+                  titulo: "Retidos e em avaliação",
+                  cor: "text-emerald-400",
+                  vazio: "Nenhum colaborador retido ou em avaliação neste mês.",
+                  grupos: [
+                    {
+                      titulo: rotuloRetidosExperiencia(limiteDiasExperiencia),
+                      itens: colaboradoresDaCoorte.retidos,
+                      mostrarMotivo: false,
+                    },
+                    {
+                      titulo: "Ainda em avaliação",
+                      itens: colaboradoresDaCoorte.avaliacao,
+                      mostrarMotivo: false,
+                    },
+                  ],
+                },
+                {
+                  titulo: "Desligados",
+                  cor: "text-red-400",
+                  vazio: "Nenhum desligamento neste mês para o prazo atual.",
+                  grupos: [
+                    {
+                      titulo: rotuloDesligadosExperiencia(limiteDiasExperiencia),
+                      itens: colaboradoresDaCoorte.desligados,
+                      mostrarMotivo: true,
+                    },
+                  ],
+                },
+              ].map((coluna, colunaIndex) => {
+                const totalColuna = coluna.grupos.reduce((soma, grupo) => soma + grupo.itens.length, 0);
+                return (
+                  <section
+                    key={coluna.titulo}
+                    className={`flex min-h-0 flex-col ${colunaIndex > 0 ? "border-t border-border lg:border-l lg:border-t-0" : ""}`}
+                  >
+                    <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/20 px-5 py-3">
+                      <span className={`text-sm font-semibold ${coluna.cor}`}>{coluna.titulo}</span>
+                      <span className="tabular-nums text-xs text-muted-foreground">{formatIntPt(totalColuna)}</span>
+                    </div>
+                    <div className="min-h-[180px] flex-1 space-y-5 overflow-y-auto p-5">
+                      {totalColuna === 0 ? (
+                        <p className="rounded-sm border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
+                          {coluna.vazio}
+                        </p>
+                      ) : (
+                        coluna.grupos.map((grupo) =>
+                          grupo.itens.length === 0 ? null : (
+                            <div key={grupo.titulo} className="space-y-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                {grupo.titulo} · {formatIntPt(grupo.itens.length)}
+                              </p>
+                              {grupo.itens.map((item, index) => (
+                                <button
+                                  key={item.key}
+                                  type="button"
+                                  onClick={() => {
+                                    const matricula = String(item.row[ORGANICO_IDX.MATRICULA] ?? "").trim();
+                                    abrirColaboradorNoOrganico(matricula);
+                                  }}
+                                  className="w-full rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                                  aria-label={`Abrir colaborador ${coluna.titulo.toLowerCase()} no orgânico`}
+                                >
+                                  <OrganicoCard
+                                    row={item.row}
+                                    rowIndex={index}
+                                    demissao={item.demissao}
+                                    motivoSecullum={grupo.mostrarMotivo ? item.motivoDemissao : undefined}
+                                    complementoDesligamento={
+                                      grupo.mostrarMotivo
+                                        ? escolherComplementoDesligamento(
+                                            complementosDesligamento,
+                                            String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                                            item.demissao,
+                                          )?.motivoFilho ?? ""
+                                        : undefined
+                                    }
+                                    fotoCadastrada={matriculasComFoto.has(String(item.row[ORGANICO_IDX.MATRICULA] ?? "").trim())}
+                                    fotoApiHabilitada={podeVerFotosOrganico && isApiConfigured()}
+                                    readOnly
+                                  />
+                                </button>
+                              ))}
+                            </div>
+                          ),
+                        )
+                      )}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={motivosDesligamentoExperienciaAberto}
+          onOpenChange={(aberto) => {
+            setMotivosDesligamentoExperienciaAberto(aberto);
+            if (!aberto) setMotivoDesligamentoSelecionado(null);
+          }}
+        >
+          <DialogContent
+            aria-describedby={undefined}
+            className="flex max-h-[min(90vh,780px)] w-[min(96vw,980px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+          >
+            <DialogHeader className="shrink-0 border-b border-border px-6 py-5 text-left">
+              <DialogTitle>Motivos dos desligamentos</DialogTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {rotuloDesligadosExperiencia(limiteDiasExperiencia)} ·{" "}
+                {formatIntPt(retencaoExperiencia.resumo.desligadosNaExperiencia)}{" "}
+                {retencaoExperiencia.resumo.desligadosNaExperiencia === 1 ? "colaborador" : "colaboradores"} no período
               </p>
             </DialogHeader>
             <div className="min-h-0 flex-1 overflow-y-auto p-6">
-              {colaboradoresDaCoorte.length === 0 ? (
+              {distribuicaoMotivosDesligamento.length === 0 ? (
                 <p className="rounded-sm border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
-                  Nenhum colaborador nesta faixa.
+                  Nenhum desligamento neste prazo e período.
+                </p>
+              ) : (
+                <div style={{ height: Math.max(240, distribuicaoMotivosDesligamento.length * 40) }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={distribuicaoMotivosDesligamento}
+                      layout="vertical"
+                      margin={{ top: 8, right: 48, left: 8, bottom: 8 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} horizontal={false} />
+                      <XAxis type="number" tick={rhChartAxisTick(chart)} allowDecimals={false} />
+                      <YAxis
+                        dataKey="motivo"
+                        type="category"
+                        width={210}
+                        interval={0}
+                        tick={(props: { x?: number; y?: number; payload?: { value?: string } }) => {
+                          const bruto = String(props.payload?.value ?? "");
+                          const curto = bruto.length > 32 ? `${bruto.slice(0, 30)}…` : bruto;
+                          return (
+                            <text
+                              x={props.x}
+                              y={props.y}
+                              dy={4}
+                              textAnchor="end"
+                              fill={chart.axisCategory}
+                              fontSize={11}
+                            >
+                              {curto}
+                            </text>
+                          );
+                        }}
+                      />
+                      <Tooltip
+                        content={(tip) => {
+                          const row = (tip.payload?.[0]?.payload ?? null) as
+                            | { motivo?: string; count?: number; pct?: number }
+                            | null;
+                          if (!tip.active || !row?.motivo) return null;
+                          return (
+                            <div className="rounded-sm border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md max-w-[280px]">
+                              <p className="font-semibold text-foreground">{row.motivo}</p>
+                              <p className="mt-1 tabular-nums text-muted-foreground">
+                                {formatIntPt(Number(row.count ?? 0))}{" "}
+                                {Number(row.count) === 1 ? "colaborador" : "colaboradores"} ({formatPct1(Number(row.pct ?? 0))}%)
+                              </p>
+                            </div>
+                          );
+                        }}
+                      />
+                      <Bar
+                        dataKey="count"
+                        fill={chart.danger}
+                        barSize={22}
+                        maxBarSize={28}
+                        cursor="pointer"
+                        onClick={(item) => {
+                          const row = (item as { payload?: { motivo?: string; count?: number } })?.payload;
+                          if (!row?.motivo || !row.count) return;
+                          setMotivoDesligamentoSelecionado(row.motivo);
+                        }}
+                      >
+                        <LabelList
+                          dataKey="count"
+                          position="right"
+                          formatter={(value: number) => formatIntPt(Number(value))}
+                          style={{ fill: chart.axisCategory, fontSize: 11, fontWeight: 700 }}
+                        />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+            <div className="shrink-0 border-t border-border px-6 py-3 text-xs text-muted-foreground">
+              Cada barra é um motivo de desligamento. Clique nela para ver os colaboradores.
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={motivoDesligamentoSelecionado != null}
+          onOpenChange={(aberto) => {
+            if (!aberto) setMotivoDesligamentoSelecionado(null);
+          }}
+        >
+          <DialogContent
+            aria-describedby={undefined}
+            className="flex max-h-[min(90vh,780px)] w-[min(94vw,980px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+          >
+            <DialogHeader className="shrink-0 border-b border-border px-6 py-5 text-left">
+              <DialogTitle>{motivoDesligamentoSelecionado}</DialogTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {formatIntPt(pessoasDoMotivoSelecionado.length)}{" "}
+                {pessoasDoMotivoSelecionado.length === 1
+                  ? "colaborador desligado por este motivo"
+                  : "colaboradores desligados por este motivo"}
+              </p>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+              {pessoasDoMotivoSelecionado.length === 0 ? (
+                <p className="rounded-sm border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
+                  Nenhum colaborador neste motivo.
                 </p>
               ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {colaboradoresDaCoorte.map((item, index) => (
+                  {pessoasDoMotivoSelecionado.map((item, index) => (
                     <button
                       key={item.key}
                       type="button"
@@ -2592,12 +3017,20 @@ const Dashboard = () => {
                         abrirColaboradorNoOrganico(matricula);
                       }}
                       className="rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                      aria-label="Abrir colaborador da coorte no orgânico"
+                      aria-label="Abrir colaborador desligado no orgânico"
                     >
                       <OrganicoCard
                         row={item.row}
                         rowIndex={index}
                         demissao={item.demissao}
+                        motivoSecullum={item.motivoDemissao}
+                        complementoDesligamento={
+                          escolherComplementoDesligamento(
+                            complementosDesligamento,
+                            String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                            item.demissao,
+                          )?.motivoFilho ?? ""
+                        }
                         fotoCadastrada={matriculasComFoto.has(String(item.row[ORGANICO_IDX.MATRICULA] ?? "").trim())}
                         fotoApiHabilitada={podeVerFotosOrganico && isApiConfigured()}
                         readOnly
@@ -2620,8 +3053,8 @@ const Dashboard = () => {
               <p className="mt-1 text-sm text-muted-foreground">
                 {formatIntPt(retencaoExperiencia.emAvaliacao.length)}{" "}
                 {retencaoExperiencia.emAvaliacao.length === 1
-                  ? "colaborador admitido há até 90 dias e ainda ativo"
-                  : "colaboradores admitidos há até 90 dias e ainda ativos"}
+                  ? `colaborador admitido há até ${limiteDiasExperiencia} dias e ainda ativo`
+                  : `colaboradores admitidos há até ${limiteDiasExperiencia} dias e ainda ativos`}
               </p>
             </DialogHeader>
             <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -2660,7 +3093,8 @@ const Dashboard = () => {
           <div className="h-full">
             <DistribuicaoExperienciaCard
               resumo={retencaoExperiencia.resumo}
-              referencia="coortes do período"
+              referencia={`desde ${formatDiaMmmAno(periodoRetencaoExperiencia.inicio)}`}
+              prazoDias={limiteDiasExperiencia}
               onOpen={() => setRetencaoExperienciaModalAberto(true)}
             />
           </div>

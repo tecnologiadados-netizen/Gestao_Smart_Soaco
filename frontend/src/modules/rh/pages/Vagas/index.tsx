@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { toast } from 'sonner';
+import { resolveUploadUrl } from '@/api/client';
 import AppLayout from '@rh/components/AppLayout';
 import SeletorCorCard from '@rh/pages/DemandasInternas/SeletorCorCard';
 import { corDoPostIt } from '@rh/lib/demandas-internas';
@@ -8,9 +11,11 @@ import { canEditRoute } from '@rh/lib/route-permissions';
 import { rhPath } from '@rh/lib/rh-paths';
 import { rhFieldInput, rhFieldLabel, rhFieldSelectNative, rhFieldTextarea } from '@rh/lib/form-field-styles';
 import {
+  anexarPdfVaga,
   atualizarVaga,
   criarVaga,
   excluirVaga,
+  removerPdfVaga,
   fraseHistorico,
   getVagas,
   prazoVencido,
@@ -22,7 +27,10 @@ import {
   type Vaga,
 } from '@rh/lib/vagas';
 
+GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+
 const CHAVE = ['rh-vagas'] as const;
+const LIMITE_PDF = 15 * 1024 * 1024;
 
 const CORES: Record<StatusVaga, string> = {
   aberta_sem_divulgacao: 'bg-[#fff4d6] text-[#8a5a00]',
@@ -89,6 +97,102 @@ function resumoVaga(vaga: Vaga): string {
   return obs || locaisDivulgacao(vaga);
 }
 
+function arquivoPdfValido(arquivo: File): boolean {
+  const pdf = arquivo.type === 'application/pdf' || arquivo.name.toLowerCase().endsWith('.pdf');
+  if (!pdf) {
+    toast.error('Envie o post da vaga em PDF.');
+    return false;
+  }
+  if (arquivo.size > LIMITE_PDF) {
+    toast.error('O PDF passa de 15 MB.');
+    return false;
+  }
+  return true;
+}
+
+function CapaPdf({ src }: { src: string }) {
+  const [imagem, setImagem] = useState('');
+  useEffect(() => {
+    let ativo = true;
+    let documento: { destroy: () => Promise<void> } | null = null;
+    (async () => {
+      const resposta = await fetch(src);
+      if (!resposta.ok) throw new Error('pdf');
+      const dados = new Uint8Array(await resposta.arrayBuffer());
+      const pdf = await getDocument({ data: dados }).promise;
+      documento = pdf;
+      const pagina = await pdf.getPage(1);
+      const viewport = pagina.getViewport({ scale: 1.5 });
+      const canvas = document.createElement('canvas');
+      const contexto = canvas.getContext('2d');
+      if (!contexto) return;
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      await pagina.render({ canvasContext: contexto, viewport, canvas }).promise;
+      if (!ativo) return;
+      setImagem(canvas.toDataURL('image/jpeg', 0.86));
+    })().catch(() => {
+      if (ativo) setImagem('');
+    });
+    return () => {
+      ativo = false;
+      void documento?.destroy();
+    };
+  }, [src]);
+  if (!imagem) return <span className="mb-2 block h-32 w-full animate-pulse rounded-md bg-black/10" aria-hidden />;
+  return <img src={imagem} alt="" draggable={false} className="mb-2 max-h-32 w-full rounded-md object-cover" />;
+}
+
+function CampoPdf({
+  src,
+  nome,
+  podeEditar,
+  onEscolher,
+  onRemover,
+}: {
+  src: string;
+  nome: string;
+  podeEditar: boolean;
+  onEscolher: (arquivo: File) => void;
+  onRemover: () => void;
+}) {
+  return (
+    <div className="mt-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Post da vaga</p>
+      {src ? (
+        <div className="mt-2">
+          <CapaPdf src={src} />
+          {nome ? <p className="text-xs text-muted-foreground">{nome}</p> : null}
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">Nenhum PDF anexado.</p>
+      )}
+      {podeEditar ? (
+        <div className="mt-2 flex gap-3">
+          <label className="cursor-pointer text-sm font-semibold text-[#FFAD00]">
+            {src ? 'Trocar PDF' : 'Anexar PDF'}
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              className="sr-only"
+              onChange={(evento) => {
+                const arquivo = evento.target.files?.[0];
+                evento.target.value = '';
+                if (arquivo && arquivoPdfValido(arquivo)) onEscolher(arquivo);
+              }}
+            />
+          </label>
+          {src ? (
+            <button type="button" onClick={onRemover} className="text-sm font-medium text-[#b42318]">
+              Remover
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function PostItVaga({ vaga, onAbrir }: { vaga: Vaga; onAbrir: () => void }) {
   const tom = corDoPostIt(vaga.cor);
   const claro = tom.texto.toLowerCase() !== '#ffffff';
@@ -106,6 +210,7 @@ function PostItVaga({ vaga, onAbrir }: { vaga: Vaga; onAbrir: () => void }) {
         className="pointer-events-none absolute bottom-0 right-0 h-5 w-5"
         style={{ background: `linear-gradient(135deg, transparent 50%, ${tom.dobra} 50%)` }}
       />
+      {vaga.anexo ? <CapaPdf src={resolveUploadUrl(vaga.anexo.storagePath)} /> : null}
       <span className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${CORES[vaga.status]}`}>
         {rotuloStatus(vaga.status)}
       </span>
@@ -385,7 +490,13 @@ function FormularioCadastro({ onCancelar, onCriada }: { onCancelar: () => void; 
   const [prazo, setPrazo] = useState('');
   const [observacao, setObservacao] = useState('');
   const [cor, setCor] = useState('branco');
+  const [arquivo, setArquivo] = useState<File | null>(null);
   const [linhas, setLinhas] = useState<LinhaLink[]>([linhaVazia()]);
+  const previa = useMemo(() => (arquivo ? URL.createObjectURL(arquivo) : ''), [arquivo]);
+  useEffect(() => {
+    if (!previa) return;
+    return () => URL.revokeObjectURL(previa);
+  }, [previa]);
   const [enviando, setEnviando] = useState(false);
 
   async function salvar() {
@@ -403,7 +514,8 @@ function FormularioCadastro({ onCancelar, onCriada }: { onCancelar: () => void; 
         links: status === 'em_divulgacao' ? linksParaEnvio(linhas) : [],
         cor,
       });
-      onCriada(resposta.vaga);
+      const gravada = arquivo ? (await anexarPdfVaga(resposta.vaga.id, arquivo)).vaga : resposta.vaga;
+      onCriada(gravada);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Não foi possível cadastrar a vaga.');
     } finally {
@@ -458,6 +570,7 @@ function FormularioCadastro({ onCancelar, onCriada }: { onCancelar: () => void; 
           Observação
           <textarea value={observacao} onChange={(evento) => setObservacao(evento.target.value)} className={`mt-1 ${rhFieldTextarea}`} />
         </label>
+        <CampoPdf src={previa} nome={arquivo?.name ?? ''} podeEditar onEscolher={setArquivo} onRemover={() => setArquivo(null)} />
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onCancelar} className="rounded-lg px-3 py-2 text-sm text-foreground hover:bg-muted">
             Cancelar
@@ -489,18 +602,33 @@ function DetalheVaga({
   const [prazo, setPrazo] = useState(vaga.prazo ?? '');
   const [observacao, setObservacao] = useState(vaga.observacao);
   const [cor, setCor] = useState(vaga.cor || 'branco');
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [removerPdf, setRemoverPdf] = useState(false);
   const [proximo, setProximo] = useState('');
   const [detalhe, setDetalhe] = useState('');
   const [linhas, setLinhas] = useState<LinhaLink[]>(() => linhasDe(vaga.links));
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
+  const previa = useMemo(() => (arquivo ? URL.createObjectURL(arquivo) : ''), [arquivo]);
+  useEffect(() => {
+    if (!previa) return;
+    return () => URL.revokeObjectURL(previa);
+  }, [previa]);
   const mutacao = useMutation({
-    mutationFn: (patch: Parameters<typeof atualizarVaga>[1]) => atualizarVaga(vaga.id, patch),
+    mutationFn: async (entrada: { patch: Parameters<typeof atualizarVaga>[1]; arquivo: File | null; removerPdf: boolean }) => {
+      let atual = vaga;
+      if (Object.keys(entrada.patch).length > 0) atual = (await atualizarVaga(vaga.id, entrada.patch)).vaga;
+      if (entrada.arquivo) atual = (await anexarPdfVaga(vaga.id, entrada.arquivo)).vaga;
+      else if (entrada.removerPdf && vaga.anexo) atual = (await removerPdfVaga(vaga.id)).vaga;
+      return { vaga: atual };
+    },
     onSuccess: (resposta) => {
       onAtualizada(resposta.vaga);
       setTitulo(resposta.vaga.titulo);
       setPrazo(resposta.vaga.prazo ?? '');
       setObservacao(resposta.vaga.observacao);
       setCor(resposta.vaga.cor || 'branco');
+      setArquivo(null);
+      setRemoverPdf(false);
       setLinhas(linhasDe(resposta.vaga.links));
       setProximo('');
       setDetalhe('');
@@ -518,6 +646,8 @@ function DetalheVaga({
     (prazo || null) !== (vaga.prazo ?? null) ||
     observacao !== vaga.observacao ||
     cor !== (vaga.cor || 'branco') ||
+    arquivo !== null ||
+    removerPdf ||
     proximo !== '' ||
     (exibirLinks && linksAlterados);
 
@@ -537,8 +667,8 @@ function DetalheVaga({
       patch.detalhe = detalhe;
     }
     if (exibirLinks && linksAlterados) patch.links = linksParaEnvio(linhas);
-    if (Object.keys(patch).length === 0) return;
-    mutacao.mutate(patch);
+    if (Object.keys(patch).length === 0 && !arquivo && !removerPdf) return;
+    mutacao.mutate({ patch, arquivo, removerPdf });
   }
 
   function fechar() {
@@ -607,6 +737,20 @@ function DetalheVaga({
       {prazoVencido({ prazo: prazo || null, status: vaga.status }) ? (
         <p className="mt-1 text-xs font-semibold text-[#b42318]">Prazo vencido</p>
       ) : null}
+
+      <CampoPdf
+        src={previa || (!removerPdf && vaga.anexo ? resolveUploadUrl(vaga.anexo.storagePath) : '')}
+        nome={arquivo?.name || (!removerPdf ? vaga.anexo?.nome : '') || ''}
+        podeEditar={podeEditar && !mutacao.isPending}
+        onEscolher={(escolhido) => {
+          setArquivo(escolhido);
+          setRemoverPdf(false);
+        }}
+        onRemover={() => {
+          setArquivo(null);
+          setRemoverPdf(true);
+        }}
+      />
 
       <label className={`${rhFieldLabel} mt-4`}>
         Observação
