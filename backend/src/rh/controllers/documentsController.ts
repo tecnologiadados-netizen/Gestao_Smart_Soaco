@@ -4,6 +4,7 @@ import { resolveSessionPermissions } from '../middleware/rhAuth.js';
 import {
   deleteOrganicoDocument,
   getOrganicoDocumentDownloadPath,
+  garantirPastaDesligamentoGlobal,
   getOrganicoDocuments,
   resolveLaunchDocuments,
   uploadOrganicoDocument,
@@ -52,8 +53,13 @@ export async function uploadOrganicoDocumentHandler(req: Request, res: Response)
     const matricula = s(body.matricula);
     const title = s(body.title);
     const category = s(body.category);
-    const folderScope = s(body.folderScope) as 'global' | 'local';
-    const folderId = s(body.folderId);
+    let folderScope = s(body.folderScope) as 'global' | 'local';
+    let folderId = s(body.folderId);
+    if (s(body.pastaDestino) === 'desligamento') {
+      const pasta = await garantirPastaDesligamentoGlobal(actor);
+      folderScope = 'global';
+      folderId = pasta.id;
+    }
 
     if (!matricula || !title || !category || !folderId || (folderScope !== 'global' && folderScope !== 'local')) {
       return sendError(res, 'Matrícula, pasta, título e categoria são obrigatórios.', 400);

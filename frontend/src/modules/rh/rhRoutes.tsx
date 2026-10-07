@@ -23,6 +23,8 @@ const Cargos = lazy(() => lazyImportWithRetry(() => import('@rh/pages/Cargos')))
 const Organograma = lazy(() => lazyImportWithRetry(() => import('@rh/pages/Organograma')));
 const Organico = lazy(() => lazyImportWithRetry(() => import('@rh/pages/Organico')));
 const FaltasAtestados = lazy(() => lazyImportWithRetry(() => import('@rh/pages/FaltasAtestados')));
+const DemandasInternas = lazy(() => lazyImportWithRetry(() => import('@rh/pages/DemandasInternas')));
+const Vagas = lazy(() => lazyImportWithRetry(() => import('@rh/pages/Vagas')));
 const Configuracoes = lazy(() => lazyImportWithRetry(() => import('@rh/pages/Configuracoes')));
 
 class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -120,6 +122,22 @@ export const rhRoutes: RouteObject[] = [
         element: wrap(
           <ProtectedRoute path={rhPath('/organico')}>
             <Organico />
+          </ProtectedRoute>,
+        ),
+      },
+      {
+        path: 'vagas/:vagaId?',
+        element: wrap(
+          <ProtectedRoute path={rhPath('/vagas')}>
+            <Vagas />
+          </ProtectedRoute>,
+        ),
+      },
+      {
+        path: 'demandas-internas/:quadroId?',
+        element: wrap(
+          <ProtectedRoute path={rhPath('/demandas-internas')}>
+            <DemandasInternas />
           </ProtectedRoute>,
         ),
       },

@@ -103,6 +103,8 @@ export type RhGroupPermissions = {
     modulos: Record<DashboardModuleId, PermissionAccess>;
   };
   cargos: PermissionAccess;
+  demandasInternas: PermissionAccess;
+  vagas: PermissionAccess;
   organograma: PermissionAccess & {
     /** Fotos configuráveis da Empresa e das Diretorias. */
     fotos: PermissionAccess;
@@ -210,6 +212,8 @@ export function buildDefaultGroupPermissions(): RhGroupPermissions {
       },
     },
     cargos: buildAccess(),
+    demandasInternas: buildAccess(),
+    vagas: buildAccess(),
     organograma: {
       ...buildAccess(),
       fotos: buildAccess(),
@@ -422,6 +426,20 @@ function deriveRoutesFromPermissions(next: RhGroupPermissions): LegacyRoutePermi
       }
       case "/cargos":
         return { ...item, canView: next.cargos.view || next.cargos.edit, canEdit: next.cargos.edit };
+      case "/demandas-internas":
+      case "/rh/demandas-internas":
+        return {
+          ...item,
+          canView: next.demandasInternas.view || next.demandasInternas.edit,
+          canEdit: next.demandasInternas.edit,
+        };
+      case "/vagas":
+      case "/rh/vagas":
+        return {
+          ...item,
+          canView: next.vagas.view || next.vagas.edit,
+          canEdit: next.vagas.edit,
+        };
       case "/organograma":
         return {
           ...item,
@@ -467,6 +485,9 @@ function applyLegacyToPermissions(routes: LegacyRoutePermission[]): RhGroupPermi
   const organico = pickLegacyRoute(routes, "/organico");
   const faltas = pickLegacyRoute(routes, "/faltas-atestados");
   const cargos = pickLegacyRoute(routes, "/cargos");
+  const demandasInternas =
+    pickLegacyRoute(routes, "/demandas-internas") ?? pickLegacyRoute(routes, "/rh/demandas-internas");
+  const vagas = pickLegacyRoute(routes, "/vagas") ?? pickLegacyRoute(routes, "/rh/vagas");
   const organograma = pickLegacyRoute(routes, "/organograma");
   const configuracoes = pickLegacyRoute(routes, "/configuracoes");
   const dashboard = pickLegacyRoute(routes, "/dashboard");
@@ -495,6 +516,11 @@ function applyLegacyToPermissions(routes: LegacyRoutePermission[]): RhGroupPermi
   next.faltas.regrasAlertas = buildAccess(faltasView, faltasEdit);
 
   next.cargos = buildAccess(!!(cargos?.canView || cargos?.canEdit), !!cargos?.canEdit);
+  next.demandasInternas = buildAccess(
+    !!(demandasInternas?.canView || demandasInternas?.canEdit),
+    !!demandasInternas?.canEdit,
+  );
+  next.vagas = buildAccess(!!(vagas?.canView || vagas?.canEdit), !!vagas?.canEdit);
   const organogramaView = !!(organograma?.canView || organograma?.canEdit);
   const organogramaEdit = !!organograma?.canEdit;
   next.organograma = {
@@ -602,6 +628,10 @@ export function normalizeGroupPermissions(input: unknown): RhGroupPermissions {
   }
 
   next.cargos = Object.hasOwn(source, "cargos") ? readAccess(source.cargos, buildAccess()) : legacy.cargos;
+  next.demandasInternas = Object.hasOwn(source, "demandasInternas")
+    ? readAccess(source.demandasInternas, buildAccess())
+    : legacy.demandasInternas;
+  next.vagas = Object.hasOwn(source, "vagas") ? readAccess(source.vagas, buildAccess()) : legacy.vagas;
   if (Object.hasOwn(source, "organograma")) {
     const organograma =
       source.organograma && typeof source.organograma === "object"
@@ -672,6 +702,14 @@ export function granularPermissionFallback(
       return mode === "edit"
         ? permissions.cargos.edit
         : permissions.cargos.view || permissions.cargos.edit;
+    case "/demandas-internas":
+    case "/rh/demandas-internas":
+      return mode === "edit"
+        ? permissions.demandasInternas.edit
+        : permissions.demandasInternas.view || permissions.demandasInternas.edit;
+    case "/vagas":
+    case "/rh/vagas":
+      return mode === "edit" ? permissions.vagas.edit : permissions.vagas.view || permissions.vagas.edit;
     case "/organograma":
       return mode === "edit"
         ? permissions.organograma.edit || permissions.organograma.fotos.edit

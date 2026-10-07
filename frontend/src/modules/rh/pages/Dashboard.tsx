@@ -90,7 +90,7 @@ import {
   type RetencaoExperienciaResumo,
 } from "@rh/pages/DistribuicaoExperienciaCard";
 import { EscolaridadeCard } from "@rh/pages/EscolaridadeCard";
-import { chaveCidade, MapaLocalidadeCard, type SelecaoLocalidade } from "@rh/pages/MapaLocalidadeCard";
+import { chaveCidade, inferirUf, MapaLocalidadeCard, type SelecaoLocalidade } from "@rh/pages/MapaLocalidadeCard";
 import {
   classificarEscolaridade,
   generoDoSexo,
@@ -1460,9 +1460,13 @@ const Dashboard = () => {
         hojePainel,
       );
       if (!ativo) return;
-      const uf = String(funcionario.uf ?? "").trim().toUpperCase();
       const cidade = String(funcionario.cidade ?? "").trim();
       const bairro = String(funcionario.bairro ?? "").trim();
+      const uf = inferirUf(
+        String(funcionario.uf ?? ""),
+        cidade,
+        `${funcionario.endereco ?? ""} ${funcionario.logradouro ?? ""}`,
+      );
       if (!/^[A-Z]{2}$/.test(uf) || !cidade) {
         semLocalidade += 1;
         return;

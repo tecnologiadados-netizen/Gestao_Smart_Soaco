@@ -150,6 +150,8 @@ export const RH_MENU: NavMenuEntry[] = [
     children: [
       { kind: 'link', to: '/rh/organico', label: 'Orgânico' },
       { kind: 'link', to: '/rh/faltas-atestados', label: 'Faltas e Atestados' },
+      { kind: 'link', to: '/rh/demandas-internas', label: 'Demandas Internas' },
+      { kind: 'link', to: '/rh/vagas', label: 'Vagas' },
     ],
   },
   {
@@ -274,6 +276,8 @@ export const PATH_LABELS: Record<string, string> = {
   '/rh/dashboard': 'RH — Dashboard',
   '/rh/organico': 'RH — Orgânico',
   '/rh/faltas-atestados': 'RH — Faltas e Atestados',
+  '/rh/demandas-internas': 'RH — Demandas Internas',
+  '/rh/vagas': 'RH — Vagas',
   '/rh/cargos': 'RH — Cargos & Salários',
   '/rh/organograma': 'RH — Organograma',
   '/rh/configuracoes': 'RH — Configurações',
@@ -351,6 +355,12 @@ export function getLabelForPath(path: string): string {
   }
   if (path.startsWith('/pedidos/programacao-producao')) {
     return PATH_LABELS['/pedidos/programacao-producao'] ?? 'Programação de produção';
+  }
+  if (path.startsWith('/rh/demandas-internas')) {
+    return PATH_LABELS['/rh/demandas-internas'] ?? 'RH — Demandas Internas';
+  }
+  if (path.startsWith('/rh/vagas')) {
+    return PATH_LABELS['/rh/vagas'] ?? 'RH — Vagas';
   }
   return PATH_LABELS[path] ?? (path || 'Início');
 }

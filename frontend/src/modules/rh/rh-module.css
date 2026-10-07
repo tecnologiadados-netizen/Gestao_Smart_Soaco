@@ -211,6 +211,46 @@
   background-color: transparent;
 }
 
+/* Título de quadro, lista e card: não herda o fundo de campo do RH. */
+.rh-module input.rh-demanda-campo,
+.rh-portal input.rh-demanda-campo,
+.rh-module textarea.rh-demanda-campo,
+.rh-portal textarea.rh-demanda-campo {
+  background-color: transparent !important;
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.rh-module input.rh-demanda-campo:focus,
+.rh-portal input.rh-demanda-campo:focus,
+.rh-module textarea.rh-demanda-campo:focus,
+.rh-portal textarea.rh-demanda-campo:focus {
+  background-color: color-mix(in oklch, var(--foreground) 8%, transparent) !important;
+  border-color: transparent;
+}
+
+/* O quadro usa paleta própria (listas claras). O modal do card acompanha, sem herdar o grafite do tema. */
+.rh-module .rh-demanda-quadro,
+.rh-portal .rh-demanda-quadro {
+  --background: #ffffff;
+  --foreground: #10233f;
+  --border: #c5d4e6;
+}
+
+.rh-module .rh-demanda-modal,
+.rh-portal .rh-demanda-modal {
+  --background: #ffffff;
+  --foreground: #10233f;
+  --card: #f7f9fc;
+  --muted: #e7eef8;
+  --muted-foreground: #3d5168;
+  --border: #c5d4e6;
+  background-color: #f7f9fc;
+  color: #10233f;
+}
+
 .rh-module .rh-filter-chip,
 .rh-portal .rh-filter-chip {
   display: inline-flex;

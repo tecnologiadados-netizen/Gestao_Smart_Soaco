@@ -12,6 +12,7 @@ import {
   sanitizeStorageSegment,
   sha256Hex,
 } from '../utils/rhUpload.js';
+import { ehPastaDesligamento, NOME_PASTA_DESLIGAMENTO } from '../lib/pastaDesligamento.js';
 import { s } from '../utils/rhHelpers.js';
 
 export type ArchiveFolderScope = 'global' | 'local';
@@ -206,7 +207,29 @@ function attachDocuments(
   });
 }
 
+/** Pasta única, visível no arquivamento de todos os colaboradores. */
+export async function garantirPastaDesligamentoGlobal(createdBy = 'sistema') {
+  const atuais = await prisma.rhOrganicoArchiveFolderGlobal.findMany({
+    where: { parentId: null },
+    select: { id: true, name: true },
+  });
+  const pronta = atuais.find((row) => ehPastaDesligamento(row.name));
+  if (pronta) return pronta;
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.rhOrganicoArchiveFolderGlobal.findMany({
+      where: { parentId: null },
+      select: { id: true, name: true },
+    });
+    const existente = rows.find((row) => ehPastaDesligamento(row.name));
+    if (existente) return existente;
+    return tx.rhOrganicoArchiveFolderGlobal.create({
+      data: { name: NOME_PASTA_DESLIGAMENTO, parentId: null, createdBy },
+    });
+  });
+}
+
 export async function buildArchiveTreeForMatricula(matricula: string): Promise<ArchiveFolderDto[]> {
+  await garantirPastaDesligamentoGlobal();
   const [globalRows, hiddenRows, localRows, docs] = await Promise.all([
     prisma.rhOrganicoArchiveFolderGlobal.findMany({
       select: { id: true, parentId: true, name: true, sortOrder: true },

@@ -1,5 +1,5 @@
 ﻿import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { Button } from "@rh/components/ui/button";
 import {
@@ -13,8 +13,11 @@ import {
 import { Label } from "@rh/components/ui/label";
 import { Textarea } from "@rh/components/ui/textarea";
 import { getMotivosDesligamento, isApiConfigured } from "@rh/lib/api-client";
+import { arquivarEntrevistaDesligamento, type PastaEntrevista } from "@rh/lib/entrevista-desligamento";
 import { rhFieldLabel, rhFieldSelectNative, rhFieldTextarea } from "@rh/lib/form-field-styles";
 import { filhosDoMotivoPai } from "@rh/lib/motivo-desligamento";
+import { useToast } from "@rh/hooks/use-toast";
+import { EntrevistaDesligamentoAnexo } from "./EntrevistaDesligamentoAnexo";
 import type { OrganicoAlteracaoPendente } from "@rh/types/api";
 import { cn } from "@rh/lib/utils";
 
@@ -85,6 +88,10 @@ export function OrganicoSecullumPendenciasDialog({
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [filhosSelecionados, setFilhosSelecionados] = useState<Record<string, string>>({});
   const [sensiveis, setSensiveis] = useState<Record<string, boolean>>({});
+  const [entrevistas, setEntrevistas] = useState<Record<string, File | null>>({});
+  const [pastasEntrevista, setPastasEntrevista] = useState<Record<string, PastaEntrevista | null>>({});
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const temDesligamento = items.some((item) => item.tipo === "desligamento");
   const { data: motivosPai = [] } = useQuery({
     queryKey: ["motivos-desligamento"],
@@ -107,7 +114,8 @@ export function OrganicoSecullumPendenciasDialog({
           <DialogTitle>Justificar alterações (Secullum)</DialogTitle>
           <DialogDescription>
             CTPS e cargo pedem um motivo em texto. No desligamento, selecione o complemento cadastrado para o motivo
-            da Secullum e escreva o motivo detalhado. Os dois são obrigatórios para finalizar.
+            da Secullum e escreva o motivo detalhado. Os dois são obrigatórios. Com os dois preenchidos, é possível
+            anexar o PDF da entrevista e escolher a pasta de destino no card do colaborador.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -201,6 +209,18 @@ export function OrganicoSecullumPendenciasDialog({
                       <span>Sensível. Só quem tem permissão para ver conteúdo sensível consegue ler este texto.</span>
                     </label>
                   ) : null}
+                  {desligamento && filhoId && value.trim() && filhos.length > 0 ? (
+                    <EntrevistaDesligamentoAnexo
+                      matricula={item.colaboradorMatricula}
+                      colaboradorNome={item.colaboradorNome}
+                      campoId={key}
+                      arquivo={entrevistas[key] ?? null}
+                      pasta={pastasEntrevista[key] ?? null}
+                      disabled={loading}
+                      onArquivo={(arquivo) => setEntrevistas((prev) => ({ ...prev, [key]: arquivo }))}
+                      onPasta={(pasta) => setPastasEntrevista((prev) => ({ ...prev, [key]: pasta }))}
+                    />
+                  ) : null}
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     {masterCanDismiss && onDismiss && !desligamento ? (
                       <Button
@@ -239,11 +259,42 @@ export function OrganicoSecullumPendenciasDialog({
                       size="sm"
                       disabled={loading || !podeFinalizar}
                       onClick={async () => {
+                        const pdf = desligamento ? entrevistas[key] ?? null : null;
+                        const pasta = desligamento ? pastasEntrevista[key] ?? null : null;
+                        if (pdf && !pasta) {
+                          toast({
+                            title: "Selecione a pasta de destino da entrevista.",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
                         await onResolve(item.id, {
                           motivo: value.trim(),
                           motivoFilhoId: desligamento ? filhoId : undefined,
                           motivoSensivel: desligamento ? sensiveis[key] === true : undefined,
                         });
+                        if (pdf && pasta) {
+                          try {
+                            await arquivarEntrevistaDesligamento({
+                              file: pdf,
+                              matricula: item.colaboradorMatricula,
+                              colaboradorNome: item.colaboradorNome,
+                              motivoSensivel: sensiveis[key] === true,
+                              pasta,
+                            });
+                            await queryClient.invalidateQueries({
+                              queryKey: ["organico-documents", item.colaboradorMatricula],
+                            });
+                            toast({ title: "Entrevista arquivada na pasta selecionada." });
+                          } catch (error) {
+                            toast({
+                              title: "O desligamento foi registrado, mas o PDF não foi arquivado.",
+                              description: error instanceof Error ? error.message : "Tente novamente.",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+                        }
                         setMotivos((prev) => {
                           const next = { ...prev };
                           delete next[key];
@@ -255,6 +306,16 @@ export function OrganicoSecullumPendenciasDialog({
                           return next;
                         });
                         setSensiveis((prev) => {
+                          const next = { ...prev };
+                          delete next[key];
+                          return next;
+                        });
+                        setEntrevistas((prev) => {
+                          const next = { ...prev };
+                          delete next[key];
+                          return next;
+                        });
+                        setPastasEntrevista((prev) => {
                           const next = { ...prev };
                           delete next[key];
                           return next;

@@ -8,6 +8,8 @@ import {
   Network,
   ClipboardList,
   FileSpreadsheet,
+  Kanban,
+  Megaphone,
   Database,
   BarChart3,
   Settings,
@@ -35,6 +37,8 @@ export const navCategories: NavCategory[] = [
     items: [
       { title: "Orgânico", url: rhPath("/organico"), icon: ClipboardList },
       { title: "Faltas e Atestados", url: rhPath("/faltas-atestados"), icon: FileSpreadsheet },
+      { title: "Demandas Internas", url: rhPath("/demandas-internas"), icon: Kanban },
+      { title: "Vagas", url: rhPath("/vagas"), icon: Megaphone },
     ],
   },
   {

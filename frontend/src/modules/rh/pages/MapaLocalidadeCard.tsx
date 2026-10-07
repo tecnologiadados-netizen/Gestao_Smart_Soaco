@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleMarker, GeoJSON, MapContainer, Marker, TileLayer, Tooltip, useMap } from "react-leaflet";
 import { rhFetchJson } from "@rh/lib/rh-fetch";
+import { rhFieldInput } from "@rh/lib/form-field-styles";
+import { pontoBairroOsmConhecido } from "@rh/lib/bairros-osm";
+import { criarMatcherTextoLivre } from "@/utils/textoLivreBusca";
 import type { Feature, FeatureCollection, GeoJsonObject, MultiPolygon, Polygon } from "geojson";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -70,8 +73,17 @@ function sedeCabeNoFiltro(filtro: { uf: string; cidadeChave: string; bairroChave
 const ESTADOS = estadosGeo as FeatureCollection<Polygon | MultiPolygon, { sigla: string; nome: string; ibge: string }>;
 const IBGE_POR_UF = new Map(ESTADOS.features.map((feature) => [feature.properties.sigla, feature.properties.ibge]));
 const cacheMalha = new Map<string, FeatureCollection<Polygon | MultiPolygon, PropsCidade>>();
-const cacheGeo = new Map<string, Ponto | null>();
-const CACHE_GEO = "rh-mapa-bairros-v7";
+type PontoMapa = Ponto & { cep?: string; rua?: string; bairro?: string };
+const cacheGeo = new Map<string, PontoMapa | null>();
+const CACHE_GEO = "rh-mapa-bairros-v22";
+cacheGeo.clear();
+try {
+  localStorage.removeItem("rh-mapa-bairros-v19");
+  localStorage.removeItem("rh-mapa-bairros-v20");
+  localStorage.removeItem("rh-mapa-bairros-v21");
+} catch {
+  /* cache antigo do CEP */
+}
 
 function normalizarLocalidade(valor: string): string {
   return valor
@@ -87,6 +99,22 @@ export function chaveCidade(cidade: string): string {
   return normalizarLocalidade(cidade);
 }
 
+const UF_PELA_CIDADE: Record<string, string> = {
+  TERESINA: "PI",
+  TIMON: "MA",
+  CURRALINHOS: "PI",
+  NAZARIA: "PI",
+};
+
+/** Secullum às vezes manda cidade/CEP e esquece a UF. Sem UF o mapa excluía o colaborador. */
+export function inferirUf(uf: string, cidade: string, endereco = ""): string {
+  const atual = uf.trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(atual)) return atual;
+  const noTexto = `${endereco} ${cidade}`.toUpperCase().match(/-\s*(PI|MA|CE|PA|PE|BA|GO|TO)\b/);
+  if (noTexto?.[1]) return noTexto[1];
+  return UF_PELA_CIDADE[chaveCidade(cidade)] ?? "";
+}
+
 const BAIRRO_GENERICO =
   /^(ZONA RURAL|ZONA URBANA|AREA RURAL|RURAL|INTERIOR|DISTRITO|ZONA|SEM BAIRRO|NAO INFORMADO|NAO INFORMADA|NAO CONSTA|SITIO|POVOADO|RODOVIA|AREA)$/;
 
@@ -96,29 +124,50 @@ function bairroGenerico(bairro: string): boolean {
   return BAIRRO_GENERICO.test(nome);
 }
 
-function extrairEndereco(endereco: string, bairro: string, cidade: string): { logradouro: string; cep: string } {
-  const cepMatch = endereco.match(/(\d{5})-?(\d{3})/);
-  const cep = cepMatch ? `${cepMatch[1]}${cepMatch[2]}` : "";
-  const antesCep = (endereco.split(/-?\s*CEP:/i)[0] ?? endereco).trim();
-  const partes = antesCep.split(",").map((parte) => parte.trim()).filter(Boolean);
-  const bairroN = chaveCidade(bairro);
-  const cidadeN = chaveCidade(cidade);
-  const corte = partes.findIndex((parte) => {
-    const nome = chaveCidade(parte);
-    return nome === bairroN || nome === cidadeN || /^[A-Z]{2}$/.test(parte);
-  });
-  const logradouro = (corte > 0 ? partes.slice(0, corte) : [])
-    .filter((parte) => chaveCidade(parte) !== cidadeN && !/^[A-Z]{2}$/.test(parte))
-    .join(", ");
-  return { logradouro, cep };
+function formatarCep(cep: string): string {
+  const digitos = cep.replace(/\D/g, "");
+  if (digitos.length !== 8) return "";
+  return `${digitos.slice(0, 5)}-${digitos.slice(5)}`;
 }
 
-function chaveEndereco(pessoa: PessoaLocalidade): string | null {
-  const extraido = extrairEndereco(pessoa.endereco, pessoa.bairro, pessoa.cidade);
-  const logradouro = (pessoa.logradouro || extraido.logradouro).trim();
-  const cep = (pessoa.cep || extraido.cep).replace(/\D/g, "");
-  if (!logradouro) return null;
-  return `end:${pessoa.uf}|${pessoa.cidadeChave}|${chaveCidade(logradouro)}|${chaveCidade(pessoa.bairro)}|${cep}`;
+function cepDoCadastro(pessoa: Pick<PessoaLocalidade, "cep">): string {
+  const digitos = String(pessoa.cep ?? "").replace(/\D/g, "");
+  if (digitos.length === 8 && !digitos.endsWith("000")) return digitos;
+  return "";
+}
+
+function pontoForaDaCidade(ponto: Ponto, centro?: { lat?: number; lng?: number }): boolean {
+  if (centro?.lat == null || centro?.lng == null) return false;
+  if (!Number.isFinite(centro.lat) || !Number.isFinite(centro.lng)) return false;
+  return distanciaKm(ponto, { lat: centro.lat, lng: centro.lng }) > 40;
+}
+
+function rotuloPessoaNoMapa(pessoa: PessoaLocalidade, ponto?: PontoMapa): string {
+  const nome = pessoa.nome || pessoa.matricula;
+  const cep = formatarCep(ponto?.cep || pessoa.cep);
+  const rua = (ponto?.rua || pessoa.logradouro).trim();
+  const bairro = (ponto?.bairro || pessoa.bairro).trim();
+  return [nome, rua, bairro, cep].filter(Boolean).join(" · ");
+}
+
+function pontoDoBairro(
+  uf: string,
+  cidade: string,
+  bairro: string,
+  api?: PontoMapa,
+): PontoMapa | undefined {
+  const osm = pontoBairroOsmConhecido(uf, cidade, bairro);
+  if (osm) {
+    return {
+      lat: osm.lat,
+      lng: osm.lng,
+      cep: api?.cep,
+      rua: api?.rua,
+      bairro: api?.bairro || bairro,
+    };
+  }
+  if (api && Number.isFinite(api.lat) && Number.isFinite(api.lng)) return api;
+  return undefined;
 }
 
 function corCalor(peso: number): string {
@@ -156,18 +205,18 @@ function deslocar(centro: Ponto, indice: number, passo = 0.0075): Ponto {
   };
 }
 
-function lerCacheGeo(): Record<string, Ponto> {
+function lerCacheGeo(): Record<string, PontoMapa> {
   try {
     const cru = localStorage.getItem(CACHE_GEO);
     if (!cru) return {};
-    const dados = JSON.parse(cru) as Record<string, Ponto>;
+    const dados = JSON.parse(cru) as Record<string, PontoMapa>;
     return dados && typeof dados === "object" ? dados : {};
   } catch {
     return {};
   }
 }
 
-function gravarCacheGeo(chave: string, ponto: Ponto) {
+function gravarCacheGeo(chave: string, ponto: PontoMapa) {
   try {
     const atual = lerCacheGeo();
     atual[chave] = ponto;
@@ -191,54 +240,73 @@ type ConsultaGeo = {
 
 async function pedirPontos(
   consultas: ConsultaGeo[],
-  aoReceber?: (pontos: Record<string, Ponto>) => void,
-): Promise<Record<string, Ponto>> {
-  const saida: Record<string, Ponto> = {};
+  aoReceber?: (pontos: Record<string, PontoMapa>) => void,
+): Promise<Record<string, PontoMapa>> {
+  const saida: Record<string, PontoMapa> = {};
   const faltantes: ConsultaGeo[] = [];
   const disco = lerCacheGeo();
+  const centroDa = (consulta: ConsultaGeo) =>
+    consulta.lat != null && consulta.lng != null ? { lat: consulta.lat, lng: consulta.lng } : undefined;
+  const servir = (consulta: ConsultaGeo, ponto: PontoMapa | null | undefined): boolean => {
+    if (!ponto || !Number.isFinite(ponto.lat) || !Number.isFinite(ponto.lng)) return false;
+    if (pontoForaDaCidade(ponto, centroDa(consulta))) {
+      cacheGeo.set(consulta.chave, null);
+      return false;
+    }
+    cacheGeo.set(consulta.chave, ponto);
+    saida[consulta.chave] = ponto;
+    return true;
+  };
   for (const consulta of consultas) {
     if (cacheGeo.has(consulta.chave)) {
       const memoria = cacheGeo.get(consulta.chave);
-      if (memoria) saida[consulta.chave] = memoria;
-      continue;
+      if (servir(consulta, memoria ?? undefined)) continue;
     }
     const salvo = disco[consulta.chave];
-    if (salvo && Number.isFinite(salvo.lat) && Number.isFinite(salvo.lng)) {
-      cacheGeo.set(consulta.chave, salvo);
-      saida[consulta.chave] = salvo;
-      continue;
-    }
+    if (servir(consulta, salvo)) continue;
     faltantes.push(consulta);
   }
   if (faltantes.length === 0) return saida;
-  try {
-    for (let inicio = 0; inicio < faltantes.length; inicio += 12) {
-      const lote = faltantes.slice(inicio, inicio + 12);
-      const resposta = await rhFetchJson<{ pontos?: Array<{ chave: string; lat: number; lng: number }> }>("geocode-localidades", {
+  const tentativas = new Map<string, number>();
+  let fila = [...faltantes];
+  while (fila.length > 0) {
+    const lote = fila.slice(0, 8);
+    const parciais: Record<string, PontoMapa> = {};
+    try {
+      const resposta = await rhFetchJson<{
+        pontos?: Array<{ chave: string; lat: number; lng: number; cep?: string; rua?: string; bairro?: string }>;
+      }>("geocode-localidades", {
         method: "POST",
         body: { consultas: lote },
       });
-      const recebidos = new Set<string>();
+      const porChave = new Map(lote.map((item) => [item.chave, item]));
       for (const ponto of resposta.pontos ?? []) {
         if (!ponto || !Number.isFinite(ponto.lat) || !Number.isFinite(ponto.lng)) continue;
-        const valor = { lat: ponto.lat, lng: ponto.lng };
-        cacheGeo.set(ponto.chave, valor);
+        const consulta = porChave.get(ponto.chave);
+        if (!consulta) continue;
+        const valor: PontoMapa = {
+          lat: ponto.lat,
+          lng: ponto.lng,
+          cep: ponto.cep,
+          rua: ponto.rua,
+          bairro: ponto.bairro,
+        };
+        if (!servir(consulta, valor)) continue;
         gravarCacheGeo(ponto.chave, valor);
-        saida[ponto.chave] = valor;
-        recebidos.add(ponto.chave);
+        parciais[ponto.chave] = valor;
       }
-      for (const consulta of lote) {
-        if (!recebidos.has(consulta.chave)) cacheGeo.set(consulta.chave, null);
-      }
-      const parciais: Record<string, Ponto> = {};
-      for (const chave of recebidos) {
-        const ponto = saida[chave];
-        if (ponto) parciais[chave] = ponto;
-      }
-      if (Object.keys(parciais).length > 0) aoReceber?.(parciais);
+    } catch {
+      /* este lote falhou; o restante da fila segue */
     }
-  } catch {
-    /* sem rede, as bolhas ficam espalhadas a partir do centro da cidade */
+    if (Object.keys(parciais).length > 0) aoReceber?.(parciais);
+    const chavesLote = new Set(lote.map((item) => item.chave));
+    fila = fila.filter((consulta) => {
+      if (saida[consulta.chave]) return false;
+      if (!chavesLote.has(consulta.chave)) return true;
+      const n = (tentativas.get(consulta.chave) ?? 0) + 1;
+      tentativas.set(consulta.chave, n);
+      return n < 3;
+    });
   }
   return saida;
 }
@@ -406,12 +474,15 @@ export function MapaLocalidadeCard({
   const [enquadramento, setEnquadramento] = useState(0);
   const [telaCheia, setTelaCheia] = useState(false);
   const [filtroMapa, setFiltroMapa] = useState<{ uf: string; cidadeChave: string; bairroChave: string | null } | null>(null);
+  const [buscaNome, setBuscaNome] = useState("");
+  const [matriculaFiltro, setMatriculaFiltro] = useState<string | null>(null);
+  const [sugestoesAbertas, setSugestoesAbertas] = useState(false);
   const mapaHostRef = useRef<HTMLDivElement>(null);
   const [malhas, setMalhas] = useState<FeatureCollection<Polygon | MultiPolygon, PropsCidade>[]>([]);
   const [carregandoCidades, setCarregandoCidades] = useState(false);
   const [malhaPronta, setMalhaPronta] = useState(false);
   const [falhaCidades, setFalhaCidades] = useState(false);
-  const [pontos, setPontos] = useState<Record<string, Ponto>>({});
+  const [pontos, setPontos] = useState<Record<string, PontoMapa>>({});
   const [centrosExtras, setCentrosExtras] = useState<Record<string, Ponto>>({});
   const [centrosUrbanos, setCentrosUrbanos] = useState<Record<string, Ponto>>({});
   const [localizando, setLocalizando] = useState(false);
@@ -564,170 +635,129 @@ export function MapaLocalidadeCard({
     if (!malhaPronta || carregandoCidades || grupos.length === 0) return;
     let ativo = true;
     const comBairro = grupos.filter((grupo) => grupo.bairroChave && !bairroGenerico(grupo.bairro));
-    const enderecos = new Map<string, PessoaLocalidade>();
-    for (const pessoa of pessoas) {
-      const chave = chaveEndereco(pessoa);
-      if (chave && !enderecos.has(chave)) enderecos.set(chave, pessoa);
+    const conhecidos: Record<string, PontoMapa> = {};
+    const semTabela: GrupoBairro[] = [];
+    for (const grupo of comBairro) {
+      const osm = pontoBairroOsmConhecido(grupo.uf, grupo.cidade, grupo.bairro);
+      if (osm) conhecidos[grupo.id] = { ...osm, bairro: grupo.bairro };
+      else semTabela.push(grupo);
     }
-    if (comBairro.length === 0 && enderecos.size === 0) {
+    if (Object.keys(conhecidos).length > 0) setPontos((atual) => ({ ...atual, ...conhecidos }));
+    if (semTabela.length === 0) {
       setLocalizando(false);
       return;
     }
     setLocalizando(true);
+    const centroDa = (uf: string, cidadeChave: string) =>
+      centroPorCidade.get(`${uf}|${cidadeChave}`) ??
+      centrosUrbanos[`${uf}|${cidadeChave}`] ??
+      centrosExtras[`${uf}|${cidadeChave}`] ??
+      (uf === "PI" && cidadeChave === "TERESINA" ? { lat: -5.08917, lng: -42.80194 } : null);
     void (async () => {
-      const urbanos = await pedirPontos(
-        porCidade.map((cidade) => ({
-          chave: `urbano:${cidade.uf}|${cidade.cidadeChave}`,
-          consulta: `${cidade.cidade}, ${cidade.uf}, Brazil`,
-          cidade: cidade.cidade,
-          bairro: "",
-          uf: cidade.uf,
-        })),
-      );
-      if (!ativo) return;
-      const urbanoPorCidade: Record<string, Ponto> = {};
-      for (const [chave, ponto] of Object.entries(urbanos)) {
-        urbanoPorCidade[chave.replace(/^urbano:/, "")] = ponto;
+      const aoReceber = (parciais: Record<string, PontoMapa>) => {
+        if (!ativo) return;
+        if (Object.keys(parciais).length > 0) setPontos((atual) => ({ ...atual, ...parciais }));
+      };
+      const cepPorGrupo = new Map<string, string>();
+      for (const pessoa of pessoas) {
+        const id = `${pessoa.uf}|${pessoa.cidadeChave}|${pessoa.bairroChave}`;
+        const cep = cepDoCadastro(pessoa);
+        if (cep && !cepPorGrupo.has(id)) cepPorGrupo.set(id, cep);
       }
-      if (Object.keys(urbanoPorCidade).length > 0) setCentrosUrbanos((atual) => ({ ...atual, ...urbanoPorCidade }));
-      const centroDa = (uf: string, cidadeChave: string) =>
-        urbanoPorCidade[`${uf}|${cidadeChave}`] ?? null;
-      const achadosEndereco = await pedirPontos(
-        [...enderecos.entries()].map(([chave, pessoa]) => {
-          const centro = centroDa(pessoa.uf, pessoa.cidadeChave);
-          const extraido = extrairEndereco(pessoa.endereco || pessoa.logradouro, pessoa.bairro, pessoa.cidade);
-          const logradouro = (extraido.logradouro || pessoa.logradouro).trim();
-          const cep = (pessoa.cep || extraido.cep).replace(/\D/g, "");
-          return {
-            chave,
-            consulta: logradouro || pessoa.cidade,
-            cidade: pessoa.cidade,
-            bairro: pessoa.bairro,
-            uf: pessoa.uf,
-            logradouro,
-            cep,
-            lat: centro?.lat,
-            lng: centro?.lng,
-          };
-        }),
-        (parciais) => {
-          if (!ativo) return;
-          if (Object.keys(parciais).length > 0) setPontos((atual) => ({ ...atual, ...parciais }));
-        },
-      );
+      const consultasBairro = semTabela.map((grupo) => {
+        const centro = centroDa(grupo.uf, grupo.cidadeChave);
+        return {
+          chave: grupo.id,
+          consulta: `${grupo.bairro}, ${grupo.cidade}, ${grupo.uf}, Brazil`,
+          cidade: grupo.cidade,
+          bairro: grupo.bairro,
+          uf: grupo.uf,
+          cep: cepPorGrupo.get(grupo.id),
+          lat: centro?.lat,
+          lng: centro?.lng,
+        };
+      });
+      const achadosBairro = await pedirPontos(consultasBairro, aoReceber);
       if (!ativo) return;
-      if (Object.keys(achadosEndereco).length > 0) setPontos((atual) => ({ ...atual, ...achadosEndereco }));
-      const semContorno = porCidade.filter((cidade) => !centroPorCidade.has(`${cidade.uf}|${cidade.cidadeChave}`));
-      const centrosAchados = await pedirPontos(
-        semContorno.map((cidade) => ({
-          chave: `cidade:${cidade.uf}|${cidade.cidadeChave}`,
-          consulta: `${cidade.cidade}, ${cidade.uf}, Brazil`,
-          cidade: cidade.cidade,
-          bairro: "",
-          uf: cidade.uf,
-        })),
-      );
-      if (!ativo) return;
-      if (Object.keys(centrosAchados).length > 0) {
-        setCentrosExtras((atual) => {
-          const proximo = { ...atual };
-          for (const [chave, ponto] of Object.entries(centrosAchados)) {
-            const id = chave.replace(/^cidade:/, "");
-            if (!proximo[id]) proximo[id] = ponto;
-          }
-          return proximo;
-        });
-      }
-      const achados = await pedirPontos(
-        comBairro.map((grupo) => {
-          const idCidade = `${grupo.uf}|${grupo.cidadeChave}`;
-          const centro = urbanoPorCidade[idCidade] ?? centrosAchados[`cidade:${idCidade}`] ?? null;
-          return {
-            chave: grupo.id,
-            consulta: `${grupo.bairro}, ${grupo.cidade}, ${grupo.uf}, Brazil`,
-            cidade: grupo.cidade,
-            bairro: grupo.bairro,
-            uf: grupo.uf,
-            lat: centro?.lat,
-            lng: centro?.lng,
-          };
-        }),
-        (parciais) => {
-          if (!ativo) return;
-          if (Object.keys(parciais).length > 0) setPontos((atual) => ({ ...atual, ...parciais }));
-        },
-      );
-      if (!ativo) return;
-      if (Object.keys(achados).length > 0) setPontos((atual) => ({ ...atual, ...achados }));
+      setPontos((atual) => ({ ...atual, ...achadosBairro, ...conhecidos }));
       setLocalizando(false);
     })();
     return () => {
       ativo = false;
     };
-  }, [assinaturaCentros, assinaturaGrupos, carregandoCidades, centroPorCidade, grupos, malhaPronta, pessoas, porCidade]);
+  }, [assinaturaCentros, assinaturaGrupos, carregandoCidades, malhaPronta, pessoas]);
 
   const bolhas = useMemo(() => {
-    const indiceNaCidade = new Map<string, number>();
     const basePorBairro = new Map<string, { ponto: Ponto; aproximada: boolean; quantidade: number }>();
     for (const grupo of grupos) {
       if (bairroGenerico(grupo.bairro)) continue;
-      const idCidade = `${grupo.uf}|${grupo.cidadeChave}`;
-      const centro = centrosUrbanos[idCidade] ?? centrosExtras[idCidade];
-      const geocodificado = pontos[grupo.id];
-      const indice = indiceNaCidade.get(idCidade) ?? 0;
-      indiceNaCidade.set(idCidade, indice + 1);
-      const ponto = geocodificado ?? (centro ? deslocar(centro, indice) : null);
-      if (!ponto) continue;
-      basePorBairro.set(grupo.id, { ponto, aproximada: !geocodificado, quantidade: grupo.quantidade });
+      const geocodificado = pontoDoBairro(grupo.uf, grupo.cidade, grupo.bairro, pontos[grupo.id]);
+      if (!geocodificado) continue;
+      basePorBairro.set(grupo.id, { ponto: geocodificado, aproximada: false, quantidade: grupo.quantidade });
     }
     const ajustados = separarCoincidentes(
       [...basePorBairro.entries()].map(([id, base]) => ({ id, ponto: base.ponto, quantidade: base.quantidade })),
     );
-    const indiceNoEndereco = new Map<string, number>();
+    const qtdPorBairro = new Map(grupos.map((grupo) => [grupo.id, grupo.quantidade]));
     const indiceNoBairro = new Map<string, number>();
-    const saida: Array<{ pessoa: PessoaLocalidade; ponto: Ponto; quantidade: number; aproximada: boolean }> = [];
+    const saida: Array<{ pessoa: PessoaLocalidade; ponto: PontoMapa; quantidade: number; aproximada: boolean }> = [];
     for (const pessoa of pessoas) {
-      const enderecoId = chaveEndereco(pessoa);
-      const pontoEndereco = enderecoId ? pontos[enderecoId] : undefined;
-      if (enderecoId && pontoEndereco) {
-        const idBairro = `${pessoa.uf}|${pessoa.cidadeChave}|${pessoa.bairroChave}`;
-        const baseBairro = basePorBairro.get(idBairro);
-        const pontoBairro = baseBairro && !baseBairro.aproximada ? (ajustados.get(idBairro) ?? baseBairro.ponto) : null;
-        const origem = pontoBairro && distanciaKm(pontoEndereco, pontoBairro) > 8 ? pontoBairro : pontoEndereco;
-        const indice = indiceNoEndereco.get(enderecoId) ?? 0;
-        indiceNoEndereco.set(enderecoId, indice + 1);
-        saida.push({
-          pessoa,
-          ponto: indice === 0 ? origem : deslocar(origem, indice, 0.0015),
-          quantidade: 1,
-          aproximada: false,
-        });
-        continue;
-      }
-      const id = `${pessoa.uf}|${pessoa.cidadeChave}|${pessoa.bairroChave}`;
-      const base = basePorBairro.get(id);
+      const idBairro = `${pessoa.uf}|${pessoa.cidadeChave}|${pessoa.bairroChave}`;
+      const quantidadeBairro = qtdPorBairro.get(idBairro) ?? 1;
+      const base = basePorBairro.get(idBairro);
       if (!base) continue;
-      const indice = indiceNoBairro.get(id) ?? 0;
-      indiceNoBairro.set(id, indice + 1);
-      const origem = ajustados.get(id) ?? base.ponto;
+      const indice = indiceNoBairro.get(idBairro) ?? 0;
+      indiceNoBairro.set(idBairro, indice + 1);
+      const origem = ajustados.get(idBairro) ?? base.ponto;
+      const pontoBairro = pontoDoBairro(pessoa.uf, pessoa.cidade, pessoa.bairro, pontos[idBairro]);
       saida.push({
         pessoa,
-        ponto: indice === 0 ? origem : deslocar(origem, indice, 0.0015),
-        quantidade: base.quantidade,
-        aproximada: base.aproximada,
+        ponto: {
+          ...(indice === 0 ? origem : deslocar(origem, indice, 0.0015)),
+          cep: formatarCep(pessoa.cep) || pontoBairro?.cep,
+          rua: pessoa.logradouro || pontoBairro?.rua,
+          bairro: pessoa.bairro || pontoBairro?.bairro,
+        },
+        quantidade: quantidadeBairro,
+        aproximada: false,
       });
     }
     return saida;
-  }, [centroPorCidade, centrosExtras, centrosUrbanos, grupos, pessoas, pontos]);
+  }, [grupos, pessoas, pontos]);
+
+  const matchNome = useMemo(() => criarMatcherTextoLivre(buscaNome), [buscaNome]);
+  const sugestoesPessoa = useMemo(() => {
+    if (!buscaNome.trim()) return [];
+    return pessoas
+      .filter((pessoa) => matchNome(pessoa.nome) || matchNome(pessoa.matricula))
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+      .slice(0, 8);
+  }, [buscaNome, matchNome, pessoas]);
+
+  const escolherPessoa = (pessoa: PessoaLocalidade) => {
+    setBuscaNome(pessoa.nome);
+    setMatriculaFiltro(pessoa.matricula);
+    setSugestoesAbertas(false);
+    setFiltroMapa(null);
+    setEnquadramento((atual) => atual + 1);
+  };
+
+  const limparBuscaPessoa = () => {
+    setBuscaNome("");
+    setMatriculaFiltro(null);
+    setSugestoesAbertas(false);
+  };
 
   const bolhasVisiveis = useMemo(() => {
-    if (!filtroMapa) return bolhas;
     return bolhas.filter((bolha) => {
+      if (matriculaFiltro) return bolha.pessoa.matricula === matriculaFiltro;
+      if (buscaNome.trim() && !matchNome(bolha.pessoa.nome) && !matchNome(bolha.pessoa.matricula)) return false;
+      if (!filtroMapa) return true;
       if (bolha.pessoa.uf !== filtroMapa.uf || bolha.pessoa.cidadeChave !== filtroMapa.cidadeChave) return false;
       if (filtroMapa.bairroChave != null && bolha.pessoa.bairroChave !== filtroMapa.bairroChave) return false;
       return true;
     });
-  }, [bolhas, filtroMapa]);
+  }, [bolhas, buscaNome, filtroMapa, matchNome, matriculaFiltro]);
 
   const cidadesComBolha = useMemo(
     () => new Set(bolhas.map((bolha) => `${bolha.pessoa.uf}|${bolha.pessoa.cidadeChave}`)),
@@ -752,15 +782,20 @@ export function MapaLocalidadeCard({
     };
   }, [cidadesComBolha, filtroMapa, malhaCidades]);
 
+  const filtrandoPessoa = Boolean(matriculaFiltro || buscaNome.trim());
   const box = useMemo(() => {
     const bounds = L.latLngBounds([]);
-    if (filtroMapa) {
-      for (const feature of malhaVisivel.features) {
-        const caixa = L.geoJSON(feature as GeoJsonObject).getBounds();
-        if (caixa.isValid() && !filtroMapa.bairroChave) bounds.extend(caixa);
+    if (filtroMapa || filtrandoPessoa) {
+      if (filtroMapa && !filtrandoPessoa) {
+        for (const feature of malhaVisivel.features) {
+          const caixa = L.geoJSON(feature as GeoJsonObject).getBounds();
+          if (caixa.isValid() && !filtroMapa.bairroChave) bounds.extend(caixa);
+        }
       }
       for (const bolha of bolhasVisiveis) bounds.extend([bolha.ponto.lat, bolha.ponto.lng]);
-      if (sedeCabeNoFiltro(filtroMapa)) bounds.extend([SEDE_SOACO.lat, SEDE_SOACO.lng]);
+      if (filtroMapa && !filtrandoPessoa && sedeCabeNoFiltro(filtroMapa)) {
+        bounds.extend([SEDE_SOACO.lat, SEDE_SOACO.lng]);
+      }
       if (bounds.isValid()) {
         const centro = bounds.getCenter();
         const nordeste = bounds.getNorthEast();
@@ -786,7 +821,16 @@ export function MapaLocalidadeCard({
       bounds.extend([extra.lat + 0.05, extra.lng + 0.05]);
     }
     return bounds.isValid() ? bounds.toBBoxString() : "";
-  }, [bolhasVisiveis, centrosExtras, chavesPrincipais, cidadesComBolha, filtroMapa, malhaCidades.features, malhaVisivel.features]);
+  }, [
+    bolhasVisiveis,
+    centrosExtras,
+    chavesPrincipais,
+    cidadesComBolha,
+    filtrandoPessoa,
+    filtroMapa,
+    malhaCidades.features,
+    malhaVisivel.features,
+  ]);
 
   const resumoCidades = useMemo(() => {
     if (porCidadeNoMapa.length === 0) return "";
@@ -795,12 +839,52 @@ export function MapaLocalidadeCard({
     return resto > 0 ? `${primeiras.join(", ")} e mais ${resto}` : primeiras.join(" e ");
   }, [porCidadeNoMapa]);
 
-  const topCidades = porCidadeNoMapa.slice(0, 3);
-  const topBairros = grupos.filter((grupo) => grupo.bairroChave).slice(0, 3);
+  const pessoasDoFiltro = useMemo(() => {
+    if (!filtrandoPessoa) return pessoas;
+    return pessoas.filter((pessoa) => {
+      if (matriculaFiltro) return pessoa.matricula === matriculaFiltro;
+      return matchNome(pessoa.nome) || matchNome(pessoa.matricula);
+    });
+  }, [filtrandoPessoa, matchNome, matriculaFiltro, pessoas]);
+
+  const topCidades = useMemo(() => {
+    if (!filtrandoPessoa) return porCidadeNoMapa.slice(0, 3);
+    const mapa = new Map<string, { uf: string; cidade: string; cidadeChave: string; quantidade: number }>();
+    for (const pessoa of pessoasDoFiltro) {
+      const id = `${pessoa.uf}|${pessoa.cidadeChave}`;
+      const atual = mapa.get(id);
+      if (atual) atual.quantidade += 1;
+      else mapa.set(id, { uf: pessoa.uf, cidade: pessoa.cidade, cidadeChave: pessoa.cidadeChave, quantidade: 1 });
+    }
+    return [...mapa.values()].sort((a, b) => b.quantidade - a.quantidade).slice(0, 3);
+  }, [filtrandoPessoa, pessoasDoFiltro, porCidadeNoMapa]);
+
+  const topBairros = useMemo(() => {
+    if (!filtrandoPessoa) return grupos.filter((grupo) => grupo.bairroChave).slice(0, 3);
+    const mapa = new Map<string, GrupoBairro>();
+    for (const pessoa of pessoasDoFiltro) {
+      if (!pessoa.bairroChave) continue;
+      const id = `${pessoa.uf}|${pessoa.cidadeChave}|${pessoa.bairroChave}`;
+      const atual = mapa.get(id);
+      if (atual) atual.quantidade += 1;
+      else {
+        mapa.set(id, {
+          id,
+          uf: pessoa.uf,
+          cidade: pessoa.cidade,
+          cidadeChave: pessoa.cidadeChave,
+          bairro: pessoa.bairro,
+          bairroChave: pessoa.bairroChave,
+          quantidade: 1,
+        });
+      }
+    }
+    return [...mapa.values()].sort((a, b) => b.quantidade - a.quantidade).slice(0, 3);
+  }, [filtrandoPessoa, grupos, pessoasDoFiltro]);
+
   const maiorCidadeTop = topCidades[0]?.quantidade ?? 1;
   const maiorBairroTop = topBairros[0]?.quantidade ?? 1;
-
-  const aproximadas = bolhas.filter((bolha) => bolha.aproximada).length;
+  const totalFiltro = filtrandoPessoa ? pessoasDoFiltro.length : total;
 
   const pintarCidade = (feature?: Feature) => {
     const props = feature?.properties as PropsCidade | undefined;
@@ -867,46 +951,100 @@ export function MapaLocalidadeCard({
         }
         .rh-mapa-folha .leaflet-control-attribution a { color: #cbd5e1; }
       `}</style>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-        <span className="label-industrial">Distribuição por localidade</span>
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="label-industrial shrink-0">Distribuição por localidade</span>
+        <div className="flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-2 overflow-x-auto">
+          <div className="relative w-[min(100%,16.5rem)] shrink-0">
+            <input
+              type="search"
+              value={buscaNome}
+              onChange={(e) => {
+                setBuscaNome(e.target.value);
+                setMatriculaFiltro(null);
+                setSugestoesAbertas(true);
+              }}
+              onFocus={() => setSugestoesAbertas(true)}
+              onBlur={() => window.setTimeout(() => setSugestoesAbertas(false), 120)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && sugestoesPessoa.length === 1 && sugestoesPessoa[0]) {
+                  e.preventDefault();
+                  escolherPessoa(sugestoesPessoa[0]);
+                }
+                if (e.key === "Escape") limparBuscaPessoa();
+              }}
+              placeholder="Nome ou matrícula…"
+              title="Use % como curinga: Ana%, %Silva, %cent%"
+              aria-label="Pesquisar colaborador pelo nome"
+              className={rhFieldInput}
+            />
+            {sugestoesAbertas && sugestoesPessoa.length > 0 ? (
+              <ul className="absolute z-[1200] mt-1 max-h-64 w-full overflow-auto rounded-lg border border-border bg-card py-1 shadow-level-1">
+                {sugestoesPessoa.map((pessoa) => (
+                  <li key={`${pessoa.matricula}-${pessoa.nome}`}>
+                    <button
+                      type="button"
+                      className="flex w-full flex-col px-3 py-1.5 text-left hover:bg-muted/60"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => escolherPessoa(pessoa)}
+                    >
+                      <span className="truncate text-sm font-medium text-foreground">{pessoa.nome}</span>
+                      <span className="truncate text-[11px] text-muted-foreground">
+                        {pessoa.matricula}
+                        {pessoa.bairro ? ` · ${pessoa.bairro}` : ""}
+                        {pessoa.cidade ? ` · ${pessoa.cidade}` : ""}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
           <button
             type="button"
-            className="rounded-sm border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+            className="h-9 shrink-0 whitespace-nowrap rounded-lg border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
             aria-pressed={telaCheia}
             onClick={alternarTelaCheia}
           >
             {telaCheia ? "Sair da tela cheia" : "Tela cheia"}
           </button>
-          {filtroMapa ? (
+          {filtroMapa || filtrandoPessoa ? (
             <button
               type="button"
-              className="rounded-sm border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-              onClick={() => setFiltroMapa(null)}
+              className="h-9 shrink-0 whitespace-nowrap rounded-lg border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+              onClick={() => {
+                setFiltroMapa(null);
+                limparBuscaPessoa();
+              }}
             >
               Ver todos
             </button>
           ) : null}
           <button
             type="button"
-            className="rounded-sm border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+            className="h-9 shrink-0 whitespace-nowrap rounded-lg border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
             onClick={() => {
               setFiltroMapa(null);
+              limparBuscaPessoa();
               setEnquadramento((atual) => atual + 1);
             }}
           >
             Enquadrar principais
           </button>
-          <span className="text-xs text-muted-foreground">{referencia}</span>
+          <span className="shrink-0 whitespace-nowrap pl-1 text-xs text-muted-foreground">{referencia}</span>
         </div>
       </div>
       <p className="mt-1 text-[11px] text-muted-foreground">
         {resumoCidades
-          ? `${resumoCidades}. Cada bolha é um colaborador, no bairro em que mora. A cor esquenta onde o bairro concentra mais gente.`
-          : "Cada bolha é um colaborador, no bairro em que mora. A cor esquenta onde o bairro concentra mais gente."}
+          ? `${resumoCidades}. Cada bolha é um colaborador no bairro do cadastro (o mesmo nome que aparece no mapa). A cor esquenta onde concentra mais gente.`
+          : "Cada bolha é um colaborador no bairro do cadastro (o mesmo nome que aparece no mapa). A cor esquenta onde concentra mais gente."}
         {carregandoCidades ? " Carregando cidades…" : ""}
-        {localizando ? " Posicionando os bairros…" : ""}
+        {localizando
+          ? ` Posicionando endereços (${bolhas.length.toLocaleString("pt-BR")} de ${total.toLocaleString("pt-BR")})…`
+          : ""}
         {falhaCidades ? " Não foi possível carregar o contorno das cidades." : ""}
+        {filtrandoPessoa
+          ? ` Busca: ${bolhasVisiveis.length.toLocaleString("pt-BR")} ${bolhasVisiveis.length === 1 ? "colaborador" : "colaboradores"}.`
+          : ""}
       </p>
 
       {total <= 0 ? (
@@ -941,7 +1079,11 @@ export function MapaLocalidadeCard({
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <Enquadrar token={enquadramento} box={box} maxZoom={filtroMapa?.bairroChave ? 16 : 13} />
+            <Enquadrar
+              token={enquadramento}
+              box={box}
+              maxZoom={matriculaFiltro || filtroMapa?.bairroChave ? 16 : 13}
+            />
             <AjustarTamanhoMapa telaCheia={telaCheia} />
             <PaneColaboradores />
             {malhaVisivel.features.length > 0 ? (
@@ -962,13 +1104,13 @@ export function MapaLocalidadeCard({
             {bolhasVisiveis.map((bolha) => {
               const peso = bolha.quantidade / maiorBairro;
               const cor = corCalor(peso);
-              const rotuloBairro = bolha.pessoa.bairro || "Sem bairro";
               const nome = bolha.pessoa.nome || bolha.pessoa.matricula;
+              const rotulo = rotuloPessoaNoMapa(bolha.pessoa, bolha.ponto);
               return (
                 <CircleMarker
                   key={`${bolha.pessoa.matricula}-${bolha.ponto.lat.toFixed(5)}-${bolha.ponto.lng.toFixed(5)}`}
                   center={[bolha.ponto.lat, bolha.ponto.lng]}
-                  radius={8}
+                  radius={matriculaFiltro && bolha.pessoa.matricula === matriculaFiltro ? 11 : 8}
                   pane="rh-colaboradores"
                   pathOptions={{
                     color: "#ffffff",
@@ -990,7 +1132,7 @@ export function MapaLocalidadeCard({
                   }}
                 >
                   <Tooltip direction="top" offset={[0, -6]} opacity={1}>
-                    {`${nome} · ${rotuloBairro}`}
+                    {rotulo}
                   </Tooltip>
                 </CircleMarker>
               );
@@ -999,8 +1141,8 @@ export function MapaLocalidadeCard({
         </div>
         <div className="grid gap-4 lg:h-[480px] lg:grid-rows-2">
           <RankingLocalidade
-            titulo="Top 3 cidades"
-            total={total}
+            titulo={filtrandoPessoa ? "Cidade" : "Top 3 cidades"}
+            total={totalFiltro}
             maior={maiorCidadeTop}
             itens={topCidades.map((cidade) => ({
               chave: `${cidade.uf}|${cidade.cidadeChave}`,
@@ -1016,8 +1158,8 @@ export function MapaLocalidadeCard({
             }))}
           />
           <RankingLocalidade
-            titulo="Top 3 bairros"
-            total={total}
+            titulo={filtrandoPessoa ? "Bairro" : "Top 3 bairros"}
+            total={totalFiltro}
             maior={maiorBairroTop}
             itens={topBairros.map((bairro) => ({
               chave: bairro.id,
@@ -1060,7 +1202,9 @@ export function MapaLocalidadeCard({
           Clique na cidade ou no bairro da lista para ver só eles no mapa. Clique na bolha para abrir o colaborador.
           {semBairro > 0 ? ` ${semBairro.toLocaleString("pt-BR")} sem bairro informado.` : ""}
           {semLocalidade > 0 ? ` ${semLocalidade.toLocaleString("pt-BR")} sem cidade ou UF.` : ""}
-          {!localizando && aproximadas > 0 ? " Parte dos bairros ficou espalhada a partir do centro da cidade." : ""}
+          {!localizando && bolhas.length < total
+            ? ` ${bolhas.length.toLocaleString("pt-BR")} de ${total.toLocaleString("pt-BR")} com ponto no mapa.`
+            : ""}
         </span>
       </div>
     </div>

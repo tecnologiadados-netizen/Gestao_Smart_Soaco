@@ -63,6 +63,8 @@ import {
   salvarDesligamentoComplemento,
 } from "@rh/lib/api-client";
 import { escolherComplementoDesligamento, filhosDoMotivoPai } from "@rh/lib/motivo-desligamento";
+import { arquivarEntrevistaDesligamento, type PastaEntrevista } from "@rh/lib/entrevista-desligamento";
+import { EntrevistaDesligamentoAnexo } from "./EntrevistaDesligamentoAnexo";
 import { canViewOrganicoConteudoSensivel } from "@rh/lib/route-permissions";
 import { useToast } from "@rh/hooks/use-toast";
 import type { OrganicoDocumentPermissions, OrganicoTabId, PermissionAccess } from "@rh/lib/rh-permissions";
@@ -235,6 +237,8 @@ export function FormFuncionarioModal({
   const [filhoId, setFilhoId] = useState("");
   const [motivoLivre, setMotivoLivre] = useState("");
   const [motivoSensivel, setMotivoSensivel] = useState(false);
+  const [entrevistaPdf, setEntrevistaPdf] = useState<File | null>(null);
+  const [entrevistaPasta, setEntrevistaPasta] = useState<PastaEntrevista | null>(null);
   const [salvandoComplemento, setSalvandoComplemento] = useState(false);
   const assinaturaComplemento = [
     open ? "1" : "0",
@@ -688,6 +692,20 @@ export function FormFuncionarioModal({
                 />
                 <span>Sensível. Só quem tem permissão para ver conteúdo sensível consegue ler este texto.</span>
               </label>
+              {filhoId && motivoLivre.trim() && !motivoOculto ? (
+                <div className="mt-3">
+                  <EntrevistaDesligamentoAnexo
+                    matricula={colaboradorMatricula}
+                    colaboradorNome={colaboradorNome}
+                    arquivo={entrevistaPdf}
+                    pasta={entrevistaPasta}
+                    disabled={salvandoComplemento}
+                    somenteLeitura={!podeEditarComplemento}
+                    onArquivo={setEntrevistaPdf}
+                    onPasta={setEntrevistaPasta}
+                  />
+                </div>
+              ) : null}
               {podeComplementarDesligamento && !motivoOculto ? (
                 <Button
                   type="button"
@@ -697,6 +715,17 @@ export function FormFuncionarioModal({
                   onClick={() => {
                     void (async () => {
                       setSalvandoComplemento(true);
+                      const pdf = entrevistaPdf;
+                      const pasta = entrevistaPasta;
+                      if (pdf && !pasta) {
+                        toast({
+                          title: "Selecione a pasta de destino da entrevista.",
+                          variant: "destructive",
+                        });
+                        setSalvandoComplemento(false);
+                        return;
+                      }
+                      let complementoSalvo = false;
                       try {
                         await salvarDesligamentoComplemento({
                           colaboradorMatricula,
@@ -707,11 +736,29 @@ export function FormFuncionarioModal({
                           motivoTexto: motivoLivre.trim(),
                           motivoSensivel,
                         });
+                        complementoSalvo = true;
                         await queryClient.invalidateQueries({ queryKey: ["desligamentos-complementos"] });
-                        toast({ title: "Desligamento complementado." });
+                        if (pdf && pasta) {
+                          await arquivarEntrevistaDesligamento({
+                            file: pdf,
+                            matricula: colaboradorMatricula,
+                            colaboradorNome,
+                            motivoSensivel,
+                            pasta,
+                          });
+                          setEntrevistaPdf(null);
+                          await queryClient.invalidateQueries({ queryKey: ["organico-documents", colaboradorMatricula] });
+                        }
+                        toast({
+                          title: pdf
+                            ? "Desligamento complementado e entrevista arquivada na pasta selecionada."
+                            : "Desligamento complementado.",
+                        });
                       } catch (error) {
                         toast({
-                          title: "Não foi possível salvar",
+                          title: complementoSalvo
+                            ? "O complemento foi salvo, mas o PDF não foi arquivado."
+                            : "Não foi possível salvar",
                           description: error instanceof Error ? error.message : "Tente novamente.",
                           variant: "destructive",
                         });

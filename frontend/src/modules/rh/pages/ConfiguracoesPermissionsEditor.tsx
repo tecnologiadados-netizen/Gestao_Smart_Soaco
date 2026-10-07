@@ -881,6 +881,48 @@ export function ConfiguracoesPermissionsEditor({ value, onChange, availableSecto
       </PermissionCard>
 
       <PermissionCard
+        title="Demandas Internas"
+        description="Quadros e cards das demandas entre o RH e a diretoria."
+      >
+        <ToggleRow
+          label="Permissões do módulo"
+          viewChecked={permissions.demandasInternas.view}
+          editChecked={permissions.demandasInternas.edit}
+          onSetView={(checked) =>
+            update((draft) => {
+              draft.demandasInternas.view = checked;
+            })
+          }
+          onSetEdit={(checked) =>
+            update((draft) => {
+              draft.demandasInternas.edit = checked;
+            })
+          }
+        />
+      </PermissionCard>
+
+      <PermissionCard
+        title="Vagas"
+        description="Cadastro e acompanhamento das vagas, da abertura ao fechamento."
+      >
+        <ToggleRow
+          label="Permissões do módulo"
+          viewChecked={permissions.vagas.view}
+          editChecked={permissions.vagas.edit}
+          onSetView={(checked) =>
+            update((draft) => {
+              draft.vagas.view = checked;
+            })
+          }
+          onSetEdit={(checked) =>
+            update((draft) => {
+              draft.vagas.edit = checked;
+            })
+          }
+        />
+      </PermissionCard>
+
+      <PermissionCard
         title="Organograma"
         description="Controle o acesso à visualização e edição do organograma."
       >
