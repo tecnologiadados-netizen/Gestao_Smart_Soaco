@@ -12,7 +12,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ArrowLeft, Lock, MessageSquareMore } from "lucide-react";
 import {
   Dialog,
@@ -49,6 +49,7 @@ import {
   rhFieldInputRead,
   rhFieldLabel,
   rhFieldSelectNative,
+  rhFieldTextarea,
   rhFormSection,
   rhFormSectionBody,
   rhFormSectionHeader,
@@ -56,10 +57,14 @@ import {
 import {
   findSecullumFuncionarioByMatricula,
   getDesligamentosComplementos,
+  getMotivosDesligamento,
   getSecullumFuncionarios,
   isApiConfigured,
+  salvarDesligamentoComplemento,
 } from "@rh/lib/api-client";
-import { escolherComplementoDesligamento } from "@rh/lib/motivo-desligamento";
+import { escolherComplementoDesligamento, filhosDoMotivoPai } from "@rh/lib/motivo-desligamento";
+import { canViewOrganicoConteudoSensivel } from "@rh/lib/route-permissions";
+import { useToast } from "@rh/hooks/use-toast";
 import type { OrganicoDocumentPermissions, OrganicoTabId, PermissionAccess } from "@rh/lib/rh-permissions";
 
 /** Grupos de colunas por seção (âncora) */
@@ -149,6 +154,8 @@ interface FormFuncionarioModalProps {
   secullumFieldsLocked?: boolean;
   /** Motivo de desligamento (API Pessoas Secullum), quando aplicável. */
   motivoDemissao?: string;
+  /** Permite preencher complemento e motivo detalhado mesmo com o restante do formulário em leitura. */
+  podeComplementarDesligamento?: boolean;
   /** Exibido somente quando o funcionário foi aberto por um atalho do Dashboard Executivo. */
   onVoltarDashboard?: () => void;
 }
@@ -167,8 +174,11 @@ export function FormFuncionarioModal({
   documentPermissions,
   secullumFieldsLocked = false,
   motivoDemissao,
+  podeComplementarDesligamento = false,
   onVoltarDashboard,
 }: FormFuncionarioModalProps) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [cells, setCells] = useState<string[]>(() =>
     initialRow ? rowToDisplayCells(initialRow) : rowToDisplayCells(getEmptyRow()),
   );
@@ -218,9 +228,29 @@ export function FormFuncionarioModal({
     () => escolherComplementoDesligamento(complementosDesligamento, colaboradorMatricula, demissao),
     [complementosDesligamento, colaboradorMatricula, demissao],
   );
-  const textoMotivoFilho = complementoDesligamento?.motivoFilho || "Pendente no alerta amarelo do Orgânico.";
-  const textoComplementoDesligamento =
-    complementoDesligamento?.motivoTexto || "Pendente no alerta amarelo do Orgânico.";
+  const podeLerMotivoSensivel = canViewOrganicoConteudoSensivel();
+  const motivoOculto = Boolean(complementoDesligamento?.motivoOculto) || (
+    Boolean(complementoDesligamento?.motivoSensivel) && !podeLerMotivoSensivel
+  );
+  const [filhoId, setFilhoId] = useState("");
+  const [motivoLivre, setMotivoLivre] = useState("");
+  const [motivoSensivel, setMotivoSensivel] = useState(false);
+  const [salvandoComplemento, setSalvandoComplemento] = useState(false);
+  const assinaturaComplemento = [
+    open ? "1" : "0",
+    colaboradorMatricula,
+    complementoDesligamento?.motivoFilhoId ?? "",
+    complementoDesligamento?.motivoTexto ?? "",
+    complementoDesligamento?.motivoSensivel ? "1" : "0",
+    motivoOculto ? "1" : "0",
+  ].join("|");
+
+  useEffect(() => {
+    if (!open) return;
+    setFilhoId(complementoDesligamento?.motivoFilhoId ?? "");
+    setMotivoLivre(motivoOculto ? "" : (complementoDesligamento?.motivoTexto ?? ""));
+    setMotivoSensivel(Boolean(complementoDesligamento?.motivoSensivel));
+  }, [assinaturaComplemento, open, complementoDesligamento, motivoOculto]);
 
   const motivoDemissaoResolvido = useMemo(() => {
     const aoVivo =
@@ -231,6 +261,18 @@ export function FormFuncionarioModal({
         : "";
     return aoVivo || String(motivoDemissao ?? "").trim();
   }, [secullumListaMotivo, colaboradorMatricula, motivoDemissao]);
+
+  const { data: motivosDesligamento = [] } = useQuery({
+    queryKey: ["motivos-desligamento"],
+    queryFn: getMotivosDesligamento,
+    enabled: open && isDesligadoContratoSecullum && isApiConfigured(),
+    staleTime: 30_000,
+  });
+  const filhosDoPai = useMemo(
+    () => filhosDoMotivoPai(motivosDesligamento, motivoDemissaoResolvido).flatMap((pai) => pai.filhos),
+    [motivosDesligamento, motivoDemissaoResolvido],
+  );
+  const podeEditarComplemento = podeComplementarDesligamento && !motivoOculto;
 
   /** Só ao abrir o modal: evita resetar o rascunho quando o pai refaz fetch do Orgânico (initialRow nova referência). */
   const wasModalOpenRef = useRef(false);
@@ -591,26 +633,97 @@ export function FormFuncionarioModal({
               />
             </div>
             <div className="min-w-0">
-              <Label htmlFor="motivo-desligamento-filho" className={lblForm}>
-                Motivo detalhado
-              </Label>
-              <Textarea
-                id="motivo-desligamento-filho"
-                value={textoMotivoFilho}
-                readOnly
-                className="min-h-[88px] resize-none rounded-xl border border-dashed border-muted-foreground/35 bg-muted px-3 py-2 text-sm text-foreground shadow-none read-only:text-foreground disabled:opacity-100 whitespace-pre-wrap"
-              />
-            </div>
-            <div className="min-w-0">
               <Label htmlFor="motivo-desligamento-complemento" className={lblForm}>
                 Complemento do desligamento
               </Label>
-              <Textarea
+              <select
                 id="motivo-desligamento-complemento"
-                value={textoComplementoDesligamento}
-                readOnly
-                className="min-h-[88px] resize-none rounded-xl border border-dashed border-muted-foreground/35 bg-muted px-3 py-2 text-sm text-foreground shadow-none read-only:text-foreground disabled:opacity-100 whitespace-pre-wrap"
-              />
+                className={rhFieldSelectNative}
+                value={filhoId}
+                disabled={!podeEditarComplemento || filhosDoPai.length === 0 || salvandoComplemento}
+                onChange={(e) => setFilhoId(e.target.value)}
+              >
+                <option value="">{podeEditarComplemento ? "Selecione o complemento" : "—"}</option>
+                {filhoId && !filhosDoPai.some((filho) => filho.id === filhoId) && complementoDesligamento?.motivoFilho ? (
+                  <option value={filhoId}>{complementoDesligamento.motivoFilho}</option>
+                ) : null}
+                {filhosDoPai.map((filho) => (
+                  <option key={filho.id} value={filho.id}>
+                    {filho.descricao}
+                  </option>
+                ))}
+              </select>
+              {filhosDoPai.length === 0 ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Cadastre os filhos deste motivo em Faltas e atestados → Cadastros.
+                </p>
+              ) : null}
+            </div>
+            <div className="min-w-0">
+              <Label htmlFor="motivo-desligamento-filho" className={lblForm}>
+                Motivo detalhado
+              </Label>
+              {motivoOculto ? (
+                <p className="flex min-h-[88px] items-center rounded-lg border border-dashed border-muted-foreground/35 bg-muted px-3 py-2 text-sm text-muted-foreground">
+                  Conteúdo sensível. Seu acesso não permite ler este texto.
+                </p>
+              ) : (
+                <Textarea
+                  id="motivo-desligamento-filho"
+                  value={motivoLivre}
+                  readOnly={!podeEditarComplemento}
+                  disabled={salvandoComplemento}
+                  placeholder={podeEditarComplemento ? "Escreva o motivo detalhado" : ""}
+                  onChange={(e) => setMotivoLivre(e.target.value)}
+                  className={rhFieldTextarea}
+                />
+              )}
+              <label className="mt-2 flex items-start gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 accent-primary"
+                  checked={motivoSensivel || motivoOculto}
+                  disabled={!podeEditarComplemento || salvandoComplemento}
+                  onChange={(e) => setMotivoSensivel(e.target.checked)}
+                />
+                <span>Sensível. Só quem tem permissão para ver conteúdo sensível consegue ler este texto.</span>
+              </label>
+              {podeComplementarDesligamento && !motivoOculto ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="mt-3"
+                  disabled={salvandoComplemento || !filhoId || !motivoLivre.trim() || filhosDoPai.length === 0}
+                  onClick={() => {
+                    void (async () => {
+                      setSalvandoComplemento(true);
+                      try {
+                        await salvarDesligamentoComplemento({
+                          colaboradorMatricula,
+                          colaboradorNome,
+                          dataDemissao: demissao,
+                          motivoPai: motivoDemissaoResolvido,
+                          motivoFilhoId: filhoId,
+                          motivoTexto: motivoLivre.trim(),
+                          motivoSensivel,
+                        });
+                        await queryClient.invalidateQueries({ queryKey: ["desligamentos-complementos"] });
+                        toast({ title: "Desligamento complementado." });
+                      } catch (error) {
+                        toast({
+                          title: "Não foi possível salvar",
+                          description: error instanceof Error ? error.message : "Tente novamente.",
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setSalvandoComplemento(false);
+                      }
+                    })();
+                  }}
+                >
+                  {salvandoComplemento ? "Salvando…" : "Salvar complemento"}
+                </Button>
+              ) : null}
             </div>
           </div>,
           detalhadoSecullum,
@@ -673,7 +786,7 @@ export function FormFuncionarioModal({
       >
         <DialogHeader className="px-6 sm:px-8 pt-5 pb-3 shrink-0 text-left border-b border-border">
           <DialogTitle>
-            {readOnly ? "Visualizar funcionário" : "Editar funcionário"}
+            {readOnly && !podeComplementarDesligamento ? "Visualizar funcionário" : "Editar funcionário"}
           </DialogTitle>
           <DialogDescription className="text-pretty leading-relaxed max-w-none">
             Todas as colunas do orgânico estão abaixo. Use as <strong>categorias</strong> para rolar até cada bloco.
@@ -684,7 +797,7 @@ export function FormFuncionarioModal({
                 Campos marcados <strong>(Secullum)</strong> vêm da integração e não podem ser editados aqui.
               </>
             ) : null}
-            {readOnly ? " Modo somente leitura." : null}
+            {readOnly && !podeComplementarDesligamento ? " Modo somente leitura." : null}
           </DialogDescription>
         </DialogHeader>
 

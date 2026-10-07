@@ -88,6 +88,7 @@ import {
   getDesligamentosComplementosHandler,
   getMotivosDesligamentoHandler,
   replaceMotivosDesligamentoFilhosHandler,
+  salvarDesligamentoComplementoHandler,
 } from '../rh/controllers/motivoDesligamentoController.js';
 import { geocodeLocalidadesHandler } from '../rh/services/geocodeLocalidade.js';
 import { MAX_DOCUMENT_SIZE_BYTES } from '../rh/utils/rhUpload.js';
@@ -186,6 +187,7 @@ router.get('/secullum-funcionarios', requireRhAccess('/organico', 'view'), wrap(
 router.get('/get-motivos-desligamento', requireRhMotivoDesligamentoView(), wrap(getMotivosDesligamentoHandler));
 router.post('/replace-motivos-desligamento-filhos', requireRhMotivoDesligamentoEdit(), wrap(replaceMotivosDesligamentoFilhosHandler));
 router.get('/get-desligamentos-complementos', requireRhMotivoDesligamentoView(), wrap(getDesligamentosComplementosHandler));
+router.post('/salvar-desligamento-complemento', requireRhAccess('/organico', 'edit'), wrap(salvarDesligamentoComplementoHandler));
 router.post('/geocode-localidades', requireRhAccess('/organico', 'view'), wrap(geocodeLocalidadesHandler));
 router.post('/create-organico-archive-folder', requireRhFeaturePermission('documentos', 'create'), wrap(createOrganicoArchiveFolderHandler));
 router.post('/rename-organico-archive-folder', requireRhFeaturePermission('documentos', 'edit'), wrap(renameOrganicoArchiveFolderHandler));

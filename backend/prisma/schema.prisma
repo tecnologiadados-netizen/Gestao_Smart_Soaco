@@ -2872,6 +2872,7 @@ model RhDesligamentoComplemento {
   motivoFilhoId        String   @map("motivo_filho_id")
   motivoFilho          String   @map("motivo_filho")
   motivoTexto          String   @map("motivo_texto")
+  motivoSensivel       Boolean  @default(false) @map("motivo_sensivel")
   registradoPor        String?  @map("registrado_por")
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")

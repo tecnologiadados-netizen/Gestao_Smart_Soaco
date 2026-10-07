@@ -722,6 +722,18 @@ export function hasSectorAccess(permissions: RhGroupPermissions, setor: string |
   return allowed.some((item) => item.toLocaleLowerCase("pt-BR") === normalized);
 }
 
+const RH_TAGS_SENSIVEIS = ['18', '19', '20', '21', '22'];
+
+/** Conteúdo marcado como sensível segue a categoria "Sensível" dos comentários do orgânico. */
+export function canViewRhConteudoSensivel(
+  permissions: RhGroupPermissions | null,
+  isMaster = false,
+): boolean {
+  if (isMaster) return true;
+  if (!permissions || !hasAccess(permissions.organico.comentarios)) return false;
+  return RH_TAGS_SENSIVEIS.some((id) => permissions.organico.comentarios.tags[id] !== false);
+}
+
 export function canViewOrganicoCommentClassification(
   permissions: RhGroupPermissions,
   tagId: string,

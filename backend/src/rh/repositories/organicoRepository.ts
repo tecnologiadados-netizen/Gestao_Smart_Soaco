@@ -430,7 +430,7 @@ export async function upsertOrganicoAlteracoesPendentes(
 export async function resolveOrganicoAlteracaoPendente(
   id: string,
   resolvedBy: string,
-  input: { motivo: string; motivoFilhoId?: string | null },
+  input: { motivo: string; motivoFilhoId?: string | null; motivoSensivel?: boolean },
 ) {
   const motivo = s(input.motivo);
   if (!motivo) throw new MotivoDesligamentoErro('Motivo é obrigatório.');
@@ -445,6 +445,7 @@ export async function resolveOrganicoAlteracaoPendente(
       resolvedBy,
       motivo,
       motivoFilhoId: s(input.motivoFilhoId),
+      motivoSensivel: input.motivoSensivel === true,
     });
     return;
   }

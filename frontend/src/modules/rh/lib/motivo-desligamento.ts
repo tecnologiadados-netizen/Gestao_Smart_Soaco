@@ -4,6 +4,9 @@ export type DesligamentoComplementoResumo = {
   motivoPai: string;
   motivoFilho: string;
   motivoTexto: string;
+  motivoSensivel?: boolean;
+  motivoOculto?: boolean;
+  motivoFilhoId?: string;
 };
 
 /** Compara o motivo pai da Secullum ignorando acento, caixa e espaços repetidos. */

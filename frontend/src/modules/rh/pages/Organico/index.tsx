@@ -59,6 +59,7 @@ import {
   getOrganicoComentariosResumo,
   getOrganicoFotosResumo,
   replaceOrganico,
+  getDesligamentosComplementos,
   getSecullumFuncionarios,
   isApiConfigured,
   lookupValueByMatriculaFolha,
@@ -73,6 +74,7 @@ import {
   setOrganicoRepresentante,
   type OrganicoRepresentante,
 } from "@rh/lib/api-client";
+import { escolherComplementoDesligamento } from "@rh/lib/motivo-desligamento";
 import { getCurrentUser, getEffectiveGroupPermissions, isAuthenticated, isMaster, setCachedGroupPermissions } from "@rh/lib/auth";
 import { getEphemeralStorageItem, setEphemeralStorageItem } from "@rh/lib/security-storage";
 import { buildRepresentanteKey } from "@rh/lib/organico-representantes-policy";
@@ -556,6 +558,12 @@ const Organico = () => {
   const { data: apiRows, isLoading: loadingOrganico, isError: errorOrganico, refetch: refetchOrganico } = useQuery({
     queryKey: ["organico"],
     queryFn: getOrganico,
+  });
+  const { data: complementosDesligamento = [] } = useQuery({
+    queryKey: ["desligamentos-complementos"],
+    queryFn: getDesligamentosComplementos,
+    enabled: isApiConfigured(),
+    staleTime: 30_000,
   });
 
   const isSoAcoTabActive = selectedEmpresaTab === ORGANICO_EMPRESA_PADRAO;
@@ -2000,6 +2008,7 @@ const Organico = () => {
                   id,
                   motivo: input.motivo,
                   motivoFilhoId: input.motivoFilhoId,
+                  motivoSensivel: input.motivoSensivel,
                 });
               }}
               onDismiss={async (id) => {
@@ -2384,6 +2393,17 @@ const Organico = () => {
                       }}
                       custoRevealed={isCustoVisibleFor(String(row[ORGANICO_IDX.MATRICULA] ?? "").trim())}
                       demissao={lookupValueByMatriculaFolha(demissaoByMatricula, String(row[ORGANICO_IDX.MATRICULA] ?? ""))}
+                      motivoSecullum={lookupValueByMatriculaFolha(
+                        motivoDemissaoByMatricula,
+                        String(row[ORGANICO_IDX.MATRICULA] ?? ""),
+                      )}
+                      complementoDesligamento={
+                        escolherComplementoDesligamento(
+                          complementosDesligamento,
+                          String(row[ORGANICO_IDX.MATRICULA] ?? ""),
+                          lookupValueByMatriculaFolha(demissaoByMatricula, String(row[ORGANICO_IDX.MATRICULA] ?? "")),
+                        )?.motivoFilho ?? ""
+                      }
                       hasComments={comentarioKeySet.has(
                         buildComentarioKey(
                           String(row[ORGANICO_IDX.MATRICULA] ?? "").trim(),
@@ -2555,6 +2575,7 @@ const Organico = () => {
               ? lookupValueByMatriculaFolha(motivoDemissaoByMatricula, String(data[editingRowIndex]?.[ORGANICO_IDX.MATRICULA] ?? ""))
               : undefined
           }
+          podeComplementarDesligamento={canEditOrganico && modalMode === "edit"}
           onVoltarDashboard={dashboardShortcut ? voltarParaDashboard : undefined}
           secullumFieldsLocked={secullumFieldsLocked}
         />

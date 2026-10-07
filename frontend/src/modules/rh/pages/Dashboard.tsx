@@ -41,7 +41,6 @@ import {
 } from "@rh/lib/api-client";
 import {
   escolherComplementoDesligamento,
-  type DesligamentoComplementoResumo,
 } from "@rh/lib/motivo-desligamento";
 import {
   canEditDashboardModule,
@@ -222,32 +221,6 @@ function empresaDaLinhaOrganico(values: unknown[], secullumEmpresa: Record<strin
     diretoria: String(values[ORGANICO_IDX.DIRETORIA] ?? ""),
     historicoLocal: isOrganicoHistoricoLocal(values),
   });
-}
-
-function BlocoMotivosDesligamento({
-  motivoSecullum,
-  complemento,
-}: {
-  motivoSecullum: string;
-  complemento: DesligamentoComplementoResumo | null;
-}) {
-  const linhas = [
-    { rotulo: "Motivo do desligamento (Secullum)", valor: motivoSecullum || "Não informado no Secullum" },
-    { rotulo: "Motivo detalhado", valor: complemento?.motivoFilho || "Pendente" },
-    { rotulo: "Complemento", valor: complemento?.motivoTexto || "Pendente" },
-  ];
-  return (
-    <div className="mt-2 space-y-2">
-      {linhas.map((linha) => (
-        <div key={linha.rotulo} className="rounded-sm border border-border bg-muted/25 px-3 py-2">
-          <span className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {linha.rotulo}
-          </span>
-          <span className="mt-0.5 block text-xs font-medium text-foreground">{linha.valor}</span>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function normalizeMatricula(value: unknown): string {
@@ -804,6 +777,7 @@ const Dashboard = () => {
     type MovimentacaoCard = {
       row: (string | number)[];
       demissao: string;
+      motivoDemissao: string;
       key: string;
     };
     const admissoes: MovimentacaoCard[] = [];
@@ -838,7 +812,12 @@ const Dashboard = () => {
           row[ORGANICO_IDX.ADMISSAO] = String(funcionario.admissao ?? "").trim();
         }
         const demissao = String(funcionario.demissao ?? "").trim();
-        const item = { row, demissao, key: `${chave || "semmat"}-${index}` };
+        const item = {
+          row,
+          demissao,
+          motivoDemissao: String(funcionario.motivoDemissao ?? "").trim(),
+          key: `${chave || "semmat"}-${index}`,
+        };
         if (noMesAtual(funcionario.admissao)) admissoes.push(item);
         if (noMesAtual(demissao)) {
           row[ORGANICO_IDX.STATUS] = "Desligado";
@@ -851,6 +830,7 @@ const Dashboard = () => {
         admissoes.push({
           row,
           demissao: "",
+          motivoDemissao: "",
           key: `${normalizeMatricula(row[ORGANICO_IDX.MATRICULA]) || "semmat"}-${index}`,
         });
       }
@@ -862,6 +842,7 @@ const Dashboard = () => {
         desligamentos.push({
           row,
           demissao,
+          motivoDemissao: "",
           key: `${normalizeMatricula(matricula) || "semmat"}-${index}`,
         });
       }
@@ -1945,6 +1926,16 @@ const Dashboard = () => {
                               row={item.row}
                               rowIndex={index}
                               demissao={item.demissao}
+                              motivoSecullum={grupo.titulo === "Desligamentos" ? item.motivoDemissao : undefined}
+                              complementoDesligamento={
+                                grupo.titulo === "Desligamentos"
+                                  ? escolherComplementoDesligamento(
+                                      complementosDesligamento,
+                                      String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                                      item.demissao,
+                                    )?.motivoFilho ?? ""
+                                  : undefined
+                              }
                         readOnly
                       />
                     </button>
@@ -2181,18 +2172,18 @@ const Dashboard = () => {
                               row={item.row}
                               rowIndex={index}
                               demissao={item.demissao}
+                              motivoSecullum={grupo.mostrarMotivo ? item.motivoDemissao : undefined}
+                              complementoDesligamento={
+                                grupo.mostrarMotivo
+                                  ? escolherComplementoDesligamento(
+                                      complementosDesligamento,
+                                      String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                                      item.demissao,
+                                    )?.motivoFilho ?? ""
+                                  : undefined
+                              }
                               readOnly
                             />
-                            {grupo.mostrarMotivo ? (
-                              <BlocoMotivosDesligamento
-                                motivoSecullum={item.motivoDemissao}
-                                complemento={escolherComplementoDesligamento(
-                                  complementosDesligamento,
-                                  String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
-                                  item.demissao,
-                                )}
-                              />
-                            ) : null}
                           </button>
                         );
                       })
@@ -2372,15 +2363,15 @@ const Dashboard = () => {
                         row={item.row}
                         rowIndex={index}
                         demissao={item.demissao}
-                        readOnly
-                      />
-                      <BlocoMotivosDesligamento
                         motivoSecullum={item.motivoDemissao}
-                        complemento={escolherComplementoDesligamento(
-                          complementosDesligamento,
-                          String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
-                          item.demissao,
-                        )}
+                        complementoDesligamento={
+                          escolherComplementoDesligamento(
+                            complementosDesligamento,
+                            String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                            item.demissao,
+                          )?.motivoFilho ?? ""
+                        }
+                        readOnly
                       />
                     </button>
                   ))}

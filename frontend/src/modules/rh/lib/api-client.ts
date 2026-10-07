@@ -381,11 +381,13 @@ export async function resolveOrganicoAlteracaoPendente(input: {
   id: string;
   motivo: string;
   motivoFilhoId?: string | null;
+  motivoSensivel?: boolean;
 }): Promise<{ ok: boolean }> {
   const body = {
     id: String(input.id ?? "").trim(),
     motivo: String(input.motivo ?? "").trim(),
     motivoFilhoId: String(input.motivoFilhoId ?? "").trim(),
+    motivoSensivel: input.motivoSensivel === true,
   };
   if (!body.id || !body.motivo) {
     throw new Error("Identificador e motivo são obrigatórios.");
@@ -428,6 +430,8 @@ export type DesligamentoComplemento = {
   motivoFilhoId: string;
   motivoFilho: string;
   motivoTexto: string;
+  motivoSensivel?: boolean;
+  motivoOculto?: boolean;
 };
 
 export async function getMotivosDesligamento(): Promise<MotivoDesligamentoPai[]> {
@@ -458,6 +462,31 @@ export async function getDesligamentosComplementos(): Promise<DesligamentoComple
   if (!isApiConfigured()) return [];
   const raw = await secureProtectedJson<{ complementos?: DesligamentoComplemento[] }>("get-desligamentos-complementos");
   return Array.isArray(raw?.complementos) ? raw.complementos : [];
+}
+
+export async function salvarDesligamentoComplemento(input: {
+  colaboradorMatricula: string;
+  colaboradorNome?: string;
+  dataDemissao?: string;
+  motivoPai?: string;
+  motivoFilhoId: string;
+  motivoTexto: string;
+  motivoSensivel?: boolean;
+}): Promise<{ ok: boolean }> {
+  const body = {
+    colaboradorMatricula: String(input.colaboradorMatricula ?? "").trim(),
+    colaboradorNome: String(input.colaboradorNome ?? "").trim(),
+    dataDemissao: String(input.dataDemissao ?? "").trim(),
+    motivoPai: String(input.motivoPai ?? "").trim(),
+    motivoFilhoId: String(input.motivoFilhoId ?? "").trim(),
+    motivoTexto: String(input.motivoTexto ?? "").trim(),
+    motivoSensivel: input.motivoSensivel === true,
+  };
+  if (!body.colaboradorMatricula || !body.motivoFilhoId || !body.motivoTexto) {
+    throw new Error("Selecione o complemento e escreva o motivo detalhado.");
+  }
+  if (!isApiConfigured()) return { ok: true };
+  return secureProtectedPost<{ ok: boolean }, typeof body>("salvar-desligamento-complemento", body);
 }
 
 export async function addOrganicoAtividades(input: {

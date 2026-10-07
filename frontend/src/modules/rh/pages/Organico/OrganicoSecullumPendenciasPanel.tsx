@@ -21,6 +21,7 @@ import { cn } from "@rh/lib/utils";
 export type ResolverPendenciaSecullumInput = {
   motivo: string;
   motivoFilhoId?: string;
+  motivoSensivel?: boolean;
 };
 
 function tipoLabel(t: OrganicoAlteracaoPendente["tipo"]): string {
@@ -83,6 +84,7 @@ export function OrganicoSecullumPendenciasDialog({
 }) {
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [filhosSelecionados, setFilhosSelecionados] = useState<Record<string, string>>({});
+  const [sensiveis, setSensiveis] = useState<Record<string, boolean>>({});
   const temDesligamento = items.some((item) => item.tipo === "desligamento");
   const { data: motivosPai = [] } = useQuery({
     queryKey: ["motivos-desligamento"],
@@ -104,8 +106,8 @@ export function OrganicoSecullumPendenciasDialog({
         <DialogHeader>
           <DialogTitle>Justificar alterações (Secullum)</DialogTitle>
           <DialogDescription>
-            CTPS e cargo pedem um motivo em texto. No desligamento, escolha o motivo filho do motivo da Secullum e
-            escreva o complemento. Os dois são obrigatórios para finalizar.
+            CTPS e cargo pedem um motivo em texto. No desligamento, selecione o complemento cadastrado para o motivo
+            da Secullum e escreva o motivo detalhado. Os dois são obrigatórios para finalizar.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -149,7 +151,7 @@ export function OrganicoSecullumPendenciasDialog({
                       </p>
                       <div>
                         <Label htmlFor={`motivo-filho-${key}`} className={rhFieldLabel}>
-                          Motivo detalhado
+                          Complemento do desligamento
                         </Label>
                         <select
                           id={`motivo-filho-${key}`}
@@ -158,7 +160,7 @@ export function OrganicoSecullumPendenciasDialog({
                           disabled={loading || filhos.length === 0}
                           onChange={(e) => setFilhosSelecionados((prev) => ({ ...prev, [key]: e.target.value }))}
                         >
-                          <option value="">Selecione o motivo filho</option>
+                          <option value="">Selecione o complemento</option>
                           {filhos.map((filho) => (
                             <option key={filho.id} value={filho.id}>
                               {filho.descricao}
@@ -173,14 +175,32 @@ export function OrganicoSecullumPendenciasDialog({
                       </div>
                     </div>
                   ) : null}
+                  {desligamento ? (
+                    <Label htmlFor={`motivo-texto-${key}`} className={rhFieldLabel}>
+                      Motivo detalhado
+                    </Label>
+                  ) : null}
                   <Textarea
-                    placeholder={desligamento ? "Complemento do desligamento..." : "Motivo da alteração..."}
+                    id={desligamento ? `motivo-texto-${key}` : undefined}
+                    placeholder={desligamento ? "Escreva o motivo detalhado" : "Motivo da alteração..."}
                     value={value}
                     onChange={(e) => setMotivos((prev) => ({ ...prev, [key]: e.target.value }))}
                     rows={3}
                     disabled={loading}
                     className={cn(rhFieldTextarea, "text-sm")}
                   />
+                  {desligamento ? (
+                    <label className="flex items-start gap-2 text-xs text-foreground">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 accent-primary"
+                        checked={sensiveis[key] === true}
+                        disabled={loading}
+                        onChange={(e) => setSensiveis((prev) => ({ ...prev, [key]: e.target.checked }))}
+                      />
+                      <span>Sensível. Só quem tem permissão para ver conteúdo sensível consegue ler este texto.</span>
+                    </label>
+                  ) : null}
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     {masterCanDismiss && onDismiss && !desligamento ? (
                       <Button
@@ -222,6 +242,7 @@ export function OrganicoSecullumPendenciasDialog({
                         await onResolve(item.id, {
                           motivo: value.trim(),
                           motivoFilhoId: desligamento ? filhoId : undefined,
+                          motivoSensivel: desligamento ? sensiveis[key] === true : undefined,
                         });
                         setMotivos((prev) => {
                           const next = { ...prev };
@@ -229,6 +250,11 @@ export function OrganicoSecullumPendenciasDialog({
                           return next;
                         });
                         setFilhosSelecionados((prev) => {
+                          const next = { ...prev };
+                          delete next[key];
+                          return next;
+                        });
+                        setSensiveis((prev) => {
                           const next = { ...prev };
                           delete next[key];
                           return next;

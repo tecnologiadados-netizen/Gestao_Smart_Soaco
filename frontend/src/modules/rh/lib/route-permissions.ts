@@ -1,6 +1,7 @@
 ﻿import { getEffectiveGroupPermissions, isMaster, isAuthenticated } from "@rh/lib/auth";
 import { allNavItems, CONFIGURACOES_NAV_ITEM } from "@rh/lib/nav-items";
 import { rhPath, stripRhPath } from "@rh/lib/rh-paths";
+import { DEFAULT_ORGANICO_COMMENT_TAG_OPTIONS } from "@rh/lib/organico-comment-tags";
 import type { OrganicoDocumentCategoryId, OrganicoDocumentClassificationId } from "@rh/lib/organico-documents";
 import {
   ORGANICO_TAB_OPTIONS,
@@ -116,6 +117,16 @@ export function canDeleteOrganicoComments(): boolean {
   if (isMaster()) return true;
   const permissions = getEffectiveGroupPermissions();
   return canEditAccess(permissions?.organico.comentarios);
+}
+
+/** Categorias com tom sensível nos comentários do orgânico. */
+export function canViewOrganicoConteudoSensivel(): boolean {
+  if (isMaster()) return true;
+  const permissions = getEffectiveGroupPermissions();
+  if (!permissions || !canViewAccess(permissions.organico.comentarios)) return false;
+  return DEFAULT_ORGANICO_COMMENT_TAG_OPTIONS.filter((tag) => tag.tone === "sensitive").some(
+    (tag) => permissions.organico.comentarios.tags[tag.id] !== false,
+  );
 }
 
 export function canViewOrganicoCommentTag(tagId: string, visibility: string): boolean {

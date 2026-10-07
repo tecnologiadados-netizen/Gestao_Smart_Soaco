@@ -4,6 +4,7 @@ import {
   listDesligamentosComplementos,
   listMotivosDesligamento,
   replaceMotivosDesligamentoFilhos,
+  salvarDesligamentoComplemento,
 } from '../repositories/motivoDesligamentoRepository.js';
 import { s, sendError } from '../utils/rhHelpers.js';
 
@@ -32,9 +33,44 @@ export async function replaceMotivosDesligamentoFilhosHandler(req: Request, res:
   }
 }
 
-export async function getDesligamentosComplementosHandler(_req: Request, res: Response) {
+export async function getDesligamentosComplementosHandler(req: Request, res: Response) {
   try {
-    res.json({ complementos: await listDesligamentosComplementos() });
+    const ctx = req.rhAuth;
+    res.json({
+      complementos: await listDesligamentosComplementos({
+        isMaster: ctx?.isMaster === true,
+        permissions: ctx?.permissions ?? null,
+      }),
+    });
+  } catch (error) {
+    sendFalha(res, error);
+  }
+}
+
+export async function salvarDesligamentoComplementoHandler(req: Request, res: Response) {
+  try {
+    const ctx = req.rhAuth!;
+    const body = req.body as {
+      colaboradorMatricula?: string;
+      colaboradorNome?: string;
+      dataDemissao?: string;
+      motivoPai?: string;
+      motivoFilhoId?: string;
+      motivoTexto?: string;
+      motivoSensivel?: boolean;
+    };
+    res.json(
+      await salvarDesligamentoComplemento({
+        colaboradorMatricula: s(body.colaboradorMatricula),
+        colaboradorNome: s(body.colaboradorNome),
+        dataDemissao: s(body.dataDemissao),
+        motivoPai: s(body.motivoPai),
+        motivoFilhoId: s(body.motivoFilhoId),
+        motivoTexto: s(body.motivoTexto),
+        motivoSensivel: body.motivoSensivel === true,
+        registradoPor: ctx.actor,
+      }),
+    );
   } catch (error) {
     sendFalha(res, error);
   }

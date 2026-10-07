@@ -333,12 +333,13 @@ export async function upsertOrganicoAlteracoesPendentesHandler(req: Request, res
 export async function resolveOrganicoAlteracaoPendenteHandler(req: Request, res: Response) {
   try {
     const { actor } = authCtx(req);
-    const body = req.body as { id?: string; motivo?: string; motivoFilhoId?: string };
+    const body = req.body as { id?: string; motivo?: string; motivoFilhoId?: string; motivoSensivel?: boolean };
     const id = s(body.id);
     if (!id) return sendError(res, 'id obrigatório.', 400);
     await resolveOrganicoAlteracaoPendente(id, actor, {
       motivo: s(body.motivo),
       motivoFilhoId: s(body.motivoFilhoId),
+      motivoSensivel: body.motivoSensivel === true,
     });
     res.json({ ok: true });
   } catch (e) {
