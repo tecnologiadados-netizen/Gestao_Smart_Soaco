@@ -2847,3 +2847,36 @@ model PdvVendaPagamento {
   @@index([vendaId])
   @@map("pdv_venda_pagamento")
 }
+
+/// Motivo detalhado (filho) de cada motivo de demissão cadastrado na Secullum.
+model RhMotivoDesligamentoFilho {
+  id        String   @id @default(uuid())
+  motivoPai String   @map("motivo_pai")
+  descricao String
+  ordem     Int      @default(0)
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([motivoPai])
+  @@map("rh_motivo_desligamento_filho")
+}
+
+/// Complemento obrigatório do desligamento (motivo filho + texto livre), depois do alerta.
+model RhDesligamentoComplemento {
+  id                   String   @id @default(uuid())
+  colaboradorMatricula String   @map("colaborador_matricula")
+  colaboradorNome      String   @default("") @map("colaborador_nome")
+  dataDemissao         String   @default("") @map("data_demissao")
+  motivoPai            String   @default("") @map("motivo_pai")
+  motivoFilhoId        String   @map("motivo_filho_id")
+  motivoFilho          String   @map("motivo_filho")
+  motivoTexto          String   @map("motivo_texto")
+  registradoPor        String?  @map("registrado_por")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@unique([colaboradorMatricula, dataDemissao])
+  @@index([colaboradorMatricula])
+  @@map("rh_desligamento_complemento")
+}

@@ -447,6 +447,60 @@ export function requireRhRegrasAlertasEdit() {
   };
 }
 
+function permitirContexto(
+  context: RhAuthContext,
+  permitido: (permissions: RhGroupPermissions) => boolean,
+): boolean {
+  if (context.isMaster) return true;
+  return context.permissions != null && permitido(context.permissions);
+}
+
+/** Leitura do catálogo de motivos filhos: Orgânico, Dashboard ou aba Cadastros. */
+export function requireRhMotivoDesligamentoView() {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const context = await ensureAuthenticated(req, res);
+      if (!context) return;
+      const allowed = permitirContexto(
+        context,
+        (permissions) =>
+          canViewRoute(permissions, '/organico') ||
+          canViewRoute(permissions, '/dashboard') ||
+          canViewAccess(permissions.faltas.cadastros),
+      );
+      if (!allowed) {
+        deny(res, 'Sem permissão para consultar motivos de desligamento.');
+        return;
+      }
+      attachRhAuth(req, context);
+      next();
+    } catch (err) {
+      console.error('[requireRhMotivoDesligamentoView]', (err as Error)?.message ?? err);
+      if (!res.headersSent) res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
+    }
+  };
+}
+
+/** Gravação dos motivos filhos: aba Cadastros de Faltas e atestados. */
+export function requireRhMotivoDesligamentoEdit() {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const context = await ensureAuthenticated(req, res);
+      if (!context) return;
+      const allowed = permitirContexto(context, (permissions) => canEditAccess(permissions.faltas.cadastros));
+      if (!allowed) {
+        deny(res, 'Sem permissão para cadastrar motivos de desligamento.');
+        return;
+      }
+      attachRhAuth(req, context);
+      next();
+    } catch (err) {
+      console.error('[requireRhMotivoDesligamentoEdit]', (err as Error)?.message ?? err);
+      if (!res.headersSent) res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
+    }
+  };
+}
+
 export function requireRhSectorAccess(
   resolveSetor: (req: Request) => string | null | undefined,
 ) {

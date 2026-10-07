@@ -10,6 +10,8 @@
  * Somente leitura: nenhuma escrita é feita na Secullum.
  */
 
+import { normalizarMotivoPai } from '../lib/motivoDesligamento.js';
+
 const AUTH_URL = 'https://autenticador.secullum.com.br/token';
 const API_BASE = 'https://pontowebintegracaoexterna.secullum.com.br/IntegracaoExterna';
 
@@ -37,6 +39,12 @@ export interface SecullumFuncionario {
   sexo: string;
   ctps: string;
   endereco: string;
+  /** Logradouro cru do campo Endereço, sem bairro/cidade. */
+  logradouro: string;
+  cidade: string;
+  uf: string;
+  bairro: string;
+  cep: string;
 }
 
 interface SecullumConfig {
@@ -159,6 +167,10 @@ function limpar(v?: string | null): string {
   return String(v ?? '').trim();
 }
 
+function limparCampo(v?: string | null): string {
+  return limpar(v).replace(/,+\s*$/g, '').replace(/\s+/g, ' ').trim();
+}
+
 /** Endereço consolidado a partir das partes da Secullum. */
 function montarEndereco(f: RawFuncionario): string {
   const partes = [
@@ -252,6 +264,11 @@ function mapFuncionario(
     sexo: f.Masculino === true ? 'Masculino' : f.Masculino === false ? 'Feminino' : '',
     ctps: limpar(f.Carteira),
     endereco: montarEndereco(f),
+    logradouro: limparCampo(f.Endereco),
+    cidade: limpar(f.Cidade?.Descricao),
+    uf: limpar(f.Uf).toUpperCase(),
+    bairro: limparCampo(f.Bairro),
+    cep: limpar(f.Cep).replace(/\D/g, ''),
   };
 }
 
@@ -291,4 +308,22 @@ export async function fetchSecullumFuncionarios(): Promise<SecullumFuncionario[]
   return funcionarios
     .map((f) => mapFuncionario(f, motivosById, afastamentos))
     .filter((f) => f.numeroFolha !== '');
+}
+
+/** Catálogo de motivos de demissão da Secullum (motivo pai / resumido). */
+export async function fetchSecullumMotivosDemissao(): Promise<string[]> {
+  const cfg = getConfig();
+  if (!cfg) return [];
+  const token = await getAccessToken(cfg);
+  const raw = await apiGet<RawDescricao[]>('MotivosDemissao', token).catch(() => [] as RawDescricao[]);
+  const vistos = new Set<string>();
+  const out: string[] = [];
+  for (const motivo of Array.isArray(raw) ? raw : []) {
+    const descricao = limpar(motivo.Descricao);
+    const key = normalizarMotivoPai(descricao);
+    if (!key || vistos.has(key)) continue;
+    vistos.add(key);
+    out.push(descricao);
+  }
+  return out.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
 }

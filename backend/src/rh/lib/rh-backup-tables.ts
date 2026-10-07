@@ -28,6 +28,8 @@ export const RH_BACKUP_MODELS = [
   'rhOrganicoRepresentantes',
   'rhOrganicoTrajetoria',
   'rhOrganicoAlteracaoPendente',
+  'rhMotivoDesligamentoFilho',
+  'rhDesligamentoComplemento',
   'rhFaltasAtestados',
   'rhSancoesDisciplinares',
   'rhPontualidadePontoSnapshot',

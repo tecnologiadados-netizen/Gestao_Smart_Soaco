@@ -55,9 +55,11 @@ import {
 } from "@rh/lib/form-field-styles";
 import {
   findSecullumFuncionarioByMatricula,
+  getDesligamentosComplementos,
   getSecullumFuncionarios,
   isApiConfigured,
 } from "@rh/lib/api-client";
+import { escolherComplementoDesligamento } from "@rh/lib/motivo-desligamento";
 import type { OrganicoDocumentPermissions, OrganicoTabId, PermissionAccess } from "@rh/lib/rh-permissions";
 
 /** Grupos de colunas por seção (âncora) */
@@ -205,6 +207,20 @@ export function FormFuncionarioModal({
       isApiConfigured(),
     staleTime: 45_000,
   });
+
+  const { data: complementosDesligamento = [] } = useQuery({
+    queryKey: ["desligamentos-complementos"],
+    queryFn: getDesligamentosComplementos,
+    enabled: open && isDesligadoContratoSecullum && isApiConfigured(),
+    staleTime: 30_000,
+  });
+  const complementoDesligamento = useMemo(
+    () => escolherComplementoDesligamento(complementosDesligamento, colaboradorMatricula, demissao),
+    [complementosDesligamento, colaboradorMatricula, demissao],
+  );
+  const textoMotivoFilho = complementoDesligamento?.motivoFilho || "Pendente no alerta amarelo do Orgânico.";
+  const textoComplementoDesligamento =
+    complementoDesligamento?.motivoTexto || "Pendente no alerta amarelo do Orgânico.";
 
   const motivoDemissaoResolvido = useMemo(() => {
     const aoVivo =
@@ -572,6 +588,28 @@ export function FormFuncionarioModal({
                 value={textoMotivoExibido}
                 readOnly
                 className="min-h-[88px] resize-none rounded-xl border border-dashed border-muted-foreground/35 bg-muted px-3 py-2 text-sm text-foreground placeholder:text-foreground shadow-none read-only:text-foreground disabled:opacity-100 whitespace-pre-wrap"
+              />
+            </div>
+            <div className="min-w-0">
+              <Label htmlFor="motivo-desligamento-filho" className={lblForm}>
+                Motivo detalhado
+              </Label>
+              <Textarea
+                id="motivo-desligamento-filho"
+                value={textoMotivoFilho}
+                readOnly
+                className="min-h-[88px] resize-none rounded-xl border border-dashed border-muted-foreground/35 bg-muted px-3 py-2 text-sm text-foreground shadow-none read-only:text-foreground disabled:opacity-100 whitespace-pre-wrap"
+              />
+            </div>
+            <div className="min-w-0">
+              <Label htmlFor="motivo-desligamento-complemento" className={lblForm}>
+                Complemento do desligamento
+              </Label>
+              <Textarea
+                id="motivo-desligamento-complemento"
+                value={textoComplementoDesligamento}
+                readOnly
+                className="min-h-[88px] resize-none rounded-xl border border-dashed border-muted-foreground/35 bg-muted px-3 py-2 text-sm text-foreground shadow-none read-only:text-foreground disabled:opacity-100 whitespace-pre-wrap"
               />
             </div>
           </div>,

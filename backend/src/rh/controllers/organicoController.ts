@@ -28,6 +28,7 @@ import {
 } from '../repositories/organicoRepository.js';
 import { replaceOrganicoSafe } from '../repositories/replaceRepository.js';
 import { notImplemented, s, sendError } from '../utils/rhHelpers.js';
+import { MotivoDesligamentoErro } from '../lib/motivoDesligamento.js';
 import { fetchSecullumFuncionarios } from '../services/secullumService.js';
 import { dispararAlertasComentariosOrganico } from '../../services/organicoComentarioAlertaEmailService.js';
 import { fetchNomusRepresentantes } from '../services/nomusRepresentantesService.js';
@@ -332,11 +333,16 @@ export async function upsertOrganicoAlteracoesPendentesHandler(req: Request, res
 export async function resolveOrganicoAlteracaoPendenteHandler(req: Request, res: Response) {
   try {
     const { actor } = authCtx(req);
-    const id = s((req.body as { id?: string }).id);
+    const body = req.body as { id?: string; motivo?: string; motivoFilhoId?: string };
+    const id = s(body.id);
     if (!id) return sendError(res, 'id obrigatório.', 400);
-    await resolveOrganicoAlteracaoPendente(id, actor);
+    await resolveOrganicoAlteracaoPendente(id, actor, {
+      motivo: s(body.motivo),
+      motivoFilhoId: s(body.motivoFilhoId),
+    });
     res.json({ ok: true });
   } catch (e) {
+    if (e instanceof MotivoDesligamentoErro) return sendError(res, e.message, e.status);
     sendError(res, (e as Error).message);
   }
 }

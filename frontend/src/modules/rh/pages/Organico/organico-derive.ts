@@ -84,9 +84,23 @@ export function parseDateBR(s: string): Date | null {
   const datePrefix = t.match(/^(\d{4}-\d{2}-\d{2}|\d{1,2}[\/-]\d{1,2}[\/-]\d{4})/);
   if (datePrefix?.[1]) t = datePrefix[1];
   // ISO: YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
-    const d = new Date(t);
-    return isNaN(d.getTime()) ? null : d;
+  const isoMatch = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const [, yearRaw, monthRaw, dayRaw] = isoMatch;
+    const year = Number(yearRaw);
+    const month = Number(monthRaw);
+    const day = Number(dayRaw);
+    // Constrói em horário local. `new Date("YYYY-MM-DD")` usa UTC e pode recuar
+    // para o dia/mês anterior em fusos negativos, como o do Brasil.
+    const d = new Date(year, month - 1, day);
+    if (
+      d.getFullYear() !== year ||
+      d.getMonth() !== month - 1 ||
+      d.getDate() !== day
+    ) {
+      return null;
+    }
+    return d;
   }
   // DD/MM/YYYY ou DD-MM-YYYY
   const match = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);

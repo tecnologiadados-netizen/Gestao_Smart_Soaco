@@ -8,6 +8,8 @@ import {
   requireRhConfigPermission,
   requireRhFeaturePermission,
   requireRhMaster,
+  requireRhMotivoDesligamentoEdit,
+  requireRhMotivoDesligamentoView,
   requireRhRegrasAlertasEdit,
   requireRhRegrasAlertasView,
   requireRhSancoesWrite,
@@ -82,6 +84,12 @@ import {
   upsertOrganicoAlteracoesPendentesHandler,
 } from '../rh/controllers/organicoController.js';
 import { rhSessionPermissionsHandler } from '../rh/controllers/sessionController.js';
+import {
+  getDesligamentosComplementosHandler,
+  getMotivosDesligamentoHandler,
+  replaceMotivosDesligamentoFilhosHandler,
+} from '../rh/controllers/motivoDesligamentoController.js';
+import { geocodeLocalidadesHandler } from '../rh/services/geocodeLocalidade.js';
 import { MAX_DOCUMENT_SIZE_BYTES } from '../rh/utils/rhUpload.js';
 
 const router = Router();
@@ -175,6 +183,10 @@ router.get('/get-organico-representantes-dados', requireRhAccess('/organico', 'v
 router.post('/sync-organico-representantes', requireRhAccess('/organico', 'edit'), wrap(syncOrganicoRepresentantesHandler));
 router.post('/set-organico-representante', requireRhAccess('/organico', 'edit'), wrap(setOrganicoRepresentanteHandler));
 router.get('/secullum-funcionarios', requireRhAccess('/organico', 'view'), wrap(secullumFuncionariosHandler));
+router.get('/get-motivos-desligamento', requireRhMotivoDesligamentoView(), wrap(getMotivosDesligamentoHandler));
+router.post('/replace-motivos-desligamento-filhos', requireRhMotivoDesligamentoEdit(), wrap(replaceMotivosDesligamentoFilhosHandler));
+router.get('/get-desligamentos-complementos', requireRhMotivoDesligamentoView(), wrap(getDesligamentosComplementosHandler));
+router.post('/geocode-localidades', requireRhAccess('/organico', 'view'), wrap(geocodeLocalidadesHandler));
 router.post('/create-organico-archive-folder', requireRhFeaturePermission('documentos', 'create'), wrap(createOrganicoArchiveFolderHandler));
 router.post('/rename-organico-archive-folder', requireRhFeaturePermission('documentos', 'edit'), wrap(renameOrganicoArchiveFolderHandler));
 router.post('/hide-organico-archive-folder', requireRhFeaturePermission('documentos', 'edit'), wrap(hideOrganicoArchiveFolderHandler));

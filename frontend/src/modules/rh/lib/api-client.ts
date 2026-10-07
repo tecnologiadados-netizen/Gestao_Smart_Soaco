@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Cliente de API do GESTÃO RH SO.
  *
  * SEGURANÇA: Este módulo usa APENAS fetch() para URLs configuradas.
@@ -356,11 +356,11 @@ type UpsertOrganicoAlteracaoPendenteItem = {
   matricula: string;
   colaboradorNome: string;
   setor: string;
-  tipo: "ctps" | "cargo";
+  tipo: "ctps" | "cargo" | "desligamento";
   campoLabel: string;
   valorAnterior: string;
   valorAtual: string;
-  /** YYYY-MM-DD — data na trajetória; opcional (usa data da detecção / hoje). */
+  /** YYYY-MM-DD — data na trajetória ou da demissão; opcional. */
   dataReferencia?: string | null;
 };
 
@@ -377,8 +377,16 @@ export async function upsertOrganicoAlteracoesPendentes(input: {
   );
 }
 
-export async function resolveOrganicoAlteracaoPendente(input: { id: string; motivo: string }): Promise<{ ok: boolean }> {
-  const body = { id: String(input.id ?? "").trim(), motivo: String(input.motivo ?? "").trim() };
+export async function resolveOrganicoAlteracaoPendente(input: {
+  id: string;
+  motivo: string;
+  motivoFilhoId?: string | null;
+}): Promise<{ ok: boolean }> {
+  const body = {
+    id: String(input.id ?? "").trim(),
+    motivo: String(input.motivo ?? "").trim(),
+    motivoFilhoId: String(input.motivoFilhoId ?? "").trim(),
+  };
   if (!body.id || !body.motivo) {
     throw new Error("Identificador e motivo são obrigatórios.");
   }
@@ -398,6 +406,58 @@ export async function deleteOrganicoAlteracaoPendente(input: { id: string }): Pr
     return { ok: true };
   }
   return secureProtectedPost<{ ok: boolean }, typeof body>("delete-organico-alteracao-pendente", body);
+}
+
+export type MotivoDesligamentoFilho = {
+  id: string;
+  descricao: string;
+  ordem: number;
+};
+
+export type MotivoDesligamentoPai = {
+  motivoPai: string;
+  filhos: MotivoDesligamentoFilho[];
+};
+
+export type DesligamentoComplemento = {
+  id: string;
+  colaboradorMatricula: string;
+  colaboradorNome: string;
+  dataDemissao: string;
+  motivoPai: string;
+  motivoFilhoId: string;
+  motivoFilho: string;
+  motivoTexto: string;
+};
+
+export async function getMotivosDesligamento(): Promise<MotivoDesligamentoPai[]> {
+  if (!isApiConfigured()) return [];
+  const raw = await secureProtectedJson<{ pais?: MotivoDesligamentoPai[] }>("get-motivos-desligamento");
+  return Array.isArray(raw?.pais) ? raw.pais : [];
+}
+
+export async function replaceMotivosDesligamentoFilhos(input: {
+  motivoPai: string;
+  filhos: Array<{ descricao: string }>;
+}): Promise<{ ok: boolean; total: number }> {
+  const body = {
+    motivoPai: String(input.motivoPai ?? "").trim(),
+    filhos: (input.filhos ?? [])
+      .map((item) => ({ descricao: String(item.descricao ?? "").trim() }))
+      .filter((item) => item.descricao),
+  };
+  if (!body.motivoPai) throw new Error("Informe o motivo pai.");
+  if (!isApiConfigured()) return { ok: true, total: body.filhos.length };
+  return secureProtectedPost<{ ok: boolean; total: number }, typeof body>(
+    "replace-motivos-desligamento-filhos",
+    body,
+  );
+}
+
+export async function getDesligamentosComplementos(): Promise<DesligamentoComplemento[]> {
+  if (!isApiConfigured()) return [];
+  const raw = await secureProtectedJson<{ complementos?: DesligamentoComplemento[] }>("get-desligamentos-complementos");
+  return Array.isArray(raw?.complementos) ? raw.complementos : [];
 }
 
 export async function addOrganicoAtividades(input: {
@@ -1026,6 +1086,11 @@ export type SecullumFuncionario = {
   sexo: string;
   ctps: string;
   endereco: string;
+  logradouro?: string;
+  cidade?: string;
+  uf?: string;
+  bairro?: string;
+  cep?: string;
 };
 
 export type OrganicoRepresentante = {
