@@ -12,7 +12,7 @@ import {
 
 function doc(partial: Partial<DocGestaoEntrada> & Pick<DocGestaoEntrada, 'idDocumento'>): DocGestaoEntrada {
   return {
-    dataEntrada: '2026-09-01',
+    dataEntrada: '2026-09-21',
     idTipoMovimentacao: 11,
     nomeTipo: 'Compra',
     itens: 1,
@@ -115,8 +115,8 @@ describe('montarPainelGestaoEntradas', () => {
   const docs: DocGestaoEntrada[] = [
     doc({ idDocumento: 1, itens: 2 }),
     doc({ idDocumento: 2, itens: 1, idTipoMovimentacao: 35, nomeTipo: 'Devolução' }),
-    doc({ idDocumento: 3, dataEntrada: '2026-09-02', itens: 4 }),
-    doc({ idDocumento: 4, dataEntrada: '2026-09-02' }),
+    doc({ idDocumento: 3, dataEntrada: '2026-09-22', itens: 4 }),
+    doc({ idDocumento: 4, dataEntrada: '2026-09-22' }),
   ];
 
   const decisoes: DecisaoGestaoEntrada[] = [
@@ -158,8 +158,8 @@ describe('montarPainelGestaoEntradas', () => {
   ];
 
   const painel = montarPainelGestaoEntradas({
-    dataInicio: '2026-09-01',
-    dataFim: '2026-09-02',
+    dataInicio: '2026-09-21',
+    dataFim: '2026-09-22',
     docs,
     idsConferidos: new Set([1, 2, 3]),
     idsComDivergenciaAtual: new Set([2, 3]),
@@ -181,6 +181,23 @@ describe('montarPainelGestaoEntradas', () => {
     expect(painel.kpis.pctLimpas).toBeCloseTo(100 / 3);
   });
 
+  it('não conta entrada anterior à conferência como pendente', () => {
+    const comHistorico = montarPainelGestaoEntradas({
+      dataInicio: '2026-07-01',
+      dataFim: '2026-09-22',
+      docs: [...docs, doc({ idDocumento: 5, dataEntrada: '2026-07-01' })],
+      idsConferidos: new Set([1, 2, 3]),
+      idsComDivergenciaAtual: new Set([2, 3]),
+      decisoes,
+    });
+    expect(comHistorico.kpis.qtdeNotas).toBe(5);
+    expect(comHistorico.kpis.qtdePendentes).toBe(1);
+    expect(comHistorico.serieDiaria.find((d) => d.data === '2026-07-01')).toMatchObject({
+      notas: 1,
+      pendentes: 0,
+    });
+  });
+
   it('ignora decisão de nota ainda não conferida no ranking', () => {
     const aceitasQtde = painel.porCampo.find((c) => c.campo === 'qtde');
     expect(aceitasQtde).toMatchObject({ aceitas: 2, recusas: 0, qtde: 2, documentos: 2 });
@@ -194,7 +211,7 @@ describe('montarPainelGestaoEntradas', () => {
   it('soma a série do dia e os tipos de movimento', () => {
     expect(painel.serieDiaria).toEqual([
       {
-        data: '2026-09-01',
+        data: '2026-09-21',
         notas: 2,
         itens: 3,
         limpas: 1,
@@ -203,7 +220,7 @@ describe('montarPainelGestaoEntradas', () => {
         pendentes: 0,
       },
       {
-        data: '2026-09-02',
+        data: '2026-09-22',
         notas: 2,
         itens: 5,
         limpas: 0,

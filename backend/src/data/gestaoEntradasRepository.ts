@@ -256,6 +256,7 @@ const ORDEM_STATUS: Record<StatusNotaGestaoEntrada, number> = {
   recusa: 1,
   limpa: 2,
   pendente: 3,
+  nao_aplicada: 4,
 };
 
 export async function queryGestaoEntradasDia(params: {
@@ -304,18 +305,22 @@ export async function queryGestaoEntradasDia(params: {
     const notas: NotaDiaGestaoEntrada[] = docs.map((doc) => {
       const linhas = linhasResp.linhasPorDocumento.get(doc.idDocumento) ?? [];
       const decisoesDoc = decisoes.get(doc.idDocumento) ?? [];
-      const regimeCompleto = regimeConferenciaPorDataEntrada(doc.dataEntrada) === 'completa';
+      const regime = regimeConferenciaPorDataEntrada(doc.dataEntrada);
+      const regimeCompleto = regime === 'completa';
       const avaliado = regimeCompleto
         ? prepararDocumentoNoEscopo({ linhas, decisoes: decisoesDoc, escopo })
         : { divergencias: [], temDivergencia: false, pendentes: 0, chaves: new Set<string>() };
       const conferida = idsConferidos.has(doc.idDocumento) && avaliado.pendentes === 0;
-      const status = classificarNotaGestaoEntrada(
-        conferida,
-        avaliado.divergencias
-          .filter((d) => d.decisao === 'aceita' || d.decisao === 'recusa')
-          .map((d) => ({ decisao: d.decisao as string })),
-        avaliado.temDivergencia
-      );
+      const status =
+        regime === 'nao_aplicada'
+          ? 'nao_aplicada'
+          : classificarNotaGestaoEntrada(
+              conferida,
+              avaliado.divergencias
+                .filter((d) => d.decisao === 'aceita' || d.decisao === 'recusa')
+                .map((d) => ({ decisao: d.decisao as string })),
+              avaliado.temDivergencia
+            );
       return {
         ...doc,
         status,

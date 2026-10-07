@@ -96,7 +96,7 @@ export type GestaoEntradasNotaDia = {
   numeroNfe: string | null;
   nomeParceiro: string | null;
   itens: number;
-  status: 'pendente' | 'limpa' | 'aceita' | 'recusa';
+  status: 'pendente' | 'limpa' | 'aceita' | 'recusa' | 'nao_aplicada';
   divergeAtual: boolean;
   divergencias: GestaoEntradasDivergencia[];
 };

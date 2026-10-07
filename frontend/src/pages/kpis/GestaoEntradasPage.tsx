@@ -613,8 +613,8 @@ export default function GestaoEntradasPage() {
                 titulo="Conferidas"
                 valor={fmtNum(k.qtdeConferidas)}
                 detalhe={
-                  k.qtdeNotas > 0
-                    ? `${fmtNum((k.qtdeConferidas / k.qtdeNotas) * 100, 0)}% do total`
+                  k.qtdeConferidas + k.qtdePendentes > 0
+                    ? `${fmtNum((k.qtdeConferidas / (k.qtdeConferidas + k.qtdePendentes)) * 100, 0)}% do total`
                     : 'Nenhuma nota no período'
                 }
                 icone={<ClipboardCheck className="h-4 w-4" strokeWidth={2.2} />}
@@ -625,8 +625,8 @@ export default function GestaoEntradasPage() {
                 titulo="Pendentes"
                 valor={fmtNum(k.qtdePendentes)}
                 detalhe={
-                  k.qtdeNotas > 0
-                    ? `${fmtNum((k.qtdePendentes / k.qtdeNotas) * 100, 0)}% do total`
+                  k.qtdeConferidas + k.qtdePendentes > 0
+                    ? `${fmtNum((k.qtdePendentes / (k.qtdeConferidas + k.qtdePendentes)) * 100, 0)}% do total`
                     : 'Nenhuma nota no período'
                 }
                 icone={<Clock3 className="h-4 w-4" strokeWidth={2.2} />}

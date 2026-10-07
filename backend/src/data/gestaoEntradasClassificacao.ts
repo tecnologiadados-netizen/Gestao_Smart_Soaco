@@ -3,6 +3,7 @@
  * Decisão em nota ainda não conferida não entra no ranking (conferência incompleta).
  */
 import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
+import { regimeConferenciaPorDataEntrada } from '../services/doubleCheckInConferenciaPeriodo.js';
 import {
   classificarNaturezaDivergencia,
   observacaoNaturezaDivergencia,
@@ -25,7 +26,12 @@ export const CAMPOS_DIVERGENCIA_ENTRADA = [
 
 export type CampoDivergenciaEntrada = (typeof CAMPOS_DIVERGENCIA_ENTRADA)[number]['campo'];
 
-export type StatusNotaGestaoEntrada = 'pendente' | 'limpa' | 'aceita' | 'recusa';
+export type StatusNotaGestaoEntrada =
+  | 'pendente'
+  | 'limpa'
+  | 'aceita'
+  | 'recusa'
+  | 'nao_aplicada';
 
 export type DocGestaoEntrada = {
   idDocumento: number;
@@ -152,16 +158,19 @@ export function montarPainelGestaoEntradas(params: {
 
   for (const doc of params.docs) {
     qtdeItens += doc.itens;
-    const conferida = params.idsConferidos.has(doc.idDocumento);
+    const foraDaConferencia = regimeConferenciaPorDataEntrada(doc.dataEntrada) === 'nao_aplicada';
+    const conferida = !foraDaConferencia && params.idsConferidos.has(doc.idDocumento);
     const divergenciaAtual = params.idsComDivergenciaAtual.has(doc.idDocumento);
     const decisoesDoc =
       conferida && divergenciaAtual ? (decisoesPorDoc.get(doc.idDocumento) ?? []) : [];
-    const status = classificarNotaGestaoEntrada(conferida, decisoesDoc, divergenciaAtual);
+    const status = foraDaConferencia
+      ? 'nao_aplicada'
+      : classificarNotaGestaoEntrada(conferida, decisoesDoc, divergenciaAtual);
 
     if (status === 'limpa') qtdeLimpas += 1;
     else if (status === 'aceita') qtdeAceitas += 1;
     else if (status === 'recusa') qtdeRecusas += 1;
-    else qtdePendentes += 1;
+    else if (status === 'pendente') qtdePendentes += 1;
 
     const dia = serieMap.get(doc.dataEntrada) ?? {
       data: doc.dataEntrada,
@@ -177,7 +186,7 @@ export function montarPainelGestaoEntradas(params: {
     if (status === 'limpa') dia.limpas += 1;
     else if (status === 'aceita') dia.aceitas += 1;
     else if (status === 'recusa') dia.recusas += 1;
-    else dia.pendentes += 1;
+    else if (status === 'pendente') dia.pendentes += 1;
     serieMap.set(doc.dataEntrada, dia);
 
     const tipo = tipoMap.get(doc.idTipoMovimentacao) ?? {

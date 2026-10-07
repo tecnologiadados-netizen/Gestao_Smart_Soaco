@@ -33,6 +33,7 @@ const STATUS_LABEL: Record<GestaoEntradasNotaDia['status'], string> = {
   recusa: 'Divergência recusada',
   limpa: 'Sem divergência',
   pendente: 'Pendente',
+  nao_aplicada: 'Não aplicada',
 };
 
 const STATUS_CLASS: Record<GestaoEntradasNotaDia['status'], string> = {
@@ -40,6 +41,7 @@ const STATUS_CLASS: Record<GestaoEntradasNotaDia['status'], string> = {
   recusa: 'border-rose-400 bg-rose-50 text-rose-800 dark:border-rose-500 dark:bg-rose-950/40 dark:text-rose-100',
   limpa: 'border-emerald-400 bg-emerald-50 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-100',
   pendente: 'border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300',
+  nao_aplicada: 'border-slate-300 bg-slate-50 text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400',
 };
 
 function fmtDataBr(ymd: string): string {
@@ -50,7 +52,7 @@ function fmtDataBr(ymd: string): string {
 
 function passaCard(nota: GestaoEntradasNotaDia, card: CardGestaoEntrada): boolean {
   if (card === 'pendentes') return nota.status === 'pendente';
-  if (card === 'conferidas') return nota.status !== 'pendente';
+  if (card === 'conferidas') return nota.status !== 'pendente' && nota.status !== 'nao_aplicada';
   return true;
 }
 
