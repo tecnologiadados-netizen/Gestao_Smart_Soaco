@@ -6,6 +6,8 @@ interface RegistroAnexosTableProps {
   onChange: (anexos: RegistroAnexo[]) => void;
   disabled?: boolean;
   comTitulo?: boolean;
+  tituloObrigatorio?: boolean;
+  erroTitulo?: string;
 }
 
 export function RegistroAnexosTable({
@@ -13,6 +15,8 @@ export function RegistroAnexosTable({
   onChange,
   disabled = false,
   comTitulo = false,
+  tituloObrigatorio = false,
+  erroTitulo,
 }: RegistroAnexosTableProps) {
   return (
     <SgqAnexosTable
@@ -20,6 +24,8 @@ export function RegistroAnexosTable({
       onChange={onChange}
       disabled={disabled}
       comTitulo={comTitulo}
+      tituloObrigatorio={tituloObrigatorio}
+      erroTitulo={erroTitulo}
       emptyMessage='Nenhuma evidência adicionada. Clique em "Adicionar anexo" para incluir um arquivo.'
       addButtonLabel="Adicionar anexo"
       readOnlyEmptyMessage="Nenhuma evidência anexada."

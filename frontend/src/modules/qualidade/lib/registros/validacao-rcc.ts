@@ -3,6 +3,7 @@ import {
   RCC_ORIGEM_CLIENTE_REVENDEDOR,
   origemReclamacaoRcc,
 } from "@qualidade/lib/registros/constants";
+import { anexoTemArquivo } from "@qualidade/types/registro-anexo";
 import type { RccDados } from "@qualidade/types/rcc";
 import type { RncItemProduto } from "@qualidade/types/rnc";
 
@@ -127,6 +128,14 @@ export function validarRcc(
     if (!rcc.servicoRealizado.trim() && !linhasServico.some(servicoPreenchido)) {
       erros.servicoRealizado = "Para encerrar, informe o serviço realizado.";
     }
+  }
+
+  if (
+    (rcc.anexos ?? []).some(
+      (anexo) => anexoTemArquivo(anexo) && !(anexo.titulo ?? "").trim()
+    )
+  ) {
+    erros.anexos = "Informe o título da evidência.";
   }
 
   if (opcoes?.origemNomus) {

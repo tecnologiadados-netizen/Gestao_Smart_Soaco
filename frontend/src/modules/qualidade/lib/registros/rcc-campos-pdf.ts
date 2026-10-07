@@ -150,6 +150,13 @@ export const RCC_CAMPOS_PDF_MAPA: RccCampoPdfMapa[] = [
     observacao: "Usa só a categoria de cada linha (Categorize a reclamação).",
   },
   {
+    rotuloPdf: "Causa do problema",
+    chaveSistema: "causaProblema",
+    versoes: ["empresa"],
+    situacao: "mapeado",
+    observacao: "Junta a causa de cada linha da reclamação.",
+  },
+  {
     rotuloPdf: "Descrição da reclamação",
     chaveSistema: "descricaoReclamacao",
     versoes: ["cliente", "empresa"],

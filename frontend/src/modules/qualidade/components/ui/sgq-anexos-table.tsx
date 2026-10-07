@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@qualidade/components/ui/table";
 import { SgqArquivoAcoes } from "@qualidade/components/documentos/sgq-arquivo-imprimir-btn";
+import { openQualidadeArquivo } from "@qualidade/lib/documents/file-actions";
 import { MSG_VISUALIZACAO_BAIXAR_ORIGINAL } from "@qualidade/lib/documents/sgq-print-window";
 import {
   criarAnexoVazio,
@@ -31,8 +32,10 @@ export interface SgqAnexosTableProps {
   emptyMessage?: string;
   addButtonLabel?: string;
   readOnlyEmptyMessage?: string;
-  /** Campo de título em cada linha. Usado nas evidências da RNC. */
+  /** Campo de título em cada linha. Usado nas evidências da RNC e da RCC. */
   comTitulo?: boolean;
+  tituloObrigatorio?: boolean;
+  erroTitulo?: string;
 }
 
 export function SgqAnexosTable({
@@ -46,6 +49,8 @@ export function SgqAnexosTable({
   addButtonLabel = "Adicionar anexo",
   readOnlyEmptyMessage = "Nenhum anexo.",
   comTitulo = false,
+  tituloObrigatorio = false,
+  erroTitulo,
 }: SgqAnexosTableProps) {
   const baseId = useId();
   const [erro, setErro] = useState("");
@@ -61,6 +66,22 @@ export function SgqAnexosTable({
   function adicionarLinha() {
     if (maxRows != null && anexos.length >= maxRows) return;
     onChange([...anexos, criarAnexoVazio()]);
+  }
+
+  function visualizarAnexo(anexo: SgqAnexo) {
+    setErro("");
+    void openQualidadeArquivo(
+      {
+        nome: anexo.nome,
+        dataUrl: anexo.dataUrl,
+        storagePath: anexo.storagePath,
+      },
+      "view"
+    ).catch((err) => {
+      setErro(
+        err instanceof Error ? err.message : "Não foi possível abrir o arquivo."
+      );
+    });
   }
 
   function selecionarArquivo(id: string, file: File) {
@@ -96,7 +117,10 @@ export function SgqAnexosTable({
   }
 
   return (
-    <div className="min-w-0 space-y-3">
+    <div
+      className="min-w-0 space-y-3"
+      data-campo-pendente={erroTitulo ? "" : undefined}
+    >
       {label ? <Label className="text-base">{label}</Label> : null}
 
       <Table surface className="table-fixed">
@@ -105,7 +129,7 @@ export function SgqAnexosTable({
             <TableHead className="w-10 border-r border-border/70">#</TableHead>
             {comTitulo ? (
               <TableHead className="w-[34%] border-r border-border/70">
-                Título
+                Título{tituloObrigatorio ? " *" : ""}
               </TableHead>
             ) : null}
             <TableHead className="min-w-0 border-r border-border/70">
@@ -137,38 +161,54 @@ export function SgqAnexosTable({
                       disabled={disabled}
                       readOnly={disabled}
                       aria-label={`Título da evidência ${index + 1}`}
+                      aria-invalid={
+                        tituloObrigatorio &&
+                        Boolean(erroTitulo) &&
+                        temArquivo &&
+                        !(anexo.titulo ?? "").trim()
+                          ? true
+                          : undefined
+                      }
                       onChange={(e) =>
                         atualizarLinha(anexo.id, { titulo: e.target.value })
                       }
                     />
                   </TableCell>
                 ) : null}
-                <TableCell className="max-w-0 border-r border-border/60 !whitespace-normal">
-                  <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                <TableCell className="border-r border-border/60 !whitespace-normal">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <Paperclip className="size-4 shrink-0 text-muted-foreground" />
-                    <span
-                      className="min-w-0 truncate text-sm"
-                      title={temArquivo ? anexo.nome : undefined}
-                    >
-                      {temArquivo ? (
-                        <span className="font-medium text-foreground">
-                          {anexo.nome}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">
-                          Nenhum arquivo selecionado
-                        </span>
-                      )}
-                    </span>
+                    {temArquivo ? (
+                      <button
+                        type="button"
+                        className="min-w-0 max-w-full truncate text-left text-sm font-medium text-primary underline-offset-2 hover:underline"
+                        title={`Visualizar ${anexo.nome}`}
+                        onClick={() => visualizarAnexo(anexo)}
+                      >
+                        {anexo.nome}
+                      </button>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        Nenhum arquivo selecionado
+                      </span>
+                    )}
+                    {temArquivo ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 shrink-0 text-xs"
+                        onClick={() => visualizarAnexo(anexo)}
+                      >
+                        Visualizar
+                      </Button>
+                    ) : null}
                   </div>
                 </TableCell>
                 <TableCell className="align-middle">
                   <div className="flex flex-wrap items-center justify-end gap-1">
                     {temArquivo ? (
-                      <SgqArquivoAcoes
-                        arquivo={anexo}
-                        onError={setErro}
-                      />
+                      <SgqArquivoAcoes arquivo={anexo} onError={setErro} />
                     ) : null}
                     {!disabled ? (
                       <>
@@ -229,6 +269,12 @@ export function SgqAnexosTable({
           ) : null}
         </TableBody>
       </Table>
+
+      {erroTitulo ? (
+        <p className="text-xs font-medium text-destructive" role="alert">
+          {erroTitulo}
+        </p>
+      ) : null}
 
       {erro ? (
         <p

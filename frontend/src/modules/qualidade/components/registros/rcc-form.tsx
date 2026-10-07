@@ -1128,6 +1128,8 @@ export function RccForm({
           onChange={(anexos) => patch({ anexos })}
           disabled={somenteLeitura}
           comTitulo
+          tituloObrigatorio
+          erroTitulo={erros.anexos}
         />
       </fieldset>
 

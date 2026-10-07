@@ -82,6 +82,22 @@ def nome_revendedor(rcc: dict[str, Any]) -> str:
     return valor_campo(rcc.get("vendedor")) or VENDEDOR_PADRAO
 
 
+def causa_problema(rcc: dict[str, Any]) -> str:
+    """Causa informada em cada linha da reclamação."""
+    linhas = rcc.get("linhasReclamacao")
+    causas: list[str] = []
+    if isinstance(linhas, list):
+        for linha in linhas:
+            if not isinstance(linha, dict):
+                continue
+            causa = valor_campo(linha.get("causa"))
+            if causa and causa not in causas:
+                causas.append(causa)
+    if causas:
+        return "; ".join(causas)
+    return valor_campo(rcc.get("causaProblema"))
+
+
 def tipo_reclamacao(rcc: dict[str, Any]) -> str:
     """Só a categoria (Categorize a reclamação), sem a descrição da linha."""
     linhas = rcc.get("linhasReclamacao")
@@ -252,6 +268,7 @@ def montar_campos(payload: dict[str, Any]) -> dict[str, str]:
         "quantidade": valor_campo(rcc.get("quantidade")),
         "pedido": valor_campo(rcc.get("numeroPedidoInternoExterno")),
         "tipo_reclamacao": tipo_reclamacao(rcc),
+        "causa_problema": causa_problema(rcc),
         "descricao_reclamacao": valor_campo(rcc.get("descricaoReclamacao")),
         "reclamacao_aceita": valor_campo(rcc.get("reclamacaoAceita")),
         "dentro_garantia": valor_campo(rcc.get("produtoDentroGarantia")),
@@ -321,6 +338,7 @@ def preencher_empresa(table, campos: dict[str, str]) -> None:
     definir_celula(table, 10, 3, campos["quantidade"])
     definir_celula(table, 10, 15, campos["pedido"])
     definir_celula(table, 12, 3, campos["tipo_reclamacao"])
+    definir_celula(table, 12, 13, campos["causa_problema"])
     definir_celula(table, 14, 0, campos["descricao_reclamacao"])
     definir_celula(table, 16, 0, campos["comentario"])
     definir_celula(table, 19, 4, campos["funcionario"])
