@@ -339,6 +339,7 @@ export async function postRecebimentoMesaAcao(req: Request, res: Response): Prom
       conferente: { id: conferente.id, login: conferente.login, nome: conferente.nome },
       atribuidoPor: usuario,
       mesaAcao: acao,
+      preservarItensConferidos: true,
     });
   } else {
     const { documentos, erro } = await queryCabecalhosDocumentosNomus([idDocumento]);
@@ -412,6 +413,7 @@ type ProdutoConferenteDto = {
   tentativasUsadas: number;
   tentativasMax: number;
   conferido: boolean;
+  esgotado: boolean;
   qtdeInformada: number | null;
 };
 
@@ -426,17 +428,37 @@ function produtoParaConferente(
   local: RecebimentoContagemLinha | undefined
 ): ProdutoConferenteDto {
   const conferido = local?.conferido === true;
+  const tentativasUsadas = local?.tentativas ?? 0;
+  const esgotado = !conferido && tentativasUsadas >= RECEBIMENTO_TENTATIVAS_MAX;
   return {
     idItem: item.idItem,
     idProduto: item.idProduto,
     codigoProduto: item.codigoProduto,
     descricaoProduto: item.descricaoProduto,
     unidadeMedida: item.unidadeMedida,
-    tentativasUsadas: local?.tentativas ?? 0,
+    tentativasUsadas,
     tentativasMax: RECEBIMENTO_TENTATIVAS_MAX,
     conferido,
-    qtdeInformada: conferido && local ? local.qtdeInformada : null,
+    esgotado,
+    qtdeInformada: local && (conferido || esgotado) ? local.qtdeInformada : null,
   };
+}
+
+function situacaoItensConferencia(
+  itensNomus: { idItem: number }[],
+  linhas: RecebimentoContagemLinha[]
+): { todosEncerrados: boolean; temDivergencia: boolean } {
+  const porItem = new Map(
+    linhas.filter((l) => l.idItemDocumento != null).map((l) => [l.idItemDocumento as number, l])
+  );
+  const todosEncerrados =
+    itensNomus.length > 0 &&
+    itensNomus.every((it) => {
+      const linha = porItem.get(it.idItem);
+      return linha?.conferido === true || (linha?.tentativas ?? 0) >= RECEBIMENTO_TENTATIVAS_MAX;
+    });
+  const temDivergencia = itensNomus.some((it) => porItem.get(it.idItem)?.conferido !== true);
+  return { todosEncerrados, temDivergencia };
 }
 
 /**
@@ -587,10 +609,15 @@ export async function postRecebimentoDigitacaoItem(req: Request, res: Response):
     return;
   }
 
+  const linhasApos = await listarItensContagem(local.id);
+  const { todosEncerrados, temDivergencia } = situacaoItensConferencia(itens, linhasApos);
   let status = local.status;
   let retornouMesa = false;
-  if (tentativa.esgotado) {
-    const atualizado = await devolverConferenciaParaMesa(local.id, RECEBIMENTO_STATUS.DIVERGENCIA);
+  if (todosEncerrados) {
+    const atualizado = await devolverConferenciaParaMesa(
+      local.id,
+      temDivergencia ? RECEBIMENTO_STATUS.DIVERGENCIA : RECEBIMENTO_STATUS.CONFERIDO
+    );
     status = atualizado.status;
     retornouMesa = true;
   }
@@ -654,15 +681,16 @@ export async function postRecebimentoDigitacaoDevolver(req: Request, res: Respon
     res.status(400).json({ error: 'Não há itens neste documento para devolver.' });
     return;
   }
-  const conferidos = new Set(
-    linhas.filter((l) => l.conferido && l.idItemDocumento != null).map((l) => l.idItemDocumento as number)
-  );
-  if (itens.some((it) => !conferidos.has(it.idItem))) {
+  const { todosEncerrados, temDivergencia } = situacaoItensConferencia(itens, linhas);
+  if (!todosEncerrados) {
     res.status(400).json({ error: 'Confera todos os itens antes de devolver à Mesa.' });
     return;
   }
 
-  const atualizado = await devolverConferenciaParaMesa(local.id, RECEBIMENTO_STATUS.CONFERIDO);
+  const atualizado = await devolverConferenciaParaMesa(
+    local.id,
+    temDivergencia ? RECEBIMENTO_STATUS.DIVERGENCIA : RECEBIMENTO_STATUS.CONFERIDO
+  );
   res.json({
     ok: true,
     status: atualizado.status,

@@ -177,11 +177,16 @@ export default function DigitacaoConferenciaPage() {
   const filtrados = grade.rowsExibidas;
   const itensCarregados = !detalheLoading && detalhe != null;
   const produtos = detalhe?.produtos ?? [];
-  const pendentes = produtos.filter((p) => !p.conferido);
-  const todosConferidos = produtos.length > 0 && pendentes.length === 0;
+  const itemEsgotado = (p: RecebimentoProdutoConferente) =>
+    p.esgotado === true || (!p.conferido && p.tentativasUsadas >= p.tentativasMax);
+  const itemPendente = (p: RecebimentoProdutoConferente) => !p.conferido && !itemEsgotado(p);
+  const pendentes = produtos.filter(itemPendente);
+  const todosConferidos = produtos.length > 0 && produtos.every((p) => p.conferido);
+  const todosEncerrados = produtos.length > 0 && pendentes.length === 0;
+  const temDivergencia = produtos.some(itemEsgotado);
 
   const selecionarProximoPendente = (lista: RecebimentoProdutoConferente[]) => {
-    const next = lista.find((p) => !p.conferido);
+    const next = lista.find((p) => !p.conferido && !(p.esgotado || p.tentativasUsadas >= p.tentativasMax));
     setIdItem(next ? next.idItem : '');
   };
 
@@ -261,15 +266,25 @@ export default function DigitacaoConferenciaPage() {
       atualizarProduto(modalDoc.idDocumento, r.produto);
       setQtde('');
       if (r.retornouMesa) {
-        fecharAposRetornoMesa('Divergência: conferência devolvida à Mesa');
+        fecharAposRetornoMesa(
+          r.status === 'DIVERGENCIA'
+            ? 'Conferência encerrada. Os itens com erro voltam para a Mesa; os conferidos ficam concluídos.'
+            : 'Conferência devolvida à Mesa'
+        );
         return;
       }
       setFeedbackRetorno('off');
-      if (r.acertou) {
-        setAcaoOk('Quantidade conferida.');
-        const restantes = (detalhe?.produtos ?? []).map((p) =>
-          p.idItem === r.produto.idItem ? r.produto : p
+      const restantes = (detalhe?.produtos ?? []).map((p) =>
+        p.idItem === r.produto.idItem ? r.produto : p
+      );
+      if (r.esgotado) {
+        setAcaoErro(
+          '3 tentativas esgotadas neste item. Ele fica marcado. Continue nos demais; o documento volta para a Mesa ao final.'
         );
+        selecionarProximoPendente(restantes);
+        qtdeRef.current?.focus();
+      } else if (r.acertou) {
+        setAcaoOk('Quantidade conferida.');
         selecionarProximoPendente(restantes);
         qtdeRef.current?.focus();
       } else {
@@ -290,13 +305,17 @@ export default function DigitacaoConferenciaPage() {
   };
 
   const devolver = async () => {
-    if (!modalDoc || !itensCarregados || !todosConferidos) return;
+    if (!modalDoc || !itensCarregados || !todosEncerrados) return;
     setDevolviendo(true);
     setAcaoErro(null);
     setFeedbackRetorno('loading');
     try {
       await postRecebimentoDigitacaoDevolver(modalDoc.idDocumento);
-      fecharAposRetornoMesa('Conferência devolvida à Mesa');
+      fecharAposRetornoMesa(
+        temDivergencia
+          ? 'Conferência encerrada. Os itens com erro voltam para a Mesa; os conferidos ficam concluídos.'
+          : 'Conferência devolvida à Mesa'
+      );
     } catch (e) {
       setFeedbackRetorno('off');
       setAcaoErro(e instanceof Error ? e.message : 'Não foi possível devolver à Mesa.');
@@ -320,8 +339,9 @@ export default function DigitacaoConferenciaPage() {
             Digitação conferência
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Pendências deliberadas pela Mesa para você. Selecione o produto do documento, informe a quantidade
-            física (às cegas, 3 chances) e devolva à Mesa.
+            Pendências deliberadas pela Mesa para você. Informe a quantidade física às cegas. Cada item tem 3
+            chances; ao esgotar, ele fica marcado e a conferência segue nos demais. O documento volta à Mesa
+            quando todos os itens tiverem sido conferidos.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -486,7 +506,8 @@ export default function DigitacaoConferenciaPage() {
                 )}
                 <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
                   Selecione o produto do documento e informe a quantidade física. A quantidade da NF não aparece
-                  nesta tela. Cada item tem 3 chances; na terceira divergência a conferência volta para a Mesa.
+                  nesta tela. Cada item tem 3 chances. Na terceira divergência o item fica marcado e a conferência
+                  continua nos demais. O documento volta para a Mesa só quando todos os itens forem encerrados.
                 </p>
                 <table className="min-w-full text-sm">
                   <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-900">
@@ -518,6 +539,10 @@ export default function DigitacaoConferenciaPage() {
                               <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                                 Conferido
                               </span>
+                            ) : itemEsgotado(it) ? (
+                              <span className="text-xs font-semibold text-rose-700 dark:text-rose-300">
+                                3 tentativas esgotadas
+                              </span>
                             ) : it.tentativasUsadas > 0 ? (
                               <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
                                 Tentativa {it.tentativasUsadas} de {it.tentativasMax}
@@ -527,7 +552,9 @@ export default function DigitacaoConferenciaPage() {
                             )}
                           </td>
                           <td className="px-2 py-2 text-right tabular-nums">
-                            {it.conferido && it.qtdeInformada != null ? nfNum.format(it.qtdeInformada) : '—'}
+                            {(it.conferido || itemEsgotado(it)) && it.qtdeInformada != null
+                              ? nfNum.format(it.qtdeInformada)
+                              : '—'}
                           </td>
                         </tr>
                       ))
@@ -587,7 +614,7 @@ export default function DigitacaoConferenciaPage() {
                   <button
                     type="button"
                     className={btnPrimary}
-                    disabled={!itensCarregados || salvando || devolviendo || !todosConferidos}
+                    disabled={!itensCarregados || salvando || devolviendo || !todosEncerrados}
                     onClick={() => void devolver()}
                   >
                     Devolver à Mesa
@@ -596,6 +623,12 @@ export default function DigitacaoConferenciaPage() {
                 {todosConferidos && (
                   <p className="text-sm text-emerald-700 dark:text-emerald-300">
                     Todos os itens conferidos. Devolva o documento à Mesa.
+                  </p>
+                )}
+                {todosEncerrados && temDivergencia && (
+                  <p className="text-sm text-rose-700 dark:text-rose-300">
+                    Há itens com 3 tentativas esgotadas. Devolva à Mesa para avaliar só esses. Os conferidos
+                    permanecem concluídos.
                   </p>
                 )}
                 {acaoOk && (

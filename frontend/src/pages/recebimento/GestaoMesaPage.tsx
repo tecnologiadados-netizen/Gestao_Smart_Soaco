@@ -687,7 +687,8 @@ export default function GestaoMesaPage() {
                           Histórico da conferência
                         </h4>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Retorno à Mesa em {fmtDateTimeBr(detalhe.historicoConferencia.retornadoEm)}
+                          Retorno à Mesa em {fmtDateTimeBr(detalhe.historicoConferencia.retornadoEm)}. Itens
+                          conferidos permanecem concluídos. A Mesa trata só os itens com divergência.
                         </p>
                       </div>
                       {badgeStatus(
@@ -773,6 +774,10 @@ export default function GestaoMesaPage() {
                           ? 'Definir ação após divergência'
                           : 'Alterar ação após divergência'}
                       </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        As ações valem para os itens com divergência. Ao reenviar para conferência, só esses
+                        itens são reabertos. Os já conferidos permanecem concluídos.
+                      </p>
                       {modalDoc.status !== 'DIVERGENCIA' && (
                         <p className="text-xs text-slate-500 dark:text-slate-400">
                           Ação atual registrada em {fmtDateTimeBr(detalhe?.mesaAcaoEm ?? null)}
@@ -811,6 +816,11 @@ export default function GestaoMesaPage() {
                               : 'Alterar ação'}
                         </button>
                       </div>
+                      {mesaAcao === 'REENVIAR_CONFERENCIA' && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          O conferente recebe de novo apenas os itens que esgotaram as 3 tentativas.
+                        </p>
+                      )}
                       {mesaAcao === 'REENVIAR_CONFERENCIA' && (
                         <div className="flex flex-wrap items-end gap-3">
                           <div className="min-w-[12rem]">

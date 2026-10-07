@@ -240,6 +240,7 @@ export type RecebimentoProdutoConferente = {
   tentativasUsadas: number;
   tentativasMax: number;
   conferido: boolean;
+  esgotado: boolean;
   qtdeInformada: number | null;
 };
 

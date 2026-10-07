@@ -172,6 +172,8 @@ export async function deliberarConferente(params: {
   conferente: RecebimentoConferenteOpcao;
   atribuidoPor: { id: number; login: string };
   mesaAcao?: string;
+  /** Reenvio da Mesa: apaga só os itens com divergência e mantém os já conferidos. */
+  preservarItensConferidos?: boolean;
 }): Promise<RecebimentoConferenciaLocal> {
   const existente = await prisma.recebimentoConferencia.findUnique({
     where: { idDocumentoEstoque: params.idDocumentoEstoque },
@@ -242,7 +244,11 @@ export async function deliberarConferente(params: {
       },
     });
     if (existente) {
-      await tx.recebimentoConferenciaItem.deleteMany({ where: { conferenciaId: atualizado.id } });
+      await tx.recebimentoConferenciaItem.deleteMany({
+        where: params.preservarItensConferidos
+          ? { conferenciaId: atualizado.id, conferido: false }
+          : { conferenciaId: atualizado.id },
+      });
     }
     return atualizado;
   });
