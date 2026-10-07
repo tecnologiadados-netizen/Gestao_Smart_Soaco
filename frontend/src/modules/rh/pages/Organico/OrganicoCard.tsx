@@ -45,6 +45,8 @@ export const OrganicoCard = memo(function OrganicoCard({
   row,
   rowIndex,
   demissao,
+  motivoSecullum,
+  complementoDesligamento,
   pendenciaSecullum = false,
   fotoCadastrada = false,
   fotoApiHabilitada = false,
@@ -60,6 +62,10 @@ export const OrganicoCard = memo(function OrganicoCard({
   row: OrganicoSheetRow;
   rowIndex: number;
   demissao?: string;
+  /** Motivo pai vindo da Secullum. Aparece no card quando o colaborador está desligado. */
+  motivoSecullum?: string;
+  /** Complemento (motivo filho) escolhido para o desligamento. */
+  complementoDesligamento?: string;
   /** Pendência de justificativa Secullum (CTPS/cargo) — exibe indicador no card. */
   pendenciaSecullum?: boolean;
   /** Há linha em `organico_fotos` para esta matrícula (resumo leve). */
@@ -90,6 +96,8 @@ export const OrganicoCard = memo(function OrganicoCard({
   });
   const status = getStatusFromRow(row);
   const isDesligado = status === "Desligado";
+  const motivoSecullumLabel = motivoSecullum?.trim() || "—";
+  const complementoLabel = complementoDesligamento?.trim() || "—";
 
   if (!emp) return null;
 
@@ -151,7 +159,7 @@ export const OrganicoCard = memo(function OrganicoCard({
           onEdit(rowIndex);
         }}
         className={actionBtn("")}
-        title={isDesligado ? "Visualizar" : "Editar"}
+        title="Editar"
       >
         <Pencil className={actionsInline ? "w-3.5 h-3.5" : "w-4 h-4"} />
       </button>
@@ -211,6 +219,12 @@ export const OrganicoCard = memo(function OrganicoCard({
               <p className="text-[11px] text-muted-foreground truncate mt-0.5">
                 {emp.cargo} · {emp.setor} · <span className="font-mono">{emp.id}</span>
               </p>
+              {isDesligado ? (
+                <p className="text-[11px] text-foreground truncate mt-0.5">
+                  <span className="text-muted-foreground">Motivo Secullum:</span> {motivoSecullumLabel}
+                  <span className="text-muted-foreground"> · Complemento:</span> {complementoLabel}
+                </p>
+              ) : null}
             </div>
           </div>,
           "flex-1"
@@ -266,6 +280,18 @@ export const OrganicoCard = memo(function OrganicoCard({
                 <span className="text-muted-foreground block text-[10px] uppercase tracking-wide">Tempo</span>
                 <span className="font-medium">{emp.tempoEmpresa}</span>
               </div>
+              {isDesligado ? (
+                <>
+                  <div className="min-w-0">
+                    <span className="text-muted-foreground block text-[10px] uppercase tracking-wide">Motivo Secullum</span>
+                    <span className="font-medium truncate block">{motivoSecullumLabel}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-muted-foreground block text-[10px] uppercase tracking-wide">Complemento</span>
+                    <span className="font-medium truncate block">{complementoLabel}</span>
+                  </div>
+                </>
+              ) : null}
               <div className="flex items-end lg:col-span-1">
                 <StatusBadge status={status} size="sm" />
               </div>
@@ -382,6 +408,18 @@ export const OrganicoCard = memo(function OrganicoCard({
           <span className={g.label}>Custo total (mês)</span>
           <span className={cn(g.value, "tabular-nums", !showCustoTotal && "tracking-widest")}>{custoTotalLabel}</span>
         </div>
+        {isDesligado ? (
+          <>
+            <div className="min-w-0">
+              <span className={g.label}>Motivo Secullum</span>
+              <span className={cn(g.value, "whitespace-normal")}>{motivoSecullumLabel}</span>
+            </div>
+            <div className="min-w-0">
+              <span className={g.label}>Complemento</span>
+              <span className={cn(g.value, "whitespace-normal")}>{complementoLabel}</span>
+            </div>
+          </>
+        ) : null}
       </div>
       <div className="mt-2">
         <StatusBadge status={status} size={g.badgeSize} />

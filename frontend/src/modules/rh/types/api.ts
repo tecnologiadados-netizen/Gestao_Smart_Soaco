@@ -135,13 +135,13 @@ export interface OrganicoFotoResumo {
   colaboradorNome: string;
 }
 
-/** Pendência de justificativa para alteração CTPS ou cargo (Secullum). */
+/** Pendência de justificativa para alteração CTPS, cargo ou complemento de desligamento (Secullum). */
 export interface OrganicoAlteracaoPendente {
   id: string;
   colaboradorMatricula: string;
   colaboradorNome: string;
   setor: string;
-  tipo: "ctps" | "cargo";
+  tipo: "ctps" | "cargo" | "desligamento";
   campoLabel: string;
   valorAnterior: string;
   valorAtual: string;

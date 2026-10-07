@@ -11,7 +11,7 @@ const DELAY_MS = 1100;
 const cache = new Map<string, { lat: number; lng: number }>();
 
 /** Nome do estado (sem acento) para segunda tentativa no Nominatim quando sigla UF não retorna resultado. */
-const UF_PARA_ESTADO: Record<string, string> = {
+export const UF_PARA_ESTADO: Record<string, string> = {
   AC: 'Acre', AL: 'Alagoas', AM: 'Amazonas', AP: 'Amapa', BA: 'Bahia', CE: 'Ceara', DF: 'Distrito Federal',
   ES: 'Espirito Santo', GO: 'Goias', MA: 'Maranhao', MG: 'Minas Gerais', MS: 'Mato Grosso do Sul', MT: 'Mato Grosso',
   PA: 'Para', PB: 'Paraiba', PE: 'Pernambuco', PI: 'Piaui', PR: 'Parana', RJ: 'Rio de Janeiro', RN: 'Rio Grande do Norte',
@@ -128,4 +128,155 @@ export async function geocodeMunicipio(
 /** Atrasa entre chamadas para respeitar limite do Nominatim (1 req/s). */
 export function delay(ms: number = DELAY_MS): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+export type CandidatoNominatim = {
+  lat: number;
+  lng: number;
+  tipo: string;
+  classe: string;
+  nome: string;
+  exibicao: string;
+};
+
+const cacheCandidatos = new Map<string, CandidatoNominatim[]>();
+
+/** Até cinco resultados, para escolher o bairro certo em vez do primeiro hit. */
+async function fetchCandidatos(q: string): Promise<CandidatoNominatim[]> {
+  const params = new URLSearchParams({
+    q,
+    format: 'json',
+    limit: '5',
+    addressdetails: '1',
+    countrycodes: 'br',
+  });
+  const res = await fetch(`${NOMINATIM_URL}?${params.toString()}`, {
+    headers: { 'User-Agent': 'GestorPedidosSoAco/1.0' },
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as Array<{
+    lat?: string;
+    lon?: string;
+    type?: string;
+    class?: string;
+    addresstype?: string;
+    name?: string;
+    display_name?: string;
+  }>;
+  if (!Array.isArray(data)) return [];
+  const saida: CandidatoNominatim[] = [];
+  for (const item of data) {
+    const lat = parseFloat(item.lat ?? '');
+    const lng = parseFloat(item.lon ?? '');
+    if (Number.isNaN(lat) || Number.isNaN(lng)) continue;
+    saida.push({
+      lat,
+      lng,
+      tipo: item.addresstype || item.type || '',
+      classe: item.class || '',
+      nome: item.name || '',
+      exibicao: item.display_name || '',
+    });
+  }
+  return saida;
+}
+
+let filaNominatim: Promise<void> = Promise.resolve();
+
+/** Vários candidatos do Nominatim, na mesma fila (1 por segundo). */
+export function buscarCandidatos(consulta: string): Promise<CandidatoNominatim[]> {
+  const chave = `cand:${normalizarSemAcentos(consulta)}`;
+  if (!chave || chave === 'cand:') return Promise.resolve([]);
+  const emCache = cacheCandidatos.get(chave);
+  if (emCache) return Promise.resolve(emCache);
+
+  const execucao = filaNominatim.then(async () => {
+    const ja = cacheCandidatos.get(chave);
+    if (ja) return ja;
+    await delay();
+    const lista = await fetchCandidatos(consulta);
+    cacheCandidatos.set(chave, lista);
+    return lista;
+  });
+  filaNominatim = execucao.then(
+    () => undefined,
+    () => undefined,
+  );
+  return execucao;
+}
+
+/** Uma consulta livre ao Nominatim, na mesma fila do restante do sistema (1 por segundo). */
+export function geocodeTexto(consulta: string): Promise<{ lat: number; lng: number } | null> {
+  const chave = normalizarSemAcentos(consulta);
+  if (!chave) return Promise.resolve(null);
+  const emCache = cache.get(chave);
+  if (emCache) return Promise.resolve(emCache);
+
+  const execucao = filaNominatim.then(async () => {
+    const ja = cache.get(chave);
+    if (ja) return ja;
+    await delay();
+    const coords = await fetchNominatim(consulta);
+    if (coords) cache.set(chave, coords);
+    return coords;
+  });
+  filaNominatim = execucao.then(
+    () => undefined,
+    () => undefined,
+  );
+  return execucao;
+}
+
+const cachePhoton = new Map<string, CandidatoNominatim[]>();
+
+/** Complementa o Nominatim quando a rua existe com outra grafia (ex.: Cosmo → Cósmico). */
+export async function buscarPhoton(consulta: string): Promise<CandidatoNominatim[]> {
+  const chave = normalizarSemAcentos(consulta);
+  if (!chave) return [];
+  const emCache = cachePhoton.get(chave);
+  if (emCache) return emCache;
+  try {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(consulta)}&limit=5&lang=default`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'GestorPedidosSoAco/1.0' }, signal: AbortSignal.timeout(5000) });
+    if (!res.ok) {
+      cachePhoton.set(chave, []);
+      return [];
+    }
+    const dados = (await res.json()) as {
+      features?: Array<{
+        geometry?: { coordinates?: [number, number] };
+        properties?: {
+          name?: string;
+          street?: string;
+          locality?: string;
+          district?: string;
+          city?: string;
+          state?: string;
+          type?: string;
+          osm_key?: string;
+        };
+      }>;
+    };
+    const saida: CandidatoNominatim[] = [];
+    for (const feature of dados.features ?? []) {
+      const coords = feature.geometry?.coordinates;
+      if (!coords || coords.length < 2) continue;
+      const props = feature.properties ?? {};
+      const nome = props.name || props.street || '';
+      const exibicao = [nome, props.locality, props.district, props.city, props.state].filter(Boolean).join(', ');
+      saida.push({
+        lat: coords[1],
+        lng: coords[0],
+        tipo: props.type || '',
+        classe: props.osm_key || '',
+        nome,
+        exibicao,
+      });
+    }
+    cachePhoton.set(chave, saida);
+    return saida;
+  } catch {
+    cachePhoton.set(chave, []);
+    return [];
+  }
 }

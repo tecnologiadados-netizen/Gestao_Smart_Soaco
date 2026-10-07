@@ -1,12 +1,14 @@
 import { useId } from "react";
 
-type ExperienciaContagem = {
-  experiencia: number;
-  fixos: number;
+export type RetencaoExperienciaResumo = {
+  retidos: number;
+  desligadosNaExperiencia: number;
+  emAvaliacao: number;
+  aprendizesExcluidos: number;
 };
 
-const COR_EXPERIENCIA = "#F59E0B";
-const COR_FIXOS = "#4F7CFF";
+const COR_RETIDOS = "#7B88FF";
+const COR_DESLIGADOS = "#FFAD00";
 const RAIO = 56;
 const CIRCUNFERENCIA = 2 * Math.PI * RAIO;
 
@@ -32,7 +34,7 @@ function ItemLegenda({
         <span className="text-sm font-medium text-muted-foreground">{titulo}</span>
       </p>
       <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-        {quantidade.toLocaleString("pt-BR")} {quantidade === 1 ? "colaborador ativo" : "colaboradores ativos"}
+        {quantidade.toLocaleString("pt-BR")} {quantidade === 1 ? "colaborador" : "colaboradores"}
       </p>
       <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground/75">{detalhe}</p>
     </div>
@@ -40,40 +42,47 @@ function ItemLegenda({
 }
 
 export function DistribuicaoExperienciaCard({
-  contagem,
+  resumo,
   referencia,
+  onOpen,
 }: {
-  contagem: ExperienciaContagem;
+  resumo: RetencaoExperienciaResumo;
   referencia: string;
+  onOpen: () => void;
 }) {
   const uid = useId().replace(/:/g, "");
-  const total = contagem.experiencia + contagem.fixos;
-  const experienciaPct = total > 0 ? (contagem.experiencia / total) * 100 : 0;
-  const fixosPct = total > 0 ? 100 - experienciaPct : 0;
-  const experienciaTraco = (experienciaPct / 100) * CIRCUNFERENCIA;
-  const fixosTraco = (fixosPct / 100) * CIRCUNFERENCIA;
+  const totalConclusivo = resumo.retidos + resumo.desligadosNaExperiencia;
+  const retidosPct = totalConclusivo > 0 ? (resumo.retidos / totalConclusivo) * 100 : 0;
+  const desligadosPct = totalConclusivo > 0 ? 100 - retidosPct : 0;
+  const retidosTraco = (retidosPct / 100) * CIRCUNFERENCIA;
+  const desligadosTraco = (desligadosPct / 100) * CIRCUNFERENCIA;
 
   return (
-    <div className="w-full border border-border bg-card p-5 shadow-level-1">
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex h-full w-full flex-col border border-border bg-card p-5 text-left shadow-level-1 transition-colors hover:border-primary/45 hover:bg-muted/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label="Abrir evolução da retenção pós-experiência"
+    >
       <div className="flex items-start justify-between gap-3">
-        <span className="label-industrial">Experiência x quadro fixo</span>
+        <span className="label-industrial">Retenção pós-experiência</span>
         <span className="shrink-0 text-[11px] text-muted-foreground">{referencia}</span>
       </div>
 
-      {total <= 0 ? (
+      {totalConclusivo <= 0 ? (
         <p className="mt-4 border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
-          Sem colaboradores ativos para esta empresa.
+          Ainda não há coortes com resultado conclusivo.
         </p>
       ) : (
-        <div className="mt-3 grid grid-cols-[168px_minmax(0,1fr)] items-center gap-4">
-          <svg viewBox="0 0 150 150" className="h-[168px] w-[168px]" role="img" aria-label={`${experienciaPct.toFixed(1)}% em experiência e ${fixosPct.toFixed(1)}% fixos`}>
+        <div className="mt-4 flex flex-1 items-center justify-center gap-8">
+          <svg viewBox="0 0 150 150" className="aspect-square w-[200px] shrink-0" role="img" aria-label={`${retidosPct.toFixed(1)}% retidos após a experiência e ${desligadosPct.toFixed(1)}% desligados durante a experiência`}>
             <defs>
-              <linearGradient id={`experiencia-${uid}`} x1="24" y1="16" x2="128" y2="136" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#FBBF24" />
-                <stop offset="100%" stopColor="#F97316" />
+              <linearGradient id={`desligados-${uid}`} x1="24" y1="16" x2="128" y2="136" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#FFD56A" />
+                <stop offset="100%" stopColor="#F59E0B" />
               </linearGradient>
-              <linearGradient id={`fixos-${uid}`} x1="125" y1="18" x2="25" y2="136" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#60A5FA" />
+              <linearGradient id={`retidos-${uid}`} x1="125" y1="18" x2="25" y2="136" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#A5B4FC" />
                 <stop offset="100%" stopColor="#4F46E5" />
               </linearGradient>
               <radialGradient id={`miolo-${uid}`} cx="45%" cy="38%" r="70%">
@@ -86,41 +95,41 @@ export function DistribuicaoExperienciaCard({
             </defs>
 
             <circle cx="75" cy="75" r={RAIO} fill="none" stroke="currentColor" strokeWidth="19" className="text-foreground/10" />
-            {experienciaPct > 0 ? (
+            {desligadosPct > 0 ? (
               <circle
                 cx="75"
                 cy="75"
                 r={RAIO}
                 fill="none"
-                stroke={`url(#experiencia-${uid})`}
+                stroke={`url(#desligados-${uid})`}
                 strokeWidth="19"
-                strokeDasharray={`${experienciaTraco} ${CIRCUNFERENCIA}`}
+                strokeDasharray={`${desligadosTraco} ${CIRCUNFERENCIA}`}
                 transform="rotate(-90 75 75)"
               />
             ) : null}
-            {fixosPct > 0 ? (
+            {retidosPct > 0 ? (
               <circle
                 cx="75"
                 cy="75"
                 r={RAIO}
                 fill="none"
-                stroke={`url(#fixos-${uid})`}
+                stroke={`url(#retidos-${uid})`}
                 strokeWidth="19"
-                strokeDasharray={`${fixosTraco} ${CIRCUNFERENCIA}`}
-                transform={`rotate(${experienciaPct * 3.6 - 90} 75 75)`}
+                strokeDasharray={`${retidosTraco} ${CIRCUNFERENCIA}`}
+                transform={`rotate(${desligadosPct * 3.6 - 90} 75 75)`}
               />
             ) : null}
 
             <circle cx="75" cy="75" r="46" fill="#ffffff" filter={`url(#sombra-${uid})`} />
             <circle cx="75" cy="75" r="40.5" fill={`url(#miolo-${uid})`} stroke="#d9e2ea" strokeWidth="1.5" />
 
-            <g fill={COR_FIXOS}>
+            <g fill={COR_RETIDOS}>
               <circle cx="65" cy="63" r="5" />
               <path d="M58.5 71.5c.5-3.7 3-5.8 6.5-5.8s6 2.1 6.5 5.8l.7 11H57.8z" />
               <rect x="59.5" y="80" width="4.8" height="13" rx="2.3" />
               <rect x="65.8" y="80" width="4.8" height="13" rx="2.3" />
             </g>
-            <g fill={COR_EXPERIENCIA}>
+            <g fill={COR_DESLIGADOS}>
               <circle cx="86" cy="63" r="5" />
               <path d="M79.5 71.5c.5-3.7 3-5.8 6.5-5.8s6 2.1 6.5 5.8l.7 11H78.8z" />
               <rect x="80.5" y="80" width="4.8" height="13" rx="2.3" />
@@ -128,24 +137,28 @@ export function DistribuicaoExperienciaCard({
             </g>
           </svg>
 
-          <div className="space-y-5">
+          <div className="max-w-[240px] space-y-5">
             <ItemLegenda
-              titulo="Fixos"
-              percentual={fixosPct}
-              quantidade={contagem.fixos}
-              detalhe="Demais colaboradores ativos."
-              cor={COR_FIXOS}
+              titulo="Retidos"
+              percentual={retidosPct}
+              quantidade={resumo.retidos}
+              detalhe="Permaneceram após o 90º dia."
+              cor={COR_RETIDOS}
             />
             <ItemLegenda
-              titulo="Em experiência"
-              percentual={experienciaPct}
-              quantidade={contagem.experiencia}
-              detalhe="Até 90 dias de admissão ou aprendiz."
-              cor={COR_EXPERIENCIA}
+              titulo="Desligados"
+              percentual={desligadosPct}
+              quantidade={resumo.desligadosNaExperiencia}
+              detalhe="Desligados até o 90º dia."
+              cor={COR_DESLIGADOS}
             />
           </div>
         </div>
       )}
-    </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-[10px] text-muted-foreground">
+        <span>{resumo.emAvaliacao.toLocaleString("pt-BR")} ainda em avaliação</span>
+        <span className="font-medium text-primary">Ver evolução</span>
+      </div>
+    </button>
   );
 }

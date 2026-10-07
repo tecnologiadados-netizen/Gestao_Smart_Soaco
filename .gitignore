@@ -54,6 +54,12 @@ backend/var/uploads/**
 backend/var/.well-known/
 # Rateio DRE da VPS — nunca sobrescrever com git pull
 backend/var/dre-rateio.json
+backend/var/rh-geocode-cep.json
+backend/var/rh-geocode-google.json
+backend/var/rh-geocode-rua-v1.json
+backend/var/rh-geocode-rua-v2.json
+backend/var/rh-geocode-cep-v3.json
+backend/var/rh-geocode-bairro-osm-v1.json
 deploy/ssl/*.pem
 deploy/ssl/*.crt
 deploy/ssl/*.key

@@ -69,6 +69,8 @@ export type RhGroupPermissions = {
     modulos: Record<string, PermissionAccess>;
   };
   cargos: PermissionAccess;
+  demandasInternas: PermissionAccess;
+  vagas: PermissionAccess;
   organograma: PermissionAccess & {
     /** Fotos configuráveis da Empresa e das Diretorias. */
     fotos: PermissionAccess;
@@ -96,6 +98,8 @@ const DEFAULT_ROUTE_ITEMS = [
   { url: "/organograma", title: "Organograma" },
   { url: "/organico", title: "Orgânico" },
   { url: "/faltas-atestados", title: "Faltas e Atestados" },
+  { url: "/demandas-internas", title: "Demandas Internas" },
+  { url: "/vagas", title: "Vagas" },
   { url: "/configuracoes", title: "Configurações" },
 ] as const;
 
@@ -254,6 +258,8 @@ function buildDefaultPermissions(): RhGroupPermissions {
       modulos: Object.fromEntries(DASHBOARD_MODULE_IDS.map((id) => [id, access()])),
     },
     cargos: access(),
+    demandasInternas: access(),
+    vagas: access(),
     organograma: {
       ...access(),
       fotos: access(),
@@ -357,6 +363,8 @@ function applyLegacy(routes: RhGroupPermissions["routes"]): RhGroupPermissions {
   const organico = routeByUrl(routes, "/organico");
   const faltas = routeByUrl(routes, "/faltas-atestados");
   const cargos = routeByUrl(routes, "/cargos");
+  const demandasInternas = routeByUrl(routes, "/demandas-internas");
+  const vagas = routeByUrl(routes, "/vagas");
   const organograma = routeByUrl(routes, "/organograma");
   const configuracoes = routeByUrl(routes, "/configuracoes");
   const dashboard = routeByUrl(routes, "/dashboard");
@@ -420,6 +428,11 @@ function applyLegacy(routes: RhGroupPermissions["routes"]): RhGroupPermissions {
   syncCompositeAccess(next);
 
   next.cargos = access(!!(cargos?.canView || cargos?.canEdit), !!cargos?.canEdit);
+  next.demandasInternas = access(
+    !!(demandasInternas?.canView || demandasInternas?.canEdit),
+    !!demandasInternas?.canEdit,
+  );
+  next.vagas = access(!!(vagas?.canView || vagas?.canEdit), !!vagas?.canEdit);
   const organogramaView = !!(organograma?.canView || organograma?.canEdit);
   const organogramaEdit = !!organograma?.canEdit;
   next.organograma = {
@@ -488,6 +501,18 @@ function deriveRoutesFromPermissions(next: RhGroupPermissions): RhGroupPermissio
       }
       case "/cargos":
         return { ...item, canView: next.cargos.view || next.cargos.edit, canEdit: next.cargos.edit };
+      case "/demandas-internas":
+        return {
+          ...item,
+          canView: next.demandasInternas.view || next.demandasInternas.edit,
+          canEdit: next.demandasInternas.edit,
+        };
+      case "/vagas":
+        return {
+          ...item,
+          canView: next.vagas.view || next.vagas.edit,
+          canEdit: next.vagas.edit,
+        };
       case "/organograma":
         return {
           ...item,
@@ -598,6 +623,10 @@ export function normalizeRhPermissions(input: unknown): RhGroupPermissions {
   next.dashboard.route = hasDashboardConfig ? readAccess(dashboard.route, access()) : legacy.dashboard.route;
 
   next.cargos = Object.hasOwn(source, "cargos") ? readAccess(source.cargos, access()) : legacy.cargos;
+  next.demandasInternas = Object.hasOwn(source, "demandasInternas")
+    ? readAccess(source.demandasInternas, access())
+    : legacy.demandasInternas;
+  next.vagas = Object.hasOwn(source, "vagas") ? readAccess(source.vagas, access()) : legacy.vagas;
   if (Object.hasOwn(source, "organograma")) {
     const organograma =
       source.organograma && typeof source.organograma === "object"
@@ -664,6 +693,12 @@ export function granularPermissionFallback(
       return mode === "edit"
         ? permissions.cargos.edit
         : permissions.cargos.view || permissions.cargos.edit;
+    case "/demandas-internas":
+      return mode === "edit"
+        ? permissions.demandasInternas.edit
+        : permissions.demandasInternas.view || permissions.demandasInternas.edit;
+    case "/vagas":
+      return mode === "edit" ? permissions.vagas.edit : permissions.vagas.view || permissions.vagas.edit;
     case "/organograma":
       return mode === "edit"
         ? permissions.organograma.edit || permissions.organograma.fotos.edit
@@ -720,6 +755,18 @@ export function hasSectorAccess(permissions: RhGroupPermissions, setor: string |
   const normalized = String(setor ?? "").trim().toLocaleLowerCase("pt-BR");
   if (!normalized) return false;
   return allowed.some((item) => item.toLocaleLowerCase("pt-BR") === normalized);
+}
+
+const RH_TAGS_SENSIVEIS = ['18', '19', '20', '21', '22'];
+
+/** Conteúdo marcado como sensível segue a categoria "Sensível" dos comentários do orgânico. */
+export function canViewRhConteudoSensivel(
+  permissions: RhGroupPermissions | null,
+  isMaster = false,
+): boolean {
+  if (isMaster) return true;
+  if (!permissions || !hasAccess(permissions.organico.comentarios)) return false;
+  return RH_TAGS_SENSIVEIS.some((id) => permissions.organico.comentarios.tags[id] !== false);
 }
 
 export function canViewOrganicoCommentClassification(

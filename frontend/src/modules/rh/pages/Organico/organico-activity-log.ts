@@ -5,7 +5,7 @@ import { isColunaDerivadaSistema, isColunaFormula } from "./organico-excel-schem
 import { ORGANICO_IDX } from "./organico-derive";
 import type { OrganicoSheetRow } from "./useOrganicoImport";
 
-export type OrganicoSecullumPendenciaTipo = "ctps" | "cargo";
+export type OrganicoSecullumPendenciaTipo = "ctps" | "cargo" | "desligamento";
 
 export type OrganicoActivityEntryType = "comentario" | "log_alteracao";
 
@@ -147,6 +147,38 @@ export function collectSecullumPendingFieldChanges(
   }
 
   return out;
+}
+
+function statusEhDesligado(row: OrganicoSheetRow | null | undefined): boolean {
+  if (!Array.isArray(row)) return false;
+  return String(row[ORGANICO_IDX.STATUS] ?? "").trim().toLocaleLowerCase("pt-BR") === "desligado";
+}
+
+/**
+ * Transição para Desligado na sync da Secullum.
+ * Linha nova que já chega desligada não gera alerta — só quem estava na base e foi desligado.
+ */
+export function collectSecullumDesligamentoPendente(
+  previousRow: OrganicoSheetRow | null | undefined,
+  nextRow: OrganicoSheetRow,
+  input: { motivoPai: string; dataDemissao: string },
+): {
+  tipo: "desligamento";
+  campoLabel: string;
+  valorAnterior: string;
+  valorAtual: string;
+  dataReferencia: string | null;
+} | null {
+  if (!Array.isArray(previousRow) || !Array.isArray(nextRow)) return null;
+  if (!statusEhDesligado(nextRow) || statusEhDesligado(previousRow)) return null;
+  const data = String(input.dataDemissao ?? "").trim().slice(0, 10);
+  return {
+    tipo: "desligamento",
+    campoLabel: "Desligamento",
+    valorAnterior: String(previousRow[ORGANICO_IDX.STATUS] ?? "").trim() || "Ativo",
+    valorAtual: String(input.motivoPai ?? "").trim() || "Não informado no Secullum",
+    dataReferencia: /^\d{4}-\d{2}-\d{2}$/.test(data) ? data : null,
+  };
 }
 
 function rowsHaveSameValues(a: OrganicoSheetRow | null | undefined, b: OrganicoSheetRow | null | undefined): boolean {

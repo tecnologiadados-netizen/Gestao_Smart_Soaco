@@ -5,6 +5,11 @@ import { canViewOrganicoCommentClassification } from '../lib/rh-permissions.js';
 import type { RhGroupPermissions } from '../lib/rh-permissions.js';
 import { RH_ORGANICO_COMMENT_VISIBILITY_OPTIONS } from '../lib/rh-organico-comment-tags.js';
 import { formatIsoDate, parseValuesJson, s } from '../utils/rhHelpers.js';
+import { MotivoDesligamentoErro } from '../lib/motivoDesligamento.js';
+import {
+  finalizarDesligamentoPendente,
+  upsertPendenciaDesligamento,
+} from './motivoDesligamentoRepository.js';
 import { mapOrganicoFotoRow, normalizeOrganicoFotoPayload } from '../utils/organicoFotoBase64.js';
 
 export async function getOrganicoList(isMaster: boolean, permissions: RhGroupPermissions | null) {
@@ -367,7 +372,8 @@ export async function getOrganicoAlteracoesPendentes(setor?: string) {
 export async function upsertOrganicoAlteracoesPendentes(
   items: Array<{
     id?: string;
-    colaboradorMatricula: string;
+    colaboradorMatricula?: string;
+    matricula?: string;
     colaboradorNome?: string;
     setor?: string;
     tipo: string;
@@ -381,8 +387,22 @@ export async function upsertOrganicoAlteracoesPendentes(
 ) {
   const results = [];
   for (const item of items) {
+    const matricula = s(item.colaboradorMatricula) || s(item.matricula);
+    if (s(item.tipo) === 'desligamento') {
+      const saved = await upsertPendenciaDesligamento({
+        colaboradorMatricula: matricula,
+        colaboradorNome: item.colaboradorNome,
+        setor: item.setor,
+        campoLabel: item.campoLabel,
+        valorAnterior: item.valorAnterior,
+        valorAtual: item.valorAtual,
+        dataReferencia: item.dataReferencia,
+      });
+      if (saved) results.push(saved);
+      continue;
+    }
     const data = {
-      colaboradorMatricula: s(item.colaboradorMatricula),
+      colaboradorMatricula: matricula,
       colaboradorNome: s(item.colaboradorNome),
       setor: s(item.setor),
       tipo: s(item.tipo),
@@ -407,10 +427,32 @@ export async function upsertOrganicoAlteracoesPendentes(
   return results.length;
 }
 
-export async function resolveOrganicoAlteracaoPendente(id: string, resolvedBy: string) {
+export async function resolveOrganicoAlteracaoPendente(
+  id: string,
+  resolvedBy: string,
+  input: { motivo: string; motivoFilhoId?: string | null; motivoSensivel?: boolean },
+) {
+  const motivo = s(input.motivo);
+  if (!motivo) throw new MotivoDesligamentoErro('Motivo é obrigatório.');
+
+  const row = await prisma.rhOrganicoAlteracaoPendente.findUnique({ where: { id } });
+  if (!row) throw new MotivoDesligamentoErro('Pendência não encontrada.');
+  if (row.resolvedAt) throw new MotivoDesligamentoErro('Esta pendência já foi finalizada.');
+
+  if (row.tipo === 'desligamento') {
+    await finalizarDesligamentoPendente({
+      id,
+      resolvedBy,
+      motivo,
+      motivoFilhoId: s(input.motivoFilhoId),
+      motivoSensivel: input.motivoSensivel === true,
+    });
+    return;
+  }
+
   await prisma.rhOrganicoAlteracaoPendente.update({
     where: { id },
-    data: { resolvedAt: new Date(), resolvedBy },
+    data: { resolvedAt: new Date(), resolvedBy, motivo },
   });
 }
 

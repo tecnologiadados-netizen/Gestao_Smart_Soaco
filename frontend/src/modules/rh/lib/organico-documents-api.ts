@@ -160,6 +160,7 @@ export async function uploadOrganicoDocument(input: {
   classification: string;
   folderScope: OrganicoArchiveFolderScope;
   folderId: string;
+  pastaDestino?: "desligamento";
   file: File;
   cover?: File | null;
   sourceKind?: "individual" | "bulk";
@@ -175,6 +176,7 @@ export async function uploadOrganicoDocument(input: {
   form.set("classification", input.classification);
   form.set("folderScope", input.folderScope);
   form.set("folderId", input.folderId);
+  if (input.pastaDestino) form.set("pastaDestino", input.pastaDestino);
   form.set("sourceKind", input.sourceKind ?? "individual");
   if (input.sourcePages) form.set("sourcePages", input.sourcePages);
   if (input.launchSource) form.set("launchSource", input.launchSource);

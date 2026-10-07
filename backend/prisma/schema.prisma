@@ -2888,3 +2888,136 @@ model PdvVendaPagamento {
   @@index([vendaId])
   @@map("pdv_venda_pagamento")
 }
+
+/// Motivo detalhado (filho) de cada motivo de demissão cadastrado na Secullum.
+model RhMotivoDesligamentoFilho {
+  id        String   @id @default(uuid())
+  motivoPai String   @map("motivo_pai")
+  descricao String
+  ordem     Int      @default(0)
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([motivoPai])
+  @@map("rh_motivo_desligamento_filho")
+}
+
+/// Complemento obrigatório do desligamento (motivo filho + texto livre), depois do alerta.
+model RhDesligamentoComplemento {
+  id                   String   @id @default(uuid())
+  colaboradorMatricula String   @map("colaborador_matricula")
+  colaboradorNome      String   @default("") @map("colaborador_nome")
+  dataDemissao         String   @default("") @map("data_demissao")
+  motivoPai            String   @default("") @map("motivo_pai")
+  motivoFilhoId        String   @map("motivo_filho_id")
+  motivoFilho          String   @map("motivo_filho")
+  motivoTexto          String   @map("motivo_texto")
+  motivoSensivel       Boolean  @default(false) @map("motivo_sensivel")
+  registradoPor        String?  @map("registrado_por")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@unique([colaboradorMatricula, dataDemissao])
+  @@index([colaboradorMatricula])
+  @@map("rh_desligamento_complemento")
+}
+
+/// Quadro de demandas internas (RH e diretoria), no estilo de um board.
+model RhDemandaQuadro {
+  id        String   @id @default(uuid())
+  nome      String
+  ordem     Int      @default(0)
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  listas    RhDemandaLista[]
+
+  @@map("rh_demanda_quadro")
+}
+
+/// Coluna de um quadro. O card muda de lista arrastando.
+model RhDemandaLista {
+  id        String          @id @default(uuid())
+  quadroId  String          @map("quadro_id")
+  nome      String
+  ordem     Int             @default(0)
+  quadro    RhDemandaQuadro @relation(fields: [quadroId], references: [id], onDelete: Cascade)
+  cards     RhDemandaCard[]
+
+  @@index([quadroId, ordem])
+  @@map("rh_demanda_lista")
+}
+
+/// Card da demanda. A observação e o checklist ficam no detalhe.
+model RhDemandaCard {
+  id         String         @id @default(uuid())
+  quadroId   String         @map("quadro_id")
+  listaId    String         @map("lista_id")
+  titulo     String
+  observacao String         @default("")
+  concluido  Boolean        @default(false)
+  cor        String         @default("branco")
+  prazo      String?
+  ordem      Int            @default(0)
+  checklists String         @default("[]")
+  createdBy  String?        @map("created_by")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+  lista      RhDemandaLista @relation(fields: [listaId], references: [id], onDelete: Cascade)
+  anexos     RhDemandaAnexo[]
+
+  @@index([listaId, ordem])
+  @@index([quadroId])
+  @@map("rh_demanda_card")
+}
+
+/// Print anexado ao card. O arquivo fica fora do Git, em uploads/rh.
+model RhDemandaAnexo {
+  id          String        @id @default(uuid())
+  cardId      String        @map("card_id")
+  nome        String
+  mimeType    String        @map("mime_type")
+  storagePath String        @map("storage_path")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  card        RhDemandaCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId])
+  @@map("rh_demanda_anexo")
+}
+
+/// Vaga acompanhada pelo RH, mesmo antes de ser divulgada.
+model RhVaga {
+  id         String            @id @default(uuid())
+  titulo     String
+  status     String
+  prazo      String?
+  observacao String            @default("")
+  /// JSON: [{ id, url, descricao }] dos anúncios, quando a vaga está em divulgação.
+  linksDivulgacao String       @default("[]") @map("links_divulgacao")
+  cor        String            @default("branco")
+  createdBy  String?           @map("created_by")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+  historico  RhVagaHistorico[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("rh_vaga")
+}
+
+/// Cada abertura, mudança de etapa, fechamento ou reabertura da vaga.
+model RhVagaHistorico {
+  id         String   @id @default(uuid())
+  vagaId     String   @map("vaga_id")
+  tipo       String
+  status     String
+  prazo      String?
+  detalhe    String   @default("")
+  createdBy  String?  @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  vaga       RhVaga   @relation(fields: [vagaId], references: [id], onDelete: Cascade)
+
+  @@index([vagaId, createdAt])
+  @@map("rh_vaga_historico")
+}

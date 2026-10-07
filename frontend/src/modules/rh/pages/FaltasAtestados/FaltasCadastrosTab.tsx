@@ -19,6 +19,7 @@ import {
   writeFaltasCadastrosFilters,
 } from "@rh/pages/FaltasAtestados/faltas-ui-filters-persistence";
 import GruposSintomasColumn from "@rh/pages/FaltasAtestados/GruposSintomasColumn";
+import MotivosDesligamentoCadastro from "@rh/pages/FaltasAtestados/MotivosDesligamentoCadastro";
 import {
   getFaltasGruposSintomasCid,
   replaceFaltasGruposSintomasCid,
@@ -639,6 +640,8 @@ export default function FaltasCadastrosTab({
           setSearch={setSg}
         />
       </div>
+
+      <MotivosDesligamentoCadastro canEdit={canEdit} />
 
       {canViewTiposRegras ? (
       <div className="rounded-sm border border-border bg-card shadow-level-1">
