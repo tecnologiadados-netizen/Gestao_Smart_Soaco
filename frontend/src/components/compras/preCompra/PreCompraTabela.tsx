@@ -42,6 +42,7 @@ const COLUNAS_NUMERICAS = new Set(['qtde', 'preco_unitario', 'valor_total']);
 
 function formatDate(value: string) {
   if (!value) return '';
+  if (/^\d{2}\/\d{2}\/\d{4}(, \d{2}\/\d{2}\/\d{4})*$/.test(value)) return value;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleDateString('pt-BR');
@@ -68,6 +69,11 @@ function formatQty(value: number | string | null | undefined) {
 
 function parseDataSort(value: string): number {
   if (!value) return 0;
+  const br = value.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) {
+    const d = new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]));
+    return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+  }
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? 0 : d.getTime();
 }
@@ -208,7 +214,9 @@ export default function PreCompraTabela({
       if (colId === 'qtde') return Number(row.qtde) || 0;
       if (colId === 'preco_unitario') return Number(row.preco_unitario) || 0;
       if (colId === 'valor_total') return Number(row.valor_total) || 0;
-      if (colId === 'solicitacao_id') return Number(row.solicitacao_id) || 0;
+      if (colId === 'solicitacao_id') {
+        return Number(String(row.solicitacao_id ?? '').split(',')[0]) || 0;
+      }
       if (colId === 'data_emissao') return parseDataSort(row.data_emissao);
       if (colId === 'data_necessidade') return parseDataSort(row.data_necessidade);
       return getCellText(row, colId);

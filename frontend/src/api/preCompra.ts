@@ -22,7 +22,7 @@ export interface PreCompraCotacaoItem {
   unidade: string;
   preco_unitario: number;
   valor_total: number;
-  solicitacao_id: number;
+  solicitacao_id: number | string;
   data_necessidade: string;
   status: number;
   status_label: string;

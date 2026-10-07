@@ -39,8 +39,24 @@ LEFT JOIN codigoprodutoexterno cpe
     ON cpe.idProduto = icc.idProduto
    AND cpe.idPessoa = pcole.id
    AND cpe.idUnidadeMedida = icpc.idUnidadeMedida
-LEFT JOIN solicitacaocompra_itemcotacaocompra sicc ON sicc.idItemCotacaoCompra = icc.id
-LEFT JOIN solicitacaocompra sc ON sc.id = sicc.idSolicitacaoCompra
+LEFT JOIN (
+    SELECT
+        sols.idItemCotacaoCompra,
+        GROUP_CONCAT(sols.id ORDER BY sols.id SEPARATOR ', ') AS solicitacao_id,
+        GROUP_CONCAT(
+            DATE_FORMAT(sols.dataNecessidade, '%d/%m/%Y')
+            ORDER BY sols.dataNecessidade SEPARATOR ', '
+        ) AS data_necessidade
+    FROM (
+        SELECT DISTINCT
+            sicc.idItemCotacaoCompra,
+            sc.id,
+            sc.dataNecessidade
+        FROM solicitacaocompra_itemcotacaocompra sicc
+        JOIN solicitacaocompra sc ON sc.id = sicc.idSolicitacaoCompra
+    ) sols
+    GROUP BY sols.idItemCotacaoCompra
+) sc ON sc.idItemCotacaoCompra = icc.id
 WHERE c.status IN (3, 4)
 `;
 
@@ -67,8 +83,8 @@ SELECT
     u.abreviatura AS unidade,
     icpc.precoUnitario AS preco_unitario,
     icpc.valorTotalComDesconto AS valor_total,
-    sc.id AS solicitacao_id,
-    sc.dataNecessidade AS data_necessidade,
+    sc.solicitacao_id AS solicitacao_id,
+    sc.data_necessidade AS data_necessidade,
     c.status AS status,
     c.id AS cotacao_id
 `;
@@ -246,7 +262,7 @@ export interface PreCompraCotacaoRow {
   valor_total: number | null;
   valor_frete?: number | null;
   valor_frete_geral?: number | null;
-  solicitacao_id: number | null;
+  solicitacao_id: number | string | null;
   data_necessidade: Date | string | null;
   status: number | null;
   cotacao_id?: number | null;
