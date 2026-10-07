@@ -99,6 +99,7 @@ SELECT
     cpe.codigo AS codigo_fornecedor,
     prod.descricao AS descricao_produto,
     icc.qtde AS qtde,
+    icpc.qtdeAtendida AS qtde_atendida,
     u.abreviatura AS unidade,
     icpc.precoUnitario AS preco_unitario,
     icpc.valorTotalComDesconto AS valor_total,
@@ -239,6 +240,7 @@ export interface PreCompraCotacaoRow {
   codigo_fornecedor: string | null;
   descricao_produto: string | null;
   qtde: number | null;
+  qtde_atendida?: number | null;
   unidade: string | null;
   preco_unitario: number | null;
   valor_total: number | null;
@@ -550,6 +552,29 @@ async function listarIdsFornecedorMesmaEmpresa(
   return ids;
 }
 
+/**
+ * O Nomus grava `valorTotalComDesconto` sobre `qtdeAtendida`. Quando essa quantidade
+ * é menor que a da cotação, o PDF mostrava qtde cheia e total pela metade.
+ * Nesse caso o total da linha passa a ser preço unitário × quantidade da cotação.
+ */
+function alinharTotalComQuantidade(raw: PreCompraCotacaoRow): PreCompraCotacaoRow {
+  const qtde = Number(raw.qtde);
+  const unit = Number(raw.preco_unitario);
+  const atual = toNumero2Casas(raw.valor_total);
+  if (!Number.isFinite(qtde) || qtde <= 0 || !Number.isFinite(unit)) return raw;
+
+  const pelaQtde = Math.round(unit * qtde * 100) / 100;
+  if (atual != null && Math.abs(atual - pelaQtde) < 0.02) return raw;
+
+  const atendida = Number(raw.qtde_atendida);
+  if (!Number.isFinite(atendida) || atendida <= 0 || Math.abs(atendida - qtde) < 0.001) return raw;
+
+  const pelaAtendida = Math.round(unit * atendida * 100) / 100;
+  if (atual == null || Math.abs(atual - pelaAtendida) >= 0.02) return raw;
+
+  return { ...raw, valor_total: pelaQtde };
+}
+
 function chaveItemPdf(raw: PreCompraCotacaoRow): string {
   const itemId = Number(raw.item_cotacao_id);
   if (Number.isFinite(itemId) && itemId > 0) return `icc:${itemId}`;
@@ -596,7 +621,7 @@ export async function buscarDadosPdfPreCompra(
     if (!atualSelecionado && novoSelecionado) escolhido.set(key, raw);
   }
 
-  const itens = Array.from(escolhido.values());
+  const itens = Array.from(escolhido.values()).map(alinharTotalComQuantidade);
   if (!itens.length) return null;
 
   const chavesMantidas = new Set(itens.map((raw) => chaveItemPdf(raw)));
