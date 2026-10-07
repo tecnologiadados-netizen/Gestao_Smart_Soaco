@@ -21,7 +21,7 @@ import {
   listarItensContagem,
   listarPendenciasConferente,
   obterConferenciaPorDocumento,
-  obterUltimoCicloConferencia,
+  listarCiclosConferencia,
   qtdeFisicaConfere,
   registrarAcaoMesa,
   registrarTentativaContagem,
@@ -127,42 +127,47 @@ export async function getRecebimentoMesaItens(req: Request, res: Response): Prom
     );
   }
   const cicloAtualFinalizado = local?.finalizadoEm != null;
-  const cicloArquivado =
-    !cicloAtualFinalizado && local ? await obterUltimoCicloConferencia(local.id) : null;
-  const linhas =
-    cicloAtualFinalizado && local
-      ? await listarItensContagem(local.id)
-      : (cicloArquivado?.itens ?? []);
-  const statusHistorico = cicloAtualFinalizado
-    ? linhas.some((linha) => !linha.conferido)
-      ? RECEBIMENTO_STATUS.DIVERGENCIA
-      : RECEBIMENTO_STATUS.CONFERIDO
-    : cicloArquivado?.status;
-  const finalizadoEmHistorico = cicloAtualFinalizado
-    ? local?.finalizadoEm
-    : cicloArquivado?.finalizadoEm;
+  const ciclosArquivados = local ? await listarCiclosConferencia(local.id) : [];
   const itensPorId = new Map(itens.map((item) => [item.idItem, item]));
-  const historicoConferencia =
-    statusHistorico && local
-      ? {
-          status: statusHistorico,
-          statusLabel: RECEBIMENTO_STATUS_LABEL[statusHistorico] ?? statusHistorico,
-          retornadoEm: finalizadoEmHistorico,
-          itens: linhas.map((linha) => {
-            const item = linha.idItemDocumento == null ? null : itensPorId.get(linha.idItemDocumento);
-            return {
-              idItem: linha.idItemDocumento,
-              codigoProduto: item?.codigoProduto ?? linha.codigoInformado,
-              descricaoProduto: item?.descricaoProduto ?? linha.descricaoProduto,
-              unidadeMedida: item?.unidadeMedida ?? linha.unidadeMedida,
-              qtdeDocumento: item?.qtde ?? null,
-              qtdeInformada: linha.qtdeInformada,
-              tentativas: linha.tentativas,
-              conferido: linha.conferido,
-            };
-          }),
-        }
-      : null;
+  const montarItensHistorico = (linhas: RecebimentoContagemLinha[]) =>
+    linhas.map((linha) => {
+      const item = linha.idItemDocumento == null ? null : itensPorId.get(linha.idItemDocumento);
+      return {
+        idItem: linha.idItemDocumento,
+        codigoProduto: item?.codigoProduto ?? linha.codigoInformado,
+        descricaoProduto: item?.descricaoProduto ?? linha.descricaoProduto,
+        unidadeMedida: item?.unidadeMedida ?? linha.unidadeMedida,
+        qtdeDocumento: item?.qtde ?? null,
+        qtdeInformada: linha.qtdeInformada,
+        tentativas: linha.tentativas,
+        conferido: linha.conferido,
+      };
+    });
+  const statusPelosItens = (linhas: { conferido: boolean }[]) =>
+    linhas.some((linha) => !linha.conferido)
+      ? RECEBIMENTO_STATUS.DIVERGENCIA
+      : RECEBIMENTO_STATUS.CONFERIDO;
+  const historicosConferencia = ciclosArquivados.map((ciclo) => {
+    const statusCiclo = statusPelosItens(ciclo.itens);
+    return {
+      status: statusCiclo,
+      statusLabel: RECEBIMENTO_STATUS_LABEL[statusCiclo] ?? statusCiclo,
+      retornadoEm: ciclo.finalizadoEm,
+      conferenteNome: ciclo.conferenteNome,
+      itens: montarItensHistorico(ciclo.itens),
+    };
+  });
+  if (cicloAtualFinalizado && local) {
+    const linhasAtuais = await listarItensContagem(local.id);
+    const statusAtual = statusPelosItens(linhasAtuais);
+    historicosConferencia.push({
+      status: statusAtual,
+      statusLabel: RECEBIMENTO_STATUS_LABEL[statusAtual] ?? statusAtual,
+      retornadoEm: local.finalizadoEm,
+      conferenteNome: local.conferenteNome,
+      itens: montarItensHistorico(linhasAtuais),
+    });
+  }
   const codigo = local?.status ?? statusPadrao().codigo;
   res.json({
     itens,
@@ -183,7 +188,7 @@ export async function getRecebimentoMesaItens(req: Request, res: Response): Prom
           vinculadaEm: local.devolucaoVinculadaEm,
         }
       : null,
-    historicoConferencia,
+    historicosConferencia,
   });
 }
 

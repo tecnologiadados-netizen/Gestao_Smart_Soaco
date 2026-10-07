@@ -329,14 +329,15 @@ export type RecebimentoCicloArquivado = {
   itens: RecebimentoContagemLinha[];
 };
 
-export async function obterUltimoCicloConferencia(
-  conferenciaId: number
-): Promise<RecebimentoCicloArquivado | null> {
-  const ciclo = await prisma.recebimentoConferenciaCiclo.findFirst({
-    where: { conferenciaId },
-    orderBy: [{ arquivadoEm: 'desc' }, { id: 'desc' }],
-  });
-  if (!ciclo) return null;
+function mapCicloArquivado(ciclo: {
+  statusRetorno: string;
+  conferenteUsuarioId: number | null;
+  conferenteLogin: string | null;
+  conferenteNome: string | null;
+  atribuidoEm: Date | null;
+  finalizadoEm: Date | null;
+  itensJson: string;
+}): RecebimentoCicloArquivado {
   let itens: RecebimentoContagemLinha[] = [];
   try {
     const parsed = JSON.parse(ciclo.itensJson) as unknown;
@@ -353,6 +354,23 @@ export async function obterUltimoCicloConferencia(
     finalizadoEm: ciclo.finalizadoEm,
     itens,
   };
+}
+
+export async function listarCiclosConferencia(
+  conferenciaId: number
+): Promise<RecebimentoCicloArquivado[]> {
+  const ciclos = await prisma.recebimentoConferenciaCiclo.findMany({
+    where: { conferenciaId },
+    orderBy: [{ finalizadoEm: 'asc' }, { id: 'asc' }],
+  });
+  return ciclos.map(mapCicloArquivado);
+}
+
+export async function obterUltimoCicloConferencia(
+  conferenciaId: number
+): Promise<RecebimentoCicloArquivado | null> {
+  const ciclos = await listarCiclosConferencia(conferenciaId);
+  return ciclos.length > 0 ? ciclos[ciclos.length - 1] : null;
 }
 
 export async function registrarAcaoMesa(params: {

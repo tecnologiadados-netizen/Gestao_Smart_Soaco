@@ -63,6 +63,7 @@ export type RecebimentoHistoricoConferencia = {
   status: RecebimentoStatusCodigo;
   statusLabel: string;
   retornadoEm: string | null;
+  conferenteNome: string | null;
   itens: RecebimentoHistoricoConferenciaItem[];
 };
 
@@ -78,7 +79,7 @@ export type RecebimentoDetalhe = {
   mesaAcaoEm: string | null;
   mesaAcaoPorLogin: string | null;
   devolucao: RecebimentoDocumentoDevolucao | null;
-  historicoConferencia: RecebimentoHistoricoConferencia | null;
+  historicosConferencia: RecebimentoHistoricoConferencia[];
 };
 
 export type RecebimentoDocumentoDevolucao = {

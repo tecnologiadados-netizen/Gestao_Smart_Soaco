@@ -177,17 +177,25 @@ export default function DigitacaoConferenciaPage() {
   const itensCarregados = !detalheLoading && detalhe != null;
   const produtos = detalhe?.produtos ?? [];
   const itemEsgotado = (p: RecebimentoProdutoConferente) =>
-    p.esgotado === true || (!p.conferido && p.tentativasUsadas >= p.tentativasMax);
+    !p.conferido &&
+    (p.esgotado === true || p.tentativasUsadas >= (p.tentativasMax > 0 ? p.tentativasMax : 3));
   const itemPendente = (p: RecebimentoProdutoConferente) => !p.conferido && !itemEsgotado(p);
   const pendentes = produtos.filter(itemPendente);
+  const pendentesIds = pendentes.map((p) => p.idItem).join(',');
   const todosConferidos = produtos.length > 0 && produtos.every((p) => p.conferido);
   const todosEncerrados = produtos.length > 0 && pendentes.length === 0;
   const temDivergencia = produtos.some(itemEsgotado);
 
   const selecionarProximoPendente = (lista: RecebimentoProdutoConferente[]) => {
-    const next = lista.find((p) => !p.conferido && !(p.esgotado || p.tentativasUsadas >= p.tentativasMax));
+    const next = lista.find(itemPendente);
     setIdItem(next ? next.idItem : '');
   };
+
+  useEffect(() => {
+    if (idItem === '') return;
+    const ids = pendentesIds ? pendentesIds.split(',').map(Number) : [];
+    if (!ids.includes(Number(idItem))) setIdItem(ids[0] ?? '');
+  }, [pendentesIds, idItem]);
 
   const abrirDetalhe = async (doc: RecebimentoPendenciaConferente) => {
     setModalDoc(doc);
