@@ -4,7 +4,7 @@
 
 import type { RowDataPacket } from 'mysql2/promise';
 import { getNomusPool } from '../config/nomusDb.js';
-import { termoParaPadraoLikeSql } from '../utils/textoLivreBusca.js';
+import { normalizarTextoBusca, termoParaPadraoLikeSql } from '../utils/textoLivreBusca.js';
 
 export const STATUS_LABELS: Record<number, string> = {
   1: 'Preparação',
@@ -93,6 +93,8 @@ SELECT
     pcole.numero AS numero_endereco,
     pcole.bairroDistrito AS bairro,
     m.nome AS municipio,
+    icc.id AS item_cotacao_id,
+    prod.id AS produto_id,
     prod.nome AS codigo_produto,
     cpe.codigo AS codigo_fornecedor,
     prod.descricao AS descricao_produto,
@@ -231,6 +233,8 @@ export interface PreCompraCotacaoRow {
   numero_endereco: string | null;
   bairro: string | null;
   municipio: string | null;
+  item_cotacao_id?: number | null;
+  produto_id?: number | null;
   codigo_produto: string | null;
   codigo_fornecedor: string | null;
   descricao_produto: string | null;
@@ -499,6 +503,59 @@ LIMIT 1
   };
 }
 
+/** Raiz do CNPJ (8 primeiros dígitos). Filiais da mesma empresa compartilham essa raiz. */
+function raizCnpj(cnpj: string | null | undefined): string | null {
+  const digits = String(cnpj ?? '').replace(/\D/g, '');
+  if (digits.length !== 14) return null;
+  return digits.slice(0, 8);
+}
+
+/**
+ * Outros cadastros Nomus da mesma empresa nesta cotação (mesmo nome e mesma raiz de CNPJ).
+ * O preço de parte dos itens às vezes fica numa filial e o PDF é emitido pela outra.
+ */
+async function listarIdsFornecedorMesmaEmpresa(
+  nomeCotacao: string,
+  fornecedorId: number
+): Promise<number[]> {
+  const pool = getNomusPool();
+  if (!pool) throw new Error('Conexão Nomus indisponível.');
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT DISTINCT p.id AS id, p.nome AS nome, p.cnpjCpf AS cnpj
+     FROM cotacaocompra c
+     JOIN coletaprecoscotacao cc ON c.id = cc.idCotacaoCompra
+     JOIN pessoa p ON p.id = cc.idFornecedor
+     WHERE c.nome = ? AND c.status IN (3, 4)`,
+    [nomeCotacao]
+  );
+
+  const lista = rows as { id: number; nome: string | null; cnpj: string | null }[];
+  const selecionado = lista.find((r) => Number(r.id) === fornecedorId);
+  if (!selecionado) return [fornecedorId];
+
+  const nome = normalizarTextoBusca(String(selecionado.nome ?? ''));
+  const raiz = raizCnpj(selecionado.cnpj);
+  if (!nome || !raiz) return [fornecedorId];
+
+  const ids: number[] = [];
+  for (const r of lista) {
+    const id = Number(r.id);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    if (normalizarTextoBusca(String(r.nome ?? '')) !== nome) continue;
+    if (raizCnpj(r.cnpj) !== raiz) continue;
+    ids.push(id);
+  }
+  if (!ids.includes(fornecedorId)) ids.unshift(fornecedorId);
+  return ids;
+}
+
+function chaveItemPdf(raw: PreCompraCotacaoRow): string {
+  const itemId = Number(raw.item_cotacao_id);
+  if (Number.isFinite(itemId) && itemId > 0) return `icc:${itemId}`;
+  return `${raw.codigo_produto}|${raw.descricao_produto}|${raw.qtde}|${raw.preco_unitario}`;
+}
+
 export async function buscarDadosPdfPreCompra(
   nomeCotacao: string,
   fornecedorId: number,
@@ -507,34 +564,52 @@ export async function buscarDadosPdfPreCompra(
   const pool = getNomusPool();
   if (!pool) throw new Error('Conexão Nomus indisponível.');
 
+  const fornecedorIds = await listarIdsFornecedorMesmaEmpresa(nomeCotacao, fornecedorId);
   const sql =
     PDF_QUERY +
-    ' AND c.nome = ? AND pcole.id = ? ' +
-    'ORDER BY prod.nome';
+    ` AND c.nome = ? AND pcole.id IN (${fornecedorIds.map(() => '?').join(',')}) ` +
+    'ORDER BY prod.nome, pcole.id';
 
   // 1º param do PDF_JOINS: COALESCE(?, cc.idContato)
   const [rows] = await pool.query<RowDataPacket[]>(sql, [
     contatoId != null && contatoId > 0 ? contatoId : null,
     nomeCotacao,
-    fornecedorId,
+    ...fornecedorIds,
   ]);
   if (!rows.length) return null;
 
-  const first = rows[0] as PreCompraCotacaoRow;
-  const seenItems = new Set<string>();
-  const itens: PreCompraCotacaoRow[] = [];
+  const lista = rows as PreCompraCotacaoRow[];
+  const first =
+    lista.find((r) => Number(r.fornecedor_id) === fornecedorId) ?? lista[0];
+
+  const escolhido = new Map<string, PreCompraCotacaoRow>();
+  for (const raw of lista) {
+    if (raw.item_cotacao_id == null && !raw.codigo_produto) continue;
+    const key = chaveItemPdf(raw);
+    const atual = escolhido.get(key);
+    if (!atual) {
+      escolhido.set(key, raw);
+      continue;
+    }
+    const atualSelecionado = Number(atual.fornecedor_id) === fornecedorId;
+    const novoSelecionado = Number(raw.fornecedor_id) === fornecedorId;
+    if (!atualSelecionado && novoSelecionado) escolhido.set(key, raw);
+  }
+
+  const itens = Array.from(escolhido.values());
+  if (!itens.length) return null;
+
+  const chavesMantidas = new Set(itens.map((raw) => chaveItemPdf(raw)));
   const solicitacoesMap = new Map<number, { id: number; data_necessidade: unknown }>();
   let valorItens = 0;
   let valorFreteItens = 0;
 
-  for (const raw of rows as PreCompraCotacaoRow[]) {
-    const itemKey = `${raw.codigo_produto}|${raw.descricao_produto}|${raw.qtde}|${raw.preco_unitario}`;
-    if (!seenItems.has(itemKey)) {
-      seenItems.add(itemKey);
-      itens.push(raw);
-      if (raw.valor_total != null) valorItens += toNumero2Casas(raw.valor_total) ?? 0;
-      if (raw.valor_frete != null) valorFreteItens += toNumero2Casas(raw.valor_frete) ?? 0;
-    }
+  for (const raw of itens) {
+    if (raw.valor_total != null) valorItens += toNumero2Casas(raw.valor_total) ?? 0;
+    if (raw.valor_frete != null) valorFreteItens += toNumero2Casas(raw.valor_frete) ?? 0;
+  }
+  for (const raw of lista) {
+    if (!chavesMantidas.has(chaveItemPdf(raw))) continue;
     const solId = raw.solicitacao_id;
     if (solId != null && !solicitacoesMap.has(solId)) {
       solicitacoesMap.set(solId, { id: solId, data_necessidade: raw.data_necessidade });
