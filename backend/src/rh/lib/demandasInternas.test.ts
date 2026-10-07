@@ -58,11 +58,17 @@ describe('checklist do card', () => {
 });
 
 describe('permissão de demandas internas', () => {
-  it('libera a rota a partir do bloco do módulo', () => {
+  it('espalha visualizar/editar antigo em cadastrar, editar e excluir de cada aba', () => {
     const permissoes = normalizeRhPermissions({
       demandasInternas: { view: true, edit: false },
     });
-    expect(permissoes.demandasInternas).toEqual({ view: true, edit: false });
+    expect(permissoes.demandasInternas.abas.quadros).toEqual({
+      view: true,
+      create: false,
+      edit: false,
+      delete: false,
+    });
+    expect(permissoes.demandasInternas.abas.cards.delete).toBe(false);
     expect(permissoes.routes.find((rota) => rota.url === '/demandas-internas')).toMatchObject({
       canView: true,
       canEdit: false,
@@ -70,5 +76,34 @@ describe('permissão de demandas internas', () => {
     expect(canViewRoute(permissoes, '/demandas-internas')).toBe(true);
     expect(canEditRoute(permissoes, '/demandas-internas')).toBe(false);
     expect(granularPermissionFallback(permissoes, '/demandas-internas', 'edit')).toBe(false);
+  });
+
+  it('quem podia editar continua podendo cadastrar, editar e excluir em todas as abas', () => {
+    const permissoes = normalizeRhPermissions({
+      vagas: { view: true, edit: true },
+    });
+    expect(permissoes.vagas.abas.triagem).toEqual({
+      view: true,
+      create: true,
+      edit: true,
+      delete: true,
+    });
+    expect(canEditRoute(permissoes, '/vagas')).toBe(true);
+  });
+
+  it('separa o comentário confidencial do desligamento das categorias de comentário', () => {
+    const herdado = normalizeRhPermissions({
+      organico: { comentarios: { view: true, edit: false } },
+    });
+    expect(herdado.organico.comentarioConfidencialDesligamento).toBe(true);
+
+    const separado = normalizeRhPermissions({
+      organico: {
+        comentarios: { view: true, edit: true },
+        comentarioConfidencialDesligamento: false,
+      },
+    });
+    expect(separado.organico.comentarios.view).toBe(true);
+    expect(separado.organico.comentarioConfidencialDesligamento).toBe(false);
   });
 });

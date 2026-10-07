@@ -1,7 +1,6 @@
 ﻿import { getEffectiveGroupPermissions, isMaster, isAuthenticated } from "@rh/lib/auth";
 import { allNavItems, CONFIGURACOES_NAV_ITEM } from "@rh/lib/nav-items";
 import { rhPath, stripRhPath } from "@rh/lib/rh-paths";
-import { DEFAULT_ORGANICO_COMMENT_TAG_OPTIONS } from "@rh/lib/organico-comment-tags";
 import type { OrganicoDocumentCategoryId, OrganicoDocumentClassificationId } from "@rh/lib/organico-documents";
 import {
   ORGANICO_TAB_OPTIONS,
@@ -10,8 +9,10 @@ import {
   canViewRoute as routeCanView,
   canEditRoute as routeCanEdit,
   type DashboardModuleId,
+  type DemandaAbaId,
   type OrganicoTabId,
   type RhGroupPermissions,
+  type VagaAbaId,
 } from "@rh/lib/rh-permissions";
 
 function canViewAccess(access: { view: boolean; edit: boolean } | null | undefined): boolean {
@@ -119,14 +120,29 @@ export function canDeleteOrganicoComments(): boolean {
   return canEditAccess(permissions?.organico.comentarios);
 }
 
-/** Categorias com tom sensível nos comentários do orgânico. */
+/** Motivo detalhado sensível do desligamento. Independente das categorias de comentários. */
 export function canViewOrganicoConteudoSensivel(): boolean {
   if (isMaster()) return true;
   const permissions = getEffectiveGroupPermissions();
-  if (!permissions || !canViewAccess(permissions.organico.comentarios)) return false;
-  return DEFAULT_ORGANICO_COMMENT_TAG_OPTIONS.filter((tag) => tag.tone === "sensitive").some(
-    (tag) => permissions.organico.comentarios.tags[tag.id] !== false,
-  );
+  return permissions?.organico.comentarioConfidencialDesligamento === true;
+}
+
+export function canDemandaAba(aba: DemandaAbaId, action: "view" | "create" | "edit" | "delete"): boolean {
+  if (!isAuthenticated()) return false;
+  if (isMaster()) return true;
+  const permissions = getEffectiveGroupPermissions();
+  return permissions?.demandasInternas.abas[aba]?.[action] === true;
+}
+
+export function canVagaAba(aba: VagaAbaId, action: "view" | "create" | "edit" | "delete"): boolean {
+  if (!isAuthenticated()) return false;
+  if (isMaster()) return true;
+  const permissions = getEffectiveGroupPermissions();
+  return permissions?.vagas.abas[aba]?.[action] === true;
+}
+
+export function vagaAbaAcessivel(aba: VagaAbaId): boolean {
+  return (["view", "create", "edit", "delete"] as const).some((action) => canVagaAba(aba, action));
 }
 
 export function canViewOrganicoCommentTag(tagId: string, visibility: string): boolean {

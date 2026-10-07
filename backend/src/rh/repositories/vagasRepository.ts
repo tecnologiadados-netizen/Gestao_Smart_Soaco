@@ -95,6 +95,11 @@ export async function listarVagas(): Promise<Vaga[]> {
   return vagas.map(mapear);
 }
 
+export async function buscarVaga(id: string): Promise<Vaga | null> {
+  const vaga = await prisma.rhVaga.findUnique({ where: { id }, include: incluir });
+  return vaga ? mapear(vaga) : null;
+}
+
 export async function criarVaga(entrada: {
   titulo: unknown;
   status: unknown;

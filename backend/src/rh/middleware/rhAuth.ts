@@ -8,6 +8,8 @@ import {
   granularPermissionFallback,
   hasSectorAccess,
   normalizeRhPermissions,
+  type CrudAction,
+  type DemandaAbaId,
   type RhGroupPermissions,
 } from '../lib/rh-permissions.js';
 import { getGrupoPermissions } from '../services/rhPermissionsService.js';
@@ -151,6 +153,35 @@ export function requireRhAccess(targetUrl: string, mode: AccessMode = 'edit') {
       next();
     } catch (err) {
       console.error('[requireRhAccess]', (err as Error)?.message ?? err);
+      if (!res.headersSent) {
+        res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
+      }
+    }
+  };
+}
+
+export function requireRhDemandaAba(aba: DemandaAbaId, action: CrudAction) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const context = await ensureAuthenticated(req, res);
+      if (!context) return;
+
+      if (context.isMaster) {
+        attachRhAuth(req, context);
+        next();
+        return;
+      }
+
+      const permitido = context.permissions?.demandasInternas.abas[aba]?.[action] === true;
+      if (!permitido) {
+        deny(res, 'Sem permissão para executar esta operação nesta aba.');
+        return;
+      }
+
+      attachRhAuth(req, context);
+      next();
+    } catch (err) {
+      console.error('[requireRhDemandaAba]', (err as Error)?.message ?? err);
       if (!res.headersSent) {
         res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
       }

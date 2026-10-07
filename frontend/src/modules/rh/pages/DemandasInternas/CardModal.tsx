@@ -9,6 +9,7 @@ type CardModalProps = {
   card: DemandaCard;
   quadros: DemandaQuadro[];
   podeEditar: boolean;
+  podeExcluir: boolean;
   onClose: () => void;
   onConcluir: () => void;
   onSalvar: (patch: {
@@ -28,6 +29,7 @@ export default function CardModal({
   card,
   quadros,
   podeEditar,
+  podeExcluir,
   onClose,
   onConcluir,
   onSalvar,
@@ -357,7 +359,7 @@ export default function CardModal({
                         className="h-28 w-full object-cover"
                       />
                     </button>
-                    {podeEditar ? (
+                    {podeExcluir ? (
                       <button
                         type="button"
                         aria-label="Remover print"
@@ -378,8 +380,9 @@ export default function CardModal({
         </div>
 
         <aside className="space-y-4">
-          {podeEditar ? (
+          {podeEditar || podeExcluir ? (
             <>
+              {podeEditar ? (
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Adicionar</p>
                 <button
@@ -410,7 +413,9 @@ export default function CardModal({
                   onChange={(evento) => void receberArquivos(Array.from(evento.target.files ?? []))}
                 />
               </div>
+              ) : null}
 
+              {podeExcluir ? (
               <button
                 type="button"
                 onClick={() => setConfirmarExclusao(true)}
@@ -418,6 +423,7 @@ export default function CardModal({
               >
                 <Trash2 className="h-4 w-4" /> Excluir card
               </button>
+              ) : null}
             </>
           ) : (
             <p className="text-sm text-muted-foreground">Somente leitura.</p>

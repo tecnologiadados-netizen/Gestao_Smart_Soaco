@@ -2,6 +2,24 @@
 import { buildDefaultGroupPermissions, canViewOrganicoCommentClassification, normalizeGroupPermissions } from "@rh/lib/rh-permissions";
 import { normalizeOrganicoCommentTagId } from "@rh/lib/organico-comment-tags";
 
+describe("rh-permissions - comentário confidencial do desligamento", () => {
+  it("herda o acesso antigo e permite desligar sem mexer nas categorias", () => {
+    const herdado = normalizeGroupPermissions({
+      organico: { comentarios: { view: true, edit: false } },
+    });
+    expect(herdado.organico.comentarioConfidencialDesligamento).toBe(true);
+
+    const separado = normalizeGroupPermissions({
+      organico: {
+        comentarios: { view: true, edit: true },
+        comentarioConfidencialDesligamento: false,
+      },
+    });
+    expect(separado.organico.comentarios.tags["18"]).not.toBe(false);
+    expect(separado.organico.comentarioConfidencialDesligamento).toBe(false);
+  });
+});
+
 describe("rh-permissions - comentários classificados", () => {
   it("mantém acesso legado a todas as tags e visibilidades ao normalizar comentários antigos", () => {
     const permissions = normalizeGroupPermissions({

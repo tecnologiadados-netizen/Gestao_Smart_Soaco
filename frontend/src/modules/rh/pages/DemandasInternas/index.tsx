@@ -5,7 +5,7 @@ import { ArrowLeft, Calendar, Check, ImageIcon, ListChecks, Plus, Trash2, X } fr
 import { toast } from 'sonner';
 import { resolveUploadUrl } from '@/api/client';
 import AppLayout from '@rh/components/AppLayout';
-import { canEditRoute } from '@rh/lib/route-permissions';
+import { canDemandaAba } from '@rh/lib/route-permissions';
 import { rhPath } from '@rh/lib/rh-paths';
 import {
   anexarPrint,
@@ -124,7 +124,15 @@ export default function DemandasInternas() {
   const { quadroId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const podeEditar = canEditRoute(rhPath('/demandas-internas'));
+  const quadroCriar = canDemandaAba('quadros', 'create');
+  const quadroEditar = canDemandaAba('quadros', 'edit');
+  const quadroExcluir = canDemandaAba('quadros', 'delete');
+  const listaCriar = canDemandaAba('listas', 'create');
+  const listaEditar = canDemandaAba('listas', 'edit');
+  const listaExcluir = canDemandaAba('listas', 'delete');
+  const cardCriar = canDemandaAba('cards', 'create');
+  const cardEditar = canDemandaAba('cards', 'edit');
+  const cardExcluir = canDemandaAba('cards', 'delete');
   const filaRef = useRef(Promise.resolve());
   const [cardAbertoId, setCardAbertoId] = useState<string | null>(null);
   const [quadroParaExcluir, setQuadroParaExcluir] = useState<DemandaQuadro | null>(null);
@@ -220,7 +228,13 @@ export default function DemandasInternas() {
       ) : quadro ? (
         <QuadroBoard
           quadro={quadro}
-          podeEditar={podeEditar}
+          quadroEditar={quadroEditar}
+          quadroExcluir={quadroExcluir}
+          listaCriar={listaCriar}
+          listaEditar={listaEditar}
+          listaExcluir={listaExcluir}
+          cardCriar={cardCriar}
+          cardEditar={cardEditar}
           onVoltar={() => navigate(rhPath('/demandas-internas'))}
           onRenomear={(nome) => void gravar(() => renomearQuadro(quadro.id, nome))}
           onExcluir={() => setQuadroParaExcluir(quadro)}
@@ -242,7 +256,7 @@ export default function DemandasInternas() {
       ) : (
         <GradeQuadros
           quadros={quadros}
-          podeEditar={podeEditar}
+          podeCriar={quadroCriar}
           onAbrir={(id) => navigate(rhPath(`/demandas-internas/${id}`))}
           onCriar={async (nome) => {
             const antes = new Set((queryClient.getQueryData<DemandasArvore>(CHAVE)?.quadros ?? []).map((item) => item.id));
@@ -314,7 +328,8 @@ export default function DemandasInternas() {
         <CardModal
           card={cardAberto}
           quadros={quadros}
-          podeEditar={podeEditar}
+          podeEditar={cardEditar}
+          podeExcluir={cardExcluir}
           onClose={() => setCardAbertoId(null)}
           onSalvar={async (patch) => {
             await gravar(() => atualizarCard(cardAberto.id, patch));
@@ -336,12 +351,12 @@ export default function DemandasInternas() {
 
 function GradeQuadros({
   quadros,
-  podeEditar,
+  podeCriar,
   onAbrir,
   onCriar,
 }: {
   quadros: DemandaQuadro[];
-  podeEditar: boolean;
+  podeCriar: boolean;
   onAbrir: (id: string) => void;
   onCriar: (nome: string) => Promise<void>;
 }) {
@@ -368,9 +383,9 @@ function GradeQuadros({
             </button>
           );
         })}
-        {podeEditar ? <Composer rotulo="Criar quadro" placeholder="Nome do quadro" destaque onCriar={onCriar} /> : null}
+        {podeCriar ? <Composer rotulo="Criar quadro" placeholder="Nome do quadro" destaque onCriar={onCriar} /> : null}
       </div>
-      {!quadros.length && !podeEditar ? (
+      {!quadros.length && !podeCriar ? (
         <p className="mt-6 text-sm text-muted-foreground">Nenhum quadro cadastrado.</p>
       ) : null}
     </div>
@@ -379,7 +394,13 @@ function GradeQuadros({
 
 function QuadroBoard({
   quadro,
-  podeEditar,
+  quadroEditar,
+  quadroExcluir,
+  listaCriar,
+  listaEditar,
+  listaExcluir,
+  cardCriar,
+  cardEditar,
   onVoltar,
   onRenomear,
   onExcluir,
@@ -393,7 +414,13 @@ function QuadroBoard({
   onSoltarLista,
 }: {
   quadro: DemandaQuadro;
-  podeEditar: boolean;
+  quadroEditar: boolean;
+  quadroExcluir: boolean;
+  listaCriar: boolean;
+  listaEditar: boolean;
+  listaExcluir: boolean;
+  cardCriar: boolean;
+  cardEditar: boolean;
   onVoltar: () => void;
   onRenomear: (nome: string) => void;
   onExcluir: () => void;
@@ -425,11 +452,11 @@ function QuadroBoard({
         </button>
         <NomeEditavel
           valor={quadro.nome}
-          podeEditar={podeEditar}
+          podeEditar={quadroEditar}
           onSalvar={onRenomear}
           className="rh-demanda-campo w-auto min-w-[8rem] max-w-sm rounded-md px-2 py-1 text-lg font-semibold text-white outline-none"
         />
-        {podeEditar ? (
+        {quadroExcluir ? (
           <button type="button" onClick={onExcluir} className="ml-auto rounded-md p-2 text-white/70 hover:bg-white/10 hover:text-white" aria-label="Excluir quadro">
             <Trash2 className="h-4 w-4" />
           </button>
@@ -444,7 +471,9 @@ function QuadroBoard({
               sobre?.tipo === 'lista' && sobre.id === lista.id ? 'ring-2 ring-[#FFAD00]' : ''
             }`}
             onDragOver={(evento) => {
-              if (!podeEditar || !arrasteAtual) return;
+              if (!arrasteAtual) return;
+              if (arrasteAtual.tipo === 'card' && !cardEditar) return;
+              if (arrasteAtual.tipo === 'lista' && !listaEditar) return;
               evento.preventDefault();
               marcar({ tipo: 'lista', id: lista.id });
             }}
@@ -452,13 +481,14 @@ function QuadroBoard({
               evento.preventDefault();
               const atual = arrasteAtual;
               limparArraste();
-              if (!podeEditar || !atual) return;
-              if (atual.tipo === 'card') onSoltarCard(atual.id, lista.id, null);
-              else if (atual.id !== lista.id) onSoltarLista(atual.id, lista.id);
+              if (!atual) return;
+              if (atual.tipo === 'card') {
+                if (cardEditar) onSoltarCard(atual.id, lista.id, null);
+              } else if (listaEditar && atual.id !== lista.id) onSoltarLista(atual.id, lista.id);
             }}
           >
             <header
-              draggable={podeEditar}
+              draggable={listaEditar}
               onDragStart={(evento) => {
                 if ((evento.target as HTMLElement).closest('[data-no-drag]')) {
                   evento.preventDefault();
@@ -474,19 +504,20 @@ function QuadroBoard({
                 evento.stopPropagation();
                 const atual = arrasteAtual;
                 limparArraste();
-                if (!podeEditar || !atual) return;
-                if (atual.tipo === 'card') onSoltarCard(atual.id, lista.id, lista.cards[0]?.id ?? null);
-                else if (atual.id !== lista.id) onSoltarLista(atual.id, lista.id);
+                if (!atual) return;
+                if (atual.tipo === 'card') {
+                  if (cardEditar) onSoltarCard(atual.id, lista.id, lista.cards[0]?.id ?? null);
+                } else if (listaEditar && atual.id !== lista.id) onSoltarLista(atual.id, lista.id);
               }}
               className="flex cursor-grab items-center gap-1 px-2 pt-2 active:cursor-grabbing"
             >
               <NomeEditavel
                 valor={lista.nome}
-                podeEditar={podeEditar}
+                podeEditar={listaEditar}
                 onSalvar={(nome) => onRenomearLista(lista.id, nome)}
                 className="rh-demanda-campo min-w-0 flex-1 rounded-md px-2 py-1 text-sm font-semibold text-[#10233f] outline-none"
               />
-              {podeEditar ? (
+              {listaExcluir ? (
                 <button
                   type="button"
                   data-no-drag
@@ -503,12 +534,14 @@ function QuadroBoard({
                 <CardFace
                   key={card.id}
                   card={card}
-                  podeEditar={podeEditar}
+                  podeEditar={cardEditar}
                   destacado={sobre?.tipo === 'card' && sobre.id === card.id}
                   onAbrir={() => onAbrirCard(card.id)}
                   onConcluir={() => onConcluir(card)}
                   onDragOver={(evento) => {
-                    if (!podeEditar || !arrasteAtual) return;
+                    if (!arrasteAtual) return;
+                    if (arrasteAtual.tipo === 'card' && !cardEditar) return;
+                    if (arrasteAtual.tipo === 'lista' && !listaEditar) return;
                     evento.preventDefault();
                     evento.stopPropagation();
                     marcar({ tipo: arrasteAtual.tipo === 'lista' ? 'lista' : 'card', id: arrasteAtual.tipo === 'lista' ? lista.id : card.id });
@@ -518,39 +551,41 @@ function QuadroBoard({
                     evento.stopPropagation();
                     const atual = arrasteAtual;
                     limparArraste();
-                    if (!podeEditar || !atual) return;
+                    if (!atual) return;
                     if (atual.tipo === 'card') {
-                      if (atual.id !== card.id) onSoltarCard(atual.id, lista.id, card.id);
+                      if (cardEditar && atual.id !== card.id) onSoltarCard(atual.id, lista.id, card.id);
                       return;
                     }
-                    if (atual.id !== lista.id) onSoltarLista(atual.id, lista.id);
+                    if (listaEditar && atual.id !== lista.id) onSoltarLista(atual.id, lista.id);
                   }}
                   onArrasteFim={limparArraste}
                 />
               ))}
             </div>
-            {podeEditar ? (
+            {cardCriar ? (
               <div className="px-2 pb-2">
                 <Composer tom="claro" escolherCor rotulo="Adicionar um card" placeholder="Título do card" onCriar={(titulo, cor) => onCriarCard(lista.id, titulo, cor ?? 'branco')} />
               </div>
             ) : null}
           </section>
         ))}
-        {podeEditar ? (
+        {listaCriar || listaEditar ? (
           <div
             className="w-72 shrink-0"
             onDragOver={(evento) => {
-              if (arrasteAtual?.tipo !== 'lista') return;
+              if (!listaEditar || arrasteAtual?.tipo !== 'lista') return;
               evento.preventDefault();
             }}
             onDrop={(evento) => {
               evento.preventDefault();
               const atual = arrasteAtual;
               limparArraste();
-              if (atual?.tipo === 'lista') onSoltarLista(atual.id, null);
+              if (listaEditar && atual?.tipo === 'lista') onSoltarLista(atual.id, null);
             }}
           >
-            <Composer tom="escuro" rotulo="Adicionar outra lista" placeholder="Nome da lista" destaque onCriar={onCriarLista} />
+            {listaCriar ? (
+              <Composer tom="escuro" rotulo="Adicionar outra lista" placeholder="Nome da lista" destaque onCriar={onCriarLista} />
+            ) : null}
           </div>
         ) : null}
       </div>

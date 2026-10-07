@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import {
   requireRhAccess,
   requireRhAusenciasWrite,
+  requireRhDemandaAba,
   requireRhConfigAccess,
   requireRhConfigPermission,
   requireRhFeaturePermission,
@@ -254,19 +255,19 @@ router.post('/hide-organico-archive-folder', requireRhFeaturePermission('documen
 router.post('/resolve-launch-documents', requireRhFeaturePermission('ausencias', 'view'), wrap(resolveLaunchDocumentsHandler));
 
 router.get('/demandas-internas', requireRhAccess('/demandas-internas', 'view'), wrap(getDemandasHandler));
-router.post('/demandas-internas/quadros', requireRhAccess('/demandas-internas', 'edit'), wrap(criarQuadroHandler));
-router.patch('/demandas-internas/quadros/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(renomearQuadroHandler));
-router.delete('/demandas-internas/quadros/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(excluirQuadroHandler));
-router.post('/demandas-internas/listas', requireRhAccess('/demandas-internas', 'edit'), wrap(criarListaHandler));
-router.patch('/demandas-internas/listas/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(renomearListaHandler));
-router.post('/demandas-internas/listas/:id/mover', requireRhAccess('/demandas-internas', 'edit'), wrap(moverListaHandler));
-router.delete('/demandas-internas/listas/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(excluirListaHandler));
-router.post('/demandas-internas/cards', requireRhAccess('/demandas-internas', 'edit'), wrap(criarCardHandler));
-router.patch('/demandas-internas/cards/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(atualizarCardHandler));
-router.post('/demandas-internas/cards/:id/mover', requireRhAccess('/demandas-internas', 'edit'), wrap(moverCardHandler));
-router.delete('/demandas-internas/cards/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(excluirCardHandler));
-router.post('/demandas-internas/cards/:id/anexos', requireRhAccess('/demandas-internas', 'edit'), receberPrint);
-router.delete('/demandas-internas/anexos/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(excluirAnexoHandler));
+router.post('/demandas-internas/quadros', requireRhDemandaAba('quadros', 'create'), wrap(criarQuadroHandler));
+router.patch('/demandas-internas/quadros/:id', requireRhDemandaAba('quadros', 'edit'), wrap(renomearQuadroHandler));
+router.delete('/demandas-internas/quadros/:id', requireRhDemandaAba('quadros', 'delete'), wrap(excluirQuadroHandler));
+router.post('/demandas-internas/listas', requireRhDemandaAba('listas', 'create'), wrap(criarListaHandler));
+router.patch('/demandas-internas/listas/:id', requireRhDemandaAba('listas', 'edit'), wrap(renomearListaHandler));
+router.post('/demandas-internas/listas/:id/mover', requireRhDemandaAba('listas', 'edit'), wrap(moverListaHandler));
+router.delete('/demandas-internas/listas/:id', requireRhDemandaAba('listas', 'delete'), wrap(excluirListaHandler));
+router.post('/demandas-internas/cards', requireRhDemandaAba('cards', 'create'), wrap(criarCardHandler));
+router.patch('/demandas-internas/cards/:id', requireRhDemandaAba('cards', 'edit'), wrap(atualizarCardHandler));
+router.post('/demandas-internas/cards/:id/mover', requireRhDemandaAba('cards', 'edit'), wrap(moverCardHandler));
+router.delete('/demandas-internas/cards/:id', requireRhDemandaAba('cards', 'delete'), wrap(excluirCardHandler));
+router.post('/demandas-internas/cards/:id/anexos', requireRhDemandaAba('cards', 'edit'), receberPrint);
+router.delete('/demandas-internas/anexos/:id', requireRhDemandaAba('cards', 'delete'), wrap(excluirAnexoHandler));
 
 router.get('/vagas', requireRhAccess('/vagas', 'view'), wrap(getVagasHandler));
 router.post('/vagas', requireRhAccess('/vagas', 'edit'), wrap(criarVagaHandler));

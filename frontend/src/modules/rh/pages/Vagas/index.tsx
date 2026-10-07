@@ -7,8 +7,7 @@ import { resolveUploadUrl } from '@/api/client';
 import AppLayout from '@rh/components/AppLayout';
 import SeletorCorCard from '@rh/pages/DemandasInternas/SeletorCorCard';
 import { corDoPostIt } from '@rh/lib/demandas-internas';
-import { canEditRoute } from '@rh/lib/route-permissions';
-import { rhPath } from '@rh/lib/rh-paths';
+import { canVagaAba, vagaAbaAcessivel } from '@rh/lib/route-permissions';
 import { rhFieldInput, rhFieldLabel, rhFieldSelectNative, rhFieldTextarea } from '@rh/lib/form-field-styles';
 import {
   anexarPdfVaga,
@@ -342,14 +341,16 @@ function TabelaLinks({
   );
 }
 
+const STATUS_ABERTURA = ['aberta_sem_divulgacao', 'em_divulgacao'] as const satisfies readonly StatusVaga[];
+
 export default function Vagas() {
-  const podeEditar = canEditRoute(rhPath('/vagas'));
+  const podeCadastrar = STATUS_ABERTURA.some((status) => canVagaAba(status, 'create'));
   const queryClient = useQueryClient();
   const consulta = useQuery({ queryKey: CHAVE, queryFn: getVagas });
   const [filtro, setFiltro] = useState<FiltroVaga>('todas');
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null);
   const [criando, setCriando] = useState(false);
-  const vagas = consulta.data?.vagas ?? [];
+  const vagas = (consulta.data?.vagas ?? []).filter((vaga) => vagaAbaAcessivel(vaga.status));
   const visiveis = useMemo(() => {
     if (filtro === 'todas') return vagas;
     if (filtro === 'abertas') return vagas.filter((vaga) => vaga.status !== 'fechada');
@@ -388,7 +389,7 @@ export default function Vagas() {
               Cadastre a posição em aberto e acompanhe divulgação, triagem, entrevista e o fechamento.
             </p>
           </div>
-          {podeEditar ? (
+          {podeCadastrar ? (
             <button
               type="button"
               onClick={() => {
@@ -414,7 +415,12 @@ export default function Vagas() {
                 ['entrevista', 'Entrevista'],
                 ['fechada', 'Fechadas'],
               ] as const
-            ).map(([id, rotulo]) => (
+            )
+              .filter(([id]) => {
+                if (id === 'todas' || id === 'abertas') return true;
+                return vagaAbaAcessivel(id);
+              })
+              .map(([id, rotulo]) => (
               <button
                 key={id}
                 type="button"
@@ -459,7 +465,7 @@ export default function Vagas() {
         </section>
       </div>
 
-      {criando && podeEditar ? (
+      {criando && podeCadastrar ? (
         <FormularioCadastro
           onCancelar={() => setCriando(false)}
           onCriada={(vaga) => {
@@ -474,7 +480,8 @@ export default function Vagas() {
         <DetalheVaga
           key={selecionada.id}
           vaga={selecionada}
-          podeEditar={podeEditar}
+          podeEditar={canVagaAba(selecionada.status, 'edit')}
+          podeExcluir={canVagaAba(selecionada.status, 'delete')}
           onAtualizada={aplicar}
           onFechar={() => setSelecionadaId(null)}
           onExcluida={() => setSelecionadaId(null)}
@@ -485,8 +492,9 @@ export default function Vagas() {
 }
 
 function FormularioCadastro({ onCancelar, onCriada }: { onCancelar: () => void; onCriada: (vaga: Vaga) => void }) {
+  const statusInicial = canVagaAba('aberta_sem_divulgacao', 'create') ? 'aberta_sem_divulgacao' : 'em_divulgacao';
   const [titulo, setTitulo] = useState('');
-  const [status, setStatus] = useState<'aberta_sem_divulgacao' | 'em_divulgacao'>('aberta_sem_divulgacao');
+  const [status, setStatus] = useState<'aberta_sem_divulgacao' | 'em_divulgacao'>(statusInicial);
   const [prazo, setPrazo] = useState('');
   const [observacao, setObservacao] = useState('');
   const [cor, setCor] = useState('branco');
@@ -557,8 +565,10 @@ function FormularioCadastro({ onCancelar, onCriada }: { onCancelar: () => void; 
             onChange={(evento) => setStatus(evento.target.value as 'aberta_sem_divulgacao' | 'em_divulgacao')}
             className={`mt-1 ${rhFieldSelectNative}`}
           >
-            <option value="aberta_sem_divulgacao">Aberta sem divulgação (standby)</option>
-            <option value="em_divulgacao">Em divulgação</option>
+            {canVagaAba('aberta_sem_divulgacao', 'create') ? (
+              <option value="aberta_sem_divulgacao">Aberta sem divulgação (standby)</option>
+            ) : null}
+            {canVagaAba('em_divulgacao', 'create') ? <option value="em_divulgacao">Em divulgação</option> : null}
           </select>
         </label>
         {status === 'em_divulgacao' ? <TabelaLinks linhas={linhas} onChange={setLinhas} podeEditar /> : null}
@@ -587,12 +597,14 @@ function FormularioCadastro({ onCancelar, onCriada }: { onCancelar: () => void; 
 function DetalheVaga({
   vaga,
   podeEditar,
+  podeExcluir,
   onAtualizada,
   onFechar,
   onExcluida,
 }: {
   vaga: Vaga;
   podeEditar: boolean;
+  podeExcluir: boolean;
   onAtualizada: (vaga: Vaga) => void;
   onFechar: () => void;
   onExcluida: () => void;
@@ -769,7 +781,9 @@ function DetalheVaga({
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Andamento</p>
           <select value={proximo} onChange={(evento) => setProximo(evento.target.value)} className={rhFieldSelectNative} disabled={mutacao.isPending}>
             <option value="">Escolha o próximo status</option>
-            {proximosStatus(vaga.status).map((status) => (
+            {proximosStatus(vaga.status)
+              .filter((status) => canVagaAba(status, 'create') || canVagaAba(status, 'edit'))
+              .map((status) => (
               <option key={status} value={status}>
                 {vaga.status === 'fechada' ? `Reabrir: ${rotuloStatus(status)}` : rotuloStatus(status)}
               </option>
@@ -803,7 +817,7 @@ function DetalheVaga({
           ))}
       </ol>
 
-      {podeEditar ? (
+      {podeExcluir ? (
         <button type="button" onClick={() => setConfirmarExclusao(true)} className="mt-5 text-sm font-medium text-[#b42318]">
           Excluir vaga
         </button>

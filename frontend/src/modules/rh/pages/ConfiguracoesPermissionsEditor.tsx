@@ -13,7 +13,14 @@ import {
   type OrganicoDocumentCategoryId,
   type OrganicoDocumentClassificationId,
 } from "@rh/lib/organico-documents";
-import { cloneGroupPermissions, DASHBOARD_MODULE_OPTIONS, ORGANICO_TAB_OPTIONS, type RhGroupPermissions } from "@rh/lib/rh-permissions";
+import {
+  cloneGroupPermissions,
+  DASHBOARD_MODULE_OPTIONS,
+  DEMANDA_ABA_OPTIONS,
+  ORGANICO_TAB_OPTIONS,
+  VAGA_ABA_OPTIONS,
+  type RhGroupPermissions,
+} from "@rh/lib/rh-permissions";
 
 type Props = {
   value: RhGroupPermissions;
@@ -128,10 +135,12 @@ function CrudRow({
   label,
   value,
   onSetField,
+  createLabel = "Inserir",
 }: {
   label: string;
   value: { view: boolean; create: boolean; edit: boolean; delete: boolean };
   onSetField: (field: "view" | "create" | "edit" | "delete", checked: boolean) => void;
+  createLabel?: string;
 }) {
   const viewId = useId();
   const createId = useId();
@@ -150,7 +159,7 @@ function CrudRow({
         <div className="flex items-center gap-2 text-sm">
           <NativeCheckbox id={createId} checked={value.create} onCheckedChange={(checked) => onSetField("create", checked)} />
           <Label htmlFor={createId} className="cursor-pointer">
-            Inserir
+            {createLabel}
           </Label>
         </div>
         <div className="flex items-center gap-2 text-sm">
@@ -283,6 +292,7 @@ export function ConfiguracoesPermissionsEditor({ value, onChange, availableSecto
   const permissions = useMemo(() => cloneGroupPermissions(value), [value]);
   const justificarSecullumId = useId();
   const notificarCadastroSecullumId = useId();
+  const comentarioConfidencialId = useId();
   const update = (mutate: (draft: RhGroupPermissions) => void) => {
     const draft = cloneGroupPermissions(permissions);
     mutate(draft);
@@ -336,6 +346,7 @@ export function ConfiguracoesPermissionsEditor({ value, onChange, availableSecto
                 }
                 draft.organico.justificarAlteracoesSecullum = true;
                 draft.organico.notificarCadastroComplementarSecullum = true;
+                draft.organico.comentarioConfidencialDesligamento = true;
               })
             }
             onClearAll={() =>
@@ -373,6 +384,7 @@ export function ConfiguracoesPermissionsEditor({ value, onChange, availableSecto
                 }
                 draft.organico.justificarAlteracoesSecullum = false;
                 draft.organico.notificarCadastroComplementarSecullum = false;
+                draft.organico.comentarioConfidencialDesligamento = false;
               })
             }
           />
@@ -570,6 +582,29 @@ export function ConfiguracoesPermissionsEditor({ value, onChange, availableSecto
             }
           />
         ))}
+
+        <div className="rounded-md border border-border/70 px-3 py-2.5">
+          <div className="flex items-start gap-3">
+            <NativeCheckbox
+              id={comentarioConfidencialId}
+              checked={permissions.organico.comentarioConfidencialDesligamento}
+              onCheckedChange={(checked) =>
+                update((draft) => {
+                  draft.organico.comentarioConfidencialDesligamento = checked;
+                })
+              }
+            />
+            <div className="min-w-0">
+              <Label className="text-sm font-medium text-foreground cursor-pointer" htmlFor={comentarioConfidencialId}>
+                Ver comentário confidencial do desligamento
+              </Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                Libera a leitura do motivo detalhado marcado como sensível no complemento do desligamento. Esta
+                permissão é independente das categorias e visibilidades dos comentários do colaborador.
+              </p>
+            </div>
+          </div>
+        </div>
 
         <ToggleRow
           label="Fotos do colaborador"
@@ -881,45 +916,41 @@ export function ConfiguracoesPermissionsEditor({ value, onChange, availableSecto
       </PermissionCard>
 
       <PermissionCard
-        title="Demandas Internas"
-        description="Quadros e cards das demandas entre o RH e a diretoria."
+        title="Aba Demandas Internas"
+        description="Cadastrar, editar e excluir em cada parte do quadro: quadros, listas e cards."
       >
-        <ToggleRow
-          label="Permissões do módulo"
-          viewChecked={permissions.demandasInternas.view}
-          editChecked={permissions.demandasInternas.edit}
-          onSetView={(checked) =>
-            update((draft) => {
-              draft.demandasInternas.view = checked;
-            })
-          }
-          onSetEdit={(checked) =>
-            update((draft) => {
-              draft.demandasInternas.edit = checked;
-            })
-          }
-        />
+        {DEMANDA_ABA_OPTIONS.map((aba) => (
+          <CrudRow
+            key={aba.id}
+            label={aba.label}
+            createLabel="Cadastrar"
+            value={permissions.demandasInternas.abas[aba.id]}
+            onSetField={(field, checked) =>
+              update((draft) => {
+                draft.demandasInternas.abas[aba.id][field] = checked;
+              })
+            }
+          />
+        ))}
       </PermissionCard>
 
       <PermissionCard
-        title="Vagas"
-        description="Cadastro e acompanhamento das vagas, da abertura ao fechamento."
+        title="Aba Vagas"
+        description="Cadastrar, editar e excluir em cada etapa da vaga, da abertura ao fechamento."
       >
-        <ToggleRow
-          label="Permissões do módulo"
-          viewChecked={permissions.vagas.view}
-          editChecked={permissions.vagas.edit}
-          onSetView={(checked) =>
-            update((draft) => {
-              draft.vagas.view = checked;
-            })
-          }
-          onSetEdit={(checked) =>
-            update((draft) => {
-              draft.vagas.edit = checked;
-            })
-          }
-        />
+        {VAGA_ABA_OPTIONS.map((aba) => (
+          <CrudRow
+            key={aba.id}
+            label={aba.label}
+            createLabel="Cadastrar"
+            value={permissions.vagas.abas[aba.id]}
+            onSetField={(field, checked) =>
+              update((draft) => {
+                draft.vagas.abas[aba.id][field] = checked;
+              })
+            }
+          />
+        ))}
       </PermissionCard>
 
       <PermissionCard

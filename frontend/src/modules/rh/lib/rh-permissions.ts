@@ -31,6 +31,32 @@ export type PermissionCrud = {
   delete: boolean;
 };
 
+export const DEMANDA_ABA_IDS = ["quadros", "listas", "cards"] as const;
+export type DemandaAbaId = (typeof DEMANDA_ABA_IDS)[number];
+
+export const DEMANDA_ABA_OPTIONS: ReadonlyArray<{ id: DemandaAbaId; label: string }> = [
+  { id: "quadros", label: "Quadros" },
+  { id: "listas", label: "Listas" },
+  { id: "cards", label: "Cards" },
+];
+
+export const VAGA_ABA_IDS = [
+  "aberta_sem_divulgacao",
+  "em_divulgacao",
+  "triagem",
+  "entrevista",
+  "fechada",
+] as const;
+export type VagaAbaId = (typeof VAGA_ABA_IDS)[number];
+
+export const VAGA_ABA_OPTIONS: ReadonlyArray<{ id: VagaAbaId; label: string }> = [
+  { id: "aberta_sem_divulgacao", label: "Sem divulgação" },
+  { id: "em_divulgacao", label: "Em divulgação" },
+  { id: "triagem", label: "Triagem" },
+  { id: "entrevista", label: "Entrevista" },
+  { id: "fechada", label: "Fechadas" },
+];
+
 export type OrganicoCommentPermissions = PermissionAccess & {
   tags: Record<string, boolean>;
   visibilities: Record<OrganicoCommentVisibilityId, boolean>;
@@ -88,6 +114,8 @@ export type RhGroupPermissions = {
     justificarAlteracoesSecullum: boolean;
     /** Toast quando a Secullum incluir colaborador novo (cadastro complementar no Orgânico). Master ignora o flag. */
     notificarCadastroComplementarSecullum: boolean;
+    /** Ler o motivo detalhado marcado como sensível no desligamento. Independente das categorias de comentários. */
+    comentarioConfidencialDesligamento: boolean;
   };
   faltas: {
     route: PermissionAccess;
@@ -103,8 +131,12 @@ export type RhGroupPermissions = {
     modulos: Record<DashboardModuleId, PermissionAccess>;
   };
   cargos: PermissionAccess;
-  demandasInternas: PermissionAccess;
-  vagas: PermissionAccess;
+  demandasInternas: {
+    abas: Record<DemandaAbaId, PermissionCrud>;
+  };
+  vagas: {
+    abas: Record<VagaAbaId, PermissionCrud>;
+  };
   organograma: PermissionAccess & {
     /** Fotos configuráveis da Empresa e das Diretorias. */
     fotos: PermissionAccess;
@@ -118,6 +150,25 @@ function hasAccess(access: PermissionAccess): boolean {
 
 function hasCrudAccess(access: PermissionCrud): boolean {
   return access.view || access.create || access.edit || access.delete;
+}
+
+function abasFromCrud<T extends string>(ids: readonly T[], value: PermissionCrud): Record<T, PermissionCrud> {
+  return Object.fromEntries(ids.map((id) => [id, { ...value }])) as Record<T, PermissionCrud>;
+}
+
+function moduloAbasPodeVer(abas: Record<string, PermissionCrud>): boolean {
+  return Object.values(abas).some(hasCrudAccess);
+}
+
+function moduloAbasPodeGravar(abas: Record<string, PermissionCrud>): boolean {
+  return Object.values(abas).some((aba) => aba.create || aba.edit || aba.delete);
+}
+
+const RH_TAGS_SENSIVEIS = ["18", "19", "20", "21", "22"];
+
+function herdaComentarioConfidencialDesligamento(comentarios: OrganicoCommentPermissions): boolean {
+  if (!hasAccess(comentarios)) return false;
+  return RH_TAGS_SENSIVEIS.some((id) => comentarios.tags[id] !== false);
 }
 
 function buildAccess(view = false, edit = false): PermissionAccess {
@@ -193,6 +244,7 @@ export function buildDefaultGroupPermissions(): RhGroupPermissions {
       documentos: buildDocumentPermissions(),
       justificarAlteracoesSecullum: false,
       notificarCadastroComplementarSecullum: false,
+      comentarioConfidencialDesligamento: false,
     },
     faltas: {
       route: buildAccess(),
@@ -212,8 +264,8 @@ export function buildDefaultGroupPermissions(): RhGroupPermissions {
       },
     },
     cargos: buildAccess(),
-    demandasInternas: buildAccess(),
-    vagas: buildAccess(),
+    demandasInternas: { abas: abasFromCrud(DEMANDA_ABA_IDS, buildCrud()) },
+    vagas: { abas: abasFromCrud(VAGA_ABA_IDS, buildCrud()) },
     organograma: {
       ...buildAccess(),
       fotos: buildAccess(),
@@ -341,6 +393,30 @@ function readCrud(input: unknown, fallback?: PermissionCrud): PermissionCrud {
   };
 }
 
+function crudEspelhandoEdicao(input: unknown): PermissionCrud {
+  const acesso = readAccess(input, buildAccess());
+  const source = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const temCreate = Object.prototype.hasOwnProperty.call(source, "create");
+  const temDelete =
+    Object.prototype.hasOwnProperty.call(source, "delete") || Object.prototype.hasOwnProperty.call(source, "remove");
+  return {
+    view: acesso.view || acesso.edit,
+    create: temCreate ? source.create === true : acesso.edit,
+    edit: acesso.edit,
+    delete: temDelete ? source.delete === true || source.remove === true : acesso.edit,
+  };
+}
+
+function readAbasCrud<T extends string>(input: unknown, ids: readonly T[]): Record<T, PermissionCrud> {
+  if (!input || typeof input !== "object") return abasFromCrud(ids, buildCrud());
+  const source = input as Record<string, unknown>;
+  const rawAbas = source.abas && typeof source.abas === "object" ? (source.abas as Record<string, unknown>) : null;
+  if (rawAbas && ids.some((id) => Object.prototype.hasOwnProperty.call(rawAbas, id))) {
+    return Object.fromEntries(ids.map((id) => [id, readCrud(rawAbas[id])])) as Record<T, PermissionCrud>;
+  }
+  return abasFromCrud(ids, crudEspelhandoEdicao(source));
+}
+
 function pickLegacyRoute(routes: LegacyRoutePermission[], url: string): LegacyRoutePermission | undefined {
   return routes.find((entry) => entry.url === url);
 }
@@ -430,15 +506,15 @@ function deriveRoutesFromPermissions(next: RhGroupPermissions): LegacyRoutePermi
       case "/rh/demandas-internas":
         return {
           ...item,
-          canView: next.demandasInternas.view || next.demandasInternas.edit,
-          canEdit: next.demandasInternas.edit,
+          canView: moduloAbasPodeVer(next.demandasInternas.abas),
+          canEdit: moduloAbasPodeGravar(next.demandasInternas.abas),
         };
       case "/vagas":
       case "/rh/vagas":
         return {
           ...item,
-          canView: next.vagas.view || next.vagas.edit,
-          canEdit: next.vagas.edit,
+          canView: moduloAbasPodeVer(next.vagas.abas),
+          canEdit: moduloAbasPodeGravar(next.vagas.abas),
         };
       case "/organograma":
         return {
@@ -503,6 +579,7 @@ function applyLegacyToPermissions(routes: LegacyRoutePermission[]): RhGroupPermi
     next.organico.formTabs[tab.id] = buildAccess(organicoView, organicoEdit);
   }
   next.organico.comentarios = buildCommentPermissions(organicoView, organicoEdit);
+  next.organico.comentarioConfidencialDesligamento = organicoView;
   next.organico.fotos = buildAccess(organicoView, organicoEdit);
   next.organico.documentos = buildDocumentPermissions();
 
@@ -516,11 +593,28 @@ function applyLegacyToPermissions(routes: LegacyRoutePermission[]): RhGroupPermi
   next.faltas.regrasAlertas = buildAccess(faltasView, faltasEdit);
 
   next.cargos = buildAccess(!!(cargos?.canView || cargos?.canEdit), !!cargos?.canEdit);
-  next.demandasInternas = buildAccess(
-    !!(demandasInternas?.canView || demandasInternas?.canEdit),
-    !!demandasInternas?.canEdit,
-  );
-  next.vagas = buildAccess(!!(vagas?.canView || vagas?.canEdit), !!vagas?.canEdit);
+  next.demandasInternas = {
+    abas: abasFromCrud(
+      DEMANDA_ABA_IDS,
+      buildCrud(
+        !!(demandasInternas?.canView || demandasInternas?.canEdit),
+        !!demandasInternas?.canEdit,
+        !!demandasInternas?.canEdit,
+        !!demandasInternas?.canEdit,
+      ),
+    ),
+  };
+  next.vagas = {
+    abas: abasFromCrud(
+      VAGA_ABA_IDS,
+      buildCrud(
+        !!(vagas?.canView || vagas?.canEdit),
+        !!vagas?.canEdit,
+        !!vagas?.canEdit,
+        !!vagas?.canEdit,
+      ),
+    ),
+  };
   const organogramaView = !!(organograma?.canView || organograma?.canEdit);
   const organogramaEdit = !!organograma?.canEdit;
   next.organograma = {
@@ -593,6 +687,11 @@ export function normalizeGroupPermissions(input: unknown): RhGroupPermissions {
   next.organico.notificarCadastroComplementarSecullum = hasOrganicoConfig
     ? organico.notificarCadastroComplementarSecullum === true
     : legacy.organico.notificarCadastroComplementarSecullum;
+  next.organico.comentarioConfidencialDesligamento = hasOrganicoConfig
+    ? Object.prototype.hasOwnProperty.call(organico, "comentarioConfidencialDesligamento")
+      ? organico.comentarioConfidencialDesligamento === true
+      : herdaComentarioConfidencialDesligamento(next.organico.comentarios)
+    : legacy.organico.comentarioConfidencialDesligamento;
   const rawTabs = organico.formTabs && typeof organico.formTabs === "object" ? (organico.formTabs as Record<string, unknown>) : {};
   for (const tab of ORGANICO_TAB_OPTIONS) {
     next.organico.formTabs[tab.id] = hasOrganicoConfig
@@ -629,9 +728,11 @@ export function normalizeGroupPermissions(input: unknown): RhGroupPermissions {
 
   next.cargos = Object.hasOwn(source, "cargos") ? readAccess(source.cargos, buildAccess()) : legacy.cargos;
   next.demandasInternas = Object.hasOwn(source, "demandasInternas")
-    ? readAccess(source.demandasInternas, buildAccess())
+    ? { abas: readAbasCrud(source.demandasInternas, DEMANDA_ABA_IDS) }
     : legacy.demandasInternas;
-  next.vagas = Object.hasOwn(source, "vagas") ? readAccess(source.vagas, buildAccess()) : legacy.vagas;
+  next.vagas = Object.hasOwn(source, "vagas")
+    ? { abas: readAbasCrud(source.vagas, VAGA_ABA_IDS) }
+    : legacy.vagas;
   if (Object.hasOwn(source, "organograma")) {
     const organograma =
       source.organograma && typeof source.organograma === "object"
@@ -705,11 +806,13 @@ export function granularPermissionFallback(
     case "/demandas-internas":
     case "/rh/demandas-internas":
       return mode === "edit"
-        ? permissions.demandasInternas.edit
-        : permissions.demandasInternas.view || permissions.demandasInternas.edit;
+        ? moduloAbasPodeGravar(permissions.demandasInternas.abas)
+        : moduloAbasPodeVer(permissions.demandasInternas.abas);
     case "/vagas":
     case "/rh/vagas":
-      return mode === "edit" ? permissions.vagas.edit : permissions.vagas.view || permissions.vagas.edit;
+      return mode === "edit"
+        ? moduloAbasPodeGravar(permissions.vagas.abas)
+        : moduloAbasPodeVer(permissions.vagas.abas);
     case "/organograma":
       return mode === "edit"
         ? permissions.organograma.edit || permissions.organograma.fotos.edit
