@@ -92,12 +92,54 @@ import {
 } from '../rh/controllers/motivoDesligamentoController.js';
 import { geocodeLocalidadesHandler } from '../rh/services/geocodeLocalidade.js';
 import { MAX_DOCUMENT_SIZE_BYTES } from '../rh/utils/rhUpload.js';
+import {
+  anexarPrintHandler,
+  atualizarCardHandler,
+  criarCardHandler,
+  criarListaHandler,
+  criarQuadroHandler,
+  excluirAnexoHandler,
+  excluirCardHandler,
+  excluirListaHandler,
+  excluirQuadroHandler,
+  getDemandasHandler,
+  moverCardHandler,
+  moverListaHandler,
+  renomearListaHandler,
+  renomearQuadroHandler,
+} from '../rh/controllers/demandasInternasController.js';
+import {
+  atualizarVagaHandler,
+  criarVagaHandler,
+  excluirVagaHandler,
+  getVagasHandler,
+} from '../rh/controllers/vagasController.js';
 
 const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_DOCUMENT_SIZE_BYTES },
 });
+
+const uploadPrint = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
+
+function receberPrint(
+  req: import('express').Request,
+  res: import('express').Response,
+  next: import('express').NextFunction,
+) {
+  uploadPrint.single('file')(req, res, (err: unknown) => {
+    if (err) {
+      const grande = !!err && typeof err === 'object' && (err as { code?: string }).code === 'LIMIT_FILE_SIZE';
+      res.status(400).json({ error: grande ? 'O print passa de 15 MB.' : 'Não foi possível receber o arquivo.' });
+      return;
+    }
+    anexarPrintHandler(req, res).catch(next);
+  });
+}
 
 router.use(requireAuth);
 
@@ -193,6 +235,26 @@ router.post('/create-organico-archive-folder', requireRhFeaturePermission('docum
 router.post('/rename-organico-archive-folder', requireRhFeaturePermission('documentos', 'edit'), wrap(renameOrganicoArchiveFolderHandler));
 router.post('/hide-organico-archive-folder', requireRhFeaturePermission('documentos', 'edit'), wrap(hideOrganicoArchiveFolderHandler));
 router.post('/resolve-launch-documents', requireRhFeaturePermission('ausencias', 'view'), wrap(resolveLaunchDocumentsHandler));
+
+router.get('/demandas-internas', requireRhAccess('/demandas-internas', 'view'), wrap(getDemandasHandler));
+router.post('/demandas-internas/quadros', requireRhAccess('/demandas-internas', 'edit'), wrap(criarQuadroHandler));
+router.patch('/demandas-internas/quadros/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(renomearQuadroHandler));
+router.delete('/demandas-internas/quadros/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(excluirQuadroHandler));
+router.post('/demandas-internas/listas', requireRhAccess('/demandas-internas', 'edit'), wrap(criarListaHandler));
+router.patch('/demandas-internas/listas/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(renomearListaHandler));
+router.post('/demandas-internas/listas/:id/mover', requireRhAccess('/demandas-internas', 'edit'), wrap(moverListaHandler));
+router.delete('/demandas-internas/listas/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(excluirListaHandler));
+router.post('/demandas-internas/cards', requireRhAccess('/demandas-internas', 'edit'), wrap(criarCardHandler));
+router.patch('/demandas-internas/cards/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(atualizarCardHandler));
+router.post('/demandas-internas/cards/:id/mover', requireRhAccess('/demandas-internas', 'edit'), wrap(moverCardHandler));
+router.delete('/demandas-internas/cards/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(excluirCardHandler));
+router.post('/demandas-internas/cards/:id/anexos', requireRhAccess('/demandas-internas', 'edit'), receberPrint);
+router.delete('/demandas-internas/anexos/:id', requireRhAccess('/demandas-internas', 'edit'), wrap(excluirAnexoHandler));
+
+router.get('/vagas', requireRhAccess('/vagas', 'view'), wrap(getVagasHandler));
+router.post('/vagas', requireRhAccess('/vagas', 'edit'), wrap(criarVagaHandler));
+router.patch('/vagas/:id', requireRhAccess('/vagas', 'edit'), wrap(atualizarVagaHandler));
+router.delete('/vagas/:id', requireRhAccess('/vagas', 'edit'), wrap(excluirVagaHandler));
 
 // Backup / grupos RH (Gestor grupos + rhGrupoPermissao)
 router.get('/rh-backup-export', requireRhMaster(), wrap(rhBackupExportHandler));
