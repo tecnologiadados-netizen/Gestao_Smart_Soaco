@@ -61,6 +61,7 @@ import {
   getDreDashboard,
   getPainelComercial,
   getPainelComercialItensPedido,
+  getPainelComercialUltimasVendas,
   getPoliticaComercialPainel,
   putPoliticaComercialPainel,
   getPoliticaComercialClientes,
@@ -207,6 +208,7 @@ router.post('/dfc/prioridades/lancamentos/lote', verPrioridadeDfcDiario, postPri
 router.delete('/dfc/prioridades/lancamentos/:idEmpresa/:tipoRef/:idRef', verPrioridadeDfcDiario, deletePrioridadeLancamentoCtrl);
 
 router.get('/painel-comercial/itens-pedido', verFinanceiroPainelComercial, getPainelComercialItensPedido);
+router.get('/painel-comercial/ultimas-vendas', verFinanceiroPainelComercial, getPainelComercialUltimasVendas);
 router.get('/painel-comercial/politica/clientes', verFinanceiroPainelComercial, getPoliticaComercialClientes);
 router.get('/painel-comercial/politica', verFinanceiroPainelComercial, getPoliticaComercialPainel);
 router.put('/painel-comercial/politica', verFinanceiroPainelComercial, putPoliticaComercialPainel);

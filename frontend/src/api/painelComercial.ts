@@ -22,6 +22,8 @@ export interface PoliticaComercialPainel {
   pctEntradaTolerancia: number;
   diasCondicaoMin: number;
   diasCondicaoMax: number;
+  /** Teto de desconto em fração. `null` = não avalia, salvo retirada Só Aço (4%). */
+  pctDescontoMaximo?: number | null;
 }
 
 export interface PainelComercialItemPedido {
@@ -41,7 +43,17 @@ export interface PainelComercialPedido {
   empresaId: number;
   vendaPorEmpresa?: string;
   cliente: string;
+  /** Pessoa Nomus. Ausente em respostas antigas. */
+  clienteId?: number;
+  /** Recorrente / reativado / novo (preenchido no painel). */
+  tipoCliente?: 'recorrente' | 'reativado' | 'novo';
+  /** @deprecated use tipoCliente */
+  clienteRecorrente?: boolean;
   vendedorRepresentante: string;
+  /** Classificação salva em Comissionamento → Classificar equipes. */
+  equipe?: 'televendas' | 'vendedores' | 'representantes' | 'sem_equipe';
+  /** Dias médios do pedido quando entra no prazo médio a prazo; ausente se fora da média. */
+  prazoMedioDias?: number | null;
   emissao: string;
   tabelaPreco: string;
   valorTotal: number;
@@ -62,7 +74,11 @@ export interface PainelComercialPedido {
   diasEsperados: string;
   periodicidadeLabel: string;
   entradaOk: boolean;
+  /** Acima da faixa de entrada — conta como conforme. */
+  entradaBenigna?: boolean;
   prazosOk: boolean;
+  /** Prazo diferente do pacote, porém menor — conta como conforme. */
+  prazosBenignos?: boolean;
   prazosIndeterminados: boolean;
   retiradaSoAco: boolean;
   status: StatusConformidadePainel;
@@ -87,6 +103,13 @@ export interface PainelComercialDashboard {
   porCondicao: { condicao: string; pedidos: number }[];
   porFaixa: { faixa: FaixaTicketPainel; label: string; pedidos: number; pctOk: number }[];
   porEntradaFaixa: { faixa: string; pedidos: number }[];
+  historicoClientes?: {
+    clienteId: number;
+    cliente: string;
+    primeiraEmissao: string;
+    ultimaEmissaoAntesPeriodo: string | null;
+  }[];
+  clientesComCompraAnterior?: { clienteId: number; cliente: string }[];
   pedidos: PainelComercialPedido[];
   erro?: string;
   error?: string;
@@ -122,6 +145,75 @@ export async function fetchPainelComercialItensPedido(
     };
   });
   return { itens };
+}
+
+export interface UltimaVendaClienteEntrada {
+  valor: number;
+  vencimento: string;
+}
+
+export interface UltimaVendaCliente {
+  pd: string;
+  pdId: number;
+  empresaId: number;
+  vendaPorEmpresa: string;
+  cliente: string;
+  vendedorRepresentante: string;
+  emissao: string;
+  formaPagamento: string;
+  condicaoPagamento: string;
+  valorTotal: number;
+  valorDesconto: number;
+  totalPedido: number;
+  somaEntrada: number;
+  pctEntrada: number;
+  entradas: UltimaVendaClienteEntrada[];
+}
+
+export async function fetchUltimasVendasClientePainel(
+  opts: { clienteId?: number; cliente?: string; limit?: number; signal?: AbortSignal }
+): Promise<{ vendas: UltimaVendaCliente[]; erro?: string }> {
+  const sp = new URLSearchParams();
+  if (opts.clienteId && opts.clienteId > 0) sp.set('clienteId', String(opts.clienteId));
+  if (opts.cliente?.trim()) sp.set('cliente', opts.cliente.trim());
+  if (opts.limit) sp.set('limit', String(opts.limit));
+  const res = await apiFetch(`/api/financeiro/painel-comercial/ultimas-vendas?${sp.toString()}`, {
+    signal: opts.signal,
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    vendas?: unknown[];
+    error?: string;
+    erro?: string;
+  };
+  if (!res.ok) {
+    return { vendas: [], erro: body.error ?? body.erro ?? res.statusText };
+  }
+  const raw = Array.isArray(body.vendas) ? body.vendas : [];
+  const vendas: UltimaVendaCliente[] = raw.map((row) => {
+    const r = row as Record<string, unknown>;
+    const entradasRaw = Array.isArray(r.entradas) ? r.entradas : [];
+    return {
+      pd: String(r.pd ?? ''),
+      pdId: Number(r.pdId) || 0,
+      empresaId: Number(r.empresaId) || 0,
+      vendaPorEmpresa: String(r.vendaPorEmpresa ?? ''),
+      cliente: String(r.cliente ?? ''),
+      vendedorRepresentante: String(r.vendedorRepresentante ?? ''),
+      emissao: String(r.emissao ?? ''),
+      formaPagamento: String(r.formaPagamento ?? ''),
+      condicaoPagamento: String(r.condicaoPagamento ?? ''),
+      valorTotal: Number(r.valorTotal) || 0,
+      valorDesconto: Number(r.valorDesconto) || 0,
+      totalPedido: Number(r.totalPedido) || 0,
+      somaEntrada: Number(r.somaEntrada) || 0,
+      pctEntrada: Number(r.pctEntrada) || 0,
+      entradas: entradasRaw.map((e) => {
+        const p = e as Record<string, unknown>;
+        return { valor: Number(p.valor) || 0, vencimento: String(p.vencimento ?? '') };
+      }),
+    };
+  });
+  return { vendas };
 }
 
 function hojeYmd(): string {
@@ -166,6 +258,7 @@ export async function fetchPainelComercial(params?: {
       porCondicao: [],
       porFaixa: [],
       porEntradaFaixa: [],
+      historicoClientes: [],
       pedidos: [],
       erro: body.error ?? body.erro ?? res.statusText,
     };
