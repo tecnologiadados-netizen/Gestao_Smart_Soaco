@@ -513,6 +513,8 @@ export interface ProdutoSetorProducao {
   codigo: string;
   descricao: string;
   setorProducao: string;
+  /** Tipo de produto do Nomus. Usado quando o item comprado não tem setor de produção. */
+  tipoProduto: string;
 }
 
 /** Atributo Nomus "Setor de Produção" (mesmo id usado nos pedidos). */
@@ -534,8 +536,10 @@ export async function buscarSetorProducaoPorProduto(
     `SELECT
        pr.nome AS codigo,
        pr.descricao AS descricao,
-       COALESCE(alo.opcao, '') AS setorProducao
+       COALESCE(alo.opcao, '') AS setorProducao,
+       COALESCE(NULLIF(TRIM(tp.nome), ''), NULLIF(TRIM(tp.descricao), ''), '') AS tipoProduto
      FROM produto pr
+     LEFT JOIN tipoproduto tp ON tp.id = pr.idTipoProduto
      LEFT JOIN atributoprodutovalor apv
        ON apv.idProduto = pr.id
       AND apv.idAtributo = ?
@@ -551,6 +555,7 @@ export async function buscarSetorProducaoPorProduto(
     codigo: String(row.codigo ?? '').trim(),
     descricao: String(row.descricao ?? '').trim(),
     setorProducao: String(row.setorProducao ?? '').trim(),
+    tipoProduto: String(row.tipoProduto ?? '').trim(),
   }));
   return { produtos, source: 'erp' };
 }

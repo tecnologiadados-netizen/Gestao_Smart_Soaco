@@ -25,6 +25,7 @@ import {
   atualizarCausaProblema,
   atualizarReclamacaoProduto,
   buscarSetorProducaoProduto,
+  classificacaoCatalogoProduto,
   criarCausaProblema,
   criarReclamacaoProduto,
   excluirCausaProblema,
@@ -158,17 +159,18 @@ function CatalogoFormulario({
   async function enviar(event: FormEvent) {
     event.preventDefault();
     const texto = descricao.trim();
-    if (produto && !produto.setorProducao.trim()) {
-      setErroForm("Esse produto não tem setor de produção no ERP.");
+    const classificacao = produto ? classificacaoCatalogoProduto(produto) : null;
+    if (produto && !classificacao?.valor) {
+      setErroForm("Esse produto não tem setor de produção nem tipo de produto no ERP.");
       return;
     }
-    const setor = (produto?.setorProducao || inicial?.setor || "").trim();
+    const setor = (classificacao?.valor || inicial?.setor || "").trim();
     if (!setor) {
-      setErroForm("Informe o código do produto para identificar o setor de produção.");
+      setErroForm("Informe o código do produto para identificar o setor ou o tipo de produto.");
       return;
     }
     if (modo === "criar" && !produto?.codigo) {
-      setErroForm("Informe o código do produto para puxar a descrição e o setor.");
+      setErroForm("Informe o código do produto para puxar a descrição e o setor ou o tipo.");
       return;
     }
     if (!texto) {
@@ -214,12 +216,16 @@ function CatalogoFormulario({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${prefixo}-setor`}>Setor de produção</Label>
+          <Label htmlFor={`${prefixo}-setor`}>
+            {classificacaoCatalogoProduto(produto).origem === "tipo"
+              ? "Tipo de produto"
+              : "Setor de produção"}
+          </Label>
           <Input
             id={`${prefixo}-setor`}
             value={
               produto
-                ? produto.setorProducao || "Não informado no ERP"
+                ? classificacaoCatalogoProduto(produto).valor || "Não informado no ERP"
                 : (inicial?.setor ?? "")
             }
             readOnly
@@ -394,7 +400,7 @@ function CatalogoSetorPage({
             <DialogTitle>Editar {textos.campo.toLowerCase()}</DialogTitle>
             <DialogDescription>
               {editando
-                ? `Setor de produção: ${editando.setorProducao}. Informe outro código se quiser trocar o setor.`
+                ? `Classificação atual: ${editando.setorProducao}. Informe outro código se quiser trocar o setor ou o tipo de produto.`
                 : ""}
             </DialogDescription>
           </DialogHeader>
@@ -446,7 +452,7 @@ function CatalogoSetorPage({
           <TableHeader>
             <TableRow>
               <TableHead>{textos.campo}</TableHead>
-              <TableHead>Setor de produção</TableHead>
+              <TableHead>Setor ou tipo de produto</TableHead>
               <TableHead className="w-28 text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -493,7 +499,7 @@ function CatalogoSetorPage({
         titulo={textos.excluirTitulo}
         mensagem={
           paraExcluir
-            ? `Excluir "${paraExcluir.descricao}" do setor ${paraExcluir.setorProducao}?`
+            ? `Excluir "${paraExcluir.descricao}" de ${paraExcluir.setorProducao}?`
             : textos.excluirFallback
         }
         confirmarLabel="Excluir"
@@ -512,7 +518,7 @@ function CatalogoSetorPage({
             <DialogTitle>{exemplosAberto?.descricao ?? "Produtos de exemplo"}</DialogTitle>
             <DialogDescription>
               {exemplosAberto
-                ? `Setor de produção: ${exemplosAberto.setorProducao}. Códigos usados para identificar esse setor.`
+                ? `Classificação: ${exemplosAberto.setorProducao}. Códigos usados para identificar esse setor ou tipo de produto.`
                 : ""}
             </DialogDescription>
           </DialogHeader>
@@ -558,12 +564,12 @@ const API_RECLAMACAO: CatalogoSetorApi = {
 const TEXTOS_RECLAMACAO: CatalogoSetorTextos = {
   titulo: "Reclamações de produto",
   intro:
-    "Informe o código do produto para puxar a descrição e o setor de produção. A reclamação fica salva no setor. No RCC, o usuário só seleciona o que foi cadastrado aqui.",
+    "Informe o código do produto para puxar a descrição e o setor de produção. Se o produto for comprado e não tiver setor, o cadastro usa o tipo de produto do Nomus. No RCC, o usuário só seleciona o que foi cadastrado aqui.",
   campo: "Reclamação",
   placeholderCampo: "Ex.: Chapa amassada",
   erroVazio: "Informe a reclamação.",
-  nota: "O código é só um exemplo para achar o setor. A tabela guarda o setor e a reclamação. Cadastrar a mesma reclamação com outro código inclui mais um exemplo.",
-  filtroPlaceholder: "Reclamação ou setor. Use % para refinar.",
+  nota: "O código é só um exemplo para achar o setor ou o tipo de produto. A tabela guarda essa classificação e a reclamação. Cadastrar a mesma reclamação com outro código inclui mais um exemplo.",
+  filtroPlaceholder: "Reclamação, setor ou tipo. Use % para refinar.",
   rodape: "Essas opções aparecem na coluna Categorize a reclamação do",
   vazio: "Nenhuma reclamação cadastrada.",
   excluirTitulo: "Excluir reclamação",
@@ -581,12 +587,12 @@ const API_CAUSA: CatalogoSetorApi = {
 const TEXTOS_CAUSA: CatalogoSetorTextos = {
   titulo: "Causas do problema",
   intro:
-    "Informe o código do produto para puxar a descrição e o setor de produção. A causa fica salva no setor. No RCC, o usuário só seleciona o que foi cadastrado aqui.",
+    "Informe o código do produto para puxar a descrição e o setor de produção. Se o produto for comprado e não tiver setor, o cadastro usa o tipo de produto do Nomus. No RCC, o usuário só seleciona o que foi cadastrado aqui.",
   campo: "Causa do problema",
   placeholderCampo: "Ex.: Produto com defeito",
   erroVazio: "Informe a causa do problema.",
-  nota: "O código é só um exemplo para achar o setor. A tabela guarda o setor e a causa.",
-  filtroPlaceholder: "Causa ou setor. Use % para refinar.",
+  nota: "O código é só um exemplo para achar o setor ou o tipo de produto. A tabela guarda essa classificação e a causa.",
+  filtroPlaceholder: "Causa, setor ou tipo. Use % para refinar.",
   rodape: "Essas opções aparecem na coluna Causa do problema do",
   vazio: "Nenhuma causa cadastrada.",
   excluirTitulo: "Excluir causa do problema",
@@ -626,12 +632,12 @@ const API_SERVICO: CatalogoSetorApi = {
 const TEXTOS_SERVICO: CatalogoSetorTextos = {
   titulo: "Serviços realizados",
   intro:
-    "Informe o código do produto para puxar a descrição e o setor de produção. O serviço fica salvo no setor. No RCC, o usuário só seleciona o que foi cadastrado aqui.",
+    "Informe o código do produto para puxar a descrição e o setor de produção. Se o produto for comprado e não tiver setor, o cadastro usa o tipo de produto do Nomus. No RCC, o usuário só seleciona o que foi cadastrado aqui.",
   campo: "Serviço realizado",
   placeholderCampo: "Ex.: Troca do compressor",
   erroVazio: "Informe o serviço realizado.",
-  nota: "O código é só um exemplo para achar o setor. A tabela guarda o setor e o serviço. Cadastrar o mesmo serviço com outro código inclui mais um exemplo.",
-  filtroPlaceholder: "Serviço ou setor. Use % para refinar.",
+  nota: "O código é só um exemplo para achar o setor ou o tipo de produto. A tabela guarda essa classificação e o serviço. Cadastrar o mesmo serviço com outro código inclui mais um exemplo.",
+  filtroPlaceholder: "Serviço, setor ou tipo. Use % para refinar.",
   rodape: "Esses serviços aparecem no campo Serviço realizado do",
   vazio: "Nenhum serviço cadastrado.",
   excluirTitulo: "Excluir serviço realizado",

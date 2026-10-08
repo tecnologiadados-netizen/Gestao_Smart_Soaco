@@ -169,6 +169,19 @@ export interface ProdutoSetorProducao {
   codigo: string;
   descricao: string;
   setorProducao: string;
+  tipoProduto: string;
+}
+
+/** Setor de produção, ou o tipo de produto do Nomus quando o item comprado não tem setor. */
+export function classificacaoCatalogoProduto(produto: ProdutoSetorProducao | null | undefined): {
+  origem: "setor" | "tipo" | "";
+  valor: string;
+} {
+  const setor = produto?.setorProducao?.trim() ?? "";
+  if (setor) return { origem: "setor", valor: setor };
+  const tipo = produto?.tipoProduto?.trim() ?? "";
+  if (tipo) return { origem: "tipo", valor: tipo };
+  return { origem: "", valor: "" };
 }
 
 export interface ReclamacaoProdutoExemplo {
