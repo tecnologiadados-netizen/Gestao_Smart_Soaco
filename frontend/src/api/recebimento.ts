@@ -78,6 +78,7 @@ export type RecebimentoDetalhe = {
   mesaUltimaAcao: string | null;
   mesaAcaoEm: string | null;
   mesaAcaoPorLogin: string | null;
+  mesaAceiteJustificativa: string | null;
   devolucao: RecebimentoDocumentoDevolucao | null;
   historicosConferencia: RecebimentoHistoricoConferencia[];
 };
@@ -92,7 +93,8 @@ export type RecebimentoDocumentoDevolucao = {
 export type RecebimentoMesaAcao =
   | 'TRATAMENTO_COMPRAS'
   | 'REENVIAR_CONFERENCIA'
-  | 'DEVOLVER_MATERIAL';
+  | 'DEVOLVER_MATERIAL'
+  | 'ACEITAR_COMO_ESTA';
 
 export type RecebimentoMesaAcaoResultado = {
   ok: boolean;
@@ -101,6 +103,7 @@ export type RecebimentoMesaAcaoResultado = {
   mesaUltimaAcao: string | null;
   mesaAcaoEm: string | null;
   mesaAcaoPorLogin: string | null;
+  mesaAceiteJustificativa: string | null;
   conferenteUsuarioId: number | null;
   conferenteLogin: string | null;
   conferenteNome: string | null;
@@ -200,12 +203,14 @@ export async function postRecebimentoMesaAcao(params: {
   idDocumento: number;
   acao: RecebimentoMesaAcao;
   conferenteUsuarioId?: number | null;
+  justificativa?: string | null;
 }): Promise<RecebimentoMesaAcaoResultado> {
   const res = await apiFetch(`/api/recebimento/mesa/documentos/${params.idDocumento}/acao`, {
     method: 'POST',
     body: {
       acao: params.acao,
       conferenteUsuarioId: params.conferenteUsuarioId ?? null,
+      justificativa: params.justificativa ?? null,
     },
   });
   const body = (await res.json().catch(() => ({}))) as Partial<RecebimentoMesaAcaoResultado> & {
@@ -221,6 +226,7 @@ export async function postRecebimentoMesaAcao(params: {
     mesaUltimaAcao: body.mesaUltimaAcao ?? null,
     mesaAcaoEm: body.mesaAcaoEm ?? null,
     mesaAcaoPorLogin: body.mesaAcaoPorLogin ?? null,
+    mesaAceiteJustificativa: body.mesaAceiteJustificativa ?? null,
     conferenteUsuarioId: body.conferenteUsuarioId ?? null,
     conferenteLogin: body.conferenteLogin ?? null,
     conferenteNome: body.conferenteNome ?? null,

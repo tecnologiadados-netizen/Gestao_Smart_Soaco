@@ -37,6 +37,7 @@ export type RecebimentoConferenciaLocal = {
   mesaAcaoEm: Date | null;
   mesaAcaoPorUsuarioId: number | null;
   mesaAcaoPorLogin: string | null;
+  mesaAceiteJustificativa: string | null;
   idDocumentoDevolucaoNomus: number | null;
   numeroDocumentoDevolucao: string | null;
   numeroNfeDevolucao: string | null;
@@ -71,6 +72,7 @@ function mapRow(row: {
   mesaAcaoEm: Date | null;
   mesaAcaoPorUsuarioId: number | null;
   mesaAcaoPorLogin: string | null;
+  mesaAceiteJustificativa: string | null;
   idDocumentoDevolucaoNomus: number | null;
   numeroDocumentoDevolucao: string | null;
   numeroNfeDevolucao: string | null;
@@ -92,6 +94,7 @@ function mapRow(row: {
     mesaAcaoEm: row.mesaAcaoEm,
     mesaAcaoPorUsuarioId: row.mesaAcaoPorUsuarioId,
     mesaAcaoPorLogin: row.mesaAcaoPorLogin,
+    mesaAceiteJustificativa: row.mesaAceiteJustificativa,
     idDocumentoDevolucaoNomus: row.idDocumentoDevolucaoNomus,
     numeroDocumentoDevolucao: row.numeroDocumentoDevolucao,
     numeroNfeDevolucao: row.numeroNfeDevolucao,
@@ -270,6 +273,7 @@ export async function deliberarConferente(params: {
         mesaAcaoEm: params.mesaAcao ? agora : null,
         mesaAcaoPorUsuarioId: params.mesaAcao ? params.atribuidoPor.id : null,
         mesaAcaoPorLogin: params.mesaAcao ? params.atribuidoPor.login : null,
+        mesaAceiteJustificativa: null,
         idDocumentoDevolucaoNomus: null,
         numeroDocumentoDevolucao: null,
         numeroNfeDevolucao: null,
@@ -406,11 +410,28 @@ export async function obterUltimoCicloConferencia(
   return ciclos.length > 0 ? ciclos[ciclos.length - 1] : null;
 }
 
+const ACEITE_JUSTIFICATIVA_MAX = 1000;
+
+/** Motivo obrigatório da ação "Aceitar como está". */
+export function normalizarJustificativaAceite(
+  valor: unknown
+): { ok: true; texto: string } | { ok: false; erro: string } {
+  const texto = typeof valor === 'string' ? valor.trim() : '';
+  if (!texto) {
+    return { ok: false, erro: 'Informe a justificativa para aceitar a quantidade como está.' };
+  }
+  if (texto.length > ACEITE_JUSTIFICATIVA_MAX) {
+    return { ok: false, erro: 'A justificativa pode ter no máximo 1000 caracteres.' };
+  }
+  return { ok: true, texto };
+}
+
 export async function registrarAcaoMesa(params: {
   conferenciaId: number;
   acao: string;
   status: RecebimentoStatus;
   usuario: { id: number; login: string };
+  justificativa?: string | null;
   devolucao?: {
     idDocumento: number;
     numeroDocumentoFiscal: string | null;
@@ -426,6 +447,7 @@ export async function registrarAcaoMesa(params: {
       mesaAcaoEm: agora,
       mesaAcaoPorUsuarioId: params.usuario.id,
       mesaAcaoPorLogin: params.usuario.login,
+      mesaAceiteJustificativa: params.justificativa ?? null,
       idDocumentoDevolucaoNomus: params.devolucao?.idDocumento ?? null,
       numeroDocumentoDevolucao: params.devolucao?.numeroDocumentoFiscal ?? null,
       numeroNfeDevolucao: params.devolucao?.numeroNfe ?? null,

@@ -131,6 +131,27 @@ function sortValue(d: RecebimentoDocumentoGrade, col: ColId): string | number {
   }
 }
 
+function CaixaJustificativaAceite({
+  texto,
+  quando,
+  login,
+}: {
+  texto: string;
+  quando: string | null;
+  login: string | null;
+}) {
+  return (
+    <div className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-100">
+      <p className="font-semibold">Aceito como está</p>
+      <p className="mt-1 whitespace-pre-wrap">{texto}</p>
+      <p className="mt-2 text-xs text-emerald-800/80 dark:text-emerald-200/80">
+        {fmtDateTimeBr(quando)}
+        {login ? ` · ${login}` : ''}
+      </p>
+    </div>
+  );
+}
+
 function tituloVolta(indice: number, total: number): string {
   if (total <= 1) return 'Retorno à Mesa';
   return `${indice + 1}ª volta à Mesa`;
@@ -255,6 +276,7 @@ export default function GestaoMesaPage() {
   const [deliberando, setDeliberando] = useState(false);
   const [deliberarErro, setDeliberarErro] = useState<string | null>(null);
   const [mesaAcao, setMesaAcao] = useState<RecebimentoMesaAcao | ''>('');
+  const [mesaJustificativa, setMesaJustificativa] = useState('');
   const [executandoMesaAcao, setExecutandoMesaAcao] = useState(false);
   const [mesaAcaoErro, setMesaAcaoErro] = useState<string | null>(null);
   const [mesaAcaoOk, setMesaAcaoOk] = useState<string | null>(null);
@@ -328,6 +350,7 @@ export default function GestaoMesaPage() {
     setDetalheErro(null);
     setDeliberarErro(null);
     setMesaAcao(acaoMesaDoStatus(doc.status));
+    setMesaJustificativa('');
     setMesaAcaoErro(null);
     setMesaAcaoOk(null);
     setConferenteBusca('');
@@ -428,6 +451,10 @@ export default function GestaoMesaPage() {
       setMesaAcaoErro('Selecione o conferente que receberá a nova conferência.');
       return;
     }
+    if (mesaAcao === 'ACEITAR_COMO_ESTA' && mesaJustificativa.trim() === '') {
+      setMesaAcaoErro('Informe a justificativa para aceitar a quantidade como está.');
+      return;
+    }
     setExecutandoMesaAcao(true);
     setMesaAcaoErro(null);
     setMesaAcaoOk(null);
@@ -436,6 +463,7 @@ export default function GestaoMesaPage() {
         idDocumento: modalDoc.idDocumento,
         acao: mesaAcao,
         conferenteUsuarioId: conferenteId === '' ? null : conferenteId,
+        justificativa: mesaAcao === 'ACEITAR_COMO_ESTA' ? mesaJustificativa.trim() : null,
       });
       const patch = {
         status: resultado.status,
@@ -454,14 +482,17 @@ export default function GestaoMesaPage() {
       detalheCacheRef.current.set(modalDoc.idDocumento, detalheAtualizado);
       setDetalhe(detalheAtualizado);
       setMesaAcao(acaoMesaDoStatus(resultado.status));
+      setMesaJustificativa('');
       setMesaAcaoOk(
         mesaAcao === 'TRATAMENTO_COMPRAS'
           ? 'Documento encaminhado para tratamento de Compras.'
           : mesaAcao === 'REENVIAR_CONFERENCIA'
             ? 'Documento enviado novamente para conferência.'
-            : resultado.devolucao
-              ? `Documento de devolução ${resultado.devolucao.numeroDocumentoFiscal ?? resultado.devolucao.idDocumento} vinculado automaticamente.`
-              : 'Devolução solicitada. O vínculo será feito automaticamente quando o documento aparecer no Nomus.'
+            : mesaAcao === 'ACEITAR_COMO_ESTA'
+              ? 'Quantidade aceita como está. O documento aguarda a troca do tipo de movimentação no Nomus.'
+              : resultado.devolucao
+                ? `Documento de devolução ${resultado.devolucao.numeroDocumentoFiscal ?? resultado.devolucao.idDocumento} vinculado automaticamente.`
+                : 'Devolução solicitada. O vínculo será feito automaticamente quando o documento aparecer no Nomus.'
       );
     } catch (e) {
       setMesaAcaoErro(e instanceof Error ? e.message : 'Não foi possível executar a ação.');
@@ -768,6 +799,13 @@ export default function GestaoMesaPage() {
 
               <div className="relative min-h-[12rem] flex-1 overflow-auto p-4">
                 <CarregandoInformacoesOverlay show={detalheLoading} mode="contained" />
+                {detalhe?.mesaAceiteJustificativa && (
+                  <CaixaJustificativaAceite
+                    texto={detalhe.mesaAceiteJustificativa}
+                    quando={detalhe.mesaAcaoEm}
+                    login={detalhe.mesaAcaoPorLogin}
+                  />
+                )}
                 {detalheErro && (
                   <p className="mb-3 text-sm text-rose-600" role="alert">
                     {detalheErro}
@@ -897,6 +935,7 @@ export default function GestaoMesaPage() {
                             <option value="TRATAMENTO_COMPRAS">Retornar para Compras tratar</option>
                             <option value="REENVIAR_CONFERENCIA">Enviar para conferência novamente</option>
                             <option value="DEVOLVER_MATERIAL">Devolver material</option>
+                            <option value="ACEITAR_COMO_ESTA">Aceitar como está</option>
                           </select>
                         </div>
                         <button
@@ -905,15 +944,18 @@ export default function GestaoMesaPage() {
                           disabled={
                             mesaAcao === '' ||
                             executandoMesaAcao ||
-                            (mesaAcao === 'REENVIAR_CONFERENCIA' && conferenteId === '')
+                            (mesaAcao === 'REENVIAR_CONFERENCIA' && conferenteId === '') ||
+                            (mesaAcao === 'ACEITAR_COMO_ESTA' && mesaJustificativa.trim() === '')
                           }
                           onClick={() => void executarAcaoMesa()}
                         >
                           {executandoMesaAcao
                             ? 'Executando…'
-                            : modalDoc.status === 'DIVERGENCIA'
-                              ? 'Executar ação'
-                              : 'Alterar ação'}
+                            : mesaAcao === 'ACEITAR_COMO_ESTA'
+                              ? 'Finalizar'
+                              : modalDoc.status === 'DIVERGENCIA'
+                                ? 'Executar ação'
+                                : 'Alterar ação'}
                         </button>
                       </div>
                       {mesaAcao === 'REENVIAR_CONFERENCIA' && (
@@ -960,13 +1002,36 @@ export default function GestaoMesaPage() {
                           próximas atualizações da Mesa.
                         </p>
                       )}
+                      {mesaAcao === 'ACEITAR_COMO_ESTA' && (
+                        <div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Use quando o fornecedor enviou quantidade a mais (brinde ou similar) e a empresa
+                            vai ficar com o que chegou. A quantidade da nota não muda. O motivo fica visível
+                            ao abrir o documento. Ao finalizar, a conferência segue para a troca do tipo de
+                            movimentação no Nomus.
+                          </p>
+                          <label className={`${labelClass} mt-3`} htmlFor="justificativa-aceite">
+                            Justificativa
+                          </label>
+                          <textarea
+                            id="justificativa-aceite"
+                            className={`${inputClass} min-h-[5.5rem] w-full`}
+                            value={mesaJustificativa}
+                            onChange={(e) => setMesaJustificativa(e.target.value)}
+                            maxLength={1000}
+                            placeholder="Ex.: fornecedor enviou 10 unidades a mais de brinde, fora da nota."
+                            disabled={executandoMesaAcao}
+                          />
+                        </div>
+                      )}
                     </>
                   ) : modalDoc.status === 'CONFERIDO' ? (
                     <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
                       <p className="font-semibold">Aguardando mesa alterar movimentação</p>
                       <p className="mt-1">
-                        A conferência fechou sem divergência. Troque o tipo de movimentação deste documento
-                        no Nomus. Ao atualizar a lista, o Gestão conclui o documento e mantém só o histórico.
+                        {detalhe?.mesaAceiteJustificativa
+                          ? 'A Mesa aceitou a quantidade física como está. Troque o tipo de movimentação deste documento no Nomus. Ao atualizar a lista, o Gestão conclui o documento e mantém o histórico, inclusive o motivo do aceite.'
+                          : 'A conferência fechou sem divergência. Troque o tipo de movimentação deste documento no Nomus. Ao atualizar a lista, o Gestão conclui o documento e mantém só o histórico.'}
                       </p>
                     </div>
                   ) : modalDoc.status === 'FINALIZADO' ? (

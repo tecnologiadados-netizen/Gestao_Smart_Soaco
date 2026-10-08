@@ -32,6 +32,7 @@ import {
   obterConferenciaPorDocumento,
   listarCiclosConferencia,
   qtdeFisicaConfere,
+  normalizarJustificativaAceite,
   registrarAcaoMesa,
   registrarTentativaContagem,
   RECEBIMENTO_TENTATIVAS_MAX,
@@ -243,6 +244,7 @@ export async function getRecebimentoMesaItens(req: Request, res: Response): Prom
     mesaUltimaAcao: local?.mesaUltimaAcao ?? null,
     mesaAcaoEm: local?.mesaAcaoEm ?? null,
     mesaAcaoPorLogin: local?.mesaAcaoPorLogin ?? null,
+    mesaAceiteJustificativa: local?.mesaAceiteJustificativa ?? null,
     devolucao: local?.idDocumentoDevolucaoNomus
       ? {
           idDocumento: local.idDocumentoDevolucaoNomus,
@@ -356,8 +358,8 @@ async function usuarioLogado(req: Request): Promise<{ id: number; login: string 
 
 /**
  * POST /api/recebimento/mesa/documentos/:id/acao
- * body: { acao: TRATAMENTO_COMPRAS | REENVIAR_CONFERENCIA | DEVOLVER_MATERIAL,
- *         conferenteUsuarioId?: number }
+ * body: { acao: TRATAMENTO_COMPRAS | REENVIAR_CONFERENCIA | DEVOLVER_MATERIAL | ACEITAR_COMO_ESTA,
+ *         conferenteUsuarioId?: number, justificativa?: string }
  */
 export async function postRecebimentoMesaAcao(req: Request, res: Response): Promise<void> {
   const usuario = await usuarioLogado(req);
@@ -371,7 +373,11 @@ export async function postRecebimentoMesaAcao(req: Request, res: Response): Prom
     res.status(400).json({ error: 'idDocumento inválido.' });
     return;
   }
-  if (!['TRATAMENTO_COMPRAS', 'REENVIAR_CONFERENCIA', 'DEVOLVER_MATERIAL'].includes(acao)) {
+  if (
+    !['TRATAMENTO_COMPRAS', 'REENVIAR_CONFERENCIA', 'DEVOLVER_MATERIAL', 'ACEITAR_COMO_ESTA'].includes(
+      acao
+    )
+  ) {
     res.status(400).json({ error: 'Selecione uma ação válida.' });
     return;
   }
@@ -424,6 +430,19 @@ export async function postRecebimentoMesaAcao(req: Request, res: Response): Prom
       preservarItensConferidos: true,
     });
     notificarDocumentoEnviadoConferencia(atualizado.numeroDocumento ?? local.numeroDocumento, idDocumento);
+  } else if (acao === 'ACEITAR_COMO_ESTA') {
+    const justificativa = normalizarJustificativaAceite(req.body?.justificativa);
+    if (!justificativa.ok) {
+      res.status(400).json({ error: justificativa.erro });
+      return;
+    }
+    atualizado = await registrarAcaoMesa({
+      conferenciaId: local.id,
+      acao,
+      status: RECEBIMENTO_STATUS.CONFERIDO,
+      usuario,
+      justificativa: justificativa.texto,
+    });
   } else {
     const { documentos, erro } = await queryCabecalhosDocumentosNomus([idDocumento]);
     if (erro) {
@@ -463,6 +482,7 @@ export async function postRecebimentoMesaAcao(req: Request, res: Response): Prom
     mesaUltimaAcao: atualizado.mesaUltimaAcao,
     mesaAcaoEm: atualizado.mesaAcaoEm,
     mesaAcaoPorLogin: atualizado.mesaAcaoPorLogin,
+    mesaAceiteJustificativa: atualizado.mesaAceiteJustificativa,
     conferenteUsuarioId: atualizado.conferenteUsuarioId,
     conferenteLogin: atualizado.conferenteLogin,
     conferenteNome: atualizado.conferenteNome,

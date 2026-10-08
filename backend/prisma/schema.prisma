@@ -332,6 +332,8 @@ model RecebimentoConferencia {
   mesaAcaoEm            DateTime?
   mesaAcaoPorUsuarioId  Int?
   mesaAcaoPorLogin      String?
+  /// Motivo obrigatório quando a Mesa aceita a quantidade física diferente da NF.
+  mesaAceiteJustificativa String?
   idDocumentoDevolucaoNomus Int?
   numeroDocumentoDevolucao  String?
   numeroNfeDevolucao        String?
