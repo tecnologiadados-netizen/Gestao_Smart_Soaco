@@ -176,12 +176,12 @@ describe('relato da conferência NF × PC', () => {
           regraPagamentoPC: '30',
           dataBaseParcelasNF: '2026-09-25',
           dataBaseParcelasPC: '2026-09-22',
-          prazosLabelNF: '27',
+          prazosLabelNF: '24',
           prazosLabelPC: '30',
-          prazosDiasNF: [27],
+          prazosDiasNF: [24],
           prazosDiasPC: [30],
           parcelasNF: [
-            { numero: 1, dataBase: '2026-09-25', dataVencimento: '2026-10-20', dias: 27 },
+            { numero: 1, dataBase: '2026-09-25', dataVencimento: '2026-10-20', dias: 24 },
           ],
           parcelasPC: [
             { numero: 1, dataBase: '2026-09-22', dataVencimento: '2026-10-22', dias: 30 },
@@ -198,7 +198,7 @@ describe('relato da conferência NF × PC', () => {
     const texto = montarMensagemConferenciaWhatsApp(comPrazo!, 'https://gsmartsoaco.com.br/c/x');
     expect(texto).toContain('*Prazos (vencimento − data base)* ✅');
     expect(texto).toContain('Parc. #1 · Não conforme ❌');
-    expect(texto).toContain('· NF: 27d | PC: 30d');
+    expect(texto).toContain('· NF: 24d | PC: 30d');
     expect(texto).not.toContain('base 25/09');
     expect(texto).not.toContain('Diferença:');
     expect(texto).not.toContain('NF: (1x) 30');
@@ -211,21 +211,21 @@ describe('relato da conferência NF × PC', () => {
       nomePedidoCompra: 'PC27910',
       condicaoPagamentoNF: '(2x) 30/45',
       regraPagamentoNF: '30/45',
-      condicaoPagamentoPC: '(2x) 30/47',
-      regraPagamentoPC: '30/47',
+      condicaoPagamentoPC: '(2x) 30/51',
+      regraPagamentoPC: '30/51',
       dataBaseParcelasNF: '2026-10-02',
       dataBaseParcelasPC: '2026-09-30',
       prazosLabelNF: '30/45',
-      prazosLabelPC: '30/47',
+      prazosLabelPC: '30/51',
       prazosDiasNF: [30, 45],
-      prazosDiasPC: [30, 47],
+      prazosDiasPC: [30, 51],
       parcelasNF: [
         { numero: 1, dataBase: '2026-10-02', dataVencimento: '2026-11-01', dias: 30 },
         { numero: 2, dataBase: '2026-10-02', dataVencimento: '2026-11-16', dias: 45 },
       ],
       parcelasPC: [
         { numero: 1, dataBase: '2026-09-30', dataVencimento: '2026-10-30', dias: 30 },
-        { numero: 2, dataBase: '2026-09-30', dataVencimento: '2026-11-18', dias: 47 },
+        { numero: 2, dataBase: '2026-09-30', dataVencimento: '2026-11-22', dias: 51 },
       ],
       divergValorUnitario: false,
       divergCondicaoPagamento: true,
@@ -244,10 +244,10 @@ describe('relato da conferência NF × PC', () => {
     expect(texto).toContain('✅ Aceita · Entrada avulsa (ajuste na entrada fiscal');
     expect(texto).toContain('conflitos prazo interno');
     expect(texto).not.toContain('NF: (2x) 30/45');
-    expect(texto).not.toContain('PC: (2x) 30/47');
+    expect(texto).not.toContain('PC: (2x) 30/51');
     expect(texto).toContain('Parc. #1 · Conforme ✅');
     expect(texto).toContain('Parc. #2 · Não conforme ❌');
-    expect(texto).toContain('· NF: 45d | PC: 47d');
+    expect(texto).toContain('· NF: 45d | PC: 51d');
     expect(texto).not.toContain('· NF: 30d | PC: 30d');
     expect(texto).not.toContain('venc.');
     expect(texto).toContain('Tabela completa no link abaixo.');

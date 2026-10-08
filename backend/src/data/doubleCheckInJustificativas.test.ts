@@ -22,6 +22,8 @@ describe('justificativas do Double Check', () => {
     expect(justificativaAplicavelAoCampo('condicao_nao_cadastrada', 'qtde')).toBe(false);
     expect(justificativaAplicavelAoCampo('peso_da_peca', 'qtde')).toBe(true);
     expect(justificativaAplicavelAoCampo('entrada_avulsa', 'condicao_pagamento')).toBe(true);
+    expect(justificativaAplicavelAoCampo('frete_lancado_na_entrada', 'condicao_pagamento')).toBe(true);
+    expect(justificativaAplicavelAoCampo('frete_lancado_na_entrada', 'qtde')).toBe(false);
     expect(justificativaAplicavelAoCampo('ipi_reflexo', 'ipi')).toBe(true);
     expect(justificativaAplicavelAoCampo('ipi_reflexo', 'valor_unitario')).toBe(false);
   });

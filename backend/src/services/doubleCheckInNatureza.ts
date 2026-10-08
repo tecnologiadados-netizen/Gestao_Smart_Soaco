@@ -31,8 +31,16 @@ export const OBS_PAGAMENTO_AJUSTE_DIA_UTIL =
 const JUSTIFICATIVAS_BENIGNAS = new Set([
   'arredondamento',
   'divergencia_so_na_tela',
+  'frete_lancado_na_entrada',
   'ipi_reflexo',
 ]);
+
+/** A NF pode vencer até estes dias antes do PC sem virar divergência real. */
+const TOLERANCIA_DIAS_PRAZO_PAGAMENTO = 5;
+
+function prazoNfDentroDaTolerancia(diasNF: number, diasPC: number): boolean {
+  return diasNF >= diasPC - TOLERANCIA_DIAS_PRAZO_PAGAMENTO;
+}
 
 export function justificativaIndicaDivergenciaBenigna(
   justificativaCodigo: string | null | undefined
@@ -189,7 +197,8 @@ export function classificarNaturezaDivergencia(params: {
   const temPrazosNosDois = diasNF.length > 0 && diasPC.length > 0;
   const mesmaEstrutura = temPrazosNosDois && diasNF.length === diasPC.length;
   const parcelasCorrespondentesIguaisOuMelhores =
-    mesmaEstrutura && diasNF.every((dias, i) => dias >= (diasPC[i] ?? Number.POSITIVE_INFINITY));
+    mesmaEstrutura &&
+    diasNF.every((dias, i) => prazoNfDentroDaTolerancia(dias, diasPC[i] ?? Number.POSITIVE_INFINITY));
   // Com estruturas diferentes, só considera benigno quando o cronograma inteiro da NF
   // é posterior ao do PC. Isso evita esconder casos mistos sem equivalência entre parcelas.
   const cronogramaNfInteiroPosterior =

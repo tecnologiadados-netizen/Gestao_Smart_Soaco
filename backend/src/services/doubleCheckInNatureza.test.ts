@@ -50,7 +50,7 @@ describe('classificarNaturezaDivergencia', () => {
     ).toBe('real');
   });
 
-  it('considera pagamento com todos os prazos iguais ou maiores como benigno', () => {
+  it('considera pagamento igual, maior ou até 5 dias mais curto como benigno', () => {
     expect(
       classificarNaturezaDivergencia({
         linha: { prazosDiasNF: [35, 65], prazosDiasPC: [30, 60] },
@@ -62,7 +62,38 @@ describe('classificarNaturezaDivergencia', () => {
         linha: { prazosDiasNF: [25, 60], prazosDiasPC: [30, 60] },
         campo: 'condicao_pagamento',
       })
+    ).toBe('benigna');
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { prazosDiasNF: [28], prazosDiasPC: [30] },
+        campo: 'condicao_pagamento',
+      })
+    ).toBe('benigna');
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { prazosDiasNF: [24, 60], prazosDiasPC: [30, 60] },
+        campo: 'condicao_pagamento',
+      })
     ).toBe('real');
+  });
+
+  it('mantém real a parcela que só existe na nota', () => {
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { prazosDiasNF: [28, 30], prazosDiasPC: [30] },
+        campo: 'condicao_pagamento',
+      })
+    ).toBe('real');
+  });
+
+  it('abona o pagamento inteiro com a justificativa de frete lançado na entrada', () => {
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { prazosDiasNF: [28, 30], prazosDiasPC: [30] },
+        campo: 'condicao_pagamento',
+        justificativaCodigo: 'frete_lancado_na_entrada',
+      })
+    ).toBe('benigna');
   });
 
   it('considera benigno quando todas as parcelas da NF vencem após o prazo do PC', () => {
@@ -120,7 +151,7 @@ describe('classificarNaturezaDivergencia', () => {
       classificarNaturezaDivergencia({
         linha: {
           prazosDiasNF: [30, 45],
-          prazosDiasPC: [30, 50],
+          prazosDiasPC: [30, 52],
           dataBaseParcelasNF: '2026-10-07',
           dataBaseParcelasPC: '2026-10-07',
           parcelasNF: [
@@ -129,7 +160,7 @@ describe('classificarNaturezaDivergencia', () => {
           ],
           parcelasPC: [
             { dias: 30, dataBase: '2026-10-07', dataVencimento: '2026-11-06' },
-            { dias: 50, dataBase: '2026-10-07', dataVencimento: '2026-11-26' },
+            { dias: 52, dataBase: '2026-10-07', dataVencimento: '2026-11-28' },
           ],
         },
         campo: 'condicao_pagamento',

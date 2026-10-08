@@ -113,6 +113,12 @@ export const JUSTIFICATIVA_SEED: readonly JustificativaSeed[] = [
     campos: ['condicao_pagamento'],
   },
   {
+    codigo: 'frete_lancado_na_entrada',
+    label: 'Frete lançado na entrada (pedido sem o valor exato)',
+    sortOrder: 44,
+    campos: ['condicao_pagamento'],
+  },
+  {
     codigo: 'condicao_pagamento',
     label: 'Condição de pagamento divergente',
     sortOrder: 43,
