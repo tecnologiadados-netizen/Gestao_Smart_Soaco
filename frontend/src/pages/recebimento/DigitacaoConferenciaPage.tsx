@@ -132,7 +132,9 @@ export default function DigitacaoConferenciaPage() {
   const [devolviendo, setDevolviendo] = useState(false);
   const [acaoOk, setAcaoOk] = useState<string | null>(null);
   const [feedbackRetorno, setFeedbackRetorno] = useState<'off' | 'loading' | 'ok' | 'erro'>('off');
-  const [feedbackMsg, setFeedbackMsg] = useState('Conferência devolvida à Mesa');
+  const [feedbackMsg, setFeedbackMsg] = useState(
+    'Conferência ok. O documento fica aguardando a Mesa alterar a movimentação no Nomus.'
+  );
   const qtdeRef = useRef<HTMLInputElement>(null);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -285,7 +287,7 @@ export default function DigitacaoConferenciaPage() {
         fecharAposRetornoMesa(
           r.status === 'DIVERGENCIA'
             ? 'Conferência encerrada. Os itens com erro voltam para a Mesa; os conferidos ficam concluídos.'
-            : 'Conferência devolvida à Mesa'
+            : 'Conferência ok. O documento fica aguardando a Mesa alterar a movimentação no Nomus.'
         );
         return;
       }
@@ -326,7 +328,7 @@ export default function DigitacaoConferenciaPage() {
       fecharAposRetornoMesa(
         temDivergencia
           ? 'Conferência encerrada. Os itens com erro voltam para a Mesa; os conferidos ficam concluídos.'
-          : 'Conferência devolvida à Mesa'
+          : 'Conferência ok. O documento fica aguardando a Mesa alterar a movimentação no Nomus.'
       );
     } catch (e) {
       mostrarErroCentro(e instanceof Error ? e.message : 'Não foi possível devolver à Mesa.');
@@ -633,7 +635,7 @@ export default function DigitacaoConferenciaPage() {
                 </form>
                 {todosConferidos && (
                   <p className="text-sm text-emerald-700 dark:text-emerald-300">
-                    Todos os itens conferidos. Devolva o documento à Mesa.
+                    Todos os itens conferidos. Devolva à Mesa para ela alterar a movimentação no Nomus.
                   </p>
                 )}
                 {todosEncerrados && temDivergencia && (

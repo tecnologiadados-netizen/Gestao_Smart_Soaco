@@ -108,24 +108,34 @@ export type RecebimentoMesaAcaoResultado = {
   devolucao: RecebimentoDocumentoDevolucao | null;
 };
 
+export type RecebimentoConcluidoMovimentacao = {
+  idDocumento: number;
+  numeroDocumento: string | null;
+  tipoMovimentacao: string | null;
+};
+
 export async function fetchRecebimentoMesaDocumentos(): Promise<{
   documentos: RecebimentoDocumentoGrade[];
   erro?: string;
+  concluidos: RecebimentoConcluidoMovimentacao[];
 }> {
   const res = await apiFetch('/api/recebimento/mesa/documentos');
   const body = (await res.json().catch(() => ({}))) as {
     documentos?: RecebimentoDocumentoGrade[];
+    concluidos?: RecebimentoConcluidoMovimentacao[];
     error?: string;
     erro?: string;
   };
   if (!res.ok) {
     return {
       documentos: body.documentos ?? [],
+      concluidos: [],
       erro: body.error ?? body.erro ?? res.statusText,
     };
   }
   return {
     documentos: body.documentos ?? [],
+    concluidos: body.concluidos ?? [],
     erro: body.erro,
   };
 }
@@ -335,6 +345,6 @@ export async function postRecebimentoDigitacaoDevolver(idDocumento: number): Pro
   }
   return {
     status: body.status ?? 'CONFERIDO',
-    statusLabel: body.statusLabel ?? 'Conferido — aguardando Mesa',
+    statusLabel: body.statusLabel ?? 'Aguardando mesa alterar movimentação',
   };
 }
