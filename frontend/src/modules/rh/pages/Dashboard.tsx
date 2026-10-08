@@ -2059,8 +2059,9 @@ const Dashboard = () => {
               </button>
             </PopoverTrigger>
             <PopoverContent
-              align="start"
-              className="w-[min(94vw,980px)] max-h-[min(78vh,620px)] overflow-y-auto p-4"
+              align="center"
+              collisionPadding={24}
+              className="w-[min(980px,calc(100vw-3rem))] max-w-[min(980px,calc(100vw-3rem))] max-h-[min(78vh,620px)] min-w-0 overflow-x-hidden overflow-y-auto p-4"
             >
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <p className="label-industrial">Movimentações deste mês</p>
