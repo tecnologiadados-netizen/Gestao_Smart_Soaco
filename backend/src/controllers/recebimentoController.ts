@@ -9,14 +9,17 @@ import {
   queryDevolucaoCompraPorNfeNomus,
   queryDocumentosPreEntradaNomus,
   queryItensDocumentoPreEntradaNomus,
+  movimentacaoDeixouPreEntrada,
   RECEBIMENTO_STATUS,
   RECEBIMENTO_STATUS_LABEL,
   type RecebimentoStatus,
 } from '../data/recebimentoNomusRepository.js';
 import {
+  concluirConferenciaPorMovimentacaoAlterada,
   deliberarConferente,
   devolverConferenciaParaMesa,
   listarConferenciasPorDocumentos,
+  listarConferenciasPorStatus,
   listarConferentesRecebimento,
   listarItensContagem,
   listarPendenciasConferente,
@@ -61,6 +64,45 @@ async function sincronizarDevolucaoSeDisponivel(
   });
 }
 
+type RecebimentoConcluidoMovimentacao = {
+  idDocumento: number;
+  numeroDocumento: string | null;
+  tipoMovimentacao: string | null;
+};
+
+/**
+ * Documentos conferidos sem divergência saem da fila quando o Nomus deixa de estar em pré-entrada.
+ * A contagem já gravada permanece como histórico; o status local passa a concluído.
+ */
+async function concluirConferidosComMovimentacaoAlterada(
+  idsTiposPreEntrada: ReadonlySet<number>
+): Promise<RecebimentoConcluidoMovimentacao[]> {
+  if (idsTiposPreEntrada.size === 0) return [];
+  const aguardando = await listarConferenciasPorStatus(RECEBIMENTO_STATUS.CONFERIDO);
+  if (aguardando.length === 0) return [];
+
+  const { documentos, erro } = await queryCabecalhosDocumentosNomus(
+    aguardando.map((item) => item.idDocumentoEstoque)
+  );
+  if (erro) return [];
+
+  const porId = new Map(documentos.map((doc) => [doc.idDocumento, doc]));
+  const concluidos: RecebimentoConcluidoMovimentacao[] = [];
+  for (const local of aguardando) {
+    const cabecalho = porId.get(local.idDocumentoEstoque);
+    if (!cabecalho || !movimentacaoDeixouPreEntrada(cabecalho.idTipoMovimentacao, idsTiposPreEntrada)) {
+      continue;
+    }
+    await concluirConferenciaPorMovimentacaoAlterada(local.id);
+    concluidos.push({
+      idDocumento: local.idDocumentoEstoque,
+      numeroDocumento: cabecalho.numeroDocumentoFiscal ?? local.numeroDocumento,
+      tipoMovimentacao: cabecalho.tipoMovimentacao,
+    });
+  }
+  return concluidos;
+}
+
 /**
  * GET /api/recebimento/mesa/documentos
  */
@@ -70,6 +112,10 @@ export async function getRecebimentoMesaDocumentos(_req: Request, res: Response)
     res.status(503).json({ error: erro, documentos: [], tipos });
     return;
   }
+
+  const concluidos = await concluirConferidosComMovimentacaoAlterada(
+    new Set(tipos.map((tipo) => tipo.id).filter((id) => id > 0))
+  );
 
   const locais = await listarConferenciasPorDocumentos(documentos.map((d) => d.idDocumento));
   await Promise.all(
@@ -97,6 +143,7 @@ export async function getRecebimentoMesaDocumentos(_req: Request, res: Response)
     documentos: lista,
     tipos,
     erro: erro || undefined,
+    concluidos,
   });
 }
 
@@ -245,6 +292,19 @@ export async function postRecebimentoMesaDeliberar(req: Request, res: Response):
     res.status(400).json({
       error: 'Este usuário não tem permissão de conferente. Atribua a permissão no grupo.',
     });
+    return;
+  }
+
+  const conferenciaAtual = await obterConferenciaPorDocumento(idDocumento);
+  if (conferenciaAtual?.status === RECEBIMENTO_STATUS.CONFERIDO) {
+    res.status(409).json({
+      error:
+        'A conferência já está ok. Altere o tipo de movimentação no Nomus para concluir o documento.',
+    });
+    return;
+  }
+  if (conferenciaAtual?.status === RECEBIMENTO_STATUS.FINALIZADO) {
+    res.status(409).json({ error: 'Este documento já foi concluído.' });
     return;
   }
 

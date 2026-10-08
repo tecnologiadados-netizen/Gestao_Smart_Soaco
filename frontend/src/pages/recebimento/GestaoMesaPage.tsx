@@ -145,6 +145,8 @@ function badgeStatus(status: RecebimentoStatusCodigo, label: string) {
           ? 'border-rose-400 bg-rose-50 text-rose-800 dark:border-rose-500 dark:bg-rose-950/40 dark:text-rose-200'
           : status === 'TRATAMENTO_COMPRAS' || status === 'AGUARDANDO_DEVOLUCAO'
             ? 'border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200'
+          : status === 'CONFERIDO'
+            ? 'border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200'
           : status === 'FINALIZADO'
             ? 'border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'
             : 'border-emerald-400 bg-emerald-50 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-200';
@@ -237,6 +239,7 @@ export default function GestaoMesaPage() {
   const [documentos, setDocumentos] = useState<RecebimentoDocumentoGrade[]>([]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [avisoConclusao, setAvisoConclusao] = useState<string | null>(null);
 
   const [modalDoc, setModalDoc] = useState<RecebimentoDocumentoGrade | null>(null);
   const [detalhe, setDetalhe] = useState<RecebimentoDetalhe | null>(null);
@@ -260,12 +263,21 @@ export default function GestaoMesaPage() {
   const filtrar = useCallback(async () => {
     setLoading(true);
     setErro(null);
+    setAvisoConclusao(null);
     detalheCacheRef.current.clear();
     setModalDoc(null);
     try {
       const r = await fetchRecebimentoMesaDocumentos();
       setDocumentos(r.documentos);
       if (r.erro) setErro(r.erro);
+      if (r.concluidos.length > 0) {
+        const nums = r.concluidos.map((item) => item.numeroDocumento ?? String(item.idDocumento));
+        setAvisoConclusao(
+          nums.length === 1
+            ? `Documento ${nums[0]} concluído: a movimentação foi alterada no Nomus. Ficou registrado apenas o histórico.`
+            : `${nums.length} documentos concluídos porque a movimentação foi alterada no Nomus (${nums.join(', ')}). Ficou registrado apenas o histórico.`
+        );
+      }
     } catch (e) {
       setDocumentos([]);
       setErro(e instanceof Error ? e.message : 'Não foi possível carregar os documentos.');
@@ -471,8 +483,8 @@ export default function GestaoMesaPage() {
           </p>
           <h1 className="mt-1 text-xl font-semibold text-slate-800 dark:text-slate-100">Gestão Mesa</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Documentos de pré-entrada da SÓ AÇO INDUSTRIAL. Clique na linha para ver materiais e deliberar o
-            conferente. Filtros e período ficam no cabeçalho da grade.
+            Documentos de pré-entrada da SÓ AÇO INDUSTRIAL. Conferência ok fica aguardando a Mesa alterar a
+            movimentação no Nomus. Quando o tipo muda, o documento é concluído e permanece só o histórico.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -496,6 +508,14 @@ export default function GestaoMesaPage() {
       {erro && (
         <p className="shrink-0 text-sm text-rose-600 dark:text-rose-400" role="alert">
           {erro}
+        </p>
+      )}
+      {avisoConclusao && (
+        <p
+          className="shrink-0 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200"
+          role="status"
+        >
+          {avisoConclusao}
         </p>
       )}
 
@@ -553,7 +573,7 @@ export default function GestaoMesaPage() {
                 <tr
                   key={d.idDocumento}
                   className={`cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${
-                    d.status === 'AGUARDANDO_CONFERENTE'
+                    d.status === 'AGUARDANDO_CONFERENTE' || d.status === 'CONFERIDO'
                       ? 'border-l-4 border-l-amber-400'
                       : 'border-l-4 border-l-sky-500'
                   }`}
@@ -884,6 +904,18 @@ export default function GestaoMesaPage() {
                         </p>
                       )}
                     </>
+                  ) : modalDoc.status === 'CONFERIDO' ? (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+                      <p className="font-semibold">Aguardando mesa alterar movimentação</p>
+                      <p className="mt-1">
+                        A conferência fechou sem divergência. Troque o tipo de movimentação deste documento
+                        no Nomus. Ao atualizar a lista, o Gestão conclui o documento e mantém só o histórico.
+                      </p>
+                    </div>
+                  ) : modalDoc.status === 'FINALIZADO' ? (
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                      Documento concluído. O registro permanece apenas no histórico da conferência.
+                    </p>
                   ) : (
                     <>
                       <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
@@ -929,7 +961,9 @@ export default function GestaoMesaPage() {
                       </div>
                     </>
                   )}
-                  {conferentes.length === 0 && (
+                  {conferentes.length === 0 &&
+                    modalDoc.status !== 'CONFERIDO' &&
+                    modalDoc.status !== 'FINALIZADO' && (
                     <p className="text-xs text-amber-700 dark:text-amber-300">
                       Nenhum usuário com permissão de conferente. Marque o módulo “Recebimento” no grupo.
                     </p>

@@ -99,6 +99,39 @@ function mapRow(row: {
   };
 }
 
+export async function listarConferenciasPorStatus(
+  status: RecebimentoStatus
+): Promise<RecebimentoConferenciaLocal[]> {
+  const rows = await prisma.recebimentoConferencia.findMany({
+    where: { status },
+    orderBy: { id: 'asc' },
+  });
+  return rows.map(mapRow);
+}
+
+/** Conferência ok: a Mesa trocou o tipo no Nomus. Fecha o documento e preserva a contagem no histórico. */
+export async function concluirConferenciaPorMovimentacaoAlterada(
+  conferenciaId: number
+): Promise<RecebimentoConferenciaLocal> {
+  const existente = await prisma.recebimentoConferencia.findUnique({
+    where: { id: conferenciaId },
+  });
+  if (!existente) {
+    throw new Error('Conferência não encontrada.');
+  }
+  const agora = new Date();
+  const row = await prisma.recebimentoConferencia.update({
+    where: { id: conferenciaId },
+    data: {
+      status: RECEBIMENTO_STATUS.FINALIZADO,
+      finalizadoEm: existente.finalizadoEm ?? agora,
+      mesaUltimaAcao: 'MOVIMENTACAO_ALTERADA',
+      mesaAcaoEm: agora,
+    },
+  });
+  return mapRow(row);
+}
+
 export async function listarConferenciasPorDocumentos(
   ids: number[]
 ): Promise<Map<number, RecebimentoConferenciaLocal>> {

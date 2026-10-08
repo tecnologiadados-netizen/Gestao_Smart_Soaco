@@ -25,13 +25,21 @@ export type RecebimentoStatus = (typeof RECEBIMENTO_STATUS)[keyof typeof RECEBIM
 export const RECEBIMENTO_STATUS_LABEL: Record<RecebimentoStatus, string> = {
   AGUARDANDO_CONFERENTE: 'Aguardando deliberar conferente',
   EM_CONFERENCIA: 'Em conferência',
-  CONFERIDO: 'Conferido — aguardando Mesa',
+  CONFERIDO: 'Aguardando mesa alterar movimentação',
   DIVERGENCIA: 'Com divergência',
   TRATAMENTO_COMPRAS: 'Tratamento compras',
   AGUARDANDO_DEVOLUCAO: 'Aguardando documento de devolução',
   DEVOLUCAO_VINCULADA: 'Devolução vinculada',
-  FINALIZADO: 'Finalizado',
+  FINALIZADO: 'Concluído',
 };
+
+/** Conferência ok sai da fila quando o Nomus deixa de usar um tipo de pré-entrada. */
+export function movimentacaoDeixouPreEntrada(
+  idTipoMovimentacao: number,
+  idsTiposPreEntrada: ReadonlySet<number>
+): boolean {
+  return idTipoMovimentacao > 0 && !idsTiposPreEntrada.has(idTipoMovimentacao);
+}
 
 export type RecebimentoTipoMovimentacao = {
   id: number;
