@@ -24,6 +24,11 @@ import {
 } from './politicaComercialPainelRepository.js';
 import { aplicarTiposEntregaFuturaSql } from '../config/pcpEntregaFutura.js';
 import type { PoliticaComercialParams } from '../services/painelComercialConformidade.js';
+import {
+  obterClassificacaoEquipes,
+  resolverEquipe,
+  type EquipeComissionamento,
+} from './comissionamentoRepository.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_FILE = 'sqlPainelComercialNomus.sql';
@@ -80,7 +85,16 @@ export interface PainelComercialPedidoDto {
   /** Atributo Nomus «Venda por qual empresa?». */
   vendaPorEmpresa: string;
   cliente: string;
+  /** Pessoa Nomus (`pe.id`). */
+  clienteId: number;
   vendedorRepresentante: string;
+  /** Equipe da classificação de comissionamento (televendas, vendedores, representantes ou sem_equipe). */
+  equipe: EquipeComissionamento;
+  /**
+   * Prazo médio (dias) deste pedido quando entra na média de vendas a prazo.
+   * `null` se excluído da política, à vista ou sem dias na condição.
+   */
+  prazoMedioDias: number | null;
   emissao: string;
   tabelaPreco: string;
   valorTotal: number;
@@ -101,7 +115,11 @@ export interface PainelComercialPedidoDto {
   diasEsperados: string;
   periodicidadeLabel: string;
   entradaOk: boolean;
+  /** Acima da faixa de entrada — conta como conforme. */
+  entradaBenigna: boolean;
   prazosOk: boolean;
+  /** Prazo diferente do pacote, porém menor ou igual — conta como conforme. */
+  prazosBenignos: boolean;
   prazosIndeterminados: boolean;
   retiradaSoAco: boolean;
   status: StatusConformidade;
@@ -128,6 +146,16 @@ export interface PainelComercialDashboardDto {
   porCondicao: { condicao: string; pedidos: number }[];
   porFaixa: { faixa: FaixaTicket; label: string; pedidos: number; pctOk: number }[];
   porEntradaFaixa: { faixa: string; pedidos: number }[];
+  /**
+   * Histórico Nomus dos clientes do período: primeira compra e última compra antes de `dataInicio`.
+   * Recorrente = compra nos 6 meses anteriores; reativado = compra só antes disso; novo = primeira compra no período.
+   */
+  historicoClientes: {
+    clienteId: number;
+    cliente: string;
+    primeiraEmissao: string;
+    ultimaEmissaoAntesPeriodo: string | null;
+  }[];
   pedidos: PainelComercialPedidoDto[];
   erro?: string;
 }
@@ -161,6 +189,7 @@ export async function obterPainelComercialDashboard(
     porCondicao: [],
     porFaixa: [],
     porEntradaFaixa: [],
+    historicoClientes: [],
     pedidos: [],
   };
 
@@ -211,6 +240,7 @@ export async function obterPainelComercialDashboard(
     empresaId: number;
     vendaPorEmpresa: string;
     cliente: string;
+    clienteId: number;
     vendedorRepresentante: string;
     emissao: string;
     tabelaPreco: string;
@@ -238,6 +268,7 @@ export async function obterPainelComercialDashboard(
     const pdId = Math.trunc(num(getCell(row, 'pd.id', 'id'))) || 0;
     const idItemPedido = Math.trunc(num(getCell(row, 'id_item_pedido', 'idItemPedido'))) || 0;
     const cliente = str(getCell(row, 'Cliente'));
+    const clienteId = Math.trunc(num(getCell(row, 'idCliente', 'idcliente'))) || 0;
     const vendedorRepresentante = str(
       getCell(row, 'vendedorRepresentante', 'Vendedor/Representante', 'vendedor/representante')
     );
@@ -263,6 +294,7 @@ export async function obterPainelComercialDashboard(
         empresaId: empresaIdRow,
         vendaPorEmpresa,
         cliente,
+        clienteId,
         vendedorRepresentante,
         emissao,
         tabelaPreco,
@@ -283,6 +315,7 @@ export async function obterPainelComercialDashboard(
     a.sumEntrada += entrada;
     if (vpt > 0) a.valorPedidoTotalRef = vpt;
     if (!a.cliente && cliente) a.cliente = cliente;
+    if (!a.clienteId && clienteId) a.clienteId = clienteId;
     if (!a.vendedorRepresentante && vendedorRepresentante) a.vendedorRepresentante = vendedorRepresentante;
     if (!a.emissao && emissao) a.emissao = emissao;
     if (!a.forma && forma) a.forma = forma;
@@ -303,6 +336,7 @@ export async function obterPainelComercialDashboard(
     }
   }
 
+  const mapaEquipes = await obterClassificacaoEquipes();
   const pedidos: PainelComercialPedidoDto[] = [];
 
   for (const a of map.values()) {
@@ -321,6 +355,8 @@ export async function obterPainelComercialDashboard(
     const diasC = extrairDiasDaCondicao(a.condicao, politica);
     const diasEsp = diasEsperadosParcelas(totalPedido, politica);
     const observacoesParaPolitica = a.algumaLinhaRetiradaSoAco ? '1-Retirada na So Aço' : a.observacoes;
+    const prazoMedioDias =
+      !isCondicaoAVista(a.condicao) && diasC.length > 0 ? mediaPrazoDias(diasC) : null;
     const analise = analisarConformidade(
       {
         totalPedido,
@@ -328,6 +364,8 @@ export async function obterPainelComercialDashboard(
         formaPagamento: a.forma,
         nomeCondicao: a.condicao,
         observacoesTipicas: observacoesParaPolitica,
+        valorTotal,
+        valorDesconto,
       },
       politica
     );
@@ -338,7 +376,10 @@ export async function obterPainelComercialDashboard(
       empresaId: a.empresaId,
       vendaPorEmpresa: a.vendaPorEmpresa,
       cliente: a.cliente,
+      clienteId: a.clienteId,
       vendedorRepresentante: a.vendedorRepresentante,
+      equipe: resolverEquipe(a.vendedorRepresentante, mapaEquipes),
+      prazoMedioDias: analise.status === 'excluido_politica' ? null : prazoMedioDias,
       emissao: a.emissao,
       tabelaPreco: a.tabelaPreco,
       valorTotal,
@@ -357,7 +398,9 @@ export async function obterPainelComercialDashboard(
       diasEsperados: diasEsp.join(', '),
       periodicidadeLabel: diasC.length ? diasC.join(' + ') : '—',
       entradaOk: analise.entradaOk,
+      entradaBenigna: analise.entradaBenigna,
       prazosOk: analise.prazosOk,
+      prazosBenignos: analise.prazosBenignos,
       prazosIndeterminados: analise.prazosIndeterminados,
       retiradaSoAco: analise.retiradaSoAco,
       status: analise.status,
@@ -471,6 +514,15 @@ export async function obterPainelComercialDashboard(
 
   pedidos.sort((a, b) => b.emissao.localeCompare(a.emissao) || a.pd.localeCompare(b.pd));
 
+  let historicoClientes: PainelComercialDashboardDto['historicoClientes'] = [];
+  try {
+    const ids = [...new Set(pedidos.map((p) => p.clienteId).filter((id) => id > 0))];
+    historicoClientes = await listarHistoricoClientesPeriodo(pool, dataInicio, dataFim, empresaFilter, ids);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('listarHistoricoClientesPeriodo', msg);
+  }
+
   return {
     dataInicio,
     dataFim,
@@ -489,8 +541,56 @@ export async function obterPainelComercialDashboard(
     porCondicao,
     porFaixa,
     porEntradaFaixa,
+    historicoClientes,
     pedidos,
   };
+}
+
+/** Primeira compra e última compra antes do período, para os clientes da grade. */
+async function listarHistoricoClientesPeriodo(
+  pool: NonNullable<ReturnType<typeof getNomusPool>>,
+  dataInicio: string,
+  _dataFim: string,
+  _empresaFilter: string,
+  clienteIds: number[]
+): Promise<PainelComercialDashboardDto['historicoClientes']> {
+  if (clienteIds.length === 0) return [];
+  const chunks: number[][] = [];
+  for (let i = 0; i < clienteIds.length; i += 400) {
+    chunks.push(clienteIds.slice(i, i + 400));
+  }
+  const out: PainelComercialDashboardDto['historicoClientes'] = [];
+  for (const chunk of chunks) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    const sql = `
+SELECT
+  pe.id AS clienteId,
+  UPPER(TRIM(pe.nome)) AS cliente,
+  MIN(DATE(pd.dataEmissao)) AS primeiraEmissao,
+  MAX(CASE WHEN DATE(pd.dataEmissao) < ? THEN DATE(pd.dataEmissao) END) AS ultimaAntesPeriodo
+FROM itempedido ip
+INNER JOIN pedido pd ON pd.id = ip.idPedido
+INNER JOIN pessoa pe ON pe.id = pd.idCliente
+LEFT JOIN formapagamento fp ON fp.id = pd.idFormaPagamento
+WHERE pe.id IN (${placeholders})
+  AND ip.status IN (1, 2, 3, 4, 5)
+  AND pd.idEmpresa IN (1, 2)
+  AND IFNULL(fp.nome, '') NOT LIKE '%Assistência%'
+GROUP BY pe.id, pe.nome`;
+    const [r] = await pool.query(sql, [dataInicio, ...chunk]);
+    const rows = (Array.isArray(r) ? r : []) as Record<string, unknown>[];
+    for (const row of rows) {
+      const primeira = emissaoParaYmd(getCell(row, 'primeiraEmissao'));
+      const ultima = emissaoParaYmd(getCell(row, 'ultimaAntesPeriodo'));
+      out.push({
+        clienteId: Math.trunc(num(getCell(row, 'clienteId', 'clienteid'))) || 0,
+        cliente: str(getCell(row, 'cliente')),
+        primeiraEmissao: primeira,
+        ultimaEmissaoAntesPeriodo: /^\d{4}-\d{2}-\d{2}$/.test(ultima) ? ultima : null,
+      });
+    }
+  }
+  return out.filter((c) => c.clienteId > 0 || c.cliente.length > 0);
 }
 
 export interface PainelComercialItemPedidoDto {
@@ -540,5 +640,170 @@ export async function obterItensPedidoPainelComercial(pdId: number): Promise<{
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { itens: [], erro: msg };
+  }
+}
+
+export interface UltimaVendaClienteEntradaDto {
+  valor: number;
+  vencimento: string;
+}
+
+export interface UltimaVendaClienteDto {
+  pd: string;
+  pdId: number;
+  empresaId: number;
+  vendaPorEmpresa: string;
+  cliente: string;
+  vendedorRepresentante: string;
+  emissao: string;
+  formaPagamento: string;
+  condicaoPagamento: string;
+  valorTotal: number;
+  valorDesconto: number;
+  totalPedido: number;
+  somaEntrada: number;
+  pctEntrada: number;
+  entradas: UltimaVendaClienteEntradaDto[];
+}
+
+function emissaoParaYmd(v: unknown): string {
+  if (v instanceof Date) return ymd(v);
+  return str(v).slice(0, 10);
+}
+
+/**
+ * Últimos pedidos do cliente no Nomus, com forma, condição, totais e parcelas de entrada
+ * (parcelapagamento com geraAdiantamento). Independente do período do painel.
+ */
+export async function obterUltimasVendasClientePainel(opts: {
+  clienteId?: number;
+  cliente?: string;
+  limit?: number;
+}): Promise<{ vendas: UltimaVendaClienteDto[]; erro?: string }> {
+  const clienteId = Math.trunc(Number(opts.clienteId) || 0);
+  const cliente = str(opts.cliente);
+  if (clienteId <= 0 && !cliente) {
+    return { vendas: [], erro: 'Informe o cliente.' };
+  }
+  const limite = Math.min(30, Math.max(1, Math.trunc(Number(opts.limit) || 15)));
+  const pool = getNomusPool();
+  if (!pool || !isNomusEnabled()) {
+    return { vendas: [], erro: 'NOMUS_DB_URL não configurado ou pool indisponível.' };
+  }
+
+  const whereCliente = clienteId > 0 ? 'pe.id = ?' : 'UPPER(TRIM(pe.nome)) = UPPER(TRIM(?))';
+  const paramCliente: number | string = clienteId > 0 ? clienteId : cliente;
+  const sql = `
+SELECT
+  pd.id AS pdId,
+  pd.nome AS pd,
+  pd.idEmpresa AS empresaId,
+  DATE(pd.dataEmissao) AS emissao,
+  UPPER(pe.nome) AS cliente,
+  IFNULL(MAX(fp.nome), '') AS formaPagamento,
+  IFNULL(MAX(cp.nome), '') AS condicaoPagamento,
+  IFNULL(MAX(vr.nome), '') AS vendedorRepresentante,
+  IFNULL(MAX(emp.opcao), '') AS vendaPorEmpresa,
+  SUM(IFNULL(ip.valorTotal, 0)) AS valorTotal,
+  SUM(IFNULL(ip.valorDesconto, 0)) AS valorDesconto,
+  SUM(
+    ROUND(IFNULL(ip.valorTotalComDesconto, 0) * IFNULL(t.aliquotaIPI, 0) / 100, 2)
+    + IFNULL(ip.valorTotalComDesconto, 0)
+  ) AS totalPedido,
+  IFNULL(MAX(adt.valorAdiantamento), 0) AS somaEntrada
+FROM itempedido ip
+INNER JOIN pedido pd ON pd.id = ip.idPedido
+INNER JOIN pessoa pe ON pe.id = pd.idCliente
+LEFT JOIN (
+  SELECT idItemPedido, MAX(aliquotaIPI) AS aliquotaIPI
+  FROM tributacao
+  GROUP BY idItemPedido
+) t ON t.idItemPedido = ip.id
+LEFT JOIN formapagamento fp ON fp.id = pd.idFormaPagamento
+LEFT JOIN condicaopagamento cp ON cp.id = pd.idCondicaoPagamento
+LEFT JOIN pessoa vr ON vr.id = COALESCE(pd.idVendedor, pd.idRepresentante)
+LEFT JOIN (
+  SELECT apev.idPedido, alo.opcao
+  FROM atributopedidovalor apev
+  LEFT JOIN atributolistaopcao alo ON alo.id = apev.idListaOpcao
+  WHERE apev.idAtributo = 592
+) emp ON emp.idPedido = pd.id
+LEFT JOIN (
+  SELECT p.id, SUM(pg.valor) AS valorAdiantamento
+  FROM parcelapagamento pg
+  INNER JOIN pedido p ON p.id = pg.idEntidadeOrigem
+  WHERE pg.geraAdiantamento = 1
+    AND pg.discriminador = 'Pedido'
+  GROUP BY p.id
+) adt ON adt.id = pd.id
+WHERE ${whereCliente}
+  AND ip.status IN (1, 2, 3, 4, 5)
+  AND pd.idEmpresa IN (1, 2)
+  AND IFNULL(fp.nome, '') NOT LIKE '%Assistência%'
+GROUP BY pd.id, pd.nome, pd.idEmpresa, DATE(pd.dataEmissao), pe.nome
+ORDER BY DATE(pd.dataEmissao) DESC, pd.id DESC
+LIMIT ${limite}`;
+
+  try {
+    const [r] = await pool.query(sql, [paramCliente]);
+    const rows = (Array.isArray(r) ? r : []) as Record<string, unknown>[];
+    const vendas: UltimaVendaClienteDto[] = rows.map((row) => {
+      const valorTotal = num(getCell(row, 'valorTotal'));
+      const valorDesconto = num(getCell(row, 'valorDesconto'));
+      const totalPedido = num(getCell(row, 'totalPedido'));
+      const somaEntrada = num(getCell(row, 'somaEntrada'));
+      const vendaPorEmpresa = str(getCell(row, 'vendaPorEmpresa'));
+      const empresaIdNomus = Math.trunc(num(getCell(row, 'empresaId'))) || 0;
+      return {
+        pd: str(getCell(row, 'pd')),
+        pdId: Math.trunc(num(getCell(row, 'pdId'))) || 0,
+        empresaId: empresaIdFromVendaPorEmpresa(vendaPorEmpresa, empresaIdNomus),
+        vendaPorEmpresa,
+        cliente: str(getCell(row, 'cliente')),
+        vendedorRepresentante: str(getCell(row, 'vendedorRepresentante')),
+        emissao: emissaoParaYmd(getCell(row, 'emissao')),
+        formaPagamento: str(getCell(row, 'formaPagamento')),
+        condicaoPagamento: str(getCell(row, 'condicaoPagamento')),
+        valorTotal,
+        valorDesconto,
+        totalPedido,
+        somaEntrada,
+        pctEntrada: totalPedido > 0 ? somaEntrada / totalPedido : 0,
+        entradas: [],
+      };
+    });
+
+    const ids = vendas.map((v) => v.pdId).filter((id) => id > 0);
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(', ');
+      const sqlParcelas = `
+SELECT pg.idEntidadeOrigem AS pdId, pg.valor AS valor, pg.dataVencimento AS vencimento
+FROM parcelapagamento pg
+WHERE pg.discriminador = 'Pedido'
+  AND pg.geraAdiantamento = 1
+  AND pg.idEntidadeOrigem IN (${placeholders})
+ORDER BY pg.dataVencimento`;
+      const [rp] = await pool.query(sqlParcelas, ids);
+      const parcelas = (Array.isArray(rp) ? rp : []) as Record<string, unknown>[];
+      const porPd = new Map<number, UltimaVendaClienteEntradaDto[]>();
+      for (const row of parcelas) {
+        const pdId = Math.trunc(num(getCell(row, 'pdId'))) || 0;
+        if (!pdId) continue;
+        const lista = porPd.get(pdId) ?? [];
+        lista.push({
+          valor: num(getCell(row, 'valor')),
+          vencimento: emissaoParaYmd(getCell(row, 'vencimento')),
+        });
+        porPd.set(pdId, lista);
+      }
+      for (const venda of vendas) {
+        venda.entradas = porPd.get(venda.pdId) ?? [];
+      }
+    }
+
+    return { vendas };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { vendas: [], erro: msg };
   }
 }

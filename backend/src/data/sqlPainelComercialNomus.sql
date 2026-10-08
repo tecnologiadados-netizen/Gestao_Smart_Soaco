@@ -18,6 +18,7 @@ END
 	pd.nome  as 'PD',
 	pd.dataEmissao as 'Emissao',
 	upper(pe.nome) as 'Cliente',
+	pe.id as idCliente,
 	p.nome as 'Cod',
 	p.descricao as 'Descricao do produto',
 	tp.nome as 'Tipo de produto do item de pedido de venda',
