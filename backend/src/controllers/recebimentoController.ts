@@ -14,6 +14,12 @@ import {
   type RecebimentoStatus,
 } from '../data/recebimentoNomusRepository.js';
 import {
+  RECEBIMENTO_CONFERENCIA_WA_CODE,
+  ensureRecebimentoConferenciaWhatsappTipo,
+  montarMensagemDocumentoEnviadoConferencia,
+} from '../config/recebimentoConferenciaAlerta.js';
+import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
+import {
   deliberarConferente,
   devolverConferenciaParaMesa,
   listarConferenciasPorDocumentos,
@@ -30,6 +36,16 @@ import {
   type RecebimentoConferenciaLocal,
   type RecebimentoContagemLinha,
 } from '../data/recebimentoConferenciaRepository.js';
+
+function notificarDocumentoEnviadoConferencia(numeroDocumento: string | null, idDocumento: number): void {
+  const documento = numeroDocumento?.trim() || String(idDocumento);
+  const texto = montarMensagemDocumentoEnviadoConferencia(documento);
+  void ensureRecebimentoConferenciaWhatsappTipo()
+    .then(() => enviarNotificacaoPorTipo(RECEBIMENTO_CONFERENCIA_WA_CODE, texto))
+    .catch((err) => {
+      console.error('[recebimento] alerta WhatsApp da conferência:', err);
+    });
+}
 
 function statusPadrao() {
   return {
@@ -255,6 +271,7 @@ export async function postRecebimentoMesaDeliberar(req: Request, res: Response):
       conferente: { id: conferente.id, login: conferente.login, nome: conferente.nome },
       atribuidoPor: mesa,
     });
+    notificarDocumentoEnviadoConferencia(local.numeroDocumento ?? numeroDocumento, idDocumento);
     res.json({
       ok: true,
       status: local.status,
@@ -346,6 +363,7 @@ export async function postRecebimentoMesaAcao(req: Request, res: Response): Prom
       mesaAcao: acao,
       preservarItensConferidos: true,
     });
+    notificarDocumentoEnviadoConferencia(atualizado.numeroDocumento ?? local.numeroDocumento, idDocumento);
   } else {
     const { documentos, erro } = await queryCabecalhosDocumentosNomus([idDocumento]);
     if (erro) {

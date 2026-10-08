@@ -9,6 +9,9 @@ import { PCP_ID_EMPRESA_SO_ACO } from './sql/sqlComprasEstoqueFragments.js';
 /** Nomus `documentoestoque.idEmpresaEntrada` — Só Aço Industrial. */
 export const RECEBIMENTO_ID_EMPRESA_SO_ACO = PCP_ID_EMPRESA_SO_ACO;
 
+/** Nomus `tipomovimentacao.id` — PRÉ ENTRADA. Não inclui importação de XML. */
+export const RECEBIMENTO_ID_TIPO_PRE_ENTRADA = 173;
+
 export const RECEBIMENTO_STATUS = {
   AGUARDANDO_CONFERENTE: 'AGUARDANDO_CONFERENTE',
   EM_CONFERENCIA: 'EM_CONFERENCIA',
@@ -84,11 +87,7 @@ function strOrNull(v: unknown): string | null {
 const SQL_TIPOS = `
 SELECT tm.id, tm.nome
 FROM tipomovimentacao tm
-WHERE tm.nome LIKE '%Pré Entrada%'
-   OR tm.nome LIKE '%Pre Entrada%'
-   OR tm.nome LIKE '%PRE ENTRADA%'
-   OR tm.nome LIKE '%PRÉ ENTRADA%'
-   OR tm.nome LIKE '%pré entrada%'
+WHERE tm.id = ${RECEBIMENTO_ID_TIPO_PRE_ENTRADA}
 ORDER BY tm.id
 `.trim();
 
@@ -289,7 +288,7 @@ export async function queryDocumentosPreEntradaNomus(): Promise<{
     return {
       documentos: [],
       tipos: [],
-      erro: 'Nenhum tipo de movimentação “Pré Entrada” encontrado no Nomus.',
+      erro: 'O tipo de movimentação PRÉ ENTRADA (173) não foi encontrado no Nomus.',
     };
   }
 

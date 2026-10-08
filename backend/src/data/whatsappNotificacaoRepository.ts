@@ -105,6 +105,8 @@ export async function listarTiposComDestinatarios(): Promise<WhatsappNotificacao
   await ensureCamasiParadaAlertaWhatsappTipo();
   const { ensureRccCadastroClienteWhatsappTipo } = await import('../config/rccCadastroClienteAlerta.js');
   await ensureRccCadastroClienteWhatsappTipo();
+  const { ensureRecebimentoConferenciaWhatsappTipo } = await import('../config/recebimentoConferenciaAlerta.js');
+  await ensureRecebimentoConferenciaWhatsappTipo();
   const rows = await prisma.whatsappNotificacaoTipo.findMany({
     include: {
       destinatarios: { select: { usuarioId: true } },
@@ -198,9 +200,14 @@ export async function salvarCatalogoTipos(items: WhatsappNotificacaoTipoSaveItem
   await prisma.$transaction(async (tx) => {
     const { CAMASI_PARADA_ALERTA_WA_CODE } = await import('../config/camasiParadaAlertaNotificacao.js');
     const { RCC_CADASTRO_CLIENTE_WA_CODE } = await import('../config/rccCadastroClienteAlerta.js');
+    const { RECEBIMENTO_CONFERENCIA_WA_CODE } = await import('../config/recebimentoConferenciaAlerta.js');
     const existing = await tx.whatsappNotificacaoTipo.findMany({ select: { id: true, code: true } });
     const incomingIds = new Set(items.filter((i) => i.id && i.id > 0).map((i) => i.id!));
-    const protegidos = new Set([CAMASI_PARADA_ALERTA_WA_CODE, RCC_CADASTRO_CLIENTE_WA_CODE]);
+    const protegidos = new Set([
+      CAMASI_PARADA_ALERTA_WA_CODE,
+      RCC_CADASTRO_CLIENTE_WA_CODE,
+      RECEBIMENTO_CONFERENCIA_WA_CODE,
+    ]);
     const toDelete = existing.filter((e) => !incomingIds.has(e.id) && !protegidos.has(e.code));
     for (const del of toDelete) {
       await tx.whatsappNotificacaoTipo.delete({ where: { id: del.id } });

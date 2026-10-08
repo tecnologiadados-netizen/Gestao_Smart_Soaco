@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Navigate } from 'react-router-dom';
-import { CheckCircle2, Eye, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Eye, Printer, RefreshCw } from 'lucide-react';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import LoaderCirculo from '../../components/LoaderCirculo';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
@@ -24,6 +24,7 @@ import {
   type RecebimentoMesaAcao,
   type RecebimentoStatusCodigo,
 } from '../../api/recebimento';
+import { imprimirDocumentoApoioVolumes } from './documentoApoioVolumesPdf';
 
 const COLUNAS = [
   { id: 'documento', label: 'Documento', align: 'left' as const },
@@ -231,7 +232,7 @@ function HistoricoVolta({
 }
 
 export default function GestaoMesaPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, nome, login } = useAuth();
   const podeMesa = podeAcessarGestaoMesa(hasPermission);
 
   const [documentos, setDocumentos] = useState<RecebimentoDocumentoGrade[]>([]);
@@ -256,6 +257,10 @@ export default function GestaoMesaPage() {
   const [mesaAcaoOk, setMesaAcaoOk] = useState<string | null>(null);
   const [feedbackDeliberacao, setFeedbackDeliberacao] = useState<'off' | 'loading' | 'ok'>('off');
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [apoioAberto, setApoioAberto] = useState(false);
+  const [qtdeVolumesInformada, setQtdeVolumesInformada] = useState('');
+  const [apoioErro, setApoioErro] = useState<string | null>(null);
+  const [gerandoApoio, setGerandoApoio] = useState(false);
 
   const filtrar = useCallback(async () => {
     setLoading(true);
@@ -455,7 +460,48 @@ export default function GestaoMesaPage() {
 
   const fecharModalDocumento = () => {
     if (feedbackDeliberacao !== 'off') return;
+    setApoioAberto(false);
     setModalDoc(null);
+  };
+
+  const abrirDocumentoApoio = () => {
+    setQtdeVolumesInformada('');
+    setApoioErro(null);
+    setApoioAberto(true);
+  };
+
+  const gerarDocumentoApoio = async () => {
+    if (!modalDoc || gerandoApoio) return;
+    const bruto = qtdeVolumesInformada.trim();
+    if (!/^\d+$/.test(bruto) || Number(bruto) < 1) {
+      setApoioErro(
+        'Informe a quantidade de volumes que consta na nota fiscal (número inteiro maior que zero).',
+      );
+      return;
+    }
+    setGerandoApoio(true);
+    setApoioErro(null);
+    try {
+      const resultado = await imprimirDocumentoApoioVolumes({
+        numeroDocumento: modalDoc.numeroDocumentoFiscal ?? String(modalDoc.idDocumento),
+        numeroNfe: modalDoc.numeroNfe ?? '—',
+        dataDocumento: fmtDataBr(dataDocYmd(modalDoc)),
+        fornecedor: modalDoc.nomeParceiro ?? '—',
+        qtdeVolumes: Number(bruto),
+        emitidoPor: nome || login,
+      });
+      if (resultado === 'aberto') {
+        setApoioAberto(false);
+      } else {
+        setApoioErro(
+          'O navegador bloqueou a janela de impressão. O PDF foi baixado para você imprimir o canhoto.',
+        );
+      }
+    } catch {
+      setApoioErro('Não foi possível gerar o documento de apoio.');
+    } finally {
+      setGerandoApoio(false);
+    }
   };
 
   if (!podeMesa) return <Navigate to="/sem-acesso" replace />;
@@ -651,14 +697,25 @@ export default function GestaoMesaPage() {
                   </p>
                   <div className="mt-2">{badgeStatus(modalDoc.status, modalDoc.statusLabel)}</div>
                 </div>
-                <button
-                  type="button"
-                  className={btnSecondary}
-                  onClick={fecharModalDocumento}
-                  disabled={feedbackDeliberacao !== 'off'}
-                >
-                  Fechar
-                </button>
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    className={btnSecondary}
+                    onClick={abrirDocumentoApoio}
+                    disabled={feedbackDeliberacao !== 'off'}
+                  >
+                    <Printer className="h-4 w-4" aria-hidden />
+                    Imprimir documento de apoio
+                  </button>
+                  <button
+                    type="button"
+                    className={btnSecondary}
+                    onClick={fecharModalDocumento}
+                    disabled={feedbackDeliberacao !== 'off'}
+                  >
+                    Fechar
+                  </button>
+                </div>
               </div>
 
               <div
@@ -951,6 +1008,79 @@ export default function GestaoMesaPage() {
                   )}
                 </div>
               )}
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {apoioAberto &&
+        modalDoc &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10200] flex items-center justify-center bg-slate-950/45 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titulo-documento-apoio"
+            onClick={() => {
+              if (!gerandoApoio) setApoioAberto(false);
+            }}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3
+                id="titulo-documento-apoio"
+                className="text-base font-semibold text-slate-900 dark:text-slate-100"
+              >
+                Documento de apoio
+              </h3>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                Informe a quantidade de volumes que consta na nota fiscal{' '}
+                {modalDoc.numeroNfe ? `nº ${modalDoc.numeroNfe}` : ''}. O canhoto só espelha esse
+                número para o conferente. Ele não representa os volumes que chegaram fisicamente.
+              </p>
+              <label className={`${labelClass} mt-4`} htmlFor="qtde-volumes-nota">
+                Volumes na nota fiscal
+              </label>
+              <input
+                id="qtde-volumes-nota"
+                className={`${inputClass} w-full`}
+                inputMode="numeric"
+                autoFocus
+                value={qtdeVolumesInformada}
+                onChange={(e) => setQtdeVolumesInformada(e.target.value.replace(/\D/g, ''))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void gerarDocumentoApoio();
+                }}
+                placeholder="Ex.: 10"
+                disabled={gerandoApoio}
+              />
+              {apoioErro && (
+                <p className="mt-2 text-sm text-rose-600" role="alert">
+                  {apoioErro}
+                </p>
+              )}
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className={btnSecondary}
+                  onClick={() => setApoioAberto(false)}
+                  disabled={gerandoApoio}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className={btnPrimary}
+                  onClick={() => void gerarDocumentoApoio()}
+                  disabled={gerandoApoio || qtdeVolumesInformada.trim() === ''}
+                >
+                  <Printer className="h-4 w-4" aria-hidden />
+                  {gerandoApoio ? 'Gerando…' : 'Gerar PDF'}
+                </button>
+              </div>
             </div>
           </div>,
           document.body
