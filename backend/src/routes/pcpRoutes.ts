@@ -22,6 +22,10 @@ import {
   getRegrasDataEntrega,
   postRegraDataEntregaVersao,
 } from '../controllers/regrasDataEntregaController.js';
+import {
+  getDetalheAcompanhamento,
+  getPipelineAcompanhamento,
+} from '../controllers/acompanhamentoSolicitacaoController.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -32,6 +36,12 @@ const podeConsultaEstoque = requirePermission(
 );
 
 const podeCoberturaEstoque = requirePermission(...PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE);
+
+const podeAcompanhamentoSolicitacao = requirePermission(
+  PERMISSOES.PCP_VER_TELA,
+  PERMISSOES.PCP_TOTAL,
+  PERMISSOES.PEDIDOS_VER
+);
 
 const podeVerRegrasEntrega = requirePermission(
   PERMISSOES.PCP_REGRAS_ENTREGA_VER,
@@ -110,6 +120,17 @@ router.get(
   '/consulta-estoque/detalhe/pedido-compra',
   podeConsultaEstoque,
   async503(getPcDetalheConsultaEstoque)
+);
+
+router.get(
+  '/acompanhamento-solicitacao',
+  podeAcompanhamentoSolicitacao,
+  async503(getPipelineAcompanhamento)
+);
+router.get(
+  '/acompanhamento-solicitacao/detalhe',
+  podeAcompanhamentoSolicitacao,
+  async503(getDetalheAcompanhamento)
 );
 
 router.get('/regras-data-entrega', podeVerRegrasEntrega, async503(getRegrasDataEntrega));

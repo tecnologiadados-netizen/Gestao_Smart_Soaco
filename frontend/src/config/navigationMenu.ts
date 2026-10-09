@@ -42,6 +42,7 @@ export const PCP_MENU: NavMenuEntry[] = [
       { kind: 'link', to: '/pedidos/ressup-almox', label: 'Ressuprimento Almox' },
       { kind: 'link', to: '/pedidos/ressup-nao-almox', label: 'Ressup Não Almox' },
       { kind: 'link', to: '/pedidos/consulta-estoque', label: 'Consulta de Estoque' },
+      { kind: 'link', to: '/pedidos/acompanhamento-solicitacao', label: 'Acompanhamento de solicitação' },
     ],
   },
   {
@@ -248,6 +249,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/pedidos/ressup-almox': 'Ressup Almox',
   '/pedidos/ressup-nao-almox': 'Ressup Não Almox',
   '/pedidos/consulta-estoque': 'Consulta de Estoque',
+  '/pedidos/acompanhamento-solicitacao': 'Acompanhamento de solicitação',
   '/pedidos/cobertura-estoque': 'Cobertura de Estoque',
   '/kpis/gestao-entradas/painel': 'Gestão entradas',
   '/pedidos/painel-metas/gerencial': 'Painel Gerencial',
