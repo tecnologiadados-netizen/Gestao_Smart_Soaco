@@ -4,23 +4,19 @@ import type { useGradeFiltrosExcel } from '../../../hooks/useGradeFiltrosExcel';
 import type { DiarioContaPagarLinha } from '../../../api/diarioFinanceiro';
 
 export const DIARIO_COLUNAS_GRADE = [
-  { id: 'origem', label: 'Origem' },
-  { id: 'situacao', label: 'Situação' },
+  { id: 'codigo', label: 'Código' },
+  { id: 'plano', label: 'Classificação' },
   { id: 'vencimento', label: 'Vencimento' },
-  { id: 'baixa', label: 'Baixa' },
-  { id: 'fornecedor', label: 'Fornecedor' },
   { id: 'empresa', label: 'Empresa' },
-  { id: 'plano', label: 'Plano de contas' },
-  { id: 'prioridade', label: 'Prioridade' },
+  { id: 'conta', label: 'Conta' },
+  { id: 'forma', label: 'Forma de pagamento' },
+  { id: 'fornecedor', label: 'Pessoa' },
   { id: 'descricao', label: 'Descrição' },
-  { id: 'observacao', label: 'Observações' },
-  { id: 'forma', label: 'Forma pgto' },
-  { id: 'conta', label: 'Conta bancária' },
-  { id: 'valor', label: 'Valor', align: 'right' as const },
-  { id: 'baixado', label: 'Baixado', align: 'right' as const },
-  { id: 'saldo', label: 'Saldo', align: 'right' as const },
-  { id: 'pc', label: 'PC' },
-  { id: 'nfe', label: 'NFe' },
+  { id: 'observacao', label: 'Comentários' },
+  { id: 'pc', label: 'Pedido de compra' },
+  { id: 'saldo', label: 'Saldo a pagar', align: 'right' as const },
+  { id: 'nfe', label: 'NF' },
+  { id: 'prioridade', label: 'Prioridade' },
   { id: 'itens', label: 'Itens', align: 'center' as const },
 ];
 

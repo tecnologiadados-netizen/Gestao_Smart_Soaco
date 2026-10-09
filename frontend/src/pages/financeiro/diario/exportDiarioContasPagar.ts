@@ -6,26 +6,27 @@ import { baixarWorkbook, MONEY_FMT, styleHeader } from '../exportFinanceiroXlsxS
 import { trechosDescricaoReprogramada, type TrechoDescricao } from './descricaoReprogramada';
 
 const COLUNAS = [
-  'Origem',
-  'Situação',
+  'Código',
+  'Classificação',
   'Vencimento',
-  'Baixa',
-  'Fornecedor',
   'Empresa',
-  'Plano de contas',
-  'Prioridade',
+  'Conta',
+  'Forma de pagamento',
+  'Pessoa',
   'Descrição',
-  'Observações',
-  'Forma pgto',
-  'Conta bancária',
-  'Valor',
-  'Baixado',
-  'Saldo',
-  'PC',
-  'NFe',
+  'Comentários',
+  'Pedido de compra',
+  'Saldo a pagar',
+  'NF',
+  'Prioridade',
 ] as const;
 
-const COL_DESCRICAO = 8;
+const COL_DESCRICAO = 7;
+const COL_SALDO = 11;
+
+function maiusculo(valor: string | null | undefined): string {
+  return (valor ?? '').toLocaleUpperCase('pt-BR');
+}
 const VERMELHO = 'FFDC2626';
 const TEXTO = [30, 41, 59] as [number, number, number];
 const VERMELHO_RGB = [220, 38, 38] as [number, number, number];
@@ -117,30 +118,23 @@ export async function exportarDiarioContasPagarExcel(opts: {
 
   for (const l of opts.linhas) {
     const row = ws.addRow([
-      l.origem,
-      l.status,
+      l.codigoClassificacao != null && l.codigoClassificacao > 0 ? l.codigoClassificacao : '',
+      maiusculo(l.planoContas),
       dataExcelSemHora(l.dataVencimento),
-      dataExcelSemHora(l.dataBaixa),
-      l.fornecedor ?? '',
-      empresaExibida(l),
-      l.planoContas ?? '',
-      opts.rotuloPrioridade?.(l) ?? '',
-      richTextDescricao(l.descricao),
-      l.observacao ?? '',
-      l.formaPagamento ?? '',
-      l.contaBancaria ?? '',
-      l.valor,
-      l.valorBaixado,
+      maiusculo(empresaExibida(l)),
+      maiusculo(l.contaBancaria),
+      maiusculo(l.formaPagamento),
+      maiusculo(l.fornecedor),
+      richTextDescricao(maiusculo(l.descricao)),
+      maiusculo(l.observacao),
+      maiusculo(l.pedidoCompra),
       l.saldo,
-      l.pedidoCompra ?? '',
-      l.notaFiscal ?? '',
+      maiusculo(l.notaFiscal),
+      maiusculo(opts.rotuloPrioridade?.(l)),
     ]);
     row.getCell(3).numFmt = 'dd/mm/yyyy';
-    row.getCell(4).numFmt = 'dd/mm/yyyy';
-    for (const col of [13, 14, 15]) {
-      row.getCell(col).numFmt = MONEY_FMT;
-      row.getCell(col).alignment = { horizontal: 'right' };
-    }
+    row.getCell(COL_SALDO).numFmt = MONEY_FMT;
+    row.getCell(COL_SALDO).alignment = { horizontal: 'right' };
   }
 
   const total = ws.addRow([
@@ -154,19 +148,13 @@ export async function exportarDiarioContasPagarExcel(opts: {
     '',
     '',
     '',
-    '',
-    '',
-    opts.totais.valor,
-    opts.totais.baixado,
     opts.totais.saldo,
     '',
     '',
   ]);
   total.font = { bold: true };
-  for (const col of [13, 14, 15]) {
-    total.getCell(col).numFmt = MONEY_FMT;
-    total.getCell(col).font = { bold: true };
-  }
+  total.getCell(COL_SALDO).numFmt = MONEY_FMT;
+  total.getCell(COL_SALDO).font = { bold: true };
 
   ws.views = [{ state: 'frozen', ySplit: 1 }];
   ws.autoFilter = {
@@ -260,23 +248,19 @@ export function exportarDiarioContasPagarPdf(opts: {
   doc.text(`Vencimento ${formatData(opts.dataInicio)} a ${formatData(opts.dataFim)}`, 8, 15);
 
   const body = opts.linhas.map((l) => [
-    l.origem,
-    l.status,
+    l.codigoClassificacao != null && l.codigoClassificacao > 0 ? String(l.codigoClassificacao) : '',
+    maiusculo(l.planoContas),
     formatData(l.dataVencimento),
-    formatData(l.dataBaixa),
-    l.fornecedor ?? '',
-    empresaExibida(l),
-    l.planoContas ?? '',
-    opts.rotuloPrioridade?.(l) ?? '',
-    l.descricao ?? '',
-    l.observacao ?? '',
-    l.formaPagamento ?? '',
-    l.contaBancaria ?? '',
-    formatMoeda(l.valor),
-    formatMoeda(l.valorBaixado),
+    maiusculo(empresaExibida(l)),
+    maiusculo(l.contaBancaria),
+    maiusculo(l.formaPagamento),
+    maiusculo(l.fornecedor),
+    maiusculo(l.descricao),
+    maiusculo(l.observacao),
+    maiusculo(l.pedidoCompra),
     formatMoeda(l.saldo),
-    l.pedidoCompra ?? '',
-    l.notaFiscal ?? '',
+    maiusculo(l.notaFiscal),
+    maiusculo(opts.rotuloPrioridade?.(l)),
   ]);
 
   autoTable(doc, {
@@ -295,10 +279,6 @@ export function exportarDiarioContasPagarPdf(opts: {
       '',
       '',
       '',
-      '',
-      '',
-      formatMoeda(opts.totais.valor),
-      formatMoeda(opts.totais.baixado),
       formatMoeda(opts.totais.saldo),
       '',
       '',
@@ -307,23 +287,19 @@ export function exportarDiarioContasPagarPdf(opts: {
     headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
     footStyles: { fillColor: [241, 245, 249], textColor: TEXTO, fontStyle: 'bold' },
     columnStyles: {
-      0: { cellWidth: 13 },
-      1: { cellWidth: 16 },
-      2: { cellWidth: 15 },
-      3: { cellWidth: 15 },
-      4: { cellWidth: 28 },
-      5: { cellWidth: 24 },
-      6: { cellWidth: 20 },
-      7: { cellWidth: 20 },
-      8: { cellWidth: 32 },
-      9: { cellWidth: 20 },
-      10: { cellWidth: 14 },
+      0: { cellWidth: 14 },
+      1: { cellWidth: 28 },
+      2: { cellWidth: 18 },
+      3: { cellWidth: 24 },
+      4: { cellWidth: 22 },
+      5: { cellWidth: 22 },
+      6: { cellWidth: 28 },
+      7: { cellWidth: 36 },
+      8: { cellWidth: 22 },
+      9: { cellWidth: 24 },
+      10: { cellWidth: 18, halign: 'right' },
       11: { cellWidth: 16 },
-      12: { cellWidth: 15, halign: 'right' },
-      13: { cellWidth: 14, halign: 'right' },
-      14: { cellWidth: 15, halign: 'right' },
-      15: { cellWidth: 18 },
-      16: { cellWidth: 16 },
+      12: { cellWidth: 18 },
     },
     horizontalPageBreak: true,
     willDrawCell(data) {
