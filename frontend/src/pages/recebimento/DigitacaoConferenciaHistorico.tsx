@@ -34,14 +34,6 @@ const btnSecondary =
 
 const nfNum = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 });
 
-const ACAO_MESA_LABEL: Record<string, string> = {
-  MOVIMENTACAO_ALTERADA: 'Movimentação alterada no Nomus',
-  TRATAMENTO_COMPRAS: 'Retornou para Compras tratar',
-  REENVIAR_CONFERENCIA: 'Reenviada para conferência',
-  DEVOLVER_MATERIAL: 'Devolver material',
-  ACEITAR_COMO_ESTA: 'Aceita como está',
-};
-
 function fmtDataBr(ymd: string | null): string {
   if (!ymd) return '—';
   const [y, m, d] = ymd.slice(0, 10).split('-');
@@ -124,11 +116,6 @@ function tituloVolta(indice: number, total: number): string {
   return `${indice + 1}ª volta à Mesa`;
 }
 
-function acaoMesaLabel(acao: string | null): string {
-  if (!acao) return '—';
-  return ACAO_MESA_LABEL[acao] ?? acao;
-}
-
 function HistoricoVolta({ volta, titulo }: { volta: RecebimentoHistoricoConferencia; titulo: string }) {
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-600">
@@ -136,9 +123,8 @@ function HistoricoVolta({ volta, titulo }: { volta: RecebimentoHistoricoConferen
         <div>
           <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{titulo}</h4>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {conferenteLabel(volta.conferenteNome, volta.conferenteLogin)}
-            {volta.atribuidoEm ? ` · Atribuído ${fmtDateTimeBr(volta.atribuidoEm)}` : ''}
-            {` · Retorno ${fmtDateTimeBr(volta.retornadoEm)}`}
+            Conferiu: {conferenteLabel(volta.conferenteNome, volta.conferenteLogin)} ·{' '}
+            {fmtDateTimeBr(volta.retornadoEm)}
           </p>
         </div>
         {badgeStatus(volta.status, volta.statusLabel)}
@@ -199,11 +185,12 @@ function HistoricoVolta({ volta, titulo }: { volta: RecebimentoHistoricoConferen
   );
 }
 
-function Campo({ rotulo, valor }: { rotulo: string; valor: string }) {
+function Campo({ rotulo, valor, horario }: { rotulo: string; valor: string; horario: string }) {
   return (
-    <div>
+    <div className="rounded-xl border border-slate-200 px-4 py-3 dark:border-slate-600">
       <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{rotulo}</dt>
-      <dd className="mt-0.5 text-sm text-slate-800 dark:text-slate-100">{valor}</dd>
+      <dd className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100">{valor}</dd>
+      <dd className="mt-0.5 text-sm tabular-nums text-slate-600 dark:text-slate-300">{horario}</dd>
     </div>
   );
 }
@@ -441,22 +428,17 @@ export default function DigitacaoConferenciaHistorico() {
                 )}
                 {detalhe && (
                   <>
-                    <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      <Campo rotulo="Tipo de movimentação" valor={detalhe.tipoMovimentacao ?? '—'} />
+                    <dl className="grid gap-3 sm:grid-cols-2">
                       <Campo
-                        rotulo="Conferente do último envio"
+                        rotulo="Deliberou"
+                        valor={detalhe.atribuidoPorLogin ?? '—'}
+                        horario={fmtDateTimeBr(detalhe.atribuidoEm)}
+                      />
+                      <Campo
+                        rotulo="Conferiu"
                         valor={conferenteLabel(detalhe.conferenteNome, detalhe.conferenteLogin)}
+                        horario={fmtDateTimeBr(detalhe.enviadoEm)}
                       />
-                      <Campo rotulo="Enviado em" valor={fmtDateTimeBr(detalhe.enviadoEm)} />
-                      <Campo
-                        rotulo="Conferente atual"
-                        valor={conferenteLabel(detalhe.conferenteAtualNome, detalhe.conferenteAtualLogin)}
-                      />
-                      <Campo rotulo="Atribuído em" valor={fmtDateTimeBr(detalhe.atribuidoEm)} />
-                      <Campo rotulo="Atribuído por" valor={detalhe.atribuidoPorLogin ?? '—'} />
-                      <Campo rotulo="Ação da Mesa" valor={acaoMesaLabel(detalhe.mesaUltimaAcao)} />
-                      <Campo rotulo="Ação da Mesa em" valor={fmtDateTimeBr(detalhe.mesaAcaoEm)} />
-                      <Campo rotulo="Ação da Mesa por" valor={detalhe.mesaAcaoPorLogin ?? '—'} />
                     </dl>
                     {detalhe.emNovaConferencia && (
                       <p className="rounded-lg border border-sky-300 bg-sky-50 p-3 text-sm text-sky-800 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200">
