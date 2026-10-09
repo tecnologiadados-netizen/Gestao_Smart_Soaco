@@ -23,6 +23,16 @@ import {
   type GestaoEntradasPainel,
   type StatusNotaGestaoEntrada,
 } from './gestaoEntradasClassificacao.js';
+import { registrarDivergenciasApontadas } from './doubleCheckInDivergenciaApontada.js';
+import { linhasCompradorGestao } from './gestaoEntradasCompradorConsulta.js';
+import {
+  agregarRankingComprador,
+  filtrarLinhasComprador,
+  type DocCompradorGestao,
+  type LinhaCompradorGestao,
+  type MundoCompradorGestao,
+  type RankingCompradorGestao,
+} from './gestaoEntradasComprador.js';
 
 const TIPOS_IN = DOUBLE_CHECKIN_TIPOS_MOV.join(', ');
 
@@ -142,11 +152,16 @@ function decisoesDoDocumento(
     }));
 }
 
+export type GestaoEntradasPainelResponse = GestaoEntradasPainel & {
+  compradoresApontados: RankingCompradorGestao[];
+  compradoresAceitos: RankingCompradorGestao[];
+};
+
 export async function queryGestaoEntradasPainel(params: {
   dataInicio: string;
   dataFim: string;
   escopo?: EscopoDivergenciaGestaoEntrada;
-}): Promise<{ data?: GestaoEntradasPainel; erro?: string }> {
+}): Promise<{ data?: GestaoEntradasPainelResponse; erro?: string }> {
   if (!isNomusEnabled()) return { erro: 'NOMUS_DB_URL não configurado' };
   const pool = getNomusPool();
   if (!pool) return { erro: 'NOMUS_DB_URL não configurado' };
@@ -182,8 +197,10 @@ export async function queryGestaoEntradasPainel(params: {
     );
     const idsComDivergenciaAtual = new Set<number>();
     const chavesPorDocumento = new Map<number, Set<string>>();
+    const linhasCompletas = new Map(linhasPorDocumento);
     for (const [id, linhas] of linhasPorDocumento ?? []) {
       if (regimeConferenciaPorDataEntrada(dataEntradaPorDocumento.get(id)) !== 'completa') {
+        linhasCompletas.delete(id);
         continue;
       }
       const avaliado = prepararDocumentoNoEscopo({
@@ -195,24 +212,136 @@ export async function queryGestaoEntradasPainel(params: {
       if (avaliado.temDivergencia) idsComDivergenciaAtual.add(id);
       if (idsConferidos.has(id) && avaliado.pendentes > 0) idsConferidos.delete(id);
     }
+    await registrarDivergenciasApontadas(linhasCompletas);
+    const docsComprador: DocCompradorGestao[] = docs
+      .filter((doc) => regimeConferenciaPorDataEntrada(doc.dataEntrada) === 'completa')
+      .map((doc) => ({ idDocumento: doc.idDocumento, dataEntrada: doc.dataEntrada }));
+    const linhasComprador = await linhasCompradorGestao({
+      escopo,
+      docs: docsComprador,
+      decisoes,
+      linhasPorDocumento: linhasCompletas,
+      chavesAtuais: chavesPorDocumento,
+    });
     const decisoesNoEscopo =
       escopo === 'geral'
         ? decisoes
         : decisoes.filter((d) => chavesPorDocumento.get(d.idDocumentoEstoque)?.has(chaveDecisaoEscopo(d)));
+    const painel = montarPainelGestaoEntradas({
+      dataInicio: params.dataInicio,
+      dataFim: params.dataFim,
+      escopo,
+      docs,
+      idsConferidos,
+      idsComDivergenciaAtual,
+      decisoes: decisoesNoEscopo,
+    });
     return {
-      data: montarPainelGestaoEntradas({
-        dataInicio: params.dataInicio,
-        dataFim: params.dataFim,
-        escopo,
-        docs,
-        idsConferidos,
-        idsComDivergenciaAtual,
-        decisoes: decisoesNoEscopo,
-      }),
+      data: {
+        ...painel,
+        compradoresApontados: agregarRankingComprador(
+          linhasComprador.filter((linha) => linha.mundo === 'apontada')
+        ),
+        compradoresAceitos: agregarRankingComprador(
+          linhasComprador.filter((linha) => linha.mundo === 'aceita')
+        ),
+      },
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[gestaoEntradasRepository] queryGestaoEntradasPainel:', msg);
+    return { erro: msg };
+  }
+}
+
+export type GestaoEntradasCompradorDetalhe = {
+  mundo: MundoCompradorGestao;
+  nomeComprador: string;
+  documentos: number;
+  pedidos: number;
+  ajustados: number;
+  linhas: LinhaCompradorGestao[];
+};
+
+export async function queryGestaoEntradasComprador(params: {
+  dataInicio: string;
+  dataFim: string;
+  escopo?: EscopoDivergenciaGestaoEntrada;
+  mundo: MundoCompradorGestao;
+  comprador: string;
+}): Promise<{ data?: GestaoEntradasCompradorDetalhe; erro?: string }> {
+  if (!isNomusEnabled()) return { erro: 'NOMUS_DB_URL não configurado' };
+  const pool = getNomusPool();
+  if (!pool) return { erro: 'NOMUS_DB_URL não configurado' };
+  const comprador = params.comprador.trim();
+  if (!comprador) return { erro: 'Informe o comprador.' };
+
+  try {
+    const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(pool, SQL_DOCS_DIA, [
+      params.dataInicio,
+      params.dataFim,
+    ]);
+    const list = Array.isArray(rows) ? rows : [];
+    const docs = list
+      .map((r) => ({
+        idDocumento: toInt(r.idDocumento),
+        dataEntrada: formatSqlDateYmd(r.dataEntrada),
+        numeroDocumentoFiscal: strOrEmpty(r.numeroDocumentoFiscal) || null,
+        numeroNfe: strOrEmpty(r.numeroNfe) || null,
+        nomeParceiro: strOrEmpty(r.nomeParceiro) || null,
+      }))
+      .filter((doc): doc is DocCompradorGestao => {
+        return (
+          doc.idDocumento > 0 &&
+          Boolean(doc.dataEntrada) &&
+          regimeConferenciaPorDataEntrada(doc.dataEntrada) === 'completa'
+        );
+      });
+    const ids = docs.map((doc) => doc.idDocumento);
+    const [{ decisoes }, linhasResp] = await Promise.all([
+      carregarLocais(ids),
+      queryLinhasComparativoPorDocumentos(ids),
+    ]);
+    if (linhasResp.erro) return { erro: linhasResp.erro };
+
+    const escopo = normalizarEscopoDivergencia(params.escopo);
+    const linhasCompletas = new Map(linhasResp.linhasPorDocumento);
+    const chavesPorDocumento = new Map<number, Set<string>>();
+    for (const doc of docs) {
+      const linhas = linhasCompletas.get(doc.idDocumento) ?? [];
+      const avaliado = prepararDocumentoNoEscopo({
+        linhas,
+        decisoes: decisoesDoDocumento(decisoes, doc.idDocumento),
+        escopo,
+      });
+      chavesPorDocumento.set(doc.idDocumento, avaliado.chaves);
+    }
+    await registrarDivergenciasApontadas(linhasCompletas);
+    const linhas = filtrarLinhasComprador(
+      await linhasCompradorGestao({
+        escopo,
+        docs,
+        decisoes,
+        linhasPorDocumento: linhasCompletas,
+        chavesAtuais: chavesPorDocumento,
+      }),
+      params.mundo,
+      comprador
+    );
+    const ranking = agregarRankingComprador(linhas)[0];
+    return {
+      data: {
+        mundo: params.mundo,
+        nomeComprador: comprador,
+        documentos: ranking?.documentos ?? 0,
+        pedidos: ranking?.pedidos ?? 0,
+        ajustados: ranking?.ajustados ?? 0,
+        linhas,
+      },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[gestaoEntradasRepository] queryGestaoEntradasComprador:', msg);
     return { erro: msg };
   }
 }

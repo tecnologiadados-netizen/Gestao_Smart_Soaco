@@ -46,6 +46,14 @@ const SECOES: SecaoAjuda[] = [
     comoLe:
       'Em Volume, cada tipo informa notas, itens e participação no top 3. Em Divergências, informa quantas NFs ainda divergem, o total de NFs daquele tipo e sua participação entre as três líderes. Clique na fatia ou na linha do tipo para abrir os documentos daquele número, na mesma visão do painel.',
   },
+  {
+    id: 'compradores',
+    titulo: 'Compradores com divergência',
+    oQueE:
+      'O card separa dois momentos do mesmo pedido. Apontada no vínculo é a primeira vez que o Double Check lê a NF ligada ao pedido e encontra divergência. O comprador é o do pedido de compra. Se o pedido não tiver comprador, usa o da cotação que o originou. Esse retrato fica gravado mesmo se o conferente desfizer o vínculo para o comprador ajustar e a nota voltar limpa. Aceita com divergência reúne as notas em que a conferência aceitou a diferença, desde 21/09/2026, e continua na conta se o pedido for corrigido depois. Uma nota aceita sai do primeiro botão e fica no segundo. A visão real mostra só divergência real; a visão geral inclui a benigna.',
+    comoLe:
+      'A barra conta notas distintas daquele comprador. O texto ao lado informa quantos pedidos entram na conta. Em Apontada no vínculo, ajustada é a nota cujo vínculo apontado deixou de divergir, sem aceite. Clique no comprador para abrir NF, pedido, campos e a situação: ainda divergente, vínculo ajustado ou divergência aceita. O número da barra é a quantidade de notas do detalhe. Apontadas anteriores a esta gravação não entram, porque o desvínculo antigo não ficou registrado. Notas que ainda divergem passam a entrar na primeira leitura do Double Check ou deste painel.',
+  },
 ];
 
 export default function GestaoEntradasAjudaModal({ aberto, onClose }: GestaoEntradasAjudaModalProps) {
@@ -54,7 +62,7 @@ export default function GestaoEntradasAjudaModal({ aberto, onClose }: GestaoEntr
       aberto={aberto}
       onClose={onClose}
       titulo="Como ler Gestão entradas"
-      subtitulo="Volume, conferência e divergências aceitas."
+      subtitulo="Volume, conferência, divergências aceitas e compradores."
       introducao="O painel acompanha a acuracidade das entradas. A visão real, que abre por padrão, ignora divergência benigna. A visão geral inclui benigna e real."
       secoes={SECOES}
       tituloId="gestao-entradas-ajuda-titulo"

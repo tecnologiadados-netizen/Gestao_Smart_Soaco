@@ -42,6 +42,40 @@ export type GestaoEntradasPainel = {
     itens: number;
     divergencias: number;
   }>;
+  compradoresApontados: RankingCompradorGestao[];
+  compradoresAceitos: RankingCompradorGestao[];
+};
+
+export type RankingCompradorGestao = {
+  nomeComprador: string;
+  documentos: number;
+  pedidos: number;
+  ajustados: number;
+};
+
+export type MundoCompradorGestao = 'apontada' | 'aceita';
+
+export type GestaoEntradasCompradorLinha = {
+  mundo: MundoCompradorGestao;
+  nomeComprador: string;
+  idDocumento: number;
+  dataEntrada: string;
+  numeroDocumentoFiscal: string | null;
+  numeroNfe: string | null;
+  nomeParceiro: string | null;
+  idPedidoCompra: number;
+  nomePedidoCompra: string;
+  campos: string[];
+  situacao: 'ainda_divergente' | 'vinculo_ajustado' | 'aceita';
+};
+
+export type GestaoEntradasCompradorDetalhe = {
+  mundo: MundoCompradorGestao;
+  nomeComprador: string;
+  documentos: number;
+  pedidos: number;
+  ajustados: number;
+  linhas: GestaoEntradasCompradorLinha[];
 };
 
 export async function fetchGestaoEntradasPainel(params: {
@@ -107,6 +141,30 @@ export type GestaoEntradasDia = {
   escopo: 'reais' | 'geral';
   notas: GestaoEntradasNotaDia[];
 };
+
+export async function fetchGestaoEntradasComprador(params: {
+  dataInicio: string;
+  dataFim: string;
+  escopo?: 'reais' | 'geral';
+  mundo: MundoCompradorGestao;
+  comprador: string;
+}): Promise<{ data?: GestaoEntradasCompradorDetalhe; erro?: string }> {
+  const sp = new URLSearchParams();
+  sp.set('dataInicio', params.dataInicio);
+  sp.set('dataFim', params.dataFim);
+  sp.set('escopo', params.escopo ?? 'reais');
+  sp.set('mundo', params.mundo);
+  sp.set('comprador', params.comprador);
+  const res = await apiFetch(`/api/compras/gestao-entradas/comprador?${sp}`);
+  const body = (await res.json().catch(() => ({}))) as GestaoEntradasCompradorDetalhe & {
+    error?: string;
+    erro?: string;
+  };
+  if (!res.ok) {
+    return { erro: body.erro ?? body.error ?? res.statusText };
+  }
+  return { data: body };
+}
 
 export async function fetchGestaoEntradasDia(params: {
   dataInicio: string;

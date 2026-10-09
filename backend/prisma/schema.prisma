@@ -296,6 +296,26 @@ model DoubleCheckInComparativoDecisao {
   @@map("double_checkin_comparativo_decisao")
 }
 
+/// Primeira leitura em que a NF vinculada ao pedido divergiu. Permanece se o vínculo for desfeito.
+model DoubleCheckInDivergenciaApontada {
+  id                     Int      @id @default(autoincrement())
+  idDocumentoEstoque     Int
+  idItemDocumentoEstoque Int
+  idItemPedidoCompra     Int
+  idPedidoCompra         Int
+  nomePedidoCompra       String
+  nomeComprador          String
+  /// valor_unitario | qtde | ipi | condicao_pagamento
+  campo                  String
+  /// real | benigna — natureza na primeira leitura
+  natureza               String
+  apontadoEm             DateTime @default(now())
+
+  @@unique([idDocumentoEstoque, idItemDocumentoEstoque, idItemPedidoCompra, campo], map: "double_checkin_divergencia_apontada_idDocumentoEstoque_idItemDocumentoEstoque_idItemPedidoCompra_campo_key")
+  @@index([idDocumentoEstoque], map: "double_checkin_divergencia_apontada_idDocumentoEstoque_idx")
+  @@map("double_checkin_divergencia_apontada")
+}
+
 /// Histórico acumulativo de observações por divergência (campo) do comparativo NF × PC.
 model DoubleCheckInComparativoObsHist {
   id                     Int      @id @default(autoincrement())

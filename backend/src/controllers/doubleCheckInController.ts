@@ -49,6 +49,7 @@ import {
   type DoubleCheckInComparativoDecisaoRow,
 } from '../data/doubleCheckInLocalRepository.js';
 import { resolveAppBaseUrl } from '../config/appBaseUrl.js';
+import { registrarDivergenciasApontadas } from '../data/doubleCheckInDivergenciaApontada.js';
 import {
   montarMensagemConferenciaWhatsApp,
   montarRelatoConferencia,
@@ -191,6 +192,8 @@ async function carregarResumosDivergenciasAtuais(
     decisoesPorDocumento.set(decisao.idDocumentoEstoque, lista);
   }
 
+  await registrarDivergenciasApontadas(linhasResp.linhasPorDocumento);
+
   for (const id of ids) {
     const linhas = linhasResp.linhasPorDocumento.get(id) ?? [];
     const naturezas = linhasComNatureza(linhas, decisoesPorDocumento.get(id) ?? [])
@@ -318,14 +321,18 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
   }
   try {
     await ensureDoubleCheckInJustificativaOpcoes();
-    const [{ linhas, erro }, decisoes, justificativas] = await Promise.all([
+    const [{ linhas, erro }, decisoes, justificativas, dataDocumento] = await Promise.all([
       queryDoubleCheckInComparativoPc({ idDocumento }),
       listarDecisoesComparativo(idDocumento),
       listarJustificativaOpcoes(true),
+      queryDoubleCheckInDataEntrada(idDocumento),
     ]);
     if (erro) {
       res.status(503).json({ linhas: [], decisoes: [], justificativas, erro, error: erro });
       return;
+    }
+    if (regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada) === 'completa') {
+      await registrarDivergenciasApontadas(new Map([[idDocumento, linhas]]));
     }
     const validacao = validarDecisoesCompletas(linhas, decisoes);
     res.json({
