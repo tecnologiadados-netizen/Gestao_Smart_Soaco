@@ -65,6 +65,7 @@ import {
   regimeConferenciaPorDataEntrada,
   type RegimeConferenciaDoubleCheck,
 } from '../services/doubleCheckInConferenciaPeriodo.js';
+import { conferenciaDoubleCheckLiberadaParaMesa } from '../services/mesaDoubleCheckGate.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -238,13 +239,17 @@ async function enriquecerNotasComConferencia(
     const regimeConferencia = regimeConferenciaPorDataEntrada(n.dataEntrada);
     const c = map.get(n.idDocumento);
     const atual = resumosAtuais.get(n.idDocumento);
+    const pendencias = Number(atual?.pendencias ?? 0);
     const conferenciaReaberta =
       regimeConferencia !== 'nao_aplicada' &&
       Boolean(c) &&
       regimeConferencia === 'completa' &&
-      Number(atual?.pendencias ?? 0) > 0;
-    const conferido =
-      regimeConferencia !== 'nao_aplicada' && Boolean(c) && !conferenciaReaberta;
+      pendencias > 0;
+    const conferido = conferenciaDoubleCheckLiberadaParaMesa({
+      regime: regimeConferencia,
+      possuiConferenciaValida: Boolean(c),
+      pendenciasSemDecisao: pendencias,
+    }) && regimeConferencia !== 'nao_aplicada';
     return {
       ...n,
       regimeConferencia,
@@ -262,6 +267,36 @@ async function enriquecerNotasComConferencia(
       totalDivergenciasReaisHistorica: c?.totalDivergenciasReaisHistorica ?? 0,
     };
   });
+}
+
+/**
+ * Documentos cuja conferência no Double Check já libera a Mesa.
+ * Entrada anterior a 19/09/2026 entra no conjunto: essa etapa não se aplica.
+ */
+export async function listarIdsConferenciaDoubleCheckConcluida(
+  docs: Array<{ idDocumento: number; dataEntrada: string | null }>
+): Promise<Set<number>> {
+  const ids = [...new Set(docs.map((d) => d.idDocumento).filter((id) => id > 0))];
+  const conferidos = await listarDocumentosConferidos(ids);
+  const completaComRegistro = docs
+    .filter(
+      (d) =>
+        conferidos.has(d.idDocumento) &&
+        regimeConferenciaPorDataEntrada(d.dataEntrada) === 'completa'
+    )
+    .map((d) => d.idDocumento);
+  const resumos = await carregarResumosDivergenciasAtuais([...new Set(completaComRegistro)]);
+  const liberados = new Set<number>();
+  for (const doc of docs) {
+    const regime = regimeConferenciaPorDataEntrada(doc.dataEntrada);
+    const ok = conferenciaDoubleCheckLiberadaParaMesa({
+      regime,
+      possuiConferenciaValida: conferidos.has(doc.idDocumento),
+      pendenciasSemDecisao: resumos.get(doc.idDocumento)?.pendencias ?? 0,
+    });
+    if (ok) liberados.add(doc.idDocumento);
+  }
+  return liberados;
 }
 
 /**

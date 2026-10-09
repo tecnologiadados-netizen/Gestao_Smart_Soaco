@@ -159,7 +159,7 @@ function tituloVolta(indice: number, total: number): string {
 
 function badgeStatus(status: RecebimentoStatusCodigo, label: string) {
   const cls =
-    status === 'AGUARDANDO_CONFERENTE'
+    status === 'AGUARDANDO_DOUBLE_CHECK' || status === 'AGUARDANDO_CONFERENTE'
       ? 'border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200'
       : status === 'EM_CONFERENCIA'
         ? 'border-sky-400 bg-sky-50 text-sky-800 dark:border-sky-500 dark:bg-sky-950/40 dark:text-sky-200'
@@ -560,8 +560,10 @@ export default function GestaoMesaPage() {
           </p>
           <h1 className="mt-1 text-xl font-semibold text-slate-800 dark:text-slate-100">Gestão Mesa</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Documentos de pré-entrada da SÓ AÇO INDUSTRIAL. Conferência ok fica aguardando a Mesa alterar a
-            movimentação no Nomus. Quando o tipo muda, o documento é concluído e permanece só o histórico.
+            Documentos de pré-entrada da SÓ AÇO INDUSTRIAL. O andamento só libera o conferente depois que a
+            conferência no Double Check estiver concluída, com ou sem divergência. Conferência ok fica
+            aguardando a Mesa alterar a movimentação no Nomus. Quando o tipo muda, o documento é concluído e
+            permanece só o histórico.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -650,7 +652,9 @@ export default function GestaoMesaPage() {
                 <tr
                   key={d.idDocumento}
                   className={`cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${
-                    d.status === 'AGUARDANDO_CONFERENTE' || d.status === 'CONFERIDO'
+                    d.status === 'AGUARDANDO_DOUBLE_CHECK' ||
+                    d.status === 'AGUARDANDO_CONFERENTE' ||
+                    d.status === 'CONFERIDO'
                       ? 'border-l-4 border-l-amber-400'
                       : 'border-l-4 border-l-sky-500'
                   }`}
@@ -1025,6 +1029,14 @@ export default function GestaoMesaPage() {
                         </div>
                       )}
                     </>
+                  ) : modalDoc.status === 'AGUARDANDO_DOUBLE_CHECK' ? (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+                      <p className="font-semibold">Aguardando conferência no Double check</p>
+                      <p className="mt-1">
+                        Conclua a conferência deste documento na tela Double Check, com ou sem divergência.
+                        Depois disso a Mesa pode deliberar o conferente.
+                      </p>
+                    </div>
                   ) : modalDoc.status === 'CONFERIDO' ? (
                     <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
                       <p className="font-semibold">Aguardando mesa alterar movimentação</p>
@@ -1084,6 +1096,7 @@ export default function GestaoMesaPage() {
                     </>
                   )}
                   {conferentes.length === 0 &&
+                    modalDoc.status !== 'AGUARDANDO_DOUBLE_CHECK' &&
                     modalDoc.status !== 'CONFERIDO' &&
                     modalDoc.status !== 'FINALIZADO' && (
                     <p className="text-xs text-amber-700 dark:text-amber-300">

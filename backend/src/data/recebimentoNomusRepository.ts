@@ -13,6 +13,7 @@ export const RECEBIMENTO_ID_EMPRESA_SO_ACO = PCP_ID_EMPRESA_SO_ACO;
 export const RECEBIMENTO_ID_TIPO_PRE_ENTRADA = 173;
 
 export const RECEBIMENTO_STATUS = {
+  AGUARDANDO_DOUBLE_CHECK: 'AGUARDANDO_DOUBLE_CHECK',
   AGUARDANDO_CONFERENTE: 'AGUARDANDO_CONFERENTE',
   EM_CONFERENCIA: 'EM_CONFERENCIA',
   CONFERIDO: 'CONFERIDO',
@@ -26,6 +27,7 @@ export const RECEBIMENTO_STATUS = {
 export type RecebimentoStatus = (typeof RECEBIMENTO_STATUS)[keyof typeof RECEBIMENTO_STATUS];
 
 export const RECEBIMENTO_STATUS_LABEL: Record<RecebimentoStatus, string> = {
+  AGUARDANDO_DOUBLE_CHECK: 'Aguardando conferência no Double check',
   AGUARDANDO_CONFERENTE: 'Aguardando deliberar conferente',
   EM_CONFERENCIA: 'Em conferência',
   CONFERIDO: 'Aguardando mesa alterar movimentação',

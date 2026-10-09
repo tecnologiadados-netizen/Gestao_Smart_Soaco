@@ -1,6 +1,7 @@
 import { apiFetch, apiJson } from './client';
 
 export type RecebimentoStatusCodigo =
+  | 'AGUARDANDO_DOUBLE_CHECK'
   | 'AGUARDANDO_CONFERENTE'
   | 'EM_CONFERENCIA'
   | 'CONFERIDO'

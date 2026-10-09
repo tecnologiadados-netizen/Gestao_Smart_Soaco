@@ -4,11 +4,18 @@
 
 import { getNomusPool, isNomusEnabled, nomusQueryWithRetry } from '../config/nomusDb.js';
 import { formatSqlDateYmd } from './dfcDateUtils.js';
+import { RECEBIMENTO_ID_TIPO_PRE_ENTRADA } from './recebimentoNomusRepository.js';
 
 /** Tipos de movimentação do SQL de negócio (entradas a conferir). */
 export const DOUBLE_CHECKIN_TIPOS_MOV = [11, 35, 111, 112, 113, 114, 115, 116] as const;
 
-const TIPOS_IN = DOUBLE_CHECKIN_TIPOS_MOV.join(', ');
+/**
+ * A grade do Double Check também lista a pré-entrada da Gestão Mesa.
+ * O histórico de preço continua só nos tipos de entrada efetivada, para não usar
+ * uma pré-entrada ainda não concluída como base da variação.
+ */
+const TIPOS_GRADE = [...DOUBLE_CHECKIN_TIPOS_MOV, RECEBIMENTO_ID_TIPO_PRE_ENTRADA].join(', ');
+const TIPOS_HISTORICO = DOUBLE_CHECKIN_TIPOS_MOV.join(', ');
 
 export type DoubleCheckInNota = {
   idDocumento: number;
@@ -81,7 +88,7 @@ LEFT JOIN tipomovimentacao tp ON tp.id = de.idTipoMovimentacao
 LEFT JOIN nfe ON nfe.idDocumentoEstoque = de.id
 WHERE DATE(de.dataEntrada) BETWEEN ? AND ?
   AND ide.discriminador = 'ItemDocumentoEntrada'
-  AND tp.id IN (${TIPOS_IN})
+  AND tp.id IN (${TIPOS_GRADE})
 GROUP BY
   de.id,
   de.numeroDocumentoFiscal,
@@ -98,7 +105,7 @@ const SQL_DATA_ENTRADA_DOCUMENTO = `
 SELECT DATE(de.dataEntrada) AS dataEntrada
 FROM documentoestoque de
 WHERE de.id = ?
-  AND de.idTipoMovimentacao IN (${TIPOS_IN})
+  AND de.idTipoMovimentacao IN (${TIPOS_GRADE})
 LIMIT 1
 `.trim();
 
@@ -128,11 +135,11 @@ LEFT JOIN unidademedida um ON um.id = p.idUnidadeMedida
 LEFT JOIN nfe ON nfe.idDocumentoEstoque = de.id
 WHERE ide.idDocumentoEstoque = ?
   AND ide.discriminador = 'ItemDocumentoEntrada'
-  AND tp.id IN (${TIPOS_IN})
+  AND tp.id IN (${TIPOS_GRADE})
 ORDER BY ide.id ASC
 `.trim();
 
-/** Últimas N entradas do produto com dataEmissao < dataRef (mesmos tipos da grade). */
+/** Últimas N entradas efetivadas do produto com dataEmissao < dataRef. */
 const SQL_HISTORICO_PRODUTO = `
 SELECT
   de.id AS idDocumento,
@@ -148,7 +155,7 @@ LEFT JOIN pessoa pe ON pe.id = de.idParceiro
 LEFT JOIN nfe ON nfe.idDocumentoEstoque = de.id
 WHERE ide.idProduto = ?
   AND ide.discriminador = 'ItemDocumentoEntrada'
-  AND de.idTipoMovimentacao IN (${TIPOS_IN})
+  AND de.idTipoMovimentacao IN (${TIPOS_HISTORICO})
   AND DATE(de.dataEmissao) < ?
 ORDER BY DATE(de.dataEmissao) DESC, de.id DESC, ide.id DESC
 LIMIT 3
@@ -499,7 +506,7 @@ INNER JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
 INNER JOIN tipomovimentacao tp ON tp.id = de.idTipoMovimentacao
 WHERE DATE(de.dataEntrada) BETWEEN ? AND ?
   AND ide.discriminador = 'ItemDocumentoEntrada'
-  AND de.idTipoMovimentacao IN (${TIPOS_IN})
+  AND de.idTipoMovimentacao IN (${TIPOS_GRADE})
 GROUP BY DATE(de.dataEntrada)
 ORDER BY DATE(de.dataEntrada) ASC
 `.trim();
@@ -514,7 +521,7 @@ INNER JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
 INNER JOIN tipomovimentacao tp ON tp.id = de.idTipoMovimentacao
 WHERE DATE(de.dataEntrada) BETWEEN ? AND ?
   AND ide.discriminador = 'ItemDocumentoEntrada'
-  AND de.idTipoMovimentacao IN (${TIPOS_IN})
+  AND de.idTipoMovimentacao IN (${TIPOS_GRADE})
 GROUP BY tp.id, tp.nome
 ORDER BY notas DESC
 `.trim();
@@ -530,7 +537,7 @@ INNER JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
 LEFT JOIN pessoa pe ON pe.id = de.idParceiro
 WHERE DATE(de.dataEntrada) BETWEEN ? AND ?
   AND ide.discriminador = 'ItemDocumentoEntrada'
-  AND de.idTipoMovimentacao IN (${TIPOS_IN})
+  AND de.idTipoMovimentacao IN (${TIPOS_GRADE})
 GROUP BY de.idParceiro, pe.nome
 ORDER BY notas DESC
 LIMIT 5
@@ -544,7 +551,7 @@ FROM itemdocumentoestoque ide
 INNER JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
 WHERE DATE(de.dataEntrada) BETWEEN ? AND ?
   AND ide.discriminador = 'ItemDocumentoEntrada'
-  AND de.idTipoMovimentacao IN (${TIPOS_IN})
+  AND de.idTipoMovimentacao IN (${TIPOS_GRADE})
 `.trim();
 
 export async function queryDoubleCheckInDashboard(params: {
