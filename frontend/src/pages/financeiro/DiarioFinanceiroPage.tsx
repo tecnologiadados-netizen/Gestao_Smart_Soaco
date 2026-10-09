@@ -10,7 +10,6 @@ import {
   type ContaBancariaOpcao,
   type FormaPagamentoOpcao,
   type DiarioContaPagarLinha,
-  type DiarioContaPagarStatus,
 } from '../../api/diarioFinanceiro';
 import {
   DFC_PRIORIDADE_CHIP,
@@ -168,13 +167,13 @@ const VAZIO_CELULA = '—';
 function textoCelula(l: DiarioContaPagarLinha, col: string): string {
   const texto = (v: string | null | undefined) => {
     const t = v?.trim();
-    return t ? t : VAZIO_CELULA;
+    return t ? t.toLocaleUpperCase('pt-BR') : VAZIO_CELULA;
   };
   switch (col) {
     case 'origem':
-      return l.origem;
+      return l.origem.toLocaleUpperCase('pt-BR');
     case 'situacao':
-      return l.status;
+      return l.status.toLocaleUpperCase('pt-BR');
     case 'vencimento':
       return formatData(l.dataVencimento);
     case 'baixa':
@@ -183,6 +182,8 @@ function textoCelula(l: DiarioContaPagarLinha, col: string): string {
       return texto(l.fornecedor);
     case 'empresa':
       return texto(empresaExibida(l));
+    case 'codigo':
+      return l.codigoClassificacao != null && l.codigoClassificacao > 0 ? String(l.codigoClassificacao) : VAZIO_CELULA;
     case 'plano':
       return texto(l.planoContas);
     case 'pc':
@@ -450,6 +451,15 @@ export default function DiarioFinanceiroPage() {
     valueForSort,
     dateColumnIds: ['vencimento', 'baixa'],
   });
+  const limparFiltros = () => {
+    setFornecedores('');
+    setEmpresas('');
+    setPlanos('');
+    setOrigens('');
+    setSituacoes('');
+    setObservacao('');
+    grade.limparFiltrosGrade();
+  };
   const limparGradeRef = useRef(grade.limparFiltrosGrade);
   limparGradeRef.current = grade.limparFiltrosGrade;
   useEffect(() => {
@@ -734,15 +744,6 @@ export default function DiarioFinanceiroPage() {
             Contas a pagar
           </button>
           <div className="flex flex-wrap items-center justify-end gap-2 py-1.5">
-            {grade.temFiltrosOuOrdem ? (
-              <button
-                type="button"
-                onClick={() => grade.limparFiltrosGrade()}
-                className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-              >
-                Limpar filtros da grade
-              </button>
-            ) : null}
             <button
               type="button"
               onClick={() => void exportar('xlsx')}
@@ -789,7 +790,7 @@ export default function DiarioFinanceiroPage() {
               aria-expanded={faixaFiltrosVisivel}
               aria-label={faixaFiltrosVisivel ? 'Ocultar filtros' : 'Mostrar filtros'}
               title={faixaFiltrosVisivel ? 'Ocultar filtros' : 'Mostrar filtros'}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 px-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
             >
               <svg
                 className={`h-4 w-4 transition-transform ${faixaFiltrosVisivel ? '' : 'rotate-180'}`}
@@ -800,7 +801,18 @@ export default function DiarioFinanceiroPage() {
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
               </svg>
-              {faixaFiltrosVisivel ? 'Ocultar' : 'Filtros'}
+            </button>
+            <button
+              type="button"
+              onClick={limparFiltros}
+              aria-label="Limpar filtros"
+              title="Limpar filtros"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h18l-7 8v5l-4 2v-7L3 4z" />
+                <path strokeLinecap="round" strokeWidth={2} d="M4 20L20 4" />
+              </svg>
             </button>
           </div>
         </div>
@@ -985,10 +997,10 @@ export default function DiarioFinanceiroPage() {
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="uppercase">
             {linhasExibidas.length === 0 && !loading && (
               <tr>
-                <td colSpan={19} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
+                <td colSpan={15} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
                   {linhasFiltradas.length === 0
                     ? 'Nenhum contas a pagar neste vencimento.'
                     : 'Nenhum lançamento com os filtros da grade.'}
@@ -1021,21 +1033,32 @@ export default function DiarioFinanceiroPage() {
                     className="rounded border-slate-400 text-primary-600 focus:ring-primary-500 disabled:opacity-40"
                   />
                 </td>
-                <td className="px-2 py-1.5 whitespace-nowrap">{l.origem}</td>
-                <td className="px-2 py-1.5 whitespace-nowrap">
-                  <StatusBadge status={l.status} />
-                </td>
-                <td className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
-                <td className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataBaixa)}</td>
-                <td className="px-2 py-1.5 max-w-[14rem] truncate" title={l.fornecedor ?? ''}>
-                  {l.fornecedor ?? '—'}
-                </td>
-                <td className="px-2 py-1.5 max-w-[12rem] truncate" title={empresaExibida(l) ?? ''}>
-                  {empresaExibida(l) ?? '—'}
+                <td className="px-2 py-1.5 whitespace-nowrap tabular-nums">
+                  {l.codigoClassificacao != null && l.codigoClassificacao > 0 ? l.codigoClassificacao : '—'}
                 </td>
                 <td className="px-2 py-1.5 max-w-[14rem] truncate" title={l.planoContas ?? ''}>
                   {l.planoContas ?? '—'}
                 </td>
+                <td className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
+                <td className="px-2 py-1.5 max-w-[12rem] truncate" title={empresaExibida(l) ?? ''}>
+                  {empresaExibida(l) ?? '—'}
+                </td>
+                <td className="px-2 py-1.5 max-w-[10rem] truncate" title={l.contaBancaria ?? ''}>
+                  {l.contaBancaria ?? '—'}
+                </td>
+                <td className="px-2 py-1.5 whitespace-nowrap">{l.formaPagamento ?? '—'}</td>
+                <td className="px-2 py-1.5 max-w-[14rem] truncate" title={l.fornecedor ?? ''}>
+                  {l.fornecedor ?? '—'}
+                </td>
+                <td className="px-2 py-1.5 min-w-[14rem] max-w-[24rem] truncate" title={l.descricao ?? ''}>
+                  <DescricaoReprogramadaGrade texto={l.descricao} />
+                </td>
+                <td className="px-2 py-1.5 max-w-[14rem] truncate" title={l.observacao ?? ''}>
+                  {l.observacao ?? '—'}
+                </td>
+                <td className="px-2 py-1.5 min-w-[12rem] max-w-[22rem] truncate" title={l.pedidoCompra ?? ''}>{l.pedidoCompra ?? '—'}</td>
+                <td className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.saldo)}</td>
+                <td className="px-2 py-1.5 max-w-[10rem] truncate whitespace-nowrap" title={l.notaFiscal ?? ''}>{l.notaFiscal ?? '—'}</td>
                 <td className="px-2 py-1.5 min-w-[11rem]">
                   {prio.chave == null ? (
                     <span className="text-slate-400">—</span>
@@ -1066,21 +1089,6 @@ export default function DiarioFinanceiroPage() {
                     </select>
                   )}
                 </td>
-                <td className="px-2 py-1.5 min-w-[14rem] max-w-[24rem] truncate" title={l.descricao ?? ''}>
-                  <DescricaoReprogramadaGrade texto={l.descricao} />
-                </td>
-                <td className="px-2 py-1.5 max-w-[14rem] truncate" title={l.observacao ?? ''}>
-                  {l.observacao ?? '—'}
-                </td>
-                <td className="px-2 py-1.5 whitespace-nowrap">{l.formaPagamento ?? '—'}</td>
-                <td className="px-2 py-1.5 max-w-[10rem] truncate" title={l.contaBancaria ?? ''}>
-                  {l.contaBancaria ?? '—'}
-                </td>
-                <td className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.valor)}</td>
-                <td className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.valorBaixado)}</td>
-                <td className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.saldo)}</td>
-                <td className="px-2 py-1.5 min-w-[12rem] max-w-[22rem] truncate" title={l.pedidoCompra ?? ''}>{l.pedidoCompra ?? '—'}</td>
-                <td className="px-2 py-1.5 max-w-[10rem] truncate whitespace-nowrap" title={l.notaFiscal ?? ''}>{l.notaFiscal ?? '—'}</td>
                 <td className="px-2 py-1.5 text-center">
                   {(l.itens?.length ?? 0) > 0 ? (
                     <button
@@ -1492,20 +1500,5 @@ function ModalItensNota({ linha, onClose }: { linha: DiarioContaPagarLinha; onCl
         </div>
       </div>
     </div>
-  );
-}
-
-function StatusBadge({ status }: { status: DiarioContaPagarStatus }) {
-  const aberto = status === 'Em aberto';
-  return (
-    <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
-        aberto
-          ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
-          : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
-      }`}
-    >
-      {status}
-    </span>
   );
 }

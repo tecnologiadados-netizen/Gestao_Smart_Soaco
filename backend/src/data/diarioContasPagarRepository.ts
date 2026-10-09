@@ -259,6 +259,8 @@ export interface DiarioContaPagarLinha {
   fornecedor: string | null;
   empresa: string | null;
   filial: string | null;
+  /** Código do plano de contas exibido em Classificação. */
+  codigoClassificacao: number | null;
   planoContas: string | null;
   descricao: string | null;
   observacao: string | null;
@@ -417,6 +419,7 @@ function mapShop9(row: Record<string, unknown>): DiarioContaPagarLinha {
     fornecedor: primeiroTexto(row.clienteFornecedor, row.nomeRazaoSocial),
     empresa: texto(row.empresa),
     filial: texto(row.nomeFilial),
+    codigoClassificacao: idPositivo(row.idPlanoContas),
     planoContas: texto(row.planoContas),
     descricao: texto(row.descricaoLancamento),
     observacao: null,
@@ -452,6 +455,7 @@ function mapNomus(row: Record<string, unknown>): DiarioContaPagarLinha {
     fornecedor: primeiroTexto(row.clienteFornecedor, row.nomeRazaoSocial),
     empresa: texto(row.empresa),
     filial: null,
+    codigoClassificacao: idPositivo(row.idPlanoContas),
     planoContas: texto(row.planoContas),
     descricao: texto(row.descricaoLancamento),
     observacao: texto(row.comentarios),

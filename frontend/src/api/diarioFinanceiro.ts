@@ -22,6 +22,7 @@ export interface DiarioContaPagarLinha {
   fornecedor: string | null;
   empresa: string | null;
   filial: string | null;
+  codigoClassificacao: number | null;
   planoContas: string | null;
   descricao: string | null;
   observacao: string | null;
