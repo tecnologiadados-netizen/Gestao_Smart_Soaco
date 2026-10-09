@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { importarAnotacoesDiario, salvarAnotacaoDiario } from '../data/diarioAnotacao.js';
 import {
   MAX_REPROGRAMAR,
   definirContaBancariaDiario,
@@ -226,5 +227,51 @@ export async function postDefinirFormaPagamento(req: Request, res: Response): Pr
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[postDefinirFormaPagamento]', msg);
     res.status(500).json({ error: msg });
+  }
+}
+
+/** POST /api/financeiro/diario/contas-pagar/anotacao */
+export async function postSalvarAnotacaoDiario(req: Request, res: Response): Promise<void> {
+  const origem = req.body?.origem;
+  const codigo = Number(req.body?.codigo);
+  const texto = String(req.body?.texto ?? '');
+  if ((origem !== 'Nomus' && origem !== 'Shop9') || !Number.isInteger(codigo) || codigo <= 0) {
+    res.status(400).json({ error: 'Informe a origem e o código do título.' });
+    return;
+  }
+  try {
+    const resultado = await salvarAnotacaoDiario({
+      origem,
+      codigo,
+      texto,
+      usuario: req.user?.login ?? '?',
+    });
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[postSalvarAnotacaoDiario]', msg);
+    res.status(400).json({ error: msg });
+  }
+}
+
+/** POST /api/financeiro/diario/contas-pagar/anotacoes/importar */
+export async function postImportarAnotacoesDiario(req: Request, res: Response): Promise<void> {
+  try {
+    const resultado = await importarAnotacoesDiario({
+      matriz: req.body?.matriz,
+      usuario: req.user?.login ?? '?',
+    });
+    console.log(
+      '[diario anotacao import] user=%s gravados=%s sem=%s ambiguos=%s',
+      req.user?.login ?? '?',
+      resultado.gravados,
+      resultado.semCorrespondencia,
+      resultado.ambiguos,
+    );
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[postImportarAnotacoesDiario]', msg);
+    res.status(400).json({ error: msg });
   }
 }

@@ -14,6 +14,7 @@ export const DIARIO_COLUNAS_GRADE = [
   { id: 'fornecedor', label: 'Pessoa' },
   { id: 'descricao', label: 'Descrição' },
   { id: 'observacao', label: 'Comentários' },
+  { id: 'anotacao', label: 'Observação' },
   { id: 'pc', label: 'Pedido de compra' },
   { id: 'saldo', label: 'Saldo a pagar', align: 'right' as const },
   { id: 'nfe', label: 'NF' },

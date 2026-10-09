@@ -20,7 +20,9 @@ import {
   getDiarioFormasPagamento,
   postDefinirContaBancaria,
   postDefinirFormaPagamento,
+  postImportarAnotacoesDiario,
   postReprogramarContasPagar,
+  postSalvarAnotacaoDiario,
 } from '../controllers/diarioFinanceiroController.js';
 import {
   getDfcAgendamentosEfetivos,
@@ -157,6 +159,8 @@ router.get('/diario/formas-pagamento', verFinanceiroDiario, getDiarioFormasPagam
 router.post('/diario/contas-pagar/reprogramar', verFinanceiroDiario, postReprogramarContasPagar);
 router.post('/diario/contas-pagar/conta-bancaria', verFinanceiroDiario, postDefinirContaBancaria);
 router.post('/diario/contas-pagar/forma-pagamento', verFinanceiroDiario, postDefinirFormaPagamento);
+router.post('/diario/contas-pagar/anotacao', verFinanceiroDiario, postSalvarAnotacaoDiario);
+router.post('/diario/contas-pagar/anotacoes/importar', verFinanceiroDiario, postImportarAnotacoesDiario);
 
 router.get('/dfc/agendamentos-efetivos', verFinanceiroDfc, getDfcAgendamentosEfetivos);
 router.get('/dfc/projecao-receitas', verFinanceiroDfc, getDfcProjecaoReceitas);

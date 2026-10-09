@@ -16,6 +16,7 @@ const COLUNAS = [
   'Pessoa',
   'Descrição',
   'Comentários',
+  'Observação',
   'Pedido de compra',
   'Saldo a pagar',
   'NF',
@@ -23,7 +24,7 @@ const COLUNAS = [
 ] as const;
 
 const COL_DESCRICAO = 8;
-const COL_SALDO = 12;
+const COL_SALDO = 13;
 
 function maiusculo(valor: string | null | undefined): string {
   return (valor ?? '').toLocaleUpperCase('pt-BR');
@@ -129,6 +130,7 @@ export async function exportarDiarioContasPagarExcel(opts: {
       maiusculo(l.fornecedor),
       richTextDescricao(maiusculo(l.descricao)),
       maiusculo(l.observacao),
+      maiusculo(l.anotacao),
       maiusculo(l.pedidoCompra),
       l.saldo,
       maiusculo(l.notaFiscal),
@@ -141,6 +143,7 @@ export async function exportarDiarioContasPagarExcel(opts: {
 
   const total = ws.addRow([
     `Lançamentos: ${opts.totais.qtd.toLocaleString('pt-BR')}`,
+    '',
     '',
     '',
     '',
@@ -261,6 +264,7 @@ export function exportarDiarioContasPagarPdf(opts: {
     maiusculo(l.fornecedor),
     maiusculo(l.descricao),
     maiusculo(l.observacao),
+    maiusculo(l.anotacao),
     maiusculo(l.pedidoCompra),
     formatMoeda(l.saldo),
     maiusculo(l.notaFiscal),
@@ -274,6 +278,7 @@ export function exportarDiarioContasPagarPdf(opts: {
     body,
     foot: [[
       `Lançamentos: ${opts.totais.qtd.toLocaleString('pt-BR')}`,
+      '',
       '',
       '',
       '',
@@ -300,12 +305,13 @@ export function exportarDiarioContasPagarPdf(opts: {
       5: { cellWidth: 22 },
       6: { cellWidth: 22 },
       7: { cellWidth: 28 },
-      8: { cellWidth: 36 },
-      9: { cellWidth: 22 },
+      8: { cellWidth: 32 },
+      9: { cellWidth: 20 },
       10: { cellWidth: 24 },
-      11: { cellWidth: 18, halign: 'right' },
-      12: { cellWidth: 16 },
-      13: { cellWidth: 18 },
+      11: { cellWidth: 22 },
+      12: { cellWidth: 18, halign: 'right' },
+      13: { cellWidth: 16 },
+      14: { cellWidth: 16 },
     },
     horizontalPageBreak: true,
     willDrawCell(data) {
