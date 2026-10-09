@@ -6,6 +6,7 @@ import {
   fetchDiarioContasBancarias,
   fetchDiarioFormasPagamento,
   fetchDiarioContasPagar,
+  importarAnotacoesDiario,
   reprogramarDiarioContasPagar,
   type ContaBancariaOpcao,
   type FormaPagamentoOpcao,
@@ -35,6 +36,8 @@ import {
   exportarDiarioContasPagarPdf,
 } from './diario/exportDiarioContasPagar';
 import { DescricaoReprogramadaGrade } from './diario/descricaoReprogramada';
+import { DiarioAnotacaoCelula } from './diario/DiarioAnotacaoCelula';
+import { lerPlanilhaAnotacoes } from './diario/lerPlanilhaAnotacoes';
 
 type Atalho = 'hoje' | 'ontem' | 'amanha' | 'mes';
 
@@ -196,6 +199,8 @@ function textoCelula(l: DiarioContaPagarLinha, col: string): string {
       return texto(l.descricao);
     case 'observacao':
       return texto(l.observacao);
+    case 'anotacao':
+      return texto(l.anotacao);
     case 'forma':
       return texto(l.formaPagamento);
     case 'conta':
@@ -276,6 +281,8 @@ export default function DiarioFinanceiroPage() {
   const [prioridadeLanc, setPrioridadeLanc] = useState<Map<string, DfcPrioridade>>(() => new Map());
   const [salvandoPrioridade, setSalvandoPrioridade] = useState<string | null>(null);
   const [exportando, setExportando] = useState<'xlsx' | 'pdf' | null>(null);
+  const [importando, setImportando] = useState(false);
+  const arquivoAnotacaoRef = useRef<HTMLInputElement | null>(null);
   const [cargaTick, setCargaTick] = useState(0);
 
   const carregarPrioridades = useCallback(async () => {
@@ -702,6 +709,27 @@ export default function DiarioFinanceiroPage() {
     [linhasExibidas],
   );
 
+  const importarAnotacoes = async (arquivo: File | undefined) => {
+    if (!arquivo || importando) return;
+    setImportando(true);
+    setErro(null);
+    try {
+      const matriz = await lerPlanilhaAnotacoes(arquivo);
+      const res = await importarAnotacoesDiario(matriz);
+      const partes = [`${res.gravados} observação(ões) gravada(s).`];
+      if (res.semCorrespondencia > 0) partes.push(`${res.semCorrespondencia} sem conta correspondente.`);
+      if (res.ambiguos > 0) partes.push(`${res.ambiguos} com mais de uma conta possível.`);
+      if (res.amostrasSem.length > 0) partes.push(`Exemplos: ${res.amostrasSem.join('; ')}.`);
+      await carregar(dataInicio, dataFim);
+      setAviso(partes.join(' '));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImportando(false);
+      if (arquivoAnotacaoRef.current) arquivoAnotacaoRef.current.value = '';
+    }
+  };
+
   const exportar = async (formato: 'xlsx' | 'pdf') => {
     if (exportando || linhasExibidas.length === 0) return;
     setExportando(formato);
@@ -744,6 +772,21 @@ export default function DiarioFinanceiroPage() {
             Contas a pagar
           </button>
           <div className="flex flex-wrap items-center justify-end gap-2 py-1.5">
+            <input
+              ref={arquivoAnotacaoRef}
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              onChange={(e) => void importarAnotacoes(e.target.files?.[0])}
+            />
+            <button
+              type="button"
+              onClick={() => arquivoAnotacaoRef.current?.click()}
+              disabled={loading || importando}
+              className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+            >
+              {importando ? 'Importando…' : 'Importar observações'}
+            </button>
             <button
               type="button"
               onClick={() => void exportar('xlsx')}
@@ -1000,7 +1043,7 @@ export default function DiarioFinanceiroPage() {
           <tbody className="uppercase">
             {linhasExibidas.length === 0 && !loading && (
               <tr>
-                <td colSpan={16} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
+                <td colSpan={17} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
                   {linhasFiltradas.length === 0
                     ? 'Nenhum contas a pagar neste vencimento.'
                     : 'Nenhum lançamento com os filtros da grade.'}
@@ -1066,6 +1109,18 @@ export default function DiarioFinanceiroPage() {
                 </td>
                 <td className="px-2 py-1.5 max-w-[14rem] truncate" title={l.observacao ?? ''}>
                   {l.observacao ?? '—'}
+                </td>
+                <td className="px-1 py-1">
+                  <DiarioAnotacaoCelula
+                    linha={l}
+                    onGravada={(texto) => {
+                      setLinhas((prev) =>
+                        prev.map((item) =>
+                          item.origem === l.origem && item.codigo === l.codigo ? { ...item, anotacao: texto } : item,
+                        ),
+                      );
+                    }}
+                  />
                 </td>
                 <td className="px-2 py-1.5 min-w-[12rem] max-w-[22rem] truncate" title={l.pedidoCompra ?? ''}>{l.pedidoCompra ?? '—'}</td>
                 <td className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.saldo)}</td>

@@ -3045,3 +3045,18 @@ model RhVagaHistorico {
   @@index([vagaId, createdAt])
   @@map("rh_vaga_historico")
 }
+
+/// Observação digitada ou importada no Diário Financeiro. Não grava no Nomus nem no Shop9.
+/// codigo = agendamentofinanceiro.id (Nomus) ou Financeiro_Contas.Ordem (Shop9).
+model DiarioAnotacao {
+  id           Int      @id @default(autoincrement())
+  origem       String
+  codigo       Int
+  texto        String
+  usuario      String
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+  criadoEm     DateTime @default(now()) @map("criado_em")
+
+  @@unique([origem, codigo])
+  @@map("diario_anotacao")
+}
