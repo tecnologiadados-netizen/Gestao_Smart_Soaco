@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CalendarRange, ClipboardCheck, Clock3, Package } from 'lucide-react';
 import {
   CartesianGrid,
@@ -17,8 +17,11 @@ import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoes
 import KpiPainelVoltarLink from '../../components/kpis/KpiPainelVoltarLink';
 import {
   fetchGestaoEntradasPainel,
+  type GestaoEntradasCompradorDetalhe,
   type GestaoEntradasPainel,
+  type MundoCompradorGestao,
 } from '../../api/gestaoEntradas';
+import GestaoEntradasCompradorModal from './GestaoEntradasCompradorModal';
 import GestaoEntradasAjudaModal from './GestaoEntradasAjudaModal';
 import GestaoEntradasCardModal, { type RecorteGestaoEntrada } from './GestaoEntradasCardModal';
 import GestaoEntradasDiaModal, {
@@ -403,8 +406,12 @@ export default function GestaoEntradasPage() {
   const [contextoMovimentacao, setContextoMovimentacao] =
     useState<ContextoMovimentacao>('volume');
   const [escopo, setEscopo] = useState<EscopoDivergencia>('reais');
+  const [mundoComprador, setMundoComprador] = useState<MundoCompradorGestao>('apontada');
+  const [compradorAberto, setCompradorAberto] = useState<string | null>(null);
+  const compradorCacheRef = useRef(new Map<string, GestaoEntradasCompradorDetalhe>());
 
   const carregar = useCallback(async (di: string, df: string, escopoArg: EscopoDivergencia) => {
+    compradorCacheRef.current.clear();
     setLoading(true);
     setErro(null);
     try {
@@ -485,6 +492,18 @@ export default function GestaoEntradasPage() {
   }, [serieChart]);
   const pctSemDivergencia =
     k && k.qtdeConferidas > 0 ? (k.qtdeLimpas / k.qtdeConferidas) * 100 : null;
+  const rankingComprador =
+    (mundoComprador === 'apontada' ? painel?.compradoresApontados : painel?.compradoresAceitos) ?? [];
+  const barrasComprador = rankingComprador.map((item) => ({
+    key: item.nomeComprador,
+    label: item.nomeComprador,
+    valor: item.documentos,
+    detalhe:
+      mundoComprador === 'apontada'
+        ? `${fmtNum(item.documentos)} ${item.documentos === 1 ? 'nota' : 'notas'} · ${fmtNum(item.pedidos)} ${item.pedidos === 1 ? 'pedido' : 'pedidos'} · ${fmtNum(item.ajustados)} ${item.ajustados === 1 ? 'ajustada' : 'ajustadas'}`
+        : `${fmtNum(item.documentos)} ${item.documentos === 1 ? 'nota' : 'notas'} · ${fmtNum(item.pedidos)} ${item.pedidos === 1 ? 'pedido' : 'pedidos'}`,
+  }));
+  const liderComprador = rankingComprador[0];
   const liderMovimento = tiposMaisUsados[0];
   const liderPercentual =
     liderMovimento && totalTiposMaisUsados > 0
@@ -1001,6 +1020,65 @@ export default function GestaoEntradasPage() {
                 />
               </div>
             </div>
+
+            <div className={`p-4 ${panelSurface}`}>
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Compradores com divergência
+                  </h2>
+                  <p className="mt-0.5 max-w-3xl text-xs text-slate-500">
+                    {liderComprador
+                      ? `${liderComprador.nomeComprador} lidera com ${fmtNum(liderComprador.documentos)} ${liderComprador.documentos === 1 ? 'nota' : 'notas'}.`
+                      : mundoComprador === 'apontada'
+                        ? 'Ainda não há divergência apontada no vínculo neste período.'
+                        : 'Nenhuma NF aceita com divergência neste período.'}{' '}
+                    {mundoComprador === 'apontada'
+                      ? 'A primeira leitura do Double Check guarda o pedido e o comprador, mesmo se o vínculo for desfeito depois.'
+                      : 'Entram as notas aceitas com divergência desde 21/09/2026, mesmo que o pedido tenha sido corrigido depois.'}{' '}
+                    Clique no comprador para ver as notas e os pedidos.
+                  </p>
+                </div>
+                <div className="inline-flex shrink-0 rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-black/25">
+                  <button
+                    type="button"
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                      mundoComprador === 'apontada'
+                        ? 'bg-white text-amber-800 shadow-sm dark:bg-amber-500/20 dark:text-amber-100'
+                        : 'text-slate-500'
+                    }`}
+                    onClick={() => setMundoComprador('apontada')}
+                  >
+                    Apontada no vínculo
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                      mundoComprador === 'aceita'
+                        ? 'bg-white text-rose-700 shadow-sm dark:bg-rose-500/20 dark:text-rose-200'
+                        : 'text-slate-500'
+                    }`}
+                    onClick={() => setMundoComprador('aceita')}
+                  >
+                    Aceita com divergência
+                  </button>
+                </div>
+              </div>
+              <BarrasRanking
+                itens={barrasComprador}
+                vazio={
+                  mundoComprador === 'apontada'
+                    ? 'Nenhuma divergência apontada no vínculo neste período. Essa leitura começa a ser gravada quando o Double Check lê a NF ligada ao pedido.'
+                    : 'Nenhuma NF aceita com divergência neste período.'
+                }
+                gradiente={
+                  mundoComprador === 'apontada'
+                    ? 'bg-gradient-to-r from-amber-400 to-orange-500 shadow-[0_0_12px_rgba(251,146,60,0.4)]'
+                    : 'bg-gradient-to-r from-rose-500 to-orange-400 shadow-[0_0_12px_rgba(244,63,94,0.4)]'
+                }
+                onItem={(item) => setCompradorAberto(item.label)}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -1021,6 +1099,17 @@ export default function GestaoEntradasPage() {
           dataFim={painel.dataFim}
           escopo={painel.escopo}
           onClose={() => setRankingAberto(null)}
+        />
+      )}
+      {compradorAberto && painel && (
+        <GestaoEntradasCompradorModal
+          mundo={mundoComprador}
+          comprador={compradorAberto}
+          dataInicio={painel.dataInicio}
+          dataFim={painel.dataFim}
+          escopo={painel.escopo}
+          cacheRef={compradorCacheRef}
+          onClose={() => setCompradorAberto(null)}
         />
       )}
       {recorteAberto && painel && (
