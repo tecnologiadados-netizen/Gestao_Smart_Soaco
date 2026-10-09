@@ -37,6 +37,7 @@ import {
 import {
   obterPainelComercialDashboard,
   obterItensPedidoPainelComercial,
+  obterUltimasVendasClientePainel,
 } from '../data/painelComercialRepository.js';
 import { queryDfcSaldoFaturar } from '../data/dfcSaldoFaturarRepository.js';
 import {
@@ -1133,6 +1134,30 @@ export async function getPoliticaComercialClientes(req: Request, res: Response):
     return;
   }
   res.json({ clientes: body.clientes });
+}
+
+/**
+ * GET /api/financeiro/painel-comercial/ultimas-vendas?clienteId=&cliente=&limit=
+ * Últimos pedidos do cliente, com forma, condição, valores e parcelas de entrada.
+ */
+export async function getPainelComercialUltimasVendas(req: Request, res: Response): Promise<void> {
+  const clienteId = Math.trunc(Number(req.query.clienteId ?? 0));
+  const cliente = String(req.query.cliente ?? '').trim();
+  const limit = Math.trunc(Number(req.query.limit ?? 15));
+  if ((!Number.isFinite(clienteId) || clienteId <= 0) && !cliente) {
+    res.status(400).json({ error: 'Informe clienteId ou cliente.', vendas: [] });
+    return;
+  }
+  const body = await obterUltimasVendasClientePainel({
+    clienteId: Number.isFinite(clienteId) ? clienteId : 0,
+    cliente,
+    limit: Number.isFinite(limit) ? limit : 15,
+  });
+  if (body.erro) {
+    res.status(503).json({ error: body.erro, vendas: [] });
+    return;
+  }
+  res.json(body);
 }
 
 /**

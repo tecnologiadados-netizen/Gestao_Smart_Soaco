@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "@rh/components/AppLayout";
@@ -10,6 +11,7 @@ import {
   Wallet,
   CalendarDays,
   ArrowUpDown,
+  GripHorizontal,
   X,
 } from "lucide-react";
 import {
@@ -28,7 +30,7 @@ import {
 } from "recharts";
 import { Button } from "@rh/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@rh/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@rh/components/ui/popover";
+import { useModalFlutuante, tamanhoViewport } from "@/hooks/useModalFlutuante";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@rh/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@rh/components/ui/tabs";
 import {
@@ -473,6 +475,24 @@ const Dashboard = () => {
   const [folhaModalAberto, setFolhaModalAberto] = useState(false);
   const [turnoverModalAberto, setTurnoverModalAberto] = useState(false);
   const [movimentacoesPopoverAberto, setMovimentacoesPopoverAberto] = useState(false);
+  const viewportMovimentacoes = typeof window === "undefined" ? { w: 1280, h: 800 } : tamanhoViewport();
+  const movimentacoesFlutuante = useModalFlutuante({
+    enabled: true,
+    open: movimentacoesPopoverAberto,
+    defaultSize: {
+      w: Math.min(980, viewportMovimentacoes.w - 48),
+      h: Math.min(620, Math.round(viewportMovimentacoes.h * 0.78)),
+    },
+    minSize: { w: 480, h: 320 },
+  });
+  useEffect(() => {
+    if (!movimentacoesPopoverAberto) return;
+    const aoTeclar = (evento: KeyboardEvent) => {
+      if (evento.key === "Escape") setMovimentacoesPopoverAberto(false);
+    };
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, [movimentacoesPopoverAberto]);
   const [movimentacoesLinhaModalAberto, setMovimentacoesLinhaModalAberto] = useState(false);
   const [retencaoExperienciaModalAberto, setRetencaoExperienciaModalAberto] = useState(false);
   const [avaliacaoExperienciaModalAberto, setAvaliacaoExperienciaModalAberto] = useState(false);
@@ -2039,43 +2059,76 @@ const Dashboard = () => {
             changeType="neutral"
             icon={Wallet}
           />
-          <Popover open={movimentacoesPopoverAberto} onOpenChange={setMovimentacoesPopoverAberto}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className="w-full text-left rounded-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                aria-label="Ver admissões e desligamentos deste mês"
-              >
-                <KpiCard
-                  title="Admissões vs Desligamentos"
-                  value={`${formatIntPt(movimentacoesMesAtual.admissoes.length)} / ${formatIntPt(
-                    movimentacoesMesAtual.desligamentos.length,
-                  )}`}
-                  change="neste mês · adm. / desl."
-                  changeType="neutral"
-                  icon={ArrowUpDown}
-                  alertColor="yellow"
-                />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              className="w-[min(94vw,980px)] max-h-[min(78vh,620px)] overflow-y-auto p-4"
-            >
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <p className="label-industrial">Movimentações deste mês</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setMovimentacoesPopoverAberto(false);
-                    setMovimentacoesLinhaModalAberto(true);
-                  }}
-                >
-                  Ver linha temporal
-                </Button>
-              </div>
+          <button
+            type="button"
+            className="w-full text-left rounded-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            aria-label="Ver admissões e desligamentos deste mês"
+            onClick={() => {
+              movimentacoesFlutuante.aplicarCentroPadrao();
+              setMovimentacoesPopoverAberto(true);
+            }}
+          >
+            <KpiCard
+              title="Admissões vs Desligamentos"
+              value={`${formatIntPt(movimentacoesMesAtual.admissoes.length)} / ${formatIntPt(
+                movimentacoesMesAtual.desligamentos.length,
+              )}`}
+              change="neste mês · adm. / desl."
+              changeType="neutral"
+              icon={ArrowUpDown}
+              alertColor="yellow"
+            />
+          </button>
+          {movimentacoesPopoverAberto
+            ? createPortal(
+                <div className="pointer-events-none fixed inset-0 z-[360]">
+                  <div
+                    role="dialog"
+                    aria-modal="false"
+                    aria-labelledby="movimentacoes-mes-titulo"
+                    className={`rh-portal pointer-events-auto flex min-w-0 flex-col overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-2xl ${
+                      movimentacoesFlutuante.dragging ? "select-none" : ""
+                    }`}
+                    style={movimentacoesFlutuante.panelStyle}
+                  >
+                    <div
+                      className={`flex shrink-0 cursor-grab touch-none items-center justify-between gap-3 border-b border-border px-4 py-3 ${
+                        movimentacoesFlutuante.dragging ? "cursor-grabbing" : ""
+                      }`}
+                      title="Arraste para mover"
+                      onPointerDown={movimentacoesFlutuante.onDragPointerDown}
+                      onPointerMove={movimentacoesFlutuante.onDragPointerMove}
+                      onPointerUp={movimentacoesFlutuante.onDragPointerEnd}
+                      onPointerCancel={movimentacoesFlutuante.onDragPointerEnd}
+                    >
+                      <p id="movimentacoes-mes-titulo" className="label-industrial inline-flex items-center gap-2">
+                        <GripHorizontal className="h-4 w-4 text-muted-foreground" aria-hidden />
+                        Movimentações deste mês
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setMovimentacoesPopoverAberto(false);
+                            setMovimentacoesLinhaModalAberto(true);
+                          }}
+                        >
+                          Ver linha temporal
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label="Fechar"
+                          onClick={() => setMovimentacoesPopoverAberto(false)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 {[
                   {
@@ -2138,8 +2191,12 @@ const Dashboard = () => {
                   </section>
                 ))}
               </div>
-            </PopoverContent>
-          </Popover>
+                    </div>
+                  </div>
+                </div>,
+                document.body,
+              )
+            : null}
           <KpiCard
             title="Idade média"
             value={`${derived.mediaIdadeAnos.toLocaleString("pt-BR", {

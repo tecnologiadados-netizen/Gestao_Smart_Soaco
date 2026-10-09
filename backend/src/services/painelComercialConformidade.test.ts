@@ -8,6 +8,7 @@ import {
   faixaTicket,
   isRetiradaSoAco,
   mediaPrazoDias,
+  prazoConcedidoNaoPior,
   prazoMedioParcelasConforme,
 } from './painelComercialConformidade.js';
 
@@ -94,7 +95,7 @@ describe('painelComercialConformidade', () => {
     expect(r.entradaOk).toBe(true);
     expect(r.prazosOk).toBe(false);
     expect(r.status).toBe('nao_conforme');
-    expect(r.motivos.some((m) => m.includes('Prazo médio'))).toBe(true);
+    expect(r.motivos.some((m) => m.includes('Prazo acima'))).toBe(true);
   });
 
   it('até limite faixa 1: exige à vista — parcelamento não conforme', () => {
@@ -170,5 +171,163 @@ describe('painelComercialConformidade', () => {
     });
     expect(abaixo.prazosOk).toBe(true);
     expect(abaixo.status).toBe('ok');
+  });
+
+  const politica306090 = {
+    ...DEFAULT_POLITICA_COMERCIAL,
+    limiteFaixa1Reais: 1,
+    diasParcelasFaixa2: [30, 60, 90],
+    diasParcelasFaixa3: [30, 60, 90],
+  };
+
+  it('prazo menor ou com menos parcelas que 30/60/90 conta como conforme', () => {
+    const menosParcelas = analisarConformidade(
+      {
+        totalPedido: 20_000,
+        somaEntrada: 6000,
+        formaPagamento: 'Boleto',
+        nomeCondicao: '30/60',
+        observacoesTipicas: '',
+      },
+      politica306090
+    );
+    expect(menosParcelas.prazosOk).toBe(true);
+    expect(menosParcelas.prazosBenignos).toBe(true);
+    expect(menosParcelas.status).toBe('ok');
+
+    const diasMenores = analisarConformidade(
+      {
+        totalPedido: 20_000,
+        somaEntrada: 6000,
+        formaPagamento: 'Boleto',
+        nomeCondicao: '15/30/45',
+        observacoesTipicas: '',
+      },
+      politica306090
+    );
+    expect(diasMenores.prazosOk).toBe(true);
+    expect(diasMenores.prazosBenignos).toBe(true);
+    expect(diasMenores.status).toBe('ok');
+    expect(prazoConcedidoNaoPior([15, 30, 45], [30, 60, 90])).toBe(true);
+  });
+
+  it('parcela mais longa que a da mesma posição é não conforme', () => {
+    const r = analisarConformidade(
+      {
+        totalPedido: 20_000,
+        somaEntrada: 6000,
+        formaPagamento: 'Boleto',
+        nomeCondicao: '30/60/120',
+        observacoesTipicas: '',
+      },
+      politica306090
+    );
+    expect(r.prazosOk).toBe(false);
+    expect(r.prazosBenignos).toBe(false);
+    expect(r.status).toBe('nao_conforme');
+    expect(prazoConcedidoNaoPior([45, 50], [30, 60, 90])).toBe(false);
+  });
+
+  it('desconto até o teto é conforme; acima é não conforme', () => {
+    const politica = { ...politica306090, pctDescontoMaximo: 0.05 };
+    const menor = analisarConformidade(
+      {
+        totalPedido: 20_000,
+        somaEntrada: 6000,
+        formaPagamento: 'Boleto',
+        nomeCondicao: '30/60/90',
+        observacoesTipicas: '',
+        valorTotal: 1000,
+        valorDesconto: 20,
+      },
+      politica
+    );
+    expect(menor.descontoOk).toBe(true);
+    expect(menor.status).toBe('ok');
+
+    const acima = analisarConformidade(
+      {
+        totalPedido: 20_000,
+        somaEntrada: 6000,
+        formaPagamento: 'Boleto',
+        nomeCondicao: '30/60/90',
+        observacoesTipicas: '',
+        valorTotal: 1000,
+        valorDesconto: 80,
+      },
+      politica
+    );
+    expect(acima.descontoOk).toBe(false);
+    expect(acima.status).toBe('nao_conforme');
+    expect(acima.motivos.some((m) => m.includes('Desconto'))).toBe(true);
+  });
+
+  it('entrada acima da faixa conta como conforme; abaixo do piso não', () => {
+    const acima = analisarConformidade(
+      {
+        totalPedido: 10_000,
+        somaEntrada: 5860,
+        formaPagamento: 'Boleto',
+        nomeCondicao: '30/60/90',
+        observacoesTipicas: '',
+      },
+      politica306090
+    );
+    expect(acima.entradaOk).toBe(true);
+    expect(acima.entradaBenigna).toBe(true);
+    expect(acima.status).toBe('ok');
+    expect(acima.motivos.some((m) => m.includes('benigno'))).toBe(true);
+
+    const dentro = analisarConformidade(
+      {
+        totalPedido: 10_000,
+        somaEntrada: 3000,
+        formaPagamento: 'Boleto',
+        nomeCondicao: '30/60/90',
+        observacoesTipicas: '',
+      },
+      politica306090
+    );
+    expect(dentro.entradaOk).toBe(true);
+    expect(dentro.entradaBenigna).toBe(false);
+    expect(dentro.status).toBe('ok');
+
+    const abaixo = analisarConformidade(
+      {
+        totalPedido: 10_000,
+        somaEntrada: 2000,
+        formaPagamento: 'Boleto',
+        nomeCondicao: '30/60/90',
+        observacoesTipicas: '',
+      },
+      politica306090
+    );
+    expect(abaixo.entradaOk).toBe(false);
+    expect(abaixo.entradaBenigna).toBe(false);
+    expect(abaixo.status).toBe('nao_conforme');
+    expect(abaixo.motivos.some((m) => m.includes('abaixo do mínimo'))).toBe(true);
+  });
+
+  it('retirada Só Aço: desconto até 4% é conforme; acima não', () => {
+    const base = {
+      totalPedido: 20_000,
+      somaEntrada: 6000,
+      formaPagamento: 'Boleto',
+      nomeCondicao: '30/60/90',
+      observacoesTipicas: '1-Retirada na So Aço',
+    };
+    const dentro = analisarConformidade(
+      { ...base, valorTotal: 1000, valorDesconto: 30 },
+      politica306090
+    );
+    expect(dentro.status).toBe('ok');
+    expect(dentro.motivos.some((m) => m.includes('conferir no ERP'))).toBe(false);
+
+    const acima = analisarConformidade(
+      { ...base, valorTotal: 1000, valorDesconto: 60 },
+      politica306090
+    );
+    expect(acima.status).toBe('nao_conforme');
+    expect(acima.motivos.some((m) => m.includes('retirada Só Aço'))).toBe(true);
   });
 });

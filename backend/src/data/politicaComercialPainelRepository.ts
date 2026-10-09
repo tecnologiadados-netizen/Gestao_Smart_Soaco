@@ -66,6 +66,12 @@ export function mergePoliticaComercialParcial(raw: unknown): PoliticaComercialPa
   if (pa <= 0 || pa >= 1) pa = d.pctEntradaAlvo;
   if (pt <= 0 || pt > 0.5) pt = d.pctEntradaTolerancia;
 
+  let pctDescontoMaximo: number | null = null;
+  if (o.pctDescontoMaximo != null && o.pctDescontoMaximo !== '') {
+    const n = Number(o.pctDescontoMaximo);
+    if (Number.isFinite(n) && n >= 0 && n <= 1) pctDescontoMaximo = n;
+  }
+
   return {
     limiteFaixa1Reais: lim1,
     limiteFaixa2Reais: lim2,
@@ -76,6 +82,7 @@ export function mergePoliticaComercialParcial(raw: unknown): PoliticaComercialPa
     pctEntradaTolerancia: pt,
     diasCondicaoMin: minD,
     diasCondicaoMax: maxD,
+    pctDescontoMaximo,
   };
 }
 
@@ -96,6 +103,9 @@ export function validarPoliticaComercialParaSalvar(p: PoliticaComercialParams): 
   }
   if (p.pctEntradaAlvo <= 0 || p.pctEntradaAlvo >= 1) return 'Entrada alvo deve estar entre 0 e 100%.';
   if (p.pctEntradaTolerancia <= 0 || p.pctEntradaTolerancia > 0.5) return 'Tolerância da entrada inválida.';
+  if (p.pctDescontoMaximo != null && (p.pctDescontoMaximo < 0 || p.pctDescontoMaximo > 1)) {
+    return 'Desconto máximo deve estar entre 0 e 100%.';
+  }
   return null;
 }
 

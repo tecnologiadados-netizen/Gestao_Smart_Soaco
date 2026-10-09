@@ -10,7 +10,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'universo',
     titulo: 'O que entra na conta',
     oQueE:
-      'O painel lê as notas de entrada do Nomus pela data de entrada, nos mesmos tipos de movimentação da conferência Double Check NFe (11, 35 e 111 a 116). Para entradas até 18/09/2026, a conferência é “Não aplicada”. De 19/09 a 20/09/2026, vale a conferência simples: o comparativo NF × PC fica visível somente para consulta e o usuário apenas confirma o documento. A partir de 21/09/2026, vale o fluxo completo, com aceite ou recusa obrigatórios para cada divergência. A leitura padrão é a visão real.',
+      'O painel lê as notas de entrada do Nomus pela data de entrada, nos tipos de movimentação 11, 35 e 111 a 116. A tela Double Check também lista a pré-entrada (tipo 173) enquanto o documento ainda está na Gestão Mesa; esse tipo não entra neste painel. Para entradas até 18/09/2026, a conferência é “Não aplicada”. De 19/09 a 20/09/2026, vale a conferência simples: o comparativo NF × PC fica visível somente para consulta e o usuário apenas confirma o documento. A partir de 21/09/2026, vale o fluxo completo, com aceite ou recusa obrigatórios para cada divergência. A leitura padrão é a visão real.',
     comoLe:
       'O período padrão é o mês corrente. Ajuste início e fim e clique em Filtrar. Visão real considera só divergência real. Visão geral inclui também a benigna. Cada nota conta uma vez, mesmo com vários itens. O detalhe do dia usa a mesma leitura que está selecionada.',
   },

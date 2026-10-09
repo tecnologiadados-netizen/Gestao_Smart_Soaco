@@ -197,7 +197,7 @@ export async function salvarClassificacaoEquipes(mapa: ClassificacaoEquipesMap):
   return limpo;
 }
 
-function resolverEquipe(vendedor: string, mapa: ClassificacaoEquipesMap): EquipeComissionamento {
+export function resolverEquipe(vendedor: string, mapa: ClassificacaoEquipesMap): EquipeComissionamento {
   const key = normalizarNome(vendedor);
   if (!key || key === '—' || key === '-') return 'sem_equipe';
   return mapa[key] ?? 'sem_equipe';

@@ -60,6 +60,7 @@ export default function PoliticaComercialPainelModal({
   const [tolPp, setTolPp] = useState('');
   const [diasMin, setDiasMin] = useState('');
   const [diasMax, setDiasMax] = useState('');
+  const [pctDescMax, setPctDescMax] = useState('');
 
   const [buscaCliente, setBuscaCliente] = useState('');
   const [clientes, setClientes] = useState<PoliticaComercialClienteNomus[]>([]);
@@ -79,6 +80,9 @@ export default function PoliticaComercialPainelModal({
     setTolPp(String(Math.round(p.pctEntradaTolerancia * 1000) / 10));
     setDiasMin(String(p.diasCondicaoMin));
     setDiasMax(String(p.diasCondicaoMax));
+    setPctDescMax(
+      p.pctDescontoMaximo == null ? '' : String(Math.round(p.pctDescontoMaximo * 1000) / 10)
+    );
   }, []);
 
   useEffect(() => {
@@ -155,6 +159,8 @@ export default function PoliticaComercialPainelModal({
     const d3 = parseDiasCsv(csv3);
     const pa = (Number(String(pctAlvo).replace(',', '.')) || 0) / 100;
     const pt = (Number(String(tolPp).replace(',', '.')) || 0) / 100;
+    const descTxt = String(pctDescMax).trim().replace(',', '.');
+    const pctDescontoMaximo = descTxt === '' ? null : Math.max(0, Number(descTxt) || 0) / 100;
     return {
       limiteFaixa1Reais,
       limiteFaixa2Reais,
@@ -165,6 +171,7 @@ export default function PoliticaComercialPainelModal({
       pctEntradaTolerancia: pt,
       diasCondicaoMin,
       diasCondicaoMax,
+      pctDescontoMaximo,
     };
   };
 
@@ -253,8 +260,10 @@ export default function PoliticaComercialPainelModal({
               <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                 Estes parâmetros alimentam a mesma lógica do painel: faixas de ticket (R$), pacotes de dias esperados
                 por faixa, entrada em % do total com tolerância, e o intervalo de dias extraídos do nome da condição
-                de pagamento no Nomus. O prazo do saldo é avaliado pela média dos dias (cadastro ≤ referência). Cartão
-                e à vista seguem as regras já fixas no sistema.
+                de pagamento no Nomus. Prazo menor ou com menos parcelas que o pacote conta como conforme; só prazo
+                mais longo é não conforme. Entrada acima da faixa (mais que o alvo) conta como conforme; abaixo do
+                mínimo é não conforme. Desconto até o máximo (vazio = não avalia; retirada Só Aço segue em 4%)
+                também conta como conforme. Cartão e à vista seguem as regras já fixas no sistema.
               </p>
 
               {loading ? (
@@ -345,6 +354,23 @@ export default function PoliticaComercialPainelModal({
                       onChange={(e) => setCsv3(e.target.value)}
                       placeholder="30, 45, 60, 75"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Desconto máximo (%)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min={0}
+                      max={100}
+                      className={inputClass}
+                      value={pctDescMax}
+                      onChange={(e) => setPctDescMax(e.target.value)}
+                      placeholder="Vazio = não avaliar"
+                    />
+                    <p className="mt-0.5 text-[10px] text-slate-500">
+                      Desconto menor ou igual a este teto é conforme. Acima, não conforme.
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">

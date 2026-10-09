@@ -17,10 +17,28 @@ import {
 } from '../../api/painelComercial';
 
 import PainelComercialPedidoDetalheModal from './PainelComercialPedidoDetalheModal';
+import PainelComercialUltimasVendasModal from './PainelComercialUltimasVendasModal';
+import {
+  COLUNAS_GRADE_PAINEL,
+  PainelCabecalhoTh,
+  PainelGradeFiltroPortal,
+  textoCelulaPainel,
+  valorOrdenacaoPainel,
+} from './PainelComercialGradeCabecalho';
+import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import PoliticaComercialEscopoChooser from './PoliticaComercialEscopoChooser';
 import PoliticaComercialPainelModal from './PoliticaComercialPainelModal';
 import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE, textoPassaBuscaLivre } from '../../utils/textoLivreBusca';
 import { downloadPainelComercialXlsx } from '../../utils/exportPainelComercialXlsx';
+import { resumirPainelComercial } from '../../utils/resumirPainelComercial';
+import {
+  criarClassificadorPedidos,
+  labelTipoCliente,
+  resumirClientesRecorrentes,
+  type TipoClientePainel,
+} from '../../utils/resumirClientesRecorrentes';
+import ClientesRecorrentesPainelChart from './ClientesRecorrentesPainelChart';
+import { EQUIPE_LABEL, type EquipeComissionamento } from '../../api/comissionamento';
 
 
 
@@ -777,7 +795,11 @@ export default function PainelFinanceiroComercialPage() {
 
   const [filtroPedido, setFiltroPedido] = useState('');
 
+  const [filtroEquipe, setFiltroEquipe] = useState<'todos' | EquipeComissionamento>('todos');
+  const [filtroTipoCliente, setFiltroTipoCliente] = useState<'todos' | TipoClientePainel>('todos');
+
   const [pedidoModal, setPedidoModal] = useState<PainelComercialPedido | null>(null);
+  const [vendasCliente, setVendasCliente] = useState<{ clienteId: number; cliente: string; pdAtual: string } | null>(null);
 
   const [politicaChooserOpen, setPoliticaChooserOpen] = useState(false);
   const [politicaModalOpen, setPoliticaModalOpen] = useState(false);
@@ -851,13 +873,54 @@ export default function PainelFinanceiroComercialPage() {
 
 
 
-  const pedidosFiltrados = useMemo(() => {
+  const pedidosEquipe = useMemo(() => {
 
     if (!dash?.pedidos) return [];
 
+    const base =
+      filtroEquipe === 'todos'
+        ? dash.pedidos
+        : dash.pedidos.filter((p) => (p.equipe ?? 'sem_equipe') === filtroEquipe);
+
+    const classificar = criarClassificadorPedidos(base, dash.historicoClientes ?? []);
+
+    return base.map((p) => {
+      const tipoCliente = classificar(p);
+      return { ...p, tipoCliente, clienteRecorrente: tipoCliente === 'recorrente' };
+    });
+
+  }, [dash, filtroEquipe]);
+
+
+
+  const visao = useMemo(() => {
+
+    if (!dash) return null;
+
+    if (filtroEquipe === 'todos') return dash;
+
+    return { ...dash, ...resumirPainelComercial(pedidosEquipe), pedidos: pedidosEquipe };
+
+  }, [dash, filtroEquipe, pedidosEquipe]);
+
+  const recorrencia = useMemo(
+    () =>
+      resumirClientesRecorrentes(
+        visao?.pedidos ?? [],
+        visao?.dataInicio ?? dataInicioAplicada,
+        visao?.dataFim ?? dataFimAplicada,
+        visao?.historicoClientes ?? []
+      ),
+    [visao, dataInicioAplicada, dataFimAplicada]
+  );
+
+
+
+  const pedidosFiltrados = useMemo(() => {
+
     const matchPed = criarMatcherTextoLivre(filtroPedido);
 
-    return dash.pedidos.filter((p) => {
+    return pedidosEquipe.filter((p) => {
 
       if (filtroStatus !== 'todos' && p.status !== filtroStatus) return false;
 
@@ -866,6 +929,8 @@ export default function PainelFinanceiroComercialPage() {
       if (filtroCondicaoPagamento.trim() && !textoPassaBuscaLivre(filtroCondicaoPagamento, p.condicaoPagamento)) return false;
 
       if (filtroCliente.trim() && !textoPassaBuscaLivre(filtroCliente, p.cliente)) return false;
+
+      if (filtroTipoCliente !== 'todos' && p.tipoCliente !== filtroTipoCliente) return false;
 
       if (filtroPedido.trim()) {
 
@@ -885,15 +950,15 @@ export default function PainelFinanceiroComercialPage() {
 
     });
 
-  }, [dash, filtroStatus, filtroFormaPagamento, filtroCondicaoPagamento, filtroCliente, filtroPedido]);
+  }, [pedidosEquipe, filtroStatus, filtroFormaPagamento, filtroCondicaoPagamento, filtroCliente, filtroPedido, filtroTipoCliente]);
 
 
 
   const serieConformidadeMes = useMemo(
 
-    () => (dash ? conformidadeMensalSeries(dash.porMes) : []),
+    () => (visao ? conformidadeMensalSeries(visao.porMes) : []),
 
-    [dash]
+    [visao]
 
   );
 
@@ -913,17 +978,19 @@ export default function PainelFinanceiroComercialPage() {
 
     };
 
-    if (!dash?.pedidos) return o;
+    if (!visao) return o;
 
-    for (const p of dash.pedidos) {
+    if (filtroEquipe === 'todos') {
 
-      o[p.status] += 1;
+      for (const p of visao.pedidos) o[p.status] += 1;
+
+      return o;
 
     }
 
-    return o;
+    return resumirPainelComercial(visao.pedidos).contagem;
 
-  }, [dash]);
+  }, [visao, filtroEquipe]);
 
 
 
@@ -937,7 +1004,11 @@ export default function PainelFinanceiroComercialPage() {
 
     filtroCliente.trim() !== '' ||
 
-    filtroPedido.trim() !== '';
+    filtroPedido.trim() !== '' ||
+
+    filtroEquipe !== 'todos' ||
+
+    filtroTipoCliente !== 'todos';
 
 
 
@@ -953,11 +1024,32 @@ export default function PainelFinanceiroComercialPage() {
 
     setFiltroPedido('');
 
+    setFiltroEquipe('todos');
+
+    setFiltroTipoCliente('todos');
+
   }, []);
 
+  const getCellTextPainel = useCallback(
+    (row: PainelComercialPedido, colId: string) => textoCelulaPainel(row, colId),
+    []
+  );
+  const valueForSortPainel = useCallback(
+    (row: PainelComercialPedido, colId: string) => valorOrdenacaoPainel(row, colId),
+    []
+  );
+  const grade = useGradeFiltrosExcel({
+    rows: pedidosFiltrados,
+    columnIds: COLUNAS_GRADE_PAINEL.map((c) => c.id),
+    getCellText: getCellTextPainel,
+    valueForSort: valueForSortPainel,
+    dateColumnIds: ['emissao'],
+  });
+  const pedidosVisiveis = grade.rowsExibidas;
+
   const exportarExcel = useCallback(() => {
-    if (pedidosFiltrados.length === 0) return;
-    downloadPainelComercialXlsx(pedidosFiltrados, {
+    if (pedidosVisiveis.length === 0) return;
+    void downloadPainelComercialXlsx(pedidosVisiveis, {
       dataInicio: dataInicioAplicada,
       dataFim: dataFimAplicada,
       empresa: empresaFiltro,
@@ -966,9 +1058,11 @@ export default function PainelFinanceiroComercialPage() {
       condicaoPagamento: filtroCondicaoPagamento,
       cliente: filtroCliente,
       pedido: filtroPedido,
+      equipe: filtroEquipe,
+      tipoCliente: filtroTipoCliente,
     });
   }, [
-    pedidosFiltrados,
+    pedidosVisiveis,
     dataInicioAplicada,
     dataFimAplicada,
     empresaFiltro,
@@ -977,6 +1071,8 @@ export default function PainelFinanceiroComercialPage() {
     filtroCondicaoPagamento,
     filtroCliente,
     filtroPedido,
+    filtroEquipe,
+    filtroTipoCliente,
   ]);
 
 
@@ -1135,6 +1231,43 @@ export default function PainelFinanceiroComercialPage() {
 
             <div>
 
+              <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Equipe</label>
+
+              <select
+                value={filtroEquipe}
+                onChange={(e) => setFiltroEquipe(e.target.value as typeof filtroEquipe)}
+                title="Usa a classificação de equipes do Comissionamento (Televendas, Vendedores e Representantes)"
+                className={`${inputClass} min-w-[11rem]`}
+              >
+                <option value="todos">Todas as equipes</option>
+                <option value="televendas">{EQUIPE_LABEL.televendas}</option>
+                <option value="vendedores">{EQUIPE_LABEL.vendedores}</option>
+                <option value="representantes">{EQUIPE_LABEL.representantes}</option>
+                <option value="sem_equipe">{EQUIPE_LABEL.sem_equipe}</option>
+              </select>
+
+            </div>
+
+            <div>
+
+              <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Tipo de cliente</label>
+
+              <select
+                value={filtroTipoCliente}
+                onChange={(e) => setFiltroTipoCliente(e.target.value as typeof filtroTipoCliente)}
+                title="Recorrente: compra nos 6 meses anteriores. Reativado: compra só antes disso. Novo: primeira compra naquele mês."
+                className={`${inputClass} min-w-[12rem]`}
+              >
+                <option value="todos">Todos os tipos</option>
+                <option value="recorrente">Recorrentes</option>
+                <option value="reativado">Reativados</option>
+                <option value="novo">Novos</option>
+              </select>
+
+            </div>
+
+            <div>
+
               <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Status</label>
 
               <select
@@ -1274,14 +1407,14 @@ export default function PainelFinanceiroComercialPage() {
             <button
               type="button"
               onClick={exportarExcel}
-              disabled={loading || !dash?.pedidos.length || pedidosFiltrados.length === 0}
+              disabled={loading || !dash?.pedidos.length || pedidosVisiveis.length === 0}
               className="ml-auto inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-md shadow-emerald-600/25 transition-all shrink-0"
               title={
                 !dash?.pedidos.length
                   ? 'Nenhum pedido no período aplicado'
-                  : pedidosFiltrados.length === 0
+                  : pedidosVisiveis.length === 0
                     ? 'Nenhum pedido corresponde aos filtros atuais'
-                    : `Exportar ${pedidosFiltrados.length} pedido${pedidosFiltrados.length !== 1 ? 's' : ''} visíveis na grade (com filtros aplicados)`
+                    : `Exportar ${pedidosVisiveis.length} pedido${pedidosVisiveis.length !== 1 ? 's' : ''} visíveis na grade (com filtros aplicados)`
               }
             >
               <svg
@@ -1304,9 +1437,9 @@ export default function PainelFinanceiroComercialPage() {
                 <path d="M12 9h4" />
               </svg>
               Exportar Excel
-              {pedidosFiltrados.length > 0 ? (
+              {pedidosVisiveis.length > 0 ? (
                 <span className="rounded-md bg-white/20 px-1.5 py-0.5 text-[11px] font-bold tabular-nums">
-                  {pedidosFiltrados.length}
+                  {pedidosVisiveis.length}
                 </span>
               ) : null}
             </button>
@@ -1331,7 +1464,7 @@ export default function PainelFinanceiroComercialPage() {
 
 
 
-      {dash && !error ? (
+      {visao && !error ? (
 
         <div className="relative flex flex-col gap-6">
 
@@ -1343,7 +1476,7 @@ export default function PainelFinanceiroComercialPage() {
 
 
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
 
             <KPICard
 
@@ -1367,11 +1500,11 @@ export default function PainelFinanceiroComercialPage() {
 
               }
 
-              value={dash.totalPedidos}
+              value={visao.totalPedidos}
 
               title="Pedidos no período"
 
-              footer={`${dash.pedidosAnalisados} na política · ${dash.pedidosExcluidosPolitica} exclusão cartão`}
+              footer={`${visao.pedidosAnalisados} na política · ${visao.pedidosExcluidosPolitica} exclusão cartão`}
 
             />
 
@@ -1393,11 +1526,11 @@ export default function PainelFinanceiroComercialPage() {
 
               }
 
-              value={pctFmt(dash.pctConformes)}
+              value={pctFmt(visao.pctConformes)}
 
               title="Taxa de conformidade"
 
-              footer={`Alerta ${pctFmt(dash.pctAlertas)} · Não conf. ${pctFmt(dash.pctNaoConformes)}`}
+              footer={`Alerta ${pctFmt(visao.pctAlertas)} · Não conf. ${pctFmt(visao.pctNaoConformes)}`}
 
             />
 
@@ -1419,11 +1552,11 @@ export default function PainelFinanceiroComercialPage() {
 
               }
 
-              value={brl.format(dash.ticketMedio)}
+              value={brl.format(visao.ticketMedio)}
 
               title="Ticket médio"
 
-              footer={`Política: ${brl.format(dash.ticketMedioAnalisados)}`}
+              footer={`Política: ${brl.format(visao.ticketMedioAnalisados)}`}
 
             />
 
@@ -1449,11 +1582,11 @@ export default function PainelFinanceiroComercialPage() {
 
               }
 
-              value={dash.pedidosAnalisados}
+              value={visao.pedidosAnalisados}
 
               title="Pedidos na política"
 
-              footer={`Base para prazos e parcelamento · exclusões cartão: ${dash.pedidosExcluidosPolitica}`}
+              footer={`Base para prazos e parcelamento · exclusões cartão: ${visao.pedidosExcluidosPolitica}`}
 
             />
 
@@ -1481,9 +1614,9 @@ export default function PainelFinanceiroComercialPage() {
 
               value={
 
-                dash.prazoMedioVendasAPrazoDias != null
+                visao.prazoMedioVendasAPrazoDias != null
 
-                  ? `${dash.prazoMedioVendasAPrazoDias.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })} dias`
+                  ? `${visao.prazoMedioVendasAPrazoDias.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })} dias`
 
                   : '—'
 
@@ -1491,7 +1624,41 @@ export default function PainelFinanceiroComercialPage() {
 
               title="Prazo médio (a prazo)"
 
-              footer={`Média do prazo do saldo nos pedidos com parcelas na condição · ${dash.pedidosVendasAPrazoComPrazoCadastrado} pedido${dash.pedidosVendasAPrazoComPrazoCadastrado !== 1 ? 's' : ''} (sem cartão e sem à vista)`}
+              footer={`Média do prazo do saldo nos pedidos com parcelas na condição · ${visao.pedidosVendasAPrazoComPrazoCadastrado} pedido${visao.pedidosVendasAPrazoComPrazoCadastrado !== 1 ? 's' : ''} (sem cartão e sem à vista)`}
+
+            />
+
+            <KPICard
+
+              accentBar="bg-sky-500"
+
+              iconWrap="bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300"
+
+              icon={
+
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+
+                  <circle cx="9" cy="7" r="4" />
+
+                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+
+                </svg>
+
+              }
+
+              value={recorrencia.clientes > 0 ? pctFmt(recorrencia.pct) : '—'}
+
+              title="% Clientes recorrentes"
+
+              footer={
+                recorrencia.clientes > 0
+                  ? `${recorrencia.recorrentes} recorrentes · ${recorrencia.reativados} reativados · ${recorrencia.novos} novos`
+                  : 'Nenhum cliente no período'
+              }
 
             />
 
@@ -1509,7 +1676,7 @@ export default function PainelFinanceiroComercialPage() {
 
             <div className="min-w-0">
 
-              <GaugeConformidadePainel percent={dash.pctConformes} />
+              <GaugeConformidadePainel percent={visao.pctConformes} />
 
             </div>
 
@@ -1525,7 +1692,7 @@ export default function PainelFinanceiroComercialPage() {
 
                     <span className="text-slate-500 dark:text-slate-400">Pedidos analisados</span>
 
-                    <span className="font-bold text-primary-600 dark:text-primary-400 tabular-nums">{dash.pedidosAnalisados}</span>
+                    <span className="font-bold text-primary-600 dark:text-primary-400 tabular-nums">{visao.pedidosAnalisados}</span>
 
                   </div>
 
@@ -1533,7 +1700,7 @@ export default function PainelFinanceiroComercialPage() {
 
                     <span className="text-slate-500 dark:text-slate-400">Excluídos (cartão)</span>
 
-                    <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">{dash.pedidosExcluidosPolitica}</span>
+                    <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">{visao.pedidosExcluidosPolitica}</span>
 
                   </div>
 
@@ -1551,7 +1718,7 @@ export default function PainelFinanceiroComercialPage() {
 
             <div className="min-w-0 flex flex-col min-h-0">
 
-              <DistribuicaoStatusPainel contagem={contagemStatus} total={dash.totalPedidos} />
+              <DistribuicaoStatusPainel contagem={contagemStatus} total={visao.totalPedidos} />
 
             </div>
 
@@ -1565,7 +1732,7 @@ export default function PainelFinanceiroComercialPage() {
 
                 <div className="space-y-4 flex-1 overflow-y-auto min-h-0">
 
-                  {dash.porFaixa.map((f) => (
+                  {visao.porFaixa.map((f) => (
 
                     <MetricBar
 
@@ -1593,6 +1760,8 @@ export default function PainelFinanceiroComercialPage() {
 
           </div>
 
+          <ClientesRecorrentesPainelChart resumo={recorrencia} />
+
 <div className="card-panel shadow-sm overflow-hidden">
 
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-600">
@@ -1601,15 +1770,15 @@ export default function PainelFinanceiroComercialPage() {
 
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
 
-                {temFiltrosLista ? (
+                {temFiltrosLista || grade.temFiltrosOuOrdem ? (
 
                   <>
 
-                    Exibindo <strong className="text-slate-700 dark:text-slate-300">{pedidosFiltrados.length}</strong> de{' '}
+                    Exibindo <strong className="text-slate-700 dark:text-slate-300">{pedidosVisiveis.length}</strong> de{' '}
 
-                    <strong className="text-slate-700 dark:text-slate-300">{dash.pedidos.length}</strong> pedido
+                    <strong className="text-slate-700 dark:text-slate-300">{visao.pedidos.length}</strong> pedido
 
-                    {dash.pedidos.length !== 1 ? 's' : ''} no período ·{' '}
+                    {visao.pedidos.length !== 1 ? 's' : ''} no período ·{' '}
 
                   </>
 
@@ -1617,57 +1786,38 @@ export default function PainelFinanceiroComercialPage() {
 
                   <>
 
-                    {dash.pedidos.length} pedido{dash.pedidos.length !== 1 ? 's' : ''} no período ·{' '}
+                    {visao.pedidos.length} pedido{visao.pedidos.length !== 1 ? 's' : ''} no período ·{' '}
 
                   </>
 
                 )}
 
-                use o ícone de visualização para abrir detalhe e itens
+                o olho abre o pedido; o relógio abre as últimas vendas do cliente
 
               </p>
 
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" ref={grade.tableScrollRef}>
 
-              <table className="w-full min-w-[1400px] text-sm text-left">
+              <table className="w-full min-w-[1520px] text-sm text-left">
 
                 <thead className="bg-primary-600 text-white">
 
                   <tr>
 
-                    <th className="py-3 px-3 font-semibold w-14 text-center" aria-label="Ver detalhe" />
+                    <th className="py-3 px-3 font-semibold w-24 text-center" aria-label="Ações" />
 
-                    <th className="py-3 px-4 font-semibold">PD</th>
-
-                    <th className="py-3 px-4 font-semibold">Cliente</th>
-
-                    <th className="py-3 px-4 font-semibold">Vendedor/Representante</th>
-
-                    <th className="py-3 px-4 font-semibold">Emissão</th>
-
-                    <th className="py-3 px-4 font-semibold text-right">Valor Total</th>
-
-                    <th className="py-3 px-4 font-semibold text-right">Valor Desconto</th>
-
-                    <th className="py-3 px-4 font-semibold text-right">Valor Total com Desconto</th>
-
-                    <th className="py-3 px-4 font-semibold text-right">Entrada</th>
-
-                    <th className="py-3 px-4 font-semibold text-right">% Ent.</th>
-
-                    <th className="py-3 px-4 font-semibold text-right">% Desc.</th>
-
-                    <th className="py-3 px-4 font-semibold">Forma</th>
-
-                    <th className="py-3 px-4 font-semibold">Condição de Pagamento</th>
-
-                    <th className="min-w-[200px] py-3 px-4 font-semibold">Prazos (cadastro → esperado)</th>
-
-                    <th className="min-w-[180px] py-3 px-4 font-semibold">Observação do pedido</th>
-
-                    <th className="py-3 px-4 font-semibold">Status</th>
+                    {COLUNAS_GRADE_PAINEL.map((col) => (
+                      <PainelCabecalhoTh
+                        key={col.id}
+                        colId={col.id}
+                        label={col.label}
+                        grade={grade}
+                        align={'align' in col ? col.align : 'left'}
+                        className={col.id === 'prazos' ? 'min-w-[200px]' : col.id === 'observacao' ? 'min-w-[180px]' : ''}
+                      />
+                    ))}
 
                   </tr>
 
@@ -1675,7 +1825,7 @@ export default function PainelFinanceiroComercialPage() {
 
                 <tbody className="text-slate-700 dark:text-slate-200">
 
-                  {pedidosFiltrados.map((p) => (
+                  {pedidosVisiveis.map((p) => (
 
                     <tr
 
@@ -1686,6 +1836,8 @@ export default function PainelFinanceiroComercialPage() {
                     >
 
                       <td className="py-3 px-3 align-middle text-center">
+
+                        <div className="inline-flex items-center gap-1">
 
                         <button
 
@@ -1717,6 +1869,36 @@ export default function PainelFinanceiroComercialPage() {
 
                         </button>
 
+                        <button
+
+                          type="button"
+
+                          className="inline-flex items-center justify-center rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 p-2 text-slate-600 dark:text-slate-300 hover:bg-primary-50 hover:border-primary-400 hover:text-primary-700 dark:hover:bg-slate-600 transition"
+
+                          title={`Últimas vendas de ${p.cliente}`}
+
+                          onClick={(e) => {
+
+                            e.stopPropagation();
+
+                            setVendasCliente({ clienteId: p.clienteId ?? 0, cliente: p.cliente, pdAtual: p.pd });
+
+                          }}
+
+                        >
+
+                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+
+                            <circle cx="12" cy="12" r="9" />
+
+                            <path d="M12 7v6l4 2" />
+
+                          </svg>
+
+                        </button>
+
+                        </div>
+
                       </td>
 
                       <td className="py-3 px-4 align-middle font-sans text-sm font-semibold tabular-nums text-primary-700 dark:text-primary-400">
@@ -1734,6 +1916,28 @@ export default function PainelFinanceiroComercialPage() {
                       <td className="max-w-[160px] truncate py-3 px-4 align-middle text-slate-700 dark:text-slate-300" title={p.vendedorRepresentante || undefined}>
 
                         {p.vendedorRepresentante || '—'}
+
+                      </td>
+
+                      <td className="whitespace-nowrap py-3 px-4 align-middle text-slate-700 dark:text-slate-300">
+
+                        {EQUIPE_LABEL[p.equipe ?? 'sem_equipe']}
+
+                      </td>
+
+                      <td className="whitespace-nowrap py-3 px-4 align-middle">
+
+                        <span
+                          className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+                            p.tipoCliente === 'recorrente'
+                              ? 'bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-200'
+                              : p.tipoCliente === 'reativado'
+                                ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-200'
+                                : 'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200'
+                          }`}
+                        >
+                          {labelTipoCliente(p.tipoCliente ?? 'novo')}
+                        </span>
 
                       </td>
 
@@ -1770,6 +1974,11 @@ export default function PainelFinanceiroComercialPage() {
                       <td className="py-3 px-4 align-middle text-right tabular-nums text-slate-700 dark:text-slate-300">
 
                         {pctFmt(p.pctEntrada * 100)}
+                        {p.entradaBenigna ? (
+                          <span className="mt-0.5 block text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                            Entrada maior — conforme
+                          </span>
+                        ) : null}
 
                       </td>
 
@@ -1796,6 +2005,11 @@ export default function PainelFinanceiroComercialPage() {
                         <span className="font-medium">{p.periodicidadeLabel}</span>
 
                         <span className="block text-[11px] text-slate-500 dark:text-slate-500">Esperado: {p.diasEsperados}</span>
+                        {p.prazosBenignos ? (
+                          <span className="mt-0.5 block text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                            Prazo menor — conforme
+                          </span>
+                        ) : null}
 
                       </td>
 
@@ -1846,6 +2060,17 @@ export default function PainelFinanceiroComercialPage() {
         {pedidoModal ? (
           <PainelComercialPedidoDetalheModal pedido={pedidoModal} onClose={() => setPedidoModal(null)} />
         ) : null}
+
+        {vendasCliente ? (
+          <PainelComercialUltimasVendasModal
+            clienteId={vendasCliente.clienteId}
+            cliente={vendasCliente.cliente}
+            pdAtual={vendasCliente.pdAtual}
+            onClose={() => setVendasCliente(null)}
+          />
+        ) : null}
+
+        <PainelGradeFiltroPortal grade={grade} />
 
         <PoliticaComercialEscopoChooser
           open={politicaChooserOpen}

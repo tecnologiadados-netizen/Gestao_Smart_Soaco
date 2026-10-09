@@ -1,8 +1,11 @@
 /**
  * Diretrizes comerciais (parcelas após faturamento) + entrada configurável.
  * Retirada “fábrica” = classificação Observacoes === '1-Retirada na So Aço'.
- * Condição de pagamento: extrai dias numéricos do nome cadastrado no Nomus;
- * compara o prazo médio das parcelas ao pacote da faixa (média cadastro ≤ média referência).
+ * Condição de pagamento: extrai dias numéricos do nome cadastrado no Nomus.
+ * O prazo concedido é conforme quando não é pior que o pacote da faixa, parcela a parcela:
+ * menos parcelas ou dias menores/iguais na mesma posição favorecem a empresa (benigno) e contam como conforme.
+ * Entrada no piso da política (alvo − tolerância) ou acima conta como conforme; acima da faixa é benigno.
+ * Abaixo do piso é não conforme. Desconto até o teto (ou 4% na retirada Só Aço) também conta como conforme.
  *
  * À vista: em qualquer valor dispensa exigência de % de entrada; prazos de pacote não se aplicam.
  * Acima do limite da faixa 1 (mínimo para parcelamento) também segue assim. Até esse limite (inclusive)
@@ -27,6 +30,12 @@ export interface PoliticaComercialParams {
   diasCondicaoMin: number;
   /** Prazo máximo (dias) aceito ao extrair números do nome da condição. */
   diasCondicaoMax: number;
+  /**
+   * Teto de desconto sobre o valor total, em fração (ex.: 0.05 = 5%).
+   * `null` = não avalia desconto, exceto retirada Só Aço (teto de 4%).
+   * Desconto menor ou igual ao teto é conforme; maior é descumprimento.
+   */
+  pctDescontoMaximo: number | null;
 }
 
 export const DEFAULT_POLITICA_COMERCIAL: PoliticaComercialParams = {
@@ -40,6 +49,7 @@ export const DEFAULT_POLITICA_COMERCIAL: PoliticaComercialParams = {
   diasCondicaoMin: 8,
   /** Teto para ler dias no nome da condição (ex.: parcelas 210…300); evita ruído de quantidades fora de prazo. */
   diasCondicaoMax: 365,
+  pctDescontoMaximo: null,
 };
 
 /** Faixas de valor total do pedido (R$), conforme política. */
@@ -136,13 +146,49 @@ export function prazoMedioParcelasConforme(obtidos: number[], esperados: number[
   return mObtidos <= mRef + 1e-9;
 }
 
+/** Desconto previsto na retirada Só Aço quando a política não define outro teto. */
+export const PCT_DESCONTO_RETIRADA_SO_ACO = 0.04;
+
+/**
+ * Prazo concedido não é pior para a empresa do que o pacote da política.
+ * Cada parcela do cadastro é comparada à parcela da mesma posição (ordenadas).
+ * Menos parcelas é permitido. Parcela extra não pode passar do último dia do pacote.
+ */
+export function prazoConcedidoNaoPior(obtidos: number[], esperados: number[]): boolean {
+  if (!obtidos.length || !esperados.length) return false;
+  const o = [...obtidos].sort((a, b) => a - b);
+  const e = [...esperados].sort((a, b) => a - b);
+  const ultimoPermitido = e[e.length - 1]!;
+  for (let i = 0; i < o.length; i++) {
+    const limite = i < e.length ? e[i]! : ultimoPermitido;
+    if (o[i]! > limite + 1e-9) return false;
+  }
+  return true;
+}
+
+export function pctDescontoPedido(valorTotal: number, valorDesconto: number): number {
+  if (!(valorTotal > 0)) return 0;
+  return valorDesconto / valorTotal;
+}
+
+/** Conforme a partir do piso (alvo − tolerância). Acima da faixa também é conforme. */
 export function pctEntradaOk(
   pct: number,
   politica: PoliticaComercialParams = DEFAULT_POLITICA_COMERCIAL
 ): boolean {
   const alvo = politica.pctEntradaAlvo;
   const tol = politica.pctEntradaTolerancia;
-  return pct >= alvo - tol && pct <= alvo + tol;
+  return pct >= alvo - tol - 1e-9;
+}
+
+/** Acima do teto da faixa (alvo + tolerância): mais entrada favorece a empresa. */
+export function entradaAcimaDaFaixa(
+  pct: number,
+  politica: PoliticaComercialParams = DEFAULT_POLITICA_COMERCIAL
+): boolean {
+  const alvo = politica.pctEntradaAlvo;
+  const tol = politica.pctEntradaTolerancia;
+  return pct > alvo + tol + 1e-9;
 }
 
 /** Retirada na fábrica (Só Aço) — critério único acordado. */
@@ -154,8 +200,13 @@ export type StatusConformidade = 'ok' | 'alerta' | 'nao_conforme' | 'excluido_po
 
 export interface AnaliseConformidadePedido {
   entradaOk: boolean;
+  /** Acima da faixa de entrada, porém maior — conta como conforme. */
+  entradaBenigna: boolean;
   prazosOk: boolean;
+  /** Cadastro diferente do pacote, porém prazo menor ou igual — conta como conforme. */
+  prazosBenignos: boolean;
   prazosIndeterminados: boolean;
+  descontoOk: boolean;
   retiradaSoAco: boolean;
   motivos: string[];
   status: StatusConformidade;
@@ -168,6 +219,8 @@ export function analisarConformidade(
     formaPagamento: string;
     nomeCondicao: string;
     observacoesTipicas: string;
+    valorTotal?: number;
+    valorDesconto?: number;
   },
   politica: PoliticaComercialParams = DEFAULT_POLITICA_COMERCIAL
 ): AnaliseConformidadePedido {
@@ -179,8 +232,11 @@ export function analisarConformidade(
   if (cartao) {
     return {
       entradaOk: true,
+      entradaBenigna: false,
       prazosOk: true,
+      prazosBenignos: false,
       prazosIndeterminados: false,
+      descontoOk: true,
       retiradaSoAco,
       motivos: ['Cartão: política de parcelas/entrada da tabela não se aplica da mesma forma.'],
       status: 'excluido_politica',
@@ -192,10 +248,16 @@ export function analisarConformidade(
   const pctEntrada = total > 0 ? input.somaEntrada / total : 0;
   /** Condição à vista: não exige percentual mínimo de entrada (política de parcelas não se aplica ao saldo). */
   const entradaOk = total <= 0 ? false : aVista ? true : pctEntradaOk(pctEntrada, politica);
+  const entradaBenigna = !aVista && total > 0 && entradaOk && entradaAcimaDaFaixa(pctEntrada, politica);
 
   if (!entradaOk && total > 0) {
+    const piso = (politica.pctEntradaAlvo - politica.pctEntradaTolerancia) * 100;
     motivos.push(
-      `Entrada ${(pctEntrada * 100).toFixed(1)}% — esperado ~${(politica.pctEntradaAlvo * 100).toFixed(0)}% do total (tolerância ±${(politica.pctEntradaTolerancia * 100).toFixed(1)} p.p.).`
+      `Entrada ${(pctEntrada * 100).toFixed(1)}% abaixo do mínimo da política (${piso.toFixed(1)}%, alvo ${(politica.pctEntradaAlvo * 100).toFixed(0)}% − tolerância ${(politica.pctEntradaTolerancia * 100).toFixed(1)} p.p.). Entrada maior que a faixa conta como conforme.`
+    );
+  } else if (entradaBenigna) {
+    motivos.push(
+      `Entrada ${(pctEntrada * 100).toFixed(1)}% acima da política (benigno — conta como conforme): esperado ~${(politica.pctEntradaAlvo * 100).toFixed(0)}% do total (tolerância ±${(politica.pctEntradaTolerancia * 100).toFixed(1)} p.p.). Mais entrada favorece a empresa.`
     );
   }
 
@@ -223,34 +285,63 @@ export function analisarConformidade(
     motivos.push(
       'Não foi possível inferir os dias de parcelas pelo nome da condição — cadastre números explícitos (ex.: 30+45+60) no Nomus.'
     );
-  } else if (!prazoMedioParcelasConforme(obtidos, esperados)) {
+  } else if (!prazoConcedidoNaoPior(obtidos, esperados)) {
     prazosOk = false;
-    const mCad = mediaPrazoDias(obtidos);
-    const mRef = mediaPrazoDias(esperados);
     const fx = faixaTicket(total, politica);
     motivos.push(
-      `Prazo médio do saldo: cadastro ${mCad.toFixed(1)} dias (parcelas [${obtidos.join(', ')}]) acima do referencial ${mRef.toFixed(1)} dias (pacote [${esperados.join(', ')}] para ${labelFaixa(fx, politica)}).`
+      `Prazo acima da política (${labelFaixa(fx, politica)}): cadastro ${fmtParcelas(obtidos)} supera o pacote ${fmtParcelas(esperados)} em alguma parcela. Prazo menor ou com menos parcelas conta como conforme.`
     );
   }
 
-  if (retiradaSoAco) {
+  const prazosBenignos =
+    !aVista &&
+    total > lim1 &&
+    obtidos.length > 0 &&
+    prazosOk &&
+    !arraysDiasIguais(obtidos, esperados);
+
+  if (prazosBenignos) {
     motivos.push(
-      'Retirada Só Aço: conferir no ERP desconto ~4% previsto na política (não validado pelo valor líquido aqui).'
+      `Prazo menor que a política (benigno — conta como conforme): cadastro ${fmtParcelas(obtidos)}, referência ${fmtParcelas(esperados)}. Menos prazo favorece a empresa.`
+    );
+  }
+
+  const pctDesconto = pctDescontoPedido(input.valorTotal ?? 0, input.valorDesconto ?? 0);
+  const tetoGeral = politica.pctDescontoMaximo;
+  const tetoRetirada = retiradaSoAco ? PCT_DESCONTO_RETIRADA_SO_ACO : null;
+  const tetoDesconto =
+    tetoGeral != null && tetoRetirada != null ? Math.min(tetoGeral, tetoRetirada) : (tetoGeral ?? tetoRetirada);
+  let descontoOk = true;
+  if (tetoDesconto != null && pctDesconto > tetoDesconto + 1e-9) {
+    descontoOk = false;
+    const usouTetoRetirada =
+      retiradaSoAco && tetoDesconto === PCT_DESCONTO_RETIRADA_SO_ACO && (tetoGeral == null || tetoGeral >= PCT_DESCONTO_RETIRADA_SO_ACO);
+    const origem = usouTetoRetirada ? 'da retirada Só Aço' : 'da política';
+    motivos.push(
+      `Desconto ${(pctDesconto * 100).toFixed(1)}% acima do máximo ${origem} (${(tetoDesconto * 100).toFixed(1)}%). Desconto menor ou igual ao teto conta como conforme.`
     );
   }
 
   let status: StatusConformidade = 'ok';
   if (total > 0 && total <= lim1 && !aVista) status = 'nao_conforme';
   else if (!entradaOk && total > 0) status = 'nao_conforme';
-  else if (!aVista && obtidos.length > 0 && !prazoMedioParcelasConforme(obtidos, esperados)) status = 'nao_conforme';
+  else if (!aVista && obtidos.length > 0 && !prazoConcedidoNaoPior(obtidos, esperados)) status = 'nao_conforme';
+  else if (!descontoOk) status = 'nao_conforme';
   else if (!aVista && prazosIndeterminados) status = 'alerta';
 
   return {
     entradaOk,
+    entradaBenigna,
     prazosOk: aVista ? true : prazosOk,
+    prazosBenignos,
     prazosIndeterminados,
+    descontoOk,
     retiradaSoAco,
     motivos,
     status,
   };
+}
+
+function fmtParcelas(dias: number[]): string {
+  return dias.join('/');
 }

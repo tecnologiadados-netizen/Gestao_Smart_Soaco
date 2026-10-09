@@ -20,6 +20,7 @@ import {
   montarMensagemDocumentoEnviadoConferencia,
 } from '../config/recebimentoConferenciaAlerta.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
+import { listarIdsConferenciaDoubleCheckConcluida } from './doubleCheckInController.js';
 import {
   concluirConferenciaPorMovimentacaoAlterada,
   deliberarConferente,
@@ -56,6 +57,26 @@ function statusPadrao() {
     codigo: RECEBIMENTO_STATUS.AGUARDANDO_CONFERENTE,
     label: RECEBIMENTO_STATUS_LABEL[RECEBIMENTO_STATUS.AGUARDANDO_CONFERENTE],
   };
+}
+
+function statusAntesDoConferente(doubleCheckConcluido: boolean) {
+  if (doubleCheckConcluido) return statusPadrao();
+  return {
+    codigo: RECEBIMENTO_STATUS.AGUARDANDO_DOUBLE_CHECK,
+    label: RECEBIMENTO_STATUS_LABEL[RECEBIMENTO_STATUS.AGUARDANDO_DOUBLE_CHECK],
+  };
+}
+
+async function idsMesaLiberadosPeloDoubleCheck(
+  docs: Array<{ idDocumento: number; dataEntrada: string | null }>
+): Promise<Set<number>> {
+  if (docs.length === 0) return new Set();
+  try {
+    return await listarIdsConferenciaDoubleCheckConcluida(docs);
+  } catch (err) {
+    console.error('[recebimento] leitura da conferência Double Check:', err);
+    return new Set();
+  }
 }
 
 async function sincronizarDevolucaoSeDisponivel(
@@ -142,9 +163,14 @@ export async function getRecebimentoMesaDocumentos(_req: Request, res: Response)
       if (sincronizado) locais.set(d.idDocumento, sincronizado);
     })
   );
+  const semConferenciaLocal = documentos.filter((d) => !locais.get(d.idDocumento));
+  const liberadosDoubleCheck = await idsMesaLiberadosPeloDoubleCheck(
+    semConferenciaLocal.map((d) => ({ idDocumento: d.idDocumento, dataEntrada: d.dataEntrada }))
+  );
   const lista = documentos.map((d) => {
     const local = locais.get(d.idDocumento);
-    const codigo = local?.status ?? RECEBIMENTO_STATUS.AGUARDANDO_CONFERENTE;
+    const codigo =
+      local?.status ?? statusAntesDoConferente(liberadosDoubleCheck.has(d.idDocumento)).codigo;
     return {
       ...d,
       status: codigo,
@@ -232,7 +258,14 @@ export async function getRecebimentoMesaItens(req: Request, res: Response): Prom
       itens: montarItensHistorico(linhasAtuais),
     });
   }
-  const codigo = local?.status ?? statusPadrao().codigo;
+  let codigo = local?.status ?? RECEBIMENTO_STATUS.AGUARDANDO_DOUBLE_CHECK;
+  if (!local) {
+    const { documentos } = await queryCabecalhosDocumentosNomus([idDocumento]);
+    const liberados = await idsMesaLiberadosPeloDoubleCheck([
+      { idDocumento, dataEntrada: documentos[0]?.dataEntrada ?? null },
+    ]);
+    codigo = statusAntesDoConferente(liberados.has(idDocumento)).codigo;
+  }
   res.json({
     itens,
     status: codigo,
@@ -324,6 +357,22 @@ export async function postRecebimentoMesaDeliberar(req: Request, res: Response):
   if (conferenciaAtual?.status === RECEBIMENTO_STATUS.FINALIZADO) {
     res.status(409).json({ error: 'Este documento já foi concluído.' });
     return;
+  }
+  if (!conferenciaAtual) {
+    const { documentos, erro: erroCabecalho } = await queryCabecalhosDocumentosNomus([idDocumento]);
+    if (erroCabecalho) {
+      res.status(503).json({ error: erroCabecalho });
+      return;
+    }
+    const liberados = await idsMesaLiberadosPeloDoubleCheck([
+      { idDocumento, dataEntrada: documentos[0]?.dataEntrada ?? null },
+    ]);
+    if (!liberados.has(idDocumento)) {
+      res.status(409).json({
+        error: 'Conclua a conferência no Double Check antes de deliberar o conferente.',
+      });
+      return;
+    }
   }
 
   try {
