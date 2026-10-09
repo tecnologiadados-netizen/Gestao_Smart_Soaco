@@ -91,6 +91,8 @@ export const PERMISSOES = {
   RECEBIMENTO_MESA: 'recebimento.mesa',
   RECEBIMENTO_CONFERENTE: 'recebimento.conferente',
   RECEBIMENTO_TOTAL: 'recebimento.total',
+  /** Histórico das conferências já enviadas à Mesa. Por enquanto, só o master. */
+  RECEBIMENTO_HISTORICO: 'recebimento.historico',
 
   // Fluxos Decisórios (mapas mentais)
   FLUXOS_VER: 'fluxos.ver',
@@ -270,6 +272,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.RECEBIMENTO_MESA,
   PERMISSOES.RECEBIMENTO_CONFERENTE,
   PERMISSOES.RECEBIMENTO_TOTAL,
+  PERMISSOES.RECEBIMENTO_HISTORICO,
   PERMISSOES.FLUXOS_VER,
   PERMISSOES.FLUXOS_EDITAR,
 
@@ -444,6 +447,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.RECEBIMENTO_MESA]: 'Mesa',
   [PERMISSOES.RECEBIMENTO_CONFERENTE]: 'Recebimento',
   [PERMISSOES.RECEBIMENTO_TOTAL]: 'Permissão total',
+  [PERMISSOES.RECEBIMENTO_HISTORICO]: 'Histórico de conferências enviadas',
   [PERMISSOES.FLUXOS_VER]: 'Ver Fluxos Decisórios (mapas mentais)',
   [PERMISSOES.FLUXOS_EDITAR]: 'Editar e excluir mapas mentais',
 

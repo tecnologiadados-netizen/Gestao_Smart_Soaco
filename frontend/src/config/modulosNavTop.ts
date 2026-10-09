@@ -78,6 +78,7 @@ export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
       PERMISSOES.RECEBIMENTO_MESA,
       PERMISSOES.RECEBIMENTO_CONFERENTE,
       PERMISSOES.RECEBIMENTO_TOTAL,
+      PERMISSOES.RECEBIMENTO_HISTORICO,
     ],
   },
   { code: 'engenharia', label: 'Engenharia', permissoes: [PERMISSOES.PRECIFICACAO_VER] },

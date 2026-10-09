@@ -86,6 +86,8 @@ export const PERMISSOES = {
   RECEBIMENTO_MESA: 'recebimento.mesa',
   RECEBIMENTO_CONFERENTE: 'recebimento.conferente',
   RECEBIMENTO_TOTAL: 'recebimento.total',
+  /** Histórico das conferências já enviadas à Mesa. Por enquanto, só o master. */
+  RECEBIMENTO_HISTORICO: 'recebimento.historico',
 
   FLUXOS_VER: 'fluxos.ver',
   FLUXOS_EDITAR: 'fluxos.editar',

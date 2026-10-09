@@ -1090,6 +1090,7 @@ export default function UsuariosPage() {
                     <div className="space-y-2">
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         Módulos do menu Recebimento. Mesa delibera o conferente; Recebimento é a digitação às cegas.
+                        O histórico das conferências enviadas é uma permissão à parte.
                       </p>
                       <label
                         className={`flex items-center gap-2 text-sm text-slate-800 dark:text-slate-100 ${

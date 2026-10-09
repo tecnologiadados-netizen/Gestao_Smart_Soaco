@@ -64,8 +64,43 @@ export type RecebimentoHistoricoConferencia = {
   status: RecebimentoStatusCodigo;
   statusLabel: string;
   retornadoEm: string | null;
+  atribuidoEm: string | null;
   conferenteNome: string | null;
+  conferenteLogin: string | null;
   itens: RecebimentoHistoricoConferenciaItem[];
+};
+
+export type RecebimentoHistoricoEnvio = {
+  idDocumento: number;
+  numeroDocumentoFiscal: string | null;
+  numeroNfe: string | null;
+  dataEmissao: string | null;
+  dataEntrada: string | null;
+  nomeParceiro: string | null;
+  tipoMovimentacao: string | null;
+  status: RecebimentoStatusCodigo;
+  statusLabel: string;
+  conferenteNome: string | null;
+  conferenteLogin: string | null;
+  enviadoEm: string | null;
+  qtdeVoltas: number;
+  emNovaConferencia: boolean;
+};
+
+export type RecebimentoHistoricoEnvioDetalhe = RecebimentoHistoricoEnvio & {
+  conferenteUsuarioId: number | null;
+  conferenteAtualNome: string | null;
+  conferenteAtualLogin: string | null;
+  atribuidoEm: string | null;
+  atribuidoPorLogin: string | null;
+  finalizadoEm: string | null;
+  mesaUltimaAcao: string | null;
+  mesaAcaoEm: string | null;
+  mesaAcaoPorLogin: string | null;
+  mesaAceiteJustificativa: string | null;
+  devolucao: RecebimentoDocumentoDevolucao | null;
+  historicosConferencia: RecebimentoHistoricoConferencia[];
+  erro?: string;
 };
 
 export type RecebimentoDetalhe = {
@@ -354,4 +389,32 @@ export async function postRecebimentoDigitacaoDevolver(idDocumento: number): Pro
     status: body.status ?? 'CONFERIDO',
     statusLabel: body.statusLabel ?? 'Aguardando mesa alterar movimentação',
   };
+}
+
+export async function fetchRecebimentoDigitacaoHistorico(): Promise<{
+  conferencias: RecebimentoHistoricoEnvio[];
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/recebimento/digitacao/historico');
+  const body = (await res.json().catch(() => ({}))) as {
+    conferencias?: RecebimentoHistoricoEnvio[];
+    error?: string;
+    erro?: string;
+  };
+  if (!res.ok) {
+    return {
+      conferencias: body.conferencias ?? [],
+      erro: body.error ?? body.erro ?? res.statusText,
+    };
+  }
+  return {
+    conferencias: body.conferencias ?? [],
+    erro: body.erro,
+  };
+}
+
+export async function fetchRecebimentoDigitacaoHistoricoDocumento(
+  idDocumento: number
+): Promise<RecebimentoHistoricoEnvioDetalhe> {
+  return apiJson<RecebimentoHistoricoEnvioDetalhe>(`/api/recebimento/digitacao/historico/${idDocumento}`);
 }

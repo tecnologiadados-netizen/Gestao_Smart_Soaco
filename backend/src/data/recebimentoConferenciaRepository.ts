@@ -305,6 +305,52 @@ export async function listarPendenciasConferente(
   return rows.map(mapRow);
 }
 
+export type RecebimentoConferenciaEnviadaResumo = RecebimentoConferenciaLocal & {
+  qtdeVoltas: number;
+  enviadoEm: Date | null;
+  conferenteEnvioNome: string | null;
+  conferenteEnvioLogin: string | null;
+  emNovaConferencia: boolean;
+};
+
+/** Conferências que já voltaram à Mesa pelo menos uma vez, inclusive as reabertas depois. */
+export async function listarConferenciasEnviadas(): Promise<RecebimentoConferenciaEnviadaResumo[]> {
+  const rows = await prisma.recebimentoConferencia.findMany({
+    where: {
+      OR: [{ finalizadoEm: { not: null } }, { ciclos: { some: {} } }],
+    },
+    include: {
+      ciclos: {
+        select: {
+          finalizadoEm: true,
+          conferenteNome: true,
+          conferenteLogin: true,
+        },
+        orderBy: [{ finalizadoEm: 'asc' }, { id: 'asc' }],
+      },
+    },
+  });
+
+  return rows
+    .map((row) => {
+      const ultimoCiclo = row.ciclos.length > 0 ? row.ciclos[row.ciclos.length - 1] : null;
+      const enviadaAtual = row.finalizadoEm != null;
+      return {
+        ...mapRow(row),
+        qtdeVoltas: row.ciclos.length + (enviadaAtual ? 1 : 0),
+        enviadoEm: enviadaAtual ? row.finalizadoEm : (ultimoCiclo?.finalizadoEm ?? null),
+        conferenteEnvioNome: enviadaAtual
+          ? row.conferenteNome
+          : (ultimoCiclo?.conferenteNome ?? row.conferenteNome),
+        conferenteEnvioLogin: enviadaAtual
+          ? row.conferenteLogin
+          : (ultimoCiclo?.conferenteLogin ?? row.conferenteLogin),
+        emNovaConferencia: asStatus(row.status) === RECEBIMENTO_STATUS.EM_CONFERENCIA,
+      };
+    })
+    .sort((a, b) => (b.enviadoEm?.getTime() ?? 0) - (a.enviadoEm?.getTime() ?? 0));
+}
+
 export const RECEBIMENTO_TENTATIVAS_MAX = 3;
 
 export function qtdeFisicaConfere(informada: number, esperada: number): boolean {

@@ -102,7 +102,11 @@ export const TELA_PRINCIPAL_MAP: Record<
   digitacao_conferencia: {
     path: '/recebimento/digitacao',
     label: 'Recebimento — Digitação conferência',
-    requiredAny: [PERMISSOES.RECEBIMENTO_CONFERENTE, PERMISSOES.RECEBIMENTO_TOTAL],
+    requiredAny: [
+      PERMISSOES.RECEBIMENTO_CONFERENTE,
+      PERMISSOES.RECEBIMENTO_TOTAL,
+      PERMISSOES.RECEBIMENTO_HISTORICO,
+    ],
   },
   precificacao: {
     path: '/engenharia/precificacao',

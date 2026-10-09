@@ -32,6 +32,7 @@ import {
   listarPendenciasConferente,
   obterConferenciaPorDocumento,
   listarCiclosConferencia,
+  listarConferenciasEnviadas,
   qtdeFisicaConfere,
   normalizarJustificativaAceite,
   registrarAcaoMesa,
@@ -190,6 +191,85 @@ export async function getRecebimentoMesaDocumentos(_req: Request, res: Response)
   });
 }
 
+type ItemNomusHistorico = {
+  idItem: number;
+  codigoProduto: string | null;
+  descricaoProduto: string | null;
+  unidadeMedida: string | null;
+  qtde: number;
+};
+
+type HistoricoVoltaDto = {
+  status: RecebimentoStatus;
+  statusLabel: string;
+  retornadoEm: Date | null;
+  atribuidoEm: Date | null;
+  conferenteNome: string | null;
+  conferenteLogin: string | null;
+  itens: Array<{
+    idItem: number | null;
+    codigoProduto: string | null;
+    descricaoProduto: string | null;
+    unidadeMedida: string | null;
+    qtdeDocumento: number | null;
+    qtdeInformada: number;
+    tentativas: number;
+    conferido: boolean;
+  }>;
+};
+
+async function montarHistoricosConferencia(
+  local: RecebimentoConferenciaLocal,
+  itens: ItemNomusHistorico[]
+): Promise<HistoricoVoltaDto[]> {
+  const ciclosArquivados = await listarCiclosConferencia(local.id);
+  const itensPorId = new Map(itens.map((item) => [item.idItem, item]));
+  const montarItensHistorico = (linhas: RecebimentoContagemLinha[]) =>
+    linhas.map((linha) => {
+      const item = linha.idItemDocumento == null ? null : itensPorId.get(linha.idItemDocumento);
+      return {
+        idItem: linha.idItemDocumento,
+        codigoProduto: item?.codigoProduto ?? linha.codigoInformado,
+        descricaoProduto: item?.descricaoProduto ?? linha.descricaoProduto,
+        unidadeMedida: item?.unidadeMedida ?? linha.unidadeMedida,
+        qtdeDocumento: item?.qtde ?? null,
+        qtdeInformada: linha.qtdeInformada,
+        tentativas: linha.tentativas,
+        conferido: linha.conferido,
+      };
+    });
+  const statusPelosItens = (linhas: { conferido: boolean }[]): RecebimentoStatus =>
+    linhas.some((linha) => !linha.conferido)
+      ? RECEBIMENTO_STATUS.DIVERGENCIA
+      : RECEBIMENTO_STATUS.CONFERIDO;
+  const historicosConferencia: HistoricoVoltaDto[] = ciclosArquivados.map((ciclo) => {
+    const statusCiclo = statusPelosItens(ciclo.itens);
+    return {
+      status: statusCiclo,
+      statusLabel: RECEBIMENTO_STATUS_LABEL[statusCiclo] ?? statusCiclo,
+      retornadoEm: ciclo.finalizadoEm,
+      atribuidoEm: ciclo.atribuidoEm,
+      conferenteNome: ciclo.conferenteNome,
+      conferenteLogin: ciclo.conferenteLogin,
+      itens: montarItensHistorico(ciclo.itens),
+    };
+  });
+  if (local.finalizadoEm != null) {
+    const linhasAtuais = await listarItensContagem(local.id);
+    const statusAtual = statusPelosItens(linhasAtuais);
+    historicosConferencia.push({
+      status: statusAtual,
+      statusLabel: RECEBIMENTO_STATUS_LABEL[statusAtual] ?? statusAtual,
+      retornadoEm: local.finalizadoEm,
+      atribuidoEm: local.atribuidoEm,
+      conferenteNome: local.conferenteNome,
+      conferenteLogin: local.conferenteLogin,
+      itens: montarItensHistorico(linhasAtuais),
+    });
+  }
+  return historicosConferencia;
+}
+
 /**
  * GET /api/recebimento/mesa/documentos/:id/itens
  */
@@ -216,48 +296,7 @@ export async function getRecebimentoMesaItens(req: Request, res: Response): Prom
       cabecalho?.idParceiro ?? null
     );
   }
-  const cicloAtualFinalizado = local?.finalizadoEm != null;
-  const ciclosArquivados = local ? await listarCiclosConferencia(local.id) : [];
-  const itensPorId = new Map(itens.map((item) => [item.idItem, item]));
-  const montarItensHistorico = (linhas: RecebimentoContagemLinha[]) =>
-    linhas.map((linha) => {
-      const item = linha.idItemDocumento == null ? null : itensPorId.get(linha.idItemDocumento);
-      return {
-        idItem: linha.idItemDocumento,
-        codigoProduto: item?.codigoProduto ?? linha.codigoInformado,
-        descricaoProduto: item?.descricaoProduto ?? linha.descricaoProduto,
-        unidadeMedida: item?.unidadeMedida ?? linha.unidadeMedida,
-        qtdeDocumento: item?.qtde ?? null,
-        qtdeInformada: linha.qtdeInformada,
-        tentativas: linha.tentativas,
-        conferido: linha.conferido,
-      };
-    });
-  const statusPelosItens = (linhas: { conferido: boolean }[]) =>
-    linhas.some((linha) => !linha.conferido)
-      ? RECEBIMENTO_STATUS.DIVERGENCIA
-      : RECEBIMENTO_STATUS.CONFERIDO;
-  const historicosConferencia = ciclosArquivados.map((ciclo) => {
-    const statusCiclo = statusPelosItens(ciclo.itens);
-    return {
-      status: statusCiclo,
-      statusLabel: RECEBIMENTO_STATUS_LABEL[statusCiclo] ?? statusCiclo,
-      retornadoEm: ciclo.finalizadoEm,
-      conferenteNome: ciclo.conferenteNome,
-      itens: montarItensHistorico(ciclo.itens),
-    };
-  });
-  if (cicloAtualFinalizado && local) {
-    const linhasAtuais = await listarItensContagem(local.id);
-    const statusAtual = statusPelosItens(linhasAtuais);
-    historicosConferencia.push({
-      status: statusAtual,
-      statusLabel: RECEBIMENTO_STATUS_LABEL[statusAtual] ?? statusAtual,
-      retornadoEm: local.finalizadoEm,
-      conferenteNome: local.conferenteNome,
-      itens: montarItensHistorico(linhasAtuais),
-    });
-  }
+  const historicosConferencia = local ? await montarHistoricosConferencia(local, itens) : [];
   let codigo = local?.status ?? RECEBIMENTO_STATUS.AGUARDANDO_DOUBLE_CHECK;
   if (!local) {
     const { documentos } = await queryCabecalhosDocumentosNomus([idDocumento]);
@@ -847,5 +886,130 @@ export async function postRecebimentoDigitacaoDevolver(req: Request, res: Respon
     ok: true,
     status: atualizado.status,
     statusLabel: RECEBIMENTO_STATUS_LABEL[atualizado.status],
+  });
+}
+
+function resumoEnvioDto(
+  envio: Awaited<ReturnType<typeof listarConferenciasEnviadas>>[number],
+  cab: {
+    numeroDocumentoFiscal: string | null;
+    numeroNfe: string | null;
+    dataEmissao: string | null;
+    dataEntrada: string | null;
+    nomeParceiro: string | null;
+    tipoMovimentacao: string | null;
+  } | null
+) {
+  return {
+    idDocumento: envio.idDocumentoEstoque,
+    numeroDocumentoFiscal: cab?.numeroDocumentoFiscal ?? envio.numeroDocumento,
+    numeroNfe: cab?.numeroNfe ?? null,
+    dataEmissao: cab?.dataEmissao ?? null,
+    dataEntrada: cab?.dataEntrada ?? null,
+    nomeParceiro: cab?.nomeParceiro ?? null,
+    tipoMovimentacao: cab?.tipoMovimentacao ?? null,
+    status: envio.status,
+    statusLabel: RECEBIMENTO_STATUS_LABEL[envio.status] ?? envio.status,
+    conferenteNome: envio.conferenteEnvioNome,
+    conferenteLogin: envio.conferenteEnvioLogin,
+    enviadoEm: envio.enviadoEm,
+    qtdeVoltas: envio.qtdeVoltas,
+    emNovaConferencia: envio.emNovaConferencia,
+  };
+}
+
+/**
+ * GET /api/recebimento/digitacao/historico
+ * Conferências já devolvidas à Mesa. Exige recebimento.historico (master tem todas).
+ */
+export async function getRecebimentoDigitacaoHistorico(_req: Request, res: Response): Promise<void> {
+  const enviados = await listarConferenciasEnviadas();
+  const ids = enviados.map((l) => l.idDocumentoEstoque);
+  const { documentos: cabecalhos, erro } = await queryCabecalhosDocumentosNomus(ids);
+  const porId = new Map(cabecalhos.map((d) => [d.idDocumento, d]));
+  res.json({
+    conferencias: enviados.map((envio) => resumoEnvioDto(envio, porId.get(envio.idDocumentoEstoque) ?? null)),
+    erro: erro || undefined,
+  });
+}
+
+/**
+ * GET /api/recebimento/digitacao/historico/:id
+ */
+export async function getRecebimentoDigitacaoHistoricoDocumento(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const idDocumento = Math.trunc(Number(req.params.id));
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+
+  let local = await obterConferenciaPorDocumento(idDocumento);
+  if (!local) {
+    res.status(404).json({ error: 'Conferência não encontrada.' });
+    return;
+  }
+
+  const [{ documentos: cabecalhos, erro: erroCab }, { itens, erro: erroItens }] = await Promise.all([
+    queryCabecalhosDocumentosNomus([idDocumento]),
+    queryItensDocumentoPreEntradaNomus(idDocumento),
+  ]);
+  const cab = cabecalhos[0] ?? null;
+  if (local.status === RECEBIMENTO_STATUS.AGUARDANDO_DEVOLUCAO) {
+    const sincronizado = await sincronizarDevolucaoSeDisponivel(
+      local,
+      cab?.numeroNfe ?? null,
+      cab?.idParceiro ?? null
+    );
+    if (sincronizado) local = sincronizado;
+  }
+
+  const historicosConferencia = await montarHistoricosConferencia(local, itens);
+  if (historicosConferencia.length === 0) {
+    res.status(404).json({ error: 'Esta conferência ainda não foi enviada.' });
+    return;
+  }
+
+  const ultimaVolta = historicosConferencia[historicosConferencia.length - 1];
+  const enviadaAtual = local.finalizadoEm != null;
+  const erro = erroCab || erroItens;
+  res.json({
+    ...resumoEnvioDto(
+      {
+        ...local,
+        qtdeVoltas: historicosConferencia.length,
+        enviadoEm: enviadaAtual ? local.finalizadoEm : (ultimaVolta?.retornadoEm ?? null),
+        conferenteEnvioNome: enviadaAtual
+          ? local.conferenteNome
+          : (ultimaVolta?.conferenteNome ?? local.conferenteNome),
+        conferenteEnvioLogin: enviadaAtual
+          ? local.conferenteLogin
+          : (ultimaVolta?.conferenteLogin ?? local.conferenteLogin),
+        emNovaConferencia: local.status === RECEBIMENTO_STATUS.EM_CONFERENCIA,
+      },
+      cab
+    ),
+    conferenteUsuarioId: local.conferenteUsuarioId,
+    conferenteAtualNome: local.conferenteNome,
+    conferenteAtualLogin: local.conferenteLogin,
+    atribuidoEm: local.atribuidoEm,
+    atribuidoPorLogin: local.atribuidoPorLogin,
+    finalizadoEm: local.finalizadoEm,
+    mesaUltimaAcao: local.mesaUltimaAcao,
+    mesaAcaoEm: local.mesaAcaoEm,
+    mesaAcaoPorLogin: local.mesaAcaoPorLogin,
+    mesaAceiteJustificativa: local.mesaAceiteJustificativa,
+    devolucao: local.idDocumentoDevolucaoNomus
+      ? {
+          idDocumento: local.idDocumentoDevolucaoNomus,
+          numeroDocumentoFiscal: local.numeroDocumentoDevolucao,
+          numeroNfe: local.numeroNfeDevolucao,
+          vinculadaEm: local.devolucaoVinculadaEm,
+        }
+      : null,
+    historicosConferencia,
+    erro: erro || undefined,
   });
 }

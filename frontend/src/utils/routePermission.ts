@@ -21,7 +21,7 @@ import {
   PERMISSOES_ACESSO_FINANCEIRO_DIARIO,
 } from './financeiroPermissoes';
 import {
-  PERMISSOES_ACESSO_DIGITACAO_CONFERENCIA,
+  PERMISSOES_ACESSO_TELA_DIGITACAO,
   PERMISSOES_ACESSO_GESTAO_MESA,
   PERMISSOES_ACESSO_RECEBIMENTO,
 } from './recebimentoPermissoes';
@@ -156,7 +156,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/logistica/cubagem/simulacao': [PERMISSOES.LOGISTICA_VER, PERMISSOES.LOGISTICA_TOTAL, PERMISSOES.LOGISTICA_CUBAGEM_VER],
   '/recebimento': PERMISSOES_ACESSO_RECEBIMENTO,
   '/recebimento/mesa': PERMISSOES_ACESSO_GESTAO_MESA,
-  '/recebimento/digitacao': PERMISSOES_ACESSO_DIGITACAO_CONFERENCIA,
+  '/recebimento/digitacao': PERMISSOES_ACESSO_TELA_DIGITACAO,
   '/relatorios': [PERMISSOES.RELATORIOS_VER],
   '/integracao': [PERMISSOES.INTEGRACAO_VER],
   '/integracao/alteracao-data-entrega-compra': [PERMISSOES.INTEGRACAO_VER],

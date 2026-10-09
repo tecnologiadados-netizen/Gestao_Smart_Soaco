@@ -5,6 +5,8 @@ import { requirePermission } from '../middleware/requirePermission.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import {
   getRecebimentoDigitacaoDocumento,
+  getRecebimentoDigitacaoHistorico,
+  getRecebimentoDigitacaoHistoricoDocumento,
   getRecebimentoDigitacaoPendencias,
   getRecebimentoMesaConferentes,
   getRecebimentoMesaDocumentos,
@@ -20,6 +22,7 @@ router.use(requireAuth);
 
 const verMesa = requirePermission(PERMISSOES.RECEBIMENTO_MESA, PERMISSOES.RECEBIMENTO_TOTAL);
 const verConferente = requirePermission(PERMISSOES.RECEBIMENTO_CONFERENTE, PERMISSOES.RECEBIMENTO_TOTAL);
+const verHistorico = requirePermission(PERMISSOES.RECEBIMENTO_HISTORICO);
 
 function async503(handler: RequestHandler): RequestHandler {
   return (req, res, next) => {
@@ -65,6 +68,12 @@ router.post(
   validateCsrf,
   verConferente,
   async503(postRecebimentoDigitacaoDevolver)
+);
+router.get('/digitacao/historico', verHistorico, async503(getRecebimentoDigitacaoHistorico));
+router.get(
+  '/digitacao/historico/:id',
+  verHistorico,
+  async503(getRecebimentoDigitacaoHistoricoDocumento)
 );
 
 export default router;

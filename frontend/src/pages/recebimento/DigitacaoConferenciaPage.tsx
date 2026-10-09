@@ -9,7 +9,12 @@ import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPorta
 import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import { useAuth } from '../../contexts/AuthContext';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
-import { podeAcessarDigitacaoConferencia } from '../../utils/recebimentoPermissoes';
+import {
+  podeAcessarDigitacaoConferencia,
+  podeAbrirTelaDigitacaoConferencia,
+  podeVerHistoricoDigitacaoConferencia,
+} from '../../utils/recebimentoPermissoes';
+import DigitacaoConferenciaHistorico from './DigitacaoConferenciaHistorico';
 import {
   fetchRecebimentoDigitacaoDocumento,
   fetchRecebimentoDigitacaoPendencias,
@@ -114,7 +119,11 @@ function produtoLabel(p: RecebimentoProdutoConferente): string {
 
 export default function DigitacaoConferenciaPage() {
   const { hasPermission } = useAuth();
-  const pode = podeAcessarDigitacaoConferencia(hasPermission);
+  const podePendencias = podeAcessarDigitacaoConferencia(hasPermission);
+  const podeHistorico = podeVerHistoricoDigitacaoConferencia(hasPermission);
+  const [aba, setAba] = useState<'pendencias' | 'historico'>(
+    podePendencias ? 'pendencias' : 'historico'
+  );
 
   const [pendencias, setPendencias] = useState<RecebimentoPendenciaConferente[]>([]);
   const [loading, setLoading] = useState(false);
@@ -156,9 +165,9 @@ export default function DigitacaoConferenciaPage() {
   }, []);
 
   useEffect(() => {
-    if (!pode) return;
+    if (!podePendencias) return;
     void carregar();
-  }, [pode, carregar]);
+  }, [podePendencias, carregar]);
 
   useEffect(() => {
     return () => {
@@ -337,11 +346,11 @@ export default function DigitacaoConferenciaPage() {
     }
   };
 
-  if (!pode) return <Navigate to="/sem-acesso" replace />;
+  if (!podeAbrirTelaDigitacaoConferencia(hasPermission)) return <Navigate to="/sem-acesso" replace />;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col gap-2">
-      <CarregandoInformacoesOverlay show={loading} mode="contained" />
+      <CarregandoInformacoesOverlay show={aba === 'pendencias' && loading} mode="contained" />
 
       <div className="flex shrink-0 flex-wrap items-start justify-between gap-2">
         <div>
@@ -351,24 +360,60 @@ export default function DigitacaoConferenciaPage() {
           <h1 className="mt-1 text-xl font-semibold text-slate-800 dark:text-slate-100">
             Digitação conferência
           </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Pendências deliberadas pela Mesa para você. Informe a quantidade física às cegas. Cada item tem 3
-            chances; ao esgotar, ele fica marcado e a conferência segue nos demais. O documento volta à Mesa
-            quando todos os itens tiverem sido conferidos.
+          {podeHistorico && podePendencias && (
+            <div
+              className="mt-3 flex gap-1 border-b border-slate-200 dark:border-slate-700"
+              role="tablist"
+              aria-label="Seções da digitação"
+            >
+              {(
+                [
+                  ['pendencias', 'Pendências'],
+                  ['historico', 'Histórico'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={aba === id}
+                  className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                    aba === id
+                      ? 'border-primary-600 text-primary-700 dark:text-primary-300'
+                      : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                  }`}
+                  onClick={() => setAba(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            {aba === 'historico'
+              ? 'Conferências já enviadas à Mesa, com o conferente, as voltas e a contagem de cada item.'
+              : 'Pendências deliberadas pela Mesa para você. Informe a quantidade física às cegas. Cada item tem 3 chances; ao esgotar, ele fica marcado e a conferência segue nos demais. O documento volta à Mesa quando todos os itens tiverem sido conferidos.'}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {grade.temFiltrosOuOrdem && (
-            <button type="button" className={btnSecondary} onClick={() => grade.limparFiltrosGrade()}>
-              Limpar filtros da grade
+        {aba === 'pendencias' && (
+          <div className="flex flex-wrap items-center gap-2">
+            {grade.temFiltrosOuOrdem && (
+              <button type="button" className={btnSecondary} onClick={() => grade.limparFiltrosGrade()}>
+                Limpar filtros da grade
+              </button>
+            )}
+            <button type="button" className={btnSecondary} onClick={() => void carregar()} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Atualizar
             </button>
-          )}
-          <button type="button" className={btnSecondary} onClick={() => void carregar()} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Atualizar
-          </button>
-        </div>
+          </div>
+        )}
       </div>
+
+      {aba === 'historico' ? (
+        <DigitacaoConferenciaHistorico />
+      ) : (
+        <>
       {erro && (
         <p className="shrink-0 text-sm text-rose-600 dark:text-rose-400" role="alert">
           {erro}
@@ -686,6 +731,8 @@ export default function DigitacaoConferenciaPage() {
           </div>,
           document.body
         )}
+        </>
+      )}
     </div>
   );
 }

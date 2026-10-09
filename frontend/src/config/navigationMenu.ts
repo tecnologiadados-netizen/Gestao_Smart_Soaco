@@ -1,7 +1,7 @@
 import { PERMISSOES, type CodigoPermissao } from './permissoes';
 import { podeAcessarRotaFinanceiro } from '../utils/financeiroPermissoes';
 import {
-  podeAcessarDigitacaoConferencia,
+  podeAbrirTelaDigitacaoConferencia,
   podeAcessarGestaoMesa,
 } from '../utils/recebimentoPermissoes';
 import {
@@ -424,7 +424,7 @@ export function buildRecebimentoMenuForUser(hasPermission: HasPermission): NavMe
     if (entry.to === '/recebimento/mesa' && podeAcessarGestaoMesa(hasPermission)) {
       filtered.push(entry);
     }
-    if (entry.to === '/recebimento/digitacao' && podeAcessarDigitacaoConferencia(hasPermission)) {
+    if (entry.to === '/recebimento/digitacao' && podeAbrirTelaDigitacaoConferencia(hasPermission)) {
       filtered.push(entry);
     }
   }

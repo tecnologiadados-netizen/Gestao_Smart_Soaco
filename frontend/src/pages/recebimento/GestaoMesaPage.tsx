@@ -192,8 +192,9 @@ function HistoricoVolta({
         <div>
           <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{titulo}</h4>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {fmtDateTimeBr(volta.retornadoEm)}
-            {volta.conferenteNome ? ` · ${volta.conferenteNome}` : ''}
+            {conferenteLabel(volta.conferenteNome, volta.conferenteLogin)}
+            {volta.atribuidoEm ? ` · Atribuído ${fmtDateTimeBr(volta.atribuidoEm)}` : ''}
+            {` · Retorno ${fmtDateTimeBr(volta.retornadoEm)}`}
           </p>
         </div>
         {badgeStatus(volta.status, volta.statusLabel)}

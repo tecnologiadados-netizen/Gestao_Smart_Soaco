@@ -78,7 +78,11 @@ export const OPCOES_TELA_PRINCIPAL: { key: string; label: string; requiredAny: C
   {
     key: 'digitacao_conferencia',
     label: 'Recebimento — Digitação conferência',
-    requiredAny: [PERMISSOES.RECEBIMENTO_CONFERENTE, PERMISSOES.RECEBIMENTO_TOTAL],
+    requiredAny: [
+      PERMISSOES.RECEBIMENTO_CONFERENTE,
+      PERMISSOES.RECEBIMENTO_TOTAL,
+      PERMISSOES.RECEBIMENTO_HISTORICO,
+    ],
   },
   {
     key: 'precificacao',
