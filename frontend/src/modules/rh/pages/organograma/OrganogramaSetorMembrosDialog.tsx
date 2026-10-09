@@ -21,7 +21,7 @@ import {
   getStatusFromRow,
   isOrganicoHistoricoLocal,
 } from "@rh/pages/Organico/organico-derive";
-import { useOrganicoCardFoto } from "@rh/pages/Organico/useOrganicoCardFoto";
+import { matriculaTemFoto, useOrganicoCardFoto } from "@rh/pages/Organico/useOrganicoCardFoto";
 import type { OrganicoRow } from "@rh/types/api";
 
 const STATUS_VALIDOS = new Set(["Ativo", "Férias", "Afastado"]);
@@ -142,6 +142,7 @@ function MembroAvatar({
     nome: membro.nome,
     fotoDisponivel,
     podeBuscar: podeBuscarFoto,
+    imediata: true,
   });
 
   return (
@@ -282,9 +283,7 @@ export function OrganogramaSetorMembrosDialog({
                 <MembroLinha
                   key={`${membro.matricula}-${membro.nome}`}
                   membro={membro}
-                  fotoDisponivel={Boolean(
-                    membro.matricula && matriculasComFoto.has(membro.matricula),
-                  )}
+                  fotoDisponivel={matriculaTemFoto(matriculasComFoto, membro.matricula)}
                   podeBuscarFoto={podeBuscarFotos}
                 />
               ))}

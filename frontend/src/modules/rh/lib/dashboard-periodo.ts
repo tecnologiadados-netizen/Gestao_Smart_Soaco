@@ -201,9 +201,10 @@ export function salarioVigenteDaMatricula(
 export function colaboradorAtivoNaData(
   input: { admissao: Date | null; demissao: Date | null; statusDesligado: boolean },
   asOf: Date,
+  opcoes?: { contarAdmissaoFutura?: boolean },
 ): boolean {
   const end = fimDoDia(asOf);
-  if (input.admissao && input.admissao > end) return false;
+  if (!opcoes?.contarAdmissaoFutura && input.admissao && input.admissao > end) return false;
   if (input.demissao) return input.demissao > end;
   if (input.statusDesligado) return false;
   return true;

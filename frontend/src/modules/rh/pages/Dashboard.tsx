@@ -12,6 +12,7 @@ import {
   CalendarDays,
   ArrowUpDown,
   GripHorizontal,
+  CircleHelp,
   X,
 } from "lucide-react";
 import {
@@ -30,6 +31,7 @@ import {
 } from "recharts";
 import { Button } from "@rh/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@rh/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@rh/components/ui/popover";
 import { useModalFlutuante, tamanhoViewport } from "@/hooks/useModalFlutuante";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@rh/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@rh/components/ui/tabs";
@@ -55,6 +57,7 @@ import {
 import {
   buildDashboardFromOrganico,
   deriveTurnoverFromPeople,
+  desligamentoPorFalecimento,
   listNovasAdmissoesMesAtual,
   listTurnoverPeopleFromOrganico,
   type FolhaMensalPoint,
@@ -110,6 +113,7 @@ import AbsenteismoDashboard, {
 import DiagnosticoGeralAusenciasJustificadas from "@rh/pages/DiagnosticoGeralAusenciasJustificadas";
 import AbsenteismoPorHorasTab from "@rh/pages/FaltasAtestados/absenteismo-por-horas/AbsenteismoPorHorasTab";
 import { OrganicoCard } from "@rh/pages/Organico/OrganicoCard";
+import { matriculaTemFoto, registrarMatriculasComFoto } from "@rh/pages/Organico/useOrganicoCardFoto";
 import { isOrganicoHistoricoLocal, ORGANICO_IDX, parseCtpsToNumber, parseDateBR } from "@rh/pages/Organico/organico-derive";
 import {
   rhChartAxisTick,
@@ -473,6 +477,7 @@ const Dashboard = () => {
   const [generoFiltro, setGeneroFiltro] = useState<GeneroFiltro>(null);
   const [periodoFolha, setPeriodoFolha] = useState<DashboardPeriodo>(() => periodoPadraoExecutivo());
   const [folhaModalAberto, setFolhaModalAberto] = useState(false);
+  const [baseCustoFolha, setBaseCustoFolha] = useState<"ctps" | "custoTotal">("ctps");
   const [turnoverModalAberto, setTurnoverModalAberto] = useState(false);
   const [movimentacoesPopoverAberto, setMovimentacoesPopoverAberto] = useState(false);
   const viewportMovimentacoes = typeof window === "undefined" ? { w: 1280, h: 800 } : tamanhoViewport();
@@ -539,14 +544,8 @@ const Dashboard = () => {
   const { data: fotosResumo } = useQuery({
     queryKey: ["organico-fotos-resumo"],
     queryFn: getOrganicoFotosResumo,
-    enabled:
-      (setorHeadcountSelecionado != null ||
-        escolaridadeSelecionada != null ||
-        coorteRetencaoSelecionada != null ||
-        localidadeSelecionada != null) &&
-      isApiConfigured() &&
-      podeVerFotosOrganico,
-    staleTime: 60 * 1000,
+    enabled: isApiConfigured() && podeVerFotosOrganico,
+    staleTime: 5 * 60 * 1000,
   });
 
   const demissaoByMatricula = useMemo(() => {
@@ -651,8 +650,9 @@ const Dashboard = () => {
         fim: hojePainel,
         hoje: hojePainel,
         salarioNaData,
+        baseCusto: baseCustoFolha,
       }),
-    [organicoDaEmpresa, demissaoByMatricula, hojePainel, salarioNaData],
+    [organicoDaEmpresa, demissaoByMatricula, hojePainel, salarioNaData, baseCustoFolha],
   );
 
   const folhaMensal = useMemo(
@@ -662,8 +662,9 @@ const Dashboard = () => {
         fim: periodoFolha.fim,
         hoje: hojePainel,
         salarioNaData,
+        baseCusto: baseCustoFolha,
       }).folhaMensal,
-    [organicoDaEmpresa, demissaoByMatricula, periodoFolha, hojePainel, salarioNaData],
+    [organicoDaEmpresa, demissaoByMatricula, periodoFolha, hojePainel, salarioNaData, baseCustoFolha],
   );
   const folhaChartData = useMemo(
     () => {
@@ -708,6 +709,7 @@ const Dashboard = () => {
             statusDesligado: Boolean(p.desligado) && !demissao,
           },
           hojePainel,
+          { contarAdmissaoFutura: true },
         );
         if (!ativo) continue;
         somar(String(p.sexo ?? ""));
@@ -726,6 +728,7 @@ const Dashboard = () => {
           statusDesligado: status.includes("DESLIG") && !demissao,
         },
         hojePainel,
+        { contarAdmissaoFutura: true },
       );
       if (!ativo) continue;
       somar(String(values[ORGANICO_IDX.SEXO] ?? ""));
@@ -955,6 +958,7 @@ const Dashboard = () => {
           admissao: p.admissao,
           demissao: p.demissao,
           setor: p.setor,
+          motivoDemissao: String(p.motivoDemissao ?? "").trim(),
       }));
     }
     return listTurnoverPeopleFromOrganico(organicoDaEmpresa, demissaoByMatricula);
@@ -1510,14 +1514,11 @@ const Dashboard = () => {
     return Math.max(280, n * pxPerRow + verticalPadding);
   }, [derived.headcountData]);
 
-  const matriculasComFoto = useMemo(() => {
-    const matriculas = new Set<string>();
-    for (const foto of fotosResumo ?? []) {
-      const matricula = String(foto.colaboradorMatricula ?? "").trim();
-      if (matricula) matriculas.add(matricula);
-    }
-    return matriculas;
-  }, [fotosResumo]);
+  const matriculasComFoto = useMemo(
+    () => registrarMatriculasComFoto((fotosResumo ?? []).map((foto) => String(foto.colaboradorMatricula ?? ""))),
+    [fotosResumo],
+  );
+  const fotosNosModais = podeVerFotosOrganico && isApiConfigured();
 
   const colaboradoresDoSetorSelecionado = useMemo(() => {
     if (!setorHeadcountSelecionado) return [];
@@ -1547,6 +1548,7 @@ const Dashboard = () => {
           statusDesligado: status.includes("DESLIG"),
         },
         hojePainel,
+        { contarAdmissaoFutura: true },
       );
       if (!ativo) continue;
       colaboradores.push({
@@ -1577,6 +1579,7 @@ const Dashboard = () => {
           statusDesligado: status.includes("DESLIG"),
         },
         hojePainel,
+        { contarAdmissaoFutura: true },
       );
       if (!ativo) continue;
       pessoas.push({
@@ -1615,6 +1618,7 @@ const Dashboard = () => {
           statusDesligado: status.includes("DESLIG"),
         },
         hojePainel,
+        { contarAdmissaoFutura: true },
       );
       if (!ativo) continue;
       colaboradores.push({
@@ -1667,6 +1671,7 @@ const Dashboard = () => {
           statusDesligado,
         },
         hojePainel,
+        { contarAdmissaoFutura: true },
       );
       if (!ativo) return;
       const cidade = String(funcionario.cidade ?? "").trim();
@@ -1903,11 +1908,18 @@ const Dashboard = () => {
             icon={Users}
             alertColor="green"
           />
-          <button
-            type="button"
+          <div
+            role="button"
+            tabIndex={0}
             className="w-full text-left rounded-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             aria-label="Ver custo da folha mês a mês"
             onClick={() => setFolhaModalAberto(true)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setFolhaModalAberto(true);
+              }
+            }}
           >
           <KpiCard
             title="Custo Folha Mensal"
@@ -1916,8 +1928,63 @@ const Dashboard = () => {
               changeType="neutral"
             icon={DollarSign}
             alertColor="yellow"
+            actionsPlacement="beside"
+            actions={
+              <div className="flex items-center gap-1">
+                <div className="inline-flex rounded-md border border-border bg-card p-0.5 shadow-sm" role="group" aria-label="Base do custo da folha">
+                  {(
+                    [
+                      ["ctps", "CTPS"],
+                      ["custoTotal", "Custo total"],
+                    ] as const
+                  ).map(([id, rotulo]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      aria-pressed={baseCustoFolha === id}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setBaseCustoFolha(id);
+                      }}
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                        baseCustoFolha === id
+                          ? "bg-[#FFAD00] text-[#041E42]"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {rotulo}
+                    </button>
+                  ))}
+                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+                      aria-label="Diferença entre CTPS e custo total"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <CircleHelp className="h-3.5 w-3.5" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="end"
+                    side="bottom"
+                    className="w-80 space-y-3 p-3 text-left text-xs leading-relaxed"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <p>
+                      <strong className="text-foreground">CTPS.</strong> Soma o salário de carteira, o campo CTPS, de quem está ativo. A média salarial usa o mesmo campo.
+                    </p>
+                    <p>
+                      <strong className="text-foreground">Custo total.</strong> Soma o campo Custo total geral do mês. Em cada colaborador esse valor junta o salário de carteira, o cargo de confiança, o adendo, a insalubridade, a periculosidade, o adicional noturno, o vale-transporte, a quentinha e o auxílio combustível do mês, e tira o desconto do vale-transporte. A média salarial passa a ser a média desse custo.
+                    </p>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            }
           />
-          </button>
+          </div>
           <button
             type="button"
             className="w-full text-left rounded-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -1952,7 +2019,9 @@ const Dashboard = () => {
             <DialogHeader className="shrink-0 border-b border-border pb-4 pr-8">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 text-left">
-                  <DialogTitle>Custo da folha mês a mês</DialogTitle>
+                  <DialogTitle>
+                    {baseCustoFolha === "custoTotal" ? "Custo total geral mês a mês" : "Custo da folha mês a mês"}
+                  </DialogTitle>
                   <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     {maiorCustoFolha && maiorCustoFolha.value > 0 ? (
                       <p className="flex flex-wrap items-center gap-1.5">
@@ -1980,9 +2049,14 @@ const Dashboard = () => {
                 />
               </div>
             </DialogHeader>
+            {baseCustoFolha === "custoTotal" ? (
+              <p className="text-xs text-muted-foreground">
+                O mês atual soma o custo total geral de cada colaborador. Os meses anteriores acompanham a variação da CTPS na trajetória.
+              </p>
+            ) : null}
             {salariosTrajetoriaErro ? (
               <p className="text-xs text-destructive">
-                Não foi possível ler a trajetória. Os meses passados podem estar com a CTPS de hoje.
+                Não foi possível ler a trajetória. Os meses passados podem estar com o valor de hoje.
               </p>
             ) : null}
             <div className="min-h-0 w-full min-w-0 flex-1 overflow-x-auto overflow-y-hidden rounded-md border border-border bg-card p-3 shadow-level-1">
@@ -2053,7 +2127,7 @@ const Dashboard = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <KpiCard
-            title="Média salarial (CTPS)"
+            title={baseCustoFolha === "custoTotal" ? "Média salarial (custo total)" : "Média salarial (CTPS)"}
             value={derived.mediaSalarialCtps > 0 ? formatCurrencyBRLExact(derived.mediaSalarialCtps) : formatCurrencyBRLExact(0)}
             change={folhaNoFechamento}
             changeType="neutral"
@@ -2182,6 +2256,12 @@ const Dashboard = () => {
                                     )?.motivoFilho ?? ""
                                   : undefined
                               }
+                        fotoCadastrada={matriculaTemFoto(
+                          matriculasComFoto,
+                          String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                        )}
+                        fotoApiHabilitada={fotosNosModais}
+                        fotoImediata
                         readOnly
                       />
                     </button>
@@ -2434,6 +2514,12 @@ const Dashboard = () => {
                                     )?.motivoFilho ?? ""
                                   : undefined
                               }
+                              fotoCadastrada={matriculaTemFoto(
+                                matriculasComFoto,
+                                String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                              )}
+                              fotoApiHabilitada={fotosNosModais}
+                              fotoImediata
                               readOnly
                             />
                           </button>
@@ -2591,6 +2677,9 @@ const Dashboard = () => {
               <p className="mt-1 text-sm text-muted-foreground">
                 {formatIntPt(desligadosByTurnoverPoint.length)}{" "}
                 {desligadosByTurnoverPoint.length === 1 ? "colaborador desligado" : "colaboradores desligados"}
+                {desligadosByTurnoverPoint.some((item) => desligamentoPorFalecimento(item.motivoDemissao))
+                  ? " · falecimento continua na lista e fica fora do cálculo do turnover"
+                  : ""}
               </p>
             </DialogHeader>
             <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -2623,6 +2712,12 @@ const Dashboard = () => {
                             item.demissao,
                           )?.motivoFilho ?? ""
                         }
+                        fotoCadastrada={matriculaTemFoto(
+                          matriculasComFoto,
+                          String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                        )}
+                        fotoApiHabilitada={fotosNosModais}
+                        fotoImediata
                         readOnly
                       />
                     </button>
@@ -2918,8 +3013,12 @@ const Dashboard = () => {
                                           )?.motivoFilho ?? ""
                                         : undefined
                                     }
-                                    fotoCadastrada={matriculasComFoto.has(String(item.row[ORGANICO_IDX.MATRICULA] ?? "").trim())}
-                                    fotoApiHabilitada={podeVerFotosOrganico && isApiConfigured()}
+                                    fotoCadastrada={matriculaTemFoto(
+                                      matriculasComFoto,
+                                      String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                                    )}
+                                    fotoApiHabilitada={fotosNosModais}
+                                    fotoImediata
                                     readOnly
                                   />
                                 </button>
@@ -3088,8 +3187,12 @@ const Dashboard = () => {
                             item.demissao,
                           )?.motivoFilho ?? ""
                         }
-                        fotoCadastrada={matriculasComFoto.has(String(item.row[ORGANICO_IDX.MATRICULA] ?? "").trim())}
-                        fotoApiHabilitada={podeVerFotosOrganico && isApiConfigured()}
+                        fotoCadastrada={matriculaTemFoto(
+                          matriculasComFoto,
+                          String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                        )}
+                        fotoApiHabilitada={fotosNosModais}
+                        fotoImediata
                         readOnly
                       />
                     </button>
@@ -3136,6 +3239,12 @@ const Dashboard = () => {
                         row={item.row}
                         rowIndex={index}
                         demissao={item.demissao}
+                        fotoCadastrada={matriculaTemFoto(
+                          matriculasComFoto,
+                          String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                        )}
+                        fotoApiHabilitada={fotosNosModais}
+                        fotoImediata
                         readOnly
                       />
                     </button>
@@ -3288,8 +3397,9 @@ const Dashboard = () => {
                         row={colaborador.row}
                         rowIndex={colaborador.rowIndex}
                         demissao={colaborador.demissao}
-                        fotoCadastrada={matriculasComFoto.has(colaborador.matricula)}
-                        fotoApiHabilitada={podeVerFotosOrganico && isApiConfigured()}
+                        fotoCadastrada={matriculaTemFoto(matriculasComFoto, colaborador.matricula)}
+                        fotoApiHabilitada={fotosNosModais}
+                        fotoImediata
                         readOnly
                         viewMode="medium"
                       />
@@ -3349,8 +3459,9 @@ const Dashboard = () => {
                         row={colaborador.row}
                         rowIndex={colaborador.rowIndex}
                         demissao={colaborador.demissao}
-                        fotoCadastrada={matriculasComFoto.has(colaborador.matricula)}
-                        fotoApiHabilitada={podeVerFotosOrganico && isApiConfigured()}
+                        fotoCadastrada={matriculaTemFoto(matriculasComFoto, colaborador.matricula)}
+                        fotoApiHabilitada={fotosNosModais}
+                        fotoImediata
                         readOnly
                         viewMode="medium"
                       />
@@ -3409,8 +3520,9 @@ const Dashboard = () => {
                         row={colaborador.row}
                         rowIndex={colaborador.rowIndex}
                         demissao={colaborador.demissao}
-                        fotoCadastrada={matriculasComFoto.has(colaborador.matricula)}
-                        fotoApiHabilitada={podeVerFotosOrganico && isApiConfigured()}
+                        fotoCadastrada={matriculaTemFoto(matriculasComFoto, colaborador.matricula)}
+                        fotoApiHabilitada={fotosNosModais}
+                        fotoImediata
                         readOnly
                         viewMode="medium"
                       />

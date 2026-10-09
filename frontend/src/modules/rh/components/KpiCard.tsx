@@ -1,4 +1,5 @@
-import { LucideIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 interface KpiCardProps {
   title: string;
@@ -9,6 +10,10 @@ interface KpiCardProps {
   alertColor?: "green" | "yellow" | "red";
   /** Textos longos (nomes, locais): quebra em várias linhas em vez de truncar em uma linha. */
   valueMultiline?: boolean;
+  /** Controle dentro do card. O clique não dispara a ação do card. */
+  actions?: ReactNode;
+  /** `beside` ocupa o espaço livre à direita, sem aumentar a altura do card. */
+  actionsPlacement?: "below" | "beside";
 }
 
 const alertColors = {
@@ -34,6 +39,8 @@ const KpiCard = ({
   icon: Icon,
   alertColor = "green",
   valueMultiline = false,
+  actions,
+  actionsPlacement = "below",
 }: KpiCardProps) => {
   return (
     <div
@@ -48,7 +55,9 @@ const KpiCard = ({
               className={
                 valueMultiline
                   ? "block min-w-0 max-w-full text-base font-bold leading-snug text-foreground [font-variant-numeric:proportional-nums] [overflow-wrap:anywhere] break-words hyphens-auto sm:text-lg"
-                  : "kpi-value block text-xl leading-tight tabular-nums sm:text-2xl whitespace-nowrap"
+                  : `kpi-value block text-xl leading-tight tabular-nums sm:text-2xl whitespace-nowrap ${
+                    actions && actionsPlacement === "beside" ? "pr-[10.5rem]" : ""
+                  }`
               }
             >
               {value}
@@ -66,8 +75,26 @@ const KpiCard = ({
                 {change}
               </span>
             ) : null}
+            {actions && actionsPlacement === "below" ? (
+              <div
+                className="pt-1"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                {actions}
+              </div>
+            ) : null}
           </div>
         </div>
+        {actions && actionsPlacement === "beside" ? (
+          <div
+            className="absolute right-[4.6rem] top-1/2 z-[1] -translate-y-1/2"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            {actions}
+          </div>
+        ) : null}
         <div
           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-transform duration-200 group-hover:scale-105 sm:h-10 sm:w-10 ${iconColors[alertColor]}`}
         >

@@ -10,6 +10,7 @@ import {
   isApiConfigured,
   setConfig,
 } from "@rh/lib/api-client";
+import { registrarMatriculasComFoto } from "@rh/pages/Organico/useOrganicoCardFoto";
 import {
   canEditOrganogramaFotos,
   canEditRoute,
@@ -449,12 +450,7 @@ const Organograma = () => {
   });
 
   const matriculasComFoto = useMemo(
-    () =>
-      new Set(
-        fotosResumo
-          .map((foto) => String(foto.colaboradorMatricula ?? "").trim())
-          .filter(Boolean),
-      ),
+    () => registrarMatriculasComFoto(fotosResumo.map((foto) => String(foto.colaboradorMatricula ?? ""))),
     [fotosResumo],
   );
 

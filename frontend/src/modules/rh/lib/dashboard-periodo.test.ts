@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ORGANICO_IDX } from "@rh/pages/Organico/organico-derive";
-import { buildDashboardFromOrganico } from "@rh/lib/dashboard-from-organico";
+import { buildDashboardFromOrganico, deriveTurnoverFromPeople } from "@rh/lib/dashboard-from-organico";
 import {
   colaboradorAtivoNaData,
   formatDiaMmmAno,
@@ -100,6 +100,21 @@ describe("período do painel", () => {
     expect(mesesNoPeriodo(periodo.inicio, periodo.fim)).toHaveLength(12);
   });
 
+  it("no quadro de hoje conta quem já está ativo mesmo com admissão futura", () => {
+    const admissao = new Date(2026, 9, 13);
+    const hoje = new Date(2026, 9, 9);
+    expect(
+      colaboradorAtivoNaData({ admissao, demissao: null, statusDesligado: false }, hoje),
+    ).toBe(false);
+    expect(
+      colaboradorAtivoNaData(
+        { admissao, demissao: null, statusDesligado: false },
+        hoje,
+        { contarAdmissaoFutura: true },
+      ),
+    ).toBe(true);
+  });
+
   it("considera ativo quem ainda não tinha sido desligado na data", () => {
     const demissao = new Date(2025, 5, 10);
     expect(
@@ -140,6 +155,17 @@ describe("dashboard no período", () => {
     expect(dashboard.turnoverData).toHaveLength(3);
   });
 
+  it("com a base de custo total, a folha e a média usam essa coluna", () => {
+    const hoje = new Date(2026, 9, 9);
+    const dashboard = buildDashboardFromOrganico(
+      [linha({ [ORGANICO_IDX.CTPS]: 2000, [ORGANICO_IDX.CUSTO_TOTAL_GERAL_MES]: 3500 })],
+      {},
+      { inicio: hoje, fim: hoje, hoje, baseCusto: "custoTotal" },
+    );
+    expect(dashboard.custoFolhaMensal).toBe(3500);
+    expect(dashboard.mediaSalarialCtps).toBe(3500);
+  });
+
   it("marca o ano anterior ao histórico de demissões como aproximado", () => {
     const hoje = new Date(2026, 9, 5);
     const quemFicou = linha({ [ORGANICO_IDX.MATRICULA]: "10", [ORGANICO_IDX.ADMISSAO]: "01/01/2020" });
@@ -167,5 +193,29 @@ describe("dashboard no período", () => {
     const jul2026 = dashboard.folhaMensal.find((p) => p.year === 2026 && p.month === "Jul");
     expect(nov2024?.ativosAproximado).toBe(true);
     expect(jul2026?.ativosAproximado).toBe(false);
+  });
+
+  it("desligamento por falecimento não entra no turnover do mês", () => {
+    const serie = deriveTurnoverFromPeople(
+      [
+        {
+          admissao: "2010-01-18",
+          demissao: "2026-09-23",
+          motivoDemissao: "Rescisão do contrato de trabalho por falecimento",
+          setor: "BALCÃO",
+        },
+        {
+          admissao: "2023-11-16",
+          demissao: "2026-09-08",
+          motivoDemissao: "Pedido de Demissão",
+          setor: "VENDAS - COMERCIAL",
+        },
+      ],
+      new Date(2026, 8, 30),
+      null,
+      { inicio: new Date(2026, 8, 1), fim: new Date(2026, 8, 30) },
+    );
+    const setembro = serie.turnoverData.find((ponto) => ponto.year === 2026 && ponto.month === "Set");
+    expect(setembro?.demissoesMes).toBe(1);
   });
 });

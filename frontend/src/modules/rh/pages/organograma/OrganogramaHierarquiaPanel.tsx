@@ -34,7 +34,7 @@ import type { DiretoriaTree } from "@rh/lib/organograma-vinculacoes";
 import { canViewOrganogramaFotos } from "@rh/lib/route-permissions";
 import { classesQuadroPan, useQuadroPan, type QuadroPanOffset } from "@rh/hooks/useQuadroPan";
 import { cn } from "@rh/lib/utils";
-import { useOrganicoCardFoto } from "@rh/pages/Organico/useOrganicoCardFoto";
+import { matriculaTemFoto, useOrganicoCardFoto } from "@rh/pages/Organico/useOrganicoCardFoto";
 import type { OrganicoRow } from "@rh/types/api";
 
 const FOTO_EMPRESA_KEY = "organograma-foto:empresa";
@@ -501,7 +501,7 @@ function CaixaPessoa({
       <AvatarPessoa
         nome={pessoa.nome}
         matricula={pessoa.matricula}
-        fotoDisponivel={Boolean(pessoa.matricula && matriculasComFoto.has(pessoa.matricula))}
+        fotoDisponivel={matriculaTemFoto(matriculasComFoto, pessoa.matricula ?? "")}
         podeBuscarFoto={podeBuscarFotos}
         fotoConfigSrc={fotoConfigSrc}
         tamanho={compacto ? "xs" : isGestao ? (ui.fullscreen ? "lg" : "md") : ui.fullscreen ? "sm" : "xs"}
