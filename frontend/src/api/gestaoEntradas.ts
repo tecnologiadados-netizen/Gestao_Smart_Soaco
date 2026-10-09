@@ -76,6 +76,7 @@ export type GestaoEntradasCompradorDetalhe = {
   pedidos: number;
   ajustados: number;
   linhas: GestaoEntradasCompradorLinha[];
+  notas: GestaoEntradasNotaDia[];
 };
 
 export async function fetchGestaoEntradasPainel(params: {

@@ -3,30 +3,9 @@ import { createPortal } from 'react-dom';
 import {
   fetchGestaoEntradasComprador,
   type GestaoEntradasCompradorDetalhe,
-  type GestaoEntradasCompradorLinha,
   type MundoCompradorGestao,
 } from '../../api/gestaoEntradas';
-
-const SITUACAO: Record<GestaoEntradasCompradorLinha['situacao'], { label: string; className: string }> = {
-  ainda_divergente: {
-    label: 'Ainda divergente',
-    className: 'border-amber-400 bg-amber-50 text-amber-900 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-100',
-  },
-  vinculo_ajustado: {
-    label: 'Vínculo ajustado',
-    className: 'border-sky-400 bg-sky-50 text-sky-900 dark:border-sky-500 dark:bg-sky-950/40 dark:text-sky-100',
-  },
-  aceita: {
-    label: 'Divergência aceita',
-    className: 'border-rose-400 bg-rose-50 text-rose-800 dark:border-rose-500 dark:bg-rose-950/40 dark:text-rose-100',
-  },
-};
-
-function fmtDataBr(ymd: string): string {
-  const [y, m, d] = ymd.slice(0, 10).split('-');
-  if (!y || !m || !d) return ymd;
-  return `${d}/${m}/${y}`;
-}
+import { TabelaDivergencias } from './GestaoEntradasDiaModal';
 
 function chaveCache(params: {
   dataInicio: string;
@@ -35,7 +14,7 @@ function chaveCache(params: {
   mundo: MundoCompradorGestao;
   comprador: string;
 }): string {
-  return `${params.dataInicio}|${params.dataFim}|${params.escopo}|${params.mundo}|${params.comprador}`;
+  return `${params.dataInicio}|${params.dataFim}|${params.escopo}|${params.mundo}|${params.comprador}|detalhe`;
 }
 
 export default function GestaoEntradasCompradorModal({
@@ -72,7 +51,7 @@ export default function GestaoEntradasCompradorModal({
   useEffect(() => {
     const chave = chaveCache({ dataInicio, dataFim, escopo, mundo, comprador });
     const cached = cacheRef.current.get(chave);
-    if (cached) {
+    if (cached?.notas) {
       setDetalhe(cached);
       setErro(null);
       setLoading(false);
@@ -101,6 +80,7 @@ export default function GestaoEntradasCompradorModal({
   const leitura = escopo === 'reais' ? 'visão real' : 'visão geral';
   const notas = detalhe?.documentos ?? 0;
   const pedidos = detalhe?.pedidos ?? 0;
+  const qtde = (detalhe?.notas ?? []).reduce((total, nota) => total + nota.divergencias.length, 0);
 
   return createPortal(
     <div className="fixed inset-0 z-[17000] flex items-center justify-center p-4 sm:p-6" role="presentation">
@@ -109,7 +89,7 @@ export default function GestaoEntradasCompradorModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="ge-comprador-titulo"
-        className="relative flex h-[min(90vh,860px)] w-[min(96vw,1100px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-xl dark:border-white/10 dark:bg-[#161822]"
+        className="relative flex h-[min(90vh,860px)] w-[min(96vw,1480px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-xl dark:border-white/10 dark:bg-[#161822]"
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-700">
           <div>
@@ -118,8 +98,8 @@ export default function GestaoEntradasCompradorModal({
             </h2>
             <p className="text-xs text-slate-500">
               {loading
-                ? 'Carregando documentos…'
-                : `${tituloMundo} · ${notas} ${notas === 1 ? 'nota' : 'notas'} · ${pedidos} ${pedidos === 1 ? 'pedido' : 'pedidos'}${
+                ? 'Carregando divergências…'
+                : `${tituloMundo} · ${qtde} ${qtde === 1 ? 'divergência' : 'divergências'} · ${notas} ${notas === 1 ? 'nota' : 'notas'} · ${pedidos} ${pedidos === 1 ? 'pedido' : 'pedidos'}${
                     mundo === 'apontada' && detalhe
                       ? ` · ${detalhe.ajustados} ${detalhe.ajustados === 1 ? 'ajustada' : 'ajustadas'}`
                       : ''
@@ -141,54 +121,10 @@ export default function GestaoEntradasCompradorModal({
             </p>
           )}
           {loading && <p className="py-10 text-center text-sm text-slate-500">Carregando…</p>}
-          {!loading && !erro && (detalhe?.linhas.length ?? 0) === 0 && (
-            <p className="py-10 text-center text-sm text-slate-500">Nenhum documento deste comprador no período.</p>
+          {!loading && !erro && qtde === 0 && (
+            <p className="py-10 text-center text-sm text-slate-500">Nenhuma divergência deste comprador no período.</p>
           )}
-          {(detalhe?.linhas.length ?? 0) > 0 && (
-            <div className="rounded-xl border border-slate-200 dark:border-white/10">
-              <table className="w-full min-w-[760px] border-separate border-spacing-0 text-left text-sm">
-                <thead className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  <tr>
-                    {['Entrada', 'Pedido', 'Campos', 'Situação'].map((coluna) => (
-                      <th
-                        key={coluna}
-                        className="sticky top-0 z-20 border-b border-slate-200 bg-slate-100 px-3 py-2 font-medium dark:border-white/10 dark:bg-[#1c2030]"
-                      >
-                        {coluna}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="[&_td]:border-b [&_td]:border-slate-200 dark:[&_td]:border-white/10">
-                  {detalhe?.linhas.map((linha, indice) => {
-                    const selo = SITUACAO[linha.situacao];
-                    const faixa = indice % 2 === 0 ? 'bg-white dark:bg-[#161822]' : 'bg-slate-100 dark:bg-[#232838]';
-                    return (
-                      <tr key={`${linha.idDocumento}-${linha.idPedidoCompra}`}>
-                        <td className={`px-3 py-2 ${faixa}`}>
-                          <p className="font-medium text-slate-800 dark:text-slate-100">
-                            {linha.numeroDocumentoFiscal ?? `Documento ${linha.idDocumento}`}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {fmtDataBr(linha.dataEntrada)}
-                            {linha.numeroNfe ? ` · NF ${linha.numeroNfe}` : ''}
-                            {linha.nomeParceiro ? ` · ${linha.nomeParceiro}` : ''}
-                          </p>
-                        </td>
-                        <td className={`px-3 py-2 text-slate-800 dark:text-slate-100 ${faixa}`}>{linha.nomePedidoCompra}</td>
-                        <td className={`px-3 py-2 text-slate-700 dark:text-slate-200 ${faixa}`}>{linha.campos.join(', ')}</td>
-                        <td className={`px-3 py-2 ${faixa}`}>
-                          <span className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold ${selo.className}`}>
-                            {selo.label}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {qtde > 0 && detalhe ? <TabelaDivergencias notas={detalhe.notas} /> : null}
         </div>
       </div>
     </div>,
