@@ -867,14 +867,6 @@ export default function DiarioFinanceiroPage() {
                 disabled={loading}
               />
             </div>
-            <button
-              type="button"
-              onClick={aplicarIntervalo}
-              disabled={loading || !dataInicio || !dataFim}
-              className={`${FILTRO_BTN} border-primary-600 bg-primary-600 text-white hover:bg-primary-700`}
-            >
-              {loading ? 'Buscando…' : 'Buscar'}
-            </button>
             <FiltroMulti
               label="Fornecedor"
               placeholder="Todos"
@@ -935,6 +927,14 @@ export default function DiarioFinanceiroPage() {
                 className={FILTRO_INPUT_CLASS}
               />
             </div>
+            <button
+              type="button"
+              onClick={aplicarIntervalo}
+              disabled={loading || !dataInicio || !dataFim}
+              className={`${FILTRO_BTN} border-primary-600 bg-primary-600 text-white hover:bg-primary-700`}
+            >
+              {loading ? 'Buscando…' : 'Buscar'}
+            </button>
           </div>
         ) : null}
       </div>
@@ -1000,7 +1000,7 @@ export default function DiarioFinanceiroPage() {
           <tbody className="uppercase">
             {linhasExibidas.length === 0 && !loading && (
               <tr>
-                <td colSpan={15} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
+                <td colSpan={16} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
                   {linhasFiltradas.length === 0
                     ? 'Nenhum contas a pagar neste vencimento.'
                     : 'Nenhum lançamento com os filtros da grade.'}
@@ -1035,6 +1035,17 @@ export default function DiarioFinanceiroPage() {
                 </td>
                 <td className="px-2 py-1.5 whitespace-nowrap tabular-nums">
                   {l.codigoClassificacao != null && l.codigoClassificacao > 0 ? l.codigoClassificacao : '—'}
+                </td>
+                <td className="px-2 py-1.5 whitespace-nowrap">
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                      l.status === 'Baixado'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
+                    }`}
+                  >
+                    {l.status}
+                  </span>
                 </td>
                 <td className="px-2 py-1.5 max-w-[14rem] truncate" title={l.planoContas ?? ''}>
                   {l.planoContas ?? '—'}

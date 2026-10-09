@@ -5,6 +5,7 @@ import type { DiarioContaPagarLinha } from '../../../api/diarioFinanceiro';
 
 export const DIARIO_COLUNAS_GRADE = [
   { id: 'codigo', label: 'Código' },
+  { id: 'situacao', label: 'Situação' },
   { id: 'plano', label: 'Classificação' },
   { id: 'vencimento', label: 'Vencimento' },
   { id: 'empresa', label: 'Empresa' },
