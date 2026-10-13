@@ -19,14 +19,13 @@ const FOLHA_ALTURA = 297;
 const MEIA_FOLHA = FOLHA_ALTURA / 2;
 const MARGEM = 12;
 
-const nfInteiro = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
-
 export type DocumentoApoioVolumesInput = {
   numeroDocumento: string;
   numeroNfe: string;
   dataDocumento: string;
   fornecedor: string;
-  qtdeVolumes: number;
+  /** Texto escrito na nota, como "1 VL CTE 1234". */
+  volumesNota: string;
   emitidoPor: string | null;
 };
 
@@ -56,7 +55,7 @@ export async function montarDocumentoApoioVolumesPdf(
   doc.setProperties({
     title: `Documento de apoio — ${input.numeroDocumento}`,
     subject:
-      'Canhoto interno. Espelha apenas a quantidade de volumes escrita na nota fiscal. Não representa volumes recebidos fisicamente.',
+      'Canhoto interno. Espelha apenas o texto de volumes escrito na nota fiscal. Não representa volumes recebidos fisicamente.',
     creator: 'Gestão Smart',
   });
 
@@ -99,7 +98,7 @@ export async function montarDocumentoApoioVolumesPdf(
   y += 5;
 
   const aviso =
-    'A empresa não usa este papel para representar os volumes que chegaram fisicamente. O número em destaque só espelha a quantidade de volumes da nota fiscal, para o conferente consultar — ele não recebe a nota em papel.';
+    'A empresa não usa este papel para representar os volumes que chegaram fisicamente. O texto em destaque só espelha o que está escrito na nota fiscal, para o conferente consultar — ele não recebe a nota em papel.';
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
@@ -127,9 +126,16 @@ export async function montarDocumentoApoioVolumesPdf(
   doc.setFontSize(8);
   doc.setTextColor(...COR.suave);
   doc.text('VOLUMES ESCRITOS NA NOTA FISCAL', largura / 2, y + 6, { align: 'center' });
-  doc.setFontSize(26);
   doc.setTextColor(...COR.tinta);
-  doc.text(nfInteiro.format(input.qtdeVolumes), largura / 2, y + 17, { align: 'center' });
+  const volumeTexto = input.volumesNota.trim();
+  let tamanhoVolume = 26;
+  doc.setFontSize(tamanhoVolume);
+  const larguraVolume = util - 8;
+  while (tamanhoVolume > 11 && doc.getTextWidth(volumeTexto) > larguraVolume) {
+    tamanhoVolume -= 1;
+    doc.setFontSize(tamanhoVolume);
+  }
+  doc.text(volumeTexto, largura / 2, y + 17, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(...COR.suave);

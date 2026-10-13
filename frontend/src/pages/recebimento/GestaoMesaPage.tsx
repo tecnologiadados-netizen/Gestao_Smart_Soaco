@@ -516,11 +516,9 @@ export default function GestaoMesaPage() {
 
   const gerarDocumentoApoio = async () => {
     if (!modalDoc || gerandoApoio) return;
-    const bruto = qtdeVolumesInformada.trim();
-    if (!/^\d+$/.test(bruto) || Number(bruto) < 1) {
-      setApoioErro(
-        'Informe a quantidade de volumes que consta na nota fiscal (número inteiro maior que zero).',
-      );
+    const volumesNota = qtdeVolumesInformada.trim().replace(/\s+/g, ' ');
+    if (!volumesNota) {
+      setApoioErro('Informe os volumes que constam na nota fiscal. Ex.: 1 VL CTE 1234');
       return;
     }
     setGerandoApoio(true);
@@ -531,7 +529,7 @@ export default function GestaoMesaPage() {
         numeroNfe: modalDoc.numeroNfe ?? '—',
         dataDocumento: fmtDataBr(dataDocYmd(modalDoc)),
         fornecedor: modalDoc.nomeParceiro ?? '—',
-        qtdeVolumes: Number(bruto),
+        volumesNota,
         emitidoPor: nome || login,
       });
       if (resultado === 'aberto') {
@@ -1150,9 +1148,10 @@ export default function GestaoMesaPage() {
                 Documento de apoio
               </h3>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                Informe a quantidade de volumes que consta na nota fiscal{' '}
-                {modalDoc.numeroNfe ? `nº ${modalDoc.numeroNfe}` : ''}. O canhoto só espelha esse
-                número para o conferente. Ele não representa os volumes que chegaram fisicamente.
+                Informe os volumes que constam na nota fiscal{' '}
+                {modalDoc.numeroNfe ? `nº ${modalDoc.numeroNfe}` : ''}. Pode usar números, letras e
+                espaços. O canhoto só espelha esse texto para o conferente. Ele não representa os
+                volumes que chegaram fisicamente.
               </p>
               <label className={`${labelClass} mt-4`} htmlFor="qtde-volumes-nota">
                 Volumes na nota fiscal
@@ -1160,14 +1159,14 @@ export default function GestaoMesaPage() {
               <input
                 id="qtde-volumes-nota"
                 className={`${inputClass} w-full`}
-                inputMode="numeric"
                 autoFocus
                 value={qtdeVolumesInformada}
-                onChange={(e) => setQtdeVolumesInformada(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => setQtdeVolumesInformada(e.target.value.replace(/[^\p{L}\p{N} ]/gu, ''))}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void gerarDocumentoApoio();
                 }}
-                placeholder="Ex.: 10"
+                placeholder="Ex.: 1 VL CTE 1234"
+                maxLength={60}
                 disabled={gerandoApoio}
               />
               {apoioErro && (
