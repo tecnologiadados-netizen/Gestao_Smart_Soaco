@@ -781,18 +781,13 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   };
 
   return (
-    <div className="flex flex-col gap-3 min-h-0">
-      <div className="card-panel shrink-0 overflow-visible">
-        <div className="px-4 pt-3 flex items-center justify-between gap-3">
-          {modo ? (
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              Vencimento {modo.dataFixa.split('-').reverse().join('/')}
-              {editavel ? '' : ' · alterações bloqueadas'}
-            </p>
-          ) : (
+    <div className={`flex flex-col gap-3 min-h-0 ${modo ? 'h-full overflow-hidden' : ''}`}>
+      <div className={`shrink-0 overflow-visible ${modo ? '' : 'card-panel'}`}>
+        {modo ? null : (
+          <div className="px-4 pt-3 flex items-center justify-between gap-3">
             <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Diário Financeiro</h1>
-          )}
-        </div>
+          </div>
+        )}
         <div className="px-4 flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700">
           <button
             type="button"
@@ -891,6 +886,8 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
 
         {faixaFiltrosVisivel ? (
           <div className="px-3 py-2 flex flex-wrap items-end gap-2">
+            {periodoTravado ? null : (
+              <>
             <div>
               <span className={FILTRO_LABEL_CLASS}>Período</span>
               <div className="inline-flex h-8 overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600">
@@ -899,7 +896,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                     key={a.id}
                     type="button"
                     onClick={() => aplicarAtalho(a.id)}
-                    disabled={loading || periodoTravado}
+                    disabled={loading}
                     className={`inline-flex h-8 items-center px-3 text-xs font-medium transition-colors disabled:opacity-60 ${
                       i > 0 ? 'border-l border-slate-300 dark:border-slate-600' : ''
                     } ${
@@ -923,7 +920,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                   setDataInicio(e.target.value);
                 }}
                 className={FILTRO_INPUT_CLASS}
-                disabled={loading || periodoTravado}
+                disabled={loading}
               />
             </div>
             <div className="w-[9.25rem]">
@@ -936,9 +933,11 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                   setDataFim(e.target.value);
                 }}
                 className={FILTRO_INPUT_CLASS}
-                disabled={loading || periodoTravado}
+                disabled={loading}
               />
             </div>
+              </>
+            )}
             <FiltroMulti
               label="Fornecedor"
               placeholder="Todos"
@@ -1042,9 +1041,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
         ref={grade.tableScrollRef}
         className={`card-panel min-h-0 overflow-auto !p-0 ${
           modo
-            ? faixaFiltrosVisivel
-              ? 'max-h-[calc(92vh-22rem)]'
-              : 'max-h-[calc(92vh-16rem)]'
+            ? 'flex-1'
             : faixaFiltrosVisivel
               ? 'max-h-[calc(100svh-18.5rem)]'
               : 'max-h-[calc(100svh-14rem)]'
