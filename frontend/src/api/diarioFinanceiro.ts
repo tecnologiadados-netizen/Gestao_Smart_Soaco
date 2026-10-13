@@ -247,6 +247,7 @@ export interface DiarioProcesso {
   aprovadoPor: string | null;
   aprovadoEm: string | null;
   enviadoEm: string | null;
+  criadoEm: string;
   editavel: boolean;
 }
 
