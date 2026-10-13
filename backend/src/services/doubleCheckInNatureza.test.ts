@@ -177,4 +177,21 @@ describe('classificarNaturezaDivergencia', () => {
       })
     ).toBe('benigna');
   });
+
+  it('mantém real o IPI que existe só na nota mesmo com divergência só na tela', () => {
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { valorIpiNF: 390, valorIpiPC: 0 },
+        campo: 'ipi',
+        justificativaCodigo: 'divergencia_so_na_tela',
+      })
+    ).toBe('real');
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { valorUnitarioNF: 50, valorUnitarioPC: 40 },
+        campo: 'valor_unitario',
+        justificativaCodigo: 'divergencia_so_na_tela',
+      })
+    ).toBe('real');
+  });
 });
