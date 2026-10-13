@@ -8,10 +8,8 @@ import ModalConsultaEstoqueDetalhe, { fmtQtde } from './ModalConsultaEstoqueDeta
 import ModalEscolhasConsultaEstoque from './ModalEscolhasConsultaEstoque';
 import {
   OPCOES_EMPENHO_PRODUTO_CONSULTA,
-  PRODUTO_FILTRO_AUTOMATICO,
   avisoEscopoEmpenhoProduto,
   devePerguntarEmpenhoProduto,
-  escolhasProdutoSaoAutomaticas,
   opcoesModoProdutoConsulta,
   rotuloEmpenhoProdutoEscopo,
   rotuloModoProduto,
@@ -222,14 +220,6 @@ export default function ModalConsultaEstoqueEmbed({
       if (cancelled) return;
       setProdutoTemBom(r.temBom);
       setProdutoBomCarregando(false);
-      if (escolhasProdutoSaoAutomaticas(r.temBom)) {
-        setEscolhasProduto({
-          modoProduto: PRODUTO_FILTRO_AUTOMATICO.modoProduto!,
-          empenhoEscopo: PRODUTO_FILTRO_AUTOMATICO.empenhoEscopo!,
-        });
-        setConfirmEscolhasAberto(false);
-        return;
-      }
       setConfirmEscolhasAberto(true);
       setEscolhaModoTemp(null);
     });
@@ -264,14 +254,6 @@ export default function ModalConsultaEstoqueEmbed({
     void verificarProdutoFiltroTemBom({ codigos: [codigo.trim()] }).then((r) => {
       setProdutoTemBom(r.temBom);
       setProdutoBomCarregando(false);
-      if (escolhasProdutoSaoAutomaticas(r.temBom)) {
-        setEscolhasProduto({
-          modoProduto: PRODUTO_FILTRO_AUTOMATICO.modoProduto!,
-          empenhoEscopo: PRODUTO_FILTRO_AUTOMATICO.empenhoEscopo!,
-        });
-        setConfirmEscolhasAberto(false);
-        return;
-      }
       setEscolhaModoTemp(escolhasProduto?.modoProduto ?? null);
       setConfirmEscolhasAberto(true);
     });
@@ -375,15 +357,13 @@ export default function ModalConsultaEstoqueEmbed({
             <span className="text-slate-500 dark:text-slate-400">
               {rotuloModoProduto(escolhasProduto.modoProduto)} · Empenho:{' '}
               {rotuloEmpenhoProdutoEscopo(escolhasProduto.empenhoEscopo)}
-              {!escolhasProdutoSaoAutomaticas(produtoTemBom) && (
-                <button
-                  type="button"
-                  className="ml-2 text-primary-600 hover:underline dark:text-primary-400"
-                  onClick={abrirAlterarEscolhas}
-                >
-                  Alterar
-                </button>
-              )}
+              <button
+                type="button"
+                className="ml-2 text-primary-600 hover:underline dark:text-primary-400"
+                onClick={abrirAlterarEscolhas}
+              >
+                Alterar
+              </button>
             </span>
           )}
         </div>

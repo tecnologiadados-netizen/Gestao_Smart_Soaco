@@ -70,7 +70,7 @@ type Props = {
   pedidoFiltro: PedidoFiltroConsultaEstoque;
   produtoFiltro?: ProdutoFiltroConsultaEstoque;
   onAlterarEscolhasProduto?: () => void;
-  /** Quando false, oculta “Alterar” (caminho automático sem BOM). */
+  /** Quando false, oculta o botão “Alterar” das escolhas do produto. */
   produtoEscolhasAlteraveis?: boolean;
   opcoes: OpcoesFiltroConsultaEstoque;
   /** `cobertura` oculta pedido, tipo, grupo, setor, subgrupos e sim/não de empenho/saldo. */
@@ -219,11 +219,6 @@ export function devePerguntarEmpenhoProduto(opts: {
   return opts.modo === 'componentes';
 }
 
-/** Sem BOM só resta “item filtrado” + empenho automático — não há o que confirmar no modal. */
-export function escolhasProdutoSaoAutomaticas(temBom: boolean): boolean {
-  return !temBom;
-}
-
 /** Mistura de itens com e sem ficha técnica na mesma seleção. */
 export function selecaoProdutoTemMisturaBom(opts: {
   temBom: boolean;
@@ -234,11 +229,6 @@ export function selecaoProdutoTemMisturaBom(opts: {
 
 export const MSG_MISTURA_BOM_PRODUTO =
   'Não é possível misturar itens com e sem ficha técnica na mesma consulta.';
-
-export const PRODUTO_FILTRO_AUTOMATICO: ProdutoFiltroConsultaEstoque = {
-  modoProduto: 'diretos',
-  empenhoEscopo: 'todos',
-};
 
 export function avisoEscopoEmpenhoProduto(opts: {
   temPedidoSelecionado: boolean;
