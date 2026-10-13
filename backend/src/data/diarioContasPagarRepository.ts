@@ -277,6 +277,8 @@ export interface DiarioContaPagarLinha {
   idRef: number | null;
   pedidoCompra: string | null;
   notaFiscal: string | null;
+  /** Texto gravado neste projeto. Não vem do Nomus nem do Shop9. */
+  anotacao: string | null;
   itens: DiarioContaPagarItem[];
 }
 
@@ -435,6 +437,7 @@ function mapShop9(row: Record<string, unknown>): DiarioContaPagarLinha {
     idRef: codigo > 0 ? codigo : null,
     pedidoCompra: null,
     notaFiscal: texto(row.notaFiscal),
+    anotacao: null,
     itens: [],
   };
 }
@@ -471,6 +474,7 @@ function mapNomus(row: Record<string, unknown>): DiarioContaPagarLinha {
     idRef: idAgendamento ?? (codigo > 0 ? codigo : null),
     pedidoCompra: null,
     notaFiscal: null,
+    anotacao: null,
     itens: [],
   };
 }
@@ -608,6 +612,8 @@ export async function queryDiarioContasPagar(params: {
     return a.origem.localeCompare(b.origem);
   });
   await Promise.all([aplicarContaLocalShop9(linhas), aplicarFormaLocalShop9(linhas)]);
+  const { aplicarAnotacoesDiario } = await import('./diarioAnotacao.js');
+  await aplicarAnotacoesDiario(linhas);
   return {
     linhas,
     erroShop9: shop9.erro,

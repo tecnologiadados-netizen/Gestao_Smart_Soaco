@@ -7,6 +7,7 @@ import { trechosDescricaoReprogramada, type TrechoDescricao } from './descricaoR
 
 const COLUNAS = [
   'Código',
+  'Situação',
   'Classificação',
   'Vencimento',
   'Empresa',
@@ -15,14 +16,15 @@ const COLUNAS = [
   'Pessoa',
   'Descrição',
   'Comentários',
+  'Observação',
   'Pedido de compra',
   'Saldo a pagar',
   'NF',
   'Prioridade',
 ] as const;
 
-const COL_DESCRICAO = 7;
-const COL_SALDO = 11;
+const COL_DESCRICAO = 8;
+const COL_SALDO = 13;
 
 function maiusculo(valor: string | null | undefined): string {
   return (valor ?? '').toLocaleUpperCase('pt-BR');
@@ -119,6 +121,7 @@ export async function exportarDiarioContasPagarExcel(opts: {
   for (const l of opts.linhas) {
     const row = ws.addRow([
       l.codigoClassificacao != null && l.codigoClassificacao > 0 ? l.codigoClassificacao : '',
+      maiusculo(l.status),
       maiusculo(l.planoContas),
       dataExcelSemHora(l.dataVencimento),
       maiusculo(empresaExibida(l)),
@@ -127,18 +130,21 @@ export async function exportarDiarioContasPagarExcel(opts: {
       maiusculo(l.fornecedor),
       richTextDescricao(maiusculo(l.descricao)),
       maiusculo(l.observacao),
+      maiusculo(l.anotacao),
       maiusculo(l.pedidoCompra),
       l.saldo,
       maiusculo(l.notaFiscal),
       maiusculo(opts.rotuloPrioridade?.(l)),
     ]);
-    row.getCell(3).numFmt = 'dd/mm/yyyy';
+    row.getCell(4).numFmt = 'dd/mm/yyyy';
     row.getCell(COL_SALDO).numFmt = MONEY_FMT;
     row.getCell(COL_SALDO).alignment = { horizontal: 'right' };
   }
 
   const total = ws.addRow([
     `Lançamentos: ${opts.totais.qtd.toLocaleString('pt-BR')}`,
+    '',
+    '',
     '',
     '',
     '',
@@ -249,6 +255,7 @@ export function exportarDiarioContasPagarPdf(opts: {
 
   const body = opts.linhas.map((l) => [
     l.codigoClassificacao != null && l.codigoClassificacao > 0 ? String(l.codigoClassificacao) : '',
+    maiusculo(l.status),
     maiusculo(l.planoContas),
     formatData(l.dataVencimento),
     maiusculo(empresaExibida(l)),
@@ -257,6 +264,7 @@ export function exportarDiarioContasPagarPdf(opts: {
     maiusculo(l.fornecedor),
     maiusculo(l.descricao),
     maiusculo(l.observacao),
+    maiusculo(l.anotacao),
     maiusculo(l.pedidoCompra),
     formatMoeda(l.saldo),
     maiusculo(l.notaFiscal),
@@ -279,6 +287,8 @@ export function exportarDiarioContasPagarPdf(opts: {
       '',
       '',
       '',
+      '',
+      '',
       formatMoeda(opts.totais.saldo),
       '',
       '',
@@ -288,18 +298,20 @@ export function exportarDiarioContasPagarPdf(opts: {
     footStyles: { fillColor: [241, 245, 249], textColor: TEXTO, fontStyle: 'bold' },
     columnStyles: {
       0: { cellWidth: 14 },
-      1: { cellWidth: 28 },
-      2: { cellWidth: 18 },
-      3: { cellWidth: 24 },
-      4: { cellWidth: 22 },
+      1: { cellWidth: 18 },
+      2: { cellWidth: 28 },
+      3: { cellWidth: 18 },
+      4: { cellWidth: 24 },
       5: { cellWidth: 22 },
-      6: { cellWidth: 28 },
-      7: { cellWidth: 36 },
-      8: { cellWidth: 22 },
-      9: { cellWidth: 24 },
-      10: { cellWidth: 18, halign: 'right' },
-      11: { cellWidth: 16 },
-      12: { cellWidth: 18 },
+      6: { cellWidth: 22 },
+      7: { cellWidth: 28 },
+      8: { cellWidth: 32 },
+      9: { cellWidth: 20 },
+      10: { cellWidth: 24 },
+      11: { cellWidth: 22 },
+      12: { cellWidth: 18, halign: 'right' },
+      13: { cellWidth: 16 },
+      14: { cellWidth: 16 },
     },
     horizontalPageBreak: true,
     willDrawCell(data) {

@@ -39,6 +39,7 @@ export interface DiarioContaPagarLinha {
   idRef: number | null;
   pedidoCompra: string | null;
   notaFiscal: string | null;
+  anotacao: string | null;
   itens: DiarioContaPagarItem[];
 }
 
@@ -183,5 +184,45 @@ export async function definirFormaPagamentoDiario(params: {
     ...body,
     atualizados: Number(body.atualizados) || 0,
     ignorados: Array.isArray(body.ignorados) ? body.ignorados : [],
+  };
+}
+
+export async function salvarAnotacaoDiario(params: {
+  origem: 'Nomus' | 'Shop9';
+  codigo: number;
+  texto: string;
+}): Promise<string | null> {
+  const res = await apiFetch('/api/financeiro/diario/contas-pagar/anotacao', {
+    method: 'POST',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as { texto?: string | null; error?: string };
+  if (!res.ok) throw new Error(body.error || `Erro ao gravar observação (${res.status})`);
+  const texto = body.texto?.trim();
+  return texto || null;
+}
+
+export interface ImportacaoAnotacaoResultado {
+  gravados: number;
+  ignoradosVazios: number;
+  semCorrespondencia: number;
+  ambiguos: number;
+  amostrasSem: string[];
+  error?: string;
+}
+
+export async function importarAnotacoesDiario(matriz: string[][]): Promise<ImportacaoAnotacaoResultado> {
+  const res = await apiFetch('/api/financeiro/diario/contas-pagar/anotacoes/importar', {
+    method: 'POST',
+    body: { matriz },
+  });
+  const body = (await res.json().catch(() => ({}))) as ImportacaoAnotacaoResultado;
+  if (!res.ok) throw new Error(body.error || `Erro ao importar observações (${res.status})`);
+  return {
+    gravados: Number(body.gravados) || 0,
+    ignoradosVazios: Number(body.ignoradosVazios) || 0,
+    semCorrespondencia: Number(body.semCorrespondencia) || 0,
+    ambiguos: Number(body.ambiguos) || 0,
+    amostrasSem: Array.isArray(body.amostrasSem) ? body.amostrasSem : [],
   };
 }

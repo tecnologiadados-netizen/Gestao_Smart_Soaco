@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { importarAnotacoesDiario, salvarAnotacaoDiario } from '../data/diarioAnotacao.js';
 import {
   MAX_REPROGRAMAR,
   definirContaBancariaDiario,
@@ -11,13 +12,6 @@ import {
 } from '../data/diarioContasPagarRepository.js';
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
-const MAX_DIAS = 366;
-
-function diasEntre(inicio: string, fim: string): number {
-  const a = Date.parse(`${inicio}T12:00:00`);
-  const b = Date.parse(`${fim}T12:00:00`);
-  return Math.round((b - a) / 86_400_000);
-}
 
 /** GET /api/financeiro/diario/contas-pagar?dataInicio=&dataFim= */
 export async function getDiarioContasPagar(req: Request, res: Response): Promise<void> {
@@ -29,10 +23,6 @@ export async function getDiarioContasPagar(req: Request, res: Response): Promise
   }
   if (dataInicio > dataFim) {
     res.status(400).json({ error: 'A data inicial não pode ser maior que a data final.' });
-    return;
-  }
-  if (diasEntre(dataInicio, dataFim) > MAX_DIAS) {
-    res.status(400).json({ error: 'O intervalo de vencimento pode ter no máximo 366 dias.' });
     return;
   }
 
@@ -237,5 +227,51 @@ export async function postDefinirFormaPagamento(req: Request, res: Response): Pr
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[postDefinirFormaPagamento]', msg);
     res.status(500).json({ error: msg });
+  }
+}
+
+/** POST /api/financeiro/diario/contas-pagar/anotacao */
+export async function postSalvarAnotacaoDiario(req: Request, res: Response): Promise<void> {
+  const origem = req.body?.origem;
+  const codigo = Number(req.body?.codigo);
+  const texto = String(req.body?.texto ?? '');
+  if ((origem !== 'Nomus' && origem !== 'Shop9') || !Number.isInteger(codigo) || codigo <= 0) {
+    res.status(400).json({ error: 'Informe a origem e o código do título.' });
+    return;
+  }
+  try {
+    const resultado = await salvarAnotacaoDiario({
+      origem,
+      codigo,
+      texto,
+      usuario: req.user?.login ?? '?',
+    });
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[postSalvarAnotacaoDiario]', msg);
+    res.status(400).json({ error: msg });
+  }
+}
+
+/** POST /api/financeiro/diario/contas-pagar/anotacoes/importar */
+export async function postImportarAnotacoesDiario(req: Request, res: Response): Promise<void> {
+  try {
+    const resultado = await importarAnotacoesDiario({
+      matriz: req.body?.matriz,
+      usuario: req.user?.login ?? '?',
+    });
+    console.log(
+      '[diario anotacao import] user=%s gravados=%s sem=%s ambiguos=%s',
+      req.user?.login ?? '?',
+      resultado.gravados,
+      resultado.semCorrespondencia,
+      resultado.ambiguos,
+    );
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[postImportarAnotacoesDiario]', msg);
+    res.status(400).json({ error: msg });
   }
 }
