@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
 import { PERMISSOES } from '../../config/permissoes';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -186,9 +187,11 @@ export default function DiarioProcessosPage() {
               setErro(null);
               setIniciarAberto(true);
             }}
-            className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700"
+            aria-label="Iniciar contas a pagar"
+            title="Iniciar contas a pagar"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 text-white hover:bg-primary-700"
           >
-            Iniciar contas a pagar
+            <Plus className="h-4 w-4" strokeWidth={2.5} />
           </button>
         </div>
       </div>
