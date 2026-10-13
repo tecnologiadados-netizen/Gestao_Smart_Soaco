@@ -32,9 +32,98 @@ export const TIPOS_MOVIMENTACAO_PRECO_COBERTURA = [
 ] as const;
 
 const CM_CHUNK = 400;
+const CM_CHUNK_CONCURRENCY = 2;
+const BOBINA_MEDIA_CACHE_TTL_MS = 10 * 60 * 1000;
+
+type BobinaMediaCache = {
+  at: number;
+  tiposKey: string;
+  map: Map<string, number>;
+};
+
+let bobinaMediaCache: BobinaMediaCache | null = null;
 
 function placeholders(n: number): string {
   return Array.from({ length: n }, () => '?').join(', ');
+}
+
+async function mapChunksParallel<T>(
+  items: T[],
+  chunkSize: number,
+  concurrency: number,
+  worker: (chunk: T[]) => Promise<void>
+): Promise<void> {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    chunks.push(items.slice(i, i + chunkSize));
+  }
+  let next = 0;
+  const run = async () => {
+    while (true) {
+      const i = next++;
+      if (i >= chunks.length) return;
+      await worker(chunks[i]!);
+    }
+  };
+  const n = Math.min(Math.max(1, concurrency), chunks.length);
+  if (n <= 0) return;
+  await Promise.all(Array.from({ length: n }, () => run()));
+}
+
+/** Já tem atividade na grade sintética (antes do CM) — entra no painel sem precisar de CM. */
+function temSinalPipelineCobertura(row: {
+  saldo: number;
+  empenho: number;
+  solicitacao?: number;
+  cotacao?: number;
+  pedidoCompra?: number;
+}): boolean {
+  return (
+    (Number(row.saldo) || 0) !== 0 ||
+    (Number(row.empenho) || 0) !== 0 ||
+    (Number(row.solicitacao) || 0) !== 0 ||
+    (Number(row.cotacao) || 0) !== 0 ||
+    (Number(row.pedidoCompra) || 0) !== 0
+  );
+}
+
+function mergeNumMap(a: Map<number, number>, b: Map<number, number>): Map<number, number> {
+  const out = new Map(a);
+  for (const [k, v] of b) out.set(k, v);
+  return out;
+}
+
+function mergeStrMap(a: Map<number, string>, b: Map<number, string>): Map<number, string> {
+  const out = new Map(a);
+  for (const [k, v] of b) out.set(k, v);
+  return out;
+}
+
+/** Comprador, preço, família, última mov. e setores — só para ids que entram no universo. */
+async function enriquecerMetadadosCobertura(ids: number[]): Promise<{
+  compradorMap: Map<number, string>;
+  precoMap: Map<number, number>;
+  familiaMap: Map<number, string>;
+  ultimaMovMap: Map<number, string>;
+  setoresMap: Map<number, string>;
+}> {
+  if (ids.length === 0) {
+    return {
+      compradorMap: new Map(),
+      precoMap: new Map(),
+      familiaMap: new Map(),
+      ultimaMovMap: new Map(),
+      setoresMap: new Map(),
+    };
+  }
+  const [compradorMap, precoMap, familiaMap, ultimaMovMap, setoresMap] = await Promise.all([
+    consultarCompradorPorIds(ids),
+    consultarUltimoPrecoEntradaPorIds(ids),
+    consultarFamiliaProdutoPorIds(ids),
+    consultarUltimaMovimentacaoEstoquePorIds(ids),
+    consultarSetoresVinculoCoberturaPorIds(ids),
+  ]);
+  return { compradorMap, precoMap, familiaMap, ultimaMovMap, setoresMap };
 }
 
 /**
@@ -47,8 +136,7 @@ async function consultarConsumoMedioPorIds(ids: number[]): Promise<Map<number, n
 
   if (!isNomusEnabled()) return map;
 
-  for (let i = 0; i < unicos.length; i += CM_CHUNK) {
-    const chunk = unicos.slice(i, i + CM_CHUNK);
+  await mapChunksParallel(unicos, CM_CHUNK, CM_CHUNK_CONCURRENCY, async (chunk) => {
     const ph = placeholders(chunk.length);
     const sql = `
 Select a.idProduto As idProduto,
@@ -98,7 +186,7 @@ Group By a.idProduto
         err instanceof Error ? err.message : err
       );
     }
-  }
+  });
 
   for (const id of unicos) {
     if (!map.has(id)) map.set(id, 0);
@@ -274,12 +362,23 @@ Where ranked.rn = 1
 /**
  * Média do preço cheio das entradas (tipos do painel) na data mais recente por chave dimensional.
  * Mesma lógica de agrupamento da precificação; fonte de valor = regra do painel.
+ * Cache em memória (TTL curto): o scan é global e independente do recorte de produtos.
  */
 async function consultarMediaPrecoBobinaPorChave(
   tipos: readonly string[]
 ): Promise<Map<string, number>> {
   const map = new Map<string, number>();
   if (!isNomusEnabled() || tipos.length === 0) return map;
+
+  const tiposKey = [...tipos].join('\0');
+  const agora = Date.now();
+  if (
+    bobinaMediaCache &&
+    bobinaMediaCache.tiposKey === tiposKey &&
+    agora - bobinaMediaCache.at < BOBINA_MEDIA_CACHE_TTL_MS
+  ) {
+    return new Map(bobinaMediaCache.map);
+  }
 
   const tiposPh = placeholders(tipos.length);
   const sql = `
@@ -320,6 +419,7 @@ Group By b.bobina
       if (!chave || !Number.isFinite(preco) || preco <= 0) continue;
       map.set(chave, preco);
     }
+    bobinaMediaCache = { at: agora, tiposKey, map: new Map(map) };
   } catch (err) {
     console.error(
       '[coberturaEstoqueRepository] consultarMediaPrecoBobinaPorChave:',
@@ -475,16 +575,30 @@ export async function consultarPainelCoberturaEstoque(params: {
     return { data: null, erro };
   }
 
-  const ids = data.map((r) => r.idProduto);
-  const [cmMap, compradorMap, precoMap, familiaMap, ultimaMovMap, setoresMap] = await Promise.all([
-    consultarConsumoMedioPorIds(ids),
-    consultarCompradorPorIds(ids),
-    consultarUltimoPrecoEntradaPorIds(ids),
-    consultarFamiliaProdutoPorIds(ids),
-    consultarUltimaMovimentacaoEstoquePorIds(ids),
-    consultarSetoresVinculoCoberturaPorIds(ids),
+  // Fase 1: itens com saldo/empenho/SC/cotação/PC já entram; os demais só se CM > 0.
+  // Evita preço/comprador/família/mov/setores para o volume descartado (tudo zero).
+  const comSinal = data.filter(temSinalPipelineCobertura);
+  const semSinal = data.filter((r) => !temSinalPipelineCobertura(r));
+  const idsComSinal = comSinal.map((r) => r.idProduto);
+  const idsSemSinal = semSinal.map((r) => r.idProduto);
+
+  const [cmComSinal, metaComSinal, cmSemSinal] = await Promise.all([
+    consultarConsumoMedioPorIds(idsComSinal),
+    enriquecerMetadadosCobertura(idsComSinal),
+    consultarConsumoMedioPorIds(idsSemSinal),
   ]);
-  let comCm = data
+
+  const aptosSemSinal = semSinal.filter((r) => (cmSemSinal.get(r.idProduto) ?? 0) > 0);
+  const metaSemSinal = await enriquecerMetadadosCobertura(aptosSemSinal.map((r) => r.idProduto));
+
+  const cmMap = mergeNumMap(cmComSinal, cmSemSinal);
+  const compradorMap = mergeStrMap(metaComSinal.compradorMap, metaSemSinal.compradorMap);
+  const precoMap = mergeNumMap(metaComSinal.precoMap, metaSemSinal.precoMap);
+  const familiaMap = mergeStrMap(metaComSinal.familiaMap, metaSemSinal.familiaMap);
+  const ultimaMovMap = mergeStrMap(metaComSinal.ultimaMovMap, metaSemSinal.ultimaMovMap);
+  const setoresMap = mergeStrMap(metaComSinal.setoresMap, metaSemSinal.setoresMap);
+
+  let comCm = [...comSinal, ...aptosSemSinal]
     .map((r) => ({
       ...r,
       consumoMedio: cmMap.get(r.idProduto) ?? 0,

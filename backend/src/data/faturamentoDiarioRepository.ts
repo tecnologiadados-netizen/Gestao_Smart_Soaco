@@ -1,9 +1,36 @@
 /**
  * Consultas Nomus: Devoluções diária/mensal e Faturamento diário/mensal.
  * Somente leitura.
+ *
+ * Devolução (tm 52) só compõe a mensagem se não houver item de origem, ou se a
+ * saída de origem passaria no mesmo filtro do faturamento (tipo, empresa 1,
+ * status da NF e listas de exclusão). O mês da saída não entra nessa regra:
+ * venda em setembro e devolução em outubro continuam cada uma no seu mês.
  */
 
 import { getNomusPool } from '../config/nomusDb.js';
+
+const SQL_DEVOLUCAO_ORIGEM_NO_FATURAMENTO = `
+  AND (
+    ide.idItemOrigemDevolucao IS NULL
+    OR EXISTS (
+      SELECT 1
+      FROM itemdocumentoestoque ide_origem
+      INNER JOIN documentoestoque de_origem ON de_origem.id = ide_origem.idDocumentoEstoque
+      INNER JOIN tipomovimentacao tm_origem ON tm_origem.id = ide_origem.idTipoMovimentacao
+      LEFT JOIN nfe nfe_origem ON nfe_origem.idDocumentoEstoque = de_origem.id
+      WHERE ide_origem.id = ide.idItemOrigemDevolucao
+        AND (nfe_origem.status IS NULL OR nfe_origem.status IN (1, 3, 4))
+        AND tm_origem.id IN (27, 59, 21, 54, 6, 62, 45, 93, 83, 74, 108, 64, 92)
+        AND de_origem.idEmpresaSaida = 1
+        AND ide_origem.id NOT IN (493134, 493135, 493136, 493137, 493138, 493139, 493140)
+        AND de_origem.numeroDocumentoFiscal NOT IN (
+          128748, 127108, 133953, 133950, 133948, 133947,
+          133956, 133951, 133949, 133957, 133961, 133876
+        )
+    )
+  )
+`;
 
 const SQL_DEVOLUCOES_DIARIA = `
 SELECT IfNull(Sum(ide.valorTotalComDesconto), 0) AS devolucao
@@ -17,6 +44,7 @@ LEFT JOIN familiaproduto fp ON pd.idFamiliaProduto = fp.id
 WHERE (ISNULL(nfe.status) = 1 OR nfe.status = 4)
   AND tm.id IN (52)
   AND DATE(de.dataEmissao) = CURDATE()
+  ${SQL_DEVOLUCAO_ORIGEM_NO_FATURAMENTO}
 `;
 
 const SQL_DEVOLUCOES_MENSAL = `
@@ -32,6 +60,7 @@ WHERE (ISNULL(nfe.status) = 1 OR nfe.status = 4)
   AND tm.id IN (52)
   AND YEAR(de.dataEmissao) = YEAR(CURDATE())
   AND MONTH(de.dataEmissao) = MONTH(CURDATE())
+  ${SQL_DEVOLUCAO_ORIGEM_NO_FATURAMENTO}
 `;
 
 const SQL_FATURAMENTO_DIARIO = `

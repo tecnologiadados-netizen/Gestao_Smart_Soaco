@@ -659,6 +659,33 @@ export async function buscarOpcoesFiltroCampo(
   }
 }
 
+/** Evita um único IN gigante no empenho BOM (painel cobertura / consulta ampla). */
+const EMPENHO_IDS_CHUNK = 300;
+const EMPENHO_CHUNK_CONCURRENCY = 2;
+
+async function mapChunksParallel<T>(
+  items: T[],
+  chunkSize: number,
+  concurrency: number,
+  worker: (chunk: T[]) => Promise<void>
+): Promise<void> {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    chunks.push(items.slice(i, i + chunkSize));
+  }
+  let next = 0;
+  const run = async () => {
+    while (true) {
+      const i = next++;
+      if (i >= chunks.length) return;
+      await worker(chunks[i]!);
+    }
+  };
+  const n = Math.min(Math.max(1, concurrency), chunks.length);
+  if (n <= 0) return;
+  await Promise.all(Array.from({ length: n }, () => run()));
+}
+
 /**
  * Empenho líquido em lote (mesma regra do Ressup/Coletas: abate PA pronto setores 5/24).
  */
@@ -674,7 +701,8 @@ async function consultarEmpenhoLiquidoPorIds(
   }
 ): Promise<Map<number, number>> {
   const map = new Map<number, number>();
-  if (ids.length === 0) return map;
+  const unicos = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))];
+  if (unicos.length === 0) return map;
 
   const pool = getNomusPool();
   if (!pool || !isNomusEnabled()) return map;
@@ -690,41 +718,43 @@ async function consultarEmpenhoLiquidoPorIds(
     !usarEmpenhoPedido && opts?.empenhoProdutoEscopo === 'produto' && paisFiltrados.length > 0;
 
   try {
-    let sql: string;
-    let params: unknown[];
-    if (usarEmpenhoPedido) {
-      ({ sql, params } = buildEmpenhoLiquidoBatchSqlPorPedido(
-        considerarRequisicoes,
-        ids,
-        opts.modoPedido!,
-        opts.idPedido!
-      ));
-    } else if (usarEmpenhoProduto) {
-      ({ sql, params } = buildEmpenhoLiquidoBatchSqlPorProduto(
-        considerarRequisicoes,
-        ids,
-        paisFiltrados
-      ));
-    } else {
-      ({ sql, params } = buildEmpenhoLiquidoBatchSql(considerarRequisicoes, ids));
-    }
-    const [rows] = (await nomusQueryWithRetry(pool, sql, params)) as [Record<string, unknown>[], unknown];
-    for (const r of Array.isArray(rows) ? rows : []) {
-      const id = Number(r.idProduto ?? 0);
-      if (id <= 0) continue;
-      map.set(id, Math.round(Number(r.empenho ?? 0) * 100) / 100);
-    }
-    for (const id of ids) {
-      if (!map.has(id)) map.set(id, 0);
-    }
+    await mapChunksParallel(unicos, EMPENHO_IDS_CHUNK, EMPENHO_CHUNK_CONCURRENCY, async (chunk) => {
+      let sql: string;
+      let params: unknown[];
+      if (usarEmpenhoPedido) {
+        ({ sql, params } = buildEmpenhoLiquidoBatchSqlPorPedido(
+          considerarRequisicoes,
+          chunk,
+          opts.modoPedido!,
+          opts.idPedido!
+        ));
+      } else if (usarEmpenhoProduto) {
+        ({ sql, params } = buildEmpenhoLiquidoBatchSqlPorProduto(
+          considerarRequisicoes,
+          chunk,
+          paisFiltrados
+        ));
+      } else {
+        ({ sql, params } = buildEmpenhoLiquidoBatchSql(considerarRequisicoes, chunk));
+      }
+      const [rows] = (await nomusQueryWithRetry(pool, sql, params)) as [
+        Record<string, unknown>[],
+        unknown,
+      ];
+      for (const r of Array.isArray(rows) ? rows : []) {
+        const id = Number(r.idProduto ?? 0);
+        if (id <= 0) continue;
+        map.set(id, Math.round(Number(r.empenho ?? 0) * 100) / 100);
+      }
+    });
   } catch (err) {
     console.error(
       '[consultaEstoqueRepository] consultarEmpenhoLiquidoPorIds:',
       err instanceof Error ? err.message : err
     );
-    for (const id of ids) {
-      if (!map.has(id)) map.set(id, 0);
-    }
+  }
+  for (const id of unicos) {
+    if (!map.has(id)) map.set(id, 0);
   }
   return map;
 }
@@ -734,14 +764,16 @@ async function consultarEmpenhoLiquidoPorIds(
  */
 export async function consultarSolicitacaoSaldoPorIds(ids: number[]): Promise<Map<number, number>> {
   const map = new Map<number, number>();
-  if (ids.length === 0) return map;
+  const unicos = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))];
+  if (unicos.length === 0) return map;
 
   const pool = getNomusPool();
   if (!pool || !isNomusEnabled()) return map;
 
-  const placeholders = ids.map(() => '?').join(', ');
-
-  const sql = `
+  try {
+    await mapChunksParallel(unicos, EMPENHO_IDS_CHUNK, EMPENHO_CHUNK_CONCURRENCY, async (chunk) => {
+      const placeholders = chunk.map(() => '?').join(', ');
+      const sql = `
 With sc_base As (
   Select
     sc.idProduto,
@@ -767,22 +799,24 @@ Select
 From sc_base
 Group By idProduto
 `.trim();
-
-  try {
-    const [rows] = (await nomusQueryWithRetry(pool, sql, ids)) as [Record<string, unknown>[], unknown];
-    for (const r of Array.isArray(rows) ? rows : []) {
-      const id = Number(r.idProduto ?? 0);
-      if (id <= 0) continue;
-      map.set(id, Number(r.solicitacao ?? 0));
-    }
-    for (const id of ids) {
-      if (!map.has(id)) map.set(id, 0);
-    }
+      const [rows] = (await nomusQueryWithRetry(pool, sql, chunk)) as [
+        Record<string, unknown>[],
+        unknown,
+      ];
+      for (const r of Array.isArray(rows) ? rows : []) {
+        const id = Number(r.idProduto ?? 0);
+        if (id <= 0) continue;
+        map.set(id, Number(r.solicitacao ?? 0));
+      }
+    });
   } catch (err) {
     console.error(
       '[consultaEstoqueRepository] consultarSolicitacaoSaldoPorIds:',
       err instanceof Error ? err.message : err
     );
+  }
+  for (const id of unicos) {
+    if (!map.has(id)) map.set(id, 0);
   }
   return map;
 }
