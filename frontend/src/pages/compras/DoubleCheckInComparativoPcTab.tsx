@@ -472,7 +472,7 @@ export default function DoubleCheckInComparativoPcTab({
                 const decVigente = dec?.vigente === false ? undefined : dec;
                 const natureza =
                   decVigente &&
-                  ['arredondamento', 'divergencia_so_na_tela', 'ipi_reflexo'].includes(
+                  ['arredondamento', 'ipi_reflexo'].includes(
                     decVigente.justificativaCodigo
                   )
                     ? 'benigna'

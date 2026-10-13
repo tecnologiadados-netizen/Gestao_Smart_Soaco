@@ -30,7 +30,6 @@ export const OBS_PAGAMENTO_AJUSTE_DIA_UTIL =
 
 const JUSTIFICATIVAS_BENIGNAS = new Set([
   'arredondamento',
-  'divergencia_so_na_tela',
   'frete_lancado_na_entrada',
   'ipi_reflexo',
 ]);
