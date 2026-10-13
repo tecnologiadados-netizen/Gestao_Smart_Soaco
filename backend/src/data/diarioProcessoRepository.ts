@@ -20,6 +20,7 @@ export interface DiarioProcessoDto {
   aprovadoPor: string | null;
   aprovadoEm: string | null;
   enviadoEm: string | null;
+  criadoEm: string;
   editavel: boolean;
 }
 
@@ -34,6 +35,7 @@ type Row = {
   aprovadoPor: string | null;
   aprovadoEm: Date | null;
   enviadoEm: Date | null;
+  criadoEm: Date;
 };
 
 function iso(data: Date | null): string | null {
@@ -59,6 +61,7 @@ function dto(row: Row): DiarioProcessoDto {
     aprovadoPor: row.aprovadoPor,
     aprovadoEm: iso(row.aprovadoEm),
     enviadoEm: iso(row.enviadoEm),
+    criadoEm: row.criadoEm.toISOString(),
     editavel: processoEditavel(status),
   };
 }

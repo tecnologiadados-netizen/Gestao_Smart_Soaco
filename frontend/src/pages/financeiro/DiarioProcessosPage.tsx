@@ -40,6 +40,19 @@ function formatarData(ymd: string): string {
   return `${dia}/${mes}/${ano}`;
 }
 
+function formatarDataHora(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export default function DiarioProcessosPage() {
   const { hasPermission } = useAuth();
   const podeAprovar =
@@ -223,6 +236,7 @@ export default function DiarioProcessosPage() {
             <tr>
               <th className="px-3 py-2 text-left font-semibold">Código</th>
               <th className="px-3 py-2 text-left font-semibold">Data</th>
+              <th className="px-3 py-2 text-left font-semibold">Criado em</th>
               <th className="px-3 py-2 text-left font-semibold">Descrição</th>
               <th className="px-3 py-2 text-left font-semibold">Usuário</th>
               <th className="px-3 py-2 text-left font-semibold">Status</th>
@@ -232,7 +246,7 @@ export default function DiarioProcessosPage() {
           <tbody>
             {processos.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
+                <td colSpan={7} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
                   {loading ? 'Carregando…' : 'Nenhum contas a pagar iniciado.'}
                 </td>
               </tr>
@@ -241,6 +255,7 @@ export default function DiarioProcessosPage() {
                 <tr key={p.id} className="border-t border-slate-200 dark:border-slate-700">
                   <td className="px-3 py-2 whitespace-nowrap">{p.codigo}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{formatarData(p.dataVencimento)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{formatarDataHora(p.criadoEm)}</td>
                   <td className="px-3 py-2 max-w-[24rem] truncate" title={p.descricao}>
                     {p.descricao}
                   </td>
