@@ -57,7 +57,7 @@ export async function patchDescricaoProcessoDiario(req: Request, res: Response):
     return;
   }
   try {
-    const processo = await atualizarDescricaoProcessoDiario(id, String(req.body?.descricao ?? ''));
+    const processo = await atualizarDescricaoProcessoDiario(id);
     res.json({ processo });
   } catch (err) {
     console.error('[patchDescricaoProcessoDiario]', msg(err));

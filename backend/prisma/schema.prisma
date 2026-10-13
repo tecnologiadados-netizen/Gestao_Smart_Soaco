@@ -3135,6 +3135,7 @@ model DiarioAnotacao {
   origem       String
   codigo       Int
   texto        String
+  cor          String?
   usuario      String
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
   criadoEm     DateTime @default(now()) @map("criado_em")
@@ -3159,4 +3160,31 @@ model DiarioContasPagarProcesso {
   criadoEm        DateTime  @default(now()) @map("criado_em")
 
   @@map("diario_contas_pagar_processo")
+}
+
+/// Primeira reprogramação conhecida do título. Não altera Nomus nem Shop9.
+/// codigo = agendamentofinanceiro.id (Nomus) ou Financeiro_Contas.Ordem (Shop9).
+model DiarioReprogramacao {
+  id                  Int      @id @default(autoincrement())
+  origem              String
+  codigo              Int
+  vencimentoOriginal  String?  @map("vencimento_original")
+  texto               String
+  atualizadoEm        DateTime @updatedAt @map("atualizado_em")
+  criadoEm            DateTime @default(now()) @map("criado_em")
+
+  @@unique([origem, codigo])
+  @@map("diario_reprogramacao")
+}
+
+/// Agrupamento local pelo nome da classificação. Não grava no Nomus nem no Shop9.
+model DiarioSubclassificacao {
+  id             Int      @id @default(autoincrement())
+  nome           String
+  classificacao  String
+  chave          String   @unique
+  atualizadoEm   DateTime @updatedAt @map("atualizado_em")
+  criadoEm       DateTime @default(now()) @map("criado_em")
+
+  @@map("diario_subclassificacao")
 }

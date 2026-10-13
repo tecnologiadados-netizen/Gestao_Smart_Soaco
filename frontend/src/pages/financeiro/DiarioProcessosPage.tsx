@@ -4,7 +4,6 @@ import { PERMISSOES } from '../../config/permissoes';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   aprovarProcessoDiario,
-  atualizarDescricaoProcessoDiario,
   devolverProcessoDiario,
   enviarProcessoDiario,
   iniciarProcessoDiario,
@@ -34,10 +33,22 @@ function hojeYmd(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+const DIAS_SEMANA = ['Domingo', 'Segunda Feira', 'Terça Feira', 'Quarta Feira', 'Quinta Feira', 'Sexta Feira', 'Sábado'] as const;
+
 function formatarData(ymd: string): string {
   const [ano, mes, dia] = ymd.split('-');
   if (!ano || !mes || !dia) return ymd;
   return `${dia}/${mes}/${ano}`;
+}
+
+function descricaoPadraoContasPagar(ymd: string): string {
+  const [ano, mes, dia] = ymd.split('-').map((parte) => Number(parte));
+  if (!ano || !mes || !dia) return '';
+  const data = new Date(ano, mes - 1, dia);
+  if (Number.isNaN(data.getTime())) return '';
+  const dd = String(dia).padStart(2, '0');
+  const mm = String(mes).padStart(2, '0');
+  return `Contas a Pagar - ${dd}/${mm} - ${DIAS_SEMANA[data.getDay()]}`;
 }
 
 function formatarDataHora(iso: string | null | undefined): string {
@@ -63,12 +74,10 @@ export default function DiarioProcessosPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [aberto, setAberto] = useState<DiarioProcesso | null>(null);
-  const [descricao, setDescricao] = useState('');
   const [fluxo, setFluxo] = useState(false);
 
   const [iniciarAberto, setIniciarAberto] = useState(false);
   const [novaData, setNovaData] = useState(hojeYmd);
-  const [novaDescricao, setNovaDescricao] = useState('');
 
   const [senhaAberta, setSenhaAberta] = useState(false);
   const [senha, setSenha] = useState('');
@@ -93,23 +102,25 @@ export default function DiarioProcessosPage() {
 
   const abrir = (processo: DiarioProcesso) => {
     setAberto(processo);
-    setDescricao(processo.descricao);
   };
 
   const substituir = (processo: DiarioProcesso) => {
     setAberto(processo);
-    setDescricao(processo.descricao);
     setProcessos((prev) => prev.map((p) => (p.id === processo.id ? processo : p)));
   };
 
   const iniciar = async () => {
     if (fluxo) return;
+    const descricao = descricaoPadraoContasPagar(novaData);
+    if (!descricao) {
+      setErro('Informe a data de vencimento.');
+      return;
+    }
     setFluxo(true);
     setErro(null);
     try {
-      const res = await iniciarProcessoDiario({ dataVencimento: novaData, descricao: novaDescricao });
+      const res = await iniciarProcessoDiario({ dataVencimento: novaData, descricao });
       setIniciarAberto(false);
-      setNovaDescricao('');
       setProcessos((prev) => {
         const sem = prev.filter((p) => p.id !== res.processo.id);
         return [res.processo, ...sem].sort((a, b) => b.dataVencimento.localeCompare(a.dataVencimento) || b.codigo - a.codigo);
@@ -124,37 +135,8 @@ export default function DiarioProcessosPage() {
     }
   };
 
-  const gravarDescricao = async (opts?: { silencioso?: boolean }): Promise<boolean> => {
-    if (!aberto || !aberto.editavel || fluxo) return false;
-    const texto = descricao.trim();
-    if (!texto) {
-      setDescricao(aberto.descricao);
-      setErro('Informe a descrição.');
-      return false;
-    }
-    if (texto === aberto.descricao) {
-      if (!opts?.silencioso) setAviso('Alterações salvas.');
-      return true;
-    }
-    setFluxo(true);
-    setErro(null);
-    try {
-      substituir(await atualizarDescricaoProcessoDiario(aberto.id, texto));
-      if (!opts?.silencioso) setAviso('Alterações salvas.');
-      return true;
-    } catch (e) {
-      setDescricao(aberto.descricao);
-      setErro(e instanceof Error ? e.message : String(e));
-      return false;
-    } finally {
-      setFluxo(false);
-    }
-  };
-
   const enviar = async () => {
     if (!aberto || fluxo) return;
-    const ok = await gravarDescricao({ silencioso: true });
-    if (!ok) return;
     setFluxo(true);
     setErro(null);
     try {
@@ -206,7 +188,6 @@ export default function DiarioProcessosPage() {
             type="button"
             onClick={() => {
               setNovaData(hojeYmd());
-              setNovaDescricao('');
               setErro(null);
               setIniciarAberto(true);
             }}
@@ -256,8 +237,8 @@ export default function DiarioProcessosPage() {
                   <td className="px-3 py-2 whitespace-nowrap">{p.codigo}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{formatarData(p.dataVencimento)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{formatarDataHora(p.criadoEm)}</td>
-                  <td className="px-3 py-2 max-w-[24rem] truncate" title={p.descricao}>
-                    {p.descricao}
+                  <td className="px-3 py-2 max-w-[24rem] truncate" title={descricaoPadraoContasPagar(p.dataVencimento)}>
+                    {descricaoPadraoContasPagar(p.dataVencimento)}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{p.usuario}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
@@ -305,16 +286,12 @@ export default function DiarioProcessosPage() {
                 className="mt-1 h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm dark:border-slate-600 dark:bg-slate-900"
               />
             </label>
-            <label className="mt-3 block text-xs font-medium text-slate-600 dark:text-slate-300">
-              Descrição
-              <input
-                required
-                maxLength={200}
-                value={novaDescricao}
-                onChange={(e) => setNovaDescricao(e.target.value)}
-                className="mt-1 h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm dark:border-slate-600 dark:bg-slate-900"
-              />
-            </label>
+            <div className="mt-3">
+              <p className="text-xs font-medium text-slate-600 dark:text-slate-300">Descrição</p>
+              <p className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                {descricaoPadraoContasPagar(novaData) || 'Informe a data de vencimento.'}
+              </p>
+            </div>
             {erro ? <p className="mt-3 text-sm text-red-600 dark:text-red-300">{erro}</p> : null}
             <div className="mt-4 flex justify-end gap-2">
               <button
@@ -342,24 +319,11 @@ export default function DiarioProcessosPage() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
-                  Contas a pagar {aberto.codigo}
+                  {descricaoPadraoContasPagar(aberto.dataVencimento)}
                 </h2>
                 <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASSE[aberto.status]}`}>
                   {STATUS_LABEL[aberto.status]}
                 </span>
-                <span className="text-sm text-slate-500 dark:text-slate-400">{formatarData(aberto.dataVencimento)}</span>
-                <input
-                  value={descricao}
-                  maxLength={200}
-                  disabled={!aberto.editavel || fluxo}
-                  onChange={(e) => {
-                    setDescricao(e.target.value);
-                    setAviso(null);
-                  }}
-                  placeholder="Descrição"
-                  aria-label="Descrição"
-                  className="h-8 min-w-[12rem] flex-1 rounded-lg border border-slate-300 bg-white px-2 text-sm disabled:opacity-70 dark:border-slate-600 dark:bg-slate-800"
-                />
               </div>
               {aberto.motivoDevolucao ? (
                 <p className="mt-1 text-xs text-orange-700 dark:text-orange-300">Devolução: {aberto.motivoDevolucao}</p>
@@ -391,24 +355,14 @@ export default function DiarioProcessosPage() {
           ) : null}
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white px-4 py-2 dark:border-slate-700 dark:bg-slate-900">
             {aberto.editavel ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => void gravarDescricao()}
-                  disabled={fluxo}
-                  className="h-8 rounded-lg border border-primary-600 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50 dark:bg-slate-800 dark:text-primary-200 dark:hover:bg-slate-700"
-                >
-                  {fluxo ? 'Salvando…' : 'Salvar'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void enviar()}
-                  disabled={fluxo}
-                  className="h-8 rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-                >
-                  Enviar para aprovação
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={() => void enviar()}
+                disabled={fluxo}
+                className="h-8 rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                Enviar para aprovação
+              </button>
             ) : null}
             {podeAprovar && aberto.status === 'em_aprovacao' ? (
               <button

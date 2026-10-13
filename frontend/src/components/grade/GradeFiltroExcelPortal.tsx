@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { ExcelFilterDraft, SortDir } from '../../hooks/useGradeFiltrosExcel';
 import {
   NUMERIC_FILTER_OPTIONS,
@@ -7,6 +7,22 @@ import {
   parseNumeroFiltroInput,
   type NumericFilterOp,
 } from '../../utils/gradeFiltroNumerico';
+
+export type CorCabecalhoGrade = { id: string; hex: string | null };
+
+/** Filtro do cabeçalho: qualquer célula que tenha cor, sem escolher uma cor específica. */
+export const FILTRO_COR_QUALQUER = '*';
+
+/** Classificar e filtrar pela cor de preenchimento da coluna (menu do cabeçalho). */
+export type FiltroCorCabecalho = {
+  cores: CorCabecalhoGrade[];
+  filtroId: string | null;
+  ordemId: string | null;
+  onClassificar: (id: string) => void;
+  onFiltrar: (id: string | null) => void;
+  /** Abre a classificação por cor da célula, com posição superior ou inferior. */
+  onAbrirClassificacao?: () => void;
+};
 
 type Props = {
   colunaAberta: string;
@@ -31,9 +47,137 @@ type Props = {
   applyButtonLabel?: string;
   /** Ações extras abaixo dos botões de ordenação (ex.: autopreencher Seq.). */
   extraActions?: ReactNode;
+  /** Classificação e filtro pela cor da célula, entre a ordenação e a pesquisa. */
+  filtroCor?: FiltroCorCabecalho;
   /** Sobreposição do menu (padrão 13001). Subir quando o modal pai tiver z-index maior. */
   zIndex?: number;
 };
+
+function BlocoFiltroCor({ filtroCor }: { filtroCor: FiltroCorCabecalho }) {
+  const [painel, setPainel] = useState<'classificar' | 'filtrar' | null>(null);
+  const abrir = (qual: 'classificar' | 'filtrar') => setPainel((atual) => (atual === qual ? null : qual));
+
+  return (
+    <>
+      <div className="my-2 border-t border-slate-200 dark:border-slate-600" />
+      <button
+        type="button"
+        onClick={() => abrir('classificar')}
+        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-slate-700"
+      >
+        <span className="min-w-0 flex-1">Classificar por cor</span>
+        <span className="text-slate-400">{painel === 'classificar' ? '▾' : '›'}</span>
+      </button>
+      {painel === 'classificar' ? (
+        <div>
+          {filtroCor.onAbrirClassificacao ? (
+            <button
+              type="button"
+              onClick={filtroCor.onAbrirClassificacao}
+              className="mb-1 block w-full rounded px-2 py-1 text-left text-[11px] font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              Classificação personalizada…
+            </button>
+          ) : null}
+          <ListaCoresCabecalho
+            cores={filtroCor.cores}
+            ativoId={filtroCor.ordemId}
+            onEscolher={filtroCor.onClassificar}
+          />
+        </div>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => abrir('filtrar')}
+        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-slate-700"
+      >
+        <span className="min-w-0 flex-1">Filtrar por cor</span>
+        <span className="text-slate-400">{painel === 'filtrar' ? '▾' : '›'}</span>
+      </button>
+      {painel === 'filtrar' ? (
+        <div>
+          {filtroCor.filtroId != null ? (
+            <button
+              type="button"
+              onClick={() => filtroCor.onFiltrar(null)}
+              className="block w-full rounded px-2 py-1 text-left text-[11px] text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              Todas as cores
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => filtroCor.onFiltrar(FILTRO_COR_QUALQUER)}
+            className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] hover:bg-slate-100 dark:hover:bg-slate-700 ${
+              filtroCor.filtroId === FILTRO_COR_QUALQUER ? 'font-medium text-primary-800 dark:text-primary-200' : ''
+            }`}
+          >
+            <span
+              className="h-3.5 w-3.5 rounded-sm border border-black/15 bg-gradient-to-br from-violet-500 via-sky-400 to-amber-400"
+              aria-hidden
+            />
+            Com cor
+          </button>
+          <ListaCoresCabecalho
+            cores={filtroCor.cores}
+            ativoId={filtroCor.filtroId}
+            onEscolher={(id) => filtroCor.onFiltrar(id)}
+          />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function ListaCoresCabecalho({
+  cores,
+  ativoId,
+  onEscolher,
+}: {
+  cores: CorCabecalhoGrade[];
+  ativoId: string | null;
+  onEscolher: (id: string) => void;
+}) {
+  const coloridas = cores.filter((cor) => cor.hex);
+  const temSem = cores.some((cor) => !cor.hex);
+  if (coloridas.length === 0 && !temSem) {
+    return <p className="px-2 py-1 text-[11px] text-slate-500">Nenhuma cor nesta coluna.</p>;
+  }
+  return (
+    <div className="px-2 pb-1">
+      {coloridas.length > 0 ? (
+        <div className="flex flex-wrap gap-1 py-1">
+          {coloridas.map((cor) => (
+            <button
+              key={cor.id}
+              type="button"
+              title={cor.hex ?? ''}
+              aria-label={cor.hex ?? 'Sem preenchimento'}
+              aria-pressed={ativoId === cor.id}
+              onClick={() => onEscolher(cor.id)}
+              className={`h-5 w-5 rounded-sm border border-black/20 ${
+                ativoId === cor.id ? 'ring-2 ring-primary-600 ring-offset-1' : ''
+              }`}
+              style={{ backgroundColor: cor.hex ?? '#ffffff' }}
+            />
+          ))}
+        </div>
+      ) : null}
+      {temSem ? (
+        <button
+          type="button"
+          onClick={() => onEscolher('')}
+          className={`flex w-full items-center gap-2 rounded px-1 py-1 text-left text-[11px] hover:bg-slate-100 dark:hover:bg-slate-700 ${
+            ativoId === '' ? 'font-medium text-primary-800 dark:text-primary-200' : ''
+          }`}
+        >
+          <span className="h-3.5 w-3.5 rounded-sm border border-slate-300 bg-white" aria-hidden />
+          Sem preenchimento
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 export default function GradeFiltroExcelPortal({
   colunaAberta,
@@ -53,6 +197,7 @@ export default function GradeFiltroExcelPortal({
   deferSortUntilApply = false,
   applyButtonLabel = 'OK',
   extraActions,
+  filtroCor,
   zIndex = 13001,
 }: Props) {
   const key = colunaAberta;
@@ -150,6 +295,8 @@ export default function GradeFiltroExcelPortal({
       <button type="button" onClick={() => escolherOrdenacao('desc')} className={sortBtnClass('desc')}>
         {sortDescLabel}
       </button>
+
+      {filtroCor ? <BlocoFiltroCor filtroCor={filtroCor} /> : null}
 
       {extraActions ? (
         <>
