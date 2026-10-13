@@ -30,6 +30,7 @@ export const PRODUCAO_MENU: NavMenuEntry[] = [];
 export const PCP_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/pedidos/sequenciamento-carradas', label: 'Sequenciamento carradas' },
   { kind: 'link', to: '/pedidos', label: 'Gerenciador de pedidos' },
+  { kind: 'link', to: '/pedidos/decomposicao', label: 'Ordem de produção' },
   { kind: 'link', to: '/pedidos/encerrados', label: 'Pedidos encerrados' },
   {
     kind: 'submenu',
@@ -233,6 +234,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/pedidos/dash-entregas': 'Painel Pedidos em aberto',
   '/pedidos/sequenciamento-carradas': 'Sequenciamento carradas',
   '/pedidos': 'Gerenciador de Pedidos',
+  '/pedidos/decomposicao': 'Ordem de produção',
   '/pedidos/encerrados': 'Pedidos encerrados',
   '/pedidos/sycroorder': 'Comunicação PD',
   '/suporte': 'Chamados',
