@@ -111,21 +111,28 @@ export default function DiarioProcessosPage() {
     }
   };
 
-  const gravarDescricao = async () => {
-    if (!aberto || !aberto.editavel || fluxo) return;
+  const gravarDescricao = async (opts?: { silencioso?: boolean }): Promise<boolean> => {
+    if (!aberto || !aberto.editavel || fluxo) return false;
     const texto = descricao.trim();
     if (!texto) {
       setDescricao(aberto.descricao);
-      return;
+      setErro('Informe a descrição.');
+      return false;
     }
-    if (texto === aberto.descricao) return;
+    if (texto === aberto.descricao) {
+      if (!opts?.silencioso) setAviso('Alterações salvas.');
+      return true;
+    }
     setFluxo(true);
     setErro(null);
     try {
       substituir(await atualizarDescricaoProcessoDiario(aberto.id, texto));
+      if (!opts?.silencioso) setAviso('Alterações salvas.');
+      return true;
     } catch (e) {
       setDescricao(aberto.descricao);
       setErro(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setFluxo(false);
     }
@@ -133,10 +140,13 @@ export default function DiarioProcessosPage() {
 
   const enviar = async () => {
     if (!aberto || fluxo) return;
+    const ok = await gravarDescricao({ silencioso: true });
+    if (!ok) return;
     setFluxo(true);
     setErro(null);
     try {
       substituir(await enviarProcessoDiario(aberto.id));
+      setAviso(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
     } finally {
@@ -312,59 +322,69 @@ export default function DiarioProcessosPage() {
       ) : null}
 
       {aberto ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 sm:p-4">
-          <div className="flex h-[92vh] w-full max-w-[96rem] flex-col overflow-hidden rounded-xl bg-slate-100 shadow-xl dark:bg-slate-900">
-            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
-                    Contas a pagar {aberto.codigo}
-                  </h2>
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASSE[aberto.status]}`}>
-                    {STATUS_LABEL[aberto.status]}
-                  </span>
-                  <span className="text-sm text-slate-500 dark:text-slate-400">{formatarData(aberto.dataVencimento)}</span>
-                </div>
-                <label className="mt-2 block text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Descrição
-                  <input
-                    value={descricao}
-                    maxLength={200}
-                    disabled={!aberto.editavel || fluxo}
-                    onChange={(e) => setDescricao(e.target.value)}
-                    onBlur={() => void gravarDescricao()}
-                    className="mt-1 h-8 w-full max-w-xl rounded-lg border border-slate-300 bg-white px-2 text-sm disabled:opacity-70 dark:border-slate-600 dark:bg-slate-900"
-                  />
-                </label>
-                {aberto.motivoDevolucao ? (
-                  <p className="mt-2 text-xs text-orange-700 dark:text-orange-300">Devolução: {aberto.motivoDevolucao}</p>
-                ) : null}
-                {aviso ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{aviso}</p> : null}
+        <div className="fixed inset-0 z-[70] flex flex-col bg-white dark:bg-slate-900">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+                  Contas a pagar {aberto.codigo}
+                </h2>
+                <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASSE[aberto.status]}`}>
+                  {STATUS_LABEL[aberto.status]}
+                </span>
+                <span className="text-sm text-slate-500 dark:text-slate-400">{formatarData(aberto.dataVencimento)}</span>
+                <input
+                  value={descricao}
+                  maxLength={200}
+                  disabled={!aberto.editavel || fluxo}
+                  onChange={(e) => {
+                    setDescricao(e.target.value);
+                    setAviso(null);
+                  }}
+                  placeholder="Descrição"
+                  aria-label="Descrição"
+                  className="h-8 min-w-[12rem] flex-1 rounded-lg border border-slate-300 bg-white px-2 text-sm disabled:opacity-70 dark:border-slate-600 dark:bg-slate-800"
+                />
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setAberto(null);
-                  setErro(null);
-                }}
-                className="inline-flex h-8 items-center rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200"
-              >
-                Fechar
-              </button>
+              {aberto.motivoDevolucao ? (
+                <p className="mt-1 text-xs text-orange-700 dark:text-orange-300">Devolução: {aberto.motivoDevolucao}</p>
+              ) : null}
+              {aviso ? <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">{aviso}</p> : null}
             </div>
-            <div className="min-h-0 flex-1 overflow-auto p-3">
-              <DiarioFinanceiroPage
-                key={aberto.id}
-                modo={{ dataFixa: aberto.dataVencimento, editavel: aberto.editavel }}
-              />
+            <button
+              type="button"
+              onClick={() => {
+                setAberto(null);
+                setErro(null);
+                setAviso(null);
+              }}
+              className="inline-flex h-8 shrink-0 items-center rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200"
+            >
+              Fechar
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <DiarioFinanceiroPage
+              key={aberto.id}
+              modo={{ dataFixa: aberto.dataVencimento, editavel: aberto.editavel }}
+            />
+          </div>
+          {erro ? (
+            <div className="shrink-0 border-t border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+              {erro}
             </div>
-            {erro ? (
-              <div className="shrink-0 border-t border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
-                {erro}
-              </div>
-            ) : null}
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
-              {aberto.editavel ? (
+          ) : null}
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white px-4 py-2 dark:border-slate-700 dark:bg-slate-900">
+            {aberto.editavel ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void gravarDescricao()}
+                  disabled={fluxo}
+                  className="h-8 rounded-lg border border-primary-600 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50 dark:bg-slate-800 dark:text-primary-200 dark:hover:bg-slate-700"
+                >
+                  {fluxo ? 'Salvando…' : 'Salvar'}
+                </button>
                 <button
                   type="button"
                   onClick={() => void enviar()}
@@ -373,36 +393,36 @@ export default function DiarioProcessosPage() {
                 >
                   Enviar para aprovação
                 </button>
-              ) : null}
-              {podeAprovar && aberto.status === 'em_aprovacao' ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSenha('');
-                    setErro(null);
-                    setSenhaAberta(true);
-                  }}
-                  disabled={fluxo}
-                  className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  Aprovar
-                </button>
-              ) : null}
-              {podeAprovar && (aberto.status === 'em_aprovacao' || aberto.status === 'aprovado') ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMotivo('');
-                    setErro(null);
-                    setDevolverAberto(true);
-                  }}
-                  disabled={fluxo}
-                  className="h-8 rounded-lg border border-orange-500 px-3 text-xs font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-50 dark:text-orange-200 dark:hover:bg-slate-700"
-                >
-                  Devolver para correção
-                </button>
-              ) : null}
-            </div>
+              </>
+            ) : null}
+            {podeAprovar && aberto.status === 'em_aprovacao' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSenha('');
+                  setErro(null);
+                  setSenhaAberta(true);
+                }}
+                disabled={fluxo}
+                className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                Aprovar
+              </button>
+            ) : null}
+            {podeAprovar && (aberto.status === 'em_aprovacao' || aberto.status === 'aprovado') ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setMotivo('');
+                  setErro(null);
+                  setDevolverAberto(true);
+                }}
+                disabled={fluxo}
+                className="h-8 rounded-lg border border-orange-500 px-3 text-xs font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-50 dark:text-orange-200 dark:hover:bg-slate-700"
+              >
+                Devolver para correção
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}
