@@ -50,7 +50,7 @@ import {
   type PainelCoberturaEstoqueData,
   type VisaoGradeCobertura,
 } from '../../api/coberturaEstoque';
-import { obterRessupEmpenhoPorPedido, type RessupEmpenhoPedidoResultado } from '../../api/compras';
+import { obterRessupEmpenhoPorPedido, type RessupEmpenhoPedidoResultado, type RessupAlmoxPcPendLinha } from '../../api/compras';
 import ModalConsultaEstoqueDetalhe, { fmtQtde } from '../../components/pcp/ModalConsultaEstoqueDetalhe';
 import TabelaDetalheSolicitacao from '../../components/pcp/TabelaDetalheSolicitacao';
 import TabelaDetalheCotacao from '../../components/pcp/TabelaDetalheCotacao';
@@ -505,6 +505,7 @@ export default function CoberturaEstoquePage() {
   const [visaoGrade, setVisaoGrade] = useState<VisaoGradeCobertura>('todos');
   const reqSeqRef = useRef(0);
   const detalheCacheRef = useRef(new Map<string, unknown>());
+  const pcPendCacheRef = useRef(new Map<number, RessupAlmoxPcPendLinha[]>());
   const limparFiltrosGradeRef = useRef<() => void>(() => {});
 
   const [detalhe, setDetalhe] = useState<DetalheModal | null>(null);
@@ -553,6 +554,7 @@ export default function CoberturaEstoquePage() {
       setErro(null);
       setLoading(true);
       detalheCacheRef.current.clear();
+      pcPendCacheRef.current.clear();
       limparFiltrosGradeRef.current();
       setCardValorAtivo(null);
       setKpiAtivo(null);
@@ -1956,6 +1958,7 @@ export default function CoberturaEstoquePage() {
           codigo={detalhe.linha.codigo}
           descricao={detalhe.linha.descricao}
           overlayFixed
+          cacheRef={pcPendCacheRef}
         />
       )}
 
