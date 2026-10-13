@@ -3060,3 +3060,21 @@ model DiarioAnotacao {
   @@unique([origem, codigo])
   @@map("diario_anotacao")
 }
+
+/// Um contas a pagar do Diário por dia de vencimento. Não grava no Nomus nem no Shop9.
+model DiarioContasPagarProcesso {
+  id              Int       @id @default(autoincrement())
+  codigo          Int       @unique
+  dataVencimento  String    @unique @map("data_vencimento")
+  descricao       String
+  usuario         String
+  status          String
+  motivoDevolucao String?   @map("motivo_devolucao")
+  aprovadoPor     String?   @map("aprovado_por")
+  aprovadoEm      DateTime? @map("aprovado_em")
+  enviadoEm       DateTime? @map("enviado_em")
+  atualizadoEm    DateTime  @updatedAt @map("atualizado_em")
+  criadoEm        DateTime  @default(now()) @map("criado_em")
+
+  @@map("diario_contas_pagar_processo")
+}

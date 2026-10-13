@@ -3,9 +3,13 @@ import { salvarAnotacaoDiario, type DiarioContaPagarLinha } from '../../../api/d
 
 export function DiarioAnotacaoCelula({
   linha,
+  dataProcesso,
+  somenteLeitura = false,
   onGravada,
 }: {
   linha: DiarioContaPagarLinha;
+  dataProcesso: string;
+  somenteLeitura?: boolean;
   onGravada: (texto: string | null) => void;
 }) {
   const [valor, setValor] = useState(linha.anotacao ?? '');
@@ -17,6 +21,7 @@ export function DiarioAnotacaoCelula({
 
   const gravar = async () => {
     const texto = valor.trim();
+    if (somenteLeitura) return;
     if (texto === (linha.anotacao ?? '').trim()) return;
     if (!(linha.codigo > 0)) return;
     setSalvando(true);
@@ -25,6 +30,7 @@ export function DiarioAnotacaoCelula({
         origem: linha.origem,
         codigo: linha.codigo,
         texto,
+        dataProcesso,
       });
       onGravada(gravado);
     } catch (err) {
@@ -38,7 +44,7 @@ export function DiarioAnotacaoCelula({
   return (
     <input
       value={valor}
-      disabled={salvando || !(linha.codigo > 0)}
+      disabled={somenteLeitura || salvando || !(linha.codigo > 0)}
       maxLength={1000}
       placeholder="Observação"
       title={valor || 'Digite a observação desta conta'}

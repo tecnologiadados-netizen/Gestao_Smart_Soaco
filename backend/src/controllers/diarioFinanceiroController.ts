@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
-import { importarAnotacoesDiario, salvarAnotacaoDiario } from '../data/diarioAnotacao.js';
+import { importarAnotacoesDiario, lerMatrizPlanilha, salvarAnotacaoDiario } from '../data/diarioAnotacao.js';
+import { assertDatasDiarioEditaveis } from '../data/diarioProcessoRepository.js';
 import {
   MAX_REPROGRAMAR,
   definirContaBancariaDiario,
@@ -12,6 +13,23 @@ import {
 } from '../data/diarioContasPagarRepository.js';
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+function dataProcessoDoBody(req: Request): string | null {
+  const data = String(req.body?.dataProcesso ?? '').trim();
+  return YMD.test(data) ? data : null;
+}
+
+/** Recusa a alteração quando o dia do processo (ou outro vencimento informado) está em aprovação ou aprovado. */
+async function recusarSeDiaTravado(res: Response, datas: string[]): Promise<boolean> {
+  try {
+    await assertDatasDiarioEditaveis(datas);
+    return false;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(409).json({ error: msg });
+    return true;
+  }
+}
 
 /** GET /api/financeiro/diario/contas-pagar?dataInicio=&dataFim= */
 export async function getDiarioContasPagar(req: Request, res: Response): Promise<void> {
@@ -63,6 +81,13 @@ export async function postReprogramarContasPagar(req: Request, res: Response): P
     }
     itens.push({ origem, id });
   }
+
+  const dataProcesso = dataProcessoDoBody(req);
+  if (!dataProcesso) {
+    res.status(400).json({ error: 'Informe o dia do contas a pagar.' });
+    return;
+  }
+  if (await recusarSeDiaTravado(res, [dataProcesso, dataVencimento])) return;
 
   try {
     const resultado = await reprogramarVencimentoContasPagar({ dataVencimento, itens });
@@ -142,6 +167,12 @@ export async function postDefinirContaBancaria(req: Request, res: Response): Pro
   }
   const itens = lerItensContas(req.body?.itens, res);
   if (!itens) return;
+  const dataProcesso = dataProcessoDoBody(req);
+  if (!dataProcesso) {
+    res.status(400).json({ error: 'Informe o dia do contas a pagar.' });
+    return;
+  }
+  if (await recusarSeDiaTravado(res, [dataProcesso])) return;
 
   try {
     const resultado = await definirContaBancariaDiario({
@@ -203,6 +234,12 @@ export async function postDefinirFormaPagamento(req: Request, res: Response): Pr
     'Selecione títulos de uma só origem. No Nomus a forma de pagamento é gravada no ERP; no Shop9 ela fica registrada neste projeto.',
   );
   if (!itens) return;
+  const dataProcesso = dataProcessoDoBody(req);
+  if (!dataProcesso) {
+    res.status(400).json({ error: 'Informe o dia do contas a pagar.' });
+    return;
+  }
+  if (await recusarSeDiaTravado(res, [dataProcesso])) return;
 
   try {
     const resultado = await definirFormaPagamentoDiario({
@@ -239,6 +276,12 @@ export async function postSalvarAnotacaoDiario(req: Request, res: Response): Pro
     res.status(400).json({ error: 'Informe a origem e o código do título.' });
     return;
   }
+  const dataProcesso = dataProcessoDoBody(req);
+  if (!dataProcesso) {
+    res.status(400).json({ error: 'Informe o dia do contas a pagar.' });
+    return;
+  }
+  if (await recusarSeDiaTravado(res, [dataProcesso])) return;
   try {
     const resultado = await salvarAnotacaoDiario({
       origem,
@@ -256,7 +299,14 @@ export async function postSalvarAnotacaoDiario(req: Request, res: Response): Pro
 
 /** POST /api/financeiro/diario/contas-pagar/anotacoes/importar */
 export async function postImportarAnotacoesDiario(req: Request, res: Response): Promise<void> {
+  const dataProcesso = dataProcessoDoBody(req);
+  if (!dataProcesso) {
+    res.status(400).json({ error: 'Informe o dia do contas a pagar.' });
+    return;
+  }
   try {
+    const vencimentos = lerMatrizPlanilha(req.body?.matriz).map((l) => l.vencimento);
+    if (await recusarSeDiaTravado(res, [dataProcesso, ...vencimentos])) return;
     const resultado = await importarAnotacoesDiario({
       matriz: req.body?.matriz,
       usuario: req.user?.login ?? '?',
