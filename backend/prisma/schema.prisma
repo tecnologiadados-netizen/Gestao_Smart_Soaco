@@ -791,6 +791,88 @@ model RegraDataEntregaVersao {
   @@map("regra_data_entrega_versao")
 }
 
+/// Setor de produção. A lista é livre, como no catálogo de exemplo.
+model DecomposicaoSetor {
+  id        Int    @id @default(autoincrement())
+  nome      String @unique
+  sortOrder Int    @default(0)
+
+  @@map("decomposicao_setor")
+}
+
+/// Produto pai da ordem de produção. O setor fica em `grupo`.
+model DecomposicaoProdutoPai {
+  id             Int      @id @default(autoincrement())
+  /// Nome do setor de produção, como no catálogo de exemplo.
+  grupo          String   @default("")
+  codigo         String   @unique
+  nome           String
+  observacao     String?
+  criadoPorLogin String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  filhos         DecomposicaoProdutoFilho[]
+  ordens         DecomposicaoOrdem[]
+
+  @@index([grupo])
+  @@map("decomposicao_produto_pai")
+}
+
+/// Filho vinculado ao pai. codigoNomus é o código do produto no NOMUS (coluna Cod).
+model DecomposicaoProdutoFilho {
+  id          Int                    @id @default(autoincrement())
+  paiId       Int
+  codigoNomus            String
+  descricao              String
+  quantidade             Int                    @default(1)
+  /// Produto em processo (PP) escolhido na lista de materiais deste filho.
+  materiaPrimaCodigo     String?
+  materiaPrimaDescricao  String?
+  sortOrder              Int                    @default(0)
+  pai         DecomposicaoProdutoPai @relation(fields: [paiId], references: [id], onDelete: Cascade)
+
+  @@unique([paiId, codigoNomus])
+  @@index([codigoNomus])
+  @@map("decomposicao_produto_filho")
+}
+
+/// Ordem emitida a partir de um pai. O conteúdo fica gravado para reimpressão.
+model DecomposicaoOrdem {
+  id             Int                      @id @default(autoincrement())
+  numero         String                   @unique
+  paiId          Int?
+  grupo          String
+  codigoPai      String
+  nomePai        String
+  quantidade     Float
+  observacao     String?
+  criadoPorLogin String?
+  createdAt      DateTime                 @default(now())
+  pai            DecomposicaoProdutoPai?  @relation(fields: [paiId], references: [id], onDelete: SetNull)
+  itens          DecomposicaoOrdemItem[]
+
+  @@index([grupo])
+  @@index([paiId])
+  @@map("decomposicao_ordem")
+}
+
+model DecomposicaoOrdemItem {
+  id                    Int               @id @default(autoincrement())
+  ordemId               Int
+  codigoNomus           String
+  descricao             String
+  quantidadeNoPai       Int
+  quantidadeTotal       Float
+  materiaPrimaCodigo    String?
+  materiaPrimaDescricao String?
+  qtdePedida            Float?
+  sortOrder             Int               @default(0)
+  ordem                 DecomposicaoOrdem @relation(fields: [ordemId], references: [id], onDelete: Cascade)
+
+  @@index([ordemId])
+  @@map("decomposicao_ordem_item")
+}
+
 // --- SycroOrder (migrado do sincroorder-crm): pedidos, histórico e notificações ---
 model SycroOrderOrder {
   id                    Int      @id @default(autoincrement())

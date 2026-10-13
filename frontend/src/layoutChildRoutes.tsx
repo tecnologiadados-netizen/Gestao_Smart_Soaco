@@ -57,6 +57,7 @@ import PainelProducaoTvPage from './pages/pedidos/painel-metas/PainelProducaoTvP
 import PainelProducaoMetasPage from './pages/pedidos/painel-metas/PainelProducaoMetasPage';
 import PainelProducaoApuracaoPage from './pages/pedidos/painel-metas/PainelProducaoApuracaoPage';
 import PedidosEncerradosPage from './pages/pedidos/PedidosEncerradosPage';
+import DecomposicaoPage from './pages/pedidos/decomposicao/DecomposicaoPage';
 import SuportePage from './pages/suporte/SuportePage';
 import SuporteConfigPage from './pages/suporte/SuporteConfigPage';
 import AmigacoAlucinacoesPage from './pages/suporte/AmigacoAlucinacoesPage';
@@ -97,6 +98,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'pedidos/sequenciamento-carradas', element: <ErrorBoundary><SequenciamentoCarradasPage /></ErrorBoundary> },
   { path: 'pedidos', element: <ErrorBoundary><PedidosPage /></ErrorBoundary> },
   { path: 'pedidos/encerrados', element: <ErrorBoundary><PedidosEncerradosPage /></ErrorBoundary> },
+  { path: 'pedidos/decomposicao', element: <ErrorBoundary><DecomposicaoPage /></ErrorBoundary> },
   { path: 'pedidos/sycroorder', element: <ErrorBoundary><SycroOrderPage /></ErrorBoundary> },
   { path: 'pedidos/mrp', element: <ErrorBoundary><MRPManagerPage /></ErrorBoundary> },
   { path: 'pedidos/mrp/:id', element: <ErrorBoundary><MRPPage /></ErrorBoundary> },
